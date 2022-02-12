@@ -1160,6 +1160,15 @@ namespace dxvk {
     // NV-DXVK start: Extract texture preparation for re-use
     DxvkSamplerCreateInfo DecodeSamplerKey(const D3D9SamplerKey& key);
     // NV-DXVK end
+    
+    void TrackBufferMappingBufferSequenceNumber(
+      D3D9CommonBuffer* pResource);
+
+    void TrackTextureMappingBufferSequenceNumber(
+      D3D9CommonTexture* pResource,
+      UINT Subresource);
+
+    uint64_t GetCurrentSequenceNumber();
 
     Com<D3D9InterfaceEx>            m_parent;
     D3DDEVTYPE                      m_deviceType;
@@ -1281,6 +1290,8 @@ namespace dxvk {
     DxvkCsChunkPool                 m_csChunkPool;
     DxvkCsThread                    m_csThread;
     DxvkCsChunkRef                  m_csChunk;
+    uint64_t                        m_csSeqNum = 0ull;
+    
     Rc<sync::Fence>                 m_submissionFence;
     uint64_t                        m_submissionId = 0ull;
     uint64_t                        m_flushSeqNum = 0ull;
