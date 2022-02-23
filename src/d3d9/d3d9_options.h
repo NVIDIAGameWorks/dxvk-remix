@@ -23,8 +23,6 @@
 
 #include "../util/config/config.h"
 
-#include "d3d9_include.h"
-
 namespace dxvk {
   class DxvkDevice;
 
