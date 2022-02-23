@@ -1376,7 +1376,7 @@ namespace dxvk {
       // NV-DXVK end
 
       Rc<DxvkImage> image = new DxvkImage(
-        m_device->vkd(), imageInfo, imageHandle);
+        m_device.ptr(), imageInfo, imageHandle);
 
       m_imageViews[i] = new DxvkImageView(
         m_device->vkd(), image, viewInfo);
