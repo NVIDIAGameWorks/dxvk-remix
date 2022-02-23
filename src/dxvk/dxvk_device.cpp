@@ -263,7 +263,7 @@ namespace dxvk {
           DxvkMemoryStats::Category category,
 // NV-DXVK start: add debug names to VkImage objects
           const char *name) {
-    return new DxvkImage(m_vkd, createInfo, m_objects.memoryManager(), memoryType, category, name);
+    return new DxvkImage(this, createInfo, m_objects.memoryManager(), memoryType, category, name);
 // NV-DXVK end
   }
   
@@ -271,7 +271,7 @@ namespace dxvk {
   Rc<DxvkImage> DxvkDevice::createImageFromVkImage(
     const DxvkImageCreateInfo&  createInfo,
           VkImage               image) {
-    return new DxvkImage(m_vkd, createInfo, image);
+    return new DxvkImage(this, createInfo, image);
   }
   
   Rc<DxvkImageView> DxvkDevice::createImageView(
