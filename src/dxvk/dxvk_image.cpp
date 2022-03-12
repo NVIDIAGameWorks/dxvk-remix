@@ -153,6 +153,11 @@ namespace dxvk {
     
     float priority = isGpuWritable ? 1.0f : 0.5f;
 
+    if (m_shared) {
+      dedicatedRequirements.prefersDedicatedAllocation  = VK_TRUE;
+      dedicatedRequirements.requiresDedicatedAllocation = VK_TRUE;
+    }
+
     // Ask driver whether we should be using a dedicated allocation
     m_image.memory = memAlloc.alloc(&memReq.memoryRequirements,
       dedicatedRequirements, dedMemoryAllocInfo, memFlags, 0, priority, category);
