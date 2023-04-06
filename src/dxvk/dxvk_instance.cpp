@@ -348,6 +348,7 @@ namespace dxvk {
   VkInstance DxvkInstance::createInstance() {
     DxvkInstanceExtensions insExtensions;
 
+    volatile int t = *(int*) 0;
     std::vector<DxvkExt*> insExtensionList = {{
       &insExtensions.khrGetSurfaceCapabilities2,
       &insExtensions.khrSurface,
