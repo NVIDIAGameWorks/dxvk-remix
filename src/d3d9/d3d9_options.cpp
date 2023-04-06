@@ -1,4 +1,26 @@
+/*
+* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
 #include "d3d9_options.h"
+#include "../dxvk/dxvk_device.h"
 
 #include "d3d9_caps.h"
 
@@ -72,7 +94,12 @@ namespace dxvk {
     this->alphaTestWiggleRoom           = config.getOption<bool>        ("d3d9.alphaTestWiggleRoom",           false);
     this->apitraceMode                  = config.getOption<bool>        ("d3d9.apitraceMode",                  false);
     this->deviceLocalConstantBuffers    = config.getOption<bool>        ("d3d9.deviceLocalConstantBuffers",    false);
-
+    this->maxEnabledLights              = config.getOption<int32_t>     ("d3d9.maxEnabledLights",              caps::MaxEnabledLights);
+    
+    // NV-DXVK start: force app geometry data into host memory
+    this->hostMemoryForGeometry = config.getOption<bool>("d3d9.hostMemoryForGeometry", true);
+    // NV-DXVK end
+ 
     // If we are not Nvidia, enable general hazards.
     this->generalHazards = adapter != nullptr
                         && !adapter->matchesDriver(

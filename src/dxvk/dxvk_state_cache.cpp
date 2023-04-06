@@ -1,3 +1,24 @@
+/*
+* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
 #include "dxvk_device.h"
 #include "dxvk_pipemanager.h"
 #include "dxvk_state_cache.h"
@@ -270,7 +291,13 @@ namespace dxvk {
 
     if (key.eq(g_nullShaderKey))
       return;
-    
+
+    // NV-DXVK start: compile raytracing shaders on shader compilation threads
+    if (shader->stage() > VK_SHADER_STAGE_COMPUTE_BIT) {
+      return;
+    }
+    // NV-DXVK end
+
     // Add the shader so we can look it up by its key
     std::unique_lock<dxvk::mutex> entryLock(m_entryLock);
     m_shaderMap.insert({ key, shader });
@@ -294,13 +321,38 @@ namespace dxvk {
       if (!workerLock)
         workerLock = std::unique_lock<dxvk::mutex>(m_workerLock);
       
-      m_workerQueue.push(item);
+      // NV-DXVK start: do not compile same shader multiple times
+      if (m_workerItemsInFlight.count(item.hash()) == 0) {
+        m_workerQueue.push(item);
+        m_workerItemsInFlight.insert(item.hash());
+      }
+      // NV-DXVK end
     }
 
     if (workerLock)
       m_workerCond.notify_all();
   }
 
+  // NV-DXVK start: compile raytracing shaders on shader compilation threads
+  void DxvkStateCache::registerRaytracingShaders(
+    const DxvkRaytracingPipelineShaders& shaders) {
+    if (shaders.groups.empty())
+      return;
+
+    WorkerItem item;
+    item.rt = shaders;
+
+    std::unique_lock<dxvk::mutex> workerLock(m_workerLock);
+
+    // Do not compile same shader multiple times
+    if (m_workerItemsInFlight.count(item.hash()) == 0) {
+      m_workerQueue.push(item);
+      m_workerItemsInFlight.insert(item.hash());
+
+      m_workerCond.notify_all();
+    }
+  }
+  // NV-DXVK end
 
   void DxvkStateCache::stopWorkerThreads() {
     { std::lock_guard<dxvk::mutex> workerLock(m_workerLock);
@@ -364,6 +416,12 @@ namespace dxvk {
     key.fs  = getShaderKey(item.gp.fs);
     key.cs  = getShaderKey(item.cp.cs);
 
+    // NV-DXVK start: compile rt shaders on shader compilation threads
+    if (!item.rt.groups.empty()) {
+      auto pipeline = m_pipeManager->createRaytracingPipeline(item.rt);
+      pipeline->compilePipeline();
+    } else
+    // NV-DXVK end
     if (item.cp.cs == nullptr) {
       auto pipeline = m_pipeManager->createGraphicsPipeline(item.gp);
       auto entries = m_entryMap.equal_range(key);
@@ -948,6 +1006,13 @@ namespace dxvk {
       }
 
       compilePipelines(item);
+
+      // NV-DXVK start: do not compile same shader multiple times
+      { std::unique_lock<dxvk::mutex> lock(m_workerLock);
+        assert(m_workerItemsInFlight.count(item.hash()) == 1);
+        m_workerItemsInFlight.erase(item.hash());
+      }
+      // NV-DXVK end
     }
   }
 

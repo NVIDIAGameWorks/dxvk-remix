@@ -1,3 +1,24 @@
+/*
+* Copyright (c) 2021-2022, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
 #pragma once
 
 #include <limits>
@@ -289,7 +310,18 @@ namespace dxvk {
         &descriptorSet, dynamicOffsetCount, pDynamicOffsets);
     }
     
-    
+    // NV-DXVK start: descriptor set(s)
+    void cmdBindDescriptorSet(
+            VkPipelineBindPoint       pipeline,
+            VkPipelineLayout          pipelineLayout,
+            VkDescriptorSet           descriptorSet,
+            uint32_t                  bindIdx) {
+      m_vkd->vkCmdBindDescriptorSets(m_execBuffer,
+        pipeline, pipelineLayout, bindIdx, 1,
+        &descriptorSet, 0, nullptr);
+    }
+    // NV-DXVK end
+
     void cmdBindIndexBuffer(
             VkBuffer                buffer,
             VkDeviceSize            offset,
@@ -644,8 +676,7 @@ namespace dxvk {
             uint32_t                queryId,
             VkEvent                 event) {
       if (event == VK_NULL_HANDLE) {
-        m_vkd->vkResetQueryPoolEXT(
-          m_vkd->device(), queryPool, queryId, 1);
+        //m_vkd->vkResetQueryPoolEXT(m_vkd->device(), queryPool, queryId, 1);
       } else {
         m_cmdBuffersUsed.set(DxvkCmdBuffer::InitBuffer);
 
@@ -747,7 +778,6 @@ namespace dxvk {
         faceMask, reference);
     }
     
-    
     void cmdSetViewport(
             uint32_t                firstViewport,
             uint32_t                viewportCount,
@@ -756,6 +786,16 @@ namespace dxvk {
         firstViewport, viewportCount, viewports);
     }
     
+    void cmdTraceRaysKHR(
+        const VkStridedDeviceAddressRegionKHR* pRaygenShaderBindingTable,
+        const VkStridedDeviceAddressRegionKHR* pMissShaderBindingTable,
+        const VkStridedDeviceAddressRegionKHR* pHitShaderBindingTable,
+        const VkStridedDeviceAddressRegionKHR* pCallableShaderBindingTable,
+        uint32_t                               width,
+        uint32_t                               height,
+        uint32_t                               depth) {
+        m_vkd->vkCmdTraceRaysKHR(m_execBuffer, pRaygenShaderBindingTable, pMissShaderBindingTable, pHitShaderBindingTable, pCallableShaderBindingTable, width, height, depth);
+    }
     
     void cmdWriteTimestamp(
             VkPipelineStageFlagBits pipelineStage,
@@ -764,6 +804,69 @@ namespace dxvk {
       m_vkd->vkCmdWriteTimestamp(m_execBuffer,
         pipelineStage, queryPool, query);
     }
+
+    void vkCmdPipelineBarrier2KHR(
+        const VkDependencyInfo *pDependencyInfo) {
+        m_vkd->vkCmdPipelineBarrier2KHR(m_execBuffer, pDependencyInfo);
+    }
+
+    void vkCmdBuildMicromapsEXT(
+        uint32_t                      infoCount,
+        const VkMicromapBuildInfoEXT* pInfos) {
+        m_vkd->vkCmdBuildMicromapsEXT(m_execBuffer, infoCount, pInfos);
+    }
+
+    void vkCmdBuildAccelerationStructuresKHR(
+        uint32_t                                    infoCount,
+        const VkAccelerationStructureBuildGeometryInfoKHR* pInfos,
+        const VkAccelerationStructureBuildRangeInfoKHR* const* ppBuildRangeInfos)
+    {
+        m_vkd->vkCmdBuildAccelerationStructuresKHR(m_execBuffer, infoCount, pInfos, ppBuildRangeInfos);
+    }
+
+    void vkCmdBuildAccelerationStructuresIndirectKHR(
+        uint32_t                                    infoCount,
+        const VkAccelerationStructureBuildGeometryInfoKHR* pInfos,
+        const VkDeviceAddress* pIndirectDeviceAddresses,
+        const uint32_t* pIndirectStrides,
+        const uint32_t* const* ppMaxPrimitiveCounts)
+    {
+        m_vkd->vkCmdBuildAccelerationStructuresIndirectKHR(m_execBuffer, infoCount, pInfos, pIndirectDeviceAddresses, pIndirectStrides, ppMaxPrimitiveCounts);
+    }
+
+    // NV-DXVK start: Integrate Aftermath
+    void vkCmdSetCheckpointNV(const void* pCheckpointMarker) {
+      m_vkd->vkCmdSetCheckpointNV(m_execBuffer, pCheckpointMarker);
+    }
+    // NV-DXVK end
+
+    void vkCmdCopyAccelerationStructureKHR(
+        const VkCopyAccelerationStructureInfoKHR* pInfo)
+    {
+        m_vkd->vkCmdCopyAccelerationStructureKHR(m_execBuffer, pInfo);
+    }
+
+    void vkCmdCopyAccelerationStructureToMemoryKHR(
+        const VkCopyAccelerationStructureToMemoryInfoKHR* pInfo)
+    {
+        m_vkd->vkCmdCopyAccelerationStructureToMemoryKHR(m_execBuffer, pInfo);
+    }
+
+    void vkCmdCopyMemoryToAccelerationStructureKHR(
+        const VkCopyMemoryToAccelerationStructureInfoKHR* pInfo)
+    {
+        m_vkd->vkCmdCopyMemoryToAccelerationStructureKHR(m_execBuffer, pInfo);
+    }
+
+    void vkCmdWriteAccelerationStructuresPropertiesKHR(
+        uint32_t                                    accelerationStructureCount,
+        const VkAccelerationStructureKHR* pAccelerationStructures,
+        VkQueryType                                 queryType,
+        VkQueryPool                                 queryPool,
+        uint32_t                                    firstQuery)
+    {
+        m_vkd->vkCmdWriteAccelerationStructuresPropertiesKHR(m_execBuffer, accelerationStructureCount, pAccelerationStructures, queryType, queryPool, firstQuery);
+    }
     
     void cmdBeginDebugUtilsLabel(VkDebugUtilsLabelEXT *pLabelInfo);
 
@@ -771,6 +874,12 @@ namespace dxvk {
 
     void cmdInsertDebugUtilsLabel(VkDebugUtilsLabelEXT *pLabelInfo);
 
+    VkCommandBuffer getCmdBuffer(DxvkCmdBuffer cmdBuffer) const {
+      if (cmdBuffer == DxvkCmdBuffer::ExecBuffer) return m_execBuffer;
+      if (cmdBuffer == DxvkCmdBuffer::InitBuffer) return m_initBuffer;
+      if (cmdBuffer == DxvkCmdBuffer::SdmaBuffer) return m_sdmaBuffer;
+      return VK_NULL_HANDLE;
+    }
   private:
     
     DxvkDevice*         m_device;
@@ -796,13 +905,6 @@ namespace dxvk {
     DxvkGpuQueryTracker m_gpuQueryTracker;
     DxvkBufferTracker   m_bufferTracker;
     DxvkStatCounters    m_statCounters;
-
-    VkCommandBuffer getCmdBuffer(DxvkCmdBuffer cmdBuffer) const {
-      if (cmdBuffer == DxvkCmdBuffer::ExecBuffer) return m_execBuffer;
-      if (cmdBuffer == DxvkCmdBuffer::InitBuffer) return m_initBuffer;
-      if (cmdBuffer == DxvkCmdBuffer::SdmaBuffer) return m_sdmaBuffer;
-      return VK_NULL_HANDLE;
-    }
 
     VkResult submitToQueue(
             VkQueue               queue,

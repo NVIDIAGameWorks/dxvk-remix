@@ -4,6 +4,7 @@
 #include "d3d9_vertex_declaration.h"
 
 #include "../spirv/spirv_module.h"
+#include "../tracy/Tracy.hpp"
 
 namespace dxvk {
 
@@ -308,6 +309,7 @@ namespace dxvk {
   };
 
   Rc<DxvkShader> D3D9SWVPEmulator::GetShaderModule(D3D9DeviceEx* pDevice, const D3D9VertexDecl* pDecl) {
+    ZoneScoped;
     auto& elements = pDecl->GetElements();
 
     // Use the shader's unique key for the lookup

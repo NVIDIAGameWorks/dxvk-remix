@@ -46,6 +46,7 @@ namespace dxvk {
    */
   struct DxvkPresentInfo {
     Rc<vk::Presenter>   presenter;
+    uint32_t            frameId;
   };
 
 

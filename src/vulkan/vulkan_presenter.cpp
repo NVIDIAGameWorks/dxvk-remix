@@ -1,6 +1,30 @@
+/*
+* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
 #include "vulkan_presenter.h"
+#include "../dxvk/dxvk_scoped_annotation.h"
 
 #include "../dxvk/dxvk_format.h"
+#include "../tracy/Tracy.hpp"
+#include "../util/util_monitor.h"
 
 namespace dxvk::vk {
 
@@ -53,6 +77,9 @@ namespace dxvk::vk {
         sync.acquire, VK_NULL_HANDLE, &m_imageIndex);
     }
     
+    if (m_acquireStatus == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT)
+      acquireFullscreenExclusive();
+
     if (m_acquireStatus != VK_SUCCESS && m_acquireStatus != VK_SUBOPTIMAL_KHR)
       return m_acquireStatus;
     
@@ -60,8 +87,8 @@ namespace dxvk::vk {
     return m_acquireStatus;
   }
 
-
   VkResult Presenter::presentImage() {
+    ZoneScoped;
     PresenterSync sync = m_semaphores.at(m_frameIndex);
 
     VkPresentInfoKHR info;
@@ -78,6 +105,11 @@ namespace dxvk::vk {
 
     if (status != VK_SUCCESS && status != VK_SUBOPTIMAL_KHR)
       return status;
+
+    // NV-DXVK start: App Controlled FSE
+    if (status == VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT)
+      acquireFullscreenExclusive();
+    // NV-DXVK end
 
     // Try to acquire next image already, in order to hide
     // potential delays from the application thread.
@@ -137,6 +169,9 @@ namespace dxvk::vk {
     m_info.presentMode  = pickPresentMode(modes.size(), modes.data(), desc.numPresentModes, desc.presentModes);
     m_info.imageExtent  = pickImageExtent(caps, desc.imageExtent);
     m_info.imageCount   = pickImageCount(caps, m_info.presentMode, desc.imageCount);
+    // NV-DXVK start: App controlled FSE
+    m_info.appOwnedFSE  = m_device.features.fullScreenExclusive && (desc.fullScreenExclusive == VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT);
+    // NV-DXVK end
 
     if (!m_info.imageExtent.width || !m_info.imageExtent.height) {
       m_info.imageCount = 0;
@@ -144,10 +179,20 @@ namespace dxvk::vk {
       return VK_SUCCESS;
     }
 
+    // NV-DXVK start: App controlled FSE
     VkSurfaceFullScreenExclusiveInfoEXT fullScreenInfo;
-    fullScreenInfo.sType            = VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT;
-    fullScreenInfo.pNext            = nullptr;
+    fullScreenInfo.sType = VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT;
+    fullScreenInfo.pNext = nullptr;
     fullScreenInfo.fullScreenExclusive = desc.fullScreenExclusive;
+
+    VkSurfaceFullScreenExclusiveWin32InfoEXT fullScreenInfoWin32;
+    if (m_info.appOwnedFSE) {
+      fullScreenInfoWin32.sType = VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_WIN32_INFO_EXT;
+      fullScreenInfoWin32.pNext = nullptr;
+      fullScreenInfoWin32.hmonitor = GetDefaultMonitor();
+      fullScreenInfo.pNext = &fullScreenInfoWin32;
+    }
+    // NV-DXVK end
 
     VkSwapchainCreateInfoKHR swapInfo;
     swapInfo.sType                  = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -168,7 +213,7 @@ namespace dxvk::vk {
     swapInfo.compositeAlpha         = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     swapInfo.presentMode            = m_info.presentMode;
     swapInfo.clipped                = VK_TRUE;
-    swapInfo.oldSwapchain           = VK_NULL_HANDLE;
+    swapInfo.oldSwapchain           = m_swapchain;
 
     if (m_device.features.fullScreenExclusive)
       swapInfo.pNext = &fullScreenInfo;
@@ -181,10 +226,33 @@ namespace dxvk::vk {
       "\n  Image count:  ", m_info.imageCount,
       "\n  Exclusive FS: ", desc.fullScreenExclusive));
     
-    if ((status = m_vkd->vkCreateSwapchainKHR(m_vkd->device(),
-        &swapInfo, nullptr, &m_swapchain)) != VK_SUCCESS)
-      return status;
-    
+    if ((status = m_vkd->vkCreateSwapchainKHR(m_vkd->device(), &swapInfo, nullptr, &m_swapchain)) != VK_SUCCESS) {
+
+      const auto errString(str::format("Presenter: vkCreateSwapchainKHR failed, error code: ", status));
+
+      if (swapInfo.pNext) {
+        Logger::warn(errString);
+        Logger::info("Presenter: retrying to create swap chain without Exclusive FS");
+
+        m_info.appOwnedFSE = false;
+        swapInfo.pNext = nullptr;
+
+        if ((status = m_vkd->vkCreateSwapchainKHR(m_vkd->device(), &swapInfo, nullptr, &m_swapchain)) != VK_SUCCESS) {
+          Logger::err(str::format("Presenter: vkCreateSwapchainKHR failed again, error code: ", status, ". Giving up."));
+
+          return status;
+        }
+      }
+      else {
+        Logger::err(errString);
+        return status;
+      }
+    }
+
+    // NV-DXVK start: App Controlled FSE
+    acquireFullscreenExclusive();
+    // NV-DXVK end
+
     // Acquire images and create views
     std::vector<VkImage> images;
 
@@ -261,6 +329,15 @@ namespace dxvk::vk {
     fullScreenInfo.pNext = nullptr;
     fullScreenInfo.fullScreenExclusive = desc.fullScreenExclusive;
 
+    VkSurfaceFullScreenExclusiveWin32InfoEXT fullScreenInfoWin32;
+
+    if (desc.fullScreenExclusive == VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT) {
+      fullScreenInfoWin32.sType = VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_WIN32_INFO_EXT;
+      fullScreenInfoWin32.pNext = nullptr;
+      fullScreenInfoWin32.hmonitor = GetDefaultMonitor();
+      fullScreenInfo.pNext = &fullScreenInfoWin32;
+    }
+
     VkPhysicalDeviceSurfaceInfo2KHR surfaceInfo;
     surfaceInfo.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR;
     surfaceInfo.pNext = &fullScreenInfo;
@@ -306,6 +383,15 @@ namespace dxvk::vk {
     fullScreenInfo.sType = VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT;
     fullScreenInfo.pNext = nullptr;
     fullScreenInfo.fullScreenExclusive = desc.fullScreenExclusive;
+    
+    VkSurfaceFullScreenExclusiveWin32InfoEXT fullScreenInfoWin32;
+
+    if (desc.fullScreenExclusive == VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT) {
+      fullScreenInfoWin32.sType = VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_WIN32_INFO_EXT;
+      fullScreenInfoWin32.pNext = nullptr;
+      fullScreenInfoWin32.hmonitor = GetDefaultMonitor();
+      fullScreenInfo.pNext = &fullScreenInfoWin32;
+    }
 
     VkPhysicalDeviceSurfaceInfo2KHR surfaceInfo;
     surfaceInfo.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SURFACE_INFO_2_KHR;
@@ -477,6 +563,8 @@ namespace dxvk::vk {
 
 
   void Presenter::destroySwapchain() {
+    releaseFullscreenExclusive();
+
     for (const auto& img : m_images)
       m_vkd->vkDestroyImageView(m_vkd->device(), img.view, nullptr);
     
@@ -498,4 +586,49 @@ namespace dxvk::vk {
     m_vki->vkDestroySurfaceKHR(m_vki->instance(), m_surface, nullptr);
   }
 
+  // NV-DXVK start: App Controlled FSE
+  VkResult Presenter::acquireFullscreenExclusive() {
+    if (!m_info.appOwnedFSE)
+      return VK_SUCCESS;
+
+    if (!m_swapchain)
+      return VK_ERROR_UNKNOWN;
+
+    VkResult result = m_vkd->vkAcquireFullScreenExclusiveModeEXT(m_vkd->device(), m_swapchain);
+
+    // Already acquired?
+    if (result == VK_ERROR_INITIALIZATION_FAILED)
+      return VK_SUCCESS;
+
+    if (result == VK_SUCCESS) {
+      Logger::debug("Acquired Fullscreen Exclusive");
+    } else {
+      Logger::warn("Fullscreen exclusive failed to acquire"); // This is not the end of the world.
+    }
+
+    return result;
+  }
+
+  VkResult Presenter::releaseFullscreenExclusive() {
+    if (!m_info.appOwnedFSE)
+      return VK_SUCCESS;
+
+    if (!m_swapchain)
+      return VK_ERROR_UNKNOWN;
+
+    VkResult result = m_vkd->vkReleaseFullScreenExclusiveModeEXT(m_vkd->device(), m_swapchain);
+
+    // Already released?
+    if (result == VK_ERROR_INITIALIZATION_FAILED)
+      return VK_SUCCESS;
+
+    if (result == VK_SUCCESS) {
+      Logger::debug("Released Fullscreen Exclusive");
+    } else {
+      Logger::err("Fullscreen exclusive failed to release"); // This is bad.
+    }
+
+    return result;
+  }
+  // NV-DXVK end
 }

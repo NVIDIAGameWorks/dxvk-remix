@@ -1,0 +1,1163 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "opaque_surface_material_blending.slangh"
+
+// Opaque Surface Material Interaction Constants
+
+// Note: Threshold value to use for considering the albedo zero or non-zero for some calculations.
+static const f16vec3 albedoThreshold = f16vec3(1.0h / 256.0h);
+// Note: Threshold value to use for considering the base reflectivity zero or non-zero for some calculations.
+static const f16vec3 baseReflectivityThreshold = f16vec3(1.0h / 256.0h);
+// Note: Threshold value to use for considering the roughness (not the perceptual roughness) zero or non-zero for some calculations.
+// Must be greater than materialMinimumRoughness in the BRDF helpers as all roughnesses will be clamped to at minimum this value.
+static const float16_t roughnessThreshold = float16_t(0.001h);
+
+// Opaque Surface Material Interaction Helper Functions
+
+// Opaque Surface Material Interaction Functions
+
+OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
+  OpaqueSurfaceMaterial opaqueSurfaceMaterial,
+  Surface surface,
+  SurfaceInteraction surfaceInteraction,
+  MinimalRayInteraction minimalRayInteraction)
+{
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction;
+
+  // Modify the Surface Interaction to handle Animated Spritesheets
+  // Todo: This ideally should be done in the surface interaction itself to be more consistent everywhere, so this spritesheet information
+  // should ideally be moved to the Surface. For Ray Portals the evaluation still needs to happen in the material though due to the slightly
+  // different way it samples the spritesheet however which may make this infeasable.
+
+  surfaceMaterialInteractionSpriteSheetAdjustmentHelper(
+    surfaceInteraction,
+    cb.timeSinceStartMS,
+    opaqueSurfaceMaterial.spriteSheetRows,
+    opaqueSurfaceMaterial.spriteSheetCols,
+    opaqueSurfaceMaterial.spriteSheetFPS,
+  );
+
+  // Sample from each Opaque Surface Material texture
+
+  f16vec4 albedoOpacitySample;
+  f16vec4 normalSample;
+  f16vec4 secondNormalSample;
+  f16vec4 tangentSample;
+  f16vec4 roughnessSample;
+  f16vec4 metallicSample;
+  f16vec4 emissiveColorSample;
+
+  const bool albedoOpacityLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.albedoOpacityTextureIndex, surfaceInteraction, albedoOpacitySample);
+  const bool normalLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.normalTextureIndex, surfaceInteraction, normalSample);
+
+  bool secondNormalLoaded = false;
+  if (cb.opaqueMaterialArgs.layeredWaterNormalEnable && surface.isAnimatedWater)
+  {
+    // take a second sample from a higher LOD using a modified texture xform
+    const vec2 motionScale = vec2(cb.opaqueMaterialArgs.layeredWaterNormalMotionX, cb.opaqueMaterialArgs.layeredWaterNormalMotionY) * cb.opaqueMaterialArgs.layeredWaterNormalMotionScale;
+    const float lodBias = cb.opaqueMaterialArgs.layeredWaterNormalLodBias;
+
+    float4x4 xform = surface.textureTransform;
+    xform[0][2] *= motionScale.x;
+    xform[1][2] *= motionScale.y;
+
+    vec2 savedCoordinates = surfaceInteraction.textureCoordinates;
+    surfaceInteraction.textureCoordinates = mul(xform, float4(surfaceInteraction.textureCoordinates, 0.f, 1.f)).xy;
+    secondNormalLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.normalTextureIndex, surfaceInteraction, secondNormalSample, lodBias);
+    surfaceInteraction.textureCoordinates = savedCoordinates;
+  }
+
+  const bool tangentLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.tangentTextureIndex, surfaceInteraction, tangentSample);
+  const bool roughnessLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.roughnessTextureIndex, surfaceInteraction, roughnessSample);
+  const bool metallicLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.metallicTextureIndex, surfaceInteraction, metallicSample);
+  const bool emissiveColorLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.emissiveColorTextureIndex, surfaceInteraction, emissiveColorSample);
+
+  // Create a tangent to world space matrix for future calculations
+
+  const f16mat3 tangentToWorld = transpose(f16mat3(surfaceInteraction.interpolatedTangent, surfaceInteraction.interpolatedBitangent, surfaceInteraction.interpolatedNormal));
+
+  // Load Albedo/Opacity
+
+  f16vec3 albedo = opaqueSurfaceMaterial.albedoOpacityConstant.rgb;
+  float16_t opacity = opaqueSurfaceMaterial.albedoOpacityConstant.a;
+  float16_t emissiveBlendOverrideInfluence = float16_t(0.0f);
+  float16_t thinFilmThickness = float16_t(0.0f);
+
+  // Note: Does not represent if the thin film is enabled in all cases, such as if the thin film enable override is specified, merely concerned with if
+  // it has been directly enabled by the material itself.
+  const bool thinFilmEnabled = opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_USE_THIN_FILM_LAYER;
+
+  // Note: Set thin film thickness constant fallback only if the thin film is enabled as a non-zero value here is responsible for indicating
+  // if the thin film is in use by later code.
+  if (thinFilmEnabled)
+  {
+    thinFilmThickness = opaqueSurfaceMaterial.thinFilmThicknessConstant;
+  }
+
+  if (albedoOpacityLoaded)
+  {
+    albedo = albedoOpacitySample.rgb;
+
+    // Note: Thin film thickness and opacity deriving their values from the alpha channel are mutually exclusive, set the appropriate
+    // one based on the specified flags, and set the opposing variable to a default value (the "default" value must match how the material is decoded from the
+    // GBuffer as well). Ideally we'd want to simply fall back on the existing opacity/thin film thickness constants instead, but we currently do not have a
+    // way of encoding these values in the GBuffer, so a code constant must be used instead. Finally, thinFilmEnabled does not need to be checked here as the
+    // alpha as thin film thickness flag is only set on the CPU if the use thin film flag is true.
+    if (opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_ALPHA_IS_THIN_FILM_THICKNESS)
+    {
+      thinFilmThickness = albedoOpacitySample.a;
+      opacity = float16_t(1.0f);
+    }
+    else
+    {
+      opacity = albedoOpacitySample.a;
+      thinFilmThickness = float16_t(0.0f);
+    }
+  }
+
+  // Fixed function texture stage state for alpha channel
+  float16_t textureAlphaArg1, textureAlphaArg2;
+  f16vec4 tFactor;
+  tFactor.a = float16_t((surface.tFactor >> 24) & 0xff) / 255.0;
+  tFactor.r = float16_t((surface.tFactor >> 16) & 0xff) / 255.0;
+  tFactor.g = float16_t((surface.tFactor >> 8)  & 0xff) / 255.0;
+  tFactor.b = float16_t((surface.tFactor)       & 0xff) / 255.0;
+  chooseTextureArgument(textureAlphaArg1, surface.textureAlphaArg1Source, opacity, surfaceInteraction.vertexColor.a, tFactor.a, opacity);
+  chooseTextureArgument(textureAlphaArg2, surface.textureAlphaArg2Source, opacity, surfaceInteraction.vertexColor.a, tFactor.a, float16_t(1.0));
+  chooseTextureOperationAlpha(opacity, surface.textureAlphaOperation, textureAlphaArg1, textureAlphaArg2);
+  
+  calcOpaqueSurfaceMaterialOpacity(
+    albedo, opacity, surface, opacity, emissiveBlendOverrideInfluence);
+
+  // Note: Gamma correct albedo input (be it from a constant or a texture). Currently assuming all textures are not using sRGB formats which
+  // automatically do this conversion.
+  // This conversion is done *after* calcOpaqueSurfaceMaterialOpacity to correctly apply double multiplicative blending.
+  // Todo: Disable this for when a sRGB texture is the source of the albedo.
+  albedo = gammaToLinear(albedo);
+
+  // "Normalize" vertex color to remove lighting contribution in different vertices.
+  // We assume the diffuse term contributes most lighting. Therefore, vertex color = diffuseColor * (N*L).
+  // By dividing the vertex color by its largest component, the result is irrelavant to N*L, but proportional to the 
+  // original diffuse color, which is more desired.
+  // In practice, we add an adjustable blending factor to avoid extreme cases.
+  surfaceInteraction.vertexColor.rgb = max(surfaceInteraction.vertexColor.rgb, f16vec3(1.0 / 255.0));
+  float16_t maxColor = max(surfaceInteraction.vertexColor.r, max(surfaceInteraction.vertexColor.g, surfaceInteraction.vertexColor.b));
+  surfaceInteraction.vertexColor.rgb /= maxColor;
+  surfaceInteraction.vertexColor.rgb = mix(f16vec3(1), surfaceInteraction.vertexColor.rgb, float16_t(cb.vertexColorStrength));
+
+  // Note: Gamma correct vertex color input.
+  surfaceInteraction.vertexColor.rgb = gammaToLinear(surfaceInteraction.vertexColor.rgb);
+
+  // fixed function texture stage setting
+  f16vec3 textureArg1, textureArg2;
+  chooseTextureArgument(textureArg1, surface.textureColorArg1Source, albedo, surfaceInteraction.vertexColor.rgb, tFactor.rgb, f16vec3(1.0));
+  chooseTextureArgument(textureArg2, surface.textureColorArg2Source, albedo, surfaceInteraction.vertexColor.rgb, tFactor.rgb, f16vec3(1.0));
+  chooseTextureOperationColor(albedo, surface.textureColorOperation, textureArg1, textureArg2);
+
+  // Apply material modifiers/overrides
+  albedo = saturate(albedo * cb.opaqueMaterialArgs.albedoScale + cb.opaqueMaterialArgs.albedoBias);
+
+  if (cb.opaqueMaterialArgs.enableThinFilmOverride)
+  {
+    // Note: Thickness override is already normalized to the proper 0-1 range by the CPU to match how the albedo texture alpha channel encodes thickness.
+    thinFilmThickness = cb.opaqueMaterialArgs.thinFilmNormalizedThicknessOverride;
+  }
+
+  // Load Normal
+
+  f16vec3 normal = surfaceInteraction.interpolatedNormal;
+
+  if (normalLoaded)
+  {
+    // Note: Using f16 from texture to decode from is fine as the original texture is only 8 bits of precision.
+    const f16vec3 tangentNormal = unsignedOctahedralToHemisphereDirection(vec2(normalSample.xy), cb.opaqueMaterialArgs.normalIntensity);
+
+    normal = normalize(mul(tangentToWorld, tangentNormal));
+
+    if (secondNormalLoaded)
+    {
+      const f16vec3 tangentNormal2 = unsignedOctahedralToHemisphereDirection(vec2(secondNormalSample.xy), cb.opaqueMaterialArgs.normalIntensity);
+      const f16vec3 normal2 = normalize(mul(tangentToWorld, tangentNormal2));
+
+      normal = normalBlendRNM(normal2, normal);
+    }
+  }
+
+  // Load Tangent
+
+  // Todo
+
+  // Load Roughness
+
+  float16_t roughness = opaqueSurfaceMaterial.roughnessConstant;
+
+  if (roughnessLoaded)
+  {
+    roughness = roughnessSample.x;
+  }
+
+  // Apply material modifiers
+  roughness = saturate(roughness * cb.opaqueMaterialArgs.roughnessScale + cb.opaqueMaterialArgs.roughnessBias);
+
+  // Load Metallic
+
+  float16_t metallic = opaqueSurfaceMaterial.metallicConstant;
+
+  if (metallicLoaded)
+  {
+    metallic = metallicSample.x;
+  }
+
+  // Load Emissive Color
+
+  f16vec3 emissiveColor = opaqueSurfaceMaterial.emissiveColorConstant;
+
+  if (emissiveColorLoaded)
+  {
+    emissiveColor = emissiveColorSample.xyz;
+  }
+
+  // Note: Gamma correct emissive color input (be it from a constant or a texture). Currently assuming all textures are not using sRGB formats which
+  // automatically do this conversion.
+  // Todo: Disable this for when a sRGB texture is the source of the emissive color.
+  emissiveColor = gammaToLinear(emissiveColor);
+
+  // Transform to desired Opaque Material Interaction values
+
+  // Note: Store a copy of the original albedo value so that operations later can use it rather than working off of the adjusted albedo
+  // (which will not look correct on materials with weird blend modes that do things like invert alpha).
+  const f16vec3 originalAlbedo = albedo;
+
+  opaqueSurfaceMaterialInteraction.shadingNormal = getBentNormal(surfaceInteraction.triangleNormal, normal, -minimalRayInteraction.viewDirection);
+  opaqueSurfaceMaterialInteraction.normalDetail = float16_t(1.0 - dot(float3(opaqueSurfaceMaterialInteraction.shadingNormal), float3(surfaceInteraction.interpolatedNormal)));
+  // Todo: Shading tangent/bitangent for anisotropy?
+  opaqueSurfaceMaterialInteraction.opacity = opacity;
+  opaqueSurfaceMaterialInteraction.thinFilmThickness = thinFilmThickness;
+
+  // Note: Opacity factored into albedo and base reflectivity to ensure NEE and indirect lighting off of objects with opacity properly
+  // account for how much light is being transmitted due to the opacity (similar to how Fresnel on glass works).
+  opaqueSurfaceMaterialInteraction.albedo = surface.isMatte ? f16vec3(0) : albedoToAdjustedAlbedo(albedo, metallic, opacity);
+  opaqueSurfaceMaterialInteraction.baseReflectivity = surface.isMatte ? f16vec3(0) : calcBaseReflectivity(albedo, metallic, opacity);
+   
+  // Note: Roughness loaded from texture is a perceptual roughness value (for optimal encoding), so this works as intended.
+  calcRoughness(roughness, opaqueSurfaceMaterial.anisotropy,
+    opaqueSurfaceMaterialInteraction.isotropicRoughness,
+    opaqueSurfaceMaterialInteraction.anisotropicRoughness);
+
+  f16vec3 derivedEmissiveColor;
+  float16_t derivedEmissiveIntensity;
+
+  // Note: "Fullbright", emissive blend modes and actual emissive color/intensity are mututally exclusive so this logic for selecting between them in this order is fine.
+  if (surface.isEmissive)
+  {
+    // Todo: Remove this hack when a proper legacy material model is created, or find some better solution to it (such as setting emissive information on the CPU side).
+    derivedEmissiveColor = originalAlbedo;
+    derivedEmissiveIntensity = float16_t(2.0f); // Note: Arbitrary constant, should be set on the CPU side instead and controllable.
+  }
+  else if (surface.isEmissiveBlend && cb.enableEmissiveBlendEmissiveOverride)
+  {
+    // Note: Interpret original material's albedo as emissive color and the emissive blend override influence combined with an arbitrary constant as emissive intensity.
+    // This is so that when "emissive" style blending is used it looks more correct in a physically based way based on the influence from the mode in question.
+    // Todo: Move this all once separate Surface Materials for D3D9 compatability and normal usage are created.
+    derivedEmissiveColor = originalAlbedo;
+    derivedEmissiveIntensity = emissiveBlendOverrideInfluence * uint16BitsToHalf(cb.emissiveBlendOverrideEmissiveIntensity);
+  }
+  else
+  {
+    derivedEmissiveColor = emissiveColor;
+    derivedEmissiveIntensity = opaqueSurfaceMaterial.emissiveIntensity;
+  }
+
+  derivedEmissiveIntensity *= uint16BitsToHalf(cb.emissiveIntensity); // Note: Global emissive intensity scalar on top of everything else.
+
+  opaqueSurfaceMaterialInteraction.emissiveRadiance = derivedEmissiveColor * derivedEmissiveIntensity;
+
+  return opaqueSurfaceMaterialInteraction;
+}
+
+OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction)
+{
+  // Decode the Opaque Surface Material Interaction from its polymorphic representation
+  // Note: Opaque type is known in advance
+
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction;
+
+  opaqueSurfaceMaterialInteraction.shadingNormal = polymorphicSurfaceMaterialInteraction.shadingNormal;
+  opaqueSurfaceMaterialInteraction.emissiveRadiance = polymorphicSurfaceMaterialInteraction.emissiveRadiance;
+  opaqueSurfaceMaterialInteraction.albedo = polymorphicSurfaceMaterialInteraction.vdata0;
+  opaqueSurfaceMaterialInteraction.baseReflectivity = polymorphicSurfaceMaterialInteraction.vdata1;
+
+  if (polymorphicSurfaceMaterialInteraction.fdata0 < 0.0)
+  {
+    opaqueSurfaceMaterialInteraction.opacity = 1.0;
+    opaqueSurfaceMaterialInteraction.thinFilmThickness = -polymorphicSurfaceMaterialInteraction.fdata0;
+  }
+  else
+  {
+    opaqueSurfaceMaterialInteraction.opacity = polymorphicSurfaceMaterialInteraction.fdata0;
+    opaqueSurfaceMaterialInteraction.thinFilmThickness = 0.0;
+  }
+  
+  opaqueSurfaceMaterialInteraction.isotropicRoughness = polymorphicSurfaceMaterialInteraction.fdata1;
+  opaqueSurfaceMaterialInteraction.anisotropicRoughness.x = polymorphicSurfaceMaterialInteraction.fdata2;
+  opaqueSurfaceMaterialInteraction.anisotropicRoughness.y = polymorphicSurfaceMaterialInteraction.fdata3;
+  opaqueSurfaceMaterialInteraction.normalDetail = polymorphicSurfaceMaterialInteraction.fdata4;
+
+  return opaqueSurfaceMaterialInteraction;
+}
+
+OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
+  GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfaceMaterialInteraction)
+{
+  // Decode the Opaque Surface Material Interaction from its polymorphic GBuffer Memory representation
+  // Note: Opaque type is known in advance
+
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction;
+
+  const uint data0 = gBufferMemoryPolymorphicSurfaceMaterialInteraction.data0;
+  const uint data1 = gBufferMemoryPolymorphicSurfaceMaterialInteraction.data1;
+
+  const float16_t perceptualRoughness = gBufferMemoryPolymorphicSurfaceMaterialInteraction.perceptualRoughness;
+  const float16_t sourceAnisotropy = snorm8ToF16(uint8_t(data0 >> 0));
+  const float16_t encodedOpacity = unorm8ToF16(uint8_t(data0 >> 8));
+  const uint8_t flagsAndType = uint8_t(data0 >> 24);
+  const f16vec3 sourceEmissiveColor = f16vec3(
+    unorm8ToF16(uint8_t(data0 >> 16)),
+    unorm8ToF16(uint8_t(data1 >> 0)),
+    unorm8ToF16(uint8_t(data1 >> 8)));
+  const float16_t sourceEmissiveIntensity = uint16BitsToHalf(uint16_t(data1 >> 16));
+
+  float16_t isotropicRoughness;
+  f16vec2 anisotropicRoughness;
+
+  const bool thinFilmEnabled = (flagsAndType & OPAQUE_SURFACE_MATERIAL_FLAG_USE_THIN_FILM_LAYER);
+
+  calcRoughness(perceptualRoughness, sourceAnisotropy, isotropicRoughness, anisotropicRoughness);
+
+  opaqueSurfaceMaterialInteraction.shadingNormal = gBufferMemoryPolymorphicSurfaceMaterialInteraction.worldShadingNormal;
+
+  opaqueSurfaceMaterialInteraction.albedo = gBufferMemoryPolymorphicSurfaceMaterialInteraction.albedo;
+  // Note: Opacity set to 1 when thin film is enabled (as we unfortunately cannot read from the opacity constant here and there
+  // is no extra room in this GBuffer encoding to store both the opacity and the thin film thickness).
+  opaqueSurfaceMaterialInteraction.opacity = thinFilmEnabled ? float16_t(1.0f) : encodedOpacity;
+  opaqueSurfaceMaterialInteraction.baseReflectivity = gBufferMemoryPolymorphicSurfaceMaterialInteraction.baseReflectivity;
+  opaqueSurfaceMaterialInteraction.isotropicRoughness = isotropicRoughness;
+  opaqueSurfaceMaterialInteraction.anisotropicRoughness = anisotropicRoughness;
+  opaqueSurfaceMaterialInteraction.emissiveRadiance = sourceEmissiveColor * sourceEmissiveIntensity;
+  // Note: Thickness set to 0 when thin film is disabled for the same reason the opacity is set to 1 when it is enabled.
+  opaqueSurfaceMaterialInteraction.thinFilmThickness = thinFilmEnabled ? encodedOpacity : float16_t(0.0f);
+
+  // We don't store this in the G-buffer
+  opaqueSurfaceMaterialInteraction.normalDetail = float16_t(0.0f);
+
+  return opaqueSurfaceMaterialInteraction;
+}
+
+SurfaceMaterialInteractionLobeInformation opaqueSurfaceMaterialInteractionGetLobeInformation(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction)
+{
+  SurfaceMaterialInteractionLobeInformation surfaceMaterialInteractionLobeInformation;
+
+  surfaceMaterialInteractionLobeInformation.diffuseReflectionPresent =
+    any(greaterThanEqual(opaqueSurfaceMaterialInteraction.albedo, albedoThreshold));
+  surfaceMaterialInteractionLobeInformation.specularReflectionPresent =
+    any(greaterThanEqual(opaqueSurfaceMaterialInteraction.baseReflectivity, baseReflectivityThreshold));
+  surfaceMaterialInteractionLobeInformation.diffuseTransmissionPresent = false;
+  surfaceMaterialInteractionLobeInformation.specularTransmissionPresent = false;
+
+  surfaceMaterialInteractionLobeInformation.specularReflectionDirac =
+    opaqueSurfaceMaterialInteraction.isotropicRoughness < roughnessThreshold;
+  surfaceMaterialInteractionLobeInformation.specularTransmissionDirac = false;
+
+  return surfaceMaterialInteractionLobeInformation;
+}
+
+SurfaceMaterialInteractionLobeSample opaqueSurfaceMaterialInteractionCalcLobeSample(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  float16_t random,
+  MinimalRayInteraction minimalRayInteraction,
+  inout bool insideMedium)
+{
+  SurfaceMaterialInteractionLobeSample surfaceMaterialInteractionLobeSample;
+
+  // Calculate dot products used for evaluation
+
+  // Note: Normal dot output direction used as a "best" approximation in this case, usually aligned with the actual sampled
+  // microfacet normal on surfaces with low roughness (identical at 0), but will become more and more potentially inaccurate
+  // as roughness increases.
+  const float16_t /* n.v */ normalDotOutputDirection =
+    dot(opaqueSurfaceMaterialInteraction.shadingNormal, minimalRayInteraction.viewDirection);
+
+  // Compute material-related quantities
+
+  // Note: Albedo and Base Reflectivity already have opacity baked into them, though the fresnel contribution may still reach
+  // 1 at grazing angles despite the low base reflectivity at normal incidence. Perceptual luminance also used for albedo and
+  // base reflectivity to hopefully look better to the human eye than a simple average.
+  const float16_t albedoLuminance = calcBt709Luminance(opaqueSurfaceMaterialInteraction.albedo);
+  const f16vec3 fresnel =
+    evalOpaqueSchlickFresnel(opaqueSurfaceMaterialInteraction.baseReflectivity, normalDotOutputDirection);
+  const float16_t fresnelLuminance = calcBt709Luminance(fresnel);
+
+  // Calculate lobe probabilities
+
+  float16_t diffuseReflectionProbability = albedoLuminance;
+  float16_t specularReflectionProbability = fresnelLuminance;
+  float16_t opacityTransmissionProbability = float16_t(1.0f) - opaqueSurfaceMaterialInteraction.opacity;
+
+  // Todo: Pass raytraceArgs in in the future if accessing these constants poses a problem later.
+  adjustProbabilityValue(
+    diffuseReflectionProbability,
+    uint16BitsToHalf(cb.opaqueDiffuseLobeSamplingProbabilityZeroThreshold),
+    uint16BitsToHalf(cb.minOpaqueDiffuseLobeSamplingProbability));
+  adjustProbabilityValue(
+    specularReflectionProbability,
+    uint16BitsToHalf(cb.opaqueSpecularLobeSamplingProbabilityZeroThreshold),
+    uint16BitsToHalf(cb.minOpaqueSpecularLobeSamplingProbability));
+  adjustProbabilityValue(
+    opacityTransmissionProbability,
+    uint16BitsToHalf(cb.opaqueOpacityTransmissionLobeSamplingProbabilityZeroThreshold),
+    uint16BitsToHalf(cb.minOpaqueOpacityTransmissionLobeSamplingProbability));
+
+  const float16_t lobeProbabilitySum = opacityTransmissionProbability + specularReflectionProbability + diffuseReflectionProbability;
+  float16_t lobeProbabilityNormalizationFactor;
+
+  if (lobeProbabilitySum != float16_t(0.0f))
+  {
+    lobeProbabilityNormalizationFactor = float16_t(1.0f) / lobeProbabilitySum;
+  }
+  else
+  {
+    // Note: Default to sampling specular lobe when no lobe desires to be sampled from. Ideally this could just be skipped entirely as
+    // a sample though, but we currently do not support that logic, so for now we pick specular since it will generate more coherent
+    // rays ideally to minimize the performance impact.
+    surfaceMaterialInteractionLobeSample.lobe = opaqueLobeTypeSpecularReflection;
+    surfaceMaterialInteractionLobeSample.pdf = float16_t(1.0f);
+
+    return surfaceMaterialInteractionLobeSample;
+  }
+
+  // Sample a lobe
+
+  // Note: Adjust the raw lobe sample to the total probability range based on the sum.
+  const float16_t lobeSample = random * lobeProbabilitySum;
+
+  // Note: < used for conditions to ensure lobes never have a chance to be sampled from if their
+  // probability is 0 (and to prevent NaNs from appearing due to 0 PDF).
+  if (lobeSample < opacityTransmissionProbability)
+  {
+    surfaceMaterialInteractionLobeSample.lobe = opaqueLobeTypeOpacityTransmission;
+    surfaceMaterialInteractionLobeSample.pdf = opacityTransmissionProbability * lobeProbabilityNormalizationFactor;
+  }
+  else if (lobeSample < (opacityTransmissionProbability + specularReflectionProbability))
+  {
+    surfaceMaterialInteractionLobeSample.lobe = opaqueLobeTypeSpecularReflection;
+    surfaceMaterialInteractionLobeSample.pdf = specularReflectionProbability * lobeProbabilityNormalizationFactor;
+  }
+  else
+  {
+    surfaceMaterialInteractionLobeSample.lobe = opaqueLobeTypeDiffuseReflection;
+    surfaceMaterialInteractionLobeSample.pdf = diffuseReflectionProbability * lobeProbabilityNormalizationFactor;
+  }
+
+  return surfaceMaterialInteractionLobeSample;
+}
+
+
+// Note: Rejection sampling introduces bias which needs to be corrected before reenabling it
+#define USE_REJECTION_SAMPLING 0
+
+SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSample(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  inout RNG randomState,
+  f16vec4 tangentToWorldSpaceQuaternion,
+  MinimalRayInteraction minimalRayInteraction)
+{
+  const f16vec4 worldToTangentSpaceQuaternion = quaternionInverse(tangentToWorldSpaceQuaternion);
+
+  // Set up relevant input vectors in tangent space
+
+  const f16vec3 outputDirection = quaternionTransformVector(worldToTangentSpaceQuaternion, minimalRayInteraction.viewDirection);
+
+  f16vec3 inputDirection;
+  float cosineHemisphereSolidAnglePdf;
+  float16_t /* l.v */ inputDirectionDotOutputDirection;
+  float16_t /* n.l */ normalDotInputDirection;
+  float16_t /* n.v */ normalDotOutputDirection;
+  float16_t /* n.h */ normalDotMicrofacetNormal;
+
+  // Random sampling may end up with an invalid sample, which will contribute 0 radiance to the output and bias the result to be darker
+  // Apply rejection sampling on top by taking a few random sample attempts to find a valid sample instead
+  // Max attempts set empirically, 2 attempts cleaned up 99%+ invalid samples, setting this to 5 was a safe upper bound to handle most dead samples
+  int32_t sampleAttemptsRemaining = 5; 
+
+#if USE_REJECTION_SAMPLING 
+  while (sampleAttemptsRemaining-- > 0)
+#else
+  sampleAttemptsRemaining = -1;   // Mark sample as invalid - it's updated below
+#endif
+  {
+    // Sample a new input direction based on a cosine weighted hemisphere
+
+    const f16vec2 u = f16vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState));
+    inputDirection = calcCosineHemisphereDirectionSample(u, cosineHemisphereSolidAnglePdf);
+
+    // Todo: Sanity check if inputDirection is facing the wrong direction (Into the surface), currently this does not have much
+    // effect and getting the triangle normal here requires a fairly high memory bandwidth cost, so for now it is not done
+
+    // Calculate the microfacet normal from the input and output directions
+
+    const f16vec3 microfacetNormal = normalize(outputDirection + inputDirection);
+
+    // Calculate dot products used for evaluation
+    // Note: Dot products against tangent space basis vectors are single components of the other vector
+
+    /* l.v */ inputDirectionDotOutputDirection = dot(inputDirection, outputDirection);
+    /* n.l */ normalDotInputDirection = inputDirection.z;
+    /* n.v */ normalDotOutputDirection = outputDirection.z;
+    /* n.h */ normalDotMicrofacetNormal = microfacetNormal.z;
+
+    if (normalDotOutputDirection > 0.h && normalDotInputDirection > 0.h)
+#if USE_REJECTION_SAMPLING 
+      break;
+#else
+      sampleAttemptsRemaining = 1;
+#endif      
+  }
+  
+  // Failed to find a valid sample
+  if (sampleAttemptsRemaining == -1)
+  {
+    SurfaceMaterialInteractionSample materialSample;
+
+    materialSample.inputDirection = f16vec3(0.0, 0.0, 0.0);
+    materialSample.throughput = f16vec3(0.0, 0.0, 0.0);
+    materialSample.solidAnglePdf = 0.0f;
+
+    return materialSample;
+  }
+  
+  // Calculate the throughput of the sample
+
+  const f16vec3 weight =
+    evalHammonDiffuse(opaqueSurfaceMaterialInteraction.albedo, opaqueSurfaceMaterialInteraction.isotropicRoughness,
+      inputDirectionDotOutputDirection, normalDotInputDirection,
+      normalDotOutputDirection, normalDotMicrofacetNormal);
+  f16vec3 throughput = safePositiveDivide(weight, f16vec3(cosineHemisphereSolidAnglePdf), materialEpsilon) *
+    normalDotInputDirection;
+
+  // Return the material sample
+
+  SurfaceMaterialInteractionSample materialSample;
+
+  materialSample.inputDirection = quaternionTransformVector(tangentToWorldSpaceQuaternion, inputDirection);
+  materialSample.throughput = throughput;
+  materialSample.solidAnglePdf = cosineHemisphereSolidAnglePdf;
+
+  return materialSample;
+}
+
+// A copy of NRD_GetTrimmingFactor - avoids having a dependency on NRD.hlsli in the material system.
+float calculateLobeTrimmingFactor(float roughness, float3 trimmingParams)
+{
+  return trimmingParams.x * smoothstep( trimmingParams.y, trimmingParams.z, roughness );
+}
+
+SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcSpecularReflectionSample(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  inout RNG randomState,
+  f16vec4 tangentToWorldSpaceQuaternion,
+  MinimalRayInteraction minimalRayInteraction)
+{
+  const f16vec4 worldToTangentSpaceQuaternion = quaternionInverse(tangentToWorldSpaceQuaternion);
+
+  // Set up relevant input vectors in tangent space
+
+  const f16vec3 outputDirection = quaternionTransformVector(worldToTangentSpaceQuaternion, minimalRayInteraction.viewDirection);
+
+  // Calculate the specular lobe trimming factor based on roughness and NRD parameters.
+  // Note: use the 'primaryIndirectNrd' parameter set because it is always controlled by the active indirect denoiser.
+  // TODO: ideally this lobe trimming should only happen at the primary vertex, but there's likely no big difference.
+
+  const float lobeTrimming = calculateLobeTrimmingFactor(
+    opaqueSurfaceMaterialInteraction.isotropicRoughness, cb.primaryIndirectNrd.specularLobeTrimmingParams);
+
+  f16vec3 inputDirection;
+
+  float16_t /* v.h */ outputDirectionDotMicrofacetNormal;
+  float16_t /* t.v */ tangentDotOutputDirection;
+  float16_t /* b.v */ bitangentDotOutputDirection;
+  float16_t /* n.v */ normalDotOutputDirection;
+  float16_t /* t.l */ tangentDotInputDirection;
+  float16_t /* b.l */ bitangentDotInputDirection;
+  float16_t /* n.l */ normalDotInputDirection;
+  float16_t /* t.h */ tangentDotMicrofacetNormal;
+  float16_t /* b.h */ bitangentDotMicrofacetNormal;
+  float16_t /* n.h */ normalDotMicrofacetNormal;
+  
+  // Random sampling may end up with an invalid sample, which will contribute 0 radiance to the output and bias the result to be darker
+  // Apply rejection sampling on top by taking a few random sample attempts to find a valid sample instead
+  // Max attempts set empirically, 3-4 attempts cleaned up 95%+ invalid samples
+  // After 10 attempts there were only a handful pixels left with invalid samples, setting this to 15 was a safe upper bound to handle most pixels
+  int32_t sampleAttemptsRemaining = 15; 
+
+#if USE_REJECTION_SAMPLING
+  while (sampleAttemptsRemaining-- > 0)
+#else
+  sampleAttemptsRemaining = -1;   // Mark sample as invalid - it's updated below
+#endif
+  {
+    // Sample a new microfacet normal based on the distribution of visible normals
+
+    const f16vec2 u = f16vec2(
+      lobeTrimming * getNextSampleBlueNoise(randomState), 
+      getNextSampleBlueNoise(randomState));
+    const f16vec3 microfacetNormal = calcGGXVisibleNormalDistributionSample(opaqueSurfaceMaterialInteraction.anisotropicRoughness, outputDirection, u);
+
+    // Reflect the output direction across the microfacet normal to get the input direction
+
+    inputDirection = reflect(-outputDirection, microfacetNormal);
+
+    // Todo: Sanity check if inputDirection is facing the wrong direction (Into the surface), currently this does not have much
+    // effect and getting the triangle normal here requires a fairly high memory bandwidth cost, so for now it is not done
+
+    // Calculate dot products used for evaluation
+    // Note: Dot products against tangent space basis vectors are single components of the other vector
+
+    /* v.h */ outputDirectionDotMicrofacetNormal = dot(outputDirection, microfacetNormal);
+    /* t.v */ tangentDotOutputDirection = outputDirection.x;
+    /* b.v */ bitangentDotOutputDirection = outputDirection.y;
+    /* n.v */ normalDotOutputDirection = outputDirection.z;
+    /* t.l */ tangentDotInputDirection = inputDirection.x;
+    /* b.l */ bitangentDotInputDirection = inputDirection.y;
+    /* n.l */ normalDotInputDirection = inputDirection.z;
+    /* t.h */ tangentDotMicrofacetNormal = microfacetNormal.x;
+    /* b.h */ bitangentDotMicrofacetNormal = microfacetNormal.y;
+    /* n.h */ normalDotMicrofacetNormal = microfacetNormal.z;
+
+    if (normalDotOutputDirection > 0.h && normalDotInputDirection > 0.h)
+#if USE_REJECTION_SAMPLING 
+      break;
+#else
+      sampleAttemptsRemaining = 1;
+#endif      
+  }
+   
+  // Failed to find a valid sample
+  if (sampleAttemptsRemaining == -1)
+  {
+    SurfaceMaterialInteractionSample materialSample;
+
+    materialSample.inputDirection = f16vec3(0.0, 0.0, 0.0);
+    materialSample.throughput = f16vec3(0.0, 0.0, 0.0);
+    materialSample.solidAnglePdf = 0.0f;
+
+    return materialSample;
+  }
+
+  // Calculate the throughput of the sample
+
+  const f16vec3 fresnel = evalOpaqueSchlickFresnel(
+    opaqueSurfaceMaterialInteraction.baseReflectivity, outputDirectionDotMicrofacetNormal);
+
+  // Todo: Pass in a material mode similar to the resolve mode to control this sort of material simplification option.
+#ifdef OPAQUE_MATERIAL_USE_THIN_FILM
+  // Note: Compute an approximate refractive index for the material for the thin film math, currently assuming the opaque material is always
+  // surrounded by a vacuum (not true in all cases but good enough for this approximation).
+  const float16_t refractiveIndex = baseReflectivityToIoR(
+    materialIoRVacuum, calcBt709Luminance(opaqueSurfaceMaterialInteraction.baseReflectivity));
+  const bool useThinFilm = opaqueSurfaceMaterialInteraction.thinFilmThickness > 0.0;
+  const float16_t thinFilmThickness = opaqueSurfaceMaterialInteraction.thinFilmThickness * OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS; // convert [0,1] range to nm
+  // Note: Matching the refractive index calculation, compute the thin film assuming the material is surrounded by a vacuum and with a fixed layer IoR.
+  const f16vec3 thinFilmFresnel = evalThinFilmFresnel(
+    materialIoRVacuum, materialIoRThinFilmLayer, refractiveIndex,
+    thinFilmThickness, outputDirectionDotMicrofacetNormal);
+
+  const f16vec3 finalFresnel = useThinFilm ? thinFilmFresnel : fresnel;
+#else
+  const f16vec3 finalFresnel = fresnel;
+#endif
+
+  const float16_t outputGGXShadowing = evalGGXShadowing(
+    opaqueSurfaceMaterialInteraction.anisotropicRoughness,
+    tangentDotOutputDirection, bitangentDotOutputDirection, normalDotOutputDirection);
+  const float16_t inputGGXShadowing = evalGGXShadowing(
+    opaqueSurfaceMaterialInteraction.anisotropicRoughness,
+    tangentDotInputDirection, bitangentDotInputDirection, normalDotInputDirection);
+  // Note: Algebraic simplification of height correlated G2/G1 to reduce evaluation cost.
+  // [Heitz 2015, "Implementing a Simple Anisotropic Rough Diffuse Material with Stochastic Evaluation"]
+  const float16_t G2OverG1 = safePositiveDivide(
+    inputGGXShadowing,
+    inputGGXShadowing + outputGGXShadowing - (inputGGXShadowing * outputGGXShadowing),
+    materialEpsilon);
+  // Note: Simplified version of (weight / solidAnglePdf) * (n.l) when sampling from the distribution of
+  // visible normals.
+  // [Heitz 2014, "Importance sampling microfacet-based BSDFs using the distribution of visible normals"]
+  const f16vec3 throughput = finalFresnel * G2OverG1; 
+
+  // Calculate the solid angle PDF of the sample
+
+  const float solidAnglePdf = evalGGXVisibleNormalDistributionSamplePdf(
+    opaqueSurfaceMaterialInteraction.anisotropicRoughness,
+    tangentDotOutputDirection, bitangentDotOutputDirection, normalDotOutputDirection,
+    tangentDotMicrofacetNormal, bitangentDotMicrofacetNormal, normalDotMicrofacetNormal,
+    outputDirectionDotMicrofacetNormal);
+
+  // Return the material sample
+
+  SurfaceMaterialInteractionSample materialSample;
+
+  materialSample.inputDirection = quaternionTransformVector(tangentToWorldSpaceQuaternion, inputDirection);
+  materialSample.throughput = throughput;
+  materialSample.solidAnglePdf = solidAnglePdf;
+
+  return materialSample;
+}
+
+SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcDiffuseTransmissionSample(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  inout bool insideMedium, inout bool penetrateSurface)
+{
+  SurfaceMaterialInteractionSample materialSample;
+
+  materialSample.inputDirection = f16vec3(0.0, 0.0, 0.0);
+  materialSample.throughput = f16vec3(0.0, 0.0, 0.0);
+  materialSample.solidAnglePdf = 0.0f;
+
+  return materialSample;
+}
+
+SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcSpecularTransmissionSample(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  inout bool insideMedium, inout bool penetrateSurface)
+{
+  SurfaceMaterialInteractionSample materialSample;
+
+  materialSample.inputDirection = f16vec3(0.0, 0.0, 0.0);
+  materialSample.throughput = f16vec3(0.0, 0.0, 0.0);
+  materialSample.solidAnglePdf = 0.0f;
+
+  return materialSample;
+}
+
+// Note: Special case lobe for opacity.
+SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcOpacityTransmissionSample(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  inout bool insideMedium, inout bool penetrateSurface)
+{
+  SurfaceMaterialInteractionSample materialSample;
+
+  materialSample.inputDirection = -minimalRayInteraction.viewDirection;
+  materialSample.throughput = f16vec3(
+    float16_t(1.0f) - opaqueSurfaceMaterialInteraction.opacity,
+    float16_t(1.0f) - opaqueSurfaceMaterialInteraction.opacity,
+    float16_t(1.0f) - opaqueSurfaceMaterialInteraction.opacity);
+  // Note: Dirac delta PDF, always a probability of 1 to sample this singular direction.
+  materialSample.solidAnglePdf = 1.0f;
+
+  // Note: Opacity rays pennetrate the surface like translucent materials.
+  penetrateSurface = true;
+
+  return materialSample;
+}
+
+void opaqueSurfaceMaterialInteractionCalcSample(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  float16_t lobeRandom,
+  inout RNG randomState,
+  f16vec4 tangentToWorldSpaceQuaternion,
+  MinimalRayInteraction minimalRayInteraction,
+  inout SurfaceMaterialInteractionSample surfaceMaterialInteractionSample,
+  inout SurfaceMaterialInteractionLobeSample surfaceMaterialInteractionLobeSample,
+  inout bool insideMedium, inout bool penetrateSurface)
+{
+  surfaceMaterialInteractionLobeSample = opaqueSurfaceMaterialInteractionCalcLobeSample(
+    opaqueSurfaceMaterialInteraction, lobeRandom, minimalRayInteraction, insideMedium);
+
+  switch (uint(surfaceMaterialInteractionLobeSample.lobe))
+  {
+  default:
+  case uint(opaqueLobeTypeDiffuseReflection):
+    surfaceMaterialInteractionSample = opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSample(
+      opaqueSurfaceMaterialInteraction, randomState, tangentToWorldSpaceQuaternion, minimalRayInteraction);
+
+    break;
+  case uint(opaqueLobeTypeSpecularReflection):
+    surfaceMaterialInteractionSample = opaqueSurfaceMaterialInteractionCalcSpecularReflectionSample(
+      opaqueSurfaceMaterialInteraction, randomState, tangentToWorldSpaceQuaternion, minimalRayInteraction);
+
+    break;
+  case uint(opaqueLobeTypeOpacityTransmission):
+    surfaceMaterialInteractionSample = opaqueSurfaceMaterialInteractionCalcOpacityTransmissionSample(
+      opaqueSurfaceMaterialInteraction, minimalRayInteraction, insideMedium, penetrateSurface);
+
+    break;
+  }
+}
+
+SurfaceMaterialInteractionPSRSample opaqueSurfaceMaterialInteractionCalcPSRReflectionSample(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction)
+{
+  // Determine if Reflection PSR should happen based on the lobe information
+
+  const SurfaceMaterialInteractionLobeInformation lobeInformation =
+    opaqueSurfaceMaterialInteractionGetLobeInformation(opaqueSurfaceMaterialInteraction);
+
+  // Note: Indicate reflection PSR should occur only if no diffuse lobe is present (to prevent
+  // the need to split paths) and if a specular dirac lobe is present.
+  if (
+    lobeInformation.diffuseReflectionPresent ||
+    !lobeInformation.specularReflectionPresent ||
+    !lobeInformation.specularReflectionDirac
+  )
+  {
+    SurfaceMaterialInteractionPSRSample materialPSRSample;
+
+    materialPSRSample.performPSR = false;
+
+    return materialPSRSample;
+  }
+
+  // Set up relevant input vectors
+
+  const f16vec3 normal = opaqueSurfaceMaterialInteraction.shadingNormal;
+  const f16vec3 outputDirection = minimalRayInteraction.viewDirection;
+
+  // Calculate the microfacet normal
+  // Note: Typically the microfacet normal would be sampled from so this would be known upfront in a sampling
+  // method, due to being a dirac distribution though we always know it'll be the same as the normal.
+
+  const f16vec3 microfacetNormal = normal;
+
+  // Reflect the output direction across the microfacet normal to get the input direction
+
+  const f16vec3 inputDirection = reflect(-outputDirection, microfacetNormal);
+
+  // Calculate dot products used for evaluation
+
+  const float16_t /* v.h */ outputDirectionDotMicrofacetNormal = dot(outputDirection, microfacetNormal);
+  const float16_t /* n.v */ normalDotOutputDirection = outputDirectionDotMicrofacetNormal;
+  const float16_t /* n.l */ normalDotInputDirection = dot(inputDirection, normal);
+
+  if (normalDotOutputDirection <= float16_t(0.0) || normalDotInputDirection <= float16_t(0.0))
+  {
+    SurfaceMaterialInteractionPSRSample materialPSRSample;
+
+    materialPSRSample.performPSR = false;
+
+    return materialPSRSample;
+  }
+
+  // Calculate the attenuation of the sample
+
+  const f16vec3 fresnel = evalOpaqueSchlickFresnel(
+    opaqueSurfaceMaterialInteraction.baseReflectivity, outputDirectionDotMicrofacetNormal);
+
+  // Todo: Pass in a material mode similar to the resolve mode to control this sort of material simplification option.
+#ifdef OPAQUE_MATERIAL_USE_THIN_FILM
+  // Note: Compute an approximate refractive index for the material for the thin film math, currently assuming the opaque material is always
+  // surrounded by a vacuum (not true in all cases but good enough for this approximation).
+  const float16_t refractiveIndex = baseReflectivityToIoR(
+    materialIoRVacuum, calcBt709Luminance(opaqueSurfaceMaterialInteraction.baseReflectivity));
+  const bool useThinFilm = opaqueSurfaceMaterialInteraction.thinFilmThickness > 0.0;
+  const float16_t thinFilmThickness = opaqueSurfaceMaterialInteraction.thinFilmThickness * OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS; // convert [0,1] range to nm
+  // Note: Matching the refractive index calculation, compute the thin film assuming the material is surrounded by a vacuum and with a fixed layer IoR.
+  const f16vec3 thinFilmFresnel = evalThinFilmFresnel(
+    materialIoRVacuum, materialIoRThinFilmLayer, refractiveIndex,
+    thinFilmThickness, outputDirectionDotMicrofacetNormal);
+
+  const f16vec3 finalFresnel = useThinFilm ? thinFilmFresnel : fresnel;
+#else
+  const f16vec3 finalFresnel = fresnel;
+#endif
+
+  const f16vec3 attenuation = finalFresnel;
+
+  // Return the material sample
+
+  SurfaceMaterialInteractionPSRSample materialPSRSample;
+
+  materialPSRSample.performPSR = true;
+  materialPSRSample.useAlternateDisocclusionThreshold = opaqueSurfaceMaterialInteraction.normalDetail > float16_t(cb.psrrNormalDetailThreshold);
+  materialPSRSample.inputDirection = inputDirection;
+  materialPSRSample.attenuation = attenuation;
+  materialPSRSample.vectorTransform = getReflectionMatrix(microfacetNormal);
+
+  return materialPSRSample;
+}
+
+SurfaceMaterialInteractionPSRSample opaqueSurfaceMaterialInteractionCalcPSRTransmissionSample(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  inout bool insideMedium, inout bool penetrateSurface)
+{
+  SurfaceMaterialInteractionPSRSample materialPSRSample;
+
+  // Todo: Expierementally test transmission PSR for opaacity in the future, for now not needed though.
+  materialPSRSample.performPSR = false;
+
+  return materialPSRSample;
+}
+
+void opaqueSurfaceMaterialInteractionCalcPSRSample(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  inout SurfaceMaterialInteractionPSRSample surfaceMaterialInteractionReflectionPSRSample,
+  inout SurfaceMaterialInteractionPSRSample surfaceMaterialInteractionTransmissionPSRSample,
+  inout f16vec3 diffuseLayerWeight,
+  inout bool reflectionSelectedIntegrationSurface,
+  inout float16_t selectedIntegrationSurfacePdf,
+  inout bool insideMedium, inout bool penetrateSurface)
+{
+  // Sample Reflection PSR
+
+  surfaceMaterialInteractionReflectionPSRSample = opaqueSurfaceMaterialInteractionCalcPSRReflectionSample(
+    opaqueSurfaceMaterialInteraction, minimalRayInteraction);
+
+  // Sample Transmission PSR
+
+  surfaceMaterialInteractionTransmissionPSRSample = opaqueSurfaceMaterialInteractionCalcPSRTransmissionSample(
+    opaqueSurfaceMaterialInteraction, minimalRayInteraction, insideMedium, penetrateSurface);
+
+  // Determine which PSR surface should be selected for integration and the probability of this choice
+
+  // Note: Reflection PSR is the only thing that can realistically happen in the opaque material currently.
+  if (surfaceMaterialInteractionReflectionPSRSample.performPSR)
+  {
+    reflectionSelectedIntegrationSurface = true;
+    selectedIntegrationSurfacePdf = 1.0f;
+  }
+  else // Implicitly: if (surfaceMaterialInteractionTransmissionPSRSample.performPSR)
+  {
+    reflectionSelectedIntegrationSurface = false;
+    selectedIntegrationSurfacePdf = 1.0f;
+  }
+}
+
+float opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  f16vec3 inputDirection)
+{
+  // Todo
+
+  return 0.0f;
+}
+
+float opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  f16vec3 inputDirection)
+{
+  // Todo
+
+  return 0.0f;
+}
+
+float opaqueSurfaceMaterialInteractionCalcDiffuseTransmissionSolidAnglePdf(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  f16vec3 inputDirection)
+{
+  // Note: Diffuse Transmission never possible for Opaque materials
+  return 0.0f;
+}
+
+float opaqueSurfaceMaterialInteractionCalcSpecularTransmissionSolidAnglePdf(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  f16vec3 inputDirection)
+{
+  // Note: Specular Transmission never possible for Opaque materials
+  return 0.0f;
+}
+
+float opaqueSurfaceMaterialInteractionCalcSolidAnglePdf(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  f16vec3 inputDirection)
+{
+  // Return the average of all the lobe PDFs
+  // Note: Only lobes which are possible and specifically involved in reflections are included
+
+  return (
+    opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(
+      opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection) +
+    opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
+      opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection)
+  ) / 2.0f;
+}
+
+
+SurfaceMaterialInteractionSplitWeight opaqueSurfaceMaterialInteractionCalcApproxProjectedWeight(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  f16vec3 inputDirection)
+{
+  const f16vec3 microfacetNormal = normalize(inputDirection + minimalRayInteraction.viewDirection);
+  const float16_t /* n.h */ normalDotMicrofacetNormal = dot(opaqueSurfaceMaterialInteraction.shadingNormal, microfacetNormal);
+  const float16_t /* v.h */ outputDirectionDotMicrofacetNormal = dot(minimalRayInteraction.viewDirection, microfacetNormal);
+  const float16_t /* n.l */ normalDotInputDirection = dot(inputDirection, opaqueSurfaceMaterialInteraction.shadingNormal);
+  const float16_t /* n.v */ normalDotOutputDirection = dot(minimalRayInteraction.viewDirection, opaqueSurfaceMaterialInteraction.shadingNormal);
+
+  if (normalDotOutputDirection <= float16_t(0.0) || normalDotInputDirection <= float16_t(0.0))
+  {
+    SurfaceMaterialInteractionSplitWeight splitWeight;
+
+    splitWeight.diffuseReflectionWeight = f16vec3(0.0, 0.0, 0.0);
+    splitWeight.specularReflectionWeight = f16vec3(0.0, 0.0, 0.0);
+
+    return splitWeight;
+  }
+
+  // Calculate the weight
+  const f16vec3 fresnel = evalOpaqueSchlickFresnel(opaqueSurfaceMaterialInteraction.baseReflectivity, outputDirectionDotMicrofacetNormal);
+  const float16_t normalDistributionFunction = evalGGXNormalDistributionIsotropic(opaqueSurfaceMaterialInteraction.isotropicRoughness, normalDotMicrofacetNormal);
+  const float16_t visibility = float16_t(1) / (float16_t(4) * normalDotInputDirection * normalDotOutputDirection);
+  const f16vec3 diffuseReflectionWeight = opaqueSurfaceMaterialInteraction.albedo;
+  const f16vec3 specularReflectionWeight = min(normalDistributionFunction * visibility * fresnel, f16vec3(float16Max));
+
+  // Create a split weight
+  SurfaceMaterialInteractionSplitWeight splitWeight;
+  splitWeight.diffuseReflectionWeight = diffuseReflectionWeight * normalDotInputDirection;
+  splitWeight.specularReflectionWeight = specularReflectionWeight * normalDotInputDirection;
+
+  return splitWeight;
+}
+
+SurfaceMaterialInteractionSplitWeight opaqueSurfaceMaterialInteractionCalcProjectedWeight(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  f16vec3 inputDirection)
+{
+  const f16vec4 tangentToWorldSpaceQuaternion =
+    quaternionCreateOrientation(materialTangentSpaceNormal, opaqueSurfaceMaterialInteraction.shadingNormal);
+  const f16vec4 worldToTangentSpaceQuaternion = quaternionInverse(tangentToWorldSpaceQuaternion);
+
+  // Set up relevant input vectors in tangent space
+
+  const f16vec3 tangentOutputDirection =
+    quaternionTransformVector(worldToTangentSpaceQuaternion, minimalRayInteraction.viewDirection);
+  const f16vec3 tangentInputDirection = quaternionTransformVector(worldToTangentSpaceQuaternion, inputDirection);
+
+  // Calculate the microfacet normal from the input and output directions
+
+  const f16vec3 microfacetNormal = normalize(tangentInputDirection + tangentOutputDirection);
+
+  // Calculate dot products used for evaluation
+
+  const float16_t /* l.v */ inputDirectionDotOutputDirection = dot(tangentInputDirection, tangentOutputDirection);
+  const float16_t /* v.h */ outputDirectionDotMicrofacetNormal = dot(tangentOutputDirection, microfacetNormal);
+  const float16_t /* t.v */ tangentDotOutputDirection = tangentOutputDirection.x;
+  const float16_t /* b.v */ bitangentDotOutputDirection = tangentOutputDirection.y;
+  const float16_t /* n.v */ normalDotOutputDirection = tangentOutputDirection.z;
+  const float16_t /* t.l */ tangentDotInputDirection = tangentInputDirection.x;
+  const float16_t /* b.l */ bitangentDotInputDirection = tangentInputDirection.y;
+  const float16_t /* n.l */ normalDotInputDirection = tangentInputDirection.z;
+  const float16_t /* t.h */ tangentDotMicrofacetNormal = microfacetNormal.x;
+  const float16_t /* b.h */ bitangentDotMicrofacetNormal = microfacetNormal.y;
+  const float16_t /* n.h */ normalDotMicrofacetNormal = microfacetNormal.z;
+
+  if (normalDotOutputDirection <= float16_t(0.0) || normalDotInputDirection <= float16_t(0.0))
+  {
+    SurfaceMaterialInteractionSplitWeight splitWeight;
+
+    splitWeight.diffuseReflectionWeight = f16vec3(0.0, 0.0, 0.0);
+    splitWeight.specularReflectionWeight = f16vec3(0.0, 0.0, 0.0);
+
+    return splitWeight;
+  }
+
+  // Calculate the weight
+
+  const f16vec3 fresnel = evalOpaqueSchlickFresnel(
+    opaqueSurfaceMaterialInteraction.baseReflectivity, outputDirectionDotMicrofacetNormal);
+
+  // Todo: Pass in a material mode similar to the resolve mode to control this sort of material simplification option.
+#ifdef OPAQUE_MATERIAL_USE_THIN_FILM
+  // Note: Compute an approximate refractive index for the material for the thin film math, currently assuming the opaque material is always
+  // surrounded by a vacuum (not true in all cases but good enough for this approximation).
+  const float16_t refractiveIndex = baseReflectivityToIoR(
+    materialIoRVacuum, calcBt709Luminance(opaqueSurfaceMaterialInteraction.baseReflectivity));
+  const bool useThinFilm = opaqueSurfaceMaterialInteraction.thinFilmThickness > 0.0;
+  const float16_t thinFilmThickness = opaqueSurfaceMaterialInteraction.thinFilmThickness * OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS; // convert [0,1] range to nm
+  // Note: Matching the refractive index calculation, compute the thin film assuming the material is surrounded by a vacuum and with a fixed layer IoR.
+  const f16vec3 thinFilmFresnel = evalThinFilmFresnel(
+    materialIoRVacuum, materialIoRThinFilmLayer, refractiveIndex,
+    thinFilmThickness, outputDirectionDotMicrofacetNormal);
+
+  const f16vec3 finalFresnel = useThinFilm ? thinFilmFresnel : fresnel;
+#else
+  const f16vec3 finalFresnel = fresnel;
+#endif
+
+  const float16_t normalDistributionFunction = evalGGXNormalDistribution(
+    opaqueSurfaceMaterialInteraction.anisotropicRoughness,
+    tangentDotMicrofacetNormal, bitangentDotMicrofacetNormal, normalDotMicrofacetNormal);
+  const float16_t visibility = evalHeightCorrelatedGGXVisibility(
+    opaqueSurfaceMaterialInteraction.anisotropicRoughness,
+    tangentDotInputDirection, tangentDotOutputDirection, bitangentDotInputDirection,
+    bitangentDotOutputDirection, normalDotInputDirection, normalDotOutputDirection);
+
+  // Note: Thin film Fresnel not taken into account properly here. If we were using a simpler diffuse model where the transmission Fresnel was simply multiplied in somewhere
+  // it'd be doable to incorporate like we do with specular, but currently the Hammon Diffuse model does Fresnel calculations internally based on various assumptions in its derivation
+  // which makes it non-trivial to modify. This should be fine though as the thin film will only add a small bit of extra reflection in some cases (due to having two Fresnel layers),
+  // or attenuate the reflected signal due to destructive interference, nothing major enough that'd majorly change the amount of transmitted light to make the diffuse contribution look very
+  // wrong, though it may be slightly the wrong color in some instances, assuming that transmitted light interferes in the same way.
+  const f16vec3 diffuseReflectionWeight = evalHammonDiffuse(
+    opaqueSurfaceMaterialInteraction.albedo, opaqueSurfaceMaterialInteraction.isotropicRoughness,
+    inputDirectionDotOutputDirection, normalDotInputDirection,
+    normalDotOutputDirection, normalDotMicrofacetNormal);
+  const f16vec3 specularReflectionWeight = min(finalFresnel * normalDistributionFunction * visibility, f16vec3(float16Max));
+
+  // Create a split weight
+
+  SurfaceMaterialInteractionSplitWeight splitWeight;
+
+  splitWeight.diffuseReflectionWeight = diffuseReflectionWeight * normalDotInputDirection;
+  splitWeight.specularReflectionWeight = specularReflectionWeight * normalDotInputDirection;
+
+  return splitWeight;
+}
+
+f16vec3 opaqueSurfaceMaterialInteractionEvalEmissiveRadiance(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction)
+{
+  return opaqueSurfaceMaterialInteraction.emissiveRadiance;
+}
+
+f16vec3 opaqueSurfaceMaterialGetAdjustedBaseReflectivity(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction)
+{
+  // Note: Simple max taken between the specular reflection base reflectivity and a monochromatic "transmission" factor
+  // based on the opacity to ensure if any contribution is in the specular lobe it will be properly represented.
+  const f16vec3 adjustedBaseReflectivity = max(
+    opaqueSurfaceMaterialInteraction.baseReflectivity,
+    f16vec3(float16_t(1.0f) - opaqueSurfaceMaterialInteraction.opacity));
+
+  return adjustedBaseReflectivity;
+}

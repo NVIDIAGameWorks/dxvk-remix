@@ -1,0 +1,186 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Disk Light Helper Functions
+
+// Note: Light vector information outputted to allow for no duplicate math for visibility weighting.
+float diskLightCalcPositionalWeight(DiskLight diskLight, vec3 position, inout vec3 lightVector, inout float16_t maxDiskRadius)
+{
+  lightVector = diskLight.position - position;
+  maxDiskRadius = max(diskLight.halfDimensions.x, diskLight.halfDimensions.y);
+
+  const float lightDistance2 = squareLength(lightVector);
+
+  // Note: Treat the light as a point light and get the incoming luminance to the viewer
+  return safePositiveDivide(
+    calcBt709Luminance(diskLightCalcPower(diskLight) / (4.0f * pi)),
+    lightDistance2,
+    lightWeightEpsilon
+  );
+}
+
+bool diskLightCalcVisibilityWeight(DiskLight diskLight, f16vec3 triangleNormal, vec3 lightVector, float16_t maxDiskRadius)
+{
+  // Cull the disks that are completely hidden below the surface,
+  // and the disks that are oriented away from the surface.
+  const bool frontSideDisk = dot(lightVector, vec3(triangleNormal)) > float(-maxDiskRadius) &&
+                             dot(lightVector, vec3(diskLight.normal)) < 0.0f;
+
+  return frontSideDisk;
+}
+
+// Disk Light Functions
+
+DiskLight diskLightCreate(DecodedPolymorphicLight decodedPolymorphicLight)
+{
+  // Decode the Disk Light from the packed memory representation
+  // Note: Light type is known in advance
+
+  DiskLight diskLight;
+
+  const uint32_t data00 = decodedPolymorphicLight.data0.x;
+  const uint32_t data01 = decodedPolymorphicLight.data0.y;
+  const uint32_t data02 = decodedPolymorphicLight.data0.z;
+  const u16vec2 data03 = unpack16(decodedPolymorphicLight.data0.w);
+  const u16vec2 data20 = unpack16(decodedPolymorphicLight.data2.x);
+  const u16vec2 data21 = unpack16(decodedPolymorphicLight.data2.y);
+  const u16vec2 data22 = unpack16(decodedPolymorphicLight.data2.z);
+  const u16vec2 data23 = unpack16(decodedPolymorphicLight.data2.w);
+  const u16vec2 data30 = unpack16(decodedPolymorphicLight.data3.x);
+  
+  diskLight.position = vec3(uintBitsToFloat(data00), uintBitsToFloat(data01), uintBitsToFloat(data02));
+  diskLight.halfDimensions = uint16BitsToHalf(data03);
+  diskLight.xAxis = f16vec3(uint16BitsToHalf(data20.x), uint16BitsToHalf(data20.y), uint16BitsToHalf(data21.x));
+  diskLight.yAxis = f16vec3(uint16BitsToHalf(data21.y), uint16BitsToHalf(data22.x), uint16BitsToHalf(data22.y));
+  diskLight.normal = f16vec3(uint16BitsToHalf(data23.x), uint16BitsToHalf(data23.y), uint16BitsToHalf(data30.x));
+  diskLight.radiance = decodedPolymorphicLight.radiance;
+  diskLight.shaping = decodedPolymorphicLight.shaping;
+
+  return diskLight;
+}
+
+float diskLightCalcSurfaceArea(DiskLight diskLight)
+{
+  return pi * diskLight.halfDimensions.x * diskLight.halfDimensions.y;
+}
+
+vec3 diskLightCalcPower(DiskLight diskLight)
+{
+  // Integrate over the cosine-weighted hemisphere of directions at each point and the disk's area
+
+  return diskLightCalcSurfaceArea(diskLight) * pi * diskLight.radiance;
+}
+
+float diskLightCalcWeight(DiskLight diskLight, MinimalSurfaceInteraction viewSurfaceInteraction)
+{
+  vec3 lightVector;
+  float16_t maxDiskRadius;
+  const float positionalWeight = diskLightCalcPositionalWeight(diskLight, viewSurfaceInteraction.position, lightVector, maxDiskRadius);
+  const bool visibilityWeight = diskLightCalcVisibilityWeight(diskLight, viewSurfaceInteraction.triangleNormal, lightVector, maxDiskRadius);
+
+  // Note: Ideally this if statement is re-ordered to avoid the calculation of the positional weight when the visibility test fails now that the logic has been abstracted
+  // into functions.
+  if (visibilityWeight) {
+    return positionalWeight;
+  } else {
+    return 0.0f;
+  }
+}
+
+float diskLightCalcWeight(DiskLight diskLight, VolumeInteraction viewVolumeInteraction)
+{
+  vec3 lightVector;
+  float16_t maxDiskRadius;
+  const float positionalWeight = diskLightCalcPositionalWeight(diskLight, viewVolumeInteraction.position, lightVector, maxDiskRadius);
+
+  return positionalWeight;
+}
+
+float16_t diskLightCalcShaping(DiskLight diskLight, f16vec3 lightToViewDirection)
+{
+  return lightShapingCalcRadialFalloff(diskLight.shaping, lightToViewDirection);
+}
+
+LightSample diskLightSampleArea(DiskLight diskLight, f16vec2 sampleCoordinates, vec3 position)
+{
+  // Compute a raw disk sample
+
+  const f16vec2 rawDiskSample = calcConcentricDiskDirectionSample(sampleCoordinates) * diskLight.halfDimensions;
+
+  // Calculate sample position and normal on the disk
+
+  const f16vec3 diskNormalSample = diskLight.normal;
+  const vec3 diskPositionSample =
+    diskLight.position + diskLight.xAxis * rawDiskSample.x + diskLight.yAxis * rawDiskSample.y;
+
+  // Calculate pdf
+
+  const float16_t areaPdf = float16_t(1.0f / diskLightCalcSurfaceArea(diskLight));
+  const vec3 sampleVector = diskPositionSample - position;
+  const float sampleDistance = length(sampleVector);
+  const float16_t sampleCosTheta = dot(f16vec3(normalize(sampleVector)), -diskNormalSample);
+  const float solidAnglePdf = areaPdftoSolidAnglePdf(areaPdf, sampleDistance, abs(sampleCosTheta));
+
+  // Calculate light shaping
+
+  const f16vec3 lightToViewDirection = f16vec3(normalize(position - diskPositionSample));
+  const float16_t lightShaping = diskLightCalcShaping(diskLight, lightToViewDirection);
+
+  // Create the light sample
+
+  LightSample lightSample;
+
+  lightSample.position = diskPositionSample;
+  lightSample.normal = diskNormalSample;
+
+  if (sampleCosTheta <= float16_t(0.0f))
+  {
+      lightSample.radiance = f16vec3(0.0f, 0.0f, 0.0f);
+      lightSample.solidAnglePdf = 0.0f;
+  }
+  else
+  {
+      lightSample.radiance = diskLight.radiance * lightShaping;
+      lightSample.solidAnglePdf = solidAnglePdf;
+  }
+
+  return lightSample;
+}
+
+LightSample diskLightSampleArea(
+  DiskLight diskLight, f16vec2 sampleCoordinates,
+  MinimalSurfaceInteraction viewSurfaceInteraction)
+{
+  return diskLightSampleArea(
+    diskLight, sampleCoordinates,
+    viewSurfaceInteraction.position);
+}
+
+LightSample diskLightSampleArea(
+  DiskLight diskLight, f16vec2 sampleCoordinates,
+  VolumeInteraction viewVolumeInteraction)
+{
+  return diskLightSampleArea(
+    diskLight, sampleCoordinates,
+    viewVolumeInteraction.position);
+}

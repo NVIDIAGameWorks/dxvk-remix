@@ -2,6 +2,9 @@
 
 #include "d3d9_interface.h"
 #include "d3d9_shader_validator.h"
+#include "d3d9_device.h"
+
+#include <windows.h>
 
 class D3DFE_PROCESSVERTICES;
 using PSGPERRORID = UINT;
@@ -82,5 +85,4 @@ extern "C" {
   DLLEXPORT int __stdcall Direct3D9EnableMaximizedWindowedModeShim(UINT a) {
     return 0;
   }
-
 }

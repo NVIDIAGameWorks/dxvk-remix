@@ -1,11 +1,32 @@
+/*
+* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
 #pragma once
 
 #include "../util/config/config.h"
-#include "../dxvk/dxvk_device.h"
 
 #include "d3d9_include.h"
 
 namespace dxvk {
+  class DxvkDevice;
 
   enum class D3D9FloatEmulation {
     Disabled,
@@ -37,6 +58,9 @@ namespace dxvk {
 
     /// Set the max shader model the device can support in the caps.
     int32_t shaderModel;
+    
+    /// Set the max enabled lights the device can support in the caps.
+    int32_t maxEnabledLights;
 
     /// Whether or not managed resources should stay in memory until unlock, or until manually evicted.
     bool evictManagedOnUnlock;
@@ -100,6 +124,11 @@ namespace dxvk {
     /// Support D32
     bool supportD32;
 
+    /// SWVP Constant Limits
+    int32_t swvpFloatCount;
+    int32_t swvpIntCount;
+    int32_t swvpBoolCount;
+
     /// Disable D3DFMT_A8 for render targets.
     /// Specifically to work around a game
     /// bug in The Sims 2 that happens on native too!
@@ -156,6 +185,11 @@ namespace dxvk {
 
     /// Use device local memory for constant buffers.
     bool deviceLocalConstantBuffers;
+
+    // NV-DXVK start: force app geometry data into host memory
+    /// Use host memory for all geometry data (vertex/index).
+    bool hostMemoryForGeometry;
+    // NV-DXVK end
   };
 
 }

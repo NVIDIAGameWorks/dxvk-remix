@@ -1,0 +1,311 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/utility/noise.slangh"
+#include "rtx/utility/gbuffer_helpers.slangh"
+#include "rtx/concept/camera/camera.slangh"
+#include "rtx/concept/ray/ray.slangh"
+#include "rtx/concept/surface/surface.slangh"
+#include "rtx/concept/surface_material/surface_material.slangh"
+#include "rtx/concept/light/light.slangh"
+#include "rtx/algorithm/rtxdi/rtxdi.slangh"
+
+// Select RIS type for surfaces
+// Type 0: Select light using RIS, then generate light sample. This option is faster than type 1 but lacks specular details.
+// Type 1: Generate light samples and use RIS to filter them. Compared to type 0, this option can preserve more specular samples.
+// Type 2: Naive light sampler, used for reference.
+static const int kSurfaceRISType = 1;
+
+// Selects and samples from a light using RTXDI. Returns if the sample and the is valid or not
+// Note: Camera used only for resolution purposes in RTXDI offset calculations.
+bool sampleLightRTXDI(
+  ivec2 pixelCoordinate,
+  MinimalSurfaceInteraction primarySurfaceInteraction,
+  inout LightSample lightSample, inout float inverseSelectionPdf, inout uint8_t portalID)
+{
+  // Load the reservoir for this pixel from RTXDI
+
+  const RTXDI_Reservoir reservoir = RAB_LoadReservoir(
+    pixelCoordinate, RTXDI_GetSpatialOutputPage());
+
+  if (!RTXDI_IsValidReservoir(reservoir))
+  {
+    return false;
+  }
+
+  // Get a light sample in portal space
+
+  lightSample = RAB_GetPortalSpaceLightSample(reservoir.lightIdx, f16vec2(reservoir.uv),
+    reservoir.portalIdx, primarySurfaceInteraction);
+  
+  inverseSelectionPdf = reservoir.weightSum;
+  portalID = reservoir.portalIdx;
+
+  // Check if the light sample has a valid PDF
+
+  if (lightSample.solidAnglePdf * inverseSelectionPdf <= 0.0f)
+  {
+    return false;
+  }
+
+  return true;
+}
+
+bool sampleLightBasicRIS(
+  inout RNG randomState,
+  MinimalSurfaceInteraction surfaceInteraction,
+  inout LightSample lightSample, inout float inverseSelectionPdf)
+{
+  if (cb.risTotalSampleCount == 0)
+  {
+    return false;
+  }
+
+  // Consider the specified number of lights and select the best using RIS/WRS
+
+  MemoryPolymorphicLight selectedPolymorphicLight;
+  float selectedLightTargetPdf = 0.0f;
+  float weightSum = 0.0f;
+
+  [unroll]
+  for (uint lightType = 0; lightType < lightTypeCount; ++lightType)
+  {
+    LightRangeInfo range = cb.lightRanges[lightType];
+    if (range.count == 0)
+      continue;
+
+    // PDF of selecting any light in this range from the overall pool of lights of all types,
+    // taking into account the different sample counts per type.
+    const float rangeInvSourcePdf = float(range.count) * float(cb.risTotalSampleCount) / float(range.risSampleCount);
+
+    // Begin strided sampling by selecting a random starting light
+    float lightIndex = getNextSampleBlueNoise(randomState) * range.count;
+    const float stride = max(1.0f, float(range.count) / float(range.risSampleCount));
+
+    for (uint i = 0; i < range.risSampleCount; i++)
+    {
+      const float risRnd = getNextSampleBlueNoise(randomState);
+
+      // Load the polymorphic light data
+
+      MemoryPolymorphicLight memoryPolymorphicLight = lights[uint(lightIndex) + range.offset];
+
+      // Calculate the weight (targetPdf)
+
+      // Note: polymorphicType comes from the loop, not memoryPolymorphicLight, so that the compiler
+      // can effectively unroll the loop and remove the switch from decodedPolymorphicLightCalcWeight
+      DecodedPolymorphicLight decodedPolymorphicLight = decodePolymorphicLight(memoryPolymorphicLight);
+      decodedPolymorphicLight.polymorphicType = lightType;
+      const float targetPdf = decodedPolymorphicLightCalcWeight(decodedPolymorphicLight, surfaceInteraction);
+
+      // Accumulate the light's weight
+
+      const float risWeight = targetPdf * rangeInvSourcePdf;
+      weightSum += risWeight;
+
+      // Check if this light should be selected
+
+      const bool selectThis = risRnd * weightSum < risWeight;
+
+      if (selectThis)
+      {
+        selectedPolymorphicLight = memoryPolymorphicLight;
+        selectedLightTargetPdf = targetPdf;
+      }
+
+      // Accumulate and wrap the light index
+
+      lightIndex += stride;
+
+      if (lightIndex >= range.count)
+      {
+        lightIndex -= range.count;
+      }
+    }
+  }
+
+  if (selectedLightTargetPdf <= 0.0f) {
+    return false;
+  }
+
+  // Sample the selected light
+
+  const float2 sampleCoordinates = float2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState));
+
+  lightSample = memoryPolymorphicLightSampleArea(selectedPolymorphicLight, sampleCoordinates, surfaceInteraction);
+
+  // Finalize RIS in a way similar to RTXDI_FinalizeResampling
+  // The M value is equal to cb.risTotalSampleCount
+  // The light count is incorporated into 'rangeInvSourcePdf' above
+  // See Bitterli et al. "Spatiotemporal reservoir resampling for real-time ray tracing with dynamic direct lighting"
+  // (Equation 6 or Algorithm 3)
+
+  // Note: Safe division always as selectedLightTargetPdf and risTotalSampleCount are gaurenteed to be greater than 0 due to the above checks.
+  inverseSelectionPdf = (selectedLightTargetPdf > 0.0f) ? weightSum / (selectedLightTargetPdf * cb.risTotalSampleCount) : 0.0f;
+
+  // Check if the light sample has a valid PDF
+
+  if (lightSample.solidAnglePdf * inverseSelectionPdf <= 0.0f)
+  {
+    return false;
+  }
+
+  return true;
+}
+
+bool sampleLightAdvancedRIS(
+  inout RNG randomState,
+  MinimalSurfaceInteraction surfaceInteraction,
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  f16vec3 viewDirection,
+  inout LightSample lightSample, inout float inverseSelectionPdf)
+{
+  if (cb.risTotalSampleCount == 0) {
+    return false;
+  }
+
+  // Consider the specified number of lights and select the best using RIS/WRS
+  float selectedLightTargetPdf = 0.0f;
+  float weightSum = 0.0f;
+
+  RAB_RandomSamplerState rtxdiRNG = RAB_InitRandomSampler(randomState.pixelIdx, cb.frameIdx, 3);
+  float2 sampleCoordinates = float2(RAB_GetNextRandom(rtxdiRNG), RAB_GetNextRandom(rtxdiRNG));
+
+  [unroll]
+  for (uint lightType = 0; lightType < lightTypeCount; ++lightType)
+  {
+    LightRangeInfo range = cb.lightRanges[lightType];
+    if (range.count == 0)
+      continue;
+
+    // PDF of selecting any light in this range from the overall pool of lights of all types,
+    // taking into account the different sample counts per type.
+    const float rangeInvSourcePdf = float(range.count) * float(cb.risTotalSampleCount) / float(range.risSampleCount);
+
+    // Begin strided sampling by selecting a random starting light
+    float stride = float(range.count) / float(range.risSampleCount);
+
+    for (uint i = 0; i < range.risSampleCount; i++)
+    {
+      // Load the polymorphic light data
+      float lightIndex = min(range.count-1, (i + RAB_GetNextRandom(rtxdiRNG)) * stride);
+      int id = uint(lightIndex) + range.offset;
+      MemoryPolymorphicLight memoryPolymorphicLight = lights[id];
+
+      // Note: polymorphicType comes from the loop, not memoryPolymorphicLight, so that the compiler
+      // can effectively unroll the loop and remove the switch from decodedPolymorphicLightCalcWeight
+      DecodedPolymorphicLight decodedPolymorphicLight = decodePolymorphicLight(memoryPolymorphicLight);
+      decodedPolymorphicLight.polymorphicType = lightType;
+      LightSample candidateSample = decodedPolymorphicLightSampleArea(decodedPolymorphicLight, sampleCoordinates, surfaceInteraction);
+
+      // Calculate the weight (targetPdf)
+      MinimalRayInteraction minimalRayInteraction;
+      minimalRayInteraction.viewDirection = viewDirection;
+      const f16vec3 inputDirection = normalize(candidateSample.position - surfaceInteraction.position);
+      const SurfaceMaterialInteractionSplitWeight splitWeight = opaqueSurfaceMaterialInteractionCalcApproxProjectedWeight(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
+      // Note: Only divide by the light sample's PDF if it is non-zero (as it may be zero when sampling a light from a specific location is impossible).
+      const float lightThroughput = candidateSample.solidAnglePdf > 0.0f ? 1.0f / candidateSample.solidAnglePdf : 0.0f;
+      const float targetPdf = calcBt709Luminance(candidateSample.radiance * (splitWeight.diffuseReflectionWeight + splitWeight.specularReflectionWeight));
+
+      // Accumulate the light's weight
+      const float risWeight = targetPdf * rangeInvSourcePdf * lightThroughput;
+      weightSum += risWeight;
+
+      // Check if this light should be selected
+      const float risRnd = RAB_GetNextRandom(rtxdiRNG);
+      const bool selectThis = risRnd * weightSum < risWeight;
+      if (selectThis)
+      {
+        selectedLightTargetPdf = targetPdf;
+        lightSample = candidateSample;
+      }
+    }
+  }
+
+  if (selectedLightTargetPdf <= 0.0f) {
+    return false;
+  }
+
+  // Set solid angle PDF to 1 because it has been considered in RIS weight
+  lightSample.solidAnglePdf = 1.0f;
+
+  // Finalize RIS in a way similar to RTXDI_FinalizeResampling
+  // The M value is equal to cb.risTotalSampleCount
+  // The light count is incorporated into 'rangeInvSourcePdf' above
+  // See Bitterli et al. "Spatiotemporal reservoir resampling for real-time ray tracing with dynamic direct lighting"
+  // (Equation 6 or Algorithm 3)
+
+  // Note: Safe division always as selectedLightTargetPdf and risTotalSampleCount are gaurenteed to be greater than 0 due to the above checks.
+  inverseSelectionPdf = (selectedLightTargetPdf > 0.0f) ? weightSum / (selectedLightTargetPdf * cb.risTotalSampleCount) : 0.0f;
+
+  // Check if the light sample has a valid PDF 
+
+  if (lightSample.solidAnglePdf * inverseSelectionPdf <= 0.0f)
+  {
+    return false;
+  }
+
+  return true;
+}
+
+bool sampleLightNaive(
+  inout RNG randomState,
+  MinimalSurfaceInteraction surfaceInteraction,
+  inout LightSample lightSample, inout float inverseSelectionPdf)
+{
+  if (cb.risTotalSampleCount == 0) {
+    return false;
+  }
+
+  int lightCount = cb.lightRanges[lightTypeCount-1].offset + cb.lightRanges[lightTypeCount-1].count;
+  const float risRnd = getNextSampleBlueNoise(randomState);
+  MemoryPolymorphicLight memoryPolymorphicLight = lights[clamp(risRnd * lightCount, 0, lightCount-1)];
+  float2 sampleCoordinates0 = float2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState));
+  lightSample = memoryPolymorphicLightSampleArea(memoryPolymorphicLight, sampleCoordinates0, surfaceInteraction);
+  inverseSelectionPdf = float(lightCount);
+  if (lightSample.solidAnglePdf * inverseSelectionPdf <= 0.0f)
+  {
+    return false;
+  }
+  return true;
+}
+
+bool sampleLightRIS(
+  inout RNG randomState,
+  MinimalSurfaceInteraction surfaceInteraction,
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  f16vec3 viewDirection,
+  inout LightSample lightSample, inout float inverseSelectionPdf)
+{
+  switch(kSurfaceRISType)
+  {
+  case 0:
+    return sampleLightBasicRIS(randomState, surfaceInteraction, lightSample, inverseSelectionPdf);
+  case 1:    
+    return sampleLightAdvancedRIS(randomState, surfaceInteraction, opaqueSurfaceMaterialInteraction, viewDirection, lightSample, inverseSelectionPdf);
+  case 2:
+    return sampleLightNaive(randomState, surfaceInteraction, lightSample, inverseSelectionPdf);
+  default:
+    return false;
+  }
+}

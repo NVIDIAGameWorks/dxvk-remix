@@ -1,0 +1,48 @@
+/*
+* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/pass/instance_definitions.h"
+#include "rtx/concept/ray_portal/ray_portal.slangh"
+
+bool isViewModelEnabled(uint8_t rayMask)
+{
+  return rayMask & (OBJECT_MASK_VIEWMODEL | OBJECT_MASK_VIEWMODEL_VIRTUAL);
+}
+
+// Call this for updating rayMasks when creating a ray starting from ViewModel surface
+void updateRayMaskForRayOriginFromViewModelSurface(inout uint8_t rayMask, PortalSpace2BitsType portalSpace) 
+{
+  switch (uint(portalSpace))
+  {
+    case PORTAL_SPACE_NONE:rayMask |= OBJECT_MASK_VIEWMODEL;
+      break;      
+    // View model is visible in this portal space since it originated from viewModel surface, 
+    // so don't need to check  for active portal space index for virtual view model
+    case PORTAL_SPACE_PORTAL_0:
+    case PORTAL_SPACE_PORTAL_1: rayMask |= OBJECT_MASK_VIEWMODEL_VIRTUAL;
+      break;
+    // ViewModel is not enabled beyond immediate portal space
+    case PORTAL_SPACE_PORTAL_COMBINED:
+      break;
+  }
+}

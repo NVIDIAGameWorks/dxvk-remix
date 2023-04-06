@@ -1,0 +1,95 @@
+/* https://www.shadertoy.com/view/XsX3zB
+ *
+ * The MIT License
+ * Copyright (c) 2013 Nikita Miropolskiy
+ * 
+ * ( license has been changed from CCA-NC-SA 3.0 to MIT
+ *
+ *   but thanks for attributing your source code when deriving from this sample 
+ *   with a following link: https://www.shadertoy.com/view/XsX3zB )
+ *
+ * ~
+ * ~ if you're looking for procedural noise implementation examples you might 
+ * ~ also want to look at the following shaders:
+ * ~ 
+ * ~ Noise Lab shader by candycat: https://www.shadertoy.com/view/4sc3z2
+ * ~
+ * ~ Noise shaders by iq:
+ * ~     Value    Noise 2D, Derivatives: https://www.shadertoy.com/view/4dXBRH
+ * ~     Gradient Noise 2D, Derivatives: https://www.shadertoy.com/view/XdXBRH
+ * ~     Value    Noise 3D, Derivatives: https://www.shadertoy.com/view/XsXfRH
+ * ~     Gradient Noise 3D, Derivatives: https://www.shadertoy.com/view/4dffRH
+ * ~     Value    Noise 2D             : https://www.shadertoy.com/view/lsf3WH
+ * ~     Value    Noise 3D             : https://www.shadertoy.com/view/4sfGzS
+ * ~     Gradient Noise 2D             : https://www.shadertoy.com/view/XdXGW8
+ * ~     Gradient Noise 3D             : https://www.shadertoy.com/view/Xsl3Dl
+ * ~     Simplex  Noise 2D             : https://www.shadertoy.com/view/Msf3WH
+ * ~     Voronoise: https://www.shadertoy.com/view/Xd23Dh
+ * ~ 
+ *
+ */
+
+ #pragma once
+
+/* discontinuous pseudorandom uniformly distributed in [-0.5, +0.5]^3 */
+vec3 random3(vec3 c) {
+  float j = 4096.0f * sin(dot(c,vec3(17.0f, 59.4f, 15.0f)));
+  vec3 r;
+  r.z = fract(512.0f * j);
+  j *= .125f;
+  r.x = fract(512.0f * j);
+  j *= .125f;
+  r.y = fract(512.0f * j);
+  return r - 0.5f;
+}
+
+/* 3d simplex noise */
+float simplexNoise3D(vec3 p) {
+  /* skew constants for 3d simplex functions */
+  const float F3 = 0.3333333f;
+  const float G3 = 0.1666667f;
+
+   /* 1. find current tetrahedron T and it's four vertices */
+   /* s, s+i1, s+i2, s+1.0 - absolute skewed (integer) coordinates of T vertices */
+   /* x, x1, x2, x3 - unskewed coordinates of p relative to each of T vertices*/
+   
+   /* calculate s and x */
+   const vec3 s = floor(p + dot(p, vec3(F3)));
+   const vec3 x = p - s + dot(s, vec3(G3));
+   
+   /* calculate i1 and i2 */
+   const vec3 e = step(vec3(0.0f), x - x.yzx);
+   const vec3 i1 = e * (1.0f - e.zxy);
+   const vec3 i2 = 1.0f - e.zxy * (1.0f - e);
+    
+   /* x1, x2, x3 */
+   vec3 x1 = x - i1 + G3;
+   vec3 x2 = x - i2 + 2.0f * G3;
+   vec3 x3 = x - 1.0f + 3.0f * G3;
+   
+   /* 2. find four surflets and store them in d */
+   vec4 w, d;
+   
+   /* calculate surflet weights */
+   w.x = dot(x, x);
+   w.y = dot(x1, x1);
+   w.z = dot(x2, x2);
+   w.w = dot(x3, x3);
+   
+   /* w fades from 0.6 at the center of the surflet to 0.0 at the margin */
+   w = max(0.6f - w, 0.0f);
+   
+   /* calculate surflet components */
+   d.x = dot(random3(s), x);
+   d.y = dot(random3(s + i1), x1);
+   d.z = dot(random3(s + i2), x2);
+   d.w = dot(random3(s + 1.0f), x3);
+   
+   /* multiply d by w^4 */
+   w *= w;
+   w *= w;
+   d *= w;
+   
+   /* 3. return the sum of the four surflets */
+   return dot(d, vec4(52.0f));
+}

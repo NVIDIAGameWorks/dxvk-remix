@@ -1,0 +1,141 @@
+/*
+* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/pass/integrate/integrate_direct_binding_indices.h"
+
+#include "rtx/algorithm/rtxdi/rtxdi.slangh"
+
+// Shared Inputs
+layout(binding = INTEGRATE_DIRECT_BINDING_SKYPROBE)
+SamplerCube<float3> SkyProbe;
+
+layout(r16f, binding = INTEGRATE_DIRECT_BINDING_SHARED_INTEGRATION_SURFACE_PDF_INPUT)
+Texture2D<float> SharedIntegrationSurfacePdf;
+
+layout(r32ui, binding = INTEGRATE_DIRECT_BINDING_SHARED_MATERIAL_DATA0_INPUT)
+Texture2D<uint> SharedMaterialData0;
+
+layout(r32ui, binding = INTEGRATE_DIRECT_BINDING_SHARED_MATERIAL_DATA1_INPUT)
+Texture2D<uint> SharedMaterialData1;
+
+// Shared Inputs/Outputs
+
+layout(r8ui, binding = INTEGRATE_DIRECT_BINDING_SHARED_FLAGS_INPUT_OUTPUT)
+RWTexture2D<uint> SharedFlags;
+
+layout(r16ui, binding = INTEGRATE_DIRECT_BINDING_SHARED_MEDIUM_MATERIAL_INDEX_INPUT_OUTPUT)
+RWTexture2D<uint> SharedMediumMaterialIndex;
+
+// Primary Inputs
+
+layout(r32ui, binding = INTEGRATE_DIRECT_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT)
+Texture2D<uint> PrimaryWorldShadingNormal;
+
+layout(r8, binding = INTEGRATE_DIRECT_BINDING_PRIMARY_PERCEPTUAL_ROUGHNESS_INPUT)
+Texture2D<float> PrimaryPerceptualRoughness;
+
+layout(rgb10_a2, binding = INTEGRATE_DIRECT_BINDING_PRIMARY_ALBEDO_INPUT)
+Texture2D<float4> PrimaryAlbedo;
+
+layout(rg16_snorm, binding = INTEGRATE_DIRECT_BINDING_PRIMARY_VIEW_DIRECTION_INPUT)
+Texture2D<float2> PrimaryViewDirection;
+
+layout(r16f, binding = INTEGRATE_DIRECT_BINDING_PRIMARY_CONE_RADIUS_INPUT)
+Texture2D<float> PrimaryConeRadius;
+
+layout(rgba32f, binding = INTEGRATE_DIRECT_BINDING_PRIMARY_WORLD_POSITION_WORLD_TRIANGLE_NORMAL_INPUT)
+Texture2D<float4> PrimaryWorldPositionWorldTriangleNormal;
+
+layout(r32f, binding = INTEGRATE_DIRECT_BINDING_PRIMARY_POSITION_ERROR_INPUT)
+Texture2D<float> PrimaryPositionError;
+
+layout(binding = INTEGRATE_DIRECT_BINDING_PRIMARY_RTXDI_RESERVOIR)
+RWStructuredBuffer<RTXDI_PackedReservoir> RtxdiReservoirBuffer;
+
+layout(r16f, binding = INTEGRATE_DIRECT_BINDING_PRIMARY_RTXDI_ILLUMINANCE_OUTPUT)
+RWTexture2D<float> PrimaryRtxdiIlluminance;
+
+// Primary Inputs/Outputs
+
+layout(rgb10_a2, binding = INTEGRATE_DIRECT_BINDING_PRIMARY_BASE_REFLECTIVITY_INPUT_OUTPUT)
+RWTexture2D<float4> PrimaryBaseReflectivity;
+
+// Secondary Inputs
+
+layout(r32ui, binding = INTEGRATE_DIRECT_BINDING_SECONDARY_WORLD_SHADING_NORMAL_INPUT)
+Texture2D<uint> SecondaryWorldShadingNormal;
+
+
+layout(rgb10_a2, binding = INTEGRATE_DIRECT_BINDING_SECONDARY_ALBEDO_INPUT)
+Texture2D<float4> SecondaryAlbedo;
+
+layout(rg16_snorm, binding = INTEGRATE_DIRECT_BINDING_SECONDARY_VIEW_DIRECTION_INPUT)
+Texture2D<float2> SecondaryViewDirection;
+
+layout(r16f, binding = INTEGRATE_DIRECT_BINDING_SECONDARY_CONE_RADIUS_INPUT)
+Texture2D<float> SecondaryConeRadius;
+
+layout(r32f, binding = INTEGRATE_DIRECT_BINDING_SECONDARY_POSITION_ERROR_INPUT)
+Texture2D<float> SecondaryPositionError;
+
+// Secondary Inputs/Outputs
+
+layout(rgb10_a2, binding = INTEGRATE_DIRECT_BINDING_SECONDARY_BASE_REFLECTIVITY_INPUT_OUTPUT)
+RWTexture2D<float4> SecondaryBaseReflectivity;
+
+// Outputs
+
+layout(rgba16f, binding = INTEGRATE_DIRECT_BINDING_PRIMARY_DIRECT_DIFFUSE_LOBE_RADIANCE_OUTPUT)
+RWTexture2D<float4> PrimaryDirectDiffuseLobeRadianceHitDistance;
+
+layout(rgba16f, binding = INTEGRATE_DIRECT_BINDING_PRIMARY_DIRECT_SPECULAR_LOBE_RADIANCE_OUTPUT)
+RWTexture2D<float4> PrimaryDirectSpecularLobeRadianceHitDistance;
+
+layout(rgba16f, binding = INTEGRATE_DIRECT_BINDING_SECONDARY_COMBINED_DIFFUSE_LOBE_RADIANCE_OUTPUT)
+RWTexture2D<float4> SecondaryCombinedDiffuseLobeRadianceHitDistance;
+
+layout(rgba16f, binding = INTEGRATE_DIRECT_BINDING_SECONDARY_COMBINED_SPECULAR_LOBE_RADIANCE_OUTPUT)
+RWTexture2D<float4> SecondaryCombinedSpecularLobeRadianceHitDistance;
+
+layout(rgba16f, binding = INTEGRATE_DIRECT_BINDING_INDIRECT_THROUGHPUT_CONE_RADIUS_OUTPUT)
+RWTexture2D<float4> IndirectThroughputConeRadius;
+
+layout(rg16f, binding = INTEGRATE_DIRECT_BINDING_INDIRECT_FIRST_SAMPLED_LOBE_AND_SOLID_ANGLE_PDF_OUTPUT)
+RWTexture2D<float2> IndirectFirstSampledLobeAndSolidAnglePdf;
+
+// Aliased Inputs / Outputs
+
+layout(rgba32f, binding = INTEGRATE_DIRECT_BINDING_ALIASED_DATA_0)
+uniform struct AliasedData0
+{
+  Texture2D<float4> SecondaryWorldPositionWorldTriangleNormal;
+  RWTexture2D<float4> IndirectRayOriginDirection;
+} aliasedData0;
+
+layout(r8, binding = INTEGRATE_DIRECT_BINDING_ALIASED_DATA_1)
+uniform struct AliasedData1
+{
+    Texture2D<float> SecondaryPerceptualRoughness;
+    RWTexture2D<float> IndirectFirstHitPerceptualRoughness;
+} aliasedData1;
+

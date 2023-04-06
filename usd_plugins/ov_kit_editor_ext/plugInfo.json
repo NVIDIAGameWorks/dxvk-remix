@@ -1,0 +1,41 @@
+{
+    "Plugins": [
+        {
+            "Info": {
+                "SdfMetadata": {
+                    "hide_in_stage_window": {
+                        "type": "bool",
+                        "appliesTo": "prims",
+                        "default": 0
+                    },
+                    "no_delete": {
+                        "type": "bool",
+                        "appliesTo": "prims",
+                        "default": 0
+                    },
+                    "always_pick_model": {
+                        "type": "bool",
+                        "appliesTo": "prims",
+                        "default": 0
+                    },
+                    "ignore_material_updates": {
+                        "type": "bool",
+                        "appliesTo": "prims",
+                        "default": 0
+                    },
+                    "no_selection_outline": {
+                        "type": "bool",
+                        "appliesTo": "prims",
+                        "default": 0
+                    },
+                    "variant_sets_ui_hints": {
+                        "type": "dictionary",
+                        "appliesTo": "prims"
+                    }
+                }
+            },
+            "Name": "Omniverse Kit Editor Extension",
+            "Type": "resource"
+        }
+    ]
+}

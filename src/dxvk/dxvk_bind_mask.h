@@ -139,8 +139,7 @@ namespace dxvk {
   };
 
   using DxvkBindingMask = DxvkBindingSet<MaxNumActiveBindings>;
-  
-  
+ 
   /**
    * \brief Bound shader resources
    * 
@@ -153,6 +152,7 @@ namespace dxvk {
     Rc<DxvkImageView>  imageView;
     Rc<DxvkBufferView> bufferView;
     DxvkBufferSlice    bufferSlice;
+    VkAccelerationStructureKHR tlas;
   };
   
 }

@@ -3,6 +3,7 @@
 #include "d3d9_caps.h"
 #include "d3d9_device.h"
 #include "d3d9_util.h"
+#include "../tracy/Tracy.hpp"
 
 namespace dxvk {
 
@@ -101,6 +102,7 @@ namespace dxvk {
             VkShaderStageFlagBits ShaderStage,
       const DxsoModuleInfo*       pDxbcModuleInfo,
       const void*                 pShaderBytecode) {
+    ZoneScoped;
     DxsoReader reader(
       reinterpret_cast<const char*>(pShaderBytecode));
 

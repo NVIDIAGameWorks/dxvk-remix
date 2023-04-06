@@ -1,0 +1,73 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Ray Interaction Functions
+
+// Note: Copies members over from RayHitInfo helper struct, this is fine as it's only a struct to move
+// parameters across the boundary introduced by TraceRay and is not a full "concept" structure (otherwise
+// duplicating data like this would be bad).
+RayInteraction rayInteractionCreate(Ray ray, RayHitInfo rayHitInfo)
+{
+  RayInteraction rayInteraction;
+
+  if (!rayHitInfo.hasHit)
+  {
+    rayInteraction.hitDistance = kMissHitDistance;
+
+    return rayInteraction;
+  }
+
+  // Note: This is currently an approximation, the proper math for the spread half angle of a cone is:
+  // radius += tan(spread_angle) * hit_distance
+  // But since the spread angle is usually so close to 0 (90 degrees / 1080 pixels / 2 for example), tan(x) can be approximated as x, allowing
+  // for the simpler form:
+  // radius += spread_angle * hit_distance
+  // Of course we could've also pre-computed the tangent of this spread angle and stored that instead, and this may be an improvement
+  // to do in the future (though there are a few other places where the spread angle is used which use it as a raw angle value rather than a
+  // tangent, so these may need to be rewritten to accomodate such a change, and really the difference between the tangent and its approximation
+  // are so minor at this scale that it likely will not make any difference).
+  rayInteraction.coneRadius = ray.coneRadius + float16_t(ray.spreadAngle * rayHitInfo.hitDistance);
+  rayInteraction.viewDirection = -ray.direction;
+  rayInteraction.hitDistance = rayHitInfo.hitDistance;
+  rayInteraction.barycentricCoordinates = rayHitInfo.barycentricCoordinates;
+  rayInteraction.primitiveIndex = rayHitInfo.primitiveIndex;
+  rayInteraction.customIndex = rayHitInfo.customIndex;
+  rayInteraction.surfaceIndex = calculateSurfaceIndex(rayHitInfo);
+  rayInteraction.frontHit = rayHitInfo.frontHit;
+
+  return rayInteraction;
+}
+
+bool rayInteractionHasHit(RayInteraction rayInteraction)
+{
+  return rayInteraction.hitDistance != kMissHitDistance;
+}
+
+RayInteraction rayInteractionCreateMiss()
+{
+  RayInteraction rayInteraction;
+
+  rayInteraction.hitDistance = kMissHitDistance;
+
+  return rayInteraction;
+}

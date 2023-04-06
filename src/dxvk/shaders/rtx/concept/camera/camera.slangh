@@ -1,0 +1,208 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Note: camera.h must be first include to define required structures
+#include "rtx/concept/camera/camera.h"
+
+// Constructs a view space position from a normalized direction in view space and an associated linear view Z value.
+vec3 cameraReconstructViewPosition(Camera camera, vec3 viewDirection, float linearViewZ)
+{
+  // Note: The ratio of the Z axis side of the similar triangles formed by the (normalized) view direction and
+  // full vector to the desired view position. LHS/RHS does not need to be checked here as these should always have the
+  // same sign if data is passed correctly.
+  const float zRatio = linearViewZ / viewDirection.z;
+
+  return vec3(viewDirection.xy * zRatio, linearViewZ);
+}
+
+// Converts a world position to a linear Z value in view space
+// Note: this will be negative for RHS camera facing -Z (see rightHandedFlag
+// in the Camera's flags)
+float cameraWorldPosToLinearViewZ(Camera camera, vec3 worldPos)
+{
+  const vec4 viewPosition = mul(camera.worldToView, vec4(worldPos, 1.0));
+
+  return viewPosition.z;
+}
+
+// Converts a view position to a depth value. Assumes the position is between the near and far planes.
+float cameraViewPosToDepth(Camera camera, vec3 viewPos)
+{
+  const vec4 viewPosition = vec4(viewPos, 1.0f);
+  // Note: Unjittered version of the view to projection matrix used always. This is fine to do
+  // because the jittering does not affect a depth conversion (at least not in our testing).
+  vec4 ndc = mul(camera.viewToProjection, viewPosition);
+
+  ndc /= ndc.w;
+
+  return ndc.z;
+}
+
+// Converts a position at the center of a pixel with a coordinate from [0, resolution] with a
+// top left origin to a screen UV coordinate from [0, 1) also with a top left origin.
+vec2 cameraPixelCoordinateToScreenUV(Camera camera, ivec2 pixelCoordinate)
+{
+  // Note: Offset by 0.5 to be in the center of a pixel.
+  const vec2 pixelCenter = vec2(pixelCoordinate) + vec2(0.5f);
+
+  return pixelCenter / vec2(camera.resolution);
+}
+
+// Converts a screen UV coordinate from [0, 1) with a top left origin to a pixel position with a coordinate
+// from [0, resolution) with a top left origin.
+ivec2 cameraScreenUVToPixelCoordinate(Camera camera, vec2 screenUV)
+{
+  // Note: For UVs centered within pixels this will automatically clamp them down to the nearest
+  // pixel coordinate, no extra math needed.
+  return ivec2(screenUV * vec2(camera.resolution));
+}
+
+// Converts a screen UV coordinate from [0, 1) with a top left origin to a 2D NDC.
+vec2 cameraScreenUVToNDC(Camera camera, vec2 screenUV)
+{
+  return screenUV * vec2(2.0f, -2.0f) + vec2(-1.0f, 1.0f);
+}
+
+// Converts a 2D NDC to a screen UV coordinate from [0, 1) with a top left origin.
+vec2 cameraNDCToScreenUV(Camera camera, vec2 ndc)
+{
+  return ndc * vec2(0.5f, -0.5f) + vec2(0.5f, 0.5f);
+}
+
+// Converts a pixel coordinate from [0, resolution) with a top left origin to a 2D NDC.
+vec2 cameraPixelCoordinateToNDC(Camera camera, ivec2 pixelCoordinate)
+{
+  const vec2 screenUV = cameraPixelCoordinateToScreenUV(camera, pixelCoordinate);
+
+  return cameraScreenUVToNDC(camera, screenUV);
+}
+
+// Converts a 2D NDC to a pixel coordinate from [0, resolution) with a top left origin.
+ivec2 cameraNDCToPixelCoordinate(Camera camera, vec2 ndc)
+{
+  const vec2 screenUV = cameraNDCToScreenUV(camera, ndc);
+
+  return cameraScreenUVToPixelCoordinate(camera, screenUV);
+}
+
+struct CameraDirections {
+  // A direction in world space.
+  vec3 worldDirection;
+  // A direction in view space.
+  vec3 viewDirection;
+};
+
+// Converts a screen UV coordinate from [0, 1) to a world/view space direction from the camera origin
+// pointing towards the pixel. A jittered matrix can be specified to be used or not depending on
+// the use case.
+CameraDirections cameraScreenUVToDirection(Camera camera, vec2 screenUV, bool jitter) {
+  const vec2 ncd = cameraScreenUVToNDC(camera, screenUV);
+  const vec4 viewPosition = mul(
+    jitter ? camera.projectionToViewJittered : camera.projectionToView,
+    vec4(ncd.x, ncd.y, 1.0f, 1.0f)
+  );
+
+  CameraDirections cameraDirections;
+
+  cameraDirections.viewDirection = normalize(viewPosition.xyz);
+  cameraDirections.worldDirection = normalize(mul(mat3(camera.viewToWorld), cameraDirections.viewDirection));
+
+  return cameraDirections;
+}
+
+CameraDirections cameraScreenUVToPrevDirection(Camera camera, vec2 screenUV, bool jitter) {
+  const vec2 ncd = cameraScreenUVToNDC(camera, screenUV);
+  const vec4 viewPosition = mul(
+    jitter ? camera.prevProjectionToViewJittered : camera.prevProjectionToView,
+    vec4(ncd.x, ncd.y, 1.0f, 1.0f)
+  );
+
+  CameraDirections cameraDirections;
+
+  cameraDirections.viewDirection = normalize(viewPosition.xyz);
+  cameraDirections.worldDirection = normalize(mul(mat3(camera.prevViewToWorld), cameraDirections.viewDirection));
+
+  return cameraDirections;
+}
+
+// Overload for converting a screen UV coordinate to a world/view space direction with the assumption
+// of using jittering (as this is the most common case).
+CameraDirections cameraScreenUVToDirection(Camera camera, vec2 screenUV) {
+  return cameraScreenUVToDirection(camera, screenUV, true);
+}
+
+// Converts a pixel coordinate from [0, resolution) to a world/view space direction similar to the
+// screen UV variant of this function.
+CameraDirections cameraPixelCoordinateToDirection(Camera camera, ivec2 pixelCoordinate, bool jitter) {
+  const vec2 screenUV = cameraPixelCoordinateToScreenUV(camera, pixelCoordinate);
+
+  return cameraScreenUVToDirection(camera, screenUV, jitter);
+}
+
+// Converts a pixel coordinate from [0, resolution) to last frame's world/view space direction similar to the
+// screen UV variant of this function.
+CameraDirections cameraPixelCoordinateToPrevDirection(Camera camera, ivec2 pixelCoordinate, bool jitter) {
+  const vec2 screenUV = cameraPixelCoordinateToScreenUV(camera, pixelCoordinate);
+
+  return cameraScreenUVToPrevDirection(camera, screenUV, jitter);
+}
+
+// Overload for converting a pixel coordinate to a world/view space direction with the assumption
+// of using jittering (as this is the most common case).
+CameraDirections cameraPixelCoordinateToDirection(Camera camera, ivec2 pixelCoordinate) {
+  return cameraPixelCoordinateToDirection(camera, pixelCoordinate, true);
+}
+
+// Gets the world space position the camera's projection is centered at.
+vec3 cameraGetWorldPosition(Camera camera)
+{
+  return transpose(camera.viewToWorld)[3].xyz;
+}
+
+// Gets the world space position the camera's projection was centered at on the previous frame.
+vec3 cameraGetPreviousWorldPosition(Camera camera)
+{
+  return transpose(camera.prevViewToWorld)[3].xyz;
+}
+
+// Note: For all translated world space functions, these may not do anything if an application does not specify a world to view matrix
+// (for instance by pre-transforming on the CPU or using a fullly composed model to view matrix like how OpenGL always operates).
+// This means when relying on translated world space for improved precision results may vary on some applications.
+
+// Converts a world space position to a position in translated world space.
+vec3 worldToTranslatedWorld(VolumeDefinitionCamera camera, vec3 worldPosition)
+{
+  return worldPosition - camera.translatedWorldOffset;
+}
+
+// Converts a translated world space position to a position in world space.
+vec3 translatedWorldToWorld(VolumeDefinitionCamera camera, vec3 translatedWorldPosition)
+{
+  return translatedWorldPosition + camera.translatedWorldOffset;
+}
+
+// Converts a position in the current frame's translated world space to the previous frame's translated world space.
+vec3 translatedWorldToPreviousTranslatedWorld(VolumeDefinitionCamera camera, vec3 translatedWorldPosition)
+{
+  return translatedWorldPosition + camera.translatedWorldOffset - camera.previousTranslatedWorldOffset;
+}

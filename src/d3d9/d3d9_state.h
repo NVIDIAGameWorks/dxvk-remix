@@ -44,11 +44,15 @@ namespace dxvk {
     float pointScaleA  = 1.0f;
     float pointScaleB  = 0.0f;
     float pointScaleC  = 0.0f;
+    int baseVertex = 0;
+    std::array<float, 2> padding = { };
+
+    std::array<float, 16> projectionToWorld = { 1,0,0,0,  0,1,0,0,  0,0,1,0,  0,0,0,1 };
   };
 
   enum class D3D9RenderStateItem {
-    FogColor   = 0,
-    FogScale   = 1,
+    FogColor = 0,
+    FogScale = 1,
     FogEnd,
     FogDensity,
     AlphaRef,
@@ -59,6 +63,8 @@ namespace dxvk {
     PointScaleA,
     PointScaleB,
     PointScaleC,
+    BaseVertex,
+    ProjectionToWorld,
 
     Count
   };
@@ -111,6 +117,8 @@ namespace dxvk {
 
 
   struct D3D9FixedFunctionVS {
+    Matrix4 World;
+    Matrix4 View;
     Matrix4 WorldView;
     Matrix4 NormalMatrix;
     Matrix4 InverseView;

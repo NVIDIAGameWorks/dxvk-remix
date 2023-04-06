@@ -1,5 +1,31 @@
+/*
+* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
 #include "dxvk_device.h"
 #include "dxvk_queue.h"
+
+#include "NvLowLatencyVk.h"
+
+#include "../tracy/Tracy.hpp"
+#include "GFSDK_Aftermath_GpuCrashDump.h"
 
 namespace dxvk {
   
@@ -25,6 +51,7 @@ namespace dxvk {
   
   
   void DxvkSubmissionQueue::submit(DxvkSubmitInfo submitInfo) {
+    ZoneScoped;
     std::unique_lock<dxvk::mutex> lock(m_mutex);
 
     m_finishCond.wait(lock, [this] {
@@ -41,6 +68,7 @@ namespace dxvk {
 
 
   void DxvkSubmissionQueue::present(DxvkPresentInfo presentInfo, DxvkSubmitStatus* status) {
+    ZoneScoped;
     std::unique_lock<dxvk::mutex> lock(m_mutex);
 
     DxvkSubmitEntry entry = { };
@@ -54,6 +82,7 @@ namespace dxvk {
 
   void DxvkSubmissionQueue::synchronizeSubmission(
           DxvkSubmitStatus*   status) {
+    ZoneScoped;
     std::unique_lock<dxvk::mutex> lock(m_mutex);
 
     m_submitCond.wait(lock, [status] {
@@ -63,6 +92,7 @@ namespace dxvk {
 
 
   void DxvkSubmissionQueue::synchronize() {
+    ZoneScoped;
     std::unique_lock<dxvk::mutex> lock(m_mutex);
 
     m_submitCond.wait(lock, [this] {
@@ -72,16 +102,20 @@ namespace dxvk {
 
 
   void DxvkSubmissionQueue::lockDeviceQueue() {
+    ZoneScoped;
     m_mutexQueue.lock();
   }
 
 
   void DxvkSubmissionQueue::unlockDeviceQueue() {
+    ZoneScoped;
     m_mutexQueue.unlock();
   }
 
 
   void DxvkSubmissionQueue::submitCmdLists() {
+    ZoneScoped;
+
     env::setThreadName("dxvk-submit");
 
     std::unique_lock<dxvk::mutex> lock(m_mutex);
@@ -101,14 +135,26 @@ namespace dxvk {
       VkResult status = VK_NOT_READY;
 
       if (m_lastError != VK_ERROR_DEVICE_LOST) {
-        std::lock_guard<dxvk::mutex> lock(m_mutexQueue);
+        // NV-DXVK start: Rename lock to lockQueue to avoid shadowing other mutex
+        std::lock_guard<dxvk::mutex> lockQueue(m_mutexQueue);
+        // NV-DXVK end
 
         if (entry.submit.cmdList != nullptr) {
           status = entry.submit.cmdList->submit(
             entry.submit.waitSync,
             entry.submit.wakeSync);
         } else if (entry.present.presenter != nullptr) {
+          
+          RtxReflex& reflex = m_device->getCommon()->metaReflex();
+          reflex.setMarker(entry.present.frameId, VK_PRESENT_START);
+
           status = entry.present.presenter->presentImage();
+
+          reflex.setMarker(entry.present.frameId, VK_PRESENT_END);
+
+          if (m_device->config().presentThrottleDelay > 0) {
+            Sleep(m_device->config().presentThrottleDelay);
+          }
         }
       } else {
         // Don't submit anything after device loss
@@ -128,6 +174,25 @@ namespace dxvk {
       } else if (status == VK_ERROR_DEVICE_LOST || entry.submit.cmdList != nullptr) {
         Logger::err(str::format("DxvkSubmissionQueue: Command submission failed: ", status));
         m_lastError = status;
+        
+        if (m_device->config().enableAftermath) {
+          // Stall the pending exception until aftermath has finished writing (or hits some error)
+          uint32_t counter = 0;
+          GFSDK_Aftermath_CrashDump_Status aftermathStatus = GFSDK_Aftermath_CrashDump_Status_NotStarted; 
+          
+          static const uint32_t kTimeoutPreventionLimit = 5000;
+          
+          while (counter < kTimeoutPreventionLimit) {
+            GFSDK_Aftermath_GetCrashDumpStatus(&aftermathStatus);
+
+            if (aftermathStatus == GFSDK_Aftermath_CrashDump_Status_Finished || aftermathStatus == GFSDK_Aftermath_CrashDump_Status_Unknown)
+              break; // Our dump was written
+
+            static const uint32_t kTimeoutPerTry = 100;
+            Sleep(kTimeoutPerTry);
+            counter += kTimeoutPerTry;
+          }
+        }
         m_device->waitForIdle();
       }
 
@@ -138,6 +203,7 @@ namespace dxvk {
   
   
   void DxvkSubmissionQueue::finishCmdLists() {
+    ZoneScoped;
     env::setThreadName("dxvk-queue");
 
     std::unique_lock<dxvk::mutex> lock(m_mutex);
@@ -170,7 +236,6 @@ namespace dxvk {
         m_lastError = status;
         m_device->waitForIdle();
       }
-
       entry.submit.cmdList->notifySignals();
       entry.submit.cmdList->reset();
 

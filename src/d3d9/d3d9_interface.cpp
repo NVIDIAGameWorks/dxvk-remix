@@ -1,3 +1,24 @@
+/*
+* Copyright (c) 2021-2022, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
 #include "d3d9_interface.h"
 
 #include "d3d9_monitor.h"
@@ -54,7 +75,18 @@ namespace dxvk {
 
     if (m_d3d9Options.dpiAware) {
       Logger::info("Process set as DPI aware");
-      SetProcessDPIAware();
+
+      // NV-DXVK start: use SetProcessDpiAwareness
+      static HINSTANCE shcore_dll = ::LoadLibraryA("shcore.dll");
+      typedef HRESULT(WINAPI* PFN_SetProcessDpiAwareness)(int);
+      if (PFN_SetProcessDpiAwareness SetProcessDpiAwarenessFn = (PFN_SetProcessDpiAwareness)::GetProcAddress(shcore_dll, "SetProcessDpiAwareness")) {
+        const int PROCESS_PER_MONITOR_DPI_AWARE = 2;
+        SetProcessDpiAwarenessFn(PROCESS_PER_MONITOR_DPI_AWARE);
+      }
+      else {
+        SetProcessDPIAware();
+      }
+      // NV-DXVK end
     }
   }
 
@@ -216,7 +248,7 @@ namespace dxvk {
           D3DCAPS9*  pCaps) {
     if (auto* adapter = GetAdapter(Adapter))
       return adapter->GetDeviceCaps(
-        DeviceType, pCaps);
+        DeviceType, pCaps); 
 
     return D3DERR_INVALIDCALL;
   }
@@ -324,7 +356,6 @@ namespace dxvk {
     if (ppReturnedDeviceInterface == nullptr
     || pPresentationParameters    == nullptr)
       return D3DERR_INVALIDCALL;
-
     auto* adapter = GetAdapter(Adapter);
 
     if (adapter == nullptr)

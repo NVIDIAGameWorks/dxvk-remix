@@ -1,9 +1,8 @@
 #pragma once
 
-#include "../dxvk/dxvk_device.h"
-
 #include "d3d9_device_child.h"
 #include "d3d9_format.h"
+#include "../dxvk/dxvk_buffer.h"
 
 namespace dxvk {
 
@@ -219,7 +218,6 @@ namespace dxvk {
     D3D9Range                   m_gpuReadingRange;
 
     uint32_t                    m_lockCount = 0;
-
   };
 
 }

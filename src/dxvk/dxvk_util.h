@@ -38,6 +38,17 @@ namespace dxvk::util {
           VkDeviceSize      blockSize,
           VkDeviceSize      pitchPerRow,
           VkDeviceSize      pitchPerLayer);
+
+  /**
+   * \brief Computes a division aligned to the next higher integer number
+   *
+   * \param [in] value First value 
+   * \param [in] divisor Divisor to divide the first value by
+   * \returns Aligned division of first value by the divisor
+   */
+  inline uint32_t ceilDivide(uint32_t value, uint32_t divisor) {
+    return (value + divisor - 1) / divisor;
+  }
   
   /**
    * \brief Repacks image data to a buffer

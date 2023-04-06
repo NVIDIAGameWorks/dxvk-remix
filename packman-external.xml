@@ -1,0 +1,37 @@
+<project toolsVersion="7.2.2">
+    <remote2 name="cloudfront">
+        <transport actions="download" protocol="https" packageLocation="d4i3qtqj3r0z5.cloudfront.net/${name}@${version}" />
+        <transport actions="list upload" configUrl="https://gitlab-master.nvidia.com/hfannar/packman-transports/-/raw/main/d4i3qtqj3r0z5.cloudfront.toml" />
+    </remote2>
+
+    <dependency name="aftermath" linkPath="external/aftermath">
+        <package name="rtx-remix-aftermath" version="1" />
+    </dependency>
+    <dependency name="fonts" linkPath="external/fonts">
+        <package name="rtx-remix-fonts" version="1" />
+    </dependency>
+    <dependency name="ngx_sdk" linkPath="external/ngx_sdk">
+        <package name="rtx-remix-ngx_sdk" version="1" />
+    </dependency>
+    <dependency name="nrd" linkPath="external/nrd">
+        <package name="rtx-remix-nrd" version="1" />
+    </dependency>
+    <dependency name="nvapi" linkPath="external/nvapi">
+        <package name="rtx-remix-nvapi" version="1" />
+    </dependency>
+    <dependency name="nv_usd" linkPath="external/nv_usd">
+        <package name="rtx-remix-nv_usd" version="1" />
+    </dependency>
+    <dependency name="omni_client_library" linkPath="external/omni_client_library">
+        <package name="rtx-remix-omni_client_library" version="1" />
+    </dependency>
+    <dependency name="omni_core_materials" linkPath="external/omni_core_materials">
+        <package name="rtx-remix-omni_core_materials" version="1" />
+    </dependency>
+    <dependency name="reflex" linkPath="external/reflex">
+        <package name="rtx-remix-reflex" version="1" />
+    </dependency>
+    <dependency name="rtxio" linkPath="external/rtxio">
+        <package name="rtx-remix-rtxio" version="1" />
+    </dependency>
+</project>

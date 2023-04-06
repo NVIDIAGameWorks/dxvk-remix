@@ -1,0 +1,40 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Note: ray_portal.h must be first include to define required structures
+#include "rtx/concept/ray_portal/ray_portal.h"
+#include "rtx/pass/instance_definitions.h"
+
+bool rayPortalHitInfoIsActive(RayPortalHitInfo rayPortalHitInfo) {
+  return rayPortalHitInfo.encodedPortalToOpposingPortalDirection.isActive();
+}
+
+typedef uint8_t PortalSpace2BitsType;     // Using 2 bits only
+#define PORTAL_SPACE_PORTAL_0         0   // Portal space after entering via portal 0
+#define PORTAL_SPACE_PORTAL_1         1   // Portal space after entering via portal 1
+#define PORTAL_SPACE_NONE             2   // Non-portal / main space before crossing any portals
+#define PORTAL_SPACE_PORTAL_COMBINED  3   // Portal spaces beyond 2nd portal hit with a same portal index
+
+#if PORTAL_SPACE_PORTAL_1 != PORTAL_SPACE_PORTAL_0 + 1
+  PORTAL_SPACE_PORTAL_1 must equal (PORTAL_SPACE_PORTAL_0 + 1)
+#endif

@@ -13,6 +13,7 @@ namespace dxvk {
   enum class DxvkStatCounter : uint32_t {
     CmdDrawCalls,             ///< Number of draw calls
     CmdDispatchCalls,         ///< Number of compute calls
+    CmdTraceRaysCalls,         ///< Number of traceRays calls
     CmdRenderPassCount,       ///< Number of render passes
     PipeCountGraphics,        ///< Number of graphics pipelines
     PipeCountCompute,         ///< Number of compute pipelines
@@ -20,6 +21,13 @@ namespace dxvk {
     QueueSubmitCount,         ///< Number of command buffer submissions
     QueuePresentCount,        ///< Number of present calls / frames
     GpuIdleTicks,             ///< GPU idle time in microseconds
+    RtxBlasCount,             ///< Number of unique BLAS's in the scene/geometry cache
+    RtxBufferCount,           ///< Number of unique buffers being tracked for RT rendering
+    RtxTextureCount,          ///< Number of unique textures being tracked for RT rendering
+    RtxInstanceCount,         ///< Number of surfaces and TLAS instance nodes in the scene
+    RtxSurfaceMaterialCount,  ///< Number of surface materials in the scene
+    RtxVolumeMaterialCount,   ///< Number of volume materials in the scene
+    RtxLightCount,            ///< Number of lights currently present in the scene
     NumCounters,              ///< Number of counters available
   };
   

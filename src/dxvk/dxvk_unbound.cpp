@@ -76,7 +76,7 @@ namespace dxvk {
                     | VK_ACCESS_SHADER_WRITE_BIT;
     
     return dev->createBuffer(info,
-      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppBuffer);
   }
   
   
@@ -117,7 +117,7 @@ namespace dxvk {
       info.flags       |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
     
     return dev->createImage(info,
-      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture);
   }
   
   

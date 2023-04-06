@@ -1,0 +1,184 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Cylinder Light Helper Functions
+
+// Note: Light vector information outputted to allow for no duplicate math for visibility weighting.
+float cylinderLightCalcPositionalWeight(CylinderLight cylinderLight, vec3 position, inout vec3 lightVector, inout vec3 edgeLightVector)
+{
+  lightVector = cylinderLight.position - position;
+  edgeLightVector = lightVector + cylinderLight.axis * cylinderLight.axisLength;
+
+  const float lightDistance2 = min(squareLength(lightVector), squareLength(edgeLightVector));
+
+  // Note: Treat the light as a point light and get the incoming luminance to the viewer
+  return safePositiveDivide(
+    calcBt709Luminance(cylinderLightCalcPower(cylinderLight) / (4.0f * pi)),
+    lightDistance2,
+    lightWeightEpsilon
+  );
+}
+
+bool cylinderLightCalcVisibilityWeight(CylinderLight cylinderLight, f16vec3 triangleNormal, vec3 lightVector, vec3 edgeLightVector)
+{
+  // Cull the cylinders that are completely hidden below the surface.
+  const bool frontSideCylinder = dot(lightVector, vec3(triangleNormal)) > float(-cylinderLight.radius) ||
+                                 dot(edgeLightVector, vec3(triangleNormal)) > float(-cylinderLight.radius);
+
+  return frontSideCylinder;
+}
+
+// Cylinder Light Functions
+
+CylinderLight cylinderLightCreate(DecodedPolymorphicLight decodedPolymorphicLight)
+{
+  // Decode the Cylinder Light from the packed memory representation
+  // Note: Light type is known in advance
+
+  CylinderLight cylinderLight;
+
+  const uint32_t data00 = decodedPolymorphicLight.data0.x;
+  const uint32_t data01 = decodedPolymorphicLight.data0.y;
+  const uint32_t data02 = decodedPolymorphicLight.data0.z;
+  const u16vec2 data03 = unpack16(decodedPolymorphicLight.data0.w);
+  const u16vec2 data20 = unpack16(decodedPolymorphicLight.data2.x);
+  const u16vec2 data21 = unpack16(decodedPolymorphicLight.data2.y);
+
+  cylinderLight.position = vec3(uintBitsToFloat(data00), uintBitsToFloat(data01), uintBitsToFloat(data02));
+  cylinderLight.radius = uint16BitsToHalf(data03.x);
+  cylinderLight.axis = f16vec3(uint16BitsToHalf(data20.x), uint16BitsToHalf(data20.y), uint16BitsToHalf(data21.x));
+  // Note: data21.y unused
+  cylinderLight.axisLength = uint16BitsToHalf(data03.y);
+  cylinderLight.radiance = decodedPolymorphicLight.radiance;
+
+  return cylinderLight;
+}
+
+float cylinderLightCalcSurfaceArea(CylinderLight cylinderLight)
+{
+  return twoPi * cylinderLight.radius * cylinderLight.axisLength;
+}
+
+vec3 cylinderLightCalcPower(CylinderLight cylinderLight)
+{
+  // Integrate over the cosine-weighted hemisphere of directions at each point and the cylinder's area
+
+  return cylinderLightCalcSurfaceArea(cylinderLight) * pi * cylinderLight.radiance;
+}
+
+float cylinderLightCalcWeight(CylinderLight cylinderLight, MinimalSurfaceInteraction viewSurfaceInteraction)
+{
+  vec3 lightVector;
+  vec3 edgeLightVector;
+  const float positionalWeight = cylinderLightCalcPositionalWeight(cylinderLight, viewSurfaceInteraction.position, lightVector, edgeLightVector);
+  const bool visibilityWeight = cylinderLightCalcVisibilityWeight(cylinderLight, viewSurfaceInteraction.triangleNormal, lightVector, edgeLightVector);
+
+  // Note: Ideally this if statement is re-ordered to avoid the calculation of the positional weight when the visibility test fails now that the logic has been abstracted
+  // into functions.
+  if (visibilityWeight) {
+    return positionalWeight;
+  } else {
+    return 0.0f;
+  }
+}
+
+float cylinderLightCalcWeight(CylinderLight cylinderLight, VolumeInteraction viewVolumeInteraction)
+{
+  vec3 lightVector;
+  vec3 edgeLightVector;
+  const float positionalWeight = cylinderLightCalcPositionalWeight(cylinderLight, viewVolumeInteraction.position, lightVector, edgeLightVector);
+
+  return positionalWeight;
+}
+
+LightSample cylinderLightSampleArea(CylinderLight cylinderLight, f16vec2 sampleCoordinates, vec3 position)
+{
+  // Construct a coordinate frame around the main axis
+
+  f16vec3 normal;
+  f16vec3 bitangent;
+  calcOrthonormalBasis(cylinderLight.axis, normal, bitangent);
+
+  // Compute phi and z
+
+  const float16_t phi = float16_t(twoPi) * sampleCoordinates.x;
+
+  const float16_t sinPhi = sin(phi);
+  const float16_t cosPhi = cos(phi);
+
+  const float16_t z = (sampleCoordinates.y - float16_t(0.5f)) * cylinderLight.axisLength;
+
+  // Calculate sample position and normal on the cylinder
+
+  // Note: Normalize used to ensure the resulting vector is normalized, even though in theory it should be.
+  const f16vec3 cylinderNormalSample = normalize(sinPhi * bitangent + cosPhi * normal);
+  const vec3 cylinderPositionSample =
+    cylinderLight.position + vec3(z * cylinderLight.axis + cylinderLight.radius * cylinderNormalSample);
+  // Note: Reprojection for position to minimize error here skipped for performance
+
+  // Calculate pdf
+
+  const float16_t areaPdf = float16_t(1.0f / cylinderLightCalcSurfaceArea(cylinderLight));
+  const vec3 sampleVector = cylinderPositionSample - position;
+  const float sampleDistance = length(sampleVector);
+  const float16_t sampleCosTheta = dot(f16vec3(normalize(sampleVector)), -cylinderNormalSample);
+  const float solidAnglePdf = areaPdftoSolidAnglePdf(areaPdf, sampleDistance, abs(sampleCosTheta));
+
+  // Create the light sample
+
+  LightSample lightSample;
+
+  lightSample.position = cylinderPositionSample;
+  lightSample.normal = cylinderNormalSample;
+
+  if (sampleCosTheta <= float16_t(0.0f))
+  {
+      lightSample.radiance = vec3(0.0f, 0.0f, 0.0f);
+      lightSample.solidAnglePdf = 0.0f;
+  }
+  else
+  {
+      lightSample.radiance = cylinderLight.radiance;
+      lightSample.solidAnglePdf = solidAnglePdf;
+  }
+
+  return lightSample;
+}
+
+LightSample cylinderLightSampleArea(
+  CylinderLight cylinderLight, f16vec2 sampleCoordinates,
+  MinimalSurfaceInteraction viewSurfaceInteraction)
+{
+  return cylinderLightSampleArea(
+    cylinderLight, sampleCoordinates,
+    viewSurfaceInteraction.position);
+}
+
+LightSample cylinderLightSampleArea(
+  CylinderLight cylinderLight, f16vec2 sampleCoordinates,
+  VolumeInteraction viewVolumeInteraction)
+{
+  return cylinderLightSampleArea(
+    cylinderLight, sampleCoordinates,
+    viewVolumeInteraction.position);
+}

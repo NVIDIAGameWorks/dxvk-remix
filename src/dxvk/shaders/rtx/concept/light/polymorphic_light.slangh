@@ -1,0 +1,271 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#ifndef ENABLE_SPHERE_LIGHTS
+#define ENABLE_SPHERE_LIGHTS 1
+#endif
+
+#ifndef ENABLE_RECT_LIGHTS
+#define ENABLE_RECT_LIGHTS 1
+#endif
+
+#ifndef ENABLE_DISK_LIGHTS
+#define ENABLE_DISK_LIGHTS 1
+#endif
+
+#ifndef ENABLE_CYLINDER_LIGHTS
+#define ENABLE_CYLINDER_LIGHTS 1
+#endif
+
+#ifndef ENABLE_DISTANT_LIGHTS
+#define ENABLE_DISTANT_LIGHTS 1
+#endif
+
+// Memory Polymorphic Light Functions
+
+DecodedPolymorphicLight decodePolymorphicLight(MemoryPolymorphicLight memoryPolymorphicLight)
+{
+  const uint32_t data10 = memoryPolymorphicLight.data1.x;
+  const uint32_t data11 = memoryPolymorphicLight.data1.y;
+  const uint32_t data12 = memoryPolymorphicLight.data1.z;
+  const uint32_t data13 = memoryPolymorphicLight.data1.w;
+  const uint32_t flagData = memoryPolymorphicLight.data3.w;
+
+  DecodedPolymorphicLight decodedPolymorphicLight;
+
+  decodedPolymorphicLight.polymorphicType = uint8_t((flagData >> 29) & lightTypeMask);
+
+  decodedPolymorphicLight.shaping = lightShapingCreate(
+    (flagData & (1u << 0)) != 0u,
+    data11, data12, data13);
+
+  decodedPolymorphicLight.radiance = logLuv32ToRadiance(data10);
+
+  decodedPolymorphicLight.data0 = memoryPolymorphicLight.data0;
+  decodedPolymorphicLight.data2 = memoryPolymorphicLight.data2;
+  decodedPolymorphicLight.data3 = memoryPolymorphicLight.data3;
+
+  return decodedPolymorphicLight;
+}
+
+LightSample decodedPolymorphicLightSampleArea(
+  DecodedPolymorphicLight decodedPolymorphicLight, f16vec2 sampleCoordinates,
+  MinimalSurfaceInteraction viewSurfaceInteraction)
+{
+  switch (uint(decodedPolymorphicLight.polymorphicType))
+  {
+#if ENABLE_SPHERE_LIGHTS
+    case uint(lightTypeSphere):
+      const SphereLight sphereLight = sphereLightCreate(decodedPolymorphicLight);
+
+      return sphereLightSampleArea(sphereLight, sampleCoordinates, viewSurfaceInteraction);
+#endif
+
+#if ENABLE_RECT_LIGHTS
+    case uint(lightTypeRect):
+      const RectLight rectLight = rectLightCreate(decodedPolymorphicLight);
+
+      return rectLightSampleArea(rectLight, sampleCoordinates, viewSurfaceInteraction);
+#endif
+
+#if ENABLE_DISK_LIGHTS
+    case uint(lightTypeDisk):
+      const DiskLight diskLight = diskLightCreate(decodedPolymorphicLight);
+
+      return diskLightSampleArea(diskLight, sampleCoordinates, viewSurfaceInteraction);
+#endif
+
+#if ENABLE_CYLINDER_LIGHTS
+    case uint(lightTypeCylinder):
+      const CylinderLight cylinderLight = cylinderLightCreate(decodedPolymorphicLight);
+
+      return cylinderLightSampleArea(cylinderLight, sampleCoordinates, viewSurfaceInteraction);
+#endif
+
+#if ENABLE_DISTANT_LIGHTS
+    case uint(lightTypeDistant):
+      const DistantLight distantLight = distantLightCreate(decodedPolymorphicLight);
+
+      return distantLightSampleArea(distantLight, sampleCoordinates, viewSurfaceInteraction);
+#endif
+
+    default:
+      return (LightSample)0;
+  }
+}
+
+LightSample memoryPolymorphicLightSampleArea(
+  MemoryPolymorphicLight memoryPolymorphicLight, f16vec2 sampleCoordinates,
+  MinimalSurfaceInteraction viewSurfaceInteraction)
+{
+  const DecodedPolymorphicLight decodedPolymorphicLight = decodePolymorphicLight(memoryPolymorphicLight);
+
+  return decodedPolymorphicLightSampleArea(decodedPolymorphicLight, sampleCoordinates, viewSurfaceInteraction);
+}
+
+LightSample decodedPolymorphicLightSampleArea(
+  DecodedPolymorphicLight decodedPolymorphicLight, f16vec2 sampleCoordinates,
+  VolumeInteraction volumeInteraction)
+{
+  switch (uint(decodedPolymorphicLight.polymorphicType))
+  {
+#if ENABLE_SPHERE_LIGHTS
+    case uint(lightTypeSphere):
+      const SphereLight sphereLight = sphereLightCreate(decodedPolymorphicLight);
+
+      return sphereLightSampleArea(sphereLight, sampleCoordinates, volumeInteraction);
+#endif
+
+#if ENABLE_RECT_LIGHTS
+    case uint(lightTypeRect):
+      const RectLight rectLight = rectLightCreate(decodedPolymorphicLight);
+
+      return rectLightSampleArea(rectLight, sampleCoordinates, volumeInteraction);
+#endif
+
+#if ENABLE_DISK_LIGHTS
+    case uint(lightTypeDisk):
+      const DiskLight diskLight = diskLightCreate(decodedPolymorphicLight);
+
+      return diskLightSampleArea(diskLight, sampleCoordinates, volumeInteraction);
+#endif
+
+#if ENABLE_CYLINDER_LIGHTS
+    case uint(lightTypeCylinder):
+      const CylinderLight cylinderLight = cylinderLightCreate(decodedPolymorphicLight);
+
+      return cylinderLightSampleArea(cylinderLight, sampleCoordinates, volumeInteraction);
+#endif
+
+#if ENABLE_DISTANT_LIGHTS
+    case uint(lightTypeDistant):
+      const DistantLight distantLight = distantLightCreate(decodedPolymorphicLight);
+
+      return distantLightSampleArea(distantLight, sampleCoordinates, volumeInteraction);
+#endif
+
+    default:
+      return (LightSample)0;
+  }
+}
+
+LightSample memoryPolymorphicLightSampleArea(
+  MemoryPolymorphicLight memoryPolymorphicLight, f16vec2 sampleCoordinates,
+  VolumeInteraction volumeInteraction)
+{
+  const DecodedPolymorphicLight decodedPolymorphicLight = decodePolymorphicLight(memoryPolymorphicLight);
+  
+  return decodedPolymorphicLightSampleArea(decodedPolymorphicLight, sampleCoordinates, volumeInteraction);
+}
+
+float decodedPolymorphicLightCalcWeight(
+  DecodedPolymorphicLight decodedPolymorphicLight,
+  MinimalSurfaceInteraction viewSurfaceInteraction)
+{
+  switch (uint(decodedPolymorphicLight.polymorphicType))
+  {
+#if ENABLE_SPHERE_LIGHTS
+    case uint(lightTypeSphere):
+      const SphereLight sphereLight = sphereLightCreate(decodedPolymorphicLight);
+
+      return sphereLightCalcWeight(sphereLight, viewSurfaceInteraction);
+#endif
+
+#if ENABLE_RECT_LIGHTS
+    case uint(lightTypeRect):
+      const RectLight rectLight = rectLightCreate(decodedPolymorphicLight);
+
+      return rectLightCalcWeight(rectLight, viewSurfaceInteraction);
+#endif
+
+#if ENABLE_DISK_LIGHTS
+    case uint(lightTypeDisk):
+      const DiskLight diskLight = diskLightCreate(decodedPolymorphicLight);
+
+      return diskLightCalcWeight(diskLight, viewSurfaceInteraction);
+#endif
+
+#if ENABLE_CYLINDER_LIGHTS
+    case uint(lightTypeCylinder):
+      const CylinderLight cylinderLight = cylinderLightCreate(decodedPolymorphicLight);
+
+      return cylinderLightCalcWeight(cylinderLight, viewSurfaceInteraction);
+#endif
+
+#if ENABLE_DISTANT_LIGHTS
+    case uint(lightTypeDistant):
+      const DistantLight distantLight = distantLightCreate(decodedPolymorphicLight);
+
+      return distantLightCalcWeight(distantLight, viewSurfaceInteraction);
+#endif
+
+    default:
+      return 0;
+  }
+}
+
+float decodedPolymorphicLightCalcWeight(
+  DecodedPolymorphicLight decodedPolymorphicLight,
+  VolumeInteraction volumeInteraction)
+{
+  switch (uint(decodedPolymorphicLight.polymorphicType))
+  {
+#if ENABLE_SPHERE_LIGHTS
+    case uint(lightTypeSphere):
+      const SphereLight sphereLight = sphereLightCreate(decodedPolymorphicLight);
+
+      return sphereLightCalcWeight(sphereLight, volumeInteraction);
+#endif
+
+#if ENABLE_RECT_LIGHTS
+    case uint(lightTypeRect):
+      const RectLight rectLight = rectLightCreate(decodedPolymorphicLight);
+
+      return rectLightCalcWeight(rectLight, volumeInteraction);
+#endif
+
+#if ENABLE_DISK_LIGHTS
+    case uint(lightTypeDisk):
+      const DiskLight diskLight = diskLightCreate(decodedPolymorphicLight);
+
+      return diskLightCalcWeight(diskLight, volumeInteraction);
+#endif
+
+#if ENABLE_CYLINDER_LIGHTS
+    case uint(lightTypeCylinder):
+      const CylinderLight cylinderLight = cylinderLightCreate(decodedPolymorphicLight);
+
+      return cylinderLightCalcWeight(cylinderLight, volumeInteraction);
+#endif
+
+#if ENABLE_DISTANT_LIGHTS
+    case uint(lightTypeDistant):
+      const DistantLight distantLight = distantLightCreate(decodedPolymorphicLight);
+
+      return distantLightCalcWeight(distantLight, volumeInteraction);
+#endif
+
+    default:
+      return 0;
+  }
+}

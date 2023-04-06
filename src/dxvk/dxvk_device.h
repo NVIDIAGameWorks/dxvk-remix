@@ -1,3 +1,24 @@
+/*
+* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
 #pragma once
 
 #include "dxvk_adapter.h"
@@ -24,6 +45,8 @@
 #include "dxvk_unbound.h"
 
 #include "../vulkan/vulkan_presenter.h"
+
+#include "../tracy/TracyVulkan.hpp"
 
 namespace dxvk {
   
@@ -55,6 +78,11 @@ namespace dxvk {
     VkQueue   queueHandle = VK_NULL_HANDLE;
     uint32_t  queueFamily = 0;
     uint32_t  queueIndex  = 0;
+#ifdef TRACY_ENABLE
+    TracyVkCtx tracyCtx;
+    VkCommandPool tracyPool = VK_NULL_HANDLE;
+    VkCommandBuffer tracyCmdList = VK_NULL_HANDLE;
+#endif
   };
 
   /**
@@ -63,6 +91,9 @@ namespace dxvk {
   struct DxvkDeviceQueueSet {
     DxvkDeviceQueue graphics;
     DxvkDeviceQueue transfer;
+    // NV-DXVK start: RTXIO
+    DxvkDeviceQueue asyncCompute;
+    // NV-DXVK end
   };
   
   /**
@@ -249,6 +280,15 @@ namespace dxvk {
     Rc<DxvkContext> createContext();
 
     /**
+     * \brief Creates a rtx context
+     * 
+     * Creates a context object that can
+     * be used to record raytracing command buffers.
+     * \returns The context object
+     */
+    Rc<RtxContext> createRtxContext();
+
+    /**
      * \brief Creates a GPU event
      * \returns New GPU event
      */
@@ -285,8 +325,24 @@ namespace dxvk {
      */
     Rc<DxvkBuffer> createBuffer(
       const DxvkBufferCreateInfo& createInfo,
-            VkMemoryPropertyFlags memoryType);
+            VkMemoryPropertyFlags memoryType,
+            DxvkMemoryStats::Category category);
     
+     // NV-DXVK start: implement acceleration structures
+    /**
+     * \brief Creates a accel structure object
+     *
+     * \param [in] createInfo Buffer create info
+     * \param [in] memoryType Memory type flags
+     * \param [in] accelType  BLAS/TLAS
+     * \returns The buffer object
+     */
+    Rc<DxvkAccelStructure> createAccelStructure(
+      const DxvkBufferCreateInfo& createInfo,
+            VkMemoryPropertyFlags memoryType,
+            VkAccelerationStructureTypeKHR accelType);
+    // NV-DXVK end
+
     /**
      * \brief Creates a buffer view
      * 
@@ -307,7 +363,8 @@ namespace dxvk {
      */
     Rc<DxvkImage> createImage(
       const DxvkImageCreateInfo&  createInfo,
-            VkMemoryPropertyFlags memoryType);
+            VkMemoryPropertyFlags memoryType,
+            DxvkMemoryStats::Category category);
 
     /**
      * \brief Creates an image object for an existing VkImage
@@ -365,6 +422,18 @@ namespace dxvk {
      * usage, draw calls, etc.
      */
     DxvkStatCounters getStatCounters();
+
+    /**
+    * \brief Stat counters
+    * 
+    * Retrieves some info about per-command list
+    * statistics, such as the number of draw calls
+    * or the number of pipelines compiled.
+    * \returns Reference to stat counters
+    */
+    DxvkStatCounters& statCounters() {
+      return m_statCounters;
+    }
 
     /**
      * \brief Retrieves memors statistics
@@ -474,6 +543,23 @@ namespace dxvk {
      */
     void waitForIdle();
     
+    /**
+     * \brief Adds a CPU delay to present calls.
+     * 
+     * Adds a fixed CPU delay after each present when enabled.
+     * Useful for development to keep the GPU from generating
+     * too much heat when not doing perf work.
+     * 
+     * \param [in] delay The delay, in ms (0 disables throttling).
+     */
+    void setPresentThrottleDelay(int32_t delay) {
+      m_options.presentThrottleDelay = delay;
+    }
+
+    DxvkObjects* getCommon() {
+      return &m_objects;
+    }
+
   private:
     
     DxvkOptions                 m_options;

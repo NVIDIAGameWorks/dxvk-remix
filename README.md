@@ -1,135 +1,57 @@
-# DXVK
-
-A Vulkan-based translation layer for Direct3D 9/10/11 which allows running 3D applications on Linux using Wine.
-
-For the current status of the project, please refer to the [project wiki](https://github.com/doitsujin/dxvk/wiki).
-
-The most recent development builds can be found [here](https://github.com/doitsujin/dxvk/actions/workflows/artifacts.yml?query=branch%3Amaster).
-
-Release builds can be found [here](https://github.com/doitsujin/dxvk/releases).
-
-## How to use
-In order to install a DXVK package obtained from the [release](https://github.com/doitsujin/dxvk/releases) page into a given wine prefix, run the following commands from within the DXVK directory:
-
-```
-export WINEPREFIX=/path/to/.wine-prefix
-./setup_dxvk.sh install
-```
-
-This will **copy** the DLLs into the `system32` and `syswow64` directories of your wine prefix and set up the required DLL overrides. Pure 32-bit prefixes are also supported.
-
-The setup script optionally takes the following arguments:
-- `--symlink`: Create symbolic links to the DLL files instead of copying them. This is especially useful for development.
-- `--with-d3d10`: Install the `d3d10{_1}.dll` helper libraries.
-- `--without-dxgi`: Do not install DXVK's DXGI implementation and use the one provided by wine instead.
-
-Verify that your application uses DXVK instead of wined3d by checking for the presence of the log file `d3d9.log` or `d3d11.log` in the application's directory, or by enabling the HUD (see notes below).
-
-In order to remove DXVK from a prefix, run the following command:
-```
-export WINEPREFIX=/path/to/.wine-prefix
-./setup_dxvk.sh uninstall
-```
+# RTX Remix
 
 ## Build instructions
 
 ### Requirements:
-- [wine 3.10](https://www.winehq.org/) or newer
-- [Meson](https://mesonbuild.com/) build system (at least version 0.46)
-- [Mingw-w64](https://www.mingw-w64.org) compiler and headers (at least version 8.0)
-- [glslang](https://github.com/KhronosGroup/glslang) compiler
+1. Windows 10 or 11
+2. [Visual Studio ](https://visualstudio.microsoft.com/vs/older-downloads/)
+    - VS 2019 is tested
+    - VS 2022 may also work, but it is not actively tested
+    - Note that our build system will always use the most recent version available on the system
+3. [Meson](https://mesonbuild.com/) - v0.61.4 has been tested, latest version should work
+    - Follow [instructions](https://mesonbuild.com/SimpleStart.html#installing-meson) on how to install and reboot the PC before moving on (Meson will indicate as much)
+4. [Vulkan SDK](https://vulkan.lunarg.com/sdk/home#windows) - 1.3.211.0 or newer
+    - You may need to uninstall previous SDK if you have an old version
+5. [Python](https://www.python.org/downloads/) - version 3.9 or newer
 
-### Building DLLs
+#### Additional notes:
+- If any dependency paths change (i.e. new Vulkan library), run `meson --reconfigure` in _Compiler64 directory via a command prompt. This may revert some custom VS project settings
 
-#### The simple way
-Inside the DXVK directory, run:
-```
-./package-release.sh master /your/target/directory --no-package
-```
+### Generate and build dxvk_rt Visual Studio project 
+1. Clone the repository with all submodules: <span style="color:red"> (ToDo: Update git path to the OSS git path)</style>
+	- `git clone --recursive  https://gitlab-master.nvidia.com/lightspeedrtx/dxvk_rt.git`
 
-This will create a folder `dxvk-master` in `/your/target/directory`, which contains both 32-bit and 64-bit versions of DXVK, which can be set up in the same way as the release versions as noted above.
+	If the clone was made non-recursively and the submodules are missing, clone them separately:
+	- `git submodule update --init --recursive`
 
-In order to preserve the build directories for development, pass `--dev-build` to the script. This option implies `--no-package`. After making changes to the source code, you can then do the following to rebuild DXVK:
-```
-# change to build.32 for 32-bit
-cd /your/target/directory/build.64
-ninja install
-```
+2. Install all the [requirements](#requirements) before proceeding further
 
-#### Compiling manually
-```
-# 64-bit build. For 32-bit builds, replace
-# build-win64.txt with build-win32.txt
-meson --cross-file build-win64.txt --buildtype release --prefix /your/dxvk/directory build.w64
-cd build.w64
-ninja install
-```
+3. Make sure PowerShell scripts are enabled
+    - One-time system setup: run `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned` in an elevated PowerShell prompt, then close and reopen any existing PowerShell prompts
+	
+4. To generate and build dxvk_rt project, open a command prompt and run
+    - `powershell -command "& .\build_dxvk_all_ninja.ps1"`
+    - This will build all 3 configurations of dxvk_rt project inside subdirectories of the build tree: 
+        - **_Comp64Debug** - full debug instrumentation, runtime speed may be slow
+        - **_Comp64DebugOptimized** - partial debug instrumentation (i.e. asserts), runtime speed is generally comparable to that of release configuration
+        - **_Comp64Release** - fastest runtime 
+    - This will generate a project in the **_vs** subdirectory
+    - Only x64 build targets are supported
+    - A VSCode setup is available as well inside the .vscode directory and set up to use the build subdirectories generated in the previous step
 
-The D3D9, D3D10, D3D11 and DXGI DLLs will be located in `/your/dxvk/directory/bin`. Setup has to be done manually in this case.
+5. Open **_vs/dxvk_rt.sln** in Visual Studio (2019+). 
+    - Do not convert the solution on load if prompted when using a newer version of Visual Studio 
+    - Once generated, the project can be built via Visual Studio or via powershell scripts
+    - A build will copy generated DXVK DLLs to any target project as specified in **gametargets.conf** (see its [setup section](#deploy-built-binaries-to-a-game))
 
-### Notes on Vulkan drivers
-Before reporting an issue, please check the [Wiki](https://github.com/doitsujin/dxvk/wiki/Driver-support) page on the current driver status and make sure you run a recent enough driver version for your hardware.
+### Deploy built binaries to a game 
+1. First time only: copy **gametargets.example.conf** to **gametargets.conf** in the project root
 
-### Online multi-player games
-Manipulation of Direct3D libraries in multi-player games may be considered cheating and can get your account **banned**. This may also apply to single-player games with an embedded or dedicated multiplayer portion. **Use at your own risk.**
+2. Update paths in the **gametargets.conf** for your game. Follow example in the **gametargets.example.conf**. Make sure to remove "#" from the start of all three lines
 
-### HUD
-The `DXVK_HUD` environment variable controls a HUD which can display the framerate and some stat counters. It accepts a comma-separated list of the following options:
-- `devinfo`: Displays the name of the GPU and the driver version.
-- `fps`: Shows the current frame rate.
-- `frametimes`: Shows a frame time graph.
-- `submissions`: Shows the number of command buffers submitted per frame.
-- `drawcalls`: Shows the number of draw calls and render passes per frame.
-- `pipelines`: Shows the total number of graphics and compute pipelines.
-- `memory`: Shows the amount of device memory allocated and used.
-- `gpuload`: Shows estimated GPU load. May be inaccurate.
-- `version`: Shows DXVK version.
-- `api`: Shows the D3D feature level used by the application.
-- `compiler`: Shows shader compiler activity
-- `samplers`: Shows the current number of sampler pairs used *[D3D9 Only]*
-- `scale=x`: Scales the HUD by a factor of `x` (e.g. `1.5`)
+3. Open and, simply, re-save top-level **meson.build** file (i.e. via notepad) to update its time stamp, and rerun the build. This will trigger a full meson script run which will generate a project within the Visual Studio solution file and deploy built binaries into games' directories specified in **gametargets.conf**
 
-Additionally, `DXVK_HUD=1` has the same effect as `DXVK_HUD=devinfo,fps`, and `DXVK_HUD=full` enables all available HUD elements.
 
-### Frame rate limit
-The `DXVK_FRAME_RATE` environment variable can be used to limit the frame rate. A value of `0` uncaps the frame rate, while any positive value will limit rendering to the given number of frames per second. Alternatively, the configuration file can be used.
+## Project Documentation
 
-### Device filter
-Some applications do not provide a method to select a different GPU. In that case, DXVK can be forced to use a given device:
-- `DXVK_FILTER_DEVICE_NAME="Device Name"` Selects devices with a matching Vulkan device name, which can be retrieved with tools such as `vulkaninfo`. Matches on substrings, so "VEGA" or "AMD RADV VEGA10" is supported if the full device name is "AMD RADV VEGA10 (LLVM 9.0.0)", for example. If the substring matches more than one device, the first device matched will be used.
-
-**Note:** If the device filter is configured incorrectly, it may filter out all devices and applications will be unable to create a D3D device.
-
-### State cache
-DXVK caches pipeline state by default, so that shaders can be recompiled ahead of time on subsequent runs of an application, even if the driver's own shader cache got invalidated in the meantime. This cache is enabled by default, and generally reduces stuttering.
-
-The following environment variables can be used to control the cache:
-- `DXVK_STATE_CACHE=0` Disables the state cache.
-- `DXVK_STATE_CACHE_PATH=/some/directory` Specifies a directory where to put the cache files. Defaults to the current working directory of the application.
-
-### Debugging
-The following environment variables can be used for **debugging** purposes.
-- `VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation` Enables Vulkan debug layers. Highly recommended for troubleshooting rendering issues and driver crashes. Requires the Vulkan SDK to be installed on the host system.
-- `DXVK_LOG_LEVEL=none|error|warn|info|debug` Controls message logging.
-- `DXVK_LOG_PATH=/some/directory` Changes path where log files are stored. Set to `none` to disable log file creation entirely, without disabling logging.
-- `DXVK_CONFIG_FILE=/xxx/dxvk.conf` Sets path to the configuration file.
-- `DXVK_PERF_EVENTS=1` Enables use of the VK_EXT_debug_utils extension for translating performance event markers.
-
-## Troubleshooting
-DXVK requires threading support from your mingw-w64 build environment. If you
-are missing this, you may see "error: ‘std::cv_status’ has not been declared"
-or similar threading related errors.
-
-On Debian and Ubuntu, this can be resolved by using the posix alternate, which
-supports threading. For example, choose the posix alternate from these
-commands:
-```
-update-alternatives --config x86_64-w64-mingw32-gcc
-update-alternatives --config x86_64-w64-mingw32-g++
-update-alternatives --config i686-w64-mingw32-gcc
-update-alternatives --config i686-w64-mingw32-g++
-```
-For non debian based distros, make sure that your mingw-w64-gcc cross compiler 
-does have `--enable-threads=posix` enabled during configure. If your distro does
-ship its mingw-w64-gcc binary with `--enable-threads=win32` you might have to
-recompile locally or open a bug at your distro's bugtracker to ask for it. 
+- [Rtx Options](/RtxOptions.md)

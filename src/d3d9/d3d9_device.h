@@ -28,6 +28,7 @@
 #include <vector>
 #include <type_traits>
 #include <unordered_map>
+#include "d3d9_rtx.h"
 
 namespace dxvk {
 
@@ -41,6 +42,7 @@ namespace dxvk {
   class D3D9Query;
   class D3D9StateBlock;
   class D3D9FormatHelper;
+  class RtxContext;
 
   enum class D3D9DeviceFlag : uint32_t {
     DirtyFramebuffer,
@@ -98,6 +100,7 @@ namespace dxvk {
     constexpr static uint32_t NullStreamIdx = caps::MaxStreams;
 
     friend class D3D9SwapChainEx;
+    friend struct D3D9Rtx;
   public:
 
     D3D9DeviceEx(
@@ -848,6 +851,8 @@ namespace dxvk {
     
     uint32_t GetInstanceCount() const;
 
+    void PrepareVertexCapture(const UINT BaseVertex, const UINT NumVertices);
+
     void PrepareDraw(D3DPRIMITIVETYPE PrimitiveType);
 
     template <DxsoProgramType ShaderStage>
@@ -959,7 +964,7 @@ namespace dxvk {
 
     void DetermineConstantLayouts(bool canSWVP);
 
-    template<bool UpBuffer>
+    template<bool UpBuffer, bool ShaderBuffer = false>
     D3D9BufferSlice AllocTempBuffer(VkDeviceSize size);
 
     bool ShouldRecord();
@@ -1248,6 +1253,8 @@ namespace dxvk {
     std::atomic<int32_t>            m_samplerCount    = { 0 };
 
     Direct3DState9                  m_state;
+
+    D3D9Rtx                         m_rtx;
 
   };
 

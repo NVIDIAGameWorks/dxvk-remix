@@ -1,0 +1,1099 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Note: resolve.h must be first include to define required structures
+#include "rtx/algorithm/resolve.h"
+#include "rtx/utility/common.slangh"
+#include "rtx/utility/math.slangh"
+#include "rtx/utility/buffer_helpers.slangh"
+#include "rtx/utility/packing.slangh"
+#include "rtx/utility/froxel.slangh"
+#include "rtx/concept/ray/ray.slangh"
+#include "rtx/concept/surface/surface.slangh"
+#include "rtx/concept/surface_material/surface_material.slangh"
+#include "rtx/concept/volume/volume.slangh"
+#include "rtx/concept/volume_material/volume_material.slangh"
+#include "rtx/concept/ray_portal/ray_portal.slangh"
+#include "rtx/algorithm/view_distance.slangh"
+#include "rtx/algorithm/volume_lighting.slangh"
+
+// Resolve Helper Functions
+
+bool isRayMaskEmpty(uint8_t rayMask)
+{
+  return rayMask == 0;
+}
+
+void updateStateOnPortalCrossing(inout PortalSpace2BitsType portalSpace, 
+                                 inout uint8_t rayMask, 
+                                 uint8_t rayPortalIndex, 
+                                 bool isViewModelRayOrStartedFromViewModel)
+{
+  PortalSpace2BitsType newPortalSpace = 0;
+  uint8_t newDynamicMask = 0;
+
+  switch(uint(portalSpace)) 
+  {
+  case PORTAL_SPACE_NONE:
+  {
+    newPortalSpace = PORTAL_SPACE_PORTAL_0 + rayPortalIndex;
+
+    newDynamicMask = rayPortalIndex == cb.virtualInstancePortalIndex
+      ? OBJECT_MASK_VIEWMODEL_VIRTUAL | OBJECT_MASK_PLAYER_MODEL
+      : OBJECT_MASK_ALL_PLAYER_MODEL;
+
+    if (rayMask & OBJECT_MASK_PLAYER_MODEL)
+      newDynamicMask |= OBJECT_MASK_PLAYER_MODEL_VIRTUAL;
+
+    break;
+  }
+  case PORTAL_SPACE_PORTAL_0:
+  case PORTAL_SPACE_PORTAL_1: 
+    uint8_t prevEntryRayPortalIndex = portalSpace - PORTAL_SPACE_PORTAL_0;
+    if (rayPortalIndex == prevEntryRayPortalIndex)
+    {
+      newPortalSpace = PORTAL_SPACE_PORTAL_COMBINED;
+      newDynamicMask = OBJECT_MASK_ALL_PLAYER_MODEL;
+    }
+    else
+    { // Reentering the main space
+      newPortalSpace = PORTAL_SPACE_NONE;
+
+      if (rayMask & OBJECT_MASK_PLAYER_MODEL_VIRTUAL)
+        newDynamicMask |= OBJECT_MASK_PLAYER_MODEL;
+      if (rayMask & OBJECT_MASK_PLAYER_MODEL)
+        newDynamicMask |= OBJECT_MASK_PLAYER_MODEL_VIRTUAL;
+    }
+    break;
+
+  case PORTAL_SPACE_PORTAL_COMBINED:
+    // Do nothing. Stay in combined space. Technically a ray could go back to immediate portal space 
+    // but we'd need more state and logic to resolve it since a ray could be several layers deep into the combined space. 
+    // Ignoring it for now until we hit a scenario where it's needed
+    newPortalSpace = PORTAL_SPACE_PORTAL_COMBINED;
+    // ViewModel instances are not visible in combined space
+    newDynamicMask = OBJECT_MASK_ALL_PLAYER_MODEL;
+    break;
+  }
+
+#ifdef RAY_TRACING_PRIMARY_RAY
+  if (isViewModelRayOrStartedFromViewModel || !cb.enableViewModelCompositionOnTop) 
+  {
+    rayMask = (rayMask & ~OBJECT_MASK_ALL_VIEWMODEL) | (newDynamicMask & OBJECT_MASK_ALL_VIEWMODEL);
+  }
+
+  if (cb.enablePlayerModelInPrimarySpace)
+    newDynamicMask |= OBJECT_MASK_PLAYER_MODEL;
+
+#else // Indirect Rays 
+  rayMask &= ~OBJECT_MASK_ALL_VIEWMODEL;
+
+  // Keep including ViewModel instances as long as the ray originated from a ViewModel surface
+  if (isViewModelRayOrStartedFromViewModel)
+    rayMask = rayMask | (newDynamicMask & OBJECT_MASK_ALL_VIEWMODEL);
+#endif
+
+  rayMask = (rayMask & ~OBJECT_MASK_ALL_PLAYER_MODEL) | (newDynamicMask & OBJECT_MASK_ALL_PLAYER_MODEL);
+
+  portalSpace = newPortalSpace;
+}
+
+void updateStateOnPortalCrossing(inout HackGenericState resolveVertexState, uint8_t rayPortalIndex)
+{
+#ifdef RAY_TRACING_PRIMARY_RAY
+  const bool isViewModelRayOrStartedFromViewModel = resolveVertexState.isViewModelRay;
+#else // Indirect Rays
+  const bool isViewModelRayOrStartedFromViewModel = resolveVertexState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
+#endif
+
+  updateStateOnPortalCrossing(resolveVertexState.portalSpace, resolveVertexState.rayMask, rayPortalIndex, isViewModelRayOrStartedFromViewModel);
+}
+
+bool evaluateOpaqueApproximations(
+  uint8_t resolveMode,
+  Surface surface, SurfaceInteraction surfaceInteraction,
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  PortalSpace2BitsType portalSpace,
+  // Note: Radiance attenuation split into incoming/outgoing rather than having the function accumulate into it
+  // to accomodate some processes optimize around the fact that opaque approximations only result in monochromatic attenuation.
+  f16vec3 incomingRadianceAttenuation, inout float16_t outgoingRadianceAttenuation, inout vec3 emissiveRadiance)
+{
+  const Camera camera = cb.camera;
+  const VolumeArgs volumeArgs = cb.volumeArgs;
+  const float16_t opacity = opaqueSurfaceMaterialInteraction.opacity;
+
+  // Handle lighting approximations
+  // Note: This has to be done with macros (unfortunately) due to the dependency on the volumetric radiance cache. Slang
+  // sadly does not support the compile time lazy code evaluation to make this any more elegant as far as I know. Currently this
+  // logic is only needed by the g-buffer pass which only deals with "primary" rays, but if we needed this in the integrator for
+  // some reason (like better quality particles in rough-ish reflections not covered by PSR) we'd want to find a non-macro way
+  // to do this so that this code does not run for NEE visibility rays in the same file as that would be not useful and bad for performance.
+
+#ifdef RESOLVE_OPACITY_LIGHTING_APPROXIMATION
+  // Note: Only perform the lighting approximation on particles using opacity, not just every surface using opacity.
+  const bool opacityLightingApprox = surface.isParticle || packedFlagGet(resolveMode, resolveModeForceOpacityLightingApprox);
+
+  if (opacityLightingApprox)
+  {
+    const uint froxelVolumeHint = portalSpaceToVolumeHint(portalSpace);
+
+    const vec3 accumulatedOutgoingRadiance = evalVolumetricNEE(VolumeFilteredRadiance, volumeArgs,
+      surfaceInteraction, froxelVolumeHint);
+
+    // Note: Volume radiance cache assumes isotropic scattering (no directionality), but we want something closer to a "diffuse" distribution for
+    // the surface of a particle rather than a volumetric contribution, so we multiply it by 4 here (albedo * 4 * radiance / (4 * pi) = albedo / pi).
+    // Secondly, in the future this should use spherical harmonics to convert to a diffuse (or perhaps some sort of directional HG phase function to allow
+    // for some contribution from behind) distribution so more directionality is respected rather than this simple multiply by 4 hack (which is not super physically correct).
+    // Finally, albedo has opacity baked into it already so it does not need to be multiplied in here.
+    emissiveRadiance += float16_t(4.0f) * opaqueSurfaceMaterialInteraction.albedo * accumulatedOutgoingRadiance * incomingRadianceAttenuation;
+  }
+#else
+  const bool opacityLightingApprox = false;
+#endif
+
+  // Handle typical emissive and attenuation approximations
+
+  const bool opacityTransmissionApprox = packedFlagGet(resolveMode, resolveModeOpacityTransmissionApprox);
+  const bool emissiveOpacityTransmissionApprox = packedFlagGet(resolveMode, resolveModeEmissiveOpacityTransmissionApprox);
+
+  // Note: Approximate opacity attenuation and emission when requested rather than returning a hit. Note while normal opacity transmission
+  // approximation is always done if requested, emissive opacity transmission approximation is only done when an emissive blend mode is in use,
+  // allowing objects with normal opacity behavior to be hit normally. Additionally, this logic is used when opacity lighting approximations are
+  // in place as this indicates that no opacity hits should be counted ever due to approximating the lighting manually without the need for a hit.
+  if ((emissiveOpacityTransmissionApprox && surface.isEmissiveBlend) || opacityTransmissionApprox || opacityLightingApprox)
+  {
+    // Note: Accumulate the material's emission into the radiance approximation as this can be calculated on any hit arbitarily. This factors the
+    // attenuation across the resolve iterations in before emissive (to not cause self-attenuation) similar to any other path tracing loop in the project.
+    emissiveRadiance +=
+      opaqueSurfaceMaterialInteractionEvalEmissiveRadiance(opaqueSurfaceMaterialInteraction) *
+      incomingRadianceAttenuation;
+    // Note: Accumulate opacity into the radiance approximation, actually a perfect representation of the effects of
+    // opacity on visibility rays. This is done for both approximation modes as this resolve hit is being skipped in either
+    // case and this attenuation should give a more proper approximation for more complex emissive blending modes.
+    outgoingRadianceAttenuation *= float16_t(1.0f) - opacity;
+    // Todo: Potentially evaluate ambient here too like we do for emission? Doesn't depend on light direction or anything
+    // either, but ideally we want to get rid of the ambient term some day so we'll skip it for now.
+
+    return true;
+  }
+
+  // Note: If no approximation was handled, treat as a hit where relevant.
+  return false;
+}
+
+bool evaluateTranslucentApproximations(
+  uint8_t resolveMode,
+  Surface surface, SurfaceInteraction surfaceInteraction,
+  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction,
+  f16vec3 incomingRadianceAttenuation, inout float16_t outgoingRadianceAttenuation, inout vec3 emissiveRadiance)
+{
+  // Handle typical attenuation approximations
+
+  const bool translucencyTransmissionApprox = packedFlagGet(resolveMode, resolveModeTranslucencyTransmissionApprox);
+
+  if (translucencyTransmissionApprox)
+  {
+    // Todo: Accumulate emission into emissive radiance on entry hit.
+    // Todo: Attenuate by fresnel factor on entry/exit points.
+    // Todo: Handle volume attenuation by adding in attenuation on the exiting hit of transmission and
+    // blindly having the ray go right through translucent objects like we did in the previous Aperture renderer.
+    // Note thin translucency can be approximated perfectly and uses a slightly different path. Note this will require
+    // returning to f16vec3 attenuation fully which will not play well with the current implementation of how the unordered
+    // approximations are handled, so it may require packing the color down into fewer bits or perhaps doing things
+    // differently (a fully ordered approach would solve a lot of this complexity and make the translucency approximations much
+    // easier to evaluate.)
+
+    return true;
+  }
+
+  // Note: If no approximation was handled, treat as a hit where relevant.
+  return false;
+}
+
+// Resolve Functions
+
+// Handles updating of the resolve state after each iteration when resolving is intended to continue.
+// Mainly used to update ray origin and teleport through Ray Portals.
+void resolveVertexFinalContinue(
+  Ray ray, SurfaceInteraction surfaceInteraction,
+  bool teleport, mat4 teleportMatrix,
+  inout HackGenericState resolveVertexState)
+{
+  // Update ray origin to move past the current interaction
+
+  if (teleport)
+  {
+    // Teleport matrix already includes ray offset to avoid self-intersection with the exit portal
+    resolveVertexState.origin = (mul(teleportMatrix, vec4(surfaceInteraction.position, 1.0f))).xyz;
+    resolveVertexState.direction = normalize(f16vec3(mul(mat3(teleportMatrix), vec3(resolveVertexState.direction))));
+  }
+  else
+  {
+    // Note: This will cause slight floating point error along the ray as the origin is shifted around without updating the direction,
+    // but it is likely fine. Ideally the tMin value instead could just be updated, but the hardware may not start the ray at tMin, resulting in excessive work.
+    // Note: Triangle normal always faces the viewer, so using it negated will always allow the ray to be pushed through the triangle hit. This is important to properly offset
+    // the ray to allow it to continue, using the ray direction instead will not work on triangles at a grazing angle.
+    resolveVertexState.origin = rayOffsetSurfaceOriginHelper(surfaceInteraction, true);
+  }
+}
+
+// Handles updating of the resolve state after an iteration when resolving is intended to stop on a hit.
+void resolveVertexFinalHit(inout HackGenericState resolveVertexState)
+{
+  // Indicate that resolving should be stopped now that a hit is found
+
+  resolveVertexState.continueResolving = false;
+}
+
+// Handles updating of the resolve state after an iteration when resolving is intended to stop on a miss specifically
+// (not to be confused with stopping on a hit which simply requires setting the continue resolving flag to false).
+void resolveVertexFinalMiss<let overrideRayInteraction : bool>(
+  inout HackGenericState resolveVertexState,
+  inout RayInteraction rayInteraction,
+  inout f16vec3 radianceAttenuation)
+{
+  // Set the hit distance for this segment of the ray to a miss and indicate that resolving should be stopped
+
+  resolveVertexState.segmentHitDistance = kMissHitDistance;
+  resolveVertexState.continueResolving = false;
+
+  // Override the Ray Interaction with a miss
+  // Note: This is somewhat redundant on rays which are already a miss (which is why a compile time bool is able to be passed
+  // to ensure this redundant operation can be skipped), but is needed when misses are to be simulated when actually hitting geometry
+  // (this is used for clip planes and the view distance).
+
+  if (overrideRayInteraction)
+  {
+    rayInteraction = rayInteractionCreateMiss();
+  }
+
+  // Account for attenuation on miss
+  // Note: This is important for any effects which apply after miss, such as potential future skybox effects.
+
+#ifdef RESOLVER_USE_VOLUMETRIC_ATTENUATION
+  radianceAttenuation *= evalVolumetricAttenuation(cb.volumeArgs, false, 0.0f);
+#endif
+}
+
+// Resolves a single vertex of the resolve loop. Note this should be called first thing from the function handling the hit logic.
+// Emissive radiance and attenuation may be accumulated immediately but the continueResolving flag must be checked to see if the
+// function should return and continue attempting to resolve an interaction. If false, the Ray Interaction can then be checked
+// for a hit and hit logic can be performed.
+void resolveVertex(
+  uint8_t resolveMode,
+  RayHitInfo rayHitInfo, inout HackGenericState resolveVertexState,
+  inout Ray ray, inout RayInteraction rayInteraction,
+  inout Surface surface, inout SurfaceInteraction surfaceInteraction,
+  inout PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
+  inout f16vec3 radianceAttenuation, inout vec3 emissiveRadiance,
+  RWTexture2D<uint4> decalMaterialTexture,
+  RWTexture2D<float4> decalEmissiveRadianceTexture,
+  // Forces enablement of ray portal resolve path regardless of global resolve mask 
+  // Needed for RayQuery paths for visibility rays from CHS as they don't run material specific hit groups
+  // Visibility rays are expected not to start from RayPortal surfaces, and thus only RayPortal path is force enabled
+  const bool forceEnableResolveRayPortal = false) 
+{
+  const Camera camera = cb.camera;
+  bool teleport = false;
+  mat4 teleportMatrix;
+
+  // Create a Ray and Ray Interaction from the hit
+
+  // Todo: Use minimal ray or something else when we have generic functions as this has
+  // no tMax value as nothing needs it.
+
+  ray.origin = resolveVertexState.origin;
+  ray.coneRadius = resolveVertexState.coneRadius;
+  ray.spreadAngle = resolveVertexState.coneSpreadAngle;
+  ray.direction = resolveVertexState.direction;
+
+  rayInteraction = rayInteractionCreate(ray, rayHitInfo);
+
+  // Note: Return misses to the caller as no further work needs to be done (this is assumed to be checked by the caller to know if surface/material information has been populated).
+  if (!rayInteractionHasHit(rayInteraction))
+  {
+    // Note: Ray interaction is already a miss here, so no need for this function to override it.
+    resolveVertexFinalMiss<false>(resolveVertexState, rayInteraction, radianceAttenuation);
+
+    return;
+  }
+
+  resolveVertexState.segmentHitDistance = rayInteraction.hitDistance;
+  // Note: Update the state with the newly calculated cone radius from this segment's interaction.
+  resolveVertexState.coneRadius = rayInteraction.coneRadius;
+
+  // Apply Volumetric attenuation for this resolve segment
+  // Note: Volume attenuation can be calculated on a per-segment basis here rather than all at once in compositing
+  // as e^x * e^y (where x/y are hit distances) is the same as e^(x + y).
+
+#ifdef RESOLVER_USE_VOLUMETRIC_ATTENUATION
+  radianceAttenuation *= evalVolumetricAttenuation(cb.volumeArgs, true, rayHitInfo.hitDistance);
+#endif
+
+  // Create a Surface and Surface Interaction from the hit
+
+  SURFACE_CREATE_READ(tempSurface, rayInteraction.surfaceIndex, surfaces);
+
+  surface = tempSurface;
+  surfaceInteraction = surfaceInteractionCreate(surface, rayInteraction, ray);
+
+  // Process user clip planes and view distance
+
+  if (
+    (isSurfaceClipped(surface, surfaceInteraction) && resolveVertexState.continueResolving) ||
+    !evalViewDistance(cb.viewDistanceArgs, cb.isZUp, camera, surfaceInteraction.position)
+  )
+  {
+    // Note: Treat various raster-related clipping and view distance interactions as misses as no
+    // geometry should be processed past them (since these operations essentially clip out everything
+    // beyond them in a specific direction).
+    resolveVertexFinalMiss<true>(resolveVertexState, rayInteraction, radianceAttenuation);
+
+    return;
+  }
+
+  // Create a Surface Material and Surface Material Interaction from the Surface
+
+  const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
+  
+  const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
+
+  // Handle special logic for specific material types
+
+  const bool separateUnorderedApproximations = packedFlagGet(resolveMode, resolveModeSeparateUnorderedApproximations);
+  const bool decalMaterialBlending = packedFlagGet(resolveMode, resolveModeDecalMaterialBlending);
+
+  if (SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE &&
+      polymorphicType == surfaceMaterialTypeOpaque)
+  {
+    const OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
+
+    OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
+      opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteraction);
+
+    // Blend any decal(s) that happened before this interaction
+    if (decalMaterialBlending && resolveVertexState.decalEncountered)
+    {
+      MemoryDecalMaterialInteraction memory;
+      memory.packed = decalMaterialTexture[resolveVertexState.pixelCoordinate];
+      memory.emissiveRadiance = decalEmissiveRadianceTexture[resolveVertexState.pixelCoordinate].rgb;
+      DecalMaterialInteraction decalMaterialInteraction = decalMaterialInteractionUnpack(memory);
+
+      decalMaterialInteractionBlend(decalMaterialInteraction, opaqueSurfaceMaterialInteraction);
+      
+      resolveVertexState.decalEncountered = false;
+    }
+
+    polymorphicSurfaceMaterialInteraction =
+      polymorphicSurfaceMaterialInteractionCreateInternal(opaqueSurfaceMaterialInteraction);
+
+    // If the current surface is a decal, store it and continue resolving
+    if (decalMaterialBlending && surfaceIsDecal(surface) && resolveVertexState.continueResolving && (!surface.isBlendedTerrain || opaqueSurfaceMaterialInteraction.opacity < 0.95))
+    {
+      if (opaqueSurfaceMaterialInteraction.opacity > 0.f)
+      {
+        const DecalMaterialInteraction decalMaterialInteraction = decalMaterialInteractionCreate(opaqueSurfaceMaterialInteraction);
+
+        MemoryDecalMaterialInteraction memory = decalMaterialInteractionPack(decalMaterialInteraction);
+        decalMaterialTexture[resolveVertexState.pixelCoordinate] = memory.packed;
+        decalEmissiveRadianceTexture[resolveVertexState.pixelCoordinate] = f16vec4(memory.emissiveRadiance, 0);
+
+        resolveVertexState.decalEncountered = true;
+      }
+
+      resolveVertexFinalContinue(ray, surfaceInteraction, teleport, teleportMatrix, resolveVertexState);
+
+      return;
+    }
+
+    // Note: Fully opaque surfaces have no chance at needing further resolving (since they are gauranteed to have no opacity-related blending or translucency), so stopping here is fine.
+    if (surface.isFullyOpaque)
+    {
+      resolveVertexFinalHit(resolveVertexState);
+
+      return;
+    }
+
+    // Note: Backfacing hits on opaque materials for now are not considered as they have no relevant contribution for lighting. This may change however if thin opaque surfaces are added.
+    // Backfacing triangles on translucent materials still need to be checked as translucency is handled with resolve functions just like everything else, as well as likely needing them for
+    // translucency approximation in the future.
+    // Todo: Perhaps re-enable this if we get consistent front/back faces in the future? This will affect illumination from backfacing objects however though so this might not look correct if enabled.
+    //if (!rayInteraction.frontHit)
+    //{
+    //  return;
+    //}
+
+    const float16_t opacity = opaqueSurfaceMaterialInteraction.opacity;
+
+    // Handle nearly-opaque early out case
+
+    // Note: Early out if opacity is set to completely opaque to stop the resolving early.
+    if (opacity >= cb.resolveOpaquenessThreshold)
+    {
+      resolveVertexFinalHit(resolveVertexState);
+
+      return;
+    }
+
+    // Handle opaque approximations
+
+    // Note: Disable opaque approximations when the separate unordered approximations flag is enabled as
+    // this approximation logic will be done in the unordered resolve step.
+    if (!separateUnorderedApproximations)
+    {
+      float16_t opaqueApproximationOutgoingAttenuation = float16_t(1.0f);
+      const bool approximationHandled = evaluateOpaqueApproximations(
+        resolveMode,
+        surface, surfaceInteraction, opaqueSurfaceMaterialInteraction,
+        resolveVertexState.portalSpace,
+        radianceAttenuation, opaqueApproximationOutgoingAttenuation, emissiveRadiance);
+
+      radianceAttenuation *= opaqueApproximationOutgoingAttenuation;
+
+      if (approximationHandled)
+      {
+        // Note: Must call resolve final on any return which expects resolving to continue.
+        resolveVertexFinalContinue(ray, surfaceInteraction, teleport, teleportMatrix, resolveVertexState);
+
+        return;
+      }
+    }
+
+    // Handle nearly-transparent early out logic
+
+    // Note: Early out if opacity is less than the threshold to avoid doing any material evaluation on nearly transparent surfaces.
+    if (opacity <= cb.resolveTransparencyThreshold)
+    {
+      // Note: Must call resolve final on any return which expects resolving to continue.
+      resolveVertexFinalContinue(ray, surfaceInteraction, teleport, teleportMatrix, resolveVertexState);
+
+      return;
+    }
+  }
+  else if (SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_TRANSLUCENT &&
+           polymorphicType == surfaceMaterialTypeTranslucent)
+  {
+    const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(surface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
+
+    TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction =
+      translucentSurfaceMaterialInteractionCreate(translucentSurfaceMaterial, surface, surfaceInteraction, rayInteraction);
+
+    // Blend any decal(s) that happened before this interaction
+    if (decalMaterialBlending && resolveVertexState.decalEncountered)
+    {
+      MemoryDecalMaterialInteraction memory;
+      memory.packed = decalMaterialTexture[resolveVertexState.pixelCoordinate];
+      memory.emissiveRadiance = decalEmissiveRadianceTexture[resolveVertexState.pixelCoordinate].rgb;
+      DecalMaterialInteraction decalMaterialInteraction = decalMaterialInteractionUnpack(memory);
+
+      decalMaterialInteractionBlend(decalMaterialInteraction, translucentSurfaceMaterialInteraction);
+
+      resolveVertexState.decalEncountered = false;
+    }
+
+    polymorphicSurfaceMaterialInteraction =
+      polymorphicSurfaceMaterialInteractionCreateInternal(translucentSurfaceMaterialInteraction);
+
+    // Handle translucent approximations
+
+    // Note: Disable translucent approximations when the separate unordered approximations flag is enabled as
+    // this approximation logic will be done in the unordered resolve step.
+    if (!separateUnorderedApproximations)
+    {
+      float16_t translucentApproximationOutgoingAttenuation = float16_t(1.0f);
+      const bool approximationHandled = evaluateTranslucentApproximations(
+        resolveMode,
+        surface, surfaceInteraction, translucentSurfaceMaterialInteraction,
+        radianceAttenuation, translucentApproximationOutgoingAttenuation, emissiveRadiance);
+
+      radianceAttenuation *= translucentApproximationOutgoingAttenuation;
+
+      if (approximationHandled)
+      {
+        // Note: Must call resolve final on any return which expects resolving to continue.
+        resolveVertexFinalContinue(ray, surfaceInteraction, teleport, teleportMatrix, resolveVertexState);
+
+        return;
+      }
+    }
+  }
+  else if ((SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_RAY_PORTAL || forceEnableResolveRayPortal) &&
+           polymorphicType == surfaceMaterialTypeRayPortal)
+  {
+    const RayPortalSurfaceMaterial rayPortalSurfaceMaterial = rayPortalSurfaceMaterialCreate(surface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
+
+    const RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction =
+      rayPortalSurfaceMaterialInteractionCreate(rayPortalSurfaceMaterial, surfaceInteraction);
+
+    polymorphicSurfaceMaterialInteraction =
+      polymorphicSurfaceMaterialInteractionCreateInternal(rayPortalSurfaceMaterialInteraction);
+
+  #ifdef RAY_TRACING_PRIMARY_RAY
+    // Don't render portal outline in ViewModel pass
+    if (!resolveVertexState.isViewModelRay)
+  #endif
+    {
+      const bool portalFadeInEffect = cb.enablePortalFadeInEffect;
+      const float16_t tFactor = portalFadeInEffect ? float16_t((surface.tFactor >> 24) & 0xff) / 255.0 : float16_t(0.0);
+      const float16_t ringTransparency =
+        saturate(float16_t(1) - rayPortalSurfaceMaterialInteraction.mask.a) *
+        (rayPortalSurfaceMaterialInteraction.isInsidePortal ? saturate(float16_t(1) - tFactor) : 1);
+      // Hack: Lingering 0.5 from earlier in the project to make the Portal less bright before it had its own material, too late to remove this now for
+      // Portal RTX, but this should be removed some day.
+      const float16_t hackPortalEmissiveIntensity = 0.5f;
+
+      emissiveRadiance +=
+        (rayPortalSurfaceMaterialInteraction.mask.rgb * (float16_t(1.0f) - ringTransparency) * hackPortalEmissiveIntensity) * radianceAttenuation;
+      radianceAttenuation *= ringTransparency;
+    }
+
+    // Assume the portal ring is opaque
+    const float opaqueThreshold = 0.02;
+    if (calcBt709Luminance(radianceAttenuation) < opaqueThreshold)
+    {
+      resolveVertexFinalHit(resolveVertexState);
+    }
+
+    if (!rayPortalSurfaceMaterialInteraction.isInsidePortal)
+    {
+      // Note: Must call resolve final on any return which expects resolving to continue.
+      resolveVertexFinalContinue(ray, surfaceInteraction, teleport, teleportMatrix, resolveVertexState);
+
+      return;
+    }
+
+    // Find Ray Portal Hit Info
+
+    const uint8_t rayPortalIndex = rayPortalSurfaceMaterialInteraction.rayPortalIndex;
+    RayPortalHitInfo rayPortalHitInfo = cb.rayPortalHitInfos[uint(rayPortalIndex)];
+
+    if (rayPortalHitInfoIsActive(rayPortalHitInfo))
+    {
+      // Discard any decals that may be located above the portal,
+      // mostly because portals are pushed closer to the walls in our renderer.
+      resolveVertexState.decalEncountered = false;
+
+      updateStateOnPortalCrossing(resolveVertexState, rayPortalIndex);
+
+      // If the ray mask was zeroed out, finish resolving and return this as a miss to the caller
+      if (isRayMaskEmpty(resolveVertexState.rayMask))
+      {
+        resolveVertexFinalMiss<true>(resolveVertexState, rayInteraction, radianceAttenuation);
+
+        return;
+      }
+
+      teleportMatrix = rayPortalHitInfo.encodedPortalToOpposingPortalDirection.unpack();
+      teleport = true;
+
+      // Note: Ray Portals will almost always change the ray direction, so indicate this to the caller.
+      if (packedFlagGet(resolveMode, resolveModeAlteredDirectionNotify))
+      {
+        resolveVertexState.directionAltered = true;
+      }
+
+      // Note: Report the Ray Portal index if requested and if this is the first Ray Portal hit.
+      if (packedFlagGet(resolveMode, resolveModeRayPortalNotify) && resolveVertexState.firstRayPortal == invalidRayPortalIndex)
+      {
+        resolveVertexState.firstRayPortal = rayPortalIndex;
+      }
+
+    #ifdef RAY_TRACING_PRIMARY_RAY
+      // Update the virtual matrix. We load the inverse teleport matrix here instead 
+      // to avoid doing the inverse on the final virtualMatrix later
+      const uint8_t opposingRayPortalIndex = getOpposingRayPortalIndex(rayPortalIndex);
+      const f16mat3 inverseTeleportMatrix = cb.rayPortalHitInfos[uint(opposingRayPortalIndex)].encodedPortalToOpposingPortalDirection.unpackAsf16mat3();
+      resolveVertexState.accumulatedVectorTransform = mul(resolveVertexState.accumulatedVectorTransform, inverseTeleportMatrix);
+    #endif
+    }
+
+    // Note: Must call resolve final on any return which expects resolving to continue.
+    resolveVertexFinalContinue(ray, surfaceInteraction, teleport, teleportMatrix, resolveVertexState);
+
+    // Note: Continue resolving if the Ray Portal was inactive or if it was traversed.
+    return;
+  }
+
+  // Indicate resolving is finished in the absence of any need to continue
+
+  resolveVertexFinalHit(resolveVertexState);
+}
+
+// Finds the lowest bin in terms of distance and outputs its index as well as other associated information.
+void findLowestBin(
+  f16mat4 binnedRadiancesAndAttenuation, f16vec4 binDistances,
+  inout uint lowestIndex, inout float16_t lowestDistance, inout f16vec4 lowestRadianceAndAttenuation)
+{
+  // Find the lowest distance and the index associated with it in the bins
+
+  lowestIndex = 0;
+  lowestDistance = binDistances.x;
+
+  for (uint i = 1; i < 4; ++i)
+  {
+    const float16_t currentDistance = selectComponent(binDistances, i);
+
+    if (currentDistance < lowestDistance)
+    {
+      lowestDistance = currentDistance;
+      lowestIndex = i;
+    }
+  }
+
+  // Extract the radiance and attenuation based on the index
+
+  lowestRadianceAndAttenuation = selectColumn(binnedRadiancesAndAttenuation, lowestIndex);
+}
+
+// Unordered resolve rays need to be a little bit longer than the regular resolve ray that generated the hitT.
+// In some cases, there is a blended surface very close to a wall, and using the original hitT results in
+// Z-fighting between the blended surface and the wall.
+// The value has been determined experimentally.
+static const float kUnorderedResolveRayLengthening = 1.001;
+
+// Translates the ray mask for the main TLAS into the ray mask for the unordered TLAS.
+// For rays that target ViewModel instances, the ViewModel mask is preserved, other bits are set to 0.
+// For rays that target regular geometry, only the provided unorderedRayMask is used.
+uint8_t convertPrimaryRayMaskToUnordered(bool isViewModelRay, uint8_t primaryRayMask, uint8_t unorderedRayMask)
+{
+  if (cb.enableViewModelCompositionOnTop)
+  {
+    return isViewModelRay
+      ? primaryRayMask & OBJECT_MASK_ALL_VIEWMODEL
+      : unorderedRayMask;
+  }
+  else
+  {
+    return (primaryRayMask & OBJECT_MASK_ALL_DYNAMIC) | unorderedRayMask;
+  }
+}
+
+// Handles unordered Resolve operations within the resolve loop which do not depend on the typical ordered execution
+// fo the resolve logic.
+void resolveVertexUnordered(
+  uint8_t resolveMode, Ray ray, uint rayMask,
+  PortalSpace2BitsType portalSpace,
+  bool useIntersectionBillboards,
+#ifdef RAY_TRACING_PRIMARY_RAY
+  f16mat3 accumulatedVectorTransform,
+#endif
+  float accumulatedHitDistance,
+  inout f16vec3 radianceAttenuation, inout vec3 emissiveRadiance,
+  out uint numInteractions)
+{
+  // Early out if approximations are not desired to be separated out
+
+  const bool separateUnorderedApproximations = packedFlagGet(resolveMode, resolveModeSeparateUnorderedApproximations);
+
+  if (!separateUnorderedApproximations)
+  {
+    return;
+  }
+
+  uint rayFlags = RAY_FLAG_CULL_OPAQUE;
+
+  if (useIntersectionBillboards)
+    rayMask &= OBJECT_MASK_UNORDERED_ALL_INTERSECTION_PRIMITIVE | OBJECT_MASK_ALL_DYNAMIC;
+  else
+    rayMask &= OBJECT_MASK_UNORDERED_ALL_GEOMETRY | OBJECT_MASK_ALL_DYNAMIC;
+
+  // Loop over each non-opaque object in the ray's path
+
+  RayQuery<0> rayQuery;
+
+  RayDesc rayDesc;
+  rayDesc.Origin = ray.origin;
+  rayDesc.Direction = ray.direction;
+  rayDesc.TMin = 0;
+  rayDesc.TMax = ray.tMax;
+  rayQuery.TraceRayInline(unorderedTLAS, rayFlags, rayMask, rayDesc);
+
+  // Note: The number of actual relevant hits along the unordered traversal.
+  numInteractions = 0;
+
+  // Note: Initialize bins to completely transparent with no radiance to be added in at an impossibly low distance. This
+  // ensures these filler items are pulled out first in sorted order, giving the incoming elements a few iterations to populate
+  // the bins.
+  f16mat4 binnedRadiancesAndAttenuation = f16mat4(
+    f16vec4(0.0f, 0.0f, 0.0f, 1.0f),
+    f16vec4(0.0f, 0.0f, 0.0f, 1.0f),
+    f16vec4(0.0f, 0.0f, 0.0f, 1.0f),
+    f16vec4(0.0f, 0.0f, 0.0f, 1.0f),
+  );
+  f16vec4 binDistances = f16vec4(-1.0f, -1.0f, -1.0f, -1.0f);
+
+  while (rayQuery.Proceed())
+  {
+    RayHitInfo rayHitInfo;
+    RayInteraction rayInteraction;
+    SurfaceInteraction surfaceInteraction;
+
+    const bool isTriangle = rayQuery.CandidateType() == CANDIDATE_NON_OPAQUE_TRIANGLE;
+
+    if (isTriangle)
+    {
+      RAY_HIT_INFO_CREATE_RAY_QUERY_CANDIDATE(rayHitInfo, rayQuery)
+
+      // Create a Ray Interaction from the hit info
+
+      rayInteraction = rayInteractionCreate(ray, rayHitInfo);
+    }
+    else
+    {
+      MemoryBillboard billboard = billboards[rayQuery.CandidateInstanceID()];
+      
+      float3 normal;
+
+      if (packedFlagGet(billboard.flags, billboardFlagIsBeam))
+      {
+        // Find the orientation of a cylinder section along the Y axis that provides the largest
+        // angle between the section plane and the incoming ray.
+        float3 xAxis = cross(billboard.yAxis, ray.direction);
+
+        // Use the normalized cross product as the X axis. If the ray is parallel to the Y axis,
+        // just keep the existing X axis because it doesn't matter - there will be no intersection.
+        float xLength = length(xAxis);
+        if (xLength > 0)
+          billboard.xAxis = xAxis / xLength;
+
+        normal = cross(billboard.xAxis, billboard.yAxis);
+      }
+#ifdef RAY_TRACING_PRIMARY_RAY
+      else if (!packedFlagGet(billboard.flags, billboardFlagIsCameraFacing))
+      {
+        // For primary rays, just rotate the billboard using the accumulatedVectorTransform.
+        // Note: multiplying on the left because we need the inverse transform
+        billboard.xAxis = mul(billboard.xAxis, accumulatedVectorTransform);
+        billboard.yAxis = mul(billboard.yAxis, accumulatedVectorTransform);
+
+        normal = normalize(cross(billboard.xAxis, billboard.yAxis));
+      }
+#endif
+      else
+      {
+        // For secondary rays, we don't have the accumulatedVectorTransform, so get creative:
+        // reorient the billboard so that it faces the virtual camera, i.e. the image of the camera
+        // below the surface where the ray originated from. Do not use the ray origin for the 
+        // virtual camera position because that results in heavy distortions of particle shapes
+        // in reflections.
+
+        // Original normal
+        normal = normalize(cross(billboard.xAxis, billboard.yAxis));
+
+        const float3 virtualCameraPosition = ray.origin - ray.direction * accumulatedHitDistance;
+        const float3 reorientedNormal = normalize(virtualCameraPosition - billboard.center);
+        
+        // If the new normal is facing the opposite direction, just flip it, because
+        // rotation becomes unstable near the opposite pole. We don't care much for the exact particle
+        // rotation in reflections etc. but stability is desirable.
+        if (dot(normal, reorientedNormal) < 0.0)
+          normal = -normal;
+        
+        // Find a quaternion that transforms the original normal into the new one.
+        const f16vec4 rotationQuat = quaternionCreateOrientation(normal, reorientedNormal);
+
+        // Use that quaternion to rotate the billboard.
+        // This is more predictable than re-creating a basis just from the normal.
+        billboard.xAxis = quaternionTransformVector(rotationQuat, billboard.xAxis);
+        billboard.yAxis = quaternionTransformVector(rotationQuat, billboard.yAxis);
+        normal = reorientedNormal;
+      }
+
+      // Compute the ray-plane intersection.
+      const float NdotD = dot(ray.direction, normal);
+      float t = dot(billboard.center - ray.origin, normal) / NdotD;
+      if (isinf(t) || isnan(t)) t = -1.0;
+
+      if (0 > t || t > ray.tMax)
+        continue;
+
+      vec3 p = ray.origin + ray.direction * t;
+      vec3 cToP = p - billboard.center.xyz;
+      vec2 uv;
+      uv.x = dot(cToP, billboard.xAxis) * billboard.inverseHalfWidth;
+      uv.y = dot(cToP, billboard.yAxis) * billboard.inverseHalfHeight;
+
+      if (max(abs(uv.x), abs(uv.y)) >= 1.0)
+        continue;
+
+      uv = uv.x * billboard.xAxisUV + uv.y * billboard.yAxisUV + billboard.centerUV;
+
+      f16vec4 vertexColor;
+      vertexColor.x = unorm8ToF16(uint8_t(billboard.vertexColor >> 16));
+      vertexColor.y = unorm8ToF16(uint8_t(billboard.vertexColor >> 8));
+      vertexColor.z = unorm8ToF16(uint8_t(billboard.vertexColor));
+      vertexColor.w = unorm8ToF16(uint8_t(billboard.vertexColor >> 24));
+
+      rayHitInfo.hitDistance = t;
+
+      rayInteraction.surfaceIndex = billboard.surfaceIndex;
+      rayInteraction.hitDistance = t;
+      rayInteraction.barycentricCoordinates = 0;
+      rayInteraction.primitiveIndex = 0;
+      rayInteraction.customIndex = 0;
+      rayInteraction.frontHit = NdotD < 0;
+
+      surfaceInteraction.position = p;
+      surfaceInteraction.positionError = 0;
+      surfaceInteraction.triangleNormal = normal;
+      surfaceInteraction.motion = 0;
+      surfaceInteraction.textureCoordinates = uv;
+      surfaceInteraction.textureGradientX = 0;
+      surfaceInteraction.textureGradientY = 0;
+      surfaceInteraction.interpolatedNormal = normal;
+      surfaceInteraction.interpolatedTangent = billboard.xAxis;
+      surfaceInteraction.interpolatedBitangent = billboard.yAxis;
+      surfaceInteraction.vertexColor = vertexColor;
+    }
+
+    SURFACE_CREATE_READ(surface, rayInteraction.surfaceIndex, surfaces);
+
+    if (isTriangle)
+      surfaceInteraction = surfaceInteractionCreate(surface, rayInteraction, ray);
+
+    // Test the hit surface against view distance clipping
+
+    if (!evalViewDistance(cb.viewDistanceArgs, cb.isZUp, cb.camera, surfaceInteraction.position))
+    {
+      // Note: Iteration skipped, we unfortunately cannot break the loop here as the hits are processed
+      // in an undefined order rather than from closest to furthest like they are in the usual resovle loop,
+      // so there may still be more unordered hits to resolve.
+      continue;
+    }
+
+    // Create a Surface Material and Surface Material Interaction from the Surface
+
+    const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
+    
+    const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
+
+    // Handle special approximation logic for specific material types
+
+    // Note: Current iteration's radiance attenuation and emissive radiance separated out for manual unordered blending logic.
+    float16_t currentRadianceAttenuation = float16_t(1.0f);
+    vec3 currentEmissiveRadiance = vec3(0.0f);
+
+    if (polymorphicType == surfaceMaterialTypeOpaque)
+    {
+      const OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
+
+      const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
+        opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteraction);
+
+      // Note: Return value ignored, should never return false in this path unless there is a bug. Additionally, incoming radiance attenuation
+      // set to 1.0 as attenuation will be manually added in later.
+      evaluateOpaqueApproximations(
+        resolveMode | resolveModeForceOpacityLightingApprox,
+        surface, surfaceInteraction, opaqueSurfaceMaterialInteraction, portalSpace,
+        f16vec3(1.0f), currentRadianceAttenuation, currentEmissiveRadiance);
+    }
+    else if (polymorphicType == surfaceMaterialTypeTranslucent)
+    {
+      const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(surface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
+
+      const TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction =
+        translucentSurfaceMaterialInteractionCreate(translucentSurfaceMaterial, surface, surfaceInteraction, rayInteraction);
+
+      // Note: Return value ignored, should never return false in this path unless there is a bug. Additionally, incoming radiance attenuation
+      // set to 1.0 as attenuation will be manually added in later.
+      evaluateTranslucentApproximations(
+        resolveMode,
+        surface, surfaceInteraction, translucentSurfaceMaterialInteraction,
+        f16vec3(1.0f), currentRadianceAttenuation, currentEmissiveRadiance);
+    }
+
+    // Calculate a blend softening factor
+    // Note: This is done to avoid raster particles handled by this seprated logic from clipping in ugly ways against geometry by
+    // fading out portions of particles closer to walls. Only done for Surfaces labeled as particles.
+
+    const float16_t softBlendFactor = saturate((ray.tMax - rayHitInfo.hitDistance) / (ray.tMax * uint16BitsToHalf(cb.particleSoftnessFactor)));
+    const float16_t blendFactor = surface.isParticle ? softBlendFactor : float16_t(1.0);
+
+    currentRadianceAttenuation = mix(float16_t(1.0f), currentRadianceAttenuation, blendFactor);
+    currentEmissiveRadiance = mix(vec3(0.0f), currentEmissiveRadiance, blendFactor);
+
+    // Find the lowest item in the bins
+
+    uint lowestIndex;
+    float16_t lowestDistance;
+    f16vec4 lowestRadianceAndAttenuation;
+
+    findLowestBin(
+      binnedRadiancesAndAttenuation, binDistances,
+      lowestIndex, lowestDistance, lowestRadianceAndAttenuation);
+
+    // Accumulate the lowest bin into the radiance and attenuation
+
+#ifdef RESOLVER_USE_VOLUMETRIC_ATTENUATION
+    // Note: Volume attenuation calculated only for the current ray start to the current hit surface, not accumulated
+    // into the attenuation as this will be handled later by the ordered resolve logic (and we do not want to incorrectly
+    // accumulate volume radiance multiple times for overlapping unordered segments).
+    const f16vec3 volumeAttenuation = evalVolumetricAttenuation(cb.volumeArgs, true, lowestDistance);
+#else
+    // Note: Set to 1 here rather than removing it from the emissive radiance statement to not have to duplicate that code.
+    const f16vec3 volumeAttenuation = f16vec3(1.0f, 1.0f, 1.0f);
+#endif
+
+    emissiveRadiance += lowestRadianceAndAttenuation.rgb * radianceAttenuation * volumeAttenuation;
+    radianceAttenuation *= lowestRadianceAndAttenuation.a;
+
+    // Replace the lowest bin with the current iteration's information
+
+    writeColumn(binnedRadiancesAndAttenuation, f16vec4(currentEmissiveRadiance, currentRadianceAttenuation), lowestIndex);
+    writeComponent(binDistances, float16_t(rayHitInfo.hitDistance), lowestIndex);
+
+    // Increment the hit count after a successful hit
+
+    numInteractions += 1;
+  }
+
+  // Early out in the special case of nothing being hit
+  // Note: This is a fairly common case since often rays travel unobstructed by particles or other intermediate objects, so having
+  // a path to skip the somewhat costly bin flushing logic below results in a small performance improvement.
+
+  if (numInteractions == 0)
+  {
+    return;
+  }
+
+  // Flush the bins by iterating through them and finding the lowest for each
+  // Note: This has to be done as there will be remaining items in the bins (up to 4) which need to be accumulated in most cases after
+  // the main loop finishes.
+
+  for (uint i = 0; i < 4; ++i)
+  {
+    // Find the lowest item in the bins
+
+    uint lowestIndex;
+    float16_t lowestDistance;
+    f16vec4 lowestRadianceAndAttenuation;
+
+    findLowestBin(
+      binnedRadiancesAndAttenuation, binDistances,
+      lowestIndex, lowestDistance, lowestRadianceAndAttenuation);
+
+    // Accumulate the lowest bin into the radiance and attenuation
+
+    // Note: Volume attenuation calculated only for the current ray start to the current hit surface, not accumulated
+    // into the attenuation as this will be handled later by the ordered resolve logic (and we do not want to incorrectly
+    // accumulate volume radiance multiple times for overlapping unordered segments).
+    const f16vec3 volumeAttenuation = evalVolumetricAttenuation(cb.volumeArgs, true, lowestDistance);
+
+    emissiveRadiance += lowestRadianceAndAttenuation.rgb * radianceAttenuation * volumeAttenuation;
+    radianceAttenuation *= lowestRadianceAndAttenuation.a;
+
+    // Invalidate the lowest bin
+
+    // Note: Invalid entry written in to safely be added if hit (in cases where fewer than 4 particle iterations
+    // were done), but designed to always compare as further away from any valid item.
+    writeColumn(binnedRadiancesAndAttenuation, f16vec4(0.0f, 0.0f, 0.0f, 1.0f), lowestIndex);
+    writeComponent(binDistances, float16_t(float16Max), lowestIndex);
+  }
+}
+
+#if 0
+#define RESOLVE(                                                                          \
+  ray, flags,                                                                             \
+  hitFunction, payloadEncodeFunction, payloadDecodeFunction,                              \
+  maxInteractions, payload, encodedPayloadBinding,                                        \
+  encodedPayloadBindingIndex, hitObjectBindingIndex)                                      \
+{                                                                                         \
+  /* Initialize the payload with the current ray's state */                               \
+                                                                                          \
+  Ray currentRay = ray;                                                                   \
+                                                                                          \
+  payload.origin = currentRay.origin;                                                     \
+  payload.coneRadius = currentRay.coneRadius;                                             \
+  payload.direction = currentRay.direction;                                               \
+                                                                                          \
+  /* Loop until a surface is resolved, or the maximum interaction count is hit */         \
+                                                                                          \
+  for (uint8_t interactionIteration = uint8_t(1);; ++interactionIteration)                \
+  {                                                                                       \
+    /* Reset the segment hit distance and continue resolving flag used for Resolve */     \
+    /* logic for this next iteration                                               */     \
+                                                                                          \
+    payload.segmentHitDistance = 0.0f;                                                    \
+    /* Note: Continue resolving flag set here to give the hit function a chance to */     \
+    /* perform final actions when it is known to be on the last iteration of the   */     \
+    /* resolve loop rather than terminating blindly.                               */     \
+    payload.continueResolving = interactionIteration < maxInteractions;                   \
+                                                                                          \
+    /* Preform the ray trace with the desired information */                              \
+                                                                                          \
+    /* Note: Live state across this call (not put into payload as it is not */            \
+    /* needed for anything on the hit function side of things):             */            \
+    /* - interactionIteration                                               */            \
+    /* - currentRay.tMax                                                    */            \
+                                                                                          \
+    TRACE_FUNCTION(                                                                       \
+      currentRay, flags, uint(payload.rayMask),                                           \
+      hitFunction, payloadEncodeFunction, payloadDecodeFunction,                          \
+      payload, encodedPayloadBinding,                                                     \
+      encodedPayloadBindingIndex, hitObjectBindingIndex);                                 \
+                                                                                          \
+    /* Check if the resolve loop should continue */                                       \
+                                                                                          \
+    if (!payload.continueResolving)                                                       \
+    {                                                                                     \
+      break;                                                                              \
+    }                                                                                     \
+                                                                                          \
+    /* Update current ray for next iteration */                                           \
+                                                                                          \
+    currentRay.origin = payload.origin;                                                   \
+    currentRay.direction = payload.direction;                                             \
+    currentRay.tMax = max(currentRay.tMax - payload.segmentHitDistance, 0.0f);            \
+  }                                                                                       \
+}
+
+// Generic Ray Trace resolve function, uses either Ray Query or
+// Trace Ray depending on how things are compiled.
+#define TRACE_FUNCTION RAY_TRACE
+#define RESOLVE_RAY_TRACE(                                   \
+  ray, flags,                                                \
+  hitFunction, payloadEncodeFunction, payloadDecodeFunction, \
+  maxInteractions, payload, encodedPayloadBinding,           \
+  encodedPayloadBindingIndex, hitObjectBindingIndex)         \
+RESOLVE(                                                     \
+  ray, flags,                                                \
+  hitFunction, payloadEncodeFunction, payloadDecodeFunction, \
+  maxInteractions, payload, encodedPayloadBinding,           \
+  encodedPayloadBindingIndex, hitObjectBindingIndex)
+#undef TRACE_FUNCTION
+
+#define TRACE_FUNCTION RAY_QUERY
+#define RESOLVE_RAY_QUERY(                                   \
+  ray, flags,                                                \
+  hitFunction, payloadEncodeFunction, payloadDecodeFunction, \
+  maxInteractions, payload, encodedPayloadBinding,           \
+  encodedPayloadBindingIndex, hitObjectBindingIndex)         \
+RESOLVE(                                                     \
+  ray, flags,                                                \
+  hitFunction, payloadEncodeFunction, payloadDecodeFunction, \
+  maxInteractions, payload, encodedPayloadBinding,           \
+  encodedPayloadBindingIndex, hitObjectBindingIndex)
+#undef TRACE_FUNCTION
+#endif
+
+#include "resolve_expanded.slangh"

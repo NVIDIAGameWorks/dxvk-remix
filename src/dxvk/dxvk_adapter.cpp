@@ -1,12 +1,39 @@
+/*
+* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+
 #include <cstring>
 #include <unordered_set>
 
 #include "dxvk_adapter.h"
+
 #include "dxvk_device.h"
 #include "dxvk_instance.h"
 
+// NV-DXVK start: RTXIO
+#include "rtx_render/rtx_io.h"
+// NV-DXVK end:
+
 namespace dxvk {
-  
+
   DxvkAdapter::DxvkAdapter(
     const Rc<vk::InstanceFn>& vki,
           VkPhysicalDevice    handle)
@@ -20,13 +47,13 @@ namespace dxvk {
 
     m_hasMemoryBudget = m_deviceExtensions.supports(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
   }
-  
-  
+
+
   DxvkAdapter::~DxvkAdapter() {
-    
+
   }
-  
-  
+
+
   DxvkAdapterMemoryInfo DxvkAdapter::getMemoryHeapInfo() const {
     VkPhysicalDeviceMemoryBudgetPropertiesEXT memBudget = { };
     memBudget.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_BUDGET_PROPERTIES_EXT;
@@ -37,7 +64,7 @@ namespace dxvk {
     memProps.pNext = m_hasMemoryBudget ? &memBudget : nullptr;
 
     m_vki->vkGetPhysicalDeviceMemoryProperties2(m_handle, &memProps);
-    
+
     DxvkAdapterMemoryInfo info = { };
     info.heapCount = memProps.memoryProperties.memoryHeapCount;
 
@@ -62,15 +89,15 @@ namespace dxvk {
     m_vki->vkGetPhysicalDeviceMemoryProperties(m_handle, &memoryProperties);
     return memoryProperties;
   }
-  
-  
+
+
   VkFormatProperties DxvkAdapter::formatProperties(VkFormat format) const {
     VkFormatProperties formatProperties;
     m_vki->vkGetPhysicalDeviceFormatProperties(m_handle, format, &formatProperties);
     return formatProperties;
   }
-  
-    
+
+
   VkResult DxvkAdapter::imageFormatProperties(
     VkFormat                  format,
     VkImageType               type,
@@ -81,30 +108,45 @@ namespace dxvk {
     return m_vki->vkGetPhysicalDeviceImageFormatProperties(
       m_handle, format, type, tiling, usage, flags, &properties);
   }
-  
-    
+
+
   DxvkAdapterQueueIndices DxvkAdapter::findQueueFamilies() const {
     uint32_t graphicsQueue = findQueueFamily(
       VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT,
       VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT);
-    
+
     uint32_t computeQueue = findQueueFamily(
       VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT,
       VK_QUEUE_COMPUTE_BIT);
-    
+
     if (computeQueue == VK_QUEUE_FAMILY_IGNORED)
       computeQueue = graphicsQueue;
 
     uint32_t transferQueue = findQueueFamily(
       VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT,
       VK_QUEUE_TRANSFER_BIT);
-    
+
     if (transferQueue == VK_QUEUE_FAMILY_IGNORED)
       transferQueue = computeQueue;
-    
+
     DxvkAdapterQueueIndices queues;
     queues.graphics = graphicsQueue;
     queues.transfer = transferQueue;
+
+    // NV-DXVK start: RTXIO
+    uint32_t asyncComputeQueue = findQueueFamily(
+      VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT,
+      VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT);
+
+    queues.asyncCompute = VK_QUEUE_FAMILY_IGNORED;
+
+    if (asyncComputeQueue != VK_QUEUE_FAMILY_IGNORED &&
+        asyncComputeQueue != graphicsQueue &&
+        asyncComputeQueue != transferQueue) {
+      queues.asyncCompute = asyncComputeQueue;
+    }
+    // NV-DXVK end
+
     return queues;
   }
 
@@ -220,8 +262,10 @@ namespace dxvk {
                 || !required.core.features.variableMultisampleRate)
         && (m_deviceFeatures.core.features.inheritedQueries
                 || !required.core.features.inheritedQueries)
-        && (m_deviceFeatures.shaderDrawParameters.shaderDrawParameters
-                || !required.shaderDrawParameters.shaderDrawParameters)
+        && (m_deviceFeatures.vulkan11Features.shaderDrawParameters
+                || !required.vulkan11Features.shaderDrawParameters)
+        && (m_deviceFeatures.vulkan12Features.hostQueryReset
+                || !required.vulkan12Features.hostQueryReset)
         && (m_deviceFeatures.ext4444Formats.formatA4R4G4B4
                 || !required.ext4444Formats.formatA4R4G4B4)
         && (m_deviceFeatures.ext4444Formats.formatA4B4G4R4
@@ -234,8 +278,6 @@ namespace dxvk {
                 || !required.extDepthClipEnable.depthClipEnable)
         && (m_deviceFeatures.extExtendedDynamicState.extendedDynamicState
                 || !required.extExtendedDynamicState.extendedDynamicState)
-        && (m_deviceFeatures.extHostQueryReset.hostQueryReset
-                || !required.extHostQueryReset.hostQueryReset)
         && (m_deviceFeatures.extMemoryPriority.memoryPriority
                 || !required.extMemoryPriority.memoryPriority)
         && (m_deviceFeatures.extRobustness2.robustBufferAccess2
@@ -251,19 +293,25 @@ namespace dxvk {
         && (m_deviceFeatures.extVertexAttributeDivisor.vertexAttributeInstanceRateZeroDivisor
                 || !required.extVertexAttributeDivisor.vertexAttributeInstanceRateZeroDivisor);
   }
-  
-  
+
+
   void DxvkAdapter::enableExtensions(const DxvkNameSet& extensions) {
     m_extraExtensions.merge(extensions);
   }
 
+  const std::string getDriverVersionString(const uint32_t version) {
+    std::string driverStr = str::format(VK_VERSION_MAJOR(version), ".", std::setfill('0'), std::setw(2), VK_VERSION_MINOR(version));
+    if (VK_VERSION_PATCH(version) != 0)
+      driverStr += str::format(".", std::setfill('0'), std::setw(2), VK_VERSION_PATCH(version));
+    return driverStr;
+  }
 
   Rc<DxvkDevice> DxvkAdapter::createDevice(
     const Rc<DxvkInstance>&   instance,
           DxvkDeviceFeatures  enabledFeatures) {
     DxvkDeviceExtensions devExtensions;
 
-    std::array<DxvkExt*, 28> devExtensionList = {{
+    std::array<DxvkExt*, 38> devExtensionList = {{
       &devExtensions.amdMemoryOverallocationBehaviour,
       &devExtensions.amdShaderFragmentMask,
       &devExtensions.ext4444Formats,
@@ -272,7 +320,6 @@ namespace dxvk {
       &devExtensions.extDepthClipEnable,
       &devExtensions.extExtendedDynamicState,
       &devExtensions.extFullScreenExclusive,
-      &devExtensions.extHostQueryReset,
       &devExtensions.extMemoryBudget,
       &devExtensions.extMemoryPriority,
       &devExtensions.extRobustness2,
@@ -290,6 +337,19 @@ namespace dxvk {
       &devExtensions.khrSamplerMirrorClampToEdge,
       &devExtensions.khrShaderFloatControls,
       &devExtensions.khrSwapchain,
+#ifdef _WIN64
+      &devExtensions.khrDeferredHostOperations,
+      &devExtensions.khrAccelerationStructure,
+      &devExtensions.khrRayQueries,
+#endif
+      &devExtensions.khrRayTracingPipeline,
+      &devExtensions.khrPipelineLibrary,
+      &devExtensions.khrPushDescriptor,
+      &devExtensions.khrShaderInt8Float16Types,
+      &devExtensions.nvRayTracingInvocationReorder,
+      &devExtensions.khrSynchronization2,
+      &devExtensions.extOpacityMicromap,
+      &devExtensions.nvLowLatency,
       &devExtensions.nvxBinaryImport,
       &devExtensions.nvxImageViewHandle,
     }};
@@ -315,19 +375,103 @@ namespace dxvk {
     if (!m_deviceExtensions.enableExtensions(
           devExtensionList.size(),
           devExtensionList.data(),
-          extensionsEnabled))
+          extensionsEnabled)) {
+      // NV-DXVK start: tell the user they cant run Remix
+      MessageBox(NULL, "Your GPU doesn't support the required features to run RTX Remix.  See the *_d3d9.log for what features your GPU doesn't support.  Remix will exit now.", "Error!", MB_OK);
+      // NV-DXVK end
       throw DxvkError("DxvkAdapter: Failed to create device");
-    
+    }
+
+    // Log device and vendor info to help with GPU identification
+    Logger::info(str::format("Detected GPU device ID is 0x", std::setfill('0'), std::setw(4), std::hex, m_deviceInfo.core.properties.deviceID, ", vendor ID is 0x", m_deviceInfo.core.properties.vendorID));
+
+    // NV-DXVK start: tell the user they cant run Remix
+    if (m_deviceInfo.core.properties.vendorID == static_cast<uint32_t>(DxvkGpuVendor::Nvidia)) {
+      const uint32_t& driverVersion = m_deviceInfo.core.properties.driverVersion;
+      
+      const uint32_t minDriverVersion = ::GetModuleHandle("winevulkan.dll") ? instance->options().nvidiaLinuxMinDriver : instance->options().nvidiaMinDriver;
+      if (driverVersion < minDriverVersion) {
+        const std::string minDriverCheckMessage = str::format("Your GPU driver needs to be updated before running this game with RTX Remix. Please update the NVIDIA Graphics Driver to the latest version. The game will exit now.\n\n"
+                                                              "\tCurrently installed: ", getDriverVersionString(driverVersion), "\n",
+                                                              "\tRequired minimum: ", getDriverVersionString(minDriverVersion));
+        MessageBox(NULL, minDriverCheckMessage.c_str(), "RTX Remix - Driver Compatibility Error!", MB_OK);
+        Logger::err(minDriverCheckMessage);
+        throw DxvkError("DxvkAdapter: Failed to create device");
+      }
+
+
+    }
+    // NV-DXVK end
+
+    // NV-DXVK start: Integrate Aftermath
+    if (instance->options().enableAftermath) {
+      std::array devAftermathExtensions = {
+        &devExtensions.nvDeviceDiagnostics,
+        &devExtensions.nvDeviceDiagnosticCheckpoints,
+      };
+
+      m_deviceExtensions.enableExtensions(
+        devAftermathExtensions.size(),
+        devAftermathExtensions.data(),
+        extensionsEnabled);
+    }
+    // NV-DXVK end
+
     // Enable additional extensions if necessary
     extensionsEnabled.merge(m_extraExtensions);
     DxvkNameList extensionNameList = extensionsEnabled.toNameList();
 
     // Enable additional device features if supported
+
+    enabledFeatures.vulkan12Features.drawIndirectCount = m_deviceFeatures.vulkan12Features.drawIndirectCount;
+    enabledFeatures.vulkan12Features.samplerMirrorClampToEdge = m_deviceFeatures.vulkan12Features.samplerMirrorClampToEdge;
+
     enabledFeatures.extExtendedDynamicState.extendedDynamicState = m_deviceFeatures.extExtendedDynamicState.extendedDynamicState;
 
     enabledFeatures.ext4444Formats.formatA4B4G4R4 = m_deviceFeatures.ext4444Formats.formatA4B4G4R4;
     enabledFeatures.ext4444Formats.formatA4R4G4B4 = m_deviceFeatures.ext4444Formats.formatA4R4G4B4;
-    
+
+    // Enable RTX device features if supported
+
+    enabledFeatures.core.features.shaderInt16 = m_deviceFeatures.core.features.shaderInt16;
+    enabledFeatures.vulkan11Features.storageBuffer16BitAccess = m_deviceFeatures.vulkan11Features.storageBuffer16BitAccess;
+    enabledFeatures.vulkan11Features.uniformAndStorageBuffer16BitAccess = m_deviceFeatures.vulkan11Features.uniformAndStorageBuffer16BitAccess;
+    enabledFeatures.vulkan12Features.bufferDeviceAddress = m_deviceFeatures.vulkan12Features.bufferDeviceAddress;
+    enabledFeatures.vulkan12Features.descriptorIndexing = m_deviceFeatures.vulkan12Features.descriptorIndexing;
+    enabledFeatures.vulkan12Features.descriptorBindingSampledImageUpdateAfterBind = m_deviceFeatures.vulkan12Features.descriptorBindingSampledImageUpdateAfterBind;
+    enabledFeatures.vulkan12Features.runtimeDescriptorArray = m_deviceFeatures.vulkan12Features.runtimeDescriptorArray;
+    enabledFeatures.vulkan12Features.descriptorBindingPartiallyBound = m_deviceFeatures.vulkan12Features.descriptorBindingPartiallyBound;
+    enabledFeatures.vulkan12Features.shaderStorageBufferArrayNonUniformIndexing = m_deviceFeatures.vulkan12Features.shaderStorageBufferArrayNonUniformIndexing;
+    enabledFeatures.vulkan12Features.shaderSampledImageArrayNonUniformIndexing = m_deviceFeatures.vulkan12Features.shaderSampledImageArrayNonUniformIndexing;
+    enabledFeatures.vulkan12Features.descriptorBindingStorageBufferUpdateAfterBind = m_deviceFeatures.vulkan12Features.descriptorBindingStorageBufferUpdateAfterBind;
+    enabledFeatures.vulkan12Features.descriptorBindingVariableDescriptorCount = m_deviceFeatures.vulkan12Features.descriptorBindingVariableDescriptorCount;
+    enabledFeatures.vulkan12Features.shaderInt8 = m_deviceFeatures.vulkan12Features.shaderInt8;
+    enabledFeatures.vulkan12Features.shaderFloat16 = m_deviceFeatures.vulkan12Features.shaderFloat16;
+    enabledFeatures.vulkan12Features.uniformAndStorageBuffer8BitAccess = m_deviceFeatures.vulkan12Features.uniformAndStorageBuffer8BitAccess;
+    enabledFeatures.khrAccelerationStructureFeatures.accelerationStructure = m_deviceFeatures.khrAccelerationStructureFeatures.accelerationStructure;
+    enabledFeatures.khrRayQueryFeatures.rayQuery = m_deviceFeatures.khrRayQueryFeatures.rayQuery;
+    enabledFeatures.khrDeviceRayTracingPipelineFeatures.rayTracingPipeline = m_deviceFeatures.khrDeviceRayTracingPipelineFeatures.rayTracingPipeline;
+
+    enabledFeatures.vulkan12Features.shaderInt8 = VK_TRUE;
+    enabledFeatures.vulkan12Features.storageBuffer8BitAccess = VK_TRUE;
+    enabledFeatures.vulkan12Features.uniformAndStorageBuffer8BitAccess = VK_TRUE;
+    enabledFeatures.vulkan12Features.timelineSemaphore = VK_TRUE;
+
+    // NV-DXVK start: RTXIO
+#ifdef WITH_RTXIO
+    if (RtxIo::enabled()) {
+      // Reset the extension provider to adapter's Vulkan instance first since client app
+      // may have probbed another Vulkan instance in the process and so latched it inside
+      // extension provider singleton.
+      RtxIoExtensionProvider::s_instance.initDeviceExtensions(instance.ptr());
+      if (!RtxIoExtensionProvider::s_instance.getDeviceFeatures(m_handle, enabledFeatures)) {
+        Logger::err("Physical device does not support features required to enable RTX IO.");
+        throw DxvkError("DxvkAdapter: Failed to create device");
+      }
+    }
+#endif
+    // NV-DXVK end:
+
     Logger::info(str::format("Device properties:"
       "\n  Device name:     : ", m_deviceInfo.core.properties.deviceName,
       "\n  Driver version   : ",
@@ -341,10 +485,33 @@ namespace dxvk {
 
     // Create pNext chain for additional device features
     enabledFeatures.core.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR;
-    enabledFeatures.core.pNext = nullptr;
+    // NV-DXVK start: RTXIO
+    // Preserve pNext chain from RTXIO
+    std::exchange(enabledFeatures.core.pNext, enabledFeatures.vulkan12Features.pNext);
+    // NV-DXVK end:
 
-    enabledFeatures.shaderDrawParameters.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES;
-    enabledFeatures.shaderDrawParameters.pNext = std::exchange(enabledFeatures.core.pNext, &enabledFeatures.shaderDrawParameters);
+    enabledFeatures.vulkan11Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
+    enabledFeatures.vulkan11Features.pNext = std::exchange(enabledFeatures.core.pNext, &enabledFeatures.vulkan11Features);
+
+    enabledFeatures.vulkan12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+    enabledFeatures.vulkan12Features.pNext = std::exchange(enabledFeatures.core.pNext, &enabledFeatures.vulkan12Features);
+
+#ifdef _WIN64
+    if (devExtensions.khrAccelerationStructure) {
+      enabledFeatures.khrAccelerationStructureFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
+      enabledFeatures.khrAccelerationStructureFeatures.pNext = std::exchange(enabledFeatures.core.pNext, &enabledFeatures.khrAccelerationStructureFeatures);
+    }
+
+    if (devExtensions.khrRayQueries) {
+      enabledFeatures.khrRayQueryFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
+      enabledFeatures.khrRayQueryFeatures.pNext = std::exchange(enabledFeatures.core.pNext, &enabledFeatures.khrRayQueryFeatures);
+    }
+#endif
+
+    if (devExtensions.khrRayTracingPipeline) {
+        enabledFeatures.khrDeviceRayTracingPipelineFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR;
+        enabledFeatures.khrDeviceRayTracingPipelineFeatures.pNext = std::exchange(enabledFeatures.core.pNext, &enabledFeatures.khrDeviceRayTracingPipelineFeatures);
+    }
 
     if (devExtensions.ext4444Formats) {
       enabledFeatures.ext4444Formats.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_4444_FORMATS_FEATURES_EXT;
@@ -364,11 +531,6 @@ namespace dxvk {
     if (devExtensions.extExtendedDynamicState) {
       enabledFeatures.extExtendedDynamicState.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT;
       enabledFeatures.extExtendedDynamicState.pNext = std::exchange(enabledFeatures.core.pNext, &enabledFeatures.extExtendedDynamicState);
-    }
-
-    if (devExtensions.extHostQueryReset) {
-      enabledFeatures.extHostQueryReset.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_QUERY_RESET_FEATURES_EXT;
-      enabledFeatures.extHostQueryReset.pNext = std::exchange(enabledFeatures.core.pNext, &enabledFeatures.extHostQueryReset);
     }
 
     if (devExtensions.extMemoryPriority) {
@@ -396,17 +558,30 @@ namespace dxvk {
       enabledFeatures.extVertexAttributeDivisor.pNext = std::exchange(enabledFeatures.core.pNext, &enabledFeatures.extVertexAttributeDivisor);
     }
 
-    if (devExtensions.khrBufferDeviceAddress) {
-      enabledFeatures.khrBufferDeviceAddress.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_KHR;
-      enabledFeatures.khrBufferDeviceAddress.pNext = std::exchange(enabledFeatures.core.pNext, &enabledFeatures.khrBufferDeviceAddress);
+    // NV-DXVK start: Integrate Aftermath
+    if (devExtensions.nvDeviceDiagnostics && instance->options().enableAftermath) {
+      enabledFeatures.nvDeviceDiagnosticsConfig.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DIAGNOSTICS_CONFIG_FEATURES_NV;
+      enabledFeatures.nvDeviceDiagnosticsConfig.pNext = std::exchange(enabledFeatures.core.pNext, &enabledFeatures.nvDeviceDiagnosticsConfig);
+      enabledFeatures.nvDeviceDiagnosticsConfig.diagnosticsConfig = VK_TRUE;
     }
+    // NV-DXVK end
 
     // Report the desired overallocation behaviour to the driver
     VkDeviceMemoryOverallocationCreateInfoAMD overallocInfo;
     overallocInfo.sType = VK_STRUCTURE_TYPE_DEVICE_MEMORY_OVERALLOCATION_CREATE_INFO_AMD;
     overallocInfo.pNext = nullptr;
     overallocInfo.overallocationBehavior = VK_MEMORY_OVERALLOCATION_BEHAVIOR_ALLOWED_AMD;
-    
+
+    // NV-DXVK start: Integrate Aftermath
+    VkDeviceDiagnosticsConfigCreateInfoNV deviceDiag;
+    deviceDiag.sType = VK_STRUCTURE_TYPE_DEVICE_DIAGNOSTICS_CONFIG_CREATE_INFO_NV;
+    deviceDiag.pNext = nullptr;
+    deviceDiag.flags = VK_DEVICE_DIAGNOSTICS_CONFIG_ENABLE_SHADER_DEBUG_INFO_BIT_NV | VK_DEVICE_DIAGNOSTICS_CONFIG_ENABLE_SHADER_ERROR_REPORTING_BIT_NV;
+    if (instance->options().enableAftermathResourceTracking) {
+      deviceDiag.flags |= VK_DEVICE_DIAGNOSTICS_CONFIG_ENABLE_RESOURCE_TRACKING_BIT_NV;
+    }
+    // NV-DXVK end
+
     // Create the requested queues
     float queuePriority = 1.0f;
     std::vector<VkDeviceQueueCreateInfo> queueInfos;
@@ -416,8 +591,13 @@ namespace dxvk {
     DxvkAdapterQueueIndices queueFamilies = findQueueFamilies();
     queueFamiliySet.insert(queueFamilies.graphics);
     queueFamiliySet.insert(queueFamilies.transfer);
+    // NV-DXVK start: RTXIO
+    if (queueFamilies.asyncCompute != VK_QUEUE_FAMILY_IGNORED) {
+      queueFamiliySet.insert(queueFamilies.asyncCompute);
+    }
+    // NV-DXVK end
     this->logQueueFamilies(queueFamilies);
-    
+
     for (uint32_t family : queueFamiliySet) {
       VkDeviceQueueCreateInfo graphicsQueue;
       graphicsQueue.sType             = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
@@ -443,7 +623,12 @@ namespace dxvk {
 
     if (devExtensions.amdMemoryOverallocationBehaviour)
       overallocInfo.pNext = std::exchange(info.pNext, &overallocInfo);
-    
+
+    // NV-DXVK start: Integrate Aftermath
+    if (devExtensions.nvDeviceDiagnostics && instance->options().enableAftermath)
+      deviceDiag.pNext = std::exchange(info.pNext, &deviceDiag);
+    // NV-DXVK end
+
     VkDevice device = VK_NULL_HANDLE;
     VkResult vr = m_vki->vkCreateDevice(m_handle, &info, nullptr, &device);
 
@@ -471,15 +656,15 @@ namespace dxvk {
 
     if (vr != VK_SUCCESS)
       throw DxvkError("DxvkAdapter: Failed to create device");
-    
+
     Rc<DxvkDevice> result = new DxvkDevice(instance, this,
       new vk::DeviceFn(true, m_vki->instance(), device),
       devExtensions, enabledFeatures);
     result->initResources();
     return result;
   }
-  
-  
+
+
   void DxvkAdapter::notifyHeapMemoryAlloc(
           uint32_t            heap,
           VkDeviceSize        bytes) {
@@ -487,7 +672,7 @@ namespace dxvk {
       m_heapAlloc[heap] += bytes;
   }
 
-  
+
   void DxvkAdapter::notifyHeapMemoryFree(
           uint32_t            heap,
           VkDeviceSize        bytes) {
@@ -510,12 +695,12 @@ namespace dxvk {
 
     return driverMatches;
   }
-  
-  
+
+
   void DxvkAdapter::logAdapterInfo() const {
     VkPhysicalDeviceProperties deviceInfo = this->deviceProperties();
     VkPhysicalDeviceMemoryProperties memoryInfo = this->memoryProperties();
-    
+
     Logger::info(str::format(deviceInfo.deviceName, ":"));
     Logger::info(str::format("  Driver: ",
       VK_VERSION_MAJOR(deviceInfo.driverVersion), ".",
@@ -528,11 +713,11 @@ namespace dxvk {
 
     for (uint32_t i = 0; i < memoryInfo.memoryHeapCount; i++) {
       constexpr VkDeviceSize mib = 1024 * 1024;
-      
+
       Logger::info(str::format("  Memory Heap[", i, "]: "));
       Logger::info(str::format("    Size: ", memoryInfo.memoryHeaps[i].size / mib, " MiB"));
       Logger::info(str::format("    Flags: ", "0x", std::hex, memoryInfo.memoryHeaps[i].flags));
-      
+
       for (uint32_t j = 0; j < memoryInfo.memoryTypeCount; j++) {
         if (memoryInfo.memoryTypes[j].heapIndex == i) {
           Logger::info(str::format(
@@ -542,7 +727,6 @@ namespace dxvk {
       }
     }
   }
-  
   
   bool DxvkAdapter::isUnifiedMemoryArchitecture() const {
     auto memory = this->memoryProperties();
@@ -620,9 +804,29 @@ namespace dxvk {
       m_deviceInfo.khrShaderFloatControls.pNext = std::exchange(m_deviceInfo.core.pNext, &m_deviceInfo.khrShaderFloatControls);
     }
 
+    if (m_deviceExtensions.supports(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME)) {
+        m_deviceInfo.khrDeviceRayTracingPipelineProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR;
+        m_deviceInfo.khrDeviceRayTracingPipelineProperties.pNext = std::exchange(m_deviceInfo.core.pNext, &m_deviceInfo.khrDeviceRayTracingPipelineProperties);
+    }
+
+    if (m_deviceExtensions.supports(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME)) {
+      m_deviceInfo.khrDeviceAccelerationStructureProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR;
+      m_deviceInfo.khrDeviceAccelerationStructureProperties.pNext = std::exchange(m_deviceInfo.core.pNext, &m_deviceInfo.khrDeviceAccelerationStructureProperties);
+    }
+
+    if (m_deviceExtensions.supports(VK_EXT_OPACITY_MICROMAP_EXTENSION_NAME)) {
+      m_deviceInfo.extOpacityMicromapProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_OPACITY_MICROMAP_PROPERTIES_EXT;
+      m_deviceInfo.extOpacityMicromapProperties.pNext = std::exchange(m_deviceInfo.core.pNext, &m_deviceInfo.extOpacityMicromapProperties);
+    }
+
+    if (m_deviceExtensions.supports(VK_NV_RAY_TRACING_INVOCATION_REORDER_EXTENSION_NAME)) {
+      m_deviceInfo.nvRayTracingInvocationReorderProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_INVOCATION_REORDER_PROPERTIES_NV;
+      m_deviceInfo.nvRayTracingInvocationReorderProperties.pNext = std::exchange(m_deviceInfo.core.pNext, &m_deviceInfo.nvRayTracingInvocationReorderProperties);
+    }
+
     // Query full device properties for all enabled extensions
     m_vki->vkGetPhysicalDeviceProperties2(m_handle, &m_deviceInfo.core);
-    
+
     // Nvidia reports the driver version in a slightly different format
     if (DxvkGpuVendor(m_deviceInfo.core.properties.vendorID) == DxvkGpuVendor::Nvidia) {
       m_deviceInfo.core.properties.driverVersion = VK_MAKE_VERSION(
@@ -632,14 +836,16 @@ namespace dxvk {
     }
   }
 
-
   void DxvkAdapter::queryDeviceFeatures() {
     m_deviceFeatures = DxvkDeviceFeatures();
     m_deviceFeatures.core.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
     m_deviceFeatures.core.pNext = nullptr;
 
-    m_deviceFeatures.shaderDrawParameters.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES;
-    m_deviceFeatures.shaderDrawParameters.pNext = std::exchange(m_deviceFeatures.core.pNext, &m_deviceFeatures.shaderDrawParameters);
+    m_deviceFeatures.vulkan11Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
+    m_deviceFeatures.vulkan11Features.pNext = std::exchange(m_deviceFeatures.core.pNext, &m_deviceFeatures.vulkan11Features);
+
+    m_deviceFeatures.vulkan12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+    m_deviceFeatures.vulkan12Features.pNext = std::exchange(m_deviceFeatures.core.pNext, &m_deviceFeatures.vulkan12Features);
 
     if (m_deviceExtensions.supports(VK_EXT_4444_FORMATS_EXTENSION_NAME)) {
       m_deviceFeatures.ext4444Formats.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_4444_FORMATS_FEATURES_EXT;
@@ -659,11 +865,6 @@ namespace dxvk {
     if (m_deviceExtensions.supports(VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME)) {
       m_deviceFeatures.extExtendedDynamicState.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_FEATURES_EXT;
       m_deviceFeatures.extExtendedDynamicState.pNext = std::exchange(m_deviceFeatures.core.pNext, &m_deviceFeatures.extExtendedDynamicState);
-    }
-
-    if (m_deviceExtensions.supports(VK_EXT_HOST_QUERY_RESET_EXTENSION_NAME)) {
-      m_deviceFeatures.extHostQueryReset.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_QUERY_RESET_FEATURES_EXT;
-      m_deviceFeatures.extHostQueryReset.pNext = std::exchange(m_deviceFeatures.core.pNext, &m_deviceFeatures.extHostQueryReset);
     }
 
     if (m_deviceExtensions.supports(VK_EXT_MEMORY_PRIORITY_EXTENSION_NAME)) {
@@ -691,6 +892,21 @@ namespace dxvk {
       m_deviceFeatures.extVertexAttributeDivisor.pNext = std::exchange(m_deviceFeatures.core.pNext, &m_deviceFeatures.extVertexAttributeDivisor);
     }
 
+    if (m_deviceExtensions.supports(VK_KHR_RAY_QUERY_EXTENSION_NAME)) {
+      m_deviceFeatures.khrRayQueryFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR;
+      m_deviceFeatures.khrRayQueryFeatures.pNext = std::exchange(m_deviceFeatures.core.pNext, &m_deviceFeatures.khrRayQueryFeatures);
+    }
+
+    if (m_deviceExtensions.supports(VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME)) {
+      m_deviceFeatures.khrAccelerationStructureFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
+      m_deviceFeatures.khrAccelerationStructureFeatures.pNext = std::exchange(m_deviceFeatures.core.pNext, &m_deviceFeatures.khrAccelerationStructureFeatures);
+    }
+
+    if (m_deviceExtensions.supports(VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME)) {
+      m_deviceFeatures.khrDeviceRayTracingPipelineFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR;
+      m_deviceFeatures.khrDeviceRayTracingPipelineFeatures.pNext = std::exchange(m_deviceFeatures.core.pNext, &m_deviceFeatures.khrDeviceRayTracingPipelineFeatures);
+    }
+
     if (m_deviceExtensions.supports(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME)) {
       m_deviceFeatures.khrBufferDeviceAddress.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_KHR;
       m_deviceFeatures.khrBufferDeviceAddress.pNext = std::exchange(m_deviceFeatures.core.pNext, &m_deviceFeatures.khrBufferDeviceAddress);
@@ -704,7 +920,7 @@ namespace dxvk {
     uint32_t numQueueFamilies = 0;
     m_vki->vkGetPhysicalDeviceQueueFamilyProperties(
       m_handle, &numQueueFamilies, nullptr);
-    
+
     m_queueFamilies.resize(numQueueFamilies);
     m_vki->vkGetPhysicalDeviceQueueFamilyProperties(
       m_handle, &numQueueFamilies, m_queueFamilies.data());
@@ -721,8 +937,8 @@ namespace dxvk {
 
     return VK_QUEUE_FAMILY_IGNORED;
   }
-  
-  
+
+
   void DxvkAdapter::logNameList(const DxvkNameList& names) {
     for (uint32_t i = 0; i < names.count(); i++)
       Logger::info(str::format("  ", names.name(i)));
@@ -762,6 +978,7 @@ namespace dxvk {
       "\n  shaderFloat64                          : ", features.core.features.shaderFloat64 ? "1" : "0",
       "\n  shaderInt64                            : ", features.core.features.shaderInt64 ? "1" : "0",
       "\n  variableMultisampleRate                : ", features.core.features.variableMultisampleRate ? "1" : "0",
+      "\n  hostQueryReset                         : ", features.vulkan12Features.hostQueryReset ? "1" : "0",
       "\n", VK_EXT_4444_FORMATS_EXTENSION_NAME,
       "\n  formatA4R4G4B4                         : ", features.ext4444Formats.formatA4R4G4B4 ? "1" : "0",
       "\n  formatA4B4G4R4                         : ", features.ext4444Formats.formatA4B4G4R4 ? "1" : "0",
@@ -772,8 +989,6 @@ namespace dxvk {
       "\n  depthClipEnable                        : ", features.extDepthClipEnable.depthClipEnable ? "1" : "0",
       "\n", VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME,
       "\n  extendedDynamicState                   : ", features.extExtendedDynamicState.extendedDynamicState ? "1" : "0",
-      "\n", VK_EXT_HOST_QUERY_RESET_EXTENSION_NAME,
-      "\n  hostQueryReset                         : ", features.extHostQueryReset.hostQueryReset ? "1" : "0",
       "\n", VK_EXT_MEMORY_PRIORITY_EXTENSION_NAME,
       "\n  memoryPriority                         : ", features.extMemoryPriority.memoryPriority ? "1" : "0",
       "\n", VK_EXT_ROBUSTNESS_2_EXTENSION_NAME,
@@ -797,6 +1012,11 @@ namespace dxvk {
     Logger::info(str::format("Queue families:",
       "\n  Graphics : ", queues.graphics,
       "\n  Transfer : ", queues.transfer));
+    // NV-DXVK start: RTXIO
+    if (queues.asyncCompute != VK_QUEUE_FAMILY_IGNORED) {
+      Logger::info(str::format("  Async Compute : ", queues.asyncCompute));
+    }
+    // NV-DXVK end
   }
-  
+
 }

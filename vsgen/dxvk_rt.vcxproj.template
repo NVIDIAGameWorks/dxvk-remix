@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="DebugOptimized|x64">
+      <Configuration>DebugOptimized</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup>
+      <ReadOnlyProject>true</ReadOnlyProject>
+  </PropertyGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>16.0</VCProjectVersion>
+    <ProjectGuid>{$dxvk_rt_project_guid}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Makefile</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugOptimized|x64'" Label="Configuration">
+    <ConfigurationType>Makefile</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Makefile</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v142</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='DebugOptimized|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <NMakeOutput>..\_Comp64Debug\src\d3d9\d3d9.dll</NMakeOutput>
+    <NMakeBuildCommandLine>ninja -C ..\_Comp64Debug</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>ninja -C ..\_Comp64Debug clean all</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine>ninja -C ..\_Comp64Debug clean</NMakeCleanCommandLine>
+    <NMakeOutput>dxvk_rt.exe</NMakeOutput>
+    <NMakePreprocessorDefinitions>_DEBUG;$dxvk_cpp_defines;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
+    <NMakeIncludeSearchPath>$include_search_path_debug</NMakeIncludeSearchPath>
+    <AdditionalOptions>/std:c++17 /fpermissive-</AdditionalOptions>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='DebugOptimized|x64'">
+    <NMakeOutput>..\_Comp64DebugOptimized\src\d3d9\d3d9.dll</NMakeOutput>
+    <NMakeBuildCommandLine>ninja -C ..\_Comp64DebugOptimized</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>ninja -C ..\_Comp64DebugOptimized clean all</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine>ninja -C ..\_Comp64DebugOptimized clean</NMakeCleanCommandLine>
+    <NMakeOutput>dxvk_rt.exe</NMakeOutput>
+    <NMakePreprocessorDefinitions>$dxvk_cpp_defines;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
+    <NMakeIncludeSearchPath>$include_search_path_debugoptimized</NMakeIncludeSearchPath>
+    <AdditionalOptions>/std:c++17 /fpermissive-</AdditionalOptions>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <NMakeOutput>..\_Comp64Release\src\d3d9\d3d9.dll</NMakeOutput>
+    <NMakeBuildCommandLine>ninja -C ..\_Comp64Release</NMakeBuildCommandLine>
+    <NMakeReBuildCommandLine>ninja -C ..\_Comp64Release clean all</NMakeReBuildCommandLine>
+    <NMakeCleanCommandLine>ninja -C ..\_Comp64Release clean</NMakeCleanCommandLine>
+    <NMakeOutput>dxvk_rt.exe</NMakeOutput>
+    <NMakePreprocessorDefinitions>NDEBUG;$dxvk_cpp_defines;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
+    <NMakeIncludeSearchPath>$include_search_path_release</NMakeIncludeSearchPath>
+    <AdditionalOptions>/std:c++17 /fpermissive-</AdditionalOptions>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+  </ItemDefinitionGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+  <ItemGroup>
+$file_references
+  </ItemGroup>
+</Project>

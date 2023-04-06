@@ -200,10 +200,13 @@ namespace dxvk {
 
 
   uint32_t SetupRenderStateBlock(SpirvModule& spvModule, uint32_t count) {
-    uint32_t floatType = spvModule.defFloatType(32);
-    uint32_t vec3Type  = spvModule.defVectorType(floatType, 3);
+    const uint32_t uintType = spvModule.defIntType(32, false);
+    const uint32_t floatType = spvModule.defFloatType(32);
+    const uint32_t vec3Type = spvModule.defVectorType(floatType, 3);
+    const uint32_t vec4Type = spvModule.defVectorType(floatType, 4);
+    const uint32_t mat4Type = spvModule.defMatrixType(vec4Type, 4);
 
-    std::array<uint32_t, 11> rsMembers = {{
+    std::array<uint32_t, 13> rsMembers = {{
       vec3Type,
       floatType,
       floatType,
@@ -216,7 +219,9 @@ namespace dxvk {
       floatType,
       floatType,
       floatType,
-    }};
+      uintType,
+      mat4Type,
+    } };
 
     uint32_t rsStruct = spvModule.defStructTypeUnique(count, rsMembers.data());
     uint32_t rsBlock = spvModule.newVar(
@@ -235,6 +240,11 @@ namespace dxvk {
 
       spvModule.setDebugMemberName   (rsStruct, memberIdx, name);
       spvModule.memberDecorateOffset (rsStruct, memberIdx, offset);
+      if (memberIdx == (uint32_t)D3D9RenderStateItem::ProjectionToWorld)
+      {
+        spvModule.memberDecorateMatrixStride(rsStruct, memberIdx, 16);
+        spvModule.memberDecorate(rsStruct, memberIdx, spv::DecorationRowMajor);
+      }
       memberIdx++;
     };
 
@@ -249,6 +259,8 @@ namespace dxvk {
     SetMemberName("point_scale_a",  offsetof(D3D9RenderStateInfo, pointScaleA));
     SetMemberName("point_scale_b",  offsetof(D3D9RenderStateInfo, pointScaleB));
     SetMemberName("point_scale_c",  offsetof(D3D9RenderStateInfo, pointScaleC));
+    SetMemberName("base_vertex",    offsetof(D3D9RenderStateInfo, baseVertex));
+    SetMemberName("proj_to_world",  offsetof(D3D9RenderStateInfo, projectionToWorld));
 
     return rsBlock;
   }
@@ -426,6 +438,8 @@ namespace dxvk {
 
 
   enum class D3D9FFVSMembers {
+    WorldMatrix,
+    ViewMatrix,
     WorldViewMatrix,
     NormalMatrix,
     InverseViewMatrix,
@@ -471,6 +485,8 @@ namespace dxvk {
     uint32_t lightType;
 
     struct {
+      uint32_t world;
+      uint32_t view;
       uint32_t worldview;
       uint32_t normal;
       uint32_t inverseView;
@@ -922,10 +938,12 @@ namespace dxvk {
 
       uint32_t flags = (m_vsKey.Data.Contents.TransformFlags >> (i * 3)) & 0b111;
       uint32_t count = flags;
+      uint32_t texcoordCount = (m_vsKey.Data.Contents.TexcoordDeclMask >> (3 * inputIndex)) & 0x7;
       switch (inputFlags) {
         default:
         case (DXVK_TSS_TCI_PASSTHRU >> TCIOffset):
           transformed = m_vs.in.TEXCOORD[inputIndex & 0xFF];
+          count = std::min(count, texcoordCount);
           break;
 
         case (DXVK_TSS_TCI_CAMERASPACENORMAL >> TCIOffset):
@@ -989,7 +1007,6 @@ namespace dxvk {
             // Very weird quirk in order to get texcoord transforms to work like they do in native.
             // In future, maybe we could sort this out properly by chopping matrices of different sizes, but thats
             // a project for another day.
-            uint32_t texcoordCount = (m_vsKey.Data.Contents.TexcoordDeclMask >> (3 * inputIndex)) & 0x7;
             uint32_t value = j > texcoordCount ? m_module.constf32(0) : m_module.constf32(1);
             transformed = m_module.opCompositeInsert(m_vec4Type, value, transformed, 1, &j);
           }
@@ -1263,6 +1280,8 @@ namespace dxvk {
     std::array<uint32_t, uint32_t(D3D9FFVSMembers::MemberCount)> members = {
       m_mat4Type, // World
       m_mat4Type, // View
+      m_mat4Type, // WorldView
+      m_mat4Type, // Normal
       m_mat4Type, // InverseView
       m_mat4Type, // Proj
 
@@ -1335,6 +1354,8 @@ namespace dxvk {
 
     m_module.setDebugName(structType, "D3D9FixedFunctionVS");
     uint32_t member = 0;
+    m_module.setDebugMemberName(structType, member++, "World");
+    m_module.setDebugMemberName(structType, member++, "View");
     m_module.setDebugMemberName(structType, member++, "WorldView");
     m_module.setDebugMemberName(structType, member++, "Normal");
     m_module.setDebugMemberName(structType, member++, "InverseView");

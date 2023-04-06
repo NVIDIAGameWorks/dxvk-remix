@@ -1,0 +1,666 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/utility/math.slangh"
+#include "rtx/utility/color.slangh"
+#include "rtx/concept/surface_material/surface_material.h"
+
+// Surface/Volume Material Constants
+
+static const float16_t materialEpsilon = float16_t(0.00008); // Note: Previously 1e-4 for fp32, now just above limit for fp16 denormal numbers
+static const float16_t materialMaximum = float16_t(65000.0); // Note: A safe maximum below the limit of 16 bit floats.
+static const float materialHighPrecisionEpsilon = 1e-30f;
+static const float materialHighPrecisionMaximum = 1e30f; // Note: A safe maximum below the limit of 32 bit floats to treat as near-infinity to prevent overflows.
+static const float16_t materialMinimumRoughness = float16_t(1e-4); // Note: Similarly just above denormal limit
+static const f16vec3 materialBaseReflectivityDielectric = f16vec3(0.04, 0.04, 0.04);
+static const float16_t materialIoRVacuum = float16_t(1.0);
+// Note: Set to mimic some sort of plastic-ey layer, not sure what an actual thin film's IoR is like but this works fine.
+static const float16_t materialIoRThinFilmLayer = float16_t(1.5);
+static const f16vec3 materialTangentSpaceNormal = f16vec3(0.0, 0.0, 1.0);
+
+// Surface/Volume Material Parameterization Helpers
+
+// Calculates the adjusted albedo to be used from a base albedo, metallic and opacity, effectively removing the albedo
+// for full conductors as they almost always absorb all transmitted light.
+// Opacity is factored in by taking into account that it represents a proportion of overall reflected to transmitted
+// light and thus should be applied to reflection contributions such as this.
+f16vec3 albedoToAdjustedAlbedo(f16vec3 baseAlbedo, float16_t metallic, float16_t opacity)
+{
+  return baseAlbedo * (float16_t(1.0) - metallic) * opacity;
+}
+
+// Calculates the base reflecitivty from albedo, metallic and opacity, effectively giving a constant dielectric
+// reflectivity if not metal and giving the albedo color as the reflectivity in the case of a full conductor.
+// Opacity is factored in by taking into account that it represents a proportion of overall reflected to transmitted
+// light and thus should be applied to reflection contributions such as this.
+f16vec3 calcBaseReflectivity(f16vec3 albedo, float16_t metallic, float16_t opacity)
+{
+  return mix(materialBaseReflectivityDielectric, albedo, metallic) * opacity;
+}
+
+// Calculates the standard (mathematically linear) roughness from a perceptual (perceptually linear) roughness value.
+// [Burley 2012, "Physically-Based Shading at Disney"]
+float16_t perceptualRoughnessToRoughness(float16_t perceptualRoughness)
+{
+  return square(perceptualRoughness);
+}
+
+// Calculates the perceptual (perceptually linear) roughness from the standard (mathematically linear) roughness value.
+// Note that this will not work as a perfect inverse when roughness has gone through additional transformations like
+// minimum clamping (typical in actual material roughness derivation).
+float16_t roughnessToPerceptualRoughness(float16_t roughness)
+{
+  return sqrt(roughness);
+}
+
+// Calculates the anisotropyic x/y roughness from roughness and an anisotropy value (-1, 1).
+// [Kulla 2017, "Revisiting Physically Based Shading at Imageworks"]
+f16vec2 isotropicRoughnessToAnisotropicRoughness(float16_t isotropicRoughness, float16_t anisotropy)
+{
+  return f16vec2(isotropicRoughness * (float16_t(1.0) + anisotropy), isotropicRoughness * (float16_t(1.0) - anisotropy));
+}
+
+// Computes an anisotropy value (-1, 1) from an x/y anisotropic roughness provided an correlated isotropic roughness for reference.
+float16_t anisotropicRoughnessToAnisotropy(float16_t isotropicRoughness, f16vec2 anisotropicRoughness)
+{
+  if (isotropicRoughness <= float16_t(0.0))
+  {
+    return float16_t(0.0f);
+  }
+
+  const f16vec2 normalizedAnisotropicRoughness = anisotropicRoughness / isotropicRoughness;
+
+  // See isotropicRoughnessToAnisotropicRoughness(..):
+  // 1+a = x => a = x-1
+  // 1-a = y => a = 1-y
+  // take the average: a = (x-y)/2
+  return (normalizedAnisotropicRoughness.x - normalizedAnisotropicRoughness.y) * float16_t(0.5);
+}
+
+// Calculates the isotropic and anisotropic x/y roughness values from a perceptual roughness value and an anisotropy
+// value.
+void calcRoughness(float16_t perceptualRoughness,
+                   float16_t anisotropy,
+                   inout float16_t isotropicRoughness,
+                   inout f16vec2 anisotropicRoughness)
+{
+  const float16_t rawIsotropicRoughness = perceptualRoughnessToRoughness(perceptualRoughness);
+  const f16vec2 rawAnisotropicRoughness = isotropicRoughnessToAnisotropicRoughness(rawIsotropicRoughness, anisotropy);
+
+  // Clamp resulting roughness to avoid numerical instability for near-zero roughness when evaluating GGX
+  const float16_t clampedIsotropicRoughness = max(rawIsotropicRoughness, materialMinimumRoughness);
+  const f16vec2 clampedAnisotropicRoughness =
+      max(rawAnisotropicRoughness, f16vec2(materialMinimumRoughness, materialMinimumRoughness));
+
+  isotropicRoughness = clampedIsotropicRoughness;
+  anisotropicRoughness = clampedAnisotropicRoughness;
+}
+
+// Overload for calculating isotropic roughness from a perceptual roughness value.
+float16_t calcRoughness(float16_t perceptualRoughness)
+{
+  float16_t isotropicRoughness;
+  f16vec2 anisotropicRoughness;
+
+  calcRoughness(perceptualRoughness, float16_t(0.0f),
+                isotropicRoughness, anisotropicRoughness);
+
+  return isotropicRoughness;
+}
+
+// Calculates the monochromatic base reflectivity from a given incident and transmitted IoR
+float16_t iorToBaseReflectivity(float16_t incidentIoR, float16_t transmittedIoR)
+{
+  return square((incidentIoR - transmittedIoR) / (incidentIoR + transmittedIoR));
+}
+
+// Calculates IoR from a monochromatic base reflectivity and an incident IoR
+// Note: When this is used on a conductor the refractive index will be fairly high, this is because the reflectivity of
+// a conductor is actually based on its full complex refractive index which when converted down to a real value will be some
+// large value like this.
+float16_t baseReflectivityToIoR(float16_t incidentIoR, float16_t baseReflectivity)
+{
+  // Note: Clamp the squared base reflectivity to 0.99 to prevent overflow issues or NaNs with near-1 physically implausible materials.
+  const float16_t baseReflectivity2 = min(sqrt(baseReflectivity), float16_t(0.99f));
+
+  return incidentIoR / (2.0f / (baseReflectivity2 + float16_t(1.0f)) - float16_t(1.0f));
+}
+
+// Calculates the attenuation coefficient (otherwise known as the extinction coefficient) from a given color and a
+// distance through the surface that color is measured at assuming attenuation by Beer's law.
+// [Burley 2015, "Extending the Disney BRDF to a BSDF with Integrated Subsurface Scattering"]
+vec3 transmittanceToAttenuationCoefficient(f16vec3 transmittanceColor,
+                                           float16_t transmittanceMeasurementDistance)
+{
+  return vec3(-log(transmittanceColor)) / float(transmittanceMeasurementDistance);
+}
+
+// Calculates the single-scattering albedo from a perceived multi-scattering albedo color and phase anisotropy
+// (assuming a view at a semi-infinite volumetric medium on the same side as a uniform light source).
+// [Kulla 2017, "Revisiting Physically Based Shading at Imageworks"]
+f16vec3 multiScatteringAlbedoToSingleScatteringAlbedo(f16vec3 multiScatteringAlbedo, float16_t anisotropy)
+{
+  const f16vec3 s = float16_t(4.09712) + float16_t(4.20863) * multiScatteringAlbedo -
+                    sqrt(float16_t(9.59217) + float16_t(41.6808) * multiScatteringAlbedo + float16_t(17.7126) * square(multiScatteringAlbedo));
+  const f16vec3 s2 = square(s);
+
+  return (float16_t(1.0) - s2) / (float16_t(1.0) - anisotropy * s2);
+}
+
+// Surface/Volume Material Distribution Helpers
+
+// Diffuse: GGX Hammon Approximation
+// [Hammon 2017, "PBR Diffuse Lighting for GGX+Smith Microsurfaces"]
+// Note: Makes a number of assumptions about the material, specifically an IoR of 1.3 (base reflectivity of 0.02)
+// and Schlick Fresnel. This doesn't quite match our assumption of 0.04 base reflectivity and sometimes is incompatible
+// with other material properties (such as thin film due to modifying how fresnel works), but still should work generally
+// fine even if it's not exact in these cases.
+f16vec3 evalHammonDiffuse(f16vec3 albedo,
+                          float16_t isotropicRoughness,
+                          float16_t /* l.v */ inputDirectionDotOutputDirection,
+                          float16_t /* n.l */ normalDotInputDirection,
+                          float16_t /* n.v */ normalDotOutputDirection,
+                          float16_t /* n.h */ normalDotMicrofacetNormal)
+{
+  const float16_t facing = float16_t(0.5) + float16_t(0.5) * inputDirectionDotOutputDirection;
+  const float16_t roughFactor =
+    facing * (float16_t(0.9) - float16_t(0.4) * facing) *
+    safePositiveDivide(float16_t(0.5) + normalDotMicrofacetNormal, normalDotMicrofacetNormal, materialEpsilon);
+  const float16_t smoothFactor =
+    float16_t(1.05) *
+    (float16_t(1.0) - invClampPow5(normalDotInputDirection)) *
+    (float16_t(1.0) - invClampPow5(normalDotOutputDirection));
+  const float16_t single = mix(smoothFactor, roughFactor, isotropicRoughness) / float16_t(pi);
+  const float16_t multi = float16_t(0.1159) * isotropicRoughness;
+
+  return albedo * (f16vec3(single, single, single) + albedo * multi);
+}
+
+// Fresnel (F): Schlick Approximation
+// [Schlick 1994, "An Inexpensive BRDF Model for Physically-Based Rendering"]
+// Note: This can be used for both dielectrics and conductors
+f16vec3 evalOpaqueSchlickFresnel(f16vec3 baseReflectivity,
+                                 float16_t /* v.h */ outputDirectionDotMicrofacetNormal)
+{
+  // Note: Unreal Engine implements Fresnel with an adjustment to f90 as described in "Crash Course in BRDF Implementation"
+  // to allow for a "shadowing" effect to be applied by artists by using base reflectivity values below something physically plausible.
+  // This however despite being fairly commonly seen in BRDF implementations is fairly dubious as realistically only pure metals will
+  // have this control (dielectrics will pull it back to the standard dielectric base reflectivity used in the material model), and artists
+  // need to actually be aware of this to actually utilize it (which is not often the case unless specifically called out).
+  // As such, the standard Schlick Fresnel is implemented here as nothing in Remix (well Portal RTX at least) actually explicitly utilizes this
+  // non-physically based shadowing feature art wise.
+
+  return baseReflectivity + (f16vec3(1.0f) - baseReflectivity) * invClampPow5(outputDirectionDotMicrofacetNormal);
+}
+
+// Fresnel (F): Schlick Approximation
+// [Schlick 1994, "An Inexpensive BRDF Model for Physically-Based Rendering"]
+// Note: This is only intended to be used for dielectrics when coming from a less dense to a more dense medium (not the other way
+// around as this function will not adjust for TIR's influence on the Fresnel response properly) during BRDF evaluation (hence the
+// monochromatic fresnel and base reflectivity) as translucent conductors are impossible. This function therefore is generally not
+// meant to be called when dealing with more general purpose material evaluations that can happen from either inside or outside of
+// a denser medium and the more general purpose evalTranslucentSchlickFresnelTIR should be called instead in these cases, but it is
+// fine to call if you know that this will always be called from the outside of a denser medium.
+float evalTranslucentSchlickFresnel(float16_t baseReflectivity,
+                                    float /* v.h */ outputDirectionDotMicrofacetNormal)
+{
+  return float(baseReflectivity) + float(float16_t(1.0) - baseReflectivity) * invClampPow5(outputDirectionDotMicrofacetNormal);
+}
+
+// Calculates the cosine of the refracted angle given the cosine of an incident angle relative to a normal.
+bool evalRefractionCosineAngle(float16_t relativeRefractiveIndex,
+                               float /* v.h */ outputDirectionDotMicrofacetNormal,
+                               inout float refractionDirectionDotMicrofacetNormal)
+{
+  const float sinSquaredAngle = square(float(relativeRefractiveIndex)) * (1.f - square(outputDirectionDotMicrofacetNormal));
+  const float cosAngle = sqrt(1.f - sinSquaredAngle);
+
+  if (sinSquaredAngle > 1.f)
+  {
+    return false;
+  }
+
+  refractionDirectionDotMicrofacetNormal = cosAngle;
+
+  return true;
+}
+
+// Fresnel (F): TIR-Enhanced Schlick Approximation
+// https://seblagarde.wordpress.com/2013/04/29/memo-on-fresnel-equations/
+// Note: This is only intended to be used for dielectrics during BRDF/BTDF evaluation (hence the monochromatic
+// fresnel and base reflectivity) as translucent conductors are impossible.
+float evalTranslucentSchlickFresnelTIR(float16_t baseReflectivity,
+                                           float16_t relativeRefractiveIndex,
+                                           float /* v.h */ outputDirectionDotMicrofacetNormal)
+{
+  float modifiedOutputDirectionDotMicrofacetNormal = outputDirectionDotMicrofacetNormal;
+
+  if (relativeRefractiveIndex > 1.f)
+  {
+    if (!evalRefractionCosineAngle(
+      relativeRefractiveIndex,
+      outputDirectionDotMicrofacetNormal,
+      modifiedOutputDirectionDotMicrofacetNormal
+    )) {
+       return 1.f;
+    }
+  }
+
+  return evalTranslucentSchlickFresnel(baseReflectivity, modifiedOutputDirectionDotMicrofacetNormal);
+}
+
+// Normal Distribution (D): Anisotropic GGX
+// [Heitz 2014, "Understanding the Masking-Shadowing Function in Microfacet Based BRDFs"]
+float16_t evalGGXNormalDistribution(f16vec2 anisotropicRoughness,
+                                    float16_t /* t.h */ tangentDotMicrofacetNormal,
+                                    float16_t /* b.h */ bitangentDotMicrofacetNormal,
+                                    float16_t /* n.h */ normalDotMicrofacetNormal)
+{
+  // Note: Algebraic rewriting based on Google Filament optimization to minimize runtime divisions
+  // at the cost of additional multiplications.
+  // Full floating point precision used here however due to very small values that emerge when small
+  // perceptual roughness values are in play (<= 0.1, meaning roughness <= 0.01). Perhaps this could be improved
+  // to not use as much full floating point math in the future, but currently this precision is needed to
+  // have specular highlights on shiny surfaces when doing NEE.
+  const float roughnessProduct = float(anisotropicRoughness.x) * float(anisotropicRoughness.y);
+  const vec3 denominatorVector = vec3(anisotropicRoughness.y * tangentDotMicrofacetNormal,
+                                      anisotropicRoughness.x * bitangentDotMicrofacetNormal,
+                                      roughnessProduct * float(normalDotMicrofacetNormal));
+  const float denominatorDot = dot(denominatorVector, denominatorVector);
+  const float body = safePositiveDivide(roughnessProduct, denominatorDot, materialHighPrecisionEpsilon);
+
+  return float16_t(1.0f / pi * roughnessProduct * body * body);
+}
+
+// Normal Distribution (D): Isotropic GGX
+// [Heitz 2014, "Understanding the Masking-Shadowing Function in Microfacet Based BRDFs"]
+float16_t evalGGXNormalDistributionIsotropic(float16_t isotropicRoughness,
+                                             float16_t /* n.h */ normalDotMicrofacetNormal)
+{
+  // Note: Full floating point precision used here to match the anisotropic GGX NDF (for the same reasons).
+  const float roughnessProduct = float(isotropicRoughness) * float(isotropicRoughness);
+  const float cosThetaMSq = float(normalDotMicrofacetNormal) * float(normalDotMicrofacetNormal);
+  const float sinThetaMSq = 1.0f - cosThetaMSq;
+  const float body = safePositiveDivide(
+    isotropicRoughness,
+    cosThetaMSq * roughnessProduct + sinThetaMSq,
+    materialHighPrecisionEpsilon);
+
+  return float16_t(1.0f / pi * body * body);
+}
+
+// Shadowing (G1): Smith Anisotropic GGX
+// [Heitz 2014, "Understanding the Masking-Shadowing Function in Microfacet Based BRDFs"]
+float16_t evalGGXShadowing(f16vec2 anisotropicRoughness,
+                           float16_t /* t.d */ tangentDotDirection,
+                           float16_t /* b.d */ bitangentDotDirection,
+                           float16_t /* n.d */ normalDotDirection)
+{
+  const f16vec3 directionDenominatorVector =
+    f16vec3(normalDotDirection,
+            anisotropicRoughness.x * tangentDotDirection,
+            anisotropicRoughness.y * bitangentDotDirection);
+  const float16_t sqrtDirectionDenominator = length(directionDenominatorVector);
+
+  return safePositiveDivide(
+    float16_t(2.0) * normalDotDirection, normalDotDirection + sqrtDirectionDenominator, materialEpsilon);
+}
+
+// Shadowing/Masking (G2): Anisotropic Height-correlated GGX
+// [Heitz 2014, "Understanding the Masking-Shadowing Function in Microfacet Based BRDFs"]
+float16_t evalHeightCorrelatedGGXShadowingMasking(f16vec2 anisotropicRoughness,
+                                                  float16_t /* t.l */ tangentDotInputDirection,
+                                                  float16_t /* t.v */ tangentDotOutputDirection,
+                                                  float16_t /* b.l */ bitangentDotInputDirection,
+                                                  float16_t /* b.v */ bitangentDotOutputDirection,
+                                                  float16_t /* n.l */ normalDotInputDirection,
+                                                  float16_t /* n.v */ normalDotOutputDirection)
+{
+  const f16vec3 inputDirectionDenominatorVector =
+    f16vec3(anisotropicRoughness.x * tangentDotInputDirection,
+            anisotropicRoughness.y * bitangentDotInputDirection,
+           normalDotInputDirection);
+  const float16_t sqrtInputDirectionDenominator = length(inputDirectionDenominatorVector);
+  const float16_t inputDirectionDenominator = normalDotOutputDirection * sqrtInputDirectionDenominator;
+
+  const f16vec3 outputDirectionDenominatorVector =
+    f16vec3(anisotropicRoughness.x * tangentDotOutputDirection,
+            anisotropicRoughness.y * bitangentDotOutputDirection,
+            normalDotOutputDirection);
+  const float16_t sqrtOutputDirectionDenominator = length(outputDirectionDenominatorVector);
+  const float16_t outputDirectionDenominator = normalDotInputDirection * sqrtOutputDirectionDenominator;
+
+  return (float16_t(2.0) * normalDotInputDirection * normalDotOutputDirection) /
+         max(inputDirectionDenominator + outputDirectionDenominator, materialEpsilon);
+}
+
+// Visibility (G2 / (4 * n.v * n.l)): Anisotropic Height-correlated GGX
+// [Heitz 2014, "Understanding the Masking-Shadowing Function in Microfacet Based BRDFs"]
+// Note: This is both the Shadowing/Masking function and the microfacet BRDF denominator combined,
+// bundled together as a "Visibility" function
+float16_t evalHeightCorrelatedGGXVisibility(f16vec2 anisotropicRoughness,
+                                            float16_t /* t.l */ tangentDotInputDirection,
+                                            float16_t /* t.v */ tangentDotOutputDirection,
+                                            float16_t /* b.l */ bitangentDotInputDirection,
+                                            float16_t /* b.v */ bitangentDotOutputDirection,
+                                            float16_t /* n.l */ normalDotInputDirection,
+                                            float16_t /* n.v */ normalDotOutputDirection)
+{
+  const f16vec3 inputDirectionDenominatorVector =
+    f16vec3(anisotropicRoughness.x * tangentDotInputDirection,
+            anisotropicRoughness.y * bitangentDotInputDirection,
+            normalDotInputDirection);
+  const float16_t sqrtInputDirectionDenominator = length(inputDirectionDenominatorVector);
+  const float16_t inputDirectionDenominator = normalDotOutputDirection * sqrtInputDirectionDenominator;
+
+  const f16vec3 outputDirectionDenominatorVector =
+    f16vec3(anisotropicRoughness.x * tangentDotOutputDirection,
+            anisotropicRoughness.y * bitangentDotOutputDirection,
+            normalDotOutputDirection);
+  const float16_t sqrtOutputDirectionDenominator = length(outputDirectionDenominatorVector);
+  const float16_t outputDirectionDenominator = normalDotInputDirection * sqrtOutputDirectionDenominator;
+
+  return safePositiveDivide(
+    float16_t(1.0), float16_t(2.0) * (inputDirectionDenominator + outputDirectionDenominator), materialEpsilon);
+}
+
+// Visible Normal Distribution (D_v)
+// [Heitz 2014, "Importance sampling microfacet-based BSDFs using the distribution of visible normals"]
+float16_t evalGGXVisibleNormalDistribution(f16vec2 anisotropicRoughness,
+                                           float16_t /* t.v */ tangentDotOutputDirection,
+                                           float16_t /* b.v */ bitangentDotOutputDirection,
+                                           float16_t /* n.v */ normalDotOutputDirection,
+                                           float16_t /* t.h */ tangentDotMicrofacetNormal,
+                                           float16_t /* b.h */ bitangentDotMicrofacetNormal,
+                                           float16_t /* n.h */ normalDotMicrofacetNormal,
+                                           float16_t /* v.h */ outputDirectionDotMicrofacetNormal)
+{
+  // Note: Multiply all components of the numerator together in advance to ideally result in as small a value as is possible before it
+  // may need to be clamped by saferPositiveDivide to avoid overflows (this assumes the terms other than the normal distribution function
+  // will be <1, which I think is true for the GGX shadowing function and of course the dot product).
+  const float16_t numerator =
+    evalGGXShadowing(anisotropicRoughness, tangentDotOutputDirection, bitangentDotOutputDirection, normalDotOutputDirection) *
+    max(float16_t(0.0), outputDirectionDotMicrofacetNormal) *
+    evalGGXNormalDistribution(anisotropicRoughness, tangentDotMicrofacetNormal, bitangentDotMicrofacetNormal, normalDotMicrofacetNormal);
+
+  return saferPositiveDivide(numerator, normalDotOutputDirection, materialEpsilon, materialMaximum);
+}
+
+// [Heitz 2014, "Importance sampling microfacet-based BSDFs using the distribution of visible normals"]
+// Note: This is only valid for the PDF of the reflected direction across the VNDF sampled microfacet normal,
+// the PDF of sampling a specific microfacet normal itself is the same as the VNDF function as it is
+// perfectly importance sampled. This function is given the sampled microfacet normal still however
+// (not the reflected direction).
+float evalGGXVisibleNormalDistributionSamplePdf(f16vec2 anisotropicRoughness,
+                                                float16_t /* t.v */ tangentDotOutputDirection,
+                                                float16_t /* b.v */ bitangentDotOutputDirection,
+                                                float16_t /* n.v */ normalDotOutputDirection,
+                                                float16_t /* t.h */ tangentDotMicrofacetNormal,
+                                                float16_t /* b.h */ bitangentDotMicrofacetNormal,
+                                                float16_t /* n.h */ normalDotMicrofacetNormal,
+                                                float16_t /* v.h */ outputDirectionDotMicrofacetNormal)
+{
+  const float16_t ggxVisibleNormalDistribution = evalGGXVisibleNormalDistribution(
+    anisotropicRoughness,
+    tangentDotOutputDirection, bitangentDotOutputDirection, normalDotOutputDirection,
+    tangentDotMicrofacetNormal, bitangentDotMicrofacetNormal, normalDotMicrofacetNormal,
+    outputDirectionDotMicrofacetNormal);
+
+  return safePositiveDivide(
+    float(ggxVisibleNormalDistribution), 4.0f * float(outputDirectionDotMicrofacetNormal), float(materialEpsilon));
+}
+
+/// Calculates Beer-Lambert attenuation at a specified distance through a medium with a specified attenuation coefficient.
+f16vec3 evalBeerLambertAttenuation(in const vec3 attenuationCoefficient, in const float16_t distance)
+{
+  return exp(-attenuationCoefficient * distance);
+}
+
+/// Calculates Beer-Lambert attenuation at an infinite distance through a medium with a specified attenuation coefficient.
+f16vec3 evalBeerLambertInfiniteAttenuation(in const vec3 attenuationCoefficient)
+{
+  // Note: Return a per-channel attenuation of 0 if any attenuation is desired due to infinite attenuation
+  // distance, otherwise return 1.
+  return mix(f16vec3(0.0f), f16vec3(1.0f), attenuationCoefficient == vec3(0.0f, 0.0f, 0.0f));
+}
+
+// Evaluates the distance of transmitted light through a thin surface based on the thickness and normal
+// and a normalized ray direction
+float16_t evalThinAttenuationDistance(in const float16_t thickness, in const f16vec3 normal, in const f16vec3 direction)
+{
+  // Note: Calculated based on the known thickness of the thin surface which represents the desired
+  // magnitude of the direction vector scaled by some distance value projected on to the normal. Since projection
+  // onto the normal vector (assuming both are normalized) is just a dot product, solving this for distance
+  // scalar is trivial. This assumes the normal is always pointing in the opposite direction of the refracting
+  // vector into the surface and that the normal and direction are not parallel (this case should be handled
+  // externally).
+  return thickness / dot(-normal, direction);
+}
+
+// Evaluates the geometric series 1 + x^2 + x^4 + ... where x < 1
+f16vec3 evalThinGeometricSeries(in const f16vec3 x)
+{
+  return float16_t(1.0) / (float16_t(1.0) - square(x));
+}
+
+// Evaluate the throughput of a sum of an infinite series of internal reflections in a thin surface under
+// the assumption that the majority of these events in a reflected direction happen very close to the point
+// of initial reflection (and thus can be combined into it)
+// [Kulla 2017, "Revisiting Physically Based Shading at Imageworks"]
+f16vec3 evalThinReflectionGeometricSeriesThroughput(in const float16_t outsideFresnel,
+                                                    in const float16_t insideFresnel,
+                                                    in const f16vec3 attenuation)
+{
+  return outsideFresnel +
+         insideFresnel * square(attenuation) * (float16_t(1.0) - outsideFresnel) * (float16_t(1.0) - insideFresnel) *
+         evalThinGeometricSeries(attenuation * insideFresnel);
+}
+
+// Evaluate the throughput of a sum of an infinite series of internal reflections in a thin surface under
+// the assumption that the majority of these events in a transmission direction happen very close to the point
+// of initial transmission (and thus can be combined into it)
+// [Kulla 2017, "Revisiting Physically Based Shading at Imageworks"]
+f16vec3 evalThinTransmissionGeometricSeriesThroughput(in const float16_t outsideFresnel,
+                                                      in const float16_t insideFresnel,
+                                                      in const f16vec3 attenuation)
+{
+  return attenuation * (float16_t(1.0f) - outsideFresnel) * (float16_t(1.0f) - insideFresnel) *
+         evalThinGeometricSeries(attenuation * insideFresnel);
+}
+
+// Fresnel Amplitude Coefficients (For S and P polarized light)
+// https://en.wikipedia.org/wiki/Fresnel_equations#Complex_amplitude_reflection_and_transmission_coefficients
+float16_t evalReflectionSPolarizedFresnelAmplitude(
+  float16_t outsideRefractiveIndex, float16_t insideRefractiveIndex,
+  float16_t incidentDirectionDotNormal, float16_t reflectedDirectionDotNormal) {
+  const float16_t x = outsideRefractiveIndex * incidentDirectionDotNormal;
+  const float16_t y = insideRefractiveIndex * reflectedDirectionDotNormal;
+
+  return (x - y) / (x + y);
+}
+
+// Note: Only valid for angles less than the critical angle.
+// Note: Equal to r_s + 1
+float16_t evalTransmissionSPolarizedFresnelAmplitude(
+  float16_t outsideRefractiveIndex, float16_t insideRefractiveIndex,
+  float16_t incidentDirectionDotNormal, float16_t transmittedDirectionDotNormal) {
+  const float16_t x = outsideRefractiveIndex * incidentDirectionDotNormal;
+  const float16_t y = insideRefractiveIndex * transmittedDirectionDotNormal;
+
+  return (float16_t(2.0f) * x) / (x + y);
+}
+
+float16_t evalReflectionPPolarizedFresnelAmplitude(
+  float16_t outsideRefractiveIndex, float16_t insideRefractiveIndex,
+  float16_t incidentDirectionDotNormal, float16_t reflectedDirectionDotNormal) {
+  const float16_t x = insideRefractiveIndex * incidentDirectionDotNormal;
+  const float16_t y = outsideRefractiveIndex * reflectedDirectionDotNormal;
+
+  return (x - y) / (x + y);
+}
+
+// Note: Only valid for angles less than the critical angle.
+// Note: Equal to (r_p + 1) * outsideRefractiveIndex/insideRefractiveIndex
+float16_t evalTransmissionPPolarizedFresnelAmplitude(
+  float16_t outsideRefractiveIndex, float16_t insideRefractiveIndex,
+  float16_t incidentDirectionDotNormal, float16_t transmittedDirectionDotNormal) {
+  const float16_t x = outsideRefractiveIndex * incidentDirectionDotNormal;
+  const float16_t y = insideRefractiveIndex * incidentDirectionDotNormal;
+  const float16_t z = outsideRefractiveIndex * transmittedDirectionDotNormal;
+
+  return (float16_t(2.0f) * x) / (y + z);
+}
+
+
+// Calculates the Fresnel through an infinite series of interactions on a thin film layer with a thickness specified in nanometers,
+// taking into account wave interference to simulate iridescence. Currently only designed to support a single-channel refractive index, making this
+// mostly intended for dielectrics for the time being (but can be used on metals reasonably as well at a cost of accuracy due to not having per-component
+// refractive indices to work with).
+// https://gamedev.net/tutorials/_/technical/graphics-programming-and-theory/thin-film-interference-for-computer-graphics-r2962/
+f16vec3 evalThinFilmFresnel(
+  in const float16_t outsideRefractiveIndex, in const float16_t layerRefractiveIndex, in const float16_t insideRefractiveIndex,
+  in const float16_t layerThickness,
+  in const float /* v.h */ outputDirectionDotMicrofacetNormal)
+{
+  // Early out to avoid NaNs with viewing angles parallel to the surface
+
+  if (outputDirectionDotMicrofacetNormal == 0.f)
+  {
+    return f16vec3(1.0f);
+  }
+
+  // Calculate refracted cosines for the layer and the inside surface itself
+  // Note: Using single refractive indices here for the outside layer to calculate cosines. This is somewhat incorrect on non-monochromatic materials
+  // (metals) which have wavelength-dependant IoR, but this should be fine for an approximation mostly used on dielectrics.
+
+  const float16_t outsideRelativeRefractiveIndex = outsideRefractiveIndex / layerRefractiveIndex;
+  const float16_t layerRelativeRefractiveIndex = layerRefractiveIndex / insideRefractiveIndex;
+
+  float outsideRefractedCosine;
+
+  if (!evalRefractionCosineAngle(
+    outsideRelativeRefractiveIndex, outputDirectionDotMicrofacetNormal, outsideRefractedCosine
+  )) {
+     return f16vec3(0.0);
+  }
+
+  float layerRefractedCosine;
+
+  if (!evalRefractionCosineAngle(
+    outsideRelativeRefractiveIndex, outsideRefractedCosine, layerRefractedCosine
+  )) {
+     return f16vec3(0.0);
+  }
+
+  // Calculate wave amplitudes
+
+  const float16_t alphaSPolarized =
+    evalReflectionSPolarizedFresnelAmplitude(layerRefractiveIndex, outsideRefractiveIndex, outsideRefractedCosine, outputDirectionDotMicrofacetNormal) *
+    evalReflectionSPolarizedFresnelAmplitude(layerRefractiveIndex, insideRefractiveIndex, outsideRefractedCosine, layerRefractedCosine);
+  const float16_t alphaPPolarized =
+    evalReflectionPPolarizedFresnelAmplitude(layerRefractiveIndex, outsideRefractiveIndex, outsideRefractedCosine, outputDirectionDotMicrofacetNormal) *
+    evalReflectionPPolarizedFresnelAmplitude(layerRefractiveIndex, insideRefractiveIndex, outsideRefractedCosine, layerRefractedCosine);
+  // Todo: Second transmission term for s and p polarized light can be derived from the reflection terms using
+  // less math (via Fresnel amplitude equalities).
+  const float16_t betaSPolarized =
+    evalTransmissionSPolarizedFresnelAmplitude(outsideRefractiveIndex, layerRefractiveIndex, outputDirectionDotMicrofacetNormal, outsideRefractedCosine) *
+    evalTransmissionSPolarizedFresnelAmplitude(layerRefractiveIndex, insideRefractiveIndex, outsideRefractedCosine, layerRefractedCosine);
+  const float16_t betaPPolarized =
+    evalTransmissionPPolarizedFresnelAmplitude(outsideRefractiveIndex, layerRefractiveIndex, outputDirectionDotMicrofacetNormal, outsideRefractedCosine) *
+    evalTransmissionPPolarizedFresnelAmplitude(layerRefractiveIndex, insideRefractiveIndex, outsideRefractedCosine, layerRefractedCosine);
+
+  // Calculate wave phase
+
+  // Note: Phase shift by 180 degrees when reflecting off a denser medium.
+  const float16_t phaseShift =
+    (layerRefractiveIndex > outsideRefractiveIndex) ? float16_t(0.0f) : pi +
+    (layerRefractiveIndex > insideRefractiveIndex) ? float16_t(0.0f) : pi;
+  // Note: Per-wavelength phase calculated for each of the sRGB primaries.
+  const f16vec3 phase =
+    ((float16_t(2.0f) * pi) / sRGBPrimaryWavelengths) * (float16_t(2.0f) * layerRefractiveIndex * layerThickness * outsideRefractedCosine) +
+    f16vec3(phaseShift);
+
+  // Calculate the resulting wave interfered amplitudes
+
+  const f16vec3 sPolarizedTransmission =
+    square(betaSPolarized) / (f16vec3(square(alphaSPolarized)) - float16_t(2.0f) * alphaSPolarized * cos(phase) + f16vec3(1.0f));
+  const f16vec3 pPolarizedTransmission =
+    square(betaPPolarized) / (f16vec3(square(alphaPPolarized)) - float16_t(2.0f) * alphaPPolarized * cos(phase) + f16vec3(1.0f));
+
+  // Account for beam geometry change and calculate unpolarized transmission
+
+  const float16_t beamRatio =
+    (insideRefractiveIndex * layerRefractedCosine) /
+    (outsideRefractiveIndex * outputDirectionDotMicrofacetNormal);
+  // Note: Unpolarized light assumed to be comprised of equal parts s and p polarized light.
+  const f16vec3 transmission = beamRatio * (sPolarizedTransmission + pPolarizedTransmission) / float16_t(2.0f);
+
+  return f16vec3(1.0f) - transmission;
+}
+
+// Approximation for specular albedo based on material information
+// Note: Assumes an Opaque material using an isotropic non-height correlated GGX microfacet distribution +
+// Schlick's approximation for Fresnel reflectance, not a perfect match to our material model, but works better
+// than only using base reflectivity. Additionally, the normal should be the shading normal used in lighting.
+// [Ray Tracing Gems, Chapter 32]
+float3 evalSpecularAlbedoGGXSchlick(in float3 baseReflectivity, in float isotropicRoughness, in float outputDirectionDotNormal)
+{
+  outputDirectionDotNormal = abs(outputDirectionDotNormal);
+
+  float4 X;
+  X.x = 1.f;
+  X.y = outputDirectionDotNormal;
+  X.z = outputDirectionDotNormal * outputDirectionDotNormal;
+  X.w = outputDirectionDotNormal * X.z;
+
+  float4 Y;
+  Y.x = 1.f;
+  Y.y = isotropicRoughness;
+  Y.z = isotropicRoughness * isotropicRoughness;
+  Y.w = isotropicRoughness * Y.z;
+
+  float2x2 M1 = float2x2(0.99044f, -1.28514f, 1.29678f, -0.755907f);
+  float3x3 M2 = float3x3(1.f, 2.92338f, 59.4188f, 20.3225f, -27.0302f, 222.592f, 121.563f, 626.13f, 316.627f);
+
+  float2x2 M3 = float2x2(0.0365463f, 3.32707, 9.0632f, -9.04756);
+  float3x3 M4 = float3x3(1.f, 3.59685f, -1.36772f, 9.04401f, -16.3174f, 9.22949f, 5.56589f, 19.7886f, -20.2123f);
+
+  float bias = dot(mul(M1, X.xy), Y.xy) * rcp(dot(mul(M2, X.xyw), Y.xyw));
+  float scale = dot(mul(M3, X.xy), Y.xy) * rcp(dot(mul(M4, X.xzw), Y.xyw));
+
+  // This is a hack for specular reflectance of 0
+  bias *= saturate(baseReflectivity.g * 50);
+
+  return mad(baseReflectivity, max(0, scale), max(0, bias));
+}
+
+// blends two normal vectors together
+f16vec3 normalBlendRNM(in f16vec3 baseNormal, in f16vec3 detailNormal)
+{
+  // https://blog.selfshadow.com/publications/blending-in-detail/
+  // this is the reoriented normal mapping method
+  baseNormal.z = max(baseNormal.z, -1.0f + materialEpsilon);
+  const f16vec3 n1 = baseNormal + f16vec3(0, 0, 1);
+  const f16vec3 n2 = detailNormal * f16vec3(-1, -1, 1);
+  return normalize(n1 * dot(n1, n2) / n1.z - n2);
+}

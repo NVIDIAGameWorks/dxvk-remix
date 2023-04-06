@@ -180,6 +180,21 @@ namespace dxvk::hud {
 
   };
 
+  /**
+   * \brief HUD item to display the raytracing mode
+   */
+  class HudRaytracingModeItem : public HudItem {
+
+  public:
+
+    HudRaytracingModeItem() = default;
+    ~HudRaytracingModeItem() = default;
+
+    HudPos render(
+      HudRenderer&      renderer,
+      HudPos            position);
+  };
+
 
   /**
    * \brief HUD item to display the frame rate
@@ -205,6 +220,7 @@ namespace dxvk::hud {
       = dxvk::high_resolution_clock::now();
 
     std::string m_frameRate;
+    std::string m_frameTime;
 
   };
 
@@ -293,6 +309,7 @@ namespace dxvk::hud {
 
     uint64_t          m_gpCount = 0;
     uint64_t          m_cpCount = 0;
+    uint64_t          m_rtpCount = 0;
     uint64_t          m_rpCount = 0;
 
     dxvk::high_resolution_clock::time_point m_lastUpdate
@@ -414,4 +431,41 @@ namespace dxvk::hud {
 
   };
 
+  /**
+   * \brief HUD item to display RTX statistics
+   */
+  class HudRtxActivityItem : public HudItem {
+  public:
+
+    HudRtxActivityItem(const Rc<DxvkDevice>& device);
+
+    ~HudRtxActivityItem();
+
+    void update(dxvk::high_resolution_clock::time_point time);
+
+    HudPos render(
+            HudRenderer& renderer,
+            HudPos       position);
+
+  private:
+
+    Rc<DxvkDevice> m_device;
+  };
+
+  /**
+   * \brief HUD item to display a scrolling vertical line to test for frame pacing issues
+   */
+  class HudScrollingLineItem: public HudItem {
+  public:
+
+    HudScrollingLineItem() { }
+    
+    HudPos render(
+            HudRenderer& renderer,
+            HudPos       position);
+
+  private:
+    
+    int m_linePosition = 0;
+  };
 }

@@ -26,6 +26,16 @@ namespace dxvk {
       return S_OK;
     }
 
+    // NV-DXVK start: reduce spam on swapchain checks
+    if (riid == __uuidof(IDirect3DSwapChain9)) {
+      ONCE(
+        Logger::warn("D3D9Texture2D::QueryInterface: Unknown interface query");
+        Logger::warn(str::format(riid));
+      );
+      return E_NOINTERFACE;
+    }
+    // NV-DXVK end
+
     Logger::warn("D3D9Texture2D::QueryInterface: Unknown interface query");
     Logger::warn(str::format(riid));
     return E_NOINTERFACE;
@@ -114,6 +124,16 @@ namespace dxvk {
       return S_OK;
     }
 
+    // NV-DXVK start: reduce spam on swapchain checks
+    if (riid == __uuidof(IDirect3DSwapChain9)) {
+      ONCE(
+        Logger::warn("D3D9Texture3D::QueryInterface: Unknown interface query");
+        Logger::warn(str::format(riid));
+      );
+      return E_NOINTERFACE;
+    }
+    // NV-DXVK end
+
     Logger::warn("D3D9Texture3D::QueryInterface: Unknown interface query");
     Logger::warn(str::format(riid));
     return E_NOINTERFACE;
@@ -195,6 +215,16 @@ namespace dxvk {
       *ppvObject = ref(this);
       return S_OK;
     }
+
+    // NV-DXVK start: reduce spam on swapchain checks
+    if (riid == __uuidof(IDirect3DSwapChain9)) {
+      ONCE(
+        Logger::warn("D3D9TextureCube::QueryInterface: Unknown interface query");
+        Logger::warn(str::format(riid));
+      );
+      return E_NOINTERFACE;
+    }
+    // NV-DXVK end
 
     Logger::warn("D3D9TextureCube::QueryInterface: Unknown interface query");
     Logger::warn(str::format(riid));

@@ -128,6 +128,16 @@ namespace dxvk {
       std::swap(m_renderTargetView, Other->m_renderTargetView);
     }
 
+    // NV-DXVK start
+    // The method is here because the external D3D9 API must NOT be used
+    // on internal objects since there's a risk of messing up public refcount,
+    // and so it was not possible to safely check for the implicit swapchain
+    // container.
+    inline IUnknown* GetContainerInternal() const {
+      return m_container;
+    }
+    // NV-DXVK end
+
   protected:
 
     IUnknown*               m_container;

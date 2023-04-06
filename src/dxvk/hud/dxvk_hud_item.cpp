@@ -3,6 +3,8 @@
 #include <iomanip>
 #include <version.h>
 
+#include "rtx_render/rtx_options.h"
+
 namespace dxvk::hud {
 
   HudItem::~HudItem() {
@@ -48,7 +50,11 @@ namespace dxvk::hud {
     
     if (m_enabled.find("1") != m_enabled.end()) {
       m_enabled.insert("devinfo");
+      m_enabled.insert("raytracingMode");
       m_enabled.insert("fps");
+      m_enabled.insert("memory");
+      m_enabled.insert("gpuload");
+      m_enabled.insert("rtx");
     }
   }
 
@@ -170,6 +176,47 @@ namespace dxvk::hud {
   }
 
 
+  HudPos HudRaytracingModeItem::render(
+    HudRenderer&      renderer,
+    HudPos            position) {
+    position.y += 16.0f;
+
+    renderer.drawText(16.0f,
+      { position.x, position.y },
+      { 0.25f, 0.5f, 0.25f, 1.0f },
+      "Raytracing Mode: ");
+    
+    if (RtxOptions::Get()->enableRaytracing()) {
+      position.y += 16.0f;
+      renderer.drawText(14.0f,
+        { position.x, position.y },
+        { 1.0f, 1.0f, 1.0f, 1.0f },
+        str::format("GBuffer [", DxvkPathtracerGbuffer::raytraceModeToString(RtxOptions::Get()->getRenderPassGBufferRaytraceMode()), "]"));
+
+      position.y += 16.0f;
+      renderer.drawText(14.0f,
+        { position.x, position.y },
+        { 1.0f, 1.0f, 1.0f, 1.0f },
+        str::format("Integrate Direct [", DxvkPathtracerIntegrateDirect::raytraceModeToString(RtxOptions::Get()->getRenderPassIntegrateDirectRaytraceMode()), "]"));
+
+      position.y += 16.0f;
+      renderer.drawText(14.0f,
+        { position.x, position.y },
+        { 1.0f, 1.0f, 1.0f, 1.0f },
+        str::format("Integrate Indirect [", DxvkPathtracerIntegrateIndirect::raytraceModeToString(RtxOptions::Get()->getRenderPassIntegrateIndirectRaytraceMode()), "]"));
+    } else {
+      position.y += 16.0f;
+      renderer.drawText(14.0f,
+        { position.x, position.y },
+        { 1.0f, 1.0f, 1.0f, 1.0f },
+        "RTX-Off (Raster)");
+    }
+
+    position.y += 16.0f;
+
+    return position;
+  }
+
   HudFpsItem::HudFpsItem() { }
   HudFpsItem::~HudFpsItem() { }
 
@@ -181,8 +228,10 @@ namespace dxvk::hud {
 
     if (elapsed.count() >= UpdateInterval) {
       int64_t fps = (10'000'000ll * m_frameCount) / elapsed.count();
+      int64_t frameTime = elapsed.count() / 100 / m_frameCount;
 
       m_frameRate = str::format(fps / 10, ".", fps % 10);
+      m_frameTime = str::format(frameTime / 10, ".", frameTime % 10);
       m_frameCount = 0;
       m_lastUpdate = time;
     }
@@ -203,6 +252,16 @@ namespace dxvk::hud {
       { position.x + 60.0f, position.y },
       { 1.0f, 1.0f, 1.0f, 1.0f },
       m_frameRate);
+
+    renderer.drawText(16.0f,
+      { position.x + 140.0f, position.y },
+      { 1.0f, 0.25f, 0.25f, 1.0f },
+      "Frame Time:");
+
+    renderer.drawText(16.0f,
+      { position.x + 285.0f, position.y },
+      { 1.0f, 1.0f, 1.0f, 1.0f },
+      m_frameTime);
 
     position.y += 8.0f;
     return position;
@@ -365,6 +424,7 @@ namespace dxvk::hud {
     if (elapsed.count() >= UpdateInterval) {
       m_gpCount = diffCounters.getCtr(DxvkStatCounter::CmdDrawCalls);
       m_cpCount = diffCounters.getCtr(DxvkStatCounter::CmdDispatchCalls);
+      m_rtpCount = diffCounters.getCtr(DxvkStatCounter::CmdTraceRaysCalls);
       m_rpCount = diffCounters.getCtr(DxvkStatCounter::CmdRenderPassCount);
 
       m_lastUpdate = time;
@@ -398,6 +458,17 @@ namespace dxvk::hud {
       { position.x + 192.0f, position.y },
       { 1.0f, 1.0f, 1.0f, 1.0f },
       str::format(m_cpCount));
+
+    position.y += 20.0f;
+    renderer.drawText(16.0f,
+      { position.x, position.y },
+      { 0.25f, 0.5f, 1.0f, 1.0f },
+      "TraceRays calls:");
+
+    renderer.drawText(16.0f,
+      { position.x + 192.0f, position.y },
+      { 1.0f, 1.0f, 1.0f, 1.0f },
+      str::format(m_rtpCount));
     
     position.y += 20.0f;
     renderer.drawText(16.0f,
@@ -487,11 +558,13 @@ namespace dxvk::hud {
     for (uint32_t i = 0; i < m_memory.memoryHeapCount; i++) {
       bool isDeviceLocal = m_memory.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT;
 
-      uint64_t memUsedMib = m_heaps[i].memoryUsed >> 20;
-      uint64_t percentage = (100 * m_heaps[i].memoryUsed) / m_memory.memoryHeaps[i].size;
+      VkDeviceSize memSizeMib = m_memory.memoryHeaps[i].size >> 20;
+      VkDeviceSize memAllocatedMib = m_heaps[i].totalAllocated() >> 20;
+      VkDeviceSize memUsedMib = m_heaps[i].totalUsed() >> 20;
+      uint64_t percentage = (100 * memUsedMib) / memSizeMib;
 
       std::string label = str::format(isDeviceLocal ? "Vidmem" : "Sysmem", " heap ", i, ":");
-      std::string text  = str::format(std::setfill(' '), std::setw(5), memUsedMib, " MB (", percentage, "%)");
+      std::string text  = str::format(std::setfill(' '), std::setw(5), memUsedMib, " / ", memAllocatedMib, " / ", memSizeMib, " MB(", percentage, "%)");
 
       position.y += 16.0f;
       renderer.drawText(16.0f,
@@ -504,6 +577,25 @@ namespace dxvk::hud {
         { 1.0f, 1.0f, 1.0f, 1.0f },
         text);
       position.y += 4.0f;
+
+      if (isDeviceLocal) {
+        for (uint32_t cat = DxvkMemoryStats::Category::First; cat <= DxvkMemoryStats::Category::Last; cat++) {
+          VkDeviceSize memSizeMib = m_heaps[i].usedByCategory(DxvkMemoryStats::Category(cat)) >> 20;
+          if (memSizeMib == 0) {
+            continue;
+          }
+
+          std::string text = str::format(std::setfill(' '), std::setw(5), DxvkMemoryStats::categoryToString(DxvkMemoryStats::Category(cat)), ": ", memSizeMib, " MB");
+          position.y += 16.0f;
+          renderer.drawText(16.0f,
+                            { position.x + 16.0f, position.y },
+                            { 1.0f, 1.0f, 1.0f, 1.0f },
+                            text);
+          position.y += 4.0f;
+        }
+
+        position.y += 16.0f;
+      }
     }
 
     position.y += 4.0f;
@@ -545,7 +637,7 @@ namespace dxvk::hud {
   HudPos HudGpuLoadItem::render(
           HudRenderer&      renderer,
           HudPos            position) {
-    position.y += 16.0f;
+    position.y += 8.0f;
 
     renderer.drawText(16.0f,
       { position.x, position.y },
@@ -557,7 +649,7 @@ namespace dxvk::hud {
       { 1.0f, 1.0f, 1.0f, 1.0f },
       m_gpuLoadString);
 
-    position.y += 8.0f;
+    position.y += 16.0f;
     return position;
   }
 
@@ -602,4 +694,96 @@ namespace dxvk::hud {
     return position;
   }
 
+
+  HudRtxActivityItem::HudRtxActivityItem(const Rc<DxvkDevice>& device)
+    : m_device(device) {
+  }
+
+  HudRtxActivityItem::~HudRtxActivityItem() {
+  }
+
+  void HudRtxActivityItem::update(dxvk::high_resolution_clock::time_point time) {
+  }
+
+  HudPos HudRtxActivityItem::render(
+    HudRenderer& renderer,
+    HudPos       position) {
+    const DxvkStatCounters counters = m_device->getStatCounters();
+
+    const std::string labels[] = { "# Presents:" , 
+                                   "# BLAS:" ,
+                                   "# Buffers:" , 
+                                   "# Textures:" , 
+                                   "# Instances/Surfaces:" , 
+                                   "# Surface Materials:" , 
+                                   "# Volume Materials:" , 
+                                   "# Lights:" }; 
+    const uint64_t values[] = { counters.getCtr(DxvkStatCounter::QueuePresentCount),
+                                counters.getCtr(DxvkStatCounter::RtxBlasCount),
+                                counters.getCtr(DxvkStatCounter::RtxBufferCount),
+                                counters.getCtr(DxvkStatCounter::RtxTextureCount),
+                                counters.getCtr(DxvkStatCounter::RtxInstanceCount),
+                                counters.getCtr(DxvkStatCounter::RtxSurfaceMaterialCount),
+                                counters.getCtr(DxvkStatCounter::RtxVolumeMaterialCount),
+                                counters.getCtr(DxvkStatCounter::RtxLightCount)};
+
+    const uint32_t kNumLabels = sizeof(labels) / sizeof(labels[0]);
+    static_assert(kNumLabels == sizeof(values) / sizeof(values[0]));
+
+    position.y += 8.0f;
+
+    const float xOffset = 16.f;
+    renderer.drawText(16.0f,
+      { position.x, position.y },
+      { 0.25f, 0.5f, 0.25f, 1.0f },
+      str::format("RTX:"));
+
+    position.y += 16.0f;
+
+    for (uint32_t i=0 ; i<kNumLabels; i++)  {
+      renderer.drawText(14.0f,
+        { position.x + xOffset, position.y },
+        { 1.0f, 1.0f, 0.25f, 1.0f },
+        labels[i]);
+
+      std::string text = str::format(std::setfill(' '), std::setw(5), values[i]);
+
+      renderer.drawText(14.0f,
+        { position.x + xOffset + 216, position.y },
+        { 1.0f, 1.0f, 1.f, 1.0f },
+        text);
+
+      position.y += 16.0f;
+    }
+
+    if (RtxOptions::Get()->getPresentThrottleDelay()) {
+      position.y += 8.0f;
+
+      renderer.drawText(16.0f,
+                        { position.x, position.y },
+                        { 1.0f, 0.2f, 0.2f, 1.0f },
+                        "Present throttling enabled!");
+      position.y += 16.0f;
+    }
+
+    return position;
+  }
+
+  HudPos HudScrollingLineItem::render(HudRenderer& renderer, HudPos position) {
+    if (m_linePosition >= renderer.surfaceSize().width)
+      m_linePosition = 0;
+
+    const HudNormColor color = { 0xff, 0xff, 0x80, 0xff };
+
+    HudLineVertex vertices[2] = {
+      { { (float)m_linePosition, 0.f }, color },
+      { { (float)m_linePosition, (float)renderer.surfaceSize().height }, color }
+    };
+
+    renderer.drawLines(2, vertices);
+
+    ++m_linePosition;
+
+    return position;
+  }
 }

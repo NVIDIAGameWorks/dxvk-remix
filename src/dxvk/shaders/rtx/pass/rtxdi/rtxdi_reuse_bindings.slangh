@@ -1,0 +1,82 @@
+/*
+* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/pass/rtxdi/rtxdi_reuse_binding_indices.h"
+#include "rtxdi/RtxdiParameters.h"
+
+layout(binding = RTXDI_REUSE_BINDING_RTXDI_RESERVOIR)
+RWStructuredBuffer<RTXDI_PackedReservoir> RtxdiReservoirBuffer;
+
+layout(r32ui, binding = RTXDI_REUSE_BINDING_WORLD_SHADING_NORMAL_INPUT)
+Texture2D<uint> PrimaryWorldShadingNormal;
+
+layout(r32ui, binding = RTXDI_REUSE_BINDING_PERCEPTUAL_ROUGHNESS_INPUT)
+Texture2D<float> PrimaryPerceptualRoughness;
+
+layout(r32f, binding = RTXDI_REUSE_BINDING_HIT_DISTANCE_INPUT)
+Texture2D<float> PrimaryHitDistance;
+
+layout(rgb10_a2, binding = RTXDI_REUSE_BINDING_ALBEDO_INPUT)
+Texture2D<float4> PrimaryAlbedo;
+
+layout(rgb10_a2, binding = RTXDI_REUSE_BINDING_BASE_REFLECTIVITY_INPUT)
+Texture2D<float4> PrimaryBaseReflectivity;
+
+layout(rgba32f, binding = RTXDI_REUSE_BINDING_WORLD_POSITION_INPUT)
+Texture2D<float4> PrimaryWorldPositionWorldTriangleNormal;
+
+layout(rgba32f, binding = RTXDI_REUSE_BINDING_PREV_WORLD_POSITION_INPUT)
+Texture2D<float4> PreviousWorldPosition_WorldTriangleNormal;
+
+layout(rg16_snorm, binding = RTXDI_REUSE_BINDING_VIEW_DIRECTION_INPUT)
+Texture2D<float2> PrimaryViewDirection;
+
+layout(r16f, binding = RTXDI_REUSE_BINDING_CONE_RADIUS_INPUT)
+Texture2D<float> PrimaryConeRadius;
+
+layout(rg32f, binding = RTXDI_REUSE_BINDING_LAST_GBUFFER)
+RWTexture2D<float2> GBufferLast;
+
+layout(r32f, binding = RTXDI_REUSE_BINDING_REPROJECTION_CONFIDENCE_OUTPUT)
+RWTexture2D<float> ReprojectionConfidence;
+
+layout(rgba16f, binding = RTXDI_REUSE_BINDING_WS_MVEC_INPUT_OUTPUT)
+Texture2D<float4> PrimaryVirtualMotionVector;
+
+layout(rg16f, binding = RTXDI_REUSE_BINDING_SS_MVEC_INPUT)
+Texture2D<float2> PrimaryScreenSpaceMotionVector;
+
+layout(r32f, binding = RTXDI_REUSE_BINDING_POSITION_ERROR_INPUT)
+Texture2D<float> PrimaryPositionError;
+
+layout(r8ui, binding = RTXDI_REUSE_BINDING_SHARED_FLAGS_INPUT)
+Texture2D<uint> SharedFlags;
+
+layout(rg16f, binding = RTXDI_REUSE_BINDING_BSDF_FACTOR_OUTPUT)
+RWTexture2D<float2> BSDFFactor;
+
+layout(r32ui, binding = RTXDI_REUSE_BINDING_TEMPORAL_POSITION_OUTPUT)
+RWTexture2D<uint> TemporalPosition;
+
+layout(rg16ui, binding = RTXDI_REUSE_BINDING_BEST_LIGHTS_INPUT)
+Texture2D<uint2> RtxdiBestLights;

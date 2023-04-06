@@ -1,0 +1,175 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/utility/color.slangh"
+
+// Clamps the contribution of ray in order to preven fireflies
+vec3 fireflyFiltering(vec3 contribution, float fireflyFilterMaxIntensity)
+{
+  if (fireflyFilterMaxIntensity > 0.0)
+  {
+    float magicNumber = 1e-5f;
+    float luminance = calcBt709Luminance(contribution);
+    float clampedLuminance = luminance < fireflyFilterMaxIntensity ? luminance : fireflyFilterMaxIntensity;
+    contribution = (luminance > magicNumber) ? (contribution * (clampedLuminance / luminance)) : contribution;
+  }
+  return contribution;
+}
+
+#define GENERIC_INTERPOLATE_HIT_ATTRIBUTE(attributeType)                            \
+attributeType interpolateHitAttribute(attributeType vertexAttributes[3], vec3 bary) \
+{                                                                                   \
+  return attributeType(                                                             \
+    vertexAttributes[0] * bary.x +                                                  \
+    vertexAttributes[1] * bary.y +                                                  \
+    vertexAttributes[2] * bary.z);                                                  \
+}
+
+GENERIC_INTERPOLATE_HIT_ATTRIBUTE(float16_t)
+GENERIC_INTERPOLATE_HIT_ATTRIBUTE(f16vec2)
+GENERIC_INTERPOLATE_HIT_ATTRIBUTE(f16vec3)
+GENERIC_INTERPOLATE_HIT_ATTRIBUTE(f16vec4)
+GENERIC_INTERPOLATE_HIT_ATTRIBUTE(vec2)
+GENERIC_INTERPOLATE_HIT_ATTRIBUTE(vec3)
+
+bool isValidValue(float value)
+{
+  return !(isnan(value) || isinf(value));
+}
+
+bool isValidValue(vec2 value)
+{
+  return !(any(isnan(value)) || any(isinf(value)));
+}
+
+bool isValidValue(vec3 value)
+{
+  return !(any(isnan(value)) || any(isinf(value)));
+}
+
+bool isValidValue(vec4 value)
+{
+  return !(any(isnan(value)) || any(isinf(value)));
+}
+
+float sanitize(float val, float defaultVal) {
+  return isValidValue(val) ? val : defaultVal;
+}
+
+vec3 sanitize(vec3 val, vec3 defaultVal) {
+  return isValidValue(val) ? val : defaultVal;
+}
+
+// Selects a component of a vector to avoid array indexing (which may cause spilling to local memory).
+#define GENERIC_SELECT_COMPONENT(componentType, vectorType)           \
+componentType selectComponent(vectorType vector, uint componentIndex) \
+{                                                                     \
+  switch (componentIndex)                                             \
+  {                                                                   \
+  default:                                                            \
+  case 0:                                                             \
+    return vector.x;                                                  \
+  case 1:                                                             \
+    return vector.y;                                                  \
+  case 2:                                                             \
+    return vector.z;                                                  \
+  case 3:                                                             \
+    return vector.w;                                                  \
+  }                                                                   \
+}
+
+GENERIC_SELECT_COMPONENT(float16_t, f16vec4)
+GENERIC_SELECT_COMPONENT(float, vec4)
+
+// Writes a component of a vector to avoid array indexing (which may cause spilling to local memory).
+#define GENERIC_WRITE_COMPONENT(componentType, vectorType)           \
+void writeComponent(                                                 \
+  inout vectorType vector, componentType value, uint componentIndex) \
+{                                                                    \
+  switch (componentIndex)                                            \
+  {                                                                  \
+  default:                                                           \
+  case 0:                                                            \
+    vector.x = value;                                                \
+    return;                                                          \
+  case 1:                                                            \
+    vector.y = value;                                                \
+    return;                                                          \
+  case 2:                                                            \
+    vector.z = value;                                                \
+    return;                                                          \
+  case 3:                                                            \
+    vector.w = value;                                                \
+    return;                                                          \
+  }                                                                  \
+}
+
+GENERIC_WRITE_COMPONENT(float16_t, f16vec4)
+GENERIC_WRITE_COMPONENT(float, vec4)
+
+// Selects a column of a matrix to avoid array indexing (which may cause spilling to local memory).
+#define GENERIC_SELECT_COLUMN(columnType, matrixType)        \
+columnType selectColumn(matrixType matrix, uint columnIndex) \
+{                                                            \
+  switch (columnIndex)                                       \
+  {                                                          \
+  default:                                                   \
+  case 0:                                                    \
+    return matrix[0];                                        \
+  case 1:                                                    \
+    return matrix[1];                                        \
+  case 2:                                                    \
+    return matrix[2];                                        \
+  case 3:                                                    \
+    return matrix[3];                                        \
+  }                                                          \
+}
+
+GENERIC_SELECT_COLUMN(f16vec4, f16mat4)
+GENERIC_SELECT_COLUMN(vec4, mat4)
+
+// Writes a column of a matrix to avoid array indexing (which may cause spilling to local memory).
+#define GENERIC_WRITE_COLUMN(columnType, matrixType)           \
+void writeColumn(                                              \
+  inout matrixType matrix, columnType value, uint columnIndex) \
+{                                                              \
+  switch (columnIndex)                                         \
+  {                                                            \
+  default:                                                     \
+  case 0:                                                      \
+    matrix[0] = value;                                         \
+    return;                                                    \
+  case 1:                                                      \
+    matrix[1] = value;                                         \
+    return;                                                    \
+  case 2:                                                      \
+    matrix[2] = value;                                         \
+    return;                                                    \
+  case 3:                                                      \
+    matrix[3] = value;                                         \
+    return;                                                    \
+  }                                                            \
+}
+
+GENERIC_WRITE_COLUMN(f16vec4, f16mat4)
+GENERIC_WRITE_COLUMN(vec4, mat4)

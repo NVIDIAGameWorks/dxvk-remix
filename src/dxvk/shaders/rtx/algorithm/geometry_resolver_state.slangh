@@ -1,0 +1,451 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/concept/ray_portal/ray_portal.slangh"
+#include "rtx/utility/packing.slangh"
+#include "rtx/concept/payload/payload.slangh"
+
+struct GeometryResolverState
+{
+  u16vec2 pixelCoordinate;
+  // Note: These ray properties are passed into the function with the state of the
+  // ray being cast as an input, and then set to the new state of the sampled ray
+  // (if applicable) as an output.
+  vec3 origin;
+  float16_t coneRadius;
+  f16vec3 direction;
+  bool directionAltered;
+
+  // Note: Radiance, throughput and hit distances are passed in and then written back out
+  // so they can be accumulated into in the geometry resolving loop.
+  vec3 radiance;
+  f16vec3 attenuation;
+  float segmentHitDistance;
+  float accumulatedHitDistance;
+  // Note: This represents the matrix to transform a normal or vector from world space into the virtual space seen
+  // through PSR and ray portals.
+  f16mat3 accumulatedVectorTransform;
+
+  // Note: Needed output for Resolve function. Indicates that more resolve work needs to happen
+  // and hits should not be counted until finished. Could be omitted from input memory payload
+  // if extra flag space is needed, but kept there for now for simplicity.
+  bool continueResolving;
+  // Note: Used to indicate the state of the inside medium flag for the PSTR event (if any). This is needed because
+  // PSTR can still trigger on thin translucent surfaces which will not put the ray into a medium, whereas for
+  // standard translucent surfaces it will.
+  bool insideMedium;
+  // Note: Flags to indicate if Primary Surface Reflection/Transmission Replacement should be done
+  // afterwards. These flags imply that the direction member (and secondary direction member when
+  // both types are desired at once) will be populated with the sampled reflected/transmission direction,
+  // as well as a secondary throughput in addition to the usual throughput, and finally information to derive
+  // vector transformations later on.
+  bool performPSRR;
+  bool performPSTR;
+  // Note: Indicates if the reflection (true) or transmission (false) PSR surface should be the surface used for integration.
+  bool reflectionSelectedIntegrationSurface;
+
+  // Note: Indicates a portal space in which the surface was hit
+  PortalSpace2BitsType portalSpace;
+
+  uint8_t rayMask;
+  bool isViewModelRay;
+  // Note: Indicates that the final resolved surface belongs to a view model. Can be 'true' even if isViewModelRay = false.
+  bool isViewModelSurface;
+  bool decalEncountered;
+  bool useAlternateDisocclusionThreshold;
+}
+
+struct MemoryGeometryResolverState : IPayload
+{
+  vec3 origin;
+  uint encodedConeRadius; // float16_t, unused
+
+  float3 radiance;
+  float accumulatedHitDistance;
+
+  uint2 encodedAccumulatedVectorTransform;
+  uint encodedAttenuation;
+  
+  uint2 encodedDirection;
+  float segmentHitDistance;
+  uint data0;
+
+  static MemoryGeometryResolverState pack(GeometryResolverState geometryResolverState)
+  {
+    MemoryGeometryResolverState ret;
+
+    ret.origin = geometryResolverState.origin;
+    
+    ret.encodedConeRadius = packFloat2x16(f16vec2(geometryResolverState.coneRadius, 0));
+    ret.encodedDirection.x = packFloat2x16(geometryResolverState.direction.xy);
+    ret.encodedDirection.y = packFloat2x16(f16vec2(geometryResolverState.direction.z, 0));
+    
+    ret.radiance = geometryResolverState.radiance;
+    ret.encodedAttenuation = colorToR11G11B10(geometryResolverState.attenuation);
+    ret.segmentHitDistance = geometryResolverState.segmentHitDistance;
+    ret.accumulatedHitDistance = geometryResolverState.accumulatedHitDistance;
+    ret.encodedAccumulatedVectorTransform = snormMat3ToUint2(geometryResolverState.accumulatedVectorTransform);
+    
+    ret.data0 =
+      uint32_t(geometryResolverState.rayMask) | 
+      (uint32_t(geometryResolverState.portalSpace) << 8) | 
+      (uint32_t(geometryResolverState.isViewModelRay) << 10) |
+      (uint32_t(geometryResolverState.isViewModelSurface) << 11) |
+      (uint32_t(geometryResolverState.decalEncountered) << 12) |
+      (uint32_t(geometryResolverState.useAlternateDisocclusionThreshold) << 13) |
+      (uint32_t(geometryResolverState.directionAltered) << 14) |
+      (uint32_t(geometryResolverState.continueResolving) << 15) |
+      (uint32_t(geometryResolverState.performPSRR) << 16) |
+      (uint32_t(geometryResolverState.performPSTR) << 17) | 
+      (uint32_t(geometryResolverState.insideMedium) << 18) | 
+      (uint32_t(geometryResolverState.reflectionSelectedIntegrationSurface) << 19);
+
+    return ret;
+  }
+
+#ifdef RAY_PIPELINE
+  GeometryResolverState unpack()
+  {
+    GeometryResolverState ret;
+
+    ret.pixelCoordinate = DispatchRaysIndex().xy;
+    
+    ret.origin = origin;
+    ret.coneRadius = unpackFloat2x16(encodedConeRadius).x;
+    ret.direction.xy = unpackFloat2x16(encodedDirection.x);
+    ret.direction.z = unpackFloat2x16(encodedDirection.y).x;
+
+    ret.radiance = radiance;
+    ret.attenuation = r11g11b10ToColor(encodedAttenuation);
+    ret.segmentHitDistance = segmentHitDistance;
+    ret.accumulatedHitDistance = accumulatedHitDistance;
+    ret.accumulatedVectorTransform = uint2ToSnormMat3(encodedAccumulatedVectorTransform);
+      
+    ret.rayMask = data0 & 0xff;
+    ret.portalSpace = (data0 >> 8) & 0b11;
+    ret.isViewModelRay = packedFlagGet(data0, 1 << 10);
+    ret.isViewModelSurface = packedFlagGet(data0, 1 << 11);
+    ret.decalEncountered = packedFlagGet(data0, 1 << 12);
+    ret.useAlternateDisocclusionThreshold = packedFlagGet(data0, 1 << 13);
+    ret.directionAltered = packedFlagGet(data0, 1 << 14);
+    ret.continueResolving = packedFlagGet(data0, 1 << 15);
+    ret.performPSRR = packedFlagGet(data0, 1 << 16);
+    ret.performPSTR = packedFlagGet(data0, 1 << 17);
+    ret.insideMedium = packedFlagGet(data0, 1 << 18);
+    ret.reflectionSelectedIntegrationSurface = packedFlagGet(data0, 1 << 19);
+
+    return ret;
+  }
+
+  bool shouldReorder(out uint coherenceHints, out uint numCoherenceHints)
+  {
+    // GeometryResolverState geometryResolverState = unpack();
+
+    coherenceHints = 0;
+    numCoherenceHints = 0;
+
+    return false;
+  }
+
+#endif // defined(RAY_PIPELINE)
+}
+
+struct GeometryPSRResolverState {
+  u16vec2 pixelCoordinate;
+  uint8_t bounceIteration;
+  // Note: These ray properties are passed into the function with the state of the
+  // ray being cast as an input, and then set to the new state of the sampled ray
+  // (if applicable) as an output.
+  vec3 origin;
+  float16_t coneRadius;
+  f16vec3 direction;
+
+  // Note: Radiance, throughput and hit distances are passed in and then written back out
+  // so they can be accumulated into in the geometry PSR resolving loop.
+  vec3 radiance;
+  f16vec3 attenuation;
+  float segmentHitDistance;
+  float accumulatedHitDistance;
+  // Note: This represents the matrix to transform a normal or vector from world space into the virtual space seen
+  // through PSR and ray portals.
+  // Todo: This will likely need to be 4x3 in the future for refractions to be accumulated in. Ideally we'd have the
+  // PSRR pass use a 3x3 one and the PSTR one use 4x3, but that'd add even more duplicated code...
+  f16mat3 accumulatedVectorTransform;
+  uint16_t mediumMaterialIndex;
+
+  // Note: Needed output for Resolve function. Indicates that more resolve work needs to happen
+  // and hits should not be counted until finished. Could be omitted from input memory payload
+  // if extra flag space is needed, but kept there for now for simplicity.
+  bool continueResolving;
+  // Note: Used as an input and output to indicate when the PSR resolving should finish. Set to true either
+  // when the max bounce count is hit or when a final hit is found.
+  bool continuePSRResolving;
+  // Note: Used to keep track of if a ray is inside a translucent medium or not, used as both an
+  // input and an output to keep a persistent state across calls.
+  bool insideMedium;
+  // Note: Indicates if this invocation is dealing with what is to be considered a "primary" surface, versus a secondary
+  // one, and thus should output to the primary set of buffers.
+  bool primarySurface;
+  // Note: A flag which indicates if this invocation of the PSR resolver was chosen to be the surface integration
+  // is done on. This means this invocation should write its data out to the stochastic buffers when applicable.
+  bool selectedIntegrationSurface;
+
+  // Note: Indicates portal space in which the surface was hit
+  PortalSpace2BitsType portalSpace;
+
+  uint8_t rayMask;
+  bool isViewModelRay;
+  bool isViewModelSurface;
+  bool isTransmissionPSR;
+  bool decalEncountered;
+  bool useAlternateDisocclusionThreshold;
+}
+
+struct MemoryGeometryPSRResolverState : IPayload
+{
+  vec3 origin;
+  uint encodedConeRadius; // 0: encodedConeRadius (float16_t)
+                          // 16: some flags (7b)
+                          // 30: portalSpace (2b)
+
+  uvec3 encodedRadiance;
+  uint encodedAttenuation;
+
+  float segmentHitDistance;
+  float accumulatedHitDistance;
+  uint2 encodedAccumulatedVectorTransform;
+
+  uint encodedDirection;
+  uint data0;       // 0: rayMask (8b)
+                    // 8: bounceIteration (8b)
+                    // 16: mediumMaterialIndex (16b)
+
+  static MemoryGeometryPSRResolverState pack(GeometryPSRResolverState geometryPSRResolverState)
+  {
+    MemoryGeometryPSRResolverState ret;
+
+    ret.origin = geometryPSRResolverState.origin;
+
+    uint encodedConeRadius = float16BitsToUint16(geometryPSRResolverState.coneRadius);
+
+    encodedConeRadius = packedFlagSet(
+      encodedConeRadius, geometryPSRResolverState.primarySurface ? (1 << 16) : 0);
+    encodedConeRadius = packedFlagSet(
+      encodedConeRadius, geometryPSRResolverState.selectedIntegrationSurface ? (1 << 17) : 0);
+    encodedConeRadius = packedFlagSet(
+      encodedConeRadius, geometryPSRResolverState.isViewModelRay ? (1 << 18) : 0);
+    encodedConeRadius = packedFlagSet(
+      encodedConeRadius, geometryPSRResolverState.isViewModelSurface ? (1 << 19) : 0);
+    encodedConeRadius = packedFlagSet(
+      encodedConeRadius, geometryPSRResolverState.isTransmissionPSR ? (1 << 20) : 0);
+    encodedConeRadius = packedFlagSet(
+      encodedConeRadius, geometryPSRResolverState.decalEncountered ? (1 << 21) : 0);
+    encodedConeRadius = packedFlagSet(
+      encodedConeRadius, geometryPSRResolverState.useAlternateDisocclusionThreshold ? (1 << 22) : 0);
+    encodedConeRadius |= uint32_t(geometryPSRResolverState.portalSpace) << 30;
+
+    ret.encodedConeRadius = encodedConeRadius;
+    ret.encodedDirection = sphereDirectionToSnorm2x16(geometryPSRResolverState.direction);
+
+    // Note: Encode flags into the sign bits of each coordinate. This must be done manually because -0 may not be properly
+    // stored if the radiance is 0 as -0 and +0 tend to be treated the same. Note this assumes the radiance is always
+    // positive to function properly.
+    uvec3 encodedRadiance = floatBitsToUint(geometryPSRResolverState.radiance);
+
+    encodedRadiance.x = packedFlagSet(
+      encodedRadiance.x, geometryPSRResolverState.continueResolving ? (1 << 31) : 0);
+    encodedRadiance.y = packedFlagSet(
+      encodedRadiance.y, geometryPSRResolverState.continuePSRResolving ? (1 << 31) : 0);
+    encodedRadiance.z = packedFlagSet(
+      encodedRadiance.z, geometryPSRResolverState.insideMedium ? (1 << 31) : 0);
+
+    ret.encodedRadiance = encodedRadiance;
+    // Note: Could likely be reduced to 24 bit to free up 8 bits if needed for something else, attenuation precision
+    // likely doesn't need to be 10/11 bit unorms.
+    ret.encodedAttenuation = colorToR11G11B10(geometryPSRResolverState.attenuation);
+    ret.segmentHitDistance = geometryPSRResolverState.segmentHitDistance;
+    ret.accumulatedHitDistance = geometryPSRResolverState.accumulatedHitDistance;
+    ret.encodedAccumulatedVectorTransform =
+      snormMat3ToUint2(geometryPSRResolverState.accumulatedVectorTransform);
+
+    ret.data0 =
+      uint32_t(geometryPSRResolverState.rayMask) |
+      (uint32_t(geometryPSRResolverState.bounceIteration) << 8) |
+      (uint32_t(geometryPSRResolverState.mediumMaterialIndex) << 16);
+
+    return ret;
+  } 
+
+#ifdef RAY_PIPELINE
+  GeometryPSRResolverState unpack()
+  {
+    GeometryPSRResolverState ret;
+
+    ret.pixelCoordinate = DispatchRaysIndex().xy;
+
+    ret.origin = origin;
+    ret.coneRadius = uint16BitsToHalf(uint16_t(encodedConeRadius));
+    ret.direction = snorm2x16ToSphereDirection(encodedDirection);
+
+    ret.radiance = abs(uintBitsToFloat(encodedRadiance));
+    ret.attenuation = r11g11b10ToColor(encodedAttenuation);
+    ret.segmentHitDistance = segmentHitDistance;
+    ret.accumulatedHitDistance = accumulatedHitDistance;
+    ret.accumulatedVectorTransform = uint2ToSnormMat3(encodedAccumulatedVectorTransform);
+
+    ret.continueResolving = packedFlagGet(encodedRadiance.x, 1 << 31);
+    ret.continuePSRResolving = packedFlagGet(encodedRadiance.y, 1 << 31);
+    ret.insideMedium = packedFlagGet(encodedRadiance.z, 1 << 31);
+    ret.primarySurface = packedFlagGet(encodedConeRadius, 1 << 16);
+    ret.selectedIntegrationSurface = packedFlagGet(encodedConeRadius, 1 << 17);
+    ret.isViewModelRay = packedFlagGet(encodedConeRadius, 1 << 18);
+    ret.isViewModelSurface = packedFlagGet(encodedConeRadius, 1 << 19);
+    ret.isTransmissionPSR = packedFlagGet(encodedConeRadius, 1 << 20);
+    ret.decalEncountered = packedFlagGet(encodedConeRadius, 1 << 21);
+    ret.useAlternateDisocclusionThreshold = packedFlagGet(encodedConeRadius, 1 << 22);
+    ret.portalSpace = (encodedConeRadius >> 30) & 0b11;
+
+    ret.rayMask = data0;
+    ret.bounceIteration = (data0 >> 8) & 0xff;
+    ret.mediumMaterialIndex = (data0 >> 16) & 0xffff;
+
+    return ret;
+  }
+  
+  bool shouldReorder(out uint coherenceHints, out uint numCoherenceHints)
+  {
+    // GeometryPSRResolverState geometryResolverState = unpack();
+
+    coherenceHints = 0;
+    numCoherenceHints = 0;
+
+    return false;
+  }
+
+#endif // defined(RAY_PIPELINE)
+}
+
+// Data that is passed from the primary rays pass into the Reflection and Transmission PSR passes
+// Note: this doesn't include the coneRadius and accumulatedHitDistance fields that are passed separately, see geometryResolverVertex(...)
+struct GbufferPSRData
+{
+  uint3 origin;
+  uint encodedDirection;
+
+  uint2 encodedAccumulatedVectorTransform;
+  uint attenuation;
+  uint mediumMaterialIndexAndGeometryFlags;
+};
+
+// Encodes various PSR data into storage formats
+GbufferPSRData packPSRData(Ray sampledRay, uint16_t mediumMaterialIndex, f16vec3 attenuation,
+  f16mat3 accumulatedVectorTransform, uint packedGeometryFlags)
+{
+  GbufferPSRData psrData = (GbufferPSRData)0;
+  psrData.origin = floatBitsToUint(sampledRay.origin);
+  psrData.encodedDirection = sphereDirectionToSnorm2x16(sampledRay.direction);
+  psrData.mediumMaterialIndexAndGeometryFlags = mediumMaterialIndex | (packedGeometryFlags << 16);
+  psrData.attenuation = colorToR11G11B10(attenuation);
+  psrData.encodedAccumulatedVectorTransform = snormMat3ToUint2(accumulatedVectorTransform);
+  return psrData;
+}
+
+// Decodes the PSR data from storage formats
+void unpackPSRData(GbufferPSRData psrData, inout GeometryPSRResolverState geometryPSRResolverState)
+{
+  geometryPSRResolverState.origin = uintBitsToFloat(psrData.origin);
+  geometryPSRResolverState.direction = snorm2x16ToSphereDirection(psrData.encodedDirection);
+  geometryPSRResolverState.attenuation = r11g11b10ToColor(psrData.attenuation);
+  geometryPSRResolverState.accumulatedVectorTransform = uint2ToSnormMat3(psrData.encodedAccumulatedVectorTransform);
+  geometryPSRResolverState.mediumMaterialIndex = psrData.mediumMaterialIndexAndGeometryFlags & 0xffff;
+  geometryPSRResolverState.insideMedium = geometryPSRResolverState.mediumMaterialIndex != BINDING_INDEX_INVALID;
+
+  GeometryFlags geometryFlags = geometryFlagsDecode(psrData.mediumMaterialIndexAndGeometryFlags >> 16);
+  geometryPSRResolverState.isViewModelRay = geometryFlags.isViewModelRay;
+  geometryPSRResolverState.rayMask = geometryFlags.objectMask | OBJECT_MASK_ALL;
+  geometryPSRResolverState.portalSpace = geometryFlags.portalSpace;
+}
+
+void storeReflectionPSRData(GbufferPSRData psrData, uint2 pixelCoordinate)
+{
+  // Note: since PSRData0 and PSRData1 are aliased with DecalMaterial and DecalEmissiveRadiance,
+  // it is very important that the reflection PSR pass happens right after the primary rays.
+  // Otherwise, the transmission PSR pass would overwrite the reflection data with its decals.
+  aliasedData0.ReflectionPSRData0[pixelCoordinate] = uint4(psrData.origin.xyz, psrData.encodedDirection);
+  aliasedData1.ReflectionPSRData1[pixelCoordinate] = uint2(psrData.encodedAccumulatedVectorTransform.xy);
+  ReflectionPSRData2[pixelCoordinate] = uint2(psrData.attenuation, psrData.mediumMaterialIndexAndGeometryFlags);
+}
+
+GbufferPSRData loadReflectionPSRData(uint2 pixelCoordinate)
+{
+  uint4 data0 = aliasedData0.ReflectionPSRData0[pixelCoordinate];
+  uint2 data1 = aliasedData1.ReflectionPSRData1[pixelCoordinate];
+  uint2 data2 = ReflectionPSRData2[pixelCoordinate];
+
+  // Clear the PSR data to prevent storing NaNs in these aliased resources
+  aliasedData0.ReflectionPSRData0[pixelCoordinate] = 0;
+  aliasedData1.ReflectionPSRData1[pixelCoordinate] = 0;
+  ReflectionPSRData2[pixelCoordinate] = 0;
+
+  GbufferPSRData psrData;
+  psrData.origin.xyz = data0.xyz;
+  psrData.encodedDirection = data0.w;
+  psrData.encodedAccumulatedVectorTransform = data1;
+  psrData.attenuation = data2.x;
+  psrData.mediumMaterialIndexAndGeometryFlags = data2.y;
+  return psrData;
+}
+
+void storeTransmissionPSRData(GbufferPSRData psrData, uint2 pixelCoordinate)
+{
+  // Note: these resources are aliased with various radiance textures, which are only used
+  // in the integrator. So it is safe to use them to pass data from the primary rays pass
+  // into the transmission PSR pass, which comes second.
+  TransmissionPSRData0[pixelCoordinate] = uint2(psrData.origin.xy);
+  TransmissionPSRData1[pixelCoordinate] = uint2(psrData.origin.z, psrData.encodedDirection);
+  TransmissionPSRData2[pixelCoordinate] = uint2(psrData.encodedAccumulatedVectorTransform.xy);
+  TransmissionPSRData3[pixelCoordinate] = uint2(psrData.attenuation, psrData.mediumMaterialIndexAndGeometryFlags);
+}
+
+GbufferPSRData loadTransmissionPSRData(uint2 pixelCoordinate)
+{
+  uint2 data0 = TransmissionPSRData0[pixelCoordinate];
+  uint2 data1 = TransmissionPSRData1[pixelCoordinate];
+  uint2 data2 = TransmissionPSRData2[pixelCoordinate];
+  uint2 data3 = TransmissionPSRData3[pixelCoordinate];
+
+  // Clear the PSR data to prevent storing NaNs in these aliased resources
+  TransmissionPSRData0[pixelCoordinate] = 0;
+  TransmissionPSRData1[pixelCoordinate] = 0;
+  TransmissionPSRData2[pixelCoordinate] = 0;
+  TransmissionPSRData3[pixelCoordinate] = 0;
+
+  GbufferPSRData psrData;
+  psrData.origin.xy = data0.xy;
+  psrData.origin.z = data1.x;
+  psrData.encodedDirection = data1.y;
+  psrData.encodedAccumulatedVectorTransform = data2.xy;
+  psrData.attenuation = data3.x;
+  psrData.mediumMaterialIndexAndGeometryFlags = data3.y;
+  return psrData;
+}

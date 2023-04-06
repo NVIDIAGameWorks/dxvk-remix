@@ -1,3 +1,24 @@
+/*
+* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
 #pragma once
 
 #include "../util/rc/util_rc.h"
@@ -120,11 +141,11 @@ namespace dxvk::vk {
     VULKAN_FN(vkCreateWaylandSurfaceKHR);
     VULKAN_FN(vkGetPhysicalDeviceWaylandPresentationSupportKHR);
     #endif
-    
-    #ifdef VK_USE_PLATFORM_WIN32_KHR
-    VULKAN_FN(vkCreateWin32SurfaceKHR);
-    VULKAN_FN(vkGetPhysicalDeviceWin32PresentationSupportKHR);
-    #endif
+
+#ifdef VK_KHR_win32_surface
+	VULKAN_FN(vkCreateWin32SurfaceKHR);
+	VULKAN_FN(vkGetPhysicalDeviceWin32PresentationSupportKHR);
+#endif
     
     VULKAN_FN(vkDestroySurfaceKHR);
     
@@ -133,6 +154,9 @@ namespace dxvk::vk {
     VULKAN_FN(vkGetPhysicalDeviceSurfaceFormatsKHR);
     VULKAN_FN(vkGetPhysicalDeviceSurfacePresentModesKHR);
     #endif
+
+
+
     
     #ifdef VK_EXT_debug_report
     VULKAN_FN(vkCreateDebugReportCallbackEXT);
@@ -144,6 +168,14 @@ namespace dxvk::vk {
     VULKAN_FN(vkCmdBeginDebugUtilsLabelEXT);
     VULKAN_FN(vkCmdEndDebugUtilsLabelEXT);
     VULKAN_FN(vkCmdInsertDebugUtilsLabelEXT);
+    VULKAN_FN(vkCreateDebugUtilsMessengerEXT);
+    VULKAN_FN(vkDestroyDebugUtilsMessengerEXT);
+    VULKAN_FN(vkQueueBeginDebugUtilsLabelEXT);
+    VULKAN_FN(vkQueueEndDebugUtilsLabelEXT);
+    VULKAN_FN(vkQueueInsertDebugUtilsLabelEXT);
+    VULKAN_FN(vkSetDebugUtilsObjectNameEXT);
+    VULKAN_FN(vkSetDebugUtilsObjectTagEXT);
+    VULKAN_FN(vkSubmitDebugUtilsMessageEXT);
     #endif
 
     #ifdef VK_EXT_full_screen_exclusive
@@ -288,6 +320,50 @@ namespace dxvk::vk {
     VULKAN_FN(vkCmdNextSubpass);
     VULKAN_FN(vkCmdEndRenderPass);
     VULKAN_FN(vkCmdExecuteCommands);
+    VULKAN_FN(vkGetSemaphoreCounterValue);
+    VULKAN_FN(vkWaitSemaphores);
+    // NV-DXVK start: RTXIO
+    VULKAN_FN(vkSignalSemaphore);
+    // NV-DXVK end
+
+    #ifdef VK_KHR_synchronization2
+    VULKAN_FN(vkCmdPipelineBarrier2KHR);
+    #endif
+
+    #ifdef VK_EXT_opacity_micromap
+    VULKAN_FN(vkCreateMicromapEXT);
+    VULKAN_FN(vkDestroyMicromapEXT);
+    VULKAN_FN(vkCmdBuildMicromapsEXT);
+    VULKAN_FN(vkGetMicromapBuildSizesEXT);
+    #endif
+
+    #ifdef VK_KHR_acceleration_structure
+    VULKAN_FN(vkCreateAccelerationStructureKHR);
+    VULKAN_FN(vkDestroyAccelerationStructureKHR);
+    VULKAN_FN(vkCmdBuildAccelerationStructuresKHR);
+    VULKAN_FN(vkCmdBuildAccelerationStructuresIndirectKHR);
+    VULKAN_FN(vkBuildAccelerationStructuresKHR);
+    VULKAN_FN(vkCopyAccelerationStructureKHR);
+    VULKAN_FN(vkCopyAccelerationStructureToMemoryKHR);
+    VULKAN_FN(vkCopyMemoryToAccelerationStructureKHR);
+    VULKAN_FN(vkWriteAccelerationStructuresPropertiesKHR);
+    VULKAN_FN(vkCmdCopyAccelerationStructureKHR);
+    VULKAN_FN(vkCmdCopyAccelerationStructureToMemoryKHR);
+    VULKAN_FN(vkCmdCopyMemoryToAccelerationStructureKHR);
+    VULKAN_FN(vkGetAccelerationStructureDeviceAddressKHR);
+    VULKAN_FN(vkCmdWriteAccelerationStructuresPropertiesKHR);
+    VULKAN_FN(vkGetDeviceAccelerationStructureCompatibilityKHR);
+    VULKAN_FN(vkGetAccelerationStructureBuildSizesKHR);
+    #endif
+
+    #ifdef VK_KHR_ray_tracing_pipeline
+    VULKAN_FN(vkCmdTraceRaysKHR);
+    VULKAN_FN(vkCreateRayTracingPipelinesKHR);
+    VULKAN_FN(vkGetRayTracingShaderGroupHandlesKHR);
+    VULKAN_FN(vkGetRayTracingCaptureReplayShaderGroupHandlesKHR);
+    VULKAN_FN(vkCmdTraceRaysIndirectKHR);
+    VULKAN_FN(vkGetRayTracingShaderGroupStackSizeKHR);
+    #endif
 
     #ifdef VK_KHR_create_renderpass2
     VULKAN_FN(vkCreateRenderPass2KHR);
@@ -347,6 +423,30 @@ namespace dxvk::vk {
     VULKAN_FN(vkCmdBeginQueryIndexedEXT);
     VULKAN_FN(vkCmdEndQueryIndexedEXT);
     #endif
+
+    #ifdef VK_EXT_buffer_device_address
+    VULKAN_FN(vkGetBufferDeviceAddress);
+    #endif
+
+    #ifdef VK_KHR_deferred_host_operations
+    VULKAN_FN(vkCreateDeferredOperationKHR);
+    VULKAN_FN(vkDeferredOperationJoinKHR);
+    VULKAN_FN(vkDestroyDeferredOperationKHR);
+    VULKAN_FN(vkGetDeferredOperationMaxConcurrencyKHR);
+    VULKAN_FN(vkGetDeferredOperationResultKHR);
+    #endif
+
+    #ifdef VK_EXT_calibrated_timestamps
+    VULKAN_FN(vkGetPhysicalDeviceCalibrateableTimeDomainsEXT);
+    VULKAN_FN(vkGetCalibratedTimestampsEXT);
+    #endif
+
+    // NV-DXVK start: Integrate Aftermath
+    #ifdef VK_NV_device_diagnostic_checkpoints
+    VULKAN_FN(vkCmdSetCheckpointNV);
+    VULKAN_FN(vkGetQueueCheckpointDataNV);
+    #endif
+    // NV-DXVK end
 
     #ifdef VK_NVX_image_view_handle
     VULKAN_FN(vkGetImageViewHandleNVX);

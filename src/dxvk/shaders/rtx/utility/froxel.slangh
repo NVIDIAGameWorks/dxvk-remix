@@ -1,0 +1,197 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/utility/common.slangh"
+
+// Note on conventions:
+// * Froxel - View frustrum oriented voxel grid cell
+// * Froxel Index - Integer based index into the froxel grid 3d texture for non-filtered operations. [0, dimensions] with top left near plane origin.
+// * Froxel Coordinate - Floating point based position value within the froxel grid. [0, dimensions] with top left near plane origin.
+// * Froxel UVW - UVW coordinate within the froxel grid for filtered reads. [0, 1] with top left near plane origin to match screen UVs.
+// * Depth Slice - z component of a froxel coordinate, linear over texture space but subject to nonlinear distribution
+// in worldspace based on the depth slice distribution and the maximum distance the grid should extend to.
+// Note that all froxel operations currently are done in translated world space. This is done because using normal world space results in precision
+// issues when the translation on the camera is high which can cause strange drifting artifacts and blurriness to the volumetric lighting. This does
+// not work in all applications as some do not have the world to view matrix exposed to manipulate in this manner, but we do it where we can. For applications
+// not exposing this matrix, the near plane can at least be set to a higher value to minimize these precision issues as well.
+
+uvec3 froxelCoordinateToFroxelIndex(vec3 froxelCoordinate)
+{
+  return uvec3(froxelCoordinate);
+}
+
+vec3 froxelCoordinateToFroxelUVW(vec3 froxelCoordinate, uvec3 froxelDimensions)
+{
+  return froxelCoordinate / vec3(froxelDimensions);
+}
+
+vec3 froxelIndexToFroxelCoordinate(uvec3 froxelIndex)
+{
+  // Note: Using the center of the froxel as the coordinate representation of the cell.
+  return vec3(froxelIndex) + vec3(0.5f, 0.5f, 0.5f);
+}
+
+vec3 froxelUVWToFroxelCoordinate(vec3 froxelUVW, uvec3 froxelDimensions)
+{
+  return froxelUVW * vec3(froxelDimensions);
+}
+
+// Converts a depth in view space to a depth in projection space. Assumes the view Z is greater than the near plane
+// and ideally less than the far plane, but the far plane will simply be clipped to (whereas being below the near plane
+// will cause issues).
+float viewZToProjectionZ(mat4 viewToProjection, float viewZ)
+{
+  const vec4 projectionPosition = mul(viewToProjection, vec4(0.0f, 0.0f, viewZ, 1.0f));
+  float projectionZ = projectionPosition.z / projectionPosition.w;
+
+  // Note: NaN and Inf map to 0 as these are likely z values of 0 in view space or floating point precision
+  // issues with values very close to the near plane.
+  if (!isValidValue(projectionZ))
+  {
+    projectionZ = 0.0f;
+  }
+
+  // Note: Clamp remaining values from 0-1 as any values past 1 (usually due to floating point error) can
+  // potentially turn into infinity depending on the near/far plane distances (e.g. if n=1 and f=100000 then it is likely).
+  // This also handles cases where coordinates are beyond the far plane properly.
+  // Additionally, take the absolute value to handle cases where projection returns a negative value (as some projection
+  // matrices can do this), though do take care as this absolute value also prevents any clamping if values go behind the
+  // near plane, so the view Z passed in is expected to either be on or beyond the near plane. If we need to do this more
+  // precisely in the future the decomposed projection's isReverseZ can be used most likely.
+  return saturate(abs(projectionZ));
+}
+
+// Converts a froxel grid depth slice to a depth in view space.
+float depthSliceToViewZ(
+  uint depthSlices, float depthSliceDistributionExponent, float maxDistance, float nearPlane,
+  float depthSlice, bool invertViewZ)
+{
+  const float viewZSign = invertViewZ ? -1.0f : 1.0f;
+  const float positiveViewZ = pow(saturate(depthSlice / depthSlices), depthSliceDistributionExponent) * maxDistance;
+
+  // Note: Offset the froxel grid from the near plane, applying the proper view Z sign to both the near plane value
+  // and the view Z offset (as both work in positive coordinates).
+  return (nearPlane + positiveViewZ) * viewZSign;
+}
+
+// Converts a depth in view space to a froxel grid depth slice.
+float viewZToDepthSlice(
+  uint depthSlices, float depthSliceDistributionExponent, float maxDistance, float nearPlane,
+  float viewZ, bool invertViewZ)
+{
+  // Note: No invert flag needed unlike depthSliceToViewZ, can just take the absolute value to make things simpler.
+  // Additionally, offset by the near plane distance similar to the inverse of this function, no need to clamp to 0
+  // though as this will be done during the saturate operation later.
+  const float viewZSign = invertViewZ ? -1.0f : 1.0f;
+  const float positiveViewZ = viewZ * viewZSign - nearPlane;
+
+  return pow(saturate(positiveViewZ / maxDistance), 1.0f / depthSliceDistributionExponent) * depthSlices;
+}
+
+// Converts a froxel grid depth slice to a depth in projection space.
+float depthSliceToProjectionZ(
+  mat4 viewToProjection,
+  uint depthSlices, float depthSliceDistributionExponent, float maxDistance, float nearPlane,
+  float depthSlice, bool invertViewZ)
+{
+  const float viewZ = depthSliceToViewZ(
+    depthSlices, depthSliceDistributionExponent, maxDistance, nearPlane,
+    depthSlice, invertViewZ);
+  const float projectionZ = viewZToProjectionZ(viewToProjection, viewZ);
+
+  return projectionZ;
+}
+
+// Converts a froxel coordinate to a position in world space.
+vec3 froxelCoordinateToTranslatedWorldPosition(
+  mat4 projectionToTranslatedWorld, mat4 viewToProjection, bool invertViewZ,
+  vec2 inverseFroxelGridDimensions, uint depthSlices, float depthSliceDistributionExponent, float maxDistance, float nearPlane,
+  vec3 froxelCoordinate)
+{
+  const float projectionZ = depthSliceToProjectionZ(
+    viewToProjection, depthSlices, depthSliceDistributionExponent, maxDistance, nearPlane,
+    froxelCoordinate.z, invertViewZ);
+  const vec2 ndc = froxelCoordinate.xy * inverseFroxelGridDimensions * vec2(2.0f, -2.0f) + vec2(-1.0f, 1.0f);
+  const vec4 projectionPosition = vec4(ndc, projectionZ, 1.0f);
+  const vec4 translatedWorldPosition = mul(projectionToTranslatedWorld, projectionPosition);
+
+  // Note: Perspective divide required after an inverse projection transformation.
+  return vec3(translatedWorldPosition.xyz) / translatedWorldPosition.w;
+}
+
+// Converts a world position to a froxel UVW coordinate. Note this may generate values out of the typical
+// [0, 1] range of UVW coordinates, leaving it up to the sampler to handle the behavior (clamp to edge recommended
+// but may generate odd lighting for locations far outside the view, clamp to border can be used instead at the cost of
+// perhaps disocclusion on the edges of the view in motion).
+vec3 translatedWorldPositionToFroxelUVW(
+  mat4 translatedWorldToView, mat4 translatedWorldToProjection, bool invertViewZ,
+  uint depthSlices, float depthSliceDistributionExponent, float maxDistance, float nearPlane,
+  vec3 translatedWorldPosition)
+{
+  const float viewZ = mul(translatedWorldToView, vec4(translatedWorldPosition, 1.0f)).z;
+  const float depthSlice = viewZToDepthSlice(
+    depthSlices, depthSliceDistributionExponent, maxDistance, nearPlane,
+    viewZ, invertViewZ);
+  const vec4 projectionPosition = mul(translatedWorldToProjection, vec4(translatedWorldPosition, 1.0f));
+  const vec2 ndc = projectionPosition.xy / projectionPosition.w;
+  const vec2 froxelUV = ndc * vec2(0.5f, -0.5f) + vec2(0.5f, 0.5f);
+  const float froxelW = depthSlice / depthSlices;
+
+  return vec3(froxelUV, froxelW);
+}
+
+// Converts a screenspace UV from [0, 1) with a top left origin and a view space Z to a froxel UVW coordinate similar to
+// the translatedWorldPositionToFroxelUVW function.
+vec3 screenUVViewZToFroxelUVW(
+  uint depthSlices, float depthSliceDistributionExponent, float maxDistance, float nearPlane,
+  vec2 screenUV, float viewZ, bool invertViewZ)
+{
+  const float depthSlice = viewZToDepthSlice(
+    depthSlices, depthSliceDistributionExponent, maxDistance, nearPlane,
+    viewZ, invertViewZ);
+  const float froxelW = depthSlice / depthSlices;
+
+  return vec3(screenUV, froxelW);
+}
+
+// Converts a screenspace UV from [0, 1) with a top left origin and an infinite depth assumption to a froxel UVW coordinate similar to
+// the translatedWorldPositionToFroxelUVW function.
+vec3 screenUVInfiniteViewZToFroxelUVW(vec2 screenUV)
+{
+  return vec3(screenUV, 1.0f);
+}
+
+/// Converts a generic "virtual" froxel UVW coordinate to its actual physical UVW coordinate, factoring in the fact that
+// multiple volumes share the same texture.
+vec3 virtualFroxelUVWToPhysicalFroxelUVW(
+  vec3 froxelUVW, uint froxelVolume, float minFilteredRadianceU, float maxFilteredRadianceU, float inverseNumFroxelVolumes)
+{
+  // Clamp the U coordinate to avoid filtering between volumes. This essentially emulates clamp to edge behavior by clamping
+  // the U coordinate to the center point of each froxel on the edges, rather than allowing for it to go further (which would start
+  // to filter across the boundary).
+  froxelUVW.x = clamp(froxelUVW.x, minFilteredRadianceU, maxFilteredRadianceU);
+  // Convert to a texture sampling coordinate
+  froxelUVW.x = (froxelUVW.x + float(froxelVolume)) * inverseNumFroxelVolumes;
+
+  return froxelUVW;
+}

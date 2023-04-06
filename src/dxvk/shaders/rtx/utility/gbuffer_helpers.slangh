@@ -1,0 +1,222 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/concept/ray/ray.slangh"
+#include "rtx/concept/ray_portal/ray_portal.slangh"
+#include "rtx/concept/surface/surface.slangh"
+#include "rtx/concept/surface_material/surface_material.slangh"
+#include "rtx/utility/geometry_flags.slangh"
+#include "rtx/external/nrd.slangh"
+
+MinimalRayInteraction minimalRayInteractionReadFromGBuffer(
+  Ray originalRay,
+  ivec2 position,
+  Texture2D<float2> viewDirectionTexture,
+  Texture2D<float> coneRadiusTexture)
+{
+  GBufferMemoryMinimalRayInteraction memory;
+  memory.encodedViewDirection = viewDirectionTexture[position];
+  memory.encodedConeRadius = float16_t(coneRadiusTexture[position].x);
+
+  return minimalRayInteractionCreate(memory, originalRay);
+}
+
+void minimalRayInteractionWriteToGBuffer(
+  MinimalRayInteraction minimalRayInteraction,
+  bool directionAltered,
+  ivec2 position,
+  RWTexture2D<float2> viewDirectionTexture,
+  RWTexture2D<float> coneRadiusTexture)
+{
+  const GBufferMemoryMinimalRayInteraction gBufferMemoryMinimalRayInteraction =
+    gBufferMemoryMinimalRayInteractionCreate(minimalRayInteraction, directionAltered);
+
+  if (directionAltered) {
+    viewDirectionTexture[position] = gBufferMemoryMinimalRayInteraction.encodedViewDirection;
+  }
+
+  coneRadiusTexture[position] = gBufferMemoryMinimalRayInteraction.encodedConeRadius;
+}
+
+MinimalSurfaceInteraction minimalSurfaceInteractionReadFromGBuffer(
+  ivec2 position,
+  Texture2D<float4> worldPositionWorldTriangleNormalTexture)
+{
+  GBufferMemoryMinimalSurfaceInteraction memory;
+  memory.encodedWorldPositionWorldTriangleNormal = worldPositionWorldTriangleNormalTexture[position];
+  memory.positionError = 0;
+  return minimalSurfaceInteractionCreate(memory);
+}
+
+MinimalSurfaceInteraction minimalSurfaceInteractionReadFromGBufferWithError(
+  ivec2 position,
+  Texture2D<float4> worldPositionWorldTriangleNormalTexture,
+  Texture2D<float> positionErrorTexture)
+{
+  GBufferMemoryMinimalSurfaceInteraction memory;
+  memory.encodedWorldPositionWorldTriangleNormal = worldPositionWorldTriangleNormalTexture[position];
+  memory.positionError = positionErrorTexture[position];
+  return minimalSurfaceInteractionCreate(memory);
+}
+
+void minimalSurfaceInteractionWriteToGBuffer(
+  MinimalSurfaceInteraction minimalSurfaceInteraction,
+  ivec2 position,
+  RWTexture2D<float4> worldPositionWorldTriangleNormalTexture,
+  RWTexture2D<float> positionErrorTexture)
+{
+  const GBufferMemoryMinimalSurfaceInteraction gBufferMemoryMinimalSurfaceInteraction =
+    gBufferMemoryMinimalSurfaceInteractionCreate(minimalSurfaceInteraction);
+
+  worldPositionWorldTriangleNormalTexture[position] = vec4(gBufferMemoryMinimalSurfaceInteraction.encodedWorldPositionWorldTriangleNormal);
+  positionErrorTexture[position] = gBufferMemoryMinimalSurfaceInteraction.positionError;
+}
+
+PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionReadFromGBuffer(
+  ivec2 position,
+  Texture2D<uint> worldShadingNormalTexture,
+  Texture2D<float> perceptualRoughnessTexture,
+  Texture2D<float4> albedoTexture,
+  RWTexture2D<float4> baseReflectivityTexture,
+  Texture2D<uint> data0Texture,
+  Texture2D<uint> data1Texture)
+{
+  GBufferMemoryPolymorphicSurfaceMaterialInteraction memory;
+  memory.worldShadingNormal = signedOctahedralToSphereDirection(snorm2x16ToFloat2x32(worldShadingNormalTexture[position]));
+  memory.perceptualRoughness = perceptualRoughnessTexture[position];
+  memory.albedo = f16vec3(albedoTexture[position].rgb);
+  memory.baseReflectivity = f16vec3(baseReflectivityTexture[position].rgb);
+  memory.data0 = data0Texture[position].x;
+  memory.data1 = data1Texture[position].x;
+
+  return polymorphicSurfaceMaterialInteractionCreate(memory);
+}
+
+void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
+  ivec2 position,
+  bool writeStochastic,
+  bool directionAltered,
+  f16mat3 virtualVectorTransform,
+  RWTexture2D<uint> worldShadingNormalTexture,
+  RWTexture2D<float> perceptualRoughnessTexture,
+  RWTexture2D<float4> virtualWorldShadingNormalPerceptualRoughnessTexture,
+  RWTexture2D<float4> virtualWorldShadingNormalPerceptualRoughnessDenoisingTexture,
+  RWTexture2D<float4> albedoTexture,
+  RWTexture2D<float4> baseReflectivityTexture,
+  RWTexture2D<uint> data0Texture,
+  RWTexture2D<uint> data1Texture)
+{
+  const GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfaceMaterialInteraction =
+    gBufferMemoryPolymorphicSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+  albedoTexture[position] = vec4(gBufferMemoryPolymorphicSurfaceMaterialInteraction.albedo, 1.0);
+  baseReflectivityTexture[position] = vec4(gBufferMemoryPolymorphicSurfaceMaterialInteraction.baseReflectivity, 1.0);
+
+  f16vec3 virtualShadingNormal = gBufferMemoryPolymorphicSurfaceMaterialInteraction.worldShadingNormal;
+
+  // If primary ray direction was altered world data needs to be transformed to virtual world space
+  if (directionAltered && cb.enableCalculateVirtualShadingNormals)
+  {
+    // Note: This transformation should always be valid for vector transformations, but normalization does still need to happen afterwards.
+    virtualShadingNormal = normalize(mul(virtualVectorTransform, virtualShadingNormal));
+  }
+
+  // Hack to work around TREX-759 while TREX-771 addresses the root cause
+  // This essentially sanitizes some common forms of invalid normal vectors from being passed to the denoiser (which is the main
+  // user of the virtual shading normal) as these cause NaNs to appear and spread within the denoiser. The cause for these bad normals
+  // to appear is due to geometry corruption, and this code should be removed once the corruption itself is fixed (as this code may hide
+  // other issues from being visible).
+  if (
+    any(isnan(virtualShadingNormal)) ||
+    any(isinf(virtualShadingNormal)) ||
+    all(virtualShadingNormal == f16vec3(0.0f, 0.0f, 0.0f))
+  )
+  {
+    virtualShadingNormal = f16vec3(0.0f, 0.0f, 1.0f);
+  }
+
+  // Note: snorm->unorm conversion for shading normal to match what denoiser expects.
+  virtualWorldShadingNormalPerceptualRoughnessTexture[position] = vec4(
+    virtualShadingNormal * 0.5f + 0.5f,
+    gBufferMemoryPolymorphicSurfaceMaterialInteraction.perceptualRoughness);
+
+  const float4 packedNormalRoughness = NRD_FrontEnd_PackNormalAndRoughness(
+    virtualShadingNormal, gBufferMemoryPolymorphicSurfaceMaterialInteraction.perceptualRoughness);
+  virtualWorldShadingNormalPerceptualRoughnessDenoisingTexture[position] = packedNormalRoughness;
+
+  // Note: Write stochastic textures only when desired. Bit hacky to have this logic here rather than in the geometery resolver but
+  // it's an easy enough way to do it.
+  if (writeStochastic) {
+    worldShadingNormalTexture[position] =
+      float2x32ToSnorm2x16(sphereDirectionToSignedOctahedral(gBufferMemoryPolymorphicSurfaceMaterialInteraction.worldShadingNormal));
+    perceptualRoughnessTexture[position] = gBufferMemoryPolymorphicSurfaceMaterialInteraction.perceptualRoughness;
+    data0Texture[position] = gBufferMemoryPolymorphicSurfaceMaterialInteraction.data0;
+    data1Texture[position] = gBufferMemoryPolymorphicSurfaceMaterialInteraction.data1;
+  }
+}
+
+// Note: Slightly redundant, but hopefully optimized to only be one read with the Ray Interaction. If not then rewrite this somehow to merge it with that function.
+bool isGBufferMiss(ivec2 position, Texture2D<float> coneRadiusTexture)
+{
+  return coneRadiusTexture[position].x == 0.0f;
+}
+
+// Note: Used to indicate to passes that the GBuffer has no data in it, while also at least providing data to fill in denoiser-related buffers such that they do
+// not read from undefined previous-frame data.
+void writeMissToGBuffer(
+  ivec2 position,
+  bool writeStochastic,
+  float missLinearViewZ,
+  RWTexture2D<float> coneRadiusTexture,
+  RWTexture2D<float> linearViewZTexture,
+  RWTexture2D<float4> worldMotionTexture,
+  RWTexture2D<float4> worldShadingNormalPerceptualRoughnessTexture,
+  RWTexture2D<float4> WorldShadingNormalPerceptualRoughnessDenoisingTexture,
+  RWTexture2D<float4> albedoTexture,
+  RWTexture2D<float4> baseReflectivityTexture)
+{
+  const vec3 missNormal = vec3(0.0f, 0.0f, 1.0f);
+  const float missPerceptualRoughness = 0.0f;
+  const vec3 missMotionVector = vec3(0.0f, 0.0f, 0.0f);
+  const vec3 missAlbedo = vec3(0.0f, 0.0f, 0.0f);
+  const vec3 missBaseReflectivity = vec3(0.0f, 0.0f, 0.0f);
+  const float missConeRadius = 0.0f;
+
+  linearViewZTexture[position] = missLinearViewZ;
+  worldMotionTexture[position] = vec4(missMotionVector, 0);
+  worldShadingNormalPerceptualRoughnessTexture[position] = vec4(missNormal * 0.5 + 0.5, missPerceptualRoughness);
+  WorldShadingNormalPerceptualRoughnessDenoisingTexture[position] = NRD_FrontEnd_PackNormalAndRoughness(missNormal, missPerceptualRoughness);
+
+  if (writeStochastic)
+  {
+    albedoTexture[position] = vec4(missAlbedo, 0.0f);
+    baseReflectivityTexture[position] = vec4(missBaseReflectivity, 0.0f);
+  }
+
+  /* Note: Cone radius usually not needed for denoisers, only outputted here to give a low-cost signal to */
+  /* subsequent passes that a g-buffer miss occured. This was previously done by the hit distance but other */
+  /* passes no longer need hit distance information unfortunately. The cone radius normally will never be */
+  /* 0 so this works fine as a reliable way to signal a miss. */
+  coneRadiusTexture[position] = missConeRadius;
+}

@@ -1,0 +1,196 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// GBuffer Memory Polymorphic Surface Material Interaction Functions
+
+uint8_t gBufferMemoryPolymorphicSurfaceMaterialInteractionGetTypeHelper(
+  GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfaceMaterialInteraction)
+{
+  // Note: High 2 bits of data0 reserved for common polymorphic type
+  return uint8_t((gBufferMemoryPolymorphicSurfaceMaterialInteraction.data0 >> 30) & surfaceMaterialTypeMask);
+}
+
+GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfaceMaterialInteractionCreateInternal(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction)
+{
+  // Encode the Opaque Surface Material Interaction into the polymorphic GBuffer Memory representation
+
+  GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfaceMaterialInteraction;
+
+  const float16_t perceptualRoughness = roughnessToPerceptualRoughness(opaqueSurfaceMaterialInteraction.isotropicRoughness);
+  const float16_t anisotropy = anisotropicRoughnessToAnisotropy(opaqueSurfaceMaterialInteraction.isotropicRoughness,
+    opaqueSurfaceMaterialInteraction.anisotropicRoughness);
+  
+  gBufferMemoryPolymorphicSurfaceMaterialInteraction.worldShadingNormal = opaqueSurfaceMaterialInteraction.shadingNormal;
+  gBufferMemoryPolymorphicSurfaceMaterialInteraction.perceptualRoughness = perceptualRoughness;
+  gBufferMemoryPolymorphicSurfaceMaterialInteraction.albedo = opaqueSurfaceMaterialInteraction.albedo;
+  gBufferMemoryPolymorphicSurfaceMaterialInteraction.baseReflectivity = opaqueSurfaceMaterialInteraction.baseReflectivity;
+
+  const float16_t emissiveIntensity = max(opaqueSurfaceMaterialInteraction.emissiveRadiance.x,
+    max(opaqueSurfaceMaterialInteraction.emissiveRadiance.y, opaqueSurfaceMaterialInteraction.emissiveRadiance.z));
+  const f16vec3 emissiveColor = (emissiveIntensity > float16_t(0.0)) ? opaqueSurfaceMaterialInteraction.emissiveRadiance / emissiveIntensity : float16_t(0.0);
+
+  const bool enableThinFilm = opaqueSurfaceMaterialInteraction.thinFilmThickness > 0.0;
+  const float16_t encodedOpacity =  enableThinFilm ?
+                                    opaqueSurfaceMaterialInteraction.thinFilmThickness : opaqueSurfaceMaterialInteraction.opacity;
+
+  const uint8_t flagsAndType = (enableThinFilm ? OPAQUE_SURFACE_MATERIAL_FLAG_USE_THIN_FILM_LAYER : 0) |
+                               // Note: Type takes 2 bits currently
+                               (uint8_t(surfaceMaterialTypeOpaque) << 6);
+
+  gBufferMemoryPolymorphicSurfaceMaterialInteraction.data0 =
+    (uint32_t(f16ToSnorm8(anisotropy)) << 0) |
+    (uint32_t(f16ToUnorm8(encodedOpacity)) << 8) |
+    (uint32_t(f16ToUnorm8(emissiveColor.r)) << 16) |
+    (uint32_t(flagsAndType) << 24);
+  // Note: Second word entierly dominated by emissive-related values. This should in theory allow things that don't use emissive
+  // to optimize this read out entierly without needing a whole additional reduced material model and serialization logic just
+  // for that pass. Of course that can be done if needed in the future, but it is avoided for now for the sake of less code.
+  gBufferMemoryPolymorphicSurfaceMaterialInteraction.data1 =
+    (uint32_t(f16ToUnorm8(emissiveColor.g)) << 0) |
+    (uint32_t(f16ToUnorm8(emissiveColor.b)) << 8) |
+    (uint32_t(float16BitsToUint16(emissiveIntensity)) << 16);
+
+  return gBufferMemoryPolymorphicSurfaceMaterialInteraction;
+}
+
+GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfaceMaterialInteractionCreateInternal(
+  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction)
+{
+  // Encode the Translucent Surface Material Interaction into the polymorphic GBuffer Memory representation
+
+  GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfaceMaterialInteraction;
+
+  gBufferMemoryPolymorphicSurfaceMaterialInteraction.worldShadingNormal = translucentSurfaceMaterialInteraction.shadingNormal;
+  // Todo: Fill out with roughness value when the translucent material adds roughness. For now though, use fallback.
+  gBufferMemoryPolymorphicSurfaceMaterialInteraction.perceptualRoughness = surfaceMaterialInteractionSerializationDataFallbackPerceptualRoughness;
+  // Note: No albedo available, fallback to default.
+  gBufferMemoryPolymorphicSurfaceMaterialInteraction.albedo = surfaceMaterialInteractionSerializationDataFallbackAlbedo;
+  // Note: Not completely equatable as the translucent material only uses a single component base reflectivity, but we include it just
+  // for completeness (the actual deserialization will not read from this value, but it could if it wanted to).
+  gBufferMemoryPolymorphicSurfaceMaterialInteraction.baseReflectivity = f16vec3(translucentSurfaceMaterialInteraction.baseReflectivity);
+
+  const bool useDiffuseLayer = (translucentSurfaceMaterialInteraction.flags & TRANSLUCENT_SURFACE_MATERIAL_FLAG_USE_DIFFUSE_LAYER);
+  // diffuse albedo and transmittance textures are mutually exclusive; if the diffuse layer is enabled, then
+  // trasmittanceColor is always read from the material buffer directly, and we only encode one of them here
+  const f16vec3 encodedColor = useDiffuseLayer ?
+      translucentSurfaceMaterialInteraction.diffuseColor :
+      translucentSurfaceMaterialInteraction.transmittanceColor;
+
+  // we're out of bits, so drop the LSB here to make room
+  const uint8_t diffuseOpacityU8 = f16ToUnorm7(translucentSurfaceMaterialInteraction.diffuseOpacity);
+  uint16_t encodedThicknessOrMeasurmentDistance = float16BitsToUint16(translucentSurfaceMaterialInteraction.thicknessOrMeasurementDistance);
+
+  if (useDiffuseLayer)
+  {
+    // Note: Drop the lowest 2 bits of the measurement distance when a diffuse layer is requested to fit 2 remaining
+    // bits of the diffuse opacity. This reduces precision slightly of the thickness/measurement distance but it should
+    // be fine as long as we don't expect to encode very tiny numbers (which can be prevented on the CPU side).
+    encodedThicknessOrMeasurmentDistance =
+      (encodedThicknessOrMeasurmentDistance & 0xFFFC) |
+      ((diffuseOpacityU8 & 0x3) >> 14);
+  }
+
+  gBufferMemoryPolymorphicSurfaceMaterialInteraction.data0 =
+    (uint32_t(translucentSurfaceMaterialInteraction.sourceSurfaceMaterialIndex) << 0) |
+    // stash red transmittance/diffuse color above sourceSurfaceMaterialIndex
+    (uint32_t(f16ToUnorm8(encodedColor.r)) << 16) |
+    // bits 31-30: material type
+    (uint32_t(surfaceMaterialTypeTranslucent) << 30) |
+    // bit 29: TRANSLUCENT_SURFACE_MATERIAL_FLAG_USE_DIFFUSE_LAYER
+    (useDiffuseLayer ? 0 : (1 << 29)) |
+    // bits 28-24: high 5 bits of 7-bit alpha
+    (uint32_t(diffuseOpacityU8 & 0x7C) << (24 - 3));
+
+  gBufferMemoryPolymorphicSurfaceMaterialInteraction.data1 =
+    // bits 0-15
+    uint32_t(encodedThicknessOrMeasurmentDistance) |
+    // bits 16-23
+    (uint32_t(f16ToUnorm8(encodedColor.b)) << 16) |
+    // bits 24-31
+    (uint32_t(f16ToUnorm8(encodedColor.g)) << 24);
+
+  return gBufferMemoryPolymorphicSurfaceMaterialInteraction;
+}
+
+GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfaceMaterialInteractionCreateInternal(
+  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction)
+{
+  // Encode the Ray Portal Surface Material Interaction into the polymorphic GBuffer Memory representation
+
+  GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfaceMaterialInteraction;
+
+  // Note: No shading normal, available, fallback to default. This would be a bit suboptimal for a consistent primary surface for denoising,
+  // but ray portals are intended to be resolved in the primary pass as they do not represent a typical surface but rather a real set of virtual
+  // geometry behind them.
+  gBufferMemoryPolymorphicSurfaceMaterialInteraction.worldShadingNormal = surfaceMaterialInteractionSerializationDataFallbackShadingNormal;
+  // Note: No roughness available, fallback to default.
+  gBufferMemoryPolymorphicSurfaceMaterialInteraction.perceptualRoughness = surfaceMaterialInteractionSerializationDataFallbackPerceptualRoughness;
+  // Note: No albedo available, fallback to default.
+  gBufferMemoryPolymorphicSurfaceMaterialInteraction.albedo = surfaceMaterialInteractionSerializationDataFallbackAlbedo;
+  // Note: No base reflectivity available, fallback to default.
+  gBufferMemoryPolymorphicSurfaceMaterialInteraction.baseReflectivity = surfaceMaterialInteractionSerializationDataFallbackBaseReflectivity;
+
+  gBufferMemoryPolymorphicSurfaceMaterialInteraction.data0 =
+    (uint32_t(rayPortalSurfaceMaterialInteraction.rayPortalIndex) << 0) |
+    (uint32_t(rayPortalSurfaceMaterialInteraction.isInsidePortal) << 8) |
+    (uint32_t(surfaceMaterialTypeRayPortal) << 30);
+  gBufferMemoryPolymorphicSurfaceMaterialInteraction.data1 =
+    (uint32_t(f16ToUnorm8(rayPortalSurfaceMaterialInteraction.mask.r)) << 0) |
+    (uint32_t(f16ToUnorm8(rayPortalSurfaceMaterialInteraction.mask.g)) << 8) |
+    (uint32_t(f16ToUnorm8(rayPortalSurfaceMaterialInteraction.mask.b)) << 16) |
+    (uint32_t(f16ToUnorm8(rayPortalSurfaceMaterialInteraction.mask.a)) << 24);
+
+  return gBufferMemoryPolymorphicSurfaceMaterialInteraction;
+}
+
+// Note: Forward declaration to make up for include order differences.
+uint8_t polymorphicSurfaceMaterialInteractionGetTypeHelper(PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction);
+
+GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfaceMaterialInteractionCreate(
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction)
+{
+  const uint8_t polymorphicType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
+
+  // Construct the respective Surface Material Interaction type to create the GBuffer Memory Polymorphic Surface Material Interaction
+
+  switch (uint(polymorphicType))
+  {
+  default:
+  case uint(surfaceMaterialTypeOpaque):
+    const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
+      opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return gBufferMemoryPolymorphicSurfaceMaterialInteractionCreateInternal(opaqueSurfaceMaterialInteraction);
+  case uint(surfaceMaterialTypeTranslucent):
+    const TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction =
+      translucentSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return gBufferMemoryPolymorphicSurfaceMaterialInteractionCreateInternal(translucentSurfaceMaterialInteraction);
+  case uint(surfaceMaterialTypeRayPortal):
+    const RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction =
+      rayPortalSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return gBufferMemoryPolymorphicSurfaceMaterialInteractionCreateInternal(rayPortalSurfaceMaterialInteraction);
+  }
+}

@@ -20,7 +20,11 @@ namespace dxvk {
     constexpr static uint32_t     MaxBufferCount = 2;
   public:
 
-    DxvkStagingDataAlloc(const Rc<DxvkDevice>& device);
+    DxvkStagingDataAlloc(const Rc<DxvkDevice>& device,
+                         const VkMemoryPropertyFlagBits memFlags = (VkMemoryPropertyFlagBits)(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT),
+                         const VkBufferUsageFlags usageFlags = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                         const VkPipelineStageFlags stages = VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         const VkAccessFlags access = VK_ACCESS_TRANSFER_READ_BIT);
 
     ~DxvkStagingDataAlloc();
 
@@ -43,6 +47,11 @@ namespace dxvk {
 
   private:
 
+    const VkMemoryPropertyFlagBits m_memoryFlags;
+    const VkBufferUsageFlags m_usage;
+    const VkPipelineStageFlags m_stages;
+    const VkAccessFlags m_access;
+
     Rc<DxvkDevice>  m_device;
     Rc<DxvkBuffer>  m_buffer;
     VkDeviceSize    m_offset = 0;
@@ -50,7 +59,6 @@ namespace dxvk {
     std::queue<Rc<DxvkBuffer>> m_buffers;
 
     Rc<DxvkBuffer> createBuffer(VkDeviceSize size);
-
   };
   
 }

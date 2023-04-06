@@ -1,3 +1,24 @@
+/*
+* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
 #pragma once
 
 #include "dxvk_barrier.h"
@@ -5,12 +26,13 @@
 #include "dxvk_cmdlist.h"
 #include "dxvk_context_state.h"
 #include "dxvk_data.h"
-#include "dxvk_objects.h"
-#include "dxvk_resource.h"
-#include "dxvk_util.h"
+#include <optional>
 
 namespace dxvk {
-  
+
+  class DxvkObjects;
+  struct TextureRef;
+
   /**
    * \brief DXVk context
    * 
@@ -33,9 +55,9 @@ namespace dxvk {
      * active command list.
      * \param [in] cmdList Target command list
      */
-    void beginRecording(
+    virtual void beginRecording(
       const Rc<DxvkCommandList>& cmdList);
-    
+
     /**
      * \brief Ends command buffer recording
      * 
@@ -55,7 +77,7 @@ namespace dxvk {
      * Transparently submits the current command
      * buffer and allocates a new one.
      */
-    void flushCommandList();
+    virtual void flushCommandList();
     
     /**
      * \brief Begins generating query data
@@ -142,7 +164,26 @@ namespace dxvk {
     void bindResourceSampler(
             uint32_t              slot,
       const Rc<DxvkSampler>&      sampler);
-    
+
+    /**
+     * \brief Binds acceleration structure
+     *
+     * Can be used for raytracing
+     * \param [in] slot Resource binding slot
+     * \param [in] accelStructure Acceleration structure
+     */
+    void bindAccelerationStructure(
+      uint32_t              slot,
+      const Rc<DxvkAccelStructure> accelStructure);
+
+    /**
+     * \brief Binds raytracing pipeline shaders 
+     *
+     * \param [in] shaders Raytracing pipeline shaders to bind
+     */
+    void bindRaytracingPipelineShaders(
+      const DxvkRaytracingPipelineShaders& shaders);
+
     /**
      * \brief Binds a shader to a given state
      * 
@@ -223,7 +264,7 @@ namespace dxvk {
             VkDeviceSize          offset,
             VkDeviceSize          length,
             uint32_t              value);
-    
+	
     /**
      * \brief Clears a buffer view
      * 
@@ -281,7 +322,7 @@ namespace dxvk {
      * \param [in] clearAspects Image aspects to clear
      * \param [in] clearValue The clear value
      */
-    void clearRenderTarget(
+    virtual void clearRenderTarget(
       const Rc<DxvkImageView>&    imageView,
             VkImageAspectFlags    clearAspects,
             VkClearValue          clearValue);
@@ -298,7 +339,7 @@ namespace dxvk {
      * \param [in] aspect Aspect mask to clear
      * \param [in] value The clear value
      */
-    void clearImageView(
+    virtual void clearImageView(
       const Rc<DxvkImageView>&    imageView,
             VkOffset3D            offset,
             VkExtent3D            extent,
@@ -559,7 +600,7 @@ namespace dxvk {
      * \param [in] firstVertex First vertex in vertex buffer
      * \param [in] firstInstance First instance ID
      */
-    void draw(
+    virtual void draw(
             uint32_t          vertexCount,
             uint32_t          instanceCount,
             uint32_t          firstVertex,
@@ -574,7 +615,7 @@ namespace dxvk {
      * \param [in] count Number of draws
      * \param [in] stride Stride between dispatch calls
      */
-    void drawIndirect(
+    virtual void drawIndirect(
             VkDeviceSize      offset,
             uint32_t          count,
             uint32_t          stride);
@@ -589,7 +630,7 @@ namespace dxvk {
      * \param [in] maxCount Maximum number of draws
      * \param [in] stride Stride between dispatch calls
      */
-    void drawIndirectCount(
+    virtual void drawIndirectCount(
             VkDeviceSize      offset,
             VkDeviceSize      countOffset,
             uint32_t          maxCount,
@@ -604,7 +645,7 @@ namespace dxvk {
      * \param [in] vertexOffset Vertex ID that corresponds to index 0
      * \param [in] firstInstance First instance ID
      */
-    void drawIndexed(
+    virtual void drawIndexed(
             uint32_t indexCount,
             uint32_t instanceCount,
             uint32_t firstIndex,
@@ -620,7 +661,7 @@ namespace dxvk {
      * \param [in] count Number of draws
      * \param [in] stride Stride between dispatch calls
      */
-    void drawIndexedIndirect(
+    virtual void drawIndexedIndirect(
             VkDeviceSize      offset,
             uint32_t          count,
             uint32_t          stride);
@@ -635,7 +676,7 @@ namespace dxvk {
      * \param [in] maxCount Maximum number of draws
      * \param [in] stride Stride between dispatch calls
      */
-    void drawIndexedIndirectCount(
+    virtual void drawIndexedIndirectCount(
             VkDeviceSize      offset,
             VkDeviceSize      countOffset,
             uint32_t          maxCount,
@@ -648,7 +689,7 @@ namespace dxvk {
      * \param [in] counterDivisor Vertex stride
      * \param [in] counterBias Counter bias
      */
-    void drawIndirectXfb(
+    virtual void drawIndirectXfb(
       const DxvkBufferSlice&  counterBuffer,
             uint32_t          counterDivisor,
             uint32_t          counterBias);
@@ -716,7 +757,15 @@ namespace dxvk {
             uint32_t                  offset,
             uint32_t                  size,
       const void*                     data);
-    
+
+    /**
+     * \brief Activates a particular push constant bank for writes and shader usage
+     *
+     * \param [in] constantBank Index of the push constant bank to update
+     */
+    void setPushConstantBank(
+            DxvkPushConstantBank constantBank);
+
     /**
      * \brief Resolves a multisampled image resource
      * 
@@ -752,6 +801,18 @@ namespace dxvk {
       const VkImageResolve&           region,
             VkResolveModeFlagBitsKHR  depthMode,
             VkResolveModeFlagBitsKHR  stencilMode);
+
+    /**
+     * \brief Starts raytracing jobs
+     *
+     * \param [in] x Number of rays in width direction
+     * \param [in] y Number of rays in height direction
+     * \param [in] z Number of rays in depth direction
+     */
+    void traceRays(
+            uint32_t                  width,
+            uint32_t                  height,
+            uint32_t                  depth);
 
     /**
      * \brief Transforms image subresource layouts
@@ -834,7 +895,8 @@ namespace dxvk {
      */
     void uploadBuffer(
       const Rc<DxvkBuffer>&           buffer,
-      const void*                     data);
+      const void* data,
+      uint32_t length = 0);
     
     /**
      * \brief Uses transfer queue to initialize image
@@ -1041,6 +1103,64 @@ namespace dxvk {
      * given context are rare.
      */
     void trimStagingBuffers();
+
+	void vkCmdBuildAccelerationStructuresKHR(
+		uint32_t                                    infoCount,
+		const VkAccelerationStructureBuildGeometryInfoKHR* pInfos,
+		const VkAccelerationStructureBuildRangeInfoKHR* const* ppBuildRangeInfos)
+	{
+		m_cmd->vkCmdBuildAccelerationStructuresKHR(infoCount, pInfos, ppBuildRangeInfos);
+	}
+
+	void vkCmdBuildAccelerationStructuresIndirectKHR(
+		uint32_t                                    infoCount,
+		const VkAccelerationStructureBuildGeometryInfoKHR* pInfos,
+		const VkDeviceAddress* pIndirectDeviceAddresses,
+		const uint32_t* pIndirectStrides,
+		const uint32_t* const* ppMaxPrimitiveCounts)
+	{
+		m_cmd->vkCmdBuildAccelerationStructuresIndirectKHR( infoCount, pInfos, pIndirectDeviceAddresses, pIndirectStrides, ppMaxPrimitiveCounts);
+	}
+
+	void vkCmdCopyAccelerationStructureKHR(
+		const VkCopyAccelerationStructureInfoKHR* pInfo)
+	{
+		m_cmd->vkCmdCopyAccelerationStructureKHR(pInfo);
+	}
+
+	void vkCmdCopyAccelerationStructureToMemoryKHR(
+		const VkCopyAccelerationStructureToMemoryInfoKHR* pInfo)
+	{
+		m_cmd->vkCmdCopyAccelerationStructureToMemoryKHR(pInfo);
+	}
+
+	void vkCmdCopyMemoryToAccelerationStructureKHR(
+		const VkCopyMemoryToAccelerationStructureInfoKHR* pInfo)
+	{
+		m_cmd->vkCmdCopyMemoryToAccelerationStructureKHR(pInfo);
+	}
+
+	void vkCmdWriteAccelerationStructuresPropertiesKHR(
+		uint32_t                                    accelerationStructureCount,
+		const VkAccelerationStructureKHR* pAccelerationStructures,
+		VkQueryType                                 queryType,
+		VkQueryPool                                 queryPool,
+		uint32_t                                    firstQuery)
+	{
+		m_cmd->vkCmdWriteAccelerationStructuresPropertiesKHR(accelerationStructureCount, pAccelerationStructures, queryType, queryPool, firstQuery);
+	}
+
+	void emitMemoryBarrier(
+		VkDependencyFlags         flags,
+		VkPipelineStageFlags      srcStages,
+		VkAccessFlags             srcAccess,
+		VkPipelineStageFlags      dstStages,
+		VkAccessFlags             dstAccess);
+
+    void commitComputeInitBarriers();
+    void commitComputePostBarriers();
+    void commitRaytracingInitBarriers();
+    void commitRaytracingPostBarriers();
    
     /**
      * \brief Begins a debug label region
@@ -1050,6 +1170,17 @@ namespace dxvk {
      * tools to mark different workloads within a frame.
      */
     void beginDebugLabel(VkDebugUtilsLabelEXT *label);
+    
+    // NV-DXVK start: Integrate Aftermath
+    /**
+     * \brief Inserts a device diagnostic checkpoint
+     * \param [in] data The data associated with the checkpoint
+     * 
+     * Inserts a device diagnostic checkpoint in the command list if 
+     * NV_device_diagnostic_checkpoints is enabled
+     */
+    void deviceDiagnosticCheckpoint(const void* data);
+    // NV-DXVK end
 
     /**
      * \brief Ends a debug label region
@@ -1068,8 +1199,18 @@ namespace dxvk {
      */
     void insertDebugLabel(VkDebugUtilsLabelEXT *label);
 
-  private:
-    
+    // NV-DXVK start: use EXT_debug_utils
+    VkDescriptorSet allocateDescriptorSet(VkDescriptorSetLayout layout, const char *name = nullptr);
+    // NV-DXVK end
+
+    DxvkFramebufferInfo getFramebufferInfo() const { return m_state.om.framebufferInfo; }
+    VkCommandBuffer getCmdBuffer(DxvkCmdBuffer cmdBuffer) const { return m_cmd->getCmdBuffer(cmdBuffer); }
+    Rc<DxvkCommandList> getCommandList() const { return m_cmd; }
+
+    DxvkObjects* getCommonObjects() const { return m_common; }
+    const Rc<DxvkDevice>& getDevice() const { return m_device; }
+
+  protected:  
     Rc<DxvkDevice>          m_device;
     DxvkObjects*            m_common;
     
@@ -1094,20 +1235,38 @@ namespace dxvk {
     
     DxvkRenderTargetLayouts m_rtLayouts = { };
 
+    DxvkPushConstantBank    m_pushConstantBank = DxvkPushConstantBank::D3D9;
+
     VkPipeline m_gpActivePipeline = VK_NULL_HANDLE;
     VkPipeline m_cpActivePipeline = VK_NULL_HANDLE;
+    VkPipeline m_rpActivePipeline = VK_NULL_HANDLE;
 
     VkDescriptorSet m_gpSet = VK_NULL_HANDLE;
     VkDescriptorSet m_cpSet = VK_NULL_HANDLE;
+    VkDescriptorSet m_rpSet = VK_NULL_HANDLE;
 
     DxvkBindingSet<MaxNumVertexBindings + 1>  m_vbTracked;
     DxvkBindingSet<MaxNumResourceSlots>       m_rcTracked;
 
     std::vector<DxvkDeferredClear> m_deferredClears;
-
+    
     std::array<DxvkShaderResourceSlot, MaxNumResourceSlots>  m_rc;
     std::array<DxvkGraphicsPipeline*, 4096> m_gpLookupCache = { };
     std::array<DxvkComputePipeline*,   256> m_cpLookupCache = { };
+    std::unordered_map<size_t /*Hash*/, DxvkRaytracingPipeline*> m_rpLookupCache;
+
+    // NV-DXVK start: early submit heuristics for memcpy work
+
+    // track the amount of memory copies being submitted to the current command list
+    // we apply a heuristic to determine whether to submit early based on this value
+    uint32_t m_bytesCopiedInCurrentCmdlist = 0;
+
+    // records a memory copy being written to the current command list
+    // may flush if heuristic decides it's time
+    void recordGPUMemCopy(uint32_t bytes);
+
+    // NV-DXVK end
+
     std::array<Rc<DxvkFramebuffer>,    512> m_framebufferCache = { };
 
     void blitImageFb(
@@ -1151,7 +1310,9 @@ namespace dxvk {
             VkExtent3D            extent,
             VkImageAspectFlags    aspect,
             VkClearValue          value);
-    
+
+    virtual void clearAttachments(VkClearAttachment clearInfo, VkClearRect clearRect);
+
     void clearImageViewCs(
       const Rc<DxvkImageView>&    imageView,
             VkOffset3D            offset,
@@ -1243,15 +1404,23 @@ namespace dxvk {
     void startTransformFeedback();
     void pauseTransformFeedback();
     
+    bool commitInitBarriers(const DxvkDescriptorSlot binding, VkPipelineStageFlags stages);
+    void commitPostBarriers(const DxvkDescriptorSlot binding, VkPipelineStageFlags stages);
+
     void unbindComputePipeline();
     bool updateComputePipeline();
     bool updateComputePipelineState();
-    
+
+    void unbindRaytracingPipeline();
+    bool updateRaytracingPipeline();
+    bool updateRaytracingPipelineState();
+
     void unbindGraphicsPipeline();
     bool updateGraphicsPipeline();
     bool updateGraphicsPipelineState();
     
-    void updateComputeShaderResources();
+    virtual void updateComputeShaderResources();
+    virtual void updateRaytracingShaderResources();
     void updateGraphicsShaderResources();
 
     template<VkPipelineBindPoint BindPoint>
@@ -1308,12 +1477,10 @@ namespace dxvk {
     void updatePushConstants();
     
     bool commitComputeState();
-    
+    bool commitRaytracingState();
     template<bool Indexed, bool Indirect>
     bool commitGraphicsState();
-    
-    void commitComputeInitBarriers();
-    void commitComputePostBarriers();
+
     
     template<bool Indexed, bool Indirect, bool DoEmit>
     void commitGraphicsBarriers();
@@ -1330,12 +1497,7 @@ namespace dxvk {
             VkPipelineStageFlags      stages,
             VkAccessFlags             access);
 
-    void emitMemoryBarrier(
-            VkDependencyFlags         flags,
-            VkPipelineStageFlags      srcStages,
-            VkAccessFlags             srcAccess,
-            VkPipelineStageFlags      dstStages,
-            VkAccessFlags             dstAccess);
+    DxvkAccessFlags checkFramebufferBarrier();
     
     void initializeImage(
       const Rc<DxvkImage>&            image,
@@ -1344,9 +1506,6 @@ namespace dxvk {
             VkPipelineStageFlags      dstStages,
             VkAccessFlags             dstAccess);
 
-    VkDescriptorSet allocateDescriptorSet(
-            VkDescriptorSetLayout     layout);
-
     void trackDrawBuffer();
 
     DxvkGraphicsPipeline* lookupGraphicsPipeline(
@@ -1354,13 +1513,15 @@ namespace dxvk {
 
     DxvkComputePipeline* lookupComputePipeline(
       const DxvkComputePipelineShaders&   shaders);
+
+    DxvkRaytracingPipeline* lookupRaytracingPipeline(
+      const DxvkRaytracingPipelineShaders& shaders);
     
     Rc<DxvkFramebuffer> lookupFramebuffer(
       const DxvkFramebufferInfo&      framebufferInfo);
 
     Rc<DxvkBuffer> createZeroBuffer(
             VkDeviceSize              size);
-
   };
   
 }

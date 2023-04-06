@@ -10,6 +10,7 @@
 #include "dxso_util.h"
 
 #include "../dxvk/dxvk_spec_const.h"
+#include "../dxvk/rtx_render/rtx_options.h"
 
 #include <cfloat>
 
@@ -478,6 +479,51 @@ namespace dxvk {
     m_module.setDebugName(m_oArray, "o");
   }
 
+  void DxsoCompiler::emitVertexCaptureInit() {
+    // Bind vertex out buffer
+    m_module.enableCapability(spv::CapabilityStorageImageWriteWithoutFormat);
+    m_module.enableCapability(spv::CapabilityImageBuffer);
+
+    const uint32_t imageTypeId = m_module.defImageType(m_module.defFloatType(32), spv::DimBuffer, 0, 0, 0, 2, spv::ImageFormatRgba32f);
+
+    const uint32_t resourcePtrType = m_module.defPointerType(imageTypeId, spv::StorageClassUniformConstant);
+
+    const uint32_t varId = m_module.newVar(resourcePtrType, spv::StorageClassUniformConstant);
+
+    m_module.setDebugName(varId, "vertexStreamOutBuffer");
+
+    const uint32_t bindingId = getVertexCaptureBufferSlot();
+
+    m_module.decorateDescriptorSet(varId, 0);
+    m_module.decorateBinding(varId, bindingId);
+    m_module.decorate(varId, spv::DecorationNonReadable);
+    
+    const uint32_t specConstId = m_module.specConstBool(true);
+    m_module.decorateSpecId(specConstId, bindingId);
+    m_module.setDebugName(specConstId, str::format("vertexStreamOut_bound").c_str());
+
+    DxsoUav uav;
+    uav.varId = varId;
+    uav.ctrId = 0;
+    uav.specId = specConstId;
+    uav.sampledType = DxsoScalarType::Float32;
+    uav.sampledTypeId = m_module.defFloatType(32);
+    uav.imageTypeId = imageTypeId;
+    uav.structStride = 0;
+    uav.structAlign = 0;
+
+    m_vs.vertexOutBuf = uav;
+
+    // Store descriptor info for the shader interface
+    DxvkResourceSlot resource;
+    resource.slot = bindingId;
+    resource.view = VK_IMAGE_VIEW_TYPE_MAX_ENUM;
+    resource.access = VK_ACCESS_SHADER_READ_BIT;
+    resource.type = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
+    resource.access |= VK_ACCESS_SHADER_WRITE_BIT;
+
+    m_resourceSlots.push_back(resource);
+  }
 
   void DxsoCompiler::emitVsInit() {
     m_module.enableCapability(spv::CapabilityClipDistance);
@@ -485,6 +531,10 @@ namespace dxvk {
     // Only VS needs this, because PS has
     // non-indexable specialized output regs
     this->emitDclOutputArray();
+
+    // Sets up an output buffer to capture vertex data post-transform
+    if(RtxOptions::Get()->isVertexCaptureEnabled()) 
+      this->emitVertexCaptureInit();
 
     // Main function of the vertex shader
     m_vs.functionId = m_module.allocateId();
@@ -3421,6 +3471,60 @@ void DxsoCompiler::emitControlFlowGenericLoop(
   }
 
 
+  void DxsoCompiler::emitVertexCaptureOp() {
+    // Write oPos to a UAV at vertex ID, vertex capture
+    DxsoRegisterInfo vertexIdReg;
+    vertexIdReg.type = { DxsoScalarType::Uint32, 1, 0 };
+    vertexIdReg.sclass = spv::StorageClassInput;
+
+    auto LoadConstant = [&](const uint32_t type, const uint32_t idx) {
+      const uint32_t offset = m_module.constu32(idx);
+      const uint32_t typePtr = m_module.defPointerType(type, spv::StorageClassPushConstant);
+
+      return m_module.opLoad(type, m_module.opAccessChain(typePtr, m_rsBlock, 1, &offset));
+    };
+
+    const uint32_t vertexId = emitNewBuiltinVariable(vertexIdReg, spv::BuiltInVertexIndex, "uVertexId", 0);
+
+    const uint32_t uintType = getScalarTypeId(DxsoScalarType::Uint32);
+
+    const uint32_t uVertexIdVal = m_module.opLoad(uintType, vertexId);
+    const uint32_t baseVertexRefId = LoadConstant(uintType, (uint32_t)(D3D9RenderStateItem::BaseVertex));
+
+    const uint32_t offsetVertexIdVal = m_module.opISub(getScalarTypeId(DxsoScalarType::Uint32), uVertexIdVal, baseVertexRefId);
+
+    uint32_t writeAddress = m_module.opIMul(getScalarTypeId(DxsoScalarType::Uint32), offsetVertexIdVal, m_module.constu32(2));
+
+    const uint32_t imageId = m_module.opLoad(m_vs.vertexOutBuf.imageTypeId, m_vs.vertexOutBuf.varId);
+
+
+    // Get the post transform oPos and reverse to world space
+    const uint32_t vec4typeId = getVectorTypeId({ DxsoScalarType::Float32, 4 });
+    const uint32_t mat4type = m_module.defMatrixType(vec4typeId, 4);
+    const uint32_t projToWorldRefId = LoadConstant(mat4type, (uint32_t)(D3D9RenderStateItem::ProjectionToWorld));
+
+    // Get gl_Position
+    const uint32_t projPosId = m_module.opLoad(vec4typeId, m_vs.oPos.id);
+
+    // Perform clip space to world space
+    const uint32_t texelId = m_module.opVectorTimesMatrix(vec4typeId, projPosId, projToWorldRefId);
+
+    // Write the data to buffer
+    SpirvImageOperands defaultOperands;
+    m_module.opImageWrite(imageId, writeAddress, texelId, defaultOperands);
+    
+    if (m_vs.oTex0.id > 0) {
+      // Get out_texcoord0
+      const uint32_t texcoord0 = m_module.opLoad(vec4typeId, m_vs.oTex0.id);
+
+      // Get the next slot
+      writeAddress = m_module.opIAdd(getScalarTypeId(DxsoScalarType::Uint32), writeAddress, m_module.constu32(1));
+
+      // Write texcoord
+      m_module.opImageWrite(imageId, writeAddress, texcoord0, defaultOperands);
+    }
+  }
+
   void DxsoCompiler::emitLinkerOutputSetup() {
     bool outputtedColor0 = false;
     bool outputtedColor1 = false;
@@ -3461,6 +3565,10 @@ void DxsoCompiler::emitControlFlowGenericLoop(
         std::string name =
           str::format("out_", elem.semantic.usage, elem.semantic.usageIndex);
         m_module.setDebugName(outputPtr.id, name.c_str());
+
+        if (elem.semantic.usage == DxsoUsage::Texcoord && elem.semantic.usageIndex == 0) {
+          m_vs.oTex0 = outputPtr;
+        }
       }
       else {
         const char* name = "unknown_builtin";
@@ -3527,7 +3635,6 @@ void DxsoCompiler::emitControlFlowGenericLoop(
             indices[count++] = i + 4;
         }
 
-
         workingReg.id = m_module.opVectorShuffle(getVectorTypeId(workingReg.type),
           workingReg.id, indexVal.id, 4, indices.data());
       }
@@ -3543,6 +3650,9 @@ void DxsoCompiler::emitControlFlowGenericLoop(
 
       m_module.opStore(outputPtr.id, workingReg.id);
     }
+
+    if (RtxOptions::Get()->isVertexCaptureEnabled())
+      this->emitVertexCaptureOp();
 
     auto OutputDefault = [&](DxsoSemantic semantic) {
       DxsoRegisterInfo info;
@@ -3696,10 +3806,10 @@ void DxsoCompiler::emitControlFlowGenericLoop(
       count = 5;
     }
     else {
-      m_interfaceSlots.pushConstOffset = offsetof(D3D9RenderStateInfo, pointSize);
+      m_interfaceSlots.pushConstOffset = 0;// offsetof(D3D9RenderStateInfo, pointSize);
       // Point scale never triggers on programmable
-      m_interfaceSlots.pushConstSize   = sizeof(float) * 3;
-      count = 8;
+      m_interfaceSlots.pushConstSize = sizeof(D3D9RenderStateInfo);// -m_interfaceSlots.pushConstOffset;
+      count = 13;
     }
 
     m_rsBlock = SetupRenderStateBlock(m_module, count);

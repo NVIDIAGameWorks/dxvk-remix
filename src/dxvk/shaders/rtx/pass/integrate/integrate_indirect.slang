@@ -1,0 +1,67 @@
+/*
+* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+
+//!variant integrate_indirect_raygen.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+
+//!variant integrate_indirect_raygen_ser.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       RT_SHADER_EXECUTION_REORDERING
+
+//!variant integrate_indirect_rayquery.comp
+
+//!variant integrate_indirect_rayquery_raygen.rgen
+//!>       RAY_PIPELINE
+
+//!end-variants
+
+#define INTEGRATE_INDIRECT
+#define RAB_HAS_PREVIOUS_GBUFFER 1
+// Note: Opacity lighting approximation used in the indirect integration pass due to particle lighting being somewhat
+// important in reflections off shiny surfaces (as without this it can make areas with many particles look weird in reflections).
+#define RESOLVE_OPACITY_LIGHTING_APPROXIMATION 1
+
+#include "rtx/pass/common_binding_indices.h"
+#include "rtx/pass/common_bindings.slangh"
+#include "rtx/pass/integrate/integrate_indirect_binding_indices.h"
+#include "rtx/pass/integrate/integrate_indirect_bindings.slangh"
+// Note: Needed for declaration of integration ray payload structure
+#include "rtx/algorithm/integrator.slangh"
+
+#include "rtx/pass/integrate/integrate_indirect.slangh"
+
+#ifdef RAY_PIPELINE
+[shader("raygeneration")]
+void main()
+{
+  integrate_indirect_pass(DispatchRaysIndex().xy);
+}
+#else
+[shader("compute")]
+[numthreads(16, 8, 1)]
+void main(uint2 ipos : SV_DispatchThreadID)
+{ 
+  integrate_indirect_pass(ipos);
+}
+#endif
