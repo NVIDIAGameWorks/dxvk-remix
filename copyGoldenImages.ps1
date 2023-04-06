@@ -20,7 +20,7 @@ $destDir = "tests/rtx/dxvk_rt_testing"
 Get-ChildItem $sourceDir -Recurse -Include "*_rtxImagePostTonemapping.png", "*_rtxImageDebugView.png", "*_rtxImageDxvkView.png" | ForEach-Object {
     $sourcePath = $_.FullName
     $relPath = $_.FullName.Substring($sourceDir.Length) -Replace "\\results\\", "\"
-	$relPath = $relPath.replace("apics", "goldens")
+    $relPath = $relPath.replace("apics", "goldens")
     $destPath = Join-Path $destDir $relPath
     $destFolder = Split-Path $destPath -Parent
   
