@@ -1,15 +1,15 @@
 function Usage {
-  write-host "Usage:"
-  write-host "  copyGoldenImages.ps1 <path_to_source_tests_folder>"
-  write-host "  <path_to_source_tests_folder> - path must end with the word 'tests', i.e. e:\data\tests'"
+    write-host "Usage:"
+    write-host "  copyGoldenImages.ps1 <path_to_source_tests_folder>"
+    write-host "  <path_to_source_tests_folder> - path must end with the word 'tests', i.e. e:\data\tests'"
 }
 
 $sourceDir=$args[0]
 
 if ($sourceDir.substring($sourceDir.length - 5, 5) -ne "tests")
 {
-  Usage
-  exit
+    Usage
+    exit
 }
 
 $sourceDir = [IO.Path]::Combine($sourceDir, "rtx\\dxvk_rt_testing")
@@ -25,7 +25,7 @@ Get-ChildItem $sourceDir -Recurse -Include "*_rtxImagePostTonemapping.png", "*_r
     $destFolder = Split-Path $destPath -Parent
   
     if (!(Test-Path $destFolder)) {
-		Write-Host "$destFolder dir didn't exist, creating"
+        Write-Host "$destFolder dir didn't exist, creating"
         New-Item -ItemType Directory -Path $destFolder | Out-Null
     }
 
