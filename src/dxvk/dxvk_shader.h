@@ -75,6 +75,7 @@ namespace dxvk {
     int32_t rasterizedStream;
     /// Xfb vertex strides
     uint32_t xfbStrides[MaxNumXfbBuffers];
+    std::vector<VkDescriptorSetLayout> extraLayouts;
   };
 
 
@@ -173,8 +174,16 @@ namespace dxvk {
      * have to be mapped to actual binding numbers.
      */
     void defineResourceSlots(
-            DxvkDescriptorSlotMapping& mapping) const;
-    
+      DxvkDescriptorSlotMapping& mapping,
+      VkShaderStageFlagBits stage = VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM) const;
+
+    /**
+     * \brief Tells if the shader has any resource bindings
+     */
+    bool hasResourceSlots() const {
+      return !m_slots.empty();
+    }
+
     /**
      * \brief Creates a shader module
      * 
@@ -276,7 +285,13 @@ namespace dxvk {
     static size_t getHash(const Rc<DxvkShader>& shader) {
       return shader != nullptr ? shader->getHash() : 0;
     }
-    
+
+    /**
+     * \brief Generates a shader key
+     *
+     */
+    void generateShaderKey();
+
   private:
     
     VkShaderStageFlagBits m_stage;

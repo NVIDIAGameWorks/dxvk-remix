@@ -1,3 +1,24 @@
+/*
+* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
 #pragma once
 
 #include "d3d9_device_child.h"
@@ -5,6 +26,9 @@
 #include "d3d9_format.h"
 
 #include "../dxvk/hud/dxvk_hud.h"
+#include "../dxvk/imgui/dxvk_imgui.h"
+
+#include "../dxvk/dxvk_swapchain_blitter.h"
 
 #include "../dxvk/dxvk_swapchain_blitter.h"
 
@@ -56,9 +80,12 @@ namespace dxvk {
 
     HRESULT STDMETHODCALLTYPE GetDisplayModeEx(D3DDISPLAYMODEEX* pMode, D3DDISPLAYROTATION* pRotation);
 
+    // NV-DXVK start
     HRESULT Reset(
             D3DPRESENT_PARAMETERS* pPresentParams,
-            D3DDISPLAYMODEEX*      pFullscreenDisplayMode);
+            D3DDISPLAYMODEEX* pFullscreenDisplayMode,
+            bool forceWindowReset = false);
+    // NV-DXVK end
 
     HRESULT WaitForVBlank();
 
@@ -75,6 +102,20 @@ namespace dxvk {
     D3D9Surface* GetBackBuffer(UINT iBackBuffer);
 
     const D3DPRESENT_PARAMETERS* GetPresentParams() const { return &m_presentParams; }
+
+    float GetWidthScale() const { return m_widthScale; }
+    float GetHeightScale() const { return m_heightScale; }
+
+    Rc<ImGUI> getGUI() const { return m_imgui; }
+
+    // NV-DXVK start: App Controlled FSE
+    bool AcquireFullscreenExclusive() const {
+      return m_presenter->acquireFullscreenExclusive() == VK_SUCCESS;
+    }
+    bool ReleaseFullscreenExclusive() const {
+      return m_presenter->releaseFullscreenExclusive() == VK_SUCCESS;
+    }
+    // NV-DXVK end
 
     void SyncFrameLatency();
 
@@ -102,6 +143,7 @@ namespace dxvk {
     Rc<vk::Presenter>         m_presenter;
 
     Rc<hud::Hud>              m_hud;
+    Rc<ImGUI>                 m_imgui;
 
     std::vector<Com<D3D9Surface, false>> m_backBuffers;
     
@@ -127,6 +169,11 @@ namespace dxvk {
     HMONITOR                  m_monitor  = nullptr;
 
     WindowState               m_windowState;
+
+    uint32_t                  m_originalWidth;
+    uint32_t                  m_originalHeight;
+
+    float                     m_widthScale = 1, m_heightScale = 1;
 
     double                    m_displayRefreshRate = 0.0;
 
@@ -191,7 +238,6 @@ namespace dxvk {
     VkFullScreenExclusiveEXT PickFullscreenMode();
 
     std::string GetApiName();
-
   };
 
 }

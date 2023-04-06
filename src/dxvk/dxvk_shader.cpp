@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
+#include "Tracy.hpp"
 
 namespace dxvk {
   
@@ -61,6 +62,7 @@ namespace dxvk {
     const Rc<DxvkShader>&       shader,
     const SpirvCodeBuffer&      code)
   : m_vkd(vkd), m_stage() {
+    ZoneScoped;
     m_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     m_stage.pNext = nullptr;
     m_stage.flags = 0;
@@ -155,12 +157,15 @@ namespace dxvk {
   
   
   void DxvkShader::defineResourceSlots(
-          DxvkDescriptorSlotMapping& mapping) const {
+    DxvkDescriptorSlotMapping& mapping,
+    VkShaderStageFlagBits stage) const {
+    if (stage == VK_SHADER_STAGE_FLAG_BITS_MAX_ENUM)
+      stage = m_stage;
     for (const auto& slot : m_slots)
-      mapping.defineSlot(m_stage, slot);
+      mapping.defineSlot(stage, slot);
     
     if (m_interface.pushConstSize) {
-      mapping.definePushConstRange(m_stage,
+      mapping.definePushConstRange(stage,
         m_interface.pushConstOffset,
         m_interface.pushConstSize);
     }
@@ -381,6 +386,15 @@ namespace dxvk {
         }
       }
     }
+  }
+
+
+  void DxvkShader::generateShaderKey()
+  {
+    const std::vector<uint64_t>& code = m_code.getCode();
+    size_t sizeInBytes = 8 * code.size();
+    Sha1Hash hash = Sha1Hash::compute(code.data(), sizeInBytes);
+    setShaderKey(DxvkShaderKey{ m_stage , hash });
   }
   
 }

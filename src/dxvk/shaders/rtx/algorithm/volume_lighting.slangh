@@ -1,0 +1,153 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/utility/froxel.slangh"
+#include "rtx/utility/color.slangh"
+#include "rtx/concept/camera/camera.slangh"
+#include "rtx/concept/surface/surface.h"
+#include "rtx/concept/ray_portal/ray_portal.slangh"
+#include "rtx/pass/volume_args.h"
+
+uint portalSpaceToVolumeHint(PortalSpace2BitsType portalSpace)
+{
+  switch (uint(portalSpace))
+  {
+    case PORTAL_SPACE_PORTAL_0: return froxelVolumePortal0;
+    case PORTAL_SPACE_PORTAL_1: return froxelVolumePortal1;
+    default: return froxelVolumeMain;
+  }
+}
+
+// Note: #ifdef disables this function so that this header can be used in composite.comp.slang,
+// which doesn't have RaytraceArgs - and the function uses cb. directly for performance.
+#ifndef VOLUME_LIGHTING_NO_NEE
+// Evaluates direct volumetric lighting at a specified Surface Interaction. Assumes the surface interaction provided
+// was generated with respect to some sort of camera-centric ray casts such that matrix jittering (from DLSS or TAA) affects it.
+vec3 evalVolumetricNEE(
+  Sampler3D<float3> volumeFilteredRadiance, VolumeArgs volumeArgs,
+  MinimalSurfaceInteraction surfaceInteraction,
+  uint froxelVolumeHint = 0)
+{
+  if (froxelVolumeHint >= volumeArgs.numActiveFroxelVolumes)
+    froxelVolumeHint = froxelVolumeMain;
+
+  bool volumeFound = false;
+  vec3 physicalFroxelUVW;
+
+  for (uint i = 0; i < volumeArgs.numActiveFroxelVolumes; ++i)
+  {
+    const uint froxelVolume = (i + froxelVolumeHint) % volumeArgs.numActiveFroxelVolumes;
+
+    // Note: use the CB directly because indexing the camera array that is passed through parameters is extremely slow.
+    const VolumeDefinitionCamera camera = cb.volumeArgs.cameras[froxelVolume];
+
+    const vec3 translatedWorldPosition = worldToTranslatedWorld(camera, surfaceInteraction.position);
+    // Note: Lookup lighting at the specified position in the volume radiance cache by calculating its UVW coordinates. Jittered matrix used
+    // here due to Surface Interaction assumptions stated in function documentation.
+    const vec3 virtualFroxelUVW = translatedWorldPositionToFroxelUVW(
+      camera.translatedWorldToView, camera.translatedWorldToProjectionJittered, packedFlagGet(camera.flags, rightHandedFlag),
+      volumeArgs.froxelDepthSlices, volumeArgs.froxelDepthSliceDistributionExponent, volumeArgs.froxelMaxDistance, camera.nearPlane,
+      translatedWorldPosition);
+
+    if (all(virtualFroxelUVW > 0.0f) && all(virtualFroxelUVW < 1.0f))
+    {
+      physicalFroxelUVW = virtualFroxelUVWToPhysicalFroxelUVW(
+        virtualFroxelUVW, froxelVolume,
+        volumeArgs.minFilteredRadianceU, volumeArgs.maxFilteredRadianceU, volumeArgs.inverseNumFroxelVolumes);
+      volumeFound = true;
+
+      break;
+    }
+  }
+
+  if (!volumeFound)
+    return 0.0;
+
+  // Note: Filtered volume radiance encoded using "fast" gamma encoding for better perceptual interpolation when using trilinear sampling.
+  const vec3 radiance = gammaToLinearFast(volumeFilteredRadiance.SampleLevel(physicalFroxelUVW, 0));
+
+  return radiance;
+}
+#endif
+
+// Evaluates the attenuation through a given distance of the global volumetric medium.
+f16vec3 evalVolumetricAttenuation(VolumeArgs volumeArgs, bool hasHit, float hitDistance)
+{
+  // Check if the global volumetrics are enabled
+  // Note: This ensures light is not attenuated by the global volumetric medium when it's not desired.
+
+  if (!volumeArgs.enableVolumetricLighting)
+  {
+    return f16vec3(1.0f, 1.0f, 1.0f);
+  }
+
+  // Calculate the global volumetric attenuation
+
+  if (!hasHit)
+  {
+    return evalBeerLambertInfiniteAttenuation(volumeArgs.attenuationCoefficient);
+  }
+  else
+  {
+    return evalBeerLambertAttenuation(volumeArgs.attenuationCoefficient, hitDistance);
+  }
+}
+
+// Evaluates direct volumetric lighting integrated along a primary view direction up to a point specified by a set of
+// screen UV coordinates, the view Z of the hit point and the hit distance (as well as a flag to indicate if a hit or
+// miss occured).
+void evalVolumetricPreintegratedNEE(
+  Sampler3D<float3> volumePreintegratedRadiance, VolumeArgs volumeArgs,
+  vec2 screenUV, bool hasHit, float viewZ, float hitDistance,
+  inout vec3 radiance, inout vec3 attenuation)
+{
+  // Check if the global volumetrics are enabled
+  // Note: This ensures inscattering is not read and light is not attenuated by the global volumetric medium when
+  // it's not desired.
+
+  if (!volumeArgs.enableVolumetricLighting)
+  {
+    radiance = vec3(0.0f, 0.0f, 0.0f);
+    attenuation = vec3(1.0f, 1.0f, 1.0f);
+
+    return;
+  }
+
+  vec3 froxelUVW;
+
+  if (!hasHit)
+  {
+    // Note: Special case for infinite hit distance.
+    froxelUVW = screenUVInfiniteViewZToFroxelUVW(screenUV);
+    attenuation = evalBeerLambertInfiniteAttenuation(volumeArgs.attenuationCoefficient);
+  }
+  else
+  {
+    froxelUVW = screenUVViewZToFroxelUVW(
+      volumeArgs.froxelDepthSlices, volumeArgs.froxelDepthSliceDistributionExponent, volumeArgs.froxelMaxDistance,
+      volumeArgs.cameras[froxelVolumeMain].nearPlane, screenUV, viewZ, packedFlagGet(volumeArgs.cameras[froxelVolumeMain].flags, rightHandedFlag));
+    attenuation = evalBeerLambertAttenuation(volumeArgs.attenuationCoefficient, hitDistance);
+  }
+
+  radiance = gammaToLinearFast(volumePreintegratedRadiance.SampleLevel(froxelUVW, 0));
+}

@@ -1,0 +1,24 @@
+/*
+Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+
+NVIDIA CORPORATION and its licensors retain all intellectual property
+and proprietary rights in and to this software, related documentation
+and any modifications thereto. Any use, reproduction, disclosure or
+distribution of this software and related documentation without an express
+license agreement from NVIDIA CORPORATION is strictly prohibited.
+*/
+#pragma once
+
+#include "rtx/utility/shader_types.slangh"
+#define NRD_HEADER_ONLY
+
+// Note: should the below values change, modify the nrd::LibraryDesc check in NRDContext
+#define NRD_NORMAL_ENCODING 2
+#define NRD_ROUGHNESS_ENCODING 1
+#define NRD_USE_SQRT_LINEAR_ROUGHNESS 0
+
+#include "../../../external/nrd/Shaders/NRD.hlsli"
+
+#if NRD_USE_SQRT_LINEAR_ROUGHNESS != 0
+#error Not supported NRD configs. Please update NRD.hlsli and ***RECOMPILE*** NRD library.
+#endif

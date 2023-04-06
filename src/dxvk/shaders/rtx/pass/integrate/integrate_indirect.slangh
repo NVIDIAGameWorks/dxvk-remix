@@ -1,0 +1,111 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/utility/common.slangh"
+#include "rtx/utility/noise.slangh"
+#include "rtx/utility/math.slangh"
+#include "rtx/utility/buffer_helpers.slangh"
+#include "rtx/utility/gbuffer_helpers.slangh"
+#include "rtx/concept/ray/ray.slangh"
+#include "rtx/concept/surface/surface.slangh"
+#include "rtx/concept/surface_material/surface_material.slangh"
+#include "rtx/algorithm/integrator.slangh"
+
+void integrate_indirect_pass(ivec2 threadIndex)
+{ 
+  if (any(threadIndex >= cb.camera.resolution))
+    return;
+
+  // Deserialize flags
+
+  const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(threadIndex, SharedFlags);
+
+  // Check if the GBuffer was hit on the Primary and Secondary surfaces
+
+  const bool primaryGBufferMiss = isGBufferMiss(threadIndex, PrimaryConeRadius);
+  const bool secondaryGBufferMiss = isGBufferMiss(threadIndex, SecondaryConeRadius);
+
+  // Write out empty data
+  // Note: This should hopefully prevent any weird undefined data from bleeding into pixels actually being denoised, but
+  // may not be needed depending on how the denoiser works.
+
+  if (primaryGBufferMiss)
+  {
+    // Note: Early out if no more work on the primary surface is needed.
+    if (geometryFlags.primarySelectedIntegrationSurface)
+    {
+      aliasedData0.IndirectRadianceHitDistance[threadIndex] = vec4(vec3(0), kEmptyPixelHitDistance);
+      return;
+    }
+  }
+
+  if (secondaryGBufferMiss)
+  {
+    // Note: Early out if no more work on the secondary surface is needed.
+    if (!geometryFlags.primarySelectedIntegrationSurface) 
+    {
+      aliasedData0.IndirectRadianceHitDistance[threadIndex] = vec4(vec3(0), kEmptyPixelHitDistance);
+      return;
+    }
+  }
+
+  // Read the medium material index
+
+  const uint16_t mediumMaterialIndex = SharedMediumMaterialIndex[threadIndex];
+
+  // Load state data carried over from the direct integration pass
+
+  const vec4 rayOriginDirection = RayOriginDirection[threadIndex];
+  const vec4 throughputConeRadius = aliasedData0.ThroughputConeRadius[threadIndex];
+  const vec2 firstSampledLobeAndSolidAnglePdf = FirstSampledLobeAndSolidAnglePdf[threadIndex];
+
+  const vec3 rayOrigin = rayOriginDirection.xyz;
+  const f16vec3 rayDirection = signedOctahedralToSphereDirection(snorm2x16ToFloat2x32(floatBitsToUint(rayOriginDirection.w)));
+  const f16vec3 throughput = throughputConeRadius.xyz;
+  const float16_t coneRadius = throughputConeRadius.w;
+  const float16_t firstHitPerceptualRoughness = FirstHitPerceptualRoughness[threadIndex];
+  const float16_t firstSampledLobePdf = firstSampledLobeAndSolidAnglePdf.x;
+  const float16_t firstSampledSolidAnglePdf = firstSampledLobeAndSolidAnglePdf.y;
+
+  float accumulatedHitDistance = 0;
+  if (geometryFlags.primarySelectedIntegrationSurface)
+    accumulatedHitDistance = PrimaryHitDistance[threadIndex];
+  else
+    accumulatedHitDistance = SecondaryHitDistance[threadIndex];
+
+  // Integrate the Indirect portion of the Path
+
+  IndirectPathTextures indirectPathTextures;
+
+  indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal = PrimaryWorldPositionWorldTriangleNormal;
+  indirectPathTextures.IndirectRadianceHitDistance = aliasedData0.IndirectRadianceHitDistance;
+  indirectPathTextures.RestirGIRadiance = RestirGIRadiance;
+  indirectPathTextures.RestirGIHitGeometry = RestirGIHitGeometry;
+  indirectPathTextures.GBufferLast = GBufferLast;
+
+  integrateIndirectPath(
+    threadIndex, INTEGRATE_INDIRECT_SBT_OFFSET_STANDARD, indirectPathTextures,
+    geometryFlags, mediumMaterialIndex, rayOrigin, rayDirection,
+    throughput, coneRadius, firstHitPerceptualRoughness,
+    firstSampledLobePdf, firstSampledSolidAnglePdf, accumulatedHitDistance);
+}

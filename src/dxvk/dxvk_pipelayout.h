@@ -17,6 +17,11 @@ namespace dxvk {
     VkDescriptorType   type;
     VkImageViewType    view;
     VkAccessFlags      access;
+    uint32_t           count;
+    VkDescriptorBindingFlags flags;
+
+    DxvkResourceSlot(uint32_t s = 0, VkDescriptorType t = VK_DESCRIPTOR_TYPE_SAMPLER, VkImageViewType v = VK_IMAGE_VIEW_TYPE_1D, VkAccessFlags a = VK_ACCESS_NONE_KHR, uint32_t c = 1, VkDescriptorBindingFlags f = 0) :
+      slot(s), type(t), view(v), access(a), count(c), flags(f) {}
   };
   
   /**
@@ -32,6 +37,8 @@ namespace dxvk {
     VkImageViewType    view;    ///< Compatible image view type
     VkShaderStageFlags stages;  ///< Stages that can use the resource
     VkAccessFlags      access;  ///< Access flags
+    uint32_t           count;   ///< Descriptor count
+    VkDescriptorBindingFlags flags; ///< Binding flags
   };
   
   
@@ -151,7 +158,8 @@ namespace dxvk {
     DxvkPipelineLayout(
       const Rc<vk::DeviceFn>&   vkd,
       const DxvkDescriptorSlotMapping& slotMapping,
-            VkPipelineBindPoint pipelineBindPoint);
+            VkPipelineBindPoint pipelineBindPoint,
+            std::vector<VkDescriptorSetLayout> extraLayouts = std::vector<VkDescriptorSetLayout>());
     
     ~DxvkPipelineLayout();
     
@@ -262,6 +270,10 @@ namespace dxvk {
       return stages;
     }
 
+    bool requiresExtraDescriptorSet() const {
+      return m_hasExtraLayouts;
+    }
+
   private:
     
     Rc<vk::DeviceFn> m_vkd;
@@ -276,6 +288,7 @@ namespace dxvk {
 
     Flags<VkDescriptorType>         m_descriptorTypes;
     
+    bool m_hasExtraLayouts = false;
   };
   
 }

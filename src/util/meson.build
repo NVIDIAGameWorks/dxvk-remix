@@ -6,12 +6,14 @@ util_src = files([
   'util_luid.cpp',
   'util_matrix.cpp',
   'util_monitor.cpp',
+  'util_window.cpp',
   
   'com/com_guid.cpp',
   'com/com_private_data.cpp',
 
   'config/config.cpp',
   
+  'log/metrics.cpp',
   'log/log.cpp',
   'log/log_debug.cpp',
   
@@ -19,6 +21,19 @@ util_src = files([
   'sha1/sha1_util.cpp',
 
   'sync/sync_recursive.cpp',
+  'xxHash/xxhash.c',
+  'xxHash/xxhash.h',
+
+  'util_messagechannel.cpp',
+  'util_messagechannel.h',
+
+  'util_singleton.h',
+
+  'util_fastops.cpp',
+  'util_fastops.h',
+
+  'util_threadpool.h',
+  'util_atomic_queue.h',
 ])
 
 util_lib = static_library('util', util_src,

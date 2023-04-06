@@ -1,4 +1,5 @@
 #include "dxvk_barrier.h"
+#include <assert.h>
 
 namespace dxvk {
   
@@ -59,6 +60,8 @@ namespace dxvk {
           VkPipelineStageFlags      dstStages,
           VkAccessFlags             dstAccess) {
     DxvkAccessFlags access = this->getAccessTypes(srcAccess);
+
+    assert(dstLayout != VK_IMAGE_LAYOUT_UNDEFINED);
 
     if (srcStages == VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT
      || dstStages == VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT

@@ -1,3 +1,24 @@
+/*
+* Copyright (c) 2021-2022, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
 #include <cstring>
 
 #include "dxvk_descriptor.h"
@@ -25,6 +46,8 @@ namespace dxvk {
       slotInfo.view   = desc.view;
       slotInfo.stages = stage;
       slotInfo.access = desc.access;
+      slotInfo.count  = desc.count;
+      slotInfo.flags  = desc.flags;
       m_descriptorSlots.push_back(slotInfo);
     }
   }
@@ -85,10 +108,14 @@ namespace dxvk {
   DxvkPipelineLayout::DxvkPipelineLayout(
     const Rc<vk::DeviceFn>&   vkd,
     const DxvkDescriptorSlotMapping& slotMapping,
-          VkPipelineBindPoint pipelineBindPoint)
+          VkPipelineBindPoint pipelineBindPoint,
+    // NV-DXVK start: descriptor set(s)
+          std::vector<VkDescriptorSetLayout> extraLayouts)
+    // NV-DXVK end
   : m_vkd           (vkd),
     m_pushConstRange(slotMapping.pushConstRange()),
-    m_bindingSlots  (slotMapping.bindingCount()) {
+    m_bindingSlots  (slotMapping.bindingCount()),
+    m_hasExtraLayouts (extraLayouts.size() > 0) {
 
     auto bindingCount = slotMapping.bindingCount();
     auto bindingInfos = slotMapping.bindingInfos();
@@ -101,20 +128,25 @@ namespace dxvk {
     
     std::vector<VkDescriptorSetLayoutBinding>    bindings(bindingCount);
     std::vector<VkDescriptorUpdateTemplateEntry> tEntries(bindingCount);
+    std::vector<VkDescriptorBindingFlags>        flags(bindingCount);
+    bool hasFlags = false;
     
     for (uint32_t i = 0; i < bindingCount; i++) {
       bindings[i].binding            = i;
       bindings[i].descriptorType     = bindingInfos[i].type;
-      bindings[i].descriptorCount    = 1;
+      bindings[i].descriptorCount    = bindingInfos[i].count;
       bindings[i].stageFlags         = bindingInfos[i].stages;
       bindings[i].pImmutableSamplers = nullptr;
       
       tEntries[i].dstBinding      = i;
       tEntries[i].dstArrayElement = 0;
-      tEntries[i].descriptorCount = 1;
+      tEntries[i].descriptorCount = 1; // Do not use update template for bindless textures/buffer arrays
       tEntries[i].descriptorType  = bindingInfos[i].type;
       tEntries[i].offset          = sizeof(DxvkDescriptorInfo) * i;
       tEntries[i].stride          = 0;
+
+      flags[i] = bindingInfos[i].flags;
+      hasFlags |= (bindingInfos[i].flags != 0);
 
       if (bindingInfos[i].type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
         m_dynamicSlots.push_back(i);
@@ -125,9 +157,14 @@ namespace dxvk {
     // Create descriptor set layout. We do not need to
     // create one if there are no active resource bindings.
     if (bindingCount > 0) {
+      VkDescriptorSetLayoutBindingFlagsCreateInfo bindingFlags{};
+      bindingFlags.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
+      bindingFlags.bindingCount = bindingCount;
+      bindingFlags.pBindingFlags = flags.data();
+
       VkDescriptorSetLayoutCreateInfo dsetInfo;
       dsetInfo.sType        = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-      dsetInfo.pNext        = nullptr;
+      dsetInfo.pNext        = hasFlags ? &bindingFlags : nullptr;
       dsetInfo.flags        = 0;
       dsetInfo.bindingCount = bindings.size();
       dsetInfo.pBindings    = bindings.data();
@@ -137,13 +174,26 @@ namespace dxvk {
         throw DxvkError("DxvkPipelineLayout: Failed to create descriptor set layout");
     }
     
+    // NV-DXVK start: descriptor set(s)
+    std::vector<VkDescriptorSetLayout> descSetLayouts;
+
+    if(bindingCount > 0)
+      descSetLayouts.push_back(m_descriptorSetLayout);
+
+    // NV-DXVK start: descriptor set(s)
+    for (auto&& layout : extraLayouts)
+      descSetLayouts.push_back(layout);
+    // NV-DXVK end
+ 
     // Create pipeline layout with the given descriptor set layout
     VkPipelineLayoutCreateInfo pipeInfo;
     pipeInfo.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipeInfo.pNext                  = nullptr;
     pipeInfo.flags                  = 0;
-    pipeInfo.setLayoutCount         = bindingCount > 0 ? 1 : 0;
-    pipeInfo.pSetLayouts            = &m_descriptorSetLayout;
+    // NV-DXVK start: descriptor set(s)
+    pipeInfo.setLayoutCount         = descSetLayouts.size();
+    pipeInfo.pSetLayouts            = descSetLayouts.data();
+    // NV-DXVK end
     pipeInfo.pushConstantRangeCount = 0;
     pipeInfo.pPushConstantRanges    = nullptr;
 

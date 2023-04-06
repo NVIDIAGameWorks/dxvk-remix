@@ -1,0 +1,52 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Ray Portal Surface Material Functions
+
+RayPortalSurfaceMaterial rayPortalSurfaceMaterialCreate(uint16_t surfaceMaterialIndex, MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial)
+{
+  // Decode the Ray Portal Surface Material from the packed memory representation
+  // Note: Ray Portal type is known in advance
+  RayPortalSurfaceMaterial rayPortalSurfaceMaterial;
+
+  const u16vec2 data00 = unpack16(memoryPolymorphicSurfaceMaterial.data0.x);
+  const u16vec2 data01 = unpack16(memoryPolymorphicSurfaceMaterial.data0.y);
+  const u16vec2 data02 = unpack16(memoryPolymorphicSurfaceMaterial.data0.z);
+  const u16vec2 data03 = unpack16(memoryPolymorphicSurfaceMaterial.data0.w);
+  const u16vec2 data10 = unpack16(memoryPolymorphicSurfaceMaterial.data1.x);
+  const u16vec2 data11 = unpack16(memoryPolymorphicSurfaceMaterial.data1.y);
+  const u16vec2 data12 = unpack16(memoryPolymorphicSurfaceMaterial.data1.z);
+  // Note: Last two bits of data1.w (or data13 in this case) are reserved for common polymorphic type
+  const u16vec2 data13 = unpack16(memoryPolymorphicSurfaceMaterial.data1.w);
+
+  rayPortalSurfaceMaterial.maskTextureIndex = data00.x;
+  rayPortalSurfaceMaterial.maskTextureIndex2 = data00.y;
+  rayPortalSurfaceMaterial.rayPortalIndex = uint8_t(data01.x);
+  rayPortalSurfaceMaterial.spriteSheetRows = uint8_t(data01.x >> 8u);
+  rayPortalSurfaceMaterial.spriteSheetCols = uint8_t(data01.y);
+  rayPortalSurfaceMaterial.spriteSheetFPS = uint8_t(data01.y >> 8u);
+  rayPortalSurfaceMaterial.rotationSpeed = uint16BitsToHalf(data02.x);
+  rayPortalSurfaceMaterial.emissiveIntensity = uint16BitsToHalf(data02.y);
+
+  return rayPortalSurfaceMaterial;
+}

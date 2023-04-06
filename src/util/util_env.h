@@ -1,3 +1,24 @@
+/*
+* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
 #pragma once
 
 #include "util_string.h"
@@ -21,7 +42,29 @@ namespace dxvk::env {
    * \returns Value of the variable
    */
   std::string getEnvVar(const char* name);
-  
+
+  /**
+   * \brief Gets environment variable as a specified type
+   *
+   * If parsing the string fails because it is either
+     * invalid or if the option is not defined, this
+     * method will return a fallback value. 
+   * Currently, this supports the types \c bool,
+   * \c int32_t, \c uint32_t, \c float, and \c std::string.
+   * \tparam T Return value type
+   * \param [in] name Name of the variable
+   * \param [in] fallback Fallback value
+   * \returns Parsed environment variable value
+   */
+  template<typename T>
+  T getEnvVar(const char* name, T fallback = T()) {
+    const std::string& value = getEnvVar(name);
+
+    T result = fallback;
+    Config::parseOptionValue(value, result);
+    return result;
+  }
+
   /**
    * \brief Checks whether a file name has a given extension
    *
@@ -41,6 +84,17 @@ namespace dxvk::env {
    * \returns Executable name
    */
   std::string getExeName();
+
+
+  /**
+   * \brief Gets the executable name without the .exe
+   * 
+   * Returns the base name (not the full path) of the
+   * program executable, including the file extension.
+   * This function should be used to identify programs.
+   * \returns Executable name
+   */
+  std::string getExeNameNoSuffix();
   
   /**
    * \brief Gets the executable name without extension
@@ -55,7 +109,29 @@ namespace dxvk::env {
    * \returns Path to executable
    */
   std::string getExePath();
+
+  /**
+   * \brief Query whether we're running under the remix bridge IPC mechanism
+   * \returns True if running under Remix bridge
+   */
+  bool isRemixBridgeActive();
   
+  // NV-DXVK start
+  /**
+   * \brief Gets full path to a given module
+   * \param module The name of the module to search for
+   * \returns Path to module
+   */
+  std::string getModulePath(const char* module);
+
+  /**
+   * \brief Gets available system physical memory (i.e. system physical memory not used by any process)
+   * \param availableSize Available system physical memory in bytes
+   * \returns true if the function succeeds
+   */
+  bool getAvailableSystemPhysicalMemory(uint64_t& availableSize);
+  // NV-DXVK end
+
   /**
    * \brief Sets name of the calling thread
    * \param [in] name Thread name
@@ -70,4 +146,8 @@ namespace dxvk::env {
    */
   bool createDirectory(const std::string& path);
   
+  /**
+ * \brief Kills the current process via system
+ */
+  void killProcess();
 }

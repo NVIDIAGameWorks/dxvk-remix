@@ -1,0 +1,309 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Ray Portal Surface Material Interaction Functions
+
+RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteractionCreate(
+  RayPortalSurfaceMaterial rayPortalSurfaceMaterial,
+  SurfaceInteraction surfaceInteraction)
+{
+  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction;
+
+  // Sample from each Ray Portal Surface Material texture
+
+  // Load Color
+  f16vec4 maskSample;
+  const bool maskLoaded = surfaceMaterialInteractionPortalSpriteSheetReadHelper(
+    rayPortalSurfaceMaterial.maskTextureIndex, 
+    surfaceInteraction,
+    cb.timeSinceStartMS,
+    rayPortalSurfaceMaterial.spriteSheetRows,
+    rayPortalSurfaceMaterial.spriteSheetCols,
+    rayPortalSurfaceMaterial.spriteSheetFPS,
+    rayPortalSurfaceMaterial.rotationSpeed,
+    maskSample);
+
+  // Gamma correction.
+  maskSample = gammaToLinear(maskSample);
+
+  f16vec4 mask = f16vec4(1.0f, 1.0f, 1.0f, 0.0f);
+  if (maskLoaded)
+  {
+    mask = maskSample;
+    mask.rgb *= uint16BitsToHalf(cb.emissiveIntensity) * rayPortalSurfaceMaterial.emissiveIntensity;
+  }
+
+  // Load Portal mask
+  f16vec4 maskSample2;
+  f16vec2 uvOffset = surfaceInteraction.textureCoordinates - f16vec2(0.5);
+  surfaceInteraction.textureCoordinates = saturate(uvOffset + f16vec2(0.5));
+  const bool maskLoaded2 = surfaceMaterialInteractionTextureReadHelper(rayPortalSurfaceMaterial.maskTextureIndex2, surfaceInteraction, maskSample2);
+  f16vec4 mask2 = f16vec4(1.0f, 1.0f, 1.0f, 0.0f);
+  if (maskLoaded2)
+  {
+    mask2 = maskSample2;
+  }
+
+  // Transform to desired Ray Portal Material Interaction values
+
+  rayPortalSurfaceMaterialInteraction.mask = mask;
+  rayPortalSurfaceMaterialInteraction.rayPortalIndex = rayPortalSurfaceMaterial.rayPortalIndex;
+  rayPortalSurfaceMaterialInteraction.isInsidePortal = mask2.r > float16_t(0.5) ? 1 : 0;
+
+  return rayPortalSurfaceMaterialInteraction;
+}
+
+RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteractionCreate(PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction)
+{
+  // Decode the Ray Portal Surface Material Interaction from its polymorphic representation
+  // Note: Ray Portal type is known in advance
+
+  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction;
+
+  rayPortalSurfaceMaterialInteraction.mask.xyz = polymorphicSurfaceMaterialInteraction.vdata0;
+  rayPortalSurfaceMaterialInteraction.mask.w = polymorphicSurfaceMaterialInteraction.fdata0;
+  rayPortalSurfaceMaterialInteraction.rayPortalIndex = polymorphicSurfaceMaterialInteraction.idata0 & 0xf;
+  rayPortalSurfaceMaterialInteraction.isInsidePortal = polymorphicSurfaceMaterialInteraction.idata0 >> 8;
+
+  return rayPortalSurfaceMaterialInteraction;
+}
+
+RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteractionCreate(
+  GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfaceMaterialInteraction)
+{
+  // Decode the Ray Portal Surface Material Interaction from its polymorphic GBuffer Memory representation
+  // Note: Ray Portal type is known in advance
+
+  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction;
+
+  const uint data0 = gBufferMemoryPolymorphicSurfaceMaterialInteraction.data0;
+  const uint data1 = gBufferMemoryPolymorphicSurfaceMaterialInteraction.data1;
+
+  const f16vec4 mask = f16vec4(
+    unorm8ToF16(uint8_t(data1 >> 0)),
+    unorm8ToF16(uint8_t(data1 >> 8)),
+    unorm8ToF16(uint8_t(data1 >> 16)),
+    unorm8ToF16(uint8_t(data1 >> 24)));
+  const uint8_t rayPortalIndex = uint8_t(data0 >> 0);
+  const uint8_t isInsidePortal = uint8_t(data0 >> 8);
+  
+  rayPortalSurfaceMaterialInteraction.mask = mask;
+  rayPortalSurfaceMaterialInteraction.isInsidePortal = isInsidePortal;
+  rayPortalSurfaceMaterialInteraction.rayPortalIndex = rayPortalIndex;
+
+  return rayPortalSurfaceMaterialInteraction;
+}
+
+SurfaceMaterialInteractionLobeInformation rayPortalSurfaceMaterialInteractionGetLobeInformation(
+  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction)
+{
+  SurfaceMaterialInteractionLobeInformation surfaceMaterialInteractionLobeInformation;
+
+  surfaceMaterialInteractionLobeInformation.diffuseReflectionPresent = false;
+  surfaceMaterialInteractionLobeInformation.specularReflectionPresent = false;
+  surfaceMaterialInteractionLobeInformation.diffuseTransmissionPresent = false;
+  surfaceMaterialInteractionLobeInformation.specularTransmissionPresent = false;
+
+  surfaceMaterialInteractionLobeInformation.specularReflectionDirac = false;
+  surfaceMaterialInteractionLobeInformation.specularTransmissionDirac = false;
+
+  return surfaceMaterialInteractionLobeInformation;
+}
+
+SurfaceMaterialInteractionSample rayPortalSurfaceMaterialInteractionCalcDiffuseReflectionSample(
+  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction)
+{
+  SurfaceMaterialInteractionSample materialSample;
+
+  materialSample.inputDirection = f16vec3(0.0, 0.0, 0.0);
+  materialSample.throughput = f16vec3(0.0, 0.0, 0.0);
+  materialSample.solidAnglePdf = 0.0f;
+
+  return materialSample;
+}
+
+SurfaceMaterialInteractionSample rayPortalSurfaceMaterialInteractionCalcSpecularReflectionSample(
+  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction)
+{
+  SurfaceMaterialInteractionSample materialSample;
+
+  materialSample.inputDirection = f16vec3(0.0, 0.0, 0.0);
+  materialSample.throughput = f16vec3(0.0, 0.0, 0.0);
+  materialSample.solidAnglePdf = 0.0f;
+
+  return materialSample;
+}
+
+SurfaceMaterialInteractionSample rayPortalSurfaceMaterialInteractionCalcDiffuseTransmissionSample(
+  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  inout bool insideMedium, inout bool penetrateSurface)
+{
+  SurfaceMaterialInteractionSample materialSample;
+
+  materialSample.inputDirection = f16vec3(0.0, 0.0, 0.0);
+  materialSample.throughput = f16vec3(0.0, 0.0, 0.0);
+  materialSample.solidAnglePdf = 0.0f;
+
+  return materialSample;
+}
+
+SurfaceMaterialInteractionSample rayPortalSurfaceMaterialInteractionCalcSpecularTransmissionSample(
+  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  inout bool insideMedium, inout bool penetrateSurface)
+{
+  SurfaceMaterialInteractionSample materialSample;
+
+  materialSample.inputDirection = f16vec3(0.0, 0.0, 0.0);
+  materialSample.throughput = f16vec3(0.0, 0.0, 0.0);
+  materialSample.solidAnglePdf = 0.0f;
+
+  return materialSample;
+}
+
+void rayPortalSurfaceMaterialInteractionCalcSample(
+  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  inout SurfaceMaterialInteractionSample surfaceMaterialInteractionSample,
+  inout SurfaceMaterialInteractionLobeSample surfaceMaterialInteractionLobeSample,
+  inout bool insideMedium, inout bool penetrateSurface)
+{
+  surfaceMaterialInteractionLobeSample.lobe = uint8_t(0u);
+  surfaceMaterialInteractionLobeSample.pdf = float16_t(1.0f);
+
+  surfaceMaterialInteractionSample.inputDirection = f16vec3(0.0, 0.0, 0.0);
+  surfaceMaterialInteractionSample.throughput = f16vec3(0.0, 0.0, 0.0);
+  surfaceMaterialInteractionSample.solidAnglePdf = 0.0f;
+}
+
+SurfaceMaterialInteractionPSRSample rayPortalSurfaceMaterialInteractionCalcPSRReflectionSample(
+  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction)
+{
+  SurfaceMaterialInteractionPSRSample materialPSRSample;
+
+  materialPSRSample.performPSR = false;
+
+  return materialPSRSample;
+}
+
+SurfaceMaterialInteractionPSRSample rayPortalSurfaceMaterialInteractionCalcPSRTransmissionSample(
+  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  inout bool insideMedium, inout bool penetrateSurface)
+{
+  SurfaceMaterialInteractionPSRSample materialPSRSample;
+
+  materialPSRSample.performPSR = false;
+
+  return materialPSRSample;
+}
+
+void rayPortalSurfaceMaterialInteractionCalcPSRSample(
+  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  inout SurfaceMaterialInteractionPSRSample surfaceMaterialInteractionReflectionPSRSample,
+  inout SurfaceMaterialInteractionPSRSample surfaceMaterialInteractionTransmissionPSRSample,
+  inout f16vec3 diffuseLayerWeight,
+  inout bool reflectionSelectedIntegrationSurface,
+  inout float16_t selectedIntegrationSurfacePdf,
+  inout bool insideMedium, inout bool penetrateSurface)
+{
+  // Sample Reflection PSR
+
+  surfaceMaterialInteractionReflectionPSRSample = rayPortalSurfaceMaterialInteractionCalcPSRReflectionSample(
+    rayPortalSurfaceMaterialInteraction, minimalRayInteraction);
+
+  // Sample Transmission PSR
+
+  surfaceMaterialInteractionTransmissionPSRSample = rayPortalSurfaceMaterialInteractionCalcPSRTransmissionSample(
+    rayPortalSurfaceMaterialInteraction, minimalRayInteraction, insideMedium, penetrateSurface);
+
+  // Determine which PSR surface should be selected for integration and the probability of this choice
+
+  // Note: No PSR is used by the ray portal material.
+  reflectionSelectedIntegrationSurface = false;
+  selectedIntegrationSurfacePdf = 1.0f;
+}
+
+float rayPortalSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(
+  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  f16vec3 inputDirection)
+{
+  return 0.0f;
+}
+
+float rayPortalSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
+  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  f16vec3 inputDirection)
+{
+  return 0.0f;
+}
+
+float rayPortalSurfaceMaterialInteractionCalcDiffuseTransmissionSolidAnglePdf(
+  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  f16vec3 inputDirection)
+{
+  return 0.0f;
+}
+
+float rayPortalSurfaceMaterialInteractionCalcSpecularTransmissionSolidAnglePdf(
+  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  f16vec3 inputDirection)
+{
+  return 0.0f;
+}
+
+float rayPortalSurfaceMaterialInteractionCalcSolidAnglePdf(
+  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  f16vec3 inputDirection)
+{
+  return 0.0f;
+}
+
+SurfaceMaterialInteractionSplitWeight rayPortalSurfaceMaterialInteractionCalcProjectedWeight(
+  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  f16vec3 inputDirection)
+{
+  SurfaceMaterialInteractionSplitWeight splitWeight;
+
+  splitWeight.diffuseReflectionWeight = f16vec3(0.0, 0.0, 0.0);
+  splitWeight.specularReflectionWeight = f16vec3(0.0, 0.0, 0.0);
+
+  return splitWeight;
+}
+
+f16vec3 rayPortalSurfaceMaterialInteractionEvalEmissiveRadiance(
+  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction)
+{
+  return f16vec3(0.0f, 0.0f, 0.0f);
+}

@@ -1,0 +1,388 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/utility/common.slangh"
+#include "rtx/utility/math.slangh"
+#include "rtx/utility/packing.slangh"
+#include "rtx/concept/ray/ray.h"
+#include "rtx/pass/common_bindings.slangh"
+
+// Surface Interaction Helper Functions
+
+// Texture Gradient from Ray Cone Helper
+// [2021, "Improved Shader and Texture Level of Detail Using Ray Cones"] (Listing 1)
+// Computes the texture gradients for anisotropic texture filtering based on the intersection of a ray cone with a triangle.
+// Approximates the ray cone as a cylinder based on the cone radius at the point of intersection and computes the axes of an
+// ellipse formed by this cylinder's intersection with the triangle to derive the gradients from. Arguments:
+// - intersectionPoint: The world space intersection point of the ray on the triangle.
+// - triangleNormal: The world space normal of the triangle.
+// - triangleArea: The world space area of the triangle.
+// - rayConeDir: The direction of the ray cone.
+// - rayConeRadiusAtIntersection: The radius of the ray cone at the intersection point, typically computed as coneRadiusAtIntersection = hitT * tan(rayConeAngle) but
+//   this may be approximated as coneRadiusAtIntersection = hitT * rayConeAngle when the ray cone angle is very close to 0.
+// - positions: An array of positions of the triangle vertices in world space.
+// - txcoords: An array of texture coordinates of the vertices of the triangle.
+// - interpolatedTexCoordsAtIntersection: The interpolated texture coordinates at the intersection point.
+// - texGradientX: The output for the first gradient of the texture coordinates.
+// - texGradientY: The output for the second gradient of the texture coordinates.
+void computeAnisotropicEllipseAxes(
+  vec3 intersectionPoint, f16vec3 triangleNormal, float triangleArea, f16vec3 rayConeDir,
+  float16_t rayConeRadiusAtIntersection, vec3 positions[3], vec2 txcoords[3], vec2 interpolatedTexCoordsAtIntersection,
+  inout vec2 texGradientX, inout vec2 texGradientY)
+{
+  // Compute ellipse axes.
+  vec3 ellipseAxis0 = rayConeDir - dot(vec3(triangleNormal), vec3(rayConeDir)) * vec3(triangleNormal); // Project the ray direction onto the plane to find the ellipse axis.
+  const vec3 rayDirPlaneProjection0 = ellipseAxis0 - dot(vec3(rayConeDir), ellipseAxis0) * vec3(rayConeDir); // Project the ellipse axis onto the plane defined by the ray cone's direction.
+  ellipseAxis0 *= rayConeRadiusAtIntersection / max(0.0001, length(rayDirPlaneProjection0)); // Use similar triangles to find the scale of the axis.
+
+  vec3 ellipseAxis1 = cross(vec3(triangleNormal), ellipseAxis0); // Find the other orthogonal ellipse axis via a cross product with the triangle's normal.
+  const vec3 rayDirPlaneProjection1 = ellipseAxis1 - dot(vec3(rayConeDir), ellipseAxis1) * vec3(rayConeDir);
+  ellipseAxis1 *= rayConeRadiusAtIntersection / max(0.0001, length(rayDirPlaneProjection1));
+
+  // Compute barycentrics and texture coordinate gradients.
+  const vec3 d = intersectionPoint - positions[0];
+  const vec3 edge01 = positions[1] - positions[0];
+  const vec3 edge02 = positions[2] - positions[0];
+  const float oneOverAreaTriangle = 1.0f / triangleArea;
+
+  vec3 edgeP;
+
+  edgeP = d + ellipseAxis0;
+  const float u1 = (dot(vec3(triangleNormal), cross(edgeP, edge02)) * oneOverAreaTriangle);
+  const float v1 = (dot(vec3(triangleNormal), cross(edge01, edgeP)) * oneOverAreaTriangle);
+  texGradientX = (1.0 - u1 - v1) * txcoords[0] + u1 * txcoords[1] + v1 * txcoords[2] - interpolatedTexCoordsAtIntersection;
+
+  edgeP = d + ellipseAxis1;
+  const float u2 = (dot(vec3(triangleNormal), cross(edgeP, edge02)) * oneOverAreaTriangle);
+  const float v2 = (dot(vec3(triangleNormal), cross(edge01, edgeP)) * oneOverAreaTriangle);
+  texGradientY = (1.0 - u2 - v2) * txcoords[0] + u2 * txcoords[1] + v2 * txcoords[2] - interpolatedTexCoordsAtIntersection;
+}
+
+// Surface Interaction Functions
+
+bool isSurfaceClipped(Surface surface, MinimalSurfaceInteraction surfaceInteraction)
+{
+  if (!surface.isClipPlaneEnabled)
+    return false;
+
+  const float clipDistance = dot(surface.clipPlane.xyz, surfaceInteraction.position) + surface.clipPlane.w;
+
+  return clipDistance < 0.0;
+}
+
+SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayInteraction, Ray ray, bool usePreviousPositions = false)
+{
+  // Compute vertex indicies
+
+  uint idx[3];
+
+  for (uint i = 0; i < 3; i++)
+  {
+    const uint indexIndex = rayInteraction.primitiveIndex * 3 + i + surface.firstIndex;
+
+    if (surface.indexBufferIndex != BINDING_INDEX_INVALID)
+    {
+      const uint indexBufferIndex = surface.indexBufferIndex;
+
+      if(surface.indexStride == 4)
+        idx[i] = BUFFER_ARRAY(indices32, indexBufferIndex, indexIndex);
+      else
+        idx[i] = BUFFER_ARRAY(indices, indexBufferIndex, indexIndex);
+    }
+    else
+    {
+      idx[i] = indexIndex;
+    }
+  }
+
+  // Retrieve vertex data
+
+  vec3 positions[3];
+
+  if (usePreviousPositions && !surface.isStatic && surface.previousPositionBufferIndex != BINDING_INDEX_INVALID)
+  {
+    for (uint i = 0; i < 3; i++)
+    {
+      const uint currentIndex = idx[i];
+
+      const uint previousPositionBufferIndex = surface.previousPositionBufferIndex;
+      const uint previousPositionElementIndex = (currentIndex * uint(surface.positionStride) + surface.positionOffset) / 4;
+
+      positions[i].x = BUFFER_ARRAY(geometries, previousPositionBufferIndex, previousPositionElementIndex + 0);
+      positions[i].y = BUFFER_ARRAY(geometries, previousPositionBufferIndex, previousPositionElementIndex + 1);
+      positions[i].z = BUFFER_ARRAY(geometries, previousPositionBufferIndex, previousPositionElementIndex + 2);
+    }
+  }
+  else
+  {
+    for (uint i = 0; i < 3; i++)
+    {
+      const uint currentIndex = idx[i];
+
+      // Note: Position buffer always required for now
+      // if (surface.positionBufferIndex != BINDING_INDEX_INVALID)
+      {
+        const uint positionBufferIndex = surface.positionBufferIndex;
+        const uint positionElementIndex = (currentIndex * uint(surface.positionStride) + surface.positionOffset) / 4;
+
+        positions[i].x = BUFFER_ARRAY(geometries, positionBufferIndex, positionElementIndex + 0);
+        positions[i].y = BUFFER_ARRAY(geometries, positionBufferIndex, positionElementIndex + 1);
+        positions[i].z = BUFFER_ARRAY(geometries, positionBufferIndex, positionElementIndex + 2);
+      }
+    }
+  }
+
+  const vec3 bary = uintToBarycentrics(rayInteraction.barycentricCoordinates);
+
+  SurfaceInteraction surfaceInteraction;
+
+  // Calculate vertex position in world space
+  // Note: World space positions needed to compute the texture gradients, a bit expensive but probably easier than transforming
+  // the ray direction into object space and worrying about how to transform its cone width appropriately (scales could affect it).
+  // Additionally, this allows us to calculate the triangle normal in world space without having to transform an object space normal
+  // into world space with a normal matrix which makes up for some of the work this does. Unfortunately the interpolated normal still
+  // requires usage of a normal matrix though. World position is now also needed for the position calculation in general as it is higher
+  // precision to calculate it this way on the Surface Interaction than on the Ray Interaction.
+
+  vec3 worldPositions[3];
+
+  if (usePreviousPositions && !surface.isStatic)
+  {
+    worldPositions[0] = mul(surface.prevObjectToWorld, vec4(positions[0], 1.0f));
+    worldPositions[1] = mul(surface.prevObjectToWorld, vec4(positions[1], 1.0f));
+    worldPositions[2] = mul(surface.prevObjectToWorld, vec4(positions[2], 1.0f));
+  }
+  else
+  {
+    worldPositions[0] = mul(surface.objectToWorld, vec4(positions[0], 1.0f));
+    worldPositions[1] = mul(surface.objectToWorld, vec4(positions[1], 1.0f));
+    worldPositions[2] = mul(surface.objectToWorld, vec4(positions[2], 1.0f));
+  }
+
+  // Calculate the approximate position error in object space
+  surfaceInteraction.positionError = max(
+    calculatePositionError(positions[0]),
+    max(calculatePositionError(positions[1]),
+        calculatePositionError(positions[2])));
+
+  // Compute world position
+  // Note: This calculation is done with world space positions rather than model space positions and transforming it to world space
+  // as we have these world space positions available to begin with as they are needed for other calculations. Additionally this way
+  // is technically more precise as well.
+
+  const vec3 hitPosition = interpolateHitAttribute(worldPositions, bary);
+
+  surfaceInteraction.position = hitPosition;
+
+  // Update the position error because it might be larger in world space than in object space
+  surfaceInteraction.positionError = max(surfaceInteraction.positionError, calculatePositionError(hitPosition));
+
+  // Compute various normals
+
+  const vec3 ab = worldPositions[1] - worldPositions[0];
+  const vec3 ac = worldPositions[2] - worldPositions[0];
+  const vec3 worldTriangleVector = cross(ab, ac);
+
+  const vec3 worldTriangleNormal = normalize(worldTriangleVector);
+  // Note: Ideally cheaper than using length to get the magnitude of the cross product's result (no sqrt required).
+  const float worldTriangleArea = dot(worldTriangleVector, worldTriangleNormal);
+
+  // Note: fp16 conversion done after area calculation so the fp32 normal can be used
+  const f16vec3 triangleNormal = f16vec3(worldTriangleNormal);
+  const bool triangleNormalSameDirection = dot(triangleNormal, rayInteraction.viewDirection) < float16_t(0.0);
+  const f16vec3 flippedTriangleNormal = triangleNormalSameDirection ? -triangleNormal : triangleNormal;
+
+  surfaceInteraction.triangleNormal = flippedTriangleNormal;
+
+  if (surface.normalBufferIndex == BINDING_INDEX_INVALID)
+  {
+    surfaceInteraction.interpolatedNormal = surfaceInteraction.triangleNormal;
+  }
+  else
+  {
+    vec3 normals[3];
+  
+    for (uint i = 0; i < 3; i++)
+    {
+      const uint currentIndex = idx[i];
+  
+      const uint normalBufferIndex = surface.normalBufferIndex;
+      const uint normalElementIndex = (currentIndex * uint(surface.normalStride) + surface.normalOffset) / 4;
+  
+      normals[i].x = BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex + 0);
+      normals[i].y = BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex + 1);
+      normals[i].z = BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex + 2);
+    }
+  
+    const vec3 objectInterpolatedNormal = normalize(interpolateHitAttribute(normals, bary));
+  
+    // Note: Second normalization required as vector may be scaled through a normal transformation
+    const f16vec3 interpolatedNormal = f16vec3(normalize(mul(surface.normalObjectToWorld, objectInterpolatedNormal)));
+    // Really the only reason to flip this normal is for double-sided geometry.  Do not flip based on view vector!
+    const bool interpolatedNormalSameDirection = dot(interpolatedNormal, flippedTriangleNormal) < float16_t(0.0);
+    const f16vec3 flippedInterpolatedNormal = interpolatedNormalSameDirection ? -interpolatedNormal : interpolatedNormal;
+  
+    surfaceInteraction.interpolatedNormal = flippedInterpolatedNormal;
+  }
+
+  // Compute motion
+  // Note: Ignore the motion if the caller needs previous positions, we don't know it.
+
+  if (!surface.isStatic && !usePreviousPositions)
+  {
+    vec3 prevObjectPosition = interpolateHitAttribute(positions, bary);
+
+    if (surface.previousPositionBufferIndex != BINDING_INDEX_INVALID)
+    {
+      vec3 prevPositions[3];
+
+      for (uint i = 0; i < 3; i++)
+      {
+        const uint currentIndex = idx[i];
+
+        const uint previousPositionBufferIndex = surface.previousPositionBufferIndex;
+        const uint previousPositionElementIndex = (currentIndex * uint(surface.positionStride) + surface.positionOffset) / 4;
+
+        prevPositions[i].x = BUFFER_ARRAY(geometries, previousPositionBufferIndex, previousPositionElementIndex + 0);
+        prevPositions[i].y = BUFFER_ARRAY(geometries, previousPositionBufferIndex, previousPositionElementIndex + 1);
+        prevPositions[i].z = BUFFER_ARRAY(geometries, previousPositionBufferIndex, previousPositionElementIndex + 2);
+      }
+
+      prevObjectPosition = interpolateHitAttribute(prevPositions, bary);
+    }
+
+    const vec3 prevPosition = mul(surface.prevObjectToWorld, vec4(prevObjectPosition, 1.0f));
+
+    surfaceInteraction.motion = prevPosition - hitPosition;
+  }
+  else
+  {
+    surfaceInteraction.motion = vec3(0.0);
+  }
+
+  // Compute texture coordinates
+
+  if (surface.texcoordBufferIndex != BINDING_INDEX_INVALID || surface.texcoordGenerationMode != uint(TexGenMode::None))
+  {
+    vec2 texcoords[3];
+    
+    for (uint i = 0; i < 3; i++)
+    {
+      if(surface.texcoordGenerationMode == uint(TexGenMode::ViewPositions))
+      {
+        float4 viewPos = mul(cb.camera.worldToView, float4(worldPositions[i], 1.f));
+        texcoords[i] = mul(surface.textureTransform, viewPos).xy;
+      }
+      else if(surface.texcoordGenerationMode == uint(TexGenMode::ViewNormals)) 
+      {
+        const uint currentIndex = idx[i];
+        const uint normalBufferIndex = surface.normalBufferIndex;
+        const uint normalElementIndex = (currentIndex * uint(surface.normalStride) + surface.normalOffset) / 4;
+        
+        float3 normal;
+        normal.x = BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex + 0);
+        normal.y = BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex + 1);
+        normal.z = BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex + 2);
+
+        normal = normalize(mul(surface.normalObjectToWorld, normal));
+
+        float4 viewPos = mul(cb.camera.worldToView, float4(normal, 0.f));
+        texcoords[i] = mul(surface.textureTransform, viewPos).xy;
+      }
+      else 
+      {
+        const uint currentIndex = idx[i];
+        uint texcoordBufferIndex = surface.texcoordBufferIndex;
+        const uint texcoordElementIndex = (currentIndex * uint(surface.texcoordStride) + surface.texcoordOffset) / 4;
+      
+        texcoords[i].x = BUFFER_ARRAY(geometries, texcoordBufferIndex, texcoordElementIndex + 0);
+        texcoords[i].y = BUFFER_ARRAY(geometries, texcoordBufferIndex, texcoordElementIndex + 1);
+        texcoords[i] = mul(surface.textureTransform, float4(texcoords[i], 1.f, 1.f)).xy;
+      }
+    } 
+
+    surfaceInteraction.textureCoordinates = interpolateHitAttribute(texcoords, bary);
+
+    f16vec3 interpolatedTangent, interpolatedBitangent;
+    // Note: World positions used here, the original PBRT usage uses model space vertex positions since it calculates the
+    // TNB frame in local space, but since we generate the TNB frame in world space this is more applicable. Additionally
+    // it removes the need to keep the object space positions around which should ideally reduce register pressure.
+    genTangSpace(
+      texcoords, worldPositions, surfaceInteraction.triangleNormal, surfaceInteraction.interpolatedNormal,
+      interpolatedTangent, interpolatedBitangent);
+    
+    surfaceInteraction.interpolatedTangent = interpolatedTangent;
+    surfaceInteraction.interpolatedBitangent = interpolatedBitangent;
+    
+    // Compute texture gradients
+    // Note: This is done here as it depends on the triangle normal and texture coordinates being calculated first
+    
+    // Note: Non-flipped world space triangle normal passed in to be consistent with the calculations done internally (rather
+    // than worrying about if the flipped vector could break it)
+    computeAnisotropicEllipseAxes(
+      hitPosition, triangleNormal, worldTriangleArea, ray.direction,
+      rayInteraction.coneRadius, worldPositions, texcoords, surfaceInteraction.textureCoordinates,
+      surfaceInteraction.textureGradientX, surfaceInteraction.textureGradientY);
+  }
+  else
+  {
+    surfaceInteraction.textureGradientX = 0.f;
+    surfaceInteraction.textureGradientY = 0.f;
+    surfaceInteraction.textureCoordinates = vec2(0.f);
+
+    // Create dummy tangent basis thats reasonable WRT normal
+    calcOrthonormalBasis(surfaceInteraction.interpolatedNormal, surfaceInteraction.interpolatedTangent, surfaceInteraction.interpolatedBitangent);
+  }
+
+  // Compute vertex colors
+
+  if (surface.color0BufferIndex != BINDING_INDEX_INVALID)
+  {
+    f16vec4 color[3];
+    for (uint i = 0; i < 3; i++)
+    {
+      const uint currentIndex = idx[i];
+
+      const uint color0BufferIndex = surface.color0BufferIndex;
+      const uint color0ElementIndex = (currentIndex * uint(surface.color0Stride) + surface.color0Offset) / 4;
+
+      // VK_FORMAT_B8G8R8A8_UNORM
+      const uint colorBits = floatBitsToUint(BUFFER_ARRAY(geometries, color0BufferIndex, color0ElementIndex));
+
+      color[i].x = unorm8ToF16(uint8_t(colorBits >> 16));
+      color[i].y = unorm8ToF16(uint8_t(colorBits >> 8));
+      color[i].z = unorm8ToF16(uint8_t(colorBits));
+      color[i].w = unorm8ToF16(uint8_t(colorBits >> 24));
+    }
+
+    surfaceInteraction.vertexColor = interpolateHitAttribute(color, bary);
+  }
+  else
+  {
+    surfaceInteraction.vertexColor = f16vec4(1.0, 1.0, 1.0, 1.0);
+  }
+
+  return surfaceInteraction;
+}
+
+// Todo: Surface interaction construction function from sampled position

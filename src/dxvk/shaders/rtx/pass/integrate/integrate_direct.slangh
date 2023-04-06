@@ -1,0 +1,163 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/utility/common.slangh"
+#include "rtx/utility/noise.slangh"
+#include "rtx/utility/math.slangh"
+#include "rtx/utility/buffer_helpers.slangh"
+#include "rtx/utility/gbuffer_helpers.slangh"
+#include "rtx/concept/ray/ray.slangh"
+#include "rtx/concept/surface/surface.slangh"
+#include "rtx/concept/surface_material/surface_material.slangh"
+#include "rtx/algorithm/integrator.slangh"
+
+void integrate_direct_pass(ivec2 threadIndex)
+{
+  if (any(threadIndex >= cb.camera.resolution))
+    return;
+
+  RNG rng = createRNG(uvec2(threadIndex), cb.frameIdx);
+
+  // Deserialize flags
+
+  GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(threadIndex, SharedFlags);
+
+  // Check if the GBuffer was hit on the Primary and Secondary surfaces
+
+  const bool primaryGBufferMiss = isGBufferMiss(threadIndex, PrimaryConeRadius);
+  const bool secondaryGBufferMiss = isGBufferMiss(threadIndex, SecondaryConeRadius);
+
+  // Write out empty data
+  // Note: This should hopefully prevent any weird undefined data from bleeding into pixels actually being denoised, but
+  // may not be needed depending on how the denoiser works.
+
+  if (primaryGBufferMiss)
+  {
+    imageStore(PrimaryDirectDiffuseLobeRadianceHitDistance, threadIndex, vec4(0.0f, 0.0f, 0.0f, 0.0f));
+    imageStore(PrimaryDirectSpecularLobeRadianceHitDistance, threadIndex, vec4(0.0f, 0.0f, 0.0f, 0.0f));
+
+    // Note: Early out if no more work on the primary surface is needed.
+    if (geometryFlags.primarySelectedIntegrationSurface) {
+      return;
+    }
+  }
+
+  if (secondaryGBufferMiss)
+  {
+    imageStore(SecondaryCombinedDiffuseLobeRadianceHitDistance, threadIndex, vec4(0.0f, 0.0f, 0.0f, 0.0f));
+    imageStore(SecondaryCombinedSpecularLobeRadianceHitDistance, threadIndex, vec4(0.0f, 0.0f, 0.0f, 0.0f));
+
+    // Note: Early out if no more work on the secondary surface is needed.
+    if (!geometryFlags.primarySelectedIntegrationSurface) {
+      return;
+    }
+  }
+
+  // Read the integration surface PDF
+
+  const float16_t integrationSurfacePdf = SharedIntegrationSurfacePdf[threadIndex];
+
+  // Deserialize the Ray
+
+  GBufferMemoryMinimalRay gBufferMemoryMinimalRay;
+
+  // Note: No need to send this across passes, constant information.
+  gBufferMemoryMinimalRay.spreadAngle = float16_t(cb.screenSpacePixelSpreadHalfAngle);
+
+  const MinimalRay minimalRay = minimalRayCreate(gBufferMemoryMinimalRay);
+
+  Ray primaryRay;
+  primaryRay.spreadAngle = minimalRay.spreadAngle;
+
+  // Deserialize the Ray Interaction, Surface Interaction, and Surface Material Interaction
+
+  MinimalRayInteraction minimalRayInteraction;
+  MinimalSurfaceInteraction minimalSurfaceInteraction;
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction;
+
+  // Deserialize the Ray Interaction, Surface Interaction, and Surface Material Interaction
+  deserializeInteractions(
+    threadIndex, geometryFlags,
+    minimalRayInteraction, minimalSurfaceInteraction, polymorphicSurfaceMaterialInteraction);
+
+  // Sample an indirect ray path sample in direct integration pass since the material for the primary surface has been loaded.
+  // This is faster than reloading all the material data in the indirect pass and computing a ray path sample there
+  // Note: this updates geometryFlags
+  sampleAndStoreIndirectRayPathSample(
+    threadIndex, primaryRay, integrationSurfacePdf, 
+    minimalRayInteraction, minimalSurfaceInteraction, polymorphicSurfaceMaterialInteraction,
+    geometryFlags);
+
+  // Rewrite Material Data for Denoising
+  // Note: This is done to turn the usual material data base reflectivity into something more suitable for
+  // denoisers like NRD once it is done being used for material deserialization (it is important no other
+  // material-based operations happen past this point). Base Reflectivity on its own does not properly describe
+  // things like opacity which is lumped into the specular lobe and thus must be adjusted, otherwise cases
+  // where the base reflectivity is 0 but a contribution in the specular channel exists will happen. This is typically
+  // not an issue if it was solely being used for specular reflections as a value of 0 indicates no reflection
+  // contribution, same goes for albedo with regards to diffuse, but just emerges due to our nonstandard usage
+  // of the denoiser for transmittance contributions. Ideally this hacky logic can be removed later if a denoiser
+  // explicitly supports translucency-esque lobes somehow, or if a more generic denoiser is used in the future.
+
+  if (polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque)
+  {
+    const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+    const f16vec3 adjustedBaseReflectivity = opaqueSurfaceMaterialGetAdjustedBaseReflectivity(opaqueSurfaceMaterialInteraction);
+
+    if (geometryFlags.primarySelectedIntegrationSurface)
+    {
+      // Note: When ReSTIR GI is in use, do not adjust the base reflectivity here as it will read from the primary base reflectivity after this pass executes
+      // still. Instead, the ReSTIR GI final shading pass will do this adjustment instead before it is used by demodulation and the denoiser.
+      if (!cb.enableReSTIRGI)
+      {
+        imageStore(PrimaryBaseReflectivity, threadIndex, vec4(adjustedBaseReflectivity, 0.0f));
+      }
+    }
+    else
+    {
+      imageStore(SecondaryBaseReflectivity, threadIndex, vec4(adjustedBaseReflectivity, 0.0f));
+    }
+  }
+
+  // Integrate the Direct portion of the Path
+
+  DirectPathTextures directPathTextures;
+
+  directPathTextures.SharedFlags = SharedFlags;
+  directPathTextures.SharedMediumMaterialIndex = SharedMediumMaterialIndex;
+  directPathTextures.PrimaryDirectDiffuseLobeRadianceHitDistance = PrimaryDirectDiffuseLobeRadianceHitDistance;
+  directPathTextures.PrimaryDirectSpecularLobeRadianceHitDistance = PrimaryDirectSpecularLobeRadianceHitDistance;
+  directPathTextures.SecondaryCombinedDiffuseLobeRadianceHitDistance = SecondaryCombinedDiffuseLobeRadianceHitDistance;
+  directPathTextures.SecondaryCombinedSpecularLobeRadianceHitDistance = SecondaryCombinedSpecularLobeRadianceHitDistance;
+  directPathTextures.IndirectRayOriginDirection = aliasedData0.IndirectRayOriginDirection;
+  directPathTextures.IndirectThroughputConeRadius = IndirectThroughputConeRadius;
+  directPathTextures.IndirectFirstHitPerceptualRoughness = aliasedData1.IndirectFirstHitPerceptualRoughness;
+  directPathTextures.IndirectFirstSampledLobeAndSolidAnglePdf = IndirectFirstSampledLobeAndSolidAnglePdf;
+  directPathTextures.PrimaryRtxdiIlluminance = PrimaryRtxdiIlluminance;
+
+  integrateDirectPath(
+    rng, threadIndex, directPathTextures,
+    geometryFlags, integrationSurfacePdf,
+    primaryRay, minimalRayInteraction, minimalSurfaceInteraction,
+    polymorphicSurfaceMaterialInteraction);
+}

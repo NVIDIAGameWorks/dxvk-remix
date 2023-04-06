@@ -8,8 +8,13 @@
 #include "dxvk_image.h"
 #include "dxvk_limits.h"
 #include "dxvk_pipelayout.h"
+#include "dxvk_raytracing.h"
 #include "dxvk_sampler.h"
 #include "dxvk_shader.h"
+#include "../util/util_matrix.h"
+#include <future>
+#include <assert.h>
+#include "rtx_render/rtx_utils.h"
 
 namespace dxvk {
   
@@ -46,7 +51,12 @@ namespace dxvk {
     CpDirtyPipelineState,       ///< Compute pipeline needs to be recompiled
     CpDirtyResources,           ///< Compute pipeline resource bindings are out of date
     CpDirtyDescriptorBinding,   ///< Compute descriptor set needs to be rebound
-    
+
+    RpDirtyPipeline,            ///< Raytracing pipeline binding are out of date
+    RpDirtyPipelineState,       ///< Raytracing pipeline needs to be recompiled
+    RpDirtyResources,           ///< Raytracing pipeline resource bindings are out of date
+    RpDirtyDescriptorBinding,   ///< Raytracing descriptor set needs to be rebound
+
     DirtyDrawBuffer,            ///< Indirect argument buffer is dirty
     DirtyPushConstants,         ///< Push constant data has changed
   };
@@ -108,12 +118,16 @@ namespace dxvk {
     DxvkFramebufferInfo framebufferInfo;
   };
 
-
-  struct DxvkPushConstantState {
-    char data[MaxPushConstantSize];
+  enum class DxvkPushConstantBank : uint32_t {
+    D3D9 = 0,
+    RTX,
+    Count
   };
-
-
+  
+  struct DxvkPushConstantState {
+    char data[static_cast<uint32_t>(DxvkPushConstantBank::Count)][MaxPushConstantSize];
+  };
+  
   struct DxvkXfbState {
     std::array<DxvkBufferSlice, MaxNumXfbBuffers> buffers;
     std::array<DxvkBufferSlice, MaxNumXfbBuffers> counters;
@@ -134,6 +148,11 @@ namespace dxvk {
     DxvkComputePipeline*          pipeline = nullptr;
   };
 
+  struct DxvkRaytracingPipelineState {
+    DxvkRaytracingPipelineShaders shaders;
+    DxvkComputePipelineStateInfo  state;
+    DxvkRaytracingPipeline*       pipeline = nullptr;
+  };
 
   struct DxvkDynamicState {
     DxvkBlendConstants  blendConstants    = { 0.0f, 0.0f, 0.0f, 0.0f };
@@ -149,7 +168,6 @@ namespace dxvk {
     VkImageAspectFlags clearAspects;
     VkClearValue clearValue;
   };
-  
   
   /**
    * \brief Pipeline state
@@ -168,6 +186,6 @@ namespace dxvk {
     
     DxvkGraphicsPipelineState gp;
     DxvkComputePipelineState  cp;
+    DxvkRaytracingPipelineState rp;
   };
-  
 }

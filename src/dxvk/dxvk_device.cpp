@@ -1,5 +1,28 @@
+/*
+* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
 #include "dxvk_device.h"
 #include "dxvk_instance.h"
+#include "rtx_render/rtx_context.h"
+#include "Tracy.hpp"
 
 namespace dxvk {
   
@@ -22,7 +45,45 @@ namespace dxvk {
     auto queueFamilies = m_adapter->findQueueFamilies();
     m_queues.graphics = getQueue(queueFamilies.graphics, 0);
     m_queues.transfer = getQueue(queueFamilies.transfer, 0);
+
+    // NV-DXVK start: RTXIO
+    if (queueFamilies.asyncCompute != VK_QUEUE_FAMILY_IGNORED) {
+      m_queues.asyncCompute = getQueue(queueFamilies.asyncCompute, 0);
+    }
+    // NV-DXVK end
+
+#ifdef TRACY_ENABLE
+    VkCommandPoolCreateInfo poolInfo;
+    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    poolInfo.pNext = nullptr;
+    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    poolInfo.queueFamilyIndex = m_queues.graphics.queueFamily;
+
+    if (m_vkd->vkCreateCommandPool(m_vkd->device(), &poolInfo, nullptr, &m_queues.graphics.tracyPool) != VK_SUCCESS)
+      throw DxvkError("DxvkCommandList: Failed to create graphics command pool");
+
+    VkCommandBufferAllocateInfo cmdInfoTracy;
+    cmdInfoTracy.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cmdInfoTracy.pNext = nullptr;
+    cmdInfoTracy.commandPool = m_queues.graphics.tracyPool;
+    cmdInfoTracy.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    cmdInfoTracy.commandBufferCount = 1;
+
+    if (m_vkd->vkAllocateCommandBuffers(m_vkd->device(), &cmdInfoTracy, &m_queues.graphics.tracyCmdList) != VK_SUCCESS)
+      throw DxvkError("DxvkCommandList: Failed to allocate command buffer");
+
+    m_queues.graphics.tracyCtx = TracyVkContextCalibrated(m_adapter->handle(),
+                                                          m_vkd->device(),
+                                                          m_queues.graphics.queueHandle,
+                                                          m_queues.graphics.tracyCmdList,
+                                                          m_vkd->vkGetPhysicalDeviceCalibrateableTimeDomainsEXT,
+                                                          m_vkd->vkGetCalibratedTimestampsEXT);
+    TracyVkContextName(m_queues.graphics.tracyCtx, "Graphics Queue", strlen("Graphics Queue"));
+#endif
+
+    m_objects.getTextureManager().start();
   }
+
   
   
   DxvkDevice::~DxvkDevice() {
@@ -30,6 +91,14 @@ namespace dxvk {
     // executed before we destroy any resources.
     this->waitForIdle();
 
+    // NV-DXVK start: RTX initializer
+    m_objects.getRtxInitializer().release();
+    // NV-DXVK end
+
+#ifdef TRACY_ENABLE
+    TracyVkDestroy(m_queues.graphics.tracyCtx);
+    m_vkd->vkDestroyCommandPool(m_vkd->device(), m_queues.graphics.tracyPool, nullptr);
+#endif
     // Stop workers explicitly in order to prevent
     // access to structures that are being destroyed.
     m_objects.pipelineManager().stopWorkerThreads();
@@ -88,7 +157,9 @@ namespace dxvk {
     Rc<DxvkDescriptorPool> pool = m_recycledDescriptorPools.retrieveObject();
 
     if (pool == nullptr)
-      pool = new DxvkDescriptorPool(m_vkd);
+      // NV-DXVK start: use EXT_debug_utils
+      pool = new DxvkDescriptorPool(m_instance->vki(), m_vkd);
+      // NV-DXVK end
     
     return pool;
   }
@@ -96,6 +167,10 @@ namespace dxvk {
   
   Rc<DxvkContext> DxvkDevice::createContext() {
     return new DxvkContext(this);
+  }
+
+  Rc<RtxContext> DxvkDevice::createRtxContext() {
+    return new RtxContext(this);
   }
 
 
@@ -120,10 +195,20 @@ namespace dxvk {
   
   Rc<DxvkBuffer> DxvkDevice::createBuffer(
     const DxvkBufferCreateInfo& createInfo,
-          VkMemoryPropertyFlags memoryType) {
-    return new DxvkBuffer(this, createInfo, m_objects.memoryManager(), memoryType);
+          VkMemoryPropertyFlags memoryType,
+          DxvkMemoryStats::Category category) {
+    return new DxvkBuffer(this, createInfo, m_objects.memoryManager(), memoryType, category);
   }
-  
+
+
+  // NV-DXVK start: implement acceleration structures
+  Rc<DxvkAccelStructure> DxvkDevice::createAccelStructure(
+      const DxvkBufferCreateInfo& createInfo,
+            VkMemoryPropertyFlags memoryType,
+            VkAccelerationStructureTypeKHR accelType) {
+    return new DxvkAccelStructure(this, createInfo, m_objects.memoryManager(), memoryType, accelType);
+  }
+  // NV-DXVK end
   
   Rc<DxvkBufferView> DxvkDevice::createBufferView(
     const Rc<DxvkBuffer>&           buffer,
@@ -134,8 +219,9 @@ namespace dxvk {
   
   Rc<DxvkImage> DxvkDevice::createImage(
     const DxvkImageCreateInfo&  createInfo,
-          VkMemoryPropertyFlags memoryType) {
-    return new DxvkImage(m_vkd, createInfo, m_objects.memoryManager(), memoryType);
+          VkMemoryPropertyFlags memoryType,
+          DxvkMemoryStats::Category category) {
+    return new DxvkImage(m_vkd, createInfo, m_objects.memoryManager(), memoryType, category);
   }
   
   
@@ -198,6 +284,10 @@ namespace dxvk {
   
   void DxvkDevice::initResources() {
     m_objects.dummyResources().clearResources(this);
+
+    // NV-DXVK start: RTX initializer
+    m_objects.getRtxInitializer().initialize();
+    // NV-DXVK end
   }
 
 
@@ -209,21 +299,33 @@ namespace dxvk {
   void DxvkDevice::presentImage(
     const Rc<vk::Presenter>&        presenter,
           DxvkSubmitStatus*         status) {
+    ZoneScoped;
+    
     status->result = VK_NOT_READY;
+
+    // NV-DXVK start: Integrate Reflex
+    m_objects.metaReflex().beforePresent(getCurrentFrameId());
 
     DxvkPresentInfo presentInfo;
     presentInfo.presenter = presenter;
+    presentInfo.frameId = getCurrentFrameId();
     m_submissionQueue.present(presentInfo, status);
     
-    std::lock_guard<sync::Spinlock> statLock(m_statLock);
-    m_statCounters.addCtr(DxvkStatCounter::QueuePresentCount, 1);
-  }
+    {
+      std::lock_guard<sync::Spinlock> statLock(m_statLock);
+      m_statCounters.addCtr(DxvkStatCounter::QueuePresentCount, 1); // Increase getCurrentFrameId()
+    }
 
+    m_objects.metaReflex().afterPresent(getCurrentFrameId());
+    // NV-DXVK end
+  }
+  
 
   void DxvkDevice::submitCommandList(
     const Rc<DxvkCommandList>&      commandList,
           VkSemaphore               waitSync,
           VkSemaphore               wakeSync) {
+    ZoneScoped;
     DxvkSubmitInfo submitInfo;
     submitInfo.cmdList  = commandList;
     submitInfo.waitSync = waitSync;
@@ -249,6 +351,7 @@ namespace dxvk {
   
   
   void DxvkDevice::waitForIdle() {
+    ZoneScoped;
     this->lockSubmission();
     if (m_vkd->vkDeviceWaitIdle(m_vkd->device()) != VK_SUCCESS)
       Logger::err("DxvkDevice: waitForIdle: Operation failed");

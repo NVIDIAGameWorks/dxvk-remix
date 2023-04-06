@@ -1,0 +1,122 @@
+/*
+* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/utility/debug_view_indices.h"
+
+vec4 readInDebugView(uvec2 pixelCoordinate)
+{
+  return DebugView[pixelCoordinate];
+}
+
+void storeInDebugView(uvec2 pixelCoordinate, bool value)
+{
+  imageStore(DebugView, ivec2(pixelCoordinate), value ? vec4(1.0) : vec4(0.0));
+}
+
+void storeInDebugView(uvec2 pixelCoordinate, vec4 value)
+{
+  imageStore(DebugView, ivec2(pixelCoordinate), value);
+}
+
+void storeInDebugView(uvec2 pixelCoordinate, vec3 value)
+{
+  storeInDebugView(pixelCoordinate, vec4(value, 1.0f));
+}
+
+void storeInDebugView(uvec2 pixelCoordinate, vec2 value)
+{
+  storeInDebugView(pixelCoordinate, vec4(value, 0.0f, 1.0f));
+}
+
+void storeInDebugView(uvec2 pixelCoordinate, float value)
+{
+  storeInDebugView(pixelCoordinate, vec4(value, value, value, 1.0f));
+}
+
+void storeInDebugView(uvec2 pixelCoordinate, f16vec4 value)
+{
+  storeInDebugView(pixelCoordinate, vec4(value));
+}
+
+void storeInDebugView(uvec2 pixelCoordinate, f16vec3 value)
+{
+  storeInDebugView(pixelCoordinate, vec3(value));
+}
+
+void storeInDebugView(uvec2 pixelCoordinate, f16vec2 value)
+{
+  storeInDebugView(pixelCoordinate, vec2(value));
+}
+
+void storeInDebugView(uvec2 pixelCoordinate, float16_t value)
+{
+  storeInDebugView(pixelCoordinate, float(value));
+}
+
+void accumulateInDebugViewAdd(u16vec2 pixelCoordinate, uint value)
+{
+  vec4 prevValue = imageLoad(DebugView, pixelCoordinate);
+  storeInDebugView(pixelCoordinate, prevValue + vec4(value));
+}
+
+void accumulateInDebugViewAnd(u16vec2 pixelCoordinate, uint value)
+{
+  vec4 prevValue = imageLoad(DebugView, pixelCoordinate);
+  storeInDebugView(pixelCoordinate, vec4(uint(prevValue.x) & value));
+}
+
+void accumulateInDebugViewOr(u16vec2 pixelCoordinate, uint value)
+{
+  vec4 prevValue = imageLoad(DebugView, pixelCoordinate);
+  storeInDebugView(pixelCoordinate, vec4(uint(prevValue.x) | value));
+}
+
+// Color codes a value into BGR, with only one channel being used to color code at a time
+// Black: 0 value
+// Red: values >= than max value
+// Blue/Green (0,1]: the remaining values, with blue representing the lower half of valid range and green the rest
+vec3 colorCodeIntoBGRexclusive(uint value, uint maxValue)
+{
+  if (value == 0)
+    return vec3(0);
+  else if (value >= maxValue)
+    return vec3(1, 0, 0);   
+
+  // Color code the rest, [1, maxValue-1], to a non-black BG color, one channel at a time
+
+  value -= 1;
+  const uint numValues = maxValue - 1;
+
+  const float numChannels = 2;
+  const uint ceilValuesPerChannel = ceil(numValues / numChannels);
+
+  vec3 color = 0;
+  const uint channel = value / ceilValuesPerChannel;
+  const uint numValuesInCurrentChannel = min(numValues - channel * ceilValuesPerChannel, ceilValuesPerChannel);
+
+  // Color code as (0,1]
+  color[channel] = (float(value % numValuesInCurrentChannel) + 1) / numValuesInCurrentChannel;
+
+  // Reswizzle to show lowest values in Blue and highest in Red
+  return color.bgr;
+}

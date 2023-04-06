@@ -23,3 +23,9 @@
 #include "../vulkan/vulkan_loader.h"
 #include "../vulkan/vulkan_names.h"
 #include "../vulkan/vulkan_util.h"
+
+#ifdef NDEBUG
+#define REMIX_SHIPPING
+#else
+#define REMIX_DEVELOPMENT
+#endif

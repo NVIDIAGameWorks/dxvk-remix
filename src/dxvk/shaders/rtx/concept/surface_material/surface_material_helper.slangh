@@ -1,0 +1,192 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Surface Material Interaction Constants
+
+// Note: Fallback values for materials with no such common properties when serializing out to the "GBuffer".
+// These should be based on what the denoiser and other passes expect for these cases as a fine default. Note that
+// the default normal is 0,0,1 as 0,0,0 causes issues with normalization.
+static const f16vec3 surfaceMaterialInteractionSerializationDataFallbackShadingNormal = f16vec3(0.0h, 0.0, 1.0h);
+static const f16vec3 surfaceMaterialInteractionSerializationDataFallbackAlbedo = f16vec3(0.h);
+static const f16vec3 surfaceMaterialInteractionSerializationDataFallbackBaseReflectivity = f16vec3(0.h);
+static const float16_t surfaceMaterialInteractionSerializationDataFallbackPerceptualRoughness = float16_t(1.0h);
+
+// Surface Material Interaction Helper Structures
+
+struct SurfaceMaterialInteractionLobeInformation
+{
+  bool diffuseReflectionPresent;
+  bool specularReflectionPresent;
+  bool diffuseTransmissionPresent;
+  bool specularTransmissionPresent;
+
+  bool specularReflectionDirac;
+  bool specularTransmissionDirac;
+};
+
+struct SurfaceMaterialInteractionLobeSample
+{
+  uint8_t lobe;
+  float16_t pdf;
+};
+
+struct SurfaceMaterialInteractionSplitWeight
+{
+  // Note: Only Diffuse and Specular reflection weights needed as weights are never evaluated separately on transmission lobes
+  f16vec3 diffuseReflectionWeight;
+  f16vec3 specularReflectionWeight;
+};
+
+struct SurfaceMaterialInteractionSample
+{
+  f16vec3 inputDirection;
+  // Note: Throughput represents (weight / solidAnglePdf) * (n.l), otherwise known as projectedWeight / solidAnglePdf to allow for
+  // algebraic cancelling. Weight never directly needed from sampling operations, only when evaluating the BSDF weight directly (which
+  // there is a function for).
+  f16vec3 throughput;
+  float solidAnglePdf;
+};
+
+struct SurfaceMaterialInteractionPSRSample
+{
+  bool performPSR;
+  bool useAlternateDisocclusionThreshold;
+  f16vec3 inputDirection;
+  f16vec3 attenuation;
+  f16mat3 vectorTransform;
+};
+
+// Surface Material Interaction Helper Functions
+
+// Note: Forward declared to solve strange issue with function not being defined (likely due to include cycle between Ray and Surface Material)
+f16vec4 textureRead(uint16_t textureIndex, SurfaceInteraction surfaceInteraction, float lodBias);
+
+bool surfaceMaterialInteractionTextureReadHelper(uint16_t textureIndex, SurfaceInteraction surfaceInteraction, inout f16vec4 textureSample, float lodBias = 0.0)
+{
+  // Return if no texture is available
+
+  if (textureIndex == BINDING_INDEX_INVALID)
+  {
+    return false;
+  }
+
+  textureSample = textureRead(textureIndex, surfaceInteraction, lodBias);
+
+  return true;
+}
+
+// Adjusts the surface material's texture coordinates and gradients with respect to specified spritesheet information.
+void surfaceMaterialInteractionSpriteSheetAdjustmentHelper(
+  inout SurfaceInteraction surfaceInteraction,
+  uint32_t timeSinceStartMS,
+  uint8_t spriteSheetRows,
+  uint8_t spriteSheetCols,
+  uint8_t spriteSheetFPS)
+{
+  if (spriteSheetFPS == 0)
+  { 
+    return;
+  }
+
+  const uint numSprites = (spriteSheetCols * spriteSheetRows);
+  const uint frame = timeSinceStartMS * spriteSheetFPS / 1000 % numSprites;
+  const vec2 uvSize = vec2(1.0f / spriteSheetCols, 1.0f / spriteSheetRows);
+
+  const vec2 uvBias = vec2(frame % spriteSheetCols, frame / spriteSheetCols) * uvSize;
+  surfaceInteraction.textureCoordinates = uvBias + surfaceInteraction.textureCoordinates * uvSize;
+  surfaceInteraction.textureGradientX *= uvSize;
+  surfaceInteraction.textureGradientY *= uvSize;
+}
+
+bool surfaceMaterialInteractionPortalSpriteSheetReadHelper(
+  uint16_t textureIndex,
+  SurfaceInteraction surfaceInteraction,
+  uint32_t timeSinceStartMS,
+  uint8_t spriteSheetRows,
+  uint8_t spriteSheetCols,
+  uint8_t spriteSheetFPS,
+  float16_t rotationSpeed,
+  inout f16vec4 textureSample)
+{
+  // Return if no texture is available
+  if (textureIndex == BINDING_INDEX_INVALID)
+  {
+    return false;
+  }
+
+  vec2 originalCoord = surfaceInteraction.textureCoordinates;
+  
+  const float timeSinceStartSecs = timeSinceStartMS * 0.001f;
+
+  // Some constant to slow down, and a unique direction for opposing Portals
+  const float t = float(rotationSpeed) * timeSinceStartSecs;
+  float2x2 rot = float2x2(cos(t), -sin(t), sin(t), cos(t));
+
+  // Rotate around the center
+  originalCoord = mul(rot, originalCoord - float2(0.5f)) + float2(0.5f);
+
+  // Make sure we don't sample from neighbouring sprite sheet cells
+  originalCoord = saturate(originalCoord);
+
+  const uint numSprites = (spriteSheetCols * spriteSheetRows);
+  const float frameWithFraction = (timeSinceStartSecs * spriteSheetFPS) % numSprites;
+  uint frame = floor(frameWithFraction);
+  const float frameFraction = frac(frameWithFraction);
+  const vec2 uvSize = vec2(1.0f / spriteSheetCols, 1.0f / spriteSheetRows);
+
+  // Scale the gradients according to the spritesheet size
+  surfaceInteraction.textureGradientX *= uvSize;
+  surfaceInteraction.textureGradientY *= uvSize;
+
+  // get prev frame sample
+  vec2 uvBias = vec2(frame % spriteSheetCols, frame / spriteSheetCols) * uvSize;
+  surfaceInteraction.textureCoordinates = uvBias + originalCoord * uvSize;
+  f16vec4 prevSample = textureRead(textureIndex, surfaceInteraction);
+
+  // get next frame sample
+  frame = (frame + 1) % numSprites;
+  uvBias = vec2(frame % spriteSheetRows, frame / spriteSheetCols) * uvSize;
+  surfaceInteraction.textureCoordinates = uvBias + originalCoord * uvSize;
+  f16vec4 futureSample = textureRead(textureIndex, surfaceInteraction);
+
+  // combine them
+  textureSample = mix(prevSample, futureSample, frameFraction);
+
+  return true;
+}
+
+void adjustProbabilityValue(inout float16_t value, float16_t zeroThreshold, float16_t minProbability)
+{
+  // Clamp the probability to zero if it is below the threshold
+
+  if (value <= zeroThreshold)
+  {
+    value = float16_t(0.0f);
+
+    return;
+  }
+
+  // Clamp any probabilities to the minimum if they are below it
+
+  value = max(value, minProbability);
+}

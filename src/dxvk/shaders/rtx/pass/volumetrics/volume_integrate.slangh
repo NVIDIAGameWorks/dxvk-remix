@@ -1,0 +1,170 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/utility/common.slangh"
+#include "rtx/utility/noise.slangh"
+#include "rtx/utility/froxel.slangh"
+#include "rtx/concept/ray/ray.slangh"
+#include "rtx/concept/volume/volume.slangh"
+#include "rtx/algorithm/volume_integrator.slangh"
+
+void volume_integrate_pass(ivec3 threadIndex)
+{ 
+  const VolumeArgs volumeArgs = cb.volumeArgs;
+  const uvec3 froxelDimensions = uvec3(volumeArgs.froxelGridDimensions, volumeArgs.froxelDepthSlices);
+  const uint froxelVolume = threadIndex.x / froxelDimensions.x;
+
+  if (any(threadIndex.yz >= froxelDimensions.yz) || froxelVolume > volumeArgs.numActiveFroxelVolumes)
+    return;
+
+  // Figure out which volume we'll be pulling the previous data from.
+  // Usually it's the same volume, but in case of portal teleportation, that doesn't work.
+  uint previousFroxelVolume = froxelVolume;
+  bool previousVolumeExists = true;
+  if (cb.teleportationPortalIndex)
+  {
+    if (froxelVolume == froxelVolumeMain)
+      previousFroxelVolume = cb.teleportationPortalIndex;
+    else if (froxelVolume != cb.teleportationPortalIndex)
+      previousFroxelVolume = froxelVolumeMain;
+    else
+      previousVolumeExists = false;
+  }
+
+  const VolumeDefinitionCamera camera = cb.volumeArgs.cameras[froxelVolume];
+  const VolumeDefinitionCamera previousCamera = cb.volumeArgs.cameras[previousFroxelVolume];
+
+  // Construct RNG
+
+  // Note: Bounce iteration multiplied by a heuristic used to offset the seed for each bounce. This is done so that
+  // each depth slice for a specific froxel x/y coordinate can be treated as if they were sampled in a raymarched way,
+  // hypothetically carrying the random state across them. This might not be the best way to do it but seems to work better
+  // than any other strategy (factoring Z into the X/Y coordinates causes regular patterns, adding Z to the frame index
+  // causes temporal smearing). This may be able to be improved in the future though as it still produces somewhat regular looking
+  // samples visually (just not as bad as before).
+  // Heuristic justification: 3ish samples for each RIS sample, plus 3ish for other logic and sample merging, and finally this is
+  // done once for each reservoir sample, using the maximum amount of them as a conservative estimate.
+  const uint approxRNGSamplesPerDepthSlice = (cb.volumeRISTotalSampleCount * 3 + 3) * volumeArgs.maxReservoirSamples;
+  //RNG rng = createRNG(uvec2(threadIndex.x, threadIndex.y), cb.frameIdx, threadIndex.z * approxRNGSamplesPerDepthSlice);
+  // Note: Volume ReSTIR RAB random state used here now instead to not be as costly as having two random samplers. If this creates
+  // issues try moving back to the original spatiotemporal blue noise. Do note this makes the volumetric random unaffected by the
+  // white noise override sadly (though this could be modified in the RTXDI Application Bridge to be consistent with the rest of
+  // our project's random).
+  RAB_RandomSamplerState rabRandomState = RAB_InitRandomSampler(
+    uvec2(threadIndex.x, threadIndex.y), cb.frameIdx,
+    threadIndex.z * approxRNGSamplesPerDepthSlice);
+
+  // Calculate the froxel coordinate for the current thread's index
+  // Note: This coordinate represents the center of a froxel.
+
+  uvec3 froxelIndex = threadIndex;
+  froxelIndex.x = threadIndex.x - froxelVolume * froxelDimensions.x;
+  const vec3 froxelCoordinate = froxelIndexToFroxelCoordinate(froxelIndex);
+
+  // Calculate previous froxel related coordinate values
+  // Note: This is done by calculating the translated world space position of the desired location in the froxel grid to reproject into the previous
+  // frame, then transforming that translated world position back into a froxel UVW coordinates with respect to the previous frame's transforms.
+  // Additionally, non-jittered (TAA/DLSS jittering, that is) matrices are used in this process as DLSS's jittering only causes excess blurring since we
+  // accumulate and filter the signal ourselves (rather than giving a raw noisy jittered signal to DLSS as intended). This is similar to the issue
+  // of giving a jittered signal to a denoiser before DLSS can work with it that we currently also deal with (due to the denoiser working in low res pixels
+  // rather than high resolution samples).
+
+  // Note: Not temporally jittered currently to avoid blurring when temporally accumulating (though this might be desirable in the future).
+  const vec3 previousLookupFroxelCoordinate = froxelCoordinate;
+  const vec3 previousLookupFroxelTranslatedWorldPosition = froxelCoordinateToTranslatedWorldPosition(
+    camera.projectionToTranslatedWorld, camera.viewToProjection, packedFlagGet(camera.flags, rightHandedFlag),
+    volumeArgs.inverseFroxelGridDimensions, volumeArgs.froxelDepthSlices,
+    volumeArgs.froxelDepthSliceDistributionExponent, volumeArgs.froxelMaxDistance, camera.nearPlane,
+    previousLookupFroxelCoordinate);
+  // Note: Convert from the current frame's translated world space to the previous frame's translated world space so the look coordinate
+  // can be reprojected properly with respect to the previous frame.
+  // Also note: the current camera and the previous camera are not necessarily the same; they are different when portal teleportation happens.
+  // We need to convert from new camera's current translated world space into old camera's previous translated world space. 
+  const vec3 previousLookupFroxelPreviousTranslatedWorldPosition =
+    previousLookupFroxelTranslatedWorldPosition + (camera.translatedWorldOffset - previousCamera.previousTranslatedWorldOffset);
+  // Note: Current froxel depth slices, depth slice distribution exponent and max distance are used even though these may have changed
+  // between now and the previous frame, resulting in incorrect reprojection. This is not a huge issue though as these settings should not
+  // be changed dynamically in production and things should stabilize out when messing with them in development.
+  const vec3 previousFroxelUVW = translatedWorldPositionToFroxelUVW(
+    previousCamera.prevTranslatedWorldToView, previousCamera.prevTranslatedWorldToProjection, packedFlagGet(previousCamera.flags, rightHandedFlag),
+    volumeArgs.froxelDepthSlices, volumeArgs.froxelDepthSliceDistributionExponent, volumeArgs.froxelMaxDistance, previousCamera.nearPlane,
+    previousLookupFroxelPreviousTranslatedWorldPosition);
+  // Note: The previous froxel coordinate/index are only valid if the Froxel UVW coordinate is valid (meaning successful reprojection).
+  const vec3 previousFroxelCoordinate = froxelUVWToFroxelCoordinate(previousFroxelUVW, froxelDimensions);
+  const uvec3 previousFroxelIndex = froxelCoordinateToFroxelIndex(previousFroxelCoordinate);
+
+  // Calculate clamped previous froxel related coordinate values
+  // Note: These values are like the typical previous froxel coordinates, but clamped to be within the froxel grid.
+
+  const vec3 clampedPreviousFroxelCoordinate = clamp(previousFroxelCoordinate, float3(0.5), float3(froxelDimensions) - float3(0.5));
+  const uvec3 clampedPreviousFroxelIndex = froxelCoordinateToFroxelIndex(clampedPreviousFroxelCoordinate);
+
+  // Calculate a froxel coordinate sampling offset for the current froxel
+
+  // const f16vec3 randomSample = f16vec3(getNextSampleBlueNoise(rng), getNextSampleBlueNoise(rng), getNextSampleBlueNoise(rng));
+  const f16vec3 randomSample = f16vec3(
+    RAB_GetNextRandom(rabRandomState),
+    RAB_GetNextRandom(rabRandomState),
+    RAB_GetNextRandom(rabRandomState));
+  const f16vec3 currentFroxelCoordinateOffset = calcUniformCenteredCubePositionSample(randomSample);
+  // Note: Jittered by coordinate offset which samples outwards from the center of the froxel cell uniformly (though will translate
+  // to a slightly nonuniform sampling pattern in worldspace).
+  const vec3 currentFroxelCoordinate = froxelCoordinate + currentFroxelCoordinateOffset;
+  const vec3 currentFroxelTranslatedWorldPosition = froxelCoordinateToTranslatedWorldPosition(
+    camera.projectionToTranslatedWorld, camera.viewToProjection, packedFlagGet(camera.flags, rightHandedFlag),
+    volumeArgs.inverseFroxelGridDimensions, volumeArgs.froxelDepthSlices,
+    volumeArgs.froxelDepthSliceDistributionExponent, volumeArgs.froxelMaxDistance, camera.nearPlane,
+    currentFroxelCoordinate);
+  const vec3 currentFroxelWorldPosition = translatedWorldToWorld(camera, currentFroxelTranslatedWorldPosition);
+
+  // Calculate the distance from the camera to the center of the froxel
+
+  // Note: While the froxel position is in translated world space, this is simply the length of the vector (implicitly from the origin).
+  const float currentFroxelDistance = length(currentFroxelTranslatedWorldPosition);
+
+  // Create a Ray to the current froxel position
+
+  // Todo: Improve with some way to construct a volume ray direction manually from a position?
+  Ray ray;
+  ray.coneRadius = float16_t(0.0f);
+  ray.spreadAngle = float16_t(cb.screenSpacePixelSpreadHalfAngle);
+
+  // Create a Ray Interaction for the current froxel
+
+  // Todo: Improve with some way to construct a volume hit manually like this
+  MinimalRayInteraction minimalRayInteraction;
+  minimalRayInteraction.coneRadius = ray.coneRadius + float16_t(ray.spreadAngle * currentFroxelDistance);
+
+  // Create a Volume Interaction for the current froxel
+
+  // Note: Volume Interaction constructed with non-translated world position for now, may not be as accurate but must be done
+  // since the rest of the renderer is not using translated world space for the time being.
+  const VolumeInteraction volumeInteraction = volumeInteractionCreate(currentFroxelWorldPosition);
+
+  // Integrate the Volume
+
+  integrateVolume(
+    rabRandomState, froxelIndex, froxelVolume, previousFroxelVolume, previousVolumeExists,
+    ray, minimalRayInteraction, volumeInteraction,
+    previousFroxelUVW, previousFroxelIndex, clampedPreviousFroxelIndex);
+}

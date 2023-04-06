@@ -1,0 +1,471 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/utility/math.slangh"
+
+// Signed/Unsigned Normalized Float Packing Helpers
+
+// Pack [0.0, 1.0] or [-1.0, 1.0] float to a uint of a given bit depth, and store into the nearest representable format
+// Note: Input size represents the size of the float (16 or 32 bit), output size represents the size
+// of the encoded unorm output, and the nearest output size is the corresponding integer format to store
+// the output in. For example a 2 bit output's nearest format is 8 bit integers. Values in and out will always be masked
+// so passing in merely a shifted value is sufficent for decoding. Additionally casts to a lower precision integer cast
+// so casting to the proper type to give as the input when decoding will also act as a mask without issue.
+// Note: For snorm encodings one value is left out to allow for 0 to be encoded perfectly (as this is often important
+// with extremely low precision representations, e.g. encoding anisotropy in a 4 bit representation).
+#define GENERIC_FLOAT_TO_NORM(inputSize, outputSize, nearestOutputSize)  \
+uint ## nearestOutputSize ## _t f ## inputSize ## ToUnorm ## outputSize( \
+  float ## inputSize ## _t x,                                            \
+  float ## inputSize ## _t d)                                            \
+{                                                                        \
+  const uint ## nearestOutputSize ## _t mask =                           \
+    uint ## nearestOutputSize ## _t((1 << outputSize) - 1);              \
+  const float ## inputSize ## _t normalizationFactor =                   \
+    float ## inputSize ## _t (mask);                                     \
+                                                                         \
+  return min(uint ## nearestOutputSize ## _t(                            \
+    floor(x * normalizationFactor + d)), mask);                          \
+}                                                                        \
+uint ## nearestOutputSize ## _t f ## inputSize ## ToUnorm ## outputSize( \
+  float ## inputSize ## _t x)                                            \
+{                                                                        \
+  return f ## inputSize ## ToUnorm ## outputSize(                        \
+    x, float ## inputSize ## _t(0.5));                                   \
+}                                                                        \
+float ## inputSize ## _t unorm ## outputSize ## ToF ## inputSize(        \
+  uint ## nearestOutputSize ## _t x)                                     \
+{                                                                        \
+  const uint ## nearestOutputSize ## _t mask =                           \
+    uint ## nearestOutputSize ## _t((1 << outputSize) - 1);              \
+  const uint ## inputSize ## _t normalizationFactor = mask;              \
+                                                                         \
+  return                                                                 \
+    float ## inputSize ## _t(x & mask) /                                 \
+    float ## inputSize ## _t(normalizationFactor);                       \
+}                                                                        \
+uint ## nearestOutputSize ## _t f ## inputSize ## ToSnorm ## outputSize( \
+  float ## inputSize ## _t x,                                            \
+  float ## inputSize ## _t d)                                            \
+{                                                                        \
+  const uint ## nearestOutputSize ## _t mask =                           \
+    uint ## nearestOutputSize ## _t((1 << outputSize) - 1);              \
+  const float ## inputSize ## _t normalizationFactor =                   \
+    float ## inputSize ## _t((1 << outputSize) - 2);                     \
+                                                                         \
+  const float ## inputSize ## _t m =                                     \
+    x * float ## inputSize ## _t(0.5) + float ## inputSize ## _t(0.5);   \
+                                                                         \
+  return min(uint ## nearestOutputSize ## _t(                            \
+    floor(m * normalizationFactor + d)), mask);                          \
+}                                                                        \
+uint ## nearestOutputSize ## _t f ## inputSize ## ToSnorm ## outputSize( \
+  float ## inputSize ## _t x)                                            \
+{                                                                        \
+  return f ## inputSize ## ToSnorm ## outputSize(                        \
+    x, float ## inputSize ## _t(0.5));                                   \
+}                                                                        \
+float ## inputSize ## _t snorm ## outputSize ## ToF ## inputSize(        \
+  uint ## nearestOutputSize ## _t x)                                     \
+{                                                                        \
+  const uint ## nearestOutputSize ## _t mask =                           \
+    uint ## nearestOutputSize ## _t((1 << outputSize) - 1);              \
+  const uint ## inputSize ## _t normalizationFactor =                    \
+    uint ## inputSize ## _t((1 << outputSize) - 2);                      \
+                                                                         \
+  const float ## inputSize ## _t m =                                     \
+    float ## inputSize ## _t(x & mask) /                                 \
+    float ## inputSize ## _t(normalizationFactor);                       \
+                                                                         \
+  return                                                                 \
+    m * float ## inputSize ## _t(2.0) - float ## inputSize ## _t(1.0);   \
+}
+
+GENERIC_FLOAT_TO_NORM(32, 2, 8)
+GENERIC_FLOAT_TO_NORM(16, 2, 8)
+GENERIC_FLOAT_TO_NORM(32, 3, 8)
+GENERIC_FLOAT_TO_NORM(16, 3, 8)
+GENERIC_FLOAT_TO_NORM(32, 4, 8)
+GENERIC_FLOAT_TO_NORM(16, 4, 8)
+GENERIC_FLOAT_TO_NORM(32, 5, 8)
+GENERIC_FLOAT_TO_NORM(16, 5, 8)
+GENERIC_FLOAT_TO_NORM(32, 6, 8)
+GENERIC_FLOAT_TO_NORM(16, 6, 8)
+GENERIC_FLOAT_TO_NORM(32, 7, 8)
+GENERIC_FLOAT_TO_NORM(16, 7, 8)
+GENERIC_FLOAT_TO_NORM(32, 8, 8)
+GENERIC_FLOAT_TO_NORM(16, 8, 8)
+GENERIC_FLOAT_TO_NORM(32, 10, 16)
+GENERIC_FLOAT_TO_NORM(16, 10, 16)
+GENERIC_FLOAT_TO_NORM(32, 11, 16)
+GENERIC_FLOAT_TO_NORM(16, 11, 16)
+GENERIC_FLOAT_TO_NORM(32, 16, 16)
+// Note: 16 norm->16 float and vice versa conversion is pointless for the most part in code we control as
+// 16 bit floats can almost always be used in this case over 16 bit norms which avoids precision loss. Additionally
+// this function is broken due to an overflow of the largest 16 bit number casted to float 16, which generates infinity.
+//GENERIC_FLOAT_TO_NORM(16, 16, 16)
+
+// Signed/Unsigned Normalized Vector Packing Helpers
+
+// Converts a 2-vector of float32, expected to be in [0,1] range, into a uint32,
+// so that the lower 16 bits contain the .x component encoded as Unorm16,
+// and the upper 16 bits contain the .y component
+uint32_t float2x32ToUnorm2x16(vec2 f)
+{
+  return
+    uint32_t(f32ToUnorm16(f.x)) |
+    (uint32_t(f32ToUnorm16(f.y)) << 16);
+}
+
+// Converts a uint32 consisting of two Unorm16 numbers into a 2-vector of float32,
+// so that the lower 16 bits become the .x component, and the upper 16 bits
+// become the .y component
+vec2 unorm2x16ToFloat2x32(uint32_t u)
+{
+  return vec2(
+    unorm16ToF32(uint16_t(u >> 0)),
+    unorm16ToF32(uint16_t(u >> 16)));
+}
+
+// Converts a 2-vector of float32, expected to be in [-1,1] range, into a uint32,
+// so that the lower 16 bits contain the .x component encoded as Snorm16,
+// and the upper 16 bits contain the .y component
+uint32_t float2x32ToSnorm2x16(vec2 f)
+{
+  return
+    uint32_t(f32ToSnorm16(f.x)) |
+    (uint32_t(f32ToSnorm16(f.y)) << 16);
+}
+
+// Converts a uint32 consisting of two Snorm16 numbers into a 2-vector of float32,
+// so that the lower 16 bits become the .x component, and the upper 16 bits
+// become the .y component
+vec2 snorm2x16ToFloat2x32(uint32_t u)
+{
+  return vec2(
+    snorm16ToF32(uint16_t(u >> 0)),
+    snorm16ToF32(uint16_t(u >> 16)));
+}
+
+// Converts a 3-vector of float16, expected to to be in [0, 1] range, into lower 24bits of uint32  
+uint32_t float3x16ToUnorm3x8(f16vec3 f)
+{
+  return 
+    uint32_t(f16ToUnorm8(f.x)) |
+    (uint32_t(f16ToUnorm8(f.y)) << 8) |
+    (uint32_t(f16ToUnorm8(f.z)) << 16);
+}
+
+// Converts a lower 24bits of uint32 consisting of three unorm8 numbers into a 3-vector of float16  
+f16vec3 unorm3x8ToFloat3x16(uint32_t u)
+{
+  return f16vec3(unorm8ToF16(u >> 0), unorm8ToF16(u >> 8), unorm8ToF16(u >> 16));
+}
+
+// General Color Packing
+
+// Converts a [0, 1] RGB color value to R5G6B5 encoding. Note this encoding favors the green channel as
+// it is most relevant to human vision.
+uint16_t colorToR5G6B5(f16vec3 color)
+{
+  return
+    (uint16_t(f16ToUnorm5(color.r)) << 0) |
+    (uint16_t(f16ToUnorm6(color.g)) << 5) |
+    (uint16_t(f16ToUnorm5(color.b)) << 11);
+}
+
+// Converts a R5G6B5 packed color to a [0, 1] RGB color.
+f16vec3 r5g6b5ToColor(uint16_t packedColor)
+{
+  return f16vec3(
+    unorm5ToF16(uint8_t(packedColor >> 0)),
+    unorm6ToF16(uint8_t(packedColor >> 5)),
+    unorm5ToF16(uint8_t(packedColor >> 11))
+  );
+}
+
+// Converts a [0, 1] RGB color value to R11G11B10 encoding. Note this encoding favors the red and green channel as
+// they are the most relevant to human vision.
+uint32_t colorToR11G11B10(f16vec3 color)
+{
+  return
+    (uint32_t(f16ToUnorm11(color.r)) << 0) |
+    (uint32_t(f16ToUnorm11(color.g)) << 11) |
+    (uint32_t(f16ToUnorm10(color.b)) << 22);
+}
+
+// Converts a R11G11B10 packed color to a [0, 1] RGB color.
+f16vec3 r11g11b10ToColor(uint32_t packedColor)
+{
+  return f16vec3(
+    unorm11ToF16(uint16_t(packedColor >> 0)),
+    unorm11ToF16(uint16_t(packedColor >> 11)),
+    unorm10ToF16(uint16_t(packedColor >> 22))
+  );
+}
+
+// LogLUV Packing Helpers
+// https://mynameismjp.wordpress.com/2008/12/12/logluv-encoding-for-hdr/
+// Note: This LogLUV encoding is slightly custom to allow for more precision in the use cases desired. Valid range of
+// inputs is [2^-48, 2^48] instead of the usual [2^-64, 2^64].
+
+// Converts a radiance value in linear sRGB to a packed LogLUV format, based on the CIELUV color space. This format
+// is useful as it encodes a wide range of radiance values with reasonable precision in a fairly perceptually
+// uniform way.
+uint32_t radianceToLogLuv32(vec3 x)
+{
+  const mat3 srgbToModXYZ = transpose(mat3(
+    0.2209f, 0.3390f, 0.4184f,
+    0.1138f, 0.6780f, 0.7319f,
+    0.0102f, 0.1130f, 0.2969f
+  ));
+
+  const vec3 modXYZ = max(mul(srgbToModXYZ, x), vec3(1e-6f, 1e-6f, 1e-6f));
+
+  const vec2 ueve = modXYZ.xy / modXYZ.z;
+  // Note: We could specify a range to normalize the exponent on explicitly for more precision, but this may pose
+  // difficulty in maintaining a proper perfect 0 representation for decoding without special care or extra logic taken
+  // for that case. Encoding with our existing snorm helpers on the other hand avoids needing to worry about this due to
+  // having a perfect 0 representation.
+  const float le = log2(modXYZ.y) / 48.0f;
+
+  // Note: Potentially slightly wasteful as the multiply in the snorm Le conversion could be combined with the normalization
+  // divide used to calculate Le. Compiler hopefully will optimize it away though.
+  return
+    (uint32_t(f32ToSnorm16(le)) << 16) |
+    (uint32_t(f32ToUnorm8(ueve.x)) << 8) |
+    uint32_t(f32ToUnorm8(ueve.y));
+}
+
+// Converts a packed LogLUV encoding to a linear sRGB radiance value.
+vec3 logLuv32ToRadiance(uint32_t x)
+{
+  const mat3 modXYZToSrgb = transpose(mat3(
+    6.0013f, -2.700f, -1.7995f,
+    -1.332f, 3.1029f, -5.7720f,
+    0.3007f, -1.088f, 5.6268f
+  ));
+
+  const float le = snorm16ToF32(uint16_t(x >> 16));
+  const vec2 ueve = vec2(unorm8ToF32(uint8_t(x >> 8)), unorm8ToF32(uint8_t(x)));
+
+  vec3 modXYZ;
+  modXYZ.y = exp2(le * 48.0f);
+  modXYZ.z = modXYZ.y / ueve.y;
+  modXYZ.x = ueve.x * modXYZ.z;
+
+  return max(mul(modXYZToSrgb, modXYZ), vec3(0.0f, 0.0f, 0.0f));
+}
+
+// Octahedral Spherical Direction Packing Helpers
+// Note: Full 32 bit floats used in these packing functions so that the full precision of 16 bit snorms
+// (which is greater than that of a 16 bit float across a good portion of the 0-1 range) is utilized properly.
+// https://knarkowicz.wordpress.com/2014/04/16/octahedron-normal-vector-encoding/
+// http://jcgt.org/published/0003/02/01/paper.pdf
+
+vec2 octWrap(vec2 v)
+{
+  vec2 wrapped = 1.0f - abs(v.yx);
+
+  wrapped.x *= signNotZero(v.x);
+  wrapped.y *= signNotZero(v.y);
+
+  return wrapped;
+}
+
+// Converts a normalized spherical vector to a signed octahedral encoding (2 channels of [-1, 1])
+vec2 sphereDirectionToSignedOctahedral(vec3 v)
+{
+  const vec2 p = v.xy * (1.0f / (abs(v.x) + abs(v.y) + abs(v.z)));
+
+  return (v.z >= 0.0f) ? p : octWrap(p);
+}
+
+// Converts a normalized spherical vector to a signed octahedral encoding (2 channels of [-1, 1]) stored as uint
+uint sphereDirectionToSnorm2x16(vec3 v)
+{
+  return float2x32ToSnorm2x16(sphereDirectionToSignedOctahedral(v));
+}
+
+// Converts a signed octahedral encoding (2 channels of [-1, 1]) to a normalized spherical vector
+vec3 signedOctahedralToSphereDirection(vec2 p)
+{
+  // Note: Slightly optimized decoding method https://twitter.com/Stubbesaurus/status/937994790553227264
+  vec3 v = vec3(p.x, p.y, 1.0f - abs(p.x) - abs(p.y));
+  const float t = max(-v.z, 0.0f);
+
+  v.x += (v.x >= 0.0f) ? -t : t;
+  v.y += (v.y >= 0.0f) ? -t : t;
+
+  return normalize(v);
+}
+
+// Converts a signed octahedral encoding (2 channels of [-1, 1]) stored as a uint to a normalized spherical vector
+vec3 snorm2x16ToSphereDirection(uint v)
+{
+  return signedOctahedralToSphereDirection(snorm2x16ToFloat2x32(v));
+}
+
+// Converts a normalized hemispherical (only positive z) vector to a signed octahedral encoding (2 channels of [-1, 1])
+vec2 hemisphereDirectionToSignedOctahedral(vec3 v)
+{
+  // Note: z is already positive so no abs needed
+  const vec2 p = v.xy * (1.0f / (abs(v.x) + abs(v.y) + v.z));
+
+  return vec2(p.x + p.y, p.x - p.y);
+}
+
+// Converts a signed octahedral encoding (2 channels of [-1, 1]) to a normalized hemispherical vector (only positive z)
+vec3 signedOctahedralToHemisphereDirection(vec2 p, float strength = 1.f)
+{
+  const vec2 t = vec2(p.x + p.y, p.x - p.y) * 0.5f;
+  const vec3 v = vec3(t.x, t.y, 1.0f - abs(t.x) - abs(t.y));
+
+  return normalize(vec3(v.xy * strength, v.z));
+}
+
+// Converts a normalized spherical vector to an unsigned octahedral encoding (2 channels of [0, 1])
+vec2 sphereDirectionToUnsignedOctahedral(vec3 v)
+{
+  const vec2 signedOctahedral = sphereDirectionToSignedOctahedral(v);
+
+  return signedOctahedral * 0.5f + 0.5f;
+}
+
+// Converts an unsigned octahedral encoding (2 channels of [0, 1] to a normalized spherical vector
+vec3 unsignedOctahedralToSphereDirection(vec2 p)
+{
+  const vec2 signedOctahedral = p * 2.0f - 1.0f;
+
+  return signedOctahedralToSphereDirection(signedOctahedral);
+}
+
+// Converts a normalized hemispherical (positive z) vector to an unsigned octahedral encoding (2 channels of [0, 1])
+vec2 hemisphereDirectionToUnsignedOctahedral(vec3 v)
+{
+  const vec2 signedOctahedral = hemisphereDirectionToSignedOctahedral(v);
+
+  return signedOctahedral * 0.5f + 0.5f;
+}
+
+// Converts an unsigned octahedral encoding (2 channels of [0, 1] to a normalized hemispherical vector (positive z)
+vec3 unsignedOctahedralToHemisphereDirection(vec2 p, float strength = 1.f)
+{
+  const vec2 signedOctahedral = p * 2.0f - 1.0f;
+
+  return signedOctahedralToHemisphereDirection(signedOctahedral, strength);
+}
+
+// Barycentric Packing Helpers
+
+uint barycentricsToUint(vec2 bary)
+{
+  return float2x32ToUnorm2x16(bary);
+}
+
+vec3 uintToBarycentrics(uint bary)
+{
+  const vec2 outBary = unorm2x16ToFloat2x32(bary);
+
+  return vec3(1 - outBary.x - outBary.y, outBary);
+}
+
+// Hexadecachoral 3-spherical Direction Packing Helpers
+
+// Converts a hexadecachoron encoding (3 channels of [-1, 1]) to a quaternion
+f16vec4 HexadecachoronToQuaternion(f16vec3 x)
+{
+  const f16vec4 q = f16vec4(x, float16_t(1.0) - (abs(x.x) + abs(x.y) + abs(x.z)));
+
+  return normalize(q);
+}
+
+// Converts a quaternion to a unorm hexadecachoron encoding (3 channels of [-1, 1])
+f16vec3 QuaternionToHexadecachoron(f16vec4 q)
+{
+  // Note: Assumes positive w coordinate
+  return q.xyz / (abs(q.x) + abs(q.y) + abs(q.z) + abs(q.w));
+}
+
+// Matrix Packing Helpers
+
+// Converts a snorm 3x3 matrix (all elements [-1, 1]) to 2 32 bit integers
+uvec2 snormMat3ToUint2(f16mat3 m)
+{
+  uvec2 packedMatrix;
+
+  const uint8_t commonElement = f16ToSnorm7(m[1][1]);
+
+  packedMatrix.x =
+    uint32_t(f16ToSnorm7(m[0][0])) << 0 |
+    uint32_t(f16ToSnorm7(m[0][1])) << 7 |
+    uint32_t(f16ToSnorm7(m[0][2])) << 14 |
+    uint32_t(f16ToSnorm7(m[1][0])) << 21 |
+    uint32_t(commonElement) << 28;
+  packedMatrix.y =
+    uint32_t(commonElement) >> 4 |
+    uint32_t(f16ToSnorm7(m[1][2])) << 3 |
+    uint32_t(f16ToSnorm7(m[2][0])) << 10 |
+    uint32_t(f16ToSnorm7(m[2][1])) << 17 |
+    uint32_t(f16ToSnorm7(m[2][2])) << 24;
+  // Note: Bit 31 of packedMatrix.y free.
+
+  return packedMatrix;
+}
+
+f16mat3 uint2ToSnormMat3(uvec2 packedMatrix)
+{
+  f16mat3 m;
+
+  const uint32_t commonElement = (packedMatrix.x >> 28) | (packedMatrix.y << 4);
+
+  m[0][0] = snorm7ToF16(uint8_t(packedMatrix.x >> 0));
+  m[0][1] = snorm7ToF16(uint8_t(packedMatrix.x >> 7));
+  m[0][2] = snorm7ToF16(uint8_t(packedMatrix.x >> 14));
+  m[1][0] = snorm7ToF16(uint8_t(packedMatrix.x >> 21));
+  m[1][1] = snorm7ToF16(uint8_t(commonElement));
+  m[1][2] = snorm7ToF16(uint8_t(packedMatrix.y >> 3));
+  m[2][0] = snorm7ToF16(uint8_t(packedMatrix.y >> 10));
+  m[2][1] = snorm7ToF16(uint8_t(packedMatrix.y >> 17));
+  m[2][2] = snorm7ToF16(uint8_t(packedMatrix.y >> 24));
+
+  return m;
+}
+
+// Packed Flag Helpers
+
+#define GENERIC_PACKED_FLAG_TEST(size)                                                        \
+bool packedFlagGet(uint ## size ## _t packedFlags, uint ## size ## _t flag) {                 \
+  return (packedFlags & flag) != 0u;                                                          \
+}                                                                                             \
+                                                                                              \
+uint ## size ## _t packedFlagSet(uint ## size ## _t packedFlags, uint ## size ## _t flag) {   \
+  return packedFlags | flag;                                                                  \
+}                                                                                             \
+                                                                                              \
+uint ## size ## _t packedFlagUnset(uint ## size ## _t packedFlags, uint ## size ## _t flag) { \
+  return packedFlags & ~flag;                                                                 \
+}
+
+GENERIC_PACKED_FLAG_TEST(8)
+GENERIC_PACKED_FLAG_TEST(16)
+GENERIC_PACKED_FLAG_TEST(32)

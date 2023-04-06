@@ -95,7 +95,6 @@ namespace dxvk {
   class DxvkIlAttribute {
 
   public:
-
     DxvkIlAttribute() = default;
 
     DxvkIlAttribute(
@@ -106,8 +105,7 @@ namespace dxvk {
     : m_location(uint32_t(location)),
       m_binding (uint32_t(binding)),
       m_format  (uint32_t(format)),
-      m_offset  (uint32_t(offset)),
-      m_reserved(0) { }
+      m_offset  (uint32_t(offset)){ }
     
     uint32_t location() const {
       return m_location;
@@ -124,7 +122,7 @@ namespace dxvk {
     uint32_t offset() const {
       return m_offset;
     }
-    
+
     VkVertexInputAttributeDescription description() const {
       VkVertexInputAttributeDescription result;
       result.location = m_location;
@@ -141,7 +139,6 @@ namespace dxvk {
     uint32_t m_format                 : 7;
     uint32_t m_offset                 : 11;
     uint32_t m_reserved               : 4;
-  
   };
 
 

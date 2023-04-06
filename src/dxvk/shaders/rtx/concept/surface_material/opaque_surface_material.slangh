@@ -1,0 +1,68 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Opaque Surface Material Functions
+
+OpaqueSurfaceMaterial opaqueSurfaceMaterialCreate(uint16_t surfaceMaterialIndex, MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial)
+{
+  // Decode the Opaque Surface Material from the packed memory representation
+  // Note: Opaque type is known in advance
+
+  OpaqueSurfaceMaterial opaqueSurfaceMaterial;
+
+  const u16vec2 data00 = unpack16(memoryPolymorphicSurfaceMaterial.data0.x);
+  const u16vec2 data01 = unpack16(memoryPolymorphicSurfaceMaterial.data0.y);
+  const u16vec2 data02 = unpack16(memoryPolymorphicSurfaceMaterial.data0.z);
+  const u16vec2 data03 = unpack16(memoryPolymorphicSurfaceMaterial.data0.w);
+  const u16vec2 data10 = unpack16(memoryPolymorphicSurfaceMaterial.data1.x);
+  const u16vec2 data11 = unpack16(memoryPolymorphicSurfaceMaterial.data1.y);
+  const u16vec2 data12 = unpack16(memoryPolymorphicSurfaceMaterial.data1.z);
+  // Note: Last two bits of data1.w (or data13 in this case) are reserved for common polymorphic type
+  const u16vec2 data13 = unpack16(memoryPolymorphicSurfaceMaterial.data1.w);
+
+  opaqueSurfaceMaterial.albedoOpacityTextureIndex = data00.x;
+  opaqueSurfaceMaterial.normalTextureIndex = data00.y;
+  opaqueSurfaceMaterial.tangentTextureIndex = data01.x;
+  opaqueSurfaceMaterial.roughnessTextureIndex = data01.y;
+  opaqueSurfaceMaterial.metallicTextureIndex = data02.x;
+  opaqueSurfaceMaterial.emissiveColorTextureIndex = data02.y;
+
+  opaqueSurfaceMaterial.anisotropy = snorm8ToF16(uint8_t(data03.x));
+  opaqueSurfaceMaterial.emissiveColorConstant = f16vec3(unorm8ToF16(uint8_t(data03.x >> 8u)), unorm8ToF16(uint8_t(data03.y)), unorm8ToF16(uint8_t(data03.y >> 8u)));
+
+  opaqueSurfaceMaterial.emissiveIntensity = uint16BitsToHalf(data10.x);
+
+  opaqueSurfaceMaterial.albedoOpacityConstant = f16vec4(unorm8ToF16(uint8_t(data10.y)), unorm8ToF16(uint8_t(data10.y >> 8u)), unorm8ToF16(uint8_t(data11.x)), unorm8ToF16(uint8_t(data11.x >> 8u)));
+  opaqueSurfaceMaterial.roughnessConstant = unorm8ToF16(uint8_t(data11.y));
+  opaqueSurfaceMaterial.metallicConstant = unorm8ToF16(uint8_t(data11.y >> 8u));
+
+  opaqueSurfaceMaterial.spriteSheetRows = uint8_t(data12.x);
+  opaqueSurfaceMaterial.spriteSheetCols = uint8_t(data12.x >> 8u);
+  opaqueSurfaceMaterial.spriteSheetFPS = uint8_t(data12.y);
+
+  opaqueSurfaceMaterial.thinFilmThicknessConstant = unorm8ToF16(uint8_t(data12.y >> 8u));
+
+  opaqueSurfaceMaterial.flags = (data13.x & 0xFF);
+
+  return opaqueSurfaceMaterial;
+}

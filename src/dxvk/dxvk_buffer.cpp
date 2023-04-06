@@ -1,3 +1,24 @@
+/*
+* Copyright (c) 2021-2022, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
 #include "dxvk_buffer.h"
 #include "dxvk_device.h"
 
@@ -9,11 +30,13 @@ namespace dxvk {
           DxvkDevice*           device,
     const DxvkBufferCreateInfo& createInfo,
           DxvkMemoryAllocator&  memAlloc,
-          VkMemoryPropertyFlags memFlags)
+          VkMemoryPropertyFlags memFlags,
+          DxvkMemoryStats::Category category)
   : m_device        (device),
     m_info          (createInfo),
     m_memAlloc      (&memAlloc),
-    m_memFlags      (memFlags) {
+    m_memFlags      (memFlags),
+    m_category      (category) {
     // Align slices so that we don't violate any alignment
     // requirements imposed by the Vulkan device/driver
     VkDeviceSize sliceAlignment = computeSliceAlignment();
@@ -29,10 +52,10 @@ namespace dxvk {
       : 1;
 
     // Allocate the initial set of buffer slices
-    m_buffer = allocBuffer(m_physSliceCount);
+    m_buffer = allocBuffer(m_physSliceCount, category);
 
     DxvkBufferSliceHandle slice;
-    slice.handle = m_buffer.buffer;
+    slice.handle = m_buffer.buffer; 
     slice.offset = 0;
     slice.length = m_physSliceLength;
     slice.mapPtr = m_buffer.memory.mapPtr(0);
@@ -43,23 +66,46 @@ namespace dxvk {
 
 
   DxvkBuffer::~DxvkBuffer() {
-    auto vkd = m_device->vkd();
+    const auto& vkd = m_device->vkd();
 
     for (const auto& buffer : m_buffers)
       vkd->vkDestroyBuffer(vkd->device(), buffer.buffer, nullptr);
     vkd->vkDestroyBuffer(vkd->device(), m_buffer.buffer, nullptr);
   }
   
-  
-  DxvkBufferHandle DxvkBuffer::allocBuffer(VkDeviceSize sliceCount) const {
-    auto vkd = m_device->vkd();
 
+  VkDeviceAddress DxvkBuffer::getDeviceAddress() {
+    const auto& vkd = m_device->vkd();
+
+    if (m_deviceAddress == 0) {
+      VkBufferDeviceAddressInfo bufferInfo { VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO };
+      bufferInfo.buffer = m_physSlice.handle;
+      m_deviceAddress = vkd->vkGetBufferDeviceAddress(vkd->device(), &bufferInfo);
+    }
+    return m_deviceAddress;
+  }
+
+  DxvkBufferHandle DxvkBuffer::allocBuffer(VkDeviceSize sliceCount, DxvkMemoryStats::Category category) const {
+    const auto& vkd = m_device->vkd();
+
+    const bool isAccelerationStructure = m_info.usage & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR;
     VkBufferCreateInfo info;
     info.sType                 = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     info.pNext                 = nullptr;
     info.flags                 = 0;
     info.size                  = m_physSliceStride * sliceCount;
-    info.usage                 = m_info.usage;
+    info.usage                 = m_info.usage | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+
+    if (!isAccelerationStructure && m_device->features().vulkan12Features.bufferDeviceAddress)
+    {
+      info.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+    }
+
+    if (info.usage & (VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT))
+    {
+      info.usage |= VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
+    }
+
     info.sharingMode           = VK_SHARING_MODE_EXCLUSIVE;
     info.queueFamilyIndexCount = 0;
     info.pQueueFamilyIndices   = nullptr;
@@ -72,6 +118,12 @@ namespace dxvk {
         "DxvkBuffer: Failed to create buffer:"
         "\n  size:  ", info.size,
         "\n  usage: ", info.usage));
+    }
+
+    VkMemoryAllocateFlags memoryAllocateFlags = 0;
+
+    if (info.usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) {
+      memoryAllocateFlags |= VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
     }
     
     VkMemoryDedicatedRequirements dedicatedRequirements;
@@ -98,6 +150,14 @@ namespace dxvk {
     vkd->vkGetBufferMemoryRequirements2(
        vkd->device(), &memReqInfo, &memReq);
 
+    // xxxnsubtil: avoid bad interaction with DxvkStagingDataAlloc
+    // when dedicated allocations are used, the implicit memory recycling in DxvkStagingDataAlloc goes away for larger buffers,
+    // which are often used for BVH builds; dedicated is not very meaningful for buffers, so ignore the hint if
+    // dedicated memory is not strictly required
+    if (!dedicatedRequirements.requiresDedicatedAllocation) {
+      dedicatedRequirements.prefersDedicatedAllocation = VK_FALSE;
+    }
+
     // Use high memory priority for GPU-writable resources
     bool isGpuWritable = (m_info.access & (
       VK_ACCESS_SHADER_WRITE_BIT |
@@ -106,7 +166,7 @@ namespace dxvk {
     
     // Ask driver whether we should be using a dedicated allocation
     handle.memory = m_memAlloc->alloc(&memReq.memoryRequirements,
-      dedicatedRequirements, dedMemoryAllocInfo, m_memFlags, priority);
+      dedicatedRequirements, dedMemoryAllocInfo, m_memFlags, memoryAllocateFlags, priority, category);
     
     if (vkd->vkBindBufferMemory(vkd->device(), handle.buffer,
         handle.memory.memory(), handle.memory.offset()) != VK_SUCCESS)
@@ -205,7 +265,7 @@ namespace dxvk {
     const DxvkBufferSliceHandle& slice) {
     if (m_views.empty())
       m_views.insert({ m_bufferSlice, m_bufferView });
-    
+     
     m_bufferSlice = slice;
     
     auto entry = m_views.find(slice);
@@ -217,7 +277,47 @@ namespace dxvk {
     }
   }
   
-  
+  // NV-DXVK start: implement acceleration structures
+  DxvkAccelStructure::DxvkAccelStructure(
+        DxvkDevice* device,
+  const DxvkBufferCreateInfo& createInfo,
+        DxvkMemoryAllocator& memAlloc,
+        VkMemoryPropertyFlags memFlags,
+        VkAccelerationStructureTypeKHR accelType)
+    : DxvkBuffer(device, createInfo, memAlloc, memFlags, DxvkMemoryStats::Category::RTXAccelerationStructure) {
+
+    VkAccelerationStructureCreateInfoKHR accelCreateInfo {};
+    accelCreateInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
+    accelCreateInfo.pNext = nullptr;
+    accelCreateInfo.createFlags = 0;
+    accelCreateInfo.buffer = DxvkBuffer::getBufferRaw();
+    accelCreateInfo.offset = 0;
+    accelCreateInfo.size = createInfo.size;
+    accelCreateInfo.type = accelType;
+
+    if (m_device->vkd()->vkCreateAccelerationStructureKHR(m_device->handle(), &accelCreateInfo, nullptr, &accelStructureRef) != VK_SUCCESS) {
+      throw DxvkError(str::format(
+        "DxvkAccelStructure: Failed to create acceleration structure:"
+        "\n  size:  ", accelCreateInfo.size,
+        "\n  type: ", accelType));
+    }
+  }
+
+  DxvkAccelStructure::~DxvkAccelStructure() {
+    if (accelStructureRef != VK_NULL_HANDLE) {
+      const auto& vkd = m_device->vkd();
+      vkd->vkDestroyAccelerationStructureKHR(m_device->handle(), accelStructureRef, nullptr);
+    }
+  }
+
+  VkDeviceAddress DxvkAccelStructure::getAccelDeviceAddress() const {
+    VkAccelerationStructureDeviceAddressInfoKHR deviceAddressInfo {};
+    deviceAddressInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
+    deviceAddressInfo.accelerationStructure = accelStructureRef;
+    return m_device->vkd()->vkGetAccelerationStructureDeviceAddressKHR(m_device->handle(), &deviceAddressInfo);
+  }
+  // NV-DXVK end
+
   DxvkBufferTracker:: DxvkBufferTracker() { }
   DxvkBufferTracker::~DxvkBufferTracker() { }
   

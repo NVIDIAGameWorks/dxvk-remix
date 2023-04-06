@@ -23,7 +23,11 @@ namespace dxvk {
     VkPhysicalDeviceVertexAttributeDivisorPropertiesEXT       extVertexAttributeDivisor;
     VkPhysicalDeviceDepthStencilResolvePropertiesKHR          khrDepthStencilResolve;
     VkPhysicalDeviceDriverPropertiesKHR                       khrDeviceDriverProperties;
+    VkPhysicalDeviceRayTracingPipelinePropertiesKHR           khrDeviceRayTracingPipelineProperties;
+    VkPhysicalDeviceAccelerationStructurePropertiesKHR        khrDeviceAccelerationStructureProperties;
     VkPhysicalDeviceFloatControlsPropertiesKHR                khrShaderFloatControls;
+    VkPhysicalDeviceOpacityMicromapPropertiesEXT              extOpacityMicromapProperties;
+    VkPhysicalDeviceRayTracingInvocationReorderPropertiesNV   nvRayTracingInvocationReorderProperties;
   };
 
 
@@ -36,17 +40,22 @@ namespace dxvk {
    */
   struct DxvkDeviceFeatures {
     VkPhysicalDeviceFeatures2                                 core;
-    VkPhysicalDeviceShaderDrawParametersFeatures              shaderDrawParameters;
+    VkPhysicalDeviceVulkan11Features                          vulkan11Features;
+    VkPhysicalDeviceVulkan12Features                          vulkan12Features;
     VkPhysicalDevice4444FormatsFeaturesEXT                    ext4444Formats;
     VkPhysicalDeviceCustomBorderColorFeaturesEXT              extCustomBorderColor;
     VkPhysicalDeviceDepthClipEnableFeaturesEXT                extDepthClipEnable;
     VkPhysicalDeviceExtendedDynamicStateFeaturesEXT           extExtendedDynamicState;
-    VkPhysicalDeviceHostQueryResetFeaturesEXT                 extHostQueryReset;
     VkPhysicalDeviceMemoryPriorityFeaturesEXT                 extMemoryPriority;
     VkPhysicalDeviceRobustness2FeaturesEXT                    extRobustness2;
     VkPhysicalDeviceShaderDemoteToHelperInvocationFeaturesEXT extShaderDemoteToHelperInvocation;
     VkPhysicalDeviceTransformFeedbackFeaturesEXT              extTransformFeedback;
     VkPhysicalDeviceVertexAttributeDivisorFeaturesEXT         extVertexAttributeDivisor;
+  	VkPhysicalDeviceRayQueryFeaturesKHR	                      khrRayQueryFeatures;
+    VkPhysicalDeviceRayTracingPipelineFeaturesKHR	            khrDeviceRayTracingPipelineFeatures;
+  	VkPhysicalDeviceAccelerationStructureFeaturesKHR          khrAccelerationStructureFeatures;
+    VkPhysicalDeviceShaderAtomicFloatFeaturesEXT              extShaderAtomicFloat;
+    VkPhysicalDeviceDiagnosticsConfigFeaturesNV               nvDeviceDiagnosticsConfig;
     VkPhysicalDeviceBufferDeviceAddressFeaturesKHR            khrBufferDeviceAddress;
   };
 

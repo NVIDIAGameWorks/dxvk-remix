@@ -1,0 +1,264 @@
+/*
+* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+
+// Note: Temporary hack file to expand resolve.slangh and ray.slangh macros
+// as the GLSL compiler has issues. Do not touch the file unless you know
+// what you're doing.
+#pragma once
+
+#include "rtx/utility/debug_view_helpers.slangh"
+#include "rtx/concept/payload/payload.slangh"
+
+// Use this macro as the 'segmentHitDistance' parameter to the RESOLVE_XX macros when shortening the ray is unnecessary
+#define SEGMENT_HIT_DISTANCE_UNUSED 0
+
+#ifdef RT_SHADER_EXECUTION_REORDERING
+
+// Use unique Reorder IDs in coherence hints to distinguish ReorderThread callsites
+#if 0 // Currently ReorderThread is only called right before InvokeHitObject so this is not needed yet
+#define SER_REORDER_ID_INTEGRATE_TRACERAY 0
+#define SER_REORDER_ID_INTEGRATE_CUSTOM 1
+#define SER_REORDER_ID_NUM_BITS 1
+
+// Must be called last
+void addGlobalReorderIDCoherenceHint(inout uint coherenceHint, inout uint numCoherenceHintBits, uint reorderID)
+{
+  coherenceHint = reorderID | (coherenceHint << SER_REORDER_ID_NUM_BITS);
+  numCoherenceHintBits += SER_REORDER_ID_NUM_BITS;
+}
+#endif
+
+void TraceRayCustom<payload_t : IPayload>(
+    RaytracingAccelerationStructure accelerationStructure,
+    uint                            rayFlags,
+    uint                            rayMask,
+    uint                            sbtRecordOffset,
+    uint                            sbtRecordStride,
+    uint                            missIndex,
+    RayDesc                         ray,
+    inout payload_t                 payload)
+{   
+  HitObject hitObject = HitObject::TraceRay(                                                                     
+    accelerationStructure,                                                                       
+    rayFlags, rayMask,                                
+    sbtRecordOffset, sbtRecordStride,                                                           
+    missIndex, ray,                                                                          
+    payload                                                                          
+  );  
+
+  uint numCoherenceHints;
+  uint coherenceHints;
+
+  if (payload.shouldReorder(coherenceHints, numCoherenceHints)) 
+  {
+    // addGlobalReorderIDCoherenceHint(coherenceHints, numCoherenceHints, SER_REORDER_ID_INTEGRATE_TRACERAY);
+    ReorderThread(hitObject, coherenceHints, numCoherenceHints);
+  }        
+
+  HitObject::Invoke(accelerationStructure, hitObject, payload);
+}
+
+#else  // !defined(RT_SHADER_EXECUTION_REORDERING)
+
+void TraceRayCustom<payload_t : IPayload>(
+    RaytracingAccelerationStructure accelerationStructure,
+    uint                            rayFlags,
+    uint                            rayMask,
+    uint                            sbtRecordOffset,
+    uint                            sbtRecordStride,
+    uint                            missIndex,
+    RayDesc                         ray,
+    inout payload_t                 payload)
+{
+  TraceRay(                                                                      
+    accelerationStructure,                                                                          
+    rayFlags, rayMask,                                                       
+    sbtRecordOffset,                                         
+    sbtRecordStride,                                                          
+    missIndex,                                                             
+    ray,                                                                         
+    payload); 
+}
+
+void ReorderThread(uint CoherenceHint, uint NumCoherenceHintBits) {}
+
+#endif
+
+#define RESOLVE_RAY_QUERY(                                                                \
+  extraArgs, ray, flags, hitFunction, maxInteractions, payload,             \
+  segmentHitDistance)                                                                     \
+{                                                                                         \
+  /* Initialize the payload with the current ray's state */                               \
+                                                                                          \
+  RayDesc currentRay;                                                                     \
+  currentRay.Origin = ray.origin;                                                         \
+  currentRay.TMin = 0.f;                                                                  \
+  currentRay.TMax = ray.tMax;                                                             \
+  currentRay.Direction = ray.direction;                                                   \
+                                                                                          \
+  payload.origin = ray.origin;                                                            \
+  payload.coneRadius = ray.coneRadius;                                                    \
+  payload.direction = ray.direction;                                                      \
+                                                                                          \
+  /* Loop until a surface is resolved, or the maximum interaction count is hit */         \
+  for (uint8_t interactionIteration = uint8_t(1);; ++interactionIteration)                \
+  {                                                                                       \
+    /* Reset the hit distance used for Resolve logic for this next iteration */           \
+                                                                                          \
+    payload.continueResolving = interactionIteration < maxInteractions;                   \
+                                                                                          \
+    /* Preform the ray trace with the desired information */                              \
+                                                                                          \
+    /* Note: Live state across this call (not put into payload as it is not */            \
+    /* needed for anything on the hit function side of things):             */            \
+    /* - interactionIteration                                               */            \
+    /* - currentRay.tMax                                                    */            \
+                                                                                          \
+    {                                                                                                   \
+      /* Invoke a Ray Query */                                                                          \
+                                                                                                        \
+      RayQuery<0> rayQuery;                                                                             \
+                                                                                                        \
+      /* Note: For now gl_RayFlagsOpaqueEXT is always used as this function will always return the */   \
+      /* closest geometry hit, translucent or not (as we handle things like translucency and opacity */ \
+      /* manually and re-cast the ray afterwards). */                                                   \
+      /* Note: Ray direction casted to vec3 to be consistent with how ray evaluation is done */         \
+      /* (to minimize any discrepancy). */                                                              \
+      rayQuery.TraceRayInline(        \
+        topLevelAS,                   \
+        flags, uint(payload.rayMask), \
+        currentRay                    \
+      );                              \
+                                                                                          \
+      while (rayQuery.Proceed())                                                          \
+      {                                                                                   \
+      };                                                                                  \
+                                                                                          \
+      /* Construct hit info from the hit */                                               \
+      RAY_HIT_INFO_CREATE_RAY_QUERY_COMMITTED(rayHitInfo, rayQuery)                       \
+                                                                                          \
+      /* Call the hit function */                                                         \
+      hitFunction(extraArgs, rayHitInfo, payload);                          \
+    }                                                                                     \
+                                                                                          \
+    /* Check if the resolve loop should continue */                                       \
+                                                                                          \
+    if (!payload.continueResolving)                                                       \
+    {                                                                                     \
+      break;                                                                              \
+    }                                                                                     \
+                                                                                          \
+    /* Update current ray for next iteration */                                           \
+                                                                                          \
+    currentRay.Origin = payload.origin;                                                   \
+    currentRay.Direction = payload.direction;                                             \
+    currentRay.TMax = max(currentRay.TMax - segmentHitDistance, 0.0f);                    \
+  }                                                                                       \
+}
+
+#ifdef RT_TRACE_RAY
+
+#define RESOLVE_RAY_TRACE(                                                                \
+  extraArgs, ray, flags, sbtRecordOffset,                                   \
+  hitFunction,                                                                            \
+  maxInteractions, payload, encodedPayloadType, segmentHitDistance,                       \
+  interactionsDebugView1, interactionsDebugView2)                                         \
+{                                                                                         \
+  /* Initialize the payload with the current ray's state */                               \
+                                                                                          \
+  RayDesc currentRay;                    \
+  currentRay.Origin = ray.origin;        \
+  currentRay.TMin = 0.f;                 \
+  currentRay.TMax = ray.tMax;            \
+  currentRay.Direction = ray.direction;  \
+                                                                                          \
+  payload.origin = ray.origin;                                                            \
+  payload.coneRadius = ray.coneRadius;                                                    \
+  payload.direction = ray.direction;                                                      \
+                                                                                          \
+  /* Loop until a surface is resolved, or the maximum interaction count is hit */         \
+  uint8_t interactionIteration;                                                           \
+  for (interactionIteration = uint8_t(1);; ++interactionIteration)                        \
+  {                                                                                       \
+    /* Reset the hit distance used for Resolve logic for this next iteration */           \
+                                                                                          \
+    payload.continueResolving = interactionIteration < maxInteractions;                   \
+                                                                                          \
+    /* Preform the ray trace with the desired information */                              \
+                                                                                          \
+    /* Note: Live state across this call (not put into payload as it is not */            \
+    /* needed for anything on the hit function side of things):             */            \
+    /* - interactionIteration                                               */            \
+    /* - currentRay.tMax                                                    */            \
+                                                                                          \
+{                                                                                        \
+  /* Encode the Payload and set to the Ray Payload binding */                            \
+                                                                                         \
+  encodedPayloadType encodedPayload = encodedPayloadType::pack(payload);                 \
+                                                                                         \
+  /* Invoke Trace Ray */                                                                 \
+                                                                                         \
+  /* Note: CHS responsible for decoding the payload, calling the proper hit function, */ \
+  /* and then encoding the payload once again. This behavior must be done to match */    \
+  /* the RayQuery path. */                                                               \
+  TraceRayCustom(                                                                        \
+    topLevelAS,                                                                          \
+    flags, uint(payload.rayMask),                                                        \
+    sbtRecordOffset, /* sbtRecordOffset */                                               \
+    0, /* sbtRecordStride */                                                             \
+    0, /* missIndex */                                                                   \
+    currentRay,                                                                          \
+    encodedPayload                                                                       \
+  );                                                                                     \
+                                                                                         \
+  /* Decode the Payload from the Ray Payload binding */                                  \
+                                                                                         \
+  payload = encodedPayload.unpack();                                                     \
+}                                                                                        \
+                                                                                          \
+    /* Check if the resolve loop should continue */                                       \
+                                                                                          \
+    if (!payload.continueResolving)                                                       \
+    {                                                                                     \
+      break;                                                                              \
+    }                                                                                     \
+                                                                                          \
+    /* Update current ray for next iteration */                                           \
+                                                                                          \
+    currentRay.Origin = payload.origin;                                                   \
+    currentRay.Direction = payload.direction;                                             \
+    currentRay.TMax = max(currentRay.TMax - segmentHitDistance, 0.0f);                    \
+  }                                                                                       \
+                                                                                          \
+  if (cb.debugView == interactionsDebugView1 || cb.debugView == interactionsDebugView2)   \
+    accumulateInDebugViewAdd(payload.pixelCoordinate, interactionIteration);              \
+}
+#else // !defined(RT_MIXED_TRACE_RAY), !defined(RT_TRACE_RAY)
+
+#define RESOLVE_RAY_TRACE(                                                                \
+  extraArgs, ray, flags, sbtRecordOffset,                                                 \
+  hitFunction,                                                                            \
+  maxInteractions, payload, encodedPayloadType, segmentHitDistance,                       \
+  interactionsDebugView1, interactionsDebugView2)                                         \
+  RESOLVE_RAY_QUERY(extraArgs, ray, flags, hitFunction, maxInteractions, payload, segmentHitDistance)
+
+#endif

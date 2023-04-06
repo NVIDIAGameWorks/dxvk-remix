@@ -99,6 +99,7 @@ namespace dxvk {
     m_context->bindResourceView(BindingIds::Image,  tmpImageView, nullptr);
     m_context->bindResourceView(BindingIds::Buffer, nullptr,     tmpBufferView);
     m_context->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, m_shaders[videoFormat.FormatType]);
+    m_context->setPushConstantBank(DxvkPushConstantBank::RTX);
     m_context->pushConstants(0, sizeof(VkExtent2D), &imageExtent);
     m_context->dispatch(
       (imageExtent.width  / 8) + (imageExtent.width  % 8),

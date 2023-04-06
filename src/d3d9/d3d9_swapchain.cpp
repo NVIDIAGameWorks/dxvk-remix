@@ -1,11 +1,93 @@
+/*
+* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
 #include "d3d9_swapchain.h"
 #include "d3d9_surface.h"
 #include "d3d9_monitor.h"
 
 #include "d3d9_hud.h"
+#include "../util/util_env.h"
+#include "../dxvk/rtx_render/rtx_bridgemessagechannel.h"
+#include "../dxvk/dxvk_scoped_annotation.h"
 
 namespace dxvk {
+  // NV-DXVK start: App Controlled FSE
+  enum FSEState {
+    Acquire = 0,
+    Release,
+    Unchanged
+  };
 
+  static FSEState ProcessFullscreenExclusiveMessages(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
+    // Only required in bridge mode!
+    assert(env::isRemixBridgeActive());
+
+    FSEState state = FSEState::Unchanged;
+
+    switch (message) {
+    case WM_ACTIVATEAPP:
+    {
+      if (wParam) {
+        Logger::debug("FSE State (Acquire): ACTIVATEAPP = TRUE");
+        state = FSEState::Acquire;
+      } else {
+        Logger::debug("FSE State (Release): ACTIVATEAPP = FALSE");
+        state = FSEState::Release;
+      }
+      break;
+    }
+    case WM_WINDOWPOSCHANGING:
+    case WM_WINDOWPOSCHANGED:
+    {
+      WINDOWPOS* windowPos = (WINDOWPOS*) lParam;
+      if (0 == (windowPos->flags & SWP_NOZORDER)) {
+        HWND prev = GetWindow(windowPos->hwnd, GW_HWNDPREV);
+        bool zorderChanged = (prev != windowPos->hwndInsertAfter);
+        if (zorderChanged) {
+          Logger::debug("FSE State (Release): zorderChanged");
+          state = FSEState::Release;
+        }
+      }
+      break;
+    }
+    case WM_EXITMENULOOP:
+    case WM_SETFOCUS:
+    {
+      Logger::debug("FSE State (Acquire): EXITMENULOOP/SETFOCUS");
+      state = FSEState::Acquire;
+      break;
+    }
+    case WM_ENTERMENULOOP:
+    case WM_NCDESTROY:
+    case WM_KILLFOCUS:
+    {
+      Logger::debug("FSE State (Release): ENTERMENULOOP/KILLFOCUS/NCDESTROY");
+      state = FSEState::Release;
+      break;
+    }
+    }
+
+    return state;
+  }
+  // NV-DXVK end
 
   struct D3D9WindowData {
     bool unicode;
@@ -93,15 +175,20 @@ namespace dxvk {
       SetWindowLongPtrW, SetWindowLongPtrA, windowData.unicode,
         window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(D3D9WindowProc)));
     windowData.swapchain = swapchain;
-
     g_windowProcMap[window] = std::move(windowData);
+
+    // NV-DXVK start: App Controlled FSE
+    if (windowData.proc == nullptr) {
+      Logger::info(str::format("No winproc detected, initiating bridge message channel for: ", window));
+
+      if (!BridgeMessageChannel::get().init(window, D3D9WindowProc)) {
+        Logger::err("Unable to init bridge message channel. FSE and input capture may not work!");
+      }
+    }
+    // NV-DXVK end
   }
 
-
-  LRESULT CALLBACK D3D9WindowProc(HWND window, UINT message, WPARAM wparam, LPARAM lparam) {
-    if (message == WM_NCCALCSIZE && wparam == TRUE)
-      return 0;
-
+  LRESULT CALLBACK D3D9WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
     D3D9WindowData windowData = {};
 
     {
@@ -110,37 +197,39 @@ namespace dxvk {
       auto it = g_windowProcMap.find(window);
       if (it != g_windowProcMap.end())
         windowData = it->second;
+      else
+        return 0;
     }
 
     bool unicode = windowData.proc
       ? windowData.unicode
       : IsWindowUnicode(window);
 
-    if (!windowData.proc || windowData.filter)
-      return CallCharsetFunction(
-        DefWindowProcW, DefWindowProcA, unicode,
-          window, message, wparam, lparam);
+    D3DPRESENT_PARAMETERS present_parms;
+    windowData.swapchain->GetPresentParameters(&present_parms);
+    
+    if (!present_parms.Windowed && !(message == WM_NCCALCSIZE && wParam == TRUE)) {
+      if (message == WM_DESTROY)
+        ResetWindowProc(window);
+      else if (message == WM_ACTIVATEAPP) {
+        D3DDEVICE_CREATION_PARAMETERS create_parms;
+        windowData.swapchain->GetDevice()->GetCreationParameters(&create_parms);
 
-    if (message == WM_DESTROY)
-      ResetWindowProc(window);
-    else if (message == WM_ACTIVATEAPP) {
-      D3DDEVICE_CREATION_PARAMETERS create_parms;
-      windowData.swapchain->GetDevice()->GetCreationParameters(&create_parms);
+        if (!(create_parms.BehaviorFlags & D3DCREATE_NOWINDOWCHANGES)) {
+          if (wParam) {
+            // Heroes of Might and Magic V needs this to resume drawing after a focus loss
+            D3DPRESENT_PARAMETERS params;
+            RECT rect;
 
-      if (!(create_parms.BehaviorFlags & D3DCREATE_NOWINDOWCHANGES)) {
-        if (wparam) {
-          // Heroes of Might and Magic V needs this to resume drawing after a focus loss
-          D3DPRESENT_PARAMETERS params;
-          RECT rect;
-
-          GetMonitorRect(GetDefaultMonitor(), &rect);
-          windowData.swapchain->GetPresentParameters(&params);
-          SetWindowPos(window, nullptr, rect.left, rect.top, params.BackBufferWidth, params.BackBufferHeight,
-                       SWP_NOACTIVATE | SWP_NOZORDER);
-        }
-        else {
-          if (IsWindowVisible(window))
-            ShowWindow(window, SW_MINIMIZE);
+            GetMonitorRect(GetDefaultMonitor(), &rect);
+            windowData.swapchain->GetPresentParameters(&params);
+            SetWindowPos(window, nullptr, rect.left, rect.top, params.BackBufferWidth, params.BackBufferHeight,
+              SWP_NOACTIVATE | SWP_NOZORDER | SWP_ASYNCWINDOWPOS);
+          }
+          else {
+            if (IsWindowVisible(window))
+              ShowWindow(window, SW_MINIMIZE);
+          }
         }
       }
     }
@@ -153,9 +242,26 @@ namespace dxvk {
         PostMessageW(window, WM_ACTIVATEAPP, 1, GetCurrentThreadId());
     }
 
-    return CallCharsetFunction(
-      CallWindowProcW, CallWindowProcA, unicode,
-        windowData.proc, window, message, wparam, lparam);
+    windowData.swapchain->getGUI()->wndProcHandler(window, message, wParam, lParam);
+
+    if (!present_parms.Windowed && env::isRemixBridgeActive()) {
+      FSEState state = ProcessFullscreenExclusiveMessages(window, message, wParam, lParam);
+
+      // Update FSE state
+      if (state == FSEState::Acquire) {
+        windowData.swapchain->AcquireFullscreenExclusive();
+      } else if (state == FSEState::Release) {
+        windowData.swapchain->ReleaseFullscreenExclusive();
+      }
+    }
+
+    if (windowData.proc) {
+      return CallCharsetFunction(
+        CallWindowProcW, CallWindowProcA, unicode,
+          windowData.proc, window, message, wParam, lParam);
+    }
+
+    return 0;
   }
 
 
@@ -181,7 +287,9 @@ namespace dxvk {
     , m_context          (m_device->createContext())
     , m_frameLatencyCap  (pDevice->GetOptions()->maxFrameLatency)
     , m_frameLatencySignal(new sync::Fence(m_frameId))
-    , m_dialog           (pDevice->GetOptions()->enableDialogMode) {
+    , m_dialog            (pDevice->GetOptions()->enableDialogMode)
+    , m_originalWidth(pPresentParams->BackBufferWidth)
+    , m_originalHeight(pPresentParams->BackBufferHeight) {
     this->NormalizePresentParameters(pPresentParams);
     m_presentParams = *pPresentParams;
     m_window = m_presentParams.hDeviceWindow;
@@ -197,8 +305,11 @@ namespace dxvk {
     InitRamp();
 
     // Apply initial window mode and fullscreen state
-    if (!m_presentParams.Windowed && FAILED(EnterFullscreenMode(pPresentParams, pFullscreenDisplayMode)))
+    if (!m_presentParams.Windowed && FAILED(EnterFullscreenMode(pPresentParams, pFullscreenDisplayMode))) {
       throw DxvkError("D3D9: Failed to set initial fullscreen state");
+    } else {
+      HookWindowProc(m_window, this);
+    }
   }
 
 
@@ -238,6 +349,12 @@ namespace dxvk {
           HWND     hDestWindowOverride,
     const RGNDATA* pDirtyRegion,
           DWORD    dwFlags) {
+    ZoneScoped;
+
+    // NV-DXVK start: Restart RTX capture on the new frame
+    m_parent->m_rtx.EndFrame();
+    // NV-DXVK end
+
     D3D9DeviceLock lock = m_parent->LockDevice();
 
     uint32_t presentInterval = m_presentParams.PresentationInterval;
@@ -254,6 +371,11 @@ namespace dxvk {
 
     if (options->presentInterval >= 0)
       presentInterval = options->presentInterval;
+
+    // NV-DXVK start: Reflex integration
+    if (RtxOptions::Get()->forceVsyncOff())
+      presentInterval = 0;
+    // NV-DXVK end
 
     bool vsync  = presentInterval != 0;
 
@@ -350,7 +472,7 @@ namespace dxvk {
       resolveInfo.layout        = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
       
       Rc<DxvkImage> resolvedSrc = m_device->createImage(
-        resolveInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        resolveInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture);
 
       m_parent->EmitCs([
         cDstImage = resolvedSrc,
@@ -405,7 +527,7 @@ namespace dxvk {
       blitCreateInfo.layout        = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
       
       Rc<DxvkImage> blittedSrc = m_device->createImage(
-        blitCreateInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        blitCreateInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture);
 
       const DxvkFormatInfo* dstFormatInfo = imageFormatInfo(blittedSrc->info().format);
       const DxvkFormatInfo* srcFormatInfo = imageFormatInfo(srcImage->info().format);
@@ -604,7 +726,8 @@ namespace dxvk {
 
   HRESULT D3D9SwapChainEx::Reset(
           D3DPRESENT_PARAMETERS* pPresentParams,
-          D3DDISPLAYMODEEX*      pFullscreenDisplayMode) {
+          D3DDISPLAYMODEEX*      pFullscreenDisplayMode,
+          bool forceWindowReset) {
     D3D9DeviceLock lock = m_parent->LockDevice();
 
     this->SynchronizePresent();
@@ -619,20 +742,43 @@ namespace dxvk {
       if (changeFullscreen)
         this->LeaveFullscreenMode();
 
-      // Adjust window position and size
-      RECT newRect = { 0, 0, 0, 0 };
-      RECT oldRect = { 0, 0, 0, 0 };
+      // NV-DXVK start: Adjust window pos only on backbuffer resolution changes to minimize
+      // negative effects from such adjustments.
+      //
+      // NOTE: Unfortunately there's no reliable way in Windows to determine 
+      // the window rect size for a given client area rect size. Every method including
+      // user32 AdjustWindowRectEx() and DWM may give incorrect client rect sizes for custom
+      // window styles (like the one used in Portal) which may result in swapchain recreation
+      // with a wrong extent at first Present() where the swapchain will be deemed dirty when
+      // the present extent != adjusted window client extent even though there was no intent
+      // from d3d client to actually change the present extent.
+      //
+      if (forceWindowReset ||
+          pPresentParams->BackBufferWidth != m_presentParams.BackBufferWidth ||
+          pPresentParams->BackBufferHeight != m_presentParams.BackBufferHeight) {
+        // Adjust window position and size
+        RECT newRect = { 0, 0, 0, 0 };
+        RECT oldRect = { 0, 0, 0, 0 };
       
-      ::GetWindowRect(m_window, &oldRect);
-      ::MapWindowPoints(HWND_DESKTOP, ::GetParent(m_window), reinterpret_cast<POINT*>(&oldRect), 1);
-      ::SetRect(&newRect, 0, 0, pPresentParams->BackBufferWidth, pPresentParams->BackBufferHeight);
-      ::AdjustWindowRectEx(&newRect,
-        ::GetWindowLongW(m_window, GWL_STYLE), FALSE,
-        ::GetWindowLongW(m_window, GWL_EXSTYLE));
-      ::SetRect(&newRect, 0, 0, newRect.right - newRect.left, newRect.bottom - newRect.top);
-      ::OffsetRect(&newRect, oldRect.left, oldRect.top);    
-      ::MoveWindow(m_window, newRect.left, newRect.top,
-        newRect.right - newRect.left, newRect.bottom - newRect.top, TRUE);
+        ::GetWindowRect(m_window, &oldRect);
+        ::MapWindowPoints(HWND_DESKTOP, ::GetParent(m_window), reinterpret_cast<POINT*>(&oldRect), 1);
+        ::SetRect(&newRect, 0, 0, pPresentParams->BackBufferWidth, pPresentParams->BackBufferHeight);
+        ::AdjustWindowRectEx(&newRect,
+          ::GetWindowLongW(m_window, GWL_STYLE), FALSE,
+          ::GetWindowLongW(m_window, GWL_EXSTYLE));
+        ::SetRect(&newRect, 0, 0, newRect.right - newRect.left, newRect.bottom - newRect.top);
+        ::OffsetRect(&newRect, oldRect.left, oldRect.top);
+        // Should use SetWindowPos rather than MoveWindow to avoid cross process deadlock
+        ::SetWindowPos(m_window, nullptr, newRect.left, newRect.top,
+            newRect.right - newRect.left, newRect.bottom - newRect.top, SWP_NOACTIVATE | SWP_NOZORDER | SWP_ASYNCWINDOWPOS);
+      }
+      
+      // NV-DXVK end
+
+      if (changeFullscreen) {
+        // Reinstall window hook that was removed in LeaveFullscreenMode() above
+        HookWindowProc(m_window, this);
+      }
     }
     else {
       if (changeFullscreen) {
@@ -647,13 +793,13 @@ namespace dxvk {
           return D3DERR_INVALIDCALL;
       }
 
-      // Move the window so that it covers the entire output    
+      // Move the window so that it covers the entire output
       RECT rect;
       GetMonitorRect(GetDefaultMonitor(), &rect);
     
       ::SetWindowPos(m_window, HWND_TOPMOST,
         rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
-        SWP_FRAMECHANGED | SWP_SHOWWINDOW | SWP_NOACTIVATE);
+        SWP_FRAMECHANGED | SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
     }
 
     m_presentParams = *pPresentParams;
@@ -807,10 +953,20 @@ namespace dxvk {
 
     if (env::getEnvVar("DXVK_FORCE_WINDOWED") == "1")
       pPresentParams->Windowed         = TRUE;
+
+    if (env::getEnvVar("DXVK_RESOLUTION_WIDTH") != "")
+      pPresentParams->BackBufferWidth = stoul(env::getEnvVar("DXVK_RESOLUTION_WIDTH"));
+
+    if (env::getEnvVar("DXVK_RESOLUTION_HEIGHT") != "")
+      pPresentParams->BackBufferHeight = stoul(env::getEnvVar("DXVK_RESOLUTION_HEIGHT"));
+
+    m_widthScale = (float)pPresentParams->BackBufferWidth / m_originalWidth;
+    m_heightScale = (float)pPresentParams->BackBufferHeight / m_originalHeight;
   }
 
 
   void D3D9SwapChainEx::PresentImage(UINT SyncInterval) {
+    ZoneScoped;
     m_parent->Flush();
 
     // Retrieve the image and image view to present
@@ -819,6 +975,7 @@ namespace dxvk {
 
     // Bump our frame id.
     ++m_frameId;
+    SyncFrameLatency();
 
     for (uint32_t i = 0; i < SyncInterval || i < 1; i++) {
       SynchronizePresent();
@@ -856,13 +1013,14 @@ namespace dxvk {
       if (m_hud != nullptr)
         m_hud->render(m_context, info.format, info.imageExtent);
 
+      if (m_imgui != nullptr)
+        m_imgui->render(m_context, info.format, info.imageExtent);
+
       if (i + 1 >= SyncInterval)
         m_context->signal(m_frameLatencySignal, m_frameId);
 
       SubmitPresent(sync, i);
     }
-
-    SyncFrameLatency();
 
     // Rotate swap chain buffers so that the back
     // buffer at index 0 becomes the front buffer.
@@ -870,10 +1028,19 @@ namespace dxvk {
       m_backBuffers[i]->Swap(m_backBuffers[i - 1].ptr());
 
     m_parent->m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
+
+    // NV-DXVK start: Reflex integration
+    if (RtxOptions::Get()->isReflexSupported() && RtxOptions::Get()->reflexMode() > ReflexMode::None) {
+      // When using Reflex, we should synchronize the present with client thread, this reduces latency
+      //   by backpressuring the client until presentation has complete
+      m_parent->SynchronizeCsThread();
+    }
+    // NV-DXVK end
   }
 
 
   void D3D9SwapChainEx::SubmitPresent(const vk::PresenterSync& Sync, uint32_t FrameId) {
+    ZoneScoped;
     // Present from CS thread so that we don't
     // have to synchronize with it first.
     m_presentStatus.result = VK_NOT_READY;
@@ -884,6 +1051,8 @@ namespace dxvk {
       cHud         = m_hud,
       cCommandList = m_context->endRecording()
     ] (DxvkContext* ctx) {
+      ScopedGpuProfileZone(ctx, "Queue Present");
+
       m_device->submitCommandList(cCommandList,
         cSync.acquire, cSync.present);
 
@@ -898,6 +1067,7 @@ namespace dxvk {
 
 
   void D3D9SwapChainEx::SynchronizePresent() {
+    ZoneScoped;
     // Recreate swap chain if the previous present call failed
     VkResult status = m_device->waitForSubmission(&m_presentStatus);
 
@@ -923,6 +1093,8 @@ namespace dxvk {
     if (m_presenter->recreateSwapChain(presenterDesc) != VK_SUCCESS)
       throw DxvkError("D3D9SwapChainEx: Failed to recreate swap chain");
     
+    
+
     CreateRenderTargetViews();
   }
 
@@ -940,6 +1112,7 @@ namespace dxvk {
     presenterDevice.queueFamily   = graphicsQueue.queueFamily;
     presenterDevice.queue         = graphicsQueue.queueHandle;
     presenterDevice.adapter       = m_device->adapter()->handle();
+    presenterDevice.features.fullScreenExclusive = m_device->extensions().extFullScreenExclusive;
 
     vk::PresenterDesc presenterDesc;
     presenterDesc.imageExtent     = GetPresentExtent();
@@ -1079,6 +1252,7 @@ namespace dxvk {
 
   void D3D9SwapChainEx::CreateHud() {
     m_hud = hud::Hud::createHud(m_device);
+    m_imgui = ImGUI::createGUI(m_device, m_window);
 
     if (m_hud != nullptr) {
       m_hud->addItem<hud::HudClientApiItem>("api", 1, GetApiName());
@@ -1209,30 +1383,35 @@ namespace dxvk {
     // regardless of their style and it also appears to work on Windows.
     HookWindowProc(m_window, this);
 
-    D3D9WindowMessageFilter filter(m_window);
-    
-    // Change the window flags to remove the decoration etc.
-    LONG style   = ::GetWindowLongW(m_window, GWL_STYLE);
-    LONG exstyle = ::GetWindowLongW(m_window, GWL_EXSTYLE);
-    
-    m_windowState.style = style;
-    m_windowState.exstyle = exstyle;
-    
-    style   &= ~WS_OVERLAPPEDWINDOW;
-    exstyle &= ~WS_EX_OVERLAPPEDWINDOW;
-    
-    ::SetWindowLongW(m_window, GWL_STYLE, style);
-    ::SetWindowLongW(m_window, GWL_EXSTYLE, exstyle);
-    
-    // Move the window so that it covers the entire output    
-    RECT rect;
-    GetMonitorRect(GetDefaultMonitor(), &rect);
-    
-    ::SetWindowPos(m_window, HWND_TOPMOST,
-      rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
-      SWP_FRAMECHANGED | SWP_SHOWWINDOW | SWP_NOACTIVATE);
+   if(!env::isRemixBridgeActive()) {
+      D3D9WindowMessageFilter filter(m_window);
+
+      // Change the window flags to remove the decoration etc.
+      LONG style = ::GetWindowLong(m_window, GWL_STYLE);
+      LONG exstyle = ::GetWindowLong(m_window, GWL_EXSTYLE);
+
+      m_windowState.style = style;
+      m_windowState.exstyle = exstyle;
+
+      style &= ~WS_OVERLAPPEDWINDOW;
+      exstyle &= ~WS_EX_OVERLAPPEDWINDOW;
+      
+      ::SetWindowLong(m_window, GWL_STYLE, style);
+      ::SetWindowLong(m_window, GWL_EXSTYLE, exstyle);
+
+      // Move the window so that it covers the entire output    
+      RECT rect;
+      GetMonitorRect(GetDefaultMonitor(), &rect);
+
+      ::SetWindowPos(m_window, HWND_TOPMOST,
+        rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
+        SWP_FRAMECHANGED | SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
+    }
     
     m_monitor = GetDefaultMonitor();
+
+    m_presenter->acquireFullscreenExclusive();
+
     return D3D_OK;
   }
   
@@ -1248,23 +1427,27 @@ namespace dxvk {
 
     ResetWindowProc(m_window);
     
-    // Only restore the window style if the application hasn't
-    // changed them. This is in line with what native D3D9 does.
-    LONG curStyle   = ::GetWindowLongW(m_window, GWL_STYLE) & ~WS_VISIBLE;
-    LONG curExstyle = ::GetWindowLongW(m_window, GWL_EXSTYLE) & ~WS_EX_TOPMOST;
-    
-    if (curStyle == (m_windowState.style & ~(WS_VISIBLE | WS_OVERLAPPEDWINDOW))
-     && curExstyle == (m_windowState.exstyle & ~(WS_EX_TOPMOST | WS_EX_OVERLAPPEDWINDOW))) {
-      ::SetWindowLongW(m_window, GWL_STYLE,   m_windowState.style);
-      ::SetWindowLongW(m_window, GWL_EXSTYLE, m_windowState.exstyle);
+    if (!env::isRemixBridgeActive()) {
+      // Only restore the window style if the application hasn't
+      // changed them. This is in line with what native D3D9 does.
+      LONG curStyle = ::GetWindowLongW(m_window, GWL_STYLE) & ~WS_VISIBLE;
+      LONG curExstyle = ::GetWindowLongW(m_window, GWL_EXSTYLE) & ~WS_EX_TOPMOST;
+
+      if (curStyle == (m_windowState.style & ~(WS_VISIBLE | WS_OVERLAPPEDWINDOW))
+       && curExstyle == (m_windowState.exstyle & ~(WS_EX_TOPMOST | WS_EX_OVERLAPPEDWINDOW))) {
+        ::SetWindowLongW(m_window, GWL_STYLE, m_windowState.style);
+        ::SetWindowLongW(m_window, GWL_EXSTYLE, m_windowState.exstyle);
+      }
+
+      // Restore window position and apply the style
+      const RECT rect = m_windowState.rect;
+
+      ::SetWindowPos(m_window, 0,
+        rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
+        SWP_FRAMECHANGED | SWP_NOZORDER | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
     }
-    
-    // Restore window position and apply the style
-    const RECT rect = m_windowState.rect;
-    
-    ::SetWindowPos(m_window, 0,
-      rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
-      SWP_FRAMECHANGED | SWP_NOZORDER | SWP_NOACTIVATE);
+
+    m_presenter->releaseFullscreenExclusive();
     
     return D3D_OK;
   }
@@ -1340,7 +1523,7 @@ namespace dxvk {
       // TODO: Should we hook WM_SIZE message for this?
       UINT width, height;
       GetWindowClientSize(m_window, &width, &height);
-
+      
       dstRect.top    = 0;
       dstRect.left   = 0;
       dstRect.right  = LONG(width);
@@ -1348,6 +1531,35 @@ namespace dxvk {
     }
     else
       dstRect = *pDestRect;
+
+    // Update window client size if need be
+    UINT width = dstRect.right - dstRect.left;
+    UINT height = dstRect.bottom - dstRect.top;
+    const bool isDxvkResolutionEnvVarSet = env::getEnvVar("DXVK_RESOLUTION_WIDTH") != "" || env::getEnvVar("DXVK_RESOLUTION_HEIGHT") != "";
+    if (isDxvkResolutionEnvVarSet &&
+      (width != m_presentParams.BackBufferWidth || height != m_presentParams.BackBufferHeight)) {
+       
+      UINT windowWidth, windowHeight;
+      GetWindowClientSize(m_window, &windowWidth, &windowHeight);
+      if (windowWidth != m_presentParams.BackBufferWidth || windowHeight != m_presentParams.BackBufferHeight) {
+
+        D3DDISPLAYMODEEX displayMode;
+        GetDisplayModeEx(&displayMode, nullptr);
+        Reset(&m_presentParams, &displayMode, isDxvkResolutionEnvVarSet);
+
+        // Update backbuffer resolution with the actual created client window resolution, 
+        // which can be different from the requested one 
+        // (i.e. when window doesn't fit the available desktop resolution real-estate)
+        // so that we don't keep resetting the window resolution
+        UINT newWindowWidth, newWindowHeight;
+        GetWindowClientSize(m_window, &newWindowWidth, &newWindowHeight);
+        m_presentParams.BackBufferWidth = newWindowWidth;
+        m_presentParams.BackBufferHeight = newWindowHeight;
+      }
+
+      dstRect.right = dstRect.left + m_presentParams.BackBufferWidth;
+      dstRect.bottom = dstRect.top + m_presentParams.BackBufferHeight;
+    }
 
     bool recreate = 
        m_dstRect.left   != dstRect.left
@@ -1368,9 +1580,20 @@ namespace dxvk {
 
 
   VkFullScreenExclusiveEXT D3D9SwapChainEx::PickFullscreenMode() {
-    return m_dialog
-      ? VK_FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT
-      : VK_FULL_SCREEN_EXCLUSIVE_DEFAULT_EXT;
+    // NV-DXVK start: App controlled FSE
+    if (!RtxOptions::Get()->allowFSE() || m_dialog || m_presentParams.Windowed)
+      return VK_FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT;
+
+    if (env::isRemixBridgeActive()) {
+      if(m_presentParams.BackBufferWidth == GetSystemMetrics(SM_CXSCREEN) &&
+         m_presentParams.BackBufferHeight == GetSystemMetrics(SM_CYSCREEN))
+        return VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT;
+      else
+        return VK_FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT;
+    }
+
+    return VK_FULL_SCREEN_EXCLUSIVE_DEFAULT_EXT;
+    // NV-DXVK end
   }
 
 

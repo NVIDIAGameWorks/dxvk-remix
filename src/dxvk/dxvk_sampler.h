@@ -61,7 +61,7 @@ namespace dxvk {
      * \brief Sampler handle
      * \returns Sampler handle
      */
-    VkSampler handle() const {
+    const VkSampler& handle() const {
       return m_sampler;
     }
     

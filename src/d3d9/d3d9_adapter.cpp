@@ -520,9 +520,9 @@ namespace dxvk {
                                      | D3DVTXPCAPS_TEXGEN_SPHEREMAP
                                   /* | D3DVTXPCAPS_NO_TEXGEN_NONLOCALVIEWER*/;
     // Max Active Lights
-    pCaps->MaxActiveLights           = caps::MaxEnabledLights;
+    pCaps->MaxActiveLights           = options.maxEnabledLights;
     // Max User Clip Planes
-    pCaps->MaxUserClipPlanes         = MaxClipPlanes;
+    pCaps->MaxUserClipPlanes         = caps::MaxClipPlanes;
     // Max Vertex Blend Matrices
     pCaps->MaxVertexBlendMatrices    = 4;
     // Max Vertex Blend Matrix Index

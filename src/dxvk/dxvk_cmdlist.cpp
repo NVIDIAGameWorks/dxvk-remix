@@ -1,6 +1,8 @@
 #include "dxvk_cmdlist.h"
 #include "dxvk_device.h"
 
+#include "../tracy/Tracy.hpp"
+
 namespace dxvk {
     
   DxvkCommandList::DxvkCommandList(DxvkDevice* device)
@@ -123,6 +125,7 @@ namespace dxvk {
   
   
   VkResult DxvkCommandList::synchronize() {
+    ZoneScoped;
     VkResult status = VK_TIMEOUT;
     
     while (status == VK_TIMEOUT) {
@@ -161,6 +164,8 @@ namespace dxvk {
   
   
   void DxvkCommandList::endRecording() {
+    TracyVkCollect(m_device->queues().graphics.tracyCtx, m_execBuffer);
+
     if (m_vkd->vkEndCommandBuffer(m_execBuffer) != VK_SUCCESS
      || m_vkd->vkEndCommandBuffer(m_initBuffer) != VK_SUCCESS
      || m_vkd->vkEndCommandBuffer(m_sdmaBuffer) != VK_SUCCESS)

@@ -1,7 +1,33 @@
+/*
+* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
 #pragma once
 
 #include <string>
 #include <unordered_map>
+#include <vector>
+
+#include "../util/util_vector.h"
+#include "../util/util_env.h"
+#include "../util/util_keybind.h"
 
 namespace dxvk {
 
@@ -41,6 +67,82 @@ namespace dxvk {
      */
     void merge(const Config& other);
 
+    // NV-DXVK start: new methods
+    /**
+     * \brief Generates a string for a value
+     *
+     * \param [in] value Option value
+     */
+    static std::string generateOptionString(
+      const std::string& value);
+
+    /**
+     * \brief Generates a string for a value
+     *
+     * \param [in] value Option value
+     */
+    static std::string generateOptionString(
+      const bool& value);
+
+    /**
+     * \brief Generates a string for a value
+     *
+     * \param [in] value Option value
+     */
+    static std::string generateOptionString(
+      const int32_t& value);
+
+    /**
+     * \brief Generates a string for a value
+     *
+     * \param [in] value Option value
+     */
+    static std::string generateOptionString(
+      const uint32_t& value);
+
+    /**
+     * \brief Generates a string for a value
+     *
+     * \param [in] value Option value
+     */
+    static std::string generateOptionString(
+      const float& value);
+
+    /**
+     * \brief Generates a string for a value
+     *
+     * \param [in] value Option value
+     */
+    static std::string generateOptionString(
+      const Vector2i& value);
+
+    // NV-DXVK start: added a variant
+    /**
+     * \brief Generates a string for a value
+     *
+     * \param [in] value Option value
+     */
+    static std::string generateOptionString(
+      const Vector2& value);
+    // NV-DXVK end
+
+    /**
+     * \brief Generates a string for a value
+     *
+     * \param [in] value Option value
+     */
+    static std::string generateOptionString(
+      const Vector3& value);
+
+    /**
+     * \brief Generates a string for a value
+     *
+     * \param [in] value Option value
+     */
+    static std::string generateOptionString(
+      const Tristate& value);
+    // NV-DXVK end
+
     /**
      * \brief Sets an option
      * 
@@ -52,28 +154,119 @@ namespace dxvk {
       const std::string& value);
 
     /**
+     * \brief Sets an option
+     *
+     * \param [in] key Option name
+     * \param [in] value Option value
+     */
+    void setOption(
+      const std::string& key,
+      const bool& value);
+
+    /**
+     * \brief Sets an option
+     *
+     * \param [in] key Option name
+     * \param [in] value Option value
+     */
+    void setOption(
+      const std::string& key,
+      const int32_t& value);
+
+    /**
+     * \brief Sets an option
+     *
+     * \param [in] key Option name
+     * \param [in] value Option value
+     */
+    void setOption(
+      const std::string& key,
+      const uint32_t& value);
+
+    /**
+     * \brief Sets an option
+     *
+     * \param [in] key Option name
+     * \param [in] value Option value
+     */
+    void setOption(
+      const std::string& key,
+      const float& value);
+
+    /**
+     * \brief Sets an option
+     *
+     * \param [in] key Option name
+     * \param [in] value Option value
+     */
+    void setOption(
+      const std::string& key,
+      const Vector2i& value);
+
+    // NV-DXVK start: added a variant
+    /**
+     * \brief Sets an option
+     *
+     * \param [in] key Option name
+     * \param [in] value Option value
+     */
+    void setOption(
+      const std::string& key,
+      const Vector2& value);
+    // NV-DXVK end
+
+    /**
+     * \brief Sets an option
+     *
+     * \param [in] key Option name
+     * \param [in] value Option value
+     */
+    void setOption(
+      const std::string& key,
+      const Vector3& value);
+
+    /**
+     * \brief Sets an option
+     *
+     * \param [in] key Option name
+     * \param [in] value Option value
+     */
+    void setOption(
+      const std::string& key,
+      const Tristate& value);
+
+    /**
      * \brief Parses an option value
      *
      * Retrieves the option value as a string, and then
      * tries to convert that string to the given type.
+     * If envVarName is specified and the envVar is set, 
+     * it retrieves the option value from the envVar instead. 
      * If parsing the string fails because it is either
      * invalid or if the option is not defined, this
-     * method will return a fallback value.
+     * method will return a fallback value. 
      * 
      * Currently, this supports the types \c bool,
-     * \c int32_t, and \c std::string.
+     * \c int32_t, \c uint32_t, \c float, and \c std::string.
      * \tparam T Return value type
      * \param [in] option Option name
      * \param [in] fallback Fallback value
+     * \param [in] envVarName Environment variable name
      * \returns Parsed option value
      * \returns The parsed option value
      */
     template<typename T>
-    T getOption(const char* option, T fallback = T()) const {
+    T getOption(const char* option, T fallback = T(), const char* envVarName = nullptr) const {
       const std::string& value = getOptionValue(option);
 
       T result = fallback;
       parseOptionValue(value, result);
+      if (envVarName) {
+        const std::string& envVarValue = env::getEnvVar(envVarName);
+        if (envVarValue != "")
+          parseOptionValue(envVarValue, result);
+      }
+
       return result;
     }
 
@@ -102,18 +295,42 @@ namespace dxvk {
      */
     static Config getUserConfig();
 
+    /**
+     * \brief Retrieves rtx user configuration
+     *
+     * Reads options from the configuration file,
+     * if it can be found, or an empty option set.
+     * \returns User-defined configuration options
+     */
+    static Config getRtxUserConfig(std::string baseGameModPath = "");
+
     static std::string toLower(std::string str);
+
+    /**
+     * \brief Writes custom configuration to file
+     */
+    static void serializeCustomConfig(const Config& config, std::string filePath, std::string filterStr = std::string());
+    // END
 
   private:
 
-    OptionMap m_options;
-
-    std::string getOptionValue(
-      const char*         option) const;
+    // START
+    /**
+     * \brief Retrieves custom configuration
+     * 
+     * Reads options from the configuration file,
+     * if it can be found, or an empty option set.
+     * \returns User-defined configuration options
+     */
+    static Config getCustomConfig(std::string filePath, std::string filterStr = std::string());
 
     static bool parseOptionValue(
       const std::string&  value,
             std::string&  result);
+
+    static bool parseOptionValue(
+      const std::string& value,
+      std::vector<std::string>& result);
 
     static bool parseOptionValue(
       const std::string&  value,
@@ -122,7 +339,33 @@ namespace dxvk {
     static bool parseOptionValue(
       const std::string&  value,
             int32_t&      result);
+
+    static bool parseOptionValue(
+      const std::string&  value,
+            uint32_t&     result);
     
+    static bool parseOptionValue(
+      const std::string&  value,
+            float&      result);
+
+    static bool parseOptionValue(
+      const std::string& value,
+      Vector2i& result);
+
+    // NV-DXVK start: added a variant
+    static bool parseOptionValue(
+      const std::string& value,
+      Vector2& result);
+    // NV-DXVK end
+
+    static bool parseOptionValue(
+      const std::string& value,
+      Vector3& result);
+
+    static bool parseOptionValue(
+      const std::string& value,
+      VirtualKeys& result);
+
     static bool parseOptionValue(
       const std::string&  value,
             Tristate&     result);
@@ -133,6 +376,13 @@ namespace dxvk {
             I             begin,
             I             end,
             V&            value);
+
+  private:
+
+    OptionMap m_options;
+
+    std::string getOptionValue(
+      const char*         option) const;
 
   };
 

@@ -5,6 +5,8 @@
 #include "dxvk_memory.h"
 #include "dxvk_resource.h"
 #include "dxvk_util.h"
+#include "../util/xxHash/xxhash.h"
+#include "dxvk_hash.h"
 
 namespace dxvk {
 
@@ -65,6 +67,27 @@ namespace dxvk {
     // be used with this image
     uint32_t        viewFormatCount = 0;
     const VkFormat* viewFormats     = nullptr;
+
+    size_t hash() const {
+      DxvkHashState result;
+      result.add(std::hash<uint32_t>()(extent.width));
+      result.add(std::hash<uint32_t>()(extent.height));
+      result.add(std::hash<uint32_t>()(extent.depth));
+      result.add(std::hash<VkFormat>()(format));
+      result.add(std::hash<VkImageUsageFlags>()(usage));
+      result.add(std::hash<VkImageCreateFlags>()(flags));
+      result.add(std::hash<VkSampleCountFlagBits>()(sampleCount));
+      result.add(std::hash<VkPipelineStageFlags>()(stages));
+      result.add(std::hash<VkAccessFlags>()(access));
+      result.add(std::hash<VkImageTiling>()(tiling));
+      result.add(std::hash<VkImageLayout>()(layout));
+      result.add(std::hash<VkImageLayout>()(initialLayout));
+      result.add(std::hash<VkBool32>()(shared));
+      result.add(std::hash<VkImageType>()(type));
+      result.add(std::hash<uint32_t>()(mipLevels));
+      result.add(std::hash<uint32_t>()(numLayers));
+      return result;
+    }
   };
   
   
@@ -99,6 +122,23 @@ namespace dxvk {
       VK_COMPONENT_SWIZZLE_IDENTITY,
       VK_COMPONENT_SWIZZLE_IDENTITY,
     };
+
+    size_t hash() const {
+      DxvkHashState result;
+      result.add(std::hash<VkImageViewType>()(type));
+      result.add(std::hash<VkFormat>()(format));
+      result.add(std::hash<VkImageUsageFlags>()(usage));
+      result.add(std::hash<VkImageAspectFlags>()(aspect));
+      result.add(std::hash<uint32_t>()(minLevel));
+      result.add(std::hash<uint32_t>()(numLevels));
+      result.add(std::hash<uint32_t>()(minLayer));
+      result.add(std::hash<uint32_t>()(numLayers));
+      result.add(std::hash<VkComponentSwizzle>()(swizzle.r));
+      result.add(std::hash<VkComponentSwizzle>()(swizzle.g));
+      result.add(std::hash<VkComponentSwizzle>()(swizzle.b));
+      result.add(std::hash<VkComponentSwizzle>()(swizzle.a));
+      return result;
+    }
   };
 
 
@@ -109,7 +149,6 @@ namespace dxvk {
     VkImage     image = VK_NULL_HANDLE;
     DxvkMemory  memory;
   };
-  
   
   /**
    * \brief DXVK image
@@ -124,11 +163,12 @@ namespace dxvk {
   public:
     
     DxvkImage(
-      const Rc<vk::DeviceFn>&     vkd,
-      const DxvkImageCreateInfo&  createInfo,
-            DxvkMemoryAllocator&  memAlloc,
-            VkMemoryPropertyFlags memFlags);
-    
+      const Rc<vk::DeviceFn>& vkd,
+      const DxvkImageCreateInfo& createInfo,
+            DxvkMemoryAllocator& memAlloc,
+            VkMemoryPropertyFlags memFlags,
+            DxvkMemoryStats::Category category);
+
     /**
      * \brief Creates image object from existing image
      * 
@@ -299,6 +339,18 @@ namespace dxvk {
       return m_image.memory.length();
     }
 
+    void setHash(XXH64_hash_t hash) {
+      m_hash = hash;
+    }
+
+    XXH64_hash_t getHash() const {
+      return m_hash;
+    }
+
+    VkDeviceMemory getMemory() const {
+      return m_image.memory.memory();
+    }
+
     /**
      * \brief Get full subresource range of the image
      * 
@@ -313,14 +365,14 @@ namespace dxvk {
       result.layerCount     = info().numLayers;
       return result;
     }
-    
+
   private:
     
     Rc<vk::DeviceFn>      m_vkd;
     DxvkImageCreateInfo   m_info;
     VkMemoryPropertyFlags m_memFlags;
     DxvkPhysicalImage     m_image;
-
+    XXH64_hash_t          m_hash = 0;
     small_vector<VkFormat, 4> m_viewFormats;
     
   };
@@ -393,7 +445,7 @@ namespace dxvk {
     VkImage imageHandle() const {
       return m_image->handle();
     }
-    
+
     /**
      * \brief Image properties
      * \returns Image properties
@@ -540,7 +592,6 @@ namespace dxvk {
     }
 
   private:
-    
     Rc<vk::DeviceFn>  m_vkd;
     Rc<DxvkImage>     m_image;
     

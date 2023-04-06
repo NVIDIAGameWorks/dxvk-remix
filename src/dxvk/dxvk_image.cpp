@@ -9,7 +9,8 @@ namespace dxvk {
     const Rc<vk::DeviceFn>&     vkd,
     const DxvkImageCreateInfo&  createInfo,
           DxvkMemoryAllocator&  memAlloc,
-          VkMemoryPropertyFlags memFlags)
+          VkMemoryPropertyFlags memFlags,
+          DxvkMemoryStats::Category category)
   : m_vkd(vkd), m_info(createInfo), m_memFlags(memFlags) {
 
     // Copy the compatible view formats to a persistent array
@@ -104,7 +105,7 @@ namespace dxvk {
 
     // Ask driver whether we should be using a dedicated allocation
     m_image.memory = memAlloc.alloc(&memReq.memoryRequirements,
-      dedicatedRequirements, dedMemoryAllocInfo, memFlags, priority);
+      dedicatedRequirements, dedMemoryAllocInfo, memFlags, 0, priority, category);
     
     // Try to bind the allocated memory slice to the image
     if (m_vkd->vkBindImageMemory(m_vkd->device(), m_image.image,

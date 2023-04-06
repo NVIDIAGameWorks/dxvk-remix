@@ -1,0 +1,42 @@
+#pragma once
+
+#include "rtx/concept/ray/ray.slangh"
+#include "rtx/concept/light/light.slangh"
+#include "rtx/concept/volume/volume_interaction.slangh"
+#include "rtx/algorithm/visibility.slangh"
+
+// Note: Test light sample visibility from a specified volume interaction. Split out into this function to be consistent among volumetric code.
+VisibilityResult evalVolumeNEEVisibility(
+  LightSample lightSample, uint8_t sampledTransportPortalIndex,
+  Ray viewRay, MinimalRayInteraction minimalRayInteraction, VolumeInteraction volumeInteraction)
+{
+  // Create a Ray to the location sampled on the light
+
+  const Ray visibilityRay = rayCreatePosition(
+    minimalRayInteraction, volumeInteraction, viewRay, lightSample.position);
+
+  // Associate the volume grid with the main space to minimize occlusion by geometry with per portal space visibility
+  // in different portal spaces. Optimally we should skip objects with per-portal space visibility altogether since 
+  // their occlusion can't be resolved in a pre-generated portal space shared volume grid. 
+  // But that will require a separate TLAS that doesn't contain such objects
+  PortalSpace2BitsType portalSpace = PORTAL_SPACE_NONE;
+
+  // Trace a visibility ray to test if the light is visible
+
+  // Note: Only trace rays against fully opaque objects and ray portals. This excludes translucent objects, or opaque objects
+  // with opacity, and ViewModel geometry. This is done so regions with many particles to not cause excessive shadowing on the lighting since this is
+  // just meant to be a rough approximation, and so these particles do not force us to need large numbers of resolve iterations
+  // to cast rays through them (as this would be expensive). We may want to add a bit more nuance here in the future to allow
+  // approximations of glass as large glass objects should ideally cast tinted shadows into particles, but we currently do not
+  // have a way to discriminate between translucency and opacity (and have no more bits available at least for now for this).
+  uint8_t rayMask = OBJECT_MASK_OPAQUE;
+
+  // Note: Culling disabled via visibilityModeDisableCulling to avoid light leaking through geometry as this is especially
+  // bad in volumetrics due to how the voxels leak through walls to begin with. Other NEE does not disable culling like this
+  // due to this due single sided decal-like objects causing issues in some cases.
+  const VisibilityResult visibility = traceVisibilityRay(
+    visibilityRay, rayMask,
+    visibilityModeDisableCulling, sampledTransportPortalIndex, portalSpace);
+
+  return visibility;
+}

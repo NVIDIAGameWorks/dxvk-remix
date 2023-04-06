@@ -1,0 +1,123 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+DecalMaterialInteraction decalMaterialInteractionUnpack(MemoryDecalMaterialInteraction memory)
+{
+  DecalMaterialInteraction decalMaterialInteraction;
+
+  decalMaterialInteraction.shadingNormal = signedOctahedralToSphereDirection(snorm2x16ToFloat2x32(memory.packed.x));
+  decalMaterialInteraction.albedo = unorm3x8ToFloat3x16(memory.packed.y);
+  decalMaterialInteraction.roughness = perceptualRoughnessToRoughness(unorm8ToF16(memory.packed.y >> 24));
+  decalMaterialInteraction.baseReflectivity = unorm3x8ToFloat3x16(memory.packed.z);
+  decalMaterialInteraction.anisotropy = unorm8ToF16(memory.packed.z >> 24);
+  decalMaterialInteraction.opacity = uint16BitsToHalf(memory.packed.w);
+  // packed.w[31:16] unused
+  decalMaterialInteraction.emissiveRadiance = memory.emissiveRadiance;
+
+  return decalMaterialInteraction;
+}
+
+MemoryDecalMaterialInteraction decalMaterialInteractionPack(DecalMaterialInteraction decalMaterialInteraction)
+{
+  MemoryDecalMaterialInteraction memory;
+
+  memory.packed.x = float2x32ToSnorm2x16(sphereDirectionToSignedOctahedral(decalMaterialInteraction.shadingNormal));
+  memory.packed.y = float3x16ToUnorm3x8(decalMaterialInteraction.albedo)
+           | (uint(f16ToUnorm8(roughnessToPerceptualRoughness(decalMaterialInteraction.roughness))) << 24);
+  memory.packed.z = float3x16ToUnorm3x8(decalMaterialInteraction.baseReflectivity)
+           | (uint(f16ToUnorm8(decalMaterialInteraction.anisotropy)) << 24);
+  memory.packed.w = float16BitsToUint16(decalMaterialInteraction.opacity);
+  memory.emissiveRadiance = decalMaterialInteraction.emissiveRadiance;
+
+  return memory;
+}
+
+DecalMaterialInteraction decalMaterialInteractionCreate(OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction)
+{
+  DecalMaterialInteraction decalMaterialInteraction;
+
+  decalMaterialInteraction.shadingNormal = opaqueSurfaceMaterialInteraction.shadingNormal;
+  decalMaterialInteraction.albedo = opaqueSurfaceMaterialInteraction.albedo;
+  decalMaterialInteraction.baseReflectivity = opaqueSurfaceMaterialInteraction.baseReflectivity;
+  decalMaterialInteraction.emissiveRadiance = opaqueSurfaceMaterialInteraction.emissiveRadiance;
+  decalMaterialInteraction.opacity = opaqueSurfaceMaterialInteraction.opacity;
+  decalMaterialInteraction.roughness = opaqueSurfaceMaterialInteraction.isotropicRoughness;
+  decalMaterialInteraction.anisotropy = anisotropicRoughnessToAnisotropy(
+    opaqueSurfaceMaterialInteraction.isotropicRoughness, opaqueSurfaceMaterialInteraction.anisotropicRoughness);
+
+  return decalMaterialInteraction;
+}
+
+void decalMaterialInteractionBlend(
+  DecalMaterialInteraction decalMaterialInteraction,
+  inout OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction)
+{
+  opaqueSurfaceMaterialInteraction.shadingNormal = normalize(mix(opaqueSurfaceMaterialInteraction.shadingNormal,
+    decalMaterialInteraction.shadingNormal, decalMaterialInteraction.opacity));
+
+  // Note: Treat albedo as if it is using premultiplied alpha as opacity is multiplied into it as part of the albedo derivation
+  // in the opaque material (see albedoToAdjustedAlbedo) which causes incorrect decal blending if not taken into account.
+  opaqueSurfaceMaterialInteraction.albedo =
+    decalMaterialInteraction.albedo + opaqueSurfaceMaterialInteraction.albedo * (1.0 - decalMaterialInteraction.opacity);
+
+  // Note: Like albedo, treat base reflectivity as if it is using premultiplied alpha as opacity is also multiplied into it as part of
+  // the base reflectivity derivation in the opaque material (see calcBaseReflectivity) which causes incorrect decal blending if not taken into account.
+  opaqueSurfaceMaterialInteraction.baseReflectivity =
+    decalMaterialInteraction.baseReflectivity + opaqueSurfaceMaterialInteraction.baseReflectivity * (1.0 - decalMaterialInteraction.opacity);
+
+  opaqueSurfaceMaterialInteraction.isotropicRoughness = mix(opaqueSurfaceMaterialInteraction.isotropicRoughness,
+    decalMaterialInteraction.roughness, decalMaterialInteraction.opacity);
+
+  f16vec2 decalAnisotropicRoughness = isotropicRoughnessToAnisotropicRoughness(decalMaterialInteraction.roughness, decalMaterialInteraction.anisotropy);
+
+  opaqueSurfaceMaterialInteraction.anisotropicRoughness = mix(opaqueSurfaceMaterialInteraction.anisotropicRoughness,
+    decalAnisotropicRoughness, decalMaterialInteraction.opacity);
+
+  opaqueSurfaceMaterialInteraction.emissiveRadiance = mix(opaqueSurfaceMaterialInteraction.emissiveRadiance,
+    decalMaterialInteraction.emissiveRadiance, decalMaterialInteraction.opacity);
+
+  // Note: Alpha compositing equation for alpha applied to opacity.
+  opaqueSurfaceMaterialInteraction.opacity =
+    decalMaterialInteraction.opacity + opaqueSurfaceMaterialInteraction.opacity * (1.0 - decalMaterialInteraction.opacity);
+}
+
+void decalMaterialInteractionBlend(
+  DecalMaterialInteraction decalMaterialInteraction,
+  inout TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction)
+{
+  translucentSurfaceMaterialInteraction.shadingNormal = normalize(mix(translucentSurfaceMaterialInteraction.shadingNormal,
+    decalMaterialInteraction.shadingNormal, decalMaterialInteraction.opacity));
+
+  translucentSurfaceMaterialInteraction.diffuseColor = mix(translucentSurfaceMaterialInteraction.diffuseColor,
+    decalMaterialInteraction.albedo * cb.translucentDecalAlbedoFactor, decalMaterialInteraction.opacity);
+
+  translucentSurfaceMaterialInteraction.baseReflectivity = mix(translucentSurfaceMaterialInteraction.baseReflectivity,
+    calcBt709Luminance(decalMaterialInteraction.baseReflectivity), decalMaterialInteraction.opacity);
+
+  translucentSurfaceMaterialInteraction.emissiveRadiance = mix(translucentSurfaceMaterialInteraction.emissiveRadiance,
+    decalMaterialInteraction.emissiveRadiance, decalMaterialInteraction.opacity);
+
+  // Note: Alpha compositing equation for alpha applied to diffuse opacity.
+  translucentSurfaceMaterialInteraction.diffuseOpacity =
+    decalMaterialInteraction.opacity + translucentSurfaceMaterialInteraction.diffuseOpacity * (1.0 - decalMaterialInteraction.opacity);
+}

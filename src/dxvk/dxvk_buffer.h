@@ -1,3 +1,24 @@
+/*
+* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
 #pragma once
 
 #include <unordered_map>
@@ -71,10 +92,14 @@ namespace dxvk {
    * to the mapped region..
    */
   struct DxvkBufferSliceHandle {
-    VkBuffer      handle;
-    VkDeviceSize  offset;
-    VkDeviceSize  length;
+    VkBuffer      handle = VK_NULL_HANDLE;
+    VkDeviceSize  offset = 0;
+    VkDeviceSize  length = VK_WHOLE_SIZE;
     void*         mapPtr;
+
+    bool operator==(DxvkBufferSliceHandle const& rhs) const {
+      return eq(rhs);
+    }
 
     bool eq(const DxvkBufferSliceHandle& other) const {
       return handle == other.handle
@@ -91,7 +116,6 @@ namespace dxvk {
     }
   };
 
-  
   /**
    * \brief Virtual buffer resource
    * 
@@ -107,7 +131,8 @@ namespace dxvk {
             DxvkDevice*           device,
       const DxvkBufferCreateInfo& createInfo,
             DxvkMemoryAllocator&  memAlloc,
-            VkMemoryPropertyFlags memFlags);
+            VkMemoryPropertyFlags memFlags,
+            DxvkMemoryStats::Category category);
     
     ~DxvkBuffer();
     
@@ -140,7 +165,9 @@ namespace dxvk {
      * \returns Pointer to mapped memory region
      */
     void* mapPtr(VkDeviceSize offset) const {
-      return reinterpret_cast<char*>(m_physSlice.mapPtr) + offset;
+      // NV-DXVK start:
+      return (m_physSlice.mapPtr != nullptr) ? reinterpret_cast<char*>(m_physSlice.mapPtr) + offset : nullptr;
+      // NV-DXVK end
     }
     
     /**
@@ -245,7 +272,7 @@ namespace dxvk {
       // backing buffer and add all slices to the free list.
       if (unlikely(m_freeSlices.empty())) {
         if (likely(!m_lazyAlloc)) {
-          DxvkBufferHandle handle = allocBuffer(m_physSliceCount);
+          DxvkBufferHandle handle = allocBuffer(m_physSliceCount, m_category);
 
           for (uint32_t i = 0; i < m_physSliceCount; i++)
             pushSlice(handle, i);
@@ -279,8 +306,14 @@ namespace dxvk {
       std::unique_lock<sync::Spinlock> swapLock(m_swapMutex);
       m_nextSlices.push_back(slice);
     }
-    
-  private:
+
+    VkBuffer getBufferRaw() {
+      return m_physSlice.handle;
+    }
+
+    VkDeviceAddress getDeviceAddress();
+
+  protected:
 
     DxvkDevice*             m_device;
     DxvkBufferCreateInfo    m_info;
@@ -289,6 +322,7 @@ namespace dxvk {
     
     DxvkBufferHandle        m_buffer;
     DxvkBufferSliceHandle   m_physSlice;
+    VkDeviceAddress         m_deviceAddress = 0;
 
     uint32_t                m_vertexStride = 0;
     uint32_t                m_lazyAlloc = false;
@@ -305,6 +339,8 @@ namespace dxvk {
     VkDeviceSize m_physSliceCount    = 1;
     VkDeviceSize m_physSliceMaxCount = 1;
 
+    DxvkMemoryStats::Category m_category;
+    
     void pushSlice(const DxvkBufferHandle& handle, uint32_t index) {
       DxvkBufferSliceHandle slice;
       slice.handle = handle.buffer;
@@ -315,7 +351,7 @@ namespace dxvk {
     }
 
     DxvkBufferHandle allocBuffer(
-            VkDeviceSize          sliceCount) const;
+      VkDeviceSize sliceCount, DxvkMemoryStats::Category category) const;
 
     VkDeviceSize computeSliceAlignment() const;
     
@@ -504,13 +540,16 @@ namespace dxvk {
       return this->m_offset == other.m_offset
           && this->m_length == other.m_length;
     }
-    
+
+    VkDeviceAddress getDeviceAddress() const {
+      return m_buffer->getDeviceAddress() + m_offset;
+    }
+
   private:
     
     Rc<DxvkBuffer> m_buffer = nullptr;
     VkDeviceSize   m_offset = 0;
     VkDeviceSize   m_length = 0;
-    
   };
   
   
@@ -642,7 +681,30 @@ namespace dxvk {
     
   };
   
-  
+
+  // NV-DXVK start: implement acceleration structures
+  class DxvkAccelStructure : public DxvkBuffer {
+    VkAccelerationStructureKHR accelStructureRef = VK_NULL_HANDLE;
+
+  public:
+    DxvkAccelStructure(
+            DxvkDevice* device,
+      const DxvkBufferCreateInfo& createInfo,
+            DxvkMemoryAllocator& memAlloc,
+            VkMemoryPropertyFlags memFlags,
+            VkAccelerationStructureTypeKHR accelType);
+
+    ~DxvkAccelStructure();
+
+    const VkAccelerationStructureKHR& getAccelStructure() const {
+      return accelStructureRef;
+    }
+
+    VkDeviceAddress getAccelDeviceAddress() const;
+  };
+  // NV-DXVK end
+
+
   /**
    * \brief Buffer slice tracker
    * 

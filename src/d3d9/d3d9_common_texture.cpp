@@ -2,11 +2,15 @@
 
 #include "d3d9_util.h"
 #include "d3d9_device.h"
+#include "d3d9_texture.h"
+#include <d3d9types.h>
 
 #include <algorithm>
+#include <iostream>
+#include <sstream>
+#include "../dxvk/imgui/dxvk_imgui.h"
 
 namespace dxvk {
-
   D3D9CommonTexture::D3D9CommonTexture(
           D3D9DeviceEx*             pDevice,
     const D3D9_COMMON_TEXTURE_DESC* pDesc,
@@ -74,6 +78,10 @@ namespace dxvk {
   D3D9CommonTexture::~D3D9CommonTexture() {
     if (m_size != 0)
       m_device->ChangeReportedMemory(m_size);
+
+    // Release this texture from ImGUI 
+    if (m_image != nullptr && m_image->getHash() != 0)
+      ImGUI::ReleaseTexture(m_image->getHash());
   }
 
 
@@ -176,7 +184,7 @@ namespace dxvk {
                                   | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
                                   | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
 
-    m_buffers[Subresource] = m_device->GetDXVKDevice()->createBuffer(info, memType);
+    m_buffers[Subresource] = m_device->GetDXVKDevice()->createBuffer(info, memType, DxvkMemoryStats::Category::AppBuffer);
     m_mappedSlices[Subresource] = m_buffers[Subresource]->getSliceHandle();
 
     return true;
@@ -303,7 +311,7 @@ namespace dxvk {
         "\n  Pool:    ", std::hex, m_desc.Pool));
     }
 
-    return m_device->GetDXVKDevice()->createImage(imageInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    return m_device->GetDXVKDevice()->createImage(imageInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture);
   }
 
 
@@ -311,7 +319,7 @@ namespace dxvk {
     DxvkImageCreateInfo imageInfo = m_image->info();
     imageInfo.sampleCount = VK_SAMPLE_COUNT_1_BIT;
 
-    return m_device->GetDXVKDevice()->createImage(imageInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    return m_device->GetDXVKDevice()->createImage(imageInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture);
   }
 
 
@@ -518,5 +526,47 @@ namespace dxvk {
       m_sampleView.Srgb = CreateView(AllLayers, Lod, VK_IMAGE_USAGE_SAMPLED_BIT, true);
   }
 
+  void D3D9CommonTexture::SetupForRtxFrom(const D3D9CommonTexture* source) {
+    ZoneScoped;
 
+    if (nullptr == source)
+      return;
+
+    if (m_type != D3DRTYPE_TEXTURE || (m_desc.Usage & D3DUSAGE_DEPTHSTENCIL))
+      return;
+
+    if (m_image->getHash() != 0) {
+      // Already setup.
+      return;
+    }
+
+    // Use subresource 0 for hashing
+    constexpr uint32_t subresource = 0;
+    const auto& buffer = source->m_buffers[subresource];
+
+    // Data may not be there yet
+    if (nullptr == buffer.ptr())
+      return;
+
+    const bool useObsoleteHashMethod = NeedsUpload(subresource) &&
+      RtxOptions::Get()->shouldUseObsoleteHashOnTextureUpload();
+
+    // Generate hash from CPU buffer
+    XXH64_hash_t imageHash;
+
+    if (unlikely(useObsoleteHashMethod)) {
+      imageHash = XXH64(buffer->mapPtr(0), buffer->info().size, 0);
+    } else {
+      imageHash = XXH3_64bits(buffer->mapPtr(0), buffer->info().size);
+    }
+    // save hash to dxvkImage
+    m_image->setHash(imageHash);
+
+    // Let ImGUI know about this texture
+    ImGUI::AddTexture(imageHash, m_sampleView.Color);
+  }
+
+  void D3D9CommonTexture::SetupForRtx() {
+    SetupForRtxFrom(this);
+  }
 }

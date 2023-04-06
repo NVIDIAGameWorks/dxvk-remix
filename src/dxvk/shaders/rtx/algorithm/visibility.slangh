@@ -1,0 +1,326 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/concept/ray/ray.slangh"
+#include "rtx/concept/surface/surface.slangh"
+#include "rtx/concept/surface_material/surface_material.slangh"
+#include "rtx/utility/packing.slangh"
+#include "rtx/algorithm/resolve.slangh"
+
+static const uint8_t visibilityModeNone = 0;
+static const uint8_t visibilityModeAccurateHitDistance = uint8_t(1 << 0);        // Return the closest hit and not just any opaque hit
+static const uint8_t visibilityModeEnableTranslucentMaterials = uint8_t(1 << 1); // Evaluate translucent materials or skip them
+static const uint8_t visibilityModeDisableCulling = uint8_t(1 << 2);             // Disable backface culling on triangles (ignoring the game's original winding and culling mode specifications).
+
+// Visibility Helper Functions
+
+// Returns the attenuation factor for the surface, i.e. (1.0 - opacity)
+f16vec3 handleVisibilityVertex(Ray ray, RayHitInfo rayHitInfo, uint8_t visibilityMode, bool usePreviousTLAS)
+{
+  RayInteraction rayInteraction = rayInteractionCreate(ray, rayHitInfo);
+
+  int surfaceIndex = rayInteraction.surfaceIndex;
+  if (usePreviousTLAS)
+  {
+    // View model instances don't have an inter-frame mapping, assume they're transparent
+    if (rayHitInfo.customIndex & CUSTOM_INDEX_IS_VIEW_MODEL)
+      return 1.0;
+
+    // Map the surface index from the previous frame to the current frame
+    surfaceIndex = surfaceMapping[surfaceIndex];
+
+    if (surfaceIndex == BINDING_INDEX_INVALID)
+      // Surface no longer exists - assume it was transparent, which is safer than
+      // assuming an opaque surface, because that would introduce more bias in ReSTIR
+      return 1.0;
+  }
+
+  SURFACE_CREATE_READ(surface, surfaceIndex, surfaces);
+
+  if (surfaceIsDecal(surface))
+    // Decals do not cast shadows
+    return 1.0;
+
+  SurfaceInteraction surfaceInteraction = surfaceInteractionCreate(surface, rayInteraction, ray, usePreviousTLAS);
+
+  if (isSurfaceClipped(surface, surfaceInteraction))
+    // Ignore parts of surfaces that are under clip planes
+    return 1.0;
+
+  const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
+  
+  const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
+
+  if (polymorphicType == surfaceMaterialTypeOpaque)
+  {
+    const OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
+
+    const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
+      opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteraction);
+
+    return float16_t(1.0) - opaqueSurfaceMaterialInteraction.opacity;
+  }
+  else if (polymorphicType == surfaceMaterialTypeTranslucent && packedFlagGet(visibilityMode, visibilityModeEnableTranslucentMaterials))
+  {
+    const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(surface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
+
+    // Extract the thin walled flag before evaluating the material interaction
+    const bool isThinWalled = translucentSurfaceMaterial.thicknessOrMeasurementDistance < float16_t(0);
+
+    // Only evaluate the translucent attenuation for thin-walled materials because we're doing an unordered
+    // traversal and don't know the distance traveled in a thick material.
+    if (isThinWalled)
+    {
+      const TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction =
+        translucentSurfaceMaterialInteractionCreate(translucentSurfaceMaterial, surface, surfaceInteraction, rayInteraction);
+
+      // Approximate the attenuation distance based on the triangle normal
+      const float16_t thickness = translucentSurfaceMaterialInteractionGetThinWallThickness(translucentSurfaceMaterialInteraction);
+      const float16_t attenuationDistance = abs(evalThinAttenuationDistance(thickness, surfaceInteraction.triangleNormal, ray.direction));
+      const f16vec3 attenuationCoefficient = transmittanceToAttenuationCoefficient(translucentSurfaceMaterialInteraction.transmittanceColor, 1.0);
+      const f16vec3 volumeAttenuation = evalBeerLambertAttenuation(attenuationCoefficient, attenuationDistance);
+
+      return volumeAttenuation;
+    }
+  }
+
+  return float16_t(1.0);
+}
+
+void applyPortalTextureTransform(RayPortalHitInfo portal, inout float2 textureCoordinates)
+{
+  float3x2 textureTransform;
+  textureTransform[0] = unpackFloat2x16(portal.textureTransform.x);
+  textureTransform[1] = unpackFloat2x16(portal.textureTransform.y);
+  textureTransform[2] = unpackFloat2x16(portal.textureTransform.z);
+  textureCoordinates = mul(float3(textureCoordinates, 1.0), textureTransform);
+}
+
+float16_t getRayPortalTransparency(
+  Ray ray,
+  RayPortalHitInfo portal,
+  out float t)
+{
+  // Compute the ray-plane intersection.
+  // Treat rays coming from behind the portal as not intersecting with it.
+  const float NdotD = dot(ray.direction, portal.normal);
+  t = dot(portal.centroid - ray.origin, portal.normal) / NdotD;
+  if (isinf(t) || isnan(t)) t = -1.0;
+
+  if (0 <= t && t <= ray.tMax && NdotD < 0)
+  {
+    vec3 p = ray.origin + ray.direction * t;
+    vec3 cToP = p - portal.centroid.xyz;
+    vec2 uv;
+    uv.x = dot(cToP, portal.xAxis.xyz) * portal.inverseHalfWidth;
+    uv.y = dot(cToP, portal.yAxis.xyz) * portal.inverseHalfHeight;
+
+    if (max(abs(uv.x), abs(uv.y)) < 1.0)
+    {
+      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[portal.materialIndex];
+  
+      const RayPortalSurfaceMaterial rayPortalSurfaceMaterial = rayPortalSurfaceMaterialCreate(portal.materialIndex, memoryPolymorphicSurfaceMaterial);
+
+      SurfaceInteraction surfaceInteraction = (SurfaceInteraction)0;
+      surfaceInteraction.textureCoordinates = uv * 0.5 + 0.5;
+
+      applyPortalTextureTransform(portal, surfaceInteraction.textureCoordinates);
+
+      const RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction =
+        rayPortalSurfaceMaterialInteractionCreate(rayPortalSurfaceMaterial, surfaceInteraction);
+
+      float16_t transparency = saturate(float16_t(1) - rayPortalSurfaceMaterialInteraction.mask.a);
+      if (!rayPortalSurfaceMaterialInteraction.isInsidePortal)
+        transparency = float16_t(0);
+
+      return transparency;
+    }
+  }
+
+  return 0;
+}
+
+struct VisibilityResult {
+  f16vec3 attenuation;
+  f16vec3 rayDirection;
+  float hitDistance;
+  bool hasOpaqueHit;
+};
+
+VisibilityResult traceVisibilityRay(
+  Ray visibilityRay,
+  uint8_t rayMask, uint8_t visibilityMode, uint8_t expectedRayPortalIndex, PortalSpace2BitsType rayOriginPortalSpace,
+  // ViewModel instances are not to occlude anything but ViewModel rays and rays originating from a ViewModel surface
+  bool isViewModelRayOrStartedFromViewModel = false,
+  bool usePreviousTLAS = false)
+{
+  // Exclude the portals from the ray mask because we have special handling for them.
+  rayMask &= ~OBJECT_MASK_PORTAL;
+
+  PortalSpace2BitsType portalSpace = rayOriginPortalSpace;  // Assign to local variable since it's being modified
+
+  VisibilityResult result;
+  result.rayDirection = visibilityRay.direction;
+
+  const float originalTMax = visibilityRay.tMax;
+
+  // If we're expecting to cross a particular portal, test whether the ray intersects that portal first.
+  // If it doesn't, there's no need to trace any rays as the result is always "invisible".
+  float portalIntersectionT = 0;
+  float16_t portalTransparency = 1.0;
+  if (expectedRayPortalIndex != invalidRayPortalIndex)
+  {
+    const RayPortalHitInfo rayPortalHitInfo = cb.rayPortalHitInfos[int(expectedRayPortalIndex)];
+
+    portalTransparency = getRayPortalTransparency(visibilityRay, rayPortalHitInfo, portalIntersectionT);
+    if (portalTransparency == float16_t(0))
+    {
+      result.attenuation = 0;
+      result.hitDistance = visibilityRay.tMax; // We don't know the distance, but whatever
+      result.hasOpaqueHit = true;
+      return result;
+    }
+
+    visibilityRay.tMax = portalIntersectionT;
+  }
+
+  // Initialize the result with full transmission
+  result.attenuation = f16vec3(1.0);
+  result.hitDistance = visibilityRay.tMax;
+  result.hasOpaqueHit = false;
+
+  while(true)
+  {
+    RayQuery<0> rayQuery;
+
+    uint rayFlags = packedFlagGet(visibilityMode, visibilityModeAccurateHitDistance)
+      ? RAY_FLAG_NONE
+      : RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH;
+
+    // Note: Enable culling of backfacing triangles only if culling is actually desired on this visibility ray.
+    rayFlags |= packedFlagGet(visibilityMode, visibilityModeDisableCulling)
+      ? 0
+      : RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
+
+    if (usePreviousTLAS)
+    {
+      rayQuery.TraceRayInline(
+        previousTopLevelAS,
+        rayFlags, rayMask,
+        rayToRayDesc(visibilityRay)
+      );
+    }
+    else
+    {
+      rayQuery.TraceRayInline(
+        topLevelAS,
+        rayFlags, rayMask,
+        rayToRayDesc(visibilityRay)
+      );
+    }
+
+
+    while (rayQuery.Proceed())
+    {
+      if (rayQuery.CandidateType() == CANDIDATE_NON_OPAQUE_TRIANGLE)
+      {
+        RayHitInfo rayHitInfo;
+        RAY_HIT_INFO_CREATE_RAY_QUERY_CANDIDATE(rayHitInfo, rayQuery)
+
+        f16vec3 surfaceAttenuation = handleVisibilityVertex(visibilityRay, rayHitInfo, visibilityMode, usePreviousTLAS);
+
+        result.attenuation *= surfaceAttenuation;
+
+        if ((float16_t(1) - calcBt709Luminance(result.attenuation)) >= cb.resolveOpaquenessThreshold)
+        {
+          rayQuery.CommitNonOpaqueTriangleHit();
+          break;
+        }
+      }
+    };
+
+    if (rayQuery.CommittedStatus() == COMMITTED_TRIANGLE_HIT)
+    {
+      result.attenuation = f16vec3(0.0);
+      result.hitDistance = rayQuery.CommittedRayT();
+      result.hasOpaqueHit = true;
+
+      // If we already went through a portal, add the path segment before the portal
+      if (expectedRayPortalIndex == invalidRayPortalIndex)
+        result.hitDistance += portalIntersectionT;
+
+      break;
+    }
+
+    if (expectedRayPortalIndex != invalidRayPortalIndex)
+    {
+      RayPortalHitInfo rayPortalHitInfo = cb.rayPortalHitInfos[uint(expectedRayPortalIndex)];
+      mat4 teleportMatrix = rayPortalHitInfo.encodedPortalToOpposingPortalDirection.unpack();
+
+      // Teleport the ray to the opposite portal
+      vec3 portalIntersectionPosition = visibilityRay.origin + visibilityRay.direction * portalIntersectionT;
+      visibilityRay.origin = (mul(teleportMatrix, vec4(portalIntersectionPosition, 1.0f))).xyz;
+      visibilityRay.direction = normalize(mul(mat3(teleportMatrix), visibilityRay.direction));
+      visibilityRay.tMax = max(0, originalTMax - portalIntersectionT);
+      visibilityRay.coneRadius += float16_t(visibilityRay.spreadAngle * portalIntersectionT);
+
+      // Apply the portal mask
+      result.attenuation *= portalTransparency;
+
+      updateStateOnPortalCrossing(portalSpace, rayMask, expectedRayPortalIndex, isViewModelRayOrStartedFromViewModel);
+
+      // We only support going through one portal, so don't iterate after the next ray
+      expectedRayPortalIndex = invalidRayPortalIndex;
+    }
+    else
+    {
+      // No ray portals left
+      break;
+    }
+  }
+
+  return result;
+}
+
+VisibilityResult traceVisibilityRay(
+  MinimalSurfaceInteraction minimalSurfaceInteraction, float3 targetPosition,
+  bool penetrateSurface, uint8_t rayMask, uint8_t visibilityMode, uint8_t expectedRayPortalIndex,
+  PortalSpace2BitsType rayOriginPortalSpace,
+  float16_t coneRadius = 0, float16_t spreadAngle = 0, float16_t tMaxFactor = 1.0,
+  // ViewModel instances shouldn't occlude anything but ViewModel surfaces and primary rays
+  bool isViewModelRayOrStartedFromViewModel = false,
+  bool usePreviousTLAS = false)
+{
+  MinimalRayInteraction minimalRayInteraction = (MinimalRayInteraction)0;
+  minimalRayInteraction.coneRadius = coneRadius;
+  
+  Ray viewRay = (Ray)0;
+  viewRay.spreadAngle = spreadAngle;
+
+  Ray visibilityRay = rayCreatePosition(
+    minimalRayInteraction, minimalSurfaceInteraction, viewRay, targetPosition, penetrateSurface);
+
+  visibilityRay.tMax *= tMaxFactor;
+
+  return traceVisibilityRay(visibilityRay, rayMask, visibilityMode, expectedRayPortalIndex, rayOriginPortalSpace, isViewModelRayOrStartedFromViewModel, usePreviousTLAS);
+}

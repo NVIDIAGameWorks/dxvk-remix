@@ -1,0 +1,282 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/utility/math.slangh"
+
+// Note: Converts an area-based PDF to a solid angle PDF given a distance and angle between the sample and viewing point.
+float areaPdftoSolidAnglePdf(float areaPdf, float distance, float16_t cosTheta)
+{
+  return areaPdf * square(distance) / float16_t(cosTheta);
+}
+
+float getUniformSphereSolidAnglePdf()
+{
+  return 1.0f / (4.0f * pi);
+}
+
+float getUniformHemisphereSolidAnglePdf()
+{
+  return 1.0f / twoPi;
+}
+
+float getCosineHemisphereSolidAnglePdf(float16_t normalDotMicrofacetNormal)
+{
+  return float(normalDotMicrofacetNormal) / pi;
+}
+
+float getUniformConeSolidAnglePdf(float cosThetaMax)
+{
+  // Note: Must be 32 bit float to avoid NaNs when cosThetaMax is very close to 1 (which it often is).
+  return 1.0f / (twoPi * (1.0f - cosThetaMax));
+}
+
+// Calculates a random position sample on a cube centered at the origin.
+// Note the random sample should be in the range [0, 1] to prevent issues.
+f16vec3 calcUniformCenteredCubePositionSample(f16vec3 rndSample)
+{
+  return rndSample * f16vec3(2.0f) - f16vec3(1.0f);
+}
+
+// Calculates a random (mostly normalized) direction vector sampled on a uniform sphere.
+// Note the random sample should be in the range [0, 1] to prevent issues.
+f16vec3 calcUniformSphereDirectionSample(f16vec2 rndSample, inout float solidAnglePdf)
+{
+  const float16_t phi = float16_t(twoPi) * rndSample.x;
+  const float16_t cosTheta = float16_t(1.0f) - float16_t(2.0f) * rndSample.y;
+  const float16_t sinTheta = sqrt(max(float16_t(1.0f) - square(cosTheta), float16_t(0.0f)));
+
+  f16vec3 result;
+
+  result.x = sinTheta * cos(phi);
+  result.y = sinTheta * sin(phi);
+  result.z = cosTheta;
+
+  solidAnglePdf = getUniformSphereSolidAnglePdf();
+
+  return result;
+}
+
+// Calculates a random (mostly normalized) direction vector sampled on a uniform hemisphere around the Z axis.
+// Note the random sample should be in the range [0, 1] to prevent issues.
+f16vec3 calcUniformHemisphereDirectionSample(f16vec2 rndSample, inout float solidAnglePdf)
+{
+  const float16_t phi = float16_t(twoPi) * rndSample.x;
+  const float16_t cosTheta = rndSample.y;
+  const float16_t sinTheta = sqrt(float16_t(1.0f) - square(cosTheta));
+
+  f16vec3 result;
+
+  result.x = sinTheta * cos(phi);
+  result.y = sinTheta * sin(phi);
+  result.z = cosTheta;
+
+  solidAnglePdf = getUniformHemisphereSolidAnglePdf();
+
+  return result;
+}
+
+// Calculates a random (mostly normalized) direction vector sampled on a cosine-weighted hemisphere around the Z axis.
+// Note the random sample should be in the range [0, 1] to prevent issues.
+f16vec3 calcCosineHemisphereDirectionSample(f16vec2 rndSample, inout float solidAnglePdf)
+{
+  const float16_t phi = float16_t(twoPi) * rndSample.x;
+  const float16_t cosTheta = sqrt(rndSample.y);
+  // Note: square(cosTheta) == rndSample.y
+  const float16_t sinTheta = sqrt(float16_t(1.0) - rndSample.y);
+
+  f16vec3 result;
+
+  result.x = sinTheta * cos(phi);
+  result.y = sinTheta * sin(phi);
+  result.z = cosTheta;
+
+  solidAnglePdf = getCosineHemisphereSolidAnglePdf(cosTheta);
+
+  return result;
+}
+
+f16vec2 calcConcentricDiskDirectionSample(f16vec2 rndSample)
+{
+  // Map uniform random numbers to [-1,1]^2
+  const f16vec2 uOffset = float16_t(2.0f) * rndSample - f16vec2(1.0f, 1.0f);
+
+  // Handle degeneracy at the origin
+  if (uOffset.x == float16_t(0.0f) && uOffset.y == float16_t(0.0f))
+  {
+    return f16vec2(0.0f, 0.0f);
+  }
+
+  // Apply concentric mapping to point
+  float16_t theta, r;
+  const float16_t piOver4 = float16_t(0.25f * pi);
+  const float16_t piOver2 = float16_t(0.5f * pi);
+
+  if (abs(uOffset.x) > abs(uOffset.y))
+  {
+    r = uOffset.x;
+    theta = piOver4 * (uOffset.y / uOffset.x);
+  }
+  else
+  {
+    r = uOffset.y;
+    theta = piOver2 - piOver4 * (uOffset.x / uOffset.y);
+  }
+
+  return r * f16vec2(cos(theta), sin(theta));
+}
+
+// Note: 32 bit floats used instead of 16 bit for sines/cosines as cosines may get very close to 1 for narrow solid angles to sample from,
+// which cannot be adequately represented with 16 bit precision. This is not as big of a deal if sampling something like a Sphere light as
+// long as the PDF is calculated in a 32 bit way to avoid NaNs, but to get adequate Distant light softness with its small solid angles, it
+// is more important to not have the sampled direction collapse to a single quantized value. We may want to check in the future that the
+// resulting 16 bit vec3 type is not being overly quantized either, but the issue I think is more in the calculation, not the output.
+f16vec3 calcUniformConeDirectionSample(f16vec2 rndSample, float cosThetaMax, inout float solidAnglePdf)
+{
+  const float phi = twoPi * float(rndSample.x);
+  const float cosTheta = mix(cosThetaMax, 1.0f, float(rndSample.y));
+  const float sinTheta = sqrt(1.0f - square(cosTheta));
+
+  const vec3 result = calcSphericalDirection(sinTheta, cosTheta, sin(phi), cos(phi));
+
+  solidAnglePdf = getUniformConeSolidAnglePdf(cosThetaMax);
+
+  return f16vec3(result);
+}
+
+// [Heitz 2018, "Sampling the GGX Distribution of Visible Normals"]
+// Note: This function operates in tangent space so any vectors given to it or retreived from it should also be in
+// tangent space.
+f16vec3 calcGGXVisibleNormalDistributionSample(f16vec2 anisotropicRoughness, f16vec3 Ve, f16vec2 u)
+{
+  // Section 3.2: transforming the view direction to the hemisphere configuration
+  const f16vec3 Vh = normalize(f16vec3(anisotropicRoughness.x * Ve.x, anisotropicRoughness.y * Ve.y, Ve.z));
+
+  // Section 4.1: orthonormal basis
+  // Note: This implementation deviates from the paper's by using Pixar's orthonormal basis function as this eliminates
+  // issues with low roughness values due to fp16 usage (from division by values which get flushed to 0), as well as improves
+  // the quality of the basis vectors generated.
+  f16vec3 T1, T2;
+  calcOrthonormalBasis(Vh, T1, T2);
+
+  // Section 4.2: parameterization of the projected area
+  const float16_t r = sqrt(u.x);
+  const float16_t phi = float16_t(twoPi) * u.y;
+  const float16_t t1 = r * cos(phi);
+  const float16_t s = float16_t(0.5) * (float16_t(1.0) + Vh.z);
+  const float t1sq = float(t1) * float(t1);
+  const float16_t t2 = mix(sqrt(max(float16_t(1.0 - t1sq), float16_t(0))), r * sin(phi), s);
+  const float t2sq = float(t2) * float(t2);
+
+  // Section 4.3: reprojection onto hemisphere
+  const f16vec3 Nh = t1 * T1 + t2 * T2 + sqrt(max(float16_t(0.0), float16_t(1.0 - (t1sq + t2sq)))) * Vh;
+
+  // Section 3.4: transforming the normal back to the ellipsoid configuration
+  const f16vec3 Ne = normalize(f16vec3(anisotropicRoughness.x * Nh.x, anisotropicRoughness.y * Nh.y, max(float16_t(0.0), Nh.z)));
+
+  return Ne;
+}
+
+// Calculates the cosine of the angle CAB between spherical triangle points on the surface of a unit sphere A, B and C.
+float sphericalTriangleCosineAngle(vec3 A, vec3 B, vec3 C)
+{
+  // Derived from: https://math.stackexchange.com/a/66731
+  // Mathematics Stack Exchange posts licensed under CC BY-SA 3.0
+
+  const vec3 CA = cross(C, A);
+  const vec3 BA = cross(B, A);
+  const float lengthCA = length(CA);
+  const float lengthBA = length(BA);
+
+  // Note: Handle cases when normalization may be NaN (in these cases two of the points
+  // are colinear which can be interpreted as having an angle of 0 in the spherical triangle,
+  // or in the case of the cosine of the angle, 1).
+  if (lengthCA == 0.0f || lengthBA == 0.0f) {
+    return 1.0f;
+  }
+
+  // Note: Normalize the vectors with the previously calculated lengths.
+  const vec3 unitCA = CA / lengthCA;
+  const vec3 unitBA = BA / lengthBA;
+
+  return clamp(dot(unitCA, unitBA), -1.0f, 1.0f);
+}
+
+// Samples a point uniformly over the area of a spherical triangle given a set of vertices on the surface of the unit sphere.
+// [Arvo 1995, "Stratified Sampling of Spherical Triangles"]
+vec3 calcSphericalTriangleSample(vec3 A, vec3 B, vec3 C, vec2 randomSample, inout float pdf)
+{
+  // Note: This code has been mostly guarded against NaNs from the common places (normalizations, sqrt,
+  // division, etc), but some may still appear and this code may need to be modified a bit in the future.
+
+  // Calculate spherical triangle angles from the vertices
+
+  // Todo: Try to share normalization length divides
+  const float cosAlpha = sphericalTriangleCosineAngle(A, C, B);
+  const float cosBeta = sphericalTriangleCosineAngle(B, A, C);
+  const float cosGamma = sphericalTriangleCosineAngle(C, A, B);
+  const float alpha = acos(cosAlpha);
+  const float beta = acos(cosBeta);
+  const float gamma = acos(cosGamma);
+  const float sinAlpha = sin(alpha);
+
+  // Calculate relevant side arc length information of the spherical triangle
+
+  const float cosc = clamp(dot(A, B), -1.0f, 1.0f);
+
+  // Calculate the area of the spherical triangle and sample a new random sub-area
+
+  const float area = alpha + beta + gamma - pi;
+  const float newArea = area * randomSample.x;
+
+  // Set the PDF based on the area of the spherical triangle
+
+  pdf = 1.0f / area;
+
+  // Calculate phi and sin/cos of phi
+
+  const float phi = newArea - alpha;
+  const float s = sin(phi);
+  const float t = cos(phi);
+
+  // Calculate u/v to derive new edge length from
+
+  const float u = t - cosAlpha;
+  const float v = s + sinAlpha * cosc;
+
+  // Calculate the cosine and position of the subtriangle vertex
+
+  const float q = saferPositiveDivide((v * t - u * s) * cosAlpha - v, (v * s + u * t) * sinAlpha, 1e-20f, 1e20f);
+  // Note: Use the C point if A and C are the same point (as this would be the only practical case where normalization
+  // can fail in the safe function).
+  const vec3 orthonormalizedCA = safeOrthonormalize(C, A, C);
+  const vec3 subtriangleVertex = q * A + sqrt(1.0f - min(q * q, 1.0f)) * orthonormalizedCA;
+
+  // Calculate the cosine and position of the sampled point
+
+  const float z = 1.0f - randomSample.y * (1.0f - clamp(dot(subtriangleVertex, B), -1.0f, 1.0f));
+  // Note: Use the B point if the subtriangle vertex and B are the same point for the same reasons as orthonormalizedCA.
+  const vec3 orthonormalizedSubtriangleVertexB = safeOrthonormalize(subtriangleVertex, B, B);
+  const vec3 sampledPoint = z * B + sqrt(1.0f - min(z * z, 1.0f)) * orthonormalizedSubtriangleVertexB;
+
+  return sampledPoint;
+}

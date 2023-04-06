@@ -1,4 +1,5 @@
 #include "dxvk_swapchain_blitter.h"
+#include "dxvk_scoped_annotation.h"
 
 #include <dxvk_present_frag.h>
 #include <dxvk_present_frag_blit.h>
@@ -26,6 +27,7 @@ namespace dxvk {
           VkRect2D            dstRect,
     const Rc<DxvkImageView>&  srcView,
           VkRect2D            srcRect) {
+    ScopedGpuProfileZone(ctx, "Blitter presentImage");
     if (m_gammaDirty)
       this->updateGammaTexture(ctx);
 
@@ -188,6 +190,8 @@ namespace dxvk {
     else
       args.srcExtent = srcRect.extent;
 
+    ctx->setPushConstantBank(DxvkPushConstantBank::RTX);
+
     ctx->pushConstants(0, sizeof(args), &args);
 
     ctx->setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, 0, srcView->imageInfo().sampleCount);
@@ -233,7 +237,7 @@ namespace dxvk {
         imgInfo.layout      = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         
         m_gammaImage = m_device->createImage(
-          imgInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+          imgInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture);
 
         DxvkImageViewCreateInfo viewInfo;
         viewInfo.type       = VK_IMAGE_VIEW_TYPE_1D;
@@ -350,7 +354,7 @@ namespace dxvk {
                    | VK_ACCESS_SHADER_READ_BIT;
     newInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
     newInfo.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    m_resolveImage = m_device->createImage(newInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    m_resolveImage = m_device->createImage(newInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture);
 
     DxvkImageViewCreateInfo viewInfo;
     viewInfo.type = VK_IMAGE_VIEW_TYPE_2D;

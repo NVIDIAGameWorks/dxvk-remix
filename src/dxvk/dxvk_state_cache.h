@@ -1,3 +1,24 @@
+/*
+* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
 #pragma once
 
 #include <atomic>
@@ -9,6 +30,9 @@
 #include <vector>
 
 #include "dxvk_state_cache_types.h"
+// NV-DXVK start: compile rt shaders on shader compilation threads
+#include "dxvk_raytracing.h"
+// NV-DXVK end
 
 namespace dxvk {
 
@@ -71,6 +95,19 @@ namespace dxvk {
     void registerShader(
       const Rc<DxvkShader>&                 shader);
 
+    // NV-DXVK start: compile raytracing shaders on shader compilation threads
+    /**
+     * \brief Registers a set of raytracing shaders
+     * 
+     * Makes the shader available to the pipeline
+     * compiler, and starts compiling all pipelines
+     * for which all shaders become available.
+     * \param [in] shaders The shaders to add
+     */
+    void registerRaytracingShaders(
+      const DxvkRaytracingPipelineShaders& shaders);
+    // NV-DXVK end
+    
     /**
      * \brief Explicitly stops worker threads
      */
@@ -91,6 +128,21 @@ namespace dxvk {
     struct WorkerItem {
       DxvkGraphicsPipelineShaders gp;
       DxvkComputePipelineShaders  cp;
+
+      // NV-DXVK start: compile rt shaders on shader compilation threads
+      DxvkRaytracingPipelineShaders rt;
+      // NV-DXVK end
+
+      // NV-DXVK start: do not compile same shader multiple times
+      size_t hash() const {
+        // raytracing shader group hash is NOT guaranteed to be zero
+        if (!rt.groups.empty()) {
+          return rt.hash();
+        }
+        // note that one of these is guaranteed to be zero
+        return cp.hash() ^ gp.hash();
+      }
+      // NV-DXVK end
     };
 
     DxvkPipelineManager*              m_pipeManager;
@@ -116,6 +168,9 @@ namespace dxvk {
     dxvk::mutex                       m_workerLock;
     dxvk::condition_variable          m_workerCond;
     std::queue<WorkerItem>            m_workerQueue;
+    // NV-DXVK start: do not compile same shader multiple times
+    std::unordered_set<size_t>        m_workerItemsInFlight;  // stores hashes for work items in the queue
+    // NV-DXVK end
     std::atomic<uint32_t>             m_workerBusy;
     std::vector<dxvk::thread>         m_workerThreads;
 

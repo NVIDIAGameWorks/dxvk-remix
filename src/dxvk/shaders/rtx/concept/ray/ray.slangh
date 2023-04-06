@@ -1,0 +1,343 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Note: ray.h must be first include to define required structures
+#include "rtx/concept/ray/ray.h"
+#include "rtx/concept/ray/ray_utilities.h"
+#include "rtx/utility/common.slangh"
+#include "rtx/utility/math.slangh"
+#include "rtx/concept/camera/camera.slangh"
+#include "rtx/concept/surface/surface.slangh"
+#include "rtx/concept/volume/volume.slangh"
+
+#include "rtx/concept/ray/ray_helper.slangh"
+#include "rtx/concept/ray/gbuffer_memory_minimal_ray.slangh"
+#include "rtx/concept/ray/minimal_ray.slangh"
+#include "rtx/concept/ray/ray_interaction.slangh"
+#include "rtx/concept/ray/gbuffer_memory_minimal_ray_interaction.slangh"
+#include "rtx/concept/ray/minimal_ray_interaction.slangh"
+
+// Returns a new origin to use for a ray offset from a surface. This variant of the ray offsetting function
+// should be used when the hit position was derived with barycentrics as only the magnitude of the position
+// need be considered when offsetting.
+vec3 rayOffsetSurfaceOriginHelper(MinimalSurfaceInteraction minimalSurfaceInteraction, bool penetrateSurface)
+{
+  // Flip the triangle normal if requested to offset rays on the opposite side of the surface
+  const f16vec3 effectiveTriangleNormal = penetrateSurface ? -minimalSurfaceInteraction.triangleNormal : minimalSurfaceInteraction.triangleNormal;
+
+  // Return the origin of the ray with the offset position from the surface interaction
+  return minimalSurfaceInteraction.position + calculateRayOffset(minimalSurfaceInteraction.positionError, effectiveTriangleNormal);
+}
+
+Ray rayCreateEmpty()
+{
+  Ray ret;
+
+  ret.origin = vec3(0);
+  ret.coneRadius = float16_t(0);
+  ret.spreadAngle = float16_t(0);
+  ret.direction = f16vec3(0);
+  ret.tMax = 0;
+
+  return ret;
+}
+
+// Note: This create function offsets the ray off of the surface using a given view ray as a reference
+// (since the amount to offset depends on the distance from the view point).
+Ray rayCreateInternal(
+  MinimalRayInteraction minimalRayInteraction, MinimalSurfaceInteraction minimalSurfaceInteraction, Ray viewRay,
+  f16vec3 direction, float tMax, bool penetrateSurface)
+{
+  Ray ray;
+
+  ray.origin = rayOffsetSurfaceOriginHelper(minimalSurfaceInteraction, penetrateSurface);
+  ray.coneRadius = minimalRayInteraction.coneRadius;
+  ray.spreadAngle = viewRay.spreadAngle;
+  ray.direction = direction;
+  ray.tMax = tMax;
+
+  return ray;
+}
+
+Ray rayCreateInternal(
+  MinimalRayInteraction minimalRayInteraction, VolumeInteraction volumeInteraction, Ray viewRay,
+  f16vec3 direction, float tMax)
+{
+  Ray ray;
+
+  ray.origin = volumeInteraction.position;
+  ray.coneRadius = minimalRayInteraction.coneRadius;
+  ray.spreadAngle = viewRay.spreadAngle;
+  ray.direction = direction;
+  ray.tMax = tMax;
+
+  return ray;
+}
+
+// Note: This create function creates a ray from a camera and a screen UV, allowing for primary ray generation.
+Ray rayCreatePrimary(Camera camera, vec2 screenUV, float16_t screenSpacePixelSpreadAngle, bool jitter)
+{
+  Ray ray;
+
+  ray.origin = cameraGetWorldPosition(camera);
+  ray.coneRadius = float16_t(0.0); // Note: Cone radius always 0 to start at the camera
+  ray.spreadAngle = screenSpacePixelSpreadAngle;
+  ray.direction = cameraScreenUVToDirection(camera, screenUV, jitter).worldDirection;
+  ray.tMax = floatMax;
+
+  return ray;
+}
+
+// Convenience function that creates a primary ray based on pixel index instead of UVs.
+Ray rayCreatePrimaryFromPixel(Camera camera, ivec2 pixelCoordinate, bool jitter)
+{
+  const vec2 inUV = cameraPixelCoordinateToScreenUV(camera, pixelCoordinate);
+
+  return rayCreatePrimary(camera, inUV, float16_t(cb.screenSpacePixelSpreadHalfAngle), jitter);
+}
+
+// Overload for creating a primary ray from a pixel index, but with the assumption of using jittering (as this is
+// the most common use case).
+Ray rayCreatePrimaryFromPixel(Camera camera, ivec2 pixelCoordinate)
+{
+  return rayCreatePrimaryFromPixel(camera, pixelCoordinate, true);
+}
+
+// Todo: Ray create function for spatial/volume positions without being fired from the camera?
+// Think irradiance cache, what would the spread angle on this be based on for reasonable texture
+// sampling quality, probably the effective resolution of the spherical harmonic or whatever is
+// storing the radiance contribution?
+
+// Note: For use when an explicit normalized direction to shoot a ray in is known, but no known distance. Ensure this is given
+// a normalized direction or things may break. If the direction points into the surface, set the penetrateSurface flag to properly
+// offset on the opposite side.
+Ray rayCreateDirection(
+  MinimalRayInteraction minimalRayInteraction, MinimalSurfaceInteraction minimalSurfaceInteraction, Ray viewRay,
+  f16vec3 direction, bool penetrateSurface)
+{
+  return rayCreateInternal(minimalRayInteraction, minimalSurfaceInteraction, viewRay, direction, floatMax, penetrateSurface);
+}
+
+// Note: For use when a target position to shoot a ray at is known, allowing for a tMax calculation (useful for visibility rays).
+// If position is on the other side of the surface, set penetrateSurface to properly offset on the opposite side.
+Ray rayCreatePosition(
+  MinimalRayInteraction minimalRayInteraction, MinimalSurfaceInteraction minimalSurfaceInteraction, Ray viewRay,
+  vec3 targetPosition, bool penetrateSurface)
+{
+  const vec3 rayVector = targetPosition - minimalSurfaceInteraction.position;
+  const f16vec3 direction = f16vec3(normalize(rayVector));
+  const float tMax = length(rayVector);
+
+  return rayCreateInternal(minimalRayInteraction, minimalSurfaceInteraction, viewRay, direction, tMax, penetrateSurface);
+}
+
+Ray rayCreatePosition(
+  MinimalRayInteraction minimalRayInteraction, VolumeInteraction volumeInteraction, Ray viewRay,
+  vec3 targetPosition)
+{
+  const vec3 rayVector = targetPosition - volumeInteraction.position;
+  const f16vec3 direction = f16vec3(normalize(rayVector));
+  const float tMax = length(rayVector);
+
+  return rayCreateInternal(minimalRayInteraction, volumeInteraction, viewRay, direction, tMax);
+}
+
+// Evaluates a position along the ray given a t value. Implicitly assumed to be within [tMin, tMax]
+vec3 rayEvaluate(Ray ray, float t)
+{
+  return ray.origin + vec3(ray.direction) * t;
+}
+
+#if 0
+// Todo: Make generic in the future so that a function object can be passed to this, or some sort of algorithm interface where this general
+// concept of a "hit function" can be encapsulated and implemented with the proper encoding/decoding methods. Additionally pass the RayPayload
+// binding information directly in rather than using a macro like this.
+// Note: The function this is called with must be called in the TraceRay CHS and have its return value encoded into the payload
+// so the payload decode function called on the payload data will work correctly.
+
+// Trace Ray + GRQ
+#define TRACE_RAY_GRQ(                                                        \
+  raytraceArgs, ray, flags, mask,                                             \
+  hitFunction, payloadEncodeFunction, payloadDecodeFunction,                  \
+  payload, encodedPayloadBinding,                                             \
+  encodedPayloadBindingIndex, hitObjectBindingIndex)                          \
+{                                                                             \
+  /* Encode the Payload and set to the Ray Payload binding */                 \
+                                                                              \
+  encodedPayloadBinding = payloadEncodeFunction(payload);                     \
+                                                                              \
+  /* Traverse AS and return commited hit */                                   \
+                                                                              \
+  hitObject = hitObjectCreateEmpty();                                         \
+  TraceRayHitObject(                                                          \
+    topLevelAS,                                                               \
+    flags | gl_RayFlagsOpaqueEXT, mask,                                       \
+    0, 0, 0, ray,                                                             \
+    encodedPayloadBindingIndex, hitObjectBindingIndex                         \
+  );                                                                          \
+                                                                              \
+#if 0                                                                         \
+  /* AddCoherenceHint() is called in reverse (most significant hint last). */ \
+  AddCoherenceHint(hitObject, pathHints.computesEmissive);                    \
+  AddCoherenceHint(hitObject, pathHints.terminatedByRussianRoulette);         \
+#endif                                                                        \
+                                                                              \
+  /* Reorder and invoke closest hit or miss shader */                         \
+  InvokeHitObject(                                                            \
+    topLevelAS,                                                               \
+    ray,                                                                      \
+    encodedPayloadBindingIndex, hitObjectBindingIndex                         \
+  );                                                                          \
+                                                                              \
+  /* Decode the Payload from the Ray Payload binding */                       \
+                                                                              \
+  payload = payloadDecodeFunction(encodedPayloadBinding);                     \
+}
+
+// Trace Ray + No GRQ
+#define TRACE_RAY(                                                                       \
+  raytraceArgs, ray, flags, mask,                                                        \
+  hitFunction, payloadEncodeFunction, payloadDecodeFunction,                             \
+  payload, encodedPayloadBinding,                                                        \
+  encodedPayloadBindingIndex, hitObjectBindingIndex)                                     \
+{                                                                                        \
+  /* Encode the Payload and set to the Ray Payload binding */                            \
+                                                                                         \
+  encodedPayloadBinding = payloadEncodeFunction(payload);                                \
+                                                                                         \
+  /* Invoke Trace Ray */                                                                 \
+                                                                                         \
+  /* Note: CHS responsible for decoding the payload, calling the proper hit function, */ \
+  /* and then encoding the payload once again. This behavior must be done to match */    \
+  /* the RayQuery path. */                                                               \
+  traceRayEXT(                                                                           \
+    topLevelAS,                                                                          \
+    flags | gl_RayFlagsOpaqueEXT, mask,                                                  \
+    0, /* sbtRecordOffset */                                                             \
+    0, /* sbtRecordStride */                                                             \
+    0, /* missIndex */                                                                   \
+    ray.origin, 0.0f, vec3(ray.direction), ray.tMax,                                     \
+    encodedPayloadBindingIndex                                                           \
+  );                                                                                     \
+                                                                                         \
+  /* Decode the Payload from the Ray Payload binding */                                  \
+                                                                                         \
+  payload = payloadDecodeFunction(encodedPayloadBinding);                                \
+}
+
+// Ray Query
+#define RAY_QUERY(                                                                                               \
+  raytraceArgs, ray, flags, mask,                                                                                \
+  hitFunction, payloadEncodeFunction, payloadDecodeFunction,                                                     \
+  payload, encodedPayloadBinding,                                                                                \
+  encodedPayloadBindingIndex, hitObjectBindingIndex)                                                             \
+{                                                                                                                \
+  /* Invoke a Ray Query */                                                                                       \
+                                                                                                                 \
+  rayQueryEXT rayQuery;                                                                                          \
+                                                                                                                 \
+  /* Note: For now gl_RayFlagsOpaqueEXT is always used as this function will always return the */                \
+  /* closest geometry hit, translucent or not (as we handle things like translucency and opacity */              \
+  /* manually and re-cast the ray afterwards). */                                                                \
+  /* Note: Ray direction casted to vec3 to be consistent with how ray evaluation is done */                      \
+  /* (to minimize any discrepancy). */                                                                           \
+  rayQueryInitializeEXT(                                                                                         \
+    rayQuery, topLevelAS,                                                                                        \
+    flags | gl_RayFlagsOpaqueEXT, mask,                                                                          \
+    ray.origin, 0.0f, vec3(ray.direction), ray.tMax                                                              \
+  );                                                                                                             \
+                                                                                                                 \
+  while (rayQueryProceedEXT(rayQuery))                                                                           \
+  {                                                                                                              \
+  };                                                                                                             \
+                                                                                                                 \
+  /* Construct hit info from the hit */                                                                          \
+                                                                                                                 \
+  RayHitInfo rayHitInfo;                                                                                         \
+                                                                                                                 \
+  const bool hasHit = rayQueryGetIntersectionTypeEXT(rayQuery, true) != gl_RayQueryCommittedIntersectionNoneEXT; \
+                                                                                                                 \
+  rayHitInfo.hasHit = hasHit;                                                                                    \
+                                                                                                                 \
+  /* Note: Only initialize remaining hit info members if a hit was found. */                                     \
+  if (hasHit)                                                                                                    \
+  {                                                                                                              \
+    const vec2 barycentricCoordinates = rayQueryGetIntersectionBarycentricsEXT(rayQuery, true);                  \
+                                                                                                                 \
+    rayHitInfo.objectToWorld = rayQueryGetIntersectionObjectToWorldEXT(rayQuery, true);                          \
+    rayHitInfo.hitDistance = rayQueryGetIntersectionTEXT(rayQuery, true);                                        \
+    rayHitInfo.barycentricCoordinates = barycentricsToUint(barycentricCoordinates);                              \
+    rayHitInfo.primitiveIndex = rayQueryGetIntersectionPrimitiveIndexEXT(rayQuery, true);                        \
+    rayHitInfo.customIndex = rayQueryGetIntersectionInstanceCustomIndexEXT(rayQuery, true);                      \
+    rayHitInfo.frontHit = rayQueryGetIntersectionFrontFaceEXT(rayQuery, true);                                   \
+  }                                                                                                              \
+                                                                                                                 \
+  /* Call the hit function */                                                                                    \
+  /* Note: No encoding or decoding of payload needed as it can be called directly here. */                       \
+                                                                                                                 \
+  hitFunction(raytraceArgs, rayHitInfo, payload);                                                                \
+}
+
+#ifdef RT_TRACE_RAY
+#ifdef RT_SHADER_EXECUTION_REORDERING
+
+#define RAY_TRACE(                                           \
+  raytraceArgs, ray, flags, mask,                            \
+  hitFunction, payloadEncodeFunction, payloadDecodeFunction, \
+  payload, encodedPayloadBinding,                            \
+  encodedPayloadBindingIndex, hitObjectBindingIndex)         \
+TRACE_RAY_GRQ(                                               \
+  raytraceArgs, ray, flags, mask,                            \
+  hitFunction, payloadEncodeFunction, payloadDecodeFunction, \
+  payload, encodedPayloadBinding,                            \
+  encodedPayloadBindingIndex, hitObjectBindingIndex)
+
+#else // !defined(RT_SHADER_EXECUTION_REORDERING)
+
+#define RAY_TRACE(                                           \
+  raytraceArgs, ray, flags, mask,                            \
+  hitFunction, payloadEncodeFunction, payloadDecodeFunction, \
+  payload, encodedPayloadBinding,                            \
+  encodedPayloadBindingIndex, hitObjectBindingIndex)         \
+TRACE_RAY(                                                   \
+  raytraceArgs, ray, flags, mask,                            \
+  hitFunction, payloadEncodeFunction, payloadDecodeFunction, \
+  payload, encodedPayloadBinding,                            \
+  encodedPayloadBindingIndex, hitObjectBindingIndex)
+
+#endif
+#else // !defined(RT_TRACE_RAY)
+
+#define RAY_TRACE(                                           \
+  raytraceArgs, ray, flags, mask,                            \
+  hitFunction, payloadEncodeFunction, payloadDecodeFunction, \
+  payload, encodedPayloadBinding,                            \
+  encodedPayloadBindingIndex, hitObjectBindingIndex)         \
+RAY_QUERY(                                                   \
+  raytraceArgs, ray, flags, mask,                            \
+  hitFunction, payloadEncodeFunction, payloadDecodeFunction, \
+  payload, encodedPayloadBinding,                            \
+  encodedPayloadBindingIndex, hitObjectBindingIndex)
+#endif
+
+#endif

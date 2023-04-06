@@ -1,0 +1,232 @@
+/*
+* Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/concept/surface/surface_shared.h"
+
+// Todo: Move this all once separate Surface Materials for D3D9 compatability and normal usage are created.
+void calcOpaqueSurfaceMaterialOpacity(
+  f16vec3 originalAlbedo, float16_t originalAlpha, Surface surface,
+  inout float16_t opacity, inout float16_t emissiveBlendOverrideInfluence, 
+  // Todo: Opacity disabled currently for emissive modes as they likely need to be rewritten anyways with the new emissive
+  // particle system. Ideally remove these commented out opacity things once we go back and figure this out again.
+  bool enableOpacityEmissiveBlendModes = false)
+{
+  // Handle Fully Opaque Surfaces
+  // Note: This is done as while resolve functions will check the fully opaque status,
+  // things like material evaluation and BSDF sampling need to know the material is fully
+  // opaque in an opacity sense.
+
+  if (surface.isFullyOpaque)
+  {
+    opacity = float16_t(1.0f);
+
+    return;
+  }
+
+  // Handle Alpha Testing
+
+  const float16_t comparisonAlpha = surface.alphaTestReferenceValue;
+  float16_t newAlpha;
+
+  switch (uint(surface.alphaTestType))
+  {
+  default:
+  case uint(AlphaTestType::kAlways):
+    newAlpha = originalAlpha;
+
+    break;
+  case uint(AlphaTestType::kNever):
+    newAlpha = float16_t(0.0f);
+
+    break;
+  case uint(AlphaTestType::kLess):
+    newAlpha = originalAlpha < comparisonAlpha ? originalAlpha : float16_t(0.0f);
+
+    break;
+  case uint(AlphaTestType::kEqual):
+    newAlpha = originalAlpha == comparisonAlpha ? originalAlpha : float16_t(0.0f);
+
+    break;
+  case uint(AlphaTestType::kLessOrEqual):
+    newAlpha = originalAlpha <= comparisonAlpha ? originalAlpha : float16_t(0.0f);
+
+    break;
+  case uint(AlphaTestType::kGreater):
+    newAlpha = originalAlpha > comparisonAlpha ? originalAlpha : float16_t(0.0f);
+
+    break;
+  case uint(AlphaTestType::kNotEqual):
+    newAlpha = originalAlpha != comparisonAlpha ? originalAlpha : float16_t(0.0f);
+
+    break;
+  case uint(AlphaTestType::kGreaterOrEqual):
+    newAlpha = originalAlpha >= comparisonAlpha ? originalAlpha : float16_t(0.0f);
+
+    break;
+  }
+
+  // When alpha-testing is used, but blending is disabled, the target alpha is 100%
+
+  if (surface.isBlendingDisabled)
+  {
+    opacity = newAlpha > float16_t(0.0f) ? float16_t(1.0f) : float16_t(0.0f);
+
+    return;
+  }
+
+  // Handle Alpha Blending emulation
+
+  const float16_t alphaOpacity = surface.invertedBlend ? float16_t(1.0f) - newAlpha : newAlpha;
+  const float16_t luminanceOpacity = calcBt709Luminance(originalAlbedo);
+    
+  switch (uint(surface.blendType))
+  {
+  default: // Note: Default path for Standard blend type
+  case uint(BlendType::kAlpha):
+    opacity = alphaOpacity;
+
+    break;
+  case uint(BlendType::kAlphaEmissive):
+    // Note: Alpha Emissive blending acts transparent at 0 alpha and emissive at 1 alpha.
+    if (enableOpacityEmissiveBlendModes)
+      opacity = mix(float16_t(0.0f), luminanceOpacity, alphaOpacity);
+    else
+      opacity = float16_t(0.0f);
+    emissiveBlendOverrideInfluence = alphaOpacity;
+
+    break;
+  case uint(BlendType::kReverseAlphaEmissive):
+    // Note: Reverse Alpha Emissive blending acts emissive at 0 alpha and opaque at 1 alpha.
+    if (enableOpacityEmissiveBlendModes) 
+      opacity = mix(luminanceOpacity, float16_t(1.0f), alphaOpacity);
+    else
+      opacity = float16_t(0.0f);
+    emissiveBlendOverrideInfluence = float16_t(1.0f) - alphaOpacity;
+
+    break;
+  case uint(BlendType::kColor):
+    opacity = luminanceOpacity;
+
+    break;
+  case uint(BlendType::kColorEmissive):
+    // Note: Color Emissive blending acts transparent at 0 alpha and emissive at 1 alpha.
+    if (enableOpacityEmissiveBlendModes) 
+      opacity = mix(float16_t(0.0f), luminanceOpacity, luminanceOpacity);
+    else
+      opacity = float16_t(0.0f);
+    emissiveBlendOverrideInfluence = luminanceOpacity;
+
+    break;
+  case uint(BlendType::kReverseColorEmissive):
+    // Note: Reverse Color Emissive blending acts emissive at 0 alpha and opaque at 1 alpha.
+    if (enableOpacityEmissiveBlendModes) 
+      opacity = mix(luminanceOpacity, float16_t(1.0f), luminanceOpacity);
+    else
+      opacity = float16_t(0.0f);
+    emissiveBlendOverrideInfluence = float16_t(1.0f) - luminanceOpacity;
+
+    break;
+  case uint(BlendType::kEmissive):
+    // Note: Emissive blending roughly similar to luminance based standard blending with color luminance as the opacity source.
+    // This is since emissive 0 is transparent and 1 is opaque.
+    if (enableOpacityEmissiveBlendModes) 
+      opacity = luminanceOpacity;
+    else
+      opacity = float16_t(0.0f);
+    emissiveBlendOverrideInfluence = float16_t(1.0f);
+
+    break;
+  case uint(BlendType::kMultiplicative):
+    // Note: Multiplicative blending roughly similar to luminance based standard blending with inverted color luminance as the opacity source.
+    // This is since multiplicative 1 is transparent and 0 is opaque.
+    opacity = float16_t(1.0f) - luminanceOpacity;
+
+    break;
+  case uint(BlendType::kDoubleMultiplicative):
+    // Note: Double multiplicative blending is a version of multiplicative where the end result is multiplied by 2.
+    // Approximate that by using a V-shaped function so that luminance = 0.5 means a transparent surface.
+    opacity = abs(float16_t(1.0f) - luminanceOpacity * float16_t(2.0));
+
+    break;
+  }
+}
+
+// Generic function choosing texture argument
+#define chooseTextureArgument(argument , source, textureColor, vertexColor0, tFactor, defaultValue)  \
+{                                                                                                    \
+  switch (uint(source))                                                                              \
+  {                                                                                                  \
+  case uint(RtTextureArgSource::VertexColor0):                                                       \
+    argument = vertexColor0; break;                                                                  \
+  case uint(RtTextureArgSource::Texture):                                                            \
+    argument = textureColor; break;                                                                  \
+  case uint(RtTextureArgSource::TFactor):                                                            \
+    argument = tFactor; break;                                                                       \
+  default:                                                                                           \
+  case uint(RtTextureArgSource::None):                                                               \
+    argument = defaultValue; break;                                                                  \
+  }                                                                                                  \
+}
+
+// Choosing texture operation for color channel
+// When modulation option is used, we assume vertex color is used as a filter color and ignore any lighting contribution in it.
+// Therefore, we treat three modulate options equally.
+void chooseTextureOperationColor(inout f16vec3 target, uint8_t textureOperation, f16vec3 textureArg1, f16vec3 textureArg2)
+{
+  switch (uint(textureOperation))
+  {
+  default:
+  case uint(DxvkRtTextureOperation::Disable):
+    break;
+  case uint(DxvkRtTextureOperation::SelectArg1):
+    target = textureArg1; break;
+  case uint(DxvkRtTextureOperation::SelectArg2):
+    target = textureArg2; break;
+  case uint(DxvkRtTextureOperation::Modulate):
+  case uint(DxvkRtTextureOperation::Modulate2x):
+  case uint(DxvkRtTextureOperation::Modulate4x):
+    target = textureArg1 * textureArg2; break;
+  }
+}
+
+// Choosing texture operation for alpha channel
+// Consider different modulation options separately because there is no lighting contribution to remove in alpha channel 
+void chooseTextureOperationAlpha(inout float16_t target, uint8_t textureOperation, float16_t textureArg1, float16_t textureArg2)
+{
+  switch (uint(textureOperation))
+  {
+  default:
+  case uint(DxvkRtTextureOperation::Disable):
+    break;
+  case uint(DxvkRtTextureOperation::SelectArg1):
+    target = textureArg1; break;
+  case uint(DxvkRtTextureOperation::SelectArg2):
+    target = textureArg2; break;
+  case uint(DxvkRtTextureOperation::Modulate):
+    target = textureArg1 * textureArg2; break;
+  case uint(DxvkRtTextureOperation::Modulate2x):
+    target = min(float16_t(1), textureArg1 * textureArg2 * float16_t(2.0)); break;
+  case uint(DxvkRtTextureOperation::Modulate4x):
+    target = min(float16_t(1), textureArg1 * textureArg2 * float16_t(4.0)); break;
+  }
+}

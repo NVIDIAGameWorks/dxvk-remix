@@ -108,6 +108,25 @@ namespace dxvk {
     uint32_t imageTypeId = 0;
   };
 
+  /**
+ * \brief Unordered access binding
+ *
+ * Stores a resource variable that is provided
+ * by a UAV, as well as associated type IDs.
+ */
+  struct DxsoUav {
+    //DxsoResourceType  type = DxbcResourceType::Typed;
+    //DxsoImageInfo     imageInfo;
+    uint32_t          varId = 0;
+    uint32_t          ctrId = 0;
+    uint32_t          specId = 0;
+    DxsoScalarType    sampledType = DxsoScalarType::Float32;
+    uint32_t          sampledTypeId = 0;
+    uint32_t          imageTypeId = 0;
+    uint32_t          structStride = 0;
+    uint32_t          structAlign = 0;
+  };
+
   enum DxsoSamplerType : uint32_t {
     SamplerTypeTexture2D = 0,
     SamplerTypeTexture3D = 1,
@@ -141,6 +160,9 @@ namespace dxvk {
    */
   struct DxsoCompilerVsPart {
     uint32_t functionId       = 0;
+    
+    // Special buffer for vertex streamout
+    DxsoUav vertexOutBuf;
 
     ////////////////////
     // Address register
@@ -149,6 +171,7 @@ namespace dxvk {
     //////////////////////////////
     // Rasterizer output registers
     DxsoRegisterPointer oPos;
+    DxsoRegisterPointer oTex0;
     DxsoRegisterPointer oPSize;
   };
 
@@ -390,6 +413,7 @@ namespace dxvk {
     /////////////////////////////////
     // Shader initialization methods
     void emitVsInit();
+    void emitVertexCaptureInit();
 
     void emitPsSharedConstants();
     void emitPsInit();
@@ -684,6 +708,8 @@ namespace dxvk {
     void emitFog();
     void emitPsProcessing();
     void emitOutputDepthClamp();
+
+    void emitVertexCaptureOp();
 
     void emitLinkerOutputSetup();
 

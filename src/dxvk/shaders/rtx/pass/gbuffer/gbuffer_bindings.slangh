@@ -1,0 +1,205 @@
+/*
+* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/pass/gbuffer/gbuffer_binding_indices.h"
+
+#include "rtx/utility/shader_types.slangh"
+
+// Inputs
+
+layout(binding = GBUFFER_BINDING_VOLUME_FILTERED_RADIANCE_INPUT)
+Sampler3D<float3> VolumeFilteredRadiance;
+
+layout(binding = GBUFFER_BINDING_SKYMATTE)
+Sampler2D<float3> SkyMatte;
+
+// Shared Outputs (Combined/Stochastic)
+// Note: Most of these buffers are stochastic, meaning one of the two mutually exclusive
+// paths (PSRR or PSTR when both are in use) will be selected randomly as the output. The
+// exception here is the radiance buffer which is just a sum of all the contributions in the
+// geometry resolver.
+
+layout(r8ui, binding = GBUFFER_BINDING_SHARED_FLAGS_OUTPUT)
+RWTexture2D<uint> SharedFlags;
+
+layout(rg16f, binding = GBUFFER_BINDING_SHARED_RADIANCE_RG_OUTPUT)
+RWTexture2D<float2> SharedRadianceRG;
+
+layout(r16f, binding = GBUFFER_BINDING_SHARED_RADIANCE_B_OUTPUT)
+RWTexture2D<float> SharedRadianceB;
+
+layout(r16f, binding = GBUFFER_BINDING_SHARED_INTEGRATION_SURFACE_PDF_OUTPUT)
+RWTexture2D<float> SharedIntegrationSurfacePdf;
+
+layout(r32ui, binding = GBUFFER_BINDING_SHARED_MATERIAL_DATA0_OUTPUT)
+RWTexture2D<uint> SharedMaterialData0;
+
+layout(r32ui, binding = GBUFFER_BINDING_SHARED_MATERIAL_DATA1_OUTPUT)
+RWTexture2D<uint> SharedMaterialData1;
+
+layout(r16ui, binding = GBUFFER_BINDING_SHARED_MEDIUM_MATERIAL_INDEX_OUTPUT)
+RWTexture2D<uint> SharedMediumMaterialIndex;
+
+// Primary Surface Outputs (Coherent)
+
+layout(r32ui, binding = GBUFFER_BINDING_PRIMARY_ATTENUATION_OUTPUT)
+RWTexture2D<uint> PrimaryAttenuation;
+
+layout(r32ui, binding = GBUFFER_BINDING_PRIMARY_WORLD_SHADING_NORMAL_OUTPUT)
+RWTexture2D<uint> PrimaryWorldShadingNormal;
+
+layout(r32ui, binding = GBUFFER_BINDING_PRIMARY_WORLD_INTERPOLATED_NORMAL_OUTPUT)
+RWTexture2D<uint> PrimaryWorldInterpolatedNormal;
+
+layout(r8, binding = GBUFFER_BINDING_PRIMARY_PERCEPTUAL_ROUGHNESS_OUTPUT)
+RWTexture2D<float> PrimaryPerceptualRoughness;
+
+layout(r32f, binding = GBUFFER_BINDING_PRIMARY_LINEAR_VIEW_Z_OUTPUT)
+RWTexture2D<float> PrimaryLinearViewZ;
+
+layout(rgb10_a2, binding = GBUFFER_BINDING_PRIMARY_ALBEDO_OUTPUT)
+RWTexture2D<float4> PrimaryAlbedo;
+
+layout(rgb10_a2, binding = GBUFFER_BINDING_PRIMARY_BASE_REFLECTIVITY_OUTPUT)
+RWTexture2D<float4> PrimaryBaseReflectivity;
+
+layout(rgba16f, binding = GBUFFER_BINDING_PRIMARY_VIRTUAL_MVEC_OUTPUT)
+RWTexture2D<float4> PrimaryVirtualMotionVector;
+
+layout(rgba16, binding = GBUFFER_BINDING_PRIMARY_VIRTUAL_WORLD_SHADING_NORMAL_OUTPUT)
+RWTexture2D<float4> PrimaryVirtualWorldShadingNormalPerceptualRoughness;
+
+layout(rgb10_a2, binding = GBUFFER_BINDING_PRIMARY_VIRTUAL_WORLD_SHADING_NORMAL_DENOISING_OUTPUT)
+RWTexture2D<float4> PrimaryVirtualWorldShadingNormalPerceptualRoughnessDenoising;
+
+layout(r32f, binding = GBUFFER_BINDING_PRIMARY_HIT_DISTANCE_OUTPUT)
+RWTexture2D<float> PrimaryHitDistance;
+
+layout(rg16_snorm, binding = GBUFFER_BINDING_PRIMARY_VIEW_DIRECTION_OUTPUT)
+RWTexture2D<float2> PrimaryViewDirection;
+
+layout(r16f, binding = GBUFFER_BINDING_PRIMARY_CONE_RADIUS_OUTPUT)
+RWTexture2D<float> PrimaryConeRadius;
+
+layout(rgba32f, binding = GBUFFER_BINDING_PRIMARY_WORLD_POSITION_OUTPUT)
+RWTexture2D<float4> PrimaryWorldPositionWorldTriangleNormal;
+
+layout(r32f, binding = GBUFFER_BINDING_PRIMARY_POSITION_ERROR_OUTPUT)
+RWTexture2D<float> PrimaryPositionError;
+
+// Secondary Surface Outputs (Coherent/Stochastic)
+// World Shading Normal, View Direction, Cone Radius, and World Position/World
+// Triangle Normal are all stochastic in the secondary buffer due to needing
+// coherency for RTXDI on the primary surface but only needing to be read as
+// sparse material data for integration/demodulation. Albedo and Base
+// Reflectivity typically would be like this, but they need to be coherent
+// for remodulation in compositing.
+
+layout(r32ui, binding = GBUFFER_BINDING_SECONDARY_ATTENUATION_OUTPUT)
+RWTexture2D<uint> SecondaryAttenuation;
+
+layout(r32ui, binding = GBUFFER_BINDING_SECONDARY_WORLD_SHADING_NORMAL_OUTPUT)
+RWTexture2D<uint> SecondaryWorldShadingNormal;
+
+layout(r8, binding = GBUFFER_BINDING_SECONDARY_PERCEPTUAL_ROUGHNESS_OUTPUT)
+RWTexture2D<float> SecondaryPerceptualRoughness;
+
+layout(r32f, binding = GBUFFER_BINDING_SECONDARY_LINEAR_VIEW_Z_OUTPUT)
+RWTexture2D<float> SecondaryLinearViewZ;
+
+layout(rgb10_a2, binding = GBUFFER_BINDING_SECONDARY_ALBEDO_OUTPUT)
+RWTexture2D<float4> SecondaryAlbedo;
+
+layout(rgb10_a2, binding = GBUFFER_BINDING_SECONDARY_BASE_REFLECTIVITY_OUTPUT)
+RWTexture2D<float4> SecondaryBaseReflectivity;
+
+layout(rgba16f, binding = GBUFFER_BINDING_SECONDARY_VIRTUAL_MVEC_OUTPUT)
+RWTexture2D<float4> SecondaryVirtualMotionVector;
+
+layout(rgba16, binding = GBUFFER_BINDING_SECONDARY_VIRTUAL_WORLD_SHADING_NORMAL_OUTPUT)
+RWTexture2D<float4> SecondaryVirtualWorldShadingNormalPerceptualRoughness;
+
+layout(rgb10_a2, binding = GBUFFER_BINDING_SECONDARY_VIRTUAL_WORLD_SHADING_NORMAL_DENOISING_OUTPUT)
+RWTexture2D<float4> SecondaryVirtualWorldShadingNormalPerceptualRoughnessDenoising;
+
+layout(r32f, binding = GBUFFER_BINDING_SECONDARY_HIT_DISTANCE_OUTPUT)
+RWTexture2D<float> SecondaryHitDistance;
+
+layout(rg16_snorm, binding = GBUFFER_BINDING_SECONDARY_VIEW_DIRECTION_OUTPUT)
+RWTexture2D<float2> SecondaryViewDirection;
+
+layout(r16f, binding = GBUFFER_BINDING_SECONDARY_CONE_RADIUS_OUTPUT)
+RWTexture2D<float> SecondaryConeRadius;
+
+layout(rgba32f, binding = GBUFFER_BINDING_SECONDARY_WORLD_POSITION_OUTPUT)
+RWTexture2D<float4> SecondaryWorldPositionWorldTriangleNormal;
+
+layout(r32f, binding = GBUFFER_BINDING_SECONDARY_POSITION_ERROR_OUTPUT)
+RWTexture2D<float> SecondaryPositionError;
+
+layout(rg16f, binding = GBUFFER_BINDING_PRIMARY_SCREEN_SPACE_MOTION_OUTPUT)
+RWTexture2D<float2> PrimaryScreenSpaceMotionVector;
+
+layout(r8ui, binding = GBUFFER_BINDING_PRIMARY_SURFACE_FLAGS_OUTPUT)
+RWTexture2D<uint> PrimarySurfaceFlags;
+
+layout(r8, binding = GBUFFER_BINDING_PRIMARY_DISOCCLUSION_THRESHOLD_MIX_OUTPUT)
+RWTexture2D<float> PrimaryDisocclusionThresholdMix;
+
+layout(r32f, binding = GBUFFER_BINDING_PRIMARY_DEPTH_OUTPUT)
+RWTexture2D<float> PrimaryDepth;
+
+layout(r8, binding = GBUFFER_BINDING_SHARED_BIAS_CURRENT_COLOR_MASK_OUTPUT)
+RWTexture2D<float> SharedBiasCurrentColorMask;
+
+layout(push_constant)
+ConstantBuffer<GbufferPushConstants> push;
+
+layout(rgba32ui, binding = GBUFFER_BINDING_ALIASED_DATA_0)
+uniform struct AliasedData0
+{
+  REORDER_COHERENT RWTexture2D<uint4> DecalMaterial;          // Internal storage
+  RWTexture2D<uint4> ReflectionPSRData0;     // Output/Input
+} aliasedData0;
+
+layout(rgba16f, binding = GBUFFER_BINDING_ALIASED_DATA_1)
+uniform struct AliasedData1
+{
+  REORDER_COHERENT RWTexture2D<float4> DecalEmissiveRadiance; // Internal storage
+  RWTexture2D<uint2> ReflectionPSRData1;     // Output/Input
+} aliasedData1;
+
+layout(rg32ui, binding = GBUFFER_BINDING_REFLECTION_PSR_DATA_STORAGE_2)
+RWTexture2D<uint2> ReflectionPSRData2;
+
+layout(rg32ui, binding = GBUFFER_BINDING_TRANSMISSION_PSR_DATA_STORAGE_0)
+RWTexture2D<uint2> TransmissionPSRData0;
+
+layout(rg32ui, binding = GBUFFER_BINDING_TRANSMISSION_PSR_DATA_STORAGE_1)
+RWTexture2D<uint2> TransmissionPSRData1;
+
+layout(rg32ui, binding = GBUFFER_BINDING_TRANSMISSION_PSR_DATA_STORAGE_2)
+RWTexture2D<uint2> TransmissionPSRData2;
+
+layout(rg32ui, binding = GBUFFER_BINDING_TRANSMISSION_PSR_DATA_STORAGE_3)
+RWTexture2D<uint2> TransmissionPSRData3;

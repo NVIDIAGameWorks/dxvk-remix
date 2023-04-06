@@ -1,0 +1,10 @@
+{
+  "FileVersion": 2,
+  "Id": "$test_project_guid",
+  "Items": [
+    {
+      "Command": "$test_case_commandline_arguments",
+      "DefaultChecked": true
+    }
+  ]
+}

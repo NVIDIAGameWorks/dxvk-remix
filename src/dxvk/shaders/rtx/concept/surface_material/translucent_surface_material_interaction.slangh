@@ -1,0 +1,1184 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Translucent Surface Material Interaction Helper Functions
+
+bool translucentSurfaceMaterialInteractionIsThinWalled(TranslucentSurfaceMaterialInteraction ti)
+{
+  return ti.thicknessOrMeasurementDistance < 0.0f;
+}
+
+float16_t translucentSurfaceMaterialInteractionGetThinWallThickness(TranslucentSurfaceMaterialInteraction ti)
+{
+  return -ti.thicknessOrMeasurementDistance;
+}
+
+// Translucent Surface Material Interaction Functions
+
+TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreate(
+  TranslucentSurfaceMaterial translucentSurfaceMaterial,
+  Surface surface,
+  SurfaceInteraction surfaceInteraction,
+  MinimalRayInteraction minimalRayInteraction)
+{
+  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction;
+
+  // Sample from each Translucent Surface Material texture
+
+  f16vec4 normalSample;
+  f16vec4 transmittanceOrDiffuseSample;
+
+  const bool normalLoaded = surfaceMaterialInteractionTextureReadHelper(translucentSurfaceMaterial.normalTextureIndex, surfaceInteraction, normalSample);
+  // Note: Premultiplied alpha should really be used here for the transmittance or diffuse color as without it "transparent" regions of the texture in the diffuse color case for
+  // example may cause incorrect coloration on the edges of more opaque regions due to texture filtering. This is hard to ensure on the art pipeline side of things however.
+  const bool transmittanceOrDiffuseLoaded = surfaceMaterialInteractionTextureReadHelper(translucentSurfaceMaterial.transmittanceOrDiffuseTextureIndex, surfaceInteraction, transmittanceOrDiffuseSample);
+
+  // Create a tangent to world space matrix for future calculations
+
+  const f16mat3 tangentToWorld = transpose(f16mat3(surfaceInteraction.interpolatedTangent, surfaceInteraction.interpolatedBitangent, surfaceInteraction.interpolatedNormal));
+
+  // Load Normal
+
+  f16vec3 normal = surfaceInteraction.interpolatedNormal;
+
+  if (normalLoaded)
+  {
+    // Note: Using f16 from texture to decode from is fine as the original texture is only 8 bits of precision.
+    const f16vec3 tangentNormal = unsignedOctahedralToHemisphereDirection(vec2(normalSample.xy), cb.translucentMaterialArgs.normalIntensity);
+
+    normal = normalize(mul(tangentToWorld, tangentNormal));
+  }
+
+  // Note: Diffuse layer override encapsulated in if the diffuse layer flag is set or not as this override is able to be done on the CPU.
+  const bool useDiffuseLayer = translucentSurfaceMaterial.flags & TRANSLUCENT_SURFACE_MATERIAL_FLAG_USE_DIFFUSE_LAYER;
+
+  // Load transmittance color
+
+  f16vec3 transmittanceColor = translucentSurfaceMaterial.transmittanceColor;
+  f16vec3 diffuseColor = f16vec3(0.0f);
+  float16_t diffuseOpacity = float16_t(0.0f);
+
+  if (!useDiffuseLayer)
+  {
+    if (transmittanceOrDiffuseLoaded)
+    {
+      transmittanceColor = lerp(translucentSurfaceMaterial.transmittanceColor, transmittanceOrDiffuseSample.rgb, transmittanceOrDiffuseSample.a);
+    }
+  }
+  else
+  {
+    if (transmittanceOrDiffuseLoaded)
+    {
+      diffuseColor = transmittanceOrDiffuseSample.rgb;
+      diffuseOpacity = transmittanceOrDiffuseSample.a;
+    }
+  }
+
+  // Note: Adjust the transmittance color prior to gamma correction.
+  transmittanceColor = saturate(transmittanceColor * cb.translucentMaterialArgs.transmittanceColorScale + cb.translucentMaterialArgs.transmittanceColorBias);
+
+  // Note: Gamma correct color inputs (be it from a constant or a texture). Currently assuming all textures are not using sRGB formats which
+  // automatically do this conversion.
+  // Todo: Disable this for when a sRGB texture is the source of the transmittance or diffuse color.
+  transmittanceColor = gammaToLinear(transmittanceColor);
+  diffuseColor = gammaToLinear(diffuseColor);
+
+  // Transform to desired Translucent Material Interaction values
+
+  translucentSurfaceMaterialInteraction.shadingNormal = getBentNormal(surfaceInteraction.triangleNormal, normal, -minimalRayInteraction.viewDirection);
+  translucentSurfaceMaterialInteraction.normalDetail = float16_t(1.0 - dot(float3(translucentSurfaceMaterialInteraction.shadingNormal), float3(surfaceInteraction.interpolatedNormal)));
+  translucentSurfaceMaterialInteraction.baseReflectivity = translucentSurfaceMaterial.baseReflectivity;
+  translucentSurfaceMaterialInteraction.refractiveIndex = translucentSurfaceMaterial.refractiveIndex;
+
+  translucentSurfaceMaterialInteraction.transmittanceColor = transmittanceColor;
+  translucentSurfaceMaterialInteraction.diffuseColor = diffuseColor;
+  translucentSurfaceMaterialInteraction.diffuseOpacity = diffuseOpacity;
+  translucentSurfaceMaterialInteraction.thicknessOrMeasurementDistance = translucentSurfaceMaterial.thicknessOrMeasurementDistance;
+  // Note: Already gamma corrected on the CPU side, no need to do so here unlike the opaque material model.
+  translucentSurfaceMaterialInteraction.emissiveRadiance = translucentSurfaceMaterial.emissiveRadiance;
+
+  translucentSurfaceMaterialInteraction.sourceSurfaceMaterialIndex = translucentSurfaceMaterial.sourceSurfaceMaterialIndex;
+
+  translucentSurfaceMaterialInteraction.flags = translucentSurfaceMaterial.flags;
+
+  return translucentSurfaceMaterialInteraction;
+}
+
+TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreate(PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction)
+{
+  // Decode the Translucent Surface Material Interaction from its polymorphic representation
+  // Note: Translucent type is known in advance
+
+  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction;
+
+  translucentSurfaceMaterialInteraction.shadingNormal = polymorphicSurfaceMaterialInteraction.shadingNormal;
+  translucentSurfaceMaterialInteraction.emissiveRadiance = polymorphicSurfaceMaterialInteraction.emissiveRadiance;
+  translucentSurfaceMaterialInteraction.transmittanceColor = polymorphicSurfaceMaterialInteraction.vdata0;
+  translucentSurfaceMaterialInteraction.diffuseColor = polymorphicSurfaceMaterialInteraction.vdata1;
+  translucentSurfaceMaterialInteraction.baseReflectivity = polymorphicSurfaceMaterialInteraction.fdata0;
+  translucentSurfaceMaterialInteraction.refractiveIndex = polymorphicSurfaceMaterialInteraction.fdata1;
+  translucentSurfaceMaterialInteraction.thicknessOrMeasurementDistance = polymorphicSurfaceMaterialInteraction.fdata2;
+  translucentSurfaceMaterialInteraction.diffuseOpacity = polymorphicSurfaceMaterialInteraction.fdata3;
+  translucentSurfaceMaterialInteraction.normalDetail = polymorphicSurfaceMaterialInteraction.fdata4;
+  translucentSurfaceMaterialInteraction.flags = polymorphicSurfaceMaterialInteraction.bdata0;
+  translucentSurfaceMaterialInteraction.sourceSurfaceMaterialIndex = polymorphicSurfaceMaterialInteraction.idata0;
+
+  return translucentSurfaceMaterialInteraction;
+}
+
+TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreate(
+  GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfaceMaterialInteraction)
+{
+  // Decode the Translucent Surface Material Interaction from its polymorphic GBuffer Memory representation
+  // Note: Translucent type is known in advance
+
+  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction;
+
+  const uint data0 = gBufferMemoryPolymorphicSurfaceMaterialInteraction.data0;
+  const uint data1 = gBufferMemoryPolymorphicSurfaceMaterialInteraction.data1;
+
+  const uint16_t sourceSurfaceMaterialIndex = uint16_t(data0 >> 0);
+
+  // Note: Fetch and decode the Translucent Surface Material constants based on the specified index. This should be faster than reading
+  // a ton of data from the G-Buffer with how things are stored currently assuming the material struct is well cached, but if this ever
+  // becomes a problem then perhaps upload a more "source" representation of transparent material params from the CPU rather than these
+  // more derived representations (which is only done as we had space in the memory material to spare to avoid more complex GPU decoding)
+  // and pass through the G-Buffer like we do for Opaque materials.
+  const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[uint(sourceSurfaceMaterialIndex)];
+  const TranslucentSurfaceMaterial translucentSurfaceMaterial =
+    translucentSurfaceMaterialCreate(sourceSurfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
+
+  translucentSurfaceMaterialInteraction.shadingNormal = gBufferMemoryPolymorphicSurfaceMaterialInteraction.worldShadingNormal;
+  translucentSurfaceMaterialInteraction.baseReflectivity = translucentSurfaceMaterial.baseReflectivity;
+  translucentSurfaceMaterialInteraction.refractiveIndex = translucentSurfaceMaterial.refractiveIndex;
+  translucentSurfaceMaterialInteraction.emissiveRadiance = translucentSurfaceMaterial.emissiveRadiance;
+
+  translucentSurfaceMaterialInteraction.sourceSurfaceMaterialIndex = sourceSurfaceMaterialIndex;
+
+  const bool useDiffuseLayer = data0 & (1 << 29);
+  const f16vec3 decodedColor = f16vec3(
+    unorm8ToF16(uint8_t(data0 >> 16)),
+    unorm8ToF16(uint8_t(data1 >> 24)),
+    unorm8ToF16(uint8_t(data1 >> 16)));
+  uint16_t encodedThicknessOrMeasurmentDistance;
+
+  if (useDiffuseLayer)
+  {
+    // transmittance color is constant
+    translucentSurfaceMaterialInteraction.transmittanceColor = translucentSurfaceMaterial.transmittanceColor;
+
+    const uint8_t diffuseOpacity =
+      ((data0 >> (24 - 3)) & 0x1F) |
+      ((data1 >> 14) & 0x3);
+
+    // color encoded in the GBuffer is the diffuse albedo color
+    translucentSurfaceMaterialInteraction.diffuseColor = decodedColor;
+    translucentSurfaceMaterialInteraction.diffuseOpacity = unorm7ToF16(diffuseOpacity);
+
+    encodedThicknessOrMeasurmentDistance = uint16_t(data1) & 0xFFFC;
+  }
+  else
+  {
+    // GBuffer contains the transmittance color
+    translucentSurfaceMaterialInteraction.transmittanceColor = decodedColor;
+    
+    translucentSurfaceMaterialInteraction.diffuseColor = f16vec3(0);
+    translucentSurfaceMaterialInteraction.diffuseOpacity = 0.0;
+
+    encodedThicknessOrMeasurmentDistance = uint16_t(data1);
+  }
+  
+  translucentSurfaceMaterialInteraction.flags =
+    (useDiffuseLayer ? TRANSLUCENT_SURFACE_MATERIAL_FLAG_USE_DIFFUSE_LAYER : 0);
+  translucentSurfaceMaterialInteraction.thicknessOrMeasurementDistance =
+    uint16BitsToHalf(encodedThicknessOrMeasurmentDistance);
+
+  // We don't store this in the G-buffer
+  translucentSurfaceMaterialInteraction.normalDetail = float16_t(0.0f);
+
+  return translucentSurfaceMaterialInteraction;
+}
+
+SurfaceMaterialInteractionLobeInformation translucentSurfaceMaterialInteractionGetLobeInformation(
+  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction)
+{
+  SurfaceMaterialInteractionLobeInformation surfaceMaterialInteractionLobeInformation;
+
+  surfaceMaterialInteractionLobeInformation.diffuseReflectionPresent = false;
+  surfaceMaterialInteractionLobeInformation.specularReflectionPresent = true;
+  surfaceMaterialInteractionLobeInformation.diffuseTransmissionPresent = false;
+  surfaceMaterialInteractionLobeInformation.specularTransmissionPresent = true;
+
+  // Todo: Change these flags conditionally if roughness is ever added to the translucent material.
+  surfaceMaterialInteractionLobeInformation.specularReflectionDirac = true;
+  surfaceMaterialInteractionLobeInformation.specularTransmissionDirac = true;
+
+  return surfaceMaterialInteractionLobeInformation;
+}
+
+SurfaceMaterialInteractionLobeSample translucentSurfaceMaterialInteractionCalcLobeSample(
+  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction,
+  float16_t random,
+  MinimalRayInteraction minimalRayInteraction,
+  bool insideMedium)
+{
+  SurfaceMaterialInteractionLobeSample surfaceMaterialInteractionLobeSample;
+
+  // Calculate dot products used for evaluation
+
+  // Note: Normal dot output direction used as a "best" approximation in this case, usually aligned with the actual sampled
+  // microfacet normal on surfaces with low roughness (identical at 0), but will become more and more potentially inaccurate
+  // as roughness increases.
+  const float16_t /* n.v */ normalDotOutputDirection =
+    dot(translucentSurfaceMaterialInteraction.shadingNormal, minimalRayInteraction.viewDirection);
+
+  // Compute material-related quantities
+
+  float16_t fresnel;
+
+  if (insideMedium)
+  {
+    // Note: Currently this does not handle nested translucency (and we probably won't due to the complexity of it).
+    // Other medium refractive index therefore always assumed to be a vacuum.
+    const float16_t relativeRefractiveIndex = translucentSurfaceMaterialInteraction.refractiveIndex / materialIoRVacuum;
+    // Todo: This will result in TIR at times (a reflection fresnel of 1) preventing any transmission to not waste samples on it as expected, but on rough
+    // surfaces this may cause issues due to the microfacet normal approximation we use above. We did solve this once before by computing the outgoing direction
+    // prior to the lobe selection, but that may be hard in this framework. Regardless this should work fine for the time being on dirac translucent surfaces.
+    fresnel = evalTranslucentSchlickFresnelTIR(translucentSurfaceMaterialInteraction.baseReflectivity, relativeRefractiveIndex, normalDotOutputDirection);
+  }
+  else
+  {
+    // Note: Fine to use evalTranslucentSchlickFresnel here as the influence of TIR on the function will never have to be taken into account due to being outside
+    // the medium.
+    fresnel = evalTranslucentSchlickFresnel(translucentSurfaceMaterialInteraction.baseReflectivity, normalDotOutputDirection);
+  }
+
+  // Calculate lobe probabilities
+
+  float16_t specularReflectionProbability = fresnel;
+  float16_t specularTransmissionProbability = float16_t(1.0f) - specularReflectionProbability;
+
+  // Todo: Pass raytraceArgs in in the future if accessing these constants poses a problem later.
+  adjustProbabilityValue(
+    specularReflectionProbability,
+    uint16BitsToHalf(cb.translucentSpecularLobeSamplingProbabilityZeroThreshold),
+    uint16BitsToHalf(cb.minTranslucentSpecularLobeSamplingProbability));
+  adjustProbabilityValue(
+    specularTransmissionProbability,
+    uint16BitsToHalf(cb.translucentTransmissionLobeSamplingProbabilityZeroThreshold),
+    uint16BitsToHalf(cb.minTranslucentTransmissionLobeSamplingProbability));
+
+  const float16_t lobeProbabilitySum = specularTransmissionProbability + specularReflectionProbability;
+  float16_t lobeProbabilityNormalizationFactor;
+
+  if (lobeProbabilitySum != float16_t(0.0f))
+  {
+    lobeProbabilityNormalizationFactor = float16_t(1.0f) / lobeProbabilitySum;
+  }
+  else
+  {
+    // Note: Default to sampling transmission lobe when no lobe desires to be sampled from.
+    surfaceMaterialInteractionLobeSample.lobe = translucentLobeTypeSpecularTransmission;
+    surfaceMaterialInteractionLobeSample.pdf = float16_t(1.0f);
+
+    return surfaceMaterialInteractionLobeSample;
+  }
+
+  // Sample a lobe
+
+  // Note: Adjust the raw lobe sample to the total probability range based on the sum.
+  const float16_t lobeSample = random * lobeProbabilitySum;
+
+  // Note: < used for conditions to ensure lobes never have a chance to be sampled from if their
+  // probability is 0 (and to prevent NaNs from appearing due to 0 PDF).
+  if (lobeSample < specularReflectionProbability)
+  {
+    surfaceMaterialInteractionLobeSample.lobe = translucentLobeTypeSpecularReflection;
+    surfaceMaterialInteractionLobeSample.pdf = specularReflectionProbability * lobeProbabilityNormalizationFactor;
+  }
+  else
+  {
+    surfaceMaterialInteractionLobeSample.lobe = translucentLobeTypeSpecularTransmission;
+    surfaceMaterialInteractionLobeSample.pdf = specularTransmissionProbability * lobeProbabilityNormalizationFactor;
+  }
+
+  return surfaceMaterialInteractionLobeSample;
+}
+
+// Note: Calculates the relative refractive indices for an incident and outgoing refractive event.
+void translucentSurfaceMaterialInteractionCalcRelativeRefractiveIndices(
+  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction,
+  bool insideMedium,
+  inout float16_t outsideRelativeRefractiveIndex, inout float16_t insideRelativeRefractiveIndex)
+{
+  float16_t incidentRefractiveIndex;
+  float16_t transmittedRefractiveIndex;
+
+  if (!insideMedium)
+  {
+    incidentRefractiveIndex = materialIoRVacuum;
+    transmittedRefractiveIndex = translucentSurfaceMaterialInteraction.refractiveIndex;
+  }
+  else
+  {
+    incidentRefractiveIndex = translucentSurfaceMaterialInteraction.refractiveIndex;
+    transmittedRefractiveIndex = materialIoRVacuum;
+  }
+
+  outsideRelativeRefractiveIndex = incidentRefractiveIndex / transmittedRefractiveIndex;
+  insideRelativeRefractiveIndex = transmittedRefractiveIndex / incidentRefractiveIndex;
+}
+
+SurfaceMaterialInteractionSample translucentSurfaceMaterialInteractionCalcDiffuseReflectionSample(
+  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction)
+{
+  SurfaceMaterialInteractionSample materialSample;
+
+  materialSample.inputDirection = f16vec3(0.0, 0.0, 0.0);
+  materialSample.throughput = f16vec3(0.0, 0.0, 0.0);
+  materialSample.solidAnglePdf = 0.0f;
+
+  return materialSample;
+}
+
+SurfaceMaterialInteractionSample translucentSurfaceMaterialInteractionCalcSpecularReflectionSample(
+  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction,
+  f16vec4 tangentToWorldSpaceQuaternion,
+  MinimalRayInteraction minimalRayInteraction,
+  bool insideMedium)
+{
+  float16_t outsideRelativeRefractiveIndex;
+  float16_t insideRelativeRefractiveIndex;
+
+  translucentSurfaceMaterialInteractionCalcRelativeRefractiveIndices(
+    translucentSurfaceMaterialInteraction, insideMedium,
+    outsideRelativeRefractiveIndex, insideRelativeRefractiveIndex);
+
+  const f16vec4 worldToTangentSpaceQuaternion = quaternionInverse(tangentToWorldSpaceQuaternion);
+
+  // Set up relevant input vectors in tangent space
+
+  const vec3 outputDirection = quaternionTransformVector(worldToTangentSpaceQuaternion, minimalRayInteraction.viewDirection);
+
+  // Sample a new microfacet normal based on the distribution of visible normals
+
+  //const f16vec2 u = random.xy;
+  //const f16vec3 microfacetNormal = calcGGXVisibleNormalDistributionSample(translucentSurfaceMaterialInteraction.anisotropicRoughness, outputDirection, u);
+  const vec3 microfacetNormal = materialTangentSpaceNormal;
+
+  // Reflect the output direction across the microfacet normal to get the input direction
+
+  const vec3 inputDirection = reflect(-outputDirection, microfacetNormal);
+
+  // Calculate the refracted direction into the thin surface for the inside Fresnel evaluation
+  // Note: This should never result in a TIR case since it's always done from the outside of the surface
+
+  const vec3 refractedDirection = refract(-outputDirection, microfacetNormal, outsideRelativeRefractiveIndex);
+
+  // Todo: Sanity check if inputDirection is facing the wrong direction (Into the surface), currently this does not have much
+  // effect and getting the triangle normal here requires a fairly high memory bandwidth cost, so for now it is not done
+
+  // Calculate dot products used for evaluation
+  // Note: Dot products against tangent space basis vectors are single components of the other vector
+
+  const float /* v.h */ outputDirectionDotMicrofacetNormal = dot(outputDirection, microfacetNormal);
+  const float /* n.v */ normalDotOutputDirection = outputDirection.z;
+  const float /* n.l */ normalDotInputDirection = inputDirection.z;
+  // Note: Negative as refracted direction always points into surface
+  const float /* r.h */ refractedDirectionDotMicrofacetNormal = dot(-refractedDirection, microfacetNormal);
+
+  if (normalDotOutputDirection <= 0.f || normalDotInputDirection <= 0.f)
+  {
+    SurfaceMaterialInteractionSample materialSample;
+
+    materialSample.inputDirection = f16vec3(0.0, 0.0, 0.0);
+    materialSample.throughput = f16vec3(0.0, 0.0, 0.0);
+    materialSample.solidAnglePdf = 0.0f;
+
+    return materialSample;
+  }
+
+  // Calculate the fresnel of the sample
+
+  const float16_t outsideFresnel = evalTranslucentSchlickFresnelTIR(
+    translucentSurfaceMaterialInteraction.baseReflectivity, outsideRelativeRefractiveIndex, abs(outputDirectionDotMicrofacetNormal));
+  const float16_t insideFresnel = evalTranslucentSchlickFresnelTIR(
+    translucentSurfaceMaterialInteraction.baseReflectivity, insideRelativeRefractiveIndex, refractedDirectionDotMicrofacetNormal);
+
+  // Calculate the throughput of the sample
+
+  f16vec3 throughput;
+
+  const bool isThinWalled = translucentSurfaceMaterialInteractionIsThinWalled(translucentSurfaceMaterialInteraction);
+
+  if (!isThinWalled)
+  {
+    throughput = outsideFresnel.xxx;
+  }
+  else
+  {
+    // Note: Check for "fiber optic" case where light never escapes from inside the thin surface.
+    const bool thinWalledTIR = (insideFresnel == float16_t(1.0f));
+
+    if (refractedDirectionDotMicrofacetNormal <= 0.0f || thinWalledTIR)
+    {
+      // Note: In this case the material acts like a fiber optic cable and infiniately reflects inside,
+      // or the vector is parallel to the plane which causes issues when trying to solve, so only the
+      // direct reflected contribution should be considered.
+      throughput = outsideFresnel.xxx;
+    }
+    else
+    {
+      const f16vec3 transmittanceColor = translucentSurfaceMaterialInteraction.transmittanceColor.rgb;
+      const float16_t thickness = translucentSurfaceMaterialInteractionGetThinWallThickness(translucentSurfaceMaterialInteraction);
+      const float16_t attenuationDistance = evalThinAttenuationDistance(thickness, microfacetNormal, refractedDirection);
+      // for thin-walled materials, transmittance measurement distance is always 1.0, as that makes it easier to manage the look of the material
+      const f16vec3 attenuationCoefficient = transmittanceToAttenuationCoefficient(transmittanceColor, 1.0);
+      const f16vec3 volumeAttenuation = evalBeerLambertAttenuation(attenuationCoefficient, attenuationDistance);
+
+      // Note: Simplified version of (weight / solidAnglePdf) * (n.l)
+      throughput = evalThinReflectionGeometricSeriesThroughput(outsideFresnel, insideFresnel, volumeAttenuation);
+    }
+  }
+
+  // Return the material sample
+
+  SurfaceMaterialInteractionSample materialSample;
+
+  materialSample.inputDirection = quaternionTransformVector(tangentToWorldSpaceQuaternion, inputDirection);
+  materialSample.throughput = throughput;
+  materialSample.solidAnglePdf = 1.0f;
+
+  return materialSample;
+}
+
+SurfaceMaterialInteractionSample translucentSurfaceMaterialInteractionCalcDiffuseTransmissionSample(
+  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  inout bool insideMedium, inout bool penetrateSurface)
+{
+  SurfaceMaterialInteractionSample materialSample;
+
+  materialSample.inputDirection = f16vec3(0.0, 0.0, 0.0);
+  materialSample.throughput = f16vec3(0.0, 0.0, 0.0);
+  materialSample.solidAnglePdf = 0.0f;
+
+  return materialSample;
+}
+
+SurfaceMaterialInteractionSample translucentSurfaceMaterialInteractionCalcSpecularTransmissionSample(
+  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  inout bool insideMedium, inout bool penetrateSurface)
+{
+  float16_t outsideRelativeRefractiveIndex;
+  float16_t insideRelativeRefractiveIndex;
+
+  translucentSurfaceMaterialInteractionCalcRelativeRefractiveIndices(
+    translucentSurfaceMaterialInteraction, insideMedium,
+    outsideRelativeRefractiveIndex, insideRelativeRefractiveIndex);
+
+  // Set up relevant input vectors
+
+  const vec3 normal = normalize(vec3(translucentSurfaceMaterialInteraction.shadingNormal));
+  const vec3 outputDirection = normalize(vec3(minimalRayInteraction.viewDirection));
+
+  // Calcuate the microfacet normal
+  // Note: Typically the microfacet normal would be sampled from so this would be known upfront in a sampling
+  // method, due to being a dirac distribution though we always know it'll be the same as the normal.
+
+  const vec3 microfacetNormal = normal;
+
+  // Calculate the refracted direction into the thin surface for the inside Fresnel evaluation
+  // Note: This should never result in a TIR case since it's always done from the outside of the surface
+
+  const vec3 refractedDirection = refract(-outputDirection, microfacetNormal, outsideRelativeRefractiveIndex);
+
+  // Calculate dot products used for evaluation
+
+  const float /* v.h */ outputDirectionDotMicrofacetNormal = dot(outputDirection, microfacetNormal);
+  const float /* n.v */ normalDotOutputDirection = dot(outputDirection, normal);
+  // Note: Negative as refracted direction always points into surface
+  const float /* r.h */ refractedDirectionDotMicrofacetNormal = dot(-refractedDirection, microfacetNormal);
+
+  if (normalDotOutputDirection <= 0.0f)
+  {
+    SurfaceMaterialInteractionSample materialSample;
+
+    materialSample.inputDirection = f16vec3(0.0f, 0.0f, 0.0f);
+    materialSample.throughput = f16vec3(0.0f);
+    materialSample.solidAnglePdf = 0.0f;
+
+    return materialSample;
+  }
+
+  // Calculate the fresnel of the sample
+  // Note: This is done in advance to determine TIR before BRDF/BTDF evaluation
+
+  const float16_t outsideFresnel = evalTranslucentSchlickFresnelTIR(
+    translucentSurfaceMaterialInteraction.baseReflectivity, outsideRelativeRefractiveIndex, outputDirectionDotMicrofacetNormal);
+  const float16_t insideFresnel = evalTranslucentSchlickFresnelTIR(
+    translucentSurfaceMaterialInteraction.baseReflectivity, insideRelativeRefractiveIndex, refractedDirectionDotMicrofacetNormal);
+
+  // Switch between reflection and transmission
+
+  f16vec3 inputDirection;
+  f16vec3 throughput;
+
+  const bool isThinWalled = translucentSurfaceMaterialInteractionIsThinWalled(translucentSurfaceMaterialInteraction);
+
+  if (!isThinWalled)
+  {
+    const bool totalInternalReflection = (outsideFresnel == 1.0f);
+
+    // Note: Check for TIR, typically this shouldn't ever be hit as the chance of imporance sampling a transmission event
+    // should be 0.
+    if (totalInternalReflection)
+    {
+      SurfaceMaterialInteractionSample materialSample;
+
+      materialSample.inputDirection = f16vec3(0.0f, 0.0f, 0.0f);
+      materialSample.throughput = f16vec3(0.0f);
+      materialSample.solidAnglePdf = 0.0f;
+
+      return materialSample;
+    }
+    else
+    {
+      // Calculate the input direction by refracting the output direction
+
+      inputDirection = refract(-outputDirection, microfacetNormal, outsideRelativeRefractiveIndex);
+
+      // Calculate dot products used for evaluation
+
+      const float16_t /* n.l */ normalDotInputDirection = dot(inputDirection, -normal);
+
+      if (normalDotInputDirection <= 0.0f)
+      {
+        SurfaceMaterialInteractionSample materialSample;
+
+        materialSample.inputDirection = f16vec3(0.0f, 0.0f, 0.0f);
+        materialSample.throughput = f16vec3(0.0f);
+        materialSample.solidAnglePdf = 0.0f;
+
+        return materialSample;
+      }
+
+      // Calculate the throughput of the sample
+
+      // Note: Simplified version of (weight / solidAnglePdf) * (n.l)
+      throughput = float16_t(1.0f - outsideFresnel).xxx;
+
+      // Flip the inside medium flag as transmission occured
+
+      insideMedium = !insideMedium;
+      penetrateSurface = true;
+    }
+  }
+  else
+  {
+    // for thin-walled materials, we pretend that the surface we hit is a solid with some thickness,
+    // and figure out what happens to the light ray based on the fresnel coefficient of the refracted ray hitting the other
+    // side of the "solid"
+
+    // Note: Check for "fiber optic" case where light never escapes from inside the thin surface.
+    const bool thinWalledTIR = (insideFresnel == float16_t(1.0f));
+
+    if (refractedDirectionDotMicrofacetNormal <= 0.0f || thinWalledTIR)
+    {
+      SurfaceMaterialInteractionSample materialSample;
+
+      materialSample.inputDirection = f16vec3(0.0f, 0.0f, 0.0f);
+      materialSample.throughput = f16vec3(0.0f);
+      materialSample.solidAnglePdf = 0.0f;
+
+      return materialSample;
+    }
+
+    // Calculate the throughput of the sample
+
+    const f16vec3 transmittanceColor = translucentSurfaceMaterialInteraction.transmittanceColor.rgb;
+    const float16_t thickness = translucentSurfaceMaterialInteractionGetThinWallThickness(translucentSurfaceMaterialInteraction);
+    const float16_t attenuationDistance = evalThinAttenuationDistance(thickness, microfacetNormal, refractedDirection);
+    // for thin-walled materials, transmittance measurement distance is always 1.0, as that makes it easier to manage the look of the material
+    const f16vec3 attenuationCoefficient = transmittanceToAttenuationCoefficient(transmittanceColor, 1.0);
+    const f16vec3 volumeAttenuation = evalBeerLambertAttenuation(attenuationCoefficient, attenuationDistance);
+
+    // Note: Simplified version of (weight / solidAnglePdf) * (n.l)
+    throughput = evalThinTransmissionGeometricSeriesThroughput(outsideFresnel, insideFresnel, volumeAttenuation);
+
+    // ray direction never changes for thin-walled materials
+    inputDirection = -outputDirection;
+    penetrateSurface = true;
+  }
+
+  // Return the material sample
+
+  SurfaceMaterialInteractionSample materialSample;
+
+  materialSample.inputDirection = inputDirection;
+  materialSample.throughput = throughput;
+  materialSample.solidAnglePdf = 1.0f;
+
+  return materialSample;
+}
+
+void translucentSurfaceMaterialInteractionCalcSample(
+  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction,
+  float16_t lobeRandom,
+  f16vec4 tangentToWorldSpaceQuaternion,
+  MinimalRayInteraction minimalRayInteraction,
+  inout SurfaceMaterialInteractionSample surfaceMaterialInteractionSample,
+  inout SurfaceMaterialInteractionLobeSample surfaceMaterialInteractionLobeSample,
+  inout bool insideMedium, inout bool penetrateSurface)
+{
+  surfaceMaterialInteractionLobeSample = translucentSurfaceMaterialInteractionCalcLobeSample(
+    translucentSurfaceMaterialInteraction, lobeRandom, minimalRayInteraction, insideMedium);
+
+  switch (uint(surfaceMaterialInteractionLobeSample.lobe))
+  {
+  default:
+  case uint(translucentLobeTypeSpecularReflection):
+    surfaceMaterialInteractionSample = translucentSurfaceMaterialInteractionCalcSpecularReflectionSample(
+      translucentSurfaceMaterialInteraction, tangentToWorldSpaceQuaternion, minimalRayInteraction, insideMedium);
+
+    break;
+  case uint(translucentLobeTypeSpecularTransmission):
+    surfaceMaterialInteractionSample = translucentSurfaceMaterialInteractionCalcSpecularTransmissionSample(
+      translucentSurfaceMaterialInteraction, minimalRayInteraction, insideMedium, penetrateSurface);
+
+    break;
+  }
+}
+
+// Note: Most this code duplicated from translucentSurfaceMaterialInteractionCalcSpecularReflectionSample,
+// but done so if roughness is ever added to glass this path will exist as a dirac on its own.
+SurfaceMaterialInteractionPSRSample translucentSurfaceMaterialInteractionCalcPSRReflectionSample(
+  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  inout f16vec3 diffuseLayerWeight,
+  bool insideMedium)
+{
+  // Determine if Reflection PSR should happen based on the lobe information
+
+  const SurfaceMaterialInteractionLobeInformation lobeInformation =
+    translucentSurfaceMaterialInteractionGetLobeInformation(translucentSurfaceMaterialInteraction);
+
+  // Note: Indicate reflection PSR should occur only if no diffuse lobe is present (to prevent
+  // the need to split paths) and if a specular dirac lobe is present.
+  if (
+    lobeInformation.diffuseReflectionPresent ||
+    !lobeInformation.specularReflectionPresent ||
+    !lobeInformation.specularReflectionDirac
+  )
+  {
+    SurfaceMaterialInteractionPSRSample materialPSRSample;
+
+    materialPSRSample.performPSR = false;
+
+    return materialPSRSample;
+  }
+
+  float16_t outsideRelativeRefractiveIndex;
+  float16_t insideRelativeRefractiveIndex;
+
+  translucentSurfaceMaterialInteractionCalcRelativeRefractiveIndices(
+    translucentSurfaceMaterialInteraction, insideMedium,
+    outsideRelativeRefractiveIndex, insideRelativeRefractiveIndex);
+
+  // Set up relevant input vectors
+
+  const vec3 normal = normalize(vec3(translucentSurfaceMaterialInteraction.shadingNormal));
+  const vec3 outputDirection = normalize(vec3(minimalRayInteraction.viewDirection));
+
+  // Calcuate the microfacet normal
+  // Note: Typically the microfacet normal would be sampled from so this would be known upfront in a sampling
+  // method, due to being a dirac distribution though we always know it'll be the same as the normal.
+
+  const vec3 microfacetNormal = normal;
+
+  // Reflect the output direction across the microfacet normal to get the input direction
+
+  const vec3 inputDirection = reflect(-outputDirection, microfacetNormal);
+
+  // Calculate the refracted direction into the thin surface for the inside Fresnel evaluation
+  // Note: This should never result in a TIR case since it's always done from the outside of the surface
+
+  const vec3 refractedDirection = refract(-outputDirection, microfacetNormal, outsideRelativeRefractiveIndex);
+
+  // Todo: Sanity check if inputDirection is facing the wrong direction (Into the surface), currently this does not have much
+  // effect and getting the triangle normal here requires a fairly high memory bandwidth cost, so for now it is not done
+
+  // Calculate dot products used for evaluation
+  // Note: Dot products against tangent space basis vectors are single components of the other vector
+
+  const float /* v.h */ outputDirectionDotMicrofacetNormal = dot(outputDirection, microfacetNormal);
+  const float /* n.v */ normalDotOutputDirection = outputDirectionDotMicrofacetNormal;
+  const float /* n.l */ normalDotInputDirection = dot(inputDirection, normal);
+  // Note: Negative as refracted direction always points into surface
+  const float /* r.h */ refractedDirectionDotMicrofacetNormal = dot(-refractedDirection, microfacetNormal);
+
+  if (normalDotOutputDirection <= 0.f || normalDotInputDirection <= 0.f)
+  {
+    SurfaceMaterialInteractionPSRSample materialPSRSample;
+
+    materialPSRSample.performPSR = false;
+
+    return materialPSRSample;
+  }
+
+  // Calculate the fresnel of the sample
+
+  const float16_t outsideFresnel = evalTranslucentSchlickFresnelTIR(
+    translucentSurfaceMaterialInteraction.baseReflectivity, outsideRelativeRefractiveIndex, abs(outputDirectionDotMicrofacetNormal));
+  const float16_t insideFresnel = evalTranslucentSchlickFresnelTIR(
+    translucentSurfaceMaterialInteraction.baseReflectivity, insideRelativeRefractiveIndex, refractedDirectionDotMicrofacetNormal);
+
+  // Calculate the attenuation of the sample
+
+  f16vec3 attenuation;
+
+  const bool isThinWalled = translucentSurfaceMaterialInteractionIsThinWalled(translucentSurfaceMaterialInteraction);
+
+  if (!isThinWalled)
+  {
+    attenuation = outsideFresnel.xxx;
+  }
+  else
+  {
+    // Note: Check for "fiber optic" case where light never escapes from inside the thin surface.
+    const bool thinWalledTIR = (insideFresnel == float16_t(1.0f));
+
+    if (refractedDirectionDotMicrofacetNormal <= 0.0f || thinWalledTIR)
+    {
+      // Note: In this case the material acts like a fiber optic cable and infiniately reflects inside,
+      // or the vector is parallel to the plane which causes issues when trying to solve, so only the
+      // direct reflected contribution should be considered.
+      attenuation = outsideFresnel.xxx;
+    }
+    else
+    {
+      const f16vec3 transmittanceColor = translucentSurfaceMaterialInteraction.transmittanceColor.rgb;
+      const float16_t thickness = translucentSurfaceMaterialInteractionGetThinWallThickness(translucentSurfaceMaterialInteraction);
+      const float16_t attenuationDistance = evalThinAttenuationDistance(thickness, microfacetNormal, refractedDirection);
+      // for thin-walled materials, transmittance measurement distance is always 1.0, as that makes it easier to manage the look of the material
+      const f16vec3 attenuationCoefficient = transmittanceToAttenuationCoefficient(transmittanceColor, 1.0);
+      const f16vec3 volumeAttenuation = evalBeerLambertAttenuation(attenuationCoefficient, attenuationDistance);
+
+      attenuation = evalThinReflectionGeometricSeriesThroughput(outsideFresnel, insideFresnel, volumeAttenuation);
+    }
+  }
+
+  // Calculate diffuse layer weight and attenuation
+
+  const bool useDiffuseLayer = translucentSurfaceMaterialInteraction.flags & TRANSLUCENT_SURFACE_MATERIAL_FLAG_USE_DIFFUSE_LAYER;
+
+  // Note: Only handle the diffuse layer for reflections when the incident ray is outside the surface. This is because TIR will never need to
+  // interact with a diffuse layer.
+  if (useDiffuseLayer && !insideMedium)
+  {
+    const f16vec3 diffuseAttenuation = mix(f16vec3(1.0f), translucentSurfaceMaterialInteraction.diffuseColor, translucentSurfaceMaterialInteraction.diffuseOpacity);
+    const f16vec3 diffuseInscattering = translucentSurfaceMaterialInteraction.diffuseColor * translucentSurfaceMaterialInteraction.diffuseOpacity;
+
+    // Note: Factor attenuation from the entry through the diffuse layer and the attenuation (fresnel) contribution from the surface for a secondary diffuse layer
+    // contribution to be accounted for. Assumes the attenuation up to this point is only the reflection contribution off the surface.
+    diffuseLayerWeight += diffuseAttenuation * attenuation * diffuseInscattering;
+    // Note: Account for the attenuation from the entry and exit through the diffuse layer.
+    attenuation *= diffuseAttenuation * diffuseAttenuation;
+  }
+
+  // Return the material sample
+
+  SurfaceMaterialInteractionPSRSample materialPSRSample;
+
+  materialPSRSample.performPSR = true;
+  materialPSRSample.useAlternateDisocclusionThreshold = translucentSurfaceMaterialInteraction.normalDetail > float16_t(cb.psrrNormalDetailThreshold);
+  materialPSRSample.inputDirection = inputDirection;
+  materialPSRSample.attenuation = attenuation;
+  materialPSRSample.vectorTransform = getReflectionMatrix(microfacetNormal);
+
+  return materialPSRSample;
+}
+
+// Note: Most this code duplicated from translucentSurfaceMaterialInteractionCalcSpecularTransmissionSample,
+// but done so if roughness is ever added to glass this path will exist as a dirac on its own.
+SurfaceMaterialInteractionPSRSample translucentSurfaceMaterialInteractionCalcPSRTransmissionSample(
+  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  inout f16vec3 diffuseLayerWeight,
+  inout bool insideMedium, inout bool penetrateSurface)
+{
+  // Determine if Transmission PSR should happen based on the lobe information
+
+  const SurfaceMaterialInteractionLobeInformation lobeInformation =
+    translucentSurfaceMaterialInteractionGetLobeInformation(translucentSurfaceMaterialInteraction);
+
+  // Note: Indicate transmission PSR should occur only if a specular transmission dirac lobe is present.
+  if (
+    !lobeInformation.specularTransmissionPresent ||
+    !lobeInformation.specularTransmissionDirac
+  )
+  {
+    SurfaceMaterialInteractionPSRSample materialPSRSample;
+
+    materialPSRSample.performPSR = false;
+
+    return materialPSRSample;
+  }
+
+  float16_t outsideRelativeRefractiveIndex;
+  float16_t insideRelativeRefractiveIndex;
+
+  translucentSurfaceMaterialInteractionCalcRelativeRefractiveIndices(
+    translucentSurfaceMaterialInteraction, insideMedium,
+    outsideRelativeRefractiveIndex, insideRelativeRefractiveIndex);
+
+  // Set up relevant input vectors
+
+  const vec3 normal = normalize(vec3(translucentSurfaceMaterialInteraction.shadingNormal));
+  const vec3 outputDirection = normalize(vec3(minimalRayInteraction.viewDirection));
+
+  // Calcuate the microfacet normal
+  // Note: Typically the microfacet normal would be sampled from so this would be known upfront in a sampling
+  // method, due to being a dirac distribution though we always know it'll be the same as the normal.
+
+  const vec3 microfacetNormal = normal;
+
+  // Calculate the refracted direction into the thin surface for the inside Fresnel evaluation
+  // Note: This should never result in a TIR case since it's always done from the outside of the surface
+
+  const vec3 refractedDirection = refract(-outputDirection, microfacetNormal, outsideRelativeRefractiveIndex);
+
+  // Calculate dot products used for evaluation
+
+  const float /* v.h */ outputDirectionDotMicrofacetNormal = dot(outputDirection, microfacetNormal);
+  const float /* n.v */ normalDotOutputDirection = dot(outputDirection, normal);
+  // Note: Negative as refracted direction always points into surface
+  const float /* r.h */ refractedDirectionDotMicrofacetNormal = dot(-refractedDirection, microfacetNormal);
+
+  if (normalDotOutputDirection <= 0.0f)
+  {
+    SurfaceMaterialInteractionPSRSample materialPSRSample;
+
+    materialPSRSample.performPSR = false;
+
+    return materialPSRSample;
+  }
+
+  // Calculate the fresnel of the sample
+  // Note: This is done in advance to determine TIR before BRDF/BTDF evaluation
+
+  const float16_t outsideFresnel = evalTranslucentSchlickFresnelTIR(
+    translucentSurfaceMaterialInteraction.baseReflectivity, outsideRelativeRefractiveIndex, outputDirectionDotMicrofacetNormal);
+  const float16_t insideFresnel = evalTranslucentSchlickFresnelTIR(
+    translucentSurfaceMaterialInteraction.baseReflectivity, insideRelativeRefractiveIndex, refractedDirectionDotMicrofacetNormal);
+
+  // Calculate needed quantities
+
+  f16vec3 inputDirection;
+  f16vec3 attenuation;
+  f16mat3 vectorTransform;
+
+  const bool oldInsideMedium = insideMedium;
+  const bool isThinWalled = translucentSurfaceMaterialInteractionIsThinWalled(translucentSurfaceMaterialInteraction);
+
+  if (!isThinWalled)
+  {
+    const bool totalInternalReflection = (outsideFresnel == 1.0f);
+
+    // Note: Check for TIR as in this case we should indicate that no transmission PSR should happen, allowing the reflection PSR
+    // to dominate and implicitly become the primary surface (to avoid it being demoted to a lower quality secondary surface).
+    if (totalInternalReflection)
+    {
+      SurfaceMaterialInteractionPSRSample materialPSRSample;
+
+      materialPSRSample.performPSR = false;
+
+      return materialPSRSample;
+    }
+    else
+    {
+      // Calculate the input direction by refracting the output direction
+
+      inputDirection = refract(-outputDirection, microfacetNormal, outsideRelativeRefractiveIndex);
+
+      // Calculate dot products used for evaluation
+
+      const float16_t /* n.l */ normalDotInputDirection = dot(inputDirection, -normal);
+
+      if (normalDotInputDirection <= 0.0f)
+      {
+        SurfaceMaterialInteractionPSRSample materialPSRSample;
+
+        materialPSRSample.performPSR = false;
+
+        return materialPSRSample;
+      }
+
+      // Calculate the attenuation of the sample
+
+      attenuation = float16_t(1.0f - outsideFresnel).xxx;
+
+      // Calculate the vector transform matrix for the refraction event
+
+      vectorTransform = getRefractionMatrix(microfacetNormal);
+
+      // Flip the inside medium flag as transmission occured
+
+      insideMedium = !insideMedium;
+      penetrateSurface = true;
+    }
+  }
+  else
+  {
+    // for thin-walled materials, we pretend that the surface we hit is a solid with some thickness,
+    // and figure out what happens to the light ray based on the fresnel coefficient of the refracted ray hitting the other
+    // side of the "solid"
+
+    // Note: Check for "fiber optic" case where light never escapes from inside the thin surface.
+    const bool thinWalledTIR = (insideFresnel == float16_t(1.0f));
+
+    if (refractedDirectionDotMicrofacetNormal <= 0.0f || thinWalledTIR)
+    {
+        SurfaceMaterialInteractionPSRSample materialPSRSample;
+
+        materialPSRSample.performPSR = false;
+
+        return materialPSRSample;
+    }
+
+    // Calculate the throughput of the sample
+
+    const f16vec3 transmittanceColor = translucentSurfaceMaterialInteraction.transmittanceColor.rgb;
+    const float16_t thickness = translucentSurfaceMaterialInteractionGetThinWallThickness(translucentSurfaceMaterialInteraction);
+    const float16_t attenuationDistance = evalThinAttenuationDistance(thickness, microfacetNormal, refractedDirection);
+    // for thin-walled materials, transmittance measurement distance is always 1.0, as that makes it easier to manage the look of the material
+    const f16vec3 attenuationCoefficient = transmittanceToAttenuationCoefficient(transmittanceColor, 1.0);
+    const f16vec3 volumeAttenuation = evalBeerLambertAttenuation(attenuationCoefficient, attenuationDistance);
+
+    attenuation = evalThinTransmissionGeometricSeriesThroughput(outsideFresnel, insideFresnel, volumeAttenuation);
+
+    // ray direction never changes for thin-walled materials
+    vectorTransform = getIdentityMatrix();
+    inputDirection = -outputDirection;
+    penetrateSurface = true;
+  }
+
+  // Calculate diffuse layer weight and attenuation
+
+  const bool useDiffuseLayer = translucentSurfaceMaterialInteraction.flags & TRANSLUCENT_SURFACE_MATERIAL_FLAG_USE_DIFFUSE_LAYER;
+
+  // Note: Only handle the diffuse layer for reflections when the incident ray is outside the surface. This is because TIR will never need to
+  // interact with a diffuse layer.
+  if (useDiffuseLayer)
+  {
+    const f16vec3 diffuseAttenuation = mix(f16vec3(1.0f), translucentSurfaceMaterialInteraction.diffuseColor, translucentSurfaceMaterialInteraction.diffuseOpacity);
+    const f16vec3 diffuseInscattering = translucentSurfaceMaterialInteraction.diffuseColor * translucentSurfaceMaterialInteraction.diffuseOpacity;
+
+    // Note: Using old inside medium flag to check its state before the translucent sample. Only apply an extra diffuse layer contribution when exiting
+    // the surface as this is the only time transmission will need to accumulate lighting from the diffuse layer.
+    if (oldInsideMedium)
+    {
+      // Note: Factor attenuation (fresnel) contribution from the surface for a secondary diffuse layer contribution to be accounted for.
+      // Assumes the attenuation up to this point is only the transmission contribution off the surface.
+      diffuseLayerWeight += attenuation * diffuseInscattering;
+    }
+
+    if (isThinWalled)
+    {
+      // Note: Account for the attenuation from the entry and exit through the diffuse layer as on a thin surface transmission goes through both hypothetical
+      // diffuse layers (unlike reflection which only ever interacts with the layer on the incident side of the surface).
+      attenuation *= diffuseAttenuation * diffuseAttenuation;
+    }
+    else
+    {
+      // Note: Account for the attenuation from either the entry or exit through the diffuse layer (depending on if the translucent interaction originates
+      // from the inside or outside of the medium).
+      attenuation *= diffuseAttenuation;
+    }
+  }
+
+  // Return the material sample
+
+  SurfaceMaterialInteractionPSRSample materialPSRSample;
+
+  materialPSRSample.performPSR = true;
+  materialPSRSample.useAlternateDisocclusionThreshold = translucentSurfaceMaterialInteraction.normalDetail > float16_t(cb.pstrNormalDetailThreshold);
+  materialPSRSample.inputDirection = inputDirection;
+  materialPSRSample.attenuation = attenuation;
+  materialPSRSample.vectorTransform = vectorTransform;
+
+  return materialPSRSample;
+}
+
+// Note: diffuseLayerWeight is used to weight the radiance from the radiance cache which when summed into the path radiance introduces an approximate diffuse
+// layer on top of the surface for PSR specifically (currently it is not implemented in the non-PSR path). For performance the radiance cache should only be
+// accessed if this value is non-zero. Note the reflection/transmission PSR sample attenuations will have this contribution factored in already for how they transmit
+// through this one-sided layer.
+void translucentSurfaceMaterialInteractionCalcPSRSample(
+  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction,
+  float16_t random,
+  MinimalRayInteraction minimalRayInteraction,
+  inout SurfaceMaterialInteractionPSRSample surfaceMaterialInteractionReflectionPSRSample,
+  inout SurfaceMaterialInteractionPSRSample surfaceMaterialInteractionTransmissionPSRSample,
+  inout f16vec3 diffuseLayerWeight,
+  inout bool reflectionSelectedIntegrationSurface,
+  inout float16_t selectedIntegrationSurfacePdf,
+  inout bool insideMedium, inout bool penetrateSurface)
+{
+  const bool oldInsideMedium = insideMedium;
+
+  // Calculate shared diffuse layer weight contribution
+
+  if (!insideMedium)
+  {
+    const f16vec3 diffuseInscattering = translucentSurfaceMaterialInteraction.diffuseColor * translucentSurfaceMaterialInteraction.diffuseOpacity;
+
+    // Note: When interacting with the medium from the outside (the side the diffuse layer is on), incorperate it
+    // by convolving a spherical isotropic BRDF with the volumetric radiance contribution. Note this in the future should
+    // be adjusted so an actual directional contribution can be done when the radiance is stored in the cache with spherical
+    // harmonics, but for now this is fine. Also note that the volumetric radiance cache already divides by the integrated spherical "BRDF"
+    // factor of 1/4pi so that does not have to be done here.
+    diffuseLayerWeight = diffuseInscattering;
+  }
+  else
+  {
+    diffuseLayerWeight = f16vec3(0.0f);
+  }
+
+  // Sample Reflection PSR
+
+  surfaceMaterialInteractionReflectionPSRSample = translucentSurfaceMaterialInteractionCalcPSRReflectionSample(
+    translucentSurfaceMaterialInteraction, minimalRayInteraction, diffuseLayerWeight, insideMedium);
+
+  // Sample Transmission PSR
+
+  surfaceMaterialInteractionTransmissionPSRSample = translucentSurfaceMaterialInteractionCalcPSRTransmissionSample(
+    translucentSurfaceMaterialInteraction, minimalRayInteraction, diffuseLayerWeight, insideMedium, penetrateSurface);
+
+  // Determine which PSR surface should be selected for integration and the probability of this choice
+  // Note: TIR is handled here in a good way as reflection PSR should be requested and transmission PSR should not be, meaning
+  // we do not have to do any special logic in the lobe sampling portion as it'll never be hit.
+
+  if (
+    surfaceMaterialInteractionReflectionPSRSample.performPSR &&
+    surfaceMaterialInteractionTransmissionPSRSample.performPSR
+  )
+  {
+    // Note: Not needed as an output, the state is only needed as an input. Using the inside medium flag from before it was altered.
+    bool dummyInsideMedium = oldInsideMedium;
+    // Todo: This calculation is a bit redundant as the fresnel is already calculated as part of the polymorphicSurfaceMaterialInteractionCalcPSRSample
+    // function. Ideally we could merge all this logic together, similar to the idea of merging other lobe sampling logic to not have as much duplicated
+    // code in the shader.
+    const SurfaceMaterialInteractionLobeSample lobeSample = translucentSurfaceMaterialInteractionCalcLobeSample(
+      translucentSurfaceMaterialInteraction,
+      random,
+      minimalRayInteraction,
+      dummyInsideMedium);
+
+    reflectionSelectedIntegrationSurface = (lobeSample.lobe == translucentLobeTypeSpecularReflection);
+    selectedIntegrationSurfacePdf = lobeSample.pdf;
+  }
+  else if (surfaceMaterialInteractionReflectionPSRSample.performPSR)
+  {
+    reflectionSelectedIntegrationSurface = true;
+    selectedIntegrationSurfacePdf = 1.0f;
+  }
+  else // Implicitly: if (surfaceMaterialInteractionTransmissionPSRSample.performPSR)
+  {
+    reflectionSelectedIntegrationSurface = false;
+    selectedIntegrationSurfacePdf = 1.0f;
+  }
+}
+
+float translucentSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(
+  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  f16vec3 inputDirection)
+{
+  // Todo
+
+  return 0.0f;
+}
+
+float translucentSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
+  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  f16vec3 inputDirection)
+{
+  // Todo
+
+  return 0.0f;
+}
+
+float translucentSurfaceMaterialInteractionCalcDiffuseTransmissionSolidAnglePdf(
+  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  f16vec3 inputDirection)
+{
+  // Note: Diffuse Transmission never possible for Translucent materials
+  return 0.0f;
+}
+
+float translucentSurfaceMaterialInteractionCalcSpecularTransmissionSolidAnglePdf(
+  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  f16vec3 inputDirection)
+{
+  // Note: Specular Transmission PDF never needed for Translucent materials (As NEE is only done on the reflecting side)
+  return 0.0f;
+}
+
+float translucentSurfaceMaterialInteractionCalcSolidAnglePdf(
+  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  f16vec3 inputDirection)
+{
+  // Return the average of all the lobe PDFs
+  // Note: Only lobes which are possible and specifically involved in reflections are included
+
+  return (
+    translucentSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
+      translucentSurfaceMaterialInteraction, minimalRayInteraction, inputDirection)
+  ) / 1.0f;
+}
+
+SurfaceMaterialInteractionSplitWeight translucentSurfaceMaterialInteractionCalcProjectedWeight(
+  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  f16vec3 inputDirection)
+{
+  SurfaceMaterialInteractionSplitWeight splitWeight;
+
+  splitWeight.diffuseReflectionWeight = f16vec3(0.0, 0.0, 0.0);
+  splitWeight.specularReflectionWeight = f16vec3(0.0, 0.0, 0.0);
+
+  return splitWeight;
+}
+
+f16vec3 translucentSurfaceMaterialInteractionEvalEmissiveRadiance(
+  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction)
+{
+  return translucentSurfaceMaterialInteraction.emissiveRadiance;
+}

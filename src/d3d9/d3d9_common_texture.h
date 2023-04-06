@@ -10,7 +10,7 @@
 
 namespace dxvk {
 
-  class D3D9DeviceEx;
+    class D3D9DeviceEx;
 
   /**
    * \brief Image memory mapping mode
@@ -386,6 +386,9 @@ namespace dxvk {
     void PreLoadAll();
     void PreLoadSubresource(UINT Subresource);
 
+    void SetupForRtx();
+    void SetupForRtxFrom(const D3D9CommonTexture* source);
+    
     void AddDirtyBox(CONST D3DBOX* pDirtyBox, uint32_t layer) {
       if (pDirtyBox) {
         D3DBOX box = *pDirtyBox;

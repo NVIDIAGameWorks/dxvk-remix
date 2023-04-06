@@ -1,0 +1,89 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/utility/noise.slangh"
+#include "rtx/concept/camera/camera.slangh"
+#include "rtx/pass/view_distance_args.h"
+
+#include "rtx/external/simplex_noise.slangh"
+
+// Evaluates the view distance based on the specified mode and function as well as other parameters. Returns true if a ray should
+// continue as normal with a hit, returns false if the view distance has been reached, indicating that a ray should skip a hit and
+// continue skipping hits all the way out to the Sky.
+bool evalViewDistance(ViewDistanceArgs viewDistanceArgs, bool isZUp, Camera camera, vec3 worldPosition)
+{
+  // Early out if the view distance mode is set to none
+
+  if (viewDistanceArgs.distanceMode == viewDistanceModeNone)
+  {
+    return true;
+  }
+
+  // Calculate the distance of the position from the Camera in world space using the desired function
+
+  const vec3 cameraWorldPosition = cameraGetWorldPosition(camera);
+  float viewDistance;
+
+  if (viewDistanceArgs.distanceFunction == viewDistanceFunctionEuclidean)
+  {
+    viewDistance = length(cameraWorldPosition - worldPosition);
+  }
+  else // if (viewDistanceArgs.distanceFunction == viewDistanceFunctionPlanarEuclidean)
+  {
+    // Note: Factor in the Z-up parameter to determine which axis should be ignored for Planar Euclidean distance.
+
+    if (isZUp)
+    {
+      viewDistance = length(cameraWorldPosition.xy - worldPosition.xy);
+    }
+    else
+    {
+      viewDistance = length(cameraWorldPosition.xz - worldPosition.xz);
+    }
+  }
+
+  // Evaluate the distance mode based on the calculated distance
+
+  if (viewDistanceArgs.distanceMode == viewDistanceModeHardCutoff)
+  {
+    return viewDistance < viewDistanceArgs.distanceThresholdOrFadeMin;
+  }
+  else // if (viewDistanceArgs.distanceMode == viewDistanceModeCoherentNoise)
+  {
+    // Note: May result in NaN if the fade span is 0, but this should not ever happen in practice (only when tweaking settings haphazardly).
+    const float t = saturate((viewDistance - viewDistanceArgs.distanceThresholdOrFadeMin) / viewDistanceArgs.distanceFadeSpan);
+
+    // Note: Used due to >= being used for the noise comparison which handles the 0 case of never failing the test but not the 1 case where
+    // the test should always fail. This could be fixed if the noise returned on a range of [0, 1) but I do not think our current coherent noise
+    // does this.
+    if (t == 1.0f)
+    {
+      return false;
+    }
+
+    const float coherentNoise = simplexNoise3D(worldPosition * viewDistanceArgs.noiseScale) * 0.5f + 0.5f;
+
+    // Note: Will return true always when t is 0 to ensure no noise holes appear in objects under the minimum fade distance.
+    return coherentNoise >= t;
+  }
+}

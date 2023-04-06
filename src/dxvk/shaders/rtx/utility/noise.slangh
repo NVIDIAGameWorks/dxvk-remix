@@ -1,0 +1,175 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// 32 bit Jenkin's hash
+// http://burtleburtle.net/bob/hash/integer.html
+uint hashJenkins(uint a) {
+  a = (a + 0x7ed55d16) + (a << 12);
+  a = (a ^ 0xc761c23c) ^ (a >> 19);
+  a = (a + 0x165667b1) + (a << 5);
+  a = (a + 0xd3a2646c) ^ (a << 9);
+  a = (a + 0xfd7046c5) + (a << 3);
+  a = (a ^ 0xb55a4f09) ^ (a >> 16);
+  return a;
+}
+
+// Single iteration of Jenkin's One-At-A-Time hash
+// https://en.wikipedia.org/wiki/Jenkins_hash_function#one_at_a_time
+uint hashJenkinsOneAtATime(uint x) {
+  x += (x << 10u);
+  x ^= (x >>  6u);
+  x += (x <<  3u);
+  x ^= (x >> 11u);
+  x += (x << 15u);
+  return x;
+}
+
+vec2 R2(uint index) {
+  // Generalized golden ratio to 2d.
+  // Solution to x^3 = x + 1
+  // AKA plastic constant.
+  // from http://extremelearning.com.au/unreasonable-effectiveness-of-quasirandom-sequences/
+  float g = 1.32471795724474602596f;
+  return fract(vec2(float(index) / g, float(index) / (g*g)));
+}
+
+#define RNG_SEED_FRAME_RANGE 64
+
+struct RNG {
+  uvec2 pixelIdx;
+  uint seed;
+  uint temporalIdx;
+};
+
+// Creates a RNG from a pixel index (which should be spatially consistent), a temporal index (which should
+// only be provided from the current frame index for temporal consistency), and an optional sample offset to
+// advance the seed as if a number of samples happened already (this is useful for reconstructing a RNG in some cases).
+RNG createRNG(uvec2 pixelIdx, uint temporalIdx, uint sampleOffset) {
+  RNG rng;
+  rng.pixelIdx = pixelIdx;
+  rng.seed = temporalIdx / RNG_SEED_FRAME_RANGE + sampleOffset;
+  rng.temporalIdx = temporalIdx;
+  return rng;
+}
+
+// Overload for typical RNG construction when no sample offset is needed.
+RNG createRNG(uvec2 pixelIdx, uint temporalIdx) {
+  return createRNG(pixelIdx, temporalIdx, 0);
+}
+
+// RNG construction variant used when no pixel index data is available. Likely not as optimal
+// for proper blue noise usage, but saves from needing to pass data through payloads for example.
+RNG createRNGPosition(vec3 position, uint temporalIdx, uint sampleOffset) {
+  RNG rng;
+  // Note: Use x/y position values mixed with z position value as the "pixel index".
+  rng.pixelIdx = uvec2(
+    floatBitsToUint(position.x) ^ floatBitsToUint(position.z),
+    floatBitsToUint(position.y) ^ floatBitsToUint(position.z));
+  rng.seed = temporalIdx / RNG_SEED_FRAME_RANGE + sampleOffset;
+  rng.temporalIdx = temporalIdx;
+  return rng;
+}
+
+// Overload for position-based RNG construction when no sample offset is needed.
+RNG createRNGPosition(vec3 position, uint temporalIdx) {
+  return createRNGPosition(position, temporalIdx, 0);
+}
+
+// Note: Used for validating blue noise implementation. Set to 1 to use white noise for everything which should be
+// fairly purely random with full float precision. Blue noise on the other hand will be quantized to the precision of
+// unorms in the blue noise texture, but generally this does not matter even as low as 8 bits of precision.
+#define WHITE_NOISE_OVERRIDE 0
+
+// Note: This is a scalar (1D) sample value, ideally it should only be used for uncorrelated 1D scalar samples, not samples
+// within 2 or 3 dimensional space (e.g. direction vectors, BSDF sample inputs, etc). Currently we have no way to actually
+// generate proper 2D or 3D blue noise samples however, so subsequent samples of this should at least be reasonable as this
+// roughly follows the spatio-temporal blue noise algorithm for scalar generation. This could be improved some day however.
+// See: "Scalar Spatiotemporal Blue Noise Masks": https://arxiv.org/pdf/2112.09629.pdf
+float getNextSampleBlueNoise(inout RNG rng) {
+#if WHITE_NOISE_OVERRIDE
+  // Note: Jenkins hash-based white noise implementation from https://stackoverflow.com/a/17479300
+
+  // Hash and combine the input data
+
+  uint hashedData = hashJenkinsOneAtATime(
+    rng.pixelIdx.x ^
+    hashJenkinsOneAtATime(rng.pixelIdx.y) ^
+    hashJenkinsOneAtATime(rng.temporalIdx) ^
+    hashJenkinsOneAtATime(rng.seed++));
+
+  // Convert the hashed data to a float
+
+  const uint ieeeMantissa = 0x007FFFFFu; // binary32 mantissa bitmask
+  const uint ieeeOne      = 0x3F800000u; // 1.0 in IEEE binary32
+
+  hashedData &= ieeeMantissa; // Keep only mantissa bits (fractional part)
+  hashedData |= ieeeOne;      // Add fractional part to 1.0
+
+  return uintBitsToFloat(hashedData) - 1.0f;
+#else
+  // Note: Increment the seed once per sample to let each sample be distinct within the current blue noise
+  // temporal layer.
+  uvec2 seedOffset = uvec2(R2(rng.seed++) * uvec2(128, 128));
+  float value = texelFetch(BlueNoise, ivec3((rng.pixelIdx.x + seedOffset.x) & 127,
+                                            (rng.pixelIdx.y + seedOffset.y) & 127, 
+                                            (rng.temporalIdx) & (RNG_SEED_FRAME_RANGE - 1)), 
+                                            0).r;
+  const float quantum = 1.0f / 255.0f;
+  // unorm blue noise texture returns values in the range [0, 1], make sure to never return 1.0 exactly
+  // as a number of sampling strategies use a [0, 1) range.
+  return min(value, 1.0f - quantum);
+#endif
+}
+
+uint reverseBits4(uint x) {
+  x = ((x & 0x5) << 1) | ((x & 0xA) >> 1);
+  x = ((x & 0x3) << 2) | ((x & 0xC) >> 2);
+  return x;
+}
+
+// https://en.wikipedia.org/wiki/Ordered_dithering
+// RESULT: [0; 1)
+float bayer4x4(uvec2 samplePos, uint frameIndex) {
+  uvec2 samplePosWrap = samplePos & 3;
+  uint a = 2068378560 * (1 - (samplePosWrap.y >> 1)) + 1500172770 * (samplePosWrap.y >> 1);
+  uint b = (samplePosWrap.x + ((samplePosWrap.y & 1) << 2)) << 2;
+  return float(((a >> b) + reverseBits4(frameIndex)) & 0xF) * 0.0625f; // * 1/16
+}
+
+// Implementation of interleaved gradient noise, which is half way between dither and random
+//
+// This idea is proposed on siggraph 2014 presentation: NEXT GENERATION POST PROCESSING IN CALL OF DUTY: ADVANCED WARFARE
+// http://advances.realtimerendering.com/s2014/index.html#_NEXT_GENERATION_POST
+//
+// We extend this with frame index to bring more randomness across frames:
+// use LCG to generate frame index based random offset of original uv position.
+// https://en.wikipedia.org/wiki/Linear_congruential_generator
+//
+// RESULT: [0: 1]
+float temporalInterleavedGradientNoise(float2 uvPosition, uint frameIdx)
+{
+  uvPosition += float2(frameIdx * 1664525 + 1013904223, frameIdx * 214013 + 2531011) * 1e-7f;
+
+  const float3 magic = float3(0.06711056f, 0.00583715f, 52.9829189f); // Reference from page 120
+  return frac(magic.z * frac(dot(uvPosition, magic.xy)));
+}

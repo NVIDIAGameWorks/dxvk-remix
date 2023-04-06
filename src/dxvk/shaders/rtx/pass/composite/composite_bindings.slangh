@@ -1,0 +1,88 @@
+/*
+* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/pass/composite/composite_binding_indices.h"
+
+#include "rtx/utility/shader_types.h"
+
+// Constants
+
+layout(binding = COMPOSITE_CONSTANTS_INPUT)
+ConstantBuffer<CompositeArgs> cb;
+
+// Inputs
+
+layout(r8ui, binding = COMPOSITE_SHARED_FLAGS_INPUT)
+RWTexture2D<uint> SharedFlags;
+layout(binding = COMPOSITE_SHARED_RADIANCE_RG_INPUT)
+Texture2D<float2> SharedRadianceRG;
+layout(binding = COMPOSITE_SHARED_RADIANCE_B_INPUT)
+Texture2D<float> SharedRadianceB;
+
+layout(binding = COMPOSITE_PRIMARY_ATTENUATION_INPUT)
+RWTexture2D<uint> PrimaryAttenuation;
+layout(binding = COMPOSITE_PRIMARY_ALBEDO_INPUT)
+Texture2D<float4> PrimaryAlbedo;
+layout(binding = COMPOSITE_PRIMARY_SPECULAR_ALBEDO_INPUT)
+Texture2D<float4> PrimarySpecularAlbedo;
+layout(binding = COMPOSITE_PRIMARY_LINEAR_VIEW_Z_INPUT)
+Texture2D<float> PrimaryLinearViewZ;
+layout(rgba16, binding = COMPOSITE_PRIMARY_VIRTUAL_WORLD_SHADING_NORMAL_INPUT)
+Texture2D<float4> PrimaryVirtualWorldNormalPerceptualRoughness;
+layout(binding = COMPOSITE_PRIMARY_INDIRECT_DIFFUSE_RADIANCE_HIT_DISTANCE_INPUT)
+Texture2D<float4> PrimaryIndirectDiffuseRadianceHitDistance;
+layout(binding = COMPOSITE_PRIMARY_INDIRECT_SPECULAR_RADIANCE_HIT_DISTANCE_INPUT)
+Texture2D<float4> PrimaryIndirectSpecularRadianceHitDistance;
+layout(binding = COMPOSITE_SECONDARY_ATTENUATION_INPUT)
+RWTexture2D<uint> SecondaryAttenuation;
+layout(binding = COMPOSITE_SECONDARY_ALBEDO_INPUT)
+Texture2D<float4> SecondaryAlbedo;
+layout(binding = COMPOSITE_SECONDARY_SPECULAR_ALBEDO_INPUT)
+Texture2D<float4> SecondarySpecularAlbedo;
+
+layout(binding = COMPOSITE_PRIMARY_DIRECT_DIFFUSE_RADIANCE_HIT_DISTANCE_INPUT)
+Texture2D<float4> PrimaryDirectDiffuseRadianceHitDistance;
+layout(binding = COMPOSITE_PRIMARY_DIRECT_SPECULAR_RADIANCE_HIT_DISTANCE_INPUT)
+Texture2D<float4> PrimaryDirectSpecularRadianceHitDistance;
+layout(binding = COMPOSITE_SECONDARY_COMBINED_DIFFUSE_RADIANCE_HIT_DISTANCE_INPUT)
+Texture2D<float4> SecondaryCombinedDiffuseRadianceHitDistance;
+layout(binding = COMPOSITE_SECONDARY_COMBINED_SPECULAR_RADIANCE_HIT_DISTANCE_INPUT)
+Texture2D<float4> SecondaryCombinedSpecularRadianceHitDistance;
+layout(binding = COMPOSITE_BSDF_FACTOR_INPUT)
+Texture2D<float2> BSDFFactor;
+layout(binding = COMPOSITE_BSDF_FACTOR2_INPUT)
+Texture2D<float2> BSDFFactor2;
+
+layout(r11f_g11f_b10f, binding = COMPOSITE_VOLUME_PREINTEGRATED_RADIANCE_INPUT)
+Sampler3D<float3> VolumePreintegratedRadiance;
+
+// Outputs
+
+layout(binding = COMPOSITE_FINAL_OUTPUT)
+RWTexture2D<float4> FinalOutput;
+
+layout(binding = COMPOSITE_LAST_FINAL_OUTPUT)
+RWTexture2D<float4> LastFinalOutput;
+
+layout(binding = COMPOSITE_DEBUG_VIEW_OUTPUT)
+RWTexture2D<float4> DebugView;

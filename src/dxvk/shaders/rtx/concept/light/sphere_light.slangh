@@ -1,0 +1,197 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Sphere Light Helper Functions
+
+// Note: Light vector information outputted to allow for no duplicate math for visibility weighting.
+float sphereLightCalcPositionalWeight(SphereLight sphereLight, vec3 position, inout vec3 lightVector)
+{
+  lightVector = sphereLight.position - position;
+
+  const float lightDistance2 = squareLength(lightVector);
+
+  // Note: Treat the light as a point light and get the incoming luminance to the viewer
+  return safePositiveDivide(
+    calcBt709Luminance(sphereLightCalcPower(sphereLight) / (4.0f * pi)),
+    lightDistance2,
+    lightWeightEpsilon
+  );
+}
+
+bool sphereLightCalcVisibilityWeight(SphereLight sphereLight, f16vec3 triangleNormal, vec3 lightVector)
+{
+  // Check if the sphere light is completely hidden beneath the surface defined by the triangle normal.
+  const bool frontSideSphere = dot(lightVector, vec3(triangleNormal)) > float(-sphereLight.radius);
+
+  return frontSideSphere;
+}
+
+// Sphere Light Functions
+
+SphereLight sphereLightCreate(DecodedPolymorphicLight decodedPolymorphicLight)
+{
+  // Decode the Sphere Light from the packed memory representation
+  // Note: Light type is known in advance
+
+  SphereLight sphereLight;
+
+  const uint32_t data00 = decodedPolymorphicLight.data0.x;
+  const uint32_t data01 = decodedPolymorphicLight.data0.y;
+  const uint32_t data02 = decodedPolymorphicLight.data0.z;
+  const u16vec2 data03 = unpack16(decodedPolymorphicLight.data0.w);
+
+  sphereLight.position = vec3(uintBitsToFloat(data00), uintBitsToFloat(data01), uintBitsToFloat(data02));
+  sphereLight.radius = uint16BitsToHalf(data03.x);
+  sphereLight.radiance = decodedPolymorphicLight.radiance;
+  sphereLight.shaping = decodedPolymorphicLight.shaping;
+
+  return sphereLight;
+}
+
+float sphereLightCalcSurfaceArea(SphereLight sphereLight)
+{
+  return 4.0f * pi * square(float(sphereLight.radius));
+}
+
+// Note: This does not take shaping into account.
+vec3 sphereLightCalcPower(SphereLight sphereLight)
+{
+  // Integrate over the cosine-weighted hemisphere of directions at each point and the sphere's area
+
+  return sphereLightCalcSurfaceArea(sphereLight) * pi * sphereLight.radiance;
+}
+
+// Note: This does not take shaping into account.
+float sphereLightCalcWeight(SphereLight sphereLight, MinimalSurfaceInteraction viewSurfaceInteraction)
+{
+  vec3 lightVector;
+  const float positionalWeight = sphereLightCalcPositionalWeight(sphereLight, viewSurfaceInteraction.position, lightVector);
+  const bool visibilityWeight = sphereLightCalcVisibilityWeight(sphereLight, viewSurfaceInteraction.triangleNormal, lightVector);
+
+  // Note: Ideally this if statement is re-ordered to avoid the calculation of the positional weight when the visibility test fails now that the logic has been abstracted
+  // into functions.
+  if (visibilityWeight) {
+    return positionalWeight;
+  } else {
+    return 0.0f;
+  }
+}
+
+float sphereLightCalcWeight(SphereLight sphereLight, VolumeInteraction viewVolumeInteraction)
+{
+  vec3 lightVector;
+  const float positionalWeight = sphereLightCalcPositionalWeight(sphereLight, viewVolumeInteraction.position, lightVector);
+
+  return positionalWeight;
+}
+
+float16_t sphereLightCalcShaping(SphereLight sphereLight, f16vec3 lightToViewDirection)
+{
+  return lightShapingCalcRadialFalloff(sphereLight.shaping, lightToViewDirection);
+}
+
+LightSample sphereLightSampleArea(SphereLight sphereLight, f16vec2 sampleCoordinates, vec3 position)
+{
+  const vec3 lightVector = sphereLight.position - position;
+  const float lightDistance2 = squareLength(lightVector);
+  const float lightDistance = sqrt(lightDistance2);
+  const float16_t radius2 = square(sphereLight.radius);
+
+  // Note: Sampling based on PBRT's solid angle sphere sampling, resulting in fewer rays occluded by the light itself,
+  // ignoring special case for when viewing inside the light (which should just use normal spherical area sampling)
+  // for performance. Similarly condition ignored in PDF calculation as well.
+
+  // Compute theta and phi for cone sampling
+
+  const float sinThetaMax2 = max(float(radius2) / lightDistance2, lightSamplingEpsilon);
+  const float cosThetaMax = sqrt(max(lightSamplingEpsilon, 1.0f - sinThetaMax2));
+  const float16_t phi = float16_t(twoPi) * sampleCoordinates.x;
+  const float cosTheta = mix(float(cosThetaMax), float(1.0f), float(sampleCoordinates.y));
+  const float16_t sinTheta = float16_t(sqrt(max(0.0f, 1.0f - square(cosTheta))));
+
+  // Calculate the alpha value representing the spherical coordinates of the sample point
+
+  const float dc = lightDistance;
+  const float dc2 = lightDistance2;
+  const float ds = dc * cosTheta - sqrt(max(lightSamplingEpsilon, radius2 - dc2 * sinTheta * sinTheta));
+  const float16_t cosAlpha = float16_t((dc2 + radius2 - square(ds)) / (2.0f * dc * sphereLight.radius));
+  const float16_t sinAlpha = sqrt(max(float16_t(0.0f), float16_t(1.0f) - square(cosAlpha)));
+
+  // Construct a coordinate frame to sample in around the direction of the light vector
+
+  const f16vec3 sampleSpaceNormal = f16vec3(normalize(lightVector));
+  f16vec3 sampleSpaceTangent;
+  f16vec3 sampleSpaceBitangent;
+  calcOrthonormalBasis(sampleSpaceNormal, sampleSpaceTangent, sampleSpaceBitangent);
+
+  // Calculate sample position and normal on the sphere
+
+  const float16_t sinPhi = sin(phi);
+  const float16_t cosPhi = cos(phi);
+
+  const f16vec3 sphereNormalSample = normalize(calcSphericalDirection(
+      sinAlpha, cosAlpha, sinPhi, cosPhi, -sampleSpaceTangent, -sampleSpaceBitangent, -sampleSpaceNormal));
+  const vec3 spherePositionSample = sphereLight.position + sphereLight.radius * sphereNormalSample;
+  // Note: Reprojection for position to minimize error here skipped for performance
+
+  // Calculate the pdf
+
+  // Note: The cone already represents a solid angle effectively so its pdf is already a solid angle pdf
+  // PDF = 1 / (2pi * (1 - cosThetaMax)) = (1 + cosThetaMax) / (2pi * (1 - sinThetaMax2))
+  // Use the last expression to improve precision
+  const float solidAnglePdf = (1.0f + cosThetaMax) / (twoPi * sinThetaMax2);
+
+  // Calculate light shaping
+
+  const f16vec3 lightToViewDirection = f16vec3(normalize(position - spherePositionSample));
+  const float16_t lightShaping = sphereLightCalcShaping(sphereLight, lightToViewDirection);
+
+  // Create the light sample
+
+  LightSample lightSample;
+
+  lightSample.position = spherePositionSample;
+  lightSample.normal = sphereNormalSample;
+  lightSample.radiance = sphereLight.radiance * lightShaping;
+  lightSample.solidAnglePdf = solidAnglePdf;
+
+  return lightSample;
+}
+
+LightSample sphereLightSampleArea(
+  SphereLight sphereLight, f16vec2 sampleCoordinates,
+  MinimalSurfaceInteraction viewSurfaceInteraction)
+{
+  return sphereLightSampleArea(
+    sphereLight, sampleCoordinates,
+    viewSurfaceInteraction.position);
+}
+
+LightSample sphereLightSampleArea(
+  SphereLight sphereLight, f16vec2 sampleCoordinates,
+  VolumeInteraction viewVolumeInteraction)
+{
+  return sphereLightSampleArea(
+    sphereLight, sampleCoordinates,
+    viewVolumeInteraction.position);
+}

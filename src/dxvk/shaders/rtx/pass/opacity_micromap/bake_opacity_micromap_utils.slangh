@@ -1,0 +1,280 @@
+/*
+* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx\utility\common.slangh"
+
+uint extractEvenBits(uint x) 
+{
+  x &= 0x55555555;
+  x = (x | (x >> 1)) & 0x33333333;
+  x = (x | (x >> 2)) & 0x0f0f0f0f;
+  x = (x | (x >> 4)) & 0x00ff00ff;
+  x = (x | (x >> 8)) & 0x000fffff;
+  return x;
+}
+
+// # Calculate exclusive prefix or (log(n) XOR's and SHF's)
+uint prefixEor(uint x) 
+{
+  x ^= x >> 1;
+  x ^= x >> 2;
+  x ^= x >> 4;
+  x ^= x >> 8;
+  return x;
+}
+
+// Convert distance along the curve to discrete barycentrics
+uint3 micromeshDistToBary(uint dist, uint subdivisionLevel) 
+{
+  uint d = dist;
+
+  // Deinterleave bits from x into even and odd halves
+  d = ((d >> 1) & 0x22222222u) | ((d << 1) & 0x44444444u) | (d & 0x99999999u);
+  d = ((d >> 2) & 0x0c0c0c0cu) | ((d << 2) & 0x30303030u) | (d & 0xc3c3c3c3u);
+  d = ((d >> 4) & 0x00f000f0u) | ((d << 4) & 0x0f000f00u) | (d & 0xf00ff00fu);
+  d = ((d >> 8) & 0x0000ff00u) | ((d << 8) & 0x00ff0000u) | (d & 0xff0000ffu);
+
+  uint f = (d & 0xffffu) | ((d << 16) & ~d);
+
+  // Calculate 2 exclusive prefix XOR in parallel in higher and lower 16-bit halves of the argument
+  f ^= (f >> 1) & 0x7fff7fffu;
+  f ^= (f >> 2) & 0x3fff3fffu;
+  f ^= (f >> 4) & 0x0fff0fffu;
+  f ^= (f >> 8) & 0x00ff00ffu;
+
+  uint t = (f ^ d) >> 16;
+
+  uint3 bary = uint3 (
+    ((f & ~t) | (d & ~t) | (~d & ~f & t)) & 0xffffu,
+    ((f >> 16) ^ d) & 0xffffu,
+    ((~f & ~t) | (d & ~t) | (~d & f & t)) & 0xffffu );
+
+  return bary;
+}
+
+float3 discreteBary2ToFloat3Bary(uint3 uBary, float rcpNumSubdivisions) 
+{
+  float3 bary;
+  bary.y = uBary.x * rcpNumSubdivisions;
+  bary.z = uBary.y * rcpNumSubdivisions;
+  bary.x = 1 - bary.y - bary.z;
+
+  return bary;
+}
+
+float2 calculateTriangleTexcoordBBoxMin(float2 vertexTexcoords[3])
+{
+  return min(min(vertexTexcoords[0], vertexTexcoords[1]), vertexTexcoords[2]);
+}
+
+float2 calculateTriangleTexcoordBBoxMax(float2 vertexTexcoords[3])
+{
+  return max(max(vertexTexcoords[0], vertexTexcoords[1]), vertexTexcoords[2]);
+}
+
+float calculateTriangleDiameterAlongTexcoordAxis(float2 vertexTexcoords[3])
+{
+  float2 edgeTexcoordLengths[3] = {
+    abs(vertexTexcoords[1] - vertexTexcoords[0]),
+    abs(vertexTexcoords[2] - vertexTexcoords[1]),
+    abs(vertexTexcoords[2] - vertexTexcoords[0]) };
+
+  float maxTexcoordLength = 0;
+
+  for (int i = 0; i < 3; i++) 
+    maxTexcoordLength = max(max(edgeTexcoordLengths[i].x, edgeTexcoordLengths[i].y), maxTexcoordLength);
+
+  return maxTexcoordLength;
+}
+
+void calculateMicrotriangleTexcoords(uint3 uBary, 
+                                     float rcpNumSubdivisions, 
+                                     float2 vertexTexcoords[3], 
+                                     out float2 microTriangleCenterTexcoord, 
+                                     out float2 microTriangleVertexTexcoords[3],
+                                     out float3 microTriangleCenterBary, 
+                                     out float3 microTriangleVertexBarys[3]) 
+{
+  // Flipped middle triangles have even number of LSBs set
+  bool isMiddleFlipped = ((uBary.x ^ uBary.y ^ uBary.z) & 1) == 0;
+  int32_t edgeDir = 1;
+
+  if (isMiddleFlipped) 
+  {
+    uBary.x += 1;
+    uBary.y += 1;
+    edgeDir = -1;
+  }
+
+  // Calculate vertex barycentrics
+  microTriangleVertexBarys[0] = discreteBary2ToFloat3Bary(uBary, rcpNumSubdivisions);
+  uBary.x += edgeDir;
+  microTriangleVertexBarys[1] = discreteBary2ToFloat3Bary(uBary, rcpNumSubdivisions);
+  uBary.x -= edgeDir;
+  uBary.y += edgeDir;
+  microTriangleVertexBarys[2] = discreteBary2ToFloat3Bary(uBary, rcpNumSubdivisions);
+
+  microTriangleVertexTexcoords[0] = interpolateHitAttribute(vertexTexcoords, microTriangleVertexBarys[0]);
+  microTriangleVertexTexcoords[1] = interpolateHitAttribute(vertexTexcoords, microTriangleVertexBarys[1]);
+  microTriangleVertexTexcoords[2] = interpolateHitAttribute(vertexTexcoords, microTriangleVertexBarys[2]);
+
+  microTriangleCenterBary = (microTriangleVertexBarys[0] + microTriangleVertexBarys[1] + microTriangleVertexBarys[2]) / 3;
+  microTriangleCenterTexcoord = interpolateHitAttribute(vertexTexcoords, microTriangleCenterBary);
+}
+
+// Calculates texcordinates for the center and corners of a microtriangle
+void micromeshDistToTexcoord(uint dist,
+                             uint subdivisionLevel,
+                             float rcpNumSubdivisions,
+                             float2 vertexTexcoords[3],
+                             out float2 microTriangleCenterTexcoord,
+                             out float2 microTriangleVertexTexcoords[3],
+                             out float3 microTriangleCenterBary, 
+                             out float3 microTriangleVertexBarys[3]) 
+{
+  uint3 uBary = micromeshDistToBary(dist, subdivisionLevel);
+
+  // Get uv for the center of the microtriangle
+  calculateMicrotriangleTexcoords(uBary, rcpNumSubdivisions, vertexTexcoords,
+                                  microTriangleCenterTexcoord, microTriangleVertexTexcoords,
+                                  microTriangleCenterBary, microTriangleVertexBarys);
+}
+
+float3 calculateBarySnappedToTriangleEdge(float2 texcoords,
+                                          uint2 edgeVertexIndices, 
+                                          float2 vertexTexcoords[3])
+{
+  float2 baseTexcoord = vertexTexcoords[edgeVertexIndices.x];
+  float2 texcoordEdge = vertexTexcoords[edgeVertexIndices.y] - vertexTexcoords[edgeVertexIndices.x];
+  float2 tcvbase = texcoords - baseTexcoord;
+  float t = dot(tcvbase, texcoordEdge) / dot(texcoordEdge, texcoordEdge);
+  float3 bary = 0;
+
+  // Snap to a vertex
+  if (t <= 0) 
+    bary[edgeVertexIndices.x] = 1;
+  else if (t >= 1)
+    bary[edgeVertexIndices.y] = 1;
+  // Snap to the projected point on a triangle edge
+  else  
+  {
+    bary[edgeVertexIndices.y] = t;
+    bary[edgeVertexIndices.x] = 1 - t;
+  }      
+  
+  return bary;
+}
+
+// Converts a texcoord to barycentric coordinates
+// Returns true if the texcoord is within the triangle and the calculated barycentrics are properly calculated
+// Otherwise returns false and bary for texcoords that is snapped to a triangle edge
+// Ref: https://www.scratchapixel.com/lessons/3d-basic-rendering/ray-tracing-rendering-a-triangle/barycentric-coordinates
+bool texcoordToBary(float2 texcoords,
+                    float2 vertexTexcoords[3],
+                    out float3 bary)
+{
+  float3 v0v1 = float3(vertexTexcoords[1] - vertexTexcoords[0], 0); 
+  float3 v0v2 = float3(vertexTexcoords[2] - vertexTexcoords[0], 0); 
+  float3 v0tc = float3(texcoords - vertexTexcoords[0], 0);
+  float3 N = cross(v0v1, v0v2);
+  float denom = dot(N, N);
+
+  // Triangle vertices alias their texcoords
+  // Snap the bary to the triangle edge
+  if (denom < 1e-6)
+  {
+    float2 v1v2 = vertexTexcoords[2] - vertexTexcoords[1]; 
+
+    uint2 edgeVertexIndices;
+    float2 texcoordEdge;
+
+    // Check if at least one vertex pair does not alias
+    if (dot(v0v1.xy, v0v1.xy) > 0)
+      edgeVertexIndices = uint2(0,1);
+    else if (dot(v0v2.xy, v0v2.xy) > 0)
+      edgeVertexIndices = uint2(0,2);
+    else if (dot(v1v2.xy, v1v2.xy) > 0)
+      edgeVertexIndices = uint2(1,2);
+    else  // All vertices alias
+    {
+      bary = float3(1, 1, 1) / 3;
+      return false;
+    }
+
+    bary = calculateBarySnappedToTriangleEdge(texcoords, edgeVertexIndices, vertexTexcoords);
+
+    return false;    
+  }
+
+  float3 C; //vector perpendicular to triangle's plane 
+
+  // Calculate barycentrics as a ratio of subtriangle areas to the triangle area
+
+  bool areBarysValid = true;
+
+  C = cross(v0tc, v0v2);
+  bary.y = dot(N, C) / denom;
+  if (bary.y < 0 || bary.y > 1)
+    areBarysValid = false; 
+  
+  C = cross(v0v1, v0tc);
+  bary.z = dot(N, C) / denom;
+  if (bary.z < 0 || bary.y + bary.z > 1)
+    areBarysValid = false; 
+
+  bary.x = 1 - bary.y - bary.z;
+
+  // Barys are invalid
+  // Snap bary to a triangle edge
+  if (!areBarysValid)
+  {
+    // Find the closesest vertex pair to the texcoords
+    
+    float2 indexDistSq[3];  // {index, distance squared}
+    float maxDistSq = 0;
+    for (uint i = 0; i < 3; i++) 
+    {
+      float2 toTexcoords = texcoords - vertexTexcoords[i];
+      indexDistSq[i] = float2(i, dot(toTexcoords, toTexcoords));
+      maxDistSq = max(maxDistSq, indexDistSq[i].y);
+    }
+
+    uint2 edgeVertexIndices;
+
+    for (uint i = 0; i < 3; i++) 
+    {
+      if (indexDistSq[i].y == maxDistSq)
+      {
+        edgeVertexIndices = uint2(uint(indexDistSq[i].x) + 1, uint(indexDistSq[i].x) + 2) % 3; 
+        break;
+      }
+    }
+
+    bary = calculateBarySnappedToTriangleEdge(texcoords, edgeVertexIndices, vertexTexcoords);
+
+    return false;    
+    
+  }
+
+  return true; 
+}

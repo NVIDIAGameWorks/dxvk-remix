@@ -241,7 +241,7 @@ namespace dxvk {
     for (uint32_t i = 0; i < m_queryPoolSize; i++) {
       VkEvent event = VK_NULL_HANDLE;
 
-      if (!m_device->features().extHostQueryReset.hostQueryReset
+      if (!m_device->features().vulkan12Features.hostQueryReset
        && m_vkd->vkCreateEvent(m_vkd->device(), &eventInfo, nullptr, &event) != VK_SUCCESS) {
         Logger::err("DXVK: Failed to create query reset event");
         return;

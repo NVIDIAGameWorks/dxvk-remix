@@ -1,0 +1,496 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Polymorphic Surface Material Interaction Functions
+
+uint8_t polymorphicSurfaceMaterialInteractionGetTypeHelper(PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction)
+{
+  return polymorphicSurfaceMaterialInteraction.type;
+}
+
+PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionCreateInternal(OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction)
+{
+  // Encode the Opaque Surface Material Interaction into its polymorphic representation
+
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction;
+
+  polymorphicSurfaceMaterialInteraction.shadingNormal = opaqueSurfaceMaterialInteraction.shadingNormal;
+  polymorphicSurfaceMaterialInteraction.emissiveRadiance = opaqueSurfaceMaterialInteraction.emissiveRadiance;
+  polymorphicSurfaceMaterialInteraction.vdata0 = opaqueSurfaceMaterialInteraction.albedo;
+  polymorphicSurfaceMaterialInteraction.vdata1 = opaqueSurfaceMaterialInteraction.baseReflectivity;
+  polymorphicSurfaceMaterialInteraction.fdata0 = opaqueSurfaceMaterialInteraction.thinFilmThickness > 0.0 ? -opaqueSurfaceMaterialInteraction.thinFilmThickness : opaqueSurfaceMaterialInteraction.opacity;
+  polymorphicSurfaceMaterialInteraction.fdata1 = opaqueSurfaceMaterialInteraction.isotropicRoughness;
+  polymorphicSurfaceMaterialInteraction.fdata2 = opaqueSurfaceMaterialInteraction.anisotropicRoughness.x;
+  polymorphicSurfaceMaterialInteraction.fdata3 = opaqueSurfaceMaterialInteraction.anisotropicRoughness.y;
+  polymorphicSurfaceMaterialInteraction.fdata4 = opaqueSurfaceMaterialInteraction.normalDetail;
+
+  polymorphicSurfaceMaterialInteraction.type = surfaceMaterialTypeOpaque;
+
+  return polymorphicSurfaceMaterialInteraction;
+}
+
+PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionCreateInternal(TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction)
+{
+  // Encode the Translucent Surface Material Interaction into its polymorphic representation
+
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction;
+
+  polymorphicSurfaceMaterialInteraction.shadingNormal = translucentSurfaceMaterialInteraction.shadingNormal;
+  polymorphicSurfaceMaterialInteraction.emissiveRadiance = translucentSurfaceMaterialInteraction.emissiveRadiance;
+  polymorphicSurfaceMaterialInteraction.vdata0 = translucentSurfaceMaterialInteraction.transmittanceColor;
+  polymorphicSurfaceMaterialInteraction.vdata1 = translucentSurfaceMaterialInteraction.diffuseColor;
+  polymorphicSurfaceMaterialInteraction.fdata0 = translucentSurfaceMaterialInteraction.baseReflectivity;
+  polymorphicSurfaceMaterialInteraction.fdata1 = translucentSurfaceMaterialInteraction.refractiveIndex;
+  polymorphicSurfaceMaterialInteraction.fdata2 = translucentSurfaceMaterialInteraction.thicknessOrMeasurementDistance;
+  polymorphicSurfaceMaterialInteraction.fdata3 = translucentSurfaceMaterialInteraction.diffuseOpacity;
+  polymorphicSurfaceMaterialInteraction.fdata4 = translucentSurfaceMaterialInteraction.normalDetail;
+  polymorphicSurfaceMaterialInteraction.idata0 = translucentSurfaceMaterialInteraction.sourceSurfaceMaterialIndex;
+  polymorphicSurfaceMaterialInteraction.bdata0 = translucentSurfaceMaterialInteraction.flags;
+  polymorphicSurfaceMaterialInteraction.type = surfaceMaterialTypeTranslucent;
+
+  return polymorphicSurfaceMaterialInteraction;
+}
+
+PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionCreateInternal(RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction)
+{
+  // Encode the Ray Portal Surface Material Interaction into its polymorphic representation
+
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction;
+
+  polymorphicSurfaceMaterialInteraction.shadingNormal = 0;
+  polymorphicSurfaceMaterialInteraction.emissiveRadiance = 0;
+  polymorphicSurfaceMaterialInteraction.vdata0 = rayPortalSurfaceMaterialInteraction.mask.xyz;
+  polymorphicSurfaceMaterialInteraction.vdata1 = 0;
+  polymorphicSurfaceMaterialInteraction.fdata0 = rayPortalSurfaceMaterialInteraction.mask.w;
+  polymorphicSurfaceMaterialInteraction.fdata1 = 0;
+  polymorphicSurfaceMaterialInteraction.fdata2 = 0;
+  polymorphicSurfaceMaterialInteraction.idata0 = rayPortalSurfaceMaterialInteraction.rayPortalIndex | (uint16_t(rayPortalSurfaceMaterialInteraction.isInsidePortal) << 8);
+
+  polymorphicSurfaceMaterialInteraction.type = surfaceMaterialTypeRayPortal;
+
+  return polymorphicSurfaceMaterialInteraction;
+}
+
+// Note: Forward declaration to make up for include order differences.
+uint8_t gBufferMemoryPolymorphicSurfaceMaterialInteractionGetTypeHelper(
+  GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfaceMaterialInteraction);
+
+PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionCreate(
+  GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfaceMaterialInteraction)
+{
+  const uint8_t polymorphicType =
+    gBufferMemoryPolymorphicSurfaceMaterialInteractionGetTypeHelper(gBufferMemoryPolymorphicSurfaceMaterialInteraction);
+
+  // Construct the respective Surface Material Interaction type to create the Polymorphic Surface Material Interaction
+
+  switch (uint(polymorphicType))
+  {
+  default:
+  case uint(surfaceMaterialTypeOpaque):
+    const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
+      opaqueSurfaceMaterialInteractionCreate(gBufferMemoryPolymorphicSurfaceMaterialInteraction);
+
+    return polymorphicSurfaceMaterialInteractionCreateInternal(opaqueSurfaceMaterialInteraction);
+  case uint(surfaceMaterialTypeTranslucent):
+    const TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction =
+      translucentSurfaceMaterialInteractionCreate(gBufferMemoryPolymorphicSurfaceMaterialInteraction);
+
+    return polymorphicSurfaceMaterialInteractionCreateInternal(translucentSurfaceMaterialInteraction);
+  case uint(surfaceMaterialTypeRayPortal):
+    const RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction =
+      rayPortalSurfaceMaterialInteractionCreate(gBufferMemoryPolymorphicSurfaceMaterialInteraction);
+
+    return polymorphicSurfaceMaterialInteractionCreateInternal(rayPortalSurfaceMaterialInteraction);
+  }
+}
+
+SurfaceMaterialInteractionLobeInformation polymorphicSurfaceMaterialInteractionGetLobeInformation(
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction)
+{
+  const uint8_t polymorphicType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
+
+  switch (uint(polymorphicType))
+  {
+  default:
+  case uint(surfaceMaterialTypeOpaque):
+    const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return opaqueSurfaceMaterialInteractionGetLobeInformation(opaqueSurfaceMaterialInteraction);
+  case uint(surfaceMaterialTypeTranslucent):
+    const TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction = translucentSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return translucentSurfaceMaterialInteractionGetLobeInformation(translucentSurfaceMaterialInteraction);
+  case uint(surfaceMaterialTypeRayPortal):
+    const RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction = rayPortalSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return rayPortalSurfaceMaterialInteractionGetLobeInformation(rayPortalSurfaceMaterialInteraction);
+  }
+}
+
+SurfaceMaterialInteractionSample polymorphicSurfaceMaterialInteractionCalcDiffuseReflectionSample(
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
+  inout RNG randomState,
+  MinimalRayInteraction minimalRayInteraction)
+{
+  const f16vec4 tangentToWorldSpaceQuaternion =
+    quaternionCreateOrientation(materialTangentSpaceNormal, polymorphicSurfaceMaterialInteraction.shadingNormal);
+
+  const uint8_t polymorphicType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
+
+  switch (uint(polymorphicType))
+  {
+  default:
+  case uint(surfaceMaterialTypeOpaque):
+    const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSample(opaqueSurfaceMaterialInteraction, randomState, tangentToWorldSpaceQuaternion, minimalRayInteraction);
+  case uint(surfaceMaterialTypeTranslucent):
+    const TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction = translucentSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return translucentSurfaceMaterialInteractionCalcDiffuseReflectionSample(translucentSurfaceMaterialInteraction, minimalRayInteraction);
+  case uint(surfaceMaterialTypeRayPortal):
+    const RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction = rayPortalSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return rayPortalSurfaceMaterialInteractionCalcDiffuseReflectionSample(rayPortalSurfaceMaterialInteraction, minimalRayInteraction);
+  }
+}
+
+SurfaceMaterialInteractionSample polymorphicSurfaceMaterialInteractionCalcSpecularReflectionSample(
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
+  inout RNG randomState,
+  MinimalRayInteraction minimalRayInteraction,
+  bool insideMedium)
+{
+  const f16vec4 tangentToWorldSpaceQuaternion =
+    quaternionCreateOrientation(materialTangentSpaceNormal, polymorphicSurfaceMaterialInteraction.shadingNormal);
+
+  const uint8_t polymorphicType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
+
+  switch (uint(polymorphicType))
+  {
+  default:
+  case uint(surfaceMaterialTypeOpaque):
+    const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return opaqueSurfaceMaterialInteractionCalcSpecularReflectionSample(opaqueSurfaceMaterialInteraction, randomState, tangentToWorldSpaceQuaternion, minimalRayInteraction);
+  case uint(surfaceMaterialTypeTranslucent):
+    const TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction = translucentSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return translucentSurfaceMaterialInteractionCalcSpecularReflectionSample(translucentSurfaceMaterialInteraction, tangentToWorldSpaceQuaternion, minimalRayInteraction, insideMedium);
+  case uint(surfaceMaterialTypeRayPortal):
+    const RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction = rayPortalSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return rayPortalSurfaceMaterialInteractionCalcSpecularReflectionSample(rayPortalSurfaceMaterialInteraction, minimalRayInteraction);
+  }
+}
+
+SurfaceMaterialInteractionSample polymorphicSurfaceMaterialInteractionCalcDiffuseTransmissionSample(
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
+  inout RNG randomState,
+  MinimalRayInteraction minimalRayInteraction,
+  inout bool insideMedium, inout bool penetrateSurface)
+{
+  const uint8_t polymorphicType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
+
+  switch (uint(polymorphicType))
+  {
+  default:
+  case uint(surfaceMaterialTypeOpaque):
+    const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return opaqueSurfaceMaterialInteractionCalcDiffuseTransmissionSample(opaqueSurfaceMaterialInteraction, minimalRayInteraction, insideMedium, penetrateSurface);
+  case uint(surfaceMaterialTypeTranslucent):
+    const TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction = translucentSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return translucentSurfaceMaterialInteractionCalcDiffuseTransmissionSample(translucentSurfaceMaterialInteraction, minimalRayInteraction, insideMedium, penetrateSurface);
+  case uint(surfaceMaterialTypeRayPortal):
+    const RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction = rayPortalSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return rayPortalSurfaceMaterialInteractionCalcDiffuseTransmissionSample(rayPortalSurfaceMaterialInteraction, minimalRayInteraction, insideMedium, penetrateSurface);
+  }
+}
+
+SurfaceMaterialInteractionSample polymorphicSurfaceMaterialInteractionCalcSpecularTransmissionSample(
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
+  inout RNG randomState,
+  MinimalRayInteraction minimalRayInteraction,
+  inout bool insideMedium, inout bool penetrateSurface)
+{
+  const uint8_t polymorphicType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
+
+  switch (uint(polymorphicType))
+  {
+  default:
+  case uint(surfaceMaterialTypeOpaque):
+    const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return opaqueSurfaceMaterialInteractionCalcSpecularTransmissionSample(opaqueSurfaceMaterialInteraction, minimalRayInteraction, insideMedium, penetrateSurface);
+  case uint(surfaceMaterialTypeTranslucent):
+    const TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction = translucentSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return translucentSurfaceMaterialInteractionCalcSpecularTransmissionSample(translucentSurfaceMaterialInteraction, minimalRayInteraction, insideMedium, penetrateSurface);
+  case uint(surfaceMaterialTypeRayPortal):
+    const RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction = rayPortalSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return rayPortalSurfaceMaterialInteractionCalcSpecularTransmissionSample(rayPortalSurfaceMaterialInteraction, minimalRayInteraction, insideMedium, penetrateSurface);
+  }
+}
+
+void polymorphicSurfaceMaterialInteractionCalcSample(
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
+  inout RNG randomState,
+  MinimalRayInteraction minimalRayInteraction,
+  inout SurfaceMaterialInteractionSample surfaceMaterialInteractionSample,
+  inout SurfaceMaterialInteractionLobeSample surfaceMaterialInteractionLobeSample,
+  inout bool insideMedium, inout bool penetrateSurface,
+  bool isPrimaryIndirectSample)
+{
+  const f16vec4 tangentToWorldSpaceQuaternion =
+    quaternionCreateOrientation(materialTangentSpaceNormal, polymorphicSurfaceMaterialInteraction.shadingNormal);
+
+  const uint8_t polymorphicType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
+
+  // Note: Both probability and dither sampling needs to update the random state here. So we remove the branch for
+  // probability sampling and always get the next blue noise to update the random state.
+  float16_t lobeRandom = float16_t(getNextSampleBlueNoise(randomState));
+  if (isPrimaryIndirectSample && cb.enableFirstBounceLobeProbabilityDithering && polymorphicType == surfaceMaterialTypeOpaque)
+  {
+    // Note: NRD team suggested to give lobe a 1/16 random tail, but this will cause some
+    // significant artifacts, such as muted some specular highlights. So we currently use
+    // bayer dither without random offset here.
+    lobeRandom = float16_t(bayer4x4(randomState.pixelIdx, randomState.temporalIdx));
+  }
+
+  switch (uint(polymorphicType))
+  {
+  default:
+  case uint(surfaceMaterialTypeOpaque):
+    const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    opaqueSurfaceMaterialInteractionCalcSample(
+      opaqueSurfaceMaterialInteraction, lobeRandom, randomState, tangentToWorldSpaceQuaternion, minimalRayInteraction,
+      surfaceMaterialInteractionSample, surfaceMaterialInteractionLobeSample,
+      insideMedium, penetrateSurface);
+
+    break;
+  case uint(surfaceMaterialTypeTranslucent):
+    const TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction = translucentSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    translucentSurfaceMaterialInteractionCalcSample(
+      translucentSurfaceMaterialInteraction, lobeRandom, tangentToWorldSpaceQuaternion, minimalRayInteraction,
+      surfaceMaterialInteractionSample, surfaceMaterialInteractionLobeSample,
+      insideMedium, penetrateSurface);
+
+    break;
+  case uint(surfaceMaterialTypeRayPortal):
+    const RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction = rayPortalSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    rayPortalSurfaceMaterialInteractionCalcSample(
+      rayPortalSurfaceMaterialInteraction, minimalRayInteraction,
+      surfaceMaterialInteractionSample, surfaceMaterialInteractionLobeSample,
+      insideMedium, penetrateSurface);
+
+    break;
+  }
+}
+
+void polymorphicSurfaceMaterialInteractionCalcPSRSample(
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
+  inout RNG randomState,
+  MinimalRayInteraction minimalRayInteraction,
+  inout SurfaceMaterialInteractionPSRSample surfaceMaterialInteractionReflectionPSRSample,
+  inout SurfaceMaterialInteractionPSRSample surfaceMaterialInteractionTransmissionPSRSample,
+  inout f16vec3 diffuseLayerWeight,
+  inout bool reflectionSelectedIntegrationSurface,
+  inout float16_t selectedIntegrationSurfacePdf,
+  inout bool insideMedium, inout bool penetrateSurface)
+{    
+  const uint8_t polymorphicType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
+
+  switch (uint(polymorphicType))
+  {
+  default:
+  case uint(surfaceMaterialTypeOpaque):
+    const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    opaqueSurfaceMaterialInteractionCalcPSRSample(
+      opaqueSurfaceMaterialInteraction, minimalRayInteraction,
+      surfaceMaterialInteractionReflectionPSRSample, surfaceMaterialInteractionTransmissionPSRSample,
+      diffuseLayerWeight, reflectionSelectedIntegrationSurface, selectedIntegrationSurfacePdf,
+      insideMedium, penetrateSurface);
+
+    break;
+  case uint(surfaceMaterialTypeTranslucent):
+    const TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction = translucentSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+    const float16_t random = getNextSampleBlueNoise(randomState);
+
+    translucentSurfaceMaterialInteractionCalcPSRSample(
+      translucentSurfaceMaterialInteraction, random, minimalRayInteraction,
+      surfaceMaterialInteractionReflectionPSRSample, surfaceMaterialInteractionTransmissionPSRSample,
+      diffuseLayerWeight, reflectionSelectedIntegrationSurface, selectedIntegrationSurfacePdf,
+      insideMedium, penetrateSurface);
+
+    break;
+  case uint(surfaceMaterialTypeRayPortal):
+    const RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction = rayPortalSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    rayPortalSurfaceMaterialInteractionCalcPSRSample(
+      rayPortalSurfaceMaterialInteraction, minimalRayInteraction,
+      surfaceMaterialInteractionReflectionPSRSample, surfaceMaterialInteractionTransmissionPSRSample,
+      diffuseLayerWeight, reflectionSelectedIntegrationSurface, selectedIntegrationSurfacePdf,
+      insideMedium, penetrateSurface);
+
+    break;
+  }
+}
+
+float polymorphicSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  f16vec3 inputDirection)
+{
+  const uint8_t polymorphicType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
+
+  switch (uint(polymorphicType))
+  {
+  default:
+  case uint(surfaceMaterialTypeOpaque):
+    const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
+  case uint(surfaceMaterialTypeTranslucent):
+    const TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction = translucentSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return translucentSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(translucentSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
+  case uint(surfaceMaterialTypeRayPortal):
+    const RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction = rayPortalSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return rayPortalSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(rayPortalSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
+  }
+}
+
+float polymorphicSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  f16vec3 inputDirection)
+{
+  const uint8_t polymorphicType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
+
+  switch (uint(polymorphicType))
+  {
+  default:
+  case uint(surfaceMaterialTypeOpaque):
+    const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
+  case uint(surfaceMaterialTypeTranslucent):
+    const TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction = translucentSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return translucentSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(translucentSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
+  case uint(surfaceMaterialTypeRayPortal):
+    const RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction = rayPortalSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return rayPortalSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(rayPortalSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
+  }
+}
+
+float polymorphicSurfaceMaterialInteractionCalcDiffuseTransmissionSolidAnglePdf(
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  f16vec3 inputDirection)
+{
+  const uint8_t polymorphicType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
+
+  switch (uint(polymorphicType))
+  {
+  default:
+  case uint(surfaceMaterialTypeOpaque):
+    const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return opaqueSurfaceMaterialInteractionCalcDiffuseTransmissionSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
+  case uint(surfaceMaterialTypeTranslucent):
+    const TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction = translucentSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return translucentSurfaceMaterialInteractionCalcDiffuseTransmissionSolidAnglePdf(translucentSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
+  case uint(surfaceMaterialTypeRayPortal):
+    const RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction = rayPortalSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return rayPortalSurfaceMaterialInteractionCalcDiffuseTransmissionSolidAnglePdf(rayPortalSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
+  }
+}
+
+float polymorphicSurfaceMaterialInteractionCalcSpecularTransmissionSolidAnglePdf(
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  f16vec3 inputDirection)
+{
+  const uint8_t polymorphicType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
+
+  switch (uint(polymorphicType))
+  {
+  default:
+  case uint(surfaceMaterialTypeOpaque):
+    const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return opaqueSurfaceMaterialInteractionCalcSpecularTransmissionSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
+  case uint(surfaceMaterialTypeTranslucent):
+    const TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction = translucentSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return translucentSurfaceMaterialInteractionCalcSpecularTransmissionSolidAnglePdf(translucentSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
+  case uint(surfaceMaterialTypeRayPortal):
+    const RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction = rayPortalSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return rayPortalSurfaceMaterialInteractionCalcSpecularTransmissionSolidAnglePdf(rayPortalSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
+  }
+}
+
+float polymorphicSurfaceMaterialInteractionCalcSolidAnglePdf(
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  f16vec3 inputDirection)
+{
+  const uint8_t polymorphicType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
+
+  switch (uint(polymorphicType))
+  {
+  default:
+  case uint(surfaceMaterialTypeOpaque):
+    const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return opaqueSurfaceMaterialInteractionCalcSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
+  case uint(surfaceMaterialTypeTranslucent):
+    const TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction = translucentSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return translucentSurfaceMaterialInteractionCalcSolidAnglePdf(translucentSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
+  case uint(surfaceMaterialTypeRayPortal):
+    const RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction = rayPortalSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+    return rayPortalSurfaceMaterialInteractionCalcSolidAnglePdf(rayPortalSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
+  }
+}
+
+f16vec3 polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction)
+{
+  return polymorphicSurfaceMaterialInteraction.emissiveRadiance;
+}

@@ -1,6 +1,8 @@
+subdir('tracy')
 subdir('util')
 subdir('spirv')
 subdir('vulkan')
+subdir('lssusd')
 subdir('dxvk')
 
 if get_option('enable_dxgi')

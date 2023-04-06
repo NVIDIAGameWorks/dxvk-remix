@@ -52,8 +52,7 @@ namespace dxvk {
     /**
      * \brief Checks for matching pipeline state
      * 
-     * \param [in] stateVector Graphics pipeline state
-     * \param [in] renderPass Render pass handle
+     * \param [in] state Compute pipeline state
      * \returns \c true if the specialization is compatible
      */
     bool isCompatible(const DxvkComputePipelineStateInfo& state) const {

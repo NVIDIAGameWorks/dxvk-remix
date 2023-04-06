@@ -1,6 +1,7 @@
 #include <cstring>
 
 #include "dxvk_hud.h"
+#include "dxvk_scoped_annotation.h"
 
 namespace dxvk::hud {
   
@@ -43,8 +44,11 @@ namespace dxvk::hud {
     addItem<HudDrawCallStatsItem>("drawcalls", -1, device);
     addItem<HudPipelineStatsItem>("pipelines", -1, device);
     addItem<HudMemoryStatsItem>("memory", -1, device);
+    addItem<HudRaytracingModeItem>("raytracingMode", -1);
     addItem<HudGpuLoadItem>("gpuload", -1, device);
     addItem<HudCompilerActivityItem>("compiler", -1, device);
+    addItem<HudRtxActivityItem>("rtx", -1, device);
+    addItem<HudScrollingLineItem>("line", -1);
   }
   
   
@@ -62,7 +66,9 @@ namespace dxvk::hud {
     const Rc<DxvkContext>&  ctx,
           VkSurfaceFormatKHR surfaceFormat,
           VkExtent2D        surfaceSize) {
-    this->setupRendererState(ctx, surfaceFormat, surfaceSize);
+    ZoneScoped;
+    ScopedGpuProfileZone(ctx, "Render DXVK HUD");
+    this->setupRendererState(ctx, surfaceFormat, surfaceSize);    
     this->renderHudElements(ctx);
     this->resetRendererState(ctx);
   }

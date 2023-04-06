@@ -1,0 +1,92 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Translucent Surface Material Functions
+
+TranslucentSurfaceMaterial translucentSurfaceMaterialCreate(uint16_t surfaceMaterialIndex, MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial)
+{
+  // Decode the Translucent Surface Material from the packed memory representation
+  // Note: Translucent type is known in advance
+
+  TranslucentSurfaceMaterial translucentSurfaceMaterial;
+
+  const u16vec2 data00 = unpack16(memoryPolymorphicSurfaceMaterial.data0.x);
+  const u16vec2 data01 = unpack16(memoryPolymorphicSurfaceMaterial.data0.y);
+  const u16vec2 data02 = unpack16(memoryPolymorphicSurfaceMaterial.data0.z);
+  const u16vec2 data03 = unpack16(memoryPolymorphicSurfaceMaterial.data0.w);
+  const u16vec2 data10 = unpack16(memoryPolymorphicSurfaceMaterial.data1.x);
+  const u16vec2 data11 = unpack16(memoryPolymorphicSurfaceMaterial.data1.y);
+  const u16vec2 data12 = unpack16(memoryPolymorphicSurfaceMaterial.data1.z);
+  // Note: Last two bits of data1.w (or data13 in this case) are reserved for common polymorphic type
+  const u16vec2 data13 = unpack16(memoryPolymorphicSurfaceMaterial.data1.w);
+
+  translucentSurfaceMaterial.normalTextureIndex = data00.x;
+  // Note: This potentially is not needed if more space is desired in the material as it can be derived from the IoR. It is simply included
+  // here for performance as it can be precomputed on the CPU.
+  translucentSurfaceMaterial.baseReflectivity = unorm8ToF16(uint8_t(data00.y));
+  // Note: Normalized on a range of [1, 3] as almost all physical IoRs used in translucent materials are within this range.
+  translucentSurfaceMaterial.refractiveIndex = unorm8ToF16(uint8_t(data00.y >> 8)) * float16_t(2.0f) + float16_t(1.0f);
+  // Todo: This should not be encoded as 3 16 bit floats, as a color it can be 8 bit unorms (or at the very least 16 bit unorms to improve precision
+  // usage). No need to change this for now though, but if more bits are needed in the translucent material in the future this would be a good place
+  // to start as there are really 24 bits free here.
+  translucentSurfaceMaterial.transmittanceColor = f16vec3(uint16BitsToHalf(data01.x), uint16BitsToHalf(data01.y), uint16BitsToHalf(data02.x));
+  // Note: This field can be broken up into an emissive color and intensity to save 8 bits potentially if needed.
+  translucentSurfaceMaterial.emissiveRadiance = f16vec3(uint16BitsToHalf(data02.y), uint16BitsToHalf(data03.x), uint16BitsToHalf(data03.y));
+  // Note: Sign bit here contains a flag which indicates if this is a thick or thin translucent material. This will break down however if the thickness
+  // or measruement distance is ever 0, as the comparisons we use cannot detect the sign of 0. No material should actually use such a value though as it
+  // makes no sense for a measurement distance and is debatably useless for a thin surface just the same (as it'd make it invisible).
+  translucentSurfaceMaterial.thicknessOrMeasurementDistance = uint16BitsToHalf(data10.x);
+  translucentSurfaceMaterial.transmittanceOrDiffuseTextureIndex = data10.y;
+  translucentSurfaceMaterial.sourceSurfaceMaterialIndex = surfaceMaterialIndex;
+  translucentSurfaceMaterial.flags = (data13.x & 0xFF);
+
+  return translucentSurfaceMaterial;
+}
+
+// Note: This function should only be called on thick translucent surfaces and must be checked in advance.
+f16vec3 translucentSurfaceMaterialEvalVolumeTransmittance(
+  TranslucentSurfaceMaterial translucentSurfaceMaterial,
+  float distance)
+{
+  // Note: Ideally we shouldn't be constantly decoding this on the GPU, but for now this is fine as we don't
+  // really have a good place to store the attenuation coefficient without risking precision issues (though 16
+  // bit floats might be acceptable).
+  // Note: thicknessOrMeasurementDistance here is assumed to be positive always, as this code path is intended to only
+  // be called on thick translucent surfaces (thin ones will have a negative thickness here instead).
+  const vec3 attenuationCoefficient = transmittanceToAttenuationCoefficient(
+    translucentSurfaceMaterial.transmittanceColor,
+    translucentSurfaceMaterial.thicknessOrMeasurementDistance);
+  const f16vec3 volumeAttenuation = evalBeerLambertAttenuation(attenuationCoefficient, distance);
+
+  return volumeAttenuation;
+}
+
+f16vec3 translucentSurfaceMaterialEvalInfiniteVolumeTransmittance(TranslucentSurfaceMaterial translucentSurfaceMaterial)
+{
+  const vec3 attenuationCoefficient = transmittanceToAttenuationCoefficient(
+    translucentSurfaceMaterial.transmittanceColor,
+    translucentSurfaceMaterial.thicknessOrMeasurementDistance);
+  const f16vec3 volumeAttenuation = evalBeerLambertInfiniteAttenuation(attenuationCoefficient);
+
+  return volumeAttenuation;
+}
