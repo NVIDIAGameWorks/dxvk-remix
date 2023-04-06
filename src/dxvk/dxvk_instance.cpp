@@ -163,7 +163,7 @@ namespace dxvk {
     static const std::string shaderDumpInfoDir = "shaderDebugInfo/";
     env::createDirectory(shaderDumpInfoDir);
 
-    std::string sdiFilename = str::format(shaderDumpInfoDir, std::hex, sdiIdentifier.id[0], "-", sdiIdentifier.id[1], ".nvdbg");
+    std::string sdiFilename = str::format(shaderDumpInfoDir, std::uppercase, std::setfill('0'), std::setw(16), std::hex, sdiIdentifier.id[0], "-", sdiIdentifier.id[1], "-0000", ".nvdbg");
 
     std::ofstream sdiFile = std::ofstream(str::tows(sdiFilename.c_str()).c_str(), std::ios::binary);
     if (sdiFile.is_open()) {
