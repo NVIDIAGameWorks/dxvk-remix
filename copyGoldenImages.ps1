@@ -4,30 +4,31 @@ function Usage {
   write-host "  <path_to_source_tests_folder> - path must end with the word 'tests', i.e. e:\data\tests'"
 }
 
-$sourceDirectory=$args[0]
+$sourceDir=$args[0]
 
-if ($sourceDirectory.substring($sourceDirectory.length - 5, 5) -ne "tests")
+if ($sourceDir.substring($sourceDir.length - 5, 5) -ne "tests")
 {
   Usage
   exit
 }
 
-write-host "Renaming \Results to \Golden folders in $sourceDirectory..."
-Get-ChildItem -Directory -Filter Results -Recurse $sourceDirectory |
-  Rename-Item -NewName { $_.name -replace 'Results', 'Golden' }  > $null
+$sourceDir = [IO.Path]::Combine($sourceDir, "rtx\\dxvk_rt_testing")
 
-write-host "Copying -rtxImagePostTonemapping.pngs from input path to local folder preserving relative folder tree..."
-robocopy $sourceDirectory ./tests *rtxImagePostTonemapping.png /S > $null
+# relative path from this script to the destination
+$destDir = "tests/rtx/dxvk_rt_testing"
 
-write-host "Copying -rtxImageDebugView.pngs from input path to local folder preserving relative folder tree..."
-robocopy $sourceDirectory ./tests *rtxImageDebugView.png /S > $null
+Get-ChildItem $sourceDir -Recurse -Include "*_rtxImagePostTonemapping.png", "*_rtxImageDebugView.png", "*_rtxImageDxvkView.png" | ForEach-Object {
+    $sourcePath = $_.FullName
+    $relPath = $_.FullName.Substring($sourceDir.Length) -Replace "\\results\\", "\"
+	$relPath = $relPath.replace("apics", "goldens")
+    $destPath = Join-Path $destDir $relPath
+    $destFolder = Split-Path $destPath -Parent
+  
+    if (!(Test-Path $destFolder)) {
+		Write-Host "$destFolder dir didn't exist, creating"
+        New-Item -ItemType Directory -Path $destFolder | Out-Null
+    }
 
-write-host "Copying -rtxImageDxvkView.pngs from input path to local folder preserving relative folder tree..."
-robocopy $sourceDirectory ./tests *rtxImageDxvkView.png /S > $null
-
-write-host "Renaming \Golden to \Results folders in $sourceDirectory..."
-Get-ChildItem -Directory -Filter Golden -Recurse $sourceDirectory |
-  Rename-Item -NewName { $_.name -replace 'Golden', 'Results' }  > $null
-
-write-host "Done"
-
+    Write-Host "Copying, $sourcePath ---> $destPath"
+    Copy-Item $sourcePath -Destination $destPath
+}
