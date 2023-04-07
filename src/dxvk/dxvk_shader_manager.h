@@ -253,8 +253,6 @@ namespace dxvk {
 
     ~ShaderManager();
 
-    void formatPath(std::string& path);
-
     bool compileShaders();
 
     Rc<DxvkShader> createShader(const ShaderInfo& info) {
@@ -276,9 +274,26 @@ namespace dxvk {
 
     static ShaderManager* s_instance;
 
-    std::string m_sourceRoot;
+    // Note: Relative paths from the source root (which may vary at runtime) to various folders and tools involved in shader compilation.
+    // These paths should be kept in sync with the project's structure if it changes.
+    const std::filesystem::path shaderFolderRelativePath{ "src/dxvk/shaders" };
+    const std::filesystem::path rtxShaderFolderRelativePath{ "src/dxvk/shaders/rtx" };
+    const std::filesystem::path rtxdiIncludeFolderRelativePath{ "submodules/rtxdi/rtxdi-sdk/include" };
+    const std::filesystem::path compileScriptRelativePath{ "scripts-common/compile_shaders.py" };
+    const std::filesystem::path glslangRelativePath{ "bin/glslangValidator.exe" };
+    const std::filesystem::path slangcRelativePath{ "bin/slangc.exe" };
+
+    std::filesystem::path m_sourceRootPath{ BUILD_SOURCE_ROOT };
+    std::filesystem::path m_tempFolderPath{ std::filesystem::temp_directory_path() };
+    // Note: Paths reduced to string in advance to avoid constant conversions to UTF-8 strings from path objects (paths should still be used
+    // whenever a path needs to be manipulated).
+    std::string m_tempFolder{ m_tempFolderPath.u8string() };
     std::string m_shaderFolder;
-    std::string m_tempFolder;
+    std::string m_rtxShaderFolder;
+    std::string m_rtxdiIncludeFolder;
+    std::string m_compileScript;
+    std::string m_glslang;
+    std::string m_slangc;
     bool m_recompileShadersOnLaunch = false;
     
     DxvkDevice* m_device;
