@@ -86,15 +86,19 @@ if get_option('buildtype') == 'release'
 endif
 
 if dxvk_is_ninja
-  # workarounds for our strange symbol name differences when embedding MDL, plus shader compile needs absolute source paths
+  # workarounds for our strange symbol name differences when embedding MDL
   add_global_arguments('/DBUILD_NINJA=1', language : 'cpp')
-  add_global_arguments('/DBUILD_NINJA_SOURCE_ROOT="' + meson.global_source_root().replace('\\', '/') + '/"', language : 'cpp')
   vs_project_defines += 'BUILD_NINJA=1;'
-  vs_project_defines += 'BUILD_NINJA_SOURCE_ROOT=' + meson.global_source_root().replace('\\', '/') + '/"' + ';'
 else
   add_global_arguments('/DBUILD_NINJA=0', language : 'cpp')
   vs_project_defines += 'BUILD_NINJA=0;'
 endif
+
+# Note: Runtime shader recompilation requires source paths based on the project root, so making a build-time define is the easiest way
+# to give it this information reliably for a local build (when distributing a build to others a manual source root must be specified in the runtime
+# configuration).
+add_global_arguments('/DBUILD_SOURCE_ROOT="' + meson.global_source_root().replace('\\', '/') + '/"', language : 'cpp')
+vs_project_defines += 'BUILD_SOURCE_ROOT=' + meson.global_source_root().replace('\\', '/') + '/"' + ';'
 
 # c++17 was added in 15.3, older version needs c++latest
 if dxvk_is_msvc and dxvk_compiler.version().version_compare('<15.3')
