@@ -191,8 +191,9 @@ namespace dxvk {
     RTX_OPTION("rtx", TaauPreset,  taauPreset, TaauPreset::Balanced,  "Adjusts TAA-U scaling factor, trades quality for performance.");
     RTX_OPTION_ENV("rtx", GraphicsPreset, graphicsPreset, GraphicsPreset::Auto, "DXVK_GRAPHICS_PRESET_TYPE", "Overall rendering preset, higher presets result in higher image quality, lower presets result in better performance.");
     RTX_OPTION_ENV("rtx", RaytraceModePreset, raytraceModePreset, RaytraceModePreset::Auto, "DXVK_RAYTRACE_MODE_PRESET_TYPE", "");
-    RTX_OPTION("rtx", std::string, sourceRootPath, "", "");
-    RTX_OPTION("rtx", bool,  recompileShadersOnLaunch, false, "");
+    RTX_OPTION("rtx", std::string, sourceRootPath, "", "A path pointing at the root folder of the project, used to override the path to the root of the project generated at build-time (as this path is only valid for the machine the project was originally compiled on). Used primarily for locating shader source files for runtime shader recompilation.");
+    RTX_OPTION("rtx", bool,  recompileShadersOnLaunch, false, "When set to true runtime shader recompilation will execute on the first frame after launch.");
+    RTX_OPTION("rtx", bool, useLiveShaderEditMode, false, "When set to true shaders will be automatically recompiled when any shader file is updated (saved for instance) in addition to the usual manual recompilation trigger.");
     RTX_OPTION("rtx", float, emissiveIntensity, 1.0f, "");
     RTX_OPTION("rtx", float, fireflyFilteringLuminanceThreshold, 1000.0f, "Maximum luminance threshold for the firefly filtering to clamp to.");
     RTX_OPTION("rtx", float, vertexColorStrength, 0.6f, "");
@@ -254,7 +255,6 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, enableDirectLighting, true, "");
     RTX_OPTION("rtx", bool, enableSecondaryBounces, true, "");
     RTX_OPTION("rtx", bool, zUp, false, "Indicates that the Z axis is the \"upward\" axis in the world when true, otherwise the Y axis when false.");
-    RTX_OPTION("rtx", bool, useLiveShaderEditMode, false, "");
     RTX_OPTION("rtx", float, uniqueObjectDistance, 300.f, "[cm]");
     RTX_OPTION_FLAG("rtx", UIType, showUI, UIType::None, RtxOptionFlags::NoSave | RtxOptionFlags::NoReset, "");
     RTX_OPTION_FLAG("rtx", bool, defaultToAdvancedUI, false, RtxOptionFlags::NoReset, "");
