@@ -68,8 +68,8 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.denoiseDirectAndIndirectLightingSeparately|bool|True|Denoising quality, high uses separate denoising of direct and indirect lighting for higher quality at the cost of performance.|
 |rtx.denoiser.maxDirectHitTContribution|float|-1||
 |rtx.denoiser.nrd.timeDeltaBetweenFrames|float|-1||
-|rtx.denoiserIndirectMode|int|14||
-|rtx.denoiserMode|int|14||
+|rtx.denoiserIndirectMode|int|16||
+|rtx.denoiserMode|int|16||
 |rtx.di.confidenceGradientPower|float|8||
 |rtx.di.confidenceGradientScale|float|6||
 |rtx.di.confidenceHistoryLength|float|8||
@@ -106,11 +106,11 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.effectLightIntensity|float|1||
 |rtx.effectLightPlasmaBall|bool|False||
 |rtx.effectLightRadius|float|5||
-|rtx.emissiveBlendOverrideEmissiveIntensity|float|0.2|Note: The emissive intensity to use when emissive blending override is enabled.|
+|rtx.emissiveBlendOverrideEmissiveIntensity|float|0.2|The emissive intensity to use when the emissive blend override is enabled. Adjust this if particles for example look overly bright globally.|
 |rtx.emissiveIntensity|float|1||
 |rtx.enableAdaptiveResolutionReplacementTextures|bool|True||
-|rtx.enableAlphaBlend|bool|True|Note: Used for partial opacity and other blending effects on various surfaces in many games.|
-|rtx.enableAlphaTest|bool|True|Note: Used for cutout style opacity in some games.|
+|rtx.enableAlphaBlend|bool|True|Enable rendering alpha blended geometry, used for partial opacity and other blending effects on various surfaces in many games.|
+|rtx.enableAlphaTest|bool|True|Enable rendering alpha tested geometry, used for cutout style opacity in some games.|
 |rtx.enableAsyncTextureUpload|bool|True||
 |rtx.enableBillboardOrientationCorrection|bool|True||
 |rtx.enableCulling|bool|True|Enable culling for opaque objects. Objects with alpha blend or alpha test are not culled.|
@@ -119,7 +119,7 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.enableDeveloperOptions|bool|False||
 |rtx.enableDirectLighting|bool|True||
 |rtx.enableDirectTranslucentShadows|bool|False|Include OBJECT_MASK_TRANSLUCENT into primary visibility rays.|
-|rtx.enableEmissiveBlendEmissiveOverride|bool|True|Note: Used to override emissive when emissive blending modes.|
+|rtx.enableEmissiveBlendEmissiveOverride|bool|True|Override typical material emissive information on draw calls with any emissive blending modes to emulate their original look more accurately.|
 |rtx.enableEmissiveParticlesInIndirectRays|bool|False||
 |rtx.enableFallbackLightShaping|bool|False|Enables light shaping on the fallback light (only used for non-Distant light types).|
 |rtx.enableFallbackLightViewPrimaryAxis|bool|False|Enables usage of the camera's view axis as the primary axis for the fallback light's shaping (only used for non - Distant light types). Typically the shaping primary axis may be specified directly, but if desired it may be set to the camera's view axis for a "flashlight" effect.|
@@ -188,8 +188,10 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.froxelMinReservoirSamples|int|1|The minimum number of Reservoir samples to do for each froxel cell when stability is at its maximum, should be at least 1.|
 |rtx.froxelMinReservoirSamplesStabilityHistory|int|1|The minimum history to consider history at minimum stability for Reservoir samples.|
 |rtx.froxelReservoirSamplesStabilityHistoryPower|float|2|The power to apply to the Reservoir sample stability history weight.|
+|rtx.fusedWorldViewMode|int|0|Set if game uses a fused World-View transform matrix.|
 |rtx.graphicsPreset|int|5|Overall rendering preset, higher presets result in higher image quality, lower presets result in better performance.|
 |rtx.hideSplashMessage|bool|False||
+|rtx.highlightedTexture|int|0|Hash of a texture that should be highlighted.|
 |rtx.indirectRaySpreadAngleFactor|float|0.05|A tuning factor for the spread angle calculated from the sampled lobe solid angle PDF.|
 |rtx.initializer.asyncAssetLoading|bool|True||
 |rtx.initializer.asyncShaderFinalizing|bool|True||
@@ -334,7 +336,7 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.rayPortalSamplingWeightMaxDistance|float|1000||
 |rtx.rayPortalSamplingWeightMinDistance|float|10||
 |rtx.raytraceModePreset|int|1||
-|rtx.recompileShadersOnLaunch|bool|False||
+|rtx.recompileShadersOnLaunch|bool|False|When set to true runtime shader recompilation will execute on the first frame after launch.|
 |rtx.reflexMode|int|1|Reflex mode selection, enabling it helps minimize input latency, boost mode may further reduce latency by boosting GPU clocks in CPU-bound cases.|
 |rtx.renderPassGBufferRaytraceMode|int|2||
 |rtx.renderPassIntegrateDirectRaytraceMode|int|0||
@@ -435,7 +437,7 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.useHighlightUnsafeAnchorMode|bool|False||
 |rtx.useHighlightUnsafeReplacementMode|bool|False||
 |rtx.useIntersectionBillboardsOnPrimaryRays|bool|False||
-|rtx.useLiveShaderEditMode|bool|False||
+|rtx.useLiveShaderEditMode|bool|False|When set to true shaders will be automatically recompiled when any shader file is updated (saved for instance) in addition to the usual manual recompilation trigger.|
 |rtx.useObsoleteHashOnTextureUpload|bool|False||
 |rtx.usePartialDdsLoader|bool|True||
 |rtx.usePostFilter|bool|True||
@@ -447,6 +449,12 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.useWhiteMaterialMode|bool|False||
 |rtx.validateCPUIndexData|bool|False||
 |rtx.vertexColorStrength|float|0.6||
+|rtx.viewDistance.distanceFadeMax|float|500|The view distance based on the result of the view distance function to end view distance noise fading at (and effectively draw nothing past this point), only used for the Coherent Noise view distance mode.|
+|rtx.viewDistance.distanceFadeMin|float|400|The view distance based on the result of the view distance function to start view distance noise fading at, only used for the Coherent Noise view distance mode.|
+|rtx.viewDistance.distanceFunction|int|0|The view distance function, Euclidean is a simple distance from the camera, whereas Planar Euclidean will ignore distance across the world's "up" direction.|
+|rtx.viewDistance.distanceMode|int|0|The view distance mode, None disables view distance, Hard Cutoff will cut off geometry past a point, and Coherent Noise will feather geometry out using a stable worldspace noise pattern (experimental).|
+|rtx.viewDistance.distanceThreshold|float|500|The view distance to draw out to based on the result of the view distance function, only used for the Hard Cutoff view distance mode.|
+|rtx.viewDistance.noiseScale|float|3|The scale per meter value applied to ther world space position fed into the noise generation function for generating the fade in Coherent Noise view distance mode.|
 |rtx.viewModel.enable|bool|False||
 |rtx.viewModel.enableVirtualInstances|bool|True||
 |rtx.viewModel.perspectiveCorrection|bool|True||
@@ -464,12 +472,14 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.volumetricTransmittanceColor|float3|0.9, 0.85, 0.8|The color to use for calculating transmittance measured at a specific distance.|
 |rtx.volumetricTransmittanceMeasurementDistance|float|10000|The distance the specified transmittance color was measured at. Lower distances indicate a denser medium.|
 |rtx.worldSpaceUiBackgroundOffset|float|-0.01|Distance along normal to offset the background of screens.|
-|rtx.zUp|bool|False||
+|rtx.zUp|bool|False|Indicates that the Z axis is the "upward" axis in the world when true, otherwise the Y axis when false.|
 
 ## Complex Types
 | RTX Option | Type | Default Value | Description |
 | :-- | :-: | :-: | :-- |
 |rtx.animatedWaterTextures|hash set|||
+|rtx.baseGameModPathRegex|string||Regex used to redirect RTX Remix Runtime to another path for replacements and rtx.conf.|
+|rtx.baseGameModRegex|string||Regex used to determine if the base game is running a mod, like a sourcemod.|
 |rtx.beamTextures|hash set|||
 |rtx.captureInstanceStageName|string|||
 |rtx.cutoutTextures|hash set|||
@@ -488,7 +498,7 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.playerModelTextures|hash set|||
 |rtx.rayPortalModelTextureHashes|hash vector||Texture hashes identifying ray portals. Allowed number of hashes: {0, 2}.|
 |rtx.skyBoxTextures|hash set|||
-|rtx.sourceRootPath|string|||
+|rtx.sourceRootPath|string||A path pointing at the root folder of the project, used to override the path to the root of the project generated at build-time (as this path is only valid for the machine the project was originally compiled on). Used primarily for locating shader source files for runtime shader recompilation.|
 |rtx.terrainTextures|hash set|||
 |rtx.uiTextures|hash set|||
 |rtx.worldSpaceUiBackgroundTextures|hash set|||
