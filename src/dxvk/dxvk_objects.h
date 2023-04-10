@@ -98,7 +98,6 @@ namespace dxvk {
       m_bloom(device),
       m_geometryUtils(device),
       m_imageUtils(device),
-      m_reflex(device),
       m_postFx(device) {
     }
 
@@ -263,7 +262,7 @@ namespace dxvk {
     }
     
     RtxReflex& metaReflex() {
-      return m_reflex.get();
+      return m_reflex.get(m_device);
     }
 
     SceneManager& getSceneManager() {
@@ -342,7 +341,7 @@ namespace dxvk {
     Active<RtxGeometryUtils>                m_geometryUtils;
     Active<RtxImageUtils>                   m_imageUtils;
     Active<DxvkPostFx>                      m_postFx;
-    Active<RtxReflex>                      m_reflex;
+    Lazy<RtxReflex>                         m_reflex;
   };
 
 }

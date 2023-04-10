@@ -27,6 +27,8 @@
 PCLSTATS_DEFINE();
 
 namespace dxvk {
+  // Reflex uses global variables for PCL init, so if a game uses multiple devices, we need to ensure we only do PCL init once.
+  static std::atomic<uint32_t> s_initPclRefcount = 0;
 
   RtxReflex::RtxReflex(DxvkDevice* device) : m_device(device) {
     // Initialize Reflex
@@ -45,9 +47,13 @@ namespace dxvk {
     status = NvLL_VK_GetSleepStatus(vkd->device(), &getParams);
     Logger::info(str::format("Reflex enable attempt, mode=", getParams.bLowLatencyMode ? "true" : "false"));
 
-    // Initialize PCL Stats
-    PCLSTATS_SET_ID_THREAD(-1);
-    PCLSTATS_INIT(0);
+    ++s_initPclRefcount;
+
+    if (s_initPclRefcount == 1) {
+      // Initialize PCL Stats
+      PCLSTATS_SET_ID_THREAD(-1);
+      PCLSTATS_INIT(0);
+    }
   }
 
   RtxReflex::~RtxReflex() {
@@ -58,8 +64,11 @@ namespace dxvk {
     NvLL_VK_DestroyLowLatencyDevice(vkd->device());
     NvLL_VK_Unload();
 
-    // Close PCL Stats
-    PCLSTATS_SHUTDOWN();
+    --s_initPclRefcount;
+    if (s_initPclRefcount == 0) {
+      // Close PCL Stats
+      PCLSTATS_SHUTDOWN();
+    }
   }
 
   void RtxReflex::updateConstants() {
