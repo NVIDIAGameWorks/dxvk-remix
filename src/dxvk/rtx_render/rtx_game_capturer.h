@@ -178,6 +178,8 @@ private:
     return flags & (1 << uint8_t(flag));
   }
 
+  static std::string basePath();
+
   enum class StateFlag : uint8_t {
     InitCaptureSingle = 1 << 0,
     InitCaptureMulti  = 1 << 1,

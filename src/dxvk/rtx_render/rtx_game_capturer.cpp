@@ -64,8 +64,8 @@ GameCapturer::GameCapturer(SceneManager& sceneManager)
   , m_keyBindStartSingle{VirtualKey{VK_CONTROL},VirtualKey{VK_SHIFT},VirtualKey{'Q'}}
   , m_keyBindToggleMulti{VirtualKey{VK_CONTROL},VirtualKey{VK_SHIFT},VirtualKey{'M'}} {
   Logger::info(str::format("[GameCapturer] DXVK_RTX_CAPTURE_ENABLE_ON_FRAME: ", env::getEnvVar("DXVK_RTX_CAPTURE_ENABLE_ON_FRAME")));
-  env::createDirectory(relPath::rtxRemixDir);
-  env::createDirectory(relPath::remixCaptureDir);
+  env::createDirectory(basePath() + relPath::rtxRemixDir);
+  env::createDirectory(basePath() + relPath::remixCaptureDir);
   lss::GameExporter::setMultiThreadSafety(true);
   if(m_bUseLssUsdPlugins) {
     Logger::debug("[GameCapturer] LSS USD Plugins successfully found and loaded.");
@@ -140,7 +140,7 @@ void GameCapturer::initCaptureStep(const Rc<RtxContext> rtxCtx) {
       stagePathSS << kDefaultExportFilePrefix << std::put_time(&locTime, "%Y-%m-%d_%H-%M-%S") << lss::ext::usd;
     }
     m_cap.instanceStageName = stagePathSS.str();
-    rtxCtx->triggerSceneThumbnail(relPath::remixCaptureThumbnailsDir, m_cap.instanceStageName);
+    rtxCtx->triggerSceneThumbnail(basePath() + relPath::remixCaptureThumbnailsDir, m_cap.instanceStageName);
   }
   Logger::info("[GameCapturer][" + m_cap.idStr + "] New capture");
   m_cap.instanceFlags.clear();
@@ -297,7 +297,7 @@ void GameCapturer::captureInstances(const Rc<RtxContext> rtxCtx) {
 
     if (rtInstancePtr->getBlas()->input.getIsSky()) {
       if (!m_cap.bSkyProbeBaked) {
-        rtxCtx->scheduleSkyProbeBake(relPath::remixCaptureTexturesDir, commonFileName::bakedSkyProbe);
+        rtxCtx->scheduleSkyProbeBake(basePath() + relPath::remixCaptureTexturesDir, commonFileName::bakedSkyProbe);
         m_cap.bSkyProbeBaked = true;
         Logger::debug("[GameCapturer][" + m_cap.idStr + "][SkyProbe] Bake scheduled to " +
                       commonFileName::bakedSkyProbe);
@@ -372,11 +372,11 @@ void GameCapturer::captureMaterial(const Rc<RtxContext> rtxCtx, const LegacyMate
 
   //Export Textures
   const std::string albedoTexFilename(matName + lss::ext::dds);
-  rtxCtx->dumpImageToFile(relPath::remixCaptureTexturesDir,
+  rtxCtx->dumpImageToFile(basePath() + relPath::remixCaptureTexturesDir,
                        albedoTexFilename,
                        materialData.getColorTexture().getImageView()->image());
 
-  const std::string albedoTexPath = str::format(relPath::remixCaptureTexturesDir, albedoTexFilename);
+  const std::string albedoTexPath = str::format(basePath() + relPath::remixCaptureTexturesDir, albedoTexFilename);
 
   // Export Material
   lss::Material lssMat;
@@ -736,6 +736,14 @@ lss::Export GameCapturer::prepExport(const Capture& cap,
   return exportPrep;
 }
 
+std::string GameCapturer::basePath() {
+  std::string path = env::getEnvVar("DXVK_CAPTURE_PATH");
+  if (!path.empty() && *path.rbegin() != '/') {
+    path += '/';
+  }
+  return path;
+}
+
 void GameCapturer::prepExportMetaData(const Capture& cap,
                                       const float framesPerSecond,
                                       const bool bUseLssUsdPlugins,
@@ -743,7 +751,7 @@ void GameCapturer::prepExportMetaData(const Capture& cap,
   // Prep meta data
   exportPrep.meta.windowTitle = window::getWindowTitle();
   exportPrep.meta.exeName = env::getExeName();
-  exportPrep.meta.iconPath = relPath::remixCaptureDir + exportPrep.meta.exeName + "_icon.bmp";
+  exportPrep.meta.iconPath = basePath() + relPath::remixCaptureDir + exportPrep.meta.exeName + "_icon.bmp";
   exportPrep.meta.geometryHashRule = RtxOptions::Get()->geometryAssetHashRuleString();
   exportPrep.meta.metersPerUnit = RtxOptions::Get()->getSceneScale();
   exportPrep.meta.timeCodesPerSecond = framesPerSecond;
@@ -756,10 +764,10 @@ void GameCapturer::prepExportMetaData(const Capture& cap,
   exportPrep.meta.isZUp = RtxOptions::Get()->isZUp();
   exportPrep.meta.isLHS = RtxOptions::Get()->isLHS();
   exportPrep.debugId = cap.idStr;
-  exportPrep.baseExportPath = relPath::remixCaptureDir;
+  exportPrep.baseExportPath = basePath() + relPath::remixCaptureDir;
   exportPrep.bExportInstanceStage = cap.bExportInstances;
   exportPrep.instanceExportName = cap.instanceStageName;
-  exportPrep.bakedSkyProbePath = cap.bSkyProbeBaked ? relPath::remixCaptureBakedSkyProbePath : "";
+  exportPrep.bakedSkyProbePath = cap.bSkyProbeBaked ? basePath() + relPath::remixCaptureBakedSkyProbePath : "";
 }
 
 void GameCapturer::prepExportMaterials(const Capture& cap,

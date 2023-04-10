@@ -67,7 +67,15 @@ namespace dxvk {
     auto t = std::time(nullptr);
     auto tm = *std::localtime(&t);
 
-    dumpImageToFile(std::string("./Screenshots/"), str::format(imageName, "_", tm.tm_mday, tm.tm_mon, tm.tm_year, "-", tm.tm_hour, tm.tm_min, tm.tm_sec, ".dds"), image);
+    std::string path = env::getEnvVar("DXVK_SCREENSHOT_PATH");
+
+    if (path.empty()) {
+      path = "./Screenshots/";
+    } else if (*path.rbegin() != '/') {
+      path += '/';
+    }
+
+    dumpImageToFile(path, str::format(imageName, "_", tm.tm_mday, tm.tm_mon, tm.tm_year, "-", tm.tm_hour, tm.tm_min, tm.tm_sec, ".dds"), image);
   }
 
   void RtxContext::generateSceneThumbnail(const std::string& dir, const std::string& filename, Rc<DxvkImage> image) {
