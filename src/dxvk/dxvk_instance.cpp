@@ -141,7 +141,14 @@ namespace dxvk {
 
     auto t = std::time(nullptr);
     auto tm = *std::localtime(&t);
-    std::string dumpFilename = str::format(exeName, "_", tm.tm_mday, tm.tm_mon, tm.tm_year, "-", tm.tm_hour, tm.tm_min, tm.tm_sec, "_aftermath.nv-gpudmp");
+
+    std::string path = env::getEnvVar("DXVK_AFTERMATH_DUMP_PATH");
+
+    if (!path.empty() && *path.rbegin() != '/') {
+      path += '/';
+    }
+
+    std::string dumpFilename = str::format(path, exeName, "_", tm.tm_mday, tm.tm_mon, tm.tm_year, "-", tm.tm_hour, tm.tm_min, tm.tm_sec, "_aftermath.nv-gpudmp");
 
     Logger::err(str::format("Aftermath detected a crash, writing dump to: ", dumpFilename));
 
@@ -160,7 +167,13 @@ namespace dxvk {
 
     std::string exeName = env::getExeNameNoSuffix();
 
-    static const std::string shaderDumpInfoDir = "shaderDebugInfo/";
+    std::string path = env::getEnvVar("DXVK_AFTERMATH_DUMP_PATH");
+
+    if (!path.empty() && *path.rbegin() != '/') {
+      path += '/';
+    }
+
+    const std::string shaderDumpInfoDir = path + "shaderDebugInfo/";
     env::createDirectory(shaderDumpInfoDir);
 
     std::string sdiFilename = str::format(shaderDumpInfoDir, std::uppercase, std::setfill('0'), std::setw(16), std::hex, sdiIdentifier.id[0], "-", sdiIdentifier.id[1], "-0000", ".nvdbg");
