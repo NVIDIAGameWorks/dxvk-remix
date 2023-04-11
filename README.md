@@ -8,18 +8,20 @@
     - VS 2019 is tested
     - VS 2022 may also work, but it is not actively tested
     - Note that our build system will always use the most recent version available on the system
-3. [Meson](https://mesonbuild.com/) - v0.61.4 has been tested, latest version should work
+3. [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/sdk-archive/)
+    - 10.0.19041.0 is tested
+4. [Meson](https://mesonbuild.com/) - v0.61.4 has been tested, latest version should work
     - Follow [instructions](https://mesonbuild.com/SimpleStart.html#installing-meson) on how to install and reboot the PC before moving on (Meson will indicate as much)
-4. [Vulkan SDK](https://vulkan.lunarg.com/sdk/home#windows) - 1.3.211.0 or newer
+5. [Vulkan SDK](https://vulkan.lunarg.com/sdk/home#windows) - 1.3.211.0 or newer
     - You may need to uninstall previous SDK if you have an old version
-5. [Python](https://www.python.org/downloads/) - version 3.9 or newer
+6. [Python](https://www.python.org/downloads/) - version 3.9 or newer
 
 #### Additional notes:
 - If any dependency paths change (i.e. new Vulkan library), run `meson --reconfigure` in _Compiler64 directory via a command prompt. This may revert some custom VS project settings
 
 ### Generate and build dxvk_rt Visual Studio project 
-1. Clone the repository with all submodules: <span style="color:red"> (ToDo: Update git path to the OSS git path)</style>
-	- `git clone --recursive  https://gitlab-master.nvidia.com/lightspeedrtx/dxvk_rt.git`
+1. Clone the repository with all submodules:
+	- `git clone --recursive https://github.com/NVIDIAGameWorks/dxvk-remix.git`
 
 	If the clone was made non-recursively and the submodules are missing, clone them separately:
 	- `git submodule update --init --recursive`
@@ -37,7 +39,6 @@
         - **_Comp64Release** - fastest runtime 
     - This will generate a project in the **_vs** subdirectory
     - Only x64 build targets are supported
-    - A VSCode setup is available as well inside the .vscode directory and set up to use the build subdirectories generated in the previous step
 
 5. Open **_vs/dxvk_rt.sln** in Visual Studio (2019+). 
     - Do not convert the solution on load if prompted when using a newer version of Visual Studio 
