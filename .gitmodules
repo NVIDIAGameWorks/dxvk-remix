@@ -25,5 +25,5 @@
 	url = https://github.com/KhronosGroup/Vulkan-Headers
 [submodule "submodules/rtxdi"]
 	path = submodules/rtxdi
-	url = https://gitlab-master.nvidia.com/rtx/RTXDI.git
+	url = https://github.com/NVIDIAGameWorks/RTXDI.git
 	branch = remix
