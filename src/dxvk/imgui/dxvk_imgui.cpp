@@ -1415,6 +1415,10 @@ namespace dxvk {
       showTextureSelectionGrid("dynamicdecaltextures", numThumbnailsPerRow, thumbnailSize, RtxOptions::Get()->dynamicDecalTexturesRef());
     }
 
+    if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 7.2: Non-Offset Decal Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->nonOffsetDecalTexturesDescription())) {
+      showTextureSelectionGrid("nonoffsetdecaltextures", numThumbnailsPerRow, thumbnailSize, RtxOptions::Get()->nonOffsetDecalTexturesRef());
+    }
+
     if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 8.1: Legacy Cutout Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->cutoutTexturesDescription())) {
       ImGui::DragFloat("Force Cutout Alpha", &RtxOptions::Get()->forceCutoutAlphaObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
       showTextureSelectionGrid("cutouttextures", numThumbnailsPerRow, thumbnailSize, RtxOptions::Get()->cutoutTexturesRef());

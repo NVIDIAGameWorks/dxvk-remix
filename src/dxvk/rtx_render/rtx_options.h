@@ -161,6 +161,7 @@ namespace dxvk {
     RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, beamTextures, {}, "");
     RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, decalTextures, {}, "");
     RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, dynamicDecalTextures, {}, "");
+    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, nonOffsetDecalTextures, {}, "");
     RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, terrainTextures, {}, "");
     RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, cutoutTextures, {}, "");
     RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, opacityMicromapIgnoreTextures, {}, "");
@@ -878,6 +879,10 @@ namespace dxvk {
 
     bool isDynamicDecalTexture(const XXH64_hash_t& h) const {
       return dynamicDecalTextures().find(h) != dynamicDecalTextures().end();
+    }
+
+    bool isNonOffsetDecalTexture(const XXH64_hash_t& h) const {
+      return nonOffsetDecalTextures().find(h) != nonOffsetDecalTextures().end();
     }
 
     bool isTerrainTexture(const XXH64_hash_t& h) const {
