@@ -72,6 +72,7 @@ enum class DxvkRtTextureOperation {
   Modulate,
   Modulate2x,
   Modulate4x,
+  Add,
 };
 
 enum class TexGenMode {

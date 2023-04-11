@@ -501,7 +501,11 @@ namespace dxvk {
 
       // Note: Particles are differentiated from typical objects with opacity by labeling their source material textures as being particle textures.
       out.isParticle = RtxOptions::Get()->isParticleTexture(drawCall.getMaterialData().getHash());
-      out.isDecal = RtxOptions::Get()->isDecalTexture(drawCall.getMaterialData().getHash()) || drawCall.getMaterialData().isBlendedTerrain;
+      out.isDecal = 
+        RtxOptions::Get()->isDecalTexture(drawCall.getMaterialData().getHash()) ||
+        RtxOptions::Get()->isDynamicDecalTexture(drawCall.getMaterialData().getHash()) ||
+        RtxOptions::Get()->isNonOffsetDecalTexture(drawCall.getMaterialData().getHash()) ||
+        drawCall.getMaterialData().isBlendedTerrain;
       out.isBlendedTerrain = drawCall.getMaterialData().isBlendedTerrain;
     } else {
       out.invertedBlend = false;
@@ -1593,6 +1597,9 @@ namespace dxvk {
   void InstanceManager::applyDecalOffsets(RtInstance& instance, const RasterGeometry& geometryData) {
     const float offsetIncrement = RtxOptions::Get()->getDecalNormalOffset();
     if (offsetIncrement == 0.f)
+      return;
+
+    if (RtxOptions::Get()->isNonOffsetDecalTexture(instance.getMaterialDataHash()))
       return;
 
     auto getNextOffset = [this, offsetIncrement]() {
