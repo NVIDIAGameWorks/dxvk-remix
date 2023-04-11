@@ -1001,12 +1001,8 @@ void UsdMod::Impl::processReplacement(Args& args) {
 void UsdMod::Impl::load(const Rc<DxvkContext>& context) {
   ZoneScoped;
   if (m_owner.state() == State::Unloaded) {
-    m_owner.setState(State::Loading);
-
     context->getDevice()->getCommon()->getTextureManager().updateMipMapSkipLevel(context);
     processUSD(context);
-
-    m_owner.setState(State::Loaded);
   }
 }
 
@@ -1053,17 +1049,20 @@ void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
   ZoneScoped;
   std::string replacementsUsdPath(m_owner.m_filePath.string());
 
+  m_owner.setState(State::Loading);
+
   pxr::UsdStageRefPtr stage = pxr::UsdStage::Open(replacementsUsdPath, pxr::UsdStage::LoadAll);
 
   if (!stage) {
     Logger::info(str::format("No USD mod files were found, no meshes / materials will be replaced."));
     m_openedFilePath.clear();
     m_fileModificationTime = fs::file_time_type();
+    m_owner.setState(State::Unloaded);
+    return;
   }
 
   std::filesystem::path modBaseDirectory = std::filesystem::path(replacementsUsdPath).remove_filename();
   m_openedFilePath = replacementsUsdPath;
-  m_owner.setState(State::Loading);
 
   AssetDataManager::get().initialize(modBaseDirectory);
 
@@ -1167,6 +1166,8 @@ void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
     VK_ACCESS_TRANSFER_WRITE_BIT,
     VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
     VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR);
+
+  m_owner.setState(State::Loaded);
 }
 
 void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cache<uint32_t>& variantCounts) {
