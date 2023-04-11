@@ -82,7 +82,12 @@ std::string ModManager::getBaseGameModPath(std::string baseGameModRegexStr, std:
 
 ModManager::Mods ModManager::enumerateAllMods() {
   Mods mods;
-  static const Path defaultModsDir = Path(kDefaultModsDir).lexically_normal();
+  
+  std::string modsPath = env::getEnvVar("DEFAULT_MODS_DIR");
+  if (modsPath == "")
+    modsPath = kDefaultModsDir;
+  
+  const Path defaultModsDir = Path(modsPath).lexically_normal();
 
   std::string baseGameModPath = getBaseGameModPath(RtxOptions::Get()->baseGameModRegex(), RtxOptions::Get()->baseGameModPathRegex());
 
