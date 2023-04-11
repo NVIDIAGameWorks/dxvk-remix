@@ -34,4 +34,13 @@
     <dependency name="rtxio" linkPath="external/rtxio">
         <package name="rtx-remix-rtxio" version="1" />
     </dependency>
+    <dependency name="glslangvalidator" linkPath="external/glslangvalidator">
+        <package name="glslangvalidator" version="12.0.0" />
+    </dependency>
+    <dependency name="slang" linkPath="external/slang">
+        <package name="slang" version="remix-custom-1" />
+    </dependency>
+    <dependency name="xxd" linkPath="external/xxd">
+        <package name="xxd" version="124290e04f194ec210b4e631c702c21ecfab0339" />
+    </dependency>
 </project>

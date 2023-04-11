@@ -234,8 +234,8 @@ endif
 def_spec_ext = '.def'
 
 # Shader compile tools
-glsl_compiler = find_program('bin/glslangValidator')
-slang_compiler = find_program('bin/slangc')
+glsl_compiler = find_program('external/glslangvalidator/glslangValidator')
+slang_compiler = find_program('external/slang/slangc')
 python_interpreter = find_program('python3', 'python')
 shader_compile_script = meson.global_source_root() + '/scripts-common/compile_shaders.py'
 
@@ -308,7 +308,7 @@ else
 endif
 
 # embedding compiler
-xxd_exe = find_program('bin/xxd')
+xxd_exe = find_program('external/xxd/xxd')
 embedding_compiler = generator(xxd_exe,
     output : '@PLAINNAME@.h',
     arguments : [ '-ps','-i', '@INPUT@', '@OUTPUT@' ]
