@@ -280,8 +280,8 @@ namespace dxvk {
     const std::filesystem::path rtxShaderFolderRelativePath{ "src/dxvk/shaders/rtx" };
     const std::filesystem::path rtxdiIncludeFolderRelativePath{ "submodules/rtxdi/rtxdi-sdk/include" };
     const std::filesystem::path compileScriptRelativePath{ "scripts-common/compile_shaders.py" };
-    const std::filesystem::path glslangRelativePath{ "bin/glslangValidator.exe" };
-    const std::filesystem::path slangcRelativePath{ "bin/slangc.exe" };
+    const std::filesystem::path glslangRelativePath{ "external/glslangValidator/glslangValidator.exe" };
+    const std::filesystem::path slangcRelativePath{ "external/slang/slangc.exe" };
 
     std::filesystem::path m_sourceRootPath{ BUILD_SOURCE_ROOT };
     std::filesystem::path m_tempFolderPath{ std::filesystem::temp_directory_path() };
