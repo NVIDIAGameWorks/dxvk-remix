@@ -8,9 +8,10 @@
 
 namespace ImGui {
 
-  IMGUI_API void SetTooltipToLastWidgetOnHover(const char* fmt, ...) IM_FMTARGS(1);  // Conditionally sets tooltip if IsItemHovered() is true
+  IMGUI_API void SetTooltipToLastWidgetOnHover(const char* text);  // Conditionally sets tooltip if IsItemHovered() is true
 
-  inline bool addTooltipAndPassthroughValue(bool value, const char* tooltip) {
+  template<typename T>
+  inline auto addTooltipAndPassthroughValue(const T& value, const char* tooltip) -> T {
     SetTooltipToLastWidgetOnHover(tooltip);
     return value;
   }
