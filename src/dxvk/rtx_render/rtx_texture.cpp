@@ -42,14 +42,15 @@ namespace dxvk {
     int                  assetBaseMip) {
     auto& rtxio = RtxIo::get();
     const auto& desc = image->info();
+    const auto& assetInfo = assetData->info();
 
     // The number of mip levels in the tail data blob.
     // For loose dds files this will be always 0.
-    const int tailMipLevels = assetData->levels() - assetData->looseLevels();
+    const int tailMipLevels = assetInfo.mipLevels - assetInfo.looseLevels;
 
     uint64_t completionSyncpt = 0;
 
-    if (assetData->compression() != AssetCompression::None) {
+    if (assetInfo.compression != AssetCompression::None) {
       RtxIo::FileSource src { assetFile, 0, 0, true };
       RtxIo::ImageDest dst { image, static_cast<uint16_t>(layer), 0, 1 };
 
@@ -136,7 +137,7 @@ namespace dxvk {
     }
 
     RtxIo::Handle file;
-    if (rtxio.openFile(texture->assetData->filename(), &file)) {
+    if (rtxio.openFile(texture->assetData->info().filename, &file)) {
       uint64_t completionSyncpt = 0;
 
       for (uint32_t layer = 0; layer < desc.numLayers; layer++) {
@@ -165,16 +166,17 @@ namespace dxvk {
   }
 
   void TextureUtils::loadTextureToVidmem(Rc<ManagedTexture> texture, const Rc<DxvkDevice>& device, const Rc<DxvkContext>& ctx) {
-    auto& tex = *texture->assetData;
+    auto& assetData = *texture->assetData;
+    auto& assetInfo = assetData.info();
     const auto& desc = texture->futureImageDesc;
 
-    const DxvkFormatInfo* formatInfo = imageFormatInfo(tex.format());
+    const DxvkFormatInfo* formatInfo = imageFormatInfo(assetInfo.format);
 
     Rc<DxvkImage> image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXMaterialTexture);
 
     // copy image data from disk
-    for (uint32_t level = 0; level < tex.levels(); ++level) {
-      const VkExtent3D levelExtent = tex.extent(level);
+    for (uint32_t level = 0; level < assetInfo.mipLevels; ++level) {
+      const VkExtent3D levelExtent = util::computeMipLevelExtent(assetInfo.extent, level);
       const VkExtent3D elementCount = util::computeBlockCount(levelExtent, formatInfo->blockSize);
       const uint32_t rowPitch = elementCount.width * formatInfo->elementSize;
       const uint32_t layerPitch = rowPitch * elementCount.height;
@@ -184,11 +186,11 @@ namespace dxvk {
           VK_IMAGE_ASPECT_COLOR_BIT,
           level,
           0,
-          uint32_t(tex.layers())
+          assetInfo.numLayers
         },
         VkOffset3D { 0, 0, 0 },
         levelExtent,
-        tex.data(0, level),
+        assetData.data(0, level),
         rowPitch, layerPitch);
     }
 
@@ -198,11 +200,11 @@ namespace dxvk {
     viewInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
     viewInfo.aspect = VK_IMAGE_ASPECT_COLOR_BIT;
     viewInfo.minLevel = 0;
-    viewInfo.numLevels = tex.levels();
+    viewInfo.numLevels = assetInfo.mipLevels;
     viewInfo.minLayer = 0;
-    viewInfo.numLayers = tex.layers();
+    viewInfo.numLayers = assetInfo.numLayers;
     viewInfo.format = desc.format;
-    
+
     texture->allMipsImageView = device->createImageView(image, viewInfo);
     texture->state = ManagedTexture::State::kVidMem;
     texture->minUploadedMip = 0;
@@ -210,15 +212,14 @@ namespace dxvk {
   }
 
   void TextureUtils::loadTextureToHostStagingBuffer(Rc<ManagedTexture> texture, const Rc<DxvkDevice>& device, MipsToLoad mipsToLoad) {
-    auto& tex = *texture->assetData;
+    auto& assetData = *texture->assetData;
+    auto& assetInfo = assetData.info();
     const auto& desc = texture->futureImageDesc;
-
-    VkFormat format = tex.format();
 
     // Upload data through a staging buffer. Special care needs to
     // be taken when dealing with compressed image formats: Rather
     // than copying pixels, we'll be copying blocks of pixels.
-    const DxvkFormatInfo* formatInfo = imageFormatInfo(format);
+    const DxvkFormatInfo* formatInfo = imageFormatInfo(assetInfo.format);
 
     int firstMip, lastMip;
     const int preloadMips = RtxTextureManager::calcPreloadMips(desc.mipLevels);
@@ -250,7 +251,8 @@ namespace dxvk {
     // First get total size of staging buffer
     size_t totalSize = 0;
     for (uint32_t level = firstMip; level <= lastMip; ++level) {
-      const VkExtent3D elementCount = util::computeBlockCount(tex.extent(level), formatInfo->blockSize);
+      const VkExtent3D levelExtent = util::computeMipLevelExtent(assetInfo.extent, level);
+      const VkExtent3D elementCount = util::computeBlockCount(levelExtent, formatInfo->blockSize);
       const size_t levelSize = formatInfo->elementSize * util::flattenImageExtent(elementCount);
       totalSize += align(levelSize, CACHE_LINE_SIZE);
     }
@@ -261,12 +263,13 @@ namespace dxvk {
 
     // Copy the data to staging
     for (uint32_t level = firstMip; level <= lastMip; ++level) {
-      const VkExtent3D elementCount = util::computeBlockCount(tex.extent(level), formatInfo->blockSize);
+      const VkExtent3D levelExtent = util::computeMipLevelExtent(assetInfo.extent, level);
+      const VkExtent3D elementCount = util::computeBlockCount(levelExtent, formatInfo->blockSize);
       const uint32_t rowPitch = elementCount.width * formatInfo->elementSize;
       const uint32_t layerPitch = rowPitch * elementCount.height;
 
       // Copy to the correct offset
-      util::packImageData((void*) pBaseDst, tex.data(0, level), elementCount, formatInfo->elementSize, rowPitch, layerPitch);
+      util::packImageData((void*) pBaseDst, assetData.data(0, level), elementCount, formatInfo->elementSize, rowPitch, layerPitch);
 
       const size_t levelSize = formatInfo->elementSize * util::flattenImageExtent(elementCount);
       pBaseDst += align(levelSize, CACHE_LINE_SIZE);
@@ -360,9 +363,11 @@ namespace dxvk {
   Rc<ManagedTexture> TextureUtils::createTexture(const Rc<AssetData>& assetData, ColorSpace colorSpace) {
     Rc<ManagedTexture> texture = new ManagedTexture();
 
+    auto& assetInfo = assetData->info();
+
     // The nvtt_exporter tool used for png->dds conversion in the TREX export cannot specify SRGB, so we rely on the USD color space
     // setting, and override the format here.  Only applies to BC* formats, since that's all the png->dds conversion flow will generate.
-    VkFormat format = colorSpace == ColorSpace::FORCE_BC_SRGB ? toSRGB(assetData->format()) : assetData->format();
+    VkFormat format = colorSpace == ColorSpace::FORCE_BC_SRGB ? toSRGB(assetInfo.format) : assetInfo.format;
 
     // Initialize image create info
     DxvkImageCreateInfo& desc = texture->futureImageDesc;
@@ -370,16 +375,16 @@ namespace dxvk {
     desc.format = format;
     desc.flags = 0;
     desc.sampleCount = VK_SAMPLE_COUNT_1_BIT;
-    desc.extent = assetData->extent(0);
-    desc.numLayers = assetData->layers();
-    desc.mipLevels = assetData->levels();
+    desc.extent = assetInfo.extent;
+    desc.numLayers = assetInfo.numLayers;
+    desc.mipLevels = assetInfo.mipLevels;
     desc.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
     desc.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
     desc.access = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
     desc.tiling = VK_IMAGE_TILING_OPTIMAL;
     desc.layout = VK_IMAGE_LAYOUT_GENERAL;
 
-    texture->mipCount = assetData->levels();
+    texture->mipCount = assetInfo.mipLevels;
     texture->assetData = new ImageAssetDataView(assetData, 0);
     texture->minUploadedMip = 0;
     texture->uniqueKey = RtxTextureManager::getUniqueKey();
@@ -414,8 +419,8 @@ namespace dxvk {
     }
 
     // Adjust image create info
-    texture->futureImageDesc.extent = texture->assetData->extent(0);
-    texture->futureImageDesc.mipLevels = texture->assetData->levels();
+    texture->futureImageDesc.extent = texture->assetData->info().extent;
+    texture->futureImageDesc.mipLevels = texture->assetData->info().mipLevels;
 
     if (RtxIo::enabled()) {
       loadTextureRtxIo(texture, device, mipsToLoad);
