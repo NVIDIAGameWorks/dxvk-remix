@@ -177,11 +177,9 @@ namespace dxvk {
 #ifdef REMIX_DEVELOPMENT
     // Note, this is currently a debug option we don't want to support in shipping config
     RTX_OPTION_ENV("rtx", bool,  enableRaytracing, true, "DXVK_ENABLE_RAYTRACING", "");
-    bool isRemixCompatible() { return true; }
 #else
     // Shipping config
     bool enableRaytracing() { return true; }
-    RTX_OPTION("rtx", bool, isRemixCompatible, false, "");
 #endif
 
     RTX_OPTION_FLAG("rtx", bool, keepTexturesForTagging, false, RtxOptionFlags::NoSave, "Note: this keeps all textures in video memory, which can drastically increase VRAM consumption. Intended to assist with tagging textures that are only used for a short period of time (such as loading screens). Use only when necessary!");

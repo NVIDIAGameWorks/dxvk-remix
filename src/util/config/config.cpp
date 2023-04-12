@@ -458,7 +458,6 @@ namespace dxvk {
     }} },
     /* HL2 engine                              */
     { R"(\\hl2\.exe$)", {{
-      { "rtx.isRemixCompatible", "True"},
       { "rtx.baseGameModRegex", std::string("sourcemods") },
       { "rtx.baseGameModPathRegex", std::string("-game \"([a-zA-Z]:.*sourcemods.*)\"") },
       { "rtx.lightConverter",
