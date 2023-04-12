@@ -40,7 +40,7 @@
     <dependency name="slang" linkPath="external/slang">
         <package name="slang" version="remix-custom-1" />
     </dependency>
-    <dependency name="xxd" linkPath="external/xxd">
-        <package name="xxd" version="124290e04f194ec210b4e631c702c21ecfab0339" />
+    <dependency name="nv_xxd" linkPath="external/nv_xxd">
+        <package name="rtx-remix-nv_xxd" version="1" />
     </dependency>
 </project>
