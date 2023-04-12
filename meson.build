@@ -308,22 +308,11 @@ else
 endif
 
 # embedding compiler
-xxd_exe = find_program('external/xxd/xxd')
+xxd_exe = find_program('external/nv_xxd/nv_xxd')
 embedding_compiler = generator(xxd_exe,
     output : '@PLAINNAME@.h',
-    arguments : [ '-ps','-i', '@INPUT@', '@OUTPUT@' ]
+    arguments : [ '@INPUT@', '@OUTPUT@', '@BASENAME@' ]
 )
-
-embedded_data_files = files([
-  'external/omni_core_materials/Base/AperturePBR_Opacity.mdl',
-  'external/omni_core_materials/Base/AperturePBR_Translucent.mdl',
-  'external/omni_core_materials/Base/AperturePBR_Model.mdl',
-  'external/omni_core_materials/Base/AperturePBR_Normal.mdl',
-  'external/fonts/NVIDIASans/NVIDIASansMd.ttf',
-  'external/fonts/RobotoMono/RobotoMonoRg.ttf'
-])
-
-generated_embedded_files = embedding_compiler.process(embedded_data_files)
 
 mdl_include_dir = include_directories(join_paths(meson.global_source_root(), 'external/omni_core_materials'))
 

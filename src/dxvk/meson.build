@@ -387,6 +387,13 @@ rtx_shaders = custom_target(
   command: rtx_shaders_command
 )
 
+dxvk_embedded_data_files = files([
+  '../../external/fonts/NVIDIASans/NVIDIASansMd.ttf',
+  '../../external/fonts/RobotoMono/RobotoMonoRg.ttf'
+])
+
+dxvk_generated_embedded_files = embedding_compiler.process(dxvk_embedded_data_files)
+
 dxvk_deps = [ thread_dep, vkcommon_dep, dxvk_extradep, usd_dep, lssUsd_dep, nrd_dep, dlss_dep, tracy_dep, tracy_dep_dynamic, aftermath_dep, nvapi_dep, reflex_dep ]
 
 if enable_rtxio
@@ -399,7 +406,7 @@ if not dxvk_is_msvc
 	dxvk_deps += ws2_32_dep
 endif
 
-dxvk_lib = static_library('dxvk', dxvk_src, dxvk_version, [generated_dxvk_shaders, rtx_shaders, generated_embedded_files],
+dxvk_lib = static_library('dxvk', dxvk_src, dxvk_version, [generated_dxvk_shaders, rtx_shaders, dxvk_generated_embedded_files],
   link_with           : [ util_lib, spirv_lib ], 
   dependencies        : [ dxvk_deps ],
   include_directories : [ dxvk_include_path, dxvk_shader_include_path, rtxdi_include_path ],

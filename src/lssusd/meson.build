@@ -9,7 +9,16 @@ else
 endif
 thread_dep = dependency('threads')
 
-lssUsd_lib = static_library('lssUsd', lssUsd_src,[generated_embedded_files],
+libusd_embedded_data_files = files([
+  '../../external/omni_core_materials/Base/AperturePBR_Opacity.mdl',
+  '../../external/omni_core_materials/Base/AperturePBR_Translucent.mdl',
+  '../../external/omni_core_materials/Base/AperturePBR_Model.mdl',
+  '../../external/omni_core_materials/Base/AperturePBR_Normal.mdl',
+])
+
+libusd_generated_embedded_files = embedding_compiler.process(libusd_embedded_data_files)
+
+lssUsd_lib = static_library('lssUsd', lssUsd_src,[libusd_generated_embedded_files],
   dependencies        : [ usd_dep, omni_client_dep, embedded_dep ],
   include_directories : [ usd_include_paths, omni_client_include_path ],
   override_options    : ['cpp_std='+dxvk_cpp_std],

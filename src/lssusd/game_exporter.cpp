@@ -176,34 +176,26 @@ void GameExporter::createApertureMdls(const std::string& baseExportPath) {
   const std::string materialsDirPath = baseExportPath + "/" + commonDirName::matDir;
   dxvk::env::createDirectory(materialsDirPath);
 
-  // xxd adds underscores depending on the relative path nesting, which changes between ninja and msbuild
-#if BUILD_NINJA
-#define EMBEDDED_VAR(__name) ___external_omni_core_materials_Base_##__name
-#else
-#define EMBEDDED_VAR(__name) _________external_omni_core_materials_Base_##__name
-#endif
-
   {
     std::ofstream stream(materialsDirPath + "AperturePBR_Opacity.mdl");
-    stream << EMBEDDED_VAR(AperturePBR_Opacity_mdl) << std::endl;
+    stream << ___AperturePBR_Opacity << std::endl;
   }
 
   {
 
     std::ofstream stream(materialsDirPath + "AperturePBR_Translucent.mdl");
-    stream << EMBEDDED_VAR(AperturePBR_Translucent_mdl) << std::endl;
+    stream << ___AperturePBR_Translucent << std::endl;
   }
 
   {
     std::ofstream stream(materialsDirPath + "AperturePBR_Model.mdl");
-    stream << EMBEDDED_VAR(AperturePBR_Model_mdl) << std::endl;
+    stream << ___AperturePBR_Model << std::endl;
   }
 
   {
     std::ofstream stream(materialsDirPath + "AperturePBR_Normal.mdl");
-    stream << EMBEDDED_VAR(AperturePBR_Normal_mdl) << std::endl;
+    stream << ___AperturePBR_Normal << std::endl;
   }
-#undef EMBED_MDL_VAR
 }
 
 void GameExporter::exportMaterials(const Export& exportData, ExportContext& ctx) {
