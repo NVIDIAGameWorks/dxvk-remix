@@ -159,9 +159,9 @@ namespace dxvk {
     RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, lightConverter, {}, "");
     RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, particleTextures, {}, "");
     RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, beamTextures, {}, "");
-    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, decalTextures, {}, "");
-    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, dynamicDecalTextures, {}, "");
-    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, nonOffsetDecalTextures, {}, "");
+    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, decalTextures, {}, "Static geometric decals or decals with complex topology.\nThese materials will be blended over the materials underneath them.\nA small offset is applied to each flat part of these decals.");
+    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, dynamicDecalTextures, {}, "Dynamically spawned geometric decals, such as bullet holes.\nThese materials will be blended over the materials underneath them.\nA small offset is applied to each triangle fan in these decals.");
+    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, nonOffsetDecalTextures, {}, "Geometric decals with arbitrary topology that are already offset from the base geometry.\nThese materials will be blended over the materials underneath them. ");
     RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, terrainTextures, {}, "");
     RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, cutoutTextures, {}, "");
     RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, opacityMicromapIgnoreTextures, {}, "");
