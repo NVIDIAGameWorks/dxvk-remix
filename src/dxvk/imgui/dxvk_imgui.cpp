@@ -2159,28 +2159,24 @@ namespace dxvk {
       builder.BuildRanges(&numericalRange);
     }
 
-    // xxd adds underscores depending on the relative path nesting, which changes between ninja and msbuild
-#if BUILD_NINJA
-#define EMBEDDED_VAR(__name) ___external_fonts_##__name
-#else
-#define EMBEDDED_VAR(__name) _________external_fonts_##__name
-#endif
-
     // Normal Size Font (Default)
 
     ImFontConfig normalFontCfg = ImFontConfig();
     normalFontCfg.SizePixels = 16.f;
     normalFontCfg.FontDataOwnedByAtlas = false;
 
+    const size_t nvidiaSansLength = sizeof(___NVIDIASansMd) / sizeof(___NVIDIASansMd[0]);
+    const size_t robotoMonoLength = sizeof(___RobotoMonoRg) / sizeof(___RobotoMonoRg[0]);
+
     {
       // Add letters/symbols (NVIDIA-Sans)
-      io.FontDefault = io.Fonts->AddFontFromMemoryTTF(&EMBEDDED_VAR(NVIDIASans_NVIDIASansMd_ttf)[0], EMBEDDED_VAR(NVIDIASans_NVIDIASansMd_ttf_len), 0, &normalFontCfg, characterRange.Data);
+      io.FontDefault = io.Fonts->AddFontFromMemoryTTF(&___NVIDIASansMd[0], nvidiaSansLength, 0, &normalFontCfg, characterRange.Data);
 
       // Enable merging
       normalFontCfg.MergeMode = true;
 
       // Add numbers (Roboto-Mono)
-      io.Fonts->AddFontFromMemoryTTF(&EMBEDDED_VAR(RobotoMono_RobotoMonoRg_ttf)[0], EMBEDDED_VAR(RobotoMono_RobotoMonoRg_ttf_len), 0, &normalFontCfg, numericalRange.Data);
+      io.Fonts->AddFontFromMemoryTTF(&___RobotoMonoRg[0], robotoMonoLength, 0, &normalFontCfg, numericalRange.Data);
     }
 
     // Large Size Font
@@ -2191,13 +2187,13 @@ namespace dxvk {
 
     {
       // Add letters/symbols (NVIDIA-Sans)
-      m_largeFont = io.Fonts->AddFontFromMemoryTTF(&EMBEDDED_VAR(NVIDIASans_NVIDIASansMd_ttf)[0], EMBEDDED_VAR(NVIDIASans_NVIDIASansMd_ttf_len), 0, &largeFontCfg, characterRange.Data);
+      m_largeFont = io.Fonts->AddFontFromMemoryTTF(&___NVIDIASansMd[0], nvidiaSansLength, 0, &largeFontCfg, characterRange.Data);
 
       // Enable merging
       largeFontCfg.MergeMode = true;
 
       // Add numbers (Roboto-Mono)
-      io.Fonts->AddFontFromMemoryTTF(&EMBEDDED_VAR(RobotoMono_RobotoMonoRg_ttf)[0], EMBEDDED_VAR(RobotoMono_RobotoMonoRg_ttf_len), 0, &largeFontCfg, numericalRange.Data);
+      io.Fonts->AddFontFromMemoryTTF(&___RobotoMonoRg[0], robotoMonoLength, 0, &largeFontCfg, numericalRange.Data);
     }
 
     // Build the fonts
