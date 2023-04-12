@@ -715,6 +715,12 @@ namespace dxvk {
         "f017847a501d804b," // blood and bullet holes
         "a65293be7ea5f7b7," // plasma ball burn marks etc.
       },
+      { "rtx.nonOffsetDecalTextures",
+        "727B75DD886D94FD," // Alyx eye irises
+        "64A2E9E0169AE37F,"
+        "C4826ABA6336F7FF," // Citizen NPC eye irises
+        "5E53185FD64EEFF2,"
+      },
       { "rtx.worldSpaceUiTextures",
        // Challenge map score boards
        "2F0654813BA4509B,"
