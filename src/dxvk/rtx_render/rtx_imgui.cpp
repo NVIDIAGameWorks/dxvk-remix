@@ -2,13 +2,17 @@
 
 namespace ImGui {
 
-  void SetTooltipToLastWidgetOnHover(const char* fmt, ...) {
-    if (fmt != "" && ImGui::IsItemHovered()) {
-      va_list args;
-      va_start(args, fmt);
-      ImGui::SetTooltip(fmt, args);
-      va_end(args);
+  void SetTooltipToLastWidgetOnHover(const char* text) {
+    // Note: Don't display tooltips for empty strings, easily detectable if the first character in the string is the null terminator.
+    if (text[0] == '\0') {
+      return;
     }
+
+    if (!ImGui::IsItemHovered()) {
+      return;
+    }
+
+    ImGui::SetTooltipUnformatted(text);
   }
 
   bool Checkbox(const char* label, dxvk::RtxOption<bool>* rtxOption) {
