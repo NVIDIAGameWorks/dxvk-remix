@@ -1091,9 +1091,6 @@ namespace dxvk {
     if(common->getSceneManager().areReplacementsLoading())
       hudMessages.emplace_back("Loading enhancements...");
 
-    if (!RtxOptions::Get()->isRemixCompatible())
-      hudMessages.emplace_back("Warning: This version of the RTX Runtime is only compatible with Portal with RTX. Use with other games will likely result in compatibility issues.");
-
     if (!hudMessages.empty()) {
       ImGui::SetNextWindowPos(ImVec2(0, viewport->Size.y), ImGuiCond_Always, ImVec2(0.0f, 1.0f));
       ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.5f, 0.2f, 0.2f, 0.35f));
