@@ -206,6 +206,8 @@ void chooseTextureOperationColor(inout f16vec3 target, uint8_t textureOperation,
   case uint(DxvkRtTextureOperation::Modulate2x):
   case uint(DxvkRtTextureOperation::Modulate4x):
     target = textureArg1 * textureArg2; break;
+  case uint(DxvkRtTextureOperation::Add):
+    target = textureArg1 + textureArg2; break;
   }
 }
 
@@ -228,5 +230,7 @@ void chooseTextureOperationAlpha(inout float16_t target, uint8_t textureOperatio
     target = min(float16_t(1), textureArg1 * textureArg2 * float16_t(2.0)); break;
   case uint(DxvkRtTextureOperation::Modulate4x):
     target = min(float16_t(1), textureArg1 * textureArg2 * float16_t(4.0)); break;
+  case uint(DxvkRtTextureOperation::Add):
+    target = min(float16_t(1), textureArg1 + textureArg2); break;
   }
 }

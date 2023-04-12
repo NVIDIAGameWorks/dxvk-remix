@@ -394,8 +394,8 @@ namespace dxvk {
     // Handle Alpha Blend State
 
     bool blendEnabled = false;
-    BlendType blendType;
-    bool invertedBlend;
+    BlendType blendType = BlendType::kColor;
+    bool invertedBlend = false;
 
     // Note: Use the Opaque Material Data's blend state information directly if requested,
     // otherwise derive the alpha blend state from the drawcall (via its legacy material data).
@@ -489,6 +489,19 @@ namespace dxvk {
       }
     }
 
+    // Special case for the player model eyes in Portal:
+    // They are rendered with blending enabled but 1.0 is added to alpha from the texture.
+    // Detect this case here and turn such geometry into non-alpha-blended, otherwise
+    // the eyes end up in the unordered TLAS and are not rendered correctly.
+    const auto& drawMaterialData = drawCall.getMaterialData();
+    if (blendEnabled && blendType == BlendType::kAlpha && !invertedBlend &&
+        drawMaterialData.textureAlphaOperation == DxvkRtTextureOperation::Add &&
+        drawMaterialData.textureAlphaArg1Source == RtTextureArgSource::Texture &&
+        drawMaterialData.textureAlphaArg2Source == RtTextureArgSource::TFactor &&
+        (drawMaterialData.tFactor >> 24) == 0xff) {
+      blendEnabled = false;
+    }
+
     if (blendEnabled) {
       out.blendType = blendType;
       out.invertedBlend = invertedBlend;
@@ -501,7 +514,11 @@ namespace dxvk {
 
       // Note: Particles are differentiated from typical objects with opacity by labeling their source material textures as being particle textures.
       out.isParticle = RtxOptions::Get()->isParticleTexture(drawCall.getMaterialData().getHash());
-      out.isDecal = RtxOptions::Get()->isDecalTexture(drawCall.getMaterialData().getHash()) || drawCall.getMaterialData().isBlendedTerrain;
+      out.isDecal = 
+        RtxOptions::Get()->isDecalTexture(drawCall.getMaterialData().getHash()) ||
+        RtxOptions::Get()->isDynamicDecalTexture(drawCall.getMaterialData().getHash()) ||
+        RtxOptions::Get()->isNonOffsetDecalTexture(drawCall.getMaterialData().getHash()) ||
+        drawCall.getMaterialData().isBlendedTerrain;
       out.isBlendedTerrain = drawCall.getMaterialData().isBlendedTerrain;
     } else {
       out.invertedBlend = false;
@@ -1593,6 +1610,9 @@ namespace dxvk {
   void InstanceManager::applyDecalOffsets(RtInstance& instance, const RasterGeometry& geometryData) {
     const float offsetIncrement = RtxOptions::Get()->getDecalNormalOffset();
     if (offsetIncrement == 0.f)
+      return;
+
+    if (RtxOptions::Get()->isNonOffsetDecalTexture(instance.getMaterialDataHash()))
       return;
 
     auto getNextOffset = [this, offsetIncrement]() {

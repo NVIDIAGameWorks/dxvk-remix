@@ -47,6 +47,7 @@ namespace dxvk {
     case D3DTOP_SELECTARG2: return DxvkRtTextureOperation::SelectArg2;
     case D3DTOP_MODULATE2X: return DxvkRtTextureOperation::Modulate2x;
     case D3DTOP_MODULATE4X: return DxvkRtTextureOperation::Modulate4x;
+    case D3DTOP_ADD: return DxvkRtTextureOperation::Add;
     }
   }
 
