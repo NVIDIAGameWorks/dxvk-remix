@@ -68,13 +68,13 @@ void computeAnisotropicEllipseAxes(
   vec3 edgeP;
 
   edgeP = d + ellipseAxis0;
-  const float u1 = (dot(vec3(triangleNormal), cross(edgeP, edge02)) * oneOverAreaTriangle);
-  const float v1 = (dot(vec3(triangleNormal), cross(edge01, edgeP)) * oneOverAreaTriangle);
+  const float u1 = (dot(vec3(triangleNormal), cross(edgeP, edge02)) * oneOverTwoAreaTriangle);
+  const float v1 = (dot(vec3(triangleNormal), cross(edge01, edgeP)) * oneOverTwoAreaTriangle);
   texGradientX = (1.0 - u1 - v1) * txcoords[0] + u1 * txcoords[1] + v1 * txcoords[2] - interpolatedTexCoordsAtIntersection;
 
   edgeP = d + ellipseAxis1;
-  const float u2 = (dot(vec3(triangleNormal), cross(edgeP, edge02)) * oneOverAreaTriangle);
-  const float v2 = (dot(vec3(triangleNormal), cross(edge01, edgeP)) * oneOverAreaTriangle);
+  const float u2 = (dot(vec3(triangleNormal), cross(edgeP, edge02)) * oneOverTwoAreaTriangle);
+  const float v2 = (dot(vec3(triangleNormal), cross(edge01, edgeP)) * oneOverTwoAreaTriangle);
   texGradientY = (1.0 - u2 - v2) * txcoords[0] + u2 * txcoords[1] + v2 * txcoords[2] - interpolatedTexCoordsAtIntersection;
 }
 
