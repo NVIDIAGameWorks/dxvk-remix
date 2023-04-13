@@ -8975,13 +8975,6 @@ void ImGui::SetTooltip(const char* fmt, ...)
     va_end(args);
 }
 
-void ImGui::SetTooltipUnformatted(const char* text)
-{
-    BeginTooltipEx(ImGuiTooltipFlags_OverridePreviousTooltip, ImGuiWindowFlags_None);
-    TextUnformatted(text);
-    EndTooltip();
-}
-
 //-----------------------------------------------------------------------------
 // [SECTION] POPUPS
 //-----------------------------------------------------------------------------
