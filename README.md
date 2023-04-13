@@ -19,7 +19,7 @@
 #### Additional notes:
 - If any dependency paths change (i.e. new Vulkan library), run `meson --reconfigure` in _Compiler64 directory via a command prompt. This may revert some custom VS project settings
 
-### Generate and build dxvk_rt Visual Studio project 
+### Generate and build dxvk-remix Visual Studio project 
 1. Clone the repository with all submodules:
 	- `git clone --recursive https://github.com/NVIDIAGameWorks/dxvk-remix.git`
 
@@ -31,16 +31,16 @@
 3. Make sure PowerShell scripts are enabled
     - One-time system setup: run `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned` in an elevated PowerShell prompt, then close and reopen any existing PowerShell prompts
 	
-4. To generate and build dxvk_rt project, open a command prompt and run
+4. To generate and build dxvk-remix project, open a command prompt and run
     - `powershell -command "& .\build_dxvk_all_ninja.ps1"`
-    - This will build all 3 configurations of dxvk_rt project inside subdirectories of the build tree: 
+    - This will build all 3 configurations of dxvk-remix project inside subdirectories of the build tree: 
         - **_Comp64Debug** - full debug instrumentation, runtime speed may be slow
         - **_Comp64DebugOptimized** - partial debug instrumentation (i.e. asserts), runtime speed is generally comparable to that of release configuration
         - **_Comp64Release** - fastest runtime 
     - This will generate a project in the **_vs** subdirectory
     - Only x64 build targets are supported
 
-5. Open **_vs/dxvk_rt.sln** in Visual Studio (2019+). 
+5. Open **_vs/dxvk-remix.sln** in Visual Studio (2019+). 
     - Do not convert the solution on load if prompted when using a newer version of Visual Studio 
     - Once generated, the project can be built via Visual Studio or via powershell scripts
     - A build will copy generated DXVK DLLs to any target project as specified in **gametargets.conf** (see its [setup section](#deploy-built-binaries-to-a-game))
