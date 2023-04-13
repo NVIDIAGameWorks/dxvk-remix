@@ -7,8 +7,8 @@ import configparser
 def generate_guid(key):
     return str(uuid.uuid5(uuid.NAMESPACE_DNS, key)).upper()
 
-def dxvkrt_guid():
-    return generate_guid("dxvk_rt")
+def dxvk_remix_guid():
+    return generate_guid("dxvk-remix")
 
 def pathsep_to_slash(path):
     return path.replace("\\", "/")
@@ -18,6 +18,12 @@ def pathsep_to_backslash(path):
 
 def pathsep_to_underscore(path):
     return pathsep_to_backslash(path).replace("\\", "_")
+
+# returns true if file exists
+def check_if_file_exists(output_root_path, filename):
+    output_root_path = pathsep_to_backslash(output_root_path)
+    target = os.path.join(output_root_path, filename)
+    return os.path.exists(target)
 
 # returns true if file updated, false if not
 def write_file_if_not_identical(output_root_path, filename, data):
