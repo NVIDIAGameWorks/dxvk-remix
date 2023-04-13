@@ -20,7 +20,8 @@
 * DEALINGS IN THE SOFTWARE.
 */
 #include <cstring>
-#include <assert.h>
+#include <cmath>
+#include <cassert>
 
 #include "dxvk_device.h"
 #include "dxvk_scoped_annotation.h"
@@ -1307,7 +1308,7 @@ namespace dxvk {
     constants.screenSpacePixelSpreadHalfAngle = getSceneManager().getCamera().getFov() / 2.0f / constants.camera.resolution.y;
 
     // Note: This value is assumed to be positive (specifically not have the sign bit set) as otherwise it will break Ray Interaction encoding.
-    assert(constants.screenSpacePixelSpreadHalfAngle >= 0.0f);
+    assert(std::signbit(constants.screenSpacePixelSpreadHalfAngle) == false);
 
     constants.debugView = m_common->metaDebugView().debugViewIdx();
 
