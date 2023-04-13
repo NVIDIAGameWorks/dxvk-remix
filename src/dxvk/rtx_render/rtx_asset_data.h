@@ -25,6 +25,7 @@
 #include "../../util/util_error.h"
 #include "../../util/rc/util_rc.h"
 #include "../../util/rc/util_rc_ptr.h"
+#include "../../util/xxHash/xxhash.h"
 
 namespace dxvk {
   enum class AssetType {
@@ -40,19 +41,33 @@ namespace dxvk {
     GDeflate,
   };
 
+  struct AssetInfo {
+    AssetType type = AssetType::Unknown;
+    AssetCompression compression = AssetCompression::None;
+
+    VkFormat format = VK_FORMAT_UNDEFINED;
+    VkExtent3D extent;
+
+    uint32_t mipLevels = 0;
+    uint32_t looseLevels = 0;
+    uint32_t numLayers = 0;
+
+    const char* filename = nullptr;
+  };
+
   class AssetData : public RcObject {
   public:
     virtual ~AssetData() = default;
 
-    virtual AssetType type() const = 0;
-    virtual AssetCompression compression() const = 0;
-    virtual VkFormat format() const = 0;
-    virtual VkExtent3D extent(int level) const = 0;
-    virtual int levels() const = 0;
-    virtual int looseLevels() const = 0;
-    virtual int layers() const = 0;
+    const AssetInfo& info() const {
+      return m_info;
+    }
+
+    XXH64_hash_t hash() const {
+      return m_hash;
+    }
+
     virtual const void* data(int layer, int level) = 0;
-    virtual const char* filename() const = 0;
     virtual void placement(
       int       layer,
       int       face,
@@ -60,6 +75,12 @@ namespace dxvk {
       uint64_t& offset,
       size_t&   size) const = 0;
     virtual void evictCache() = 0;
+
+  protected:
+    AssetData() = default;
+
+    AssetInfo m_info;
+    XXH64_hash_t m_hash;
   };
 
   class ImageAssetDataView : public AssetData {
@@ -67,39 +88,13 @@ namespace dxvk {
     ImageAssetDataView(const Rc<AssetData>& sourceAsset, int minLevel)
       : m_sourceAsset(sourceAsset)
       , m_minLevel(minLevel) {
-      if (sourceAsset->type() != AssetType::Image1D &&
-          sourceAsset->type() != AssetType::Image2D &&
-          sourceAsset->type() != AssetType::Image3D) {
+      if (sourceAsset->info().type != AssetType::Image1D &&
+          sourceAsset->info().type != AssetType::Image2D &&
+          sourceAsset->info().type != AssetType::Image3D) {
         throw DxvkError("Only image assets supported by image asset data view class!");
       }
-    }
-
-    AssetType type() const override {
-      return m_sourceAsset->type();
-    }
-
-    AssetCompression compression() const override {
-      return m_sourceAsset->compression();
-    }
-
-    VkFormat format() const override {
-      return m_sourceAsset->format();
-    }
-
-    VkExtent3D extent(int level) const override {
-      return m_sourceAsset->extent(level + m_minLevel);
-    }
-
-    int levels() const override {
-      return m_sourceAsset->levels() - m_minLevel;
-    }
-
-    int looseLevels() const override {
-      return std::max(0, m_sourceAsset->looseLevels() - m_minLevel);
-    }
-
-    int layers() const override {
-      return m_sourceAsset->layers();
+      m_info = sourceAsset->info();
+      m_hash = sourceAsset->hash();
     }
 
     const void* data(int layer, int level) override {
@@ -108,10 +103,6 @@ namespace dxvk {
 
     void evictCache() override {
       return m_sourceAsset->evictCache();
-    }
-
-    const char* filename() const override {
-      return m_sourceAsset->filename();
     }
 
     void placement(

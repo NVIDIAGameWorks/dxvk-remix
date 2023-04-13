@@ -40,7 +40,7 @@ namespace dxvk {
     ~AssetDataManager();
 
     void initialize(const std::filesystem::path& path);
-    Rc<AssetData> find(const char* filename);
+    Rc<AssetData> findAsset(const std::string& filename);
   };
 
 } // namespace dxvk
