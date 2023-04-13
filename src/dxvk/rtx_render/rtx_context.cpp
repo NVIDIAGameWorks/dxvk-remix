@@ -20,7 +20,8 @@
 * DEALINGS IN THE SOFTWARE.
 */
 #include <cstring>
-#include <assert.h>
+#include <cmath>
+#include <cassert>
 
 #include "dxvk_device.h"
 #include "dxvk_scoped_annotation.h"
@@ -1303,9 +1304,12 @@ namespace dxvk {
     auto* cameraTeleportDirectionInfo = getSceneManager().getRayPortalManager().getCameraTeleportationRayPortalDirectionInfo();
     constants.teleportationPortalIndex = cameraTeleportDirectionInfo ? cameraTeleportDirectionInfo->entryPortalInfo.portalIndex + 1 : 0;
 
-    // Reminder: proj[1][1] --> 1.0/tan(fovY/2)
-    // By inversing this math we can use this half fovY angle for the entire camera divided by the vertical resolution to get the effective half angle of a single pixel.
-    constants.screenSpacePixelSpreadHalfAngle = atan(1.0f / (getSceneManager().getCamera().getViewToProjection().data[1][1])) / constants.camera.resolution.y;
+    // Note: Use half of the vertical FoV for the main camera in radians divided by the vertical resolution to get the effective half angle of a single pixel.
+    constants.screenSpacePixelSpreadHalfAngle = getSceneManager().getCamera().getFov() / 2.0f / constants.camera.resolution.y;
+
+    // Note: This value is assumed to be positive (specifically not have the sign bit set) as otherwise it will break Ray Interaction encoding.
+    assert(std::signbit(constants.screenSpacePixelSpreadHalfAngle) == false);
+
     constants.debugView = m_common->metaDebugView().debugViewIdx();
 
     getDenoiseArgs(constants.primaryDirectNrd, constants.primaryIndirectNrd, constants.secondaryCombinedNrd);
