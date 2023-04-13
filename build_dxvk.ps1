@@ -22,7 +22,7 @@
 
 .   ".\build_common.ps1"
 
-# It's possible to build specific parts of the DXVK_RT codebase like so:'
+# It's possible to build specific parts of the dxvk-remix codebase like so:'
 # powershell -command "& { . .\build_dxvk.ps1 PerformBuild -BuildFlavour debugoptimized -BuildSubDir _CompTest -Backend vs }"
 
 PerformBuild @args

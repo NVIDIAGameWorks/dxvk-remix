@@ -88,16 +88,16 @@ def generate_dxvk_project(output_root_path, dxvk_cpp_defines):
     for f in [ "meson.build", "dxvk.conf" ]:
         file_references += "    <ClCompile Include=\"" + pathsep_to_backslash("../" + f) + "\" />\n"
 
-    project_template = Template(open("dxvk_rt.vcxproj.template", "rt").read())
+    project_template = Template(open("dxvk-remix.vcxproj.template", "rt").read())
     data = project_template.safe_substitute(
-        dxvk_rt_project_guid=dxvkrt_guid(),
+        dxvk_remix_project_guid=dxvk_remix_guid(),
         dxvk_cpp_defines=dxvk_cpp_defines,
         include_search_path_debug=include_search_path_debug,
         include_search_path_debugoptimized=include_search_path_debugoptimized,
         include_search_path_release=include_search_path_release,
         file_references=file_references)
 
-    write_file_if_not_identical(output_root_path, "dxvk_rt.vcxproj", data)
+    write_file_if_not_identical(output_root_path, "dxvk-remix.vcxproj", data)
 
     # generate vcxproj.filters
     filters_file_template = Template("""<?xml version="1.0" encoding="utf-8"?>
@@ -131,5 +131,5 @@ def generate_dxvk_project(output_root_path, dxvk_cpp_defines):
             references += reference_template.safe_substitute(path=fileref, filter_name=filter_name)
 
     data = filters_file_template.safe_substitute(filters=filters, file_references=references)
-    if write_file_if_not_identical(output_root_path, "dxvk_rt.vcxproj.filters", data):
-        print("Generated dxvk_rt.vcxproj.filters")
+    if write_file_if_not_identical(output_root_path, "dxvk-remix.vcxproj.filters", data):
+        print("Generated dxvk-remix.vcxproj.filters")

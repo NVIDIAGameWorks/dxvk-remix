@@ -94,8 +94,8 @@
   <ItemGroup>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="dxvk_rt.vcxproj">
-      <Project>{$dxvkrt_project_guid}</Project>
+    <ProjectReference Include="dxvk-remix.vcxproj">
+      <Project>{$dxvk_remix_project_guid}</Project>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

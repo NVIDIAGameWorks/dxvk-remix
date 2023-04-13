@@ -22,11 +22,11 @@ def generate_testcase_project(vcxproj_output_path, test_case, command_line, outp
     test_name = pathsep_to_underscore(test_case)
     vcxproj_target = test_name.removeprefix("apics_") + ".vcxproj"
 
-    dxvkrt_project_guid = dxvkrt_guid()
+    dxvk_remix_project_guid = dxvk_remix_guid()
     test_project_guid = generate_guid(test_name)
     if working_directory == None:
         working_directory = "$(SolutionDir)\\" + os.path.join("..\\tests\\rtx\\dxvk_rt_testing\\", pathsep_to_backslash(test_case))
-    
+
     if not os.path.isabs(test_case_executable):
         test_case_executable = os.path.join(working_directory, test_case_executable)
 
@@ -39,7 +39,7 @@ def generate_testcase_project(vcxproj_output_path, test_case, command_line, outp
     d = projt.safe_substitute(test_project_guid=test_project_guid, 
                               test_case_outputdir=output_directory,
                               copy_target=copy_target,
-                              dxvkrt_project_guid=dxvkrt_project_guid)
+                              dxvk_remix_project_guid=dxvk_remix_project_guid)
 
     write_file_if_not_identical(vcxproj_output_path, vcxproj_target, d)
 

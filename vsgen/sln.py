@@ -9,7 +9,7 @@ from vsutil import *
 
 # usage: generate_sln.py <path/to/output.sln> <project1_folder/project1_name> <project2_folder/project2_name> ...
 
-# dxvk_rt_project_guid = "F9D37238-B68F-40CC-A509-5B02DC6FB609"
+# dxvk_remix_project_guid = "F9D37238-B68F-40CC-A509-5B02DC6FB609"
 nmake_project_type_guid = "8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942"
 folder_project_type_guid = "2150E333-8FDC-42A3-9474-1A3956D46DE8"
 
@@ -18,13 +18,13 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.1.32210.238
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{$nmake_project_type_guid}") = "dxvk_rt", "dxvk_rt.vcxproj", "{$dxvk_rt_project_guid}"
+Project("{$nmake_project_type_guid}") = "dxvk-remix", "dxvk-remix.vcxproj", "{$dxvk_remix_project_guid}"
 EndProject
 """)
 
 test_project_template = Template("""Project("{$nmake_project_type_guid}") = "$project_name", "$project_file_name.vcxproj", "{$project_guid}"
 	ProjectSection(ProjectDependencies) = postProject
-		{$dxvk_rt_project_guid} = {$dxvk_rt_project_guid}
+		{$dxvk_remix_project_guid} = {$dxvk_remix_project_guid}
 	EndProjectSection
 EndProject
 """)
@@ -66,11 +66,12 @@ footer_template = Template("""	EndGlobalSection
 	EndGlobalSection
 EndGlobal""")
 
-output_file = "dxvk_rt.sln"
+output_file = "dxvk-remix.sln"
+old_output_file = "dxvk_rt.sln"
 
 def generate_sln(output_root_path, test_cases):
 	solution_guid = generate_guid(output_file)
-	dxvk_rt_project_guid = dxvkrt_guid()
+	dxvk_remix_project_guid = dxvk_remix_guid()
 
 	# list of tuples (project_name, project_guid, folder_guid)
 	projects = []
@@ -92,7 +93,7 @@ def generate_sln(output_root_path, test_cases):
 
 	output_data = header_template.safe_substitute(
 		nmake_project_type_guid=nmake_project_type_guid,
-		dxvk_rt_project_guid=dxvk_rt_project_guid)
+		dxvk_remix_project_guid=dxvk_remix_project_guid)
 
 	for project_name, project_file_name, project_guid, folder_guid in projects:
 		output_data += test_project_template.safe_substitute(
@@ -100,7 +101,7 @@ def generate_sln(output_root_path, test_cases):
 			project_name=project_name,
 			project_file_name=project_file_name,
 			project_guid=project_guid,
-			dxvk_rt_project_guid=dxvk_rt_project_guid)
+			dxvk_remix_project_guid=dxvk_remix_project_guid)
 
 	for folder_name in folders:
 		folder_guid = generate_guid(folder_name)
@@ -112,7 +113,7 @@ def generate_sln(output_root_path, test_cases):
 	output_data += global_header
 
 	output_data += global_project_section_template.safe_substitute(
-		project_guid=dxvk_rt_project_guid)
+		project_guid=dxvk_remix_project_guid)
 
 	for project_name, project_file_name, project_guid, folder_guid in projects:
 		output_data += global_project_section_template.safe_substitute(
@@ -127,5 +128,9 @@ def generate_sln(output_root_path, test_cases):
 
 	output_data += footer_template.safe_substitute(
 		solution_guid=solution_guid)
+
+	if check_if_file_exists(output_root_path, old_output_file):
+		print('Error: solution file changed from dxvk_rt.sln to dxvk-remix.sln --- please delete _vs/dxvk_rt.sln and rebuild')
+		sys.exit(1)
 
 	write_file_if_not_identical(output_root_path, output_file, output_data)
