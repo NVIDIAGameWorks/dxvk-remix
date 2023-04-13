@@ -1,6 +1,7 @@
 #pragma once
 
 #include <imgui\imgui.h>
+#include <imgui\imgui_internal.h>
 #include "..\rtx_render\rtx_option.h"
 #include "..\util\util_vector.h"
 #include <type_traits>
@@ -8,9 +9,11 @@
 
 namespace ImGui {
 
-  IMGUI_API void SetTooltipToLastWidgetOnHover(const char* fmt, ...) IM_FMTARGS(1);  // Conditionally sets tooltip if IsItemHovered() is true
+  IMGUI_API void          SetTooltipUnformatted(const char* text);  // Same as SetTooltip, just without text formatting (so percentage signs do not interfere with tooltips when not desired).
+  IMGUI_API void SetTooltipToLastWidgetOnHover(const char* text);  // Conditionally sets tooltip if IsItemHovered() is true
 
-  inline bool addTooltipAndPassthroughValue(bool value, const char* tooltip) {
+  template<typename T>
+  inline T addTooltipAndPassthroughValue(const T& value, const char* tooltip) {
     SetTooltipToLastWidgetOnHover(tooltip);
     return value;
   }
