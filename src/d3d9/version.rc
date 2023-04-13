@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <version.h>
 
 // DLL version information.
 VS_VERSION_INFO    VERSIONINFO
@@ -20,7 +21,7 @@ BEGIN
       VALUE "InternalName",     "D3D9.dll"
       VALUE "LegalCopyright",   "zlib/libpng license, MIT license"
       VALUE "OriginalFilename", "D3D9.dll"
-      VALUE "ProductName",      "dxvk-remix (remix-0.1.1)"
+      VALUE "ProductName",      DXVK_VERSION
       VALUE "ProductVersion",   "10.0.17763.1"
     END
   END
