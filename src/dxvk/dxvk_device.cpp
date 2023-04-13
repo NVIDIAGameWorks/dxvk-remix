@@ -80,8 +80,6 @@ namespace dxvk {
                                                           m_vkd->vkGetCalibratedTimestampsEXT);
     TracyVkContextName(m_queues.graphics.tracyCtx, "Graphics Queue", strlen("Graphics Queue"));
 #endif
-
-    m_objects.getTextureManager().start();
   }
 
   
