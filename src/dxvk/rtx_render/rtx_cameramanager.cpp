@@ -112,7 +112,6 @@ namespace dxvk {
     decomposeProjection(input.getTransformData().viewToProjection, aspectRatio, fov, nearPlane, farPlane, shearX, shearY, isLHS, isReverseZ);
 
     if (m_trackCamerasSeenStats.getValue()) {
-
       std::string projParamsDesc = str::format("fv:", fov, ", np : ", nearPlane, ", fp : ", farPlane, ", lhs : ", isLHS, ", reverseZ : ", isReverseZ, " }");
 
       if (projParamsDesc != m_lastProjParamsSeen) {
@@ -139,8 +138,8 @@ namespace dxvk {
     }
 
     // Filter invalid cameras, extreme shearing
-    const float kFovTolerance = 0.001f;
-    if (abs(shearX) > 0.01f || fov < kFovTolerance) {
+    constexpr float kFovToleranceRadians = 0.001f;
+    if (abs(shearX) > 0.01f || fov < kFovToleranceRadians) {
       ONCE(Logger::warn("[RTX] Camera Manager: rejected an invalid camera"));
       return false;
     }
@@ -164,7 +163,7 @@ namespace dxvk {
 
       // First valid camera in a frame, we currently expect it to be the main camera
       // If FOV is 0, just default to the main camera
-      if (m_lastSetCameraType == CameraType::Unknown || fov < kFovTolerance) {
+      if (m_lastSetCameraType == CameraType::Unknown || fov < kFovToleranceRadians) {
         cameraType = CameraType::Main;
       } 
       else {
@@ -174,12 +173,12 @@ namespace dxvk {
           cameraType = cameraTypeIter->second;
         } else {
           // FOV is different from Main camera => consider it View Model
-          if (abs(fov - getCamera(CameraType::Main).getFov()) > kFovTolerance) {
+          if (abs(fov - getCamera(CameraType::Main).getFov()) > kFovToleranceRadians) {
             if (RtxOptions::Get()->isViewModelEnabled()) {
               if (!m_cameras[CameraType::ViewModel].has_value())
                 m_cameras[CameraType::ViewModel] = new RtCamera();
 
-              if (getCamera(CameraType::ViewModel).isValid(frameId) && (fov - getCamera(CameraType::ViewModel).getFov() > kFovTolerance)) {
+              if (getCamera(CameraType::ViewModel).isValid(frameId) && (fov - getCamera(CameraType::ViewModel).getFov() > kFovToleranceRadians)) {
                 ONCE(Logger::warn("[RTX] Camera Manager: Multiple ViewModel camera candidates found. Secondary candidates are defaulted to Main camera. "));
                 cameraType = CameraType::Main;
               } else {
@@ -195,7 +194,7 @@ namespace dxvk {
     }
 
     // Check fov consistency accross frames
-    if (frameId > 0 && getCamera(cameraType).isValid(frameId - 1) && (fov - getCamera(cameraType).getFov() > kFovTolerance))
+    if (frameId > 0 && getCamera(cameraType).isValid(frameId - 1) && (fov - getCamera(cameraType).getFov() > kFovToleranceRadians))
       ONCE(Logger::warn("[RTX] Camera Manager: FOV of a camera changed between frames"));
 
     m_cameraHashToType[cameraHash] = cameraType;
