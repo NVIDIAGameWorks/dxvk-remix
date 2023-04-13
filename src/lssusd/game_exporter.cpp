@@ -176,26 +176,19 @@ void GameExporter::createApertureMdls(const std::string& baseExportPath) {
   const std::string materialsDirPath = baseExportPath + "/" + commonDirName::matDir;
   dxvk::env::createDirectory(materialsDirPath);
 
-  {
-    std::ofstream stream(materialsDirPath + "AperturePBR_Opacity.mdl");
-    stream << ___AperturePBR_Opacity << std::endl;
-  }
+  auto writeFile = [](const std::string& path, const auto& data) {
+    std::ofstream stream(path, std::ios_base::binary);
+    if (stream.is_open()) {
+      stream.write(reinterpret_cast<const char*>(data), sizeof(data));
+    } else {
+      dxvk::Logger::info(dxvk::str::format("[GameExporter] Unable to create file: ", path));
+    }
+  };
 
-  {
-
-    std::ofstream stream(materialsDirPath + "AperturePBR_Translucent.mdl");
-    stream << ___AperturePBR_Translucent << std::endl;
-  }
-
-  {
-    std::ofstream stream(materialsDirPath + "AperturePBR_Model.mdl");
-    stream << ___AperturePBR_Model << std::endl;
-  }
-
-  {
-    std::ofstream stream(materialsDirPath + "AperturePBR_Normal.mdl");
-    stream << ___AperturePBR_Normal << std::endl;
-  }
+  writeFile(materialsDirPath + "AperturePBR_Opacity.mdl", ___AperturePBR_Opacity);
+  writeFile(materialsDirPath + "AperturePBR_Translucent.mdl", ___AperturePBR_Translucent);
+  writeFile(materialsDirPath + "AperturePBR_Model.mdl", ___AperturePBR_Model);
+  writeFile(materialsDirPath + "AperturePBR_Normal.mdl", ___AperturePBR_Normal);
 }
 
 void GameExporter::exportMaterials(const Export& exportData, ExportContext& ctx) {
