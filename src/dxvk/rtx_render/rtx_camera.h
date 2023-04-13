@@ -123,6 +123,7 @@ namespace dxvk
   public:
     RtCamera();
 
+    // Gets the Y axis (vertical) FoV of the camera's projection matrix in radians. Note this value will be positive always (even with strange camera types).
     float getFov() const { return m_fov; }
     const Matrix4& getWorldToView(bool freecam = true) const;
     const Matrix4& getPreviousWorldToView(bool freecam = true) const;

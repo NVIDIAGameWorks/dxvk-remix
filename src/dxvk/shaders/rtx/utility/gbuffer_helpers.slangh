@@ -35,6 +35,7 @@ MinimalRayInteraction minimalRayInteractionReadFromGBuffer(
   Texture2D<float> coneRadiusTexture)
 {
   GBufferMemoryMinimalRayInteraction memory;
+
   memory.encodedViewDirection = viewDirectionTexture[position];
   memory.encodedConeRadius = float16_t(coneRadiusTexture[position].x);
 
@@ -63,8 +64,10 @@ MinimalSurfaceInteraction minimalSurfaceInteractionReadFromGBuffer(
   Texture2D<float4> worldPositionWorldTriangleNormalTexture)
 {
   GBufferMemoryMinimalSurfaceInteraction memory;
+
   memory.encodedWorldPositionWorldTriangleNormal = worldPositionWorldTriangleNormalTexture[position];
   memory.positionError = 0;
+
   return minimalSurfaceInteractionCreate(memory);
 }
 
@@ -74,8 +77,10 @@ MinimalSurfaceInteraction minimalSurfaceInteractionReadFromGBufferWithError(
   Texture2D<float> positionErrorTexture)
 {
   GBufferMemoryMinimalSurfaceInteraction memory;
+
   memory.encodedWorldPositionWorldTriangleNormal = worldPositionWorldTriangleNormalTexture[position];
   memory.positionError = positionErrorTexture[position];
+
   return minimalSurfaceInteractionCreate(memory);
 }
 
@@ -102,6 +107,7 @@ PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionReadF
   Texture2D<uint> data1Texture)
 {
   GBufferMemoryPolymorphicSurfaceMaterialInteraction memory;
+
   memory.worldShadingNormal = signedOctahedralToSphereDirection(snorm2x16ToFloat2x32(worldShadingNormalTexture[position]));
   memory.perceptualRoughness = perceptualRoughnessTexture[position];
   memory.albedo = f16vec3(albedoTexture[position].rgb);

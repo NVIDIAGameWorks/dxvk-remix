@@ -49,6 +49,7 @@ struct SampledXform {
 using SampledXforms = std::vector<SampledXform>;
   
 struct Camera {
+  // Note: FoV in radians.
   float         fov = NAN;
   float         aspectRatio = NAN;
   float         nearPlane = NAN;

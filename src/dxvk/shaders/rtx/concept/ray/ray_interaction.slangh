@@ -68,6 +68,7 @@ RayInteraction rayInteractionCreateMiss()
   RayInteraction rayInteraction;
 
   rayInteraction.hitDistance = kMissHitDistance;
+  // Note: Other members left undefined as they should not be read from misses, only hit distance needed to identify a miss.
 
   return rayInteraction;
 }
