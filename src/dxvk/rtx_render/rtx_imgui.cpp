@@ -2,6 +2,12 @@
 
 namespace ImGui {
 
+  void ImGui::SetTooltipUnformatted(const char* text) {
+    ImGui::BeginTooltipEx(ImGuiTooltipFlags_OverridePreviousTooltip, ImGuiWindowFlags_None);
+    ImGui::TextUnformatted(text);
+    ImGui::EndTooltip();
+  }
+
   void SetTooltipToLastWidgetOnHover(const char* text) {
     // Note: Don't display tooltips for empty strings, easily detectable if the first character in the string is the null terminator.
     if (text[0] == '\0') {
