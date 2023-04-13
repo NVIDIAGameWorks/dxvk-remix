@@ -30,7 +30,8 @@
 
 namespace dxvk {
   RtxTextureManager::RtxTextureManager(const Rc<DxvkDevice>& device)
-  : m_device(device) {
+  : m_device(device),
+    m_ctx(m_device->createContext()) {
   }
 
   RtxTextureManager::~RtxTextureManager() {
@@ -43,7 +44,6 @@ namespace dxvk {
   }
 
   void RtxTextureManager::start() {
-    m_ctx = m_device->createContext();
     m_thread = dxvk::thread([this]() { threadFunc(); });
   }
 
