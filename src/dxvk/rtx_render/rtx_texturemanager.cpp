@@ -253,8 +253,7 @@ namespace dxvk {
   Rc<ManagedTexture> RtxTextureManager::preloadTexture(const Rc<AssetData>& assetData,
     ColorSpace colorSpace, const Rc<DxvkContext>& context, bool forceLoad) {
 
-    auto filename = assetData->filename();
-    XXH64_hash_t hash = XXH64_std_hash<std::string>{}(filename);
+    const XXH64_hash_t hash = assetData->hash();
 
     auto it = m_textures.find(hash);
     if (it != m_textures.end()) {
@@ -280,8 +279,7 @@ namespace dxvk {
     if (texture != nullptr) {
       unloadTexture(texture);
 
-      XXH64_hash_t hash = XXH64_std_hash<std::string>{}(texture->assetData->filename());
-      m_textures.erase(hash);
+      m_textures.erase(texture->assetData->hash());
     }
   }
 

@@ -227,7 +227,7 @@ Rc<ManagedTexture> UsdMod::Impl::getTexture(const Args& args, const pxr::UsdPrim
     const ColorSpace colorSpace = ColorSpace::AUTO; // Always do this, whether or not force SRGB is required or not is unclear at this time.
     const std::string& strPath = path.GetResolvedPath();
     if (!strPath.empty()) {
-      auto assetData = AssetDataManager::get().find(strPath.c_str());
+      auto assetData = AssetDataManager::get().findAsset(strPath);
       if (assetData != nullptr) {
         auto device = args.context->getDevice();
         auto& textureManager = device->getCommon()->getTextureManager();
