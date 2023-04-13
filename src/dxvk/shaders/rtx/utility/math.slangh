@@ -155,7 +155,7 @@ GENERIC_SQUARE_LENGTH(float, vec4)
 
 // Calculates an orthonormal basis from a specified normal vector
 // [Duff et al. 17, Building An Orthonormal Basis, Revisited]
-void calcOrthonormalBasis(f16vec3 normal, inout f16vec3 tangent, inout f16vec3 bitangent)
+void calcOrthonormalBasis(f16vec3 normal, out f16vec3 tangent, out f16vec3 bitangent)
 {
   const float16_t sign = signNotZero(normal.z);
 
@@ -268,8 +268,8 @@ void genTangSpace(vec2 uvs[3],
                   vec3 pos[3],
                   f16vec3 triangleNormal,
                   f16vec3 interpolatedNormal,
-                  inout f16vec3 tangentU,
-                  inout f16vec3 tangentV)
+                  out f16vec3 tangentU,
+                  out f16vec3 tangentV)
 {
   // Compute triangle partial derivatives
 
@@ -287,7 +287,8 @@ void genTangSpace(vec2 uvs[3],
   vec3 newTangentU;
   vec3 newTangentV;
 
-  bool degenerateUV = abs(determinant) < 1e-8f;
+  const bool degenerateUV = abs(determinant) < 1e-8f;
+
   if (!degenerateUV)
   {
     const float invdet = 1.0f / determinant;
@@ -297,16 +298,17 @@ void genTangSpace(vec2 uvs[3],
   }
 
   vec3 newNormal = cross(newTangentU, newTangentV);
-  bool degenerateBasis = all(newNormal == vec3(0));
+  bool degenerateBasis = all(newNormal == vec3(0.0f));
 
   // Gram-Schmidt Orthogonalization
   // Note: Converted to 32 bit float to use with other vectors easier, hopefully won't take up too many more registers.
-  vec3 preciseInterpolatedNormal = vec3(interpolatedNormal);
+  const vec3 preciseInterpolatedNormal = vec3(interpolatedNormal);
 
-  // Note: Float 16 conversion done before normalization to avoid deviation from normalized vectors due to quantization
-  tangentU = f16vec3(orthogonalize(newTangentU, preciseInterpolatedNormal));
+  // Note: Orthogonalizing here will not change the cross product's direction (relevant for later) as the orthogonalized vector
+  // is a linear combination of the two input vectors and thus will stay as part of the plane spanned by the two vectors.
+  newTangentU = orthogonalize(newTangentU, preciseInterpolatedNormal);
 
-  if (degenerateUV || degenerateBasis || length(tangentU) == float16_t(0))
+  if (degenerateUV || degenerateBasis || dot(newTangentU, newTangentU) == 0.0f)
   {
     calcOrthonormalBasis(triangleNormal, tangentU, tangentV);
 
@@ -314,9 +316,13 @@ void genTangSpace(vec2 uvs[3],
     return;
   }
 
-  tangentU = normalize(tangentU);
-  const float sign = signNotZero(dot(cross(preciseInterpolatedNormal, newTangentU), newTangentV));
-  tangentV = f16vec3(normalize(sign * cross(preciseInterpolatedNormal, newTangentU)));
+  const float bitangentSign = signNotZero(dot(cross(preciseInterpolatedNormal, newTangentU), newTangentV));
+
+  // Note: Float 16 conversion done after normalization in these cases to avoid precision/overflow issues with large tangent vectors.
+  // Not quite as accurate as this may result in a slightly non-normalized vector compared to normalizing it in this quantized form,
+  // but it should be fine.
+  tangentU = f16vec3(normalize(newTangentU));
+  tangentV = f16vec3(normalize(bitangentSign * cross(preciseInterpolatedNormal, newTangentU)));
 }
 
 // Smart bent normal for ray tracing
