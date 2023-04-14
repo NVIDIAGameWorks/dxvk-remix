@@ -297,8 +297,8 @@ void genTangSpace(vec2 uvs[3],
     newTangentV = (-duv12[0] * dp02 + duv02[0] * dp12) * invdet;
   }
 
-  vec3 newNormal = cross(newTangentU, newTangentV);
-  bool degenerateBasis = all(newNormal == vec3(0.0f));
+  const vec3 newNormal = cross(newTangentU, newTangentV);
+  const bool degenerateBasis = all(newNormal == vec3(0.0f));
 
   // Gram-Schmidt Orthogonalization
   // Note: Converted to 32 bit float to use with other vectors easier, hopefully won't take up too many more registers.
