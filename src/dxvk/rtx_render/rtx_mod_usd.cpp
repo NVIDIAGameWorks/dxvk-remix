@@ -994,7 +994,9 @@ void UsdMod::Impl::processReplacement(Args& args) {
   }
   
   if (!args.meshes.empty() && args.rootPrim.HasAttribute(kPreserveOriginalToken)) {
-    args.meshes[0].includeOriginal = true;
+    int preserve = 0;
+    args.rootPrim.GetAttribute(kPreserveOriginalToken).Get(&preserve);
+    args.meshes[0].includeOriginal = preserve != 0;
   }
 }
 
