@@ -280,7 +280,8 @@ namespace dxvk {
       return { RtxGeometryStatus::Ignored, false };
     }
 
-    if (!d3d9State().renderStates[ColorWriteIndex(kRenderTargetIndex)]) {
+    constexpr DWORD rgbWriteMask = D3DCOLORWRITEENABLE_RED | D3DCOLORWRITEENABLE_GREEN | D3DCOLORWRITEENABLE_BLUE;
+    if ((d3d9State().renderStates[ColorWriteIndex(kRenderTargetIndex)] & rgbWriteMask) != rgbWriteMask) {
       ONCE(Logger::info("[RTX-Compatibility-Info] Skipped drawcall, colour write disabled."));
       return { RtxGeometryStatus::Ignored, false };
     }
