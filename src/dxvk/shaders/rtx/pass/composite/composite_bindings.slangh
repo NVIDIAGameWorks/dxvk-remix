@@ -59,6 +59,8 @@ layout(binding = COMPOSITE_SECONDARY_ALBEDO_INPUT)
 Texture2D<float4> SecondaryAlbedo;
 layout(binding = COMPOSITE_SECONDARY_SPECULAR_ALBEDO_INPUT)
 Texture2D<float4> SecondarySpecularAlbedo;
+layout(rgba32ui, binding = COMPOSITE_ALPHA_GBUFFER_INPUT)
+Texture2D<uint4> AlphaBlendGBuffer;
 
 layout(binding = COMPOSITE_PRIMARY_DIRECT_DIFFUSE_RADIANCE_HIT_DISTANCE_INPUT)
 Texture2D<float4> PrimaryDirectDiffuseRadianceHitDistance;
@@ -75,6 +77,11 @@ Texture2D<float2> BSDFFactor2;
 
 layout(r11f_g11f_b10f, binding = COMPOSITE_VOLUME_PREINTEGRATED_RADIANCE_INPUT)
 Sampler3D<float3> VolumePreintegratedRadiance;
+layout(binding = COMPOSITE_VOLUME_FILTERED_RADIANCE_INPUT)
+Sampler3D<float3> VolumeFilteredRadiance;
+
+layout(binding = COMPOSITE_BLUE_NOISE_TEXTURE)
+Texture2DArray BlueNoise;
 
 // Outputs
 
@@ -86,3 +93,6 @@ RWTexture2D<float4> LastFinalOutput;
 
 layout(binding = COMPOSITE_DEBUG_VIEW_OUTPUT)
 RWTexture2D<float4> DebugView;
+
+layout(binding = COMPOSITE_ALPHA_BLEND_RADIANCE_OUTPUT)
+RWTexture2D<float4> AlphaBlendRadiance;

@@ -12,23 +12,33 @@ if ($sourceDir.substring($sourceDir.length - 5, 5) -ne "tests")
     exit
 }
 
-$sourceDir = [IO.Path]::Combine($sourceDir, "rtx\\dxvk_rt_testing")
-
 # relative path from this script to the destination
-$destDir = "tests/rtx/dxvk_rt_testing"
+$destDir = "tests/rtx/dxvk_rt_testing/goldens"
 
-Get-ChildItem $sourceDir -Recurse -Include "*_rtxImagePostTonemapping.png", "*_rtxImageDebugView.png", "*_rtxImageDxvkView.png" | ForEach-Object {
-    $sourcePath = $_.FullName
-    $relPath = $_.FullName.Substring($sourceDir.Length) -Replace "\\results\\", "\"
-    $relPath = $relPath.replace("apics", "goldens")
-    $destPath = Join-Path $destDir $relPath
-    $destFolder = Split-Path $destPath -Parent
-  
-    if (!(Test-Path $destFolder)) {
-        Write-Host "$destFolder dir didn't exist, creating"
-        New-Item -ItemType Directory -Path $destFolder | Out-Null
+$destImages = Get-ChildItem $destDir -Recurse -Include "*_rtxImagePostTonemapping.png", "*_rtxImageDebugView.png", "*_rtxImageDxvkView.png"
+$srcImages = Get-ChildItem $sourceDir -Recurse -Include "*_rtxImagePostTonemapping.png", "*_rtxImageDebugView.png", "*_rtxImageDxvkView.png"
+
+ForEach ($destImage in $destImages) {
+    $srcImage = $srcImages | where Name -CEQ $destImage.Name
+
+    if ($srcImage) {
+        Write-Host "Copying,"$srcImage.Name"---> $destImage"
+        Copy-Item $srcImage -Destination $destImage
+
+        $srcImages = $srcImages | Where-Object {$_.FullName -ne $srcImage.FullName}
+    } else {
+        Write-Warning ("Image " + $destImage.Name + " is not found in the artifacts!")
+    }
+}
+
+if ($srcImages) {
+    [console]::beep(500, 500)
+
+    Write-Warning "New images discovered in the artifacts:"
+
+    ForEach ($srcImage in $srcImages) {
+        write-host "`t"$srcImage.FullName
     }
 
-    Write-Host "Copying, $sourcePath ---> $destPath"
-    Copy-Item $sourcePath -Destination $destPath
+    Write-Warning "You may need to manually initialize these images in the repo."
 }

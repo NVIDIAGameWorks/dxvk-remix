@@ -251,7 +251,7 @@ namespace dxvk
       Resource m_secondaryAlbedo;
       AliasedResource m_secondaryBaseReflectivity;
       AliasedResource m_secondarySpecularAlbedo;
-      Resource m_secondaryVirtualMotionVector;
+      AliasedResource m_secondaryVirtualMotionVector;
       Resource m_secondaryVirtualWorldShadingNormalPerceptualRoughness;
       Resource m_secondaryVirtualWorldShadingNormalPerceptualRoughnessDenoising;
       Resource m_secondaryHitDistance;
@@ -261,6 +261,8 @@ namespace dxvk
       Resource m_secondaryPositionError;
       AliasedResource m_decalMaterial;
       AliasedResource m_decalEmissiveRadiance;
+      Resource m_alphaBlendGBuffer;
+      AliasedResource m_alphaBlendRadiance;
 
       // Resource containing 1spp radiance from indirect pass - with each pixel containing {diffuse | specular} for a {primary | secondary} surface
       AliasedResource m_indirectRadianceHitDistance;

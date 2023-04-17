@@ -1242,6 +1242,7 @@ namespace dxvk {
     constants.psrrNormalDetailThreshold = RtxOptions::Get()->psrrNormalDetailThreshold();
     constants.pstrNormalDetailThreshold = RtxOptions::Get()->pstrNormalDetailThreshold();
     constants.enableDirectLighting = RtxOptions::Get()->isDirectLightingEnabled();
+    constants.enableStochasticAlphaBlend = m_common->metaComposite().enableStochasticAlphaBlend();
     constants.enableSeparateUnorderedApproximations = RtxOptions::Get()->isSeparateUnorderedApproximationsEnabled() && getResourceManager().getTLAS(Tlas::Unordered).accelStructure != nullptr;
     constants.enableDirectTranslucentShadows = RtxOptions::Get()->areDirectTranslucentShadowsEnabled();
     constants.enableIndirectTranslucentShadows = RtxOptions::Get()->areIndirectTranslucentShadowsEnabled();
@@ -1347,6 +1348,7 @@ namespace dxvk {
 
     constants.resolveTransparencyThreshold = RtxOptions::Get()->getResolveTransparencyThreshold();
     constants.resolveOpaquenessThreshold = RtxOptions::Get()->getResolveOpaquenessThreshold();
+    constants.resolveStochasticAlphaBlendThreshold = m_common->metaComposite().stochasticAlphaBlendOpacityThreshold();
 
     constants.volumeClampedReprojectionConfidencePenalty = RtxOptions::Get()->getVolumetricClampedReprojectionConfidencePenalty();
 
@@ -1598,7 +1600,7 @@ namespace dxvk {
       denoiseInput.specular_hitT = &rtOutput.m_secondaryCombinedSpecularRadiance.resource(Resources::AccessType::Read);
       denoiseInput.normal_roughness = &rtOutput.m_secondaryVirtualWorldShadingNormalPerceptualRoughnessDenoising;
       denoiseInput.linearViewZ = &rtOutput.m_secondaryLinearViewZ;
-      denoiseInput.motionVector = &rtOutput.m_secondaryVirtualMotionVector;
+      denoiseInput.motionVector = &rtOutput.m_secondaryVirtualMotionVector.resource(Resources::AccessType::Read);
       denoiseInput.frameTimeMs = frameTimeSecs * 1000.f;
       denoiseInput.reset = m_resetHistory;
 
