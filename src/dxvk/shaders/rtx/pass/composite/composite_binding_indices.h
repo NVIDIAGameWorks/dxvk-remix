@@ -50,10 +50,14 @@
 #define COMPOSITE_BSDF_FACTOR2_INPUT                               21
 
 #define COMPOSITE_VOLUME_PREINTEGRATED_RADIANCE_INPUT              22
+#define COMPOSITE_VOLUME_FILTERED_RADIANCE_INPUT                   23
+#define COMPOSITE_ALPHA_GBUFFER_INPUT                              24
 
+#define COMPOSITE_BLUE_NOISE_TEXTURE                               25
 // Outputs
 
-#define COMPOSITE_FINAL_OUTPUT                                     25
-#define COMPOSITE_LAST_FINAL_OUTPUT                                26
+#define COMPOSITE_FINAL_OUTPUT                                     26
+#define COMPOSITE_LAST_FINAL_OUTPUT                                27
+#define COMPOSITE_ALPHA_BLEND_RADIANCE_OUTPUT                      28
 
 #define COMPOSITE_DEBUG_VIEW_OUTPUT                                29

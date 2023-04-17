@@ -29,6 +29,8 @@
 #define DENOISER_MODE_REBLUR 2
 
 struct CompositeArgs {
+  Camera camera;
+
   mat4 projectionToViewJittered;
   mat4 viewToWorld;
 
@@ -78,4 +80,20 @@ struct CompositeArgs {
   uint8_t compositeSecondaryCombinedSpecular;
   uint16_t pad;
   uint enableSeparatedDenoisers;
+  uint frameIdx;
+
+  uint enableStochasticAlphaBlend;
+  uint stochasticAlphaBlendEnableFilter;
+  uint stochasticAlphaBlendUseNeighborSearch;
+  uint stochasticAlphaBlendSearchTheSameObject;
+  uint stochasticAlphaBlendSearchIteration;
+  float stochasticAlphaBlendInitialSearchRadius;
+  float stochasticAlphaBlendRadiusExpandFactor;
+  uint stochasticAlphaBlendShareNeighbors;
+  float stochasticAlphaBlendNormalSimilarity;
+  float stochasticAlphaBlendDepthDifference;
+  float stochasticAlphaBlendPlanarDifference;
+  uint stochasticAlphaBlendUseRadianceVolume;
+  float stochasticAlphaBlendRadianceVolumeMultiplier;
+  uint stochasticAlphaBlendDiscardBlackPixel;
 };

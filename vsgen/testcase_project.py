@@ -49,6 +49,7 @@ def generate_testcase_project(vcxproj_output_path, test_case, command_line, outp
         usert = Template(open("testcase_project.vcxproj.user.template").read())
         d = usert.safe_substitute(test_case_executable=test_case_executable.replace("&", "&amp;"),
                                   test_case_commandline_arguments=test_case_commandline_arguments,
+                                  test_case_rtxconf_directory=os.path.join(working_directory.replace("apics", "configs"), "rtx.conf").replace("\\\\", "\\"),
                                   test_case_working_directory=working_directory)
 
         print(d, file=open(user_target, "wt"))

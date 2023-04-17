@@ -25,12 +25,14 @@
 
 #include "rtx/utility/common.slangh"
 #include "rtx/utility/packing.slangh"
+#include "rtx/utility/noise.slangh"
 #include "rtx/utility/color.slangh"
 #include "rtx/utility/froxel.slangh"
 #include "rtx/utility/brdf.slangh"
 #include "rtx/utility/demodulate_helpers.slangh"
 #include "rtx/utility/debug_view_helpers.slangh"
 #include "rtx/concept/camera/camera.slangh"
+#include "rtx/concept/surface/alpha_blend_surface.slangh"
 #include "rtx/external/NRD.slangh"
 #include "rtx/utility/geometry_flags.slangh"
 
@@ -140,9 +142,29 @@ void updateDebugViewAtStart(uint2 thread_id)
   }
 }
 
+void updateAlphaBlendDebugView(uint2 thread_id, AlphaBlendSurface surface)
+{
+  // Output Debug Information
+  switch(cb.debugViewIdx)
+  {
+  case DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_COLOR:
+    storeInDebugView(ivec2(thread_id), surface.isValid() ? surface.color.rgb : f16vec3(0));
+    break;
+  case DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_NORMAL:
+    storeInDebugView(ivec2(thread_id), surface.isValid() ? surface.normal : f16vec3(0));
+    break;
+  case DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_GEOMETRY_HASH:
+    storeInDebugView(ivec2(thread_id), r5g6b5ToColor(surface.geometryHash));
+    break;    
+  case DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_BACKGROUND_TRANSPARENCY:
+    storeInDebugView(ivec2(thread_id), surface.backgroundTransparency);
+    break;
+  }
+}
+
 [shader("compute")]
 [numthreads(16, 8, 1)]
-void main(uint2 thread_id : SV_DispatchThreadID)
+void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThreadID)
 {
   const VolumeArgs volumeArgs = cb.volumeArgs;
   // Note: Fake camera constructed due to Composite pass's lack of access to typical constant buffer members. A bit hacky
@@ -152,6 +174,7 @@ void main(uint2 thread_id : SV_DispatchThreadID)
 
   fakeCamera.resolution = cb.resolution;
   fakeCamera.projectionToViewJittered = cb.projectionToViewJittered;
+  fakeCamera.viewToWorld = cb.viewToWorld;
   fakeCamera.nearPlane = cb.nearPlane;
 
   // Early out for pixels outside the camera
@@ -326,5 +349,90 @@ void main(uint2 thread_id : SV_DispatchThreadID)
     attenuatedOutput = radianceOutput * (1.0f - fogColor.a) + fogColor.rgb * fogColor.a;
   }
 
-  imageStore(FinalOutput, thread_id.xy, vec4(attenuatedOutput, 1.0));
+  vec4 alphaBlendOutput = 0;
+  float backgroundAlpha = 1;
+  if (cb.enableStochasticAlphaBlend)
+  {    
+    AlphaBlendSurface surface = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[thread_id]);
+    vec3 cameraPosition = cameraGetWorldPosition(fakeCamera);
+    vec4 centerLight = AlphaBlendRadiance[thread_id];
+    bool discardPixel = cb.stochasticAlphaBlendDiscardBlackPixel && all(centerLight.xyz == 0);
+
+    if (!discardPixel && surface.isValid())
+    {
+      RNG randomState = createRNG(thread_id, cb.frameIdx, 5);
+      surface.color = surface.color;
+      vec3 particleNormal = surface.normal;
+      backgroundAlpha = surface.backgroundTransparency;
+
+      vec4 totalLight = vec4(centerLight.xyz, 1);
+
+      if(cb.stochasticAlphaBlendEnableFilter)
+      {
+        float minHitT = surface.hitT;
+        float maxHitT = surface.hitT;
+        float4 multilayerLight = totalLight;
+        for (int i = 0; i < 25; ++i)
+        {
+          int2 offset = int2(i % 5, i / 5) - 2;
+          if (all(offset == 0))
+          {
+            continue;
+          }
+          int2 neighborPixel = clamp(thread_id.xy + offset * 2,0,cb.resolution-1);
+
+          AlphaBlendSurface neighborSurface = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[neighborPixel]);
+          if (neighborSurface.isValid())
+          {
+            const CameraDirections neighborRayDirections = cameraPixelCoordinateToDirection(fakeCamera, neighborPixel.xy);
+            vec3 neighborPosition = cameraPosition + neighborSurface.hitT * neighborRayDirections.worldDirection;
+
+            const float transparencyBandwidth = 0.05;
+            const float distanceWeight = 0.5;
+            float weight = exp(-abs(neighborSurface.backgroundTransparency - surface.backgroundTransparency) / transparencyBandwidth + -distanceWeight* dot(offset, offset));
+
+            minHitT = min(minHitT, neighborSurface.hitT);
+            maxHitT = max(maxHitT, neighborSurface.hitT);
+
+            vec4 neighborLight = AlphaBlendRadiance[neighborPixel];
+            multilayerLight += vec4(neighborLight.xyz * weight, weight);
+          }
+        }
+        multilayerLight.rgb /= multilayerLight.w;
+
+        float depthRange = maxHitT - minHitT;
+        float depthBandwidth = 0.05;
+        totalLight.xyz = lerp(totalLight.xyz, multilayerLight.xyz, saturate(depthRange / surface.hitT / depthBandwidth));
+      }
+      alphaBlendOutput.xyz = totalLight.xyz;
+
+      if (volumeArgs.enableVolumetricLighting)
+      {
+        float alphaBlendSurfaceLinearViewZ = surface.hitT * primaryRayDirections.viewDirection.z;
+        vec3 alphaBlendPreintegratedRadiance = vec3(0.0f, 0.0f, 0.0f);
+        vec3 alphaBlendAttenuation = vec3(1.0f, 1.0f, 1.0f);
+        evalVolumetricPreintegratedNEE(
+          VolumePreintegratedRadiance, volumeArgs,
+          screenUV, true, alphaBlendSurfaceLinearViewZ, surface.hitT,
+          alphaBlendPreintegratedRadiance, alphaBlendAttenuation);
+        alphaBlendOutput.xyz += alphaBlendPreintegratedRadiance * (1 - backgroundAlpha);
+      }
+
+#if 0
+      // TODO: Need to revisit this when we have depth information for particles.
+      alphaBlendOutput.xyz += !primaryMiss ? sharedRadiance * backgroundAlpha : 0.0;
+#endif
+
+      if (!volumeArgs.enableVolumetricLighting)
+      {
+        const vec4 fogColor = calculateFog(surface.hitT);
+        alphaBlendOutput.xyz = alphaBlendOutput.xyz * (1.0f - fogColor.a) + fogColor.rgb * fogColor.a;
+        alphaBlendOutput.xyz *= (1 - backgroundAlpha);
+      }
+    }
+
+    updateAlphaBlendDebugView(thread_id.xy, surface);
+  }
+
+  imageStore(FinalOutput, thread_id.xy, vec4(attenuatedOutput * backgroundAlpha + alphaBlendOutput.rgb, 1.0));
 }

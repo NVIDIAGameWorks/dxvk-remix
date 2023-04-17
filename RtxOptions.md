@@ -145,6 +145,7 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.enableSeparateUnorderedApproximations|bool|True|Use a separate loop for surfaces which can have lighting evaluated in an approximate unordered way on each path segment. This improves performance typically.|
 |rtx.enableShaderExecutionReorderingInPathtracerGbuffer|bool|False||
 |rtx.enableShaderExecutionReorderingInPathtracerIntegrateIndirect|bool|True||
+|rtx.enableStochasticAlphaBlend|bool|True|Use stochastic alpha blend.|
 |rtx.enableUnorderedResolveInIndirectRays|bool|True||
 |rtx.enableVolumetricLighting|bool|False|Enabling volumetric lighting provides higher quality ray traced physical volumetrics, disabling falls back to cheaper depth based fog. Note: it does not disable the volume radiance cache as a whole as it is still needed for particles.|
 |rtx.enableVolumetricsInPortals|bool|True|Enables using extra frustum-aligned volumes for lighting in portals.|
@@ -398,6 +399,20 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.skyForceHDR|bool|False|By default sky will be rasterized in the color format used by the game. Set the checkbox to force sky to be rasterized in HDR intermediate format. This may be important when sky textures replaced with HDR textures.|
 |rtx.skyProbeSide|int|1024||
 |rtx.skyUiDrawcallCount|int|0||
+|rtx.stochasticAlphaBlendDepthDifference|float|0.1|Max depth difference for a valid neighbor.|
+|rtx.stochasticAlphaBlendDiscardBlackPixel|bool|False|Discard black pixels.|
+|rtx.stochasticAlphaBlendEnableFilter|bool|True|Filter samples to suppress noise.|
+|rtx.stochasticAlphaBlendInitialSearchRadius|float|10|Initial search radius.|
+|rtx.stochasticAlphaBlendNormalSimilarity|float|0.9|Min normal similarity for a valid neighbor.|
+|rtx.stochasticAlphaBlendOpacityThreshold|float|0.95|Max opacity to use stochastic alpha blend.|
+|rtx.stochasticAlphaBlendPlanarDifference|float|0.2|Max planar difference for a valid neighbor.|
+|rtx.stochasticAlphaBlendRadianceVolumeMultiplier|float|1|Radiance volume multiplier.|
+|rtx.stochasticAlphaBlendRadiusExpandFactor|float|1.6|Multiply radius by this factor if cannot find a good neighbor.|
+|rtx.stochasticAlphaBlendSearchIteration|int|6|Search iterations.|
+|rtx.stochasticAlphaBlendSearchTheSameObject|bool|True|Only use radiance samples from the same object.|
+|rtx.stochasticAlphaBlendShareNeighbors|bool|True|Share result with other pixels to accelerate search.|
+|rtx.stochasticAlphaBlendUseNeighborSearch|bool|True|Get radiance from neighbor opaque pixels.|
+|rtx.stochasticAlphaBlendUseRadianceVolume|bool|True|Get radiance from radiance volume.|
 |rtx.taauPreset|int|1|Adjusts TAA-U scaling factor, trades quality for performance.|
 |rtx.temporalAA.colorClampingFactor|float|1||
 |rtx.temporalAA.maximumRadiance|float|10000||
@@ -483,8 +498,12 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.beamTextures|hash set|||
 |rtx.captureInstanceStageName|string|||
 |rtx.cutoutTextures|hash set|||
-|rtx.decalTextures|hash set|||
-|rtx.dynamicDecalTextures|hash set|||
+|rtx.decalTextures|hash set||Static geometric decals or decals with complex topology.
+These materials will be blended over the materials underneath them.
+A small offset is applied to each flat part of these decals.|
+|rtx.dynamicDecalTextures|hash set||Dynamically spawned geometric decals, such as bullet holes.
+These materials will be blended over the materials underneath them.
+A small offset is applied to each triangle fan in these decals.|
 |rtx.geometryAssetHashRuleString|string|positions,indices,geometrydescriptor|Defines which hashes we need to include when sampling from replacements and doing USD capture|
 |rtx.geometryGenerationHashRuleString|string|positions,indices,texcoords,geometrydescriptor|Defines which asset hashes we need to generate via the geometry processing engine|
 |rtx.hideInstanceTextures|hash set|||
@@ -492,6 +511,8 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.ignoreTextures|hash set|||
 |rtx.lightConverter|hash set|||
 |rtx.lightmapTextures|hash set|||
+|rtx.nonOffsetDecalTextures|hash set||Geometric decals with arbitrary topology that are already offset from the base geometry.
+These materials will be blended over the materials underneath them. |
 |rtx.opacityMicromapIgnoreTextures|hash set|||
 |rtx.particleTextures|hash set|||
 |rtx.playerModelBodyTextures|hash set|||
