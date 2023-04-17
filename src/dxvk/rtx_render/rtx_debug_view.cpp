@@ -40,6 +40,8 @@
 #include "rtx_options.h"
 
 namespace dxvk {
+  static const bool s_disableAnimation = (env::getEnvVar("DXVK_DEBUG_VIEW_DISABLE_ANIMATION") == "1");
+
   static const auto colormap0 = turboColormap(0.0f);
   static const auto colormap25= turboColormap(0.25f);
   static const auto colormap50 = turboColormap(0.5f);
@@ -453,7 +455,7 @@ namespace dxvk {
     debugViewArgs.debugViewIdx = debugViewIdx();
     debugViewArgs.colorCodeRadius = std::clamp(m_colorCodeRadius, 0, 8);
 
-    if (env::getEnvVar("DXVK_DEBUG_VIEW_DISABLE_ANIMATION") == "1")
+    if (s_disableAnimation)
       debugViewArgs.animationTimeSec = 0;
     else
       debugViewArgs.animationTimeSec = elapsedSec.count();
