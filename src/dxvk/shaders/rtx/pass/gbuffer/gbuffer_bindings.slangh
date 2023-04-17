@@ -172,6 +172,9 @@ RWTexture2D<float> PrimaryDepth;
 layout(r8, binding = GBUFFER_BINDING_SHARED_BIAS_CURRENT_COLOR_MASK_OUTPUT)
 RWTexture2D<float> SharedBiasCurrentColorMask;
 
+layout(rgba32ui, binding = GBUFFER_BINDING_ALPHA_BLEND_GBUFFER_OUTPUT)
+RWTexture2D<uint4> AlphaBlendGBuffer;
+
 layout(push_constant)
 ConstantBuffer<GbufferPushConstants> push;
 
