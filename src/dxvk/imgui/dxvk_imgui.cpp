@@ -1351,6 +1351,9 @@ namespace dxvk {
       ImGui::Checkbox("Shader-based Vertex Capture", &RtxOptions::Get()->useVertexCaptureObject());
       ImGui::Separator();
 
+      ImGui::Checkbox("Ignore Stencil Volumes", &RtxOptions::Get()->ignoreStencilVolumeHeuristicsObject());
+      ImGui::Separator();
+
       ImGui::DragFloat("Vertex Color Strength", &RtxOptions::Get()->vertexColorStrengthObject(), 0.001f, 0.0f, 1.0f);
 
       ImGui::Unindent();
