@@ -143,6 +143,7 @@ struct RaytraceArgs {
   uint enableRussianRoulette;
   uint enableSecondaryBounces;
   uint enableSeparateUnorderedApproximations;
+  uint enableStochasticAlphaBlend;
   uint enableDirectTranslucentShadows;
   uint enableIndirectTranslucentShadows;
   uint enableFirstBounceLobeProbabilityDithering;
@@ -230,6 +231,7 @@ struct RaytraceArgs {
 
   float resolveTransparencyThreshold;
   float resolveOpaquenessThreshold;
+  float resolveStochasticAlphaBlendThreshold;
   float translucentDecalAlbedoFactor;
 
   float volumeClampedReprojectionConfidencePenalty;

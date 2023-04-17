@@ -73,7 +73,7 @@ void evalNEE(
     // Note: Factor in volumetric attenuation in volumetric NEE rays (when volumetrics are enabled )to simulate somewhat more correct light falloff through a medium. Note we're
     // still lacking a multiscattering contribution along the ray for now, but this isn't as bad as say doing this on every standard integration ray (which causes a significant amount
     // of energy loss).
-    volumeAttenuation = evalBeerLambertAttenuation(cb.volumeArgs.attenuationCoefficient, visibility.hitDistance);
+    volumeAttenuation = evalBeerLambertAttenuation(cb.volumeArgs.attenuationCoefficient, min(float16Max, visibility.hitDistance));
   }
 
   const vec3 attenuatedRadiance = lightSample.radiance * lightThroughput * volumeAttenuation;
