@@ -533,8 +533,7 @@ namespace dxvk {
     this->emitDclOutputArray();
 
     // Sets up an output buffer to capture vertex data post-transform
-    if(RtxOptions::Get()->isVertexCaptureEnabled()) 
-      this->emitVertexCaptureInit();
+    this->emitVertexCaptureInit();
 
     // Main function of the vertex shader
     m_vs.functionId = m_module.allocateId();
@@ -3651,8 +3650,7 @@ void DxsoCompiler::emitControlFlowGenericLoop(
       m_module.opStore(outputPtr.id, workingReg.id);
     }
 
-    if (RtxOptions::Get()->isVertexCaptureEnabled())
-      this->emitVertexCaptureOp();
+    this->emitVertexCaptureOp();
 
     auto OutputDefault = [&](DxsoSemantic semantic) {
       DxsoRegisterInfo info;
