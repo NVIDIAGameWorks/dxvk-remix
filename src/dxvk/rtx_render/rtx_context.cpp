@@ -851,7 +851,7 @@ namespace dxvk {
       assert(geoData.positionBuffer.offset() % 4 == 0);
 
       // Did we have a texcoord buffer bound for this draw?
-      if (!geoData.texcoordBuffer.defined()) {
+      if (!geoData.texcoordBuffer.defined() || !RtxGeometryUtils::isTexcoordFormatValid(geoData.texcoordBuffer.vertexFormat())) {
         // Known offset for vertex capture buffers
         const uint32_t texcoordOffset = sizeof(float) * 4;
         geoData.texcoordBuffer = RasterBuffer(DxvkBufferSlice(vertexCaptureBuffer), texcoordOffset, stride, VK_FORMAT_R32G32_SFLOAT);

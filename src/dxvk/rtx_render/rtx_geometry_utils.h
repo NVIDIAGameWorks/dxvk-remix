@@ -51,6 +51,13 @@ namespace dxvk {
     ~RtxGeometryUtils();
 
     /**
+     * \brief Currently we only support these texcoord formats...
+     */
+    static bool isTexcoordFormatValid(VkFormat format) {
+      return format == VK_FORMAT_R32G32B32A32_SFLOAT || format == VK_FORMAT_R32G32B32_SFLOAT || format == VK_FORMAT_R32G32_SFLOAT;
+    }
+
+    /**
      * \brief Execute a compute shader to perform skinning
      */
     void dispatchSkinning(
