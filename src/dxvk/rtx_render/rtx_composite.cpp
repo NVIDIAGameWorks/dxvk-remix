@@ -31,6 +31,7 @@
 #include "rtx_options.h"
 
 #include <rtx_shaders/composite.h>
+#include <rtx_shaders/composite_alpha_blend.h>
 
 constexpr ImGuiTreeNodeFlags collapsingHeaderClosedFlags = ImGuiTreeNodeFlags_CollapsingHeader;
 
@@ -38,12 +39,14 @@ namespace dxvk {
 
   // Defined within an unnamed namespace to ensure unique definition across binary
   namespace {
-    class CompositeShader : public ManagedShader {
-      SHADER_SOURCE(CompositeShader, VK_SHADER_STAGE_COMPUTE_BIT, composite)
+
+    class CompositeAlphaBlendShader : public ManagedShader {
+      SHADER_SOURCE(CompositeAlphaBlendShader, VK_SHADER_STAGE_COMPUTE_BIT, composite_alpha_blend)
 
       BEGIN_PARAMETER()
         CONSTANT_BUFFER(COMPOSITE_CONSTANTS_INPUT)
         RW_TEXTURE2D(COMPOSITE_FINAL_OUTPUT)
+        RW_TEXTURE2D(COMPOSITE_ALPHA_BLEND_RADIANCE_OUTPUT)
         RW_TEXTURE2D(COMPOSITE_LAST_FINAL_OUTPUT)
         RW_TEXTURE2D_READONLY(COMPOSITE_SHARED_FLAGS_INPUT)
         TEXTURE2D(COMPOSITE_SHARED_RADIANCE_RG_INPUT)
@@ -63,8 +66,49 @@ namespace dxvk {
         TEXTURE2D(COMPOSITE_SECONDARY_COMBINED_DIFFUSE_RADIANCE_HIT_DISTANCE_INPUT)
         TEXTURE2D(COMPOSITE_SECONDARY_COMBINED_SPECULAR_RADIANCE_HIT_DISTANCE_INPUT)
         SAMPLER3D(COMPOSITE_VOLUME_PREINTEGRATED_RADIANCE_INPUT)
+        SAMPLER3D(COMPOSITE_VOLUME_FILTERED_RADIANCE_INPUT)
         TEXTURE2D(COMPOSITE_BSDF_FACTOR_INPUT)
         TEXTURE2D(COMPOSITE_BSDF_FACTOR2_INPUT)
+        TEXTURE2D(COMPOSITE_ALPHA_GBUFFER_INPUT)
+        TEXTURE2DARRAY(COMPOSITE_BLUE_NOISE_TEXTURE)
+
+        RW_TEXTURE2D(COMPOSITE_DEBUG_VIEW_OUTPUT)
+      END_PARAMETER()
+    };
+
+    PREWARM_SHADER_PIPELINE(CompositeAlphaBlendShader);
+
+    class CompositeShader : public ManagedShader {
+      SHADER_SOURCE(CompositeShader, VK_SHADER_STAGE_COMPUTE_BIT, composite)
+
+      BEGIN_PARAMETER()
+        CONSTANT_BUFFER(COMPOSITE_CONSTANTS_INPUT)
+        RW_TEXTURE2D(COMPOSITE_FINAL_OUTPUT)
+        RW_TEXTURE2D(COMPOSITE_ALPHA_BLEND_RADIANCE_OUTPUT)
+        RW_TEXTURE2D(COMPOSITE_LAST_FINAL_OUTPUT)
+        RW_TEXTURE2D_READONLY(COMPOSITE_SHARED_FLAGS_INPUT)
+        TEXTURE2D(COMPOSITE_SHARED_RADIANCE_RG_INPUT)
+        TEXTURE2D(COMPOSITE_SHARED_RADIANCE_B_INPUT)
+        RW_TEXTURE2D_READONLY(COMPOSITE_PRIMARY_ATTENUATION_INPUT)
+        TEXTURE2D(COMPOSITE_PRIMARY_ALBEDO_INPUT)
+        TEXTURE2D(COMPOSITE_PRIMARY_SPECULAR_ALBEDO_INPUT)
+        TEXTURE2D(COMPOSITE_PRIMARY_VIRTUAL_WORLD_SHADING_NORMAL_INPUT)
+        TEXTURE2D(COMPOSITE_PRIMARY_LINEAR_VIEW_Z_INPUT)
+        RW_TEXTURE2D_READONLY(COMPOSITE_SECONDARY_ATTENUATION_INPUT)
+        TEXTURE2D(COMPOSITE_SECONDARY_ALBEDO_INPUT)
+        TEXTURE2D(COMPOSITE_SECONDARY_SPECULAR_ALBEDO_INPUT)
+        TEXTURE2D(COMPOSITE_PRIMARY_DIRECT_DIFFUSE_RADIANCE_HIT_DISTANCE_INPUT)
+        TEXTURE2D(COMPOSITE_PRIMARY_DIRECT_SPECULAR_RADIANCE_HIT_DISTANCE_INPUT)
+        TEXTURE2D(COMPOSITE_PRIMARY_INDIRECT_DIFFUSE_RADIANCE_HIT_DISTANCE_INPUT)
+        TEXTURE2D(COMPOSITE_PRIMARY_INDIRECT_SPECULAR_RADIANCE_HIT_DISTANCE_INPUT)
+        TEXTURE2D(COMPOSITE_SECONDARY_COMBINED_DIFFUSE_RADIANCE_HIT_DISTANCE_INPUT)
+        TEXTURE2D(COMPOSITE_SECONDARY_COMBINED_SPECULAR_RADIANCE_HIT_DISTANCE_INPUT)
+        SAMPLER3D(COMPOSITE_VOLUME_PREINTEGRATED_RADIANCE_INPUT)
+        SAMPLER3D(COMPOSITE_VOLUME_FILTERED_RADIANCE_INPUT)
+        TEXTURE2D(COMPOSITE_BSDF_FACTOR_INPUT)
+        TEXTURE2D(COMPOSITE_BSDF_FACTOR2_INPUT)
+        TEXTURE2D(COMPOSITE_ALPHA_GBUFFER_INPUT)
+        TEXTURE2DARRAY(COMPOSITE_BLUE_NOISE_TEXTURE)
 
         RW_TEXTURE2D(COMPOSITE_DEBUG_VIEW_OUTPUT)
       END_PARAMETER()
@@ -78,6 +122,28 @@ namespace dxvk {
   }
 
   CompositePass::~CompositePass() {
+  }
+
+  void CompositePass::showStochasticAlphaBlendImguiSettings() {
+    if (ImGui::CollapsingHeader("Stochastic Alpha Blend", collapsingHeaderClosedFlags)) {
+      ImGui::Indent();
+      ImGui::Checkbox("Enable Stochastic Alpha Blend", &enableStochasticAlphaBlendObject());
+      ImGui::DragFloat("Max Blend Opacity", &stochasticAlphaBlendOpacityThresholdObject(), 0.005f, 0.0f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+      ImGui::Checkbox("Use Neighbor Search", &stochasticAlphaBlendUseNeighborSearchObject());
+      ImGui::Checkbox("Search The Same Object", &stochasticAlphaBlendSearchTheSameObjectObject());
+      ImGui::Checkbox("Share Search Result", &stochasticAlphaBlendShareNeighborsObject());
+      ImGui::DragInt("Search Iterations", &stochasticAlphaBlendSearchIterationObject(), 0.1f, 1, 20, "%d", ImGuiSliderFlags_AlwaysClamp);
+      ImGui::DragFloat("Initial Search Radius", &stochasticAlphaBlendInitialSearchRadiusObject(), 0.01f, 1.0f, 20.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+      ImGui::DragFloat("Radius Expand Factor", &stochasticAlphaBlendRadiusExpandFactorObject(), 0.01f, 1.0f, 5.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+      ImGui::DragFloat("Neighbor Normal Similarity", &stochasticAlphaBlendNormalSimilarityObject(), 0.001f, 0.0f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+      ImGui::DragFloat("Neighbor Depth Difference", &stochasticAlphaBlendDepthDifferenceObject(), 0.001f, 0.0f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+      ImGui::DragFloat("Neighbor Planar Difference", &stochasticAlphaBlendPlanarDifferenceObject(), 0.001f, 0.0f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+      ImGui::Checkbox("Use Radiance Volume", &stochasticAlphaBlendUseRadianceVolumeObject());
+      ImGui::DragFloat("Radiance Volume Multiplier", &stochasticAlphaBlendRadianceVolumeMultiplierObject(), 0.001f, 0.0f, 10.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+      ImGui::Checkbox("Discard Black Pixels", &stochasticAlphaBlendDiscardBlackPixelObject());
+      ImGui::Checkbox("Filter Stochastic Alpha Blend", &stochasticAlphaBlendEnableFilterObject());
+      ImGui::Unindent();
+    }
   }
 
   void CompositePass::showImguiSettings() {
@@ -158,7 +224,6 @@ namespace dxvk {
     CompositeArgs compositeArgs = {};
     compositeArgs.enableSeparatedDenoisers = rtOutput.m_raytraceArgs.enableSeparatedDenoisers;
 
-    ScopedGpuProfileZone(ctx, "Composition");
     ctx->bindResourceView(COMPOSITE_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);
     ctx->bindResourceView(COMPOSITE_SHARED_RADIANCE_RG_INPUT, rtOutput.m_sharedRadianceRG.view, nullptr);
     ctx->bindResourceView(COMPOSITE_SHARED_RADIANCE_B_INPUT, rtOutput.m_sharedRadianceB.view, nullptr);
@@ -188,6 +253,7 @@ namespace dxvk {
 
     ctx->bindResourceView(COMPOSITE_BSDF_FACTOR_INPUT, rtOutput.m_bsdfFactor.view, nullptr);
     ctx->bindResourceView(COMPOSITE_BSDF_FACTOR2_INPUT, rtOutput.m_bsdfFactor2.view, nullptr);
+    ctx->bindResourceView(COMPOSITE_ALPHA_GBUFFER_INPUT, rtOutput.m_alphaBlendGBuffer.view, nullptr);
 
     // Note: Clamp to edge used to avoid interpolation to black on the edges of the view.
     Rc<DxvkSampler> linearSampler = ctx->getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
@@ -195,8 +261,13 @@ namespace dxvk {
     ctx->bindResourceView(COMPOSITE_VOLUME_PREINTEGRATED_RADIANCE_INPUT, rtOutput.m_volumePreintegratedRadiance.view, nullptr);
     ctx->bindResourceSampler(COMPOSITE_VOLUME_PREINTEGRATED_RADIANCE_INPUT, linearSampler);
 
+    ctx->bindResourceView(COMPOSITE_VOLUME_FILTERED_RADIANCE_INPUT, rtOutput.m_volumeFilteredRadiance.view, nullptr);
+    ctx->bindResourceSampler(COMPOSITE_VOLUME_FILTERED_RADIANCE_INPUT, linearSampler);
+
     ctx->bindResourceView(COMPOSITE_FINAL_OUTPUT, rtOutput.m_compositeOutput.view(Resources::AccessType::Write), nullptr);
+    ctx->bindResourceView(COMPOSITE_ALPHA_BLEND_RADIANCE_OUTPUT, rtOutput.m_alphaBlendRadiance.view(Resources::AccessType::Write), nullptr);
     ctx->bindResourceView(COMPOSITE_LAST_FINAL_OUTPUT, rtOutput.m_lastCompositeOutput.view(Resources::AccessType::Write), nullptr);
+    ctx->bindResourceView(COMPOSITE_BLUE_NOISE_TEXTURE, ctx->getResourceManager().getBlueNoiseTexture(ctx), nullptr);
 
     DebugView& debugView = ctx->getDevice()->getCommon()->metaDebugView();
     ctx->bindResourceView(COMPOSITE_DEBUG_VIEW_OUTPUT, debugView.getDebugOutput(), nullptr);
@@ -204,11 +275,13 @@ namespace dxvk {
 
     // Some camera paramters for primary ray reconstruction
     Camera cameraConstants = sceneManager.getCamera().getShaderConstants();
+    compositeArgs.camera = cameraConstants;
     compositeArgs.projectionToViewJittered = cameraConstants.projectionToViewJittered;
     compositeArgs.viewToWorld = cameraConstants.viewToWorld;
     compositeArgs.resolution.x = float(cameraConstants.resolution.x);
     compositeArgs.resolution.y = float(cameraConstants.resolution.y);
     compositeArgs.nearPlane = cameraConstants.nearPlane;
+    compositeArgs.frameIdx = m_device->getCurrentFrameId();
 
     if (enableFog()) {
       const float colorScale = fogColorScale();
@@ -268,15 +341,38 @@ namespace dxvk {
     compositeArgs.compositeSecondaryCombinedDiffuse = compositeSecondaryCombinedDiffuse();
     compositeArgs.compositeSecondaryCombinedSpecular = compositeSecondaryCombinedSpecular();
 
+    compositeArgs.enableStochasticAlphaBlend = enableStochasticAlphaBlend();
+    compositeArgs.stochasticAlphaBlendEnableFilter = stochasticAlphaBlendEnableFilter();
+    compositeArgs.stochasticAlphaBlendUseNeighborSearch = stochasticAlphaBlendUseNeighborSearch();
+    compositeArgs.stochasticAlphaBlendSearchTheSameObject = stochasticAlphaBlendSearchTheSameObject();
+    compositeArgs.stochasticAlphaBlendUseRadianceVolume = stochasticAlphaBlendUseRadianceVolume();
+    compositeArgs.stochasticAlphaBlendSearchIteration = stochasticAlphaBlendSearchIteration();
+    compositeArgs.stochasticAlphaBlendInitialSearchRadius = stochasticAlphaBlendInitialSearchRadius();
+    compositeArgs.stochasticAlphaBlendRadiusExpandFactor = stochasticAlphaBlendRadiusExpandFactor();
+    compositeArgs.stochasticAlphaBlendShareNeighbors = stochasticAlphaBlendShareNeighbors();
+    compositeArgs.stochasticAlphaBlendNormalSimilarity = stochasticAlphaBlendNormalSimilarity();
+    compositeArgs.stochasticAlphaBlendDepthDifference = stochasticAlphaBlendDepthDifference();
+    compositeArgs.stochasticAlphaBlendPlanarDifference = stochasticAlphaBlendPlanarDifference();
+    compositeArgs.stochasticAlphaBlendDiscardBlackPixel = stochasticAlphaBlendDiscardBlackPixel();
+    compositeArgs.stochasticAlphaBlendRadianceVolumeMultiplier = stochasticAlphaBlendRadianceVolumeMultiplier();
+    
     Rc<DxvkBuffer> cb = getCompositeConstantsBuffer();
     ctx->updateBuffer(cb, 0, sizeof(CompositeArgs), &compositeArgs);
     cmdList->trackResource<DxvkAccess::Read>(cb);
 
     ctx->bindResourceBuffer(COMPOSITE_CONSTANTS_INPUT, DxvkBufferSlice(cb, 0, cb->info().size));
-    ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, CompositeShader::getShader());
+    VkExtent3D workgroups = util::computeBlockCount(rtOutput.m_compositeOutputExtent, VkExtent3D { 16, 8, 1 });
 
-    VkExtent3D workgroups = util::computeBlockCount(rtOutput.m_compositeOutputExtent, VkExtent3D{ 16, 8, 1 });
+    if (enableStochasticAlphaBlend()) {
+      ScopedGpuProfileZone(ctx, "Composite Alpha Blend");
+      ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, CompositeAlphaBlendShader::getShader());
+      ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
+    }
 
-    ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
+    {
+      ScopedGpuProfileZone(ctx, "Composition");
+      ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, CompositeShader::getShader());
+      ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
+    }
   }
 } // namespace dxvk

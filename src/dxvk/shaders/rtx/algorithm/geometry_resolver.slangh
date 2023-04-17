@@ -31,6 +31,7 @@
 #include "rtx/concept/ray/ray.slangh"
 #include "rtx/concept/surface/surface.slangh"
 #include "rtx/concept/surface_material/surface_material.slangh"
+#include "rtx/concept/surface/alpha_blend_surface.slangh"
 #include "rtx/concept/light/light.slangh"
 #include "rtx/algorithm/resolve.slangh"
 #include "rtx/algorithm/volume_lighting.slangh"
@@ -102,6 +103,13 @@ void geometryResolverOutputMiss(
       PrimaryVirtualWorldShadingNormalPerceptualRoughness,
       PrimaryVirtualWorldShadingNormalPerceptualRoughnessDenoising,
       PrimaryAlbedo, PrimaryBaseReflectivity);
+
+    if (cb.enableStochasticAlphaBlend)
+    {
+      AlphaBlendSurface alphaBlendSurface = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[pixelCoordinate]);    
+      alphaBlendSurface.finalize(0);
+      AlphaBlendGBuffer[pixelCoordinate] = alphaBlendSurface.pack();
+    }
   }
   else
   {
@@ -266,6 +274,14 @@ void geometryResolverOutputSurface(
       SecondaryVirtualWorldShadingNormalPerceptualRoughness, SecondaryVirtualWorldShadingNormalPerceptualRoughnessDenoising,
       SecondaryAlbedo, SecondaryBaseReflectivity,
       SharedMaterialData0, SharedMaterialData1);
+  }
+
+  if (cb.enableStochasticAlphaBlend && primarySurface)
+  {
+    //Write opaque objects' geometry hash
+    AlphaBlendSurface alphaBlendSurface = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[pixelCoordinate]);
+    alphaBlendSurface.finalize(surface.hashPacked);
+    AlphaBlendGBuffer[pixelCoordinate] = alphaBlendSurface.pack();
   }
 }
 
@@ -860,6 +876,7 @@ void geometryResolverVertex(
   hackState.accumulatedVectorTransform = geometryResolverState.accumulatedVectorTransform;
   hackState.decalEncountered = geometryResolverState.decalEncountered;
   hackState.pixelCoordinate = geometryResolverState.pixelCoordinate;
+  hackState.isStochasticAlphaBlend = false;
 
   resolveVertex(
     resolveMode,
@@ -868,7 +885,7 @@ void geometryResolverVertex(
     surface, surfaceInteraction,
     polymorphicSurfaceMaterialInteraction,
     radianceAttenuation, emissiveRadiance,
-    aliasedData0.DecalMaterial, aliasedData1.DecalEmissiveRadiance);
+    aliasedData0.DecalMaterial, aliasedData1.DecalEmissiveRadiance, false, true);
 
   // Todo: Remove hack thing
   geometryResolverState.origin = hackState.origin;
@@ -883,6 +900,8 @@ void geometryResolverVertex(
   geometryResolverState.accumulatedVectorTransform = hackState.accumulatedVectorTransform;
   geometryResolverState.decalEncountered = hackState.decalEncountered;
 
+  bool isStochasticAlphaBlend = hackState.isStochasticAlphaBlend;
+
   // Accumulate Segment Hit Distance
   // Note: Only accumulate hit distance if the current ray interaction was not a miss.
 
@@ -896,6 +915,22 @@ void geometryResolverVertex(
     // TODO: add jitter?
     vec2 screenUV = cameraPixelCoordinateToScreenUV(cb.camera, geometryResolverState.pixelCoordinate);
     emissiveRadiance += cb.skyBrightness * SkyMatte.Sample(screenUV);
+  }
+
+  // Record alpha blend surface when stochastic alpha blend is enabled
+  if (cb.enableStochasticAlphaBlend && isStochasticAlphaBlend)
+  {
+    f16vec4 alphaBlendColor = AlphaBlendSurface::getAlphaBlendSurface(polymorphicSurfaceMaterialInteraction);
+    
+    AlphaBlendSurface alphaBlendSurface = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[geometryResolverState.pixelCoordinate]);
+    alphaBlendSurface.update(
+      alphaBlendColor, polymorphicSurfaceMaterialInteraction.shadingNormal, geometryResolverState.accumulatedHitDistance, surface.hashPacked);
+    AlphaBlendGBuffer[geometryResolverState.pixelCoordinate] = alphaBlendSurface.pack();
+
+    if (alphaBlendSurface.backgroundTransparency < 1.0 / 255.0)
+    {
+      geometryResolverState.continueResolving = false;
+    }
   }
 
   // Handle attenuation and emissive radiance from the Resolve function
@@ -1582,6 +1617,14 @@ void geometryResolver(ivec2 pixelCoordinate) {
   GeometryResolverState geometryResolverState = geometryResolverStateCreateEmpty(u16vec2(pixelCoordinate));
 
   geometryResolverState.isViewModelRay = cb.enableViewModelCompositionOnTop;
+
+  if (cb.enableStochasticAlphaBlend)
+  {
+    RNG randomState = createRNG(geometryResolverState.pixelCoordinate, cb.frameIdx);
+    AlphaBlendSurface alphaBlendSurface = AlphaBlendSurface.createEmpty();
+    alphaBlendSurface.randomThreshold = getNextSampleBlueNoise(randomState);
+    AlphaBlendGBuffer[pixelCoordinate] = alphaBlendSurface.pack();
+  }
 
   // Resolve First Hit Geometry
   // 1-2 iterations:

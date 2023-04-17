@@ -670,15 +670,17 @@ namespace dxvk
   }
 
   VolumeDefinitionCamera RtCamera::getVolumeShaderConstants() const {
-    auto& translatedWorldToView = m_matCache[TranslatedWorldToView];
-    auto& viewToTranslatedWorld = m_matCache[ViewToTranslatedWorld];
-    auto& viewToProjection = m_matCache[ViewToProjection];
-    auto& viewToWorld = m_matCache[ViewToWorld];
-    auto& prevViewToWorld = m_matCache[UncorrectedPreviousViewToWorld];
-    auto& projectionToView = m_matCache[ProjectionToView];
-    auto& prevTranslatedWorldToView = m_matCache[UncorrectedPreviousTranslatedWorldToView];
-    auto& viewToProjectionJittered = m_matCache[ViewToProjectionJittered];
-    auto& prevViewToProjection = m_matCache[PreviousViewToProjection];
+    auto& translatedWorldToView = getTranslatedWorldToView();
+    auto& viewToTranslatedWorld = getViewToTranslatedWorld();
+    auto& viewToProjection = getViewToProjection();
+    auto& viewToWorld = getViewToWorld();
+    auto& projectionToView = getProjectionToView();
+    auto& viewToProjectionJittered = getViewToProjectionJittered();
+    auto& prevViewToProjection = getPreviousViewToProjection();
+
+    bool isFreeCamera = isFreeCameraEnabled();
+    auto& prevViewToWorld = isFreeCamera ? m_matCache[FreeCamPreviousViewToWorld] : m_matCache[UncorrectedPreviousViewToWorld];
+    auto& prevTranslatedWorldToView = isFreeCamera ? m_matCache[FreeCamPreviousTranslatedWorldToView] : m_matCache[UncorrectedPreviousTranslatedWorldToView];
     
     VolumeDefinitionCamera camera;
 
