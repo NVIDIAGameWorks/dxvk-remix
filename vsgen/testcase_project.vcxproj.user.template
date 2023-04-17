@@ -5,20 +5,29 @@
     <LocalDebuggerCommandArguments>$test_case_commandline_arguments</LocalDebuggerCommandArguments>
     <LocalDebuggerWorkingDirectory>$test_case_working_directory</LocalDebuggerWorkingDirectory>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
-    <LocalDebuggerEnvironment>DXVK_CONFIG_FILE=$(SolutionDir)..\dxvk.conf</LocalDebuggerEnvironment>
+    <LocalDebuggerEnvironment>
+      DXVK_CONFIG_FILE=$(SolutionDir)..\dxvk.conf
+      DXVK_RTX_CONFIG_FILE=$test_case_rtxconf_directory
+    </LocalDebuggerEnvironment>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LocalDebuggerCommand>$test_case_executable</LocalDebuggerCommand>
     <LocalDebuggerCommandArguments>$test_case_commandline_arguments</LocalDebuggerCommandArguments>
     <LocalDebuggerWorkingDirectory>$test_case_working_directory</LocalDebuggerWorkingDirectory>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
-    <LocalDebuggerEnvironment>DXVK_CONFIG_FILE=$(SolutionDir)..\dxvk.conf</LocalDebuggerEnvironment>
+    <LocalDebuggerEnvironment>
+      DXVK_CONFIG_FILE=$(SolutionDir)..\dxvk.conf
+      DXVK_RTX_CONFIG_FILE=$test_case_rtxconf_directory
+    </LocalDebuggerEnvironment>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LocalDebuggerCommand>$test_case_executable</LocalDebuggerCommand>
     <LocalDebuggerCommandArguments>$test_case_commandline_arguments</LocalDebuggerCommandArguments>
     <LocalDebuggerWorkingDirectory>$test_case_working_directory</LocalDebuggerWorkingDirectory>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
-    <LocalDebuggerEnvironment>DXVK_CONFIG_FILE=$(SolutionDir)..\dxvk.conf</LocalDebuggerEnvironment>
+    <LocalDebuggerEnvironment>
+      DXVK_CONFIG_FILE=$(SolutionDir)..\dxvk.conf
+      DXVK_RTX_CONFIG_FILE=$test_case_rtxconf_directory
+    </LocalDebuggerEnvironment>
   </PropertyGroup>
 </Project>
