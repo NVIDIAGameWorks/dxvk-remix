@@ -691,17 +691,15 @@ namespace dxvk {
     m_rtState.texStage = stage;
   }
 
-  void RtxContext::addLights(const D3DLIGHT9* pLights, const uint32_t numLights)
-  {
-    for (uint32_t i = 0; i < numLights; i++)
-    {
+  void RtxContext::addLights(const D3DLIGHT9* pLights, const uint32_t numLights) {
+    for (uint32_t i = 0; i < numLights; i++) {
       getSceneManager().addLight(pLights[i]);
     }
   }
 
   // checks the current state to see if the app is drawing a stencil shadow volume
   bool RtxContext::isStencilShadowVolumeState() {
-    if (m_state.gp.state.ds.enableStencilTest()) {
+    if (RtxOptions::Get()->ignoreStencilVolumeHeuristics() && m_state.gp.state.ds.enableStencilTest()) {
       const VkCullModeFlags cullMode = m_state.gp.state.rs.cullMode();
 
       if (cullMode == VK_CULL_MODE_FRONT_BIT) {
