@@ -59,7 +59,7 @@
 #endif
 
 namespace dxvk {
-
+  static const bool s_explicitFlush = (env::getEnvVar("DXVK_EXPLICIT_FLUSH") == "1");
 
   D3D9DeviceEx::D3D9DeviceEx(
           D3D9InterfaceEx*       pParent,
@@ -4865,7 +4865,7 @@ namespace dxvk {
   void D3D9DeviceEx::FlushImplicit(BOOL StrongHint) {
     // NV-DXVK start: deterministic CI runs
     // While testing in CI, it's important to achieve timing determinism.
-    if (env::getEnvVar("DXVK_EXPLICIT_FLUSH") == "1") {
+    if (s_explicitFlush) {
       Flush();
       return;
     }
