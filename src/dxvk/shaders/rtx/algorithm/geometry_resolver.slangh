@@ -917,11 +917,17 @@ void geometryResolverVertex(
     emissiveRadiance += cb.skyBrightness * SkyMatte.Sample(screenUV);
   }
 
+  // Handle attenuation and emissive radiance from the Resolve function
+
+  // Note: Emissive radiance handled first so objects with opacity do not attenuate themselves.
+  geometryResolverState.radiance += emissiveRadiance * geometryResolverState.attenuation;
+  geometryResolverState.attenuation *= radianceAttenuation;
+
   // Record alpha blend surface when stochastic alpha blend is enabled
   if (cb.enableStochasticAlphaBlend && isStochasticAlphaBlend)
   {
     f16vec4 alphaBlendColor = AlphaBlendSurface::getAlphaBlendSurface(polymorphicSurfaceMaterialInteraction);
-    bool hasEmissive = any(emissiveRadiance > 0);
+    bool hasEmissive = any(geometryResolverState.radiance > 0);
     
     AlphaBlendSurface alphaBlendSurface = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[geometryResolverState.pixelCoordinate]);
     alphaBlendSurface.update(
@@ -933,12 +939,6 @@ void geometryResolverVertex(
       geometryResolverState.continueResolving = false;
     }
   }
-
-  // Handle attenuation and emissive radiance from the Resolve function
-
-  // Note: Emissive radiance handled first so objects with opacity do not attenuate themselves.
-  geometryResolverState.radiance += emissiveRadiance * geometryResolverState.attenuation;
-  geometryResolverState.attenuation *= radianceAttenuation;
 
   // Check if resolving should continue, and if a surface was hit
 
