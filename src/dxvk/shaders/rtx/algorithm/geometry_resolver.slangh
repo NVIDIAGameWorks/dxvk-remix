@@ -921,10 +921,11 @@ void geometryResolverVertex(
   if (cb.enableStochasticAlphaBlend && isStochasticAlphaBlend)
   {
     f16vec4 alphaBlendColor = AlphaBlendSurface::getAlphaBlendSurface(polymorphicSurfaceMaterialInteraction);
+    bool hasEmissive = any(emissiveRadiance > 0);
     
     AlphaBlendSurface alphaBlendSurface = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[geometryResolverState.pixelCoordinate]);
     alphaBlendSurface.update(
-      alphaBlendColor, polymorphicSurfaceMaterialInteraction.shadingNormal, geometryResolverState.accumulatedHitDistance, surface.hashPacked);
+      alphaBlendColor, polymorphicSurfaceMaterialInteraction.shadingNormal, geometryResolverState.accumulatedHitDistance, surface.hashPacked, hasEmissive);
     AlphaBlendGBuffer[geometryResolverState.pixelCoordinate] = alphaBlendSurface.pack();
 
     if (alphaBlendSurface.backgroundTransparency < 1.0 / 255.0)
