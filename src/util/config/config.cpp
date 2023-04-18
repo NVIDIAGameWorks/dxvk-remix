@@ -954,6 +954,7 @@ namespace dxvk {
     }
   }
 
+  // NV-DXVK start: Configuration parsing logic moved out for sharing between multiple configuration loading functions
   static Config parseConfigFile(std::string filePath) {
     Config config;
     
@@ -979,6 +980,7 @@ namespace dxvk {
     
     return config;
   }
+  // NV-DXVK end
 
   Config::Config() { }
   Config::~Config() { }
@@ -1327,7 +1329,7 @@ namespace dxvk {
   }
 
 
-  Config Config::getRtxUserConfig(std::string baseGameModPath) {
+  Config Config::getRtxUserConfig(const std::string& baseGameModPath) {
     // Load either $DXVK_RTX_CONFIG_FILE or $PWD/rtx.conf
     std::string filePath = env::getEnvVar("DXVK_RTX_CONFIG_FILE");
 
@@ -1339,37 +1341,6 @@ namespace dxvk {
     // Load baseGameModPath/rtx.conf and merge into RTX user config if present
     if (baseGameModPath != "") {
       config.merge(parseConfigFile(baseGameModPath + "/rtx.conf"));
-    }
-
-    return config;
-  }
-
-  Config Config::getCustomConfig(std::string filePath, std::string filterStr) {
-    Config config;
-
-    if (filePath == "")
-      return config;
-
-    // Open the file if it exists
-    std::ifstream stream(str::tows(filePath.c_str()).c_str());
-
-    if (!stream)
-      return config;
-
-    // Inform the user that we loaded a file, might
-    // help when debugging configuration issues
-    Logger::info(str::format("Found config file: ", filePath));
-
-    // Initialize parser context
-    ConfigContext ctx;
-    ctx.active = true;
-
-    // Parse the file line by line
-    std::string line;
-
-    while (std::getline(stream, line)) {
-      if(!filterStr.empty() && line.find(filterStr) != std::string::npos)
-        parseUserConfigLine(config, ctx, line);
     }
 
     return config;
@@ -1391,9 +1362,9 @@ namespace dxvk {
   }
 
   // NV-DXVK start: Extend logOptions function
-  void Config::logOptions(const std::string& configName) const {
+  void Config::logOptions(const char* configName) const {
     if (!m_options.empty()) {
-      Logger::info(str::format("Effective ", configName, " configuration:"));
+      Logger::info(str::format(configName, " configuration:"));
 
       for (auto& pair : m_options)
         Logger::info(str::format("  ", pair.first, " = ", pair.second));

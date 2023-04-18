@@ -214,7 +214,7 @@ namespace dxvk {
 
     // Load configurations
     // Note: Loading is done in the following order currently, each step overriding values in the previous
-    // configuration values when a conflict exist, resulting in the final "effective" configuration:
+    // configuration values when a conflict exist, resulting in the combined "effective" configuration:
     // - Configuration defaults in code (Implicit)
     // - dxvk.conf ("User Config")
     // - Per-application configuration in code ("Built-in Config" from config.cpp)
@@ -222,12 +222,12 @@ namespace dxvk {
     //   - baseGameModPath/rtx.conf (Mod-specific extension of "RTX User Config")
 
     auto userConfig = Config::getUserConfig();
-    userConfig.logOptions("user");
+    userConfig.logOptions("User");
     // Note: Moved since this is the first set of configuration values to be set, so no need to merge.
     m_config = std::move(userConfig);
 
     const auto appConfig = Config::getAppConfig(env::getExePath());
-    appConfig.logOptions("built-in");
+    appConfig.logOptions("Built-in");
     m_config.merge(appConfig);
 
     // Handle games that have native mod support, where the base game looks into another folder for mod, 
@@ -250,8 +250,8 @@ namespace dxvk {
     RtxOption<bool>::setCustomConfig(m_config);
     RtxOption<bool>::updateRtxOptions();
 
-    // Log the final "effective" configuration to be used
-    m_config.logOptions("effective");
+    // Log the combined "effective" configuration to be used
+    m_config.logOptions("Effective (combined)");
 
     // NV-DXVK end 
 

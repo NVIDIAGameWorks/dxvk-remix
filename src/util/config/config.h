@@ -277,7 +277,7 @@ namespace dxvk {
      * Prints the effective configuration
      * to the log for debugging purposes. 
      */
-    void logOptions(const std::string& configName) const;
+    void logOptions(const char* configName) const;
     // NV-DXVK end
 
     /**
@@ -304,7 +304,7 @@ namespace dxvk {
      * if it can be found, or an empty option set.
      * \returns User-defined configuration options
      */
-    static Config getRtxUserConfig(std::string baseGameModPath = "");
+    static Config getRtxUserConfig(const std::string& baseGameModPath = "");
 
     static std::string toLower(std::string str);
 
