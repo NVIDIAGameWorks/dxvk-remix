@@ -201,6 +201,10 @@ bool MessageChannelServer::init(HWND clientWindow,
 
   m_clientWindow = clientWindow;
   m_windowHandler = std::move(windowHandler);
+  // If we're creating a new thread, we need to release the old one first, just in case it hasnt cleaned itself up yet.
+  if (m_worker.joinable()) {
+    m_worker.detach();
+  }
   m_worker = ThreadType([this] { workerJob(); });
   m_workerThreadId = ::GetThreadId((HANDLE)m_worker.native_handle());
 
@@ -254,10 +258,15 @@ void MessageChannelServer::workerJob() {
     return;
   }
 
-  const HWND kCurrentThreadId = (HWND) (-1);
+  env::setThreadName("dxvk-remix-message-channel");
 
   MSG msg;
+  const HWND kCurrentThreadId = (HWND) (-1);
   while (GetMessage(&msg, kCurrentThreadId, 0, 0)) {
+    // Destroy the thread if the window was also destroyed.
+    if (msg.message == WM_DESTROY)
+      return;
+
     TranslateMessage(&msg);
 
     if (onMessage(msg.message, msg.wParam, msg.lParam)) {
