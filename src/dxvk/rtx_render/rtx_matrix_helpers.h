@@ -48,7 +48,8 @@ static inline void decomposeProjection(const dxvk::Matrix4& matrix, float& aspec
   DecomposeProjection(NDC_D3D, NDC_D3D, float4x4(cameraMatrix), &flags, cameraParams, nullptr, nullptr, nullptr, nullptr);
   // Extract the FOV and aspect ratio from the projection matrix
   aspectRatio = cameraParams[PROJ_ASPECT];
-  fov = (180.0 / M_PI) * cameraParams[PROJ_FOVY];
+  // Note: FoV represents the vertical FoV in radians (as opposed to PROJ_FOVX which is the horizontal FoV).
+  fov = cameraParams[PROJ_FOVY];
   nearPlane = cameraParams[PROJ_ZNEAR];
   farPlane = cameraParams[PROJ_ZFAR];
   shearX = cameraParams[PROJ_DIRX];

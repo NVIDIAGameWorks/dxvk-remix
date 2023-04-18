@@ -1,0 +1,159 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Note: surface.h must be first include to define required structures
+#include "rtx/utility/common.slangh"
+#include "rtx/utility/packing.slangh"
+#include "rtx/concept/surface_material/surface_material.h"
+
+struct AlphaBlendSurface
+{
+  f16vec4 color;
+  f16vec3 normal;
+  float16_t hitT;
+  float16_t backgroundTransparency;
+  float16_t randomThreshold;
+  uint16_t geometryHash;
+
+  uint4 pack()
+  {
+    uint4 data;
+    data.x = 
+      (uint32_t(f16ToUnorm8(color.r)) << 24) |
+      (uint32_t(f16ToUnorm8(color.g)) << 16) |
+      (uint32_t(f16ToUnorm8(color.b)) << 8) |
+      (uint32_t(f16ToUnorm8(color.a)));
+
+    data.y = (uint32_t(float16BitsToUint16(backgroundTransparency)) << 16) | uint32_t(float16BitsToUint16(hitT));
+    data.z = sphereDirectionToSnorm2x16(normal);
+    data.w = (uint32_t(float16BitsToUint16(randomThreshold)) << 16) | uint32_t(geometryHash);
+    return data;
+  }
+
+  [mutating] void unpack(const uint4 data)
+  {
+    color.r = unorm8ToF16(uint8_t(data.x >> 24));
+    color.g = unorm8ToF16(uint8_t(data.x >> 16));
+    color.b = unorm8ToF16(uint8_t(data.x >> 8));
+    color.a = unorm8ToF16(uint8_t(data.x));
+
+    backgroundTransparency = uint16BitsToHalf(data.y >> 16);
+    hitT = uint16BitsToHalf(data.y & 0xffff);
+    randomThreshold = uint16BitsToHalf(data.w >> 16);
+    geometryHash = (data.w & 0xffff);
+
+    normal = snorm2x16ToSphereDirection(data.z);
+  }
+
+  static AlphaBlendSurface createEmpty()
+  {
+    AlphaBlendSurface surface;
+    surface.color = f16vec4(0.0);
+    surface.hitT = 0.0;
+    surface.backgroundTransparency = 1.0;
+    surface.normal = f16vec3(0.0);
+    surface.randomThreshold = 0.0;
+    surface.geometryHash = 0;
+    return surface;
+  }
+
+  static AlphaBlendSurface createFromPacked(const uint4 data)
+  {
+    AlphaBlendSurface surface = {};
+    surface.unpack(data);
+    return surface;
+  }
+
+  bool isValid()
+  {
+    return hitT > 0.0;
+  }
+
+  bool isOpaque()
+  {
+    return color.a == 1.0;
+  }
+
+  [mutating] void setOpaque()
+  {
+    color.a = 1.0;
+  }
+
+  static f16vec4 getAlphaBlendSurface(PolymorphicSurfaceMaterialInteraction bsdf)
+  {
+    if (bsdf.type == surfaceMaterialTypeOpaque)
+    {
+      // See opaqueSurfaceMaterialInteractionCreate()
+      // vdata0 is albedo
+      // fdata0 is opacity
+      f16vec3 albedo = bsdf.vdata0;
+      float16_t opacity = abs(bsdf.fdata0);
+
+      // The input color has pre-multiplied alpha, demodulate it first
+      // See albedoToAdjustedAlbedo()
+      f16vec3 color = opacity == 0.0 ? 0.0 : saturate(albedo / opacity);
+      return f16vec4(color, opacity);
+    }
+    return f16vec4(0,0,0,0);
+  }
+
+  [mutating] void update(f16vec4 newColor, f16vec3 newNormal, float16_t newHitT, uint16_t newHash)
+  {
+    // Suppose we have 3 alpha blend surfaces, from front to back, with color C1, C2, C3, alpha a1, a2, a3,
+    // and a opaque background with color CB.
+    // The alpha blended color should be:
+    //     C' =  C1 * a1 + 
+    //         + C2 * (1 - a1) * a2
+    //         + C3 * (1 - a1) * (1 - a2) * a3
+    //         + CB * (1 - a1) * (1 - a2) * (1 - a3)
+    // The code below ensures an unbiased result, specifically:
+    //     C1 has a1 probability to be chosen, so its alpha becomes 1
+    //     C2 has (1 - a1) * a2 probability to be chosen, so its alpha becomes 1
+    //     C3 has (1 - a1) * (1 - a2) probability to be chosen, so its alpha is still a3
+    //     CB is a separate layer and will not be recorded
+    if (!isOpaque())
+    {
+      if (randomThreshold >= 1.0 - backgroundTransparency)
+      {
+        color = newColor;
+        hitT = newHitT;
+        normal = newNormal;
+        geometryHash = newHash;
+      }
+      else
+      {
+        setOpaque();
+      }
+    }
+    backgroundTransparency *= saturate(float16_t(1) - newColor.a);
+  }
+
+  [mutating] void finalize(uint16_t newHash)
+  {
+    // inject background's geometry hash so that samples can be picked up from the same object's opaque pixels
+    if (!isOpaque() && randomThreshold >= 1.0 - backgroundTransparency)
+    {
+      geometryHash = newHash;
+    }
+  }
+};

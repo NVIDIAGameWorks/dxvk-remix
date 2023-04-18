@@ -40,6 +40,8 @@
 #include "rtx_options.h"
 
 namespace dxvk {
+  static const bool s_disableAnimation = (env::getEnvVar("DXVK_DEBUG_VIEW_DISABLE_ANIMATION") == "1");
+
   static const auto colormap0 = turboColormap(0.0f);
   static const auto colormap25= turboColormap(0.25f);
   static const auto colormap50 = turboColormap(0.5f);
@@ -113,6 +115,11 @@ namespace dxvk {
 
         {DEBUG_VIEW_RTXDI_GRADIENTS, "RTXDI Gradients"},
         {DEBUG_VIEW_RTXDI_CONFIDENCE, "RTXDI Confidence"},
+
+        {DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_COLOR, "Stochastic Alpha Blend Color"},
+        {DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_NORMAL, "Stochastic Alpha Blend Normal"},
+        {DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_GEOMETRY_HASH, "Stochastic Alpha Blend Geometry Hash"},
+        {DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_BACKGROUND_TRANSPARENCY, "Stochastic Alpha Blend Background Transparency"},
 
         {DEBUG_VIEW_INTEGRATE_INDIRECT_FIRST_RAY_THROUGHPUT, "Indirect First Ray Throughput"},
         {DEBUG_VIEW_INTEGRATE_INDIRECT_FIRST_SAMPLED_LOBE_PDF, "Indirect First Sampled Lobe Pdf"},
@@ -448,7 +455,7 @@ namespace dxvk {
     debugViewArgs.debugViewIdx = debugViewIdx();
     debugViewArgs.colorCodeRadius = std::clamp(m_colorCodeRadius, 0, 8);
 
-    if (env::getEnvVar("DXVK_DEBUG_VIEW_DISABLE_ANIMATION") == "1")
+    if (s_disableAnimation)
       debugViewArgs.animationTimeSec = 0;
     else
       debugViewArgs.animationTimeSec = elapsedSec.count();

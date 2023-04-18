@@ -311,7 +311,8 @@ void resolveVertex(
   // Forces enablement of ray portal resolve path regardless of global resolve mask 
   // Needed for RayQuery paths for visibility rays from CHS as they don't run material specific hit groups
   // Visibility rays are expected not to start from RayPortal surfaces, and thus only RayPortal path is force enabled
-  const bool forceEnableResolveRayPortal = false) 
+  const bool forceEnableResolveRayPortal = false,
+  const bool useStochasticAlphaBlend = false) 
 {
   const Camera camera = cb.camera;
   bool teleport = false;
@@ -451,7 +452,6 @@ void resolveVertex(
     if (opacity >= cb.resolveOpaquenessThreshold)
     {
       resolveVertexFinalHit(resolveVertexState);
-
       return;
     }
 
@@ -479,10 +479,18 @@ void resolveVertex(
       }
     }
 
-    // Handle nearly-transparent early out logic
+    // Handle nearly-transparent early out logic and stochastic alpha blend
+    bool handleStochasticAlphaBlend = 
+      useStochasticAlphaBlend && cb.enableStochasticAlphaBlend &&
+      opacity > cb.resolveTransparencyThreshold && opacity <= cb.resolveStochasticAlphaBlendThreshold;
+
+#ifdef RAY_TRACING_PRIMARY_RAY
+    resolveVertexState.isStochasticAlphaBlend = handleStochasticAlphaBlend;
+#endif
 
     // Note: Early out if opacity is less than the threshold to avoid doing any material evaluation on nearly transparent surfaces.
-    if (opacity <= cb.resolveTransparencyThreshold)
+    // Stochastic alpha blend is also handled here
+    if (opacity <= cb.resolveTransparencyThreshold || handleStochasticAlphaBlend)
     {
       // Note: Must call resolve final on any return which expects resolving to continue.
       resolveVertexFinalContinue(ray, surfaceInteraction, teleport, teleportMatrix, resolveVertexState);

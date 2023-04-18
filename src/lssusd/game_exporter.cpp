@@ -593,7 +593,8 @@ void GameExporter::exportCamera(const Export& exportData, ExportContext& ctx) {
   pxr::GfCamera simpleCam;
   simpleCam.SetPerspectiveFromAspectRatioAndFieldOfView(
     exportData.camera.aspectRatio,
-    exportData.camera.fov,
+    // Note: USD expects vertical FoV in this case in degrees, not radians like we store.
+    exportData.camera.fov * (180.0f / M_PI),
     pxr::GfCamera::FOVVertical
   );
 

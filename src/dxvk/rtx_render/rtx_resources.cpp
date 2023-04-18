@@ -755,7 +755,7 @@ namespace dxvk {
     m_raytracingOutput.m_secondaryBaseReflectivity = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32, "Secondary Base Reflectivity");
     m_raytracingOutput.m_secondarySpecularAlbedo = AliasedResource(
     m_raytracingOutput.m_secondaryBaseReflectivity, ctx, m_downscaledExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32, "Secondary Specular Albedo");
-    m_raytracingOutput.m_secondaryVirtualMotionVector = createImageResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT);
+    m_raytracingOutput.m_secondaryVirtualMotionVector = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Secondary Virtual Motion Vector");
     m_raytracingOutput.m_secondaryVirtualWorldShadingNormalPerceptualRoughness = createImageResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_UNORM);
     m_raytracingOutput.m_secondaryVirtualWorldShadingNormalPerceptualRoughnessDenoising = createImageResource(ctx, m_downscaledExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32);
     m_raytracingOutput.m_secondaryHitDistance = createImageResource(ctx, m_downscaledExtent, VK_FORMAT_R32_SFLOAT);
@@ -764,7 +764,8 @@ namespace dxvk {
     m_raytracingOutput.m_secondaryPositionError = createImageResource(ctx, m_downscaledExtent, VK_FORMAT_R32_SFLOAT);
     m_raytracingOutput.m_decalMaterial = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R32G32B32A32_UINT, "Decal Material");
     m_raytracingOutput.m_decalEmissiveRadiance = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Decal Emissive Radiance", allowCompatibleFormatAliasing);
-
+    m_raytracingOutput.m_alphaBlendGBuffer = createImageResource(ctx, m_downscaledExtent, VK_FORMAT_R32G32B32A32_UINT);
+    m_raytracingOutput.m_alphaBlendRadiance = AliasedResource(m_raytracingOutput.m_secondaryVirtualMotionVector, ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Alpha Blend Radiance");
     m_raytracingOutput.m_indirectRadianceHitDistance = AliasedResource(m_raytracingOutput.m_decalEmissiveRadiance, ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Indirect Radiance Hit Distance");
 
     // Denoiser input and output (Primary/Secondary Surfaces with Direct/Indirect or Combined Radiance)

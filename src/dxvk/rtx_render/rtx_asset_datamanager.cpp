@@ -31,13 +31,7 @@
 namespace dxvk {
   
   class GliTextureData : public AssetData {
-  public:
-    bool load(const char* filename) {
-      m_texture = gli::load(filename);
-      return !m_texture.empty();
-    }
-
-    AssetType type() const override {
+    AssetType type() const {
       switch (m_texture.target()) {
       case gli::target::TARGET_1D:
       case gli::target::TARGET_1D_ARRAY:
@@ -56,15 +50,7 @@ namespace dxvk {
       return AssetType::Unknown;
     }
 
-    AssetCompression compression() const override {
-      return AssetCompression::None;
-    }
-
-    VkFormat format() const override {
-      return static_cast<VkFormat>(m_texture.format());
-    }
-
-    VkExtent3D extent(int level) const override {
+    VkExtent3D extent(int level) const {
       const auto ext = m_texture.extent(level);
       return VkExtent3D {
         static_cast<uint32_t>(ext.x),
@@ -73,16 +59,28 @@ namespace dxvk {
       };
     }
 
-    int levels() const override {
-      return m_texture.levels();
-    }
+  public:
+    bool load(const std::string& filename) {
+      m_texture = gli::load(filename.c_str());
 
-    int looseLevels() const override {
-      return m_texture.levels();
-    }
+      if (!m_texture.empty()) {
+        m_filename = filename;
 
-    int layers() const override {
-      return m_texture.layers();
+        m_info.type = type();
+        m_info.compression = AssetCompression::None;
+        m_info.format = static_cast<VkFormat>(m_texture.format());
+        m_info.extent = extent(0);
+        m_info.mipLevels = m_texture.levels();
+        m_info.looseLevels = m_texture.levels();
+        m_info.numLayers = m_texture.layers();
+        m_info.filename = m_filename.c_str();
+
+        m_hash = XXH64_std_hash<std::string> {}(m_filename);
+
+        return true;
+      }
+
+      return false;
     }
 
     const void* data(int layer, int level) override {
@@ -90,11 +88,6 @@ namespace dxvk {
     }
 
     void evictCache() override {
-    }
-
-    const char* filename() const override {
-      assert(0 && "Data placement interface is not supported by GliTextureData");
-      return nullptr;
     }
 
     void placement(
@@ -110,6 +103,7 @@ namespace dxvk {
 
   private:
     gli::texture m_texture;
+    std::string m_filename;
   };
 
   class DdsFileParser {
@@ -118,7 +112,7 @@ namespace dxvk {
       closeHandle();
     }
 
-    bool parse(const char* filename) {
+    bool parse(const std::string& filename) {
       using namespace gli::detail;
 
       m_filename = filename;
@@ -240,12 +234,7 @@ namespace dxvk {
   class DdsTextureData : public DdsFileParser, public AssetData {
     std::unordered_map<int, std::vector<uint8_t>> m_data;
 
-  public:
-
-    ~DdsTextureData() override {
-    }
-
-    AssetType type() const override {
+    AssetType type() const {
       if (m_width > 1 && m_height == 1 && m_depth == 1) {
         return AssetType::Image1D;
       }
@@ -255,32 +244,9 @@ namespace dxvk {
       return AssetType::Image2D;
     }
 
-    AssetCompression compression() const override {
-      return AssetCompression::None;
-    }
+  public:
 
-    VkFormat format() const override {
-      return m_format;
-    }
-
-    VkExtent3D extent(int level) const override {
-      return VkExtent3D{
-        std::max(m_width >> level, 1u),
-        std::max(m_height >> level, 1u),
-        std::max(m_depth >> level, 1u)
-      };
-    }
-
-    int levels() const override {
-      return m_levels;
-    }
-
-    int looseLevels() const override {
-      return m_levels;
-    }
-
-    int layers() const override {
-      return m_layers;
+    ~DdsTextureData() override {
     }
 
     const void* data(int layer, int level) override {
@@ -313,10 +279,6 @@ namespace dxvk {
       closeHandle();
     }
 
-    const char* filename() const override {
-      return m_filename.c_str();
-    }
-
     void placement(
       int       layer,
       int       face,
@@ -328,15 +290,29 @@ namespace dxvk {
       offset64 = offset;
     }
 
-    bool load(const char* filename) {
-      return parse(filename);
+    bool load(const std::string& filename) {
+      if (parse(filename)) {
+        m_info.type = type();
+        m_info.compression = AssetCompression::None;
+        m_info.format = m_format;
+        m_info.extent = { m_width, m_height, m_depth };
+        m_info.mipLevels = m_levels;
+        m_info.looseLevels = m_levels;
+        m_info.numLayers = m_layers;
+        m_info.filename = m_filename.c_str();
+
+        m_hash = XXH64_std_hash<std::string> {}(m_filename);
+
+        return true;
+      }
+      return false;
     }
   };
 
   class PackagedAssetData : public AssetData {
   public:
     PackagedAssetData() = delete;
-    PackagedAssetData(Rc<AssetPackage>& package, uint32_t assetIdx)
+    PackagedAssetData(const Rc<AssetPackage>& package, uint32_t assetIdx)
     : m_package(package)
     , m_assetIdx(assetIdx) {
       m_assetDesc = package->getAssetDesc(assetIdx);
@@ -344,9 +320,21 @@ namespace dxvk {
       if (m_assetDesc == nullptr) {
         throw DxvkError("Asset description was not found in the package!");
       }
+
+      m_info.type = type();
+      m_info.compression = compression();
+      m_info.format = static_cast<VkFormat>(m_assetDesc->format);
+      m_info.extent = extent(0);
+      m_info.mipLevels = m_assetDesc->numMips;
+      m_info.looseLevels = m_assetDesc->numMips - m_assetDesc->numTailMips;
+      m_info.numLayers = m_assetDesc->arraySize;
+      m_info.filename = m_package->getFilename().c_str();
+
+      m_hash = XXH64_std_hash<std::string> {}(m_package->getFilename());
+      m_hash ^= XXH3_64bits(&m_assetIdx, sizeof(m_assetIdx));
     }
 
-    AssetType type() const override {
+    AssetType type() const {
       switch (m_assetDesc->type) {
       case AssetPackage::AssetDesc::Type::BUFFER:
         return AssetType::Buffer;
@@ -364,7 +352,7 @@ namespace dxvk {
       return AssetType::Unknown;
     }
 
-    AssetCompression compression() const override {
+    AssetCompression compression() const {
       const auto blobDesc = m_package->getDataBlobDesc(
         m_assetDesc->baseBlobIdx);
 
@@ -373,11 +361,7 @@ namespace dxvk {
         AssetCompression::GDeflate : AssetCompression::None;
     }
 
-    VkFormat format() const override {
-      return static_cast<VkFormat>(m_assetDesc->format);
-    }
-
-    VkExtent3D extent(int level) const override {
+    VkExtent3D extent(int level) const {
       if (type() == AssetType::Buffer) {
         return VkExtent3D { m_assetDesc->size, 0, 1 };
       }
@@ -389,29 +373,31 @@ namespace dxvk {
       };
     }
 
-    int levels() const override {
-      return m_assetDesc->numMips;
-    }
-
-    int looseLevels() const override {
-      return m_assetDesc->numMips - m_assetDesc->numTailMips;
-    }
-
-    int layers() const override {
-      return m_assetDesc->arraySize;
-    }
-
     const void* data(int layer, int level) override {
-      // TODO
-      Logger::err("Direct access to asset data is "
-                  "not supported by PackagedAssetData class.");
+      uint32_t blobIdx = getBlobIndex(layer, 0, level);
+
+      const auto& it = m_data.find(blobIdx);
+      if (it != m_data.end())
+        return it->second.data();
+
+      if (auto blobDesc = m_package->getDataBlobDesc(blobIdx)) {
+        if (blobDesc->compression != 0) {
+          throw DxvkError("Compressed data blobs are not supported for CPU readback.");
+        }
+
+        std::vector<uint8_t> data(blobDesc->size);
+        m_package->readDataBlob(blobIdx, data.data(), data.size());
+
+        const void* rawData = data.data();
+        m_data[blobIdx] = std::move(data);
+        return rawData;
+      }
+
       return nullptr;
     }
 
-    void evictCache() override { }
-
-    const char* filename() const override {
-      return m_package->getFilename().c_str();
+    void evictCache() override {
+      m_data.clear();
     }
 
     void placement(
@@ -420,17 +406,8 @@ namespace dxvk {
       int       level,
       uint64_t& offset,
       size_t&   size) const override {
-      if (m_assetDesc->type == AssetPackage::AssetDesc::Type::IMAGE_CUBE) {
-        layer = layer * 6 + face;
-      }
 
-      const uint32_t numLooseMips =
-        m_assetDesc->numMips - m_assetDesc->numTailMips;
-      const uint32_t baseBlobIdx =
-        level >= numLooseMips ? m_assetDesc->tailBlobIdx :
-        level + m_assetDesc->baseBlobIdx;
-
-      const uint32_t blobIdx = baseBlobIdx + layer * numLooseMips;
+      uint32_t blobIdx = getBlobIndex(layer, face, level);
 
       if (auto blobDesc = m_package->getDataBlobDesc(blobIdx)) {
         offset = blobDesc->offset;
@@ -442,9 +419,31 @@ namespace dxvk {
     }
 
   private:
+    uint32_t getBlobIndex(int       layer,
+                          int       face,
+                          int       level) const {
+      if (m_assetDesc->type == AssetPackage::AssetDesc::Type::BUFFER) {
+        return m_assetDesc->baseBlobIdx;
+      }
+
+      if (m_assetDesc->type == AssetPackage::AssetDesc::Type::IMAGE_CUBE) {
+        layer = layer * 6 + face;
+      }
+
+      const uint32_t numLooseMips =
+        m_assetDesc->numMips - m_assetDesc->numTailMips;
+      const uint32_t baseBlobIdx =
+        level >= numLooseMips ? m_assetDesc->tailBlobIdx :
+        level + m_assetDesc->baseBlobIdx;
+
+      return baseBlobIdx + layer * numLooseMips;
+    }
+
     Rc<AssetPackage> m_package;
     const AssetPackage::AssetDesc* m_assetDesc = nullptr;
     uint32_t m_assetIdx;
+
+    std::unordered_map<uint32_t, std::vector<uint8_t>> m_data;
   };
 
   AssetDataManager::AssetDataManager() {
@@ -478,10 +477,10 @@ namespace dxvk {
     }
   }
 
-  Rc<AssetData> AssetDataManager::find(const char* filename) {
+  Rc<AssetData> AssetDataManager::findAsset(const std::string& filename) {
     ZoneScoped;
 
-    const char* extension = strrchr(filename, '.');
+    const char* extension = strrchr(filename.c_str(), '.');
     const bool isDDS = extension ? _stricmp(extension, ".dds") == 0 : false;
     // Only allow DDS even though GLI supports KTX and KMG formats as well: we haven't tested those.
     const bool isSupported = isDDS;

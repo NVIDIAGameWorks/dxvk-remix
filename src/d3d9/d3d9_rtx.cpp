@@ -15,6 +15,8 @@
 #include "d3d9_texture.h"
 
 namespace dxvk {
+  static const bool s_isDxvkResolutionEnvVarSet = (env::getEnvVar("DXVK_RESOLUTION_WIDTH") != "") || (env::getEnvVar("DXVK_RESOLUTION_HEIGHT") != "");
+
   D3D9Rtx::D3D9Rtx(D3D9DeviceEx* d3d9Device)
     : m_rtStagingData(d3d9Device->GetDXVKDevice(), (VkMemoryPropertyFlagBits) (VK_MEMORY_PROPERTY_HOST_CACHED_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT))
     , m_parent(d3d9Device)
@@ -280,13 +282,13 @@ namespace dxvk {
       return { RtxGeometryStatus::Ignored, false };
     }
 
-    if (!d3d9State().renderStates[ColorWriteIndex(kRenderTargetIndex)]) {
+    constexpr DWORD rgbWriteMask = D3DCOLORWRITEENABLE_RED | D3DCOLORWRITEENABLE_GREEN | D3DCOLORWRITEENABLE_BLUE;
+    if ((d3d9State().renderStates[ColorWriteIndex(kRenderTargetIndex)] & rgbWriteMask) != rgbWriteMask) {
       ONCE(Logger::info("[RTX-Compatibility-Info] Skipped drawcall, colour write disabled."));
       return { RtxGeometryStatus::Ignored, false };
     }
 
-    const bool isDxvkResolutionEnvVarSet = env::getEnvVar("DXVK_RESOLUTION_WIDTH") != "" || env::getEnvVar("DXVK_RESOLUTION_HEIGHT") != "";
-    if (!isDxvkResolutionEnvVarSet) {
+    if (!s_isDxvkResolutionEnvVarSet) {
       // NOTE: This can fail when setting DXVK_RESOLUTION_WIDTH or HEIGHT
       bool isPrimary = isRenderTargetPrimary(m_activePresentParams, d3d9State().renderTargets[kRenderTargetIndex]->GetCommonTexture()->Desc());
 
