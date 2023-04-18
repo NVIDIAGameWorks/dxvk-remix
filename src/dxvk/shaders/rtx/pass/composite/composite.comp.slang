@@ -148,7 +148,7 @@ void updateAlphaBlendDebugView(uint2 thread_id, AlphaBlendSurface surface)
   switch(cb.debugViewIdx)
   {
   case DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_COLOR:
-    storeInDebugView(ivec2(thread_id), surface.isValid() ? surface.color.rgb : f16vec3(0));
+    storeInDebugView(ivec2(thread_id), surface.isValid() ? surface.color.rgb : f16vec3(1,0,1));
     break;
   case DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_NORMAL:
     storeInDebugView(ivec2(thread_id), surface.isValid() ? surface.normal : f16vec3(0));
@@ -332,8 +332,7 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
 
   const vec3 radianceOutput =
     (remodulatedTotalPrimaryRadiance + remodulatedTotalSecondaryRadiance) +
-    volumetricPreintegratedRadiance +
-    sharedRadiance;
+    volumetricPreintegratedRadiance;
 
   // Apply D3D9-style fog when volumetric lighting is disabled
 
@@ -341,6 +340,7 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
 
   vec4 alphaBlendOutput = 0;
   float backgroundAlpha = 1;
+  bool isAlphaBlend = false;
   if (cb.enableStochasticAlphaBlend)
   {    
     AlphaBlendSurface surface = AlphaBlendSurface.createFromPacked(AlphaBlendGBuffer[thread_id]);
@@ -350,6 +350,7 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
 
     if (!discardPixel && surface.isValid())
     {
+      isAlphaBlend = true;
       RNG randomState = createRNG(thread_id, cb.frameIdx, 5);
       surface.color = surface.color;
       vec3 particleNormal = surface.normal;
@@ -408,7 +409,14 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
         alphaBlendOutput.xyz += alphaBlendPreintegratedRadiance * (1 - backgroundAlpha);
       }
 
-      alphaBlendOutput.xyz += surface.hasEmissive ? sharedRadiance : sharedRadiance * backgroundAlpha;
+      if (surface.hasEmissive)
+      {
+        alphaBlendOutput.xyz += sharedRadiance;
+      }
+      else
+      {
+        attenuatedOutput += sharedRadiance;
+      }
 
       if (!volumeArgs.enableVolumetricLighting)
       {
@@ -419,6 +427,11 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
     }
 
     updateAlphaBlendDebugView(thread_id.xy, surface);
+  }
+
+  if (!isAlphaBlend)
+  {
+    attenuatedOutput += sharedRadiance;
   }
 
   if (!volumeArgs.enableVolumetricLighting)
