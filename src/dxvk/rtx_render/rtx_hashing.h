@@ -101,7 +101,7 @@ namespace dxvk {
     *
     *   ruleset [in]: list of hash component names (CSV format)
     */
-  HashRule createRule(const std::string& ruleset);
+  HashRule createRule(const char* rulesetName, const std::string& ruleset);
 
   /**
     * \brief Generate a hash from geometry description
