@@ -486,7 +486,7 @@ if dxvk_is_ninja
     fs.read('gametargets.conf')
   endif
   fs.read('vsgen/dxvk_project.py')
-  fs.read('vsgen/dxvk_rt.vcxproj.template')
+  fs.read('vsgen/dxvk-remix.vcxproj.template')
   fs.read('vsgen/get_game_target_list.py')
   fs.read('vsgen/sln.py')
   fs.read('vsgen/testcase_project.py')

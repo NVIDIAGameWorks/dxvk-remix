@@ -487,7 +487,7 @@ namespace dxvk {
     }
 
     if (input.texcoordBuffer.defined()) {
-      assert(input.texcoordBuffer.vertexFormat() == VK_FORMAT_R32G32B32A32_SFLOAT || input.texcoordBuffer.vertexFormat() == VK_FORMAT_R32G32B32_SFLOAT || input.texcoordBuffer.vertexFormat() == VK_FORMAT_R32G32_SFLOAT);
+      assert(isTexcoordFormatValid(input.texcoordBuffer.vertexFormat()));
       stride += sizeof(float) * 2;
     }
 

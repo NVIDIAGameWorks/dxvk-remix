@@ -19,7 +19,7 @@
   </PropertyGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
-    <ProjectGuid>{$dxvk_rt_project_guid}</ProjectGuid>
+    <ProjectGuid>{$dxvk_remix_project_guid}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -58,7 +58,7 @@
     <NMakeBuildCommandLine>ninja -C ..\_Comp64Debug</NMakeBuildCommandLine>
     <NMakeReBuildCommandLine>ninja -C ..\_Comp64Debug clean all</NMakeReBuildCommandLine>
     <NMakeCleanCommandLine>ninja -C ..\_Comp64Debug clean</NMakeCleanCommandLine>
-    <NMakeOutput>dxvk_rt.exe</NMakeOutput>
+    <NMakeOutput>dxvk-remix.dll</NMakeOutput>
     <NMakePreprocessorDefinitions>_DEBUG;$dxvk_cpp_defines;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
     <NMakeIncludeSearchPath>$include_search_path_debug</NMakeIncludeSearchPath>
     <AdditionalOptions>/std:c++17 /fpermissive-</AdditionalOptions>
@@ -68,7 +68,7 @@
     <NMakeBuildCommandLine>ninja -C ..\_Comp64DebugOptimized</NMakeBuildCommandLine>
     <NMakeReBuildCommandLine>ninja -C ..\_Comp64DebugOptimized clean all</NMakeReBuildCommandLine>
     <NMakeCleanCommandLine>ninja -C ..\_Comp64DebugOptimized clean</NMakeCleanCommandLine>
-    <NMakeOutput>dxvk_rt.exe</NMakeOutput>
+    <NMakeOutput>dxvk-remix.dll</NMakeOutput>
     <NMakePreprocessorDefinitions>$dxvk_cpp_defines;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
     <NMakeIncludeSearchPath>$include_search_path_debugoptimized</NMakeIncludeSearchPath>
     <AdditionalOptions>/std:c++17 /fpermissive-</AdditionalOptions>
@@ -78,7 +78,7 @@
     <NMakeBuildCommandLine>ninja -C ..\_Comp64Release</NMakeBuildCommandLine>
     <NMakeReBuildCommandLine>ninja -C ..\_Comp64Release clean all</NMakeReBuildCommandLine>
     <NMakeCleanCommandLine>ninja -C ..\_Comp64Release clean</NMakeCleanCommandLine>
-    <NMakeOutput>dxvk_rt.exe</NMakeOutput>
+    <NMakeOutput>dxvk-remix.dll</NMakeOutput>
     <NMakePreprocessorDefinitions>NDEBUG;$dxvk_cpp_defines;$(NMakePreprocessorDefinitions)</NMakePreprocessorDefinitions>
     <NMakeIncludeSearchPath>$include_search_path_release</NMakeIncludeSearchPath>
     <AdditionalOptions>/std:c++17 /fpermissive-</AdditionalOptions>

@@ -434,7 +434,7 @@ float RAB_GetLightSampleTargetPdfForVolume(RAB_LightSample lightSample, RAB_Volu
     const float lightSampleDistance = distance(volumeInteraction.volumeInteraction.position, lightSample.position);
 
     // Todo: Replace evalBeerLambertAttenuation here (and in other locations) with a specialized volumetric helper.
-    volumeAttenuation = evalBeerLambertAttenuation(cb.volumeArgs.attenuationCoefficient, lightSampleDistance);
+    volumeAttenuation = evalBeerLambertAttenuation(cb.volumeArgs.attenuationCoefficient, min(float16Max, lightSampleDistance));
   }
 
   const float targetPdf = calcBt709Luminance(lightSample.radiance * volumeAttenuation) * phaseWeight * lightThroughput;

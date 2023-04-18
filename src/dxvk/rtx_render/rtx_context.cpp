@@ -20,7 +20,8 @@
 * DEALINGS IN THE SOFTWARE.
 */
 #include <cstring>
-#include <assert.h>
+#include <cmath>
+#include <cassert>
 
 #include "dxvk_device.h"
 #include "dxvk_scoped_annotation.h"
@@ -690,17 +691,15 @@ namespace dxvk {
     m_rtState.texStage = stage;
   }
 
-  void RtxContext::addLights(const D3DLIGHT9* pLights, const uint32_t numLights)
-  {
-    for (uint32_t i = 0; i < numLights; i++)
-    {
+  void RtxContext::addLights(const D3DLIGHT9* pLights, const uint32_t numLights) {
+    for (uint32_t i = 0; i < numLights; i++) {
       getSceneManager().addLight(pLights[i]);
     }
   }
 
   // checks the current state to see if the app is drawing a stencil shadow volume
   bool RtxContext::isStencilShadowVolumeState() {
-    if (m_state.gp.state.ds.enableStencilTest()) {
+    if (RtxOptions::Get()->ignoreStencilVolumeHeuristics() && m_state.gp.state.ds.enableStencilTest()) {
       const VkCullModeFlags cullMode = m_state.gp.state.rs.cullMode();
 
       if (cullMode == VK_CULL_MODE_FRONT_BIT) {
@@ -850,7 +849,7 @@ namespace dxvk {
       assert(geoData.positionBuffer.offset() % 4 == 0);
 
       // Did we have a texcoord buffer bound for this draw?
-      if (!geoData.texcoordBuffer.defined()) {
+      if (!geoData.texcoordBuffer.defined() || !RtxGeometryUtils::isTexcoordFormatValid(geoData.texcoordBuffer.vertexFormat())) {
         // Known offset for vertex capture buffers
         const uint32_t texcoordOffset = sizeof(float) * 4;
         geoData.texcoordBuffer = RasterBuffer(DxvkBufferSlice(vertexCaptureBuffer), texcoordOffset, stride, VK_FORMAT_R32G32_SFLOAT);
@@ -1241,6 +1240,7 @@ namespace dxvk {
     constants.psrrNormalDetailThreshold = RtxOptions::Get()->psrrNormalDetailThreshold();
     constants.pstrNormalDetailThreshold = RtxOptions::Get()->pstrNormalDetailThreshold();
     constants.enableDirectLighting = RtxOptions::Get()->isDirectLightingEnabled();
+    constants.enableStochasticAlphaBlend = m_common->metaComposite().enableStochasticAlphaBlend();
     constants.enableSeparateUnorderedApproximations = RtxOptions::Get()->isSeparateUnorderedApproximationsEnabled() && getResourceManager().getTLAS(Tlas::Unordered).accelStructure != nullptr;
     constants.enableDirectTranslucentShadows = RtxOptions::Get()->areDirectTranslucentShadowsEnabled();
     constants.enableIndirectTranslucentShadows = RtxOptions::Get()->areIndirectTranslucentShadowsEnabled();
@@ -1303,9 +1303,12 @@ namespace dxvk {
     auto* cameraTeleportDirectionInfo = getSceneManager().getRayPortalManager().getCameraTeleportationRayPortalDirectionInfo();
     constants.teleportationPortalIndex = cameraTeleportDirectionInfo ? cameraTeleportDirectionInfo->entryPortalInfo.portalIndex + 1 : 0;
 
-    // Reminder: proj[1][1] --> 1.0/tan(fovY/2)
-    // By inversing this math we can use this half fovY angle for the entire camera divided by the vertical resolution to get the effective half angle of a single pixel.
-    constants.screenSpacePixelSpreadHalfAngle = atan(1.0f / (getSceneManager().getCamera().getViewToProjection().data[1][1])) / constants.camera.resolution.y;
+    // Note: Use half of the vertical FoV for the main camera in radians divided by the vertical resolution to get the effective half angle of a single pixel.
+    constants.screenSpacePixelSpreadHalfAngle = getSceneManager().getCamera().getFov() / 2.0f / constants.camera.resolution.y;
+
+    // Note: This value is assumed to be positive (specifically not have the sign bit set) as otherwise it will break Ray Interaction encoding.
+    assert(std::signbit(constants.screenSpacePixelSpreadHalfAngle) == false);
+
     constants.debugView = m_common->metaDebugView().debugViewIdx();
 
     getDenoiseArgs(constants.primaryDirectNrd, constants.primaryIndirectNrd, constants.secondaryCombinedNrd);
@@ -1343,6 +1346,7 @@ namespace dxvk {
 
     constants.resolveTransparencyThreshold = RtxOptions::Get()->getResolveTransparencyThreshold();
     constants.resolveOpaquenessThreshold = RtxOptions::Get()->getResolveOpaquenessThreshold();
+    constants.resolveStochasticAlphaBlendThreshold = m_common->metaComposite().stochasticAlphaBlendOpacityThreshold();
 
     constants.volumeClampedReprojectionConfidencePenalty = RtxOptions::Get()->getVolumetricClampedReprojectionConfidencePenalty();
 
@@ -1594,7 +1598,7 @@ namespace dxvk {
       denoiseInput.specular_hitT = &rtOutput.m_secondaryCombinedSpecularRadiance.resource(Resources::AccessType::Read);
       denoiseInput.normal_roughness = &rtOutput.m_secondaryVirtualWorldShadingNormalPerceptualRoughnessDenoising;
       denoiseInput.linearViewZ = &rtOutput.m_secondaryLinearViewZ;
-      denoiseInput.motionVector = &rtOutput.m_secondaryVirtualMotionVector;
+      denoiseInput.motionVector = &rtOutput.m_secondaryVirtualMotionVector.resource(Resources::AccessType::Read);
       denoiseInput.frameTimeMs = frameTimeSecs * 1000.f;
       denoiseInput.reset = m_resetHistory;
 

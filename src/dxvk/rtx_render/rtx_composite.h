@@ -63,6 +63,7 @@ namespace dxvk {
 
     void showImguiSettings();
     void showDenoiseImguiSettings();
+    void showStochasticAlphaBlendImguiSettings();
 
   private:
     dxvk::DxvkDevice* m_device;
@@ -79,6 +80,22 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, compositePrimaryIndirectSpecular, true, "");
     RTX_OPTION("rtx", bool, compositeSecondaryCombinedDiffuse, true, "");
     RTX_OPTION("rtx", bool, compositeSecondaryCombinedSpecular, true, "");
+
+    RW_RTX_OPTION("rtx", bool, enableStochasticAlphaBlend, true, "Use stochastic alpha blend.");
+    RTX_OPTION("rtx", float, stochasticAlphaBlendOpacityThreshold, 0.95f, "Max opacity to use stochastic alpha blend.");
+    RTX_OPTION("rtx", bool, stochasticAlphaBlendUseNeighborSearch, true, "Get radiance from neighbor opaque pixels.");
+    RTX_OPTION("rtx", bool, stochasticAlphaBlendSearchTheSameObject, true, "Only use radiance samples from the same object.");
+    RTX_OPTION("rtx", int, stochasticAlphaBlendSearchIteration, 6, "Search iterations.");
+    RTX_OPTION("rtx", float, stochasticAlphaBlendInitialSearchRadius, 10.0f, "Initial search radius.");
+    RTX_OPTION("rtx", float, stochasticAlphaBlendRadiusExpandFactor, 1.6f, "Multiply radius by this factor if cannot find a good neighbor.");
+    RTX_OPTION("rtx", bool, stochasticAlphaBlendShareNeighbors, true, "Share result with other pixels to accelerate search.");
+    RTX_OPTION("rtx", float, stochasticAlphaBlendNormalSimilarity, 0.9f, "Min normal similarity for a valid neighbor.");
+    RTX_OPTION("rtx", float, stochasticAlphaBlendDepthDifference, 0.1f, "Max depth difference for a valid neighbor.");
+    RTX_OPTION("rtx", float, stochasticAlphaBlendPlanarDifference, 0.2f, "Max planar difference for a valid neighbor.");
+    RTX_OPTION("rtx", bool, stochasticAlphaBlendUseRadianceVolume, true, "Get radiance from radiance volume.");
+    RTX_OPTION("rtx", float, stochasticAlphaBlendRadianceVolumeMultiplier, 1.0, "Radiance volume multiplier.");
+    RTX_OPTION("rtx", bool, stochasticAlphaBlendEnableFilter, true, "Filter samples to suppress noise.");
+    RTX_OPTION("rtx", bool, stochasticAlphaBlendDiscardBlackPixel, false, "Discard black pixels.");
 
     RTX_OPTION("rtx", bool, usePostFilter, true, "");
     RTX_OPTION("rtx", float, postFilterThreshold, 3.0f, "");

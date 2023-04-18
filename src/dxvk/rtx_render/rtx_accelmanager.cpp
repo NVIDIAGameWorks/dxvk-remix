@@ -274,6 +274,8 @@ namespace dxvk {
     const VkAccelerationStructureBuildRangeInfoKHR* pBuildRange = &buildRange;
     
     cmdList->vkCmdBuildAccelerationStructuresKHR(1, &buildInfo, &pBuildRange);
+
+    cmdList->trackResource<DxvkAccess::Write>(scratchSlice.buffer());
   }
 
   Rc<PooledBlas> AccelManager::createPooledBlas(size_t bufferSize) const {

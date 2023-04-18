@@ -962,12 +962,14 @@ namespace dxvk {
       rtxdiRayQuery.enableRayTracedBiasCorrectionRef() = true;
       restirGiRayQuery.biasCorrectionModeRef() = ReSTIRGIBiasCorrection::PairwiseRaytrace;
       restirGiRayQuery.useReflectionReprojectionRef() = true;
+      common->metaComposite().enableStochasticAlphaBlendRef() = true;
     } else if (RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Medium ||
                RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Low) {
       rtxdiRayQuery.enableRayTracedBiasCorrectionRef() = false;
       restirGiRayQuery.biasCorrectionModeRef() = ReSTIRGIBiasCorrection::BRDF;
       postFx.enableRef() = false;
       restirGiRayQuery.useReflectionReprojectionRef() = false;
+      common->metaComposite().enableStochasticAlphaBlendRef() = false;
     }
 
     // Path Tracing Settings
@@ -1351,6 +1353,9 @@ namespace dxvk {
       ImGui::Checkbox("Shader-based Vertex Capture", &RtxOptions::Get()->useVertexCaptureObject());
       ImGui::Separator();
 
+      ImGui::Checkbox("Ignore Stencil Volumes", &RtxOptions::Get()->ignoreStencilVolumeHeuristicsObject());
+      ImGui::Separator();
+
       ImGui::DragFloat("Vertex Color Strength", &RtxOptions::Get()->vertexColorStrengthObject(), 0.001f, 0.0f, 1.0f);
 
       ImGui::Unindent();
@@ -1636,7 +1641,7 @@ namespace dxvk {
 
         ImGui::SliderFloat("Resolve Transparency Threshold", &RtxOptions::Get()->resolveTransparencyThresholdObject(), 0.0f, 1.0f);
         RtxOptions::Get()->resolveOpaquenessThresholdRef() = std::max(RtxOptions::Get()->resolveTransparencyThreshold(), RtxOptions::Get()->resolveOpaquenessThreshold());
-        ImGui::SliderFloat("Resolve Opaqueness Theshold", &RtxOptions::Get()->resolveOpaquenessThresholdObject(), 0.0f, 1.0f);
+        ImGui::SliderFloat("Resolve Opaqueness Threshold", &RtxOptions::Get()->resolveOpaquenessThresholdObject(), 0.0f, 1.0f);
 
         ImGui::Unindent();
       }
@@ -1831,6 +1836,7 @@ namespace dxvk {
       ImGui::Separator();
       ImGui::SliderFloat("Particle Softness", &RtxOptions::Get()->particleSoftnessFactorObject(), 0.f, 0.5f);
 
+      common->metaComposite().showStochasticAlphaBlendImguiSettings();
       ImGui::Unindent();
     }
 
