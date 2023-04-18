@@ -49,8 +49,10 @@ namespace dxvk {
     return HashComponentNames[(uint32_t) component]; 
   }
 
-  HashRule createRule(const std::string& ruleset) {
+  HashRule createRule(const char* rulesetName, const std::string& ruleset) {
     HashRule ruleOutput;
+
+    Logger::info(str::format(rulesetName, " hash rule:"));
 
     if (ruleset == "") {
       Logger::warn("\tNo active geometry hash rule.");
