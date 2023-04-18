@@ -440,9 +440,9 @@ namespace dxvk {
     ImGui::Dummy(ImVec2 { 4, 0 });
   }
 
-  void ImGUI::switchMenu(UIType type) {
+  void ImGUI::switchMenu(UIType type, bool force) {
     UIType oldType = RtxOptions::Get()->showUI();
-    if (oldType == type) {
+    if (oldType == type && !force) {
       return;
     }
     if (oldType == UIType::Basic) {
@@ -2072,11 +2072,20 @@ namespace dxvk {
   }
 
   void ImGUI::render(
+    const HWND hwnd,
     const Rc<DxvkContext>& ctx,
     VkSurfaceFormatKHR surfaceFormat,
     VkExtent2D        surfaceSize) {
     ZoneScoped;
     ScopedGpuProfileZone(ctx, "ImGUI Render");
+
+    // Sometimes games can change windows on us, so we need to check that here and tell ImGUI
+    if (m_hwnd != hwnd) {
+      m_hwnd = hwnd;
+      ImGui_ImplWin32_Shutdown();
+      ImGui_ImplWin32_Init(hwnd);
+    }
+
     if (!m_init) {
       //this initializes imgui for Vulkan
       ImGui_ImplVulkan_InitInfo init_info = {};

@@ -181,7 +181,10 @@ namespace dxvk {
     if (windowData.proc == nullptr) {
       Logger::info(str::format("No winproc detected, initiating bridge message channel for: ", window));
 
-      if (!BridgeMessageChannel::get().init(window, D3D9WindowProc)) {
+      if (BridgeMessageChannel::get().init(window, D3D9WindowProc)) {
+        // Send the initial state messages
+        swapchain->getGUI()->switchMenu(RtxOptions::Get()->showUI(), true);
+      } else {
         Logger::err("Unable to init bridge message channel. FSE and input capture may not work!");
       }
     }
@@ -774,13 +777,7 @@ namespace dxvk {
       }
       
       // NV-DXVK end
-
-      if (changeFullscreen) {
-        // Reinstall window hook that was removed in LeaveFullscreenMode() above
-        HookWindowProc(m_window, this);
-      }
-    }
-    else {
+    } else {
       if (changeFullscreen) {
         if (FAILED(this->EnterFullscreenMode(pPresentParams, pFullscreenDisplayMode)))
           return D3DERR_INVALIDCALL;
@@ -803,6 +800,15 @@ namespace dxvk {
     }
 
     m_presentParams = *pPresentParams;
+
+    // NV-DXVK start: Support games changing the HWND at runtime.
+    if (m_presentParams.hDeviceWindow != m_window || changeFullscreen) {
+      m_window = m_presentParams.hDeviceWindow;
+
+      // Reinstall window hook that was removed in LeaveFullscreenMode() above
+      HookWindowProc(m_window, this);
+    }
+    // NV-DXVK end
 
     if (changeFullscreen)
       SetGammaRamp(0, &m_ramp);
@@ -1014,7 +1020,7 @@ namespace dxvk {
         m_hud->render(m_context, info.format, info.imageExtent);
 
       if (m_imgui != nullptr)
-        m_imgui->render(m_context, info.format, info.imageExtent);
+        m_imgui->render(m_window, m_context, info.format, info.imageExtent);
 
       if (i + 1 >= SyncInterval)
         m_context->signal(m_frameLatencySignal, m_frameId);
