@@ -270,13 +270,15 @@ namespace dxvk {
       return result;
     }
 
+    // NV-DXVK start: Extend logOptions function
     /**
      * \brief Logs option values
      * 
      * Prints the effective configuration
      * to the log for debugging purposes. 
      */
-    void logOptions() const;
+    void logOptions(const std::string& configName) const;
+    // NV-DXVK end
 
     /**
      * \brief Retrieves default options for an app
@@ -352,15 +354,15 @@ namespace dxvk {
       const std::string& value,
       Vector2i& result);
 
-    // NV-DXVK start: added a variant
+    // NV-DXVK start: Add option parsing variants
     static bool parseOptionValue(
       const std::string& value,
       Vector2& result);
-    // NV-DXVK end
 
     static bool parseOptionValue(
       const std::string& value,
       Vector3& result);
+    // NV-DXVK end
 
     static bool parseOptionValue(
       const std::string& value,

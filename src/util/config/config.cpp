@@ -1308,8 +1308,7 @@ namespace dxvk {
       });
     
     if (appConfig != g_appDefaults.end()) {
-      // Inform the user that we loaded a default config
-      Logger::info(str::format("Found built-in config:"));
+      // NV-DXVK deletion: Move logging of loaded built-in configuration outside this function
       return appConfig->second;
     }
 
@@ -1336,9 +1335,12 @@ namespace dxvk {
       filePath = "rtx.conf";
 
     auto config = parseConfigFile(filePath);
+
+    // Load baseGameModPath/rtx.conf and merge into RTX user config if present
     if (baseGameModPath != "") {
       config.merge(parseConfigFile(baseGameModPath + "/rtx.conf"));
     }
+
     return config;
   }
 
@@ -1388,14 +1390,16 @@ namespace dxvk {
     }
   }
 
-  void Config::logOptions() const {
+  // NV-DXVK start: Extend logOptions function
+  void Config::logOptions(const std::string& configName) const {
     if (!m_options.empty()) {
-      Logger::info("Effective configuration:");
+      Logger::info(str::format("Effective ", configName, " configuration:"));
 
       for (auto& pair : m_options)
         Logger::info(str::format("  ", pair.first, " = ", pair.second));
     }
   }
+  // NV-DXVK end
 
   std::string Config::toLower(std::string str) {
     std::transform(str.begin(), str.end(), str.begin(),
