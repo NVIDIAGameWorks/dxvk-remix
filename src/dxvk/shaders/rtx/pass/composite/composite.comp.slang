@@ -330,13 +330,11 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
   // Note: The primary hit accumulated radiance value is not affected by the throughput (rather takes attenuation into account
   // while accumulating already), so it can be added in here without issue.
 
-  const vec3 radianceOutput =
+  vec3 radianceOutput =
     (remodulatedTotalPrimaryRadiance + remodulatedTotalSecondaryRadiance) +
     volumetricPreintegratedRadiance;
 
   // Apply D3D9-style fog when volumetric lighting is disabled
-
-  vec3 attenuatedOutput = radianceOutput;
 
   vec4 alphaBlendOutput = 0;
   float backgroundAlpha = 1;
@@ -415,7 +413,7 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
       }
       else
       {
-        attenuatedOutput += sharedRadiance;
+        radianceOutput += sharedRadiance;
       }
 
       if (!volumeArgs.enableVolumetricLighting)
@@ -431,9 +429,10 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
 
   if (!isAlphaBlend)
   {
-    attenuatedOutput += sharedRadiance;
+    radianceOutput += sharedRadiance;
   }
 
+  vec3 attenuatedOutput = radianceOutput;
   if (!volumeArgs.enableVolumetricLighting)
   {
     // Todo: Using view distance is a bit of a hack here, the primary emissive contribution will not be fully weighted correctly
