@@ -210,9 +210,25 @@ namespace dxvk {
     Logger::info(str::format("Game: ", env::getExeName()));
     Logger::info(str::format("DXVK_Remix: ", DXVK_VERSION));
 
-    m_config = Config::getUserConfig();
-    m_config.merge(Config::getAppConfig(env::getExePath()));
-    m_config.logOptions();
+    // NV-DXVK start: Custom config loading/logging
+
+    // Load configurations
+    // Note: Loading is done in the following order currently, each step overriding values in the previous
+    // configuration values when a conflict exist, resulting in the combined "effective" configuration:
+    // - Configuration defaults in code (Implicit)
+    // - dxvk.conf ("User Config")
+    // - Per-application configuration in code ("Built-in Config" from config.cpp)
+    // - rtx.conf ("RTX User Config")
+    //   - baseGameModPath/rtx.conf (Mod-specific extension of "RTX User Config")
+
+    auto userConfig = Config::getUserConfig();
+    userConfig.logOptions("User");
+    // Note: Moved since this is the first set of configuration values to be set, so no need to merge.
+    m_config = std::move(userConfig);
+
+    const auto appConfig = Config::getAppConfig(env::getExePath());
+    appConfig.logOptions("Built-in");
+    m_config.merge(appConfig);
 
     // Handle games that have native mod support, where the base game looks into another folder for mod, 
     // and the new asset path is passed in through the command line
@@ -224,11 +240,22 @@ namespace dxvk {
     // The start-up config contains the values from the code and dxvk.conf,
     // while the custom config also contains values from rtx.conf
     RtxOption<bool>::setStartupConfig(m_config);
-    m_config.merge(Config::getRtxUserConfig(baseGameModPath));
+
+    const auto rtxUserConfig = Config::getRtxUserConfig(baseGameModPath);
+    rtxUserConfig.logOptions("RTX user");
+    m_config.merge(rtxUserConfig);
+
+    // Set custom config after the RTX user config has been merged into the config and
+    // update the RTX options
     RtxOption<bool>::setCustomConfig(m_config);
     RtxOption<bool>::updateRtxOptions();
 
-    // NV-DXVK start:
+    // Log the combined "effective" configuration to be used
+    m_config.logOptions("Effective (combined)");
+
+    // NV-DXVK end 
+
+    // NV-DXVK start: Wait for debugger functionality
     if (m_config.getOption<bool>("dxvk.waitForDebuggerToAttach", false, "DXVK_WAIT_FOR_DEBUGGER_TO_ATTACH"))
       while (!::IsDebuggerPresent())
         ::Sleep(100);
