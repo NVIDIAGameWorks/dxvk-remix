@@ -553,6 +553,11 @@ namespace dxvk {
           continue;
 
         D3D9CommonTexture* texture = GetCommonTexture(d3d9State().textures[stage]);
+
+        // Remix can only handle 2D textures - no cubemaps or volumes.
+        if (texture->GetType() != D3DRTYPE_TEXTURE)
+          continue;
+          
         const XXH64_hash_t texHash = texture->GetSampleView(true)->image()->getHash();
 
         // Currently we only support regular textures, skip lightmaps.
