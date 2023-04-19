@@ -75,8 +75,8 @@ namespace dxvk
     return lengthSqr(getViewToWorld()[3] - getPreviousViewToWorld()[3]) > RtxOptions::Get()->getUniqueObjectDistanceSqr();
   }
 
-  bool RtCamera::isFreeCameraEnabled() const {
-    return RtxOptions::Get()->isFreeCameraEnabled();
+  bool RtCamera::isFreeCameraEnabled() {
+    return enableFreeCamera();
   }
 
   Vector3 RtCamera::getHorizontalForwardDirection() const {
@@ -378,7 +378,7 @@ namespace dxvk
     m_matCache[MatrixType::PreviousWorldToView] = m_matCache[MatrixType::WorldToView];
     m_matCache[MatrixType::PreviousViewToWorld] = m_matCache[MatrixType::ViewToWorld];
     m_matCache[MatrixType::UncorrectedPreviousViewToWorld] = m_matCache[MatrixType::ViewToWorld];
-    m_matCache[MatrixType::WorldToView] = RtxOptions::Get()->isFreeCameraViewRelative() ? newWorldToView : Matrix4();
+    m_matCache[MatrixType::WorldToView] = freeCameraViewRelative() ? newWorldToView : Matrix4();
     m_matCache[MatrixType::ViewToWorld] = inverse(m_matCache[MatrixType::WorldToView]);
 
     // Setup Translated World/View Matrix Data
@@ -390,7 +390,7 @@ namespace dxvk
     Matrix4 viewToTranslatedWorld = m_matCache[MatrixType::ViewToWorld];
     viewToTranslatedWorld[3] = Vector4(0.0f, 0.0f, 0.0f, viewToTranslatedWorld[3].w);
 
-    m_matCache[MatrixType::ViewToTranslatedWorld] = RtxOptions::Get()->isFreeCameraViewRelative() ? viewToTranslatedWorld : Matrix4();
+    m_matCache[MatrixType::ViewToTranslatedWorld] = freeCameraViewRelative() ? viewToTranslatedWorld : Matrix4();
     // Note: Slightly non-ideal to have to inverse an already inverted matrix when we have the original world to view matrix,
     // but this is the safest way to ensure a proper inversion when modifying the view to world transform manually.
     m_matCache[MatrixType::TranslatedWorldToView] = inverse(m_matCache[MatrixType::ViewToTranslatedWorld]);
@@ -424,7 +424,7 @@ namespace dxvk
 
     // Apply free camera shaking
 
-    if (!RtxOptions::Get()->isFreeCameraEnabled() && RtxOptions::Get()->isCameraShaking()) {
+    if (!enableFreeCamera() && RtxOptions::Get()->isCameraShaking()) {
       Matrix4 newViewToWorld = getShakenViewToWorldMatrix(m_matCache[MatrixType::ViewToWorld]);
       Matrix4 newViewToTranslatedWorld = newViewToWorld;
       newViewToTranslatedWorld[3] = Vector4(0.0f, 0.0f, 0.0f, newViewToTranslatedWorld[3].w);
@@ -491,7 +491,7 @@ namespace dxvk
       m_firstUpdate = false;
     }
 
-    if (!RtxOptions::Get()->isFreeCameraEnabled())
+    if (!enableFreeCamera())
       return isCameraCut();
 
     auto currTime = std::chrono::system_clock::now();
@@ -500,7 +500,7 @@ namespace dxvk
     m_prevRunningTime = currTime;
 
     // Perform custom camera controls logic
-    float speed = elapsedSec.count() * RtxOptions::Get()->getSceneScale() * RtxOptions::Get()->freeCameraSpeed();
+    float speed = elapsedSec.count() * RtxOptions::Get()->getSceneScale() * freeCameraSpeed();
 
     float moveLeftRight = 0;
     float moveBackForward = 0;
@@ -522,7 +522,7 @@ namespace dxvk
         !IsKeyDown(ImGuiKey_LeftCtrl) &&
         !IsKeyDown(ImGuiKey_RightCtrl) &&
         !IsKeyDown(ImGuiKey_LeftAlt) &&
-        !IsKeyDown(ImGuiKey_RightAlt) && !RtxOptions::Get()->isCameraLocked();
+        !IsKeyDown(ImGuiKey_RightAlt) && !lockFreeCamera();
 
       if (!isKeyAvailable) {
         speed = 0;
@@ -551,10 +551,9 @@ namespace dxvk
 
       POINT p;
       if (GetCursorPos(&p)) {
-        if (!RtxOptions::Get()->isCameraLocked() && ImGui::IsMouseDown(ImGuiMouseButton_Left) && ((m_mouseX != p.x) || (m_mouseY != p.y))) {
-          m_yaw += coordSystemScale * (m_mouseX - p.x) * 0.1f * elapsedSec.count();
-
-          m_pitch += coordSystemScale * (m_mouseY - p.y) * 0.2f * elapsedSec.count();
+        if (!lockFreeCamera() && ImGui::IsMouseDown(ImGuiMouseButton_Left) && ((m_mouseX != p.x) || (m_mouseY != p.y))) {
+          freeCameraYawRef() += coordSystemScale * (m_mouseX - p.x) * 0.1f * elapsedSec.count();
+          freeCameraPitchRef() += coordSystemScale * (m_mouseY - p.y) * 0.2f * elapsedSec.count();
         }
 
         m_mouseX = p.x;
@@ -563,12 +562,12 @@ namespace dxvk
 
       // Reset
       if (ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
-        m_position = Vector4(0.0f);
+        freeCameraPositionRef() = Vector3(0.f);
         moveLeftRight = 0;
         moveBackForward = 0;
         moveDownUp = 0;
-        m_yaw = 0.0f;
-        m_pitch = 0.0f;
+        freeCameraYawRef() = 0.0f;
+        freeCameraPitchRef() = 0.0f;
       }
     } else {
       // track mouse position when out of focus to avoid uncontrollable camera flips when we're back in focus
@@ -584,13 +583,13 @@ namespace dxvk
     Matrix4 freeCamViewToWorld(m_matCache[MatrixType::ViewToWorld]);
 
     freeCamViewToWorld[3] = Vector4(0.0);
-    freeCamViewToWorld *= getMatrixFromEulerAngles(m_pitch, m_yaw);
+    freeCamViewToWorld *= getMatrixFromEulerAngles(freeCameraPitch(), freeCameraYaw());
 
-    m_position += moveLeftRight * freeCamViewToWorld.data[0];
-    m_position += moveDownUp * freeCamViewToWorld.data[1];
-    m_position -= moveBackForward * freeCamViewToWorld.data[2];
+    freeCameraPositionRef() += moveLeftRight * freeCamViewToWorld.data[0].xyz();
+    freeCameraPositionRef() += moveDownUp * freeCamViewToWorld.data[1].xyz();
+    freeCameraPositionRef() -= moveBackForward * freeCamViewToWorld.data[2].xyz();
 
-    freeCamViewToWorld[3] = m_matCache[MatrixType::ViewToWorld][3] + m_position;
+    freeCamViewToWorld[3] = m_matCache[MatrixType::ViewToWorld][3] + Vector4(freeCameraPosition(), 0.f);
 
     if (RtxOptions::Get()->isCameraShaking()) {
       freeCamViewToWorld = getShakenViewToWorldMatrix(freeCamViewToWorld);
@@ -697,6 +696,26 @@ namespace dxvk
     camera.flags = ((!m_isLHS) ? rightHandedFlag : 0);
 
     return camera;
+  }
+
+  void RtCamera::showImguiSettings() {
+    const static ImGuiSliderFlags sliderFlags = ImGuiSliderFlags_AlwaysClamp;
+    const static ImGuiTreeNodeFlags collapsingHeaderFlags = ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_CollapsingHeader;
+    const static ImGuiTreeNodeFlags collapsingHeaderClosedFlags = ImGuiTreeNodeFlags_CollapsingHeader;
+
+    if (ImGui::CollapsingHeader("Free Camera", collapsingHeaderFlags)) {
+      ImGui::Indent();
+
+      ImGui::Checkbox("Enable Free Camera", &enableFreeCameraObject());
+      ImGui::Checkbox("Lock Free Camera", &lockFreeCameraObject());
+      ImGui::DragFloat3("Position", &freeCameraPositionObject(), 0.1f, -1e5, -1e5, "%.3f", sliderFlags);
+      ImGui::DragFloat("Yaw", &freeCameraYawObject(), 0.1f, -Pi<float>(2), Pi<float>(2), "%.3f", sliderFlags);
+      ImGui::DragFloat("Pitch", &freeCameraPitchObject(), 0.1f, -Pi<float>(2), Pi<float>(2), "%.3f", sliderFlags);
+      ImGui::DragFloat("Speed", &freeCameraSpeedObject(), 0.1f, 0.f, 5000.0f, "%.3f");
+      ImGui::Checkbox("View Relative", &freeCameraViewRelativeObject());
+
+      ImGui::Unindent();
+    }
   }
 
   Matrix4 RtCamera::getShakenViewToWorldMatrix(Matrix4& viewToWorld) {

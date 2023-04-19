@@ -274,22 +274,26 @@ namespace dxvk {
 
 // The RTX_OPTION* macros provide a convenient way to declare a serializable option
 #define RTX_OPTION_FULL(category, type, name, value, environment, flags, description) \
-  private: inline static RtxOption<type> m_##name = RtxOption<type>(category, #name, environment, type(value), uint32_t(flags), description); \
+  private: inline static RtxOption<type> m_##name = RtxOption<type>(category, #name, environment, type(value), static_cast<uint32_t>(flags), description); \
   private: static RtxOption<type>& name##Object() { return m_##name; } \
   public : static const type& name() { return m_##name.getValue(); } \
   private: static type& name##Ref() { return m_##name.getValue(); } \
   public : static const char* name##Description() { return m_##name.getDescription(); }
 
-#define RTX_OPTION_ENV(category, type, name, value, environment, description) RTX_OPTION_FULL(category, type, name, value, environment, 0, description)
-#define RTX_OPTION_FLAG(category, type, name, value, flags, description) RTX_OPTION_FULL(category, type, name, value, "", uint32_t(flags), description)
-#define RTX_OPTION(category, type, name, value, description) RTX_OPTION_FULL(category, type, name, value, "", 0, description)
-
-#define RW_RTX_OPTION(category, type, name, value, description) \
-  private: inline static RtxOption<type> m_##name = RtxOption<type>(category, #name, "", type(value), 0, description); \
+#define RW_RTX_OPTION_FULL(category, type, name, value, environment, flags, description) \
+  private: inline static RtxOption<type> m_##name = RtxOption<type>(category, #name, environment, type(value), static_cast<uint32_t>(flags), description); \
   public : static RtxOption<type>& name##Object() { return m_##name; } \
   public : static const type& name() { return m_##name.getValue(); } \
   public : static type& name##Ref() { return m_##name.getValue(); } \
   public : static const char* name##Description() { return m_##name.getDescription(); }
+
+#define RTX_OPTION_ENV(category, type, name, value, environment, description) RTX_OPTION_FULL(category, type, name, value, environment, 0, description)
+#define RTX_OPTION_FLAG(category, type, name, value, flags, description) RTX_OPTION_FULL(category, type, name, value, "", static_cast<uint32_t>(flags), description)
+#define RTX_OPTION(category, type, name, value, description) RTX_OPTION_FULL(category, type, name, value, "", 0, description)
+
+#define RW_RTX_OPTION_ENV(category, type, name, value, environment, description) RW_RTX_OPTION_FULL(category, type, name, value, environment, 0, description)
+#define RW_RTX_OPTION_FLAG(category, type, name, value, flags, description) RW_RTX_OPTION_FULL(category, type, name, value, "", static_cast<uint32_t>(flags), description)
+#define RW_RTX_OPTION(category, type, name, value, description) RW_RTX_OPTION_FULL(category, type, name, value, "", 0, description)
 
 #define RTX_OPTION_CLAMP(name, minValue, maxValue) name##Ref() = std::clamp(name(), minValue, maxValue);
 #define RTX_OPTION_CLAMP_MAX(name, maxValue) name##Ref() = std::min(name(), maxValue);
