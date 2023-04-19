@@ -37,8 +37,12 @@ While dxvk-remix is a fork of DXVK, please report bugs encountered with dxvk-rem
 3. Make sure PowerShell scripts are enabled
     - One-time system setup: run `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned` in an elevated PowerShell prompt, then close and reopen any existing PowerShell prompts
 	
-4. To generate and build dxvk-remix project, open a command prompt and run
-    - `powershell -command "& .\build_dxvk_all_ninja.ps1"`
+4. To generate and build dxvk-remix project:
+    - Right Click on `dxvk-remix\build_dxvk_all_ninja.ps1` and select "Run with Powershell"
+    - If that fails or has problems, run the build manually in a way you can read the errors:
+        - open a windows file explorer to the `dxvk-remix` folder
+        - type `cmd` in the address bar to open a command line window in that folder.
+        - copy and paste `powershell -command "& .\build_dxvk_all_ninja.ps1"` into the command line, then press enter
     - This will build all 3 configurations of dxvk-remix project inside subdirectories of the build tree: 
         - **_Comp64Debug** - full debug instrumentation, runtime speed may be slow
         - **_Comp64DebugOptimized** - partial debug instrumentation (i.e. asserts), runtime speed is generally comparable to that of release configuration
