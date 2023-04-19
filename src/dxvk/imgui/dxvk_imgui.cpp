@@ -34,6 +34,7 @@
 #include "rtx_render/rtx_imgui.h"
 #include "dxvk_device.h"
 #include "dxvk_shader_manager.h"
+#include "rtx_render/rtx_camera.h"
 #include "rtx_render/rtx_context.h"
 #include "rtx_render/rtx_options.h"
 #include "dxvk_image.h"
@@ -1138,12 +1139,7 @@ namespace dxvk {
       const Vector3& cameraPosition = RtxContext::getLastCameraPosition();
       ImGui::Text("Camera at: %.2f %.2f %.2f", cameraPosition.x, cameraPosition.y, cameraPosition.z);
 
-      ImGui::Checkbox("Enable Free-Camera", &RtxOptions::Get()->useFreeCameraObject());
-      ImGui::SameLine(0.f, 10.f);
-      ImGui::Checkbox("Lock", &RtxOptions::Get()->lockCameraObject());
-      ImGui::DragFloat("Speed (cm/s)", &RtxOptions::Get()->freeCameraSpeedObject(), 0.1f, 0.f, 5000.0f, "%.3f");
-
-      ImGui::Checkbox("View Relative Free-Camera", &RtxOptions::Get()->freeCameraViewRelativeObject());
+      RtCamera::showImguiSettings();
 
       if (ImGui::CollapsingHeader("Camera Animation", collapsingHeaderClosedFlags)) {
         ImGui::Checkbox("Animate Camera", &RtxOptions::Get()->shakeCameraObject());
