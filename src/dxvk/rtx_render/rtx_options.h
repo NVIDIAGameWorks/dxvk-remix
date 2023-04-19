@@ -168,10 +168,10 @@ namespace dxvk {
     RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, animatedWaterTextures, {}, "");
 
     RW_RTX_OPTION("rtx", std::string, geometryGenerationHashRuleString, "positions,indices,texcoords,geometrydescriptor",
-                  "Defines which asset hashes we need to generate via the geometry processing engine");
+                  "Defines which asset hashes we need to generate via the geometry processing engine.");
 
     RW_RTX_OPTION("rtx", std::string, geometryAssetHashRuleString, "positions,indices,geometrydescriptor",
-                  "Defines which hashes we need to include when sampling from replacements and doing USD capture");
+                  "Defines which hashes we need to include when sampling from replacements and doing USD capture.");
     
   public:
 #ifdef REMIX_DEVELOPMENT
@@ -786,8 +786,8 @@ namespace dxvk {
       const VirtualKeys& kDefaultRemixMenuKeyBinds { VirtualKey{VK_MENU},VirtualKey{'X'} };
       m_remixMenuKeyBinds = options.getOption<VirtualKeys>("rtx.remixMenuKeyBinds", kDefaultRemixMenuKeyBinds);
 
-      GeometryHashGenerationRule = createRule(geometryGenerationHashRuleString());
-      GeometryAssetHashRule = createRule(geometryAssetHashRuleString());
+      GeometryHashGenerationRule = createRule("Geometry generation", geometryGenerationHashRuleString());
+      GeometryAssetHashRule = createRule("Geometry asset", geometryAssetHashRuleString());
     }
 
     void updateUpscalerFromDlssPreset();
