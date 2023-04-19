@@ -20,9 +20,11 @@
 * DEALINGS IN THE SOFTWARE.
 */
 #pragma once
-#include "../../util/util_vector.h"
-#include "../../util/util_matrix.h"
-#include "../../util/rc/util_rc.h"
+
+#include "rtx_option.h"
+#include "../util/util_vector.h"
+#include "../util/util_matrix.h"
+#include "../util/rc/util_rc.h"
 #include <chrono>
 #include "glm/glm.hpp"
 #include "rtx/concept/camera/camera.h"
@@ -52,9 +54,15 @@ namespace dxvk
 
   class RtCamera : public RcObject
   {
-    Vector4 m_position = { 0.0f, 0.0f, 0.0f, 0.0f };
+    RTX_OPTION_ENV("rtx.camera", bool, enableFreeCamera, false, "RTX_ENABLE_FREE_CAMERA", "Enable free camera.");
+    RW_RTX_OPTION_ENV("rtx.camera", Vector3, freeCameraPosition, Vector3(0.f, 0.f, 0.f), "RTX_FREE_CAMERA_POSITION", "Free camera's position.");
+    RW_RTX_OPTION_ENV("rtx.camera", float, freeCameraYaw, 0.f, "RTX_FREE_CAMERA_YAW", "Free camera's position.");
+    RW_RTX_OPTION_ENV("rtx.camera", float, freeCameraPitch, 0.f, "RTX_FREE_CAMERA_PITCH", "Free camera's pitch.");
+    RW_RTX_OPTION("rtx.camera", bool, lockFreeCamera, false, "Locks free camera.");
+    RW_RTX_OPTION("rtx.camera", bool, freeCameraViewRelative, true, "Free camera transform is relative to the view.");
+    RW_RTX_OPTION("rtx", float, freeCameraSpeed, 200, "Free camera speed [GameUnits/s].");
+
     long m_mouseX = 0, m_mouseY = 0;
-    float m_yaw = 0.0f, m_pitch = 0.0f;
     uint32_t m_renderResolution[2] = { 0 };
     uint32_t m_finalResolution[2] = { 0 };
     float m_jitter[2] = { 0 };
@@ -162,7 +170,7 @@ namespace dxvk
     float getFarPlane() const { return m_farPlane; }
 
     bool isCameraCut() const;
-    bool isFreeCameraEnabled() const;
+    static bool isFreeCameraEnabled();
     Vector3 getHorizontalForwardDirection() const;
 
     const Matrix4& getViewToProjectionJittered() const { return m_matCache[MatrixType::ViewToProjectionJittered]; }
@@ -180,6 +188,8 @@ namespace dxvk
 
     Camera getShaderConstants() const;
     VolumeDefinitionCamera getVolumeShaderConstants() const;
+
+    static void showImguiSettings();
   private:
     Matrix4 getShakenViewToWorldMatrix(Matrix4& viewToWorld);
   };
