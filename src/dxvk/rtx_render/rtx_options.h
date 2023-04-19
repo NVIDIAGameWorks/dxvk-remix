@@ -252,7 +252,7 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, enableSecondaryBounces, true, "");
     RTX_OPTION("rtx", bool, zUp, false, "Indicates that the Z axis is the \"upward\" axis in the world when true, otherwise the Y axis when false.");
     RTX_OPTION("rtx", float, uniqueObjectDistance, 300.f, "[cm]");
-    RTX_OPTION_FLAG("rtx", UIType, showUI, UIType::None, RtxOptionFlags::NoSave | RtxOptionFlags::NoReset, "");
+    RTX_OPTION_FLAG("rtx", UIType, showUI, UIType::None, RtxOptionFlags::NoSave | RtxOptionFlags::NoReset, "0 = Don't Show, 1 = Show Simple, 2 = Show Advanced.");
     RTX_OPTION_FLAG("rtx", bool, defaultToAdvancedUI, false, RtxOptionFlags::NoReset, "");
     RTX_OPTION("rtx", bool, showUICursor, false, "");
     RTX_OPTION_FLAG("rtx", bool, blockInputToGameInUI, true, RtxOptionFlags::NoSave, "");

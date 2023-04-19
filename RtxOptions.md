@@ -394,7 +394,7 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.secondaryRayMaxInteractions|int|8||
 |rtx.serializeChangedOptionOnly|bool|True||
 |rtx.shakeCamera|bool|False||
-|rtx.showUI|int|0||
+|rtx.showUI|int|0|0 = Don't Show, 1 = Show Simple, 2 = Show Advanced.|
 |rtx.showUICursor|bool|False||
 |rtx.skipDrawCallsPostRTXInjection|bool|False||
 |rtx.skipObjectsWithUnknownCamera|bool|False||
