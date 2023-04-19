@@ -34,6 +34,12 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.bloom.intensity|float|0.06||
 |rtx.bloom.sigma|float|0.1||
 |rtx.calculateLightIntensityUsingLeastSquares|bool|True|Enable usage of least squares for approximating a light's falloff curve rather than a more basic single point approach. This will generally result in more accurate matching of the original application's custom light attenuation curves, especially with non physically based linear-style attenuation.|
+|rtx.camera.enableFreeCamera|bool|False|Enable free camera.|
+|rtx.camera.freeCameraPitch|float|0|Free camera's pitch.|
+|rtx.camera.freeCameraPosition|float3|0, 0, 0|Free camera's position.|
+|rtx.camera.freeCameraViewRelative|bool|True|Free camera transform is relative to the view.|
+|rtx.camera.freeCameraYaw|float|0|Free camera's position.|
+|rtx.camera.lockFreeCamera|bool|False|Locks free camera.|
 |rtx.camera.trackCamerasSeenStats|bool|False||
 |rtx.cameraAnimationAmplitude|float|2||
 |rtx.cameraAnimationMode|int|3||
@@ -171,8 +177,7 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.forceCutoutAlpha|float|0.5|When an object is added to cutoutTextures, its surface with alpha less than this value will get discarded. This is meant to improve on legacy, low-resolution textures that use blended transparency instead of alpha cutout, which can result in blurry halos around edges. This is generally best handled by generating replacement assets that use either fully opaque, detailed geometry, or fully transparent alpha cutouts on higher resolution textures. Rendered output might still look incorrect even with this flag.|
 |rtx.forceHighResolutionReplacementTextures|bool|False||
 |rtx.forceVsyncOff|bool|False||
-|rtx.freeCameraSpeed|float|200|[GameUnits/s]|
-|rtx.freeCameraViewRelative|bool|True||
+|rtx.freeCameraSpeed|float|200|Free camera speed [GameUnits/s].|
 |rtx.froxelDepthSliceDistributionExponent|float|2|The exponent to use on depth values to nonlinearly distribute froxels away from the camera. Higher values bias more froxels closer to the camera with 1 being linear.|
 |rtx.froxelDepthSlices|int|48|The z dimension of the froxel grid. Must be constant after initialization.|
 |rtx.froxelFilterGaussianSigma|float|1.2|The sigma value of the gaussian function used to filter volumetric radiance values. Larger values cause a smoother filter to be used.|
@@ -193,6 +198,7 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.graphicsPreset|int|5|Overall rendering preset, higher presets result in higher image quality, lower presets result in better performance.|
 |rtx.hideSplashMessage|bool|False||
 |rtx.highlightedTexture|int|0|Hash of a texture that should be highlighted.|
+|rtx.ignoreStencilVolumeHeuristics|bool|True|Tries to detect stencil volumes and ignore those when pathtracing.  Stencil buffer was used for a variety of effects in the D3D7-9 era, mostly for geometry based lights and shadows - things we don't need when pathtracing.|
 |rtx.indirectRaySpreadAngleFactor|float|0.05|A tuning factor for the spread angle calculated from the sampled lobe solid angle PDF.|
 |rtx.initializer.asyncAssetLoading|bool|True||
 |rtx.initializer.asyncShaderFinalizing|bool|True||
@@ -235,7 +241,6 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.localtonemap.mip|int|3||
 |rtx.localtonemap.shadows|float|2||
 |rtx.localtonemap.useGaussian|bool|True||
-|rtx.lockCamera|bool|False||
 |rtx.logLegacyHashReplacementMatches|bool|False||
 |rtx.maxAccumulationFrames|int|254|The number of frames to accumulate volume lighting samples over. More results in greater image stability at the cost of potentially more temporal lag.|
 |rtx.maxAnisotropyLevel|float|8|Min of this and the hardware device limits.|
@@ -447,7 +452,6 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.useAnisotropicFiltering|bool|True||
 |rtx.useDenoiser|bool|True||
 |rtx.useDenoiserReferenceMode|bool|False||
-|rtx.useFreeCamera|bool|False||
 |rtx.useHighlightLegacyMode|bool|False||
 |rtx.useHighlightUnsafeAnchorMode|bool|False||
 |rtx.useHighlightUnsafeReplacementMode|bool|False||
@@ -504,8 +508,8 @@ A small offset is applied to each flat part of these decals.|
 |rtx.dynamicDecalTextures|hash set||Dynamically spawned geometric decals, such as bullet holes.
 These materials will be blended over the materials underneath them.
 A small offset is applied to each triangle fan in these decals.|
-|rtx.geometryAssetHashRuleString|string|positions,indices,geometrydescriptor|Defines which hashes we need to include when sampling from replacements and doing USD capture|
-|rtx.geometryGenerationHashRuleString|string|positions,indices,texcoords,geometrydescriptor|Defines which asset hashes we need to generate via the geometry processing engine|
+|rtx.geometryAssetHashRuleString|string|positions,indices,geometrydescriptor|Defines which hashes we need to include when sampling from replacements and doing USD capture.|
+|rtx.geometryGenerationHashRuleString|string|positions,indices,texcoords,geometrydescriptor|Defines which asset hashes we need to generate via the geometry processing engine.|
 |rtx.hideInstanceTextures|hash set|||
 |rtx.ignoreLights|hash set|||
 |rtx.ignoreTextures|hash set|||

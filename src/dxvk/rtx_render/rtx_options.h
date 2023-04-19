@@ -232,13 +232,10 @@ namespace dxvk {
     RTX_OPTION("rtx", uint32_t, maxPrimsInMergedBLAS, 50000, "");
     
     // Camera
-    RTX_OPTION("rtx", bool, useFreeCamera, false, "");
     RTX_OPTION("rtx", bool, shakeCamera, false, "");
     RTX_OPTION("rtx", CameraAnimationMode, cameraAnimationMode, CameraAnimationMode::CameraShake_Pitch, "");
     RTX_OPTION("rtx", int, cameraShakePeriod, 20, "");
     RTX_OPTION("rtx", float, cameraAnimationAmplitude, 2.0f, "");
-    RTX_OPTION("rtx", bool, lockCamera, false, "");
-    RTX_OPTION("rtx", bool, freeCameraViewRelative, true, "");
     RTX_OPTION("rtx", bool, skipObjectsWithUnknownCamera, false, "");
     RTX_OPTION("rtx", bool, enableNearPlaneOverride, false, "");
     RTX_OPTION("rtx", float, nearPlaneOverride, 0.1f, "");
@@ -289,7 +286,6 @@ namespace dxvk {
     RTX_OPTION("rtx", uint32_t, numFramesToKeepMaterialTextures, 30, "");
     RTX_OPTION("rtx", bool, enablePreviousTLAS, true, "");
     RTX_OPTION("rtx", float, sceneScale, 1, "Defines the ratio of rendering unit (1cm) to game unit, i.e. sceneScale = 1cm / GameUnit.");
-    RTX_OPTION("rtx", float, freeCameraSpeed, 200, "[GameUnits/s]");
 
     // Legacy light translation Options
     // Todo: Move these options to the Light Manager in the future [Task: TREX-2573]
@@ -917,13 +913,10 @@ namespace dxvk {
     uint32_t getMinPrimsInStaticBLAS() const { return minPrimsInStaticBLAS(); }
 
     // Camera
-    bool isFreeCameraEnabled() const { return useFreeCamera(); }
     CameraAnimationMode getCameraAnimationMode() { return cameraAnimationMode(); }
     bool isCameraShaking() { return shakeCamera(); }
     int getCameraShakePeriod() { return cameraShakePeriod(); }
     float getCameraAnimationAmplitude() { return cameraAnimationAmplitude(); }
-    bool isCameraLocked() { return lockCamera(); }
-    bool isFreeCameraViewRelative() const { return freeCameraViewRelative(); }
     bool getSkipObjectsWithUnknownCamera() const { return skipObjectsWithUnknownCamera(); }
 
     bool isRayPortalVirtualInstanceMatchingEnabled() const { return useRayPortalVirtualInstanceMatching(); }
