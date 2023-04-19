@@ -1,5 +1,4 @@
-windows = import('windows')
-d3d9_res = windows.compile_resources('version.rc')
+d3d9_res = wrc_generator.process('version.rc')
 
 d3d9_shaders = files([
   'shaders/d3d9_convert_yuy2_uyvy.comp',

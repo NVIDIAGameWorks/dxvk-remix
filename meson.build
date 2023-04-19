@@ -266,7 +266,7 @@ if dxvk_is_msvc
 else
   wrc_generator = generator(wrc,
   output    : [ '@BASENAME@' + res_ext ],
-  arguments : [ '-i', '@INPUT@', '-o', '@OUTPUT@' ])
+  arguments : [ '-i', '@INPUT@', '-o', '@OUTPUT@', '-I', '@OUTDIR@' ])
 endif
 
 dxvk_version = vcs_tag(
