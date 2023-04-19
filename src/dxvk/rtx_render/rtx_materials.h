@@ -1135,6 +1135,37 @@ struct LegacyMaterialData {
     return ((getColorTexture().isValid()  && !getColorTexture().isImageEmpty()) ||
             (getColorTexture2().isValid() && !getColorTexture2().isImageEmpty()));
   }
+  
+  const void printDebugInfo(const char* name = "") const {
+#ifdef REMIX_DEVELOPMENT
+    Logger::warn(str::format(
+      "LegacyMaterialData ", name,
+      " address: ", this,
+      " alphaTestEnabled: ", alphaTestEnabled,
+      " alphaTestReferenceValue: ", alphaTestReferenceValue,
+      " alphaTestCompareOp: ", alphaTestCompareOp,
+      " alphaBlendEnabled: ", alphaBlendEnabled,
+      " srcColorBlendFactor: ", srcColorBlendFactor,
+      " dstColorBlendFactor: ", dstColorBlendFactor,
+      " colorBlendOp: ", colorBlendOp,
+      // " textureColorArg1Source: ", textureColorArg1Source,
+      // " textureColorArg2Source: ", textureColorArg2Source,
+      // " textureColorOperation: ", textureColorOperation,
+      // " textureAlphaArg1Source: ", textureAlphaArg1Source,
+      // " textureAlphaArg2Source: ", textureAlphaArg2Source,
+      // " textureAlphaOperation: ", textureAlphaOperation,
+      " tFactor: ", tFactor,
+      " isBlendedTerrain: ", isBlendedTerrain,
+      // " m_d3dMaterial.Diffuse: ", m_d3dMaterial.Diffuse,
+      // " m_d3dMaterial.Ambient: ", m_d3dMaterial.Ambient,
+      // " m_d3dMaterial.Specular: ", m_d3dMaterial.Specular,
+      // " m_d3dMaterial.Emissive: ", m_d3dMaterial.Emissive,
+      // " m_d3dMaterial.Power: ", m_d3dMaterial.Power,
+      std::hex, " m_colorTexture: 0x", m_colorTexture.getImageHash(),
+      " m_colorTexture2: 0x", m_colorTexture2.getImageHash(),
+      " m_cachedHash: 0x", m_cachedHash, std::dec));
+#endif
+  }
 
   bool alphaTestEnabled = false;
   uint8_t alphaTestReferenceValue = 0;
