@@ -1,4 +1,9 @@
-d3d9_res = wrc_generator.process('version.rc')
+d3d9_version = vcs_tag(
+  command: ['git', 'describe', '--dirty=+'],
+  input:    'version.rc.in', 
+  output:  'version.rc')
+
+d3d9_res = wrc_generator.process(d3d9_version)
 
 d3d9_shaders = files([
   'shaders/d3d9_convert_yuy2_uyvy.comp',
