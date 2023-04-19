@@ -335,6 +335,10 @@ namespace dxvk {
 
     // Setup custom style
     setupStyle();
+
+    // Enable keyboard nav
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
   }
 
   ImGUI::~ImGUI() {
