@@ -1,0 +1,51 @@
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-windows:
+    runs-on: windows-2022
+
+    strategy:
+      matrix:
+        include:
+          - build-flavour: debug
+            output-subdir: _Comp64Debug
+          - build-flavour: release
+            output-subdir: _Comp64Release
+
+    steps:
+    - name: Setup variables
+      uses: actions/github-script@v6
+      with:
+        script: core.exportVariable('GITHUB_SHA_SHORT', context.sha.substring(0, 7))
+
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        submodules: recursive
+        
+    - name: Setup Vulkan SDK
+      run: choco install vulkan-sdk -y
+
+    - name: Setup Meson
+      run: pip install meson==0.62.1
+    
+    - name: Build
+      shell: pwsh
+      run: |
+        Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
+        . .\build_common.ps1
+        PerformBuild -BuildFlavour ${{matrix.build-flavour}} -BuildSubDir ${{matrix.output-subdir}} -Backend ninja -EnableTracy false
+    
+    - name: Upload binaries
+      uses: actions/upload-artifact@v3
+      with:
+        name: dxvk-remix-${{env.GITHUB_SHA_SHORT}}-${{matrix.build-flavour}}
+        path: |
+          ${{matrix.output-subdir}}\src\d3d9\d3d9.dll
+          ${{matrix.output-subdir}}\src\d3d9\d3d9.pdb
