@@ -42,5 +42,5 @@ ConstantBuffer<InterleaveGeometryArgs> cb;
 void main(uint idx : SV_DispatchThreadID) {
   if (idx >= cb.vertexCount) return;
 
-  interleave(idx, dst, srcPosition, srcNormal, srcTexcoord, srcColor0, cb);
+  interleaver::interleave(idx, dst, srcPosition, srcNormal, srcTexcoord, srcColor0, cb);
 }

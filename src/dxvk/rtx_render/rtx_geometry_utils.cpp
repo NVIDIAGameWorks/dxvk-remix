@@ -479,20 +479,16 @@ namespace dxvk {
   size_t RtxGeometryUtils::computeOptimalVertexStride(const RasterGeometry& input) {
     // Calculate stride
     size_t stride = sizeof(float) * 3; // position is the minimum
-    assert(input.positionBuffer.vertexFormat() == VK_FORMAT_R32G32B32A32_SFLOAT || input.positionBuffer.vertexFormat() == VK_FORMAT_R32G32B32_SFLOAT);
 
     if (input.normalBuffer.defined()) {
-      assert(input.normalBuffer.vertexFormat() == VK_FORMAT_R32G32B32_SFLOAT);
       stride += sizeof(float) * 3;
     }
 
     if (input.texcoordBuffer.defined()) {
-      assert(isTexcoordFormatValid(input.texcoordBuffer.vertexFormat()));
       stride += sizeof(float) * 2;
     }
 
     if (input.color0Buffer.defined()) {
-      assert(input.color0Buffer.vertexFormat() == VK_FORMAT_B8G8R8A8_UNORM);
       stride += sizeof(uint32_t);
     }
 
@@ -501,7 +497,7 @@ namespace dxvk {
 
   void RtxGeometryUtils::cacheVertexDataOnGPU(const Rc<RtxContext>& ctx, const RasterGeometry& input, RaytraceGeometry& output) {
     ZoneScoped;
-    if (input.isVertexDataInterleaved()) {
+    if (input.isVertexDataInterleaved() && input.areFormatsGpuFriendly()) {
       const size_t vertexBufferSize = input.vertexCount * input.positionBuffer.stride();
       ctx->copyBuffer(output.historyBuffer[0], 0, input.positionBuffer.buffer(), input.positionBuffer.offset(), vertexBufferSize);
 
@@ -537,12 +533,21 @@ namespace dxvk {
     assert(input.positionBuffer.offsetFromSlice() % 4 == 0);
     args.positionOffset = input.positionBuffer.offsetFromSlice() / 4;
     args.positionStride = input.positionBuffer.stride() / 4;
+    args.positionFormat = input.positionBuffer.vertexFormat();
+    if (!interleaver::formatConversionFloatSupported(args.positionFormat)) {
+      ONCE(Logger::err(str::format("[rtx-interleaver] Unsupported position buffer format (", args.positionFormat, ")")));
+      return;
+    }
     args.hasNormals = input.normalBuffer.defined();
     if (args.hasNormals) {
       pendingGpuWrites |= input.normalBuffer.isPendingGpuWrite();
       assert(input.normalBuffer.offsetFromSlice() % 4 == 0);
       args.normalOffset = input.normalBuffer.offsetFromSlice() / 4;
       args.normalStride = input.normalBuffer.stride() / 4;
+      args.normalFormat = input.normalBuffer.vertexFormat();
+      if (!interleaver::formatConversionFloatSupported(args.normalFormat)) {
+        ONCE(Logger::err(str::format("[rtx-interleaver] Unsupported normal buffer format (", args.normalFormat, "), skipping normals")));
+      }
     }
     args.hasTexcoord = input.texcoordBuffer.defined();
     if (args.hasTexcoord) {
@@ -550,6 +555,10 @@ namespace dxvk {
       assert(input.texcoordBuffer.offsetFromSlice() % 4 == 0);
       args.texcoordOffset = input.texcoordBuffer.offsetFromSlice() / 4;
       args.texcoordStride = input.texcoordBuffer.stride() / 4;
+      args.texcoordFormat = input.texcoordBuffer.vertexFormat();
+      if (!interleaver::formatConversionFloatSupported(args.texcoordFormat)) {
+        ONCE(Logger::err(str::format("[rtx-interleaver] Unsupported texcoord buffer format (", args.texcoordFormat, "), skipping texcoord")));
+      }
     }
     args.hasColor0 = input.color0Buffer.defined();
     if (args.hasColor0) {
@@ -557,6 +566,10 @@ namespace dxvk {
       assert(input.color0Buffer.offsetFromSlice() % 4 == 0);
       args.color0Offset = input.color0Buffer.offsetFromSlice() / 4;
       args.color0Stride = input.color0Buffer.stride() / 4;
+      args.color0Format = input.color0Buffer.vertexFormat();
+      if (!interleaver::formatConversionUintSupported(args.color0Format)) {
+        ONCE(Logger::err(str::format("[rtx-interleaver] Unsupported texcoord buffer format (", args.color0Format, "), skipping color0")));
+      }
     }
 
     args.minVertexIndex = 0;
@@ -599,7 +612,7 @@ namespace dxvk {
       args.color0Offset = 0;
 
       for (uint32_t i = 0; i < input.vertexCount; i++) {
-        interleave(i, dst.data(), inputData.positionData, inputData.normalData, inputData.texcoordData, inputData.vertexColorData, args);
+        interleaver::interleave(i, dst.data(), inputData.positionData, inputData.normalData, inputData.texcoordData, inputData.vertexColorData, args);
       }
 
       ctx->updateBuffer(output.buffer, 0, output.stride * input.vertexCount, dst.data());

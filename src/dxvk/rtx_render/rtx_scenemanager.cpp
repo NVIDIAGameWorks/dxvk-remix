@@ -212,7 +212,7 @@ namespace dxvk {
         // Set up the ideal vertex params, if input vertices are interleaved, it's safe to assume the positionBuffer stride is the vertex stride
         output.vertexCount = input.vertexCount;
 
-        const size_t vertexStride = input.isVertexDataInterleaved() ? input.positionBuffer.stride() : RtxGeometryUtils::computeOptimalVertexStride(input);
+        const size_t vertexStride = (input.isVertexDataInterleaved() && input.areFormatsGpuFriendly()) ? input.positionBuffer.stride() : RtxGeometryUtils::computeOptimalVertexStride(input);
         const size_t vertexBufferSize = output.vertexCount * vertexStride;
 
         // Set up the ideal index params
