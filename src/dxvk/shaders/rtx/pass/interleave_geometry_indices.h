@@ -24,17 +24,22 @@
 struct InterleaveGeometryArgs {
   uint32_t positionOffset;
   uint32_t positionStride;
+  uint32_t positionFormat;
+
   uint32_t hasNormals;
   uint32_t normalOffset;
   uint32_t normalStride;
+  uint32_t normalFormat;
 
   uint32_t hasTexcoord;
   uint32_t texcoordOffset;
   uint32_t texcoordStride;
+  uint32_t texcoordFormat;
 
   uint32_t hasColor0;
   uint32_t color0Offset;
   uint32_t color0Stride;
+  uint32_t color0Format;
 
   uint32_t minVertexIndex;
   uint32_t outputStride;
