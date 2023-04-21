@@ -154,7 +154,7 @@ namespace dxvk {
 
     void showReflexOptions();
 
-    void showSetupWindow();
+    void showSetupWindow(const Rc<DxvkContext>& ctx);
     void showEnhancementsWindow(const Rc<DxvkContext>& ctx);
     void showAppConfig();
 

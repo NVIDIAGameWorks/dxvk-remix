@@ -248,6 +248,7 @@ dxvk_src = files([
   'rtx_render/rtx_initializer.h',
   'rtx_render/rtx_instancemanager.cpp',
   'rtx_render/rtx_instancemanager.h',
+  'rtx_render/rtx_lightmanager_gui.cpp',
   'rtx_render/rtx_lightmanager.cpp',
   'rtx_render/rtx_lightmanager.h',
   'rtx_render/rtx_lights.cpp',
