@@ -229,23 +229,6 @@ namespace dxvk {
     } }
   };
 
-  ImGui::ComboWithKey<FallbackLightMode> fallbackLightModeCombo {
-    "Fallback Light Mode",
-    ImGui::ComboWithKey<FallbackLightMode>::ComboEntries { {
-        {FallbackLightMode::Never, "Never"},
-        {FallbackLightMode::NoLightsPresent, "No Lights Present"},
-        {FallbackLightMode::Always, "Always"},
-    } }
-  };
-
-  ImGui::ComboWithKey<FallbackLightType> fallbackLightTypeCombo {
-    "Fallback Light Type",
-    ImGui::ComboWithKey<FallbackLightType>::ComboEntries { {
-        {FallbackLightType::Distant, "Distant"},
-        {FallbackLightType::Sphere, "Sphere"},
-    } }
-  };
-
   ImGui::ComboWithKey<ViewDistanceMode> viewDistanceModeCombo {
     "View Distance Mode",
     ImGui::ComboWithKey<ViewDistanceMode>::ComboEntries { {
@@ -632,7 +615,7 @@ namespace dxvk {
               showRenderingSettings(ctx);
               break;
             case Tabs::kSetup:
-              showSetupWindow();
+              showSetupWindow(ctx);
               break;
             case Tabs::kEnhancements:
               showEnhancementsWindow(ctx);
@@ -1321,7 +1304,7 @@ namespace dxvk {
     ImGui::Checkbox("Highlight Replacements with Unstable Anchors (flash red)", &RtxOptions::Get()->useHighlightUnsafeReplacementModeObject());
   }
 
-  void ImGUI::showSetupWindow() {
+  void ImGUI::showSetupWindow(const Rc<DxvkContext>& ctx) {
     ImGui::PushItemWidth(200);
 
     const float thumbnailSize = 135.f;
@@ -1358,6 +1341,8 @@ namespace dxvk {
 
       ImGui::DragFloat("Vertex Color Strength", &RtxOptions::Get()->vertexColorStrengthObject(), 0.001f, 0.0f, 1.0f);
 
+      auto common = ctx->getCommonObjects();
+      common->getSceneManager().getLightManager().showImguiSettings();
       ImGui::Unindent();
     }
 
@@ -1966,62 +1951,6 @@ namespace dxvk {
         ImGui::DragFloat("Vertical Detection Distance", &RtxOptions::Get()->playerModel.verticalDetectionDistanceObject(), 0.01f, 0.f, 100.f);
         ImGui::Unindent();
       }
-      ImGui::Unindent();
-    }
-
-    if (ImGui::CollapsingHeader("Light Translation", collapsingHeaderClosedFlags)) {
-      ImGui::Indent();
-
-      bool& lightSettingsDirty = RtxOptions::Get()->lightSettingsDirty;
-
-      lightSettingsDirty |= fallbackLightModeCombo.getKey(&RtxOptions::Get()->fallbackLightModeObject());
-
-      if (RtxOptions::Get()->fallbackLightMode() != FallbackLightMode::Never) {
-        lightSettingsDirty |= fallbackLightTypeCombo.getKey(&RtxOptions::Get()->fallbackLightTypeObject());
-
-        lightSettingsDirty |= ImGui::DragFloat3("Fallback Light Radiance", &RtxOptions::Get()->fallbackLightRadianceObject(), 0.1f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
-
-        if (RtxOptions::Get()->fallbackLightType() == FallbackLightType::Distant) {
-          lightSettingsDirty |= ImGui::DragFloat3("Fallback Light Direction", &RtxOptions::Get()->fallbackLightDirectionObject(), 0.1f, 0.0f, 0.0f, "%.3f", sliderFlags);
-          lightSettingsDirty |= ImGui::DragFloat("Fallback Light Angle", &RtxOptions::Get()->fallbackLightAngleObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
-        } else if (RtxOptions::Get()->fallbackLightType() == FallbackLightType::Sphere) {
-          lightSettingsDirty |= ImGui::DragFloat("Fallback Light Radius", &RtxOptions::Get()->fallbackLightRadiusObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
-          lightSettingsDirty |= ImGui::DragFloat3("Fallback Light Position Offset", &RtxOptions::Get()->fallbackLightPositionOffsetObject(), 0.1f, 0.0f, 0.0f, "%.3f", sliderFlags);
-          ImGui::SetTooltipToLastWidgetOnHover(RtxOptions::Get()->fallbackLightPositionOffsetDescription());
-
-          lightSettingsDirty |= ImGui::Checkbox("Enable Fallback Light Shaping", &RtxOptions::Get()->enableFallbackLightShapingObject());
-
-          if (RtxOptions::Get()->enableFallbackLightShaping()) {
-            ImGui::Indent();
-
-            lightSettingsDirty |= ImGui::Checkbox("Fallback Light Match View Axis", &RtxOptions::Get()->enableFallbackLightViewPrimaryAxisObject());
-            ImGui::SetTooltipToLastWidgetOnHover(RtxOptions::Get()->enableFallbackLightViewPrimaryAxisDescription());
-
-            if (!RtxOptions::Get()->enableFallbackLightViewPrimaryAxis()) {
-              lightSettingsDirty |= ImGui::DragFloat3("Fallback Light Primary Axis", &RtxOptions::Get()->fallbackLightPrimaryAxisObject(), 0.1f, 0.0f, 0.0f, "%.3f", sliderFlags);
-            }
-
-            lightSettingsDirty |= ImGui::DragFloat("Fallback Light Cone Angle", &RtxOptions::Get()->fallbackLightConeAngleObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
-            lightSettingsDirty |= ImGui::DragFloat("Fallback Light Cone Softness", &RtxOptions::Get()->fallbackLightConeSoftnessObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
-            lightSettingsDirty |= ImGui::DragFloat("Fallback Light Focus Exponent", &RtxOptions::Get()->fallbackLightFocusExponentObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
-
-            ImGui::Unindent();
-          }
-        }
-      }
-
-      ImGui::Separator();
-
-      lightSettingsDirty |= ImGui::Checkbox("Least Squares Intensity Calculation", &RtxOptions::Get()->calculateLightIntensityUsingLeastSquaresObject());
-      lightSettingsDirty |= ImGui::DragFloat("Sphere Light Fixed Radius", &RtxOptions::Get()->lightConversionSphereLightFixedRadiusObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
-      lightSettingsDirty |= ImGui::DragFloat("Distant Light Fixed Intensity", &RtxOptions::Get()->lightConversionDistantLightFixedIntensityObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
-      lightSettingsDirty |= ImGui::DragFloat("Distant Light Fixed Angle", &RtxOptions::Get()->lightConversionDistantLightFixedAngleObject(), 0.01f, 0.0f, kPi, "%.4f", sliderFlags);
-      lightSettingsDirty |= ImGui::DragFloat("Equality Distance Threshold", &RtxOptions::Get()->lightConversionEqualityDistanceThresholdObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
-      lightSettingsDirty |= ImGui::DragFloat("Equality Direction Threshold", &RtxOptions::Get()->lightConversionEqualityDirectionThresholdObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
-
-      // Note: Must be called if the light conversion options changed.
-      RtxOptions::Get()->updateCachedLegacyLightConversionOptions();
-
       ImGui::Unindent();
     }
 
