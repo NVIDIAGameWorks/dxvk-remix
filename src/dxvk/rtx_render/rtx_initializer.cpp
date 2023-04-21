@@ -70,10 +70,13 @@ namespace dxvk {
     // Load assets (if any) as early as possible
     if (m_asyncAssetLoading.getValue()) {
       // Async asset loading (USD)
-      dxvk::thread([this] {
+      dxvk::thread asyncAssetLoadThread([this] {
         env::setThreadName("rtx-initialize-assets");
         loadAssets();
       });
+
+      // Note: Detach the thread to allow it to load asynchronously until it is finished.
+      asyncAssetLoadThread.detach();
     } else {
       loadAssets();
     }
