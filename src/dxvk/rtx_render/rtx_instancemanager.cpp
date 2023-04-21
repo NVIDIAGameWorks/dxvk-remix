@@ -1014,7 +1014,7 @@ namespace dxvk {
 
     currentInstance.m_billboardCount = 0;
 
-    if (cameraType == CameraType::ViewModel && !currentInstance.m_isHidden)
+    if (cameraType == CameraType::ViewModel && !currentInstance.m_isHidden && isFirstUpdateThisFrame)
       m_viewModelCandidates.push_back(&currentInstance);
 
     if (RtxOptions::Get()->enableSeparateUnorderedApproximations() &&
