@@ -474,13 +474,12 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.viewDistance.distanceMode|int|0|The view distance mode, None disables view distance, Hard Cutoff will cut off geometry past a point, and Coherent Noise will feather geometry out using a stable worldspace noise pattern (experimental).|
 |rtx.viewDistance.distanceThreshold|float|500|The view distance to draw out to based on the result of the view distance function, only used for the Hard Cutoff view distance mode.|
 |rtx.viewDistance.noiseScale|float|3|The scale per meter value applied to ther world space position fed into the noise generation function for generating the fade in Coherent Noise view distance mode.|
-|rtx.viewModel.enable|bool|False||
-|rtx.viewModel.enableVirtualInstances|bool|True||
-|rtx.viewModel.perspectiveCorrection|bool|True||
-|rtx.viewModel.rangeMeters|float|1||
-|rtx.viewModel.scale|float|1||
-|rtx.viewModel.separateRays|bool|False||
-|rtx.viewModel.viewRelativeOffsetMeters|float3|0, 0, 0|Right, Up, Forward offset for a given camera view.|
+|rtx.viewModel.enable|bool|False|If true, try to resolve view models (e.g. first-person weapons). World geometry doesn't have shadows / reflections / etc from the view models.|
+|rtx.viewModel.enableVirtualInstances|bool|True|If true, virtual instances are created to render the view models behind a portal.|
+|rtx.viewModel.perspectiveCorrection|bool|True|If true, apply correction to view models (e.g. different FOV is used for view models).|
+|rtx.viewModel.rangeMeters|float|1|[meters] Max distance at which to find a portal for view model virtual instances. If rtx.viewModel.separateRays is true, this is also max length of view model rays.|
+|rtx.viewModel.scale|float|1|Scale for view models. Minimize to prevent clipping.|
+|rtx.viewModel.separateRays|bool|False|If true, launch additional primary rays to render view models on top of everything.|
 |rtx.volumetricAnisotropy|float|0|The anisotropy of the scattering phase function (-1 being backscattering, 0 being isotropic, 1 being forward scattering).|
 |rtx.volumetricClampedReprojectionConfidencePenalty|float|0.5|The penalty from [0, 1] to apply to the sample count of temporally reprojected reservoirs when reprojection is clamped to the fustrum (indicating lower quality reprojection).|
 |rtx.volumetricEnableInitialVisibility|bool|True|Determines whether to trace a visibility ray for Reservoir samples.|

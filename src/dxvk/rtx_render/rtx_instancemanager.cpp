@@ -144,7 +144,10 @@ namespace dxvk {
 
     // The D3D matrix on input, needs to be transposed before feeding to the VK API (left/right handed conversion)
     // NOTE: VkTransformMatrixKHR is 4x3 matrix, and Matrix4 is 4x4
-    memcpy(&m_vkInstance.transform, &transpose(objectToWorld), sizeof(VkTransformMatrixKHR));
+    {
+      const auto t = transpose(objectToWorld);
+      memcpy(&m_vkInstance.transform, &t, sizeof(VkTransformMatrixKHR));
+    }
 
     // See if the transform has changed even a tiny bit.
     // The result is used for the 'isStatic' surface flag, which is in turn used to skip motion vector calculation
@@ -161,7 +164,10 @@ namespace dxvk {
 
     // The D3D matrix on input, needs to be transposed before feeding to the VK API (left/right handed conversion)
     // NOTE: VkTransformMatrixKHR is 4x3 matrix, and Matrix4 is 4x4
-    memcpy(&m_vkInstance.transform, &transpose(objectToWorld), sizeof(VkTransformMatrixKHR));
+    {
+      const auto t = transpose(objectToWorld);
+      memcpy(&m_vkInstance.transform, &t, sizeof(VkTransformMatrixKHR));
+    }
 
     // See the comment in setTransform(...)
     return memcmp(surface.prevObjectToWorld.data, surface.objectToWorld.data, sizeof(Matrix4)) != 0;
@@ -1040,11 +1046,10 @@ namespace dxvk {
       event.onInstanceDestroyedCallback(*instance);
   }
 
-  RtInstance* InstanceManager::createViewModelInstance(Rc<RtxContext> ctx, Rc<DxvkCommandList> cmdList, 
+  RtInstance* InstanceManager::createViewModelInstance(Rc<RtxContext> ctx, Rc<DxvkCommandList> cmdList,
                                                        const RtInstance& reference,
-                                                       const Matrix4& perspectiveCorrectionTransform,
-                                                       const Vector3& worldOffsetFromReference,
-                                                       const Vector3& prevWorldOffsetFromReference) {
+                                                       const Matrix4& perspectiveCorrection,
+                                                       const Matrix4& prevPerspectiveCorrection) {
 
     // Create a view model instance corresponding to the reference instance, for one frame 
 
@@ -1062,27 +1067,36 @@ namespace dxvk {
     // View model instances are recreated every frame
     viewModelInstance->markForGarbageCollection();
 
-    Matrix4 objectToWorld = viewModelInstance->getTransform();
-
     if (RtxOptions::Get()->isViewModelPerspectiveCorrectionEnabled()) {
-      // Only need to run this on BVH op (maybe this could be moved to geometry processing?)
-      if (viewModelInstance->getBlas()->frameLastUpdated == frameId) {
-        const Matrix4 worldToObject = inverse(objectToWorld);
-        const Matrix4 instancePositionTransform = worldToObject * perspectiveCorrectionTransform * objectToWorld;
+      // A transform that looks "correct" only from a main camera's point of view
+      const auto corrected = perspectiveCorrection * reference.getTransform();
+      const auto prevCorrected = prevPerspectiveCorrection * reference.getPrevTransform();
 
-        ctx->getCommonObjects()->metaGeometryUtils().dispatchViewModelCorrection(cmdList, ctx,
-          viewModelInstance->getBlas()->modifiedGeometryData, instancePositionTransform);
+      auto isOrdinary = [](const Matrix4& m) {
+        auto isCloseTo = [](auto a, auto b) {
+          return std::abs(a - b) < 0.001f;
+        };
+        return isCloseTo(m[0][3], 0.0f)
+          && isCloseTo(m[1][3], 0.0f)
+          && isCloseTo(m[2][3], 0.0f)
+          && isCloseTo(m[3][3], 1.0f);
+      };
+
+      // If matrices are not convoluted, don't modify the vertex data: just set the transforms directly
+      if (isOrdinary(corrected) && isOrdinary(prevCorrected)) {
+        viewModelInstance->setCurrentTransform(corrected);
+        viewModelInstance->setPrevTransform(prevCorrected);
+      } else {
+        ONCE(Logger::info("[RTX-Compatibility-Info] Unexpected values in the perspective-corrected transform of a view model. Fallback to geometry modification"));
+        // Only need to run this on BVH op (maybe this could be moved to geometry processing?)
+        if (viewModelInstance->getBlas()->frameLastUpdated == frameId) {
+          const Matrix4 worldToObject = inverse(reference.getTransform());
+          const Matrix4 instancePositionTransform = worldToObject * perspectiveCorrection * reference.getTransform();
+
+          ctx->getCommonObjects()->metaGeometryUtils().dispatchViewModelCorrection(cmdList, ctx,
+            viewModelInstance->getBlas()->modifiedGeometryData, instancePositionTransform);
+        }
       }
-    }
-    else {
-      // Update current frame transform
-      objectToWorld[3].xyz() += worldOffsetFromReference;
-      viewModelInstance->setCurrentTransform(objectToWorld);
-
-      // Update previous frame transform
-      Matrix4 prevObjectToWorld = viewModelInstance->getPrevTransform();
-      prevObjectToWorld[3].xyz() += prevWorldOffsetFromReference;
-      viewModelInstance->setPrevTransform(prevObjectToWorld);
     }
 
     // ViewModel should never be considered static
@@ -1116,16 +1130,6 @@ namespace dxvk {
 
     const RtCamera& camera = cameraManager.getMainCamera();
     const RtCamera& viewModelCamera = cameraManager.getCamera(CameraType::ViewModel);
-    
-    // Create a world offset from view model instance's reference
-    Vector3 viewOffset = RtxOptions::Get()->getViewModelViewRelativeOffsetMeters() * RtxOptions::Get()->getMeterToWorldUnitScale();
-    viewOffset.z *= cameraManager.getMainCamera().isLHS() ? 1.f : -1.f;
-    Vector3 worldOffsetFromReference = Matrix3(camera.getViewToWorld(false)) * viewOffset;
-    Vector3 prevWorldOffsetFromReference = Matrix3(camera.getPreviousViewToWorld(false)) * viewOffset;
-
-    // Apply any artificial offsets done to the camera as well since ViewModel is relative to the camera used for raytracing
-    worldOffsetFromReference += camera.getArtificialWorldOffset();
-    prevWorldOffsetFromReference += camera.getPreviousArtificialWorldOffset();
 
     // Use the FOV (XY scaling) from the view-model matrix and the near/far planes (ZW scaling) from the main matrix.
     // The view-model camera has different near/far planes, so if that projection matrix is used naively,
@@ -1147,7 +1151,8 @@ namespace dxvk {
     // where 'position' is the original vertex data supplied by the game, and 'transformedPosition' is what we need to compute in order to make
     // the view model project into the same screen positions using the main camera.
     // The 'objectToWorld' matrices are applied later, in createViewModelInstance, because they're different per-instance.
-    const Matrix4 perspectiveCorrectionTransform = camera.getViewToWorld(false) * (camera.getProjectionToView() * viewModelProjectionMatrix * scaleMatrix) * viewModelCamera.getWorldToView(false);
+    const Matrix4 perspectiveCorrection = camera.getViewToWorld(false) * (camera.getProjectionToView() * viewModelProjectionMatrix * scaleMatrix) * viewModelCamera.getWorldToView(false);
+    const Matrix4 prevPerspectiveCorrection = camera.getPreviousViewToWorld(false) * (camera.getPreviousProjectionToView() * viewModelProjectionMatrix * scaleMatrix) * viewModelCamera.getPreviousWorldToView(false);
     
     // Create any valid view model instances from the list of candidates
     std::vector<RtInstance*> viewModelInstances;
@@ -1163,9 +1168,7 @@ namespace dxvk {
       // Tag the instance as ViewModel so it can be checked for it being a reference view model instance
       candidateInstance->setCustomIndexBit(CUSTOM_INDEX_IS_VIEW_MODEL, true);
 
-      RtInstance* viewModelInstance = createViewModelInstance(ctx, cmdList, *candidateInstance, perspectiveCorrectionTransform, worldOffsetFromReference, prevWorldOffsetFromReference);
-
-      viewModelInstances.push_back(viewModelInstance);
+      viewModelInstances.push_back(createViewModelInstance(ctx, cmdList, *candidateInstance, perspectiveCorrection, prevPerspectiveCorrection));
     }
 
     // Create virtual instances for the view model instances

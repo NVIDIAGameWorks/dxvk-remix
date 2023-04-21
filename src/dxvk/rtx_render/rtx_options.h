@@ -192,13 +192,12 @@ namespace dxvk {
   public:
     struct ViewModel {
       friend class ImGUI;
-      RTX_OPTION("rtx.viewModel", bool, enable, false, "");
-      RTX_OPTION("rtx.viewModel", float, rangeMeters, 1.0f, "");
-      RTX_OPTION("rtx.viewModel", float, scale, 1.0f, "");
-      RTX_OPTION("rtx.viewModel", Vector3, viewRelativeOffsetMeters, Vector3(0.0f, 0.0f, 0.0f), "Right, Up, Forward offset for a given camera view."); 
-      RTX_OPTION("rtx.viewModel", bool, enableVirtualInstances, true, "");
-      RTX_OPTION("rtx.viewModel", bool, perspectiveCorrection, true, "");
-      RTX_OPTION("rtx.viewModel", bool, separateRays, false, "");
+      RTX_OPTION("rtx.viewModel", bool, enable, false, "If true, try to resolve view models (e.g. first-person weapons). World geometry doesn't have shadows / reflections / etc from the view models.");
+      RTX_OPTION("rtx.viewModel", float, rangeMeters, 1.0f, "[meters] Max distance at which to find a portal for view model virtual instances. If rtx.viewModel.separateRays is true, this is also max length of view model rays.");
+      RTX_OPTION("rtx.viewModel", float, scale, 1.0f, "Scale for view models. Minimize to prevent clipping.");
+      RTX_OPTION("rtx.viewModel", bool, enableVirtualInstances, true, "If true, virtual instances are created to render the view models behind a portal.");
+      RTX_OPTION("rtx.viewModel", bool, perspectiveCorrection, true, "If true, apply correction to view models (e.g. different FOV is used for view models).");
+      RTX_OPTION("rtx.viewModel", bool, separateRays, false, "If true, launch additional primary rays to render view models on top of everything.");
     } viewModel;
 
   public:
@@ -896,7 +895,6 @@ namespace dxvk {
     bool isViewModelEnabled() const { return viewModel.enable(); }
     float getViewModelRangeMeters() const { return viewModel.rangeMeters(); }
     float getViewModelScale() const { return viewModel.scale(); }
-    Vector3 getViewModelViewRelativeOffsetMeters() const { return viewModel.viewRelativeOffsetMeters(); }
     bool isViewModelVirtualInstancesEnabled() const { return viewModel.enableVirtualInstances(); }
     bool isViewModelPerspectiveCorrectionEnabled() const { return viewModel.perspectiveCorrection(); }
     bool isViewModelSeparateRaysEnabled() const { return viewModel.separateRays(); }
