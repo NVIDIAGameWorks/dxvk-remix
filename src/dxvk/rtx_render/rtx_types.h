@@ -114,6 +114,11 @@ struct RaytraceGeometry {
   }
 };
 
+struct AxisAlignBoundingBox {
+  Vector3 minPos = { FLT_MAX, FLT_MAX, FLT_MAX };
+  Vector3 maxPos = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
+};
+
 // Stores a snapshot of the geometry state for a draw call.
 // WARNING: Usage is undefined after the drawcall this was 
 //          generated from has finished executing on the GPU
@@ -140,6 +145,9 @@ struct RasterGeometry {
   RasterBuffer indexBuffer;
   RasterBuffer blendWeightBuffer;
   RasterBuffer blendIndicesBuffer;
+
+  AxisAlignBoundingBox boundingBox;
+  std::shared_future<AxisAlignBoundingBox> futureBoundingBox;
 
   const XXH64_hash_t getHashForRule(const HashRule& rule) const {
     XXH64_hash_t hashResult = kEmptyHash;
@@ -436,6 +444,16 @@ struct DrawCallState {
 
   bool hasTextureCoordinates() const {
     return getGeometryData().texcoordBuffer.defined() || getTransformData().texgenMode != TexGenMode::None;
+  }
+
+  bool finalizeGeometryBoundingBox() {
+    if (!m_geometryData.futureBoundingBox.valid()) {
+      return false;
+    }
+
+    m_geometryData.boundingBox = m_geometryData.futureBoundingBox.get();
+
+    return true;
   }
 
 private:

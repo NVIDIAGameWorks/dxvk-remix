@@ -1062,8 +1062,9 @@ namespace dxvk {
     spillRenderPass(false);
 
     for (auto& drawCallState : m_drawCallQueue) {
-      if (drawCallState.finalizeGeometryHashes())
+      if (drawCallState.finalizeGeometryHashes() && drawCallState.finalizeGeometryBoundingBox()) {
         getSceneManager().submitDrawState(this, m_cmd, drawCallState);
+      }
     }
 
     m_drawCallQueue.clear();
