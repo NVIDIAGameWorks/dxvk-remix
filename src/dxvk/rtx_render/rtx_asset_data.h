@@ -95,6 +95,8 @@ namespace dxvk {
       }
       m_info = sourceAsset->info();
       m_hash = sourceAsset->hash();
+
+      setMinLevel(minLevel);
     }
 
     const void* data(int layer, int level) override {
@@ -116,6 +118,23 @@ namespace dxvk {
     }
 
     void setMinLevel(int minLevel) {
+      const auto& srcInfo = m_sourceAsset->info();
+
+      // minLevel must not be >= m_info.mipLevels
+      if (minLevel >= srcInfo.mipLevels) {
+        throw DxvkError("Minimum mip level is larger than the "
+                        "number of source asset mip levels!");
+      }
+
+      // Patch asset view info
+      m_info.mipLevels = srcInfo.mipLevels - minLevel;
+      m_info.looseLevels = srcInfo.looseLevels > minLevel ?
+        srcInfo.looseLevels - minLevel : 0;
+
+      m_info.extent.width = std::max(1u, srcInfo.extent.width >> minLevel);
+      m_info.extent.height = std::max(1u, srcInfo.extent.height >> minLevel);
+      m_info.extent.depth = std::max(1u, srcInfo.extent.depth >> minLevel);
+
       m_minLevel = minLevel;
     }
 
