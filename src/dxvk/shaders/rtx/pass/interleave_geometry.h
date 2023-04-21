@@ -23,32 +23,103 @@
 
 // This function can be executed on the CPU or GPU!!
 #ifdef __cplusplus
+#define WriteBuffer(T) T*
+#define ReadBuffer(T) const T*
+
 #define asfloat(x) *reinterpret_cast<const float*>(&x)
-void interleave(const uint32_t idx, float* dst, const float* srcPosition, const float* srcNormal, const float* srcTexcoord, const uint32_t* srcColor0, const InterleaveGeometryArgs& cb)
+#define asuint(x) *reinterpret_cast<const uint32_t*>(&x)
 #else
-void interleave(const uint32_t idx, RWStructuredBuffer<float> dst, StructuredBuffer<float> srcPosition, StructuredBuffer<float> srcNormal, StructuredBuffer<float> srcTexcoord, StructuredBuffer<uint32_t> srcColor0, InterleaveGeometryArgs cb)
+#define WriteBuffer(T) RWStructuredBuffer<T>
+#define ReadBuffer(T) StructuredBuffer<T>
 #endif
-{
-  const uint32_t srcVertexIndex = idx + cb.minVertexIndex;
 
-  uint32_t writeOffset = 0;
+namespace interleaver {
 
-  dst[idx* cb.outputStride + writeOffset++] = srcPosition[srcVertexIndex * cb.positionStride + cb.positionOffset + 0];
-  dst[idx* cb.outputStride + writeOffset++] = srcPosition[srcVertexIndex * cb.positionStride + cb.positionOffset + 1];
-  dst[idx* cb.outputStride + writeOffset++] = srcPosition[srcVertexIndex * cb.positionStride + cb.positionOffset + 2];
+  enum class SupportedVkFormats {
+    VK_FORMAT_A2B10G10R10_SNORM_PACK32 = 65,
 
-  if (cb.hasNormals) {
-    dst[idx * cb.outputStride + writeOffset++] = srcNormal[srcVertexIndex * cb.normalStride + cb.normalOffset + 0];
-    dst[idx * cb.outputStride + writeOffset++] = srcNormal[srcVertexIndex * cb.normalStride + cb.normalOffset + 1];
-    dst[idx * cb.outputStride + writeOffset++] = srcNormal[srcVertexIndex * cb.normalStride + cb.normalOffset + 2];
+    // Passthrough format mapping
+    VK_FORMAT_B8G8R8A8_UNORM = 44,
+    VK_FORMAT_R32G32_SFLOAT = 103,
+    VK_FORMAT_R32G32B32_SFLOAT = 106,
+    VK_FORMAT_R32G32B32A32_SFLOAT = 109,
+  };
+
+  bool formatConversionFloatSupported(uint32_t format) {
+    switch (format) {
+    case SupportedVkFormats::VK_FORMAT_R32G32_SFLOAT:
+    case SupportedVkFormats::VK_FORMAT_R32G32B32_SFLOAT:
+    case SupportedVkFormats::VK_FORMAT_R32G32B32A32_SFLOAT:
+    case SupportedVkFormats::VK_FORMAT_A2B10G10R10_SNORM_PACK32:
+      return true;
+    default:
+      return false;
+    }
   }
 
-  if (cb.hasTexcoord) {
-    dst[idx * cb.outputStride + writeOffset++] = srcTexcoord[srcVertexIndex * cb.texcoordStride + cb.texcoordOffset + 0];
-    dst[idx * cb.outputStride + writeOffset++] = srcTexcoord[srcVertexIndex * cb.texcoordStride + cb.texcoordOffset + 1];
-  } 
+  bool formatConversionUintSupported(uint32_t format) {
+    switch (format) {
+    case SupportedVkFormats::VK_FORMAT_B8G8R8A8_UNORM:
+      return true;
+    default:
+      return false;
+    }
+  }
 
-  if (cb.hasColor0) {
-    dst[idx * cb.outputStride + writeOffset++] = asfloat(srcColor0[srcVertexIndex * cb.color0Stride + cb.color0Offset + 0]);
+  float3 convert(uint32_t format, ReadBuffer(float) input, uint32_t index) {
+    switch (format) {
+    case SupportedVkFormats::VK_FORMAT_R32G32_SFLOAT:
+      return float3(input[index + 0], input[index + 1], 0);
+    case SupportedVkFormats::VK_FORMAT_R32G32B32_SFLOAT:
+    case SupportedVkFormats::VK_FORMAT_R32G32B32A32_SFLOAT:
+      return float3(input[index + 0], input[index + 1], input[index + 2]);
+    case SupportedVkFormats::VK_FORMAT_A2B10G10R10_SNORM_PACK32:
+      //  TODO: Would be nice to utilize packing.slangh here, but this code needs to run on CPU also...
+      uint data = asuint(input[index]);
+      float b = float((data >> 20) & 0x3FF) / 511.0f;
+      float g = float((data >> 10) & 0x3FF) / 511.0f;
+      float r = float((data >> 0) & 0x3FF) / 511.0f;
+      return float3(r, g, b);
+
+    }
+    return float3(1, 1, 1);
+  }
+
+  uint3 convert(uint32_t format, ReadBuffer(uint32_t) input, uint32_t index) {
+    switch (format) {
+    case SupportedVkFormats::VK_FORMAT_B8G8R8A8_UNORM:
+      // Passthrough format we support in other places
+      return uint3(input[index], 0, 0);
+    }
+    return uint3(1,1,1);
+  }
+
+  void interleave(const uint32_t idx, WriteBuffer(float) dst, ReadBuffer(float) srcPosition, ReadBuffer(float) srcNormal, ReadBuffer(float) srcTexcoord, ReadBuffer(uint32_t) srcColor0, const InterleaveGeometryArgs cb) {
+    const uint32_t srcVertexIndex = idx + cb.minVertexIndex;
+
+    uint32_t writeOffset = 0;
+
+    float3 position = convert(cb.positionFormat, srcPosition, srcVertexIndex * cb.positionStride + cb.positionOffset);
+    dst[idx * cb.outputStride + writeOffset++] = position.x;
+    dst[idx * cb.outputStride + writeOffset++] = position.y;
+    dst[idx * cb.outputStride + writeOffset++] = position.z;
+
+    if (cb.hasNormals) {
+      float3 normals = convert(cb.normalFormat, srcNormal, srcVertexIndex * cb.normalStride + cb.normalOffset);
+      dst[idx * cb.outputStride + writeOffset++] = normals.x;
+      dst[idx * cb.outputStride + writeOffset++] = normals.y;
+      dst[idx * cb.outputStride + writeOffset++] = normals.z;
+    }
+
+    if (cb.hasTexcoord) {
+      float3 texcoords = convert(cb.texcoordFormat, srcTexcoord, srcVertexIndex * cb.texcoordStride + cb.texcoordOffset);
+      dst[idx * cb.outputStride + writeOffset++] = texcoords.x;
+      dst[idx * cb.outputStride + writeOffset++] = texcoords.y;
+    }
+
+    if (cb.hasColor0) {
+      uint3 color0 = convert(cb.color0Format, srcColor0, srcVertexIndex * cb.color0Stride + cb.color0Offset);
+      dst[idx * cb.outputStride + writeOffset++] = asfloat(color0.x);
+    }
   }
 }

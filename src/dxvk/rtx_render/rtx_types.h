@@ -193,6 +193,24 @@ struct RasterGeometry {
     return true;
   }
 
+  bool areFormatsGpuFriendly() const {
+    assert(positionBuffer.defined());
+
+    if (positionBuffer.vertexFormat() != VK_FORMAT_R32G32B32_SFLOAT && positionBuffer.vertexFormat() != VK_FORMAT_R32G32B32A32_SFLOAT)
+      return false;
+
+    if (normalBuffer.defined() && (normalBuffer.vertexFormat() != VK_FORMAT_R32G32B32_SFLOAT && normalBuffer.vertexFormat() != VK_FORMAT_R32G32B32A32_SFLOAT))
+      return false;
+
+    if (texcoordBuffer.defined() && (texcoordBuffer.vertexFormat() != VK_FORMAT_R32G32_SFLOAT && texcoordBuffer.vertexFormat() != VK_FORMAT_R32G32B32_SFLOAT && texcoordBuffer.vertexFormat() != VK_FORMAT_R32G32B32A32_SFLOAT))
+      return false;
+
+    if (color0Buffer.defined() && (color0Buffer.vertexFormat() != VK_FORMAT_B8G8R8A8_UNORM))
+      return false;
+
+    return true;
+  }
+
   bool isTopologyRaytraceReady() const {
     // Unsupported BVH builder topology
     if (topology == VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP)

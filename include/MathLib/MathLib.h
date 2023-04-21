@@ -386,6 +386,39 @@ class uint2
         }
 };
 
+
+class uint3
+{
+    public:
+
+        union
+        {
+            struct
+            {
+                uint32_t pv[COORD_3D];
+            };
+
+            struct
+            {
+                uint32_t x, y, z;
+            };
+        };
+
+    public:
+
+        PLATFORM_INLINE uint3()
+        {
+        }
+
+        PLATFORM_INLINE uint3(uint32_t a, uint32_t b, uint32_t c) : x(a), y(b), z(c)
+        {
+        }
+
+        PLATFORM_INLINE uint3(const float3& v) : x( uint32_t(v.x) ), y( uint32_t(v.y) ), z( uint32_t(v.z) )
+        {
+        }
+};
+
 class int4
 {
     public:
