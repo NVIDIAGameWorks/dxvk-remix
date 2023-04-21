@@ -76,6 +76,20 @@ namespace dxvk {
 
   LightManager::LightManager(Rc<DxvkDevice> device)
     : m_device(device) {
+    // Legacy light translation Options
+    fallbackLightRadianceRef().x = std::max(fallbackLightRadiance().x, 0.0f);
+    fallbackLightRadianceRef().y = std::max(fallbackLightRadiance().y, 0.0f);
+    fallbackLightRadianceRef().z = std::max(fallbackLightRadiance().z, 0.0f);
+    RTX_OPTION_CLAMP_MIN(fallbackLightAngle, 0.0f);
+    RTX_OPTION_CLAMP_MIN(fallbackLightRadius, 0.0f);
+    RTX_OPTION_CLAMP_MIN(fallbackLightConeAngle, 0.0f);
+    RTX_OPTION_CLAMP_MIN(fallbackLightConeSoftness, 0.0f);
+    RTX_OPTION_CLAMP_MIN(fallbackLightFocusExponent, 0.0f);
+    RTX_OPTION_CLAMP_MIN(lightConversionSphereLightFixedRadius, 0.0f);
+    RTX_OPTION_CLAMP_MIN(lightConversionDistantLightFixedIntensity, 0.0f);
+    RTX_OPTION_CLAMP(lightConversionDistantLightFixedAngle, 0.0f, kPi);
+    RTX_OPTION_CLAMP_MIN(lightConversionEqualityDistanceThreshold, 0.0f);
+    RTX_OPTION_CLAMP(lightConversionEqualityDirectionThreshold, 0.0f, 1.0f);
   }
 
   LightManager::~LightManager() {
@@ -89,20 +103,6 @@ namespace dxvk {
     const uint32_t currentFrame = m_device->getCurrentFrameId();
     const uint32_t framesToKeep = RtxOptions::Get()->getNumFramesToKeepLights();
     const uint32_t framesToSleep = RtxOptions::Get()->getNumFramesToPutLightsToSleep();
-
-    // Note: Clear the lights and fallback light if the settings are dirty to recreate the lights on the next frame.
-    // Somewhat hacky due to difficulty communicating between ImGui and the Light Manager, but this
-    // works.
-    if (RtxOptions::Get()->isLightSettingsDirty()) {
-      clear();
-
-      // Note: Fallback light reset here so that changes to its settings will take effect, does not need to be part
-      // of usual light clearing logic though.
-      m_fallbackLight.reset();
-
-      // Note: Reset the dirty flag once lights are cleared.
-      RtxOptions::Get()->clearLightSettingsDirty();
-    }
 
     for (auto it = m_lights.begin(); it != m_lights.end();) {
       RtLight& light = it->second;
@@ -178,50 +178,50 @@ namespace dxvk {
 
     // Create or remove a fallback light depending on if any lights are present in the game and the fallback light mode
 
-    const auto fallbackLightMode = RtxOptions::Get()->fallbackLightMode();
+    const auto mode = fallbackLightMode();
 
     if (
-      fallbackLightMode == FallbackLightMode::Always ||
-      (fallbackLightMode == FallbackLightMode::NoLightsPresent && m_lights.empty())
+      mode == FallbackLightMode::Always ||
+      (mode == FallbackLightMode::NoLightsPresent && m_lights.empty())
     ) {
       auto const& mainCamera = cameraManager.getMainCamera();
       const auto oldFallbackLightPresent = m_fallbackLight.has_value();
 
-      const auto fallbackLightType = RtxOptions::Get()->fallbackLightType();
+      const auto type = fallbackLightType();
 
-      if (fallbackLightType == FallbackLightType::Distant) {
+      if (type == FallbackLightType::Distant) {
         // Note: Distant light does not need to be dynamic, do not recreate every frame.
         if (!oldFallbackLightPresent) {
           // Create the Distant Fallback Light
 
           m_fallbackLight.emplace(RtDistantLight(
             // Note: Distant light direction must be normalized, but a non-normalized direction is provided as an option.
-            normalize(RtxOptions::Get()->fallbackLightDirection()),
-            RtxOptions::Get()->fallbackLightAngle() * kDegreesToRadians / 2.0f,
-            RtxOptions::Get()->fallbackLightRadiance()
+            normalize(fallbackLightDirection()),
+            fallbackLightAngle() * kDegreesToRadians / 2.0f,
+            fallbackLightRadiance()
           ));
         }
-      } else if (fallbackLightType == FallbackLightType::Sphere) {
+      } else if (type == FallbackLightType::Sphere) {
         // Create the Sphere Fallback Light
 
         const auto oldSphereLightBufferIndex = oldFallbackLightPresent ? m_fallbackLight->getBufferIdx() : 0;
 
         RtLightShaping shaping{};
 
-        const auto enableFallbackLightShaping = RtxOptions::Get()->enableFallbackLightShaping();
+        const auto enableFallback = enableFallbackLightShaping();
 
-        if (enableFallbackLightShaping) {
+        if (enableFallback) {
           shaping.enabled = true;
 
-          if (RtxOptions::Get()->enableFallbackLightViewPrimaryAxis()) {
+          if (enableFallbackLightViewPrimaryAxis()) {
             shaping.primaryAxis = mainCamera.getDirection();
           } else {
-            shaping.primaryAxis = RtxOptions::Get()->fallbackLightPrimaryAxis();
+            shaping.primaryAxis = fallbackLightPrimaryAxis();
           }
 
-          shaping.cosConeAngle = std::cos(RtxOptions::Get()->fallbackLightConeAngle() * kDegreesToRadians);
-          shaping.coneSoftness = RtxOptions::Get()->fallbackLightConeSoftness();
-          shaping.focusExponent = RtxOptions::Get()->fallbackLightFocusExponent();
+          shaping.cosConeAngle = std::cos(fallbackLightConeAngle() * kDegreesToRadians);
+          shaping.coneSoftness = fallbackLightConeSoftness();
+          shaping.focusExponent = fallbackLightFocusExponent();
         } else {
           shaping.enabled = false;
         }
@@ -229,9 +229,9 @@ namespace dxvk {
         // Note: Will be recreated every frame due to the need to be dynamic. Not super effecient but this is only
         // a one-off use case for debugging so performance is not super important here.
         m_fallbackLight.emplace(RtSphereLight(
-          mainCamera.getPosition() + RtxOptions::Get()->fallbackLightPositionOffset(),
-          RtxOptions::Get()->fallbackLightRadiance(),
-          RtxOptions::Get()->fallbackLightRadius(),
+          mainCamera.getPosition() + fallbackLightPositionOffset(),
+          fallbackLightRadiance(),
+          fallbackLightRadius(),
           shaping
         ));
 
@@ -246,8 +246,8 @@ namespace dxvk {
         }
       }
     } else if (
-      (fallbackLightMode == FallbackLightMode::Never) ||
-      (fallbackLightMode == FallbackLightMode::NoLightsPresent && !m_lights.empty())
+      (mode == FallbackLightMode::Never) ||
+      (mode == FallbackLightMode::NoLightsPresent && !m_lights.empty())
     ) {
       if (m_fallbackLight.has_value()) {
         m_fallbackLight.reset();
@@ -444,6 +444,27 @@ namespace dxvk {
   void LightManager::addLight(const RtLight& rtLight, const DrawCallState& drawCallState) {
     if (RtxOptions::Get()->shouldIgnoreLight(drawCallState.getMaterialData().getHash()))
       return;
+
+    addLight(rtLight);
+  }
+
+  void LightManager::addGameLight(const D3DLIGHTTYPE type, const RtLight& rtLight) {
+    switch (type) {
+    case D3DLIGHT_DIRECTIONAL:
+      if (ignoreGameDirectionalLights())
+        return;
+      break;
+
+    case D3DLIGHT_POINT:
+      if (ignoreGamePointLights())
+        return;
+      break;
+
+    case D3DLIGHT_SPOT:
+      if (ignoreGameSpotLights())
+        return;
+      break;
+    }
 
     addLight(rtLight);
   }
