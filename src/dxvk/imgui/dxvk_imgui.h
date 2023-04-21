@@ -69,10 +69,12 @@ namespace dxvk {
      * \brief Render ImGUI
      * 
      * Renders the ImGUI to the given context.
+     * \param [in] hwnd Window currently being drawn into
      * \param [in] ctx Device context
      * \param [in] surfaceSize Image size, in pixels
      */
     void render(
+            const HWND hwnd,
             const Rc<DxvkContext>&  ctx,
             VkSurfaceFormatKHR surfaceFormat,
             VkExtent2D         surfaceSize);
@@ -90,6 +92,8 @@ namespace dxvk {
     static void AddTexture(const XXH64_hash_t hash, const Rc<DxvkImageView>& imageView);
     static void ReleaseTexture(const XXH64_hash_t hash);
     static bool checkHotkeyState(const VirtualKeys& virtKeys);
+
+    void switchMenu(UIType type, bool force = false);
 
   private:
     
@@ -135,7 +139,6 @@ namespace dxvk {
       const int subItemWidth,
       const int subItemIndent);
 
-    void switchMenu(UIType type);
 
     void showErrorStatus(const Rc<DxvkContext>& ctx);
 
