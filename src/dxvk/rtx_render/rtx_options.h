@@ -117,17 +117,6 @@ namespace dxvk {
     Count
   };
 
-  enum class FallbackLightMode : int {
-    Never = 0,
-    NoLightsPresent,
-    Always,
-  };
-
-  enum class FallbackLightType : int {
-    Distant = 0,
-    Sphere,
-  };
-
   enum class ReflexMode : int {
     None = 0,
     LowLatency,
@@ -287,38 +276,6 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, enablePreviousTLAS, true, "");
     RTX_OPTION("rtx", float, sceneScale, 1, "Defines the ratio of rendering unit (1cm) to game unit, i.e. sceneScale = 1cm / GameUnit.");
 
-    // Legacy light translation Options
-    // Todo: Move these options to the Light Manager in the future [Task: TREX-2573]
-    // The mode to determine when to create a fallback light. Never (0) never creates the light, NoLightsPresent (1) creates the fallback light only when no lights are provided to Remix, and Always (2)
-    // always creates the fallback light. Primarily a debugging feature, users should create their own lights via the Remix workflow rather than relying on this feature to provide lighting.
-    // As such, this option should be set to Never for "production" builds of Remix creations to avoid the fallback light from appearing in games unintentionally in cases where no lights exist (which is
-    // the default behavior when set to NoLightsPresent).
-    RTX_OPTION("rtx", FallbackLightMode, fallbackLightMode, FallbackLightMode::NoLightsPresent, "");
-    RTX_OPTION("rtx", FallbackLightType, fallbackLightType, FallbackLightType::Distant, "The light type to use for the fallback light. Determines which other fallback light options are used.");
-    RTX_OPTION("rtx", Vector3, fallbackLightRadiance, Vector3(1.6f, 1.8f, 2.0f), "The radiance to use for the fallback light (used across all light types).");
-    RTX_OPTION("rtx", Vector3, fallbackLightDirection, Vector3(-0.2f, -1.0f, 0.4f), "The direction to use for the fallback light (used only for Distant light types)"); 
-    RTX_OPTION("rtx", float, fallbackLightAngle, 5.0f, "The spread angle to use for the fallback light (used only for Distant light types)."); 
-    RTX_OPTION("rtx", float, fallbackLightRadius, 5.0f, "The radius to use for the fallback light (used only for Sphere light types).");
-    RTX_OPTION("rtx", Vector3, fallbackLightPositionOffset, Vector3(0.0f, 0.0f, 0.0f), "The position offset from the camera origin to use for the fallback light (used only for non-Distant light types).");
-    RTX_OPTION("rtx", bool, enableFallbackLightShaping, false, "Enables light shaping on the fallback light (only used for non-Distant light types).");
-    RTX_OPTION("rtx", bool, enableFallbackLightViewPrimaryAxis, false, 
-               R"(Enables usage of the camera's view axis as the primary axis for the fallback light's shaping (only used for non - Distant light types). Typically the shaping primary axis may be specified directly, but if desired it may be set to the camera's view axis for a "flashlight" effect.)");
-    RTX_OPTION("rtx", Vector3, fallbackLightPrimaryAxis, Vector3(0.0f, 0.0f, -1.0f), "The primary axis to use for the fallback light shaping (used only for non-Distant light types).");
-    RTX_OPTION("rtx", float, fallbackLightConeAngle, 25.0f, "The cone angle to use for the fallback light shaping (used only for non-Distant light types with shaping enabled).");
-    RTX_OPTION("rtx", float, fallbackLightConeSoftness, 0.1f, "The cone softness to use for the fallback light shaping (used only for non-Distant light types with shaping enabled).");
-    RTX_OPTION("rtx", float, fallbackLightFocusExponent, 2.0f, "The focus exponent to use for the fallback light shaping (used only for non-Distant light types with shaping enabled).");
-    RTX_OPTION("rtx", bool, calculateLightIntensityUsingLeastSquares, true, "Enable usage of least squares for approximating a light's falloff curve rather than a more basic single point approach. This will generally result in more accurate matching of the original application's custom light attenuation curves, especially with non physically based linear-style attenuation.");
-    RTX_OPTION("rtx", float, lightConversionSphereLightFixedRadius, 4.f, "The fixed radius in world units to use for legacy lights converted to sphere lights (currently point and spot lights will convert to sphere lights). Use caution with large light radii as many legacy lights will be placed close to geometry and intersect it, causing suboptimal light sampling performance or other visual artifacts (lights clipping through walls, etc).");
-    RTX_OPTION("rtx", float, lightConversionDistantLightFixedIntensity, 1.0f, "The fixed intensity (in W/sr) to use for legacy lights converted to distant lights (currently directional lights will convert to distant lights).");
-    RTX_OPTION("rtx", float, lightConversionDistantLightFixedAngle, 0.0349f, "The angular size in radiance of the distant light source for legacy lights converted to distant lights. Set to ~2 degrees in radians by default.");
-    RTX_OPTION("rtx", float, lightConversionEqualityDistanceThreshold, 0.05f, "The upper distance threshold between two positions used to determine if two positional lights as the same light when uniquely identifying legacy lights for conversion.");
-    RTX_OPTION("rtx", float, lightConversionEqualityDirectionThreshold, 0.99f, "The lower cosine angle threshold between two directions used to determine if two directional lights as the same light when uniquely identifying legacy lights for conversion.");
-
-    // Note: Cached values used to precompute quantities for options fetching to not have to needlessly recompute them.
-    float cachedLightConversionDistantLightFixedHalfAngle;
-    float cachedLightConversionEqualitySquaredDistanceThreshold;
-    // Note: Slightly hacky method to communicate when ImGui alters light conversion related settings to the light manager.
-    bool lightSettingsDirty = false;
 
     // Resolve Options
     RTX_OPTION("rtx", uint8_t, primaryRayMaxInteractions, 32, "");
@@ -577,13 +534,6 @@ namespace dxvk {
     static std::unique_ptr<RtxOptions> pInstance;
     RtxOptions() { }
 
-    // Note: Should be called whenever lightConversionDistantLightFixedAngle or lightConversionEqualityDistanceThreshold are changed. Ideally would be
-    // done through a setter function but ImGui needs direct access to the original options with how we currently have it set up.
-    void updateCachedLegacyLightConversionOptions() {
-      cachedLightConversionDistantLightFixedHalfAngle = lightConversionDistantLightFixedAngle() / 2.0f;
-      cachedLightConversionEqualitySquaredDistanceThreshold = lightConversionEqualityDistanceThreshold() * lightConversionEqualityDistanceThreshold();
-    }
-
     // Note: Should be called whenever the min/max stability history values are changed.
     // Ideally would be done through a setter function but ImGui needs direct access to the original options with how we currently have it set up.
     void updateCachedVolumetricOptions() {
@@ -628,23 +578,6 @@ namespace dxvk {
       //  options.getOption<bool>("rtx.enableShaderExecutionReorderingInVolumeIntegrate", enableShaderExecutionReorderingInVolumeIntegrate);
       //enableShaderExecutionReorderingInPathtracerIntegrateDirect =
       //  options.getOption<bool>("rtx.enableShaderExecutionReorderingInPathtracerIntegrateDirect", enableShaderExecutionReorderingInPathtracerIntegrateDirect);
-
-      // Legacy light translation Options
-      fallbackLightRadianceRef().x = std::max(fallbackLightRadiance().x, 0.0f);
-      fallbackLightRadianceRef().y = std::max(fallbackLightRadiance().y, 0.0f);
-      fallbackLightRadianceRef().z = std::max(fallbackLightRadiance().z, 0.0f);
-      RTX_OPTION_CLAMP_MIN(fallbackLightAngle, 0.0f);
-      RTX_OPTION_CLAMP_MIN(fallbackLightRadius, 0.0f);
-      RTX_OPTION_CLAMP_MIN(fallbackLightConeAngle, 0.0f);
-      RTX_OPTION_CLAMP_MIN(fallbackLightConeSoftness, 0.0f);
-      RTX_OPTION_CLAMP_MIN(fallbackLightFocusExponent, 0.0f);
-      RTX_OPTION_CLAMP_MIN(lightConversionSphereLightFixedRadius, 0.0f);
-      RTX_OPTION_CLAMP_MIN(lightConversionDistantLightFixedIntensity, 0.0f);
-      RTX_OPTION_CLAMP(lightConversionDistantLightFixedAngle, 0.0f, kPi);
-      RTX_OPTION_CLAMP_MIN(lightConversionEqualityDistanceThreshold, 0.0f);
-      RTX_OPTION_CLAMP(lightConversionEqualityDirectionThreshold, 0.0f, 1.0f);
-
-      updateCachedLegacyLightConversionOptions();
 
       // Resolve Options
 
@@ -967,16 +900,6 @@ namespace dxvk {
     bool isViewModelVirtualInstancesEnabled() const { return viewModel.enableVirtualInstances(); }
     bool isViewModelPerspectiveCorrectionEnabled() const { return viewModel.perspectiveCorrection(); }
     bool isViewModelSeparateRaysEnabled() const { return viewModel.separateRays(); }
-
-    // Legacy light translation Options
-    bool shouldCalculateLightIntensityUsingLeastSquares() const { return calculateLightIntensityUsingLeastSquares(); }
-    float getLightConversionSphereLightFixedRadius() const { return lightConversionSphereLightFixedRadius(); }
-    float getLightConversionDistantLightFixedIntensity() const { return lightConversionDistantLightFixedIntensity(); }
-    float getLightConversionDistantLightFixedHalfAngle() const { return cachedLightConversionDistantLightFixedHalfAngle; }
-    float getLightConversionEqualitySquaredDistanceThreshold() const { return cachedLightConversionEqualitySquaredDistanceThreshold; }
-    float getLightConversionEqualityDirectionThreshold() const { return lightConversionEqualityDirectionThreshold(); }
-    bool isLightSettingsDirty() const { return lightSettingsDirty; }
-    void clearLightSettingsDirty() { lightSettingsDirty = false; }
 
     // Resolve Options
     uint8_t getPrimaryRayMaxInteractions() const { return primaryRayMaxInteractions(); }

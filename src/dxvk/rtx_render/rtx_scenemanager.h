@@ -142,6 +142,7 @@ public:
   const BindlessResourceManager& getBindlessResourceManager() const { return m_bindlessResourceManager; }
   const OpacityMicromapManager* getOpacityMicromapManager() const { return m_opacityMicromapManager.get(); }
   const VolumeManager& getVolumeManager() const { return m_volumeManager; }
+  LightManager& getLightManager() { return m_lightManager; }
   std::unique_ptr<AssetReplacer>& getAssetReplacer() { return m_pReplacer; }
 
   void addLight(const D3DLIGHT9& light);

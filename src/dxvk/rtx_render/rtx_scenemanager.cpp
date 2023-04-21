@@ -990,7 +990,8 @@ namespace dxvk {
         }
       }
     } else {
-      m_lightManager.addLight(*rtLight);
+      // This is a light coming from the game directly, so use the appropriate API for filter rules
+      m_lightManager.addGameLight(light.Type, *rtLight);
     }
   }
 

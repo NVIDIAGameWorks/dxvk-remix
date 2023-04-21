@@ -22,6 +22,7 @@
 
 #include "rtx_lights.h"
 #include "rtx_options.h"
+#include "rtx_lightmanager.h"
 
 namespace dxvk {
 
@@ -146,7 +147,7 @@ static Vector3 calculateRadiance(const D3DLIGHT9& light, const float radius) {
     // No squared attenuation term
     if (b > kEpsilon) {
       // linear falloff
-      if (RtxOptions::Get()->shouldCalculateLightIntensityUsingLeastSquares()) {
+      if (LightManager::calculateLightIntensityUsingLeastSquares()) {
         endDistance = intensityToEndDistance(leastSquareIntensity(originalBrightness, light.Attenuation2, light.Attenuation1, light.Attenuation0, light.Range));
       } else {
         // 1/(b*d + c) = kLegacyLightEndValue
@@ -157,7 +158,7 @@ static Vector3 calculateRadiance(const D3DLIGHT9& light, const float radius) {
       // TODO may want to do something different here - the light is still fully bright at light.Range...
     }
   } else {
-    if (RtxOptions::Get()->shouldCalculateLightIntensityUsingLeastSquares()) {
+    if (LightManager::calculateLightIntensityUsingLeastSquares()) {
       endDistance = intensityToEndDistance(leastSquareIntensity(originalBrightness, light.Attenuation2, light.Attenuation1, light.Attenuation0, light.Range));
     } else {
       endDistance = solveQuadraticEndDistance(originalBrightness, light.Attenuation2, light.Attenuation1, light.Attenuation0, light.Range);
@@ -246,7 +247,7 @@ RtSphereLight::RtSphereLight(const D3DLIGHT9& light) {
   m_position[1] = light.Position.y;
   m_position[2] = light.Position.z;
 
-  m_radius = RtxOptions::Get()->getLightConversionSphereLightFixedRadius() * RtxOptions::Get()->getSceneScale();
+  m_radius = LightManager::lightConversionSphereLightFixedRadius() * RtxOptions::Get()->getSceneScale();
   m_radiance = calculateRadiance(light, m_radius);
 
   if (light.Type == D3DLIGHT_SPOT) {
@@ -304,7 +305,7 @@ void RtSphereLight::writeGPUData(unsigned char* data, std::size_t& offset) const
 }
 
 bool RtSphereLight::operator==(const RtSphereLight& rhs) const {
-  return lengthSqr(m_position - rhs.m_position) < RtxOptions::Get()->getLightConversionEqualitySquaredDistanceThreshold();
+  return lengthSqr(m_position - rhs.m_position) < (LightManager::lightConversionEqualityDistanceThreshold() * LightManager::lightConversionEqualityDistanceThreshold());
 }
 
 Vector4 RtSphereLight::getColorAndIntensity() const {
@@ -400,7 +401,7 @@ void RtRectLight::writeGPUData(unsigned char* data, std::size_t& offset) const {
 }
 
 bool RtRectLight::operator==(const RtRectLight& rhs) const {
-  return lengthSqr(m_position - rhs.m_position) < RtxOptions::Get()->getLightConversionEqualitySquaredDistanceThreshold();
+  return lengthSqr(m_position - rhs.m_position) < (LightManager::lightConversionEqualityDistanceThreshold() * LightManager::lightConversionEqualityDistanceThreshold());
 }
 
 Vector4 RtRectLight::getColorAndIntensity() const {
@@ -501,7 +502,7 @@ void RtDiskLight::writeGPUData(unsigned char* data, std::size_t& offset) const {
 }
 
 bool RtDiskLight::operator==(const RtDiskLight& rhs) const {
-  return lengthSqr(m_position - rhs.m_position) < RtxOptions::Get()->getLightConversionEqualitySquaredDistanceThreshold();
+  return lengthSqr(m_position - rhs.m_position) < (LightManager::lightConversionEqualityDistanceThreshold() * LightManager::lightConversionEqualityDistanceThreshold());
 }
 
 Vector4 RtDiskLight::getColorAndIntensity() const {
@@ -583,7 +584,7 @@ void RtCylinderLight::writeGPUData(unsigned char* data, std::size_t& offset) con
 }
 
 bool RtCylinderLight::operator==(const RtCylinderLight& rhs) const {
-  return lengthSqr(m_position - rhs.m_position) < RtxOptions::Get()->getLightConversionEqualitySquaredDistanceThreshold();
+  return lengthSqr(m_position - rhs.m_position) < (LightManager::lightConversionEqualityDistanceThreshold() * LightManager::lightConversionEqualityDistanceThreshold());
 }
 
 Vector4 RtCylinderLight::getColorAndIntensity() const {
@@ -630,9 +631,9 @@ RtDistantLight::RtDistantLight(const D3DLIGHT9& light) {
   m_direction[1] = light.Direction.y;
   m_direction[2] = light.Direction.z;
 
-  m_halfAngle = RtxOptions::Get()->getLightConversionDistantLightFixedHalfAngle();
+  m_halfAngle = LightManager::lightConversionDistantLightFixedAngle() / 2.f;
 
-  const float fixedIntensity = RtxOptions::Get()->getLightConversionDistantLightFixedIntensity();
+  const float fixedIntensity = LightManager::lightConversionDistantLightFixedIntensity();
 
   m_radiance[0] = light.Diffuse.r * fixedIntensity;
   m_radiance[1] = light.Diffuse.g * fixedIntensity;
@@ -685,7 +686,7 @@ void RtDistantLight::writeGPUData(unsigned char* data, std::size_t& offset) cons
 }
 
 bool RtDistantLight::operator==(const RtDistantLight& rhs) const {
-  return dot(m_direction, rhs.m_direction) > RtxOptions::Get()->getLightConversionEqualityDirectionThreshold();
+  return dot(m_direction, rhs.m_direction) > (LightManager::lightConversionEqualityDistanceThreshold() * LightManager::lightConversionEqualityDistanceThreshold());
 }
 
 Vector4 RtDistantLight::getColorAndIntensity() const {
