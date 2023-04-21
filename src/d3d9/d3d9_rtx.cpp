@@ -413,6 +413,7 @@ namespace dxvk {
     processVertices(vertexContext, vertexIndexOffset, idealTexcoordIndex, geoData);
     geoData.futureGeometryHashes = computeHash(geoData, (maxIndex - minIndex));
     std::shared_future<SkinningData> futureSkinningData = processSkinning(geoData);
+    geoData.futureBoundingBox = computeAxisAlignedBoundingBox(geoData);
 
     // Send it
     m_parent->EmitCs([geoData, futureSkinningData, legacyState, status,
@@ -493,7 +494,7 @@ namespace dxvk {
     }
 
     return std::shared_future<SkinningData>(); // empty future
-  } 
+  }
 
   template<bool FixedFunction>
   uint32_t D3D9Rtx::processTextures() {
