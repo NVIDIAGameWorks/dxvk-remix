@@ -1162,24 +1162,6 @@ namespace dxvk {
       ImGui::Unindent();
     }
 
-    if(ImGui::CollapsingHeader("View Model", collapsingHeaderClosedFlags)) {
-      ImGui::Indent();
-      ImGui::Checkbox("Enable View Model", &RtxOptions::Get()->viewModel.enableObject());
-      ImGui::Checkbox("Virtual Instances", &RtxOptions::Get()->viewModel.enableVirtualInstancesObject());
-      ImGui::Checkbox("Perspective Correction", &RtxOptions::Get()->viewModel.perspectiveCorrectionObject());
-      ImGui::Checkbox("Separate Rays", &RtxOptions::Get()->viewModel.separateRaysObject());
-      if (RtxOptions::Get()->viewModel.separateRays()) {
-        ImGui::DragFloat("Range [m]", &RtxOptions::Get()->viewModel.rangeMetersObject(), 0.01f, 0.0f, 1000.0f);
-      }
-      if (!RtxOptions::Get()->viewModel.perspectiveCorrection()) {
-        ImGui::DragFloat3("View Relative Offset [m]", &RtxOptions::Get()->viewModel.viewRelativeOffsetMetersObject(), 0.001f, -0.5f, 0.5f, "%.3f");
-      }
-      else {
-        ImGui::DragFloat("Scale", &RtxOptions::Get()->viewModel.scaleObject(), 0.01f, 0.01f, 2.0f);
-      }
-      ImGui::Unindent();
-    }
-
     if (ImGui::CollapsingHeader("Developer Options", collapsingHeaderFlags)) {
       ImGui::Indent();
       ImGui::Checkbox("Enable", &RtxOptions::Get()->enableDeveloperOptionsObject());
@@ -1357,6 +1339,21 @@ namespace dxvk {
       ImGui::Separator();
 
       ImGui::DragFloat("Vertex Color Strength", &RtxOptions::Get()->vertexColorStrengthObject(), 0.001f, 0.0f, 1.0f);
+      ImGui::Separator();
+      
+      if (ImGui::CollapsingHeader("View Model", collapsingHeaderClosedFlags)) {
+        ImGui::Indent();
+        ImGui::Checkbox("Enable View Model", &RtxOptions::Get()->viewModel.enableObject());
+        ImGui::Checkbox("Virtual Instances", &RtxOptions::Get()->viewModel.enableVirtualInstancesObject());
+        ImGui::Checkbox("Perspective Correction", &RtxOptions::Get()->viewModel.perspectiveCorrectionObject());
+        ImGui::Checkbox("Separate Rays", &RtxOptions::Get()->viewModel.separateRaysObject());
+        if (RtxOptions::Get()->viewModel.separateRays()) {
+          ImGui::DragFloat("Range [m]", &RtxOptions::Get()->viewModel.rangeMetersObject(), 0.01f, 0.0f, 1000.0f);
+        } else {
+          ImGui::DragFloat("Scale", &RtxOptions::Get()->viewModel.scaleObject(), 0.01f, 0.01f, 2.0f);
+        }
+        ImGui::Unindent();
+      }
 
       ImGui::Unindent();
     }
