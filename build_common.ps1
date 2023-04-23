@@ -49,20 +49,16 @@ Write-Host "Using Visual Studio installation at: ${vsPath}" -ForegroundColor Yel
 #
 # Make sure the Visual Studio Command Prompt variables are set.
 #
-If (Test-Path env:LIBPATH) {
-  Write-Host "Visual Studio Command Prompt variables already set." -ForegroundColor Yellow
-} Else {
-  # Load VC vars
-  Push-Location "${vsPath}\VC\Auxiliary\Build"
-  cmd /c "vcvarsall.bat x64&set" |
-    ForEach-Object {
-      If ($_ -match "=") {
-        $v = $_.split("="); Set-Item -Force -Path "ENV:\$($v[0])" -Value "$($v[1])"
-      }
-    }
-  Pop-Location
-  Write-Host "Visual Studio Command Prompt variables set." -ForegroundColor Yellow
+# Load VC vars
+Push-Location "${vsPath}\VC\Auxiliary\Build"
+cmd /c "vcvarsall.bat x64&set" |
+ForEach-Object {
+  If ($_ -match "=") {
+	$v = $_.split("="); Set-Item -Force -Path "ENV:\$($v[0])" -Value "$($v[1])"
+  }
 }
+Pop-Location
+Write-Host "Visual Studio Command Prompt variables set." -ForegroundColor Yellow
 
 function PerformBuild {
 	param(
