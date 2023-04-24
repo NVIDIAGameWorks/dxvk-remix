@@ -413,7 +413,9 @@ namespace dxvk {
     processVertices(vertexContext, vertexIndexOffset, idealTexcoordIndex, geoData);
     geoData.futureGeometryHashes = computeHash(geoData, (maxIndex - minIndex));
     std::shared_future<SkinningData> futureSkinningData = processSkinning(geoData);
-    geoData.futureBoundingBox = computeAxisAlignedBoundingBox(geoData);
+    if (RtxOptions::Get()->calculateMeshBoundingBox()) {
+      geoData.futureBoundingBox = computeAxisAlignedBoundingBox(geoData);
+    }
 
     // Send it
     m_parent->EmitCs([geoData, futureSkinningData, legacyState, status,

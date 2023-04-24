@@ -479,6 +479,8 @@ namespace dxvk {
     RTX_OPTION("rtx", float, captureMeshTexcoordDelta, 0.3f, "Inter-frame texcoord min delta warrants new time sample.");
     RTX_OPTION("rtx", float, captureMeshColorDelta, 0.3f, "Inter-frame color min delta warrants new time sample.");
 
+    RTX_OPTION("rtx", bool, calculateMeshBoundingBox, false, "Calculate bounding box for every mesh.");
+
     RTX_OPTION("rtx", bool, resetBufferCacheOnEveryFrame, true, "");
 
     // Note: this will cause history rejection when camera gets teleported through portal (TREX-641)
