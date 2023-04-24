@@ -1367,6 +1367,10 @@ namespace dxvk {
 
     // NV-DXVK start: Check if RTX swapchain parameters need to be reset
     // Check if RT is a surface of implicit swapchain
+    if (rt == nullptr) {
+      return D3D_OK;
+    }
+
     const bool isImplicitSwapchain = m_implicitSwapchain != nullptr &&
       rt->GetContainerInternal() == m_implicitSwapchain.ptr();
 
