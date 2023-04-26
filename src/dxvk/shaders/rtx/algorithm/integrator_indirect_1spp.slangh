@@ -1,0 +1,898 @@
+/*
+* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/algorithm/path_state.slangh"
+#include "rtx/utility/noise.slangh"
+#include "rtx/utility/color.slangh"
+#include "rtx/utility/packing.slangh"
+#include "rtx/utility/debug_view_helpers.slangh"
+#include "rtx/utility/gbuffer_helpers.slangh"
+#include "rtx/concept/ray/ray.slangh"
+#include "rtx/pass/instance_definitions.slangh"
+#include "rtx/concept/surface/surface.slangh"
+#include "rtx/algorithm/integrator.slangh"
+
+// Input specular signal of low roughness material into restir gi
+static const uint kRestirGIAcceptLowRoughnessInput = false;
+
+// Integrate Helper Functions
+
+PathState pathStateCreateEmpty(u16vec2 pixelCoordinate, GeometryFlags geometryFlags)
+{
+  PathState pathState;
+
+  // Note: Primary linear roughness, origin, cone radius, medium material index, inside medium flag and
+  // direction assumed to be set by primary vertex intergation.
+
+  pathState.pixelCoordinate = pixelCoordinate;
+  pathState.bounceIteration = uint8_t(1);
+  pathState.coneSpreadAngle = cb.screenSpacePixelSpreadHalfAngle;
+
+  pathState.radiance = vec3(0.0f, 0.0f, 0.0f);
+  pathState.throughput = vec3(1.0f);
+  pathState.firstBounceHitDistance = kEmptyPixelHitDistance;
+  pathState.mediumMaterialIndex = BINDING_INDEX_INVALID;
+  
+  pathState.continueResolving = true;
+  pathState.continuePath = true;
+  pathState.insideMedium = false;
+  pathState.decalEncountered = false;
+
+  pathState.portalSpace = geometryFlags.portalSpace;
+  pathState.indirectLightPortalID = RESTIR_GI_INVALID_INDIRECT_LIGHT_PORTAL_ID;
+  pathState.restirGiHasFoundRoughSurface = false;
+
+  pathState.rayMask = OBJECT_MASK_ALL | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC);
+
+  if (geometryFlags.isViewModel) 
+    updateRayMaskForRayOriginFromViewModelSurface(pathState.rayMask, pathState.portalSpace);
+
+  return pathState;
+}
+
+// Helper function to accumulate attenuation or other throughputs into the Path State throughput.
+void accumulateThroughput(inout PathState pathState, vec3 throughput)
+{
+  pathState.throughput *= throughput;
+}
+
+// Overload for accumulating throughput for single-channel values.
+void accumulateThroughput(inout PathState pathState, float throughput)
+{
+  pathState.throughput *= throughput;
+}
+
+// Helper function to accumulate radiance the Path State.
+void accumulateRadiance(inout vec3 accumulatedRadiance, PathState pathState, vec3 radiance)
+{
+  accumulatedRadiance += pathState.throughput * radiance;
+}
+
+// Overload for simpler path state usage when accumulating radiance.
+void accumulateRadiance(inout PathState pathState, vec3 radiance)
+{
+  accumulateRadiance(pathState.radiance, pathState, radiance);
+}
+
+void evalEmission(
+  inout PathState pathState,
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction)
+{
+  // Add in Emissive contribution
+
+  const vec3 emissiveRadiance = polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(polymorphicSurfaceMaterialInteraction);
+
+  accumulateRadiance(pathState, emissiveRadiance);
+}
+
+void evalNEESecondary(
+  vec3 throughput, 
+  inout vec3 accumulatedRadiance,
+  LightSample lightSample, 
+  float invSelectionPdf, 
+  uint8_t sampledTransportPortalIndex, 
+  PortalSpace2BitsType portalSpace,
+  uint8_t objectMask,
+  bool isViewModelSurface,
+  Ray viewRay,
+  MinimalRayInteraction minimalRayInteraction, 
+  MinimalSurfaceInteraction minimalSurfaceInteraction,
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  out float16_t specularPortion)
+{
+  // Setup and trace the visibility ray
+
+  uint8_t rayMask = OBJECT_MASK_OPAQUE | (objectMask & OBJECT_MASK_ALL_DYNAMIC);
+  if (cb.enableIndirectTranslucentShadows) rayMask |= OBJECT_MASK_TRANSLUCENT;
+
+  VisibilityResult visibility = traceVisibilityRay(minimalSurfaceInteraction,
+    lightSample.position, false, rayMask,
+    visibilityModeEnableTranslucentMaterials,
+    sampledTransportPortalIndex, portalSpace,
+    minimalRayInteraction.coneRadius, viewRay.spreadAngle, 1.0, isViewModelSurface);
+
+  specularPortion = float16_t(0);
+
+  if (visibility.hasOpaqueHit)
+    return;
+
+  // Evaluate the material and accumulate throughput and hit distance
+
+  const SurfaceMaterialInteractionSplitWeight splitWeight = opaqueSurfaceMaterialInteractionCalcProjectedWeight(
+    opaqueSurfaceMaterialInteraction, minimalRayInteraction, visibility.rayDirection);
+
+  const f16vec3 combinedWeight = splitWeight.diffuseReflectionWeight + splitWeight.specularReflectionWeight;
+
+  specularPortion = calcBt709Luminance(splitWeight.specularReflectionWeight) / calcBt709Luminance(combinedWeight);
+
+  const float lightSampleThroughput = invSelectionPdf / lightSample.solidAnglePdf;
+
+  // Accumulate Radiance
+
+  const vec3 lightThroughput = vec3(combinedWeight) * lightSampleThroughput * vec3(visibility.attenuation);
+  const vec3 attenuatedRadiance = lightSample.radiance * lightThroughput;
+
+  accumulatedRadiance += throughput * attenuatedRadiance;
+}
+
+
+// Note: Using separate accumulation for particles and whatever else as while they should be visible in reflections
+// through indirect paths, they do not need to be evaluated with particularly high quality. This is only done for the
+// first bounce as past that all particles and similar things will be skipped anyways.
+bool getSeparateUnorderedApproximationsActive(PathState pathState)
+{
+  return
+    cb.enableSeparateUnorderedApproximations &&
+    cb.enableUnorderedResolveInIndirectRays &&
+    pathState.bounceIteration <= 1;
+}
+
+// Calculate a point's screen space position, if it's outside the screen, move it to screen boundary.
+// Return if the point is inside the screen.
+bool calculateScreenBoundedPixelCoordinate(mat4 transformMatrix, vec3 position, inout ivec2 pixelCoordinate)
+{
+  vec4 ndc = mul(transformMatrix, vec4(position, 1.0f));
+  ndc.xyz /= ndc.w;
+
+  // Note: NDC x/y coordinates are valid from [-1, 1], whereas the NDC z (depth) is valid from [0, 1]
+  bool isInsideScreen = all((ndc.xyz <= vec3(1.0f, 1.0f, 1.0f)) && (ndc.xyz >= vec3(-1.0f, -1.0f, 0.0f)));
+  if (!isInsideScreen)
+  {
+    ndc.xy *= ndc.w < 0 ? -1 : 1;
+    vec2 absXY = abs(ndc.xy);
+    ndc.xy /= max(absXY.x, absXY.y);
+  }
+
+  pixelCoordinate = cameraNDCToPixelCoordinate(cb.camera, ndc.xy);
+
+  return isInsideScreen;
+}
+
+uint2 jitterBoundaryPixels(uint2 pixelCoordinate, uint2 jitterOffset)
+{
+  const uint2 padding = uint2(16, 8);
+  jitterOffset = (jitterOffset + cb.frameIdx) & (padding-1);
+  jitterOffset = reversebits(jitterOffset) >> uint2(28,29);
+  return clamp(pixelCoordinate, 0, cb.camera.resolution - padding) + jitterOffset;
+}
+
+// Integrate Path Vertex Functions
+
+void integratePathVertex(
+  IndirectPathTextures indirectPathTextures, RayHitInfo rayHitInfo,
+  inout PathState pathState)
+{
+  const bool separateUnorderedApproximations = getSeparateUnorderedApproximationsActive(pathState);
+
+  // Setup resolve state
+
+  // Note: Emissives are fine to approximate here (since lighting rarely matters on them), and non-emissive opacity particles should be
+  // lit with the lighting approximation when particles will be hit in general (only when separate unordered approximations are enabled,
+  // as on bounce counts higher than 1 all particles will be skipped).
+  const uint8_t resolveMode =
+    resolveModeRayPortalNotify |
+    resolveModeEmissiveOpacityTransmissionApprox |
+    resolveModeDecalMaterialBlending |
+    (separateUnorderedApproximations ? resolveModeSeparateUnorderedApproximations : 0);
+  f16vec3 radianceAttenuation = f16vec3(1.0f, 1.0f, 1.0f);
+  vec3 emissiveRadiance = vec3(0);
+
+  // Handle Unordered Resolving
+  // Note: Done before resolveVertex so attenuation from unordered objects
+  // between the origin and the hit point can be accumulated in advance.
+
+  // Note: Only do unordered resolving when separate unordered approximations are desired for this bounce of the path.
+  if (separateUnorderedApproximations)
+  {
+    Ray unorderedResolveRay;
+    unorderedResolveRay.origin = pathState.origin;
+    unorderedResolveRay.coneRadius = pathState.coneRadius;
+    unorderedResolveRay.spreadAngle = float16_t(cb.screenSpacePixelSpreadHalfAngle);
+    unorderedResolveRay.direction = pathState.direction;
+    unorderedResolveRay.tMax = rayHitInfo.hasHit ? rayHitInfo.hitDistance * kUnorderedResolveRayLengthening : floatMax;
+
+    uint numUnorderedInteractions = 0;
+    const bool isViewModel = pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
+    uint8_t unorderedRayMask = OBJECT_MASK_UNORDERED_ALL_BLENDED
+      | (cb.enableEmissiveParticlesInIndirectRays ? OBJECT_MASK_UNORDERED_ALL_EMISSIVE : 0);
+    unorderedRayMask = convertPrimaryRayMaskToUnordered(isViewModel, pathState.rayMask, unorderedRayMask);
+    
+    resolveVertexUnordered(
+      resolveMode, unorderedResolveRay,
+      unorderedRayMask, pathState.portalSpace,
+      /* useIntersectionBillboards = */ cb.enableBillboardOrientationCorrection,
+      pathState.accumulatedHitDistance,
+      radianceAttenuation, emissiveRadiance,
+      numUnorderedInteractions);
+
+    if (cb.debugView == DEBUG_VIEW_SECONDARY_UNORDERED_INTERACTIONS || cb.debugView == DEBUG_VIEW_SECONDARY_RAY_AND_UNORDERED_INTERACTIONS)
+      accumulateInDebugViewAdd(pathState.pixelCoordinate, numUnorderedInteractions);
+  }
+
+  // Invoke the Resolve Vertex function
+
+  Ray ray;
+  RayInteraction rayInteraction;
+  Surface surface;
+  SurfaceInteraction surfaceInteraction;
+  surfaceInteraction.position = pathState.origin;
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction;
+
+  // Todo: Remove hack thing
+  HackGenericState hackState;
+  hackState.origin = pathState.origin;
+  hackState.coneRadius = pathState.coneRadius;
+  hackState.coneSpreadAngle = pathState.coneSpreadAngle;
+  hackState.direction = pathState.direction;
+  hackState.segmentHitDistance = 0; // don't care
+  hackState.continueResolving = pathState.continueResolving;
+  hackState.portalSpace = pathState.portalSpace;
+  hackState.rayMask = pathState.rayMask;
+  hackState.firstRayPortal = invalidRayPortalIndex;
+  hackState.decalEncountered = pathState.decalEncountered;
+  hackState.pixelCoordinate = pathState.pixelCoordinate;
+
+  resolveVertex(
+    resolveMode,
+    rayHitInfo, hackState,
+    ray, rayInteraction,
+    surface, surfaceInteraction,
+    polymorphicSurfaceMaterialInteraction,
+    radianceAttenuation, emissiveRadiance,
+    DecalMaterial, aliasedData0.DecalEmissiveRadiance);
+
+  // Output ReSTIR GI geometry information
+
+  if (cb.enableReSTIRGI && pathState.bounceIteration == 1)
+  {
+    if (hackState.continueResolving)
+    {
+      if (hackState.firstRayPortal != invalidRayPortalIndex)
+      {
+        pathState.indirectLightPortalID = hackState.firstRayPortal;
+      }
+    }
+    else
+    {
+      vec3 hitPosition;
+      f16vec3 hitNormal = f16vec3(0,0,0);
+      if (rayInteractionHasHit(rayInteraction))
+      {
+        hitPosition = surfaceInteraction.position;
+        hitNormal = surfaceInteraction.triangleNormal; 
+      }
+      else
+      {
+        // When ray miss occurs, we assume the sample is on the sky dome with a large distance to the scene.
+        const float skyDomeDistance = 1e5;
+        hitPosition = pathState.origin + pathState.direction * skyDomeDistance;
+        hitNormal = -pathState.direction;
+      }
+
+      ReSTIRGI_StoreHitGeometry(indirectPathTextures.RestirGIHitGeometry, pathState.pixelCoordinate, hitPosition, hitNormal, pathState.indirectLightPortalID);
+    }
+  }
+
+  // Todo: Remove hack thing
+  pathState.origin = hackState.origin;
+  pathState.coneRadius = hackState.coneRadius;
+  pathState.direction = hackState.direction;
+  pathState.continueResolving = hackState.continueResolving;
+  pathState.portalSpace = hackState.portalSpace;
+  pathState.rayMask = hackState.rayMask;
+  pathState.decalEncountered = hackState.decalEncountered;
+
+  if (rayInteractionHasHit(rayInteraction))
+  {
+    pathState.accumulatedHitDistance += hackState.segmentHitDistance;
+
+    if (pathState.bounceIteration == 1)
+      pathState.firstBounceHitDistance = float16_t(min(float16Max, pathState.firstBounceHitDistance + rayInteraction.hitDistance));
+  }
+  else if (!pathState.continueResolving)
+  {
+    // Apply sky radiance on miss
+    // Note: True misses going out into infinity will have no hit in the ray interaction and the continue resolving flag set to false. This is in contrast to misses
+    // which may require further resolving which may be needed in cases of skipping specific pieces of geometry while still wishing to continue traversal.
+
+    emissiveRadiance += cb.skyBrightness * SkyProbe.Sample(pathState.direction);
+  }
+
+  // Handle emissive radiance and attenuation from the Resolve function
+
+  // Note: When accumulating radiance/throughput from the resolve logic, emissive takes priority
+  // over attenuation so that emissive surfaces do not attenuate themselves.
+  float16_t oldLuminance = calcBt709Luminance(pathState.radiance);
+  accumulateRadiance(pathState, emissiveRadiance);
+  accumulateThroughput(pathState, radianceAttenuation);
+
+  // Handle medium attenuation if needed
+  // Note: This is done here to avoid needing to accumulate the total resolved hit distance. Slightly
+  // more expensive in some cases than doing it after resolving is finished, but saves payload space.
+  // Additionally this allows for proper handling of infinite attenuation when a miss happens.
+
+  if (pathState.mediumMaterialIndex != BINDING_INDEX_INVALID)
+  {
+    const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[pathState.mediumMaterialIndex];
+    const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(
+      pathState.mediumMaterialIndex, memoryPolymorphicSurfaceMaterial);
+
+    // Calculate the volume transmittance
+
+    f16vec3 volumeTransmittance;
+
+    if (rayInteractionHasHit(rayInteraction))
+    {
+      volumeTransmittance = translucentSurfaceMaterialEvalVolumeTransmittance(
+        translucentSurfaceMaterial, rayInteraction.hitDistance);
+    }
+    else
+    {
+      // Note: Assume infinite hit distance on miss. This wouldn't be true with things that have a practical tMax
+      // value (such as NEE rays), but for the geometey resolver this is a fine assumption.
+      volumeTransmittance = translucentSurfaceMaterialEvalInfiniteVolumeTransmittance(
+        translucentSurfaceMaterial);
+    }
+
+    accumulateThroughput(pathState, volumeTransmittance);
+  }
+
+  // Check if resolving should continue, and if a surface was hit
+
+  if (pathState.continueResolving)
+  {
+    return;
+  }
+
+  if (!rayInteractionHasHit(rayInteraction))
+  {
+    return;
+  }
+
+  // Add Emission
+  evalEmission(pathState, polymorphicSurfaceMaterialInteraction);
+
+// We don't need to sample lights or surface rays in the portal closest hit shader
+#if (SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT) != 0
+
+  float16_t restirHitT = float16_t(kMissHitDistance);
+  updateReSTIRGIHitDistance(oldLuminance, calcBt709Luminance(pathState.radiance), restirHitT, pathState.accumulatedHitDistance);
+
+  // Construct RNG
+  RNG randomState = createRNG(pathState.pixelCoordinate, cb.frameIdx, pathState.calculateRNGOffset(kRNGOffsetSampleClosestHitShader));
+
+  const bool oldInsideMedium = pathState.insideMedium;
+  vec3 continuationThroughput = f16vec3(1.0);
+  uint8_t continuationLobe = 0;
+  f16vec3 incomingDirection = pathState.direction;
+  {
+    // Sample a new direction
+    float16_t sampledLobePdf, solidAnglePdf;
+    const Ray sampledRay = sampleDirection(
+      randomState, pathState.insideMedium, continuationThroughput,
+      ray, rayInteraction, surfaceInteraction,
+      polymorphicSurfaceMaterialInteraction,
+      continuationLobe, sampledLobePdf, solidAnglePdf,
+      false);
+
+    // Set the ray into the path vertex state
+    pathState.origin = sampledRay.origin;
+    pathState.coneRadius = sampledRay.coneRadius;
+    pathState.direction = sampledRay.direction;
+  }
+
+  // Set the material medium index if a medium was entered or exited
+
+  evalMediumChange(
+    oldInsideMedium, pathState.insideMedium,
+    polymorphicSurfaceMaterialInteraction, pathState.mediumMaterialIndex);
+
+  // Get Opaque material information for future reference
+
+  const bool isOpaqueMaterial = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque;
+  const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+  // polymorphicSurfaceMaterialInteraction is no longer live since this point.
+
+  // Perform NEE
+
+  if (isOpaqueMaterial)
+  {
+    LightSample lightSample;
+    float invSelectionPdf;
+    bool lightSampleValid = false;
+    bool isWithinGbuffer = false;
+    // Only steal rtxdi sample on rough surfaces with weak specular lobe, otherwise specular highlight will get lost.
+    // The value is based on experiment.
+    const float16_t baseReflectivityFactor = 3.0f;
+    if (cb.enableRtxdi && cb.enableRtxdiSampleStealing &&
+      calcBt709Luminance(opaqueSurfaceMaterialInteraction.baseReflectivity) < baseReflectivityFactor * opaqueSurfaceMaterialInteraction.isotropicRoughness) 
+    {
+      // Perform some safety checks, and if lucky, steal some high quality samples from RTX-DI reservoirs
+      ivec2 pixelCoordinate;
+      isWithinGbuffer = calculateScreenBoundedPixelCoordinate(
+        cb.camera.worldToProjectionJittered,
+        surfaceInteraction.position, pixelCoordinate);
+
+      if (cb.enableRtxdiStealBoundaryPixelSamplesWhenOutsideOfScreen && !isWithinGbuffer)
+      {
+        pixelCoordinate = jitterBoundaryPixels(pixelCoordinate, pathState.pixelCoordinate);
+        isWithinGbuffer = true;
+      }
+
+      if (isWithinGbuffer)
+      {
+        MinimalSurfaceInteraction gbuffer = minimalSurfaceInteractionReadFromGBuffer(pixelCoordinate, indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal);
+        float3 relativePosition = gbuffer.position - surfaceInteraction.position;
+        float relativeLength = length(relativePosition);
+        float cameraDistance = length(surfaceInteraction.position - cameraGetWorldPosition(cb.camera));
+        const float planeTolerance = 0.1;
+        const float distanceTolerance = 0.01;
+        isWithinGbuffer = dot(surfaceInteraction.interpolatedNormal, gbuffer.triangleNormal) > 0.8f &&   // sane normal difference?
+                          (relativeLength < cameraDistance * distanceTolerance ||
+                           abs(dot(relativePosition, surfaceInteraction.interpolatedNormal)) < planeTolerance * relativeLength);
+      }
+
+      if (isWithinGbuffer)
+      {
+        uint8_t sampledTransportPortalIndex = invalidRayPortalIndex;
+
+        // Select and sample a light for NEE via RTXDI
+
+        lightSampleValid = sampleLightRTXDI(
+          pixelCoordinate,
+          surfaceInteraction,
+          lightSample, invSelectionPdf, sampledTransportPortalIndex);
+      }
+    }
+
+    if (!isWithinGbuffer)
+    {
+      // Select and sample a light for NEE via RIS
+
+      lightSampleValid = sampleLightRIS(
+        randomState,
+        surfaceInteraction, opaqueSurfaceMaterialInteraction, rayInteraction.viewDirection,
+        lightSample, invSelectionPdf);
+    }
+
+    if (lightSampleValid)
+    {
+      const bool isViewModel = pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
+      float16_t specularPortion = float16_t(0);
+
+      // Todo: Ray Portal transport sampling in the future.
+      evalNEESecondary(
+        pathState.throughput, pathState.radiance,
+        lightSample, invSelectionPdf, invalidRayPortalIndex, pathState.portalSpace, pathState.rayMask,
+        isViewModel, ray, rayInteraction, surfaceInteraction,
+        opaqueSurfaceMaterialInteraction, specularPortion);
+
+      float hitT = pathState.accumulatedHitDistance;
+      if (opaqueSurfaceMaterialInteraction.isotropicRoughness <= cb.reSTIRGIVirtualSampleRoughnessThreshold
+        && specularPortion >= cb.reSTIRGIVirtualSampleSpecularThreshold)
+      {
+        hitT += length(lightSample.position - surfaceInteraction.position);
+      }
+
+      updateReSTIRGIHitDistance(oldLuminance, calcBt709Luminance(pathState.radiance), restirHitT, min(hitT, float16Max));
+    }
+  }
+
+  // Check for path termination
+  // Note: Bounce iteration refers to the index of the current vertex in the path,
+  // 0 = Primary Hit, 1 = 1st Indirect Hit (1 bounce), etc. The decision to terminate here
+  // represents if the path should terminate at this current bounce iteration and not
+  // cast another ray. Note since the primary hit logic is hardcoded (for now) the path
+  // will always be extended to a bounce iteration of 1, so this is the minimum bounce
+  // number that can be set.
+
+  // Todo: Allow minimum/maximum bounce iterations to be set by ray tracing args.
+  if (pathState.bounceIteration >= cb.pathMaxBounces)
+  {
+    pathState.continuePath = false;
+  }
+  else if (pathState.bounceIteration >= cb.pathMinBounces)
+  {
+    // Russian Roulette
+    // Note: This logic will conditionally terminate paths based on the effective throughput, allowing for
+    // paths which contribute little to the final image to be shorter while paths which are more important
+    // are allowed to be longer.
+
+    float continueProbability = min(
+      calcBt709Luminance(pathState.throughput),
+      cb.russianRouletteMaxContinueProbability);
+    const float continueSample = getNextSampleBlueNoise(randomState);
+    // Note: < used to ensure path never continues if the probability is 0 (and to avoid NaNs in the
+    // throughput when the probability is divided into it).
+    bool continueResult = continueSample < continueProbability;
+
+    if (!cb.enableRussianRoulette)
+    {
+      continueProbability = 1.f;
+      continueResult = true;
+    }   
+
+    // Note: Factor the probability of continuing the path into the throughput. This causes odd brightness
+    // in denoising when the continue probability is very low, but this math has been validated to be
+    // correct as far as I can tell.
+    if (continueResult)
+    {
+      continuationThroughput /= continueProbability;
+    }
+
+    pathState.continuePath = continueResult;
+  }
+  else
+  {
+    pathState.continuePath = true;
+  }
+
+  // Steal samples from restir gi
+  if (cb.enableReSTIRGI
+    && cb.enableReSTIRGISampleStealing > 0
+    && isOpaqueMaterial)
+  {
+    // Perform some safety checks, and if lucky, steal some high quality samples from ReSTIR GI reservoirs
+    ivec2 pixelCoordinate;
+    bool isWithinGbuffer = calculateScreenBoundedPixelCoordinate(
+      cb.camera.prevWorldToProjectionJittered,
+      surfaceInteraction.position, pixelCoordinate);
+
+    if (cb.enableReSTIRGIStealBoundaryPixelSamplesWhenOutsideOfScreen && !isWithinGbuffer)
+    {
+      pixelCoordinate = jitterBoundaryPixels(pixelCoordinate, pathState.pixelCoordinate);
+      isWithinGbuffer = true;
+    }
+
+    if (isWithinGbuffer)
+    {
+      const MinimalSurfaceInteraction prevSurfaceInteraction = minimalSurfaceInteractionReadFromGBuffer(
+        pixelCoordinate, PreviousWorldPosition_WorldTriangleNormal);
+
+      float prevHitDistance = length(prevSurfaceInteraction.position - cameraGetWorldPosition(cb.camera));
+      float3 relativePosition = prevSurfaceInteraction.position - surfaceInteraction.position;
+      float relativeLength = length(relativePosition);
+      const float planeTolerance = 0.1;
+      const float distanceTolerance = 0.05;
+
+      isWithinGbuffer =
+        dot(surfaceInteraction.triangleNormal, prevSurfaceInteraction.triangleNormal) > 0.8f &&
+        (relativeLength < prevHitDistance * distanceTolerance ||
+          abs(dot(prevSurfaceInteraction.triangleNormal, relativePosition)) < relativeLength * planeTolerance);
+    }
+
+    vec3 indirectLight = vec3(0);
+    if (isWithinGbuffer && opaqueSurfaceMaterialInteraction.opacity == float16_t(1))
+    {
+      if (cb.enableReSTIRGISampleStealing == 2)
+      {
+        if (cb.isLastCompositeOutputValid)
+        {
+          vec4 lastColor = LastComposite[pixelCoordinate];
+          accumulateRadiance(pathState, lastColor.xyz * opaqueSurfaceMaterialInteraction.albedo + lastColor.w * opaqueSurfaceMaterialInteraction.baseReflectivity);
+        }
+      }
+      else
+      {
+        ReSTIRGI_Reservoir spatialReservoir = RAB_LoadGIReservoir(pixelCoordinate, ReSTIRGI_GetSpatialOutputPage());
+          
+        if (!spatialReservoir.getFlag(RESTIR_GI_FLAG_OCCLUDED_SAMPLE))
+        {
+          MinimalRayInteraction minimalRayInteraction2;
+          minimalRayInteraction2.coneRadius = 0.0;
+          minimalRayInteraction2.viewDirection = -incomingDirection;
+          vec3 L2 = normalize(spatialReservoir.position - surfaceInteraction.position);
+          SurfaceMaterialInteractionSplitWeight brdf2 = opaqueSurfaceMaterialInteractionCalcProjectedWeight(opaqueSurfaceMaterialInteraction, minimalRayInteraction2, L2);
+          indirectLight += spatialReservoir.radiance * brdf2.diffuseReflectionWeight * spatialReservoir.avgWeight;        
+          if (opaqueSurfaceMaterialInteraction.isotropicRoughness > RAB_RESTIR_GI_MIN_ROUGHNESS)
+          {
+            indirectLight += spatialReservoir.radiance * brdf2.specularReflectionWeight * spatialReservoir.avgWeight;
+          }
+        }
+        accumulateRadiance(pathState, indirectLight);
+      }
+
+      if (opaqueSurfaceMaterialInteraction.isotropicRoughness > RAB_RESTIR_GI_MIN_ROUGHNESS)
+      {
+        // For high roughness surface, restir gi can provide full indirect light and hence no more rays are needed.
+        pathState.continuePath = false;
+      }
+      else
+      {
+        // For low roughness surface, restir gi cannot sample specular light effectively, so we need to trace specular ray.
+        pathState.continuePath &= (continuationLobe != opaqueLobeTypeDiffuseReflection);
+      }
+
+      updateReSTIRGIHitDistance(oldLuminance, calcBt709Luminance(pathState.radiance), restirHitT, pathState.accumulatedHitDistance);
+    }
+  }
+
+  // Update RestirGI hit distance until a rough surface is hit
+  if (cb.enableReSTIRGI &&
+      !pathState.restirGiHasFoundRoughSurface && 
+      restirHitT > 0.h)
+  {
+    if (opaqueSurfaceMaterialInteraction.isotropicRoughness > cb.reSTIRGIVirtualSampleRoughnessThreshold ||
+        continuationLobe == opaqueLobeTypeDiffuseReflection)
+    {
+      restirHitT = max(restirHitT, pathState.accumulatedHitDistance);
+      pathState.restirGiHasFoundRoughSurface = true;
+    }
+
+    RestirGIRadiance[pathState.pixelCoordinate].a = restirHitT;
+  }
+
+  // Terminate the path if requested
+  // Note: Terminating here ensures no sampling is done for the final iteration.
+
+  if (!pathState.continuePath)
+  {
+    return;
+  }
+
+  accumulateThroughput(pathState, continuationThroughput);
+
+#endif // SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT
+}
+
+// Update the hit distance when a significant contribution to the final result is found
+void updateReSTIRGIHitDistance(inout float16_t oldLuminance, float16_t newLuminance, inout float16_t restirHitT, float16_t newHitT)
+{
+  // If both oldLuminance and newLuminance are 0, still update hit distance
+  if (newLuminance >= oldLuminance * cb.reSTIRGIVirtualSampleLuminanceThreshold)
+  {
+    restirHitT = newHitT;
+    oldLuminance = newLuminance;
+  }
+}
+
+vec3 calculateReSTIRGIRadianceFactor(
+  GeometryFlags geometryFlags,
+  float16_t primaryPerceptualRoughness,
+  float16_t firstSampledLobePdf,
+  float16_t firstSampledSolidAnglePdf,
+  vec3 firstLobeThroughput)
+{
+  // pathState.radiance = L * fi * cosA / (solidAnglePdf * lobePdf)
+  // throughput = fi * cosA / (solidAnglePdf * lobePdf)
+  float16_t isotropicRoughness = calcRoughness(primaryPerceptualRoughness);
+  const float16_t diffuseLobeProbability = geometryFlags.firstSampledLobeIsSpecular ?
+    float16_t(1.0) - firstSampledLobePdf : firstSampledLobePdf;
+
+  // Only skip specular lobe when diffuse probability is high enough.
+  const float16_t minDiffuseProbability = 0.05;
+
+  if (!kRestirGIAcceptLowRoughnessInput && isotropicRoughness < float16_t(RAB_RESTIR_GI_DELTA_ROUGHNESS) && diffuseLobeProbability > minDiffuseProbability)
+  {
+    // For low roughness surface, only diffuse samples are input to ReSTIR GI.
+    // So the input to ReSTIR GI should be L / (solidAnglePdf * lobePdf)
+    if (geometryFlags.firstSampledLobeIsSpecular)
+    {
+      return 0;
+    }
+    else
+    {
+      return 1.0 / max(firstSampledSolidAnglePdf * firstSampledLobePdf * firstLobeThroughput, vec3(1e-7));
+    }
+  }
+  else
+  {
+    // For high roughness surface, both diffuse and specular samples are accepted.
+    // So the input to ReSTIR GI should be L / solidAnglePdf
+    return 1.0 / max(firstSampledSolidAnglePdf * firstLobeThroughput, vec3(1e-7));
+  }
+}
+
+// Restore the ReSTIR GI radiance factor from the texture and multiply it by the actual radiance.
+// Can't use the radiance written out to the IndirectRadiance for ReSTIR GI
+// because there's firefly filtering applied to the radiance values stored in these textures, and that biases the results.
+// This looks kind of stupid because we just wrote this radiance factor to a texture earlier in this function,
+// but it's actually better than storing the factor in a variable. That would result in the factor being spilled and filled
+// multiple times as the integrator progresses through the scene, and with a texture store it's only spilled once.
+void storeRestirGIRadiance(PathState pathState, GeometryFlags geometryFlags, float16_t gbufferSurfaceHitDistance)
+{
+  if (!(cb.enableReSTIRGI && geometryFlags.primarySelectedIntegrationSurface))
+    return;
+
+  f16vec4 restirGIRadianceFactorHitDistance = RestirGIRadiance[pathState.pixelCoordinate];
+  f16vec3 restirGIRadiance = min(restirGIRadianceFactorHitDistance.rgb * pathState.radiance, float16Max);
+
+  // Calculate indirect portion of the path length
+  float16_t restirGIHitDistance = max(restirGIRadianceFactorHitDistance.a - gbufferSurfaceHitDistance, 0.0);
+
+  RestirGIRadiance[pathState.pixelCoordinate] = f16vec4(restirGIRadiance, restirGIHitDistance);
+}
+
+void integrateIndirectPath(
+  ivec2 pixelCoordinate,
+  uint indirectSbtOffset,
+  IndirectPathTextures indirectPathTextures,
+  GeometryFlags geometryFlags, uint16_t mediumMaterialIndex, vec3 rayOrigin, f16vec3 rayDirection,
+  f16vec3 throughput, float16_t rayConeRadius, float16_t firstHitPerceptualRoughness,
+  float16_t firstSampledLobePdf, float16_t firstSampledSolidAnglePdf,
+  float16_t gbufferSurfaceHitDistance)
+{
+  // Initialize Path State
+
+  // Note: Not technically live state as this is only passed into the resolve call and reconstructed from its output.
+  PathState pathState = pathStateCreateEmpty(u16vec2(pixelCoordinate), geometryFlags);
+
+  // Note: Carry over relevant state from the direct lighting integration. These are currently the only values which
+  // need to be set, the rest can remain as default.
+  pathState.origin = rayOrigin;
+  pathState.coneRadius = rayConeRadius;
+  pathState.direction = rayDirection;
+  pathState.mediumMaterialIndex = mediumMaterialIndex;
+  pathState.throughput = throughput;
+  pathState.insideMedium = geometryFlags.insideMedium;
+  pathState.accumulatedHitDistance = gbufferSurfaceHitDistance;
+
+  pathState.coneSpreadAngle = calculateSpreadAngleFromSolidAnglePdf(pathState.coneSpreadAngle, firstSampledSolidAnglePdf);
+
+  if (cb.enableReSTIRGI && geometryFlags.primarySelectedIntegrationSurface)
+  {
+    // Pre-calculate the radiance factor to reduce live state dragged over the integrator
+    // Note: Using throughput passed from the direct lighting integrator, not the path state throughput. Additionally uses first sampled
+    // lobe and solid angle pdf from the direct lighting integrator as this data is only available there.
+    const vec3 restirGIRadianceFactor = calculateReSTIRGIRadianceFactor(
+      geometryFlags, firstHitPerceptualRoughness, firstSampledLobePdf, firstSampledSolidAnglePdf, throughput);
+
+    // Output the radiance factor for ReSTIR GI and other information into the reservoir.
+    // The actual radiance is reconstructed in the temporal reuse pass from the indirect textures that are written out later in the integrator.
+    indirectPathTextures.RestirGIRadiance[pathState.pixelCoordinate] = f16vec4(min(restirGIRadianceFactor, float16Max), 0);
+  }
+
+  if (firstSampledSolidAnglePdf == float16_t(0))
+    pathState.continuePath = false;
+
+  pathState.continuePath &= any(pathState.throughput) > 0;
+
+  // Integrate Secondary Vertices
+
+  if (cb.enableSecondaryBounces)
+  for (; pathState.continuePath; ++pathState.bounceIteration)
+  {
+    // Note: Set to false to be set to true only if the path should continue in the path vertex function.
+    // This is done to easily account for the various cases the path vertex function may return on
+    // which do not require path extension.
+    pathState.continuePath = false;
+
+    pathState.decalEncountered = false;
+
+    // Create a secondary Ray from the Path State
+
+    // Todo: Find a better way to construct this, ideally a
+    // version without tMax when we have generic functions,
+    // and a constructor to take individual values.
+    Ray secondaryRay;
+    secondaryRay.origin = pathState.origin;
+    secondaryRay.coneRadius = pathState.coneRadius;
+    secondaryRay.direction = pathState.direction;
+    secondaryRay.tMax = floatMax;
+
+    // Trace the secondary ray and integrate the secondary vertex
+
+    // if we're inside a solid translucent object, we can't use backface culling
+    // (otherwise we don't hit the other side of the object)
+    uint flags = pathState.insideMedium ? 0 : RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
+    flags |= RAY_FLAG_FORCE_OPAQUE;
+
+    RESOLVE_RAY_TRACE(
+      indirectPathTextures, secondaryRay, flags, indirectSbtOffset,
+      integratePathVertex,
+      cb.secondaryRayMaxInteractions, pathState, MemoryPathState,
+      SEGMENT_HIT_DISTANCE_UNUSED,
+      DEBUG_VIEW_SECONDARY_RAY_INTERACTIONS, DEBUG_VIEW_SECONDARY_RAY_AND_UNORDERED_INTERACTIONS);
+  }
+
+  // Re-load geometry flags from the resource so that they're not carried around as live state during a ray path integration
+  geometryFlags = geometryFlagsReadFromGBuffer(pathState.pixelCoordinate, SharedFlags);
+
+  storeRestirGIRadiance(pathState, geometryFlags, gbufferSurfaceHitDistance);
+
+  vec4 indirectOutData = vec4(pathState.radiance, pathState.firstBounceHitDistance);
+
+  // Sanitize only primary indirect signal
+  // Secondary indirect signal is sanitized in demodulate pass after radiance contribution from the direct lighting is added
+  if (geometryFlags.primarySelectedIntegrationSurface)
+  {
+    indirectOutData = sanitizeRadianceHitDistance(indirectOutData.xyz, indirectOutData.w);
+  }
+
+  // Store the integrated ray path radiance and hit distance 
+  indirectPathTextures.IndirectRadianceHitDistance[pathState.pixelCoordinate] = indirectOutData;
+
+  integratorIndirectPathOutputDebugView(
+    pathState.pixelCoordinate,
+    indirectPathTextures,
+    pathState,
+    geometryFlags);
+}
+
+void integratorIndirectPathOutputDebugView(
+  uvec2 pixelCoordinate,
+  IndirectPathTextures indirectPathTexture,
+  PathState pathState,
+  GeometryFlags geometryFlags)
+{
+  switch(cb.debugView)
+  {
+  default:
+  case DEBUG_VIEW_DISABLED:
+    break;
+  case DEBUG_VIEW_SECONDARY_RAY_BOUNCES:
+    // Revert the last bounceIteration increase on for loop exit
+    storeInDebugView(pathState.pixelCoordinate, pathState.bounceIteration - (cb.enableSecondaryBounces ? 1 : 0));
+    break;
+  case DEBUG_VIEW_NOISY_SECONDARY_INDIRECT_DIFFUSE_RADIANCE:
+    if (!geometryFlags.primarySelectedIntegrationSurface)
+    {
+      if (geometryFlags.firstSampledLobeIsSpecular)
+        storeInDebugView(ivec2(pixelCoordinate), 0);
+      else
+        storeInDebugView(ivec2(pixelCoordinate), pathState.radiance);
+    }
+    break;
+  case DEBUG_VIEW_NOISY_SECONDARY_INDIRECT_SPECULAR_RADIANCE:
+    if (!geometryFlags.primarySelectedIntegrationSurface)
+    {
+      if (geometryFlags.firstSampledLobeIsSpecular)
+        storeInDebugView(ivec2(pixelCoordinate), pathState.radiance);
+      else
+        storeInDebugView(ivec2(pixelCoordinate), 0);
+    }
+    break;
+  case DEBUG_VIEW_NAN:
+    {
+      bool isValid = true;
+      
+      // DEBUG_VIEW_NOISY_SECONDARY_INDIRECT_DIFFUSE_RADIANCE
+      // DEBUG_VIEW_NOISY_SECONDARY_INDIRECT_SPECULAR_RADIANCE
+      if (!geometryFlags.primarySelectedIntegrationSurface)
+        isValid &= isValidValue(pathState.radiance);
+      
+      accumulateInDebugViewAnd(pixelCoordinate, isValid);
+      break;
+    }
+  }
+}
