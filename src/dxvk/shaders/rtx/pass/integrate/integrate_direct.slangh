@@ -29,7 +29,44 @@
 #include "rtx/concept/ray/ray.slangh"
 #include "rtx/concept/surface/surface.slangh"
 #include "rtx/concept/surface_material/surface_material.slangh"
-#include "rtx/algorithm/integrator.slangh"
+#include "rtx/algorithm/integrator_direct.slangh"
+
+// Deserialize the Ray Interaction, Surface Interaction, and Surface Material Interaction
+void deserializeInteractions(
+  ivec2 pixelCoordinate, 
+  GeometryFlags geometryFlags,
+  out MinimalRayInteraction minimalRayInteraction,
+  out MinimalSurfaceInteraction minimalSurfaceInteraction,
+  out PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction)
+{
+  // Re-derive the original primary ray direction
+  const Ray primaryRay = rayCreatePrimaryFromPixel(cb.camera, pixelCoordinate);
+
+  if (geometryFlags.primarySelectedIntegrationSurface)
+  {
+    minimalRayInteraction = minimalRayInteractionReadFromGBuffer(
+      primaryRay, pixelCoordinate, PrimaryViewDirection, PrimaryConeRadius);
+
+    minimalSurfaceInteraction = minimalSurfaceInteractionReadFromGBufferWithError(
+      pixelCoordinate, PrimaryWorldPositionWorldTriangleNormal, PrimaryPositionError);
+
+    polymorphicSurfaceMaterialInteraction = polymorphicSurfaceMaterialInteractionReadFromGBuffer(
+      pixelCoordinate, PrimaryWorldShadingNormal, PrimaryPerceptualRoughness, PrimaryAlbedo, PrimaryBaseReflectivity,
+      SharedMaterialData0, SharedMaterialData1);
+  }
+  else
+  {
+    minimalRayInteraction = minimalRayInteractionReadFromGBuffer(
+      primaryRay, pixelCoordinate, SecondaryViewDirection, SecondaryConeRadius);
+
+    minimalSurfaceInteraction = minimalSurfaceInteractionReadFromGBufferWithError(
+      pixelCoordinate, aliasedData0.SecondaryWorldPositionWorldTriangleNormal, aliasedData2.SecondaryPositionError);
+
+    polymorphicSurfaceMaterialInteraction = polymorphicSurfaceMaterialInteractionReadFromGBuffer(
+      pixelCoordinate, SecondaryWorldShadingNormal, aliasedData1.SecondaryPerceptualRoughness, SecondaryAlbedo, SecondaryBaseReflectivity,
+      SharedMaterialData0, SharedMaterialData1);
+  }
+}
 
 void integrate_direct_pass(ivec2 threadIndex)
 {
