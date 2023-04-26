@@ -82,7 +82,7 @@ namespace dxvk {
         RW_TEXTURE2D(INTEGRATE_DIRECT_BINDING_INDIRECT_RAY_ORIGIN_DIRECTION_OUTPUT)
         RW_TEXTURE2D(INTEGRATE_DIRECT_BINDING_INDIRECT_THROUGHPUT_CONE_RADIUS_OUTPUT)
         RW_TEXTURE2D(INTEGRATE_DIRECT_BINDING_INDIRECT_FIRST_HIT_PERCEPTUAL_ROUGHNESS_OUTPUT)
-        RW_TEXTURE2D(INTEGRATE_DIRECT_BINDING_INDIRECT_FIRST_SAMPLED_LOBE_AND_SOLID_ANGLE_PDF_OUTPUT)
+        RW_TEXTURE2D(INTEGRATE_DIRECT_BINDING_INDIRECT_FIRST_SAMPLED_LOBE_DATA_OUTPUT)
       END_PARAMETER()
     };
   }
@@ -133,7 +133,6 @@ namespace dxvk {
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SECONDARY_VIEW_DIRECTION_INPUT, rtOutput.m_secondaryViewDirection.view(Resources::AccessType::Read), nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SECONDARY_CONE_RADIUS_INPUT, rtOutput.m_secondaryConeRadius.view(Resources::AccessType::Read), nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SECONDARY_WORLD_POSITION_WORLD_TRIANGLE_NORMAL_INPUT, rtOutput.m_secondaryWorldPositionWorldTriangleNormal.view(Resources::AccessType::Read), nullptr);
-    ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SECONDARY_POSITION_ERROR_INPUT, rtOutput.m_secondaryPositionError.view, nullptr);
 
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_FLAGS_INPUT_OUTPUT, rtOutput.m_sharedFlags.view, nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_MEDIUM_MATERIAL_INDEX_INPUT_OUTPUT, rtOutput.m_sharedMediumMaterialIndex.view, nullptr);
@@ -150,7 +149,9 @@ namespace dxvk {
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_INDIRECT_THROUGHPUT_CONE_RADIUS_OUTPUT, rtOutput.m_indirectThroughputConeRadius.view(Resources::AccessType::Write), nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_INDIRECT_FIRST_HIT_PERCEPTUAL_ROUGHNESS_OUTPUT, rtOutput.m_indirectFirstHitPerceptualRoughness.view(Resources::AccessType::Write), nullptr);
 
-    ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_INDIRECT_FIRST_SAMPLED_LOBE_AND_SOLID_ANGLE_PDF_OUTPUT, rtOutput.m_indirectFirstSampledLobeAndSolidAnglePdf.view(Resources::AccessType::Write), nullptr);
+    // Aliased resources
+    ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SECONDARY_POSITION_ERROR_INPUT, rtOutput.m_secondaryPositionError.view(Resources::AccessType::Read), nullptr);
+    ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_INDIRECT_FIRST_SAMPLED_LOBE_DATA_OUTPUT, rtOutput.m_indirectFirstSampledLobeData.view(Resources::AccessType::Write), nullptr);
 
     const auto rayDims = rtOutput.m_compositeOutputExtent;
 

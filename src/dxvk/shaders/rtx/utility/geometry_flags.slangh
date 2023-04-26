@@ -69,7 +69,13 @@ uint geometryFlagsEncode(GeometryFlags geometryFlags)
   encodedFlags = packedFlagSet(
     encodedFlags, geometryFlags.performPSRR ? (1 << 9) : 0);
 
-  encodedFlags |= (uint(geometryFlags.objectMask) & OBJECT_MASK_ALL_DYNAMIC) << 8;
+#if OBJECT_MASK_ALL_DYNAMIC_NUMBER_OF_ACTIVE_BITS > (16 - 12)
+  "There is not enough bits in the encoded geometry flags for dynamic object mask."
+#endif   
+
+  uint dynamicObjectMaskBits = (uint(geometryFlags.objectMask) & OBJECT_MASK_ALL_DYNAMIC) 
+                         >> OBJECT_MASK_ALL_DYNAMIC_FIRST_ACTIVE_BIT_OFFSET;
+  encodedFlags |= dynamicObjectMaskBits << 11; 
 
   return encodedFlags;
 }
@@ -98,7 +104,8 @@ GeometryFlags geometryFlagsDecode(uint16_t encodedFlags)
   geometryFlags.performPSTR = packedFlagGet(encodedFlags, (1 << 8));
   geometryFlags.performPSRR = packedFlagGet(encodedFlags, (1 << 9));
 
-  geometryFlags.objectMask = (encodedFlags >> 8) & OBJECT_MASK_ALL_DYNAMIC;
+  geometryFlags.objectMask = ((encodedFlags >> 11) << OBJECT_MASK_ALL_DYNAMIC_FIRST_ACTIVE_BIT_OFFSET) & OBJECT_MASK_ALL_DYNAMIC;
+
 
   return geometryFlags;
 }

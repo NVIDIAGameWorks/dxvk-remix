@@ -39,7 +39,7 @@ Sampler2D<float3> SkyMatte;
 // exception here is the radiance buffer which is just a sum of all the contributions in the
 // geometry resolver.
 
-layout(r8ui, binding = GBUFFER_BINDING_SHARED_FLAGS_OUTPUT)
+layout(r16ui, binding = GBUFFER_BINDING_SHARED_FLAGS_OUTPUT)
 RWTexture2D<uint> SharedFlags;
 
 layout(rg16f, binding = GBUFFER_BINDING_SHARED_RADIANCE_RG_OUTPUT)

@@ -27,7 +27,7 @@
 
 // Shared Inputs
 
-layout(r8ui, binding = RESTIR_GI_FINAL_SHADING_BINDING_SHARED_FLAGS_INPUT)
+layout(r16ui, binding = RESTIR_GI_FINAL_SHADING_BINDING_SHARED_FLAGS_INPUT)
 Texture2D<uint> SharedFlags;
 
 layout(r32ui, binding = RESTIR_GI_FINAL_SHADING_BINDING_SHARED_MATERIAL_DATA0_INPUT)
@@ -83,9 +83,6 @@ RWTexture2D<float4> PrimaryIndirectSpecularLobeRadianceHitDistance;
 
 layout(binding = RESTIR_GI_FINAL_SHADING_BINDING_RESTIR_GI_RESERVOIR_OUTPUT)
 RWStructuredBuffer<ReSTIRGI_PackedReservoir> RestirGIReservoirBuffer;
-
-layout(rgba32f, binding = RESTIR_GI_FINAL_SHADING_BINDING_RESTIR_GI_HIT_GEOMETRY_OUTPUT)
-RWTexture2D<float4> restirGIHitGeometry;
 
 layout(rg16f, binding = RESTIR_GI_FINAL_SHADING_BINDING_BSDF_FACTOR2_OUTPUT)
 RWTexture2D<float2> BSDFFactor2;

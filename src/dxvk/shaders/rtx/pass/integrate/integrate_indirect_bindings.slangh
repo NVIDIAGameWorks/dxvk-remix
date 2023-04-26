@@ -31,7 +31,7 @@
 layout(binding = INTEGRATE_INDIRECT_BINDING_SKYPROBE)
 SamplerCube<float3> SkyProbe;
 
-layout(r8ui, binding = INTEGRATE_INDIRECT_BINDING_SHARED_FLAGS_INPUT)
+layout(r16ui, binding = INTEGRATE_INDIRECT_BINDING_SHARED_FLAGS_INPUT)
 Texture2D<uint> SharedFlags;
 
 layout(r16ui, binding = INTEGRATE_INDIRECT_BINDING_SHARED_MEDIUM_MATERIAL_INDEX_INPUT)
@@ -77,8 +77,13 @@ Texture2D<float> SecondaryHitDistance;
 layout(rgba16f, binding = INTEGRATE_INDIRECT_BINDING_LAST_COMPOSITE_INPUT)
 Texture2D<float4> LastComposite;
 
-layout(rgba16f, binding = INTEGRATE_INDIRECT_BINDING_INDIRECT_FIRST_SAMPLED_LOBE_AND_SOLID_ANGLE_PDF_INPUT)
-Texture2D<float2> FirstSampledLobeAndSolidAnglePdf;
+layout(r32ui, binding = INTEGRATE_INDIRECT_BINDING_FIRST_SAMPLED_LOBE_DATA_INPUT)
+Texture2D<uint> FirstSampledLobeData;
+
+// Storage
+
+layout(rgba32ui, binding = INTEGRATE_INDIRECT_BINDING_DECAL_MATERIAL_STORAGE)
+REORDER_COHERENT RWTexture2D<uint4> DecalMaterial;
 
 // Outputs
 
@@ -91,8 +96,6 @@ REORDER_COHERENT RWTexture2D<float4> RestirGIRadiance;
 layout(rgba32f, binding = INTEGRATE_INDIRECT_BINDING_RESTIR_GI_HIT_GEOMETRY_OUTPUT)
 RWTexture2D<float4> RestirGIHitGeometry;
 
-layout(rgba32ui, binding = INTEGRATE_INDIRECT_BINDING_DECAL_MATERIAL_STORAGE)
-REORDER_COHERENT RWTexture2D<uint4> DecalMaterial;
 
 // Aliased resources
 

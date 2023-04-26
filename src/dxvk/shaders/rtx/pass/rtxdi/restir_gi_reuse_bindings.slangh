@@ -66,7 +66,7 @@ Texture2D<float4> RestirGIHitGeometry;
 layout(r32f, binding = RESTIR_GI_REUSE_BINDING_POSITION_ERROR_INPUT)
 Texture2D<float> PrimaryPositionError;
 
-layout(r8ui, binding = RESTIR_GI_REUSE_BINDING_SHARED_FLAGS_INPUT)
+layout(r16ui, binding = RESTIR_GI_REUSE_BINDING_SHARED_FLAGS_INPUT)
 Texture2D<uint> SharedFlags;
 
 layout(rgba32f, binding = RESTIR_GI_REUSE_BINDING_PREV_WORLD_POSITION_INPUT)
