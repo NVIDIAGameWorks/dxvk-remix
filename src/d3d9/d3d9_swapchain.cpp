@@ -391,6 +391,10 @@ namespace dxvk {
     recreate   |= window != m_window;    
     recreate   |= m_dialog != m_lastDialog;
 
+    // NV-DXVK start: check if we've received a new window
+    recreate   |= !m_presenter->isSameHWND(window);
+    // NV-DXVK end
+
     m_window    = window;
 
     m_dirty    |= vsync != m_vsync;
