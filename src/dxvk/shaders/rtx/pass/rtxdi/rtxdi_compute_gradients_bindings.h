@@ -98,7 +98,7 @@ Texture2D<float> PreviousRtxdiIlluminance;
 layout(r32f, binding = RTXDI_COMPUTE_GRADIENTS_BINDING_HIT_DISTANCE_INPUT)
 Texture2D<float> PrimaryHitDistance;
 
-layout(r8ui, binding = RTXDI_COMPUTE_GRADIENTS_BINDING_SHARED_FLAGS_INPUT)
+layout(r16ui, binding = RTXDI_COMPUTE_GRADIENTS_BINDING_SHARED_FLAGS_INPUT)
 Texture2D<uint> SharedFlags;
 
 layout(rg16f, binding = RTXDI_COMPUTE_GRADIENTS_BINDING_GRADIENTS_OUTPUT)

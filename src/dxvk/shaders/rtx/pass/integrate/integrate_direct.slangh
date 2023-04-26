@@ -152,7 +152,6 @@ void integrate_direct_pass(ivec2 threadIndex)
   directPathTextures.IndirectRayOriginDirection = aliasedData0.IndirectRayOriginDirection;
   directPathTextures.IndirectThroughputConeRadius = IndirectThroughputConeRadius;
   directPathTextures.IndirectFirstHitPerceptualRoughness = aliasedData1.IndirectFirstHitPerceptualRoughness;
-  directPathTextures.IndirectFirstSampledLobeAndSolidAnglePdf = IndirectFirstSampledLobeAndSolidAnglePdf;
   directPathTextures.PrimaryRtxdiIlluminance = PrimaryRtxdiIlluminance;
 
   integrateDirectPath(
