@@ -29,7 +29,7 @@
 #include "rtx/concept/ray/ray.slangh"
 #include "rtx/concept/surface/surface.slangh"
 #include "rtx/concept/surface_material/surface_material.slangh"
-#include "rtx/algorithm/integrator_indirect_1spp.slangh"
+#include "rtx/algorithm/integrator_indirect.slangh"
 
 void integrate_indirect_pass(ivec2 threadIndex)
 { 
