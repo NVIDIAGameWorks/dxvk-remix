@@ -77,21 +77,22 @@ void integrate_indirect_pass(ivec2 threadIndex)
 
   const vec4 rayOriginDirection = RayOriginDirection[threadIndex];
   const vec4 throughputConeRadius = aliasedData0.ThroughputConeRadius[threadIndex];
-  const vec2 firstSampledLobeAndSolidAnglePdf = FirstSampledLobeAndSolidAnglePdf[threadIndex];
+  IndirectSampleData indirectSampleData;
+  indirectSampleData.load(threadIndex, FirstSampledLobeData);
 
   const vec3 rayOrigin = rayOriginDirection.xyz;
   const f16vec3 rayDirection = signedOctahedralToSphereDirection(snorm2x16ToFloat2x32(floatBitsToUint(rayOriginDirection.w)));
   const f16vec3 throughput = throughputConeRadius.xyz;
   const float16_t coneRadius = throughputConeRadius.w;
   const float16_t firstHitPerceptualRoughness = FirstHitPerceptualRoughness[threadIndex];
-  const float16_t firstSampledLobePdf = firstSampledLobeAndSolidAnglePdf.x;
-  const float16_t firstSampledSolidAnglePdf = firstSampledLobeAndSolidAnglePdf.y;
+  const float16_t firstSampledLobePdf = indirectSampleData.firstSampledLobePdf;
+  const float16_t firstSampledSolidAnglePdf = indirectSampleData.firstSampledSolidAnglePdf;
 
-  float accumulatedHitDistance = 0;
+  float gbufferSurfaceHitDistance = 0;
   if (geometryFlags.primarySelectedIntegrationSurface)
-    accumulatedHitDistance = PrimaryHitDistance[threadIndex];
+    gbufferSurfaceHitDistance = PrimaryHitDistance[threadIndex];
   else
-    accumulatedHitDistance = SecondaryHitDistance[threadIndex];
+    gbufferSurfaceHitDistance = SecondaryHitDistance[threadIndex];
 
   // Integrate the Indirect portion of the Path
 
@@ -107,5 +108,5 @@ void integrate_indirect_pass(ivec2 threadIndex)
     threadIndex, INTEGRATE_INDIRECT_SBT_OFFSET_STANDARD, indirectPathTextures,
     geometryFlags, mediumMaterialIndex, rayOrigin, rayDirection,
     throughput, coneRadius, firstHitPerceptualRoughness,
-    firstSampledLobePdf, firstSampledSolidAnglePdf, accumulatedHitDistance);
+    firstSampledLobePdf, firstSampledSolidAnglePdf, gbufferSurfaceHitDistance);
 }

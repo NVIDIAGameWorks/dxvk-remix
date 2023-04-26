@@ -258,7 +258,7 @@ namespace dxvk
       AliasedResource m_secondaryViewDirection;
       AliasedResource m_secondaryConeRadius;
       AliasedResource m_secondaryWorldPositionWorldTriangleNormal;
-      Resource m_secondaryPositionError;
+      AliasedResource m_secondaryPositionError;
       AliasedResource m_decalMaterial;
       AliasedResource m_decalEmissiveRadiance;
       Resource m_alphaBlendGBuffer;
@@ -276,7 +276,7 @@ namespace dxvk
 
       AliasedResource m_indirectRayOriginDirection;
       AliasedResource m_indirectThroughputConeRadius;
-      AliasedResource m_indirectFirstSampledLobeAndSolidAnglePdf;
+      AliasedResource m_indirectFirstSampledLobeData;
       AliasedResource m_indirectFirstHitPerceptualRoughness;
 
       AliasedResource m_gbufferPSRData[7];

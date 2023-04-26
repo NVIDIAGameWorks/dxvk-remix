@@ -69,7 +69,7 @@ Texture2D<float2> PrimaryScreenSpaceMotionVector;
 layout(r32f, binding = RTXDI_REUSE_BINDING_POSITION_ERROR_INPUT)
 Texture2D<float> PrimaryPositionError;
 
-layout(r8ui, binding = RTXDI_REUSE_BINDING_SHARED_FLAGS_INPUT)
+layout(r16ui, binding = RTXDI_REUSE_BINDING_SHARED_FLAGS_INPUT)
 Texture2D<uint> SharedFlags;
 
 layout(rg16f, binding = RTXDI_REUSE_BINDING_BSDF_FACTOR_OUTPUT)
