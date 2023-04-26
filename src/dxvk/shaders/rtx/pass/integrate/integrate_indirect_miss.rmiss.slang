@@ -36,7 +36,7 @@
 // Note: Needed for declaration of integration ray payload structure
 #include "rtx/algorithm/integrator.slangh"
 
-#include "rtx/algorithm/integrator_indirect_1spp.slangh"
+#include "rtx/algorithm/integrator_indirect.slangh"
 
 [shader("miss")]
 void main(inout MemoryPathState rayPayload : SV_RayPayload)
