@@ -1,0 +1,444 @@
+/*
+* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/algorithm/path_state.slangh"
+#include "rtx/utility/noise.slangh"
+#include "rtx/utility/color.slangh"
+#include "rtx/utility/packing.slangh"
+#include "rtx/utility/debug_view_helpers.slangh"
+#include "rtx/utility/gbuffer_helpers.slangh"
+#include "rtx/concept/ray/ray.slangh"
+#include "rtx/pass/instance_definitions.slangh"
+#include "rtx/concept/surface/surface.slangh"
+#include "rtx/concept/surface_material/surface_material.slangh"
+#include "rtx/concept/light/light.slangh"
+#include "rtx/algorithm/lighting.slangh"
+#include "rtx/algorithm/resolve.slangh"
+#include "rtx/algorithm/visibility.slangh"
+#include "integrator.slangh"
+
+void evalNEEPrimary(
+  vec3 throughput,
+  inout vec3 diffuseLobeRadiance,
+  inout vec3 specularLobeRadiance,
+  out float hitDistance, 
+  out bool hasOpaqueHit,
+  out float illuminance,
+  LightSample lightSample, 
+  float invSelectionPdf, 
+  uint8_t sampledTransportPortalIndex, 
+  PortalSpace2BitsType portalSpace,
+  uint8_t objectMask,
+  bool isViewModelSurface,
+  Ray viewRay, 
+  MinimalRayInteraction minimalRayInteraction, 
+  MinimalSurfaceInteraction minimalSurfaceInteraction,
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction)
+{
+  // Setup and trace the visibility ray
+
+  uint8_t rayMask = OBJECT_MASK_OPAQUE | (objectMask & OBJECT_MASK_ALL_DYNAMIC);
+  if (cb.enableDirectTranslucentShadows) rayMask |= OBJECT_MASK_TRANSLUCENT;
+
+  VisibilityResult visibility = traceVisibilityRay(minimalSurfaceInteraction,
+    lightSample.position, false, rayMask,
+    visibilityModeAccurateHitDistance | visibilityModeEnableTranslucentMaterials,
+    sampledTransportPortalIndex, portalSpace,
+    minimalRayInteraction.coneRadius, viewRay.spreadAngle, 1.0, isViewModelSurface);
+
+  hitDistance = visibility.hitDistance;
+  hasOpaqueHit = visibility.hasOpaqueHit;
+  illuminance = 0;
+
+  if (visibility.hasOpaqueHit)
+    return;
+
+  // Evaluate the material and accumulate throughput and hit distance
+
+  const SurfaceMaterialInteractionSplitWeight splitWeight = opaqueSurfaceMaterialInteractionCalcProjectedWeight(
+    opaqueSurfaceMaterialInteraction, minimalRayInteraction, visibility.rayDirection);
+
+  const float lightSampleThroughput = invSelectionPdf / lightSample.solidAnglePdf;
+
+  // Determine the weight for the lobes lobe
+
+  const f16vec3 diffuseLobeWeight = splitWeight.diffuseReflectionWeight;
+  const f16vec3 specularLobeWeight = splitWeight.specularReflectionWeight;
+
+  // Accumulate Radiance
+
+  const vec3 commonLightThroughput = lightSampleThroughput * vec3(visibility.attenuation);
+  const vec3 diffuseLobeLightThroughput = vec3(diffuseLobeWeight) * commonLightThroughput;
+  const vec3 specularLobeLightThroughput = vec3(specularLobeWeight) * commonLightThroughput;
+  const vec3 diffuseAttenuatedRadiance = lightSample.radiance * diffuseLobeLightThroughput;
+  const vec3 specularAttenuatedRadiance = lightSample.radiance * specularLobeLightThroughput;
+
+  diffuseLobeRadiance += throughput * diffuseAttenuatedRadiance;
+  specularLobeRadiance += throughput * specularAttenuatedRadiance;
+
+  // Illuminance for RTXDI gradients: just light sample radiance and visibility over sampling PDF
+  illuminance = calcBt709Luminance(commonLightThroughput * lightSample.radiance);
+}
+
+void calculateRussianRouletteOnFirstBounce(
+  inout RNG randomState,
+  inout vec3 throughput,
+  inout float16_t firstSampledSolidAnglePdf) 
+{
+  if (!(cb.enableRussianRoulette && cb.pathMinBounces == 0))
+    return;
+
+  float continueProbability = 
+    clamp(calcBt709Luminance(throughput), 
+          cb.russianRoulette1stBounceMinContinueProbability,
+          cb.russianRoulette1stBounceMaxContinueProbability);
+
+  const float continueSample = getNextSampleBlueNoise(randomState);
+
+  // Note: < used to ensure path never continues if the probability is 0 (and to avoid NaNs in the
+  // throughput when the probability is divided into it).
+  const bool continueResult = continueSample < continueProbability;
+
+  // Note: Factor the probability of continuing the path into the throughput. This causes odd brightness
+  // in denoising when the continue probability is very low, but this math has been validated to be
+  // correct as far as I can tell.
+  if (continueResult)
+  {
+    throughput *= 1.0f / continueProbability;
+
+    // Multiply RR probability into the first sampled solid angle pdf as well so that RR probability carries
+    // over into calculateReSTIRGIRadianceFactor() in indirect pass
+    firstSampledSolidAnglePdf *= float16_t(continueProbability);
+  }
+  else 
+  {
+    // Denote discarded paths with 0 throughput
+    throughput = 0;
+  } 
+}
+
+// Samples an indirect ray at ray path's first bounce
+void sampleIndirectRayForFirstBounce(
+  u16vec2 pixelCoordinate,
+  Ray primaryRay,
+  float16_t integrationSurfacePdf,
+  MinimalRayInteraction primaryMinimalRayInteraction, 
+  MinimalSurfaceInteraction primaryMinimalSurfaceInteraction,
+  PolymorphicSurfaceMaterialInteraction primaryPolymorphicSurfaceMaterialInteraction,
+  inout uint16_t mediumMaterialIndex,
+  inout bool insideMedium,
+  out bool mediumChanged,
+  out Ray sampledRay,
+  out vec3 throughput,
+  out float16_t perceptualRoughness,
+  out uint8_t firstRayPathSampledLobe,
+  out float16_t firstSampledLobePdf,
+  out float16_t firstSampledSolidAnglePdf,
+  out bool firstSampledLobeIsSpecular)
+{
+  // Construct RNG as it is not carried in the path state
+  RNG randomState = createRNG(pixelCoordinate, cb.frameIdx, PathState::calculateRNGOffsetOnFirstBounce(kRNGOffsetSampleFirstBounceDirection));
+
+  // Note: Set the perceptual roughness only in the case of a material actually having roughness 
+  // (which for now is only opaque, but may change in the future).
+  perceptualRoughness = 0;
+
+  if (polymorphicSurfaceMaterialInteractionGetTypeHelper(primaryPolymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque)
+  {
+    perceptualRoughness = roughnessToPerceptualRoughness(
+      opaqueSurfaceMaterialInteractionCreate(primaryPolymorphicSurfaceMaterialInteraction).isotropicRoughness);
+  }
+
+  // Note: Throughput starts off by dividing by the PDF for the integration surface from the g-buffer pass.
+  // This is done to account for PSR-related decisions into the throughput so that the integration output (which is
+  // stochastic, unlike the emissive outputs from the g-buffer pass) will not lose energy.
+  throughput = 1.0f / integrationSurfacePdf;
+
+  const bool oldInsideMedium = insideMedium;
+  
+  // Sample a new direction
+  sampledRay = sampleDirection(randomState, insideMedium, throughput,
+                               primaryRay, primaryMinimalRayInteraction, primaryMinimalSurfaceInteraction,
+                               primaryPolymorphicSurfaceMaterialInteraction,
+                               firstRayPathSampledLobe, firstSampledLobePdf, firstSampledSolidAnglePdf,
+                               true);
+  
+  // Set the material medium index if a medium was entered or exited
+  mediumChanged = evalMediumChange(oldInsideMedium, insideMedium, primaryPolymorphicSurfaceMaterialInteraction, mediumMaterialIndex);
+  
+  // Set the first sampled lobe type
+
+  firstSampledLobeIsSpecular = true;
+
+  if (polymorphicSurfaceMaterialInteractionGetTypeHelper(primaryPolymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque)
+  {
+    // Note: Opacity on opaque objects treated as a specular lobe as it should be filtered like a reflection (not blurred).
+    firstSampledLobeIsSpecular = firstRayPathSampledLobe != opaqueLobeTypeDiffuseReflection;
+  }
+    
+  // Apply Russian Roulette prior to checking this ray path being valid to integrate
+  calculateRussianRouletteOnFirstBounce(randomState, throughput, firstSampledSolidAnglePdf);
+}
+
+void sampleAndStoreIndirectRayPathSample(
+  u16vec2 pixelCoordinate,
+  Ray primaryRay,
+  float16_t integrationSurfacePdf,
+  MinimalRayInteraction primaryMinimalRayInteraction, 
+  MinimalSurfaceInteraction primarySurfaceInteraction,
+  PolymorphicSurfaceMaterialInteraction primaryPolymorphicSurfaceMaterialInteraction,
+  inout GeometryFlags geometryFlags)
+{
+  uint16_t mediumMaterialIndex = SharedMediumMaterialIndex[pixelCoordinate];
+  bool insideMedium = geometryFlags.insideMedium;
+
+  bool mediumChanged;
+  Ray sampledRay;
+  vec3 throughput;
+  float16_t perceptualRoughness;
+  uint8_t firstRayPathSampledLobe;
+  float16_t firstSampledSolidAnglePdf;
+  float16_t firstSampledLobePdf;
+  bool firstSampledLobeIsSpecular;
+
+  // Sample an indirect ray
+  sampleIndirectRayForFirstBounce(pixelCoordinate, primaryRay, integrationSurfacePdf,
+                                  primaryMinimalRayInteraction, 
+                                  primarySurfaceInteraction,
+                                  primaryPolymorphicSurfaceMaterialInteraction,
+                                  mediumMaterialIndex, insideMedium, 
+                                  mediumChanged, sampledRay, throughput, perceptualRoughness, 
+                                  firstRayPathSampledLobe, firstSampledLobePdf, firstSampledSolidAnglePdf, firstSampledLobeIsSpecular);
+
+  // Serialize out the Medium Material Index if it changed
+  if (mediumChanged)
+    imageStore(SharedMediumMaterialIndex, pixelCoordinate, mediumMaterialIndex);
+
+  // Output the sampled lobe information for the Indirect integration pass
+  aliasedData0.IndirectRayOriginDirection[pixelCoordinate] = vec4(
+    sampledRay.origin,
+    uintBitsToFloat(float2x32ToSnorm2x16(sphereDirectionToSignedOctahedral(sampledRay.direction))));
+  IndirectThroughputConeRadius[pixelCoordinate] = vec4(throughput, sampledRay.coneRadius);
+  aliasedData1.IndirectFirstHitPerceptualRoughness[pixelCoordinate] = perceptualRoughness;
+
+  IndirectSampleData indirectSampleData;
+  indirectSampleData.firstSampledLobeIsSpecular = firstSampledLobeIsSpecular;
+  indirectSampleData.firstSampledLobePdf = firstSampledLobePdf;
+  indirectSampleData.firstSampledSolidAnglePdf = firstSampledSolidAnglePdf;
+  indirectSampleData.insideMedium = insideMedium;
+  indirectSampleData.store(pixelCoordinate, aliasedData2.IndirectFirstSampledLobeData);
+
+  // Store the Geometry Flags with the new path information if it changed
+  if (insideMedium != geometryFlags.insideMedium || firstSampledLobeIsSpecular != geometryFlags.firstSampledLobeIsSpecular)
+  {
+    geometryFlags.insideMedium = insideMedium;
+    geometryFlags.firstSampledLobeIsSpecular = firstSampledLobeIsSpecular;
+    geometryFlagsWriteToGBuffer(geometryFlags, pixelCoordinate, SharedFlags);
+  }
+ }
+
+void integrateDirectPath(
+  inout RNG randomState, ivec2 pixelCoordinate,
+  DirectPathTextures directPathTextures,
+  GeometryFlags geometryFlags, float16_t integrationSurfacePdf,
+  Ray primaryRay, MinimalRayInteraction primaryMinimalRayInteraction, MinimalSurfaceInteraction primarySurfaceInteraction,
+  PolymorphicSurfaceMaterialInteraction primaryPolymorphicSurfaceMaterialInteraction)
+{
+
+  // Note: Throughput starts off by dividing by the PDF for the integration surface from the g-buffer pass.
+  // This is done to account for PSR-related decisions into the throughput so that the integration output (which is
+  // stochastic, unlike the emissive outputs from the g-buffer pass) will not lose energy.
+  vec3 throughput = 1.0f / integrationSurfacePdf;
+
+  // Note: Emission not added in for the primary vertex as it is handled already by the G-Buffer
+  // pass. This is done because these contributions are noise-free and do not need to be denoised.
+
+  vec3 diffuseLobeRadiance = vec3(0.0f, 0.0f, 0.0f);
+  vec3 specularLobeRadiance = vec3(0.0f, 0.0f, 0.0f);
+  float lightHitDistance = 0.0f;
+  float illuminance = 0;
+
+  if (cb.enableDirectLighting && polymorphicSurfaceMaterialInteractionGetTypeHelper(primaryPolymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque)
+  {
+    OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(primaryPolymorphicSurfaceMaterialInteraction);
+
+    // Select a light for NEE
+
+    LightSample lightSample;
+    float inverseSelectionPdf;
+    bool rtxdiLightSampleValid = false;
+    bool risLightSampleValid = false;
+    // Note: The Ray Portal index that the NEE light sample should be assumed to be sampled through.
+    // Set to the invalid index if the light was not sampled through a Ray Portal.
+    uint8_t sampledTransportPortalIndex = invalidRayPortalIndex;
+
+    // Note: Use RTXDI for NEE only if it is requested and if the primary surface is being integrated as
+    // running RTXDI on secondary surfaces will attempt to use lights from the primary surface which results
+    // in poor quality lighting if the surface is in a significantly different spatial location.
+    if (
+      cb.enableRtxdi &&
+      geometryFlags.primarySelectedIntegrationSurface)
+    {
+      // Select and sample a light for NEE via RTXDI
+
+      rtxdiLightSampleValid = sampleLightRTXDI(
+        pixelCoordinate,
+        primarySurfaceInteraction,
+        lightSample, inverseSelectionPdf, sampledTransportPortalIndex);
+    }
+    else
+    {
+      // Select and sample a light for NEE via RIS
+
+      risLightSampleValid = sampleLightRIS(
+        randomState,
+        primarySurfaceInteraction, opaqueSurfaceMaterialInteraction, primaryMinimalRayInteraction.viewDirection,
+        lightSample, inverseSelectionPdf);
+    }
+
+    // Evaluate NEE
+
+    if (rtxdiLightSampleValid || risLightSampleValid)
+    {
+      bool hasOpaqueHit = false;
+
+      evalNEEPrimary(
+        throughput,
+        diffuseLobeRadiance, specularLobeRadiance, lightHitDistance, hasOpaqueHit, illuminance,
+        lightSample, inverseSelectionPdf, sampledTransportPortalIndex, geometryFlags.portalSpace, geometryFlags.objectMask,
+        geometryFlags.isViewModel, primaryRay, primaryMinimalRayInteraction, primarySurfaceInteraction,
+        opaqueSurfaceMaterialInteraction);
+
+      if (rtxdiLightSampleValid && hasOpaqueHit && cb.enableRtxdiDiscardInvisibleSamples)
+      {
+        RTXDI_Reservoir reservoir = RAB_LoadReservoir(pixelCoordinate, RTXDI_GetSpatialOutputPage());
+
+        reservoir.lightIdx = RTXDI_INVALID_LIGHT_INDEX;
+        reservoir.weightSum = 0;
+
+        RAB_StoreReservoir(reservoir, pixelCoordinate, RTXDI_GetSpatialOutputPage());
+      }
+    }
+  }
+
+  // Output direct lighting radiance information
+
+  if (geometryFlags.primarySelectedIntegrationSurface)
+  {
+    // Note: Output split direct lighting contribution only if the selected integration surface is primary,
+    // the secondary surface uses a combined lighting contribution.
+    directPathTextures.PrimaryDirectDiffuseLobeRadianceHitDistance[pixelCoordinate] =
+      sanitizeRadianceHitDistance(diffuseLobeRadiance, lightHitDistance);
+    directPathTextures.PrimaryDirectSpecularLobeRadianceHitDistance[pixelCoordinate] =
+      sanitizeRadianceHitDistance(specularLobeRadiance, lightHitDistance);
+    // Store the surface illuminance for gradient computation.
+    directPathTextures.PrimaryRtxdiIlluminance[pixelCoordinate] = illuminance;
+  }
+  else
+  {
+    float4 secondaryCombinedDiffuseLobeRadianceHitDistance;
+    float4 secondaryCombinedSpecularLobeRadianceHitDistance;
+
+    // Note: For secondary surfaces, output the direct lighting radiance for the opposing lobe as usual and set
+    // the current lobe direct lighting radiance into the current lobe output, intended to be summed into in
+    // the indirect signal (as this acts as a fine way to carry the state between passes, the actual
+    // output packing/firefly filtering will happen in the demodulate pass as well).
+    if (geometryFlags.firstSampledLobeIsSpecular)
+    {
+      secondaryCombinedDiffuseLobeRadianceHitDistance = sanitizeRadianceHitDistance(diffuseLobeRadiance, lightHitDistance);
+      secondaryCombinedSpecularLobeRadianceHitDistance = float4(specularLobeRadiance, kEmptyPixelHitDistance);
+    }
+    else
+    {
+      secondaryCombinedDiffuseLobeRadianceHitDistance = float4(diffuseLobeRadiance, kEmptyPixelHitDistance);
+      secondaryCombinedSpecularLobeRadianceHitDistance = sanitizeRadianceHitDistance(specularLobeRadiance, lightHitDistance); 
+    }
+
+    directPathTextures.SecondaryCombinedDiffuseLobeRadianceHitDistance[pixelCoordinate] = secondaryCombinedDiffuseLobeRadianceHitDistance;
+    directPathTextures.SecondaryCombinedSpecularLobeRadianceHitDistance[pixelCoordinate] = secondaryCombinedSpecularLobeRadianceHitDistance;
+
+    directPathTextures.PrimaryRtxdiIlluminance[pixelCoordinate] = 0;
+  }
+  
+  integratorDirectPathOutputDebugView(pixelCoordinate, directPathTextures, geometryFlags);
+}
+
+void integratorDirectPathOutputDebugView(
+  uvec2 pixelCoordinate,
+  DirectPathTextures directPathTextures,
+  GeometryFlags geometryFlags)
+{
+  IndirectSampleData indirectSampleData;
+
+  switch(cb.debugView)
+  {
+  default:
+  case DEBUG_VIEW_DISABLED:
+    break;
+  case DEBUG_VIEW_NOISY_SECONDARY_DIRECT_DIFFUSE_RADIANCE:
+  {
+    if (!geometryFlags.primarySelectedIntegrationSurface)  
+      storeInDebugView(pixelCoordinate, directPathTextures.SecondaryCombinedDiffuseLobeRadianceHitDistance[pixelCoordinate].xyz);
+    else
+      storeInDebugView(pixelCoordinate, 0);
+    break;
+  }
+  case DEBUG_VIEW_NOISY_SECONDARY_DIRECT_SPECULAR_RADIANCE:
+  {
+    if (!geometryFlags.primarySelectedIntegrationSurface)  
+      storeInDebugView(pixelCoordinate, directPathTextures.SecondaryCombinedSpecularLobeRadianceHitDistance[pixelCoordinate].xyz);
+    else
+      storeInDebugView(pixelCoordinate, 0);
+    break;
+  }
+  case DEBUG_VIEW_PERCEPTUAL_ROUGHNESS:
+    storeInDebugView(pixelCoordinate, directPathTextures.IndirectFirstHitPerceptualRoughness[pixelCoordinate]);
+    break;
+  case DEBUG_VIEW_INTEGRATE_INDIRECT_FIRST_RAY_THROUGHPUT:
+    storeInDebugView(pixelCoordinate, directPathTextures.IndirectThroughputConeRadius[pixelCoordinate].xyz);
+    break;
+  case DEBUG_VIEW_INTEGRATE_INDIRECT_FIRST_SAMPLED_LOBE_PDF:
+    indirectSampleData.load(pixelCoordinate, aliasedData2.IndirectFirstSampledLobeData);
+   storeInDebugView(pixelCoordinate, indirectSampleData.firstSampledLobePdf);
+    break;
+  case DEBUG_VIEW_INTEGRATE_INDIRECT_FIRST_SAMPLED_SOLID_ANGLE_PDF:
+    indirectSampleData.load(pixelCoordinate, aliasedData2.IndirectFirstSampledLobeData);
+    storeInDebugView(pixelCoordinate, indirectSampleData.firstSampledSolidAnglePdf);
+    break;
+  case DEBUG_VIEW_NAN:
+  {
+    bool isValid = true;
+    
+    isValid &= isValidValue(directPathTextures.IndirectFirstHitPerceptualRoughness[pixelCoordinate]);
+    isValid &= isValidValue(directPathTextures.IndirectThroughputConeRadius[pixelCoordinate]);
+
+    indirectSampleData.load(pixelCoordinate, aliasedData2.IndirectFirstSampledLobeData);
+    isValid &= isValidValue(indirectSampleData.firstSampledLobePdf);
+    isValid &= isValidValue(indirectSampleData.firstSampledSolidAnglePdf);
+    
+    accumulateInDebugViewAnd(pixelCoordinate, isValid);
+    break;
+  }
+  }
+}
+
