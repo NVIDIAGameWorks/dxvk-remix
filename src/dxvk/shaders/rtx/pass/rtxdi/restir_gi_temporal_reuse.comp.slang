@@ -68,14 +68,14 @@ void main(int2 thread_id : SV_DispatchThreadID)
   initialSample.avgWeight = 1;
   initialSample.flagsAndVirtualFraction = 0;
   initialSample.radiance = vec3(0);
-  float pathLength = 0;
+  float indirectPathLength = 0;
 
   // Load the radiance
   if (geometryFlags.primarySelectedIntegrationSurface)
   {
     vec4 radianceAndDistance = RestirGIRadiance[thread_id];
     initialSample.radiance = sanitize(radianceAndDistance.rgb, vec3(0));
-    pathLength = radianceAndDistance.w; 
+    indirectPathLength = radianceAndDistance.w; 
   }
 
   // The restir algorithm can accept larger fireflies while producing stable result, so set the threshold higher to avoid darkening.
@@ -104,11 +104,11 @@ void main(int2 thread_id : SV_DispatchThreadID)
     && surface.opaqueSurfaceMaterialInteraction.isotropicRoughness > RAB_RESTIR_GI_DELTA_ROUGHNESS)
   {
     vec3 direction = initialSample.position - surface.minimalSurfaceInteraction.position;
-    if (any(direction != 0) && pathLength > length(direction) * 1.01)
+    if (any(direction != 0) && indirectPathLength > length(direction) * 1.01)
     {
       // Extend virtual fraction length by 20% to prevent occlusion when the sample is used by neighbor pixels
-      initialSample.setVirtualFraction((pathLength - length(direction)) * 1.2);
-      initialSample.position = surface.minimalSurfaceInteraction.position + normalize(direction) * pathLength;
+      initialSample.setVirtualFraction((indirectPathLength - length(direction)) * 1.2);
+      initialSample.position = surface.minimalSurfaceInteraction.position + normalize(direction) * indirectPathLength;
       initialSample.normal = -normalize(direction);
     }
   }

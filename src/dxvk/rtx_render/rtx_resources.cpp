@@ -761,7 +761,7 @@ namespace dxvk {
     m_raytracingOutput.m_secondaryHitDistance = createImageResource(ctx, m_downscaledExtent, VK_FORMAT_R32_SFLOAT);
     m_raytracingOutput.m_secondaryViewDirection = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16_SNORM, "Secondary View Direction", allowCompatibleFormatAliasing);
     m_raytracingOutput.m_secondaryWorldPositionWorldTriangleNormal = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R32G32B32A32_SFLOAT, "Secondary World Position World Triangle Normal", allowCompatibleFormatAliasing);
-    m_raytracingOutput.m_secondaryPositionError = createImageResource(ctx, m_downscaledExtent, VK_FORMAT_R32_SFLOAT);
+    m_raytracingOutput.m_secondaryPositionError = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R32_SFLOAT, "Secondary Position Error", allowCompatibleFormatAliasing);
     m_raytracingOutput.m_decalMaterial = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R32G32B32A32_UINT, "Decal Material");
     m_raytracingOutput.m_decalEmissiveRadiance = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Decal Emissive Radiance", allowCompatibleFormatAliasing);
     m_raytracingOutput.m_alphaBlendGBuffer = createImageResource(ctx, m_downscaledExtent, VK_FORMAT_R32G32B32A32_UINT);
@@ -789,7 +789,7 @@ namespace dxvk {
       m_raytracingOutput.m_secondaryWorldPositionWorldTriangleNormal, ctx, m_downscaledExtent, VK_FORMAT_R32G32B32A32_SFLOAT, "Indirect Ray Origin Direction");
     m_raytracingOutput.m_indirectThroughputConeRadius = AliasedResource(
       m_raytracingOutput.m_decalEmissiveRadiance, ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Indirect Throughput Cone Radius");
-    m_raytracingOutput.m_indirectFirstSampledLobeAndSolidAnglePdf = AliasedResource(m_raytracingOutput.m_secondaryViewDirection, ctx, m_downscaledExtent, VK_FORMAT_R16G16_SFLOAT, "Indirect First Sampled Lobe And Solid Angle Pdf");
+    m_raytracingOutput.m_indirectFirstSampledLobeData = AliasedResource(m_raytracingOutput.m_secondaryPositionError, ctx, m_downscaledExtent, VK_FORMAT_R32_UINT, "Indirect First Sampled Lobe Data");
     m_raytracingOutput.m_indirectFirstHitPerceptualRoughness = AliasedResource(
       m_raytracingOutput.m_secondaryPerceptualRoughness, ctx, m_downscaledExtent, VK_FORMAT_R8_UNORM, "Indirect First Hit Perceptual Roughness");
     m_raytracingOutput.m_bsdfFactor = createImageResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16_SFLOAT);

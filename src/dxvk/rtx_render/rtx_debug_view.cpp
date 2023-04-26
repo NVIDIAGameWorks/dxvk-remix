@@ -121,6 +121,7 @@ namespace dxvk {
         {DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_GEOMETRY_HASH, "Stochastic Alpha Blend Geometry Hash"},
         {DEBUG_VIEW_STOCHASTIC_ALPHA_BLEND_BACKGROUND_TRANSPARENCY, "Stochastic Alpha Blend Background Transparency"},
 
+        {DEBUG_VIEW_GEOMETRY_FLAGS_FIRST_SAMPLED_LOBE_IS_SPECULAR, "Geometry Flags: First Sampled Lobe Is Specular"},
         {DEBUG_VIEW_INTEGRATE_INDIRECT_FIRST_RAY_THROUGHPUT, "Indirect First Ray Throughput"},
         {DEBUG_VIEW_INTEGRATE_INDIRECT_FIRST_SAMPLED_LOBE_PDF, "Indirect First Sampled Lobe Pdf"},
         {DEBUG_VIEW_INTEGRATE_INDIRECT_FIRST_SAMPLED_SOLID_ANGLE_PDF, "Indirect First Sampled Solid Angle Pdf"},

@@ -216,7 +216,6 @@ struct DirectPathTextures
   RWTexture2D<float4> IndirectRayOriginDirection;
   RWTexture2D<float4> IndirectThroughputConeRadius;
   RWTexture2D<float> IndirectFirstHitPerceptualRoughness;
-  RWTexture2D<float2> IndirectFirstSampledLobeAndSolidAnglePdf;
   RWTexture2D<float> PrimaryRtxdiIlluminance;
 };
 

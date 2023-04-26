@@ -64,7 +64,7 @@ namespace dxvk {
         TEXTURE2D(INTEGRATE_INDIRECT_BINDING_RAY_ORIGIN_DIRECTION_INPUT)
         TEXTURE2D(INTEGRATE_INDIRECT_BINDING_THROUGHPUT_CONE_RADIUS_INPUT)
         TEXTURE2D(INTEGRATE_INDIRECT_BINDING_FIRST_HIT_PERCEPTUAL_ROUGHNESS_INPUT)
-        TEXTURE2D(INTEGRATE_INDIRECT_BINDING_INDIRECT_FIRST_SAMPLED_LOBE_AND_SOLID_ANGLE_PDF_INPUT)
+        TEXTURE2D(INTEGRATE_INDIRECT_BINDING_FIRST_SAMPLED_LOBE_DATA_INPUT)
         TEXTURE2D(INTEGRATE_INDIRECT_BINDING_LAST_GBUFFER_INPUT)
         TEXTURE2D(INTEGRATE_INDIRECT_BINDING_PREV_WORLD_POSITION_INPUT)
         SAMPLER3D(INTEGRATE_INDIRECT_BINDING_VOLUME_FILTERED_RADIANCE_INPUT)
@@ -72,12 +72,13 @@ namespace dxvk {
         TEXTURE2D(INTEGRATE_INDIRECT_BINDING_SECONDARY_HIT_DISTANCE_INPUT)
         TEXTURE2D(INTEGRATE_INDIRECT_BINDING_LAST_COMPOSITE_INPUT)
 
+        RW_TEXTURE2D(INTEGRATE_INDIRECT_BINDING_DECAL_MATERIAL_STORAGE)
+        RW_TEXTURE2D(INTEGRATE_INDIRECT_BINDING_DECAL_EMISSIVE_RADIANCE_STORAGE)
+
         RW_TEXTURE2D(INTEGRATE_INDIRECT_BINDING_INDIRECT_RADIANCE_HIT_DISTANCE_OUTPUT)
         RW_STRUCTURED_BUFFER(INTEGRATE_INDIRECT_BINDING_RESTIR_GI_RESERVOIR_OUTPUT)
         RW_TEXTURE2D(INTEGRATE_INDIRECT_BINDING_RESTIR_GI_RADIANCE_OUTPUT)
         RW_TEXTURE2D(INTEGRATE_INDIRECT_BINDING_RESTIR_GI_HIT_GEOMETRY_OUTPUT)
-        RW_TEXTURE2D(INTEGRATE_INDIRECT_BINDING_DECAL_MATERIAL_STORAGE)
-        RW_TEXTURE2D(INTEGRATE_INDIRECT_BINDING_DECAL_EMISSIVE_RADIANCE_STORAGE)
 
         RW_TEXTURE2D(INTEGRATE_INSTRUMENTATION)
 
@@ -141,7 +142,6 @@ namespace dxvk {
     ctx->bindResourceBuffer(INTEGRATE_INDIRECT_BINDING_PRIMARY_RTXDI_RESERVOIR, DxvkBufferSlice(rtOutput.m_rtxdiReservoirBuffer, 0, rtOutput.m_rtxdiReservoirBuffer->info().size));
     ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_RAY_ORIGIN_DIRECTION_INPUT, rtOutput.m_indirectRayOriginDirection.view(Resources::AccessType::Read), nullptr);
     ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_FIRST_HIT_PERCEPTUAL_ROUGHNESS_INPUT, rtOutput.m_indirectFirstHitPerceptualRoughness.view(Resources::AccessType::Read), nullptr);
-    ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_INDIRECT_FIRST_SAMPLED_LOBE_AND_SOLID_ANGLE_PDF_INPUT, rtOutput.m_indirectFirstSampledLobeAndSolidAnglePdf.view(Resources::AccessType::Read), nullptr);
     ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_LAST_GBUFFER_INPUT, rtOutput.m_gbufferLast.view, nullptr);
     ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_PREV_WORLD_POSITION_INPUT, rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().view, nullptr);
 
@@ -154,11 +154,15 @@ namespace dxvk {
     const uint32_t isLastCompositeOutputValid = rtOutput.m_lastCompositeOutput.matchesWriteFrameIdx(frameIdx - 1);
     assert(isLastCompositeOutputValid == rtOutput.m_raytraceArgs.isLastCompositeOutputValid && "Last composite state changed since CB was initialized");
     ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_LAST_COMPOSITE_INPUT, rtOutput.m_lastCompositeOutput.view(Resources::AccessType::Read, isLastCompositeOutputValid), nullptr);
+    ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_FIRST_SAMPLED_LOBE_DATA_INPUT, rtOutput.m_indirectFirstSampledLobeData.view(Resources::AccessType::Read), nullptr);
 
+    // Storage resources
+    ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_DECAL_MATERIAL_STORAGE, rtOutput.m_decalMaterial.view(Resources::AccessType::Write), nullptr);
+
+    // Output resources
     ctx->bindResourceBuffer(INTEGRATE_INDIRECT_BINDING_RESTIR_GI_RESERVOIR_OUTPUT, DxvkBufferSlice(rtOutput.m_restirGIReservoirBuffer, 0, rtOutput.m_restirGIReservoirBuffer->info().size));
     ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_RESTIR_GI_RADIANCE_OUTPUT, rtOutput.m_restirGIRadiance.view(Resources::AccessType::Write), nullptr);
     ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_RESTIR_GI_HIT_GEOMETRY_OUTPUT, rtOutput.m_restirGIHitGeometry.view, nullptr);
-    ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_DECAL_MATERIAL_STORAGE, rtOutput.m_decalMaterial.view(Resources::AccessType::Write), nullptr);
 
     // Aliased resources
     // m_indirectRadiance writes the actual output carried forward and therefore it must be bound with write access last
@@ -191,7 +195,7 @@ namespace dxvk {
     }
   }
 
-  DxvkRaytracingPipelineShaders DxvkPathtracerIntegrateIndirect::getPipelineShaders(const bool useRayQuery, 
+  DxvkRaytracingPipelineShaders DxvkPathtracerIntegrateIndirect::getPipelineShaders(const bool useRayQuery,
                                                                                     const bool serEnabled,
                                                                                     const bool ommEnabled) {
 

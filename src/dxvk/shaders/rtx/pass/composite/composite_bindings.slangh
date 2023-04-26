@@ -32,7 +32,7 @@ ConstantBuffer<CompositeArgs> cb;
 
 // Inputs
 
-layout(r8ui, binding = COMPOSITE_SHARED_FLAGS_INPUT)
+layout(r16ui, binding = COMPOSITE_SHARED_FLAGS_INPUT)
 RWTexture2D<uint> SharedFlags;
 layout(binding = COMPOSITE_SHARED_RADIANCE_RG_INPUT)
 Texture2D<float2> SharedRadianceRG;
@@ -92,6 +92,9 @@ layout(binding = COMPOSITE_LAST_FINAL_OUTPUT)
 RWTexture2D<float4> LastFinalOutput;
 
 layout(binding = COMPOSITE_DEBUG_VIEW_OUTPUT)
+#ifdef RT_SHADER_EXECUTION_REORDERING
+REORDER_COHERENT
+#endif
 RWTexture2D<float4> DebugView;
 
 layout(binding = COMPOSITE_ALPHA_BLEND_RADIANCE_OUTPUT)

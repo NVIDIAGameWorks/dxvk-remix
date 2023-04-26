@@ -30,7 +30,7 @@ ConstantBuffer<RaytraceArgs> cb;
 
 // Inputs
 
-layout(r8ui, binding = DEMODULATE_BINDING_SHARED_FLAGS_INPUT)
+layout(r16ui, binding = DEMODULATE_BINDING_SHARED_FLAGS_INPUT)
 Texture2D<uint> SharedFlags;
 
 layout(rgba16, binding = DEMODULATE_BINDING_PRIMARY_VIRTUAL_WORLD_SHADING_NORMAL_INPUT)

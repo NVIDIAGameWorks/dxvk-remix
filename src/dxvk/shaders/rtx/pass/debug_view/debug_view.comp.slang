@@ -34,7 +34,7 @@ layout(rgba16f, binding = DEBUG_VIEW_BINDING_DENOISED_SECONDARY_COMBINED_DIFFUSE
 Texture2D<float4> DenoisedSecondaryCombinedDiffuseRadianceHitT;
 layout(rgba16f, binding = DEBUG_VIEW_BINDING_DENOISED_SECONDARY_COMBINED_SPECULAR_RADIANCE_HIT_T_INPUT)
 Texture2D<float4> DenoisedSecondaryCombinedSpecularRadianceHitT;
-layout(r8ui, binding = DEBUG_VIEW_BINDING_SHARED_FLAGS_INPUT)
+layout(r16ui, binding = DEBUG_VIEW_BINDING_SHARED_FLAGS_INPUT)
 Texture2D<uint> SharedFlags;
 layout(r32f, binding = DEBUG_VIEW_BINDING_PRIMARY_LINEAR_VIEW_Z_INPUT)
 Texture2D<float> PrimaryLinearViewZ;

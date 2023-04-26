@@ -162,6 +162,17 @@ void updateAlphaBlendDebugView(uint2 thread_id, AlphaBlendSurface surface)
   }
 }
 
+void postCompositeDebugView(uint2 thread_id, GeometryFlags geometryFlags)
+{
+  // Output Debug Information
+  switch(cb.debugViewIdx)
+  {
+  case DEBUG_VIEW_GEOMETRY_FLAGS_FIRST_SAMPLED_LOBE_IS_SPECULAR:
+    storeInDebugView(ivec2(thread_id), geometryFlags.firstSampledLobeIsSpecular);
+    break;
+  }
+}
+
 [shader("compute")]
 [numthreads(16, 8, 1)]
 void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThreadID)
@@ -444,4 +455,6 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
   }
 
   imageStore(FinalOutput, thread_id.xy, vec4(attenuatedOutput * backgroundAlpha + alphaBlendOutput.rgb, 1.0));
+
+  postCompositeDebugView(thread_id, geometryFlags);
 }

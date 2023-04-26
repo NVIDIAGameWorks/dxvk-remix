@@ -86,6 +86,8 @@
 
 // All objects with custom visibility rules
 #define OBJECT_MASK_ALL_DYNAMIC       (OBJECT_MASK_ALL_VIEWMODEL | OBJECT_MASK_ALL_PLAYER_MODEL)
+#define OBJECT_MASK_ALL_DYNAMIC_FIRST_ACTIVE_BIT_OFFSET 4
+#define OBJECT_MASK_ALL_DYNAMIC_NUMBER_OF_ACTIVE_BITS   4
 
 // Note: Sky excluded as often it should not be traced against when calculating visibility.
 //       ViewModel is excluded

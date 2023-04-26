@@ -40,7 +40,7 @@ Texture2D<uint> SharedMaterialData1;
 
 // Shared Inputs/Outputs
 
-layout(r8ui, binding = INTEGRATE_DIRECT_BINDING_SHARED_FLAGS_INPUT_OUTPUT)
+layout(r16ui, binding = INTEGRATE_DIRECT_BINDING_SHARED_FLAGS_INPUT_OUTPUT)
 RWTexture2D<uint> SharedFlags;
 
 layout(r16ui, binding = INTEGRATE_DIRECT_BINDING_SHARED_MEDIUM_MATERIAL_INDEX_INPUT_OUTPUT)
@@ -95,9 +95,6 @@ Texture2D<float2> SecondaryViewDirection;
 layout(r16f, binding = INTEGRATE_DIRECT_BINDING_SECONDARY_CONE_RADIUS_INPUT)
 Texture2D<float> SecondaryConeRadius;
 
-layout(r32f, binding = INTEGRATE_DIRECT_BINDING_SECONDARY_POSITION_ERROR_INPUT)
-Texture2D<float> SecondaryPositionError;
-
 // Secondary Inputs/Outputs
 
 layout(rgb10_a2, binding = INTEGRATE_DIRECT_BINDING_SECONDARY_BASE_REFLECTIVITY_INPUT_OUTPUT)
@@ -120,9 +117,6 @@ RWTexture2D<float4> SecondaryCombinedSpecularLobeRadianceHitDistance;
 layout(rgba16f, binding = INTEGRATE_DIRECT_BINDING_INDIRECT_THROUGHPUT_CONE_RADIUS_OUTPUT)
 RWTexture2D<float4> IndirectThroughputConeRadius;
 
-layout(rg16f, binding = INTEGRATE_DIRECT_BINDING_INDIRECT_FIRST_SAMPLED_LOBE_AND_SOLID_ANGLE_PDF_OUTPUT)
-RWTexture2D<float2> IndirectFirstSampledLobeAndSolidAnglePdf;
-
 // Aliased Inputs / Outputs
 
 layout(rgba32f, binding = INTEGRATE_DIRECT_BINDING_ALIASED_DATA_0)
@@ -135,7 +129,14 @@ uniform struct AliasedData0
 layout(r8, binding = INTEGRATE_DIRECT_BINDING_ALIASED_DATA_1)
 uniform struct AliasedData1
 {
-    Texture2D<float> SecondaryPerceptualRoughness;
-    RWTexture2D<float> IndirectFirstHitPerceptualRoughness;
+  Texture2D<float> SecondaryPerceptualRoughness;
+  RWTexture2D<float> IndirectFirstHitPerceptualRoughness;
 } aliasedData1;
 
+
+layout(r32, binding = INTEGRATE_DIRECT_BINDING_ALIASED_DATA_2)
+uniform struct AliasedData2
+{
+  Texture2D<float> SecondaryPositionError;
+  RWTexture2D<uint> IndirectFirstSampledLobeData;
+} aliasedData2;

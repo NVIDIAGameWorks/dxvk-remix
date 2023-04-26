@@ -41,6 +41,55 @@
 // Input specular signal of low roughness material into restir gi
 static const uint kRestirGIAcceptLowRoughnessInput = false;
 
+struct IndirectSampleData
+{
+  float16_t firstSampledLobePdf;    
+  float16_t firstSampledSolidAnglePdf;
+  bool firstSampledLobeIsSpecular;
+  bool insideMedium; 
+
+  [mutating] void unpack(const uint encodedData) 
+  {
+    firstSampledLobePdf = abs(unpackFloat2x16(encodedData)).x;
+    firstSampledSolidAnglePdf = abs(unpackFloat2x16(encodedData)).y;
+
+    firstSampledLobeIsSpecular = packedFlagGet(encodedData, 1 << 15);
+    insideMedium = packedFlagGet(encodedData, 1 << 31);
+  } 
+
+  uint pack()
+  {
+    uint encodedData = packFloat2x16(abs(f16vec2(firstSampledLobePdf, firstSampledSolidAnglePdf)));
+    
+    // Note: Encode flags into the sign bits of each float. This must be done manually because -0 may not be properly
+    // stored if the value is 0 as -0 and +0 tend to be treated the same. Assumes the pdfs are always 0 or greater
+    // Lobe pdf and and solid angle pdfs are expected to be >= 0
+    encodedData = packedFlagSet(encodedData, (uint(firstSampledLobeIsSpecular) << 15) | (uint(insideMedium) << 31));
+
+    return encodedData;
+  }
+
+  [mutating] void load(u16vec2 texelIndex, RWTexture2D<uint> encodedIndirectSampleDataTexture) 
+  {
+    unpack(encodedIndirectSampleDataTexture[texelIndex]);
+  }
+
+  [mutating] void load(u16vec2 texelIndex, Texture2D<uint> encodedIndirectSampleDataTexture) 
+  {
+    unpack(encodedIndirectSampleDataTexture[texelIndex]);
+  }
+
+  void store(u16vec2 texelIndex, RWTexture2D<uint> encodedIndirectSampleDataTexture) 
+  {
+    encodedIndirectSampleDataTexture[texelIndex] = pack();
+  }
+
+  bool isValidSample()
+  {
+    return firstSampledSolidAnglePdf > 0.h;
+  }
+}
+
 // Integrate Helper Functions
 
 PathState pathStateCreateEmpty(u16vec2 pixelCoordinate, GeometryFlags geometryFlags)
@@ -958,7 +1007,7 @@ void deserializeInteractions(
       primaryRay, pixelCoordinate, SecondaryViewDirection, SecondaryConeRadius);
 
     minimalSurfaceInteraction = minimalSurfaceInteractionReadFromGBufferWithError(
-      pixelCoordinate, aliasedData0.SecondaryWorldPositionWorldTriangleNormal, SecondaryPositionError);
+      pixelCoordinate, aliasedData0.SecondaryWorldPositionWorldTriangleNormal, aliasedData2.SecondaryPositionError);
 
     polymorphicSurfaceMaterialInteraction = polymorphicSurfaceMaterialInteractionReadFromGBuffer(
       pixelCoordinate, SecondaryWorldShadingNormal, aliasedData1.SecondaryPerceptualRoughness, SecondaryAlbedo, SecondaryBaseReflectivity,
@@ -1106,7 +1155,13 @@ void sampleAndStoreIndirectRayPathSample(
     uintBitsToFloat(float2x32ToSnorm2x16(sphereDirectionToSignedOctahedral(sampledRay.direction))));
   IndirectThroughputConeRadius[pixelCoordinate] = vec4(throughput, sampledRay.coneRadius);
   aliasedData1.IndirectFirstHitPerceptualRoughness[pixelCoordinate] = perceptualRoughness;
-  IndirectFirstSampledLobeAndSolidAnglePdf[pixelCoordinate] = vec2(firstSampledLobePdf, firstSampledSolidAnglePdf);
+
+  IndirectSampleData indirectSampleData;
+  indirectSampleData.firstSampledLobeIsSpecular = firstSampledLobeIsSpecular;
+  indirectSampleData.firstSampledLobePdf = firstSampledLobePdf;
+  indirectSampleData.firstSampledSolidAnglePdf = firstSampledSolidAnglePdf;
+  indirectSampleData.insideMedium = insideMedium;
+  indirectSampleData.store(pixelCoordinate, aliasedData2.IndirectFirstSampledLobeData);
 
   // Store the Geometry Flags with the new path information if it changed
   if (insideMedium != geometryFlags.insideMedium || firstSampledLobeIsSpecular != geometryFlags.firstSampledLobeIsSpecular)
@@ -1248,6 +1303,8 @@ void integratorDirectPathOutputDebugView(
   DirectPathTextures directPathTextures,
   GeometryFlags geometryFlags)
 {
+  IndirectSampleData indirectSampleData;
+
   switch(cb.debugView)
   {
   default:
@@ -1276,10 +1333,12 @@ void integratorDirectPathOutputDebugView(
     storeInDebugView(pixelCoordinate, directPathTextures.IndirectThroughputConeRadius[pixelCoordinate].xyz);
     break;
   case DEBUG_VIEW_INTEGRATE_INDIRECT_FIRST_SAMPLED_LOBE_PDF:
-    storeInDebugView(pixelCoordinate, directPathTextures.IndirectFirstSampledLobeAndSolidAnglePdf[pixelCoordinate].x);
+    indirectSampleData.load(pixelCoordinate, aliasedData2.IndirectFirstSampledLobeData);
+   storeInDebugView(pixelCoordinate, indirectSampleData.firstSampledLobePdf);
     break;
   case DEBUG_VIEW_INTEGRATE_INDIRECT_FIRST_SAMPLED_SOLID_ANGLE_PDF:
-    storeInDebugView(pixelCoordinate, directPathTextures.IndirectFirstSampledLobeAndSolidAnglePdf[pixelCoordinate].y);
+    indirectSampleData.load(pixelCoordinate, aliasedData2.IndirectFirstSampledLobeData);
+    storeInDebugView(pixelCoordinate, indirectSampleData.firstSampledSolidAnglePdf);
     break;
   case DEBUG_VIEW_NAN:
   {
@@ -1287,7 +1346,10 @@ void integratorDirectPathOutputDebugView(
     
     isValid &= isValidValue(directPathTextures.IndirectFirstHitPerceptualRoughness[pixelCoordinate]);
     isValid &= isValidValue(directPathTextures.IndirectThroughputConeRadius[pixelCoordinate]);
-    isValid &= isValidValue(directPathTextures.IndirectFirstSampledLobeAndSolidAnglePdf[pixelCoordinate]);
+
+    indirectSampleData.load(pixelCoordinate, aliasedData2.IndirectFirstSampledLobeData);
+    isValid &= isValidValue(indirectSampleData.firstSampledLobePdf);
+    isValid &= isValidValue(indirectSampleData.firstSampledSolidAnglePdf);
     
     accumulateInDebugViewAnd(pixelCoordinate, isValid);
     break;
@@ -1313,7 +1375,7 @@ void storeRestirGIRadiance(PathState pathState, GeometryFlags geometryFlags, flo
   f16vec4 restirGIRadianceFactorHitDistance = RestirGIRadiance[pathState.pixelCoordinate];
   f16vec3 restirGIRadiance = min(restirGIRadianceFactorHitDistance.rgb * pathState.radiance, float16Max);
 
-  // Ignore primary ray hit distance
+  // Calculate indirect portion of the path length
   float16_t restirGIHitDistance = max(restirGIRadianceFactorHitDistance.a - gbufferSurfaceHitDistance, 0.0);
 
   RestirGIRadiance[pathState.pixelCoordinate] = f16vec4(restirGIRadiance, restirGIHitDistance);
@@ -1326,7 +1388,7 @@ void integrateIndirectPath(
   GeometryFlags geometryFlags, uint16_t mediumMaterialIndex, vec3 rayOrigin, f16vec3 rayDirection,
   f16vec3 throughput, float16_t rayConeRadius, float16_t firstHitPerceptualRoughness,
   float16_t firstSampledLobePdf, float16_t firstSampledSolidAnglePdf,
-  float16_t accumulatedHitDistance)
+  float16_t gbufferSurfaceHitDistance)
 {
   // Initialize Path State
 
@@ -1341,7 +1403,7 @@ void integrateIndirectPath(
   pathState.mediumMaterialIndex = mediumMaterialIndex;
   pathState.throughput = throughput;
   pathState.insideMedium = geometryFlags.insideMedium;
-  pathState.accumulatedHitDistance = accumulatedHitDistance;
+  pathState.accumulatedHitDistance = gbufferSurfaceHitDistance;
 
   pathState.coneSpreadAngle = calculateSpreadAngleFromSolidAnglePdf(pathState.coneSpreadAngle, firstSampledSolidAnglePdf);
 
@@ -1404,7 +1466,7 @@ void integrateIndirectPath(
   // Re-load geometry flags from the resource so that they're not carried around as live state during a ray path integration
   geometryFlags = geometryFlagsReadFromGBuffer(pathState.pixelCoordinate, SharedFlags);
 
-  storeRestirGIRadiance(pathState, geometryFlags, accumulatedHitDistance);
+  storeRestirGIRadiance(pathState, geometryFlags, gbufferSurfaceHitDistance);
 
   vec4 indirectOutData = vec4(pathState.radiance, pathState.firstBounceHitDistance);
 
