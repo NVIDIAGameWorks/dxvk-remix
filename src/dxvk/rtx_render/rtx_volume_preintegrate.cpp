@@ -21,7 +21,7 @@
 */
 #include "rtx_volume_preintegrate.h"
 #include "dxvk_device.h"
-#include "dxvk_shader_manager.h"
+#include "rtx_render/rtx_shader_manager.h"
 
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/volumetrics/volume_preintegrate_binding_indices.h"

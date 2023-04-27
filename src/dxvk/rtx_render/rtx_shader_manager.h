@@ -194,7 +194,7 @@ namespace dxvk {
     }
 
     void checkForShaderChanges();
-    void reloadShaders();
+    bool reloadShaders();
 
     template<typename T>
     Rc<DxvkShader> getShader() {

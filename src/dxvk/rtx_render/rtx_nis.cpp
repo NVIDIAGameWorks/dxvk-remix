@@ -26,7 +26,7 @@
 
 #include "rtx/external/NIS/NIS_Config.h"
 #include "rtx/external/NIS/DXVK_NIS_Bindings.h"
-#include "dxvk_shader_manager.h"
+#include "rtx_render/rtx_shader_manager.h"
 
 #include <rtx_shaders/DXVK_NIS_Main_128_float_24.h>
 #include <rtx_shaders/DXVK_NIS_Main_128_float_32.h>

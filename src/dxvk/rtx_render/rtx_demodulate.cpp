@@ -24,7 +24,7 @@
 #include "rtx.h"
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/demodulate/demodulate_binding_indices.h"
-#include "dxvk_shader_manager.h"
+#include "rtx_render/rtx_shader_manager.h"
 #include "dxvk_scoped_annotation.h"
 #include "dxvk_context.h"
 #include "rtx_context.h"
