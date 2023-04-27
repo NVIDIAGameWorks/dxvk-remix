@@ -17,7 +17,7 @@ license agreement from NVIDIA CORPORATION is strictly prohibited.
 #define NRD_ROUGHNESS_ENCODING 1
 #define NRD_USE_SQRT_LINEAR_ROUGHNESS 0
 
-#include "../../../external/nrd/Shaders/NRD.hlsli"
+#include "../../../external/nrd/Shaders/include/NRD.hlsli"
 
 #if NRD_USE_SQRT_LINEAR_ROUGHNESS != 0
 #error Not supported NRD configs. Please update NRD.hlsli and ***RECOMPILE*** NRD library.
