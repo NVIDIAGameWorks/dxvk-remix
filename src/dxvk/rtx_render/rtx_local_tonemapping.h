@@ -66,16 +66,16 @@ namespace dxvk {
     Resources::MipMapResource m_mipsAssemble;
 
     // Tone curve settings
-    RTX_OPTION("rtx.localtonemap", int, mip, 3, "");
-    RTX_OPTION("rtx.localtonemap", int, displayMip, 0, "");
-    RTX_OPTION("rtx.localtonemap", bool, boostLocalContrast, false, "");
-    RTX_OPTION("rtx.localtonemap", bool, useGaussian, true, "");
-    RTX_OPTION("rtx.localtonemap", bool, finalizeWithACES, true, "");
-    RTX_OPTION("rtx.localtonemap", float, exposure, 0.75, "");
-    RTX_OPTION("rtx.localtonemap", float, shadows, 2.0, "");
-    RTX_OPTION("rtx.localtonemap", float, highlights, 4.0, "");
-    RTX_OPTION("rtx.localtonemap", float, exposurePreferenceSigma, 4.0, "");
-    RTX_OPTION("rtx.localtonemap", float, exposurePreferenceOffset, 0.0, "");
+    RTX_OPTION("rtx.localtonemap", int, mip, 3, "Top mip level of tone map pyramid.");
+    RTX_OPTION("rtx.localtonemap", int, displayMip, 0, "Bottom mip level of tone map pyramid.");
+    RTX_OPTION("rtx.localtonemap", bool, boostLocalContrast, false, "Boosts contrast on local features.");
+    RTX_OPTION("rtx.localtonemap", bool, useGaussian, true, "Uses gaussian kernel to generate tone map pyramid.");
+    RTX_OPTION("rtx.localtonemap", bool, finalizeWithACES, true, "Applies ACES tone mapping on final result.");
+    RTX_OPTION("rtx.localtonemap", float, exposure, 0.75, "Exposure factor applied on average exposure.");
+    RTX_OPTION("rtx.localtonemap", float, shadows, 2.0, "Shadow area strength. Higher values cause brighter shadows.");
+    RTX_OPTION("rtx.localtonemap", float, highlights, 4.0, "Highlight area strength. Higher values cause darker highlight.");
+    RTX_OPTION("rtx.localtonemap", float, exposurePreferenceSigma, 4.0, "Transition sharpness between different areas of exposure. Smaller values result in sharper transitions.");
+    RTX_OPTION("rtx.localtonemap", float, exposurePreferenceOffset, 0.0, "Offset to reference luminance when calculating the weights a pixel belongs to shadow/normal/highlight areas.");
   };
   
 }
