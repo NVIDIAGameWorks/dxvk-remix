@@ -14,7 +14,7 @@
         <package name="rtx-remix-ngx_sdk" version="1" />
     </dependency>
     <dependency name="nrd" linkPath="external/nrd">
-        <package name="rtx-remix-nrd" version="1" />
+        <package name="rtx-remix-nrd" version="4" />
     </dependency>
     <dependency name="nvapi" linkPath="external/nvapi">
         <package name="rtx-remix-nvapi" version="1" />
