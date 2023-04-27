@@ -1811,8 +1811,6 @@ namespace dxvk {
       ImGui::Checkbox("Render Alpha Blended", &RtxOptions::Get()->enableAlphaBlendObject());
       ImGui::Checkbox("Render Alpha Tested", &RtxOptions::Get()->enableAlphaTestObject());
       ImGui::Separator();
-      ImGui::Checkbox("Enable Triangle Culling", &RtxOptions::Get()->enableCullingObject());
-      ImGui::Separator();
       ImGui::Checkbox("Emissive Blend Override", &RtxOptions::Get()->enableEmissiveBlendEmissiveOverrideObject());
       ImGui::DragFloat("Emissive Blend Override Intensity", &RtxOptions::Get()->emissiveBlendOverrideEmissiveIntensityObject(), 0.001f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
       ImGui::Separator();
@@ -1929,6 +1927,9 @@ namespace dxvk {
 
     if (ImGui::CollapsingHeader("Geometry", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
+      ImGui::Checkbox("Enable Triangle Culling (Globally)", &RtxOptions::Get()->enableCullingObject());
+      ImGui::Checkbox("Enable Triangle Culling (Override Secondary Rays)", &RtxOptions::Get()->enableCullingInSecondaryRaysObject());
+      ImGui::Separator();
       ImGui::DragInt("Min Prims in Static BLAS", &RtxOptions::Get()->minPrimsInStaticBLASObject(), 1.f, 100, 0);
       ImGui::Checkbox("Portals: Virtual Instance Matching", &RtxOptions::Get()->useRayPortalVirtualInstanceMatchingObject());
       ImGui::Checkbox("Portals: Fade In Effect", &RtxOptions::Get()->enablePortalFadeInEffectObject());

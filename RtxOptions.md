@@ -34,6 +34,7 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.bloom.intensity|float|0.06||
 |rtx.bloom.sigma|float|0.1||
 |rtx.calculateLightIntensityUsingLeastSquares|bool|True|Enable usage of least squares for approximating a light's falloff curve rather than a more basic single point approach. This will generally result in more accurate matching of the original application's custom light attenuation curves, especially with non physically based linear-style attenuation.|
+|rtx.calculateMeshBoundingBox|bool|False|Calculate bounding box for every mesh.|
 |rtx.camera.enableFreeCamera|bool|False|Enable free camera.|
 |rtx.camera.freeCameraPitch|float|0|Free camera's pitch.|
 |rtx.camera.freeCameraPosition|float3|0, 0, 0|Free camera's position.|
@@ -119,7 +120,8 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.enableAlphaTest|bool|True|Enable rendering alpha tested geometry, used for cutout style opacity in some games.|
 |rtx.enableAsyncTextureUpload|bool|True||
 |rtx.enableBillboardOrientationCorrection|bool|True||
-|rtx.enableCulling|bool|True|Enable culling for opaque objects. Objects with alpha blend or alpha test are not culled.|
+|rtx.enableCulling|bool|True|Enable front/backface culling for opaque objects. Objects with alpha blend or alpha test are not culled.|
+|rtx.enableCullingInSecondaryRays|bool|False|Enable front/backface culling for opaque objects. Objects with alpha blend or alpha test are not culled.  Only applies in secondary rays, defaults to off.  Generally helps with light bleeding from objects that aren't watertight.|
 |rtx.enableDLSSEnhancement|bool|True||
 |rtx.enableDecalMaterialBlending|bool|True||
 |rtx.enableDeveloperOptions|bool|False||
@@ -198,6 +200,9 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.graphicsPreset|int|5|Overall rendering preset, higher presets result in higher image quality, lower presets result in better performance.|
 |rtx.hideSplashMessage|bool|False||
 |rtx.highlightedTexture|int|0|Hash of a texture that should be highlighted.|
+|rtx.ignoreGameDirectionalLights|bool|False|Ignores any directional lights coming from the original game (lights added via toolkit still work).|
+|rtx.ignoreGamePointLights|bool|False|Ignores any point lights coming from the original game (lights added via toolkit still work).|
+|rtx.ignoreGameSpotLights|bool|False|Ignores any spot lights coming from the original game (lights added via toolkit still work).|
 |rtx.ignoreStencilVolumeHeuristics|bool|True|Tries to detect stencil volumes and ignore those when pathtracing.  Stencil buffer was used for a variety of effects in the D3D7-9 era, mostly for geometry based lights and shadows - things we don't need when pathtracing.|
 |rtx.indirectRaySpreadAngleFactor|float|0.05|A tuning factor for the spread angle calculated from the sampled lobe solid angle PDF.|
 |rtx.initializer.asyncAssetLoading|bool|True||
