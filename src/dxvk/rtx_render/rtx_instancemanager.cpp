@@ -200,6 +200,14 @@ namespace dxvk {
     m_isMarkedForGC = true;
   }
 
+  void RtInstance::markAsInsideFrustum() const {
+    m_isInsideFrustum = true;
+  }
+
+  void RtInstance::markAsOutsideFrustum() const {
+    m_isInsideFrustum = false;
+  }
+
   bool RtInstance::registerCamera(CameraType::Enum cameraType, uint32_t frameIndex) {
     bool settingNewCameraType = std::find(m_seenCameraTypes.begin(), m_seenCameraTypes.end(), cameraType) == m_seenCameraTypes.end();
 
@@ -287,12 +295,23 @@ namespace dxvk {
       m_previousViewModelState = isViewModelEnabled;
     }
 
+    const bool forceGarbageCollection = (m_instances.size() >= RtxOptions::Get()->numKeepInstances());
     for (uint32_t i = 0; i < m_instances.size();) {
       // Must take a ref here since we'll be swapping
       RtInstance*& pInstance = m_instances[i];
       assert(pInstance != nullptr);
 
-      if (pInstance->m_frameLastUpdated + numFramesToKeepInstances <= currentFrame || pInstance->m_isMarkedForGC) {
+      const XXH64_hash_t topologicalHash = pInstance->getBlas()->input.getGeometryData().getHashForRule(rules::TopologicalHash);
+      const bool enableGarbageCollection =
+        !RtxOptions::Get()->enableAntiCulling() || // It's always True if anti-culling is disabled
+        (pInstance->m_isInsideFrustum) ||
+        (pInstance->getBlas()->input.getSkinningState().numBones > 0) ||
+        (pInstance->m_isAnimated) ||
+        (pInstance->m_isPlayerModel);
+
+      if (((forceGarbageCollection || enableGarbageCollection) &&
+           pInstance->m_frameLastUpdated + numFramesToKeepInstances <= currentFrame) ||
+          pInstance->m_isMarkedForGC) {
         // Note: Pop and swap for performance, index not incremented to process swapped instance on next iteration
         removeInstance(pInstance);
 
@@ -338,6 +357,7 @@ namespace dxvk {
 
     if (currentInstance == nullptr) {
       // No existing match - so need to create one
+      currentInstance = findSimilarInstance(blas, drawCall, material, objectToWorld, cameraManager, rayPortalManager);
       currentInstance = addInstance(blas, drawCall, material, objectToWorld);
     }
 
