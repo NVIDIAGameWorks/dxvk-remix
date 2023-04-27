@@ -2768,7 +2768,6 @@ PLATFORM_INLINE void DecomposeProjection(uint8_t ucNdcOrigin, uint8_t ucNdcDepth
     float fFarZ = vPlane[PLANE_FAR].w;
 
     float x0, x1, y0, y1;
-    bool bLeftHanded;
 
     if( bIsOrtho )
     {
@@ -2776,8 +2775,6 @@ PLATFORM_INLINE void DecomposeProjection(uint8_t ucNdcOrigin, uint8_t ucNdcDepth
         x1 = vPlane[PLANE_RIGHT].w;
         y0 = -vPlane[PLANE_BOTTOM].w;
         y1 = vPlane[PLANE_TOP].w;
-
-        bLeftHanded = proj.a22 > 0.0f;
     }
     else
     {
@@ -2785,9 +2782,9 @@ PLATFORM_INLINE void DecomposeProjection(uint8_t ucNdcOrigin, uint8_t ucNdcDepth
         x1 = vPlane[PLANE_RIGHT].z / vPlane[PLANE_RIGHT].x;
         y0 = vPlane[PLANE_BOTTOM].z / vPlane[PLANE_BOTTOM].y;
         y1 = vPlane[PLANE_TOP].z / vPlane[PLANE_TOP].y;
-
-        bLeftHanded = x0 > x1 && y0 > y1;
     }
+
+    bool bLeftHanded = proj.a22 > 0.0f;
 
     if( puiFlags )
     {
@@ -2887,8 +2884,8 @@ PLATFORM_INLINE void DecomposeProjection(uint8_t ucNdcOrigin, uint8_t ucNdcDepth
         pfSettings15[PROJ_ZNEAR]        = fNearZ;
         pfSettings15[PROJ_ZFAR]         = fFarZ;
         pfSettings15[PROJ_ASPECT]       = fAspect;
-        pfSettings15[PROJ_FOVX]         = fAngleX1 - fAngleX0;
-        pfSettings15[PROJ_FOVY]         = fAngleY1 - fAngleY0;
+        pfSettings15[PROJ_FOVX]         = Abs(fAngleX1 - fAngleX0);
+        pfSettings15[PROJ_FOVY]         = Abs(fAngleY1 - fAngleY0);
         pfSettings15[PROJ_MINX]         = x0 * fNearZ;
         pfSettings15[PROJ_MAXX]         = x1 * fNearZ;
         pfSettings15[PROJ_MINY]         = y0 * fNearZ;
