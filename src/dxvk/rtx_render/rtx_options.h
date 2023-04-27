@@ -231,8 +231,8 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, useRayPortalVirtualInstanceMatching, true, "");
     RTX_OPTION("rtx", bool, enablePortalFadeInEffect, false, "");
 
-    RTX_OPTION_ENV("rtx", bool, useRTXDI, true, "DXVK_USE_RTXDI", "");
-    RTX_OPTION_ENV("rtx", bool, useReSTIRGI, true, "DXVK_USE_RESTIR_GI", "");
+    RTX_OPTION_ENV("rtx", bool, useRTXDI, true, "DXVK_USE_RTXDI", "Enable RTXDI to improve direct light quality.");
+    RTX_OPTION_ENV("rtx", bool, useReSTIRGI, true, "DXVK_USE_RESTIR_GI", "Enable ReSTIR GI to improve indirect light quality.");
     RTX_OPTION_ENV("rtx", UpscalerType, upscalerType, UpscalerType::DLSS, "DXVK_UPSCALER_TYPE", "Upscaling boosts performance with varying degrees of image quality tradeoff depending on the type of upscaler and the quality mode/preset.");
     RTX_OPTION("rtx", float, resolutionScale, 0.75f, "");
     RTX_OPTION("rtx", bool, forceCameraJitter, false, "");
