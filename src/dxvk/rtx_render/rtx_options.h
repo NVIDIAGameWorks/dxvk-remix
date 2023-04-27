@@ -155,6 +155,7 @@ namespace dxvk {
     RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, cutoutTextures, {}, "");
     RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, opacityMicromapIgnoreTextures, {}, "");
     RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, animatedWaterTextures, {}, "");
+    RW_RTX_OPTION("rtx.antiCulling", std::unordered_set<XXH64_hash_t>, antiCullingTextures, {}, "[Experimental] Textures that are forced to extend life length when anti-culling is enabled.\n Some games use different culling methods we can't fully match, use this option to manually add textures to force extend their life when anti-culling fails.");
 
     RW_RTX_OPTION("rtx", std::string, geometryGenerationHashRuleString, "positions,indices,texcoords,geometrydescriptor",
                   "Defines which asset hashes we need to generate via the geometry processing engine.");
@@ -275,6 +276,11 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, enablePreviousTLAS, true, "");
     RTX_OPTION("rtx", float, sceneScale, 1, "Defines the ratio of rendering unit (1cm) to game unit, i.e. sceneScale = 1cm / GameUnit.");
 
+    // Anti-Culling Options
+    RTX_OPTION("rtx.antiCulling", bool, enableAntiCulling, false, "[Experimental] Enable Anti-Culling, allow extending life of objects outside the anti-culling frustum.");
+    // TODO: This should be a threshold of memory size
+    RTX_OPTION("rtx.antiCulling", uint32_t, numKeepInstances, 1000, "[Experimental] When enable anti-culling, the maximum number of RayTracing instances we hold in the BVH. If the total number of RT instances pass this threshold, instances pass their original life length (it may be extended after anti-culling) will be removed.");
+    RTX_OPTION("rtx.antiCulling", float, antiCullingFovScale, 1.15, "[Experimental] Scalar of the FOV of Anti-Culling Frustum.");
 
     // Resolve Options
     RTX_OPTION("rtx", uint8_t, primaryRayMaxInteractions, 32, "");
@@ -825,6 +831,10 @@ namespace dxvk {
 
     bool isAnimatedWaterTexture(const XXH64_hash_t& h) const {
       return animatedWaterTextures().find(h) != animatedWaterTextures().end();
+    }
+
+    bool isAntiCullingTexture(const XXH64_hash_t& h) const {
+      return antiCullingTextures().find(h) != antiCullingTextures().end();
     }
 
     bool getRayPortalTextureIndex(const XXH64_hash_t& h, std::size_t& index) const {

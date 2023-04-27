@@ -76,6 +76,7 @@ namespace dxvk
     Vector4 m_shakeOffset = { 0.0f,0.0f,0.0f,0.0f };
     float m_shakeYaw = 0.0f, m_shakePitch = 0.0f;
     float m_fov = 0.f;
+    float m_aspectRatio = 0.f;
 
     enum MatrixType {
       WorldToView = 0,
@@ -118,7 +119,9 @@ namespace dxvk
     };
 
     Matrix4 m_matCache[MatrixType::Count];
-    
+
+    cFrustum m_frustum;
+
     // Captures any artificial offsets applied on top of the input transfrom 
     // from the game engine.
     Vector3 m_artificalWorldOffset = Vector3(0.f);
@@ -129,10 +132,13 @@ namespace dxvk
     std::chrono::time_point<std::chrono::system_clock> m_prevRunningTime;
 
   public:
+
     RtCamera();
 
     // Gets the Y axis (vertical) FoV of the camera's projection matrix in radians. Note this value will be positive always (even with strange camera types).
-    float getFov() const { return m_fov; }
+    inline const float getFov() const { return m_fov; }
+    inline const float getAspectRatio() const { return m_aspectRatio; }
+
     const Matrix4& getWorldToView(bool freecam = true) const;
     const Matrix4& getPreviousWorldToView(bool freecam = true) const;
     const Matrix4& getPreviousPreviousWorldToView(bool freecam = true) const;
@@ -149,6 +155,9 @@ namespace dxvk
     const Matrix4& getPreviousViewToProjection() const { return m_matCache[MatrixType::PreviousViewToProjection]; }
     const Matrix4& getProjectionToView() const { return m_matCache[MatrixType::ProjectionToView]; }
     const Matrix4& getPreviousProjectionToView() const { return m_matCache[MatrixType::PreviousProjectionToView]; }
+
+    inline const cFrustum& getFrustum() const { return m_frustum; }
+    inline cFrustum& getFrustum() { return m_frustum; }
 
     void setPreviousWorldToView(const Matrix4& worldToView, bool freecam = true);
     void setPreviousViewToWorld(const Matrix4& viewToWorld, bool freecam = true);
@@ -181,7 +190,7 @@ namespace dxvk
     void setResolution(const uint32_t renderResolution[2], const uint32_t finalResolution[2]);
     bool update(
       uint32_t frameIdx, const Matrix4& newWorldToView, const Matrix4& newViewToProjection,
-      float fov, float nearPlane, float farPlane, bool isLHS
+      float fov, float aspectRatio, float nearPlane, float farPlane, bool isLHS
     );
     void getJittering(float jitter[2]) const;
     bool isLHS() const { return m_isLHS; }

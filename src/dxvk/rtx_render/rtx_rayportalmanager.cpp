@@ -633,7 +633,7 @@ namespace dxvk {
           
           RtCamera& portalCamera = cameraManager.getCamera((CameraType::Enum) (CameraType::Portal0 + portalIndex));
           portalCamera.update(m_device->getCurrentFrameId(), portalViewMatrix, mainCamera.getViewToProjection(),
-                              mainCamera.getFov(), mainCamera.getNearPlane(), mainCamera.getFarPlane(), mainCamera.isLHS());
+                              mainCamera.getFov(), mainCamera.getAspectRatio(), mainCamera.getNearPlane(), mainCamera.getFarPlane(), mainCamera.isLHS());
         }
 
         return;

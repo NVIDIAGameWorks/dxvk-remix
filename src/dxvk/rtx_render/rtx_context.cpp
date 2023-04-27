@@ -61,6 +61,7 @@
 #include "../util/util_fastops.h"
 
 namespace dxvk {
+
   Metrics Metrics::s_instance;
 
   void RtxContext::takeScreenshot(std::string imageName, Rc<DxvkImage> image) {
