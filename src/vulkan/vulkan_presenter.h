@@ -207,12 +207,6 @@ namespace dxvk::vk {
       return m_swapchain;
     }
 
-    // NV-DXVK start: check if we've received a new window
-    bool isSameHWND(const HWND other) const {
-      return m_window == other;
-    }
-    // NV-DXVK end
-
     /**
      * \brief Acquires FSE
      *
