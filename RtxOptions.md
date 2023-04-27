@@ -120,7 +120,8 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.enableAlphaTest|bool|True|Enable rendering alpha tested geometry, used for cutout style opacity in some games.|
 |rtx.enableAsyncTextureUpload|bool|True||
 |rtx.enableBillboardOrientationCorrection|bool|True||
-|rtx.enableCulling|bool|True|Enable culling for opaque objects. Objects with alpha blend or alpha test are not culled.|
+|rtx.enableCulling|bool|True|Enable front/backface culling for opaque objects. Objects with alpha blend or alpha test are not culled.|
+|rtx.enableCullingInSecondaryRays|bool|False|Enable front/backface culling for opaque objects. Objects with alpha blend or alpha test are not culled.  Only applies in secondary rays, defaults to off.  Generally helps with light bleeding from objects that aren't watertight.|
 |rtx.enableDLSSEnhancement|bool|True||
 |rtx.enableDecalMaterialBlending|bool|True||
 |rtx.enableDeveloperOptions|bool|False||

@@ -209,18 +209,20 @@ VisibilityResult traceVisibilityRay(
   result.hitDistance = visibilityRay.tMax;
   result.hasOpaqueHit = false;
 
-  while(true)
-  {
-    RayQuery<0> rayQuery;
+  uint rayFlags = packedFlagGet(visibilityMode, visibilityModeAccurateHitDistance)
+    ? RAY_FLAG_NONE
+    : RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH;
 
-    uint rayFlags = packedFlagGet(visibilityMode, visibilityModeAccurateHitDistance)
-      ? RAY_FLAG_NONE
-      : RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH;
-
-    // Note: Enable culling of backfacing triangles only if culling is actually desired on this visibility ray.
+  // Note: Enable culling of backfacing triangles only if culling is actually desired on this visibility ray.
+  if(cb.enableCullingSecondaryRays) {
     rayFlags |= packedFlagGet(visibilityMode, visibilityModeDisableCulling)
       ? 0
       : RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
+  }
+
+  while(true)
+  {
+    RayQuery<0> rayQuery;
 
     if (usePreviousTLAS)
     {

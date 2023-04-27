@@ -1355,6 +1355,7 @@ namespace dxvk {
     constants.skyBrightness = RtxOptions::Get()->skyBrightness();
     constants.isLastCompositeOutputValid = rtOutput.m_lastCompositeOutput.matchesWriteFrameIdx(frameIdx - 1);
     constants.isZUp = RtxOptions::Get()->isZUp();
+    constants.enableCullingSecondaryRays = RtxOptions::Get()->enableCullingInSecondaryRays();
 
     // Upload the constants to the GPU
     {
