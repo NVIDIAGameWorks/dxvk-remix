@@ -208,7 +208,7 @@ namespace dxvk {
 
     const bool isCameraCut = getLastSetCamera().update(
       frameId, input.getTransformData().worldToView, input.getTransformData().viewToProjection,
-      fov, nearPlane, farPlane, isLHS);
+      fov, aspectRatio, nearPlane, farPlane, isLHS);
 
     // Register camera cut when there are significant interruptions to the view (like changing level, or opening a menu)
     if (isCameraCut && getLastSetCameraType() == CameraType::Main) {

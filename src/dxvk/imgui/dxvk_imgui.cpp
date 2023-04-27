@@ -1441,6 +1441,11 @@ namespace dxvk {
       showTextureSelectionGrid("watertextures", numThumbnailsPerRow, thumbnailSize, RtxOptions::Get()->animatedWaterTexturesRef());
     }
 
+    if (RtxOptions::Get()->enableAntiCulling() &&
+      IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 8.4: Anti-Culling Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->antiCullingTexturesDescription())) {
+      showTextureSelectionGrid("antiCullingTextures", numThumbnailsPerRow, thumbnailSize, RtxOptions::Get()->antiCullingTexturesRef());
+    }
+
     if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 9.1: Player Model Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->playerModelTexturesDescription())) {
       showTextureSelectionGrid("playermodeltextures", numThumbnailsPerRow, thumbnailSize, RtxOptions::Get()->playerModelTexturesRef());
     }
@@ -1959,6 +1964,13 @@ namespace dxvk {
       ImGui::Checkbox("Portals: Virtual Instance Matching", &RtxOptions::Get()->useRayPortalVirtualInstanceMatchingObject());
       ImGui::Checkbox("Portals: Fade In Effect", &RtxOptions::Get()->enablePortalFadeInEffectObject());
       ImGui::Checkbox("Reset Buffer Cache Every Frame", &RtxOptions::Get()->resetBufferCacheOnEveryFrameObject());
+      if (ImGui::CollapsingHeader("Experimental Geometry Features", collapsingHeaderClosedFlags)) {
+        ImGui::Checkbox("Anti-Culling", &RtxOptions::Get()->enableAntiCullingObject());
+        if (RtxOptions::Get()->enableAntiCulling()) {
+          ImGui::InputInt("Instance Max Size", &RtxOptions::Get()->numKeepInstancesObject(), 1, 1, 0);
+          ImGui::DragFloat("Anti-Culling Fov Scale", &RtxOptions::Get()->antiCullingFovScaleObject(), 0.01f, 0.1f, 2.0f);
+        }
+      }
       ImGui::Unindent();
     }
 

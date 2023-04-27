@@ -351,12 +351,13 @@ namespace dxvk
 
   bool RtCamera::update(
     uint32_t frameIdx, const Matrix4& newWorldToView, const Matrix4& newViewToProjection,
-    float fov, float nearPlane, float farPlane, bool isLHS
+    float fov, float aspectRatio, float nearPlane, float farPlane, bool isLHS
   ) {
     if (m_frameLastTouched == frameIdx)
       return false;
 
     m_fov = fov;
+    m_aspectRatio = aspectRatio;
     m_isLHS = isLHS;
     m_nearPlane = nearPlane;
     m_farPlane = farPlane;
@@ -401,6 +402,14 @@ namespace dxvk
     m_matCache[MatrixType::PreviousProjectionToView] = m_matCache[MatrixType::ProjectionToView];
 
     Matrix4 modifiedViewToProj = newViewToProjection;
+
+    // Create Anti-Culling frustum
+    if (RtxOptions::Get()->enableAntiCulling()) {
+      const float fovScale = RtxOptions::Get()->antiCullingFovScale();
+      float4x4 frustumMatrix;
+      frustumMatrix.SetupByHalfFovyInf((float)(fov * fovScale * 0.5), aspectRatio, nearPlane, (isLHS ? PROJ_LEFT_HANDED : 0));
+      m_frustum.Setup(NDC_OGL, frustumMatrix);
+    }
 
     // Sometimes we want to modify the near plane for RT.  See DevSettings->Camera->Advanced
     if(RtxOptions::Get()->enableNearPlaneOverride()) {

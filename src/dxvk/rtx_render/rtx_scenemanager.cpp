@@ -38,6 +38,7 @@
 
 #include "rtx_game_capturer.h"
 #include "rtx_matrix_helpers.h"
+#include "rtx_intersection_test_helpers.h"
 
 #include "dxvk_scoped_annotation.h"
 #include "../tracy/Tracy.hpp"
@@ -121,16 +122,50 @@ namespace dxvk {
   void SceneManager::garbageCollection() {
     ZoneScoped;
     // Garbage collection for BLAS/Scene objects
+    if (!RtxOptions::Get()->enableAntiCulling())
     {
       if (m_device->getCurrentFrameId() > RtxOptions::Get()->numFramesToKeepGeometryData()) {
-        const size_t oldestFrame = m_device->getCurrentFrameId() - RtxOptions::Get()->numFramesToKeepGeometryData();
         auto& entries = m_drawCallCache.getEntries();
+        const size_t oldestFrame = m_device->getCurrentFrameId() - RtxOptions::Get()->numFramesToKeepGeometryData();
         for (auto& iter = entries.begin(); iter != entries.end(); ) {
           if (iter->second.frameLastTouched < oldestFrame) {
             onSceneObjectDestroyed(iter->second, iter->first);
             iter = entries.erase(iter);
           } else {
             ++iter;
+          }
+        }
+      }
+    }
+    else { // Implement anti-culling object GC
+      auto& entries = m_drawCallCache.getEntries();
+      for (auto& iter = entries.begin(); iter != entries.end(); ++iter) {
+        for (const RtInstance* instance : iter->second.getLinkedInstances()) {
+          // No need to do frustum check for instances under the keeping threshold
+          const uint32_t numFramesToKeepInstances = RtxOptions::Get()->getNumFramesToKeepInstances();
+          const uint32_t currentFrame = m_device->getCurrentFrameId();
+          if (instance->getFrameLastUpdated() + numFramesToKeepInstances > currentFrame) {
+            continue;
+          }
+
+          const Matrix4 objectToView = m_cameraManager.getMainCamera().getWorldToView(false) * instance->getBlas()->input.getTransformData().objectToWorld;
+
+          bool isInsideFrustum = true;
+          if (instance->getBlas()->input.getGeometryData().futureBoundingBox.valid()) {
+            const AxisAlignBoundingBox boundingBox = instance->getBlas()->input.getGeometryData().boundingBox;
+            isInsideFrustum = boundingBoxIntersectsFrustum(m_cameraManager.getMainCamera().getFrustum(), boundingBox.minPos, boundingBox.maxPos, objectToView);
+          }
+          else {
+            // Fallback to check object center under view space
+            isInsideFrustum = m_cameraManager.getMainCamera().getFrustum().CheckSphere(float3(objectToView[3][0], objectToView[3][1], objectToView[3][2]), 0);
+          }
+
+          // Only GC the objects inside the frustum to anti-frustum culling, this could cause significant performance impact
+          // For the objects which can't be handled well with this algorithm, we will need game specific hash to force keeping them
+          if (isInsideFrustum && !RtxOptions::Get()->isAntiCullingTexture(instance->getMaterialDataHash())) {
+            instance->markAsInsideFrustum();
+          } else {
+            instance->markAsOutsideFrustum();
           }
         }
       }

@@ -24,7 +24,7 @@
 #include "MathLib/MathLib.h"
 #include "../util/util_matrix.h"
 
-bool rayIntersectsPlane(
+static inline bool rayIntersectsPlane(
   const dxvk::Vector3& s0,  // ray segment start
   const dxvk::Vector3& d,   // ray direction
   const dxvk::Vector3& n,   // plane normal
@@ -40,12 +40,12 @@ bool rayIntersectsPlane(
   return false;
 }
 
-bool inRange(float a, float minValue, float maxValue)
+static inline bool inRange(float a, float minValue, float maxValue)
 {
   return a >= minValue && a <= maxValue;
 }
 
-bool lineSegmentIntersectsQuad(
+static inline bool lineSegmentIntersectsQuad(
   const dxvk::Vector3& l0,  // line segment start
   const dxvk::Vector3& l1,  // line segment end
   const dxvk::Vector3& n,   // quad plane normal 
@@ -71,7 +71,7 @@ bool lineSegmentIntersectsQuad(
 }
 
 // Projects a point onto a quad and returns whether it lies within quad's bounds
-bool projectedPointLiesInsideQuad(
+static inline bool projectedPointLiesInsideQuad(
   const dxvk::Vector3& p ,  // point
   const dxvk::Vector3& n,   // quad plane normal 
   const dxvk::Vector3& centroid,    // quad center point 
@@ -83,4 +83,41 @@ bool projectedPointLiesInsideQuad(
   float v = dot(cToP, basis[1]);
   return inRange(u, -halfExtents.x, halfExtents.x)
       && inRange(v, -halfExtents.y, halfExtents.y);
+}
+
+// Fast BoundingBox-Frustum intersection check
+static inline bool boundingBoxIntersectsFrustum(
+  cFrustum& frustum,                   // The frustum check for intersection
+  const dxvk::Vector3& minPos,         // The minimum position of AABB bounding box of the object
+  const dxvk::Vector3& maxPos,         // The maximum position of AABB bounding box of the object
+  const dxvk::Matrix4& objectToView) { // Object to viewspace transform matrix
+  const dxvk::Vector4 minPosView = objectToView * dxvk::Vector4(minPos, 1.0f);
+  const dxvk::Vector4 maxPosView = objectToView * dxvk::Vector4(maxPos, 1.0f);
+
+  float4 obbVertices[8] = {
+    float4(minPosView.x, minPosView.y, minPosView.z, 1.0f),
+    float4(maxPosView.x, minPosView.y, minPosView.z, 1.0f),
+    float4(minPosView.x, maxPosView.y, minPosView.z, 1.0f),
+    float4(minPosView.x, minPosView.y, maxPosView.z, 1.0f),
+    float4(maxPosView.x, maxPosView.y, minPosView.z, 1.0f),
+    float4(minPosView.x, maxPosView.y, maxPosView.z, 1.0f),
+    float4(maxPosView.x, minPosView.y, maxPosView.z, 1.0f),
+    float4(minPosView.x, minPosView.y, minPosView.z, 1.0f)
+  };
+
+  for (uint32_t planeIdx = 0; planeIdx < PLANES_NUM; ++planeIdx) {
+    bool insidePlane = false;
+    const float4 plane = frustum.GetPlane(planeIdx);
+    for (uint32_t obbVerticesIdx = 0; obbVerticesIdx < 8; ++obbVerticesIdx) {
+      // Fast in-out plane check with SIMD
+      if (Dot44(plane, obbVertices[obbVerticesIdx]) >= 0.0f) {
+        insidePlane = true;
+        break;
+      }
+    }
+    if (!insidePlane) {
+      return false;
+    }
+  }
+  return true;
 }
