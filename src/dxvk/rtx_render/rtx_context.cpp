@@ -25,7 +25,7 @@
 
 #include "dxvk_device.h"
 #include "dxvk_scoped_annotation.h"
-#include "dxvk_shader_manager.h"
+#include "rtx_render/rtx_shader_manager.h"
 #include "dxvk_adapter.h"
 #include "rtx_context.h"
 #include "rtx_asset_exporter.h"

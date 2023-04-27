@@ -5,10 +5,11 @@
 #include <cstdio>
 
 #include "dxvk_device.h"
-#include "dxvk_shader_manager.h"
 
 #include "../util/util_string.h"
-#include "rtx_render/rtx_options.h"
+
+#include "rtx_shader_manager.h"
+#include "rtx_options.h"
 
 namespace dxvk {
   ShaderManager* ShaderManager::s_instance = nullptr;
@@ -110,7 +111,9 @@ namespace dxvk {
 
       // Skip shader reload at the start of a first frame as the render passes haven't initialized their shaders
       if (!isFirstFrame) {
-        reloadShaders();
+        if (!reloadShaders()) {
+          Logger::err("recompileShadersOnLaunch failed!");
+        }
         m_recompileShadersOnLaunch = false;
       }
       isFirstFrame = false;
@@ -135,11 +138,12 @@ namespace dxvk {
     }
   }
 
-  void ShaderManager::reloadShaders()
+  bool ShaderManager::reloadShaders()
   {
     if (!compileShaders())
-      return;
+      return false;
 
+    bool allShadersLoaded = true;
     for (auto& [name, info] : m_shaderMap) {
       const std::string shaderSPIRVBinary = (m_tempFolderPath / (std::string{ info.m_name } + ".spv")).u8string();
 
@@ -157,7 +161,10 @@ namespace dxvk {
 
       if (!success) {
         Logger::info("Failed to load SPIR-V binary: \"" + shaderSPIRVBinary + "\"");
+        allShadersLoaded = false;
       }
     }
+
+    return allShadersLoaded;
   }
 }

@@ -33,7 +33,7 @@
 #include "dxvk_imgui.h"
 #include "rtx_render/rtx_imgui.h"
 #include "dxvk_device.h"
-#include "dxvk_shader_manager.h"
+#include "rtx_render/rtx_shader_manager.h"
 #include "rtx_render/rtx_camera.h"
 #include "rtx_render/rtx_context.h"
 #include "rtx_render/rtx_options.h"
@@ -1105,13 +1105,38 @@ namespace dxvk {
 
     ImGui::SetTooltipToLastWidgetOnHover("Screenshot will be dumped to, '<exe-dir>/Screenshots'");
 
-    ImGui::SameLine();
+    ImGui::SameLine(200.f);
     ImGui::Checkbox("Include G-Buffer", &RtxOptions::Get()->captureDebugImageObject());
+        
+    { // Recompile Shaders button and its status message
+      using namespace std::chrono;
+      static enum { None, OK, Error } shaderMessage = None;
+      static time_point<steady_clock> shaderMessageTimeout;
 
-    if (ImGui::Button("Recompile Shaders")) {
-      ShaderManager::getInstance()->reloadShaders();
+      if (ImGui::Button("Recompile Shaders")) {
+        if (ShaderManager::getInstance()->reloadShaders())
+          shaderMessage = OK;
+        else
+          shaderMessage = Error;
+
+        // Set a 5 seconds timeout to hide the message later
+        shaderMessageTimeout = steady_clock::now() + seconds(5);
+      }
+
+      if (shaderMessage != None) {
+        // Display the message: green OK if successful, red ERROR if not
+        ImGui::SameLine();
+        ImGui::PushStyleColor(ImGuiCol_Text, shaderMessage == OK ? 0xff40ff40 : 0xff4040ff);
+        ImGui::TextUnformatted(shaderMessage == OK ? "OK" : "ERROR");
+        ImGui::PopStyleColor();
+
+        // Hide the message after a timeout
+        if (steady_clock::now() > shaderMessageTimeout) {
+          shaderMessage = None;
+        }
+      }
     }
-    ImGui::SameLine();
+    ImGui::SameLine(200.f);
     ImGui::Checkbox("Live shader edit mode", &RtxOptions::Get()->useLiveShaderEditModeObject());
 
     ImGui::Checkbox("Force V-Sync Off?", &RtxOptions::Get()->forceVsyncOffObject());

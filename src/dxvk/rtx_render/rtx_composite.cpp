@@ -24,7 +24,7 @@
 #include "rtx/pass/composite/composite_binding_indices.h"
 #include "rtx/pass/composite/composite_args.h"
 #include "rtx/pass/raytrace_args.h"
-#include "dxvk_shader_manager.h"
+#include "rtx_render/rtx_shader_manager.h"
 #include <dxvk_scoped_annotation.h>
 #include "rtx_imgui.h"
 #include "rtx_context.h"

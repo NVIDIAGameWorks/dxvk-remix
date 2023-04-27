@@ -21,7 +21,7 @@
 */
 #include "rtx_image_utils.h"
 #include "dxvk_device.h"
-#include "dxvk_shader_manager.h"
+#include "rtx_render/rtx_shader_manager.h"
 
 #include <rtx_shaders/cube_to_latlong.h>
 #include "dxvk_scoped_annotation.h"

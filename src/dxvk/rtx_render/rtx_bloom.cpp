@@ -23,7 +23,7 @@
 #include "rtx_bloom.h"
 #include "dxvk_device.h"
 #include "dxvk_scoped_annotation.h"
-#include "dxvk_shader_manager.h"
+#include "rtx_render/rtx_shader_manager.h"
 #include "rtx/pass/bloom/bloom.h"
 
 #include <rtx_shaders/bloom_downscale.h>
