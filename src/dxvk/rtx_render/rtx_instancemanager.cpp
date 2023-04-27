@@ -64,7 +64,7 @@ namespace dxvk {
     if (drawClockwise == worldToProjectionMirrored)
       flags |= VK_GEOMETRY_INSTANCE_TRIANGLE_FLIP_FACING_BIT_KHR;
     
-    if (!RtxOptions::Get()->isCullingEnabled())
+    if (!RtxOptions::Get()->enableCulling())
       flags |= VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
 
     // This check can be overridden by replacement assets.
