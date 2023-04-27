@@ -391,8 +391,11 @@ namespace dxvk {
     recreate   |= window != m_window;    
     recreate   |= m_dialog != m_lastDialog;
 
-    // NV-DXVK start: check if we've received a new window
-    recreate   |= !m_presenter->isSameHWND(window);
+    // NV-DXVK start: Support games changing the HWND at runtime.
+    if (window != m_window) {
+      // Reinstall window hook that was removed in LeaveFullscreenMode() above
+      HookWindowProc(window, this);
+    }
     // NV-DXVK end
 
     m_window    = window;
@@ -801,18 +804,14 @@ namespace dxvk {
       ::SetWindowPos(m_window, HWND_TOPMOST,
         rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
         SWP_FRAMECHANGED | SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
+
+      if (changeFullscreen) {
+        // Reinstall window hook that was removed in LeaveFullscreenMode() above
+        HookWindowProc(m_window, this);
+      }
     }
 
     m_presentParams = *pPresentParams;
-
-    // NV-DXVK start: Support games changing the HWND at runtime.
-    if (m_presentParams.hDeviceWindow != m_window || changeFullscreen) {
-      m_window = m_presentParams.hDeviceWindow;
-
-      // Reinstall window hook that was removed in LeaveFullscreenMode() above
-      HookWindowProc(m_window, this);
-    }
-    // NV-DXVK end
 
     if (changeFullscreen)
       SetGammaRamp(0, &m_ramp);
