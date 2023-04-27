@@ -16,19 +16,19 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.applicationId|int|102100511|Used for DLSS.|
 |rtx.assetEstimatedSizeGB|int|2||
 |rtx.asyncTextureUploadPreloadMips|int|8||
-|rtx.autoExposure.autoExposureSpeed|float|5||
-|rtx.autoExposure.centerMeteringSize|float|0.5||
-|rtx.autoExposure.enabled|bool|True||
+|rtx.autoExposure.autoExposureSpeed|float|5|Average exposure changing speed when the image changes.|
+|rtx.autoExposure.centerMeteringSize|float|0.5|The importance of pixels around the screen center.|
+|rtx.autoExposure.enabled|bool|True|Automatically adjusts exposure so that the image won't be too bright or too dark.|
 |rtx.autoExposure.evMaxValue|float|5|Min/Max values tuned by moving from bright/dark locations in game, and adjusting until they look correct.|
 |rtx.autoExposure.evMinValue|float|-2|Min/Max values tuned by moving from bright/dark locations in game, and adjusting until they look correct.|
-|rtx.autoExposure.exposureAverageMode|int|1||
-|rtx.autoExposure.exposureCenterMeteringEnabled|bool|False||
-|rtx.autoExposure.exposureWeightCurve0|float|1||
-|rtx.autoExposure.exposureWeightCurve1|float|1||
-|rtx.autoExposure.exposureWeightCurve2|float|1||
-|rtx.autoExposure.exposureWeightCurve3|float|1||
-|rtx.autoExposure.exposureWeightCurve4|float|1||
-|rtx.autoExposure.useExposureCompensation|bool|False||
+|rtx.autoExposure.exposureAverageMode|int|1|Average mode. Valid values: <Mean=0, Median=1>. The mean mode averages exposures across pixels. The median mode is more stable for extreme pixel values.|
+|rtx.autoExposure.exposureCenterMeteringEnabled|bool|False|Gives higher weight to pixels around the screen center.|
+|rtx.autoExposure.exposureWeightCurve0|float|1|Curve control point 0.|
+|rtx.autoExposure.exposureWeightCurve1|float|1|Curve control point 1.|
+|rtx.autoExposure.exposureWeightCurve2|float|1|Curve control point 2.|
+|rtx.autoExposure.exposureWeightCurve3|float|1|Curve control point 3.|
+|rtx.autoExposure.exposureWeightCurve4|float|1|Curve control point 4.|
+|rtx.autoExposure.useExposureCompensation|bool|False|Uses a curve to determine the importance of different exposure levels when calculating average exposure.|
 |rtx.blockInputToGameInUI|bool|True||
 |rtx.bloom.enable|bool|True||
 |rtx.bloom.intensity|float|0.06||
@@ -102,12 +102,12 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.di.permutationSamplingNthFrame|int|0|Apply permutation sampling when (frameIdx % this == 0), 0 means off.|
 |rtx.di.spatialSamples|int|2|The number of spatial reuse samples in converged areas.|
 |rtx.di.stealBoundaryPixelSamplesWhenOutsideOfScreen|bool|True|Steal screen boundary samples when a hit point is outside the screen.|
-|rtx.dlssEnhancementDirectLightMaxValue|float|10||
-|rtx.dlssEnhancementDirectLightPower|float|0.7||
-|rtx.dlssEnhancementIndirectLightMaxValue|float|1.5||
-|rtx.dlssEnhancementIndirectLightMinRoughness|float|0.3||
-|rtx.dlssEnhancementIndirectLightPower|float|1||
-|rtx.dlssEnhancementMode|int|1||
+|rtx.dlssEnhancementDirectLightMaxValue|float|10|The maximum strength of direct lighting enhancement.|
+|rtx.dlssEnhancementDirectLightPower|float|0.7|The overall strength of direct lighting enhancement.|
+|rtx.dlssEnhancementIndirectLightMaxValue|float|1.5|The maximum strength of indirect lighting enhancement.|
+|rtx.dlssEnhancementIndirectLightMinRoughness|float|0.3|The reference roughness in indirect lighting enhancement.|
+|rtx.dlssEnhancementIndirectLightPower|float|1|The overall strength of indirect lighting enhancement.|
+|rtx.dlssEnhancementMode|int|1|The enhancement filter type. Valid values: <Normal Difference=1, Laplacian=0>. Normal difference mode provides more normal detail at the cost of some noise. Laplacian mode is less aggressive.|
 |rtx.dlssPreset|int|1|Combined DLSS Preset for quickly controlling Upscaling, Frame Interpolation and Latency Reduction.|
 |rtx.drawCallRange|int2|0, 2147483647||
 |rtx.effectLightIntensity|float|1||
@@ -122,7 +122,7 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.enableBillboardOrientationCorrection|bool|True||
 |rtx.enableCulling|bool|True|Enable front/backface culling for opaque objects. Objects with alpha blend or alpha test are not culled.|
 |rtx.enableCullingInSecondaryRays|bool|False|Enable front/backface culling for opaque objects. Objects with alpha blend or alpha test are not culled.  Only applies in secondary rays, defaults to off.  Generally helps with light bleeding from objects that aren't watertight.|
-|rtx.enableDLSSEnhancement|bool|True||
+|rtx.enableDLSSEnhancement|bool|True|Enhances lighting details when DLSS is on.|
 |rtx.enableDecalMaterialBlending|bool|True||
 |rtx.enableDeveloperOptions|bool|False||
 |rtx.enableDirectLighting|bool|True||
@@ -236,16 +236,16 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.lightConversionEqualityDirectionThreshold|float|0.99|The lower cosine angle threshold between two directions used to determine if two directional lights as the same light when uniquely identifying legacy lights for conversion.|
 |rtx.lightConversionEqualityDistanceThreshold|float|0.05|The upper distance threshold between two positions used to determine if two positional lights as the same light when uniquely identifying legacy lights for conversion.|
 |rtx.lightConversionSphereLightFixedRadius|float|4|The fixed radius in world units to use for legacy lights converted to sphere lights (currently point and spot lights will convert to sphere lights). Use caution with large light radii as many legacy lights will be placed close to geometry and intersect it, causing suboptimal light sampling performance or other visual artifacts (lights clipping through walls, etc).|
-|rtx.localtonemap.boostLocalContrast|bool|False|Boost contrast on local features.|
+|rtx.localtonemap.boostLocalContrast|bool|False|Boosts contrast on local features.|
 |rtx.localtonemap.displayMip|int|0|Bottom mip level of tone map pyramid.|
 |rtx.localtonemap.exposure|float|0.75|Exposure factor applied on average exposure.|
-|rtx.localtonemap.exposurePreferenceOffset|float|0|Offset to reference luminance when determine different areas.|
-|rtx.localtonemap.exposurePreferenceSigma|float|4|Transition sharpness between different areas. Higher values have lower contract.|
-|rtx.localtonemap.finalizeWithACES|bool|True|Apply ACES tone mapping on final result.|
-|rtx.localtonemap.highlights|float|4|Highlight area strength. Higher values have lower contract.|
+|rtx.localtonemap.exposurePreferenceOffset|float|0|Offset to reference luminance when calculating the weights a pixel belongs to shadow/normal/highlight areas.|
+|rtx.localtonemap.exposurePreferenceSigma|float|4|Transition sharpness between different areas of exposure. Smaller values result in sharper transitions.|
+|rtx.localtonemap.finalizeWithACES|bool|True|Applies ACES tone mapping on final result.|
+|rtx.localtonemap.highlights|float|4|Highlight area strength. Higher values cause darker highlight.|
 |rtx.localtonemap.mip|int|3|Top mip level of tone map pyramid.|
-|rtx.localtonemap.shadows|float|2|Shadow area strength. Higher values have lower contract.|
-|rtx.localtonemap.useGaussian|bool|True|Use gaussian kernel to generate tone map pyramid.|
+|rtx.localtonemap.shadows|float|2|Shadow area strength. Higher values cause brighter shadows.|
+|rtx.localtonemap.useGaussian|bool|True|Uses gaussian kernel to generate tone map pyramid.|
 |rtx.logLegacyHashReplacementMatches|bool|False||
 |rtx.maxAccumulationFrames|int|254|The number of frames to accumulate volume lighting samples over. More results in greater image stability at the cost of potentially more temporal lag.|
 |rtx.maxAnisotropyLevel|float|8|Min of this and the hardware device limits.|
@@ -302,7 +302,7 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.pathMaxBounces|int|4|The maximum number of indirect bounces the path will be allowed to complete. Higher values result in better indirect lighting, lower values result in better performance. Must be < 16.|
 |rtx.pathMinBounces|int|1|The minimum number of indirect bounces the path must complete before Russian Roulette can be used. Must be < 16.|
 |rtx.pipeline.useDeferredOperations|bool|True||
-|rtx.pixelHighlightReuseStrength|float|0.5||
+|rtx.pixelHighlightReuseStrength|float|0.5|The specular portion when we reuse last frame's pixel value.|
 |rtx.playerModel.backwardOffset|float|18||
 |rtx.playerModel.enableInPrimarySpace|bool|False||
 |rtx.playerModel.enablePrimaryShadows|bool|True||
@@ -312,7 +312,7 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.playerModel.intersectionCapsuleHeight|float|68||
 |rtx.playerModel.intersectionCapsuleRadius|float|24||
 |rtx.playerModel.verticalDetectionDistance|float|64||
-|rtx.postFilterThreshold|float|3||
+|rtx.postFilterThreshold|float|3|Clamps a pixel when its luminance exceeds x times of the average.|
 |rtx.postfx.blurDiameterFraction|float|0.02||
 |rtx.postfx.chromaticAberrationAmount|float|0.02||
 |rtx.postfx.chromaticCenterAttenuationAmount|float|0.975||
@@ -362,31 +362,31 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.restirGI.biasCorrectionMode|int|4|Bias correction mode to combine central with its neighbors in spatial reuse.|
 |rtx.restirGI.boilingFilterMaxThreshold|float|20|Boiling filter threshold when surface normal is parallel to view direction.|
 |rtx.restirGI.boilingFilterMinThreshold|float|10|Boiling filter threshold when surface normal is perpendicular to view direction.|
-|rtx.restirGI.boilingFilterRemoveReservoirThreshold|float|62|Remove a sample when a sample's weight exceeds this threshold.|
-|rtx.restirGI.fireflyThreshold|float|50|Clamp specular input to suppress boiling.|
+|rtx.restirGI.boilingFilterRemoveReservoirThreshold|float|62|Removes a sample when a sample's weight exceeds this threshold.|
+|rtx.restirGI.fireflyThreshold|float|50|Clamps specular input to suppress boiling.|
 |rtx.restirGI.misMode|int|2|MIS mode to mix specular output with input.|
 |rtx.restirGI.misRoughness|float|0.3|Reference roughness when roughness MIS is used. Higher values give ReSTIR inputs higher weight.|
 |rtx.restirGI.pairwiseMISCentralWeight|float|0.1|The importance of central sample in pairwise bias correction modes.|
 |rtx.restirGI.parallaxAmount|float|0.02|Parallax strength when parallax MIS is used. Higher values give ReSTIR inputs higher weight.|
 |rtx.restirGI.permutationSamplingSize|int|2|Permutation sampling strength.|
 |rtx.restirGI.reflectionMinParallax|float|3|When the parallax between normal and reflection reprojection is greater than this threshold, randomly choose one reprojected position and reuse the sample on it. Otherwise, get a sample between the two positions.|
-|rtx.restirGI.roughnessClamp|float|0.01|Clamp minimum roughness a sample's importance is evaluated.|
-|rtx.restirGI.stealBoundaryPixelSamplesWhenOutsideOfScreen|bool|True|Try to steal ReSTIR GI samples even a hit point is outside the screen. This will further improve highly specular samples at the cost of some bias.|
+|rtx.restirGI.roughnessClamp|float|0.01|Clamps minimum roughness a sample's importance is evaluated.|
+|rtx.restirGI.stealBoundaryPixelSamplesWhenOutsideOfScreen|bool|True|Steals ReSTIR GI samples even a hit point is outside the screen. This will further improve highly specular samples at the cost of some bias.|
 |rtx.restirGI.temporalAdaptiveHistoryLengthMs|int|500|Temporal history time length, when adaptive temporal history is enabled.|
 |rtx.restirGI.temporalFixedHistoryLength|int|30|Fixed temporal history length, when adaptive temporal history is disabled.|
 |rtx.restirGI.useAdaptiveTemporalHistory|bool|True|Adjust temporal history length based on frame rate.|
-|rtx.restirGI.useBoilingFilter|bool|True|Enable boiling filter to suppress boiling artifacts.|
-|rtx.restirGI.useDemodulatedTargetFunction|bool|False|Demodulate target function. This will improve the result in non-pairwise modes.|
-|rtx.restirGI.useDiscardEnlargedPixels|bool|True|Discard enlarged samples when the camera is moving towards an object.|
-|rtx.restirGI.useFinalVisibility|bool|True|Test visiblity in output.|
-|rtx.restirGI.usePermutationSampling|bool|True|Use permutation sample to perturb samples. This will improve results in DLSS.|
-|rtx.restirGI.useReflectionReprojection|bool|True|Use reflection reprojection for reflective objects to achieve stable result when the camera is moving.|
-|rtx.restirGI.useSampleStealing|int|2|Steal ReSTIR GI samples in path tracer. This will improve highly specular results.|
-|rtx.restirGI.useSpatialReuse|bool|True|Enable spatial reuse.|
-|rtx.restirGI.useTemporalBiasCorrection|bool|True|Correct bias caused by temporal reprojection.|
-|rtx.restirGI.useTemporalJacobian|bool|True|Calculate Jacobian determinant in temporal reprojection.|
-|rtx.restirGI.useTemporalReuse|bool|True|Enable temporal reuse.|
-|rtx.restirGI.useVirtualSample|bool|True|Use virtual position for samples from highly specular surfaces.|
+|rtx.restirGI.useBoilingFilter|bool|True|Enables boiling filter to suppress boiling artifacts.|
+|rtx.restirGI.useDemodulatedTargetFunction|bool|False|Demodulates target function. This will improve the result in non-pairwise modes.|
+|rtx.restirGI.useDiscardEnlargedPixels|bool|True|Discards enlarged samples when the camera is moving towards an object.|
+|rtx.restirGI.useFinalVisibility|bool|True|Tests visiblity in output.|
+|rtx.restirGI.usePermutationSampling|bool|True|Uses permutation sample to perturb samples. This will improve results in DLSS.|
+|rtx.restirGI.useReflectionReprojection|bool|True|Uses reflection reprojection for reflective objects to achieve stable result when the camera is moving.|
+|rtx.restirGI.useSampleStealing|int|2|Steals ReSTIR GI samples in path tracer. This will improve highly specular results.|
+|rtx.restirGI.useSpatialReuse|bool|True|Enables spatial reuse.|
+|rtx.restirGI.useTemporalBiasCorrection|bool|True|Corrects bias caused by temporal reprojection.|
+|rtx.restirGI.useTemporalJacobian|bool|True|Calculates Jacobian determinant in temporal reprojection.|
+|rtx.restirGI.useTemporalReuse|bool|True|Enables temporal reuse.|
+|rtx.restirGI.useVirtualSample|bool|True|Uses virtual position for samples from highly specular surfaces.|
 |rtx.restirGI.virtualSampleLuminanceThreshold|float|2|The last path vertex with luminance greater than 2 times of the previous accumulated radiance will get virtualized. Higher values tend to keep the first path vertex with non-zero contribution.|
 |rtx.restirGI.virtualSampleRoughnessThreshold|float|0.2|Surface with roughness under this threshold is considered to be highly specular, i.e. a "mirror".|
 |rtx.restirGI.virtualSampleSpecularThreshold|float|0.5|If a highly specular path vertex's direct specular light portion is higher than this. Its distance to the light source will get accumulated.|
@@ -464,7 +464,7 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.useLiveShaderEditMode|bool|False|When set to true shaders will be automatically recompiled when any shader file is updated (saved for instance) in addition to the usual manual recompilation trigger.|
 |rtx.useObsoleteHashOnTextureUpload|bool|False||
 |rtx.usePartialDdsLoader|bool|True||
-|rtx.usePostFilter|bool|True||
+|rtx.usePostFilter|bool|True|Uses post filter to remove fireflies in the denoised result.|
 |rtx.useRTXDI|bool|True|Enable RTXDI to improve direct light quality.|
 |rtx.useRayPortalVirtualInstanceMatching|bool|True||
 |rtx.useReSTIRGI|bool|True|Enable ReSTIR GI to improve indirect light quality.|
