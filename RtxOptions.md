@@ -34,6 +34,7 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.bloom.intensity|float|0.06||
 |rtx.bloom.sigma|float|0.1||
 |rtx.calculateLightIntensityUsingLeastSquares|bool|True|Enable usage of least squares for approximating a light's falloff curve rather than a more basic single point approach. This will generally result in more accurate matching of the original application's custom light attenuation curves, especially with non physically based linear-style attenuation.|
+|rtx.calculateMeshBoundingBox|bool|False|Calculate bounding box for every mesh.|
 |rtx.camera.enableFreeCamera|bool|False|Enable free camera.|
 |rtx.camera.freeCameraPitch|float|0|Free camera's pitch.|
 |rtx.camera.freeCameraPosition|float3|0, 0, 0|Free camera's position.|
@@ -67,10 +68,10 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.debugView.minValue|float|0||
 |rtx.decalNormalOffset|float|0.003|Distance along normal between two adjacent decals.|
 |rtx.defaultToAdvancedUI|bool|False||
-|rtx.demodulate.demodulateRoughness|bool|True||
-|rtx.demodulate.demodulateRoughnessOffset|float|0.1||
-|rtx.demodulate.directLightBoilingThreshold|float|5||
-|rtx.demodulate.enableDirectLightBoilingFilter|bool|True||
+|rtx.demodulate.demodulateRoughness|bool|True|Demodulate roughness to improve specular details.|
+|rtx.demodulate.demodulateRoughnessOffset|float|0.1|Strength of roughness demodulation, lower values are stronger.|
+|rtx.demodulate.directLightBoilingThreshold|float|5|Remove direct light sample when its luminance is higher than the average one multiplied by this threshold .|
+|rtx.demodulate.enableDirectLightBoilingFilter|bool|True|Boiling filter removing direct light sample when its luminance is too high.|
 |rtx.denoiseDirectAndIndirectLightingSeparately|bool|True|Denoising quality, high uses separate denoising of direct and indirect lighting for higher quality at the cost of performance.|
 |rtx.denoiser.maxDirectHitTContribution|float|-1||
 |rtx.denoiser.nrd.timeDeltaBetweenFrames|float|-1||
@@ -198,6 +199,9 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.graphicsPreset|int|5|Overall rendering preset, higher presets result in higher image quality, lower presets result in better performance.|
 |rtx.hideSplashMessage|bool|False||
 |rtx.highlightedTexture|int|0|Hash of a texture that should be highlighted.|
+|rtx.ignoreGameDirectionalLights|bool|False|Ignores any directional lights coming from the original game (lights added via toolkit still work).|
+|rtx.ignoreGamePointLights|bool|False|Ignores any point lights coming from the original game (lights added via toolkit still work).|
+|rtx.ignoreGameSpotLights|bool|False|Ignores any spot lights coming from the original game (lights added via toolkit still work).|
 |rtx.ignoreStencilVolumeHeuristics|bool|True|Tries to detect stencil volumes and ignore those when pathtracing.  Stencil buffer was used for a variety of effects in the D3D7-9 era, mostly for geometry based lights and shadows - things we don't need when pathtracing.|
 |rtx.indirectRaySpreadAngleFactor|float|0.05|A tuning factor for the spread angle calculated from the sampled lobe solid angle PDF.|
 |rtx.initializer.asyncAssetLoading|bool|True||
@@ -231,16 +235,16 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.lightConversionEqualityDirectionThreshold|float|0.99|The lower cosine angle threshold between two directions used to determine if two directional lights as the same light when uniquely identifying legacy lights for conversion.|
 |rtx.lightConversionEqualityDistanceThreshold|float|0.05|The upper distance threshold between two positions used to determine if two positional lights as the same light when uniquely identifying legacy lights for conversion.|
 |rtx.lightConversionSphereLightFixedRadius|float|4|The fixed radius in world units to use for legacy lights converted to sphere lights (currently point and spot lights will convert to sphere lights). Use caution with large light radii as many legacy lights will be placed close to geometry and intersect it, causing suboptimal light sampling performance or other visual artifacts (lights clipping through walls, etc).|
-|rtx.localtonemap.boostLocalContrast|bool|False||
-|rtx.localtonemap.displayMip|int|0||
-|rtx.localtonemap.exposure|float|0.75||
-|rtx.localtonemap.exposurePreferenceOffset|float|0||
-|rtx.localtonemap.exposurePreferenceSigma|float|4||
-|rtx.localtonemap.finalizeWithACES|bool|True||
-|rtx.localtonemap.highlights|float|4||
-|rtx.localtonemap.mip|int|3||
-|rtx.localtonemap.shadows|float|2||
-|rtx.localtonemap.useGaussian|bool|True||
+|rtx.localtonemap.boostLocalContrast|bool|False|Boost contrast on local features.|
+|rtx.localtonemap.displayMip|int|0|Bottom mip level of tone map pyramid.|
+|rtx.localtonemap.exposure|float|0.75|Exposure factor applied on average exposure.|
+|rtx.localtonemap.exposurePreferenceOffset|float|0|Offset to reference luminance when determine different areas.|
+|rtx.localtonemap.exposurePreferenceSigma|float|4|Transition sharpness between different areas. Higher values have lower contract.|
+|rtx.localtonemap.finalizeWithACES|bool|True|Apply ACES tone mapping on final result.|
+|rtx.localtonemap.highlights|float|4|Highlight area strength. Higher values have lower contract.|
+|rtx.localtonemap.mip|int|3|Top mip level of tone map pyramid.|
+|rtx.localtonemap.shadows|float|2|Shadow area strength. Higher values have lower contract.|
+|rtx.localtonemap.useGaussian|bool|True|Use gaussian kernel to generate tone map pyramid.|
 |rtx.logLegacyHashReplacementMatches|bool|False||
 |rtx.maxAccumulationFrames|int|254|The number of frames to accumulate volume lighting samples over. More results in greater image stability at the cost of potentially more temporal lag.|
 |rtx.maxAnisotropyLevel|float|8|Min of this and the hardware device limits.|
@@ -354,37 +358,37 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.resolveOpaquenessThreshold|float|0.996078|x >= threshold : opaque surface.|
 |rtx.resolvePreCombinedMatrices|bool|True||
 |rtx.resolveTransparencyThreshold|float|0.00392157|x <= threshold : transparent surface.|
-|rtx.restirGI.biasCorrectionMode|int|4||
-|rtx.restirGI.boilingFilterMaxThreshold|float|20||
-|rtx.restirGI.boilingFilterMinThreshold|float|10||
-|rtx.restirGI.boilingFilterRemoveReservoirThreshold|float|62||
-|rtx.restirGI.fireflyThreshold|float|50||
-|rtx.restirGI.misMode|int|2||
-|rtx.restirGI.misRoughness|float|0.3||
-|rtx.restirGI.pairwiseMISCentralWeight|float|0.1||
-|rtx.restirGI.parallaxAmount|float|0.02||
-|rtx.restirGI.permutationSamplingSize|int|2||
+|rtx.restirGI.biasCorrectionMode|int|4|Bias correction mode to combine central with its neighbors in spatial reuse.|
+|rtx.restirGI.boilingFilterMaxThreshold|float|20|Boiling filter threshold when surface normal is parallel to view direction.|
+|rtx.restirGI.boilingFilterMinThreshold|float|10|Boiling filter threshold when surface normal is perpendicular to view direction.|
+|rtx.restirGI.boilingFilterRemoveReservoirThreshold|float|62|Remove a sample when a sample's weight exceeds this threshold.|
+|rtx.restirGI.fireflyThreshold|float|50|Clamp specular input to suppress boiling.|
+|rtx.restirGI.misMode|int|2|MIS mode to mix specular output with input.|
+|rtx.restirGI.misRoughness|float|0.3|Reference roughness when roughness MIS is used. Higher values give ReSTIR inputs higher weight.|
+|rtx.restirGI.pairwiseMISCentralWeight|float|0.1|The importance of central sample in pairwise bias correction modes.|
+|rtx.restirGI.parallaxAmount|float|0.02|Parallax strength when parallax MIS is used. Higher values give ReSTIR inputs higher weight.|
+|rtx.restirGI.permutationSamplingSize|int|2|Permutation sampling strength.|
 |rtx.restirGI.reflectionMinParallax|float|3|When the parallax between normal and reflection reprojection is greater than this threshold, randomly choose one reprojected position and reuse the sample on it. Otherwise, get a sample between the two positions.|
-|rtx.restirGI.roughnessClamp|float|0.01||
-|rtx.restirGI.stealBoundaryPixelSamplesWhenOutsideOfScreen|bool|True||
-|rtx.restirGI.temporalAdaptiveHistoryLengthMs|int|500||
-|rtx.restirGI.temporalFixedHistoryLength|int|30||
-|rtx.restirGI.useAdaptiveTemporalHistory|bool|True||
-|rtx.restirGI.useBoilingFilter|bool|True||
-|rtx.restirGI.useDemodulatedTargetFunction|bool|False||
-|rtx.restirGI.useDiscardEnlargedPixels|bool|True||
-|rtx.restirGI.useFinalVisibility|bool|True||
-|rtx.restirGI.usePermutationSampling|bool|True||
+|rtx.restirGI.roughnessClamp|float|0.01|Clamp minimum roughness a sample's importance is evaluated.|
+|rtx.restirGI.stealBoundaryPixelSamplesWhenOutsideOfScreen|bool|True|Try to steal ReSTIR GI samples even a hit point is outside the screen. This will further improve highly specular samples at the cost of some bias.|
+|rtx.restirGI.temporalAdaptiveHistoryLengthMs|int|500|Temporal history time length, when adaptive temporal history is enabled.|
+|rtx.restirGI.temporalFixedHistoryLength|int|30|Fixed temporal history length, when adaptive temporal history is disabled.|
+|rtx.restirGI.useAdaptiveTemporalHistory|bool|True|Adjust temporal history length based on frame rate.|
+|rtx.restirGI.useBoilingFilter|bool|True|Enable boiling filter to suppress boiling artifacts.|
+|rtx.restirGI.useDemodulatedTargetFunction|bool|False|Demodulate target function. This will improve the result in non-pairwise modes.|
+|rtx.restirGI.useDiscardEnlargedPixels|bool|True|Discard enlarged samples when the camera is moving towards an object.|
+|rtx.restirGI.useFinalVisibility|bool|True|Test visiblity in output.|
+|rtx.restirGI.usePermutationSampling|bool|True|Use permutation sample to perturb samples. This will improve results in DLSS.|
 |rtx.restirGI.useReflectionReprojection|bool|True|Use reflection reprojection for reflective objects to achieve stable result when the camera is moving.|
-|rtx.restirGI.useSampleStealing|int|2||
-|rtx.restirGI.useSpatialReuse|bool|True||
-|rtx.restirGI.useTemporalBiasCorrection|bool|True||
-|rtx.restirGI.useTemporalJacobian|bool|True||
-|rtx.restirGI.useTemporalReuse|bool|True||
-|rtx.restirGI.useVirtualSample|bool|True|ReSTIR virtual sample can improve results on highly specular surfaces by storing virtual samples behind the mirror, instead of actual samples "on the mirror". When an indirect ray hits a highly specular surface, the hit T will get accumulated until a path vertex with significant contribution is hit. Then the hit T will be used to extend the 1st indirect ray, whose extended end point will be the virtual sample's position. If the significant path vertex has high specular contribution, its distance to light source will also get accumulated. The last path vertex with radiance greater than 2 times of the previous accumulated radiance will get virtualized. Value is based on experiment. Higher values tend to keep the first path vertex with non-zero contribution, unless another one with much higher contribution is discovered.|
-|rtx.restirGI.virtualSampleLuminanceThreshold|float|2|The last path vertex with radiance greater than 2 times of the previous accumulated radiance will get virtualized. Value is based on experiment. Higher values tend to keep the first path vertex with non-zero contribution, unless another one with much higher contribution is discovered.|
-|rtx.restirGI.virtualSampleRoughnessThreshold|float|0.2|Surface with roughness under this threshold is consider to be highly specular, i.e. a "mirror".|
-|rtx.restirGI.virtualSampleSpecularThreshold|float|0.5|If a highly specular path vertex's specular light portion is higher than this. Its distance to the light source will get accumulated.|
+|rtx.restirGI.useSampleStealing|int|2|Steal ReSTIR GI samples in path tracer. This will improve highly specular results.|
+|rtx.restirGI.useSpatialReuse|bool|True|Enable spatial reuse.|
+|rtx.restirGI.useTemporalBiasCorrection|bool|True|Correct bias caused by temporal reprojection.|
+|rtx.restirGI.useTemporalJacobian|bool|True|Calculate Jacobian determinant in temporal reprojection.|
+|rtx.restirGI.useTemporalReuse|bool|True|Enable temporal reuse.|
+|rtx.restirGI.useVirtualSample|bool|True|Use virtual position for samples from highly specular surfaces.|
+|rtx.restirGI.virtualSampleLuminanceThreshold|float|2|The last path vertex with luminance greater than 2 times of the previous accumulated radiance will get virtualized. Higher values tend to keep the first path vertex with non-zero contribution.|
+|rtx.restirGI.virtualSampleRoughnessThreshold|float|0.2|Surface with roughness under this threshold is considered to be highly specular, i.e. a "mirror".|
+|rtx.restirGI.virtualSampleSpecularThreshold|float|0.5|If a highly specular path vertex's direct specular light portion is higher than this. Its distance to the light source will get accumulated.|
 |rtx.risLightSampleCount|int|7|The number of lights randomly selected from the global pool to consider when selecting a light with RIS.|
 |rtx.rngSeedWithFrameIndex|bool|True||
 |rtx.russianRoulette1stBounceMaxContinueProbability|float|1|The maximum probability of continuing a path when Russian Roulette is being used on the first bounce.|
@@ -460,9 +464,9 @@ RTX Options are configurable parameters for RTX pipeline components. They can be
 |rtx.useObsoleteHashOnTextureUpload|bool|False||
 |rtx.usePartialDdsLoader|bool|True||
 |rtx.usePostFilter|bool|True||
-|rtx.useRTXDI|bool|True||
+|rtx.useRTXDI|bool|True|Enable RTXDI to improve direct light quality.|
 |rtx.useRayPortalVirtualInstanceMatching|bool|True||
-|rtx.useReSTIRGI|bool|True||
+|rtx.useReSTIRGI|bool|True|Enable ReSTIR GI to improve indirect light quality.|
 |rtx.useVertexCapture|bool|False||
 |rtx.useVirtualShadingNormalsForDenoising|bool|True||
 |rtx.useWhiteMaterialMode|bool|False||
