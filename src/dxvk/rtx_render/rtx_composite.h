@@ -97,21 +97,22 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, stochasticAlphaBlendEnableFilter, true, "Filter samples to suppress noise.");
     RTX_OPTION("rtx", bool, stochasticAlphaBlendDiscardBlackPixel, false, "Discard black pixels.");
 
-    RTX_OPTION("rtx", bool, usePostFilter, true, "");
-    RTX_OPTION("rtx", float, postFilterThreshold, 3.0f, "");
+    RTX_OPTION("rtx", bool, usePostFilter, true, "Uses post filter to remove fireflies in the denoised result.");
+    RTX_OPTION("rtx", float, postFilterThreshold, 3.0f, "Clamps a pixel when its luminance exceeds x times of the average.");
 
     RTX_OPTION("rtx", float, noiseMixRatio, 0.2f, "");
     RTX_OPTION("rtx", float, noiseNormalPower, 0.5f, "");
     RTX_OPTION("rtx", float, noiseClampLow, 0.5f, "");
     RTX_OPTION("rtx", float, noiseClampHigh, 2.0f, "");
-    RTX_OPTION("rtx", bool,  enableDLSSEnhancement, true, "");
-    RTX_OPTION("rtx", float, dlssEnhancementDirectLightPower, 0.7f, "");
-    RTX_OPTION("rtx", float, dlssEnhancementIndirectLightPower, 1.0f, "");
-    RTX_OPTION("rtx", float, dlssEnhancementDirectLightMaxValue, 10.0f, "");
-    RTX_OPTION("rtx", float, dlssEnhancementIndirectLightMaxValue, 1.5f, "");
-    RTX_OPTION("rtx", float, dlssEnhancementIndirectLightMinRoughness, 0.3f, "");
-    RTX_OPTION("rtx", EnhancementMode, dlssEnhancementMode, EnhancementMode::NormalDifference, "");
-    RTX_OPTION("rtx", float, pixelHighlightReuseStrength, 0.5, "");
+    RTX_OPTION("rtx", bool,  enableDLSSEnhancement, true, "Enhances lighting details when DLSS is on.");
+    RTX_OPTION("rtx", float, dlssEnhancementDirectLightPower, 0.7f, "The overall strength of direct lighting enhancement.");
+    RTX_OPTION("rtx", float, dlssEnhancementIndirectLightPower, 1.0f, "The overall strength of indirect lighting enhancement.");
+    RTX_OPTION("rtx", float, dlssEnhancementDirectLightMaxValue, 10.0f, "The maximum strength of direct lighting enhancement.");
+    RTX_OPTION("rtx", float, dlssEnhancementIndirectLightMaxValue, 1.5f, "The maximum strength of indirect lighting enhancement.");
+    RTX_OPTION("rtx", float, dlssEnhancementIndirectLightMinRoughness, 0.3f, "The reference roughness in indirect lighting enhancement.");
+    RTX_OPTION("rtx", EnhancementMode, dlssEnhancementMode, EnhancementMode::NormalDifference,
+      "The enhancement filter type. Valid values: <Normal Difference=1, Laplacian=0>. Normal difference mode provides more normal detail at the cost of some noise. Laplacian mode is less aggressive.");
+    RTX_OPTION("rtx", float, pixelHighlightReuseStrength, 0.5, "The specular portion when we reuse last frame's pixel value.");
 
     Rc<DxvkBuffer> getCompositeConstantsBuffer();
     void createConstantsBuffer();

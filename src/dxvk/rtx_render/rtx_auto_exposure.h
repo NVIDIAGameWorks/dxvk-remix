@@ -78,21 +78,21 @@ namespace dxvk {
       Median
     };
 
-    RTX_OPTION("rtx.autoExposure", bool, enabled, true, "");
+    RTX_OPTION("rtx.autoExposure", bool, enabled, true, "Automatically adjusts exposure so that the image won't be too bright or too dark.");
 
     // Exposure Settings
-    RTX_OPTION("rtx.autoExposure", float, autoExposureSpeed, 5.f, "");
+    RTX_OPTION("rtx.autoExposure", float, autoExposureSpeed, 5.f, "Average exposure changing speed when the image changes.");
     RTX_OPTION("rtx.autoExposure", float, evMinValue, -2.0f, "Min/Max values tuned by moving from bright/dark locations in game, and adjusting until they look correct.");
     RTX_OPTION("rtx.autoExposure", float, evMaxValue, 5.f, "Min/Max values tuned by moving from bright/dark locations in game, and adjusting until they look correct.");
-    RTX_OPTION("rtx.autoExposure", bool,  exposureCenterMeteringEnabled, false, "");
-    RTX_OPTION("rtx.autoExposure", float, centerMeteringSize, 0.5f, "");
-    RTX_OPTION("rtx.autoExposure", ExposureAverageMode, exposureAverageMode, ExposureAverageMode::Median, "");
-    RTX_OPTION("rtx.autoExposure", bool, useExposureCompensation, false, "");
-    RTX_OPTION("rtx.autoExposure", float, exposureWeightCurve0, 1.f, "");
-    RTX_OPTION("rtx.autoExposure", float, exposureWeightCurve1, 1.f, "");
-    RTX_OPTION("rtx.autoExposure", float, exposureWeightCurve2, 1.f, "");
-    RTX_OPTION("rtx.autoExposure", float, exposureWeightCurve3, 1.f, "");
-    RTX_OPTION("rtx.autoExposure", float, exposureWeightCurve4, 1.f, "");
+    RTX_OPTION("rtx.autoExposure", bool,  exposureCenterMeteringEnabled, false, "Gives higher weight to pixels around the screen center.");
+    RTX_OPTION("rtx.autoExposure", float, centerMeteringSize, 0.5f, "The importance of pixels around the screen center.");
+    RTX_OPTION("rtx.autoExposure", ExposureAverageMode, exposureAverageMode, ExposureAverageMode::Median, "Average mode. Valid values: <Mean=0, Median=1>. The mean mode averages exposures across pixels. The median mode is more stable for extreme pixel values.");
+    RTX_OPTION("rtx.autoExposure", bool, useExposureCompensation, false, "Uses a curve to determine the importance of different exposure levels when calculating average exposure.");
+    RTX_OPTION("rtx.autoExposure", float, exposureWeightCurve0, 1.f, "Curve control point 0.");
+    RTX_OPTION("rtx.autoExposure", float, exposureWeightCurve1, 1.f, "Curve control point 1.");
+    RTX_OPTION("rtx.autoExposure", float, exposureWeightCurve2, 1.f, "Curve control point 2.");
+    RTX_OPTION("rtx.autoExposure", float, exposureWeightCurve3, 1.f, "Curve control point 3.");
+    RTX_OPTION("rtx.autoExposure", float, exposureWeightCurve4, 1.f, "Curve control point 4.");
   };
   
 }
