@@ -150,7 +150,7 @@ namespace dxvk {
       *value.v2i = options.getOption<Vector2i>(fullName.c_str(), *value.v2i, env);
       break;
     case OptionType::String:
-      *value.string = options.getOption<std::string>(fullName.c_str(), *value.string);
+      *value.string = options.getOption<std::string>(fullName.c_str(), *value.string, env);
       break;
     default:
       break;

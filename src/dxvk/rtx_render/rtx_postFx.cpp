@@ -23,7 +23,7 @@
 #include "rtx_postFx.h"
 #include "dxvk_device.h"
 #include "dxvk_scoped_annotation.h"
-#include "dxvk_shader_manager.h"
+#include "rtx_render/rtx_shader_manager.h"
 #include "rtx/pass/post_fx/post_fx.h"
 
 #include <rtx_shaders/post_fx.h>

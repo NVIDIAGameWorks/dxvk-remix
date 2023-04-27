@@ -21,7 +21,7 @@
 */
 #include "rtx_pathtracer_integrate_direct.h"
 #include "dxvk_device.h"
-#include "dxvk_shader_manager.h"
+#include "rtx_render/rtx_shader_manager.h"
 
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/integrate/integrate_direct_binding_indices.h"

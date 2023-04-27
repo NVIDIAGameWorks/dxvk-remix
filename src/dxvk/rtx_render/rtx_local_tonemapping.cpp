@@ -22,7 +22,7 @@
 #include "rtx_local_tonemapping.h"
 #include "dxvk_device.h"
 #include "dxvk_scoped_annotation.h"
-#include "dxvk_shader_manager.h"
+#include "rtx_render/rtx_shader_manager.h"
 #include "rtx.h"
 #include "rtx/pass/local_tonemap/local_tonemapping.h"
 

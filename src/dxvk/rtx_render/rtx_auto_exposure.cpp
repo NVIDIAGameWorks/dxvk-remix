@@ -22,15 +22,12 @@
 #include "rtx_tonemapping.h"
 #include "dxvk_device.h"
 #include "dxvk_scoped_annotation.h"
-#include "dxvk_shader_manager.h"
+#include "rtx_render/rtx_shader_manager.h"
 #include "rtx.h"
 #include "rtx/pass/tonemap/tonemapping.h"
 
 #include <rtx_shaders/auto_exposure.h>
 #include <rtx_shaders/auto_exposure_histogram.h>
-#include <rtx_shaders/tonemapping_histogram.h>
-#include <rtx_shaders/tonemapping_tone_curve.h>
-#include <rtx_shaders/tonemapping_apply_tonemapping.h>
 #include "rtx_imgui.h"
 
 #include "rtx/utility/debug_view_indices.h"

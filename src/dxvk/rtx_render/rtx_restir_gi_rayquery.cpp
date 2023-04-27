@@ -21,7 +21,7 @@
 */
 #include "rtx_rtxdi_rayquery.h"
 #include "dxvk_device.h"
-#include "dxvk_shader_manager.h"
+#include "rtx_render/rtx_shader_manager.h"
 
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/rtxdi/restir_gi_reuse_binding_indices.h"
