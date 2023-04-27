@@ -29,7 +29,7 @@
 #include "rtx/pass/debug_view/debug_view_binding_indices.h"
 #include "rtx/pass/debug_view/debug_view_waveform_render_binding_indices.h"
 #include "rtx/pass/debug_view/debug_view_args.h"
-#include "dxvk_shader_manager.h"
+#include "rtx_render/rtx_shader_manager.h"
 #include "rtx_imgui.h"
 #include "dxvk_scoped_annotation.h"
 #include "rtx_context.h"

@@ -153,8 +153,6 @@ dxvk_src = files([
   'dxvk_shader.h',
   'dxvk_shader_key.cpp',
   'dxvk_shader_key.h',
-  'dxvk_shader_manager.cpp',
-  'dxvk_shader_manager.h',
   'dxvk_signal.cpp',
   'dxvk_signal.h',
   'dxvk_spec_const.cpp',
@@ -295,6 +293,8 @@ dxvk_src = files([
   'rtx_render/rtx_asset_datamanager.h',
   'rtx_render/rtx_asset_data.h',
   'rtx_render/rtx_asset_package.h',
+  'rtx_render/rtx_shader_manager.cpp',
+  'rtx_render/rtx_shader_manager.h',
 
   'rtx_render/rtx_hashing.cpp',
   'rtx_render/rtx_hashing.h',

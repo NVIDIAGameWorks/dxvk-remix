@@ -21,7 +21,7 @@
 */
 #include "rtx_pathtracer_integrate_indirect.h"
 #include "dxvk_device.h"
-#include "dxvk_shader_manager.h"
+#include "rtx_render/rtx_shader_manager.h"
 #include "rtx_context.h"
 #include "rtx_options.h"
 

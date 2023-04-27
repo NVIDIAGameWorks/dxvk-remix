@@ -26,7 +26,7 @@
 #include "../../util/thread.h"
 #include "dxvk_context.h"
 #include "dxvk_device.h"
-#include "dxvk_shader_manager.h"
+#include "rtx_render/rtx_shader_manager.h"
 #include "rtx_io.h"
 #include "dxvk_raytracing.h"
 

@@ -23,7 +23,7 @@
 #include "rtx_taa.h"
 #include "dxvk_device.h"
 #include "dxvk_scoped_annotation.h"
-#include "dxvk_shader_manager.h"
+#include "rtx_render/rtx_shader_manager.h"
 #include "rtx/pass/temporal_aa/temporal_aa.h"
 
 #include <rtx_shaders/temporal_aa.h>

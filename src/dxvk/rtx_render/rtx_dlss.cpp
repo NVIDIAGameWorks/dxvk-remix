@@ -33,7 +33,7 @@
 #include "dxvk_scoped_annotation.h"
 #include "rtx_shaders/prepare_dlss.h"
 #include "../util/util_env.h"
-#include "dxvk_shader_manager.h"
+#include "rtx_render/rtx_shader_manager.h"
 #include "rtx_imgui.h"
 
 #include "rtx_matrix_helpers.h"

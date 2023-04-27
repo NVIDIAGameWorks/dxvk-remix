@@ -21,7 +21,7 @@
 */
 #include "rtx_pathtracer_gbuffer.h"
 #include "dxvk_device.h"
-#include "dxvk_shader_manager.h"
+#include "rtx_render/rtx_shader_manager.h"
 #include "rtx_options.h"
 
 #include "rtx/pass/common_binding_indices.h"
