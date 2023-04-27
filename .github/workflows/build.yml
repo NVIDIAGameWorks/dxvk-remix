@@ -40,12 +40,12 @@ jobs:
       run: |
         Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
         . .\build_common.ps1
-        PerformBuild -BuildFlavour ${{matrix.build-flavour}} -BuildSubDir ${{matrix.output-subdir}} -Backend ninja -EnableTracy false
+        PerformBuild -BuildFlavour ${{matrix.build-flavour}} -BuildSubDir ${{matrix.output-subdir}} -Backend ninja -EnableTracy false copy_output
     
     - name: Upload binaries
       uses: actions/upload-artifact@v3
       with:
         name: dxvk-remix-${{env.GITHUB_SHA_SHORT}}-${{matrix.build-flavour}}
         path: |
-          ${{matrix.output-subdir}}\src\d3d9\d3d9.dll
-          ${{matrix.output-subdir}}\src\d3d9\d3d9.pdb
+          _output\*.dll
+          _output\*.pdb
