@@ -55,6 +55,19 @@ namespace dxvk {
     } }
   };
 
+  void LightManager::showImguiLightOverview() {
+    if (ImGui::CollapsingHeader("Light Statistics", ImGuiTreeNodeFlags_CollapsingHeader)) {
+      ImGui::Indent();
+      ImGui::Text("Sphere Lights: %d", getLightCount(lightTypeSphere));
+      ImGui::Text("Rectangle Lights: %d", getLightCount(lightTypeRect));
+      ImGui::Text("Disk Lights: %d", getLightCount(lightTypeDisk));
+      ImGui::Text("Cylinder Lights: %d", getLightCount(lightTypeCylinder));
+      ImGui::Text("Distant Lights: %d", getLightCount(lightTypeDistant));
+      ImGui::Text("Total Lights: %d", getActiveCount());
+      ImGui::Unindent();
+    }
+  }
+
   void LightManager::showImguiSettings() {
     if (ImGui::CollapsingHeader("Light Translation", ImGuiTreeNodeFlags_CollapsingHeader)) {
       ImGui::Indent();
