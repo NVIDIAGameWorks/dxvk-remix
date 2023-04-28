@@ -589,4 +589,11 @@ namespace dxvk {
     }
   }
 
+  uint LightManager::getLightCount(uint type) {
+    if (type >= lightTypeCount) {
+      return 0;
+    }
+    return m_lightTypeRanges[type].count;
+  }
+
 }  // namespace dxvk
