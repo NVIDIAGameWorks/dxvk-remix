@@ -65,6 +65,7 @@ public:
   ~LightManager();
 
   void showImguiSettings();
+  void showImguiLightOverview();
 
   const std::unordered_map<XXH64_hash_t, RtLight>& getLightTable() const { return m_lights; }
   const Rc<DxvkBuffer> getLightBuffer() const { return m_lightBuffer; }
@@ -86,6 +87,8 @@ public:
 
   void setRaytraceArgs(RaytraceArgs& raytraceArgs, uint32_t rtxdiInitialLightSamples, uint32_t volumeRISInitialLightSamples, uint32_t risLightSamples) const;
   
+  uint getLightCount(uint type);
+
 private:
   std::unordered_map<XXH64_hash_t, RtLight> m_lights;
   // Note: A fallback light tracked seperately and handled specially to not be mixed up with
