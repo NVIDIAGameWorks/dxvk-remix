@@ -42,10 +42,14 @@ jobs:
         . .\build_common.ps1
         PerformBuild -BuildFlavour ${{matrix.build-flavour}} -BuildSubDir ${{matrix.output-subdir}} -Backend ninja -EnableTracy false copy_output
     
+    - name: Copy readme
+      run: copy artifacts_readme.txt _output
+    
     - name: Upload binaries
       uses: actions/upload-artifact@v3
       with:
-        name: dxvk-remix-${{env.GITHUB_SHA_SHORT}}-${{matrix.build-flavour}}
+        name: dxvk-remix-${{env.GITHUB_SHA_SHORT}}-${{github.run_number}}-${{matrix.build-flavour}}
         path: |
           _output\*.dll
           _output\*.pdb
+          _output\*.txt
