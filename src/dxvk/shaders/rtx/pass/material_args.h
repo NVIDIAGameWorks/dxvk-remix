@@ -31,6 +31,8 @@ struct OpaqueMaterialArgs {
   float roughnessBias;
   float albedoScale;
   float albedoBias;
+  float metallicScale;
+  float metallicBias;
   float normalIntensity;
   float layeredWaterNormalMotionX;
   float layeredWaterNormalMotionY;
@@ -40,6 +42,8 @@ struct OpaqueMaterialArgs {
   uint enableThinFilmOverride;
   // Note: This thickness value is normalized on 0-1, predivided by the thinFilmMaxThickness on the CPU.
   float thinFilmNormalizedThicknessOverride = 0.0;
+  uint pad0;
+  uint pad1;
 };
 
 struct TranslucentMaterialArgs {
@@ -63,11 +67,13 @@ struct OpaqueMaterialOptions {
 
   // Modifiers
 
-  RTX_OPTION("rtx.opaqueMaterial", float, roughnessScale, 1.0f, "");
-  RTX_OPTION("rtx.opaqueMaterial", float, roughnessBias, 0.0f, "");
-  RTX_OPTION("rtx.opaqueMaterial", float, albedoScale, 1.0f, "");
-  RTX_OPTION("rtx.opaqueMaterial", float, albedoBias, 0.0f, "");
-  RTX_OPTION("rtx.opaqueMaterial", float, normalIntensity, 1.0f, "");
+  RTX_OPTION("rtx.opaqueMaterial", float, roughnessScale, 1.0f, "Scales the original roughness value.");
+  RTX_OPTION("rtx.opaqueMaterial", float, roughnessBias, 0.0f, "Offsets the original roughness value.");
+  RTX_OPTION("rtx.opaqueMaterial", float, albedoScale, 1.0f, "Scales the original albedo value.");
+  RTX_OPTION("rtx.opaqueMaterial", float, albedoBias, 0.0f, "Offsets the original albedo value.");
+  RTX_OPTION("rtx.opaqueMaterial", float, metallicScale, 1.0f, "Scales the original metallic value.");
+  RTX_OPTION("rtx.opaqueMaterial", float, metallicBias, 0.0f, "Offsets the original metallic value.");
+  RTX_OPTION("rtx.opaqueMaterial", float, normalIntensity, 1.0f, "Scales normal map strength.");
   RTX_OPTION("rtx.opaqueMaterial", Vector2, layeredWaterNormalMotion, Vector2(-0.25f, -0.3f), "");
   RTX_OPTION("rtx.opaqueMaterial", float, layeredWaterNormalMotionScale, 9.0f, "");
   RTX_OPTION("rtx.opaqueMaterial", float, layeredWaterNormalLodBias, 5.0f, "");
@@ -85,6 +91,8 @@ public:
     args.roughnessBias = roughnessBias();
     args.albedoScale = albedoScale();
     args.albedoBias = albedoBias();
+    args.metallicScale = metallicScale();
+    args.metallicBias = metallicBias();
     args.normalIntensity = normalIntensity();
     args.layeredWaterNormalMotionX = layeredWaterNormalMotion().x;
     args.layeredWaterNormalMotionY = layeredWaterNormalMotion().y;
