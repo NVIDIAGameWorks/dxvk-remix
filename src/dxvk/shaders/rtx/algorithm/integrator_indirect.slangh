@@ -196,6 +196,20 @@ uint2 jitterBoundaryPixels(uint2 pixelCoordinate, uint2 jitterOffset)
   return clamp(pixelCoordinate, 0, cb.camera.resolution - padding) + jitterOffset;
 }
 
+uint2 pointDirectionToAddress(vec3 position, f16vec3 direction)
+{
+  vec3 cameraPos = cameraGetWorldPosition(cb.camera);
+  float extend = 10;
+  vec3 origin = cameraPos - extend * 0.5;
+  vec3 UVW = (position - origin) / extend;
+  ivec3 UVWi = UVW * RADIANCE_CACHE_PROBE_RESOLUTION;
+  ivec2 UV2D = ivec2(UVWi.y * RADIANCE_CACHE_PROBE_RESOLUTION + UVWi.x, UVWi.z);
+
+  vec2 directionUV = sphereDirectionToUnsignedOctahedral(direction);
+  ivec2 directionUVi = clamp(directionUV * RADIANCE_CACHE_MIP_RESOLUTION, 0, RADIANCE_CACHE_MIP_RESOLUTION-1);
+  return UV2D * RADIANCE_CACHE_MIP_RESOLUTION + directionUVi;
+}
+
 // Integrate Path Vertex Functions
 
 void integratePathVertex(
