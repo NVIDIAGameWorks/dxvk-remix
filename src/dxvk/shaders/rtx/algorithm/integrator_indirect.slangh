@@ -105,9 +105,9 @@ void evalEmission(
   accumulateRadiance(pathState, emissiveRadiance);
 }
 
-void evalNEESecondary(
-  vec3 throughput, 
-  inout vec3 accumulatedRadiance,
+vec3 evalNEESecondary(
+  //vec3 throughput, 
+  //inout vec3 accumulatedRadiance,
   LightSample lightSample, 
   float invSelectionPdf, 
   uint8_t sampledTransportPortalIndex, 
@@ -134,7 +134,7 @@ void evalNEESecondary(
   specularPortion = float16_t(0);
 
   if (visibility.hasOpaqueHit)
-    return;
+    return vec3(0);
 
   // Evaluate the material and accumulate throughput and hit distance
 
@@ -152,7 +152,8 @@ void evalNEESecondary(
   const vec3 lightThroughput = vec3(combinedWeight) * lightSampleThroughput * vec3(visibility.attenuation);
   const vec3 attenuatedRadiance = lightSample.radiance * lightThroughput;
 
-  accumulatedRadiance += throughput * attenuatedRadiance;
+  return attenuatedRadiance;
+  //accumulatedRadiance += throughput * attenuatedRadiance;
 }
 
 
@@ -196,12 +197,16 @@ uint2 jitterBoundaryPixels(uint2 pixelCoordinate, uint2 jitterOffset)
   return clamp(pixelCoordinate, 0, cb.camera.resolution - padding) + jitterOffset;
 }
 
-uint2 pointDirectionToAddress(vec3 position, f16vec3 direction)
+int2 pointDirectionToAddress(vec3 position, f16vec3 direction)
 {
   vec3 cameraPos = cameraGetWorldPosition(cb.camera);
-  float extend = 10;
+  float extend = 1000;//cb.debugKnob.x + 1;
   vec3 origin = cameraPos - extend * 0.5;
   vec3 UVW = (position - origin) / extend;
+  if (any(UVW < 0) || any(UVW >= 1))
+  {
+    return int2(-1,-1);
+  }
   ivec3 UVWi = UVW * RADIANCE_CACHE_PROBE_RESOLUTION;
   ivec2 UV2D = ivec2(UVWi.y * RADIANCE_CACHE_PROBE_RESOLUTION + UVWi.x, UVWi.z);
 
@@ -328,6 +333,8 @@ void integratePathVertex(
   }
 
   // Todo: Remove hack thing
+  vec3 oldOrigin = pathState.origin;
+  vec3 newLight = 0;
   pathState.origin = hackState.origin;
   pathState.coneRadius = hackState.coneRadius;
   pathState.direction = hackState.direction;
@@ -405,6 +412,7 @@ void integratePathVertex(
 
   // Add Emission
   evalEmission(pathState, polymorphicSurfaceMaterialInteraction);
+  newLight += polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(polymorphicSurfaceMaterialInteraction);
 
 // We don't need to sample lights or surface rays in the portal closest hit shader
 #if (SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT) != 0
@@ -515,11 +523,15 @@ void integratePathVertex(
       float16_t specularPortion = float16_t(0);
 
       // Todo: Ray Portal transport sampling in the future.
-      evalNEESecondary(
-        pathState.throughput, pathState.radiance,
+      vec3 neeLight = evalNEESecondary(
+        //pathState.throughput, pathState.radiance,
         lightSample, invSelectionPdf, invalidRayPortalIndex, pathState.portalSpace, pathState.rayMask,
         isViewModel, ray, rayInteraction, surfaceInteraction,
         opaqueSurfaceMaterialInteraction, specularPortion);
+
+      pathState.radiance += pathState.throughput * neeLight;
+
+      newLight += neeLight;
 
       float hitT = pathState.accumulatedHitDistance;
       if (opaqueSurfaceMaterialInteraction.isotropicRoughness <= cb.reSTIRGIVirtualSampleRoughnessThreshold
@@ -529,6 +541,19 @@ void integratePathVertex(
       }
 
       updateReSTIRGIHitDistance(oldLuminance, calcBt709Luminance(pathState.radiance), restirHitT, min(hitT, float16Max));
+    }
+  }
+
+  // update cache
+  {
+    f16vec3 direction = normalize(pathState.origin - oldOrigin);
+    int2 address = pointDirectionToAddress(oldOrigin, direction);
+    if (all(address != -1))
+    {
+      vec4 oldRadiance = RadianceCache[address];
+      float weight = oldRadiance.a + 1;
+      vec3 newRadiance = lerp(oldRadiance.rgb, newLight, 1.0 / weight);
+      RadianceCache[address] = vec4(sanitize(newRadiance, vec3(0)), clamp(weight + 1, 0, 100));
     }
   }
 
@@ -768,6 +793,8 @@ void integrateIndirectPath(
 {
   // Initialize Path State
 
+  RadianceCache[pixelCoordinate] = RadianceCache[pixelCoordinate] * 0.999;
+
   // Note: Not technically live state as this is only passed into the resolve call and reconstructed from its output.
   PathState pathState = pathStateCreateEmpty(u16vec2(pixelCoordinate), geometryFlags);
 
@@ -895,7 +922,7 @@ void integratorIndirectPathOutputDebugView(
         storeInDebugView(ivec2(pixelCoordinate), pathState.radiance);
       else
         storeInDebugView(ivec2(pixelCoordinate), 0);*/
-      uvec2 radiancePixel = pixelCoordinate / 2;
+      uvec2 radiancePixel = pixelCoordinate / 3;
       vec4 radiance = RadianceCache[radiancePixel];
       storeInDebugView(ivec2(pixelCoordinate), radiance);
     }
