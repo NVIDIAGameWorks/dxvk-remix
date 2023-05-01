@@ -200,7 +200,7 @@ uint2 jitterBoundaryPixels(uint2 pixelCoordinate, uint2 jitterOffset)
 int2 pointDirectionToAddress(vec3 position, f16vec3 direction)
 {
   vec3 cameraPos = cameraGetWorldPosition(cb.camera);
-  float extend = 1000;//cb.debugKnob.y + 1;
+  float extend = 500;//cb.debugKnob.y * 10 + 1;
   vec3 origin = cameraPos - extend * 0.5;
   vec3 UVW = (position - origin) / extend;
   if (any(UVW < 0) || any(UVW >= 1))
