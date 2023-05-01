@@ -80,6 +80,9 @@ namespace dxvk {
         RW_TEXTURE2D(INTEGRATE_INDIRECT_BINDING_RESTIR_GI_RADIANCE_OUTPUT)
         RW_TEXTURE2D(INTEGRATE_INDIRECT_BINDING_RESTIR_GI_HIT_GEOMETRY_OUTPUT)
 
+
+        RW_TEXTURE2D(INTEGRATE_INDIRECT_BINDING_RADIANCE_CACHE)
+
         RW_TEXTURE2D(INTEGRATE_INSTRUMENTATION)
 
       END_PARAMETER()
@@ -163,6 +166,8 @@ namespace dxvk {
     ctx->bindResourceBuffer(INTEGRATE_INDIRECT_BINDING_RESTIR_GI_RESERVOIR_OUTPUT, DxvkBufferSlice(rtOutput.m_restirGIReservoirBuffer, 0, rtOutput.m_restirGIReservoirBuffer->info().size));
     ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_RESTIR_GI_RADIANCE_OUTPUT, rtOutput.m_restirGIRadiance.view(Resources::AccessType::Write), nullptr);
     ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_RESTIR_GI_HIT_GEOMETRY_OUTPUT, rtOutput.m_restirGIHitGeometry.view, nullptr);
+
+    ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_RADIANCE_CACHE, rtOutput.m_radianceCache.view, nullptr);
 
     // Aliased resources
     // m_indirectRadiance writes the actual output carried forward and therefore it must be bound with write access last
