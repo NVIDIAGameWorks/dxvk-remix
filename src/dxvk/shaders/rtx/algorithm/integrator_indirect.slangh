@@ -874,12 +874,16 @@ void integratorIndirectPathOutputDebugView(
     }
     break;
   case DEBUG_VIEW_NOISY_SECONDARY_INDIRECT_SPECULAR_RADIANCE:
-    if (!geometryFlags.primarySelectedIntegrationSurface)
+    if (geometryFlags.primarySelectedIntegrationSurface)
     {
+      /*
       if (geometryFlags.firstSampledLobeIsSpecular)
         storeInDebugView(ivec2(pixelCoordinate), pathState.radiance);
       else
-        storeInDebugView(ivec2(pixelCoordinate), 0);
+        storeInDebugView(ivec2(pixelCoordinate), 0);*/
+      uvec2 radiancePixel = pixelCoordinate / 2;
+      vec4 radiance = RadianceCache[radiancePixel];
+      storeInDebugView(ivec2(pixelCoordinate), radiance);
     }
     break;
   case DEBUG_VIEW_NAN:
