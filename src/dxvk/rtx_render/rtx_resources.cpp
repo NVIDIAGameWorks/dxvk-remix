@@ -26,6 +26,7 @@
 #include <rtxdi/RtxdiParameters.h>
 #include "rtx/pass/raytrace_args.h"
 #include "rtx/pass/gbuffer/gbuffer_binding_indices.h"
+#include "rtx/pass/integrate/integrate_indirect_binding_indices.h"
 #include <assert.h>
 #include "rtx_options.h"
 #include "rtx/utility/gpu_printing.h"
