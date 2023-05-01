@@ -368,7 +368,7 @@ void geometryResolverOutputDebugView(
 
     break;
   case DEBUG_VIEW_POSITION:
-    storeInDebugView(pixelCoordinate, surfaceInteraction.position);
+    storeInDebugView(pixelCoordinate, frac(surfaceInteraction.position * 0.1));
 
     break;
   case DEBUG_VIEW_TEXCOORDS:
