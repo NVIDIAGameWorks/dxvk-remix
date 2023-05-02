@@ -46,7 +46,8 @@ namespace dxvk {
   static int g_blasCount = 0;
 
   AccelManager::AccelManager(Rc<DxvkDevice> device)
-    : m_device(device) {
+    : m_device(device) 
+    , m_scratchAllocator(device, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR) {
   }
 
   void AccelManager::clear() {
@@ -76,15 +77,13 @@ namespace dxvk {
     }
   }
   
-  PooledBlas::PooledBlas(Rc<DxvkDevice> device)
-    : device(std::move(device)) {
+  PooledBlas::PooledBlas(Rc<DxvkDevice> device) {
     ++g_blasCount;
   }
 
   PooledBlas::~PooledBlas() {
     accelerationStructureReference = 0;
     accelStructure = nullptr;
-    device = nullptr;
     --g_blasCount;
   }
 
@@ -210,7 +209,7 @@ namespace dxvk {
     }
   }
 
-  void AccelManager::createAndBuildIntersectionBlas(Rc<RtxContext> ctx, Rc<DxvkCommandList> cmdList, DxvkBarrierSet& execBarriers) {
+  void AccelManager::createAndBuildIntersectionBlas(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, DxvkBarrierSet& execBarriers) {
     if (m_intersectionBlas.ptr())
       return;
 
@@ -264,9 +263,8 @@ namespace dxvk {
 
     geometry.geometry.aabbs.data.deviceAddress = m_aabbBuffer->getDeviceAddress();
 
-    DxvkStagingDataAlloc& scratchAllocator = ctx->getScratchAllocator();
     const uint32_t scratchAlignment = m_device->properties().khrDeviceAccelerationStructureProperties.minAccelerationStructureScratchOffsetAlignment;
-    DxvkBufferSlice scratchSlice = scratchAllocator.alloc(scratchAlignment, sizeInfo.buildScratchSize + scratchAlignment);
+    DxvkBufferSlice scratchSlice = m_scratchAllocator.alloc(scratchAlignment, sizeInfo.buildScratchSize + scratchAlignment);
     buildInfo.scratchData.deviceAddress = scratchSlice.getDeviceAddress();
 
     VkAccelerationStructureBuildRangeInfoKHR buildRange {};
@@ -312,7 +310,7 @@ namespace dxvk {
       VK_ACCESS_SHADER_READ_BIT);
   }
 
-  void AccelManager::mergeInstancesIntoBlas(Rc<RtxContext> ctx, 
+  void AccelManager::mergeInstancesIntoBlas(Rc<DxvkContext> ctx, 
                                             Rc<DxvkCommandList> cmdList, 
                                             DxvkBarrierSet& execBarriers, 
                                             const std::vector<TextureRef>& textures,
@@ -351,7 +349,6 @@ namespace dxvk {
       instances.clear();
     }
 
-    DxvkStagingDataAlloc& scratchAllocator = ctx->getScratchAllocator();
     const uint32_t scratchAlignment = m_device->properties().khrDeviceAccelerationStructureProperties.minAccelerationStructureScratchOffsetAlignment;
     const uint32_t currentFrame = m_device->getCurrentFrameId();
 
@@ -462,7 +459,7 @@ namespace dxvk {
           buildInfo.dstAccelerationStructure = blasEntry->staticBlas->accelStructure->getAccelStructure();
 
           // Allocate a scratch buffer slice
-          DxvkBufferSlice scratchSlice = scratchAllocator.alloc(scratchAlignment, sizeInfo.buildScratchSize + scratchAlignment);
+          DxvkBufferSlice scratchSlice = m_scratchAllocator.alloc(scratchAlignment, sizeInfo.buildScratchSize + scratchAlignment);
           buildInfo.scratchData.deviceAddress = scratchSlice.getDeviceAddress();
 
           // Put the new BLAS into the build queue
@@ -577,13 +574,12 @@ namespace dxvk {
                 textures, instances, blasBuckets, blasToBuild, blasRangesToBuild, frameTimeSecs);
   }
 
-  void AccelManager::createBlasBuffersAndInstances(Rc<RtxContext> ctx, 
+  void AccelManager::createBlasBuffersAndInstances(Rc<DxvkContext> ctx, 
                                                    Rc<DxvkCommandList> cmdList,
                                                    const std::vector<std::unique_ptr<BlasBucket>>& blasBuckets,
                                                    std::vector<VkAccelerationStructureBuildGeometryInfoKHR>& blasToBuild,
                                                    std::vector<VkAccelerationStructureBuildRangeInfoKHR*>& blasRangesToBuild) {
 
-    DxvkStagingDataAlloc& scratchAllocator = ctx->getScratchAllocator();
     const uint32_t scratchAlignment = m_device->properties().khrDeviceAccelerationStructureProperties.minAccelerationStructureScratchOffsetAlignment;
     const uint32_t currentFrame = m_device->getCurrentFrameId();
 
@@ -631,7 +627,7 @@ namespace dxvk {
       buildInfo.dstAccelerationStructure = selectedBlas->accelStructure->getAccelStructure();
 
       // Allocate a scratch buffer slice
-      DxvkBufferSlice scratchSlice = scratchAllocator.alloc(scratchAlignment, sizeInfo.buildScratchSize);
+      DxvkBufferSlice scratchSlice = m_scratchAllocator.alloc(scratchAlignment, sizeInfo.buildScratchSize);
       buildInfo.scratchData.deviceAddress = scratchSlice.getDeviceAddress();
 
       // Track the lifetime of the scratch and BLAS buffers
@@ -667,7 +663,7 @@ namespace dxvk {
     }
   }
 
-  void AccelManager::prepareSceneData(Rc<RtxContext> ctx, Rc<DxvkCommandList> cmdList, DxvkBarrierSet& execBarriers, InstanceManager& instanceManager) {
+  void AccelManager::prepareSceneData(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, DxvkBarrierSet& execBarriers, InstanceManager& instanceManager) {
     bool haveInstances = false;
     for (const auto& instances : m_mergedInstances) {
       if (!instances.empty()) {
@@ -787,7 +783,7 @@ namespace dxvk {
     }
   }
 
-  void AccelManager::uploadSurfaceData(Rc<RtxContext> ctx) {
+  void AccelManager::uploadSurfaceData(Rc<DxvkContext> ctx) {
     if (m_reorderedSurfaces.empty())
       return;
 
@@ -863,7 +859,7 @@ namespace dxvk {
     }
   }
 
-  void AccelManager::buildBlases(Rc<RtxContext> ctx,
+  void AccelManager::buildBlases(Rc<DxvkContext> ctx,
                                  Rc<DxvkCommandList> cmdList,
                                  DxvkBarrierSet& execBarriers,
                                  const CameraManager& cameraManager,
@@ -909,7 +905,7 @@ namespace dxvk {
     }
   }
 
-  void AccelManager::buildTlas(Rc<RtxContext> ctx, Rc<DxvkCommandList> cmdList) {
+  void AccelManager::buildTlas(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList) {
     if (m_vkInstanceBuffer == nullptr)
       return;
 
@@ -939,7 +935,7 @@ namespace dxvk {
       VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR);
   }
 
-  void AccelManager::internalBuildTlas(Rc<RtxContext> ctx, Rc<DxvkCommandList> cmdList, Tlas::Type type) {
+  void AccelManager::internalBuildTlas(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, Tlas::Type type) {
     static constexpr char* names[] = { "buildTLAS_Opaque", "buildTLAS_NonOpaque" };
     ScopedGpuProfileZone(ctx, names[type]);
     const VkBuildAccelerationStructureFlagsKHR flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR;
@@ -976,7 +972,7 @@ namespace dxvk {
     vkd->vkGetAccelerationStructureBuildSizesKHR(vkd->device(), VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, &buildInfo, &numInstances, &sizeInfo);
 
     // Create TLAS
-    Tlas& tlas = ctx->getResourceManager().getTLAS(type);
+    Tlas& tlas = m_device->getCommon()->getResources().getTLAS(type);
 
     if (type == Tlas::Opaque)
       std::swap(tlas.accelStructure, tlas.previousAccelStructure);
@@ -995,8 +991,7 @@ namespace dxvk {
     }
 
     // Allocate the scratch memory
-    DxvkStagingDataAlloc& scratchAllocator = ctx->getScratchAllocator();
-    auto scratchSlice = scratchAllocator.alloc(m_device->properties().khrDeviceAccelerationStructureProperties.minAccelerationStructureScratchOffsetAlignment, sizeInfo.buildScratchSize);
+    auto scratchSlice = m_scratchAllocator.alloc(m_device->properties().khrDeviceAccelerationStructureProperties.minAccelerationStructureScratchOffsetAlignment, sizeInfo.buildScratchSize);
 
     // Update build information
     buildInfo.srcAccelerationStructure = nullptr;

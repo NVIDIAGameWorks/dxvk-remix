@@ -56,8 +56,9 @@ static inline pxr::GfMatrix4d matrix4ToGfMatrix4d(const Matrix4& mat4) {
 
 size_t GameCapturer::Capture::nextId = 0;
 
-GameCapturer::GameCapturer(SceneManager& sceneManager) 
+GameCapturer::GameCapturer(SceneManager& sceneManager, AssetExporter& exporter) 
   : m_sceneManager(sceneManager)
+  , m_exporter(exporter)
   , m_maxFramesCapturable(RtxOptions::Get()->getCaptureMaxFrames())
   , m_framesPerSecond(RtxOptions::Get()->getCaptureFramesPerSecond())
   , m_bUseLssUsdPlugins(lss::GameExporter::loadUsdPlugins("./lss/usd_plugins/"))
@@ -77,13 +78,13 @@ GameCapturer::GameCapturer(SceneManager& sceneManager)
 GameCapturer::~GameCapturer() {
 }
 
-void GameCapturer::step(const Rc<RtxContext> rtxCtx, const float frameTimeSecs) {
-  hotkeyStep(rtxCtx);
+void GameCapturer::step(const Rc<DxvkContext> ctx, const float frameTimeSecs) {
+  hotkeyStep(ctx);
   if (getState(StateFlag::InitCapture)) {
-    initCaptureStep(rtxCtx);
+    initCaptureStep(ctx);
   }
   if(getState(StateFlag::Capturing)) {
-    captureStep(rtxCtx, frameTimeSecs);
+    captureStep(ctx, frameTimeSecs);
   }
   exportStep();
 }
@@ -95,11 +96,11 @@ void GameCapturer::setInstanceUpdateFlag(const RtInstance& rtInstance, const Ins
   m_cap.instanceFlags[rtInstance.getId()] |= (1 << uint8_t(flag));
 }
 
-void GameCapturer::hotkeyStep(const Rc<RtxContext> rtxCtx) {
+void GameCapturer::hotkeyStep(const Rc<DxvkContext> ctx) {
   const bool bStartSingle = ImGUI::checkHotkeyState(m_keyBindStartSingle);
   const bool bToggleMulti = ImGUI::checkHotkeyState(m_keyBindToggleMulti);
   if(bStartSingle || bToggleMulti) {
-    if (RtxOptions::Get()->getEnableAnyReplacements() && rtxCtx->getSceneManager().areReplacementsLoaded()) {
+    if (RtxOptions::Get()->getEnableAnyReplacements() && m_sceneManager.areReplacementsLoaded()) {
       Logger::warn("[GameCapturer] Cannot begin capture when replacement assets are enabled/loaded.");
     } else if(getState(StateFlag::Capturing)) {
       Logger::warn("[GameCapturer] Cannot begin new capture, one currently in progress.");
@@ -119,7 +120,7 @@ void GameCapturer::hotkeyStep(const Rc<RtxContext> rtxCtx) {
   }
 }
 
-void GameCapturer::initCaptureStep(const Rc<RtxContext> rtxCtx) {
+void GameCapturer::initCaptureStep(const Rc<DxvkContext> ctx) {
   assert(getState(StateFlag::InitCapture));
   assert(!getState(StateFlag::Capturing));
 
@@ -140,7 +141,7 @@ void GameCapturer::initCaptureStep(const Rc<RtxContext> rtxCtx) {
       stagePathSS << kDefaultExportFilePrefix << std::put_time(&locTime, "%Y-%m-%d_%H-%M-%S") << lss::ext::usd;
     }
     m_cap.instanceStageName = stagePathSS.str();
-    rtxCtx->triggerSceneThumbnail(basePath() + relPath::remixCaptureThumbnailsDir, m_cap.instanceStageName);
+    m_exporter.generateSceneThumbnail(ctx, basePath() + relPath::remixCaptureThumbnailsDir, m_cap.instanceStageName);
   }
   Logger::info("[GameCapturer][" + m_cap.idStr + "] New capture");
   m_cap.instanceFlags.clear();
@@ -154,11 +155,11 @@ void GameCapturer::initCaptureStep(const Rc<RtxContext> rtxCtx) {
   setState(StateFlag::InitCapture, false);
 }
 
-void GameCapturer::captureStep(const Rc<RtxContext> rtxCtx, const float dt) {
+void GameCapturer::captureStep(const Rc<DxvkContext> ctx, const float dt) {
   assert(getState(StateFlag::Capturing));
 
   m_cap.currentFrameNum += dt * static_cast<float>(m_framesPerSecond);
-  captureFrame(rtxCtx);
+  captureFrame(ctx);
 
   if(getState(StateFlag::CapturingSingle) || m_cap.numFramesCaptured >= m_maxFramesCapturable) {
     setState(StateFlag::BeginExport, true);
@@ -166,13 +167,13 @@ void GameCapturer::captureStep(const Rc<RtxContext> rtxCtx, const float dt) {
   }
 }
 
-void GameCapturer::captureFrame(const Rc<RtxContext> rtxCtx) {
+void GameCapturer::captureFrame(const Rc<DxvkContext> ctx) {
   Logger::debug("[GameCapturer][" + m_cap.idStr + "] Begin frame capture");
   if(m_cap.bExportInstances) {
     captureCamera();
     captureLights();
   }
-  captureInstances(rtxCtx);
+  captureInstances(ctx);
   ++m_cap.numFramesCaptured;
   Logger::debug("[GameCapturer][" + m_cap.idStr + "] End frame capture");
 }
@@ -291,13 +292,13 @@ void GameCapturer::captureDistantLight(const RtDistantLight& rtLight) {
   distantLight.finalTime = m_cap.currentFrameNum;
 }
 
-void GameCapturer::captureInstances(const Rc<RtxContext> rtxCtx) {
+void GameCapturer::captureInstances(const Rc<DxvkContext> ctx) {
   for (const RtInstance* rtInstancePtr : m_sceneManager.getInstanceTable()) {
     assert(rtInstancePtr->getBlas() != nullptr);
 
     if (rtInstancePtr->getBlas()->input.getIsSky()) {
       if (!m_cap.bSkyProbeBaked) {
-        rtxCtx->scheduleSkyProbeBake(basePath() + relPath::remixCaptureTexturesDir, commonFileName::bakedSkyProbe);
+        m_exporter.bakeSkyProbe(ctx, basePath() + relPath::remixCaptureTexturesDir, commonFileName::bakedSkyProbe);
         m_cap.bSkyProbeBaked = true;
         Logger::debug("[GameCapturer][" + m_cap.idStr + "][SkyProbe] Bake scheduled to " +
                       commonFileName::bakedSkyProbe);
@@ -313,11 +314,11 @@ void GameCapturer::captureInstances(const Rc<RtxContext> rtxCtx) {
     const bool bXformUpdate = checkInstanceUpdateFlag(instanceFlags, InstFlag::XformUpdate);
     Instance& instance = m_cap.instances[instanceId];
     if(bIsNew) {
-      newInstance(rtxCtx, *rtInstancePtr);
+      newInstance(ctx, *rtInstancePtr);
     }
     if(m_cap.bExportInstances && !bIsNew && (bPointsUpdate || bNormalsUpdate || bIndexUpdate)) {
       const BlasEntry* pBlas = rtInstancePtr->getBlas();
-      captureMesh(rtxCtx, instance.meshHash, pBlas->modifiedGeometryData,
+      captureMesh(ctx, instance.meshHash, pBlas->modifiedGeometryData,
                   false, bPointsUpdate, bNormalsUpdate, bIndexUpdate);
     }
     if(m_cap.bExportInstances && (bIsNew || bXformUpdate)) {
@@ -329,7 +330,7 @@ void GameCapturer::captureInstances(const Rc<RtxContext> rtxCtx) {
   }
 }
 
-void GameCapturer::newInstance(const Rc<RtxContext> rtxCtx, const RtInstance& rtInstance) {
+void GameCapturer::newInstance(const Rc<DxvkContext> ctx, const RtInstance& rtInstance) {
   const BlasEntry* pBlas = rtInstance.getBlas();
   assert(pBlas != nullptr);
   const XXH64_hash_t matHash = rtInstance.getMaterialDataHash();
@@ -338,7 +339,7 @@ void GameCapturer::newInstance(const Rc<RtxContext> rtxCtx, const RtInstance& rt
 
   const bool bIsNewMat = (matHash != 0x0) && (m_cap.materials.count(matHash) == 0);
   if (bIsNewMat) {
-    captureMaterial(rtxCtx, pBlas->getMaterialData(matHash), !rtInstance.surface.alphaState.isFullyOpaque);
+    captureMaterial(ctx, pBlas->getMaterialData(matHash), !rtInstance.surface.alphaState.isFullyOpaque);
   }
 
   bool bIsNewMesh = false;
@@ -354,7 +355,7 @@ void GameCapturer::newInstance(const Rc<RtxContext> rtxCtx, const RtInstance& rt
     instanceNum = m_cap.meshes[meshHash]->instanceCount++;
   }
   if (bIsNewMesh) {
-    captureMesh(rtxCtx, meshHash, pBlas->modifiedGeometryData, true, true, true, true);
+    captureMesh(ctx, meshHash, pBlas->modifiedGeometryData, true, true, true, true);
   }
 
   const XXH64_hash_t instanceId = rtInstance.getId();
@@ -367,12 +368,12 @@ void GameCapturer::newInstance(const Rc<RtxContext> rtxCtx, const RtInstance& rt
   Logger::debug("[GameCapturer][" + m_cap.idStr + "][Inst:" + hashToString(instanceId) + "] New");
 }
 
-void GameCapturer::captureMaterial(const Rc<RtxContext> rtxCtx, const LegacyMaterialData& materialData, const bool bEnableOpacity) {
+void GameCapturer::captureMaterial(const Rc<DxvkContext> ctx, const LegacyMaterialData& materialData, const bool bEnableOpacity) {
   const std::string matName = dxvk::hashToString(materialData.getHash());
 
   //Export Textures
   const std::string albedoTexFilename(matName + lss::ext::dds);
-  rtxCtx->dumpImageToFile(basePath() + relPath::remixCaptureTexturesDir,
+  m_exporter.dumpImageToFile(ctx, basePath() + relPath::remixCaptureTexturesDir,
                        albedoTexFilename,
                        materialData.getColorTexture().getImageView()->image());
 
@@ -387,7 +388,7 @@ void GameCapturer::captureMaterial(const Rc<RtxContext> rtxCtx, const LegacyMate
   Logger::debug("[GameCapturer][" + m_cap.idStr + "][Mat:" + matName + "] New");
 }
 
-void GameCapturer::captureMesh(const Rc<RtxContext> rtxCtx,
+void GameCapturer::captureMesh(const Rc<DxvkContext> ctx,
                                const XXH64_hash_t currentMeshHash,
                                const RaytraceGeometry& geomData,
                                const bool bIsNewMesh,
@@ -430,32 +431,32 @@ void GameCapturer::captureMesh(const Rc<RtxContext> rtxCtx,
   }
 
   if(bCapturePositions && geomData.positionBuffer.defined()) {
-    captureMeshPositions(rtxCtx, geomData, m_cap.currentFrameNum, pMesh);
+    captureMeshPositions(ctx, geomData, m_cap.currentFrameNum, pMesh);
   }
   
   if(bCaptureNormals && geomData.normalBuffer.defined()) {
-    captureMeshNormals(rtxCtx, geomData, m_cap.currentFrameNum, pMesh);
+    captureMeshNormals(ctx, geomData, m_cap.currentFrameNum, pMesh);
   }
   
   if(bCaptureIndices && geomData.indexBuffer.defined()) {
-    captureMeshIndices(rtxCtx, geomData, m_cap.currentFrameNum, pMesh);
+    captureMeshIndices(ctx, geomData, m_cap.currentFrameNum, pMesh);
   }
 
   if (bIsNewMesh && geomData.texcoordBuffer.defined()) {
-    captureMeshTexCoords(rtxCtx, geomData, m_cap.currentFrameNum, pMesh);
+    captureMeshTexCoords(ctx, geomData, m_cap.currentFrameNum, pMesh);
   }
 
   if (bIsNewMesh && geomData.color0Buffer.defined()) {
-    captureMeshColor(rtxCtx, geomData, m_cap.currentFrameNum, pMesh);
+    captureMeshColor(ctx, geomData, m_cap.currentFrameNum, pMesh);
   }
 }
 
-void GameCapturer::captureMeshPositions(const Rc<RtxContext> rtxCtx,
+void GameCapturer::captureMeshPositions(const Rc<DxvkContext> ctx,
                                         const RaytraceGeometry& geomData,
                                         const float currentFrameNum,
                                         std::shared_ptr<Mesh> pMesh) {
                                           
-  AssetExporter::BufferCallback captureMeshPositionsAsync = [rtxCtx, geomData, currentFrameNum, pMesh](Rc<DxvkBuffer> posBuf) {
+  AssetExporter::BufferCallback captureMeshPositionsAsync = [ctx, geomData, currentFrameNum, pMesh](Rc<DxvkBuffer> posBuf) {
     // Prep helper vars
     const size_t numVertices = geomData.vertexCount;
     constexpr size_t positionSubElementSize = sizeof(float);
@@ -484,15 +485,15 @@ void GameCapturer::captureMeshPositions(const Rc<RtxContext> rtxCtx,
     evalNewBufferAndCache(pMesh, pMesh->lssData.buffers.positionBufs, positions, currentFrameNum, positionsDifferentEnough);
   };
   pMesh->meshSync.numOutstandingInc();
-  rtxCtx->copyBufferFromGPU(geomData.positionBuffer, captureMeshPositionsAsync);
+  m_exporter.copyBufferFromGPU(ctx, geomData.positionBuffer, captureMeshPositionsAsync);
 }
 
-void GameCapturer::captureMeshNormals(const Rc<RtxContext> rtxCtx,
+void GameCapturer::captureMeshNormals(const Rc<DxvkContext> ctx,
                                       const RaytraceGeometry& geomData,
                                       const float currentFrameNum,
                                       std::shared_ptr<Mesh> pMesh) {
                                         
-  AssetExporter::BufferCallback captureMeshNormalsAsync = [rtxCtx, geomData, currentFrameNum, pMesh](Rc<DxvkBuffer> norBuf) {
+  AssetExporter::BufferCallback captureMeshNormalsAsync = [ctx, geomData, currentFrameNum, pMesh](Rc<DxvkBuffer> norBuf) {
     assert(geomData.normalBuffer.vertexFormat() == VK_FORMAT_R32G32B32_SFLOAT);
     // Prep helper vars
     const size_t numVertices = geomData.vertexCount;
@@ -522,7 +523,7 @@ void GameCapturer::captureMeshNormals(const Rc<RtxContext> rtxCtx,
     evalNewBufferAndCache(pMesh, pMesh->lssData.buffers.normalBufs, normals, currentFrameNum, normalsDifferentEnough);
   };
   pMesh->meshSync.numOutstandingInc();
-  rtxCtx->copyBufferFromGPU(geomData.normalBuffer, captureMeshNormalsAsync);
+  m_exporter.copyBufferFromGPU(ctx, geomData.normalBuffer, captureMeshNormalsAsync);
 }
 
 template<typename T>
@@ -538,12 +539,12 @@ static void getIndicesFromVK(const size_t numIndices, const DxvkBufferSlice& ind
   }
 }
 
-void GameCapturer::captureMeshIndices(const Rc<RtxContext> rtxCtx,
+void GameCapturer::captureMeshIndices(const Rc<DxvkContext> ctx,
                                       const RaytraceGeometry& geomData,
                                       const float currentFrameNum,
                                       std::shared_ptr<Mesh> pMesh) {
                                           
-  AssetExporter::BufferCallback captureMeshIndicesAsync = [rtxCtx, geomData, currentFrameNum, pMesh](Rc<DxvkBuffer> idxBuf) {
+  AssetExporter::BufferCallback captureMeshIndicesAsync = [ctx, geomData, currentFrameNum, pMesh](Rc<DxvkBuffer> idxBuf) {
     const size_t numIndices = geomData.indexCount;
     const DxvkBufferSlice indexBuffer(idxBuf, 0, idxBuf->info().size);
     // Copy GPU buffer to local VtArray
@@ -569,15 +570,15 @@ void GameCapturer::captureMeshIndices(const Rc<RtxContext> rtxCtx,
     evalNewBufferAndCache(pMesh, pMesh->lssData.buffers.idxBufs, indices, currentFrameNum, differentIndices);
   };
   pMesh->meshSync.numOutstandingInc();
-  rtxCtx->copyBufferFromGPU(geomData.indexBuffer, captureMeshIndicesAsync);
+  m_exporter.copyBufferFromGPU(ctx, geomData.indexBuffer, captureMeshIndicesAsync);
 }
 
-void GameCapturer::captureMeshTexCoords(const Rc<RtxContext> rtxCtx,
+void GameCapturer::captureMeshTexCoords(const Rc<DxvkContext> ctx,
                                         const RaytraceGeometry& geomData,
                                         const float currentFrameNum,
                                         std::shared_ptr<Mesh> pMesh) {
                                           
-  AssetExporter::BufferCallback captureMeshTexCoordsAsync = [rtxCtx, geomData, currentFrameNum, pMesh](Rc<DxvkBuffer> texBuf) {
+  AssetExporter::BufferCallback captureMeshTexCoordsAsync = [ctx, geomData, currentFrameNum, pMesh](Rc<DxvkBuffer> texBuf) {
     assert(geomData.texcoordBuffer.vertexFormat() == VK_FORMAT_R32G32_SFLOAT ||
            geomData.texcoordBuffer.vertexFormat() == VK_FORMAT_R32G32B32_SFLOAT);
     // Prep helper vars
@@ -609,15 +610,15 @@ void GameCapturer::captureMeshTexCoords(const Rc<RtxContext> rtxCtx,
     evalNewBufferAndCache(pMesh, pMesh->lssData.buffers.texcoordBufs, texcoords, currentFrameNum, differentIndices);
   };
   pMesh->meshSync.numOutstandingInc();
-  rtxCtx->copyBufferFromGPU(geomData.texcoordBuffer, captureMeshTexCoordsAsync);
+  m_exporter.copyBufferFromGPU(ctx, geomData.texcoordBuffer, captureMeshTexCoordsAsync);
 }
 
-void GameCapturer::captureMeshColor(const Rc<RtxContext> rtxCtx,
+void GameCapturer::captureMeshColor(const Rc<DxvkContext> ctx,
                                     const RaytraceGeometry& geomData,
                                     const float currentFrameNum,
                                     std::shared_ptr<Mesh> pMesh) {
                                           
-  AssetExporter::BufferCallback captureMeshColorAsync = [rtxCtx, geomData, currentFrameNum, pMesh](Rc<DxvkBuffer> colBuf) {
+  AssetExporter::BufferCallback captureMeshColorAsync = [ctx, geomData, currentFrameNum, pMesh](Rc<DxvkBuffer> colBuf) {
     assert(geomData.color0Buffer.vertexFormat() == VK_FORMAT_B8G8R8A8_UNORM);
     // Prep helper vars
     const size_t numVertices = geomData.vertexCount;
@@ -649,7 +650,7 @@ void GameCapturer::captureMeshColor(const Rc<RtxContext> rtxCtx,
     evalNewBufferAndCache(pMesh, pMesh->lssData.buffers.colorBufs, colors, currentFrameNum, colorsDifferentEnough);
   };
   pMesh->meshSync.numOutstandingInc();
-  rtxCtx->copyBufferFromGPU(geomData.color0Buffer, captureMeshColorAsync);
+  m_exporter.copyBufferFromGPU(ctx, geomData.color0Buffer, captureMeshColorAsync);
 }
 
 template <typename T, typename CompareTReturnBool>

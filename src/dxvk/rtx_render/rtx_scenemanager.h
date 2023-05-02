@@ -50,7 +50,7 @@
 
 namespace dxvk 
 {
-class RtxContext;
+class DxvkContext;
 class DxvkDevice;
 class GameCapturer;
 struct AssetReplacement;
@@ -115,11 +115,13 @@ public:
 
   void destroy();
 
-  void submitDrawState(Rc<RtxContext> ctx, Rc<DxvkCommandList> cmd, const DrawCallState& input);
+  void submitDrawState(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmd, const DrawCallState& input);
   
   bool areReplacementsLoaded() const;
   bool areReplacementsLoading() const;
   const std::string getReplacementStatus() const;
+
+  uint32_t getGameTimeSinceStartMS();
 
   Rc<DxvkBuffer> getSurfaceMaterialBuffer() { return m_surfaceMaterialBuffer; }
   Rc<DxvkBuffer> getVolumeMaterialBuffer() { return m_volumeMaterialBuffer; }
@@ -159,11 +161,11 @@ public:
   void clearFogState();
 
   // ISceneManager but not really
-  void clear(Rc<RtxContext> ctx, bool needWfi);
+  void clear(Rc<DxvkContext> ctx, bool needWfi);
   void garbageCollection();
-  void prepareSceneData(Rc<RtxContext> ctx, Rc<DxvkCommandList> cmdList, class DxvkBarrierSet& execBarriers, const float frameTimeSecs);
+  void prepareSceneData(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, class DxvkBarrierSet& execBarriers, const float frameTimeSecs);
 
-  void onFrameEnd(Rc<RtxContext> ctx);
+  void onFrameEnd(Rc<DxvkContext> ctx);
 
   // GameCapturer
   void triggerUsdCapture() const;
@@ -171,7 +173,7 @@ public:
 
   void finalizeAllPendingTexturePromotions();
 
-  void trackTexture(Rc<RtxContext> ctx, TextureRef inputTexture, uint32_t& textureIndex, bool hasTexcoords, bool patchSampler = true, bool allowAsync = true);
+  void trackTexture(Rc<DxvkContext> ctx, TextureRef inputTexture, uint32_t& textureIndex, bool hasTexcoords, bool patchSampler = true, bool allowAsync = true);
 
 private:
   enum class ObjectCacheState
@@ -183,19 +185,19 @@ private:
   };
   // Handles conversion of geometry data coming from a draw call, to the data used by the raytracing backend
   template<bool isNew>
-  ObjectCacheState processGeometryInfo(Rc<RtxContext> ctx, Rc<DxvkCommandList> cmd, const DrawCallState& drawCallState, RaytraceGeometry& modifiedGeometryData);
+  ObjectCacheState processGeometryInfo(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmd, const DrawCallState& drawCallState, RaytraceGeometry& modifiedGeometryData);
 
   // Consumes a draw call state and updates the scene state accordingly
-  uint64_t processDrawCallState(Rc<RtxContext> ctx, Rc<DxvkCommandList> cmd, const DrawCallState& blasInput, const MaterialData* replacementMaterialData);
+  uint64_t processDrawCallState(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmd, const DrawCallState& blasInput, const MaterialData* replacementMaterialData);
   // Updates ref counts for old and new buffers
   void updateBufferCache(const RaytraceGeometry& oldGeoData, RaytraceGeometry& newGeoData);
   // Decrements the ref count for buffers associated with the specified geometry data
   void freeBufferCache(const RaytraceGeometry& geoData);
 
   // Called whenever a new BLAS scene object is added to the cache
-  ObjectCacheState onSceneObjectAdded(Rc<RtxContext> ctx, Rc<DxvkCommandList> cmd, const DrawCallState& drawCallState, BlasEntry* pBlas);
+  ObjectCacheState onSceneObjectAdded(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmd, const DrawCallState& drawCallState, BlasEntry* pBlas);
   // Called whenever a BLAS scene object is updated
-  ObjectCacheState onSceneObjectUpdated(Rc<RtxContext> ctx, Rc<DxvkCommandList> cmd, const DrawCallState& drawCallState, BlasEntry* pBlas);
+  ObjectCacheState onSceneObjectUpdated(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmd, const DrawCallState& drawCallState, BlasEntry* pBlas);
   // Called whenever a BLAS scene object is destroyed
   void onSceneObjectDestroyed(const BlasEntry& pBlas, const XXH64_hash_t& hash);
 
@@ -206,9 +208,9 @@ private:
   // Called whenever an instance has been removed from the database
   void onInstanceDestroyed(const RtInstance& instance);
 
-  uint64_t drawReplacements(Rc<RtxContext> ctx, Rc<DxvkCommandList> cmd, const DrawCallState* input, const std::vector<AssetReplacement>* pReplacements, const MaterialData* overrideMaterialData);
+  uint64_t drawReplacements(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmd, const DrawCallState* input, const std::vector<AssetReplacement>* pReplacements, const MaterialData* overrideMaterialData);
 
-  void createEffectLight(Rc<RtxContext> ctx, const DrawCallState& input, const RtInstance* instance);
+  void createEffectLight(Rc<DxvkContext> ctx, const DrawCallState& input, const RtInstance* instance);
 
   Rc<GameCapturer> m_gameCapturer;
   uint32_t m_beginUsdExportFrameNum = -1;
@@ -241,6 +243,8 @@ private:
   Rc<DxvkSampler> m_materialTextureSampler;
 
   uint32_t m_currentFrameIdx = -1;
+  bool m_useFixedFrameTime = false;
+  std::chrono::time_point<std::chrono::system_clock> m_startTime;
 };
 
 }  // namespace nvvk

@@ -109,7 +109,7 @@ namespace dxvk {
     }
   }
 
-  void AssetExporter::exportImage(Rc<DxvkDevice> device, Rc<RtxContext> ctx, const std::string& filename, Rc<DxvkImage> image, bool thumbnail/* = false*/) {
+  void AssetExporter::exportImage(Rc<DxvkContext> ctx, const std::string& filename, Rc<DxvkImage> image, bool thumbnail/* = false*/) {
     // NOTE: Should use a mutex here...
     {
       std::lock_guard lock(m_readbackSignalMutex);
@@ -179,7 +179,7 @@ namespace dxvk {
         desc.extent = dstExtent;
 
         // Temp image to blit into (pBlitDests is linear, so we can only copy into)
-        pBlitTemps[level] = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXMaterialTexture);
+        pBlitTemps[level] = ctx->getDevice()->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXMaterialTexture);
       }
 
       {
@@ -196,7 +196,7 @@ namespace dxvk {
         desc.extent = dstExtent;
 
         // Make the image where we'll copy the GPU resource to CPU accessible mem
-        pBlitDests[level] = device->createImage(desc, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, DxvkMemoryStats::Category::RTXMaterialTexture);
+        pBlitDests[level] = ctx->getDevice()->createImage(desc, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, DxvkMemoryStats::Category::RTXMaterialTexture);
       }
 
       VkOffset3D srcOffset = VkOffset3D { 0,0,0 };
@@ -257,7 +257,7 @@ namespace dxvk {
 
     // Spawn a thread so we dont sync with the GPU here...(remember, GPU runs async with CPU!).  
     // NOTE: A task scheduler will probably be better longterm here
-    dxvk::thread exporterThread([this, device, pBlitDests, pBlitTemps, syncValue, filename, exportTex = std::move(exportTex)] {
+    dxvk::thread exporterThread([this, device = ctx->getDevice(), pBlitDests, pBlitTemps, syncValue, filename, exportTex = std::move(exportTex)] {
       // Stall until the GPU has completed its copy to system memory (GPU->CPU)
       this->m_readbackSignal->wait(syncValue);
 
@@ -309,7 +309,7 @@ namespace dxvk {
     exporterThread.detach();
   }
 
-  void AssetExporter::exportBuffer(Rc<DxvkDevice> device, Rc<RtxContext> ctx, const DxvkBufferSlice& buffer, BufferCallback bufferCallback) {
+  void AssetExporter::exportBuffer(Rc<DxvkContext> ctx, const DxvkBufferSlice& buffer, BufferCallback bufferCallback) {
     // NOTE: Should use a mutex here...
     {
       std::lock_guard lock(m_readbackSignalMutex);
@@ -331,7 +331,7 @@ namespace dxvk {
     desc.size = buffer.length();
 
     // Make the image where we'll copy the GPU resource to CPU accessible mem
-    Rc<DxvkBuffer> bufferDest = device->createBuffer(desc, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT, DxvkMemoryStats::Category::RTXBuffer);
+    Rc<DxvkBuffer> bufferDest = ctx->getDevice()->createBuffer(desc, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT, DxvkMemoryStats::Category::RTXBuffer);
 
     ctx->copyBuffer(bufferDest, VkDeviceSize{0}, buffer.buffer(), buffer.offset(), desc.size);
 
@@ -351,6 +351,33 @@ namespace dxvk {
       m_numExportsInFlight--;
     };
     std::thread(asyncWaitThenCallback, bufferCallback).detach();
+  }
+
+  void AssetExporter::generateSceneThumbnail(Rc<DxvkContext> ctx, const std::string& dir, const std::string& filename) {
+    auto& resourceManager = ctx->getCommonObjects()->getResources();
+    auto finalOutput = resourceManager.getRaytracingOutput().m_finalOutput.image;
+
+    env::createDirectory(dir);
+
+    exportImage(ctx, str::format(dir, filename, ".dds"), finalOutput, true);
+  }
+
+  void AssetExporter::bakeSkyProbe(Rc<DxvkContext> ctx, const std::string& dir, const std::string& filename) {
+    auto& resourceManager = ctx->getCommonObjects()->getResources();
+
+    auto skyprobeView = resourceManager.getSkyProbe(ctx);
+
+    const auto skyprobeExt = skyprobeView.image->info().extent;
+    const uint32_t equatorLength = std::min(skyprobeExt.width * 4, 16384u);
+    const VkExtent3D latlongExt { equatorLength, equatorLength / 2, 1 };
+
+    auto latlong = resourceManager.createImageResource(ctx, latlongExt, VK_FORMAT_R16G16B16A16_SFLOAT);
+
+    const auto transform = RtxOptions::Get()->isZUp() ? RtxImageUtils::LatLongTransform::ZUp2OpenEXR : RtxImageUtils::LatLongTransform::None;
+
+    ctx->getCommonObjects()->metaImageUtils().cubemapToLatLong(ctx, skyprobeView.view, latlong.view, transform);
+
+    dumpImageToFile(ctx, dir, filename, latlong.image);
   }
 
 } // namespace dxvk
