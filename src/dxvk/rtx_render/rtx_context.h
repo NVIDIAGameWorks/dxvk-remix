@@ -118,13 +118,6 @@ namespace dxvk {
     void setTextureSlots(const uint32_t colorTextureSlot, const uint32_t colorTextureSlot2);
 
     /**
-      * \brief Sets the vertex capture buffer slot on the context
-      *
-      * \param [in] vertexCaptureSlot: Index into m_rc containing vertex capture buffer
-      */
-    void setVertexCaptureSlot(const uint32_t vertexCaptureSlot);
-
-    /**
       * \brief Set the current object2world transform on context
       *
       * \param [in] objectToWorld: matrix containing the object to world transform

@@ -479,7 +479,64 @@ namespace dxvk {
     m_module.setDebugName(m_oArray, "o");
   }
 
+  // NV-DXVK start: vertex shader data capture implementation
   void DxsoCompiler::emitVertexCaptureInit() {
+    const uint32_t uintType = m_module.defIntType(32, false);
+    const uint32_t floatType = m_module.defFloatType(32);
+    const uint32_t vec3Type = m_module.defVectorType(floatType, 3);
+    const uint32_t vec4Type = m_module.defVectorType(floatType, 4);
+    const uint32_t mat4Type = m_module.defMatrixType(vec4Type, 4);
+
+    // Constant Buffer for vertex capture
+    {
+      std::array<uint32_t, uint32_t(D3D9RtxVertexCaptureMembers::MemberCount)> members = {
+        mat4Type,
+        mat4Type,
+        uintType
+      };
+
+      const uint32_t structType = m_module.defStructType(members.size(), members.data());
+
+      m_module.decorateBlock(structType);
+
+      m_module.setDebugName(structType, "D3D9RtxVertexCaptureData");
+
+      uint32_t memberIdx = 0;
+      auto SetMemberName = [&](const char* name, uint32_t offset) {
+        m_module.setDebugMemberName(structType, memberIdx, name);
+        m_module.memberDecorateOffset(structType, memberIdx, offset);
+        if (memberIdx == (uint32_t) D3D9RtxVertexCaptureMembers::ProjectionToWorld || memberIdx == (uint32_t) D3D9RtxVertexCaptureMembers::NormalTransform) {
+          m_module.memberDecorateMatrixStride(structType, memberIdx, 16);
+          m_module.memberDecorate(structType, memberIdx, spv::DecorationRowMajor);
+        }
+        memberIdx++;
+
+      };
+      SetMemberName("normal_transform", offsetof(D3D9RtxVertexCaptureData, normalTransform));
+      SetMemberName("proj_to_world", offsetof(D3D9RtxVertexCaptureData, projectionToWorld));
+      SetMemberName("base_vertex", offsetof(D3D9RtxVertexCaptureData, baseVertex));
+
+      m_vs.vertexCaptureConstants = m_module.newVar(
+        m_module.defPointerType(structType, spv::StorageClassUniform),
+        spv::StorageClassUniform);
+
+      m_module.setDebugName(m_vs.vertexCaptureConstants, "vertex_capture_consts");
+
+      const uint32_t bindingId = computeResourceSlotId(
+        DxsoProgramType::VertexShader, DxsoBindingType::ConstantBuffer,
+        DxsoConstantBuffers::VSVertexCaptureData);
+
+      m_module.decorateDescriptorSet(m_vs.vertexCaptureConstants, 0);
+      m_module.decorateBinding(m_vs.vertexCaptureConstants, bindingId);
+
+      DxvkResourceSlot resource;
+      resource.slot = bindingId;
+      resource.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+      resource.view = VK_IMAGE_VIEW_TYPE_MAX_ENUM;
+      resource.access = VK_ACCESS_UNIFORM_READ_BIT;
+      m_resourceSlots.push_back(resource);
+    }
+
     // Bind vertex out buffer
     m_module.enableCapability(spv::CapabilityStorageImageWriteWithoutFormat);
     m_module.enableCapability(spv::CapabilityImageBuffer);
@@ -490,7 +547,7 @@ namespace dxvk {
 
     const uint32_t varId = m_module.newVar(resourcePtrType, spv::StorageClassUniformConstant);
 
-    m_module.setDebugName(varId, "vertexStreamOutBuffer");
+    m_module.setDebugName(varId, "vertex_capture_out");
 
     const uint32_t bindingId = getVertexCaptureBufferSlot();
 
@@ -500,7 +557,7 @@ namespace dxvk {
     
     const uint32_t specConstId = m_module.specConstBool(true);
     m_module.decorateSpecId(specConstId, bindingId);
-    m_module.setDebugName(specConstId, str::format("vertexStreamOut_bound").c_str());
+    m_module.setDebugName(specConstId, str::format("vertex_capture_out_bound").c_str());
 
     DxsoUav uav;
     uav.varId = varId;
@@ -524,6 +581,7 @@ namespace dxvk {
 
     m_resourceSlots.push_back(resource);
   }
+  // NV-DXVK end
 
   void DxsoCompiler::emitVsInit() {
     m_module.enableCapability(spv::CapabilityClipDistance);
@@ -532,8 +590,10 @@ namespace dxvk {
     // non-indexable specialized output regs
     this->emitDclOutputArray();
 
+    // NV-DXVK start: vertex shader data capture implementation
     // Sets up an output buffer to capture vertex data post-transform
     this->emitVertexCaptureInit();
+    // NV-DXVK end
 
     // Main function of the vertex shader
     m_vs.functionId = m_module.allocateId();
@@ -3466,10 +3526,17 @@ void DxsoCompiler::emitControlFlowGenericLoop(
       }
 
       m_module.opStore(indexPtr.id, workingReg.id);
+
+      // NV-DXVK start: vertex shader data capture implementation
+      if (m_programInfo.type() == DxsoProgramType::VertexShader && elem.semantic.usage == DxsoUsage::Normal && elem.semantic.usageIndex == 0) {
+        m_vs.oNormal0 = indexPtr;
+      }
+      // NV-DXVK end
     }
   }
 
 
+  // NV-DXVK start: vertex shader data capture implementation
   void DxsoCompiler::emitVertexCaptureOp() {
     // Write oPos to a UAV at vertex ID, vertex capture
     DxsoRegisterInfo vertexIdReg;
@@ -3478,9 +3545,8 @@ void DxsoCompiler::emitControlFlowGenericLoop(
 
     auto LoadConstant = [&](const uint32_t type, const uint32_t idx) {
       const uint32_t offset = m_module.constu32(idx);
-      const uint32_t typePtr = m_module.defPointerType(type, spv::StorageClassPushConstant);
-
-      return m_module.opLoad(type, m_module.opAccessChain(typePtr, m_rsBlock, 1, &offset));
+      const uint32_t typePtr = m_module.defPointerType(type, spv::StorageClassUniform);
+      return m_module.opLoad(type, m_module.opAccessChain(typePtr, m_vs.vertexCaptureConstants, 1, &offset));
     };
 
     const uint32_t vertexId = emitNewBuiltinVariable(vertexIdReg, spv::BuiltInVertexIndex, "uVertexId", 0);
@@ -3488,19 +3554,18 @@ void DxsoCompiler::emitControlFlowGenericLoop(
     const uint32_t uintType = getScalarTypeId(DxsoScalarType::Uint32);
 
     const uint32_t uVertexIdVal = m_module.opLoad(uintType, vertexId);
-    const uint32_t baseVertexRefId = LoadConstant(uintType, (uint32_t)(D3D9RenderStateItem::BaseVertex));
+    const uint32_t baseVertexRefId = LoadConstant(uintType, (uint32_t)(D3D9RtxVertexCaptureMembers::BaseVertex));
 
     const uint32_t offsetVertexIdVal = m_module.opISub(getScalarTypeId(DxsoScalarType::Uint32), uVertexIdVal, baseVertexRefId);
 
-    uint32_t writeAddress = m_module.opIMul(getScalarTypeId(DxsoScalarType::Uint32), offsetVertexIdVal, m_module.constu32(2));
+    uint32_t writeAddress = m_module.opIMul(getScalarTypeId(DxsoScalarType::Uint32), offsetVertexIdVal, m_module.constu32(3));
 
-    const uint32_t imageId = m_module.opLoad(m_vs.vertexOutBuf.imageTypeId, m_vs.vertexOutBuf.varId);
-
+    const uint32_t vertexOutBufferId = m_module.opLoad(m_vs.vertexOutBuf.imageTypeId, m_vs.vertexOutBuf.varId);
 
     // Get the post transform oPos and reverse to world space
     const uint32_t vec4typeId = getVectorTypeId({ DxsoScalarType::Float32, 4 });
     const uint32_t mat4type = m_module.defMatrixType(vec4typeId, 4);
-    const uint32_t projToWorldRefId = LoadConstant(mat4type, (uint32_t)(D3D9RenderStateItem::ProjectionToWorld));
+    const uint32_t projToWorldRefId = LoadConstant(mat4type, (uint32_t)(D3D9RtxVertexCaptureMembers::ProjectionToWorld));
 
     // Get gl_Position
     const uint32_t projPosId = m_module.opLoad(vec4typeId, m_vs.oPos.id);
@@ -3510,19 +3575,68 @@ void DxsoCompiler::emitControlFlowGenericLoop(
 
     // Write the data to buffer
     SpirvImageOperands defaultOperands;
-    m_module.opImageWrite(imageId, writeAddress, texelId, defaultOperands);
+    m_module.opImageWrite(vertexOutBufferId, writeAddress, texelId, defaultOperands);
     
+    // Get the next slot
+    writeAddress = m_module.opIAdd(getScalarTypeId(DxsoScalarType::Uint32), writeAddress, m_module.constu32(1));
+
     if (m_vs.oTex0.id > 0) {
       // Get out_texcoord0
       const uint32_t texcoord0 = m_module.opLoad(vec4typeId, m_vs.oTex0.id);
 
-      // Get the next slot
-      writeAddress = m_module.opIAdd(getScalarTypeId(DxsoScalarType::Uint32), writeAddress, m_module.constu32(1));
-
       // Write texcoord
-      m_module.opImageWrite(imageId, writeAddress, texcoord0, defaultOperands);
+      m_module.opImageWrite(vertexOutBufferId, writeAddress, texcoord0, defaultOperands);
+    }
+
+    // Get the next slot
+    writeAddress = m_module.opIAdd(getScalarTypeId(DxsoScalarType::Uint32), writeAddress, m_module.constu32(1));
+
+    if (m_vs.oNormal0.id > 0) {
+      // Load normal matrix from constants
+      const uint32_t vec3typeId = getVectorTypeId({ DxsoScalarType::Float32, 3 });
+      const uint32_t mat3typeId = m_module.defMatrixType(vec3typeId, 3);
+      uint32_t normalTransformId = LoadConstant(mat4type, (uint32_t) (D3D9RtxVertexCaptureMembers::NormalTransform));
+
+      // Convert to float3x3
+      std::array<uint32_t, 4> indices = { 0, 1, 2, 3 };
+      std::array<uint32_t, 3> mtxIndices;
+      for (uint32_t i = 0; i < 3; i++) {
+        mtxIndices[i] = m_module.opCompositeExtract(vec4typeId, normalTransformId, 1, &i);
+        mtxIndices[i] = m_module.opVectorShuffle(vec3typeId, mtxIndices[i], mtxIndices[i], 3, indices.data());
+      }
+      normalTransformId = m_module.opCompositeConstruct(mat3typeId, mtxIndices.size(), mtxIndices.data());
+
+      // Load normals from input assembler into float3
+      const uint32_t floatTypeId = getScalarTypeId(DxsoScalarType::Float32);
+      uint32_t normal0 = m_module.opLoad(vec4typeId, m_vs.oNormal0.id);
+      {
+        std::array<uint32_t, 3> normalIndices = {
+          m_module.opCompositeExtract(floatTypeId, normal0, 1, &indices[0]),
+          m_module.opCompositeExtract(floatTypeId, normal0, 1, &indices[1]),
+          m_module.opCompositeExtract(floatTypeId, normal0, 1, &indices[2]),
+        };
+        normal0 = m_module.opCompositeConstruct(vec3typeId, normalIndices.size(), normalIndices.data());
+      }
+
+      // Transform the normal
+      normal0 = m_module.opMatrixTimesVector(vec3typeId, normalTransformId, normal0);
+
+      // Expand to vec4
+      {
+        std::array<uint32_t, 4> normalIndices = {
+          m_module.opCompositeExtract(floatTypeId, normal0, 1, &indices[0]),
+          m_module.opCompositeExtract(floatTypeId, normal0, 1, &indices[1]),
+          m_module.opCompositeExtract(floatTypeId, normal0, 1, &indices[2]),
+          m_module.opCompositeExtract(floatTypeId, normal0, 1, &indices[2]),
+        };
+        normal0 = m_module.opCompositeConstruct(vec4typeId, normalIndices.size(), normalIndices.data());
+      }
+
+      // Write normal
+      m_module.opImageWrite(vertexOutBufferId, writeAddress, normal0, defaultOperands);
     }
   }
+  // NV-DXVK end
 
   void DxsoCompiler::emitLinkerOutputSetup() {
     bool outputtedColor0 = false;
@@ -3565,9 +3679,11 @@ void DxsoCompiler::emitControlFlowGenericLoop(
           str::format("out_", elem.semantic.usage, elem.semantic.usageIndex);
         m_module.setDebugName(outputPtr.id, name.c_str());
 
+        // NV-DXVK start: vertex shader data capture implementation
         if (elem.semantic.usage == DxsoUsage::Texcoord && elem.semantic.usageIndex == 0) {
           m_vs.oTex0 = outputPtr;
         }
+        // NV-DXVK end
       }
       else {
         const char* name = "unknown_builtin";
@@ -3650,7 +3766,9 @@ void DxsoCompiler::emitControlFlowGenericLoop(
       m_module.opStore(outputPtr.id, workingReg.id);
     }
 
+    // NV-DXVK start: vertex shader data capture implementation
     this->emitVertexCaptureOp();
+    // NV-DXVK end
 
     auto OutputDefault = [&](DxsoSemantic semantic) {
       DxsoRegisterInfo info;
@@ -3804,10 +3922,10 @@ void DxsoCompiler::emitControlFlowGenericLoop(
       count = 5;
     }
     else {
-      m_interfaceSlots.pushConstOffset = 0;// offsetof(D3D9RenderStateInfo, pointSize);
+      m_interfaceSlots.pushConstOffset = offsetof(D3D9RenderStateInfo, pointSize);
       // Point scale never triggers on programmable
-      m_interfaceSlots.pushConstSize = sizeof(D3D9RenderStateInfo);// -m_interfaceSlots.pushConstOffset;
-      count = 13;
+      m_interfaceSlots.pushConstSize = sizeof(D3D9RenderStateInfo) - m_interfaceSlots.pushConstOffset;
+      count = 11;
     }
 
     m_rsBlock = SetupRenderStateBlock(m_module, count);

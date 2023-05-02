@@ -663,10 +663,6 @@ namespace dxvk {
     m_rtState.colorTextureSlot2 = colorTextureSlot2;
   }
 
-  void RtxContext::setVertexCaptureSlot(const uint32_t vertexCaptureSlot) {
-    m_rtState.vertexCaptureSlot = vertexCaptureSlot;
-  }
-
   void RtxContext::setObjectTransform(const Matrix4& objectToWorld) {
     m_rtState.world = objectToWorld;
   }
@@ -837,33 +833,7 @@ namespace dxvk {
       // This is fixed function vertex pipeline.
       const D3D9FixedFunctionVS* pVertexMaterialData = (D3D9FixedFunctionVS*) m_rtState.vsFixedFunctionCB->mapPtr(0);
       originalMaterialData.m_d3dMaterial = pVertexMaterialData->Material;
-    } else if (RtxOptions::Get()->isVertexCaptureEnabled()) {
-      if (m_rc[m_rtState.vertexCaptureSlot].bufferView == nullptr && m_rtState.vertexCaptureSlot >= m_rc.size())
-        return RtxGeometryStatus::Ignored;
-
-      Rc<DxvkBuffer> vertexCaptureBuffer = m_rc[m_rtState.vertexCaptureSlot].bufferView->buffer();
-
-      // Known stride for vertex capture buffers
-      const uint32_t stride = sizeof(float) * 8;
-
-      geoData.positionBuffer = RasterBuffer(DxvkBufferSlice(vertexCaptureBuffer), 0, stride, VK_FORMAT_R32G32B32A32_SFLOAT);
-      assert(geoData.positionBuffer.offset() % 4 == 0);
-
-      // Did we have a texcoord buffer bound for this draw?
-      if (!geoData.texcoordBuffer.defined() || !RtxGeometryUtils::isTexcoordFormatValid(geoData.texcoordBuffer.vertexFormat())) {
-        // Known offset for vertex capture buffers
-        const uint32_t texcoordOffset = sizeof(float) * 4;
-        geoData.texcoordBuffer = RasterBuffer(DxvkBufferSlice(vertexCaptureBuffer), texcoordOffset, stride, VK_FORMAT_R32G32_SFLOAT);
-        assert(geoData.texcoordBuffer.offset() % 4 == 0);
-      }
-
-      // We know nothing about these buffers, or what format they may be in, so ignore for now - address in [TREX-416]
-      geoData.normalBuffer = RasterBuffer();
-      geoData.color0Buffer = RasterBuffer();
-    } else {
-      ONCE(Logger::info(str::format("[RTX-Compatibility-Info] Shader usage detected, try enabling VertexCapture for this application.")));
-      return RtxGeometryStatus::Ignored;
-    } 
+    }
 
     const auto fusedMode = RtxOptions::Get()->fusedWorldViewMode();
     if (unlikely(fusedMode != FusedWorldViewMode::None)) {
@@ -1073,7 +1043,7 @@ namespace dxvk {
   }
 
   bool RtxContext::requiresDrawCall() const {
-    return (RtxOptions::Get()->isVertexCaptureEnabled() && m_rtState.useProgrammableVS) || !m_captureStateForRTX || !RtxOptions::Get()->enableRaytracing();
+    return m_rtState.useProgrammableVS || !m_captureStateForRTX || !RtxOptions::Get()->enableRaytracing();
   }
 
   void RtxContext::draw(

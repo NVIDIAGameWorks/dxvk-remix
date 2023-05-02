@@ -23,6 +23,11 @@ namespace dxvk {
     , m_gpeWorkers(popcnt_uint8(D3D9Rtx::kAllThreads), "geometry-processing") { }
 
   void D3D9Rtx::Initialize() {
+    m_vsVertexCaptureData = m_parent->CreateConstantBuffer(false,
+                                        sizeof(D3D9RtxVertexCaptureData),
+                                        DxsoProgramType::VertexShader,
+                                        DxsoConstantBuffers::VSVertexCaptureData);
+
     // Get constant buffer bindings from D3D9
     m_parent->EmitCs([](DxvkContext* ctx) {
       const uint32_t vsFixedFunctionConstants = computeResourceSlotId(DxsoProgramType::VertexShader, DxsoBindingType::ConstantBuffer, DxsoConstantBuffers::VSFixedFunction);
@@ -82,12 +87,28 @@ namespace dxvk {
     return stagingSlice;
   }
 
-  void D3D9Rtx::prepareVertexCapture(const int vertexIndexOffset, const uint32_t vertexCount) {
-    // struct {
-    //  float4 position;
-    //  float4 texcoord0;
-    // }
-    const size_t vertexCaptureDataSize = vertexCount * 2 * sizeof(Vector4);
+  void D3D9Rtx::prepareVertexCapture(RasterGeometry& geoData, const int vertexIndexOffset) {
+    ZoneScoped;
+
+    struct CapturedVertex {
+      Vector4 position;
+      Vector4 texcoord0;
+      Vector4 normal0;
+    };
+
+    auto BoundVertexShaderHas = [&](DxsoUsage usage)-> bool {
+      const auto& isgn = d3d9State().vertexShader->GetCommonShader()->GetIsgn();
+      for (uint32_t i = 0; i < isgn.elemCount; i++) {
+        const auto& decl = isgn.elems[i];
+        if (decl.semantic.usageIndex == 0 && decl.semantic.usage == usage)
+          return true;
+      }
+      return false;
+    };
+
+    // Known stride for vertex capture buffers
+    const uint32_t stride = sizeof(CapturedVertex);
+    const size_t vertexCaptureDataSize = geoData.vertexCount * stride;
 
     D3D9BufferSlice buf = m_parent->AllocTempBuffer<false, true>(vertexCaptureDataSize);
 
@@ -100,34 +121,56 @@ namespace dxvk {
     // Create underlying buffer view object
     Rc<DxvkBufferView> bufferView = m_parent->GetDXVKDevice()->createBufferView(buf.slice.buffer(), viewInfo);
 
-    // Bind the latest projection to world matrix...
-    // NOTE: May be better to move reverse transformation to end of frame, because this won't work if there hasnt been a FF draw this frame to scrape the matrix from...
-    const Matrix4& ObjectToProjection = d3d9State().transforms[GetTransformIndex(D3DTS_PROJECTION)] 
-                                      * d3d9State().transforms[GetTransformIndex(D3DTS_VIEW)] 
-                                      * d3d9State().transforms[GetTransformIndex(D3DTS_WORLD)];
-    const Matrix4& vkProjectionToObject = inverse(ObjectToProjection);
+    geoData.positionBuffer = RasterBuffer(buf.slice, 0, stride, VK_FORMAT_R32G32B32A32_SFLOAT);
+    assert(geoData.positionBuffer.offset() % 4 == 0);
 
-    m_parent->EmitCs([vkProjectionToObject,
-                      vertexIndexOffset,
-                      cBuffer = bufferView](DxvkContext* ctx) {
+    // Did we have a texcoord buffer bound for this draw?
+    if (BoundVertexShaderHas(DxsoUsage::Texcoord) && (!geoData.texcoordBuffer.defined() || !RtxGeometryUtils::isTexcoordFormatValid(geoData.texcoordBuffer.vertexFormat()))) {
+      // Known offset for vertex capture buffers
+      const uint32_t texcoordOffset = offsetof(CapturedVertex, texcoord0);
+      geoData.texcoordBuffer = RasterBuffer(buf.slice, texcoordOffset, stride, VK_FORMAT_R32G32_SFLOAT);
+      assert(geoData.texcoordBuffer.offset() % 4 == 0);
+    }
+
+    if (BoundVertexShaderHas(DxsoUsage::Normal) && useVertexCapturedNormals()) {
+      const uint32_t normalOffset = offsetof(CapturedVertex, normal0);
+      geoData.normalBuffer = RasterBuffer(buf.slice, normalOffset, stride, VK_FORMAT_R32G32B32_SFLOAT);
+      assert(geoData.normalBuffer.offset() % 4 == 0);
+    } else {
+      geoData.normalBuffer = RasterBuffer();
+    }
+
+    auto constants = m_vsVertexCaptureData->allocSlice();
+
+    m_parent->EmitCs([cProjection = d3d9State().transforms[GetTransformIndex(D3DTS_PROJECTION)],
+                      cView = d3d9State().transforms[GetTransformIndex(D3DTS_VIEW)],
+                      cWorld = d3d9State().transforms[GetTransformIndex(D3DTS_WORLD)],
+                      cBuffer = bufferView,
+                      cConstantBuffer = m_vsVertexCaptureData,
+                      cConstants = constants,
+                      vertexIndexOffset](DxvkContext* ctx) {
       RtxContext* rtxCtx = static_cast<RtxContext*>(ctx);
-      const uint32_t bindingId = getVertexCaptureBufferSlot();
-      rtxCtx->bindResourceView(bindingId, nullptr, cBuffer);
-      rtxCtx->setVertexCaptureSlot(bindingId); // Might be overkill to pass this slot since it's essentially static... Might come in handy one day though.
 
       // Set constants required for vertex shader injection
-      ctx->setPushConstantBank(DxvkPushConstantBank::D3D9);
-      ctx->pushConstants(offsetof(D3D9RenderStateInfo, projectionToWorld), sizeof(Matrix4), &vkProjectionToObject);
-      ctx->pushConstants(offsetof(D3D9RenderStateInfo, baseVertex), sizeof(int), &vertexIndexOffset);
+
+      // Bind the latest projection to world matrix...
+      // NOTE: May be better to move reverse transformation to end of frame, because this won't work if there hasnt been a FF draw this frame to scrape the matrix from...
+      const Matrix4& ObjectToProjection = cProjection * cView * cWorld;
+
+      // Bind the new constants to buffer
+      ctx->invalidateBuffer(cConstantBuffer, cConstants);
+
+      D3D9RtxVertexCaptureData& data = *(D3D9RtxVertexCaptureData*) cConstants.mapPtr;
+      // Apply an inverse transform to get positions in object space (what renderer expects)
+      data.projectionToWorld = inverse(ObjectToProjection);
+      data.normalTransform = cWorld;
+      data.baseVertex = vertexIndexOffset;
+
+      rtxCtx->bindResourceView(getVertexCaptureBufferSlot(), nullptr, cBuffer);
     });
   }
 
   void D3D9Rtx::processVertices(const VertexContext vertexContext[caps::MaxStreams], int vertexIndexOffset, uint32_t idealTexcoordIndex, RasterGeometry& geoData) {
-    // For shader based drawcalls we also want to capture the vertex shader output
-    if (likely(m_parent->UseProgrammableVS() && RtxOptions::Get()->isVertexCaptureEnabled())) {
-        prepareVertexCapture(vertexIndexOffset, geoData.vertexCount);
-    }
-
     DxvkBufferSlice streamCopies[caps::MaxStreams] {};
 
     // Process vertex buffers from CPU
@@ -260,6 +303,11 @@ namespace dxvk {
     int currentDrawCallID = m_drawCallID++;
     if (currentDrawCallID < RtxOptions::Get()->getDrawCallRange().x || 
         currentDrawCallID > RtxOptions::Get()->getDrawCallRange().y) {
+      return { RtxGeometryStatus::Ignored, false };
+    }
+
+    if (m_parent->UseProgrammableVS() && !useVertexCapture()) {
+      ONCE(Logger::info("[RTX-Compatibility-Info] Skipping draw call with shader usage as vertex capture is not enabled."));
       return { RtxGeometryStatus::Ignored, false };
     }
 
@@ -415,6 +463,11 @@ namespace dxvk {
     std::shared_future<SkinningData> futureSkinningData = processSkinning(geoData);
     if (RtxOptions::Get()->calculateMeshBoundingBox()) {
       geoData.futureBoundingBox = computeAxisAlignedBoundingBox(geoData);
+    }
+
+    // For shader based drawcalls we also want to capture the vertex shader output
+    if (m_parent->UseProgrammableVS() && useVertexCapture()) {
+      prepareVertexCapture(geoData, vertexIndexOffset);
     }
 
     // Send it

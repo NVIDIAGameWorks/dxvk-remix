@@ -49,6 +49,9 @@ namespace dxvk {
     VSClipPlanes     = 3,
     VSFixedFunction  = 4,
     VSVertexBlendData = 5,
+    // NV-DXVK start: vertex shader data capture implementation
+    VSVertexCaptureData = 6,
+    // NV-DXVK end
     VSCount,
 
     PSConstantBuffer = 0,
