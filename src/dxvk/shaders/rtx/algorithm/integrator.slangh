@@ -156,6 +156,24 @@ Ray sampleDirection(
   return sampledRay;
 }
 
+int2 pointToAddress(vec3 position, uvec2 pixel)
+{
+  vec3 cameraPos = cameraGetWorldPosition(cb.camera);
+  float extend = 1000;//cb.debugKnob.y * 10 + 1;
+  vec3 origin = cameraPos - extend * 0.5;
+  vec3 UVW = (position - origin) / extend;
+  if (any(UVW < 0) || any(UVW >= 1))
+  {
+    return int2(-1,-1);
+  }
+  ivec3 UVWi = UVW * RADIANCE_CACHE_PROBE_RESOLUTION;
+  ivec2 UV2D = ivec2(UVWi.y * RADIANCE_CACHE_PROBE_RESOLUTION + UVWi.x, UVWi.z);
+
+  int mipRes = RADIANCE_CACHE_MIP_RESOLUTION;
+  uvec2 offset = (pixel + cb.frameIdx) & (mipRes-1)
+  return UV2D * mipRes + offset;
+}
+
 int2 pointDirectionToAddress(vec3 position, f16vec3 direction)
 {
   vec3 cameraPos = cameraGetWorldPosition(cb.camera);
