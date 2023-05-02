@@ -124,7 +124,11 @@ private:
   // always creates the fallback light. Primarily a debugging feature, users should create their own lights via the Remix workflow rather than relying on this feature to provide lighting.
   // As such, this option should be set to Never for "production" builds of Remix creations to avoid the fallback light from appearing in games unintentionally in cases where no lights exist (which is
   // the default behavior when set to NoLightsPresent).
-  RTX_OPTION("rtx", FallbackLightMode, fallbackLightMode, FallbackLightMode::NoLightsPresent, "");
+  RTX_OPTION("rtx", FallbackLightMode, fallbackLightMode, FallbackLightMode::NoLightsPresent,
+             "The mode to determine when to create a fallback light.\n"
+             "Never (0) never creates the light, NoLightsPresent (1) creates the fallback light only when no lights are provided to Remix, and Always (2) always creates the fallback light.\n"
+             "Primarily a debugging feature, users should create their own lights via the Remix workflow rather than relying on this feature to provide lighting.\n"
+             "As such, this option should be set to Never for \"production\" builds of Remix creations to avoid the fallback light from appearing in games unintentionally in cases where no lights exist (which is the default behavior when set to NoLightsPresent).");
   RTX_OPTION("rtx", FallbackLightType, fallbackLightType, FallbackLightType::Distant, "The light type to use for the fallback light. Determines which other fallback light options are used.");
   RTX_OPTION("rtx", Vector3, fallbackLightRadiance, Vector3(1.6f, 1.8f, 2.0f), "The radiance to use for the fallback light (used across all light types).");
   RTX_OPTION("rtx", Vector3, fallbackLightDirection, Vector3(-0.2f, -1.0f, 0.4f), "The direction to use for the fallback light (used only for Distant light types)");

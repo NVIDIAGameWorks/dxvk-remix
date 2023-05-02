@@ -234,7 +234,7 @@ void integratePathVertex(
     uint numUnorderedInteractions = 0;
     const bool isViewModel = pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
     uint8_t unorderedRayMask = OBJECT_MASK_UNORDERED_ALL_BLENDED
-      | (cb.enableEmissiveParticlesInIndirectRays ? OBJECT_MASK_UNORDERED_ALL_EMISSIVE : 0);
+      | (cb.enableUnorderedEmissiveParticlesInIndirectRays ? OBJECT_MASK_UNORDERED_ALL_EMISSIVE : 0);
     unorderedRayMask = convertPrimaryRayMaskToUnordered(isViewModel, pathState.rayMask, unorderedRayMask);
     
     resolveVertexUnordered(

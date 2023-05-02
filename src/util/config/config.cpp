@@ -497,8 +497,50 @@ namespace dxvk {
         "d0425187257ec023,"
         "9158e4ac55129ecb,"
         "aa16c42fa367111c"
-       },
-      { "rtx.lightmapTextures",      "050173DFF733DBE1,913E194A071E2720,8D39476483C92F63,8BF8566E3C8B006F,54392326AF548522,AF312EE92AAD9609,A66CF9B74461F3DE,BD904729C36EEFE8,DB0E52AC3A7C8F12,C44E50BC6B433C6E,EE61086C4E281087,5371BABD1CDD7707,E4CFD8B693D251DD,BDD5ACBF489E7853,7B16D306254AB39E,C12951B8D7192A9E,7DE4CAEA279A9A09,5AF15B44D7E92568,CFB3E770A1FAF3F2,CDC07C4F6BD631F5,1B8F23FC10195395,8D6ACC0820F0D424,FAD3E22AA96D7B51,E9BEA521567E008E,AA2B1355C046AA80,26172AB99925C7AD,7B16D306254AB39E,7DE4CAEA279A9A09,BDD5ACBF489E7853,C12951B8D7192A9E,5AF15B44D7E92568,264724EA902655F8,E51A3DB8B4CE10AF,C8DECC54A0085620,33D41383CC45BCE1,CE19CDCC72E90FDF, 08790A05BF2829FB, 5F7DE781C2993BEC, A60D1CF2839DC373, FEE6D3D200FF4220, 216C17AA33DB5D75" },
+      },
+      { "rtx.lightmapTextures",
+        "050173DFF733DBE1,"
+        "913E194A071E2720,"
+        "8D39476483C92F63,"
+        "8BF8566E3C8B006F,"
+        "54392326AF548522,"
+        "AF312EE92AAD9609,"
+        "A66CF9B74461F3DE,"
+        "BD904729C36EEFE8,"
+        "DB0E52AC3A7C8F12,"
+        "C44E50BC6B433C6E,"
+        "EE61086C4E281087,"
+        "5371BABD1CDD7707,"
+        "E4CFD8B693D251DD,"
+        "BDD5ACBF489E7853,"
+        "7B16D306254AB39E,"
+        "C12951B8D7192A9E,"
+        "7DE4CAEA279A9A09,"
+        "5AF15B44D7E92568,"
+        "CFB3E770A1FAF3F2,"
+        "CDC07C4F6BD631F5,"
+        "1B8F23FC10195395,"
+        "8D6ACC0820F0D424,"
+        "FAD3E22AA96D7B51,"
+        "E9BEA521567E008E,"
+        "AA2B1355C046AA80,"
+        "26172AB99925C7AD,"
+        "7B16D306254AB39E,"
+        "7DE4CAEA279A9A09,"
+        "BDD5ACBF489E7853,"
+        "C12951B8D7192A9E,"
+        "5AF15B44D7E92568,"
+        "264724EA902655F8,"
+        "E51A3DB8B4CE10AF,"
+        "C8DECC54A0085620,"
+        "33D41383CC45BCE1,"
+        "CE19CDCC72E90FDF,"
+        "08790A05BF2829FB,"
+        "5F7DE781C2993BEC,"
+        "A60D1CF2839DC373,"
+        "FEE6D3D200FF4220,"
+        "216C17AA33DB5D75"
+      },
       { "rtx.uiTextures",
         "7C47908363E9FB46,"
         "49C49D3F95609C9D,"
@@ -550,7 +592,7 @@ namespace dxvk {
         "068E64C3DB849782,"  // ugly textures used for plasma catchers for fake bloom
         "92e275beee2d2c12,"  // tanker detail texture
         "ace20008ae3a0a5b,"  // barrel detail texture
-        },
+      },
       { "rtx.ignoreLights",
         // Chell atlases - associated with a light (player light?)
         "460306E97FB2D4B5,"  // 5044883607524660405ULL
@@ -776,19 +818,19 @@ namespace dxvk {
       { "rtx.viewModel.scale",                    "0.4" },
       { "rtx.effectLightPlasmaBall",              "True" },
       { "rtx.enableVolumetricLighting",           "True" },
-      { "rtx.volumetricTransmittanceColor",       "0.9, 0.89, 0.88" }, // Slight blue tint to act more like water vapor for now
+      { "rtx.volumetricTransmittanceColor",       "0.953238, 0.948409, 0.943550" }, // Slight blue tint to act more like water vapor for now
       { "rtx.volumetricTransmittanceMeasurementDistance", "20000.0" },
       { "rtx.froxelGridResolutionScale",          "16" },
       { "rtx.froxelDepthSlices",                  "48" },
       { "rtx.enableFogRemap",                     "True" },
-      { "rtx.fogRemapMaxDistanceMin",             "100.0f" },
-      { "rtx.fogRemapMaxDistanceMax",             "4000.0f" },
-      { "rtx.fogRemapTransmittanceMeasurementDistanceMin", "2000.0f" },
+      { "rtx.fogRemapMaxDistanceMin",             "100.0" },
+      { "rtx.fogRemapMaxDistanceMax",             "4000.0" },
+      { "rtx.fogRemapTransmittanceMeasurementDistanceMin", "2000.0" },
       { "rtx.fogRemapTransmittanceMeasurementDistanceMax", "12000.0" },
       { "rtx.useObsoleteHashOnTextureUpload",                   "True" },
-      { "rtx.temporalAA.maximumRadiance",                       "10000.0f" },
-      { "rtx.temporalAA.colorClampingFactor",                   "1.0f"  },
-      { "rtx.temporalAA.newFrameWeight",                        "0.05f" },
+      { "rtx.temporalAA.maximumRadiance",                       "10000.0" },
+      { "rtx.temporalAA.colorClampingFactor",                   "1.0"  },
+      { "rtx.temporalAA.newFrameWeight",                        "0.05" },
       { "rtx.postfx.motionBlurSampleCount",                     "4"     },
       { "rtx.postfx.exposureFraction",                          "0.4"   },
       { "rtx.postfx.blurDiameterFraction",                      "0.02"  },
@@ -804,7 +846,7 @@ namespace dxvk {
       { "rtx.enableNearPlaneOverride",                          "True"  },
       { "rtx.nativeMipBias",                                    "0.9"   },
       { "rtx.upscalingMipBias",                                 "-0.4"  },
-      { "rtx.assetEstimatedSizeGB",                             "12"    },
+      { "rtx.assetEstimatedSizeGiB",                            "12"    },
       { "rtx.legacyMaterial.roughnessConstant",                 "0.1"   },
       // TODO (REMIX-656): Remove this once we can transition content to new hash
       { "rtx.geometryGenerationHashRuleString", "positions,"

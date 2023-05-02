@@ -428,6 +428,7 @@ void resolveVertex(
     }
 
     // Note: Fully opaque surfaces have no chance at needing further resolving (since they are gauranteed to have no opacity-related blending or translucency), so stopping here is fine.
+    // Todo: Incorporate decals into this check so this can be moved above the decal logic for early outing sooner on most hits?
     if (surface.isFullyOpaque)
     {
       resolveVertexFinalHit(resolveVertexState);

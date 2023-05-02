@@ -114,7 +114,7 @@
 //   that generated the intersection primitives, but keeping the geometry that did not generate any such primitives
 //   because that geometry still has both _GEOMETRY and _INTERSECTION_PRIMITIVE bits set.
 // - Secondary rays use the BLENDED_INTERSECTION_PRIMITIVE mask optionally combined with EMISSIVE_INTERSECTION_PRIMITIVE,
-//   depending on cb.enableEmissiveParticlesInIndirectRays
+//   depending on cb.enableUnorderedEmissiveParticlesInIndirectRays
 //
 // View model and player model have no duality in their translucent geometry:
 // - View model has only geometric translucency that uses OBJECT_MASK_VIEWMODEL[_VIRTUAL]

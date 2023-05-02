@@ -844,8 +844,10 @@ namespace dxvk {
 
       // Create a sampler to account for DLSS lod bias and any custom filtering overrides the user has set
       const bool temporalUpscaling = RtxOptions::Get()->isDLSSEnabled() || RtxOptions::Get()->isTAAEnabled();
-      const float mipBias = (temporalUpscaling ? (log2(resourceManager.getUpscaleRatio()) + RtxOptions::Get()->upscalingMipBias()) : 0.0f) + RtxOptions::Get()->getNativeMipBias();
-      m_materialTextureSampler = resourceManager.getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT, mipBias, RtxOptions::Get()->getAnisotropicFilteringEnabled());
+      const float totalUpscaleMipBias = temporalUpscaling ? (log2(resourceManager.getUpscaleRatio()) + RtxOptions::Get()->upscalingMipBias()) : 0.0f;
+      const float totalTipBias = totalUpscaleMipBias + RtxOptions::Get()->getNativeMipBias();
+
+      m_materialTextureSampler = resourceManager.getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT, totalTipBias, RtxOptions::Get()->getAnisotropicFilteringEnabled());
     }
 
     // Note: Use either the specified override Material Data or the original draw calls state's Material Data to create a Surface Material if no override is specified

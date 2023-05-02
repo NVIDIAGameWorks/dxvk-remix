@@ -673,10 +673,10 @@ namespace dxvk {
 
     // Record the texture setting at the first frame it shows up
     static int lastFrameID = -1;
-    static int textureMipMapSetting = RtxOptions::Get()->skipReplacementTextureMipMapLevel();
+    static unsigned int textureMipMapSetting = RtxOptions::Get()->minReplacementTextureMipMapLevel();
     int currentFrameID = ctx->getDevice()->getCurrentFrameId();
     if (currentFrameID != lastFrameID + 1) {
-      textureMipMapSetting = RtxOptions::Get()->skipReplacementTextureMipMapLevel();
+      textureMipMapSetting = RtxOptions::Get()->minReplacementTextureMipMapLevel();
     }
 
     // Open popup if it's specified by user settings
@@ -744,9 +744,9 @@ namespace dxvk {
 
       if (ImGui::Button("Save Settings", ImVec2(buttonWidth, 0))) {
         RtxOptions::Get()->serialize();
-        if (textureMipMapSetting != RtxOptions::Get()->skipReplacementTextureMipMapLevel()) {
+        if (textureMipMapSetting != RtxOptions::Get()->minReplacementTextureMipMapLevel()) {
           ImGui::OpenPopup("Message");
-          textureMipMapSetting = RtxOptions::Get()->skipReplacementTextureMipMapLevel();
+          textureMipMapSetting = RtxOptions::Get()->minReplacementTextureMipMapLevel();
         }
         m_userGraphicsSettingChanged = false;
       }
@@ -938,7 +938,7 @@ namespace dxvk {
     // Map settings to indirect particle level
     int indirectLightParticlesLevel = 0;
     if (RtxOptions::Get()->enableUnorderedResolveInIndirectRays()) {
-      indirectLightParticlesLevel = RtxOptions::Get()->enableEmissiveParticlesInIndirectRays() ? 2 : 1;
+      indirectLightParticlesLevel = RtxOptions::Get()->enableUnorderedEmissiveParticlesInIndirectRays() ? 2 : 1;
     }
 
     // Map presets to options
@@ -973,7 +973,7 @@ namespace dxvk {
       m_userGraphicsSettingChanged |= maxPathBouncesCombo.getKey(&RtxOptions::Get()->pathMaxBouncesObject());
       m_userGraphicsSettingChanged |= ImGui::Checkbox("Enable Volumetric Lighting", &RtxOptions::Get()->enableVolumetricLightingObject());
       m_userGraphicsSettingChanged |= denoiserQualityCombo.getKey(&RtxOptions::Get()->denoiseDirectAndIndirectLightingSeparatelyObject());
-      m_userGraphicsSettingChanged |= textureQualityCombo.getKey(&RtxOptions::Get()->skipReplacementTextureMipMapLevelObject());
+      m_userGraphicsSettingChanged |= textureQualityCombo.getKey(&RtxOptions::Get()->minReplacementTextureMipMapLevelObject());
       m_userGraphicsSettingChanged |= indirectLightingParticlesCombo.getKey(&indirectLightParticlesLevel);
       ImGui::SetTooltipToLastWidgetOnHover("Controls the quality of particles in indirect (reflection/GI) rays.");
 
@@ -1013,15 +1013,15 @@ namespace dxvk {
     if (RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Custom) {
       switch (indirectLightParticlesLevel) {
       case 0:
-        RtxOptions::Get()->enableEmissiveParticlesInIndirectRaysRef() = false;
+        RtxOptions::Get()->enableUnorderedEmissiveParticlesInIndirectRaysRef() = false;
         RtxOptions::Get()->enableUnorderedResolveInIndirectRaysRef() = false;
         break;
       case 1:
-        RtxOptions::Get()->enableEmissiveParticlesInIndirectRaysRef() = false;
+        RtxOptions::Get()->enableUnorderedEmissiveParticlesInIndirectRaysRef() = false;
         RtxOptions::Get()->enableUnorderedResolveInIndirectRaysRef() = true;
         break;
       case 2:
-        RtxOptions::Get()->enableEmissiveParticlesInIndirectRaysRef() = true;
+        RtxOptions::Get()->enableUnorderedEmissiveParticlesInIndirectRaysRef() = true;
         RtxOptions::Get()->enableUnorderedResolveInIndirectRaysRef() = true;
         break;
       }
@@ -1161,6 +1161,15 @@ namespace dxvk {
 
         ImGui::Checkbox("Portals: Camera History Correction", &RtxOptions::Get()->rayPortalCameraHistoryCorrectionObject());
         ImGui::Checkbox("Portals: Camera In-Between Portals Correction", &RtxOptions::Get()->rayPortalCameraInBetweenPortalsCorrectionObject());
+
+        if (RtxOptions::Get()->rayPortalCameraInBetweenPortalsCorrection()) {
+          ImGui::Indent();
+
+          ImGui::DragFloat("Portals: Camera In-Between Portals Correction Threshold", &RtxOptions::Get()->rayPortalCameraInBetweenPortalsCorrectionThresholdObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
+
+          ImGui::Unindent();
+        }
+
         ImGui::Checkbox("Skip Objects Rendered with Unknown Camera", &RtxOptions::Get()->skipObjectsWithUnknownCameraObject());
 
         ImGui::Checkbox("Override Near Plane (if less than original)", &RtxOptions::Get()->enableNearPlaneOverrideObject());
@@ -1296,14 +1305,21 @@ namespace dxvk {
     ImGui::BeginDisabled(!common->getSceneManager().areReplacementsLoaded());
     ImGui::Checkbox("Enable Enhanced Assets", &RtxOptions::Get()->enableReplacementAssetsObject());
     {
+      ImGui::Indent();
       ImGui::BeginDisabled(!RtxOptions::Get()->enableReplacementAssets());
+
       ImGui::Checkbox("Enable Enhanced Materials", &RtxOptions::Get()->enableReplacementMaterialsObject());
-      ImGui::Checkbox("Enable Adaptive Texture Resolution", &RtxOptions::Get()->enableAdaptiveResolutionReplacementTexturesObject());
-      ImGui::DragInt("Skip Texture Mip Map Levels", &RtxOptions::Get()->skipReplacementTextureMipMapLevelObject(), 0.1f, 0, 16, "%d", sliderFlags);
-      ImGui::Checkbox("Force High Resolution Textures", &RtxOptions::Get()->forceHighResolutionReplacementTexturesObject());
       ImGui::Checkbox("Enable Enhanced Meshes", &RtxOptions::Get()->enableReplacementMeshesObject());
       ImGui::Checkbox("Enable Enhanced Lights", &RtxOptions::Get()->enableReplacementLightsObject());
+
+      ImGui::Separator();
+
+      ImGui::Checkbox("Force High Resolution Textures", &RtxOptions::Get()->forceHighResolutionReplacementTexturesObject());
+      ImGui::Checkbox("Enable Adaptive Texture Resolution", &RtxOptions::Get()->enableAdaptiveResolutionReplacementTexturesObject());
+      ImGui::DragInt("Minimum Mip Map Level", &RtxOptions::Get()->minReplacementTextureMipMapLevelObject(), 0.1f, 0, 16, "%d", sliderFlags);
+
       ImGui::EndDisabled();
+      ImGui::Unindent();
     }
     ImGui::EndDisabled();
     ImGui::Separator();
@@ -1534,18 +1550,7 @@ namespace dxvk {
           ImGui::Checkbox("Enable Thin-Film Layer", &opaqueMaterialOptions.enableThinFilmOverrideObject());
 
           if (opaqueMaterialOptions.enableThinFilmOverride()) {
-            // Note: Convert from normalized thickness (used on the GPU) to thickness in nanometers. Ideally this should not need to be done as we should not be
-            // modifying data given to the GPU directly here (and rather it should simply be modifying an option which is later translated to GPU data), but this is
-            // how it is currently.
-            float currentThinFilmThicknessOverride =
-              opaqueMaterialOptions.thinFilmNormalizedThicknessOverride() * OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS;
-
-            if (IMGUI_ADD_TOOLTIP(
-                  ImGui::SliderFloat("Thin Film Thickness", &currentThinFilmThicknessOverride, 0.0f, OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS, "%.1f nm", sliderFlags),
-                  opaqueMaterialOptions.thinFilmNormalizedThicknessOverrideDescription())) {
-              // Note: Renormalize only on value update to avoid potential cyclic behavior with denormalizing/renormalizing every iteration this code is run.
-              opaqueMaterialOptions.thinFilmNormalizedThicknessOverrideRef() = std::clamp(currentThinFilmThicknessOverride / OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS, 0.0f, 1.0f);
-            }
+            ImGui::SliderFloat("Thin Film Thickness", &opaqueMaterialOptions.thinFilmThicknessOverrideObject(), 0.0f, OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS, "%.1f nm", sliderFlags);
           }
 
           ImGui::Unindent();
@@ -1691,9 +1696,9 @@ namespace dxvk {
         ImGui::Checkbox("Enable Russian Roulette", &RtxOptions::Get()->enableRussianRouletteObject());
         ImGui::Checkbox("Enable Probability Dithering Filtering for Primary Bounce", &RtxOptions::Get()->enableFirstBounceLobeProbabilityDitheringObject());
         ImGui::Checkbox("Unordered Resolve in Indirect Rays", &RtxOptions::Get()->enableUnorderedResolveInIndirectRaysObject());
-        ImGui::Checkbox("Emissive Particles in Indirect Rays", &RtxOptions::Get()->enableEmissiveParticlesInIndirectRaysObject());
+        ImGui::Checkbox("Unordered Emissive Particles in Indirect Rays", &RtxOptions::Get()->enableUnorderedEmissiveParticlesInIndirectRaysObject());
         // # bounces limitted by 4b allocation in payload
-        // Note: it's possible get up to 16 bounces => will require logic adjustment
+        // Note: It's possible get up to 16 bounces => will require logic adjustment
         ImGui::DragInt("Minimum Path Bounces", &RtxOptions::Get()->pathMinBouncesObject(), 1.0f, 0, 15, "%d", sliderFlags);
         ImGui::DragInt("Maximum Path Bounces", &RtxOptions::Get()->pathMaxBouncesObject(), 1.0f, RtxOptions::Get()->pathMinBounces(), 15, "%d", sliderFlags);
         ImGui::DragFloat("Firefly Filtering Luminance Threshold", &RtxOptions::Get()->fireflyFilteringLuminanceThresholdObject(), 0.1f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
@@ -1790,56 +1795,87 @@ namespace dxvk {
       ImGui::Unindent();
     }
 
-    if (ImGui::CollapsingHeader("Volumetrics", collapsingHeaderClosedFlags)) {
+    if (ImGui::CollapsingHeader("Froxel Radiance Cache/Volumetrics", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
 
-      ImGui::DragInt("Froxel Grid Resolution Scale", &RtxOptions::Get()->froxelGridResolutionScaleObject(), 0.1f, 1);
-      ImGui::DragInt("Froxel Depth Slices", &RtxOptions::Get()->froxelDepthSlicesObject(), 0.1f, 1, UINT16_MAX);
-      ImGui::DragInt("Max Accumulation Frames", &RtxOptions::Get()->maxAccumulationFramesObject(), 0.1f, 1, UINT8_MAX);
-      ImGui::DragFloat("Froxel Depth Slice Distribution Exponent", &RtxOptions::Get()->froxelDepthSliceDistributionExponentObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
-      ImGui::DragFloat("Froxel Max Distance", &RtxOptions::Get()->froxelMaxDistanceObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
-      ImGui::DragFloat("Froxel Firefly Filtering Luminance Threshold", &RtxOptions::Get()->froxelFireflyFilteringLuminanceThresholdObject(), 0.1f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
-      ImGui::DragFloat("Froxel Filter Gaussian Sigma", &RtxOptions::Get()->froxelFilterGaussianSigmaObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
-      ImGui::Checkbox("Per-Portal Volumes", &RtxOptions::Get()->enableVolumetricsInPortalsObject());
+      if (ImGui::CollapsingHeader("Froxel Radiance Cache", collapsingHeaderFlags)) {
+        ImGui::Indent();
 
-      ImGui::Separator();
+        ImGui::DragInt("Froxel Grid Resolution Scale", &RtxOptions::Get()->froxelGridResolutionScaleObject(), 0.1f, 1);
+        ImGui::DragInt("Froxel Depth Slices", &RtxOptions::Get()->froxelDepthSlicesObject(), 0.1f, 1, UINT16_MAX);
+        ImGui::DragInt("Max Accumulation Frames", &RtxOptions::Get()->maxAccumulationFramesObject(), 0.1f, 1, UINT8_MAX);
+        ImGui::DragFloat("Froxel Depth Slice Distribution Exponent", &RtxOptions::Get()->froxelDepthSliceDistributionExponentObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
+        ImGui::DragFloat("Froxel Max Distance", &RtxOptions::Get()->froxelMaxDistanceObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
+        ImGui::DragFloat("Froxel Firefly Filtering Luminance Threshold", &RtxOptions::Get()->froxelFireflyFilteringLuminanceThresholdObject(), 0.1f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
+        ImGui::DragFloat("Froxel Filter Gaussian Sigma", &RtxOptions::Get()->froxelFilterGaussianSigmaObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
+        ImGui::Checkbox("Per-Portal Volumes", &RtxOptions::Get()->enableVolumetricsInPortalsObject());
 
-      ImGui::DragInt("Initial RIS Sample Count", &RtxOptions::Get()->volumetricInitialRISSampleCountObject(), 0.05f, 1, UINT8_MAX);
-      ImGui::Checkbox("Enable Initial Visibility", &RtxOptions::Get()->volumetricEnableInitialVisibilityObject());
-      ImGui::Checkbox("Enable Temporal Resampling", &RtxOptions::Get()->volumetricEnableTemporalResamplingObject());
-      ImGui::DragInt("Temporal Reuse Max Sample Count", &RtxOptions::Get()->volumetricTemporalReuseMaxSampleCountObject(), 1.0f, 1, UINT16_MAX);
-      ImGui::DragFloat("Clamped Reprojection Confidence Pentalty", &RtxOptions::Get()->volumetricClampedReprojectionConfidencePenaltyObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        ImGui::Separator();
 
-      ImGui::Separator();
+        ImGui::DragInt("Initial RIS Sample Count", &RtxOptions::Get()->volumetricInitialRISSampleCountObject(), 0.05f, 1, UINT8_MAX);
+        ImGui::Checkbox("Enable Initial Visibility", &RtxOptions::Get()->volumetricEnableInitialVisibilityObject());
+        ImGui::Checkbox("Enable Temporal Resampling", &RtxOptions::Get()->volumetricEnableTemporalResamplingObject());
+        ImGui::DragInt("Temporal Reuse Max Sample Count", &RtxOptions::Get()->volumetricTemporalReuseMaxSampleCountObject(), 1.0f, 1, UINT16_MAX);
+        ImGui::DragFloat("Clamped Reprojection Confidence Pentalty", &RtxOptions::Get()->volumetricClampedReprojectionConfidencePenaltyObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
 
-      ImGui::DragInt("Min Reservoir Samples", &RtxOptions::Get()->froxelMinReservoirSamplesObject(), 0.05f, 1, UINT8_MAX);
-      ImGui::DragInt("Max Reservoir Samples", &RtxOptions::Get()->froxelMaxReservoirSamplesObject(), 0.05f, 1, UINT8_MAX);
-      ImGui::DragInt("Min Reservoir Samples Stability History", &RtxOptions::Get()->froxelMinReservoirSamplesStabilityHistoryObject(), 0.1f, 1, UINT8_MAX);
-      ImGui::DragInt("Max Reservoir Samples Stability History", &RtxOptions::Get()->froxelMaxReservoirSamplesStabilityHistoryObject(), 0.1f, 1, UINT8_MAX);
-      ImGui::DragFloat("Reservoir Samples Stability History Power", &RtxOptions::Get()->froxelReservoirSamplesStabilityHistoryPowerObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
+        ImGui::Separator();
 
-      ImGui::DragInt("Min Kernel Radius", &RtxOptions::Get()->froxelMinKernelRadiusObject(), 0.05f, 1, UINT8_MAX);
-      ImGui::DragInt("Max Kernel Radius", &RtxOptions::Get()->froxelMaxKernelRadiusObject(), 0.05f, 1, UINT8_MAX);
-      ImGui::DragInt("Min Kernel Radius Stability History", &RtxOptions::Get()->froxelMinKernelRadiusStabilityHistoryObject(), 0.1f, 1, UINT8_MAX);
-      ImGui::DragInt("Min Kernel Radius Stability History", &RtxOptions::Get()->froxelMaxKernelRadiusStabilityHistoryObject(), 0.1f, 1, UINT8_MAX);
-      ImGui::DragFloat("Kernel Radius Stability History Power", &RtxOptions::Get()->froxelKernelRadiusStabilityHistoryPowerObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
+        ImGui::DragInt("Min Reservoir Samples", &RtxOptions::Get()->froxelMinReservoirSamplesObject(), 0.05f, 1, UINT8_MAX);
+        ImGui::DragInt("Max Reservoir Samples", &RtxOptions::Get()->froxelMaxReservoirSamplesObject(), 0.05f, 1, UINT8_MAX);
+        ImGui::DragInt("Min Reservoir Samples Stability History", &RtxOptions::Get()->froxelMinReservoirSamplesStabilityHistoryObject(), 0.1f, 1, UINT8_MAX);
+        ImGui::DragInt("Max Reservoir Samples Stability History", &RtxOptions::Get()->froxelMaxReservoirSamplesStabilityHistoryObject(), 0.1f, 1, UINT8_MAX);
+        ImGui::DragFloat("Reservoir Samples Stability History Power", &RtxOptions::Get()->froxelReservoirSamplesStabilityHistoryPowerObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
 
-      ImGui::Separator();
+        ImGui::DragInt("Min Kernel Radius", &RtxOptions::Get()->froxelMinKernelRadiusObject(), 0.05f, 1, UINT8_MAX);
+        ImGui::DragInt("Max Kernel Radius", &RtxOptions::Get()->froxelMaxKernelRadiusObject(), 0.05f, 1, UINT8_MAX);
+        ImGui::DragInt("Min Kernel Radius Stability History", &RtxOptions::Get()->froxelMinKernelRadiusStabilityHistoryObject(), 0.1f, 1, UINT8_MAX);
+        ImGui::DragInt("Min Kernel Radius Stability History", &RtxOptions::Get()->froxelMaxKernelRadiusStabilityHistoryObject(), 0.1f, 1, UINT8_MAX);
+        ImGui::DragFloat("Kernel Radius Stability History Power", &RtxOptions::Get()->froxelKernelRadiusStabilityHistoryPowerObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
 
-      ImGui::Checkbox("Enable Volumetric Lighting", &RtxOptions::Get()->enableVolumetricLightingObject());
-      ImGui::DragFloat3("Transmittance Color", &RtxOptions::Get()->volumetricTransmittanceColorObject(), 0.01f, 0.0f, 1.0f, "%.3f");
-      ImGui::DragFloat("Transmittance Measurement Distance", &RtxOptions::Get()->volumetricTransmittanceMeasurementDistanceObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
-      ImGui::DragFloat3("Single Scattering Albedo", &RtxOptions::Get()->volumetricSingleScatteringAlbedoObject(), 0.01f, 0.0f, 1.0f, "%.3f");
-      ImGui::DragFloat("Anisotropy", &RtxOptions::Get()->volumetricAnisotropyObject(), 0.01f, -1.0f, 1.0f, "%.3f", sliderFlags);
+        ImGui::Unindent();
+      }
 
-      ImGui::Separator();
+      if (ImGui::CollapsingHeader("Volumetric Lighting", collapsingHeaderFlags)) {
+        ImGui::Indent();
 
-      ImGui::Checkbox("Enable Legacy Fog Remapping", &RtxOptions::Get()->enableFogRemapObject());
-      ImGui::DragFloat("Color Strength", &RtxOptions::Get()->fogRemapColorStrengthObject(), 0.0f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
-      ImGui::DragFloat("Legacy Max Distance Min", &RtxOptions::Get()->fogRemapMaxDistanceMinObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
-      ImGui::DragFloat("Legacy Max Distance Max", &RtxOptions::Get()->fogRemapMaxDistanceMaxObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
-      ImGui::DragFloat("Remapped Transmittance Measurement Distance Min", &RtxOptions::Get()->fogRemapTransmittanceMeasurementDistanceMinObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
-      ImGui::DragFloat("Remapped Transmittance Measurement Distance Max", &RtxOptions::Get()->fogRemapTransmittanceMeasurementDistanceMaxObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
+        ImGui::Checkbox("Enable Volumetric Lighting", &RtxOptions::Get()->enableVolumetricLightingObject());
+
+        if (RtxOptions::Get()->enableVolumetricLighting()) {
+          ImGui::DragFloat3("Transmittance Color", &RtxOptions::Get()->volumetricTransmittanceColorObject(), 0.01f, 0.0f, 1.0f, "%.3f");
+          ImGui::DragFloat("Transmittance Measurement Distance", &RtxOptions::Get()->volumetricTransmittanceMeasurementDistanceObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
+          ImGui::DragFloat3("Single Scattering Albedo", &RtxOptions::Get()->volumetricSingleScatteringAlbedoObject(), 0.01f, 0.0f, 1.0f, "%.3f");
+          ImGui::DragFloat("Anisotropy", &RtxOptions::Get()->volumetricAnisotropyObject(), 0.01f, -1.0f, 1.0f, "%.3f", sliderFlags);
+
+          ImGui::Separator();
+
+          ImGui::Checkbox("Enable Legacy Fog Remapping", &RtxOptions::Get()->enableFogRemapObject());
+
+          if (RtxOptions::Get()->enableFogRemap()) {
+            ImGui::Indent();
+
+            ImGui::Checkbox("Enable Fog Color Remapping", &RtxOptions::Get()->enableFogColorRemapObject());
+
+            ImGui::Separator();
+
+            ImGui::Checkbox("Enable Fog Max Distance Remapping", &RtxOptions::Get()->enableFogMaxDistanceRemapObject());
+
+            if (RtxOptions::Get()->enableFogMaxDistanceRemap()) {
+              ImGui::DragFloat("Legacy Max Distance Min", &RtxOptions::Get()->fogRemapMaxDistanceMinObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
+              ImGui::DragFloat("Legacy Max Distance Max", &RtxOptions::Get()->fogRemapMaxDistanceMaxObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
+              ImGui::DragFloat("Remapped Transmittance Measurement Distance Min", &RtxOptions::Get()->fogRemapTransmittanceMeasurementDistanceMinObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
+              ImGui::DragFloat("Remapped Transmittance Measurement Distance Max", &RtxOptions::Get()->fogRemapTransmittanceMeasurementDistanceMaxObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
+            }
+
+            ImGui::Separator();
+
+            ImGui::DragFloat("Color Multiscattering Scale", &RtxOptions::Get()->fogRemapColorMultiscatteringScaleObject(), 0.0f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
+
+            ImGui::Unindent();
+          }
+        }
+
+        ImGui::Unindent();
+      }
 
       // Note: Must be called if the volumetrics options changed.
       RtxOptions::Get()->updateCachedVolumetricOptions();
@@ -2036,7 +2072,7 @@ namespace dxvk {
       ImGui::Separator();
       ImGui::Checkbox("Use Anisotropic Filtering", &RtxOptions::Get()->useAnisotropicFilteringObject());
       if (RtxOptions::Get()->useAnisotropicFiltering()) {
-        ImGui::DragFloat("Max Anisotropy Level", &RtxOptions::Get()->maxAnisotropyLevelObject(), 0.5f, 1.0f, 16.f, "%.3f", sliderFlags);
+        ImGui::DragFloat("Max Anisotropy Samples", &RtxOptions::Get()->maxAnisotropySamplesObject(), 0.5f, 1.0f, 16.f, "%.3f", sliderFlags);
       }
       ImGui::DragFloat("Translucent Decal Albedo Factor", &RtxOptions::Get()->translucentDecalAlbedoFactorObject(), 0.01f);
       ImGui::DragFloat("Decal Normal Offset", &RtxOptions::Get()->decalNormalOffsetObject(), 0.0001f, 0.f, 0.f, "%.4f");

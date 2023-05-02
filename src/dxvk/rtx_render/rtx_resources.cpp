@@ -385,7 +385,7 @@ namespace dxvk {
 
   Rc<DxvkSampler> dxvk::Resources::getSampler(const VkFilter filter, const VkSamplerMipmapMode mipFilter, const VkSamplerAddressMode addrMode, const float mipBias/* = 0*/, const bool useAnisotropy/* = false*/) {
     const VkPhysicalDeviceLimits& limits = m_device->properties().core.properties.limits;
-    const float maxAniso = std::min(limits.maxSamplerAnisotropy, RtxOptions::Get()->getMaxAnisotropyLevel());
+    const float maxAniso = std::min(limits.maxSamplerAnisotropy, RtxOptions::Get()->getMaxAnisotropySamples());
 
     // Build a simple key to lookup the cache
     DxvkHashState key;
@@ -395,7 +395,7 @@ namespace dxvk {
     key.add(hash(addrMode));
     key.add(hash((uint32_t&) mipBias));
     key.add(hash((uint32_t&) maxAniso));
-    key.add(hash(!!useAnisotropy));
+    key.add(hash(static_cast<uint32_t>(useAnisotropy)));
 
     Rc<DxvkSampler> sampler = nullptr;
 
