@@ -356,23 +356,23 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.playerModel.intersectionCapsuleRadius|float|24||
 |rtx.playerModel.verticalDetectionDistance|float|64||
 |rtx.postFilterThreshold|float|3|Clamps a pixel when its luminance exceeds x times of the average\.|
-|rtx.postfx.blurDiameterFraction|float|0.02||
-|rtx.postfx.chromaticAberrationAmount|float|0.02||
-|rtx.postfx.chromaticCenterAttenuationAmount|float|0.975||
+|rtx.postfx.blurDiameterFraction|float|0.02|The diameter of the circle that motion blur samplings occur\. Motion vectors beyond this circle will be clamped\.|
+|rtx.postfx.chromaticAberrationAmount|float|0.02|The strength of chromatic aberration\.|
+|rtx.postfx.chromaticCenterAttenuationAmount|float|0.975|Control the amount of chromatic aberration effect that attunuated when close to the center of screen\.|
 |rtx.postfx.enable|bool|True|Enables post\-processing effects\.|
 |rtx.postfx.enableChromaticAberration|bool|True|Enables chromatic aberration post\-processing effect\.|
 |rtx.postfx.enableMotionBlur|bool|True|Enables motion blur post\-processing effect\.|
-|rtx.postfx.enableMotionBlurEmissive|bool|True||
-|rtx.postfx.enableMotionBlurNoiseSample|bool|True||
+|rtx.postfx.enableMotionBlurEmissive|bool|True|Enable Motion Blur for Emissive surfaces\. Disable this when the motion blur on emissive surfaces cause severe artifacts\.|
+|rtx.postfx.enableMotionBlurNoiseSample|bool|True|Enable random distance sampling for every step along the motion vector\. The random pattern is generated with interleaved gradient noise\.|
 |rtx.postfx.enableVignette|bool|True|Enables vignette post\-processing effect\.|
-|rtx.postfx.exposureFraction|float|0.4||
-|rtx.postfx.motionBlurDynamicDeduction|float|0.075||
-|rtx.postfx.motionBlurJitterStrength|float|0.6||
-|rtx.postfx.motionBlurMinimumVelocityThresholdInPixel|float|1||
-|rtx.postfx.motionBlurSampleCount|int|4||
-|rtx.postfx.vignetteIntensity|float|0.8||
-|rtx.postfx.vignetteRadius|float|0.8||
-|rtx.postfx.vignetteSoftness|float|0.2||
+|rtx.postfx.exposureFraction|float|0.4|Simulate the camera exposure, the longer exposure will cause stronger motion blur\.|
+|rtx.postfx.motionBlurDynamicDeduction|float|0.075|The deduction of motion blur for dynamic objects\.|
+|rtx.postfx.motionBlurJitterStrength|float|0.6|The jitter strength of every sample along the motion vector\.|
+|rtx.postfx.motionBlurMinimumVelocityThresholdInPixel|float|1|The minimum motion vector distance that enable the motion blur\. The unit is pixel size\.|
+|rtx.postfx.motionBlurSampleCount|int|4|The number of samples along the motion vector\. More samples could help to reduce motion blur noise\.|
+|rtx.postfx.vignetteIntensity|float|0.8|The darkness of vignette effect\.|
+|rtx.postfx.vignetteRadius|float|0.8|The radius that vignette effect starts\. The unit is normalized screen space, 0 represents the center, 1 means the edge of the short edge of the rendering window\. So, this setting can larger than 1 until reach to the long edge of the rendering window\.|
+|rtx.postfx.vignetteSoftness|float|0.2|The gradient that the color drop to black from the vignetteRadius to the edge of rendering window\.|
 |rtx.presentThrottleDelay|int|16|A time in milliseconds that the DXVK presentation thread should sleep for\. Requires present throttling to be enabled to take effect\.<br>Note that the application may sleep for longer than the specified time as is expected with sleep functions in general\.|
 |rtx.primaryRayMaxInteractions|int|32|The maximum number of resolver interactions to use for primary \(initial G\-Buffer\) rays\.<br>This affects how many Decals, Ray Portals and potentially particles \(if unordered approximations are not enabled\) may be interacted with along a ray at the cost of performance for higher amounts of interactions\.|
 |rtx.psrRayMaxInteractions|int|32|The maximum number of resolver interactions to use for PSR \(primary surface replacement G\-Buffer\) rays\.<br>This affects how many Decals, Ray Portals and potentially particles \(if unordered approximations are not enabled\) may be interacted with along a ray at the cost of performance for higher amounts of interactions\.|
@@ -554,7 +554,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.decalTextures|hash set||Textures on draw calls used for static geometric decals or decals with complex topology\.<br>These materials will be blended over the materials underneath them when decal material blending is enabled\.<br>A small configurable offset is applied to each flat part of these decals to prevent coplanar geometric cases \(which poses problems for ray tracing\)\.|
 |rtx.dynamicDecalTextures|hash set||Textures on draw calls used for dynamically spawned geometric decals, such as bullet holes\.<br>These materials will be blended over the materials underneath them when decal material blending is enabled\.<br>A small configurable offset is applied to each flat part of these decals to prevent coplanar geometric cases \(which poses problems for ray tracing\)\.|
 |rtx.geometryAssetHashRuleString|string|positions,indices,geometrydescriptor|Defines which hashes we need to include when sampling from replacements and doing USD capture\.|
-|rtx.geometryGenerationHashRuleString|string|positions,indices,texcoords,geometrydescriptor|Defines which asset hashes we need to generate via the geometry processing engine\.|
+|rtx.geometryGenerationHashRuleString|string|positions,indices,texcoords,geometrydescriptor,vertexlayout|Defines which asset hashes we need to generate via the geometry processing engine\.|
 |rtx.hideInstanceTextures|hash set||Textures on draw calls that should be hidden from rendering, but not totally ignored\.<br>This is similar to rtx\.ignoreTextures but instead of completely ignoring such draw calls they are only hidden from rendering, allowing for the hidden objects to still appear in captures\.<br>As such, this is mostly only a development tool to hide objects during development until they are properly replaced, otherwise the objects should be ignored with rtx\.ignoreTextures instead for better performance\.|
 |rtx.ignoreLights|hash set||Lights that should be ignored\.<br>Any matching light will be skipped and not added to be ray traced\.|
 |rtx.ignoreTextures|hash set||Textures on draw calls that should be ignored\.<br>Any draw call using an ignore texture will be skipped and not ray traced, useful for removing undesirable rasterized effects or geometry not suitable for ray tracing\.|
