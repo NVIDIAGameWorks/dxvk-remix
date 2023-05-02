@@ -196,9 +196,9 @@ namespace dxvk {
       pathMinBouncesRef() = 0;
       pathMaxBouncesRef() = 2;
       enableVolumetricLightingRef() = false;
-      enableEmissiveParticlesInIndirectRaysRef() = false;
+      enableUnorderedEmissiveParticlesInIndirectRaysRef() = false;
       denoiseDirectAndIndirectLightingSeparatelyRef() = false;
-      skipReplacementTextureMipMapLevelRef() = 1;
+      minReplacementTextureMipMapLevelRef() = 1;
       enableUnorderedResolveInIndirectRaysRef() = false;
     };
 
@@ -208,9 +208,9 @@ namespace dxvk {
       pathMinBouncesRef() = 1;
       pathMaxBouncesRef() = 4;
       enableVolumetricLightingRef() = true;
-      enableEmissiveParticlesInIndirectRaysRef() = true;
+      enableUnorderedEmissiveParticlesInIndirectRaysRef() = true;
       denoiseDirectAndIndirectLightingSeparatelyRef() = true;
-      skipReplacementTextureMipMapLevelRef() = 0;
+      minReplacementTextureMipMapLevelRef() = 0;
       enableUnorderedResolveInIndirectRaysRef() = true;
 
       russianRouletteMaxContinueProbabilityRef() = 0.9f;
@@ -219,9 +219,9 @@ namespace dxvk {
       pathMinBouncesRef() = 0;
       pathMaxBouncesRef() = 2;
       enableVolumetricLightingRef() = true;
-      enableEmissiveParticlesInIndirectRaysRef() = true;
+      enableUnorderedEmissiveParticlesInIndirectRaysRef() = true;
       denoiseDirectAndIndirectLightingSeparatelyRef() = false;
-      skipReplacementTextureMipMapLevelRef() = 1;
+      minReplacementTextureMipMapLevelRef() = 1;
       enableUnorderedResolveInIndirectRaysRef() = true;
 
       russianRouletteMaxContinueProbabilityRef() = 0.9f;

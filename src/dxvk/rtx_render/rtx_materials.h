@@ -23,6 +23,8 @@
 
 #include "rtx_texture.h"
 #include "rtx_option.h"
+#include "../../util/util_color.h"
+#include "../../util/util_macro.h"
 #include "../shaders/rtx/utility/shared_constants.h"
 #include "../shaders/rtx/concept/surface/surface_shared.h"
 
@@ -318,19 +320,21 @@ struct SharedMaterialDefaults {
 
 struct LegacyMaterialDefaults {
   friend class ImGUI;
-  RTX_OPTION("rtx.legacyMaterial", float, anisotropy, 0.f, "");
-  RTX_OPTION("rtx.legacyMaterial", float, emissiveIntensity, 0.f, "");
-  RTX_OPTION("rtx.legacyMaterial", bool, useAlbedoTextureIfPresent, true, "");
-  RTX_OPTION("rtx.legacyMaterial", Vector3, albedoConstant, Vector3(1.0f, 1.0f, 1.0f), "");
-  RTX_OPTION("rtx.legacyMaterial", float, opacityConstant, 1.f, "");
-  RTX_OPTION_ENV("rtx.legacyMaterial", float, roughnessConstant, 0.7f, "DXVK_LEGACY_MATERIAL_DEFAULT_ROUGHNESS", "");
-  RTX_OPTION("rtx.legacyMaterial", float, metallicConstant, 0.1f, "");
-  RTX_OPTION("rtx.legacyMaterial", Vector3, emissiveColorConstant, Vector3(0.0f, 0.0f, 0.0f), "");
-  RTX_OPTION("rtx.legacyMaterial", bool, enableEmissive, false, "");
-  RTX_OPTION("rtx.legacyMaterial", bool, enableThinFilm, false, "");
-  RTX_OPTION("rtx.legacyMaterial", bool, alphaIsThinFilmThickness, false, "");
+  RTX_OPTION("rtx.legacyMaterial", float, anisotropy, 0.f, "The default roughness anisotropy to use for non-replaced \"legacy\" materials. Should be in the range -1 to 1, where 0 is isotropic.");
+  RTX_OPTION("rtx.legacyMaterial", float, emissiveIntensity, 0.f, "The default emissive intensity to use for non-replaced \"legacy\" materials.");
+  RTX_OPTION("rtx.legacyMaterial", bool, useAlbedoTextureIfPresent, true, "A flag to determine if an \"albedo\" texture (a qualifying color texture) from the original application should be used if present on non-replaced \"legacy\" materials.");
+  RTX_OPTION("rtx.legacyMaterial", Vector3, albedoConstant, Vector3(1.0f, 1.0f, 1.0f), "The default albedo constant to use for non-replaced \"legacy\" materials. Should be a color in sRGB colorspace with gamma encoding.");
+  RTX_OPTION("rtx.legacyMaterial", float, opacityConstant, 1.f, "The default opacity constant to use for non-replaced \"legacy\" materials. Should be in the range 0 to 1.");
+  RTX_OPTION_ENV("rtx.legacyMaterial", float, roughnessConstant, 0.7f, "DXVK_LEGACY_MATERIAL_DEFAULT_ROUGHNESS", "The default perceptual roughness constant to use for non-replaced \"legacy\" materials. Should be in the range 0 to 1.");
+  RTX_OPTION("rtx.legacyMaterial", float, metallicConstant, 0.1f, "The default metallic constant to use for non-replaced \"legacy\" materials. Should be in the range 0 to 1.");
+  RTX_OPTION("rtx.legacyMaterial", Vector3, emissiveColorConstant, Vector3(0.0f, 0.0f, 0.0f), "The default emissive color constant to use for non-replaced \"legacy\" materials. Should be a color in sRGB colorspace with gamma encoding.");
+  RTX_OPTION("rtx.legacyMaterial", bool, enableEmissive, false, "A flag to determine if emission should be used on non-replaced \"legacy\" materials.");
+  RTX_OPTION("rtx.legacyMaterial", bool, enableThinFilm, false, "A flag to determine if a thin-film layer should be used on non-replaced \"legacy\" materials.");
+  RTX_OPTION("rtx.legacyMaterial", bool, alphaIsThinFilmThickness, false, "A flag to determine if the alpha channel from the albedo source should be treated as thin film thickness on non-replaced \"legacy\" materials.");
   // Note: Should be something non-zero as 0 is an invalid thickness to have (even if this is just unused).
-  RTX_OPTION("rtx.legacyMaterial", float, thinFilmThicknessConstant, 200.f, "");
+  RTX_OPTION("rtx.legacyMaterial", float, thinFilmThicknessConstant, 200.f,
+             "The thickness (in nanometers) of the thin-film layer assuming it is enabled on non-replaced \"legacy\" materials.\n"
+             "Should be any value larger than 0, typically within the wavelength of light, but must be less than or equal to OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS (" STRINGIFY(OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS) " nm).");
 };
 
 // Note: These material defaults should be kept in sync with the MDL defaults just in case data is not written out by the MDL
@@ -772,12 +776,9 @@ private:
     const float x = (1.0f - m_refractiveIndex) / (1.0f + m_refractiveIndex);
 
     const float kSRGBGamma = 2.2f;
-    // Note: Convert gamma to linear here similar to how we gamma correct the emissive color constant on the GPU for opaque materials.
-    const Vector3 linearEmissiveColor = Vector3{
-      std::pow(m_emissiveColorConstant.x, kSRGBGamma),
-      std::pow(m_emissiveColorConstant.y, kSRGBGamma),
-      std::pow(m_emissiveColorConstant.z, kSRGBGamma),
-    };
+    // Note: Convert gamma to linear here similar to how we gamma correct the emissive color constant on the GPU for opaque materials
+    // (since it cannot vary per-pixel unlike the opaque material).
+    const auto linearEmissiveColor = sRGBGammaToLinear(m_emissiveColorConstant);
 
     m_cachedBaseReflectivity = x * x;
     m_cachedTransmittanceMeasurementDistanceOrThickness =

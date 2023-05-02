@@ -59,7 +59,7 @@ namespace dxvk {
 
   RayPortalManager::RayPortalManager(Rc<DxvkDevice> device, ResourceCache* pResourceCache)
     : m_device(device)
-    , kCameraDepthPenetrationThreshold(0.1f * RtxOptions::Get()->getMeterToWorldUnitScale())
+    , kCameraDepthPenetrationThreshold(RtxOptions::Get()->rayPortalCameraInBetweenPortalsCorrectionThreshold() * RtxOptions::Get()->getMeterToWorldUnitScale())
     , m_pResourceCache(pResourceCache) {
   }
 

@@ -397,6 +397,12 @@ namespace dxvk {
                                  const MemoryAperture mem, MipsToLoad mipsToLoad, int minimumMipLevel) {
     ZoneScoped;
 
+    // Todo: Currently the options in this function must remain constant at runtime so that the minimum mip level calculations here stay
+    // the same. This is not ideal as ideally these options should be able to be changed at runtime to allow for new textures loaded after
+    // the point to take advantage of the new textures. This should be improved to make this function less fragile and make the options
+    // less confusing (as some of these options are changed as "texture quality" settings in the user graphics settings menu, but will not
+    // take effect until Remix is restarted).
+
     // Fetch the pre-configured minimum mip level
     if (minimumMipLevel >= 0) {
       texture->largestMipLevel = minimumMipLevel;
@@ -405,12 +411,13 @@ namespace dxvk {
     }
 
     // Figure out the actual minimum mip level
-    if (RtxOptions::Get()->forceHighResolutionReplacementTextures())
+    if (RtxOptions::Get()->getInitialForceHighResolutionReplacementTextures()) {
       minimumMipLevel = 0;
-    else if (RtxOptions::Get()->enableAdaptiveResolutionReplacementTextures())
-      minimumMipLevel = std::max(minimumMipLevel, RtxOptions::Get()->getInitialSkipReplacementTextureMipMapLevel());
-    else
-      minimumMipLevel = RtxOptions::Get()->getInitialSkipReplacementTextureMipMapLevel();
+    } else if (RtxOptions::Get()->getInitialEnableAdaptiveResolutionReplacementTextures()) {
+      minimumMipLevel = std::max(minimumMipLevel, static_cast<int>(RtxOptions::Get()->getInitialMinReplacementTextureMipMapLevel()));
+    } else {
+      minimumMipLevel = RtxOptions::Get()->getInitialMinReplacementTextureMipMapLevel();
+    }
 
     // Adjust the asset data view if necessary
     if (minimumMipLevel != 0 && texture->mipCount > 1) {

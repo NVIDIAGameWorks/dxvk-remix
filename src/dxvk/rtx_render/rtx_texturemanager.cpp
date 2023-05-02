@@ -215,8 +215,7 @@ namespace dxvk {
             uploadTexture(texture);
         }
       }
-    }
-    catch (const DxvkError& e) {
+    } catch (const DxvkError& e) {
       Logger::err("Exception on TextureManager thread!");
       Logger::err(e.message());
     }
@@ -242,8 +241,7 @@ namespace dxvk {
         m_ctx->flushCommandList();
         texture->linearImageDataLargeMips.reset();
       }
-    }
-    catch (const DxvkError& e) {
+    } catch (const DxvkError& e) {
       texture->state = ManagedTexture::State::kFailed;
       Logger::err("Failed to finish texture promotion to VidMem!");
       Logger::err(e.message());
@@ -290,7 +288,11 @@ namespace dxvk {
   }
 
   uint32_t RtxTextureManager::updateMipMapSkipLevel(const Rc<DxvkContext>& context) {
-    // Check video memory
+    const unsigned int MiBPerGiB = 1024;
+    RtxContext* rtxContext = dynamic_cast<RtxContext*>(context.ptr());
+
+    // Check and reserve GPU memory
+
     VkPhysicalDeviceMemoryProperties memory = m_device->adapter()->memoryProperties();
     DxvkAdapterMemoryInfo memHeapInfo = m_device->adapter()->getMemoryHeapInfo();
     VkDeviceSize availableMemorySizeMib = 0;
@@ -306,28 +308,44 @@ namespace dxvk {
       availableMemorySizeMib = std::max(memSizeMib - memUsedMib, availableMemorySizeMib);
     }
 
-    const int GB = 1024;
-    RtxContext* rtxContext = dynamic_cast<RtxContext*>(context.ptr());
     if (rtxContext && !rtxContext->getResourceManager().isResourceReady()) {
-      // Assume raytracing resources like buffers occupy 2GB
-      const int pipelineResourceMemorySize = 2 * GB;
-      availableMemorySizeMib = std::max(int(availableMemorySizeMib) - pipelineResourceMemorySize, 0);
+      // Reserve space for various non-texture GPU resources (buffers, etc)
+
+      const auto adaptiveResolutionReservedGPUMemoryMiB =
+        static_cast<std::int32_t>(RtxOptions::Get()->adaptiveResolutionReservedGPUMemoryGiB() * MiBPerGiB);
+
+      // Note: int32_t used for clamping behavior on underflow.
+      availableMemorySizeMib = std::max(static_cast<std::int32_t>(availableMemorySizeMib) - adaptiveResolutionReservedGPUMemoryMiB, 0);
     }
 
-    // Check system memory
+    // Check and reserve CPU memory
+
     uint64_t availableSystemMemorySizeByte;
     if (dxvk::env::getAvailableSystemPhysicalMemory(availableSystemMemorySizeByte)) {
-      // This function is invoked during initialization, and the game may not have loaded other data.
-      // Reserve 2GB space for other game data.
+      // Reserve space for non-texture CPU resources
+      // Note: This is done as this function is invoked during initialization, and the game may not have loaded other data yet
+      // which would cause the textures to occasionally starve the rest of Remix for resources if some is not reserved.
       // TODO: The OpacityMicromapMemoryManager also allocate memory adaptively and it may eat up the memory
       // saved here. Need to figure out a way to control global memory consumption.
-      VkDeviceSize assetReservedSizeMib = std::max(static_cast<int>(availableSystemMemorySizeByte >> 20) - 2 * GB, 0);
+
+      const auto adaptiveResolutionReservedCPUMemoryMiB =
+        static_cast<std::int32_t>(RtxOptions::Get()->adaptiveResolutionReservedCPUMemoryGiB() * MiBPerGiB);
+      // Note: int32_t used for clamping behavior on underflow.
+      const VkDeviceSize assetReservedSizeMib =
+        std::max(static_cast<std::int32_t>(availableSystemMemorySizeByte >> 20u) - adaptiveResolutionReservedCPUMemoryMiB, 0);
+
       availableMemorySizeMib = std::min(availableMemorySizeMib, assetReservedSizeMib);
     }
 
-    int assetSizeMib = RtxOptions::Get()->assetEstimatedSizeGB() * GB;
+    // Determine the minimum mip level to load
+
+    unsigned int assetSizeMib = RtxOptions::Get()->assetEstimatedSizeGiB() * MiBPerGiB;
     for (m_minimumMipLevel = 0; assetSizeMib > availableMemorySizeMib && m_minimumMipLevel < 2; m_minimumMipLevel++) {
       // Skip one more mip map level
+      // Note: Removing the top-most mip reduces memory consumption by 25% if mips are assumed to be an infinite geometric
+      // series. In reality though they are not as they terminate at a 1x1 mip, so this is actually a conservative estimate
+      // which will overestimate how much memory a texture will take at times (fairly accurate to the ideal solution though
+      // across most mip levels except the very highest few where the missing contribution becomes significant).
       assetSizeMib /= 4;
     }
 
