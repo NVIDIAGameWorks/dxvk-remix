@@ -20,7 +20,12 @@ namespace dxvk {
 
   //This class handles all of the RTX operations that are required from the D3D9 side.
   struct D3D9Rtx {
+    friend class ImGUI; // <-- we want to modify these values directly.
+
     D3D9Rtx(D3D9DeviceEx* d3d9Device);
+
+    RTX_OPTION("rtx", bool, useVertexCapture, true, "When enabled, injects code into the original vertex shader to capture final shaded vertex positions.  Is useful for games using simple vertex shaders, that still also set the fixed function transform matrices.");
+    RTX_OPTION("rtx", bool, useVertexCapturedNormals, true, "When enabled, vertex normals are read from the input assembler and used in raytracing.  This doesn't always work as normals can be in any coordinate space, but can help sometimes.");
 
     // Copy of the parameters issued to D3D9 on DrawXXX
     struct Draw {
@@ -132,6 +137,8 @@ namespace dxvk {
 
     bool m_rtxInjectTriggered = false;
 
+    Rc<DxvkBuffer> m_vsVertexCaptureData;
+
     struct IndexContext {
       VkIndexType indexType = VK_INDEX_TYPE_NONE_KHR;
       DxvkBufferSliceHandle indexBuffer;
@@ -155,7 +162,7 @@ namespace dxvk {
     template<typename T>
     DxvkBufferSlice processIndexBuffer(const uint32_t indexCount, const uint32_t startIndex, const DxvkBufferSliceHandle& indexSlice, uint32_t& minIndex, uint32_t& maxIndex);
 
-    void prepareVertexCapture(const int vertexIndexOffset, const uint32_t vertexCount);
+    void prepareVertexCapture(RasterGeometry& geoData, const int vertexIndexOffset);
 
     void processVertices(const VertexContext vertexContext[caps::MaxStreams], int vertexIndexOffset, uint32_t idealTexcoordIndex, RasterGeometry& geoData);
 

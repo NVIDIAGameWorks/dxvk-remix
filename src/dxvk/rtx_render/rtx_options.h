@@ -216,7 +216,7 @@ namespace dxvk {
     } playerModel;
 
     RTX_OPTION("rtx", bool, resolvePreCombinedMatrices, true, "");
-    RTX_OPTION("rtx", bool, useVertexCapture, false, "");
+
     RTX_OPTION("rtx", uint32_t, minPrimsInStaticBLAS, 1000, "");
     RTX_OPTION("rtx", uint32_t, maxPrimsInMergedBLAS, 50000, "");
     
@@ -854,7 +854,6 @@ namespace dxvk {
     }
 
     const ivec2 getDrawCallRange() const { Vector2i v = drawCallRange(); return ivec2{v.x, v.y}; }
-    bool isVertexCaptureEnabled() const { return useVertexCapture(); }
     uint32_t getMinPrimsInStaticBLAS() const { return minPrimsInStaticBLAS(); }
 
     // Camera
@@ -884,7 +883,6 @@ namespace dxvk {
     }
     bool isAdaptiveResolutionDenoisingEnabled() const { return adaptiveResolutionDenoising(); }
     bool shouldCaptureDebugImage() const { return captureDebugImage(); }
-    bool isResolvePreCombinedMatricesEnabled() const { return resolvePreCombinedMatrices(); }
     bool isLiveShaderEditModeEnabled() const { return useLiveShaderEditMode(); }
     bool isZUp() const { return zUp(); }
     float getUniqueObjectDistance() const { return uniqueObjectDistance(); }
