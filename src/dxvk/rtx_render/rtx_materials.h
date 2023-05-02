@@ -505,7 +505,7 @@ struct RtOpaqueSurfaceMaterial {
     writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.y));
     writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.z));
 
-    assert(m_cachedEmissiveIntensity < FLOAT16_MAX);
+    assert(m_cachedEmissiveIntensity <= FLOAT16_MAX);
     writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedEmissiveIntensity));
 
     writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_albedoOpacityConstant.x));
@@ -638,7 +638,7 @@ private:
 
     // Note: Opaque material does not take an emissive radiance directly, so zeroing out the intensity works
     // fine as a way to disable it (in case a texture is in use).
-    m_cachedEmissiveIntensity = m_enableEmission ? m_emissiveIntensity : 0.0f;
+    m_cachedEmissiveIntensity = std::min(m_enableEmission ? m_emissiveIntensity : 0.0f, FLOAT16_MAX);
     // Note: Pre-normalize thickness constant so that it does not need to be done on the GPU.
     m_cachedThinFilmNormalizedThicknessConstant = m_thinFilmThicknessConstant / OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS;
   }
@@ -710,8 +710,11 @@ struct RtTranslucentSurfaceMaterial {
     writeGPUHelper(data, offset, glm::packHalf1x16(m_transmittanceColor.z)); // data02.x
 
     // 6 Bytes
+    assert(m_cachedEmissiveRadiance.x <= FLOAT16_MAX);
     writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedEmissiveRadiance.x));    // data02.y
+    assert(m_cachedEmissiveRadiance.y <= FLOAT16_MAX);
     writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedEmissiveRadiance.y));    // data03.x
+    assert(m_cachedEmissiveRadiance.z <= FLOAT16_MAX);
     writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedEmissiveRadiance.z));    // data03.y
 
     // 2 Bytes
@@ -782,6 +785,10 @@ private:
     // Note: Global emissive intensity scalar from options applied here as in the opaque material it is applied on the GPU
     // side, but since we calculate the emissive radiance on the CPU for translucent materials it must be done here.
     m_cachedEmissiveRadiance = m_enableEmission ? getEmissiveIntensity() * m_emissiveIntensity * linearEmissiveColor : 0.0f;
+
+    m_cachedEmissiveRadiance.x = std::min(m_cachedEmissiveRadiance.x, FLOAT16_MAX);
+    m_cachedEmissiveRadiance.y = std::min(m_cachedEmissiveRadiance.y, FLOAT16_MAX);
+    m_cachedEmissiveRadiance.z = std::min(m_cachedEmissiveRadiance.z, FLOAT16_MAX);
 
     // Note: Ensure the transmittance measurement distance or thickness was encoded properly by ensuring
     // it is not 0. This is because we currently do not actually check the sign bit but just use a less than
