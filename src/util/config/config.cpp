@@ -813,7 +813,8 @@ namespace dxvk {
                                                 "legacypositions0,"
                                                 "legacypositions1,"
                                                 "legacyindices,"
-                                                "geometrydescriptor" },
+                                                "geometrydescriptor,"
+                                                "vertexlayout" },
     }} },
     /* Kohan II                                  */
     { R"(\\k2\.exe$)", {{
