@@ -30,7 +30,7 @@
 #include <unordered_map>
 
 namespace dxvk {
-  class RtxContext;
+  class DxvkContext;
   class DxvkDevice;
   class DxvkCommandList;
   class DxvkBarrierSet;
@@ -240,7 +240,7 @@ namespace dxvk {
                                         VkAccelerationStructureGeometryKHR& targetGeometry, const InstanceManager& instanceManager);
 
     // Called once per frame to build pending Opacity Micromap items in Opacity Micromap Manager
-    void buildOpacityMicromaps(Rc<RtxContext> ctx, Rc<DxvkCommandList> cmdList, const std::vector<TextureRef>& textures, uint32_t lastCameraCutFrameId, float frameTimeSecs);
+    void buildOpacityMicromaps(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, const std::vector<TextureRef>& textures, uint32_t lastCameraCutFrameId, float frameTimeSecs);
 
     // Called once per frame before any calls to Opacity Micromap Manager
     void onFrameStart(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList);
@@ -326,13 +326,13 @@ namespace dxvk {
 
     void calculateRequiredVRamSize(uint32_t numTriangles, uint16_t subdivisionLevel, VkOpacityMicromapFormatEXT ommFormat, VkIndexType triangleIndexType, VkDeviceSize& arrayBufferDeviceSize, VkDeviceSize& blasOmmBuffersDeviceSize);
 
-    OmmResult bakeOpacityMicromapArray(Rc<RtxContext> ctx, Rc<DxvkCommandList> cmdList, XXH64_hash_t ommSrcHash,
+    OmmResult bakeOpacityMicromapArray(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, XXH64_hash_t ommSrcHash,
                                   OpacityMicromapCacheItem& ommCacheItem, CachedSourceData& sourceData,
                                   const std::vector<TextureRef>& textures, uint32_t& maxMicroTrianglesToBake);
-    OmmResult buildOpacityMicromap(Rc<RtxContext> ctx, Rc<DxvkCommandList> cmdList, XXH64_hash_t ommSrcHash, OpacityMicromapCacheItem& ommCacheItem, VkMicromapUsageEXT& ommUsageGroup, VkMicromapBuildInfoEXT& ommBuildInfo, uint32_t& maxMicroTrianglesToBuild, bool forceBuild);
-    void bakeOpacityMicromapArrays(Rc<RtxContext> ctx, Rc<DxvkCommandList> cmdList,
+    OmmResult buildOpacityMicromap(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, XXH64_hash_t ommSrcHash, OpacityMicromapCacheItem& ommCacheItem, VkMicromapUsageEXT& ommUsageGroup, VkMicromapBuildInfoEXT& ommBuildInfo, uint32_t& maxMicroTrianglesToBuild, bool forceBuild);
+    void bakeOpacityMicromapArrays(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList,
                                    const std::vector<TextureRef>& textures, uint32_t& maxMicroTrianglesToBake);
-    void buildOpacityMicromapsInternal(Rc<RtxContext> ctx, Rc<DxvkCommandList> cmdList, uint32_t& maxMicroTrianglesToBuild);
+    void buildOpacityMicromapsInternal(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, uint32_t& maxMicroTrianglesToBuild);
 
     Rc<DxvkDevice> m_device;
 
@@ -381,6 +381,7 @@ namespace dxvk {
 
     VkDeviceSize m_amountOfMemoryMissing = 0;    // Records how much memory was missing in a frame
     OpacityMicromapMemoryManager m_memoryManager;
+    DxvkStagingDataAlloc m_scratchAllocator;
 
     mutable OpacityMicromapSettings m_settings;
 

@@ -34,8 +34,9 @@
 
 namespace dxvk 
 {
-class RtxContext;
+class DxvkContext;
 class SceneManager;
+class AssetExporter;
 struct RtLight;
 struct RtSphereLight;
 struct RtRectLight;
@@ -53,10 +54,10 @@ class Matrix4;
 class GameCapturer : public RcObject
 {
 public:
-  GameCapturer(SceneManager& sceneManager);
+  GameCapturer(SceneManager& sceneManager, AssetExporter& exporter);
   ~GameCapturer();
 
-  void step(const Rc<RtxContext> rtxCtx, const float dt);
+  void step(const Rc<DxvkContext> ctx, const float dt);
   void startNewSingleFrameCapture() {
     setState(StateFlag::InitCaptureSingle, true);
   }
@@ -112,41 +113,41 @@ private:
     size_t        meshInstNum = 0;
   };
 
-  void hotkeyStep(const Rc<RtxContext> rtxCtx);
-  void initCaptureStep(const Rc<RtxContext> rtxCtx);
-  void captureStep(const Rc<RtxContext> rtxCtx, const float dt);
-  void captureFrame(const Rc<RtxContext> rtxCtx);
+  void hotkeyStep(const Rc<DxvkContext> ctx);
+  void initCaptureStep(const Rc<DxvkContext> ctx);
+  void captureStep(const Rc<DxvkContext> ctx, const float dt);
+  void captureFrame(const Rc<DxvkContext> ctx);
   void captureCamera();
   void captureLights();
   void captureSphereLight(const dxvk::RtSphereLight& rtLight);
   void captureDistantLight(const RtDistantLight& rtLight);
-  void captureInstances(const Rc<RtxContext> rtxCtx);
-  void newInstance(const Rc<RtxContext> rtxCtx, const RtInstance& rtInstance);
-  void captureMaterial(const Rc<RtxContext> rtxCtx, const LegacyMaterialData& materialData, const bool bEnableOpacity);
-  void captureMesh(const Rc<RtxContext> rtxCtx,
+  void captureInstances(const Rc<DxvkContext> ctx);
+  void newInstance(const Rc<DxvkContext> ctx, const RtInstance& rtInstance);
+  void captureMaterial(const Rc<DxvkContext> ctx, const LegacyMaterialData& materialData, const bool bEnableOpacity);
+  void captureMesh(const Rc<DxvkContext> ctx,
                    const XXH64_hash_t currentMeshHash,
                    const RaytraceGeometry& geomData,
                    const bool bIsNewMesh,
                    const bool bCapturePositions,
                    const bool bCaptureNormals,
                    const bool bCaptureIndices);
-  void captureMeshPositions(const Rc<RtxContext> rtxCtx,
+  void captureMeshPositions(const Rc<DxvkContext> ctx,
                             const RaytraceGeometry& geomData,
                             const float currentCaptureTime,
                             std::shared_ptr<Mesh> pMesh);
-  void captureMeshNormals(const Rc<RtxContext> rtxCtx,
+  void captureMeshNormals(const Rc<DxvkContext> ctx,
                           const RaytraceGeometry& geomData,
                           const float currentCaptureTime,
                           std::shared_ptr<Mesh> pMesh);
-  void captureMeshIndices(const Rc<RtxContext> rtxCtx,
+  void captureMeshIndices(const Rc<DxvkContext> ctx,
                           const RaytraceGeometry& geomData,
                           const float currentCaptureTime,
                           std::shared_ptr<Mesh> pMesh);
-  void captureMeshTexCoords(const Rc<RtxContext> rtxCtx,
+  void captureMeshTexCoords(const Rc<DxvkContext> ctx,
                             const RaytraceGeometry& geomData,
                             const float currentCaptureTime,
                             std::shared_ptr<Mesh> pMesh);
-  void captureMeshColor(const Rc<RtxContext> rtxCtx,
+  void captureMeshColor(const Rc<DxvkContext> ctx,
                         const RaytraceGeometry& geomData,
                         const float currentCaptureTime,
                         std::shared_ptr<Mesh> pMesh);
@@ -199,6 +200,7 @@ private:
   
   // Constants
   SceneManager& m_sceneManager; // We only use SceneManager get()ers, but none are const
+  AssetExporter& m_exporter;
   const size_t m_maxFramesCapturable = 1;
   const uint32_t m_framesPerSecond = 24;
   const bool m_bUseLssUsdPlugins = false;

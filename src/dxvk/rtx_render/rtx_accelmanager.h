@@ -32,7 +32,7 @@
 
 namespace dxvk 
 {
-class RtxContext;
+class DxvkContext;
 class DxvkDevice;
 class ResourceCache;
 class CameraManager;
@@ -82,35 +82,35 @@ public:
   void garbageCollection();
 
   // Prepares instance buffers for rendering by the GPU
-  void prepareSceneData(Rc<RtxContext> ctx, Rc<DxvkCommandList> cmdList, class DxvkBarrierSet& execBarriers, InstanceManager& instanceManager);
+  void prepareSceneData(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, class DxvkBarrierSet& execBarriers, InstanceManager& instanceManager);
 
   // Uploads instances' surface data to the GPU
-  void uploadSurfaceData(Rc<RtxContext> ctx);
+  void uploadSurfaceData(Rc<DxvkContext> ctx);
 
   // Merges the RtInstance's into a set of BLAS. Some of the BLAS will contain multiple geometries/instances,
   // and some other BLAS will be dedicated to instances with static geometries.
-  void mergeInstancesIntoBlas(Rc<RtxContext> ctx, Rc<DxvkCommandList> cmdList, class DxvkBarrierSet& execBarriers,
+  void mergeInstancesIntoBlas(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, class DxvkBarrierSet& execBarriers,
                               const std::vector<TextureRef>& textures, const CameraManager& cameraManager, 
                               InstanceManager& instanceManager, OpacityMicromapManager* opacityMicromapManager, float frameTimeSecs);
 
-  void buildTlas(Rc<RtxContext> ctx, Rc<DxvkCommandList> cmdList);
+  void buildTlas(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList);
 
   // Returns the number of live BLAS objects
   static uint32_t getBlasCount();
 
 private:
-  void buildBlases(Rc<RtxContext> ctx, Rc<DxvkCommandList> cmdList, DxvkBarrierSet& execBarriers,
+  void buildBlases(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, DxvkBarrierSet& execBarriers,
                    const CameraManager& cameraManager, OpacityMicromapManager* opacityMicromapManager, const InstanceManager& instanceManager,
                    const std::vector<TextureRef>& textures, const std::vector<RtInstance*>& instances,
                    const std::vector<std::unique_ptr<BlasBucket>>& blasBuckets, 
                    std::vector<VkAccelerationStructureBuildGeometryInfoKHR>& blasToBuild,
                    std::vector<VkAccelerationStructureBuildRangeInfoKHR*>& blasRangesToBuild,
                    float elapsedTime);
-  void createBlasBuffersAndInstances(Rc<RtxContext> ctx, Rc<DxvkCommandList> cmdList, 
+  void createBlasBuffersAndInstances(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, 
                                      const std::vector<std::unique_ptr<BlasBucket>>& blasBuckets,
                                      std::vector<VkAccelerationStructureBuildGeometryInfoKHR>& blasToBuild,
                                      std::vector<VkAccelerationStructureBuildRangeInfoKHR*>& blasRangesToBuild);
-  void internalBuildTlas(Rc<RtxContext> ctx, Rc<DxvkCommandList> cmdList, Tlas::Type type);
+  void internalBuildTlas(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, Tlas::Type type);
   std::vector<RtInstance*> m_reorderedSurfaces;
   std::vector<uint32_t> m_reorderedSurfacesFirstIndexOffset; 
   std::vector<VkAccelerationStructureInstanceKHR> m_mergedInstances[Tlas::Count];
@@ -125,9 +125,11 @@ private:
   Rc<PooledBlas> m_intersectionBlas;
   Rc<DxvkBuffer> m_aabbBuffer;
   Rc<DxvkBuffer> m_billboardsBuffer;
-  void createAndBuildIntersectionBlas(Rc<RtxContext> ctx, Rc<DxvkCommandList> cmdList, class DxvkBarrierSet& execBarriers);
+  void createAndBuildIntersectionBlas(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, class DxvkBarrierSet& execBarriers);
 
   Rc<PooledBlas> createPooledBlas(size_t bufferSize) const;
+
+  DxvkStagingDataAlloc m_scratchAllocator;
 };
 
 }  // namespace dxvk

@@ -22,6 +22,7 @@
 #pragma once
 
 #include "rtx_resources.h"
+#include "../util/rc/util_rc_ptr.h"
 
 namespace dxvk {
 
@@ -48,7 +49,6 @@ namespace dxvk {
   private:
     static DxvkRaytracingPipelineShaders getPipelineShaders(const bool isPSRPass, const bool useRayQuery, const bool serEnabled, const bool ommEnabled);
     Rc<DxvkShader> getComputeShader(const bool isPSRPass) const;
-
     Rc<DxvkDevice> m_device;
   };
 }

@@ -140,7 +140,6 @@ namespace dxvk {
   }
 
   void DxvkPathtracerGbuffer::prewarmShaders(DxvkPipelineManager& pipelineManager) const {
-
     const bool isOpacityMicromapSupported = OpacityMicromapManager::checkIsOpacityMicromapSupported(m_device);
 
     for (int32_t isPSRPass = 1; isPSRPass >= 0; isPSRPass--) {

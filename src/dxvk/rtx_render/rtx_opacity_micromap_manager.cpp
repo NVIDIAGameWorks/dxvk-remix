@@ -113,7 +113,8 @@ namespace dxvk {
 
   OpacityMicromapMemoryManager::OpacityMicromapMemoryManager(
     const Rc<DxvkDevice>& device)
-    : m_device(device), m_memoryProperties(device->adapter()->memoryProperties()) {
+    : m_device(device)
+    , m_memoryProperties(device->adapter()->memoryProperties()) {
     // +1 to account for OMMs used in a previous TLAS
     const uint32_t kMaxFramesOMMResourcesAreUsed = kMaxFramesInFlight + 1;
 
@@ -213,7 +214,8 @@ namespace dxvk {
 
   OpacityMicromapManager::OpacityMicromapManager(Rc<DxvkDevice> device)
     : m_device(device)
-    , m_memoryManager(device)  {
+    , m_memoryManager(device)
+    , m_scratchAllocator(device, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR) {
     initSettings();
   }
 
@@ -1033,7 +1035,7 @@ namespace dxvk {
   template <typename IndexType>
   OpacityMicromapManager::OmmResult initializeOpacityMicromapTriangleArrayBuffers(
     Rc<DxvkDevice> device,
-    Rc<RtxContext> ctx,
+    Rc<DxvkContext> ctx,
     Rc<DxvkCommandList> cmdList,
     VkOpacityMicromapFormatEXT ommFormat,
     uint16_t subdivisionLevel,
@@ -1170,7 +1172,7 @@ namespace dxvk {
   }
   
   OpacityMicromapManager::OmmResult OpacityMicromapManager::bakeOpacityMicromapArray(
-    Rc<RtxContext> ctx,
+    Rc<DxvkContext> ctx,
     Rc<DxvkCommandList> cmdList,
     XXH64_hash_t ommSrcHash,
     OpacityMicromapCacheItem& ommCacheItem,
@@ -1276,7 +1278,7 @@ namespace dxvk {
   }
 
   OpacityMicromapManager::OmmResult OpacityMicromapManager::buildOpacityMicromap(
-    Rc<RtxContext> ctx,
+    Rc<DxvkContext> ctx,
     Rc<DxvkCommandList> cmdList,
     XXH64_hash_t ommSrcHash,
     OpacityMicromapCacheItem& ommCacheItem,
@@ -1368,9 +1370,8 @@ namespace dxvk {
     }
     
     // Allocate the scratch memory
-    DxvkStagingDataAlloc& scratchAllocator = ctx->getScratchAllocator();
     uint32_t scratchAlignment = m_device->properties().khrDeviceAccelerationStructureProperties.minAccelerationStructureScratchOffsetAlignment;
-    DxvkBufferSlice scratchSlice = scratchAllocator.alloc(scratchAlignment, sizeInfo.buildScratchSize);
+    DxvkBufferSlice scratchSlice = m_scratchAllocator.alloc(scratchAlignment, sizeInfo.buildScratchSize);
 
     // Build the array with vkBuildMicromapsEXT
     {
@@ -1429,7 +1430,7 @@ namespace dxvk {
     return OmmResult::Success;
   }
 
-  void OpacityMicromapManager::bakeOpacityMicromapArrays(Rc<RtxContext> ctx,
+  void OpacityMicromapManager::bakeOpacityMicromapArrays(Rc<DxvkContext> ctx,
                                                          Rc<DxvkCommandList> cmdList,
                                                          const std::vector<TextureRef>& textures,
                                                          uint32_t& maxMicroTrianglesToBake) {
@@ -1526,7 +1527,7 @@ namespace dxvk {
     }
   }
 
-  void OpacityMicromapManager::buildOpacityMicromapsInternal(Rc<RtxContext> ctx,
+  void OpacityMicromapManager::buildOpacityMicromapsInternal(Rc<DxvkContext> ctx,
                                                              Rc<DxvkCommandList> cmdList,
                                                              uint32_t& maxMicroTrianglesToBuild) {
 
@@ -1732,7 +1733,7 @@ namespace dxvk {
     }
   }
 
-  void OpacityMicromapManager::buildOpacityMicromaps(Rc<RtxContext> ctx,
+  void OpacityMicromapManager::buildOpacityMicromaps(Rc<DxvkContext> ctx,
                                                      Rc<DxvkCommandList> cmdList,
                                                      const std::vector<TextureRef>& textures,
                                                      uint32_t lastCameraCutFrameId,
