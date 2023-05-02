@@ -177,7 +177,7 @@ void sampleIndirectRayForFirstBounce(
   const bool oldInsideMedium = insideMedium;
   
   // Sample a new direction
-  sampledRay = sampleDirection2(randomState, insideMedium, throughput,
+  sampledRay = sampleDirection(randomState, insideMedium, throughput,
                                primaryRay, primaryMinimalRayInteraction, primaryMinimalSurfaceInteraction,
                                primaryPolymorphicSurfaceMaterialInteraction,
                                firstRayPathSampledLobe, firstSampledLobePdf, firstSampledSolidAnglePdf,

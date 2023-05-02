@@ -905,7 +905,7 @@ namespace dxvk {
       RADIANCE_CACHE_MIP_RESOLUTION * RADIANCE_CACHE_PROBE_RESOLUTION,
       1
     };
-    m_raytracingOutput.m_radianceCache = createImageResource(ctx, cacheExtend, VK_FORMAT_R16G16B16A16_SFLOAT);
+    m_raytracingOutput.m_radianceCache = createImageResource(ctx, cacheExtend, VK_FORMAT_R32G32B32A32_UINT);
 
     // Post Effect motion blur prefilter intermediate textures
     m_raytracingOutput.m_primarySurfaceFlagsIntermediateTexture1 = AliasedResource(m_raytracingOutput.m_secondaryPerceptualRoughness, ctx, m_downscaledExtent, VK_FORMAT_R8_UINT, "Primary Surface Flags Intermediate Texture 1");

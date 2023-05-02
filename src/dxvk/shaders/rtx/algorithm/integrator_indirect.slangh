@@ -412,7 +412,7 @@ void integratePathVertex(
   {
     // Sample a new direction
     float16_t sampledLobePdf, solidAnglePdf;
-    const Ray sampledRay = sampleDirection2(
+    const Ray sampledRay = sampleDirection(
       randomState, pathState.insideMedium, continuationThroughput,
       ray, rayInteraction, surfaceInteraction,
       polymorphicSurfaceMaterialInteraction,
@@ -775,7 +775,7 @@ void integrateIndirectPath(
 {
   // Initialize Path State
 
-  RadianceCache[pixelCoordinate] = RadianceCache[pixelCoordinate] * 0.999;
+  //RadianceCache[pixelCoordinate] = RadianceCache[pixelCoordinate] * 0.999;
 
   // Note: Not technically live state as this is only passed into the resolve call and reconstructed from its output.
   PathState pathState = pathStateCreateEmpty(u16vec2(pixelCoordinate), geometryFlags);
