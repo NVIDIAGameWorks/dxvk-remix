@@ -438,12 +438,6 @@ namespace dxvk {
   void RtxGeometryUtils::processGeometryBuffers(const InterleavedGeometryDescriptor& desc, RaytraceGeometry& output) {
     const DxvkBufferSlice targetSlice = DxvkBufferSlice(desc.buffer);
 
-    if (output.positionBuffer.defined()) {
-      assert(output.positionBuffer.stride() == desc.stride);
-      assert(output.positionBuffer.offsetFromSlice() == desc.positionOffset);
-      assert(output.positionBuffer.vertexFormat() == VK_FORMAT_R32G32B32_SFLOAT);
-    }
-
     output.positionBuffer = RaytraceBuffer(targetSlice, desc.positionOffset, desc.stride, VK_FORMAT_R32G32B32_SFLOAT);
 
     if (desc.hasNormals)
@@ -458,13 +452,6 @@ namespace dxvk {
 
   void RtxGeometryUtils::processGeometryBuffers(const RasterGeometry& input, RaytraceGeometry& output) {
     const DxvkBufferSlice slice = DxvkBufferSlice(output.historyBuffer[0]);
-
-    if (output.positionBuffer.defined()) {
-      // This assert may cause the portal game crash, remove it.
-      // assert(output.positionBuffer.stride() == input.positionBuffer.stride());
-      assert(output.positionBuffer.offsetFromSlice() == input.positionBuffer.offsetFromSlice());
-      assert(output.positionBuffer.vertexFormat() == input.positionBuffer.vertexFormat());
-    }
 
     output.positionBuffer = RaytraceBuffer(slice, input.positionBuffer.offsetFromSlice(), input.positionBuffer.stride(), input.positionBuffer.vertexFormat());
 

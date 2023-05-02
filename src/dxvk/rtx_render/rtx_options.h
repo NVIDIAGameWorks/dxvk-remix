@@ -157,7 +157,7 @@ namespace dxvk {
     RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, animatedWaterTextures, {}, "");
     RW_RTX_OPTION("rtx.antiCulling", std::unordered_set<XXH64_hash_t>, antiCullingTextures, {}, "[Experimental] Textures that are forced to extend life length when anti-culling is enabled.\n Some games use different culling methods we can't fully match, use this option to manually add textures to force extend their life when anti-culling fails.");
 
-    RW_RTX_OPTION("rtx", std::string, geometryGenerationHashRuleString, "positions,indices,texcoords,geometrydescriptor",
+    RW_RTX_OPTION("rtx", std::string, geometryGenerationHashRuleString, "positions,indices,texcoords,geometrydescriptor,vertexlayout",
                   "Defines which asset hashes we need to generate via the geometry processing engine.");
 
     RW_RTX_OPTION("rtx", std::string, geometryAssetHashRuleString, "positions,indices,geometrydescriptor",
