@@ -72,7 +72,6 @@ namespace dxvk {
 
   DxvkDLSS::DxvkDLSS(DxvkDevice* device)
   {
-    m_dlssWrapper = std::make_unique<NGXWrapper>(device, dxvk::str::tows(dxvk::env::getExePath().c_str()).c_str());
 
     m_device = device;
 
@@ -86,7 +85,7 @@ namespace dxvk {
 
   DxvkDLSS::~DxvkDLSS()
   {
-    m_dlssWrapper.release();
+    NGXWrapper::releaseInstance();
   }
 
   NVSDK_NGX_PerfQuality_Value profileToQuality(DLSSProfile profile)
@@ -104,7 +103,7 @@ namespace dxvk {
   }
 
   bool DxvkDLSS::supportsDLSS() const {
-    return m_dlssWrapper->supportsDLSS();
+    return NGXWrapper::getInstance(m_device)->supportsDLSS();
   }
 
   DLSSProfile DxvkDLSS::getAutoProfile(uint32_t displayWidth, uint32_t displayHeight) {
@@ -162,7 +161,7 @@ namespace dxvk {
     } else {
       NVSDK_NGX_PerfQuality_Value perfQuality = profileToQuality(mActualProfile);
 
-      auto optimalSettings = m_dlssWrapper->queryOptimalSettings(displaySize, perfQuality);
+      auto optimalSettings = NGXWrapper::getInstance(m_device)->queryOptimalSettings(displaySize, perfQuality);
       mInputSize[0] = outRenderSize[0] = optimalSettings.optimalRenderSize[0];
       mInputSize[1] = outRenderSize[1] = optimalSettings.optimalRenderSize[1];
     }
@@ -280,7 +279,7 @@ namespace dxvk {
       auto specularAlbedoInput = &rtOutput.m_primarySpecularAlbedo.resource(Resources::AccessType::Read);
 
       // Note: Add texture inputs added here to the pInputs array above to properly access the images.
-      m_dlssWrapper->evaluateDLSS(cmdList,
+      NGXWrapper::getInstance(m_device)->evaluateDLSS(cmdList,
                                   ctx,
                                   &rtOutput.m_compositeOutput.resource(Resources::AccessType::Read),  // pUnresolvedColor
                                   &rtOutput.m_finalOutput,                                            // pResolvedColor
@@ -324,12 +323,13 @@ namespace dxvk {
   }
 
   void DxvkDLSS::initializeDLSS(Rc<DxvkContext> renderContext, Rc<DxvkCommandList> cmdList) {
-    m_dlssWrapper->releaseDLSS();
+    NGXWrapper* dlssWrapper = NGXWrapper::getInstance(m_device);
+    dlssWrapper->releaseDLSS();
 
     NVSDK_NGX_PerfQuality_Value perfQuality = profileToQuality(mProfile);
 
-    auto optimalSettings = m_dlssWrapper->queryOptimalSettings(mInputSize, perfQuality);
+    auto optimalSettings = dlssWrapper->queryOptimalSettings(mInputSize, perfQuality);
 
-    m_dlssWrapper->initializeDLSS(renderContext, cmdList, mInputSize, mDLSSOutputSize, mIsHDR, mInverseDepth, mAutoExposure, false, perfQuality);
+    dlssWrapper->initializeDLSS(renderContext, cmdList, mInputSize, mDLSSOutputSize, mIsHDR, mInverseDepth, mAutoExposure, false, perfQuality);
   }
 }
