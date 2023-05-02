@@ -23,6 +23,8 @@
 
 #include <vulkan/vulkan.h>
 
+#include "../../util/util_macro.h"
+
 namespace dxvk {
 
 enum class RtxResult
@@ -33,9 +35,6 @@ enum class RtxResult
     eErrorUnknown = 3,
     eNotReady = 4 ///< Asynchronous operation or waiting is not yet complete.
 };
-
-#define STRINGIFY_HELPER(x) #x
-#define STRINGIFY(x) STRINGIFY_HELPER(x)
 
 inline bool vkFailed(VkResult res) {
   return res != VK_SUCCESS &&

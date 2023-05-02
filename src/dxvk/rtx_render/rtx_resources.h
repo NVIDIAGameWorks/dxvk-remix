@@ -369,7 +369,7 @@ namespace dxvk
 
     float getUpscaleRatio() const { return m_raytracingOutput.isReady() ? ((float)m_downscaledExtent.width / m_targetExtent.width) : 1.0f; }
 
-    bool isResourceReady() { return m_raytracingOutput.isReady(); }
+    bool isResourceReady() const { return m_raytracingOutput.isReady(); }
 
     const VkExtent3D& getTargetDimensions() const { return m_targetExtent; }
     const VkExtent3D& getDownscaleDimensions() const { return m_downscaledExtent; }

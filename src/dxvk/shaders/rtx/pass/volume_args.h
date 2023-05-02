@@ -74,6 +74,7 @@ struct VolumeArgs {
   float inverseNumFroxelVolumes;
   float pad;
 
+  // Note: This value is already converted into linear space so it is fine to directly add in as a contribution to the volumetrics.
   vec3 multiScatteringEstimate;
   float pad1;
 };

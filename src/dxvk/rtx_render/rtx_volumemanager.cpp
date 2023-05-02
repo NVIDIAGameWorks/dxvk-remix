@@ -20,15 +20,16 @@
 * DEALINGS IN THE SOFTWARE.
 */
 #include <cassert>
+#include <cmath>
 
 #include "rtx_lightmanager.h"
 #include "rtx_context.h"
 #include "rtx_options.h"
 
+#include "../util/util_color.h"
 #include "../d3d9/d3d9_state.h"
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/raytrace_args.h"
-#include "math.h"
 
 namespace dxvk {
 
@@ -67,62 +68,79 @@ namespace dxvk {
   }
 
   VolumeArgs VolumeManager::getVolumeArgs(CameraManager const& cameraManager, VkExtent3D froxelGridDimensions, uint32_t numFroxelVolumes, FogState const& fogState, bool enablePortalVolumes) const {
-    // Calculate the volumetric parameters from the existing fog state
+    // Calculate the volumetric parameters from options and the fixed function fog state
 
-    Vector3 const volumetricTransmittanceColor{ RtxOptions::Get()->getVolumetricTransmittanceColor() };
-    // Note: Using BT.709 luminance calculation, should use the helper function from the GPU but it is not available here.
-    float const transmittanceColorLuminance{
-      volumetricTransmittanceColor.x * 0.2126f +
-      volumetricTransmittanceColor.y * 0.7152f +
-      volumetricTransmittanceColor.z * 0.0722f
-    };
+    // Note: Volumetric transmittance color option is in gamma space, so must be converted to linear for usage in the volumetric system.
+    Vector3 volumetricTransmittanceColor{ sRGBGammaToLinear(RtxOptions::Get()->getVolumetricTransmittanceColor()) };
     // Note: Fall back to usual default in cases such as the "none" D3D fog mode, no fog remapping specified, or invalid values in the fog mode derivation
     // (such as dividing by zero).
     float volumetricTransmittanceMeasurementDistance = RtxOptions::Get()->getVolumetricTransmittanceMeasurementDistance();
+    Vector3 multiScatteringEstimate = Vector3();
 
+    // Todo: Make this configurable in the future as this threshold was created specifically for Portal RTX's underwater fixed function fog.
     constexpr float waterFogDensityThrehold = 0.065f;
     const bool canUsePhysicalFog = shouldConvertToPhysicalFog(fogState, waterFogDensityThrehold);
 
-    Vector3 multiScatteringEstimate = Vector3();
+    if (
+      RtxOptions::Get()->enableFogRemap() &&
+      // Note: Only consider remapping fog if any fixed function fog is actually enabled (not the "none" mode).
+      fogState.mode != D3DFOG_NONE &&
+      canUsePhysicalFog
+    ) {
+      // Handle Fog Color remapping
+      // Note: This must happen first as max distance remapping will depend on the luminance derived from the color determined here.
 
-    if (RtxOptions::Get()->isFogRemapEnabled() && canUsePhysicalFog) {
-      // Switch derivation from D3D9 fog based on which fog mode is in use (if any)
+      if (RtxOptions::Get()->enableFogColorRemap()) {
+        // Note: Legacy fixed function fog color is in gamma space as all the rendering in old games was typically in gamma space, same assumption we make
+        // for textures/lights.
+        volumetricTransmittanceColor = sRGBGammaToLinear(fogState.color);
+      }
 
-      if (fogState.mode == D3DFOG_LINEAR) {
-        float fogRemapMaxDistanceMin { RtxOptions::Get()->getFogRemapMaxDistanceMin() };
-        float fogRemapMaxDistanceMax { RtxOptions::Get()->getFogRemapMaxDistanceMax() };
-        float fogRemapTransmittanceMeasurementDistanceMin { RtxOptions::Get()->getFogRemapTransmittanceMeasurementDistanceMin() };
-        float fogRemapTransmittanceMeasurementDistanceMax { RtxOptions::Get()->getFogRemapTransmittanceMeasurementDistanceMax() };
+      // Handle Fog Max Distance remapping
 
-        // Note: Ensure the mins and maxes are consistent with eachother.
-        fogRemapMaxDistanceMax = std::max(fogRemapMaxDistanceMax, fogRemapMaxDistanceMin);
-        fogRemapTransmittanceMeasurementDistanceMax = std::max(fogRemapTransmittanceMeasurementDistanceMax, fogRemapTransmittanceMeasurementDistanceMin);
+      if (RtxOptions::Get()->enableFogMaxDistanceRemap()) {
+        // Switch transmittance measurement distance derivation from D3D9 fog based on which fog mode is in use
 
-        float const maxDistanceRange{ fogRemapMaxDistanceMax - fogRemapMaxDistanceMin };
-        float const transmittanceMeasurementDistanceRange{ fogRemapTransmittanceMeasurementDistanceMax - fogRemapTransmittanceMeasurementDistanceMin };
-        // Todo: Scene scale stuff ignored for now because scene scale stuff is not actually functioning properly. Add back in if it's ever fixed.
-        // Note: Remap the end fog state distance into renderer units so that options can all be in renderer units (to be consistent with everything else).
-        // float const normalizedRange{ (fogState.end * RtxOptions::Get()->getSceneScale() - fogRemapMaxDistanceMin) / maxDistanceRange };
-        float const normalizedRange{ (fogState.end - fogRemapMaxDistanceMin) / maxDistanceRange };
+        if (fogState.mode == D3DFOG_LINEAR) {
+          float fogRemapMaxDistanceMin { RtxOptions::Get()->getFogRemapMaxDistanceMin() };
+          float fogRemapMaxDistanceMax { RtxOptions::Get()->getFogRemapMaxDistanceMax() };
+          float fogRemapTransmittanceMeasurementDistanceMin { RtxOptions::Get()->getFogRemapTransmittanceMeasurementDistanceMin() };
+          float fogRemapTransmittanceMeasurementDistanceMax { RtxOptions::Get()->getFogRemapTransmittanceMeasurementDistanceMax() };
 
-        volumetricTransmittanceMeasurementDistance = normalizedRange * transmittanceMeasurementDistanceRange + fogRemapTransmittanceMeasurementDistanceMin;
-      } else if (fogState.mode == D3DFOG_EXP || fogState.mode == D3DFOG_EXP2) {
-        // Note: Derived using the following, doesn't take fog color into account but that is fine for a rough estimate:
-        // density = -ln(color) / measurement_distance (For exp)
-        // density^2 = -ln(color) / measurement_distance (For exp2)
+          // Note: Ensure the mins and maxes are consistent with eachother.
+          fogRemapMaxDistanceMax = std::max(fogRemapMaxDistanceMax, fogRemapMaxDistanceMin);
+          fogRemapTransmittanceMeasurementDistanceMax = std::max(fogRemapTransmittanceMeasurementDistanceMax, fogRemapTransmittanceMeasurementDistanceMin);
 
-        if (fogState.density != 0.0f) {
-          volumetricTransmittanceMeasurementDistance = -log(transmittanceColorLuminance) / fogState.density;
+          float const maxDistanceRange{ fogRemapMaxDistanceMax - fogRemapMaxDistanceMin };
+          float const transmittanceMeasurementDistanceRange{ fogRemapTransmittanceMeasurementDistanceMax - fogRemapTransmittanceMeasurementDistanceMin };
           // Todo: Scene scale stuff ignored for now because scene scale stuff is not actually functioning properly. Add back in if it's ever fixed.
-          // Note: Convert transmittance measurement distance into our engine's units (from game-specific world units due to being derived
-          // from the D3D9 side of things). This in effect is the same as dividing the density by the scene scale.
-          // volumetricTransmittanceMeasurementDistance *= RtxOptions::Get()->getSceneScale();
+          // Note: Remap the end fog state distance into renderer units so that options can all be in renderer units (to be consistent with everything else).
+          // float const normalizedRange{ (fogState.end * RtxOptions::Get()->getSceneScale() - fogRemapMaxDistanceMin) / maxDistanceRange };
+          float const normalizedRange{ (fogState.end - fogRemapMaxDistanceMin) / maxDistanceRange };
+
+          volumetricTransmittanceMeasurementDistance = normalizedRange * transmittanceMeasurementDistanceRange + fogRemapTransmittanceMeasurementDistanceMin;
+        } else if (fogState.mode == D3DFOG_EXP || fogState.mode == D3DFOG_EXP2) {
+          // Note: Derived using the following, doesn't take fog color into account but that is fine for a rough estimate:
+          // density = -ln(color) / measurement_distance (For exp)
+          // density^2 = -ln(color) / measurement_distance (For exp2)
+
+          if (fogState.density != 0.0f) {
+            float const transmittanceColorLuminance{ sRGBLuminance(volumetricTransmittanceColor) };
+
+            volumetricTransmittanceMeasurementDistance = -log(transmittanceColorLuminance) / fogState.density;
+            // Todo: Scene scale stuff ignored for now because scene scale stuff is not actually functioning properly. Add back in if it's ever fixed.
+            // Note: Convert transmittance measurement distance into our engine's units (from game-specific world units due to being derived
+            // from the D3D9 side of things). This in effect is the same as dividing the density by the scene scale.
+            // volumetricTransmittanceMeasurementDistance *= RtxOptions::Get()->getSceneScale();
+          }
         }
       }
 
       // Add some "ambient" from the original fog as a constant term applied to fog during preintegration
-      multiScatteringEstimate = fogState.color * RtxOptions::Get()->fogRemapColorStrength();
+      multiScatteringEstimate = fogState.color * RtxOptions::Get()->fogRemapColorMultiscatteringScale();
     }
+
+    // Calculate scattering and attenuation coefficients for the volume
 
     Vector3 const volumetricAttenuationCoefficient{
       -log(volumetricTransmittanceColor.x) / volumetricTransmittanceMeasurementDistance,

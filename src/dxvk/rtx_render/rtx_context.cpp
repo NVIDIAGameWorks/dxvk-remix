@@ -1186,7 +1186,7 @@ namespace dxvk {
     constants.enhanceBSDFIndirectLightMinRoughness = m_common->metaComposite().dlssEnhancementIndirectLightMinRoughness();
     constants.enableFirstBounceLobeProbabilityDithering = RtxOptions::Get()->isFirstBounceLobeProbabilityDitheringEnabled();
     constants.enableUnorderedResolveInIndirectRays = RtxOptions::Get()->isUnorderedResolveInIndirectRaysEnabled();
-    constants.enableEmissiveParticlesInIndirectRays = RtxOptions::Get()->isEmissiveParticlesInIndirectRaysEnabled();
+    constants.enableUnorderedEmissiveParticlesInIndirectRays = RtxOptions::Get()->enableUnorderedEmissiveParticlesInIndirectRays();
     constants.enableDecalMaterialBlending = RtxOptions::Get()->isDecalMaterialBlendingEnabled();
     constants.enableBillboardOrientationCorrection = RtxOptions::Get()->enableBillboardOrientationCorrection() && RtxOptions::Get()->enableSeparateUnorderedApproximations();
     constants.useIntersectionBillboardsOnPrimaryRays = RtxOptions::Get()->useIntersectionBillboardsOnPrimaryRays() && constants.enableBillboardOrientationCorrection;
@@ -1942,8 +1942,7 @@ namespace dxvk {
       if (!options->isSkyboxTexture(colorTextureHash)) {
         return false;
       }
-    }
-    else {
+    } else {
       // TODO (REMIX-1110): This is a WAR to handle non-textured sky materials, will replace soon with geometry hash based solution
       if (m_drawCallID >= options->skyDrawcallIdThreshold()) {
         return false;
