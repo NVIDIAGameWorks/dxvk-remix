@@ -29,7 +29,6 @@
 #include "rtx_texture.h"
 
 namespace dxvk {
-  class DxvkDevice;
   class DxvkContext;
   struct ManagedTexture;
 

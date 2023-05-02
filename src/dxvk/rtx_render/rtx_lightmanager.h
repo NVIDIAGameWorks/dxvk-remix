@@ -35,7 +35,7 @@ struct RaytraceArgs;
 
 namespace dxvk
 {
-class RtxContext;
+class DxvkContext;
 class DxvkDevice;
 
 struct LightRange
@@ -79,7 +79,7 @@ public:
 
   void dynamicLightMatching();
 
-  void prepareSceneData(Rc<RtxContext> ctx, CameraManager const& cameraManager);
+  void prepareSceneData(Rc<DxvkContext> ctx, CameraManager const& cameraManager);
 
   void addGameLight(D3DLIGHTTYPE type, const RtLight& light);
   void addLight(const RtLight& light);

@@ -1066,7 +1066,7 @@ namespace dxvk {
       event.onInstanceDestroyedCallback(*instance);
   }
 
-  RtInstance* InstanceManager::createViewModelInstance(Rc<RtxContext> ctx, Rc<DxvkCommandList> cmdList,
+  RtInstance* InstanceManager::createViewModelInstance(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList,
                                                        const RtInstance& reference,
                                                        const Matrix4& perspectiveCorrection,
                                                        const Matrix4& prevPerspectiveCorrection) {
@@ -1129,7 +1129,7 @@ namespace dxvk {
     return viewModelInstance;
   }
 
-  void InstanceManager::createViewModelInstances(Rc<RtxContext> ctx, Rc<DxvkCommandList> cmdList,
+  void InstanceManager::createViewModelInstances(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList,
                                                  const CameraManager& cameraManager,
                                                  const RayPortalManager& rayPortalManager) {
     ScopedGpuProfileZone(ctx, "ViewModel");
@@ -1364,7 +1364,7 @@ namespace dxvk {
     *out_FarPortalInfo = (portalIndexForVirtualInstances >= 0) ? &rayPortalPair->pairInfos[!portalIndexForVirtualInstances] : nullptr;
   }
 
-  void InstanceManager::createPlayerModelVirtualInstances(Rc<RtxContext> ctx, const CameraManager& cameraManager, const RayPortalManager& rayPortalManager) {
+  void InstanceManager::createPlayerModelVirtualInstances(Rc<DxvkContext> ctx, const CameraManager& cameraManager, const RayPortalManager& rayPortalManager) {
     if (m_playerModelInstances.empty())
       return;
 

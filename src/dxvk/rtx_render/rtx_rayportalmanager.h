@@ -30,7 +30,7 @@
 
 namespace dxvk 
 {
-class RtxContext;
+class DxvkContext;
 class DxvkDevice;
 class CameraManager;
 class ResourceCache;
@@ -113,7 +113,7 @@ public:
   
   void clear();
   void garbageCollection();
-  void prepareSceneData(Rc<RtxContext> ctx, const float frameTimeSecs);
+  void prepareSceneData(Rc<DxvkContext> ctx, const float frameTimeSecs);
   void createVirtualCameras(CameraManager& cameraManager) const;
 
   // Helpers

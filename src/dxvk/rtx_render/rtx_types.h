@@ -497,7 +497,6 @@ private:
 
  // A BLAS and its data buffer that can be pooled and used for various geometries
 struct PooledBlas : public RcObject {
-  Rc<DxvkDevice> device;
   Rc<DxvkAccelStructure> accelStructure;
   uint64_t accelerationStructureReference = 0;
 

@@ -45,6 +45,7 @@
 
 namespace dxvk {
 
+  class DxvkDevice;
   class DxvkDenoise;
   class DxvkToneMapping;
   class DxvkBloom;
@@ -285,6 +286,10 @@ namespace dxvk {
       return m_sceneManager.getOpacityMicromapManager();
     }
 
+    AssetExporter& metaExporter() {
+      return m_exporter.get();
+    }
+
   private:
 
     DxvkDevice*                       m_device;
@@ -342,6 +347,7 @@ namespace dxvk {
     Active<RtxImageUtils>                   m_imageUtils;
     Active<DxvkPostFx>                      m_postFx;
     Lazy<RtxReflex>                         m_reflex;
+    Lazy<AssetExporter>                     m_exporter;
   };
 
 }

@@ -34,7 +34,7 @@ struct SkinningArgs;
 namespace dxvk {
 
   class DxvkDevice;
-  class RtxContext;
+  class DxvkContext;
 
   /**
   * \brief Geometry utility shaders and related objects
@@ -62,7 +62,7 @@ namespace dxvk {
      */
     void dispatchSkinning(
       Rc<DxvkCommandList> cmdList,
-      Rc<RtxContext> ctx,
+      Rc<DxvkContext> ctx,
       const DrawCallState& drawCallState, const RaytraceGeometry& geo) const;
 
     /**
@@ -70,7 +70,7 @@ namespace dxvk {
      */
     void dispatchViewModelCorrection(
       Rc<DxvkCommandList> cmdList,
-      Rc<RtxContext> ctx,
+      Rc<DxvkContext> ctx,
       const RaytraceGeometry& geo,
       const Matrix4& positionTransform) const;
 
@@ -106,7 +106,7 @@ namespace dxvk {
     void dispatchBakeOpacityMicromap(
       Rc<DxvkDevice> device,
       Rc<DxvkCommandList> cmdList,
-      Rc<RtxContext> ctx,
+      Rc<DxvkContext> ctx,
       const RaytraceGeometry& geo, 
       const TextureRef& opacityTexture,
       const TextureRef* secondaryOpacityTexture,
@@ -130,24 +130,24 @@ namespace dxvk {
     // Index related:
     static uint32_t getOptimalTriangleListSize(const RasterGeometry& input);
     static VkIndexType getOptimalIndexFormat(uint32_t vertexCount);
-    static bool cacheIndexDataOnGPU(const Rc<RtxContext>& ctx, const RasterGeometry& input, RaytraceGeometry& output);
-    static bool generateTriangleList(const Rc<RtxContext>& ctx, const RasterGeometry& input, Rc<DxvkBuffer> output);
+    static bool cacheIndexDataOnGPU(const Rc<DxvkContext>& ctx, const RasterGeometry& input, RaytraceGeometry& output);
+    static bool generateTriangleList(const Rc<DxvkContext>& ctx, const RasterGeometry& input, Rc<DxvkBuffer> output);
     // Vertex related:
     static void processGeometryBuffers(const InterleavedGeometryDescriptor& desc, RaytraceGeometry& output);
     static void processGeometryBuffers(const RasterGeometry& input, RaytraceGeometry& output);
     static size_t computeOptimalVertexStride(const RasterGeometry& input);
-    static void cacheVertexDataOnGPU(const Rc<RtxContext>& ctx, const RasterGeometry& input, RaytraceGeometry& output);
+    static void cacheVertexDataOnGPU(const Rc<DxvkContext>& ctx, const RasterGeometry& input, RaytraceGeometry& output);
 
     /**
      * \brief Execute a compute shader to generate a triangle list from arbitrary topologies
      */
-    void dispatchGenTriList(const Rc<RtxContext>& ctx, const GenTriListArgs& args, const DxvkBufferSlice& dst, const RasterBuffer* srcBuffer) const;
+    void dispatchGenTriList(const Rc<DxvkContext>& ctx, const GenTriListArgs& args, const DxvkBufferSlice& dst, const RasterBuffer* srcBuffer) const;
     
     /**
       * \brief Execute a compute shader to interleave vertex data into a single buffer
       */
     void interleaveGeometry(
-      const Rc<RtxContext>& ctx,
+      const Rc<DxvkContext>& ctx,
       const RasterGeometry& input,
       InterleavedGeometryDescriptor& output) const;
   };

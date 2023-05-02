@@ -130,9 +130,11 @@ namespace dxvk {
   RtxGeometryUtils::~RtxGeometryUtils() { }
 
   void RtxGeometryUtils::dispatchSkinning(Rc<DxvkCommandList> cmdList,
-                                          Rc<RtxContext> ctx,
+                                          Rc<DxvkContext> ctx,
                                           const DrawCallState& drawCallState,
                                           const RaytraceGeometry& geo) const {
+    ZoneScoped;
+    ScopedGpuProfileZone(ctx, "performSkinning");
 
     SkinningArgs params {};
 
@@ -189,7 +191,7 @@ namespace dxvk {
 
   void RtxGeometryUtils::dispatchViewModelCorrection(
     Rc<DxvkCommandList> cmdList,
-    Rc<RtxContext> ctx,
+    Rc<DxvkContext> ctx,
     const RaytraceGeometry& geo,
     const Matrix4& positionTransform) const {
 
@@ -231,7 +233,7 @@ namespace dxvk {
   void RtxGeometryUtils::dispatchBakeOpacityMicromap(
     Rc<DxvkDevice> device,
     Rc<DxvkCommandList> cmdList,
-    Rc<RtxContext> ctx,
+    Rc<DxvkContext> ctx,
     const RaytraceGeometry& geo,
     const TextureRef& opacityTexture,
     const TextureRef* secondaryOpacityTexture,
@@ -260,7 +262,7 @@ namespace dxvk {
     args.conservativeEstimationMaxTexelTapsPerMicroTriangle = desc.conservativeEstimationMaxTexelTapsPerMicroTriangle;
     args.triangleOffset = desc.triangleOffset;
 
-    auto nearestSampler = ctx->getResourceManager().getSampler(VK_FILTER_NEAREST, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_REPEAT);
+    auto nearestSampler = device->getCommon()->getResources().getSampler(VK_FILTER_NEAREST, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_REPEAT);
 
     // Bind other resources
     ctx->bindResourceBuffer(BINDING_BAKE_OPACITY_MICROMAP_TEXCOORD_INPUT, geo.texcoordBuffer);
@@ -270,7 +272,7 @@ namespace dxvk {
                           secondaryOpacityTexture ? secondaryOpacityTexture->getImageView() : opacityTexture.getImageView(), nullptr);
     ctx->bindResourceSampler(BINDING_BAKE_OPACITY_MICROMAP_SECONDARY_OPACITY_INPUT, nearestSampler);
     ctx->bindResourceBuffer(BINDING_BAKE_OPACITY_MICROMAP_BINDING_SURFACE_DATA_INPUT,
-                            DxvkBufferSlice(ctx->getSceneManager().getSurfaceBuffer(), 0, ctx->getSceneManager().getSurfaceBuffer()->info().size));
+                            DxvkBufferSlice(device->getCommon()->getSceneManager().getSurfaceBuffer()));
     ctx->bindResourceBuffer(BINDING_BAKE_OPACITY_MICROMAP_ARRAY_OUTPUT,
                             DxvkBufferSlice(opacityMicromapBuffer, 0, opacityMicromapBuffer->info().size));
 
@@ -352,7 +354,7 @@ namespace dxvk {
     return (vertexCount < 64 * 1024) ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
   }
 
-  bool RtxGeometryUtils::cacheIndexDataOnGPU(const Rc<RtxContext>& ctx, const RasterGeometry& input, RaytraceGeometry& output) {
+  bool RtxGeometryUtils::cacheIndexDataOnGPU(const Rc<DxvkContext>& ctx, const RasterGeometry& input, RaytraceGeometry& output) {
     ZoneScoped;
     // Handle index buffer replacement - since the BVH builder does not support legacy primitive topology
     if (input.isTopologyRaytraceReady()) {
@@ -363,7 +365,7 @@ namespace dxvk {
     return true;
   }
 
-  bool RtxGeometryUtils::generateTriangleList(const Rc<RtxContext>& ctx, const RasterGeometry& input, Rc<DxvkBuffer> output) {
+  bool RtxGeometryUtils::generateTriangleList(const Rc<DxvkContext>& ctx, const RasterGeometry& input, Rc<DxvkBuffer> output) {
     ZoneScoped;
 
     const uint32_t indexCount = getOptimalTriangleListSize(input);
@@ -399,7 +401,7 @@ namespace dxvk {
     return true;
   }
 
-  void RtxGeometryUtils::dispatchGenTriList(const Rc<RtxContext>& ctx, const GenTriListArgs& cb, const DxvkBufferSlice& dstSlice, const RasterBuffer* srcBuffer) const {
+  void RtxGeometryUtils::dispatchGenTriList(const Rc<DxvkContext>& ctx, const GenTriListArgs& cb, const DxvkBufferSlice& dstSlice, const RasterBuffer* srcBuffer) const {
     ZoneScoped;
     ScopedGpuProfileZone(ctx, "generateTriangleList");
     // At some point, its more efficient to do these calculations on the GPU, this limit is somewhat arbitrary however, and might require better tuning...
@@ -495,7 +497,7 @@ namespace dxvk {
     return stride;
   }
 
-  void RtxGeometryUtils::cacheVertexDataOnGPU(const Rc<RtxContext>& ctx, const RasterGeometry& input, RaytraceGeometry& output) {
+  void RtxGeometryUtils::cacheVertexDataOnGPU(const Rc<DxvkContext>& ctx, const RasterGeometry& input, RaytraceGeometry& output) {
     ZoneScoped;
     if (input.isVertexDataInterleaved() && input.areFormatsGpuFriendly()) {
       const size_t vertexBufferSize = input.vertexCount * input.positionBuffer.stride();
@@ -513,7 +515,7 @@ namespace dxvk {
   }
 
   void RtxGeometryUtils::interleaveGeometry(
-    const Rc<RtxContext>& ctx,
+    const Rc<DxvkContext>& ctx,
     const RasterGeometry& input,
     InterleavedGeometryDescriptor& output) const {
     ZoneScoped;
