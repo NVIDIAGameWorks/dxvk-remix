@@ -27,10 +27,10 @@
 // These would be split into their own structs, but to minimize how much padding is needed they are combined for the time being.
 
 struct OpaqueMaterialArgs {
-  float roughnessScale;
-  float roughnessBias;
   float albedoScale;
   float albedoBias;
+  float roughnessScale;
+  float roughnessBias;
   float metallicScale;
   float metallicBias;
   float normalIntensity;
@@ -59,6 +59,7 @@ static_assert((sizeof(OpaqueMaterialArgs) & 15) == 0);
 static_assert((sizeof(TranslucentMaterialArgs) & 15) == 0);
 
 #include "rtx_option.h"
+#include "../util/util_macro.h"
 
 namespace dxvk {
 
@@ -67,30 +68,42 @@ struct OpaqueMaterialOptions {
 
   // Modifiers
 
-  RTX_OPTION("rtx.opaqueMaterial", float, roughnessScale, 1.0f, "Scales the original roughness value.");
-  RTX_OPTION("rtx.opaqueMaterial", float, roughnessBias, 0.0f, "Offsets the original roughness value.");
-  RTX_OPTION("rtx.opaqueMaterial", float, albedoScale, 1.0f, "Scales the original albedo value.");
-  RTX_OPTION("rtx.opaqueMaterial", float, albedoBias, 0.0f, "Offsets the original albedo value.");
-  RTX_OPTION("rtx.opaqueMaterial", float, metallicScale, 1.0f, "Scales the original metallic value.");
-  RTX_OPTION("rtx.opaqueMaterial", float, metallicBias, 0.0f, "Offsets the original metallic value.");
-  RTX_OPTION("rtx.opaqueMaterial", float, normalIntensity, 1.0f, "Scales normal map strength.");
-  RTX_OPTION("rtx.opaqueMaterial", Vector2, layeredWaterNormalMotion, Vector2(-0.25f, -0.3f), "");
-  RTX_OPTION("rtx.opaqueMaterial", float, layeredWaterNormalMotionScale, 9.0f, "");
-  RTX_OPTION("rtx.opaqueMaterial", float, layeredWaterNormalLodBias, 5.0f, "");
-  RTX_OPTION("rtx.opaqueMaterial", bool, layeredWaterNormalEnable, true, "");
+  RTX_OPTION("rtx.opaqueMaterial", float, albedoScale, 1.0f, "A scale factor to apply to all albedo values in the opaque material. Should only be used for debugging or development.");
+  RTX_OPTION("rtx.opaqueMaterial", float, albedoBias, 0.0f, "A bias factor to add to all albedo values in the opaque material. Should only be used for debugging or development.");
+  RTX_OPTION("rtx.opaqueMaterial", float, roughnessScale, 1.0f, "A scale factor to apply to all roughness values in the opaque material. Should only be used for debugging or development.");
+  RTX_OPTION("rtx.opaqueMaterial", float, roughnessBias, 0.0f, "A bias factor to add to all roughness values in the opaque material. Should only be used for debugging or development.");
+  RTX_OPTION("rtx.opaqueMaterial", float, metallicScale, 1.0f, "A scale factor to apply to all metallic values in the opaque material. Should only be used for debugging or development.");
+  RTX_OPTION("rtx.opaqueMaterial", float, metallicBias, 0.0f, "A bias factor to add to all metallic values in the opaque material. Should only be used for debugging or development.");
+  RTX_OPTION("rtx.opaqueMaterial", float, normalIntensity, 1.0f, "An arbitrary strength scale factor to apply when decoding normals in the opaque material. Should only be used for debugging or development.");
+  RTX_OPTION("rtx.opaqueMaterial", Vector2, layeredWaterNormalMotion, Vector2(-0.25f, -0.3f),
+             "A vector describing the motion in the U and V axes across a texture to apply for layered water.\n"
+             "Only takes effect when layered water normals are enabled (and an object is properly classified as animated water).");
+  // Todo: This option is somewhat redundant and could be collapsed down into the water normal motion directly.
+  RTX_OPTION("rtx.opaqueMaterial", float, layeredWaterNormalMotionScale, 9.0f,
+             "A scale factor applied to the layered water normal motion vector.\n"
+             "Only takes effect when layered water normals are enabled (and an object is properly classified as animated water).");
+  RTX_OPTION("rtx.opaqueMaterial", float, layeredWaterNormalLodBias, 5.0f,
+             "The LoD bias to use when sampling from the normal map on layered water for the second layer of detail.\n"
+             "This value typically should be greater than 0 to allow for a more blurry mip to be selected as this allows for a low frequency variation of normals to be applied to the higher frequency variation from the typical normal map.\n"
+             "Only takes effect when layered water normals are enabled (and an object is properly classified as animated water).");
+  RTX_OPTION("rtx.opaqueMaterial", bool, layeredWaterNormalEnable, true,
+             "A flag indicating if layered water normal should be enabled or disabled.\n"
+             "Note that objects must be properly classified as animated water to be rendered with this mode.");
 
   // Overrides
 
-  RTX_OPTION("rtx.opaqueMaterial", bool, enableThinFilmOverride, false, "");
-  // Note: This thickness value is normalized on 0-1, predivided by the thinFilmMaxThickness on the CPU.
-  RTX_OPTION("rtx.opaqueMaterial", float, thinFilmNormalizedThicknessOverride, 0.0f, "");
+  RTX_OPTION("rtx.opaqueMaterial", bool, enableThinFilmOverride, false, "A flag to force the thin-film layer on the opaque material to be enabled. Should only be used for debugging or development.");
+  RTX_OPTION("rtx.opaqueMaterial", float, thinFilmThicknessOverride, 0.0f,
+             "The thin-film layer's thickness in nanometers for the opaque material when the thin-film override is enabled.\n"
+             "Should be any value larger than 0, typically within the wavelength of light, but must be less than or equal to OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS (" STRINGIFY(OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS) " nm).\n"
+             "Should only be used for debugging or development.");
 
 public:
   void fillShaderParams(OpaqueMaterialArgs& args) const {
-    args.roughnessScale = roughnessScale();
-    args.roughnessBias = roughnessBias();
     args.albedoScale = albedoScale();
     args.albedoBias = albedoBias();
+    args.roughnessScale = roughnessScale();
+    args.roughnessBias = roughnessBias();
     args.metallicScale = metallicScale();
     args.metallicBias = metallicBias();
     args.normalIntensity = normalIntensity();
@@ -100,7 +113,8 @@ public:
     args.layeredWaterNormalLodBias = layeredWaterNormalLodBias();
     args.layeredWaterNormalEnable = layeredWaterNormalEnable();
     args.enableThinFilmOverride = enableThinFilmOverride();
-    args.thinFilmNormalizedThicknessOverride = thinFilmNormalizedThicknessOverride();
+    // Note: GPU expects the thin film thickness override to be normalized on the maximum range.
+    args.thinFilmNormalizedThicknessOverride = std::clamp(thinFilmThicknessOverride() / OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS, 0.0f, 1.0f);
   }
 };
 
@@ -109,13 +123,13 @@ struct TranslucentMaterialOptions {
 
   // Modifiers
 
-  RTX_OPTION("rtx.translucentMaterial", float, transmittanceColorScale, 1.0f, "");
-  RTX_OPTION("rtx.translucentMaterial", float, transmittanceColorBias, 0.0f, "");
-  RTX_OPTION("rtx.translucentMaterial", float, normalIntensity, 1.0f, "");
+  RTX_OPTION("rtx.translucentMaterial", float, transmittanceColorScale, 1.0f, "A scale factor to apply to all transmittance color values in the translucent material. Should only be used for debugging or development.");
+  RTX_OPTION("rtx.translucentMaterial", float, transmittanceColorBias, 0.0f, "A bias factor to add to all transmittance color values in the opaque material. Should only be used for debugging or development.");
+  RTX_OPTION("rtx.translucentMaterial", float, normalIntensity, 1.0f, "An arbitrary strength scale factor to apply when decoding normals in the translucent material. Should only be used for debugging or development.");
 
   // Overrides
 
-  RTX_OPTION("rtx.translucentMaterial", bool, enableDiffuseLayerOverride, false, "");
+  RTX_OPTION("rtx.translucentMaterial", bool, enableDiffuseLayerOverride, false, "A flag to force the diffuse layer on the translucent material to be enabled. Should only be used for debugging or development.");
 
 public:
   void fillShaderParams(TranslucentMaterialArgs& args) const {

@@ -45,9 +45,9 @@ namespace dxvk {
 #endif
 
     // Initialize RTX settings presets
+    // Todo: Improve this preset override functionality with a more clear envionrment variable [REMIX-1482]
     if (env::getEnvVar("DXVK_TERMINATE_APP_FRAME") == "" ||
         env::getEnvVar("DXVK_GRAPHICS_PRESET_TYPE") != "0") {
-      
       const DxvkDeviceInfo& deviceInfo = m_device->adapter()->devicePropertiesExt();
 
       RtxOptions::Get()->updateUpscalerFromDlssPreset();
