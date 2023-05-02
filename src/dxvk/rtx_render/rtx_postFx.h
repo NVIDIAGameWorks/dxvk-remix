@@ -63,19 +63,19 @@ namespace dxvk {
   private:
     Rc<vk::DeviceFn> m_vkd;
 
-    RTX_OPTION("rtx.postfx", bool,  enableMotionBlurNoiseSample, true, "");
-    RTX_OPTION("rtx.postfx", bool,  enableMotionBlurEmissive, true, "");
-    RTX_OPTION("rtx.postfx", uint,  motionBlurSampleCount, 4, "");
-    RTX_OPTION("rtx.postfx", float, exposureFraction, 0.4f, "");
-    RTX_OPTION("rtx.postfx", float, blurDiameterFraction, 0.02f, "");
-    RTX_OPTION("rtx.postfx", float, motionBlurMinimumVelocityThresholdInPixel, 1.0f, "");
-    RTX_OPTION("rtx.postfx", float, motionBlurDynamicDeduction, 0.075f, "");
-    RTX_OPTION("rtx.postfx", float, motionBlurJitterStrength, 0.6f, "");
-    RTX_OPTION("rtx.postfx", float, chromaticAberrationAmount, 0.02f, "");
-    RTX_OPTION("rtx.postfx", float, chromaticCenterAttenuationAmount, 0.975f, "");
-    RTX_OPTION("rtx.postfx", float, vignetteIntensity, 0.8f, "");
-    RTX_OPTION("rtx.postfx", float, vignetteRadius, 0.8f, "");
-    RTX_OPTION("rtx.postfx", float, vignetteSoftness, 0.2f, "");
+    RTX_OPTION("rtx.postfx", bool,  enableMotionBlurNoiseSample, true, "Enable random distance sampling for every step along the motion vector. The random pattern is generated with interleaved gradient noise.");
+    RTX_OPTION("rtx.postfx", bool,  enableMotionBlurEmissive, true, "Enable Motion Blur for Emissive surfaces. Disable this when the motion blur on emissive surfaces cause severe artifacts.");
+    RTX_OPTION("rtx.postfx", uint,  motionBlurSampleCount, 4, "The number of samples along the motion vector. More samples could help to reduce motion blur noise.");
+    RTX_OPTION("rtx.postfx", float, exposureFraction, 0.4f, "Simulate the camera exposure, the longer exposure will cause stronger motion blur.");
+    RTX_OPTION("rtx.postfx", float, blurDiameterFraction, 0.02f, "The diameter of the circle that motion blur samplings occur. Motion vectors beyond this circle will be clamped.");
+    RTX_OPTION("rtx.postfx", float, motionBlurMinimumVelocityThresholdInPixel, 1.0f, "The minimum motion vector distance that enable the motion blur. The unit is pixel size.");
+    RTX_OPTION("rtx.postfx", float, motionBlurDynamicDeduction, 0.075f, "The deduction of motion blur for dynamic objects.");
+    RTX_OPTION("rtx.postfx", float, motionBlurJitterStrength, 0.6f, "The jitter strength of every sample along the motion vector.");
+    RTX_OPTION("rtx.postfx", float, chromaticAberrationAmount, 0.02f, "The strength of chromatic aberration.");
+    RTX_OPTION("rtx.postfx", float, chromaticCenterAttenuationAmount, 0.975f, "Control the amount of chromatic aberration effect that attunuated when close to the center of screen.");
+    RTX_OPTION("rtx.postfx", float, vignetteIntensity, 0.8f, "The darkness of vignette effect.");
+    RTX_OPTION("rtx.postfx", float, vignetteRadius, 0.8f, "The radius that vignette effect starts. The unit is normalized screen space, 0 represents the center, 1 means the edge of the short edge of the rendering window. So, this setting can larger than 1 until reach to the long edge of the rendering window.");
+    RTX_OPTION("rtx.postfx", float, vignetteSoftness, 0.2f, "The gradient that the color drop to black from the vignetteRadius to the edge of rendering window.");
   };
 
 }
