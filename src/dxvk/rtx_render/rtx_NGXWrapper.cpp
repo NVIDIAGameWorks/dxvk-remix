@@ -39,6 +39,8 @@
 
 namespace dxvk
 {
+  NGXWrapper* NGXWrapper::s_instance = nullptr;
+
   namespace
   {
     std::string resultToString(NVSDK_NGX_Result result)
@@ -200,6 +202,25 @@ namespace dxvk
       NVSDK_NGX_VULKAN_ReleaseFeature(m_featureDLSS);
       m_featureDLSS = nullptr;
     }
+  }
+
+  void NGXWrapper::releaseInstance() {
+    if (s_instance != nullptr) {
+      delete s_instance;
+      s_instance = nullptr;
+    }
+  }
+
+  NGXWrapper* NGXWrapper::getInstance(DxvkDevice* device) {
+    // Only one NGX instance is allowed, release resource if a different device appears
+    if (s_instance && s_instance->m_device != device) {
+      releaseInstance();
+    }
+
+    if (!s_instance) {
+      s_instance = new NGXWrapper(device, dxvk::str::tows(dxvk::env::getExePath().c_str()).c_str());
+    }
+    return s_instance;
   }
 
   NGXWrapper::OptimalSettings NGXWrapper::queryOptimalSettings(const uint32_t displaySize[2], NVSDK_NGX_PerfQuality_Value perfQuality) const

@@ -47,11 +47,8 @@ namespace dxvk
       uint32_t maxRenderSize[2];
     };
 
-    /** Constructor.
-        Throws an exception if unable to initialize NGX.
-    */
-    NGXWrapper(DxvkDevice* device, const wchar_t* logFolder = L".");
-    ~NGXWrapper();
+    static NGXWrapper* getInstance(DxvkDevice* device);
+    static void releaseInstance();
 
     /** Query optimal DLSS settings for a given resolution and performance/quality profile.
     */
@@ -107,6 +104,9 @@ namespace dxvk
     bool supportsDLSS() const { return m_supportsDLSS; }
 
   private:
+    NGXWrapper(DxvkDevice* device, const wchar_t* logFolder = L".");
+    ~NGXWrapper();
+
     void initializeNGX(const wchar_t* logFolder);
     void shutdownNGX();
 
@@ -117,5 +117,7 @@ namespace dxvk
 
     NVSDK_NGX_Parameter* m_parameters = nullptr;
     NVSDK_NGX_Handle* m_featureDLSS = nullptr;
+
+    static NGXWrapper* s_instance;
   };
 }
