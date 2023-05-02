@@ -30,24 +30,37 @@ namespace dxvk {
     float coeff[4];
   };
 
+  // NV-DXVK start: vertex shader data capture implementation
+  struct D3D9RtxVertexCaptureData {
+    Matrix4 normalTransform;
+    Matrix4 projectionToWorld;
+    int baseVertex = 0;
+    int padding[3];
+  };
+
+  enum class D3D9RtxVertexCaptureMembers {
+    NormalTransform = 0,
+    ProjectionToWorld,
+    BaseVertex,
+
+    MemberCount
+  };
+  // NV-DXVK end
+
   struct D3D9RenderStateInfo {
     std::array<float, 3> fogColor = { };
-    float fogScale   = 0.0f;
-    float fogEnd     = 1.0f;
+    float fogScale = 0.0f;
+    float fogEnd = 1.0f;
     float fogDensity = 1.0f;
 
-    float alphaRef   = 0.0f;
+    float alphaRef = 0.0f;
 
-    float pointSize    = 1.0f;
+    float pointSize = 1.0f;
     float pointSizeMin = 1.0f;
     float pointSizeMax = 64.0f;
-    float pointScaleA  = 1.0f;
-    float pointScaleB  = 0.0f;
-    float pointScaleC  = 0.0f;
-    int baseVertex = 0;
-    std::array<float, 2> padding = { };
-
-    std::array<float, 16> projectionToWorld = { 1,0,0,0,  0,1,0,0,  0,0,1,0,  0,0,0,1 };
+    float pointScaleA = 1.0f;
+    float pointScaleB = 0.0f;
+    float pointScaleC = 0.0f;
   };
 
   enum class D3D9RenderStateItem {
@@ -63,8 +76,6 @@ namespace dxvk {
     PointScaleA,
     PointScaleB,
     PointScaleC,
-    BaseVertex,
-    ProjectionToWorld,
 
     Count
   };

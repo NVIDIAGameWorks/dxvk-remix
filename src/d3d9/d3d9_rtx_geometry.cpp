@@ -146,7 +146,7 @@ namespace dxvk {
 
     // Assume the GPU changed the data via shaders, include the constant buffer data in hash
     XXH64_hash_t vertexDataSeed = kEmptyHash;
-    if (m_parent->UseProgrammableVS() && RtxOptions::Get()->isVertexCaptureEnabled()) {
+    if (m_parent->UseProgrammableVS() && useVertexCapture()) {
       const D3D9ConstantSets& cb = m_parent->m_consts[DxsoProgramTypes::VertexShader];
       vertexDataSeed = XXH3_64bits_withSeed(&d3d9State().vsConsts.fConsts[0], cb.meta.maxConstIndexF * sizeof(float) * 4, vertexDataSeed);
       vertexDataSeed = XXH3_64bits_withSeed(&d3d9State().vsConsts.iConsts[0], cb.meta.maxConstIndexI * sizeof(int) * 4, vertexDataSeed);

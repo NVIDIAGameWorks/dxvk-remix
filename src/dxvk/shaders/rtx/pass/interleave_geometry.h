@@ -21,13 +21,14 @@
 */
 #pragma once
 
+#include "../utility/packing_helpers.h"
+
 // This function can be executed on the CPU or GPU!!
 #ifdef __cplusplus
-#define WriteBuffer(T) T*
-#define ReadBuffer(T) const T*
-
 #define asfloat(x) *reinterpret_cast<const float*>(&x)
 #define asuint(x) *reinterpret_cast<const uint32_t*>(&x)
+#define WriteBuffer(T) T*
+#define ReadBuffer(T) const T*
 #else
 #define WriteBuffer(T) RWStructuredBuffer<T>
 #define ReadBuffer(T) StructuredBuffer<T>
@@ -36,6 +37,7 @@
 namespace interleaver {
 
   enum class SupportedVkFormats {
+    VK_FORMAT_R8G8B8A8_UNORM = 37,
     VK_FORMAT_A2B10G10R10_SNORM_PACK32 = 65,
 
     // Passthrough format mapping
@@ -50,6 +52,7 @@ namespace interleaver {
     case SupportedVkFormats::VK_FORMAT_R32G32_SFLOAT:
     case SupportedVkFormats::VK_FORMAT_R32G32B32_SFLOAT:
     case SupportedVkFormats::VK_FORMAT_R32G32B32A32_SFLOAT:
+    case SupportedVkFormats::VK_FORMAT_R8G8B8A8_UNORM:
     case SupportedVkFormats::VK_FORMAT_A2B10G10R10_SNORM_PACK32:
       return true;
     default:
@@ -73,14 +76,22 @@ namespace interleaver {
     case SupportedVkFormats::VK_FORMAT_R32G32B32_SFLOAT:
     case SupportedVkFormats::VK_FORMAT_R32G32B32A32_SFLOAT:
       return float3(input[index + 0], input[index + 1], input[index + 2]);
-    case SupportedVkFormats::VK_FORMAT_A2B10G10R10_SNORM_PACK32:
-      //  TODO: Would be nice to utilize packing.slangh here, but this code needs to run on CPU also...
+    case SupportedVkFormats::VK_FORMAT_R8G8B8A8_UNORM:
+    {
       uint data = asuint(input[index]);
-      float b = float((data >> 20) & 0x3FF) / 511.0f;
-      float g = float((data >> 10) & 0x3FF) / 511.0f;
-      float r = float((data >> 0) & 0x3FF) / 511.0f;
+      float b = unorm8ToF32(uint8_t((data >> 16) & 0xFF));
+      float g = unorm8ToF32(uint8_t((data >> 8) & 0xFF));
+      float r = unorm8ToF32(uint8_t((data >> 0) & 0xFF));
+      return float3(r, g, b) * 2.f - 1.f;
+    }
+    case SupportedVkFormats::VK_FORMAT_A2B10G10R10_SNORM_PACK32:
+    {
+      uint data = asuint(input[index]);
+      float b = unorm10ToF32(data >> 20);
+      float g = unorm10ToF32(data >> 10);
+      float r = unorm10ToF32(data >> 0);
       return float3(r, g, b);
-
+    }
     }
     return float3(1, 1, 1);
   }
@@ -123,3 +134,11 @@ namespace interleaver {
     }
   }
 }
+
+#ifdef __cplusplus
+#undef WriteBuffer
+#undef ReadBuffer
+
+#undef asfloat
+#undef asuint
+#endif

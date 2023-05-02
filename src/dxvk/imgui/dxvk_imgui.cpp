@@ -45,6 +45,7 @@
 #include "dxvk_imgui_about.h"
 #include "dxvk_imgui_splash.h"
 #include "dxvk_scoped_annotation.h"
+#include "../../d3d9/d3d9_rtx.h"
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 extern ImGuiKey ImGui_ImplWin32_VirtualKeyToImGuiKey(WPARAM wParam);
@@ -1340,15 +1341,21 @@ namespace dxvk {
       ImGui::DragFloat("Unique Object Search Distance", &RtxOptions::Get()->uniqueObjectDistanceObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
       ImGui::Separator();
 
-      ImGui::Checkbox("Shader-based Vertex Capture", &RtxOptions::Get()->useVertexCaptureObject());
-      ImGui::Separator();
 
       ImGui::Checkbox("Ignore Stencil Volumes", &RtxOptions::Get()->ignoreStencilVolumeHeuristicsObject());
       ImGui::Separator();
 
       ImGui::DragFloat("Vertex Color Strength", &RtxOptions::Get()->vertexColorStrengthObject(), 0.001f, 0.0f, 1.0f);
       ImGui::Separator();
-      
+
+      if (ImGui::CollapsingHeader("Shader Support (Experimental)", collapsingHeaderClosedFlags)) {
+        ImGui::Indent();
+        ImGui::Checkbox("Capture Vertices from Shader", &D3D9Rtx::useVertexCaptureObject());
+        ImGui::Checkbox("Capture Normals from Shader", &D3D9Rtx::useVertexCapturedNormalsObject());
+        ImGui::Separator();
+        ImGui::Unindent();
+      }
+
       if (ImGui::CollapsingHeader("View Model", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
         ImGui::Checkbox("Enable View Model", &RtxOptions::Get()->viewModel.enableObject());
