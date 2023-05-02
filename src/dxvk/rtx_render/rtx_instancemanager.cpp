@@ -346,7 +346,7 @@ namespace dxvk {
     Matrix4 worldToProjection = drawCall.getTransformData().viewToProjection * drawCall.getTransformData().worldToView;
 
     // An attempt to resolve cases where games pre-combine view and world matrices
-    if (RtxOptions::Get()->isResolvePreCombinedMatricesEnabled() &&
+    if (RtxOptions::Get()->resolvePreCombinedMatrices() &&
       isIdentityExact(drawCall.getTransformData().worldToView)) {
       objectToWorld = cameraManager.getLastSetCamera().getViewToWorld(false) * drawCall.getTransformData().objectToView;
       worldToProjection = drawCall.getTransformData().viewToProjection * cameraManager.getLastSetCamera().getWorldToView(false);

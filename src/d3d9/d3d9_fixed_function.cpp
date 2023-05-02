@@ -203,24 +203,19 @@ namespace dxvk {
     const uint32_t uintType = spvModule.defIntType(32, false);
     const uint32_t floatType = spvModule.defFloatType(32);
     const uint32_t vec3Type = spvModule.defVectorType(floatType, 3);
-    const uint32_t vec4Type = spvModule.defVectorType(floatType, 4);
-    const uint32_t mat4Type = spvModule.defMatrixType(vec4Type, 4);
 
-    std::array<uint32_t, 13> rsMembers = {{
+    std::array<uint32_t, 11> rsMembers = {{
       vec3Type,
       floatType,
       floatType,
       floatType,
       floatType,
-
       floatType,
       floatType,
       floatType,
       floatType,
       floatType,
       floatType,
-      uintType,
-      mat4Type,
     } };
 
     uint32_t rsStruct = spvModule.defStructTypeUnique(count, rsMembers.data());
@@ -240,11 +235,6 @@ namespace dxvk {
 
       spvModule.setDebugMemberName   (rsStruct, memberIdx, name);
       spvModule.memberDecorateOffset (rsStruct, memberIdx, offset);
-      if (memberIdx == (uint32_t)D3D9RenderStateItem::ProjectionToWorld)
-      {
-        spvModule.memberDecorateMatrixStride(rsStruct, memberIdx, 16);
-        spvModule.memberDecorate(rsStruct, memberIdx, spv::DecorationRowMajor);
-      }
       memberIdx++;
     };
 
@@ -259,8 +249,6 @@ namespace dxvk {
     SetMemberName("point_scale_a",  offsetof(D3D9RenderStateInfo, pointScaleA));
     SetMemberName("point_scale_b",  offsetof(D3D9RenderStateInfo, pointScaleB));
     SetMemberName("point_scale_c",  offsetof(D3D9RenderStateInfo, pointScaleC));
-    SetMemberName("base_vertex",    offsetof(D3D9RenderStateInfo, baseVertex));
-    SetMemberName("proj_to_world",  offsetof(D3D9RenderStateInfo, projectionToWorld));
 
     return rsBlock;
   }

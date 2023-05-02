@@ -161,8 +161,11 @@ namespace dxvk {
   struct DxsoCompilerVsPart {
     uint32_t functionId       = 0;
     
+    // NV-DXVK start: vertex shader data capture implementation
     // Special buffer for vertex streamout
+    uint32_t vertexCaptureConstants;
     DxsoUav vertexOutBuf;
+    // NV-DXVK end
 
     ////////////////////
     // Address register
@@ -171,8 +174,12 @@ namespace dxvk {
     //////////////////////////////
     // Rasterizer output registers
     DxsoRegisterPointer oPos;
-    DxsoRegisterPointer oTex0;
     DxsoRegisterPointer oPSize;
+
+    // NV-DXVK start: vertex shader data capture implementation
+    DxsoRegisterPointer oTex0;
+    DxsoRegisterPointer oNormal0;
+    // NV-DXVK end
   };
 
   /**
@@ -413,7 +420,10 @@ namespace dxvk {
     /////////////////////////////////
     // Shader initialization methods
     void emitVsInit();
-    void emitVertexCaptureInit();
+
+    // NV-DXVK start: vertex shader data capture implementation
+    void emitVertexCaptureInit();    
+    // NV-DXVK end
 
     void emitPsSharedConstants();
     void emitPsInit();
@@ -709,7 +719,9 @@ namespace dxvk {
     void emitPsProcessing();
     void emitOutputDepthClamp();
 
+    // NV-DXVK start: vertex shader data capture implementation
     void emitVertexCaptureOp();
+    // NV-DXVK end
 
     void emitLinkerOutputSetup();
 
