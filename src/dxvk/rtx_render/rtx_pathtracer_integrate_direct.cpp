@@ -79,6 +79,8 @@ namespace dxvk {
         RW_TEXTURE2D(INTEGRATE_DIRECT_BINDING_SECONDARY_COMBINED_SPECULAR_LOBE_RADIANCE_OUTPUT)
         RW_TEXTURE2D(INTEGRATE_DIRECT_BINDING_PRIMARY_RTXDI_ILLUMINANCE_OUTPUT)
 
+        RW_TEXTURE2D(INTEGRATE_DIRECT_BINDING_RADIANCE_CACHE)
+
         RW_TEXTURE2D(INTEGRATE_DIRECT_BINDING_INDIRECT_RAY_ORIGIN_DIRECTION_OUTPUT)
         RW_TEXTURE2D(INTEGRATE_DIRECT_BINDING_INDIRECT_THROUGHPUT_CONE_RADIUS_OUTPUT)
         RW_TEXTURE2D(INTEGRATE_DIRECT_BINDING_INDIRECT_FIRST_HIT_PERCEPTUAL_ROUGHNESS_OUTPUT)
@@ -144,6 +146,7 @@ namespace dxvk {
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SECONDARY_COMBINED_DIFFUSE_LOBE_RADIANCE_OUTPUT, rtOutput.m_secondaryCombinedDiffuseRadiance.view(Resources::AccessType::Write), nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SECONDARY_COMBINED_SPECULAR_LOBE_RADIANCE_OUTPUT, rtOutput.m_secondaryCombinedSpecularRadiance.view(Resources::AccessType::Write), nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_PRIMARY_RTXDI_ILLUMINANCE_OUTPUT, rtOutput.getCurrentRtxdiIlluminance().view(Resources::AccessType::Write), nullptr);
+    ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_RADIANCE_CACHE, rtOutput.m_radianceCache.view, nullptr);
 
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_INDIRECT_RAY_ORIGIN_DIRECTION_OUTPUT, rtOutput.m_indirectRayOriginDirection.view(Resources::AccessType::Write), nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_INDIRECT_THROUGHPUT_CONE_RADIUS_OUTPUT, rtOutput.m_indirectThroughputConeRadius.view(Resources::AccessType::Write), nullptr);

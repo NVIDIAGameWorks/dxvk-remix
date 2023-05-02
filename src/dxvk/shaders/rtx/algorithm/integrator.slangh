@@ -156,6 +156,114 @@ Ray sampleDirection(
   return sampledRay;
 }
 
+int2 pointDirectionToAddress(vec3 position, f16vec3 direction)
+{
+  vec3 cameraPos = cameraGetWorldPosition(cb.camera);
+  float extend = cb.debugKnob.y * 10 + 1;
+  vec3 origin = cameraPos - extend * 0.5;
+  vec3 UVW = (position - origin) / extend;
+  if (any(UVW < 0) || any(UVW >= 1))
+  {
+    return int2(-1,-1);
+  }
+  ivec3 UVWi = UVW * RADIANCE_CACHE_PROBE_RESOLUTION;
+  ivec2 UV2D = ivec2(UVWi.y * RADIANCE_CACHE_PROBE_RESOLUTION + UVWi.x, UVWi.z);
+
+  int mipRes = RADIANCE_CACHE_MIP_RESOLUTION;
+  vec2 directionUV = sphereDirectionToUnsignedOctahedral(direction);
+  ivec2 directionUVi = clamp(directionUV * mipRes, 0, mipRes-1);
+  return UV2D * mipRes + directionUVi;
+}
+
+Ray sampleDirection2(
+  inout RNG randomState, inout bool insideMedium, inout vec3 throughput,
+  Ray ray, MinimalRayInteraction minimalRayInteraction, MinimalSurfaceInteraction minimalSurfaceInteraction,
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
+  out uint8_t sampledLobe, out float16_t sampledLobePdf, out float16_t solidAnglePdf,
+  bool isPrimaryIndirectSample)
+{
+  // Sample from the material
+
+  SurfaceMaterialInteractionSample surfaceMaterialInteractionSample;
+  SurfaceMaterialInteractionLobeSample surfaceMaterialInteractionLobeSample;
+  bool penetrateSurface = false;
+
+  float finalTargetPDF = 0;
+  float weightSum = 0;
+  int M = cb.debugKnob.x;
+  vec3 finalL = 0;
+
+  int2 testAddress = pointDirectionToAddress(minimalSurfaceInteraction.position, f16vec3(0,0,1));
+  bool useBSDFSampling = M == 0 || any(testAddress == -1);
+  if (useBSDFSampling)
+  {
+    polymorphicSurfaceMaterialInteractionCalcSample(
+      polymorphicSurfaceMaterialInteraction, randomState, minimalRayInteraction,
+      surfaceMaterialInteractionSample, surfaceMaterialInteractionLobeSample,
+      insideMedium, penetrateSurface, isPrimaryIndirectSample);
+  }
+  else
+  {
+    for (int i = 0; i < M; ++i)
+    {
+      SurfaceMaterialInteractionSample bsdfSample;
+      SurfaceMaterialInteractionLobeSample lobeSample;
+      bool insideMedium0;
+      polymorphicSurfaceMaterialInteractionCalcSample(
+        polymorphicSurfaceMaterialInteraction, randomState, minimalRayInteraction,
+        bsdfSample, lobeSample,
+        insideMedium, penetrateSurface, isPrimaryIndirectSample);
+
+      int2 address = pointDirectionToAddress(minimalSurfaceInteraction.position, bsdfSample.inputDirection);
+      vec3 L = vec3(1);
+      if (all(address != -1))
+      {
+        L = RadianceCache[address].xyz;
+      }
+      float srcPDF = bsdfSample.solidAnglePdf * lobeSample.pdf;
+      float targetPDF = calcBt709Luminance(L * bsdfSample.throughput) * bsdfSample.solidAnglePdf;
+      //float w = targetPDF / srcPDF;
+      float w = calcBt709Luminance(L * bsdfSample.throughput) / lobeSample.pdf;
+      weightSum += w;
+      if (getNextSampleBlueNoise(randomState) * weightSum <= w )
+      {
+        surfaceMaterialInteractionSample = bsdfSample;
+        surfaceMaterialInteractionLobeSample = lobeSample;
+        finalTargetPDF = targetPDF;
+        insideMedium = insideMedium0;
+        finalL = L;
+      }
+    }
+  }
+
+  sampledLobe = surfaceMaterialInteractionLobeSample.lobe;
+  sampledLobePdf = surfaceMaterialInteractionLobeSample.pdf;
+  solidAnglePdf = min(surfaceMaterialInteractionSample.solidAnglePdf, float16Max);
+
+  // Create a ray from the material sample
+
+  Ray sampledRay = rayCreateDirection(
+    minimalRayInteraction, minimalSurfaceInteraction, ray, surfaceMaterialInteractionSample.inputDirection, penetrateSurface);
+
+  sampledRay.spreadAngle = calculateSpreadAngleFromSolidAnglePdf(sampledRay.spreadAngle, solidAnglePdf);
+
+  // Combine sample throughput into the throughput
+  if (useBSDFSampling)
+  {
+    const vec3 directionSampleThroughput = surfaceMaterialInteractionSample.throughput / surfaceMaterialInteractionLobeSample.pdf;
+    throughput *= directionSampleThroughput;
+  }
+  else
+  {
+    //vec3 W = surfaceMaterialInteractionSample.throughput / finalTargetPDF * weightSum / M;
+    vec3 normalizeTpt = normalize(surfaceMaterialInteractionSample.throughput);
+    float3 W = normalizeTpt / calcBt709Luminance(finalL * normalizeTpt) * weightSum / M;
+    throughput *= W;
+  }
+
+  return sampledRay;
+}
+
 Ray sampleDirection(
   inout RNG randomState, inout bool insideMedium, inout vec3 throughput,
   Ray ray, MinimalRayInteraction minimalRayInteraction, MinimalSurfaceInteraction minimalSurfaceInteraction,

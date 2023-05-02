@@ -56,6 +56,9 @@
 // used for an invalid index similar to the max binding index for materials.
 #define LIGHT_INDEX_INVALID (0xFFFF)
 
+#define RADIANCE_CACHE_MIP_RESOLUTION 32
+#define RADIANCE_CACHE_PROBE_RESOLUTION 20
+
 #ifdef __cplusplus
 
 #define COMMON_RAYTRACING_BINDINGS \
