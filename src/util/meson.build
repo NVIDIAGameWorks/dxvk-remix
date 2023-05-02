@@ -7,7 +7,9 @@ util_src = files([
   'util_matrix.cpp',
   'util_monitor.cpp',
   'util_window.cpp',
-  
+
+  'thread.cpp',
+
   'com/com_guid.cpp',
   'com/com_private_data.cpp',
 
