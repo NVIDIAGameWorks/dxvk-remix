@@ -262,12 +262,13 @@ namespace dxvk {
     // Assume we won't need this, and update the value if required
     output.previousPositionBuffer = RaytraceBuffer();
 
+    const size_t vertexStride = (input.isVertexDataInterleaved() && input.areFormatsGpuFriendly()) ? input.positionBuffer.stride() : RtxGeometryUtils::computeOptimalVertexStride(input);
+
     switch (result) {
       case ObjectCacheState::KBuildBVH: {
         // Set up the ideal vertex params, if input vertices are interleaved, it's safe to assume the positionBuffer stride is the vertex stride
         output.vertexCount = input.vertexCount;
 
-        const size_t vertexStride = (input.isVertexDataInterleaved() && input.areFormatsGpuFriendly()) ? input.positionBuffer.stride() : RtxGeometryUtils::computeOptimalVertexStride(input);
         const size_t vertexBufferSize = output.vertexCount * vertexStride;
 
         // Set up the ideal index params
@@ -302,15 +303,35 @@ namespace dxvk {
         break;
       }
       case ObjectCacheState::kUpdateBVH: {
+        bool invalidateHistory = false;
+
+        // Stride changed, so we must recreate the previous buffer and use identical data
+        if (output.historyBuffer[0]->info().size != align(vertexStride * input.vertexCount, CACHE_LINE_SIZE)) {
+          auto desc = output.historyBuffer[0]->info();
+          desc.size = align(vertexStride * input.vertexCount, CACHE_LINE_SIZE);
+          output.historyBuffer[0] = m_device->createBuffer(desc, memoryProperty, DxvkMemoryStats::Category::RTXAccelerationStructure);
+
+          // Invalidate the current buffer
+          output.historyBuffer[1] = nullptr;
+
+          // Mark this object for realignment
+          invalidateHistory = true;
+        }
+
         // Use the previous updates vertex data for previous position lookup
         std::swap(output.historyBuffer[0], output.historyBuffer[1]);
 
         if (output.historyBuffer[0].ptr() == nullptr) {
           // First frame this object has been dynamic need to allocate a 2nd frame of data to preserve history.
-          output.historyBuffer[0] = m_device->createBuffer(inOutGeometry.historyBuffer[0]->info(), memoryProperty, DxvkMemoryStats::Category::RTXAccelerationStructure);
+          output.historyBuffer[0] = m_device->createBuffer(output.historyBuffer[1]->info(), memoryProperty, DxvkMemoryStats::Category::RTXAccelerationStructure);
         } 
 
         RtxGeometryUtils::cacheVertexDataOnGPU(ctx, input, output);
+
+        // Sometimes, we need to invalidate history, do that here by copying the current buffer to the previous..
+        if (invalidateHistory) {
+          ctx->copyBuffer(output.historyBuffer[1], 0, output.historyBuffer[0], 0, output.historyBuffer[1]->info().size);
+        }
 
         // Assign the previous buffer using the last slice (copy most params from the position, just change buffer)
         output.previousPositionBuffer = RaytraceBuffer(DxvkBufferSlice(output.historyBuffer[1], 0, output.positionBuffer.length()), output.positionBuffer.offsetFromSlice(), output.positionBuffer.stride(), output.positionBuffer.vertexFormat());

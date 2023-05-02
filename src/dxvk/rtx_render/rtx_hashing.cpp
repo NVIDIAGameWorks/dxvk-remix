@@ -32,6 +32,8 @@
 #include "rtx_options.h"
 #include "rtx_hashing.h"
 #include "Tracy.hpp"
+#include "rtx_geometry_utils.h"
+#include "rtx_types.h"
 
 namespace dxvk {
   const static char* HashComponentNames[] = {
@@ -42,6 +44,7 @@ namespace dxvk {
     "indices",
     "legacyindices",
     "geometrydescriptor",
+    "vertexlayout",
   };
   static_assert((sizeof(HashComponentNames) / sizeof(char*)) == (size_t) HashComponents::Count);
 
@@ -85,6 +88,11 @@ namespace dxvk {
     h = XXH3_64bits_withSeed(&vertexCount, sizeof(vertexCount), h);
     h = XXH3_64bits_withSeed(&topology, sizeof(topology), h);
     return XXH3_64bits_withSeed(&indexType, sizeof(indexType), h);
+  }
+
+  XXH64_hash_t hashVertexLayout(const RasterGeometry& input) {
+    const size_t vertexStride = (input.isVertexDataInterleaved() && input.areFormatsGpuFriendly()) ? input.positionBuffer.stride() : RtxGeometryUtils::computeOptimalVertexStride(input);
+    return XXH3_64bits(&vertexStride, sizeof(vertexStride));
   }
 
   XXH64_hash_t hashContiguousMemory(const void* pData, size_t byteSize) {

@@ -36,6 +36,7 @@ namespace dxvk {
     Indices,
     LegacyIndices,
     GeometryDescriptor,
+    VertexLayout,
     Count
   };
 
@@ -50,12 +51,10 @@ namespace dxvk {
                                    | (1 << (uint32_t)HashComponents::GeometryDescriptor);    
     
     const HashRule VertexDataHash  = (1 << (uint32_t)HashComponents::VertexPosition)
-                                   | (1 << (uint32_t)HashComponents::VertexTexcoord);
+                                   | (1 << (uint32_t)HashComponents::VertexTexcoord)
+                                   | (1 << (uint32_t)HashComponents::VertexLayout);
 
-    const HashRule FullGeometryHash = (1 << (uint32_t)HashComponents::VertexPosition)
-                                    | (1 << (uint32_t)HashComponents::VertexTexcoord)
-                                    | (1 << (uint32_t)HashComponents::Indices)
-                                    | (1 << (uint32_t)HashComponents::GeometryDescriptor);
+    const HashRule FullGeometryHash = VertexDataHash | TopologicalHash;
 
     const HashRule LegacyAssetHash0 = (1 << (uint32_t)HashComponents::LegacyPositions0)
                                     | (1 << (uint32_t)HashComponents::LegacyIndices);
@@ -115,6 +114,13 @@ namespace dxvk {
                                       const uint32_t vertexCount,
                                       const uint32_t indexType,
                                       const uint32_t topology);
+
+  /**
+    * \brief Generate a hash from vertex layout
+    *
+    *   geometry [in]: object defining the layout of a drawcalls geometry
+    */
+  XXH64_hash_t hashVertexLayout(const struct RasterGeometry& geometry);
 
   /**
     * \brief Hashes a region of contiguous memory

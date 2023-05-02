@@ -162,13 +162,20 @@ namespace dxvk {
                                                       geoData.topology);
     }
 
-    return m_gpeWorkers.Schedule([vertexRegions, indexBufferRef, pIndexData, indexStride, indexDataSize, indexCount, maxIndexValue, vertexDataSeed, geometryDescriptorHash]() -> GeometryHashes {
+    // Calculate this based on the RasterGeometry input data
+    XXH64_hash_t vertexLayoutHash = kEmptyHash;
+    if (RtxOptions::Get()->GeometryHashGenerationRule.test(HashComponents::VertexLayout)) {
+      vertexLayoutHash = hashVertexLayout(geoData);
+    }
+
+    return m_gpeWorkers.Schedule([vertexRegions, indexBufferRef, pIndexData, indexStride, indexDataSize, indexCount, maxIndexValue, vertexDataSeed, geometryDescriptorHash, vertexLayoutHash]() -> GeometryHashes {
       ZoneScoped;
 
       GeometryHashes hashes;
 
       // Finalize the descriptor hash
       hashes[HashComponents::GeometryDescriptor] = geometryDescriptorHash;
+      hashes[HashComponents::VertexLayout] = vertexLayoutHash;
 
       // Index hash
       switch (indexStride) {
