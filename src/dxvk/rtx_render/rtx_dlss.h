@@ -75,11 +75,11 @@ namespace dxvk {
 
     void showImguiSettings();
 
-    void initializeDLSS(Rc<DxvkContext> pRenderContext, Rc<DxvkCommandList> cmdList);
-
+  private:
     static DLSSProfile getAutoProfile(uint32_t displayWidth, uint32_t displayHeight);
 
-  private:
+    void initializeDLSS(Rc<DxvkContext> pRenderContext, Rc<DxvkCommandList> cmdList);
+
     bool useDlssAutoExposure(Rc<DxvkDevice>& device) const;
 
     // Options
@@ -101,7 +101,5 @@ namespace dxvk {
     DxvkDevice* m_device;
     Rc<DxvkShader> m_shader;
     Rc<DxvkBuffer> m_constants;
-
-    std::unique_ptr<NGXWrapper> m_dlssWrapper;
   };
 }  // namespace dxvk
