@@ -54,7 +54,7 @@ namespace dxvk {
   RtxImageUtils::RtxImageUtils(DxvkDevice* pDevice) {
   }
 
-  void RtxImageUtils::cubemapToLatLong(Rc<RtxContext>& ctx, Rc<DxvkImageView>& cube,
+  void RtxImageUtils::cubemapToLatLong(Rc<DxvkContext>& ctx, Rc<DxvkImageView>& cube,
                                        Rc<DxvkImageView>& latlong,
                                        LatLongTransform transform) const {
     auto latlongExt = latlong->image()->info().extent;
@@ -68,7 +68,7 @@ namespace dxvk {
     ctx->setPushConstantBank(DxvkPushConstantBank::RTX);
     ctx->pushConstants(0, sizeof(CubeToLatLongArgs), &cb);
 
-    auto linearSampler = ctx->getResourceManager().getSampler(VK_FILTER_LINEAR,
+    auto linearSampler = ctx->getCommonObjects()->getResources().getSampler(VK_FILTER_LINEAR,
       VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
 
     ctx->bindResourceView(CUBE_TO_LATLONG_INPUT, cube, nullptr);

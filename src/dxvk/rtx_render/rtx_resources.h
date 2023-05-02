@@ -407,7 +407,7 @@ namespace dxvk
 
     Tlas m_tlas[Tlas::Type::Count];
 
-    Rc<DxvkDevice> m_device;
+    DxvkDevice* m_device;
 
     VkExtent3D m_downscaledExtent = { 0, 0, 0 };
     VkExtent3D m_targetExtent = { 0, 0, 0 };

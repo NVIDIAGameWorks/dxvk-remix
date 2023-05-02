@@ -77,21 +77,8 @@ namespace dxvk {
       path += '/';
     }
 
-    dumpImageToFile(path, str::format(imageName, "_", tm.tm_mday, tm.tm_mon, tm.tm_year, "-", tm.tm_hour, tm.tm_min, tm.tm_sec, ".dds"), image);
-  }
-
-  void RtxContext::generateSceneThumbnail(const std::string& dir, const std::string& filename, Rc<DxvkImage> image) {
-    env::createDirectory(dir);
-    m_exporter->exportImage(m_device, this, str::format(dir, filename, ".dds"), image, true);
-  }
-
-  void RtxContext::dumpImageToFile(const std::string& dir, const std::string& filename, Rc<DxvkImage> image) {
-    env::createDirectory(dir);
-    m_exporter->exportImage(m_device, this, str::format(dir, filename), image);
-  }
-  
-  void RtxContext::copyBufferFromGPU(const DxvkBufferSlice& buffer, AssetExporter::BufferCallback bufferCallback) {
-    m_exporter->exportBuffer(m_device, this, buffer, bufferCallback);
+    auto& exporter = getCommonObjects()->metaExporter();
+    exporter.dumpImageToFile(this, path, str::format(imageName, "_", tm.tm_mday, tm.tm_mon, tm.tm_year, "-", tm.tm_hour, tm.tm_min, tm.tm_sec, ".dds"), image);
   }
 
   void RtxContext::blitImageHelper(const Rc<DxvkImage>& srcImage, const Rc<DxvkImage>& dstImage, VkFilter filter) {
@@ -137,9 +124,7 @@ namespace dxvk {
 
   RtxContext::RtxContext(const Rc<DxvkDevice>& device)
     : DxvkContext(device)
-    , m_captureStateForRTX(true)
-    , m_scratchAllocator(device, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR)
-    , m_exporter(new AssetExporter()) {
+    , m_captureStateForRTX(true) {
     // Note: This may not be the best place to check for these features/properties, they ideally would be specified as
     // required upfront, but there's no good place to do that for this RTX extension (the D3D9 stuff does it before device
     // creation), so instead we just check for what is needed.
@@ -178,16 +163,12 @@ namespace dxvk {
       m_terminateAppFrameNum = stoul(env::getEnvVar("DXVK_TERMINATE_APP_FRAME"));
       m_triggerDelayedTerminate = true;
     }
-    if (env::getEnvVar("DXVK_DENOISER_NRD_FRAME_TIME_MS") != "") {
-      m_useFixedFrameTime = true;
-    }
+
     m_prevRunningTime = std::chrono::system_clock::now();
-    m_startTime = std::chrono::system_clock::now();
 
     checkOpacityMicromapSupport();
     checkShaderExecutionReorderingSupport();
     reportCpuSimdSupport();
-
   }
 
   RtxContext::~RtxContext() {
@@ -231,22 +212,6 @@ namespace dxvk {
     m_prevGpuIdleTicks = currGpuIdleTicks;
 
     return (float)delta * 0.001f * 0.001f; // to secs
-  }
-
-  // Returns wall time between start of app and current time.
-  uint32_t RtxContext::getGameTimeSinceStartMS() {
-    // Used in testing
-    if (m_useFixedFrameTime) {
-      float deltaTimeMS = 1000.f / 60; // Assume 60 fps
-      return (uint32_t)(m_device->getCurrentFrameId() * deltaTimeMS);
-    }
-
-    // TODO(TREX-1004) find a way to 'pause' this when a game is paused.
-    auto currTime = std::chrono::system_clock::now();
-
-    auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(currTime - m_startTime);
-
-    return static_cast<uint32_t>(elapsedMs.count());
   }
 
   VkExtent3D RtxContext::setDownscaleExtent(const VkExtent3D& upscaleExtent) {
@@ -527,11 +492,6 @@ namespace dxvk {
           }
         }
 
-        for (auto& pendingReq : m_pendingThumbnailRequests) {
-          generateSceneThumbnail(pendingReq.directory, pendingReq.filename, rtOutput.m_finalOutput.image);
-        }
-        m_pendingThumbnailRequests.clear();
-
         // Set up output src
         Rc<DxvkImage> srcImage = rtOutput.m_finalOutput.image;
 
@@ -558,9 +518,6 @@ namespace dxvk {
       getSceneManager().clear(this, m_previousInjectRtxHadScene);
       m_previousInjectRtxHadScene = false;
     }
-
-    // Bake sky probe if any
-    bakeSkyProbe();
 
     // The rest of the frame should render without RTX capture - at the moment that means UI stuff should raster on top of the RTX output
     disableRtxCapture();
@@ -611,11 +568,10 @@ namespace dxvk {
         getSceneManager().isGameCapturerIdle()) {
       Logger::info(str::format("RTX: Terminating application"));
       Metrics::serialize();
-      m_exporter->waitForAllExportsToComplete();
+      getCommonObjects()->metaExporter().waitForAllExportsToComplete();
 
       env::killProcess();
     }
-
 
     // Enable this again for the next frame
     enableRtxCapture();
@@ -1338,7 +1294,7 @@ namespace dxvk {
 
     // We are going to use this value to perform some animations on GPU, to mitigate precision related issues loop time every 24 hours.
     const uint32_t kOneDayMS = 24 * 60 * 60 * 1000;
-    constants.timeSinceStartMS = getGameTimeSinceStartMS() % kOneDayMS;
+    constants.timeSinceStartMS = getSceneManager().getGameTimeSinceStartMS() % kOneDayMS;
 
     m_common->metaRtxdiRayQuery().setRaytraceArgs(rtOutput);
     getSceneManager().getLightManager().setRaytraceArgs(
@@ -1770,8 +1726,6 @@ namespace dxvk {
       enableRtxCapture();
     else
       disableRtxCapture();
-
-    m_scratchAllocator.trim();
   }
 
   void RtxContext::updateComputeShaderResources() {
@@ -1816,13 +1770,6 @@ namespace dxvk {
 
   bool RtxContext::shouldUseTAA() const {
     return RtxOptions::Get()->isTAAEnabled();
-  }
-
-  void RtxContext::performSkinning(const DrawCallState& drawCallState, const RaytraceGeometry& geo) {
-    ZoneScoped;
-    ScopedGpuProfileZone(this, "performSkinning");
-
-    m_common->metaGeometryUtils().dispatchSkinning(m_cmd, this, drawCallState, geo);
   }
 
   void RtxContext::rasterizeToSkyMatte(const DrawParameters& params) {
@@ -2130,42 +2077,6 @@ namespace dxvk {
     }
 
     DxvkContext::clearImageView(imageView, offset, extent, aspect, value);
-  }
-
-  // Schedule sky probe bake on next frame
-  void RtxContext::scheduleSkyProbeBake(const std::string& dir, const std::string& filename) {
-    m_skyProbeBakeOutDir = dir;
-    m_skyProbeBakeOutFilename = filename;
-    m_skyProbeBakePending = true;
-  }
-
-  void RtxContext::bakeSkyProbe() {
-    if (!m_skyProbeBakePending)
-      return;
-
-    auto skyprobeView = getResourceManager().getSkyProbe(Rc<DxvkContext>(this));
-
-    const auto skyprobeExt = skyprobeView.image->info().extent;
-    const uint32_t equatorLength = std::min(skyprobeExt.width * 4, 16384u);
-    const VkExtent3D latlongExt { equatorLength, equatorLength/2, 1 };
-
-    auto latlong = getResourceManager().createImageResource(Rc<DxvkContext>(this),
-                                                            latlongExt, VK_FORMAT_R16G16B16A16_SFLOAT);
-    m_cmd->trackResource<DxvkAccess::Read>(skyprobeView.view);
-    m_cmd->trackResource<DxvkAccess::Write>(latlong.view);
-
-    const auto transform = RtxOptions::Get()->isZUp() ?
-      RtxImageUtils::LatLongTransform::ZUp2OpenEXR : RtxImageUtils::LatLongTransform::None;
-
-    m_common->metaImageUtils().cubemapToLatLong(Rc<RtxContext>(this),
-                                                skyprobeView.view, latlong.view, transform);
-
-    DxvkContext::flushCommandList();
-    m_device->waitForIdle();
-
-    dumpImageToFile(m_skyProbeBakeOutDir, m_skyProbeBakeOutFilename, latlong.image);
-
-    m_skyProbeBakePending = false;
   }
 
   void RtxContext::updateReflexConstants() {

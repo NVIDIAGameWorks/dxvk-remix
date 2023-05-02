@@ -62,7 +62,6 @@ namespace dxvk {
 
     float getWallTimeSinceLastCall();
     float getGpuIdleTimeSinceLastCall();
-    uint32_t getGameTimeSinceStartMS();
 
     void endFrame(Rc<DxvkImage> targetImage = nullptr);
 
@@ -174,8 +173,6 @@ namespace dxvk {
 
     RtxGeometryStatus commitGeometryToRT(const DrawParameters& params);
 
-    void performSkinning(const DrawCallState& drawCallState, const RaytraceGeometry& geo);
-
     virtual void beginRecording(const Rc<DxvkCommandList>& cmdList) override;
     virtual void draw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance) override;
     virtual void drawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance) override;
@@ -183,11 +180,7 @@ namespace dxvk {
 
     void processPendingDrawCalls();
 
-    void generateSceneThumbnail(const std::string& dir, const std::string& filename, Rc<DxvkImage> image);
-    void dumpImageToFile(const std::string& dir, const std::string& filename, Rc<DxvkImage> image);
-    void copyBufferFromGPU(const DxvkBufferSlice& buffer, AssetExporter::BufferCallback bufferCallback);
     void blitImageHelper(const Rc<DxvkImage>& srcImage, const Rc<DxvkImage>& dstImage, VkFilter filter);
-    void scheduleSkyProbeBake(const std::string& dir, const std::string& filename);
 
     SceneManager& getSceneManager();
     Resources& getResourceManager();
@@ -196,13 +189,7 @@ namespace dxvk {
     static void triggerUsdCapture() { s_triggerUsdCapture = true; }
     static const Vector3& getLastCameraPosition() { return s_lastCameraPosition; }
 
-    void triggerSceneThumbnail(const std::string& directory, const std::string& filename) {
-      m_pendingThumbnailRequests.push_back({ directory, filename });
-    }
-
     void bindCommonRayTracingResources(const Resources::RaytracingOutput& rtOutput);
-
-    DxvkStagingDataAlloc& getScratchAllocator() { return m_scratchAllocator; }
 
     void getDenoiseArgs(NrdArgs& outPrimaryDirectNrdArgs, NrdArgs& outPrimaryIndirectNrdArgs, NrdArgs& outSecondaryNrdArgs);
     void updateRaytraceArgsConstantBuffer(Rc<DxvkCommandList> cmdList, Resources::RaytracingOutput& rtOutput, float frameTimeSecs);
@@ -242,7 +229,6 @@ namespace dxvk {
     void initSkyProbe();
     void rasterizeToSkyProbe(const DrawParameters& params);
     bool rasterizeSky(const DrawParameters& params, const DrawCallState& drawCallState);
-    void bakeSkyProbe();
 
     void enableRtxCapture();
     void disableRtxCapture();
@@ -256,10 +242,6 @@ namespace dxvk {
     VkFormat m_skyRtColorFormat;
     VkClearValue m_skyClearValue;
     bool m_skyClearDirty = false;
-
-    std::string m_skyProbeBakeOutDir;
-    std::string m_skyProbeBakeOutFilename;
-    bool m_skyProbeBakePending = false;
 
     void updateReflexConstants();
 
@@ -282,27 +264,14 @@ namespace dxvk {
 
     std::chrono::time_point<std::chrono::system_clock> m_prevRunningTime;
     uint64_t m_prevGpuIdleTicks;
-    std::chrono::time_point<std::chrono::system_clock> m_startTime;
-
-    DxvkStagingDataAlloc m_scratchAllocator;
-
-    std::unique_ptr<AssetExporter> m_exporter;
 
     bool m_screenshotFrameEnabled = false;
     bool m_triggerDelayedTerminate = false;
-    bool m_useFixedFrameTime = false;
     uint32_t m_screenshotFrameNum = -1;
     uint32_t m_terminateAppFrameNum = -1;
     float m_terrainOffset = 0.f;
     XXH64_hash_t m_lastTerrainMaterial = 0;
     bool m_previousInjectRtxHadScene = false;
-
-    struct ThumbnailRequest {
-      std::string directory;
-      std::string filename;
-    };
-
-    std::vector<ThumbnailRequest> m_pendingThumbnailRequests;
 
     std::vector<DrawCallState> m_drawCallQueue;
 

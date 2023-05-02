@@ -48,7 +48,7 @@ namespace dxvk {
     /**
      * \brief Execute a compute shader to unwrap a cubemap image into a lat-long image
      */
-    void cubemapToLatLong(Rc<RtxContext>& ctx, Rc<DxvkImageView>& cube,
+    void cubemapToLatLong(Rc<DxvkContext>& ctx, Rc<DxvkImageView>& cube,
                           Rc<DxvkImageView>& latlong, LatLongTransform transform) const;
   };
 }
