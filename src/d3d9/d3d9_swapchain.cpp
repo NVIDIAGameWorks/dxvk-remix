@@ -480,9 +480,11 @@ namespace dxvk {
                                 | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
       resolveInfo.tiling        = VK_IMAGE_TILING_OPTIMAL;
       resolveInfo.layout        = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-      
+
+      // NV-DXVK start: add debug names to VkImage objects
       Rc<DxvkImage> resolvedSrc = m_device->createImage(
-        resolveInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture);
+        resolveInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture, "GetFrontBufferData resolved src");
+      // NV-DXVK end
 
       m_parent->EmitCs([
         cDstImage = resolvedSrc,
@@ -535,9 +537,11 @@ namespace dxvk {
                                    | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
       blitCreateInfo.tiling        = VK_IMAGE_TILING_OPTIMAL;
       blitCreateInfo.layout        = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-      
+
+      // NV-DXVK start: add debug names to VkImage objects
       Rc<DxvkImage> blittedSrc = m_device->createImage(
-        blitCreateInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture);
+        blitCreateInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture, "GetFrontBufferData blit src");
+      // NV-DXVK end
 
       const DxvkFormatInfo* dstFormatInfo = imageFormatInfo(blittedSrc->info().format);
       const DxvkFormatInfo* srcFormatInfo = imageFormatInfo(srcImage->info().format);

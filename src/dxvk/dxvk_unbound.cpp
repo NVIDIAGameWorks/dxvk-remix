@@ -116,8 +116,10 @@ namespace dxvk {
     if (type == VK_IMAGE_TYPE_2D)
       info.flags       |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
     
+    // NV-DXVK start: add debug names to VkImage objects
     return dev->createImage(info,
-      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture);
+      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture, "unbound texture");
+    // NV-DXVK end
   }
   
   

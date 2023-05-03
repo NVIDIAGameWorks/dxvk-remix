@@ -176,21 +176,21 @@ namespace dxvk {
 
     viewInfo.format = desc.format = VK_FORMAT_R32_SFLOAT;
     viewInfo.usage = desc.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    m_exposure.image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget);
+    m_exposure.image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget, "autoexposure");
     m_exposure.view = device->createImageView(m_exposure.image, viewInfo);
     ctx->changeImageLayout(m_exposure.image, VK_IMAGE_LAYOUT_GENERAL);
 
     desc.extent = VkExtent3D { EXPOSURE_HISTOGRAM_SIZE, 1, 1 };
     viewInfo.format = desc.format = VK_FORMAT_R32_UINT;
     viewInfo.usage = desc.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    m_exposureHistogram.image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget);
+    m_exposureHistogram.image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget, "autoexposure histogram");
     m_exposureHistogram.view = device->createImageView(m_exposureHistogram.image, viewInfo);
     ctx->changeImageLayout(m_exposureHistogram.image, VK_IMAGE_LAYOUT_GENERAL);
 
     desc.extent = VkExtent3D { EXPOSURE_HISTOGRAM_SIZE, 1, 1 };
     viewInfo.format = desc.format = VK_FORMAT_R32_SFLOAT;
     viewInfo.usage = desc.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-    m_exposureWeightCurve.image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget);
+    m_exposureWeightCurve.image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget, "autoexposure weight curve");
     m_exposureWeightCurve.view = device->createImageView(m_exposureWeightCurve.image, viewInfo);
     ctx->changeImageLayout(m_exposureWeightCurve.image, VK_IMAGE_LAYOUT_GENERAL);
   }

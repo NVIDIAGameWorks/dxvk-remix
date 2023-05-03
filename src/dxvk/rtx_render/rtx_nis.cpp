@@ -106,7 +106,7 @@ namespace dxvk {
     desc.tiling = VK_IMAGE_TILING_OPTIMAL;
     desc.layout = VK_IMAGE_LAYOUT_GENERAL;
 
-    texture.image = ctx->getDevice()->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget);
+    texture.image = ctx->getDevice()->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget, "NIS output");
 
     const DxvkFormatInfo* formatInfo = imageFormatInfo(format);
     const uint32_t rowPitch = desc.extent.width * formatInfo->elementSize;

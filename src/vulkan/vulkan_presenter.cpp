@@ -300,6 +300,22 @@ namespace dxvk::vk {
       if ((status = m_vkd->vkCreateSemaphore(m_vkd->device(),
           &semInfo, nullptr, &m_semaphores[i].present)) != VK_SUCCESS)
         return status;
+
+      // NV-DXVK start: add debug names to VkImage objects
+      if (m_vkd->vkSetDebugUtilsObjectNameEXT) {
+        VkDebugUtilsObjectNameInfoEXT nameInfo;
+        nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+        nameInfo.pNext = nullptr;
+        nameInfo.objectType = VK_OBJECT_TYPE_SEMAPHORE;
+        nameInfo.objectHandle = (uint64_t) m_semaphores[i].acquire;
+        nameInfo.pObjectName = "Presenter: acquire semaphore";
+        m_vkd->vkSetDebugUtilsObjectNameEXT(m_vkd->device(), &nameInfo);
+        
+        nameInfo.objectHandle = (uint64_t) m_semaphores[i].present;
+        nameInfo.pObjectName = "Presenter: present semaphore";
+        m_vkd->vkSetDebugUtilsObjectNameEXT(m_vkd->device(), &nameInfo);
+      }
+      // NV-DXVK end
     }
     
     // Invalidate indices

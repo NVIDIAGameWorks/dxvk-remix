@@ -117,7 +117,7 @@ namespace dxvk {
     desc.extent.width >>= firstMip;
     desc.extent.height >>= firstMip;
     Rc<DxvkImage> image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-      DxvkMemoryStats::Category::RTXMaterialTexture);
+      DxvkMemoryStats::Category::RTXMaterialTexture, "material texture");
 
     // Make DxvkImageView
     DxvkImageViewCreateInfo viewInfo;
@@ -172,7 +172,7 @@ namespace dxvk {
 
     const DxvkFormatInfo* formatInfo = imageFormatInfo(assetInfo.format);
 
-    Rc<DxvkImage> image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXMaterialTexture);
+    Rc<DxvkImage> image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXMaterialTexture, "material texture");
 
     // copy image data from disk
     for (uint32_t level = 0; level < assetInfo.mipLevels; ++level) {
@@ -306,7 +306,7 @@ namespace dxvk {
 
     // If this is a first time promotion, then allocate vid memory
     if (!image.ptr())
-      image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXMaterialTexture);
+      image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXMaterialTexture, "material texture");
 
     size_t currentOffsetLow = 0;
     size_t currentOffsetHigh = 0;
