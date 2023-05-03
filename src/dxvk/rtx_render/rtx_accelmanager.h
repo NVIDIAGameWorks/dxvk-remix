@@ -110,7 +110,8 @@ private:
                                      const std::vector<std::unique_ptr<BlasBucket>>& blasBuckets,
                                      std::vector<VkAccelerationStructureBuildGeometryInfoKHR>& blasToBuild,
                                      std::vector<VkAccelerationStructureBuildRangeInfoKHR*>& blasRangesToBuild);
-  void internalBuildTlas(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, Tlas::Type type);
+  template<Tlas::Type type>
+  void internalBuildTlas(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList);
   std::vector<RtInstance*> m_reorderedSurfaces;
   std::vector<uint32_t> m_reorderedSurfacesFirstIndexOffset; 
   std::vector<VkAccelerationStructureInstanceKHR> m_mergedInstances[Tlas::Count];

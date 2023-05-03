@@ -382,7 +382,7 @@ DxvkMemory::DxvkMemory() { }
           VkMemoryAllocateFlags             allocateFlags,
           float                             priority,
           DxvkMemoryStats::Category         category) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     // NV-DXVK start: Allocation mutex removal
     // Note: The mutex here in DXVK has been removed in favor of the per-memory type mutex in tryAllocFromType.
@@ -537,7 +537,7 @@ DxvkMemory::DxvkMemory() { }
           float                             priority,
     const VkMemoryDedicatedAllocateInfo*    dedAllocInfo,
           DxvkMemoryStats::Category         category) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     bool useMemoryPriority = (propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
                           && (m_device->features().extMemoryPriority.memoryPriority);
     

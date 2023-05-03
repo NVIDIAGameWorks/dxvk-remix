@@ -48,7 +48,7 @@
 #include "../util/util_defer.h"
 
 #include "rtx_imgui.h"
-#include "../tracy/Tracy.hpp"
+#include "dxvk_scoped_annotation.h"
 #include "imgui/dxvk_imgui.h"
 
 #include <ctime>
@@ -215,7 +215,7 @@ namespace dxvk {
   }
 
   VkExtent3D RtxContext::setDownscaleExtent(const VkExtent3D& upscaleExtent) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     VkExtent3D downscaleExtent;
     if (shouldUseDLSS()) {
       DxvkDLSS& dlss = m_common->metaDLSS();
@@ -260,7 +260,7 @@ namespace dxvk {
 
   // Hooked into D3D9 presentImage (same place HUD rendering is)
   void RtxContext::injectRTX(Rc<DxvkImage> targetImage) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     m_device->setPresentThrottleDelay(RtxOptions::Get()->getPresentThrottleDelay());
 
@@ -578,7 +578,7 @@ namespace dxvk {
   }
 
   void RtxContext::updateMetrics(const float frameTimeSecs, const float gpuIdleTimeSecs) const {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     Metrics::log(Metric::average_frame_time, frameTimeSecs * 1000); // In milliseconds
     Metrics::log(Metric::gpu_idle_ticks, gpuIdleTimeSecs * 1000); // In milliseconds
     uint64_t vidUsageMib = 0;
@@ -681,7 +681,7 @@ namespace dxvk {
   }
 
   RtxGeometryStatus RtxContext::commitGeometryToRT(const DrawParameters& params){
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     if (!m_captureStateForRTX || !RtxOptions::Get()->enableRaytracing())
       return RtxGeometryStatus::Ignored;
@@ -984,7 +984,7 @@ namespace dxvk {
   }
 
   void RtxContext::processPendingDrawCalls() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     spillRenderPass(false);
 
@@ -1089,7 +1089,7 @@ namespace dxvk {
   }
 
   void RtxContext::updateRaytraceArgsConstantBuffer(Rc<DxvkCommandList> cmdList, Resources::RaytracingOutput& rtOutput, float frameTimeSecs) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     // Prepare shader arguments
     RaytraceArgs &constants = rtOutput.m_raytraceArgs;
     constants = {}; 
@@ -1295,7 +1295,7 @@ namespace dxvk {
   }
 
   void RtxContext::bindCommonRayTracingResources(const Resources::RaytracingOutput& rtOutput) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     Rc<DxvkBuffer> constantsBuffer = getResourceManager().getConstantsBuffer();
     Rc<DxvkBuffer> surfaceBuffer = getSceneManager().getSurfaceBuffer();
     Rc<DxvkBuffer> surfaceMappingBuffer = getSceneManager().getSurfaceMappingBuffer();
@@ -1354,7 +1354,6 @@ namespace dxvk {
   }
 
   void RtxContext::dispatchVolumetrics(const Resources::RaytracingOutput& rtOutput) {
-    ZoneScoped;
     ScopedGpuProfileZone(this, "Volumetrics");
 
     // Volume Raytracing
@@ -1379,7 +1378,6 @@ namespace dxvk {
   }
 
   void RtxContext::dispatchIntegrate(const Resources::RaytracingOutput& rtOutput) {
-    ZoneScoped;
     ScopedGpuProfileZone(this, "Integrate Raytracing");
     
     m_common->metaPathtracerIntegrateDirect().dispatch(this, rtOutput);
@@ -1387,13 +1385,12 @@ namespace dxvk {
   }
   
   void RtxContext::dispatchDemodulate(const Resources::RaytracingOutput& rtOutput) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     DemodulatePass& demodulate = m_common->metaDemodulate();
     demodulate.dispatch(this, rtOutput);
   }
   
   void RtxContext::dispatchReferenceDenoise(const Resources::RaytracingOutput& rtOutput, float frameTimeSecs) {
-    ZoneScoped;
     if (!RtxOptions::Get()->isDenoiserEnabled() || !RtxOptions::Get()->useDenoiserReferenceMode())
       return;
 
@@ -1430,7 +1427,6 @@ namespace dxvk {
   }
 
   void RtxContext::dispatchDenoise(const Resources::RaytracingOutput& rtOutput, float frameTimeSecs) {
-    ZoneScoped;
     if (!RtxOptions::Get()->isDenoiserEnabled() || RtxOptions::Get()->useDenoiserReferenceMode())
       return;
 
@@ -1541,20 +1537,17 @@ namespace dxvk {
   }
 
   void RtxContext::dispatchDLSS(const Resources::RaytracingOutput& rtOutput) {
-    ZoneScoped;
     DxvkDLSS& dlss = m_common->metaDLSS();
 
     dlss.dispatch(m_cmd, m_device, this, m_execBarriers, rtOutput, m_resetHistory);
   }
 
   void RtxContext::dispatchNIS(const Resources::RaytracingOutput& rtOutput) {
-    ZoneScoped;
     ScopedGpuProfileZone(this, "NIS");
     m_common->metaNIS().dispatch(this, rtOutput);
   }
 
   void RtxContext::dispatchTemporalAA(const Resources::RaytracingOutput& rtOutput) {
-    ZoneScoped;
     ScopedGpuProfileZone(this, "TAA");
 
     DxvkTemporalAA& taa = m_common->metaTAA();
@@ -1576,13 +1569,14 @@ namespace dxvk {
   }
 
   void RtxContext::dispatchComposite(const Resources::RaytracingOutput& rtOutput) {
-    ZoneScoped;
     if (getSceneManager().getSurfaceBuffer() == nullptr) {
       return;
     }
 
+    ScopedGpuProfileZone(this, "Composite");
+
     bool isNRDPreCompositionDenoiserEnabled = RtxOptions::Get()->isDenoiserEnabled() && !RtxOptions::Get()->useDenoiserReferenceMode();
-    
+
     CompositePass::Settings settings;
     settings.fog = getSceneManager().getFogState();
     settings.isNRDPreCompositionDenoiserEnabled = isNRDPreCompositionDenoiserEnabled;
@@ -1596,7 +1590,7 @@ namespace dxvk {
   }
 
   void RtxContext::dispatchToneMapping(const Resources::RaytracingOutput& rtOutput, bool performSRGBConversion, const float deltaTime) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     if (m_common->metaDebugView().debugViewIdx() == DEBUG_VIEW_PRE_TONEMAP_OUTPUT)
       return;
@@ -1637,7 +1631,7 @@ namespace dxvk {
   }
 
   void RtxContext::dispatchBloom(const Resources::RaytracingOutput& rtOutput) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     DxvkBloom& bloom = m_common->metaBloom();
     if (!bloom.shouldDispatch())
       return;
@@ -1652,7 +1646,7 @@ namespace dxvk {
   }
 
   void RtxContext::dispatchPostFx(Resources::RaytracingOutput& rtOutput) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     DxvkPostFx& postFx = m_common->metaPostFx();
     RtCamera& mainCamera = getSceneManager().getCamera();
     if (!postFx.enable()) {
@@ -1669,7 +1663,7 @@ namespace dxvk {
   }
 
   void RtxContext::dispatchDebugView(Rc<DxvkImage>& srcImage, const Resources::RaytracingOutput& rtOutput, bool captureScreenImage)  {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     auto& debugView = m_common->metaDebugView();
 
@@ -1683,7 +1677,7 @@ namespace dxvk {
   }
 
   void RtxContext::flushCommandList() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     const bool wasCapturingForRtx = m_captureStateForRTX;
 
@@ -1699,7 +1693,7 @@ namespace dxvk {
   }
 
   void RtxContext::updateComputeShaderResources() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     DxvkContext::updateComputeShaderResources();
 
     auto&& layout = m_state.cp.pipeline->layout();
@@ -1715,7 +1709,7 @@ namespace dxvk {
   }
 
   void RtxContext::updateRaytracingShaderResources() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     DxvkContext::updateRaytracingShaderResources();
 
     auto&& layout = m_state.rp.pipeline->layout();
@@ -1743,7 +1737,6 @@ namespace dxvk {
   }
 
   void RtxContext::rasterizeToSkyMatte(const DrawParameters& params) {
-    ZoneScoped;
     ScopedGpuProfileZone(this, "rasterizeToSkyMatte");
 
     auto skyMatteView = getResourceManager().getSkyMatte(this, m_skyColorFormat).view;
@@ -1819,7 +1812,6 @@ namespace dxvk {
       {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f},
     };
 
-    ZoneScoped;
     ScopedGpuProfileZone(this, "rasterizeToSkyProbe");
 
     // Lazy init
@@ -1949,7 +1941,6 @@ namespace dxvk {
       }
     }
 
-    ZoneScoped;
     ScopedGpuProfileZone(this, "rasterizeSky");
 
     // Grab and apply replacement texture if any

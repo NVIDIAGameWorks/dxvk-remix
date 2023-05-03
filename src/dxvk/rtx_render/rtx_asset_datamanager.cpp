@@ -25,7 +25,7 @@
 #include "rtx_asset_package.h"
 #include "rtx_game_capturer_paths.h"
 #include "rtx_io.h"
-#include "Tracy.hpp"
+#include "dxvk_scoped_annotation.h"
 #include <gli/gli.hpp>
 
 namespace dxvk {
@@ -478,7 +478,7 @@ namespace dxvk {
   }
 
   Rc<AssetData> AssetDataManager::findAsset(const std::string& filename) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     const char* extension = strrchr(filename.c_str(), '.');
     const bool isDDS = extension ? _stricmp(extension, ".dds") == 0 : false;

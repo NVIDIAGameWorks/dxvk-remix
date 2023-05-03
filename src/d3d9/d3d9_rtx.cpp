@@ -41,20 +41,20 @@ namespace dxvk {
 
   template<typename T>
   void D3D9Rtx::copyIndices(const uint32_t indexCount, T* pIndicesDst, const T* pIndices, uint32_t& minIndex, uint32_t& maxIndex) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     assert(indexCount >= 3);
 
     // Find min/max index
     {
-      ZoneScopedN("Find min/max");
+      ScopedCpuProfileZoneN("Find min/max");
 
       fast::findMinMax<T>(indexCount, pIndices, minIndex, maxIndex);
     }
 
     // Modify the indices if the min index is non-zero
     {
-      ZoneScopedN("Copy indices");
+      ScopedCpuProfileZoneN("Copy indices");
 
       if (minIndex != 0) {
         fast::copySubtract<T>(pIndicesDst, pIndices, indexCount, (T) minIndex);
@@ -66,7 +66,7 @@ namespace dxvk {
 
   template<typename T>
   DxvkBufferSlice D3D9Rtx::processIndexBuffer(const uint32_t indexCount, const uint32_t startIndex, const DxvkBufferSliceHandle& indexSlice, uint32_t& minIndex, uint32_t& maxIndex) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     const uint32_t indexStride = sizeof(T);
     const size_t numIndexBytes = indexCount * indexStride;
@@ -88,7 +88,7 @@ namespace dxvk {
   }
 
   void D3D9Rtx::prepareVertexCapture(RasterGeometry& geoData, const int vertexIndexOffset) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     struct CapturedVertex {
       Vector4 position;
@@ -181,7 +181,7 @@ namespace dxvk {
       if (ctx.buffer.handle == VK_NULL_HANDLE)
         continue;
 
-      ZoneScopedN("Process Vertices");
+      ScopedCpuProfileZoneN("Process Vertices");
       const int32_t vertexOffset = ctx.offset + ctx.stride * vertexIndexOffset;
       const uint32_t numVertexBytes = ctx.stride * geoData.vertexCount;
 
@@ -391,7 +391,7 @@ namespace dxvk {
   }
 
   void D3D9Rtx::internalPrepareDraw(const IndexContext& indexContext, const VertexContext vertexContext[caps::MaxStreams], const Draw& drawContext) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     // RTX was injected => treat everything else as rasterized 
     if (m_rtxInjectTriggered) {
@@ -485,7 +485,7 @@ namespace dxvk {
   }
 
   std::shared_future<SkinningData> D3D9Rtx::processSkinning(const RasterGeometry& geoData) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     if (d3d9State().renderStates[D3DRS_VERTEXBLEND] != D3DVBF_DISABLE) {
       bool hasBlendIndices = d3d9State().vertexDecl != nullptr ? d3d9State().vertexDecl->TestFlag(D3D9VertexDeclFlag::HasBlendIndices) : false;
       bool indexedVertexBlend = hasBlendIndices && d3d9State().renderStates[D3DRS_INDEXEDVERTEXBLENDENABLE];
@@ -511,7 +511,7 @@ namespace dxvk {
       const uint32_t vertexCount = geoData.vertexCount;
 
       return m_gpeWorkers.Schedule([cBoneMatrices = d3d9State().transforms, blendIndices, numBonesPerVertex, vertexCount]() -> SkinningData {
-        ZoneScoped;
+        ScopedCpuProfileZone();
         uint32_t numBones = numBonesPerVertex;
 
         int minBoneIndex = 0;

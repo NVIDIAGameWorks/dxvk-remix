@@ -283,7 +283,7 @@ namespace dxvk {
     : m_device(device.ptr()) { }
 
   void Resources::createRaytracingOutput(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     if (m_downscaledExtent != downscaledExtent) {
       m_downscaledExtent = downscaledExtent;

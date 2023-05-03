@@ -165,7 +165,7 @@ namespace dxvk {
   };
 
   void DxvkRaytracingPipeline::compilePipeline() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     std::lock_guard<dxvk::mutex> lock(m_mutex);
 
@@ -198,7 +198,7 @@ namespace dxvk {
   }
 
   void DxvkRaytracingPipeline::createLayout() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     constexpr uint32_t maxShadersInGroup = 3;
     const size_t maxShaderModules = m_shaders.groups.size() * maxShadersInGroup;

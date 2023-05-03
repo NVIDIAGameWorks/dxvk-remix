@@ -2088,7 +2088,6 @@ namespace dxvk {
     const Rc<DxvkContext>& ctx,
     VkSurfaceFormatKHR surfaceFormat,
     VkExtent2D        surfaceSize) {
-    ZoneScoped;
     ScopedGpuProfileZone(ctx, "ImGUI Render");
 
     // Sometimes games can change windows on us, so we need to check that here and tell ImGUI

@@ -527,7 +527,7 @@ namespace dxvk {
   }
 
   void D3D9CommonTexture::SetupForRtxFrom(const D3D9CommonTexture* source) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     if (nullptr == source)
       return;
