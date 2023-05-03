@@ -291,8 +291,7 @@ namespace dxvk {
     if (type == dxvk::DenoiserType::Secondaries) {
       // Relax this substantially for secondaries, to improve quality of curved glass
       common.disocclusionThreshold = 0.1f;
-    }
-    else {
+    } else {
       // Separate disocclusion threshold for transmission through curved glass
       common.disocclusionThresholdAlternate = 0.1f;
     }
