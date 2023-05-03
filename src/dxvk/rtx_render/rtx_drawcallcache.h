@@ -26,7 +26,7 @@
 #include <unordered_map>
 
 #include "../util/util_vector.h"
-#include "../tracy/Tracy.hpp"
+#include "dxvk_scoped_annotation.h"
 
 #include "rtx_types.h"
 #include <d3d9types.h>

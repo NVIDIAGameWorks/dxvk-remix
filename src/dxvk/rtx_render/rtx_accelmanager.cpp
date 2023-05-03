@@ -131,7 +131,7 @@ namespace dxvk {
   }
 
   static void fillGeometryInfoFromBlasEntry(const BlasEntry& blasEntry, RtInstance& instance, const OpacityMicromapManager* opacityMicromapManager) {
-
+    ScopedCpuProfileZone();
     instance.buildGeometries.clear();
     instance.buildRanges.clear();
     instance.billboardIndices.clear();
@@ -292,6 +292,7 @@ namespace dxvk {
   }
 
   static void trackBlasBuildResources(Rc<DxvkCommandList> cmdList, DxvkBarrierSet& execBarriers, const BlasEntry* blasEntry) {
+    ScopedCpuProfileZone();
     cmdList->trackResource<DxvkAccess::Read>(blasEntry->modifiedGeometryData.positionBuffer.buffer());
     cmdList->trackResource<DxvkAccess::Read>(blasEntry->modifiedGeometryData.indexBuffer.buffer());
 
@@ -318,7 +319,6 @@ namespace dxvk {
                                             InstanceManager& instanceManager,
                                             OpacityMicromapManager* opacityMicromapManager,
                                             float frameTimeSecs) {
-
     ScopedGpuProfileZone(ctx, "buildBLAS");
 
     auto& instances = instanceManager.getInstanceTable();
@@ -664,6 +664,7 @@ namespace dxvk {
   }
 
   void AccelManager::prepareSceneData(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, DxvkBarrierSet& execBarriers, InstanceManager& instanceManager) {
+    ScopedCpuProfileZone();
     bool haveInstances = false;
     for (const auto& instances : m_mergedInstances) {
       if (!instances.empty()) {
@@ -784,6 +785,7 @@ namespace dxvk {
   }
 
   void AccelManager::uploadSurfaceData(Rc<DxvkContext> ctx) {
+    ScopedCpuProfileZone();
     if (m_reorderedSurfaces.empty())
       return;
 
@@ -871,7 +873,7 @@ namespace dxvk {
                                  std::vector<VkAccelerationStructureBuildGeometryInfoKHR>& blasToBuild,
                                  std::vector<VkAccelerationStructureBuildRangeInfoKHR*>& blasRangesToBuild,
                                  float frameTimeSecs) {
-
+    ScopedGpuProfileZone(ctx, "buildBLAS");
     // Upload surfaces before opacity micromap generation which reads the surface data on the GPU
     uploadSurfaceData(ctx);
 
@@ -924,9 +926,8 @@ namespace dxvk {
       cmdList->trackResource<DxvkAccess::Read>(blas->accelStructure);
     }
 
-    for (auto type : {Tlas::Opaque, Tlas::Unordered}) {
-      internalBuildTlas(ctx, cmdList, type);
-    }
+    internalBuildTlas<Tlas::Opaque>(ctx, cmdList);
+    internalBuildTlas<Tlas::Unordered>(ctx, cmdList);
 
     ctx->emitMemoryBarrier(0,
       VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
@@ -935,7 +936,8 @@ namespace dxvk {
       VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR);
   }
 
-  void AccelManager::internalBuildTlas(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, Tlas::Type type) {
+  template<Tlas::Type type>
+  void AccelManager::internalBuildTlas(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList) {
     static constexpr char* names[] = { "buildTLAS_Opaque", "buildTLAS_NonOpaque" };
     ScopedGpuProfileZone(ctx, names[type]);
     const VkBuildAccelerationStructureFlagsKHR flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR;

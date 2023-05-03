@@ -526,20 +526,7 @@ namespace dxvk {
 
     m_settings.m_resetHistory |= inputs.reset;
 
-    const char* annotation = nullptr;
-    switch (m_settings.m_methodDesc.method) {
-    case nrd::Method::REBLUR_DIFFUSE_SPECULAR:
-      annotation = "NRD: ReBLUR";
-      break;
-    case nrd::Method::RELAX_DIFFUSE_SPECULAR:
-      annotation = "NRD: ReLAX";
-      break;
-    case nrd::Method::REFERENCE:
-      annotation = "NRD: Reference";
-      break;
-    }
-
-    ScopedGpuProfileZone(ctx, annotation);
+    ScopedGpuProfileZone(ctx, "NRD");
 
     prepareResources(cmdList, device, ctx, rtOutput);
 
@@ -612,7 +599,7 @@ namespace dxvk {
         const nrd::PipelineDesc& pipelineDesc = denoiserDesc.pipelines[dispatchDesc.pipelineIndex];
         const ComputePipeline& computePipeline = m_computePipelines[dispatchDesc.pipelineIndex];
 
-        ScopedGpuProfileZone(ctx, dispatchDesc.name);
+        ScopedGpuProfileZoneDynamic(ctx, dispatchDesc.name);
 
         VkDescriptorSet descriptorSet = ctx->allocateDescriptorSet(computePipeline.descriptorSetLayout, "NRD descriptor set");
 

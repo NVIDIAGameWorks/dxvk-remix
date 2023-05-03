@@ -52,8 +52,7 @@
 #include <thread>
 #include <future>
 #include <xutility>
-#include "../tracy/Tracy.hpp"
-#include "../tracy/TracyC.h"
+#include "../dxvk/dxvk_scoped_annotation.h"
 #ifdef MSC_VER
 #pragma fenv_access (on)
 #endif
@@ -2491,7 +2490,7 @@ namespace dxvk {
           D3DPRIMITIVETYPE PrimitiveType,
           UINT             StartVertex,
           UINT             PrimitiveCount) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     D3D9DeviceLock lock = LockDevice();
 
@@ -2534,7 +2533,7 @@ namespace dxvk {
           UINT             NumVertices,
           UINT             StartIndex,
           UINT             PrimitiveCount) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     D3D9DeviceLock lock = LockDevice();
 
@@ -2577,7 +2576,7 @@ namespace dxvk {
           UINT             PrimitiveCount,
     const void*            pVertexStreamZeroData,
           UINT             VertexStreamZeroStride) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     D3D9DeviceLock lock = LockDevice();
 
@@ -2635,7 +2634,7 @@ namespace dxvk {
           D3DFORMAT        IndexDataFormat,
     const void*            pVertexStreamZeroData,
           UINT             VertexStreamZeroStride) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     D3D9DeviceLock lock = LockDevice();
 
@@ -4683,7 +4682,7 @@ namespace dxvk {
           UINT                    SizeToLock,
           void**                  ppbData,
           DWORD                   Flags) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (unlikely(ppbData == nullptr))
@@ -4797,7 +4796,7 @@ namespace dxvk {
 
   HRESULT D3D9DeviceEx::FlushBuffer(
         D3D9CommonBuffer*       pResource) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     auto dstBuffer = pResource->GetBufferSlice<D3D9_COMMON_BUFFER_TYPE_REAL>();
     auto srcSlice = pResource->GetMappedSlice();
 
@@ -5225,7 +5224,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::UpdateClipPlanes() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     m_flags.clr(D3D9DeviceFlag::DirtyClipPlanes);
 
     auto slice = m_vsClipPlanes->allocSlice();
@@ -5323,8 +5322,6 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::Flush() {
-    TracyCSetThreadName("D3D9");
-
     D3D9DeviceLock lock = LockDevice();
 
     m_initializer->Flush();
@@ -5476,7 +5473,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::UploadManagedTextures(uint32_t mask) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     // Guaranteed to not be nullptr...
     for (uint32_t texIdx : bit::BitMask(mask))
       UploadManagedTexture(GetCommonTexture(m_state.textures[texIdx]));
@@ -5486,7 +5483,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::GenerateTextureMips(uint32_t mask) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     for (uint32_t texIdx : bit::BitMask(mask)) {
       // Guaranteed to not be nullptr...
@@ -5583,7 +5580,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::UpdateFog() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     auto& rs = m_state.renderStates;
 
     bool fogEnabled = rs[D3DRS_FOGENABLE];
@@ -5664,7 +5661,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::BindFramebuffer() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     m_flags.clr(D3D9DeviceFlag::DirtyFramebuffer);
 
     DxvkRenderTargets attachments;
@@ -5710,7 +5707,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::BindViewportAndScissor() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     m_flags.clr(D3D9DeviceFlag::DirtyViewportScissor);
 
     VkViewport viewport;
@@ -5780,7 +5777,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::BindMultiSampleState() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     m_flags.clr(D3D9DeviceFlag::DirtyMultiSampleState);
 
     DxvkMultisampleState msState;
@@ -5798,7 +5795,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::BindBlendState() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     m_flags.clr(D3D9DeviceFlag::DirtyBlendState);
 
     auto& state = m_state.renderStates;
@@ -5887,7 +5884,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::BindDepthStencilState() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     m_flags.clr(D3D9DeviceFlag::DirtyDepthStencilState);
 
     auto& rs = m_state.renderStates;
@@ -5934,7 +5931,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::BindRasterizerState() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     m_flags.clr(D3D9DeviceFlag::DirtyRasterizerState);
 
     auto& rs = m_state.renderStates;
@@ -5957,7 +5954,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::BindDepthBias() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     m_flags.clr(D3D9DeviceFlag::DirtyDepthBias);
 
     auto& rs = m_state.renderStates;
@@ -5979,7 +5976,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::BindAlphaTestState() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     m_flags.clr(D3D9DeviceFlag::DirtyAlphaTestState);
 
     auto& rs = m_state.renderStates;
@@ -6150,7 +6147,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::UndirtySamplers(uint32_t mask) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     for (uint32_t i : bit::BitMask(mask))
       BindSampler(i);
@@ -6201,7 +6198,7 @@ namespace dxvk {
 
   
   void D3D9DeviceEx::PrepareDraw(D3DPRIMITIVETYPE PrimitiveType) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     if (unlikely(m_activeHazardsRT != 0)) {
       EmitCs([](DxvkContext* ctx) {
         ctx->emitRenderTargetReadbackBarrier();
@@ -6683,7 +6680,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::UpdateFixedFunctionVS() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     // Shader...
     bool hasPositionT = m_state.vertexDecl != nullptr ? m_state.vertexDecl->TestFlag(D3D9VertexDeclFlag::HasPositionT) : false;
     bool hasBlendWeight    = m_state.vertexDecl != nullptr ? m_state.vertexDecl->TestFlag(D3D9VertexDeclFlag::HasBlendWeight)  : false;
@@ -6885,7 +6882,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::UpdateFixedFunctionPS() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     // Shader...
     if (m_flags.test(D3D9DeviceFlag::DirtyFFPixelShader) || m_lastSamplerTypesFF != m_textureTypes) {
       m_flags.clr(D3D9DeviceFlag::DirtyFFPixelShader);

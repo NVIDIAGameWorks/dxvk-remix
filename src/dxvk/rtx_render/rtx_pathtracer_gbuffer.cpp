@@ -156,7 +156,6 @@ namespace dxvk {
   }
 
   void DxvkPathtracerGbuffer::dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
-    ZoneScoped;
     ScopedGpuProfileZone(ctx, "Gbuffer Raytracing");
 
     // Bind resources
@@ -322,7 +321,7 @@ namespace dxvk {
                                                                           const bool useRayQuery,
                                                                           const bool serEnabled, 
                                                                           const bool ommEnabled) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     DxvkRaytracingPipelineShaders shaders;
     if (useRayQuery) {
       if (isPSRPass) {

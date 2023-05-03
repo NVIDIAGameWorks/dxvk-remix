@@ -133,7 +133,6 @@ namespace dxvk {
                                           Rc<DxvkContext> ctx,
                                           const DrawCallState& drawCallState,
                                           const RaytraceGeometry& geo) const {
-    ZoneScoped;
     ScopedGpuProfileZone(ctx, "performSkinning");
 
     SkinningArgs params {};
@@ -355,7 +354,7 @@ namespace dxvk {
   }
 
   bool RtxGeometryUtils::cacheIndexDataOnGPU(const Rc<DxvkContext>& ctx, const RasterGeometry& input, RaytraceGeometry& output) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     // Handle index buffer replacement - since the BVH builder does not support legacy primitive topology
     if (input.isTopologyRaytraceReady()) {
       ctx->copyBuffer(output.indexCacheBuffer, 0, input.indexBuffer.buffer(), input.indexBuffer.offset() + input.indexBuffer.offsetFromSlice(), input.indexCount * input.indexBuffer.stride());
@@ -366,7 +365,7 @@ namespace dxvk {
   }
 
   bool RtxGeometryUtils::generateTriangleList(const Rc<DxvkContext>& ctx, const RasterGeometry& input, Rc<DxvkBuffer> output) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     const uint32_t indexCount = getOptimalTriangleListSize(input);
     const uint32_t primIterCount = indexCount / 3;
@@ -402,7 +401,6 @@ namespace dxvk {
   }
 
   void RtxGeometryUtils::dispatchGenTriList(const Rc<DxvkContext>& ctx, const GenTriListArgs& cb, const DxvkBufferSlice& dstSlice, const RasterBuffer* srcBuffer) const {
-    ZoneScoped;
     ScopedGpuProfileZone(ctx, "generateTriangleList");
     // At some point, its more efficient to do these calculations on the GPU, this limit is somewhat arbitrary however, and might require better tuning...
     const uint32_t kNumTrianglesToProcessOnCPU = 512;
@@ -485,7 +483,7 @@ namespace dxvk {
   }
 
   void RtxGeometryUtils::cacheVertexDataOnGPU(const Rc<DxvkContext>& ctx, const RasterGeometry& input, RaytraceGeometry& output) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     if (input.isVertexDataInterleaved() && input.areFormatsGpuFriendly()) {
       const size_t vertexBufferSize = input.vertexCount * input.positionBuffer.stride();
       ctx->copyBuffer(output.historyBuffer[0], 0, input.positionBuffer.buffer(), input.positionBuffer.offset(), vertexBufferSize);
@@ -505,7 +503,6 @@ namespace dxvk {
     const Rc<DxvkContext>& ctx,
     const RasterGeometry& input,
     InterleavedGeometryDescriptor& output) const {
-    ZoneScoped;
     ScopedGpuProfileZone(ctx, "interleaveGeometry");
     // Required
     assert(input.positionBuffer.defined());

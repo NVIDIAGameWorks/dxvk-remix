@@ -288,7 +288,6 @@ namespace dxvk {
   }
 
   void TextureUtils::promoteHostToVid(const Rc<DxvkDevice>& device, const Rc<DxvkContext>& ctx, const Rc<ManagedTexture>& texture, uint32_t minMipLevel) {
-    ZoneScoped;
     ScopedGpuProfileZone(ctx, "promoteHostToVid");
 
     if (texture->state == ManagedTexture::State::kVidMem) {
@@ -395,7 +394,7 @@ namespace dxvk {
 
   void TextureUtils::loadTexture(Rc<ManagedTexture> texture, const Rc<DxvkDevice>& device, const Rc<DxvkContext>& ctx,
                                  const MemoryAperture mem, MipsToLoad mipsToLoad, int minimumMipLevel) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     // Todo: Currently the options in this function must remain constant at runtime so that the minimum mip level calculations here stay
     // the same. This is not ideal as ideally these options should be able to be changed at runtime to allow for new textures loaded after

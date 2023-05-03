@@ -122,11 +122,11 @@ namespace dxvk {
         semaphoreWaitInfo.pSemaphores = &m_lowLatencySemaphore;
         semaphoreWaitInfo.pValues = &signalValue;
         {
-          ZoneScopedN("Reflex_Sleep");
+          ScopedCpuProfileZoneN("Reflex_Sleep");
           NvLL_VK_Status status = NvLL_VK_Sleep(vkd->device(), signalValue);
         }
         {
-          ZoneScopedN("Reflex_WaitSemaphore");
+          ScopedCpuProfileZoneN("Reflex_WaitSemaphore");
           vkWaitSemaphores(vkd->device(), &semaphoreWaitInfo, 500000000);
         }
       }

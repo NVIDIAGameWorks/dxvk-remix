@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
-#include "Tracy.hpp"
+#include "dxvk_scoped_annotation.h"
 
 namespace dxvk {
   
@@ -62,7 +62,7 @@ namespace dxvk {
     const Rc<DxvkShader>&       shader,
     const SpirvCodeBuffer&      code)
   : m_vkd(vkd), m_stage() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     m_stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     m_stage.pNext = nullptr;
     m_stage.flags = 0;

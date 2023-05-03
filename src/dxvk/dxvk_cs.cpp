@@ -1,5 +1,5 @@
 #include "dxvk_cs.h"
-#include "../tracy/Tracy.hpp"
+#include "dxvk_scoped_annotation.h"
 #include "../tracy/TracyC.h"
 
 namespace dxvk {
@@ -114,7 +114,7 @@ namespace dxvk {
   
   
   void DxvkCsThread::dispatchChunk(DxvkCsChunkRef&& chunk) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     { std::unique_lock<dxvk::mutex> lock(m_mutex);
       m_chunksQueued.push(std::move(chunk));
@@ -126,7 +126,7 @@ namespace dxvk {
   
   
   void DxvkCsThread::synchronize() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     std::unique_lock<dxvk::mutex> lock(m_mutex);
     
@@ -137,7 +137,7 @@ namespace dxvk {
   
   
   void DxvkCsThread::threadFunc() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     env::setThreadName("dxvk-cs");
 

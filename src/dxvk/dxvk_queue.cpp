@@ -21,10 +21,9 @@
 */
 #include "dxvk_device.h"
 #include "dxvk_queue.h"
+#include "dxvk_scoped_annotation.h"
 
 #include "NvLowLatencyVk.h"
-
-#include "../tracy/Tracy.hpp"
 #include "GFSDK_Aftermath_GpuCrashDump.h"
 
 namespace dxvk {
@@ -51,7 +50,7 @@ namespace dxvk {
   
   
   void DxvkSubmissionQueue::submit(DxvkSubmitInfo submitInfo) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     std::unique_lock<dxvk::mutex> lock(m_mutex);
 
     m_finishCond.wait(lock, [this] {
@@ -68,7 +67,7 @@ namespace dxvk {
 
 
   void DxvkSubmissionQueue::present(DxvkPresentInfo presentInfo, DxvkSubmitStatus* status) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     std::unique_lock<dxvk::mutex> lock(m_mutex);
 
     DxvkSubmitEntry entry = { };
@@ -82,7 +81,7 @@ namespace dxvk {
 
   void DxvkSubmissionQueue::synchronizeSubmission(
           DxvkSubmitStatus*   status) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     std::unique_lock<dxvk::mutex> lock(m_mutex);
 
     m_submitCond.wait(lock, [status] {
@@ -92,7 +91,7 @@ namespace dxvk {
 
 
   void DxvkSubmissionQueue::synchronize() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     std::unique_lock<dxvk::mutex> lock(m_mutex);
 
     m_submitCond.wait(lock, [this] {
@@ -102,19 +101,19 @@ namespace dxvk {
 
 
   void DxvkSubmissionQueue::lockDeviceQueue() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     m_mutexQueue.lock();
   }
 
 
   void DxvkSubmissionQueue::unlockDeviceQueue() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     m_mutexQueue.unlock();
   }
 
 
   void DxvkSubmissionQueue::submitCmdLists() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     env::setThreadName("dxvk-submit");
 
@@ -203,7 +202,7 @@ namespace dxvk {
   
   
   void DxvkSubmissionQueue::finishCmdLists() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     env::setThreadName("dxvk-queue");
 
     std::unique_lock<dxvk::mutex> lock(m_mutex);

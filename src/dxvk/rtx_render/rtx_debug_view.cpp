@@ -420,7 +420,7 @@ namespace dxvk {
   }
 
   void DebugView::onFrameBegin(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     RtxPass::onFrameBegin(ctx, downscaledExtent, targetExtent);
 

@@ -363,7 +363,7 @@ namespace dxvk {
   }
 
   bool RtxIo::flush(bool async) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     if (async) {
       const uint32_t framesSinceFlush = m_device->getCurrentFrameId() -

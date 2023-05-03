@@ -19,7 +19,7 @@ namespace dxvk {
   }
 
   DxvkBufferSlice DxvkStagingDataAlloc::alloc(VkDeviceSize align, VkDeviceSize size) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     if (size > MaxBufferSize)
       return DxvkBufferSlice(createBuffer(size));

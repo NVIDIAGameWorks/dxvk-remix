@@ -23,7 +23,7 @@
 #include "d3d9_device.h"
 #include "d3d9_util.h"
 
-#include "../tracy/Tracy.hpp"
+#include "../dxvk/dxvk_scoped_annotation.h"
 
 
 namespace dxvk {
@@ -57,7 +57,7 @@ namespace dxvk {
   }
   
   HRESULT D3D9CommonBuffer::Unlock() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     return m_parent->UnlockBuffer(this);
   }

@@ -102,8 +102,8 @@ namespace dxvk {
     ctx->setPushConstantBank(DxvkPushConstantBank::RTX);
 
     dispatchDownscale(cmdList, ctx, inOutColorBuffer, m_bloomBuffer0);
-    dispatchBlur(cmdList, ctx, linearSampler, m_bloomBuffer0, m_bloomBuffer1, false);
-    dispatchBlur(cmdList, ctx, linearSampler, m_bloomBuffer1, m_bloomBuffer0, true);
+    dispatchBlur<false>(cmdList, ctx, linearSampler, m_bloomBuffer0, m_bloomBuffer1);
+    dispatchBlur<true>(cmdList, ctx, linearSampler, m_bloomBuffer1, m_bloomBuffer0);
     dispatchComposite(cmdList, ctx, linearSampler, inOutColorBuffer, m_bloomBuffer0);
   }
 
@@ -130,13 +130,13 @@ namespace dxvk {
     ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
   }
 
+  template<bool isVertical>
   void DxvkBloom::dispatchBlur(
     Rc<DxvkCommandList> cmdList,
     Rc<DxvkContext> ctx,
     Rc<DxvkSampler> linearSampler,
     const Resources::Resource& inputBuffer,
-    const Resources::Resource& outputBuffer,
-    bool isVertical)
+    const Resources::Resource& outputBuffer)
   {
     ScopedGpuProfileZone(ctx, isVertical ? "Vertical Blur" : "Horizontal Blur");
 

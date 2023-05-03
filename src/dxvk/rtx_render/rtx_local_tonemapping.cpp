@@ -257,8 +257,7 @@ namespace dxvk {
     }
 
     for (int i = mipLevel; i > displayMipLevel; i--) {
-      std::string scopeName = str::format("Blend Laplacian ", i);
-      ScopedGpuProfileZone(ctx, scopeName.c_str());
+      ScopedGpuProfileZone(ctx, "Blend Laplacian");
 
       // Blend the finer levels - Laplacians.
       uvec2 targetResolution = resolutionList[i-1];
