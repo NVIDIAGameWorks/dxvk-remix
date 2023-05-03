@@ -223,12 +223,10 @@ namespace dxvk {
   }
 
   void DxvkRtxdiRayQuery::dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
-    
+    ScopedGpuProfileZone(ctx, "RTXDI");
+
     if (!RtxOptions::Get()->useRTXDI())
       return;
-
-    ZoneScoped;
-    ScopedGpuProfileZone(ctx, "RTXDI");
 
     const auto& numRaysExtent = rtOutput.m_compositeOutputExtent;
     VkExtent3D workgroups = util::computeBlockCount(numRaysExtent, VkExtent3D{ 16, 8, 1 });

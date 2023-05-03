@@ -41,7 +41,6 @@
 #include "rtx_intersection_test_helpers.h"
 
 #include "dxvk_scoped_annotation.h"
-#include "../tracy/Tracy.hpp"
 
 namespace dxvk {
 
@@ -104,12 +103,12 @@ namespace dxvk {
   }
 
   void SceneManager::initialize(Rc<DxvkContext> ctx) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     m_pReplacer->initialize(ctx);
   }
 
   void SceneManager::clear(Rc<DxvkContext> ctx, bool needWfi) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     // Only clear once after the scene disappears, to avoid adding a WFI on every frame through clear().
     if (needWfi)
@@ -140,7 +139,7 @@ namespace dxvk {
   }
 
   void SceneManager::garbageCollection() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     // Garbage collection for BLAS/Scene objects
     if (!RtxOptions::Get()->enableAntiCulling())
     {
@@ -215,6 +214,7 @@ namespace dxvk {
 
   template<bool isNew>
   SceneManager::ObjectCacheState SceneManager::processGeometryInfo(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmd, const DrawCallState& drawCallState, RaytraceGeometry& inOutGeometry) {
+    ScopedCpuProfileZone();
     ObjectCacheState result = ObjectCacheState::KBuildBVH;
     const RasterGeometry& input = drawCallState.getGeometryData();
 
@@ -350,7 +350,7 @@ namespace dxvk {
 
 
   void SceneManager::onFrameEnd(Rc<DxvkContext> ctx) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     if (m_enqueueDelayedClear) {
       clear(ctx, true);
       m_enqueueDelayedClear = false;
@@ -370,6 +370,7 @@ namespace dxvk {
 
 
   void SceneManager::submitDrawState(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmd, const DrawCallState& input) {
+    ScopedCpuProfileZone();
     const uint32_t kBufferCacheLimit = kSurfaceInvalidBufferIndex - 10; // Limit for unique buffers minus some padding
     if (m_bufferCache.getTotalCount() >= kBufferCacheLimit && m_bufferCache.getActiveCount() >= kBufferCacheLimit) {
       Logger::info("[RTX-Compatibility-Info] This application is pushing more unique buffers than is currently supported - some objects may not raytrace.");
@@ -480,8 +481,7 @@ namespace dxvk {
     }
   }
 
-  void SceneManager::createEffectLight(Rc<DxvkContext> ctx, const DrawCallState& input, const RtInstance* instance)
-  {
+  void SceneManager::createEffectLight(Rc<DxvkContext> ctx, const DrawCallState& input, const RtInstance* instance) {
     const float effectLightIntensity = RtxOptions::Get()->getEffectLightIntensity();
     if (effectLightIntensity <= 0.f)
       return;
@@ -538,6 +538,7 @@ namespace dxvk {
   }
 
   uint64_t SceneManager::drawReplacements(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmd, const DrawCallState* input, const std::vector<AssetReplacement>* pReplacements, const MaterialData* overrideMaterialData) {
+    ScopedCpuProfileZone();
     uint64_t rootInstanceId = UINT64_MAX;
     // Detect replacements of meshes that would have unstable hashes due to the vertex hash using vertex data from a shared vertex buffer.
     // TODO: Once the vertex hash only uses vertices referenced by the index buffer, this should be removed.
@@ -602,6 +603,7 @@ namespace dxvk {
   }
   
   void SceneManager::freeBufferCache(const RaytraceGeometry& geoData) {
+    ScopedCpuProfileZone();
     if (geoData.indexBuffer.defined()) {
       m_bufferCache.removeRef(geoData.indexBuffer);
     }
@@ -623,6 +625,7 @@ namespace dxvk {
   }
 
   void SceneManager::updateBufferCache(const RaytraceGeometry& oldGeoData, RaytraceGeometry& newGeoData) {
+    ScopedCpuProfileZone();
     if (RtxOptions::Get()->resetBufferCacheOnEveryFrame()) {
       if (newGeoData.indexBuffer.defined())
         newGeoData.indexBufferIndex = m_bufferCache.addRef(newGeoData.indexBuffer);
@@ -816,6 +819,7 @@ namespace dxvk {
   }
 
   uint64_t SceneManager::processDrawCallState(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmd, const DrawCallState& drawCallState, const MaterialData* overrideMaterialData) {
+    ScopedCpuProfileZone();
     const MaterialData& renderMaterialData = overrideMaterialData != nullptr ? *overrideMaterialData : drawCallState.getMaterialData();
     if (renderMaterialData.getIgnored()) {
       return UINT64_MAX;
@@ -1053,12 +1057,14 @@ namespace dxvk {
   }
 
   void SceneManager::finalizeAllPendingTexturePromotions() {
+    ScopedCpuProfileZone();
     for (auto& texture : m_textureCache.getObjectTable())
       if (texture.isPromotable())
         texture.finalizePendingPromotion();
   }
 
   void SceneManager::addLight(const D3DLIGHT9& light) {
+    ScopedCpuProfileZone();
     // Attempt to convert the D3D9 light to RT
 
     std::optional<RtLight> rtLight = RtLight::TryCreate(light);
@@ -1085,7 +1091,7 @@ namespace dxvk {
   }
 
   void SceneManager::prepareSceneData(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, DxvkBarrierSet& execBarriers, const float frameTimeSecs) {
-    ZoneScoped;
+    ScopedGpuProfileZone(ctx, "Build Scene");
 
     // Needs to happen before garbageCollection to avoid destroying dynamic lights
     m_lightManager.dynamicLightMatching();
@@ -1101,7 +1107,6 @@ namespace dxvk {
       return;
     }
 
-    ScopedGpuProfileZone(ctx, "Build Scene");
 
     m_rayPortalManager.prepareSceneData(ctx, frameTimeSecs);
     // Note: only main camera needs to be teleportation corrected as only that one is used for ray tracing & denoising

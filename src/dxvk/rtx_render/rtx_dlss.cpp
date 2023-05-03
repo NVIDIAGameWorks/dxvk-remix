@@ -133,7 +133,7 @@ namespace dxvk {
   }
 
   void DxvkDLSS::setSetting(const uint32_t displaySize[2], const DLSSProfile profile, uint32_t outRenderSize[2]) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     // Handle the "auto" case, this is the param we'll pass to determine optimal resolution setting
     DLSSProfile actualProfile = profile;
     if (actualProfile == DLSSProfile::Auto) {

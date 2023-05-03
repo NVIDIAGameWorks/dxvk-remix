@@ -1630,6 +1630,7 @@ namespace dxvk {
   }
 
   void OpacityMicromapManager::onFrameStart(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList) {
+    ScopedCpuProfileZone();
     const uint32_t currentFrameIndex = m_device->getCurrentFrameId();
 
     m_numBoundOMMs = 0;

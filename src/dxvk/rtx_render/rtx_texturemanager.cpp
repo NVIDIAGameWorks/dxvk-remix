@@ -124,7 +124,7 @@ namespace dxvk {
   }
 
   void RtxTextureManager::synchronize(bool dropRequests) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     std::unique_lock<dxvk::mutex> lock(m_queueMutex);
     
@@ -154,7 +154,7 @@ namespace dxvk {
   }
 
   void RtxTextureManager::threadFunc() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     env::setThreadName("rtx-texture-manager");
 
@@ -223,7 +223,7 @@ namespace dxvk {
 
   void RtxTextureManager::uploadTexture(const Rc<ManagedTexture>& texture)
   {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     if (texture->state != ManagedTexture::State::kQueuedForUpload)
       return;

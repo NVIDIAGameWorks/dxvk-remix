@@ -120,6 +120,7 @@ namespace dxvk {
   }
 
   void LightManager::dynamicLightMatching() {
+    ScopedCpuProfileZone();
     // Try match up any stragglers now we have the full light list this frame.
     for (auto it = m_lights.begin(); it != m_lights.end(); ) {
       RtLight& light = it->second;
@@ -172,6 +173,7 @@ namespace dxvk {
   }
 
   void LightManager::prepareSceneData(Rc<DxvkContext> ctx, CameraManager const& cameraManager) {
+    ScopedCpuProfileZone();
     // Note: Early outing in this function (via returns) should be done carefully (or not at all ideally) as it may skip important
     // logic such as swapping the current/previous frame light buffer, updating light count information or allocating/updating the
     // light buffer which may cause issues in some cases (or rather already has, which is why this warning exists).
