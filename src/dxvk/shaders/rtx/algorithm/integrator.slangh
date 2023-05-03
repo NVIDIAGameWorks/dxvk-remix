@@ -170,7 +170,7 @@ int2 pointToAddress(vec3 position, uvec2 pixel)
   ivec2 UV2D = ivec2(UVWi.y * RADIANCE_CACHE_PROBE_RESOLUTION + UVWi.x, UVWi.z);
 
   int mipRes = RADIANCE_CACHE_MIP_RESOLUTION;
-  uvec2 offset = 0;//(pixel + cb.frameIdx) & (mipRes - 1);
+  uvec2 offset = (pixel + cb.frameIdx) & (mipRes - 1);
   return UV2D * mipRes + offset;
 }
 
