@@ -2248,7 +2248,7 @@ namespace dxvk {
       info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
       info.layout = VK_IMAGE_LAYOUT_GENERAL;
       info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-      m_fontTexture = m_device->createImage(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture);
+      m_fontTexture = m_device->createImage(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture, "imgui font texture");
       bd->FontImage = m_fontTexture->handle();
     }
 

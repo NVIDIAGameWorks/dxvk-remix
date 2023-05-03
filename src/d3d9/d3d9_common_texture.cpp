@@ -310,8 +310,10 @@ namespace dxvk {
         "\n  Usage:   ", std::hex, m_desc.Usage,
         "\n  Pool:    ", std::hex, m_desc.Pool));
     }
-
-    return m_device->GetDXVKDevice()->createImage(imageInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture);
+    
+    // NV-DXVK start: add debug names to VkImage objects
+    return m_device->GetDXVKDevice()->createImage(imageInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture, "D3D9 texture primary");
+    // NV-DXVK end
   }
 
 
@@ -319,7 +321,9 @@ namespace dxvk {
     DxvkImageCreateInfo imageInfo = m_image->info();
     imageInfo.sampleCount = VK_SAMPLE_COUNT_1_BIT;
 
-    return m_device->GetDXVKDevice()->createImage(imageInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture);
+    // NV-DXVK start: add debug names to VkImage objects
+    return m_device->GetDXVKDevice()->createImage(imageInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture, "D3D9 texture resolve");
+    // NV-DXVK end
   }
 
 

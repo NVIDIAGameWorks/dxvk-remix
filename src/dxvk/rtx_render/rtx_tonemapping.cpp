@@ -156,13 +156,13 @@ namespace dxvk {
 
     viewInfo.format = desc.format = VK_FORMAT_R32_UINT;
     viewInfo.usage = desc.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    m_toneHistogram.image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget);
+    m_toneHistogram.image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget, "tone mapper histogram");
     m_toneHistogram.view = device->createImageView(m_toneHistogram.image, viewInfo);
     ctx->changeImageLayout(m_toneHistogram.image, VK_IMAGE_LAYOUT_GENERAL);
 
     viewInfo.format = desc.format = VK_FORMAT_R32_SFLOAT;
     viewInfo.usage = desc.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
-    m_toneCurve.image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget);
+    m_toneCurve.image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget, "tone mapper curve");
     m_toneCurve.view = device->createImageView(m_toneCurve.image, viewInfo);
     ctx->changeImageLayout(m_toneCurve.image, VK_IMAGE_LAYOUT_GENERAL);
   }

@@ -179,7 +179,7 @@ namespace dxvk {
         desc.extent = dstExtent;
 
         // Temp image to blit into (pBlitDests is linear, so we can only copy into)
-        pBlitTemps[level] = ctx->getDevice()->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXMaterialTexture);
+        pBlitTemps[level] = ctx->getDevice()->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXMaterialTexture, "exportImage blit temp");
       }
 
       {
@@ -196,7 +196,7 @@ namespace dxvk {
         desc.extent = dstExtent;
 
         // Make the image where we'll copy the GPU resource to CPU accessible mem
-        pBlitDests[level] = ctx->getDevice()->createImage(desc, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, DxvkMemoryStats::Category::RTXMaterialTexture);
+        pBlitDests[level] = ctx->getDevice()->createImage(desc, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, DxvkMemoryStats::Category::RTXMaterialTexture, "exportimage blit dest");
       }
 
       VkOffset3D srcOffset = VkOffset3D { 0,0,0 };
@@ -371,7 +371,7 @@ namespace dxvk {
     const uint32_t equatorLength = std::min(skyprobeExt.width * 4, 16384u);
     const VkExtent3D latlongExt { equatorLength, equatorLength / 2, 1 };
 
-    auto latlong = resourceManager.createImageResource(ctx, latlongExt, VK_FORMAT_R16G16B16A16_SFLOAT);
+    auto latlong = resourceManager.createImageResource(ctx, "sky probe latlong", latlongExt, VK_FORMAT_R16G16B16A16_SFLOAT);
 
     const auto transform = RtxOptions::Get()->isZUp() ? RtxImageUtils::LatLongTransform::ZUp2OpenEXR : RtxImageUtils::LatLongTransform::None;
 

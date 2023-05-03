@@ -299,7 +299,9 @@ namespace dxvk::hud {
     info.tiling         = VK_IMAGE_TILING_OPTIMAL;
     info.layout         = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
     
-    return device->createImage(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture);
+    // NV-DXVK start: add debug names to VkImage objects
+    return device->createImage(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture, "hud font");
+    // NV-DXVK end
   }
   
   

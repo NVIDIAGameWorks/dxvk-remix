@@ -949,8 +949,10 @@ namespace dxvk {
       imgInfo.tiling = dstImage->info().tiling;
       imgInfo.layout = VK_IMAGE_LAYOUT_GENERAL;
 
+      // NV-DXVK start: add debug names to VkImage objects
       auto tmpImage = m_device->createImage(
-        imgInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture);
+        imgInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture, "copyImageRegion tmp");
+      // NV-DXVK end
 
       VkImageSubresourceLayers tmpSubresource;
       tmpSubresource.aspectMask = dstSubresource.aspectMask;
@@ -3668,7 +3670,9 @@ namespace dxvk {
       info.tiling = VK_IMAGE_TILING_OPTIMAL;
       info.layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 
-      tgtImage = m_device->createImage(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture);
+      // NV-DXVK start: add debug names to VkImage objects
+      tgtImage = m_device->createImage(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture, "copyImageFb target");
+      // NV-DXVK end
 
       tgtSubresource.mipLevel = 0;
       tgtSubresource.baseArrayLayer = 0;

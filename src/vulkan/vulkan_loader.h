@@ -165,16 +165,8 @@ namespace dxvk::vk {
     #endif
 
     #ifdef VK_EXT_debug_utils
-    VULKAN_FN(vkCmdBeginDebugUtilsLabelEXT);
-    VULKAN_FN(vkCmdEndDebugUtilsLabelEXT);
-    VULKAN_FN(vkCmdInsertDebugUtilsLabelEXT);
     VULKAN_FN(vkCreateDebugUtilsMessengerEXT);
     VULKAN_FN(vkDestroyDebugUtilsMessengerEXT);
-    VULKAN_FN(vkQueueBeginDebugUtilsLabelEXT);
-    VULKAN_FN(vkQueueEndDebugUtilsLabelEXT);
-    VULKAN_FN(vkQueueInsertDebugUtilsLabelEXT);
-    VULKAN_FN(vkSetDebugUtilsObjectNameEXT);
-    VULKAN_FN(vkSetDebugUtilsObjectTagEXT);
     VULKAN_FN(vkSubmitDebugUtilsMessageEXT);
     #endif
 
@@ -464,6 +456,19 @@ namespace dxvk::vk {
     #ifdef VK_KHR_buffer_device_address
     VULKAN_FN(vkGetBufferDeviceAddressKHR);
     #endif
+
+    // NV-DXVK start: use EXT_debug_utils
+    #ifdef VK_EXT_debug_utils
+    VULKAN_FN(vkCmdBeginDebugUtilsLabelEXT);
+    VULKAN_FN(vkCmdEndDebugUtilsLabelEXT);
+    VULKAN_FN(vkCmdInsertDebugUtilsLabelEXT);
+    VULKAN_FN(vkQueueBeginDebugUtilsLabelEXT);
+    VULKAN_FN(vkQueueEndDebugUtilsLabelEXT);
+    VULKAN_FN(vkQueueInsertDebugUtilsLabelEXT);
+    VULKAN_FN(vkSetDebugUtilsObjectNameEXT);
+    VULKAN_FN(vkSetDebugUtilsObjectTagEXT);
+    #endif
+    // NV-DXVK end
   };
   
 }
