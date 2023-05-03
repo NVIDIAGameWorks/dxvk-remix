@@ -167,7 +167,10 @@ namespace dxvk {
       const DxvkImageCreateInfo& createInfo,
             DxvkMemoryAllocator& memAlloc,
             VkMemoryPropertyFlags memFlags,
-            DxvkMemoryStats::Category category);
+            DxvkMemoryStats::Category category,
+            // NV-DXVK start: add debug names to VkImage objects
+            const char *name);
+            // NV-DXVK end
 
     /**
      * \brief Creates image object from existing image

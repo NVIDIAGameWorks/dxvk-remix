@@ -219,8 +219,11 @@ namespace dxvk {
   Rc<DxvkImage> DxvkDevice::createImage(
     const DxvkImageCreateInfo&  createInfo,
           VkMemoryPropertyFlags memoryType,
-          DxvkMemoryStats::Category category) {
-    return new DxvkImage(m_vkd, createInfo, m_objects.memoryManager(), memoryType, category);
+          DxvkMemoryStats::Category category,
+// NV-DXVK start: add debug names to VkImage objects
+          const char *name) {
+    return new DxvkImage(m_vkd, createInfo, m_objects.memoryManager(), memoryType, category, name);
+// NV-DXVK end
   }
   
   

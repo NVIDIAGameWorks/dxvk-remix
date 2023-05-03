@@ -236,8 +236,10 @@ namespace dxvk {
         imgInfo.tiling      = VK_IMAGE_TILING_OPTIMAL;
         imgInfo.layout      = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         
+        // NV-DXVK start: add debug names to VkImage objects
         m_gammaImage = m_device->createImage(
-          imgInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture);
+          imgInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture, "swapchain gamma");
+        // NV-DXVK end
 
         DxvkImageViewCreateInfo viewInfo;
         viewInfo.type       = VK_IMAGE_VIEW_TYPE_1D;
@@ -354,7 +356,9 @@ namespace dxvk {
                    | VK_ACCESS_SHADER_READ_BIT;
     newInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
     newInfo.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    m_resolveImage = m_device->createImage(newInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture);
+    // NV-DXVK start: add debug names to VkImage objects
+    m_resolveImage = m_device->createImage(newInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture, "swapchain resolve");
+    // NV-DXVK end
 
     DxvkImageViewCreateInfo viewInfo;
     viewInfo.type = VK_IMAGE_VIEW_TYPE_2D;

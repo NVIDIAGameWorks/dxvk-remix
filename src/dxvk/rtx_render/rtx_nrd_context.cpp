@@ -243,7 +243,7 @@ namespace dxvk {
       if (isPermanent) {
         // Always allocate these
         Resources::Resource resource;
-        resource.image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget);
+        resource.image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget, "nrd permament tex");
         resource.view = device->createImageView(resource.image, viewInfo);
 
         ctx->changeImageLayout(resource.image, VK_IMAGE_LAYOUT_GENERAL);
@@ -270,7 +270,7 @@ namespace dxvk {
             m_sharedTransientTex.erase(imageHash);
           }
           Resources::Resource resource;
-          resource.image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget);
+          resource.image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget, "nrd transient tex");
           resource.view = device->createImageView(resource.image, viewInfo);
 
           ctx->changeImageLayout(resource.image, VK_IMAGE_LAYOUT_GENERAL);
@@ -285,7 +285,7 @@ namespace dxvk {
     }
 
     if (m_settings.m_commonSettings.enableValidation) {
-      m_validationTex = Resources::createImageResource(ctx, rtOutput.m_compositeOutputExtent, VK_FORMAT_R32G32B32A32_SFLOAT);
+      m_validationTex = Resources::createImageResource(ctx, "nrd validation texture", rtOutput.m_compositeOutputExtent, VK_FORMAT_R32G32B32A32_SFLOAT);
     }
   }
 

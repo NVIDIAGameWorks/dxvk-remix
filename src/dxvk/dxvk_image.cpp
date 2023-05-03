@@ -10,7 +10,10 @@ namespace dxvk {
     const DxvkImageCreateInfo&  createInfo,
           DxvkMemoryAllocator&  memAlloc,
           VkMemoryPropertyFlags memFlags,
-          DxvkMemoryStats::Category category)
+          DxvkMemoryStats::Category category,
+          // NV-DXVK start: add debug names to VkImage objects
+          const char *name)
+          // NV-DXVK end
   : m_vkd(vkd), m_info(createInfo), m_memFlags(memFlags) {
 
     // Copy the compatible view formats to a persistent array
@@ -59,6 +62,18 @@ namespace dxvk {
         "\n  Usage:           ", info.usage,
         "\n  Tiling:          ", info.tiling));
     }
+
+    // NV-DXVK start: add debug names to VkImage objects
+    if (name && m_vkd->vkSetDebugUtilsObjectNameEXT) {
+      VkDebugUtilsObjectNameInfoEXT nameInfo;
+      nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+      nameInfo.pNext = nullptr;
+      nameInfo.objectType = VK_OBJECT_TYPE_IMAGE;
+      nameInfo.objectHandle = (uint64_t) m_image.image;
+      nameInfo.pObjectName = name;
+      m_vkd->vkSetDebugUtilsObjectNameEXT(m_vkd->device(), &nameInfo);
+    }
+    // NV-DXVK end
     
     // Get memory requirements for the image. We may enforce strict
     // alignment on non-linear images in order not to violate the

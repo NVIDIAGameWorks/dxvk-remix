@@ -138,14 +138,14 @@ namespace dxvk {
     if (m_vkd->vkAllocateDescriptorSets(m_vkd->device(), &info, &set) != VK_SUCCESS)
       return VK_NULL_HANDLE;
 
-    if (name && m_vki->vkSetDebugUtilsObjectNameEXT) {
+    if (name && m_vkd->vkSetDebugUtilsObjectNameEXT) {
       VkDebugUtilsObjectNameInfoEXT nameInfo;
       nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
       nameInfo.pNext = nullptr;
       nameInfo.objectType = VK_OBJECT_TYPE_DESCRIPTOR_SET;
       nameInfo.objectHandle = (uint64_t) set;
       nameInfo.pObjectName = name;
-      m_vki->vkSetDebugUtilsObjectNameEXT(m_vkd->device(), &nameInfo);
+      m_vkd->vkSetDebugUtilsObjectNameEXT(m_vkd->device(), &nameInfo);
     }
 
     return set;
