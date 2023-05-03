@@ -320,9 +320,9 @@ namespace dxvk {
     vec2 extendF = { static_cast<float>(targetExtent.width), static_cast<float>(targetExtent.height) };
     int mipLevel = static_cast<int>(floor(log2f(std::max(extendF.x, extendF.y)))) + 1;
 
-    m_mips = Resources::createMipmapResource(ctx, targetExtent, VK_FORMAT_R16G16B16A16_SFLOAT, mipLevel);
-    m_mipsWeights = Resources::createMipmapResource(ctx, targetExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32, mipLevel);
-    m_mipsAssemble = Resources::createMipmapResource(ctx, targetExtent, VK_FORMAT_R16_SFLOAT, mipLevel);
+    m_mips = Resources::createMipmapResource(ctx, targetExtent, VK_FORMAT_R16G16B16A16_SFLOAT, mipLevel, "local tone mapper mips");
+    m_mipsWeights = Resources::createMipmapResource(ctx, targetExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32, mipLevel, "local tone mapper mips weights");
+    m_mipsAssemble = Resources::createMipmapResource(ctx, targetExtent, VK_FORMAT_R16_SFLOAT, mipLevel, "local tone mapper mips assemble");
   }
 
   void DxvkLocalToneMapping::releaseTargetResource() {

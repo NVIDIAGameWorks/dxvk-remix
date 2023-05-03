@@ -364,7 +364,10 @@ namespace dxvk {
     Rc<DxvkImage> createImage(
       const DxvkImageCreateInfo&  createInfo,
             VkMemoryPropertyFlags memoryType,
-            DxvkMemoryStats::Category category);
+            DxvkMemoryStats::Category category,
+            // NV-DXVK start: add debug names to VkImage objects
+            const char *name);
+            // NV-DXVK end
 
     /**
      * \brief Creates an image object for an existing VkImage

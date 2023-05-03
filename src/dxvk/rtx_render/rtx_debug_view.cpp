@@ -615,7 +615,7 @@ namespace dxvk {
           m_cachedImage.image->info().extent.width != outputImage->info().extent.width ||
           m_cachedImage.image->info().extent.height != outputImage->info().extent.height ||
           m_cachedImage.image->info().format != outputImage->info().format) {
-        m_cachedImage = Resources::createImageResource(ctx, outputImage->info().extent, outputImage->info().format);
+        m_cachedImage = Resources::createImageResource(ctx, "debug view cache", outputImage->info().extent, outputImage->info().format);
       }
 
       const VkImageSubresourceLayers srcSubresourceLayers = { outputImage->formatInfo()->aspectMask, 0, 0, 1 };
@@ -632,16 +632,16 @@ namespace dxvk {
 
   void DebugView::createDownscaledResource(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent) {
     // Debug
-    m_debugView = Resources::createImageResource(ctx, downscaledExtent, VK_FORMAT_R32G32B32A32_SFLOAT);
+    m_debugView = Resources::createImageResource(ctx, "debug view", downscaledExtent, VK_FORMAT_R32G32B32A32_SFLOAT);
 
     // Note: Only allocate half resolution for HDR waveform buffers, this is the default view size
     // and while it is wasteful if the resolution scale is higher, this is probably fine.
-    m_hdrWaveformRed = Resources::createImageResource(ctx, { (downscaledExtent.width + 2) / 2, (downscaledExtent.height + 2) / 2, 1 }, VK_FORMAT_R32_UINT);
-    m_hdrWaveformBlue = Resources::createImageResource(ctx, { (downscaledExtent.width + 2) / 2, (downscaledExtent.height + 2) / 2, 1 }, VK_FORMAT_R32_UINT);
-    m_hdrWaveformGreen = Resources::createImageResource(ctx, { (downscaledExtent.width + 2) / 2, (downscaledExtent.height + 2) / 2, 1 }, VK_FORMAT_R32_UINT);
+    m_hdrWaveformRed = Resources::createImageResource(ctx, "debug hdr waveform red", { (downscaledExtent.width + 2) / 2, (downscaledExtent.height + 2) / 2, 1 }, VK_FORMAT_R32_UINT);
+    m_hdrWaveformBlue = Resources::createImageResource(ctx, "debug hdr waveform green", { (downscaledExtent.width + 2) / 2, (downscaledExtent.height + 2) / 2, 1 }, VK_FORMAT_R32_UINT);
+    m_hdrWaveformGreen = Resources::createImageResource(ctx, "debug hdr waveform blue", { (downscaledExtent.width + 2) / 2, (downscaledExtent.height + 2) / 2, 1 }, VK_FORMAT_R32_UINT);
 
     // Instrumentation
-    m_instrumentation = Resources::createImageResource(ctx, downscaledExtent, VK_FORMAT_R32_UINT);
+    m_instrumentation = Resources::createImageResource(ctx, "debug instrumentation", downscaledExtent, VK_FORMAT_R32_UINT);
   }
 
   void DebugView::releaseDownscaledResource() {

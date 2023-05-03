@@ -116,7 +116,7 @@ namespace dxvk {
   void DxvkTemporalAA::createTargetResource(Rc<DxvkContext>& ctx, const VkExtent3D& targetExtent) {
     // TAA intermediate textures
     for(uint32_t i=0 ; i<2 ; i++)
-      m_taaFeedbackTexture[i] = Resources::createImageResource(ctx, targetExtent, VK_FORMAT_R32G32B32A32_SFLOAT);
+      m_taaFeedbackTexture[i] = Resources::createImageResource(ctx, "taa feedback texture", targetExtent, VK_FORMAT_R32G32B32A32_SFLOAT);
   }
 
   void DxvkTemporalAA::releaseTargetResource() {

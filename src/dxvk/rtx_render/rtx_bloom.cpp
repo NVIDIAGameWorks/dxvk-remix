@@ -200,8 +200,8 @@ namespace dxvk {
   }
 
   void DxvkBloom::createTargetResource(Rc<DxvkContext>& ctx, const VkExtent3D& targetExtent) {
-    m_bloomBuffer0 = Resources::createImageResource(ctx, { util::ceilDivide(targetExtent.width, 4), util::ceilDivide(targetExtent.height, 4), 1 }, VK_FORMAT_R16G16B16A16_SFLOAT);
-    m_bloomBuffer1 = Resources::createImageResource(ctx, { util::ceilDivide(targetExtent.width, 4), util::ceilDivide(targetExtent.height, 4), 1 }, VK_FORMAT_R16G16B16A16_SFLOAT);
+    m_bloomBuffer0 = Resources::createImageResource(ctx, "bloom buffer 0", { util::ceilDivide(targetExtent.width, 4), util::ceilDivide(targetExtent.height, 4), 1 }, VK_FORMAT_R16G16B16A16_SFLOAT);
+    m_bloomBuffer1 = Resources::createImageResource(ctx, "bloom buffer 1", { util::ceilDivide(targetExtent.width, 4), util::ceilDivide(targetExtent.height, 4), 1 }, VK_FORMAT_R16G16B16A16_SFLOAT);
   }
 
   void DxvkBloom::releaseTargetResource() {

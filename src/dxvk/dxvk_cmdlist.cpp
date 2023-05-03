@@ -212,14 +212,20 @@ namespace dxvk {
   }
   
   void DxvkCommandList::cmdBeginDebugUtilsLabel(VkDebugUtilsLabelEXT *pLabelInfo) {
-    m_vki->vkCmdBeginDebugUtilsLabelEXT(m_execBuffer, pLabelInfo);
+    // NV-DXVK start: add debug names to VkImage objects
+    m_vkd->vkCmdBeginDebugUtilsLabelEXT(m_execBuffer, pLabelInfo);
+    // NV-DXVK end
   }
 
   void DxvkCommandList::cmdEndDebugUtilsLabel() {
-    m_vki->vkCmdEndDebugUtilsLabelEXT(m_execBuffer);
+    // NV-DXVK start: add debug names to VkImage objects
+    m_vkd->vkCmdEndDebugUtilsLabelEXT(m_execBuffer);
+    // NV-DXVK end
   }
 
   void DxvkCommandList::cmdInsertDebugUtilsLabel(VkDebugUtilsLabelEXT *pLabelInfo) {
-    m_vki->vkCmdInsertDebugUtilsLabelEXT(m_execBuffer, pLabelInfo);
+    // NV-DXVK start: add debug names to VkImage objects
+    m_vkd->vkCmdInsertDebugUtilsLabelEXT(m_execBuffer, pLabelInfo);
+    // NV-DXVK end
   }
 }
