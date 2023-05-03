@@ -133,7 +133,7 @@ void geometryResolverOutputSurface(
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
   vec3 radiance, f16vec3 attenuation, f16mat3 accumulatedVectorTransform,
   uint16_t mediumMaterialIndex, float virtualHitDistance, bool directionAltered,
-  float disocclusionThresholdMix)
+  bool useAlternateDisocclusionThreshold)
 {
   // Output Attenuation (Primary/secondary surface coherent)
 
@@ -163,9 +163,17 @@ void geometryResolverOutputSurface(
   {
     const float4 projectionSpacePosition = mul(cb.camera.worldToProjectionJittered, float4(virtualHitPosition, 1.f));
     const float depth = projectionSpacePosition.z/projectionSpacePosition.w;
+
     imageStore(PrimaryDepth, pixelCoordinate, depth);
     imageStore(PrimaryLinearViewZ, pixelCoordinate, linearViewZ);
     imageStore(PrimaryHitDistance, pixelCoordinate, virtualHitDistance);
+
+    // Note: Fully use an alternate disocclusion threshold when specified, done by setting the mix value to 1.0 (this mixes
+    // between the standard and alternate disocclusion threshold specified in the denoiser's settings).
+    const float disocclusionThresholdMix = useAlternateDisocclusionThreshold ? 1.0f : 0.0f;
+
+    // Note: May seem overkill to store a bool like this, but the denoiser expects an input unorm texture to lerp between the standard
+    // and alternate disocclusion threshold so it must be expanded and stored to a texture like this at some point.
     imageStore(PrimaryDisocclusionThresholdMix, pixelCoordinate, disocclusionThresholdMix);
   }
   else
@@ -291,7 +299,8 @@ void geometryResolverOutputDebugView(
   Surface surface, SurfaceInteraction surfaceInteraction,
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
   float16_t selectedIntegrationSurfacePdf,
-  bool directionAltered, PortalSpace2BitsType portalSpace, float virtualHitDistance)
+  bool directionAltered, PortalSpace2BitsType portalSpace, float virtualHitDistance,
+  bool useAlternateDisocclusionThreshold)
 {
   const uint8_t materialType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
 
@@ -609,6 +618,10 @@ void geometryResolverOutputDebugView(
   case DEBUG_VIEW_PSR_SELECTED_INTEGRATION_SURFACE_PDF: 
     storeInDebugView(pixelCoordinate, selectedIntegrationSurfacePdf);
     break;
+  case DEBUG_VIEW_PRIMARY_USE_ALTERNATE_DISOCCLUSION_THRESHOLD: 
+    // Note: Green = True, Red = False
+    storeInDebugView(pixelCoordinate, useAlternateDisocclusionThreshold ? vec3(0.0f, 1.0f, 0.0f) : vec3(1.0f, 0.0f, 0.0f));
+    break;
   case DEBUG_VIEW_GEOMETRY_HASH:
     storeInDebugView(pixelCoordinate, r5g6b5ToColor(surface.hashPacked)); // visualize directly as colour (note the hash is compressed into a 16bit using XOR)
     break;
@@ -848,8 +861,11 @@ void geometryResolverVertex(
     radianceAttenuation, emissiveRadiance,
     numUnorderedInteractions);
 
+  // Note: Add to the number of unordered interactions in the debug view based on the number of unordered interactions in resolving.
   if (cb.debugView == DEBUG_VIEW_PRIMARY_UNORDERED_INTERACTIONS || cb.debugView == DEBUG_VIEW_PRIMARY_RAY_AND_UNORDERED_INTERACTIONS)
+  {
     accumulateInDebugViewAdd(geometryResolverState.pixelCoordinate, numUnorderedInteractions);
+  }
 
   bool originalContinueResolving = geometryResolverState.continueResolving;
 
@@ -1040,7 +1056,9 @@ void geometryResolverVertex(
   }
 
   if (rayInteraction.customIndex & CUSTOM_INDEX_IS_VIEW_MODEL)
+  {
     geometryResolverState.isViewModelSurface = true;
+  }
 
   if (geometryResolverState.performPSRR || geometryResolverState.performPSTR)
   {
@@ -1076,8 +1094,11 @@ void geometryResolverVertex(
 
       geometryResolverState.coneRadius = sampledRay.coneRadius;
 
+      // Note: Set the common alternate disocclusion threshold flag if reflection PSR requests it.
       if (surfaceMaterialInteractionReflectionPSRSample.useAlternateDisocclusionThreshold)
+      {
         useAlternateDisocclusionThreshold = true;
+      }
     }
 
     // Set Transmission PSR information
@@ -1099,8 +1120,12 @@ void geometryResolverVertex(
       // Note: Overwriting cone radius here if both PSRR and PSTR are active, but this should be fine as the value will
       // be identical in both cases.
       geometryResolverState.coneRadius = sampledRay.coneRadius;
+
+      // Note: Set the common alternate disocclusion threshold flag if transmission PSR requests it.
       if (surfaceMaterialInteractionTransmissionPSRSample.useAlternateDisocclusionThreshold)
+      {
         useAlternateDisocclusionThreshold = true;
+      }
     }
 
     PrimaryConeRadius[geometryResolverState.pixelCoordinate] = rayInteraction.coneRadius;
@@ -1110,8 +1135,6 @@ void geometryResolverVertex(
   else
   {
     // Output the Surface if no form of PSR should happen (Standard surface case)
-
-    const float disocclusionThresholdMix = (geometryResolverState.useAlternateDisocclusionThreshold) ? 1.0f : 0.0f;
 
     // Note: Consider this surface the primary surface and the surface to invoke the integrator on when no PSR is done. Note that
     // the medium material index is set to the invalid index here as if PSRR/PSTR were not done then there's no way the ray is currently
@@ -1123,7 +1146,8 @@ void geometryResolverVertex(
       polymorphicSurfaceMaterialInteraction,
       geometryResolverState.radiance, geometryResolverState.attenuation,
       geometryResolverState.accumulatedVectorTransform, BINDING_INDEX_INVALID,
-      geometryResolverState.accumulatedHitDistance, geometryResolverState.directionAltered, disocclusionThresholdMix);
+      geometryResolverState.accumulatedHitDistance, geometryResolverState.directionAltered,
+      geometryResolverState.useAlternateDisocclusionThreshold);
   }
   
   // Output Emissive Radiance
@@ -1148,7 +1172,8 @@ void geometryResolverVertex(
     surface, surfaceInteraction,
     polymorphicSurfaceMaterialInteraction,
     selectedIntegrationSurfacePdf,
-    geometryResolverState.directionAltered, geometryResolverState.portalSpace, geometryResolverState.accumulatedHitDistance);
+    geometryResolverState.directionAltered, geometryResolverState.portalSpace,
+    geometryResolverState.accumulatedHitDistance, geometryResolverState.useAlternateDisocclusionThreshold);
 }
 
 // Note: Logic grouped into function to make loop count termination more unified with non-PSR continuation cases in calling logic.
@@ -1279,8 +1304,11 @@ void geometryPSRResolverVertex(
     radianceAttenuation, emissiveRadiance,
     numUnorderedInteractions);
 
+  // Note: Add to the number of unordered interactions in the debug view based on the number of unordered interactions in resolving.
   if (cb.debugView == DEBUG_VIEW_PRIMARY_UNORDERED_INTERACTIONS || cb.debugView == DEBUG_VIEW_PRIMARY_RAY_AND_UNORDERED_INTERACTIONS)
+  {
     accumulateInDebugViewAdd(geometryPSRResolverState.pixelCoordinate, numUnorderedInteractions);
+  }
 
   // Invoke the Resolve Vertex function
 
@@ -1457,9 +1485,12 @@ void geometryPSRResolverVertex(
     geometryPSRResolverState.continuePSRResolving = true;
     geometryPSRResolverState.accumulatedVectorTransform =
       mul(geometryPSRResolverState.accumulatedVectorTransform, surfaceMaterialInteractionReflectionPSRSample.vectorTransform);
-      
+
+    // Note: Set the common alternate disocclusion threshold flag if reflection PSR requests it.
     if (surfaceMaterialInteractionReflectionPSRSample.useAlternateDisocclusionThreshold)
+    {
       geometryPSRResolverState.useAlternateDisocclusionThreshold = true;
+    }
   }
   else if (useTransmissionPSRSample)
   {
@@ -1475,14 +1506,16 @@ void geometryPSRResolverVertex(
     geometryPSRResolverState.continuePSRResolving = true;
     geometryPSRResolverState.accumulatedVectorTransform =
       mul(geometryPSRResolverState.accumulatedVectorTransform, surfaceMaterialInteractionTransmissionPSRSample.vectorTransform);
-      
+
+    // Note: Set the common alternate disocclusion threshold flag if transmission PSR requests it.
     if (surfaceMaterialInteractionTransmissionPSRSample.useAlternateDisocclusionThreshold)
+    {
       geometryPSRResolverState.useAlternateDisocclusionThreshold = true;
+    }
   }
   else // Note: This case happens either when no PSR continuation is desired or if the max PSR bounce count was hit.
   {
     // Output the resolved Surface
-    const float disocclusionThresholdMix = (geometryPSRResolverState.useAlternateDisocclusionThreshold) ? 1.0f : 0.0f;
 
     // Note: directionAltered set to true as PSR will almost always alter the ray direction.
     geometryResolverOutputSurface(
@@ -1493,23 +1526,28 @@ void geometryPSRResolverVertex(
       polymorphicSurfaceMaterialInteraction,
       geometryPSRResolverState.radiance, geometryPSRResolverState.attenuation,
       geometryPSRResolverState.accumulatedVectorTransform, geometryPSRResolverState.mediumMaterialIndex,
-      geometryPSRResolverState.accumulatedHitDistance, true, disocclusionThresholdMix);
+      geometryPSRResolverState.accumulatedHitDistance, true,
+      geometryPSRResolverState.useAlternateDisocclusionThreshold);
 
     // Output Emissive Radiance
-      
+
     SharedRadianceRG[geometryPSRResolverState.pixelCoordinate] = geometryPSRResolverState.radiance.rg;
     SharedRadianceB[geometryPSRResolverState.pixelCoordinate] = geometryPSRResolverState.radiance.b;
   }
 
   if (rayInteraction.customIndex & CUSTOM_INDEX_IS_VIEW_MODEL)
+  {
     geometryPSRResolverState.isViewModelSurface = true;
+  }
 
   // If this is the last bounce, ignore translucent geometry (e.g. glass)
   // so that we don't end up with a translucent surface in the G-buffer.
   // That results in ReSTIR GI not working on some parts of detailed glass objects,
   // and therefore producing excessive noise.
   if (isLastBounce)
+  {
     geometryPSRResolverState.rayMask &= ~OBJECT_MASK_TRANSLUCENT;
+  }
 }
 
 void preprocessPrimaryRayState(inout Ray originalCameraRay, inout GeometryResolverState geometryResolverState)
@@ -1534,12 +1572,17 @@ void preprocessPrimaryRayState(inout Ray originalCameraRay, inout GeometryResolv
 
     // If view model composition (separate rays) is disabled, include it in the regular rays.
     if (!cb.enableViewModelCompositionOnTop)
+    {
       rayMask |= OBJECT_MASK_VIEWMODEL;
+    }
   }
 
   rayMask |= OBJECT_MASK_PLAYER_MODEL_VIRTUAL;
+
   if (cb.enablePlayerModelInPrimarySpace)
+  {
     rayMask |= OBJECT_MASK_PLAYER_MODEL;
+  }
 
   geometryResolverState.rayMask = rayMask;
 }
@@ -1547,13 +1590,19 @@ void preprocessPrimaryRayState(inout Ray originalCameraRay, inout GeometryResolv
 uint8_t primaryRayMaskToObjectMask(uint8_t rayMask, bool isViewModel)
 {
   if (isViewModel)
+  {
     rayMask &= ~OBJECT_MASK_ALL_PLAYER_MODEL;
+  }
   else
   {
     rayMask = (rayMask & ~OBJECT_MASK_ALL_VIEWMODEL);
+
     if (cb.enablePlayerModelPrimaryShadows)
-     rayMask = rayMask | OBJECT_MASK_ALL_PLAYER_MODEL;
+    {
+      rayMask = rayMask | OBJECT_MASK_ALL_PLAYER_MODEL;
+    }
   }
+
   return rayMask;
 }
 
@@ -1604,9 +1653,13 @@ void geometryPSRResolver(inout GeometryPSRResolverState psrResolverState) {
       break;
     }
   }
-  
+
+  // Add to the number of primary ray bounces in the debug view based on the number of PSR iterations
+
   if (cb.debugView == DEBUG_VIEW_PRIMARY_RAY_BOUNCES)
+  {
     accumulateInDebugViewAdd(psrResolverState.pixelCoordinate, psrResolverState.bounceIteration);
+  }
 }
 
 void geometryResolver(ivec2 pixelCoordinate) {
@@ -1741,21 +1794,23 @@ void geometryResolver(ivec2 pixelCoordinate) {
   motionBlurSurfaceFlags.isStatic = cachedMotionBlurSurfaceFlags.isStatic;
   motionBlurSurfaceFlags.isEmissive = isRadianceOutput;
   motionBlurSurfaceFlagsWriteToGBuffer(motionBlurSurfaceFlags, ivec2(pixelCoordinate), PrimarySurfaceFlags);
-
-  if (cb.debugView == DEBUG_VIEW_PRIMARY_DISOCCLUSION_THRESHOLD_MIX)
-  {
-    float disocclusionThresholdMix = PrimaryDisocclusionThresholdMix[pixelCoordinate];
-    storeInDebugView(pixelCoordinate, disocclusionThresholdMix.xxx);
-  }
 }
 
 void geometryPSRResolverPass(ivec2 pixelCoordinate) {
   GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixelCoordinate, SharedFlags);
 
+  // Early out if the PSR pass currently executing does not handle a requested PSR type
+
   if (!push.isTransmissionPSR && !geometryFlags.performPSRR)
+  {
     return;
+  }
   else if (push.isTransmissionPSR && !geometryFlags.performPSTR)
+  {
     return;
+  }
+
+  // Re-load the Geometry PSR Resolver state from memory
 
   GeometryPSRResolverState geometryPSRResolverState;
 
@@ -1772,9 +1827,13 @@ void geometryPSRResolverPass(ivec2 pixelCoordinate) {
 
   GbufferPSRData psrData;
   if (push.isTransmissionPSR)
+  {
     psrData = loadTransmissionPSRData(pixelCoordinate);
+  }
   else
+  {
     psrData = loadReflectionPSRData(pixelCoordinate);
+  }
 
   unpackPSRData(psrData, geometryPSRResolverState);
 
@@ -1815,6 +1874,8 @@ void geometryPSRResolverPass(ivec2 pixelCoordinate) {
   }
 
   geometryPSRResolverState.radiance = vec3(SharedRadianceRG[pixelCoordinate], SharedRadianceB[pixelCoordinate]);
+
+  // Invoke the Geometry PSR Resolver
   
   geometryPSRResolver(geometryPSRResolverState);
 

@@ -187,6 +187,8 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   // Load Normal
 
   f16vec3 normal = surfaceInteraction.interpolatedNormal;
+  // Note: Defaults to 0 as this indicates no normal detail (which should be the case when a normal map is not present).
+  float16_t normalDetail = 0.0h;
 
   if (normalLoaded)
   {
@@ -194,6 +196,11 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
     const f16vec3 tangentNormal = unsignedOctahedralToHemisphereDirection(vec2(normalSample.xy), cb.opaqueMaterialArgs.normalIntensity);
 
     normal = normalize(mul(tangentToWorld, tangentNormal));
+    // Note: Only factoring in the initial normal map read as part of the normal map calculation as the second normal acts blends in worldspace which
+    // would re-introduce the potential for precision issues that we're trying to avoid in this calculation. Additionally, the second normal is only used
+    // currently for water effects and is sampled from a less detailed mip, so it is likely not too relevant for "detail" in the normal map with regards
+    // to what the normal detail is used for (denoiser disocclusion threshold modifications).
+    normalDetail = 1.0h - tangentNormal.z; // Note: 1 - n.z == 1 - dot(n, vec3(0, 0, 1))
 
     if (secondNormalLoaded)
     {
@@ -252,7 +259,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   const f16vec3 originalAlbedo = albedo;
 
   opaqueSurfaceMaterialInteraction.shadingNormal = getBentNormal(surfaceInteraction.triangleNormal, normal, -minimalRayInteraction.viewDirection);
-  opaqueSurfaceMaterialInteraction.normalDetail = float16_t(1.0 - dot(float3(opaqueSurfaceMaterialInteraction.shadingNormal), float3(surfaceInteraction.interpolatedNormal)));
+  opaqueSurfaceMaterialInteraction.normalDetail = normalDetail;
   // Todo: Shading tangent/bitangent for anisotropy?
   opaqueSurfaceMaterialInteraction.opacity = opacity;
   opaqueSurfaceMaterialInteraction.thinFilmThickness = thinFilmThickness;

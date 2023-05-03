@@ -139,7 +139,7 @@ namespace dxvk {
         {DEBUG_VIEW_PSR_PRIMARY_SECONDARY_SURFACE_MASK, "PSR Primary Secondary Surface Mask"},
         {DEBUG_VIEW_PSR_SELECTED_INTEGRATION_SURFACE_PDF, "PSR Selected Integration Surface PDF"},
         
-        {DEBUG_VIEW_PRIMARY_DISOCCLUSION_THRESHOLD_MIX, "Primary Disocclusion Threshold Mix"},
+        {DEBUG_VIEW_PRIMARY_USE_ALTERNATE_DISOCCLUSION_THRESHOLD, "Primary Use Alternate Disocclusion Threshold"},
 
         {DEBUG_VIEW_PRIMARY_SPECULAR_ALBEDO,               "Primary Specular Albedo"},
         {DEBUG_VIEW_SECONDARY_SPECULAR_ALBEDO,               "Secondary Specular Albedo"},
