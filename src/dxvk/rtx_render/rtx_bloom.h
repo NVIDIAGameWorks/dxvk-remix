@@ -57,13 +57,13 @@ namespace dxvk {
       const Resources::Resource& inputBuffer,
       const Resources::Resource& outputBuffer);
 
+    template<bool isVertical>
     void dispatchBlur(
       Rc<DxvkCommandList> cmdList,
       Rc<DxvkContext> ctx,
       Rc<DxvkSampler> linearSampler,
       const Resources::Resource& inputBuffer,
-      const Resources::Resource& outputBuffer,
-      bool isVertical);
+      const Resources::Resource& outputBuffer);
 
     void dispatchComposite(
       Rc<DxvkCommandList> cmdList,

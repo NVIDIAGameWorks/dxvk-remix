@@ -54,6 +54,7 @@ namespace dxvk {
   }
 
   void BindlessResourceManager::prepareSceneData(const Rc<DxvkCommandList>& cmd, const std::vector<TextureRef>& rtTextures, const std::vector<RaytraceBuffer>& rtBuffers) {
+    ScopedCpuProfileZone();
     if (m_frameLastUpdated == m_device->getCurrentFrameId()) {
       Logger::debug("Updating bindless tables multiple times per frame...");
       return;

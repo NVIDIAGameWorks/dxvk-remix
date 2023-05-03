@@ -245,7 +245,7 @@ Rc<ManagedTexture> UsdMod::Impl::getTexture(const Args& args, const pxr::UsdPrim
 }
 
 MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matPrim) {
-  ZoneScoped;
+  ScopedCpuProfileZone();
 
   // Textures
   static const pxr::TfToken kShaderToken("Shader");
@@ -618,7 +618,7 @@ bool UsdMod::Impl::processGeomSubset(Args& args, const pxr::UsdPrim& subPrim, Ra
 }
 
 void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
-  ZoneScoped;
+  ScopedCpuProfileZone();
 
   static const pxr::TfToken kFaceVertexCounts("faceVertexCounts");
   static const pxr::TfToken kFaceVertexIndices("faceVertexIndices");
@@ -976,7 +976,7 @@ void UsdMod::Impl::processLight(Args& args, const pxr::UsdPrim& lightPrim) {
 }
 
 void UsdMod::Impl::processReplacement(Args& args) {
-  ZoneScoped;
+  ScopedCpuProfileZone();
   static const pxr::TfToken kPreserveOriginalToken("preserveOriginalDrawCall");
 
   if (args.rootPrim.IsA<pxr::UsdGeomMesh>()) {
@@ -1001,7 +1001,7 @@ void UsdMod::Impl::processReplacement(Args& args) {
 }
 
 void UsdMod::Impl::load(const Rc<DxvkContext>& context) {
-  ZoneScoped;
+  ScopedCpuProfileZone();
   if (m_owner.state() == State::Unloaded) {
     context->getDevice()->getCommon()->getTextureManager().updateMipMapSkipLevel(context);
     processUSD(context);
@@ -1048,7 +1048,7 @@ bool UsdMod::Impl::checkForChanges(const Rc<DxvkContext>& context) {
 }
 
 void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
-  ZoneScoped;
+  ScopedCpuProfileZone();
   std::string replacementsUsdPath(m_owner.m_filePath.string());
 
   m_owner.setState(State::Loading);

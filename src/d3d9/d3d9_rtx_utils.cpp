@@ -14,7 +14,7 @@
 
 namespace dxvk {
   bool getMinMaxBoneIndices(const uint8_t* pBoneIndices, uint32_t stride, uint32_t vertexCount, uint32_t numBonesPerVertex, int& minBoneIndex, int& maxBoneIndex) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     if (vertexCount == 0)
       return false;
 

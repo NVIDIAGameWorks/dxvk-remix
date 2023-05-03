@@ -23,7 +23,6 @@
 #include "../dxvk/dxvk_scoped_annotation.h"
 
 #include "../dxvk/dxvk_format.h"
-#include "../tracy/Tracy.hpp"
 #include "../util/util_monitor.h"
 
 namespace dxvk::vk {
@@ -88,7 +87,7 @@ namespace dxvk::vk {
   }
 
   VkResult Presenter::presentImage() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     PresenterSync sync = m_semaphores.at(m_frameIndex);
 
     VkPresentInfoKHR info;

@@ -1,7 +1,6 @@
 #include "dxvk_cmdlist.h"
 #include "dxvk_device.h"
-
-#include "../tracy/Tracy.hpp"
+#include "dxvk_scoped_annotation.h"
 
 namespace dxvk {
     
@@ -125,7 +124,7 @@ namespace dxvk {
   
   
   VkResult DxvkCommandList::synchronize() {
-    ZoneScoped;
+    ScopedCpuProfileZone();
     VkResult status = VK_TIMEOUT;
     
     while (status == VK_TIMEOUT) {

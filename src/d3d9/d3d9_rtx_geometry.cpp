@@ -24,7 +24,7 @@ namespace dxvk {
   };
 
   bool getVertexRegion(const RasterBuffer& buffer, const size_t vertexCount, HashQuery& outResult) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     if (!buffer.defined())
       return false;
@@ -69,7 +69,7 @@ namespace dxvk {
 
   template<typename T>
   void hashGeometryData(const size_t indexCount, const uint32_t maxIndexValue, const void* pIndexData, const Rc<DxvkBuffer>& indexBufferRef, const HashQuery vertexRegions[Count], GeometryHashes& hashesOut) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     const HashRule& globalHashRule = RtxOptions::Get()->GeometryHashGenerationRule;
 
@@ -119,7 +119,7 @@ namespace dxvk {
   }
 
   std::shared_future<GeometryHashes> D3D9Rtx::computeHash(const RasterGeometry& geoData, const uint32_t maxIndexValue) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     const uint32_t indexCount = geoData.indexCount;
     const uint32_t vertexCount = geoData.vertexCount;
@@ -169,7 +169,7 @@ namespace dxvk {
     }
 
     return m_gpeWorkers.Schedule([vertexRegions, indexBufferRef, pIndexData, indexStride, indexDataSize, indexCount, maxIndexValue, vertexDataSeed, geometryDescriptorHash, vertexLayoutHash]() -> GeometryHashes {
-      ZoneScoped;
+      ScopedCpuProfileZone();
 
       GeometryHashes hashes;
 
@@ -202,7 +202,7 @@ namespace dxvk {
   }
 
   std::shared_future<AxisAlignBoundingBox> D3D9Rtx::computeAxisAlignedBoundingBox(const RasterGeometry& geoData) {
-    ZoneScoped;
+    ScopedCpuProfileZone();
 
     const void* pVertexData = geoData.positionBuffer.mapPtr((size_t)geoData.positionBuffer.offsetFromSlice());
     const uint32_t vertexCount = geoData.vertexCount;
@@ -213,7 +213,7 @@ namespace dxvk {
     }
 
     return m_gpeWorkers.Schedule([pVertexData, vertexCount, vertexStride]()->AxisAlignBoundingBox {
-      ZoneScoped;
+      ScopedCpuProfileZone();
 
       __m128 minPos = _mm_set_ps1(FLT_MAX);
       __m128 maxPos = _mm_set_ps1(-FLT_MAX);
