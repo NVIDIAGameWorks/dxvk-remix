@@ -580,11 +580,15 @@ void integratePathVertex(
                 emissiveLightSample.position = emissiveSurfaceInteraction.position;
                 emissiveLightSample.normal = emissiveSurfaceInteraction.interpolatedNormal;
                 emissiveLightSample.radiance = emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance;
-                emissiveLightSample.solidAnglePdf = 1.0;
+                float16_t areaPdf = 1.0 / emissiveSurfaceInteraction.triangleArea;
+                vec3 offset = emissiveSurfaceInteraction.position - surfaceInteraction.position;
+                float r2 = dot(offset, offset);
+                float cosPhi = abs(dot(normalize(offset), emissiveSurfaceInteraction.triangleNormal));
+                emissiveLightSample.solidAnglePdf = cosPhi > 0 ? areaPdf * r2 / cosPhi : 0;
 
                 float16_t specularPortion2;
                 const bool isViewModel = pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
-                float emissiveInvSelectionPdf = 1.0;
+                float emissiveInvSelectionPdf = candidateCount;
                 vec3 emissiveNEELight = evalNEESecondary(
                   emissiveLightSample, emissiveInvSelectionPdf, invalidRayPortalIndex, pathState.portalSpace, pathState.rayMask,
                   isViewModel, ray, rayInteraction, surfaceInteraction,
