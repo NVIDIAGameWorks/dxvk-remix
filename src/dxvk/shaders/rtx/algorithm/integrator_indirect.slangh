@@ -397,7 +397,7 @@ void integratePathVertex(
   vec3 emissiveLight = polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(polymorphicSurfaceMaterialInteraction);
   if (any(emissiveLight) > 0)
   {
-    int address = pointToAddress(oldOrigin);
+    int address = NEECache.pointToAddress(oldOrigin);
     //f16vec3 direction = normalize(pathState.origin - oldOrigin);
     //int2 address = pointDirectionToAddress(oldOrigin, direction);
     if (address != -1)
@@ -541,7 +541,7 @@ void integratePathVertex(
 
     if(cb.debugKnob.x > 0)
     {
-      int address = pointToAddress(surfaceInteraction.position);
+      int address = NEECache.pointToAddress(surfaceInteraction.position);
       if (all(address != -1))
       {
         int4 data = 0;// RadianceCache[address];
