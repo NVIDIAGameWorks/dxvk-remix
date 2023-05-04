@@ -96,15 +96,21 @@ namespace dxvk {
       Vector4 normal0;
     };
 
-    auto BoundVertexShaderHas = [&](DxsoUsage usage)-> bool {
-      const auto& isgn = d3d9State().vertexShader->GetCommonShader()->GetIsgn();
-      for (uint32_t i = 0; i < isgn.elemCount; i++) {
-        const auto& decl = isgn.elems[i];
+    auto BoundShaderHas = [&](const D3D9CommonShader* shader, DxsoUsage usage, bool inOut)-> bool {
+      if (shader == nullptr)
+        return false;
+
+      const auto& sgn = inOut ? shader->GetIsgn() : shader->GetOsgn();
+      for (uint32_t i = 0; i < sgn.elemCount; i++) {
+        const auto& decl = sgn.elems[i];
         if (decl.semantic.usageIndex == 0 && decl.semantic.usage == usage)
           return true;
       }
       return false;
     };
+
+    // Get common shaders to query what data we can capture
+    const D3D9CommonShader* vertexShader = d3d9State().vertexShader.ptr() != nullptr ? d3d9State().vertexShader->GetCommonShader() : nullptr;
 
     // Known stride for vertex capture buffers
     const uint32_t stride = sizeof(CapturedVertex);
@@ -124,15 +130,16 @@ namespace dxvk {
     geoData.positionBuffer = RasterBuffer(buf.slice, 0, stride, VK_FORMAT_R32G32B32A32_SFLOAT);
     assert(geoData.positionBuffer.offset() % 4 == 0);
 
-    // Did we have a texcoord buffer bound for this draw?
-    if (BoundVertexShaderHas(DxsoUsage::Texcoord) && (!geoData.texcoordBuffer.defined() || !RtxGeometryUtils::isTexcoordFormatValid(geoData.texcoordBuffer.vertexFormat()))) {
+    // Did we have a texcoord buffer bound for this draw?  Note, we currently get texcoord from the vertex shader output 
+    if (BoundShaderHas(vertexShader, DxsoUsage::Texcoord, false) && (!geoData.texcoordBuffer.defined() || !RtxGeometryUtils::isTexcoordFormatValid(geoData.texcoordBuffer.vertexFormat()))) {
       // Known offset for vertex capture buffers
       const uint32_t texcoordOffset = offsetof(CapturedVertex, texcoord0);
       geoData.texcoordBuffer = RasterBuffer(buf.slice, texcoordOffset, stride, VK_FORMAT_R32G32_SFLOAT);
       assert(geoData.texcoordBuffer.offset() % 4 == 0);
     }
 
-    if (BoundVertexShaderHas(DxsoUsage::Normal) && useVertexCapturedNormals()) {
+    // Check if we should/can get normals.  We don't see a lot of games sending normals to pixel shader, so we must capture from the IA output (or Vertex input)
+    if (BoundShaderHas(vertexShader, DxsoUsage::Normal, true) && useVertexCapturedNormals()) {
       const uint32_t normalOffset = offsetof(CapturedVertex, normal0);
       geoData.normalBuffer = RasterBuffer(buf.slice, normalOffset, stride, VK_FORMAT_R32G32B32_SFLOAT);
       assert(geoData.normalBuffer.offset() % 4 == 0);
