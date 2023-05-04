@@ -167,7 +167,8 @@ namespace dxvk {
     ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_RESTIR_GI_RADIANCE_OUTPUT, rtOutput.m_restirGIRadiance.view(Resources::AccessType::Write), nullptr);
     ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_RESTIR_GI_HIT_GEOMETRY_OUTPUT, rtOutput.m_restirGIHitGeometry.view, nullptr);
 
-    ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_RADIANCE_CACHE, rtOutput.m_radianceCache.view, nullptr);
+    //ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_RADIANCE_CACHE, rtOutput.m_radianceCache.view, nullptr);
+    ctx->bindResourceBuffer(INTEGRATE_INDIRECT_BINDING_RADIANCE_CACHE, DxvkBufferSlice(rtOutput.m_radianceCache, 0, rtOutput.m_radianceCache->info().size));
 
     // Aliased resources
     // m_indirectRadiance writes the actual output carried forward and therefore it must be bound with write access last
