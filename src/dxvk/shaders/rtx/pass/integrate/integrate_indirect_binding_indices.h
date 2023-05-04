@@ -47,6 +47,7 @@
 #define INTEGRATE_INDIRECT_BINDING_FIRST_SAMPLED_LOBE_DATA_INPUT                       56
 
 #define INTEGRATE_INDIRECT_BINDING_RADIANCE_CACHE                                      57
+#define INTEGRATE_INDIRECT_BINDING_RADIANCE_CACHE_TASK                                 58
 // Storage
 
 #define INTEGRATE_INDIRECT_BINDING_DECAL_MATERIAL_STORAGE                              60
