@@ -96,8 +96,8 @@ REORDER_COHERENT RWTexture2D<float4> RestirGIRadiance;
 layout(rgba32f, binding = INTEGRATE_INDIRECT_BINDING_RESTIR_GI_HIT_GEOMETRY_OUTPUT)
 RWTexture2D<float4> RestirGIHitGeometry;
 
-layout(rgba32ui, binding = INTEGRATE_INDIRECT_BINDING_RADIANCE_CACHE)
-RWTexture2D<float4> RadianceCache;
+layout(binding = INTEGRATE_INDIRECT_BINDING_RADIANCE_CACHE)
+RWByteAddressBuffer RadianceCache;
 
 // Aliased resources
 

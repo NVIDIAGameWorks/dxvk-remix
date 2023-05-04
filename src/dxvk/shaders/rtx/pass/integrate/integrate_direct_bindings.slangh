@@ -75,8 +75,8 @@ RWStructuredBuffer<RTXDI_PackedReservoir> RtxdiReservoirBuffer;
 layout(r16f, binding = INTEGRATE_DIRECT_BINDING_PRIMARY_RTXDI_ILLUMINANCE_OUTPUT)
 RWTexture2D<float> PrimaryRtxdiIlluminance;
 
-layout(rgba32ui, binding = INTEGRATE_DIRECT_BINDING_RADIANCE_CACHE)
-RWTexture2D<uint4> RadianceCache;
+layout(binding = INTEGRATE_DIRECT_BINDING_RADIANCE_CACHE)
+RWByteAddressBuffer RadianceCache;
 // Primary Inputs/Outputs
 
 layout(rgb10_a2, binding = INTEGRATE_DIRECT_BINDING_PRIMARY_BASE_REFLECTIVITY_INPUT_OUTPUT)

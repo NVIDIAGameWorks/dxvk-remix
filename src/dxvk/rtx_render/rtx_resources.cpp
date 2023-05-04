@@ -900,12 +900,16 @@ namespace dxvk {
     m_raytracingOutput.m_restirGIRadiance = AliasedResource(m_raytracingOutput.m_compositeOutput, ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "ReSTIR GI Radiance");
     m_raytracingOutput.m_restirGIHitGeometry = createImageResource(ctx, "restir gi hit geometry", m_downscaledExtent, VK_FORMAT_R32G32B32A32_SFLOAT);
 
-    VkExtent3D cacheExtend = {
-      RADIANCE_CACHE_MIP_RESOLUTION * RADIANCE_CACHE_PROBE_RESOLUTION * RADIANCE_CACHE_PROBE_RESOLUTION,
-      RADIANCE_CACHE_MIP_RESOLUTION * RADIANCE_CACHE_PROBE_RESOLUTION,
-      1
-    };
-    m_raytracingOutput.m_radianceCache = createImageResource(ctx, cacheExtend, VK_FORMAT_R32G32B32A32_UINT);
+    //VkExtent3D cacheExtend = {
+    //  RADIANCE_CACHE_MIP_RESOLUTION * RADIANCE_CACHE_PROBE_RESOLUTION * RADIANCE_CACHE_PROBE_RESOLUTION,
+    //  RADIANCE_CACHE_MIP_RESOLUTION * RADIANCE_CACHE_PROBE_RESOLUTION,
+    //  1
+    //};
+    DxvkBufferCreateInfo radianceCacheInfo = rtxdiBufferInfo;
+    int cellCount = RADIANCE_CACHE_PROBE_RESOLUTION * RADIANCE_CACHE_PROBE_RESOLUTION * RADIANCE_CACHE_PROBE_RESOLUTION;
+    radianceCacheInfo.size = cellCount * RADIANCE_CACHE_ELEMENTS * sizeof(int) * 2;
+    m_raytracingOutput.m_radianceCache = m_device->createBuffer(radianceCacheInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer); //createImageResource(ctx, cacheExtend, VK_FORMAT_R32G32B32A32_UINT);
+    m_raytracingOutput.m_radianceCacheTask = m_device->createBuffer(radianceCacheInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
 
     // Post Effect motion blur prefilter intermediate textures
     m_raytracingOutput.m_primarySurfaceFlagsIntermediateTexture1 = AliasedResource(m_raytracingOutput.m_secondaryPerceptualRoughness, ctx, m_downscaledExtent, VK_FORMAT_R8_UINT, "Primary Surface Flags Intermediate Texture 1");
