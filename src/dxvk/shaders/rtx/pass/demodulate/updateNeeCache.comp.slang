@@ -536,17 +536,16 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   GroupMemoryBarrierWithGroupSync();
 
   // update nee cache
-  int baseAddress = NEECache.cellToAddress(cellID);
   if (localIndex.x < s_tarTaskCount)
   {
     int candidateID = localIndex.x;
-    RadianceCache.Store2(baseAddress + (candidateID + 1) * RADIANCE_CACHE_ELEMENT_SIZE, s_tarTaskList[candidateID]);
+    cell.setCandidate(candidateID, s_tarTaskList[candidateID]);
   }
 
   if (localIndex.x == 0 && localIndex.y == 0)
   {
-    RadianceCacheTask.Store(baseAddress, 0);
-    RadianceCache.Store(baseAddress, s_tarTaskCount);
+    RadianceCacheTask.Store(cell.m_baseAddress, 0);
+    RadianceCache.Store(cell.m_baseAddress, s_tarTaskCount);
   }
   /*
   const Camera camera = cb.camera;
