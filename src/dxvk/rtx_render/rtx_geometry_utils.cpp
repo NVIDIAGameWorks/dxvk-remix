@@ -532,7 +532,7 @@ namespace dxvk {
       args.normalStride = input.normalBuffer.stride() / 4;
       args.normalFormat = input.normalBuffer.vertexFormat();
       if (!interleaver::formatConversionFloatSupported(args.normalFormat)) {
-        ONCE(Logger::err(str::format("[rtx-interleaver] Unsupported normal buffer format (", args.normalFormat, "), skipping normals")));
+        ONCE(Logger::warn(str::format("[rtx-interleaver] Unsupported normal buffer format (", args.normalFormat, "), skipping normals")));
       }
     }
     args.hasTexcoord = input.texcoordBuffer.defined();
@@ -543,7 +543,7 @@ namespace dxvk {
       args.texcoordStride = input.texcoordBuffer.stride() / 4;
       args.texcoordFormat = input.texcoordBuffer.vertexFormat();
       if (!interleaver::formatConversionFloatSupported(args.texcoordFormat)) {
-        ONCE(Logger::err(str::format("[rtx-interleaver] Unsupported texcoord buffer format (", args.texcoordFormat, "), skipping texcoord")));
+        ONCE(Logger::warn(str::format("[rtx-interleaver] Unsupported texcoord buffer format (", args.texcoordFormat, "), skipping texcoord")));
       }
     }
     args.hasColor0 = input.color0Buffer.defined();
@@ -554,7 +554,7 @@ namespace dxvk {
       args.color0Stride = input.color0Buffer.stride() / 4;
       args.color0Format = input.color0Buffer.vertexFormat();
       if (!interleaver::formatConversionUintSupported(args.color0Format)) {
-        ONCE(Logger::err(str::format("[rtx-interleaver] Unsupported texcoord buffer format (", args.color0Format, "), skipping color0")));
+        ONCE(Logger::warn(str::format("[rtx-interleaver] Unsupported color0 buffer format (", args.color0Format, "), skipping color0")));
       }
     }
 
