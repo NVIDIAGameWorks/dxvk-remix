@@ -414,7 +414,7 @@ void integratePathVertex(
       }
     }
   }
-  if (!hasNEE)
+  if (!hasNEE || pathState.bounceIteration == 1)
   {
     accumulateRadiance(pathState, emissiveLight);
   }
