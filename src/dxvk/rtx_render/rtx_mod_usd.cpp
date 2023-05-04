@@ -52,6 +52,7 @@
 #include <pxr/usd/usdShade/materialBindingAPI.h>
 #include <pxr/base/arch/fileSystem.h>
 #include "../../lssusd/usd_include_end.h"
+#include "../util/util_watchdog.h"
 
 namespace fs = std::filesystem;
 
@@ -61,7 +62,10 @@ const char* const kStatusKey = "remix_replacement_status";
 
 class UsdMod::Impl {
 public:
-  Impl(UsdMod& owner) : m_owner{owner} {}
+  Impl(UsdMod& owner) 
+    : m_owner{owner}
+    , m_usdChangeWatchdog([this] { return this->haveFilesChanged(); }, "usd-mod-watchdog")
+  {}
 
   void load(const Rc<DxvkContext>& context);
   void unload();
@@ -78,6 +82,8 @@ private:
     std::vector<AssetReplacement>& meshes;
   };
 
+  bool haveFilesChanged();
+
   void processUSD(const Rc<DxvkContext>& context);
 
   void TEMP_parseSecretReplacementVariants(const fast_unordered_cache<uint32_t>& variants);
@@ -92,6 +98,8 @@ private:
   std::filesystem::file_time_type m_fileModificationTime;
   std::string m_openedFilePath;
   size_t m_replacedCount = 0;
+
+  Watchdog<1000> m_usdChangeWatchdog;
 };
 
 // context and member variable arguments to pass down to anonymous functions (to avoid having USD in the header)
@@ -1005,12 +1013,14 @@ void UsdMod::Impl::load(const Rc<DxvkContext>& context) {
   if (m_owner.state() == State::Unloaded) {
     context->getDevice()->getCommon()->getTextureManager().updateMipMapSkipLevel(context);
     processUSD(context);
+
+    m_usdChangeWatchdog.start();
   }
 }
 
 void UsdMod::Impl::unload() {
   if (m_owner.state() == State::Loaded) {
-//    context->getDevice()->getCommon()->getTextureManager().demoteTexturesFromVidmem();
+    m_usdChangeWatchdog.stop();
 
     m_owner.m_replacements->clear();
 
@@ -1018,7 +1028,7 @@ void UsdMod::Impl::unload() {
   }
 }
 
-bool UsdMod::Impl::checkForChanges(const Rc<DxvkContext>& context) {
+bool UsdMod::Impl::haveFilesChanged() {
   if (m_openedFilePath.empty())
     return false;
 
@@ -1036,15 +1046,17 @@ bool UsdMod::Impl::checkForChanges(const Rc<DxvkContext>& context) {
       return false;
     }
   }
+  return (newModTime > m_fileModificationTime);
+}
 
-  bool changed = false;
-  if (newModTime > m_fileModificationTime) {
+bool UsdMod::Impl::checkForChanges(const Rc<DxvkContext>& context) {
+  if (m_usdChangeWatchdog.hasSignaled()) {
     unload();
-    processUSD(context);
-    changed = true;
+    load(context);
+    return true;
   }
 
-  return changed;
+  return false;
 }
 
 void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
