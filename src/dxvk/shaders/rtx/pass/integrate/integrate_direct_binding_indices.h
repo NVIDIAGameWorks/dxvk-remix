@@ -45,6 +45,7 @@
 #define INTEGRATE_DIRECT_BINDING_SECONDARY_CONE_RADIUS_INPUT             56
 
 #define INTEGRATE_DIRECT_BINDING_RADIANCE_CACHE                          57
+#define INTEGRATE_DIRECT_BINDING_RADIANCE_CACHE_TASK                     58
 
 // Inputs/Outputs
 

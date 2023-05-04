@@ -77,6 +77,9 @@ RWTexture2D<float> PrimaryRtxdiIlluminance;
 
 layout(binding = INTEGRATE_DIRECT_BINDING_RADIANCE_CACHE)
 RWByteAddressBuffer RadianceCache;
+
+layout(binding = INTEGRATE_DIRECT_BINDING_RADIANCE_CACHE_TASK)
+RWByteAddressBuffer RadianceCacheTask;
 // Primary Inputs/Outputs
 
 layout(rgb10_a2, binding = INTEGRATE_DIRECT_BINDING_PRIMARY_BASE_REFLECTIVITY_INPUT_OUTPUT)
