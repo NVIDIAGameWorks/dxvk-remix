@@ -49,6 +49,12 @@ namespace dxvk {
       return m_isgn;
     }
 
+    // NV-DXVK start: expose shader outputs for vertex capture
+    const DxsoIsgn& GetOsgn() const {
+      return m_osgn;
+    }
+    // NV-DXVK end
+
     const DxsoShaderMetaInfo& GetMeta() const { return m_meta; }
     const DxsoDefinedConstants& GetConstants() const { return m_constants; }
 
@@ -61,6 +67,9 @@ namespace dxvk {
   private:
 
     DxsoIsgn              m_isgn;
+    // NV-DXVK start: expose shader outputs for vertex capture
+    DxsoIsgn              m_osgn;
+    // NV-DXVK end
     uint32_t              m_usedSamplers;
     uint32_t              m_usedRTs;
 
