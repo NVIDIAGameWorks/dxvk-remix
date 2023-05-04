@@ -35,7 +35,9 @@
 #include "rtx/concept/ray/ray_helper.slangh"
 #include "rtx/algorithm/integrator_helpers.slangh"
 #include "rtx/external/nrd.slangh"
+#include "rtx/algorithm/neecache.h"
 
+/*
 struct DemodulationData
 {
   vec3 diffuseAlbedo;
@@ -486,12 +488,65 @@ void outputToDebugViewAtTheEnd(
     accumulateInDebugViewAnd(ivec2(pixelCoordinate), isValid);
   }
   }
-}
+}*/
+
+groupshared uint2 s_srcTaskList[RADIANCE_CACHE_ELEMENTS];
+groupshared uint2 s_tarTaskList[RADIANCE_CACHE_ELEMENTS];
+groupshared int s_tarTaskCount;
 
 [shader("compute")]
-[numthreads(16, 1, 1)]
-void main(uint3 pixelCoordinate : SV_DispatchThreadID, uint2 localIndex : SV_GroupThreadID)
+[numthreads(RADIANCE_CACHE_ELEMENTS, 1, 1)]
+void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupThreadID)
 {
+  int3 cellID = threadIndex / int3(RADIANCE_CACHE_ELEMENTS,1,1);
+
+  // load to shared memory
+  int taskCount = NEECache.getTaskCount(cellID);
+  int taskID = localIndex.x;  
+  int2 task = NEECache.getTask(cellID, taskID);
+  s_srcTaskList[taskID] = task;
+  if (localIndex.x == 0 && localIndex.y == 0)
+  {
+    s_tarTaskCount = 0;
+  }
+  GroupMemoryBarrierWithGroupSync();
+
+  // merge tasks
+  bool insertTask = false;
+  if (taskID < RADIANCE_CACHE_ELEMENTS-1 && all(task != -1))
+  {
+    bool isNewTask = true;
+    for (int i = 0; i < taskID -1; ++i)
+    {
+      if (all(s_srcTaskList[i] == task))
+      {
+        isNewTask = false;
+      }
+    }
+    insertTask = isNewTask;
+  }
+
+  if (insertTask)
+  {
+    int oldCount = 0;
+    InterlockedAdd(s_tarTaskCount, 1, oldCount);
+    s_tarTaskList[oldCount] = task;
+  }
+  GroupMemoryBarrierWithGroupSync();
+
+  // update nee cache
+  int baseAddress = NEECache.cellToAddress(cellID);
+  if (localIndex.x < s_tarTaskCount)
+  {
+    int candidateID = localIndex.x;
+    RadianceCache.Store2(baseAddress + (candidateID + 1) * RADIANCE_CACHE_ELEMENT_SIZE, s_tarTaskList[candidateID]);
+  }
+
+  if (localIndex.x == 0 && localIndex.y == 0)
+  {
+    RadianceCacheTask.Store(baseAddress, 0);
+    RadianceCache.Store(baseAddress, s_tarTaskCount);
+  }
   /*
   const Camera camera = cb.camera;
 
