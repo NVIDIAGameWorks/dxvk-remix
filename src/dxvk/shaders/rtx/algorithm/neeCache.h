@@ -40,7 +40,7 @@ struct NEECache
     return idx * RADIANCE_CACHE_ELEMENTS * RADIANCE_CACHE_ELEMENT_SIZE;
   }
 
-  static int pointToAddress(vec3 position)
+  static int3 pointToCell(vec3 position)
   {
     vec3 cameraPos = cameraGetWorldPosition(cb.camera);
     float extend = 1000;
@@ -50,8 +50,17 @@ struct NEECache
     {
       return -1;
     }
-
     ivec3 UVWi = UVW * RADIANCE_CACHE_PROBE_RESOLUTION;
+    return UVWi;
+  }
+
+  static int pointToAddress(vec3 position)
+  {
+    ivec3 UVWi = pointToCell(position);
+    if (any(UVWi == -1))
+    {
+      return -1;
+    }
     return cellToAddress(UVWi);
   }
 
@@ -68,9 +77,30 @@ struct NEECache
     return min(count, RADIANCE_CACHE_ELEMENTS - 1);
   }
 
+  static int getCandidateCount(float3 point)
+  {
+    int address = pointToAddress(point);
+    if (address == -1)
+    {
+      return 0;
+    }
+    uint count = RadianceCache.Load(address);
+    return min(count, RADIANCE_CACHE_ELEMENTS - 1);
+  }
+
+  static int2 getCandidate(float3 point, int taskID)
+  {
+    int address = getTaskAddress(pointToCell(point), taskID);
+    if (address == -1)
+    {
+      return int2(-1);
+    }
+    return RadianceCache.Load2(address);
+  }
+
   static int getTaskAddress(int3 cellID, int taskID)
   {
-    if (taskID >= RADIANCE_CACHE_ELEMENTS - 1)
+    if (any(cellID == -1) || taskID >= RADIANCE_CACHE_ELEMENTS - 1)
     {
       return -1;
     }
@@ -89,9 +119,13 @@ struct NEECache
     return RadianceCacheTask.Load2(address);
   }
 
-  static bool insertTask(int3 cellID, uint2 task)
+  static bool insertTask(float3 point, uint2 task)
   {
-    int baseAddress = cellToAddress(cellID);
+    int baseAddress = pointToAddress(point);
+    if (baseAddress == -1)
+    {
+      return false;
+    }
     uint oldLength;
     RadianceCacheTask.InterlockedAdd(baseAddress, 1, oldLength);
 
@@ -102,6 +136,6 @@ struct NEECache
     }
     return false;
   }
-  
+
 }
 #endif
