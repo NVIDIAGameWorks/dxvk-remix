@@ -544,8 +544,8 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
 
   if (localIndex.x == 0 && localIndex.y == 0)
   {
-    RadianceCacheTask.Store(cell.m_baseAddress, 0);
-    RadianceCache.Store(cell.m_baseAddress, s_tarTaskCount);
+    cell.setTaskCount(0);
+    cell.setCandidateCount(s_tarTaskCount);
   }
   /*
   const Camera camera = cb.camera;
