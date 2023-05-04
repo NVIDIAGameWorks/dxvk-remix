@@ -39,31 +39,15 @@ struct NEECell
 
   bool isValid() { return m_baseAddress != -1; }
 
-  void clearTask()
+  void setTaskCount(int count)
   {
-    RadianceCacheTask.Store(m_baseAddress, 0);
+    RadianceCacheTask.Store(m_baseAddress, count);
   }
 
   int getTaskCount()
   {
     uint count = RadianceCacheTask.Load(m_baseAddress);
     return min(count, RADIANCE_CACHE_ELEMENTS - 1);
-  }
-
-  int getCandidateCount()
-  {
-    uint count = RadianceCache.Load(m_baseAddress);
-    return min(count, RADIANCE_CACHE_ELEMENTS - 1);
-  }
-
-  int2 getCandidate(int idx)
-  {
-    return RadianceCache.Load2(m_baseAddress + indexToOffset(idx));
-  }
-
-  void setCandidate(int idx, int2 candidate)
-  {
-    return RadianceCache.Store2(m_baseAddress + indexToOffset(idx), candidate);
   }
 
   int2 getTask(int idx)
@@ -82,6 +66,27 @@ struct NEECell
       return true;
     }
     return false;
+  }
+
+  int getCandidateCount()
+  {
+    uint count = RadianceCache.Load(m_baseAddress);
+    return min(count, RADIANCE_CACHE_ELEMENTS - 1);
+  }
+
+  void setCandidateCount(int count)
+  {
+    RadianceCache.Store(m_baseAddress, count);
+  }
+
+  int2 getCandidate(int idx)
+  {
+    return RadianceCache.Load2(m_baseAddress + indexToOffset(idx));
+  }
+
+  void setCandidate(int idx, int2 candidate)
+  {
+    return RadianceCache.Store2(m_baseAddress + indexToOffset(idx), candidate);
   }
 }
 
