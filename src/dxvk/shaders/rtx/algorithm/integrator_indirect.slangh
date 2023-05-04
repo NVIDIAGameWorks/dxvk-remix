@@ -393,27 +393,32 @@ void integratePathVertex(
   }
 
   // Add Emission
-  evalEmission(pathState, polymorphicSurfaceMaterialInteraction);
   vec3 emissiveLight = polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(polymorphicSurfaceMaterialInteraction);
-  if (any(emissiveLight) > 0)
+  bool hasNEE = false;
+  if (cb.debugKnob.x > 0 && any(emissiveLight) > 0)
   {
     NEECell cell = NEECache.createCell(oldOrigin);
     if (cell.isValid())
     {
-      cell.insertTask(uint2(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex));
+      uint2 task = uint2(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex);
+      cell.insertTask(task);
+
+      for (int i = 0; i < cell.getCandidateCount(); ++i)
+      {
+        int2 candidate = cell.getCandidate(i);
+        if (all(candidate == task))
+        {
+          hasNEE = true;
+          break;
+        }
+      }
     }
-    // int address = NEECache.pointToAddress(oldOrigin);
-    // //f16vec3 direction = normalize(pathState.origin - oldOrigin);
-    // //int2 address = pointDirectionToAddress(oldOrigin, direction);
-    // if (address != -1)
-    // {
-    //   // vec4 oldRadiance = RadianceCache[address];
-    //   // float weight = oldRadiance.a + 1;
-    //   // vec3 newRadiance = lerp(oldRadiance.rgb, newLight, 1.0 / weight);
-    //   // RadianceCache[address] = vec4(sanitize(newRadiance, vec3(0)), clamp(weight + 1, 0, 100));
-    //   //RadianceCache[address] = int4(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex,0,0);
-    // }
   }
+  if (!hasNEE)
+  {
+    accumulateRadiance(pathState, emissiveLight);
+  }
+  //evalEmission(pathState, polymorphicSurfaceMaterialInteraction);
 
 // We don't need to sample lights or surface rays in the portal closest hit shader
 #if (SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT) != 0
