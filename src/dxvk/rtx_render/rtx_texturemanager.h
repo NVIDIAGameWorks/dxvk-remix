@@ -23,6 +23,7 @@
 #include <mutex>
 #include <queue>
 
+#include "../../util/util_renderprocessor.h"
 #include "../../util/thread.h"
 #include "../../util/rc/util_rc_ptr.h"
 #include "../../util/sync/sync_signal.h"
@@ -32,14 +33,12 @@ namespace dxvk {
   class DxvkContext;
   struct ManagedTexture;
 
-  class RtxTextureManager {
+  class RtxTextureManager : public RenderProcessor<Rc<ManagedTexture>> {
   public:
     RtxTextureManager(const Rc<DxvkDevice>& device);
     ~RtxTextureManager();
 
-    void start();
-    Rc<ManagedTexture> preloadTexture(const Rc<AssetData>& assetData, ColorSpace colorSpace,
-      const Rc<DxvkContext>& context, bool forceLoad);
+    Rc<ManagedTexture> preloadTexture(const Rc<AssetData>& assetData, ColorSpace colorSpace, const Rc<DxvkContext>& context, bool forceLoad);
     void scheduleTextureUpload(TextureRef& texture, Rc<DxvkContext>& immediateContext, bool allowAsync);
     void unloadTexture(const Rc<ManagedTexture>& texture);
     void releaseTexture(const Rc<ManagedTexture>& texture);
@@ -66,24 +65,22 @@ namespace dxvk {
       return key;
     }
 
+  protected:
+    void work(Rc<ManagedTexture>& item, Rc<DxvkContext>& ctx, Rc<DxvkCommandList>& cmd) override;
+
+    bool wakeWorkerCondition() override {
+      return RenderProcessor::wakeWorkerCondition() || m_kickoff;
+    }
+
   private:
     Rc<DxvkDevice> m_device;
-    Rc<DxvkContext> m_ctx;
-    dxvk::mutex m_queueMutex;
-    std::atomic<bool> m_stopped = { false };
     std::atomic<bool> m_dropRequests = false;
-    dxvk::condition_variable m_condOnAdd;
-    dxvk::condition_variable m_condOnSync;
     bool m_kickoff = false;
-    std::queue<Rc<ManagedTexture>> m_textureQueue;
-    std::atomic<uint32_t> m_texturesPending = { 0u };
-    dxvk::thread m_thread;
 
     uint32_t m_minimumMipLevel{ 0u };
     fast_unordered_cache<Rc<ManagedTexture>> m_textures;
 
-    void threadFunc();
-    void uploadTexture(const Rc<ManagedTexture>& texture);
+    void uploadTexture(const Rc<ManagedTexture>& texture, Rc<DxvkContext>& ctx);
   };
 
 } // namespace dxvk
