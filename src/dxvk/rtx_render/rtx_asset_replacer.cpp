@@ -83,6 +83,8 @@ void AssetReplacer::initialize(const Rc<DxvkContext>& context) {
 }
 
 bool AssetReplacer::checkForChanges(const Rc<DxvkContext>& context) {
+  ScopedCpuProfileZone();
+
   bool changed = false;
   for (auto& mod : m_modManager.mods()) {
     changed |= mod->checkForChanges(context);

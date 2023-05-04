@@ -36,6 +36,8 @@ util_src = files([
 
   'util_threadpool.h',
   'util_atomic_queue.h',
+  
+  'util_watchdog.h',
 ])
 
 util_lib = static_library('util', util_src,
