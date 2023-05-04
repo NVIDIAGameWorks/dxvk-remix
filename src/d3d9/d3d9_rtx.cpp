@@ -325,8 +325,8 @@ namespace dxvk {
 
     // Only certain draw calls are worth raytracing
     if (!isPrimitiveSupported(drawContext.PrimitiveType)) {
-      ONCE(Logger::info(str::format("[RTX-Compatibility-Info] Trying to raytrace an unsupported primitive topology [", drawContext.PrimitiveType, "]. Falling back to rasterization")));
-      return { RtxGeometryStatus::Rasterized, false };
+      ONCE(Logger::info(str::format("[RTX-Compatibility-Info] Trying to raytrace an unsupported primitive topology [", drawContext.PrimitiveType, "]. Ignoring.")));
+      return { RtxGeometryStatus::Ignored, false };
     }
 
     // We only look at RT 0 currently.
@@ -343,6 +343,18 @@ namespace dxvk {
       return { RtxGeometryStatus::Ignored, false };
     }
 
+    // Attempt to detect shadow mask draws and ignore them
+    // Conditions: non-textured flood-fill draws into a small quad render target
+    if (((d3d9State().textureStages[0][D3DTSS_COLOROP] == D3DTOP_SELECTARG1 && d3d9State().textureStages[0][D3DTSS_COLORARG1] != D3DTA_TEXTURE) ||
+        (d3d9State().textureStages[0][D3DTSS_COLOROP] == D3DTOP_SELECTARG2 && d3d9State().textureStages[0][D3DTSS_COLORARG2] != D3DTA_TEXTURE))) {
+      auto rtExt = d3d9State().renderTargets[kRenderTargetIndex]->GetSurfaceExtent();
+      // If rt is a quad at least 4 times smaller than backbuffer it is likely a shadow mask
+      if (rtExt.width == rtExt.height && rtExt.width < m_activePresentParams.BackBufferWidth / 4) {
+        ONCE(Logger::info("[RTX-Compatibility-Info] Skipped shadow mask drawcall."));
+        return { RtxGeometryStatus::Ignored, false };
+      }
+    }
+
     if (!s_isDxvkResolutionEnvVarSet) {
       // NOTE: This can fail when setting DXVK_RESOLUTION_WIDTH or HEIGHT
       bool isPrimary = isRenderTargetPrimary(m_activePresentParams, d3d9State().renderTargets[kRenderTargetIndex]->GetCommonTexture()->Desc());
@@ -351,6 +363,17 @@ namespace dxvk {
         ONCE(Logger::info("[RTX-Compatibility-Info] Found a draw call to a non-primary render target. Falling back to rasterization"));
         return { RtxGeometryStatus::Rasterized, false };
       }
+    }
+
+    // Detect stencil shadow draws and ignore them
+    // Conditions: passingthrough stencil is enabled with increment or decrement z-fail action
+    if (d3d9State().renderStates[D3DRS_STENCILENABLE] == TRUE &&
+        d3d9State().renderStates[D3DRS_STENCILFUNC] == D3DCMP_ALWAYS &&
+        (d3d9State().renderStates[D3DRS_STENCILZFAIL] == D3DSTENCILOP_DECR || d3d9State().renderStates[D3DRS_STENCILZFAIL] == D3DSTENCILOP_INCR ||
+        d3d9State().renderStates[D3DRS_STENCILZFAIL] == D3DSTENCILOP_DECRSAT || d3d9State().renderStates[D3DRS_STENCILZFAIL] == D3DSTENCILOP_INCRSAT) &&
+        d3d9State().renderStates[D3DRS_ZWRITEENABLE] == FALSE) {
+      ONCE(Logger::info("[RTX-Compatibility-Info] Skipped stencil shadow drawcall."));
+      return { RtxGeometryStatus::Ignored, false };
     }
 
     // Check UI only to the primary render target
@@ -397,18 +420,21 @@ namespace dxvk {
     return false;
   }
 
-  void D3D9Rtx::internalPrepareDraw(const IndexContext& indexContext, const VertexContext vertexContext[caps::MaxStreams], const Draw& drawContext) {
+  bool D3D9Rtx::internalPrepareDraw(const IndexContext& indexContext, const VertexContext vertexContext[caps::MaxStreams], const Draw& drawContext) {
     ScopedCpuProfileZone();
 
     // RTX was injected => treat everything else as rasterized 
     if (m_rtxInjectTriggered) {
-      return;
+      return true;
     }
 
     auto [status, triggerRtxInjection] = makeDrawCallType(drawContext);
 
+    // When raytracing is enabled we want to completely remove the ignored drawcalls from further processing as early as possible
+    const bool processIgnoredDraws = !RtxOptions::Get()->enableRaytracing();
+
     if (status == RtxGeometryStatus::Ignored) {
-      return;
+      return processIgnoredDraws;
     }
 
     if (triggerRtxInjection) {
@@ -417,7 +443,7 @@ namespace dxvk {
       });
 
       m_rtxInjectTriggered = true;
-      return;
+      return true;
     }
 
     assert(status == RtxGeometryStatus::RayTraced || status == RtxGeometryStatus::Rasterized);
@@ -444,7 +470,7 @@ namespace dxvk {
       // Unlikely, but invalid
       if (maxIndex == minIndex) {
         ONCE(Logger::info("[RTX-Compatibility-Info] Skipped invalid drawcall, no triangles detected in index buffer."));
-        return;
+        return processIgnoredDraws;
       }
 
       geoData.vertexCount = maxIndex - minIndex + 1;
@@ -455,7 +481,7 @@ namespace dxvk {
 
     if (geoData.vertexCount == 0) {
       ONCE(Logger::info("[RTX-Compatibility-Info] Skipped invalid drawcall, no vertices detected."));
-      return;
+      return processIgnoredDraws;
     }
 
     // Fetch all the legacy state (colour modes, alpha test, etc...)
@@ -489,6 +515,8 @@ namespace dxvk {
       rtxCtx->setGeometry(geoData, status);
       rtxCtx->setSkinningData(futureSkinningData);
     });
+
+    return true;
   }
 
   std::shared_future<SkinningData> D3D9Rtx::processSkinning(const RasterGeometry& geoData) {
@@ -667,7 +695,7 @@ namespace dxvk {
     return FixedFunction ? texStageState.texcoordIndex : 0;
   }
 
-  void D3D9Rtx::PrepareDrawGeometryForRT(const bool indexed, const Draw& context) {
+  bool D3D9Rtx::PrepareDrawGeometryForRT(const bool indexed, const Draw& context) {
     IndexContext indices;
     if (indexed) {
       D3D9CommonBuffer* ibo = GetCommonBuffer(d3d9State().indices);
@@ -692,7 +720,7 @@ namespace dxvk {
     return internalPrepareDraw(indices, vertices, context);
   }
 
-  void D3D9Rtx::PrepareDrawUPGeometryForRT(const bool indexed, 
+  bool D3D9Rtx::PrepareDrawUPGeometryForRT(const bool indexed, 
                                            const D3D9BufferSlice& buffer,
                                            const D3DFORMAT indexFormat,
                                            const uint32_t indexSize,

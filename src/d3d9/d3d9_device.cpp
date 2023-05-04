@@ -2503,7 +2503,9 @@ namespace dxvk {
     PrepareDraw(PrimitiveType);
 
     // NV-DXVK start: geometry processing
-    m_rtx.PrepareDrawGeometryForRT(false, { PrimitiveType, (INT)StartVertex, 0, 0, 0, PrimitiveCount });
+    if (!m_rtx.PrepareDrawGeometryForRT(false, { PrimitiveType, (INT)StartVertex, 0, 0, 0, PrimitiveCount })) {
+      return D3D_OK;
+    }
     // NV-DXVK end
 
     EmitCs([this,
@@ -2546,7 +2548,9 @@ namespace dxvk {
     PrepareDraw(PrimitiveType);
 
     // NV-DXVK start: geometry processing
-    m_rtx.PrepareDrawGeometryForRT(true, { PrimitiveType, BaseVertexIndex, MinVertexIndex, NumVertices, StartIndex, PrimitiveCount });
+    if (!m_rtx.PrepareDrawGeometryForRT(true, { PrimitiveType, BaseVertexIndex, MinVertexIndex, NumVertices, StartIndex, PrimitiveCount })) {
+      return D3D_OK;
+    }
     // NV-DXVK end
 
     EmitCs([this,
@@ -2597,7 +2601,9 @@ namespace dxvk {
     FillUPVertexBuffer(upSlice.mapPtr, pVertexStreamZeroData, dataSize, bufferSize);
 
     // NV-DXVK start: geometry processing
-    m_rtx.PrepareDrawUPGeometryForRT(false, upSlice, D3DFMT_UNKNOWN, 0, 0, dataSize, VertexStreamZeroStride, { PrimitiveType, 0, 0, 0, 0, PrimitiveCount });
+    if (!m_rtx.PrepareDrawUPGeometryForRT(false, upSlice, D3DFMT_UNKNOWN, 0, 0, dataSize, VertexStreamZeroStride, { PrimitiveType, 0, 0, 0, 0, PrimitiveCount })) {
+      return D3D_OK;
+    }
     // NV-DXVK end
 
     EmitCs([this,
@@ -2662,7 +2668,9 @@ namespace dxvk {
     std::memcpy(data + vertexBufferSize, pIndexData, indicesSize);
 
     // NV-DXVK start: geometry processing
-    m_rtx.PrepareDrawUPGeometryForRT(true, upSlice, IndexDataFormat, indicesSize, vertexDataSize, vertexDataSize, VertexStreamZeroStride, { PrimitiveType, 0, MinVertexIndex, NumVertices, 0, PrimitiveCount });
+    if (!m_rtx.PrepareDrawUPGeometryForRT(true, upSlice, IndexDataFormat, indicesSize, vertexDataSize, vertexDataSize, VertexStreamZeroStride, { PrimitiveType, 0, MinVertexIndex, NumVertices, 0, PrimitiveCount })) {
+      return D3D_OK;
+    }
     // NV-DXVK end
 
     EmitCs([this,
