@@ -30,6 +30,7 @@
 #include "rtx_context.h"
 #include "rtx_imgui.h"
 #include "rtx/pass/raytrace_args.h"
+#include "rtx/algorithm/neecache.h"
 
 #include <rtx_shaders/demodulate.h>
 #include <rtx_shaders/updateNeeCache.h>
