@@ -799,8 +799,6 @@ namespace dxvk {
 
     RTX_OPTION("rtx", bool, serializeChangedOptionOnly, true, "");
 
-    RTX_OPTION("rtx", bool, ignoreStencilVolumeHeuristics, true, "Tries to detect stencil volumes and ignore those when pathtracing.  Stencil buffer was used for a variety of effects in the D3D7-9 era, mostly for geometry based lights and shadows - things we don't need when pathtracing.");
-    
     RTX_OPTION("rtx", uint32_t, applicationId, 102100511, "Used to uniquely identify the application to DLSS. Generally should not be changed without good reason.");
 
     static std::unique_ptr<RtxOptions> pInstance;
