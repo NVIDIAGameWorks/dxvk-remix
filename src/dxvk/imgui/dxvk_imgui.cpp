@@ -1357,10 +1357,6 @@ namespace dxvk {
       ImGui::DragFloat("Unique Object Search Distance", &RtxOptions::Get()->uniqueObjectDistanceObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
       ImGui::Separator();
 
-
-      ImGui::Checkbox("Ignore Stencil Volumes", &RtxOptions::Get()->ignoreStencilVolumeHeuristicsObject());
-      ImGui::Separator();
-
       ImGui::DragFloat("Vertex Color Strength", &RtxOptions::Get()->vertexColorStrengthObject(), 0.001f, 0.0f, 1.0f);
       ImGui::Separator();
 
