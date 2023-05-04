@@ -61,6 +61,11 @@ struct NEECell
     return RadianceCache.Load2(m_baseAddress + indexToOffset(idx));
   }
 
+  void setCandidate(int idx, int2 candidate)
+  {
+    return RadianceCache.Store2(m_baseAddress + indexToOffset(idx), candidate);
+  }
+
   int2 getTask(int idx)
   {
     return RadianceCacheTask.Load2(m_baseAddress + indexToOffset(idx));
