@@ -28,10 +28,67 @@
 
 #ifndef __cplusplus
 
+struct NEECell
+{
+  int m_baseAddress;
+
+  static int indexToOffset(int idx)
+  {
+    return (idx + 1) * RADIANCE_CACHE_ELEMENT_SIZE;
+  }
+
+  bool isValid() { return m_baseAddress != -1; }
+
+  void clearTask()
+  {
+    RadianceCacheTask.Store(m_baseAddress, 0);
+  }
+
+  int getTaskCount()
+  {
+    uint count = RadianceCacheTask.Load(m_baseAddress);
+    return min(count, RADIANCE_CACHE_ELEMENTS - 1);
+  }
+
+  int getCandidateCount()
+  {
+    uint count = RadianceCache.Load(m_baseAddress);
+    return min(count, RADIANCE_CACHE_ELEMENTS - 1);
+  }
+
+  int2 getCandidate(int idx)
+  {
+    return RadianceCache.Load2(m_baseAddress + indexToOffset(idx));
+  }
+
+  int2 getTask(int idx)
+  {
+    return RadianceCacheTask.Load2(m_baseAddress + indexToOffset(idx));
+  }
+
+  bool insertTask(uint2 task)
+  {
+    uint oldLength;
+    RadianceCacheTask.InterlockedAdd(m_baseAddress, 1, oldLength);
+
+    if (oldLength < RADIANCE_CACHE_ELEMENTS - 1)
+    {
+      RadianceCacheTask.Store2(m_baseAddress + indexToOffset(oldLength), task);
+      return true;
+    }
+    return false;
+  }
+}
+
 struct NEECache
 {
   static int cellToAddress(int3 cellID)
   {
+    if (any(cellID == -1))
+    {
+      return -1;
+    }
+
     int idx =
       cellID.z * RADIANCE_CACHE_PROBE_RESOLUTION * RADIANCE_CACHE_PROBE_RESOLUTION +
       cellID.y * RADIANCE_CACHE_PROBE_RESOLUTION +
@@ -64,78 +121,16 @@ struct NEECache
     return cellToAddress(UVWi);
   }
 
-  static void clearTask(int3 cellID)
+  static NEECell createCell(int3 cellID)
   {
-    int address = cellToAddress(cellID);
-    RadianceCacheTask.Store(address, 0);
+    NEECell cell = {};
+    cell.m_baseAddress = cellToAddress(cellID);
+    return cell;
   }
 
-  static int getTaskCount(int3 cellID)
+  static NEECell createCell(vec3 point)
   {
-    int address = cellToAddress(cellID);
-    uint count = RadianceCacheTask.Load(address);
-    return min(count, RADIANCE_CACHE_ELEMENTS - 1);
+    return createCell(pointToCell(point));
   }
-
-  static int getCandidateCount(float3 point)
-  {
-    int address = pointToAddress(point);
-    if (address == -1)
-    {
-      return 0;
-    }
-    uint count = RadianceCache.Load(address);
-    return min(count, RADIANCE_CACHE_ELEMENTS - 1);
-  }
-
-  static int2 getCandidate(float3 point, int taskID)
-  {
-    int address = getTaskAddress(pointToCell(point), taskID);
-    if (address == -1)
-    {
-      return int2(-1);
-    }
-    return RadianceCache.Load2(address);
-  }
-
-  static int getTaskAddress(int3 cellID, int taskID)
-  {
-    if (any(cellID == -1) || taskID >= RADIANCE_CACHE_ELEMENTS - 1)
-    {
-      return -1;
-    }
-
-    int baseAddress = cellToAddress(cellID);
-    return baseAddress + (taskID + 1) * RADIANCE_CACHE_ELEMENT_SIZE;
-  }
-
-  static int2 getTask(int3 cellID, int taskID)
-  {
-    int address = getTaskAddress(cellID, taskID);
-    if (address == -1)
-    {
-      return int2(-1);
-    }
-    return RadianceCacheTask.Load2(address);
-  }
-
-  static bool insertTask(float3 point, uint2 task)
-  {
-    int baseAddress = pointToAddress(point);
-    if (baseAddress == -1)
-    {
-      return false;
-    }
-    uint oldLength;
-    RadianceCacheTask.InterlockedAdd(baseAddress, 1, oldLength);
-
-    if (oldLength < RADIANCE_CACHE_ELEMENTS - 1)
-    {
-      RadianceCacheTask.Store2(baseAddress + (oldLength + 1) * RADIANCE_CACHE_ELEMENT_SIZE, task);
-      return true;
-    }
-    return false;
-  }
-
 }
 #endif

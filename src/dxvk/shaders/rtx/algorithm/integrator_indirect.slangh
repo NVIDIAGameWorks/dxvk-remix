@@ -397,7 +397,11 @@ void integratePathVertex(
   vec3 emissiveLight = polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(polymorphicSurfaceMaterialInteraction);
   if (any(emissiveLight) > 0)
   {
-    NEECache.insertTask(oldOrigin, uint2(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex));
+    NEECell cell = NEECache.createCell(oldOrigin);
+    if (cell.isValid())
+    {
+      cell.insertTask(uint2(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex));
+    }
     // int address = NEECache.pointToAddress(oldOrigin);
     // //f16vec3 direction = normalize(pathState.origin - oldOrigin);
     // //int2 address = pointDirectionToAddress(oldOrigin, direction);
@@ -542,48 +546,52 @@ void integratePathVertex(
 
     if(cb.debugKnob.x > 0)
     {
-      int candidateCount = NEECache.getCandidateCount(surfaceInteraction.position);
-      if (candidateCount > 0)
+      NEECell cell = NEECache.createCell(surfaceInteraction.position);
+      if (cell.isValid())
       {
-        int candidateIdx = min(getNextSampleBlueNoise(randomState) * candidateCount, candidateCount-1);
-        int2 data = NEECache.getCandidate(surfaceInteraction.position, candidateIdx);
-        //int2 data = 0;// RadianceCache[address];
-        int surfaceIndex = data.x;
-        int primitiveIndex = data.y;// = int4(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex,0,0);
-        if (surfaceIndex >= 0 && primitiveIndex >= 0)
+        int candidateCount = cell.getCandidateCount();
+        if (candidateCount > 0)
         {
-          SURFACE_CREATE_READ(emissiveSurface, surfaceIndex, surfaces);
-          RayInteraction emissiveRayInteracton = rayInteraction;
-          emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState)));
-          emissiveRayInteracton.primitiveIndex = primitiveIndex;
-          SurfaceInteraction emissiveSurfaceInteraction = surfaceInteractionCreate(emissiveSurface, emissiveRayInteracton, ray);
-
-          const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[emissiveSurface.surfaceMaterialIndex];
-          const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
-
-          if (polymorphicType == surfaceMaterialTypeOpaque)
+          int candidateIdx = min(getNextSampleBlueNoise(randomState) * candidateCount, candidateCount - 1);
+          int2 data = cell.getCandidate(candidateIdx);
+          //int2 data = 0;// RadianceCache[address];
+          int surfaceIndex = data.x;
+          int primitiveIndex = data.y;// = int4(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex,0,0);
+          if (surfaceIndex >= 0 && primitiveIndex >= 0)
           {
-            const OpaqueSurfaceMaterial emissiveOpaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(emissiveSurface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
-            const OpaqueSurfaceMaterialInteraction emissiveOpaqueSurfaceMaterialInteraction =
-              opaqueSurfaceMaterialInteractionCreate(emissiveOpaqueSurfaceMaterial, emissiveSurface, emissiveSurfaceInteraction, emissiveRayInteracton);
+            SURFACE_CREATE_READ(emissiveSurface, surfaceIndex, surfaces);
+            RayInteraction emissiveRayInteracton = rayInteraction;
+            emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState)));
+            emissiveRayInteracton.primitiveIndex = primitiveIndex;
+            SurfaceInteraction emissiveSurfaceInteraction = surfaceInteractionCreate(emissiveSurface, emissiveRayInteracton, ray);
 
-            if (any(emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance > f16vec3(0)))
+            const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[emissiveSurface.surfaceMaterialIndex];
+            const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
+
+            if (polymorphicType == surfaceMaterialTypeOpaque)
             {
-              LightSample emissiveLightSample;
-              emissiveLightSample.position = emissiveSurfaceInteraction.position;
-              emissiveLightSample.normal = emissiveSurfaceInteraction.interpolatedNormal;
-              emissiveLightSample.radiance = emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance;
-              emissiveLightSample.solidAnglePdf = 1.0;
+              const OpaqueSurfaceMaterial emissiveOpaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(emissiveSurface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
+              const OpaqueSurfaceMaterialInteraction emissiveOpaqueSurfaceMaterialInteraction =
+                opaqueSurfaceMaterialInteractionCreate(emissiveOpaqueSurfaceMaterial, emissiveSurface, emissiveSurfaceInteraction, emissiveRayInteracton);
 
-              float16_t specularPortion2;
-              const bool isViewModel = pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
-              float emissiveInvSelectionPdf = 1.0;
-              vec3 emissiveNEELight = evalNEESecondary(
-                emissiveLightSample, emissiveInvSelectionPdf, invalidRayPortalIndex, pathState.portalSpace, pathState.rayMask,
-                isViewModel, ray, rayInteraction, surfaceInteraction,
-                opaqueSurfaceMaterialInteraction, specularPortion2);
+              if (any(emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance > f16vec3(0)))
+              {
+                LightSample emissiveLightSample;
+                emissiveLightSample.position = emissiveSurfaceInteraction.position;
+                emissiveLightSample.normal = emissiveSurfaceInteraction.interpolatedNormal;
+                emissiveLightSample.radiance = emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance;
+                emissiveLightSample.solidAnglePdf = 1.0;
 
-              pathState.radiance += pathState.throughput * emissiveNEELight;
+                float16_t specularPortion2;
+                const bool isViewModel = pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
+                float emissiveInvSelectionPdf = 1.0;
+                vec3 emissiveNEELight = evalNEESecondary(
+                  emissiveLightSample, emissiveInvSelectionPdf, invalidRayPortalIndex, pathState.portalSpace, pathState.rayMask,
+                  isViewModel, ray, rayInteraction, surfaceInteraction,
+                  opaqueSurfaceMaterialInteraction, specularPortion2);
+
+                pathState.radiance += pathState.throughput * emissiveNEELight;
+              }
             }
           }
         }

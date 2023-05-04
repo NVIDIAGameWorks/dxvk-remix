@@ -499,11 +499,12 @@ groupshared int s_tarTaskCount;
 void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupThreadID)
 {
   int3 cellID = threadIndex / int3(RADIANCE_CACHE_ELEMENTS,1,1);
+  NEECell cell = NEECache.createCell(cellID);
 
   // load to shared memory
-  int taskCount = NEECache.getTaskCount(cellID);
+  int taskCount = cell.getTaskCount();
   int taskID = localIndex.x;  
-  int2 task = NEECache.getTask(cellID, taskID);
+  int2 task = cell.getTask(taskID);
   s_srcTaskList[taskID] = task;
   if (localIndex.x == 0 && localIndex.y == 0)
   {
