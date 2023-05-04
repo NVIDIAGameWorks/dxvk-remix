@@ -942,14 +942,14 @@ void integrateIndirectPath(
     pathState.pixelCoordinate,
     indirectPathTextures,
     pathState,
-    geometryFlags);
+    geometryFlags, rayOrigin);
 }
 
 void integratorIndirectPathOutputDebugView(
   uvec2 pixelCoordinate,
   IndirectPathTextures indirectPathTexture,
   PathState pathState,
-  GeometryFlags geometryFlags)
+  GeometryFlags geometryFlags, vec3 rayOrigin)
 {
   switch(cb.debugView)
   {
@@ -972,6 +972,14 @@ void integratorIndirectPathOutputDebugView(
   case DEBUG_VIEW_NOISY_SECONDARY_INDIRECT_SPECULAR_RADIANCE:
     if (geometryFlags.primarySelectedIntegrationSurface)
     {
+      NEECell cell = NEECache.createCell(rayOrigin);
+      vec3 color = 0;
+      if (cell.isValid())
+      {
+        int count = cell.getCandidateCount();
+        color = lerp(vec3(1,0,0), vec3(0,1,0), count / float(RADIANCE_CACHE_ELEMENTS));
+      }
+      storeInDebugView(ivec2(pixelCoordinate), color);
       /*
       if (geometryFlags.firstSampledLobeIsSpecular)
         storeInDebugView(ivec2(pixelCoordinate), pathState.radiance);
