@@ -650,36 +650,6 @@ namespace dxvk {
     }
   }
 
-  // checks the current state to see if the app is drawing a stencil shadow volume
-  bool RtxContext::isStencilShadowVolumeState() {
-    if (RtxOptions::Get()->ignoreStencilVolumeHeuristics() && m_state.gp.state.ds.enableStencilTest()) {
-      const VkCullModeFlags cullMode = m_state.gp.state.rs.cullMode();
-
-      if (cullMode == VK_CULL_MODE_FRONT_BIT) {
-        const VkStencilOpState state = m_state.gp.state.dsBack.state();
-
-        if (state.depthFailOp == VK_STENCIL_OP_DECREMENT_AND_CLAMP &&
-            state.compareOp == VK_COMPARE_OP_ALWAYS) {
-          return true;
-        }
-
-        if (state.depthFailOp == VK_STENCIL_OP_KEEP &&
-            state.compareOp == VK_COMPARE_OP_NOT_EQUAL) {
-          return true;
-        }
-      } else if (cullMode == VK_CULL_MODE_BACK_BIT) {
-        const VkStencilOpState state = m_state.gp.state.dsFront.state();
-
-        if (state.depthFailOp == VK_STENCIL_OP_INCREMENT_AND_CLAMP &&
-            state.compareOp == VK_COMPARE_OP_ALWAYS) {
-          return true;
-        }
-      }
-    }
-
-    return false;
-  }
-
   RtxGeometryStatus RtxContext::commitGeometryToRT(const DrawParameters& params){
     ScopedCpuProfileZone();
 
@@ -711,10 +681,6 @@ namespace dxvk {
 
     if (m_queryManager.isQueryTypeActive(VK_QUERY_TYPE_OCCLUSION))
       return RtxGeometryStatus::Ignored;
-
-    if (isStencilShadowVolumeState()) {
-      return RtxGeometryStatus::Ignored;
-    }
 
     // We'll need these later
     if (!m_rtState.geometry.futureGeometryHashes.valid())
