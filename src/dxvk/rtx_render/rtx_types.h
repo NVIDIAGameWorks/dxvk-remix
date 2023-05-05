@@ -448,10 +448,25 @@ struct DrawCallState {
     return m_isSky;
   }
 
+  bool finalizePendingFutures() {
+    // Bounding boxes (if enabled) will be finalized here, default is FLT_MAX bounds
+    finalizeGeometryBoundingBox();
+
+    // Geometry hashes are vital, and cannot be disabled, so its important we get valid data (hence the return type)
+    return finalizeGeometryHashes();
+  }
+
+  bool hasTextureCoordinates() const {
+    return getGeometryData().texcoordBuffer.defined() || getTransformData().texgenMode != TexGenMode::None;
+  }
+
+private:
+  friend class RtxContext;
+
   bool finalizeGeometryHashes() {
     if (!m_geometryData.futureGeometryHashes.valid())
       return false;
-    
+
     m_geometryData.hashes = m_geometryData.futureGeometryHashes.get();
 
     if (m_geometryData.hashes[HashComponents::VertexPosition] == kEmptyHash)
@@ -460,22 +475,11 @@ struct DrawCallState {
     return true;
   }
 
-  bool hasTextureCoordinates() const {
-    return getGeometryData().texcoordBuffer.defined() || getTransformData().texgenMode != TexGenMode::None;
-  }
-
-  bool finalizeGeometryBoundingBox() {
-    if (!m_geometryData.futureBoundingBox.valid()) {
-      return false;
+  void finalizeGeometryBoundingBox() {
+    if (m_geometryData.futureBoundingBox.valid()) {
+      m_geometryData.boundingBox = m_geometryData.futureBoundingBox.get();
     }
-
-    m_geometryData.boundingBox = m_geometryData.futureBoundingBox.get();
-
-    return true;
   }
-
-private:
-  friend class RtxContext;
 
   RasterGeometry m_geometryData;
 
