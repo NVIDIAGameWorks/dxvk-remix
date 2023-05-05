@@ -118,7 +118,8 @@ vec3 evalNEESecondary(
   MinimalRayInteraction minimalRayInteraction, 
   MinimalSurfaceInteraction minimalSurfaceInteraction,
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
-  out float16_t specularPortion)
+  out float16_t specularPortion,
+  f16vec2 diffuseSpecularMISWeight)
 {
   // Setup and trace the visibility ray
 
@@ -141,7 +142,7 @@ vec3 evalNEESecondary(
   const SurfaceMaterialInteractionSplitWeight splitWeight = opaqueSurfaceMaterialInteractionCalcProjectedWeight(
     opaqueSurfaceMaterialInteraction, minimalRayInteraction, visibility.rayDirection);
 
-  const f16vec3 combinedWeight = splitWeight.diffuseReflectionWeight + splitWeight.specularReflectionWeight;
+  const f16vec3 combinedWeight = splitWeight.diffuseReflectionWeight * diffuseSpecularMISWeight.x + splitWeight.specularReflectionWeight * diffuseSpecularMISWeight.y;
 
   specularPortion = calcBt709Luminance(splitWeight.specularReflectionWeight) / calcBt709Luminance(combinedWeight);
 
@@ -197,6 +198,14 @@ uint2 jitterBoundaryPixels(uint2 pixelCoordinate, uint2 jitterOffset)
   return clamp(pixelCoordinate, 0, cb.camera.resolution - padding) + jitterOffset;
 }
 
+float getLightSamplingSolidAnglePDF(float16_t triangleArea, vec3 samplePosition, f16vec3 sampleNormal, vec3 surfacePosition)
+{
+  float16_t areaPdf = 1.0 / triangleArea;
+  vec3 offset = samplePosition - surfacePosition;
+  float r2 = dot(offset, offset);
+  float cosPhi = abs(dot(normalize(offset), sampleNormal));
+  return cosPhi > 0 ? areaPdf * r2 / cosPhi : 0;
+}
 // Integrate Path Vertex Functions
 
 void integratePathVertex(
@@ -414,10 +423,14 @@ void integratePathVertex(
       }
     }
   }
-  if (!hasNEE || pathState.bounceIteration == 1)
+
+  float16_t misWeight = 1.0;
+  if (hasNEE && pathState.bounceIteration > 1)
   {
-    accumulateRadiance(pathState, emissiveLight);
+    float16_t lightPdf = getLightSamplingSolidAnglePDF(surfaceInteraction.triangleArea, surfaceInteraction.position, surfaceInteraction.triangleNormal, oldOrigin);
+    misWeight = pathState.solidAnglePdf / (pathState.solidAnglePdf + lightPdf);
   }
+  accumulateRadiance(pathState, emissiveLight * misWeight);
   //evalEmission(pathState, polymorphicSurfaceMaterialInteraction);
 
 // We don't need to sample lights or surface rays in the portal closest hit shader
@@ -447,6 +460,7 @@ void integratePathVertex(
     pathState.origin = sampledRay.origin;
     pathState.coneRadius = sampledRay.coneRadius;
     pathState.direction = sampledRay.direction;
+    pathState.solidAnglePdf = solidAnglePdf;
   }
 
   // Set the material medium index if a medium was entered or exited
@@ -533,7 +547,7 @@ void integratePathVertex(
         //pathState.throughput, pathState.radiance,
         lightSample, invSelectionPdf, invalidRayPortalIndex, pathState.portalSpace, pathState.rayMask,
         isViewModel, ray, rayInteraction, surfaceInteraction,
-        opaqueSurfaceMaterialInteraction, specularPortion);
+        opaqueSurfaceMaterialInteraction, specularPortion, f16vec2(1.0));
 
       pathState.radiance += pathState.throughput * neeLight;
 
@@ -585,11 +599,23 @@ void integratePathVertex(
                 emissiveLightSample.position = emissiveSurfaceInteraction.position;
                 emissiveLightSample.normal = emissiveSurfaceInteraction.interpolatedNormal;
                 emissiveLightSample.radiance = emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance;
-                float16_t areaPdf = 1.0 / emissiveSurfaceInteraction.triangleArea;
-                vec3 offset = emissiveSurfaceInteraction.position - surfaceInteraction.position;
-                float r2 = dot(offset, offset);
-                float cosPhi = abs(dot(normalize(offset), emissiveSurfaceInteraction.triangleNormal));
-                emissiveLightSample.solidAnglePdf = cosPhi > 0 ? areaPdf * r2 / cosPhi : 0;
+                // float16_t areaPdf = 1.0 / emissiveSurfaceInteraction.triangleArea;
+                // vec3 offset = emissiveSurfaceInteraction.position - surfaceInteraction.position;
+                // float r2 = dot(offset, offset);
+                // float cosPhi = abs(dot(normalize(offset), emissiveSurfaceInteraction.triangleNormal));
+                // emissiveLightSample.solidAnglePdf = cosPhi > 0 ? areaPdf * r2 / cosPhi : 0;
+                float16_t lightPdf = getLightSamplingSolidAnglePDF(
+                  emissiveSurfaceInteraction.triangleArea, emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal, surfaceInteraction.position);
+                emissiveLightSample.solidAnglePdf = lightPdf;
+
+                f16vec3 inputDirection = normalize(emissiveSurfaceInteraction.position - surfaceInteraction.position);
+                float16_t diffuseSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(
+                  opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
+                float16_t specularSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
+                  opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
+                f16vec2 misWeight;
+                misWeight.x = lightPdf / (lightPdf + diffuseSolidAnglePdf);
+                misWeight.y = lightPdf / (lightPdf + specularSolidAnglePdf);
 
                 float16_t specularPortion2;
                 const bool isViewModel = pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
@@ -597,7 +623,7 @@ void integratePathVertex(
                 vec3 emissiveNEELight = evalNEESecondary(
                   emissiveLightSample, emissiveInvSelectionPdf, invalidRayPortalIndex, pathState.portalSpace, pathState.rayMask,
                   isViewModel, ray, rayInteraction, surfaceInteraction,
-                  opaqueSurfaceMaterialInteraction, specularPortion2);
+                  opaqueSurfaceMaterialInteraction, specularPortion2, misWeight);
 
                 pathState.radiance += pathState.throughput * emissiveNEELight;
               }
