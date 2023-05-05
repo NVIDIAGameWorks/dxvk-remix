@@ -496,6 +496,8 @@ namespace dxvk {
     std::shared_future<SkinningData> futureSkinningData = processSkinning(geoData);
     if (RtxOptions::Get()->calculateMeshBoundingBox()) {
       geoData.futureBoundingBox = computeAxisAlignedBoundingBox(geoData);
+    } else {
+      geoData.futureBoundingBox = std::shared_future<AxisAlignBoundingBox>();
     }
 
     // For shader based drawcalls we also want to capture the vertex shader output

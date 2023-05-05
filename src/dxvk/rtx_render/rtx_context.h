@@ -171,8 +171,6 @@ namespace dxvk {
     virtual void drawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance) override;
     virtual void flushCommandList() override;
 
-    void processPendingDrawCalls();
-
     void blitImageHelper(const Rc<DxvkImage>& srcImage, const Rc<DxvkImage>& dstImage, VkFilter filter);
 
     SceneManager& getSceneManager();
@@ -265,8 +263,6 @@ namespace dxvk {
     float m_terrainOffset = 0.f;
     XXH64_hash_t m_lastTerrainMaterial = 0;
     bool m_previousInjectRtxHadScene = false;
-
-    std::vector<DrawCallState> m_drawCallQueue;
 
     DxvkRaytracingInstanceState m_rtState;
   };
