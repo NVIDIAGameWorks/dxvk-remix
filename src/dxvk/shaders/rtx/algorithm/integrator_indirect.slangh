@@ -327,7 +327,7 @@ void integratePathVertex(
 
   if (rayInteractionHasHit(rayInteraction))
   {
-    pathState.accumulatedHitDistance += hackState.segmentHitDistance;
+    pathState.accumulatedHitDistance += float16_t(hackState.segmentHitDistance);
 
     if (pathState.bounceIteration == 1)
       pathState.firstBounceHitDistance = float16_t(min(float16Max, pathState.firstBounceHitDistance + rayInteraction.hitDistance));
