@@ -41,6 +41,7 @@
 #include "rtx/pass/interleave_geometry.h"
 
 namespace dxvk {
+  static constexpr uint32_t kMaxInterleavedComponents = 3 + 3 + 2 + 1;
 
   // Defined within an unnamed namespace to ensure unique definition across binary
   namespace {
@@ -421,15 +422,15 @@ namespace dxvk {
       const VkExtent3D workgroups = util::computeBlockCount(VkExtent3D { cb.primCount, 1, 1 }, VkExtent3D { 128, 1, 1 });
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
     } else {
-      std::vector<uint16_t> dst;
-      dst.resize(cb.primCount * 3);
+      RtxInbandBufferUpdate<uint16_t, kNumTrianglesToProcessOnCPU * 3> dst(dstSlice, cb.primCount * 3);
 
       const uint16_t* src = (cb.useIndexBuffer != 0) ? reinterpret_cast<uint16_t*>(srcBuffer->mapPtr()) : nullptr;
 
       for (uint32_t idx = 0; idx < cb.primCount; idx++) {
         generateIndices(idx, dst.data(), src, cb);
       }
-      ctx->updateBuffer(dstSlice.buffer(), dstSlice.offset(), dst.size() * sizeof(uint16_t), dst.data());
+
+      dst.commit(ctx);
     }
   }
 
@@ -478,6 +479,8 @@ namespace dxvk {
     if (input.color0Buffer.defined()) {
       stride += sizeof(uint32_t);
     }
+
+    assert(stride <= kMaxInterleavedComponents * sizeof(float) && "Maximum number of interleaved components needs update.");
 
     return stride;
   }
@@ -586,8 +589,8 @@ namespace dxvk {
       const VkExtent3D workgroups = util::computeBlockCount(VkExtent3D { input.vertexCount, 1, 1 }, VkExtent3D { 128, 1, 1 });
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
     } else {
-      std::vector<float> dst;
-      dst.resize(output.buffer->info().size / 4);
+      RtxInbandBufferUpdate<float, kNumVerticesToProcessOnCPU * kMaxInterleavedComponents> dst(
+        DxvkBufferSlice(output.buffer), input.vertexCount * output.stride / sizeof(float));
 
       GeometryBufferData inputData(input);
 
@@ -601,7 +604,7 @@ namespace dxvk {
         interleaver::interleave(i, dst.data(), inputData.positionData, inputData.normalData, inputData.texcoordData, inputData.vertexColorData, args);
       }
 
-      ctx->updateBuffer(output.buffer, 0, output.stride * input.vertexCount, dst.data());
+      dst.commit(ctx);
     }
 
     uint32_t offset = 0;

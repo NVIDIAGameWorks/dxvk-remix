@@ -151,4 +151,64 @@ namespace dxvk {
       const RasterGeometry& input,
       InterleavedGeometryDescriptor& output) const;
   };
+
+  // A helper class to do small in-band buffer updates. Should be used instead of
+  // DxvkContext::updateBuffer() when update size is guaranteed to be smaller than 64KB.
+  //
+  // Note: DxvkContext::updateBuffer() should be avoided because under certain conditions
+  // it may replace the buffer and may also use the "init" command buffer and so may fail to
+  // sync properly. updateBuffer() also uses a staging copy in case if update is larger
+  // than 4096 bytes.
+  inline constexpr size_t kMaxInbandUpdateSize = 64 * 1024;
+  template<typename T, size_t MaxUpdateCount = kMaxInbandUpdateSize / sizeof(T)>
+  class RtxInbandBufferUpdate {
+    static_assert(MaxUpdateCount * sizeof(T) < kMaxInbandUpdateSize,
+                  "Vulkan cannot update more than 64KB in-band!");
+
+    const DxvkBufferSlice& m_bufferSlice;
+
+    T m_data[MaxUpdateCount];
+    size_t m_updateSize;
+
+  public:
+    RtxInbandBufferUpdate(const DxvkBufferSlice& bufferSlice, size_t updateCount)
+    : m_bufferSlice(bufferSlice)
+    // Note: dxvk buffers guaranteed to be at least 4-bytes aligned so
+    // we do not have to check for that and may enforce 4-byte update size
+    // alignment.
+    , m_updateSize(align(updateCount * sizeof(T), 4)) {
+#ifdef REMIX_DEVELOPMENT
+      if ((bufferSlice.offset() & 3) != 0) {
+        throw DxvkError("In-band update offset must be a multiple of 4.");
+      }
+      if (updateCount * sizeof(T) > m_bufferSlice.length()) {
+        throw DxvkError("Refusing to update a buffer past slice bounds.");
+      }
+#endif
+    }
+
+    void commit(const Rc<DxvkContext>& ctx) {
+      auto cmd = ctx->getCommandList();
+      auto sliceHandle = m_bufferSlice.getSliceHandle();
+
+      cmd->cmdUpdateBuffer(
+        DxvkCmdBuffer::ExecBuffer,
+        sliceHandle.handle,
+        sliceHandle.offset,
+        m_updateSize,
+        m_data);
+
+      cmd->trackResource<DxvkAccess::Write>(m_bufferSlice.buffer());
+
+      ctx->emitMemoryBarrier(0,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_ACCESS_TRANSFER_WRITE_BIT,
+        m_bufferSlice.buffer()->info().stages,
+        m_bufferSlice.buffer()->info().access);
+    }
+
+    T* data() {
+      return m_data + 0;
+    }
+  };
 }

@@ -1089,21 +1089,8 @@ namespace dxvk {
       *(ommIndex++) = i;
     }
 
-    DxvkBufferSliceHandle bufferSlice = triangleArrayBuffer->getSliceHandle(0, triangleArrayBufferSize);
-    cmdList->cmdUpdateBuffer(
-      DxvkCmdBuffer::ExecBuffer,
-      bufferSlice.handle,
-      bufferSlice.offset,
-      bufferSlice.length,
-      hostTriangleArrayBuffer.data());
-
-    bufferSlice = triangleIndexBuffer->getSliceHandle(0, triangleIndexBufferSize);
-    cmdList->cmdUpdateBuffer(
-      DxvkCmdBuffer::ExecBuffer,
-      bufferSlice.handle,
-      bufferSlice.offset,
-      bufferSlice.length,
-      hostTriangleIndexBuffer.data());
+    ctx->updateBuffer(triangleArrayBuffer, 0, triangleArrayBufferSize, hostTriangleArrayBuffer.data(), true);
+    ctx->updateBuffer(triangleIndexBuffer, 0, triangleIndexBufferSize, hostTriangleIndexBuffer.data(), true);
 
     return OpacityMicromapManager::OmmResult::Success;
   }
