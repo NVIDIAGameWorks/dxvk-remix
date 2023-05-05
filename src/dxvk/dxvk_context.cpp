@@ -2257,17 +2257,21 @@ namespace dxvk {
   }
 
 
+// NV-DXVK start: replaced buffers do not play well with rtx
   void DxvkContext::updateBuffer(
     const Rc<DxvkBuffer>&           buffer,
           VkDeviceSize              offset,
           VkDeviceSize              size,
-    const void*                     data) {
+    const void*                     data,
+          bool                      forceNoReplace) {
     bool isHostVisible = buffer->memFlags() & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
 
-    bool replaceBuffer = (size == buffer->info().size)
+    bool replaceBuffer = !forceNoReplace
+                      && (size == buffer->info().size)
                       && (size <= (1 << 20))
                       && !isHostVisible;
-    
+// NV-DXVK end:
+
     DxvkBufferSliceHandle bufferSlice;
     DxvkCmdBuffer         cmdBuffer;
 

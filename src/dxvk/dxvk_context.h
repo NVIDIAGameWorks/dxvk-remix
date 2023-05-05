@@ -827,7 +827,8 @@ namespace dxvk {
       const VkImageSubresourceRange&  dstSubresources,
             VkImageLayout             srcLayout,
             VkImageLayout             dstLayout);
-    
+
+    // NV-DXVK start: replaced buffers do not play well with rtx
     /**
      * \brief Updates a buffer
      * 
@@ -836,13 +837,16 @@ namespace dxvk {
      * \param [in] offset Offset of sub range to update
      * \param [in] size Length of sub range to update
      * \param [in] data Data to upload
+     * \param [in] forceNoReplace Do not replace the buffer
      */
     void updateBuffer(
       const Rc<DxvkBuffer>&           buffer,
             VkDeviceSize              offset,
             VkDeviceSize              size,
-      const void*                     data);
-    
+      const void*                     data,
+      bool                            forceNoReplace = false);
+    // NV-DXVK end:
+
     /**
      * \brief Updates an image
      * 
