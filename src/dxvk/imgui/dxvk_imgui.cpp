@@ -1260,11 +1260,78 @@ namespace dxvk {
         std::stringstream formatName;
         formatName << imageInfo.format;
 
+        std::stringstream rtxTextureOptions;
+
         char tooltip[1024];
-        sprintf(tooltip, "%s: %dx%d %s\nHash: 0x%" PRIx64,
+        if (ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+          auto& rtxOptions = RtxOptions::Get();
+
+          if (rtxOptions->isLightmapTexture(pair.first))
+            rtxTextureOptions << "Lightmap Texture\n";
+
+          if (rtxOptions->isSkyboxTexture(pair.first))
+            rtxTextureOptions << "Skybox Texture\n";
+
+          if (rtxOptions->shouldIgnoreTexture(pair.first))
+            rtxTextureOptions << "Ignore Texture\n";
+
+          if (rtxOptions->shouldIgnoreLight(pair.first))
+            rtxTextureOptions << "Ignore Light\n";
+
+          if (rtxOptions->isUiTexture(pair.first))
+            rtxTextureOptions << "UI Texture\n";
+
+          if (rtxOptions->isWorldSpaceUiTexture(pair.first))
+            rtxTextureOptions << "World Space UI Texture\n";
+
+          if (rtxOptions->isWorldSpaceUiBackgroundTexture(pair.first))
+            rtxTextureOptions << "World Space UI BG Texture\n";
+
+          if (rtxOptions->isHideInstanceTexture(pair.first))
+            rtxTextureOptions << "Hide Instance Texture\n";
+
+          if (rtxOptions->isPlayerModelTexture(pair.first))
+            rtxTextureOptions << "Player Model Texture\n";
+
+          if (rtxOptions->isPlayerModelBodyTexture(pair.first))
+            rtxTextureOptions << "Player Model Body Texture\n";
+
+          if (rtxOptions->isParticleTexture(pair.first))
+            rtxTextureOptions << "Particle Texture\n";
+
+          if (rtxOptions->isBeamTexture(pair.first))
+            rtxTextureOptions << "Beam Texture\n";
+
+          if (rtxOptions->isDecalTexture(pair.first))
+            rtxTextureOptions << "Decal Texture\n";
+
+          if (rtxOptions->isCutoutTexture(pair.first))
+            rtxTextureOptions << "Legacy Cutout Texture\n";
+
+          if (rtxOptions->isDynamicDecalTexture(pair.first))
+            rtxTextureOptions << "Dynamic Decal Texture\n";
+
+          if (rtxOptions->isNonOffsetDecalTexture(pair.first))
+            rtxTextureOptions << "Non Offset Decal Texture\n";
+
+          if (rtxOptions->isTerrainTexture(pair.first))
+            rtxTextureOptions << "Terrain Texture\n";
+
+          if (rtxOptions->shouldOpacityMicromapIgnoreTexture(pair.first))
+            rtxTextureOptions << "Opacity Micromap Ignore Texture\n";
+
+          if (rtxOptions->isAnimatedWaterTexture(pair.first))
+            rtxTextureOptions << "Animated Water Texture\n";
+
+          if (rtxOptions->isAntiCullingTexture(pair.first))
+            rtxTextureOptions << "Anti Culling Texture\n";
+        }
+
+        sprintf(tooltip, "%s: %dx%d %s\nHash: 0x%" PRIx64 "\n%s",
                 (imageInfo.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) ? "Render Target" : "Texture",
                 imageInfo.extent.width, imageInfo.extent.height,
-                formatName.str().c_str() + strlen("VK_FORMAT_"), pair.first);
+                formatName.str().c_str() + strlen("VK_FORMAT_"), pair.first,
+                rtxTextureOptions.str().c_str());
 
         ImGui::SetTooltip(tooltip);
         if (ImGui::IsMouseDown(ImGuiMouseButton_Middle)) {
