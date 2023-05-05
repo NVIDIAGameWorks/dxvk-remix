@@ -568,7 +568,7 @@ SurfaceMaterialInteractionSample translucentSurfaceMaterialInteractionCalcSpecul
     {
       // Calculate the input direction by refracting the output direction
 
-      inputDirection = refract(-outputDirection, microfacetNormal, outsideRelativeRefractiveIndex);
+      inputDirection = refractedDirection;
 
       // Calculate dot products used for evaluation
 
@@ -921,7 +921,7 @@ SurfaceMaterialInteractionPSRSample translucentSurfaceMaterialInteractionCalcPSR
     {
       // Calculate the input direction by refracting the output direction
 
-      inputDirection = refract(-outputDirection, microfacetNormal, outsideRelativeRefractiveIndex);
+      inputDirection = refractedDirection;
 
       // Calculate dot products used for evaluation
 
