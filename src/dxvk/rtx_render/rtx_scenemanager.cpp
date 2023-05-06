@@ -558,7 +558,7 @@ namespace dxvk {
           *replacement.geometryData, // Note: Geometry Data replaced
           input->getMaterialData(), // Note: Original legacy material data preserved
           transforms,
-          input->getSkinningState(),
+          SkinningData(), // We dont currently support skinning of replacements 
           input->getFogState(),
           input->getStencilEnabledState()
         };
