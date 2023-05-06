@@ -36,6 +36,7 @@
 #include "rtx/pass/view_model/view_model_correction_binding_indices.h"
 #include "rtx/pass/opacity_micromap/bake_opacity_micromap_binding_indices.h"
 #include "rtx/pass/gpu_skinning_binding_indices.h"
+#include "rtx/pass/skinning.h"
 #include "rtx/pass/gen_tri_list_index_buffer.h"
 #include "rtx/pass/interleave_geometry_indices.h"
 #include "rtx/pass/interleave_geometry.h"
@@ -137,11 +138,7 @@ namespace dxvk {
 
     SkinningArgs params {};
 
-    // Do skinning in object space, so undo any objectToWorld transform that may be in here.
-    for (uint32_t i = 0; i < drawCallState.getSkinningState().numBones; i++) {
-      params.bones[i] = inverse(drawCallState.getTransformData().objectToWorld) * drawCallState.getSkinningState().pBoneMatrices[i];
-      params.bones[i] = drawCallState.getSkinningState().pBoneMatrices[i];
-    }
+    memcpy(&params.bones[0], &drawCallState.getSkinningState().pBoneMatrices[0], sizeof(Matrix4) * drawCallState.getSkinningState().numBones);
 
     params.dstPositionStride = geo.positionBuffer.stride();
     params.dstPositionOffset = geo.positionBuffer.offsetFromSlice();
@@ -162,30 +159,64 @@ namespace dxvk {
     params.useIndices = drawCallState.getGeometryData().blendIndicesBuffer.defined() ? 1 : 0;
     params.numBones = drawCallState.getSkinningState().numBonesPerVertex;
 
-    // Setting alignment to device limit minUniformBufferOffsetAlignment because the offset value should be its multiple.
-    // See https://vulkan.lunarg.com/doc/view/1.2.189.2/windows/1.2-extensions/vkspec.html#VUID-VkWriteDescriptorSet-descriptorType-00327
-    const auto& devInfo = ctx->getDevice()->properties().core.properties;
-    VkDeviceSize alignment = devInfo.limits.minUniformBufferOffsetAlignment;
+    // At some point, its more efficient to do these calculations on the GPU, this limit is somewhat arbitrary however, and might require better tuning...
+    const uint32_t kNumVerticesToProcessOnCPU = 256;
 
-    DxvkBufferSlice cb = m_pCbData->alloc(alignment, sizeof(SkinningArgs));
-    memcpy(cb.mapPtr(0), &params, sizeof(SkinningArgs));
-    cmdList->trackResource<DxvkAccess::Write>(cb.buffer());
+    // Check we have appropriate CPU access
+    const bool pendingGpuWrite = drawCallState.getGeometryData().positionBuffer.isPendingGpuWrite() ||
+                                 drawCallState.getGeometryData().normalBuffer.isPendingGpuWrite() ||
+                                 drawCallState.getGeometryData().blendWeightBuffer.isPendingGpuWrite() ||
+                                 (drawCallState.getGeometryData().blendIndicesBuffer.defined() && drawCallState.getGeometryData().blendIndicesBuffer.isPendingGpuWrite());
 
-    ctx->bindResourceBuffer(BINDING_SKINNING_CONSTANTS, cb);
-    ctx->bindResourceBuffer(BINDING_POSITION_OUTPUT, geo.positionBuffer);
-    ctx->bindResourceBuffer(BINDING_POSITION_INPUT, drawCallState.getGeometryData().positionBuffer);
-    ctx->bindResourceBuffer(BINDING_NORMAL_OUTPUT, geo.normalBuffer);
-    ctx->bindResourceBuffer(BINDING_NORMAL_INPUT, drawCallState.getGeometryData().normalBuffer);
-    ctx->bindResourceBuffer(BINDING_BLEND_WEIGHT_INPUT, drawCallState.getGeometryData().blendWeightBuffer);
+    const bool useCPU = params.numVertices <= kNumVerticesToProcessOnCPU && !pendingGpuWrite;
 
-    if (drawCallState.getGeometryData().blendIndicesBuffer.defined())
-      ctx->bindResourceBuffer(BINDING_BLEND_INDICES_INPUT, drawCallState.getGeometryData().blendIndicesBuffer);
+    if (!useCPU) {
+      // Setting alignment to device limit minUniformBufferOffsetAlignment because the offset value should be its multiple.
+      // See https://vulkan.lunarg.com/doc/view/1.2.189.2/windows/1.2-extensions/vkspec.html#VUID-VkWriteDescriptorSet-descriptorType-00327
+      const auto& devInfo = ctx->getDevice()->properties().core.properties;
+      VkDeviceSize alignment = devInfo.limits.minUniformBufferOffsetAlignment;
 
-    ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, SkinningShader::getShader());
+      DxvkBufferSlice cb = m_pCbData->alloc(alignment, sizeof(SkinningArgs));
+      memcpy(cb.mapPtr(0), &params, sizeof(SkinningArgs));
+      cmdList->trackResource<DxvkAccess::Write>(cb.buffer());
 
-    const VkExtent3D workgroups = util::computeBlockCount(VkExtent3D { params.numVertices, 1, 1 }, VkExtent3D { 128, 1, 1 });
-    ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
-    cmdList->trackResource<DxvkAccess::Read>(cb.buffer());
+      ctx->bindResourceBuffer(BINDING_SKINNING_CONSTANTS, cb);
+      ctx->bindResourceBuffer(BINDING_POSITION_OUTPUT, geo.positionBuffer);
+      ctx->bindResourceBuffer(BINDING_POSITION_INPUT, drawCallState.getGeometryData().positionBuffer);
+      ctx->bindResourceBuffer(BINDING_NORMAL_OUTPUT, geo.normalBuffer);
+      ctx->bindResourceBuffer(BINDING_NORMAL_INPUT, drawCallState.getGeometryData().normalBuffer);
+      ctx->bindResourceBuffer(BINDING_BLEND_WEIGHT_INPUT, drawCallState.getGeometryData().blendWeightBuffer);
+
+      if (drawCallState.getGeometryData().blendIndicesBuffer.defined())
+        ctx->bindResourceBuffer(BINDING_BLEND_INDICES_INPUT, drawCallState.getGeometryData().blendIndicesBuffer);
+
+      ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, SkinningShader::getShader());
+
+      const VkExtent3D workgroups = util::computeBlockCount(VkExtent3D { params.numVertices, 1, 1 }, VkExtent3D { 128, 1, 1 });
+      ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
+      cmdList->trackResource<DxvkAccess::Read>(cb.buffer());
+    } else {
+      const float* srcPosition = reinterpret_cast<float*>(drawCallState.getGeometryData().positionBuffer.mapPtr(0));
+      const float* srcNormal = reinterpret_cast<float*>(drawCallState.getGeometryData().normalBuffer.mapPtr(0));
+      const float* srcBlendWeight = reinterpret_cast<float*>(drawCallState.getGeometryData().blendWeightBuffer.mapPtr(0));
+      const uint32_t* srcBlendIndices = reinterpret_cast<uint32_t*>(drawCallState.getGeometryData().blendIndicesBuffer.mapPtr(0));
+
+      // For CPU we are going to update a single entry at a time...
+      params.dstPositionStride = 0;
+      params.dstPositionOffset = 0;
+      params.dstNormalStride = 0;
+      params.dstNormalOffset = 0;
+
+      float dstPosition[3];
+      float dstNormal[3];
+
+      for (uint32_t idx = 0; idx < params.numVertices; idx++) {
+        skinning(idx, &dstPosition[0], &dstNormal[0], srcPosition, srcBlendWeight, srcBlendIndices, srcNormal, params);
+
+        ctx->updateBuffer(geo.positionBuffer.buffer(), geo.positionBuffer.offsetFromSlice() + idx * geo.positionBuffer.stride(), sizeof(dstPosition), &dstPosition[0]);
+        ctx->updateBuffer(geo.normalBuffer.buffer(), geo.normalBuffer.offsetFromSlice() + idx * geo.normalBuffer.stride(), sizeof(dstNormal), &dstNormal[0]);
+      }
+    }
   }
 
   void RtxGeometryUtils::dispatchViewModelCorrection(
