@@ -20,6 +20,7 @@
 * DEALINGS IN THE SOFTWARE.
 */
 #include "gpu_skinning_binding_indices.h"
+#include "skinning.h"
 
 layout(binding = BINDING_SKINNING_CONSTANTS)
 ConstantBuffer<SkinningArgs> cb;
@@ -47,66 +48,5 @@ StructuredBuffer<float> srcNormal;
 void main(uint idx : SV_DispatchThreadID) {
     if (idx >= cb.numVertices) return;
 
-    const uint baseWeightsOffset = (cb.blendWeightOffset + idx * cb.blendWeightStride) / 4;
-    float4 blendWeights = float4(srcBlendWeight[baseWeightsOffset + 0],
-                                 srcBlendWeight[baseWeightsOffset + 1],
-                                 srcBlendWeight[baseWeightsOffset + 2],
-                                 srcBlendWeight[baseWeightsOffset + 3]);
-    
-    // When bone index buffer not used, indices default to the below
-    uint4 blendIndices = uint4(0, 1, 2, 3);
-    
-    if (cb.useIndices)
-    {
-        const uint baseIndicesOffset = (cb.blendIndicesOffset + idx * cb.blendIndicesStride) / 4;
-        const uint packedIndices = srcBlendIndices[baseIndicesOffset];
-        blendIndices.x = (packedIndices >> 0) & 0xff;
-        blendIndices.y = (packedIndices >> 8) & 0xff;
-        blendIndices.z = (packedIndices >> 16) & 0xff;
-        blendIndices.w = (packedIndices >> 24) & 0xff;
-    }
-
-    // Weights are normalized to 1, the last weight is equal to the remainder
-    float totalWeight = 0;
-    for (uint i = 0; i < cb.numBones-1; i++)
-    {
-        totalWeight += blendWeights[i];
-    }
-    blendWeights[cb.numBones - 1] = 1.f - totalWeight;
-    
-    const uint baseSrcPositionOffset = (cb.srcPositionOffset + idx * cb.srcPositionStride) / 4;
-    float4 position = float4(srcPosition[baseSrcPositionOffset + 0], 
-                             srcPosition[baseSrcPositionOffset + 1], 
-                             srcPosition[baseSrcPositionOffset + 2], 1.f);
-    const uint baseSrcNormalOffset = (cb.srcNormalOffset + idx * cb.srcNormalStride) / 4;
-    float4 normal = float4(srcNormal[baseSrcNormalOffset + 0], 
-                           srcNormal[baseSrcNormalOffset + 1], 
-                           srcNormal[baseSrcNormalOffset + 2], 0.f);
-    
-    // Do the skinning
-    float4 positionOut = 0.f;
-    float4 normalOut = 0.f;
-    for (uint i = 0; i < cb.numBones; i++)
-    {
-        if (blendWeights[i] > 0)
-        {
-            mat4 bone = cb.bones[blendIndices[i]];
-            positionOut += mul(bone, position) * blendWeights[i];
-            normalOut += mul(bone, normal) * blendWeights[i];
-        }
-    }
-
-    float normalLength = length(normalOut.xyz);
-    if (normalLength > 0.f)
-        normalOut.xyz /= normalLength;
-  
-    const uint baseDstPositionOffset = (cb.dstPositionOffset + idx * cb.dstPositionStride) / 4;
-    dstPosition[baseDstPositionOffset + 0] = positionOut.x;
-    dstPosition[baseDstPositionOffset + 1] = positionOut.y;
-    dstPosition[baseDstPositionOffset + 2] = positionOut.z;
-
-    const uint baseDstNormalOffset = (cb.dstNormalOffset + idx * cb.dstNormalStride) / 4;
-    dstNormal[baseDstNormalOffset + 0] = normalOut.x;
-    dstNormal[baseDstNormalOffset + 1] = normalOut.y;
-    dstNormal[baseDstNormalOffset + 2] = normalOut.z;
+    skinning(idx, dstPosition, dstNormal, srcPosition, srcBlendWeight, srcBlendIndices, srcNormal, cb);
 }
