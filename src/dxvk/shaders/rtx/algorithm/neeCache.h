@@ -110,7 +110,7 @@ struct NEECache
   static int3 pointToCell(vec3 position)
   {
     vec3 cameraPos = cameraGetWorldPosition(cb.camera);
-    float extend = 1000;
+    float extend = 2000;
     vec3 origin = cameraPos - extend * 0.5;
     vec3 UVW = (position - origin) / extend;
     if (any(UVW < 0) || any(UVW >= 1))

@@ -501,7 +501,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   int3 cellID = threadIndex / int3(RADIANCE_CACHE_ELEMENTS,1,1);
   NEECell cell = NEECache.createCell(cellID);
 
-  // load to shared memory
+  // load new id to shared memory
   int taskCount = cell.getTaskCount();
   int taskID = localIndex.x;  
   int2 task = cell.getTask(taskID);
@@ -512,9 +512,19 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   }
   GroupMemoryBarrierWithGroupSync();
 
+  // load old id to shared memory
+  int oldIDCount = cell.getCandidateCount();
+  if (localIndex.x < oldIDCount)
+  {
+    int oldCount = 0;
+    InterlockedAdd(s_tarTaskCount, 1, oldCount);
+    s_tarTaskList[oldCount] = cell.getCandidate(localIndex.x);
+  }
+  GroupMemoryBarrierWithGroupSync();
+
   // merge tasks
   bool insertTask = false;
-  if (taskID < RADIANCE_CACHE_ELEMENTS-1 && all(task != -1))
+  if (taskID < taskCount && all(task != -1))
   {
     bool isNewTask = true;
     for (int i = 0; i < taskID -1; ++i)
@@ -524,16 +534,31 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
         isNewTask = false;
       }
     }
+    for (int i = 0; i < min(s_tarTaskCount, RADIANCE_CACHE_ELEMENTS-1); ++i)
+    {
+      if (all(s_tarTaskList[i] == task))
+      {
+        isNewTask = false;
+      }
+    }
     insertTask = isNewTask;
   }
 
-  if (insertTask)
+  if (insertTask && s_tarTaskCount < RADIANCE_CACHE_ELEMENTS-1)
   {
     int oldCount = 0;
     InterlockedAdd(s_tarTaskCount, 1, oldCount);
-    s_tarTaskList[oldCount] = task;
+    if (oldCount < RADIANCE_CACHE_ELEMENTS-1)
+    {
+      s_tarTaskList[oldCount] = task;
+    }
   }
   GroupMemoryBarrierWithGroupSync();
+
+  if (localIndex.x == 0 && localIndex.y == 0)
+  {
+    s_tarTaskCount = min(s_tarTaskCount, RADIANCE_CACHE_ELEMENTS-1);
+  }
 
   // update nee cache
   if (localIndex.x < s_tarTaskCount)
@@ -545,7 +570,14 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   if (localIndex.x == 0 && localIndex.y == 0)
   {
     cell.setTaskCount(0);
-    cell.setCandidateCount(s_tarTaskCount);
+    if (cb.debugKnob.x != 0)
+    {
+      cell.setCandidateCount(min(RADIANCE_CACHE_ELEMENTS-1, s_tarTaskCount));
+    }
+    else
+    {
+      cell.setCandidateCount(0);
+    }
   }
   /*
   const Camera camera = cb.camera;
