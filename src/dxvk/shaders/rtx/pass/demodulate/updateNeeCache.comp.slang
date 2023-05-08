@@ -19,6 +19,7 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
+#include "rtx/pass/common_bindings.slangh"
 #include "rtx/pass/demodulate/update_nee_cache_bindings.slangh"
 
 #include "rtx/pass/raytrace_args.h"
