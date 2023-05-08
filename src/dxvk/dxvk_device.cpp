@@ -280,6 +280,9 @@ namespace dxvk {
 
 
   uint32_t DxvkDevice::getCurrentFrameId() const {
+    // NV-DXVK start
+    // ToDo: avoid returning kInvalidFrameIndex
+    // NV-DXVK end
     return m_statCounters.getCtr(DxvkStatCounter::QueuePresentCount);
   }
   

@@ -24,11 +24,23 @@
 #include "rtx/pass/nrd_args.h"
 
 // Display Types
-static const uint displayTypeStandard = 0u;
-static const uint displayTypeBGRExclusiveColor = 1u;
-static const uint displayTypeEV100 = 2u;
-static const uint displayTypeHDRWaveform = 3u;
+enum class DebugViewDisplayType : uint32_t {
+  Standard = 0,
+  BGRExclusiveColor,
+  EV100,
+  HDRWaveform,
 
+  Count
+};
+
+// Sampler Types
+enum class DebugViewSamplerType: uint32_t {
+  Nearest = 0,
+  NormalizedNearest,
+  NormalizedLinear,
+
+  Count
+};
 struct DebugViewArgs {
   uint debugViewIdx;
   int colorCodeRadius;
@@ -38,7 +50,7 @@ struct DebugViewArgs {
   int evMinValue;
 
   uvec2 debugViewResolution;
-  uint displayType;
+  DebugViewDisplayType displayType;
   uint frameIdx;
 
   // Standard Display
@@ -69,6 +81,8 @@ struct DebugViewArgs {
 
   // HDR Waveform Display enable flags
   uint enableLuminanceModeFlag;
+
+  DebugViewSamplerType samplerType;
 
   vec4 debugKnob;
 

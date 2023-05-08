@@ -1620,7 +1620,10 @@ namespace dxvk {
     if (!debugView.shouldDispatch())
       return;
 
-    debugView.dispatch(m_cmd, this, srcImage, rtOutput, *m_common);
+    debugView.dispatch(m_cmd, this,
+      getResourceManager().getSampler(VK_FILTER_NEAREST, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE),
+      getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE),
+      srcImage, rtOutput, *m_common);
 
     if (captureScreenImage)
       takeScreenshot("rtxImageDebugView", debugView.getDebugOutput()->image());

@@ -201,7 +201,7 @@ namespace dxvk {
     });
   }
 
-  std::shared_future<AxisAlignBoundingBox> D3D9Rtx::computeAxisAlignedBoundingBox(const RasterGeometry& geoData) {
+  std::shared_future<AxisAlignedBoundingBox> D3D9Rtx::computeAxisAlignedBoundingBox(const RasterGeometry& geoData) {
     ScopedCpuProfileZone();
 
     const void* pVertexData = geoData.positionBuffer.mapPtr((size_t)geoData.positionBuffer.offsetFromSlice());
@@ -209,10 +209,10 @@ namespace dxvk {
     const size_t vertexStride = geoData.positionBuffer.stride();
 
     if (pVertexData == nullptr) {
-      return std::shared_future<AxisAlignBoundingBox>();
+      return std::shared_future<AxisAlignedBoundingBox>();
     }
 
-    return m_gpeWorkers.Schedule([pVertexData, vertexCount, vertexStride]()->AxisAlignBoundingBox {
+    return m_gpeWorkers.Schedule([pVertexData, vertexCount, vertexStride]()->AxisAlignedBoundingBox {
       ScopedCpuProfileZone();
 
       __m128 minPos = _mm_set_ps1(FLT_MAX);
@@ -228,11 +228,11 @@ namespace dxvk {
         pVertex += vertexStride;
       }
 
-      AxisAlignBoundingBox boundingbox = {
+      AxisAlignedBoundingBox boundingBox = {
         { minPos.m128_f32[0], minPos.m128_f32[1], minPos.m128_f32[2] },
         { maxPos.m128_f32[0], maxPos.m128_f32[1], maxPos.m128_f32[2] }
       };
-      return boundingbox;
+      return boundingBox;
     });
   }
 }

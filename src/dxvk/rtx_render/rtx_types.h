@@ -114,9 +114,21 @@ struct RaytraceGeometry {
   }
 };
 
-struct AxisAlignBoundingBox {
+struct AxisAlignedBoundingBox {
   Vector3 minPos = { FLT_MAX, FLT_MAX, FLT_MAX };
   Vector3 maxPos = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
+
+  void invalidate() {
+    minPos = { FLT_MAX, FLT_MAX, FLT_MAX };
+    maxPos = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
+  }
+
+  void unionWith(const AxisAlignedBoundingBox& other) {
+    for (uint32_t i = 0; i < 3; i++) {
+      minPos[i] = std::min(minPos[i], other.minPos[i]);
+      maxPos[i] = std::max(maxPos[i], other.maxPos[i]);
+    }
+  }
 };
 
 // Stores a snapshot of the geometry state for a draw call.
@@ -146,8 +158,8 @@ struct RasterGeometry {
   RasterBuffer blendWeightBuffer;
   RasterBuffer blendIndicesBuffer;
 
-  AxisAlignBoundingBox boundingBox;
-  std::shared_future<AxisAlignBoundingBox> futureBoundingBox;
+  AxisAlignedBoundingBox boundingBox;
+  std::shared_future<AxisAlignedBoundingBox> futureBoundingBox;
 
   const XXH64_hash_t getHashForRule(const HashRule& rule) const {
     XXH64_hash_t hashResult = kEmptyHash;
@@ -380,35 +392,9 @@ struct DrawCallState {
 
   DrawCallState(
     const RasterGeometry& geometryData, const LegacyMaterialData& materialData, const DrawCallTransforms& transformData,
-    const SkinningData& skinningData, const FogState& fogState, bool stencilEnabled) :
-    m_geometryData { geometryData },
-    m_materialData { materialData },
-    m_transformData { transformData },
-    m_skinningData { skinningData },
-    m_fogState { fogState },
-    m_stencilEnabled { stencilEnabled }
-  {}
-
-  DrawCallState(const DrawCallState& _input)
-    : m_geometryData(_input.m_geometryData)
-    , m_materialData(_input.m_materialData)
-    , m_transformData(_input.m_transformData)
-    , m_skinningData(_input.m_skinningData)
-    , m_fogState(_input.m_fogState)
-    , m_isSky(_input.m_isSky) { }
-
-  DrawCallState& operator=(const DrawCallState& drawCallState) {
-    if (this != &drawCallState) {
-      m_geometryData = drawCallState.m_geometryData;
-      m_materialData = drawCallState.m_materialData;
-      m_transformData = drawCallState.m_transformData;
-      m_skinningData = drawCallState.m_skinningData;
-      m_fogState = drawCallState.m_fogState;
-      m_stencilEnabled = drawCallState.m_stencilEnabled;
-    }
-
-    return *this;
-  }
+    const SkinningData& skinningData, const FogState& fogState, bool stencilEnabled);
+  DrawCallState(const DrawCallState& _input);
+  DrawCallState& operator=(const DrawCallState& drawCallState);
 
   // Note: This uses the original material for the hash, not the replaced material
   const XXH64_hash_t getHash(const HashRule& rule) const {
@@ -448,13 +434,7 @@ struct DrawCallState {
     return m_isSky;
   }
 
-  bool finalizePendingFutures() {
-    // Bounding boxes (if enabled) will be finalized here, default is FLT_MAX bounds
-    finalizeGeometryBoundingBox();
-
-    // Geometry hashes are vital, and cannot be disabled, so its important we get valid data (hence the return type)
-    return finalizeGeometryHashes();
-  }
+  bool finalizePendingFutures();
 
   bool hasTextureCoordinates() const {
     return getGeometryData().texcoordBuffer.defined() || getTransformData().texgenMode != TexGenMode::None;
@@ -463,23 +443,8 @@ struct DrawCallState {
 private:
   friend class RtxContext;
 
-  bool finalizeGeometryHashes() {
-    if (!m_geometryData.futureGeometryHashes.valid())
-      return false;
-
-    m_geometryData.hashes = m_geometryData.futureGeometryHashes.get();
-
-    if (m_geometryData.hashes[HashComponents::VertexPosition] == kEmptyHash)
-      throw DxvkError("Position hash should never be empty");
-
-    return true;
-  }
-
-  void finalizeGeometryBoundingBox() {
-    if (m_geometryData.futureBoundingBox.valid()) {
-      m_geometryData.boundingBox = m_geometryData.futureBoundingBox.get();
-    }
-  }
+  bool finalizeGeometryHashes();
+  void finalizeGeometryBoundingBox();
 
   RasterGeometry m_geometryData;
 
