@@ -92,6 +92,7 @@ struct NEECell
 
 struct NEECache
 {
+  static float s_extend = 2000;
   static int cellToAddress(int3 cellID)
   {
     if (any(cellID == -1))
@@ -110,15 +111,23 @@ struct NEECache
   static int3 pointToCell(vec3 position)
   {
     vec3 cameraPos = cameraGetWorldPosition(cb.camera);
-    float extend = 2000;
-    vec3 origin = cameraPos - extend * 0.5;
-    vec3 UVW = (position - origin) / extend;
+    vec3 origin = cameraPos - s_extend * 0.5;
+    vec3 UVW = (position - origin) / s_extend;
     if (any(UVW < 0) || any(UVW >= 1))
     {
       return -1;
     }
     ivec3 UVWi = UVW * RADIANCE_CACHE_PROBE_RESOLUTION;
     return UVWi;
+  }
+
+  static vec3 cellToPoint(ivec3 cellID)
+  {
+    vec3 cameraPos = cameraGetWorldPosition(cb.camera);
+    vec3 origin = cameraPos - s_extend * 0.5;
+    vec3 UVW = vec3(cellID + 0.5) / RADIANCE_CACHE_PROBE_RESOLUTION;
+    vec3 position = UVW * s_extend + origin;
+    return position;
   }
 
   static int pointToAddress(vec3 position)
