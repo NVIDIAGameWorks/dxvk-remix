@@ -79,7 +79,8 @@ namespace dxvk {
       PUSH_CONSTANTS(VkExtent2D)
 
       BEGIN_PARAMETER()
-        CONSTANT_BUFFER(UPDATE_NEE_CACHE_BINDING_CONSTANTS)
+        COMMON_RAYTRACING_BINDINGS
+        //CONSTANT_BUFFER(UPDATE_NEE_CACHE_BINDING_CONSTANTS)
         //TEXTURE2D(UPDATE_NEE_CACHE_BINDING_SHARED_FLAGS_INPUT)
         //TEXTURE2D(UPDATE_NEE_CACHE_BINDING_PRIMARY_VIRTUAL_WORLD_SHADING_NORMAL_INPUT)
         //TEXTURE2D(UPDATE_NEE_CACHE_BINDING_PRIMARY_LINEAR_VIEW_Z_INPUT)
@@ -98,7 +99,7 @@ namespace dxvk {
         //RW_TEXTURE2D(UPDATE_NEE_CACHE_BINDING_SECONDARY_COMBINED_SPECULAR_RADIANCE_INPUT_OUTPUT)
         //RW_TEXTURE2D(UPDATE_NEE_CACHE_BINDING_PRIMARY_SPECULAR_ALBEDO_OUTPUT)
         //RW_TEXTURE2D(UPDATE_NEE_CACHE_BINDING_SECONDARY_SPECULAR_ALBEDO_OUTPUT)
-        RW_TEXTURE2D(UPDATE_NEE_CACHE_BINDING_DEBUG_VIEW_OUTPUT)
+        //RW_TEXTURE2D(UPDATE_NEE_CACHE_BINDING_DEBUG_VIEW_OUTPUT)
         RW_STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE)
         RW_STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE_TASK)
       END_PARAMETER()
@@ -185,7 +186,8 @@ namespace dxvk {
     ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
 
     {
-      ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_CONSTANTS, DxvkBufferSlice(constantsBuffer, 0, constantsBuffer->info().size));
+      ctx->bindCommonRayTracingResources(rtOutput);
+      //ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_CONSTANTS, DxvkBufferSlice(constantsBuffer, 0, constantsBuffer->info().size));
       //ctx->bindResourceView(UPDATE_NEE_CACHE_BINDING_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);
       //ctx->bindResourceView(UPDATE_NEE_CACHE_BINDING_PRIMARY_VIRTUAL_WORLD_SHADING_NORMAL_INPUT, rtOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughness.view, nullptr);
       //ctx->bindResourceView(UPDATE_NEE_CACHE_BINDING_PRIMARY_LINEAR_VIEW_Z_INPUT, rtOutput.m_primaryLinearViewZ.view, nullptr);
@@ -204,7 +206,7 @@ namespace dxvk {
       //ctx->bindResourceView(UPDATE_NEE_CACHE_BINDING_SECONDARY_COMBINED_SPECULAR_RADIANCE_INPUT_OUTPUT, rtOutput.m_secondaryCombinedSpecularRadiance.view(Resources::AccessType::ReadWrite), nullptr);
       //ctx->bindResourceView(UPDATE_NEE_CACHE_BINDING_PRIMARY_SPECULAR_ALBEDO_OUTPUT, rtOutput.m_primarySpecularAlbedo.view(Resources::AccessType::Write), nullptr);
       //ctx->bindResourceView(UPDATE_NEE_CACHE_BINDING_SECONDARY_SPECULAR_ALBEDO_OUTPUT, rtOutput.m_secondarySpecularAlbedo.view(Resources::AccessType::Write), nullptr);
-      ctx->bindResourceView(UPDATE_NEE_CACHE_BINDING_DEBUG_VIEW_OUTPUT, debugView.getDebugOutput(), nullptr);
+      //ctx->bindResourceView(UPDATE_NEE_CACHE_BINDING_DEBUG_VIEW_OUTPUT, debugView.getDebugOutput(), nullptr);
       ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE, DxvkBufferSlice(rtOutput.m_radianceCache, 0, rtOutput.m_radianceCache->info().size));
       ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE_TASK, DxvkBufferSlice(rtOutput.m_radianceCacheTask, 0, rtOutput.m_radianceCacheTask->info().size));
 

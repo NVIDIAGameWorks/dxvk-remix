@@ -25,8 +25,8 @@
 
 // Constants
 
-layout(binding = UPDATE_NEE_CACHE_BINDING_CONSTANTS)
-ConstantBuffer<RaytraceArgs> cb;
+// layout(binding = UPDATE_NEE_CACHE_BINDING_CONSTANTS)
+// ConstantBuffer<RaytraceArgs> cb;
 
 // Inputs
 
@@ -76,8 +76,8 @@ ConstantBuffer<RaytraceArgs> cb;
 
 // Outputs
 
-layout(binding = UPDATE_NEE_CACHE_BINDING_DEBUG_VIEW_OUTPUT)
-RWTexture2D<float4> DebugView;
+// layout(binding = UPDATE_NEE_CACHE_BINDING_DEBUG_VIEW_OUTPUT)
+// RWTexture2D<float4> DebugView;
 
 layout(binding = UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE)
 RWByteAddressBuffer RadianceCache;

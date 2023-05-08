@@ -25,7 +25,7 @@
 
 // Constants
 
-#define UPDATE_NEE_CACHE_BINDING_CONSTANTS                                    0
+//#define UPDATE_NEE_CACHE_BINDING_CONSTANTS                                    15
 
 // Inputs
 
@@ -52,10 +52,10 @@
 
 // Outputs
 
-#define UPDATE_NEE_CACHE_BINDING_DEBUG_VIEW_OUTPUT                  1
+//#define UPDATE_NEE_CACHE_BINDING_DEBUG_VIEW_OUTPUT                  15
 
-#define UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE 2
-#define UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE_TASK 3
+#define UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE 15
+#define UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE_TASK 16
 
 
 // Aliased Inputs/Outputs 
