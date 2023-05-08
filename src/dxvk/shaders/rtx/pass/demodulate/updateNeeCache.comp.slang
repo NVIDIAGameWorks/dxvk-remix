@@ -21,7 +21,6 @@
 */
 #include "rtx/pass/common_bindings.slangh"
 #include "rtx/pass/demodulate/update_nee_cache_bindings.slangh"
-
 #include "rtx/pass/raytrace_args.h"
 
 #include "rtx/utility/math.slangh"
@@ -30,18 +29,57 @@
 #include "rtx/utility/common.slangh"
 #include "rtx/utility/brdf.slangh"
 #include "rtx/utility/packing.slangh"
+#include "rtx/utility/geometry_flags.slangh"
 #include "rtx/utility/demodulate_helpers.slangh"
 #include "rtx/utility/debug_view_helpers.slangh"
+#include "rtx/utility/buffer_helpers.slangh"
 #include "rtx/concept/camera/camera.slangh"
-#include "rtx/utility/geometry_flags.slangh"
+#include "rtx/concept/ray/ray.slangh"
 #include "rtx/concept/ray/ray_helper.slangh"
+#include "rtx/concept/surface/surface.slangh"
+#include "rtx/concept/surface_material/surface_material.slangh"
 #include "rtx/algorithm/integrator_helpers.slangh"
-#include "rtx/external/nrd.slangh"
 #include "rtx/algorithm/neecache.h"
+#include "rtx/external/nrd.slangh"
 
 groupshared uint2 s_srcTaskList[RADIANCE_CACHE_ELEMENTS];
-groupshared uint2 s_tarTaskList[RADIANCE_CACHE_ELEMENTS];
+groupshared uint2 s_tarTaskList[RADIANCE_CACHE_ELEMENTS * 2];
+groupshared float s_tarLight[RADIANCE_CACHE_ELEMENTS * 2];
 groupshared int s_tarTaskCount;
+
+float getTriangleLight(uint2 data)
+{
+  int surfaceIndex = data.x;
+  int primitiveIndex = data.y;// = int4(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex,0,0);
+  float triangleLight = 0;
+  if (surfaceIndex >= 0 && primitiveIndex >= 0)
+  {
+    SURFACE_CREATE_READ(emissiveSurface, surfaceIndex, surfaces);
+    RayInteraction emissiveRayInteracton = {};// rayInteraction;
+    emissiveRayInteracton.frontHit = true;
+    emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(vec2(0.5));//barycentricsToUint(vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState)));
+    emissiveRayInteracton.primitiveIndex = primitiveIndex;
+    Ray ray;
+    ray.direction = f16vec3(1.0);
+    SurfaceInteraction emissiveSurfaceInteraction = surfaceInteractionCreate(emissiveSurface, emissiveRayInteracton, ray);
+
+    const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[emissiveSurface.surfaceMaterialIndex];
+    const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
+
+    if (polymorphicType == surfaceMaterialTypeOpaque)
+    {
+      const OpaqueSurfaceMaterial emissiveOpaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(emissiveSurface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
+      const OpaqueSurfaceMaterialInteraction emissiveOpaqueSurfaceMaterialInteraction =
+        opaqueSurfaceMaterialInteractionCreate(emissiveOpaqueSurfaceMaterial, emissiveSurface, emissiveSurfaceInteraction, emissiveRayInteracton);
+
+      if (any(emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance > f16vec3(0)))
+      {
+        triangleLight = calcBt709Luminance(emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance);
+      }
+    }
+  }
+  return triangleLight;
+}
 
 [shader("compute")]
 [numthreads(RADIANCE_CACHE_ELEMENTS, 1, 1)]
@@ -52,20 +90,21 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
 
   RNG rng = createRNG(uvec2(threadIndex.xy + threadIndex.z * RADIANCE_CACHE_ELEMENTS * 20 * 20), cb.frameIdx);
 
-  // load new id to shared memory
-  int taskCount = cell.getTaskCount();
-  int taskID = localIndex.x;  
-  int2 task = cell.getTask(taskID);
-  s_srcTaskList[taskID] = task;
   if (localIndex.x == 0 && localIndex.y == 0)
   {
     s_tarTaskCount = 0;
   }
   GroupMemoryBarrierWithGroupSync();
 
+  // load new id to shared memory
+  int taskCount = cell.getTaskCount();
+  int taskID = localIndex.x;  
+  int2 task = cell.getTask(taskID);
+  s_srcTaskList[taskID] = task;
+
   // load old id to shared memory
   int oldIDCount = cell.getCandidateCount();
-  if (localIndex.x < oldIDCount && getNextSampleBlueNoise(rng) < 0.99)
+  if (localIndex.x < oldIDCount /*&& getNextSampleBlueNoise(rng) < 0.99*/)
   {
     int oldCount = 0;
     InterlockedAdd(s_tarTaskCount, 1, oldCount);
@@ -85,7 +124,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
         isNewTask = false;
       }
     }
-    for (int i = 0; i < min(s_tarTaskCount, RADIANCE_CACHE_ELEMENTS-1); ++i)
+    for (int i = 0; i < s_tarTaskCount; ++i)
     {
       if (all(s_tarTaskList[i] == task))
       {
@@ -95,39 +134,61 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
     insertTask = isNewTask;
   }
 
-  if (insertTask && s_tarTaskCount < RADIANCE_CACHE_ELEMENTS-1)
+  if (insertTask /*&& s_tarTaskCount < RADIANCE_CACHE_ELEMENTS-1*/)
   {
     int oldCount = 0;
     InterlockedAdd(s_tarTaskCount, 1, oldCount);
-    if (oldCount < RADIANCE_CACHE_ELEMENTS-1)
+    //if (oldCount < RADIANCE_CACHE_ELEMENTS-1)
     {
       s_tarTaskList[oldCount] = task;
     }
   }
   GroupMemoryBarrierWithGroupSync();
 
+  // get triangle light
+  uint triangleID = localIndex.x;
+  if (triangleID < s_tarTaskCount)
+  {
+    uint2 data = s_tarTaskList[triangleID];
+    s_tarLight[triangleID] = getTriangleLight(data);
+  }
+  triangleID = localIndex.x + RADIANCE_CACHE_ELEMENTS;
+  if (triangleID < s_tarTaskCount)
+  {
+    uint2 data = s_tarTaskList[triangleID];
+    s_tarLight[triangleID] = getTriangleLight(data);
+  }
+  GroupMemoryBarrierWithGroupSync();
+
+  // sort tasks
   if (localIndex.x == 0 && localIndex.y == 0)
   {
-    s_tarTaskCount = min(s_tarTaskCount, RADIANCE_CACHE_ELEMENTS-1);
+    for (int i = 0; i < s_tarTaskCount; ++i)
+    {
+      for (int j = i+1; j < s_tarTaskCount; ++j)
+      {
+        if (s_tarLight[i] < s_tarLight[j])
+        {
+          float lightI = s_tarLight[i];
+          s_tarLight[i] = s_tarLight[j];
+          s_tarLight[j] = lightI;
+
+          uint2 dataI = s_tarTaskList[i];
+          s_tarTaskList[i] = s_tarTaskList[j];
+          s_tarTaskList[j] = dataI;
+        }
+      }
+    }
+    s_tarTaskCount = cb.debugKnob.x != 0 ? min(s_tarTaskCount, RADIANCE_CACHE_ELEMENTS-1) : 0;
+    cell.setTaskCount(0);
+    cell.setCandidateCount(s_tarTaskCount);
   }
+  GroupMemoryBarrierWithGroupSync();
 
   // update nee cache
   if (localIndex.x < s_tarTaskCount)
   {
     int candidateID = localIndex.x;
     cell.setCandidate(candidateID, s_tarTaskList[candidateID]);
-  }
-
-  if (localIndex.x == 0 && localIndex.y == 0)
-  {
-    cell.setTaskCount(0);
-    if (cb.debugKnob.x != 0)
-    {
-      cell.setCandidateCount(min(RADIANCE_CACHE_ELEMENTS-1, s_tarTaskCount));
-    }
-    else
-    {
-      cell.setCandidateCount(0);
-    }
   }
 }
