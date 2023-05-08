@@ -1,0 +1,102 @@
+/*
+* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/pass/demodulate/update_nee_cache_binding_indices.h"
+
+// Constants
+
+layout(binding = UPDATE_NEE_CACHE_BINDING_CONSTANTS)
+ConstantBuffer<RaytraceArgs> cb;
+
+// Inputs
+
+// layout(r16ui, binding = UPDATE_NEE_CACHE_BINDING_SHARED_FLAGS_INPUT)
+// Texture2D<uint> SharedFlags;
+
+// layout(rgba16, binding = UPDATE_NEE_CACHE_BINDING_PRIMARY_VIRTUAL_WORLD_SHADING_NORMAL_INPUT)
+// Texture2D<float4> PrimaryVirtualWorldNormalPerceptualRoughness;
+
+// layout(r32f, binding = UPDATE_NEE_CACHE_BINDING_PRIMARY_LINEAR_VIEW_Z_INPUT)
+// Texture2D<float> PrimaryLinearViewZ;
+
+// layout(rgb10_a2, binding = UPDATE_NEE_CACHE_BINDING_PRIMARY_ALBEDO_INPUT)
+// Texture2D<float4> PrimaryAlbedo;
+
+// layout(rgba16, binding = UPDATE_NEE_CACHE_BINDING_SECONDARY_VIRTUAL_WORLD_SHADING_NORMAL_INPUT)
+// Texture2D<float4> SecondaryVirtualWorldNormalPerceptualRoughness;
+
+// layout(r32f, binding = UPDATE_NEE_CACHE_BINDING_SECONDARY_LINEAR_VIEW_Z_INPUT)
+// Texture2D<float> SecondaryLinearViewZ;
+
+// layout(rgb10_a2, binding = UPDATE_NEE_CACHE_BINDING_SECONDARY_ALBEDO_INPUT)
+// Texture2D<float4> SecondaryAlbedo;
+
+// layout(rgba16, binding = UPDATE_NEE_CACHE_BINDING_INDIRECT_RADIANCE_HIT_DISTANCE_INPUT)
+// Texture2D<float4> IndirectRadianceHitDistance;
+
+// // Input/Outputs
+
+// layout(rgba16f, binding = UPDATE_NEE_CACHE_BINDING_PRIMARY_DIRECT_DIFFUSE_RADIANCE_INPUT_OUTPUT)
+// RWTexture2D<float4> PrimaryDirectDiffuseRadiance;
+
+// layout(rgba16f, binding = UPDATE_NEE_CACHE_BINDING_PRIMARY_DIRECT_SPECULAR_RADIANCE_INPUT_OUTPUT)
+// RWTexture2D<float4> PrimaryDirectSpecularRadiance;
+
+// layout(rgba16f, binding = UPDATE_NEE_CACHE_BINDING_PRIMARY_INDIRECT_DIFFUSE_RADIANCE_INPUT_OUTPUT)
+// RWTexture2D<float4> PrimaryIndirectDiffuseRadiance;
+
+// layout(rgba16f, binding = UPDATE_NEE_CACHE_BINDING_PRIMARY_INDIRECT_SPECULAR_RADIANCE_INPUT_OUTPUT)
+// RWTexture2D<float4> PrimaryIndirectSpecularRadiance;
+
+// layout(rgba16f, binding = UPDATE_NEE_CACHE_BINDING_SECONDARY_COMBINED_DIFFUSE_RADIANCE_INPUT_OUTPUT)
+// RWTexture2D<float4> SecondaryCombinedDiffuseRadiance;
+
+// layout(rgba16f, binding = UPDATE_NEE_CACHE_BINDING_SECONDARY_COMBINED_SPECULAR_RADIANCE_INPUT_OUTPUT)
+// RWTexture2D<float4> SecondaryCombinedSpecularRadiance;
+
+// Outputs
+
+layout(binding = UPDATE_NEE_CACHE_BINDING_DEBUG_VIEW_OUTPUT)
+RWTexture2D<float4> DebugView;
+
+layout(binding = UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE)
+RWByteAddressBuffer RadianceCache;
+
+layout(binding = UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE_TASK)
+RWByteAddressBuffer RadianceCacheTask;
+
+// Aliased Inputs / Outputs
+
+//layout(rgb10_a2, binding = UPDATE_NEE_CACHE_BINDING_ALIASED_DATA_0)
+//uniform struct AliasedData0
+//{
+//  Texture2D<float4> PrimaryBaseReflectivity;
+//  RWTexture2D<float4> PrimarySpecularAlbedo;
+//} aliasedData0;
+//
+//layout(rgb10_a2, binding = UPDATE_NEE_CACHE_BINDING_ALIASED_DATA_1)
+//uniform struct AliasedData1
+//{
+//  Texture2D<float4> SecondaryBaseReflectivity;
+//  RWTexture2D<float4> SecondarySpecularAlbedo;
+//} aliasedData1;
