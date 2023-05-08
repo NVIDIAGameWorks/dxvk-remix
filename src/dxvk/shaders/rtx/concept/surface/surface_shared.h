@@ -79,5 +79,7 @@ enum class TexGenMode {
   None = 0,
   ViewPositions,
   ViewNormals,
+
+  Count
 };
 
