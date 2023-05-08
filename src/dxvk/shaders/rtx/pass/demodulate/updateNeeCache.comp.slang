@@ -77,6 +77,8 @@ float getTriangleLight(uint2 data, vec3 cellCenter)
         vec3 offset = emissiveSurfaceInteraction.position - cellCenter;
         float distSq = dot(offset, offset);
         triangleLight = calcBt709Luminance(emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance) * emissiveSurfaceInteraction.triangleArea / distSq;
+        //triangleLight = 1.0 * emissiveSurfaceInteraction.triangleArea / distSq;
+        //triangleLight = 1.0 / distSq;
       }
     }
   }

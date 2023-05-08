@@ -76,7 +76,8 @@ namespace dxvk {
     class UpdateNEECacheShader : public ManagedShader {
       SHADER_SOURCE(UpdateNEECacheShader, VK_SHADER_STAGE_COMPUTE_BIT, updateNeeCache)
 
-      PUSH_CONSTANTS(VkExtent2D)
+      //PUSH_CONSTANTS(VkExtent2D)
+      BINDLESS_ENABLED()
 
       BEGIN_PARAMETER()
         COMMON_RAYTRACING_BINDINGS
