@@ -167,16 +167,16 @@ namespace dxvk {
             continue;
           }
 
-          const Matrix4 objectToView = m_cameraManager.getMainCamera().getWorldToView(false) * instance->getBlas()->input.getTransformData().objectToWorld;
+          const Matrix4 objectToView = getCamera().getWorldToView(false) * instance->getBlas()->input.getTransformData().objectToWorld;
 
           bool isInsideFrustum = true;
           if (instance->getBlas()->input.getGeometryData().futureBoundingBox.valid()) {
-            const AxisAlignBoundingBox boundingBox = instance->getBlas()->input.getGeometryData().boundingBox;
-            isInsideFrustum = boundingBoxIntersectsFrustum(m_cameraManager.getMainCamera().getFrustum(), boundingBox.minPos, boundingBox.maxPos, objectToView);
+            const AxisAlignedBoundingBox& boundingBox = instance->getBlas()->input.getGeometryData().boundingBox;
+            isInsideFrustum = boundingBoxIntersectsFrustum(getCamera().getFrustum(), boundingBox.minPos, boundingBox.maxPos, objectToView);
           }
           else {
             // Fallback to check object center under view space
-            isInsideFrustum = m_cameraManager.getMainCamera().getFrustum().CheckSphere(float3(objectToView[3][0], objectToView[3][1], objectToView[3][2]), 0);
+            isInsideFrustum = getCamera().getFrustum().CheckSphere(float3(objectToView[3][0], objectToView[3][1], objectToView[3][2]), 0);
           }
 
           // Only GC the objects inside the frustum to anti-frustum culling, this could cause significant performance impact
@@ -513,7 +513,7 @@ namespace dxvk {
     const Vector4 renderingPos = input.getTransformData().objectToView * Vector4(centroid.x, centroid.y, centroid.z, 1.0f);
     // Note: False used in getViewToWorld since the renderingPos of the object is defined with respect to the game's object to view
     // matrix, not our freecam's, and as such we want to convert it back to world space using the matching matrix.
-    Vector4 worldPos = m_cameraManager.getMainCamera().getViewToWorld(false) * renderingPos;
+    Vector4 worldPos = getCamera().getViewToWorld(false) * renderingPos;
 
     RtLightShaping shaping;
     shaping.enabled = false;
@@ -1110,9 +1110,9 @@ namespace dxvk {
 
     m_rayPortalManager.prepareSceneData(ctx, frameTimeSecs);
     // Note: only main camera needs to be teleportation corrected as only that one is used for ray tracing & denoising
-    m_rayPortalManager.fixCameraInBetweenPortals(m_cameraManager.getMainCamera());
+    m_rayPortalManager.fixCameraInBetweenPortals(getCamera());
     m_rayPortalManager.createVirtualCameras(m_cameraManager);
-    const bool didTeleport = m_rayPortalManager.detectTeleportationAndCorrectCameraHistory(m_cameraManager.getMainCamera());
+    const bool didTeleport = m_rayPortalManager.detectTeleportationAndCorrectCameraHistory(getCamera());
 
     if (m_cameraManager.isCameraCutThisFrame()) {
       // Ignore camera cut events on teleportation so we don't flush the caches

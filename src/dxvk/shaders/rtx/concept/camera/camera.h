@@ -19,8 +19,7 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
-#ifndef CAMERA_H
-#define CAMERA_H
+#pragma once
 
 #include "rtx/utility/shader_types.h"
 
@@ -74,5 +73,3 @@ struct VolumeDefinitionCamera
   vec3 previousTranslatedWorldOffset;
   uint flags;
 };
-
-#endif

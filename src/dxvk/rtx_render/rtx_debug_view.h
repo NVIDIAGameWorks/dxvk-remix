@@ -23,6 +23,7 @@
 
 #include "rtx/utility/shader_types.h"
 #include "rtx/utility/debug_view_indices.h"
+#include "rtx/pass/debug_view/debug_view_args.h"
 
 #include "dxvk_context.h"
 #include "../dxvk_include.h"
@@ -38,16 +39,6 @@ namespace dxvk {
   class DxvkContext;
   class DxvkObjects;
 
-  // Note: Set to match IDs on GPU.
-  enum class DebugViewDisplayType : uint32_t {
-    Standard = 0,
-    BGRExclusiveColor = 1,
-    EV100 = 2,
-    HDRWaveform = 3,
-
-    Count
-  };
-
   class DebugView : public RtxPass {
 
   public:
@@ -55,7 +46,13 @@ namespace dxvk {
     DebugView(dxvk::DxvkDevice* device);
     ~DebugView() = default;
 
-    void dispatch(Rc<DxvkCommandList> cmdList, Rc<DxvkContext> ctx, Rc<DxvkImage>& outputImage, const Resources::RaytracingOutput& rtOutput, DxvkObjects& common);
+    void dispatch(Rc<DxvkCommandList> cmdList, 
+                  Rc<DxvkContext> ctx,
+                  Rc<DxvkSampler> nearestSampler,
+                  Rc<DxvkSampler> linearSampler, 
+                  Rc<DxvkImage>& outputImage, 
+                  const Resources::RaytracingOutput& rtOutput, 
+                  DxvkObjects& common);
 
     void initSettings(const dxvk::Config& config);
     void showImguiSettings();
@@ -93,6 +90,8 @@ namespace dxvk {
     // and should not ever be set to the disabled debug view index.
     uint32_t m_lastDebugViewIdx;
     RTX_OPTION_ENV("rtx.debugView", DebugViewDisplayType, displayType, DebugViewDisplayType::Standard, "DXVK_RTX_DEBUG_VIEW_DISPLAY_TYPE", "");
+
+    RTX_OPTION("rtx.debugView", DebugViewSamplerType, samplerType, DebugViewSamplerType::NormalizedLinear, "Sampler type/n/t0: Nearest./n/t1:Normalized Nearest./n/t2:Normalized Linear.");
 
     // Common Display
     bool m_enableInfNanView = true;

@@ -198,6 +198,14 @@ namespace dxvk {
       {DebugViewDisplayType::HDRWaveform, "HDR Waveform"},
   } });
 
+  ImGui::ComboWithKey<DebugViewSamplerType> samplerTypeCombo = ImGui::ComboWithKey<DebugViewSamplerType>(
+  "Sampler Type",
+  ImGui::ComboWithKey<DebugViewSamplerType>::ComboEntries { {
+      {DebugViewSamplerType::Nearest, "Nearest"},
+      {DebugViewSamplerType::NormalizedNearest, "Normalized Nearest"},
+      {DebugViewSamplerType::NormalizedLinear, "Normalized Linear"},
+  } });
+
   // Defined within an unnamed namespace to ensure unique definition across binary
   namespace {
     class DebugViewShader : public ManagedShader {
@@ -218,7 +226,11 @@ namespace dxvk {
         TEXTURE2D(DEBUG_VIEW_BINDING_FINAL_SHADING_INPUT)
         TEXTURE2D(DEBUG_VIEW_BINDING_COMPOSITE_OUTPUT_INPUT)
         TEXTURE2D(DEBUG_VIEW_BINDING_INSTRUMENTATION_INPUT)
+
+        SAMPLER(DEBUG_VIEW_BINDING_LINEAR_SAMPLER)
+        
         CONSTANT_BUFFER(DEBUG_VIEW_BINDING_CONSTANTS_INPUT)
+        
         RW_TEXTURE2D(DEBUG_VIEW_BINDING_HDR_WAVEFORM_RED_INPUT_OUTPUT)
         RW_TEXTURE2D(DEBUG_VIEW_BINDING_HDR_WAVEFORM_GREEN_INPUT_OUTPUT)
         RW_TEXTURE2D(DEBUG_VIEW_BINDING_HDR_WAVEFORM_BLUE_INPUT_OUTPUT)
@@ -290,6 +302,7 @@ namespace dxvk {
     ImGui::DragFloat4("Debug Knob", (float*)&m_debugKnob, 0.1f, -1000.f, 1000.f, "%.3f", sliderFlags);
 
     displayTypeCombo.getKey(&displayTypeObject());
+    samplerTypeCombo.getKey(&samplerTypeObject());
 
     if (ImGui::CollapsingHeader("Display Settings", collapsingHeaderFlags)) {
       ImGui::Indent();
@@ -463,7 +476,7 @@ namespace dxvk {
 
     debugViewArgs.frameIdx = ctx->getDevice()->getCurrentFrameId();
 
-    debugViewArgs.displayType = static_cast<uint>(displayType());
+    debugViewArgs.displayType = displayType();
     debugViewArgs.enableInfNanViewFlag = m_enableInfNanView;
     debugViewArgs.debugViewResolution.x = debugViewResolution.width;
     debugViewArgs.debugViewResolution.y = debugViewResolution.height;
@@ -497,6 +510,8 @@ namespace dxvk {
       debugViewArgs.hdrWaveformHistogramNormalizationScale = m_hdrWaveformHistogramNormalizationScale;
     }
 
+    debugViewArgs.samplerType = samplerType();
+
     debugViewArgs.isRTXDIConfidenceValid = rtOutput.getCurrentRtxdiConfidence().matchesWriteFrameIdx(frameIdx);
 
     // Todo: Add cases for secondary denoiser.
@@ -524,7 +539,9 @@ namespace dxvk {
   }
 
   void DebugView::dispatch(Rc<DxvkCommandList> cmdList, 
-                           Rc<DxvkContext> ctx, 
+                           Rc<DxvkContext> ctx,
+                           Rc<DxvkSampler> nearestSampler,
+                           Rc<DxvkSampler> linearSampler,
                            Rc<DxvkImage>& outputImage,
                            const Resources::RaytracingOutput& rtOutput, 
                            DxvkObjects& common) {
@@ -579,6 +596,9 @@ namespace dxvk {
         ctx->bindResourceView(DEBUG_VIEW_BINDING_HDR_WAVEFORM_GREEN_INPUT_OUTPUT, m_hdrWaveformGreen.view, nullptr);
         ctx->bindResourceView(DEBUG_VIEW_BINDING_HDR_WAVEFORM_BLUE_INPUT_OUTPUT, m_hdrWaveformBlue.view, nullptr);
         ctx->bindResourceBuffer(DEBUG_VIEW_BINDING_CONSTANTS_INPUT, DxvkBufferSlice(cb, 0, cb->info().size));
+
+        ctx->bindResourceSampler(DEBUG_VIEW_BINDING_NEAREST_SAMPLER, nearestSampler);
+        ctx->bindResourceSampler(DEBUG_VIEW_BINDING_LINEAR_SAMPLER, linearSampler);
 
         ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, DebugViewShader::getShader());
 

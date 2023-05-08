@@ -60,6 +60,12 @@ RWTexture2D<uint> HDRWaveformGreenInputOutput;
 layout(r32ui, binding = DEBUG_VIEW_BINDING_HDR_WAVEFORM_BLUE_INPUT_OUTPUT)
 RWTexture2D<uint> HDRWaveformBlueInputOutput;
 
+layout(rgba16f, binding = DEBUG_VIEW_BINDING_NEAREST_SAMPLER)
+SamplerState NearestSampler;
+
+layout(rgba16f, binding = DEBUG_VIEW_BINDING_LINEAR_SAMPLER)
+SamplerState LinearSampler;
+
 layout(binding = DEBUG_VIEW_BINDING_CONSTANTS_INPUT)
 ConstantBuffer<DebugViewArgs> cb;
 
@@ -69,6 +75,22 @@ ConstantBuffer<DebugViewArgs> cb;
 #include "rtx/utility/debug_view_helpers.slangh"
 //#include "rtx/utility/gbuffer_helpers.slangh"
 #include "rtx/external/NRD.slangh"
+
+float4 sampleTexture(Texture2D<float4> texture, ivec2 threadId)
+{
+  const float2 uv = (threadId + 0.5f) / float2(cb.debugViewResolution);
+
+  switch(cb.samplerType)
+  {
+  case DebugViewSamplerType::Nearest:
+    return texture[threadId];
+  case DebugViewSamplerType::NormalizedNearest:
+    return texture.SampleLevel(NearestSampler, uv, 0.0f);
+  case DebugViewSamplerType::NormalizedLinear:
+    return texture.SampleLevel(LinearSampler, uv, 0.0f);
+  }
+  return 0;
+}
 
 float nrdGetHitT(float normalizedHitT, float primaryHitPerceptualRoughness, float linearViewZ)
 {
@@ -350,7 +372,7 @@ void postprocess(ivec2 threadId, inout vec4 outValue)
 
     if (nanDetected || infDetected)
     {
-      const bool usePseudoColorWarningColors = (cb.displayType == displayTypeStandard) && cb.enablePseudoColorFlag;
+      const bool usePseudoColorWarningColors = (cb.displayType == DebugViewDisplayType::Standard) && cb.enablePseudoColorFlag;
       const vec3 kNanWarningColor = usePseudoColorWarningColors ? vec3(0, 0, 0) : vec3(1, 0, 0);
       const vec3 kInfWarningColor = usePseudoColorWarningColors ? vec3(0, 0, 0) : vec3(0, 0, 1);
       const vec3 kCombinedWarningColor =
@@ -366,7 +388,7 @@ void postprocess(ivec2 threadId, inout vec4 outValue)
 
   // Switch between Display mode
 
-  if (cb.displayType == displayTypeStandard)
+  if (cb.displayType == DebugViewDisplayType::Standard)
   {
     outValue *= cb.scale;
     outValue = (outValue - vec4(cb.minValue)) / (vec4(cb.maxValue - cb.minValue));
@@ -377,11 +399,11 @@ void postprocess(ivec2 threadId, inout vec4 outValue)
     if (cb.enablePseudoColorFlag)
       outValue.rgb = turboColormap(calcBt709Luminance(outValue.rgb));
   }
-  else if (cb.displayType == displayTypeBGRExclusiveColor)
+  else if (cb.displayType == DebugViewDisplayType::BGRExclusiveColor)
   {
     outValue.rgb = colorCodeIntoBGRexclusive(outValue.r, cb.maxValue);
   }
-  else if (cb.displayType == displayTypeEV100)
+  else if (cb.displayType == DebugViewDisplayType::EV100)
   {
     const float luminance = calcBt709Luminance(outValue.rgb);
     const float ev100 = calcLuminanceEV100(luminance);
@@ -389,7 +411,7 @@ void postprocess(ivec2 threadId, inout vec4 outValue)
 
     outValue = vec4(turboColormap(normalizedEV), 1.0f);
   }
-  else if (cb.displayType == displayTypeHDRWaveform)
+  else if (cb.displayType == DebugViewDisplayType::HDRWaveform)
   {
     vec3 log10OutValue;
 

@@ -131,7 +131,7 @@ Surface surfaceCreate(MemorySurface memorySurface)
   surface.textureAlphaArg1Source = uint8_t((textureFlagData >> 7) & 0x3);
   surface.textureAlphaArg2Source = uint8_t((textureFlagData >> 9) & 0x3);
   surface.textureAlphaOperation  = uint8_t((textureFlagData >> 11) & 0x7);
-  surface.texcoordGenerationMode  = uint8_t((textureFlagData >> 17) & 0x1);
+  surface.texcoordGenerationMode  = uint8_t((textureFlagData >> 17) & 0x3);
 
   surface.clipPlane = uintBitsToFloat(memorySurface.data14);
 

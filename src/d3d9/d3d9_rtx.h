@@ -187,7 +187,7 @@ namespace dxvk {
 
     std::shared_future<SkinningData> processSkinning(const RasterGeometry& geoData);
 
-    std::shared_future<AxisAlignBoundingBox> computeAxisAlignedBoundingBox(const RasterGeometry& geoData);
+    std::shared_future<AxisAlignedBoundingBox> computeAxisAlignedBoundingBox(const RasterGeometry& geoData);
 
     std::shared_future<GeometryHashes> computeHash(const RasterGeometry& geoData, const uint32_t maxIndexValue);
   };

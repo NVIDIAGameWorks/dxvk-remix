@@ -45,6 +45,16 @@ struct LightRangeInfo {
   uint16_t pad;
 };
 
+// Note: ensure 16B alignment
+struct TerrainArgs {
+  uint2 cascadeMapSize;    // Number of cascade tiles in each dimension
+  float2 rcpCascadeMapSize;
+
+  uint maxCascadeLevel;
+  float lastCascadeScale;
+  uint2 pad1;
+};
+
 // Constant buffer
 struct RaytraceArgs {
   Camera camera;

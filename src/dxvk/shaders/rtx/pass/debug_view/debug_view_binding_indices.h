@@ -43,8 +43,13 @@
 #define DEBUG_VIEW_BINDING_CONSTANTS_INPUT                                                 16
 
 // Inputs / Outputs
-#define DEBUG_VIEW_BINDING_HDR_WAVEFORM_RED_INPUT_OUTPUT                                   17
-#define DEBUG_VIEW_BINDING_HDR_WAVEFORM_GREEN_INPUT_OUTPUT                                 18
-#define DEBUG_VIEW_BINDING_HDR_WAVEFORM_BLUE_INPUT_OUTPUT                                  19
+#define DEBUG_VIEW_BINDING_HDR_WAVEFORM_RED_INPUT_OUTPUT                                   50
+#define DEBUG_VIEW_BINDING_HDR_WAVEFORM_GREEN_INPUT_OUTPUT                                 51
+#define DEBUG_VIEW_BINDING_HDR_WAVEFORM_BLUE_INPUT_OUTPUT                                  52
 
-#define DEBUG_VIEW_BINDING_INPUT_OUTPUT                                                    20
+// Samplers
+#define DEBUG_VIEW_BINDING_NEAREST_SAMPLER                                                 80
+#define DEBUG_VIEW_BINDING_LINEAR_SAMPLER                                                  81
+
+// Outputs
+#define DEBUG_VIEW_BINDING_INPUT_OUTPUT                                                    100
