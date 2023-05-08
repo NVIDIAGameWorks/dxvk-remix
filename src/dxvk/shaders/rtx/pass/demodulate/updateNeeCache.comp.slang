@@ -26,6 +26,7 @@
 
 #include "rtx/utility/math.slangh"
 #include "rtx/utility/color.slangh"
+#include "rtx/utility/noise.slangh"
 #include "rtx/utility/common.slangh"
 #include "rtx/utility/brdf.slangh"
 #include "rtx/utility/packing.slangh"
@@ -502,6 +503,8 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   int3 cellID = threadIndex / int3(RADIANCE_CACHE_ELEMENTS,1,1);
   NEECell cell = NEECache.createCell(cellID);
 
+  RNG rng = createRNG(uvec2(threadIndex.xy + threadIndex.z * RADIANCE_CACHE_ELEMENTS * 20 * 20), cb.frameIdx);
+
   // load new id to shared memory
   int taskCount = cell.getTaskCount();
   int taskID = localIndex.x;  
@@ -515,7 +518,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
 
   // load old id to shared memory
   int oldIDCount = cell.getCandidateCount();
-  if (localIndex.x < oldIDCount)
+  if (localIndex.x < oldIDCount && getNextSampleBlueNoise(rng) < 0.99)
   {
     int oldCount = 0;
     InterlockedAdd(s_tarTaskCount, 1, oldCount);
