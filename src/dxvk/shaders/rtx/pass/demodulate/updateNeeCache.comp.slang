@@ -47,7 +47,7 @@ groupshared uint2 s_tarTaskList[RADIANCE_CACHE_ELEMENTS * 2];
 groupshared float s_tarLight[RADIANCE_CACHE_ELEMENTS * 2];
 groupshared int s_tarTaskCount;
 
-float getTriangleLight(uint2 data)
+float getTriangleLight(uint2 data, vec3 cellCenter)
 {
   int surfaceIndex = data.x;
   int primitiveIndex = data.y;// = int4(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex,0,0);
@@ -74,7 +74,9 @@ float getTriangleLight(uint2 data)
 
       if (any(emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance > f16vec3(0)))
       {
-        triangleLight = calcBt709Luminance(emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance);
+        vec3 offset = emissiveSurfaceInteraction.position - cellCenter;
+        float distSq = dot(offset, offset);
+        triangleLight = calcBt709Luminance(emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance) * emissiveSurfaceInteraction.triangleArea / distSq;
       }
     }
   }
@@ -87,6 +89,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
 {
   int3 cellID = threadIndex / int3(RADIANCE_CACHE_ELEMENTS,1,1);
   NEECell cell = NEECache.createCell(cellID);
+  vec3 cellCenter = NEECache.cellToPoint(cellID);
 
   RNG rng = createRNG(uvec2(threadIndex.xy + threadIndex.z * RADIANCE_CACHE_ELEMENTS * 20 * 20), cb.frameIdx);
 
@@ -150,20 +153,20 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   if (triangleID < s_tarTaskCount)
   {
     uint2 data = s_tarTaskList[triangleID];
-    s_tarLight[triangleID] = getTriangleLight(data);
+    s_tarLight[triangleID] = getTriangleLight(data, cellCenter);
   }
   triangleID = localIndex.x + RADIANCE_CACHE_ELEMENTS;
   if (triangleID < s_tarTaskCount)
   {
     uint2 data = s_tarTaskList[triangleID];
-    s_tarLight[triangleID] = getTriangleLight(data);
+    s_tarLight[triangleID] = getTriangleLight(data, cellCenter);
   }
   GroupMemoryBarrierWithGroupSync();
 
   // sort tasks
   if (localIndex.x == 0 && localIndex.y == 0)
   {
-    for (int i = 0; i < s_tarTaskCount; ++i)
+    for (int i = 0; i < s_tarTaskCount-1; ++i)
     {
       for (int j = i+1; j < s_tarTaskCount; ++j)
       {
