@@ -214,8 +214,8 @@ namespace dxvk {
       for (uint32_t idx = 0; idx < params.numVertices; idx++) {
         skinning(idx, &dstPosition[0], &dstNormal[0], srcPosition, srcBlendWeight, srcBlendIndices, srcNormal, params);
 
-        ctx->updateBuffer(geo.positionBuffer.buffer(), geo.positionBuffer.offsetFromSlice() + idx * geo.positionBuffer.stride(), sizeof(dstPosition), &dstPosition[0]);
-        ctx->updateBuffer(geo.normalBuffer.buffer(), geo.normalBuffer.offsetFromSlice() + idx * geo.normalBuffer.stride(), sizeof(dstNormal), &dstNormal[0]);
+        ctx->updateBuffer(geo.positionBuffer.buffer(), geo.positionBuffer.offsetFromSlice() + idx * geo.positionBuffer.stride(), sizeof(dstPosition), &dstPosition[0], true);
+        ctx->updateBuffer(geo.normalBuffer.buffer(), geo.normalBuffer.offsetFromSlice() + idx * geo.normalBuffer.stride(), sizeof(dstNormal), &dstNormal[0], true);
       }
     }
   }
@@ -453,15 +453,15 @@ namespace dxvk {
       const VkExtent3D workgroups = util::computeBlockCount(VkExtent3D { cb.primCount, 1, 1 }, VkExtent3D { 128, 1, 1 });
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
     } else {
-      RtxInbandBufferUpdate<uint16_t, kNumTrianglesToProcessOnCPU * 3> dst(dstSlice, cb.primCount * 3);
+      uint16_t dst[kNumTrianglesToProcessOnCPU * 3];
 
       const uint16_t* src = (cb.useIndexBuffer != 0) ? reinterpret_cast<uint16_t*>(srcBuffer->mapPtr()) : nullptr;
 
       for (uint32_t idx = 0; idx < cb.primCount; idx++) {
-        generateIndices(idx, dst.data(), src, cb);
+        generateIndices(idx, dst, src, cb);
       }
 
-      dst.commit(ctx);
+      ctx->updateBuffer(dstSlice.buffer(), 0, cb.primCount * 3 * sizeof(uint16_t), dst, true);
     }
   }
 
@@ -620,8 +620,7 @@ namespace dxvk {
       const VkExtent3D workgroups = util::computeBlockCount(VkExtent3D { input.vertexCount, 1, 1 }, VkExtent3D { 128, 1, 1 });
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
     } else {
-      RtxInbandBufferUpdate<float, kNumVerticesToProcessOnCPU * kMaxInterleavedComponents> dst(
-        DxvkBufferSlice(output.buffer), input.vertexCount * output.stride / sizeof(float));
+      float dst[kNumVerticesToProcessOnCPU * kMaxInterleavedComponents];
 
       GeometryBufferData inputData(input);
 
@@ -632,10 +631,10 @@ namespace dxvk {
       args.color0Offset = 0;
 
       for (uint32_t i = 0; i < input.vertexCount; i++) {
-        interleaver::interleave(i, dst.data(), inputData.positionData, inputData.normalData, inputData.texcoordData, inputData.vertexColorData, args);
+        interleaver::interleave(i, dst, inputData.positionData, inputData.normalData, inputData.texcoordData, inputData.vertexColorData, args);
       }
 
-      dst.commit(ctx);
+      ctx->updateBuffer(output.buffer, 0, input.vertexCount * output.stride, dst, true);
     }
 
     uint32_t offset = 0;
