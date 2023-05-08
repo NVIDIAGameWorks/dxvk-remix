@@ -371,12 +371,12 @@ namespace dxvk {
     // no previous frame light indices can possibly exist (and thus nothing in the shader should be trying to access it). On the next frame
     // after the light buffer and previous light buffer are swapped, this code will allocate another buffer and the process will continue
     // fine swapping back and forth from that point onwards.
-    if (m_lightBuffer == nullptr || info.size > m_lightBuffer->info().size) {
+    if (info.size > 0 && (m_lightBuffer == nullptr || info.size > m_lightBuffer->info().size)) {
       m_lightBuffer = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
     }
 
     info.size = align(lightMappingBufferEntries * sizeof(uint16_t), kBufferAlignment);
-    if (m_lightMappingBuffer == nullptr || info.size > m_lightMappingBuffer->info().size) {
+    if (info.size > 0 && (m_lightMappingBuffer == nullptr || info.size > m_lightMappingBuffer->info().size)) {
       m_lightMappingBuffer = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
     }
     
