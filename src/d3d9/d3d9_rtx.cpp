@@ -497,7 +497,7 @@ namespace dxvk {
     if (RtxOptions::Get()->calculateMeshBoundingBox()) {
       geoData.futureBoundingBox = computeAxisAlignedBoundingBox(geoData);
     } else {
-      geoData.futureBoundingBox = std::shared_future<AxisAlignBoundingBox>();
+      geoData.futureBoundingBox = std::shared_future<AxisAlignedBoundingBox>();
     }
 
     // For shader based drawcalls we also want to capture the vertex shader output

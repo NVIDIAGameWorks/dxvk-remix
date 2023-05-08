@@ -204,7 +204,10 @@ struct RtSurface {
     textureFlags |= ((static_cast<uint32_t>(textureAlphaArg1Source) & 0x3) << 7);
     textureFlags |= ((static_cast<uint32_t>(textureAlphaArg2Source) & 0x3) << 9);
     textureFlags |= ((static_cast<uint32_t>(textureAlphaOperation)  & 0x7) << 11);
-    textureFlags |= ((static_cast<uint32_t>(texgenMode)  & 0x3) << 17);
+
+    static_assert(static_cast<uint32_t>(TexGenMode::Count) <= 4);
+    textureFlags |= ((static_cast<uint32_t>(texgenMode) & 0x3) << 17);
+
     writeGPUHelper(data, offset, textureFlags);
 
     // Note: This element of the normal object to world matrix is encoded to minimize padding

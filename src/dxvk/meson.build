@@ -279,6 +279,7 @@ dxvk_src = files([
   'rtx_render/rtx_texture.h',
   'rtx_render/rtx_texturemanager.cpp',
   'rtx_render/rtx_texturemanager.h',
+  'rtx_render/rtx_types.cpp',
   'rtx_render/rtx_types.h',
   'rtx_render/rtx_utils.h',
   'rtx_render/rtx_volumemanager.cpp',
