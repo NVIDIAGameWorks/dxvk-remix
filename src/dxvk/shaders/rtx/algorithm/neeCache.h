@@ -113,12 +113,20 @@ struct NEECache
     vec3 cameraPos = cameraGetWorldPosition(cb.camera);
     vec3 origin = cameraPos - s_extend * 0.5;
     vec3 UVW = (position - origin) / s_extend;
-    if (any(UVW < 0) || any(UVW >= 1))
+    vec3 UVWi = UVW * RADIANCE_CACHE_PROBE_RESOLUTION - 0.5;
+    vec3 fracUVWi = fract(UVWi);
+
+    RNG rng = createRNGPosition(position, cb.frameIdx);
+    ivec3 offset;
+    offset.x = getNextSampleBlueNoise(rng) > fracUVWi.x ? 0 : 1;
+    offset.y = getNextSampleBlueNoise(rng) > fracUVWi.y ? 0 : 1;
+    offset.z = getNextSampleBlueNoise(rng) > fracUVWi.z ? 0 : 1;
+    ivec3 cellID = ivec3(UVWi) + offset;
+    if (any(cellID < 0) || any(cellID > RADIANCE_CACHE_PROBE_RESOLUTION-1))
     {
-      return -1;
+      return int3(-1);
     }
-    ivec3 UVWi = UVW * RADIANCE_CACHE_PROBE_RESOLUTION;
-    return UVWi;
+    return cellID;
   }
 
   static vec3 cellToPoint(ivec3 cellID)
