@@ -128,6 +128,35 @@ namespace dxvk {
   };
   std::unordered_map<XXH64_hash_t, ImGuiTexture> g_imguiTextureMap;
 
+  struct RtxTextureOption {
+    char* uniqueId;
+    char* displayName;
+    RtxOption<std::unordered_set<XXH64_hash_t>>* rtxOption;
+    XXH64_hash_t bufferTextureHash;
+    bool bufferToggle;
+  };
+
+  RtxTextureOption rtxTextureOptions[18] = {
+    {"uitextures", "UI Texture", &RtxOptions::Get()->uiTexturesObject()},
+    {"worldspaceuitextures", "World Space UI Texture", &RtxOptions::Get()->worldSpaceUiTexturesObject()},
+    {"skytextures", "Sky Texture", &RtxOptions::Get()->skyBoxTexturesObject()},
+    {"ignoretextures", "Ignore Texture (optional)", &RtxOptions::Get()->ignoreTexturesObject()},
+    {"ignorelights", "Ignore Lights (optional)", &RtxOptions::Get()->ignoreLightsObject()},
+    {"particletextures", "Particle Texture (optional)", &RtxOptions::Get()->particleTexturesObject()},
+    {"beamtextures", "Beam Texture (optional)", &RtxOptions::Get()->beamTexturesObject()},
+    {"lightconvertertextures", "Add Light to Textures (optional)", &RtxOptions::Get()->lightConverterObject()},
+    {"decaltextures", "Decal Texture (optional)", &RtxOptions::Get()->decalTexturesObject()},
+    {"dynamicdecaltextures", "Dynamic Decal Texture", &RtxOptions::Get()->dynamicDecalTexturesObject()},
+    {"nonoffsetdecaltextures", "Non-Offset Decal Texture", &RtxOptions::Get()->nonOffsetDecalTexturesObject()},
+    {"cutouttextures", "Legacy Cutout Texture (optional)", &RtxOptions::Get()->cutoutTexturesObject()},
+    {"terraintextures", "Terrain Texture", &RtxOptions::Get()->terrainTexturesObject()},
+    {"watertextures", "Water Texture (optional)", &RtxOptions::Get()->animatedWaterTexturesObject()},
+    {"antiCullingTextures", "Anti-Culling Texture (optional)", &RtxOptions::Get()->antiCullingTexturesObject()},
+    {"playermodeltextures", "Player Model Texture (optional)", &RtxOptions::Get()->playerModelTexturesObject()},
+    {"playermodelbodytextures", "Player Model Body Texture (optional)", &RtxOptions::Get()->playerModelBodyTexturesObject()},
+    {"opacitymicromapignoretextures", "Opacity Micromap Ignore Texture (optional)", &RtxOptions::Get()->opacityMicromapIgnoreTexturesObject()}
+  };
+
   ImGui::ComboWithKey<RenderPassGBufferRaytraceMode> renderPassGBufferRaytraceModeCombo {
     "GBuffer Raytracing Mode",
     ImGui::ComboWithKey<RenderPassGBufferRaytraceMode>::ComboEntries { {
@@ -1358,6 +1387,124 @@ namespace dxvk {
     ImGui::PopID();
   }
 
+
+  void ImGUI::showTextureSelectionGrid(const char* uniqueId, const uint32_t texturesPerRow, const float thumbnailSize) {
+    ImGui::PushID(uniqueId);
+    uint32_t cnt = 0;
+    float x = 0;
+    const float startX = ImGui::GetCursorPosX();
+    const float thumbnailSpacing = ImGui::GetStyle().ItemSpacing.x;
+    const float thumbnailPadding = ImGui::GetStyle().CellPadding.x;
+
+    for (auto& pair : g_imguiTextureMap) {
+
+      bool hasSelection = false;
+      for (int i = 0; i < IM_ARRAYSIZE(rtxTextureOptions); i++) {
+        auto& rtxOption = rtxTextureOptions[i].rtxOption;
+        hasSelection = rtxOption->getValue().find(pair.first) != rtxOption->getValue().end();
+        if (hasSelection)
+          break;
+      }
+
+      if (hasSelection)
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.996078f, 0.329412f, 0.f, 1.f));
+      else
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.f, 0.f, 0.f, 1.00f));
+
+      // Lazily create the tex ID ImGUI wants
+      if(pair.second.texID == VK_NULL_HANDLE)
+        pair.second.texID = ImGui_ImplVulkan_AddTexture(VK_NULL_HANDLE, pair.second.imageView->handle(), VK_IMAGE_LAYOUT_GENERAL);
+
+      const auto& imageInfo = pair.second.imageView->imageInfo();
+
+      // Calculate thumbnail extent with respect to image aspect
+      const float aspect = static_cast<float>(imageInfo.extent.width) / imageInfo.extent.height;
+      const ImVec2 extent {
+        aspect >= 1.f ? thumbnailSize : thumbnailSize * aspect,
+        aspect <= 1.f ? thumbnailSize : thumbnailSize / aspect
+      };
+
+      // Align thumbnail image button
+      const float y = ImGui::GetCursorPosY();
+      ImGui::SetCursorPosX(x + startX + (thumbnailSize - extent.x) / 2.f);
+      ImGui::SetCursorPosY(y + (thumbnailSize - extent.y) / 2.f);
+
+      if (ImGui::ImageButton(pair.second.texID, extent)) {
+          ImGui::OpenPopup("rtx_texture_selection");
+      }
+
+      if (ImGui::IsItemHovered()) {
+        std::stringstream formatName;
+        formatName << imageInfo.format;
+
+        //populate buffer values for texture options
+        for (int i = 0; i < IM_ARRAYSIZE(rtxTextureOptions); i++) {
+          auto& rtxOption = rtxTextureOptions[i].rtxOption;
+          rtxTextureOptions[i].bufferTextureHash = pair.first;
+          rtxTextureOptions[i].bufferToggle = rtxOption->getValue().find(pair.first) != rtxOption->getValue().end();
+        }
+
+        char tooltip[1024];
+
+        sprintf(tooltip, "%s: %dx%d %s\nHash: 0x%" PRIx64 "\n\nClick to edit texture selection",
+                (imageInfo.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) ? "Render Target" : "Texture",
+                imageInfo.extent.width, imageInfo.extent.height,
+                formatName.str().c_str() + strlen("VK_FORMAT_"), pair.first);
+
+        ImGui::SetTooltip(tooltip);
+        if (ImGui::IsMouseDown(ImGuiMouseButton_Middle)) {
+          ImGui::LogToClipboard();
+          ImGui::LogText("%" PRIx64, pair.first);
+          ImGui::LogFinish();
+        }
+
+        RtxOptions::Get()->highlightedTextureRef() = pair.first;
+      }
+
+      ImGui::PopStyleColor(1);
+
+      if (++cnt % texturesPerRow != 0) {
+        x += thumbnailSize + thumbnailSpacing + thumbnailPadding;
+        ImGui::SetCursorPosY(y);
+      } else {
+        x = 0;
+        ImGui::SetCursorPosY(y + thumbnailSize + thumbnailSpacing + thumbnailPadding);
+      }
+    }
+
+    if (ImGui::BeginPopup("rtx_texture_selection")) {
+      ImGui::TextWrapped("Texture Selection:\n");
+
+      for (int i = 0; i < IM_ARRAYSIZE(rtxTextureOptions); i++) {
+        if (ImGui::Checkbox(rtxTextureOptions[i].displayName, &rtxTextureOptions[i].bufferToggle)) {
+          XXH64_hash_t textureHash = rtxTextureOptions[i].bufferTextureHash;
+          std::unordered_set<XXH64_hash_t>& textureOptionSet = rtxTextureOptions[i].rtxOption->getValue();
+
+          const char* action;
+          if (textureOptionSet.find(textureHash) != textureOptionSet.end()) {
+            textureOptionSet.erase(textureHash);
+            action = "removed";
+          } else {
+            textureOptionSet.insert(textureHash);
+            action = "added";
+          }
+
+          char buffer[256];
+          sprintf_s(buffer, "%s - %s %016llX\n", rtxTextureOptions[i].uniqueId, action, textureHash);
+          Logger::info(buffer);
+        }
+          
+        if (ImGui::IsItemHovered())
+          ImGui::SetTooltip(rtxTextureOptions[i].rtxOption->getDescription());
+      }
+
+      ImGui::EndPopup();
+    }
+
+    ImGui::NewLine();
+    ImGui::PopID();    
+  }
+
   void ImGUI::showEnhancementsWindow(const Rc<DxvkContext>& ctx) {
     ImGui::PushItemWidth(200);
 
@@ -1407,6 +1554,10 @@ namespace dxvk {
     const uint32_t numThumbnailsPerRow = uint32_t(std::max(1.f, (m_windowWidth - 18.f) / (thumbnailSize + thumbnailSpacing + thumbnailPadding * 2.f)));
 
     ImGui::Checkbox("Preserve discarded textures", &RtxOptions::Get()->keepTexturesForTaggingObject());
+
+    if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 0: Texture Selection", collapsingHeaderClosedFlags), "Select texture definitions for Remix")) {
+      showTextureSelectionGrid("textures", numThumbnailsPerRow, thumbnailSize);
+    }
 
     if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 1: UI Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->uiTexturesDescription())) {
       showTextureSelectionGrid("uitextures", numThumbnailsPerRow, thumbnailSize, RtxOptions::Get()->uiTexturesRef());
