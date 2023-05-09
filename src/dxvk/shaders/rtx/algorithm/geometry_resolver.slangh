@@ -342,7 +342,7 @@ void geometryResolverOutputDebugView(
   case DEBUG_VIEW_IS_STATIC:
     // Green = static, Red = not static
     //storeInDebugView(pixelCoordinate, surface.isStatic ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0));
-    storeInDebugView(pixelCoordinate, surfaceInteraction.triangleArea / 10000.0);
+    storeInDebugView(pixelCoordinate, surfaceInteraction.sqrtTriangleArea);
 
     break;
   case DEBUG_VIEW_IS_OPAQUE:

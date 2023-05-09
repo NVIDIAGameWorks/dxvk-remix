@@ -198,9 +198,9 @@ uint2 jitterBoundaryPixels(uint2 pixelCoordinate, uint2 jitterOffset)
   return clamp(pixelCoordinate, 0, cb.camera.resolution - padding) + jitterOffset;
 }
 
-float getLightSamplingSolidAnglePDF(float16_t triangleArea, vec3 samplePosition, f16vec3 sampleNormal, vec3 surfacePosition)
+float getLightSamplingSolidAnglePDF(float16_t sqrtTriangleArea, vec3 samplePosition, f16vec3 sampleNormal, vec3 surfacePosition)
 {
-  float16_t areaPdf = 1.0 / triangleArea;
+  float areaPdf = 1.0 / (sqrtTriangleArea * sqrtTriangleArea);
   vec3 offset = samplePosition - surfacePosition;
   float r2 = dot(offset, offset);
   float cosPhi = abs(dot(normalize(offset), sampleNormal));
@@ -427,7 +427,7 @@ void integratePathVertex(
   float16_t misWeight = 1.0;
   if (hasNEE && pathState.bounceIteration > 1)
   {
-    float16_t lightPdf = getLightSamplingSolidAnglePDF(surfaceInteraction.triangleArea, surfaceInteraction.position, surfaceInteraction.triangleNormal, oldOrigin);
+    float16_t lightPdf = getLightSamplingSolidAnglePDF(surfaceInteraction.sqrtTriangleArea, surfaceInteraction.position, surfaceInteraction.triangleNormal, oldOrigin);
     misWeight = pathState.solidAnglePdf / (pathState.solidAnglePdf + lightPdf);
   }
   accumulateRadiance(pathState, emissiveLight * misWeight);
@@ -606,7 +606,7 @@ void integratePathVertex(
                 // float cosPhi = abs(dot(normalize(offset), emissiveSurfaceInteraction.triangleNormal));
                 // emissiveLightSample.solidAnglePdf = cosPhi > 0 ? areaPdf * r2 / cosPhi : 0;
                 float16_t lightPdf = getLightSamplingSolidAnglePDF(
-                  emissiveSurfaceInteraction.triangleArea, emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal, surfaceInteraction.position);
+                  emissiveSurfaceInteraction.sqrtTriangleArea, emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal, surfaceInteraction.position);
                 emissiveLightSample.solidAnglePdf = lightPdf;
 
                 f16vec3 inputDirection = normalize(emissiveSurfaceInteraction.position - surfaceInteraction.position);
