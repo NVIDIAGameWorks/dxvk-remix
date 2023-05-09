@@ -268,11 +268,15 @@ void integrate_direct_pass(ivec2 threadIndex)
       if (candidateCount > 0)
       {
         RNG randomState = createRNG(threadIndex, cb.frameIdx, /*pathState.calculateRNGOffset(kRNGOffsetSampleClosestHitShader)*/10);
-        int candidateIdx = min(getNextSampleBlueNoise(randomState) * candidateCount, candidateCount - 1);
-        int2 data = cell.getCandidate(candidateIdx).getIDData();
+        //int candidateIdx = min(getNextSampleBlueNoise(randomState) * candidateCount, candidateCount - 1);
+        //int2 data = cell.getCandidate(candidateIdx).getIDData();
         //int2 data = 0;// RadianceCache[address];
-        int surfaceIndex = data.x;
-        int primitiveIndex = data.y;// = int4(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex,0,0);
+        //int surfaceIndex = data.x;
+        //int primitiveIndex = data.y;// = int4(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex,0,0);
+
+        NEECandidate candidate = cell.sampleCandidate(getNextSampleBlueNoise(randomState));
+        int surfaceIndex = candidate.getSurfaceID();
+        int primitiveIndex = candidate.getPrimitiveID();// = int4(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex,0,0);
         if (surfaceIndex >= 0 && primitiveIndex >= 0)
         {
           SURFACE_CREATE_READ(emissiveSurface, surfaceIndex, surfaces);

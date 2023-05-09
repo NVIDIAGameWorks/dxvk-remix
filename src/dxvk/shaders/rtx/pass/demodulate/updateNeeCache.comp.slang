@@ -75,10 +75,12 @@ float getTriangleLight(uint2 data, vec3 cellCenter)
       if (any(emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance > f16vec3(0)))
       {
         vec3 offset = emissiveSurfaceInteraction.position - cellCenter;
-        float distSq = dot(offset, offset);
+        float cellSize = NEECache.getCellSize() * 0.5;//cb.debugKnob.z > 0 ?  : 0;
+        float distSq = max(dot(offset, offset), cellSize * cellSize);
         triangleLight = calcBt709Luminance(emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance) * emissiveSurfaceInteraction.triangleArea / distSq;
         //triangleLight = 1.0 * emissiveSurfaceInteraction.triangleArea / distSq;
         //triangleLight = 1.0 / distSq;
+        //triangleLight = log(1 + triangleLight);
       }
     }
   }
@@ -195,7 +197,14 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
     }
     for (int i = 0; i < s_tarTaskCount; ++i)
     {
-      s_tarLight[i] /= totalLight;
+      if (cb.debugKnob.y > 0)
+      {
+        s_tarLight[i] = saturate(s_tarLight[i] / totalLight);
+      }
+      else
+      {
+        s_tarLight[i] = 1.0 / s_tarTaskCount;
+      }
     }
   }
   GroupMemoryBarrierWithGroupSync();
@@ -210,7 +219,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
     for (int i = 0; i <= candidateID; ++i)
     {
       sampleThreshold += s_tarLight[i];
-    }    
+    }
     candidate.setSampleThreshold(sampleThreshold);
 
     cell.setCandidate(candidateID, candidate);
