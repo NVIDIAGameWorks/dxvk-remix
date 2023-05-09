@@ -33,18 +33,27 @@ namespace dxvk {
   RtxReflex::RtxReflex(DxvkDevice* device) : m_device(device) {
     // Initialize Reflex
     NvLL_VK_Status status = NvLL_VK_Initialize();
-    VkSemaphoreCreateInfo semaphoreInfo;
-    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    semaphoreInfo.pNext = nullptr;
-    semaphoreInfo.flags = 0;
+    assert(status == NVLL_VK_OK);
+    VkSemaphoreTypeCreateInfo timelineSemaphoreCreateInfo;
+    timelineSemaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
+    timelineSemaphoreCreateInfo.pNext = nullptr;
+    timelineSemaphoreCreateInfo.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
+    timelineSemaphoreCreateInfo.initialValue = 0;
+
+    VkSemaphoreCreateInfo createInfo;
+    createInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    createInfo.pNext = &timelineSemaphoreCreateInfo;
+    createInfo.flags = 0;
     Rc<vk::DeviceFn>vkd = m_device->vkd();
-    if (vkd->vkCreateSemaphore(vkd->device(), &semaphoreInfo, nullptr, &m_lowLatencySemaphore) != VK_SUCCESS)
+    if (vkd->vkCreateSemaphore(vkd->device(), &createInfo, nullptr, &m_lowLatencySemaphore) != VK_SUCCESS)
       throw DxvkError("DxvkDevice: Failed to allocate low latency semaphore");
     VkSemaphore* pSemaphore = &m_lowLatencySemaphore;
-    status = NvLL_VK_InitLowLatencyDevice(m_device->vkd()->device(), (HANDLE*) pSemaphore);
+    if ((status = NvLL_VK_InitLowLatencyDevice(m_device->vkd()->device(), (HANDLE*) pSemaphore)) != VK_SUCCESS)
+      throw DxvkError("DxvkDevice: Failed to initialize vulkan device as a low latency device");
     updateConstants();
     NVLL_VK_GET_SLEEP_STATUS_PARAMS getParams = {};
-    status = NvLL_VK_GetSleepStatus(vkd->device(), &getParams);
+    if ((status = NvLL_VK_GetSleepStatus(vkd->device(), &getParams)) != VK_SUCCESS)
+      throw DxvkError("DxvkDevice: Failed to initialize vulkan device as a low latency device");
     Logger::info(str::format("Reflex enable attempt, mode=", getParams.bLowLatencyMode ? "true" : "false"));
 
     ++s_initPclRefcount;
@@ -113,7 +122,7 @@ namespace dxvk {
       signalValue += 1;
 
       // Sleep
-      {
+      if (RtxOptions::Get()->reflexMode() != ReflexMode::None) {
         VkSemaphoreWaitInfo semaphoreWaitInfo;
         semaphoreWaitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO;
         semaphoreWaitInfo.pNext = NULL;
@@ -121,10 +130,12 @@ namespace dxvk {
         semaphoreWaitInfo.semaphoreCount = 1;
         semaphoreWaitInfo.pSemaphores = &m_lowLatencySemaphore;
         semaphoreWaitInfo.pValues = &signalValue;
+        NvLL_VK_Status status = NVLL_VK_OK;
         {
           ScopedCpuProfileZoneN("Reflex_Sleep");
-          NvLL_VK_Status status = NvLL_VK_Sleep(vkd->device(), signalValue);
+          status = NvLL_VK_Sleep(vkd->device(), signalValue);
         }
+        if(status == NVLL_VK_OK)
         {
           ScopedCpuProfileZoneN("Reflex_WaitSemaphore");
           vkWaitSemaphores(vkd->device(), &semaphoreWaitInfo, 500000000);
