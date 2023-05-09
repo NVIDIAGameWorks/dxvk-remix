@@ -414,7 +414,7 @@ void integratePathVertex(
 
       for (int i = 0; i < cell.getCandidateCount(); ++i)
       {
-        int2 candidate = cell.getCandidate(i);
+        int2 candidate = cell.getCandidate(i).getIDData();
         if (all(candidate == task))
         {
           hasNEE = true;
@@ -572,7 +572,7 @@ void integratePathVertex(
         if (candidateCount > 0)
         {
           int candidateIdx = min(getNextSampleBlueNoise(randomState) * candidateCount, candidateCount - 1);
-          int2 data = cell.getCandidate(candidateIdx);
+          int2 data = cell.getCandidate(candidateIdx).getIDData();
           //int2 data = 0;// RadianceCache[address];
           int surfaceIndex = data.x;
           int primitiveIndex = data.y;// = int4(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex,0,0);
