@@ -269,7 +269,7 @@ void integrate_direct_pass(ivec2 threadIndex)
       {
         RNG randomState = createRNG(threadIndex, cb.frameIdx, /*pathState.calculateRNGOffset(kRNGOffsetSampleClosestHitShader)*/10);
         int candidateIdx = min(getNextSampleBlueNoise(randomState) * candidateCount, candidateCount - 1);
-        int2 data = cell.getCandidate(candidateIdx);
+        int2 data = cell.getCandidate(candidateIdx).getIDData();
         //int2 data = 0;// RadianceCache[address];
         int surfaceIndex = data.x;
         int primitiveIndex = data.y;// = int4(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex,0,0);

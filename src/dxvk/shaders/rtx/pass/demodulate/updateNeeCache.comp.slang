@@ -113,7 +113,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   {
     int oldCount = 0;
     InterlockedAdd(s_tarTaskCount, 1, oldCount);
-    s_tarTaskList[oldCount] = cell.getCandidate(localIndex.x);
+    s_tarTaskList[oldCount] = cell.getCandidate(localIndex.x).getIDData();
   }
   GroupMemoryBarrierWithGroupSync();
 
@@ -187,6 +187,16 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
     s_tarTaskCount = cb.debugKnob.x != 0 ? min(s_tarTaskCount, RADIANCE_CACHE_ELEMENTS-1) : 0;
     cell.setTaskCount(0);
     cell.setCandidateCount(s_tarTaskCount);
+
+    float totalLight = 0;
+    for (int i = 0; i < s_tarTaskCount; ++i)
+    {
+      totalLight += s_tarLight[i];
+    }
+    for (int i = 0; i < s_tarTaskCount; ++i)
+    {
+      s_tarLight[i] /= totalLight;
+    }
   }
   GroupMemoryBarrierWithGroupSync();
 
@@ -194,6 +204,15 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   if (localIndex.x < s_tarTaskCount)
   {
     int candidateID = localIndex.x;
-    cell.setCandidate(candidateID, s_tarTaskList[candidateID]);
+    NEECandidate candidate = NEECandidate.create(s_tarTaskList[candidateID]);
+
+    float sampleThreshold = 0;
+    for (int i = 0; i <= candidateID; ++i)
+    {
+      sampleThreshold += s_tarLight[i];
+    }    
+    candidate.setSampleThreshold(sampleThreshold);
+
+    cell.setCandidate(candidateID, candidate);
   }
 }

@@ -28,6 +28,62 @@
 
 #ifndef __cplusplus
 
+struct NEECandidate
+{
+  uint2 m_data;
+
+  bool isValid()
+  {
+    return m_data.y == 0xffffffff;
+  }
+
+  int getSurfaceID()
+  {
+    return m_data.x & 0xffffff;
+  }
+
+  [mutating] void setSurfaceID(int surfaceID)
+  {
+    m_data.x = (m_data.x & 0xff000000) | surfaceID;
+  }
+
+  int getPrimitiveID()
+  {
+    return m_data.y;
+  }
+
+  uint2 getIDData()
+  {
+    uint2 data = m_data;
+    data.x &= 0xffffff;
+    return data;
+  }
+
+  [mutating] void setPrimitiveID(int primitiveID)
+  {
+    m_data.y = primitiveID;
+  }
+
+  float16_t getSampleThreshold()
+  {
+    uint8_t threshold = (m_data.x >> 24) & 0xff;
+    return float16_t(threshold) / 255.0f;
+  }
+
+  [mutating] void setSampleThreshold(float16_t threshold)
+  {
+    uint thresholdI = threshold * 255.0f;
+    m_data.x = (m_data.x & 0xffffff) | (thresholdI << 24);
+  }
+
+  static NEECandidate create(uint2 data)
+  {
+    NEECandidate nee;
+    nee.m_data = data;
+    return nee;
+  }
+}
+
 struct NEECell
 {
   int m_baseAddress;
@@ -79,15 +135,29 @@ struct NEECell
     RadianceCache.Store(m_baseAddress, count);
   }
 
-  int2 getCandidate(int idx)
+  NEECandidate getCandidate(int idx)
   {
-    return RadianceCache.Load2(m_baseAddress + indexToOffset(idx));
+    return NEECandidate.create(RadianceCache.Load2(m_baseAddress + indexToOffset(idx)));
   }
 
-  void setCandidate(int idx, int2 candidate)
+  void setCandidate(int idx, NEECandidate candidate)
   {
-    return RadianceCache.Store2(m_baseAddress + indexToOffset(idx), candidate);
+    return RadianceCache.Store2(m_baseAddress + indexToOffset(idx), candidate.m_data);
   }
+
+  // NEECandidate getCandidate(float sampleThreshold)
+  // {
+  //   int count = getCandidateCount();
+  //   for (int i = 0; i < count; ++i)
+  //   {
+  //     NEECandidate candidate = getCandidate(i);
+  //     if (candidate.getSampleThreshold() >= sampleThreshold)
+  //     {
+  //       return candidate;
+  //     }
+  //   }
+  //   return NEECandidate.create(uint2(0xffffffff));
+  // }
 }
 
 struct NEECache
