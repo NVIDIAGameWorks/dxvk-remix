@@ -964,7 +964,10 @@ void resolveVertexUnordered(
 #endif
 
     emissiveRadiance += lowestRadianceAndAttenuation.rgb * radianceAttenuation * volumeAttenuation;
-    radianceAttenuation *= lowestRadianceAndAttenuation.a;
+    // Hack: This is done as a workaround for a compiler bug (REMIX-1551), should be revertex back to what it was originally to avoid
+    // increased register pressure in resolving.
+    radianceAttenuation = f16vec3(vec3(radianceAttenuation) * float(lowestRadianceAndAttenuation.a));
+    // radianceAttenuation *= lowestRadianceAndAttenuation.a;
 
     // Replace the lowest bin with the current iteration's information
 
@@ -1009,7 +1012,10 @@ void resolveVertexUnordered(
     const f16vec3 volumeAttenuation = evalVolumetricAttenuation(cb.volumeArgs, true, lowestDistance);
 
     emissiveRadiance += lowestRadianceAndAttenuation.rgb * radianceAttenuation * volumeAttenuation;
-    radianceAttenuation *= lowestRadianceAndAttenuation.a;
+    // Hack: This is done as a workaround for a compiler bug (REMIX-1551), should be revertex back to what it was originally to avoid
+    // increased register pressure in resolving.
+    radianceAttenuation = f16vec3(vec3(radianceAttenuation) * float(lowestRadianceAndAttenuation.a));
+    // radianceAttenuation *= lowestRadianceAndAttenuation.a;
 
     // Invalidate the lowest bin
 
