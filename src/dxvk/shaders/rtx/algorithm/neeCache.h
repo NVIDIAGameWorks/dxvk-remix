@@ -34,7 +34,7 @@ struct NEECandidate
 
   bool isValid()
   {
-    return m_data.y == 0xffffffff;
+    return m_data.y != 0xffffffff;
   }
 
   int getSurfaceID()
@@ -189,6 +189,9 @@ struct NEECache
     vec3 cameraPos = cameraGetWorldPosition(cb.camera);
     vec3 origin = cameraPos - s_extend * 0.5;
     vec3 UVW = (position - origin) / s_extend;
+
+    // jitter or not
+#if 1
     vec3 UVWi = UVW * RADIANCE_CACHE_PROBE_RESOLUTION - 0.5;
     vec3 fracUVWi = fract(UVWi);
 
@@ -203,6 +206,14 @@ struct NEECache
       return int3(-1);
     }
     return cellID;
+#else
+    ivec3 UVWi = UVW * RADIANCE_CACHE_PROBE_RESOLUTION;
+    if (any(UVWi < 0) || any(UVWi > RADIANCE_CACHE_PROBE_RESOLUTION-1))
+    {
+      return int3(-1);
+    }
+    return UVWi;
+#endif
   }
 
   static float getCellSize()
