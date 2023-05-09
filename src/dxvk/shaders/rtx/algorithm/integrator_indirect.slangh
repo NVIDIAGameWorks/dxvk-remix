@@ -577,7 +577,7 @@ void integratePathVertex(
           //int2 data = 0;// RadianceCache[address];
           int surfaceIndex = candidate.getSurfaceID();
           int primitiveIndex = candidate.getPrimitiveID();// = int4(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex,0,0);
-          if (surfaceIndex >= 0 && primitiveIndex >= 0)
+          if (candidate.isValid())
           {
             SURFACE_CREATE_READ(emissiveSurface, surfaceIndex, surfaces);
             RayInteraction emissiveRayInteracton = rayInteraction;
