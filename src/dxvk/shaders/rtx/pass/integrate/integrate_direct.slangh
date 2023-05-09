@@ -31,9 +31,9 @@
 #include "rtx/concept/surface_material/surface_material.slangh"
 #include "rtx/algorithm/integrator_direct.slangh"
 
-float getLightSamplingSolidAnglePDF(float16_t triangleArea, vec3 samplePosition, f16vec3 sampleNormal, vec3 surfacePosition)
+float getLightSamplingSolidAnglePDF(float16_t sqrtTriangleArea, vec3 samplePosition, f16vec3 sampleNormal, vec3 surfacePosition)
 {
-  float16_t areaPdf = 1.0 / triangleArea;
+  float16_t areaPdf = 1.0 / (sqrtTriangleArea * sqrtTriangleArea);
   vec3 offset = samplePosition - surfacePosition;
   float r2 = dot(offset, offset);
   float cosPhi = abs(dot(normalize(offset), sampleNormal));
@@ -306,7 +306,7 @@ void integrate_direct_pass(ivec2 threadIndex)
               // float cosPhi = abs(dot(normalize(offset), emissiveSurfaceInteraction.triangleNormal));
               // emissiveLightSample.solidAnglePdf = cosPhi > 0 ? areaPdf * r2 / cosPhi : 0;
               float16_t lightPdf = getLightSamplingSolidAnglePDF(
-                emissiveSurfaceInteraction.triangleArea, emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal, minimalSurfaceInteraction.position);
+                emissiveSurfaceInteraction.sqrtTriangleArea, emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal, minimalSurfaceInteraction.position);
               emissiveLightSample.solidAnglePdf = lightPdf;
 
               RayInteraction rayInteraction = {};
