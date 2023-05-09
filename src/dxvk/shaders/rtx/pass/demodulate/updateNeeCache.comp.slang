@@ -77,7 +77,7 @@ float getTriangleLight(uint2 data, vec3 cellCenter)
         vec3 offset = emissiveSurfaceInteraction.position - cellCenter;
         float cellSize = NEECache.getCellSize() * 0.5;//cb.debugKnob.z > 0 ?  : 0;
         float distSq = max(dot(offset, offset), cellSize * cellSize);
-        triangleLight = calcBt709Luminance(emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance) * emissiveSurfaceInteraction.triangleArea / distSq;
+        triangleLight = calcBt709Luminance(emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance) * sqrt(emissiveSurfaceInteraction.triangleArea) / distSq;
         //triangleLight = 1.0 * emissiveSurfaceInteraction.triangleArea / distSq;
         //triangleLight = 1.0 / distSq;
         //triangleLight = log(1 + triangleLight);
