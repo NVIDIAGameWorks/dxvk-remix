@@ -78,7 +78,7 @@ float getTriangleLight(uint2 data, vec3 cellCenter)
         float cellSize = NEECache.getCellSize() * 0.5;//cb.debugKnob.z > 0 ?  : 0;
         float distSq = max(dot(offset, offset), cellSize * cellSize);
         float triangleArea = emissiveSurfaceInteraction.sqrtTriangleArea * emissiveSurfaceInteraction.sqrtTriangleArea;
-        triangleLight = calcBt709Luminance(emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance) * triangleArea / distSq;
+        triangleLight = float(calcBt709Luminance(emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance)) * triangleArea / distSq;
         //triangleLight = 1.0 * emissiveSurfaceInteraction.triangleArea / distSq;
         //triangleLight = 1.0 / distSq;
         //triangleLight = log(1 + triangleLight);
@@ -171,30 +171,31 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   // sort tasks
   if (localIndex.x == 0 && localIndex.y == 0)
   {
-    if (cb.debugKnob.z == 0)
-    {
-      for (int i = 0; i < s_tarTaskCount-1; ++i)
-      {
-        for (int j = i+1; j < s_tarTaskCount; ++j)
-        {
-          if (s_tarLight[i] < s_tarLight[j])
-          {
-            float lightI = s_tarLight[i];
-            s_tarLight[i] = s_tarLight[j];
-            s_tarLight[j] = lightI;
+    // if (cb.debugKnob.z == 0)
+    // {
+    //   for (int i = 0; i < s_tarTaskCount-1; ++i)
+    //   {
+    //     for (int j = i+1; j < s_tarTaskCount; ++j)
+    //     {
+    //       if (s_tarLight[i] < s_tarLight[j])
+    //       {
+    //         float lightI = s_tarLight[i];
+    //         s_tarLight[i] = s_tarLight[j];
+    //         s_tarLight[j] = lightI;
 
-            uint2 dataI = s_tarTaskList[i];
-            s_tarTaskList[i] = s_tarTaskList[j];
-            s_tarTaskList[j] = dataI;
-          }
-        }
-      }
-    }
-    else
+    //         uint2 dataI = s_tarTaskList[i];
+    //         s_tarTaskList[i] = s_tarTaskList[j];
+    //         s_tarTaskList[j] = dataI;
+    //       }
+    //     }
+    //   }
+    // }
+    // else
     {
-      int validCount = min(s_tarTaskCount, RADIANCE_CACHE_ELEMENTS-1);
-      for (int i = RADIANCE_CACHE_ELEMENTS-1; i < s_tarTaskCount; ++i)
+      int validCount = min(s_tarTaskCount, NEECell.getMaxCandidateCount());
+      for (int i = NEECell.getMaxCandidateCount(); i < s_tarTaskCount; ++i)
       {
+        //int targetID = s_tarTaskList[i].x % validCount;//min(getNextSampleBlueNoise(rng) * validCount, validCount-1);
         int targetID = min(getNextSampleBlueNoise(rng) * validCount, validCount-1);
         float ft = s_tarLight[i];
         float fs = s_tarLight[targetID];
@@ -206,7 +207,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
       }
     }
 
-    s_tarTaskCount = cb.debugKnob.x != 0 ? min(s_tarTaskCount, RADIANCE_CACHE_ELEMENTS-1) : 0;
+    s_tarTaskCount = cb.debugKnob.x != 0 ? min(s_tarTaskCount, NEECell.getMaxCandidateCount()) : 0;
     cell.setTaskCount(0);
     cell.setCandidateCount(s_tarTaskCount);
 

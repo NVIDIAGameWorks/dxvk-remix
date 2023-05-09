@@ -127,7 +127,7 @@ struct NEECell
   int getCandidateCount()
   {
     uint count = RadianceCache.Load(m_baseAddress);
-    return min(count, RADIANCE_CACHE_ELEMENTS - 1);
+    return min(count, getMaxCandidateCount());
   }
 
   void setCandidateCount(int count)
@@ -149,8 +149,7 @@ struct NEECell
   {
     int count = getCandidateCount();
 
-#define UNIFORM_SAMPLING 0
-#if UNIFORM_SAMPLING
+#if 0
     return getCandidate(min(sampleThreshold * count, count-1));
 #else
     for (int i = 0; i < count; ++i)
@@ -163,6 +162,11 @@ struct NEECell
     }
     return NEECandidate.create(uint2(0xffffffff));
 #endif
+  }
+
+  static int getMaxCandidateCount()
+  {
+    return RADIANCE_CACHE_ELEMENTS-1;
   }
 }
 
