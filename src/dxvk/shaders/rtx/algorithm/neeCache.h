@@ -145,19 +145,25 @@ struct NEECell
     return RadianceCache.Store2(m_baseAddress + indexToOffset(idx), candidate.m_data);
   }
 
-  // NEECandidate getCandidate(float sampleThreshold)
-  // {
-  //   int count = getCandidateCount();
-  //   for (int i = 0; i < count; ++i)
-  //   {
-  //     NEECandidate candidate = getCandidate(i);
-  //     if (candidate.getSampleThreshold() >= sampleThreshold)
-  //     {
-  //       return candidate;
-  //     }
-  //   }
-  //   return NEECandidate.create(uint2(0xffffffff));
-  // }
+  NEECandidate sampleCandidate(float sampleThreshold)
+  {
+    int count = getCandidateCount();
+
+#define UNIFORM_SAMPLING 0
+#if UNIFORM_SAMPLING
+    return getCandidate(min(sampleThreshold * count, count-1));
+#else
+    for (int i = 0; i < count; ++i)
+    {
+      NEECandidate candidate = getCandidate(i);
+      if (candidate.getSampleThreshold() >= sampleThreshold)
+      {
+        return candidate;
+      }
+    }
+    return NEECandidate.create(uint2(0xffffffff));
+#endif
+  }
 }
 
 struct NEECache
@@ -197,6 +203,11 @@ struct NEECache
       return int3(-1);
     }
     return cellID;
+  }
+
+  static float getCellSize()
+  {
+    return s_extend / RADIANCE_CACHE_PROBE_RESOLUTION;
   }
 
   static vec3 cellToPoint(ivec3 cellID)
