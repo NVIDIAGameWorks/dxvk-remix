@@ -81,7 +81,7 @@ float getTriangleLight(uint2 data, vec3 cellCenter, inout RNG randomState)
         float cellSize = NEECache.getCellSize() * 0.5;//cb.debugKnob.z > 0 ?  : 0;
         float distSq = max(dot(offset, offset), cellSize * cellSize);
         float cosTheta = abs(dot(emissiveSurfaceInteraction.triangleNormal, normalize(offset)));
-        float triangleArea = emissiveSurfaceInteraction.sqrtTriangleArea * emissiveSurfaceInteraction.sqrtTriangleArea;
+        float triangleArea = emissiveSurfaceInteraction.triangleArea;// * emissiveSurfaceInteraction.sqrtTriangleArea;
         vec3 radiance = emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance;
         //float luminance = max(radiance.x, max(radiance.y, radiance.z));
         float luminance = calcBt709Luminance(emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance);
