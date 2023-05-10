@@ -57,8 +57,8 @@ float getTriangleLight(uint2 data, vec3 cellCenter, inout RNG randomState)
     SURFACE_CREATE_READ(emissiveSurface, surfaceIndex, surfaces);
     RayInteraction emissiveRayInteracton = {};// rayInteraction;
     emissiveRayInteracton.frontHit = true;
-    emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(vec2(0.5));
-    //emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState)));
+    //emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(vec2(0.5));
+    emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(uvToBary(vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState))));
     emissiveRayInteracton.primitiveIndex = primitiveIndex;
     Ray ray;
     ray.direction = f16vec3(1.0);
@@ -178,25 +178,26 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   if (localIndex.x == 0 && localIndex.y == 0)
   {
     // if (cb.debugKnob.z == 0)
-    // {
-    //   for (int i = 0; i < s_tarTaskCount-1; ++i)
-    //   {
-    //     for (int j = i+1; j < s_tarTaskCount; ++j)
-    //     {
-    //       if (s_tarLight[i] < s_tarLight[j])
-    //       {
-    //         float lightI = s_tarLight[i];
-    //         s_tarLight[i] = s_tarLight[j];
-    //         s_tarLight[j] = lightI;
+    if(0)
+    {
+      for (int i = 0; i < s_tarTaskCount-1; ++i)
+      {
+        for (int j = i+1; j < s_tarTaskCount; ++j)
+        {
+          if (s_tarLight[i] < s_tarLight[j])
+          {
+            float lightI = s_tarLight[i];
+            s_tarLight[i] = s_tarLight[j];
+            s_tarLight[j] = lightI;
 
-    //         uint2 dataI = s_tarTaskList[i];
-    //         s_tarTaskList[i] = s_tarTaskList[j];
-    //         s_tarTaskList[j] = dataI;
-    //       }
-    //     }
-    //   }
-    // }
-    // else
+            uint2 dataI = s_tarTaskList[i];
+            s_tarTaskList[i] = s_tarTaskList[j];
+            s_tarTaskList[j] = dataI;
+          }
+        }
+      }
+    }
+    else
     {
       int validCount = min(s_tarTaskCount, NEECell.getMaxCandidateCount());
       for (int i = NEECell.getMaxCandidateCount(); i < s_tarTaskCount; ++i)
