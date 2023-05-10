@@ -129,32 +129,31 @@ namespace dxvk {
   std::unordered_map<XXH64_hash_t, ImGuiTexture> g_imguiTextureMap;
 
   struct RtxTextureOption {
-    char* uniqueId;
     char* displayName;
-    RtxOption<std::unordered_set<XXH64_hash_t>>* rtxOption;
+    RtxOption<std::unordered_set<XXH64_hash_t>>* textureSetOption;
     XXH64_hash_t bufferTextureHash;
     bool bufferToggle;
   };
 
-  RtxTextureOption rtxTextureOptions[18] = {
-    {"uitextures", "UI Texture", &RtxOptions::Get()->uiTexturesObject()},
-    {"worldspaceuitextures", "World Space UI Texture", &RtxOptions::Get()->worldSpaceUiTexturesObject()},
-    {"skytextures", "Sky Texture", &RtxOptions::Get()->skyBoxTexturesObject()},
-    {"ignoretextures", "Ignore Texture (optional)", &RtxOptions::Get()->ignoreTexturesObject()},
-    {"ignorelights", "Ignore Lights (optional)", &RtxOptions::Get()->ignoreLightsObject()},
-    {"particletextures", "Particle Texture (optional)", &RtxOptions::Get()->particleTexturesObject()},
-    {"beamtextures", "Beam Texture (optional)", &RtxOptions::Get()->beamTexturesObject()},
-    {"lightconvertertextures", "Add Light to Textures (optional)", &RtxOptions::Get()->lightConverterObject()},
-    {"decaltextures", "Decal Texture (optional)", &RtxOptions::Get()->decalTexturesObject()},
-    {"dynamicdecaltextures", "Dynamic Decal Texture", &RtxOptions::Get()->dynamicDecalTexturesObject()},
-    {"nonoffsetdecaltextures", "Non-Offset Decal Texture", &RtxOptions::Get()->nonOffsetDecalTexturesObject()},
-    {"cutouttextures", "Legacy Cutout Texture (optional)", &RtxOptions::Get()->cutoutTexturesObject()},
-    {"terraintextures", "Terrain Texture", &RtxOptions::Get()->terrainTexturesObject()},
-    {"watertextures", "Water Texture (optional)", &RtxOptions::Get()->animatedWaterTexturesObject()},
-    {"antiCullingTextures", "Anti-Culling Texture (optional)", &RtxOptions::Get()->antiCullingTexturesObject()},
-    {"playermodeltextures", "Player Model Texture (optional)", &RtxOptions::Get()->playerModelTexturesObject()},
-    {"playermodelbodytextures", "Player Model Body Texture (optional)", &RtxOptions::Get()->playerModelBodyTexturesObject()},
-    {"opacitymicromapignoretextures", "Opacity Micromap Ignore Texture (optional)", &RtxOptions::Get()->opacityMicromapIgnoreTexturesObject()}
+  std::map<std::string, RtxTextureOption> rtxTextureOptions {
+    {"uitextures", {"UI Texture", &RtxOptions::Get()->uiTexturesObject()}},
+    {"worldspaceuitextures", {"World Space UI Texture", &RtxOptions::Get()->worldSpaceUiTexturesObject()}},
+    {"skytextures", {"Sky Texture", &RtxOptions::Get()->skyBoxTexturesObject()}},
+    {"ignoretextures", {"Ignore Texture (optional)", &RtxOptions::Get()->ignoreTexturesObject()}},
+    {"ignorelights", {"Ignore Lights (optional)", &RtxOptions::Get()->ignoreLightsObject()}},
+    {"particletextures", {"Particle Texture (optional)", &RtxOptions::Get()->particleTexturesObject()}},
+    {"beamtextures", {"Beam Texture (optional)", &RtxOptions::Get()->beamTexturesObject()}},
+    {"lightconvertertextures", {"Add Light to Textures (optional)", &RtxOptions::Get()->lightConverterObject()}},
+    {"decaltextures", {"Decal Texture (optional)", &RtxOptions::Get()->decalTexturesObject()}},
+    {"dynamicdecaltextures", {"Dynamic Decal Texture", &RtxOptions::Get()->dynamicDecalTexturesObject()}},
+    {"nonoffsetdecaltextures", {"Non-Offset Decal Texture", &RtxOptions::Get()->nonOffsetDecalTexturesObject()}},
+    {"cutouttextures", {"Legacy Cutout Texture (optional)", &RtxOptions::Get()->cutoutTexturesObject()}},
+    {"terraintextures", {"Terrain Texture", &RtxOptions::Get()->terrainTexturesObject()}},
+    {"watertextures", {"Water Texture (optional)", &RtxOptions::Get()->animatedWaterTexturesObject()}},
+    {"antiCullingTextures", {"Anti-Culling Texture (optional)", &RtxOptions::Get()->antiCullingTexturesObject()}},
+    {"playermodeltextures", {"Player Model Texture (optional)", &RtxOptions::Get()->playerModelTexturesObject()}},
+    {"playermodelbodytextures", {"Player Model Body Texture (optional)", &RtxOptions::Get()->playerModelBodyTexturesObject()}},
+    {"opacitymicromapignoretextures", {"Opacity Micromap Ignore Texture (optional)", &RtxOptions::Get()->opacityMicromapIgnoreTexturesObject()}}
   };
 
   ImGui::ComboWithKey<RenderPassGBufferRaytraceMode> renderPassGBufferRaytraceModeCombo {
@@ -1238,15 +1237,41 @@ namespace dxvk {
     ImGui::PopItemWidth();
   }
 
-  void ImGUI::showTextureSelectionGrid(const char* uniqueId, const uint32_t texturesPerRow, const float thumbnailSize, std::unordered_set<XXH64_hash_t>& data) {
+  void ImGUI::showTextureSelectionGrid(const Rc<DxvkContext>& ctx, const char* uniqueId, const uint32_t texturesPerRow, const float thumbnailSize) {
     ImGui::PushID(uniqueId);
+    auto common = ctx->getCommonObjects();
     uint32_t cnt = 0;
     float x = 0;
     const float startX = ImGui::GetCursorPosX();
     const float thumbnailSpacing = ImGui::GetStyle().ItemSpacing.x;
     const float thumbnailPadding = ImGui::GetStyle().CellPadding.x;
+
+    RtxTextureOption listRtxOption;
+    auto rtxOptionIterator = rtxTextureOptions.find(uniqueId);
+    bool isListFiltered = rtxOptionIterator != rtxTextureOptions.end();
+
+    ImGuiWindowFlags window_flags = ImGuiWindowFlags_HorizontalScrollbar;
+    ImGui::BeginChild(str::format("Child", uniqueId).c_str(), ImVec2(ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y), false, window_flags);
+
     for (auto& pair : g_imguiTextureMap) {
-      if (data.find(pair.first) != data.end())
+      bool textureHasSelection = false;
+
+      if (isListFiltered) {
+        listRtxOption = rtxOptionIterator->second;
+        auto& textureSet = listRtxOption.textureSetOption->getValue();
+        textureHasSelection = textureSet.find(pair.first) != textureSet.end();
+      } else {
+        for (const auto [uniqueId, rtxOption] : rtxTextureOptions) {
+          auto& textureSet = rtxOption.textureSetOption->getValue();
+          textureHasSelection = textureSet.find(pair.first) != textureSet.end();
+          if (textureHasSelection)
+            break;
+        }
+      }
+
+      bool isLegacyMaterial = common->getSceneManager().getAssetReplacer()->getReplacementMaterial(pair.first) == nullptr;
+
+      if (textureHasSelection)
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.996078f, 0.329412f, 0.f, 1.f));
       else
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.f, 0.f, 0.f, 1.00f));
@@ -1269,193 +1294,44 @@ namespace dxvk {
       ImGui::SetCursorPosX(x + startX + (thumbnailSize - extent.x) / 2.f);
       ImGui::SetCursorPosY(y + (thumbnailSize - extent.y) / 2.f);
 
-      if (ImGui::ImageButton(pair.second.texID, extent)) {
-        const char* action;
-        if (data.find(pair.first) != data.end()) {
-          data.erase(pair.first);
-          action = "removed";
-        }
-        else {
-          data.insert(pair.first);
-          action = "added";
-        }
-
-        char buffer[256];
-        sprintf_s(buffer, "%s - %s %016llX\n", uniqueId, action, pair.first);
-        Logger::info(buffer);
+      if (ImGui::ImageButton(pair.second.texID, extent) && isListFiltered) {
+        toggleTextureSelection(pair.first, uniqueId, listRtxOption.textureSetOption->getValue());
       }
 
       if (ImGui::IsItemHovered()) {
         std::stringstream formatName;
         formatName << imageInfo.format;
 
-        std::stringstream rtxTextureOptions;
+        //list all selections for this texture
+        std::string rtxTextureSelection;
+        for (auto& [uniqueId, rtxOption] : rtxTextureOptions) {
+          rtxOption.bufferTextureHash = pair.first;
+          rtxOption.bufferToggle = rtxOption.textureSetOption->getValue().find(pair.first) != rtxOption.textureSetOption->getValue().end();
+          if (rtxOption.bufferToggle) {
+            if (rtxTextureSelection.empty())
+              rtxTextureSelection = "\n";
 
-        char tooltip[1024];
-        if (ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
-          auto& rtxOptions = RtxOptions::Get();
-
-          if (rtxOptions->isLightmapTexture(pair.first))
-            rtxTextureOptions << "Lightmap Texture\n";
-
-          if (rtxOptions->isSkyboxTexture(pair.first))
-            rtxTextureOptions << "Skybox Texture\n";
-
-          if (rtxOptions->shouldIgnoreTexture(pair.first))
-            rtxTextureOptions << "Ignore Texture\n";
-
-          if (rtxOptions->shouldIgnoreLight(pair.first))
-            rtxTextureOptions << "Ignore Light\n";
-
-          if (rtxOptions->isUiTexture(pair.first))
-            rtxTextureOptions << "UI Texture\n";
-
-          if (rtxOptions->isWorldSpaceUiTexture(pair.first))
-            rtxTextureOptions << "World Space UI Texture\n";
-
-          if (rtxOptions->isWorldSpaceUiBackgroundTexture(pair.first))
-            rtxTextureOptions << "World Space UI BG Texture\n";
-
-          if (rtxOptions->isHideInstanceTexture(pair.first))
-            rtxTextureOptions << "Hide Instance Texture\n";
-
-          if (rtxOptions->isPlayerModelTexture(pair.first))
-            rtxTextureOptions << "Player Model Texture\n";
-
-          if (rtxOptions->isPlayerModelBodyTexture(pair.first))
-            rtxTextureOptions << "Player Model Body Texture\n";
-
-          if (rtxOptions->isParticleTexture(pair.first))
-            rtxTextureOptions << "Particle Texture\n";
-
-          if (rtxOptions->isBeamTexture(pair.first))
-            rtxTextureOptions << "Beam Texture\n";
-
-          if (rtxOptions->isDecalTexture(pair.first))
-            rtxTextureOptions << "Decal Texture\n";
-
-          if (rtxOptions->isCutoutTexture(pair.first))
-            rtxTextureOptions << "Legacy Cutout Texture\n";
-
-          if (rtxOptions->isDynamicDecalTexture(pair.first))
-            rtxTextureOptions << "Dynamic Decal Texture\n";
-
-          if (rtxOptions->isNonOffsetDecalTexture(pair.first))
-            rtxTextureOptions << "Non Offset Decal Texture\n";
-
-          if (rtxOptions->isTerrainTexture(pair.first))
-            rtxTextureOptions << "Terrain Texture\n";
-
-          if (rtxOptions->shouldOpacityMicromapIgnoreTexture(pair.first))
-            rtxTextureOptions << "Opacity Micromap Ignore Texture\n";
-
-          if (rtxOptions->isAnimatedWaterTexture(pair.first))
-            rtxTextureOptions << "Animated Water Texture\n";
-
-          if (rtxOptions->isAntiCullingTexture(pair.first))
-            rtxTextureOptions << "Anti Culling Texture\n";
+            rtxTextureSelection = str::format(rtxTextureSelection, rtxOption.displayName, "\n");
+          }
         }
 
-        sprintf(tooltip, "%s: %dx%d %s\nHash: 0x%" PRIx64 "\n%s",
+        char tooltip[1024];
+        sprintf(tooltip, "%s: %dx%d %s\nHash: 0x%" PRIx64 "\n%s\n\nRigth click to manage selection \n%s",
                 (imageInfo.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) ? "Render Target" : "Texture",
                 imageInfo.extent.width, imageInfo.extent.height,
                 formatName.str().c_str() + strlen("VK_FORMAT_"), pair.first,
-                rtxTextureOptions.str().c_str());
+                isLegacyMaterial ? "Legacy Material" : "Replaced Material",
+                rtxTextureSelection.c_str());
 
         ImGui::SetTooltip(tooltip);
-        if (ImGui::IsMouseDown(ImGuiMouseButton_Middle)) {
+        if (ImGui::IsMouseReleased(ImGuiMouseButton_Middle)) {
           ImGui::LogToClipboard();
           ImGui::LogText("%" PRIx64, pair.first);
           ImGui::LogFinish();
         }
 
-        RtxOptions::Get()->highlightedTextureRef() = pair.first;
-      }
-
-      ImGui::PopStyleColor(1);
-
-      if (++cnt % texturesPerRow != 0) {
-        x += thumbnailSize + thumbnailSpacing + thumbnailPadding;
-        ImGui::SetCursorPosY(y);
-      } else {
-        x = 0;
-        ImGui::SetCursorPosY(y + thumbnailSize + thumbnailSpacing + thumbnailPadding);
-      }
-    }
-
-    ImGui::NewLine();
-    ImGui::PopID();
-  }
-
-
-  void ImGUI::showTextureSelectionGrid(const char* uniqueId, const uint32_t texturesPerRow, const float thumbnailSize) {
-    ImGui::PushID(uniqueId);
-    uint32_t cnt = 0;
-    float x = 0;
-    const float startX = ImGui::GetCursorPosX();
-    const float thumbnailSpacing = ImGui::GetStyle().ItemSpacing.x;
-    const float thumbnailPadding = ImGui::GetStyle().CellPadding.x;
-
-    for (auto& pair : g_imguiTextureMap) {
-
-      bool hasSelection = false;
-      for (int i = 0; i < IM_ARRAYSIZE(rtxTextureOptions); i++) {
-        auto& rtxOption = rtxTextureOptions[i].rtxOption;
-        hasSelection = rtxOption->getValue().find(pair.first) != rtxOption->getValue().end();
-        if (hasSelection)
-          break;
-      }
-
-      if (hasSelection)
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.996078f, 0.329412f, 0.f, 1.f));
-      else
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.f, 0.f, 0.f, 1.00f));
-
-      // Lazily create the tex ID ImGUI wants
-      if(pair.second.texID == VK_NULL_HANDLE)
-        pair.second.texID = ImGui_ImplVulkan_AddTexture(VK_NULL_HANDLE, pair.second.imageView->handle(), VK_IMAGE_LAYOUT_GENERAL);
-
-      const auto& imageInfo = pair.second.imageView->imageInfo();
-
-      // Calculate thumbnail extent with respect to image aspect
-      const float aspect = static_cast<float>(imageInfo.extent.width) / imageInfo.extent.height;
-      const ImVec2 extent {
-        aspect >= 1.f ? thumbnailSize : thumbnailSize * aspect,
-        aspect <= 1.f ? thumbnailSize : thumbnailSize / aspect
-      };
-
-      // Align thumbnail image button
-      const float y = ImGui::GetCursorPosY();
-      ImGui::SetCursorPosX(x + startX + (thumbnailSize - extent.x) / 2.f);
-      ImGui::SetCursorPosY(y + (thumbnailSize - extent.y) / 2.f);
-
-      if (ImGui::ImageButton(pair.second.texID, extent)) {
+        if (ImGui::IsMouseReleased(ImGuiMouseButton_Right)) {
           ImGui::OpenPopup("rtx_texture_selection");
-      }
-
-      if (ImGui::IsItemHovered()) {
-        std::stringstream formatName;
-        formatName << imageInfo.format;
-
-        //populate buffer values for texture options
-        for (int i = 0; i < IM_ARRAYSIZE(rtxTextureOptions); i++) {
-          auto& rtxOption = rtxTextureOptions[i].rtxOption;
-          rtxTextureOptions[i].bufferTextureHash = pair.first;
-          rtxTextureOptions[i].bufferToggle = rtxOption->getValue().find(pair.first) != rtxOption->getValue().end();
-        }
-
-        char tooltip[1024];
-
-        sprintf(tooltip, "%s: %dx%d %s\nHash: 0x%" PRIx64 "\n\nClick to edit texture selection",
-                (imageInfo.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) ? "Render Target" : "Texture",
-                imageInfo.extent.width, imageInfo.extent.height,
-                formatName.str().c_str() + strlen("VK_FORMAT_"), pair.first);
-
-        ImGui::SetTooltip(tooltip);
-        if (ImGui::IsMouseDown(ImGuiMouseButton_Middle)) {
-          ImGui::LogToClipboard();
-          ImGui::LogText("%" PRIx64, pair.first);
-          ImGui::LogFinish();
         }
 
         RtxOptions::Get()->highlightedTextureRef() = pair.first;
@@ -1473,36 +1349,36 @@ namespace dxvk {
     }
 
     if (ImGui::BeginPopup("rtx_texture_selection")) {
-      ImGui::TextWrapped("Texture Selection:\n");
+      ImGui::Text("Texture Selection:\n");
 
-      for (int i = 0; i < IM_ARRAYSIZE(rtxTextureOptions); i++) {
-        if (ImGui::Checkbox(rtxTextureOptions[i].displayName, &rtxTextureOptions[i].bufferToggle)) {
-          XXH64_hash_t textureHash = rtxTextureOptions[i].bufferTextureHash;
-          std::unordered_set<XXH64_hash_t>& textureOptionSet = rtxTextureOptions[i].rtxOption->getValue();
-
-          const char* action;
-          if (textureOptionSet.find(textureHash) != textureOptionSet.end()) {
-            textureOptionSet.erase(textureHash);
-            action = "removed";
-          } else {
-            textureOptionSet.insert(textureHash);
-            action = "added";
-          }
-
-          char buffer[256];
-          sprintf_s(buffer, "%s - %s %016llX\n", rtxTextureOptions[i].uniqueId, action, textureHash);
-          Logger::info(buffer);
+      for (auto& [id, rtxOption] : rtxTextureOptions) {
+        if (IMGUI_ADD_TOOLTIP(ImGui::Checkbox(rtxOption.displayName, &rtxOption.bufferToggle), rtxOption.textureSetOption->getDescription())) {
+          toggleTextureSelection(rtxOption.bufferTextureHash, id.c_str(), rtxOption.textureSetOption->getValue());
         }
-          
-        if (ImGui::IsItemHovered())
-          ImGui::SetTooltip(rtxTextureOptions[i].rtxOption->getDescription());
       }
 
       ImGui::EndPopup();
     }
 
+    ImGui::EndChild();
+
     ImGui::NewLine();
-    ImGui::PopID();    
+    ImGui::PopID();
+  }
+
+  void ImGUI::toggleTextureSelection(XXH64_hash_t textureHash, const char* uniqueId, std::unordered_set<XXH64_hash_t>& textureSet) {
+    const char* action;
+    if (textureSet.find(textureHash) != textureSet.end()) {
+      textureSet.erase(textureHash);
+      action = "removed";
+    } else {
+      textureSet.insert(textureHash);
+      action = "added";
+    }
+
+    char buffer[256];
+    sprintf_s(buffer, "%s - %s %016llX\n", uniqueId, action, textureHash);
+    Logger::info(buffer);
   }
 
   void ImGUI::showEnhancementsWindow(const Rc<DxvkContext>& ctx) {
@@ -1556,15 +1432,15 @@ namespace dxvk {
     ImGui::Checkbox("Preserve discarded textures", &RtxOptions::Get()->keepTexturesForTaggingObject());
 
     if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 0: Texture Selection", collapsingHeaderClosedFlags), "Select texture definitions for Remix")) {
-      showTextureSelectionGrid("textures", numThumbnailsPerRow, thumbnailSize);
+      showTextureSelectionGrid(ctx, "textures", numThumbnailsPerRow, thumbnailSize);
     }
 
     if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 1: UI Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->uiTexturesDescription())) {
-      showTextureSelectionGrid("uitextures", numThumbnailsPerRow, thumbnailSize, RtxOptions::Get()->uiTexturesRef());
+      showTextureSelectionGrid(ctx,"uitextures", numThumbnailsPerRow, thumbnailSize);
     }
 
     if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 1.2: Worldspace UI Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->worldSpaceUiTexturesDescription())) {
-      showTextureSelectionGrid("worldspaceuitextures", numThumbnailsPerRow, thumbnailSize, RtxOptions::Get()->worldSpaceUiTexturesRef());
+      showTextureSelectionGrid(ctx,"worldspaceuitextures", numThumbnailsPerRow, thumbnailSize);
     }
 
     if (ImGui::CollapsingHeader("Step 2: Parameter Tuning", collapsingHeaderClosedFlags)) {
@@ -1630,72 +1506,72 @@ namespace dxvk {
       ImGui::Separator();
 
       if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Sky Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->skyBoxTexturesDescription())) {
-        showTextureSelectionGrid("skytextures", numThumbnailsPerRow, thumbnailSize, RtxOptions::Get()->skyBoxTexturesRef());
+        showTextureSelectionGrid(ctx,"skytextures", numThumbnailsPerRow, thumbnailSize);
       }
 
       ImGui::Unindent();
     }
 
     if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 4: Ignore Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->ignoreTexturesDescription())) {
-      showTextureSelectionGrid("ignoretextures", numThumbnailsPerRow, thumbnailSize, RtxOptions::Get()->ignoreTexturesRef());
+      showTextureSelectionGrid(ctx,"ignoretextures", numThumbnailsPerRow, thumbnailSize);
     }
 
     if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 5: Ignore Lights (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->ignoreLightsDescription())) {
-      showTextureSelectionGrid("ignorelights", numThumbnailsPerRow, thumbnailSize, RtxOptions::Get()->ignoreLightsRef());
+      showTextureSelectionGrid(ctx,"ignorelights", numThumbnailsPerRow, thumbnailSize);
     }
 
     if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 6: Particle Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->particleTexturesDescription())) {
-      showTextureSelectionGrid("particletextures", numThumbnailsPerRow, thumbnailSize, RtxOptions::Get()->particleTexturesRef());
+      showTextureSelectionGrid(ctx,"particletextures", numThumbnailsPerRow, thumbnailSize);
     }
 
     if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 6.1: Beam Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->beamTexturesDescription())) {
-      showTextureSelectionGrid("beamtextures", numThumbnailsPerRow, thumbnailSize, RtxOptions::Get()->beamTexturesRef());
+      showTextureSelectionGrid(ctx,"beamtextures", numThumbnailsPerRow, thumbnailSize);
     }
 
     if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 6.2: Add Lights to Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->lightConverterDescription())) {
-      showTextureSelectionGrid("lightconvertertextures", numThumbnailsPerRow, thumbnailSize, RtxOptions::Get()->lightConverterRef());
+      showTextureSelectionGrid(ctx,"lightconvertertextures", numThumbnailsPerRow, thumbnailSize);
     }
 
     if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 7: Decal Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->decalTexturesDescription())) {
-      showTextureSelectionGrid("decaltextures", numThumbnailsPerRow, thumbnailSize, RtxOptions::Get()->decalTexturesRef());
+      showTextureSelectionGrid(ctx,"decaltextures", numThumbnailsPerRow, thumbnailSize);
     }
 
     if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 7.1: Dynamic Decal Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->dynamicDecalTexturesDescription())) {
-      showTextureSelectionGrid("dynamicdecaltextures", numThumbnailsPerRow, thumbnailSize, RtxOptions::Get()->dynamicDecalTexturesRef());
+      showTextureSelectionGrid(ctx,"dynamicdecaltextures", numThumbnailsPerRow, thumbnailSize);
     }
 
     if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 7.2: Non-Offset Decal Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->nonOffsetDecalTexturesDescription())) {
-      showTextureSelectionGrid("nonoffsetdecaltextures", numThumbnailsPerRow, thumbnailSize, RtxOptions::Get()->nonOffsetDecalTexturesRef());
+      showTextureSelectionGrid(ctx,"nonoffsetdecaltextures", numThumbnailsPerRow, thumbnailSize);
     }
 
     if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 8.1: Legacy Cutout Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->cutoutTexturesDescription())) {
       ImGui::DragFloat("Force Cutout Alpha", &RtxOptions::Get()->forceCutoutAlphaObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
-      showTextureSelectionGrid("cutouttextures", numThumbnailsPerRow, thumbnailSize, RtxOptions::Get()->cutoutTexturesRef());
+      showTextureSelectionGrid(ctx,"cutouttextures", numThumbnailsPerRow, thumbnailSize);
     }
     
     if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 8.2: Terrain Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->terrainTexturesDescription())) {
-      showTextureSelectionGrid("terraintextures", numThumbnailsPerRow, thumbnailSize, RtxOptions::Get()->terrainTexturesRef());
+      showTextureSelectionGrid(ctx,"terraintextures", numThumbnailsPerRow, thumbnailSize);
     }
 
     if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 8.3: Water Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->animatedWaterTexturesDescription())) {
-      showTextureSelectionGrid("watertextures", numThumbnailsPerRow, thumbnailSize, RtxOptions::Get()->animatedWaterTexturesRef());
+      showTextureSelectionGrid(ctx,"watertextures", numThumbnailsPerRow, thumbnailSize);
     }
 
     if (RtxOptions::Get()->enableAntiCulling() &&
       IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 8.4: Anti-Culling Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->antiCullingTexturesDescription())) {
-      showTextureSelectionGrid("antiCullingTextures", numThumbnailsPerRow, thumbnailSize, RtxOptions::Get()->antiCullingTexturesRef());
+      showTextureSelectionGrid(ctx,"antiCullingTextures", numThumbnailsPerRow, thumbnailSize);
     }
 
     if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 9.1: Player Model Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->playerModelTexturesDescription())) {
-      showTextureSelectionGrid("playermodeltextures", numThumbnailsPerRow, thumbnailSize, RtxOptions::Get()->playerModelTexturesRef());
+      showTextureSelectionGrid(ctx,"playermodeltextures", numThumbnailsPerRow, thumbnailSize);
     }
 
     if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 9.2: Player Model Body Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->playerModelBodyTexturesDescription())) {
-      showTextureSelectionGrid("playermodelbodytextures", numThumbnailsPerRow, thumbnailSize, RtxOptions::Get()->playerModelBodyTexturesRef());
+      showTextureSelectionGrid(ctx,"playermodelbodytextures", numThumbnailsPerRow, thumbnailSize);
     }
 
     if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 10: Opacity Micromap Ignore Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->opacityMicromapIgnoreTexturesDescription())) {
-      showTextureSelectionGrid("opacitymicromapignoretextures", numThumbnailsPerRow, thumbnailSize, RtxOptions::Get()->opacityMicromapIgnoreTexturesRef());
+      showTextureSelectionGrid(ctx,"opacitymicromapignoretextures", numThumbnailsPerRow, thumbnailSize);
     }
 
     if (ImGui::CollapsingHeader("Step 11: Material Options (optional)", collapsingHeaderClosedFlags)) {

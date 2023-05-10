@@ -159,10 +159,9 @@ namespace dxvk {
     void showAppConfig();
 
     // helper to display a configurable grid of all textures currently hooked to ImGUI
-    void showTextureSelectionGrid(const char* uniqueId, const uint32_t texturesPerRow, const float thumbnailSize, std::unordered_set<XXH64_hash_t>& data);
+    void showTextureSelectionGrid(const Rc<DxvkContext>& ctx, const char* uniqueId, const uint32_t texturesPerRow, const float thumbnailSize);
 
-    // helper to display a configurable grid of all textures currently hooked to ImGUI
-    void showTextureSelectionGrid(const char* uniqueId, const uint32_t texturesPerRow, const float thumbnailSize);
+    void toggleTextureSelection(XXH64_hash_t textureHash, const char* uniqueId, std::unordered_set<XXH64_hash_t>& textureSet);
 
     void createFontsTexture(const Rc<DxvkContext>& ctx);
 
