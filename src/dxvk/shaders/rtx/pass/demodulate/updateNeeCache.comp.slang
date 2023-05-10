@@ -57,8 +57,8 @@ float getTriangleLight(uint2 data, vec3 cellCenter, inout RNG randomState)
     SURFACE_CREATE_READ(emissiveSurface, surfaceIndex, surfaces);
     RayInteraction emissiveRayInteracton = {};// rayInteraction;
     emissiveRayInteracton.frontHit = true;
-    //emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(vec2(0.5));
-    emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(uvToBary(vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState))));
+    emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(uvToBary(vec2(0.3)));
+    //emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(uvToBary(vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState))));
     emissiveRayInteracton.primitiveIndex = primitiveIndex;
     Ray ray;
     ray.direction = f16vec3(1.0);

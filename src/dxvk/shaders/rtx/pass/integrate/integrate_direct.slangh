@@ -322,10 +322,6 @@ void integrate_direct_pass(ivec2 threadIndex)
                 isViewModel, /*ray*/ primaryRay, rayInteraction, /*surfaceInteraction*/minimalSurfaceInteraction,
                 opaqueSurfaceMaterialInteraction, specularPortion2, misWeight);
 
-              if (dot(normalize(emissiveSurfaceInteraction.position - minimalSurfaceInteraction.position), vec3(1,0,0)) < 0.0)
-              {
-                emissiveNEELight = 0;
-              }
 
               //pathState.radiance += pathState.throughput * emissiveNEELight;
               PrimaryDirectDiffuseLobeRadianceHitDistance[threadIndex].xyz += emissiveNEELight;
