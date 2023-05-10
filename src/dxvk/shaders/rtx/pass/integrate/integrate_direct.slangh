@@ -275,8 +275,11 @@ void integrate_direct_pass(ivec2 threadIndex)
         {
           SURFACE_CREATE_READ(emissiveSurface, surfaceIndex, surfaces);
           RayInteraction emissiveRayInteracton = {};
-          emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(vec2(getNextSampleBlueNoise(rng), getNextSampleBlueNoise(rng)));
+          vec2 uv = vec2(getNextSampleBlueNoise(rng), getNextSampleBlueNoise(rng));
+          emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(uvToBary(uv));
+          //emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(vec2(0.9999999));
           emissiveRayInteracton.primitiveIndex = primitiveIndex;
+          //emissiveRayInteracton.viewDirection = -minimalRayInteraction.viewDirection;
           SurfaceInteraction emissiveSurfaceInteraction = surfaceInteractionCreate(emissiveSurface, emissiveRayInteracton, primaryRay);
 
           const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[emissiveSurface.surfaceMaterialIndex];
@@ -318,6 +321,11 @@ void integrate_direct_pass(ivec2 threadIndex)
                 OBJECT_MASK_ALL | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC) /*pathState.rayMask*/,
                 isViewModel, /*ray*/ primaryRay, rayInteraction, /*surfaceInteraction*/minimalSurfaceInteraction,
                 opaqueSurfaceMaterialInteraction, specularPortion2, misWeight);
+
+              if (dot(normalize(emissiveSurfaceInteraction.position - minimalSurfaceInteraction.position), vec3(1,0,0)) < 0.0)
+              {
+                emissiveNEELight = 0;
+              }
 
               //pathState.radiance += pathState.throughput * emissiveNEELight;
               PrimaryDirectDiffuseLobeRadianceHitDistance[threadIndex].xyz += emissiveNEELight;

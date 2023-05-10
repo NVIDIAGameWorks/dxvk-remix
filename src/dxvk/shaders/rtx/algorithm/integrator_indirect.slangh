@@ -579,7 +579,7 @@ void integratePathVertex(
           {
             SURFACE_CREATE_READ(emissiveSurface, surfaceIndex, surfaces);
             RayInteraction emissiveRayInteracton = rayInteraction;
-            emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState)));
+            emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(uvToBary(vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState))));
             emissiveRayInteracton.primitiveIndex = primitiveIndex;
             SurfaceInteraction emissiveSurfaceInteraction = surfaceInteractionCreate(emissiveSurface, emissiveRayInteracton, ray);
 
@@ -612,7 +612,7 @@ void integratePathVertex(
                 misWeight.y = lightPdf / (lightPdf + specularSolidAnglePdf);
 
                 float16_t specularPortion2;
-                const bool isViewModel = pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
+                const bool isViewModel = false;//pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
                 float emissiveInvSelectionPdf = 1.0;// / lightObjectPdf;
                 vec3 emissiveNEELight = evalNEESecondary(
                   emissiveLightSample, emissiveInvSelectionPdf, invalidRayPortalIndex, pathState.portalSpace, pathState.rayMask,

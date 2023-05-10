@@ -155,6 +155,7 @@ struct NEECell
     int count = getCandidateCount();
 
 #if 0
+    pdf = 1.0 / count;
     return getCandidate(min(sampleThreshold * count, count-1));
 #else
     NEECandidate candidate;
@@ -266,5 +267,10 @@ struct NEECache
   {
     return createCell(pointToCell(point));
   }
+}
+
+vec2 uvToBary(vec2 uv)
+{
+  return uv.x + uv.y < 1 ? uv : 1 - uv.yx;
 }
 #endif
