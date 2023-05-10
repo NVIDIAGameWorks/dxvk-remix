@@ -31,9 +31,9 @@
 #include "rtx/concept/surface_material/surface_material.slangh"
 #include "rtx/algorithm/integrator_direct.slangh"
 
-float getLightSamplingSolidAnglePDF(float16_t sqrtTriangleArea, vec3 samplePosition, f16vec3 sampleNormal, vec3 surfacePosition)
+float getLightSamplingSolidAnglePDF(float sqrtTriangleArea, vec3 samplePosition, f16vec3 sampleNormal, vec3 surfacePosition)
 {
-  float16_t areaPdf = 1.0 / (sqrtTriangleArea * sqrtTriangleArea);
+  float areaPdf = 1.0 / (sqrtTriangleArea * sqrtTriangleArea);
   vec3 offset = samplePosition - surfacePosition;
   float r2 = dot(offset, offset);
   float cosPhi = abs(dot(normalize(offset), sampleNormal));
@@ -267,21 +267,21 @@ void integrate_direct_pass(ivec2 threadIndex)
       int candidateCount = cell.getCandidateCount();
       if (candidateCount > 0)
       {
-        RNG randomState = createRNG(threadIndex, cb.frameIdx, /*pathState.calculateRNGOffset(kRNGOffsetSampleClosestHitShader)*/10);
+        //RNG randomState = createRNG(threadIndex, cb.frameIdx, /*pathState.calculateRNGOffset(kRNGOffsetSampleClosestHitShader)*/10);
         //int candidateIdx = min(getNextSampleBlueNoise(randomState) * candidateCount, candidateCount - 1);
         //int2 data = cell.getCandidate(candidateIdx).getIDData();
         //int2 data = 0;// RadianceCache[address];
         //int surfaceIndex = data.x;
         //int primitiveIndex = data.y;// = int4(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex,0,0);
 
-        NEECandidate candidate = cell.sampleCandidate(getNextSampleBlueNoise(randomState));
+        NEECandidate candidate = cell.sampleCandidate(getNextSampleBlueNoise(rng));
         int surfaceIndex = candidate.getSurfaceID();
         int primitiveIndex = candidate.getPrimitiveID();// = int4(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex,0,0);
         if (candidate.isValid())
         {
           SURFACE_CREATE_READ(emissiveSurface, surfaceIndex, surfaces);
           RayInteraction emissiveRayInteracton = {};// minimalRayInteraction;
-          emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState)));
+          emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(vec2(getNextSampleBlueNoise(rng), getNextSampleBlueNoise(rng)));
           emissiveRayInteracton.primitiveIndex = primitiveIndex;
           SurfaceInteraction emissiveSurfaceInteraction = surfaceInteractionCreate(emissiveSurface, emissiveRayInteracton, primaryRay);
 
