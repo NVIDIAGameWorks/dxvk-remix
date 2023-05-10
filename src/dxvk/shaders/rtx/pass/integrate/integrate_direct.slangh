@@ -294,8 +294,8 @@ void integrate_direct_pass(ivec2 threadIndex)
               emissiveLightSample.position = emissiveSurfaceInteraction.position;
               emissiveLightSample.normal = emissiveSurfaceInteraction.interpolatedNormal;
               emissiveLightSample.radiance = emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance;
-              float16_t lightPdf = getLightSamplingSolidAnglePDF(
-                emissiveSurfaceInteraction.sqrtTriangleArea, emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal, minimalSurfaceInteraction.position) * lightObjectPdf;
+              float16_t lightPdf = lightObjectPdf * getLightSamplingSolidAnglePDF(
+                emissiveSurfaceInteraction.sqrtTriangleArea, emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal, minimalSurfaceInteraction.position);
               emissiveLightSample.solidAnglePdf = lightPdf;
 
               RayInteraction rayInteraction = {};
@@ -312,7 +312,7 @@ void integrate_direct_pass(ivec2 threadIndex)
 
               float16_t specularPortion2;
               const bool isViewModel = false;// pathState.rayMask& OBJECT_MASK_ALL_VIEWMODEL;
-              float emissiveInvSelectionPdf = candidateCount;
+              float emissiveInvSelectionPdf = 1.0;// / lightObjectPdf;
               vec3 emissiveNEELight = evalNEESecondary(
                 emissiveLightSample, emissiveInvSelectionPdf, invalidRayPortalIndex, /*pathState.portalSpace*/PORTAL_SPACE_NONE, 
                 OBJECT_MASK_ALL | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC) /*pathState.rayMask*/,

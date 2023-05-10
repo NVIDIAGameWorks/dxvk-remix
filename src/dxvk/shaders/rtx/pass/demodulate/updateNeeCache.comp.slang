@@ -227,7 +227,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
     for (int i = 0; i < s_tarTaskCount; ++i)
     {
       //if (cb.debugKnob.z > 0) s_tarLight[i] = 1;//sqrt(s_tarLight[i]);//clamp(s_tarLight[i],0.1,1);
-      s_tarLight[i] = pow(s_tarLight[i], 0.3);
+      //s_tarLight[i] = pow(s_tarLight[i], 0.3);
       //s_tarLight[i] = max(maxLight * cb.debugKnob.z, s_tarLight[i]);
       totalLight += s_tarLight[i];
     }
