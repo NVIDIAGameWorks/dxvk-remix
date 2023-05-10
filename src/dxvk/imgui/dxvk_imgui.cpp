@@ -129,31 +129,32 @@ namespace dxvk {
   std::unordered_map<XXH64_hash_t, ImGuiTexture> g_imguiTextureMap;
 
   struct RtxTextureOption {
+    char* uniqueId;
     char* displayName;
     RtxOption<std::unordered_set<XXH64_hash_t>>* textureSetOption;
     XXH64_hash_t bufferTextureHash;
     bool bufferToggle;
   };
 
-  std::map<std::string, RtxTextureOption> rtxTextureOptions {
-    {"uitextures", {"UI Texture", &RtxOptions::Get()->uiTexturesObject()}},
-    {"worldspaceuitextures", {"World Space UI Texture", &RtxOptions::Get()->worldSpaceUiTexturesObject()}},
-    {"skytextures", {"Sky Texture", &RtxOptions::Get()->skyBoxTexturesObject()}},
-    {"ignoretextures", {"Ignore Texture (optional)", &RtxOptions::Get()->ignoreTexturesObject()}},
-    {"ignorelights", {"Ignore Lights (optional)", &RtxOptions::Get()->ignoreLightsObject()}},
-    {"particletextures", {"Particle Texture (optional)", &RtxOptions::Get()->particleTexturesObject()}},
-    {"beamtextures", {"Beam Texture (optional)", &RtxOptions::Get()->beamTexturesObject()}},
-    {"lightconvertertextures", {"Add Light to Textures (optional)", &RtxOptions::Get()->lightConverterObject()}},
-    {"decaltextures", {"Decal Texture (optional)", &RtxOptions::Get()->decalTexturesObject()}},
-    {"dynamicdecaltextures", {"Dynamic Decal Texture", &RtxOptions::Get()->dynamicDecalTexturesObject()}},
-    {"nonoffsetdecaltextures", {"Non-Offset Decal Texture", &RtxOptions::Get()->nonOffsetDecalTexturesObject()}},
-    {"cutouttextures", {"Legacy Cutout Texture (optional)", &RtxOptions::Get()->cutoutTexturesObject()}},
-    {"terraintextures", {"Terrain Texture", &RtxOptions::Get()->terrainTexturesObject()}},
-    {"watertextures", {"Water Texture (optional)", &RtxOptions::Get()->animatedWaterTexturesObject()}},
-    {"antiCullingTextures", {"Anti-Culling Texture (optional)", &RtxOptions::Get()->antiCullingTexturesObject()}},
-    {"playermodeltextures", {"Player Model Texture (optional)", &RtxOptions::Get()->playerModelTexturesObject()}},
-    {"playermodelbodytextures", {"Player Model Body Texture (optional)", &RtxOptions::Get()->playerModelBodyTexturesObject()}},
-    {"opacitymicromapignoretextures", {"Opacity Micromap Ignore Texture (optional)", &RtxOptions::Get()->opacityMicromapIgnoreTexturesObject()}}
+  std::vector<RtxTextureOption> rtxTextureOptions = {
+    {"uitextures", "UI Texture", &RtxOptions::Get()->uiTexturesObject()},
+    {"worldspaceuitextures", "World Space UI Texture", &RtxOptions::Get()->worldSpaceUiTexturesObject()},
+    {"skytextures", "Sky Texture", &RtxOptions::Get()->skyBoxTexturesObject()},
+    {"ignoretextures", "Ignore Texture (optional)", &RtxOptions::Get()->ignoreTexturesObject()},
+    {"ignorelights", "Ignore Lights (optional)", &RtxOptions::Get()->ignoreLightsObject()},
+    {"particletextures", "Particle Texture (optional)", &RtxOptions::Get()->particleTexturesObject()},
+    {"beamtextures", "Beam Texture (optional)", &RtxOptions::Get()->beamTexturesObject()},
+    {"lightconvertertextures", "Add Light to Textures (optional)", &RtxOptions::Get()->lightConverterObject()},
+    {"decaltextures", "Decal Texture (optional)", &RtxOptions::Get()->decalTexturesObject()},
+    {"dynamicdecaltextures", "Dynamic Decal Texture", &RtxOptions::Get()->dynamicDecalTexturesObject()},
+    {"nonoffsetdecaltextures", "Non-Offset Decal Texture", &RtxOptions::Get()->nonOffsetDecalTexturesObject()},
+    {"cutouttextures", "Legacy Cutout Texture (optional)", &RtxOptions::Get()->cutoutTexturesObject()},
+    {"terraintextures", "Terrain Texture", &RtxOptions::Get()->terrainTexturesObject()},
+    {"watertextures", "Water Texture (optional)", &RtxOptions::Get()->animatedWaterTexturesObject()},
+    {"antiCullingTextures", "Anti-Culling Texture (optional)", &RtxOptions::Get()->antiCullingTexturesObject()},
+    {"playermodeltextures", "Player Model Texture (optional)", &RtxOptions::Get()->playerModelTexturesObject()},
+    {"playermodelbodytextures", "Player Model Body Texture (optional)", &RtxOptions::Get()->playerModelBodyTexturesObject()},
+    {"opacitymicromapignoretextures", "Opacity Micromap Ignore Texture (optional)", &RtxOptions::Get()->opacityMicromapIgnoreTexturesObject()}
   };
 
   ImGui::ComboWithKey<RenderPassGBufferRaytraceMode> renderPassGBufferRaytraceModeCombo {
@@ -1246,9 +1247,16 @@ namespace dxvk {
     const float thumbnailSpacing = ImGui::GetStyle().ItemSpacing.x;
     const float thumbnailPadding = ImGui::GetStyle().CellPadding.x;
 
+    bool isListFiltered = false;
     RtxTextureOption listRtxOption;
-    auto rtxOptionIterator = rtxTextureOptions.find(uniqueId);
-    bool isListFiltered = rtxOptionIterator != rtxTextureOptions.end();
+
+    for (auto rtxOption : rtxTextureOptions) {
+      if (strcmp(rtxOption.uniqueId, uniqueId) == 0) {
+        listRtxOption = rtxOption;
+        isListFiltered = true;
+        break;
+      }
+    }
 
     const ImVec2 availableSize = ImGui::GetContentRegionAvail();
     const float childWindowHeight = availableSize.y < 600 ? 600 : availableSize.y;
@@ -1259,11 +1267,10 @@ namespace dxvk {
       bool textureHasSelection = false;
 
       if (isListFiltered) {
-        listRtxOption = rtxOptionIterator->second;
         auto& textureSet = listRtxOption.textureSetOption->getValue();
         textureHasSelection = textureSet.find(pair.first) != textureSet.end();
       } else {
-        for (const auto [uniqueId, rtxOption] : rtxTextureOptions) {
+        for (const auto rtxOption : rtxTextureOptions) {
           auto& textureSet = rtxOption.textureSetOption->getValue();
           textureHasSelection = textureSet.find(pair.first) != textureSet.end();
           if (textureHasSelection)
@@ -1306,7 +1313,7 @@ namespace dxvk {
 
         //list all selections for this texture
         std::string rtxTextureSelection;
-        for (auto& [uniqueId, rtxOption] : rtxTextureOptions) {
+        for (auto& rtxOption : rtxTextureOptions) {
           rtxOption.bufferTextureHash = pair.first;
           rtxOption.bufferToggle = rtxOption.textureSetOption->getValue().find(pair.first) != rtxOption.textureSetOption->getValue().end();
           if (rtxOption.bufferToggle) {
@@ -1353,9 +1360,9 @@ namespace dxvk {
     if (ImGui::BeginPopup("rtx_texture_selection")) {
       ImGui::Text("Texture Selection:\n");
 
-      for (auto& [id, rtxOption] : rtxTextureOptions) {
+      for (auto& rtxOption : rtxTextureOptions) {
         if (IMGUI_ADD_TOOLTIP(ImGui::Checkbox(rtxOption.displayName, &rtxOption.bufferToggle), rtxOption.textureSetOption->getDescription())) {
-          toggleTextureSelection(rtxOption.bufferTextureHash, id.c_str(), rtxOption.textureSetOption->getValue());
+          toggleTextureSelection(rtxOption.bufferTextureHash, rtxOption.uniqueId, rtxOption.textureSetOption->getValue());
         }
       }
 
