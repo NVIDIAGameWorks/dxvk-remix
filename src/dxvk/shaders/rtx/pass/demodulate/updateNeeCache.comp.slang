@@ -47,6 +47,15 @@ groupshared uint2 s_tarTaskList[RADIANCE_CACHE_ELEMENTS * 2];
 groupshared float s_tarLight[RADIANCE_CACHE_ELEMENTS * 2];
 groupshared int s_tarTaskCount;
 
+float getGeometricTerm(vec3 surfacePosition, vec3 samplePosition, f16vec3 sampleNormal)
+{
+  float cellSize = NEECache.getCellSize() * 0.5;
+  vec3 offset = samplePosition - surfacePosition;
+  float cellDistance = length(offset);
+  float cosTheta = cellDistance < cellSize ? 1.0 : saturate(dot(sampleNormal, normalize(offset)));
+  return cosTheta / (cellDistance * cellDistance);
+}
+
 float getTriangleLight(uint2 data, vec3 cellCenter, inout RNG randomState)
 {
   int surfaceIndex = data.x;
@@ -78,17 +87,26 @@ float getTriangleLight(uint2 data, vec3 cellCenter, inout RNG randomState)
       if (any(emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance > f16vec3(0)))
       {
         vec3 offset = emissiveSurfaceInteraction.position - cellCenter;
-        float cellSize = NEECache.getCellSize() * 0.5;//cb.debugKnob.z > 0 ?  : 0;
-        float distSq = max(dot(offset, offset), cellSize * cellSize);
-        float cosTheta = abs(dot(emissiveSurfaceInteraction.triangleNormal, normalize(offset)));
-        float triangleArea = emissiveSurfaceInteraction.triangleArea;// * emissiveSurfaceInteraction.sqrtTriangleArea;
+        float cellSize = NEECache.getCellSize() * 0.5;
+        //float cellDistance = length(offset);
+        //float cosTheta = cellDistance < cellSize ? 1.0 : abs(dot(emissiveSurfaceInteraction.triangleNormal, normalize(offset)));
+        //cellDistance = max(cellDistance, cellSize);
+        float g = 0;
+#if 0
+        g = getGeometricTerm(cellCenter, emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal);
+#else
+        g += getGeometricTerm(cellCenter + vec3(cellSize, 0, 0), emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal);
+        g += getGeometricTerm(cellCenter + vec3(-cellSize, 0, 0), emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal);
+        g += getGeometricTerm(cellCenter + vec3(0, cellSize, 0), emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal);
+        g += getGeometricTerm(cellCenter + vec3(0, -cellSize, 0), emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal);
+        g += getGeometricTerm(cellCenter + vec3(0, 0, cellSize), emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal);
+        g += getGeometricTerm(cellCenter + vec3(0, 0, -cellSize), emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal);
+        g /= 6.0;
+#endif
+        float triangleArea = emissiveSurfaceInteraction.triangleArea;
         vec3 radiance = emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance;
-        //float luminance = max(radiance.x, max(radiance.y, radiance.z));
         float luminance = calcBt709Luminance(emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance);
-        triangleLight = luminance * triangleArea * cosTheta / distSq;
-        //triangleLight = 1.0 * emissiveSurfaceInteraction.triangleArea / distSq;
-        //triangleLight = 1.0 / distSq;
-        //triangleLight = log(1 + triangleLight);
+        triangleLight = luminance * triangleArea * g;//cosTheta / (cellDistance * cellDistance);
         //triangleLight = sqrt(triangleLight);
       }
     }
@@ -204,12 +222,14 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
       int validCount = min(s_tarTaskCount, NEECell.getMaxCandidateCount());
       for (int i = NEECell.getMaxCandidateCount(); i < s_tarTaskCount; ++i)
       {
-        //int targetID = (s_tarTaskList[i].y + 0) % validCount;//min(getNextSampleBlueNoise(rng) * validCount, validCount-1);
+        //int targetID = (s_tarTaskList[i].y + cb.frameIdx) % validCount;//min(getNextSampleBlueNoise(rng) * validCount, validCount-1);
         //int targetID = min(getNextSampleBlueNoise(rng) * validCount, validCount-1);
         int targetID = (cb.frameIdx + i) % validCount;
         float ft = s_tarLight[i];
         float fs = s_tarLight[targetID];
-        if (getNextSampleBlueNoise(rng) * fs < ft)
+        float rnd = getNextSampleBlueNoise(rng);
+        //rnd = rnd * 0.5 + float(cb.frameIdx & 0x1) * 0.5;
+        if (rnd * fs < ft)
         {
           s_tarLight[targetID] = s_tarLight[i];
           s_tarTaskList[targetID] = s_tarTaskList[i];
@@ -221,17 +241,19 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
     cell.setTaskCount(0);
     cell.setCandidateCount(s_tarTaskCount);
 
-    float maxLight = 0;
+    float totalLight0 = 0;
     for (int i = 0; i < s_tarTaskCount; ++i)
     {
-      maxLight = max(maxLight, s_tarLight[i]);
+      //maxLight = max(maxLight, s_tarLight[i]);
+      totalLight0 += s_tarLight[i];
     }
+    float avgLight = s_tarTaskCount == 0 ? 0 : totalLight0 / s_tarTaskCount;
     float totalLight = 0;
     for (int i = 0; i < s_tarTaskCount; ++i)
     {
       //if (cb.debugKnob.z > 0) s_tarLight[i] = 1;//sqrt(s_tarLight[i]);//clamp(s_tarLight[i],0.1,1);
       //s_tarLight[i] = pow(s_tarLight[i], 0.3);
-      //s_tarLight[i] = max(maxLight * cb.debugKnob.z, s_tarLight[i]);
+      //s_tarLight[i] = clamp(s_tarLight[i], avgLight * cb.debugKnob.z, avgLight * cb.debugKnob.w);
       totalLight += s_tarLight[i];
     }
     for (int i = 0; i < s_tarTaskCount; ++i)
