@@ -37,6 +37,11 @@ struct NEECandidate
     return m_data.y != 0xffffffff;
   }
 
+  [mutating] void setInvalid()
+  {
+    m_data.y = 0xffffffff;
+  }
+
   int getSurfaceID()
   {
     return m_data.x & 0xffffff;
@@ -145,7 +150,7 @@ struct NEECell
     return RadianceCache.Store2(m_baseAddress + indexToOffset(idx), candidate.m_data);
   }
 
-  NEECandidate sampleCandidate(float sampleThreshold)
+  NEECandidate sampleCandidate(float sampleThreshold, out float pdf)
   {
     int count = getCandidateCount();
 
@@ -153,9 +158,14 @@ struct NEECell
     return getCandidate(min(sampleThreshold * count, count-1));
 #else
     NEECandidate candidate;
-    for (int i = 0; i < count; ++i)
+    candidate.setInvalid();
+    int i = 0;
+    float lastCdf = 0;
+    for (; i < count; ++i)
     {
       candidate = getCandidate(i);
+      pdf = candidate.getSampleThreshold() - lastCdf;
+      lastCdf = pdf;
       if (candidate.getSampleThreshold() >= sampleThreshold)
       {
         return candidate;

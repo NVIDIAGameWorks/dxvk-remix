@@ -571,10 +571,8 @@ void integratePathVertex(
         int candidateCount = cell.getCandidateCount();
         if (candidateCount > 0)
         {
-          NEECandidate candidate = cell.sampleCandidate(getNextSampleBlueNoise(randomState));
-          //int candidateIdx = min(getNextSampleBlueNoise(randomState) * candidateCount, candidateCount - 1);
-          //int2 data = cell.getCandidate(candidateIdx).getIDData();
-          //int2 data = 0;// RadianceCache[address];
+          float lightObjectPdf = 0;
+          NEECandidate candidate = cell.sampleCandidate(getNextSampleBlueNoise(randomState), lightObjectPdf);
           int surfaceIndex = candidate.getSurfaceID();
           int primitiveIndex = candidate.getPrimitiveID();// = int4(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex,0,0);
           if (candidate.isValid())
@@ -600,13 +598,8 @@ void integratePathVertex(
                 emissiveLightSample.position = emissiveSurfaceInteraction.position;
                 emissiveLightSample.normal = emissiveSurfaceInteraction.interpolatedNormal;
                 emissiveLightSample.radiance = emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance;
-                // float16_t areaPdf = 1.0 / emissiveSurfaceInteraction.triangleArea;
-                // vec3 offset = emissiveSurfaceInteraction.position - surfaceInteraction.position;
-                // float r2 = dot(offset, offset);
-                // float cosPhi = abs(dot(normalize(offset), emissiveSurfaceInteraction.triangleNormal));
-                // emissiveLightSample.solidAnglePdf = cosPhi > 0 ? areaPdf * r2 / cosPhi : 0;
                 float16_t lightPdf = getLightSamplingSolidAnglePDF(
-                  emissiveSurfaceInteraction.sqrtTriangleArea, emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal, surfaceInteraction.position);
+                  emissiveSurfaceInteraction.sqrtTriangleArea, emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal, surfaceInteraction.position) * lightObjectPdf;
                 emissiveLightSample.solidAnglePdf = lightPdf;
 
                 f16vec3 inputDirection = normalize(emissiveSurfaceInteraction.position - surfaceInteraction.position);
