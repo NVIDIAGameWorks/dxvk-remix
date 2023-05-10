@@ -668,7 +668,7 @@ namespace dxvk {
       friend class RtxOptions;
       friend class ImGUI;
       bool isSupported = false;
-      RTX_OPTION_ENV("rtx.opacityMicromap", bool, enable, true, "DXVK_ENABLE_OPACITY_MICROMAP", "");
+      RTX_OPTION_ENV("rtx.opacityMicromap", bool, enable, false, "DXVK_ENABLE_OPACITY_MICROMAP", "");
     } opacityMicromap;
 
     RTX_OPTION("rtx", ReflexMode, reflexMode, ReflexMode::LowLatency, "Reflex mode selection, enabling it helps minimize input latency, boost mode may further reduce latency by boosting GPU clocks in CPU-bound cases."); // default to low-latency (not boost)
