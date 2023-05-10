@@ -47,7 +47,7 @@ groupshared uint2 s_tarTaskList[RADIANCE_CACHE_ELEMENTS * 2];
 groupshared float s_tarLight[RADIANCE_CACHE_ELEMENTS * 2];
 groupshared int s_tarTaskCount;
 
-float getTriangleLight(uint2 data, vec3 cellCenter)
+float getTriangleLight(uint2 data, vec3 cellCenter, inout RNG randomState)
 {
   int surfaceIndex = data.x;
   int primitiveIndex = data.y;// = int4(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex,0,0);
@@ -57,7 +57,8 @@ float getTriangleLight(uint2 data, vec3 cellCenter)
     SURFACE_CREATE_READ(emissiveSurface, surfaceIndex, surfaces);
     RayInteraction emissiveRayInteracton = {};// rayInteraction;
     emissiveRayInteracton.frontHit = true;
-    emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(vec2(0.5));//barycentricsToUint(vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState)));
+    emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(vec2(0.5));
+    //emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState)));
     emissiveRayInteracton.primitiveIndex = primitiveIndex;
     Ray ray;
     ray.direction = f16vec3(1.0);
@@ -82,6 +83,7 @@ float getTriangleLight(uint2 data, vec3 cellCenter)
         //triangleLight = 1.0 * emissiveSurfaceInteraction.triangleArea / distSq;
         //triangleLight = 1.0 / distSq;
         //triangleLight = log(1 + triangleLight);
+        //triangleLight = sqrt(triangleLight);
       }
     }
   }
@@ -158,13 +160,13 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   if (triangleID < s_tarTaskCount)
   {
     uint2 data = s_tarTaskList[triangleID];
-    s_tarLight[triangleID] = getTriangleLight(data, cellCenter);
+    s_tarLight[triangleID] = getTriangleLight(data, cellCenter, rng);
   }
   triangleID = localIndex.x + RADIANCE_CACHE_ELEMENTS;
   if (triangleID < s_tarTaskCount)
   {
     uint2 data = s_tarTaskList[triangleID];
-    s_tarLight[triangleID] = getTriangleLight(data, cellCenter);
+    s_tarLight[triangleID] = getTriangleLight(data, cellCenter, rng);
   }
   GroupMemoryBarrierWithGroupSync();
 
@@ -195,7 +197,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
       int validCount = min(s_tarTaskCount, NEECell.getMaxCandidateCount());
       for (int i = NEECell.getMaxCandidateCount(); i < s_tarTaskCount; ++i)
       {
-        //int targetID = s_tarTaskList[i].x % validCount;//min(getNextSampleBlueNoise(rng) * validCount, validCount-1);
+        //int targetID = (s_tarTaskList[i].y + 0) % validCount;//min(getNextSampleBlueNoise(rng) * validCount, validCount-1);
         int targetID = min(getNextSampleBlueNoise(rng) * validCount, validCount-1);
         float ft = s_tarLight[i];
         float fs = s_tarLight[targetID];
@@ -214,6 +216,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
     float totalLight = 0;
     for (int i = 0; i < s_tarTaskCount; ++i)
     {
+      //s_tarLight[i] = clamp(s_tarLight[i],0.1,1);
       totalLight += s_tarLight[i];
     }
     for (int i = 0; i < s_tarTaskCount; ++i)
