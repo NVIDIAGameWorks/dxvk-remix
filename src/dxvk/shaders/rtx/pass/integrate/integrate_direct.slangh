@@ -267,20 +267,14 @@ void integrate_direct_pass(ivec2 threadIndex)
       int candidateCount = cell.getCandidateCount();
       if (candidateCount > 0)
       {
-        //RNG randomState = createRNG(threadIndex, cb.frameIdx, /*pathState.calculateRNGOffset(kRNGOffsetSampleClosestHitShader)*/10);
-        //int candidateIdx = min(getNextSampleBlueNoise(randomState) * candidateCount, candidateCount - 1);
-        //int2 data = cell.getCandidate(candidateIdx).getIDData();
-        //int2 data = 0;// RadianceCache[address];
-        //int surfaceIndex = data.x;
-        //int primitiveIndex = data.y;// = int4(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex,0,0);
-
-        NEECandidate candidate = cell.sampleCandidate(getNextSampleBlueNoise(rng));
+        float lightObjectPdf = 0;
+        NEECandidate candidate = cell.sampleCandidate(getNextSampleBlueNoise(rng), lightObjectPdf);
         int surfaceIndex = candidate.getSurfaceID();
-        int primitiveIndex = candidate.getPrimitiveID();// = int4(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex,0,0);
+        int primitiveIndex = candidate.getPrimitiveID();
         if (candidate.isValid())
         {
           SURFACE_CREATE_READ(emissiveSurface, surfaceIndex, surfaces);
-          RayInteraction emissiveRayInteracton = {};// minimalRayInteraction;
+          RayInteraction emissiveRayInteracton = {};
           emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(vec2(getNextSampleBlueNoise(rng), getNextSampleBlueNoise(rng)));
           emissiveRayInteracton.primitiveIndex = primitiveIndex;
           SurfaceInteraction emissiveSurfaceInteraction = surfaceInteractionCreate(emissiveSurface, emissiveRayInteracton, primaryRay);
@@ -300,13 +294,8 @@ void integrate_direct_pass(ivec2 threadIndex)
               emissiveLightSample.position = emissiveSurfaceInteraction.position;
               emissiveLightSample.normal = emissiveSurfaceInteraction.interpolatedNormal;
               emissiveLightSample.radiance = emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance;
-              // float16_t areaPdf = 1.0 / emissiveSurfaceInteraction.triangleArea;
-              // vec3 offset = emissiveSurfaceInteraction.position - surfaceInteraction.position;
-              // float r2 = dot(offset, offset);
-              // float cosPhi = abs(dot(normalize(offset), emissiveSurfaceInteraction.triangleNormal));
-              // emissiveLightSample.solidAnglePdf = cosPhi > 0 ? areaPdf * r2 / cosPhi : 0;
               float16_t lightPdf = getLightSamplingSolidAnglePDF(
-                emissiveSurfaceInteraction.sqrtTriangleArea, emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal, minimalSurfaceInteraction.position);
+                emissiveSurfaceInteraction.sqrtTriangleArea, emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal, minimalSurfaceInteraction.position) * lightObjectPdf;
               emissiveLightSample.solidAnglePdf = lightPdf;
 
               RayInteraction rayInteraction = {};
