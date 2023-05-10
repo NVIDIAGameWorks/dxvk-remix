@@ -249,7 +249,7 @@ SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayI
   const vec3 worldTriangleNormal = normalize(worldTriangleVector);
   // Note: Ideally cheaper than using length to get the magnitude of the cross product's result (no sqrt required).
   const float worldTwoTriangleArea = dot(worldTriangleVector, worldTriangleNormal);
-  surfaceInteraction.sqrtTriangleArea = min(sqrt(worldTwoTriangleArea * 0.5), float16Max);
+  surfaceInteraction.triangleArea = worldTwoTriangleArea * 0.5;
 
   // Note: fp16 conversion done after area calculation so the fp32 normal can be used
   const f16vec3 triangleNormal = f16vec3(worldTriangleNormal);
