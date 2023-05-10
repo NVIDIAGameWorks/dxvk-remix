@@ -1250,8 +1250,10 @@ namespace dxvk {
     auto rtxOptionIterator = rtxTextureOptions.find(uniqueId);
     bool isListFiltered = rtxOptionIterator != rtxTextureOptions.end();
 
-    ImGuiWindowFlags window_flags = ImGuiWindowFlags_HorizontalScrollbar;
-    ImGui::BeginChild(str::format("Child", uniqueId).c_str(), ImVec2(ImGui::GetContentRegionAvail().x, ImGui::GetContentRegionAvail().y), false, window_flags);
+    const ImVec2 availableSize = ImGui::GetContentRegionAvail();
+    const float childWindowHeight = availableSize.y < 600 ? 600 : availableSize.y;
+    ImGuiWindowFlags window_flags = ImGuiWindowFlags_None;
+    ImGui::BeginChild(str::format("Child", uniqueId).c_str(), ImVec2(availableSize.x, childWindowHeight), false, window_flags);
 
     for (auto& pair : g_imguiTextureMap) {
       bool textureHasSelection = false;
