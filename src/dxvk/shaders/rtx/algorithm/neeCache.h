@@ -66,7 +66,7 @@ struct NEECandidate
 
   float16_t getSampleThreshold()
   {
-    uint8_t threshold = (m_data.x >> 24) & 0xff;
+    uint threshold = (m_data.x >> 24) & 0xff;
     return float16_t(threshold) / 255.0f;
   }
 
@@ -152,15 +152,16 @@ struct NEECell
 #if 0
     return getCandidate(min(sampleThreshold * count, count-1));
 #else
+    NEECandidate candidate;
     for (int i = 0; i < count; ++i)
     {
-      NEECandidate candidate = getCandidate(i);
+      candidate = getCandidate(i);
       if (candidate.getSampleThreshold() >= sampleThreshold)
       {
         return candidate;
       }
     }
-    return NEECandidate.create(uint2(0xffffffff));
+    return candidate;
 #endif
   }
 

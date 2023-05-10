@@ -78,8 +78,12 @@ float getTriangleLight(uint2 data, vec3 cellCenter, inout RNG randomState)
         vec3 offset = emissiveSurfaceInteraction.position - cellCenter;
         float cellSize = NEECache.getCellSize() * 0.5;//cb.debugKnob.z > 0 ?  : 0;
         float distSq = max(dot(offset, offset), cellSize * cellSize);
+        float cosTheta = 1;//cb.debugKnob.z > 0 ? abs(dot(emissiveSurfaceInteraction.triangleNormal, normalize(offset))) : 1;
         float triangleArea = emissiveSurfaceInteraction.sqrtTriangleArea * emissiveSurfaceInteraction.sqrtTriangleArea;
-        triangleLight = float(calcBt709Luminance(emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance)) * triangleArea / distSq;
+        vec3 radiance = emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance;
+        //float luminance = max(radiance.x, max(radiance.y, radiance.z));
+        float luminance = calcBt709Luminance(emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance);
+        triangleLight = luminance * triangleArea * cosTheta / distSq;
         //triangleLight = 1.0 * emissiveSurfaceInteraction.triangleArea / distSq;
         //triangleLight = 1.0 / distSq;
         //triangleLight = log(1 + triangleLight);
@@ -98,7 +102,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   NEECell cell = NEECache.createCell(cellID);
   vec3 cellCenter = NEECache.cellToPoint(cellID);
 
-  RNG rng = createRNG(uvec2(threadIndex.xy + threadIndex.z * RADIANCE_CACHE_ELEMENTS * 20 * 20), cb.frameIdx);
+  RNG rng = createRNG(uvec2(threadIndex.xy /*+ threadIndex.z * RADIANCE_CACHE_ELEMENTS * 20 * 20*/), cb.frameIdx, threadIndex.z);
 
   if (localIndex.x == 0 && localIndex.y == 0)
   {
@@ -198,7 +202,8 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
       for (int i = NEECell.getMaxCandidateCount(); i < s_tarTaskCount; ++i)
       {
         //int targetID = (s_tarTaskList[i].y + 0) % validCount;//min(getNextSampleBlueNoise(rng) * validCount, validCount-1);
-        int targetID = min(getNextSampleBlueNoise(rng) * validCount, validCount-1);
+        //int targetID = min(getNextSampleBlueNoise(rng) * validCount, validCount-1);
+        int targetID = (cb.frameIdx + i) % validCount;
         float ft = s_tarLight[i];
         float fs = s_tarLight[targetID];
         if (getNextSampleBlueNoise(rng) * fs < ft)
@@ -213,10 +218,17 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
     cell.setTaskCount(0);
     cell.setCandidateCount(s_tarTaskCount);
 
+    float maxLight = 0;
+    for (int i = 0; i < s_tarTaskCount; ++i)
+    {
+      maxLight = max(maxLight, s_tarLight[i]);
+    }
     float totalLight = 0;
     for (int i = 0; i < s_tarTaskCount; ++i)
     {
-      //s_tarLight[i] = clamp(s_tarLight[i],0.1,1);
+      //if (cb.debugKnob.z > 0) s_tarLight[i] = 1;//sqrt(s_tarLight[i]);//clamp(s_tarLight[i],0.1,1);
+      //s_tarLight[i] = pow(s_tarLight[i], 0.3);
+      //s_tarLight[i] = max(maxLight * cb.debugKnob.z, s_tarLight[i]);
       totalLight += s_tarLight[i];
     }
     for (int i = 0; i < s_tarTaskCount; ++i)

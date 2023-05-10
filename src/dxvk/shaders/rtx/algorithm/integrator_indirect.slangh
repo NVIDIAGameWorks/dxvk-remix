@@ -198,7 +198,7 @@ uint2 jitterBoundaryPixels(uint2 pixelCoordinate, uint2 jitterOffset)
   return clamp(pixelCoordinate, 0, cb.camera.resolution - padding) + jitterOffset;
 }
 
-float getLightSamplingSolidAnglePDF(float16_t sqrtTriangleArea, vec3 samplePosition, f16vec3 sampleNormal, vec3 surfacePosition)
+float getLightSamplingSolidAnglePDF(float sqrtTriangleArea, vec3 samplePosition, f16vec3 sampleNormal, vec3 surfacePosition)
 {
   float areaPdf = 1.0 / (sqrtTriangleArea * sqrtTriangleArea);
   vec3 offset = samplePosition - surfacePosition;
@@ -425,7 +425,7 @@ void integratePathVertex(
   }
 
   float16_t misWeight = 1.0;
-  if (hasNEE && pathState.bounceIteration > 1)
+  if (hasNEE)
   {
     float16_t lightPdf = getLightSamplingSolidAnglePDF(surfaceInteraction.sqrtTriangleArea, surfaceInteraction.position, surfaceInteraction.triangleNormal, oldOrigin);
     misWeight = pathState.solidAnglePdf / (pathState.solidAnglePdf + lightPdf);
