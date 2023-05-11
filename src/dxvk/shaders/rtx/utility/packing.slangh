@@ -24,7 +24,6 @@
 #include "rtx/utility/math.slangh"
 #include "rtx/utility/packing_helpers.h"
 
-
 // Signed/Unsigned Normalized Vector Packing Helpers
 
 // Converts a 2-vector of float32, expected to be in [0,1] range, into a uint32,
