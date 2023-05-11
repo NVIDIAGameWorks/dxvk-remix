@@ -77,8 +77,8 @@ float getTriangleLight(uint2 data, vec3 cellCenter, inout RNG randomState)
     Ray ray;
     ray.direction = f16vec3(1.0);
     SurfaceInteraction emissiveSurfaceInteraction = surfaceInteractionCreate(emissiveSurface, emissiveRayInteracton, ray);
-    emissiveSurfaceInteraction.textureGradientX = 0.5;
-    emissiveSurfaceInteraction.textureGradientY = 0.5;
+    emissiveSurfaceInteraction.textureGradientX = vec2(0.5,0);
+    emissiveSurfaceInteraction.textureGradientY = vec2(0,0.5);
 
     const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[emissiveSurface.surfaceMaterialIndex];
     const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
