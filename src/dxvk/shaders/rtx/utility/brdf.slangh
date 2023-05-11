@@ -654,13 +654,12 @@ float3 evalSpecularAlbedoGGXSchlick(in float3 baseReflectivity, in float isotrop
   return mad(baseReflectivity, max(0, scale), max(0, bias));
 }
 
-// blends two normal vectors together
+// Blends two normal vectors (which need not be normalized) together
+// Reoriented Normal Mapping from: https://blog.selfshadow.com/publications/blending-in-detail/
 f16vec3 normalBlendRNM(in f16vec3 baseNormal, in f16vec3 detailNormal)
 {
-  // https://blog.selfshadow.com/publications/blending-in-detail/
-  // this is the reoriented normal mapping method
-  baseNormal.z = max(baseNormal.z, -1.0f + materialEpsilon);
   const f16vec3 n1 = baseNormal + f16vec3(0, 0, 1);
   const f16vec3 n2 = detailNormal * f16vec3(-1, -1, 1);
-  return normalize(n1 * dot(n1, n2) / n1.z - n2);
+
+  return normalize(n1 * safePositiveDivide(dot(n1, n2), n1.z, materialEpsilon) - n2);
 }
