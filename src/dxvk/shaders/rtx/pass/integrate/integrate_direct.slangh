@@ -250,9 +250,9 @@ void integrate_direct_pass(ivec2 threadIndex)
     primaryRay, minimalRayInteraction, minimalSurfaceInteraction,
     polymorphicSurfaceMaterialInteraction);
 
-  if (cb.debugKnob.x > 0)
+  if (cb.enableNeeCache > 0)
   {
-    NEECell cell = NEECache.createCell(minimalSurfaceInteraction.position);
+    NEECell cell = NEECache.findCell(minimalSurfaceInteraction.position, true);
     if (cell.isValid() && polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque)
     {
       int candidateCount = cell.getCandidateCount();

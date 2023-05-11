@@ -1161,6 +1161,11 @@ namespace dxvk {
     constants.reSTIRGIMISParallaxAmount = restirGI.parallaxAmount();
     constants.enableReSTIRGIDemodulatedTargetFunction = restirGI.useDemodulatedTargetFunction();
 
+
+    auto& neeCache = m_common->metaNeeCache();
+    constants.enableNeeCache = neeCache.enabled();
+    constants.enableNeeCacheImportanceSampling = neeCache.enableImportanceSampling();
+
     auto* cameraTeleportDirectionInfo = getSceneManager().getRayPortalManager().getCameraTeleportationRayPortalDirectionInfo();
     constants.teleportationPortalIndex = cameraTeleportDirectionInfo ? cameraTeleportDirectionInfo->entryPortalInfo.portalIndex + 1 : 0;
 

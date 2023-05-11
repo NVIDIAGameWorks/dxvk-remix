@@ -1919,6 +1919,15 @@ namespace dxvk {
         ImGui::PopID();
         ImGui::Unindent();
       }
+
+      if (ImGui::CollapsingHeader("NEE Cache", collapsingHeaderClosedFlags)) {
+        ImGui::Indent();
+        ImGui::PushID("NEE Cache");
+        auto& neeCache = common->metaNeeCache();
+        neeCache.showImguiSettings();
+        ImGui::PopID();
+        ImGui::Unindent();
+      }
       ImGui::Unindent();
     }
 

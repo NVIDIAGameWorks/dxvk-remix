@@ -200,36 +200,39 @@ struct NEECache
     return idx * RADIANCE_CACHE_ELEMENTS * RADIANCE_CACHE_ELEMENT_SIZE;
   }
 
-  static int3 pointToCell(vec3 position)
+  static int3 pointToCell(vec3 position, bool jittered)
   {
     vec3 cameraPos = cameraGetWorldPosition(cb.camera);
     vec3 origin = cameraPos - s_extend * 0.5;
     vec3 UVW = (position - origin) / s_extend;
 
     // jitter or not
-#if 1
-    vec3 UVWi = UVW * RADIANCE_CACHE_PROBE_RESOLUTION - 0.5;
-    vec3 fracUVWi = fract(UVWi);
+    if(jittered)
+    {
+      vec3 UVWi = UVW * RADIANCE_CACHE_PROBE_RESOLUTION - 0.5;
+      vec3 fracUVWi = fract(UVWi);
 
-    RNG rng = createRNGPosition(position, cb.frameIdx);
-    ivec3 offset;
-    offset.x = getNextSampleBlueNoise(rng) > fracUVWi.x ? 0 : 1;
-    offset.y = getNextSampleBlueNoise(rng) > fracUVWi.y ? 0 : 1;
-    offset.z = getNextSampleBlueNoise(rng) > fracUVWi.z ? 0 : 1;
-    ivec3 cellID = ivec3(UVWi) + offset;
-    if (any(cellID < 0) || any(cellID > RADIANCE_CACHE_PROBE_RESOLUTION-1))
-    {
-      return int3(-1);
+      RNG rng = createRNGPosition(position, cb.frameIdx);
+      ivec3 offset;
+      offset.x = getNextSampleBlueNoise(rng) > fracUVWi.x ? 0 : 1;
+      offset.y = getNextSampleBlueNoise(rng) > fracUVWi.y ? 0 : 1;
+      offset.z = getNextSampleBlueNoise(rng) > fracUVWi.z ? 0 : 1;
+      ivec3 cellID = ivec3(UVWi) + offset;
+      if (any(cellID < 0) || any(cellID > RADIANCE_CACHE_PROBE_RESOLUTION-1))
+      {
+        return int3(-1);
+      }
+      return cellID;
     }
-    return cellID;
-#else
-    ivec3 UVWi = UVW * RADIANCE_CACHE_PROBE_RESOLUTION;
-    if (any(UVWi < 0) || any(UVWi > RADIANCE_CACHE_PROBE_RESOLUTION-1))
+    else
     {
-      return int3(-1);
+      ivec3 UVWi = UVW * RADIANCE_CACHE_PROBE_RESOLUTION;
+      if (any(UVWi < 0) || any(UVWi > RADIANCE_CACHE_PROBE_RESOLUTION-1))
+      {
+        return int3(-1);
+      }
+      return UVWi;
     }
-    return UVWi;
-#endif
   }
 
   static float getCellSize()
@@ -237,7 +240,7 @@ struct NEECache
     return s_extend / RADIANCE_CACHE_PROBE_RESOLUTION;
   }
 
-  static vec3 cellToPoint(ivec3 cellID)
+  static vec3 cellToCenterPoint(ivec3 cellID)
   {
     vec3 cameraPos = cameraGetWorldPosition(cb.camera);
     vec3 origin = cameraPos - s_extend * 0.5;
@@ -246,9 +249,9 @@ struct NEECache
     return position;
   }
 
-  static int pointToAddress(vec3 position)
+  static int pointToAddress(vec3 position, bool jittered)
   {
-    ivec3 UVWi = pointToCell(position);
+    ivec3 UVWi = pointToCell(position, jittered);
     if (any(UVWi == -1))
     {
       return -1;
@@ -256,16 +259,16 @@ struct NEECache
     return cellToAddress(UVWi);
   }
 
-  static NEECell createCell(int3 cellID)
+  static NEECell getCell(int3 cellID)
   {
     NEECell cell = {};
     cell.m_baseAddress = cellToAddress(cellID);
     return cell;
   }
 
-  static NEECell createCell(vec3 point)
+  static NEECell findCell(vec3 point, bool jittered)
   {
-    return createCell(pointToCell(point));
+    return getCell(pointToCell(point, jittered));
   }
 }
 

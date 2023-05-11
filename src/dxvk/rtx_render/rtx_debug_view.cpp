@@ -120,6 +120,8 @@ namespace dxvk {
         {DEBUG_VIEW_RESTIR_GI_FINAL_SHADING, "ReSTIR GI Final Shading MIS Weight"},
         {DEBUG_VIEW_RESTIR_GI_VIRTUAL_HIT_T, "ReSTIR GI Virtual Hit Distance"},
 
+        {DEBUV_VIEW_NEE_CACHE_CANDIDATE_ID, "NEE Cache Candidate"},
+
         {DEBUG_VIEW_RTXDI_GRADIENTS, "RTXDI Gradients"},
         {DEBUG_VIEW_RTXDI_CONFIDENCE, "RTXDI Confidence"},
 

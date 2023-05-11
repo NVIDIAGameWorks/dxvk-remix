@@ -116,6 +116,8 @@ namespace dxvk {
   NeeCachePass::~NeeCachePass() { }
 
   void NeeCachePass::showImguiSettings() {
+    ImGui::Checkbox("Enabled", &enabledObject());
+    ImGui::Checkbox("Enable Importance Sampling", &enableImportanceSamplingObject());
     // ImGui::Checkbox("Demodulate Roughness", &demodulateRoughnessObject());
     // ImGui::DragFloat("Roughness sensitivity", &demodulateRoughnessOffsetObject(), 0.01f, 0.0f, 5.0f, "%.3f");
     // ImGui::Checkbox("Direct Light Boiling Filter", &enableDirectLightBoilingFilterObject());
