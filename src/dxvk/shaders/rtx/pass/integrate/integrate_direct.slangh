@@ -260,7 +260,7 @@ void integrate_direct_pass(ivec2 threadIndex)
       {
         float lightObjectPdf = 0;
         NEECandidate candidate = cell.sampleCandidate(getNextSampleBlueNoise(rng), lightObjectPdf);
-        int surfaceIndex = candidate.getSurfaceID();
+        int surfaceIndex = candidate.getSurfaceID(true);
         int primitiveIndex = candidate.getPrimitiveID();
         if (candidate.isValid())
         {

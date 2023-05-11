@@ -42,9 +42,14 @@ struct NEECandidate
     m_data.y = 0xffffffff;
   }
 
-  int getSurfaceID()
+  int getSurfaceID(bool mapToThisFrame)
   {
-    return m_data.x & 0xffffff;
+    uint surfaceID = m_data.x & 0xffffff;
+    if (mapToThisFrame)
+    {
+      surfaceID = surfaceMapping[surfaceID];
+    }
+    return surfaceID;
   }
 
   [mutating] void setSurfaceID(int surfaceID)
@@ -57,10 +62,14 @@ struct NEECandidate
     return m_data.y;
   }
 
-  uint2 getIDData()
+  uint2 getIDData(bool mapToThisFrame)
   {
     uint2 data = m_data;
     data.x &= 0xffffff;
+    if (mapToThisFrame)
+    {
+      data.x = surfaceMapping[data.x];
+    }
     return data;
   }
 
