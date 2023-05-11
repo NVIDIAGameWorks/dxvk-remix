@@ -36,6 +36,10 @@ namespace dxvk {
   }
 
   void RtxInitializer::initialize() {
+    // WAR: RtxInitializer::release() is not always called
+    // TODO: replace with assert check
+    ShaderManager::destroyInstance();
+
     ShaderManager::getInstance()->setDevice(m_device.ptr());
 
 #ifdef WITH_RTXIO
@@ -89,6 +93,7 @@ namespace dxvk {
   }
 
   void RtxInitializer::release() {
+    ShaderManager::destroyInstance();
 #ifdef WITH_RTXIO
     RtxIo::get().release();
 #endif
