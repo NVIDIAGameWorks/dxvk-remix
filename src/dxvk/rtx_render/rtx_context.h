@@ -204,6 +204,7 @@ namespace dxvk {
     void dispatchVolumetrics(const Resources::RaytracingOutput& rtOutput);
     void dispatchIntegrate(const Resources::RaytracingOutput& rtOutput);
     void dispatchDemodulate(const Resources::RaytracingOutput& rtOutput);
+    void dispatchNeeCache(const Resources::RaytracingOutput& rtOutput);
     void dispatchDLSS(const Resources::RaytracingOutput& rtOutput);
     void dispatchDenoise(const Resources::RaytracingOutput& rtOutput, float frameTimeSecs);
     void dispatchReferenceDenoise(const Resources::RaytracingOutput& rtOutput, float frameTimeSecs);

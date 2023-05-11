@@ -214,6 +214,8 @@ dxvk_src = files([
   'rtx_render/rtx_game_capturer.cpp',
   'rtx_render/rtx_game_capturer.h',
   'rtx_render/rtx_game_capturer_paths.h',
+  'rtx_render/rtx_neecache.cpp',
+  'rtx_render/rtx_neecache.h',
   'rtx_render/rtx_geometry_utils.cpp',
   'rtx_render/rtx_geometry_utils.h',
   'rtx_render/rtx_hashing.cpp',
