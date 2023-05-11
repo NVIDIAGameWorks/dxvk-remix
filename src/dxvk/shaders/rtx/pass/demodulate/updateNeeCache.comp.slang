@@ -49,10 +49,11 @@ groupshared int s_tarTaskCount;
 
 float getGeometricTerm(vec3 surfacePosition, vec3 samplePosition, f16vec3 sampleNormal)
 {
-  float cellSize = NEECache.getCellSize() * 0.5;
+  float cellSize = NEECache.getCellSize() * 1;
   vec3 offset = samplePosition - surfacePosition;
   float cellDistance = length(offset);
   float cosTheta = cellDistance < cellSize ? 1.0 : saturate(dot(sampleNormal, normalize(offset)));
+  cellDistance = max(cellDistance, cellSize);
   return cosTheta / (cellDistance * cellDistance);
 }
 
@@ -63,24 +64,29 @@ float getTriangleLight(uint2 data, vec3 cellCenter, inout RNG randomState)
   float triangleLight = 0;
   if (surfaceIndex >= 0 && primitiveIndex >= 0)
   {
-    SURFACE_CREATE_READ(emissiveSurface, surfaceIndex, surfaces);
+    SURFACE_CREATE_READ(emissiveSurface0, surfaceIndex, surfaces);    
+    Surface emissiveSurface = emissiveSurface0;
     RayInteraction emissiveRayInteracton = {};// rayInteraction;
     emissiveRayInteracton.frontHit = true;
     emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(uvToBary(vec2(0.3)));
     //emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(uvToBary(vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState))));
     emissiveRayInteracton.primitiveIndex = primitiveIndex;
+    //emissiveSurface.isEmissive = false;
+    //emissiveSurface.isEmissiveBlend = false;
+
     Ray ray;
     ray.direction = f16vec3(1.0);
     SurfaceInteraction emissiveSurfaceInteraction = surfaceInteractionCreate(emissiveSurface, emissiveRayInteracton, ray);
-    emissiveSurfaceInteraction.textureGradientX = 0.1;
-    emissiveSurfaceInteraction.textureGradientY = 0.1;
+    emissiveSurfaceInteraction.textureGradientX = 0.5;
+    emissiveSurfaceInteraction.textureGradientY = 0.5;
 
     const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[emissiveSurface.surfaceMaterialIndex];
     const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
 
     if (polymorphicType == surfaceMaterialTypeOpaque)
     {
-      const OpaqueSurfaceMaterial emissiveOpaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(emissiveSurface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
+      OpaqueSurfaceMaterial emissiveOpaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(emissiveSurface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
+      //emissiveOpaqueSurfaceMaterial.emissiveIntensity = 1.0;
       const OpaqueSurfaceMaterialInteraction emissiveOpaqueSurfaceMaterialInteraction =
         opaqueSurfaceMaterialInteractionCreate(emissiveOpaqueSurfaceMaterial, emissiveSurface, emissiveSurfaceInteraction, emissiveRayInteracton);
 
@@ -105,7 +111,11 @@ float getTriangleLight(uint2 data, vec3 cellCenter, inout RNG randomState)
 #endif
         float triangleArea = emissiveSurfaceInteraction.triangleArea;
         vec3 radiance = emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance;
-        float luminance = calcBt709Luminance(emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance);
+        f16vec4 ecolor;
+        surfaceMaterialInteractionTextureReadHelper(emissiveOpaqueSurfaceMaterial.emissiveColorTextureIndex, emissiveSurfaceInteraction, ecolor);
+        //radiance = ecolor.rgb;// * emissiveOpaqueSurfaceMaterial.emissiveIntensity;
+      
+        float luminance = calcBt709Luminance(radiance);
         triangleLight = luminance * triangleArea * g;//cosTheta / (cellDistance * cellDistance);
         //triangleLight = sqrt(triangleLight);
       }
@@ -141,8 +151,13 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   if (localIndex.x < oldIDCount /*&& getNextSampleBlueNoise(rng) < 0.99*/)
   {
     int oldCount = 0;
-    InterlockedAdd(s_tarTaskCount, 1, oldCount);
-    s_tarTaskList[oldCount] = cell.getCandidate(localIndex.x).getIDData();
+    //InterlockedAdd(s_tarTaskCount, 1, oldCount);
+    s_tarTaskList[localIndex.x] = cell.getCandidate(localIndex.x).getIDData();
+  }
+
+  if (localIndex.x == 0 && localIndex.y == 0)
+  {
+    s_tarTaskCount = oldIDCount;
   }
   GroupMemoryBarrierWithGroupSync();
 
@@ -167,6 +182,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
     }
     insertTask = isNewTask;
   }
+  GroupMemoryBarrierWithGroupSync();
 
   if (insertTask /*&& s_tarTaskCount < RADIANCE_CACHE_ELEMENTS-1*/)
   {
@@ -198,7 +214,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   if (localIndex.x == 0 && localIndex.y == 0)
   {
     // if (cb.debugKnob.z == 0)
-    if(0)
+    if(1)
     {
       for (int i = 0; i < s_tarTaskCount-1; ++i)
       {

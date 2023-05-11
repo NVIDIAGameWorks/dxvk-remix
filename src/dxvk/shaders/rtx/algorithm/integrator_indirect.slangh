@@ -1000,7 +1000,9 @@ void integratorIndirectPathOutputDebugView(
       if (cell.isValid())
       {
         int count = cell.getCandidateCount();
-        color = lerp(vec3(1,0,0), vec3(0,1,0), count / float(RADIANCE_CACHE_ELEMENTS));
+        color = lerp(vec3(1,0,0), vec3(0,1,0), count / float(NEECell.getMaxCandidateCount()-1));
+        NEECandidate can = cell.getCandidate(0);
+        color = vec3(can.getSurfaceID() % 255, can.getPrimitiveID() % 255, 0) / 255.0;
       }
       storeInDebugView(ivec2(pixelCoordinate), color);
       /*
