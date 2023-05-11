@@ -21,6 +21,7 @@
 #include "rtx_render/rtx_pathtracer_integrate_direct.h"
 #include "rtx_render/rtx_pathtracer_integrate_indirect.h"
 #include "rtx_render/rtx_demodulate.h"
+#include "rtx_render/rtx_neecache.h"
 #include "rtx_render/rtx_denoise.h"
 #include "rtx_render/rtx_dlss.h"
 #include "rtx_render/rtx_nis.h"
@@ -80,6 +81,7 @@ namespace dxvk {
       m_pathtracerIntegrateDirect(device),
       m_pathtracerIntegrateIndirect(device),
       m_demodulate(device),
+      m_neeCache(device),
       m_primaryDirectLightDenoiser(device, DenoiserType::DirectLight),
       m_primaryIndirectLightDenoiser(device, DenoiserType::IndirectLight),
       m_primaryCombinedLightDenoiser(device, DenoiserType::DirectAndIndirectLight),
@@ -180,6 +182,10 @@ namespace dxvk {
 
     DemodulatePass& metaDemodulate() {
       return m_demodulate.get();
+    }
+
+    NeeCachePass& metaNeeCache() {
+      return m_neeCache.get();
     }
 
     DxvkDenoise& metaPrimaryDirectLightDenoiser() {
@@ -333,6 +339,7 @@ namespace dxvk {
     Active<DxvkPathtracerIntegrateDirect>   m_pathtracerIntegrateDirect;
     Active<DxvkPathtracerIntegrateIndirect> m_pathtracerIntegrateIndirect;
     Active<DemodulatePass>                  m_demodulate;
+    Active<NeeCachePass>                    m_neeCache;
     Active<DxvkDenoise>                     m_primaryDirectLightDenoiser;
     Active<DxvkDenoise>                     m_primaryIndirectLightDenoiser;
     Active<DxvkDenoise>                     m_primaryCombinedLightDenoiser;

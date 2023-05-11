@@ -432,6 +432,9 @@ namespace dxvk {
         // Demodulation
         dispatchDemodulate(rtOutput);
 
+        // NEE Cache
+        dispatchNeeCache(rtOutput);
+
         // Note: Primary direct diffuse/specular radiance textures noisy and in a demodulated state after demodulation step.
         if (captureScreenImage && captureDebugImage) {
           takeScreenshot("noisyDiffuse", rtOutput.m_primaryDirectDiffuseRadiance.image(Resources::AccessType::Read));
@@ -1347,6 +1350,12 @@ namespace dxvk {
     ScopedCpuProfileZone();
     DemodulatePass& demodulate = m_common->metaDemodulate();
     demodulate.dispatch(this, rtOutput);
+  }
+
+  void RtxContext::dispatchNeeCache(const Resources::RaytracingOutput& rtOutput) {
+    ZoneScoped;
+    NeeCachePass& neeCache = m_common->metaNeeCache();
+    neeCache.dispatch(this, rtOutput);
   }
   
   void RtxContext::dispatchReferenceDenoise(const Resources::RaytracingOutput& rtOutput, float frameTimeSecs) {
