@@ -87,6 +87,7 @@ namespace dxvk {
         {DEBUG_VIEW_ANISOTROPIC_ROUGHNESS, "Anisotropic Roughness"},
         {DEBUG_VIEW_OPACITY, "Opacity"},
         {DEBUG_VIEW_EMISSIVE_RADIANCE, "Emissive Radiance"},
+        {DEBUG_VIEW_EMISSIVE_FLUX, "Emissive Flux"},
         {DEBUG_VIEW_THIN_FILM_THICKNESS, "Thin Film Thickness"},
 
         {DEBUG_VIEW_IS_BAKED_TERRAIN, "Terrain: Is Baked Terrain (RGS only)"},
