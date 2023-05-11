@@ -417,6 +417,9 @@ namespace dxvk {
         // RTXDI
         m_common->metaRtxdiRayQuery().dispatch(this, rtOutput);
         
+        // NEE Cache
+        dispatchNeeCache(rtOutput);
+        
         // Integration Raytracing
         dispatchIntegrate(rtOutput);
 
@@ -431,9 +434,6 @@ namespace dxvk {
 
         // Demodulation
         dispatchDemodulate(rtOutput);
-
-        // NEE Cache
-        dispatchNeeCache(rtOutput);
 
         // Note: Primary direct diffuse/specular radiance textures noisy and in a demodulated state after demodulation step.
         if (captureScreenImage && captureDebugImage) {
