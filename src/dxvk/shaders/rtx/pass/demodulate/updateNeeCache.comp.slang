@@ -47,6 +47,13 @@ groupshared uint2 s_tarTaskList[RADIANCE_CACHE_ELEMENTS * 2];
 groupshared float s_tarLight[RADIANCE_CACHE_ELEMENTS * 2];
 groupshared int s_tarTaskCount;
 
+uint2 mapIDData(uint2 data)
+{
+  uint2 newData = data;
+  newData.x = surfaceMapping[newData.x];
+  return newData;
+}
+
 float getGeometricTerm(vec3 surfacePosition, vec3 samplePosition, f16vec3 sampleNormal)
 {
   float cellSize = NEECache.getCellSize() * 1;
@@ -145,7 +152,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   int taskCount = cell.getTaskCount();
   int taskID = localIndex.x;  
   int2 task = cell.getTask(taskID);
-  s_srcTaskList[taskID] = task;
+  s_srcTaskList[taskID] = mapIDData(task);
 
   // load old id to shared memory
   int oldIDCount = cell.getCandidateCount();
@@ -153,7 +160,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   {
     int oldCount = 0;
     //InterlockedAdd(s_tarTaskCount, 1, oldCount);
-    s_tarTaskList[localIndex.x] = cell.getCandidate(localIndex.x).getIDData(true);
+    s_tarTaskList[localIndex.x] = mapIDData(cell.getCandidate(localIndex.x).getIDData());
   }
 
   if (localIndex.x == 0 && localIndex.y == 0)

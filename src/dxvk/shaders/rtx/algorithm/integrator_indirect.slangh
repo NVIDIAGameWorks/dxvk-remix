@@ -407,7 +407,7 @@ void integratePathVertex(
 
       for (int i = 0; i < cell.getCandidateCount(); ++i)
       {
-        int2 candidate = cell.getCandidate(i).getIDData(true);
+        int2 candidate = cell.getCandidate(i).getIDData();
         if (all(candidate == task))
         {
           hasNEE = true;
@@ -566,7 +566,7 @@ void integratePathVertex(
         {
           float lightObjectPdf = 0;
           NEECandidate candidate = cell.sampleCandidate(getNextSampleBlueNoise(randomState), lightObjectPdf);
-          int surfaceIndex = candidate.getSurfaceID(true);
+          int surfaceIndex = candidate.getSurfaceID();
           int primitiveIndex = candidate.getPrimitiveID();// = int4(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex,0,0);
           if (candidate.isValid())
           {
@@ -1011,7 +1011,7 @@ void integratorIndirectPathOutputDebugView(
         int count = cell.getCandidateCount();
         color = lerp(vec3(1,0,0), vec3(0,1,0), count / float(NEECell.getMaxCandidateCount()-1));
         NEECandidate can = cell.getCandidate(0);
-        color = vec3(can.getSurfaceID(false) % 255, can.getPrimitiveID() % 255, 0) / 255.0;
+        color = vec3(can.getSurfaceID() % 255, can.getPrimitiveID() % 255, 0) / 255.0;
       }
       storeInDebugView(ivec2(pixelCoordinate), color);
     }
