@@ -523,69 +523,89 @@ namespace dxvk {
 
   std::shared_future<SkinningData> D3D9Rtx::processSkinning(const RasterGeometry& geoData) {
     ScopedCpuProfileZone();
-    if (d3d9State().renderStates[D3DRS_VERTEXBLEND] != D3DVBF_DISABLE) {
-      bool hasBlendIndices = d3d9State().vertexDecl != nullptr ? d3d9State().vertexDecl->TestFlag(D3D9VertexDeclFlag::HasBlendIndices) : false;
-      bool indexedVertexBlend = hasBlendIndices && d3d9State().renderStates[D3DRS_INDEXEDVERTEXBLENDENABLE];
 
-      uint32_t numBonesPerVertex = 0;
-      switch (d3d9State().renderStates[D3DRS_VERTEXBLEND]) {
-      case D3DVBF_0WEIGHTS: numBonesPerVertex = 1; break;
-      case D3DVBF_1WEIGHTS: numBonesPerVertex = 2; break;
-      case D3DVBF_2WEIGHTS: numBonesPerVertex = 3; break;
-      case D3DVBF_3WEIGHTS: numBonesPerVertex = 4; break;
-      }
+    static const auto kEmptySkinningFuture = std::shared_future<SkinningData>();
 
-      RasterBuffer blendIndices;
-      // Analyze the vertex data and find the min and max bone indices used in this mesh.
-      // The min index is used to detect a case when vertex blend is enabled but there is just one bone used in the mesh,
-      // so we can drop the skinning pass. That is processed in RtxContext::commitGeometryToRT(...)
-      if (indexedVertexBlend && geoData.blendIndicesBuffer.defined()) {
-        blendIndices = geoData.blendIndicesBuffer;
-        // Acquire prevents the staging allocator from re-using this memory
-        blendIndices.buffer()->acquire(DxvkAccess::Read);
-      }
+    if (m_parent->UseProgrammableVS()) {
+      return kEmptySkinningFuture;
+    }
       
-      const uint32_t vertexCount = geoData.vertexCount;
+    // Some games set vertex blend without enough data to actually do the blending, handle that logic below.
 
-      return m_gpeWorkers.Schedule([cBoneMatrices = d3d9State().transforms, blendIndices, numBonesPerVertex, vertexCount]() -> SkinningData {
-        ScopedCpuProfileZone();
-        uint32_t numBones = numBonesPerVertex;
+    const bool hasBlendWeight = d3d9State().vertexDecl != nullptr ? d3d9State().vertexDecl->TestFlag(D3D9VertexDeclFlag::HasBlendWeight) : false;
+    const bool hasBlendIndices = d3d9State().vertexDecl != nullptr ? d3d9State().vertexDecl->TestFlag(D3D9VertexDeclFlag::HasBlendIndices) : false;
+    const bool indexedVertexBlend = hasBlendIndices && d3d9State().renderStates[D3DRS_INDEXEDVERTEXBLENDENABLE];
 
-        int minBoneIndex = 0;
-        if (blendIndices.defined()) {
-          const uint8_t* pBlendIndices = (uint8_t*)blendIndices.mapPtr(blendIndices.offsetFromSlice());
-          // Find out how many bone indices are specified for each vertex.
-          // This is needed to find out the min bone index and ignore the padding zeroes.
-          int maxBoneIndex = -1;
-          if (!getMinMaxBoneIndices(pBlendIndices, blendIndices.stride(), vertexCount, numBonesPerVertex, minBoneIndex, maxBoneIndex)) {
-            minBoneIndex = 0;
-            maxBoneIndex = 0;
-          }
-          numBones = maxBoneIndex + 1;
-
-          // Release this memory back to the staging allocator
-          blendIndices.buffer()->release(DxvkAccess::Read);
-        }
-
-        // Pass bone data to RT back-end
-        std::vector<Matrix4> bones;
-        bones.resize(numBones);
-        for (uint32_t i = 0; i < numBones; i++) {
-          bones[i] = cBoneMatrices[GetTransformIndex(D3DTS_WORLDMATRIX(i))];
-        }
-
-        SkinningData skinningData;
-        skinningData.pBoneMatrices = bones;
-        skinningData.minBoneIndex = minBoneIndex;
-        skinningData.numBones = numBones;
-        skinningData.numBonesPerVertex = numBonesPerVertex;
-        skinningData.computeHash(); // Computes the hash and stores it in the skinningData itself
-
-        return skinningData;
-      });
+    if (d3d9State().renderStates[D3DRS_VERTEXBLEND] == D3DVBF_DISABLE) {
+      return kEmptySkinningFuture;
     }
 
-    return std::shared_future<SkinningData>(); // empty future
+    if (d3d9State().renderStates[D3DRS_VERTEXBLEND] != D3DVBF_0WEIGHTS) {
+      if (!hasBlendWeight) {
+        return kEmptySkinningFuture;
+      }
+    } else if (!indexedVertexBlend) {
+      return kEmptySkinningFuture;
+    }
+
+    // We actually have skinning data now, process it!
+
+    uint32_t numBonesPerVertex = 0;
+    switch (d3d9State().renderStates[D3DRS_VERTEXBLEND]) {
+    case D3DVBF_0WEIGHTS: numBonesPerVertex = 1; break;
+    case D3DVBF_1WEIGHTS: numBonesPerVertex = 2; break;
+    case D3DVBF_2WEIGHTS: numBonesPerVertex = 3; break;
+    case D3DVBF_3WEIGHTS: numBonesPerVertex = 4; break;
+    }
+
+    RasterBuffer blendIndices;
+    // Analyze the vertex data and find the min and max bone indices used in this mesh.
+    // The min index is used to detect a case when vertex blend is enabled but there is just one bone used in the mesh,
+    // so we can drop the skinning pass. That is processed in RtxContext::commitGeometryToRT(...)
+    if (indexedVertexBlend && geoData.blendIndicesBuffer.defined()) {
+      blendIndices = geoData.blendIndicesBuffer;
+      // Acquire prevents the staging allocator from re-using this memory
+      blendIndices.buffer()->acquire(DxvkAccess::Read);
+    }
+      
+    const uint32_t vertexCount = geoData.vertexCount;
+
+    return m_gpeWorkers.Schedule([cBoneMatrices = d3d9State().transforms, blendIndices, numBonesPerVertex, vertexCount]() -> SkinningData {
+      ScopedCpuProfileZone();
+      uint32_t numBones = numBonesPerVertex;
+
+      int minBoneIndex = 0;
+      if (blendIndices.defined()) {
+        const uint8_t* pBlendIndices = (uint8_t*)blendIndices.mapPtr(blendIndices.offsetFromSlice());
+        // Find out how many bone indices are specified for each vertex.
+        // This is needed to find out the min bone index and ignore the padding zeroes.
+        int maxBoneIndex = -1;
+        if (!getMinMaxBoneIndices(pBlendIndices, blendIndices.stride(), vertexCount, numBonesPerVertex, minBoneIndex, maxBoneIndex)) {
+          minBoneIndex = 0;
+          maxBoneIndex = 0;
+        }
+        numBones = maxBoneIndex + 1;
+
+        // Release this memory back to the staging allocator
+        blendIndices.buffer()->release(DxvkAccess::Read);
+      }
+
+      // Pass bone data to RT back-end
+      std::vector<Matrix4> bones;
+      bones.resize(numBones);
+      for (uint32_t i = 0; i < numBones; i++) {
+        bones[i] = cBoneMatrices[GetTransformIndex(D3DTS_WORLDMATRIX(i))];
+      }
+
+      SkinningData skinningData;
+      skinningData.pBoneMatrices = bones;
+      skinningData.minBoneIndex = minBoneIndex;
+      skinningData.numBones = numBones;
+      skinningData.numBonesPerVertex = numBonesPerVertex;
+      skinningData.computeHash(); // Computes the hash and stores it in the skinningData itself
+
+      return skinningData;
+    });
   }
 
   template<bool FixedFunction>
