@@ -200,9 +200,11 @@ namespace dxvk {
 
 
   uint32_t SetupRenderStateBlock(SpirvModule& spvModule, uint32_t count) {
+// NV-DXVK start
     const uint32_t uintType = spvModule.defIntType(32, false);
     const uint32_t floatType = spvModule.defFloatType(32);
     const uint32_t vec3Type = spvModule.defVectorType(floatType, 3);
+// NV-DXVK end
 
     std::array<uint32_t, 11> rsMembers = {{
       vec3Type,
@@ -210,13 +212,14 @@ namespace dxvk {
       floatType,
       floatType,
       floatType,
+
       floatType,
       floatType,
       floatType,
       floatType,
       floatType,
       floatType,
-    } };
+    }};
 
     uint32_t rsStruct = spvModule.defStructTypeUnique(count, rsMembers.data());
     uint32_t rsBlock = spvModule.newVar(
@@ -426,8 +429,10 @@ namespace dxvk {
 
 
   enum class D3D9FFVSMembers {
+// NV-DXVK start
     WorldMatrix,
     ViewMatrix,
+// NV-DXVK end
     WorldViewMatrix,
     NormalMatrix,
     InverseViewMatrix,
@@ -473,8 +478,10 @@ namespace dxvk {
     uint32_t lightType;
 
     struct {
+// NV-DXVK start
       uint32_t world;
       uint32_t view;
+// NV-DXVK end
       uint32_t worldview;
       uint32_t normal;
       uint32_t inverseView;
@@ -771,6 +778,9 @@ namespace dxvk {
                       || semantic == DxsoSemantic{ DxsoUsage::Color, 1 };
 
     if (diffuseOrSpec && m_fsKey.Stages[0].Contents.GlobalFlatShade)
+// NV-DXVK start: color output must not be flat from the fragment shader
+      if (input)
+// NV-DXVK end
       m_module.decorate(ptr, spv::DecorationFlat);
 
     std::string name = str::format(input ? "in_" : "out_", semantic.usage, semantic.usageIndex);
@@ -926,12 +936,16 @@ namespace dxvk {
 
       uint32_t flags = (m_vsKey.Data.Contents.TransformFlags >> (i * 3)) & 0b111;
       uint32_t count = flags;
+// NV-DXVK start
       uint32_t texcoordCount = (m_vsKey.Data.Contents.TexcoordDeclMask >> (3 * inputIndex)) & 0x7;
+// NV-DXVK end
       switch (inputFlags) {
         default:
         case (DXVK_TSS_TCI_PASSTHRU >> TCIOffset):
           transformed = m_vs.in.TEXCOORD[inputIndex & 0xFF];
+// NV-DXVK start
           count = std::min(count, texcoordCount);
+// NV-DXVK end
           break;
 
         case (DXVK_TSS_TCI_CAMERASPACENORMAL >> TCIOffset):
@@ -986,6 +1000,9 @@ namespace dxvk {
       }
 
       uint32_t type = flags;
+// NV-DXVK start: if no texcoords, treat as disabled
+      if (count > 0)
+// NV-DXVK end
       if (type != D3DTTFF_DISABLE) {
         if (!m_vsKey.Data.Contents.HasPositionT) {
           for (uint32_t j = count; j < 4; j++) {
@@ -995,6 +1012,8 @@ namespace dxvk {
             // Very weird quirk in order to get texcoord transforms to work like they do in native.
             // In future, maybe we could sort this out properly by chopping matrices of different sizes, but thats
             // a project for another day.
+// NV-DXVK start
+// NV-DXVK end
             uint32_t value = j > texcoordCount ? m_module.constf32(0) : m_module.constf32(1);
             transformed = m_module.opCompositeInsert(m_vec4Type, value, transformed, 1, &j);
           }
@@ -1268,8 +1287,10 @@ namespace dxvk {
     std::array<uint32_t, uint32_t(D3D9FFVSMembers::MemberCount)> members = {
       m_mat4Type, // World
       m_mat4Type, // View
+// NV-DXVK start
       m_mat4Type, // WorldView
       m_mat4Type, // Normal
+// NV-DXVK end
       m_mat4Type, // InverseView
       m_mat4Type, // Proj
 
@@ -1342,8 +1363,10 @@ namespace dxvk {
 
     m_module.setDebugName(structType, "D3D9FixedFunctionVS");
     uint32_t member = 0;
+// NV-DXVK start
     m_module.setDebugMemberName(structType, member++, "World");
     m_module.setDebugMemberName(structType, member++, "View");
+// NV-DXVK end
     m_module.setDebugMemberName(structType, member++, "WorldView");
     m_module.setDebugMemberName(structType, member++, "Normal");
     m_module.setDebugMemberName(structType, member++, "InverseView");

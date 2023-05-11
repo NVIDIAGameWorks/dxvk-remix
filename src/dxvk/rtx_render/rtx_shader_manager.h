@@ -1,3 +1,24 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
 #pragma once
 
 #include <vector>
@@ -183,10 +204,16 @@ namespace dxvk {
 
   class ShaderManager {
   public:
-    static ShaderManager* getInstance();
+    ShaderManager(const ShaderManager& other) = delete;
+    ShaderManager(ShaderManager&& other) noexcept = delete;
+    ShaderManager& operator=(const ShaderManager& other) = delete;
+    ShaderManager& operator=(ShaderManager&& other) noexcept = delete;
 
-    void setDevice(DxvkDevice* device) { 
-      m_device = device; 
+    static ShaderManager* getInstance();
+    static void destroyInstance();
+
+    void setDevice(DxvkDevice* device) {
+      m_device = device;
     }
 
     void addGlobalExtraLayout(const VkDescriptorSetLayout extraLayout) {
@@ -250,8 +277,7 @@ namespace dxvk {
     };
 
     ShaderManager();
-
-    ~ShaderManager();
+    ~ShaderManager() = default;
 
     bool compileShaders();
 
@@ -274,35 +300,27 @@ namespace dxvk {
 
     static ShaderManager* s_instance;
 
-    // Note: Relative paths from the source root (which may vary at runtime) to various folders and tools involved in shader compilation.
-    // These paths should be kept in sync with the project's structure if it changes.
-    const std::filesystem::path shaderFolderRelativePath{ "src/dxvk/shaders" };
-    const std::filesystem::path rtxShaderFolderRelativePath{ "src/dxvk/shaders/rtx" };
-    const std::filesystem::path rtxdiIncludeFolderRelativePath{ "submodules/rtxdi/rtxdi-sdk/include" };
-    const std::filesystem::path compileScriptRelativePath{ "scripts-common/compile_shaders.py" };
-    const std::filesystem::path glslangRelativePath{ "external/glslangValidator/glslangValidator.exe" };
-    const std::filesystem::path slangcRelativePath{ "external/slang/slangc.exe" };
+    std::filesystem::path m_sourceRootPath;
+    const std::filesystem::path m_tempFolderPath;
 
-    std::filesystem::path m_sourceRootPath{ BUILD_SOURCE_ROOT };
-    std::filesystem::path m_tempFolderPath{ std::filesystem::temp_directory_path() };
     // Note: Paths reduced to string in advance to avoid constant conversions to UTF-8 strings from path objects (paths should still be used
     // whenever a path needs to be manipulated).
-    std::string m_tempFolder{ m_tempFolderPath.u8string() };
+    const std::string m_tempFolder;
     std::string m_shaderFolder;
     std::string m_rtxShaderFolder;
     std::string m_rtxdiIncludeFolder;
     std::string m_compileScript;
     std::string m_glslang;
     std::string m_slangc;
-    bool m_recompileShadersOnLaunch = false;
-    
+    bool m_recompileShadersOnLaunch;
+
     DxvkDevice* m_device;
 
     std::vector<VkDescriptorSetLayout> m_extraLayouts;
 
     std::unordered_map<std::string, ShaderInfo> m_shaderMap;
     dxvk::mutex m_shaderMapLock;
-    
-    HANDLE m_shaderChangeNotificationObject = NULL;
+
+    HANDLE m_shaderChangeNotificationObject;
   };
 }
