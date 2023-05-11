@@ -130,8 +130,8 @@ float getTriangleLight(uint2 data, vec3 cellCenter, inout RNG randomState)
 void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupThreadID)
 {
   int3 cellID = threadIndex / int3(RADIANCE_CACHE_ELEMENTS,1,1);
-  NEECell cell = NEECache.createCell(cellID);
-  vec3 cellCenter = NEECache.cellToPoint(cellID);
+  NEECell cell = NEECache.getCell(cellID);
+  vec3 cellCenter = NEECache.cellToCenterPoint(cellID);
 
   RNG rng = createRNG(uvec2(threadIndex.xy /*+ threadIndex.z * RADIANCE_CACHE_ELEMENTS * 20 * 20*/), cb.frameIdx, threadIndex.z);
 
@@ -255,7 +255,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
       }
     }
 
-    s_tarTaskCount = cb.debugKnob.x != 0 ? min(s_tarTaskCount, NEECell.getMaxCandidateCount()) : 0;
+    s_tarTaskCount = cb.enableNeeCache != 0 ? min(s_tarTaskCount, NEECell.getMaxCandidateCount()) : 0;
     cell.setTaskCount(0);
     cell.setCandidateCount(s_tarTaskCount);
 
@@ -276,7 +276,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
     }
     for (int i = 0; i < s_tarTaskCount; ++i)
     {
-      if (cb.debugKnob.y > 0)
+      if (cb.enableNeeCacheImportanceSampling > 0)
       {
         s_tarLight[i] = saturate(s_tarLight[i] / totalLight);
       }

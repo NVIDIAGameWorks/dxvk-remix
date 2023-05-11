@@ -397,9 +397,9 @@ void integratePathVertex(
   // Add Emission
   vec3 emissiveLight = polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(polymorphicSurfaceMaterialInteraction);
   bool hasNEE = false;
-  if (cb.debugKnob.x > 0 && any(emissiveLight) > 0)
+  if (cb.enableNeeCache > 0 && any(emissiveLight) > 0)
   {
-    NEECell cell = NEECache.createCell(oldOrigin);
+    NEECell cell = NEECache.findCell(oldOrigin, true);
     if (cell.isValid())
     {
       uint2 task = uint2(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex);
@@ -556,9 +556,9 @@ void integratePathVertex(
       updateReSTIRGIHitDistance(oldLuminance, calcBt709Luminance(pathState.radiance), restirHitT, min(hitT, float16Max));
     }
 
-    if(cb.debugKnob.x > 0)
+    if(cb.enableNeeCache > 0)
     {
-      NEECell cell = NEECache.createCell(surfaceInteraction.position);
+      NEECell cell = NEECache.findCell(surfaceInteraction.position, true);
       if (cell.isValid())
       {
         int candidateCount = cell.getCandidateCount();
@@ -995,7 +995,16 @@ void integratorIndirectPathOutputDebugView(
   case DEBUG_VIEW_NOISY_SECONDARY_INDIRECT_SPECULAR_RADIANCE:
     if (geometryFlags.primarySelectedIntegrationSurface)
     {
-      NEECell cell = NEECache.createCell(rayOrigin);
+      if (geometryFlags.firstSampledLobeIsSpecular)
+        storeInDebugView(ivec2(pixelCoordinate), pathState.radiance);
+      else
+        storeInDebugView(ivec2(pixelCoordinate), 0);
+    }
+    break;    
+  case DEBUV_VIEW_NEE_CACHE_CANDIDATE_ID:
+    if (geometryFlags.primarySelectedIntegrationSurface)
+    {
+      NEECell cell = NEECache.findCell(rayOrigin, false);
       vec3 color = 0;
       if (cell.isValid())
       {
@@ -1005,14 +1014,6 @@ void integratorIndirectPathOutputDebugView(
         color = vec3(can.getSurfaceID() % 255, can.getPrimitiveID() % 255, 0) / 255.0;
       }
       storeInDebugView(ivec2(pixelCoordinate), color);
-      /*
-      if (geometryFlags.firstSampledLobeIsSpecular)
-        storeInDebugView(ivec2(pixelCoordinate), pathState.radiance);
-      else
-        storeInDebugView(ivec2(pixelCoordinate), 0);*/
-      //uvec2 radiancePixel = pixelCoordinate / 3;
-      //vec4 radiance = RadianceCache[radiancePixel];
-      //storeInDebugView(ivec2(pixelCoordinate), radiance);
     }
     break;
   case DEBUG_VIEW_NAN:

@@ -50,6 +50,8 @@ namespace dxvk {
     // RTX_OPTION("rtx.demodulate", bool, enableDirectLightBoilingFilter, true, "Boiling filter removing direct light sample when its luminance is too high.");
     // RTX_OPTION("rtx.demodulate", float, directLightBoilingThreshold, 5.f, "Remove direct light sample when its luminance is higher than the average one multiplied by this threshold .");
 
+    RTX_OPTION("rtx.neeCache", bool, enabled, true, "Enable NEE cache.");
+    RTX_OPTION("rtx.neeCache", bool, enableImportanceSampling, true, "Enable importance sampling.");
   private:
     Rc<vk::DeviceFn> m_vkd;
 
