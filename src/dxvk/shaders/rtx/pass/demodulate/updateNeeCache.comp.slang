@@ -52,7 +52,7 @@ float getGeometricTerm(vec3 surfacePosition, vec3 samplePosition, f16vec3 sample
   float cellSize = NEECache.getCellSize() * 1;
   vec3 offset = samplePosition - surfacePosition;
   float cellDistance = length(offset);
-  float cosTheta = cellDistance < cellSize ? 1.0 : saturate(dot(sampleNormal, normalize(offset)));
+  float cosTheta = lerp(1.0, abs(dot(sampleNormal, normalize(offset))), saturate(cellDistance / cellSize - 1));
   cellDistance = max(cellDistance, cellSize);
   return cosTheta / (cellDistance * cellDistance);
 }
@@ -112,12 +112,13 @@ float getTriangleLight(uint2 data, vec3 cellCenter, inout RNG randomState)
         float triangleArea = emissiveSurfaceInteraction.triangleArea;
         vec3 radiance = emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance;
         f16vec4 ecolor;
-        surfaceMaterialInteractionTextureReadHelper(emissiveOpaqueSurfaceMaterial.emissiveColorTextureIndex, emissiveSurfaceInteraction, ecolor);
+        //surfaceMaterialInteractionTextureReadHelper(emissiveOpaqueSurfaceMaterial.emissiveColorTextureIndex, emissiveSurfaceInteraction, ecolor);
         //radiance = ecolor.rgb;// * emissiveOpaqueSurfaceMaterial.emissiveIntensity;
       
         float luminance = calcBt709Luminance(radiance);
         triangleLight = luminance * triangleArea * g;//cosTheta / (cellDistance * cellDistance);
         //triangleLight = sqrt(triangleLight);
+        triangleLight = clamp(triangleLight,0, floatMax / 32.0);
       }
     }
   }
@@ -214,7 +215,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   if (localIndex.x == 0 && localIndex.y == 0)
   {
     // if (cb.debugKnob.z == 0)
-    if(1)
+    if(0)
     {
       for (int i = 0; i < s_tarTaskCount-1; ++i)
       {
@@ -236,11 +237,12 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
     else
     {
       int validCount = min(s_tarTaskCount, NEECell.getMaxCandidateCount());
+      int fixedCount = 0;//NEECell.getMaxCandidateCount() / 2;
       for (int i = NEECell.getMaxCandidateCount(); i < s_tarTaskCount; ++i)
       {
         //int targetID = (s_tarTaskList[i].y + cb.frameIdx) % validCount;//min(getNextSampleBlueNoise(rng) * validCount, validCount-1);
         //int targetID = min(getNextSampleBlueNoise(rng) * validCount, validCount-1);
-        int targetID = (cb.frameIdx + i) % validCount;
+        int targetID = fixedCount + (cb.frameIdx + i) % (validCount - fixedCount);
         float ft = s_tarLight[i];
         float fs = s_tarLight[targetID];
         float rnd = getNextSampleBlueNoise(rng);
