@@ -554,6 +554,10 @@ namespace dxvk {
         transforms.objectToWorld = transforms.objectToWorld * replacement.replacementToObject;
         transforms.objectToView = transforms.objectToView * replacement.replacementToObject;
         
+        // Mesh replacements dont support these.
+        transforms.textureTransform = Matrix4();
+        transforms.texgenMode = TexGenMode::None;
+
         const DrawCallState newDrawCallState{
           *replacement.geometryData, // Note: Geometry Data replaced
           input->getMaterialData(), // Note: Original legacy material data preserved
