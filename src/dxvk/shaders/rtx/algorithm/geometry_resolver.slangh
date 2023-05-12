@@ -547,6 +547,9 @@ void geometryResolverOutputDebugView(
     storeInDebugView(pixelCoordinate, emissiveRadiance * (cb.debugView == DEBUG_VIEW_EMISSIVE_FLUX ? surfaceInteraction.triangleArea: 1.0));
 
     break;
+  case DEBUG_VIEW_SURFACE_AREA:
+    storeInDebugView(pixelCoordinate, surfaceInteraction.triangleArea);
+    break;
   case DEBUG_VIEW_THIN_FILM_THICKNESS:
     float16_t thinFilmThickness = float16_t(0.0f);
 
