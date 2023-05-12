@@ -140,6 +140,7 @@ namespace dxvk {
     uint32_t m_drawCallID = 0;
 
     bool m_rtxInjectTriggered = false;
+    bool m_forceGeometryCopy = false;
 
     Rc<DxvkBuffer> m_vsVertexCaptureData;
 
@@ -151,7 +152,8 @@ namespace dxvk {
     struct VertexContext {
       uint32_t stride = 0;
       uint32_t offset = 0;
-      DxvkBufferSliceHandle buffer;
+      DxvkBufferSlice buffer;
+      DxvkBufferSliceHandle mappedSlice;
     };
 
     static bool isPrimitiveSupported(const D3DPRIMITIVETYPE PrimitiveType) {
