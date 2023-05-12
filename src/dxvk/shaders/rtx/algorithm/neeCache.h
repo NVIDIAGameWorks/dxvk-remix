@@ -185,7 +185,7 @@ struct NEECell
 
 struct NEECache
 {
-  static float s_extend = 2000;
+  static float s_extend = 4000;
   static int cellToAddress(int3 cellID)
   {
     if (any(cellID == -1))
