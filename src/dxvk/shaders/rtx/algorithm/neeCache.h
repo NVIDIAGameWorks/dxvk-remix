@@ -185,7 +185,6 @@ struct NEECell
 
 struct NEECache
 {
-  static float s_extend = 4000;
   static int cellToAddress(int3 cellID)
   {
     if (any(cellID == -1))
@@ -203,9 +202,10 @@ struct NEECache
 
   static int3 pointToCell(vec3 position, bool jittered)
   {
+    float extend = cb.neeCacheRange;
     vec3 cameraPos = cameraGetWorldPosition(cb.camera);
-    vec3 origin = cameraPos - s_extend * 0.5;
-    vec3 UVW = (position - origin) / s_extend;
+    vec3 origin = cameraPos - extend * 0.5;
+    vec3 UVW = (position - origin) / extend;
 
     // jitter or not
     if(jittered)
@@ -238,15 +238,16 @@ struct NEECache
 
   static float getCellSize()
   {
-    return s_extend / RADIANCE_CACHE_PROBE_RESOLUTION;
+    return cb.neeCacheRange / RADIANCE_CACHE_PROBE_RESOLUTION;
   }
 
   static vec3 cellToCenterPoint(ivec3 cellID)
   {
+    float extend = cb.neeCacheRange;
     vec3 cameraPos = cameraGetWorldPosition(cb.camera);
-    vec3 origin = cameraPos - s_extend * 0.5;
+    vec3 origin = cameraPos - extend * 0.5;
     vec3 UVW = vec3(cellID + 0.5) / RADIANCE_CACHE_PROBE_RESOLUTION;
-    vec3 position = UVW * s_extend + origin;
+    vec3 position = UVW * extend + origin;
     return position;
   }
 
