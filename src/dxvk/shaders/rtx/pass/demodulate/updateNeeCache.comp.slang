@@ -69,7 +69,7 @@ float getTriangleLight(uint2 data, vec3 cellCenter, inout RNG randomState)
   int surfaceIndex = data.x;
   int primitiveIndex = data.y;// = int4(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex,0,0);
   float triangleLight = 0;
-  if (surfaceIndex >= 0 && surfaceIndex != BINDING_INDEX_INVALID && primitiveIndex >= 0)
+  if (surfaceIndex >= 0 && surfaceIndex < BINDING_INDEX_INVALID && surfaceIndex < cb.surfaceCount && primitiveIndex >= 0)
   {
     SURFACE_CREATE_READ(emissiveSurface0, surfaceIndex, surfaces);    
     Surface emissiveSurface = emissiveSurface0;
@@ -222,7 +222,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   if (localIndex.x == 0 && localIndex.y == 0)
   {
     // if (cb.debugKnob.z == 0)
-    if(0)
+    if(1)
     {
       for (int i = 0; i < s_tarTaskCount-1; ++i)
       {
