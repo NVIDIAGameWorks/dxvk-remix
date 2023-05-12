@@ -185,7 +185,7 @@ namespace dxvk {
       // Get vertex context
       const VertexContext& ctx = vertexContext[element.Stream];
 
-      if (ctx.buffer.handle == VK_NULL_HANDLE)
+      if (ctx.mappedSlice.handle == VK_NULL_HANDLE)
         continue;
 
       ScopedCpuProfileZoneN("Process Vertices");
@@ -194,7 +194,7 @@ namespace dxvk {
 
       // Validating index data here, vertexCount and vertexIndexOffset accounts for the min/max indices
       if (RtxOptions::Get()->getValidateCPUIndexData()) {
-        if (ctx.buffer.length < vertexOffset + numVertexBytes) {
+        if (ctx.mappedSlice.length < vertexOffset + numVertexBytes) {
           throw DxvkError("Invalid draw call");
         }
       }
@@ -232,14 +232,31 @@ namespace dxvk {
       if (targetBuffer != nullptr) {
         assert(!targetBuffer->defined());
 
-        // Only do the copy once
+        // Only do once for each stream
         if (!streamCopies[element.Stream].defined()) {
-          streamCopies[element.Stream] = m_rtStagingData.alloc(CACHE_LINE_SIZE, numVertexBytes);
+          // Deep clonning a buffer object is not cheap (320 bytes to copy and other work). Set a min-size threshold.
+          const uint32_t kMinSizeToClone = 512;
 
-          // Acquire prevents the staging allocator from re-using this memory
-          streamCopies[element.Stream].buffer()->acquire(DxvkAccess::Read);
+          // Check if buffer is actualy a d3d9 orphan
+          const bool isOrphan = !(ctx.buffer.getSliceHandle() == ctx.mappedSlice);
+          const bool canUseBuffer = m_forceGeometryCopy == false;
 
-          memcpy(streamCopies[element.Stream].mapPtr(0), (uint8_t*) ctx.buffer.mapPtr + vertexOffset, numVertexBytes);
+          if (canUseBuffer && !isOrphan) {
+            // Use the buffer directly if it is not an orphan
+            streamCopies[element.Stream] = ctx.buffer.subSlice(vertexOffset, numVertexBytes);
+          } else if (canUseBuffer && numVertexBytes > kMinSizeToClone) {
+            // Create a clone for the orphaned physical slice
+            auto clone = ctx.buffer.buffer()->clone();
+            clone->rename(ctx.mappedSlice);
+            streamCopies[element.Stream] = DxvkBufferSlice(clone, ctx.buffer.offset() + vertexOffset, numVertexBytes);
+          } else {
+            streamCopies[element.Stream] = m_rtStagingData.alloc(CACHE_LINE_SIZE, numVertexBytes);
+
+            // Acquire prevents the staging allocator from re-using this memory
+            streamCopies[element.Stream].buffer()->acquire(DxvkAccess::Read);
+
+            memcpy(streamCopies[element.Stream].mapPtr(0), (uint8_t*) ctx.mappedSlice.mapPtr + vertexOffset, numVertexBytes);
+          }
         }
 
         *targetBuffer = RasterBuffer(streamCopies[element.Stream], element.Offset, ctx.stride, DecodeDecltype(D3DDECLTYPE(element.Type)));
@@ -447,6 +464,9 @@ namespace dxvk {
     }
 
     assert(status == RtxGeometryStatus::RayTraced || status == RtxGeometryStatus::Rasterized);
+
+    m_forceGeometryCopy = RtxOptions::Get()->useBuffersDirectly() == false;
+    m_forceGeometryCopy |= m_parent->GetOptions()->allowDiscard == false;
 
     // The packet we'll send to RtxContext with information about geometry
     RasterGeometry geoData;
@@ -709,6 +729,23 @@ namespace dxvk {
 
     DxvkRtxTextureStageState texStageState = createTextureStageState(d3d9State(), firstStage);
 
+    if (!m_forceGeometryCopy) {
+      if (auto texture = d3d9State().textures[firstStage]) {
+        auto commonTexture = GetCommonTexture(texture);
+        auto hash = commonTexture->GetImage()->getHash();
+
+        if (RtxOptions::Get()->alwaysCopyDecalGeometries()) {
+          // Only poke decal hashes when option is enabled.
+          m_forceGeometryCopy |= RtxOptions::Get()->isDecalTexture(hash) ||
+                                 RtxOptions::Get()->isDynamicDecalTexture(hash) ||
+                                 RtxOptions::Get()->isNonOffsetDecalTexture(hash) ||
+                                 // Fixme: atm terrain and world-space ui are considered decals..
+                                 RtxOptions::Get()->isTerrainTexture(hash) ||
+                                 RtxOptions::Get()->isWorldSpaceUiTexture(hash);
+        }
+      }
+    }
+
     m_parent->EmitCs([texSlotsForRT, texStageState](DxvkContext* ctx) {
       static_cast<RtxContext*>(ctx)->setTextureStageState(texStageState);
       static_cast<RtxContext*>(ctx)->setTextureSlots(texSlotsForRT[0], texSlotsForRT[1]);
@@ -735,7 +772,8 @@ namespace dxvk {
       if (vbo != nullptr) {
         vertices[i].stride = dx9Vbo.stride;
         vertices[i].offset = dx9Vbo.offset;
-        vertices[i].buffer = vbo->GetMappedSlice();
+        vertices[i].buffer = vbo->GetBufferSlice<D3D9_COMMON_BUFFER_TYPE_MAPPING>();
+        vertices[i].mappedSlice = vbo->GetMappedSlice();
       }
     }
 
@@ -761,7 +799,8 @@ namespace dxvk {
     VertexContext vertices[caps::MaxStreams];
     vertices[0].stride = vertexStride;
     vertices[0].offset = 0;
-    vertices[0].buffer = buffer.slice.getSliceHandle(0, vertexSize);
+    vertices[0].buffer = buffer.slice.subSlice(0, vertexSize);
+    vertices[0].mappedSlice = buffer.slice.getSliceHandle(0, vertexSize);
 
     return internalPrepareDraw(indices, vertices, drawContext);
   }

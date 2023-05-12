@@ -66,6 +66,13 @@ namespace dxvk {
 
 
   DxvkBuffer::~DxvkBuffer() {
+    // NV-DXVK start: buffer clones for orphaned slices
+    if (m_parent != nullptr) {
+      // Clones own nothing. Bail out.
+      return;
+    }
+    // NV-DXVK end
+
     const auto& vkd = m_device->vkd();
 
     for (const auto& buffer : m_buffers)
@@ -208,6 +215,28 @@ namespace dxvk {
     return result;
   }
 
+  // NV-DXVK start: buffer clones for orphaned slices
+  DxvkBuffer::DxvkBuffer(DxvkBuffer& parent) 
+    : m_device   (parent.m_device),
+      m_info     (parent.m_info),
+      m_memAlloc (parent.m_memAlloc),
+      m_memFlags (parent.m_memFlags),
+      m_category (parent.m_category) {
+    m_buffer.buffer = parent.m_buffer.buffer;
+
+    m_physSlice = parent.m_physSlice;
+    m_vertexStride = parent.m_vertexStride;
+
+    m_parent = &parent;
+  }
+
+  Rc<DxvkBuffer> DxvkBuffer::clone() {
+    if (m_parent != nullptr) {
+      throw DxvkError("Refusing to clone a clone!");
+    }
+    return new DxvkBuffer(*this);
+  }
+  // NV-DXVK end
 
 
   
