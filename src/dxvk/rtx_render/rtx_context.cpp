@@ -1165,6 +1165,7 @@ namespace dxvk {
     auto& neeCache = m_common->metaNeeCache();
     constants.enableNeeCache = neeCache.enabled();
     constants.enableNeeCacheImportanceSampling = neeCache.enableImportanceSampling();
+    constants.surfaceCount = getSceneManager().getAccelManager().getSurfaceCount();
 
     auto* cameraTeleportDirectionInfo = getSceneManager().getRayPortalManager().getCameraTeleportationRayPortalDirectionInfo();
     constants.teleportationPortalIndex = cameraTeleportDirectionInfo ? cameraTeleportDirectionInfo->entryPortalInfo.portalIndex + 1 : 0;
