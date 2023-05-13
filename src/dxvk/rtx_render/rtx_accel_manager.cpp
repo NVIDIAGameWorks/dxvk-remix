@@ -863,7 +863,7 @@ namespace dxvk {
         if (surface.getPreviousSurfaceIndex() != BINDING_INDEX_INVALID) {
           uint32_t mappingID = surfaceIndex;
           if (surface.getVkInstance().mask == 0) {
-            mappingID = BINDING_INDEX_INVALID;
+            //mappingID = BINDING_INDEX_INVALID;
           }
           surfaceIndexMapping[surface.getPreviousSurfaceIndex()] = mappingID;
         }
