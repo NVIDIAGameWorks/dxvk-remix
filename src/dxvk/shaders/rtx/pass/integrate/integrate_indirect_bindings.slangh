@@ -102,6 +102,9 @@ RWByteAddressBuffer RadianceCache;
 layout(binding = INTEGRATE_INDIRECT_BINDING_RADIANCE_CACHE_TASK)
 RWByteAddressBuffer RadianceCacheTask;
 
+layout(rgba32ui, binding = INTEGRATE_INDIRECT_BINDING_RADIANCE_CACHE_THREAD_TASK)
+RWTexture2D<float4> RadianceCacheThreadTask;
+
 // Aliased resources
 
 layout(rgba16f, binding = INTEGRATE_INDIRECT_BINDING_ALIASED_DATA_0)
