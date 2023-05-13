@@ -310,6 +310,7 @@ namespace dxvk
       Rc<DxvkBuffer> m_restirGIReservoirBuffer;
       Rc<DxvkBuffer> m_radianceCache;
       Rc<DxvkBuffer> m_radianceCacheTask;
+      Resource m_radianceCacheThreadTask;
 
       VkExtent3D m_froxelVolumeExtent;
       uint32_t m_numFroxelVolumes;

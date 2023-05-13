@@ -48,6 +48,7 @@
 
 #define INTEGRATE_INDIRECT_BINDING_RADIANCE_CACHE                                      57
 #define INTEGRATE_INDIRECT_BINDING_RADIANCE_CACHE_TASK                                 58
+#define INTEGRATE_INDIRECT_BINDING_RADIANCE_CACHE_THREAD_TASK                          59
 // Storage
 
 #define INTEGRATE_INDIRECT_BINDING_DECAL_MATERIAL_STORAGE                              60
