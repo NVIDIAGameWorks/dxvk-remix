@@ -59,6 +59,10 @@ float getGeometricTerm(vec3 surfacePosition, vec3 samplePosition, f16vec3 sample
   float cellSize = NEECache.getCellSize() * 1;
   vec3 offset = samplePosition - surfacePosition;
   float cellDistance = length(offset);
+  if (cellDistance > NEECache.getVolumeSize() * 2)
+  {
+    return 0;
+  }
   float cosTheta = lerp(1.0, abs(dot(sampleNormal, normalize(offset))), saturate(cellDistance / cellSize - 1));
   cellDistance = max(cellDistance, cellSize);
   return cosTheta / (cellDistance * cellDistance);
@@ -69,7 +73,7 @@ float getTriangleLight(uint2 data, vec3 cellCenter, inout RNG randomState)
   int surfaceIndex = data.x;
   int primitiveIndex = data.y;// = int4(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex,0,0);
   float triangleLight = 0;
-  if (surfaceIndex >= 0 && surfaceIndex < BINDING_INDEX_INVALID && surfaceIndex < cb.surfaceCount && primitiveIndex >= 0)
+  if (surfaceIndex >= 0 && surfaceIndex != BINDING_INDEX_INVALID && /*surfaceIndex < cb.surfaceCount &&*/ primitiveIndex >= 0)
   {
     SURFACE_CREATE_READ(emissiveSurface0, surfaceIndex, surfaces);    
     Surface emissiveSurface = emissiveSurface0;
@@ -222,7 +226,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   if (localIndex.x == 0 && localIndex.y == 0)
   {
     // if (cb.debugKnob.z == 0)
-    if(1)
+    if(0)
     {
       for (int i = 0; i < s_tarTaskCount-1; ++i)
       {

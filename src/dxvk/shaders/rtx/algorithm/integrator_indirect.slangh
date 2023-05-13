@@ -382,22 +382,10 @@ void integratePathVertex(
     accumulateThroughput(pathState, volumeTransmittance);
   }
 
-  // Check if resolving should continue, and if a surface was hit
-
-  if (pathState.continueResolving)
-  {
-    return;
-  }
-
-  if (!rayInteractionHasHit(rayInteraction))
-  {
-    return;
-  }
-
   // Add Emission
   vec3 emissiveLight = polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(polymorphicSurfaceMaterialInteraction);
   bool hasNEE = false;
-  if (cb.enableNeeCache > 0 && any(emissiveLight) > 0)
+  if (cb.enableNeeCache > 0 && any(emissiveLight) > 0 && (!pathState.continueResolving || ((pathState.pixelCoordinate.x + pathState.pixelCoordinate.y) % 3) == 0))
   {
     int3 cellID = NEECache.loadCellID(pathState.pixelCoordinate);
     if (all(cellID != -1))
@@ -419,6 +407,18 @@ void integratePathVertex(
         }
       }
     }
+  }
+
+  // Check if resolving should continue, and if a surface was hit
+
+  if (pathState.continueResolving)
+  {
+    return;
+  }
+
+  if (!rayInteractionHasHit(rayInteraction))
+  {
+    return;
   }
 
   float16_t misWeight = 1.0;

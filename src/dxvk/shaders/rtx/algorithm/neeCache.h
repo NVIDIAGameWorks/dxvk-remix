@@ -280,6 +280,11 @@ struct NEECache
     return cb.neeCacheRange / RADIANCE_CACHE_PROBE_RESOLUTION;
   }
 
+  static float getVolumeSize()
+  {
+    return cb.neeCacheRange;
+  }
+
   static vec3 cellToCenterPoint(ivec3 cellID)
   {
     float extend = cb.neeCacheRange;
