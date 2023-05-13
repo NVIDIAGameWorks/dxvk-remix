@@ -81,6 +81,7 @@ namespace dxvk {
 
         RW_STRUCTURED_BUFFER(INTEGRATE_DIRECT_BINDING_RADIANCE_CACHE)
         RW_STRUCTURED_BUFFER(INTEGRATE_DIRECT_BINDING_RADIANCE_CACHE_TASK)
+        RW_TEXTURE2D(INTEGRATE_DIRECT_BINDING_RADIANCE_CACHE_THREAD_TASK)
 
         RW_TEXTURE2D(INTEGRATE_DIRECT_BINDING_INDIRECT_RAY_ORIGIN_DIRECTION_OUTPUT)
         RW_TEXTURE2D(INTEGRATE_DIRECT_BINDING_INDIRECT_THROUGHPUT_CONE_RADIUS_OUTPUT)
@@ -150,6 +151,7 @@ namespace dxvk {
     //ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_RADIANCE_CACHE, rtOutput.m_radianceCache.view, nullptr);
     ctx->bindResourceBuffer(INTEGRATE_DIRECT_BINDING_RADIANCE_CACHE, DxvkBufferSlice(rtOutput.m_radianceCache, 0, rtOutput.m_radianceCache->info().size));
     ctx->bindResourceBuffer(INTEGRATE_DIRECT_BINDING_RADIANCE_CACHE_TASK, DxvkBufferSlice(rtOutput.m_radianceCacheTask, 0, rtOutput.m_radianceCacheTask->info().size));
+    ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_RADIANCE_CACHE_THREAD_TASK, rtOutput.m_radianceCacheThreadTask.view, nullptr);
 
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_INDIRECT_RAY_ORIGIN_DIRECTION_OUTPUT, rtOutput.m_indirectRayOriginDirection.view(Resources::AccessType::Write), nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_INDIRECT_THROUGHPUT_CONE_RADIUS_OUTPUT, rtOutput.m_indirectThroughputConeRadius.view(Resources::AccessType::Write), nullptr);
