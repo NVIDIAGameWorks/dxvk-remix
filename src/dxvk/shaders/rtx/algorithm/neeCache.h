@@ -200,6 +200,35 @@ struct NEECache
     return idx * RADIANCE_CACHE_ELEMENTS * RADIANCE_CACHE_ELEMENT_SIZE;
   }
 
+  static int cellToOffset(int3 cellID)
+  {
+    int idx =
+      cellID.z * RADIANCE_CACHE_PROBE_RESOLUTION * RADIANCE_CACHE_PROBE_RESOLUTION +
+      cellID.y * RADIANCE_CACHE_PROBE_RESOLUTION +
+      cellID.x;
+    return idx;
+  }
+
+  static int3 offsetToCell(int offset)
+  {
+    if (offset == -1)
+    {
+      return int3(-1);
+    }
+    int3 cellID;
+    const int zSize = RADIANCE_CACHE_PROBE_RESOLUTION * RADIANCE_CACHE_PROBE_RESOLUTION;
+    const int ySize = RADIANCE_CACHE_PROBE_RESOLUTION;
+
+    cellID.z = offset / zSize;
+    offset -= cellID.z * zSize;
+
+    cellID.y = offset / ySize;
+    offset -= cellID.y * ySize;
+
+    cellID.x = offset;
+    return cellID;
+  }
+
   static int3 pointToCell(vec3 position, bool jittered)
   {
     float extend = cb.neeCacheRange;
@@ -234,6 +263,16 @@ struct NEECache
       }
       return UVWi;
     }
+  }
+
+  static int pointToOffset(vec3 position, bool jittered)
+  {
+    int3 cellID = pointToCell(position, jittered);
+    if (all(cellID >= 0) && all(cellID < RADIANCE_CACHE_PROBE_RESOLUTION))
+    {
+      return cellToOffset(cellID);
+    }
+    return -1;
   }
 
   static float getCellSize()
@@ -271,6 +310,18 @@ struct NEECache
   static NEECell findCell(vec3 point, bool jittered)
   {
     return getCell(pointToCell(point, jittered));
+  }
+
+  static void storeCellID(int2 pixel, vec3 point, bool jittered)
+  {
+    int offset = pointToOffset(point, jittered);
+    RadianceCacheThreadTask[pixel] = uint4(offset, 0,0,0);
+  }
+
+  static int3 loadCellID(int2 pixel)
+  {
+    int offset = RadianceCacheThreadTask[pixel].x;
+    return offsetToCell(offset);
   }
 }
 

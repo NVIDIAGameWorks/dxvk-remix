@@ -399,19 +399,23 @@ void integratePathVertex(
   bool hasNEE = false;
   if (cb.enableNeeCache > 0 && any(emissiveLight) > 0)
   {
-    NEECell cell = NEECache.findCell(oldOrigin, true);
-    if (cell.isValid())
-    {
-      uint2 task = uint2(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex);
-      cell.insertTask(task);
-
-      for (int i = 0; i < cell.getCandidateCount(); ++i)
+    int3 cellID = NEECache.loadCellID(pathState.pixelCoordinate);
+    if (all(cellID != -1))
+    {      
+      NEECell cell = NEECache.getCell(cellID);
+      if (cell.isValid())
       {
-        int2 candidate = cell.getCandidate(i).getIDData();
-        if (all(candidate == task))
+        uint2 task = uint2(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex);
+        cell.insertTask(task);
+
+        for (int i = 0; i < cell.getCandidateCount(); ++i)
         {
-          hasNEE = true;
-          break;
+          int2 candidate = cell.getCandidate(i).getIDData();
+          if (all(candidate == task))
+          {
+            hasNEE = true;
+            break;
+          }
         }
       }
     }
@@ -454,6 +458,8 @@ void integratePathVertex(
     pathState.coneRadius = sampledRay.coneRadius;
     pathState.direction = sampledRay.direction;
     pathState.solidAnglePdf = solidAnglePdf;
+
+    NEECache.storeCellID(pathState.pixelCoordinate, pathState.origin, true);
   }
 
   // Set the material medium index if a medium was entered or exited
@@ -887,6 +893,8 @@ void integrateIndirectPath(
   pathState.solidAnglePdf = firstSampledSolidAnglePdf;
 
   pathState.coneSpreadAngle = calculateSpreadAngleFromSolidAnglePdf(pathState.coneSpreadAngle, firstSampledSolidAnglePdf);
+
+  NEECache.storeCellID(pixelCoordinate, rayOrigin, true);
 
   if (cb.enableReSTIRGI && geometryFlags.primarySelectedIntegrationSurface)
   {
