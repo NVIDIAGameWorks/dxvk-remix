@@ -58,7 +58,7 @@ namespace dxvk {
 
 
     class UpdateNEETaskShader : public ManagedShader {
-      SHADER_SOURCE(UpdateNEECacheShader, VK_SHADER_STAGE_COMPUTE_BIT, updateNeeTask)
+      SHADER_SOURCE(UpdateNEETaskShader, VK_SHADER_STAGE_COMPUTE_BIT, updateNeeTask)
 
       BINDLESS_ENABLED()
 
@@ -100,6 +100,13 @@ namespace dxvk {
 
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, UpdateNEETaskShader::getShader());
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
+    }
+
+    {
+      ctx->bindCommonRayTracingResources(rtOutput);
+      ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE, DxvkBufferSlice(rtOutput.m_radianceCache, 0, rtOutput.m_radianceCache->info().size));
+      ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE_TASK, DxvkBufferSlice(rtOutput.m_radianceCacheTask, 0, rtOutput.m_radianceCacheTask->info().size));
+      ctx->bindResourceView(UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE_THREAD_TASK, rtOutput.m_radianceCacheThreadTask.view, nullptr);
 
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, UpdateNEECacheShader::getShader());
       ctx->dispatch(RADIANCE_CACHE_PROBE_RESOLUTION, RADIANCE_CACHE_PROBE_RESOLUTION, RADIANCE_CACHE_PROBE_RESOLUTION);

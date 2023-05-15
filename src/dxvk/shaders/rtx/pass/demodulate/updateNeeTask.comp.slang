@@ -42,9 +42,10 @@
 #include "rtx/algorithm/neecache.h"
 #include "rtx/external/nrd.slangh"
 
-groupshared uint2 s_srcTaskList[RADIANCE_CACHE_ELEMENTS];
-groupshared uint2 s_tarTaskList[RADIANCE_CACHE_ELEMENTS * 2];
-groupshared float s_tarLight[RADIANCE_CACHE_ELEMENTS * 2];
+// groupshared uint2 s_srcTaskList[RADIANCE_CACHE_ELEMENTS];
+// groupshared uint2 s_tarTaskList[RADIANCE_CACHE_ELEMENTS * 2];
+// groupshared float s_tarLight[RADIANCE_CACHE_ELEMENTS * 2];
+groupshared uint3 s_task[16*8];
 groupshared int s_tarTaskCount;
 
 uint2 mapIDData(uint2 data)
@@ -134,8 +135,72 @@ float getTriangleLight(uint2 data, vec3 cellCenter, inout RNG randomState)
 
 [shader("compute")]
 [numthreads(16, 8, 1)]
-void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupThreadID)
+void main(int2 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupThreadID)
 {
+  if (localIndex.x == 0 && localIndex.y == 0)
+  {
+    s_tarTaskCount = 0;
+  }
+  GroupMemoryBarrierWithGroupSync();
+
+  uint4 threadTask = NEECache.loadThreadTask(threadIndex);
+
+  // if(0)
+  // {
+  //   //int3 cellID = int3(threadIndex.xy % 20, (threadIndex.y / 20 * 16 + threadIndex.x / 20));//
+  //   int3 cellID = NEECache.offsetToCell(threadTask.x);
+  //   if (all(cellID != -1))
+  //   {      
+  //     NEECell cell = NEECache.getCell(cellID);
+  //     if (cell.isValid())
+  //     {
+  //       //uint2 task = uint2(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex);
+  //       //cell.insertTask(threadTask.yz);
+  //       //cell.setTaskCount(0);
+  //       //cell.setCandidateCount(0);
+  //     }
+  //   }
+  //   return;
+  // }
+
+  if (threadTask.x != 0xffffffff && threadTask.y != 0xffffffff && threadTask.z != 0xffffffff)
+  {
+    int oldCount;
+    InterlockedAdd(s_tarTaskCount, 1, oldCount);
+    s_task[oldCount] = threadTask.xyz;
+  }
+  GroupMemoryBarrierWithGroupSync();
+
+  bool shouldBeAdded = false;
+  int localTaskID = localIndex.y * 16 + localIndex.x;
+  uint3 localTask = s_task[localTaskID];
+  if (localTaskID < s_tarTaskCount)
+  {
+    bool isNew = true;
+    for (int i = 0; i < localTaskID-1; ++i)
+    {
+      if (all(s_task[i] == localTask))
+      {
+        isNew = false;
+      }
+    }
+    shouldBeAdded = isNew;
+  }
+
+  if (shouldBeAdded)
+  {
+    //    uint4 threadTask = NEECache.loadThreadTask(pathState.pixelCoordinate);
+    int3 cellID = NEECache.offsetToCell(localTask.x);
+    if (all(cellID != -1))
+    {      
+      NEECell cell = NEECache.getCell(cellID);
+      if (cell.isValid())
+      {
+        //uint2 task = uint2(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex);
+        cell.insertTask(localTask.yz);
+      }
+    }
+  }
   // int3 cellID = threadIndex / int3(RADIANCE_CACHE_ELEMENTS,1,1);
   // NEECell cell = NEECache.getCell(cellID);
   // vec3 cellCenter = NEECache.cellToCenterPoint(cellID);
