@@ -317,16 +317,17 @@ struct NEECache
     return getCell(pointToCell(point, jittered));
   }
 
-  static void storeCellID(int2 pixel, vec3 point, bool jittered)
+  static void storeThreadTask(int2 pixel, /*vec3 point, bool jittered,*/ uint4 data)
   {
-    int offset = pointToOffset(point, jittered);
-    RadianceCacheThreadTask[pixel] = uint4(offset, 0,0,0);
+    //int offset = pointToOffset(point, jittered);
+    RadianceCacheThreadTask[pixel] = data;//uint4(offset, -1,-1,-1);
   }
 
-  static int3 loadCellID(int2 pixel)
+  static uint4 loadThreadTask(int2 pixel)
   {
-    int offset = RadianceCacheThreadTask[pixel].x;
-    return offsetToCell(offset);
+    //int offset = RadianceCacheThreadTask[pixel].x;
+    //return offsetToCell(offset);
+    return RadianceCacheThreadTask[pixel];
   }
 }
 
