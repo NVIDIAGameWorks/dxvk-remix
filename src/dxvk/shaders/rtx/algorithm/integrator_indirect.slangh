@@ -395,9 +395,10 @@ void integratePathVertex(
       if (cell.isValid())
       {
         uint2 task = uint2(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex);
-        cell.insertTask(task);
+        
         if (threadTask.y == 0xffffffff || threadTask.z == 0xffffffff)
         {
+          //cell.insertTask(task);
           threadTask.y = rayInteraction.surfaceIndex;
           threadTask.z = rayInteraction.primitiveIndex;
           NEECache.storeThreadTask(pathState.pixelCoordinate, threadTask);
@@ -468,7 +469,7 @@ void integratePathVertex(
 
     //NEECache.storeCellID(pathState.pixelCoordinate, pathState.origin, true);
     uint4 threadTask = NEECache.loadThreadTask(pathState.pixelCoordinate);
-    if (threadTask.y == 0xffffffff || threadTask.z == 0xffffffff)
+    if (threadTask.y == 0xffffffff && threadTask.z == 0xffffffff)
     {
       //threadTask.y = rayInteraction.surfaceIndex;
       //threadTask.z = rayInteraction.primitiveIndex;
@@ -975,6 +976,10 @@ void integrateIndirectPath(
   geometryFlags = geometryFlagsReadFromGBuffer(pathState.pixelCoordinate, SharedFlags);
 
   storeRestirGIRadiance(pathState, geometryFlags, gbufferSurfaceHitDistance);
+
+  // uint4 threadTask2 = 0;
+  // threadTask2.x = (pixelCoordinate.y * 1920 + pixelCoordinate.x) % (20*20*20);
+  // NEECache.storeThreadTask(pathState.pixelCoordinate, threadTask2);
 
   vec4 indirectOutData = vec4(pathState.radiance, pathState.firstBounceHitDistance);
 
