@@ -1,0 +1,98 @@
+/*
+* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/pass/rtxdi/integrate_nee_binding_indices.h"
+
+#include "rtx/algorithm/rtxdi/rtxdi.slangh"
+
+// Shared Inputs
+
+layout(r16ui, binding = INTEGRATE_NEE_BINDING_SHARED_FLAGS_INPUT)
+Texture2D<uint> SharedFlags;
+
+layout(r32ui, binding = INTEGRATE_NEE_BINDING_SHARED_MATERIAL_DATA0_INPUT)
+Texture2D<uint> SharedMaterialData0;
+
+layout(r32ui, binding = INTEGRATE_NEE_BINDING_SHARED_MATERIAL_DATA1_INPUT)
+Texture2D<uint> SharedMaterialData1;
+
+// Primary Inputs
+
+layout(r32ui, binding = INTEGRATE_NEE_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT)
+Texture2D<uint> PrimaryWorldShadingNormal;
+
+layout(r32ui, binding = INTEGRATE_NEE_BINDING_PRIMARY_WORLD_INTERPOLATED_NORMAL_INPUT)
+Texture2D<uint> PrimaryWorldInterpolatedNormal;
+
+layout(r32f, binding = INTEGRATE_NEE_BINDING_PRIMARY_HIT_DISTANCE_INPUT)
+Texture2D<float> PrimaryHitDistance;
+
+layout(r8, binding = INTEGRATE_NEE_BINDING_PRIMARY_PERCEPTUAL_ROUGHNESS_INPUT)
+Texture2D<float> PrimaryPerceptualRoughness;
+
+layout(rgb10_a2, binding = INTEGRATE_NEE_BINDING_PRIMARY_ALBEDO_INPUT)
+Texture2D<float4> PrimaryAlbedo;
+
+layout(rg16_snorm, binding = INTEGRATE_NEE_BINDING_PRIMARY_VIEW_DIRECTION_INPUT)
+Texture2D<float2> PrimaryViewDirection;
+
+layout(r16f, binding = INTEGRATE_NEE_BINDING_PRIMARY_CONE_RADIUS_INPUT)
+Texture2D<float> PrimaryConeRadius;
+
+layout(rgba32f, binding = INTEGRATE_NEE_BINDING_PRIMARY_WORLD_POSITION_INPUT)
+Texture2D<float4> PrimaryWorldPositionWorldTriangleNormal;
+
+layout(r32f, binding = INTEGRATE_NEE_BINDING_PRIMARY_POSITION_ERROR_INPUT)
+Texture2D<float> PrimaryPositionError;
+
+layout(rgba16f, binding = INTEGRATE_NEE_BINDING_INDIRECT_RADIANCE_HIT_DISTANCE_INPUT)
+Texture2D<float4> IndirectRadianceHitDistance;
+
+// Primary Inputs/Outputs
+
+layout(rgb10_a2, binding = INTEGRATE_NEE_BINDING_PRIMARY_BASE_REFLECTIVITY_INPUT_OUTPUT)
+RWTexture2D<float4> PrimaryBaseReflectivity;
+
+// Outputs
+
+layout(rgba16f, binding = INTEGRATE_NEE_BINDING_PRIMARY_INDIRECT_DIFFUSE_RADIANCE_HIT_DISTANCE_OUTPUT)
+RWTexture2D<float4> PrimaryIndirectDiffuseLobeRadianceHitDistance;
+
+layout(rgba16f, binding = INTEGRATE_NEE_BINDING_PRIMARY_INDIRECT_SPECULAR_RADIANCE_HIT_DISTANCE_OUTPUT)
+RWTexture2D<float4> PrimaryIndirectSpecularLobeRadianceHitDistance;
+
+layout(binding = INTEGRATE_NEE_BINDING_RESTIR_GI_RESERVOIR_OUTPUT)
+RWStructuredBuffer<ReSTIRGI_PackedReservoir> RestirGIReservoirBuffer;
+
+layout(rg16f, binding = INTEGRATE_NEE_BINDING_BSDF_FACTOR2_OUTPUT)
+RWTexture2D<float2> BSDFFactor2;
+
+layout(binding = INTEGRATE_NEE_BINDING_RADIANCE_CACHE)
+RWByteAddressBuffer RadianceCache;
+
+layout(binding = INTEGRATE_NEE_BINDING_RADIANCE_CACHE_TASK)
+RWByteAddressBuffer RadianceCacheTask;
+
+layout(rgba32ui, binding = INTEGRATE_NEE_BINDING_RADIANCE_CACHE_THREAD_TASK)
+RWTexture2D<uint4> RadianceCacheThreadTask;
+
