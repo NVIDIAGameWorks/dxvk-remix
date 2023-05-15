@@ -87,8 +87,9 @@ namespace dxvk {
       return m_texture.data(layer, 0, level);
     }
 
-    void evictCache() override {
-    }
+    void evictCache(int, int) override { }
+
+    void evictCache() override { }
 
     void placement(
       int       layer,
@@ -189,7 +190,7 @@ namespace dxvk {
     FILE* openHandle() {
       assert(!m_filename.empty() && "DDS filename cannot be empty");
       if (m_file == nullptr) {
-        m_file = gli::detail::open_file(m_filename.c_str(), "rb");
+        m_file = std::fopen(m_filename.c_str(), "rb");
       }
       return m_file;
     }
@@ -244,13 +245,16 @@ namespace dxvk {
       return AssetType::Image2D;
     }
 
-  public:
-
-    ~DdsTextureData() override {
+    int getKey(int layer, int level) const {
+      return (layer * m_faces + 0) * m_levels + level;
     }
 
+  public:
+
+    ~DdsTextureData() override { }
+
     const void* data(int layer, int level) override {
-      int key = (layer * m_faces + 0) * m_levels + level;
+      int key = getKey(layer, level);
       const auto& it = m_data.find(key);
       if (it != m_data.end())
         return it->second.data();
@@ -263,15 +267,23 @@ namespace dxvk {
         return nullptr;
 
       auto file = openHandle();
-
+      assert(file);
+      
       std::vector<uint8_t> data;
       std::fseek(file, dataOffset, SEEK_SET);
       data.resize(dataSize);
       std::fread(data.data(), dataSize, 1, file);
+      
+      closeHandle();
 
       const void* rawData = data.data();
       m_data[key] = std::move(data);
       return rawData;
+    }
+
+    void evictCache(int layer, int level) override {
+      int key = getKey(layer, level);
+      m_data[key].clear();
     }
 
     void evictCache() override {
@@ -396,6 +408,11 @@ namespace dxvk {
       return nullptr;
     }
 
+    void evictCache(int layer, int level) override {
+      uint32_t blobIdx = getBlobIndex(layer, 0, level);
+      m_data[blobIdx].clear();
+    }
+    
     void evictCache() override {
       m_data.clear();
     }

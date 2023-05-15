@@ -64,36 +64,30 @@ namespace dxvk {
   //  - Smaller mips: data is stored in linearImageDataSmallMips and kept as long as the texture object is alive,
   //    to reduce latency when textures are first used
   struct ManagedTexture : public RcObject {
+    friend struct TextureUtils;
+
     enum struct State {
       kUnknown,                                         // Texture was not initialized, its state is unknown.
       kInitialized,                                     // Texture was initialized and image asset data discovered.
-      kHostMem,                                         // Texture image content pre-loaded into a CPU-side buffer.
       kQueuedForUpload,                                 // Texture image upload or RTX IO request is in-flight.
       kVidMem,                                          // Texture image is in VID memory (either partial, or full mip-chain).
       kFailed                                           // Texture image to upload or read, or was dropped.
     };
 
-    // Stage 0 - Texture initialized, image asset data discovered.
-    Rc<AssetData> assetData;
+    // Stage 1 - Texture initialized, image asset data discovered.
+    Rc<ImageAssetDataView> assetData;
     int mipCount = 0;                                   // how many mips in the original asset
+    int minPreloadedMip = -1;                           // highest resolution mip pre-loaded
     uint64_t completionSyncpt = 0;                      // completion syncpoint value
-
-    // Stage 1 - System memory cache.
-    std::shared_ptr<uint8_t> linearImageDataLargeMips;  // mips 0..numLargeMips-1
-    std::shared_ptr<uint8_t> linearImageDataSmallMips;  // mips numLargeMips..mipLevels
-    int numLargeMips = -1;                              // how many mips were not preloaded (i.e., number of mips in linearImageDataLargeMips)
-    int largestMipLevel = 0;                            // biggest mip that we're willing to load
 
     // Stage 2 - Video memory (stripped top mips) cache.
     Rc<DxvkImageView> smallMipsImageView = nullptr;
 
-    // Stage 3 - Video memory (full mip chain loaded) cache
+    // Stage 3 - Video memory (full mip chain loaded).
     Rc<DxvkImageView> allMipsImageView = nullptr;
 
     std::atomic<State> state = State::kUnknown;
     size_t uniqueKey = kInvalidTextureKey;
-    uint32_t minUploadedMip = 0;
-    DxvkImageCreateInfo futureImageDesc;
     bool canDemote = true;
     uint32_t frameQueuedForUpload = 0;
 
@@ -106,15 +100,14 @@ namespace dxvk {
         // Evict large image
         allMipsImageView = nullptr;
         completionSyncpt = ~0;
-
-        if (linearImageDataSmallMips) {
-          // If we have data in a CPU buffer - evict the small image too
-          smallMipsImageView = nullptr;
-          minUploadedMip = futureImageDesc.mipLevels;
-          state = ManagedTexture::State::kHostMem;
-        }
+        smallMipsImageView = nullptr;
+        state = ManagedTexture::State::kInitialized;
+        minPreloadedMip = -1;
       }
     }
+
+  private:
+    DxvkImageCreateInfo futureImageDesc;
   };
 
   struct TextureRef {
@@ -283,15 +276,7 @@ namespace dxvk {
 
     static Rc<ManagedTexture> createTexture(const Rc<AssetData>& assetData, ColorSpace colorSpace);
 
-    // TODO: to be moved
-    static void loadTexture(Rc<ManagedTexture> texture, const Rc<DxvkDevice>& device, const Rc<DxvkContext>& context, const MemoryAperture mem, MipsToLoad mipsToLoad, int minimumMipLevel = -1);
-
-    static void promoteHostToVid(const Rc<DxvkDevice>& device, const Rc<DxvkContext>& ctx, const Rc<ManagedTexture>& texture, uint32_t minMipLevel = 0);
-
-  private:
-
-    static void loadTextureToHostStagingBuffer(Rc<ManagedTexture> texture, const Rc<DxvkDevice>& device, MipsToLoad mipsToLoad);
-    static void loadTextureToVidmem(Rc<ManagedTexture> texture, const Rc<DxvkDevice>& device, const Rc<DxvkContext>& ctx);
+    static void loadTexture(Rc<ManagedTexture> texture, const Rc<DxvkContext>& ctx, const bool isPreloading, int minimumMipLevel);
   };
 
 } // namespace dxvk

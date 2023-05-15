@@ -69,7 +69,7 @@ namespace dxvk {
       m_sceneManager    (device),
       m_rtResources     (device),
       m_rtInitializer   (device),
-      m_rtTextureUploader(device),
+      m_textureManager(device),
       m_dummyResources  (device), 
       m_volumeIntegrate(device),
       m_volumeFilter(device),
@@ -279,7 +279,7 @@ namespace dxvk {
     }
 
     RtxTextureManager& getTextureManager() {
-      return m_rtTextureUploader;
+      return m_textureManager;
     }
 
     const OpacityMicromapManager* getOpacityMicromapManager() {
@@ -313,7 +313,7 @@ namespace dxvk {
     SceneManager       m_sceneManager;
     Resources          m_rtResources;
     RtxInitializer     m_rtInitializer;
-    RtxTextureManager  m_rtTextureUploader;
+    RtxTextureManager  m_textureManager;
 
     // RTX Shaders
     Active<DxvkVolumeIntegrate>             m_volumeIntegrate;

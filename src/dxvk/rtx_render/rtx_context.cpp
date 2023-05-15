@@ -289,8 +289,7 @@ namespace dxvk {
       textureManager.synchronize();
 
       // Now complete any pending promotions
-      SceneManager& sceneManager = m_device->getCommon()->getSceneManager();
-      sceneManager.finalizeAllPendingTexturePromotions();
+      textureManager.finalizeAllPendingTexturePromotions();
     }
 
     if (RtxOptions::Get()->upscalerType() == UpscalerType::DLSS && !getCommonObjects()->metaDLSS().supportsDLSS()) {

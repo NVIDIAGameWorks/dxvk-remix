@@ -846,7 +846,6 @@ namespace dxvk {
       { "rtx.enableNearPlaneOverride",                          "True"  },
       { "rtx.nativeMipBias",                                    "0.9"   },
       { "rtx.upscalingMipBias",                                 "-0.4"  },
-      { "rtx.assetEstimatedSizeGiB",                            "12"    },
       { "rtx.legacyMaterial.roughnessConstant",                 "0.1"   },
       { "rtx.opacityMicromap.enable",                           "True"  },
       // TODO (REMIX-656): Remove this once we can transition content to new hash
