@@ -239,7 +239,7 @@ namespace dxvk {
 
           // Check if buffer is actualy a d3d9 orphan
           const bool isOrphan = !(ctx.buffer.getSliceHandle() == ctx.mappedSlice);
-          const bool canUseBuffer = m_forceGeometryCopy == false;
+          const bool canUseBuffer = ctx.canUseBuffer && m_forceGeometryCopy == false;
 
           if (canUseBuffer && !isOrphan) {
             // Use the buffer directly if it is not an orphan
@@ -774,6 +774,13 @@ namespace dxvk {
         vertices[i].offset = dx9Vbo.offset;
         vertices[i].buffer = vbo->GetBufferSlice<D3D9_COMMON_BUFFER_TYPE_MAPPING>();
         vertices[i].mappedSlice = vbo->GetMappedSlice();
+        // If staging upload has been enabled on a buffer then previous buffer lock:
+        //   a) triggered a pipeline stall (overlapped mapped ranges, improper flags etc)
+        //   b) does not have D3DLOCK_DONOTWAIT, or was in use at Map()
+        // 
+        // Buffers with staged uploads may have contents valid ONLY until next Map().
+        // We must NOT use such buffer directly and have to always copy the contents.
+        vertices[i].canUseBuffer = vbo->DoesStagingBufferUploads() == false;
       }
     }
 
@@ -801,6 +808,7 @@ namespace dxvk {
     vertices[0].offset = 0;
     vertices[0].buffer = buffer.slice.subSlice(0, vertexSize);
     vertices[0].mappedSlice = buffer.slice.getSliceHandle(0, vertexSize);
+    vertices[0].canUseBuffer = true;
 
     return internalPrepareDraw(indices, vertices, drawContext);
   }

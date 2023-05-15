@@ -154,6 +154,7 @@ namespace dxvk {
       uint32_t offset = 0;
       DxvkBufferSlice buffer;
       DxvkBufferSliceHandle mappedSlice;
+      bool canUseBuffer;
     };
 
     static bool isPrimitiveSupported(const D3DPRIMITIVETYPE PrimitiveType) {
