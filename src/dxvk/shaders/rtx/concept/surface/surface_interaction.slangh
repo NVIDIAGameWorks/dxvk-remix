@@ -288,12 +288,12 @@ SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayI
     
     for (uint i = 0; i < 3; i++)
     {
-      if(surface.texcoordGenerationMode == uint(TexGenMode::ViewPositions))
+      if (surface.texcoordGenerationMode == uint(TexGenMode::ViewPositions))
       {
         float4 viewPos = mul(cb.camera.worldToView, float4(worldPositions[i], 1.f));
         texcoords[i] = mul(surface.textureTransform, viewPos).xy;
       }
-      else if(surface.texcoordGenerationMode == uint(TexGenMode::ViewNormals)) 
+      else if (surface.texcoordGenerationMode == uint(TexGenMode::ViewNormals)) 
       {
         const uint currentIndex = idx[i];
         const uint normalBufferIndex = surface.normalBufferIndex;
