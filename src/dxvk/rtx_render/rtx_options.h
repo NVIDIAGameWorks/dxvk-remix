@@ -338,7 +338,7 @@ namespace dxvk {
     RTX_OPTION("rtx", uint32_t, numFramesToKeepBLAS, 4, "");
     RTX_OPTION("rtx", uint32_t, numFramesToKeepLights, 100, ""); // NOTE: This was the default we've had for a while, can probably be reduced...
     RTX_OPTION("rtx", uint32_t, numFramesToKeepGeometryData, 5, "");
-    RTX_OPTION("rtx", uint32_t, numFramesToKeepMaterialTextures, 30, "");
+    RTX_OPTION("rtx", uint32_t, numFramesToKeepMaterialTextures, 5, "");
     RTX_OPTION("rtx", bool, enablePreviousTLAS, true, "");
     RTX_OPTION("rtx", float, sceneScale, 1, "Defines the ratio of rendering unit (1cm) to game unit, i.e. sceneScale = 1cm / GameUnit.");
 
@@ -702,20 +702,10 @@ namespace dxvk {
                "This minimum will always be considered as long as force high resolution replacement textures is not enabled, meaning that with or without adaptive resolution replacement textures enabled this setting will always enforce a minimum mipmap restriction.\n"
                "Generally this should be changed to reduce the texture quality globally if desired to reduce CPU and GPU memory usage and typically should be controlled by some sort of texture quality setting.\n"
                "Additionally, this setting must be set at startup and changing it will not take effect at runtime.");
-    RTX_OPTION("rtx", uint, adaptiveResolutionReservedCPUMemoryGiB, 2,
-               "The amount of CPU memory in gibibytes to reserve away from consideration for adaptive resolution replacement textures.\n"
-               "This value should only be changed to reflect the estimated amount of memory Remix itself consumes on the CPU (aside from texture loading) and should not be changed otherwise.\n"
-               "Only relevant when force high resolution replacement textures is disabled and adaptive resolution replacement textures is enabled. See asset estimated size parameter for more information.\n");
     RTX_OPTION("rtx", uint, adaptiveResolutionReservedGPUMemoryGiB, 2,
                "The amount of GPU memory in gibibytes to reserve away from consideration for adaptive resolution replacement textures.\n"
                "This value should only be changed to reflect the estimated amount of memory Remix itself consumes on the GPU (aside from texture loading, mostly from rendering-related buffers) and should not be changed otherwise.\n"
                "Only relevant when force high resolution replacement textures is disabled and adaptive resolution replacement textures is enabled. See asset estimated size parameter for more information.\n");
-    RTX_OPTION("rtx", uint, assetEstimatedSizeGiB, 2,
-               "The estimated size in gibibytes of all of the assets expected to be loaded typically in a standard scene.\n"
-               "This value is important to set on more production-ready games as it will allow texture loading to calculate which mip levels to load up to in order to ensure memory usage does not exceed CPU or GPU memory limits.\n"
-               "Note that setting this value too high may force textures to load as lower quality than they may be able to if there is enough memory available (as this is just an estimate), so it is better to estimate a lower size than a higher one.\n"
-               "Finally, this value is only relevant when force high resolution replacement textures is disabled and adaptive resolution replacement textures is enabled.\n"
-               "For more information the mip calculations in the code should be referenced, but generally this value is used in conjunction with the estimated GPU pipeline resource and CPU game data sizes as well as the general CPU/GPU free memory to determine which mip level will fit in the remaining space.");
     RTX_OPTION_ENV("rtx", bool, enableAsyncTextureUpload, true, "DXVK_ASYNC_TEXTURE_UPLOAD", "");
     RTX_OPTION_ENV("rtx", bool, alwaysWaitForAsyncTextures, false, "DXVK_WAIT_ASYNC_TEXTURES", "");
     RTX_OPTION("rtx", int,  asyncTextureUploadPreloadMips, 8, "");
@@ -786,11 +776,6 @@ namespace dxvk {
     const TranslucentMaterialDefaults translucentMaterialDefaults{};
     const RayPortalMaterialDefaults rayPortalMaterialDefaults{};
     const SharedMaterialDefaults sharedMaterialDefaults{};
-
-    // Initial values of corresponding options to prevent them changing at runtime.
-    bool initialForceHighResolutionReplacementTextures;
-    bool initialEnableAdaptiveResolutionReplacementTextures;
-    uint initialMinReplacementTextureMipMapLevel;
 
     RTX_OPTION("rtx", float, effectLightIntensity, 1.f, "");
     RTX_OPTION("rtx", float, effectLightRadius, 5.f, "");
@@ -981,14 +966,6 @@ namespace dxvk {
         enableReplacementMeshesRef() = false;
         enableReplacementMaterialsRef() = false;
       }
-
-      // Cache these values so they don't change during runtime.
-      // Note: This must be done as calculations in the texture system currently invoke mip calculation code multiple times
-      // and assume the calculated minimum mip level will remain the same. Therefore any options which alter this calculation
-      // need to remain constant at runtime unfortunately.
-      initialForceHighResolutionReplacementTextures = forceHighResolutionReplacementTextures();
-      initialEnableAdaptiveResolutionReplacementTextures = enableAdaptiveResolutionReplacementTextures();
-      initialMinReplacementTextureMipMapLevel = minReplacementTextureMipMapLevel();
 
       const VirtualKeys& kDefaultRemixMenuKeyBinds { VirtualKey{VK_MENU},VirtualKey{'X'} };
       m_remixMenuKeyBinds = options.getOption<VirtualKeys>("rtx.remixMenuKeyBinds", kDefaultRemixMenuKeyBinds);
@@ -1336,9 +1313,5 @@ namespace dxvk {
     std::string getCurrentDirectory() const;
 
     bool shouldUseObsoleteHashOnTextureUpload() const { return useObsoleteHashOnTextureUpload(); }
-
-    bool getInitialForceHighResolutionReplacementTextures() const { return initialForceHighResolutionReplacementTextures; }
-    bool getInitialEnableAdaptiveResolutionReplacementTextures() const { return initialEnableAdaptiveResolutionReplacementTextures; }
-    uint getInitialMinReplacementTextureMipMapLevel() const { return initialMinReplacementTextureMipMapLevel; }
   };
 }

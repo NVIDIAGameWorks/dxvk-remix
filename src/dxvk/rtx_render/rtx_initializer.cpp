@@ -108,8 +108,6 @@ namespace dxvk {
     pCommon->getSceneManager().initialize(ctx);
 
     ctx->flushCommandList();
-
-    pCommon->getTextureManager().start();
   }
 
   void RtxInitializer::startPrewarmShaders() {
