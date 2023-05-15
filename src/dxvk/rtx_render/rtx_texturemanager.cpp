@@ -31,6 +31,8 @@
 #include "rtx_io.h"
 
 namespace dxvk {
+  constexpr VkDeviceSize MiBPerGiB = 1024;
+
   void RtxTextureManager::work(Rc<ManagedTexture>& texture, Rc<DxvkContext>& ctx, Rc<DxvkCommandList>& cmd) {
 #ifdef WITH_RTXIO
     if (m_kickoff || m_dropRequests) {
@@ -48,26 +50,34 @@ namespace dxvk {
     // thus making the frame longer.
     // Note: RTX IO will manage dispatches on its own and does not need to be cooled down.
     if (!RtxIo::enabled()) {
-      while (!m_dropRequests && !hasStopped() && !alwaysWait && texture->frameQueuedForUpload >= m_device->getCurrentFrameId())
+      while (!m_dropRequests && !hasStopped() && !alwaysWait && texture->frameQueuedForUpload >= m_pDevice->getCurrentFrameId())
         Sleep(1);
     }
 
     if (m_dropRequests) {
       texture->state = ManagedTexture::State::kFailed;
       texture->demote();
-    } else
-      uploadTexture(texture, ctx);
+    } else {
+      loadTexture(texture, ctx);
+    }
   }
 
-  RtxTextureManager::RtxTextureManager(const Rc<DxvkDevice>& device)
-    : RenderProcessor(device.ptr(), "rtx-texture-manager")
-    , m_device(device) {
+  RtxTextureManager::RtxTextureManager(DxvkDevice* device)
+    : RenderProcessor(device, "rtx-texture-manager")
+    , m_pDevice(device) {
   }
 
   RtxTextureManager::~RtxTextureManager() {
   }
 
-  void RtxTextureManager::scheduleTextureUpload(TextureRef& texture, Rc<DxvkContext>& immediateContext, bool allowAsync) {
+  void RtxTextureManager::initialize(const Rc<DxvkContext>& ctx) {
+    updateMemoryBudgets(ctx);
+
+    // Kick off upload thread
+    RenderProcessor::start();
+  }
+
+  void RtxTextureManager::scheduleTextureLoad(TextureRef& texture, Rc<DxvkContext>& immediateContext, bool allowAsync) {
     const Rc<ManagedTexture>& managedTexture = texture.getManagedTexture();
     if (managedTexture.ptr() == nullptr)
       return;
@@ -90,52 +100,36 @@ namespace dxvk {
 #endif
       return;
     case ManagedTexture::State::kFailed:
-    case ManagedTexture::State::kHostMem:
-      // We need to schedule an upload
+      managedTexture->demote();
       break;
     }
 
-    int preloadMips = allowAsync ? calcPreloadMips(managedTexture->futureImageDesc.mipLevels) : managedTexture->futureImageDesc.mipLevels;
+    // Note: if texture was not preloaded or was demoted then we must preload it now.
+    // The preloaded content remains in host memory after demotion so this would be
+    // a fast upload operation. Suboptimal textures are never preloaded and so do not stay
+    // in host memory.
+    if (managedTexture->minPreloadedMip < 0 && !isTextureSuboptimal(managedTexture)) {
+      const int largestMipToPreload = managedTexture->mipCount - calcPreloadMips(managedTexture->mipCount);
+      TextureUtils::loadTexture(managedTexture, immediateContext, true, largestMipToPreload);
 
-    if (RtxIo::enabled()) {
-      // When we get here with a texture in VID mem, the texture is considered already preloaded with RTXIO
-      preloadMips = managedTexture->state != ManagedTexture::State::kVidMem ? preloadMips : 0;
-    }
-
-    if (preloadMips) {
-      try {
-        assert(managedTexture->linearImageDataSmallMips);
-
-        int largestMipToPreload = managedTexture->futureImageDesc.mipLevels - uint32_t(preloadMips);
-        if (largestMipToPreload < managedTexture->numLargeMips && managedTexture->linearImageDataLargeMips == nullptr) {
-          TextureUtils::loadTexture(managedTexture, m_device, immediateContext, TextureUtils::MemoryAperture::HOST, TextureUtils::MipsToLoad::LowMips);
-        }
-        
-        TextureUtils::promoteHostToVid(m_device, immediateContext, managedTexture, largestMipToPreload);
-      } catch(const DxvkError& e) {
-        managedTexture->state = ManagedTexture::State::kFailed;
-        Logger::err("Failed to create image for VidMem promotion!");
-        Logger::err(e.message());
+      if (texture.finalizePendingPromotion()) {
+        // We're done.
         return;
       }
     }
-    
-    const bool asyncUpload = (preloadMips < managedTexture->futureImageDesc.mipLevels);
-    if (asyncUpload) {
-      managedTexture->state = ManagedTexture::State::kQueuedForUpload;
-      managedTexture->frameQueuedForUpload = m_device->getCurrentFrameId();
 
-      RenderProcessor::add(std::move(managedTexture));
+    // If texture is still not preloaded disallow async load and do it in-sync.
+    // This is likely a suboptimal texture.
+    allowAsync = allowAsync && managedTexture->minPreloadedMip > 0;
+
+    managedTexture->state = ManagedTexture::State::kQueuedForUpload;
+    managedTexture->frameQueuedForUpload = m_pDevice->getCurrentFrameId();
+
+    if (!allowAsync) {
+      loadTexture(managedTexture, immediateContext);
     } else {
-      // if we're not queueing for upload, make sure we don't hang on to low mip data
-      if (managedTexture->linearImageDataLargeMips) {
-        managedTexture->linearImageDataLargeMips.reset();
-      }
+      RenderProcessor::add(std::move(managedTexture));
     }
-  }
-
-  void RtxTextureManager::unloadTexture(const Rc<ManagedTexture>& texture) {
-    texture->demote();
   }
 
   void RtxTextureManager::synchronize(bool dropRequests) {
@@ -155,6 +149,63 @@ namespace dxvk {
     }
   }
 
+  void RtxTextureManager::finalizeAllPendingTexturePromotions() {
+    ScopedCpuProfileZone();
+    for (auto& texture : m_textureCache.getObjectTable()) {
+      if (texture.isPromotable()) {
+        texture.finalizePendingPromotion();
+      }
+    }
+  }
+
+  void RtxTextureManager::addTexture(Rc<DxvkContext>& immediateContext, TextureRef inputTexture, Rc<DxvkSampler> sampler, bool allowAsync, uint32_t& textureIndexOut) {
+    // If theres valid texture backing this ref, then skip
+    if (!inputTexture.isValid())
+      return;
+
+    // Track this texture
+    textureIndexOut = m_textureCache.track(inputTexture);
+
+    // Fetch the texture object from cache
+    TextureRef& cachedTexture = m_textureCache.at(textureIndexOut);
+
+    // If there is a pending promotion, schedule it
+    if (cachedTexture.isPromotable()) {
+      scheduleTextureLoad(cachedTexture, immediateContext, allowAsync);
+    }
+
+    // Patch the sampler entry
+    cachedTexture.sampler = sampler;
+    cachedTexture.frameLastUsed = m_pDevice->getCurrentFrameId();
+  }
+
+  void RtxTextureManager::clear() {
+    ScopedCpuProfileZone();
+    for (const auto& pair : m_assetHashToTextures) {
+      pair.second->demote();
+    }
+
+    m_textureCache.clear();
+  }
+
+  void RtxTextureManager::garbageCollection() {
+    ScopedCpuProfileZone();
+    // Demote high res material textures
+    if (m_pDevice->getCurrentFrameId() > RtxOptions::Get()->numFramesToKeepMaterialTextures()) {
+      const size_t oldestFrame = m_pDevice->getCurrentFrameId() - RtxOptions::Get()->numFramesToKeepMaterialTextures();
+
+      for (auto& texture : m_textureCache.getObjectTable()) {
+        const bool isDemotable = texture.getManagedTexture() != nullptr && texture.getManagedTexture()->canDemote;
+        if (isDemotable){
+          const bool shouldEvict = (texture.frameLastUsed < oldestFrame);
+          if (shouldEvict) {
+            texture.demote();
+          }
+        }
+      }
+    }
+  }
+
   int RtxTextureManager::calcPreloadMips(int mipLevels) {
     if (RtxOptions::Get()->enableAsyncTextureUpload()) {
       return clamp(RtxOptions::Get()->asyncTextureUploadPreloadMips(), 0, mipLevels);
@@ -163,79 +214,137 @@ namespace dxvk {
     }
   }
 
-  void RtxTextureManager::uploadTexture(const Rc<ManagedTexture>& texture, Rc<DxvkContext>& ctx) {
+  XXH64_hash_t RtxTextureManager::getUniqueKey() {
+    static uint64_t ID;
+    XXH64_hash_t key;
+
+    do {
+#ifdef _DEBUG
+      assert(ID + 1 > ID && "Texture hash key id rollover detected!");
+#endif
+      ++ID;
+      key = XXH3_64bits(&ID, sizeof(ID));
+    } while (key == kInvalidTextureKey);
+
+    return key;
+  }
+
+  void RtxTextureManager::loadTexture(const Rc<ManagedTexture>& texture, Rc<DxvkContext>& ctx) {
     ScopedCpuProfileZone();
 
     if (texture->state != ManagedTexture::State::kQueuedForUpload)
       return;
 
     try {
-      if (!RtxIo::enabled()) {
-        assert(texture->numLargeMips > 0);
-        assert(!texture->linearImageDataLargeMips);
+      uint32_t largestMipToLoad = 0;
+
+      const uint32_t kPercentageOfBudgetConsideredSpilling = 75;
+      const VkDeviceSize spillMib = overBudgetMib(kPercentageOfBudgetConsideredSpilling);
+
+      // If we're over budget, aggressively limit the texture resolution for new textures, every 512Mib we go over budget
+      if (spillMib) {
+        const uint32_t kReduceMipsEveryMib = 512;
+        largestMipToLoad += spillMib / kReduceMipsEveryMib;
       }
 
-      TextureUtils::loadTexture(texture, m_device, ctx, TextureUtils::MemoryAperture::HOST, TextureUtils::MipsToLoad::LowMips);
+      TextureUtils::loadTexture(texture, ctx, false, largestMipToLoad);
+      texture->state = ManagedTexture::State::kVidMem;
+
+#ifdef _DEBUG
+      Logger::debug(str::format("Loaded texture ", texture->assetData->hash(), " at ",
+                                texture->assetData->info().filename, " largest level ", largestMipToLoad));
+#endif
 
       if (!RtxIo::enabled()) {
-        TextureUtils::promoteHostToVid(m_device, ctx, texture);
         ctx->flushCommandList();
-        texture->linearImageDataLargeMips.reset();
       }
     } catch (const DxvkError& e) {
       texture->state = ManagedTexture::State::kFailed;
-      Logger::err("Failed to finish texture promotion to VidMem!");
+      Logger::err("Failed to load texture!");
       Logger::err(e.message());
     }
   }
 
-  Rc<ManagedTexture> RtxTextureManager::preloadTexture(const Rc<AssetData>& assetData,
+  VkDeviceSize RtxTextureManager::overBudgetMib(VkDeviceSize percentageOfBudget) const {
+    // Get the current memory usage for material textures
+    VkDeviceSize currentUsageMib = 0;
+    for (uint32_t i = 0; i < m_pDevice->adapter()->memoryProperties().memoryHeapCount; i++) {
+      bool isDeviceLocal = m_pDevice->adapter()->memoryProperties().memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT;
+      if (isDeviceLocal) {
+        currentUsageMib += m_pDevice->getMemoryStats(i).usedByCategory(DxvkMemoryStats::Category::RTXMaterialTexture) >> 20;
+      }
+    }
+
+    VkDeviceSize budgetMib = m_textureBudgetMib * percentageOfBudget / 100;
+
+    // If we're under budget, great
+    if (currentUsageMib < budgetMib)
+      return 0;
+
+    // Return the spill overbudget
+    return (currentUsageMib - budgetMib);
+  }
+
+  bool RtxTextureManager::isTextureSuboptimal(const Rc<ManagedTexture>& texture) const {
+    const auto& extent = texture->assetData->info().extent;
+
+    // Large textures that have only a single mip level are considered suboptimal since they
+    // may cause high pressure on memory and/or cause hitches when loaded at runtime.
+    const bool result = texture->mipCount == 1 && (extent.width * extent.height >= 512 * 512);
+
+    if (result) {
+      ONCE(Logger::warn(str::format("A suboptimal replacement texture detected: ",
+                                    texture->assetData->info().filename,
+                                    "! Please make sure all replacement textures have mip-maps.")));
+    }
+
+    return result;
+  }
+
+  Rc<ManagedTexture> RtxTextureManager::preloadTextureAsset(const Rc<AssetData>& assetData,
     ColorSpace colorSpace, const Rc<DxvkContext>& context, bool forceLoad) {
 
     const XXH64_hash_t hash = assetData->hash();
 
-    auto it = m_textures.find(hash);
-    if (it != m_textures.end()) {
+    auto it = m_assetHashToTextures.find(hash);
+    if (it != m_assetHashToTextures.end()) {
       return it->second;
     }
 
+    // Create managed texture
     auto texture = TextureUtils::createTexture(assetData, colorSpace);
 
-    TextureUtils::loadTexture(texture,
-      m_device,
-      context,
-      TextureUtils::MemoryAperture::HOST,
-      forceLoad ? TextureUtils::MipsToLoad::All : TextureUtils::MipsToLoad::HighMips,
-      m_minimumMipLevel);
+    // Skip suboptimal textures
+    const bool skipPreload = isTextureSuboptimal(texture);
+
+    // Preload texture contents
+    if (!skipPreload || forceLoad) {
+      const int largestMipToPreload = forceLoad ? 0 : texture->mipCount - calcPreloadMips(texture->mipCount);
+      TextureUtils::loadTexture(texture, context, !forceLoad, largestMipToPreload);
+
+      // Execute the command list asap to improve visual responsiveness when
+      // replacements are processed asynchronously
+      if (!RtxIo::enabled()) {
+        context->flushCommandList();
+      }
+
+#ifdef _DEBUG
+      Logger::debug(str::format(forceLoad ? "Loaded" : "Preloaded", " texture ", hash, " at ",
+                                assetData->info().filename, " largest level ", largestMipToPreload));
+#endif
+    }
 
     // The content suggested we keep this texture always loaded, never demote.
     texture->canDemote = !forceLoad;
 
-    return m_textures.emplace(hash, texture).first->second;
+    return m_assetHashToTextures.emplace(hash, texture).first->second;
   }
 
-  void RtxTextureManager::releaseTexture(const Rc<ManagedTexture>& texture) {
-    if (texture != nullptr) {
-      unloadTexture(texture);
-
-      m_textures.erase(texture->assetData->hash());
-    }
-  }
-
-  void RtxTextureManager::demoteTexturesFromVidmem() {
-    for (const auto& pair : m_textures) {
-      unloadTexture(pair.second);
-    }
-  }
-
-  uint32_t RtxTextureManager::updateMipMapSkipLevel(const Rc<DxvkContext>& context) {
-    const unsigned int MiBPerGiB = 1024;
-    RtxContext* rtxContext = dynamic_cast<RtxContext*>(context.ptr());
-
+  void RtxTextureManager::updateMemoryBudgets(const Rc<DxvkContext>& context) {
     // Check and reserve GPU memory
 
-    VkPhysicalDeviceMemoryProperties memory = m_device->adapter()->memoryProperties();
-    DxvkAdapterMemoryInfo memHeapInfo = m_device->adapter()->getMemoryHeapInfo();
+    VkPhysicalDeviceMemoryProperties memory = m_pDevice->adapter()->memoryProperties();
+    DxvkAdapterMemoryInfo memHeapInfo = m_pDevice->adapter()->getMemoryHeapInfo();
     VkDeviceSize availableMemorySizeMib = 0;
     for (uint32_t i = 0; i < memory.memoryHeapCount; i++) {
       bool isDeviceLocal = memory.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT;
@@ -249,7 +358,7 @@ namespace dxvk {
       availableMemorySizeMib = std::max(memSizeMib - memUsedMib, availableMemorySizeMib);
     }
 
-    if (rtxContext && !rtxContext->getResourceManager().isResourceReady()) {
+    if (!context->getCommonObjects()->getResources().isResourceReady()) {
       // Reserve space for various non-texture GPU resources (buffers, etc)
 
       const auto adaptiveResolutionReservedGPUMemoryMiB =
@@ -259,38 +368,7 @@ namespace dxvk {
       availableMemorySizeMib = std::max(static_cast<std::int32_t>(availableMemorySizeMib) - adaptiveResolutionReservedGPUMemoryMiB, 0);
     }
 
-    // Check and reserve CPU memory
-
-    uint64_t availableSystemMemorySizeByte;
-    if (dxvk::env::getAvailableSystemPhysicalMemory(availableSystemMemorySizeByte)) {
-      // Reserve space for non-texture CPU resources
-      // Note: This is done as this function is invoked during initialization, and the game may not have loaded other data yet
-      // which would cause the textures to occasionally starve the rest of Remix for resources if some is not reserved.
-      // TODO: The OpacityMicromapMemoryManager also allocate memory adaptively and it may eat up the memory
-      // saved here. Need to figure out a way to control global memory consumption.
-
-      const auto adaptiveResolutionReservedCPUMemoryMiB =
-        static_cast<std::int32_t>(RtxOptions::Get()->adaptiveResolutionReservedCPUMemoryGiB() * MiBPerGiB);
-      // Note: int32_t used for clamping behavior on underflow.
-      const VkDeviceSize assetReservedSizeMib =
-        std::max(static_cast<std::int32_t>(availableSystemMemorySizeByte >> 20u) - adaptiveResolutionReservedCPUMemoryMiB, 0);
-
-      availableMemorySizeMib = std::min(availableMemorySizeMib, assetReservedSizeMib);
-    }
-
-    // Determine the minimum mip level to load
-
-    unsigned int assetSizeMib = RtxOptions::Get()->assetEstimatedSizeGiB() * MiBPerGiB;
-    for (m_minimumMipLevel = 0; assetSizeMib > availableMemorySizeMib && m_minimumMipLevel < 2; m_minimumMipLevel++) {
-      // Skip one more mip map level
-      // Note: Removing the top-most mip reduces memory consumption by 25% if mips are assumed to be an infinite geometric
-      // series. In reality though they are not as they terminate at a 1x1 mip, so this is actually a conservative estimate
-      // which will overestimate how much memory a texture will take at times (fairly accurate to the ideal solution though
-      // across most mip levels except the very highest few where the missing contribution becomes significant).
-      assetSizeMib /= 4;
-    }
-
-    return m_minimumMipLevel;
+    m_textureBudgetMib = availableMemorySizeMib * budgetPercentageOfAvailableVram() / 100;
   }
 
 }

@@ -96,15 +96,15 @@ namespace dxvk {
   }
 #endif
 
-  static void loadTextureRtxIo(
-    const Rc<ManagedTexture>& texture,
-    const Rc<DxvkDevice>&     device,
-    TextureUtils::MipsToLoad  mipsToLoad) {
+  static Rc<DxvkImageView> loadTextureRtxIo(
+    const Rc<ManagedTexture>&  texture,
+    const Rc<DxvkContext>&     ctx,
+    DxvkImageCreateInfo        desc,
+    const bool                 isPreloading) {
 #ifdef WITH_RTXIO
-    const bool isPreloading = mipsToLoad == TextureUtils::MipsToLoad::HighMips;
+    const Rc<DxvkDevice>& device = ctx->getDevice();
 
     auto& rtxio = RtxIo::get();
-    auto desc = texture->futureImageDesc;
 
     const int numMipsToLoad = isPreloading
       ? RtxTextureManager::calcPreloadMips(desc.mipLevels) : desc.mipLevels;
@@ -130,11 +130,7 @@ namespace dxvk {
     viewInfo.numLayers = desc.numLayers;
     viewInfo.format = desc.format;
 
-    if (isPreloading) {
-      texture->smallMipsImageView = device->createImageView(image, viewInfo);
-    } else {
-      texture->allMipsImageView = device->createImageView(image, viewInfo);
-    }
+    Rc<DxvkImageView> view = device->createImageView(image, viewInfo);
 
     RtxIo::Handle file;
     if (rtxio.openFile(texture->assetData->info().filename, &file)) {
@@ -146,8 +142,6 @@ namespace dxvk {
       }
 
       if (completionSyncpt) {
-        texture->minUploadedMip = firstMip;
-
         if (isPreloading) {
           // TODO(iterentiev): in pre-loading phase we load into smallMipsImage, however, with async asset
           // loading the same managed texture can be in the loading load phase at the same time. Using single
@@ -162,13 +156,24 @@ namespace dxvk {
         }
       }
     }
+    
+    // We no longer care about this data
+    texture->assetData->evictCache();
+
+    return view;
 #endif
+    return nullptr;
   }
 
-  void TextureUtils::loadTextureToVidmem(Rc<ManagedTexture> texture, const Rc<DxvkDevice>& device, const Rc<DxvkContext>& ctx) {
+  Rc<DxvkImageView> loadTextureToVidmem(
+        const Rc<ManagedTexture>&  texture,
+        const Rc<DxvkContext>&     ctx,
+        DxvkImageCreateInfo        desc,
+        const bool                 isPreloading) {
+    const Rc<DxvkDevice>& device = ctx->getDevice();
+
     auto& assetData = *texture->assetData;
     auto& assetInfo = assetData.info();
-    const auto& desc = texture->futureImageDesc;
 
     const DxvkFormatInfo* formatInfo = imageFormatInfo(assetInfo.format);
 
@@ -205,158 +210,17 @@ namespace dxvk {
     viewInfo.numLayers = assetInfo.numLayers;
     viewInfo.format = desc.format;
 
-    texture->allMipsImageView = device->createImageView(image, viewInfo);
+    Rc<DxvkImageView> view = device->createImageView(image, viewInfo);
     texture->state = ManagedTexture::State::kVidMem;
-    texture->minUploadedMip = 0;
-    texture->uniqueKey = RtxTextureManager::getUniqueKey();
-  }
 
-  void TextureUtils::loadTextureToHostStagingBuffer(Rc<ManagedTexture> texture, const Rc<DxvkDevice>& device, MipsToLoad mipsToLoad) {
-    auto& assetData = *texture->assetData;
-    auto& assetInfo = assetData.info();
-    const auto& desc = texture->futureImageDesc;
-
-    // Upload data through a staging buffer. Special care needs to
-    // be taken when dealing with compressed image formats: Rather
-    // than copying pixels, we'll be copying blocks of pixels.
-    const DxvkFormatInfo* formatInfo = imageFormatInfo(assetInfo.format);
-
-    int firstMip, lastMip;
-    const int preloadMips = RtxTextureManager::calcPreloadMips(desc.mipLevels);
-    assert(preloadMips > 0);
-    const int firstPreloadMip = desc.mipLevels - preloadMips;
-
-    const bool loadLowMips = (mipsToLoad == MipsToLoad::LowMips || mipsToLoad == MipsToLoad::All);
-    const bool loadHighMips = (mipsToLoad == MipsToLoad::HighMips || mipsToLoad == MipsToLoad::All);
-    
-    switch (mipsToLoad) {
-    case MipsToLoad::LowMips:
-      // if we're loading low mips, we should have already loaded the high mips
-      assert(texture->linearImageDataSmallMips);
-      firstMip = 0;
-      lastMip = firstPreloadMip - 1;
-      break;
-
-    case MipsToLoad::HighMips:
-      firstMip = firstPreloadMip;
-      lastMip = desc.mipLevels - 1;
-      break;
-
-    case MipsToLoad::All:
-      firstMip = 0;
-      lastMip = desc.mipLevels - 1;
-      break;
-    }
-
-    // First get total size of staging buffer
-    size_t totalSize = 0;
-    for (uint32_t level = firstMip; level <= lastMip; ++level) {
-      const VkExtent3D levelExtent = util::computeMipLevelExtent(assetInfo.extent, level);
-      const VkExtent3D elementCount = util::computeBlockCount(levelExtent, formatInfo->blockSize);
-      const size_t levelSize = formatInfo->elementSize * util::flattenImageExtent(elementCount);
-      totalSize += align(levelSize, CACHE_LINE_SIZE);
-    }
-
-    // Allocate staging resource
-    std::shared_ptr<uint8_t> pStagingData(new uint8_t[totalSize], std::default_delete<uint8_t[]>());
-    uintptr_t pBaseDst = (uintptr_t) pStagingData.get();
-
-    // Copy the data to staging
-    for (uint32_t level = firstMip; level <= lastMip; ++level) {
-      const VkExtent3D levelExtent = util::computeMipLevelExtent(assetInfo.extent, level);
-      const VkExtent3D elementCount = util::computeBlockCount(levelExtent, formatInfo->blockSize);
-      const uint32_t rowPitch = elementCount.width * formatInfo->elementSize;
-      const uint32_t layerPitch = rowPitch * elementCount.height;
-
-      // Copy to the correct offset
-      util::packImageData((void*) pBaseDst, assetData.data(0, level), elementCount, formatInfo->elementSize, rowPitch, layerPitch);
-
-      const size_t levelSize = formatInfo->elementSize * util::flattenImageExtent(elementCount);
-      pBaseDst += align(levelSize, CACHE_LINE_SIZE);
-    }
-
-    if (loadLowMips) {
-      texture->linearImageDataLargeMips = pStagingData;
-    }
-
-    if (loadHighMips) {
-      texture->linearImageDataSmallMips = pStagingData;
-      texture->numLargeMips = desc.mipLevels - preloadMips;
-      texture->minUploadedMip = desc.mipLevels;
-      texture->state = ManagedTexture::State::kHostMem;
-    }
-  }
-
-  void TextureUtils::promoteHostToVid(const Rc<DxvkDevice>& device, const Rc<DxvkContext>& ctx, const Rc<ManagedTexture>& texture, uint32_t minMipLevel) {
-    ScopedGpuProfileZone(ctx, "promoteHostToVid");
-
-    if (texture->state == ManagedTexture::State::kVidMem) {
-      Logger::warn("Tried to promote texture from HOST to VID, but it was already in VID...");
-      return;
-    }
-
-    const DxvkImageCreateInfo& desc = texture->futureImageDesc;
-
-    // Make the DxvkImage if it doesn't exist yet
-    Rc<DxvkImage> image;
-
-    // If this is a vid upgrade (low --> all mips) then use the existing memory
-    if (texture->smallMipsImageView.ptr())
-      image = texture->smallMipsImageView->image();
-
-    // If this is a first time promotion, then allocate vid memory
-    if (!image.ptr())
-      image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXMaterialTexture, "material texture");
-
-    size_t currentOffsetLow = 0;
-    size_t currentOffsetHigh = 0;
-    // copy image data to GPU
-    for (uint32_t level = 0; level < desc.mipLevels; ++level) {
-      const DxvkFormatInfo* formatInfo = imageFormatInfo(desc.format);
-
-      const VkImageSubresourceLayers subresourceLayers = { formatInfo->aspectMask, level, 0, 1 };
-      
-      const VkExtent3D elementCount = util::computeBlockCount(image->mipLevelExtent(level), formatInfo->blockSize);
-
-      if (level >= minMipLevel && level < texture->minUploadedMip) {
-        const uint32_t rowPitch = elementCount.width * formatInfo->elementSize;
-        const uint32_t layerPitch = rowPitch * elementCount.height;
-
-        uint8_t* ptr;
-        if (level < texture->numLargeMips) {
-          assert(texture->linearImageDataLargeMips);
-          ctx->uploadImage(image, subresourceLayers, texture->linearImageDataLargeMips.get() + currentOffsetLow, rowPitch, layerPitch);
-        } else {
-          assert(texture->linearImageDataSmallMips);
-          ctx->uploadImage(image, subresourceLayers, texture->linearImageDataSmallMips.get() + currentOffsetHigh, rowPitch, layerPitch);
-        }
-      }
-
-      if (level < texture->numLargeMips) {
-        currentOffsetLow += align(formatInfo->elementSize * util::flattenImageExtent(elementCount), CACHE_LINE_SIZE);
-      } else {
-        currentOffsetHigh += align(formatInfo->elementSize * util::flattenImageExtent(elementCount), CACHE_LINE_SIZE);
+    // If we're not preloading, get rid of the higher res mips
+    if (!isPreloading) {
+      for (int level = 0; level < std::max(1, texture->minPreloadedMip); level++) {
+        texture->assetData->evictCache(0, level);
       }
     }
 
-    DxvkImageViewCreateInfo viewInfo;
-    viewInfo.type = VK_IMAGE_VIEW_TYPE_2D;
-    viewInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
-    viewInfo.aspect = VK_IMAGE_ASPECT_COLOR_BIT;
-    viewInfo.minLevel = minMipLevel;
-    viewInfo.numLevels = desc.mipLevels - minMipLevel;
-    viewInfo.minLayer = 0;
-    viewInfo.numLayers = 1;
-    viewInfo.format = desc.format;
-
-    texture->minUploadedMip = minMipLevel;
-
-    if (minMipLevel == 0) {
-      texture->allMipsImageView = device->createImageView(image, viewInfo);
-      texture->state = ManagedTexture::State::kVidMem;
-    } else {
-      texture->smallMipsImageView = device->createImageView(image, viewInfo);
-    }
+    return view;
   }
 
   Rc<ManagedTexture> TextureUtils::createTexture(const Rc<AssetData>& assetData, ColorSpace colorSpace) {
@@ -385,58 +249,55 @@ namespace dxvk {
 
     texture->mipCount = assetInfo.mipLevels;
     texture->assetData = new ImageAssetDataView(assetData, 0);
-    texture->minUploadedMip = 0;
     texture->uniqueKey = RtxTextureManager::getUniqueKey();
     texture->state = ManagedTexture::State::kInitialized;
 
     return texture;
   }
 
-  void TextureUtils::loadTexture(Rc<ManagedTexture> texture, const Rc<DxvkDevice>& device, const Rc<DxvkContext>& ctx,
-                                 const MemoryAperture mem, MipsToLoad mipsToLoad, int minimumMipLevel) {
+  void TextureUtils::loadTexture(Rc<ManagedTexture> texture, const Rc<DxvkContext>& ctx, const bool isPreloading, int minimumMipLevel) {
     ScopedCpuProfileZone();
 
-    // Todo: Currently the options in this function must remain constant at runtime so that the minimum mip level calculations here stay
-    // the same. This is not ideal as ideally these options should be able to be changed at runtime to allow for new textures loaded after
-    // the point to take advantage of the new textures. This should be improved to make this function less fragile and make the options
-    // less confusing (as some of these options are changed as "texture quality" settings in the user graphics settings menu, but will not
-    // take effect until Remix is restarted).
-
-    // Fetch the pre-configured minimum mip level
-    if (minimumMipLevel >= 0) {
-      texture->largestMipLevel = minimumMipLevel;
-    } else {
-      minimumMipLevel = texture->largestMipLevel;
-    }
-
-    // Figure out the actual minimum mip level
-    if (RtxOptions::Get()->getInitialForceHighResolutionReplacementTextures()) {
-      minimumMipLevel = 0;
-    } else if (RtxOptions::Get()->getInitialEnableAdaptiveResolutionReplacementTextures()) {
-      minimumMipLevel = std::max(minimumMipLevel, static_cast<int>(RtxOptions::Get()->getInitialMinReplacementTextureMipMapLevel()));
-    } else {
-      minimumMipLevel = RtxOptions::Get()->getInitialMinReplacementTextureMipMapLevel();
+    if (!isPreloading) {
+      // Apply config overrides if we're not preloading
+      if (RtxOptions::Get()->forceHighResolutionReplacementTextures()) {
+        minimumMipLevel = 0;
+      } else if (RtxOptions::Get()->enableAdaptiveResolutionReplacementTextures()) {
+        minimumMipLevel = std::max<int>(minimumMipLevel, RtxOptions::Get()->minReplacementTextureMipMapLevel());
+      } else {
+        minimumMipLevel = RtxOptions::Get()->minReplacementTextureMipMapLevel();
+      }
     }
 
     // Adjust the asset data view if necessary
-    if (minimumMipLevel != 0 && texture->mipCount > 1) {
-      const int baseLevel = std::min(minimumMipLevel, (int) texture->mipCount - 1);
-      static_cast<ImageAssetDataView*>(&*texture->assetData)->setMinLevel(baseLevel);
+    const int baseLevel = std::min(minimumMipLevel, texture->mipCount - 1);
+    texture->assetData->setMinLevel(baseLevel);
+
+    if (isPreloading) {
+      texture->minPreloadedMip = baseLevel;
     }
 
     // Adjust image create info
     texture->futureImageDesc.extent = texture->assetData->info().extent;
     texture->futureImageDesc.mipLevels = texture->assetData->info().mipLevels;
 
+    Rc<DxvkImageView> viewTarget;
+
     if (RtxIo::enabled()) {
-      loadTextureRtxIo(texture, device, mipsToLoad);
-    } else if (mem == MemoryAperture::HOST) {
-      loadTextureToHostStagingBuffer(texture, device, mipsToLoad);
+      viewTarget = loadTextureRtxIo(texture, ctx, texture->futureImageDesc, isPreloading);
     } else {
-      assert(mem == MemoryAperture::VID);
-      loadTextureToVidmem(texture, device, ctx);
+      viewTarget = loadTextureToVidmem(texture, ctx, texture->futureImageDesc, isPreloading);
     }
 
-    texture->assetData->evictCache();
+    if (isPreloading) {
+      texture->smallMipsImageView = viewTarget;
+
+      if (texture->minPreloadedMip == 0) {
+        // If texture was fully loaded, set all mips view as well and skip future load.
+        texture->allMipsImageView = viewTarget;
+      }
+    } else {
+      texture->allMipsImageView = viewTarget;
+    }
   }
 } // namespace dxvk

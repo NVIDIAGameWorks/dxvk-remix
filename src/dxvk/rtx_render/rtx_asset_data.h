@@ -74,7 +74,9 @@ namespace dxvk {
       int       level,
       uint64_t& offset,
       size_t&   size) const = 0;
+
     virtual void evictCache() = 0;
+    virtual void evictCache(int layer, int level) = 0;
 
   protected:
     AssetData() = default;
@@ -105,6 +107,10 @@ namespace dxvk {
 
     void evictCache() override {
       return m_sourceAsset->evictCache();
+    }
+
+    void evictCache(int layer, int level) override {
+      return m_sourceAsset->evictCache(layer, level + m_minLevel);
     }
 
     void placement(
