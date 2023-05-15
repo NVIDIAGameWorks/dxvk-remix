@@ -573,8 +573,8 @@ namespace dxvk {
   }
 
   bool OpacityMicromapManager::doesInstanceUseOpacityMicromap(const RtInstance& instance) const {
-    if (instance.getTexcoordHash() == kEmptyHash) {
-      ONCE(Logger::info("[RTX Opacity Micromap] No texcoord hash detected. Ignoring the Opacity Micromap request."));
+    if (instance.getTexcoordHash() == kEmptyHash || instance.surface.texgenMode != TexGenMode::None) {
+      ONCE(Logger::info("[RTX Opacity Micromap] Instance does not have compatible texture coordinates. Ignoring the Opacity Micromap request."));
       return false;
     }
 

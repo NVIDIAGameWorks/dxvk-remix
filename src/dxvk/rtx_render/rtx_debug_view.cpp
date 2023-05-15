@@ -65,6 +65,7 @@ namespace dxvk {
 
         {DEBUG_VIEW_POSITION, "Position"},
         {DEBUG_VIEW_TEXCOORDS, "Texture Coordinates"},
+        {DEBUG_VIEW_TEXCOORD_GENERATION_MODE, "Texture Coordinates Generation Mode"},
         {DEBUG_VIEW_VIRTUAL_MOTION_VECTOR, "Virtual Motion Vector"},
         {DEBUG_VIEW_SCREEN_SPACE_MOTION_VECTOR, "Screen-Space Motion Vector"},
         {DEBUG_VIEW_TRIANGLE_NORMAL, "Triangle Normal"},
