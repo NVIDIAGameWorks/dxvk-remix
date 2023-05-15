@@ -239,7 +239,7 @@ Rc<ManagedTexture> UsdMod::Impl::getTexture(const Args& args, const pxr::UsdPrim
       if (assetData != nullptr) {
         auto device = args.context->getDevice();
         auto& textureManager = device->getCommon()->getTextureManager();
-        return textureManager.preloadTexture(assetData, colorSpace, args.context, forcePreload);
+        return textureManager.preloadTextureAsset(assetData, colorSpace, args.context, forcePreload);
       } else {
         Logger::info(str::format("Texture ", path.GetAssetPath(), " asset data cannot be found or corrupted."));
       }
@@ -1011,7 +1011,6 @@ void UsdMod::Impl::processReplacement(Args& args) {
 void UsdMod::Impl::load(const Rc<DxvkContext>& context) {
   ScopedCpuProfileZone();
   if (m_owner.state() == State::Unloaded) {
-    context->getDevice()->getCommon()->getTextureManager().updateMipMapSkipLevel(context);
     processUSD(context);
 
     m_usdChangeWatchdog.start();

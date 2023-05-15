@@ -61,7 +61,6 @@ class OpacityMicromapManager;
 class ResourceCache {
 public:
   bool find(const RaytraceBuffer& buf, uint32_t& outIdx) const { return m_bufferCache.find(buf, outIdx); }
-  bool find(const TextureRef& tex, uint32_t& outIdx) const { return m_textureCache.find(tex, outIdx); }
   bool find(const RtSurfaceMaterial& surf, uint32_t& outIdx) const { return m_surfaceMaterialCache.find(surf, outIdx); }
 
 protected:
@@ -71,18 +70,6 @@ protected:
     }
   };
   SparseRefCountCache<RaytraceBuffer, BufferHashFn> m_bufferCache;
-
-  struct TextureHashFn {
-    size_t operator() (const TextureRef& tex) const {
-      return tex.getUniqueKey();
-    }
-  };
-  struct TextureEquality {
-    bool operator()(const TextureRef& lhs, const TextureRef& rhs) const {
-      return lhs.getUniqueKey() == rhs.getUniqueKey();
-    }
-  };
-  SparseUniqueCache<TextureRef, TextureHashFn, TextureEquality> m_textureCache;
 
   struct SurfaceMaterialHashFn {
     size_t operator() (const RtSurfaceMaterial& mat) const {
@@ -131,7 +118,6 @@ public:
   bool isPreviousFrameSceneAvailable() const { return m_previousFrameSceneAvailable && getSurfaceMappingBuffer().ptr() != nullptr; }
 
   const std::vector<RaytraceBuffer>& getBufferTable() const { return m_bufferCache.getObjectTable(); }
-  const std::vector<TextureRef>& getTextureTable() const { return m_textureCache.getObjectTable(); }
   const std::vector<RtSurfaceMaterial>& getSurfaceMaterialTable() const { return m_surfaceMaterialCache.getObjectTable(); }
   const std::vector<RtVolumeMaterial>& getVolumeMaterialTable() const { return m_volumeMaterialCache.getObjectTable(); }
   const DrawCallCache& getDrawCallCache() const { return m_drawCallCache; }
@@ -170,8 +156,6 @@ public:
   // GameCapturer
   void triggerUsdCapture() const;
   bool isGameCapturerIdle() const;
-
-  void finalizeAllPendingTexturePromotions();
 
   void trackTexture(Rc<DxvkContext> ctx, TextureRef inputTexture, uint32_t& textureIndex, bool hasTexcoords, bool patchSampler = true, bool allowAsync = true);
 
