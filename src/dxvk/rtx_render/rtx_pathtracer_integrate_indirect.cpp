@@ -27,6 +27,7 @@
 
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/integrate/integrate_indirect_binding_indices.h"
+#include "rtx/pass/rtxdi/restir_gi_final_shading_binding_indices.h"
 #include "rtx/concept/surface_material/surface_material_hitgroup.h"
 
 #include <rtx_shaders/integrate_indirect_raygen.h>
@@ -36,6 +37,7 @@
 #include <rtx_shaders/integrate_indirect_material_opaque_translucent_closestHit.h>
 #include <rtx_shaders/integrate_indirect_material_rayPortal_closestHit.h>
 #include <rtx_shaders/integrate_indirect_miss.h>
+#include <rtx_shaders/integrate_nee.h>
 
 #include "dxvk_scoped_annotation.h"
 #include "rtx_opacity_micromap_manager.h"
@@ -103,6 +105,40 @@ namespace dxvk {
       BEGIN_PARAMETER()
       END_PARAMETER()
     };
+
+    class IntegrateNEEShader : public ManagedShader {
+      SHADER_SOURCE(IntegrateNEEShader, VK_SHADER_STAGE_COMPUTE_BIT, integrate_nee)
+      
+      BINDLESS_ENABLED()
+
+      BEGIN_PARAMETER()
+        COMMON_RAYTRACING_BINDINGS
+
+        TEXTURE2D(RESTIR_GI_FINAL_SHADING_BINDING_SHARED_FLAGS_INPUT)
+        TEXTURE2D(RESTIR_GI_FINAL_SHADING_BINDING_SHARED_MATERIAL_DATA0_INPUT)
+        TEXTURE2D(RESTIR_GI_FINAL_SHADING_BINDING_SHARED_MATERIAL_DATA1_INPUT)
+
+        TEXTURE2D(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT)
+        TEXTURE2D(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_WORLD_INTERPOLATED_NORMAL_INPUT)
+        TEXTURE2D(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_PERCEPTUAL_ROUGHNESS_INPUT)
+        TEXTURE2D(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_HIT_DISTANCE_INPUT)
+        TEXTURE2D(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_ALBEDO_INPUT)
+        TEXTURE2D(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_VIEW_DIRECTION_INPUT)
+        TEXTURE2D(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_CONE_RADIUS_INPUT)
+        TEXTURE2D(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_WORLD_POSITION_INPUT)
+        TEXTURE2D(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_POSITION_ERROR_INPUT)
+        TEXTURE2D(RESTIR_GI_FINAL_SHADING_BINDING_INDIRECT_RADIANCE_HIT_DISTANCE_INPUT)
+
+        RW_TEXTURE2D(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_BASE_REFLECTIVITY_INPUT_OUTPUT)
+
+        RW_TEXTURE2D(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_INDIRECT_DIFFUSE_RADIANCE_HIT_DISTANCE_OUTPUT)
+        RW_TEXTURE2D(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_INDIRECT_SPECULAR_RADIANCE_HIT_DISTANCE_OUTPUT)
+        STRUCTURED_BUFFER(RESTIR_GI_FINAL_SHADING_BINDING_RESTIR_GI_RESERVOIR_OUTPUT)
+        RW_TEXTURE2D(RESTIR_GI_FINAL_SHADING_BINDING_BSDF_FACTOR2_OUTPUT)
+      END_PARAMETER()
+    };
+
+    PREWARM_SHADER_PIPELINE(IntegrateNEEShader);
   }
 
   DxvkPathtracerIntegrateIndirect::DxvkPathtracerIntegrateIndirect(DxvkDevice* device) : m_device(device) {
@@ -202,6 +238,39 @@ namespace dxvk {
       ctx->bindRaytracingPipelineShaders(getPipelineShaders(false, serEnabled, ommEnabled));
       ctx->traceRays(rayDims.width, rayDims.height, rayDims.depth);
       break;
+    }
+
+    {
+      VkExtent3D workgroups = util::computeBlockCount(rayDims, VkExtent3D { 8, 8, 1 });
+
+      ScopedGpuProfileZone(ctx, "Integrate NEE");
+      ctx->bindCommonRayTracingResources(rtOutput);
+
+      ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);
+      ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_SHARED_MATERIAL_DATA0_INPUT, rtOutput.m_sharedMaterialData0.view, nullptr);
+      ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_SHARED_MATERIAL_DATA1_INPUT, rtOutput.m_sharedMaterialData1.view, nullptr);
+
+      ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT, rtOutput.m_primaryWorldShadingNormal.view, nullptr);
+      ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_WORLD_INTERPOLATED_NORMAL_INPUT, rtOutput.m_primaryWorldInterpolatedNormal.view, nullptr);
+      ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_PERCEPTUAL_ROUGHNESS_INPUT, rtOutput.m_primaryPerceptualRoughness.view, nullptr);
+      ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_HIT_DISTANCE_INPUT, rtOutput.m_primaryHitDistance.view, nullptr);
+      ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_ALBEDO_INPUT, rtOutput.m_primaryAlbedo.view, nullptr);
+      ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_VIEW_DIRECTION_INPUT, rtOutput.m_primaryViewDirection.view, nullptr);
+      ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_CONE_RADIUS_INPUT, rtOutput.m_primaryConeRadius.view, nullptr);
+      ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_WORLD_POSITION_INPUT, rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view, nullptr);
+      ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_POSITION_ERROR_INPUT, rtOutput.m_primaryPositionError.view, nullptr);
+      ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_INDIRECT_RADIANCE_HIT_DISTANCE_INPUT, rtOutput.m_indirectRadianceHitDistance.view(Resources::AccessType::Read), nullptr);
+
+      ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_BASE_REFLECTIVITY_INPUT_OUTPUT, rtOutput.m_primaryBaseReflectivity.view(Resources::AccessType::ReadWrite), nullptr);
+
+      ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_INDIRECT_DIFFUSE_RADIANCE_HIT_DISTANCE_OUTPUT, rtOutput.m_primaryIndirectDiffuseRadiance.view(Resources::AccessType::Write), nullptr);
+      ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_INDIRECT_SPECULAR_RADIANCE_HIT_DISTANCE_OUTPUT, rtOutput.m_primaryIndirectSpecularRadiance.view(Resources::AccessType::Write), nullptr);
+
+      ctx->bindResourceBuffer(RESTIR_GI_FINAL_SHADING_BINDING_RESTIR_GI_RESERVOIR_OUTPUT, DxvkBufferSlice(rtOutput.m_restirGIReservoirBuffer, 0, rtOutput.m_restirGIReservoirBuffer->info().size));
+      ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_BSDF_FACTOR2_OUTPUT, rtOutput.m_bsdfFactor2.view, nullptr);
+
+      ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, IntegrateNEEShader::getShader());
+      ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
     }
   }
 
