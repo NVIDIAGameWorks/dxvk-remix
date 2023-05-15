@@ -387,7 +387,8 @@ void integratePathVertex(
   bool hasNEE = false;
   if (cb.enableNeeCache > 0 && any(emissiveLight) > 0 && (!pathState.continueResolving || ((pathState.pixelCoordinate.x + pathState.pixelCoordinate.y) % 3) == 0))
   {
-    int3 cellID = NEECache.loadCellID(pathState.pixelCoordinate);
+    uint4 threadTask = NEECache.loadThreadTask(pathState.pixelCoordinate);
+    int3 cellID = NEECache.offsetToCell(threadTask.x);
     if (all(cellID != -1))
     {      
       NEECell cell = NEECache.getCell(cellID);
@@ -395,6 +396,12 @@ void integratePathVertex(
       {
         uint2 task = uint2(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex);
         cell.insertTask(task);
+        if (threadTask.y == 0xffffffff || threadTask.z == 0xffffffff)
+        {
+          threadTask.y = rayInteraction.surfaceIndex;
+          threadTask.z = rayInteraction.primitiveIndex;
+          NEECache.storeThreadTask(pathState.pixelCoordinate, threadTask);
+        }
 
         for (int i = 0; i < cell.getCandidateCount(); ++i)
         {
@@ -459,7 +466,15 @@ void integratePathVertex(
     pathState.direction = sampledRay.direction;
     pathState.solidAnglePdf = solidAnglePdf;
 
-    NEECache.storeCellID(pathState.pixelCoordinate, pathState.origin, true);
+    //NEECache.storeCellID(pathState.pixelCoordinate, pathState.origin, true);
+    uint4 threadTask = NEECache.loadThreadTask(pathState.pixelCoordinate);
+    if (threadTask.y == 0xffffffff || threadTask.z == 0xffffffff)
+    {
+      //threadTask.y = rayInteraction.surfaceIndex;
+      //threadTask.z = rayInteraction.primitiveIndex;
+      threadTask.x = NEECache.pointToOffset(pathState.origin, true);
+      NEECache.storeThreadTask(pathState.pixelCoordinate, threadTask);
+    }
   }
 
   // Set the material medium index if a medium was entered or exited
@@ -894,7 +909,11 @@ void integrateIndirectPath(
 
   pathState.coneSpreadAngle = calculateSpreadAngleFromSolidAnglePdf(pathState.coneSpreadAngle, firstSampledSolidAnglePdf);
 
-  NEECache.storeCellID(pixelCoordinate, rayOrigin, true);
+  //NEECache.storeCellID(pixelCoordinate, rayOrigin, true);
+  uint4 threadTask;
+  threadTask.x = NEECache.pointToOffset(rayOrigin, true);
+  threadTask.yzw = 0xffffffff;
+  NEECache.storeThreadTask(pixelCoordinate, threadTask);
 
   if (cb.enableReSTIRGI && geometryFlags.primarySelectedIntegrationSurface)
   {
