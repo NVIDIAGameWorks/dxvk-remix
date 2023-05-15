@@ -377,6 +377,9 @@ void geometryResolverOutputDebugView(
     storeInDebugView(pixelCoordinate, fract(surfaceInteraction.textureCoordinates));
 
     break;
+  case DEBUG_VIEW_TEXCOORD_GENERATION_MODE:
+    storeInDebugView(pixelCoordinate, uint(surface.texcoordGenerationMode));
+    break;
   case DEBUG_VIEW_TRIANGLE_NORMAL:
     storeInDebugView(pixelCoordinate, surfaceInteraction.triangleNormal);
 
