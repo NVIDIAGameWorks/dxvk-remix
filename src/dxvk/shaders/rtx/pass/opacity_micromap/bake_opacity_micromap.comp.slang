@@ -82,7 +82,7 @@ void loadVertexData(uint triIdx, Surface surface, out float2 vertexTexcoords[3],
     vertexTexcoords[i] = float2(Texcoords[texcoordIndex], Texcoords[texcoordIndex + 1]);
 
     // Apply texture transform (FF)
-    vertexTexcoords[i] = mul(surface.textureTransform, float4(vertexTexcoords[i], 0.f, 1.f)).xy;
+    vertexTexcoords[i] = mul(surface.textureTransform, float4(vertexTexcoords[i], 1.f, 1.f)).xy;
 
     // Get opacity
     vertexOpacities[i] = 1.0f;
