@@ -413,11 +413,13 @@ namespace dxvk {
   }
 
   bool D3D9Rtx::isRenderingUI() {
-    // Here we assume drawcalls with an orthographic projection are UI calls (as this pattern is common, and we can't raytrace these objects).
-    const bool isOrthographic = (d3d9State().transforms[GetTransformIndex(D3DTS_PROJECTION)][3][3] == 1.0f);
-    const bool zWriteEnabled = d3d9State().renderStates[D3DRS_ZWRITEENABLE];
-    if (isOrthographic && !zWriteEnabled) {
-      return true;
+    if (!m_parent->UseProgrammableVS()) {
+      // Here we assume drawcalls with an orthographic projection are UI calls (as this pattern is common, and we can't raytrace these objects).
+      const bool isOrthographic = (d3d9State().transforms[GetTransformIndex(D3DTS_PROJECTION)][3][3] == 1.0f);
+      const bool zWriteEnabled = d3d9State().renderStates[D3DRS_ZWRITEENABLE];
+      if (isOrthographic && !zWriteEnabled) {
+        return true;
+      }
     }
 
     // Check if UI texture bound
