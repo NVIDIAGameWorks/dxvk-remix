@@ -5,8 +5,8 @@ pushd %~dp0
 Rem This scripts invokes xcopy to recursively copy directories on Windows
 Rem we need to do the / to \ replacement because meson absolutely refuses to pass down \ here
 
-set SRC="%1"
-set DST="%2"
+set SRC=%1
+set DST=%2
 
 @REM echo ////////////////////////////////////////////////////
 @REM echo  copy of %SRC:/=\%:
