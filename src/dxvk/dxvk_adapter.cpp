@@ -31,8 +31,20 @@
 // NV-DXVK start: RTXIO
 #include "rtx_render/rtx_io.h"
 // NV-DXVK end:
+// NV-DXVK start: Remix message box utilities
+#include "rtx_render/rtx_env.h"
+// NV-DXVK end:
 
 namespace dxvk {
+
+  const char* GpuVendorToString(DxvkGpuVendor vendor) {
+    switch (vendor) {
+      case DxvkGpuVendor::Amd: return "AMD";
+      case DxvkGpuVendor::Nvidia: return "NVIDIA";
+      case DxvkGpuVendor::Intel: return "Intel";
+      default: return "Unknown";
+    }
+  }
 
   DxvkAdapter::DxvkAdapter(
     const Rc<vk::InstanceFn>& vki,
@@ -376,34 +388,16 @@ namespace dxvk {
           devExtensionList.size(),
           devExtensionList.data(),
           extensionsEnabled)) {
-      // NV-DXVK start: tell the user they cant run Remix
-      MessageBox(NULL, "Your GPU doesn't support the required features to run RTX Remix.  See the *_d3d9.log for what features your GPU doesn't support.  Remix will exit now.", "Error!", MB_OK);
+      // NV-DXVK start: Check against extension requirements for DXVK and Remix to run
+      Logger::err("Unable to find all required Vulkan GPU extensions for device creation.");
+
+      messageBox("Your GPU doesn't support the required features to run RTX Remix.  See the *_d3d9.log for what features your GPU doesn't support.  The game will exit now.", "RTX Remix - GPU Feature Error!", MB_OK);
       // NV-DXVK end
+
       throw DxvkError("DxvkAdapter: Failed to create device");
     }
 
-    // Log device and vendor info to help with GPU identification
-    Logger::info(str::format("Detected GPU device ID is 0x", std::setfill('0'), std::setw(4), std::hex, m_deviceInfo.core.properties.deviceID, ", vendor ID is 0x", m_deviceInfo.core.properties.vendorID));
-
-    // NV-DXVK start: tell the user they cant run Remix
-    if (m_deviceInfo.core.properties.vendorID == static_cast<uint32_t>(DxvkGpuVendor::Nvidia)) {
-      const uint32_t& driverVersion = m_deviceInfo.core.properties.driverVersion;
-      
-      const uint32_t minDriverVersion = ::GetModuleHandle("winevulkan.dll") ? instance->options().nvidiaLinuxMinDriver : instance->options().nvidiaMinDriver;
-      if (driverVersion < minDriverVersion) {
-        const std::string minDriverCheckMessage = str::format("Your GPU driver needs to be updated before running this game with RTX Remix. Please update the NVIDIA Graphics Driver to the latest version. The game will exit now.\n\n"
-                                                              "\tCurrently installed: ", getDriverVersionString(driverVersion), "\n",
-                                                              "\tRequired minimum: ", getDriverVersionString(minDriverVersion));
-        MessageBox(NULL, minDriverCheckMessage.c_str(), "RTX Remix - Driver Compatibility Error!", MB_OK);
-        Logger::err(minDriverCheckMessage);
-        throw DxvkError("DxvkAdapter: Failed to create device");
-      }
-
-
-    }
-    // NV-DXVK end
-
-    // NV-DXVK start: Integrate Aftermath
+    // NV-DXVK start: Integrate Aftermath extensions
     if (instance->options().enableAftermath) {
       std::array devAftermathExtensions = {
         &devExtensions.nvDeviceDiagnostics,
@@ -472,19 +466,9 @@ namespace dxvk {
 #endif
     // NV-DXVK end:
 
-    Logger::info(str::format("Device properties:"
-      "\n  Device name:     : ", m_deviceInfo.core.properties.deviceName,
-      "\n  Driver version   : ",
-        VK_VERSION_MAJOR(m_deviceInfo.core.properties.driverVersion), ".",
-        VK_VERSION_MINOR(m_deviceInfo.core.properties.driverVersion), ".",
-        VK_VERSION_PATCH(m_deviceInfo.core.properties.driverVersion)));
-
-    Logger::info("Enabled device extensions:");
-    this->logNameList(extensionNameList);
-    this->logFeatures(enabledFeatures);
-
     // Create pNext chain for additional device features
     enabledFeatures.core.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR;
+
     // NV-DXVK start: RTXIO
     // Preserve pNext chain from RTXIO
     std::exchange(enabledFeatures.core.pNext, enabledFeatures.vulkan12Features.pNext);
@@ -563,6 +547,67 @@ namespace dxvk {
       enabledFeatures.nvDeviceDiagnosticsConfig.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DIAGNOSTICS_CONFIG_FEATURES_NV;
       enabledFeatures.nvDeviceDiagnosticsConfig.pNext = std::exchange(enabledFeatures.core.pNext, &enabledFeatures.nvDeviceDiagnosticsConfig);
       enabledFeatures.nvDeviceDiagnosticsConfig.diagnosticsConfig = VK_TRUE;
+    }
+    // NV-DXVK end
+
+    // NV-DXVK start: Moved logging to where it is on more recent DXVK to properly show enabled features, also added more information to be logged
+    // (Still needs driver version from latest DXVK though at the time of writing this, but we can wait on that since it needs larger changes)
+
+    // Log GPU information, extensions and enabled features
+
+    // Note: Split out from the other formatting operation to not have these hex modifiers affect other printed values. Not very effecient
+    // but C++'s formatting being stateful like this is annoying to work with otherwise.
+    const auto hexFormattedString = str::format(
+      std::setfill('0'), std::setw(4), std::hex,
+      "\n  Device ID:       : 0x", m_deviceInfo.core.properties.deviceID,
+      "\n  Vendor ID:       : 0x", m_deviceInfo.core.properties.vendorID
+    );
+
+    Logger::info(str::format("Device properties:"
+      "\n  Device name:     : ", m_deviceInfo.core.properties.deviceName,
+      // Note: This cast is fine to do as values will be safely represented in this fixed-width enum, see:
+      // https://stackoverflow.com/a/55404179
+      // Additionally, the function to convert to string will properly handle cases where the vendor is unknown.
+      "\n  Vendor name:     : ", GpuVendorToString(static_cast<DxvkGpuVendor>(m_deviceInfo.core.properties.vendorID)),
+      hexFormattedString,
+      "\n  Driver version   : ",
+        VK_VERSION_MAJOR(m_deviceInfo.core.properties.driverVersion), ".",
+        VK_VERSION_MINOR(m_deviceInfo.core.properties.driverVersion), ".",
+        VK_VERSION_PATCH(m_deviceInfo.core.properties.driverVersion)));
+
+    Logger::info("Enabled device extensions:");
+    this->logNameList(extensionNameList);
+    this->logFeatures(enabledFeatures);
+
+    // NV-DXVK end
+
+    // NV-DXVK start: Check against set driver version minimums requires for Remix to run
+    // Note: This vendor/driver version check could be done much sooner, but we do it here instead just before device creation or anything else
+    // substantial with Vulkan takes place so that the device info, extensions and enabled features can be printed out first (just to ensure
+    // users get a bit more info in the log if the driver version check fails).
+    if (m_deviceInfo.core.properties.vendorID == static_cast<uint32_t>(DxvkGpuVendor::Nvidia)) {
+      const auto driverVersion = m_deviceInfo.core.properties.driverVersion;
+      const auto minDriverVersion = ::GetModuleHandle("winevulkan.dll") ? instance->options().nvidiaLinuxMinDriver : instance->options().nvidiaMinDriver;
+
+      if (driverVersion < minDriverVersion) {
+        const auto currentDriverVersionString = getDriverVersionString(driverVersion);
+        const auto minimumDriverVersionString = getDriverVersionString(minDriverVersion);
+
+        // Note: Error logging done before message box to ensure it is always logged (as the process will block on the message box call and may be terminated
+        // before the user interacts with the message box to continue execution).
+        Logger::err(str::format(
+          "Current NVIDIA Graphics Driver version (", currentDriverVersionString, ") is lower than the minimum required version (", minimumDriverVersionString, "). "
+          "Please update your to the latest version for RTX Remix to function properly."));
+
+        const std::string minDriverCheckDialogMessage = str::format(
+          "Your GPU driver needs to be updated before running this game with RTX Remix. Please update the NVIDIA Graphics Driver to the latest version. The game will exit now.\n\n"
+          "\tCurrently installed: ", currentDriverVersionString, "\n",
+          "\tRequired minimum: ", minimumDriverVersionString);
+
+        messageBox(minDriverCheckDialogMessage.c_str(), "RTX Remix - Driver Compatibility Error!", MB_OK);
+
+        throw DxvkError("DxvkAdapter: Failed to create device");
+      }
     }
     // NV-DXVK end
 

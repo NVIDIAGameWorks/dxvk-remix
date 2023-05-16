@@ -296,6 +296,8 @@ dxvk_src = files([
   'rtx_render/rtx_asset_package.h',
   'rtx_render/rtx_shader_manager.cpp',
   'rtx_render/rtx_shader_manager.h',
+  'rtx_render/rtx_env.cpp',
+  'rtx_render/rtx_env.h',
 
   'rtx_render/rtx_hashing.cpp',
   'rtx_render/rtx_hashing.h',

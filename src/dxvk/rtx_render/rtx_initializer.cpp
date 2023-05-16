@@ -49,7 +49,14 @@ namespace dxvk {
 #endif
 
     // Initialize RTX settings presets
-    // Todo: Improve this preset override functionality with a more clear envionrment variable [REMIX-1482]
+    // Todo: Improve this preset override functionality [REMIX-1482]
+    // Currently this logic is very confusing and is intended to skip preset initialization from overriding options, but only results in weird behavior
+    // when a termination frame is not set (due to running a test locally in a more open-ended way), or due to how the ultra preset is being used but
+    // it is being treated more as a custom preset in practice (except it's not fully custom either due to other preset initialization happening in dxvk_imgui.cpp,
+    // though to be fair this logic is not acutally invoked I think unless the Remix menu is opened, but it still shouldn't be split out like this especially if a user
+    // is debugging tests and opens the menu only for all the graphics settings to change).
+    // Additionally, skipping this logic skips the DLSS preset initialization which is also probably wrong (though the tests will have to explicitly ask for DLSS
+    // to be disabled if this is changed).
     if (env::getEnvVar("DXVK_TERMINATE_APP_FRAME") == "" ||
         env::getEnvVar("DXVK_GRAPHICS_PRESET_TYPE") != "0") {
       const DxvkDeviceInfo& deviceInfo = m_device->adapter()->devicePropertiesExt();
@@ -59,7 +66,7 @@ namespace dxvk {
       RtxOptions::Get()->updateRaytraceModePresets(deviceInfo.core.properties.vendorID);
     } else {
       // Default, init to custom unless otherwise specified
-      if(RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Auto)
+      if (RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Auto)
         RtxOptions::Get()->graphicsPresetRef() = GraphicsPreset::Custom;
     }
 
