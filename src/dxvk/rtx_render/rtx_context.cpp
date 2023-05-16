@@ -810,14 +810,14 @@ namespace dxvk {
     }
 
     // Assigns textures for raytracing and handles various texture based rules for rt capture
-    auto assignTexture = [this](const uint32_t textureSlot, TextureRef& target) -> RtxGeometryStatus {
+    auto assignTexture = [this](const uint32_t textureSlot, TextureRef& target, bool isOptionalTexture) -> RtxGeometryStatus {
       if (textureSlot < m_rc.size() &&
           m_rc[textureSlot].imageView != nullptr &&
           m_rc[textureSlot].imageView->type() == VK_IMAGE_VIEW_TYPE_2D) {
         const XXH64_hash_t texHash = m_rc[textureSlot].imageView->image()->getHash();
 
         // Texture hash can be empty if the texture is a render-target or other unsupported texture type.
-        if (texHash == kEmptyHash) {
+        if (texHash == kEmptyHash && !isOptionalTexture) {
           ONCE(Logger::info("[RTX-Compatibility-Info] Texture without valid hash detected, skipping drawcall."));
           return RtxGeometryStatus::Ignored;
         }
@@ -830,11 +830,12 @@ namespace dxvk {
 
     {
       RtxGeometryStatus status = RtxGeometryStatus::RayTraced;
-      if ((status = assignTexture(m_rtState.colorTextureSlot, originalMaterialData.m_colorTexture)) != RtxGeometryStatus::RayTraced)
+      if ((status = assignTexture(m_rtState.colorTextureSlot, originalMaterialData.m_colorTexture, false)) != RtxGeometryStatus::RayTraced)
         return status;
 
-      if ((status = assignTexture(m_rtState.colorTextureSlot2, originalMaterialData.m_colorTexture2)) != RtxGeometryStatus::RayTraced)
-        return status;
+      // ColorTexture2 is optional and currently only used as RayPortal material, the material type will be checked in the submitDrawState.
+      // So we don't use it to check valid drawcall or not here.
+      assignTexture(m_rtState.colorTextureSlot2, originalMaterialData.m_colorTexture2, true);
     }
 
     originalMaterialData.updateCachedHash();
