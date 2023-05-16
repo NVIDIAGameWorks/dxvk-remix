@@ -70,6 +70,7 @@ namespace dxvk {
           "Nuno Subtil",
           "Ilya Terentiev",
           "Pierre-Olivier Trottier",
+          "Sultim Tsyrendashiev",
           "Lakshmi Vengesanam"}},
       { "Art",
         { "Vernon Andres-Quentin",
