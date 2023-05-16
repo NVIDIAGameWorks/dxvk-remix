@@ -761,6 +761,11 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, useBuffersDirectly, true, "When enabled Remix will use the incoming vertex buffers directly where possible instead of copying data. Note: setting the d3d9.allowDiscard to False will disable this option.");
     RTX_OPTION("rtx", bool, alwaysCopyDecalGeometries, true, "When set to True tells the geometry processor to always copy decals geometry. This is an optimization flag to experiment with when rtx.useBuffersDirectly is True.");
 
+    // Automation Options
+    RTX_OPTION_ENV("rtx.automation", bool, disableBlockingDialogBoxes, false, "DXVK_AUTOMATION_DISABLE_BLOCKING_DIALOG_BOXES",
+                   "Disables various blocking blocking dialog boxes (such as popup windows) requiring user interaction when set to true, otherwise uses default behavior when set to false.\n"
+                   "This option is typically meant for automation-driven execution of Remix where such dialog boxes if present may cause the application to hang due to blocking waiting for user input.");
+
   public:
     LegacyMaterialDefaults legacyMaterial;
     OpaqueMaterialOptions opaqueMaterialOptions;
