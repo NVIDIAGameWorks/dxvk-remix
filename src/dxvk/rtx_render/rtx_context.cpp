@@ -931,16 +931,13 @@ namespace dxvk {
       transformData.objectToWorld = transformData.objectToWorld * offsetMatrix;
     }
 
-    // Handle the sky
-    drawCallState.m_isSky = rasterizeSky(params, drawCallState);
-
     drawCallState.m_stencilEnabled = m_state.gp.state.ds.enableStencilTest();
-
-    // Process camera data now
-    getSceneManager().processCameraData(drawCallState);
 
     // Sync any pending work with geometry processing threads
     if (drawCallState.finalizePendingFutures()) {
+      // Handle the sky
+      drawCallState.m_isSky = rasterizeSky(params, drawCallState);
+
       getSceneManager().submitDrawState(this, m_cmd, drawCallState);
     }
 
@@ -1884,8 +1881,8 @@ namespace dxvk {
         return false;
       }
     } else {
-      // TODO (REMIX-1110): This is a WAR to handle non-textured sky materials, will replace soon with geometry hash based solution
-      if (m_drawCallID >= options->skyDrawcallIdThreshold()) {
+      const XXH64_hash_t geometryHash = drawCallState.getHash(RtxOptions::Get()->GeometryAssetHashRule);
+      if (m_drawCallID >= options->skyDrawcallIdThreshold() && !options->isSkyboxGeometry(geometryHash)) {
         return false;
       }
     }
