@@ -140,7 +140,11 @@ namespace dxvk {
                   "These textures will be ignored when attempting to determine the desired textures from a draw to use for ray tracing.");
     RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, skyBoxTextures, {},
                   "Textures on draw calls used for the sky or are otherwise intended to be very far away from the camera at all times (no parallax).\n"
-                  "Any draw calls using a texture in this list will be treated as sky and rendered as such in a manner different from typical geometry.");
+                  "Any draw calls using a texture in this list will be treated as sky and rendered as such in a manner different from typical geometry.");    
+    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, skyBoxGeometries, {},
+                  "Geometries from draw calls used for the sky or are otherwise intended to be very far away from the camera at all times (no parallax).\n"
+                  "Any draw calls using a geometry hash in this list will be treated as sky and rendered as such in a manner different from typical geometry.\n"
+                  "The geometry hash being used for sky detection is based off of the asset hash rule, see: \"rtx.geometryAssetHashRuleString\".");
     RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, ignoreTextures, {},
                   "Textures on draw calls that should be ignored.\n"
                   "Any draw call using an ignore texture will be skipped and not ray traced, useful for removing undesirable rasterized effects or geometry not suitable for ray tracing.");
@@ -1015,6 +1019,10 @@ namespace dxvk {
 
     bool isSkyboxTexture(const XXH64_hash_t& h) const {
       return skyBoxTextures().find(h) != skyBoxTextures().end();
+    }
+
+    bool isSkyboxGeometry(const XXH64_hash_t& h) const {
+      return skyBoxGeometries().find(h) != skyBoxGeometries().end();
     }
 
     bool shouldIgnoreTexture(const XXH64_hash_t& h) const {
