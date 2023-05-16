@@ -145,12 +145,16 @@ namespace dxvk {
     const size_t indexDataSize = indexCount * indexStride;
 
     // Assume the GPU changed the data via shaders, include the constant buffer data in hash
-    XXH64_hash_t vertexDataSeed = kEmptyHash;
+    XXH64_hash_t vertexShaderHash = kEmptyHash;
     if (m_parent->UseProgrammableVS() && useVertexCapture()) {
-      const D3D9ConstantSets& cb = m_parent->m_consts[DxsoProgramTypes::VertexShader];
-      vertexDataSeed = XXH3_64bits_withSeed(&d3d9State().vsConsts.fConsts[0], cb.meta.maxConstIndexF * sizeof(float) * 4, vertexDataSeed);
-      vertexDataSeed = XXH3_64bits_withSeed(&d3d9State().vsConsts.iConsts[0], cb.meta.maxConstIndexI * sizeof(int) * 4, vertexDataSeed);
-      vertexDataSeed = XXH3_64bits_withSeed(&d3d9State().vsConsts.bConsts[0], cb.meta.maxConstIndexB * sizeof(uint32_t), vertexDataSeed);
+      if (RtxOptions::Get()->GeometryHashGenerationRule.test(HashComponents::GeometryDescriptor)) {
+        const D3D9ConstantSets& cb = m_parent->m_consts[DxsoProgramTypes::VertexShader];
+        auto& shaderByteCode = d3d9State().vertexShader->GetCommonShader()->GetBytecode();
+        vertexShaderHash = XXH3_64bits(shaderByteCode.data(), shaderByteCode.size());
+        vertexShaderHash = XXH3_64bits_withSeed(&d3d9State().vsConsts.fConsts[0], cb.meta.maxConstIndexF * sizeof(float) * 4, vertexShaderHash);
+        vertexShaderHash = XXH3_64bits_withSeed(&d3d9State().vsConsts.iConsts[0], cb.meta.maxConstIndexI * sizeof(int) * 4, vertexShaderHash);
+        vertexShaderHash = XXH3_64bits_withSeed(&d3d9State().vsConsts.bConsts[0], cb.meta.maxConstIndexB * sizeof(uint32_t)/32, vertexShaderHash);
+      }
     }
 
     // Calculate this based on the RasterGeometry input data
@@ -168,7 +172,7 @@ namespace dxvk {
       vertexLayoutHash = hashVertexLayout(geoData);
     }
 
-    return m_gpeWorkers.Schedule([vertexRegions, indexBufferRef, pIndexData, indexStride, indexDataSize, indexCount, maxIndexValue, vertexDataSeed, geometryDescriptorHash, vertexLayoutHash]() -> GeometryHashes {
+    return m_gpeWorkers.Schedule([vertexRegions, indexBufferRef, pIndexData, indexStride, indexDataSize, indexCount, maxIndexValue, vertexShaderHash, geometryDescriptorHash, vertexLayoutHash]() -> GeometryHashes {
       ScopedCpuProfileZone();
 
       GeometryHashes hashes;
@@ -176,6 +180,7 @@ namespace dxvk {
       // Finalize the descriptor hash
       hashes[HashComponents::GeometryDescriptor] = geometryDescriptorHash;
       hashes[HashComponents::VertexLayout] = vertexLayoutHash;
+      hashes[HashComponents::VertexShader] = vertexShaderHash;
 
       // Index hash
       switch (indexStride) {
@@ -188,11 +193,6 @@ namespace dxvk {
       default:
         hashGeometryData<NoIndices>(indexCount, maxIndexValue, pIndexData, indexBufferRef, vertexRegions, hashes);
         break;
-      }
-
-      // Do we need to modify the hash from an external source?
-      if (vertexDataSeed) {
-        hashes[HashComponents::VertexPosition] ^= vertexDataSeed;
       }
 
       assert(hashes[HashComponents::VertexPosition] != kEmptyHash);
