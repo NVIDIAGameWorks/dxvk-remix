@@ -134,6 +134,16 @@ namespace dxvk {
     static std::string generateOptionString(
       const Vector3& value);
 
+    // NV-DXVK start: added a variant
+    /**
+     * \brief Generates a string for a value
+     *
+     * \param [in] value Option value
+     */
+    static std::string generateOptionString(
+      const Vector4& value);
+    // NV-DXVK end
+
     /**
      * \brief Generates a string for a value
      *

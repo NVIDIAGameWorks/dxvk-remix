@@ -27,8 +27,11 @@ static const float fourPi = 4.0f * pi;
 static const float goldenRatio = 1.61803398875f;
 static const float silverRatio = 0.61803398875f;
 
-static const float floatMax = 3.402823466e+38f;
 static const float float16Max = 65504.f;
+static const float floatMax = 3.402823466e+38f;
+
+static const int int16Max = 32767;
+static const int intMax = 2147483647;
 
 // Clamps a value to the range [0, 1]
 #define GENERIC_SATURATE(type)       \

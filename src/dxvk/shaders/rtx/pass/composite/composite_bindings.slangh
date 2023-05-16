@@ -92,9 +92,6 @@ layout(binding = COMPOSITE_LAST_FINAL_OUTPUT)
 RWTexture2D<float4> LastFinalOutput;
 
 layout(binding = COMPOSITE_DEBUG_VIEW_OUTPUT)
-#ifdef RT_SHADER_EXECUTION_REORDERING
-REORDER_COHERENT
-#endif
 RWTexture2D<float4> DebugView;
 
 layout(binding = COMPOSITE_ALPHA_BLEND_RADIANCE_OUTPUT)

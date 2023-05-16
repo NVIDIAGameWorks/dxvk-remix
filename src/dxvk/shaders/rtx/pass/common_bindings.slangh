@@ -34,6 +34,7 @@
 #include "rtx/concept/volume_material/volume_material.h"
 #include "rtx/concept/light/light.h"
 #include "rtx/concept/billboard.h"
+#include "rtx/utility/gpu_printing.h"
 
 // Note: Texture array may only be up to a size of 2^16
 layout(set = BINDING_SET_BINDLESS_TEXTURE2D, binding = 0)
@@ -98,3 +99,6 @@ ConstantBuffer<RaytraceArgs> cb;
 
 layout(binding = BINDING_DEBUG_VIEW_TEXTURE)
 RWTexture2D DebugView;
+
+layout(binding = BINDING_GPU_PRINT_BUFFER) 
+RWStructuredBuffer<GpuPrintBufferElement> GpuPrintBuffer;

@@ -413,6 +413,15 @@ namespace dxvk {
 
       ImGui::Unindent();
     }
+
+    ImGui::Checkbox("Enable GPU Printing On Press CTRL", &gpuPrint.enableObject());
+
+    if (ImGui::CollapsingHeader("GPU Print", collapsingHeaderFlags)) {
+      ImGui::Checkbox("Use Mouse Position", &gpuPrint.useMousePositionObject());
+      if (!gpuPrint.useMousePosition()) {
+        ImGui::DragInt2("Pixel Position", &gpuPrint.pixelIndexObject(), 0.1f, 0, INT32_MAX, "%d", sliderFlags);
+      }
+    }   
   }
 
   void DebugView::createConstantsBuffer()
