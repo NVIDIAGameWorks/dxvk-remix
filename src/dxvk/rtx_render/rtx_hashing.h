@@ -37,6 +37,7 @@ namespace dxvk {
     LegacyIndices,
     GeometryDescriptor,
     VertexLayout,
+    VertexShader,
     Count
   };
 
@@ -52,7 +53,8 @@ namespace dxvk {
     
     const HashRule VertexDataHash  = (1 << (uint32_t)HashComponents::VertexPosition)
                                    | (1 << (uint32_t)HashComponents::VertexTexcoord)
-                                   | (1 << (uint32_t)HashComponents::VertexLayout);
+                                   | (1 << (uint32_t)HashComponents::VertexLayout)
+                                   | (1 << (uint32_t)HashComponents::VertexShader);
 
     const HashRule FullGeometryHash = VertexDataHash | TopologicalHash;
 
