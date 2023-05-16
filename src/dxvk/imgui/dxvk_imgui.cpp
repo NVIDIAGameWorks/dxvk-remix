@@ -946,6 +946,7 @@ namespace dxvk {
     RtxOptions::Get()->updateGraphicsPresets();
 
     // Note: These settings aren't updated in updateGraphicsPresets since they are not in the RtxOptions class.
+    // Todo: Improve this preset override functionality and ideally move it into the updateGraphicsPresets section somehow [REMIX-1482]
     if (RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Ultra ||
         RtxOptions::Get()->graphicsPreset() == GraphicsPreset::High) {
       rtxdiRayQuery.enableRayTracedBiasCorrectionRef() = true;
