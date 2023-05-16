@@ -322,7 +322,7 @@ SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayI
     } 
 
     surfaceInteraction.textureCoordinates = interpolateHitAttribute(texcoords, bary);
-
+    
     f16vec3 interpolatedTangent, interpolatedBitangent;
     // Note: World positions used here, the original PBRT usage uses model space vertex positions since it calculates the
     // TNB frame in local space, but since we generate the TNB frame in world space this is more applicable. Additionally

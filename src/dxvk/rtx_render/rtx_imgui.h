@@ -104,6 +104,12 @@ namespace ImGui {
     return IMGUI_ADD_TOOLTIP(DragInt(label, &rtxOption->getValue(), std::forward<Args>(args)...), rtxOption->getDescription());
   }
 
+  // Variant handling RtxOption as input
+  template <typename ... Args>
+  IMGUI_API bool DragInt2(const char* label, dxvk::RtxOption<dxvk::Vector2i>* rtxOption, Args&& ... args) {
+    return IMGUI_ADD_TOOLTIP(DragInt2(label, rtxOption->getValue().data, std::forward<Args>(args)...), rtxOption->getDescription());
+  }
+
   // Variant handling integral types (excluding <int>) of various precisions as input
   template<typename T, std::enable_if_t<!std::is_same_v<T, int> && (std::is_integral_v<T> || std::is_enum_v<T>), bool> = true,
     typename ... Args>

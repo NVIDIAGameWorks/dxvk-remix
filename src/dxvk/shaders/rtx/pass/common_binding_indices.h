@@ -43,8 +43,9 @@
 #define BINDING_BINDLESS_INDICES_BUFFER          12
 #define BINDING_CONSTANTS                        13
 #define BINDING_DEBUG_VIEW_TEXTURE               14
+#define BINDING_GPU_PRINT_BUFFER                 15
 
-#define COMMON_MAX_BINDING                       14
+#define COMMON_MAX_BINDING                       BINDING_GPU_PRINT_BUFFER
 #define COMMON_NUM_BINDINGS                      (COMMON_MAX_BINDING + 1)
 
 // Note: Used to represent a non-existent buffer and material index in the Surface,
@@ -71,7 +72,8 @@
   STRUCTURED_BUFFER(BINDING_BILLBOARDS_BUFFER)                      \
   TEXTURE2DARRAY(BINDING_BLUE_NOISE_TEXTURE)                        \
   CONSTANT_BUFFER(BINDING_CONSTANTS)                                \
-  RW_TEXTURE2D(BINDING_DEBUG_VIEW_TEXTURE)
+  RW_TEXTURE2D(BINDING_DEBUG_VIEW_TEXTURE)                          \
+  RW_STRUCTURED_BUFFER(BINDING_GPU_PRINT_BUFFER)
   
 #endif
 

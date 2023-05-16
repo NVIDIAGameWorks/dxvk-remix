@@ -183,7 +183,8 @@ namespace dxvk {
     void bindCommonRayTracingResources(const Resources::RaytracingOutput& rtOutput);
 
     void getDenoiseArgs(NrdArgs& outPrimaryDirectNrdArgs, NrdArgs& outPrimaryIndirectNrdArgs, NrdArgs& outSecondaryNrdArgs);
-    void updateRaytraceArgsConstantBuffer(Rc<DxvkCommandList> cmdList, Resources::RaytracingOutput& rtOutput, float frameTimeSecs);
+    void updateRaytraceArgsConstantBuffer(Rc<DxvkCommandList> cmdList, Resources::RaytracingOutput& rtOutput, float frameTimeSecs,
+                                          const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent);
 
   protected:
     virtual void updateComputeShaderResources() override;

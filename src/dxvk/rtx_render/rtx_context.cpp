@@ -38,6 +38,7 @@
 #include "rtx/pass/raytrace_args.h"
 #include "rtx/pass/volume_args.h"
 #include "rtx/utility/debug_view_indices.h"
+#include "rtx/utility/gpu_printing.h"
 #include "rtx_nrd_settings.h"
 #include "rtx_scenemanager.h"
 
@@ -385,22 +386,24 @@ namespace dxvk {
           m_resetHistory = true;
         }
 
+        const VkExtent3D downscaledExtent = setDownscaleExtent(targetImage->info().extent);
+
         // Calculate extents based on if DLSS is enabled or not
-        if (!getResourceManager().validateRaytracingOutput(setDownscaleExtent(targetImage->info().extent), targetImage->info().extent)) {
+        if (!getResourceManager().validateRaytracingOutput(downscaledExtent, targetImage->info().extent)) {
           Logger::debug("Raytracing output resources were not available to use this frame, so we must re-create inline.");
 
           resetScreenResolution(targetImage->info().extent);
         }
 
         // Allocate/release resources based on each pass's status
-        getResourceManager().onFrameBegin(this, setDownscaleExtent(targetImage->info().extent), targetImage->info().extent);
+        getResourceManager().onFrameBegin(this, downscaledExtent, targetImage->info().extent);
 
         Resources::RaytracingOutput& rtOutput = getResourceManager().getRaytracingOutput();
 
         updateReflexConstants();
 
         // Generate ray tracing constant buffer
-        updateRaytraceArgsConstantBuffer(m_cmd, rtOutput, frameTimeSecs);
+        updateRaytraceArgsConstantBuffer(m_cmd, rtOutput, frameTimeSecs, downscaledExtent, targetImage->info().extent);
 
         // Volumetric Lighting
         dispatchVolumetrics(rtOutput);
@@ -1035,7 +1038,8 @@ namespace dxvk {
     outSecondaryNrdArgs = denoiser2.getNrdArgs();
   }
 
-  void RtxContext::updateRaytraceArgsConstantBuffer(Rc<DxvkCommandList> cmdList, Resources::RaytracingOutput& rtOutput, float frameTimeSecs) {
+  void RtxContext::updateRaytraceArgsConstantBuffer(Rc<DxvkCommandList> cmdList, Resources::RaytracingOutput& rtOutput, float frameTimeSecs,
+                                                    const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent) {
     ScopedCpuProfileZone();
     // Prepare shader arguments
     RaytraceArgs &constants = rtOutput.m_raytraceArgs;
@@ -1185,11 +1189,37 @@ namespace dxvk {
     // Note: This value is assumed to be positive (specifically not have the sign bit set) as otherwise it will break Ray Interaction encoding.
     assert(std::signbit(constants.screenSpacePixelSpreadHalfAngle) == false);
 
-    constants.debugView = m_common->metaDebugView().debugViewIdx();
+    // Debug View
+    {
+      const DebugView& debugView = m_common->metaDebugView();
+      constants.debugView = debugView.debugViewIdx();
+      constants.debugKnob = debugView.debugKnob();
+      
+      constants.gpuPrintThreadIndex = u16vec2 { kInvalidThreadIndex, kInvalidThreadIndex };
+      constants.gpuPrintElementIndex = frameIdx % kMaxFramesInFlight;
+     
+      if (debugView.gpuPrint.enable() && ImGui::IsKeyDown(ImGuiKey_ModCtrl)) {
+        if (debugView.gpuPrint.useMousePosition()) {
+          Vector2 toDownscaledExtentScale = {
+            downscaledExtent.width / static_cast<float>(targetExtent.width),
+            downscaledExtent.height / static_cast<float>(targetExtent.height)
+          };
+
+          const ImVec2 mousePos = ImGui::GetMousePos();
+          constants.gpuPrintThreadIndex = u16vec2 {
+            static_cast<uint16_t>(mousePos.x * toDownscaledExtentScale.x),
+            static_cast<uint16_t>(mousePos.y * toDownscaledExtentScale.y)
+          };
+        } else {
+          constants.gpuPrintThreadIndex = u16vec2 {
+            static_cast<uint16_t>(debugView.gpuPrint.pixelIndex().x), 
+            static_cast<uint16_t>(debugView.gpuPrint.pixelIndex().y) 
+          };
+        }
+      }
+    }
 
     getDenoiseArgs(constants.primaryDirectNrd, constants.primaryIndirectNrd, constants.secondaryCombinedNrd);
-
-    constants.debugKnob = m_common->metaDebugView().debugKnob();
 
     RayPortalManager::SceneData portalData = getSceneManager().getRayPortalManager().getRayPortalInfoSceneData();
     constants.numActiveRayPortals = portalData.numActiveRayPortals;
@@ -1252,6 +1282,7 @@ namespace dxvk {
     Rc<DxvkBuffer> lightBuffer = getSceneManager().getLightManager().getLightBuffer();
     Rc<DxvkBuffer> previousLightBuffer = getSceneManager().getLightManager().getPreviousLightBuffer();
     Rc<DxvkBuffer> lightMappingBuffer = getSceneManager().getLightManager().getLightMappingBuffer();
+    Rc<DxvkBuffer> gpuPrintBuffer = getResourceManager().getRaytracingOutput().m_gpuPrintBuffer;
 
     DebugView& debugView = getCommonObjects()->metaDebugView();
 
@@ -1269,6 +1300,7 @@ namespace dxvk {
     bindResourceView(BINDING_BLUE_NOISE_TEXTURE, getResourceManager().getBlueNoiseTexture(this), nullptr);
     bindResourceBuffer(BINDING_CONSTANTS, DxvkBufferSlice(constantsBuffer, 0, constantsBuffer->info().size));
     bindResourceView(BINDING_DEBUG_VIEW_TEXTURE, debugView.getDebugOutput(), nullptr);
+    bindResourceBuffer(BINDING_GPU_PRINT_BUFFER, DxvkBufferSlice(gpuPrintBuffer, 0, gpuPrintBuffer.ptr() ? gpuPrintBuffer->info().size : 0));
   }
 
   void RtxContext::checkOpacityMicromapSupport() {
@@ -1612,7 +1644,32 @@ namespace dxvk {
   void RtxContext::dispatchDebugView(Rc<DxvkImage>& srcImage, const Resources::RaytracingOutput& rtOutput, bool captureScreenImage)  {
     ScopedCpuProfileZone();
 
-    auto& debugView = m_common->metaDebugView();
+    DebugView& debugView = m_common->metaDebugView();
+    const RaytraceArgs& constants = rtOutput.m_raytraceArgs;
+    const uint32_t frameIdx = m_device->getCurrentFrameId();
+
+    if (debugView.gpuPrint.enable()) {
+      // Read from the oldest element as it is guaranteed to be written on the GPU by now
+      VkDeviceSize offset = ((frameIdx + 1) % kMaxFramesInFlight) * sizeof(GpuPrintBufferElement);
+      GpuPrintBufferElement* gpuPrintElement = reinterpret_cast<GpuPrintBufferElement*>(rtOutput.m_gpuPrintBuffer->mapPtr(offset));
+
+      if (gpuPrintElement && gpuPrintElement->isValid()) {
+        static std::string previousString = "";
+        const std::string newString = str::format("GPU print value [", gpuPrintElement->threadIndex.x, ", ", gpuPrintElement->threadIndex.y, "]: ", Config::generateOptionString(reinterpret_cast<Vector4&>(gpuPrintElement->writtenData)));
+
+        // Avoid spamming the console with the same output
+        if (newString != previousString) {
+          previousString = newString;
+
+          // Add additional info on which we don't want to differentiate when printing out
+          const std::string fullInfoString = str::format("Frame: ", gpuPrintElement->frameIndex, " - ", newString);
+          Logger::info(fullInfoString);
+        }
+
+        // Invalidate the element so that it's not reused
+        gpuPrintElement->invalidate();
+      }
+    }
 
     if (!debugView.shouldDispatch())
       return;
