@@ -219,7 +219,8 @@ namespace dxvk {
       if (input.hashes[HashComponents::Indices] == inOutGeometry.hashes[HashComponents::Indices]) {
         // Check if the vertex positions have changed, requiring a BVH refit
         if (input.hashes[HashComponents::VertexPosition] == inOutGeometry.hashes[HashComponents::VertexPosition]
-            && drawCallState.getSkinningState().boneHash == inOutGeometry.lastBoneHash) {
+         && input.hashes[HashComponents::VertexShader] == inOutGeometry.hashes[HashComponents::VertexShader]
+         && drawCallState.getSkinningState().boneHash == inOutGeometry.lastBoneHash) {
           result = ObjectCacheState::kUpdateInstance;
         } else {
           result = ObjectCacheState::kUpdateBVH;

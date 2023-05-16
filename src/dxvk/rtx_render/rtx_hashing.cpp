@@ -45,6 +45,7 @@ namespace dxvk {
     "legacyindices",
     "geometrydescriptor",
     "vertexlayout",
+    "vertexshader",
   };
   static_assert((sizeof(HashComponentNames) / sizeof(char*)) == (size_t) HashComponents::Count);
 
