@@ -28,6 +28,7 @@
 #include "rtx/pass/gbuffer/gbuffer_binding_indices.h"
 #include <assert.h>
 #include "rtx_options.h"
+#include "rtx/utility/gpu_printing.h"
 
 namespace dxvk {
 
@@ -303,8 +304,8 @@ namespace dxvk {
     return m_raytracingOutput.isReady() && m_targetExtent == targetExtent && m_downscaledExtent == downscaledExtent;
   }
 
-  void Resources::onFrameBegin(Rc<DxvkContext> ctx, const VkExtent3D& downscaledExtents, const VkExtent3D& targetExtent) {
-    executeFrameBeginEventList(m_onFrameBegin, ctx, downscaledExtents, targetExtent);
+  void Resources::onFrameBegin(Rc<DxvkContext> ctx, const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent) {
+    executeFrameBeginEventList(m_onFrameBegin, ctx, downscaledExtent, targetExtent);
 
     // Alias resources that alias to different resources frame to frame
     m_raytracingOutput.m_secondaryConeRadius = AliasedResource(m_raytracingOutput.getCurrentRtxdiConfidence(), ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "Secondary Cone Radius");
@@ -837,6 +838,26 @@ namespace dxvk {
     // Post Effect motion blur prefilter intermediate textures
     m_raytracingOutput.m_primarySurfaceFlagsIntermediateTexture1 = AliasedResource(m_raytracingOutput.m_secondaryPerceptualRoughness, ctx, m_downscaledExtent, VK_FORMAT_R8_UINT, "Primary Surface Flags Intermediate Texture 1");
     m_raytracingOutput.m_primarySurfaceFlagsIntermediateTexture2 = AliasedResource(m_raytracingOutput.m_sharedBiasCurrentColorMask, ctx, m_downscaledExtent, VK_FORMAT_R8_UINT, "Primary Surface Flags Intermediate Texture 2");
+
+    // GPU print buffer
+    {
+      const uint32_t bufferLength = kMaxFramesInFlight;
+
+      DxvkBufferCreateInfo gpuPrintBufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+      gpuPrintBufferInfo.usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+      gpuPrintBufferInfo.stages = VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
+      gpuPrintBufferInfo.access = VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_HOST_READ_BIT | VK_ACCESS_HOST_WRITE_BIT;
+      gpuPrintBufferInfo.size = bufferLength * sizeof(GpuPrintBufferElement);
+      
+      m_raytracingOutput.m_gpuPrintBuffer = m_device->createBuffer(gpuPrintBufferInfo, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, DxvkMemoryStats::Category::RTXBuffer);
+      GpuPrintBufferElement* gpuPrintElements = reinterpret_cast<GpuPrintBufferElement*>(m_raytracingOutput.m_gpuPrintBuffer->mapPtr(0));
+     
+      if (gpuPrintElements) {
+        for (uint32_t i = 0; i < bufferLength; i++) {
+          gpuPrintElements[i].invalidate();
+        }
+      }
+    }
 
     // Let other systems know of the resize
     executeResizeEventList(m_onDownscaleResize, ctx, m_downscaledExtent);

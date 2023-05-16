@@ -308,6 +308,8 @@ namespace dxvk
 
       VkExtent3D m_froxelVolumeExtent;
       uint32_t m_numFroxelVolumes;
+      
+      Rc<DxvkBuffer> m_gpuPrintBuffer;
 
       RaytraceArgs m_raytraceArgs;
 
@@ -344,7 +346,7 @@ namespace dxvk
     }
 
     // Message function called at the beginning of the frame, usually allocate or release resources based on each pass's status
-    void onFrameBegin(Rc<DxvkContext> ctx, const VkExtent3D& downscaledExtents, const VkExtent3D& targetExtent);
+    void onFrameBegin(Rc<DxvkContext> ctx, const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent);
 
     // Message function called when target or downscaled resolution is changed
     void onResize(Rc<DxvkContext> ctx, const VkExtent3D& downscaledExtents, const VkExtent3D& upscaledExtents);

@@ -1077,6 +1077,14 @@ namespace dxvk {
     return ss.str();
   }
 
+  // NV-DXVK start: added a variant
+  std::string Config::generateOptionString(const Vector4& value) {
+    std::stringstream ss;
+    ss << value.x << ", " << value.y << ", " << value.z << ", " << value.w;
+    return ss.str();
+  }
+  // NV-DXVK end
+
   std::string Config::generateOptionString(const Tristate& value) {
     switch (value) {
     default:
