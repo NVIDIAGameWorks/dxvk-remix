@@ -215,6 +215,8 @@ dxvk_src = files([
   'rtx_render/rtx_asset_exporter.h',
   'rtx_render/rtx_asset_replacer.cpp',
   'rtx_render/rtx_asset_replacer.h',
+  'rtx_render/rtx_terrain_baker.cpp',
+  'rtx_render/rtx_terrain_baker.h',
   'rtx_render/rtx_camera.cpp',
   'rtx_render/rtx_camera.h',
   'rtx_render/rtx_cameramanager.cpp',

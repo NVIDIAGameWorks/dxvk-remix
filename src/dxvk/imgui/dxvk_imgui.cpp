@@ -37,6 +37,7 @@
 #include "rtx_render/rtx_camera.h"
 #include "rtx_render/rtx_context.h"
 #include "rtx_render/rtx_options.h"
+#include "rtx_render/rtx_terrain_baker.h"
 #include "dxvk_image.h"
 #include "../util/rc/util_rc_ptr.h"
 #include "../util/util_math.h"
@@ -2019,6 +2020,8 @@ namespace dxvk {
       }
       ImGui::Unindent();
     }
+
+    common->getTerrainBaker().showImguiSettings();
 
     if (ImGui::CollapsingHeader("Player Model", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
