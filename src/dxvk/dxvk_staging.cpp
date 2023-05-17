@@ -3,15 +3,24 @@
 
 namespace dxvk {
   
-  DxvkStagingDataAlloc::DxvkStagingDataAlloc(const Rc<DxvkDevice>& device, const VkMemoryPropertyFlagBits memFlags, const VkBufferUsageFlags usageFlags, const VkPipelineStageFlags stages, const VkAccessFlags access)
+  // NV-DXVK start: Add alignment override functionality.
+  DxvkStagingDataAlloc::DxvkStagingDataAlloc(
+    const Rc<DxvkDevice>& device,
+    const VkMemoryPropertyFlagBits memFlags,
+    const VkBufferUsageFlags usageFlags,
+    const VkPipelineStageFlags stages,
+    const VkAccessFlags access,
+    const VkDeviceSize bufferRequiredAlignmentOverride)
     : m_device(device) 
 	  , m_memoryFlags(memFlags)
     , m_usage(usageFlags)
     , m_stages(stages)
     , m_access(access)
+    , m_bufferRequiredAlignmentOverride(bufferRequiredAlignmentOverride)
   {
 
   }
+  // NV-DXVK end
 
 
   DxvkStagingDataAlloc::~DxvkStagingDataAlloc() {
@@ -67,6 +76,9 @@ namespace dxvk {
     info.access = m_access;
     info.stages = m_stages;
     info.usage = m_usage;
+    // NV-DXVK start: Add alignment override functionality.
+    info.requiredAlignmentOverride = m_bufferRequiredAlignmentOverride;
+    // NV-DXVK end
 
     return m_device->createBuffer(info, m_memoryFlags, DxvkMemoryStats::Category::AppBuffer);
   }

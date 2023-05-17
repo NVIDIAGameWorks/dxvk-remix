@@ -51,6 +51,17 @@ namespace dxvk {
     
     /// Allowed access patterns
     VkAccessFlags access;
+
+    // NV-DXVK start: Add additional alignment requirements for the Buffer's allocation.
+    /// The required alignment the buffer should be allocated with. Note this will potentially
+    /// increase the alignment over the memory requirements of the buffer which may be detrimental
+    /// to some types of allocations (as it may waste more space), but this alignment may be nessecary
+    /// when the buffer's usage/stages/access flags do not ensure an alignment in the Vulkan specification
+    /// for an intended use case. This alignment must be within the maximum alignment any Vulkan object
+    /// is required to be aligned to though, so do not use for any alignments other than things specified
+    /// by the specification.
+    VkDeviceSize requiredAlignmentOverride = 1;
+    // NV-DXVK end
   };
   
   
