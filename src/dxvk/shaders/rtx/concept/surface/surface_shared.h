@@ -78,6 +78,7 @@ enum class DxvkRtTextureOperation {
 enum class TexGenMode {
   None = 0,
   ViewPositions,
+  CascadedViewPositions,
   ViewNormals,
 
   Count

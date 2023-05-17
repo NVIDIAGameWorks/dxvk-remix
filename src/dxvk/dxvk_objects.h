@@ -286,6 +286,10 @@ namespace dxvk {
       return m_sceneManager.getOpacityMicromapManager();
     }
 
+    const TerrainBaker& getTerrainBaker() {
+      return m_sceneManager.getTerrainBaker();
+    }
+
     AssetExporter& metaExporter() {
       return m_exporter.get();
     }
@@ -308,6 +312,10 @@ namespace dxvk {
     Lazy<DxvkMetaCopyObjects>         m_metaCopy;
     Lazy<DxvkMetaResolveObjects>      m_metaResolve;
     Lazy<DxvkMetaPackObjects>         m_metaPack;
+
+
+    // Note: SceneManager(...) retrieves m_exporter from DxvkObjects(), so m_exporter has to be initialized prior to m_sceneManager
+    Lazy<AssetExporter>               m_exporter;
 
     // RTX Management
     SceneManager       m_sceneManager;
@@ -347,7 +355,6 @@ namespace dxvk {
     Active<RtxImageUtils>                   m_imageUtils;
     Active<DxvkPostFx>                      m_postFx;
     Lazy<RtxReflex>                         m_reflex;
-    Lazy<AssetExporter>                     m_exporter;
   };
 
 }

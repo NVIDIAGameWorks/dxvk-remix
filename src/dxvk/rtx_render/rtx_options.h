@@ -186,7 +186,8 @@ namespace dxvk {
                   "Textures on draw calls used for geometric decals with arbitrary topology that are already offset from the base geometry.\n"
                   "These materials will be blended over the materials underneath them when decal material blending is enabled.\n"
                   "Unlike typical decals however these decals have no offset applied to them due assuming the offset is already being done by whatever is passing data to Remix.");
-    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, terrainTextures, {}, "");
+    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, terrainTextures, {}, "Albedo textures that are baked blended together to form a unified terrain texture used during ray tracing.\n"
+                                                                                "Put albedo textures into this category if the game renders terrain as a blend of multiple textures.");
     RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, cutoutTextures, {}, "");
     RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, opacityMicromapIgnoreTextures, {}, "");
     RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, animatedWaterTextures, {},
@@ -265,7 +266,7 @@ namespace dxvk {
 
     RTX_OPTION("rtx", uint32_t, minPrimsInStaticBLAS, 1000, "");
     RTX_OPTION("rtx", uint32_t, maxPrimsInMergedBLAS, 50000, "");
-    
+
     // Camera
     RTX_OPTION("rtx", bool, shakeCamera, false, "");
     RTX_OPTION("rtx", CameraAnimationMode, cameraAnimationMode, CameraAnimationMode::CameraShake_Pitch, "");
@@ -736,6 +737,7 @@ namespace dxvk {
     RTX_OPTION("rtx", float, captureMeshTexcoordDelta, 0.3f, "Inter-frame texcoord min delta warrants new time sample.");
     RTX_OPTION("rtx", float, captureMeshColorDelta, 0.3f, "Inter-frame color min delta warrants new time sample.");
 
+    // Note: call needsMeshBoundingBox() to check if BBOX calculation is enabled
     RTX_OPTION("rtx", bool, calculateMeshBoundingBox, false, "Calculate bounding box for every mesh.");
 
     RTX_OPTION("rtx", bool, resetBufferCacheOnEveryFrame, true, "");
@@ -1153,7 +1155,7 @@ namespace dxvk {
     uint32_t getNumFramesToKeepBLAS() const { return numFramesToKeepBLAS(); }
     uint32_t getNumFramesToKeepLights() const { return numFramesToKeepLights(); }
     uint32_t getNumFramesToPutLightsToSleep() const { return numFramesToKeepLights() /2; }
-    float getMeterToWorldUnitScale() const { return 100.f * getSceneScale(); } // T-Rex world unit is in 1cm 
+    float getMeterToWorldUnitScale() const { return 100.f * getSceneScale(); } // RTX Remix world unit is in 1cm 
     float getSceneScale() const { return sceneScale(); }
 
     // Render Pass Modes
@@ -1179,6 +1181,9 @@ namespace dxvk {
     bool areIndirectTranslucentShadowsEnabled() const { return enableIndirectTranslucentShadows(); }
     float getResolveTransparencyThreshold() const { return resolveTransparencyThreshold(); }
     float getResolveOpaquenessThreshold() const { return resolveOpaquenessThreshold(); }
+    
+    // Returns shared enablement composed of multiple enablement inputs
+    bool needsMeshBoundingBox();
 
     // PSR Options
     bool isPSRREnabled() const { return enablePSRR(); }

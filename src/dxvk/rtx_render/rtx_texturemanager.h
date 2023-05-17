@@ -112,6 +112,11 @@ namespace dxvk {
       */
     static XXH64_hash_t getUniqueKey();
 
+    // Do not use. This is here temporarily for WAR for REMIX-1557
+    void releaseTexture(TextureRef& textureRef) {
+      m_textureCache.free(textureRef);
+    }
+
   protected:
     void work(Rc<ManagedTexture>& item, Rc<DxvkContext>& ctx, Rc<DxvkCommandList>& cmd) override;
 
