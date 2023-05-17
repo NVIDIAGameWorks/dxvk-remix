@@ -23,6 +23,7 @@
 #include "dxvk_device.h"
 
 #include <algorithm>
+#include <numeric>
 
 namespace dxvk {
   
@@ -156,6 +157,13 @@ namespace dxvk {
 
     vkd->vkGetBufferMemoryRequirements2(
        vkd->device(), &memReqInfo, &memReq);
+
+    // NV-DXVK start: Increase memory requirement alignment based on override requirement.
+    // Note: This increase in alignment is safe to do as long as the override alignment is less than or equal to the maximum alignment
+    // required by the Vulkan spec (since raw device memory allocation will only gaurentee alignment in such cases even if custom
+    // sub-allocating logic can handle greater alignments).
+    memReq.memoryRequirements.alignment = std::lcm(memReq.memoryRequirements.alignment, m_info.requiredAlignmentOverride);
+    // NV-DXVK end
 
     // xxxnsubtil: avoid bad interaction with DxvkStagingDataAlloc
     // when dedicated allocations are used, the implicit memory recycling in DxvkStagingDataAlloc goes away for larger buffers,
