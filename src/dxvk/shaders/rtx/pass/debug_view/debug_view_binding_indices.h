@@ -41,6 +41,7 @@
 #define DEBUG_VIEW_BINDING_COMPOSITE_OUTPUT_INPUT                                          14
 #define DEBUG_VIEW_BINDING_INSTRUMENTATION_INPUT                                           15
 #define DEBUG_VIEW_BINDING_CONSTANTS_INPUT                                                 16
+#define DEBUG_VIEW_BINDING_TERRAIN_INPUT                                                   17
 
 // Inputs / Outputs
 #define DEBUG_VIEW_BINDING_HDR_WAVEFORM_RED_INPUT_OUTPUT                                   50

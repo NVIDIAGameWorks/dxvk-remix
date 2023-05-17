@@ -19,6 +19,7 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
+
 #include <cstring>
 #include <cmath>
 #include <cassert>
@@ -33,6 +34,7 @@
 #include "rtx_bindlessresourcemanager.h"
 #include "rtx_opacity_micromap_manager.h"
 #include "rtx_asset_replacer.h"
+#include "rtx_terrain_baker.h"
 
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/raytrace_args.h"
@@ -291,6 +293,7 @@ namespace dxvk {
 
       // Now complete any pending promotions
       textureManager.finalizeAllPendingTexturePromotions();
+
     }
 
     if (RtxOptions::Get()->upscalerType() == UpscalerType::DLSS && !getCommonObjects()->metaDLSS().supportsDLSS()) {
@@ -386,9 +389,9 @@ namespace dxvk {
           m_resetHistory = true;
         }
 
+        // Calculate extents based on if DLSS is enabled or not
         const VkExtent3D downscaledExtent = setDownscaleExtent(targetImage->info().extent);
 
-        // Calculate extents based on if DLSS is enabled or not
         if (!getResourceManager().validateRaytracingOutput(downscaledExtent, targetImage->info().extent)) {
           Logger::debug("Raytracing output resources were not available to use this frame, so we must re-create inline.");
 
@@ -396,7 +399,7 @@ namespace dxvk {
         }
 
         // Allocate/release resources based on each pass's status
-        getResourceManager().onFrameBegin(this, downscaledExtent, targetImage->info().extent);
+        getResourceManager().onFrameBegin(this, getCommonObjects()->getTextureManager(), downscaledExtent, targetImage->info().extent);
 
         Resources::RaytracingOutput& rtOutput = getResourceManager().getRaytracingOutput();
 
@@ -906,41 +909,15 @@ namespace dxvk {
       }
     }
 
-    if (RtxOptions::Get()->isTerrainTexture(originalMaterialData.getHash())) {
-      // When switching from one terrain layer to another, move the next layer up a bit.
-      // One layer can be drawn in multiple draw calls, but they have the same materials. We don't want to shift terrain patches of the same layer.
-      if (originalMaterialData.getHash() != m_lastTerrainMaterial && m_lastTerrainMaterial != 0)
-        m_terrainOffset += RtxOptions::Get()->getSceneScale() * 0.01f;
-
-      m_lastTerrainMaterial = originalMaterialData.getHash();
-
-      // If this is not the first layer, make it a decal.
-      // isBlendedTerrain is a special kind of decal: it will turn into a regular opaque material if it's nearly opaque.
-      // This helps with opaque patches of terrain in the top layer that have nothing under them.
-      if (m_terrainOffset != 0.f)
-        originalMaterialData.isBlendedTerrain = true;
-
-      const bool zUp = RtxOptions::Get()->isZUp();
-
-      // Offset matrix to move the layer.
-      const Matrix4 offsetMatrix {
-        1.0f, 0.0f, 0.0f, 0.0f,
-        0.0f, 1.0f, 0.0f, 0.0f,
-        0.0f, 0.0f, 1.0f, 0.0f,
-        0.0f, zUp ? 0.0f : m_terrainOffset, zUp ? m_terrainOffset : 0.f, 1.0f
-      };
-
-      // Apply the offset
-      transformData.objectToView = transformData.objectToView * offsetMatrix;
-      transformData.objectToWorld = transformData.objectToWorld * offsetMatrix;
-    }
-
     drawCallState.m_stencilEnabled = m_state.gp.state.ds.enableStencilTest();
 
     // Sync any pending work with geometry processing threads
     if (drawCallState.finalizePendingFutures()) {
       // Handle the sky
       drawCallState.m_isSky = rasterizeSky(params, drawCallState);
+
+      // Bake the terrain
+      bakeTerrain(params, drawCallState, transformData);
 
       getSceneManager().submitDrawState(this, m_cmd, drawCallState);
     }
@@ -1147,6 +1124,8 @@ namespace dxvk {
     constants.enablePlayerModelInPrimarySpace = RtxOptions::Get()->playerModel.enableInPrimarySpace();
     constants.enablePlayerModelPrimaryShadows = RtxOptions::Get()->playerModel.enablePrimaryShadows();
     constants.enablePreviousTLAS = RtxOptions::Get()->enablePreviousTLAS() && m_common->getSceneManager().isPreviousFrameSceneAvailable();
+
+    constants.terrainArgs = getSceneManager().getTerrainBaker().getTerrainArgs();
 
     auto& restirGI = m_common->metaReSTIRGIRayQuery();
     constants.enableReSTIRGI = restirGI.shouldDispatch();
@@ -1925,6 +1904,91 @@ namespace dxvk {
     *static_cast<D3D9FixedFunctionVS*>(slice.mapPtr) = vs;
   }
 
+  void RtxContext::bakeTerrain(const DrawParameters& params, DrawCallState& drawCallState, DrawCallTransforms& transformData) {
+    if (!TerrainBaker::needsTerrainBaking())
+      return;
+
+    // Check if the hash is marked as a terrain texture
+    const XXH64_hash_t colorTextureHash = drawCallState.getMaterialData().m_colorTexture.getImageHash();
+    if (!(colorTextureHash && RtxOptions::Get()->isTerrainTexture(colorTextureHash))) {
+      return;
+    }
+
+    Rc<DxvkImageView> previousColorView;
+
+    const D3D9FixedFunctionVS& vs = *static_cast<D3D9FixedFunctionVS*>(m_rtState.vsFixedFunctionCB->mapPtr(0));
+
+    if (!TerrainBaker::debugDisableBaking()) {
+      // Grab and apply replacement texture if any
+      // NOTE: only the original color texture will be replaced with albedo-opacity texture
+      auto replacementMaterial = getSceneManager().getAssetReplacer()->getReplacementMaterial(drawCallState.getMaterialData().getHash());
+
+      if (replacementMaterial) {
+        auto albedoOpacity = replacementMaterial->getOpaqueMaterialData().getAlbedoOpacityTexture();
+
+        if (albedoOpacity.isValid()) {
+          uint32_t textureIndex;
+          getSceneManager().trackTexture(this, albedoOpacity, textureIndex, true, false);
+          albedoOpacity.finalizePendingPromotion();
+
+          // Save current color texture first
+          if (m_rtState.colorTextureSlot < m_rc.size() &&
+              m_rc[m_rtState.colorTextureSlot].imageView != nullptr) {
+            previousColorView = m_rc[m_rtState.colorTextureSlot].imageView;
+          }
+
+          bindResourceView(m_rtState.colorTextureSlot, albedoOpacity.getImageView(), nullptr);
+        }
+      }
+    }
+
+    // Save current RTs
+    DxvkRenderTargets currentRenderTargets = m_state.om.renderTargets;
+
+    // Save state
+    const uint32_t previousViewportCount = m_state.gp.state.rs.viewportCount();
+    const DxvkViewportState previousViewportState = m_state.vp;
+    const DxvkContextState previousContextState = getContextState();
+
+    // Bake the texture
+    const bool isBaked = getSceneManager().getTerrainBaker().bakeDrawCall(this, m_state, m_rtState, params, drawCallState, transformData.textureTransform);
+
+    if (isBaked) {
+      // Bind the baked terrain texture to the mesh
+      if (!TerrainBaker::debugDisableBinding()) {
+        // Update the material data
+        auto terrainTexture = getResourceManager().getTerrainTexture(Rc<DxvkContext>(this));
+        auto terrainSampler = getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+
+        LegacyMaterialData overrideMaterial;
+        overrideMaterial.m_colorTexture = TextureRef(terrainSampler, terrainTexture.view);
+        drawCallState.m_materialData = overrideMaterial;
+
+        // Generate texcoords in the RT shader
+        transformData.texgenMode = TexGenMode::CascadedViewPositions;
+      }
+
+      // Restore state modified during baking
+      if (!TerrainBaker::debugDisableBaking()) {
+        setContextState(previousContextState);
+        setViewports(previousViewportCount, previousViewportState.viewports.data(), previousViewportState.scissorRects.data());
+        bindRenderTargets(currentRenderTargets);
+
+        // Restore color texture
+        if (previousColorView != nullptr) {
+          bindResourceView(m_rtState.colorTextureSlot, previousColorView, nullptr);
+        }
+
+        // Restore vertex state
+        auto slice = m_rtState.vsFixedFunctionCB->allocSlice();
+        invalidateBuffer(m_rtState.vsFixedFunctionCB, slice);
+        *static_cast<D3D9FixedFunctionVS*>(slice.mapPtr) = vs;
+      }
+    }
+
+    return;
+  }
+
   bool RtxContext::rasterizeSky(const DrawParameters& params, const DrawCallState& drawCallState) {
     auto& options = RtxOptions::Get();
 
@@ -1948,7 +2012,7 @@ namespace dxvk {
     ScopedGpuProfileZone(this, "rasterizeSky");
 
     // Grab and apply replacement texture if any
-    // NOTE: only the original color texture will be replaced with albedo-opaticy texture
+    // NOTE: only the original color texture will be replaced with albedo-opacity texture
     auto replacementMaterial = getSceneManager().getAssetReplacer()->getReplacementMaterial(drawCallState.getMaterialData().getHash());
     bool replacemenIsLDR = false;
     Rc<DxvkImageView> curColorView;

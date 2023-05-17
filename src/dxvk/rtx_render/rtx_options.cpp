@@ -22,6 +22,7 @@
 #include "rtx_options.h"
 #include <filesystem>
 #include <nvapi.h>
+#include "rtx_terrain_baker.h"
 
 namespace dxvk {
   std::unique_ptr<RtxOptions> RtxOptions::pInstance = nullptr;
@@ -282,5 +283,10 @@ namespace dxvk {
 
   std::string RtxOptions::getCurrentDirectory() const {
     return std::filesystem::current_path().string();
+  }
+
+  bool RtxOptions::needsMeshBoundingBox() {
+    return calculateMeshBoundingBox() || 
+           TerrainBaker::needsTerrainBaking();
   }
 }

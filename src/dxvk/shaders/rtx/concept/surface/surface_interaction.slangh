@@ -26,6 +26,7 @@
 #include "rtx/utility/packing.slangh"
 #include "rtx/concept/ray/ray.h"
 #include "rtx/pass/common_bindings.slangh"
+#include "rtx/utility/debug_view_indices.h"
 
 // Surface Interaction Helper Functions
 
@@ -88,6 +89,48 @@ bool isSurfaceClipped(Surface surface, MinimalSurfaceInteraction surfaceInteract
   const float clipDistance = dot(surface.clipPlane.xyz, surfaceInteraction.position) + surface.clipPlane.w;
 
   return clipDistance < 0.0;
+}
+ 
+// <0, 1> -> <-0.5, 0.5>
+vec2 texcoordToOffsetFromTextureCenter(vec2 texcoord)
+{
+  return texcoord - 0.5;
+}
+
+// <-0.5, 0.5> -> <0, 1>
+vec2 offsetFromTextureCenterToTexcoord(vec2 offset)
+{
+  return offset + 0.5;
+}
+
+// Converts from <0, 1> texture space of a first cascade into <0, 1> texture space of the Nth cascade
+vec2 convert1stCascadeTexCoordToTargetCascadeLevel(float rcpTargetCascadeLevelScale, vec2 texcoord)
+{
+  return offsetFromTextureCenterToTexcoord(rcpTargetCascadeLevelScale * texcoordToOffsetFromTextureCenter(texcoord));
+}
+
+// Converts from <0, 1> texture space of a Nth cascade into <0, 1> of a combined tiled texture space <0, 1>
+vec2 convert1stCascadeTexCoordToTiledTexCoord(uvec2 cascade2DIndex, float rcpTargetCascadeLevelScale, vec2 texcoord)
+{
+  return cb.terrainArgs.rcpCascadeMapSize * (cascade2DIndex + convert1stCascadeTexCoordToTargetCascadeLevel(rcpTargetCascadeLevelScale, texcoord));
+}
+
+// Converts from <0, 1> texture space of a first cascade into texture coords of Nth cascade of a combined tiled texture space <0, 1>
+// where cascades are stored as tiles left to right, top to bottom
+void convert1stCascadeTexCoordsToTargetCascadeLevel(uint targetCascadeLevel, inout vec2 interpolatedTexcoord, inout vec2 texcoords[3])
+{
+  ivec2 cascade2DIndex;
+  cascade2DIndex.y = targetCascadeLevel * cb.terrainArgs.rcpCascadeMapSize.x;
+  cascade2DIndex.x = targetCascadeLevel - cascade2DIndex.y * cb.terrainArgs.cascadeMapSize.x;
+
+  const float baseCascadeScale = targetCascadeLevel == cb.terrainArgs.maxCascadeLevel ? cb.terrainArgs.lastCascadeScale : 1.f;
+  const float rcpTargetCascadeLevelScale = 1 / (baseCascadeScale * pow(2, targetCascadeLevel));
+
+  interpolatedTexcoord = convert1stCascadeTexCoordToTiledTexCoord(cascade2DIndex, rcpTargetCascadeLevelScale, interpolatedTexcoord);
+
+  [unroll]
+  for (uint i = 0; i < 3; i++)
+    texcoords[i] = convert1stCascadeTexCoordToTiledTexCoord(cascade2DIndex, rcpTargetCascadeLevelScale, texcoords[i]);
 }
 
 SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayInteraction, Ray ray, bool usePreviousPositions = false)
@@ -288,7 +331,9 @@ SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayI
     
     for (uint i = 0; i < 3; i++)
     {
-      if (surface.texcoordGenerationMode == uint(TexGenMode::ViewPositions))
+      if (surface.texcoordGenerationMode == uint(TexGenMode::ViewPositions) ||
+          // For now, calculate texcoords for the first cascade. The texcoords for an appropriate cascade will get adjusted based on the interpolated texcoord later
+          surface.texcoordGenerationMode == uint(TexGenMode::CascadedViewPositions))
       {
         float4 viewPos = mul(cb.camera.worldToView, float4(worldPositions[i], 1.f));
         texcoords[i] = mul(surface.textureTransform, viewPos).xy;
@@ -322,7 +367,44 @@ SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayI
     } 
 
     surfaceInteraction.textureCoordinates = interpolateHitAttribute(texcoords, bary);
-    
+   
+    // Convert texcoords from the 1st cascade to a corresponding cascade in a combined tiled cascades texture space
+    if (surface.texcoordGenerationMode == uint(TexGenMode::CascadedViewPositions))
+    {
+      uint cascadeLevel = 0;
+      
+      // Calculate the texcoords for cascade maps with more than one cascade.
+      // Texcoords for the first cascade are already correct if there's only a single cascade in the map
+      if (cb.terrainArgs.maxCascadeLevel > 0) 
+      {
+        const vec2 textureCenterOffset = texcoordToOffsetFromTextureCenter(surfaceInteraction.textureCoordinates);
+        const float maxTextureCenterOffset = length(textureCenterOffset);
+
+      
+        // Calculate a cascade level if sampling outside the first cascade
+        if (maxTextureCenterOffset >= 0.5)
+        {
+          // Convert the offset from <0, 0.5> to <0, 1> of the first cascade 
+          const float normalizedTextureCenterOffset = maxTextureCenterOffset * 2;
+
+          // Calculate the cascade level starting from cascade level 1
+          cascadeLevel = min(ceil(log2(normalizedTextureCenterOffset)), cb.terrainArgs.maxCascadeLevel);
+        }
+        convert1stCascadeTexCoordsToTargetCascadeLevel(cascadeLevel, surfaceInteraction.textureCoordinates, texcoords);
+      }
+        
+#if defined(RAY_TRACING_PRIMARY_RAY) && defined(RAY_PIPELINE)
+      if (cb.debugView == DEBUG_VIEW_CASCADE_LEVEL)
+      {
+        storeInDebugView(DispatchRaysIndex().xy, cascadeLevel);
+      }
+      else if (cb.debugView == DEBUG_VIEW_IS_BAKED_TERRAIN)
+      {
+        storeInDebugView(DispatchRaysIndex().xy, 1);
+      }
+#endif    
+    }
+
     f16vec3 interpolatedTangent, interpolatedBitangent;
     // Note: World positions used here, the original PBRT usage uses model space vertex positions since it calculates the
     // TNB frame in local space, but since we generate the TNB frame in world space this is more applicable. Additionally
@@ -357,9 +439,15 @@ SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayI
       surfaceInteraction.interpolatedBitangent);
   }
 
+  // Baked terrain is the only surface using cascaded view positions, so key off of that. 
+  const bool isBakedTerrain = surface.texcoordGenerationMode == uint(TexGenMode::CascadedViewPositions);
+
   // Compute vertex colors
 
-  if (surface.color0BufferIndex != BINDING_INDEX_INVALID)
+  if (surface.color0BufferIndex != BINDING_INDEX_INVALID &&
+     // Baked terrain has vertex colors already baked in, so default to neutral vertex color of 1.
+     // They won't get reapplied later anyway
+     !isBakedTerrain)
   {
     f16vec4 color[3];
     for (uint i = 0; i < 3; i++)

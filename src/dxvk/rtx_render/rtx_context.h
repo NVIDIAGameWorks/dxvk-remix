@@ -36,7 +36,16 @@ namespace dxvk {
   class DxvkContext;
   class AssetExporter;
   class SceneManager;
-
+  class TerrainBaker;
+  
+  struct DrawParameters {
+    uint32_t vertexCount = 0;
+    uint32_t indexCount = 0;
+    uint32_t instanceCount = 0;
+    uint32_t firstIndex = 0;
+    uint32_t vertexOffset = 0;
+    uint32_t firstInstance = 0;
+  };
   /** 
    * \brief RTX context
    * 
@@ -46,14 +55,6 @@ namespace dxvk {
    */
 
   class RtxContext : public DxvkContext {
-    struct DrawParameters {
-      uint32_t vertexCount = 0;
-      uint32_t indexCount = 0;
-      uint32_t instanceCount = 0;
-      uint32_t firstIndex = 0;
-      uint32_t vertexOffset = 0;
-      uint32_t firstInstance = 0;
-    };
 
   public:
     
@@ -221,6 +222,7 @@ namespace dxvk {
     void initSkyProbe();
     void rasterizeToSkyProbe(const DrawParameters& params);
     bool rasterizeSky(const DrawParameters& params, const DrawCallState& drawCallState);
+    void bakeTerrain(const DrawParameters& params, DrawCallState& drawCallState, DrawCallTransforms& transformData);
 
     void enableRtxCapture();
     void disableRtxCapture();

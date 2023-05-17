@@ -99,14 +99,17 @@ namespace dxvk {
     uint32_t m_lastDebugViewIdx;
     RTX_OPTION_ENV("rtx.debugView", DebugViewDisplayType, displayType, DebugViewDisplayType::Standard, "DXVK_RTX_DEBUG_VIEW_DISPLAY_TYPE", "");
 
-    RTX_OPTION("rtx.debugView", DebugViewSamplerType, samplerType, DebugViewSamplerType::NormalizedLinear, "Sampler type/n/t0: Nearest./n/t1:Normalized Nearest./n/t2:Normalized Linear.");
+    RTX_OPTION("rtx.debugView", DebugViewSamplerType, samplerType, DebugViewSamplerType::NormalizedLinear, "Sampler type for debug views that sample from a texture (applies only to a subset of debug views).\n"
+                                                                                                           "0: Nearest.\n"
+                                                                                                           "1: Normalized Nearest.\n"
+                                                                                                           "2: Normalized Linear.");
 
     // Common Display
     bool m_enableInfNanView = true;
     int m_colorCodeRadius = 4;
 
     // Standard Display
-    RTX_OPTION("rtx.debugView", bool, enablePseudoColor, false, "");
+    RTX_OPTION_ENV("rtx.debugView", bool, enablePseudoColor, false, "RTX_DEBUG_VIEW_ENABLE_PSEUDO_COLOR", "Enables RGB color coding of a scalar debug view value.");
     bool m_enableAlphaChannel = false;
     float m_scale = 1.f;
     RTX_OPTION_ENV("rtx.debugView", float, minValue, 0.f, "DXVK_RTX_DEBUG_VIEW_MIN_VALUE", "");

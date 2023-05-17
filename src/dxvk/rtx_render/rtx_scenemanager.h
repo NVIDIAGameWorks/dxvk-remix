@@ -56,6 +56,7 @@ class GameCapturer;
 struct AssetReplacement;
 struct AssetReplacer;
 class OpacityMicromapManager;
+class TerrainBaker;
 
 // The resource cache can be *searched* by other users
 class ResourceCache {
@@ -132,6 +133,17 @@ public:
   const VolumeManager& getVolumeManager() const { return m_volumeManager; }
   LightManager& getLightManager() { return m_lightManager; }
   std::unique_ptr<AssetReplacer>& getAssetReplacer() { return m_pReplacer; }
+  TerrainBaker& getTerrainBaker() { return *m_terrainBaker.get(); }
+
+  // Scene utility functions
+  static Vector3 getSceneUp();
+  static Vector3 getSceneForward();
+  static Vector3 calculateSceneRight();
+
+  // Reswizzles input vector to an output that has xy coordinates on scene's horizontal axes and z coordinate to be on the scene's vertical axis
+  static Vector3 worldToSceneOrientedVector(const Vector3& worldVector); 
+
+  static Vector3 sceneToWorldOrientedVector(const Vector3& sceneVector);
 
   void addLight(const D3DLIGHT9& light);
   
@@ -215,6 +227,8 @@ private:
   CameraManager m_cameraManager;
 
   std::unique_ptr<AssetReplacer> m_pReplacer;
+
+  std::unique_ptr<TerrainBaker> m_terrainBaker;
 
   FogState m_fog;
 
