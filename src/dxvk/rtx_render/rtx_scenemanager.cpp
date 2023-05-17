@@ -30,6 +30,7 @@
 #include "dxvk_buffer.h"
 #include "rtx_context.h"
 #include "rtx_options.h"
+#include "rtx_terrain_baker.h"
 
 #include <assert.h>
 
@@ -54,6 +55,7 @@ namespace dxvk {
     , m_bindlessResourceManager(device)
     , m_volumeManager(device)
     , m_pReplacer(new AssetReplacer(device))
+    , m_terrainBaker(new TerrainBaker())
     , m_gameCapturer(new GameCapturer(*this, device->getCommon()->metaExporter()))
     , m_cameraManager(device)
     , m_startTime(std::chrono::system_clock::now()) {
@@ -108,6 +110,27 @@ namespace dxvk {
 
     auto& textureManager = m_device->getCommon()->getTextureManager();
     textureManager.initialize(ctx);
+  }
+
+  Vector3 SceneManager::getSceneUp() {
+    return RtxOptions::Get()->zUp() ? Vector3(0.f, 0.f, 1.f) : Vector3(0.f, 1.f, 0.f);
+  }
+
+  Vector3 SceneManager::getSceneForward() {
+    return RtxOptions::Get()->zUp() ? Vector3(0.f, 1.f, 0.f) : Vector3(0.f, 0.f, 1.f);
+  }
+
+  Vector3 SceneManager::calculateSceneRight() {
+    return cross(getSceneForward(), getSceneUp());
+  }
+
+  Vector3 SceneManager::worldToSceneOrientedVector(const Vector3& worldVector) {
+    return RtxOptions::Get()->zUp() ? worldVector : Vector3(worldVector.x, worldVector.z, worldVector.y);
+  }
+
+  Vector3 SceneManager::sceneToWorldOrientedVector(const Vector3& sceneVector) {
+    // Same transform applies to and from
+    return worldToSceneOrientedVector(sceneVector);
   }
 
   void SceneManager::clear(Rc<DxvkContext> ctx, bool needWfi) {
@@ -359,6 +382,9 @@ namespace dxvk {
       m_bufferCache.clear();
 
     m_materialTextureSampler = nullptr;
+
+    if (TerrainBaker::needsTerrainBaking())
+      m_terrainBaker->onFrameEnd(m_device->getCurrentFrameId());
   }
 
   std::unordered_set<XXH64_hash_t> uniqueHashes;

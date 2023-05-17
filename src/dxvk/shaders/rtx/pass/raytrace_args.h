@@ -52,7 +52,7 @@ struct TerrainArgs {
 
   uint maxCascadeLevel;
   float lastCascadeScale;
-  uint2 pad1;
+  uint2 pad0;
 };
 
 // Constant buffer
@@ -130,6 +130,8 @@ struct RaytraceArgs {
   ViewDistanceArgs viewDistanceArgs;
 
   LightRangeInfo lightRanges[lightTypeCount];
+
+  TerrainArgs terrainArgs;
 
   uint uniformRandomNumber;
   uint16_t opaqueDiffuseLobeSamplingProbabilityZeroThreshold;

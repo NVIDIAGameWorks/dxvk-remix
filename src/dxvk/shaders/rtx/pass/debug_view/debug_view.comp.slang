@@ -66,6 +66,9 @@ SamplerState NearestSampler;
 layout(rgba16f, binding = DEBUG_VIEW_BINDING_LINEAR_SAMPLER)
 SamplerState LinearSampler;
 
+layout(binding = DEBUG_VIEW_BINDING_TERRAIN_INPUT)
+Texture2D<float4> TerrainTexture;
+
 layout(binding = DEBUG_VIEW_BINDING_CONSTANTS_INPUT)
 ConstantBuffer<DebugViewArgs> cb;
 
@@ -227,6 +230,12 @@ vec4 loadInput(ivec2 threadId)
     break;
   case DEBUG_VIEW_PSR_PRIMARY_SECONDARY_SURFACE_MASK:
     value = geometryFlags.primarySelectedIntegrationSurface ? vec4(1, 1, 1, 1) : vec4(0, 0, 0, 1);
+    break;
+  case DEBUG_VIEW_TERRAIN_MAP:
+    value = vec4(sampleTexture(TerrainTexture, threadId).rgb, 1);
+    break;
+  case DEBUG_VIEW_TERRAIN_MAP_OPACITY:
+    value = vec4(sampleTexture(TerrainTexture, threadId).aaa, 1);
     break;
   case DEBUG_VIEW_EXPOSURE_HISTOGRAM:
     // Show histogram or weight as a bar across the top on the screen, technically not safe, but the first handful of threads should be fine.

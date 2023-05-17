@@ -104,6 +104,12 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   float16_t emissiveBlendOverrideInfluence = float16_t(0.0f);
   float16_t thinFilmThickness = float16_t(0.0f);
 
+  // Baked terrain is the only surface using cascaded view positions, so key off of that
+  const bool isBakedTerrain = surface.texcoordGenerationMode == uint(TexGenMode::CascadedViewPositions);
+
+  // Texture operations have already been applied during terrain baking, so skip them for baked terrain surfaces
+  const bool applyTextureOperations = !isBakedTerrain;
+
   // Note: Does not represent if the thin film is enabled in all cases, such as if the thin film enable override is specified, merely concerned with if
   // it has been directly enabled by the material itself.
   const bool thinFilmEnabled = opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_USE_THIN_FILM_LAYER;
@@ -135,20 +141,37 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
       thinFilmThickness = float16_t(0.0f);
     }
   }
+         
+#if defined(RAY_TRACING_PRIMARY_RAY) && defined(RAY_PIPELINE)
+  if (cb.debugView == DEBUG_VIEW_RAW_ALBEDO) 
+  {
+    storeInDebugView(DispatchRaysIndex().xy, albedo.xyz);
+  }
+#endif   
 
-  // Fixed function texture stage state for alpha channel
-  float16_t textureAlphaArg1, textureAlphaArg2;
-  f16vec4 tFactor;
-  tFactor.a = float16_t((surface.tFactor >> 24) & 0xff) / 255.0;
-  tFactor.r = float16_t((surface.tFactor >> 16) & 0xff) / 255.0;
-  tFactor.g = float16_t((surface.tFactor >> 8)  & 0xff) / 255.0;
-  tFactor.b = float16_t((surface.tFactor)       & 0xff) / 255.0;
-  chooseTextureArgument(textureAlphaArg1, surface.textureAlphaArg1Source, opacity, surfaceInteraction.vertexColor.a, tFactor.a, opacity);
-  chooseTextureArgument(textureAlphaArg2, surface.textureAlphaArg2Source, opacity, surfaceInteraction.vertexColor.a, tFactor.a, float16_t(1.0));
-  chooseTextureOperationAlpha(opacity, surface.textureAlphaOperation, textureAlphaArg1, textureAlphaArg2);
+  f16vec4 tFactor = 0.h;
+
+  // WAR for REMIX-1573: texture ops for opacity should happen during baking and be skipped here for baked terrain, 
+  // but right now the opacity is not 1 in the baked texture where it is expected to be and thus texture ops 
+  // are required to blend the layer contributions properly 
+#if 0
+  if (applyTextureOperations) 
+#endif    
+  {
+    // Adjust opacity via texture operations.
+    // Fixed function texture stage state for alpha channel
+    float16_t textureAlphaArg1, textureAlphaArg2;
+    tFactor.a = float16_t((surface.tFactor >> 24) & 0xff) / 255.0;
+    tFactor.r = float16_t((surface.tFactor >> 16) & 0xff) / 255.0;
+    tFactor.g = float16_t((surface.tFactor >> 8)  & 0xff) / 255.0;
+    tFactor.b = float16_t((surface.tFactor)       & 0xff) / 255.0;
+    chooseTextureArgument(textureAlphaArg1, surface.textureAlphaArg1Source, opacity, surfaceInteraction.vertexColor.a, tFactor.a, opacity);
+    chooseTextureArgument(textureAlphaArg2, surface.textureAlphaArg2Source, opacity, surfaceInteraction.vertexColor.a, tFactor.a, float16_t(1.0));
+    chooseTextureOperationAlpha(opacity, surface.textureAlphaOperation, textureAlphaArg1, textureAlphaArg2);
   
-  calcOpaqueSurfaceMaterialOpacity(
-    albedo, opacity, surface, opacity, emissiveBlendOverrideInfluence);
+    calcOpaqueSurfaceMaterialOpacity(
+      albedo, opacity, surface, opacity, emissiveBlendOverrideInfluence);
+  }
 
   // Note: Gamma correct albedo input (be it from a constant or a texture). Currently assuming all textures are not using sRGB formats which
   // automatically do this conversion.
@@ -156,24 +179,28 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   // Todo: Disable this for when a sRGB texture is the source of the albedo.
   albedo = gammaToLinear(albedo);
 
-  // "Normalize" vertex color to remove lighting contribution in different vertices.
-  // We assume the diffuse term contributes most lighting. Therefore, vertex color = diffuseColor * (N*L).
-  // By dividing the vertex color by its largest component, the result is irrelavant to N*L, but proportional to the 
-  // original diffuse color, which is more desired.
-  // In practice, we add an adjustable blending factor to avoid extreme cases.
-  surfaceInteraction.vertexColor.rgb = max(surfaceInteraction.vertexColor.rgb, f16vec3(1.0 / 255.0));
-  float16_t maxColor = max(surfaceInteraction.vertexColor.r, max(surfaceInteraction.vertexColor.g, surfaceInteraction.vertexColor.b));
-  surfaceInteraction.vertexColor.rgb /= maxColor;
-  surfaceInteraction.vertexColor.rgb = mix(f16vec3(1), surfaceInteraction.vertexColor.rgb, float16_t(cb.vertexColorStrength));
+  // Apply vertex color via texture operations
+  if (applyTextureOperations) 
+  {
+    // "Normalize" vertex color to remove lighting contribution in different vertices.
+    // We assume the diffuse term contributes most lighting. Therefore, vertex color = diffuseColor * (N*L).
+    // By dividing the vertex color by its largest component, the result is irrelavant to N*L, but proportional to the 
+    // original diffuse color, which is more desired.
+    // In practice, we add an adjustable blending factor to avoid extreme cases.
+    surfaceInteraction.vertexColor.rgb = max(surfaceInteraction.vertexColor.rgb, f16vec3(1.0 / 255.0));
+    float16_t maxColor = max(surfaceInteraction.vertexColor.r, max(surfaceInteraction.vertexColor.g, surfaceInteraction.vertexColor.b));
+    surfaceInteraction.vertexColor.rgb /= maxColor;
+    surfaceInteraction.vertexColor.rgb = mix(f16vec3(1), surfaceInteraction.vertexColor.rgb, float16_t(cb.vertexColorStrength));
 
-  // Note: Gamma correct vertex color input.
-  surfaceInteraction.vertexColor.rgb = gammaToLinear(surfaceInteraction.vertexColor.rgb);
+    // Note: Gamma correct vertex color input.
+    surfaceInteraction.vertexColor.rgb = gammaToLinear(surfaceInteraction.vertexColor.rgb);
 
-  // fixed function texture stage setting
-  f16vec3 textureArg1, textureArg2;
-  chooseTextureArgument(textureArg1, surface.textureColorArg1Source, albedo, surfaceInteraction.vertexColor.rgb, tFactor.rgb, f16vec3(1.0));
-  chooseTextureArgument(textureArg2, surface.textureColorArg2Source, albedo, surfaceInteraction.vertexColor.rgb, tFactor.rgb, f16vec3(1.0));
-  chooseTextureOperationColor(albedo, surface.textureColorOperation, textureArg1, textureArg2);
+    // Fixed function texture stage setting
+    f16vec3 textureArg1, textureArg2;
+    chooseTextureArgument(textureArg1, surface.textureColorArg1Source, albedo, surfaceInteraction.vertexColor.rgb, tFactor.rgb, f16vec3(1.0));
+    chooseTextureArgument(textureArg2, surface.textureColorArg2Source, albedo, surfaceInteraction.vertexColor.rgb, tFactor.rgb, f16vec3(1.0));
+    chooseTextureOperationColor(albedo, surface.textureColorOperation, textureArg1, textureArg2);  
+  }
 
   // Apply material modifiers/overrides
   albedo = saturate(albedo * cb.opaqueMaterialArgs.albedoScale + cb.opaqueMaterialArgs.albedoBias);

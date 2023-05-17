@@ -66,6 +66,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.autoExposure.exposureWeightCurve3|float|1|Curve control point 3\.|
 |rtx.autoExposure.exposureWeightCurve4|float|1|Curve control point 4\.|
 |rtx.autoExposure.useExposureCompensation|bool|False|Uses a curve to determine the importance of different exposure levels when calculating average exposure\.|
+|rtx.automation.disableBlockingDialogBoxes|bool|False|Disables various blocking blocking dialog boxes \(such as popup windows\) requiring user interaction when set to true, otherwise uses default behavior when set to false\.<br>This option is typically meant for automation\-driven execution of Remix where such dialog boxes if present may cause the application to hang due to blocking waiting for user input\.|
 |rtx.blockInputToGameInUI|bool|True||
 |rtx.bloom.enable|bool|True||
 |rtx.bloom.intensity|float|0.06||
@@ -98,12 +99,15 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.compositeSecondaryCombinedSpecular|bool|True||
 |rtx.debugView.debugViewIdx|int|0||
 |rtx.debugView.displayType|int|0||
-|rtx.debugView.enablePseudoColor|bool|False||
+|rtx.debugView.enablePseudoColor|bool|False|Enables RGB color coding of a scalar debug view value\.|
 |rtx.debugView.evMaxValue|int|4||
 |rtx.debugView.evMinValue|int|-4||
+|rtx.debugView.gpuPrint.enable|bool|False|Enables writing into a GPU buffer that's read by CPU when CTRL is pressed\. The value is printed to console\.|
+|rtx.debugView.gpuPrint.pixelIndex|int2|2147483647, 2147483647|Pixel position to GPU print for\. Requires useMousePosition to be turned off\.|
+|rtx.debugView.gpuPrint.useMousePosition|bool|True|Uses mouse position to select a pixel to GPU print for\.|
 |rtx.debugView.maxValue|float|1||
 |rtx.debugView.minValue|float|0||
-|rtx.debugView.samplerType|int|2|Sampler type/n/t0: Nearest\./n/t1:Normalized Nearest\./n/t2:Normalized Linear\.|
+|rtx.debugView.samplerType|int|2|Sampler type for debug views that sample from a texture \(applies only to a subset of debug views\)\.<br>0: Nearest\.<br>1: Normalized Nearest\.<br>2: Normalized Linear\.|
 |rtx.decalNormalOffset|float|0.003|Distance along normal to offset between two adjacent decals to prevent coplanar rendering issues such as Z\-fighting\.|
 |rtx.defaultToAdvancedUI|bool|False||
 |rtx.demodulate.demodulateRoughness|bool|True|Demodulate roughness to improve specular details\.|
@@ -469,6 +473,17 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.temporalAA.colorClampingFactor|float|1||
 |rtx.temporalAA.maximumRadiance|float|10000||
 |rtx.temporalAA.newFrameWeight|float|1||
+|rtx.terrainBaker.cascadeMap.defaultHalfWidth|float|1000|Cascade map square's default half width around the camera \[game units\]\. Used when the terrain's BBOX couldn't be estimated\.|
+|rtx.terrainBaker.cascadeMap.defaultHeight|float|1000|Cascade map baker's camera default height above the in\-game camera \[game units\]\. Used when the terrain's BBOX couldn't be estimated\.|
+|rtx.terrainBaker.cascadeMap.expandLastCascade|bool|True|Expands the last cascade's footprint to cover the whole cascade map\. This ensures all terrain surface has valid baked texture data to sample from across the cascade map's range even if there isn't enough cascades generated \(due to the current settings or limitations\)\.|
+|rtx.terrainBaker.cascadeMap.levelHalfWidth|float|10|First cascade level square's half width around the camera \[game units\]\.|
+|rtx.terrainBaker.cascadeMap.levelResolution|int|4096|Texture resolution per cascade level\.|
+|rtx.terrainBaker.cascadeMap.maxLevels|int|8|Max number of cascade levels\.|
+|rtx.terrainBaker.cascadeMap.useTerrainBBOX|bool|True|Uses terrain's bounding box to calculate the cascade map's scene footprint\.|
+|rtx.terrainBaker.clearTerrainBeforeBaking|bool|False|Performs a clear on the terrain texture before it is baked to in a frame\.|
+|rtx.terrainBaker.debugDisableBaking|bool|False|Force disables rebaking every frame\. Used for debugging only\.|
+|rtx.terrainBaker.debugDisableBinding|bool|False|Force disables binding of the baked terrain texture to the terrain meshes\. Used for debugging only\.|
+|rtx.terrainBaker.enableBaking|bool|True|\[Experimental\] Enables runtime baking of blended terrains from top down \(i\.e\. in an opposite direction of "rtx\.zUp"\)\.<br>It bakes multiple blended albedo terrain textures into a single texture sampled during ray tracing\. The system requires "Terrain Textures" to contain hashes of the terrain textures to apply\.<br>Only use this system if the game renders terrain surfaces with multiple blended surfaces on top of each other \(i\.e\. sand mixed with dirt, grass, snow, etc\.\)\.<br>Requirement: the baked terrain surfaces must not be placed vertically in the game world\. Horizontal surfaces will have the best image quality\. Requires "rtx\.zUp" to be set properly\.|
 |rtx.texturemanager.budgetPercentageOfAvailableVram|int|50|The percentage of available VRAM we should use for material textures\.  If material textures are required beyond this budget, then those textures will be loaded at lower quality\.  Important note, it's impossible to perfectly match the budget while maintaining reasonable quality levels, so use this as more of a guideline\.  If the replacements assets are simply too large for the target GPUs available vid mem, we may end up going overbudget regularly\.  Defaults to 50% of the available VRAM\.|
 |rtx.tonemap.colorBalance|float3|1, 1, 1||
 |rtx.tonemap.colorGradingEnabled|bool|False||
@@ -555,7 +570,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.decalTextures|hash set||Textures on draw calls used for static geometric decals or decals with complex topology\.<br>These materials will be blended over the materials underneath them when decal material blending is enabled\.<br>A small configurable offset is applied to each flat part of these decals to prevent coplanar geometric cases \(which poses problems for ray tracing\)\.|
 |rtx.dynamicDecalTextures|hash set||Textures on draw calls used for dynamically spawned geometric decals, such as bullet holes\.<br>These materials will be blended over the materials underneath them when decal material blending is enabled\.<br>A small configurable offset is applied to each flat part of these decals to prevent coplanar geometric cases \(which poses problems for ray tracing\)\.|
 |rtx.geometryAssetHashRuleString|string|positions,indices,geometrydescriptor|Defines which hashes we need to include when sampling from replacements and doing USD capture\.|
-|rtx.geometryGenerationHashRuleString|string|positions,indices,texcoords,geometrydescriptor,vertexlayout|Defines which asset hashes we need to generate via the geometry processing engine\.|
+|rtx.geometryGenerationHashRuleString|string|positions,indices,texcoords,geometrydescriptor,vertexlayout,vertexshader|Defines which asset hashes we need to generate via the geometry processing engine\.|
 |rtx.hideInstanceTextures|hash set||Textures on draw calls that should be hidden from rendering, but not totally ignored\.<br>This is similar to rtx\.ignoreTextures but instead of completely ignoring such draw calls they are only hidden from rendering, allowing for the hidden objects to still appear in captures\.<br>As such, this is mostly only a development tool to hide objects during development until they are properly replaced, otherwise the objects should be ignored with rtx\.ignoreTextures instead for better performance\.|
 |rtx.ignoreLights|hash set||Lights that should be ignored\.<br>Any matching light will be skipped and not added to be ray traced\.|
 |rtx.ignoreTextures|hash set||Textures on draw calls that should be ignored\.<br>Any draw call using an ignore texture will be skipped and not ray traced, useful for removing undesirable rasterized effects or geometry not suitable for ray tracing\.|
@@ -570,7 +585,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.skyBoxGeometries|hash set||Geometries from draw calls used for the sky or are otherwise intended to be very far away from the camera at all times \(no parallax\)\.<br>Any draw calls using a geometry hash in this list will be treated as sky and rendered as such in a manner different from typical geometry\.<br>The geometry hash being used for sky detection is based off of the asset hash rule, see: "rtx\.geometryAssetHashRuleString"\.|
 |rtx.skyBoxTextures|hash set||Textures on draw calls used for the sky or are otherwise intended to be very far away from the camera at all times \(no parallax\)\.<br>Any draw calls using a texture in this list will be treated as sky and rendered as such in a manner different from typical geometry\.|
 |rtx.sourceRootPath|string||A path pointing at the root folder of the project, used to override the path to the root of the project generated at build\-time \(as this path is only valid for the machine the project was originally compiled on\)\. Used primarily for locating shader source files for runtime shader recompilation\.|
-|rtx.terrainTextures|hash set|||
+|rtx.terrainTextures|hash set||Albedo textures that are baked blended together to form a unified terrain texture used during ray tracing\.<br>Put albedo textures into this category if the game renders terrain as a blend of multiple textures\.|
 |rtx.uiTextures|hash set||Textures on draw calls that should be treated as screenspace UI elements\.<br>All exclusively UI\-related textures should be classified this way and doing so allows the UI to be rasterized on top of the ray traced scene like usual\.<br>Note that currently the first UI texture encountered triggers RTX injection \(though this may change in the future as this does cause issues with games that draw UI mid\-frame\)\.|
 |rtx.worldSpaceUiBackgroundTextures|hash set|||
 |rtx.worldSpaceUiTextures|hash set||Textures on draw calls that should be treated as worldspace UI elements\.<br>Unlike typical UI textures this option is useful for improved rendering of UI elements which appear as part of the scene \(moving around in 3D space rather than as a screenspace element\)\.|
