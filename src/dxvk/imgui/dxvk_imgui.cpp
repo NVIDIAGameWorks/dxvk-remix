@@ -953,13 +953,14 @@ namespace dxvk {
       restirGiRayQuery.biasCorrectionModeRef() = ReSTIRGIBiasCorrection::PairwiseRaytrace;
       restirGiRayQuery.useReflectionReprojectionRef() = true;
       common->metaComposite().enableStochasticAlphaBlendRef() = true;
+      postFx.enableRef() = true;
     } else if (RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Medium ||
                RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Low) {
       rtxdiRayQuery.enableRayTracedBiasCorrectionRef() = false;
       restirGiRayQuery.biasCorrectionModeRef() = ReSTIRGIBiasCorrection::BRDF;
-      postFx.enableRef() = false;
       restirGiRayQuery.useReflectionReprojectionRef() = false;
       common->metaComposite().enableStochasticAlphaBlendRef() = false;
+      postFx.enableRef() = false;
     }
 
     // Path Tracing Settings
