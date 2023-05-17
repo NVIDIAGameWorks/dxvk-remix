@@ -46,8 +46,21 @@ namespace dxvk {
   static int g_blasCount = 0;
 
   AccelManager::AccelManager(Rc<DxvkDevice> device)
-    : m_device(device) 
-    , m_scratchAllocator(device, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR) {
+    : m_device(device)
+    , m_scratchAlignment(device->properties().khrDeviceAccelerationStructureProperties.minAccelerationStructureScratchOffsetAlignment)
+    , m_scratchAllocator(
+        device,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
+        VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+        VK_ACCESS_TRANSFER_READ_BIT,
+        // Note: The scratch buffer's device address must be aligned to the minimum alignment required by the Vulkan runtime, otherwise
+        // even if scratch allocation offsets are aligned they may add to a device address which will mess up this alignment (the alignment
+        // requirement in Vulkan applies to the scratch buffer's device address, not just an offset as the name may imply). The lack of
+        // this alignment override created issues on Intel GPUs where the min scratch alignment is 128 bytes but the underlying buffer was
+        // only allocated with a 64 byte alignment.
+        // Note: This could use the value of m_scratchAlignment, but this is duplicated to avoid potential future initialization order issues.
+        device->properties().khrDeviceAccelerationStructureProperties.minAccelerationStructureScratchOffsetAlignment) {
   }
 
   void AccelManager::clear() {
@@ -263,9 +276,10 @@ namespace dxvk {
 
     geometry.geometry.aabbs.data.deviceAddress = m_aabbBuffer->getDeviceAddress();
 
-    const uint32_t scratchAlignment = m_device->properties().khrDeviceAccelerationStructureProperties.minAccelerationStructureScratchOffsetAlignment;
-    DxvkBufferSlice scratchSlice = m_scratchAllocator.alloc(scratchAlignment, sizeInfo.buildScratchSize + scratchAlignment);
+    const DxvkBufferSlice scratchSlice = m_scratchAllocator.alloc(m_scratchAlignment, sizeInfo.buildScratchSize + m_scratchAlignment);
     buildInfo.scratchData.deviceAddress = scratchSlice.getDeviceAddress();
+
+    assert(buildInfo.scratchData.deviceAddress % m_scratchAlignment == 0); // Note: Required by the Vulkan specification.
 
     VkAccelerationStructureBuildRangeInfoKHR buildRange {};
     buildRange.primitiveCount = 1;
@@ -349,7 +363,6 @@ namespace dxvk {
       instances.clear();
     }
 
-    const uint32_t scratchAlignment = m_device->properties().khrDeviceAccelerationStructureProperties.minAccelerationStructureScratchOffsetAlignment;
     const uint32_t currentFrame = m_device->getCurrentFrameId();
 
     if (instances.size() > CUSTOM_INDEX_SURFACE_MASK) {
@@ -459,8 +472,10 @@ namespace dxvk {
           buildInfo.dstAccelerationStructure = blasEntry->staticBlas->accelStructure->getAccelStructure();
 
           // Allocate a scratch buffer slice
-          DxvkBufferSlice scratchSlice = m_scratchAllocator.alloc(scratchAlignment, sizeInfo.buildScratchSize + scratchAlignment);
+          const DxvkBufferSlice scratchSlice = m_scratchAllocator.alloc(m_scratchAlignment, sizeInfo.buildScratchSize + m_scratchAlignment);
           buildInfo.scratchData.deviceAddress = scratchSlice.getDeviceAddress();
+
+          assert(buildInfo.scratchData.deviceAddress % m_scratchAlignment == 0); // Note: Required by the Vulkan specification.
 
           // Put the new BLAS into the build queue
           blasToBuild.push_back(buildInfo);
@@ -580,7 +595,6 @@ namespace dxvk {
                                                    std::vector<VkAccelerationStructureBuildGeometryInfoKHR>& blasToBuild,
                                                    std::vector<VkAccelerationStructureBuildRangeInfoKHR*>& blasRangesToBuild) {
 
-    const uint32_t scratchAlignment = m_device->properties().khrDeviceAccelerationStructureProperties.minAccelerationStructureScratchOffsetAlignment;
     const uint32_t currentFrame = m_device->getCurrentFrameId();
 
     // Create or find a matching BLAS for each bucket, then build it
@@ -627,8 +641,10 @@ namespace dxvk {
       buildInfo.dstAccelerationStructure = selectedBlas->accelStructure->getAccelStructure();
 
       // Allocate a scratch buffer slice
-      DxvkBufferSlice scratchSlice = m_scratchAllocator.alloc(scratchAlignment, sizeInfo.buildScratchSize);
+      const DxvkBufferSlice scratchSlice = m_scratchAllocator.alloc(m_scratchAlignment, sizeInfo.buildScratchSize);
       buildInfo.scratchData.deviceAddress = scratchSlice.getDeviceAddress();
+
+      assert(buildInfo.scratchData.deviceAddress % m_scratchAlignment == 0); // Note: Required by the Vulkan specification.
 
       // Track the lifetime of the scratch and BLAS buffers
       cmdList->trackResource<DxvkAccess::Write>(scratchSlice.buffer());
@@ -993,12 +1009,14 @@ namespace dxvk {
     }
 
     // Allocate the scratch memory
-    auto scratchSlice = m_scratchAllocator.alloc(m_device->properties().khrDeviceAccelerationStructureProperties.minAccelerationStructureScratchOffsetAlignment, sizeInfo.buildScratchSize);
+    const auto scratchSlice = m_scratchAllocator.alloc(m_scratchAlignment, sizeInfo.buildScratchSize);
 
     // Update build information
     buildInfo.srcAccelerationStructure = nullptr;
     buildInfo.dstAccelerationStructure = tlas.accelStructure->getAccelStructure();
     buildInfo.scratchData.deviceAddress = scratchSlice.getDeviceAddress();
+
+    assert(buildInfo.scratchData.deviceAddress % m_scratchAlignment == 0); // Note: Required by the Vulkan specification.
 
     // Build Offsets info: n instances
     VkAccelerationStructureBuildRangeInfoKHR        buildOffsetInfo { numInstances, 0, 0, 0 };

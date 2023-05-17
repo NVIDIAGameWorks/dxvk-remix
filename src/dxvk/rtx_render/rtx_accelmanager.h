@@ -130,6 +130,7 @@ private:
 
   Rc<PooledBlas> createPooledBlas(size_t bufferSize) const;
 
+  VkDeviceSize m_scratchAlignment;
   DxvkStagingDataAlloc m_scratchAllocator;
 };
 
