@@ -157,6 +157,12 @@ inline uint32_t setBits(uint32_t& target, uint32_t value, uint32_t bitmask, uint
   return setBits(target, value << lshift, bitmask << lshift);
 }
 
+// Wipes the contents of a vector and releases allocated memory.
+template<typename T>
+void releaseVectorMemory(std::vector<T>& v) {
+  std::vector<T>().swap(v);
+}
+
 // A passthrough hash class compatible with std c++ containers.
 struct XXH64_hash_passthrough {
   [[nodiscard]] size_t operator()(const XXH64_hash_t keyval) const noexcept {
