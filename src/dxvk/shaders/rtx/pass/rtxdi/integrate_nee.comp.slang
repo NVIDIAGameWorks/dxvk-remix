@@ -30,7 +30,7 @@
 #include "rtxdi/DlssEnhancementFilterFunctions.slangh"
 #include "rtx/algorithm/neecache.h"
 
-void evalNEESecondary(
+bool evalNEESecondary(
   //vec3 throughput, 
   //inout vec3 accumulatedRadiance,
   LightSample lightSample,
@@ -44,7 +44,7 @@ void evalNEESecondary(
   MinimalSurfaceInteraction minimalSurfaceInteraction,
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
   out float16_t specularPortion,
-  f16vec2 diffuseSpecularMISWeight,
+  //f16vec2 diffuseSpecularMISWeight,
   out vec3 diffuseLight,
   out vec3 specularLight)
 {
@@ -63,14 +63,14 @@ void evalNEESecondary(
   diffuseLight = specularLight = 0;
 
   if (visibility.hasOpaqueHit)
-    return;
+    return false;
 
   // Evaluate the material and accumulate throughput and hit distance
 
   const SurfaceMaterialInteractionSplitWeight splitWeight = opaqueSurfaceMaterialInteractionCalcProjectedWeight(
     opaqueSurfaceMaterialInteraction, minimalRayInteraction, visibility.rayDirection);
 
-  const f16vec3 combinedWeight = splitWeight.diffuseReflectionWeight * diffuseSpecularMISWeight.x + splitWeight.specularReflectionWeight * diffuseSpecularMISWeight.y;
+  const f16vec3 combinedWeight = splitWeight.diffuseReflectionWeight + splitWeight.specularReflectionWeight;
 
   specularPortion = calcBt709Luminance(splitWeight.specularReflectionWeight) / calcBt709Luminance(combinedWeight);
 
@@ -81,10 +81,11 @@ void evalNEESecondary(
   const vec3 lightThroughput = /*vec3(combinedWeight) */ lightSampleThroughput * vec3(visibility.attenuation);
   const vec3 attenuatedRadiance = lightSample.radiance * lightThroughput;
 
-  diffuseLight = attenuatedRadiance * splitWeight.diffuseReflectionWeight * diffuseSpecularMISWeight.x;
-  specularLight = attenuatedRadiance * splitWeight.specularReflectionWeight * diffuseSpecularMISWeight.y;
+  diffuseLight = attenuatedRadiance * splitWeight.diffuseReflectionWeight;// *diffuseSpecularMISWeight.x;
+  specularLight = attenuatedRadiance * splitWeight.specularReflectionWeight;// *diffuseSpecularMISWeight.y;
   //return attenuatedRadiance;
   //accumulatedRadiance += throughput * attenuatedRadiance;
+  return true;
 }
 
 [shader("compute")]
@@ -100,7 +101,8 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   const Ray originalPrimaryRay = rayCreatePrimaryFromPixel(camera, threadIndex);
 
   RNG rng = createRNG(uvec2(threadIndex), cb.frameIdx);
-
+  RAB_RandomSamplerState rtxdiRNG = RAB_InitRandomSampler(threadIndex, cb.frameIdx, 7);
+  RAB_Surface surface = RAB_GetGBufferSurface(threadIndex, false);
   const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(threadIndex, SharedFlags);
   const bool gBufferMiss = isGBufferMiss(threadIndex, PrimaryConeRadius);
 
@@ -155,6 +157,9 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   }
 
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+  ReSTIRGI_Reservoir resultReservoir = ReSTIRGI_Reservoir.createEmpty();
+
   if (cb.enableNeeCache && cb.enableNeeCacheInFirstBounce)
   {
     NEECell cell = NEECache.findCell(minimalSurfaceInteraction.position, true);
@@ -220,18 +225,34 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
               const bool isViewModel = false;// pathState.rayMask& OBJECT_MASK_ALL_VIEWMODEL;
               float emissiveInvSelectionPdf = 1.0;// / lightObjectPdf;
               vec3 diffuseLight, specularLight;
-              evalNEESecondary(
+              bool isVisible = evalNEESecondary(
                 emissiveLightSample, emissiveInvSelectionPdf, invalidRayPortalIndex, /*pathState.portalSpace*/PORTAL_SPACE_NONE, 
                 OBJECT_MASK_ALL | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC) /*pathState.rayMask*/,
                 isViewModel, /*ray*/ primaryRay, rayInteraction, /*surfaceInteraction*/minimalSurfaceInteraction,
-                opaqueSurfaceMaterialInteraction, specularPortion2, misWeight, diffuseLight, specularLight);
+                opaqueSurfaceMaterialInteraction, specularPortion2, diffuseLight, specularLight);
 
 
               //pathState.radiance += pathState.throughput * emissiveNEELight;
               //PrimaryDirectDiffuseLobeRadianceHitDistance[threadIndex].xyz += emissiveNEELight;
               //PrimaryDirectSpecularLobeRadianceHitDistance[threadIndex] = 0;// emissiveNEELight;
-               PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex].xyz += diffuseLight;
-               PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex].xyz += specularLight;
+               PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex].xyz += diffuseLight * misWeight.x;
+               PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex].xyz += specularLight * misWeight.y;
+
+              if (cb.enableReSTIRGI && isVisible)
+              {
+                ReSTIRGI_Reservoir neeSample;
+                neeSample.M = 1;
+                neeSample.avgWeight = 1;
+                neeSample.flagsAndVirtualFraction = 0;
+                neeSample.radiance = vec3(0);
+                neeSample.setPortalID(RESTIR_GI_INVALID_INDIRECT_LIGHT_PORTAL_ID);
+                neeSample.position = emissiveLightSample.position;
+                neeSample.normal = emissiveLightSample.normal;
+                neeSample.radiance = emissiveLightSample.radiance / emissiveLightSample.solidAnglePdf;
+
+                float wi = calcBt709Luminance(diffuseLight + specularLight);
+                resultReservoir.update(wi, neeSample, 0.5);
+              }
             }
           }
         }
@@ -295,7 +316,14 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
       }
     }
 
+    float wiT = max(0.f, initialSample.avgWeight) * initialSample.M * RAB_GetGITargetPdfForSurface(initialSample.radiance, initialSample.position, surface);
+    resultReservoir.update(wiT, initialSample, RAB_GetNextRandom(rtxdiRNG));
+
+    float pNew = RAB_GetGITargetPdfForSurface(resultReservoir.radiance, resultReservoir.position, surface);
+    resultReservoir.finalize(pNew, 1.0, resultReservoir.M);
+    resultReservoir.M = 1;
+
     // Store complete initial sample
-    RAB_StoreGIReservoir(initialSample, threadIndex, ReSTIRGI_GetInitSamplePage());
+    RAB_StoreGIReservoir(resultReservoir, threadIndex, ReSTIRGI_GetInitSamplePage());
   }
 }
