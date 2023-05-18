@@ -840,7 +840,7 @@ namespace dxvk {
     // Note: A single texture is aliased for both the noisy output from the integration pass and the denoised result from NRD.
     m_raytracingOutput.m_primaryDirectDiffuseRadiance = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Primary Direct Diffuse Radiance", allowCompatibleFormatAliasing);
     m_raytracingOutput.m_primaryDirectSpecularRadiance = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Primary Direct Specular Radiance", allowCompatibleFormatAliasing);
-    m_raytracingOutput.m_primaryIndirectDiffuseRadiance = AliasedResource(m_raytracingOutput.m_decalEmissiveRadiance, ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Primary Indirect Diffuse Radiance Hit Distance");
+    m_raytracingOutput.m_primaryIndirectDiffuseRadiance = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Primary Indirect Diffuse Radiance Hit Distance", allowCompatibleFormatAliasing);
     m_raytracingOutput.m_primaryIndirectSpecularRadiance = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Primary Indirect Specular Radiance", allowCompatibleFormatAliasing);
     m_raytracingOutput.m_secondaryCombinedDiffuseRadiance = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Secondary Combined Diffuse Radiance", allowCompatibleFormatAliasing);
     m_raytracingOutput.m_secondaryCombinedSpecularRadiance = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Secondary Combined Specular Radiance", allowCompatibleFormatAliasing);
