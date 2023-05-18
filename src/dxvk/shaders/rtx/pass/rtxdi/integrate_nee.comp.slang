@@ -164,13 +164,24 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
 
   ReSTIRGI_Reservoir spatialReservoir = RAB_LoadGIReservoir(threadIndex, ReSTIRGI_GetSpatialOutputPage());
 
+  vec4 initialDiffuseOutput = vec4(0);
+  vec4 initialSpecularOutput = vec4(0);
+  const vec4 indirectRadianceHitDistance = IndirectRadianceHitDistance[threadIndex];
+  if (geometryFlags.firstSampledLobeIsSpecular) 
+  {
+    initialSpecularOutput = indirectRadianceHitDistance;
+    initialSpecularOutput.xyz = clamp(initialSpecularOutput.xyz, 0, cb.reSTIRGIFireflyThreshold);
+  }
+  else
+    initialDiffuseOutput = indirectRadianceHitDistance;
+
+  PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex] = initialDiffuseOutput;
+  PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex] = initialSpecularOutput;
+
   if (polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) != surfaceMaterialTypeOpaque)
   {
     return;
   }
-
-  PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex].xyz = 0;
-  PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex].xyz = 0;
 
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
   if (cb.enableNeeCache > 0)
@@ -241,8 +252,8 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
               //pathState.radiance += pathState.throughput * emissiveNEELight;
               //PrimaryDirectDiffuseLobeRadianceHitDistance[threadIndex].xyz += emissiveNEELight;
               //PrimaryDirectSpecularLobeRadianceHitDistance[threadIndex] = 0;// emissiveNEELight;
-               PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex].xyz = diffuseLight;
-               PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex].xyz = specularLight;
+               PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex].xyz += diffuseLight;
+               PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex].xyz += specularLight;
             }
           }
         }
