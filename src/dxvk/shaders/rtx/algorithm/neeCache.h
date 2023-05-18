@@ -178,6 +178,17 @@ struct NEECell
 #endif
   }
 
+  float getCandidatePdf(int idx)
+  {
+    float lastCDF = 0;
+    if (idx > 0)
+    {
+      lastCDF = getCandidate(idx-1).getSampleThreshold();
+    }
+    float thisCDF = getCandidate(idx).getSampleThreshold();
+    return thisCDF - lastCDF;
+  }
+
   static int getMaxCandidateCount()
   {
     return RADIANCE_CACHE_ELEMENTS-1;
