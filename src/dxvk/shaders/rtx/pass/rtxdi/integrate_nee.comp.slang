@@ -59,7 +59,7 @@
 //   return normalize(testPoint - position);
 // }
 
-vec3 evalNEESecondary(
+void evalNEESecondary(
   //vec3 throughput, 
   //inout vec3 accumulatedRadiance,
   LightSample lightSample,
@@ -73,7 +73,9 @@ vec3 evalNEESecondary(
   MinimalSurfaceInteraction minimalSurfaceInteraction,
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
   out float16_t specularPortion,
-  f16vec2 diffuseSpecularMISWeight)
+  f16vec2 diffuseSpecularMISWeight,
+  out vec3 diffuseLight,
+  out vec3 specularLight)
 {
   // Setup and trace the visibility ray
 
@@ -87,9 +89,10 @@ vec3 evalNEESecondary(
     minimalRayInteraction.coneRadius, viewRay.spreadAngle, 1.0, isViewModelSurface);
 
   specularPortion = float16_t(0);
+  diffuseLight = specularLight = 0;
 
   if (visibility.hasOpaqueHit)
-    return vec3(0);
+    return;
 
   // Evaluate the material and accumulate throughput and hit distance
 
@@ -104,10 +107,12 @@ vec3 evalNEESecondary(
 
   // Accumulate Radiance
 
-  const vec3 lightThroughput = vec3(combinedWeight) * lightSampleThroughput * vec3(visibility.attenuation);
+  const vec3 lightThroughput = /*vec3(combinedWeight) */ lightSampleThroughput * vec3(visibility.attenuation);
   const vec3 attenuatedRadiance = lightSample.radiance * lightThroughput;
 
-  return attenuatedRadiance;
+  diffuseLight = attenuatedRadiance * splitWeight.diffuseReflectionWeight * diffuseSpecularMISWeight.x;
+  specularLight = attenuatedRadiance * splitWeight.specularReflectionWeight * diffuseSpecularMISWeight.y;
+  //return attenuatedRadiance;
   //accumulatedRadiance += throughput * attenuatedRadiance;
 }
 
@@ -163,6 +168,9 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   {
     return;
   }
+
+  PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex].xyz = 0;
+  PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex].xyz = 0;
 
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
   if (cb.enableNeeCache > 0)
@@ -222,18 +230,19 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
               float16_t specularPortion2;
               const bool isViewModel = false;// pathState.rayMask& OBJECT_MASK_ALL_VIEWMODEL;
               float emissiveInvSelectionPdf = 1.0;// / lightObjectPdf;
-              vec3 emissiveNEELight = evalNEESecondary(
+              vec3 diffuseLight, specularLight;
+              evalNEESecondary(
                 emissiveLightSample, emissiveInvSelectionPdf, invalidRayPortalIndex, /*pathState.portalSpace*/PORTAL_SPACE_NONE, 
                 OBJECT_MASK_ALL | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC) /*pathState.rayMask*/,
                 isViewModel, /*ray*/ primaryRay, rayInteraction, /*surfaceInteraction*/minimalSurfaceInteraction,
-                opaqueSurfaceMaterialInteraction, specularPortion2, misWeight);
+                opaqueSurfaceMaterialInteraction, specularPortion2, misWeight, diffuseLight, specularLight);
 
 
               //pathState.radiance += pathState.throughput * emissiveNEELight;
               //PrimaryDirectDiffuseLobeRadianceHitDistance[threadIndex].xyz += emissiveNEELight;
               //PrimaryDirectSpecularLobeRadianceHitDistance[threadIndex] = 0;// emissiveNEELight;
-               PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex].xyz += emissiveNEELight;
-               //PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex] = specularOutput;
+               PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex].xyz = diffuseLight;
+               PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex].xyz = specularLight;
             }
           }
         }
