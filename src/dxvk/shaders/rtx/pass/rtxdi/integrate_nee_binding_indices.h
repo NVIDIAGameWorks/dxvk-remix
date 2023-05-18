@@ -45,6 +45,9 @@
 #define INTEGRATE_NEE_BINDING_RADIANCE_CACHE_TASK                                 58
 #define INTEGRATE_NEE_BINDING_RADIANCE_CACHE_THREAD_TASK                          59
 
+#define INTEGRATE_NEE_BINDING_RADIANCE_INPUT                                      60
+#define INTEGRATE_NEE_BINDING_HIT_GEOMETRY_INPUT                                  61
+
 // Inputs/Outputs
 
 #define INTEGRATE_NEE_BINDING_PRIMARY_BASE_REFLECTIVITY_INPUT_OUTPUT                    70
