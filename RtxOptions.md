@@ -447,7 +447,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.serializeChangedOptionOnly|bool|True||
 |rtx.shakeCamera|bool|False||
 |rtx.showUI|int|0|0 = Don't Show, 1 = Show Simple, 2 = Show Advanced\.|
-|rtx.showUICursor|bool|False||
+|rtx.showUICursor|bool|True||
 |rtx.skipDrawCallsPostRTXInjection|bool|False|Ignores all draw calls recorded after RTX Injection, the location of which varies but is currently based on when tagged UI textures begin to draw\.|
 |rtx.skipObjectsWithUnknownCamera|bool|False||
 |rtx.skyBrightness|float|1||
