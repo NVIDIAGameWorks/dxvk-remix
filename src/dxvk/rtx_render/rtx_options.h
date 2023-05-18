@@ -302,7 +302,7 @@ namespace dxvk {
     RTX_OPTION("rtx", float, uniqueObjectDistance, 300.f, "[cm]");
     RTX_OPTION_FLAG("rtx", UIType, showUI, UIType::None, RtxOptionFlags::NoSave | RtxOptionFlags::NoReset, "0 = Don't Show, 1 = Show Simple, 2 = Show Advanced.");
     RTX_OPTION_FLAG("rtx", bool, defaultToAdvancedUI, false, RtxOptionFlags::NoReset, "");
-    RTX_OPTION("rtx", bool, showUICursor, false, "");
+    RTX_OPTION("rtx", bool, showUICursor, true, "");
     RTX_OPTION_FLAG("rtx", bool, blockInputToGameInUI, true, RtxOptionFlags::NoSave, "");
     RTX_OPTION("rtx", bool, hideSplashMessage, false,
                "A flag to disable the splash message indicating how to use Remix from appearing when the application starts.\n"
