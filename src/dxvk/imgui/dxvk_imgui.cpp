@@ -482,6 +482,97 @@ namespace dxvk {
     }
   }
   
+  void ImGUI::showMaterialOptions() {
+    if (ImGui::CollapsingHeader("Material Options (optional)", collapsingHeaderClosedFlags)) {
+      ImGui::Indent();
+
+      if (ImGui::CollapsingHeader("Legacy Material Defaults", collapsingHeaderFlags)) {
+        ImGui::Indent();
+
+        LegacyMaterialDefaults& legacyMaterial = RtxOptions::Get()->legacyMaterial;
+        ImGui::Checkbox("Use Albedo/Opacity Texture (if present)", &legacyMaterial.useAlbedoTextureIfPresentObject());
+        ImGui::ColorEdit3("Albedo", &legacyMaterial.albedoConstantObject());
+        ImGui::DragFloat("Opacity", &legacyMaterial.opacityConstantObject());
+        ImGui::ColorEdit3("Emissive Color", &legacyMaterial.emissiveColorConstantObject());
+        ImGui::DragFloat("Emissive Intensity", &legacyMaterial.emissiveIntensityObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
+        ImGui::DragFloat("Roughness", &legacyMaterial.roughnessConstantObject(), 0.01f, 0.02f, 1.f, "%.3f", sliderFlags);
+        ImGui::DragFloat("Metallic", &legacyMaterial.metallicConstantObject(), 0.01f, 0.0f, 1.f, "%.3f", sliderFlags);
+        ImGui::DragFloat("Anisotropy", &legacyMaterial.anisotropyObject(), 0.01f, -1.0f, 1.f, "%.3f", sliderFlags);
+
+        ImGui::Unindent();
+      }
+
+      if (ImGui::CollapsingHeader("PBR Material Modifiers", collapsingHeaderFlags)) {
+        ImGui::Indent();
+
+        if (ImGui::CollapsingHeader("Opaque", collapsingHeaderFlags)) {
+          ImGui::Indent();
+
+          OpaqueMaterialOptions& opaqueMaterialOptions = RtxOptions::Get()->opaqueMaterialOptions;
+          ImGui::SliderFloat("Albedo Scale", &opaqueMaterialOptions.albedoScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
+          ImGui::SliderFloat("Albedo Bias", &opaqueMaterialOptions.albedoBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
+          ImGui::SliderFloat("Metallic Scale", &opaqueMaterialOptions.metallicScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
+          ImGui::SliderFloat("Metallic Bias", &opaqueMaterialOptions.metallicBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
+          ImGui::SliderFloat("Roughness Scale", &opaqueMaterialOptions.roughnessScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
+          ImGui::SliderFloat("Roughness Bias", &opaqueMaterialOptions.roughnessBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
+          ImGui::SliderFloat("Normal Strength##1", &opaqueMaterialOptions.normalIntensityObject(), -10.0f, 10.f, "%.3f", sliderFlags);
+
+          ImGui::Checkbox("Enable dual-layer animated water normal", &opaqueMaterialOptions.layeredWaterNormalEnableObject());
+
+          if (opaqueMaterialOptions.layeredWaterNormalEnable()) {
+            ImGui::SliderFloat2("Layered Motion Direction", &opaqueMaterialOptions.layeredWaterNormalMotionObject(), -1.0f, 1.0f, "%.3f", sliderFlags);
+            ImGui::SliderFloat("Layered Motion Scale", &opaqueMaterialOptions.layeredWaterNormalMotionScaleObject(), -10.0f, 10.0f, "%.3f", sliderFlags);
+            ImGui::SliderFloat("LOD bias", &opaqueMaterialOptions.layeredWaterNormalLodBiasObject(), 0.0f, 16.0f, "%.3f", sliderFlags);
+          }
+
+          ImGui::Unindent();
+        }
+
+        if (ImGui::CollapsingHeader("Translucent", collapsingHeaderFlags)) {
+          ImGui::Indent();
+
+          TranslucentMaterialOptions& translucentMaterialOptions = RtxOptions::Get()->translucentMaterialOptions;
+          ImGui::SliderFloat("Transmit. Color Scale", &translucentMaterialOptions.transmittanceColorScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
+          ImGui::SliderFloat("Transmit. Color Bias", &translucentMaterialOptions.transmittanceColorBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
+          ImGui::SliderFloat("Normal Strength##2", &translucentMaterialOptions.normalIntensityObject(), -10.0f, 10.f, "%.3f", sliderFlags);
+
+          ImGui::Unindent();
+        }
+
+        ImGui::Unindent();
+      }
+
+      if (ImGui::CollapsingHeader("PBR Material Overrides", collapsingHeaderClosedFlags)) {
+        ImGui::Indent();
+
+        if (ImGui::CollapsingHeader("Opaque", collapsingHeaderFlags)) {
+          ImGui::Indent();
+
+          OpaqueMaterialOptions& opaqueMaterialOptions = RtxOptions::Get()->opaqueMaterialOptions;
+          ImGui::Checkbox("Enable Thin-Film Layer", &opaqueMaterialOptions.enableThinFilmOverrideObject());
+
+          if (opaqueMaterialOptions.enableThinFilmOverride()) {
+            ImGui::SliderFloat("Thin Film Thickness", &opaqueMaterialOptions.thinFilmThicknessOverrideObject(), 0.0f, OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS, "%.1f nm", sliderFlags);
+          }
+
+          ImGui::Unindent();
+        }
+
+        if (ImGui::CollapsingHeader("Translucent", collapsingHeaderFlags)) {
+          ImGui::Indent();
+
+          ImGui::Checkbox("Enable Diffuse Layer", &RtxOptions::Get()->translucentMaterialOptions.enableDiffuseLayerOverrideObject());
+
+          ImGui::Unindent();
+        }
+
+        ImGui::Unindent();
+      }
+
+      ImGui::Unindent();
+    }
+  }
+
   void ImGUI::processHotkeys() {
     auto& io = ImGui::GetIO();
     auto& opts = *RtxOptions::Get();
@@ -1263,6 +1354,8 @@ namespace dxvk {
     ImGuiWindowFlags window_flags = ImGuiWindowFlags_None;
     ImGui::BeginChild(str::format("Child", uniqueId).c_str(), ImVec2(availableSize.x, childWindowHeight), false, window_flags);
 
+    static char textureInfo[1024];
+
     for (auto& pair : g_imguiTextureMap) {
       bool textureHasSelection = false;
 
@@ -1303,15 +1396,19 @@ namespace dxvk {
       ImGui::SetCursorPosX(x + startX + (thumbnailSize - extent.x) / 2.f);
       ImGui::SetCursorPosY(y + (thumbnailSize - extent.y) / 2.f);
 
-      if (ImGui::ImageButton(pair.second.texID, extent) && isListFiltered) {
-        toggleTextureSelection(pair.first, uniqueId, listRtxOption.textureSetOption->getValue());
+      if (ImGui::ImageButton(pair.second.texID, extent)) {
+        if (isListFiltered)
+          toggleTextureSelection(pair.first, uniqueId, listRtxOption.textureSetOption->getValue());
+        else
+          ImGui::OpenPopup("rtx_texture_selection");
       }
 
       if (ImGui::IsItemHovered()) {
         std::stringstream formatName;
         formatName << imageInfo.format;
 
-        //list all selections for this texture
+        // list all selections for this texture
+        bool textureIsUnassigned = true;
         std::string rtxTextureSelection;
         for (auto& rtxOption : rtxTextureOptions) {
           rtxOption.bufferTextureHash = pair.first;
@@ -1320,27 +1417,27 @@ namespace dxvk {
             if (rtxTextureSelection.empty())
               rtxTextureSelection = "\n";
 
-            rtxTextureSelection = str::format(rtxTextureSelection, rtxOption.displayName, "\n");
+            rtxTextureSelection = str::format(rtxTextureSelection, " - ", rtxOption.displayName, "\n");
+            
+            textureIsUnassigned = false;
           }
         }
 
-        char tooltip[1024];
-        sprintf(tooltip, "%s: %dx%d %s\nHash: 0x%" PRIx64 "\n%s\n\nRigth click to manage selection \n%s",
+        if (textureIsUnassigned) {
+          rtxTextureSelection = "\n - None\n";
+        }
+
+        sprintf(textureInfo, "%s: %dx%d %s\nHash: 0x%" PRIx64 "\nStatus: %s\n\n",
                 (imageInfo.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) ? "Render Target" : "Texture",
                 imageInfo.extent.width, imageInfo.extent.height,
                 formatName.str().c_str() + strlen("VK_FORMAT_"), pair.first,
-                isLegacyMaterial ? "Legacy Material" : "Replaced Material",
-                rtxTextureSelection.c_str());
+                isLegacyMaterial ? "Legacy Material" : "Replaced Material");
 
-        ImGui::SetTooltip(tooltip);
+        ImGui::SetTooltip("%s(Left click to assign categories.)\n\nCurrent categories:%s", textureInfo, rtxTextureSelection.c_str());
         if (ImGui::IsMouseReleased(ImGuiMouseButton_Middle)) {
           ImGui::LogToClipboard();
           ImGui::LogText("%" PRIx64, pair.first);
           ImGui::LogFinish();
-        }
-
-        if (ImGui::IsMouseReleased(ImGuiMouseButton_Right)) {
-          ImGui::OpenPopup("rtx_texture_selection");
         }
 
         RtxOptions::Get()->highlightedTextureRef() = pair.first;
@@ -1358,7 +1455,8 @@ namespace dxvk {
     }
 
     if (ImGui::BeginPopup("rtx_texture_selection")) {
-      ImGui::Text("Texture Selection:\n");
+      ImGui::Text("Texture Info:\n");
+      ImGui::Text(textureInfo);
 
       for (auto& rtxOption : rtxTextureOptions) {
         if (IMGUI_ADD_TOOLTIP(ImGui::Checkbox(rtxOption.displayName, &rtxOption.bufferToggle), rtxOption.textureSetOption->getDescription())) {
@@ -1433,23 +1531,15 @@ namespace dxvk {
   void ImGUI::showSetupWindow(const Rc<DxvkContext>& ctx) {
     ImGui::PushItemWidth(200);
 
-    const float thumbnailSize = 135.f;
+    const float thumbnailSize = 120.f;
     const float thumbnailSpacing = ImGui::GetStyle().ItemSpacing.x;
     const float thumbnailPadding = ImGui::GetStyle().CellPadding.x;
     const uint32_t numThumbnailsPerRow = uint32_t(std::max(1.f, (m_windowWidth - 18.f) / (thumbnailSize + thumbnailSpacing + thumbnailPadding * 2.f)));
 
     ImGui::Checkbox("Preserve discarded textures", &RtxOptions::Get()->keepTexturesForTaggingObject());
 
-    if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 0: Texture Selection", collapsingHeaderClosedFlags), "Select texture definitions for Remix")) {
+    if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 1: Categorize Textures", collapsingHeaderClosedFlags), "Select texture definitions for Remix")) {
       showTextureSelectionGrid(ctx, "textures", numThumbnailsPerRow, thumbnailSize);
-    }
-
-    if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 1: UI Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->uiTexturesDescription())) {
-      showTextureSelectionGrid(ctx,"uitextures", numThumbnailsPerRow, thumbnailSize);
-    }
-
-    if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 1.2: Worldspace UI Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->worldSpaceUiTexturesDescription())) {
-      showTextureSelectionGrid(ctx,"worldspaceuitextures", numThumbnailsPerRow, thumbnailSize);
     }
 
     if (ImGui::CollapsingHeader("Step 2: Parameter Tuning", collapsingHeaderClosedFlags)) {
@@ -1488,188 +1578,114 @@ namespace dxvk {
         ImGui::Unindent();
       }
 
+      if (ImGui::CollapsingHeader("Sky Tuning", collapsingHeaderClosedFlags)) {
+        ImGui::Indent();
+        ImGui::DragFloat("Sky Brightness", &RtxOptions::Get()->skyBrightnessObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
+        ImGui::InputInt("First N untextured drawcalls", &RtxOptions::Get()->skyDrawcallIdThresholdObject(), 1, 1, 0);
+
+        if (ImGui::CollapsingHeader("Advanced", collapsingHeaderClosedFlags)) {
+          ImGui::Checkbox("Force HDR sky", &RtxOptions::Get()->skyForceHDRObject());
+
+          static const char* exts[] = { "256 (1.5MB vidmem)", "512 (6MB vidmem)", "1024 (24MB vidmem)",
+            "2048 (96MB vidmem)", "4096 (384MB vidmem)", "8192 (1.5GB vidmem)" };
+
+          static int extIdx;
+          extIdx = std::clamp(bit::tzcnt(RtxOptions::Get()->skyProbeSide()), 8u, 13u) - 8;
+
+          ImGui::Combo("Sky Probe Extent", &extIdx, exts, IM_ARRAYSIZE(exts));
+          RtxOptions::Get()->skyProbeSideRef() = 1 << (extIdx + 8);
+        }
+
+        ImGui::Unindent();
+      }
+
       auto common = ctx->getCommonObjects();
       common->getSceneManager().getLightManager().showImguiSettings();
       ImGui::Unindent();
     }
 
-    if (ImGui::CollapsingHeader("Step 3: Sky Parameters (optional)", collapsingHeaderClosedFlags)) {
-      ImGui::Indent();
+    showMaterialOptions();
 
-      ImGui::DragFloat("Sky Brightness", &RtxOptions::Get()->skyBrightnessObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
-      {
-        static const char* exts[] = { "256 (1.5MB vidmem)", "512 (6MB vidmem)", "1024 (24MB vidmem)",
-          "2048 (96MB vidmem)", "4096 (384MB vidmem)", "8192 (1.5GB vidmem)" };
-
-        static int extIdx;
-        extIdx = std::clamp(bit::tzcnt(RtxOptions::Get()->skyProbeSide()), 8u, 13u) - 8;
-
-        ImGui::Combo("Sky Probe Extent", &extIdx, exts, IM_ARRAYSIZE(exts));
-        RtxOptions::Get()->skyProbeSideRef() = 1 << (extIdx + 8);
+    if (showLegacyTextureGui()) {
+      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 1: UI Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->uiTexturesDescription())) {
+        showTextureSelectionGrid(ctx, "uitextures", numThumbnailsPerRow, thumbnailSize);
       }
 
-      ImGui::Checkbox("Force HDR sky", &RtxOptions::Get()->skyForceHDRObject());
-
-      ImGui::Separator();
-      ImGui::InputInt("First N untextured drawcalls", &RtxOptions::Get()->skyDrawcallIdThresholdObject(), 1, 1, 0);
-      ImGui::Separator();
-
-      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Sky Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->skyBoxTexturesDescription())) {
-        showTextureSelectionGrid(ctx,"skytextures", numThumbnailsPerRow, thumbnailSize);
+      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 1.2: Worldspace UI Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->worldSpaceUiTexturesDescription())) {
+        showTextureSelectionGrid(ctx, "worldspaceuitextures", numThumbnailsPerRow, thumbnailSize);
       }
 
-      ImGui::Unindent();
-    }
-
-    if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 4: Ignore Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->ignoreTexturesDescription())) {
-      showTextureSelectionGrid(ctx,"ignoretextures", numThumbnailsPerRow, thumbnailSize);
-    }
-
-    if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 5: Ignore Lights (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->ignoreLightsDescription())) {
-      showTextureSelectionGrid(ctx,"ignorelights", numThumbnailsPerRow, thumbnailSize);
-    }
-
-    if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 6: Particle Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->particleTexturesDescription())) {
-      showTextureSelectionGrid(ctx,"particletextures", numThumbnailsPerRow, thumbnailSize);
-    }
-
-    if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 6.1: Beam Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->beamTexturesDescription())) {
-      showTextureSelectionGrid(ctx,"beamtextures", numThumbnailsPerRow, thumbnailSize);
-    }
-
-    if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 6.2: Add Lights to Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->lightConverterDescription())) {
-      showTextureSelectionGrid(ctx,"lightconvertertextures", numThumbnailsPerRow, thumbnailSize);
-    }
-
-    if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 7: Decal Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->decalTexturesDescription())) {
-      showTextureSelectionGrid(ctx,"decaltextures", numThumbnailsPerRow, thumbnailSize);
-    }
-
-    if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 7.1: Dynamic Decal Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->dynamicDecalTexturesDescription())) {
-      showTextureSelectionGrid(ctx,"dynamicdecaltextures", numThumbnailsPerRow, thumbnailSize);
-    }
-
-    if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 7.2: Non-Offset Decal Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->nonOffsetDecalTexturesDescription())) {
-      showTextureSelectionGrid(ctx,"nonoffsetdecaltextures", numThumbnailsPerRow, thumbnailSize);
-    }
-
-    if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 8.1: Legacy Cutout Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->cutoutTexturesDescription())) {
-      ImGui::DragFloat("Force Cutout Alpha", &RtxOptions::Get()->forceCutoutAlphaObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
-      showTextureSelectionGrid(ctx,"cutouttextures", numThumbnailsPerRow, thumbnailSize);
-    }
-    
-    if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 8.2: Terrain Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->terrainTexturesDescription())) {
-      showTextureSelectionGrid(ctx,"terraintextures", numThumbnailsPerRow, thumbnailSize);
-    }
-
-    if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 8.3: Water Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->animatedWaterTexturesDescription())) {
-      showTextureSelectionGrid(ctx,"watertextures", numThumbnailsPerRow, thumbnailSize);
-    }
-
-    if (RtxOptions::Get()->enableAntiCulling() &&
-      IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 8.4: Anti-Culling Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->antiCullingTexturesDescription())) {
-      showTextureSelectionGrid(ctx,"antiCullingTextures", numThumbnailsPerRow, thumbnailSize);
-    }
-
-    if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 9.1: Player Model Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->playerModelTexturesDescription())) {
-      showTextureSelectionGrid(ctx,"playermodeltextures", numThumbnailsPerRow, thumbnailSize);
-    }
-
-    if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 9.2: Player Model Body Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->playerModelBodyTexturesDescription())) {
-      showTextureSelectionGrid(ctx,"playermodelbodytextures", numThumbnailsPerRow, thumbnailSize);
-    }
-
-    if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 10: Opacity Micromap Ignore Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->opacityMicromapIgnoreTexturesDescription())) {
-      showTextureSelectionGrid(ctx,"opacitymicromapignoretextures", numThumbnailsPerRow, thumbnailSize);
-    }
-
-    if (ImGui::CollapsingHeader("Step 11: Material Options (optional)", collapsingHeaderClosedFlags)) {
-      ImGui::Indent();
-
-      if (ImGui::CollapsingHeader("Legacy Material Defaults", collapsingHeaderFlags)) {
+      if (ImGui::CollapsingHeader("Step 3: Sky Parameters (optional)", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
 
-        LegacyMaterialDefaults& legacyMaterial = RtxOptions::Get()->legacyMaterial;
-        ImGui::Checkbox("Use Albedo/Opacity Texture (if present)", &legacyMaterial.useAlbedoTextureIfPresentObject());
-        ImGui::ColorEdit3("Albedo", &legacyMaterial.albedoConstantObject());
-        ImGui::DragFloat("Opacity", &legacyMaterial.opacityConstantObject());
-        ImGui::ColorEdit3("Emissive Color", &legacyMaterial.emissiveColorConstantObject());
-        ImGui::DragFloat("Emissive Intensity", &legacyMaterial.emissiveIntensityObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
-        ImGui::DragFloat("Roughness", &legacyMaterial.roughnessConstantObject(), 0.01f, 0.02f, 1.f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Metallic", &legacyMaterial.metallicConstantObject(), 0.01f, 0.0f, 1.f, "%.3f", sliderFlags);
-        ImGui::DragFloat("Anisotropy", &legacyMaterial.anisotropyObject(), 0.01f, -1.0f, 1.f, "%.3f", sliderFlags);
-
-        ImGui::Unindent();
-      }
-
-      if (ImGui::CollapsingHeader("PBR Material Modifiers", collapsingHeaderFlags)) {
-        ImGui::Indent();
-
-        if (ImGui::CollapsingHeader("Opaque", collapsingHeaderFlags)) {
-          ImGui::Indent();
-
-          OpaqueMaterialOptions& opaqueMaterialOptions = RtxOptions::Get()->opaqueMaterialOptions;
-          ImGui::SliderFloat("Albedo Scale", &opaqueMaterialOptions.albedoScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Albedo Bias", &opaqueMaterialOptions.albedoBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Metallic Scale", &opaqueMaterialOptions.metallicScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Metallic Bias", &opaqueMaterialOptions.metallicBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Roughness Scale", &opaqueMaterialOptions.roughnessScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Roughness Bias", &opaqueMaterialOptions.roughnessBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Normal Strength##1", &opaqueMaterialOptions.normalIntensityObject(), -10.0f, 10.f, "%.3f", sliderFlags);
-          
-          ImGui::Checkbox("Enable dual-layer animated water normal", &opaqueMaterialOptions.layeredWaterNormalEnableObject());
-
-          if (opaqueMaterialOptions.layeredWaterNormalEnable()) {
-            ImGui::SliderFloat2("Layered Motion Direction", &opaqueMaterialOptions.layeredWaterNormalMotionObject(), -1.0f, 1.0f, "%.3f", sliderFlags);
-            ImGui::SliderFloat("Layered Motion Scale", &opaqueMaterialOptions.layeredWaterNormalMotionScaleObject(), -10.0f, 10.0f, "%.3f", sliderFlags);
-            ImGui::SliderFloat("LOD bias", &opaqueMaterialOptions.layeredWaterNormalLodBiasObject(), 0.0f, 16.0f, "%.3f", sliderFlags);
-          }
-
-          ImGui::Unindent();
-        }
-
-        if (ImGui::CollapsingHeader("Translucent", collapsingHeaderFlags)) {
-          ImGui::Indent();
-
-          TranslucentMaterialOptions& translucentMaterialOptions = RtxOptions::Get()->translucentMaterialOptions;
-          ImGui::SliderFloat("Transmit. Color Scale", &translucentMaterialOptions.transmittanceColorScaleObject(), 0.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Transmit. Color Bias", &translucentMaterialOptions.transmittanceColorBiasObject(), -1.0f, 1.f, "%.3f", sliderFlags);
-          ImGui::SliderFloat("Normal Strength##2", &translucentMaterialOptions.normalIntensityObject(), -10.0f, 10.f, "%.3f", sliderFlags);
-
-          ImGui::Unindent();
+        if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Sky Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->skyBoxTexturesDescription())) {
+          showTextureSelectionGrid(ctx, "skytextures", numThumbnailsPerRow, thumbnailSize);
         }
 
         ImGui::Unindent();
       }
 
-      if (ImGui::CollapsingHeader("PBR Material Overrides", collapsingHeaderClosedFlags)) {
-        ImGui::Indent();
-
-        if (ImGui::CollapsingHeader("Opaque", collapsingHeaderFlags)) {
-          ImGui::Indent();
-
-          OpaqueMaterialOptions& opaqueMaterialOptions = RtxOptions::Get()->opaqueMaterialOptions;
-          ImGui::Checkbox("Enable Thin-Film Layer", &opaqueMaterialOptions.enableThinFilmOverrideObject());
-
-          if (opaqueMaterialOptions.enableThinFilmOverride()) {
-            ImGui::SliderFloat("Thin Film Thickness", &opaqueMaterialOptions.thinFilmThicknessOverrideObject(), 0.0f, OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS, "%.1f nm", sliderFlags);
-          }
-
-          ImGui::Unindent();
-        }
-
-        if (ImGui::CollapsingHeader("Translucent", collapsingHeaderFlags)) {
-          ImGui::Indent();
-
-          ImGui::Checkbox("Enable Diffuse Layer", &RtxOptions::Get()->translucentMaterialOptions.enableDiffuseLayerOverrideObject());
-
-          ImGui::Unindent();
-        }
-
-        ImGui::Unindent();
+      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 4: Ignore Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->ignoreTexturesDescription())) {
+        showTextureSelectionGrid(ctx, "ignoretextures", numThumbnailsPerRow, thumbnailSize);
       }
 
-      ImGui::Unindent();
+      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 5: Ignore Lights (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->ignoreLightsDescription())) {
+        showTextureSelectionGrid(ctx, "ignorelights", numThumbnailsPerRow, thumbnailSize);
+      }
+
+      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 6: Particle Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->particleTexturesDescription())) {
+        showTextureSelectionGrid(ctx, "particletextures", numThumbnailsPerRow, thumbnailSize);
+      }
+
+      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 6.1: Beam Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->beamTexturesDescription())) {
+        showTextureSelectionGrid(ctx, "beamtextures", numThumbnailsPerRow, thumbnailSize);
+      }
+
+      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 6.2: Add Lights to Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->lightConverterDescription())) {
+        showTextureSelectionGrid(ctx, "lightconvertertextures", numThumbnailsPerRow, thumbnailSize);
+      }
+
+      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 7: Decal Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->decalTexturesDescription())) {
+        showTextureSelectionGrid(ctx, "decaltextures", numThumbnailsPerRow, thumbnailSize);
+      }
+
+      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 7.1: Dynamic Decal Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->dynamicDecalTexturesDescription())) {
+        showTextureSelectionGrid(ctx, "dynamicdecaltextures", numThumbnailsPerRow, thumbnailSize);
+      }
+
+      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 7.2: Non-Offset Decal Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->nonOffsetDecalTexturesDescription())) {
+        showTextureSelectionGrid(ctx, "nonoffsetdecaltextures", numThumbnailsPerRow, thumbnailSize);
+      }
+
+      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 8.1: Legacy Cutout Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->cutoutTexturesDescription())) {
+        ImGui::DragFloat("Force Cutout Alpha", &RtxOptions::Get()->forceCutoutAlphaObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        showTextureSelectionGrid(ctx, "cutouttextures", numThumbnailsPerRow, thumbnailSize);
+      }
+
+      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 8.2: Terrain Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->terrainTexturesDescription())) {
+        showTextureSelectionGrid(ctx, "terraintextures", numThumbnailsPerRow, thumbnailSize);
+      }
+
+      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 8.3: Water Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->animatedWaterTexturesDescription())) {
+        showTextureSelectionGrid(ctx, "watertextures", numThumbnailsPerRow, thumbnailSize);
+      }
+
+      if (RtxOptions::Get()->enableAntiCulling() &&
+        IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 8.4: Anti-Culling Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->antiCullingTexturesDescription())) {
+        showTextureSelectionGrid(ctx, "antiCullingTextures", numThumbnailsPerRow, thumbnailSize);
+      }
+
+      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 9.1: Player Model Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->playerModelTexturesDescription())) {
+        showTextureSelectionGrid(ctx, "playermodeltextures", numThumbnailsPerRow, thumbnailSize);
+      }
+
+      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 9.2: Player Model Body Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->playerModelBodyTexturesDescription())) {
+        showTextureSelectionGrid(ctx, "playermodelbodytextures", numThumbnailsPerRow, thumbnailSize);
+      }
+
+      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 10: Opacity Micromap Ignore Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->opacityMicromapIgnoreTexturesDescription())) {
+        showTextureSelectionGrid(ctx, "opacitymicromapignoretextures", numThumbnailsPerRow, thumbnailSize);
+      }
     }
 
     ImGui::PopItemWidth();

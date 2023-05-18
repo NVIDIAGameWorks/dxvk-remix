@@ -155,6 +155,9 @@ namespace dxvk {
     void showReflexOptions();
 
     void showSetupWindow(const Rc<DxvkContext>& ctx);
+
+    void showMaterialOptions();
+
     void showEnhancementsWindow(const Rc<DxvkContext>& ctx);
     void showAppConfig();
 
@@ -172,6 +175,8 @@ namespace dxvk {
     void sendUIActivationMessage();
 
     void showMemoryStats() const;
+
+    RTX_OPTION("rtx.gui", bool, showLegacyTextureGui, false, "A setting to toggle the old texture selection GUI, where each texture category is represented as it's own list.");
   };
   
 }
