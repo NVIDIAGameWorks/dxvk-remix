@@ -1292,13 +1292,15 @@ namespace dxvk {
 
   void RtxContext::checkShaderExecutionReorderingSupport() {
     
+    const bool allowSER = RtxOptions::Get()->isShaderExecutionReorderingSupported();
+
     // SER Extension support check
     const bool isSERExtensionSupported = m_device->extensions().nvRayTracingInvocationReorder;
     const bool isSERReorderingEnabled = 
       VK_RAY_TRACING_INVOCATION_REORDER_MODE_REORDER_NV == m_device->properties().nvRayTracingInvocationReorderProperties.rayTracingInvocationReorderReorderingHint;
     const bool isSERSupported = isSERExtensionSupported && isSERReorderingEnabled;
     
-    RtxOptions::Get()->setIsShaderExecutionReorderingSupported(isSERSupported);
+    RtxOptions::Get()->setIsShaderExecutionReorderingSupported(isSERSupported && allowSER);
 
     const VkPhysicalDeviceProperties& props = m_device->adapter()->deviceProperties();
     const NV_GPU_ARCHITECTURE_ID archId = RtxOptions::Get()->getNvidiaArch();
