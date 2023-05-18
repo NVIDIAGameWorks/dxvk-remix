@@ -385,7 +385,7 @@ void integratePathVertex(
   // Add Emission
   vec3 emissiveLight = polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(polymorphicSurfaceMaterialInteraction);
   bool hasNEE = false;
-  if (cb.enableNeeCache && cb.enableNeeCacheInFirstBounce && any(emissiveLight) > 0 && (!pathState.continueResolving || ((pathState.pixelCoordinate.x + pathState.pixelCoordinate.y) % 3) == 0))
+  if (cb.enableNeeCache && cb.enableNeeCacheInFirstBounce && any(emissiveLight) > 0 && (!pathState.continueResolving))
   {
     uint4 threadTask = NEECache.loadThreadTask(pathState.pixelCoordinate);
     int3 cellID = NEECache.offsetToCell(threadTask.x);
@@ -614,7 +614,8 @@ void integratePathVertex(
               const OpaqueSurfaceMaterialInteraction emissiveOpaqueSurfaceMaterialInteraction =
                 opaqueSurfaceMaterialInteractionCreate(emissiveOpaqueSurfaceMaterial, emissiveSurface, emissiveSurfaceInteraction, emissiveRayInteracton);
 
-              if (any(emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance > f16vec3(0)))
+              if (any(emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance > f16vec3(0)) &&
+                dot(opaqueSurfaceMaterialInteraction.shadingNormal, emissiveSurfaceInteraction.position - surfaceInteraction.position) > 0)
               {
                 LightSample emissiveLightSample;
                 emissiveLightSample.position = emissiveSurfaceInteraction.position;
@@ -632,8 +633,8 @@ void integratePathVertex(
                 f16vec2 misWeight;
                 if (cb.enableNeeCacheMIS)
                 {
-                  misWeight.x = lightPdf / (lightPdf + diffuseSolidAnglePdf);
-                  misWeight.y = lightPdf / (lightPdf + specularSolidAnglePdf);
+                  misWeight.x = saturate(lightPdf / (lightPdf + diffuseSolidAnglePdf));
+                  misWeight.y = saturate(lightPdf / (lightPdf + specularSolidAnglePdf));
                 }
                 else
                 {

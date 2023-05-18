@@ -320,8 +320,9 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
     resultReservoir.update(wiT, initialSample, RAB_GetNextRandom(rtxdiRNG));
 
     float pNew = RAB_GetGITargetPdfForSurface(resultReservoir.radiance, resultReservoir.position, surface);
-    resultReservoir.finalize(pNew, 1.0, resultReservoir.M);
+    // Both inputs samples use MIS, no need to divide the result by M
     resultReservoir.M = 1;
+    resultReservoir.finalize(pNew, 1.0, resultReservoir.M);
 
     // Store complete initial sample
     RAB_StoreGIReservoir(resultReservoir, threadIndex, ReSTIRGI_GetInitSamplePage());
