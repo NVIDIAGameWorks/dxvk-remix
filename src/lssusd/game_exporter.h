@@ -59,6 +59,7 @@ private:
   static void createApertureMdls(const std::string& baseExportPath);
   static void exportMaterials(const Export& exportData, ExportContext& ctx);
   static void exportMeshes(const Export& exportData, ExportContext& ctx);
+  static void exportSkeletons(const Export& exportData, ExportContext& ctx);
   struct ReducedIdxBufSet {
     // Per-timecode reduced bufset
     std::map<float,IndexBuffer> bufSet;
@@ -69,7 +70,8 @@ private:
   static ReducedIdxBufSet reduceIdxBufferSet(const std::map<float,IndexBuffer>& idxBufSet);
   template<typename T>
   static std::map<float,pxr::VtArray<T>> reduceBufferSet(const std::map<float,pxr::VtArray<T>>& bufSet,
-                                                         const ReducedIdxBufSet& reducedIdxBufSet);
+                                                         const ReducedIdxBufSet& reducedIdxBufSet,
+                                                         size_t elemsPerIdx = 1);
   template<typename T>
   static void exportBufferSet(const std::map<float,pxr::VtArray<T>>& bufSet,
                               pxr::UsdAttribute attr);

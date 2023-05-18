@@ -29,6 +29,7 @@ namespace commonDirName {
   static const std::string thumbDir("./thumbs/");
   static const std::string texDir("./textures/");
   static const std::string meshDir("./meshes/");
+  static const std::string skeletonDir("./skeletons/");
   static const std::string lightDir("./lights/");
   static const std::string matDir("./materials/");
 }
@@ -59,6 +60,7 @@ static const struct {
 
 namespace prefix {
   static const std::string mesh("mesh_");
+  static const std::string skeleton("skel_");
   static const std::string light("light_");
   static const std::string mat("mat_");
 }
