@@ -44,6 +44,10 @@
 #include <pxr/usd/usdLux/distantLight.h>
 #include <pxr/usd/usdLux/domeLight.h>
 #include <pxr/usd/usdLux/shapingAPI.h>
+#include <pxr/usd/usdSkel/animation.h>
+#include <pxr/usd/usdSkel/bindingAPI.h>
+#include <pxr/usd/usdSkel/root.h>
+#include <pxr/usd/usdSkel/skeleton.h>
 #include <pxr/usd/usdShade/material.h>
 #include <pxr/usd/usdShade/materialBindingAPI.h>
 #include <pxr/base/gf/camera.h>
@@ -69,6 +73,35 @@
 #include <AperturePBR_Model.mdl.h>
 #include <AperturePBR_Normal.mdl.h>
 #include "../util/util_env.h"
+
+namespace {
+pxr::VtArray<pxr::TfToken> generateJointsList(size_t numBones) {
+  pxr::VtArray<pxr::TfToken> result(numBones);
+  for (int i = 0; i < numBones; ++i) {
+    result[i] = pxr::TfToken(dxvk::str::format("joint", i));
+  }
+  return result;
+}
+
+inline pxr::GfMatrix4d ToRHS(const pxr::GfMatrix4d& xform) {
+  static pxr::GfMatrix4d XYflip(pxr::GfVec4d(1.0, 1.0, -1.0, 1.0));
+
+  // Change of Basis transform
+  // X' = P * X * P-1
+  return XYflip * xform * XYflip;
+}
+
+pxr::VtMatrix4dArray sanitizeBoneXforms(const pxr::SdfPath& sdfPath,
+                                               const pxr::VtMatrix4dArray& xforms,
+                                               const lss::ExportMetaData& meta) {
+  pxr::VtMatrix4dArray sanitizedXforms;
+  sanitizedXforms.reserve(xforms.size());
+  for (const pxr::GfMatrix4d& xform: xforms) {
+    sanitizedXforms.push_back(meta.isLHS ? ToRHS(xform) : xform);
+  }
+  return sanitizedXforms;
+}
+}
 
 namespace lss {
 
@@ -108,6 +141,7 @@ void GameExporter::exportUsdInternal(const Export& exportData) {
   ctx.instanceStage = (exportData.bExportInstanceStage) ? createInstanceStage(exportData) : pxr::UsdStageRefPtr();
   exportMaterials(exportData, ctx);
   exportMeshes(exportData, ctx);
+  exportSkeletons(exportData, ctx);
   if(ctx.instanceStage) {
     exportCamera(exportData, ctx);
     exportSphereLights(exportData, ctx);
@@ -320,9 +354,99 @@ void GameExporter::exportMaterials(const Export& exportData, ExportContext& ctx)
   dxvk::Logger::debug("[GameExporter][" + exportData.debugId + "][exportMaterials] End");
 }
 
+void GameExporter::exportSkeletons(const Export& exportData, ExportContext& ctx) {
+  dxvk::Logger::debug("[GameExporter][" + exportData.debugId + "][exportSkeletons] Begin");
+  static pxr::ArDefaultResolver arDefResolver;
+  static const pxr::GfMatrix4d identity(1);
+  const std::string relDirPath = commonDirName::skeletonDir + "/";
+  const std::string dirPath = exportData.baseExportPath + "/" + relDirPath;
+  const std::string fullStagePath = arDefResolver.ComputeLocalPath(dirPath);
+  dxvk::env::createDirectory(dirPath);
+  for (const auto& [meshId, mesh] : exportData.meshes) {
+    if (mesh.numBones == 0) {
+      continue;
+    }
+
+    // Build skeleton stage
+    const std::string name = prefix::skeleton + mesh.meshName;
+    const std::string stagePath = dirPath + name + lss::ext::usd;
+    pxr::UsdStageRefPtr stage = findOpenOrCreateStage(stagePath, true);
+    assert(stage);
+    setCommonStageMetaData(stage, exportData);
+
+    pxr::VtDictionary customLayerData = stage->GetRootLayer()->GetCustomLayerData();
+    for (auto& component : mesh.componentHashes) {
+      customLayerData.SetValueAtPath(component.first, pxr::VtValue(component.second));
+    }
+    stage->GetRootLayer()->SetCustomLayerData(customLayerData);
+
+    // Build skel root prim on stage
+    const auto defaultPrimPath = gStageRootPath.AppendElementString(name);
+    pxr::UsdSkelRoot skelRootSchema = pxr::UsdSkelRoot::Define(stage, defaultPrimPath);
+
+    assert(skelRootSchema);
+    stage->SetDefaultPrim(skelRootSchema.GetPrim());
+
+    // Build skeleton prim under above xform
+    const auto skeletonSdfPath = defaultPrimPath.AppendChild(gTokSkel);
+    auto skelSchema = pxr::UsdSkelSkeleton::Define(stage, skeletonSdfPath);
+    assert(skelSchema);
+
+
+    // Set bindTransforms attribute
+    auto bindTransformsAttr = skelSchema.CreateBindTransformsAttr();
+    assert(bindTransformsAttr);
+    pxr::VtMatrix4dArray boneXforms = sanitizeBoneXforms(skeletonSdfPath, mesh.boneXForms, exportData.meta);
+    bindTransformsAttr.Set(boneXforms);
+
+    // Set restTransforms attribute
+    auto restTransformsAttr = skelSchema.CreateRestTransformsAttr();
+    assert(restTransformsAttr);
+    pxr::VtMatrix4dArray identities(mesh.numBones, pxr::GfMatrix4d(1));
+    restTransformsAttr.Set(identities);
+
+    // Create SkelAnimation prim with a pose
+    const auto skelPoseSdfPath = defaultPrimPath.AppendChild(gTokPose);
+    auto skelAnimationSchema = pxr::UsdSkelAnimation::Define(stage, skelPoseSdfPath);
+    assert(skelAnimationSchema);
+
+    // set the rotations, scales, and translations attributes on the pose
+    skelAnimationSchema.SetTransforms(identities);
+
+    // Set joints attribute on both the skeleton and the pose
+    const pxr::VtArray<pxr::TfToken> jointsList = generateJointsList(mesh.numBones);
+    auto jointsAttr = skelSchema.CreateJointsAttr();
+    assert(jointsAttr);
+    jointsAttr.Set(jointsList);
+
+    auto jointsAttr2 = skelAnimationSchema.CreateJointsAttr();
+    assert(jointsAttr2);
+    jointsAttr2.Set(jointsList);
+
+    // Bind the pose to the skeleton
+    pxr::UsdSkelBindingAPI skelBindingSchema = pxr::UsdSkelBindingAPI::Apply(skelSchema.GetPrim());
+    auto animationSource = skelBindingSchema.CreateAnimationSourceRel();
+    animationSource.AddTarget(skelAnimationSchema.GetPath());
+
+    stage->Save();
+
+    // Build meshSchema prim on instance stage
+    if (ctx.instanceStage != nullptr) {
+      const std::string mesh_name = prefix::mesh + mesh.meshName;
+      const std::string relSkelStagePath = relDirPath + name + lss::ext::usd;
+
+      pxr::UsdPrim mesh_prim = ctx.instanceStage->GetPrimAtPath(gRootMeshesPath.AppendElementString(mesh_name));
+      auto meshInstanceUsdReferences = mesh_prim.GetReferences();
+      meshInstanceUsdReferences.AddReference(relSkelStagePath);
+    }
+  }
+  dxvk::Logger::debug("[GameExporter][" + exportData.debugId + "][exportSkeletons] End");
+}
+
 void GameExporter::exportMeshes(const Export& exportData, ExportContext& ctx) {
   dxvk::Logger::debug("[GameExporter][" + exportData.debugId + "][exportMeshes] Begin");
   static pxr::ArDefaultResolver arDefResolver;
+  static const pxr::GfMatrix4d identity(1);
   const std::string relMeshDirPath = commonDirName::meshDir + "/";
   const std::string meshDirPath = exportData.baseExportPath + "/" + relMeshDirPath;
   const std::string fullMeshStagePath = arDefResolver.ComputeLocalPath(meshDirPath);
@@ -330,6 +454,8 @@ void GameExporter::exportMeshes(const Export& exportData, ExportContext& ctx) {
   for(const auto& [meshId,mesh] : exportData.meshes) {
     assert(mesh.numVertices > 0);
     assert(mesh.numIndices > 0);
+
+    const bool isSkeleton = mesh.numBones > 0;
 
     // Build mesh stage
     const std::string meshName = prefix::mesh + mesh.meshName;
@@ -346,7 +472,12 @@ void GameExporter::exportMeshes(const Export& exportData, ExportContext& ctx) {
 
     // Build mesh xform prim on mesh stage, make it visible
     const auto meshXformSdfPath = gStageRootPath.AppendElementString(meshName);
-    auto meshXformSchema = pxr::UsdGeomXform::Define(meshStage, meshXformSdfPath);
+    pxr::UsdGeomXformable meshXformSchema;
+    if (isSkeleton) {
+      meshXformSchema = pxr::UsdSkelRoot::Define(meshStage, meshXformSdfPath);
+    } else {
+      meshXformSchema = pxr::UsdGeomXform::Define(meshStage, meshXformSdfPath);
+    }
     assert(meshXformSchema);
     meshStage->SetDefaultPrim(meshXformSchema.GetPrim());
     auto meshXformVisibilityAttr = meshXformSchema.CreateVisibilityAttr();
@@ -379,37 +510,31 @@ void GameExporter::exportMeshes(const Export& exportData, ExportContext& ctx) {
     faceVertexCountsAttr.Set(faceVertexCounts);
 
     // Indices
-    ReducedIdxBufSet reducedIdxBufSet = (exportData.meta.bReduceMeshBuffers) ? reduceIdxBufferSet(mesh.buffers.idxBufs) : ReducedIdxBufSet();
+    const bool reduce = exportData.meta.bReduceMeshBuffers;
+    ReducedIdxBufSet reducedIdxBufSet = reduce ? reduceIdxBufferSet(mesh.buffers.idxBufs) : ReducedIdxBufSet();
     const std::map<float,IndexBuffer>& idxBufSet =
-      (exportData.meta.bReduceMeshBuffers) ? reducedIdxBufSet.bufSet : mesh.buffers.idxBufs;
+      reduce ? reducedIdxBufSet.bufSet : mesh.buffers.idxBufs;
     auto indexAttr = meshSchema.CreateFaceVertexIndicesAttr();
     assert(indexAttr);
     exportBufferSet(idxBufSet, indexAttr);
     // Vertices
-    const std::map<float,PositionBuffer> reducedPosBufSet =
-      (exportData.meta.bReduceMeshBuffers) ? reduceBufferSet(mesh.buffers.positionBufs, reducedIdxBufSet) : std::map<float,PositionBuffer>();
-    const std::map<float,PositionBuffer>& posBufSet =
-      (exportData.meta.bReduceMeshBuffers) ? reducedPosBufSet : mesh.buffers.positionBufs;
     auto pointsAttr = meshSchema.CreatePointsAttr();
     assert(pointsAttr);
-    exportBufferSet(posBufSet, pointsAttr);
+    exportBufferSet(reduce ? reduceBufferSet(mesh.buffers.positionBufs, reducedIdxBufSet) : mesh.buffers.positionBufs, pointsAttr);
     // Normals
     auto normalsAttr = meshSchema.CreateNormalsAttr();
     assert(normalsAttr);
-    exportBufferSet(mesh.buffers.normalBufs, normalsAttr);
+    exportBufferSet(reduce ? reduceBufferSet(mesh.buffers.normalBufs, reducedIdxBufSet) : mesh.buffers.normalBufs, normalsAttr);
     // Set subdivision scheme to None (USD defaults to catmull clark)
     auto subdivAttr = meshSchema.CreateSubdivisionSchemeAttr();
     assert(subdivAttr);
     subdivAttr.Set(pxr::UsdGeomTokens->none);
     // Texture Coordinates
-    const std::map<float,TexcoordBuffer> reducedTexcoordBufSet =
-      (exportData.meta.bReduceMeshBuffers) ? reduceBufferSet(mesh.buffers.texcoordBufs, reducedIdxBufSet) : std::map<float,TexcoordBuffer>();
-    const std::map<float,TexcoordBuffer>& texcoordBufSet =
-      (exportData.meta.bReduceMeshBuffers) ? reducedTexcoordBufSet : mesh.buffers.texcoordBufs;
     static const pxr::TfToken kTokSt("st");
     auto stAttr = meshSchema.CreatePrimvar(kTokSt, pxr::SdfValueTypeNames->TexCoord2fArray, pxr::UsdGeomTokens->vertex);
     assert(stAttr);
-    exportBufferSet(texcoordBufSet, stAttr);
+    exportBufferSet(reduce ? reduceBufferSet(mesh.buffers.texcoordBufs, reducedIdxBufSet) : mesh.buffers.texcoordBufs, stAttr);
+    
 
     // Vertex Colors
     if (mesh.buffers.colorBufs.size() > 0) {
@@ -419,7 +544,33 @@ void GameExporter::exportMeshes(const Export& exportData, ExportContext& ctx) {
         // Constant Color
         displayColorPrimvar.SetInterpolation(pxr::UsdGeomTokens->constant);
       }
-      exportBufferSet(mesh.buffers.colorBufs, displayColorPrimvar);
+      exportBufferSet(reduce ? reduceBufferSet(mesh.buffers.colorBufs, reducedIdxBufSet) : mesh.buffers.colorBufs, displayColorPrimvar);
+    }
+    
+    if (isSkeleton) {
+      pxr::UsdSkelBindingAPI skelBind = pxr::UsdSkelBindingAPI::Apply(meshSchema.GetPrim());
+
+      auto jointWeightsAttr = skelBind.CreateJointWeightsPrimvar(0, mesh.bonesPerVertex);
+      assert(jointWeightsAttr);
+      exportBufferSet(reduce ? reduceBufferSet(mesh.buffers.blendWeightBufs, reducedIdxBufSet, mesh.bonesPerVertex) : mesh.buffers.blendWeightBufs, jointWeightsAttr);
+
+      auto jointIndicesAttr = skelBind.CreateJointIndicesPrimvar(0, mesh.bonesPerVertex);
+      assert(jointIndicesAttr);
+      if (mesh.buffers.blendIndicesBufs.size() > 0) {
+        exportBufferSet(reduce ? reduceBufferSet(mesh.buffers.blendIndicesBufs, reducedIdxBufSet, mesh.bonesPerVertex) : mesh.buffers.blendIndicesBufs, jointIndicesAttr);
+      } else {
+        // D3D9 allows for default bone indices of "0, 1, ... bonesPerVertex" if no joint indices are set.
+        pxr::VtArray<int> defaultIndices(mesh.bonesPerVertex * mesh.numVertices);
+        for (int i = 0; i < mesh.numVertices; ++i) {
+          for (int j = 0; j < mesh.bonesPerVertex; ++j) {
+            defaultIndices[i * mesh.bonesPerVertex + j] = j;
+          }
+        }
+        jointIndicesAttr.Set(defaultIndices);
+      }
+
+      auto skelRel = skelBind.CreateSkeletonRel();
+      skelRel.AddTarget(meshXformSdfPath.AppendChild(gTokSkel));
     }
 
     const bool bHasMat = mesh.matId != kInvalidId;
@@ -453,7 +604,12 @@ void GameExporter::exportMeshes(const Export& exportData, ExportContext& ctx) {
     // Build meshSchema prim on instance stage
     if(ctx.instanceStage != nullptr) {
       const auto meshInstanceXformSdfPath = gRootMeshesPath.AppendElementString(meshName);
-      auto meshInstanceXformSchema = pxr::UsdGeomXform::Define(ctx.instanceStage, meshInstanceXformSdfPath);
+      pxr::UsdGeomXformable meshInstanceXformSchema;
+      if (isSkeleton) {
+        meshInstanceXformSchema = pxr::UsdSkelRoot::Define(ctx.instanceStage, meshInstanceXformSdfPath);
+      } else {
+        meshInstanceXformSchema = pxr::UsdGeomXform::Define(ctx.instanceStage, meshInstanceXformSdfPath);
+      }
       assert(meshInstanceXformSchema);
       
       const std::string relMeshStagePath = relMeshDirPath + meshName + lss::ext::usd;
@@ -495,7 +651,8 @@ GameExporter::ReducedIdxBufSet GameExporter::reduceIdxBufferSet(const std::map<f
 
 template<typename T>
 std::map<float,pxr::VtArray<T>> GameExporter::reduceBufferSet(const std::map<float,pxr::VtArray<T>>& bufSet,
-                                                              const ReducedIdxBufSet& reducedIdxBufSet) {
+                                                              const ReducedIdxBufSet& reducedIdxBufSet,
+                                                              size_t elemsPerIdx) {
   static const auto getIdxBufTimeCode =
     [](const ReducedIdxBufSet& reducedIdxBufSet, const float bufTimeCode)
   {
@@ -513,17 +670,19 @@ std::map<float,pxr::VtArray<T>> GameExporter::reduceBufferSet(const std::map<flo
     // There may not be a 1:1 mapping in timecodes b/w index buffers and other buffers
     const float idxBufTimeCode = getIdxBufTimeCode(reducedIdxBufSet, timeCode);
     const IndexBuffer& idxBuf = reducedIdxBufSet.bufSet.at(idxBufTimeCode);
-    const int idxBufReductionOffset = reducedIdxBufSet.idxOffsets.at(idxBufTimeCode);
+    const int idxBufReductionOffset = reducedIdxBufSet.idxOffsets.at(idxBufTimeCode) * elemsPerIdx;
     // Sort indices
     std::set<int> sortedIdxSet(idxBuf.cbegin(), idxBuf.cend());
     // Create a scratch space to assign values for new, reduce VtArray, in case there are holes in the indices
     const int maxIdx = *(--sortedIdxSet.cend());
-    const size_t numElems = maxIdx + 1;
+    const size_t numElems = (maxIdx + 1) * elemsPerIdx;
     T* const reducedBufScratch = new T[numElems];
     // Init potential holes to 0
     memset(reducedBufScratch, 0, sizeof(T) * numElems);
     for(const int index : sortedIdxSet) {
-      reducedBufScratch[index] = buf[index + idxBufReductionOffset];
+      for (int elem = 0; elem < elemsPerIdx; ++elem) {
+        reducedBufScratch[(index * elemsPerIdx) + elem] = buf[(index * elemsPerIdx + idxBufReductionOffset ) + elem];
+      }
     }
     reducedBufSet[timeCode] = pxr::VtArray<T>(reducedBufScratch, reducedBufScratch + numElems);
   }
@@ -550,7 +709,15 @@ void GameExporter::exportInstances(const Export& exportData, ExportContext& ctx)
     // Build base Xform prim for instance to reside in
     auto instanceName = (instanceData.isSky ? "sky_" : "inst_") + std::string(instanceData.instanceName);
     const pxr::SdfPath fullInstancePath = gRootInstancesPath.AppendElementString(instanceName);
-    auto instanceXform = pxr::UsdGeomXform::Define(ctx.instanceStage, fullInstancePath);
+
+    const bool isSkeleton = !instanceData.boneXForms.empty();
+
+    pxr::UsdGeomXformable instanceXform;
+    if (isSkeleton) {
+      instanceXform = pxr::UsdSkelRoot::Define(ctx.instanceStage, fullInstancePath);
+    } else {
+      instanceXform = pxr::UsdGeomXform::Define(ctx.instanceStage, fullInstancePath);
+    }
     assert(instanceXform);
 
     // Attach reference to mesh in question
@@ -575,6 +742,20 @@ void GameExporter::exportInstances(const Export& exportData, ExportContext& ctx)
       const auto shaderMatSchema = pxr::UsdShadeMaterial::Get(ctx.instanceStage, matLssReference.instanceSdfPath);
       assert(shaderMatSchema);
       pxr::UsdShadeMaterialBindingAPI(instanceXform.GetPrim()).Bind(shaderMatSchema);
+    }
+
+    if (isSkeleton) {
+      // Set instance skeleton pose / animation
+      const auto skelPoseSdfPath = fullInstancePath.AppendChild(gTokPose);
+      auto skelAnimationSchema = pxr::UsdSkelAnimation::Define(ctx.instanceStage, skelPoseSdfPath);
+      assert(skelAnimationSchema);
+
+      // set the rotations, scales, and translations attributes on the pose
+      for (auto sample : instanceData.boneXForms) {
+        skelAnimationSchema.SetTransforms(
+            sanitizeBoneXforms(skelPoseSdfPath, sample.xforms, exportData.meta),
+            exportData.meta.numFramesCaptured == 1 ? pxr::UsdTimeCode::Default() : pxr::UsdTimeCode(sample.time));
+      }
     }
 
     setTimeSampledXforms<true>(ctx.instanceStage, fullInstancePath, instanceData.firstTime, instanceData.finalTime, instanceData.xforms, exportData.meta);
@@ -755,14 +936,6 @@ void GameExporter::exportSky(const Export& exportData, ExportContext& ctx) {
   domeLightSchema.OrientToStageUpAxis();
 
   dxvk::Logger::debug("[GameExporter][" + exportData.debugId + "][exportSky] End");
-}
-
-static inline pxr::GfMatrix4d ToRHS(const pxr::GfMatrix4d& xform) {
-  static pxr::GfMatrix4d XYflip(pxr::GfVec4d(1.0, 1.0, -1.0, 1.0));
-
-  // Change of Basis transform
-  // X' = P * X * P-1
-  return XYflip * xform * XYflip;
 }
 
 // Extract Euler angles from a rotation matrix factored as RxRyRz

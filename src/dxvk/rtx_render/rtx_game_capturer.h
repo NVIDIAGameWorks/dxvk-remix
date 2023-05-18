@@ -126,7 +126,7 @@ private:
   void captureMaterial(const Rc<DxvkContext> ctx, const LegacyMaterialData& materialData, const bool bEnableOpacity);
   void captureMesh(const Rc<DxvkContext> ctx,
                    const XXH64_hash_t currentMeshHash,
-                   const RaytraceGeometry& geomData,
+                   const BlasEntry& blas,
                    const bool bIsNewMesh,
                    const bool bCapturePositions,
                    const bool bCaptureNormals,
@@ -151,6 +151,10 @@ private:
                         const RaytraceGeometry& geomData,
                         const float currentCaptureTime,
                         std::shared_ptr<Mesh> pMesh);
+  void captureMeshBlending(const Rc<DxvkContext> ctx,
+                           const RasterGeometry& geomData,
+                           const float currentCaptureTime,
+                           std::shared_ptr<Mesh> pMesh);
   template <typename T, typename CompareTReturnBool>
   static void evalNewBufferAndCache(std::shared_ptr<Mesh> pMesh,
                                     std::map<float,pxr::VtArray<T>>& bufferCache,

@@ -52,6 +52,14 @@ static inline pxr::GfMatrix4d matrix4ToGfMatrix4d(const Matrix4& mat4) {
   const auto& float4x4 = reinterpret_cast<const float(&)[4][4]>(mat4);
   return pxr::GfMatrix4d{pxr::GfMatrix4f(float4x4)};
 }
+static inline pxr::VtMatrix4dArray matrix4VecToGfMatrix4dVec(const std::vector<Matrix4>& mat4s) {
+  pxr::VtMatrix4dArray result(mat4s.size());
+  for (int i = 0; i < mat4s.size(); ++i) {
+    const auto& float4x4 = reinterpret_cast<const float(&)[4][4]>(mat4s[i]);
+    result[i] = pxr::GfMatrix4d{pxr::GfMatrix4f(float4x4)};
+  }
+  return result;
+}
 }
 
 size_t GameCapturer::Capture::nextId = 0;
@@ -318,12 +326,15 @@ void GameCapturer::captureInstances(const Rc<DxvkContext> ctx) {
     }
     if(m_cap.bExportInstances && !bIsNew && (bPointsUpdate || bNormalsUpdate || bIndexUpdate)) {
       const BlasEntry* pBlas = rtInstancePtr->getBlas();
-      captureMesh(ctx, instance.meshHash, pBlas->modifiedGeometryData,
-                  false, bPointsUpdate, bNormalsUpdate, bIndexUpdate);
+      assert(pBlas != nullptr);
+      captureMesh(ctx, instance.meshHash, *pBlas, false, bPointsUpdate, bNormalsUpdate, bIndexUpdate);
     }
     if(m_cap.bExportInstances && (bIsNew || bXformUpdate)) {
-      // [TODO] Determine whether transpose is necessary based on source engine
       instance.lssData.xforms.push_back({m_cap.currentFrameNum, matrix4ToGfMatrix4d(rtInstancePtr->getTransform())});
+      const SkinningData& skinData = rtInstancePtr->getBlas()->input.getSkinningState();
+      if (skinData.numBones > 0) {
+        instance.lssData.boneXForms.push_back({ m_cap.currentFrameNum, matrix4VecToGfMatrix4dVec(skinData.pBoneMatrices) });
+      }
     }
     instance.lssData.finalTime = m_cap.currentFrameNum;
     instance.lssData.isSky = rtInstancePtr->getBlas()->input.getIsSky();
@@ -355,7 +366,7 @@ void GameCapturer::newInstance(const Rc<DxvkContext> ctx, const RtInstance& rtIn
     instanceNum = m_cap.meshes[meshHash]->instanceCount++;
   }
   if (bIsNewMesh) {
-    captureMesh(ctx, meshHash, pBlas->modifiedGeometryData, true, true, true, true);
+    captureMesh(ctx, meshHash, *pBlas, true, true, true, true);
   }
 
   const XXH64_hash_t instanceId = rtInstance.getId();
@@ -390,12 +401,15 @@ void GameCapturer::captureMaterial(const Rc<DxvkContext> ctx, const LegacyMateri
 
 void GameCapturer::captureMesh(const Rc<DxvkContext> ctx,
                                const XXH64_hash_t currentMeshHash,
-                               const RaytraceGeometry& geomData,
+                               const BlasEntry& blas,
                                const bool bIsNewMesh,
                                const bool bCapturePositions,
                                const bool bCaptureNormals,
                                const bool bCaptureIndices) {
   assert((bIsNewMesh && bCapturePositions && bCaptureNormals && bCaptureIndices) || !bIsNewMesh);
+  const RaytraceGeometry& geomData = blas.modifiedGeometryData;
+  const SkinningData& skinData = blas.input.getSkinningState();
+  const RasterGeometry& rasterGeomData = blas.input.getGeometryData();
 
   // Safely get a handle to the mesh
   std::shared_ptr<Mesh> pMesh;
@@ -427,6 +441,8 @@ void GameCapturer::captureMesh(const Rc<DxvkContext> ctx,
     pMesh->lssData.numVertices = numVertices;
     pMesh->lssData.numIndices = numIndices;
     pMesh->lssData.isDoubleSided = isDoubleSided;
+    pMesh->lssData.numBones = skinData.numBones;
+    pMesh->lssData.bonesPerVertex = skinData.numBonesPerVertex;
     Logger::debug("[GameCapturer][" + m_cap.idStr + "][Mesh:" + pMesh->lssData.meshName + "] New");
   }
 
@@ -448,6 +464,11 @@ void GameCapturer::captureMesh(const Rc<DxvkContext> ctx,
 
   if (bIsNewMesh && geomData.color0Buffer.defined()) {
     captureMeshColor(ctx, geomData, m_cap.currentFrameNum, pMesh);
+  }
+
+  if (bIsNewMesh && skinData.numBones > 0) {
+    captureMeshBlending(ctx, rasterGeomData, m_cap.currentFrameNum, pMesh);
+    pMesh->lssData.boneXForms = matrix4VecToGfMatrix4dVec(skinData.pBoneMatrices);
   }
 }
 
@@ -651,6 +672,89 @@ void GameCapturer::captureMeshColor(const Rc<DxvkContext> ctx,
   };
   pMesh->meshSync.numOutstandingInc();
   m_exporter.copyBufferFromGPU(ctx, geomData.color0Buffer, captureMeshColorAsync);
+}
+
+void GameCapturer::captureMeshBlending(const Rc<DxvkContext> ctx,
+                                       const RasterGeometry& geomData,
+                                       const float currentFrameNum,
+                                       std::shared_ptr<Mesh> pMesh) {
+  AssetExporter::BufferCallback captureMeshBlendWeightsAsync = [ctx, geomData, currentFrameNum, pMesh](Rc<DxvkBuffer> inBuf) {
+    // Prep helper vars
+    const size_t numVertices = geomData.vertexCount;
+    const size_t bonesPerVertex = pMesh->lssData.bonesPerVertex;
+    const size_t stride = geomData.blendWeightBuffer.stride() / sizeof(float);
+    const DxvkBufferSlice bufferSlice(inBuf, 0, inBuf->info().size );
+    const VkFormat format = geomData.blendWeightBuffer.vertexFormat();
+    if (bonesPerVertex <= 2) {
+      assert(format == VK_FORMAT_R32_SFLOAT || format == VK_FORMAT_R32G32_SFLOAT || format == VK_FORMAT_R32G32B32_SFLOAT);
+    } else if (bonesPerVertex == 3) {
+      assert(format == VK_FORMAT_R32G32_SFLOAT || format == VK_FORMAT_R32G32B32_SFLOAT);
+    } else if (bonesPerVertex == 4) {
+      assert(format == VK_FORMAT_R32G32B32_SFLOAT);
+    }
+    // Ensure no reads are out of bounds
+    assert(((size_t)(numVertices - 1) * (size_t)geomData.blendWeightBuffer.stride() + sizeof(float) * bonesPerVertex) <=
+           (bufferSlice.length() - geomData.blendWeightBuffer.offsetFromSlice()));
+    // Get copied-to-CPU GPU buffer
+    const float* pVkBwBuf = (float*)bufferSlice.mapPtr((size_t)geomData.blendWeightBuffer.offsetFromSlice());
+    assert(pVkBwBuf);
+    // Copy GPU buffer to local VtArray
+    pxr::VtArray<float> targetBuffer;
+    targetBuffer.reserve(numVertices * bonesPerVertex);
+    for (size_t idx = 0; idx < numVertices; ++idx) {
+      float lastWeight = 1.0;
+      for (size_t bone_idx = 0; bone_idx < bonesPerVertex-1; ++bone_idx) {
+        float thisWeight = pVkBwBuf[idx * stride + bone_idx];
+        lastWeight -= thisWeight;
+        targetBuffer.push_back(thisWeight);
+      }
+      // D3D9 only stores bonesPerVertex - 1 weights. The last weight is 1 minus the other weights.
+      targetBuffer.push_back(lastWeight);
+    }
+    assert(targetBuffer.size() > 0);
+    // Create comparison function that returns float
+    static auto weightsDifferentEnough = [](const float& a, const float& b) {
+      const static float delta = RtxOptions::Get()->getCaptureMeshBlendWeightDelta();
+      return abs(a - b) > delta;
+    };
+    // Cache buffer iff new buffer differs from previous buffer
+    evalNewBufferAndCache(pMesh, pMesh->lssData.buffers.blendWeightBufs, targetBuffer, currentFrameNum, weightsDifferentEnough);
+  };
+  AssetExporter::BufferCallback captureMeshBlendIndicesAsync = [ctx, geomData, currentFrameNum, pMesh](Rc<DxvkBuffer> inBuf) {
+    assert(geomData.blendIndicesBuffer.vertexFormat() == VK_FORMAT_R8G8B8A8_USCALED);
+    // Prep helper vars
+    const size_t numVertices = geomData.vertexCount;
+    const size_t bonesPerVertex = pMesh->lssData.bonesPerVertex;
+    const size_t stride = geomData.blendIndicesBuffer.stride() / sizeof(uint8_t);
+    const DxvkBufferSlice bufferSlice(inBuf, 0, inBuf->info().size );
+    // Ensure no reads are out of bounds
+    assert(((size_t)(numVertices - 1) * (size_t)geomData.blendIndicesBuffer.stride() + sizeof(uint8_t) * bonesPerVertex) <=
+           (bufferSlice.length() - geomData.blendIndicesBuffer.offsetFromSlice()));
+    // Get copied-to-CPU GPU buffer
+    const uint8_t* VkBuf = (uint8_t*)bufferSlice.mapPtr((size_t)geomData.blendIndicesBuffer.offsetFromSlice());
+    assert(VkBuf);
+    // Copy GPU buffer to local VtArray
+    pxr::VtArray<int> targetBuffer;
+    targetBuffer.reserve(numVertices * bonesPerVertex);
+    for (size_t idx = 0; idx < numVertices; ++idx) {
+      for (size_t bone_idx = 0; bone_idx < bonesPerVertex; ++bone_idx) {
+        targetBuffer.push_back(VkBuf[idx * stride + bone_idx]);
+      }
+    }
+    assert(targetBuffer.size() > 0);
+    // Create comparison function that returns float
+    static auto weightsDifferentEnough = [](const int& a, const int& b) {
+      return a != b;
+    };
+    // Cache buffer iff new buffer differs from previous buffer
+    evalNewBufferAndCache(pMesh, pMesh->lssData.buffers.blendIndicesBufs, targetBuffer, currentFrameNum, weightsDifferentEnough);
+  };
+  pMesh->meshSync.numOutstandingInc();
+  m_exporter.copyBufferFromGPU(ctx, geomData.blendWeightBuffer, captureMeshBlendWeightsAsync);
+  if (geomData.blendIndicesBuffer.defined()) {
+    pMesh->meshSync.numOutstandingInc();
+    m_exporter.copyBufferFromGPU(ctx, geomData.blendIndicesBuffer, captureMeshBlendIndicesAsync);
+  }
 }
 
 template <typename T, typename CompareTReturnBool>

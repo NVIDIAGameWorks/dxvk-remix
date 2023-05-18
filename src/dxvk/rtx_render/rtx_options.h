@@ -736,6 +736,7 @@ namespace dxvk {
     RTX_OPTION("rtx", float, captureMeshNormalDelta, 0.3f, "Inter-frame normal min delta warrants new time sample.");
     RTX_OPTION("rtx", float, captureMeshTexcoordDelta, 0.3f, "Inter-frame texcoord min delta warrants new time sample.");
     RTX_OPTION("rtx", float, captureMeshColorDelta, 0.3f, "Inter-frame color min delta warrants new time sample.");
+    RTX_OPTION("rtx", float, captureMeshBlendWeightDelta, 0.01f, "Inter-frame blend weight min delta warrants new time sample.");
 
     // Note: call needsMeshBoundingBox() to check if BBOX calculation is enabled
     RTX_OPTION("rtx", bool, calculateMeshBoundingBox, false, "Calculate bounding box for every mesh.");
@@ -1313,6 +1314,8 @@ namespace dxvk {
     float getCaptureMeshNormalDelta() const { return captureMeshNormalDelta(); }
     float getCaptureMeshTexcoordDelta() const { return captureMeshTexcoordDelta(); }
     float getCaptureMeshColorDelta() const { return captureMeshColorDelta(); }
+    float getCaptureMeshBlendWeightDelta() const { return captureMeshBlendWeightDelta(); }
+    
     
     bool isUseVirtualShadingNormalsForDenoisingEnabled() const { return useVirtualShadingNormalsForDenoising(); }
     bool isResetDenoiserHistoryOnSettingsChangeEnabled() const { return resetDenoiserHistoryOnSettingsChange(); }
