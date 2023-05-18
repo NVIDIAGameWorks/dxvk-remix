@@ -194,8 +194,8 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.enableRussianRoulette|bool|True|A flag to enable or disable Russian Roulette, a rendering technique to give paths a chance of terminating randomly with each bounce based on their importance\.<br>This is usually useful to have enabled as it will ensure useless paths are terminated earlier while more important paths are allowed to accumulate more bounces\.<br>Furthermore this allows for the renderer to remain unbiased whereas a hard clamp on the number of bounces will introduce bias \(though this is also done in Remix for the sake of performance\)\.<br>On the other hand, randomly terminating paths too aggressively may leave threads in GPU warps without work which may hurt thread occupancy when not used with a thread\-reordering technique like SER\.|
 |rtx.enableSecondaryBounces|bool|True|Enables indirect lighting \(lighting from diffuse/specular bounces to one or more other surfaces\) on surfaces when set to true, otherwise disables it\.|
 |rtx.enableSeparateUnorderedApproximations|bool|True|Use a separate loop during resolving for surfaces which can have lighting evaluated in an approximate unordered way on each path segment \(such as particles\)\.<br>This improves performance typically in how particles or decals are rendered and should usually always be enabled\.<br>Do note however the unordered nature of this resolving method may result in visual artifacts with large numbers of stacked particles due to difficulty in determining the intended order\.<br>Additionally, unordered approximations will only be done on the first indirect ray bounce \(as particles matter less in higher bounces\), and only if enabled by its corresponding setting\.|
-|rtx.enableShaderExecutionReorderingInPathtracerGbuffer|bool|False||
-|rtx.enableShaderExecutionReorderingInPathtracerIntegrateIndirect|bool|True||
+|rtx.enableShaderExecutionReorderingInPathtracerGbuffer|bool|False|\(Note: Hard disabled in shader code\) Enables Shader Execution Reordering \(SER\) in GBuffer Raytrace pass if SER is supported\.|
+|rtx.enableShaderExecutionReorderingInPathtracerIntegrateIndirect|bool|True|Enables Shader Execution Reordering \(SER\) in Integrate Indirect pass if SER is supported\.|
 |rtx.enableStochasticAlphaBlend|bool|True|Use stochastic alpha blend\.|
 |rtx.enableUnorderedEmissiveParticlesInIndirectRays|bool|False|A flag to enable or disable unordered resolve emissive particles specifically in indirect rays\.<br>Should be enabled in higher quality rendering modes as emissive particles are fairly important in reflections, but may be disabled to skip such interactions which can improve performance on lower end hardware\.<br>Note that rtx\.enableUnorderedResolveInIndirectRays must first be enabled for this option to take any effect \(as it will control if unordered resolve is used to begin with in indirect rays\)\.|
 |rtx.enableUnorderedResolveInIndirectRays|bool|True|A flag to enable or disable unordered resolve approximations in indirect rays\.<br>This allows for the presence of unordered approximations in resolving to be overridden in indirect rays and as such requires separate unordered approximations to be enabled to have any effect\.<br>This option should be enabled if objects which can be resolvered in an unordered way in indirect rays are expected for higher quality in reflections, but may come at a performance cost\.<br>Note that even with this option enabled, unordered resolve approximations are only done on the first indirect bounce for the sake of performance overall\.|
@@ -260,7 +260,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.io.useAsyncQueue|bool|True||
 |rtx.isLHS|bool|False||
 |rtx.isReflexSupported|bool|True||
-|rtx.isShaderExecutionReorderingSupported|bool|False||
+|rtx.isShaderExecutionReorderingSupported|bool|True|Enables support of Shader Execution Reordering \(SER\) if it is supported by the target HW and SW\.|
 |rtx.keepTexturesForTagging|bool|False|A flag to keep all textures in video memory, which can drastically increase VRAM consumption\. Intended to assist with tagging textures that are only used for a short period of time \(such as loading screens\)\. Use only when necessary\!|
 |rtx.legacyMaterial.albedoConstant|float3|1, 1, 1|The default albedo constant to use for non\-replaced "legacy" materials\. Should be a color in sRGB colorspace with gamma encoding\.|
 |rtx.legacyMaterial.alphaIsThinFilmThickness|bool|False|A flag to determine if the alpha channel from the albedo source should be treated as thin film thickness on non\-replaced "legacy" materials\.|
@@ -473,10 +473,10 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.temporalAA.colorClampingFactor|float|1||
 |rtx.temporalAA.maximumRadiance|float|10000||
 |rtx.temporalAA.newFrameWeight|float|1||
-|rtx.terrainBaker.cascadeMap.defaultHalfWidth|float|1000|Cascade map square's default half width around the camera \[game units\]\. Used when the terrain's BBOX couldn't be estimated\.|
-|rtx.terrainBaker.cascadeMap.defaultHeight|float|1000|Cascade map baker's camera default height above the in\-game camera \[game units\]\. Used when the terrain's BBOX couldn't be estimated\.|
+|rtx.terrainBaker.cascadeMap.defaultHalfWidth|float|1000|Cascade map square's default half width around the camera \[meters\]\. Used when the terrain's BBOX couldn't be estimated\.|
+|rtx.terrainBaker.cascadeMap.defaultHeight|float|1000|Cascade map baker's camera default height above the in\-game camera \[meters\]\. Used when the terrain's BBOX couldn't be estimated\.|
 |rtx.terrainBaker.cascadeMap.expandLastCascade|bool|True|Expands the last cascade's footprint to cover the whole cascade map\. This ensures all terrain surface has valid baked texture data to sample from across the cascade map's range even if there isn't enough cascades generated \(due to the current settings or limitations\)\.|
-|rtx.terrainBaker.cascadeMap.levelHalfWidth|float|10|First cascade level square's half width around the camera \[game units\]\.|
+|rtx.terrainBaker.cascadeMap.levelHalfWidth|float|10|First cascade level square's half width around the camera \[meters\]\.|
 |rtx.terrainBaker.cascadeMap.levelResolution|int|4096|Texture resolution per cascade level\.|
 |rtx.terrainBaker.cascadeMap.maxLevels|int|8|Max number of cascade levels\.|
 |rtx.terrainBaker.cascadeMap.useTerrainBBOX|bool|True|Uses terrain's bounding box to calculate the cascade map's scene footprint\.|
