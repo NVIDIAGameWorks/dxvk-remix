@@ -52,6 +52,9 @@ namespace dxvk {
 
     RTX_OPTION("rtx.neeCache", bool, enabled, true, "Enable NEE cache.");
     RTX_OPTION("rtx.neeCache", bool, enableImportanceSampling, true, "Enable importance sampling.");
+    RTX_OPTION("rtx.neeCache", bool, enableMIS, true, "Enable MIS.");
+    RTX_OPTION("rtx.neeCache", bool, enableInFirstBounce, true, "Enable NEE Cache in first bounce.");
+    RTX_OPTION("rtx.neeCache", bool, enableInHigherBounces, true, "Enable NEE Cache in higher bounces.");
     RTX_OPTION("rtx.neeCache", float, range, 2000, "World space range.");
   private:
     Rc<vk::DeviceFn> m_vkd;

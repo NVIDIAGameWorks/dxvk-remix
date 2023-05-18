@@ -241,6 +241,9 @@ struct RaytraceArgs {
 
   uint enableNeeCache;
   uint enableNeeCacheImportanceSampling;
+  uint enableNeeCacheMIS;
+  uint enableNeeCacheInFirstBounce;
+  uint enableNeeCacheInHigherBounces;
   float neeCacheRange;
   uint surfaceCount;
 
