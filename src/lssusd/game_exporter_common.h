@@ -28,6 +28,8 @@ namespace lss {
 
 const pxr::TfToken gTokLights("lights");
 const pxr::TfToken gTokMesh("mesh");
+const pxr::TfToken gTokSkel("skel");
+const pxr::TfToken gTokPose("pose");
 const pxr::TfToken gTokMeshes("meshes");
 const pxr::TfToken gTokLooks("Looks");
 const pxr::TfToken gTokScope("Scope");
