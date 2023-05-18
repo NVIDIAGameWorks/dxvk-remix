@@ -163,6 +163,7 @@ struct NEECell
     candidate.setInvalid();
     int i = 0;
     float lastCdf = 0;
+    pdf = 1;
     for (; i < count; ++i)
     {
       candidate = getCandidate(i);
