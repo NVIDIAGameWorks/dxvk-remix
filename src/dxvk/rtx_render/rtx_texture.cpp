@@ -156,9 +156,6 @@ namespace dxvk {
         }
       }
     }
-    
-    // We no longer care about this data
-    texture->assetData->evictCache();
 
     return view;
 #endif
@@ -212,13 +209,6 @@ namespace dxvk {
 
     Rc<DxvkImageView> view = device->createImageView(image, viewInfo);
     texture->state = ManagedTexture::State::kVidMem;
-
-    // If we're not preloading, get rid of the higher res mips
-    if (!isPreloading) {
-      for (int level = 0; level < std::max(1, texture->minPreloadedMip); level++) {
-        texture->assetData->evictCache(0, level);
-      }
-    }
 
     return view;
   }
@@ -298,6 +288,18 @@ namespace dxvk {
       }
     } else {
       texture->allMipsImageView = viewTarget;
+
+      // Get rid of cached higher res mips. Wipe caches of images that skipped
+      // the preload phase, but keep the fully preloaded images.
+      const uint32_t firstLevelToKeep = texture->minPreloadedMip < 0 ?
+        texture->mipCount : texture->minPreloadedMip;
+
+      for (uint32_t level = 0; level < firstLevelToKeep; level++) {
+        texture->assetData->evictCache(0, level);
+      }
     }
+
+    // Release asset source to keep the number of open file low
+    texture->assetData->releaseSource();
   }
 } // namespace dxvk

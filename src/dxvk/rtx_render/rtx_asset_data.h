@@ -67,7 +67,32 @@ namespace dxvk {
       return m_hash;
     }
 
+    /**
+     * \brief Get asset data
+     *
+     * Returns a pointer to asset data. Loads asset data from the
+     * source when needed and stores it in the internal cache.
+     * The internal cache will stay around until this object is
+     * destroyed or cache is evicted using the evictCache() method.
+     *
+     * Note: for performance reasons the source media may
+     * remain open after this function completes. To release
+     * the source media use releaseSource() method.
+     * \param [in] layer Image layer, ignored if asset is not an image
+     * \param [in] level Image level, ignored if asset is not an image
+     * \returns Pointer to data
+     */
     virtual const void* data(int layer, int level) = 0;
+
+    /**
+     * \brief Get asset data location in the source
+     *
+     * \param [in] layer Image layer, ignored if asset is not an image
+     * \param [in] face Cube image face, ignored if asset is not an image
+     * \param [in] level Image level, ignored if asset is not an image
+     * \param [out] offset Offset in the source media
+     * \param [out] size Data size in the source media
+     */
     virtual void placement(
       int       layer,
       int       face,
@@ -75,8 +100,27 @@ namespace dxvk {
       uint64_t& offset,
       size_t&   size) const = 0;
 
-    virtual void evictCache() = 0;
+    /**
+     * \brief Release cached resources
+     *
+     * Releases the internally allocated memory for a given
+     * subresource.
+     * \param [in] layer Image layer, ignored if asset is not an image
+     * \param [in] level Image level, ignored if asset is not an image
+     */
     virtual void evictCache(int layer, int level) = 0;
+
+    /**
+     * \brief Release source media
+     *
+     * The source media may remain open for performace reasons as
+     * long as asset data object is alive. (i.e. same file is not
+     * opened/closed multiple times while loading separate image layers)
+     * This function sets a hint on the source media that it will not be
+     * needed anytime soon (e.g. image asset has been uploaded to GPU) and
+     * may be released as well as the OS resources it uses.
+     */
+    virtual void releaseSource() = 0;
 
   protected:
     AssetData() = default;
@@ -105,8 +149,8 @@ namespace dxvk {
       return m_sourceAsset->data(layer, level + m_minLevel);
     }
 
-    void evictCache() override {
-      return m_sourceAsset->evictCache();
+    void releaseSource() {
+      m_sourceAsset->releaseSource();
     }
 
     void evictCache(int layer, int level) override {

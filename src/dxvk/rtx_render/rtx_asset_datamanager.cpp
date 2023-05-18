@@ -89,7 +89,7 @@ namespace dxvk {
 
     void evictCache(int, int) override { }
 
-    void evictCache() override { }
+    void releaseSource() override { }
 
     void placement(
       int       layer,
@@ -190,7 +190,16 @@ namespace dxvk {
     FILE* openHandle() {
       assert(!m_filename.empty() && "DDS filename cannot be empty");
       if (m_file == nullptr) {
+        errno = 0;
         m_file = std::fopen(m_filename.c_str(), "rb");
+
+        if (m_file == nullptr) {
+          if (errno == EMFILE) {
+            throw DxvkError("Unable to open a DDS file: too many open files. "
+                            "Please consider using AssetData::releaseSource() "
+                            "method to keep the number of open files low.");
+          }
+        }
       }
       return m_file;
     }
@@ -256,15 +265,17 @@ namespace dxvk {
     const void* data(int layer, int level) override {
       int key = getKey(layer, level);
       const auto& it = m_data.find(key);
-      if (it != m_data.end())
+      if (it != m_data.end() && !it->second.empty())
         return it->second.data();
 
       long dataOffset;
       size_t dataSize;
       getDataPlacement(layer, 0, level, dataOffset, dataSize);
 
-      if (m_fileSize < dataOffset + dataSize)
+      if (m_fileSize < dataOffset + dataSize) {
+        Logger::warn(str::format("Corrupted DDS file discovered: ", m_filename));
         return nullptr;
+      }
 
       auto file = openHandle();
       assert(file);
@@ -273,8 +284,6 @@ namespace dxvk {
       std::fseek(file, dataOffset, SEEK_SET);
       data.resize(dataSize);
       std::fread(data.data(), dataSize, 1, file);
-      
-      closeHandle();
 
       const void* rawData = data.data();
       m_data[key] = std::move(data);
@@ -283,11 +292,10 @@ namespace dxvk {
 
     void evictCache(int layer, int level) override {
       int key = getKey(layer, level);
-      m_data[key].clear();
+      releaseVectorMemory(m_data[key]);
     }
 
-    void evictCache() override {
-      m_data.clear();
+    void releaseSource() override {
       closeHandle();
     }
 
@@ -389,7 +397,7 @@ namespace dxvk {
       uint32_t blobIdx = getBlobIndex(layer, 0, level);
 
       const auto& it = m_data.find(blobIdx);
-      if (it != m_data.end())
+      if (it != m_data.end() && !it->second.empty())
         return it->second.data();
 
       if (auto blobDesc = m_package->getDataBlobDesc(blobIdx)) {
@@ -410,11 +418,10 @@ namespace dxvk {
 
     void evictCache(int layer, int level) override {
       uint32_t blobIdx = getBlobIndex(layer, 0, level);
-      m_data[blobIdx].clear();
+      releaseVectorMemory(m_data[blobIdx]);
     }
-    
-    void evictCache() override {
-      m_data.clear();
+
+    void releaseSource() override {
     }
 
     void placement(
