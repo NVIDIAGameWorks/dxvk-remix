@@ -385,6 +385,7 @@ void integratePathVertex(
   // Add Emission
   vec3 emissiveLight = polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(polymorphicSurfaceMaterialInteraction);
   bool hasNEE = false;
+  float16_t lightSelectionPDF = 0;
   if (cb.enableNeeCache && cb.enableNeeCacheInFirstBounce && any(emissiveLight) > 0 && (!pathState.continueResolving))
   {
     uint4 threadTask = NEECache.loadThreadTask(pathState.pixelCoordinate);
@@ -409,6 +410,7 @@ void integratePathVertex(
           int2 candidate = cell.getCandidate(i).getIDData();
           if (all(candidate == task))
           {
+            lightSelectionPDF = cell.getCandidatePdf(i);
             hasNEE = true;
             break;
           }
@@ -434,7 +436,7 @@ void integratePathVertex(
   {
     if (cb.enableNeeCacheMIS)
     {
-      float16_t lightPdf = getLightSamplingSolidAnglePDF(surfaceInteraction.triangleArea, surfaceInteraction.position, surfaceInteraction.triangleNormal, oldOrigin);
+      float16_t lightPdf = lightSelectionPDF * getLightSamplingSolidAnglePDF(surfaceInteraction.triangleArea, surfaceInteraction.position, surfaceInteraction.triangleNormal, oldOrigin);
       misWeight = pathState.solidAnglePdf / (pathState.solidAnglePdf + lightPdf);
     }
     else
