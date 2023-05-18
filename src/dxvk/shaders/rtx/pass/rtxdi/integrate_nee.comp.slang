@@ -155,7 +155,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   }
 
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
-  if (cb.enableNeeCache > 0)
+  if (cb.enableNeeCache && cb.enableNeeCacheInFirstBounce)
   {
     NEECell cell = NEECache.findCell(minimalSurfaceInteraction.position, true);
     if (cell.isValid())// && polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque)
@@ -206,8 +206,15 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
               float16_t specularSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
                 opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
               f16vec2 misWeight;
-              misWeight.x = lightPdf / (lightPdf + diffuseSolidAnglePdf);
-              misWeight.y = lightPdf / (lightPdf + specularSolidAnglePdf);
+              if (cb.enableNeeCacheMIS)
+              {
+                misWeight.x = lightPdf / (lightPdf + diffuseSolidAnglePdf);
+                misWeight.y = lightPdf / (lightPdf + specularSolidAnglePdf);
+              }
+              else
+              {
+                misWeight = 1.0;
+              }
 
               float16_t specularPortion2;
               const bool isViewModel = false;// pathState.rayMask& OBJECT_MASK_ALL_VIEWMODEL;

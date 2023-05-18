@@ -82,6 +82,9 @@ namespace dxvk {
   void NeeCachePass::showImguiSettings() {
     ImGui::Checkbox("Enabled", &enabledObject());
     ImGui::Checkbox("Enable Importance Sampling", &enableImportanceSamplingObject());
+    ImGui::Checkbox("Enable MIS", &enableMISObject());
+    ImGui::Checkbox("Enable in First Bounce", &enableInFirstBounceObject());
+    ImGui::Checkbox("Enable in Higher Bounces", &enableInHigherBouncesObject());
     ImGui::DragFloat("Cache Range", &rangeObject(), 1.f, 0.1f, 10000000.0f, "%.3f");
   }
 

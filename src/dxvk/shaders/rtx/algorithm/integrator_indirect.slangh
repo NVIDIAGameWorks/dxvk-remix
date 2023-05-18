@@ -385,7 +385,7 @@ void integratePathVertex(
   // Add Emission
   vec3 emissiveLight = polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(polymorphicSurfaceMaterialInteraction);
   bool hasNEE = false;
-  if (cb.enableNeeCache > 0 && any(emissiveLight) > 0 && (!pathState.continueResolving || ((pathState.pixelCoordinate.x + pathState.pixelCoordinate.y) % 3) == 0))
+  if (cb.enableNeeCache && cb.enableNeeCacheInFirstBounce && any(emissiveLight) > 0 && (!pathState.continueResolving || ((pathState.pixelCoordinate.x + pathState.pixelCoordinate.y) % 3) == 0))
   {
     uint4 threadTask = NEECache.loadThreadTask(pathState.pixelCoordinate);
     int3 cellID = NEECache.offsetToCell(threadTask.x);
@@ -432,8 +432,15 @@ void integratePathVertex(
   float16_t misWeight = 1.0;
   if (hasNEE)
   {
-    float16_t lightPdf = getLightSamplingSolidAnglePDF(surfaceInteraction.triangleArea, surfaceInteraction.position, surfaceInteraction.triangleNormal, oldOrigin);
-    misWeight = pathState.solidAnglePdf / (pathState.solidAnglePdf + lightPdf);
+    if (cb.enableNeeCacheMIS)
+    {
+      float16_t lightPdf = getLightSamplingSolidAnglePDF(surfaceInteraction.triangleArea, surfaceInteraction.position, surfaceInteraction.triangleNormal, oldOrigin);
+      misWeight = pathState.solidAnglePdf / (pathState.solidAnglePdf + lightPdf);
+    }
+    else
+    {
+      misWeight = 0.0;
+    }
   }
   accumulateRadiance(pathState, emissiveLight * misWeight);
   //evalEmission(pathState, polymorphicSurfaceMaterialInteraction);
@@ -578,7 +585,7 @@ void integratePathVertex(
       updateReSTIRGIHitDistance(oldLuminance, calcBt709Luminance(pathState.radiance), restirHitT, min(hitT, float16Max));
     }
 
-    if(cb.enableNeeCache > 0)
+    if(cb.enableNeeCache && cb.enableNeeCacheInHigherBounces)
     {
       NEECell cell = NEECache.findCell(surfaceInteraction.position, true);
       if (cell.isValid())
@@ -623,8 +630,15 @@ void integratePathVertex(
                 float16_t specularSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
                   opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
                 f16vec2 misWeight;
-                misWeight.x = lightPdf / (lightPdf + diffuseSolidAnglePdf);
-                misWeight.y = lightPdf / (lightPdf + specularSolidAnglePdf);
+                if (cb.enableNeeCacheMIS)
+                {
+                  misWeight.x = lightPdf / (lightPdf + diffuseSolidAnglePdf);
+                  misWeight.y = lightPdf / (lightPdf + specularSolidAnglePdf);
+                }
+                else
+                {
+                  misWeight = 1.0;
+                }
 
                 float16_t specularPortion2;
                 const bool isViewModel = false;//pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
