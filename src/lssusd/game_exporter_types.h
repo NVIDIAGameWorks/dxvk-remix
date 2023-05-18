@@ -47,6 +47,12 @@ struct SampledXform {
   pxr::GfMatrix4d xform;
 };
 using SampledXforms = std::vector<SampledXform>;
+
+struct SampledBoneXform {
+  double time;
+  pxr::VtMatrix4dArray xforms;
+};
+using SampledBoneXforms = std::vector<SampledBoneXform>;
   
 struct Camera {
   // Note: FoV in radians.
@@ -98,12 +104,16 @@ using PositionBuffer = pxr::VtArray<pxr::GfVec3f>;
 using NormalBuffer = pxr::VtArray<pxr::GfVec3f>;
 using TexcoordBuffer = pxr::VtArray<pxr::GfVec2f>;
 using ColorBuffer = pxr::VtArray<pxr::GfVec3f>;
+using BlendWeightBuffer = pxr::VtArray<float>;
+using BlendIndicesBuffer = pxr::VtArray<int>;
 struct MeshBuffers {
   std::map<float,IndexBuffer> idxBufs;
   std::map<float,PositionBuffer> positionBufs;
   std::map<float,NormalBuffer> normalBufs;
   std::map<float,TexcoordBuffer> texcoordBufs;
   std::map<float,ColorBuffer> colorBufs;
+  std::map<float,BlendWeightBuffer> blendWeightBufs;
+  std::map<float,BlendIndicesBuffer> blendIndicesBufs;
 };
 
 struct Mesh {
@@ -114,16 +124,20 @@ struct Mesh {
   bool        isDoubleSided = false;
   Id          matId = kInvalidId;
   MeshBuffers buffers;
+  uint32_t    numBones = 0;
+  uint32_t    bonesPerVertex = 0;
+  pxr::VtMatrix4dArray boneXForms;
 };
 
 struct Instance {
-  std::string   instanceName;
-  float         firstTime = NAN;
-  float         finalTime = NAN;
-  Id            matId = kInvalidId;
-  Id            meshId = kInvalidId;
-  SampledXforms xforms;
-  bool          isSky;
+  std::string       instanceName;
+  float             firstTime = NAN;
+  float             finalTime = NAN;
+  Id                matId = kInvalidId;
+  Id                meshId = kInvalidId;
+  SampledXforms     xforms;
+  bool              isSky;
+  SampledBoneXforms boneXForms;
 };
 
 struct ExportMetaData {
