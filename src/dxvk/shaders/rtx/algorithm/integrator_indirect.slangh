@@ -890,7 +890,10 @@ void storeRestirGIRadiance(PathState pathState, GeometryFlags geometryFlags, flo
     return;
 
   f16vec4 restirGIRadianceFactorHitDistance = RestirGIRadiance[pathState.pixelCoordinate];
-  f16vec3 restirGIRadiance = min(restirGIRadianceFactorHitDistance.rgb * pathState.radiance, float16Max);
+  vec3 restirGIRadiance = restirGIRadianceFactorHitDistance.rgb * pathState.radiance;
+  float luminance = calcBt709Luminance(restirGIRadiance);
+  float luminanceFactor = min(1.0, float16Max / luminance);
+  restirGIRadiance *= luminanceFactor;
 
   // Calculate indirect portion of the path length
   float16_t restirGIHitDistance = max(restirGIRadianceFactorHitDistance.a - gbufferSurfaceHitDistance, 0.0);
