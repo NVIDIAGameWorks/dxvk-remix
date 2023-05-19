@@ -184,7 +184,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
           //emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(vec2(0.9999999));
           emissiveRayInteracton.primitiveIndex = primitiveIndex;
           //emissiveRayInteracton.viewDirection = -minimalRayInteraction.viewDirection;
-          SurfaceInteraction emissiveSurfaceInteraction = surfaceInteractionCreate(emissiveSurface, emissiveRayInteracton, primaryRay);
+          SurfaceInteraction emissiveSurfaceInteraction = surfaceInteractionCreate(emissiveSurface, emissiveRayInteracton, primaryRay, false, false);
 
           const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[emissiveSurface.surfaceMaterialIndex];
           const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
