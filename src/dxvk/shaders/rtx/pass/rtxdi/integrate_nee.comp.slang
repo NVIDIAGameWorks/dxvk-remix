@@ -106,6 +106,23 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(threadIndex, SharedFlags);
   const bool gBufferMiss = isGBufferMiss(threadIndex, PrimaryConeRadius);
 
+  vec4 initialDiffuseOutput = vec4(0);
+  vec4 initialSpecularOutput = vec4(0);
+  const vec4 indirectRadianceHitDistance = IndirectRadianceHitDistance[threadIndex];
+  if (!gBufferMiss)
+  {    
+    if (geometryFlags.firstSampledLobeIsSpecular) 
+    {
+      initialSpecularOutput = indirectRadianceHitDistance;
+      initialSpecularOutput.xyz = clamp(initialSpecularOutput.xyz, 0, cb.reSTIRGIFireflyThreshold);
+    }
+    else
+      initialDiffuseOutput = indirectRadianceHitDistance;
+  }
+
+  PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex] = initialDiffuseOutput;
+  PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex] = initialSpecularOutput;
+
   // Early out if the primary surface was a miss or if the indirect integrator was not selected
   // to output indirect lighting information
   if (gBufferMiss)
@@ -136,20 +153,6 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
     threadIndex, PrimaryWorldShadingNormal, PrimaryPerceptualRoughness, PrimaryAlbedo, PrimaryBaseReflectivity, SharedMaterialData0, SharedMaterialData1);
 
   ReSTIRGI_Reservoir spatialReservoir = RAB_LoadGIReservoir(threadIndex, ReSTIRGI_GetSpatialOutputPage());
-
-  vec4 initialDiffuseOutput = vec4(0);
-  vec4 initialSpecularOutput = vec4(0);
-  const vec4 indirectRadianceHitDistance = IndirectRadianceHitDistance[threadIndex];
-  if (geometryFlags.firstSampledLobeIsSpecular) 
-  {
-    initialSpecularOutput = indirectRadianceHitDistance;
-    initialSpecularOutput.xyz = clamp(initialSpecularOutput.xyz, 0, cb.reSTIRGIFireflyThreshold);
-  }
-  else
-    initialDiffuseOutput = indirectRadianceHitDistance;
-
-  PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex] = initialDiffuseOutput;
-  PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex] = initialSpecularOutput;
 
   if (polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) != surfaceMaterialTypeOpaque)
   {
