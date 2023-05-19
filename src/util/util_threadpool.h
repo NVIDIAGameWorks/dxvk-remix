@@ -19,6 +19,8 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
+#pragma once
+
 #include <atomic>
 #include <condition_variable>
 #include <deque>
@@ -101,18 +103,24 @@ namespace dxvk {
     // Schedule a task to be executed by the thread pool
     template <uint8_t Affinity = 0xFF, typename F, typename... Args, typename R = std::invoke_result_t<std::decay_t<F>, std::decay_t<Args>...>>
     std::shared_future<R> Schedule(F&& f, Args&&... args) {
-      std::function<R()> taskFunc = std::bind(std::forward<F>(f), std::forward<Args>(args)...);
-      std::shared_ptr<std::promise<R>> taskPromise = std::make_shared<std::promise<R>>();
+      auto taskPromise = std::make_shared<std::promise<R>>();
+      auto resultFuture = taskPromise->get_future();
 
       // Package up the user task, and wrap it with promise
-      auto work = [taskFunc, taskPromise] {
+      // Note: with C++20, we would forward parameter pack like "...cArgs = std::forward<Args>(args)"
+      // so we would avoid copying for appropriate arguments
+      auto work = std::function<void()>([
+        cTaskPromise = std::move(taskPromise),
+        cFn = std::forward<F>(f),
+        args...
+      ]() mutable {
         if constexpr (std::is_void_v<R>) {
-          std::invoke(taskFunc);
-          taskPromise->set_value();
+          cFn(std::forward<Args>(args)...);
+          cTaskPromise->set_value();
         } else {
-          taskPromise->set_value(std::invoke(taskFunc));
+          cTaskPromise->set_value(cFn(std::forward<Args>(args)...));
         }
-      };
+      });
 
       // Add the task to the queue and notify a worker thread
       //  just distribute evenly to all threads for some mask denoted by Affinity.
@@ -127,7 +135,7 @@ namespace dxvk {
 
       // Atomic queue is SPSC, so we don't need to take a lock here
       // since we know this will always be called from a single thread.
-      if (!m_workerTasks[thread]->push(work)) {
+      if (!m_workerTasks[thread]->push(std::move(work))) {
         return std::shared_future<R>(); // the queue is full, return empty future
       }
 
@@ -143,7 +151,7 @@ namespace dxvk {
 
       ++m_numTasks;
 
-      return taskPromise->get_future();
+      return resultFuture;
     }
 
   private:
