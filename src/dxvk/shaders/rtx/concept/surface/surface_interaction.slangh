@@ -133,7 +133,7 @@ void convert1stCascadeTexCoordsToTargetCascadeLevel(uint targetCascadeLevel, ino
     texcoords[i] = convert1stCascadeTexCoordToTiledTexCoord(cascade2DIndex, rcpTargetCascadeLevelScale, texcoords[i]);
 }
 
-SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayInteraction, Ray ray, bool usePreviousPositions = false)
+SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayInteraction, Ray ray, bool usePreviousPositions = false, bool useRayconeFootprint = true)
 {
   // Compute vertex indicies
 
@@ -422,10 +422,18 @@ SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayI
     
     // Note: Non-flipped world space triangle normal passed in to be consistent with the calculations done internally (rather
     // than worrying about if the flipped vector could break it)
-    computeAnisotropicEllipseAxes(
-      hitPosition, triangleNormal, worldTwoTriangleArea, ray.direction,
-      rayInteraction.coneRadius, worldPositions, texcoords, surfaceInteraction.textureCoordinates,
-      surfaceInteraction.textureGradientX, surfaceInteraction.textureGradientY);
+    if (useRayconeFootprint)
+    {
+      computeAnisotropicEllipseAxes(
+        hitPosition, triangleNormal, worldTwoTriangleArea, ray.direction,
+        rayInteraction.coneRadius, worldPositions, texcoords, surfaceInteraction.textureCoordinates,
+        surfaceInteraction.textureGradientX, surfaceInteraction.textureGradientY);
+    }
+    else
+    {
+      surfaceInteraction.textureGradientX = (texcoords[1] - texcoords[0]) / 3.0f;
+      surfaceInteraction.textureGradientY = (texcoords[2] - texcoords[0]) / 3.0f;
+    }
   }
   else
   {

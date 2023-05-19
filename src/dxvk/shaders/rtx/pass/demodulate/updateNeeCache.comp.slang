@@ -79,7 +79,7 @@ float getTriangleLight(uint2 data, vec3 cellCenter, inout RNG randomState)
     Surface emissiveSurface = emissiveSurface0;
     RayInteraction emissiveRayInteracton = {};// rayInteraction;
     emissiveRayInteracton.frontHit = true;
-    emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(uvToBary(vec2(0.3)));
+    emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(uvToBary(vec2(1.0 / 3.0)));
     //emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(uvToBary(vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState))));
     emissiveRayInteracton.primitiveIndex = primitiveIndex;
     //emissiveSurface.isEmissive = false;
@@ -87,9 +87,7 @@ float getTriangleLight(uint2 data, vec3 cellCenter, inout RNG randomState)
 
     Ray ray;
     ray.direction = f16vec3(1.0);
-    SurfaceInteraction emissiveSurfaceInteraction = surfaceInteractionCreate(emissiveSurface, emissiveRayInteracton, ray);
-    emissiveSurfaceInteraction.textureGradientX = vec2(0.5,0);
-    emissiveSurfaceInteraction.textureGradientY = vec2(0,0.5);
+    SurfaceInteraction emissiveSurfaceInteraction = surfaceInteractionCreate(emissiveSurface, emissiveRayInteracton, ray, false, false);
 
     const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[emissiveSurface.surfaceMaterialIndex];
     const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
