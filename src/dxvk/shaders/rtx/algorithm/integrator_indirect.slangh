@@ -382,11 +382,15 @@ void integratePathVertex(
     accumulateThroughput(pathState, volumeTransmittance);
   }
 
+  // Construct RNG
+  RNG randomState = createRNG(pathState.pixelCoordinate, cb.frameIdx, pathState.calculateRNGOffset(kRNGOffsetSampleClosestHitShader));
+
   // Add Emission
   vec3 emissiveLight = polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(polymorphicSurfaceMaterialInteraction);
   bool hasNEE = false;
   float16_t lightSelectionPDF = 0;
-  if (cb.enableNeeCache && cb.enableNeeCacheInFirstBounce && any(emissiveLight) > 0 && (!pathState.continueResolving))
+  bool isNeeEnabledInBounce = (pathState.bounceIteration == 1 && cb.enableNeeCacheInFirstBounce) || (pathState.bounceIteration > 1 && cb.enableNeeCacheInHigherBounces);
+  if (cb.enableNeeCache && isNeeEnabledInBounce && any(emissiveLight) > 0)
   {
     uint4 threadTask = NEECache.loadThreadTask(pathState.pixelCoordinate);
     int3 cellID = NEECache.offsetToCell(threadTask.x);
@@ -396,8 +400,8 @@ void integratePathVertex(
       if (cell.isValid())
       {
         uint2 task = uint2(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex);
-        
-        if (threadTask.y == 0xffffffff || threadTask.z == 0xffffffff)
+        bool isEmpty = threadTask.y == 0xffffffff || threadTask.z == 0xffffffff;
+        if (isEmpty || getNextSampleBlueNoise(randomState) < 0.5)
         {
           //cell.insertTask(task);
           threadTask.y = rayInteraction.surfaceIndex;
@@ -452,9 +456,6 @@ void integratePathVertex(
 
   float16_t restirHitT = float16_t(kMissHitDistance);
   updateReSTIRGIHitDistance(oldLuminance, calcBt709Luminance(pathState.radiance), restirHitT, pathState.accumulatedHitDistance);
-
-  // Construct RNG
-  RNG randomState = createRNG(pathState.pixelCoordinate, cb.frameIdx, pathState.calculateRNGOffset(kRNGOffsetSampleClosestHitShader));
 
   const bool oldInsideMedium = pathState.insideMedium;
   vec3 continuationThroughput = f16vec3(1.0);

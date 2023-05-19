@@ -59,10 +59,6 @@ float getGeometricTerm(vec3 surfacePosition, vec3 samplePosition, f16vec3 sample
   float cellSize = NEECache.getCellSize() * 1;
   vec3 offset = samplePosition - surfacePosition;
   float cellDistance = length(offset);
-  if (cellDistance > NEECache.getVolumeSize() * 2)
-  {
-    return 0;
-  }
   float cosTheta = lerp(1.0, abs(dot(sampleNormal, normalize(offset))), saturate(cellDistance / cellSize - 1));
   cellDistance = max(cellDistance, cellSize);
   return cosTheta / (cellDistance * cellDistance);
