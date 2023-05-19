@@ -307,7 +307,10 @@ namespace dxvk {
     VkDescriptorPoolCreateInfo pool_info = {};
     pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-    pool_info.maxSets = 1000;
+    // ImGUI is currently using a single set per texture, and so we want this to be a big number 
+    //  to support displaying texture lists in games that use a lot of textures.
+    // See: 'ImGui_ImplVulkan_AddTexture(...)' for more details about how this system works.
+    pool_info.maxSets = 10000;
     pool_info.poolSizeCount = std::size(pool_sizes);
     pool_info.pPoolSizes = pool_sizes;
 
@@ -1223,8 +1226,14 @@ namespace dxvk {
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.f, 0.f, 0.f, 1.00f));
 
       // Lazily create the tex ID ImGUI wants
-      if(pair.second.texID == VK_NULL_HANDLE)
+      if (pair.second.texID == VK_NULL_HANDLE) {
         pair.second.texID = ImGui_ImplVulkan_AddTexture(VK_NULL_HANDLE, pair.second.imageView->handle(), VK_IMAGE_LAYOUT_GENERAL);
+
+        if (pair.second.texID == VK_NULL_HANDLE) {
+          ONCE(Logger::err("Failed to allocate ImGUI handle for texture, likely because we're trying to render more textures than VkDescriptorPoolCreateInfo::maxSets.  As such, we will truncate the texture list to show only what we can."));
+          return;
+        }
+      }
 
       const auto& imageInfo = pair.second.imageView->imageInfo();
 
