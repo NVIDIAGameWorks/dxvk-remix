@@ -19,6 +19,8 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
+#pragma once
+
 #include <atomic>
 #include <cstring>
 #include <utility>
@@ -40,13 +42,13 @@ namespace dxvk {
       m_head = m_tail = 0;
     }
 
-    bool push(const T& item) {
+    bool push(T&& item) {
       auto tail = m_tail.load();
       auto nextTail = (tail + 1) % Capacity;
       if (nextTail == m_head.load()) {
         return false;  // queue is full
       }
-      m_data[tail] = item;
+      m_data[tail] = std::move(item);
       m_tail.store(nextTail);
       return true;
     }
