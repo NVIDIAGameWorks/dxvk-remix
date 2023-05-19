@@ -151,7 +151,7 @@ namespace dxvk {
 
     m_parent->EmitCs([cProjection = d3d9State().transforms[GetTransformIndex(D3DTS_PROJECTION)],
                       cView = d3d9State().transforms[GetTransformIndex(D3DTS_VIEW)],
-                      cWorld = d3d9State().transforms[GetTransformIndex(D3DTS_WORLD)],
+                      cWorld = m_objectToWorldTransform,
                       cBuffer = bufferView,
                       cConstantBuffer = m_vsVertexCaptureData,
                       cConstants = constants,
@@ -269,7 +269,11 @@ namespace dxvk {
     if (m_flags.test(D3D9RtxFlag::DirtyObjectTransform)) {
       m_flags.clr(D3D9RtxFlag::DirtyObjectTransform);
 
-      m_parent->EmitCs([cObjectToWorld = d3d9State().transforms[GetTransformIndex(D3DTS_WORLD)]](DxvkContext* ctx) {
+      // When games use vertex shaders, the object to world transforms can be unreliable, and so we can ignore them.
+      const bool useObjectToWorldTransform = !m_parent->UseProgrammableVS() || (m_parent->UseProgrammableVS() && useVertexCapture() && useWorldMatricesForShaders());
+      m_objectToWorldTransform = useObjectToWorldTransform ? d3d9State().transforms[GetTransformIndex(D3DTS_WORLD)] : Matrix4();
+
+      m_parent->EmitCs([cObjectToWorld = m_objectToWorldTransform](DxvkContext* ctx) {
         static_cast<RtxContext*>(ctx)->setObjectTransform(cObjectToWorld);
       });
     }
