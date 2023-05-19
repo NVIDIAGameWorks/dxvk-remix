@@ -53,6 +53,8 @@ namespace dxvk {
 
   ImGuiAbout::Credits::Credits()
     : m_sections({
+      { "Github Contributors",
+        { "Leonardo Leotte"}},
       { "Engineering",
         { "Riley Alston",
           "Xiangshun Bei",
