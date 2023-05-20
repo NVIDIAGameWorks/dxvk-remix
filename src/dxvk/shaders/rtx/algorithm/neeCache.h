@@ -155,10 +155,6 @@ struct NEECell
   {
     int count = getCandidateCount();
 
-#if 0
-    pdf = 1.0 / count;
-    return getCandidate(min(sampleThreshold * count, count-1));
-#else
     NEECandidate candidate;
     candidate.setInvalid();
     int i = 0;
@@ -175,7 +171,6 @@ struct NEECell
       }
     }
     return candidate;
-#endif
   }
 
   float getCandidatePdf(int idx)
@@ -329,16 +324,13 @@ struct NEECache
     return getCell(pointToCell(point, jittered));
   }
 
-  static void storeThreadTask(int2 pixel, /*vec3 point, bool jittered,*/ uint4 data)
+  static void storeThreadTask(int2 pixel, uint4 data)
   {
-    //int offset = pointToOffset(point, jittered);
-    RadianceCacheThreadTask[pixel] = data;//uint4(offset, -1,-1,-1);
+    RadianceCacheThreadTask[pixel] = data;
   }
 
   static uint4 loadThreadTask(int2 pixel)
   {
-    //int offset = RadianceCacheThreadTask[pixel].x;
-    //return offsetToCell(offset);
     return RadianceCacheThreadTask[pixel];
   }
 }
