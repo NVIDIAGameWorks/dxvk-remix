@@ -23,62 +23,6 @@
 
 #include "rtx/pass/demodulate/update_nee_cache_binding_indices.h"
 
-// Constants
-
-// layout(binding = UPDATE_NEE_CACHE_BINDING_CONSTANTS)
-// ConstantBuffer<RaytraceArgs> cb;
-
-// Inputs
-
-// layout(r16ui, binding = UPDATE_NEE_CACHE_BINDING_SHARED_FLAGS_INPUT)
-// Texture2D<uint> SharedFlags;
-
-// layout(rgba16, binding = UPDATE_NEE_CACHE_BINDING_PRIMARY_VIRTUAL_WORLD_SHADING_NORMAL_INPUT)
-// Texture2D<float4> PrimaryVirtualWorldNormalPerceptualRoughness;
-
-// layout(r32f, binding = UPDATE_NEE_CACHE_BINDING_PRIMARY_LINEAR_VIEW_Z_INPUT)
-// Texture2D<float> PrimaryLinearViewZ;
-
-// layout(rgb10_a2, binding = UPDATE_NEE_CACHE_BINDING_PRIMARY_ALBEDO_INPUT)
-// Texture2D<float4> PrimaryAlbedo;
-
-// layout(rgba16, binding = UPDATE_NEE_CACHE_BINDING_SECONDARY_VIRTUAL_WORLD_SHADING_NORMAL_INPUT)
-// Texture2D<float4> SecondaryVirtualWorldNormalPerceptualRoughness;
-
-// layout(r32f, binding = UPDATE_NEE_CACHE_BINDING_SECONDARY_LINEAR_VIEW_Z_INPUT)
-// Texture2D<float> SecondaryLinearViewZ;
-
-// layout(rgb10_a2, binding = UPDATE_NEE_CACHE_BINDING_SECONDARY_ALBEDO_INPUT)
-// Texture2D<float4> SecondaryAlbedo;
-
-// layout(rgba16, binding = UPDATE_NEE_CACHE_BINDING_INDIRECT_RADIANCE_HIT_DISTANCE_INPUT)
-// Texture2D<float4> IndirectRadianceHitDistance;
-
-// // Input/Outputs
-
-// layout(rgba16f, binding = UPDATE_NEE_CACHE_BINDING_PRIMARY_DIRECT_DIFFUSE_RADIANCE_INPUT_OUTPUT)
-// RWTexture2D<float4> PrimaryDirectDiffuseRadiance;
-
-// layout(rgba16f, binding = UPDATE_NEE_CACHE_BINDING_PRIMARY_DIRECT_SPECULAR_RADIANCE_INPUT_OUTPUT)
-// RWTexture2D<float4> PrimaryDirectSpecularRadiance;
-
-// layout(rgba16f, binding = UPDATE_NEE_CACHE_BINDING_PRIMARY_INDIRECT_DIFFUSE_RADIANCE_INPUT_OUTPUT)
-// RWTexture2D<float4> PrimaryIndirectDiffuseRadiance;
-
-// layout(rgba16f, binding = UPDATE_NEE_CACHE_BINDING_PRIMARY_INDIRECT_SPECULAR_RADIANCE_INPUT_OUTPUT)
-// RWTexture2D<float4> PrimaryIndirectSpecularRadiance;
-
-// layout(rgba16f, binding = UPDATE_NEE_CACHE_BINDING_SECONDARY_COMBINED_DIFFUSE_RADIANCE_INPUT_OUTPUT)
-// RWTexture2D<float4> SecondaryCombinedDiffuseRadiance;
-
-// layout(rgba16f, binding = UPDATE_NEE_CACHE_BINDING_SECONDARY_COMBINED_SPECULAR_RADIANCE_INPUT_OUTPUT)
-// RWTexture2D<float4> SecondaryCombinedSpecularRadiance;
-
-// Outputs
-
-// layout(binding = UPDATE_NEE_CACHE_BINDING_DEBUG_VIEW_OUTPUT)
-// RWTexture2D<float4> DebugView;
-
 layout(binding = UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE)
 RWByteAddressBuffer RadianceCache;
 
@@ -87,19 +31,3 @@ RWByteAddressBuffer RadianceCacheTask;
 
 layout(rgba32ui, binding = UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE_THREAD_TASK)
 RWTexture2D<uint4> RadianceCacheThreadTask;
-
-// Aliased Inputs / Outputs
-
-//layout(rgb10_a2, binding = UPDATE_NEE_CACHE_BINDING_ALIASED_DATA_0)
-//uniform struct AliasedData0
-//{
-//  Texture2D<float4> PrimaryBaseReflectivity;
-//  RWTexture2D<float4> PrimarySpecularAlbedo;
-//} aliasedData0;
-//
-//layout(rgb10_a2, binding = UPDATE_NEE_CACHE_BINDING_ALIASED_DATA_1)
-//uniform struct AliasedData1
-//{
-//  Texture2D<float4> SecondaryBaseReflectivity;
-//  RWTexture2D<float4> SecondarySpecularAlbedo;
-//} aliasedData1;

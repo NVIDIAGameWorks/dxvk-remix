@@ -1077,63 +1077,8 @@ float opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
 
     if (normalDotOutputDirection <= 0.h || normalDotInputDirection <= 0.h)
       return 0;
-    //  sampleAttemptsRemaining = 1;
-  //}
-   
-  // Failed to find a valid sample
-  // if (sampleAttemptsRemaining == -1)
-  // {
-  //   SurfaceMaterialInteractionSample materialSample;
-
-  //   materialSample.inputDirection = f16vec3(0.0, 0.0, 0.0);
-  //   materialSample.throughput = f16vec3(0.0, 0.0, 0.0);
-  //   materialSample.solidAnglePdf = 0.0f;
-
-  //   return materialSample;
-  // }
-
-  // Calculate the throughput of the sample
-
-  // const f16vec3 fresnel = evalOpaqueSchlickFresnel(
-  //   opaqueSurfaceMaterialInteraction.baseReflectivity, outputDirectionDotMicrofacetNormal);
-
-//   // Todo: Pass in a material mode similar to the resolve mode to control this sort of material simplification option.
-// #ifdef OPAQUE_MATERIAL_USE_THIN_FILM
-//   // Note: Compute an approximate refractive index for the material for the thin film math, currently assuming the opaque material is always
-//   // surrounded by a vacuum (not true in all cases but good enough for this approximation).
-//   const float16_t refractiveIndex = baseReflectivityToIoR(
-//     materialIoRVacuum, calcBt709Luminance(opaqueSurfaceMaterialInteraction.baseReflectivity));
-//   const bool useThinFilm = opaqueSurfaceMaterialInteraction.thinFilmThickness > 0.0;
-//   const float16_t thinFilmThickness = opaqueSurfaceMaterialInteraction.thinFilmThickness * OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS; // convert [0,1] range to nm
-//   // Note: Matching the refractive index calculation, compute the thin film assuming the material is surrounded by a vacuum and with a fixed layer IoR.
-//   const f16vec3 thinFilmFresnel = evalThinFilmFresnel(
-//     materialIoRVacuum, materialIoRThinFilmLayer, refractiveIndex,
-//     thinFilmThickness, outputDirectionDotMicrofacetNormal);
-
-//   const f16vec3 finalFresnel = useThinFilm ? thinFilmFresnel : fresnel;
-// #else
-//   const f16vec3 finalFresnel = fresnel;
-// #endif
-
-  // const float16_t outputGGXShadowing = evalGGXShadowing(
-  //   opaqueSurfaceMaterialInteraction.anisotropicRoughness,
-  //   tangentDotOutputDirection, bitangentDotOutputDirection, normalDotOutputDirection);
-  // const float16_t inputGGXShadowing = evalGGXShadowing(
-  //   opaqueSurfaceMaterialInteraction.anisotropicRoughness,
-  //   tangentDotInputDirection, bitangentDotInputDirection, normalDotInputDirection);
-  // // Note: Algebraic simplification of height correlated G2/G1 to reduce evaluation cost.
-  // // [Heitz 2015, "Implementing a Simple Anisotropic Rough Diffuse Material with Stochastic Evaluation"]
-  // const float16_t G2OverG1 = safePositiveDivide(
-  //   inputGGXShadowing,
-  //   inputGGXShadowing + outputGGXShadowing - (inputGGXShadowing * outputGGXShadowing),
-  //   materialEpsilon);
-  // // Note: Simplified version of (weight / solidAnglePdf) * (n.l) when sampling from the distribution of
-  // // visible normals.
-  // // [Heitz 2014, "Importance sampling microfacet-based BSDFs using the distribution of visible normals"]
-  // const f16vec3 throughput = finalFresnel * G2OverG1; 
 
   // Calculate the solid angle PDF of the sample
-
   const float solidAnglePdf = evalGGXVisibleNormalDistributionSamplePdf(
     opaqueSurfaceMaterialInteraction.anisotropicRoughness,
     tangentDotOutputDirection, bitangentDotOutputDirection, normalDotOutputDirection,
@@ -1141,17 +1086,6 @@ float opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
     outputDirectionDotMicrofacetNormal);
 
   return solidAnglePdf;
-
-  // Return the material sample
-
-  // SurfaceMaterialInteractionSample materialSample;
-
-  // materialSample.inputDirection = quaternionTransformVector(tangentToWorldSpaceQuaternion, inputDirection);
-  // materialSample.throughput = throughput;
-  // materialSample.solidAnglePdf = solidAnglePdf;
-
-  // return materialSample;
-  // return 0.0f;
 }
 
 float opaqueSurfaceMaterialInteractionCalcDiffuseTransmissionSolidAnglePdf(

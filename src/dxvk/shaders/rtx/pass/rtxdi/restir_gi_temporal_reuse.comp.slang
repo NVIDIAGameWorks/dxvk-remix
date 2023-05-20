@@ -60,61 +60,6 @@ void main(int2 thread_id : SV_DispatchThreadID)
 
   const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(thread_id, SharedFlags);
 
-  // Create the initial reservoir.
-  // We don't store the actual reservoir in the integrator because a) many parameters are constant anyway,
-  // b) hit geometry is written into a texture separate from the reservoir buffer to avoid partial writes.
-  // ReSTIRGI_Reservoir initialSample;
-  // initialSample.M = 1;
-  // initialSample.avgWeight = 1;
-  // initialSample.flagsAndVirtualFraction = 0;
-  // initialSample.radiance = vec3(0);
-  // float indirectPathLength = 0;
-
-  // // Load the radiance
-  // if (geometryFlags.primarySelectedIntegrationSurface)
-  // {
-  //   vec4 radianceAndDistance = RestirGIRadiance[thread_id];
-  //   initialSample.radiance = sanitize(radianceAndDistance.rgb, vec3(0));
-  //   indirectPathLength = radianceAndDistance.w; 
-  // }
-
-  // // The restir algorithm can accept larger fireflies while producing stable result, so set the threshold higher to avoid darkening.
-  // const float fireflyFilteringFactor = 30;
-  // initialSample.radiance = fireflyFiltering(initialSample.radiance, cb.fireflyFilteringLuminanceThreshold * fireflyFilteringFactor);
-
-  // uint8_t portalID;
-  // ReSTIRGI_LoadHitGeometry(RestirGIHitGeometry, thread_id, initialSample.position, initialSample.normal, portalID);
-  // initialSample.setPortalID(portalID);
-
-  // // Transform hit point when the indirect ray crosses a portal
-  // if (portalID != RESTIR_GI_INVALID_INDIRECT_LIGHT_PORTAL_ID)
-  // {
-  //   RayPortalHitInfo rayPortalHitInfo = cb.rayPortalHitInfos[(uint)getOpposingRayPortalIndex(portalID)];
-  //   if (rayPortalHitInfoIsActive(rayPortalHitInfo))
-  //   {
-  //     mat4 teleportMatrix = rayPortalHitInfo.encodedPortalToOpposingPortalDirection.unpack();
-  //     initialSample.position = (mul(teleportMatrix, vec4(initialSample.position, 1.0f))).xyz;
-  //     initialSample.normal = mul(mat3(teleportMatrix), initialSample.normal);
-  //   }
-  // }
-
-  // // Calculate position and normal for a virtual sample
-  // initialSample.setVirtualFraction(0.0);
-  // if (cb.enableReSTIRGIVirtualSample > 0
-  //   && surface.opaqueSurfaceMaterialInteraction.isotropicRoughness > RAB_RESTIR_GI_DELTA_ROUGHNESS)
-  // {
-  //   vec3 direction = initialSample.position - surface.minimalSurfaceInteraction.position;
-  //   if (any(direction != 0) && indirectPathLength > length(direction) * 1.01)
-  //   {
-  //     // Extend virtual fraction length by 20% to prevent occlusion when the sample is used by neighbor pixels
-  //     initialSample.setVirtualFraction((indirectPathLength - length(direction)) * 1.2);
-  //     initialSample.position = surface.minimalSurfaceInteraction.position + normalize(direction) * indirectPathLength;
-  //     initialSample.normal = -normalize(direction);
-  //   }
-  // }
-
-  // // Store complete initial sample
-  // RAB_StoreGIReservoir(initialSample, thread_id, ReSTIRGI_GetInitSamplePage());
   ReSTIRGI_Reservoir initialSample = RAB_LoadGIReservoir(thread_id, ReSTIRGI_GetInitSamplePage());
   
   RAB_RandomSamplerState rng = RAB_InitRandomSampler(thread_id, cb.frameIdx, 2);
