@@ -661,19 +661,6 @@ void integratePathVertex(
     }
   }
 
-  // update cache
-  // {
-  //   f16vec3 direction = normalize(pathState.origin - oldOrigin);
-  //   int2 address = pointDirectionToAddress(oldOrigin, direction);
-  //   if (all(address != -1))
-  //   {
-  //     vec4 oldRadiance = RadianceCache[address];
-  //     float weight = oldRadiance.a + 1;
-  //     vec3 newRadiance = lerp(oldRadiance.rgb, newLight, 1.0 / weight);
-  //     RadianceCache[address] = vec4(sanitize(newRadiance, vec3(0)), clamp(weight + 1, 0, 100));
-  //   }
-  // }
-
   // Check for path termination
   // Note: Bounce iteration refers to the index of the current vertex in the path,
   // 0 = Primary Hit, 1 = 1st Indirect Hit (1 bounce), etc. The decision to terminate here
@@ -997,10 +984,6 @@ void integrateIndirectPath(
   geometryFlags = geometryFlagsReadFromGBuffer(pathState.pixelCoordinate, SharedFlags);
 
   storeRestirGIRadiance(pathState, geometryFlags, gbufferSurfaceHitDistance);
-
-  // uint4 threadTask2 = 0;
-  // threadTask2.x = (pixelCoordinate.y * 1920 + pixelCoordinate.x) % (20*20*20);
-  // NEECache.storeThreadTask(pathState.pixelCoordinate, threadTask2);
 
   vec4 indirectOutData = vec4(pathState.radiance, pathState.firstBounceHitDistance);
 
