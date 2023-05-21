@@ -825,9 +825,6 @@ void integrateIndirectPath(
   float16_t gbufferSurfaceHitDistance)
 {
   // Initialize Path State
-
-  //RadianceCache[pixelCoordinate] = RadianceCache[pixelCoordinate] * 0.999;
-
   // Note: Not technically live state as this is only passed into the resolve call and reconstructed from its output.
   PathState pathState = pathStateCreateEmpty(u16vec2(pixelCoordinate), geometryFlags);
 
@@ -844,7 +841,6 @@ void integrateIndirectPath(
 
   pathState.coneSpreadAngle = calculateSpreadAngleFromSolidAnglePdf(pathState.coneSpreadAngle, firstSampledSolidAnglePdf);
 
-  //NEECache.storeCellID(pixelCoordinate, rayOrigin, true);
   uint4 threadTask;
   threadTask.x = NEECache.pointToOffset(rayOrigin, true);
   threadTask.yzw = 0xffffffff;
