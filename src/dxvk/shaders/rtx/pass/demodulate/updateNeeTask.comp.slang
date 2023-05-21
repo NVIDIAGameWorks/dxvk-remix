@@ -143,24 +143,6 @@ void main(int2 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupThr
 
   uint4 threadTask = NEECache.loadThreadTask(threadIndex);
 
-  // if(0)
-  // {
-  //   //int3 cellID = int3(threadIndex.xy % 20, (threadIndex.y / 20 * 16 + threadIndex.x / 20));//
-  //   int3 cellID = NEECache.offsetToCell(threadTask.x);
-  //   if (all(cellID != -1))
-  //   {      
-  //     NEECell cell = NEECache.getCell(cellID);
-  //     if (cell.isValid())
-  //     {
-  //       //uint2 task = uint2(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex);
-  //       //cell.insertTask(threadTask.yz);
-  //       //cell.setTaskCount(0);
-  //       //cell.setCandidateCount(0);
-  //     }
-  //   }
-  //   return;
-  // }
-
   if (threadTask.x != 0xffffffff && threadTask.y != 0xffffffff && threadTask.z != 0xffffffff)
   {
     int oldCount;
@@ -187,14 +169,12 @@ void main(int2 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupThr
 
   if (shouldBeAdded)
   {
-    //    uint4 threadTask = NEECache.loadThreadTask(pathState.pixelCoordinate);
     int3 cellID = NEECache.offsetToCell(localTask.x);
     if (all(cellID != -1))
     {      
       NEECell cell = NEECache.getCell(cellID);
       if (cell.isValid())
       {
-        //uint2 task = uint2(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex);
         cell.insertTask(localTask.yz);
       }
     }
