@@ -105,55 +105,6 @@ void evalEmission(
   accumulateRadiance(pathState, emissiveRadiance);
 }
 
-bool evalNEESecondary(
-  LightSample lightSample, 
-  float invSelectionPdf, 
-  uint8_t sampledTransportPortalIndex, 
-  PortalSpace2BitsType portalSpace,
-  uint8_t objectMask,
-  bool isViewModelSurface,
-  Ray viewRay,
-  MinimalRayInteraction minimalRayInteraction, 
-  MinimalSurfaceInteraction minimalSurfaceInteraction,
-  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
-  out vec3 diffuseLight,
-  out vec3 specularLight)
-{
-  diffuseLight = specularLight = 0;
-
-  // Setup and trace the visibility ray
-
-  uint8_t rayMask = OBJECT_MASK_OPAQUE | (objectMask & OBJECT_MASK_ALL_DYNAMIC);
-  if (cb.enableIndirectTranslucentShadows) rayMask |= OBJECT_MASK_TRANSLUCENT;
-
-  VisibilityResult visibility = traceVisibilityRay(minimalSurfaceInteraction,
-    lightSample.position, false, rayMask,
-    visibilityModeEnableTranslucentMaterials,
-    sampledTransportPortalIndex, portalSpace,
-    minimalRayInteraction.coneRadius, viewRay.spreadAngle, 1.0, isViewModelSurface);
-
-
-  if (visibility.hasOpaqueHit)
-    return false;
-
-  // Evaluate the material and accumulate throughput and hit distance
-
-  const SurfaceMaterialInteractionSplitWeight splitWeight = opaqueSurfaceMaterialInteractionCalcProjectedWeight(
-    opaqueSurfaceMaterialInteraction, minimalRayInteraction, visibility.rayDirection);
-
-  const float lightSampleThroughput = invSelectionPdf / lightSample.solidAnglePdf;
-
-  // Accumulate Radiance
-
-  const vec3 lightThroughput = lightSampleThroughput * vec3(visibility.attenuation);
-  const vec3 attenuatedRadiance = lightSample.radiance * lightThroughput;
-
-  diffuseLight = attenuatedRadiance * splitWeight.diffuseReflectionWeight;
-  specularLight = attenuatedRadiance * splitWeight.specularReflectionWeight;
-
-  return true;
-}
-
 
 // Note: Using separate accumulation for particles and whatever else as while they should be visible in reflections
 // through indirect paths, they do not need to be evaluated with particularly high quality. This is only done for the

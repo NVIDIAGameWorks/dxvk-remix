@@ -31,64 +31,6 @@
 #include "rtx/algorithm/neecache.h"
 #include "rtx/algorithm/integrator.slangh"
 
-bool evalNEESecondary(
-  //vec3 throughput, 
-  //inout vec3 accumulatedRadiance,
-  LightSample lightSample,
-  float invSelectionPdf,
-  uint8_t sampledTransportPortalIndex,
-  PortalSpace2BitsType portalSpace,
-  uint8_t objectMask,
-  bool isViewModelSurface,
-  Ray viewRay,
-  MinimalRayInteraction minimalRayInteraction,
-  MinimalSurfaceInteraction minimalSurfaceInteraction,
-  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
-  out float16_t specularPortion,
-  //f16vec2 diffuseSpecularMISWeight,
-  out vec3 diffuseLight,
-  out vec3 specularLight)
-{
-  // Setup and trace the visibility ray
-
-  uint8_t rayMask = OBJECT_MASK_OPAQUE | (objectMask & OBJECT_MASK_ALL_DYNAMIC);
-  if (cb.enableIndirectTranslucentShadows) rayMask |= OBJECT_MASK_TRANSLUCENT;
-
-  VisibilityResult visibility = traceVisibilityRay(minimalSurfaceInteraction,
-    lightSample.position, false, rayMask,
-    visibilityModeEnableTranslucentMaterials,
-    sampledTransportPortalIndex, portalSpace,
-    minimalRayInteraction.coneRadius, viewRay.spreadAngle, 1.0, isViewModelSurface);
-
-  specularPortion = float16_t(0);
-  diffuseLight = specularLight = 0;
-
-  if (visibility.hasOpaqueHit)
-    return false;
-
-  // Evaluate the material and accumulate throughput and hit distance
-
-  const SurfaceMaterialInteractionSplitWeight splitWeight = opaqueSurfaceMaterialInteractionCalcProjectedWeight(
-    opaqueSurfaceMaterialInteraction, minimalRayInteraction, visibility.rayDirection);
-
-  const f16vec3 combinedWeight = splitWeight.diffuseReflectionWeight + splitWeight.specularReflectionWeight;
-
-  specularPortion = calcBt709Luminance(splitWeight.specularReflectionWeight) / calcBt709Luminance(combinedWeight);
-
-  const float lightSampleThroughput = invSelectionPdf / lightSample.solidAnglePdf;
-
-  // Accumulate Radiance
-
-  const vec3 lightThroughput = /*vec3(combinedWeight) */ lightSampleThroughput * vec3(visibility.attenuation);
-  const vec3 attenuatedRadiance = lightSample.radiance * lightThroughput;
-
-  diffuseLight = attenuatedRadiance * splitWeight.diffuseReflectionWeight;// *diffuseSpecularMISWeight.x;
-  specularLight = attenuatedRadiance * splitWeight.specularReflectionWeight;// *diffuseSpecularMISWeight.y;
-  //return attenuatedRadiance;
-  //accumulatedRadiance += throughput * attenuatedRadiance;
-  return true;
-}
-
 [shader("compute")]
 [numthreads(8, 8, 1)]
 void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupThreadID)
@@ -210,7 +152,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
               lightSample, emissiveInvSelectionPdf, invalidRayPortalIndex, /*pathState.portalSpace*/PORTAL_SPACE_NONE, 
               OBJECT_MASK_ALL | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC) /*pathState.rayMask*/,
               isViewModel, /*ray*/ primaryRay, rayInteraction, /*surfaceInteraction*/minimalSurfaceInteraction,
-              opaqueSurfaceMaterialInteraction, specularPortion2, diffuseLight, specularLight);
+              opaqueSurfaceMaterialInteraction, diffuseLight, specularLight);
 
              PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex].xyz += diffuseLight * misWeight.x;
              PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex].xyz += specularLight * misWeight.y;
