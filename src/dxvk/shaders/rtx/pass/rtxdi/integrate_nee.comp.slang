@@ -29,6 +29,7 @@
 #include "rtx/algorithm/integrator_helpers.slangh"
 #include "rtxdi/DlssEnhancementFilterFunctions.slangh"
 #include "rtx/algorithm/neecache.h"
+#include "rtx/algorithm/integrator.slangh"
 
 bool evalNEESecondary(
   //vec3 throughput, 
@@ -177,85 +178,57 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
         int primitiveIndex = candidate.getPrimitiveID();
         if (candidate.isValid())
         {
-          SURFACE_CREATE_READ(emissiveSurface, surfaceIndex, surfaces);
-          RayInteraction emissiveRayInteracton = {};
           vec2 uv = vec2(getNextSampleBlueNoise(rng), getNextSampleBlueNoise(rng));
-          emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(uvToBary(uv));
-          //emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(vec2(0.9999999));
-          emissiveRayInteracton.primitiveIndex = primitiveIndex;
-          //emissiveRayInteracton.viewDirection = -minimalRayInteraction.viewDirection;
-          SurfaceInteraction emissiveSurfaceInteraction = surfaceInteractionCreate(emissiveSurface, emissiveRayInteracton, primaryRay, false, false);
+          LightSample lightSample = getLightSampleFromTriangle(candidate.getSurfaceID(), candidate.getPrimitiveID(), uv, lightObjectPdf, minimalSurfaceInteraction.position);
 
-          const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[emissiveSurface.surfaceMaterialIndex];
-          const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
-
-          if (polymorphicType == surfaceMaterialTypeOpaque)
+          if (any(lightSample.radiance > 0))
           {
-            const OpaqueSurfaceMaterial emissiveOpaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(emissiveSurface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
-            const OpaqueSurfaceMaterialInteraction emissiveOpaqueSurfaceMaterialInteraction =
-              opaqueSurfaceMaterialInteractionCreate(emissiveOpaqueSurfaceMaterial, emissiveSurface, emissiveSurfaceInteraction, emissiveRayInteracton);
-
-            if (any(emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance > f16vec3(0)))
+            RayInteraction rayInteraction = {};
+            rayInteraction.coneRadius = minimalRayInteraction.coneRadius;
+            rayInteraction.viewDirection = minimalRayInteraction.viewDirection;
+            f16vec3 inputDirection = normalize(lightSample.position - minimalSurfaceInteraction.position);
+            float16_t diffuseSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(
+              opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
+            float16_t specularSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
+              opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
+            f16vec2 misWeight;
+            if (cb.enableNeeCacheMIS)
             {
-              LightSample emissiveLightSample;
-              emissiveLightSample.position = emissiveSurfaceInteraction.position;
-              emissiveLightSample.normal = emissiveSurfaceInteraction.interpolatedNormal;
-              emissiveLightSample.radiance = emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance;
-              float16_t lightPdf = lightObjectPdf * getLightSamplingSolidAnglePDF(
-                emissiveSurfaceInteraction.triangleArea, emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal, minimalSurfaceInteraction.position);
-              emissiveLightSample.solidAnglePdf = lightPdf;
+              misWeight.x = lightSample.solidAnglePdf / (lightSample.solidAnglePdf + diffuseSolidAnglePdf);
+              misWeight.y = lightSample.solidAnglePdf / (lightSample.solidAnglePdf + specularSolidAnglePdf);
+            }
+            else
+            {
+              misWeight = 1.0;
+            }
 
-              RayInteraction rayInteraction = {};
-              rayInteraction.coneRadius = minimalRayInteraction.coneRadius;
-              rayInteraction.viewDirection = minimalRayInteraction.viewDirection;
-              f16vec3 inputDirection = normalize(emissiveSurfaceInteraction.position - minimalSurfaceInteraction.position);
-              float16_t diffuseSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(
-                opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
-              float16_t specularSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
-                opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
-              f16vec2 misWeight;
-              if (cb.enableNeeCacheMIS)
-              {
-                misWeight.x = lightPdf / (lightPdf + diffuseSolidAnglePdf);
-                misWeight.y = lightPdf / (lightPdf + specularSolidAnglePdf);
-              }
-              else
-              {
-                misWeight = 1.0;
-              }
+            float16_t specularPortion2;
+            const bool isViewModel = false;// pathState.rayMask& OBJECT_MASK_ALL_VIEWMODEL;
+            float emissiveInvSelectionPdf = 1.0;// / lightObjectPdf;
+            vec3 diffuseLight, specularLight;
+            bool isVisible = evalNEESecondary(
+              lightSample, emissiveInvSelectionPdf, invalidRayPortalIndex, /*pathState.portalSpace*/PORTAL_SPACE_NONE, 
+              OBJECT_MASK_ALL | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC) /*pathState.rayMask*/,
+              isViewModel, /*ray*/ primaryRay, rayInteraction, /*surfaceInteraction*/minimalSurfaceInteraction,
+              opaqueSurfaceMaterialInteraction, specularPortion2, diffuseLight, specularLight);
 
-              float16_t specularPortion2;
-              const bool isViewModel = false;// pathState.rayMask& OBJECT_MASK_ALL_VIEWMODEL;
-              float emissiveInvSelectionPdf = 1.0;// / lightObjectPdf;
-              vec3 diffuseLight, specularLight;
-              bool isVisible = evalNEESecondary(
-                emissiveLightSample, emissiveInvSelectionPdf, invalidRayPortalIndex, /*pathState.portalSpace*/PORTAL_SPACE_NONE, 
-                OBJECT_MASK_ALL | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC) /*pathState.rayMask*/,
-                isViewModel, /*ray*/ primaryRay, rayInteraction, /*surfaceInteraction*/minimalSurfaceInteraction,
-                opaqueSurfaceMaterialInteraction, specularPortion2, diffuseLight, specularLight);
+             PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex].xyz += diffuseLight * misWeight.x;
+             PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex].xyz += specularLight * misWeight.y;
 
+            if (cb.enableReSTIRGI && isVisible)
+            {
+              ReSTIRGI_Reservoir neeSample;
+              neeSample.M = 1;
+              neeSample.avgWeight = 1;
+              neeSample.flagsAndVirtualFraction = 0;
+              neeSample.radiance = vec3(0);
+              neeSample.setPortalID(RESTIR_GI_INVALID_INDIRECT_LIGHT_PORTAL_ID);
+              neeSample.position = lightSample.position;
+              neeSample.normal = lightSample.normal;
+              neeSample.radiance = lightSample.radiance / lightSample.solidAnglePdf;
 
-              //pathState.radiance += pathState.throughput * emissiveNEELight;
-              //PrimaryDirectDiffuseLobeRadianceHitDistance[threadIndex].xyz += emissiveNEELight;
-              //PrimaryDirectSpecularLobeRadianceHitDistance[threadIndex] = 0;// emissiveNEELight;
-               PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex].xyz += diffuseLight * misWeight.x;
-               PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex].xyz += specularLight * misWeight.y;
-
-              if (cb.enableReSTIRGI && isVisible)
-              {
-                ReSTIRGI_Reservoir neeSample;
-                neeSample.M = 1;
-                neeSample.avgWeight = 1;
-                neeSample.flagsAndVirtualFraction = 0;
-                neeSample.radiance = vec3(0);
-                neeSample.setPortalID(RESTIR_GI_INVALID_INDIRECT_LIGHT_PORTAL_ID);
-                neeSample.position = emissiveLightSample.position;
-                neeSample.normal = emissiveLightSample.normal;
-                neeSample.radiance = emissiveLightSample.radiance / emissiveLightSample.solidAnglePdf;
-
-                float wi = calcBt709Luminance(diffuseLight + specularLight);
-                resultReservoir.update(wi, neeSample, 0.5);
-              }
+              float wi = calcBt709Luminance(diffuseLight + specularLight);
+              resultReservoir.update(wi, neeSample, 0.5);
             }
           }
         }

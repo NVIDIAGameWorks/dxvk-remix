@@ -203,3 +203,35 @@ bool evalMediumChange(
 
   return false;
 }
+
+LightSample getLightSampleFromTriangle(int surfaceIndex, int primitiveIndex, vec2 uv, float trianglePdf, vec3 shadingPosition)
+{
+  SURFACE_CREATE_READ(surface, surfaceIndex, surfaces);
+  RayInteraction rayInteracton = {};
+  rayInteracton.barycentricCoordinates = barycentricsToUint(uvToBary(uv));
+  rayInteracton.primitiveIndex = primitiveIndex;
+  Ray dummyRay = {};
+  SurfaceInteraction surfaceInteraction = surfaceInteractionCreate(surface, rayInteracton, dummyRay, false, false);
+
+  const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
+  const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
+
+  LightSample lightSample = {};
+  if (polymorphicType == surfaceMaterialTypeOpaque)
+  {
+    const OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
+    const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
+      opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteracton);
+
+    if (any(opaqueSurfaceMaterialInteraction.emissiveRadiance > f16vec3(0)))
+    {
+      lightSample.position = surfaceInteraction.position;
+      lightSample.normal = surfaceInteraction.interpolatedNormal;
+      lightSample.radiance = opaqueSurfaceMaterialInteraction.emissiveRadiance;
+      float16_t lightPdf = trianglePdf * getLightSamplingSolidAnglePDF(
+        surfaceInteraction.triangleArea, surfaceInteraction.position, surfaceInteraction.triangleNormal, shadingPosition);
+      lightSample.solidAnglePdf = lightPdf;
+    }
+  }
+  return lightSample;
+}
