@@ -348,4 +348,5 @@ float getLightSamplingSolidAnglePDF(float triangleArea, vec3 samplePosition, f16
   float cosPhi = abs(dot(normalize(offset), sampleNormal));
   return cosPhi > 0 ? areaPdf * r2 / cosPhi : 0;
 }
+
 #endif
