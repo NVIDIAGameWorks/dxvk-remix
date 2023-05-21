@@ -105,9 +105,7 @@ void evalEmission(
   accumulateRadiance(pathState, emissiveRadiance);
 }
 
-vec3 evalNEESecondary(
-  //vec3 throughput, 
-  //inout vec3 accumulatedRadiance,
+bool evalNEESecondary(
   LightSample lightSample, 
   float invSelectionPdf, 
   uint8_t sampledTransportPortalIndex, 
@@ -118,9 +116,11 @@ vec3 evalNEESecondary(
   MinimalRayInteraction minimalRayInteraction, 
   MinimalSurfaceInteraction minimalSurfaceInteraction,
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
-  out float16_t specularPortion,
-  f16vec2 diffuseSpecularMISWeight)
+  out vec3 diffuseLight,
+  out vec3 specularLight)
 {
+  diffuseLight = specularLight = 0;
+
   // Setup and trace the visibility ray
 
   uint8_t rayMask = OBJECT_MASK_OPAQUE | (objectMask & OBJECT_MASK_ALL_DYNAMIC);
@@ -132,29 +132,26 @@ vec3 evalNEESecondary(
     sampledTransportPortalIndex, portalSpace,
     minimalRayInteraction.coneRadius, viewRay.spreadAngle, 1.0, isViewModelSurface);
 
-  specularPortion = float16_t(0);
 
   if (visibility.hasOpaqueHit)
-    return vec3(0);
+    return false;
 
   // Evaluate the material and accumulate throughput and hit distance
 
   const SurfaceMaterialInteractionSplitWeight splitWeight = opaqueSurfaceMaterialInteractionCalcProjectedWeight(
     opaqueSurfaceMaterialInteraction, minimalRayInteraction, visibility.rayDirection);
 
-  const f16vec3 combinedWeight = splitWeight.diffuseReflectionWeight * diffuseSpecularMISWeight.x + splitWeight.specularReflectionWeight * diffuseSpecularMISWeight.y;
-
-  specularPortion = calcBt709Luminance(splitWeight.specularReflectionWeight) / calcBt709Luminance(combinedWeight);
-
   const float lightSampleThroughput = invSelectionPdf / lightSample.solidAnglePdf;
 
   // Accumulate Radiance
 
-  const vec3 lightThroughput = vec3(combinedWeight) * lightSampleThroughput * vec3(visibility.attenuation);
+  const vec3 lightThroughput = lightSampleThroughput * vec3(visibility.attenuation);
   const vec3 attenuatedRadiance = lightSample.radiance * lightThroughput;
 
-  return attenuatedRadiance;
-  //accumulatedRadiance += throughput * attenuatedRadiance;
+  diffuseLight = attenuatedRadiance * splitWeight.diffuseReflectionWeight;
+  specularLight = attenuatedRadiance * splitWeight.specularReflectionWeight;
+
+  return true;
 }
 
 
@@ -565,18 +562,17 @@ void integratePathVertex(
     if (lightSampleValid)
     {
       const bool isViewModel = pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
-      float16_t specularPortion = float16_t(0);
 
       // Todo: Ray Portal transport sampling in the future.
-      vec3 neeLight = evalNEESecondary(
-        //pathState.throughput, pathState.radiance,
+      vec3 diffuseLight, specularLight;
+      evalNEESecondary(
         lightSample, invSelectionPdf, invalidRayPortalIndex, pathState.portalSpace, pathState.rayMask,
         isViewModel, ray, rayInteraction, surfaceInteraction,
-        opaqueSurfaceMaterialInteraction, specularPortion, f16vec2(1.0));
+        opaqueSurfaceMaterialInteraction, diffuseLight, specularLight);
 
+      vec3 neeLight = diffuseLight + specularLight;
+      float16_t specularPortion = calcBt709Luminance(specularLight) / calcBt709Luminance(neeLight);
       pathState.radiance += pathState.throughput * neeLight;
-
-      //newLight += neeLight;
 
       float hitT = pathState.accumulatedHitDistance;
       if (opaqueSurfaceMaterialInteraction.isotropicRoughness <= cb.reSTIRGIVirtualSampleRoughnessThreshold
@@ -623,14 +619,15 @@ void integratePathVertex(
                 misWeight = 1.0;
               }
 
-              float16_t specularPortion2;
               const bool isViewModel = false;//pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
               float emissiveInvSelectionPdf = 1.0;// / lightObjectPdf;
-              vec3 emissiveNEELight = evalNEESecondary(
+              vec3 diffuseLight, specularLight;
+              evalNEESecondary(
                 lightSample, emissiveInvSelectionPdf, invalidRayPortalIndex, pathState.portalSpace, pathState.rayMask,
                 isViewModel, ray, rayInteraction, surfaceInteraction,
-                opaqueSurfaceMaterialInteraction, specularPortion2, misWeight);
+                opaqueSurfaceMaterialInteraction, diffuseLight, specularLight);
 
+              vec3 emissiveNEELight = diffuseLight * misWeight.x + specularLight * misWeight.y;
               pathState.radiance += pathState.throughput * emissiveNEELight;
             }
           }
