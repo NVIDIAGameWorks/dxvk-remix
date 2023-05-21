@@ -31,58 +31,6 @@
 #include "rtx/concept/surface_material/surface_material.slangh"
 #include "rtx/algorithm/integrator_direct.slangh"
 
-vec3 evalNEESecondary(
-  //vec3 throughput, 
-  //inout vec3 accumulatedRadiance,
-  LightSample lightSample,
-  float invSelectionPdf,
-  uint8_t sampledTransportPortalIndex,
-  PortalSpace2BitsType portalSpace,
-  uint8_t objectMask,
-  bool isViewModelSurface,
-  Ray viewRay,
-  MinimalRayInteraction minimalRayInteraction,
-  MinimalSurfaceInteraction minimalSurfaceInteraction,
-  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
-  out float16_t specularPortion,
-  f16vec2 diffuseSpecularMISWeight)
-{
-  // Setup and trace the visibility ray
-
-  uint8_t rayMask = OBJECT_MASK_OPAQUE | (objectMask & OBJECT_MASK_ALL_DYNAMIC);
-  if (cb.enableIndirectTranslucentShadows) rayMask |= OBJECT_MASK_TRANSLUCENT;
-
-  VisibilityResult visibility = traceVisibilityRay(minimalSurfaceInteraction,
-    lightSample.position, false, rayMask,
-    visibilityModeEnableTranslucentMaterials,
-    sampledTransportPortalIndex, portalSpace,
-    minimalRayInteraction.coneRadius, viewRay.spreadAngle, 1.0, isViewModelSurface);
-
-  specularPortion = float16_t(0);
-
-  if (visibility.hasOpaqueHit)
-    return vec3(0);
-
-  // Evaluate the material and accumulate throughput and hit distance
-
-  const SurfaceMaterialInteractionSplitWeight splitWeight = opaqueSurfaceMaterialInteractionCalcProjectedWeight(
-    opaqueSurfaceMaterialInteraction, minimalRayInteraction, visibility.rayDirection);
-
-  const f16vec3 combinedWeight = splitWeight.diffuseReflectionWeight * diffuseSpecularMISWeight.x + splitWeight.specularReflectionWeight * diffuseSpecularMISWeight.y;
-
-  specularPortion = calcBt709Luminance(splitWeight.specularReflectionWeight) / calcBt709Luminance(combinedWeight);
-
-  const float lightSampleThroughput = invSelectionPdf / lightSample.solidAnglePdf;
-
-  // Accumulate Radiance
-
-  const vec3 lightThroughput = vec3(combinedWeight) * lightSampleThroughput * vec3(visibility.attenuation);
-  const vec3 attenuatedRadiance = lightSample.radiance * lightThroughput;
-
-  return attenuatedRadiance;
-  //accumulatedRadiance += throughput * attenuatedRadiance;
-}
-
 // Deserialize the Ray Interaction, Surface Interaction, and Surface Material Interaction
 void deserializeInteractions(
   ivec2 pixelCoordinate, 
