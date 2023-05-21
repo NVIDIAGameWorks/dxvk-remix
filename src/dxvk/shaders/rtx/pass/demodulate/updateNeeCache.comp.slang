@@ -67,19 +67,16 @@ float getGeometricTerm(vec3 surfacePosition, vec3 samplePosition, f16vec3 sample
 float getTriangleLight(uint2 data, vec3 cellCenter, inout RNG randomState)
 {
   int surfaceIndex = data.x;
-  int primitiveIndex = data.y;// = int4(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex,0,0);
+  int primitiveIndex = data.y;
   float triangleLight = 0;
   if (surfaceIndex >= 0 && surfaceIndex != BINDING_INDEX_INVALID && /*surfaceIndex < cb.surfaceCount &&*/ primitiveIndex >= 0)
   {
     SURFACE_CREATE_READ(emissiveSurface0, surfaceIndex, surfaces);    
     Surface emissiveSurface = emissiveSurface0;
-    RayInteraction emissiveRayInteracton = {};// rayInteraction;
+    RayInteraction emissiveRayInteracton = {};
     emissiveRayInteracton.frontHit = true;
     emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(uvToBary(vec2(1.0 / 3.0)));
-    //emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(uvToBary(vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState))));
     emissiveRayInteracton.primitiveIndex = primitiveIndex;
-    //emissiveSurface.isEmissive = false;
-    //emissiveSurface.isEmissiveBlend = false;
 
     Ray ray;
     ray.direction = f16vec3(1.0);
@@ -91,7 +88,6 @@ float getTriangleLight(uint2 data, vec3 cellCenter, inout RNG randomState)
     if (polymorphicType == surfaceMaterialTypeOpaque)
     {
       OpaqueSurfaceMaterial emissiveOpaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(emissiveSurface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
-      //emissiveOpaqueSurfaceMaterial.emissiveIntensity = 1.0;
       const OpaqueSurfaceMaterialInteraction emissiveOpaqueSurfaceMaterialInteraction =
         opaqueSurfaceMaterialInteractionCreate(emissiveOpaqueSurfaceMaterial, emissiveSurface, emissiveSurfaceInteraction, emissiveRayInteracton);
 
@@ -99,9 +95,6 @@ float getTriangleLight(uint2 data, vec3 cellCenter, inout RNG randomState)
       {
         vec3 offset = emissiveSurfaceInteraction.position - cellCenter;
         float cellSize = NEECache.getCellSize() * 0.5;
-        //float cellDistance = length(offset);
-        //float cosTheta = cellDistance < cellSize ? 1.0 : abs(dot(emissiveSurfaceInteraction.triangleNormal, normalize(offset)));
-        //cellDistance = max(cellDistance, cellSize);
         float g = 0;
 #if 0
         g = getGeometricTerm(cellCenter, emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal);
@@ -114,15 +107,9 @@ float getTriangleLight(uint2 data, vec3 cellCenter, inout RNG randomState)
         g += getGeometricTerm(cellCenter + vec3(0, 0, -cellSize), emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal);
         g /= 6.0;
 #endif
-        float triangleArea = emissiveSurfaceInteraction.triangleArea;
-        vec3 radiance = emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance;
-        f16vec4 ecolor;
-        //surfaceMaterialInteractionTextureReadHelper(emissiveOpaqueSurfaceMaterial.emissiveColorTextureIndex, emissiveSurfaceInteraction, ecolor);
-        //radiance = ecolor.rgb;// * emissiveOpaqueSurfaceMaterial.emissiveIntensity;
-      
-        float luminance = calcBt709Luminance(radiance);
-        triangleLight = luminance * triangleArea * g;//cosTheta / (cellDistance * cellDistance);
-        //triangleLight = sqrt(triangleLight);
+        float triangleArea = emissiveSurfaceInteraction.triangleArea;      
+        float luminance = calcBt709Luminance(emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance);
+        triangleLight = luminance * triangleArea * g;
         triangleLight = clamp(triangleLight,0, floatMax / 32.0);
       }
     }
