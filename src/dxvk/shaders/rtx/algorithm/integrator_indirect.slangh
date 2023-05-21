@@ -599,61 +599,39 @@ void integratePathVertex(
           float lightObjectPdf = 0;
           NEECandidate candidate = cell.sampleCandidate(getNextSampleBlueNoise(randomState), lightObjectPdf);
           int surfaceIndex = candidate.getSurfaceID();
-          int primitiveIndex = candidate.getPrimitiveID();// = int4(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex,0,0);
+          int primitiveIndex = candidate.getPrimitiveID();
           if (candidate.isValid())
           {
-            SURFACE_CREATE_READ(emissiveSurface, surfaceIndex, surfaces);
-            RayInteraction emissiveRayInteracton = rayInteraction;
-            emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(uvToBary(vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState))));
-            emissiveRayInteracton.primitiveIndex = primitiveIndex;
-            SurfaceInteraction emissiveSurfaceInteraction = surfaceInteractionCreate(emissiveSurface, emissiveRayInteracton, ray, false, false);
+            vec2 uv = vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState));
+            LightSample lightSample = getLightSampleFromTriangle(candidate.getSurfaceID(), candidate.getPrimitiveID(), uv, lightObjectPdf, surfaceInteraction.position);
 
-            const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[emissiveSurface.surfaceMaterialIndex];
-            const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
-
-            if (polymorphicType == surfaceMaterialTypeOpaque)
+            if(any(lightSample.radiance > 0))
             {
-              const OpaqueSurfaceMaterial emissiveOpaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(emissiveSurface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
-              const OpaqueSurfaceMaterialInteraction emissiveOpaqueSurfaceMaterialInteraction =
-                opaqueSurfaceMaterialInteractionCreate(emissiveOpaqueSurfaceMaterial, emissiveSurface, emissiveSurfaceInteraction, emissiveRayInteracton);
-
-              if (any(emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance > f16vec3(0)) &&
-                dot(opaqueSurfaceMaterialInteraction.shadingNormal, emissiveSurfaceInteraction.position - surfaceInteraction.position) > 0)
+              f16vec3 inputDirection = normalize(lightSample.position - surfaceInteraction.position);
+              float16_t diffuseSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(
+                opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
+              float16_t specularSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
+                opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
+              f16vec2 misWeight;
+              if (cb.enableNeeCacheMIS)
               {
-                LightSample emissiveLightSample;
-                emissiveLightSample.position = emissiveSurfaceInteraction.position;
-                emissiveLightSample.normal = emissiveSurfaceInteraction.interpolatedNormal;
-                emissiveLightSample.radiance = emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance;
-                float16_t lightPdf = lightObjectPdf * getLightSamplingSolidAnglePDF(
-                  emissiveSurfaceInteraction.triangleArea, emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal, surfaceInteraction.position) * lightObjectPdf;
-                emissiveLightSample.solidAnglePdf = lightPdf;
-
-                f16vec3 inputDirection = normalize(emissiveSurfaceInteraction.position - surfaceInteraction.position);
-                float16_t diffuseSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(
-                  opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
-                float16_t specularSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
-                  opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
-                f16vec2 misWeight;
-                if (cb.enableNeeCacheMIS)
-                {
-                  misWeight.x = saturate(lightPdf / (lightPdf + diffuseSolidAnglePdf));
-                  misWeight.y = saturate(lightPdf / (lightPdf + specularSolidAnglePdf));
-                }
-                else
-                {
-                  misWeight = 1.0;
-                }
-
-                float16_t specularPortion2;
-                const bool isViewModel = false;//pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
-                float emissiveInvSelectionPdf = 1.0;// / lightObjectPdf;
-                vec3 emissiveNEELight = evalNEESecondary(
-                  emissiveLightSample, emissiveInvSelectionPdf, invalidRayPortalIndex, pathState.portalSpace, pathState.rayMask,
-                  isViewModel, ray, rayInteraction, surfaceInteraction,
-                  opaqueSurfaceMaterialInteraction, specularPortion2, misWeight);
-
-                pathState.radiance += pathState.throughput * emissiveNEELight;
+                misWeight.x = saturate(lightSample.solidAnglePdf / (lightSample.solidAnglePdf + diffuseSolidAnglePdf));
+                misWeight.y = saturate(lightSample.solidAnglePdf / (lightSample.solidAnglePdf + specularSolidAnglePdf));
               }
+              else
+              {
+                misWeight = 1.0;
+              }
+
+              float16_t specularPortion2;
+              const bool isViewModel = false;//pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
+              float emissiveInvSelectionPdf = 1.0;// / lightObjectPdf;
+              vec3 emissiveNEELight = evalNEESecondary(
+                lightSample, emissiveInvSelectionPdf, invalidRayPortalIndex, pathState.portalSpace, pathState.rayMask,
+                isViewModel, ray, rayInteraction, surfaceInteraction,
+                opaqueSurfaceMaterialInteraction, specularPortion2, misWeight);
+
+              pathState.radiance += pathState.throughput * emissiveNEELight;
             }
           }
         }
