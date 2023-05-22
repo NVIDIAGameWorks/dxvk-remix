@@ -341,20 +341,7 @@ void geometryResolverOutputDebugView(
     break;
   case DEBUG_VIEW_IS_STATIC:
     // Green = static, Red = not static
-    //storeInDebugView(pixelCoordinate, surface.isStatic ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0));
-    {
-      //storeInDebugView(pixelCoordinate, log(1+surfaceInteraction.triangleArea));
-      // storeInDebugView(pixelCoordinate, vec3(
-      //   float(rayInteraction.surfaceIndex & 0xFF) / 256.f,
-      //   float((rayInteraction.surfaceIndex >> 8) & 0xFF) / 256.f,
-      //   float((rayInteraction.surfaceIndex >> 16) & 0xFF) / 256.f));
-      uint16_t bufferIndex = surface.previousPositionBufferIndex;
-      vec3 color = bufferIndex == BINDING_INDEX_INVALID ? vec3(1): vec3(
-        float(bufferIndex & 0xF),
-        float((bufferIndex >> 4) & 0xF),
-        float((bufferIndex >> 8) & 0xF)) / 16.0;
-      storeInDebugView(pixelCoordinate, color);
-    }
+    storeInDebugView(pixelCoordinate, surface.isStatic ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0));
 
     break;
   case DEBUG_VIEW_IS_OPAQUE:

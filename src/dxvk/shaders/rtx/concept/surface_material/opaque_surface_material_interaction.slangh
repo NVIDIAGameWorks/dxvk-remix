@@ -1023,10 +1023,6 @@ float opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
   // Note: use the 'primaryIndirectNrd' parameter set because it is always controlled by the active indirect denoiser.
   // TODO: ideally this lobe trimming should only happen at the primary vertex, but there's likely no big difference.
 
-  //const float lobeTrimming = calculateLobeTrimmingFactor(
-  //  opaqueSurfaceMaterialInteraction.isotropicRoughness, cb.primaryIndirectNrd.specularLobeTrimmingParams);
-
-  //f16vec3 inputDirection;
   float16_t /* v.h */ outputDirectionDotMicrofacetNormal;
   float16_t /* t.v */ tangentDotOutputDirection;
   float16_t /* b.v */ bitangentDotOutputDirection;
@@ -1038,45 +1034,27 @@ float opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
   float16_t /* b.h */ bitangentDotMicrofacetNormal;
   float16_t /* n.h */ normalDotMicrofacetNormal;
   
-  // Random sampling may end up with an invalid sample, which will contribute 0 radiance to the output and bias the result to be darker
-  // Apply rejection sampling on top by taking a few random sample attempts to find a valid sample instead
-  // Max attempts set empirically, 3-4 attempts cleaned up 95%+ invalid samples
-  // After 10 attempts there were only a handful pixels left with invalid samples, setting this to 15 was a safe upper bound to handle most pixels
-  //int32_t sampleAttemptsRemaining = 15; 
+  const f16vec3 microfacetNormal = normalize(inputDirection + outputDirection);
 
-  //sampleAttemptsRemaining = -1;   // Mark sample as invalid - it's updated below
-  //{
-    // Sample a new microfacet normal based on the distribution of visible normals
+  // Todo: Sanity check if inputDirection is facing the wrong direction (Into the surface), currently this does not have much
+  // effect and getting the triangle normal here requires a fairly high memory bandwidth cost, so for now it is not done
 
-    //const f16vec2 u = f16vec2(
-    //  lobeTrimming * getNextSampleBlueNoise(randomState), 
-    //  getNextSampleBlueNoise(randomState));
-    //const f16vec3 microfacetNormal = calcGGXVisibleNormalDistributionSample(opaqueSurfaceMaterialInteraction.anisotropicRoughness, outputDirection, u);
+  // Calculate dot products used for evaluation
+  // Note: Dot products against tangent space basis vectors are single components of the other vector
 
-    // Reflect the output direction across the microfacet normal to get the input direction
+  /* v.h */ outputDirectionDotMicrofacetNormal = dot(outputDirection, microfacetNormal);
+  /* t.v */ tangentDotOutputDirection = outputDirection.x;
+  /* b.v */ bitangentDotOutputDirection = outputDirection.y;
+  /* n.v */ normalDotOutputDirection = outputDirection.z;
+  /* t.l */ tangentDotInputDirection = inputDirection.x;
+  /* b.l */ bitangentDotInputDirection = inputDirection.y;
+  /* n.l */ normalDotInputDirection = inputDirection.z;
+  /* t.h */ tangentDotMicrofacetNormal = microfacetNormal.x;
+  /* b.h */ bitangentDotMicrofacetNormal = microfacetNormal.y;
+  /* n.h */ normalDotMicrofacetNormal = microfacetNormal.z;
 
-    //inputDirection = reflect(-outputDirection, microfacetNormal);
-    const f16vec3 microfacetNormal = normalize(inputDirection + outputDirection);
-
-    // Todo: Sanity check if inputDirection is facing the wrong direction (Into the surface), currently this does not have much
-    // effect and getting the triangle normal here requires a fairly high memory bandwidth cost, so for now it is not done
-
-    // Calculate dot products used for evaluation
-    // Note: Dot products against tangent space basis vectors are single components of the other vector
-
-    /* v.h */ outputDirectionDotMicrofacetNormal = dot(outputDirection, microfacetNormal);
-    /* t.v */ tangentDotOutputDirection = outputDirection.x;
-    /* b.v */ bitangentDotOutputDirection = outputDirection.y;
-    /* n.v */ normalDotOutputDirection = outputDirection.z;
-    /* t.l */ tangentDotInputDirection = inputDirection.x;
-    /* b.l */ bitangentDotInputDirection = inputDirection.y;
-    /* n.l */ normalDotInputDirection = inputDirection.z;
-    /* t.h */ tangentDotMicrofacetNormal = microfacetNormal.x;
-    /* b.h */ bitangentDotMicrofacetNormal = microfacetNormal.y;
-    /* n.h */ normalDotMicrofacetNormal = microfacetNormal.z;
-
-    if (normalDotOutputDirection <= 0.h || normalDotInputDirection <= 0.h)
-      return 0;
+  if (normalDotOutputDirection <= 0.h || normalDotInputDirection <= 0.h)
+    return 0;
 
   // Calculate the solid angle PDF of the sample
   const float solidAnglePdf = evalGGXVisibleNormalDistributionSamplePdf(
