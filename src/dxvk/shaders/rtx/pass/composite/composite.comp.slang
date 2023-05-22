@@ -168,8 +168,7 @@ void postCompositeDebugView(uint2 thread_id, GeometryFlags geometryFlags)
   switch(cb.debugViewIdx)
   {
   case DEBUG_VIEW_GEOMETRY_FLAGS_FIRST_SAMPLED_LOBE_IS_SPECULAR:
-    //storeInDebugView(ivec2(thread_id), geometryFlags.firstSampledLobeIsSpecular);
-    storeInDebugView(ivec2(thread_id), LastFinalOutput[thread_id]);    
+    storeInDebugView(ivec2(thread_id), geometryFlags.firstSampledLobeIsSpecular);
     break;
   }
 }

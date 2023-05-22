@@ -261,9 +261,6 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
     float totalLight = 0;
     for (int i = 0; i < s_tarTaskCount; ++i)
     {
-      //if (cb.debugKnob.z > 0) s_tarLight[i] = 1;//sqrt(s_tarLight[i]);//clamp(s_tarLight[i],0.1,1);
-      //s_tarLight[i] = pow(s_tarLight[i], 0.3);
-      //s_tarLight[i] = clamp(s_tarLight[i], avgLight * cb.debugKnob.z, avgLight * cb.debugKnob.w);
       totalLight += s_tarLight[i];
     }
     for (int i = 0; i < s_tarTaskCount; ++i)
