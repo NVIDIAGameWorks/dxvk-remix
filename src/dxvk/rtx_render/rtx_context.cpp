@@ -1170,6 +1170,7 @@ namespace dxvk {
     constants.enableNeeCacheInHigherBounces = neeCache.enableInHigherBounces();
     constants.enableNeeCacheRandomReplacement = neeCache.enableRandomReplacement();
     constants.neeCacheRange = neeCache.range();
+    constants.neeCacheTextureSampleFootprintSize = neeCache.textureSampleFootprintSize();
     constants.surfaceCount = getSceneManager().getAccelManager().getSurfaceCount();
 
     auto* cameraTeleportDirectionInfo = getSceneManager().getRayPortalManager().getCameraTeleportationRayPortalDirectionInfo();

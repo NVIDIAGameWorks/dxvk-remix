@@ -246,6 +246,7 @@ struct RaytraceArgs {
   uint enableNeeCacheInHigherBounces;
   uint enableNeeCacheRandomReplacement;
   float neeCacheRange;
+  float neeCacheTextureSampleFootprintSize;
   uint surfaceCount;
 
   uint teleportationPortalIndex; // 0 means no teleportation, 1+ means portal 0+

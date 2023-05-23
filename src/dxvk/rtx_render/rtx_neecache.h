@@ -51,7 +51,8 @@ namespace dxvk {
     RTX_OPTION("rtx.neeCache", bool, enableInFirstBounce, true, "Enable NEE Cache in first bounce.");
     RTX_OPTION("rtx.neeCache", bool, enableInHigherBounces, true, "Enable NEE Cache in higher bounces.");
     RTX_OPTION("rtx.neeCache", bool, enableRandomReplacement, true, "Enable random replacement.");
-    RTX_OPTION("rtx.neeCache", float, range, 2000, "World space range.");
+    RTX_OPTION("rtx.neeCache", float, range, 2000, "World space range.");    
+    RTX_OPTION("rtx.neeCache", float, textureSampleFootprintSize, 0.1, "Texture sample footprint size.");
   private:
     Rc<vk::DeviceFn> m_vkd;
 

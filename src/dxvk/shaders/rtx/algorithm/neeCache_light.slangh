@@ -74,6 +74,8 @@ LightSample getLightSampleFromTriangle(int surfaceIndex, int primitiveIndex, vec
   surfaceInteraction.vertexColor = f16vec4(0);
 #endif
 
+  surfaceInteraction.textureGradientX *= cb.neeCacheTextureSampleFootprintSize;
+  surfaceInteraction.textureGradientY *= cb.neeCacheTextureSampleFootprintSize;
   rayInteracton.viewDirection = normalize(surfaceInteraction.position - shadingPosition);
 
   const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
