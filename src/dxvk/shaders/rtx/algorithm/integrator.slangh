@@ -263,9 +263,16 @@ LightSample getLightSampleFromTriangle(int surfaceIndex, int primitiveIndex, vec
   surface.isEmissive = false;
   surface.isEmissiveBlend = false;
   surface.isStatic = true;
+  surface.isMatte = true;
   surface.texcoordGenerationMode = uint(TexGenMode::None);
+  surface.previousPositionBufferIndex = BINDING_INDEX_INVALID;
   surface.normalBufferIndex = BINDING_INDEX_INVALID;
   surface.color0BufferIndex = BINDING_INDEX_INVALID;
+  surface.isAnimatedWater = false;
+  surface.textureAlphaArg1Source = uint(RtTextureArgSource::None);
+  surface.textureAlphaArg2Source = uint(RtTextureArgSource::None);
+  surface.textureAlphaOperation = uint(DxvkRtTextureOperation::Disable);
+  surface.tFactor = 0;
 #endif
 
   RayInteraction rayInteracton = {};
@@ -281,6 +288,8 @@ LightSample getLightSampleFromTriangle(int surfaceIndex, int primitiveIndex, vec
   surfaceInteraction.interpolatedBitangent = f16vec3(0);
   surfaceInteraction.vertexColor = f16vec4(0);
 #endif
+
+  rayInteracton.viewDirection = normalize(surfaceInteraction.position - shadingPosition);
 
   const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
   const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
@@ -298,15 +307,18 @@ LightSample getLightSampleFromTriangle(int surfaceIndex, int primitiveIndex, vec
     OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
 #if USE_SIMIPLIFIED_MODEL
     opaqueSurfaceMaterial.spriteSheetFPS = 0;
+    opaqueSurfaceMaterial.albedoOpacityTextureIndex = BINDING_INDEX_INVALID;
+    opaqueSurfaceMaterial.normalTextureIndex = BINDING_INDEX_INVALID;
+    opaqueSurfaceMaterial.tangentTextureIndex = BINDING_INDEX_INVALID;
+    opaqueSurfaceMaterial.roughnessTextureIndex = BINDING_INDEX_INVALID;
+    opaqueSurfaceMaterial.metallicTextureIndex = BINDING_INDEX_INVALID;
+    opaqueSurfaceMaterial.flags &= ~OPAQUE_SURFACE_MATERIAL_FLAG_USE_THIN_FILM_LAYER;
 #endif
 
     const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
       opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteracton);
 
-    if (any(opaqueSurfaceMaterialInteraction.emissiveRadiance > f16vec3(0)))
-    {
-      lightSample.radiance = opaqueSurfaceMaterialInteraction.emissiveRadiance;
-    }
+    lightSample.radiance = opaqueSurfaceMaterialInteraction.emissiveRadiance;
   }
   return lightSample;
 }
