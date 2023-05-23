@@ -73,30 +73,31 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.bloom.sigma|float|0.1||
 |rtx.calculateLightIntensityUsingLeastSquares|bool|True|Enable usage of least squares for approximating a light's falloff curve rather than a more basic single point approach\. This will generally result in more accurate matching of the original application's custom light attenuation curves, especially with non physically based linear\-style attenuation\.|
 |rtx.calculateMeshBoundingBox|bool|False|Calculate bounding box for every mesh\.|
-|rtx.camera.enableFreeCamera|bool|False|Enable free camera\.|
+|rtx.camera.enableFreeCamera|bool|False|Enables free camera\.|
 |rtx.camera.freeCameraPitch|float|0|Free camera's pitch\.|
 |rtx.camera.freeCameraPosition|float3|0, 0, 0|Free camera's position\.|
 |rtx.camera.freeCameraViewRelative|bool|True|Free camera transform is relative to the view\.|
 |rtx.camera.freeCameraYaw|float|0|Free camera's position\.|
 |rtx.camera.lockFreeCamera|bool|False|Locks free camera\.|
-|rtx.camera.trackCamerasSeenStats|bool|False||
+|rtx.camera.trackCamerasSeenStats|bool|False|Enables tracking and reporting of statistics for Cameras seen within a frame\.|
 |rtx.cameraAnimationAmplitude|float|2||
 |rtx.cameraAnimationMode|int|3||
 |rtx.cameraShakePeriod|int|20||
 |rtx.captureDebugImage|bool|False||
 |rtx.captureFramesPerSecond|int|24||
 |rtx.captureMaxFrames|int|1||
+|rtx.captureMeshBlendWeightDelta|float|0.01|Inter\-frame blend weight min delta warrants new time sample\.|
 |rtx.captureMeshColorDelta|float|0.3|Inter\-frame color min delta warrants new time sample\.|
 |rtx.captureMeshNormalDelta|float|0.3|Inter\-frame normal min delta warrants new time sample\.|
 |rtx.captureMeshPositionDelta|float|0.3|Inter\-frame position min delta warrants new time sample\.|
 |rtx.captureMeshTexcoordDelta|float|0.3|Inter\-frame texcoord min delta warrants new time sample\.|
 |rtx.captureNoInstance|bool|False||
-|rtx.compositePrimaryDirectDiffuse|bool|True||
-|rtx.compositePrimaryDirectSpecular|bool|True||
-|rtx.compositePrimaryIndirectDiffuse|bool|True||
-|rtx.compositePrimaryIndirectSpecular|bool|True||
-|rtx.compositeSecondaryCombinedDiffuse|bool|True||
-|rtx.compositeSecondaryCombinedSpecular|bool|True||
+|rtx.compositePrimaryDirectDiffuse|bool|True|Enables direct lightning's diffuse signal for primary surfaces in the final composite\.|
+|rtx.compositePrimaryDirectSpecular|bool|True|Enables direct lightning's specular signal for primary surfaces in the final composite\.|
+|rtx.compositePrimaryIndirectDiffuse|bool|True|Enables indirect lightning's diffuse signal for primary surfaces in the final composite\.|
+|rtx.compositePrimaryIndirectSpecular|bool|True|Enables indirect lightning's specular signal for primary surfaces in the final composite\.|
+|rtx.compositeSecondaryCombinedDiffuse|bool|True|Enables combined direct and indirect lightning's diffuse signal for secondary surfaces in the final composite\.|
+|rtx.compositeSecondaryCombinedSpecular|bool|True|Enables combined direct and indirect lightning's specular signal for secondary surfaces in the final composite\.|
 |rtx.debugView.debugViewIdx|int|0||
 |rtx.debugView.displayType|int|0||
 |rtx.debugView.enablePseudoColor|bool|False|Enables RGB color coding of a scalar debug view value\.|
@@ -116,7 +117,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.demodulate.enableDirectLightBoilingFilter|bool|True|Boiling filter removing direct light sample when its luminance is too high\.|
 |rtx.denoiseDirectAndIndirectLightingSeparately|bool|True|Denoising quality, high uses separate denoising of direct and indirect lighting for higher quality at the cost of performance\.|
 |rtx.denoiser.maxDirectHitTContribution|float|-1||
-|rtx.denoiser.nrd.timeDeltaBetweenFrames|float|-1||
+|rtx.denoiser.nrd.timeDeltaBetweenFrames|float|0|Frame time to use for denoising\. Setting this to 0 will use actual frame time for a given frame\. 0 is primarily used for automation to ensure image output determinism\.|
 |rtx.denoiserIndirectMode|int|16||
 |rtx.denoiserMode|int|16||
 |rtx.di.confidenceGradientPower|float|8||
@@ -242,6 +243,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.froxelReservoirSamplesStabilityHistoryPower|float|2|The power to apply to the Reservoir sample stability history weight\.|
 |rtx.fusedWorldViewMode|int|0|Set if game uses a fused World\-View transform matrix\.|
 |rtx.graphicsPreset|int|5|Overall rendering preset, higher presets result in higher image quality, lower presets result in better performance\.|
+|rtx.gui.showLegacyTextureGui|bool|False|A setting to toggle the old texture selection GUI, where each texture category is represented as its own list\.|
 |rtx.hideSplashMessage|bool|False|A flag to disable the splash message indicating how to use Remix from appearing when the application starts\.<br>When set to true this message will be hidden, otherwise it will be displayed on every launch\.|
 |rtx.highlightedTexture|int|0|Hash of a texture that should be highlighted\.|
 |rtx.ignoreGameDirectionalLights|bool|False|Ignores any directional lights coming from the original game \(lights added via toolkit still work\)\.|
@@ -304,30 +306,43 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.nativeMipBias|float|0|Specifies a mipmapping level bias to add to all material texture filtering\. Stacks with the upscaling mip bias\.<br>Mipmaps are determined based on how far away a texture is, using this can bias the desired level in a lower quality direction \(positive bias\), or a higher quality direction with potentially more aliasing \(negative bias\)\.<br>Note that mipmaps are also important for good spatial caching of textures, so too far negative of a mip bias may start to significantly affect performance, therefore changing this value is not recommended|
 |rtx.nearPlaneOverride|float|0.1|The near plane value to use for the Camera when the near plane override is enabled\.<br>Only takes effect when rtx\.enableNearPlaneOverride is enabled, see that option for more information about why this is useful\.|
 |rtx.nisPreset|int|1|Adjusts NIS scaling factor, trades quality for performance\.|
-|rtx.noiseClampHigh|float|2||
-|rtx.noiseClampLow|float|0.5||
-|rtx.noiseMixRatio|float|0.2||
-|rtx.noiseNormalPower|float|0.5||
 |rtx.numFramesToKeepBLAS|int|4||
 |rtx.numFramesToKeepGeometryData|int|5||
 |rtx.numFramesToKeepInstances|int|1||
 |rtx.numFramesToKeepLights|int|100||
 |rtx.numFramesToKeepMaterialTextures|int|5||
-|rtx.opacityMicromap.conservativeEstimationMaxTexelTapsPerMicroTriangle|int|64|Set to 64 as a safer cap\. 512 has been found to cause a timeout\.|
-|rtx.opacityMicromap.enable|bool|False||
-|rtx.opacityMicromap.enableParticles|bool|True||
-|rtx.opacityMicromap.enableResetEveryFrame|bool|False||
-|rtx.opacityMicromap.maxBudgetSizeMB|int|1536||
-|rtx.opacityMicromap.maxOmmBuildRequests|int|5000||
-|rtx.opacityMicromap.maxVidmemSizePercentage|float|0.15||
-|rtx.opacityMicromap.minBudgetSizeMB|int|512||
-|rtx.opacityMicromap.minFreeVidmemMBToNotAllocate|int|2560||
-|rtx.opacityMicromap.numFramesAtStartToBuildWithHighWorkload|int|0||
-|rtx.opacityMicromap.ommBuildRequest_minInstanceFrameAge|int|1||
-|rtx.opacityMicromap.ommBuildRequest_minNumFramesRequested|int|5||
-|rtx.opacityMicromap.ommBuildRequest_minNumRequests|int|10||
-|rtx.opacityMicromap.subdivisionLevel|int|8||
-|rtx.opacityMicromap.workloadHighWorkloadMultiplier|int|20||
+|rtx.opacityMicromap.buildRequests.customFiltersForBillboards|bool|True|Applies custom filters for staged Billboard requests\.|
+|rtx.opacityMicromap.buildRequests.enableAnimatedInstances|bool|False|Enables Opacity Micromaps for animated instances\.|
+|rtx.opacityMicromap.buildRequests.enableParticles|bool|True|Enables Opacity Micromaps for particles\.|
+|rtx.opacityMicromap.buildRequests.maxRequestFrameAge|int|300|Max request frame age to allow building Opacity Micromaps for\. Any requests older than this are purged\.|
+|rtx.opacityMicromap.buildRequests.maxRequests|int|5000|Max number of staged unique Opacity Micromap build requests\.<br>Any further requests will simply be discarded until the number of staged requests decreases below this threshold\.<br>Once a staged request passes filters for building, it is removed from the staging list\.|
+|rtx.opacityMicromap.buildRequests.minInstanceFrameAge|int|1|Min instance's frame age which to allow building Opacity Micromaps for\.|
+|rtx.opacityMicromap.buildRequests.minNumFramesRequested|int|5|Min number of frames for a staged Opacity Micromap request before it is allowed to be built\.|
+|rtx.opacityMicromap.buildRequests.minNumRequests|int|10|Min number of Opacity Micromap usage requests for a staged Opacity Micromap request before it is allowed to be built\.|
+|rtx.opacityMicromap.building.allow2StateOpacityMicromaps|bool|True|Allows generation of two state Opacity Micromaps\.|
+|rtx.opacityMicromap.building.conservativeEstimation.enable|bool|True|Enables Conservative Estimation of micro triangle opacities\.|
+|rtx.opacityMicromap.building.conservativeEstimation.maxTexelTapsPerMicroTriangle|int|64|Max number of texel taps per micro triangle when Conservative Estimation is enabled\.<br>Set to 64 as a safer cap\. 512 has been found to cause a timeout\.<br>Any microtriangles requiring more texel taps will be tagged as Opaque Unknown\.|
+|rtx.opacityMicromap.building.decalsMinResolveTransparencyThreshold|float|0|Min resolve transparency threshold for decals\.|
+|rtx.opacityMicromap.building.enableVertexAndTextureOperations|bool|True|Applies vertex and texture operations during baking\.|
+|rtx.opacityMicromap.building.force2StateOpacityMicromaps|bool|False|Forces generation of two state Opacity Micromaps\.|
+|rtx.opacityMicromap.building.highWorkloadMultiplier|int|20|High workload multiplier that is applied to number of Opacity Micromaps to bake and build per frame\.<br>This is used for testing to decrease frame latency for Opacity Micromaps being ready\.|
+|rtx.opacityMicromap.building.maxAllowedBillboardsPerInstanceToSplit|int|16|Max billboards per instance to consider for splitting \(large value results in increased CPU costs on BLAS builds\)\.|
+|rtx.opacityMicromap.building.maxMicroTrianglesToBakeMillionPerSecond|int|60|Max Micro Triangles to bake \[Million/Second\]\.|
+|rtx.opacityMicromap.building.maxMicroTrianglesToBuildMillionPerSecond|int|300|Max Micro Triangles to build \[Million/Second\]\.|
+|rtx.opacityMicromap.building.numFramesAtStartToBuildWithHighWorkload|int|0|Number of frames at start to to bake and build Opacity Micromaps with high workload multiplier\.<br>This is used for testing to decrease frame latency for Opacity Micromaps being ready\.|
+|rtx.opacityMicromap.building.splitBillboardGeometry|bool|True|Splits billboard geometry and corresponding Opacity Micromaps to quads for higher reuse\.<br>Games often batch instanced geometry that reuses same geometry and textures, such as for particles\.<br>Splitting such batches into unique subgeometries then allows higher reuse of build Opacity Micromaps\.|
+|rtx.opacityMicromap.building.subdivisionLevel|int|8|Opacity Micromap subdivision level per triangle\. |
+|rtx.opacityMicromap.cache.maxBudgetSizeMB|int|1536|Budget: Max Allowed Size \[MB\]\.|
+|rtx.opacityMicromap.cache.maxVidmemSizePercentage|float|0.15|Budget: Max Video Memory Size %\.|
+|rtx.opacityMicromap.cache.minBudgetSizeMB|int|512|Budget: Min Video Memory \[MB\] required\.<br>If the min amount is not available, then the budget will be set to 0\.|
+|rtx.opacityMicromap.cache.minFreeVidmemMBToNotAllocate|int|2560|Min Video Memory \[MB\] to keep free before allocating any for Opacity Micromaps\.|
+|rtx.opacityMicromap.cache.minUsageFrameAgeBeforeEviction|int|900|Min Opacity Micromap usage frame age before eviction\.<br>Opacity Micromaps unused longer than this can be evicted when freeing up memory for new Opacity Micromaps\.|
+|rtx.opacityMicromap.enable|bool|False|Enables Opacity Micromaps for geometries with textures that have alpha cutouts\.<br>This is generally the case for geometries such as fences, foliage, particles, etc\. \.<br>Opacity Micromaps greatly speed up raytracing of partially opaque triangles\.<br>Examples of scenes that benefit a lot: multiple trees with a lot of foliage,<br>grass blased on the ground or steam consisting of many particles\.|
+|rtx.opacityMicromap.enableBakingArrays|bool|True|Enables baking of opacity textures into Opacity Micromap arrays per triangle\.|
+|rtx.opacityMicromap.enableBinding|bool|True|Enables binding of built Opacity Micromaps to bottom level acceleration structures\.|
+|rtx.opacityMicromap.enableBuilding|bool|True|Enables building of Opacity Micromap arrays\.|
+|rtx.opacityMicromap.enableResetEveryFrame|bool|False|Debug: resets Opacity Micromap runtime data every frame\. |
+|rtx.opacityMicromap.showAdvancedOptions|bool|False|Shows advanced options\.|
 |rtx.opaqueDiffuseLobeSamplingProbabilityZeroThreshold|float|0.01|The threshold for which to zero opaque diffuse probability weight values\.|
 |rtx.opaqueMaterial.albedoBias|float|0|A bias factor to add to all albedo values in the opaque material\. Should only be used for debugging or development\.|
 |rtx.opaqueMaterial.albedoScale|float|1|A scale factor to apply to all albedo values in the opaque material\. Should only be used for debugging or development\.|
@@ -387,7 +402,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.rayPortalCameraHistoryCorrection|bool|False|A flag to control if history correction on ray portal camera teleportation events is enabled or disabled\.<br>This allows for the previous camera matrix to be set to a virtual matrix to correct the large discontunity in position and view direction which happens when a camera teleports from moving through a ray portal \(in games like Portal\)\.<br>As such this option should always be enabled in games utilizing ray portals the camera can pass through as it should fix artifacts from incorrectly calculated motion vectors or other deltas that rely on the current and previous camera matrix\.|
 |rtx.rayPortalCameraInBetweenPortalsCorrection|bool|False|A flag to contol correction when the camera is "in\-between" a pair of ray portals\.<br>This is mostly relevant in applications which allow the camera to move through a ray portal \(games like Portal\) as often the ray portals are placed slightly off of a surface, allowing the camera to sometimes end up in this tiny gap for a frame\.<br>To correct this artifact \(as it can mess up denoising and other temporal surface consistency checks due to the sudden frame of geometry in front of the camera\) this option pushes the camera slightly backwards if this occurs when entering a ray portal\.<br>Similar to ray portal camera history correction this option should always be enabled in games utilizing ray portals the camera can pass through\.|
 |rtx.rayPortalCameraInBetweenPortalsCorrectionThreshold|float|0.1|The threshold to use for camera "in\-between" ray portal detection in meters\.<br>When the camera is less than this distance behind the surface of a ray portal it will be pushed backwards to stay behind the ray portal\.<br>This value should stay small but be large enough to cover the gap between ray portals and the geometry behind them \(if such a gap exists in the underlying application\)\.<br>Additionally, this setting must be set at startup and changing it will not take effect at runtime\.|
-|rtx.rayPortalEnabled|bool|False||
+|rtx.rayPortalEnabled|bool|False|Enables ray portal support\. Note this requires portal texture hashes to be set for the ray portal geometries in rtx\.rayPortalModelTextureHashes\.|
 |rtx.rayPortalModelHeightAxis|float3|0, 1, 0|The axis in object space to map the ray portal geometry's height axis to\. Currently unused \(as PCA is not implemented\)\.|
 |rtx.rayPortalModelNormalAxis|float3|0, 0, 1|The axis in object space to map the ray portal geometry's normal axis to\. Currently unused \(as PCA is not implemented\)\.|
 |rtx.rayPortalModelWidthAxis|float3|1, 0, 0|The axis in object space to map the ray portal geometry's width axis to\. Currently unused \(as PCA is not implemented\)\.|
@@ -531,6 +546,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.useVertexCapturedNormals|bool|True|When enabled, vertex normals are read from the input assembler and used in raytracing\.  This doesn't always work as normals can be in any coordinate space, but can help sometimes\.|
 |rtx.useVirtualShadingNormalsForDenoising|bool|True|A flag to enable or disable the usage of virtual shading normals for denoising passes\.<br>This is primairly important for anything that modifies the direction of a primary ray, so mainly PSR and ray portals as both of these will view a surface from an angle different from the "virtual" viewing direction perceived by the camera\.<br>This can cause some issues with denoising due to the normals not matching the expected perception of what the normals should be, for example normals facing away from the camera direction due to being viewed from a different angle via refraction or portal teleportation\.<br>To correct this, virtual normals are calculcated such that they always are oriented relative to the primary camera ray as if its direction was never altered, matching the virtual perception of the surface from the camera's point of view\.<br>As an aside, virtual normals themselves can cause issues with denoising due to the normals suddenly changing from virtual to "real" normals upon traveling through a portal, causing surface consistency failures in the denoiser, but this is accounted for via a special transform given to the denoiser on camera ray portal teleportation events\.<br>As such, this option should generally always be enabled when rendering with ray portals in the scene to have good denoising quality\.|
 |rtx.useWhiteMaterialMode|bool|False||
+|rtx.useWorldMatricesForShaders|bool|True|When enabled, Remix will utilize the world matrices being passed from the game via D3D9 fixed function API, even when running with shaders\.  Sometimes games pass these matrices and they are useful, however for some games they are very unreliable, and should be filtered out\.  If you're seeing precision related issues with shader vertex capture, try disabling this setting\.|
 |rtx.validateCPUIndexData|bool|False||
 |rtx.vertexColorStrength|float|0.6|A scalar to apply to how strong vertex color influence should be on materials\.<br>A value of 1 indicates that it should be fully considered \(though do note the texture operation and relevant parameters still control how much it should be blended with the actual albedo color\), a value of 0 indicates that it should be fully ignored\.|
 |rtx.viewDistance.distanceFadeMax|float|500|The view distance based on the result of the view distance function to end view distance noise fading at \(and effectively draw nothing past this point\), only used for the Coherent Noise view distance mode\.|
@@ -577,7 +593,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.lightConverter|hash set|||
 |rtx.lightmapTextures|hash set||Textures used for lightmapping \(baked static lighting on surfaces\) in older games\.<br>These textures will be ignored when attempting to determine the desired textures from a draw to use for ray tracing\.|
 |rtx.nonOffsetDecalTextures|hash set||Textures on draw calls used for geometric decals with arbitrary topology that are already offset from the base geometry\.<br>These materials will be blended over the materials underneath them when decal material blending is enabled\.<br>Unlike typical decals however these decals have no offset applied to them due assuming the offset is already being done by whatever is passing data to Remix\.|
-|rtx.opacityMicromapIgnoreTextures|hash set|||
+|rtx.opacityMicromapIgnoreTextures|hash set||Textures to ignore when generating Opacity Micromaps\. This generally does not have to be set and is only useful for black listing problematic cases for Opacity Micromap usage\.|
 |rtx.particleTextures|hash set||Textures on draw calls that should be treated as particles\.<br>When objects are marked as particles more approximate rendering methods are leveraged allowing for more effecient and typically better looking particle rendering\.<br>Generally any billboard\-like blended particle objects in the original application should be classified this way\.|
 |rtx.playerModelBodyTextures|hash set|||
 |rtx.playerModelTextures|hash set|||

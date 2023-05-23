@@ -100,7 +100,7 @@ namespace dxvk {
     void updateAdaptiveAccumulation(float frameTimeMs);
 
   private:
-    RTX_OPTION_ENV("rtx.denoiser.nrd", float, timeDeltaBetweenFrames, -1.0f, "DXVK_DENOISER_NRD_FRAME_TIME_MS", "");    
+    RTX_OPTION_ENV("rtx.denoiser.nrd", float, timeDeltaBetweenFrames, 0.f, "DXVK_DENOISER_NRD_FRAME_TIME_MS", "Frame time to use for denoising. Setting this to 0 will use actual frame time for a given frame. 0 is primarily used for automation to ensure image output determinism.");    
     RTX_OPTION_ENV("rtx", nrd::Method, denoiserMode, sDefaultMethod, "DXVK_DENOISER_NRD_MODE", "");
     RTX_OPTION_ENV("rtx", nrd::Method, denoiserIndirectMode, sDefaultIndirectMethod, "DXVK_DENOISER_INDIRECT_NRD_MODE", "");
     RTX_OPTION("rtx.denoiser", float, maxDirectHitTContribution, -1.0f, "");

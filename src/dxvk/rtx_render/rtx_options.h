@@ -189,7 +189,7 @@ namespace dxvk {
     RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, terrainTextures, {}, "Albedo textures that are baked blended together to form a unified terrain texture used during ray tracing.\n"
                                                                                 "Put albedo textures into this category if the game renders terrain as a blend of multiple textures.");
     RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, cutoutTextures, {}, "");
-    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, opacityMicromapIgnoreTextures, {}, "");
+    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, opacityMicromapIgnoreTextures, {}, "Textures to ignore when generating Opacity Micromaps. This generally does not have to be set and is only useful for black listing problematic cases for Opacity Micromap usage.");
     RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, animatedWaterTextures, {},
                   "Textures on draw calls to be treated as \"animated water\".\n"
                   "Objects with this flag applied will animate their normals to fake a basic water effect based on the layered water material parameters, and only when rtx.opaqueMaterial.layeredWaterNormalEnable is set to true.\n"
@@ -673,7 +673,12 @@ namespace dxvk {
       friend class RtxOptions;
       friend class ImGUI;
       bool isSupported = false;
-      RTX_OPTION_ENV("rtx.opacityMicromap", bool, enable, false, "DXVK_ENABLE_OPACITY_MICROMAP", "");
+      RTX_OPTION_ENV("rtx.opacityMicromap", bool, enable, false, "DXVK_ENABLE_OPACITY_MICROMAP", 
+                     "Enables Opacity Micromaps for geometries with textures that have alpha cutouts.\n"
+                     "This is generally the case for geometries such as fences, foliage, particles, etc. .\n"
+                     "Opacity Micromaps greatly speed up raytracing of partially opaque triangles.\n"
+                     "Examples of scenes that benefit a lot: multiple trees with a lot of foliage,\n"
+                     "grass blased on the ground or steam consisting of many particles.");
     } opacityMicromap;
 
     RTX_OPTION("rtx", ReflexMode, reflexMode, ReflexMode::LowLatency, "Reflex mode selection, enabling it helps minimize input latency, boost mode may further reduce latency by boosting GPU clocks in CPU-bound cases."); // default to low-latency (not boost)

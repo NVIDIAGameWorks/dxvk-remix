@@ -38,6 +38,106 @@ namespace dxvk {
   class InstanceManager;
   struct InstanceEventHandler;
 
+  struct OpacityMicromapOptions {
+    friend class OpacityMicromapManager;
+
+    RTX_OPTION("rtx.opacityMicromap", bool, showAdvancedOptions, false, "Shows advanced options.");
+
+    RTX_OPTION("rtx.opacityMicromap", bool, enableBinding, true, "Enables binding of built Opacity Micromaps to bottom level acceleration structures.");
+    RTX_OPTION("rtx.opacityMicromap", bool, enableBakingArrays, true, "Enables baking of opacity textures into Opacity Micromap arrays per triangle.");
+    RTX_OPTION("rtx.opacityMicromap", bool, enableBuilding, true, "Enables building of Opacity Micromap arrays.");
+    RTX_OPTION("rtx.opacityMicromap", bool, enableResetEveryFrame, false, "Debug: resets Opacity Micromap runtime data every frame. ");
+
+
+    struct Cache {
+      friend class OpacityMicromapManager;
+
+      RTX_OPTION("rtx.opacityMicromap.cache", int, minFreeVidmemMBToNotAllocate, 2560, "Min Video Memory [MB] to keep free before allocating any for Opacity Micromaps.");
+      RTX_OPTION("rtx.opacityMicromap.cache", int, minBudgetSizeMB, 512, "Budget: Min Video Memory [MB] required.\n"
+                                                                         "If the min amount is not available, then the budget will be set to 0.");
+      RTX_OPTION("rtx.opacityMicromap.cache", int, maxBudgetSizeMB, 1536, "Budget: Max Allowed Size [MB].");
+      RTX_OPTION("rtx.opacityMicromap.cache", float, maxVidmemSizePercentage, 0.15, "Budget: Max Video Memory Size %.");
+      RTX_OPTION("rtx.opacityMicromap.cache", int, minUsageFrameAgeBeforeEviction, 60 * 15, 
+                 "Min Opacity Micromap usage frame age before eviction.\n"
+                 "Opacity Micromaps unused longer than this can be evicted when freeing up memory for new Opacity Micromaps.");
+
+    };
+
+
+    struct BuildRequests {
+      friend class OpacityMicromapManager;
+
+      RTX_OPTION("rtx.opacityMicromap.buildRequests", int, maxRequests, 5 * 1000,
+                 "Max number of staged unique Opacity Micromap build requests.\n"
+                 "Any further requests will simply be discarded until the number of staged requests decreases below this threshold.\n"
+                 "Once a staged request passes filters for building, it is removed from the staging list.");
+      RTX_OPTION("rtx.opacityMicromap.buildRequests", bool, enableParticles, true, "Enables Opacity Micromaps for particles.");
+      RTX_OPTION("rtx.opacityMicromap.buildRequests", bool, enableAnimatedInstances, false, "Enables Opacity Micromaps for animated instances.");
+
+      RTX_OPTION_ENV("rtx.opacityMicromap.buildRequests", int, minInstanceFrameAge, 1, "DXVK_OPACITY_MICROMAP_MIN_INSTANCE_FRAME_AGE", "Min instance's frame age which to allow building Opacity Micromaps for.");
+      RTX_OPTION("rtx.opacityMicromap.buildRequests", int, maxRequestFrameAge, 300, "Max request frame age to allow building Opacity Micromaps for. Any requests older than this are purged.");
+      RTX_OPTION_ENV("rtx.opacityMicromap.buildRequests", int, minNumFramesRequested, 5, "DXVK_OPACITY_MICROMAP_OMM_BUILD_REQUESTED_MIN_NUM_FRAMES_REQUESTED",
+                     "Min number of frames for a staged Opacity Micromap request before it is allowed to be built.");
+      RTX_OPTION_ENV("rtx.opacityMicromap.buildRequests", int, minNumRequests, 10, "DXVK_OPACITY_MICROMAP_OMM_BUILD_REQUESTED_MIN_NUM_REQUESTS",
+                     "Min number of Opacity Micromap usage requests for a staged Opacity Micromap request before it is allowed to be built.");
+
+      RTX_OPTION("rtx.opacityMicromap.buildRequests", bool, customFiltersForBillboards, true, "Applies custom filters for staged Billboard requests.");
+    };
+
+
+    struct Building {
+      friend class OpacityMicromapManager;
+
+      RTX_OPTION("rtx.opacityMicromap.building", bool, splitBillboardGeometry, true,
+                 "Splits billboard geometry and corresponding Opacity Micromaps to quads for higher reuse.\n"
+                 "Games often batch instanced geometry that reuses same geometry and textures, such as for particles.\n"
+                 "Splitting such batches into unique subgeometries then allows higher reuse of build Opacity Micromaps.");
+      RTX_OPTION("rtx.opacityMicromap.building", int, maxAllowedBillboardsPerInstanceToSplit, 16, "Max billboards per instance to consider for splitting (large value results in increased CPU costs on BLAS builds).");
+
+      RTX_OPTION("rtx.opacityMicromap.building", bool, enableVertexAndTextureOperations, true, "Applies vertex and texture operations during baking.");
+      RTX_OPTION("rtx.opacityMicromap.building", bool, allow2StateOpacityMicromaps, true, "Allows generation of two state Opacity Micromaps.");
+      RTX_OPTION("rtx.opacityMicromap.building", bool, force2StateOpacityMicromaps, false, "Forces generation of two state Opacity Micromaps.");
+      RTX_OPTION("rtx.opacityMicromap.building", int, subdivisionLevel, 8, "Opacity Micromap subdivision level per triangle. ");
+      // Set to 0 as higher values cause bullet decals on a glass panels to miss parts in Portal RTX
+      RTX_OPTION("rtx.opacityMicromap.building", float, decalsMinResolveTransparencyThreshold, 0.f, "Min resolve transparency threshold for decals.");
+
+      // Parameterized to <1% FPS overhead on 4090
+      // Baking: 2 mil ~ 0.15 ms
+      // Building: 10 mil ~ 0.04 ms
+      RTX_OPTION("rtx.opacityMicromap.building", int, maxMicroTrianglesToBakeMillionPerSecond, 60 * 1, "Max Micro Triangles to bake [Million/Second].");
+      RTX_OPTION("rtx.opacityMicromap.building", int, maxMicroTrianglesToBuildMillionPerSecond, 60 * 5, "Max Micro Triangles to build [Million/Second].");
+
+      // Disabled for now as camera cuts occur even on non-camera movements, i.e. when
+      // a plasma ball hits a sink, to avoid increased workload during those moments/gameplay
+      RTX_OPTION_ENV("rtx.opacityMicromap.building", int, numFramesAtStartToBuildWithHighWorkload, 0, "DXVK_OPACITY_MICROMAP_NUM_FRAMES_AT_START_TO_BUILD_WITH_HIGH_WORKLOAD",
+                     "Number of frames at start to to bake and build Opacity Micromaps with high workload multiplier.\n"
+                     "This is used for testing to decrease frame latency for Opacity Micromaps being ready.");
+      RTX_OPTION_ENV("rtx.opacityMicromap.building", int, highWorkloadMultiplier, 20, "DXVK_OPACITY_MICROMAP_HIGH_WORKLOAD_MULTIPLIER",
+                     "High workload multiplier that is applied to number of Opacity Micromaps to bake and build per frame.\n"
+                     "This is used for testing to decrease frame latency for Opacity Micromaps being ready.");
+
+
+      struct ConservativeEstimation {
+        friend class OpacityMicromapManager;
+
+        RTX_OPTION("rtx.opacityMicromap.building.conservativeEstimation", bool, enable, true, "Enables Conservative Estimation of micro triangle opacities.");
+        // Sets a max number of texel taps per microtriangle. Optimally, a mictriangle resolution should be similar to that of the opacity
+        // texture, but, currently, a global subdivision level is used instead for implementation simplicity and, thus, a microtriangle can overlap multiple texels.
+        // To handle this case we allow Opacity Micromap baking shader to do N taps per microtriangle to resolve the opacity state. 
+        // This value must not be too high, however, as it can lead to threads in the baking shader taking too long and causing timeouts. 
+        // 512 taps has been found to cause a timeout. Also if a microtriangle has much smaller resolution that the source texture, there's a higher chance
+        // of the microtriangles covering both fully opaque and fully transparent texels, and being classified in unknown opaque state which eliminates Opacity Micromap
+        // performance benefits. Therefore allowing for high taps baking scenarios has a diminishing return.
+        // FutureWork: perform a configuration optimization on host or GPU processing texture coordinates for each triangle to determine an appropriate Opacity Micromap resolution
+        // per triangle. 
+        RTX_OPTION("rtx.opacityMicromap.building.conservativeEstimation", int, maxTexelTapsPerMicroTriangle, 64,
+                   "Max number of texel taps per micro triangle when Conservative Estimation is enabled.\n"
+                   "Set to 64 as a safer cap. 512 has been found to cause a timeout.\n"
+                   "Any microtriangles requiring more texel taps will be tagged as Opaque Unknown.");
+      };
+    };
+  };
+
   // Encapsulates built opacity micromap buffers used in BLAS
   class DxvkOpacityMicromap : public DxvkResource {
   public:
@@ -51,62 +151,6 @@ namespace dxvk {
 
   private:
     Rc<DxvkDevice> m_device;
-  };
-
-  struct OpacityMicromapSettings {
-    bool showAdvancedOptions = false;
-    bool enableBinding = true;
-    bool enableBakingArrays = true;
-    bool enableBuilding = true;
-    bool enableResetEveryFrame = false;
-    bool enableVertexAndTextureOperations = true;
-    bool allow2StateOpacityMicromaps = true;
-    bool force2StateOpacityMicromaps = false;
-    bool customBuildRequestFilteringForBillboards = true;
-
-    // Scene
-    bool splitBillboardGeometry = true;
-    uint32_t maxAllowedBillboardsPerInstanceToSplit = 16;   // Max billboards per instance to consider for splitting (high # cause a CPU strain on BLAS builds)
-
-    // Cache
-    float maxVidmemSizePercentage = 0.5;    // max % of vidmem size that can be allocated for the budget
-    uint32_t minBudgetSizeMB;         // min budget size 
-    uint32_t maxBudgetSizeMB;         
-    uint32_t minFreeVidmemMBToNotAllocate = 1024; // min of vidmem memory free to not to allocate for the budget
-
-    uint32_t minUsageFrameAgeBeforeEviction = 60 * 15;
-
-    // Build Requests
-    uint32_t maxOmmBuildRequests = 5 * 1000;
-    uint32_t ommBuildRequest_minInstanceFrameAge = 1;
-    uint32_t ommBuildRequest_minNumFramesRequested = 5;
-    uint32_t ommBuildRequest_maxRequestFramesAge = 300;
-    uint32_t ommBuildRequest_minNumRequests = 10;
-    bool enableAnimatedInstances = false;
-    bool enableParticles = true;
-
-    uint32_t subdivisionLevel = 8;
-    float decalsMinResolveTransparencyThreshold = 0.0f; // Set to 0 as higher values cause bullet decals on a glass panels to miss parts in Portal RTX
-    bool enableConservativeEstimation = true;
-    // Sets a max number of texel taps per microtriangle. Optimally, a mictriangle resolution should be similar to that of the opacity
-    // texture, but, currently, a global subdivision level is used instead for implementation simplicity and, thus, a microtriangle can overlap multiple texels.
-    // To handle this case we allow Opacity Micromap baking shader to do N taps per microtriangle to resolve the opacity state. 
-    // This value must not be too high, however, as it can lead to threads in the baking shader taking too long and causing timeouts. 
-    // 512 taps has been found to cause a timeout. Also if a microtriangle has much smaller resolution that the source texture, there's a higher chance
-    // of the microtriangles covering both fully opaque and fully transparent texels, and being classified in unknown opaque state which eliminates Opacity Micromap
-    // performance benefits. Therefore allowing for high taps baking scenarios has a diminishing return.
-    // FutureWork: perform a configuration optimization on host or GPU processing texture coordinates for each triangle to determine an appropriate Opacity Micromap resolution
-    // per triangle. 
-    uint32_t conservativeEstimationMaxTexelTapsPerMicroTriangle;
-
-    // Disabled for now as camera cuts occur even on non-camera movements, i.e. when
-    // a plasma ball hits a sink, to avoid increased workload during those moments/gameplay
-    uint32_t numFramesAtStartToBuildWithHighWorkload = 0;
-    uint32_t workloadHighWorkloadMultiplier = 20;
-
-    // Parameterized to <1% FPS overhead on 4090
-    uint32_t maxMicroTrianglesToBakeMillionPerSecond = 60 * 1;    // 2 mil ~ 0.15 ms on 4090
-    uint32_t maxMicroTrianglesToBuildMillionPerSecond = 60 * 5;  // 10 mil ~ 0.04ms on 4090
   };
 
   enum class OpacityMicromapCacheState {
@@ -128,7 +172,7 @@ namespace dxvk {
     uint32_t numTriangles = UINT32_MAX;
     VkOpacityMicromapFormatEXT ommFormat = VK_OPACITY_MICROMAP_FORMAT_MAX_ENUM_EXT;
 
-    OmmRequest(const RtInstance& _instance, const InstanceManager& instanceManager, const OpacityMicromapSettings& settings, uint32_t _quadSliceIndex = kInvalidIndex);
+    OmmRequest(const RtInstance& _instance, const InstanceManager& instanceManager, uint32_t _quadSliceIndex = kInvalidIndex);
     OmmRequest(OmmRequest&&) = default;
     OmmRequest(const OmmRequest&) = default;
 
@@ -178,7 +222,7 @@ namespace dxvk {
     OpacityMicromapMemoryManager(const Rc<DxvkDevice>& device);
 
     void onFrameStart();
-    void updateMemoryBudget(Rc<DxvkContext> ctx, const OpacityMicromapSettings& settings);
+    void updateMemoryBudget(Rc<DxvkContext> ctx);
 
     bool allocate(VkDeviceSize size);
     VkDeviceSize getAvailable() const;
@@ -250,8 +294,6 @@ namespace dxvk {
 
     void showImguiSettings() const;
 
-    const OpacityMicromapSettings& getSettings() const { return m_settings; }
-
     static bool checkIsOpacityMicromapSupported(Rc<DxvkDevice> device);
 
     bool doesInstanceUseOpacityMicromap(const RtInstance& instance) const;
@@ -286,8 +328,6 @@ namespace dxvk {
     private:
       const RtInstance* instance = nullptr;
     };
-
-    void initSettings();
 
     XXH64_hash_t bindOpacityMicromap(Rc<DxvkCommandList> cmdList, const RtInstance& instance, uint32_t billboardIndex, VkAccelerationStructureGeometryKHR& targetGeometry, const InstanceManager& instanceManager);
 
@@ -336,18 +376,11 @@ namespace dxvk {
 
     Rc<DxvkDevice> m_device;
 
-    // Active baking state
-    bool m_opacityMicromapUseConservativeEstimation = false;
-    uint32_t m_opacityMicromapConservativeEstimationMaxTexelTapsPerMicroTriangle = 0;
-    uint32_t m_subdivisionLevel = 0;
-    bool m_enableVertexAndTextureOperations = false;
-
     // Bound built OMMs need to be synchronized once before being used. 
     // This tracks if any such OMMs have been bound
     bool m_boundOmmsRequireSynchronization = false;
     uint32_t m_numBoundOMMs = 0;
     uint32_t m_numRequestedOMMBindings = 0;
-
 
     std::unordered_map<XXH64_hash_t, InstanceOmmRequests> m_instanceOmmRequests;
 
@@ -382,26 +415,6 @@ namespace dxvk {
     VkDeviceSize m_amountOfMemoryMissing = 0;    // Records how much memory was missing in a frame
     OpacityMicromapMemoryManager m_memoryManager;
     DxvkStagingDataAlloc m_scratchAllocator;
-
-    mutable OpacityMicromapSettings m_settings;
-
-    struct RtxOptionSettings {
-      RTX_OPTION("rtx.opacityMicromap", int, maxOmmBuildRequests, 5 * 1000, "");
-      RTX_OPTION_ENV("rtx.opacityMicromap", int, numFramesAtStartToBuildWithHighWorkload, 0, "DXVK_OPACITY_MICROMAP_NUM_FRAMES_AT_START_TO_BUILD_WITH_HIGH_WORKLOAD", "");
-      RTX_OPTION_ENV("rtx.opacityMicromap", int, workloadHighWorkloadMultiplier, 20, "DXVK_OPACITY_MICROMAP_HIGH_WORKLOAD_MULTIPLIER", "");
-      RTX_OPTION("rtx.opacityMicromap", float, maxVidmemSizePercentage, 0.15, "");
-      RTX_OPTION("rtx.opacityMicromap", int, minFreeVidmemMBToNotAllocate, 2560, "");
-      RTX_OPTION("rtx.opacityMicromap", int, minBudgetSizeMB, 512, "");
-      RTX_OPTION("rtx.opacityMicromap", int, maxBudgetSizeMB, 1536, "");
-      RTX_OPTION_ENV("rtx.opacityMicromap", int, ommBuildRequest_minInstanceFrameAge, 1, "DXVK_OPACITY_MICROMAP_MIN_INSTANCE_FRAME_AGE", "");
-      RTX_OPTION_ENV("rtx.opacityMicromap", int, ommBuildRequest_minNumFramesRequested, 5, "DXVK_OPACITY_MICROMAP_OMM_BUILD_REQUESTED_MIN_NUM_FRAMES_REQUESTED", "");
-      RTX_OPTION_ENV("rtx.opacityMicromap", int, ommBuildRequest_minNumRequests, 10, "DXVK_OPACITY_MICROMAP_OMM_BUILD_REQUESTED_MIN_NUM_REQUESTS", "");
-      RTX_OPTION("rtx.opacityMicromap", int, subdivisionLevel, 8, "");
-      RTX_OPTION("rtx.opacityMicromap", bool, enableResetEveryFrame, false, "");
-      RTX_OPTION("rtx.opacityMicromap", int, conservativeEstimationMaxTexelTapsPerMicroTriangle, 64, "Set to 64 as a safer cap. 512 has been found to cause a timeout.");
-      RTX_OPTION_ENV("rtx.opacityMicromap", bool, enableParticles, true, "DXVK_OPACITY_MICROMAP_ENABLE_PARTICLES", "");
-    };
   };
-
 }  // namespace dxvk
 
