@@ -583,7 +583,7 @@ namespace dxvk {
           *replacement.geometryData, // Note: Geometry Data replaced
           input->getMaterialData(), // Note: Original legacy material data preserved
           transforms,
-          SkinningData(), // We dont currently support skinning of replacements 
+          input->getSkinningState(),
           input->getFogState(),
           input->getStencilEnabledState()
         };
@@ -840,7 +840,9 @@ namespace dxvk {
     // Update the input state, so we always have a reference to the original draw call state
     pBlas->frameLastTouched = m_device->getCurrentFrameId();
 
-    if (drawCallState.getSkinningState().numBones > 0 && (result == ObjectCacheState::KBuildBVH || result == ObjectCacheState::kUpdateBVH)) {
+    if (drawCallState.getSkinningState().numBones > 0 &&
+        drawCallState.getGeometryData().numBonesPerVertex > 0 &&
+        (result == ObjectCacheState::KBuildBVH || result == ObjectCacheState::kUpdateBVH)) {
       m_device->getCommon()->metaGeometryUtils().dispatchSkinning(cmd, ctx, drawCallState, pBlas->modifiedGeometryData);
       pBlas->frameLastUpdated = pBlas->frameLastTouched;
     }
