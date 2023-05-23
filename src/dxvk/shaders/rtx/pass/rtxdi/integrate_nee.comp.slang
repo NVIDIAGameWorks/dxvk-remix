@@ -260,7 +260,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
       storeInDebugView(ivec2(threadIndex), color);
     }
     break;
-  case DEBUG_VIEW_NEE_CACHE_MIN_MAX_CANDIDATE_PROBABILITY:
+  case DEBUG_VIEW_NEE_CACHE_HISTOGRAM:
     if (geometryFlags.primarySelectedIntegrationSurface)
     {
       NEECell cell = NEECache.findCell(minimalSurfaceInteraction.position, false);
