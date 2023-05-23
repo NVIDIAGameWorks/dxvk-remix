@@ -49,6 +49,7 @@
 #include <pxr/usd/usdLux/distantLight.h>
 #include "pxr/usd/usdLux/light.h"
 #include <pxr/usd/usdLux/blackbody.h>
+#include <pxr/usd/usdSkel/bindingAPI.h>
 #include <pxr/usd/usdShade/materialBindingAPI.h>
 #include <pxr/base/arch/fileSystem.h>
 #include "../../lssusd/usd_include_end.h"
@@ -658,6 +659,8 @@ void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
     pxr::VtArray<pxr::GfVec3f> points;
     pxr::VtArray<pxr::GfVec3f> normals;
     pxr::VtArray<pxr::GfVec2f> uvs;
+    pxr::VtArray<float> jointWeights;
+    pxr::VtArray<int> jointIndices;
 
     const bool hasIndices = prim.HasAttribute(kFaceVertexIndices);
     if ((numSubsets <= 1) && !hasIndices) {
@@ -670,6 +673,28 @@ void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
     prim.GetAttribute(kPoints).Get(&points);
     prim.GetAttribute(kNormals).Get(&normals);
     prim.GetAttribute(kInvertedUvs).Get(&uvs);
+    
+    size_t numBones = 0;
+    if (prim.HasAPI<pxr::UsdSkelBindingAPI>()) {
+      pxr::UsdSkelBindingAPI skelBinding(prim);
+      pxr::UsdGeomPrimvar jointIndicesPV = skelBinding.GetJointIndicesPrimvar();
+      pxr::UsdGeomPrimvar jointWeightsPV = skelBinding.GetJointWeightsPrimvar();
+      numBones = jointIndicesPV.GetElementSize();
+      if (numBones > 4) {
+        Logger::err(str::format("Prim: ", prim.GetPath().GetString(), ", has more than 4 bones per vertex.  Falling back to 4 bones per vertex."));
+        // Should be safe to fall back to just 4 bones, though vertices with more bound bones will animate wrong.
+        numBones = 4;
+      }
+      if (!jointWeightsPV.HasValue()) {
+        Logger::err(str::format("Prim: ", prim.GetPath().GetString(), ", has Skeleton API but no joint weights."));
+      }
+      if (jointWeightsPV.GetElementSize() != numBones) {
+        Logger::err(str::format("Prim: ", prim.GetPath().GetString(), ", joint indices and joint weights must have matching element sizes."));
+      }
+      // TODO need to check that jointWeights exists.
+      jointIndicesPV.Get(&jointIndices);
+      jointWeightsPV.Get(&jointWeights);
+    }
 
     if (points.size() == 0) {
       Logger::err(str::format("Prim: ", prim.GetPath().GetString(), ", does not have positional vertices, this is currently a requirement."));
@@ -684,8 +709,18 @@ void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
       Logger::warn(str::format("Prim: ", prim.GetPath().GetString(), "'s position array length doesn't match uv array's, skip uv data."));
     }
 
+    if (!jointIndices.empty() && points.size() * numBones != jointIndices.size()) {
+      Logger::warn(str::format("Prim: ", prim.GetPath().GetString(), "'s num positions (", points.size(),") * bonesPerVertex (", numBones,") doesn't match num jointIndices (", jointIndices.size(),"), skip jointIndices data."));
+    }
+
+    if (!jointWeights.empty() && points.size() * numBones != jointWeights.size()) {
+      Logger::warn(str::format("Prim: ", prim.GetPath().GetString(), "'s num positions (", points.size(), ") * bonesPerVertex (", numBones, ") doesn't match num jointWeights (", jointIndices.size(), "), skip jointWeights data."));
+    }
+
     bool isNormalValid = !normals.empty() && points.size() == normals.size();
     bool isUVValid = !uvs.empty() && points.size() == uvs.size();
+    bool isJointIndicesValid = !jointIndices.empty() && points.size() * numBones == jointIndices.size();
+    bool isJointWeightsValid = !jointWeights.empty() && points.size() * numBones == jointWeights.size();
 
     newGeomData.vertexCount = points.size();
 
@@ -693,12 +728,16 @@ void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
     const size_t pointsSize = sizeof(pxr::GfVec3f);
     const size_t normalsSize = isNormalValid ? sizeof(pxr::GfVec3f) : 0;
     const size_t uvSize = isUVValid ? sizeof(pxr::GfVec2f) : 0;
-    const size_t vertexStructureSize = pointsSize + normalsSize + uvSize;
+    const size_t jointIndicesSize = isJointIndicesValid ? sizeof(uint32_t): 0;
+    const size_t jointWeightsSize = isJointWeightsValid ? sizeof(float) * (numBones - 1) : 0; // last weight is 1 minus the other weights
+    const size_t vertexStructureSize = pointsSize + normalsSize + uvSize + jointIndicesSize + jointWeightsSize;
 
     const size_t indexOffset = 0;
     const size_t pointsOffset = dxvk::align(indexSize, CACHE_LINE_SIZE);
     const size_t normalsOffset = pointsOffset + pointsSize;
     const size_t uvOffset = normalsOffset + normalsSize;
+    const size_t jointIndicesOffset = uvOffset + uvSize;
+    const size_t jointWeightsOffset = jointIndicesOffset + jointIndicesSize;
 
     const size_t indexSliceSize = dxvk::align(indexSize, CACHE_LINE_SIZE);
     const size_t vertexSliceSize = dxvk::align(vertexStructureSize * newGeomData.vertexCount, CACHE_LINE_SIZE);
@@ -767,6 +806,21 @@ void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
         (*pBaseVertexData++) = uvs[i][0];
         (*pBaseVertexData++) = uvs[i][1];
       }
+
+      if (isJointIndicesValid) {
+        uint32_t vertIndices = 0;
+        for (int j = 0; j < numBones; ++j) {
+          vertIndices |= jointIndices[i * numBones + j] << 8 * j;
+        }
+        memcpy(pBaseVertexData, &vertIndices, sizeof(float));
+        pBaseVertexData++;
+      }
+
+      if (isJointWeightsValid) {
+        for (int j = 0; j < numBones - 1; ++j) {
+          (*pBaseVertexData++) = jointWeights[i * numBones + j];
+        }
+      }
     }
 
     // Create the snapshots
@@ -779,6 +833,23 @@ void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
     if (isUVValid) {
       newGeomData.texcoordBuffer = RasterBuffer(vertexSlice, uvOffset - vertexSlice.offset(), vertexStructureSize, VK_FORMAT_R32G32B32_SFLOAT);
       newGeomData.hashes[HashComponents::VertexTexcoord] = ++m_replacedCount;
+    }
+
+    if (isJointIndicesValid) {
+      newGeomData.blendIndicesBuffer = RasterBuffer(vertexSlice, jointIndicesOffset - vertexSlice.offset(), vertexStructureSize, VK_FORMAT_R8G8B8A8_USCALED);
+    }
+
+    if (isJointWeightsValid) {
+      VkFormat format = VK_FORMAT_R32_SFLOAT;
+      if (numBones == 3) {
+        format = VK_FORMAT_R32G32_SFLOAT;
+      } else if (numBones == 4) {
+        format = VK_FORMAT_R32G32B32_SFLOAT;
+      }
+      newGeomData.blendWeightBuffer = RasterBuffer(vertexSlice, jointWeightsOffset - vertexSlice.offset(), vertexStructureSize, format);
+      
+      // Note: only want to set this when there are actually weights, as it triggers the replacement to be skinned.
+      newGeomData.numBonesPerVertex = numBones;
     }
     
     newGeomData.hashes[HashComponents::VertexPosition] = ++m_replacedCount;
