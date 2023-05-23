@@ -172,6 +172,7 @@ namespace dxvk {
     template<typename T>
     DxvkBufferSlice processIndexBuffer(const uint32_t indexCount, const uint32_t startIndex, const DxvkBufferSliceHandle& indexSlice, uint32_t& minIndex, uint32_t& maxIndex);
 
+    DxvkBufferSlice allocVertexCaptureBuffer(const VkDeviceSize size);
     void prepareVertexCapture(RasterGeometry& geoData, const int vertexIndexOffset);
 
     void processVertices(const VertexContext vertexContext[caps::MaxStreams], int vertexIndexOffset, uint32_t idealTexcoordIndex, RasterGeometry& geoData);
