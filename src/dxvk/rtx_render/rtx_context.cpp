@@ -1168,6 +1168,7 @@ namespace dxvk {
     constants.enableNeeCacheMIS = neeCache.enableMIS();
     constants.enableNeeCacheInFirstBounce = neeCache.enableInFirstBounce();
     constants.enableNeeCacheInHigherBounces = neeCache.enableInHigherBounces();
+    constants.enableNeeCacheRandomReplacement = neeCache.enableRandomReplacement();
     constants.neeCacheRange = neeCache.range();
     constants.surfaceCount = getSceneManager().getAccelManager().getSurfaceCount();
 

@@ -78,7 +78,7 @@ struct NEECandidate
 
   [mutating] void setSampleThreshold(float16_t threshold)
   {
-    uint thresholdI = threshold * 255.0f;
+    uint thresholdI = min(uint(threshold * 255.0f), 255);
     m_data.x = (m_data.x & 0xffffff) | (thresholdI << 24);
   }
 

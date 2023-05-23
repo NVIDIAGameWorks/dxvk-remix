@@ -85,6 +85,7 @@ namespace dxvk {
     ImGui::Checkbox("Enable MIS", &enableMISObject());
     ImGui::Checkbox("Enable in First Bounce", &enableInFirstBounceObject());
     ImGui::Checkbox("Enable in Higher Bounces", &enableInHigherBouncesObject());
+    ImGui::Checkbox("Enable Random Replacement", &enableRandomReplacementObject());
     ImGui::DragFloat("Cache Range", &rangeObject(), 1.f, 0.1f, 10000000.0f, "%.3f");
   }
 
