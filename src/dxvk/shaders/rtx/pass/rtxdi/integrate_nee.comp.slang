@@ -264,42 +264,42 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
     if (geometryFlags.primarySelectedIntegrationSurface)
     {
       NEECell cell = NEECache.findCell(minimalSurfaceInteraction.position, false);
-      vec3 color = 0;
+      ivec3 cellID = NEECache.pointToCell(minimalSurfaceInteraction.position, false);
+      vec3 color = (surface.opaqueSurfaceMaterialInteraction.albedo + surface.opaqueSurfaceMaterialInteraction.baseReflectivity);
+      if (all(cellID != -1))
+      {
+        color = lerp(color, vec3(cellID + 1) / RADIANCE_CACHE_PROBE_RESOLUTION, 0.9);
+      }
       if (cell.isValid())
       {
-        ivec2 tileID = threadIndex / 5;
-        bool isMax = ((tileID.x + tileID.y) & 0x1) == 0;
-        int count = cell.getCandidateCount();
-        float lastSampleThreshold = 0;
-        float extremeValue = isMax ? 0 : 1;
-        for (int i = 0; i < count; ++i)
+        const ivec2 histogramSize = ivec2(100);
+        const ivec2 histogramPixel = vec2(threadIndex.x, cb.camera.resolution.y - threadIndex.y) % histogramSize;
+        const int padding = 2;
+        if (all(histogramPixel > ivec2(padding)) && all(histogramPixel < ivec2(histogramSize - padding)))
         {
-          NEECandidate candidiate = cell.getCandidate(i);
+          int maxBinCount = NEECell.getMaxCandidateCount();
+          const ivec2 binPixel = histogramPixel - padding;
+          const int binWidth = (histogramSize.x - padding * 2) / maxBinCount;
+          const int binHeight = histogramSize.y - padding * 2;
+          int binIndex = binPixel.x / binWidth;
+          NEECandidate candidiate = cell.getCandidate(binIndex);
           float sampleThreshold = candidiate.getSampleThreshold();
-          float prob = sampleThreshold - lastSampleThreshold;
-          lastSampleThreshold = sampleThreshold;
-          extremeValue = isMax ? max(extremeValue, prob) : min(extremeValue, prob);
-          if (prob < 0 || prob > 1)
+          float lastSampleThreshold = 0;
+          if (binIndex > 0)
           {
-            extremeValue = -1;
-            break;
+            NEECandidate candidiate = cell.getCandidate(binIndex - 1);
+            lastSampleThreshold = candidiate.getSampleThreshold();
           }
-        }
-        if (extremeValue == -1)
-        {
-          color = 0.0;
-        }
-        else if (extremeValue == 0)
-        {
-          color = vec3(0,0,0.5);
-        }
-        else if (extremeValue == 1)
-        {
-          color = vec3(1,1,0);
+          float probability = sampleThreshold - lastSampleThreshold;
+          int pixelThreshold = binHeight * probability;
+          if (histogramPixel.y < pixelThreshold)
+          {
+            color = (dot(cellID, 1) & 0x1) ? vec3(1, 0.5, 0) : vec3(0,0,1);
+          }
         }
         else
         {
-          color = lerp(vec3(0,0,1), vec3(1,0.5,0), extremeValue);
+          color *= 0.8;
         }
       }
       storeInDebugView(ivec2(threadIndex), color);
