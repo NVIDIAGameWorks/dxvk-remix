@@ -96,10 +96,6 @@ namespace dxvk {
     this->deviceLocalConstantBuffers    = config.getOption<bool>        ("d3d9.deviceLocalConstantBuffers",    false);
     this->maxEnabledLights              = config.getOption<int32_t>     ("d3d9.maxEnabledLights",              caps::MaxEnabledLights);
     
-    // NV-DXVK start: force app geometry data into host memory
-    this->hostMemoryForGeometry = config.getOption<bool>("d3d9.hostMemoryForGeometry", true);
-    // NV-DXVK end
- 
     // If we are not Nvidia, enable general hazards.
     this->generalHazards = adapter != nullptr
                         && !adapter->matchesDriver(

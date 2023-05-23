@@ -87,6 +87,16 @@ namespace dxvk {
     return stagingSlice;
   }
 
+  DxvkBufferSlice D3D9Rtx::allocVertexCaptureBuffer(const VkDeviceSize size) {
+    DxvkBufferCreateInfo info;
+    info.usage = VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+    info.access = VK_ACCESS_TRANSFER_READ_BIT;
+    info.stages = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT;
+    info.size = size;
+
+    return DxvkBufferSlice(m_parent->GetDXVKDevice()->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppBuffer));
+  }
+
   void D3D9Rtx::prepareVertexCapture(RasterGeometry& geoData, const int vertexIndexOffset) {
     ScopedCpuProfileZone();
 
@@ -114,9 +124,9 @@ namespace dxvk {
 
     // Known stride for vertex capture buffers
     const uint32_t stride = sizeof(CapturedVertex);
-    const size_t vertexCaptureDataSize = geoData.vertexCount * stride;
+    const size_t vertexCaptureDataSize = align(geoData.vertexCount * stride, CACHE_LINE_SIZE);
 
-    D3D9BufferSlice buf = m_parent->AllocTempBuffer<false, true>(vertexCaptureDataSize);
+    DxvkBufferSlice slice = allocVertexCaptureBuffer(vertexCaptureDataSize);
 
     // Fill in buffer view info
     DxvkBufferViewCreateInfo viewInfo;
@@ -125,23 +135,23 @@ namespace dxvk {
     viewInfo.rangeLength = vertexCaptureDataSize;
 
     // Create underlying buffer view object
-    Rc<DxvkBufferView> bufferView = m_parent->GetDXVKDevice()->createBufferView(buf.slice.buffer(), viewInfo);
+    Rc<DxvkBufferView> bufferView = m_parent->GetDXVKDevice()->createBufferView(slice.buffer(), viewInfo);
 
-    geoData.positionBuffer = RasterBuffer(buf.slice, 0, stride, VK_FORMAT_R32G32B32A32_SFLOAT);
+    geoData.positionBuffer = RasterBuffer(slice, 0, stride, VK_FORMAT_R32G32B32A32_SFLOAT);
     assert(geoData.positionBuffer.offset() % 4 == 0);
 
     // Did we have a texcoord buffer bound for this draw?  Note, we currently get texcoord from the vertex shader output 
     if (BoundShaderHas(vertexShader, DxsoUsage::Texcoord, false) && (!geoData.texcoordBuffer.defined() || !RtxGeometryUtils::isTexcoordFormatValid(geoData.texcoordBuffer.vertexFormat()))) {
       // Known offset for vertex capture buffers
       const uint32_t texcoordOffset = offsetof(CapturedVertex, texcoord0);
-      geoData.texcoordBuffer = RasterBuffer(buf.slice, texcoordOffset, stride, VK_FORMAT_R32G32_SFLOAT);
+      geoData.texcoordBuffer = RasterBuffer(slice, texcoordOffset, stride, VK_FORMAT_R32G32_SFLOAT);
       assert(geoData.texcoordBuffer.offset() % 4 == 0);
     }
 
     // Check if we should/can get normals.  We don't see a lot of games sending normals to pixel shader, so we must capture from the IA output (or Vertex input)
     if (BoundShaderHas(vertexShader, DxsoUsage::Normal, true) && useVertexCapturedNormals()) {
       const uint32_t normalOffset = offsetof(CapturedVertex, normal0);
-      geoData.normalBuffer = RasterBuffer(buf.slice, normalOffset, stride, VK_FORMAT_R32G32B32_SFLOAT);
+      geoData.normalBuffer = RasterBuffer(slice, normalOffset, stride, VK_FORMAT_R32G32B32_SFLOAT);
       assert(geoData.normalBuffer.offset() % 4 == 0);
     } else {
       geoData.normalBuffer = RasterBuffer();
