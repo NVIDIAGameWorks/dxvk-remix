@@ -306,13 +306,20 @@ LightSample getLightSampleFromTriangle(int surfaceIndex, int primitiveIndex, vec
   {
     OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
 #if USE_SIMIPLIFIED_MODEL
-    opaqueSurfaceMaterial.spriteSheetFPS = 0;
     opaqueSurfaceMaterial.albedoOpacityTextureIndex = BINDING_INDEX_INVALID;
     opaqueSurfaceMaterial.normalTextureIndex = BINDING_INDEX_INVALID;
     opaqueSurfaceMaterial.tangentTextureIndex = BINDING_INDEX_INVALID;
     opaqueSurfaceMaterial.roughnessTextureIndex = BINDING_INDEX_INVALID;
     opaqueSurfaceMaterial.metallicTextureIndex = BINDING_INDEX_INVALID;
-    opaqueSurfaceMaterial.flags &= ~OPAQUE_SURFACE_MATERIAL_FLAG_USE_THIN_FILM_LAYER;
+    opaqueSurfaceMaterial.anisotropy = 1.0;
+    opaqueSurfaceMaterial.albedoOpacityConstant = 0.0;
+    opaqueSurfaceMaterial.roughnessConstant = 0.0;
+    opaqueSurfaceMaterial.metallicConstant = 0.0;
+    opaqueSurfaceMaterial.spriteSheetRows = 0;
+    opaqueSurfaceMaterial.spriteSheetCols = 0;
+    opaqueSurfaceMaterial.spriteSheetFPS = 0;
+    opaqueSurfaceMaterial.thinFilmThicknessConstant = 0.0;
+    opaqueSurfaceMaterial.flags = 0;
 #endif
 
     const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
