@@ -142,6 +142,10 @@ struct RasterGeometry {
   uint32_t vertexCount = 0;
   uint32_t indexCount = 0;
 
+  // Copy of the bones per vertex from SkinningState.
+  // This allows replacements to have different values from the original.
+  uint32_t numBonesPerVertex = 0;
+
   // Hashed values
   VkPrimitiveTopology topology = VkPrimitiveTopology(0);
   VkCullModeFlags cullMode = VkCullModeFlags(0);
