@@ -547,16 +547,20 @@ void geometryResolverOutputDebugView(
 
   case DEBUG_VIEW_EMISSIVE_FLUX:
   {
-    f16vec3 emissiveRadiance = f16vec3(0.0f);
+    vec3 lightFlux = f16vec3(0.0f);
 
     if (materialType == surfaceMaterialTypeOpaque)
     {
-      float lightObjectPdf = 1.0;
-      LightSample lightSample = getLightSampleFromTriangle(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex, vec2(0.3), lightObjectPdf, surfaceInteraction.position);
-      emissiveRadiance = lightSample.radiance;
+      // float lightObjectPdf = 1.0;
+      // LightSample lightSample = getLightSampleFromTriangle(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex, vec2(0.3), lightObjectPdf, surfaceInteraction.position);      
+      // lightFlux = lightSample.radiance;
+
+      vec3 triangleCenter;
+      f16vec3 triangleNormal;
+      getTriangleLightFlux(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex, triangleCenter, triangleNormal, lightFlux);
     }
 
-    storeInDebugView(pixelCoordinate, emissiveRadiance * surfaceInteraction.triangleArea);
+    storeInDebugView(pixelCoordinate, lightFlux);
     break;
   }
   case DEBUG_VIEW_SURFACE_AREA:
