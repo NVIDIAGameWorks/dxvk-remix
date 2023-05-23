@@ -74,12 +74,12 @@ namespace dxvk {
     RTX_OPTION("rtx", float, fogColorScale, 0.25f, "");
     RTX_OPTION("rtx", float, maxFogDistance, 65504.f, "");
 
-    RTX_OPTION("rtx", bool, compositePrimaryDirectDiffuse, true, "");
-    RTX_OPTION("rtx", bool, compositePrimaryDirectSpecular, true, "");
-    RTX_OPTION("rtx", bool, compositePrimaryIndirectDiffuse, true, "");
-    RTX_OPTION("rtx", bool, compositePrimaryIndirectSpecular, true, "");
-    RTX_OPTION("rtx", bool, compositeSecondaryCombinedDiffuse, true, "");
-    RTX_OPTION("rtx", bool, compositeSecondaryCombinedSpecular, true, "");
+    RTX_OPTION("rtx", bool, compositePrimaryDirectDiffuse, true, "Enables direct lightning's diffuse signal for primary surfaces in the final composite.");
+    RTX_OPTION("rtx", bool, compositePrimaryDirectSpecular, true, "Enables direct lightning's specular signal for primary surfaces in the final composite.");
+    RTX_OPTION("rtx", bool, compositePrimaryIndirectDiffuse, true, "Enables indirect lightning's diffuse signal for primary surfaces in the final composite.");
+    RTX_OPTION("rtx", bool, compositePrimaryIndirectSpecular, true, "Enables indirect lightning's specular signal for primary surfaces in the final composite.");
+    RTX_OPTION("rtx", bool, compositeSecondaryCombinedDiffuse, true, "Enables combined direct and indirect lightning's diffuse signal for secondary surfaces in the final composite.");
+    RTX_OPTION("rtx", bool, compositeSecondaryCombinedSpecular, true, "Enables combined direct and indirect lightning's specular signal for secondary surfaces in the final composite.");
 
     RW_RTX_OPTION("rtx", bool, enableStochasticAlphaBlend, true, "Use stochastic alpha blend.");
     RTX_OPTION("rtx", float, stochasticAlphaBlendOpacityThreshold, 0.95f, "Max opacity to use stochastic alpha blend.");
@@ -100,10 +100,6 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, usePostFilter, true, "Uses post filter to remove fireflies in the denoised result.");
     RTX_OPTION("rtx", float, postFilterThreshold, 3.0f, "Clamps a pixel when its luminance exceeds x times of the average.");
 
-    RTX_OPTION("rtx", float, noiseMixRatio, 0.2f, "");
-    RTX_OPTION("rtx", float, noiseNormalPower, 0.5f, "");
-    RTX_OPTION("rtx", float, noiseClampLow, 0.5f, "");
-    RTX_OPTION("rtx", float, noiseClampHigh, 2.0f, "");
     RTX_OPTION("rtx", bool,  enableDLSSEnhancement, true, "Enhances lighting details when DLSS is on.");
     RTX_OPTION("rtx", float, dlssEnhancementDirectLightPower, 0.7f, "The overall strength of direct lighting enhancement.");
     RTX_OPTION("rtx", float, dlssEnhancementIndirectLightPower, 1.0f, "The overall strength of indirect lighting enhancement.");

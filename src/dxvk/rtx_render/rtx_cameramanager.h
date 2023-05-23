@@ -80,8 +80,8 @@ namespace dxvk
     std::unordered_map<XXH64_hash_t, CameraType::Enum> m_cameraHashToType;
     CameraType::Enum m_lastSetCameraType = CameraType::Unknown;
 
-    RTX_OPTION("rtx", bool, rayPortalEnabled, false, "");
-    RTX_OPTION("rtx.camera", bool, trackCamerasSeenStats, false, "");
+    RTX_OPTION("rtx", bool, rayPortalEnabled, false, "Enables ray portal support. Note this requires portal texture hashes to be set for the ray portal geometries in rtx.rayPortalModelTextureHashes.");
+    RTX_OPTION("rtx.camera", bool, trackCamerasSeenStats, false, "Enables tracking and reporting of statistics for Cameras seen within a frame.");
 
     std::string m_projParamsSeen;
     std::string m_lastProjParamsSeen;
