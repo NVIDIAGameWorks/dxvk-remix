@@ -293,9 +293,9 @@ namespace dxvk {
     const bool result = texture->mipCount == 1 && (extent.width * extent.height >= 512 * 512);
 
     if (result) {
-      ONCE(Logger::warn(str::format("A suboptimal replacement texture detected: ",
+      Logger::warn(str::format("A suboptimal replacement texture detected: ",
                                     texture->assetData->info().filename,
-                                    "! Please make sure all replacement textures have mip-maps.")));
+                                    "! Please make sure all replacement textures have mip-maps."));
     }
 
     return result;

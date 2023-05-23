@@ -139,6 +139,8 @@ namespace dxvk {
 
     SkinningArgs params {};
 
+    assert(drawCallState.getGeometryData().blendWeightBuffer.defined());
+
     memcpy(&params.bones[0], &drawCallState.getSkinningState().pBoneMatrices[0], sizeof(Matrix4) * drawCallState.getSkinningState().numBones);
 
     params.dstPositionStride = geo.positionBuffer.stride();
@@ -158,7 +160,7 @@ namespace dxvk {
     params.blendIndicesOffset = drawCallState.getGeometryData().blendIndicesBuffer.offsetFromSlice();
     params.numVertices = geo.vertexCount;
     params.useIndices = drawCallState.getGeometryData().blendIndicesBuffer.defined() ? 1 : 0;
-    params.numBones = drawCallState.getSkinningState().numBonesPerVertex;
+    params.numBones = drawCallState.getGeometryData().numBonesPerVertex;
 
     // At some point, its more efficient to do these calculations on the GPU, this limit is somewhat arbitrary however, and might require better tuning...
     const uint32_t kNumVerticesToProcessOnCPU = 256;

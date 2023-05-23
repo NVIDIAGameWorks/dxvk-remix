@@ -804,6 +804,9 @@ namespace dxvk {
         skinningData.numBones = 0;
         skinningData.numBonesPerVertex = 0;
       }
+      
+      // Store the numBonesPerVertex in the RasterGeometry as well to allow it to be overridden
+      geoData.numBonesPerVertex = skinningData.numBonesPerVertex;
 
       // Reset the future
       m_rtState.futureSkinningData = std::shared_future<SkinningData>();
