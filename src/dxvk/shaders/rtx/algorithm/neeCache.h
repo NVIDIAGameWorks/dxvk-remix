@@ -28,6 +28,8 @@
 
 #ifndef __cplusplus
 
+#include "rtx/algorithm/neecache_light.slangh"
+
 struct NEECandidate
 {
   uint2 m_data;
@@ -333,20 +335,6 @@ struct NEECache
   {
     return RadianceCacheThreadTask[pixel];
   }
-}
-
-vec2 uvToBary(vec2 uv)
-{
-  return uv.x + uv.y < 1 ? uv : 1 - uv.yx;
-}
-
-float getLightSamplingSolidAnglePDF(float triangleArea, vec3 samplePosition, f16vec3 sampleNormal, vec3 surfacePosition)
-{
-  float areaPdf = 1.0 / triangleArea;
-  vec3 offset = samplePosition - surfacePosition;
-  float r2 = dot(offset, offset);
-  float cosPhi = abs(dot(normalize(offset), sampleNormal));
-  return cosPhi > 0 ? areaPdf * r2 / cosPhi : 0;
 }
 
 #endif

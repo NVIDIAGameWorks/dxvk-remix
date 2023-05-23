@@ -36,6 +36,7 @@
 #include "rtx/algorithm/resolve.slangh"
 #include "rtx/algorithm/volume_lighting.slangh"
 #include "rtx/pass/post_fx/post_fx_motion_blur_geometry_flags.slangh"
+#include "rtx/algorithm/neecache_light.slangh"
 
 // Geometry Resolver Helper Constants
 
@@ -527,7 +528,7 @@ void geometryResolverOutputDebugView(
 
     break;
   case DEBUG_VIEW_EMISSIVE_RADIANCE:
-  case DEBUG_VIEW_EMISSIVE_FLUX:
+  {
     f16vec3 emissiveRadiance = f16vec3(0.0f);
 
     if (materialType == surfaceMaterialTypeOpaque)
@@ -538,10 +539,26 @@ void geometryResolverOutputDebugView(
     {
       emissiveRadiance = translucentSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction).emissiveRadiance;
     }
-    
-    storeInDebugView(pixelCoordinate, emissiveRadiance * (cb.debugView == DEBUG_VIEW_EMISSIVE_FLUX ? surfaceInteraction.triangleArea: 1.0));
+
+    storeInDebugView(pixelCoordinate, emissiveRadiance * (cb.debugView == DEBUG_VIEW_EMISSIVE_FLUX ? surfaceInteraction.triangleArea : 1.0));
 
     break;
+  }
+
+  case DEBUG_VIEW_EMISSIVE_FLUX:
+  {
+    f16vec3 emissiveRadiance = f16vec3(0.0f);
+
+    if (materialType == surfaceMaterialTypeOpaque)
+    {
+      float lightObjectPdf = 1.0;
+      LightSample lightSample = getLightSampleFromTriangle(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex, vec2(0.3), lightObjectPdf, surfaceInteraction.position);
+      emissiveRadiance = lightSample.radiance;
+    }
+
+    storeInDebugView(pixelCoordinate, emissiveRadiance * surfaceInteraction.triangleArea);
+    break;
+  }
   case DEBUG_VIEW_SURFACE_AREA:
     storeInDebugView(pixelCoordinate, surfaceInteraction.triangleArea);
     break;
