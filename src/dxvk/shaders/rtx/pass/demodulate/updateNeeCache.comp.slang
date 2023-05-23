@@ -136,7 +136,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   // load new id to shared memory
   int taskCount = cell.getTaskCount();
   int taskID = localIndex.x;  
-  int2 task = mapIDData(cell.getTask(taskID));
+  int2 task = taskID < taskCount ? mapIDData(cell.getTask(taskID)) : -1;
   s_srcTaskList[taskID] = task;
 
   // load old id to shared memory
@@ -206,8 +206,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   // sort tasks
   if (localIndex.x == 0 && localIndex.y == 0)
   {
-    // if (cb.debugKnob.z == 0)
-    if(1)
+    if(!cb.enableNeeCacheRandomReplacement)
     {
       for (int i = 0; i < s_tarTaskCount-1; ++i)
       {
