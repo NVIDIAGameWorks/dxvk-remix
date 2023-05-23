@@ -566,8 +566,9 @@ void geometryResolverOutputDebugView(
     if (materialType == surfaceMaterialTypeOpaque)
     {
       float lightObjectPdf = 1.0;
+      vec3 baryCentrics = uintToBarycentrics(rayInteraction.barycentricCoordinates);
       LightSample lightSample = getLightSampleFromTriangle(
-        rayInteraction.surfaceIndex, rayInteraction.primitiveIndex, surfaceInteraction.textureCoordinates, lightObjectPdf, cameraGetWorldPosition(cb.camera));      
+        rayInteraction.surfaceIndex, rayInteraction.primitiveIndex, baryCentrics.yz, lightObjectPdf, cameraGetWorldPosition(cb.camera));      
       sampleRadiance = lightSample.radiance * lightSample.solidAnglePdf;
     }
 
