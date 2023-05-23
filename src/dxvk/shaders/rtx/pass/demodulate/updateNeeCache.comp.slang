@@ -71,48 +71,27 @@ float getTriangleLight(uint2 data, vec3 cellCenter, inout RNG randomState)
   float triangleLight = 0;
   if (surfaceIndex >= 0 && surfaceIndex != BINDING_INDEX_INVALID && /*surfaceIndex < cb.surfaceCount &&*/ primitiveIndex >= 0)
   {
-    SURFACE_CREATE_READ(emissiveSurface0, surfaceIndex, surfaces);    
-    Surface emissiveSurface = emissiveSurface0;
-    RayInteraction emissiveRayInteracton = {};
-    emissiveRayInteracton.frontHit = true;
-    emissiveRayInteracton.barycentricCoordinates = barycentricsToUint(uvToBary(vec2(1.0 / 3.0)));
-    emissiveRayInteracton.primitiveIndex = primitiveIndex;
+    vec3 triangleCenter;
+    vec3 lightFlux;
+    f16vec3  triangleNormal;
+    getTriangleLightFlux(surfaceIndex, primitiveIndex, triangleCenter, triangleNormal, lightFlux);
 
-    Ray ray;
-    ray.direction = f16vec3(1.0);
-    SurfaceInteraction emissiveSurfaceInteraction = surfaceInteractionCreate(emissiveSurface, emissiveRayInteracton, ray, false, false);
-
-    const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[emissiveSurface.surfaceMaterialIndex];
-    const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
-
-    if (polymorphicType == surfaceMaterialTypeOpaque)
-    {
-      OpaqueSurfaceMaterial emissiveOpaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(emissiveSurface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
-      const OpaqueSurfaceMaterialInteraction emissiveOpaqueSurfaceMaterialInteraction =
-        opaqueSurfaceMaterialInteractionCreate(emissiveOpaqueSurfaceMaterial, emissiveSurface, emissiveSurfaceInteraction, emissiveRayInteracton);
-
-      if (any(emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance > f16vec3(0)))
-      {
-        vec3 offset = emissiveSurfaceInteraction.position - cellCenter;
-        float cellSize = NEECache.getCellSize() * 0.5;
-        float g = 0;
+    vec3 offset = triangleCenter - cellCenter;
+    float cellSize = NEECache.getCellSize() * 0.5;
+    float g = 0;
 #if 0
-        g = getGeometricTerm(cellCenter, emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal);
+    g = getGeometricTerm(cellCenter, triangleCenter, triangleNormal);
 #else
-        g += getGeometricTerm(cellCenter + vec3(cellSize, 0, 0), emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal);
-        g += getGeometricTerm(cellCenter + vec3(-cellSize, 0, 0), emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal);
-        g += getGeometricTerm(cellCenter + vec3(0, cellSize, 0), emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal);
-        g += getGeometricTerm(cellCenter + vec3(0, -cellSize, 0), emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal);
-        g += getGeometricTerm(cellCenter + vec3(0, 0, cellSize), emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal);
-        g += getGeometricTerm(cellCenter + vec3(0, 0, -cellSize), emissiveSurfaceInteraction.position, emissiveSurfaceInteraction.triangleNormal);
-        g /= 6.0;
+    g += getGeometricTerm(cellCenter + vec3(cellSize, 0, 0), triangleCenter, triangleNormal);
+    g += getGeometricTerm(cellCenter + vec3(-cellSize, 0, 0), triangleCenter, triangleNormal);
+    g += getGeometricTerm(cellCenter + vec3(0, cellSize, 0), triangleCenter, triangleNormal);
+    g += getGeometricTerm(cellCenter + vec3(0, -cellSize, 0), triangleCenter, triangleNormal);
+    g += getGeometricTerm(cellCenter + vec3(0, 0, cellSize), triangleCenter, triangleNormal);
+    g += getGeometricTerm(cellCenter + vec3(0, 0, -cellSize), triangleCenter, triangleNormal);
+    g /= 6.0;
 #endif
-        float triangleArea = emissiveSurfaceInteraction.triangleArea;      
-        float luminance = calcBt709Luminance(emissiveOpaqueSurfaceMaterialInteraction.emissiveRadiance);
-        triangleLight = luminance * triangleArea * g;
-        triangleLight = clamp(triangleLight,0, floatMax / 32.0);
-      }
-    }
+    triangleLight = calcBt709Luminance(lightFlux) * g;
+    triangleLight = clamp(triangleLight, 0, floatMax / 32.0);
   }
   return triangleLight;
 }

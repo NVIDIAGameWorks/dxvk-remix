@@ -114,3 +114,32 @@ LightSample getLightSampleFromTriangle(int surfaceIndex, int primitiveIndex, vec
   }
   return lightSample;
 }
+
+void getTriangleLightFlux(int surfaceIndex, int primitiveIndex, out vec3 triangleCenter, out f16vec3 triangleNormal, out vec3 lightFlux)
+{
+  SURFACE_CREATE_READ(surface0, surfaceIndex, surfaces);    
+  Surface surface = surface0;
+  RayInteraction rayInteracton = {};
+  rayInteracton.frontHit = true;
+  rayInteracton.barycentricCoordinates = barycentricsToUint(uvToBary(vec2(1.0 / 3.0)));
+  rayInteracton.primitiveIndex = primitiveIndex;
+
+  Ray ray;
+  ray.direction = f16vec3(1.0);
+  SurfaceInteraction surfaceInteraction = surfaceInteractionCreate(surface, rayInteracton, ray, false, false);
+  triangleCenter = surfaceInteraction.position;
+  triangleNormal = surfaceInteraction.triangleNormal;
+  lightFlux = vec3(0);
+
+  const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
+  const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
+
+  if (polymorphicType == surfaceMaterialTypeOpaque)
+  {
+    OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
+    const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
+      opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteracton);
+
+    lightFlux = opaqueSurfaceMaterialInteraction.emissiveRadiance * surfaceInteraction.triangleArea;
+  }
+}
