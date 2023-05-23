@@ -255,33 +255,32 @@ bool evalNEESecondary(
 
 LightSample getLightSampleFromTriangle(int surfaceIndex, int primitiveIndex, vec2 uv, float trianglePdf, vec3 shadingPosition)
 {
+#define USE_SIMIPLIFIED_MODEL 1
+
   SURFACE_CREATE_READ(surface0, surfaceIndex, surfaces);
   Surface surface = surface0;
+#if USE_SIMIPLIFIED_MODEL
   surface.isEmissive = false;
   surface.isEmissiveBlend = false;
   surface.isStatic = true;
   surface.texcoordGenerationMode = uint(TexGenMode::None);
   surface.normalBufferIndex = BINDING_INDEX_INVALID;
   surface.color0BufferIndex = BINDING_INDEX_INVALID;
+#endif
 
   RayInteraction rayInteracton = {};
   rayInteracton.barycentricCoordinates = barycentricsToUint(uvToBary(uv));
   rayInteracton.primitiveIndex = primitiveIndex;
   Ray dummyRay = {};
-  SurfaceInteraction surfaceInteraction0 = surfaceInteractionCreate(surface, rayInteracton, dummyRay, false, false);
-  SurfaceInteraction surfaceInteraction;
-  surfaceInteraction.position = surfaceInteraction0.position;
+
+  SurfaceInteraction surfaceInteraction = surfaceInteractionCreate(surface, rayInteracton, dummyRay, false, false);
+#if USE_SIMIPLIFIED_MODEL
   surfaceInteraction.positionError = 0;
-  surfaceInteraction.triangleNormal = surfaceInteraction0.triangleNormal;
   surfaceInteraction.motion = 0;
-  surfaceInteraction.textureCoordinates = surfaceInteraction0.textureCoordinates;
-  surfaceInteraction.textureGradientX = surfaceInteraction0.textureGradientX;
-  surfaceInteraction.textureGradientY = surfaceInteraction0.textureGradientY;
-  surfaceInteraction.interpolatedNormal = surfaceInteraction0.triangleNormal;
   surfaceInteraction.interpolatedTangent = f16vec3(0);
   surfaceInteraction.interpolatedBitangent = f16vec3(0);
   surfaceInteraction.vertexColor = f16vec4(0);
-  surfaceInteraction.triangleArea = surfaceInteraction0.triangleArea;
+#endif
 
   const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
   const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
@@ -292,12 +291,14 @@ LightSample getLightSampleFromTriangle(int surfaceIndex, int primitiveIndex, vec
   float16_t lightPdf = trianglePdf * getLightSamplingSolidAnglePDF(
     surfaceInteraction.triangleArea, surfaceInteraction.position, surfaceInteraction.triangleNormal, shadingPosition);
   lightSample.solidAnglePdf = lightPdf;
-  lightSample.radiance = 1;
+  lightSample.radiance = 0;
 
   if (polymorphicType == surfaceMaterialTypeOpaque)
   {
     OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
-    //opaqueSurfaceMaterial.spriteSheetFPS = 0;
+#if USE_SIMIPLIFIED_MODEL
+    opaqueSurfaceMaterial.spriteSheetFPS = 0;
+#endif
 
     const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
       opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteracton);
