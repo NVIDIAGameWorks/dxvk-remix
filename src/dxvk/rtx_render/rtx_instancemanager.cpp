@@ -362,7 +362,6 @@ namespace dxvk {
 
     if (currentInstance == nullptr) {
       // No existing match - so need to create one
-      currentInstance = findSimilarInstance(blas, drawCall, material, objectToWorld, cameraManager, rayPortalManager);
       currentInstance = addInstance(blas, drawCall, material, objectToWorld);
     }
 
