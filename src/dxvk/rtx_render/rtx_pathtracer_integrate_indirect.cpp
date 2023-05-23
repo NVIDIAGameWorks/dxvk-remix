@@ -167,7 +167,6 @@ namespace dxvk {
   }
 
   void DxvkPathtracerIntegrateIndirect::dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
-    ScopedGpuProfileZone(ctx, "Integrate Indirect Raytracing");
 
     const uint32_t frameIdx = ctx->getDevice()->getCurrentFrameId();
 
@@ -230,20 +229,23 @@ namespace dxvk {
     const bool serEnabled = RtxOptions::Get()->isShaderExecutionReorderingInPathtracerIntegrateIndirectEnabled();
     const bool ommEnabled = RtxOptions::Get()->getEnableOpacityMicromap();
 
-    switch (RtxOptions::Get()->getRenderPassIntegrateIndirectRaytraceMode()) {
-    case RaytraceMode::RayQuery:
-      VkExtent3D workgroups = util::computeBlockCount(rayDims, VkExtent3D { 16, 8, 1 });
-      ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getComputeShader());
-      ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
-      break;
-    case RaytraceMode::RayQueryRayGen:
-      ctx->bindRaytracingPipelineShaders(getPipelineShaders(true, serEnabled, ommEnabled));
-      ctx->traceRays(rayDims.width, rayDims.height, rayDims.depth);
-      break;
-    case RaytraceMode::TraceRay:
-      ctx->bindRaytracingPipelineShaders(getPipelineShaders(false, serEnabled, ommEnabled));
-      ctx->traceRays(rayDims.width, rayDims.height, rayDims.depth);
-      break;
+    {
+      ScopedGpuProfileZone(ctx, "Integrate Indirect Raytracing");
+      switch (RtxOptions::Get()->getRenderPassIntegrateIndirectRaytraceMode()) {
+      case RaytraceMode::RayQuery:
+        VkExtent3D workgroups = util::computeBlockCount(rayDims, VkExtent3D { 16, 8, 1 });
+        ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getComputeShader());
+        ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
+        break;
+      case RaytraceMode::RayQueryRayGen:
+        ctx->bindRaytracingPipelineShaders(getPipelineShaders(true, serEnabled, ommEnabled));
+        ctx->traceRays(rayDims.width, rayDims.height, rayDims.depth);
+        break;
+      case RaytraceMode::TraceRay:
+        ctx->bindRaytracingPipelineShaders(getPipelineShaders(false, serEnabled, ommEnabled));
+        ctx->traceRays(rayDims.width, rayDims.height, rayDims.depth);
+        break;
+      }
     }
 
     {
