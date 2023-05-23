@@ -28,6 +28,9 @@
 #include "rtx/pass/common_bindings.slangh"
 #include "rtx/utility/debug_view_indices.h"
 
+static const int kFootprintFromRayOrigin = 0;
+static const int kFootprintFromRayDiection = 1;
+static const int kFootprintFromTextureCoordDiff = 2;
 // Surface Interaction Helper Functions
 
 // Texture Gradient from Ray Cone Helper
@@ -133,7 +136,7 @@ void convert1stCascadeTexCoordsToTargetCascadeLevel(uint targetCascadeLevel, ino
     texcoords[i] = convert1stCascadeTexCoordToTiledTexCoord(cascade2DIndex, rcpTargetCascadeLevelScale, texcoords[i]);
 }
 
-SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayInteraction, Ray ray, bool usePreviousPositions = false, bool useRayconeFootprint = true)
+SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayInteraction, Ray ray, bool usePreviousPositions = false, int footprintMode = kFootprintFromRayDiection)
 {
   // Compute vertex indicies
 
@@ -422,10 +425,11 @@ SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayI
     
     // Note: Non-flipped world space triangle normal passed in to be consistent with the calculations done internally (rather
     // than worrying about if the flipped vector could break it)
-    if (useRayconeFootprint)
+    if (footprintMode != kFootprintFromTextureCoordDiff)
     {
+      f16vec3 direction = footprintMode == kFootprintFromRayDiection ? ray.direction : normalize(surfaceInteraction.position - ray.origin);
       computeAnisotropicEllipseAxes(
-        hitPosition, triangleNormal, worldTwoTriangleArea, ray.direction,
+        hitPosition, triangleNormal, worldTwoTriangleArea, direction,
         rayInteraction.coneRadius, worldPositions, texcoords, surfaceInteraction.textureCoordinates,
         surfaceInteraction.textureGradientX, surfaceInteraction.textureGradientY);
     }

@@ -63,9 +63,10 @@ LightSample getLightSampleFromTriangle(int surfaceIndex, int primitiveIndex, vec
   RayInteraction rayInteracton = {};
   rayInteracton.barycentricCoordinates = barycentricsToUint(uvToBary(uv));
   rayInteracton.primitiveIndex = primitiveIndex;
-  Ray dummyRay = {};
-
-  SurfaceInteraction surfaceInteraction = surfaceInteractionCreate(surface, rayInteracton, dummyRay, false, false);
+  rayInteracton.coneRadius = cb.neeCacheTextureSampleFootprintSize;
+  Ray ray = {};
+  ray.origin = shadingPosition;
+  SurfaceInteraction surfaceInteraction = surfaceInteractionCreate(surface, rayInteracton, ray, false, kFootprintFromRayOrigin);
 #if USE_SIMIPLIFIED_MODEL
   surfaceInteraction.positionError = 0;
   surfaceInteraction.motion = 0;
@@ -74,8 +75,6 @@ LightSample getLightSampleFromTriangle(int surfaceIndex, int primitiveIndex, vec
   surfaceInteraction.vertexColor = f16vec4(0);
 #endif
 
-  surfaceInteraction.textureGradientX *= cb.neeCacheTextureSampleFootprintSize;
-  surfaceInteraction.textureGradientY *= cb.neeCacheTextureSampleFootprintSize;
   rayInteracton.viewDirection = normalize(surfaceInteraction.position - shadingPosition);
 
   const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
@@ -126,9 +125,9 @@ void getTriangleLightFlux(int surfaceIndex, int primitiveIndex, out vec3 triangl
   rayInteracton.barycentricCoordinates = barycentricsToUint(uvToBary(vec2(1.0 / 3.0)));
   rayInteracton.primitiveIndex = primitiveIndex;
 
-  Ray ray;
-  ray.direction = f16vec3(1.0);
-  SurfaceInteraction surfaceInteraction = surfaceInteractionCreate(surface, rayInteracton, ray, false, false);
+  Ray dummyRay;
+  dummyRay.direction = f16vec3(1.0);
+  SurfaceInteraction surfaceInteraction = surfaceInteractionCreate(surface, rayInteracton, dummyRay, false, kFootprintFromTextureCoordDiff);
   triangleCenter = surfaceInteraction.position;
   triangleNormal = surfaceInteraction.triangleNormal;
   lightFlux = vec3(0);
