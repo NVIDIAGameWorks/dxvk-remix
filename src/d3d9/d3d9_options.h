@@ -185,11 +185,6 @@ namespace dxvk {
 
     /// Use device local memory for constant buffers.
     bool deviceLocalConstantBuffers;
-
-    // NV-DXVK start: force app geometry data into host memory
-    /// Use host memory for all geometry data (vertex/index).
-    bool hostMemoryForGeometry;
-    // NV-DXVK end
   };
 
 }
