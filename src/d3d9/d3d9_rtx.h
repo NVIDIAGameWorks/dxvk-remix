@@ -10,7 +10,6 @@ namespace dxvk {
   class DxvkDevice;
 
   enum class D3D9RtxFlag : uint32_t {
-    DirtyObjectTransform,
     DirtyCameraTransforms,
     DirtyLights,
     DirtyClipPlanes,
@@ -62,9 +61,6 @@ namespace dxvk {
       case GetTransformIndex(D3DTS_VIEW):
       case GetTransformIndex(D3DTS_PROJECTION):
         SetDirty(D3D9RtxFlag::DirtyCameraTransforms);
-        break;
-      case GetTransformIndex(D3DTS_WORLD):
-        SetDirty(D3D9RtxFlag::DirtyObjectTransform);
         break;
       }
     }
