@@ -130,11 +130,11 @@ namespace dxvk {
     m_used -= sizeToRelease;
   }
 
-  void OpacityMicromapMemoryManager::updateMemoryBudget(Rc<DxvkContext> ctx, const OpacityMicromapSettings& settings) {
+  void OpacityMicromapMemoryManager::updateMemoryBudget(Rc<DxvkContext> ctx) {
 
     // Gather runtime vidmem stats
     VkDeviceSize vidmemSize = 0;
-    VkDeviceSize vidmemUsedSize = static_cast<VkDeviceSize>(settings.minFreeVidmemMBToNotAllocate) * 1024 * 1024;
+    VkDeviceSize vidmemUsedSize = static_cast<VkDeviceSize>(OpacityMicromapOptions::Cache::minFreeVidmemMBToNotAllocate()) * 1024 * 1024;
     
     DxvkMemoryAllocator& memoryManager = ctx->getCommonObjects()->memoryManager();
     const VkPhysicalDeviceMemoryProperties& memoryProperties = memoryManager.getMemoryProperties();
@@ -151,11 +151,11 @@ namespace dxvk {
 
     // Calculate a new budget given the runtime vidmem stats
     VkDeviceSize maxAllowedBudget = std::min(
-      static_cast<VkDeviceSize>(static_cast<double>(settings.maxVidmemSizePercentage) * vidmemSize), 
-      static_cast<VkDeviceSize>(settings.maxBudgetSizeMB) * 1024 * 1024);
+      static_cast<VkDeviceSize>(static_cast<double>(OpacityMicromapOptions::Cache::maxVidmemSizePercentage()) * vidmemSize),
+      static_cast<VkDeviceSize>(OpacityMicromapOptions::Cache::maxBudgetSizeMB()) * 1024 * 1024);
     VkDeviceSize newBudget = std::min(vidmemFreeSize, maxAllowedBudget);
 
-    if (newBudget < static_cast<VkDeviceSize>(settings.minBudgetSizeMB) * 1024 * 1024)
+    if (newBudget < static_cast<VkDeviceSize>(OpacityMicromapOptions::Cache::minBudgetSizeMB()) * 1024 * 1024)
       newBudget = 0;
     
     // Update the budget
@@ -216,10 +216,9 @@ namespace dxvk {
     : m_device(device)
     , m_memoryManager(device)
     , m_scratchAllocator(device, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR) {
-    initSettings();
   }
 
-  OmmRequest::OmmRequest(const RtInstance& _instance, const InstanceManager& instanceManager, const OpacityMicromapSettings& settings, uint32_t _quadSliceIndex)
+  OmmRequest::OmmRequest(const RtInstance& _instance, const InstanceManager& instanceManager, uint32_t _quadSliceIndex)
     : instance(_instance)
     , quadSliceIndex(_quadSliceIndex) {
     ommSrcHash = calculateMaterialSourceHash(instance);
@@ -248,12 +247,12 @@ namespace dxvk {
 
       auto& alphaState = instance.surface.alphaState;
 
-      if (settings.allow2StateOpacityMicromaps && (
+      if (OpacityMicromapOptions::Building::allow2StateOpacityMicromaps() && (
         isBillboardOmmRequest() ||
         (!alphaState.isFullyOpaque && (alphaState.isParticle || alphaState.isDecal)) || alphaState.emissiveBlend))
         ommFormat = VK_OPACITY_MICROMAP_FORMAT_2_STATE_EXT;
 
-      if (settings.force2StateOpacityMicromaps)
+      if (OpacityMicromapOptions::Building::force2StateOpacityMicromaps())
         ommFormat = VK_OPACITY_MICROMAP_FORMAT_2_STATE_EXT;
 
       ommSrcHash = XXH64(&ommFormat, sizeof(ommFormat), ommSrcHash);
@@ -297,23 +296,6 @@ namespace dxvk {
 
     instance = _instance;
   }  
-  
-  void OpacityMicromapManager::initSettings() {
-    m_settings.maxOmmBuildRequests = RtxOptionSettings::maxOmmBuildRequests();
-    m_settings.numFramesAtStartToBuildWithHighWorkload = RtxOptionSettings::numFramesAtStartToBuildWithHighWorkload();
-    m_settings.workloadHighWorkloadMultiplier = RtxOptionSettings::workloadHighWorkloadMultiplier();
-    m_settings.maxVidmemSizePercentage = RtxOptionSettings::maxVidmemSizePercentage();
-    m_settings.minFreeVidmemMBToNotAllocate = RtxOptionSettings::minFreeVidmemMBToNotAllocate();
-    m_settings.minBudgetSizeMB = RtxOptionSettings::minBudgetSizeMB();
-    m_settings.maxBudgetSizeMB = RtxOptionSettings::maxBudgetSizeMB();
-    m_settings.ommBuildRequest_minInstanceFrameAge = RtxOptionSettings::ommBuildRequest_minInstanceFrameAge();
-    m_settings.ommBuildRequest_minNumFramesRequested = RtxOptionSettings::ommBuildRequest_minNumFramesRequested();
-    m_settings.ommBuildRequest_minNumRequests = RtxOptionSettings::ommBuildRequest_minNumRequests();
-    m_settings.subdivisionLevel = RtxOptionSettings::subdivisionLevel();
-    m_settings.enableResetEveryFrame = RtxOptionSettings::enableResetEveryFrame();
-    m_settings.enableParticles = RtxOptionSettings::enableParticles();
-    m_settings.conservativeEstimationMaxTexelTapsPerMicroTriangle = RtxOptionSettings::conservativeEstimationMaxTexelTapsPerMicroTriangle();
-  }
 
   void OpacityMicromapManager::destroyOmmData(const OpacityMicromapCache::iterator& ommCacheItemIter, bool destroyParentInstanceOmmRequestContainer) {
     const XXH64_hash_t ommSrcHash = ommCacheItemIter->first;
@@ -444,14 +426,14 @@ namespace dxvk {
     const static ImGuiTreeNodeFlags collapsingHeaderFlags = ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_CollapsingHeader;
     const static ImGuiTreeNodeFlags collapsingHeaderClosedFlags = ImGuiTreeNodeFlags_CollapsingHeader;
 
-#define ADVANCED(x) if (m_settings.showAdvancedOptions) x
+#define ADVANCED(x) if (OpacityMicromapOptions::showAdvancedOptions()) x
 
-    ImGui::Checkbox("Show Advanced Settings", &m_settings.showAdvancedOptions);
-    ImGui::Checkbox("Enable Binding", &m_settings.enableBinding);
-    ADVANCED(ImGui::Checkbox("Enable Baking Arrays", &m_settings.enableBakingArrays));
-    ADVANCED(ImGui::Checkbox("Enable Building", &m_settings.enableBuilding));
+    ImGui::Checkbox("Show Advanced Settings", &OpacityMicromapOptions::showAdvancedOptionsObject());
+    ImGui::Checkbox("Enable Binding", &OpacityMicromapOptions::enableBindingObject());
+    ADVANCED(ImGui::Checkbox("Enable Baking Arrays", &OpacityMicromapOptions::enableBakingArraysObject()));
+    ADVANCED(ImGui::Checkbox("Enable Building", &OpacityMicromapOptions::enableBuildingObject()));
 
-    ImGui::Checkbox("Reset Every Frame", &m_settings.enableResetEveryFrame);
+    ImGui::Checkbox("Reset Every Frame", &OpacityMicromapOptions::enableResetEveryFrameObject());
 
     // Stats
     if (ImGui::CollapsingHeader("Statistics", collapsingHeaderFlags)) {
@@ -475,57 +457,58 @@ namespace dxvk {
     ADVANCED(
       if (ImGui::CollapsingHeader("Scene", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
-        ImGui::Checkbox("Split Billboard Geometry", &m_settings.splitBillboardGeometry);
-        ImGui::DragInt("Max Allowed Billboards Per Instance To Split", &m_settings.maxAllowedBillboardsPerInstanceToSplit, 1.f, 0, 4096, "%d", sliderFlags);
         ImGui::Unindent();
       });
     
     if (ImGui::CollapsingHeader("Cache", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
-      ImGui::DragFloat("Budget: Max Vidmem Size %", &m_settings.maxVidmemSizePercentage, 0.001f, 0.0f, 1.f, "%.3f", sliderFlags);
-      ADVANCED(ImGui::DragInt("Budget: Min Required Size [MB]", &m_settings.minBudgetSizeMB, 8.f, 0, 256 * 1024, "%d", sliderFlags));
-      ImGui::DragInt("Budget: Max Allowed Size [MB]", &m_settings.maxBudgetSizeMB, 8.f, 0, 256 * 1024, "%d", sliderFlags);
-      ImGui::DragInt("Budget: Min Vidmem Free To Not Allocate [MB]", &m_settings.minFreeVidmemMBToNotAllocate, 16.f, 0, 256 * 1024, "%d", sliderFlags);
-      ADVANCED(ImGui::DragInt("Min Usage Frame Age Before Eviction", &m_settings.minUsageFrameAgeBeforeEviction, 1.f, 0, 60 * 3600, "%d", sliderFlags));
+      ImGui::DragFloat("Budget: Max Vidmem Size %", &OpacityMicromapOptions::Cache::maxVidmemSizePercentageObject(), 0.001f, 0.0f, 1.f, "%.3f", sliderFlags);
+      ADVANCED(ImGui::DragInt("Budget: Min Required Size [MB]", &OpacityMicromapOptions::Cache::minBudgetSizeMBObject(), 8.f, 0, 256 * 1024, "%d", sliderFlags));
+      ImGui::DragInt("Budget: Max Allowed Size [MB]", &OpacityMicromapOptions::Cache::maxBudgetSizeMBObject(), 8.f, 0, 256 * 1024, "%d", sliderFlags);
+      ImGui::DragInt("Budget: Min Vidmem Free To Not Allocate [MB]", &OpacityMicromapOptions::Cache::minFreeVidmemMBToNotAllocateObject(), 16.f, 0, 256 * 1024, "%d", sliderFlags);
+      ADVANCED(ImGui::DragInt("Min Usage Frame Age Before Eviction", &OpacityMicromapOptions::Cache::minUsageFrameAgeBeforeEvictionObject(), 1.f, 0, 60 * 3600, "%d", sliderFlags));
       ImGui::Unindent();
     }
 
 
     if (ImGui::CollapsingHeader("Requests Filter", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
-      ImGui::Checkbox("Animated Instances", &m_settings.enableAnimatedInstances);
-      ImGui::Checkbox("Particles", &m_settings.enableParticles);
-      ADVANCED(ImGui::Checkbox("Custom Filters for Billboards", &m_settings.customBuildRequestFilteringForBillboards));
+      ImGui::Checkbox("Animated Instances", &OpacityMicromapOptions::BuildRequests::enableAnimatedInstancesObject());
+      ImGui::Checkbox("Particles", &OpacityMicromapOptions::BuildRequests::enableParticlesObject());
+      ADVANCED(ImGui::Checkbox("Custom Filters for Billboards", &OpacityMicromapOptions::BuildRequests::customFiltersForBillboardsObject()));
       
-      ADVANCED(ImGui::DragInt("Max Staged Requests", &m_settings.maxOmmBuildRequests, 1.f, 1, 1000 * 1000, "%d", sliderFlags));
+      ADVANCED(ImGui::DragInt("Max Staged Requests", &OpacityMicromapOptions::BuildRequests::maxRequestsObject(), 1.f, 1, 1000 * 1000, "%d", sliderFlags));
       // ToDo: we don't support setting this to 0 at the moment, should revisit later
-      ADVANCED(ImGui::DragInt("Min Instance Frame Age", &m_settings.ommBuildRequest_minInstanceFrameAge, 1.f, 0, 200, "%d", sliderFlags));
-      ADVANCED(ImGui::DragInt("Min Num Frames Requested", &m_settings.ommBuildRequest_minNumFramesRequested, 1.f, 0, 200, "%d", sliderFlags));
-      ADVANCED(ImGui::DragInt("Max Request Frame Age", &m_settings.ommBuildRequest_maxRequestFramesAge, 1.f, 0, 60 * 3600, "%d", sliderFlags));
-      ADVANCED(ImGui::DragInt("Min Num Requests", &m_settings.ommBuildRequest_minNumRequests, 1.f, 1, 1000, "%d", sliderFlags));
+      ADVANCED(ImGui::DragInt("Min Instance Frame Age", &OpacityMicromapOptions::BuildRequests::minInstanceFrameAgeObject(), 1.f, 0, 200, "%d", sliderFlags));
+      ADVANCED(ImGui::DragInt("Min Num Frames Requested", &OpacityMicromapOptions::BuildRequests::minNumFramesRequestedObject(), 1.f, 0, 200, "%d", sliderFlags));
+      ADVANCED(ImGui::DragInt("Max Request Frame Age", &OpacityMicromapOptions::BuildRequests::maxRequestFrameAgeObject(), 1.f, 0, 60 * 3600, "%d", sliderFlags));
+      ADVANCED(ImGui::DragInt("Min Num Requests", &OpacityMicromapOptions::BuildRequests::minNumRequestsObject(), 1.f, 1, 1000, "%d", sliderFlags));
       ImGui::Unindent();
     }
 
     if (ImGui::CollapsingHeader("Building", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
 
+      ImGui::Checkbox("Split Billboard Geometry", &OpacityMicromapOptions::Building::splitBillboardGeometryObject());
+      ImGui::DragInt("Max Allowed Billboards Per Instance To Split", &OpacityMicromapOptions::Building::maxAllowedBillboardsPerInstanceToSplitObject(), 1.f, 0, 4096, "%d", sliderFlags);
+
       // Note: 2 is minimum to ensure # microtriangle size is a multiple of 1 byte to ensure cross triangle alignment requirement
-      ImGui::DragInt("Subdivision Level", &m_settings.subdivisionLevel, 1.f, 2, 11, "%d", sliderFlags);
-      ADVANCED(ImGui::Checkbox("Vertex, Texture Ops & Emissive Blending", &m_settings.enableVertexAndTextureOperations));
-      ADVANCED(ImGui::Checkbox("Allow 2 State Opacity Micromaps", &m_settings.allow2StateOpacityMicromaps));
-      ADVANCED(ImGui::Checkbox("Force 2 State Opacity Micromaps", &m_settings.force2StateOpacityMicromaps));
+      ImGui::DragInt("Subdivision Level", &OpacityMicromapOptions::Building::subdivisionLevelObject(), 1.f, 2, 11, "%d", sliderFlags);
+      ADVANCED(ImGui::Checkbox("Vertex, Texture Ops & Emissive Blending", &OpacityMicromapOptions::Building::enableVertexAndTextureOperationsObject()));
+      ADVANCED(ImGui::Checkbox("Allow 2 State Opacity Micromaps", &OpacityMicromapOptions::Building::allow2StateOpacityMicromapsObject()));
+      ADVANCED(ImGui::Checkbox("Force 2 State Opacity Micromaps", &OpacityMicromapOptions::Building::force2StateOpacityMicromapsObject()));
 
-      ADVANCED(ImGui::DragFloat("Decals: Min Resolve Transparency Threshold", &m_settings.decalsMinResolveTransparencyThreshold, 0.001f, 0.0f, 1.f, "%.3f", sliderFlags));
+      ADVANCED(ImGui::DragFloat("Decals: Min Resolve Transparency Threshold", &OpacityMicromapOptions::Building::decalsMinResolveTransparencyThresholdObject(), 0.001f, 0.0f, 1.f, "%.3f", sliderFlags));
 
-      ADVANCED(ImGui::DragInt("Max # of uTriangles to Bake [Million per Second]", &m_settings.maxMicroTrianglesToBakeMillionPerSecond, 1.f, 1, 65536, "%d", sliderFlags));
-      ADVANCED(ImGui::DragInt("Max # of uTriangles to Build [Million per Second]", &m_settings.maxMicroTrianglesToBuildMillionPerSecond, 1.f, 1, 65536, "%d", sliderFlags));
-      ADVANCED(ImGui::DragInt("# Frames with High Workload Multiplier at Start", &m_settings.numFramesAtStartToBuildWithHighWorkload, 1.f, 0, 100000, "%d", sliderFlags));
-      ADVANCED(ImGui::DragInt("High Workload Multiplier", &m_settings.workloadHighWorkloadMultiplier, 1.f, 1, 1000, "%d", sliderFlags));
+      ADVANCED(ImGui::DragInt("Max # of uTriangles to Bake [Million per Second]", &OpacityMicromapOptions::Building::maxMicroTrianglesToBakeMillionPerSecondObject(), 1.f, 1, 65536, "%d", sliderFlags));
+      ADVANCED(ImGui::DragInt("Max # of uTriangles to Build [Million per Second]", &OpacityMicromapOptions::Building::maxMicroTrianglesToBuildMillionPerSecondObject(), 1.f, 1, 65536, "%d", sliderFlags));
+      ADVANCED(ImGui::DragInt("# Frames with High Workload Multiplier at Start", &OpacityMicromapOptions::Building::numFramesAtStartToBuildWithHighWorkloadObject(), 1.f, 0, 100000, "%d", sliderFlags));
+      ADVANCED(ImGui::DragInt("High Workload Multiplier", &OpacityMicromapOptions::Building::highWorkloadMultiplierObject(), 1.f, 1, 1000, "%d", sliderFlags));
 
       if (ImGui::CollapsingHeader("Conservative Estimation", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
-        ImGui::Checkbox("Enable", &m_settings.enableConservativeEstimation);
-        ADVANCED(ImGui::DragInt("Max Texel Taps Per uTriangle", &m_settings.conservativeEstimationMaxTexelTapsPerMicroTriangle, 16.f, 1, 256 * 256, "%d", sliderFlags);
+        ImGui::Checkbox("Enable", &OpacityMicromapOptions::Building::ConservativeEstimation::enableObject());
+        ADVANCED(ImGui::DragInt("Max Texel Taps Per uTriangle", &OpacityMicromapOptions::Building::ConservativeEstimation::maxTexelTapsPerMicroTriangleObject(), 16.f, 1, 256 * 256, "%d", sliderFlags);
         ImGui::Unindent());
       }
 
@@ -606,10 +589,10 @@ namespace dxvk {
 
     // Process Opacity Micromap enablement
     {
-      useOpacityMicromap &= !instance.isAnimated() || m_settings.enableAnimatedInstances;
-      useOpacityMicromap &= !alphaState.isParticle || m_settings.enableParticles;
-      if (m_settings.splitBillboardGeometry)
-        useOpacityMicromap &= instance.getBillboardCount() <= m_settings.maxAllowedBillboardsPerInstanceToSplit;
+      useOpacityMicromap &= !instance.isAnimated() || OpacityMicromapOptions::BuildRequests::enableAnimatedInstances();
+      useOpacityMicromap &= !alphaState.isParticle || OpacityMicromapOptions::BuildRequests::enableParticles();
+      if (OpacityMicromapOptions::Building::splitBillboardGeometry())
+        useOpacityMicromap &= instance.getBillboardCount() <= OpacityMicromapOptions::Building::maxAllowedBillboardsPerInstanceToSplit();
     }
 
     // Check if it needs per uTriangle opacity data
@@ -706,7 +689,7 @@ namespace dxvk {
     }
 
     // Prevent host getting overloaded
-    if (m_ommBuildRequestStatistics.size() >= m_settings.maxOmmBuildRequests)
+    if (m_ommBuildRequestStatistics.size() >= OpacityMicromapOptions::BuildRequests::maxRequests())
       return false;
 
     XXH64_hash_t ommSrcHash = ommRequest.ommSrcHash;
@@ -725,11 +708,11 @@ namespace dxvk {
           m_blackListedList.find(ommSrcHash) != m_blackListedList.end())
         return false;
   
-      uint32_t minInstanceFrameAge = m_settings.ommBuildRequest_minInstanceFrameAge;
-      uint32_t minNumRequests = m_settings.ommBuildRequest_minNumRequests;
-      uint32_t minNumFramesRequested = m_settings.ommBuildRequest_minNumFramesRequested;
+      uint32_t minInstanceFrameAge = OpacityMicromapOptions::BuildRequests::minInstanceFrameAge();
+      uint32_t minNumRequests = OpacityMicromapOptions::BuildRequests::minNumRequests();
+      uint32_t minNumFramesRequested = OpacityMicromapOptions::BuildRequests::minNumFramesRequested();
 
-      if (instance.getBillboardCount() > 0 && m_settings.customBuildRequestFilteringForBillboards) {
+      if (instance.getBillboardCount() > 0 && OpacityMicromapOptions::BuildRequests::customFiltersForBillboards()) {
         // Lower the filter requirements for particles since they are dynamic
         // But still we want to avoid baking particles that do not get reused for now
         minInstanceFrameAge = 0;
@@ -769,8 +752,8 @@ namespace dxvk {
     m_ommCache.emplace(
       std::piecewise_construct,
       std::forward_as_tuple(ommSrcHash),
-      std::forward_as_tuple(m_device, OpacityMicromapCacheState::eStep0_Unprocessed, m_subdivisionLevel, 
-                            m_enableVertexAndTextureOperations, m_device->getCurrentFrameId(),
+      std::forward_as_tuple(m_device, OpacityMicromapCacheState::eStep0_Unprocessed, OpacityMicromapOptions::Building::subdivisionLevel(), 
+                            OpacityMicromapOptions::Building::enableVertexAndTextureOperations(), m_device->getCurrentFrameId(),
                             lastElementIterator, ommRequest));
 
     return true;
@@ -815,12 +798,12 @@ namespace dxvk {
                                                            const InstanceManager& instanceManager, 
                                                            std::vector<OmmRequest>& ommRequests) {
 
-    const uint32_t numOmmRequests = std::max(m_settings.splitBillboardGeometry ? instance.getBillboardCount() : 1u, 1u);
+    const uint32_t numOmmRequests = std::max(OpacityMicromapOptions::Building::splitBillboardGeometry() ? instance.getBillboardCount() : 1u, 1u);
     ommRequests.reserve(numOmmRequests);
     XXH64_hash_t ommSrcHash;  // Compound hash for the instance
 
     // Create all OmmRequest objects corresponding to the instance
-    if (instance.getBillboardCount() > 0 && m_settings.splitBillboardGeometry) {
+    if (instance.getBillboardCount() > 0 && OpacityMicromapOptions::Building::splitBillboardGeometry()) {
       const uint32_t numTriangles = instance.getBlas()->modifiedGeometryData.calculatePrimitiveCount();
       assert((numTriangles & 1) == 0 &&
              "Only compound omms consisting of multiples of quads are supported");
@@ -829,7 +812,7 @@ namespace dxvk {
       ommSrcHashes.reserve(numOmmRequests);
 
       for (uint32_t i = 0; i < instance.getBillboardCount(); i++) {
-        OmmRequest ommRequest(instance, instanceManager, m_settings, i);
+        OmmRequest ommRequest(instance, instanceManager, i);
 
         // Only track unique omm requests
         if (std::find(ommSrcHashes.begin(), ommSrcHashes.end(), ommRequest.ommSrcHash) == ommSrcHashes.end()) {
@@ -841,7 +824,7 @@ namespace dxvk {
       ommSrcHash = XXH64(ommSrcHashes.data(), ommSrcHashes.size() * sizeof(ommSrcHashes[0]), kEmptyHash);
 
     } else {
-      ommRequests.emplace_back(instance, instanceManager, m_settings);
+      ommRequests.emplace_back(instance, instanceManager);
       ommSrcHash = ommRequests[0].ommSrcHash;
     }
 
@@ -937,13 +920,13 @@ namespace dxvk {
                                                            const InstanceManager& instanceManager) {
     m_numRequestedOMMBindings++;
 
-    if (!m_settings.enableBinding)
+    if (!OpacityMicromapOptions::enableBinding())
       return kEmptyHash;
 
     // ToDo: avoid fixing up the index here
     billboardIndex = 
-      (instance.getBillboardCount() > 0 && m_settings.splitBillboardGeometry) ? billboardIndex : OmmRequest::kInvalidIndex;
-    const OmmRequest ommRequest(instance, instanceManager, m_settings, billboardIndex);
+      (instance.getBillboardCount() > 0 && OpacityMicromapOptions::Building::splitBillboardGeometry()) ? billboardIndex : OmmRequest::kInvalidIndex;
+    const OmmRequest ommRequest(instance, instanceManager, billboardIndex);
 
     auto& ommCacheItemIter = m_ommCache.find(ommRequest.ommSrcHash);
 
@@ -1238,8 +1221,8 @@ namespace dxvk {
       desc.surfaceIndex = instance.getSurfaceIndex();
       desc.materialType = instance.getMaterialType();
       desc.applyVertexAndTextureOperations = ommCacheItem.useVertexAndTextureOperations;
-      desc.useConservativeEstimation = m_opacityMicromapUseConservativeEstimation;
-      desc.conservativeEstimationMaxTexelTapsPerMicroTriangle = m_opacityMicromapConservativeEstimationMaxTexelTapsPerMicroTriangle;
+      desc.useConservativeEstimation = OpacityMicromapOptions::Building::ConservativeEstimation::enable();
+      desc.conservativeEstimationMaxTexelTapsPerMicroTriangle = OpacityMicromapOptions::Building::ConservativeEstimation::maxTexelTapsPerMicroTriangle();
       desc.maxNumMicroTrianglesToBake = maxMicroTrianglesToBake;
       desc.numTriangles = numTriangles;
       desc.triangleOffset = sourceData.triangleOffset;
@@ -1248,7 +1231,7 @@ namespace dxvk {
 
       // Overrides
       if (instance.surface.alphaState.isDecal)
-        desc.resolveTransparencyThreshold = std::max(desc.resolveTransparencyThreshold, m_settings.decalsMinResolveTransparencyThreshold);
+        desc.resolveTransparencyThreshold = std::max(desc.resolveTransparencyThreshold, OpacityMicromapOptions::Building::decalsMinResolveTransparencyThreshold());
 
       ctx->getCommonObjects()->metaGeometryUtils().dispatchBakeOpacityMicromap(
         m_device, cmdList, ctx, blasEntry.modifiedGeometryData, opacityTexture, secondaryOpacityTexture, 
@@ -1422,7 +1405,7 @@ namespace dxvk {
                                                          const std::vector<TextureRef>& textures,
                                                          uint32_t& maxMicroTrianglesToBake) {
 
-    if (!m_settings.enableBakingArrays)
+    if (!OpacityMicromapOptions::enableBakingArrays())
       return;
 
 #ifdef VALIDATION_MODE
@@ -1518,7 +1501,7 @@ namespace dxvk {
                                                              Rc<DxvkCommandList> cmdList,
                                                              uint32_t& maxMicroTrianglesToBuild) {
 
-    if (!m_settings.enableBuilding)
+    if (!OpacityMicromapOptions::enableBuilding())
       return;
 
 #ifdef VALIDATION_MODE
@@ -1623,29 +1606,37 @@ namespace dxvk {
     m_numBoundOMMs = 0;
     m_numRequestedOMMBindings = 0;
 
-    bool forceRebuildOMMs =
-      m_opacityMicromapUseConservativeEstimation != m_settings.enableConservativeEstimation ||
-      m_opacityMicromapConservativeEstimationMaxTexelTapsPerMicroTriangle != m_settings.conservativeEstimationMaxTexelTapsPerMicroTriangle ||
-      m_subdivisionLevel != m_settings.subdivisionLevel ||
-      m_enableVertexAndTextureOperations != m_settings.enableVertexAndTextureOperations ||
-      m_settings.enableResetEveryFrame;
+    // Clear caches if we need to rebuild OMMs
+    {
+      static bool prevEnableConservativeEstimation = OpacityMicromapOptions::Building::ConservativeEstimation::enable();
+      static uint32_t prevConservativeEstimationMaxTexelTapsPerMicroTriangle = OpacityMicromapOptions::Building::ConservativeEstimation::maxTexelTapsPerMicroTriangle();
+      static uint32_t prevSubdivisionLevel = OpacityMicromapOptions::Building::subdivisionLevel();
+      static bool prevEnableVertexAndTextureOperations = OpacityMicromapOptions::Building::enableVertexAndTextureOperations();
 
-    m_opacityMicromapUseConservativeEstimation = m_settings.enableConservativeEstimation;
-    m_opacityMicromapConservativeEstimationMaxTexelTapsPerMicroTriangle = m_settings.conservativeEstimationMaxTexelTapsPerMicroTriangle;
-    m_subdivisionLevel = m_settings.subdivisionLevel;
-    m_enableVertexAndTextureOperations = m_settings.enableVertexAndTextureOperations;
-    
-    if (forceRebuildOMMs)
-      clear();
+      bool forceRebuildOMMs =
+        OpacityMicromapOptions::Building::ConservativeEstimation::enable() != prevEnableConservativeEstimation ||
+        OpacityMicromapOptions::Building::ConservativeEstimation::maxTexelTapsPerMicroTriangle() != prevConservativeEstimationMaxTexelTapsPerMicroTriangle ||
+        prevSubdivisionLevel != OpacityMicromapOptions::Building::subdivisionLevel() ||
+        prevEnableVertexAndTextureOperations != OpacityMicromapOptions::Building::enableVertexAndTextureOperations() ||
+        OpacityMicromapOptions::enableResetEveryFrame();
 
-    // Purge obsolete OMM Build Requests
+      prevEnableConservativeEstimation = OpacityMicromapOptions::Building::ConservativeEstimation::enable();
+      prevConservativeEstimationMaxTexelTapsPerMicroTriangle = OpacityMicromapOptions::Building::ConservativeEstimation::maxTexelTapsPerMicroTriangle();
+      prevSubdivisionLevel = OpacityMicromapOptions::Building::subdivisionLevel();
+      prevEnableVertexAndTextureOperations = OpacityMicromapOptions::Building::enableVertexAndTextureOperations();
+
+      if (forceRebuildOMMs)
+        clear();
+    }
+
+    // Purge obsolete OMM build requests
     for (auto statIter = m_ommBuildRequestStatistics.begin(); statIter != m_ommBuildRequestStatistics.end();) {
       const uint32_t requestAge = currentFrameIndex - statIter->second.lastRequestFrameId;
 
       // Increment the iterator before any deletion
       auto currentStatIter = statIter++;
 
-      if (requestAge > m_settings.ommBuildRequest_maxRequestFramesAge)
+      if (requestAge > OpacityMicromapOptions::BuildRequests::maxRequestFrameAge())
         m_ommBuildRequestStatistics.erase(currentStatIter);
     }
     
@@ -1658,7 +1649,7 @@ namespace dxvk {
     // Update memory management
     {
       const VkDeviceSize prevBudget = m_memoryManager.getBudget();
-      m_memoryManager.updateMemoryBudget(ctx, m_settings);
+      m_memoryManager.updateMemoryBudget(ctx);
 
       if (m_memoryManager.getBudget() != 0) {
         const bool hasVRamBudgetDecreased = m_memoryManager.getBudget() < prevBudget;
@@ -1694,7 +1685,7 @@ namespace dxvk {
             const uint32_t cacheItemUsageFrameAge = currentFrameIndex - cacheItemIter->second.lastUseFrameIndex;
 
             // Stop eviction once an item is recent enough
-            if (cacheItemUsageFrameAge < m_settings.minUsageFrameAgeBeforeEviction &&
+            if (cacheItemUsageFrameAge < OpacityMicromapOptions::Cache::minUsageFrameAgeBeforeEviction() &&
               // Force eviction if the VRAM budget decreased to speed fitting into the budget up
               !hasVRamBudgetDecreased)
               break;
@@ -1764,12 +1755,12 @@ namespace dxvk {
     const float secondToFrameBudgetScale = workloadScalePerSecond * frameTimeSecs;
 
     // Initialize per frame budgets
-    float numMillionMicroTrianglesToBakeAvailable = m_settings.maxMicroTrianglesToBakeMillionPerSecond * secondToFrameBudgetScale;
-    float numMillionMicroTrianglesToBuildAvailable = m_settings.maxMicroTrianglesToBuildMillionPerSecond * secondToFrameBudgetScale;
+    float numMillionMicroTrianglesToBakeAvailable = OpacityMicromapOptions::Building::maxMicroTrianglesToBakeMillionPerSecond() * secondToFrameBudgetScale;
+    float numMillionMicroTrianglesToBuildAvailable = OpacityMicromapOptions::Building::maxMicroTrianglesToBuildMillionPerSecond() * secondToFrameBudgetScale;
 
-    if (m_device->getCurrentFrameId() - lastCameraCutFrameId < m_settings.numFramesAtStartToBuildWithHighWorkload) {
-      numMillionMicroTrianglesToBakeAvailable *= m_settings.workloadHighWorkloadMultiplier;
-      numMillionMicroTrianglesToBuildAvailable *= m_settings.workloadHighWorkloadMultiplier;
+    if (m_device->getCurrentFrameId() - lastCameraCutFrameId < OpacityMicromapOptions::Building::numFramesAtStartToBuildWithHighWorkload()) {
+      numMillionMicroTrianglesToBakeAvailable *= OpacityMicromapOptions::Building::highWorkloadMultiplier();
+      numMillionMicroTrianglesToBuildAvailable *= OpacityMicromapOptions::Building::highWorkloadMultiplier();
     }
 
     float fNumMicroTrianglesToBakeAvailable = numMillionMicroTrianglesToBakeAvailable * 1e6f;

@@ -179,14 +179,6 @@ namespace dxvk {
     ImGui::DragFloat("Indirect Light Min Sharpen Roughness", &dlssEnhancementIndirectLightMinRoughnessObject(), 0.01f, 0.f, 1.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::Checkbox("Use Post Filter", &usePostFilterObject());
     ImGui::DragFloat("Post Filter Threshold", &postFilterThresholdObject(), 0.01f, 0.0f, 100.f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-    if (ImGui::CollapsingHeader("Noise Mix")) {
-      ImGui::Indent();
-      ImGui::SliderFloat("Noise Mix Ratio", &noiseMixRatioObject(), 0.f, 1.f);
-      ImGui::SliderFloat("Noise NdotV Power", &noiseNormalPowerObject(), 0.f, 1.f);
-      ImGui::SliderFloat("Noise Clamp Low", &noiseClampLowObject(), 0.f, 1.f);
-      ImGui::SliderFloat("Noise Clamp High", &noiseClampHighObject(), 1.f, 10.f);
-      ImGui::Unindent();
-    }
 
     dlssEnhancementDirectLightPowerRef() = bsdfPowers[0];
     dlssEnhancementIndirectLightPowerRef() = bsdfPowers[1];

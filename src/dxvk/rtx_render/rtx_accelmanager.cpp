@@ -155,7 +155,7 @@ namespace dxvk {
     // Associate each billboard with a unique geometry entry
     if (instance.getBillboardCount() > 0 && usesIndices && 
         (opacityMicromapManager && 
-         opacityMicromapManager->getSettings().splitBillboardGeometry &&
+         OpacityMicromapOptions::Building::splitBillboardGeometry() &&
          opacityMicromapManager->doesInstanceUseOpacityMicromap(instance))) {
 
       VkAccelerationStructureGeometryKHR geometry = {};
