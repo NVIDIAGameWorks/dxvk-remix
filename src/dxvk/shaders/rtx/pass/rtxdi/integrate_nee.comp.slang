@@ -245,4 +245,65 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
     // Store complete initial sample
     RAB_StoreGIReservoir(resultReservoir, threadIndex, ReSTIRGI_GetInitSamplePage());
   }
+
+  switch(cb.debugView)
+  {
+  case DEBUG_VIEW_NEE_CACHE_CANDIDATE_ID:
+    if (geometryFlags.primarySelectedIntegrationSurface)
+    {
+      ivec3 cellID = NEECache.pointToCell(minimalSurfaceInteraction.position, false);
+      vec3 color = 0;
+      if (all(cellID != -1))
+      {
+        color = vec3(cellID + 1) / RADIANCE_CACHE_PROBE_RESOLUTION;
+      }
+      storeInDebugView(ivec2(threadIndex), color);
+    }
+    break;
+  case DEBUG_VIEW_NEE_CACHE_MIN_MAX_CANDIDATE_PROBABILITY:
+    if (geometryFlags.primarySelectedIntegrationSurface)
+    {
+      NEECell cell = NEECache.findCell(minimalSurfaceInteraction.position, false);
+      vec3 color = 0;
+      if (cell.isValid())
+      {
+        ivec2 tileID = threadIndex / 5;
+        bool isMax = ((tileID.x + tileID.y) & 0x1) == 0;
+        int count = cell.getCandidateCount();
+        float lastSampleThreshold = 0;
+        float extremeValue = isMax ? 0 : 1;
+        for (int i = 0; i < count; ++i)
+        {
+          NEECandidate candidiate = cell.getCandidate(i);
+          float sampleThreshold = candidiate.getSampleThreshold();
+          float prob = sampleThreshold - lastSampleThreshold;
+          lastSampleThreshold = sampleThreshold;
+          extremeValue = isMax ? max(extremeValue, prob) : min(extremeValue, prob);
+          if (prob < 0 || prob > 1)
+          {
+            extremeValue = -1;
+            break;
+          }
+        }
+        if (extremeValue == -1)
+        {
+          color = 0.0;
+        }
+        else if (extremeValue == 0)
+        {
+          color = vec3(0,0,0.5);
+        }
+        else if (extremeValue == 1)
+        {
+          color = vec3(1,1,0);
+        }
+        else
+        {
+          color = lerp(vec3(0,0,1), vec3(1,0.5,0), extremeValue);
+        }
+      }
+      storeInDebugView(ivec2(threadIndex), color);
+    }
+    break;
+  }
 }
