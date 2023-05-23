@@ -275,13 +275,16 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
         const ivec2 histogramSize = ivec2(100);
         const ivec2 histogramPixel = vec2(threadIndex.x, cb.camera.resolution.y - threadIndex.y) % histogramSize;
         const int padding = 2;
-        if (all(histogramPixel > ivec2(padding)) && all(histogramPixel < ivec2(histogramSize - padding)))
+        if (all(histogramPixel >= ivec2(padding)) && all(histogramPixel < ivec2(histogramSize - padding)))
         {
+          // Get bin index
           int maxBinCount = NEECell.getMaxCandidateCount();
           const ivec2 binPixel = histogramPixel - padding;
           const int binWidth = (histogramSize.x - padding * 2) / maxBinCount;
           const int binHeight = histogramSize.y - padding * 2;
           int binIndex = binPixel.x / binWidth;
+
+          // Get bin threshold
           NEECandidate candidiate = cell.getCandidate(binIndex);
           float sampleThreshold = candidiate.getSampleThreshold();
           float lastSampleThreshold = 0;
@@ -291,8 +294,10 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
             lastSampleThreshold = candidiate.getSampleThreshold();
           }
           float probability = sampleThreshold - lastSampleThreshold;
-          int pixelThreshold = binHeight * probability;
-          if (histogramPixel.y < pixelThreshold)
+
+          // Calculate histogram          
+          const ivec2 pdfPixel = binPixel;
+          if (pdfPixel.y < binHeight * probability)
           {
             color = (dot(cellID, 1) & 0x1) ? vec3(1, 0.5, 0) : vec3(0,0,1);
           }
