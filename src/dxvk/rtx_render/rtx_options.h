@@ -738,9 +738,6 @@ namespace dxvk {
     RTX_OPTION("rtx", float, captureMeshColorDelta, 0.3f, "Inter-frame color min delta warrants new time sample.");
     RTX_OPTION("rtx", float, captureMeshBlendWeightDelta, 0.01f, "Inter-frame blend weight min delta warrants new time sample.");
 
-    // Note: call needsMeshBoundingBox() to check if BBOX calculation is enabled
-    RTX_OPTION("rtx", bool, calculateMeshBoundingBox, false, "Calculate bounding box for every mesh.");
-
     RTX_OPTION("rtx", bool, resetBufferCacheOnEveryFrame, true, "");
 
     RTX_OPTION("rtx", bool, useVirtualShadingNormalsForDenoising, true,
