@@ -278,10 +278,11 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
         if (all(histogramPixel >= ivec2(padding)) && all(histogramPixel < ivec2(histogramSize - padding)))
         {
           // Get bin index
+          int legendHeight = 12;
           int maxBinCount = NEECell.getMaxCandidateCount();
           const ivec2 binPixel = histogramPixel - padding;
-          const int binWidth = (histogramSize.x - padding * 2) / maxBinCount;
-          const int binHeight = histogramSize.y - padding * 2;
+          const float binWidth = float(histogramSize.x - padding * 2) / maxBinCount;
+          const int binHeight = histogramSize.y - padding * 2 - legendHeight;
           int binIndex = binPixel.x / binWidth;
 
           // Get bin threshold
@@ -296,10 +297,22 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
           float probability = sampleThreshold - lastSampleThreshold;
 
           // Calculate histogram          
-          const ivec2 pdfPixel = binPixel;
-          if (pdfPixel.y < binHeight * probability)
+          const ivec2 pdfPixel = binPixel - ivec2(0, legendHeight);
+          if (binPixel.y < legendHeight - padding * 2)
           {
-            color = (dot(cellID, 1) & 0x1) ? vec3(1, 0.5, 0) : vec3(0,0,1);
+            vec3 triangleCenter;
+            f16vec3 triangleNormal;
+            vec3 lightFlux;
+            getTriangleLightFlux(candidiate.getSurfaceID(), candidiate.getPrimitiveID(), triangleCenter, triangleNormal, lightFlux);
+            color = lightFlux / calcBt709Luminance(lightFlux) * 0.7;
+          }
+          else if(binPixel.y < legendHeight)
+          {
+            color *= 0.8;
+          }
+          else if (pdfPixel.y < binHeight * probability)
+          {
+            color = (dot(cellID, 1) & 0x1) ? vec3(0.8) : vec3(0.3);
           }
         }
         else
