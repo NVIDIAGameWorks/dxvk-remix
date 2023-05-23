@@ -54,11 +54,6 @@ struct CompositeArgs {
   float roughnessDemodulationOffset;
   uint combineLightingChannels;
 
-  float noiseMixRatio;
-  float noiseNormalPower;
-  float noiseClampLow;
-  float noiseClampHigh;
-
   VolumeArgs volumeArgs;
 
   // One of DENOISER_MODE constants, affects signal conversion
