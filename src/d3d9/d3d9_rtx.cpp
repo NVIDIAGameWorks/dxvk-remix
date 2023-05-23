@@ -276,17 +276,9 @@ namespace dxvk {
   }
 
   uint32_t D3D9Rtx::processRenderState() {
-    if (m_flags.test(D3D9RtxFlag::DirtyObjectTransform)) {
-      m_flags.clr(D3D9RtxFlag::DirtyObjectTransform);
-
-      // When games use vertex shaders, the object to world transforms can be unreliable, and so we can ignore them.
-      const bool useObjectToWorldTransform = !m_parent->UseProgrammableVS() || (m_parent->UseProgrammableVS() && useVertexCapture() && useWorldMatricesForShaders());
-      m_objectToWorldTransform = useObjectToWorldTransform ? d3d9State().transforms[GetTransformIndex(D3DTS_WORLD)] : Matrix4();
-
-      m_parent->EmitCs([cObjectToWorld = m_objectToWorldTransform](DxvkContext* ctx) {
-        static_cast<RtxContext*>(ctx)->setObjectTransform(cObjectToWorld);
-      });
-    }
+    // When games use vertex shaders, the object to world transforms can be unreliable, and so we can ignore them.
+    const bool useObjectToWorldTransform = !m_parent->UseProgrammableVS() || (m_parent->UseProgrammableVS() && useVertexCapture() && useWorldMatricesForShaders());
+    m_objectToWorldTransform = useObjectToWorldTransform ? d3d9State().transforms[GetTransformIndex(D3DTS_WORLD)] : Matrix4();
 
     if (m_flags.test(D3D9RtxFlag::DirtyCameraTransforms)) {
       m_flags.clr(D3D9RtxFlag::DirtyCameraTransforms);
@@ -543,11 +535,13 @@ namespace dxvk {
 
     // Send it
     m_parent->EmitCs([geoData, futureSkinningData, legacyState, status,
+                      cObjectToWorld = m_objectToWorldTransform,
                       cUseVS = m_parent->UseProgrammableVS(),
                       cUsePS = m_parent->UseProgrammablePS()](DxvkContext* ctx) {
       assert(dynamic_cast<RtxContext*>(ctx));
       RtxContext* rtxCtx = static_cast<RtxContext*>(ctx);
 
+      rtxCtx->setObjectTransform(cObjectToWorld);
       rtxCtx->setShaderState(cUseVS, cUsePS);
       rtxCtx->setLegacyState(legacyState);
       rtxCtx->setGeometry(geoData, status);
