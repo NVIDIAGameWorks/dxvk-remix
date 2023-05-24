@@ -130,7 +130,6 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
           if (any(lightSample.radiance > 0))
           {
             vec3 inputDirection = normalize(lightSample.position - minimalSurfaceInteraction.position);
-            vec2 misWeight = getLightSampleMISWeight(opaqueSurfaceMaterialInteraction, inputDirection, minimalRayInteraction.viewDirection, lightSample.solidAnglePdf);
 
             float16_t specularPortion2;
             const bool isViewModel = false;// pathState.rayMask& OBJECT_MASK_ALL_VIEWMODEL;
@@ -141,11 +140,15 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
               isViewModel, /*ray*/ primaryRay, minimalRayInteraction, /*surfaceInteraction*/minimalSurfaceInteraction,
               opaqueSurfaceMaterialInteraction, diffuseLight, specularLight);
 
-            PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex].xyz += diffuseLight * misWeight.x;
-            PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex].xyz += specularLight * misWeight.y;
+            vec2 misWeight = getLightSampleMISWeight(opaqueSurfaceMaterialInteraction, inputDirection, minimalRayInteraction.viewDirection, lightSample.solidAnglePdf);
+            diffuseLight *= misWeight.x;
+            specularLight *= misWeight.y;
+
+            PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex].xyz += diffuseLight;
+            PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex].xyz += specularLight;
           }
 
-          if (cb.enableReSTIRGI)
+          if (cb.enableReSTIRGI && isVisible)
           {
             ReSTIRGI_Reservoir neeSample;
             neeSample.M = 1;
@@ -157,7 +160,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
             neeSample.normal = lightSample.normal;
             neeSample.radiance = isVisible ? lightSample.radiance / lightSample.solidAnglePdf : vec3(0);
 
-            float wi = isVisible ? calcBt709Luminance(diffuseLight + specularLight) : 0;
+            float wi = calcBt709Luminance(diffuseLight + specularLight);
             resultReservoir.update(wi, neeSample, 0.5);
           }
         }
