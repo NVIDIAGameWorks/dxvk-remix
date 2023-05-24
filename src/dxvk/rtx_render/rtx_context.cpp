@@ -1171,6 +1171,7 @@ namespace dxvk {
     constants.enableNeeCacheRandomReplacement = neeCache.enableRandomReplacement();
     constants.neeCacheRange = neeCache.range();
     constants.neeCacheTextureSampleFootprintSize = neeCache.textureSampleFootprintSize();
+    constants.neeCacheAgeCullingSpeed = neeCache.ageCullingSpeed();
     constants.surfaceCount = getSceneManager().getAccelManager().getSurfaceCount();
 
     auto* cameraTeleportDirectionInfo = getSceneManager().getRayPortalManager().getCameraTeleportationRayPortalDirectionInfo();

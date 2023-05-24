@@ -90,7 +90,7 @@ float getTriangleLight(uint2 data, uint age, vec3 cellCenter)
     g += getGeometricTerm(cellCenter + vec3(0, 0, -cellSize), triangleCenter, triangleNormal);
     g /= 6.0;
 #endif
-    triangleLight = calcBt709Luminance(lightFlux) * g * pow(0.9, float(age));
+    triangleLight = calcBt709Luminance(lightFlux) * g * pow(1.0 - cb.neeCacheAgeCullingSpeed, float(age) + 1);
     triangleLight = clamp(triangleLight, 0, floatMax / 32.0);
   }
   return triangleLight;
@@ -127,6 +127,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
     uint2 newID = mapIDData(candidate.getIDData());
     candidate.setSurfaceID(newID.x);
     candidate.setPrimitiveID(newID.y);
+    candidate.setAge(candidate.getAge() + 1);
     s_candidateList[localIndex.x] = candidate;
   }
 
