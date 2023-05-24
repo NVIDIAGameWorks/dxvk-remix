@@ -569,7 +569,7 @@ void geometryResolverOutputDebugView(
       vec3 baryCentrics = uintToBarycentrics(rayInteraction.barycentricCoordinates);
       LightSample lightSample = getLightSampleFromTriangle(
         rayInteraction.surfaceIndex, rayInteraction.primitiveIndex, baryCentrics.yz, lightObjectPdf, cameraGetWorldPosition(cb.camera));      
-      sampleRadiance = lightSample.radiance * lightSample.solidAnglePdf;
+      sampleRadiance = lightSample.radiance;
     }
 
     storeInDebugView(pixelCoordinate, sampleRadiance);
