@@ -351,7 +351,6 @@ void integratePathVertex(
         bool isEmpty = threadTask.y == 0xffffffff || threadTask.z == 0xffffffff;
         if (isEmpty || getNextSampleBlueNoise(randomState) < 0.5)
         {
-          //cell.insertTask(task);
           threadTask.y = rayInteraction.surfaceIndex;
           threadTask.z = rayInteraction.primitiveIndex;
           NEECache.storeThreadTask(pathState.pixelCoordinate, threadTask);
@@ -538,7 +537,8 @@ void integratePathVertex(
           if (candidate.isValid())
           {
             vec2 uv = vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState));
-            LightSample lightSample = getLightSampleFromTriangle(candidate.getSurfaceID(), candidate.getPrimitiveID(), uv, lightObjectPdf, surfaceInteraction.position);
+            LightSample lightSample = getLightSampleFromTriangle(
+              candidate.getSurfaceID(), candidate.getPrimitiveID(), uv, lightObjectPdf, surfaceInteraction.position, rayInteraction.coneRadius, hackState.coneSpreadAngle);
 
             if(any(lightSample.radiance > 0))
             {
