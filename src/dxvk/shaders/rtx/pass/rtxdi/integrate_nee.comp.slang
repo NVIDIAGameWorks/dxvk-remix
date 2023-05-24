@@ -278,7 +278,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
         if (all(histogramPixel >= ivec2(padding)) && all(histogramPixel < ivec2(histogramSize - padding)))
         {
           // Get bin index
-          int legendHeight = 12;
+          int legendHeight = 24;
           int maxBinCount = NEECell.getMaxCandidateCount();
           const ivec2 binPixel = histogramPixel - padding;
           const float binWidth = float(histogramSize.x - padding * 2) / maxBinCount;
@@ -298,8 +298,15 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
 
           // Calculate histogram          
           const ivec2 pdfPixel = binPixel - ivec2(0, legendHeight);
-          if (binPixel.y < legendHeight - padding * 2)
+          const int legendContentHeight = legendHeight - padding * 2;
+          if (binPixel.y < legendContentHeight / 2)
           {
+            int age = candidiate.getAge();
+            color = lerp(vec3(0,1,0), vec3(1,0,0), saturate(age / 255.0));
+          }
+          else if (binPixel.y < legendContentHeight)
+          {
+            // Triangle color
             vec3 triangleCenter;
             f16vec3 triangleNormal;
             vec3 lightFlux;
@@ -308,10 +315,12 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
           }
           else if(binPixel.y < legendHeight)
           {
+            // Padding line
             color *= 0.8;
           }
           else if (pdfPixel.y < binHeight * probability)
           {
+            // Histogram
             color = (dot(cellID, 1) & 0x1) ? vec3(0.8) : vec3(0.3);
           }
         }

@@ -85,8 +85,9 @@ namespace dxvk {
     ImGui::Checkbox("Enable MIS", &enableMISObject());
     ImGui::Checkbox("Enable in First Bounce", &enableInFirstBounceObject());
     ImGui::Checkbox("Enable in Higher Bounces", &enableInHigherBouncesObject());
-    ImGui::Checkbox("Enable Random Replacement", &enableRandomReplacementObject());    
+    ImGui::Checkbox("Enable Random Replacement", &enableRandomReplacementObject());
     ImGui::DragFloat("Texture Sample Footprint Size", &textureSampleFootprintSizeObject(), 0.001f, 0.f, 1.f, "%.3f");
+    ImGui::DragFloat("Age Culling Speed", &ageCullingSpeedObject(), 0.001f, 0.0f, 0.99f, "%.3f");
     ImGui::DragFloat("Cache Range", &rangeObject(), 1.f, 0.1f, 10000000.0f, "%.3f");
   }
 

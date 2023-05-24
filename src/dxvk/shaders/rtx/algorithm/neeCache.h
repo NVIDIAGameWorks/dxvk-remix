@@ -88,6 +88,7 @@ struct NEECandidate
 
   [mutating] void setAge(int age)
   {
+    age = min(age, 255);
     m_data.y = (m_data.y & 0xffffff) | (age << 24);
   }
 
