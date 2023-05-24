@@ -999,7 +999,7 @@ float opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(
   MinimalRayInteraction minimalRayInteraction,
   f16vec3 inputDirection)
 {
-  float16_t cosTheta = dot(inputDirection, opaqueSurfaceMaterialInteraction.shadingNormal);
+  float cosTheta = dot(inputDirection, opaqueSurfaceMaterialInteraction.shadingNormal);
   float solidAnglePdf = getCosineHemisphereSolidAnglePdf(saturate(cosTheta));
 
   return solidAnglePdf;

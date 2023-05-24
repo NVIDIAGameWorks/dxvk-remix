@@ -555,20 +555,7 @@ void integratePathVertex(
             if(any(lightSample.radiance > 0))
             {
               f16vec3 inputDirection = normalize(lightSample.position - surfaceInteraction.position);
-              float16_t diffuseSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(
-                opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
-              float16_t specularSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
-                opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
-              f16vec2 misWeight;
-              if (cb.enableNeeCacheMIS)
-              {
-                misWeight.x = saturate(lightSample.solidAnglePdf / (lightSample.solidAnglePdf + diffuseSolidAnglePdf));
-                misWeight.y = saturate(lightSample.solidAnglePdf / (lightSample.solidAnglePdf + specularSolidAnglePdf));
-              }
-              else
-              {
-                misWeight = 1.0;
-              }
+              vec2 misWeight = getLightSampleMISWeight(opaqueSurfaceMaterialInteraction, inputDirection, rayInteraction.viewDirection, lightSample.solidAnglePdf);
 
               const bool isViewModel = false;//pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
               float emissiveInvSelectionPdf = 1.0;// / lightObjectPdf;

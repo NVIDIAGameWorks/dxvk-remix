@@ -125,24 +125,8 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
 
           if (any(lightSample.radiance > 0))
           {
-            RayInteraction rayInteraction = {};
-            rayInteraction.coneRadius = minimalRayInteraction.coneRadius;
-            rayInteraction.viewDirection = minimalRayInteraction.viewDirection;
-            f16vec3 inputDirection = normalize(lightSample.position - minimalSurfaceInteraction.position);
-            float16_t diffuseSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(
-              opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
-            float16_t specularSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
-              opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
-            f16vec2 misWeight;
-            if (cb.enableNeeCacheMIS)
-            {
-              misWeight.x = lightSample.solidAnglePdf / (lightSample.solidAnglePdf + diffuseSolidAnglePdf);
-              misWeight.y = lightSample.solidAnglePdf / (lightSample.solidAnglePdf + specularSolidAnglePdf);
-            }
-            else
-            {
-              misWeight = 1.0;
-            }
+            vec3 inputDirection = normalize(lightSample.position - minimalSurfaceInteraction.position);
+            vec2 misWeight = getLightSampleMISWeight(opaqueSurfaceMaterialInteraction, inputDirection, minimalRayInteraction.viewDirection, lightSample.solidAnglePdf);
 
             float16_t specularPortion2;
             const bool isViewModel = false;// pathState.rayMask& OBJECT_MASK_ALL_VIEWMODEL;
@@ -151,7 +135,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
             bool isVisible = evalNEESecondary(
               lightSample, emissiveInvSelectionPdf, invalidRayPortalIndex, /*pathState.portalSpace*/PORTAL_SPACE_NONE, 
               OBJECT_MASK_ALL | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC) /*pathState.rayMask*/,
-              isViewModel, /*ray*/ primaryRay, rayInteraction, /*surfaceInteraction*/minimalSurfaceInteraction,
+              isViewModel, /*ray*/ primaryRay, minimalRayInteraction, /*surfaceInteraction*/minimalSurfaceInteraction,
               opaqueSurfaceMaterialInteraction, diffuseLight, specularLight);
 
              PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex].xyz += diffuseLight * misWeight.x;
