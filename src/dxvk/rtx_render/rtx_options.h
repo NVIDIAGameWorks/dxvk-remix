@@ -678,7 +678,7 @@ namespace dxvk {
                      "This is generally the case for geometries such as fences, foliage, particles, etc. .\n"
                      "Opacity Micromaps greatly speed up raytracing of partially opaque triangles.\n"
                      "Examples of scenes that benefit a lot: multiple trees with a lot of foliage,\n"
-                     "grass blased on the ground or steam consisting of many particles.");
+                     "a ground densely covered with grass blades or steam consisting of many particles.");
     } opacityMicromap;
 
     RTX_OPTION("rtx", ReflexMode, reflexMode, ReflexMode::LowLatency, "Reflex mode selection, enabling it helps minimize input latency, boost mode may further reduce latency by boosting GPU clocks in CPU-bound cases."); // default to low-latency (not boost)
