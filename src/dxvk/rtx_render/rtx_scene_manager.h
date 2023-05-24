@@ -36,16 +36,16 @@
 #include "../util/util_hashtable.h"
 
 #include "rtx_types.h"
-#include "rtx_cameramanager.h"
-#include "rtx_drawcallcache.h"
-#include "rtx_sparseuniquecache.h"
-#include "rtx_sparserefcountcache.h"
-#include "rtx_lightmanager.h"
-#include "rtx_instancemanager.h"
-#include "rtx_accelmanager.h"
-#include "rtx_rayportalmanager.h"
-#include "rtx_bindlessresourcemanager.h"
-#include "rtx_volumemanager.h"
+#include "rtx_camera_manager.h"
+#include "rtx_draw_call_cache.h"
+#include "rtx_sparse_unique_cache.h"
+#include "rtx_sparse_ref_count_cache.h"
+#include "rtx_light_manager.h"
+#include "rtx_instance_manager.h"
+#include "rtx_accel_manager.h"
+#include "rtx_ray_portal_manager.h"
+#include "rtx_bindless_resource_manager.h"
+#include "rtx_volume_manager.h"
 #include <d3d9types.h>
 
 namespace dxvk 

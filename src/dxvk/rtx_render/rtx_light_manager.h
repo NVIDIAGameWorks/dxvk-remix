@@ -29,7 +29,7 @@
 #include "rtx/utility/shader_types.h"
 #include "rtx/concept/light/light_types.h"
 #include "rtx_lights.h"
-#include "rtx_cameramanager.h"
+#include "rtx_camera_manager.h"
 
 struct RaytraceArgs;
 

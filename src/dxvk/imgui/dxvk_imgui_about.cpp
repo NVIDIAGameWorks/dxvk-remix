@@ -25,7 +25,7 @@
 #include "dxvk_device.h"
 #include "dxvk_context.h"
 #include "dxvk_objects.h"
-#include "rtx_render/rtx_scenemanager.h"
+#include "rtx_render/rtx_scene_manager.h"
 
 #include <unordered_map>
 #include <unordered_set>

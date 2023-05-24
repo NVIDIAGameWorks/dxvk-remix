@@ -19,7 +19,7 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
-#include "rtx_drawcallcache.h"
+#include "rtx_draw_call_cache.h"
 #include "../d3d9/d3d9_state.h"
 
 namespace dxvk 

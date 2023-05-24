@@ -23,9 +23,9 @@
 
 #include "../dxvk_device.h"
 #include "../dxvk_context.h"
-#include "rtx_scenemanager.h"
+#include "rtx_scene_manager.h"
 #include "rtx_resources.h"
-#include "rtx_bindlessresourcemanager.h"
+#include "rtx_bindless_resource_manager.h"
 
 #include "../shaders/rtx/pass/common_binding_indices.h"
 #include "../dxvk_descriptor.h"
