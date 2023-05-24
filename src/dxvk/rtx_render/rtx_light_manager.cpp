@@ -23,7 +23,7 @@
 #include <cmath>
 #include <cassert>
 
-#include "rtx_lightmanager.h"
+#include "rtx_light_manager.h"
 #include "rtx_context.h"
 #include "rtx_options.h"
 #include "rtx_utils.h"

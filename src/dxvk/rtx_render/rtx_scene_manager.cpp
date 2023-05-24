@@ -23,7 +23,7 @@
 #include <vector>
 
 #include "rtx_asset_replacer.h"
-#include "rtx_scenemanager.h"
+#include "rtx_scene_manager.h"
 #include "rtx_opacity_micromap_manager.h"
 #include "dxvk_device.h"
 #include "dxvk_context.h"

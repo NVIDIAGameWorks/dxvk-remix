@@ -28,7 +28,7 @@
 #include "../../util/rc/util_rc_ptr.h"
 #include "../../util/sync/sync_signal.h"
 #include "rtx_texture.h"
-#include "rtx_sparseuniquecache.h"
+#include "rtx_sparse_unique_cache.h"
 
 namespace dxvk {
   class DxvkContext;

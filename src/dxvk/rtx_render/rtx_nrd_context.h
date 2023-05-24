@@ -26,7 +26,7 @@
 #include "dxvk_context.h"
 #include "rtx_denoise.h"
 #include "rtx_nrd_settings.h"
-#include "rtx_scenemanager.h"
+#include "rtx_scene_manager.h"
 
 namespace dxvk {
   class NRDContext {

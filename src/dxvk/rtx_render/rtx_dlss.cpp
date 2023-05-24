@@ -38,7 +38,7 @@
 
 #include "rtx_matrix_helpers.h"
 
-#include "rtx_NGXWrapper.h"
+#include "rtx_ngx_wrapper.h"
 
 namespace dxvk {
   const char* dlssProfileToString(DLSSProfile dlssProfile) {

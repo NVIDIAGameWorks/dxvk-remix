@@ -26,8 +26,8 @@
 #include "rtx.h"
 #include "rtx_context.h"
 #include "rtx_opacity_micromap_manager.h"
-#include "rtx_scenemanager.h"
-#include "rtx_accelmanager.h"
+#include "rtx_scene_manager.h"
+#include "rtx_accel_manager.h"
 
 #include "../d3d9/d3d9_state.h"
 #include "rtx_matrix_helpers.h"

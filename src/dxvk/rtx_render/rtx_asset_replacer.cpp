@@ -29,7 +29,7 @@
 #include "rtx_options.h"
 #include "rtx_game_capturer_paths.h"
 #include "rtx_utils.h"
-#include "rtx_asset_datamanager.h"
+#include "rtx_asset_data_manager.h"
 
 namespace dxvk {
 

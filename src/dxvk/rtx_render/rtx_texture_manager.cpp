@@ -19,7 +19,7 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
-#include "rtx_texturemanager.h"
+#include "rtx_texture_manager.h"
 #include "../../util/thread.h"
 #include "../../util/rc/util_rc_ptr.h"
 #include "dxvk_context.h"
