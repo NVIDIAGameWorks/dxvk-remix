@@ -123,6 +123,9 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
           vec2 uv = vec2(getNextSampleBlueNoise(rng), getNextSampleBlueNoise(rng));
           LightSample lightSample = getLightSampleFromTriangle(candidate.getSurfaceID(), candidate.getPrimitiveID(), uv, lightObjectPdf, minimalSurfaceInteraction.position);
 
+          bool isVisible = false;
+          vec3 diffuseLight = 0;
+          vec3 specularLight = 0;
           if (any(lightSample.radiance > 0))
           {
             vec3 inputDirection = normalize(lightSample.position - minimalSurfaceInteraction.position);
@@ -131,31 +134,30 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
             float16_t specularPortion2;
             const bool isViewModel = false;// pathState.rayMask& OBJECT_MASK_ALL_VIEWMODEL;
             float emissiveInvSelectionPdf = 1.0;// / lightObjectPdf;
-            vec3 diffuseLight, specularLight;
             bool isVisible = evalNEESecondary(
-              lightSample, emissiveInvSelectionPdf, invalidRayPortalIndex, /*pathState.portalSpace*/PORTAL_SPACE_NONE, 
+              lightSample, emissiveInvSelectionPdf, invalidRayPortalIndex, /*pathState.portalSpace*/PORTAL_SPACE_NONE,
               OBJECT_MASK_ALL | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC) /*pathState.rayMask*/,
               isViewModel, /*ray*/ primaryRay, minimalRayInteraction, /*surfaceInteraction*/minimalSurfaceInteraction,
               opaqueSurfaceMaterialInteraction, diffuseLight, specularLight);
 
-             PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex].xyz += diffuseLight * misWeight.x;
-             PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex].xyz += specularLight * misWeight.y;
+            PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex].xyz += diffuseLight * misWeight.x;
+            PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex].xyz += specularLight * misWeight.y;
+          }
 
-            if (cb.enableReSTIRGI && isVisible)
-            {
-              ReSTIRGI_Reservoir neeSample;
-              neeSample.M = 1;
-              neeSample.avgWeight = 1;
-              neeSample.flagsAndVirtualFraction = 0;
-              neeSample.radiance = vec3(0);
-              neeSample.setPortalID(RESTIR_GI_INVALID_INDIRECT_LIGHT_PORTAL_ID);
-              neeSample.position = lightSample.position;
-              neeSample.normal = lightSample.normal;
-              neeSample.radiance = lightSample.radiance / lightSample.solidAnglePdf;
+          if (cb.enableReSTIRGI)
+          {
+            ReSTIRGI_Reservoir neeSample;
+            neeSample.M = 1;
+            neeSample.avgWeight = 1;
+            neeSample.flagsAndVirtualFraction = 0;
+            neeSample.radiance = vec3(0);
+            neeSample.setPortalID(RESTIR_GI_INVALID_INDIRECT_LIGHT_PORTAL_ID);
+            neeSample.position = lightSample.position;
+            neeSample.normal = lightSample.normal;
+            neeSample.radiance = isVisible ? lightSample.radiance / lightSample.solidAnglePdf : vec3(0);
 
-              float wi = calcBt709Luminance(diffuseLight + specularLight);
-              resultReservoir.update(wi, neeSample, 0.5);
-            }
+            float wi = isVisible ? calcBt709Luminance(diffuseLight + specularLight) : 0;
+            resultReservoir.update(wi, neeSample, 0.5);
           }
         }
       }
