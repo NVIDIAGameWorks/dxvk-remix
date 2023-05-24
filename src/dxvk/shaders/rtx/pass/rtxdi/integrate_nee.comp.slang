@@ -109,7 +109,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   if (cb.enableNeeCache && cb.enableNeeCacheInFirstBounce)
   {
     NEECell cell = NEECache.findCell(minimalSurfaceInteraction.position, true);
-    if (cell.isValid())// && polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque)
+    if (cell.isValid())
     {
       int candidateCount = cell.getCandidateCount();
       if (candidateCount > 0)
