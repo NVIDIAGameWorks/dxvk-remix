@@ -53,7 +53,7 @@ namespace dxvk {
     RTX_OPTION("rtx.neeCache", bool, enableRandomReplacement, false, "Enable random replacement.");
     RTX_OPTION("rtx.neeCache", float, range, 2000, "World space range.");    
     RTX_OPTION("rtx.neeCache", float, textureSampleFootprintSize, 0.1, "Texture sample footprint size.");
-    RTX_OPTION("rtx.neeCache", float, ageCullingSpeed, 0.01, "A triangle without being detected for several frames will be less important. This threshold determines the culling speed.");
+    RTX_OPTION("rtx.neeCache", float, ageCullingSpeed, 0.02, "A triangle without being detected for several frames will be less important. This threshold determines the culling speed.");
   private:
     Rc<vk::DeviceFn> m_vkd;
 
