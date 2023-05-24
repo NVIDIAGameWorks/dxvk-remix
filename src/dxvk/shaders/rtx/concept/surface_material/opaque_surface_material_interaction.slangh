@@ -429,21 +429,20 @@ SurfaceMaterialInteractionLobeInformation opaqueSurfaceMaterialInteractionGetLob
   return surfaceMaterialInteractionLobeInformation;
 }
 
-SurfaceMaterialInteractionLobeSample opaqueSurfaceMaterialInteractionCalcLobeSample(
+bool opaqueSurfaceMaterialInteractionCalcLobeProbability(
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
-  float16_t random,
-  MinimalRayInteraction minimalRayInteraction,
-  inout bool insideMedium)
+  f16vec3 viewDirection,
+  out float16_t diffuseReflectionProbability,
+  out float16_t specularReflectionProbability,
+  out float16_t opacityTransmissionProbability)
 {
-  SurfaceMaterialInteractionLobeSample surfaceMaterialInteractionLobeSample;
-
   // Calculate dot products used for evaluation
 
   // Note: Normal dot output direction used as a "best" approximation in this case, usually aligned with the actual sampled
   // microfacet normal on surfaces with low roughness (identical at 0), but will become more and more potentially inaccurate
   // as roughness increases.
   const float16_t /* n.v */ normalDotOutputDirection =
-    dot(opaqueSurfaceMaterialInteraction.shadingNormal, minimalRayInteraction.viewDirection);
+    dot(opaqueSurfaceMaterialInteraction.shadingNormal, viewDirection);
 
   // Compute material-related quantities
 
@@ -457,9 +456,9 @@ SurfaceMaterialInteractionLobeSample opaqueSurfaceMaterialInteractionCalcLobeSam
 
   // Calculate lobe probabilities
 
-  float16_t diffuseReflectionProbability = albedoLuminance;
-  float16_t specularReflectionProbability = fresnelLuminance;
-  float16_t opacityTransmissionProbability = float16_t(1.0f) - opaqueSurfaceMaterialInteraction.opacity;
+  diffuseReflectionProbability = albedoLuminance;
+  specularReflectionProbability = fresnelLuminance;
+  opacityTransmissionProbability = float16_t(1.0f) - opaqueSurfaceMaterialInteraction.opacity;
 
   // Todo: Pass raytraceArgs in in the future if accessing these constants poses a problem later.
   adjustProbabilityValue(
@@ -476,44 +475,62 @@ SurfaceMaterialInteractionLobeSample opaqueSurfaceMaterialInteractionCalcLobeSam
     uint16BitsToHalf(cb.minOpaqueOpacityTransmissionLobeSamplingProbability));
 
   const float16_t lobeProbabilitySum = opacityTransmissionProbability + specularReflectionProbability + diffuseReflectionProbability;
-  float16_t lobeProbabilityNormalizationFactor;
 
-  if (lobeProbabilitySum != float16_t(0.0f))
-  {
-    lobeProbabilityNormalizationFactor = float16_t(1.0f) / lobeProbabilitySum;
-  }
-  else
+  if (lobeProbabilitySum == float16_t(0.0f))
+    return false;
+
+  float16_t lobeProbabilityNormalizationFactor = float16_t(1.0f) / lobeProbabilitySum;
+  diffuseReflectionProbability *= lobeProbabilityNormalizationFactor;
+  specularReflectionProbability *= lobeProbabilityNormalizationFactor;
+  opacityTransmissionProbability *= lobeProbabilityNormalizationFactor;
+  return true;
+}
+
+SurfaceMaterialInteractionLobeSample opaqueSurfaceMaterialInteractionCalcLobeSample(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  float16_t random,
+  MinimalRayInteraction minimalRayInteraction,
+  inout bool insideMedium)
+{
+  float16_t diffuseReflectionProbability;
+  float16_t specularReflectionProbability;
+  float16_t opacityTransmissionProbability;
+  bool isValid = opaqueSurfaceMaterialInteractionCalcLobeProbability(
+    opaqueSurfaceMaterialInteraction, minimalRayInteraction.viewDirection,
+    diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability);
+
+  SurfaceMaterialInteractionLobeSample surfaceMaterialInteractionLobeSample;
+  if(!isValid)
   {
     // Note: Default to sampling specular lobe when no lobe desires to be sampled from. Ideally this could just be skipped entirely as
     // a sample though, but we currently do not support that logic, so for now we pick specular since it will generate more coherent
     // rays ideally to minimize the performance impact.
     surfaceMaterialInteractionLobeSample.lobe = opaqueLobeTypeSpecularReflection;
     surfaceMaterialInteractionLobeSample.pdf = float16_t(1.0f);
-
     return surfaceMaterialInteractionLobeSample;
   }
 
   // Sample a lobe
 
   // Note: Adjust the raw lobe sample to the total probability range based on the sum.
-  const float16_t lobeSample = random * lobeProbabilitySum;
+  const float16_t lobeSample = random;// *lobeProbabilitySum;
 
   // Note: < used for conditions to ensure lobes never have a chance to be sampled from if their
   // probability is 0 (and to prevent NaNs from appearing due to 0 PDF).
   if (lobeSample < opacityTransmissionProbability)
   {
     surfaceMaterialInteractionLobeSample.lobe = opaqueLobeTypeOpacityTransmission;
-    surfaceMaterialInteractionLobeSample.pdf = opacityTransmissionProbability * lobeProbabilityNormalizationFactor;
+    surfaceMaterialInteractionLobeSample.pdf = opacityTransmissionProbability;
   }
   else if (lobeSample < (opacityTransmissionProbability + specularReflectionProbability))
   {
     surfaceMaterialInteractionLobeSample.lobe = opaqueLobeTypeSpecularReflection;
-    surfaceMaterialInteractionLobeSample.pdf = specularReflectionProbability * lobeProbabilityNormalizationFactor;
+    surfaceMaterialInteractionLobeSample.pdf = specularReflectionProbability;
   }
   else
   {
     surfaceMaterialInteractionLobeSample.lobe = opaqueLobeTypeDiffuseReflection;
-    surfaceMaterialInteractionLobeSample.pdf = diffuseReflectionProbability * lobeProbabilityNormalizationFactor;
+    surfaceMaterialInteractionLobeSample.pdf = diffuseReflectionProbability;
   }
 
   return surfaceMaterialInteractionLobeSample;
