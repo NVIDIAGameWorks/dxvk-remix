@@ -229,7 +229,7 @@ bool evalNEESecondary(
     lightSample.position, false, rayMask,
     visibilityModeEnableTranslucentMaterials,
     sampledTransportPortalIndex, portalSpace,
-    minimalRayInteraction.coneRadius, viewRay.spreadAngle, 1.0, isViewModelSurface);
+    minimalRayInteraction.coneRadius, viewRay.spreadAngle, 0.98, isViewModelSurface);
 
 
   if (visibility.hasOpaqueHit)
