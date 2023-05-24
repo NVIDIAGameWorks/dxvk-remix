@@ -19,7 +19,7 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
-#include "rtx_asset_datamanager.h"
+#include "rtx_asset_data_manager.h"
 #include "rtx_utils.h"
 #include "rtx_options.h"
 #include "rtx_asset_package.h"

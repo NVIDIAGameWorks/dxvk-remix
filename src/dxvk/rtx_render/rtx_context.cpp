@@ -31,7 +31,7 @@
 #include "rtx_context.h"
 #include "rtx_asset_exporter.h"
 #include "rtx_options.h"
-#include "rtx_bindlessresourcemanager.h"
+#include "rtx_bindless_resource_manager.h"
 #include "rtx_opacity_micromap_manager.h"
 #include "rtx_asset_replacer.h"
 #include "rtx_terrain_baker.h"
@@ -42,7 +42,7 @@
 #include "rtx/utility/debug_view_indices.h"
 #include "rtx/utility/gpu_printing.h"
 #include "rtx_nrd_settings.h"
-#include "rtx_scenemanager.h"
+#include "rtx_scene_manager.h"
 
 #include "../d3d9/d3d9_state.h"
 #include "../d3d9/d3d9_spec_constants.h"

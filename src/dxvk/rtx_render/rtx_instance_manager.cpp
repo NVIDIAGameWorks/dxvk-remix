@@ -24,9 +24,9 @@
 #include <assert.h>
 
 #include "rtx_context.h"
-#include "rtx_scenemanager.h"
-#include "rtx_instancemanager.h"
-#include "rtx_cameramanager.h"
+#include "rtx_scene_manager.h"
+#include "rtx_instance_manager.h"
+#include "rtx_camera_manager.h"
 #include "rtx_options.h"
 #include "rtx_materials.h"
 #include "rtx_opacity_micromap_manager.h"

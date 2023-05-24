@@ -29,7 +29,7 @@
 #include "rtx_types.h"
 #include "../util/util_vector.h"
 #include "../util/util_matrix.h"
-#include "rtx_cameramanager.h"
+#include "rtx_camera_manager.h"
 #include "dxvk_cmdlist.h"
 
 namespace dxvk 

@@ -19,7 +19,7 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
-#include "rtx_NGXWrapper.h"
+#include "rtx_ngx_wrapper.h"
 
 #include <nvsdk_ngx.h>
 #include <nvsdk_ngx_vk.h>
