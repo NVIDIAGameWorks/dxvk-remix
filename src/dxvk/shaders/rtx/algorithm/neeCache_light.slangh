@@ -144,3 +144,23 @@ void getTriangleLightFlux(int surfaceIndex, int primitiveIndex, out vec3 triangl
     lightFlux = opaqueSurfaceMaterialInteraction.emissiveRadiance * surfaceInteraction.triangleArea;
   }
 }
+
+vec2 getLightSampleMISWeight(OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction, vec3 inputDirection, vec3 viewDirection, float lightSampleSolidAnglePDF)
+{
+  RayInteraction rayInteraction = {};
+  rayInteraction.coneRadius = 0;
+  rayInteraction.viewDirection = viewDirection;
+
+  float diffuseSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(
+    opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
+  float specularSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
+    opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
+
+  vec2 misWeight = 1.0;
+  if (cb.enableNeeCacheMIS)
+  {
+    misWeight.x = saturate(lightSampleSolidAnglePDF / (lightSampleSolidAnglePDF + diffuseSolidAnglePdf));
+    misWeight.y = saturate(lightSampleSolidAnglePDF / (lightSampleSolidAnglePDF + specularSolidAnglePdf));
+  }
+  return misWeight;
+}
