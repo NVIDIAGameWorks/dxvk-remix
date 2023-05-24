@@ -42,7 +42,7 @@
 #include "../util/rc/util_rc_ptr.h"
 #include "../util/util_math.h"
 #include "rtx_render/rtx_opacity_micromap_manager.h"
-#include "rtx_render/rtx_bridgemessagechannel.h"
+#include "rtx_render/rtx_bridge_message_channel.h"
 #include "dxvk_imgui_about.h"
 #include "dxvk_imgui_splash.h"
 #include "dxvk_scoped_annotation.h"

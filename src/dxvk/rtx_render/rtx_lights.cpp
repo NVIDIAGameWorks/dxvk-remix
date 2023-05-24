@@ -22,7 +22,7 @@
 
 #include "rtx_lights.h"
 #include "rtx_options.h"
-#include "rtx_lightmanager.h"
+#include "rtx_light_manager.h"
 
 namespace dxvk {
 

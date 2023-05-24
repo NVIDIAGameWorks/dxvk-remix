@@ -19,7 +19,7 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
-#include "rtx_cameramanager.h"
+#include "rtx_camera_manager.h"
 #include "dxvk_device.h"
 #include "rtx_matrix_helpers.h"
 //#include "rtx_options.h"

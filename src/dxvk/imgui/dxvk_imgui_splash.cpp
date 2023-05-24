@@ -23,7 +23,7 @@
 
 #include "imgui.h"
 #include "../rtx_render/rtx_options.h"
-#include "../rtx_render/rtx_bridgemessagechannel.h"
+#include "../rtx_render/rtx_bridge_message_channel.h"
 #include "../rtx_render/rtx_utils.h"
 #include "../util/util_math.h"
 

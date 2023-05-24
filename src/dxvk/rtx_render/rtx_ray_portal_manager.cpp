@@ -23,7 +23,7 @@
 #include <vector>
 #include <assert.h>
 
-#include "rtx_rayportalmanager.h"
+#include "rtx_ray_portal_manager.h"
 
 #include "rtx_context.h"
 #include "../d3d9/d3d9_state.h"

@@ -25,7 +25,7 @@
 
 #include "d3d9_hud.h"
 #include "../util/util_env.h"
-#include "../dxvk/rtx_render/rtx_bridgemessagechannel.h"
+#include "../dxvk/rtx_render/rtx_bridge_message_channel.h"
 #include "../dxvk/dxvk_scoped_annotation.h"
 
 namespace dxvk {
