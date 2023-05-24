@@ -46,8 +46,7 @@ struct NEECandidate
 
   int getSurfaceID()
   {
-    uint surfaceID = m_data.x & 0xffffff;
-    return surfaceID;
+    return m_data.x & 0xffffff;
   }
 
   [mutating] void setSurfaceID(int surfaceID)
@@ -57,19 +56,17 @@ struct NEECandidate
 
   int getPrimitiveID()
   {
-    return m_data.y;
-  }
-
-  uint2 getIDData()
-  {
-    uint2 data = m_data;
-    data.x &= 0xffffff;
-    return data;
+    return m_data.y & 0xffffff;
   }
 
   [mutating] void setPrimitiveID(int primitiveID)
   {
-    m_data.y = primitiveID;
+    m_data.y = (m_data.y & 0xff000000) | primitiveID;
+  }
+
+  uint2 getIDData()
+  {
+    return uint2(getSurfaceID(), getPrimitiveID());
   }
 
   float16_t getSampleThreshold()
@@ -82,6 +79,26 @@ struct NEECandidate
   {
     uint thresholdI = min(uint(threshold * 255.0f), 255);
     m_data.x = (m_data.x & 0xffffff) | (thresholdI << 24);
+  }
+
+  uint getAge()
+  {
+    return m_data.y >> 24;
+  }
+
+  [mutating] void setAge(int age)
+  {
+    m_data.y = (m_data.y & 0xffffff) | (age << 24);
+  }
+
+  static NEECandidate create(uint surfaceID, uint primitiveID)
+  {
+    NEECandidate nee;
+    nee.m_data = 0;
+    nee.setSurfaceID(surfaceID);
+    nee.setPrimitiveID(primitiveID);
+    nee.setAge(0);
+    return nee;
   }
 
   static NEECandidate create(uint2 data)
