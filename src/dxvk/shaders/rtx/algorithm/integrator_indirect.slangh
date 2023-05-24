@@ -383,21 +383,12 @@ void integratePathVertex(
     return;
   }
 
-  float16_t misWeight = 1.0;
+  float misWeight = 1.0;
   if (hasNEE)
   {
-    if (cb.enableNeeCacheMIS)
-    {
-      float16_t lightPdf = lightSelectionPDF * getLightSamplingSolidAnglePDF(surfaceInteraction.triangleArea, surfaceInteraction.position, surfaceInteraction.triangleNormal, oldOrigin);
-      misWeight = pathState.solidAnglePdf / (pathState.solidAnglePdf + lightPdf);
-    }
-    else
-    {
-      misWeight = 0.0;
-    }
+    misWeight = getBRDFSampleMISWeight(surfaceInteraction, oldOrigin, lightSelectionPDF, pathState.solidAnglePdf);
   }
   accumulateRadiance(pathState, emissiveLight * misWeight);
-  //evalEmission(pathState, polymorphicSurfaceMaterialInteraction);
 
 // We don't need to sample lights or surface rays in the portal closest hit shader
 #if (SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT) != 0
@@ -425,12 +416,9 @@ void integratePathVertex(
     pathState.direction = sampledRay.direction;
     pathState.solidAnglePdf = solidAnglePdf;
 
-    //NEECache.storeCellID(pathState.pixelCoordinate, pathState.origin, true);
     uint4 threadTask = NEECache.loadThreadTask(pathState.pixelCoordinate);
     if (threadTask.y == 0xffffffff && threadTask.z == 0xffffffff)
     {
-      //threadTask.y = rayInteraction.surfaceIndex;
-      //threadTask.z = rayInteraction.primitiveIndex;
       threadTask.x = NEECache.pointToOffset(pathState.origin, true);
       NEECache.storeThreadTask(pathState.pixelCoordinate, threadTask);
     }
