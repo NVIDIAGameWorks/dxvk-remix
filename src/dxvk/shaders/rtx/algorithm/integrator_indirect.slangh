@@ -414,7 +414,7 @@ void integratePathVertex(
     pathState.origin = sampledRay.origin;
     pathState.coneRadius = sampledRay.coneRadius;
     pathState.direction = sampledRay.direction;
-    pathState.solidAnglePdf = solidAnglePdf;
+    pathState.solidAnglePdf = solidAnglePdf * sampledLobePdf;
 
     uint4 threadTask = NEECache.loadThreadTask(pathState.pixelCoordinate);
     if (threadTask.y == 0xffffffff && threadTask.z == 0xffffffff)
@@ -812,7 +812,7 @@ void integrateIndirectPath(
   pathState.throughput = throughput;
   pathState.insideMedium = geometryFlags.insideMedium;
   pathState.accumulatedHitDistance = gbufferSurfaceHitDistance;
-  pathState.solidAnglePdf = firstSampledSolidAnglePdf;
+  pathState.solidAnglePdf = firstSampledSolidAnglePdf * firstSampledLobePdf;
 
   pathState.coneSpreadAngle = calculateSpreadAngleFromSolidAnglePdf(pathState.coneSpreadAngle, firstSampledSolidAnglePdf);
 
