@@ -121,7 +121,8 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
         if (candidate.isValid())
         {
           vec2 uv = vec2(getNextSampleBlueNoise(rng), getNextSampleBlueNoise(rng));
-          LightSample lightSample = getLightSampleFromTriangle(candidate.getSurfaceID(), candidate.getPrimitiveID(), uv, lightObjectPdf, minimalSurfaceInteraction.position);
+          LightSample lightSample = getLightSampleFromTriangle(
+            candidate.getSurfaceID(), candidate.getPrimitiveID(), uv, lightObjectPdf, minimalSurfaceInteraction.position, minimalRayInteraction.coneRadius, primaryRay.spreadAngle);
 
           bool isVisible = false;
           vec3 diffuseLight = 0;

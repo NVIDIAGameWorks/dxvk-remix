@@ -38,7 +38,7 @@ float getLightSamplingSolidAnglePDF(float triangleArea, vec3 samplePosition, f16
 }
 
 
-LightSample getLightSampleFromTriangle(int surfaceIndex, int primitiveIndex, vec2 uv, float trianglePdf, vec3 shadingPosition)
+LightSample getLightSampleFromTriangle(int surfaceIndex, int primitiveIndex, vec2 uv, float trianglePdf, vec3 shadingPosition, float16_t coneRadius, float16_t spreadAngle)
 {
 #define USE_SIMIPLIFIED_MODEL 1
 
@@ -63,9 +63,10 @@ LightSample getLightSampleFromTriangle(int surfaceIndex, int primitiveIndex, vec
   RayInteraction rayInteracton = {};
   rayInteracton.barycentricCoordinates = barycentricsToUint(uvToBary(uv));
   rayInteracton.primitiveIndex = primitiveIndex;
-  rayInteracton.coneRadius = cb.neeCacheTextureSampleFootprintSize;
+  rayInteracton.coneRadius = coneRadius * cb.neeCacheTextureSampleFootprintSize;
   Ray ray = {};
   ray.origin = shadingPosition;
+  ray.spreadAngle = spreadAngle * cb.neeCacheTextureSampleFootprintSize;
   SurfaceInteraction surfaceInteraction = surfaceInteractionCreate(surface, rayInteracton, ray, false, kFootprintFromRayOrigin);
 #if USE_SIMIPLIFIED_MODEL
   surfaceInteraction.positionError = 0;

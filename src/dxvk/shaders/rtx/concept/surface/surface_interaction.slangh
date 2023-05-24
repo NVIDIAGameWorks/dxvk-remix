@@ -427,7 +427,9 @@ SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayI
     // than worrying about if the flipped vector could break it)
     if (footprintMode != kFootprintFromTextureCoordDiff)
     {
-      f16vec3 direction = footprintMode == kFootprintFromRayDiection ? ray.direction : normalize(surfaceInteraction.position - ray.origin);
+      vec3 positionOffset = surfaceInteraction.position - ray.origin;
+      f16vec3 direction = footprintMode == kFootprintFromRayDiection ? ray.direction : normalize(positionOffset);
+      float16_t coneRadius = footprintMode == kFootprintFromRayDiection ? rayInteraction.coneRadius : rayInteraction.coneRadius + length(positionOffset) * ray.spreadAngle;
       computeAnisotropicEllipseAxes(
         hitPosition, triangleNormal, worldTwoTriangleArea, direction,
         rayInteraction.coneRadius, worldPositions, texcoords, surfaceInteraction.textureCoordinates,
