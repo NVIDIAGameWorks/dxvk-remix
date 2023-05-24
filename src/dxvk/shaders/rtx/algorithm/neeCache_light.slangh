@@ -88,7 +88,8 @@ LightSample getLightSampleFromTriangle(int surfaceIndex, int primitiveIndex, vec
   lightSample.solidAnglePdf = lightPdf;
   lightSample.radiance = 0;
 
-  if (polymorphicType == surfaceMaterialTypeOpaque)
+  // The light sample and the shading point may be one the same triangle. In this case, solid angle PDF is 0.
+  if (lightSample.solidAnglePdf > 0 && polymorphicType == surfaceMaterialTypeOpaque)
   {
     OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
 #if USE_SIMIPLIFIED_MODEL
