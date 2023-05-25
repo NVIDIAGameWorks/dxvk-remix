@@ -546,8 +546,8 @@ void integratePathVertex(
               f16vec3 inputDirection = normalize(lightSample.position - surfaceInteraction.position);
               vec2 misWeight = getLightSampleMISWeight(opaqueSurfaceMaterialInteraction, inputDirection, rayInteraction.viewDirection, lightSample.solidAnglePdf);
 
-              const bool isViewModel = false;//pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
-              float emissiveInvSelectionPdf = 1.0;// / lightObjectPdf;
+              const bool isViewModel = pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
+              float emissiveInvSelectionPdf = 1.0;
               vec3 diffuseLight, specularLight;
               evalNEESecondary(
                 lightSample, emissiveInvSelectionPdf, invalidRayPortalIndex, pathState.portalSpace, pathState.rayMask,

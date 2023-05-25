@@ -77,9 +77,6 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   GBufferMemoryMinimalRay gBufferMemoryMinimalRay;
   gBufferMemoryMinimalRay.spreadAngle = float16_t(cb.screenSpacePixelSpreadHalfAngle);
   const MinimalRay minimalRay = minimalRayCreate(gBufferMemoryMinimalRay);
-  Ray currentRay;
-  currentRay.spreadAngle = minimalRay.spreadAngle;
-
   Ray primaryRay;
   primaryRay.spreadAngle = minimalRay.spreadAngle;
 
@@ -94,8 +91,6 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   // Deserialize the Surface Material Interaction
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction = polymorphicSurfaceMaterialInteractionReadFromGBuffer(
     threadIndex, PrimaryWorldShadingNormal, PrimaryPerceptualRoughness, PrimaryAlbedo, PrimaryBaseReflectivity, SharedMaterialData0, SharedMaterialData1);
-
-  ReSTIRGI_Reservoir spatialReservoir = RAB_LoadGIReservoir(threadIndex, ReSTIRGI_GetSpatialOutputPage());
 
   if (polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) != surfaceMaterialTypeOpaque)
   {
@@ -134,13 +129,11 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
             float misWeight = lightSample.solidAnglePdf / (brdfSampleSolidAnglePdf + lightSample.solidAnglePdf);
             lightSample.radiance *= misWeight;
 
-            float16_t specularPortion2;
-            const bool isViewModel = false;// pathState.rayMask& OBJECT_MASK_ALL_VIEWMODEL;
-            float emissiveInvSelectionPdf = 1.0;// / lightObjectPdf;
+            float emissiveInvSelectionPdf = 1.0;
+            uint8_t rayMask = OBJECT_MASK_OPAQUE | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC);
             isVisible = evalNEESecondary(
-              lightSample, emissiveInvSelectionPdf, invalidRayPortalIndex, /*pathState.portalSpace*/PORTAL_SPACE_NONE,
-              OBJECT_MASK_ALL | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC) /*pathState.rayMask*/,
-              isViewModel, /*ray*/ primaryRay, minimalRayInteraction, /*surfaceInteraction*/minimalSurfaceInteraction,
+              lightSample, emissiveInvSelectionPdf, invalidRayPortalIndex, surface.portalSpace, rayMask,
+              surface.isViewModel, primaryRay, minimalRayInteraction, minimalSurfaceInteraction,
               opaqueSurfaceMaterialInteraction, diffuseLight, specularLight);
 
             PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex].xyz += diffuseLight;
@@ -209,9 +202,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
 
     // Calculate position and normal for a virtual sample
     initialSample.setVirtualFraction(0.0);
-    if (cb.enableReSTIRGIVirtualSample > 0
-      //&& surface.opaqueSurfaceMaterialInteraction.isotropicRoughness > RAB_RESTIR_GI_DELTA_ROUGHNESS
-      )
+    if (cb.enableReSTIRGIVirtualSample > 0 && surface.opaqueSurfaceMaterialInteraction.isotropicRoughness > RAB_RESTIR_GI_DELTA_ROUGHNESS)
     {
       vec3 direction = initialSample.position - minimalSurfaceInteraction.position;
       if (any(direction != 0) && indirectPathLength > length(direction) * 1.01)
@@ -235,6 +226,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
     RAB_StoreGIReservoir(resultReservoir, threadIndex, ReSTIRGI_GetInitSamplePage());
   }
 
+  // Debug views
   switch(cb.debugView)
   {
   case DEBUG_VIEW_NEE_CACHE_CANDIDATE_ID:
