@@ -21,7 +21,7 @@
 */
 #pragma once
 
-#include "rtx/pass/rtxdi/integrate_nee_binding_indices.h"
+#include "rtx/pass/integrate/integrate_nee_binding_indices.h"
 
 #include "rtx/algorithm/rtxdi/rtxdi.slangh"
 
