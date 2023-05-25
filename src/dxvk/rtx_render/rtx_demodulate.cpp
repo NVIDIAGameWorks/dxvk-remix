@@ -24,17 +24,14 @@
 #include "rtx.h"
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/demodulate/demodulate_binding_indices.h"
-#include "rtx/pass/nee_cache/update_nee_cache_binding_indices.h"
 #include "rtx_render/rtx_shader_manager.h"
 #include "dxvk_scoped_annotation.h"
 #include "dxvk_context.h"
 #include "rtx_context.h"
 #include "rtx_imgui.h"
 #include "rtx/pass/raytrace_args.h"
-#include "rtx/algorithm/neecache.h"
 
 #include <rtx_shaders/demodulate.h>
-#include <rtx_shaders/updateNeeCache.h>
 
 namespace dxvk {
 
