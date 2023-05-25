@@ -23,7 +23,7 @@
 #define RAB_HAS_RESTIR_GI_RESERVOIRS 1
 
 #include "rtx/pass/common_bindings.slangh"
-#include "rtx/pass/rtxdi/integrate_nee_bindings.slangh"
+#include "rtx/pass/integrate/integrate_nee_bindings.slangh"
 #include "rtx/utility/gbuffer_helpers.slangh"
 #include "rtx/utility/debug_view_helpers.slangh"
 #include "rtx/algorithm/integrator_helpers.slangh"

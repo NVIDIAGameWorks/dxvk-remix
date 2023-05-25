@@ -27,7 +27,7 @@
 
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/integrate/integrate_indirect_binding_indices.h"
-#include "rtx/pass/rtxdi/integrate_nee_binding_indices.h"
+#include "rtx/pass/integrate/integrate_nee_binding_indices.h"
 #include "rtx/concept/surface_material/surface_material_hitgroup.h"
 
 #include <rtx_shaders/integrate_indirect_raygen.h>
