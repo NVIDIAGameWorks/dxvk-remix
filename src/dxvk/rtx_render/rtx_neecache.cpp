@@ -34,15 +34,15 @@
 #include "rtx/algorithm/neecache.h"
 
 #include <rtx_shaders/demodulate.h>
-#include <rtx_shaders/updateNeeCache.h>
-#include <rtx_shaders/updateNeeTask.h>
+#include <rtx_shaders/update_nee_cache.h>
+#include <rtx_shaders/update_nee_task.h>
 
 namespace dxvk {
 
   // Defined within an unnamed namespace to ensure unique definition across binary
   namespace {
     class UpdateNEECacheShader : public ManagedShader {
-      SHADER_SOURCE(UpdateNEECacheShader, VK_SHADER_STAGE_COMPUTE_BIT, updateNeeCache)
+      SHADER_SOURCE(UpdateNEECacheShader, VK_SHADER_STAGE_COMPUTE_BIT, update_nee_cache)
 
       BINDLESS_ENABLED()
 
@@ -58,7 +58,7 @@ namespace dxvk {
 
 
     class UpdateNEETaskShader : public ManagedShader {
-      SHADER_SOURCE(UpdateNEETaskShader, VK_SHADER_STAGE_COMPUTE_BIT, updateNeeTask)
+      SHADER_SOURCE(UpdateNEETaskShader, VK_SHADER_STAGE_COMPUTE_BIT, update_nee_task)
 
       BINDLESS_ENABLED()
 
