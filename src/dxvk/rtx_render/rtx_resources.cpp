@@ -906,7 +906,7 @@ namespace dxvk {
     radianceCacheInfo.size = cellCount * RADIANCE_CACHE_ELEMENTS * sizeof(int) * 2;
     m_raytracingOutput.m_radianceCache = m_device->createBuffer(radianceCacheInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
     m_raytracingOutput.m_radianceCacheTask = m_device->createBuffer(radianceCacheInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
-    m_raytracingOutput.m_radianceCacheThreadTask = createImageResource(ctx, "radiance cache thread task", m_downscaledExtent, VK_FORMAT_R32G32B32A32_UINT);
+    m_raytracingOutput.m_radianceCacheThreadTask = createImageResource(ctx, "radiance cache thread task", m_downscaledExtent, VK_FORMAT_R32G32_UINT);
 
     // Post Effect motion blur prefilter intermediate textures
     m_raytracingOutput.m_primarySurfaceFlagsIntermediateTexture1 = AliasedResource(m_raytracingOutput.m_secondaryPerceptualRoughness, ctx, m_downscaledExtent, VK_FORMAT_R8_UINT, "Primary Surface Flags Intermediate Texture 1");

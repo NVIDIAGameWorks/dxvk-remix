@@ -344,14 +344,24 @@ struct NEECache
     return getCell(pointToCell(point, jittered));
   }
 
-  static void storeThreadTask(int2 pixel, uint4 data)
+  static void storeThreadTask(int2 pixel, uint cellOffset, uint surfaceID, uint primitiveID)
   {
+    uint2 data = uint2(surfaceID, primitiveID) & 0xffffff;
+    data.x = data.x | ((cellOffset & 0xff) << 24);
+    data.y = data.y | ((cellOffset & 0xff00) << 16);
     RadianceCacheThreadTask[pixel] = data;
   }
 
-  static uint4 loadThreadTask(int2 pixel)
+  static void loadThreadTask(int2 pixel, out uint cellOffset, out uint surfaceID, out uint primitiveID)
   {
-    return RadianceCacheThreadTask[pixel];
+    uint2 data = RadianceCacheThreadTask[pixel];
+    surfaceID   = data.x & 0xffffff;
+    primitiveID = data.y & 0xffffff;
+    if (surfaceID == 0xffffff || primitiveID == 0xffffff)
+    {
+      surfaceID = primitiveID = 0xffffffff;
+    }
+    cellOffset = (data.x >> 24) | ((data.y & 0xff000000) >> 16);
   }
 }
 
