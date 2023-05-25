@@ -178,3 +178,26 @@ float getBRDFSampleMISWeight(SurfaceInteraction surfaceInteraction, vec3 positio
   float misWeight = saturate(brdfSampleSolidAnglePDF / (brdfSampleSolidAnglePDF + lightPdf));
   return misWeight;
 }
+
+float getBSDFSampleTotalPDF(OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction, f16vec3 viewDirection, f16vec3 sampleDirection, float firstSampledSolidAnglePdf, bool firstSampledLobeIsSpecular)
+{
+  float16_t diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability;
+  bool isValid = opaqueSurfaceMaterialInteractionCalcLobeProbability(
+    opaqueSurfaceMaterialInteraction, viewDirection,
+    diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability);
+
+  MinimalRayInteraction minimalRayInteraction;
+  minimalRayInteraction.viewDirection = viewDirection;
+  float totalPdf = 0;
+  if (firstSampledLobeIsSpecular)
+  {
+    float diffuseSolidAnglePdf  = opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, sampleDirection);
+    totalPdf = diffuseReflectionProbability * diffuseSolidAnglePdf + specularReflectionProbability * firstSampledSolidAnglePdf;
+  }
+  else
+  {
+    float specularSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, sampleDirection);
+    totalPdf = diffuseReflectionProbability * firstSampledSolidAnglePdf + specularReflectionProbability * specularSolidAnglePdf;
+  }
+  return totalPdf;
+}
