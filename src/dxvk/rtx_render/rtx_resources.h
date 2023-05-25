@@ -28,6 +28,7 @@
 #include "vulkan/vulkan_core.h"
 #include "rtx_utils.h"
 #include "rtx/pass/raytrace_args.h"
+#include "rtx_render/rtx_utils.h"
 
 namespace dxvk 
 {
@@ -366,7 +367,15 @@ namespace dxvk
     const Resources::Resource& getTerrainTexture(Rc<DxvkContext> ctx);
     Rc<DxvkImageView> getCompatibleViewForView(const Rc<DxvkImageView>& view, VkFormat format);
 
-    Rc<DxvkSampler> getSampler(const VkFilter filter, const VkSamplerMipmapMode mipFilter, const VkSamplerAddressMode addrMode, const float mipBias = 0, const bool useAnisotropy = false);
+    Rc<DxvkSampler> getSampler(const VkFilter filter, const VkSamplerMipmapMode mipFilter,
+                               const VkSamplerAddressMode addressModeU,
+                               const VkSamplerAddressMode addressModeV,
+                               const VkSamplerAddressMode addressModeW,
+                               const VkClearColorValue borderColor = VkClearColorValue(),
+                               const float mipBias = 0, const bool useAnisotropy = false);
+    Rc<DxvkSampler> getSampler(const VkFilter filter, const VkSamplerMipmapMode mipFilter, 
+                               const VkSamplerAddressMode addrMode, 
+                               const float mipBias = 0, const bool useAnisotropy = false);
 
     Tlas& getTLAS(Tlas::Type type) { return m_tlas[type]; }
 
@@ -410,7 +419,7 @@ namespace dxvk
     
     Resources::Resource m_terrain;
 
-    std::unordered_map<size_t, Rc<DxvkSampler>> m_samplerCache;
+    fast_unordered_cache<Rc<DxvkSampler>> m_samplerCache;
     fast_unordered_cache<std::pair<Rc<DxvkImageView>, uint32_t>> m_viewCache;
 
     Tlas m_tlas[Tlas::Type::Count];

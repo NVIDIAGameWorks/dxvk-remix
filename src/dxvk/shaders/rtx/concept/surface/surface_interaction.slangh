@@ -182,7 +182,7 @@ SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayI
     {
       const uint currentIndex = idx[i];
 
-      // Note: Position buffer always required for now
+      // Note: Position buffer is always required for now
       // if (surface.positionBufferIndex != BINDING_INDEX_INVALID)
       {
         const uint positionBufferIndex = surface.positionBufferIndex;
@@ -364,7 +364,7 @@ SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayI
         texcoords[i].y = BUFFER_ARRAY(geometries, texcoordBufferIndex, texcoordElementIndex + 1);
         texcoords[i] = mul(surface.textureTransform, float4(texcoords[i], 1.f, 1.f)).xy;
       }
-    } 
+    }
 
     surfaceInteraction.textureCoordinates = interpolateHitAttribute(texcoords, bary);
    

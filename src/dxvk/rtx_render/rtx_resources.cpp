@@ -397,42 +397,57 @@ namespace dxvk {
     m_blueNoiseTexView = m_device->createImageView(m_blueNoiseTex, viewInfo);
   }
 
-  Rc<DxvkSampler> dxvk::Resources::getSampler(const VkFilter filter, const VkSamplerMipmapMode mipFilter, const VkSamplerAddressMode addrMode, const float mipBias/* = 0*/, const bool useAnisotropy/* = false*/) {
+  Rc<DxvkSampler> dxvk::Resources::getSampler(
+    const VkFilter filter,
+    const VkSamplerMipmapMode mipFilter,
+    const VkSamplerAddressMode addressModeU,
+    const VkSamplerAddressMode addressModeV,
+    const VkSamplerAddressMode addressModeW,
+    const VkClearColorValue borderColor/* = VkClearColorValue()*/,
+    const float mipBias/* = 0*/,
+    const bool useAnisotropy/* = false*/) {
     const VkPhysicalDeviceLimits& limits = m_device->properties().core.properties.limits;
     const float maxAniso = std::min(limits.maxSamplerAnisotropy, RtxOptions::Get()->getMaxAnisotropySamples());
 
-    // Build a simple key to lookup the cache
-    DxvkHashState key;
-    std::hash<uint32_t> hash;
-    key.add(hash(filter));
-    key.add(hash(mipFilter));
-    key.add(hash(addrMode));
-    key.add(hash((uint32_t&) mipBias));
-    key.add(hash((uint32_t&) maxAniso));
-    key.add(hash(static_cast<uint32_t>(useAnisotropy)));
+    // Fill out the rest of the sample create info
+    DxvkSamplerCreateInfo samplerInfo;
+    samplerInfo.magFilter = filter;
+    samplerInfo.minFilter = filter;
+    samplerInfo.mipmapMode = mipFilter;
+    samplerInfo.mipmapLodBias = mipBias;
+    samplerInfo.mipmapLodMin = 0.0f;
+    samplerInfo.mipmapLodMax = VK_LOD_CLAMP_NONE;
+    samplerInfo.useAnisotropy = useAnisotropy;
+    samplerInfo.maxAnisotropy = maxAniso;
+    samplerInfo.addressModeU = addressModeU;
+    samplerInfo.addressModeV = addressModeV;
+    samplerInfo.addressModeW = addressModeW;
+    samplerInfo.compareToDepth = VK_FALSE;
+    samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+    samplerInfo.borderColor = borderColor;
+    samplerInfo.usePixelCoord = VK_FALSE;
+    
+    // Build a hash key to lookup the sampler in the cache.
+    // We only hash on values that can change
+    XXH64_hash_t key;
+    {
+      key = XXH3_64bits(&filter, sizeof(filter));
+      key = XXH3_64bits_withSeed(&mipFilter, sizeof(mipFilter), key);
+      key = XXH3_64bits_withSeed(&mipBias, sizeof(mipBias), key);
+      key = XXH3_64bits_withSeed(&useAnisotropy, sizeof(useAnisotropy), key);
+      key = XXH3_64bits_withSeed(&maxAniso, sizeof(maxAniso), key);
+      key = XXH3_64bits_withSeed(&addressModeU, sizeof(addressModeU), key);
+      key = XXH3_64bits_withSeed(&addressModeV, sizeof(addressModeV), key);
+      key = XXH3_64bits_withSeed(&addressModeW, sizeof(addressModeW), key);
+      key = XXH3_64bits_withSeed(&borderColor, sizeof(borderColor), key);
+    }
 
-    Rc<DxvkSampler> sampler = nullptr;
+    Rc<DxvkSampler> sampler;
 
     auto samplerIt = m_samplerCache.find(key);
     if (samplerIt == m_samplerCache.end()) {
 
-      // Make it
-      DxvkSamplerCreateInfo samplerInfo;
-      samplerInfo.magFilter = filter;
-      samplerInfo.minFilter = filter;
-      samplerInfo.mipmapMode = mipFilter;
-      samplerInfo.mipmapLodBias = mipBias;
-      samplerInfo.mipmapLodMin = 0.0f;
-      samplerInfo.mipmapLodMax = VK_LOD_CLAMP_NONE;
-      samplerInfo.useAnisotropy = useAnisotropy;
-      samplerInfo.maxAnisotropy = maxAniso;
-      samplerInfo.addressModeU = addrMode;
-      samplerInfo.addressModeV = addrMode;
-      samplerInfo.addressModeW = addrMode;
-      samplerInfo.compareToDepth = VK_FALSE;
-      samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
-      samplerInfo.borderColor = VkClearColorValue();
-      samplerInfo.usePixelCoord = VK_FALSE;
+      // Create the sampler
       sampler = m_device->createSampler(samplerInfo);
 
       // Add it to the cache
@@ -440,7 +455,17 @@ namespace dxvk {
     } else {
       sampler = samplerIt->second;
     }
+
     return sampler;
+  }
+
+  Rc<DxvkSampler> dxvk::Resources::getSampler(
+    const VkFilter filter,
+    const VkSamplerMipmapMode mipFilter,
+    const VkSamplerAddressMode addressMode,
+    const float mipBias/* = 0*/,
+    const bool useAnisotropy/* = false*/) {
+    return getSampler(filter, mipFilter, addressMode, addressMode, addressMode, VkClearColorValue(), mipBias, useAnisotropy);
   }
 
   Rc<DxvkImageView> Resources::getWhiteTexture(Rc<DxvkContext> ctx) {

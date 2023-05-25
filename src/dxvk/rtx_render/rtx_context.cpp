@@ -531,10 +531,6 @@ namespace dxvk {
     updateMetrics(frameTimeSecs, gpuIdleTimeSecs);
 
     m_resetHistory = false;
-
-    // Reset the terrain offsetting system for the next frame.
-    m_terrainOffset = 0.f;
-    m_lastTerrainMaterial = 0;
   }
 
   // Called right before D3D9 present
