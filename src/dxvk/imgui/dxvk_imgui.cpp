@@ -725,9 +725,7 @@ namespace dxvk {
         kSetup,
         kEnhancements,
         kAbout,
-#ifdef REMIX_DEVELOPMENT
         kDevelopment,
-#endif
         kCount
       };
       const char* names[] = { "Rendering", "Game Setup", "Enhancements", "About" , "Dev Settings"};
@@ -748,11 +746,9 @@ namespace dxvk {
             case Tabs::kAbout:
               m_about->show(ctx);
               break;
-#ifdef REMIX_DEVELOPMENT
             case Tabs::kDevelopment:
               showAppConfig();
               break;
-#endif
             }
             ImGui::EndTabItem();
           }
