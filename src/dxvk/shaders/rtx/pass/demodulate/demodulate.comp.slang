@@ -580,21 +580,8 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID, uint2 localIndex : SV_Gro
     primaryDirectDiffuseInput = PrimaryDirectDiffuseRadiance[pixelCoordinate];
     primaryDirectSpecularInput = PrimaryDirectSpecularRadiance[pixelCoordinate];
   
-    // Restir GI stored indirect radiance and hit distance data to resources for each lobe
-    if (cb.enableReSTIRGI || true)
-    {
-      primaryIndirectDiffuseInput = PrimaryIndirectDiffuseRadiance[pixelCoordinate];
-      primaryIndirectSpecularInput = PrimaryIndirectSpecularRadiance[pixelCoordinate];
-    }
-    else
-    {
-      const vec4 indirectRadianceHitDistance = IndirectRadianceHitDistance[pixelCoordinate];
-
-      if (geometryFlags.firstSampledLobeIsSpecular) 
-        primaryIndirectSpecularInput = indirectRadianceHitDistance;
-      else
-        primaryIndirectDiffuseInput = indirectRadianceHitDistance;
-    }
+    primaryIndirectDiffuseInput = PrimaryIndirectDiffuseRadiance[pixelCoordinate];
+    primaryIndirectSpecularInput = PrimaryIndirectSpecularRadiance[pixelCoordinate];
   }
   // Load the secondary combined signals
   else

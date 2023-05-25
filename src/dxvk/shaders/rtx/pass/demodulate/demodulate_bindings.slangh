@@ -79,12 +79,6 @@ RWTexture2D<float4> SecondaryCombinedSpecularRadiance;
 layout(binding = DEMODULATE_BINDING_DEBUG_VIEW_OUTPUT)
 RWTexture2D<float4> DebugView;
 
-layout(binding = DEMODULATE_BINDING_RADIANCE_CACHE)
-RWByteAddressBuffer RadianceCache;
-
-layout(binding = DEMODULATE_BINDING_RADIANCE_CACHE_TASK)
-RWByteAddressBuffer RadianceCacheTask;
-
 // Aliased Inputs / Outputs
 
 layout(rgb10_a2, binding = DEMODULATE_BINDING_ALIASED_DATA_0)
