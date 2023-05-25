@@ -39,7 +39,7 @@ namespace dxvk {
     /// Enables unnormalized coordinates
     VkBool32 usePixelCoord;
   };
-  
+
   
   /**
    * \brief Sampler
@@ -64,11 +64,24 @@ namespace dxvk {
     const VkSampler& handle() const {
       return m_sampler;
     }
+
+    // NV-DXVK start
+    /**
+     * \brief Sampler info
+     * \returns Sampler create info
+     */
+    const DxvkSamplerCreateInfo& info() const {
+      return m_createInfo;
+    }
+    // NV-DXVK end
     
   private:
     
     Rc<vk::DeviceFn>      m_vkd;
     VkSampler             m_sampler = VK_NULL_HANDLE;
+    // NV-DXVK start
+    DxvkSamplerCreateInfo   m_createInfo;
+    // NV-DXVK end
 
     static VkBorderColor getBorderColor(
       const Rc<DxvkDevice>&         device,

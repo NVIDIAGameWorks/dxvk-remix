@@ -263,8 +263,6 @@ namespace dxvk {
     bool m_triggerDelayedTerminate = false;
     uint32_t m_screenshotFrameNum = -1;
     uint32_t m_terminateAppFrameNum = -1;
-    float m_terrainOffset = 0.f;
-    XXH64_hash_t m_lastTerrainMaterial = 0;
     bool m_previousInjectRtxHadScene = false;
 
     DxvkRaytracingInstanceState m_rtState;

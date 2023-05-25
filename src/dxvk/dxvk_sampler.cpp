@@ -2,11 +2,14 @@
 #include "dxvk_device.h"
 
 namespace dxvk {
-    
+
   DxvkSampler::DxvkSampler(
           DxvkDevice*             device,
     const DxvkSamplerCreateInfo&  info)
-  : m_vkd(device->vkd()) {
+  : m_vkd(device->vkd())
+  // NV-DXVK start
+  , m_createInfo(info) {
+  // NV-DXVK end
     VkSamplerCustomBorderColorCreateInfoEXT borderColorInfo;
     borderColorInfo.sType               = VK_STRUCTURE_TYPE_SAMPLER_CUSTOM_BORDER_COLOR_CREATE_INFO_EXT;
     borderColorInfo.pNext               = nullptr;
