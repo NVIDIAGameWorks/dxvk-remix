@@ -252,7 +252,7 @@ void sampleAndStoreIndirectRayPathSample(
   if (polymorphicSurfaceMaterialInteractionGetTypeHelper(primaryPolymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque)
   {
     const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(primaryPolymorphicSurfaceMaterialInteraction);
-    totalPdf = getBSDFSampleTotalPDF(opaqueSurfaceMaterialInteraction, primaryMinimalRayInteraction.viewDirection, sampledRay.direction, firstSampledSolidAnglePdf, firstSampledLobeIsSpecular);
+    totalPdf = NEECacheUtils.getBSDFSampleTotalPDF(opaqueSurfaceMaterialInteraction, primaryMinimalRayInteraction.viewDirection, sampledRay.direction, firstSampledSolidAnglePdf, firstSampledLobeIsSpecular);
   }
   RadianceCacheThreadTask[pixelCoordinate] = asuint(vec2(totalPdf, 0));
 

@@ -553,7 +553,7 @@ void geometryResolverOutputDebugView(
     {
       vec3 triangleCenter;
       f16vec3 triangleNormal;
-      getTriangleLightFlux(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex, triangleCenter, triangleNormal, lightFlux);
+      NEECacheUtils.getTriangleLightFlux(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex, triangleCenter, triangleNormal, lightFlux);
     }
 
     storeInDebugView(pixelCoordinate, lightFlux);
@@ -567,7 +567,7 @@ void geometryResolverOutputDebugView(
     {
       float lightObjectPdf = 1.0;
       vec3 baryCentrics = uintToBarycentrics(rayInteraction.barycentricCoordinates);
-      LightSample lightSample = getLightSampleFromTriangle(
+      LightSample lightSample = NEECacheUtils.getLightSampleFromTriangle(
         rayInteraction.surfaceIndex, rayInteraction.primitiveIndex, baryCentrics.yz, lightObjectPdf, cameraGetWorldPosition(cb.camera), rayInteraction.coneRadius, ray.spreadAngle);      
       sampleRadiance = lightSample.radiance;
     }
