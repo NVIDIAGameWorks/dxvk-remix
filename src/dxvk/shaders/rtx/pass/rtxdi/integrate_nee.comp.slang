@@ -236,7 +236,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
       vec3 color = 0;
       if (all(cellID != -1))
       {
-        color = vec3(cellID + 1) / RADIANCE_CACHE_PROBE_RESOLUTION;
+        color = vec3(cellID + 1) / NEE_CACHE_PROBE_RESOLUTION;
       }
       storeInDebugView(ivec2(threadIndex), color);
     }
@@ -249,7 +249,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
       vec3 color = (surface.opaqueSurfaceMaterialInteraction.albedo + surface.opaqueSurfaceMaterialInteraction.baseReflectivity);
       if (all(cellID != -1))
       {
-        color = lerp(color, vec3(cellID + 1) / RADIANCE_CACHE_PROBE_RESOLUTION, 0.9);
+        color = lerp(color, vec3(cellID + 1) / NEE_CACHE_PROBE_RESOLUTION, 0.9);
       }
       if (cell.isValid())
       {

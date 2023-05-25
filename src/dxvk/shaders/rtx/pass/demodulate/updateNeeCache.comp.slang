@@ -42,9 +42,9 @@
 #include "rtx/algorithm/neecache.h"
 #include "rtx/external/nrd.slangh"
 
-groupshared uint2 s_srcTaskList[RADIANCE_CACHE_ELEMENTS];
-groupshared NEECandidate s_candidateList[RADIANCE_CACHE_ELEMENTS * 2];
-groupshared float s_candidateLight[RADIANCE_CACHE_ELEMENTS * 2];
+groupshared uint2 s_srcTaskList[NEE_CACHE_ELEMENTS];
+groupshared NEECandidate s_candidateList[NEE_CACHE_ELEMENTS * 2];
+groupshared float s_candidateLight[NEE_CACHE_ELEMENTS * 2];
 groupshared int s_candidateCount;
 
 uint2 mapIDData(uint2 data)
@@ -97,14 +97,14 @@ float getTriangleLight(uint2 data, uint age, vec3 cellCenter)
 }
 
 [shader("compute")]
-[numthreads(RADIANCE_CACHE_ELEMENTS, 1, 1)]
+[numthreads(NEE_CACHE_ELEMENTS, 1, 1)]
 void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupThreadID)
 {
-  int3 cellID = threadIndex / int3(RADIANCE_CACHE_ELEMENTS,1,1);
+  int3 cellID = threadIndex / int3(NEE_CACHE_ELEMENTS,1,1);
   NEECell cell = NEECache.getCell(cellID);
   vec3 cellCenter = NEECache.cellToCenterPoint(cellID);
 
-  RNG rng = createRNG(uvec2(threadIndex.xy /*+ threadIndex.z * RADIANCE_CACHE_ELEMENTS * 20 * 20*/), cb.frameIdx, threadIndex.z);
+  RNG rng = createRNG(uvec2(threadIndex.xy + threadIndex.z * NEE_CACHE_ELEMENTS * NEE_CACHE_PROBE_RESOLUTION * NEE_CACHE_PROBE_RESOLUTION), cb.frameIdx, threadIndex.z);
 
   if (localIndex.x == 0 && localIndex.y == 0)
   {
@@ -120,7 +120,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
 
   // load old id to shared memory
   int oldIDCount = cell.getCandidateCount();
-  if (localIndex.x < oldIDCount /*&& getNextSampleBlueNoise(rng) < 0.99*/)
+  if (localIndex.x < oldIDCount)
   {
     int oldCount = 0;
     NEECandidate candidate = cell.getCandidate(localIndex.x);
@@ -162,15 +162,12 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   }
   GroupMemoryBarrierWithGroupSync();
 
-  if (insertTask /*&& s_candidateCount < RADIANCE_CACHE_ELEMENTS-1*/)
+  if (insertTask)
   {
     int oldCount = 0;
     InterlockedAdd(s_candidateCount, 1, oldCount);
-    //if (oldCount < RADIANCE_CACHE_ELEMENTS-1)
-    {
-      NEECandidate newCandidate = NEECandidate.create(task.x, task.y);
-      s_candidateList[oldCount] = newCandidate;
-    }
+    NEECandidate newCandidate = NEECandidate.create(task.x, task.y);
+    s_candidateList[oldCount] = newCandidate;
   }
   GroupMemoryBarrierWithGroupSync();
 
@@ -181,7 +178,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
     NEECandidate candidate = s_candidateList[triangleID];
     s_candidateLight[triangleID] = getTriangleLight(candidate.getIDData(), candidate.getAge(), cellCenter);
   }
-  triangleID = localIndex.x + RADIANCE_CACHE_ELEMENTS;
+  triangleID = localIndex.x + NEE_CACHE_ELEMENTS;
   if (triangleID < s_candidateCount)
   {
     NEECandidate candidate = s_candidateList[triangleID];

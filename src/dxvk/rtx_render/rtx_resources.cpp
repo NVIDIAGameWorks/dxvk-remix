@@ -902,8 +902,8 @@ namespace dxvk {
     m_raytracingOutput.m_restirGIHitGeometry = createImageResource(ctx, "restir gi hit geometry", m_downscaledExtent, VK_FORMAT_R32G32B32A32_SFLOAT);
 
     DxvkBufferCreateInfo radianceCacheInfo = rtxdiBufferInfo;
-    int cellCount = RADIANCE_CACHE_PROBE_RESOLUTION * RADIANCE_CACHE_PROBE_RESOLUTION * RADIANCE_CACHE_PROBE_RESOLUTION;
-    radianceCacheInfo.size = cellCount * RADIANCE_CACHE_ELEMENTS * sizeof(int) * 2;
+    int cellCount = NEE_CACHE_PROBE_RESOLUTION * NEE_CACHE_PROBE_RESOLUTION * NEE_CACHE_PROBE_RESOLUTION;
+    radianceCacheInfo.size = cellCount * NEE_CACHE_ELEMENTS * sizeof(int) * 2;
     m_raytracingOutput.m_radianceCache = m_device->createBuffer(radianceCacheInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
     m_raytracingOutput.m_radianceCacheTask = m_device->createBuffer(radianceCacheInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
     m_raytracingOutput.m_radianceCacheThreadTask = createImageResource(ctx, "radiance cache thread task", m_downscaledExtent, VK_FORMAT_R32G32_UINT);
