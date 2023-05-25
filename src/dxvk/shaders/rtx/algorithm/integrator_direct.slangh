@@ -248,6 +248,30 @@ void sampleAndStoreIndirectRayPathSample(
   indirectSampleData.insideMedium = insideMedium;
   indirectSampleData.store(pixelCoordinate, aliasedData2.IndirectFirstSampledLobeData);
 
+  float totalPdf = 0;
+  if (polymorphicSurfaceMaterialInteractionGetTypeHelper(primaryPolymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque)
+  {
+    const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(primaryPolymorphicSurfaceMaterialInteraction);
+
+    float16_t diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability;
+    bool isValid = opaqueSurfaceMaterialInteractionCalcLobeProbability(
+      opaqueSurfaceMaterialInteraction, primaryMinimalRayInteraction.viewDirection,
+      diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability);
+
+    if (firstSampledLobeIsSpecular)
+    {
+      float diffuseSolidAnglePdf  = opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, primaryMinimalRayInteraction, sampledRay.direction);
+      totalPdf = diffuseReflectionProbability * diffuseSolidAnglePdf + specularReflectionProbability * firstSampledSolidAnglePdf;
+    }
+    else
+    {
+      float specularSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, primaryMinimalRayInteraction, sampledRay.direction);
+      totalPdf = diffuseReflectionProbability * firstSampledSolidAnglePdf + specularReflectionProbability * specularSolidAnglePdf;
+    }
+
+    RadianceCacheThreadTask[pixelCoordinate] = asuint(vec2(totalPdf, 0));
+  }
+
   // Store the Geometry Flags with the new path information if it changed
   if (insideMedium != geometryFlags.insideMedium || firstSampledLobeIsSpecular != geometryFlags.firstSampledLobeIsSpecular)
   {

@@ -1109,12 +1109,16 @@ float opaqueSurfaceMaterialInteractionCalcSolidAnglePdf(
   // Return the average of all the lobe PDFs
   // Note: Only lobes which are possible and specifically involved in reflections are included
 
-  return (
-    opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(
-      opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection) +
-    opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
-      opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection)
-  ) / 2.0f;
+  float16_t diffuseReflectionProbability;
+  float16_t specularReflectionProbability;
+  float16_t opacityTransmissionProbability;
+  bool isValid = opaqueSurfaceMaterialInteractionCalcLobeProbability(
+    opaqueSurfaceMaterialInteraction, minimalRayInteraction.viewDirection, diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability);
+
+  float diffuseSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
+  float specularSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
+
+  return diffuseSolidAnglePdf * diffuseReflectionProbability + specularSolidAnglePdf * specularReflectionProbability;
 }
 
 
