@@ -100,9 +100,9 @@ namespace dxvk {
     // Bind resources
     {
       ctx->bindCommonRayTracingResources(rtOutput);
-      ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE, DxvkBufferSlice(rtOutput.m_radianceCache, 0, rtOutput.m_radianceCache->info().size));
-      ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE_TASK, DxvkBufferSlice(rtOutput.m_radianceCacheTask, 0, rtOutput.m_radianceCacheTask->info().size));
-      ctx->bindResourceView(UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE_THREAD_TASK, rtOutput.m_radianceCacheThreadTask.view, nullptr);
+      ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE, DxvkBufferSlice(rtOutput.m_neeCache, 0, rtOutput.m_neeCache->info().size));
+      ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE_TASK, DxvkBufferSlice(rtOutput.m_neeCacheTask, 0, rtOutput.m_neeCacheTask->info().size));
+      ctx->bindResourceView(UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE_THREAD_TASK, rtOutput.m_neeCacheThreadTask.view, nullptr);
 
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, UpdateNEETaskShader::getShader());
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
@@ -110,9 +110,9 @@ namespace dxvk {
 
     {
       ctx->bindCommonRayTracingResources(rtOutput);
-      ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE, DxvkBufferSlice(rtOutput.m_radianceCache, 0, rtOutput.m_radianceCache->info().size));
-      ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE_TASK, DxvkBufferSlice(rtOutput.m_radianceCacheTask, 0, rtOutput.m_radianceCacheTask->info().size));
-      ctx->bindResourceView(UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE_THREAD_TASK, rtOutput.m_radianceCacheThreadTask.view, nullptr);
+      ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE, DxvkBufferSlice(rtOutput.m_neeCache, 0, rtOutput.m_neeCache->info().size));
+      ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE_TASK, DxvkBufferSlice(rtOutput.m_neeCacheTask, 0, rtOutput.m_neeCacheTask->info().size));
+      ctx->bindResourceView(UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE_THREAD_TASK, rtOutput.m_neeCacheThreadTask.view, nullptr);
 
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, UpdateNEECacheShader::getShader());
       ctx->dispatch(NEE_CACHE_PROBE_RESOLUTION, NEE_CACHE_PROBE_RESOLUTION, NEE_CACHE_PROBE_RESOLUTION);
