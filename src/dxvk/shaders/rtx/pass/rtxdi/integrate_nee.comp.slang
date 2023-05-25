@@ -128,7 +128,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
           vec3 diffuseLight = 0;
           vec3 specularLight = 0;
           if (any(lightSample.radiance > 0))
-            {
+          {
             vec3 inputDirection = normalize(lightSample.position - minimalSurfaceInteraction.position);
             float brdfSampleSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
             float misWeight = lightSample.solidAnglePdf / (brdfSampleSolidAnglePdf + lightSample.solidAnglePdf);
@@ -137,16 +137,11 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
             float16_t specularPortion2;
             const bool isViewModel = false;// pathState.rayMask& OBJECT_MASK_ALL_VIEWMODEL;
             float emissiveInvSelectionPdf = 1.0;// / lightObjectPdf;
-            bool isVisible = evalNEESecondary(
+            isVisible = evalNEESecondary(
               lightSample, emissiveInvSelectionPdf, invalidRayPortalIndex, /*pathState.portalSpace*/PORTAL_SPACE_NONE,
               OBJECT_MASK_ALL | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC) /*pathState.rayMask*/,
               isViewModel, /*ray*/ primaryRay, minimalRayInteraction, /*surfaceInteraction*/minimalSurfaceInteraction,
               opaqueSurfaceMaterialInteraction, diffuseLight, specularLight);
-
-
-            // vec2 misWeight = getLightSampleMISWeight(opaqueSurfaceMaterialInteraction, inputDirection, minimalRayInteraction.viewDirection, lightSample.solidAnglePdf);
-            //diffuseLight *= misWeight;
-            //specularLight *= misWeight;
 
             PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex].xyz += diffuseLight;
             PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex].xyz += specularLight;
@@ -164,7 +159,6 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
             neeSample.normal = lightSample.normal;
             neeSample.radiance = isVisible ? lightSample.radiance / lightSample.solidAnglePdf : vec3(0);
 
-            //float wi = calcBt709Luminance(diffuseLight + specularLight);
             float wi = RAB_GetGITargetPdfForSurface(neeSample.radiance, neeSample.position, surface);
             resultReservoir.update(wi, neeSample, 0.5);
           }
