@@ -75,13 +75,13 @@ RWStructuredBuffer<RTXDI_PackedReservoir> RtxdiReservoirBuffer;
 layout(r16f, binding = INTEGRATE_DIRECT_BINDING_PRIMARY_RTXDI_ILLUMINANCE_OUTPUT)
 RWTexture2D<float> PrimaryRtxdiIlluminance;
 
-layout(binding = INTEGRATE_DIRECT_BINDING_RADIANCE_CACHE)
+layout(binding = INTEGRATE_DIRECT_BINDING_NEE_CACHE)
 RWByteAddressBuffer RadianceCache;
 
-layout(binding = INTEGRATE_DIRECT_BINDING_RADIANCE_CACHE_TASK)
+layout(binding = INTEGRATE_DIRECT_BINDING_NEE_CACHE_TASK)
 RWByteAddressBuffer RadianceCacheTask;
 
-layout(rg32ui, binding = INTEGRATE_DIRECT_BINDING_RADIANCE_CACHE_THREAD_TASK)
+layout(rg32ui, binding = INTEGRATE_DIRECT_BINDING_NEE_CACHE_THREAD_TASK)
 RWTexture2D<uint2> RadianceCacheThreadTask;
 
 // Primary Inputs/Outputs
