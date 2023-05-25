@@ -340,20 +340,19 @@ void integratePathVertex(
   bool isNeeEnabledInBounce = (pathState.bounceIteration == 1 && cb.enableNeeCacheInFirstBounce) || (pathState.bounceIteration > 1 && cb.enableNeeCacheInHigherBounces);
   if (cb.enableNeeCache && isNeeEnabledInBounce && any(emissiveLight) > 0)
   {
-    uint4 threadTask = NEECache.loadThreadTask(pathState.pixelCoordinate);
-    int3 cellID = NEECache.offsetToCell(threadTask.x);
+    uint cellOffset, surfaceID, primitiveID;
+    NEECache.loadThreadTask(pathState.pixelCoordinate, cellOffset, surfaceID, primitiveID);
+    int3 cellID = NEECache.offsetToCell(cellOffset);
     if (all(cellID != -1))
     {      
       NEECell cell = NEECache.getCell(cellID);
       if (cell.isValid())
       {
         uint2 task = uint2(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex);
-        bool isEmpty = threadTask.y == 0xffffffff || threadTask.z == 0xffffffff;
+        bool isEmpty = (surfaceID == 0xffffffff || primitiveID == 0xffffffff);
         if (isEmpty || getNextSampleBlueNoise(randomState) < 0.5)
         {
-          threadTask.y = rayInteraction.surfaceIndex;
-          threadTask.z = rayInteraction.primitiveIndex;
-          NEECache.storeThreadTask(pathState.pixelCoordinate, threadTask);
+          NEECache.storeThreadTask(pathState.pixelCoordinate, cellOffset, rayInteraction.surfaceIndex, rayInteraction.primitiveIndex);
         }
 
         for (int i = 0; i < cell.getCandidateCount(); ++i)
@@ -415,11 +414,13 @@ void integratePathVertex(
     pathState.direction = sampledRay.direction;
     pathState.solidAnglePdf = solidAnglePdf * sampledLobePdf;
 
-    uint4 threadTask = NEECache.loadThreadTask(pathState.pixelCoordinate);
-    if (threadTask.y == 0xffffffff && threadTask.z == 0xffffffff)
+    // If there is no task recorded, record new cell offset
+    uint cellOffset, surfaceID, primitiveID;
+    NEECache.loadThreadTask(pathState.pixelCoordinate, cellOffset, surfaceID, primitiveID);
+    if (surfaceID == 0xffffffff && primitiveID == 0xffffffff)
     {
-      threadTask.x = NEECache.pointToOffset(pathState.origin, true);
-      NEECache.storeThreadTask(pathState.pixelCoordinate, threadTask);
+      cellOffset = NEECache.pointToOffset(pathState.origin, true);
+      NEECache.storeThreadTask(pathState.pixelCoordinate, cellOffset, surfaceID, primitiveID);
     }
   }
 
@@ -816,10 +817,8 @@ void integrateIndirectPath(
 
   pathState.coneSpreadAngle = calculateSpreadAngleFromSolidAnglePdf(pathState.coneSpreadAngle, firstSampledSolidAnglePdf);
 
-  uint4 threadTask;
-  threadTask.x = NEECache.pointToOffset(rayOrigin, true);
-  threadTask.yzw = 0xffffffff;
-  NEECache.storeThreadTask(pixelCoordinate, threadTask);
+  uint cellOffset = NEECache.pointToOffset(rayOrigin, true);
+  NEECache.storeThreadTask(pixelCoordinate, cellOffset, 0xffffffff, 0xffffffff);
 
   if (cb.enableReSTIRGI && geometryFlags.primarySelectedIntegrationSurface)
   {

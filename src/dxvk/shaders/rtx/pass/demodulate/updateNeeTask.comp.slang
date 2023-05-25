@@ -55,13 +55,15 @@ void main(int2 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupThr
   }
   GroupMemoryBarrierWithGroupSync();
 
-  uint4 threadTask = NEECache.loadThreadTask(threadIndex);
+  uint cellOffset, surfaceID, primitiveID;
+  NEECache.loadThreadTask(threadIndex, cellOffset, surfaceID, primitiveID);
+  uint3 threadTask = uint3(cellOffset, surfaceID, primitiveID);
 
-  if (threadTask.x != 0xffffffff && threadTask.y != 0xffffffff && threadTask.z != 0xffffffff)
+  if (threadTask.y != 0xffffffff && threadTask.z != 0xffffffff)
   {
     int oldCount;
     InterlockedAdd(s_tarTaskCount, 1, oldCount);
-    s_task[oldCount] = threadTask.xyz;
+    s_task[oldCount] = threadTask;
   }
   GroupMemoryBarrierWithGroupSync();
 

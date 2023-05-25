@@ -29,5 +29,5 @@ RWByteAddressBuffer RadianceCache;
 layout(binding = UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE_TASK)
 RWByteAddressBuffer RadianceCacheTask;
 
-layout(rgba32ui, binding = UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE_THREAD_TASK)
-RWTexture2D<uint4> RadianceCacheThreadTask;
+layout(rg32ui, binding = UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE_THREAD_TASK)
+RWTexture2D<uint2> RadianceCacheThreadTask;
