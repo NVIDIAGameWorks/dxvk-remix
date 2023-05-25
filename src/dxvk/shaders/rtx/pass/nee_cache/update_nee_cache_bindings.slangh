@@ -21,7 +21,7 @@
 */
 #pragma once
 
-#include "rtx/pass/demodulate/update_nee_cache_binding_indices.h"
+#include "rtx/pass/nee_cache/update_nee_cache_binding_indices.h"
 
 layout(binding = UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE)
 RWByteAddressBuffer RadianceCache;
