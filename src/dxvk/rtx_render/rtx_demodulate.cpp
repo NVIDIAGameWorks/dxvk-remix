@@ -63,8 +63,6 @@ namespace dxvk {
         RW_TEXTURE2D(DEMODULATE_BINDING_PRIMARY_SPECULAR_ALBEDO_OUTPUT)
         RW_TEXTURE2D(DEMODULATE_BINDING_SECONDARY_SPECULAR_ALBEDO_OUTPUT)
         RW_TEXTURE2D(DEMODULATE_BINDING_DEBUG_VIEW_OUTPUT)
-        RW_STRUCTURED_BUFFER(DEMODULATE_BINDING_RADIANCE_CACHE)
-        RW_STRUCTURED_BUFFER(DEMODULATE_BINDING_RADIANCE_CACHE_TASK)
       END_PARAMETER()
     };
 
@@ -142,10 +140,8 @@ namespace dxvk {
     ctx->bindResourceView(DEMODULATE_BINDING_SECONDARY_SPECULAR_ALBEDO_OUTPUT, rtOutput.m_secondarySpecularAlbedo.view(Resources::AccessType::Write), nullptr);
     ctx->bindResourceView(DEMODULATE_BINDING_DEBUG_VIEW_OUTPUT, debugView.getDebugOutput(), nullptr);
 
-    ctx->bindResourceBuffer(DEMODULATE_BINDING_RADIANCE_CACHE, DxvkBufferSlice(rtOutput.m_radianceCache, 0, rtOutput.m_radianceCache->info().size));
-    ctx->bindResourceBuffer(DEMODULATE_BINDING_RADIANCE_CACHE_TASK, DxvkBufferSlice(rtOutput.m_radianceCacheTask, 0, rtOutput.m_radianceCacheTask->info().size));
-
     ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, DemodulateShader::getShader());
+    
     ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
   }
   
