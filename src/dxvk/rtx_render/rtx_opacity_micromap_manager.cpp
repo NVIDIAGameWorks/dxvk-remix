@@ -1209,11 +1209,6 @@ namespace dxvk {
 
     // Generate OMM array
     {
-      const TextureRef opacityTexture = textures[instance.getAlbedoOpacityTextureIndex()];
-      const TextureRef* secondaryOpacityTexture = nullptr;
-      if (instance.getSecondaryOpacityTextureIndex() != kSurfaceMaterialInvalidTextureIndex)
-        secondaryOpacityTexture = &textures[instance.getSecondaryOpacityTextureIndex()];
-
       RtxGeometryUtils::BakeOpacityMicromapDesc desc = {};
       desc.subdivisionLevel = ommCacheItem.subdivisionLevel;
       desc.numMicroTrianglesPerTriangle = calculateNumMicroTriangles(ommCacheItem.subdivisionLevel);
@@ -1234,7 +1229,8 @@ namespace dxvk {
         desc.resolveTransparencyThreshold = std::max(desc.resolveTransparencyThreshold, OpacityMicromapOptions::Building::decalsMinResolveTransparencyThreshold());
 
       ctx->getCommonObjects()->metaGeometryUtils().dispatchBakeOpacityMicromap(
-        m_device, cmdList, ctx, blasEntry.modifiedGeometryData, opacityTexture, secondaryOpacityTexture, 
+        m_device, cmdList, ctx, blasEntry.modifiedGeometryData, 
+        textures, instance.getAlbedoOpacityTextureIndex(), instance.getSecondaryOpacityTextureIndex(),
         desc, ommCacheItem.bakingState, ommCacheItem.ommArrayBuffer);
 
       cmdList->trackResource<DxvkAccess::Write>(ommCacheItem.ommArrayBuffer);

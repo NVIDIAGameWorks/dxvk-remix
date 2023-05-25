@@ -107,9 +107,10 @@ namespace dxvk {
       Rc<DxvkDevice> device,
       Rc<DxvkCommandList> cmdList,
       Rc<DxvkContext> ctx,
-      const RaytraceGeometry& geo, 
-      const TextureRef& opacityTexture,
-      const TextureRef* secondaryOpacityTexture,
+      const RaytraceGeometry& geo,
+      const std::vector<TextureRef>& textures,
+      const uint32_t albedoOpacityTextureIndex,
+      const uint32_t secondaryAlbedoOpacityTextureIndex,
       const BakeOpacityMicromapDesc& desc,
       BakeOpacityMicromapState& bakeState,
       Rc<DxvkBuffer> opacityMicromapBuffer) const;
