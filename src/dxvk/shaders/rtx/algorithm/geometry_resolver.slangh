@@ -369,7 +369,7 @@ void geometryResolverOutputDebugView(
 
     break;
   case DEBUG_VIEW_POSITION:
-    storeInDebugView(pixelCoordinate, frac(surfaceInteraction.position * 0.1));
+    storeInDebugView(pixelCoordinate, surfaceInteraction.position);
 
     break;
   case DEBUG_VIEW_TEXCOORDS:
@@ -528,7 +528,6 @@ void geometryResolverOutputDebugView(
 
     break;
   case DEBUG_VIEW_EMISSIVE_RADIANCE:
-  {
     f16vec3 emissiveRadiance = f16vec3(0.0f);
 
     if (materialType == surfaceMaterialTypeOpaque)
@@ -540,10 +539,9 @@ void geometryResolverOutputDebugView(
       emissiveRadiance = translucentSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction).emissiveRadiance;
     }
 
-    storeInDebugView(pixelCoordinate, emissiveRadiance * (cb.debugView == DEBUG_VIEW_EMISSIVE_FLUX ? surfaceInteraction.triangleArea : 1.0));
+    storeInDebugView(pixelCoordinate, emissiveRadiance);
 
     break;
-  }
 
   case DEBUG_VIEW_EMISSIVE_FLUX:
   {

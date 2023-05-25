@@ -156,10 +156,9 @@ void integrate_direct_pass(ivec2 threadIndex)
   // of the denoiser for transmittance contributions. Ideally this hacky logic can be removed later if a denoiser
   // explicitly supports translucency-esque lobes somehow, or if a more generic denoiser is used in the future.
 
-  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction;
   if (polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque)
   {
-    opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+    const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
     const f16vec3 adjustedBaseReflectivity = opaqueSurfaceMaterialGetAdjustedBaseReflectivity(opaqueSurfaceMaterialInteraction);
 
     if (geometryFlags.primarySelectedIntegrationSurface)
@@ -197,5 +196,4 @@ void integrate_direct_pass(ivec2 threadIndex)
     geometryFlags, integrationSurfacePdf,
     primaryRay, minimalRayInteraction, minimalSurfaceInteraction,
     polymorphicSurfaceMaterialInteraction);
-
 }
