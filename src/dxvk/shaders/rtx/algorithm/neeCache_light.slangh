@@ -158,15 +158,8 @@ vec2 getLightSampleMISWeight(OpaqueSurfaceMaterialInteraction opaqueSurfaceMater
   rayInteraction.coneRadius = 0;
   rayInteraction.viewDirection = viewDirection;
 
-  float16_t diffuseReflectionProbability;
-  float16_t specularReflectionProbability;
-  float16_t opacityTransmissionProbability;
-  bool isValid = opaqueSurfaceMaterialInteractionCalcLobeProbability(
-    opaqueSurfaceMaterialInteraction, viewDirection,
-    diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability);
-
-  float diffuseSolidAnglePdf  = diffuseReflectionProbability * opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
-  float specularSolidAnglePdf = specularReflectionProbability * opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
+  float diffuseSolidAnglePdf  = opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
+  float specularSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
 
   vec2 misWeight;
   misWeight.x = saturate(lightSampleSolidAnglePDF / (lightSampleSolidAnglePDF + diffuseSolidAnglePdf));

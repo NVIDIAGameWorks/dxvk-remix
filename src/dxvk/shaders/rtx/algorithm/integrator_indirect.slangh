@@ -412,7 +412,7 @@ void integratePathVertex(
     pathState.origin = sampledRay.origin;
     pathState.coneRadius = sampledRay.coneRadius;
     pathState.direction = sampledRay.direction;
-    pathState.solidAnglePdf = solidAnglePdf * sampledLobePdf;
+    pathState.solidAnglePdf = solidAnglePdf;
 
     // If there is no task recorded, record new cell offset
     uint cellOffset, surfaceID, primitiveID;
@@ -813,7 +813,7 @@ void integrateIndirectPath(
   pathState.throughput = throughput;
   pathState.insideMedium = geometryFlags.insideMedium;
   pathState.accumulatedHitDistance = gbufferSurfaceHitDistance;
-  pathState.solidAnglePdf = firstSampledSolidAnglePdf * firstSampledLobePdf;
+  pathState.solidAnglePdf = firstSampledSolidAnglePdf;
 
   pathState.coneSpreadAngle = calculateSpreadAngleFromSolidAnglePdf(pathState.coneSpreadAngle, firstSampledSolidAnglePdf);
 
