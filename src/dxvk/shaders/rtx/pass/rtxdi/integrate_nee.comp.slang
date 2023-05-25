@@ -142,7 +142,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
 
           if (cb.enableReSTIRGI && isVisible)
           {
-            ReSTIRGI_Reservoir neeSample;
+            ReSTIRGI_Reservoir neeSample = ReSTIRGI_Reservoir.createEmpty();
             neeSample.M = 1;
             neeSample.avgWeight = 1;
             neeSample.flagsAndVirtualFraction = 0;
@@ -150,7 +150,8 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
             neeSample.setPortalID(RESTIR_GI_INVALID_INDIRECT_LIGHT_PORTAL_ID);
             neeSample.position = lightSample.position;
             neeSample.normal = lightSample.normal;
-            neeSample.radiance = isVisible ? lightSample.radiance / lightSample.solidAnglePdf : vec3(0);
+            neeSample.radiance = lightSample.radiance / lightSample.solidAnglePdf;
+            neeSample.setVirtualFraction(0.0);
 
             float wi = RAB_GetGITargetPdfForSurface(neeSample.radiance, neeSample.position, surface);
             resultReservoir.update(wi, neeSample, 0.5);

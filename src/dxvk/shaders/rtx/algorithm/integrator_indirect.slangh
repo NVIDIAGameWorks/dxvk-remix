@@ -335,7 +335,6 @@ void integratePathVertex(
 
   // Add Emission
   vec3 emissiveLight = polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(polymorphicSurfaceMaterialInteraction);
-  bool hasNEE = false;
   float16_t lightSelectionPDF = 0;
   bool isNeeEnabledInBounce = (pathState.bounceIteration == 1 && cb.enableNeeCacheInFirstBounce) || (pathState.bounceIteration > 1 && cb.enableNeeCacheInHigherBounces);
   if (cb.enableNeeCache && isNeeEnabledInBounce && any(emissiveLight) > 0)
@@ -355,15 +354,18 @@ void integratePathVertex(
           NEECache.storeThreadTask(pathState.pixelCoordinate, cellOffset, rayInteraction.surfaceIndex, rayInteraction.primitiveIndex);
         }
 
+        float16_t lastSampleThreshold = 0;
         for (int i = 0; i < cell.getCandidateCount(); ++i)
         {
-          int2 candidate = cell.getCandidate(i).getIDData();
-          if (all(candidate == task))
+          NEECandidate candidate = cell.getCandidate(i);
+          int2 candidateID = candidate.getIDData();
+          float16_t sampleThreshold = candidate.getSampleThreshold();
+          if (all(candidateID == task) && sampleThreshold > lastSampleThreshold)
           {
-            lightSelectionPDF = cell.getCandidatePdf(i);
-            hasNEE = true;
+            lightSelectionPDF = sampleThreshold - lastSampleThreshold;
             break;
           }
+          lastSampleThreshold = sampleThreshold;
         }
       }
     }
@@ -382,7 +384,7 @@ void integratePathVertex(
   }
 
   float misWeight = 1.0;
-  if (hasNEE)
+  if (lightSelectionPDF > 0.0)
   {
     misWeight = NEECacheUtils.getBRDFSampleMISWeight(surfaceInteraction, oldOrigin, lightSelectionPDF, pathState.solidAnglePdf);
   }
