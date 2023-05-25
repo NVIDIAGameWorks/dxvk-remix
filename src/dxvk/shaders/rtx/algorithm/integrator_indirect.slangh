@@ -384,7 +384,7 @@ void integratePathVertex(
   float misWeight = 1.0;
   if (hasNEE)
   {
-    misWeight = getBRDFSampleMISWeight(surfaceInteraction, oldOrigin, lightSelectionPDF, pathState.solidAnglePdf);
+    misWeight = NEECacheUtils.getBRDFSampleMISWeight(surfaceInteraction, oldOrigin, lightSelectionPDF, pathState.solidAnglePdf);
   }
   accumulateRadiance(pathState, emissiveLight * misWeight);
 
@@ -538,13 +538,13 @@ void integratePathVertex(
           if (candidate.isValid())
           {
             vec2 uv = vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState));
-            LightSample lightSample = getLightSampleFromTriangle(
+            LightSample lightSample = NEECacheUtils.getLightSampleFromTriangle(
               candidate.getSurfaceID(), candidate.getPrimitiveID(), uv, lightObjectPdf, surfaceInteraction.position, rayInteraction.coneRadius, hackState.coneSpreadAngle);
 
             if(any(lightSample.radiance > 0))
             {
               f16vec3 inputDirection = normalize(lightSample.position - surfaceInteraction.position);
-              vec2 misWeight = getLightSampleMISWeight(opaqueSurfaceMaterialInteraction, inputDirection, rayInteraction.viewDirection, lightSample.solidAnglePdf);
+              vec2 misWeight = NEECacheUtils.getLightSampleMISWeight(opaqueSurfaceMaterialInteraction, inputDirection, rayInteraction.viewDirection, lightSample.solidAnglePdf);
 
               const bool isViewModel = pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
               float emissiveInvSelectionPdf = 1.0;
