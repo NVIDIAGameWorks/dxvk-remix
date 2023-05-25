@@ -90,6 +90,10 @@ struct NEECacheUtils
       surfaceInteraction.triangleArea, surfaceInteraction.position, surfaceInteraction.triangleNormal, shadingPosition);
     lightSample.solidAnglePdf = lightPdf;
     lightSample.radiance = 0;
+    if (dot(lightSample.normal, shadingPosition - lightSample.position) < 0)
+    {
+      lightSample.normal *= -1;
+    }
 
     // The light sample and the shading point may be one the same triangle. In this case, solid angle PDF is 0.
     if (lightSample.solidAnglePdf > 0 && polymorphicType == surfaceMaterialTypeOpaque)
