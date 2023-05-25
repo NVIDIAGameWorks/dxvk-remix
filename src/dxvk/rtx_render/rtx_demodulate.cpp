@@ -141,7 +141,6 @@ namespace dxvk {
     ctx->bindResourceView(DEMODULATE_BINDING_DEBUG_VIEW_OUTPUT, debugView.getDebugOutput(), nullptr);
 
     ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, DemodulateShader::getShader());
-    
     ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
   }
   
