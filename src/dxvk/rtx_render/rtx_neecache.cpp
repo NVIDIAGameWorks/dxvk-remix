@@ -115,7 +115,7 @@ namespace dxvk {
       ctx->bindResourceView(UPDATE_NEE_CACHE_BINDING_RADIANCE_CACHE_THREAD_TASK, rtOutput.m_radianceCacheThreadTask.view, nullptr);
 
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, UpdateNEECacheShader::getShader());
-      ctx->dispatch(RADIANCE_CACHE_PROBE_RESOLUTION, RADIANCE_CACHE_PROBE_RESOLUTION, RADIANCE_CACHE_PROBE_RESOLUTION);
+      ctx->dispatch(NEE_CACHE_PROBE_RESOLUTION, NEE_CACHE_PROBE_RESOLUTION, NEE_CACHE_PROBE_RESOLUTION);
     }
   }
   
