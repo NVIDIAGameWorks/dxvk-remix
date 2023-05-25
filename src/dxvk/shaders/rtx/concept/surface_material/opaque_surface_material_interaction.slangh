@@ -513,7 +513,7 @@ SurfaceMaterialInteractionLobeSample opaqueSurfaceMaterialInteractionCalcLobeSam
   // Sample a lobe
 
   // Note: Adjust the raw lobe sample to the total probability range based on the sum.
-  const float16_t lobeSample = random;
+  const float16_t lobeSample = random;// *lobeProbabilitySum;
 
   // Note: < used for conditions to ensure lobes never have a chance to be sampled from if their
   // probability is 0 (and to prevent NaNs from appearing due to 0 PDF).
