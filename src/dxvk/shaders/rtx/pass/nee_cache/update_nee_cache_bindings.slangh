@@ -24,10 +24,10 @@
 #include "rtx/pass/nee_cache/update_nee_cache_binding_indices.h"
 
 layout(binding = UPDATE_NEE_CACHE_BINDING_NEE_CACHE)
-RWByteAddressBuffer RadianceCache;
+RWByteAddressBuffer NeeCache;
 
 layout(binding = UPDATE_NEE_CACHE_BINDING_NEE_CACHE_TASK)
-RWByteAddressBuffer RadianceCacheTask;
+RWByteAddressBuffer NeeCacheTask;
 
 layout(rg32ui, binding = UPDATE_NEE_CACHE_BINDING_NEE_CACHE_THREAD_TASK)
-RWTexture2D<uint2> RadianceCacheThreadTask;
+RWTexture2D<uint2> NeeCacheThreadTask;

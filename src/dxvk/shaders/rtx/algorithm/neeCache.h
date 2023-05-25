@@ -123,28 +123,28 @@ struct NEECell
 
   void setTaskCount(int count)
   {
-    RadianceCacheTask.Store(m_baseAddress, count);
+    NeeCacheTask.Store(m_baseAddress, count);
   }
 
   int getTaskCount()
   {
-    uint count = RadianceCacheTask.Load(m_baseAddress);
+    uint count = NeeCacheTask.Load(m_baseAddress);
     return min(count, NEE_CACHE_ELEMENTS - 1);
   }
 
   int2 getTask(int idx)
   {
-    return RadianceCacheTask.Load2(m_baseAddress + indexToOffset(idx));
+    return NeeCacheTask.Load2(m_baseAddress + indexToOffset(idx));
   }
 
   bool insertTask(uint2 task)
   {
     uint oldLength;
-    RadianceCacheTask.InterlockedAdd(m_baseAddress, 1, oldLength);
+    NeeCacheTask.InterlockedAdd(m_baseAddress, 1, oldLength);
 
     if (oldLength < NEE_CACHE_ELEMENTS - 1)
     {
-      RadianceCacheTask.Store2(m_baseAddress + indexToOffset(oldLength), task);
+      NeeCacheTask.Store2(m_baseAddress + indexToOffset(oldLength), task);
       return true;
     }
     return false;
@@ -152,23 +152,23 @@ struct NEECell
 
   int getCandidateCount()
   {
-    uint count = RadianceCache.Load(m_baseAddress);
+    uint count = NeeCache.Load(m_baseAddress);
     return min(count, getMaxCandidateCount());
   }
 
   void setCandidateCount(int count)
   {
-    RadianceCache.Store(m_baseAddress, count);
+    NeeCache.Store(m_baseAddress, count);
   }
 
   NEECandidate getCandidate(int idx)
   {
-    return NEECandidate.create(RadianceCache.Load2(m_baseAddress + indexToOffset(idx)));
+    return NEECandidate.create(NeeCache.Load2(m_baseAddress + indexToOffset(idx)));
   }
 
   void setCandidate(int idx, NEECandidate candidate)
   {
-    return RadianceCache.Store2(m_baseAddress + indexToOffset(idx), candidate.m_data);
+    return NeeCache.Store2(m_baseAddress + indexToOffset(idx), candidate.m_data);
   }
 
   NEECandidate sampleCandidate(float sampleThreshold, out float pdf)
@@ -349,12 +349,12 @@ struct NEECache
     uint2 data = uint2(surfaceID, primitiveID) & 0xffffff;
     data.x = data.x | ((cellOffset & 0xff) << 24);
     data.y = data.y | ((cellOffset & 0xff00) << 16);
-    RadianceCacheThreadTask[pixel] = data;
+    NeeCacheThreadTask[pixel] = data;
   }
 
   static void loadThreadTask(int2 pixel, out uint cellOffset, out uint surfaceID, out uint primitiveID)
   {
-    uint2 data = RadianceCacheThreadTask[pixel];
+    uint2 data = NeeCacheThreadTask[pixel];
     surfaceID   = data.x & 0xffffff;
     primitiveID = data.y & 0xffffff;
     if (surfaceID == 0xffffff || primitiveID == 0xffffff)
