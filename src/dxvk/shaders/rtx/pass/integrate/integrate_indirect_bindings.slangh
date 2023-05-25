@@ -97,13 +97,13 @@ layout(rgba32f, binding = INTEGRATE_INDIRECT_BINDING_RESTIR_GI_HIT_GEOMETRY_OUTP
 RWTexture2D<float4> RestirGIHitGeometry;
 
 layout(binding = INTEGRATE_INDIRECT_BINDING_NEE_CACHE)
-RWByteAddressBuffer RadianceCache;
+RWByteAddressBuffer NeeCache;
 
 layout(binding = INTEGRATE_INDIRECT_BINDING_NEE_CACHE_TASK)
-RWByteAddressBuffer RadianceCacheTask;
+RWByteAddressBuffer NeeCacheTask;
 
 layout(rg32ui, binding = INTEGRATE_INDIRECT_BINDING_NEE_CACHE_THREAD_TASK)
-RWTexture2D<uint2> RadianceCacheThreadTask;
+RWTexture2D<uint2> NeeCacheThreadTask;
 
 // Aliased resources
 

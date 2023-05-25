@@ -94,11 +94,11 @@ layout(rg16f, binding = INTEGRATE_NEE_BINDING_BSDF_FACTOR2_OUTPUT)
 RWTexture2D<float2> BSDFFactor2;
 
 layout(binding = INTEGRATE_NEE_BINDING_NEE_CACHE)
-RWByteAddressBuffer RadianceCache;
+RWByteAddressBuffer NeeCache;
 
 layout(binding = INTEGRATE_NEE_BINDING_NEE_CACHE_TASK)
-RWByteAddressBuffer RadianceCacheTask;
+RWByteAddressBuffer NeeCacheTask;
 
 layout(rg32ui, binding = INTEGRATE_NEE_BINDING_NEE_CACHE_THREAD_TASK)
-RWTexture2D<uint2> RadianceCacheThreadTask;
+RWTexture2D<uint2> NeeCacheThreadTask;
 
