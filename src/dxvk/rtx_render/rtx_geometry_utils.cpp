@@ -268,11 +268,18 @@ namespace dxvk {
     Rc<DxvkCommandList> cmdList,
     Rc<DxvkContext> ctx,
     const RaytraceGeometry& geo,
-    const TextureRef& opacityTexture,
-    const TextureRef* secondaryOpacityTexture,
+    const std::vector<TextureRef>& textures,
+    const uint32_t albedoOpacityTextureIndex,
+    const uint32_t secondaryAlbedoOpacityTextureIndex,
     const BakeOpacityMicromapDesc& desc,
     BakeOpacityMicromapState& bakeState,
     Rc<DxvkBuffer> opacityMicromapBuffer) const {
+
+    // Init textures
+    const TextureRef& opacityTexture = textures[albedoOpacityTextureIndex];
+    const TextureRef* secondaryOpacityTexture = nullptr;
+    if (secondaryAlbedoOpacityTextureIndex != kSurfaceMaterialInvalidTextureIndex)
+      secondaryOpacityTexture = &textures[secondaryAlbedoOpacityTextureIndex];
 
     VkExtent3D opacityTextureResolution = opacityTexture.getImageView()->imageInfo().extent;
 
@@ -295,15 +302,36 @@ namespace dxvk {
     args.conservativeEstimationMaxTexelTapsPerMicroTriangle = desc.conservativeEstimationMaxTexelTapsPerMicroTriangle;
     args.triangleOffset = desc.triangleOffset;
 
-    auto nearestSampler = device->getCommon()->getResources().getSampler(VK_FILTER_NEAREST, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_REPEAT);
+    // Init samplers
+    Rc<DxvkSampler> opacitySampler;
+    Rc<DxvkSampler> secondaryOpacitySampler;
+    {
+      const DxvkSamplerCreateInfo& samplerInfo = opacityTexture.sampler->info();
+
+      opacitySampler = device->getCommon()->getResources().getSampler(
+        VK_FILTER_NEAREST, VK_SAMPLER_MIPMAP_MODE_NEAREST,
+        samplerInfo.addressModeU, samplerInfo.addressModeV, samplerInfo.addressModeW,
+        samplerInfo.borderColor);
+
+      if (secondaryOpacityTexture) {
+        const DxvkSamplerCreateInfo& secondarySamplerInfo = secondaryOpacityTexture->sampler->info();
+          secondaryOpacitySampler = device->getCommon()->getResources().getSampler(
+          VK_FILTER_NEAREST, VK_SAMPLER_MIPMAP_MODE_NEAREST,
+          secondarySamplerInfo.addressModeU, secondarySamplerInfo.addressModeV, secondarySamplerInfo.addressModeW,
+          secondarySamplerInfo.borderColor);
+      }
+      else {
+        secondaryOpacitySampler = opacitySampler;
+      }
+    }
 
     // Bind other resources
     ctx->bindResourceBuffer(BINDING_BAKE_OPACITY_MICROMAP_TEXCOORD_INPUT, geo.texcoordBuffer);
     ctx->bindResourceView(BINDING_BAKE_OPACITY_MICROMAP_OPACITY_INPUT, opacityTexture.getImageView(), nullptr);
-    ctx->bindResourceSampler(BINDING_BAKE_OPACITY_MICROMAP_OPACITY_INPUT, nearestSampler);
+    ctx->bindResourceSampler(BINDING_BAKE_OPACITY_MICROMAP_OPACITY_INPUT, opacitySampler);
     ctx->bindResourceView(BINDING_BAKE_OPACITY_MICROMAP_SECONDARY_OPACITY_INPUT,
                           secondaryOpacityTexture ? secondaryOpacityTexture->getImageView() : opacityTexture.getImageView(), nullptr);
-    ctx->bindResourceSampler(BINDING_BAKE_OPACITY_MICROMAP_SECONDARY_OPACITY_INPUT, nearestSampler);
+    ctx->bindResourceSampler(BINDING_BAKE_OPACITY_MICROMAP_SECONDARY_OPACITY_INPUT, secondaryOpacitySampler);
     ctx->bindResourceBuffer(BINDING_BAKE_OPACITY_MICROMAP_BINDING_SURFACE_DATA_INPUT,
                             DxvkBufferSlice(device->getCommon()->getSceneManager().getSurfaceBuffer()));
     ctx->bindResourceBuffer(BINDING_BAKE_OPACITY_MICROMAP_ARRAY_OUTPUT,
