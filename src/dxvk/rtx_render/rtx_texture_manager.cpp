@@ -34,14 +34,9 @@ namespace dxvk {
   constexpr VkDeviceSize MiBPerGiB = 1024;
 
   void RtxTextureManager::work(Rc<ManagedTexture>& texture, Rc<DxvkContext>& ctx, Rc<DxvkCommandList>& cmd) {
-#ifdef WITH_RTXIO
-    if (m_kickoff || m_dropRequests) {
-      if (RtxIo::enabled()) {
-        RtxIo::get().flush(!m_dropRequests);
-      }
-      m_kickoff = false;
+    if (m_dropRequests) {
+      flushRtxIo(false);
     }
-#endif
 
     const bool alwaysWait = RtxOptions::Get()->alwaysWaitForAsyncTextures();
 
@@ -77,31 +72,50 @@ namespace dxvk {
     RenderProcessor::start();
   }
 
-  void RtxTextureManager::scheduleTextureLoad(TextureRef& texture, Rc<DxvkContext>& immediateContext, bool allowAsync) {
+  static ManagedTexture::State processManagedTextureState(const TextureRef& texture) {
     const Rc<ManagedTexture>& managedTexture = texture.getManagedTexture();
-    if (managedTexture.ptr() == nullptr)
-      return;
+    if (managedTexture == nullptr)
+      return ManagedTexture::State::kUnknown;
 
     switch (managedTexture->state) {
-    case ManagedTexture::State::kVidMem:
-      if (texture.finalizePendingPromotion()) {
-        // Texture reached its final destination
-        return;
-      }
-      break;
     case ManagedTexture::State::kQueuedForUpload:
 #ifdef WITH_RTXIO
       if (RtxIo::enabled()) {
         if (RtxIo::get().isComplete(managedTexture->completionSyncpt)) {
           managedTexture->state = ManagedTexture::State::kVidMem;
-          texture.finalizePendingPromotion();
         }
       }
 #endif
-      return;
+      break;
     case ManagedTexture::State::kFailed:
       managedTexture->demote();
       break;
+    }
+
+    return managedTexture->state;
+  }
+
+  void RtxTextureManager::scheduleTextureLoad(TextureRef& texture, Rc<DxvkContext>& immediateContext, bool allowAsync) {
+    const auto managedState = processManagedTextureState(texture);
+
+    if (managedState == ManagedTexture::State::kVidMem) {
+      // We have texture in vidmem - attempt to finalize the promotion so that it can be used for rendering
+      if (texture.finalizePendingPromotion()) {
+        // Texture reached its final destination
+        return;
+      }
+    } else if (managedState == ManagedTexture::State::kQueuedForUpload) {
+      // Texture is still in-flight
+      return;
+    }
+
+    const Rc<ManagedTexture>& managedTexture = texture.getManagedTexture();
+    if (managedTexture == nullptr)
+      return;
+
+    if (m_itemsPending == 0) {
+      // We're about to start a batch
+      m_batchStartTime = dxvk::high_resolution_clock::now();
     }
 
     // Note: if texture was not preloaded or was demoted then we must preload it now.
@@ -140,6 +154,8 @@ namespace dxvk {
     RenderProcessor::sync();
 
     m_dropRequests = false;
+
+    flushRtxIo(false);
   }
 
   void RtxTextureManager::kickoff() {
@@ -147,13 +163,23 @@ namespace dxvk {
       m_kickoff = true;
       m_condOnAdd.notify_one();
     }
+
+    m_pDevice->statCounters().setCtr(DxvkStatCounter::RtxTexturesInFlight, m_itemsPending.load());
   }
 
   void RtxTextureManager::finalizeAllPendingTexturePromotions() {
     ScopedCpuProfileZone();
     for (auto& texture : m_textureCache.getObjectTable()) {
       if (texture.isPromotable()) {
-        texture.finalizePendingPromotion();
+        if (processManagedTextureState(texture) == ManagedTexture::State::kVidMem) {
+          // We have texture in vidmem - attempt to finalize the promotion
+          if (!texture.finalizePendingPromotion()) {
+#ifdef _DEBUG
+            Logger::debug(str::format("Unable to finalize pending promotion for ",
+                                      texture.getManagedTexture()->assetData->info().filename));
+#endif
+          }
+        }
       }
     }
   }
@@ -248,7 +274,6 @@ namespace dxvk {
       }
 
       TextureUtils::loadTexture(texture, ctx, false, largestMipToLoad);
-      texture->state = ManagedTexture::State::kVidMem;
 
 #ifdef _DEBUG
       Logger::debug(str::format("Loaded texture ", texture->assetData->hash(), " at ",
@@ -369,6 +394,41 @@ namespace dxvk {
     }
 
     m_textureBudgetMib = availableMemorySizeMib * budgetPercentageOfAvailableVram() / 100;
+  }
+
+  void RtxTextureManager::flushRtxIo(bool async) {
+#ifdef WITH_RTXIO
+    if (RtxIo::enabled()) {
+      RtxIo::get().flush(async);
+    }
+#endif
+  }
+
+  bool RtxTextureManager::wakeWorkerCondition() {
+    if (m_kickoff) {
+      flushRtxIo(true);
+      m_kickoff = false;
+
+      // Report batch duration when all items have been processed.
+      // We want to capture rtxio flush time so we check time after a flush in a kickoff event
+      // that is fired at a frame boundary when the number of pending items drops to zero.
+
+      constexpr auto zeroTimePoint = dxvk::high_resolution_clock::time_point(dxvk::high_resolution_clock::duration(0));
+
+      if (m_itemsPending == 0 && m_batchStartTime != zeroTimePoint) {
+        m_lastBatchDuration = dxvk::high_resolution_clock::now() - m_batchStartTime;
+        m_batchStartTime = zeroTimePoint;
+
+#ifdef _DEBUG
+        Logger::debug(str::format("Texture manager batch time: ",
+          std::chrono::duration_cast<std::chrono::milliseconds>(m_lastBatchDuration).count(), "ms"));
+#endif
+
+        m_pDevice->statCounters().setCtr(DxvkStatCounter::RtxLastTextureBatchDuration,
+          std::chrono::duration_cast<std::chrono::milliseconds>(m_lastBatchDuration).count());
+      }
+    }
+    return RenderProcessor::wakeWorkerCondition();
   }
 
 }

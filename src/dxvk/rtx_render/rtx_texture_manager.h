@@ -112,6 +112,10 @@ namespace dxvk {
       */
     static XXH64_hash_t getUniqueKey();
 
+    inline static bool getShowProgress() {
+      return showProgress();
+    }
+
     // Do not use. This is here temporarily for WAR for REMIX-1557
     void releaseTexture(TextureRef& textureRef) {
       m_textureCache.free(textureRef);
@@ -120,11 +124,11 @@ namespace dxvk {
   protected:
     void work(Rc<ManagedTexture>& item, Rc<DxvkContext>& ctx, Rc<DxvkCommandList>& cmd) override;
 
-    bool wakeWorkerCondition() override {
-      return RenderProcessor::wakeWorkerCondition() || m_kickoff;
-    }
+    bool wakeWorkerCondition() override;
 
   private:
+    void flushRtxIo(bool async);
+
     struct TextureHashFn {
       size_t operator() (const TextureRef& tex) const {
         return tex.getUniqueKey();
@@ -141,11 +145,15 @@ namespace dxvk {
     std::atomic<bool> m_dropRequests = false;
     bool m_kickoff = false;
 
+    dxvk::high_resolution_clock::time_point m_batchStartTime { dxvk::high_resolution_clock::duration(0) };
+    dxvk::high_resolution_clock::duration m_lastBatchDuration { dxvk::high_resolution_clock::duration(0) };
+
     VkDeviceSize m_textureBudgetMib = 0;
 
     fast_unordered_cache<Rc<ManagedTexture>> m_assetHashToTextures;
 
     RTX_OPTION("rtx.texturemanager", uint32_t, budgetPercentageOfAvailableVram, 50, "The percentage of available VRAM we should use for material textures.  If material textures are required beyond this budget, then those textures will be loaded at lower quality.  Important note, it's impossible to perfectly match the budget while maintaining reasonable quality levels, so use this as more of a guideline.  If the replacements assets are simply too large for the target GPUs available vid mem, we may end up going overbudget regularly.  Defaults to 50% of the available VRAM.");
+    RTX_OPTION("rtx.texturemanager", bool, showProgress, false, "Show texture loading progress in the HUD.");
 
     bool isTextureSuboptimal(const Rc<ManagedTexture>& texture) const;
     void scheduleTextureLoad(TextureRef& texture, Rc<DxvkContext>& immediateContext, bool allowAsync);
