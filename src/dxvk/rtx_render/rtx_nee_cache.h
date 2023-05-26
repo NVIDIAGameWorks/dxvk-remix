@@ -44,10 +44,10 @@ namespace dxvk {
       const Resources::RaytracingOutput& rtOutput);
 
     void showImguiSettings();
-    
+
     void setRaytraceArgs(RaytraceArgs& raytraceArgs) const;
 
-    RW_RTX_OPTION("rtx.neeCache", bool, enabled, true, "Enable NEE cache.");
+    RW_RTX_OPTION("rtx.neeCache", bool, enabled, true, "Enable NEE cache. The integrator will perform NEE on emissive triangles stored in the cache, which usually have significant light contributions.");
     RTX_OPTION("rtx.neeCache", bool, enableImportanceSampling, true, "Enable importance sampling.");
     RTX_OPTION("rtx.neeCache", bool, enableMIS, true, "Enable MIS.");
     RTX_OPTION("rtx.neeCache", bool, enableInFirstBounce, true, "Enable NEE Cache in first bounce.");
