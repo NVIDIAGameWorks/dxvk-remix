@@ -116,7 +116,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
         if (candidate.isValid())
         {
           vec2 uv = vec2(getNextSampleBlueNoise(rng), getNextSampleBlueNoise(rng));
-          LightSample lightSample = NEECacheUtils.getLightSampleFromTriangle(
+          LightSample lightSample = NEECacheUtils.calculateLightSampleFromTriangle(
             candidate.getSurfaceID(), candidate.getPrimitiveID(), uv, lightObjectPdf, minimalSurfaceInteraction.position, minimalRayInteraction.coneRadius, primaryRay.spreadAngle);
 
           bool isVisible = false;
@@ -292,7 +292,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
             vec3 triangleCenter;
             f16vec3 triangleNormal;
             vec3 lightIntensity;
-            NEECacheUtils.getTriangleLightIntensity(candidiate.getSurfaceID(), candidiate.getPrimitiveID(), triangleCenter, triangleNormal, lightIntensity);
+            NEECacheUtils.calculateTriangleLightIntensity(candidiate.getSurfaceID(), candidiate.getPrimitiveID(), triangleCenter, triangleNormal, lightIntensity);
             color = lightIntensity / calcBt709Luminance(lightIntensity) * 0.7;
           }
           else if(binPixel.y < legendHeight)

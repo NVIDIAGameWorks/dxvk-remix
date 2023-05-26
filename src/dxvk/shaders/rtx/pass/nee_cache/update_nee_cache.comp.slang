@@ -74,7 +74,7 @@ float getTriangleLight(uint2 data, uint age, vec3 cellCenter)
     vec3 triangleCenter;
     vec3 lightFlux;
     f16vec3  triangleNormal;
-    NEECacheUtils.getTriangleLightIntensity(surfaceIndex, primitiveIndex, triangleCenter, triangleNormal, lightFlux);
+    NEECacheUtils.calculateTriangleLightIntensity(surfaceIndex, primitiveIndex, triangleCenter, triangleNormal, lightFlux);
 
     vec3 offset = triangleCenter - cellCenter;
     float cellSize = NEECache.getCellSize() * 0.5;

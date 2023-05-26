@@ -30,7 +30,7 @@ struct NEECacheUtils
     return uv.x + uv.y < 1 ? uv : 1 - uv.yx;
   }
 
-  static float getLightSamplingSolidAnglePDF(float triangleArea, vec3 samplePosition, f16vec3 sampleNormal, vec3 surfacePosition)
+  static float calculateLightSamplingSolidAnglePDF(float triangleArea, vec3 samplePosition, f16vec3 sampleNormal, vec3 surfacePosition)
   {
     float areaPdf = 1.0 / triangleArea;
     vec3 offset = samplePosition - surfacePosition;
@@ -40,7 +40,7 @@ struct NEECacheUtils
   }
 
 
-  static LightSample getLightSampleFromTriangle(int surfaceIndex, int primitiveIndex, vec2 uv, float trianglePdf, vec3 shadingPosition, float16_t coneRadius, float16_t spreadAngle)
+  static LightSample calculateLightSampleFromTriangle(int surfaceIndex, int primitiveIndex, vec2 uv, float trianglePdf, vec3 shadingPosition, float16_t coneRadius, float16_t spreadAngle)
   {
   #define USE_SIMIPLIFIED_MODEL 1
 
@@ -86,7 +86,7 @@ struct NEECacheUtils
     LightSample lightSample = {};
     lightSample.position = surfaceInteraction.position;
     lightSample.normal = surfaceInteraction.interpolatedNormal;
-    float16_t lightPdf = trianglePdf * getLightSamplingSolidAnglePDF(
+    float16_t lightPdf = trianglePdf * calculateLightSamplingSolidAnglePDF(
       surfaceInteraction.triangleArea, surfaceInteraction.position, surfaceInteraction.triangleNormal, shadingPosition);
     lightSample.solidAnglePdf = lightPdf;
     lightSample.radiance = 0;
@@ -124,7 +124,7 @@ struct NEECacheUtils
     return lightSample;
   }
 
-  static void getTriangleLightIntensity(int surfaceIndex, int primitiveIndex, out vec3 triangleCenter, out f16vec3 triangleNormal, out vec3 lightIntensity)
+  static void calculateTriangleLightIntensity(int surfaceIndex, int primitiveIndex, out vec3 triangleCenter, out f16vec3 triangleNormal, out vec3 lightIntensity)
   {
     SURFACE_CREATE_READ(surface0, surfaceIndex, surfaces);    
     Surface surface = surface0;
@@ -153,7 +153,7 @@ struct NEECacheUtils
     }
   }
 
-  static vec2 getLightSampleMISWeight(OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction, vec3 inputDirection, vec3 viewDirection, float lightSampleSolidAnglePDF)
+  static vec2 calculateLightSampleMISWeight(OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction, vec3 inputDirection, vec3 viewDirection, float lightSampleSolidAnglePDF)
   {
     if (!cb.enableNeeCacheMIS)
     {
@@ -173,19 +173,19 @@ struct NEECacheUtils
     return misWeight;
   }
 
-  static float getBRDFSampleMISWeight(SurfaceInteraction surfaceInteraction, vec3 position, float lightSelectionPDF, float brdfSampleSolidAnglePDF)
+  static float calculateBRDFSampleMISWeight(SurfaceInteraction surfaceInteraction, vec3 position, float lightSelectionPDF, float brdfSampleSolidAnglePDF)
   {
     if (!cb.enableNeeCacheMIS)
     {
       return 0.0;
     }
 
-    float lightPdf = lightSelectionPDF * getLightSamplingSolidAnglePDF(surfaceInteraction.triangleArea, surfaceInteraction.position, surfaceInteraction.triangleNormal, position);
+    float lightPdf = lightSelectionPDF * calculateLightSamplingSolidAnglePDF(surfaceInteraction.triangleArea, surfaceInteraction.position, surfaceInteraction.triangleNormal, position);
     float misWeight = saturate(brdfSampleSolidAnglePDF / (brdfSampleSolidAnglePDF + lightPdf));
     return misWeight;
   }
 
-  static float getBSDFSampleTotalPDF(OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction, f16vec3 viewDirection, f16vec3 sampleDirection, float firstSampledSolidAnglePdf, bool firstSampledLobeIsSpecular)
+  static float calculateBSDFSampleTotalPDF(OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction, f16vec3 viewDirection, f16vec3 sampleDirection, float firstSampledSolidAnglePdf, bool firstSampledLobeIsSpecular)
   {
     float16_t diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability;
     bool isValid = opaqueSurfaceMaterialInteractionCalcLobeProbability(
