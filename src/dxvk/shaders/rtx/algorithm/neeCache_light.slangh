@@ -124,7 +124,7 @@ struct NEECacheUtils
     return lightSample;
   }
 
-  static void getTriangleLightFlux(int surfaceIndex, int primitiveIndex, out vec3 triangleCenter, out f16vec3 triangleNormal, out vec3 lightFlux)
+  static void getTriangleLightIntensity(int surfaceIndex, int primitiveIndex, out vec3 triangleCenter, out f16vec3 triangleNormal, out vec3 lightIntensity)
   {
     SURFACE_CREATE_READ(surface0, surfaceIndex, surfaces);    
     Surface surface = surface0;
@@ -138,7 +138,7 @@ struct NEECacheUtils
     SurfaceInteraction surfaceInteraction = surfaceInteractionCreate(surface, rayInteracton, dummyRay, false, kFootprintFromTextureCoordDiff);
     triangleCenter = surfaceInteraction.position;
     triangleNormal = surfaceInteraction.triangleNormal;
-    lightFlux = vec3(0);
+    lightIntensity = vec3(0);
 
     const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
     const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
@@ -149,7 +149,7 @@ struct NEECacheUtils
       const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
         opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteracton);
 
-      lightFlux = opaqueSurfaceMaterialInteraction.emissiveRadiance * surfaceInteraction.triangleArea;
+      lightIntensity = opaqueSurfaceMaterialInteraction.emissiveRadiance * surfaceInteraction.triangleArea;
     }
   }
 

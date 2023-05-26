@@ -291,9 +291,9 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
             // Triangle color
             vec3 triangleCenter;
             f16vec3 triangleNormal;
-            vec3 lightFlux;
-            NEECacheUtils.getTriangleLightFlux(candidiate.getSurfaceID(), candidiate.getPrimitiveID(), triangleCenter, triangleNormal, lightFlux);
-            color = lightFlux / calcBt709Luminance(lightFlux) * 0.7;
+            vec3 lightIntensity;
+            NEECacheUtils.getTriangleLightIntensity(candidiate.getSurfaceID(), candidiate.getPrimitiveID(), triangleCenter, triangleNormal, lightIntensity);
+            color = lightIntensity / calcBt709Luminance(lightIntensity) * 0.7;
           }
           else if(binPixel.y < legendHeight)
           {

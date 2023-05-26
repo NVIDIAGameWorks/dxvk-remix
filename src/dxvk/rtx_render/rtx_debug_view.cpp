@@ -87,7 +87,7 @@ namespace dxvk {
         {DEBUG_VIEW_ANISOTROPIC_ROUGHNESS, "Anisotropic Roughness"},
         {DEBUG_VIEW_OPACITY, "Opacity"},
         {DEBUG_VIEW_EMISSIVE_RADIANCE, "Emissive Radiance"},
-        {DEBUG_VIEW_EMISSIVE_FLUX, "Emissive Flux"},
+        {DEBUG_VIEW_EMISSIVE_TRIANGLE_INTENSITY, "Emissive Triangle Intensity"},
         {DEBUG_VIEW_SURFACE_AREA, "Surface Area"},
         {DEBUG_VIEW_THIN_FILM_THICKNESS, "Thin Film Thickness"},
 
