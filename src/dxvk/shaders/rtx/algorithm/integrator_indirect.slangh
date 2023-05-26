@@ -925,7 +925,7 @@ void integratorIndirectPathOutputDebugView(
     }
     break;
   case DEBUG_VIEW_NOISY_SECONDARY_INDIRECT_SPECULAR_RADIANCE:
-    if (geometryFlags.primarySelectedIntegrationSurface)
+    if (!geometryFlags.primarySelectedIntegrationSurface)
     {
       if (geometryFlags.firstSampledLobeIsSpecular)
         storeInDebugView(ivec2(pixelCoordinate), pathState.radiance);
