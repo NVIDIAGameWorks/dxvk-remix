@@ -91,6 +91,18 @@ namespace dxvk {
     ImGui::DragFloat("Cache Range", &rangeObject(), 1.f, 0.1f, 10000000.0f, "%.3f");
   }
 
+  void NeeCachePass::setRaytraceArgs(RaytraceArgs& constants) const {    
+    constants.neeCacheArgs.enable = enabled();
+    constants.neeCacheArgs.enableImportanceSampling = enableImportanceSampling();
+    constants.neeCacheArgs.enableMIS = enableMIS();
+    constants.neeCacheArgs.enableInFirstBounce = enableInFirstBounce();
+    constants.neeCacheArgs.enableInHigherBounces = enableInHigherBounces();
+    constants.neeCacheArgs.enableRandomReplacement = enableRandomReplacement();
+    constants.neeCacheArgs.range = range();
+    constants.neeCacheArgs.textureSampleFootprintSize = textureSampleFootprintSize();
+    constants.neeCacheArgs.ageCullingSpeed = ageCullingSpeed();
+  }
+
   void NeeCachePass::dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
     const auto& numRaysExtent = rtOutput.m_compositeOutputExtent;
     VkExtent3D workgroups = util::computeBlockCount(numRaysExtent, VkExtent3D{ 16, 8, 1 });

@@ -90,7 +90,7 @@ float getTriangleLight(uint2 data, uint age, vec3 cellCenter)
     g += getGeometricTerm(cellCenter + vec3(0, 0, -cellSize), triangleCenter, triangleNormal);
     g /= 6.0;
 #endif
-    triangleLight = calcBt709Luminance(lightFlux) * g * pow(1.0 - cb.neeCacheAgeCullingSpeed, float(age) + 1);
+    triangleLight = calcBt709Luminance(lightFlux) * g * pow(1.0 - cb.neeCacheArgs.ageCullingSpeed, float(age) + 1);
     triangleLight = clamp(triangleLight, 0, floatMax / 32.0);
   }
   return triangleLight;
@@ -189,7 +189,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   // sort tasks
   if (localIndex.x == 0 && localIndex.y == 0)
   {
-    if(!cb.enableNeeCacheRandomReplacement)
+    if(!cb.neeCacheArgs.enableRandomReplacement)
     {
       for (int i = 0; i < s_candidateCount-1; ++i)
       {
@@ -226,7 +226,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
       }
     }
 
-    s_candidateCount = cb.enableNeeCache != 0 ? min(s_candidateCount, NEECell.getMaxCandidateCount()) : 0;
+    s_candidateCount = cb.neeCacheArgs.enable != 0 ? min(s_candidateCount, NEECell.getMaxCandidateCount()) : 0;
     cell.setTaskCount(0);
     cell.setCandidateCount(s_candidateCount);
 
@@ -243,7 +243,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
     }
     for (int i = 0; i < s_candidateCount; ++i)
     {
-      if (cb.enableNeeCacheImportanceSampling > 0)
+      if (cb.neeCacheArgs.enableImportanceSampling > 0)
       {
         s_candidateLight[i] = saturate(s_candidateLight[i] / totalLight);
       }

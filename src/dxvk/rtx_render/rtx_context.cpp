@@ -1162,16 +1162,7 @@ namespace dxvk {
     constants.enableReSTIRGIDemodulatedTargetFunction = restirGI.useDemodulatedTargetFunction();
 
 
-    auto& neeCache = m_common->metaNeeCache();
-    constants.enableNeeCache = neeCache.enabled();
-    constants.enableNeeCacheImportanceSampling = neeCache.enableImportanceSampling();
-    constants.enableNeeCacheMIS = neeCache.enableMIS();
-    constants.enableNeeCacheInFirstBounce = neeCache.enableInFirstBounce();
-    constants.enableNeeCacheInHigherBounces = neeCache.enableInHigherBounces();
-    constants.enableNeeCacheRandomReplacement = neeCache.enableRandomReplacement();
-    constants.neeCacheRange = neeCache.range();
-    constants.neeCacheTextureSampleFootprintSize = neeCache.textureSampleFootprintSize();
-    constants.neeCacheAgeCullingSpeed = neeCache.ageCullingSpeed();
+    m_common->metaNeeCache().setRaytraceArgs(constants);
     constants.surfaceCount = getSceneManager().getAccelManager().getSurfaceCount();
 
     auto* cameraTeleportDirectionInfo = getSceneManager().getRayPortalManager().getCameraTeleportationRayPortalDirectionInfo();

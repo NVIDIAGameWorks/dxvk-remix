@@ -105,7 +105,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
 
   ReSTIRGI_Reservoir resultReservoir = ReSTIRGI_Reservoir.createEmpty();
 
-  if (cb.enableNeeCache && cb.enableNeeCacheInFirstBounce)
+  if (cb.neeCacheArgs.enable && cb.neeCacheArgs.enableInFirstBounce)
   {
     NEECell cell = NEECache.findCell(minimalSurfaceInteraction.position, true);
     if (cell.isValid())

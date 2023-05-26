@@ -258,7 +258,7 @@ struct NEECache
 
   static int3 pointToCell(vec3 position, bool jittered)
   {
-    float extend = cb.neeCacheRange;
+    float extend = cb.neeCacheArgs.range;
     vec3 cameraPos = cameraGetWorldPosition(cb.camera);
     vec3 origin = cameraPos - extend * 0.5;
     vec3 UVW = (position - origin) / extend;
@@ -304,17 +304,17 @@ struct NEECache
 
   static float getCellSize()
   {
-    return cb.neeCacheRange / NEE_CACHE_PROBE_RESOLUTION;
+    return cb.neeCacheArgs.range / NEE_CACHE_PROBE_RESOLUTION;
   }
 
   static float getVolumeSize()
   {
-    return cb.neeCacheRange;
+    return cb.neeCacheArgs.range;
   }
 
   static vec3 cellToCenterPoint(ivec3 cellID)
   {
-    float extend = cb.neeCacheRange;
+    float extend = cb.neeCacheArgs.range;
     vec3 cameraPos = cameraGetWorldPosition(cb.camera);
     vec3 origin = cameraPos - extend * 0.5;
     vec3 UVW = vec3(cellID + 0.5) / NEE_CACHE_PROBE_RESOLUTION;
