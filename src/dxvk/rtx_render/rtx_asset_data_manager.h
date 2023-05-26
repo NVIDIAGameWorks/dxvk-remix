@@ -22,6 +22,7 @@
 #pragma once
 
 #include <filesystem>
+#include <map>
 #include "../util/util_singleton.h"
 #include "rtx_asset_data.h"
 #include "rtx_asset_package.h"
@@ -33,13 +34,13 @@ namespace dxvk {
   // wraps the asset in an AssetData implementation that help to abstract
   // the access to actual data.
   class AssetDataManager : public Singleton<AssetDataManager> {
-    Rc<AssetPackage> m_package;
-    std::filesystem::path m_basePath;
+    std::map<std::string, Rc<AssetPackage>> m_packages;
+    std::string m_basePath;
   public:
     AssetDataManager();
     ~AssetDataManager();
 
-    void initialize(const std::filesystem::path& path);
+    void initialize(const std::filesystem::path& basePath);
     Rc<AssetData> findAsset(const std::string& filename);
   };
 
