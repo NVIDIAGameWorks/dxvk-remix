@@ -61,7 +61,7 @@ struct NeeCacheArgs {
   uint enableMIS;
   uint enableInFirstBounce;
 
-  uint enableInHigherBounces;
+  uint enableInSecondAndMoreBounces;
   uint enableRandomReplacement;
   float range;
   float textureSampleFootprintSize;

@@ -84,7 +84,7 @@ namespace dxvk {
     ImGui::Checkbox("Enable Importance Sampling", &enableImportanceSamplingObject());
     ImGui::Checkbox("Enable MIS", &enableMISObject());
     ImGui::Checkbox("Enable in First Bounce", &enableInFirstBounceObject());
-    ImGui::Checkbox("Enable in Higher Bounces", &enableInHigherBouncesObject());
+    ImGui::Checkbox("Enable in Second and More Bounces", &enableInSecondAndMoreBouncesObject());
     ImGui::Checkbox("Enable Random Replacement", &enableRandomReplacementObject());
     ImGui::DragFloat("Texture Sample Footprint Size", &textureSampleFootprintSizeObject(), 0.001f, 0.f, 20.f, "%.3f");
     ImGui::DragFloat("Age Culling Speed", &ageCullingSpeedObject(), 0.001f, 0.0f, 0.99f, "%.3f");
@@ -96,7 +96,7 @@ namespace dxvk {
     constants.neeCacheArgs.enableImportanceSampling = enableImportanceSampling();
     constants.neeCacheArgs.enableMIS = enableMIS();
     constants.neeCacheArgs.enableInFirstBounce = enableInFirstBounce();
-    constants.neeCacheArgs.enableInHigherBounces = enableInHigherBounces();
+    constants.neeCacheArgs.enableInSecondAndMoreBounces = enableInSecondAndMoreBounces();
     constants.neeCacheArgs.enableRandomReplacement = enableRandomReplacement();
     constants.neeCacheArgs.range = range();
     constants.neeCacheArgs.textureSampleFootprintSize = textureSampleFootprintSize();

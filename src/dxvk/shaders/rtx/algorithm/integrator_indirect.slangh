@@ -334,7 +334,7 @@ void integratePathVertex(
   // Add Emission
   vec3 emissiveLight = polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(polymorphicSurfaceMaterialInteraction);
   float16_t lightSelectionPDF = 0;
-  bool isNeeEnabledInBounce = (pathState.bounceIteration == 1 && cb.neeCacheArgs.enableInFirstBounce) || (pathState.bounceIteration > 1 && cb.neeCacheArgs.enableInHigherBounces);
+  bool isNeeEnabledInBounce = (pathState.bounceIteration == 1 && cb.neeCacheArgs.enableInFirstBounce) || (pathState.bounceIteration > 1 && cb.neeCacheArgs.enableInSecondAndMoreBounces);
   if (cb.neeCacheArgs.enable && isNeeEnabledInBounce && any(emissiveLight) > 0)
   {
     uint cellOffset, surfaceID, primitiveID;
@@ -523,7 +523,7 @@ void integratePathVertex(
       updateReSTIRGIHitDistance(oldLuminance, calcBt709Luminance(pathState.radiance), restirHitT, min(hitT, float16Max));
     }
 
-    if(cb.neeCacheArgs.enable && cb.neeCacheArgs.enableInHigherBounces)
+    if(cb.neeCacheArgs.enable && cb.neeCacheArgs.enableInSecondAndMoreBounces)
     {
       NEECell cell = NEECache.findCell(surfaceInteraction.position, true);
       if (cell.isValid())
