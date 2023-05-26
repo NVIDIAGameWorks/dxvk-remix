@@ -29,7 +29,7 @@
 #include "rtx/utility/debug_view_indices.h"
 
 static const int kFootprintFromRayOrigin = 0;
-static const int kFootprintFromRayDiection = 1;
+static const int kFootprintFromRayDirection = 1;
 static const int kFootprintFromTextureCoordDiff = 2;
 // Surface Interaction Helper Functions
 
@@ -136,7 +136,7 @@ void convert1stCascadeTexCoordsToTargetCascadeLevel(uint targetCascadeLevel, ino
     texcoords[i] = convert1stCascadeTexCoordToTiledTexCoord(cascade2DIndex, rcpTargetCascadeLevelScale, texcoords[i]);
 }
 
-SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayInteraction, Ray ray, bool usePreviousPositions = false, int footprintMode = kFootprintFromRayDiection)
+SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayInteraction, Ray ray, bool usePreviousPositions = false, int footprintMode = kFootprintFromRayDirection)
 {
   // Compute vertex indicies
 
@@ -428,8 +428,8 @@ SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayI
     if (footprintMode != kFootprintFromTextureCoordDiff)
     {
       vec3 positionOffset = surfaceInteraction.position - ray.origin;
-      f16vec3 direction = footprintMode == kFootprintFromRayDiection ? ray.direction : normalize(positionOffset);
-      float16_t coneRadius = footprintMode == kFootprintFromRayDiection ? rayInteraction.coneRadius : rayInteraction.coneRadius + length(positionOffset) * ray.spreadAngle;
+      f16vec3 direction = footprintMode == kFootprintFromRayDirection ? ray.direction : normalize(positionOffset);
+      float16_t coneRadius = footprintMode == kFootprintFromRayDirection ? rayInteraction.coneRadius : rayInteraction.coneRadius + length(positionOffset) * ray.spreadAngle;
       computeAnisotropicEllipseAxes(
         hitPosition, triangleNormal, worldTwoTriangleArea, direction,
         rayInteraction.coneRadius, worldPositions, texcoords, surfaceInteraction.textureCoordinates,
