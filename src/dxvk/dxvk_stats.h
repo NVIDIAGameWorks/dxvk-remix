@@ -28,6 +28,8 @@ namespace dxvk {
     RtxSurfaceMaterialCount,  ///< Number of surface materials in the scene
     RtxVolumeMaterialCount,   ///< Number of volume materials in the scene
     RtxLightCount,            ///< Number of lights currently present in the scene
+    RtxTexturesInFlight,      ///< Number of texture currently being loaded
+    RtxLastTextureBatchDuration, ///< Duration in ms of the last processed texture batch
     NumCounters,              ///< Number of counters available
   };
   
