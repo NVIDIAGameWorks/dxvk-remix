@@ -49,16 +49,17 @@ groupshared int s_tarTaskCount;
 [numthreads(16, 8, 1)]
 void main(int2 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupThreadID)
 {
+  // Clear target task list
   if (localIndex.x == 0 && localIndex.y == 0)
   {
     s_tarTaskCount = 0;
   }
   GroupMemoryBarrierWithGroupSync();
 
+  // Load recorded task for each pixel
   uint cellOffset, surfaceID, primitiveID;
   NEECache.loadThreadTask(threadIndex, cellOffset, surfaceID, primitiveID);
   uint3 threadTask = uint3(cellOffset, surfaceID, primitiveID);
-
   if (threadTask.y != 0xffffffff && threadTask.z != 0xffffffff)
   {
     int oldCount;
@@ -67,6 +68,7 @@ void main(int2 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupThr
   }
   GroupMemoryBarrierWithGroupSync();
 
+  // Skip repeated tasks
   bool shouldBeAdded = false;
   int localTaskID = localIndex.y * 16 + localIndex.x;
   uint3 localTask = s_task[localTaskID];
@@ -83,6 +85,7 @@ void main(int2 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupThr
     shouldBeAdded = isNew;
   }
 
+  // Add remaining tasks to the pixel's corresponding cell
   if (shouldBeAdded)
   {
     int3 cellID = NEECache.offsetToCell(localTask.x);
