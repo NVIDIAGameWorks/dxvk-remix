@@ -44,6 +44,8 @@ namespace dxvk {
       const Resources::RaytracingOutput& rtOutput);
 
     void showImguiSettings();
+    
+    void setRaytraceArgs(RaytraceArgs& raytraceArgs) const;
 
     RW_RTX_OPTION("rtx.neeCache", bool, enabled, true, "Enable NEE cache.");
     RTX_OPTION("rtx.neeCache", bool, enableImportanceSampling, true, "Enable importance sampling.");

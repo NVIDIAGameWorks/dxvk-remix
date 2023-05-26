@@ -65,10 +65,10 @@ struct NEECacheUtils
     RayInteraction rayInteracton = {};
     rayInteracton.barycentricCoordinates = barycentricsToUint(NEECacheUtils.uvToBarycentrics(uv));
     rayInteracton.primitiveIndex = primitiveIndex;
-    rayInteracton.coneRadius = coneRadius * cb.neeCacheTextureSampleFootprintSize;
+    rayInteracton.coneRadius = coneRadius * cb.neeCacheArgs.textureSampleFootprintSize;
     Ray ray = {};
     ray.origin = shadingPosition;
-    ray.spreadAngle = spreadAngle * cb.neeCacheTextureSampleFootprintSize;
+    ray.spreadAngle = spreadAngle * cb.neeCacheArgs.textureSampleFootprintSize;
     SurfaceInteraction surfaceInteraction = surfaceInteractionCreate(surface, rayInteracton, ray, false, kFootprintFromRayOrigin);
   #if USE_SIMIPLIFIED_MODEL
     surfaceInteraction.positionError = 0;
@@ -155,7 +155,7 @@ struct NEECacheUtils
 
   static vec2 calculateLightSampleMISWeight(OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction, vec3 inputDirection, vec3 viewDirection, float lightSampleSolidAnglePDF)
   {
-    if (!cb.enableNeeCacheMIS)
+    if (!cb.neeCacheArgs.enableMIS)
     {
       return 1.0;
     }
@@ -175,7 +175,7 @@ struct NEECacheUtils
 
   static float calculateBRDFSampleMISWeight(SurfaceInteraction surfaceInteraction, vec3 position, float lightSelectionPDF, float brdfSampleSolidAnglePDF)
   {
-    if (!cb.enableNeeCacheMIS)
+    if (!cb.neeCacheArgs.enableMIS)
     {
       return 0.0;
     }

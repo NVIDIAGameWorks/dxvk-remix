@@ -55,6 +55,21 @@ struct TerrainArgs {
   uint2 pad0;
 };
 
+struct NeeCacheArgs {
+  uint enable;
+  uint enableImportanceSampling;
+  uint enableMIS;
+  uint enableInFirstBounce;
+
+  uint enableInHigherBounces;
+  uint enableRandomReplacement;
+  float range;
+  float textureSampleFootprintSize;
+
+  uint3 padding;
+  float ageCullingSpeed;
+};
+
 // Constant buffer
 struct RaytraceArgs {
   Camera camera;
@@ -132,6 +147,7 @@ struct RaytraceArgs {
   LightRangeInfo lightRanges[lightTypeCount];
 
   TerrainArgs terrainArgs;
+  NeeCacheArgs neeCacheArgs;
 
   uint uniformRandomNumber;
   uint16_t opaqueDiffuseLobeSamplingProbabilityZeroThreshold;
@@ -239,17 +255,7 @@ struct RaytraceArgs {
   float reSTIRGIMISParallaxAmount;
   uint enableReSTIRGIDemodulatedTargetFunction;
 
-  uint enableNeeCache;
-  uint enableNeeCacheImportanceSampling;
-  uint enableNeeCacheMIS;
-  uint enableNeeCacheInFirstBounce;
-  uint enableNeeCacheInHigherBounces;
-  uint enableNeeCacheRandomReplacement;
-  float neeCacheRange;
-  float neeCacheTextureSampleFootprintSize;
-  float neeCacheAgeCullingSpeed;
   uint surfaceCount;
-
   uint teleportationPortalIndex; // 0 means no teleportation, 1+ means portal 0+
 
   float resolveTransparencyThreshold;
