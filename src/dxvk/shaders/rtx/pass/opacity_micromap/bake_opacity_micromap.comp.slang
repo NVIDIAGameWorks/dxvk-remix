@@ -104,10 +104,11 @@ void applyVertexAndTextureOperationsToOpacity(inout float16_t opacity, f16vec3 a
 {
   if (cb.materialType == surfaceMaterialTypeOpaque) {
 
-    if (surface.color0BufferIndex == BINDING_INDEX_INVALID)
-      return;
-    
-    float16_t vertexInterpolatedOpacity = interpolateHitAttribute(vertexOpacities, bary); 
+    float16_t vertexInterpolatedOpacity = 1.h;
+
+    if (surface.color0BufferIndex != BINDING_INDEX_INVALID) {
+      vertexInterpolatedOpacity = interpolateHitAttribute(vertexOpacities, bary); 
+    }
 
     // Fixed function texture stage state for alpha channel
     float16_t textureAlphaArg1, textureAlphaArg2;
