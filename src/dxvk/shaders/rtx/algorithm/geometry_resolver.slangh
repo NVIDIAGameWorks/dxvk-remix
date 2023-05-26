@@ -36,7 +36,7 @@
 #include "rtx/algorithm/resolve.slangh"
 #include "rtx/algorithm/volume_lighting.slangh"
 #include "rtx/pass/post_fx/post_fx_motion_blur_geometry_flags.slangh"
-#include "rtx/algorithm/neecache_light.slangh"
+#include "rtx/algorithm/nee_cache_light.slangh"
 
 // Geometry Resolver Helper Constants
 
