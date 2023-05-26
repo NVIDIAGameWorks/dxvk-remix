@@ -227,6 +227,35 @@ RtLightShaping getLightShaping(const pxr::UsdPrim& lightPrim, Vector3 zAxis) {
 }
 }  // namespace
 
+// Resolves full path for a texture in a shader from texture USD asset path and source USD path.
+// This method is used when real path to a texture asset was not resolved by USD, e.g. the asset
+// is likely packaged and is not physically present on disk.
+static std::string resolveTexturePath(
+  const pxr::UsdPrim& shader,
+  const pxr::TfToken& textureToken,
+  const std::string& textureAssetPath) {
+  for (auto spec : shader.GetPrimStack()) {
+    auto attribs = spec->GetAttributes();
+    if (attribs.find(textureToken) != attribs.end()) {
+      // Trim special path chars.
+      // Note: we could use filesystem::weakly_canonical() to make the resulting path
+      // canonical but unfortunately it is extremly expensive.
+      size_t pathStartPos = 0;
+      while (textureAssetPath[pathStartPos] == '.') {
+        ++pathStartPos;
+      }
+
+      std::filesystem::path sourcePath(spec->GetLayer()->GetRealPath());
+      std::filesystem::path resolvedPath = sourcePath.parent_path();
+      resolvedPath += textureAssetPath.data() + pathStartPos;
+      resolvedPath.make_preferred();
+
+      return resolvedPath.string();
+    }
+  }
+  Logger::warn(str::format("Unable to resolve full path for ", textureAssetPath));
+  return textureAssetPath;
+}
 
 Rc<ManagedTexture> UsdMod::Impl::getTexture(const Args& args, const pxr::UsdPrim& shader, const pxr::TfToken& textureToken, bool forcePreload) {
   static const pxr::TfToken kSRGBColorSpace("sRGB");
@@ -234,18 +263,27 @@ Rc<ManagedTexture> UsdMod::Impl::getTexture(const Args& args, const pxr::UsdPrim
   auto attr = shader.GetAttribute(textureToken);
   if (attr.Get(&path)) {
     const ColorSpace colorSpace = ColorSpace::AUTO; // Always do this, whether or not force SRGB is required or not is unclear at this time.
-    const std::string& strPath = path.GetResolvedPath();
-    if (!strPath.empty()) {
-      auto assetData = AssetDataManager::get().findAsset(strPath);
-      if (assetData != nullptr) {
-        auto device = args.context->getDevice();
-        auto& textureManager = device->getCommon()->getTextureManager();
-        return textureManager.preloadTextureAsset(assetData, colorSpace, args.context, forcePreload);
-      } else {
-        Logger::info(str::format("Texture ", path.GetAssetPath(), " asset data cannot be found or corrupted."));
-      }
+
+    std::string resolvedTexturePath;
+    if (!path.GetResolvedPath().empty()) {
+      // We have a resolved path - texture file exists on disk
+      resolvedTexturePath = path.GetResolvedPath();
     } else if (!path.GetAssetPath().empty()) {
-      Logger::info(str::format("rtx_asset_replacer found a texture with an invalid path: ", path.GetAssetPath()));
+      // We do NOT have a resolved path - this could be a packaged texture
+      // Resolve full path from the asset path and source USD path
+      resolvedTexturePath = resolveTexturePath(shader, textureToken, path.GetAssetPath());
+    } else {
+      // No texture set
+      return nullptr;
+    }
+
+    auto assetData = AssetDataManager::get().findAsset(resolvedTexturePath);
+    if (assetData != nullptr) {
+      auto device = args.context->getDevice();
+      auto& textureManager = device->getCommon()->getTextureManager();
+      return textureManager.preloadTextureAsset(assetData, colorSpace, args.context, forcePreload);
+    } else {
+      Logger::err(str::format("Texture ", resolvedTexturePath, " asset data cannot be found or corrupted."));
     }
   }
 
