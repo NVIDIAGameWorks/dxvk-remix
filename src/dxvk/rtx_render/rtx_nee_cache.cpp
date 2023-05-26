@@ -19,7 +19,7 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
-#include "rtx_neecache.h"
+#include "rtx_nee_cache.h"
 #include "dxvk_device.h"
 #include "rtx.h"
 #include "rtx/pass/common_binding_indices.h"
@@ -31,7 +31,7 @@
 #include "rtx_context.h"
 #include "rtx_imgui.h"
 #include "rtx/pass/raytrace_args.h"
-#include "rtx/algorithm/neecache.h"
+#include "rtx/algorithm/nee_cache.h"
 
 #include <rtx_shaders/demodulate.h>
 #include <rtx_shaders/update_nee_cache.h>

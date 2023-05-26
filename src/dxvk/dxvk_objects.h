@@ -21,7 +21,7 @@
 #include "rtx_render/rtx_pathtracer_integrate_direct.h"
 #include "rtx_render/rtx_pathtracer_integrate_indirect.h"
 #include "rtx_render/rtx_demodulate.h"
-#include "rtx_render/rtx_neecache.h"
+#include "rtx_render/rtx_nee_cache.h"
 #include "rtx_render/rtx_denoise.h"
 #include "rtx_render/rtx_dlss.h"
 #include "rtx_render/rtx_nis.h"

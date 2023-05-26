@@ -28,7 +28,7 @@
 #include "rtx/utility/debug_view_helpers.slangh"
 #include "rtx/algorithm/integrator_helpers.slangh"
 #include "rtxdi/DlssEnhancementFilterFunctions.slangh"
-#include "rtx/algorithm/neecache.h"
+#include "rtx/algorithm/nee_cache.h"
 #include "rtx/algorithm/integrator.slangh"
 
 [shader("compute")]

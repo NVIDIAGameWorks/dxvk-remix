@@ -28,7 +28,7 @@
 
 #ifndef __cplusplus
 
-#include "rtx/algorithm/neecache_light.slangh"
+#include "rtx/algorithm/nee_cache_light.slangh"
 
 struct NEECandidate
 {

@@ -35,7 +35,7 @@
 #include "rtx/algorithm/lighting.slangh"
 #include "rtx/algorithm/resolve.slangh"
 #include "rtx/algorithm/visibility.slangh"
-#include "rtx/algorithm/neecache.h"
+#include "rtx/algorithm/nee_cache.h"
 
 struct IndirectSampleData
 {
