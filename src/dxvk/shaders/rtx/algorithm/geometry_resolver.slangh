@@ -543,18 +543,18 @@ void geometryResolverOutputDebugView(
 
     break;
 
-  case DEBUG_VIEW_EMISSIVE_FLUX:
+  case DEBUG_VIEW_EMISSIVE_TRIANGLE_INTENSITY:
   {
-    vec3 lightFlux = f16vec3(0.0f);
+    vec3 lightIntensity = f16vec3(0.0f);
 
     if (materialType == surfaceMaterialTypeOpaque)
     {
       vec3 triangleCenter;
       f16vec3 triangleNormal;
-      NEECacheUtils.getTriangleLightFlux(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex, triangleCenter, triangleNormal, lightFlux);
+      NEECacheUtils.getTriangleLightIntensity(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex, triangleCenter, triangleNormal, lightIntensity);
     }
 
-    storeInDebugView(pixelCoordinate, lightFlux);
+    storeInDebugView(pixelCoordinate, lightIntensity);
     break;
   }
   case DEBUG_VIEW_NEE_CACHE_SAMPLE_RADIANCE:
