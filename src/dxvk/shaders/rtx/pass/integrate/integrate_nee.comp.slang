@@ -36,7 +36,9 @@
 void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupThreadID)
 {
   if (any(threadIndex >= cb.camera.resolution))
+  {
     return;
+  }
 
   const Camera camera = cb.camera;
 
@@ -60,7 +62,9 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
       initialSpecularOutput.xyz = clamp(initialSpecularOutput.xyz, 0, cb.reSTIRGIFireflyThreshold);
     }
     else
+    {
       initialDiffuseOutput = indirectRadianceHitDistance;
+    }
   }
 
   PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex] = initialDiffuseOutput;
