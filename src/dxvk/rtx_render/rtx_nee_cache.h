@@ -52,7 +52,7 @@ namespace dxvk {
     RTX_OPTION("rtx.neeCache", bool, enableMIS, true, "Enable MIS.");
     RTX_OPTION("rtx.neeCache", bool, enableInFirstBounce, true, "Enable NEE Cache in the first bounce.");
     RTX_OPTION("rtx.neeCache", bool, enableInSecondAndMoreBounces, true, "Enable NEE Cache in the second and more bounces.");
-    RTX_OPTION("rtx.neeCache", bool, enableRandomReplacement, false, "Enable random replacement.");
+    RTX_OPTION("rtx.neeCache", bool, enableRandomReplacement, false, "Enable random replacement, in which old triangles will be randomly replaced by newly discovered ones. Otherwise, the ones with highest contribution scores will always be chosen.");
     RTX_OPTION("rtx.neeCache", float, range, 2000, "World space range.");    
     RTX_OPTION("rtx.neeCache", float, textureSampleFootprintSize, 1.0, "Texture sample footprint size.");
     RTX_OPTION("rtx.neeCache", float, ageCullingSpeed, 0.02, "A triangle without being detected for several frames will be less important. This threshold determines the culling speed.");
