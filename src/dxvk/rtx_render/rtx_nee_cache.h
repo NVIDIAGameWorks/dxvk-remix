@@ -50,6 +50,7 @@ namespace dxvk {
     RW_RTX_OPTION("rtx.neeCache", bool, enabled, true, "Enable NEE cache. The integrator will perform NEE on emissive triangles stored in the cache, which usually have significant light contributions.");
     RTX_OPTION("rtx.neeCache", bool, enableImportanceSampling, true, "Enable importance sampling.");
     RTX_OPTION("rtx.neeCache", bool, enableMIS, true, "Enable MIS.");
+    RTX_OPTION("rtx.neeCache", bool, enableJittering, true, "Enable jittering in cell look up.");
     RTX_OPTION("rtx.neeCache", bool, enableInFirstBounce, true, "Enable NEE Cache in the first bounce.");
     RTX_OPTION("rtx.neeCache", bool, enableInSecondAndMoreBounces, true, "Enable NEE Cache in the second and more bounces.");
     RTX_OPTION("rtx.neeCache", bool, enableRandomReplacement, false, "Enable random replacement, in which old triangles will be randomly replaced by newly discovered ones. Otherwise, the ones with highest contribution scores will always be chosen.");

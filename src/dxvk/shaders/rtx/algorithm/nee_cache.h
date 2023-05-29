@@ -264,7 +264,7 @@ struct NEECache
     vec3 UVW = (position - origin) / extend;
 
     // jitter or not
-    if(jittered)
+    if(jittered && cb.neeCacheArgs.enableJittering)
     {
       vec3 UVWi = UVW * NEE_CACHE_PROBE_RESOLUTION - 0.5;
       vec3 fracUVWi = fract(UVWi);
