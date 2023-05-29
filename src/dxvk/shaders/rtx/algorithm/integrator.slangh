@@ -218,7 +218,6 @@ bool evalNEESecondary(
   inout vec3 diffuseLight,
   inout vec3 specularLight)
 {
-  diffuseLight = specularLight = 0;
 
   // Setup and trace the visibility ray
 
@@ -233,7 +232,10 @@ bool evalNEESecondary(
 
 
   if (visibility.hasOpaqueHit)
+  {
+    diffuseLight = specularLight = 0;
     return false;
+  }
 
   // Evaluate the material and accumulate throughput and hit distance
 
