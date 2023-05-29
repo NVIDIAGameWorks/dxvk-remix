@@ -505,44 +505,42 @@ void integratePathVertex(
     if(cb.neeCacheArgs.enable && cb.neeCacheArgs.enableInSecondAndMoreBounces)
     {
       NEECell cell = NEECache.findCell(surfaceInteraction.position, true);
-      if (cell.isValid())
+      if (cell.isValid() && cell.getCandidateCount() > 0)
       {
-        int candidateCount = cell.getCandidateCount();
-        if (candidateCount > 0)
+        // Sample cached triangles
+        float lightObjectPdf = 0;
+        NEECandidate candidate = cell.sampleCandidate(getNextSampleBlueNoise(randomState), lightObjectPdf);
+
+        if (candidate.isValid())
         {
-          float lightObjectPdf = 0;
-          NEECandidate candidate = cell.sampleCandidate(getNextSampleBlueNoise(randomState), lightObjectPdf);
+          // Sample the selected triangle
+          vec2 uv = vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState));
+          LightSample lightSampleTriangle = NEECacheUtils.calculateLightSampleFromTriangle(
+            candidate.getSurfaceID(), candidate.getPrimitiveID(), uv, lightObjectPdf, surfaceInteraction.position, rayInteraction.coneRadius, hackState.coneSpreadAngle);
 
-          if (candidate.isValid())
+          // Calculate cached triangle NEE sample's MIS light contribution
+          vec3 diffuseLightTriangle, specularLightTriangle;
+          f16vec3 inputDirection = normalize(lightSampleTriangle.position - surfaceInteraction.position);
+          evaluateUnshadowLight(lightSampleTriangle, opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection, diffuseLightTriangle, specularLightTriangle);
+          vec2 misWeight = NEECacheUtils.calculateLightSampleMISWeight(opaqueSurfaceMaterialInteraction, inputDirection, rayInteraction.viewDirection, lightSampleTriangle.solidAnglePdf);
+          diffuseLightTriangle *= misWeight.x;
+          specularLightTriangle *= misWeight.y;
+
+          // Use RIS to choose between the light NEE sample and the cached triangle NEE sample
+          float weightLight = lightSampleValid && lightSample.solidAnglePdf > 0 ? calcBt709Luminance(diffuseLight + specularLight) / lightSample.solidAnglePdf : 0;
+          float weightTriangle = lightSampleTriangle.solidAnglePdf > 0 ? calcBt709Luminance(diffuseLightTriangle + specularLightTriangle) / lightSampleTriangle.solidAnglePdf : 0;
+          float r = getNextSampleBlueNoise(randomState);
+          if (r * (weightLight + weightTriangle) > weightLight)
           {
-            vec2 uv = vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState));
-            LightSample lightSampleTriangle = NEECacheUtils.calculateLightSampleFromTriangle(
-              candidate.getSurfaceID(), candidate.getPrimitiveID(), uv, lightObjectPdf, surfaceInteraction.position, rayInteraction.coneRadius, hackState.coneSpreadAngle);
-
-            // Calculate cached triangle NEE sample's MIS light contribution
-            vec3 diffuseLightTriangle, specularLightTriangle;
-            f16vec3 inputDirection = normalize(lightSampleTriangle.position - surfaceInteraction.position);
-            evaluateUnshadowLight(lightSampleTriangle, opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection, diffuseLightTriangle, specularLightTriangle);
-            vec2 misWeight = NEECacheUtils.calculateLightSampleMISWeight(opaqueSurfaceMaterialInteraction, inputDirection, rayInteraction.viewDirection, lightSampleTriangle.solidAnglePdf);
-            diffuseLightTriangle *= misWeight.x;
-            specularLightTriangle *= misWeight.y;
-
-            // Use RIS to choose between the light NEE sample and the cached triangle NEE sample
-            float weightLight = lightSampleValid && lightSample.solidAnglePdf > 0 ? calcBt709Luminance(diffuseLight + specularLight) / lightSample.solidAnglePdf : 0;
-            float weightTriangle = lightSampleTriangle.solidAnglePdf > 0 ? calcBt709Luminance(diffuseLightTriangle + specularLightTriangle) / lightSampleTriangle.solidAnglePdf : 0;
-            float r = getNextSampleBlueNoise(randomState);
-            if (r * (weightLight + weightTriangle) > weightLight)
-            {
-              lightSample = lightSampleTriangle;
-              diffuseLight = diffuseLightTriangle;
-              specularLight = specularLightTriangle;
-            }
-
-            // Finalize the chosen sample
-            float targetPdf = calcBt709Luminance(diffuseLight + specularLight);
-            lightSample.solidAnglePdf = targetPdf / (weightLight + weightTriangle);
-            lightSampleValid = true;
+            lightSample = lightSampleTriangle;
+            diffuseLight = diffuseLightTriangle;
+            specularLight = specularLightTriangle;
           }
+
+          // Finalize the chosen sample
+          float targetPdf = calcBt709Luminance(diffuseLight + specularLight);
+          lightSample.solidAnglePdf = targetPdf / (weightLight + weightTriangle);
+          lightSampleValid = true;
         }
       }
     }
