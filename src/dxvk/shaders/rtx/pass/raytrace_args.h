@@ -66,7 +66,8 @@ struct NeeCacheArgs {
   float range;
   float textureSampleFootprintSize;
 
-  uint3 padding;
+  uint2 padding;
+  uint enableJittering;
   float ageCullingSpeed;
 };
 

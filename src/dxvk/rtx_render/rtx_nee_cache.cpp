@@ -83,6 +83,7 @@ namespace dxvk {
     ImGui::Checkbox("Enabled", &enabledObject());
     ImGui::Checkbox("Enable Importance Sampling", &enableImportanceSamplingObject());
     ImGui::Checkbox("Enable MIS", &enableMISObject());
+    ImGui::Checkbox("Enable Jittering", &enableJitteringObject());
     ImGui::Checkbox("Enable in First Bounce", &enableInFirstBounceObject());
     ImGui::Checkbox("Enable in Second and More Bounces", &enableInSecondAndMoreBouncesObject());
     ImGui::Checkbox("Enable Random Replacement", &enableRandomReplacementObject());
@@ -101,6 +102,7 @@ namespace dxvk {
     constants.neeCacheArgs.range = range();
     constants.neeCacheArgs.textureSampleFootprintSize = textureSampleFootprintSize();
     constants.neeCacheArgs.ageCullingSpeed = ageCullingSpeed();
+    constants.neeCacheArgs.enableJittering = enableJittering();
   }
 
   void NeeCachePass::dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
