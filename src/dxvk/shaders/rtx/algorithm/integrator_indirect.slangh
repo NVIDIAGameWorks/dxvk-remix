@@ -528,7 +528,7 @@ void integratePathVertex(
             specularLightTriangle *= misWeight.y;
 
             // Use RIS to choose between the light NEE sample and the cached triangle NEE sample
-            float weightLight = lightSample.solidAnglePdf > 0 ? calcBt709Luminance(diffuseLight + specularLight) / lightSample.solidAnglePdf : 0;
+            float weightLight = lightSampleValid && lightSample.solidAnglePdf > 0 ? calcBt709Luminance(diffuseLight + specularLight) / lightSample.solidAnglePdf : 0;
             float weightTriangle = lightSampleTriangle.solidAnglePdf > 0 ? calcBt709Luminance(diffuseLightTriangle + specularLightTriangle) / lightSampleTriangle.solidAnglePdf : 0;
             float r = getNextSampleBlueNoise(randomState);
             if (r * (weightLight + weightTriangle) > weightLight)
