@@ -133,14 +133,13 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
             float misWeight = lightSample.solidAnglePdf / (brdfSampleSolidAnglePdf + lightSample.solidAnglePdf);
             lightSample.radiance *= misWeight;
 
-            evaluateUnshadowLight(lightSample, opaqueSurfaceMaterialInteraction, minimalRayInteraction, minimalSurfaceInteraction, diffuseLight, specularLight);
+            evaluateUnshadowLight(lightSample, opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection, diffuseLight, specularLight);
 
-            float emissiveInvSelectionPdf = 1.0;
             uint8_t rayMask = OBJECT_MASK_OPAQUE | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC);
             isVisible = evalNEESecondary(
-              lightSample, emissiveInvSelectionPdf, invalidRayPortalIndex, surface.portalSpace, rayMask,
+              lightSample, invalidRayPortalIndex, surface.portalSpace, rayMask,
               surface.isViewModel, primaryRay, minimalRayInteraction, minimalSurfaceInteraction,
-              opaqueSurfaceMaterialInteraction, diffuseLight, specularLight);
+              diffuseLight, specularLight);
 
             PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex].xyz += diffuseLight;
             PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex].xyz += specularLight;
