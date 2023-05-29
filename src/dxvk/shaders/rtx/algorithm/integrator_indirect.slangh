@@ -498,12 +498,75 @@ void integratePathVertex(
         lightSample, invSelectionPdf);
     }
 
+    lightSample.solidAnglePdf /= invSelectionPdf;
+    invSelectionPdf = 1.0;
+    vec3 diffuseLight, specularLight;
+    evaluateUnshadowLight(lightSample, opaqueSurfaceMaterialInteraction, rayInteraction, surfaceInteraction, diffuseLight, specularLight);
+
+    if(cb.neeCacheArgs.enable && cb.neeCacheArgs.enableInSecondAndMoreBounces)
+    {
+      NEECell cell = NEECache.findCell(surfaceInteraction.position, true);
+      if (cell.isValid())
+      {
+        int candidateCount = cell.getCandidateCount();
+        if (candidateCount > 0)
+        {
+          float lightObjectPdf = 0;
+          NEECandidate candidate = cell.sampleCandidate(getNextSampleBlueNoise(randomState), lightObjectPdf);
+          int surfaceIndex = candidate.getSurfaceID();
+          int primitiveIndex = candidate.getPrimitiveID();
+          if (candidate.isValid())
+          {
+            vec2 uv = vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState));
+            LightSample lightSample2 = NEECacheUtils.calculateLightSampleFromTriangle(
+              candidate.getSurfaceID(), candidate.getPrimitiveID(), uv, lightObjectPdf, surfaceInteraction.position, rayInteraction.coneRadius, hackState.coneSpreadAngle);
+
+            vec3 diffuseLight2, specularLight2;
+            evaluateUnshadowLight(lightSample2, opaqueSurfaceMaterialInteraction, rayInteraction, surfaceInteraction, diffuseLight, specularLight);
+
+            float targetPdf = calcBt709Luminance(diffuseLight + specularLight);
+            float w1 = calcBt709Luminance(diffuseLight + specularLight) / lightSample.solidAnglePdf;
+            float w2 = calcBt709Luminance(diffuseLight2 + specularLight2) / lightSample2.solidAnglePdf;
+
+            float r = getNextSampleBlueNoise(randomState);
+            if (r * (w1 + w2) > w1)
+            {
+              lightSample = lightSample2;
+              diffuseLight = diffuseLight2;
+              specularLight = specularLight2;
+              targetPdf = calcBt709Luminance(diffuseLight2 + specularLight2);
+            }
+
+            lightSample.solidAnglePdf = targetPdf / (w1 + w2);
+            // if(any(lightSample.radiance > 0))
+            // {
+            //   // f16vec3 inputDirection = normalize(lightSample.position - surfaceInteraction.position);
+            //   // vec2 misWeight = NEECacheUtils.calculateLightSampleMISWeight(opaqueSurfaceMaterialInteraction, inputDirection, rayInteraction.viewDirection, lightSample.solidAnglePdf);
+
+            //   // const bool isViewModel = pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
+            //   // float emissiveInvSelectionPdf = 1.0;
+            //   // vec3 diffuseLight, specularLight;
+            //   // evalNEESecondary(
+            //   //   lightSample, emissiveInvSelectionPdf, invalidRayPortalIndex, pathState.portalSpace, pathState.rayMask,
+            //   //   isViewModel, ray, rayInteraction, surfaceInteraction,
+            //   //   opaqueSurfaceMaterialInteraction, diffuseLight, specularLight);
+
+            //   // vec3 emissiveNEELight = diffuseLight * misWeight.x + specularLight * misWeight.y;
+            //   // pathState.radiance += pathState.throughput * emissiveNEELight;
+
+            //   evaluate
+            // }
+          }
+        }
+      }
+    }
+
     if (lightSampleValid)
     {
       const bool isViewModel = pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
 
       // Todo: Ray Portal transport sampling in the future.
-      vec3 diffuseLight, specularLight;
+      //vec3 diffuseLight, specularLight;
       evalNEESecondary(
         lightSample, invSelectionPdf, invalidRayPortalIndex, pathState.portalSpace, pathState.rayMask,
         isViewModel, ray, rayInteraction, surfaceInteraction,
@@ -521,45 +584,6 @@ void integratePathVertex(
       }
 
       updateReSTIRGIHitDistance(oldLuminance, calcBt709Luminance(pathState.radiance), restirHitT, min(hitT, float16Max));
-    }
-
-    if(cb.neeCacheArgs.enable && cb.neeCacheArgs.enableInSecondAndMoreBounces)
-    {
-      NEECell cell = NEECache.findCell(surfaceInteraction.position, true);
-      if (cell.isValid())
-      {
-        int candidateCount = cell.getCandidateCount();
-        if (candidateCount > 0)
-        {
-          float lightObjectPdf = 0;
-          NEECandidate candidate = cell.sampleCandidate(getNextSampleBlueNoise(randomState), lightObjectPdf);
-          int surfaceIndex = candidate.getSurfaceID();
-          int primitiveIndex = candidate.getPrimitiveID();
-          if (candidate.isValid())
-          {
-            vec2 uv = vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState));
-            LightSample lightSample = NEECacheUtils.calculateLightSampleFromTriangle(
-              candidate.getSurfaceID(), candidate.getPrimitiveID(), uv, lightObjectPdf, surfaceInteraction.position, rayInteraction.coneRadius, hackState.coneSpreadAngle);
-
-            if(any(lightSample.radiance > 0))
-            {
-              f16vec3 inputDirection = normalize(lightSample.position - surfaceInteraction.position);
-              vec2 misWeight = NEECacheUtils.calculateLightSampleMISWeight(opaqueSurfaceMaterialInteraction, inputDirection, rayInteraction.viewDirection, lightSample.solidAnglePdf);
-
-              const bool isViewModel = pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
-              float emissiveInvSelectionPdf = 1.0;
-              vec3 diffuseLight, specularLight;
-              evalNEESecondary(
-                lightSample, emissiveInvSelectionPdf, invalidRayPortalIndex, pathState.portalSpace, pathState.rayMask,
-                isViewModel, ray, rayInteraction, surfaceInteraction,
-                opaqueSurfaceMaterialInteraction, diffuseLight, specularLight);
-
-              vec3 emissiveNEELight = diffuseLight * misWeight.x + specularLight * misWeight.y;
-              pathState.radiance += pathState.throughput * emissiveNEELight;
-            }
-          }
-        }
-      }
     }
   }
 
