@@ -533,7 +533,7 @@ void integratePathVertex(
             float w2 = lightSample2.solidAnglePdf > 0 ? calcBt709Luminance(diffuseLight2 + specularLight2) / lightSample2.solidAnglePdf : 0;
 
             float r = getNextSampleBlueNoise(randomState);
-            if (1 || r * (w1 + w2) > w1)
+            if (r * (w1 + w2) > w1)
             {
               lightSample = lightSample2;
               diffuseLight = diffuseLight2;
@@ -541,7 +541,7 @@ void integratePathVertex(
               targetPdf = calcBt709Luminance(diffuseLight2 + specularLight2);
             }
 
-            //lightSample.solidAnglePdf = targetPdf / (w1 + w2);
+            lightSample.solidAnglePdf = targetPdf / (w1 + w2);
             // if(any(lightSample.radiance > 0))
             // {
             //   // f16vec3 inputDirection = normalize(lightSample.position - surfaceInteraction.position);
