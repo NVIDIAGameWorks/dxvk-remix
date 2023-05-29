@@ -525,15 +525,15 @@ void integratePathVertex(
             evaluateUnshadowLight(lightSample2, opaqueSurfaceMaterialInteraction, rayInteraction, surfaceInteraction, diffuseLight2, specularLight2);
             f16vec3 inputDirection = normalize(lightSample2.position - surfaceInteraction.position);
             vec2 misWeight = NEECacheUtils.calculateLightSampleMISWeight(opaqueSurfaceMaterialInteraction, inputDirection, rayInteraction.viewDirection, lightSample2.solidAnglePdf);
-            diffuseLight2 *= misWeight.x;
-            specularLight2 *= misWeight.y;
+            //diffuseLight2 *= misWeight.x;
+            //specularLight2 *= misWeight.y;
 
             float targetPdf = calcBt709Luminance(diffuseLight + specularLight);
-            float w1 = calcBt709Luminance(diffuseLight + specularLight) / lightSample.solidAnglePdf;
-            float w2 = calcBt709Luminance(diffuseLight2 + specularLight2) / lightSample2.solidAnglePdf;
+            float w1 = lightSample.solidAnglePdf > 0 ? calcBt709Luminance(diffuseLight + specularLight) / lightSample.solidAnglePdf : 0;
+            float w2 = lightSample2.solidAnglePdf > 0 ? calcBt709Luminance(diffuseLight2 + specularLight2) / lightSample2.solidAnglePdf : 0;
 
             float r = getNextSampleBlueNoise(randomState);
-            if (r * (w1 + w2) > w1)
+            if (1 || r * (w1 + w2) > w1)
             {
               lightSample = lightSample2;
               diffuseLight = diffuseLight2;
@@ -541,7 +541,7 @@ void integratePathVertex(
               targetPdf = calcBt709Luminance(diffuseLight2 + specularLight2);
             }
 
-            lightSample.solidAnglePdf = targetPdf / (w1 + w2);
+            //lightSample.solidAnglePdf = targetPdf / (w1 + w2);
             // if(any(lightSample.radiance > 0))
             // {
             //   // f16vec3 inputDirection = normalize(lightSample.position - surfaceInteraction.position);
