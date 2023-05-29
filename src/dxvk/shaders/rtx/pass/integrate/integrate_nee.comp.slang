@@ -255,7 +255,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
       vec3 color = (surface.opaqueSurfaceMaterialInteraction.albedo + surface.opaqueSurfaceMaterialInteraction.baseReflectivity);
       if (all(cellID != -1))
       {
-        color = lerp(color, vec3(cellID + 1) / NEE_CACHE_PROBE_RESOLUTION, 0.9);
+        color = lerp(color, (dot(cellID, 1) & 0x1) ? vec3(1) : vec3(0), 0.3);
       }
       if (cell.isValid())
       {
@@ -308,7 +308,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
           else if (pdfPixel.y < binHeight * probability)
           {
             // Histogram
-            color = (dot(cellID, 1) & 0x1) ? vec3(0.8) : vec3(0.3);
+            color = (dot(cellID, 1) & 0x1) ? vec3(1,0.5,0) : vec3(0,0,1);
           }
         }
         else
