@@ -249,7 +249,7 @@ bool evalNEESecondary(
   return true;
 }
 
-void evaluateUnshadowLight(
+void evaluateUnshadowedLight(
   LightSample lightSample,
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
   MinimalRayInteraction minimalRayInteraction,

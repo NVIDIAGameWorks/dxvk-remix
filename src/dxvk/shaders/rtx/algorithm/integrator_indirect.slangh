@@ -500,7 +500,7 @@ void integratePathVertex(
 
     lightSample.solidAnglePdf /= invSelectionPdf;
     vec3 diffuseLight, specularLight;
-    evaluateUnshadowLight(lightSample, opaqueSurfaceMaterialInteraction, rayInteraction, normalize(lightSample.position - surfaceInteraction.position), diffuseLight, specularLight);
+    evaluateUnshadowedLight(lightSample, opaqueSurfaceMaterialInteraction, rayInteraction, normalize(lightSample.position - surfaceInteraction.position), diffuseLight, specularLight);
 
     if(cb.neeCacheArgs.enable && cb.neeCacheArgs.enableInSecondAndMoreBounces)
     {
@@ -521,7 +521,7 @@ void integratePathVertex(
           // Calculate cached triangle NEE sample's MIS light contribution
           vec3 diffuseLightTriangle, specularLightTriangle;
           f16vec3 inputDirection = normalize(lightSampleTriangle.position - surfaceInteraction.position);
-          evaluateUnshadowLight(lightSampleTriangle, opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection, diffuseLightTriangle, specularLightTriangle);
+          evaluateUnshadowedLight(lightSampleTriangle, opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection, diffuseLightTriangle, specularLightTriangle);
           vec2 misWeight = NEECacheUtils.calculateLightSampleMISWeight(opaqueSurfaceMaterialInteraction, inputDirection, rayInteraction.viewDirection, lightSampleTriangle.solidAnglePdf);
           diffuseLightTriangle *= misWeight.x;
           specularLightTriangle *= misWeight.y;
