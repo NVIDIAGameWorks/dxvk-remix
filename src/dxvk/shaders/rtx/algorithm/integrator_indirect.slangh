@@ -525,8 +525,8 @@ void integratePathVertex(
             evaluateUnshadowLight(lightSample2, opaqueSurfaceMaterialInteraction, rayInteraction, surfaceInteraction, diffuseLight2, specularLight2);
             f16vec3 inputDirection = normalize(lightSample2.position - surfaceInteraction.position);
             vec2 misWeight = NEECacheUtils.calculateLightSampleMISWeight(opaqueSurfaceMaterialInteraction, inputDirection, rayInteraction.viewDirection, lightSample2.solidAnglePdf);
-            //diffuseLight2 *= misWeight.x;
-            //specularLight2 *= misWeight.y;
+            diffuseLight2 *= misWeight.x;
+            specularLight2 *= misWeight.y;
 
             float targetPdf = calcBt709Luminance(diffuseLight + specularLight);
             float w1 = lightSample.solidAnglePdf > 0 ? calcBt709Luminance(diffuseLight + specularLight) / lightSample.solidAnglePdf : 0;
