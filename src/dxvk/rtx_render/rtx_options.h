@@ -245,7 +245,6 @@ namespace dxvk {
       RTX_OPTION("rtx.viewModel", float, scale, 1.0f, "Scale for view models. Minimize to prevent clipping.");
       RTX_OPTION("rtx.viewModel", bool, enableVirtualInstances, true, "If true, virtual instances are created to render the view models behind a portal.");
       RTX_OPTION("rtx.viewModel", bool, perspectiveCorrection, true, "If true, apply correction to view models (e.g. different FOV is used for view models).");
-      RTX_OPTION("rtx.viewModel", bool, separateRays, false, "If true, launch additional primary rays to render view models on top of everything.");
     } viewModel;
 
   public:
@@ -1173,7 +1172,6 @@ namespace dxvk {
     float getViewModelScale() const { return viewModel.scale(); }
     bool isViewModelVirtualInstancesEnabled() const { return viewModel.enableVirtualInstances(); }
     bool isViewModelPerspectiveCorrectionEnabled() const { return viewModel.perspectiveCorrection(); }
-    bool isViewModelSeparateRaysEnabled() const { return viewModel.separateRays(); }
 
     // Resolve Options
     uint8_t getPrimaryRayMaxInteractions() const { return primaryRayMaxInteractions(); }
