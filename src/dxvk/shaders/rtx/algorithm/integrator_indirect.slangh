@@ -232,10 +232,9 @@ void integratePathVertex(
     unorderedResolveRay.tMax = rayHitInfo.hasHit ? rayHitInfo.hitDistance * kUnorderedResolveRayLengthening : floatMax;
 
     uint numUnorderedInteractions = 0;
-    const bool isViewModel = pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
     uint8_t unorderedRayMask = OBJECT_MASK_UNORDERED_ALL_BLENDED
       | (cb.enableUnorderedEmissiveParticlesInIndirectRays ? OBJECT_MASK_UNORDERED_ALL_EMISSIVE : 0);
-    unorderedRayMask = convertPrimaryRayMaskToUnordered(isViewModel, pathState.rayMask, unorderedRayMask);
+    unorderedRayMask = convertPrimaryRayMaskToUnordered(pathState.rayMask, unorderedRayMask);
     
     resolveVertexUnordered(
       resolveMode, unorderedResolveRay,
