@@ -295,7 +295,7 @@ namespace dxvk {
       m_previousViewModelState = isViewModelEnabled;
     }
 
-    const bool forceGarbageCollection = (m_instances.size() >= RtxOptions::Get()->numKeepInstances());
+    const bool forceGarbageCollection = (m_instances.size() >= RtxOptions::AntiCulling::Object::numObjectsToKeep());
     for (uint32_t i = 0; i < m_instances.size();) {
       // Must take a ref here since we'll be swapping
       RtInstance*& pInstance = m_instances[i];
@@ -307,7 +307,7 @@ namespace dxvk {
                                        ((RtxOptions::Get()->highlightedTexture() == materialData.getColorTexture().getImageHash()) ||
                                         (RtxOptions::Get()->highlightedTexture() == materialData.getColorTexture2().getImageHash()));
       const bool enableGarbageCollection =
-        !RtxOptions::Get()->enableAntiCulling() || // It's always True if anti-culling is disabled
+        !RtxOptions::AntiCulling::Object::enable() || // It's always True if anti-culling is disabled
         (pInstance->m_isInsideFrustum) ||
         (pInstance->getBlas()->input.getSkinningState().numBones > 0) ||
         (pInstance->m_isAnimated) ||

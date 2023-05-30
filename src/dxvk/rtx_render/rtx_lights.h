@@ -403,6 +403,10 @@ struct RtLight {
     return m_frameLastTouched;
   }
 
+  const bool getIsInsideFrustum() const {
+    return m_isInsideFrustum;
+  }
+
   void setFrameLastTouched(const uint32_t frame) const {
     m_frameLastTouched = frame;
   }
@@ -417,6 +421,14 @@ struct RtLight {
 
   void setRootInstanceId(uint64_t rootInstanceId) {
      m_rootInstanceId = rootInstanceId;
+  }
+
+  void markAsInsideFrustum() const {
+    m_isInsideFrustum = true;
+  }
+
+  void markAsOutsideFrustum() const {
+    m_isInsideFrustum = false;
   }
 
   uint32_t isStaticCount = 0;
@@ -442,6 +454,8 @@ private:
   // Shared Light Information
   mutable uint32_t m_frameLastTouched = kInvalidFrameIndex;
   mutable uint32_t m_bufferIdx = kNewLightIdx; // index into the light list (RTX-DI needs to understand how light indices change over time)
+
+  mutable bool m_isInsideFrustum = true;
 };
 
 } // namespace dxvk

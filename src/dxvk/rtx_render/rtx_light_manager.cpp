@@ -104,16 +104,22 @@ namespace dxvk {
     const uint32_t framesToKeep = RtxOptions::Get()->getNumFramesToKeepLights();
     const uint32_t framesToSleep = RtxOptions::Get()->getNumFramesToPutLightsToSleep();
 
+    const bool forceGarbageCollection = (m_lights.size() >= RtxOptions::AntiCulling::Light::numLightsToKeep());
     for (auto it = m_lights.begin(); it != m_lights.end();) {
-      RtLight& light = it->second;
-      if (light.isChildOfMesh() || light.isDynamic) {
-        if (light.getFrameLastTouched() < currentFrame) {
+      const RtLight& light = it->second;
+      const uint32_t frameLastTouched = light.getFrameLastTouched();
+      if (!RtxOptions::AntiCulling::Light::enable() || // It's always True if anti-culling is disabled
+          (light.getIsInsideFrustum() ||
+           frameLastTouched + RtxOptions::AntiCulling::Light::numFramesToExtendLightLifetime() <= currentFrame)) {
+        if (light.isChildOfMesh() || light.isDynamic) {
+          if (light.getFrameLastTouched() < currentFrame) {
+            it = m_lights.erase(it);
+            continue;
+          }
+        } else if ((light.isStaticCount < framesToSleep) && (frameLastTouched + framesToKeep) <= currentFrame) {
           it = m_lights.erase(it);
           continue;
         }
-      } else if ((light.isStaticCount < framesToSleep) && (light.getFrameLastTouched() + framesToKeep) <= currentFrame) {
-        it = m_lights.erase(it);
-        continue;
       }
       ++it;
     }

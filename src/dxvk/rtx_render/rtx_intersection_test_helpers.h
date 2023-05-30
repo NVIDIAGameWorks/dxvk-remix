@@ -85,6 +85,13 @@ static inline bool projectedPointLiesInsideQuad(
       && inRange(v, -halfExtents.y, halfExtents.y);
 }
 
+static inline bool sphereIntersectsFrustum(
+  cFrustum& frustum,           // The frustum check for intersection
+  const dxvk::Vector3& center, // The center position of the sphere bounding box of the object
+  const float radius) {        // The radius of the sphere bounding box of the object
+  return frustum.CheckSphere(float3(center.x, center.y, center.z), radius);
+}
+
 // Fast BoundingBox-Frustum intersection check
 static inline bool boundingBoxIntersectsFrustum(
   cFrustum& frustum,                   // The frustum check for intersection
@@ -108,9 +115,9 @@ static inline bool boundingBoxIntersectsFrustum(
   for (uint32_t planeIdx = 0; planeIdx < PLANES_NUM; ++planeIdx) {
     bool insidePlane = false;
     const float4 plane = frustum.GetPlane(planeIdx);
-    for (uint32_t obbVerticesIdx = 0; obbVerticesIdx < 8; ++obbVerticesIdx) {
+    for (uint32_t obbVertexIdx = 0; obbVertexIdx < 8; ++obbVertexIdx) {
       // Fast in-out plane check with SIMD
-      if (Dot44(plane, obbVertices[obbVerticesIdx]) >= 0.0f) {
+      if (Dot44(plane, obbVertices[obbVertexIdx]) >= 0.0f) {
         insidePlane = true;
         break;
       }
@@ -119,5 +126,43 @@ static inline bool boundingBoxIntersectsFrustum(
       return false;
     }
   }
+  return true;
+}
+
+static inline bool rectIntersectsFrustum(
+  cFrustum& frustum,               // The frustum check for intersection
+  const dxvk::Vector3& pos,        // The center position of the rectangle
+  const dxvk::Vector2& dimensions, // Object space extents of rectangle
+  const dxvk::Vector3& xAxis,      // xAxis vector in world space
+  const dxvk::Vector3& yAxis) {    // yAxis vector in world space
+  constexpr int RectVerticeNumber = 4;
+
+  const dxvk::Vector3 vertices[RectVerticeNumber] = {
+    pos + dimensions.x * xAxis,
+    pos - dimensions.x * xAxis,
+    pos + dimensions.y * yAxis,
+    pos - dimensions.y * yAxis
+  };
+
+  const float4 verticesSimd[RectVerticeNumber] = {
+    float4(vertices[0].x, vertices[0].y, vertices[0].z, 1.0f),
+    float4(vertices[1].x, vertices[1].y, vertices[1].z, 1.0f),
+    float4(vertices[2].x, vertices[2].y, vertices[2].z, 1.0f),
+    float4(vertices[3].x, vertices[3].y, vertices[3].z, 1.0f),
+  };
+
+  // Loop all planes. If all 4 vertices of rectangle are outside of any of these 6 planes,
+  // the rectangle is not intersecting with the frustum.
+  for (uint32_t planeIdx = 0; planeIdx < PLANES_NUM; ++planeIdx) {
+    const float4 plane = frustum.GetPlane(planeIdx);
+    for (uint32_t vertexIdx = 0; vertexIdx < RectVerticeNumber; ++vertexIdx) {
+      // Fast in-out plane check with SIMD
+      if (Dot44(plane, verticesSimd[vertexIdx]) >= 0.0f) {
+        continue;
+      }
+      return false;
+    }
+  }
+
   return true;
 }
