@@ -88,10 +88,13 @@ namespace dxvk {
                                                      const bool enableVertexAndTextureOperations, 
                                                      uint32_t currentFrameIndex,
                                                      std::list<XXH64_hash_t>::iterator _leastRecentlyUsedListIter,
+                                                     std::list<XXH64_hash_t>::iterator _cacheStateListIter,
                                                      const OmmRequest& ommRequest)
     : cacheState(_cacheState)
     , lastUseFrameIndex(currentFrameIndex)
     , leastRecentlyUsedListIter(_leastRecentlyUsedListIter)
+    , cacheStateListIter(_cacheStateListIter)
+    , isUnprocessedCacheStateListIterValid(true)
     , numTriangles(ommRequest.numTriangles)
     , ommFormat(ommRequest.ommFormat) {
     useVertexAndTextureOperations = enableVertexAndTextureOperations;
@@ -263,7 +266,7 @@ namespace dxvk {
     omm_validation_assert(!instance && "Instance has not been unlinked");
   }
 
-  void OpacityMicromapManager::CachedSourceData::initialize(const OmmRequest& ommRequest, std::unordered_map<XXH64_hash_t, InstanceOmmRequests>& instanceOmmRequests) {
+  void OpacityMicromapManager::CachedSourceData::initialize(const OmmRequest& ommRequest, fast_unordered_cache<InstanceOmmRequests>& instanceOmmRequests) {
     setInstance(&ommRequest.instance, instanceOmmRequests);
 
     numTriangles = ommRequest.numTriangles;
@@ -276,7 +279,7 @@ namespace dxvk {
     }
   }
 
-  void OpacityMicromapManager::CachedSourceData::setInstance(const RtInstance* _instance, std::unordered_map<XXH64_hash_t, InstanceOmmRequests>& instanceOmmRequests, bool deleteParentInstanceIfEmpty) {
+  void OpacityMicromapManager::CachedSourceData::setInstance(const RtInstance* _instance, fast_unordered_cache<InstanceOmmRequests>& instanceOmmRequests, bool deleteParentInstanceIfEmpty) {
     omm_validation_assert(instance != _instance && "Redundant call setting the same instance twice.");
 
     if (instance && _instance)
@@ -297,9 +300,10 @@ namespace dxvk {
     instance = _instance;
   }  
 
-  void OpacityMicromapManager::destroyOmmData(const OpacityMicromapCache::iterator& ommCacheItemIter, bool destroyParentInstanceOmmRequestContainer) {
+  void OpacityMicromapManager::destroyOmmData(OpacityMicromapCache::iterator& ommCacheItemIter, bool destroyParentInstanceOmmRequestContainer) {
     const XXH64_hash_t ommSrcHash = ommCacheItemIter->first;
-    const OpacityMicromapCacheState ommCacheState = ommCacheItemIter->second.cacheState;
+    OpacityMicromapCacheItem& ommCacheItem = ommCacheItemIter->second;
+    const OpacityMicromapCacheState ommCacheState = ommCacheItem.cacheState;
 
 #ifdef VALIDATION_MODE
     Logger::warn(str::format("[RTX Opacity Micromap] Destroying ", ommSrcHash, " on thread_id ", std::this_thread::get_id()));
@@ -308,16 +312,20 @@ namespace dxvk {
     switch (ommCacheState) {
     case OpacityMicromapCacheState::eStep0_Unprocessed:
     case OpacityMicromapCacheState::eStep1_Baking:
-      m_unprocessedList.remove(ommSrcHash);
+      // Note the iterator may be invalid if the cache state list element was
+      // already destroyed when source data was unlinked
+      if (ommCacheItem.isUnprocessedCacheStateListIterValid) {
+        m_unprocessedList.erase(ommCacheItem.cacheStateListIter);
+        ommCacheItem.isUnprocessedCacheStateListIterValid = false;
+      }
       break;
     case OpacityMicromapCacheState::eStep2_Baked:
-      m_bakedList.remove(ommSrcHash);
+      m_bakedList.erase(ommCacheItem.cacheStateListIter);
       break;
     case OpacityMicromapCacheState::eStep3_Built:
-      m_builtList.remove(ommSrcHash);
+      m_builtList.erase(ommCacheItem.cacheStateListIter);
       break;
     case OpacityMicromapCacheState::eStep4_Ready:
-      m_readyList.remove(ommSrcHash);
       break;
     default:
       omm_validation_assert(0);
@@ -347,7 +355,8 @@ namespace dxvk {
       if (ommCacheIterator == m_ommCache.end())
         return;
 
-      const OpacityMicromapCacheState ommCacheState = ommCacheIterator->second.cacheState;
+      OpacityMicromapCacheItem& ommCacheItem = ommCacheIterator->second;
+      const OpacityMicromapCacheState ommCacheState = ommCacheItem.cacheState;
 
       if (!forceDestroy) {
         switch (ommCacheState) {
@@ -358,8 +367,11 @@ namespace dxvk {
           // If the OMM data has been at least partially baked keep it in the cache
         case OpacityMicromapCacheState::eStep1_Baking:
           // Remove partially baked OMM items from to be baked list until a new instance is linked with it again
-          m_unprocessedList.remove(ommSrcHash);
-          deleteCachedSourceData(ommSrcHash, ommCacheState, destroyParentInstanceOmmRequestContainer);
+          if (ommCacheItem.isUnprocessedCacheStateListIterValid) {
+            m_unprocessedList.erase(ommCacheItem.cacheStateListIter);
+            ommCacheItem.isUnprocessedCacheStateListIterValid = false;
+            deleteCachedSourceData(ommSrcHash, ommCacheState, destroyParentInstanceOmmRequestContainer);
+          }
           return;
         case OpacityMicromapCacheState::eStep2_Baked:
         case OpacityMicromapCacheState::eStep3_Built:
@@ -405,7 +417,6 @@ namespace dxvk {
     m_unprocessedList.clear();
     m_bakedList.clear();
     m_builtList.clear();
-    m_readyList.clear();
 
     m_leastRecentlyUsedList.clear();
     m_ommCache.clear();
@@ -443,7 +454,6 @@ namespace dxvk {
       ADVANCED(ImGui::Text("# Unprocessed Items: %d", m_unprocessedList.size()));
       ADVANCED(ImGui::Text("# Baked Items: %d", m_bakedList.size()));
       ADVANCED(ImGui::Text("# Built Items: %d", m_builtList.size()));
-      ImGui::Text("# Ready Items: %d", m_readyList.size());
       ADVANCED(ImGui::Text("# Cache Items: %d", m_ommCache.size()));
       ADVANCED(ImGui::Text("# Black Listed Items: %d", m_blackListedList.size()));
       ImGui::Text("VRAM usage/budget [MB]: %d/%d", m_memoryManager.getUsed() / (1024 * 1024), m_memoryManager.getBudget() / (1024 * 1024));
@@ -648,7 +658,7 @@ namespace dxvk {
     instance.setOpacityMicromapSourceHash(ommSrcHash);
   }
 
-  std::unordered_map<XXH64_hash_t, OpacityMicromapManager::CachedSourceData>::iterator OpacityMicromapManager::registerCachedSourceData(const OmmRequest& ommRequest) {
+  fast_unordered_cache<OpacityMicromapManager::CachedSourceData>::iterator OpacityMicromapManager::registerCachedSourceData(const OmmRequest& ommRequest) {
 
     auto sourceDataIter = m_cachedSourceData.insert({ ommRequest.ommSrcHash, CachedSourceData() }).first;
     CachedSourceData& sourceData = sourceDataIter->second;
@@ -667,7 +677,7 @@ namespace dxvk {
     return sourceDataIter;
   }
 
-  void OpacityMicromapManager::deleteCachedSourceData(std::unordered_map<XXH64_hash_t, OpacityMicromapManager::CachedSourceData>::iterator sourceDataIter, OpacityMicromapCacheState ommCacheState, bool destroyParentInstanceOmmRequestContainer) {
+  void OpacityMicromapManager::deleteCachedSourceData(fast_unordered_cache<OpacityMicromapManager::CachedSourceData>::iterator sourceDataIter, OpacityMicromapCacheState ommCacheState, bool destroyParentInstanceOmmRequestContainer) {
     if (ommCacheState <= OpacityMicromapCacheState::eStep1_Baking)
       sourceDataIter->second.setInstance(nullptr, m_instanceOmmRequests, destroyParentInstanceOmmRequestContainer);
     m_cachedSourceData.erase(sourceDataIter);
@@ -743,7 +753,8 @@ namespace dxvk {
       }
     }
 
-    if (!insertToUnprocessedList(ommRequest))
+    std::list<XXH64_hash_t>::iterator cacheStateListIter;
+    if (!insertToUnprocessedList(ommRequest, cacheStateListIter))
       return false;
 
     // Place the element to the end of the LRU list, and thus marking it as most recent 
@@ -754,12 +765,12 @@ namespace dxvk {
       std::forward_as_tuple(ommSrcHash),
       std::forward_as_tuple(m_device, OpacityMicromapCacheState::eStep0_Unprocessed, OpacityMicromapOptions::Building::subdivisionLevel(), 
                             OpacityMicromapOptions::Building::enableVertexAndTextureOperations(), m_device->getCurrentFrameId(),
-                            lastElementIterator, ommRequest));
+                            lastElementIterator, cacheStateListIter, ommRequest));
 
     return true;
   }
   
-  bool OpacityMicromapManager::insertToUnprocessedList(const OmmRequest& ommRequest) {
+  bool OpacityMicromapManager::insertToUnprocessedList(const OmmRequest& ommRequest, std::list<XXH64_hash_t>::iterator& cacheStateListIter) {
     XXH64_hash_t ommSrcHash = ommRequest.ommSrcHash;
 
     auto sourceDataIter = registerCachedSourceData(ommRequest);
@@ -783,13 +794,14 @@ namespace dxvk {
         if (sourceData.numTriangles < itemSourceData.numTriangles ||
             // insert in front of any billboard requests
             itemSourceData.getInstance()->getBillboardCount() > 0) {
-          m_unprocessedList.insert(itemIter, ommSrcHash);
+          cacheStateListIter = m_unprocessedList.insert(itemIter, ommSrcHash);
           return true;
         }
       }
     }
 
     m_unprocessedList.emplace_back(ommSrcHash);
+    cacheStateListIter = std::prev(m_unprocessedList.end());
 
     return true;
   }
@@ -893,9 +905,10 @@ namespace dxvk {
       if (ommCacheItem.cacheState == OpacityMicromapCacheState::eStep1_Baking) {
         auto sourceDataIter = m_cachedSourceData.find(ommSrcHash);
 
-        // Source data has been unlinked and removed from unprocessed list, add it back to the unprocessed list
+        // Source data has been unlinked and removed from unprocessed list, try adding it back to the unprocessed list
         if (sourceDataIter == m_cachedSourceData.end()) {
-          return insertToUnprocessedList(ommRequest);
+          ommCacheItem.isUnprocessedCacheStateListIterValid = insertToUnprocessedList(ommRequest, ommCacheItem.cacheStateListIter);
+          return ommCacheItem.isUnprocessedCacheStateListIterValid;
         }
       }
     }
@@ -995,12 +1008,12 @@ namespace dxvk {
         cmdList->vkCmdPipelineBarrier2KHR(&dependencyInfo);
       }
 
-      // All built instances have been synchronized, move them to the ready list
+      // All built instances have been synchronized, remove them from the built list
       {
         for (auto& ommSrcHash : m_builtList) {
           m_ommCache[ommSrcHash].cacheState = OpacityMicromapCacheState::eStep4_Ready;
         }
-        m_readyList.splice(m_readyList.end(), m_builtList);
+        m_builtList.clear();
       }
 
       m_boundOmmsRequireSynchronization = false;
@@ -1455,11 +1468,11 @@ namespace dxvk {
           // Unlink the referenced RtInstance
           sourceData.setInstance(nullptr, m_instanceOmmRequests);
 
-          // First update the iterator, then pop the built element
+          // Move the item from the unprocessed list to the end of the baked list
           ommCacheItem.cacheState = OpacityMicromapCacheState::eStep2_Baked;
-          m_bakedList.push_back(ommSrcHash);
-          auto ommSrcHashIterToErase = ommSrcHashIter++;
-          m_unprocessedList.erase(ommSrcHashIterToErase);
+          auto ommSrcHashIterToMove = ommSrcHashIter++;
+          m_bakedList.splice(m_bakedList.end(), m_unprocessedList, ommSrcHashIterToMove);
+          ommCacheItem.isUnprocessedCacheStateListIterValid = false;
         }
         else {
         // Do nothing, else path means all the budget has been used up and thus the loop will exit due to maxMicroTrianglesToBake == 0
@@ -1542,11 +1555,10 @@ namespace dxvk {
                                               micromapBuildInfos[buildItemCount], maxMicroTrianglesToBuild, forceOmmBuild);
       
       if (result == OmmResult::Success) {
-        // First update the iterator, then pop the built element
         ommCacheItem.cacheState = OpacityMicromapCacheState::eStep3_Built;
-        m_builtList.push_back(ommSrcHash);
-        auto ommSrcHashIterToErase = ommSrcHashIter++;
-        m_bakedList.erase(ommSrcHashIterToErase);
+        // Move the item from the baked list to the end of the built list
+        auto ommSrcHashIterToMove = ommSrcHashIter++;
+        m_builtList.splice(m_builtList.end(), m_bakedList, ommSrcHashIterToMove);
         ++buildItemCount;
 
         forceOmmBuild = false;
