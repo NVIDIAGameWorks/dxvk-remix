@@ -141,12 +141,17 @@ namespace dxvk {
 
   void DxvkPathtracerGbuffer::prewarmShaders(DxvkPipelineManager& pipelineManager) const {
     const bool isOpacityMicromapSupported = OpacityMicromapManager::checkIsOpacityMicromapSupported(m_device);
+    const bool isShaderExecutionReorderingSupported = 
+      RtxContext::checkIsShaderExecutionReorderingSupported(m_device) && 
+      RtxOptions::Get()->isShaderExecutionReorderingInPathtracerGbufferEnabled();
 
     for (int32_t isPSRPass = 1; isPSRPass >= 0; isPSRPass--) {
       for (int32_t useRayQuery = 1; useRayQuery >= 0; useRayQuery--) {
-        for (int32_t serEnabled = 1; serEnabled >= 0; serEnabled--)
-          for (int32_t ommEnabled = isOpacityMicromapSupported; ommEnabled >= 0; ommEnabled--)
+        for (int32_t serEnabled = isShaderExecutionReorderingSupported; serEnabled >= 0; serEnabled--) {
+          for (int32_t ommEnabled = isOpacityMicromapSupported; ommEnabled >= 0; ommEnabled--) {
             pipelineManager.registerRaytracingShaders(getPipelineShaders(isPSRPass, useRayQuery, serEnabled, ommEnabled));
+          }
+        }
       }
 
       DxvkComputePipelineShaders shaders;
