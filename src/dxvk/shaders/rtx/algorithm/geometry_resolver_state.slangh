@@ -68,8 +68,7 @@ struct GeometryResolverState
   PortalSpace2BitsType portalSpace;
 
   uint8_t rayMask;
-  bool isViewModelRay;
-  // Note: Indicates that the final resolved surface belongs to a view model. Can be 'true' even if isViewModelRay = false.
+  // Note: Indicates that the final resolved surface belongs to a view model
   bool isViewModelSurface;
   bool decalEncountered;
   bool useAlternateDisocclusionThreshold;
@@ -109,7 +108,7 @@ struct MemoryGeometryResolverState : IPayload
     ret.data0 =
       uint32_t(geometryResolverState.rayMask) | 
       (uint32_t(geometryResolverState.portalSpace) << 8) | 
-      (uint32_t(geometryResolverState.isViewModelRay) << 10) |
+      // 10 bit unused
       (uint32_t(geometryResolverState.isViewModelSurface) << 11) |
       (uint32_t(geometryResolverState.decalEncountered) << 12) |
       (uint32_t(geometryResolverState.useAlternateDisocclusionThreshold) << 13) |
@@ -143,7 +142,6 @@ struct MemoryGeometryResolverState : IPayload
       
     ret.rayMask = data0 & 0xff;
     ret.portalSpace = (data0 >> 8) & 0b11;
-    ret.isViewModelRay = packedFlagGet(data0, 1 << 10);
     ret.isViewModelSurface = packedFlagGet(data0, 1 << 11);
     ret.decalEncountered = packedFlagGet(data0, 1 << 12);
     ret.useAlternateDisocclusionThreshold = packedFlagGet(data0, 1 << 13);
@@ -214,7 +212,6 @@ struct GeometryPSRResolverState {
   PortalSpace2BitsType portalSpace;
 
   uint8_t rayMask;
-  bool isViewModelRay;
   bool isViewModelSurface;
   bool isTransmissionPSR;
   bool decalEncountered;
@@ -225,7 +222,7 @@ struct MemoryGeometryPSRResolverState : IPayload
 {
   vec3 origin;
   uint encodedConeRadius; // 0: encodedConeRadius (float16_t)
-                          // 16: some flags (7b)
+                          // 16: some flags (7b), 18 bit unused
                           // 30: portalSpace (2b)
 
   uvec3 encodedRadiance;
@@ -252,8 +249,6 @@ struct MemoryGeometryPSRResolverState : IPayload
       encodedConeRadius, geometryPSRResolverState.primarySurface ? (1 << 16) : 0);
     encodedConeRadius = packedFlagSet(
       encodedConeRadius, geometryPSRResolverState.selectedIntegrationSurface ? (1 << 17) : 0);
-    encodedConeRadius = packedFlagSet(
-      encodedConeRadius, geometryPSRResolverState.isViewModelRay ? (1 << 18) : 0);
     encodedConeRadius = packedFlagSet(
       encodedConeRadius, geometryPSRResolverState.isViewModelSurface ? (1 << 19) : 0);
     encodedConeRadius = packedFlagSet(
@@ -318,7 +313,6 @@ struct MemoryGeometryPSRResolverState : IPayload
     ret.insideMedium = packedFlagGet(encodedRadiance.z, 1 << 31);
     ret.primarySurface = packedFlagGet(encodedConeRadius, 1 << 16);
     ret.selectedIntegrationSurface = packedFlagGet(encodedConeRadius, 1 << 17);
-    ret.isViewModelRay = packedFlagGet(encodedConeRadius, 1 << 18);
     ret.isViewModelSurface = packedFlagGet(encodedConeRadius, 1 << 19);
     ret.isTransmissionPSR = packedFlagGet(encodedConeRadius, 1 << 20);
     ret.decalEncountered = packedFlagGet(encodedConeRadius, 1 << 21);
@@ -381,7 +375,6 @@ void unpackPSRData(GbufferPSRData psrData, inout GeometryPSRResolverState geomet
   geometryPSRResolverState.insideMedium = geometryPSRResolverState.mediumMaterialIndex != BINDING_INDEX_INVALID;
 
   GeometryFlags geometryFlags = geometryFlagsDecode(psrData.mediumMaterialIndexAndGeometryFlags >> 16);
-  geometryPSRResolverState.isViewModelRay = geometryFlags.isViewModelRay;
   geometryPSRResolverState.rayMask = geometryFlags.objectMask | OBJECT_MASK_ALL;
   geometryPSRResolverState.portalSpace = geometryFlags.portalSpace;
 }

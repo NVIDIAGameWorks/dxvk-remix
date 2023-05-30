@@ -72,7 +72,6 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.bloom.intensity|float|0.06||
 |rtx.bloom.sigma|float|0.1||
 |rtx.calculateLightIntensityUsingLeastSquares|bool|True|Enable usage of least squares for approximating a light's falloff curve rather than a more basic single point approach\. This will generally result in more accurate matching of the original application's custom light attenuation curves, especially with non physically based linear\-style attenuation\.|
-|rtx.calculateMeshBoundingBox|bool|False|Calculate bounding box for every mesh\.|
 |rtx.camera.enableFreeCamera|bool|False|Enables free camera\.|
 |rtx.camera.freeCameraPitch|float|0|Free camera's pitch\.|
 |rtx.camera.freeCameraPosition|float3|0, 0, 0|Free camera's position\.|
@@ -258,8 +257,8 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.instanceOverrideSelectedInstancePrintMaterialHash|bool|False||
 |rtx.instanceOverrideWorldOffset|float3|0, 0, 0||
 |rtx.io.enabled|bool|False|When this option is enabled the assets will be loaded \(and optionally decompressed on GPU\) using high performance RTX IO runtime\. RTX IO must be enabled for loading compressed assets, but is not necessary for working with loose uncompressed assets\.|
-|rtx.io.memoryBudgetMB|size_t|256|RTX IO memory budget\. A half of this amount will be allocated on host and another half will be allocated in GPU-local memory\. The minimum budget is 64MB\.|
-|rtx.io.useAsyncQueue|bool|True|When this option is set to True, RTX IO decompression workload will be dispatched on the async-compute queue on GPUs where such queue is available\.|
+|rtx.io.memoryBudgetMB|int|256||
+|rtx.io.useAsyncQueue|bool|True||
 |rtx.isLHS|bool|False||
 |rtx.isReflexSupported|bool|True||
 |rtx.isShaderExecutionReorderingSupported|bool|True|Enables support of Shader Execution Reordering \(SER\) if it is supported by the target HW and SW\.|
@@ -337,7 +336,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.opacityMicromap.cache.minBudgetSizeMB|int|512|Budget: Min Video Memory \[MB\] required\.<br>If the min amount is not available, then the budget will be set to 0\.|
 |rtx.opacityMicromap.cache.minFreeVidmemMBToNotAllocate|int|2560|Min Video Memory \[MB\] to keep free before allocating any for Opacity Micromaps\.|
 |rtx.opacityMicromap.cache.minUsageFrameAgeBeforeEviction|int|900|Min Opacity Micromap usage frame age before eviction\.<br>Opacity Micromaps unused longer than this can be evicted when freeing up memory for new Opacity Micromaps\.|
-|rtx.opacityMicromap.enable|bool|False|Enables Opacity Micromaps for geometries with textures that have alpha cutouts\.<br>This is generally the case for geometries such as fences, foliage, particles, etc\. \.<br>Opacity Micromaps greatly speed up raytracing of partially opaque triangles\.<br>Examples of scenes that benefit a lot: multiple trees with a lot of foliage,<br>grass blased on the ground or steam consisting of many particles\.|
+|rtx.opacityMicromap.enable|bool|False|Enables Opacity Micromaps for geometries with textures that have alpha cutouts\.<br>This is generally the case for geometries such as fences, foliage, particles, etc\. \.<br>Opacity Micromaps greatly speed up raytracing of partially opaque triangles\.<br>Examples of scenes that benefit a lot: multiple trees with a lot of foliage,<br>a ground densely covered with grass blades or steam consisting of many particles\.|
 |rtx.opacityMicromap.enableBakingArrays|bool|True|Enables baking of opacity textures into Opacity Micromap arrays per triangle\.|
 |rtx.opacityMicromap.enableBinding|bool|True|Enables binding of built Opacity Micromaps to bottom level acceleration structures\.|
 |rtx.opacityMicromap.enableBuilding|bool|True|Enables building of Opacity Micromap arrays\.|
@@ -561,7 +560,6 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.viewModel.perspectiveCorrection|bool|True|If true, apply correction to view models \(e\.g\. different FOV is used for view models\)\.|
 |rtx.viewModel.rangeMeters|float|1|\[meters\] Max distance at which to find a portal for view model virtual instances\. If rtx\.viewModel\.separateRays is true, this is also max length of view model rays\.|
 |rtx.viewModel.scale|float|1|Scale for view models\. Minimize to prevent clipping\.|
-|rtx.viewModel.separateRays|bool|False|If true, launch additional primary rays to render view models on top of everything\.|
 |rtx.volumetricAnisotropy|float|0|The anisotropy of the scattering phase function \(\-1 being backscattering, 0 being isotropic, 1 being forward scattering\)\.|
 |rtx.volumetricClampedReprojectionConfidencePenalty|float|0.5|The penalty from \[0, 1\] to apply to the sample count of temporally reprojected reservoirs when reprojection is clamped to the fustrum \(indicating lower quality reprojection\)\.|
 |rtx.volumetricEnableInitialVisibility|bool|True|Determines whether to trace a visibility ray for Reservoir samples\.<br>Results in slightly higher quality froxel grid light samples at the cost of a ray per froxel cell each frame and should generally be enabled\.|

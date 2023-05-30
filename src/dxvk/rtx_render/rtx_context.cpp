@@ -1087,7 +1087,6 @@ namespace dxvk {
     constants.enableSecondaryBounces = RtxOptions::Get()->isSecondaryBouncesEnabled();
     constants.enableSeparatedDenoisers = RtxOptions::Get()->isSeparatedDenoiserEnabled();
     constants.enableCalculateVirtualShadingNormals = RtxOptions::Get()->isUseVirtualShadingNormalsForDenoisingEnabled();
-    constants.enableViewModelCompositionOnTop = RtxOptions::Get()->isViewModelEnabled() && RtxOptions::Get()->isViewModelSeparateRaysEnabled();
     constants.enableViewModelVirtualInstances = RtxOptions::Get()->isViewModelVirtualInstancesEnabled();
     constants.enablePSRR = RtxOptions::Get()->isPSRREnabled();
     constants.enablePSTR = RtxOptions::Get()->isPSTREnabled();
