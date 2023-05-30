@@ -717,7 +717,9 @@ namespace dxvk::hud {
                                    "# Instances/Surfaces:" , 
                                    "# Surface Materials:" , 
                                    "# Volume Materials:" , 
-                                   "# Lights:" }; 
+                                   "# Lights:",
+                                   "# Textures in-flight:",
+                                   "# Last tex. batch (ms):"}; 
     const uint64_t values[] = { counters.getCtr(DxvkStatCounter::QueuePresentCount),
                                 counters.getCtr(DxvkStatCounter::RtxBlasCount),
                                 counters.getCtr(DxvkStatCounter::RtxBufferCount),
@@ -725,7 +727,9 @@ namespace dxvk::hud {
                                 counters.getCtr(DxvkStatCounter::RtxInstanceCount),
                                 counters.getCtr(DxvkStatCounter::RtxSurfaceMaterialCount),
                                 counters.getCtr(DxvkStatCounter::RtxVolumeMaterialCount),
-                                counters.getCtr(DxvkStatCounter::RtxLightCount)};
+                                counters.getCtr(DxvkStatCounter::RtxLightCount),
+                                counters.getCtr(DxvkStatCounter::RtxTexturesInFlight),
+                                counters.getCtr(DxvkStatCounter::RtxLastTextureBatchDuration)};
 
     const uint32_t kNumLabels = sizeof(labels) / sizeof(labels[0]);
     static_assert(kNumLabels == sizeof(values) / sizeof(values[0]));
@@ -749,7 +753,7 @@ namespace dxvk::hud {
       std::string text = str::format(std::setfill(' '), std::setw(5), values[i]);
 
       renderer.drawText(14.0f,
-        { position.x + xOffset + 216, position.y },
+        { position.x + xOffset + 250, position.y },
         { 1.0f, 1.0f, 1.f, 1.0f },
         text);
 
@@ -764,6 +768,28 @@ namespace dxvk::hud {
                         { 1.0f, 0.2f, 0.2f, 1.0f },
                         "Present throttling enabled!");
       position.y += 16.0f;
+    }
+
+    if (RtxTextureManager::getShowProgress()) {
+      constexpr size_t kNumTexPerLine = 64;
+      int64_t numTexInFlight = counters.getCtr(DxvkStatCounter::RtxTexturesInFlight);
+
+      std::string progress(std::min<size_t>(kNumTexPerLine, numTexInFlight), '*');
+
+      while (numTexInFlight > 0) {
+        if (progress.length() > numTexInFlight) {
+          progress.resize(numTexInFlight);
+        }
+
+        position.y += 8.0f;
+        renderer.drawText(16.0f,
+                          { position.x, position.y },
+                          { 0.0f, 1.0f, 0.0f, 1.0f },
+                          progress);
+        position.y += 16.0f;
+
+        numTexInFlight -= kNumTexPerLine;
+      }
     }
 
     return position;

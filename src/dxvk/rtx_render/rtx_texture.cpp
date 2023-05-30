@@ -38,8 +38,7 @@ namespace dxvk {
     const Rc<DxvkImage>& image,
     int                  layer,
     const Rc<AssetData>& assetData,
-    RtxIo::Handle        assetFile,
-    int                  assetBaseMip) {
+    RtxIo::Handle        assetFile) {
     auto& rtxio = RtxIo::get();
     const auto& desc = image->info();
     const auto& assetInfo = assetData->info();
@@ -59,7 +58,7 @@ namespace dxvk {
       for (uint32_t n = 0; n < desc.mipLevels; n++) {
         const bool isTail = desc.mipLevels - n <= tailMipLevels;
 
-        assetData->placement(layer, 0, n + assetBaseMip, src.offset, src.size);
+        assetData->placement(layer, 0, n, src.offset, src.size);
 
         dst.startMip = n;
         dst.count = isTail ? tailMipLevels : 1;
@@ -73,12 +72,12 @@ namespace dxvk {
     } else {
       uint64_t offset;
       size_t size;
-      assetData->placement(layer, 0, assetBaseMip, offset, size);
+      assetData->placement(layer, 0, 0, offset, size);
       // TODO: optimize
       for (uint32_t n = 1; n < desc.mipLevels; n++) {
         uint64_t levelOffset;
         size_t levelSize;
-        assetData->placement(layer, 0, n + assetBaseMip, levelOffset, levelSize);
+        assetData->placement(layer, 0, n, levelOffset, levelSize);
         size += levelSize;
       }
 
@@ -99,23 +98,13 @@ namespace dxvk {
   static Rc<DxvkImageView> loadTextureRtxIo(
     const Rc<ManagedTexture>&  texture,
     const Rc<DxvkContext>&     ctx,
-    DxvkImageCreateInfo        desc,
+    const DxvkImageCreateInfo& desc,
     const bool                 isPreloading) {
 #ifdef WITH_RTXIO
     const Rc<DxvkDevice>& device = ctx->getDevice();
 
     auto& rtxio = RtxIo::get();
 
-    const int numMipsToLoad = isPreloading
-      ? RtxTextureManager::calcPreloadMips(desc.mipLevels) : desc.mipLevels;
-    assert(numMipsToLoad > 0);
-
-    const int firstMip = desc.mipLevels - numMipsToLoad;
-    const int lastMip = desc.mipLevels - 1;
-
-    desc.mipLevels = numMipsToLoad;
-    desc.extent.width >>= firstMip;
-    desc.extent.height >>= firstMip;
     Rc<DxvkImage> image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
       DxvkMemoryStats::Category::RTXMaterialTexture, "material texture");
 
@@ -138,7 +127,7 @@ namespace dxvk {
 
       for (uint32_t layer = 0; layer < desc.numLayers; layer++) {
         completionSyncpt = scheduleImageLayerUpdateRtxIo(image, layer,
-          texture->assetData, file, firstMip);
+          texture->assetData, file);
       }
 
       if (completionSyncpt) {
@@ -165,7 +154,7 @@ namespace dxvk {
   Rc<DxvkImageView> loadTextureToVidmem(
         const Rc<ManagedTexture>&  texture,
         const Rc<DxvkContext>&     ctx,
-        DxvkImageCreateInfo        desc,
+        const DxvkImageCreateInfo& desc,
         const bool                 isPreloading) {
     const Rc<DxvkDevice>& device = ctx->getDevice();
 
@@ -202,15 +191,30 @@ namespace dxvk {
     viewInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
     viewInfo.aspect = VK_IMAGE_ASPECT_COLOR_BIT;
     viewInfo.minLevel = 0;
-    viewInfo.numLevels = assetInfo.mipLevels;
+    viewInfo.numLevels = desc.mipLevels;
     viewInfo.minLayer = 0;
-    viewInfo.numLayers = assetInfo.numLayers;
+    viewInfo.numLayers = desc.numLayers;
     viewInfo.format = desc.format;
 
     Rc<DxvkImageView> view = device->createImageView(image, viewInfo);
     texture->state = ManagedTexture::State::kVidMem;
 
     return view;
+  }
+
+  void ManagedTexture::demote() {
+    if (canDemote && (state == ManagedTexture::State::kVidMem || state == ManagedTexture::State::kFailed)) {
+      // Evict large image
+      allMipsImageView = nullptr;
+      completionSyncpt = ~0;
+
+      if (!RtxIo::enabled()) {
+        // RTXIO path does not evict small images
+        smallMipsImageView = nullptr;
+        state = ManagedTexture::State::kInitialized;
+        minPreloadedMip = -1;
+      }
+    }
   }
 
   Rc<ManagedTexture> TextureUtils::createTexture(const Rc<AssetData>& assetData, ColorSpace colorSpace) {

@@ -25,7 +25,7 @@
 
 namespace dxvk {
   class RtxSemaphore : public sync::Signal {
-    Rc<DxvkDevice> m_device;
+    DxvkDevice* m_device;
     VkSemaphore m_sema;
   public:
     explicit RtxSemaphore(const Rc<DxvkDevice>& device);

@@ -95,16 +95,7 @@ namespace dxvk {
       return state != State::kUnknown && state != State::kFailed;
     }
 
-    void demote() {
-      if (canDemote && (state == ManagedTexture::State::kVidMem || state == ManagedTexture::State::kFailed)) {
-        // Evict large image
-        allMipsImageView = nullptr;
-        completionSyncpt = ~0;
-        smallMipsImageView = nullptr;
-        state = ManagedTexture::State::kInitialized;
-        minPreloadedMip = -1;
-      }
-    }
+    void demote();
 
   private:
     DxvkImageCreateInfo futureImageDesc;
