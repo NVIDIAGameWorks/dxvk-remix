@@ -193,6 +193,16 @@ namespace dxvk {
     VkOpacityMicromapFormatEXT ommFormat = VK_OPACITY_MICROMAP_FORMAT_2_STATE_EXT;
     std::list<XXH64_hash_t>::iterator leastRecentlyUsedListIter;
 
+    // Iterator to a cache state list for the current cacheState.
+    // Since the iterator is moved between the lists, it is initalized only once
+    // and remains valid until it's removed from a list
+    std::list<XXH64_hash_t>::iterator cacheStateListIter;
+
+    // Whether cacheStateListIter is valid when it corresponds to m_unprocessedList.
+    // This is to handle the iterator state when an OMM cache item is in unprocessed or baking state
+    // but the source data has been unliked and cacheStateList item was removed
+    bool isUnprocessedCacheStateListIterValid = false;  
+
     // Needed during baking
     Rc<DxvkBuffer> ommArrayBuffer;   // Per micro triangle
     RtxGeometryUtils::BakeOpacityMicromapState bakingState;
@@ -202,7 +212,9 @@ namespace dxvk {
     VkDeviceSize arrayBufferDeviceSize = 0;
 
     OpacityMicromapCacheItem();
-    OpacityMicromapCacheItem(Rc<DxvkDevice> device, OpacityMicromapCacheState _cacheState, const uint32_t subdivisionLevel, const bool enableVertexAndTextureOperations, uint32_t currentFrameIndex, std::list<XXH64_hash_t>::iterator _mostRecentlyUsedListIter, const OmmRequest& ommRequest);
+    OpacityMicromapCacheItem(Rc<DxvkDevice> device, OpacityMicromapCacheState _cacheState, const uint32_t subdivisionLevel, const bool enableVertexAndTextureOperations,     
+                             uint32_t currentFrameIndex, std::list<XXH64_hash_t>::iterator _mostRecentlyUsedListIter, std::list<XXH64_hash_t>::iterator _cacheStateListIter,
+                             const OmmRequest& ommRequest);
     OpacityMicromapCacheItem(const OpacityMicromapCacheItem& src) 
     : cacheState(src.cacheState)
     , blasOmmBuffers(src.blasOmmBuffers)
@@ -210,7 +222,9 @@ namespace dxvk {
     , useVertexAndTextureOperations(src.useVertexAndTextureOperations)
     , subdivisionLevel(src.subdivisionLevel)
     , ommFormat(src.ommFormat)
-    , leastRecentlyUsedListIter(src.leastRecentlyUsedListIter) { }
+    , leastRecentlyUsedListIter(src.leastRecentlyUsedListIter)
+    , cacheStateListIter(src.cacheStateListIter)
+    , isUnprocessedCacheStateListIterValid(src.isUnprocessedCacheStateListIterValid) { }
 
     VkDeviceSize getDeviceSize() const;
 
@@ -305,7 +319,7 @@ namespace dxvk {
     void onBlasBuild(Rc<DxvkCommandList> cmdList);
 
   private:
-    typedef std::unordered_map<XXH64_hash_t, OpacityMicromapCacheItem> OpacityMicromapCache;
+    typedef fast_unordered_cache<OpacityMicromapCacheItem> OpacityMicromapCache;
 
     struct InstanceOmmRequests {
       uint32_t numActiveRequests = 0;
@@ -319,8 +333,8 @@ namespace dxvk {
 
       ~CachedSourceData();
 
-      void initialize(const OmmRequest& ommRequest, std::unordered_map<XXH64_hash_t, InstanceOmmRequests>& instanceOmmRequests);
-      void setInstance(const RtInstance* _instance, std::unordered_map<XXH64_hash_t, InstanceOmmRequests>& instanceOmmRequests, bool deleteParentInstanceIfEmpty = true);
+      void initialize(const OmmRequest& ommRequest, fast_unordered_cache<InstanceOmmRequests>& instanceOmmRequests);
+      void setInstance(const RtInstance* _instance, fast_unordered_cache<InstanceOmmRequests>& instanceOmmRequests, bool deleteParentInstanceIfEmpty = true);
 
       const RtInstance* getInstance() const {
         return instance; 
@@ -336,11 +350,11 @@ namespace dxvk {
 
     bool registerOmmRequestInternal(RtInstance& instance, const OmmRequest& ommRequest);
     bool addNewOmmBuildRequest(RtInstance& instance, const OmmRequest& ommRequest);
-    std::unordered_map<XXH64_hash_t, CachedSourceData>::iterator registerCachedSourceData(const OmmRequest& ommRequest);
-    void deleteCachedSourceData(std::unordered_map<XXH64_hash_t, CachedSourceData>::iterator sourceDataIter, OpacityMicromapCacheState ommCacheState, bool destroyParentInstanceOmmRequestContainer);
+    fast_unordered_cache<CachedSourceData>::iterator registerCachedSourceData(const OmmRequest& ommRequest);
+    void deleteCachedSourceData(fast_unordered_cache<CachedSourceData>::iterator sourceDataIter, OpacityMicromapCacheState ommCacheState, bool destroyParentInstanceOmmRequestContainer);
     void deleteCachedSourceData(XXH64_hash_t ommSrcHash, OpacityMicromapCacheState ommCacheState, bool destroyParentInstanceOmmRequestContainer);
-    bool insertToUnprocessedList(const OmmRequest& ommRequest);
-    void destroyOmmData(const OpacityMicromapCache::iterator& ommCacheIterator, bool destroyParentInstanceOmmRequestContainer = true);
+    bool insertToUnprocessedList(const OmmRequest& ommRequest, std::list<XXH64_hash_t>::iterator& cacheStateListIter);
+    void destroyOmmData(OpacityMicromapCache::iterator& ommCacheIterator, bool destroyParentInstanceOmmRequestContainer = true);
     void destroyOmmData(XXH64_hash_t ommSrcHash);
 
     // Destroys references to an instance, but retains associated cached baked/built OMM data that doesn't depend on lifetime of the instance
@@ -382,17 +396,16 @@ namespace dxvk {
     uint32_t m_numBoundOMMs = 0;
     uint32_t m_numRequestedOMMBindings = 0;
 
-    std::unordered_map<XXH64_hash_t, InstanceOmmRequests> m_instanceOmmRequests;
+    fast_unordered_cache<InstanceOmmRequests> m_instanceOmmRequests;
 
     OpacityMicromapCache m_ommCache; 
-    std::unordered_map<XXH64_hash_t, CachedSourceData> m_cachedSourceData;
+    fast_unordered_cache<CachedSourceData> m_cachedSourceData;
     std::vector<Rc<DxvkOpacityMicromap>> m_boundOMMs; // OMMs bound in a frame
 
     // Ordered lists starting with oldest and/or smallest inserted items 
     std::list<XXH64_hash_t> m_unprocessedList;   // Contains OMM data requests that are yet to be baked
     std::list<XXH64_hash_t> m_bakedList;         // Contains OMM items with baked OMM arrays
     std::list<XXH64_hash_t> m_builtList;         // Contains OMM items with built OMMs but require synchronization
-    std::list<XXH64_hash_t> m_readyList;         // Contains OMM items with built OMM data};
 
     std::unordered_set<XXH64_hash_t> m_blackListedList;// Contains OMM surface hashes that failed to get baked or built (in time)
                                                  // and helps avoid wasting resources for such cases
@@ -410,7 +423,7 @@ namespace dxvk {
     // LRU management
     std::list<XXH64_hash_t> m_leastRecentlyUsedList;  // Items stored in their usage order starting with least recently used item
 
-    std::unordered_map<XXH64_hash_t, OMMBuildRequestStatistics> m_ommBuildRequestStatistics;
+    fast_unordered_cache<OMMBuildRequestStatistics> m_ommBuildRequestStatistics;
 
     VkDeviceSize m_amountOfMemoryMissing = 0;    // Records how much memory was missing in a frame
     OpacityMicromapMemoryManager m_memoryManager;
