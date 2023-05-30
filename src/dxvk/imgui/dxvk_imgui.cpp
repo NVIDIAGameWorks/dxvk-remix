@@ -1674,7 +1674,7 @@ namespace dxvk {
         showTextureSelectionGrid(ctx, "watertextures", numThumbnailsPerRow, thumbnailSize);
       }
 
-      if (RtxOptions::Get()->enableAntiCulling() &&
+      if (RtxOptions::AntiCulling::Object::enable() &&
         IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 8.4: Anti-Culling Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->antiCullingTexturesDescription())) {
         showTextureSelectionGrid(ctx, "antiCullingTextures", numThumbnailsPerRow, thumbnailSize);
       }
@@ -1914,6 +1914,7 @@ namespace dxvk {
         ImGui::PopID();
         ImGui::Unindent();
       }
+
       ImGui::Unindent();
     }
 
@@ -2134,13 +2135,6 @@ namespace dxvk {
       ImGui::Checkbox("Portals: Virtual Instance Matching", &RtxOptions::Get()->useRayPortalVirtualInstanceMatchingObject());
       ImGui::Checkbox("Portals: Fade In Effect", &RtxOptions::Get()->enablePortalFadeInEffectObject());
       ImGui::Checkbox("Reset Buffer Cache Every Frame", &RtxOptions::Get()->resetBufferCacheOnEveryFrameObject());
-      if (ImGui::CollapsingHeader("Experimental Geometry Features", collapsingHeaderClosedFlags)) {
-        ImGui::Checkbox("Anti-Culling", &RtxOptions::Get()->enableAntiCullingObject());
-        if (RtxOptions::Get()->enableAntiCulling()) {
-          ImGui::InputInt("Instance Max Size", &RtxOptions::Get()->numKeepInstancesObject(), 1, 1, 0);
-          ImGui::DragFloat("Anti-Culling Fov Scale", &RtxOptions::Get()->antiCullingFovScaleObject(), 0.01f, 0.1f, 2.0f);
-        }
-      }
       ImGui::Unindent();
     }
 
@@ -2200,6 +2194,25 @@ namespace dxvk {
       }
       ImGui::DragFloat("Translucent Decal Albedo Factor", &RtxOptions::Get()->translucentDecalAlbedoFactorObject(), 0.01f);
       ImGui::DragFloat("Decal Normal Offset", &RtxOptions::Get()->decalNormalOffsetObject(), 0.0001f, 0.f, 0.f, "%.4f");
+
+      ImGui::Unindent();
+    }
+
+    if (ImGui::CollapsingHeader("Experimental Features", collapsingHeaderClosedFlags)) {
+      ImGui::Indent();
+
+      ImGui::Checkbox("Anti-Culling", &RtxOptions::AntiCulling::Object::enableObject());
+      if (RtxOptions::AntiCulling::Object::enable()) {
+        ImGui::InputInt("Instance Max Size", &RtxOptions::AntiCulling::Object::numObjectsToKeepObject(), 1, 1, 0);
+        ImGui::DragFloat("Anti-Culling Fov Scale", &RtxOptions::AntiCulling::Object::fovScaleObject(), 0.01f, 0.1f, 2.0f);
+      }
+      ImGui::Separator();
+      ImGui::Checkbox("Anti-Culling Lights", &RtxOptions::AntiCulling::Light::enableObject());
+      if (RtxOptions::AntiCulling::Light::enable()) {
+        ImGui::InputInt("Max Number Of Lights", &RtxOptions::AntiCulling::Light::numLightsToKeepObject(), 1, 1, 0);
+        ImGui::InputInt("Max Number of Frames to keep lights", &RtxOptions::AntiCulling::Light::numFramesToExtendLightLifetimeObject(), 1, 1, 0);
+        ImGui::DragFloat("Anti-Culling Lights Fov Scale", &RtxOptions::AntiCulling::Light::fovScaleObject(), 0.01f, 0.1f, 2.0f);
+      }
 
       ImGui::Unindent();
     }

@@ -48,9 +48,13 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.allowFSE|bool|False|A flag indicating if the application should be able to utilize exclusive full screen mode when set to true, otherwise force it to be disabled when set to false\.<br>Exclusive full screen may see performance benefits over other fullscreen modes at the cost of stability in some cases\.<br>Do note that on modern Windows full screen optimizations will likely be used regardless which in most cases results in performance similar to exclusive full screen even when it is not in use\.|
 |rtx.alwaysCopyDecalGeometries|bool|True|When set to True tells the geometry processor to always copy decals geometry\. This is an optimization flag to experiment with when rtx\.useBuffersDirectly is True\.|
 |rtx.alwaysWaitForAsyncTextures|bool|False||
-|rtx.antiCulling.antiCullingFovScale|float|1.15|\[Experimental\] Scalar of the FOV of Anti\-Culling Frustum\.|
-|rtx.antiCulling.enableAntiCulling|bool|False|\[Experimental\] Enable Anti\-Culling, allow extending life of objects outside the anti\-culling frustum\.|
-|rtx.antiCulling.numKeepInstances|int|1000|\[Experimental\] When enable anti\-culling, the maximum number of RayTracing instances we hold in the BVH\. If the total number of RT instances pass this threshold, instances pass their original life length \(it may be extended after anti\-culling\) will be removed\.|
+|rtx.antiCulling.light.enable|bool|False|\[Experimental\] Enable Anti\-Culling for lights\.|
+|rtx.antiCulling.light.fovScale|float|1|\[Experimental\] Scalar of the FOV of lights Anti\-Culling Frustum\.|
+|rtx.antiCulling.light.numFramesToExtendLightLifetime|int|1000|\[Experimental\] Maximum number of frames to keep  when Anti\-Culling is enabled\. Make sure neither set this too low then the anti\-culling won't work, nor too high which will hurt the performance\.|
+|rtx.antiCulling.light.numLightsToKeep|int|1000|\[Experimental\] Maximum number of lights to keep when Anti\-Culling is enabled\.|
+|rtx.antiCulling.object.enable|bool|False|\[Experimental\] Extends lifetime of objects that go outside the camera frustum \(anti\-culling frustum\)\.|
+|rtx.antiCulling.object.fovScale|float|1.15|\[Experimental\] Scalar of the FOV of Anti\-Culling Frustum\.|
+|rtx.antiCulling.object.numObjectsToKeep|int|1000|\[Experimental\] The maximum number of RayTracing instances to keep when Anti\-Culling is enabled\.|
 |rtx.applicationId|int|102100511|Used to uniquely identify the application to DLSS\. Generally should not be changed without good reason\.|
 |rtx.asyncTextureUploadPreloadMips|int|8||
 |rtx.autoExposure.autoExposureSpeed|float|5|Average exposure changing speed when the image changes\.|
