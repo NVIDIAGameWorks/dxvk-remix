@@ -476,27 +476,31 @@ namespace dxvk {
   AssetDataManager::~AssetDataManager() {
   }
 
-  void AssetDataManager::initialize(const std::filesystem::path& path) {
-    if (m_package != nullptr) {
+  void AssetDataManager::initialize(const std::filesystem::path& basePath) {
+    if (!m_basePath.empty()) {
       return;
     }
 
-    m_basePath = path;
-    m_basePath.make_preferred();
+    // Make base path preferred and lowercase
+    m_basePath = std::filesystem::absolute(basePath).make_preferred().string();
+    std::for_each(m_basePath.begin(), m_basePath.end(), [](char& c) { c = tolower(c); });
+
+    Logger::info(str::format("Base asset path: ", m_basePath));
 
     if (RtxIo::enabled()) {
-      std::string packagePath;
-
-      // Find the pkg (if it exists)
-      for (const auto& entry : std::filesystem::directory_iterator(path))
-        if (entry.path().extension() == ".pkg")
-          packagePath = entry.path().string();
-
-      // Try to initialize the replacements packages
-      Rc<AssetPackage> package = new AssetPackage(packagePath);
-
-      if (package->initialize()) {
-        m_package = std::move(package);
+      // Find the packages
+      for (const auto& entry : std::filesystem::directory_iterator(basePath)) {
+        if (entry.path().extension() == ".pkg") {
+          const auto packagePath = entry.path().string();
+          // Try to initialize the replacements packages
+          Rc<AssetPackage> package = new AssetPackage(packagePath);
+          if (package->initialize()) {
+            m_packages.emplace(packagePath, std::move(package));
+            Logger::debug(str::format("Mounted a package at: ", entry.path()));
+          } else {
+            Logger::warn(str::format("Corrupted package discovered at: ", entry.path()));
+          }
+        }
       }
     }
   }
@@ -514,18 +518,35 @@ namespace dxvk {
       return nullptr;
     }
 
-    if (RtxIo::enabled() && m_package != nullptr) {
-      auto relativePath = std::filesystem::relative(filename, m_basePath);
-      uint32_t assetIdx = m_package->findAsset(relativePath.string());
-      if (AssetPackage::kNoAssetIdx != assetIdx) {
-        return new PackagedAssetData(m_package, assetIdx);
-      }
-    }
-
     if (isDDS && RtxOptions::Get()->usePartialDdsLoader()) {
       Rc<DdsTextureData> dds = new DdsTextureData;
       if (dds->load(filename)) {
         return dds;
+      }
+    }
+
+    if (RtxIo::enabled() && !m_packages.empty()) {
+      // Trim base path.
+      // Note: we could use std::filesystem::relative() but it might be is very
+      // expensive in some cases.
+      std::string relativePath = filename;
+
+      // Make the base path part lowercase
+      if (m_basePath.length() < relativePath.length()) {
+        std::for_each(relativePath.begin(), relativePath.begin() + m_basePath.length(),
+                      [](char& c) { c = tolower(c); });
+      }
+
+      size_t basePos = relativePath.find(m_basePath);
+      if (basePos != std::string::npos) {
+        relativePath = relativePath.substr(basePos + m_basePath.length());
+      }
+
+      for (auto it = m_packages.rbegin(); it != m_packages.rend(); ++it) {
+        uint32_t assetIdx = it->second->findAsset(relativePath);
+        if (AssetPackage::kNoAssetIdx != assetIdx) {
+          return new PackagedAssetData(it->second, assetIdx);
+        }
       }
     }
 
@@ -537,7 +558,6 @@ namespace dxvk {
       return gli;
     }
 
-    Logger::err(str::format("Failed to load image file: ", filename));
     return nullptr;
   }
 

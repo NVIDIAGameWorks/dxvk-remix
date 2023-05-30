@@ -257,9 +257,9 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.instanceOverrideInstanceIdxRange|int|15||
 |rtx.instanceOverrideSelectedInstancePrintMaterialHash|bool|False||
 |rtx.instanceOverrideWorldOffset|float3|0, 0, 0||
-|rtx.io.enabled|bool|False||
-|rtx.io.memoryBudgetMB|int|256||
-|rtx.io.useAsyncQueue|bool|True||
+|rtx.io.enabled|bool|False|When this option is enabled the assets will be loaded \(and optionally decompressed on GPU\) using high performance RTX IO runtime\. RTX IO must be enabled for loading compressed assets, but is not necessary for working with loose uncompressed assets\.|
+|rtx.io.memoryBudgetMB|size_t|256|RTX IO memory budget\. A half of this amount will be allocated on host and another half will be allocated in GPU-local memory\. The minimum budget is 64MB\.|
+|rtx.io.useAsyncQueue|bool|True|When this option is set to True, RTX IO decompression workload will be dispatched on the async-compute queue on GPUs where such queue is available\.|
 |rtx.isLHS|bool|False||
 |rtx.isReflexSupported|bool|True||
 |rtx.isShaderExecutionReorderingSupported|bool|True|Enables support of Shader Execution Reordering \(SER\) if it is supported by the target HW and SW\.|
@@ -500,6 +500,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.terrainBaker.debugDisableBinding|bool|False|Force disables binding of the baked terrain texture to the terrain meshes\. Used for debugging only\.|
 |rtx.terrainBaker.enableBaking|bool|True|\[Experimental\] Enables runtime baking of blended terrains from top down \(i\.e\. in an opposite direction of "rtx\.zUp"\)\.<br>It bakes multiple blended albedo terrain textures into a single texture sampled during ray tracing\. The system requires "Terrain Textures" to contain hashes of the terrain textures to apply\.<br>Only use this system if the game renders terrain surfaces with multiple blended surfaces on top of each other \(i\.e\. sand mixed with dirt, grass, snow, etc\.\)\.<br>Requirement: the baked terrain surfaces must not be placed vertically in the game world\. Horizontal surfaces will have the best image quality\. Requires "rtx\.zUp" to be set properly\.|
 |rtx.texturemanager.budgetPercentageOfAvailableVram|int|50|The percentage of available VRAM we should use for material textures\.  If material textures are required beyond this budget, then those textures will be loaded at lower quality\.  Important note, it's impossible to perfectly match the budget while maintaining reasonable quality levels, so use this as more of a guideline\.  If the replacements assets are simply too large for the target GPUs available vid mem, we may end up going overbudget regularly\.  Defaults to 50% of the available VRAM\.|
+|rtx.texturemanager.showProgress|bool|False|Show texture loading progress in the HUD\.|
 |rtx.tonemap.colorBalance|float3|1, 1, 1||
 |rtx.tonemap.colorGradingEnabled|bool|False||
 |rtx.tonemap.contrast|float|1||

@@ -250,8 +250,7 @@ namespace dxvk {
       throw DxvkError(str::format("RTX IO creation failed with: ", result));
     }
 
-    m_device = device;
-    m_flushSema = new RtxSemaphore(m_device);
+    m_device = device.ptr();
 
     updateMemoryStats(memoryBudgetMB());
 
@@ -270,7 +269,6 @@ namespace dxvk {
     m_rtxio = nullptr;
     updateMemoryStats(-static_cast<int64_t>(memoryBudgetMB()));
 
-    m_flushSema = nullptr;
     m_device = nullptr;
   }
 
@@ -348,9 +346,18 @@ namespace dxvk {
       return 0;
     }
 
+    uint64_t currentTopPt;
+    rtxioGetTimelineValue(m_rtxio, RTXIO_PIPELINE_STAGE_TOP, &currentTopPt);
+
     m_sizeInFlight += sizeWithSlack;
 
-    return m_completionPt + 1;
+    return currentTopPt + 1;
+  }
+
+  bool RtxIo::isComplete(uint64_t syncpt) const {
+    uint64_t currentBottomPt;
+    rtxioGetTimelineValue(m_rtxio, RTXIO_PIPELINE_STAGE_BOTTOM, &currentBottomPt);
+    return currentBottomPt >= syncpt;
   }
 
   bool RtxIo::enqueueSignal(const Rc<RtxSemaphore>& sema, uint64_t value) {
@@ -384,8 +391,6 @@ namespace dxvk {
     if (m_sizeInFlight == 0) {
       return true;
     }
-
-    enqueueSignal(m_flushSema, ++m_completionPt);
 
     if (auto result = rtxioFlush(m_rtxio, !async)) {
       Logger::err(str::format("RTX IO flush failed with ", result));

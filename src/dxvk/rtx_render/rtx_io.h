@@ -107,13 +107,14 @@ namespace dxvk {
     uint64_t enqueueRead(const ImageDest& dst, const FileSource& src);
     bool enqueueSignal(const Rc<RtxSemaphore>& sema, uint64_t value);
 
-    bool isComplete(uint64_t syncpt) const {
-      return m_flushSema->value() >= syncpt;
-    }
+    bool isComplete(uint64_t syncpt) const;
 
     bool flush(bool async);
 
-    RTX_OPTION("rtx.io", bool, enabled, false, "");
+    RTX_OPTION_ENV("rtx.io", bool, enabled, false, "DXVK_USE_RTXIO",
+      "When this option is enabled the assets will be loaded (and optionally decompressed on GPU) using high "
+      "performance RTX IO runtime. RTX IO must be enabled for loading compressed assets, but is not "
+      "necessary for working with loose uncompressed assets.");
 
   private:
     static void OnEvent(uint32_t event, const void* data, void* userData);
@@ -124,7 +125,7 @@ namespace dxvk {
     void updateMemoryStats(int64_t memAdjustmentMB);
     void dumpStats() const;
 
-    Rc<DxvkDevice> m_device;
+    DxvkDevice* m_device;
     DxvkDeviceQueue m_workQueue;
     DxvkDeviceQueue m_transferQueue;
     dxvk::mutex m_flushMutex;
@@ -134,8 +135,6 @@ namespace dxvk {
     Handle m_rtxio;
 
     // TODO(iterentiev): implement real batching
-    Rc<RtxSemaphore> m_flushSema;
-    uint64_t m_completionPt = 0;
     size_t m_sizeInFlight = 0;
 
     uint32_t m_lastFlushFrame = 0;

@@ -23,7 +23,7 @@
 
 namespace dxvk {
   RtxSemaphore::RtxSemaphore(const Rc<DxvkDevice>& device)
-  : m_device(device) {
+  : m_device(device.ptr()) {
     VkSemaphoreTypeCreateInfo timelineCreateInfo;
     timelineCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
     timelineCreateInfo.pNext = nullptr;
