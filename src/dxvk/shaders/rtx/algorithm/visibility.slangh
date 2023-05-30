@@ -170,8 +170,8 @@ struct VisibilityResult {
 VisibilityResult traceVisibilityRay(
   Ray visibilityRay,
   uint8_t rayMask, uint8_t visibilityMode, uint8_t expectedRayPortalIndex, PortalSpace2BitsType rayOriginPortalSpace,
-  // ViewModel instances are not to occlude anything but ViewModel rays and rays originating from a ViewModel surface
-  bool isViewModelRayOrStartedFromViewModel = false,
+  // ViewModel instances are not to occlude anything but rays originating from a ViewModel surface
+  bool hasRayOriginatedFromViewModel = false,
   bool usePreviousTLAS = false)
 {
   // Exclude the portals from the ray mask because we have special handling for them.
@@ -289,7 +289,7 @@ VisibilityResult traceVisibilityRay(
       // Apply the portal mask
       result.attenuation *= portalTransparency;
 
-      updateStateOnPortalCrossing(portalSpace, rayMask, expectedRayPortalIndex, isViewModelRayOrStartedFromViewModel);
+      updateStateOnPortalCrossing(portalSpace, rayMask, expectedRayPortalIndex, hasRayOriginatedFromViewModel);
 
       // We only support going through one portal, so don't iterate after the next ray
       expectedRayPortalIndex = invalidRayPortalIndex;
@@ -310,7 +310,7 @@ VisibilityResult traceVisibilityRay(
   PortalSpace2BitsType rayOriginPortalSpace,
   float16_t coneRadius = 0, float16_t spreadAngle = 0, float16_t tMaxFactor = 1.0,
   // ViewModel instances shouldn't occlude anything but ViewModel surfaces and primary rays
-  bool isViewModelRayOrStartedFromViewModel = false,
+  bool hasRayOriginatedFromViewModel = false,
   bool usePreviousTLAS = false)
 {
   MinimalRayInteraction minimalRayInteraction = (MinimalRayInteraction)0;
@@ -324,5 +324,5 @@ VisibilityResult traceVisibilityRay(
 
   visibilityRay.tMax *= tMaxFactor;
 
-  return traceVisibilityRay(visibilityRay, rayMask, visibilityMode, expectedRayPortalIndex, rayOriginPortalSpace, isViewModelRayOrStartedFromViewModel, usePreviousTLAS);
+  return traceVisibilityRay(visibilityRay, rayMask, visibilityMode, expectedRayPortalIndex, rayOriginPortalSpace, hasRayOriginatedFromViewModel, usePreviousTLAS);
 }
