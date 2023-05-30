@@ -14,7 +14,7 @@ namespace ImGui {
       return;
     }
 
-    if (!ImGui::IsItemHovered()) {
+    if (!ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
       return;
     }
 
