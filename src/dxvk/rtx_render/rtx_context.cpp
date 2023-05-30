@@ -1289,17 +1289,25 @@ namespace dxvk {
     Logger::info(str::format("[RTX info] Opacity Micromap: ", isOpacityMicromapSupported ? "supported" : "not supported"));
   }
 
-  void RtxContext::checkShaderExecutionReorderingSupport() {
-    
+  bool RtxContext::checkIsShaderExecutionReorderingSupported(Rc<DxvkDevice> device) {
     const bool allowSER = RtxOptions::Get()->isShaderExecutionReorderingSupported();
 
+    if (!allowSER) {
+      return false;
+    }
+
     // SER Extension support check
-    const bool isSERExtensionSupported = m_device->extensions().nvRayTracingInvocationReorder;
-    const bool isSERReorderingEnabled = 
-      VK_RAY_TRACING_INVOCATION_REORDER_MODE_REORDER_NV == m_device->properties().nvRayTracingInvocationReorderProperties.rayTracingInvocationReorderReorderingHint;
-    const bool isSERSupported = isSERExtensionSupported && isSERReorderingEnabled;
+    const bool isSERExtensionSupported = device->extensions().nvRayTracingInvocationReorder;
+    const bool isSERReorderingEnabled =
+      VK_RAY_TRACING_INVOCATION_REORDER_MODE_REORDER_NV == device->properties().nvRayTracingInvocationReorderProperties.rayTracingInvocationReorderReorderingHint;
+      
+    return isSERExtensionSupported && isSERReorderingEnabled;
+  }
+
+  void RtxContext::checkShaderExecutionReorderingSupport() {    
+    const bool isSERSupported = checkIsShaderExecutionReorderingSupported(m_device);
     
-    RtxOptions::Get()->setIsShaderExecutionReorderingSupported(isSERSupported && allowSER);
+    RtxOptions::Get()->setIsShaderExecutionReorderingSupported(isSERSupported);
 
     const VkPhysicalDeviceProperties& props = m_device->adapter()->deviceProperties();
     const NV_GPU_ARCHITECTURE_ID archId = RtxOptions::Get()->getNvidiaArch();

@@ -200,7 +200,7 @@ namespace dxvk {
 
     // Whether cacheStateListIter is valid when it corresponds to m_unprocessedList.
     // This is to handle the iterator state when an OMM cache item is in unprocessed or baking state
-    // but the source data has been unliked and cacheStateList item was removed
+    // but the source data has been unlinked and cacheStateList item was removed
     bool isUnprocessedCacheStateListIterValid = false;  
 
     // Needed during baking

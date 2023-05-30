@@ -187,6 +187,7 @@ namespace dxvk {
     void updateRaytraceArgsConstantBuffer(Rc<DxvkCommandList> cmdList, Resources::RaytracingOutput& rtOutput, float frameTimeSecs,
                                           const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent);
 
+    static bool checkIsShaderExecutionReorderingSupported(Rc<DxvkDevice> device);
   protected:
     virtual void updateComputeShaderResources() override;
     virtual void updateRaytracingShaderResources() override;
