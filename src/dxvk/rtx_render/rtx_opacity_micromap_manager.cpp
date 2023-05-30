@@ -46,7 +46,7 @@ namespace dxvk {
 
   XXH64_hash_t calculateMaterialSourceHash(const RtInstance& instance) {
     XXH64_hash_t h = kEmptyHash;
-#define ADD_TO_HASH(x) h = XXH64(&x, sizeof(x), h)
+#define ADD_TO_HASH(x) h = XXH3_64bits_withSeed(&x, sizeof(x), h)
 
     ADD_TO_HASH(instance.getMaterialHash());
     ADD_TO_HASH(instance.surface.alphaState);
@@ -57,8 +57,9 @@ namespace dxvk {
     ADD_TO_HASH(instance.surface.textureAlphaArg1Source);
     ADD_TO_HASH(instance.surface.textureAlphaArg2Source);
     ADD_TO_HASH(instance.surface.textureAlphaOperation);
-    const uint32_t tFactorAlpha = instance.surface.tFactor;
+    const uint8_t tFactorAlpha = instance.surface.tFactor >> 24;
     ADD_TO_HASH(tFactorAlpha);
+    ADD_TO_HASH(instance.surface.textureTransform);
 
     return h;
   }
@@ -225,8 +226,8 @@ namespace dxvk {
 
     if (isBillboardOmmRequest()) {
       const IntersectionBillboard& billboard = instanceManager.getBillboards()[instance.getFirstBillboardIndex() + quadSliceIndex];
-      ommSrcHash = XXH64(&billboard.texCoordHash, sizeof(billboard.texCoordHash), ommSrcHash);
-      ommSrcHash = XXH64(&billboard.vertexOpacityHash, sizeof(billboard.vertexOpacityHash), ommSrcHash);
+      ommSrcHash = XXH3_64bits_withSeed(&billboard.texCoordHash, sizeof(billboard.texCoordHash), ommSrcHash);
+      ommSrcHash = XXH3_64bits_withSeed(&billboard.vertexOpacityHash, sizeof(billboard.vertexOpacityHash), ommSrcHash);
       numTriangles = 2;
     } 
     else {
@@ -234,12 +235,12 @@ namespace dxvk {
       
       assert(instance.getTexcoordHash() != kEmptyHash);
 
-      ommSrcHash = XXH64(&instance.getTexcoordHash(), sizeof(instance.getTexcoordHash()), ommSrcHash);
+      ommSrcHash = XXH3_64bits_withSeed(&instance.getTexcoordHash(), sizeof(instance.getTexcoordHash()), ommSrcHash);
       // ToDo: is this already included in any of the previous hashes added up to this point?
-      ommSrcHash = XXH64(&instance.surface.textureTransform, sizeof(instance.surface.textureTransform), ommSrcHash);
+      ommSrcHash = XXH3_64bits_withSeed(&instance.surface.textureTransform, sizeof(instance.surface.textureTransform), ommSrcHash);
     }
 
-    ommSrcHash = XXH64(&numTriangles, sizeof(numTriangles), ommSrcHash);
+    ommSrcHash = XXH3_64bits_withSeed(&numTriangles, sizeof(numTriangles), ommSrcHash);
 
     // Select OmmFormat for the OMM request and add it to the hash
     {
@@ -255,7 +256,7 @@ namespace dxvk {
       if (OpacityMicromapOptions::Building::force2StateOpacityMicromaps())
         ommFormat = VK_OPACITY_MICROMAP_FORMAT_2_STATE_EXT;
 
-      ommSrcHash = XXH64(&ommFormat, sizeof(ommFormat), ommSrcHash);
+      ommSrcHash = XXH3_64bits_withSeed(&ommFormat, sizeof(ommFormat), ommSrcHash);
     }
   }
 
@@ -821,7 +822,7 @@ namespace dxvk {
         }
       }
 
-      ommSrcHash = XXH64(ommSrcHashes.data(), ommSrcHashes.size() * sizeof(ommSrcHashes[0]), kEmptyHash);
+      ommSrcHash = XXH3_64bits_withSeed(ommSrcHashes.data(), ommSrcHashes.size() * sizeof(ommSrcHashes[0]), kEmptyHash);
 
     } else {
       ommRequests.emplace_back(instance, instanceManager);
