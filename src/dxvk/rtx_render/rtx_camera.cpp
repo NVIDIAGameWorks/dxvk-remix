@@ -404,11 +404,18 @@ namespace dxvk
     Matrix4 modifiedViewToProj = newViewToProjection;
 
     // Create Anti-Culling frustum
-    if (RtxOptions::Get()->enableAntiCulling()) {
-      const float fovScale = RtxOptions::Get()->antiCullingFovScale();
+    if (RtxOptions::AntiCulling::Object::enable()) {
+      const float fovScale = RtxOptions::AntiCulling::Object::fovScale();
       float4x4 frustumMatrix;
       frustumMatrix.SetupByHalfFovyInf((float)(fov * fovScale * 0.5), aspectRatio, nearPlane, (isLHS ? PROJ_LEFT_HANDED : 0));
       m_frustum.Setup(NDC_OGL, frustumMatrix);
+    }
+
+    if (RtxOptions::AntiCulling::Light::enable()) {
+      const float fovScale = RtxOptions::AntiCulling::Light::fovScale();
+      float4x4 frustumMatrix;
+      frustumMatrix.SetupByHalfFovyInf((float) (fov * fovScale * 0.5), aspectRatio, nearPlane, (isLHS ? PROJ_LEFT_HANDED : 0));
+      m_lightAntiCullingFrustum.Setup(NDC_OGL, frustumMatrix);
     }
 
     // Sometimes we want to modify the near plane for RT.  See DevSettings->Camera->Advanced

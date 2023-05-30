@@ -168,7 +168,7 @@ namespace dxvk {
   void SceneManager::garbageCollection() {
     ScopedCpuProfileZone();
     // Garbage collection for BLAS/Scene objects
-    if (!RtxOptions::Get()->enableAntiCulling())
+    if (!RtxOptions::AntiCulling::Object::enable())
     {
       if (m_device->getCurrentFrameId() > RtxOptions::Get()->numFramesToKeepGeometryData()) {
         auto& entries = m_drawCallCache.getEntries();
@@ -184,7 +184,9 @@ namespace dxvk {
       }
     }
     else { // Implement anti-culling object GC
-      auto& entries = m_drawCallCache.getEntries();
+      cFrustum& cameraFrustum = getCamera().getFrustum();
+
+      const auto& entries = m_drawCallCache.getEntries();
       for (auto& iter = entries.begin(); iter != entries.end(); ++iter) {
         for (const RtInstance* instance : iter->second.getLinkedInstances()) {
           // No need to do frustum check for instances under the keeping threshold
@@ -199,11 +201,11 @@ namespace dxvk {
           bool isInsideFrustum = true;
           if (instance->getBlas()->input.getGeometryData().futureBoundingBox.valid()) {
             const AxisAlignedBoundingBox& boundingBox = instance->getBlas()->input.getGeometryData().boundingBox;
-            isInsideFrustum = boundingBoxIntersectsFrustum(getCamera().getFrustum(), boundingBox.minPos, boundingBox.maxPos, objectToView);
+            isInsideFrustum = boundingBoxIntersectsFrustum(cameraFrustum, boundingBox.minPos, boundingBox.maxPos, objectToView);
           }
           else {
             // Fallback to check object center under view space
-            isInsideFrustum = getCamera().getFrustum().CheckSphere(float3(objectToView[3][0], objectToView[3][1], objectToView[3][2]), 0);
+            isInsideFrustum = cameraFrustum.CheckSphere(float3(objectToView[3][0], objectToView[3][1], objectToView[3][2]), 0);
           }
 
           // Only GC the objects inside the frustum to anti-frustum culling, this could cause significant performance impact
@@ -213,6 +215,43 @@ namespace dxvk {
           } else {
             instance->markAsOutsideFrustum();
           }
+        }
+      }
+    }
+
+    if (RtxOptions::AntiCulling::Light::enable()) {
+      cFrustum& cameraLightAntiCullingFrustum = getCamera().getLightAntiCullingFrustum();
+      for (auto& [lightHash, rtLight] : m_lightManager.getLightTable()) {
+        bool isLightInsideFrustum = true;
+        switch (rtLight.getType()) {
+        case RtLightType::Sphere: {
+          const RtSphereLight& sphereLight = rtLight.getSphereLight();
+          isLightInsideFrustum = sphereIntersectsFrustum(cameraLightAntiCullingFrustum, sphereLight.getPosition(), sphereLight.getRadius());
+          break;
+        }
+        case RtLightType::Rect: {
+          const RtRectLight& rectLight = rtLight.getRectLight();
+          isLightInsideFrustum = rectIntersectsFrustum(
+            cameraLightAntiCullingFrustum, rectLight.getPosition(), rectLight.getDimensions(), rectLight.getXAxis(), rectLight.getYAxis());
+          break;
+        }
+        // TODO: Implement anti-culling for Disk and Cylinder
+        case RtLightType::Disk:
+          break;
+        case RtLightType::Cylinder:
+          break;
+        case RtLightType::Distant:
+          // Can't do anti-culling for directional lights
+          break;
+        default:
+          assert(false);
+          break;
+        }
+
+        if (isLightInsideFrustum) {
+          rtLight.markAsInsideFrustum();
+        } else {
+          rtLight.markAsOutsideFrustum();
         }
       }
     }
