@@ -648,6 +648,10 @@ namespace dxvk {
     }
   }
 
+  void RtxContext::setFogState(const FogState& fogState) {
+    m_rtState.fogState = fogState;
+  }
+
   RtxGeometryStatus RtxContext::commitGeometryToRT(const DrawParameters& params){
     ScopedCpuProfileZone();
 
@@ -662,19 +666,6 @@ namespace dxvk {
     const uint32_t vertexCount = m_rtState.geometry.vertexCount;
 
     if(indexCount == 0 && vertexCount == 0)
-      return RtxGeometryStatus::Ignored;
-
-    if (!RtxOptions::Get()->isAlphaTestEnabled()) {
-      if (m_rtState.legacyState.alphaTestEnabled)
-        return RtxGeometryStatus::Ignored;
-    }
-
-    if (!RtxOptions::Get()->isAlphaBlendEnabled()) {
-      if (m_state.gp.state.omBlend->blendEnable())
-        return RtxGeometryStatus::Ignored;
-    }
-
-    if (m_state.gp.state.rs.cullMode() == VkCullModeFlagBits::VK_CULL_MODE_FRONT_AND_BACK)
       return RtxGeometryStatus::Ignored;
 
     // We'll need these later
@@ -748,8 +739,7 @@ namespace dxvk {
 
     if (!m_rtState.useProgrammableVS) {
       // This is fixed function vertex pipeline.
-      const D3D9FixedFunctionVS* pVertexMaterialData = (D3D9FixedFunctionVS*) m_rtState.vsFixedFunctionCB->mapPtr(0);
-      originalMaterialData.m_d3dMaterial = pVertexMaterialData->Material;
+      originalMaterialData.m_d3dMaterial = m_rtState.legacyState.d3dMaterial;
     }
 
     const auto fusedMode = RtxOptions::Get()->fusedWorldViewMode();
@@ -850,10 +840,14 @@ namespace dxvk {
 
     // Set Alpha Blend information
 
-    originalMaterialData.alphaBlendEnabled = m_state.gp.state.omBlend[0].blendEnable();
-    originalMaterialData.srcColorBlendFactor = m_state.gp.state.omBlend[0].srcColorBlendFactor();
-    originalMaterialData.dstColorBlendFactor = m_state.gp.state.omBlend[0].dstColorBlendFactor();
-    originalMaterialData.colorBlendOp = m_state.gp.state.omBlend[0].colorBlendOp();
+    originalMaterialData.alphaBlendEnabled = m_rtState.legacyState.alphaBlendEnabled;
+    originalMaterialData.srcColorBlendFactor = m_rtState.legacyState.srcColorBlendFactor;
+    originalMaterialData.dstColorBlendFactor = m_rtState.legacyState.dstColorBlendFactor;
+    originalMaterialData.colorBlendOp = m_rtState.legacyState.colorBlendOp;
+
+    // Set Stencil Test information
+
+    drawCallState.m_stencilEnabled = m_rtState.legacyState.stencilEnabled;
 
     // Set color source information
     auto toTextureArgSource = [&](DxvkRtColorSource colorSource) {
@@ -889,23 +883,8 @@ namespace dxvk {
     if (RtxOptions::Get()->shouldIgnoreTexture(originalMaterialData.getHash()))
       return RtxGeometryStatus::Ignored;
 
-    FogState& fogState = drawCallState.m_fogState;
-    {
-      uint32_t fogEnabled = m_state.gp.state.sc.specConstants[D3D9SpecConstantId::FogEnabled];
-      uint32_t vertexFogMode = m_state.gp.state.sc.specConstants[D3D9SpecConstantId::VertexFogMode];
-      uint32_t pixelFogMode = m_state.gp.state.sc.specConstants[D3D9SpecConstantId::PixelFogMode];
-      const D3D9RenderStateInfo* push = reinterpret_cast<const D3D9RenderStateInfo*>(m_state.pc.data);
-
-      if (fogEnabled) {
-        fogState.mode = (pixelFogMode != D3DFOG_NONE) ? pixelFogMode : vertexFogMode;
-        fogState.color = { push->fogColor[0], push->fogColor[1], push->fogColor[2] };
-        fogState.scale = push->fogScale;
-        fogState.end = push->fogEnd;
-        fogState.density = push->fogDensity;
-      }
-    }
-
-    drawCallState.m_stencilEnabled = m_state.gp.state.ds.enableStencilTest();
+    // Set fog information
+    drawCallState.m_fogState = m_rtState.fogState;
 
     // Sync any pending work with geometry processing threads
     if (drawCallState.finalizePendingFutures()) {

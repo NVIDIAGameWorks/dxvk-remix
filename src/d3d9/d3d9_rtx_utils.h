@@ -53,4 +53,13 @@ namespace dxvk {
     * \returns: desired texture stage state object
     */
   DxvkRtxTextureStageState createTextureStageState(const Direct3DState9& d3d9State, const uint32_t stageIdx);
+
+  /**
+    * \brief: This function creates a fog state object by reading D3D9 state info from input device
+    *
+    * \param [in] pDevice: parent D3D9 device
+    *
+    * \returns: desired og state object
+    */
+  FogState createFogState(D3D9DeviceEx* pDevice);
 }

@@ -352,6 +352,16 @@ namespace dxvk {
       return { RtxGeometryStatus::Ignored, false };
     }
 
+    if (!RtxOptions::Get()->isAlphaTestEnabled() && m_parent->IsAlphaTestEnabled()) {
+      ONCE(Logger::info(str::format("[RTX-Compatibility-Info] Raytracing an alpha-tested draw call when alpha-tested objects disabled in RT. Ignoring.")));
+      return { RtxGeometryStatus::Ignored, false };
+    }
+
+    if (!RtxOptions::Get()->isAlphaBlendEnabled() && d3d9State().renderStates[D3DRS_ALPHABLENDENABLE]) {
+      ONCE(Logger::info(str::format("[RTX-Compatibility-Info] Raytracing an alpha-blended draw call when alpha-blended objects disabled in RT. Ignoring.")));
+      return { RtxGeometryStatus::Ignored, false };
+    }
+    
     if (m_activeOcclusionQueries > 0) {
       ONCE(Logger::info(str::format("[RTX-Compatibility-Info] Trying to raytrace an occlusion query. Ignoring.")));
       return { RtxGeometryStatus::Rasterized, false };
@@ -523,6 +533,9 @@ namespace dxvk {
     // Fetch all the render state and send it to rtx context (textures, transforms, etc.)
     const uint32_t idealTexcoordIndex = processRenderState();
 
+    // Fetch fog state 
+    const FogState fogState = createFogState(m_parent);
+
     // Copy all the vertices into a staging buffer.  Assign fields of the geoData structure.
     processVertices(vertexContext, vertexIndexOffset, idealTexcoordIndex, geoData);
     geoData.futureGeometryHashes = computeHash(geoData, (maxIndex - minIndex));
@@ -539,7 +552,7 @@ namespace dxvk {
     }
 
     // Send it
-    m_parent->EmitCs([geoData, futureSkinningData, legacyState, status,
+    m_parent->EmitCs([geoData, futureSkinningData, legacyState, status, fogState,
                       cObjectToWorld = m_objectToWorldTransform,
                       cUseVS = m_parent->UseProgrammableVS(),
                       cUsePS = m_parent->UseProgrammablePS()](DxvkContext* ctx) {
@@ -551,6 +564,7 @@ namespace dxvk {
       rtxCtx->setLegacyState(legacyState);
       rtxCtx->setGeometry(geoData, status);
       rtxCtx->setSkinningData(futureSkinningData);
+      rtxCtx->setFogState(fogState);
     });
 
     return true;

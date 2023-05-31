@@ -573,6 +573,12 @@ struct DxvkRtxLegacyState {
   DxvkRtColorSource diffuseColorSource = DxvkRtColorSource::None;
   DxvkRtColorSource specularColorSource = DxvkRtColorSource::None;
   uint32_t tFactor = 0xffffffff; // Value for D3DRS_TEXTUREFACTOR, default value of is opaque white
+  bool alphaBlendEnabled = false;
+  VkBlendFactor srcColorBlendFactor = VkBlendFactor::VK_BLEND_FACTOR_ONE;
+  VkBlendFactor dstColorBlendFactor = VkBlendFactor::VK_BLEND_FACTOR_ZERO;
+  VkBlendOp colorBlendOp = VkBlendOp::VK_BLEND_OP_ADD;
+  bool stencilEnabled = false;
+  D3DMATERIAL9 d3dMaterial = {};
 };
 
 struct DxvkRtxTextureStageState {
@@ -609,6 +615,7 @@ struct DxvkRaytracingInstanceState {
   DxvkRtxTextureStageState texStage;
   uint32_t clipPlaneMask = 0;
   Vector4 clipPlanes[MaxClipPlanes] = { 0.f };
+  FogState fogState;
 };
 
 } // namespace dxvk
