@@ -1074,7 +1074,7 @@ namespace dxvk {
       restirGiRayQuery.biasCorrectionModeRef() = ReSTIRGIBiasCorrection::PairwiseRaytrace;
       restirGiRayQuery.useReflectionReprojectionRef() = true;
       common->metaComposite().enableStochasticAlphaBlendRef() = true;
-      neeCache.enabledRef() = RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Ultra;
+      neeCache.enableRef() = RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Ultra;
       postFx.enableRef() = true;
     } else if (RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Medium ||
                RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Low) {
@@ -1082,7 +1082,7 @@ namespace dxvk {
       restirGiRayQuery.biasCorrectionModeRef() = ReSTIRGIBiasCorrection::BRDF;
       restirGiRayQuery.useReflectionReprojectionRef() = false;
       common->metaComposite().enableStochasticAlphaBlendRef() = false;
-      neeCache.enabledRef() = false;
+      neeCache.enableRef() = false;
       postFx.enableRef() = false;
     }
 

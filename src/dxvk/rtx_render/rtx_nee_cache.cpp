@@ -80,27 +80,27 @@ namespace dxvk {
   NeeCachePass::~NeeCachePass() { }
 
   void NeeCachePass::showImguiSettings() {
-    ImGui::Checkbox("Enabled", &enabledObject());
+    ImGui::Checkbox("Enable NEE Cache", &enableObject());
     ImGui::Checkbox("Enable Importance Sampling", &enableImportanceSamplingObject());
     ImGui::Checkbox("Enable MIS", &enableMISObject());
     ImGui::Checkbox("Enable Jittering", &enableJitteringObject());
     ImGui::Checkbox("Enable in First Bounce", &enableInFirstBounceObject());
     ImGui::Checkbox("Enable in Second and More Bounces", &enableInSecondAndMoreBouncesObject());
     ImGui::Checkbox("Enable Random Replacement", &enableRandomReplacementObject());
-    ImGui::DragFloat("Texture Sample Footprint Size", &textureSampleFootprintSizeObject(), 0.001f, 0.f, 20.f, "%.3f");
+    ImGui::DragFloat("Emissive Texture Sample Footprint Size", &emissiveTextureSampleFootprintSizeObject(), 0.001f, 0.f, 20.f, "%.3f");
     ImGui::DragFloat("Age Culling Speed", &ageCullingSpeedObject(), 0.001f, 0.0f, 0.99f, "%.3f");
     ImGui::DragFloat("Cache Range", &rangeObject(), 1.f, 0.1f, 10000000.0f, "%.3f");
   }
 
   void NeeCachePass::setRaytraceArgs(RaytraceArgs& constants) const {    
-    constants.neeCacheArgs.enable = enabled();
+    constants.neeCacheArgs.enable = enable();
     constants.neeCacheArgs.enableImportanceSampling = enableImportanceSampling();
     constants.neeCacheArgs.enableMIS = enableMIS();
     constants.neeCacheArgs.enableInFirstBounce = enableInFirstBounce();
     constants.neeCacheArgs.enableInSecondAndMoreBounces = enableInSecondAndMoreBounces();
     constants.neeCacheArgs.enableRandomReplacement = enableRandomReplacement();
     constants.neeCacheArgs.range = range();
-    constants.neeCacheArgs.textureSampleFootprintSize = textureSampleFootprintSize();
+    constants.neeCacheArgs.emissiveTextureSampleFootprintSize = emissiveTextureSampleFootprintSize();
     constants.neeCacheArgs.ageCullingSpeed = ageCullingSpeed();
     constants.neeCacheArgs.enableJittering = enableJittering();
   }
