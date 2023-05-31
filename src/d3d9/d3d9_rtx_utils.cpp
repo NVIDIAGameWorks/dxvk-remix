@@ -119,6 +119,48 @@ namespace dxvk {
 
     state.tFactor = d3d9State.renderStates[D3DRS_TEXTUREFACTOR];
 
+    state.alphaBlendEnabled = d3d9State.renderStates[D3DRS_ALPHABLENDENABLE] != FALSE;
+
+    if (state.alphaBlendEnabled) {
+      D3D9BlendState color;
+      color.Src = D3DBLEND(d3d9State.renderStates[D3DRS_SRCBLEND]);
+      color.Dst = D3DBLEND(d3d9State.renderStates[D3DRS_DESTBLEND]);
+      color.Op = D3DBLENDOP(d3d9State.renderStates[D3DRS_BLENDOP]);
+      FixupBlendState(color);
+
+      state.srcColorBlendFactor = DecodeBlendFactor(color.Src, false);
+      state.dstColorBlendFactor = DecodeBlendFactor(color.Dst, false);
+      state.colorBlendOp = DecodeBlendOp(color.Op);
+    }
+
+    state.stencilEnabled = d3d9State.renderStates[D3DRS_STENCILENABLE];
+
+    state.d3dMaterial = d3d9State.material;
+
     return state;
+  }
+
+  FogState createFogState(D3D9DeviceEx* pDevice) {
+    const Direct3DState9& d3d9State = *pDevice->GetRawState();
+
+    FogState fogState;
+
+    const bool fogEnabled = d3d9State.renderStates[D3DRS_FOGENABLE];
+
+    if (fogEnabled) {
+      Vector4 color;
+      DecodeD3DCOLOR(D3DCOLOR(d3d9State.renderStates[D3DRS_FOGCOLOR]), color.data);
+
+      float end = bit::cast<float>(d3d9State.renderStates[D3DRS_FOGEND]);
+      float start = bit::cast<float>(d3d9State.renderStates[D3DRS_FOGSTART]);
+
+      fogState.mode = d3d9State.renderStates[D3DRS_FOGTABLEMODE] != D3DFOG_NONE ? d3d9State.renderStates[D3DRS_FOGTABLEMODE] : d3d9State.renderStates[D3DRS_FOGVERTEXMODE];
+      fogState.color = color.xyz();
+      fogState.scale = 1.0f / (end - start);
+      fogState.end = end;
+      fogState.density = bit::cast<float>(d3d9State.renderStates[D3DRS_FOGDENSITY]);
+    }
+
+    return fogState;
   }
 }
