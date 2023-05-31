@@ -52,7 +52,7 @@ namespace dxvk {
     RTX_OPTION("rtx.neeCache", bool, enableMIS, true, "Enable MIS.");
     RTX_OPTION("rtx.neeCache", bool, enableJittering, true, "Enable jittering in cell look up.");
     RTX_OPTION("rtx.neeCache", bool, enableInFirstBounce, true, "Enable NEE Cache in the first bounce.");
-    RTX_OPTION("rtx.neeCache", bool, enableInSecondAndMoreBounces, true, "Enable NEE Cache in the second and more bounces.");
+    RTX_OPTION("rtx.neeCache", bool, enableAfterFirstBounce, true, "Enable NEE Cache in the second and more bounces.");
     RTX_OPTION("rtx.neeCache", bool, enableRandomReplacement, false, "Enable random replacement, in which old triangles will be randomly replaced by newly discovered ones. Otherwise, the ones with highest contribution scores will always be chosen.");
     RTX_OPTION("rtx.neeCache", float, range, 3000, "World space range.");
     RTX_OPTION("rtx.neeCache", float, emissiveTextureSampleFootprintSize, 1.0, "Emissive texture sample footprint size.");
