@@ -74,7 +74,7 @@ namespace dxvk {
   }
 
   NeeCachePass::NeeCachePass(dxvk::DxvkDevice* device)
-    : m_vkd(device->vkd()), m_device(device) {
+    : m_vkd(device->vkd()) {
   }
 
   NeeCachePass::~NeeCachePass() { }

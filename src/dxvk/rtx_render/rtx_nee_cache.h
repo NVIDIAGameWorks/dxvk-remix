@@ -59,7 +59,5 @@ namespace dxvk {
     RTX_OPTION("rtx.neeCache", float, ageCullingSpeed, 0.02, "This threshold determines culling speed of an old triangle. A triangle that is not detected for several frames will be deemed less important and culled quicker.");
   private:
     Rc<vk::DeviceFn> m_vkd;
-
-    dxvk::DxvkDevice* m_device;
   };
 } // namespace dxvk
