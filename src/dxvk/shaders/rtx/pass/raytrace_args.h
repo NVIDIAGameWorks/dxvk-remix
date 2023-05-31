@@ -59,7 +59,7 @@ struct NeeCacheArgs {
   uint enable;
   uint enableImportanceSampling;
   uint enableMIS;
-  uint enableInFirstBounce;
+  uint enableOnFirstBounce;
 
   uint enableAfterFirstBounce;
   uint enableRandomReplacement;

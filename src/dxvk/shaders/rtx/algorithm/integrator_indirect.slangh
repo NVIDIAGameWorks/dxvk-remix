@@ -333,8 +333,8 @@ void integratePathVertex(
   // Add Emission
   vec3 emissiveLight = polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(polymorphicSurfaceMaterialInteraction);
   float16_t lightSelectionPDF = 0;
-  bool isNeeEnabledInBounce = (pathState.bounceIteration == 1 && cb.neeCacheArgs.enableInFirstBounce) || (pathState.bounceIteration > 1 && cb.neeCacheArgs.enableAfterFirstBounce);
-  if (cb.neeCacheArgs.enable && isNeeEnabledInBounce && any(emissiveLight) > 0)
+  bool isNeeEnabledOnBounce = (pathState.bounceIteration == 1 && cb.neeCacheArgs.enableOnFirstBounce) || (pathState.bounceIteration > 1 && cb.neeCacheArgs.enableAfterFirstBounce);
+  if (cb.neeCacheArgs.enable && isNeeEnabledOnBounce && any(emissiveLight) > 0)
   {
     uint cellOffset, surfaceID, primitiveID;
     NEECache.loadThreadTask(pathState.pixelCoordinate, cellOffset, surfaceID, primitiveID);

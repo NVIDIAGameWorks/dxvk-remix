@@ -96,7 +96,7 @@ namespace dxvk {
     constants.neeCacheArgs.enable = enable();
     constants.neeCacheArgs.enableImportanceSampling = enableImportanceSampling();
     constants.neeCacheArgs.enableMIS = enableMIS();
-    constants.neeCacheArgs.enableInFirstBounce = enableInFirstBounce();
+    constants.neeCacheArgs.enableOnFirstBounce = enableOnFirstBounce();
     constants.neeCacheArgs.enableAfterFirstBounce = enableAfterFirstBounce();
     constants.neeCacheArgs.enableRandomReplacement = enableRandomReplacement();
     constants.neeCacheArgs.range = range();
