@@ -263,7 +263,7 @@ struct NEECache
     vec3 origin = cameraPos - extend * 0.5;
     vec3 UVW = (position - origin) / extend;
 
-    // jitter or not
+    // jitter cell ID
     if(jittered && cb.neeCacheArgs.enableJittering)
     {
       vec3 UVWi = UVW * NEE_CACHE_PROBE_RESOLUTION - 0.5;
