@@ -71,13 +71,13 @@ struct NEECandidate
 
   float16_t getSampleThreshold()
   {
-    uint threshold = (m_data.x >> 24) & 0xff;
-    return float16_t(threshold) / 255.0f;
+    uint8_t thresholdI = (m_data.x >> 24) & 0xff;
+    return unorm8ToF16(thresholdI);
   }
 
   [mutating] void setSampleThreshold(float16_t threshold)
   {
-    uint thresholdI = min(uint(threshold * 255.0f), 255);
+    uint thresholdI = f16ToUnorm8(threshold);
     m_data.x = (m_data.x & 0xffffff) | (thresholdI << 24);
   }
 
