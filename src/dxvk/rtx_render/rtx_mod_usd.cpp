@@ -586,17 +586,12 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
 }
 
 MaterialData* UsdMod::Impl::processMaterialUser(Args& args, const pxr::UsdPrim& prim) {
-  static const pxr::TfToken kMaterialBinding("material:binding");
-  // Check if the prim has a material:
-  auto relationship =  prim.GetRelationship(kMaterialBinding);
-  auto direct = pxr::UsdShadeMaterialBindingAPI::DirectBinding {relationship};
-  if (!direct.GetMaterial()) {
-    return nullptr;
+  auto bindAPI = pxr::UsdShadeMaterialBindingAPI(prim);
+  auto boundMaterial = bindAPI.ComputeBoundMaterial();
+  if (boundMaterial) {
+    return processMaterial(args, boundMaterial.GetPrim());
   }
-
-  pxr::SdfPath materialPath = direct.GetMaterialPath();
-  pxr::UsdPrim matPrim = prim.GetStage()->GetPrimAtPath(materialPath);
-  return processMaterial(args, matPrim);
+  return nullptr;
 }
 
 bool UsdMod::Impl::processGeomSubset(Args& args, const pxr::UsdPrim& subPrim, RasterGeometry& geometryData, MaterialData*& materialData) {
