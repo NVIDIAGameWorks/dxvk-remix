@@ -229,6 +229,7 @@ namespace dxvk {
     const bool serEnabled = RtxOptions::Get()->isShaderExecutionReorderingInPathtracerIntegrateIndirectEnabled();
     const bool ommEnabled = RtxOptions::Get()->getEnableOpacityMicromap();
 
+    // Trace indirect ray
     {
       ScopedGpuProfileZone(ctx, "Integrate Indirect Raytracing");
       switch (RtxOptions::Get()->getRenderPassIntegrateIndirectRaytraceMode()) {
@@ -248,6 +249,8 @@ namespace dxvk {
       }
     }
 
+    // Sample triangles in the NEE cache and perform NEE
+    // Construct restir input sample
     {
       VkExtent3D workgroups = util::computeBlockCount(rayDims, VkExtent3D { 8, 8, 1 });
 
