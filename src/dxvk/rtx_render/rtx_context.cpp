@@ -1355,6 +1355,7 @@ namespace dxvk {
     
     m_common->metaPathtracerIntegrateDirect().dispatch(this, rtOutput);
     m_common->metaPathtracerIntegrateIndirect().dispatch(this, rtOutput);
+    m_common->metaPathtracerIntegrateIndirect().dispatchNEE(this, rtOutput);
   }
   
   void RtxContext::dispatchDemodulate(const Resources::RaytracingOutput& rtOutput) {
