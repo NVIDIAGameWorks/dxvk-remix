@@ -288,18 +288,8 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
     const bool useDiffuseMIS = false;
     if(cb.reSTIRGIMISMode != misDisabledMode)
     {
-      vec4 initialDiffuseOutput = vec4(0);
-      vec4 initialSpecularOutput = vec4(0);
-        
-      const vec4 indirectRadianceHitDistance = IndirectRadianceHitDistance[threadIndex];
-
-      if (geometryFlags.firstSampledLobeIsSpecular) 
-      {
-        initialSpecularOutput = indirectRadianceHitDistance;
-        initialSpecularOutput.xyz = clamp(initialSpecularOutput.xyz, 0, cb.reSTIRGIFireflyThreshold);
-      }
-      else
-        initialDiffuseOutput = indirectRadianceHitDistance;
+      vec4 initialDiffuseOutput = PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex];
+      vec4 initialSpecularOutput = PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex];
 
       if (useDiffuseMIS)
       {
