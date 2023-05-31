@@ -207,7 +207,6 @@ struct RaytraceArgs {
   uint enableReplaceDirectSpecularHitTWithIndirectSpecularHitT;
   uint enableSeparatedDenoisers;
 
-  uint enableViewModelCompositionOnTop;
   uint enableViewModelVirtualInstances;
 
   uint enablePSRR;

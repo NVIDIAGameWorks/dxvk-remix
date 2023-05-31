@@ -121,6 +121,7 @@ namespace dxvk
     Matrix4 m_matCache[MatrixType::Count];
 
     cFrustum m_frustum;
+    cFrustum m_lightAntiCullingFrustum;
 
     // Captures any artificial offsets applied on top of the input transfrom 
     // from the game engine.
@@ -158,6 +159,9 @@ namespace dxvk
 
     inline const cFrustum& getFrustum() const { return m_frustum; }
     inline cFrustum& getFrustum() { return m_frustum; }
+
+    inline const cFrustum& getLightAntiCullingFrustum() const { return m_lightAntiCullingFrustum; }
+    inline cFrustum& getLightAntiCullingFrustum() { return m_lightAntiCullingFrustum; }
 
     void setPreviousWorldToView(const Matrix4& worldToView, bool freecam = true);
     void setPreviousViewToWorld(const Matrix4& viewToWorld, bool freecam = true);

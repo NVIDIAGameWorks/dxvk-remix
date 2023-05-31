@@ -64,7 +64,6 @@ GeometryResolverState geometryResolverStateCreateEmpty(u16vec2 pixelCoordinate)
   geometryResolverState.accumulatedHitDistance = 0.0f;
   geometryResolverState.rayMask = uint8_t(0x0);
   geometryResolverState.portalSpace = PORTAL_SPACE_NONE;
-  geometryResolverState.isViewModelRay = false;
   geometryResolverState.isViewModelSurface = false;
   geometryResolverState.accumulatedVectorTransform = getIdentityMatrix();
 
@@ -890,7 +889,7 @@ void geometryResolverVertex(
   unorderedResolveRay.tMax = rayHitInfo.hasHit ? rayHitInfo.hitDistance * kUnorderedResolveRayLengthening : floatMax;
 
   uint numUnorderedInteractions = 0;
-  uint8_t unorderedRayMask = convertPrimaryRayMaskToUnordered(geometryResolverState.isViewModelRay, geometryResolverState.rayMask, OBJECT_MASK_ALL_UNORDERED);
+  uint8_t unorderedRayMask = convertPrimaryRayMaskToUnordered(geometryResolverState.rayMask, OBJECT_MASK_ALL_UNORDERED);
 
   resolveVertexUnordered(
     resolveMode, unorderedResolveRay,
@@ -927,7 +926,6 @@ void geometryResolverVertex(
   hackState.continueResolving = geometryResolverState.continueResolving;
   hackState.rayMask = geometryResolverState.rayMask;
   hackState.portalSpace = geometryResolverState.portalSpace;
-  hackState.isViewModelRay = geometryResolverState.isViewModelRay;
   hackState.accumulatedVectorTransform = geometryResolverState.accumulatedVectorTransform;
   hackState.decalEncountered = geometryResolverState.decalEncountered;
   hackState.pixelCoordinate = geometryResolverState.pixelCoordinate;
@@ -951,7 +949,6 @@ void geometryResolverVertex(
   geometryResolverState.continueResolving = hackState.continueResolving;
   geometryResolverState.rayMask = hackState.rayMask;
   geometryResolverState.portalSpace = hackState.portalSpace;
-  geometryResolverState.isViewModelRay = hackState.isViewModelRay;
   geometryResolverState.accumulatedVectorTransform = hackState.accumulatedVectorTransform;
   geometryResolverState.decalEncountered = hackState.decalEncountered;
 
@@ -1002,18 +999,15 @@ void geometryResolverVertex(
     return;
   }
 
+  // Output a miss
   if (!rayInteractionHasHit(rayInteraction))
   {
-    // Output miss except for view model rays
-
-    if (!geometryResolverState.isViewModelRay) {
-      // Note: Alwrays write to primary surface for initial misses, always will be the selected surface
-      // in this case as well.
-      geometryResolverOutputMiss(true, true, geometryResolverState.pixelCoordinate);
-      
-      SharedRadianceRG[geometryResolverState.pixelCoordinate] = geometryResolverState.radiance.rg;
-      SharedRadianceB[geometryResolverState.pixelCoordinate] = geometryResolverState.radiance.b;
-    }
+    // Note: Alwrays write to primary surface for initial misses, always will be the selected surface
+    // in this case as well.
+    geometryResolverOutputMiss(true, true, geometryResolverState.pixelCoordinate);
+    
+    SharedRadianceRG[geometryResolverState.pixelCoordinate] = geometryResolverState.radiance.rg;
+    SharedRadianceB[geometryResolverState.pixelCoordinate] = geometryResolverState.radiance.b;
 
     return;
   }
@@ -1035,7 +1029,6 @@ void geometryResolverVertex(
   // Note: Only sample from PSR if either PSRR or PSTR are enabled, and if the hit is not a separately traced viewmodel.
   const bool samplePSR =
     (enablePSRR || enablePSTR) &&
-    !geometryResolverState.isViewModelRay &&
     !geometryResolverState.decalEncountered;
 
   // Check if the first hit surface is eligible for PSRR or PSTR by sampling it
@@ -1106,7 +1099,6 @@ void geometryResolverVertex(
     // Set the geometry flag bits that must be the same for both PSR passes, see unpackPSRData(...)
 
     GeometryFlags geometryFlags = (GeometryFlags)0;
-    geometryFlags.isViewModelRay = geometryResolverState.isViewModelRay;
     geometryFlags.isViewModel = geometryResolverState.isViewModelSurface;
     geometryFlags.portalSpace = geometryResolverState.portalSpace;
     geometryFlags.objectMask = primaryRayMaskToObjectMask(geometryResolverState.rayMask, geometryResolverState.isViewModelSurface);
@@ -1333,7 +1325,7 @@ void geometryPSRResolverVertex(
   unorderedResolveRay.tMax = rayHitInfo.hasHit ? rayHitInfo.hitDistance * kUnorderedResolveRayLengthening : floatMax;
 
   uint numUnorderedInteractions = 0;
-  uint8_t unorderedRayMask = convertPrimaryRayMaskToUnordered(geometryPSRResolverState.isViewModelRay, geometryPSRResolverState.rayMask, OBJECT_MASK_ALL_UNORDERED);
+  uint8_t unorderedRayMask = convertPrimaryRayMaskToUnordered(geometryPSRResolverState.rayMask, OBJECT_MASK_ALL_UNORDERED);
 
   resolveVertexUnordered(
     resolveMode, unorderedResolveRay,
@@ -1367,7 +1359,6 @@ void geometryPSRResolverVertex(
   hackState.continueResolving = geometryPSRResolverState.continueResolving;
   hackState.rayMask = geometryPSRResolverState.rayMask;
   hackState.portalSpace = geometryPSRResolverState.portalSpace;
-  hackState.isViewModelRay = geometryPSRResolverState.isViewModelRay;
   hackState.accumulatedVectorTransform = geometryPSRResolverState.accumulatedVectorTransform;
   hackState.decalEncountered = geometryPSRResolverState.decalEncountered;
   hackState.pixelCoordinate = geometryPSRResolverState.pixelCoordinate;
@@ -1389,7 +1380,6 @@ void geometryPSRResolverVertex(
   geometryPSRResolverState.continueResolving = hackState.continueResolving;
   geometryPSRResolverState.rayMask = hackState.rayMask;
   geometryPSRResolverState.portalSpace = hackState.portalSpace;
-  geometryPSRResolverState.isViewModelRay = hackState.isViewModelRay;
   geometryPSRResolverState.accumulatedVectorTransform = hackState.accumulatedVectorTransform;
   geometryPSRResolverState.decalEncountered = hackState.decalEncountered;
 
@@ -1597,26 +1587,10 @@ void preprocessPrimaryRayState(inout Ray originalCameraRay, inout GeometryResolv
 
   // Determine the ray mask
 
-  uint8_t rayMask;
-
-  if (geometryResolverState.isViewModelRay)
-  {
-    originalCameraRay.tMax = cb.viewModelRayTMax;
-
-    rayMask = OBJECT_MASK_VIEWMODEL | OBJECT_MASK_PORTAL;
-  }
-  else 
-  {
-    rayMask = OBJECT_MASK_ALL;
-
-    // If view model composition (separate rays) is disabled, include it in the regular rays.
-    if (!cb.enableViewModelCompositionOnTop)
-    {
-      rayMask |= OBJECT_MASK_VIEWMODEL;
-    }
-  }
-
-  rayMask |= OBJECT_MASK_PLAYER_MODEL_VIRTUAL;
+  uint8_t rayMask = 
+      OBJECT_MASK_ALL | 
+      OBJECT_MASK_VIEWMODEL |
+      OBJECT_MASK_PLAYER_MODEL_VIRTUAL;
 
   if (cb.enablePlayerModelInPrimarySpace)
   {
@@ -1709,8 +1683,6 @@ void geometryResolver(ivec2 pixelCoordinate) {
   // resolve logic.
   GeometryResolverState geometryResolverState = geometryResolverStateCreateEmpty(u16vec2(pixelCoordinate));
 
-  geometryResolverState.isViewModelRay = cb.enableViewModelCompositionOnTop;
-
   if (cb.enableStochasticAlphaBlend)
   {
     RNG randomState = createRNG(geometryResolverState.pixelCoordinate, cb.frameIdx);
@@ -1720,13 +1692,6 @@ void geometryResolver(ivec2 pixelCoordinate) {
   }
 
   // Resolve First Hit Geometry
-  // 1-2 iterations:
-  //  o On ViewModel:
-  //    1) ViewModel camera ray trace pass
-  //    2) Ray misses from 1st iteration are restarted and raytraced for main camera. Skipped otherwise
-  //  o Otherwise:
-  //    1) Main camera ray trace pass
-  for (;;)
   {
     // Pass specific set up
     Ray primaryRay;
@@ -1748,27 +1713,6 @@ void geometryResolver(ivec2 pixelCoordinate) {
 
     if (cb.debugView == DEBUG_VIEW_PRIMARY_RAY_BOUNCES)
       accumulateInDebugViewAdd(geometryResolverState.pixelCoordinate, 1);
-
-    // Reset ViewModel rays that missed and ray trace them again 
-    // for Main camera in the next iteration
-    if (geometryResolverState.isViewModelRay && geometryResolverState.segmentHitDistance == kMissHitDistance)
-    {
-      // Note: Retain accumulated radiance, i.e. from particles hit during ViewModel render
-      const vec3 accumulatedRadiance = geometryResolverState.radiance;
-      const f16vec3 accumulatedAttenuation = geometryResolverState.attenuation;
-
-      geometryResolverState = geometryResolverStateCreateEmpty(u16vec2(geometryResolverState.pixelCoordinate));
-
-      geometryResolverState.radiance = accumulatedRadiance;
-      geometryResolverState.attenuation = accumulatedAttenuation;
-      
-      // Go again, now tracing non-viewModel
-      geometryResolverState.isViewModelRay = false;
-
-      continue;
-    }
-
-    break;
   }
 
   // Translate PSR flags and the selected integration surface flag from reflection/transmission to a primary/secondary context
@@ -1806,7 +1750,6 @@ void geometryResolver(ivec2 pixelCoordinate) {
   geometryFlags.firstSampledLobeIsSpecular = false;
   geometryFlags.performPSTR = geometryResolverState.performPSTR;
   geometryFlags.performPSRR = geometryResolverState.performPSRR;
-  geometryFlags.isViewModelRay = geometryResolverState.isViewModelRay;
 
   // Output miss data for the secondary surface if it is not present
   // Note: Known to not be the selected surface in this case, hence why false is passed for this.

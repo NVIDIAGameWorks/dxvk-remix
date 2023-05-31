@@ -84,7 +84,6 @@ struct HackGenericState
   bool decalEncountered;
 
 #ifdef RAY_TRACING_PRIMARY_RAY
-  bool isViewModelRay;
   bool isStochasticAlphaBlend;
   f16mat3 accumulatedVectorTransform;
 #endif
