@@ -45,6 +45,8 @@ namespace dxvk {
 
     void dispatch(class RtxContext* ctx, const Resources::RaytracingOutput& rtOutput);
 
+    void dispatchNEE(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput);
+
     static const char* raytraceModeToString(RaytraceMode raytraceMode);
 
   private:
