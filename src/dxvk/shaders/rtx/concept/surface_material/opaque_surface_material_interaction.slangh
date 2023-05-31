@@ -479,7 +479,7 @@ bool opaqueSurfaceMaterialInteractionCalcLobeProbability(
   if (lobeProbabilitySum == float16_t(0.0f))
     return false;
 
-  float16_t lobeProbabilityNormalizationFactor = float16_t(1.0f) / lobeProbabilitySum;
+  float16_t lobeProbabilityNormalizationFactor = 1.h / lobeProbabilitySum;
   diffuseReflectionProbability *= lobeProbabilityNormalizationFactor;
   specularReflectionProbability *= lobeProbabilityNormalizationFactor;
   opacityTransmissionProbability *= lobeProbabilityNormalizationFactor;
