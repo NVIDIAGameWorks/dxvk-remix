@@ -198,7 +198,6 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
 
   // Perform next event estimation on cached emissive triangle list
   // Also add NEE sample to sample reservoir
-  ReSTIRGI_Reservoir resultReservoir = ReSTIRGI_Reservoir.createEmpty();
   if (cb.neeCacheArgs.enable && cb.neeCacheArgs.enableInFirstBounce)
   {
     NEECell cell = NEECache.findCell(minimalSurfaceInteraction.position, true);
@@ -253,78 +252,13 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
             neeSample.setVirtualFraction(0.0);
 
             float wi = RAB_GetGITargetPdfForSurface(neeSample.radiance, neeSample.position, surface);
+            ReSTIRGI_Reservoir resultReservoir = ReSTIRGI_Reservoir.createEmpty();
             resultReservoir.update(wi, neeSample, 0.5);
+            RAB_StoreGIReservoir(resultReservoir, threadIndex, ReSTIRGI_GetInitSamplePage());
           }
         }
       }
     }
-  }
-
-  // Add BSDF sample to sample reservoir
-  if (cb.enableReSTIRGI)
-  {
-    // Create the initial reservoir.
-    // We don't store the actual reservoir in the integrator because a) many parameters are constant anyway,
-    // b) hit geometry is written into a texture separate from the reservoir buffer to avoid partial writes.
-    ReSTIRGI_Reservoir initialSample;
-    initialSample.M = 1;
-    initialSample.avgWeight = 1;
-    initialSample.flagsAndVirtualFraction = 0;
-    initialSample.radiance = vec3(0);
-    float indirectPathLength = 0;
-
-    // Load the radiance
-    if (geometryFlags.primarySelectedIntegrationSurface)
-    {
-      vec4 radianceAndDistance = RestirGIRadiance[threadIndex];
-      initialSample.radiance = sanitize(radianceAndDistance.rgb, vec3(0));
-      indirectPathLength = radianceAndDistance.w; 
-    }
-
-    // The restir algorithm can accept larger fireflies while producing stable result, so set the threshold higher to avoid darkening.
-    const float fireflyFilteringFactor = 30;
-    initialSample.radiance = fireflyFiltering(initialSample.radiance, cb.fireflyFilteringLuminanceThreshold * fireflyFilteringFactor);
-
-    uint8_t portalID;
-    ReSTIRGI_LoadHitGeometry(RestirGIHitGeometry, threadIndex, initialSample.position, initialSample.normal, portalID);
-    initialSample.setPortalID(portalID);
-
-    // Transform hit point when the indirect ray crosses a portal
-    if (portalID != RESTIR_GI_INVALID_INDIRECT_LIGHT_PORTAL_ID)
-    {
-      RayPortalHitInfo rayPortalHitInfo = cb.rayPortalHitInfos[(uint)getOpposingRayPortalIndex(portalID)];
-      if (rayPortalHitInfoIsActive(rayPortalHitInfo))
-      {
-        mat4 teleportMatrix = rayPortalHitInfo.encodedPortalToOpposingPortalDirection.unpack();
-        initialSample.position = (mul(teleportMatrix, vec4(initialSample.position, 1.0f))).xyz;
-        initialSample.normal = mul(mat3(teleportMatrix), initialSample.normal);
-      }
-    }
-
-    // Calculate position and normal for a virtual sample
-    initialSample.setVirtualFraction(0.0);
-    if (cb.enableReSTIRGIVirtualSample > 0 && surface.opaqueSurfaceMaterialInteraction.isotropicRoughness > RAB_RESTIR_GI_DELTA_ROUGHNESS)
-    {
-      vec3 direction = initialSample.position - minimalSurfaceInteraction.position;
-      if (any(direction != 0) && indirectPathLength > length(direction) * 1.01)
-      {
-        // Extend virtual fraction length by 20% to prevent occlusion when the sample is used by neighbor pixels
-        initialSample.setVirtualFraction((indirectPathLength - length(direction)) * 1.2);
-        initialSample.position = minimalSurfaceInteraction.position + normalize(direction) * indirectPathLength;
-        initialSample.normal = -normalize(direction);
-      }
-    }
-
-    float wiT = max(0.f, initialSample.avgWeight) * initialSample.M * RAB_GetGITargetPdfForSurface(initialSample.radiance, initialSample.position, surface);
-    resultReservoir.update(wiT, initialSample, RAB_GetNextRandom(rtxdiRNG));
-
-    float pNew = RAB_GetGITargetPdfForSurface(resultReservoir.radiance, resultReservoir.position, surface);
-    // Both inputs samples use MIS, no need to divide the result by M
-    resultReservoir.M = 1;
-    resultReservoir.finalize(pNew, 1.0, resultReservoir.M);
-
-    // Store complete initial sample
-    RAB_StoreGIReservoir(resultReservoir, threadIndex, ReSTIRGI_GetInitSamplePage());
   }
 
   showDebugViews(threadIndex, geometryFlags, minimalSurfaceInteraction, surface);
