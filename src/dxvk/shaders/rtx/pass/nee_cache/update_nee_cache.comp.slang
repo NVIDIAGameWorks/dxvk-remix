@@ -79,9 +79,6 @@ float getTriangleLight(uint2 data, uint age, vec3 cellCenter)
     vec3 offset = triangleCenter - cellCenter;
     float cellSize = NEECache.getCellSize() * 0.5;
     float g = 0;
-#if 0
-    g = getGeometricTerm(cellCenter, triangleCenter, triangleNormal);
-#else
     g += getGeometricTerm(cellCenter + vec3(cellSize, 0, 0), triangleCenter, triangleNormal);
     g += getGeometricTerm(cellCenter + vec3(-cellSize, 0, 0), triangleCenter, triangleNormal);
     g += getGeometricTerm(cellCenter + vec3(0, cellSize, 0), triangleCenter, triangleNormal);
@@ -89,7 +86,7 @@ float getTriangleLight(uint2 data, uint age, vec3 cellCenter)
     g += getGeometricTerm(cellCenter + vec3(0, 0, cellSize), triangleCenter, triangleNormal);
     g += getGeometricTerm(cellCenter + vec3(0, 0, -cellSize), triangleCenter, triangleNormal);
     g /= 6.0;
-#endif
+
     triangleLight = calcBt709Luminance(lightFlux) * g * pow(1.0 - cb.neeCacheArgs.ageCullingSpeed, float(age) + 1);
     triangleLight = clamp(triangleLight, 0, floatMax / 32.0);
   }
