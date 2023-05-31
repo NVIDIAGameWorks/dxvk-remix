@@ -398,17 +398,6 @@ DxvkMemory::DxvkMemory() { }
       dedAllocPtr = nullptr;
     }
 
-    if (!result) {
-      Logger::warn(str::format(
-        "Requested memory allocation but failed to find space in preferred heaps, this alloc will be demoted to slower memory segments",
-        "\n  Size:      ", req->size,
-        "\n  Category:  ", category,
-        "\n  Alignment: ", req->alignment,
-        "\n  Mem property flags: ", "0x", std::hex, propertyFlags,
-        "\n  Mem allocate flags: ", "0x", std::hex, allocateFlags,
-        "\n  Mem types: ", "0x", std::hex, req->memoryTypeBits));
-    }
-
     // If that still didn't work, probe slower memory types as well
     VkMemoryPropertyFlags optFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
                                    | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
