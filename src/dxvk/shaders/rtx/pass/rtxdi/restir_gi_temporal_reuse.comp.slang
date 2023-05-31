@@ -73,7 +73,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
   // Load the radiance
   if (geometryFlags.primarySelectedIntegrationSurface)
   {
-    vec4 radianceAndDistance = RestirGIRadiance[threadIndex];
+    vec4 radianceAndDistance = RestirGIRadiance[thread_id];
     initialSample.radiance = sanitize(radianceAndDistance.rgb, vec3(0));
     indirectPathLength = radianceAndDistance.w; 
   }
@@ -83,7 +83,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
   initialSample.radiance = fireflyFiltering(initialSample.radiance, cb.fireflyFilteringLuminanceThreshold * fireflyFilteringFactor);
 
   uint8_t portalID;
-  ReSTIRGI_LoadHitGeometry(RestirGIHitGeometry, threadIndex, initialSample.position, initialSample.normal, portalID);
+  ReSTIRGI_LoadHitGeometry(RestirGIHitGeometry, thread_id, initialSample.position, initialSample.normal, portalID);
   initialSample.setPortalID(portalID);
 
   // Transform hit point when the indirect ray crosses a portal
@@ -102,24 +102,25 @@ void main(int2 thread_id : SV_DispatchThreadID)
   initialSample.setVirtualFraction(0.0);
   if (cb.enableReSTIRGIVirtualSample > 0 && surface.opaqueSurfaceMaterialInteraction.isotropicRoughness > RAB_RESTIR_GI_DELTA_ROUGHNESS)
   {
-    vec3 direction = initialSample.position - minimalSurfaceInteraction.position;
+    vec3 direction = initialSample.position - surface.minimalSurfaceInteraction.position;
     if (any(direction != 0) && indirectPathLength > length(direction) * 1.01)
     {
       // Extend virtual fraction length by 20% to prevent occlusion when the sample is used by neighbor pixels
       initialSample.setVirtualFraction((indirectPathLength - length(direction)) * 1.2);
-      initialSample.position = minimalSurfaceInteraction.position + normalize(direction) * indirectPathLength;
+      initialSample.position = surface.minimalSurfaceInteraction.position + normalize(direction) * indirectPathLength;
       initialSample.normal = -normalize(direction);
     }
   }
 
   ReSTIRGI_Reservoir inputReservoir = ReSTIRGI_Reservoir.createEmpty();
+  RAB_RandomSamplerState rng = RAB_InitRandomSampler(thread_id, cb.frameIdx, 2);
   if (cb.neeCacheArgs.enable && cb.neeCacheArgs.enableInFirstBounce)
   {
     inputReservoir = RAB_LoadGIReservoir(thread_id, ReSTIRGI_GetInitSamplePage());
   }
 
   float wiT = max(0.f, initialSample.avgWeight) * initialSample.M * RAB_GetGITargetPdfForSurface(initialSample.radiance, initialSample.position, surface);
-  inputReservoir.update(wiT, initialSample, RAB_GetNextRandom(rtxdiRNG));
+  inputReservoir.update(wiT, initialSample, RAB_GetNextRandom(rng));
 
   float pNew = RAB_GetGITargetPdfForSurface(inputReservoir.radiance, inputReservoir.position, surface);
   // Both inputs samples use MIS, no need to divide the result by M
@@ -127,9 +128,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
   inputReservoir.finalize(pNew, 1.0, inputReservoir.M);
 
   // Store complete initial sample
-  RAB_StoreGIReservoir(inputReservoir, threadIndex, ReSTIRGI_GetInitSamplePage());
-  
-  RAB_RandomSamplerState rng = RAB_InitRandomSampler(thread_id, cb.frameIdx, 2);
+  RAB_StoreGIReservoir(inputReservoir, thread_id, ReSTIRGI_GetInitSamplePage());
 
   // Reprojection
   // Note: Camera jittering not used for RTXDI. Also not using Ray and rayEvaluate here due to Ray using 16 bit
