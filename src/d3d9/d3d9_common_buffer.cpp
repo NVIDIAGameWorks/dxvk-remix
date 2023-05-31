@@ -90,21 +90,19 @@ namespace dxvk {
     VkMemoryPropertyFlags memoryFlags = 0;
 
     if (m_desc.Type == D3DRTYPE_VERTEXBUFFER) {
-      info.usage |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+      info.usage  |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
       info.stages |= VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
       info.access |= VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
-      memoryFlags |=  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
       if (m_parent->SupportsSWVP()) {
-        info.usage |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+        info.usage  |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
         info.stages |= VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT;
         info.access |= VK_ACCESS_SHADER_WRITE_BIT;
       }
     }
     else if (m_desc.Type == D3DRTYPE_INDEXBUFFER) {
-      info.usage |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+      info.usage  |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
       info.stages |= VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
       info.access |= VK_ACCESS_INDEX_READ_BIT;
-      memoryFlags |=VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     }
 
     if (GetMapMode() == D3D9_COMMON_BUFFER_MAP_MODE_DIRECT) {
@@ -115,8 +113,8 @@ namespace dxvk {
         info.access |= VK_ACCESS_HOST_READ_BIT;
 
       memoryFlags |= VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT
-        | VK_MEMORY_PROPERTY_HOST_CACHED_BIT
-        | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+                  | VK_MEMORY_PROPERTY_HOST_CACHED_BIT
+                  | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     }
     else {
       info.access |= VK_ACCESS_TRANSFER_WRITE_BIT;
