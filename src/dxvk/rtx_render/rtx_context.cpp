@@ -677,9 +677,6 @@ namespace dxvk {
     if (m_state.gp.state.rs.cullMode() == VkCullModeFlagBits::VK_CULL_MODE_FRONT_AND_BACK)
       return RtxGeometryStatus::Ignored;
 
-    if (m_queryManager.isQueryTypeActive(VK_QUERY_TYPE_OCCLUSION))
-      return RtxGeometryStatus::Ignored;
-
     // We'll need these later
     if (!m_rtState.geometry.futureGeometryHashes.valid())
       return RtxGeometryStatus::Ignored;

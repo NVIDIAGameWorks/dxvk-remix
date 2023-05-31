@@ -352,6 +352,11 @@ namespace dxvk {
       return { RtxGeometryStatus::Ignored, false };
     }
 
+    if (m_activeOcclusionQueries > 0) {
+      ONCE(Logger::info(str::format("[RTX-Compatibility-Info] Trying to raytrace an occlusion query. Ignoring.")));
+      return { RtxGeometryStatus::Rasterized, false };
+    }
+
     // We only look at RT 0 currently.
     const uint32_t kRenderTargetIndex = 0;
 

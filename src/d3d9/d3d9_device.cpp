@@ -6561,6 +6561,12 @@ namespace dxvk {
   void D3D9DeviceEx::Begin(D3D9Query* pQuery) {
     D3D9DeviceLock lock = LockDevice();
 
+    // NV-DXVK start: Don't raytrace occlusion queries
+    if (pQuery->GetType() == D3DQUERYTYPE_OCCLUSION) {
+      m_rtx.BeginOcclusionQuery();
+    }
+    // NV-DXVK end
+
     EmitCs([cQuery = Com<D3D9Query, false>(pQuery)](DxvkContext* ctx) {
       cQuery->Begin(ctx);
     });
@@ -6569,6 +6575,12 @@ namespace dxvk {
 
   void D3D9DeviceEx::End(D3D9Query* pQuery) {
     D3D9DeviceLock lock = LockDevice();
+
+    // NV-DXVK start: Don't raytrace occlusion queries
+    if (pQuery->GetType() == D3DQUERYTYPE_OCCLUSION) {
+      m_rtx.EndOcclusionQuery();
+    }
+    // NV-DXVK end
 
     EmitCs([cQuery = Com<D3D9Query, false>(pQuery)](DxvkContext* ctx) {
       cQuery->End(ctx);
