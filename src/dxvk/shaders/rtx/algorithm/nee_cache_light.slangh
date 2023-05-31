@@ -65,10 +65,10 @@ struct NEECacheUtils
     RayInteraction rayInteracton = {};
     rayInteracton.barycentricCoordinates = barycentricsToUint(NEECacheUtils.uvToBarycentrics(uv));
     rayInteracton.primitiveIndex = primitiveIndex;
-    rayInteracton.coneRadius = coneRadius * cb.neeCacheArgs.textureSampleFootprintSize;
+    rayInteracton.coneRadius = coneRadius * cb.neeCacheArgs.emissiveTextureSampleFootprintSize;
     Ray ray = {};
     ray.origin = shadingPosition;
-    ray.spreadAngle = spreadAngle * cb.neeCacheArgs.textureSampleFootprintSize;
+    ray.spreadAngle = spreadAngle * cb.neeCacheArgs.emissiveTextureSampleFootprintSize;
     SurfaceInteraction surfaceInteraction = surfaceInteractionCreate(surface, rayInteracton, ray, false, kFootprintFromRayOrigin);
   #if USE_SIMIPLIFIED_MODEL
     surfaceInteraction.positionError = 0;

@@ -47,7 +47,7 @@ namespace dxvk {
 
     void setRaytraceArgs(RaytraceArgs& raytraceArgs) const;
 
-    RW_RTX_OPTION("rtx.neeCache", bool, enabled, true, "Enable NEE cache. The integrator will perform NEE on emissive triangles stored in the cache, which usually have significant light contributions.");
+    RW_RTX_OPTION("rtx.neeCache", bool, enable, true, "Enable NEE cache. The integrator will perform NEE on emissive triangles, which usually have significant light contributions, stored in the cache.");
     RTX_OPTION("rtx.neeCache", bool, enableImportanceSampling, true, "Enable importance sampling.");
     RTX_OPTION("rtx.neeCache", bool, enableMIS, true, "Enable MIS.");
     RTX_OPTION("rtx.neeCache", bool, enableJittering, true, "Enable jittering in cell look up.");
@@ -55,7 +55,7 @@ namespace dxvk {
     RTX_OPTION("rtx.neeCache", bool, enableInSecondAndMoreBounces, true, "Enable NEE Cache in the second and more bounces.");
     RTX_OPTION("rtx.neeCache", bool, enableRandomReplacement, false, "Enable random replacement, in which old triangles will be randomly replaced by newly discovered ones. Otherwise, the ones with highest contribution scores will always be chosen.");
     RTX_OPTION("rtx.neeCache", float, range, 3000, "World space range.");
-    RTX_OPTION("rtx.neeCache", float, textureSampleFootprintSize, 1.0, "Texture sample footprint size.");
+    RTX_OPTION("rtx.neeCache", float, emissiveTextureSampleFootprintSize, 1.0, "Emissive texture sample footprint size.");
     RTX_OPTION("rtx.neeCache", float, ageCullingSpeed, 0.02, "This threshold determines culling speed of an old triangle. A triangle that is not detected for several frames will be deemed less important and culled quicker.");
   private:
     Rc<vk::DeviceFn> m_vkd;
