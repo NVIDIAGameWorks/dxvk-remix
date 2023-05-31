@@ -84,7 +84,7 @@ namespace dxvk {
     ImGui::Checkbox("Enable Importance Sampling", &enableImportanceSamplingObject());
     ImGui::Checkbox("Enable MIS", &enableMISObject());
     ImGui::Checkbox("Enable Jittering", &enableJitteringObject());
-    ImGui::Checkbox("Enable in First Bounce", &enableOnFirstBounceObject());
+    ImGui::Checkbox("Enable On First Bounce", &enableOnFirstBounceObject());
     ImGui::Checkbox("Enable After First Bounce", &enableAfterFirstBounceObject());
     ImGui::Checkbox("Enable Random Replacement", &enableRandomReplacementObject());
     ImGui::DragFloat("Emissive Texture Sample Footprint Scale", &emissiveTextureSampleFootprintScaleObject(), 0.001f, 0.f, 20.f, "%.3f");
