@@ -40,7 +40,6 @@ struct GeometryFlags
   bool firstSampledLobeIsSpecular;
   bool performPSTR;
   bool performPSRR;
-  bool isViewModelRay;
 
   uint8_t objectMask;
 };
@@ -62,8 +61,7 @@ uint geometryFlagsEncode(GeometryFlags geometryFlags)
     encodedFlags, geometryFlags.insideMedium ? (1 << 5) : 0);
   encodedFlags = packedFlagSet(
     encodedFlags, geometryFlags.firstSampledLobeIsSpecular ? (1 << 6) : 0);
-  encodedFlags = packedFlagSet(
-    encodedFlags, geometryFlags.isViewModelRay ? (1 << 7) : 0);
+  // 7 bit unused
   encodedFlags = packedFlagSet(
     encodedFlags, geometryFlags.performPSTR ? (1 << 8) : 0);
   encodedFlags = packedFlagSet(
@@ -100,7 +98,6 @@ GeometryFlags geometryFlagsDecode(uint16_t encodedFlags)
 
   geometryFlags.insideMedium = packedFlagGet(encodedFlags, (1 << 5));
   geometryFlags.firstSampledLobeIsSpecular = packedFlagGet(encodedFlags, (1 << 6));
-  geometryFlags.isViewModelRay = packedFlagGet(encodedFlags, (1 << 7));
   geometryFlags.performPSTR = packedFlagGet(encodedFlags, (1 << 8));
   geometryFlags.performPSRR = packedFlagGet(encodedFlags, (1 << 9));
 

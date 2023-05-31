@@ -47,7 +47,7 @@ bool isRayMaskEmpty(uint8_t rayMask)
 void updateStateOnPortalCrossing(inout PortalSpace2BitsType portalSpace, 
                                  inout uint8_t rayMask, 
                                  uint8_t rayPortalIndex, 
-                                 bool isViewModelRayOrStartedFromViewModel)
+                                 bool hasRayOriginatedFromViewModel)
 {
   PortalSpace2BitsType newPortalSpace = 0;
   uint8_t newDynamicMask = 0;
@@ -97,10 +97,7 @@ void updateStateOnPortalCrossing(inout PortalSpace2BitsType portalSpace,
   }
 
 #ifdef RAY_TRACING_PRIMARY_RAY
-  if (isViewModelRayOrStartedFromViewModel || !cb.enableViewModelCompositionOnTop) 
-  {
-    rayMask = (rayMask & ~OBJECT_MASK_ALL_VIEWMODEL) | (newDynamicMask & OBJECT_MASK_ALL_VIEWMODEL);
-  }
+  rayMask = (rayMask & ~OBJECT_MASK_ALL_VIEWMODEL) | (newDynamicMask & OBJECT_MASK_ALL_VIEWMODEL);
 
   if (cb.enablePlayerModelInPrimarySpace)
     newDynamicMask |= OBJECT_MASK_PLAYER_MODEL;
@@ -109,7 +106,7 @@ void updateStateOnPortalCrossing(inout PortalSpace2BitsType portalSpace,
   rayMask &= ~OBJECT_MASK_ALL_VIEWMODEL;
 
   // Keep including ViewModel instances as long as the ray originated from a ViewModel surface
-  if (isViewModelRayOrStartedFromViewModel)
+  if (hasRayOriginatedFromViewModel)
     rayMask = rayMask | (newDynamicMask & OBJECT_MASK_ALL_VIEWMODEL);
 #endif
 
@@ -121,12 +118,12 @@ void updateStateOnPortalCrossing(inout PortalSpace2BitsType portalSpace,
 void updateStateOnPortalCrossing(inout HackGenericState resolveVertexState, uint8_t rayPortalIndex)
 {
 #ifdef RAY_TRACING_PRIMARY_RAY
-  const bool isViewModelRayOrStartedFromViewModel = resolveVertexState.isViewModelRay;
+  const bool hasRayOriginatedFromViewModel = false;
 #else // Indirect Rays
-  const bool isViewModelRayOrStartedFromViewModel = resolveVertexState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
+  const bool hasRayOriginatedFromViewModel = resolveVertexState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
 #endif
 
-  updateStateOnPortalCrossing(resolveVertexState.portalSpace, resolveVertexState.rayMask, rayPortalIndex, isViewModelRayOrStartedFromViewModel);
+  updateStateOnPortalCrossing(resolveVertexState.portalSpace, resolveVertexState.rayMask, rayPortalIndex, hasRayOriginatedFromViewModel);
 }
 
 bool evaluateOpaqueApproximations(
@@ -557,10 +554,7 @@ void resolveVertex(
     polymorphicSurfaceMaterialInteraction =
       polymorphicSurfaceMaterialInteractionCreateInternal(rayPortalSurfaceMaterialInteraction);
 
-  #ifdef RAY_TRACING_PRIMARY_RAY
-    // Don't render portal outline in ViewModel pass
-    if (!resolveVertexState.isViewModelRay)
-  #endif
+    // Render Portal outline
     {
       const bool portalFadeInEffect = cb.enablePortalFadeInEffect;
       const float16_t tFactor = portalFadeInEffect ? float16_t((surface.tFactor >> 24) & 0xff) / 255.0 : float16_t(0.0);
@@ -681,20 +675,9 @@ void findLowestBin(
 static const float kUnorderedResolveRayLengthening = 1.001;
 
 // Translates the ray mask for the main TLAS into the ray mask for the unordered TLAS.
-// For rays that target ViewModel instances, the ViewModel mask is preserved, other bits are set to 0.
-// For rays that target regular geometry, only the provided unorderedRayMask is used.
-uint8_t convertPrimaryRayMaskToUnordered(bool isViewModelRay, uint8_t primaryRayMask, uint8_t unorderedRayMask)
+uint8_t convertPrimaryRayMaskToUnordered(uint8_t primaryRayMask, uint8_t unorderedRayMask)
 {
-  if (cb.enableViewModelCompositionOnTop)
-  {
-    return isViewModelRay
-      ? primaryRayMask & OBJECT_MASK_ALL_VIEWMODEL
-      : unorderedRayMask;
-  }
-  else
-  {
-    return (primaryRayMask & OBJECT_MASK_ALL_DYNAMIC) | unorderedRayMask;
-  }
+  return (primaryRayMask & OBJECT_MASK_ALL_DYNAMIC) | unorderedRayMask;
 }
 
 // Handles unordered Resolve operations within the resolve loop which do not depend on the typical ordered execution

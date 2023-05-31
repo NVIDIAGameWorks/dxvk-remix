@@ -245,7 +245,6 @@ namespace dxvk {
       RTX_OPTION("rtx.viewModel", float, scale, 1.0f, "Scale for view models. Minimize to prevent clipping.");
       RTX_OPTION("rtx.viewModel", bool, enableVirtualInstances, true, "If true, virtual instances are created to render the view models behind a portal.");
       RTX_OPTION("rtx.viewModel", bool, perspectiveCorrection, true, "If true, apply correction to view models (e.g. different FOV is used for view models).");
-      RTX_OPTION("rtx.viewModel", bool, separateRays, false, "If true, launch additional primary rays to render view models on top of everything.");
     } viewModel;
 
   public:
@@ -347,12 +346,25 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, enablePreviousTLAS, true, "");
     RTX_OPTION("rtx", float, sceneScale, 1, "Defines the ratio of rendering unit (1cm) to game unit, i.e. sceneScale = 1cm / GameUnit.");
 
-    // Anti-Culling Options
-    RTX_OPTION("rtx.antiCulling", bool, enableAntiCulling, false, "[Experimental] Enable Anti-Culling, allow extending life of objects outside the anti-culling frustum.");
-    // TODO: This should be a threshold of memory size
-    RTX_OPTION("rtx.antiCulling", uint32_t, numKeepInstances, 1000, "[Experimental] When enable anti-culling, the maximum number of RayTracing instances we hold in the BVH. If the total number of RT instances pass this threshold, instances pass their original life length (it may be extended after anti-culling) will be removed.");
-    RTX_OPTION("rtx.antiCulling", float, antiCullingFovScale, 1.15f, "[Experimental] Scalar of the FOV of Anti-Culling Frustum.");
-
+    struct AntiCulling {
+      struct Object {
+        friend class ImGUI;
+        friend class RtxOptions;
+        // Anti-Culling Options
+        RTX_OPTION_ENV("rtx.antiCulling.object", bool, enable, false, "RTX_ANTI_CULLING_OBJECTS", "[Experimental] Extends lifetime of objects that go outside the camera frustum (anti-culling frustum).");
+        // TODO: This should be a threshold of memory size
+        RTX_OPTION("rtx.antiCulling.object", uint32_t, numObjectsToKeep, 1000, "[Experimental] The maximum number of RayTracing instances to keep when Anti-Culling is enabled.");
+        RTX_OPTION("rtx.antiCulling.object", float, fovScale, 1.15f, "[Experimental] Scalar of the FOV of Anti-Culling Frustum.");
+      };
+      struct Light {
+        friend class ImGUI;
+        friend class RtxOptions;
+        RTX_OPTION_ENV("rtx.antiCulling.light", bool, enable, false, "RTX_ANTI_CULLING_LIGHTS", "[Experimental] Enable Anti-Culling for lights.");
+        RTX_OPTION("rtx.antiCulling.light", uint32_t, numLightsToKeep, 1000, "[Experimental] Maximum number of lights to keep when Anti-Culling is enabled.");
+        RTX_OPTION("rtx.antiCulling.light", uint32_t, numFramesToExtendLightLifetime, 1000, "[Experimental] Maximum number of frames to keep  when Anti-Culling is enabled. Make sure neither set this too low then the anti-culling won't work, nor too high which will hurt the performance.");
+        RTX_OPTION("rtx.antiCulling.light", float, fovScale, 1.0f, "[Experimental] Scalar of the FOV of lights Anti-Culling Frustum.");
+      };
+    };
     // Resolve Options
     // Todo: Potentially document that after a number of resolver interactions is exhausted the next interaction will be treated as a hit regardless.
     RTX_OPTION("rtx", uint8_t, primaryRayMaxInteractions, 32,
@@ -1173,7 +1185,6 @@ namespace dxvk {
     float getViewModelScale() const { return viewModel.scale(); }
     bool isViewModelVirtualInstancesEnabled() const { return viewModel.enableVirtualInstances(); }
     bool isViewModelPerspectiveCorrectionEnabled() const { return viewModel.perspectiveCorrection(); }
-    bool isViewModelSeparateRaysEnabled() const { return viewModel.separateRays(); }
 
     // Resolve Options
     uint8_t getPrimaryRayMaxInteractions() const { return primaryRayMaxInteractions(); }
@@ -1286,7 +1297,7 @@ namespace dxvk {
     float getNativeMipBias() const { return nativeMipBias(); }
     bool getAnisotropicFilteringEnabled() const { return useAnisotropicFiltering(); }
     float getMaxAnisotropySamples() const { return maxAnisotropySamples(); }
-  
+
     // Developer Options
     bool getDeveloperOptionsEnabled() const { return enableDeveloperOptions(); }
     ivec2 getDrawCallRange() { Vector2i v = drawCallRange(); return ivec2{v.x, v.y}; };

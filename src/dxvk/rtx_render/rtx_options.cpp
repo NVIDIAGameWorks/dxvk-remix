@@ -286,7 +286,7 @@ namespace dxvk {
   }
 
   bool RtxOptions::needsMeshBoundingBox() {
-    return enableAntiCulling() ||
+    return AntiCulling::Object::enable() ||
            TerrainBaker::needsTerrainBaking();
   }
 }
