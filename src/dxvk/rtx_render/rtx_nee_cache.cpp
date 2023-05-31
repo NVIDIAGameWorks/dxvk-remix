@@ -87,7 +87,7 @@ namespace dxvk {
     ImGui::Checkbox("Enable in First Bounce", &enableOnFirstBounceObject());
     ImGui::Checkbox("Enable After First Bounce", &enableAfterFirstBounceObject());
     ImGui::Checkbox("Enable Random Replacement", &enableRandomReplacementObject());
-    ImGui::DragFloat("Emissive Texture Sample Footprint Size", &emissiveTextureSampleFootprintSizeObject(), 0.001f, 0.f, 20.f, "%.3f");
+    ImGui::DragFloat("Emissive Texture Sample Footprint Scale", &emissiveTextureSampleFootprintScaleObject(), 0.001f, 0.f, 20.f, "%.3f");
     ImGui::DragFloat("Age Culling Speed", &ageCullingSpeedObject(), 0.001f, 0.0f, 0.99f, "%.3f");
     ImGui::DragFloat("Cache Range", &rangeObject(), 1.f, 0.1f, 10000000.0f, "%.3f");
   }
@@ -100,7 +100,7 @@ namespace dxvk {
     constants.neeCacheArgs.enableAfterFirstBounce = enableAfterFirstBounce();
     constants.neeCacheArgs.enableRandomReplacement = enableRandomReplacement();
     constants.neeCacheArgs.range = range();
-    constants.neeCacheArgs.emissiveTextureSampleFootprintSize = emissiveTextureSampleFootprintSize();
+    constants.neeCacheArgs.emissiveTextureSampleFootprintScale = emissiveTextureSampleFootprintScale();
     constants.neeCacheArgs.ageCullingSpeed = ageCullingSpeed();
     constants.neeCacheArgs.enableJittering = enableJittering();
   }
