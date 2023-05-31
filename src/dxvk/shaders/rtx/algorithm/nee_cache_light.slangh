@@ -92,6 +92,8 @@ struct NEECacheUtils
     lightSample.radiance = 0;
     if (dot(lightSample.normal, shadingPosition - lightSample.position) < 0)
     {
+      // Flip the normal if it's not facing the shading point,
+      // because backfacing triangles are also considered.
       lightSample.normal *= -1;
     }
 
