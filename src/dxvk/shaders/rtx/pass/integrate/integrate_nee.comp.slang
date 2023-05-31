@@ -198,7 +198,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
 
   // Perform next event estimation on cached emissive triangle list
   // Also add NEE sample to sample reservoir
-  if (cb.neeCacheArgs.enable && cb.neeCacheArgs.enableInFirstBounce)
+  if (cb.neeCacheArgs.enable && cb.neeCacheArgs.enableOnFirstBounce)
   {
     ReSTIRGI_Reservoir resultReservoir = ReSTIRGI_Reservoir.createEmpty();
     NEECell cell = NEECache.findCell(minimalSurfaceInteraction.position, true);

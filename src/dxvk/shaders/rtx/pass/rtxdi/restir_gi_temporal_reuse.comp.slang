@@ -114,7 +114,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
 
   ReSTIRGI_Reservoir inputReservoir = ReSTIRGI_Reservoir.createEmpty();
   RAB_RandomSamplerState rng = RAB_InitRandomSampler(thread_id, cb.frameIdx, 2);
-  if (cb.neeCacheArgs.enable && cb.neeCacheArgs.enableInFirstBounce)
+  if (cb.neeCacheArgs.enable && cb.neeCacheArgs.enableOnFirstBounce)
   {
     inputReservoir = RAB_LoadGIReservoir(thread_id, ReSTIRGI_GetInitSamplePage());
   }
