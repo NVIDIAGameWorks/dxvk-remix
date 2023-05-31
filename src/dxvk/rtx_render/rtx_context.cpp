@@ -1364,7 +1364,6 @@ namespace dxvk {
   }
 
   void RtxContext::dispatchNeeCache(const Resources::RaytracingOutput& rtOutput) {
-    ZoneScoped;
     NeeCachePass& neeCache = m_common->metaNeeCache();
     neeCache.dispatch(this, rtOutput);
   }
