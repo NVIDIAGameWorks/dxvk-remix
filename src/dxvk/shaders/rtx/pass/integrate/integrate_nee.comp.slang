@@ -200,6 +200,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   // Also add NEE sample to sample reservoir
   if (cb.neeCacheArgs.enable && cb.neeCacheArgs.enableInFirstBounce)
   {
+    ReSTIRGI_Reservoir resultReservoir = ReSTIRGI_Reservoir.createEmpty();
     NEECell cell = NEECache.findCell(minimalSurfaceInteraction.position, true);
     if (cell.isValid())
     {
@@ -252,13 +253,12 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
             neeSample.setVirtualFraction(0.0);
 
             float wi = RAB_GetGITargetPdfForSurface(neeSample.radiance, neeSample.position, surface);
-            ReSTIRGI_Reservoir resultReservoir = ReSTIRGI_Reservoir.createEmpty();
             resultReservoir.update(wi, neeSample, 0.5);
-            RAB_StoreGIReservoir(resultReservoir, threadIndex, ReSTIRGI_GetInitSamplePage());
           }
         }
       }
     }
+    RAB_StoreGIReservoir(resultReservoir, threadIndex, ReSTIRGI_GetInitSamplePage());
   }
 
   showDebugViews(threadIndex, geometryFlags, minimalSurfaceInteraction, surface);
