@@ -189,24 +189,19 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction = polymorphicSurfaceMaterialInteractionReadFromGBuffer(
     threadIndex, PrimaryWorldShadingNormal, PrimaryPerceptualRoughness, PrimaryAlbedo, PrimaryBaseReflectivity, SharedMaterialData0, SharedMaterialData1);
 
-  if (polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) != surfaceMaterialTypeOpaque)
-  {
-    return;
-  }
-
-  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
-
   // Perform next event estimation on cached emissive triangle list
   // Also add NEE sample to sample reservoir
-  if (cb.neeCacheArgs.enable && cb.neeCacheArgs.enableOnFirstBounce)
+  ReSTIRGI_Reservoir resultReservoir = ReSTIRGI_Reservoir.createEmpty();
+  if (cb.neeCacheArgs.enable && cb.neeCacheArgs.enableOnFirstBounce &&
+      polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) != surfaceMaterialTypeOpaque)
   {
-    ReSTIRGI_Reservoir resultReservoir = ReSTIRGI_Reservoir.createEmpty();
     NEECell cell = NEECache.findCell(minimalSurfaceInteraction.position, true);
     if (cell.isValid())
     {
       int candidateCount = cell.getCandidateCount();
       if (candidateCount > 0)
       {
+        OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
         float lightObjectPdf = 0;
         NEECandidate candidate = cell.sampleCandidate(getNextSampleBlueNoise(rng), lightObjectPdf);
         int surfaceIndex = candidate.getSurfaceID();
@@ -258,8 +253,8 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
         }
       }
     }
-    RAB_StoreGIReservoir(resultReservoir, threadIndex, ReSTIRGI_GetInitSamplePage());
   }
+  RAB_StoreGIReservoir(resultReservoir, threadIndex, ReSTIRGI_GetInitSamplePage());
 
   showDebugViews(threadIndex, geometryFlags, minimalSurfaceInteraction, surface);
 }
