@@ -77,8 +77,8 @@ struct PathState
   uint8_t indirectLightPortalID;
   bool restirGiHasFoundRoughSurface;
 
-  float16_t accumulatedHitDistance;
-  float16_t solidAnglePdf;
+  float accumulatedHitDistance;
+  float solidAnglePdf;
 
   // Calculates an RNG offset at a start of a bounce set in the path state
   uint calculateRNGOffset(uint sampleOffset) 
@@ -113,7 +113,8 @@ struct MemoryPathState : IPayload
               // Unused (4b)
 
   uint coneRadiusAndHitDistance; // float16_t, float16_t
-  uint accumulatedHitDistanceSolidAnglePdf;
+  float accumulatedHitDistance;
+  float solidAnglePdf;
 
   static MemoryPathState pack(PathState pathState)
   {
@@ -154,9 +155,8 @@ struct MemoryPathState : IPayload
 
     ret.encodedRadiance = encodedRadiance;
     ret.encodedThroughput = encodedThroughput;
-    ret.accumulatedHitDistanceSolidAnglePdf =
-     (uint32_t(float16BitsToUint16(pathState.accumulatedHitDistance)) << 16) |
-      uint32_t(float16BitsToUint16(pathState.solidAnglePdf));
+    ret.accumulatedHitDistance = pathState.accumulatedHitDistance;
+    ret.solidAnglePdf = pathState.solidAnglePdf;
     
     return ret;
   }
@@ -190,8 +190,8 @@ struct MemoryPathState : IPayload
     pathState.rayMask = (data1 >> 8) & 0xff;
     pathState.portalSpace = (data1 >> 16) & 0b11;
     pathState.indirectLightPortalID = (data1 >> 18) & 0b11;
-    pathState.accumulatedHitDistance = uint16BitsToHalf(accumulatedHitDistanceSolidAnglePdf >> 16);
-    pathState.solidAnglePdf = uint16BitsToHalf(accumulatedHitDistanceSolidAnglePdf);
+    pathState.accumulatedHitDistance = accumulatedHitDistance;
+    pathState.solidAnglePdf = solidAnglePdf;
 
     return pathState;
   }
