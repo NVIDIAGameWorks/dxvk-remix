@@ -23,6 +23,7 @@
 #include <filesystem>
 #include <nvapi.h>
 #include "rtx_terrain_baker.h"
+#include "rtx_render/rtx_nee_cache.h"
 
 namespace dxvk {
   std::unique_ptr<RtxOptions> RtxOptions::pInstance = nullptr;
@@ -201,7 +202,7 @@ namespace dxvk {
       denoiseDirectAndIndirectLightingSeparatelyRef() = false;
       minReplacementTextureMipMapLevelRef() = 1;
       enableUnorderedResolveInIndirectRaysRef() = false;
-      useNEECacheRef() = false;
+      NeeCachePass::enableRef() = false;
     };
 
     assert(graphicsPreset() != GraphicsPreset::Auto);
@@ -214,7 +215,7 @@ namespace dxvk {
       denoiseDirectAndIndirectLightingSeparatelyRef() = true;
       minReplacementTextureMipMapLevelRef() = 0;
       enableUnorderedResolveInIndirectRaysRef() = true;
-      useNEECacheRef() = true;
+      NeeCachePass::enableRef() = true;
 
       russianRouletteMaxContinueProbabilityRef() = 0.9f;
       russianRoulette1stBounceMinContinueProbabilityRef() = 0.6f;
@@ -226,7 +227,7 @@ namespace dxvk {
       denoiseDirectAndIndirectLightingSeparatelyRef() = false;
       minReplacementTextureMipMapLevelRef() = 1;
       enableUnorderedResolveInIndirectRaysRef() = true;
-      useNEECacheRef() = false;
+      NeeCachePass::enableRef() = false;
 
       russianRouletteMaxContinueProbabilityRef() = 0.9f;
       russianRoulette1stBounceMinContinueProbabilityRef() = 0.6f;
