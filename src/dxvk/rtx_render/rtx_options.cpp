@@ -201,6 +201,7 @@ namespace dxvk {
       denoiseDirectAndIndirectLightingSeparatelyRef() = false;
       minReplacementTextureMipMapLevelRef() = 1;
       enableUnorderedResolveInIndirectRaysRef() = false;
+      useNEECacheRef() = false;
     };
 
     assert(graphicsPreset() != GraphicsPreset::Auto);
@@ -213,6 +214,7 @@ namespace dxvk {
       denoiseDirectAndIndirectLightingSeparatelyRef() = true;
       minReplacementTextureMipMapLevelRef() = 0;
       enableUnorderedResolveInIndirectRaysRef() = true;
+      useNEECacheRef() = true;
 
       russianRouletteMaxContinueProbabilityRef() = 0.9f;
       russianRoulette1stBounceMinContinueProbabilityRef() = 0.6f;
@@ -224,6 +226,7 @@ namespace dxvk {
       denoiseDirectAndIndirectLightingSeparatelyRef() = false;
       minReplacementTextureMipMapLevelRef() = 1;
       enableUnorderedResolveInIndirectRaysRef() = true;
+      useNEECacheRef() = false;
 
       russianRouletteMaxContinueProbabilityRef() = 0.9f;
       russianRoulette1stBounceMinContinueProbabilityRef() = 0.6f;
