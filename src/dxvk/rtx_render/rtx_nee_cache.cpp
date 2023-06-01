@@ -80,7 +80,6 @@ namespace dxvk {
   NeeCachePass::~NeeCachePass() { }
 
   void NeeCachePass::showImguiSettings() {
-    ImGui::Checkbox("Enable NEE Cache", &enableObject());
     ImGui::Checkbox("Enable Importance Sampling", &enableImportanceSamplingObject());
     ImGui::Checkbox("Enable MIS", &enableMISObject());
     ImGui::Checkbox("Enable Jittering", &enableJitteringObject());
@@ -92,8 +91,7 @@ namespace dxvk {
     ImGui::DragFloat("Cache Range", &rangeObject(), 1.f, 0.1f, 10000000.0f, "%.3f");
   }
 
-  void NeeCachePass::setRaytraceArgs(RaytraceArgs& constants) const {    
-    constants.neeCacheArgs.enable = enable();
+  void NeeCachePass::setRaytraceArgs(RaytraceArgs& constants) const {
     constants.neeCacheArgs.enableImportanceSampling = enableImportanceSampling();
     constants.neeCacheArgs.enableMIS = enableMIS();
     constants.neeCacheArgs.enableOnFirstBounce = enableOnFirstBounce();

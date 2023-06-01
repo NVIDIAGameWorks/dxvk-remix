@@ -1161,7 +1161,8 @@ namespace dxvk {
     constants.enableReSTIRGIDemodulatedTargetFunction = restirGI.useDemodulatedTargetFunction();
 
 
-    m_common->metaNeeCache().setRaytraceArgs(constants);
+    constants.neeCacheArgs.enable = RtxOptions::Get()->useNEECache();
+    m_common->metaNeeCache().setRaytraceArgs(constants);    
     constants.surfaceCount = getSceneManager().getAccelManager().getSurfaceCount();
 
     auto* cameraTeleportDirectionInfo = getSceneManager().getRayPortalManager().getCameraTeleportationRayPortalDirectionInfo();
