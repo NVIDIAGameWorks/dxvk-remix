@@ -193,7 +193,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   // Also add NEE sample to sample reservoir
   ReSTIRGI_Reservoir resultReservoir = ReSTIRGI_Reservoir.createEmpty();
   if (cb.neeCacheArgs.enable && cb.neeCacheArgs.enableOnFirstBounce &&
-      polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) != surfaceMaterialTypeOpaque)
+      polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque)
   {
     NEECell cell = NEECache.findCell(minimalSurfaceInteraction.position, true);
     if (cell.isValid())
