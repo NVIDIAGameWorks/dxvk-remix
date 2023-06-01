@@ -291,7 +291,6 @@ namespace dxvk {
     RTX_OPTION_ENV("rtx", bool, useReSTIRGI, true, "DXVK_USE_RESTIR_GI",
                    "A flag indicating if ReSTIR GI should be used, true enables ReSTIR GI, false disables it and relies on typical GI sampling.\n"
                    "ReSTIR GI provides improved indirect path sampling over typical importance sampling and should usually be enabled for better indirect diffuse and specular GI quality at the cost of some performance.");
-    RTX_OPTION("rtx", bool, useNEECache, true, "Enable NEE cache. The integrator will perform NEE on emissive triangles, which usually have significant light contributions, stored in the cache.");
     RTX_OPTION_ENV("rtx", UpscalerType, upscalerType, UpscalerType::DLSS, "DXVK_UPSCALER_TYPE", "Upscaling boosts performance with varying degrees of image quality tradeoff depending on the type of upscaler and the quality mode/preset.");
     RTX_OPTION("rtx", float, resolutionScale, 0.75f, "");
     RTX_OPTION("rtx", bool, forceCameraJitter, false, "");
