@@ -162,6 +162,13 @@ namespace dxvk {
       */
     void addLights(const D3DLIGHT9* pLights, const uint32_t numLights);
 
+    /**
+      * \brief Updates the current fixed function fog state on context
+      *
+      * \param [in] fogState: fog state information
+      */
+    void setFogState(const FogState& fogState);
+
     void clearRenderTarget(const Rc<DxvkImageView>& imageView, VkImageAspectFlags clearAspects, VkClearValue clearValue);
     void clearImageView(const Rc<DxvkImageView>& imageView, VkOffset3D offset, VkExtent3D extent, VkImageAspectFlags aspect, VkClearValue value);
 

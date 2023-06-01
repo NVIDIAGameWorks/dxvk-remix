@@ -43,6 +43,21 @@ namespace dxvk {
     void Initialize();
 
     /**
+      * \brief: Signal that an occlusion query has started for the current device
+      */
+    void BeginOcclusionQuery() {
+      ++m_activeOcclusionQueries;
+    }
+
+    /**
+      * \brief: Signal that an occlusion query has ended for the current device
+      */
+    void EndOcclusionQuery() {
+      --m_activeOcclusionQueries;
+      assert(m_activeOcclusionQueries >= 0);
+    }
+
+    /**
       * \brief: Signal that a parameter needs to be updated for RTX
       *
       * \param [in] flag: parameter that requires updating
@@ -138,6 +153,8 @@ namespace dxvk {
 
     bool m_rtxInjectTriggered = false;
     bool m_forceGeometryCopy = false;
+
+    int m_activeOcclusionQueries = 0;
 
     Rc<DxvkBuffer> m_vsVertexCaptureData;
 
