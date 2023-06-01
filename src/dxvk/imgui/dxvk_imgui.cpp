@@ -1074,7 +1074,7 @@ namespace dxvk {
       restirGiRayQuery.biasCorrectionModeRef() = ReSTIRGIBiasCorrection::PairwiseRaytrace;
       restirGiRayQuery.useReflectionReprojectionRef() = true;
       common->metaComposite().enableStochasticAlphaBlendRef() = true;
-      neeCache.enableRef() = RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Ultra;
+      RtxOptions::Get()->useNEECacheRef() = RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Ultra;
       postFx.enableRef() = true;
     } else if (RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Medium ||
                RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Low) {
@@ -1082,7 +1082,7 @@ namespace dxvk {
       restirGiRayQuery.biasCorrectionModeRef() = ReSTIRGIBiasCorrection::BRDF;
       restirGiRayQuery.useReflectionReprojectionRef() = false;
       common->metaComposite().enableStochasticAlphaBlendRef() = false;
-      neeCache.enableRef() = false;
+      RtxOptions::Get()->useNEECacheRef() = false;
       postFx.enableRef() = false;
     }
 
@@ -1920,6 +1920,7 @@ namespace dxvk {
 
       if (ImGui::CollapsingHeader("NEE Cache", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
+        ImGui::Checkbox("Enable NEE Cache", &RtxOptions::Get()->useNEECacheObject());
         ImGui::PushID("NEE Cache");
         auto& neeCache = common->metaNeeCache();
         neeCache.showImguiSettings();
