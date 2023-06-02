@@ -417,6 +417,9 @@ namespace dxvk {
         // RTXDI
         m_common->metaRtxdiRayQuery().dispatch(this, rtOutput);
         
+        // NEE Cache
+        dispatchNeeCache(rtOutput);
+        
         // Integration Raytracing
         dispatchIntegrate(rtOutput);
 
@@ -1133,6 +1136,10 @@ namespace dxvk {
     constants.reSTIRGIMISParallaxAmount = restirGI.parallaxAmount();
     constants.enableReSTIRGIDemodulatedTargetFunction = restirGI.useDemodulatedTargetFunction();
 
+
+    m_common->metaNeeCache().setRaytraceArgs(constants);
+    constants.surfaceCount = getSceneManager().getAccelManager().getSurfaceCount();
+
     auto* cameraTeleportDirectionInfo = getSceneManager().getRayPortalManager().getCameraTeleportationRayPortalDirectionInfo();
     constants.teleportationPortalIndex = cameraTeleportDirectionInfo ? cameraTeleportDirectionInfo->entryPortalInfo.portalIndex + 1 : 0;
 
@@ -1324,12 +1331,18 @@ namespace dxvk {
     
     m_common->metaPathtracerIntegrateDirect().dispatch(this, rtOutput);
     m_common->metaPathtracerIntegrateIndirect().dispatch(this, rtOutput);
+    m_common->metaPathtracerIntegrateIndirect().dispatchNEE(this, rtOutput);
   }
   
   void RtxContext::dispatchDemodulate(const Resources::RaytracingOutput& rtOutput) {
     ScopedCpuProfileZone();
     DemodulatePass& demodulate = m_common->metaDemodulate();
     demodulate.dispatch(this, rtOutput);
+  }
+
+  void RtxContext::dispatchNeeCache(const Resources::RaytracingOutput& rtOutput) {
+    NeeCachePass& neeCache = m_common->metaNeeCache();
+    neeCache.dispatch(this, rtOutput);
   }
   
   void RtxContext::dispatchReferenceDenoise(const Resources::RaytracingOutput& rtOutput, float frameTimeSecs) {

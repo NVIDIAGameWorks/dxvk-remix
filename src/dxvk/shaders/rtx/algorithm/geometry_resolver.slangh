@@ -36,6 +36,7 @@
 #include "rtx/algorithm/resolve.slangh"
 #include "rtx/algorithm/volume_lighting.slangh"
 #include "rtx/pass/post_fx/post_fx_motion_blur_geometry_flags.slangh"
+#include "rtx/algorithm/nee_cache_light.slangh"
 
 // Geometry Resolver Helper Constants
 
@@ -536,9 +537,44 @@ void geometryResolverOutputDebugView(
     {
       emissiveRadiance = translucentSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction).emissiveRadiance;
     }
-    
+
     storeInDebugView(pixelCoordinate, emissiveRadiance);
 
+    break;
+
+  case DEBUG_VIEW_EMISSIVE_TRIANGLE_INTENSITY:
+  {
+    vec3 lightIntensity = f16vec3(0.0f);
+
+    if (materialType == surfaceMaterialTypeOpaque)
+    {
+      vec3 triangleCenter;
+      f16vec3 triangleNormal;
+      NEECacheUtils.calculateTriangleLightIntensity(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex, triangleCenter, triangleNormal, lightIntensity);
+    }
+
+    storeInDebugView(pixelCoordinate, lightIntensity);
+    break;
+  }
+  case DEBUG_VIEW_NEE_CACHE_SAMPLE_RADIANCE:
+  {
+    vec3 sampleRadiance = f16vec3(0.0f);
+
+    if (materialType == surfaceMaterialTypeOpaque)
+    {
+      float lightObjectPdf = 1.0;
+      vec3 baryCentrics = uintToBarycentrics(rayInteraction.barycentricCoordinates);
+      LightSample lightSample = NEECacheUtils.calculateLightSampleFromTriangle(
+        rayInteraction.surfaceIndex, rayInteraction.primitiveIndex, baryCentrics.yz, lightObjectPdf, cameraGetWorldPosition(cb.camera), rayInteraction.coneRadius, ray.spreadAngle);      
+      sampleRadiance = lightSample.radiance;
+    }
+
+    storeInDebugView(pixelCoordinate, sampleRadiance);
+    break;
+  }
+
+  case DEBUG_VIEW_SURFACE_AREA:
+    storeInDebugView(pixelCoordinate, surfaceInteraction.triangleArea);
     break;
   case DEBUG_VIEW_THIN_FILM_THICKNESS:
     float16_t thinFilmThickness = float16_t(0.0f);

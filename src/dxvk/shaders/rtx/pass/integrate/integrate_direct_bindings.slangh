@@ -75,6 +75,15 @@ RWStructuredBuffer<RTXDI_PackedReservoir> RtxdiReservoirBuffer;
 layout(r16f, binding = INTEGRATE_DIRECT_BINDING_PRIMARY_RTXDI_ILLUMINANCE_OUTPUT)
 RWTexture2D<float> PrimaryRtxdiIlluminance;
 
+layout(binding = INTEGRATE_DIRECT_BINDING_NEE_CACHE)
+RWByteAddressBuffer NeeCache;
+
+layout(binding = INTEGRATE_DIRECT_BINDING_NEE_CACHE_TASK)
+RWByteAddressBuffer NeeCacheTask;
+
+layout(rg32ui, binding = INTEGRATE_DIRECT_BINDING_NEE_CACHE_THREAD_TASK)
+RWTexture2D<uint2> NeeCacheThreadTask;
+
 // Primary Inputs/Outputs
 
 layout(rgb10_a2, binding = INTEGRATE_DIRECT_BINDING_PRIMARY_BASE_REFLECTIVITY_INPUT_OUTPUT)

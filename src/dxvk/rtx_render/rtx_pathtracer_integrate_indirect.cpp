@@ -27,6 +27,7 @@
 
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/integrate/integrate_indirect_binding_indices.h"
+#include "rtx/pass/integrate/integrate_nee_binding_indices.h"
 #include "rtx/concept/surface_material/surface_material_hitgroup.h"
 
 #include <rtx_shaders/integrate_indirect_raygen.h>
@@ -36,6 +37,7 @@
 #include <rtx_shaders/integrate_indirect_material_opaque_translucent_closestHit.h>
 #include <rtx_shaders/integrate_indirect_material_rayPortal_closestHit.h>
 #include <rtx_shaders/integrate_indirect_miss.h>
+#include <rtx_shaders/integrate_nee.h>
 
 #include "dxvk_scoped_annotation.h"
 #include "rtx_opacity_micromap_manager.h"
@@ -80,6 +82,11 @@ namespace dxvk {
         RW_TEXTURE2D(INTEGRATE_INDIRECT_BINDING_RESTIR_GI_RADIANCE_OUTPUT)
         RW_TEXTURE2D(INTEGRATE_INDIRECT_BINDING_RESTIR_GI_HIT_GEOMETRY_OUTPUT)
 
+
+        RW_STRUCTURED_BUFFER(INTEGRATE_INDIRECT_BINDING_NEE_CACHE)
+        RW_STRUCTURED_BUFFER(INTEGRATE_INDIRECT_BINDING_NEE_CACHE_TASK)
+        RW_TEXTURE2D(INTEGRATE_INDIRECT_BINDING_NEE_CACHE_THREAD_TASK)
+
         RW_TEXTURE2D(INTEGRATE_INSTRUMENTATION)
 
       END_PARAMETER()
@@ -98,6 +105,47 @@ namespace dxvk {
       BEGIN_PARAMETER()
       END_PARAMETER()
     };
+
+    class IntegrateNEEShader : public ManagedShader {
+      SHADER_SOURCE(IntegrateNEEShader, VK_SHADER_STAGE_COMPUTE_BIT, integrate_nee)
+      
+      BINDLESS_ENABLED()
+
+      BEGIN_PARAMETER()
+        COMMON_RAYTRACING_BINDINGS
+
+        TEXTURE2D(INTEGRATE_NEE_BINDING_SHARED_FLAGS_INPUT)
+        TEXTURE2D(INTEGRATE_NEE_BINDING_SHARED_MATERIAL_DATA0_INPUT)
+        TEXTURE2D(INTEGRATE_NEE_BINDING_SHARED_MATERIAL_DATA1_INPUT)
+
+        TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT)
+        TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_WORLD_INTERPOLATED_NORMAL_INPUT)
+        TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_PERCEPTUAL_ROUGHNESS_INPUT)
+        TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_HIT_DISTANCE_INPUT)
+        TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_ALBEDO_INPUT)
+        TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_VIEW_DIRECTION_INPUT)
+        TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_CONE_RADIUS_INPUT)
+        TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_WORLD_POSITION_INPUT)
+        TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_POSITION_ERROR_INPUT)
+        TEXTURE2D(INTEGRATE_NEE_BINDING_INDIRECT_RADIANCE_HIT_DISTANCE_INPUT)
+        TEXTURE2D(INTEGRATE_NEE_BINDING_HIT_GEOMETRY_INPUT)
+        TEXTURE2D(INTEGRATE_NEE_BINDING_RADIANCE_INPUT)
+
+
+        RW_TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_BASE_REFLECTIVITY_INPUT_OUTPUT)
+
+        RW_TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_INDIRECT_DIFFUSE_RADIANCE_HIT_DISTANCE_OUTPUT)
+        RW_TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_INDIRECT_SPECULAR_RADIANCE_HIT_DISTANCE_OUTPUT)
+        STRUCTURED_BUFFER(INTEGRATE_NEE_BINDING_RESTIR_GI_RESERVOIR_OUTPUT)
+        RW_TEXTURE2D(INTEGRATE_NEE_BINDING_BSDF_FACTOR2_OUTPUT)
+
+        RW_STRUCTURED_BUFFER(INTEGRATE_NEE_BINDING_NEE_CACHE)
+        RW_STRUCTURED_BUFFER(INTEGRATE_NEE_BINDING_NEE_CACHE_TASK)
+        RW_TEXTURE2D(INTEGRATE_NEE_BINDING_NEE_CACHE_THREAD_TASK)
+      END_PARAMETER()
+    };
+
+    PREWARM_SHADER_PIPELINE(IntegrateNEEShader);
   }
 
   DxvkPathtracerIntegrateIndirect::DxvkPathtracerIntegrateIndirect(DxvkDevice* device) : m_device(device) {
@@ -122,7 +170,6 @@ namespace dxvk {
   }
 
   void DxvkPathtracerIntegrateIndirect::dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
-    ScopedGpuProfileZone(ctx, "Integrate Indirect Raytracing");
 
     const uint32_t frameIdx = ctx->getDevice()->getCurrentFrameId();
 
@@ -167,6 +214,10 @@ namespace dxvk {
     ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_RESTIR_GI_RADIANCE_OUTPUT, rtOutput.m_restirGIRadiance.view(Resources::AccessType::Write), nullptr);
     ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_RESTIR_GI_HIT_GEOMETRY_OUTPUT, rtOutput.m_restirGIHitGeometry.view, nullptr);
 
+    ctx->bindResourceBuffer(INTEGRATE_INDIRECT_BINDING_NEE_CACHE, DxvkBufferSlice(rtOutput.m_neeCache, 0, rtOutput.m_neeCache->info().size));
+    ctx->bindResourceBuffer(INTEGRATE_INDIRECT_BINDING_NEE_CACHE_TASK, DxvkBufferSlice(rtOutput.m_neeCacheTask, 0, rtOutput.m_neeCache->info().size));
+    ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_NEE_CACHE_THREAD_TASK, rtOutput.m_neeCacheThreadTask.view, nullptr);
+
     // Aliased resources
     // m_indirectRadiance writes the actual output carried forward and therefore it must be bound with write access last
     ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_THROUGHPUT_CONE_RADIUS_INPUT, rtOutput.m_indirectThroughputConeRadius.view(Resources::AccessType::Read), nullptr);
@@ -181,21 +232,68 @@ namespace dxvk {
     const bool serEnabled = RtxOptions::Get()->isShaderExecutionReorderingInPathtracerIntegrateIndirectEnabled();
     const bool ommEnabled = RtxOptions::Get()->getEnableOpacityMicromap();
 
-    switch (RtxOptions::Get()->getRenderPassIntegrateIndirectRaytraceMode()) {
-    case RaytraceMode::RayQuery:
-      VkExtent3D workgroups = util::computeBlockCount(rayDims, VkExtent3D { 16, 8, 1 });
-      ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getComputeShader());
-      ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
-      break;
-    case RaytraceMode::RayQueryRayGen:
-      ctx->bindRaytracingPipelineShaders(getPipelineShaders(true, serEnabled, ommEnabled));
-      ctx->traceRays(rayDims.width, rayDims.height, rayDims.depth);
-      break;
-    case RaytraceMode::TraceRay:
-      ctx->bindRaytracingPipelineShaders(getPipelineShaders(false, serEnabled, ommEnabled));
-      ctx->traceRays(rayDims.width, rayDims.height, rayDims.depth);
-      break;
+    // Trace indirect ray
+    {
+      ScopedGpuProfileZone(ctx, "Integrate Indirect Raytracing");
+      switch (RtxOptions::Get()->getRenderPassIntegrateIndirectRaytraceMode()) {
+      case RaytraceMode::RayQuery:
+        VkExtent3D workgroups = util::computeBlockCount(rayDims, VkExtent3D { 16, 8, 1 });
+        ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getComputeShader());
+        ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
+        break;
+      case RaytraceMode::RayQueryRayGen:
+        ctx->bindRaytracingPipelineShaders(getPipelineShaders(true, serEnabled, ommEnabled));
+        ctx->traceRays(rayDims.width, rayDims.height, rayDims.depth);
+        break;
+      case RaytraceMode::TraceRay:
+        ctx->bindRaytracingPipelineShaders(getPipelineShaders(false, serEnabled, ommEnabled));
+        ctx->traceRays(rayDims.width, rayDims.height, rayDims.depth);
+        break;
+      }
     }
+  }
+
+
+  void DxvkPathtracerIntegrateIndirect::dispatchNEE(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
+    // Sample triangles in the NEE cache and perform NEE
+    // Construct restir input sample
+    const auto rayDims = rtOutput.m_compositeOutputExtent;
+    VkExtent3D workgroups = util::computeBlockCount(rayDims, VkExtent3D { 8, 8, 1 });
+
+    ScopedGpuProfileZone(ctx, "Integrate NEE");
+    ctx->bindCommonRayTracingResources(rtOutput);
+
+    ctx->bindResourceView(INTEGRATE_NEE_BINDING_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);
+    ctx->bindResourceView(INTEGRATE_NEE_BINDING_SHARED_MATERIAL_DATA0_INPUT, rtOutput.m_sharedMaterialData0.view, nullptr);
+    ctx->bindResourceView(INTEGRATE_NEE_BINDING_SHARED_MATERIAL_DATA1_INPUT, rtOutput.m_sharedMaterialData1.view, nullptr);
+
+    ctx->bindResourceView(INTEGRATE_NEE_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT, rtOutput.m_primaryWorldShadingNormal.view, nullptr);
+    ctx->bindResourceView(INTEGRATE_NEE_BINDING_PRIMARY_WORLD_INTERPOLATED_NORMAL_INPUT, rtOutput.m_primaryWorldInterpolatedNormal.view, nullptr);
+    ctx->bindResourceView(INTEGRATE_NEE_BINDING_PRIMARY_PERCEPTUAL_ROUGHNESS_INPUT, rtOutput.m_primaryPerceptualRoughness.view, nullptr);
+    ctx->bindResourceView(INTEGRATE_NEE_BINDING_PRIMARY_HIT_DISTANCE_INPUT, rtOutput.m_primaryHitDistance.view, nullptr);
+    ctx->bindResourceView(INTEGRATE_NEE_BINDING_PRIMARY_ALBEDO_INPUT, rtOutput.m_primaryAlbedo.view, nullptr);
+    ctx->bindResourceView(INTEGRATE_NEE_BINDING_PRIMARY_VIEW_DIRECTION_INPUT, rtOutput.m_primaryViewDirection.view, nullptr);
+    ctx->bindResourceView(INTEGRATE_NEE_BINDING_PRIMARY_CONE_RADIUS_INPUT, rtOutput.m_primaryConeRadius.view, nullptr);
+    ctx->bindResourceView(INTEGRATE_NEE_BINDING_PRIMARY_WORLD_POSITION_INPUT, rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view, nullptr);
+    ctx->bindResourceView(INTEGRATE_NEE_BINDING_PRIMARY_POSITION_ERROR_INPUT, rtOutput.m_primaryPositionError.view, nullptr);
+    ctx->bindResourceView(INTEGRATE_NEE_BINDING_INDIRECT_RADIANCE_HIT_DISTANCE_INPUT, rtOutput.m_indirectRadianceHitDistance.view(Resources::AccessType::Read), nullptr);
+    ctx->bindResourceView(INTEGRATE_NEE_BINDING_HIT_GEOMETRY_INPUT, rtOutput.m_restirGIHitGeometry.view, nullptr);
+    ctx->bindResourceView(INTEGRATE_NEE_BINDING_RADIANCE_INPUT, rtOutput.m_restirGIRadiance.view(Resources::AccessType::Read), nullptr);
+
+    ctx->bindResourceView(INTEGRATE_NEE_BINDING_PRIMARY_BASE_REFLECTIVITY_INPUT_OUTPUT, rtOutput.m_primaryBaseReflectivity.view(Resources::AccessType::ReadWrite), nullptr);
+
+    ctx->bindResourceView(INTEGRATE_NEE_BINDING_PRIMARY_INDIRECT_DIFFUSE_RADIANCE_HIT_DISTANCE_OUTPUT, rtOutput.m_primaryIndirectDiffuseRadiance.view(Resources::AccessType::Write), nullptr);
+    ctx->bindResourceView(INTEGRATE_NEE_BINDING_PRIMARY_INDIRECT_SPECULAR_RADIANCE_HIT_DISTANCE_OUTPUT, rtOutput.m_primaryIndirectSpecularRadiance.view(Resources::AccessType::Write), nullptr);
+
+    ctx->bindResourceBuffer(INTEGRATE_NEE_BINDING_RESTIR_GI_RESERVOIR_OUTPUT, DxvkBufferSlice(rtOutput.m_restirGIReservoirBuffer, 0, rtOutput.m_restirGIReservoirBuffer->info().size));
+    ctx->bindResourceView(INTEGRATE_NEE_BINDING_BSDF_FACTOR2_OUTPUT, rtOutput.m_bsdfFactor2.view, nullptr);
+
+    ctx->bindResourceBuffer(INTEGRATE_NEE_BINDING_NEE_CACHE, DxvkBufferSlice(rtOutput.m_neeCache, 0, rtOutput.m_neeCache->info().size));
+    ctx->bindResourceBuffer(INTEGRATE_NEE_BINDING_NEE_CACHE_TASK, DxvkBufferSlice(rtOutput.m_neeCacheTask, 0, rtOutput.m_neeCache->info().size));
+    ctx->bindResourceView(INTEGRATE_NEE_BINDING_NEE_CACHE_THREAD_TASK, rtOutput.m_neeCacheThreadTask.view, nullptr);
+
+    ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, IntegrateNEEShader::getShader());
+    ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
   }
 
   DxvkRaytracingPipelineShaders DxvkPathtracerIntegrateIndirect::getPipelineShaders(const bool useRayQuery,

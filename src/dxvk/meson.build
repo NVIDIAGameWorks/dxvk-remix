@@ -243,6 +243,8 @@ dxvk_src = files([
   'rtx_render/rtx_mod_manager.h',
   'rtx_render/rtx_mod_usd.cpp',
   'rtx_render/rtx_mod_usd.h',
+  'rtx_render/rtx_nee_cache.cpp',
+  'rtx_render/rtx_nee_cache.h',
   'rtx_render/rtx_ngx_wrapper.cpp',
   'rtx_render/rtx_ngx_wrapper.h',
   'rtx_render/rtx_nis.cpp',

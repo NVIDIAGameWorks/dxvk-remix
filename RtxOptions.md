@@ -308,6 +308,16 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.minTranslucentTransmissionLobeSamplingProbability|float|0.25|The minimum allowed non\-zero value for translucent transmission probability weights\.|
 |rtx.nativeMipBias|float|0|Specifies a mipmapping level bias to add to all material texture filtering\. Stacks with the upscaling mip bias\.<br>Mipmaps are determined based on how far away a texture is, using this can bias the desired level in a lower quality direction \(positive bias\), or a higher quality direction with potentially more aliasing \(negative bias\)\.<br>Note that mipmaps are also important for good spatial caching of textures, so too far negative of a mip bias may start to significantly affect performance, therefore changing this value is not recommended|
 |rtx.nearPlaneOverride|float|0.1|The near plane value to use for the Camera when the near plane override is enabled\.<br>Only takes effect when rtx\.enableNearPlaneOverride is enabled, see that option for more information about why this is useful\.|
+|rtx.neeCache.ageCullingSpeed|float|0.02|This threshold determines culling speed of an old triangle\. A triangle that is not detected for several frames will be deemed less important and culled quicker\.|
+|rtx.neeCache.emissiveTextureSampleFootprintScale|float|1|Emissive texture sample footprint scale\.|
+|rtx.neeCache.enable|bool|True|Enable NEE cache\. The integrator will perform NEE on emissive triangles, which usually have significant light contributions, stored in the cache\.|
+|rtx.neeCache.enableAfterFirstBounce|bool|True|Enable NEE Cache on a second and higher bounces\.|
+|rtx.neeCache.enableImportanceSampling|bool|True|Enable importance sampling\.|
+|rtx.neeCache.enableJittering|bool|True|Enable jittering in cell look up\.|
+|rtx.neeCache.enableMIS|bool|True|Enable MIS\.|
+|rtx.neeCache.enableOnFirstBounce|bool|True|Enable NEE Cache on a first bounce\.|
+|rtx.neeCache.enableRandomReplacement|bool|False|Enable random replacement, in which old triangles will be randomly replaced by newly discovered ones\. Otherwise, the ones with highest contribution scores will always be chosen\.|
+|rtx.neeCache.range|float|3000|World space range\.|
 |rtx.nisPreset|int|1|Adjusts NIS scaling factor, trades quality for performance\.|
 |rtx.numFramesToKeepBLAS|int|4||
 |rtx.numFramesToKeepGeometryData|int|5||

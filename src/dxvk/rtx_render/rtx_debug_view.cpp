@@ -87,6 +87,8 @@ namespace dxvk {
         {DEBUG_VIEW_ANISOTROPIC_ROUGHNESS, "Anisotropic Roughness"},
         {DEBUG_VIEW_OPACITY, "Opacity"},
         {DEBUG_VIEW_EMISSIVE_RADIANCE, "Emissive Radiance"},
+        {DEBUG_VIEW_EMISSIVE_TRIANGLE_INTENSITY, "Emissive Triangle Intensity"},
+        {DEBUG_VIEW_SURFACE_AREA, "Surface Area"},
         {DEBUG_VIEW_THIN_FILM_THICKNESS, "Thin Film Thickness"},
 
         {DEBUG_VIEW_IS_BAKED_TERRAIN, "Terrain: Is Baked Terrain (RGS only)"},
@@ -119,6 +121,10 @@ namespace dxvk {
         {DEBUG_VIEW_RESTIR_GI_SPATIAL_REUSE, "ReSTIR GI Spatial Reuse"},
         {DEBUG_VIEW_RESTIR_GI_FINAL_SHADING, "ReSTIR GI Final Shading MIS Weight"},
         {DEBUG_VIEW_RESTIR_GI_VIRTUAL_HIT_T, "ReSTIR GI Virtual Hit Distance"},
+
+        {DEBUG_VIEW_NEE_CACHE_CANDIDATE_ID, "NEE Cache Candidate"},
+        {DEBUG_VIEW_NEE_CACHE_HISTOGRAM, "NEE Cache Histogram"},
+        {DEBUG_VIEW_NEE_CACHE_SAMPLE_RADIANCE, "NEE Cache Sample Radiance"},
 
         {DEBUG_VIEW_RTXDI_GRADIENTS, "RTXDI Gradients"},
         {DEBUG_VIEW_RTXDI_CONFIDENCE, "RTXDI Confidence"},
