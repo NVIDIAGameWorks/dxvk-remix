@@ -2145,7 +2145,6 @@ namespace dxvk {
       ImGui::DragInt("Min Prims in Static BLAS", &RtxOptions::Get()->minPrimsInStaticBLASObject(), 1.f, 100, 0);
       ImGui::Checkbox("Portals: Virtual Instance Matching", &RtxOptions::Get()->useRayPortalVirtualInstanceMatchingObject());
       ImGui::Checkbox("Portals: Fade In Effect", &RtxOptions::Get()->enablePortalFadeInEffectObject());
-      ImGui::Checkbox("Reset Buffer Cache Every Frame", &RtxOptions::Get()->resetBufferCacheOnEveryFrameObject());
       ImGui::Unindent();
     }
 

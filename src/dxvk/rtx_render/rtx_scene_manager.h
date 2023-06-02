@@ -39,7 +39,6 @@
 #include "rtx_camera_manager.h"
 #include "rtx_draw_call_cache.h"
 #include "rtx_sparse_unique_cache.h"
-#include "rtx_sparse_ref_count_cache.h"
 #include "rtx_light_manager.h"
 #include "rtx_instance_manager.h"
 #include "rtx_accel_manager.h"
@@ -66,11 +65,25 @@ public:
 
 protected:
   struct BufferHashFn {
-    size_t operator() (const RaytraceBuffer& slice) const {
-      return slice.getSliceHandle().hash();
+    [[nodiscard]] size_t operator()(const RaytraceBuffer& slice) const noexcept {
+      if (!slice.defined()) {
+        return kEmptyHash;
+      }
+
+      auto hashValue = [](auto value, XXH64_hash_t seed) {
+        return XXH3_64bits_withSeed(&value, sizeof(value), seed);
+      };
+
+      XXH64_hash_t h = kEmptyHash;
+
+      h = hashValue(reinterpret_cast<uintptr_t>(slice.buffer()->getBufferRaw()), h);
+      h = hashValue(slice.getDynamicOffset(), h);
+      h = hashValue(slice.length(), h);
+
+      return h;
     }
   };
-  SparseRefCountCache<RaytraceBuffer, BufferHashFn> m_bufferCache;
+  SparseUniqueCache<RaytraceBuffer, BufferHashFn> m_bufferCache;
 
   struct SurfaceMaterialHashFn {
     size_t operator() (const RtSurfaceMaterial& mat) const {
@@ -119,9 +132,6 @@ public:
   bool isPreviousFrameSceneAvailable() const { return m_previousFrameSceneAvailable && getSurfaceMappingBuffer().ptr() != nullptr; }
 
   const std::vector<RaytraceBuffer>& getBufferTable() const { return m_bufferCache.getObjectTable(); }
-  const std::vector<RtSurfaceMaterial>& getSurfaceMaterialTable() const { return m_surfaceMaterialCache.getObjectTable(); }
-  const std::vector<RtVolumeMaterial>& getVolumeMaterialTable() const { return m_volumeMaterialCache.getObjectTable(); }
-  const DrawCallCache& getDrawCallCache() const { return m_drawCallCache; }
   const std::vector<RtInstance*>& getInstanceTable() const { return m_instanceManager.getInstanceTable(); }
   
   const InstanceManager& getInstanceManager() const { return m_instanceManager; }
@@ -185,17 +195,15 @@ private:
 
   // Consumes a draw call state and updates the scene state accordingly
   uint64_t processDrawCallState(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmd, const DrawCallState& blasInput, const MaterialData* replacementMaterialData);
-  // Updates ref counts for old and new buffers
-  void updateBufferCache(const RaytraceGeometry& oldGeoData, RaytraceGeometry& newGeoData);
-  // Decrements the ref count for buffers associated with the specified geometry data
-  void freeBufferCache(const RaytraceGeometry& geoData);
+  // Updates ref counts for new buffers
+  void updateBufferCache(RaytraceGeometry& newGeoData);
 
   // Called whenever a new BLAS scene object is added to the cache
   ObjectCacheState onSceneObjectAdded(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmd, const DrawCallState& drawCallState, BlasEntry* pBlas);
   // Called whenever a BLAS scene object is updated
   ObjectCacheState onSceneObjectUpdated(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmd, const DrawCallState& drawCallState, BlasEntry* pBlas);
   // Called whenever a BLAS scene object is destroyed
-  void onSceneObjectDestroyed(const BlasEntry& pBlas, const XXH64_hash_t& hash);
+  void onSceneObjectDestroyed(const BlasEntry& pBlas);
 
   // Called whenever a new instance has been added to the database
   void onInstanceAdded(const RtInstance& instance);
