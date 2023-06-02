@@ -99,6 +99,7 @@ struct Surface
   bool isAnimatedWater;
   bool isClipPlaneEnabled;
   bool isMatte;
+  bool isTextureFactorBlend;
 
   mat4x3 objectToWorld;
   mat4x3 prevObjectToWorld;

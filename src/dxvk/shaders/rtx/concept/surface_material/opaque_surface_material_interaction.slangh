@@ -180,7 +180,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   albedo = gammaToLinear(albedo);
 
   // Apply vertex color via texture operations
-  if (applyTextureOperations) 
+  if (applyTextureOperations)
   {
     // "Normalize" vertex color to remove lighting contribution in different vertices.
     // We assume the diffuse term contributes most lighting. Therefore, vertex color = diffuseColor * (N*L).
@@ -199,7 +199,10 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
     f16vec3 textureArg1, textureArg2;
     chooseTextureArgument(textureArg1, surface.textureColorArg1Source, albedo, surfaceInteraction.vertexColor.rgb, tFactor.rgb, f16vec3(1.0));
     chooseTextureArgument(textureArg2, surface.textureColorArg2Source, albedo, surfaceInteraction.vertexColor.rgb, tFactor.rgb, f16vec3(1.0));
-    chooseTextureOperationColor(albedo, surface.textureColorOperation, textureArg1, textureArg2);  
+    chooseTextureOperationColor(albedo, surface.textureColorOperation, textureArg1, textureArg2);
+    if (surface.isTextureFactorBlend) {
+      albedo *= tFactor.rgb;
+    }
   }
 
   // Apply material modifiers/overrides

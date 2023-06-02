@@ -148,6 +148,7 @@ struct RtSurface {
     flags |= isAnimatedWater ?               (1 << 24) : 0;
     flags |= isClipPlaneEnabled ?            (1 << 25) : 0;
     flags |= isMatte ?                       (1 << 26) : 0;
+    flags |= isTextureFactorBlend ?          (1 << 27) : 0;
 
     writeGPUHelper(data, offset, flags);
 
@@ -251,6 +252,7 @@ struct RtSurface {
   bool isStatic = false;
   bool isAnimatedWater = false;
   bool isClipPlaneEnabled = false;
+  bool isTextureFactorBlend = false;
 
   RtTextureArgSource textureColorArg1Source = RtTextureArgSource::Texture;
   RtTextureArgSource textureColorArg2Source = RtTextureArgSource::None;
@@ -1193,6 +1195,7 @@ struct LegacyMaterialData {
   DxvkRtTextureOperation textureAlphaOperation = DxvkRtTextureOperation::SelectArg1;
   uint32_t tFactor = 0xffffffff;  // Value for D3DRS_TEXTUREFACTOR, default value of is opaque white
   bool isBlendedTerrain = false;
+  bool isTextureFactorBlend = false;
 
 private:
   friend class RtxContext;
