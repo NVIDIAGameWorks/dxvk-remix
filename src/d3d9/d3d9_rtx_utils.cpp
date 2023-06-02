@@ -72,8 +72,7 @@ namespace dxvk {
     }
   }
 
-
-  DxvkRtxTextureStageState createTextureStageState(const Direct3DState9& d3d9State, const uint32_t stageIdx) {
+  DxvkRtxTextureStageState createTextureStageState(const Direct3DState9& d3d9State, const uint32_t stageIdx, const bool useTextureFactorBlending) {
     DxvkRtxTextureStageState stage;
     stage.colorOperation = convertTextureOp(d3d9State.textureStages[stageIdx][DXVK_TSS_COLOROP]);
     stage.colorArg1Source = convertTextureArg(d3d9State.textureStages[stageIdx][DXVK_TSS_COLORARG1]);
@@ -87,6 +86,7 @@ namespace dxvk {
 
     stage.transformFlags = d3d9State.textureStages[stageIdx][DXVK_TSS_TEXTURETRANSFORMFLAGS];
     stage.transform = d3d9State.transforms[GetTransformIndex(D3DTS_TEXTURE0) + stageIdx];
+    stage.useTextureFactorBlend = useTextureFactorBlending;
     return stage;
   }
 

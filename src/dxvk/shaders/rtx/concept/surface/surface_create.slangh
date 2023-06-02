@@ -72,15 +72,16 @@ Surface surfaceCreate(MemorySurface memorySurface)
   // way alpha is meant to be interpreted as a floating point value.
   surface.alphaTestReferenceValue = float16_t(uint8_t((flagData >> 6) & 0xFFu)) / float16_t(0xFFu);
   surface.blendType = uint8_t((flagData >> 14) & surfaceBlendTypeMask);
-  surface.invertedBlend      = (flagData & (1u << 18)) != 0u;
-  surface.isBlendingDisabled = (flagData & (1u << 19)) != 0u;
-  surface.isEmissiveBlend    = (flagData & (1u << 20)) != 0u;
-  surface.isParticle         = (flagData & (1u << 21)) != 0u;
-  surface.isDecal            = (flagData & (1u << 22)) != 0u;
-  surface.isBlendedTerrain   = (flagData & (1u << 23)) != 0u;
-  surface.isAnimatedWater    = (flagData & (1u << 24)) != 0u;
-  surface.isClipPlaneEnabled = (flagData & (1u << 25)) != 0u;
-  surface.isMatte            = (flagData & (1u << 26)) != 0u;
+  surface.invertedBlend        = (flagData & (1u << 18)) != 0u;
+  surface.isBlendingDisabled   = (flagData & (1u << 19)) != 0u;
+  surface.isEmissiveBlend      = (flagData & (1u << 20)) != 0u;
+  surface.isParticle           = (flagData & (1u << 21)) != 0u;
+  surface.isDecal              = (flagData & (1u << 22)) != 0u;
+  surface.isBlendedTerrain     = (flagData & (1u << 23)) != 0u;
+  surface.isAnimatedWater      = (flagData & (1u << 24)) != 0u;
+  surface.isClipPlaneEnabled   = (flagData & (1u << 25)) != 0u;
+  surface.isMatte              = (flagData & (1u << 26)) != 0u;
+  surface.isTextureFactorBlend = (flagData & (1u << 27)) != 0u;
 
   const vec4 prevObjectToWorldData0 = uintBitsToFloat(memorySurface.data3);
   const vec4 prevObjectToWorldData1 = uintBitsToFloat(memorySurface.data4);
