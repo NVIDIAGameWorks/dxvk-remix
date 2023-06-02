@@ -183,8 +183,9 @@ struct NEECell
     for (; i < count; ++i)
     {
       candidate = getCandidate(i);
-      pdf = candidate.getSampleThreshold() - lastCdf;
-      lastCdf = pdf;
+      float cdf = candidate.getSampleThreshold();
+      pdf = cdf - lastCdf;
+      lastCdf = cdf;
       if (candidate.getSampleThreshold() >= sampleThreshold)
       {
         return candidate;
