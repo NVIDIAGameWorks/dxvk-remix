@@ -418,7 +418,6 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.renderPassIntegrateDirectRaytraceMode|int|0|The ray tracing mode to use for the Direct Lighting pass which applies lighting to the primary/secondary surfaces\.|
 |rtx.renderPassIntegrateIndirectRaytraceMode|int|2|The ray tracing mode to use for the Indirect Lighting pass which applies lighting to the primary/secondary surfaces\.|
 |rtx.replaceDirectSpecularHitTWithIndirectSpecularHitT|bool|True||
-|rtx.resetBufferCacheOnEveryFrame|bool|True||
 |rtx.resetDenoiserHistoryOnSettingsChange|bool|False||
 |rtx.resolutionScale|float|0.75||
 |rtx.resolveOpaquenessThreshold|float|0.996078|A threshold for which any opacity value above is considered totally opaque\.|

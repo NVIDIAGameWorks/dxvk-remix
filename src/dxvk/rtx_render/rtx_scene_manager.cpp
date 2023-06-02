@@ -175,7 +175,7 @@ namespace dxvk {
         const size_t oldestFrame = m_device->getCurrentFrameId() - RtxOptions::Get()->numFramesToKeepGeometryData();
         for (auto& iter = entries.begin(); iter != entries.end(); ) {
           if (iter->second.frameLastTouched < oldestFrame) {
-            onSceneObjectDestroyed(iter->second, iter->first);
+            onSceneObjectDestroyed(iter->second);
             iter = entries.erase(iter);
           } else {
             ++iter;
@@ -397,7 +397,7 @@ namespace dxvk {
     }
 
     // Update buffers in the cache
-    updateBufferCache(inOutGeometry, output);
+    updateBufferCache(output);
 
     // Finalize our modified geometry data to the output
     inOutGeometry = output;
@@ -417,8 +417,7 @@ namespace dxvk {
     m_instanceManager.onFrameEnd();
     m_previousFrameSceneAvailable = true;
 
-    if (RtxOptions::Get()->resetBufferCacheOnEveryFrame())
-      m_bufferCache.clear();
+    m_bufferCache.clear();
 
     m_materialTextureSampler = nullptr;
 
@@ -665,117 +664,43 @@ namespace dxvk {
   void SceneManager::clearFogState() {
     m_fog = FogState();
   }
-  
-  void SceneManager::freeBufferCache(const RaytraceGeometry& geoData) {
+
+  void SceneManager::updateBufferCache(RaytraceGeometry& newGeoData) {
     ScopedCpuProfileZone();
-    if (geoData.indexBuffer.defined()) {
-      m_bufferCache.removeRef(geoData.indexBuffer);
+    if (newGeoData.indexBuffer.defined()) {
+      newGeoData.indexBufferIndex = m_bufferCache.track(newGeoData.indexBuffer);
+    } else {
+      newGeoData.indexBufferIndex = kSurfaceInvalidBufferIndex;
     }
-    if (geoData.normalBuffer.defined()) {
-      m_bufferCache.removeRef(geoData.normalBuffer);
+
+    if (newGeoData.normalBuffer.defined()) {
+      newGeoData.normalBufferIndex = m_bufferCache.track(newGeoData.normalBuffer);
+    } else {
+      newGeoData.normalBufferIndex = kSurfaceInvalidBufferIndex;
     }
-    if (geoData.color0Buffer.defined()) {
-      m_bufferCache.removeRef(geoData.color0Buffer);
+
+    if (newGeoData.color0Buffer.defined()) {
+      newGeoData.color0BufferIndex = m_bufferCache.track(newGeoData.color0Buffer);
+    } else {
+      newGeoData.color0BufferIndex = kSurfaceInvalidBufferIndex;
     }
-    if (geoData.texcoordBuffer.defined()) {
-      m_bufferCache.removeRef(geoData.texcoordBuffer);
+
+    if (newGeoData.texcoordBuffer.defined()) {
+      newGeoData.texcoordBufferIndex = m_bufferCache.track(newGeoData.texcoordBuffer);
+    } else {
+      newGeoData.texcoordBufferIndex = kSurfaceInvalidBufferIndex;
     }
-    if (geoData.positionBuffer.defined()) {
-      m_bufferCache.removeRef(geoData.positionBuffer);
+
+    if (newGeoData.positionBuffer.defined()) {
+      newGeoData.positionBufferIndex = m_bufferCache.track(newGeoData.positionBuffer);
+    } else {
+      newGeoData.positionBufferIndex = kSurfaceInvalidBufferIndex;
     }
-    if (geoData.previousPositionBuffer.defined()) {
-      m_bufferCache.removeRef(geoData.previousPositionBuffer);
-    }
-  }
 
-  void SceneManager::updateBufferCache(const RaytraceGeometry& oldGeoData, RaytraceGeometry& newGeoData) {
-    ScopedCpuProfileZone();
-    if (RtxOptions::Get()->resetBufferCacheOnEveryFrame()) {
-      if (newGeoData.indexBuffer.defined())
-        newGeoData.indexBufferIndex = m_bufferCache.addRef(newGeoData.indexBuffer);
-      else
-        newGeoData.indexBufferIndex = kSurfaceInvalidBufferIndex;
-
-      if (newGeoData.normalBuffer.defined())
-        newGeoData.normalBufferIndex = m_bufferCache.addRef(newGeoData.normalBuffer);
-      else
-        newGeoData.normalBufferIndex = kSurfaceInvalidBufferIndex;
-
-      if (newGeoData.color0Buffer.defined())
-        newGeoData.color0BufferIndex = m_bufferCache.addRef(newGeoData.color0Buffer);
-      else
-        newGeoData.color0BufferIndex = kSurfaceInvalidBufferIndex;
-
-      if (newGeoData.texcoordBuffer.defined())
-        newGeoData.texcoordBufferIndex = m_bufferCache.addRef(newGeoData.texcoordBuffer);
-      else
-        newGeoData.texcoordBufferIndex = kSurfaceInvalidBufferIndex;
-
-      if (newGeoData.positionBuffer.defined())
-        newGeoData.positionBufferIndex = m_bufferCache.addRef(newGeoData.positionBuffer);
-      else
-        newGeoData.positionBufferIndex = kSurfaceInvalidBufferIndex;
-
-      if (newGeoData.previousPositionBuffer.defined())
-        newGeoData.previousPositionBufferIndex = m_bufferCache.addRef(newGeoData.previousPositionBuffer);
-      else
-        newGeoData.previousPositionBufferIndex = kSurfaceInvalidBufferIndex;
-    }
-    else {
-      // If buffers have changed, free the old buffer and track the new one
-      if (oldGeoData.indexBuffer != newGeoData.indexBuffer) {
-        if (newGeoData.indexBuffer.defined())
-          newGeoData.indexBufferIndex = m_bufferCache.addRef(newGeoData.indexBuffer);
-        if (oldGeoData.indexBuffer.defined())
-          m_bufferCache.removeRef(oldGeoData.indexBuffer);
-      } else {
-        newGeoData.indexBufferIndex = oldGeoData.indexBufferIndex;
-      }
-
-      if (oldGeoData.normalBuffer != newGeoData.normalBuffer) {
-        if (newGeoData.normalBuffer.defined())
-          newGeoData.normalBufferIndex = m_bufferCache.addRef(newGeoData.normalBuffer);
-        if (oldGeoData.normalBuffer.defined())
-          m_bufferCache.removeRef(oldGeoData.normalBuffer);
-      } else {
-        newGeoData.normalBufferIndex = oldGeoData.normalBufferIndex;
-      }
-
-      if (oldGeoData.color0Buffer != newGeoData.color0Buffer) {
-        if (newGeoData.color0Buffer.defined())
-          newGeoData.color0BufferIndex = m_bufferCache.addRef(newGeoData.color0Buffer);
-        if (oldGeoData.color0Buffer.defined())
-          m_bufferCache.removeRef(oldGeoData.color0Buffer);
-      } else {
-        newGeoData.color0BufferIndex = oldGeoData.color0BufferIndex;
-      }
-
-      if (oldGeoData.texcoordBuffer != newGeoData.texcoordBuffer) {
-        if (newGeoData.texcoordBuffer.defined())
-          newGeoData.texcoordBufferIndex = m_bufferCache.addRef(newGeoData.texcoordBuffer);
-        if (oldGeoData.texcoordBuffer.defined())
-          m_bufferCache.removeRef(oldGeoData.texcoordBuffer);
-      } else {
-        newGeoData.texcoordBufferIndex = oldGeoData.texcoordBufferIndex;
-      }
-
-      if (oldGeoData.positionBuffer != newGeoData.positionBuffer) {
-        if (newGeoData.positionBuffer.defined())
-          newGeoData.positionBufferIndex = m_bufferCache.addRef(newGeoData.positionBuffer);
-        if (oldGeoData.positionBuffer.defined())
-          m_bufferCache.removeRef(oldGeoData.positionBuffer);
-      } else {
-        newGeoData.positionBufferIndex = oldGeoData.positionBufferIndex;
-      }
-
-      if (oldGeoData.previousPositionBuffer != newGeoData.previousPositionBuffer) {
-        if (newGeoData.previousPositionBuffer.defined())
-          newGeoData.previousPositionBufferIndex = m_bufferCache.addRef(newGeoData.previousPositionBuffer);
-        if (oldGeoData.previousPositionBuffer.defined())
-          m_bufferCache.removeRef(oldGeoData.previousPositionBuffer);
-      } else {
-        newGeoData.previousPositionBufferIndex = oldGeoData.previousPositionBufferIndex;
-      }
+    if (newGeoData.previousPositionBuffer.defined()) {
+      newGeoData.previousPositionBufferIndex = m_bufferCache.track(newGeoData.previousPositionBuffer);
+    } else {
+      newGeoData.previousPositionBufferIndex = kSurfaceInvalidBufferIndex;
     }
   }
 
@@ -810,10 +735,7 @@ namespace dxvk {
     return result;
   }
   
-  void SceneManager::onSceneObjectDestroyed(const BlasEntry& blas, const XXH64_hash_t& hash) {
-    if (!RtxOptions::Get()->resetBufferCacheOnEveryFrame())
-      freeBufferCache(blas.modifiedGeometryData);
-
+  void SceneManager::onSceneObjectDestroyed(const BlasEntry& blas) {
     for (const RtInstance* instance : blas.getLinkedInstances()) {
       instance->markForGarbageCollection();
     }
