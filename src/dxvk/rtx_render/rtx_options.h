@@ -755,8 +755,6 @@ namespace dxvk {
     RTX_OPTION("rtx", float, captureMeshColorDelta, 0.3f, "Inter-frame color min delta warrants new time sample.");
     RTX_OPTION("rtx", float, captureMeshBlendWeightDelta, 0.01f, "Inter-frame blend weight min delta warrants new time sample.");
 
-    RTX_OPTION("rtx", bool, resetBufferCacheOnEveryFrame, true, "");
-
     RTX_OPTION("rtx", bool, useVirtualShadingNormalsForDenoising, true,
                "A flag to enable or disable the usage of virtual shading normals for denoising passes.\n"
                "This is primairly important for anything that modifies the direction of a primary ray, so mainly PSR and ray portals as both of these will view a surface from an angle different from the \"virtual\" viewing direction perceived by the camera.\n"
