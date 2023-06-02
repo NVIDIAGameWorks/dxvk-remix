@@ -7,6 +7,12 @@
 #include "../dxvk/rtx_render/rtx_hashing.h"
 #include "../util/util_fastops.h"
 
+namespace {
+  // Avoid scheduling tasks for very small geometry, as overhead might be higher than the task itself.
+  constexpr uint32_t VertexCountScheduleThreshold = 8;
+  constexpr uint32_t IndexCountScheduleThreshold = 16;
+}
+
 namespace dxvk {
   // Geometry indices should never be signed.  Using this to handle the non-indexed case for templates.
   typedef int NoIndices;
@@ -172,7 +178,7 @@ namespace dxvk {
       vertexLayoutHash = hashVertexLayout(geoData);
     }
 
-    return m_gpeWorkers.Schedule([vertexRegions, indexBufferRef, pIndexData, indexStride, indexDataSize, indexCount, maxIndexValue, vertexShaderHash, geometryDescriptorHash, vertexLayoutHash]() -> GeometryHashes {
+    auto work = [vertexRegions, indexBufferRef, pIndexData, indexStride, indexDataSize, indexCount, maxIndexValue, vertexShaderHash, geometryDescriptorHash, vertexLayoutHash]() -> GeometryHashes {
       ScopedCpuProfileZone();
 
       GeometryHashes hashes;
@@ -198,7 +204,15 @@ namespace dxvk {
       assert(hashes[HashComponents::VertexPosition] != kEmptyHash);
 
       return hashes;
-    });
+    };
+
+    if (vertexCount < VertexCountScheduleThreshold && indexCount < IndexCountScheduleThreshold) {
+      auto ready = std::promise<GeometryHashes>();
+      ready.set_value(work());
+      return ready.get_future();
+    }
+
+    return m_gpeWorkers.Schedule(std::move(work));
   }
 
   std::shared_future<AxisAlignedBoundingBox> D3D9Rtx::computeAxisAlignedBoundingBox(const RasterGeometry& geoData) {
@@ -212,7 +226,7 @@ namespace dxvk {
       return std::shared_future<AxisAlignedBoundingBox>();
     }
 
-    return m_gpeWorkers.Schedule([pVertexData, vertexCount, vertexStride]()->AxisAlignedBoundingBox {
+    auto work = [pVertexData, vertexCount, vertexStride]()->AxisAlignedBoundingBox {
       ScopedCpuProfileZone();
 
       __m128 minPos = _mm_set_ps1(FLT_MAX);
@@ -233,6 +247,14 @@ namespace dxvk {
         { maxPos.m128_f32[0], maxPos.m128_f32[1], maxPos.m128_f32[2] }
       };
       return boundingBox;
-    });
+    };
+
+    if (vertexCount < VertexCountScheduleThreshold) {
+      auto ready = std::promise<AxisAlignedBoundingBox>();
+      ready.set_value(work());
+      return ready.get_future();
+    }
+
+    return m_gpeWorkers.Schedule(std::move(work));
   }
 }
