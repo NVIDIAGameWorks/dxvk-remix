@@ -882,6 +882,7 @@ namespace dxvk {
     originalMaterialData.textureAlphaArg2Source = getTextureArgSource(rtState.texStage.alphaArg2Source, rtState.legacyState.diffuseColorSource, rtState.legacyState.specularColorSource);
     originalMaterialData.textureAlphaOperation = m_rtState.texStage.alphaOperation;
     originalMaterialData.tFactor = m_rtState.legacyState.tFactor;
+    originalMaterialData.isTextureFactorBlend = m_rtState.texStage.useTextureFactorBlend;
 
     if (RtxOptions::Get()->shouldIgnoreTexture(originalMaterialData.getHash()))
       return RtxGeometryStatus::Ignored;
