@@ -64,8 +64,7 @@ public:
   ~SparseUniqueCache() {}
 
   void clear() {
-    std::queue<uint32_t> empty;
-    std::swap(m_freeBuffers, empty);
+    m_freeBuffers = {};
     m_objects.clear();
     m_bufferMap.clear();
   }
