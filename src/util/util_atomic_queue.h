@@ -62,7 +62,7 @@ namespace dxvk {
         }
         nextHead = (head + 1) % Capacity;
       } while (!m_head.compare_exchange_weak(head, nextHead));
-      item = m_data[head];
+      item = std::move(m_data[head]);
       return true;
     }
 
