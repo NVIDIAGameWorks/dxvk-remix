@@ -591,6 +591,7 @@ struct DxvkRtxTextureStageState {
   uint32_t texcoordIndex = 0;
   uint32_t transformFlags = 0;
   Matrix4 transform;
+  bool useTextureFactorBlend;
 };
 
 enum class RtxGeometryStatus {

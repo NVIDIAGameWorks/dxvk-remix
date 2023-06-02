@@ -689,6 +689,8 @@ namespace dxvk {
     constexpr uint32_t kMaxTextureBindings = 2;
     constexpr uint32_t NumTexcoordBins = FixedFunction ? (D3DDP_MAXTEXCOORD * kMaxTextureBindings) : kMaxTextureBindings;
 
+    bool useTextureFactorBlend = false;
+
     // Build a mapping of texcoord indices to stage
     const uint8_t kInvalidStage = 0xFF;
     uint8_t texcoordIndexToStage[NumTexcoordBins];
@@ -696,6 +698,16 @@ namespace dxvk {
       memset(&texcoordIndexToStage[0], kInvalidStage, sizeof(texcoordIndexToStage));
 
       for (uint32_t stage = 0; stage < caps::TextureStageCount; stage++) {
+        // Support texture factor blending besides the first stage. Currently, we only support 1 additional stage tFactor blending.
+        if (RtxOptions::Get()->enableMultiStageTextureFactorBlending() &&
+            stage != 0 &&
+            d3d9State().textureStages[stage][DXVK_TSS_COLORARG2] == D3DTA_TFACTOR &&
+            (d3d9State().textureStages[stage][DXVK_TSS_COLOROP] == D3DTOP_MODULATE ||
+             d3d9State().textureStages[stage][DXVK_TSS_COLOROP] == D3DTOP_MODULATE2X ||
+             d3d9State().textureStages[stage][DXVK_TSS_COLOROP] == D3DTOP_MODULATE4X)) {
+          useTextureFactorBlend = true;
+        }
+
         if (d3d9State().textures[stage] == nullptr)
           continue;
 
@@ -756,7 +768,7 @@ namespace dxvk {
       texSlotsForRT[textureID++] = computeResourceSlotId(shaderSampler.first, DxsoBindingType::Image, uint32_t(shaderSampler.second));
     }
 
-    DxvkRtxTextureStageState texStageState = createTextureStageState(d3d9State(), firstStage);
+    DxvkRtxTextureStageState texStageState = createTextureStageState(d3d9State(), firstStage, useTextureFactorBlend);
 
     if (!m_forceGeometryCopy) {
       if (auto texture = d3d9State().textures[firstStage]) {
