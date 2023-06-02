@@ -28,6 +28,9 @@
 #include "rtx/pass/common_bindings.slangh"
 #include "rtx/utility/debug_view_indices.h"
 
+static const int kFootprintFromRayOrigin = 0;
+static const int kFootprintFromRayDirection = 1;
+static const int kFootprintFromTextureCoordDiff = 2;
 // Surface Interaction Helper Functions
 
 // Texture Gradient from Ray Cone Helper
@@ -133,7 +136,7 @@ void convert1stCascadeTexCoordsToTargetCascadeLevel(uint targetCascadeLevel, ino
     texcoords[i] = convert1stCascadeTexCoordToTiledTexCoord(cascade2DIndex, rcpTargetCascadeLevelScale, texcoords[i]);
 }
 
-SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayInteraction, Ray ray, bool usePreviousPositions = false)
+SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayInteraction, Ray ray, bool usePreviousPositions = false, int footprintMode = kFootprintFromRayDirection)
 {
   // Compute vertex indicies
 
@@ -249,6 +252,7 @@ SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayI
   const vec3 worldTriangleNormal = normalize(worldTriangleVector);
   // Note: Ideally cheaper than using length to get the magnitude of the cross product's result (no sqrt required).
   const float worldTwoTriangleArea = dot(worldTriangleVector, worldTriangleNormal);
+  surfaceInteraction.triangleArea = worldTwoTriangleArea * 0.5;
 
   // Note: fp16 conversion done after area calculation so the fp32 normal can be used
   const f16vec3 triangleNormal = f16vec3(worldTriangleNormal);
@@ -421,10 +425,21 @@ SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayI
     
     // Note: Non-flipped world space triangle normal passed in to be consistent with the calculations done internally (rather
     // than worrying about if the flipped vector could break it)
-    computeAnisotropicEllipseAxes(
-      hitPosition, triangleNormal, worldTwoTriangleArea, ray.direction,
-      rayInteraction.coneRadius, worldPositions, texcoords, surfaceInteraction.textureCoordinates,
-      surfaceInteraction.textureGradientX, surfaceInteraction.textureGradientY);
+    if (footprintMode != kFootprintFromTextureCoordDiff)
+    {
+      vec3 positionOffset = surfaceInteraction.position - ray.origin;
+      f16vec3 direction = footprintMode == kFootprintFromRayDirection ? ray.direction : normalize(positionOffset);
+      float16_t coneRadius = footprintMode == kFootprintFromRayDirection ? rayInteraction.coneRadius : rayInteraction.coneRadius + length(positionOffset) * ray.spreadAngle;
+      computeAnisotropicEllipseAxes(
+        hitPosition, triangleNormal, worldTwoTriangleArea, direction,
+        rayInteraction.coneRadius, worldPositions, texcoords, surfaceInteraction.textureCoordinates,
+        surfaceInteraction.textureGradientX, surfaceInteraction.textureGradientY);
+    }
+    else
+    {
+      surfaceInteraction.textureGradientX = (texcoords[1] - texcoords[0]) / 3.0f;
+      surfaceInteraction.textureGradientY = (texcoords[2] - texcoords[0]) / 3.0f;
+    }
   }
   else
   {

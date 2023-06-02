@@ -78,6 +78,7 @@ struct PathState
   bool restirGiHasFoundRoughSurface;
 
   float accumulatedHitDistance;
+  float solidAnglePdf;
 
   // Calculates an RNG offset at a start of a bounce set in the path state
   uint calculateRNGOffset(uint sampleOffset) 
@@ -113,6 +114,7 @@ struct MemoryPathState : IPayload
 
   uint coneRadiusAndHitDistance; // float16_t, float16_t
   float accumulatedHitDistance;
+  float solidAnglePdf;
 
   static MemoryPathState pack(PathState pathState)
   {
@@ -154,6 +156,7 @@ struct MemoryPathState : IPayload
     ret.encodedRadiance = encodedRadiance;
     ret.encodedThroughput = encodedThroughput;
     ret.accumulatedHitDistance = pathState.accumulatedHitDistance;
+    ret.solidAnglePdf = pathState.solidAnglePdf;
     
     return ret;
   }
@@ -188,6 +191,7 @@ struct MemoryPathState : IPayload
     pathState.portalSpace = (data1 >> 16) & 0b11;
     pathState.indirectLightPortalID = (data1 >> 18) & 0b11;
     pathState.accumulatedHitDistance = accumulatedHitDistance;
+    pathState.solidAnglePdf = solidAnglePdf;
 
     return pathState;
   }

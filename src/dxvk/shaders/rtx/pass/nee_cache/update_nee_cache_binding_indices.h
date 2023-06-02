@@ -21,38 +21,15 @@
 */
 #pragma once
 
-#include "rtx_resources.h"
-#include "rtx/pass/raytrace_args.h"
+#include "rtx/pass/common_binding_indices.h"
 
-namespace dxvk {
+#define UPDATE_NEE_CACHE_BINDING_NEE_CACHE 16
+#define UPDATE_NEE_CACHE_BINDING_NEE_CACHE_TASK 17
+#define UPDATE_NEE_CACHE_BINDING_NEE_CACHE_THREAD_TASK 18
 
-  class DxvkDevice;
+#define UPDATE_NEE_CACHE_MIN_BINDING                           UPDATE_NEE_CACHE_BINDING_NEE_CACHE
 
-  class DxvkPathtracerIntegrateIndirect {
+#if UPDATE_NEE_CACHE_MIN_BINDING <= COMMON_MAX_BINDING
+#error "Increase the base index of update NEE cache bindings to avoid overlap with common bindings!"
+#endif
 
-  public:
-    enum class RaytraceMode {
-      RayQuery = 0,
-      RayQueryRayGen,
-      TraceRay,
-      Count
-    };
-
-    DxvkPathtracerIntegrateIndirect(DxvkDevice* device);
-    ~DxvkPathtracerIntegrateIndirect() = default;
-
-    void prewarmShaders(DxvkPipelineManager& pipelineManager) const;
-
-    void dispatch(class RtxContext* ctx, const Resources::RaytracingOutput& rtOutput);
-
-    void dispatchNEE(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput);
-
-    static const char* raytraceModeToString(RaytraceMode raytraceMode);
-
-  private:
-    static DxvkRaytracingPipelineShaders getPipelineShaders(const bool useRayQuery, const bool serEnabled, const bool ommEnabled);
-    Rc<DxvkShader> getComputeShader() const;
-
-    Rc<DxvkDevice> m_device;
-  };
-}

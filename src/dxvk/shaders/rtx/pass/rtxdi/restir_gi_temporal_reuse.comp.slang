@@ -100,8 +100,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
 
   // Calculate position and normal for a virtual sample
   initialSample.setVirtualFraction(0.0);
-  if (cb.enableReSTIRGIVirtualSample > 0
-    && surface.opaqueSurfaceMaterialInteraction.isotropicRoughness > RAB_RESTIR_GI_DELTA_ROUGHNESS)
+  if (cb.enableReSTIRGIVirtualSample > 0 && surface.opaqueSurfaceMaterialInteraction.isotropicRoughness > RAB_RESTIR_GI_DELTA_ROUGHNESS)
   {
     vec3 direction = initialSample.position - surface.minimalSurfaceInteraction.position;
     if (any(direction != 0) && indirectPathLength > length(direction) * 1.01)
@@ -113,10 +112,23 @@ void main(int2 thread_id : SV_DispatchThreadID)
     }
   }
 
-  // Store complete initial sample
-  RAB_StoreGIReservoir(initialSample, thread_id, ReSTIRGI_GetInitSamplePage());
-  
+  ReSTIRGI_Reservoir inputReservoir = ReSTIRGI_Reservoir.createEmpty();
   RAB_RandomSamplerState rng = RAB_InitRandomSampler(thread_id, cb.frameIdx, 2);
+  if (cb.neeCacheArgs.enable && cb.neeCacheArgs.enableOnFirstBounce)
+  {
+    inputReservoir = RAB_LoadGIReservoir(thread_id, ReSTIRGI_GetInitSamplePage());
+  }
+
+  float wiT = max(0.f, initialSample.avgWeight) * initialSample.M * RAB_GetGITargetPdfForSurface(initialSample.radiance, initialSample.position, surface);
+  inputReservoir.update(wiT, initialSample, RAB_GetNextRandom(rng));
+
+  float pNew = RAB_GetGITargetPdfForSurface(inputReservoir.radiance, inputReservoir.position, surface);
+  // Both inputs samples use MIS, no need to divide the result by M
+  inputReservoir.M = 1;
+  inputReservoir.finalize(pNew, 1.0, inputReservoir.M);
+
+  // Store complete initial sample
+  RAB_StoreGIReservoir(inputReservoir, thread_id, ReSTIRGI_GetInitSamplePage());
 
   // Reprojection
   // Note: Camera jittering not used for RTXDI. Also not using Ray and rayEvaluate here due to Ray using 16 bit
@@ -213,7 +225,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
 
   bool isGBufferSimilar;
   bool isInitialSample;
-  ReSTIRGI_Reservoir resultReservoir = ReSTIRGI_TemporalResampling(initialSample, thread_id, surface, rng, tparams, isGBufferSimilar, isInitialSample);
+  ReSTIRGI_Reservoir resultReservoir = ReSTIRGI_TemporalResampling(inputReservoir, thread_id, surface, rng, tparams, isGBufferSimilar, isInitialSample);
 
   // Update last frame's visibility mask when raytraced pairwise MIS is used. 
   if (cb.reSTIRGIBiasCorrectionMode == RTXDI_BIAS_CORRECTION_PAIRWISE_RAY_TRACED &&
@@ -226,13 +238,13 @@ void main(int2 thread_id : SV_DispatchThreadID)
 
   if (!cb.enableReSTIRGITemporalReuse)
   {
-    resultReservoir = initialSample;
+    resultReservoir = inputReservoir;
   }
   RAB_StoreGIReservoir(resultReservoir, thread_id, ReSTIRGI_GetTemporalOutputPage());
 
   if (cb.debugView == DEBUG_VIEW_RESTIR_GI_INITIAL_SAMPLE)
   {
-    storeInDebugView(thread_id, initialSample.radiance);
+    storeInDebugView(thread_id, inputReservoir.radiance);
   }
   else if (cb.debugView == DEBUG_VIEW_RESTIR_GI_TEMPORAL_REUSE)
   {
@@ -242,7 +254,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
   {
     bool isValid = true;
     // DEBUG_VIEW_RESTIR_GI_INITIAL_SAMPLE
-    isValid &= isValidValue(initialSample.radiance);
+    isValid &= isValidValue(inputReservoir.radiance);
     accumulateInDebugViewAnd(thread_id, isValid);
   }
 }

@@ -26,6 +26,8 @@
 #include <rtxdi/RtxdiParameters.h>
 #include "rtx/pass/raytrace_args.h"
 #include "rtx/pass/gbuffer/gbuffer_binding_indices.h"
+#include "rtx/pass/integrate/integrate_indirect_binding_indices.h"
+#include "rtx/algorithm/nee_cache.h"
 #include <assert.h>
 #include "rtx_options.h"
 #include "rtx/utility/gpu_printing.h"
@@ -838,7 +840,7 @@ namespace dxvk {
     // Note: A single texture is aliased for both the noisy output from the integration pass and the denoised result from NRD.
     m_raytracingOutput.m_primaryDirectDiffuseRadiance = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Primary Direct Diffuse Radiance", allowCompatibleFormatAliasing);
     m_raytracingOutput.m_primaryDirectSpecularRadiance = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Primary Direct Specular Radiance", allowCompatibleFormatAliasing);
-    m_raytracingOutput.m_primaryIndirectDiffuseRadiance = AliasedResource(m_raytracingOutput.m_decalEmissiveRadiance, ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Primary Indirect Diffuse Radiance Hit Distance");
+    m_raytracingOutput.m_primaryIndirectDiffuseRadiance = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Primary Indirect Diffuse Radiance Hit Distance", allowCompatibleFormatAliasing);
     m_raytracingOutput.m_primaryIndirectSpecularRadiance = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Primary Indirect Specular Radiance", allowCompatibleFormatAliasing);
     m_raytracingOutput.m_secondaryCombinedDiffuseRadiance = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Secondary Combined Diffuse Radiance", allowCompatibleFormatAliasing);
     m_raytracingOutput.m_secondaryCombinedSpecularRadiance = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Secondary Combined Specular Radiance", allowCompatibleFormatAliasing);
@@ -898,6 +900,13 @@ namespace dxvk {
     m_raytracingOutput.m_restirGIReservoirBuffer = m_device->createBuffer(rtxdiBufferInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
     m_raytracingOutput.m_restirGIRadiance = AliasedResource(m_raytracingOutput.m_compositeOutput, ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "ReSTIR GI Radiance");
     m_raytracingOutput.m_restirGIHitGeometry = createImageResource(ctx, "restir gi hit geometry", m_downscaledExtent, VK_FORMAT_R32G32B32A32_SFLOAT);
+
+    DxvkBufferCreateInfo neeCacheInfo = rtxdiBufferInfo;
+    int cellCount = NEE_CACHE_PROBE_RESOLUTION * NEE_CACHE_PROBE_RESOLUTION * NEE_CACHE_PROBE_RESOLUTION;
+    neeCacheInfo.size = cellCount * NEE_CACHE_ELEMENTS * sizeof(int) * 2;
+    m_raytracingOutput.m_neeCache = m_device->createBuffer(neeCacheInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
+    m_raytracingOutput.m_neeCacheTask = m_device->createBuffer(neeCacheInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
+    m_raytracingOutput.m_neeCacheThreadTask = createImageResource(ctx, "radiance cache thread task", m_downscaledExtent, VK_FORMAT_R32G32_UINT);
 
     // Post Effect motion blur prefilter intermediate textures
     m_raytracingOutput.m_primarySurfaceFlagsIntermediateTexture1 = AliasedResource(m_raytracingOutput.m_secondaryPerceptualRoughness, ctx, m_downscaledExtent, VK_FORMAT_R8_UINT, "Primary Surface Flags Intermediate Texture 1");

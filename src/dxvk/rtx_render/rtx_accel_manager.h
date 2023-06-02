@@ -98,6 +98,7 @@ public:
   // Returns the number of live BLAS objects
   static uint32_t getBlasCount();
 
+  uint32_t getSurfaceCount() const { return m_reorderedSurfaces.size(); }
 private:
   void buildBlases(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, DxvkBarrierSet& execBarriers,
                    const CameraManager& cameraManager, OpacityMicromapManager* opacityMicromapManager, const InstanceManager& instanceManager,

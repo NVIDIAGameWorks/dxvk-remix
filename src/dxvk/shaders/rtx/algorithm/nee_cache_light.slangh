@@ -1,0 +1,212 @@
+/*
+* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/concept/light/light_helper.slangh"
+
+struct NEECacheUtils
+{
+  static vec2 uvToBarycentrics(vec2 uv)
+  {
+    return uv.x + uv.y < 1 ? uv : 1 - uv.yx;
+  }
+
+  static float calculateLightSamplingSolidAnglePDF(float triangleArea, vec3 samplePosition, f16vec3 sampleNormal, vec3 surfacePosition)
+  {
+    float areaPdf = 1.0 / triangleArea;
+    vec3 offset = samplePosition - surfacePosition;
+    float r2 = dot(offset, offset);
+    float cosPhi = abs(dot(normalize(offset), sampleNormal));
+    return cosPhi > 0 ? areaPdf * r2 / cosPhi : 0;
+  }
+
+
+  static LightSample calculateLightSampleFromTriangle(int surfaceIndex, int primitiveIndex, vec2 uv, float trianglePdf, vec3 shadingPosition, float16_t coneRadius, float16_t spreadAngle)
+  {
+  #define USE_SIMIPLIFIED_MODEL 1
+
+    SURFACE_CREATE_READ(surface0, surfaceIndex, surfaces);
+    Surface surface = surface0;
+  #if USE_SIMIPLIFIED_MODEL
+    surface.isEmissive = false;
+    surface.isEmissiveBlend = false;
+    surface.isStatic = true;
+    surface.isMatte = true;
+    surface.texcoordGenerationMode = uint(TexGenMode::None);
+    surface.previousPositionBufferIndex = BINDING_INDEX_INVALID;
+    surface.normalBufferIndex = BINDING_INDEX_INVALID;
+    surface.color0BufferIndex = BINDING_INDEX_INVALID;
+    surface.isAnimatedWater = false;
+    surface.textureAlphaArg1Source = uint(RtTextureArgSource::None);
+    surface.textureAlphaArg2Source = uint(RtTextureArgSource::None);
+    surface.textureAlphaOperation = uint(DxvkRtTextureOperation::Disable);
+    surface.tFactor = 0;
+  #endif
+
+    RayInteraction rayInteracton = {};
+    rayInteracton.barycentricCoordinates = barycentricsToUint(NEECacheUtils.uvToBarycentrics(uv));
+    rayInteracton.primitiveIndex = primitiveIndex;
+    rayInteracton.coneRadius = coneRadius * cb.neeCacheArgs.emissiveTextureSampleFootprintScale;
+    Ray ray = {};
+    ray.origin = shadingPosition;
+    ray.spreadAngle = spreadAngle * cb.neeCacheArgs.emissiveTextureSampleFootprintScale;
+    SurfaceInteraction surfaceInteraction = surfaceInteractionCreate(surface, rayInteracton, ray, false, kFootprintFromRayOrigin);
+  #if USE_SIMIPLIFIED_MODEL
+    surfaceInteraction.positionError = 0;
+    surfaceInteraction.motion = 0;
+    surfaceInteraction.interpolatedTangent = f16vec3(0);
+    surfaceInteraction.interpolatedBitangent = f16vec3(0);
+    surfaceInteraction.vertexColor = f16vec4(0);
+  #endif
+
+    rayInteracton.viewDirection = normalize(surfaceInteraction.position - shadingPosition);
+
+    const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
+    const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
+
+    LightSample lightSample = {};
+    lightSample.position = surfaceInteraction.position;
+    lightSample.normal = surfaceInteraction.interpolatedNormal;
+    float lightPdf = trianglePdf * calculateLightSamplingSolidAnglePDF(
+      surfaceInteraction.triangleArea, surfaceInteraction.position, surfaceInteraction.triangleNormal, shadingPosition);
+    lightSample.solidAnglePdf = lightPdf;
+    lightSample.radiance = 0;
+    if (dot(lightSample.normal, shadingPosition - lightSample.position) < 0)
+    {
+      // Flip the normal if it's not facing the shading point,
+      // because backfacing triangles are also considered.
+      lightSample.normal *= -1;
+    }
+
+    // The light sample and the shading point may be one the same triangle. In this case, solid angle PDF is 0.
+    if (lightSample.solidAnglePdf > 0 && polymorphicType == surfaceMaterialTypeOpaque)
+    {
+      OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
+  #if USE_SIMIPLIFIED_MODEL
+      opaqueSurfaceMaterial.albedoOpacityTextureIndex = BINDING_INDEX_INVALID;
+      opaqueSurfaceMaterial.normalTextureIndex = BINDING_INDEX_INVALID;
+      opaqueSurfaceMaterial.tangentTextureIndex = BINDING_INDEX_INVALID;
+      opaqueSurfaceMaterial.roughnessTextureIndex = BINDING_INDEX_INVALID;
+      opaqueSurfaceMaterial.metallicTextureIndex = BINDING_INDEX_INVALID;
+      opaqueSurfaceMaterial.anisotropy = 1.0;
+      opaqueSurfaceMaterial.albedoOpacityConstant = 0.0;
+      opaqueSurfaceMaterial.roughnessConstant = 0.0;
+      opaqueSurfaceMaterial.metallicConstant = 0.0;
+      opaqueSurfaceMaterial.spriteSheetRows = 0;
+      opaqueSurfaceMaterial.spriteSheetCols = 0;
+      opaqueSurfaceMaterial.spriteSheetFPS = 0;
+      opaqueSurfaceMaterial.thinFilmThicknessConstant = 0.0;
+      opaqueSurfaceMaterial.flags = 0;
+  #endif
+
+      const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
+        opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteracton);
+
+      lightSample.radiance = opaqueSurfaceMaterialInteraction.emissiveRadiance;
+    }
+    return lightSample;
+  }
+
+  static void calculateTriangleLightIntensity(int surfaceIndex, int primitiveIndex, out vec3 triangleCenter, out f16vec3 triangleNormal, out vec3 lightIntensity)
+  {
+    SURFACE_CREATE_READ(surface0, surfaceIndex, surfaces);    
+    Surface surface = surface0;
+    RayInteraction rayInteracton = {};
+    rayInteracton.frontHit = true;
+    rayInteracton.barycentricCoordinates = barycentricsToUint(uvToBarycentrics(vec2(1.0 / 3.0)));
+    rayInteracton.primitiveIndex = primitiveIndex;
+
+    Ray dummyRay;
+    dummyRay.direction = f16vec3(1.0);
+    SurfaceInteraction surfaceInteraction = surfaceInteractionCreate(surface, rayInteracton, dummyRay, false, kFootprintFromTextureCoordDiff);
+    triangleCenter = surfaceInteraction.position;
+    triangleNormal = surfaceInteraction.triangleNormal;
+    lightIntensity = vec3(0);
+
+    const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
+    const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
+
+    if (polymorphicType == surfaceMaterialTypeOpaque)
+    {
+      OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
+      const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
+        opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteracton);
+
+      lightIntensity = opaqueSurfaceMaterialInteraction.emissiveRadiance * surfaceInteraction.triangleArea;
+    }
+  }
+
+  static vec2 calculateLightSampleMISWeight(OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction, vec3 inputDirection, vec3 viewDirection, float lightSampleSolidAnglePDF)
+  {
+    if (!cb.neeCacheArgs.enableMIS)
+    {
+      return 1.0;
+    }
+
+    RayInteraction rayInteraction = {};
+    rayInteraction.coneRadius = 0;
+    rayInteraction.viewDirection = viewDirection;
+
+    float diffuseSolidAnglePdf  = opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
+    float specularSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
+
+    vec2 misWeight;
+    misWeight.x = saturate(lightSampleSolidAnglePDF / (lightSampleSolidAnglePDF + diffuseSolidAnglePdf));
+    misWeight.y = saturate(lightSampleSolidAnglePDF / (lightSampleSolidAnglePDF + specularSolidAnglePdf));
+    return misWeight;
+  }
+
+  static float calculateBRDFSampleMISWeight(SurfaceInteraction surfaceInteraction, vec3 position, float lightSelectionPDF, float brdfSampleSolidAnglePDF)
+  {
+    if (!cb.neeCacheArgs.enableMIS)
+    {
+      return 0.0;
+    }
+
+    float lightPdf = lightSelectionPDF * calculateLightSamplingSolidAnglePDF(surfaceInteraction.triangleArea, surfaceInteraction.position, surfaceInteraction.triangleNormal, position);
+    float misWeight = saturate(brdfSampleSolidAnglePDF / (brdfSampleSolidAnglePDF + lightPdf));
+    return misWeight;
+  }
+
+  static float calculateBSDFSampleTotalPDF(OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction, f16vec3 viewDirection, f16vec3 sampleDirection, float firstSampledSolidAnglePdf, bool firstSampledLobeIsSpecular)
+  {
+    float16_t diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability;
+    bool isValid = opaqueSurfaceMaterialInteractionCalcLobeProbability(
+      opaqueSurfaceMaterialInteraction, viewDirection,
+      diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability);
+
+    MinimalRayInteraction minimalRayInteraction;
+    minimalRayInteraction.viewDirection = viewDirection;
+    float totalPdf = 0;
+    if (firstSampledLobeIsSpecular)
+    {
+      float diffuseSolidAnglePdf  = opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, sampleDirection);
+      totalPdf = diffuseReflectionProbability * diffuseSolidAnglePdf + specularReflectionProbability * firstSampledSolidAnglePdf;
+    }
+    else
+    {
+      float specularSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, sampleDirection);
+      totalPdf = diffuseReflectionProbability * firstSampledSolidAnglePdf + specularReflectionProbability * specularSolidAnglePdf;
+    }
+    return totalPdf;
+  }
+}

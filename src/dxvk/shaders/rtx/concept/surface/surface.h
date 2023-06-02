@@ -129,6 +129,7 @@ struct SurfaceInteraction : MinimalSurfaceInteraction
   f16vec3 interpolatedTangent;
   f16vec3 interpolatedBitangent;
   f16vec4 vertexColor;
+  float triangleArea;
 };
 
 struct GBufferMemoryMinimalSurfaceInteraction

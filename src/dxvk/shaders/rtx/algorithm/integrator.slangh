@@ -35,6 +35,7 @@
 #include "rtx/algorithm/lighting.slangh"
 #include "rtx/algorithm/resolve.slangh"
 #include "rtx/algorithm/visibility.slangh"
+#include "rtx/algorithm/nee_cache.h"
 
 struct IndirectSampleData
 {
@@ -201,4 +202,70 @@ bool evalMediumChange(
   }
 
   return false;
+}
+
+bool evalNEESecondary(
+  LightSample lightSample,
+  uint8_t sampledTransportPortalIndex, 
+  PortalSpace2BitsType portalSpace,
+  uint8_t objectMask,
+  bool isViewModelSurface,
+  Ray viewRay,
+  MinimalRayInteraction minimalRayInteraction, 
+  MinimalSurfaceInteraction minimalSurfaceInteraction,
+  inout vec3 diffuseLight,
+  inout vec3 specularLight)
+{
+
+  // Setup and trace the visibility ray
+
+  uint8_t rayMask = OBJECT_MASK_OPAQUE | (objectMask & OBJECT_MASK_ALL_DYNAMIC);
+  if (cb.enableIndirectTranslucentShadows) rayMask |= OBJECT_MASK_TRANSLUCENT;
+
+  VisibilityResult visibility = traceVisibilityRay(minimalSurfaceInteraction,
+    lightSample.position, false, rayMask,
+    visibilityModeEnableTranslucentMaterials,
+    sampledTransportPortalIndex, portalSpace,
+    minimalRayInteraction.coneRadius, viewRay.spreadAngle, 0.98, isViewModelSurface);
+
+
+  if (visibility.hasOpaqueHit)
+  {
+    diffuseLight = specularLight = 0;
+    return false;
+  }
+
+  // Accumulate throughput and hit distance
+  const float lightSampleThroughput = 1.0 / lightSample.solidAnglePdf;
+
+  // Accumulate Radiance
+
+  const vec3 lightThroughput = lightSampleThroughput * vec3(visibility.attenuation);
+  const vec3 attenuatedRadiance = lightThroughput;
+
+  diffuseLight *= attenuatedRadiance;
+  specularLight *= attenuatedRadiance;
+
+  return true;
+}
+
+void evaluateUnshadowedLight(
+  LightSample lightSample,
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  MinimalRayInteraction minimalRayInteraction,
+  f16vec3 inputDirection,
+  out vec3 diffuseLight,
+  out vec3 specularLight)
+{
+  if (dot(inputDirection, opaqueSurfaceMaterialInteraction.shadingNormal) < 0.0)
+  {
+    diffuseLight = specularLight = 0;
+    return;
+  }
+
+  const SurfaceMaterialInteractionSplitWeight splitWeight = opaqueSurfaceMaterialInteractionCalcProjectedWeight(
+    opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
+
+  diffuseLight = lightSample.radiance * splitWeight.diffuseReflectionWeight;
+  specularLight = lightSample.radiance * splitWeight.specularReflectionWeight;
 }
