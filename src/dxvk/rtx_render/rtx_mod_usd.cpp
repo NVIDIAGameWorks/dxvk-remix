@@ -96,9 +96,15 @@ private:
   void processLight(Args& args, const pxr::UsdPrim& lightPrim);
   void processReplacement(Args& args);
 
+  // Returns next hash value compatible with geometry and drawcall hashing
+  XXH64_hash_t getNextGeomHash() {
+    static size_t id;
+    ++id;
+    return XXH64(&id, sizeof(id), 0);
+  }
+
   std::filesystem::file_time_type m_fileModificationTime;
   std::string m_openedFilePath;
-  size_t m_replacedCount = 0;
 
   Watchdog<1000> m_usdChangeWatchdog;
 };
@@ -648,8 +654,9 @@ bool UsdMod::Impl::processGeomSubset(Args& args, const pxr::UsdPrim& subPrim, Ra
 
   geometryData.indexCount = vertexIndicesSize;
   // Set these as hashed so that the geometryData acts like it's static.
-  geometryData.hashes[HashComponents::VertexPosition] = ++m_replacedCount;
+  geometryData.hashes[HashComponents::VertexPosition] = getNextGeomHash();
   geometryData.hashes[HashComponents::Indices] = geometryData.hashes[HashComponents::VertexPosition];
+  geometryData.hashes.precombine();
 
   MaterialData* mat = processMaterialUser(args, subPrim);
   if (mat) {
@@ -865,7 +872,7 @@ void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
 
     if (isUVValid) {
       newGeomData.texcoordBuffer = RasterBuffer(vertexSlice, uvOffset - vertexSlice.offset(), vertexStructureSize, VK_FORMAT_R32G32B32_SFLOAT);
-      newGeomData.hashes[HashComponents::VertexTexcoord] = ++m_replacedCount;
+      newGeomData.hashes[HashComponents::VertexTexcoord] = getNextGeomHash();
     }
 
     if (isJointIndicesValid) {
@@ -885,7 +892,7 @@ void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
       newGeomData.numBonesPerVertex = numBones;
     }
     
-    newGeomData.hashes[HashComponents::VertexPosition] = ++m_replacedCount;
+    newGeomData.hashes[HashComponents::VertexPosition] = getNextGeomHash();
     if (!vecIndices.empty() || !points.empty()) {
       // Set these as hashed so that the geometry acts like it's static.
       // TODO this will need to change to support skeleton meshes
@@ -907,6 +914,8 @@ void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
     if (prim.GetAttribute(kOrientation).Get(&orientation) && orientation == kRightHanded) {
       newGeomData.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     }
+
+    newGeomData.hashes.precombine();
   }
 
   MaterialData* materialData = processMaterialUser(args, prim);

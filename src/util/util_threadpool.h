@@ -35,9 +35,231 @@
 #include "util_env.h"
 #include "util_math.h"
 #include "util_fastops.h"
+#include "util_bit.h"
 #include "sync/sync_spinlock.h"
 
 namespace dxvk {
+  const size_t kLambdaStorageCapacity = 256;
+  // Note: use up to 64 bytes for state
+  const size_t kResultStorageCapacity = 256 - 64;
+
+  template<size_t Capacity = kResultStorageCapacity, bool UseWait = false>
+  struct Result {
+    struct Nop { };
+    using OnSetCondition = std::conditional_t<UseWait, dxvk::condition_variable, Nop>;
+    using ResultMutex = std::conditional_t<UseWait, dxvk::mutex, Nop>;
+
+    template<typename T>
+    void set(T&& t) {
+      static_assert(sizeof(T) <= Capacity,
+          "Result object storage space overrun!");
+
+      new(storage.data()) T(std::forward<T>(t));
+
+      set();
+    }
+
+    void set() {
+      if constexpr (UseWait) {
+        std::unique_lock<dxvk::mutex> lock(mtx);
+        hasResult = true;
+        cond.notify_one();
+      } else {
+        hasResult = true;
+      }
+    }
+
+    void get() {
+#ifdef _DEBUG
+      if (isDisposed) {
+        throw DxvkError("Refusing to get a disposed result!");
+      }
+#endif
+
+      if constexpr (UseWait) {
+        if (!hasResult) {
+          std::unique_lock<dxvk::mutex> lock(mtx);
+          cond.wait(lock, [this] {
+            return hasResult;
+          });
+        }
+      } else {
+        while (!hasResult) {
+          std::this_thread::yield();
+        }
+      }
+
+      hasResult = false;
+      isDisposed = true;
+    }
+
+    template<typename T>
+    T get() {
+      get();
+      return std::move(*reinterpret_cast<T*>(storage.data()));
+    }
+
+    void reset() {
+      hasResult = false;
+      isDisposed = false;
+    }
+
+    void cancel() {
+      hasResult = false;
+      isDisposed = true;
+    }
+
+    bool disposed() const {
+      return isDisposed;
+    }
+
+  private:
+    std::array<uint8_t, Capacity> storage;
+    bool hasResult = false;
+    bool isDisposed = false;
+
+    OnSetCondition cond;
+    mutable ResultMutex mtx;
+  };
+
+  using TaskId = uint32_t;
+  template<typename ResultType> struct Future;
+
+  struct Task {
+    using LambdaStorage = std::array<uint8_t, kLambdaStorageCapacity>;
+    using ThunkType = void(void*);
+    using ThunkStorage = std::array<uint8_t, sizeof(uintptr_t)>;
+
+    template<typename LambdaType, typename ResultType>
+    Future<ResultType> capture(LambdaType&& lambda) {
+      if constexpr (sizeof(LambdaType) > sizeof(lambdaStorage)) {
+        char(*__type_size)[sizeof(LambdaType)] = 1;
+        static_assert(false, "Task object storage space overrun!");
+      }
+
+      // Create lambda in-place
+      new (lambdaStorage.data()) LambdaType(std::forward<LambdaType>(lambda));
+
+      // We need to use a thunk to capture the actual lambda type
+      captureThunk([this]() {
+        auto& lambda = *reinterpret_cast<LambdaType*>(lambdaStorage.data());
+
+        if (!result.disposed()) {
+          if constexpr (!std::is_void_v<ResultType>) {
+            result.set(lambda());
+          } else {
+            lambda();
+            result.set();
+          }
+        }
+
+        lambda.~LambdaType();
+      });
+
+      result.reset();
+
+      return Future<ResultType>(*this);
+    }
+
+    void operator() () {
+      dispatchThunk();
+    }
+
+    template<typename ResultType>
+    ResultType getResult() {
+      return result.get<ResultType>();
+    }
+
+    void getResult() {
+      result.get();
+    }
+
+    void cancel() {
+      result.cancel();
+    }
+
+    bool valid() const {
+      return !result.disposed();
+    }
+
+  private:
+    template<typename InvocableType>
+    static inline void Thunk(void* thunkLambda) {
+      (*static_cast<InvocableType*>(thunkLambda))();
+    }
+
+    template<typename TunkLambdaType>
+    void captureThunk(TunkLambdaType&& thunkLambda) {
+      new (thunkStorage.data()) TunkLambdaType(std::forward<TunkLambdaType>(thunkLambda));
+      thunk = &Thunk<typename std::decay_t<TunkLambdaType>>;
+    }
+
+    void dispatchThunk() {
+#ifdef _DEBUG
+      if (!thunk) {
+        throw DxvkError("Task thunk was not initialized!");
+      }
+#endif
+      thunk(thunkStorage.data());
+      thunk = nullptr;
+    }
+
+    alignas(64) LambdaStorage lambdaStorage;
+    alignas(64) Result<kResultStorageCapacity> result;
+    alignas(64) ThunkStorage thunkStorage;
+    ThunkType* thunk = nullptr;
+  };
+
+  template<typename ResultType>
+  struct Future {
+    Future() = default;
+    explicit Future(Task& task)
+    : task { &task }
+    { }
+
+    ResultType get() const {
+      ResultType r = task->getResult<ResultType>();
+      task = nullptr;
+      return r;
+    }
+
+    bool valid() const {
+      return task != nullptr && task->valid();
+    }
+
+    void cancel() const {
+      task->cancel();
+      task = nullptr;
+    }
+
+  private:
+    mutable Task* task = nullptr;
+  };
+
+  template<>
+  struct Future<void> {
+    Future() = default;
+    explicit Future(Task& task)
+    : task { &task } { }
+
+    void get() const {
+      task->getResult();
+      task = nullptr;
+    }
+
+    bool valid() const {
+      return task != nullptr && task->valid();
+    }
+
+    void cancel() const {
+      task->cancel();
+      task = nullptr;
+    }
+
+  private:
+    mutable Task* task = nullptr;
+  };
+
   /**
     * \brief Implements a async task scheduler, optimized
     *        for tasks of varying execution time using a
@@ -53,13 +275,12 @@ namespace dxvk {
     *  Example usage:
     *   // Creates 1 thread, and uses it to return PI via a future
     *   WorkerThreadPool threadPool(1, "thread-pool-name");
-    *   std::future<float> result = threadPool.Schedule([]{ return 3.14159265359f; });
+    *   Future<float> result = threadPool.Schedule([]{ return 3.14159265359f; });
     *   float pi = result.get();
     */
   template<size_t NumTasksPerThread, bool WorkStealing = true, bool LowLatency = true>
   class WorkerThreadPool {
-    using Task = std::function<void()>;
-    using Queue = AtomicQueue<Task, NumTasksPerThread>;
+    using Queue = AtomicQueue<TaskId, NumTasksPerThread>;
     using QueuePtr = std::unique_ptr<Queue>;
 
     struct Nop { };
@@ -68,7 +289,10 @@ namespace dxvk {
 
   public:
     WorkerThreadPool(uint8_t numThreads, const char* workerName = "Nameless Worker Thread") 
-     : m_numThread(numThreads) {
+    : m_numThread(numThreads) {
+      // Note: round up to a closest power-of-two so we can use mask as modulo
+      m_taskCount = 1 << (32 - bit::lzcnt(static_cast<uint32_t>(NumTasksPerThread*numThreads) - 1));
+      m_tasks.resize(m_taskCount);
       m_workerTasks.resize(m_numThread);
       m_workerThreads.resize(m_numThread);
       // Create the work queues first!  We need to create
@@ -98,34 +322,30 @@ namespace dxvk {
       for (auto& worker : m_workerThreads) {
         worker.join();
       }
+
+      if (m_numTasks > 0) {
+        for (auto& workerTasks : m_workerTasks) {
+          TaskId taskId;
+          while (workerTasks->pop(taskId)) {
+            // Cancel the actual task job
+            m_tasks[taskId].cancel();
+            // Execute the task to dispatch the destructor
+            m_tasks[taskId]();
+            --m_numTasks;
+          }
+        }
+      }
+
+      assert(m_numTasks == 0 && "Tasks left in thread pool queue after destruction!");
     }
 
     // Schedule a task to be executed by the thread pool
-    template <uint8_t Affinity = 0xFF, typename F, typename... Args, typename R = std::invoke_result_t<std::decay_t<F>, std::decay_t<Args>...>>
-    std::shared_future<R> Schedule(F&& f, Args&&... args) {
-      auto taskPromise = std::make_shared<std::promise<R>>();
-      auto resultFuture = taskPromise->get_future();
-
-      // Package up the user task, and wrap it with promise
-      // Note: with C++20, we would forward parameter pack like "...cArgs = std::forward<Args>(args)"
-      // so we would avoid copying for appropriate arguments
-      auto work = std::function<void()>([
-        cTaskPromise = std::move(taskPromise),
-        cFn = std::forward<F>(f),
-        args...
-      ]() mutable {
-        if constexpr (std::is_void_v<R>) {
-          cFn(std::forward<Args>(args)...);
-          cTaskPromise->set_value();
-        } else {
-          cTaskPromise->set_value(cFn(std::forward<Args>(args)...));
-        }
-      });
-
+    template <uint8_t Affinity = 0xFF, typename F, typename R = std::invoke_result_t<std::decay_t<F>>>
+    Future<R> Schedule(F&& f) {
       // Add the task to the queue and notify a worker thread
       //  just distribute evenly to all threads for some mask denoted by Affinity.
       static size_t s_idx = 0;
-      
+
       // Is the affinity mask valid?
       const uint8_t affinityMask = std::min(popcnt_uint8(Affinity), m_numThread);
 
@@ -135,23 +355,32 @@ namespace dxvk {
 
       // Atomic queue is SPSC, so we don't need to take a lock here
       // since we know this will always be called from a single thread.
-      if (!m_workerTasks[thread]->push(std::move(work))) {
-        return std::shared_future<R>(); // the queue is full, return empty future
-      }
 
-      if constexpr (!LowLatency) {
-        if constexpr (WorkStealing) {
-          // Notify only one worker when workers can steal from the others
-          m_condOnAdd.notify_one();
-        } else {
-          // Notify all workers when they cannot steal
-          m_condOnAdd.notify_all();
+      Future<R> future;
+      if (!m_workerTasks[thread]->isFull()) {
+        // Get next task id
+        TaskId taskId = m_taskId++ & (m_taskCount - 1);
+
+        // Capture task lambda
+        future = m_tasks[taskId].capture<F, R>(std::forward<F>(f));
+
+        // Place task into queue
+        m_workerTasks[thread]->push(std::move(taskId));
+
+        if constexpr (!LowLatency) {
+          if constexpr (WorkStealing) {
+            // Notify only one worker when workers can steal from the others
+            m_condOnAdd.notify_one();
+          } else {
+            // Notify all workers when they cannot steal
+            m_condOnAdd.notify_all();
+          }
         }
+
+        ++m_numTasks;
       }
 
-      ++m_numTasks;
-
-      return resultFuture;
+      return future;
     }
 
   private:
@@ -196,14 +425,14 @@ namespace dxvk {
 
     // True if front pop, False if back pop
     bool executeTask(const uint32_t workerId) {
-      Task task;
+      TaskId taskId;
       {
         // Since we're using an SPSC queue, we must take a lock when
         // popping, since we may be stealing (or be stolen from) by
         // another thread.
         std::unique_lock<sync::Spinlock> lock(m_threadMutex);
 
-        if (!m_workerTasks[workerId]->pop(task)) {
+        if (!m_workerTasks[workerId]->pop(taskId)) {
           return false;
         }
 
@@ -211,12 +440,14 @@ namespace dxvk {
       }
 
       // Execute the task
-      if (task) {
-        task();
-        return true;
-      }
-      return false;
+      m_tasks[taskId]();
+
+      return true;
     }
+
+    std::vector<Task> m_tasks;
+    std::atomic<TaskId> m_taskId = 0;
+    uint32_t m_taskCount;
 
     uint8_t m_numThread;
 

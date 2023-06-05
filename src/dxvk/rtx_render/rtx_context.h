@@ -138,7 +138,7 @@ namespace dxvk {
       *
       * \param [in] skinningData: shared future containing skinning data
       */
-    void setSkinningData(std::shared_future<SkinningData> skinningData);
+    void setSkinningData(Future<SkinningData> skinningData);
 
     /**
       * \brief Set legacy rendering state on the context
@@ -254,6 +254,7 @@ namespace dxvk {
     bool shouldUseNIS() const;
     bool shouldUseTAA() const;
     bool shouldUseUpscaler() const { return shouldUseDLSS() || shouldUseNIS() || shouldUseTAA(); }
+    void cancelFutureData();
 
     inline static bool s_triggerScreenshot = false;
     inline static bool s_triggerUsdCapture = false;

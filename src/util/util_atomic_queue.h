@@ -42,6 +42,10 @@ namespace dxvk {
       m_head = m_tail = 0;
     }
 
+    bool isFull() const {
+      return ((m_tail + 1) % Capacity) == m_head;
+    }
+
     bool push(T&& item) {
       auto tail = m_tail.load();
       auto nextTail = (tail + 1) % Capacity;

@@ -7,12 +7,6 @@
 #include "../dxvk/rtx_render/rtx_hashing.h"
 #include "../util/util_fastops.h"
 
-namespace {
-  // Avoid scheduling tasks for very small geometry, as overhead might be higher than the task itself.
-  constexpr uint32_t VertexCountScheduleThreshold = 8;
-  constexpr uint32_t IndexCountScheduleThreshold = 16;
-}
-
 namespace dxvk {
   // Geometry indices should never be signed.  Using this to handle the non-indexed case for templates.
   typedef int NoIndices;
@@ -40,8 +34,8 @@ namespace dxvk {
     outResult.stride = buffer.stride();
     outResult.size = outResult.stride * vertexCount;
     // Make sure we hold on to this reference while the hashing is in flight
-    outResult.ref = buffer.buffer();
-    assert(outResult.ref.ptr());
+    outResult.ref = buffer.buffer().ptr();
+    assert(outResult.ref);
     return true;
   }
 
@@ -74,7 +68,8 @@ namespace dxvk {
   }
 
   template<typename T>
-  void hashGeometryData(const size_t indexCount, const uint32_t maxIndexValue, const void* pIndexData, const Rc<DxvkBuffer>& indexBufferRef, const HashQuery vertexRegions[Count], GeometryHashes& hashesOut) {
+  void hashGeometryData(const size_t indexCount, const uint32_t maxIndexValue, const void* pIndexData,
+                        DxvkBuffer* indexBufferRef, const HashQuery vertexRegions[Count], GeometryHashes& hashesOut) {
     ScopedCpuProfileZone();
 
     const HashRule& globalHashRule = RtxOptions::Get()->GeometryHashGenerationRule;
@@ -82,7 +77,7 @@ namespace dxvk {
     // TODO (REMIX-658): Improve this by reducing allocation overhead of vector
     std::vector<T> uniqueIndices(0);
     if constexpr (!std::is_same<T, NoIndices>::value) {
-      assert((indexCount > 0 && indexBufferRef.ptr()));
+      assert((indexCount > 0 && indexBufferRef));
       deduplicateSortIndices(pIndexData, indexCount, maxIndexValue, uniqueIndices);
 
       if (globalHashRule.test(HashComponents::Indices)) {
@@ -96,6 +91,7 @@ namespace dxvk {
 
       // Release this memory back to the staging allocator
       indexBufferRef->release(DxvkAccess::Read);
+      indexBufferRef->decRef();
     }
 
     // Do vertex based rules
@@ -119,12 +115,14 @@ namespace dxvk {
       if (region.size == 0)
         continue;
 
-      if (region.ref.ptr())
+      if (region.ref) {
         region.ref->release(DxvkAccess::Read);
+        region.ref->decRef();
+      }
     }
   }
 
-  std::shared_future<GeometryHashes> D3D9Rtx::computeHash(const RasterGeometry& geoData, const uint32_t maxIndexValue) {
+  Future<GeometryHashes> D3D9Rtx::computeHash(const RasterGeometry& geoData, const uint32_t maxIndexValue) {
     ScopedCpuProfileZone();
 
     const uint32_t indexCount = geoData.indexCount;
@@ -134,18 +132,23 @@ namespace dxvk {
     memset(&vertexRegions[0], 0, sizeof(vertexRegions));
 
     if (!getVertexRegion(geoData.positionBuffer, vertexCount, vertexRegions[Position]))
-      return std::shared_future<GeometryHashes>(); //invalid
+      return Future<GeometryHashes>(); //invalid
 
     // Acquire prevents the staging allocator from re-using this memory
     vertexRegions[Position].ref->acquire(DxvkAccess::Read);
+    vertexRegions[Position].ref->incRef();
 
-    if(getVertexRegion(geoData.texcoordBuffer, vertexCount, vertexRegions[Texcoord]))
+    if (getVertexRegion(geoData.texcoordBuffer, vertexCount, vertexRegions[Texcoord])) {
       vertexRegions[Texcoord].ref->acquire(DxvkAccess::Read);
+      vertexRegions[Texcoord].ref->incRef();
+    }
 
     // Make sure we hold a ref to the index buffer while hashing.
     const Rc<DxvkBuffer> indexBufferRef = geoData.indexBuffer.buffer();
-    if(indexBufferRef.ptr())
+    if (indexBufferRef.ptr()) {
       indexBufferRef->acquire(DxvkAccess::Read);
+      indexBufferRef->incRef();
+    }
     const void* pIndexData = geoData.indexBuffer.defined() ? geoData.indexBuffer.mapPtr(0) : nullptr;
     const size_t indexStride = geoData.indexBuffer.stride();
     const size_t indexDataSize = indexCount * indexStride;
@@ -178,7 +181,10 @@ namespace dxvk {
       vertexLayoutHash = hashVertexLayout(geoData);
     }
 
-    auto work = [vertexRegions, indexBufferRef, pIndexData, indexStride, indexDataSize, indexCount, maxIndexValue, vertexShaderHash, geometryDescriptorHash, vertexLayoutHash]() -> GeometryHashes {
+    return m_gpeWorkers.Schedule([vertexRegions, indexBufferRef = indexBufferRef.ptr(),
+                                 pIndexData, indexStride, indexDataSize, indexCount,
+                                 maxIndexValue, vertexShaderHash, geometryDescriptorHash,
+                                 vertexLayoutHash]() -> GeometryHashes {
       ScopedCpuProfileZone();
 
       GeometryHashes hashes;
@@ -203,19 +209,13 @@ namespace dxvk {
 
       assert(hashes[HashComponents::VertexPosition] != kEmptyHash);
 
+      hashes.precombine();
+
       return hashes;
-    };
-
-    if (vertexCount < VertexCountScheduleThreshold && indexCount < IndexCountScheduleThreshold) {
-      auto ready = std::promise<GeometryHashes>();
-      ready.set_value(work());
-      return ready.get_future();
-    }
-
-    return m_gpeWorkers.Schedule(std::move(work));
+    });
   }
 
-  std::shared_future<AxisAlignedBoundingBox> D3D9Rtx::computeAxisAlignedBoundingBox(const RasterGeometry& geoData) {
+  Future<AxisAlignedBoundingBox> D3D9Rtx::computeAxisAlignedBoundingBox(const RasterGeometry& geoData) {
     ScopedCpuProfileZone();
 
     const void* pVertexData = geoData.positionBuffer.mapPtr((size_t)geoData.positionBuffer.offsetFromSlice());
@@ -223,10 +223,13 @@ namespace dxvk {
     const size_t vertexStride = geoData.positionBuffer.stride();
 
     if (pVertexData == nullptr) {
-      return std::shared_future<AxisAlignedBoundingBox>();
+      return Future<AxisAlignedBoundingBox>();
     }
 
-    auto work = [pVertexData, vertexCount, vertexStride]()->AxisAlignedBoundingBox {
+    auto vertexBuffer = geoData.positionBuffer.buffer().ptr();
+    vertexBuffer->incRef();
+
+    return m_gpeWorkers.Schedule([pVertexData, vertexCount, vertexStride, vertexBuffer]()->AxisAlignedBoundingBox {
       ScopedCpuProfileZone();
 
       __m128 minPos = _mm_set_ps1(FLT_MAX);
@@ -246,15 +249,10 @@ namespace dxvk {
         { minPos.m128_f32[0], minPos.m128_f32[1], minPos.m128_f32[2] },
         { maxPos.m128_f32[0], maxPos.m128_f32[1], maxPos.m128_f32[2] }
       };
+
+      vertexBuffer->decRef();
+
       return boundingBox;
-    };
-
-    if (vertexCount < VertexCountScheduleThreshold) {
-      auto ready = std::promise<AxisAlignedBoundingBox>();
-      ready.set_value(work());
-      return ready.get_future();
-    }
-
-    return m_gpeWorkers.Schedule(std::move(work));
+    });
   }
 }

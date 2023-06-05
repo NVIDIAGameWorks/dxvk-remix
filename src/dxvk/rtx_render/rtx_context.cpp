@@ -633,7 +633,7 @@ namespace dxvk {
     m_rtState.vsFixedFunctionCB = m_rc[vsFixedFunctionConstants].bufferSlice.buffer();
   }
 
-  void RtxContext::setSkinningData(std::shared_future<SkinningData> skinningData) {
+  void RtxContext::setSkinningData(Future<SkinningData> skinningData) {
     m_rtState.futureSkinningData = skinningData;
   }
 
@@ -653,6 +653,21 @@ namespace dxvk {
 
   void RtxContext::setFogState(const FogState& fogState) {
     m_rtState.fogState = fogState;
+  }
+
+  void RtxContext::cancelFutureData() {
+    // Cancel any future data that was not used as early
+    // as possible so we do not waste cycles on it
+
+    if (m_rtState.futureSkinningData.valid()) {
+      m_rtState.futureSkinningData.cancel();
+    }
+    if (m_rtState.geometry.futureGeometryHashes.valid()) {
+      m_rtState.geometry.futureGeometryHashes.cancel();
+    }
+    if (m_rtState.geometry.futureBoundingBox.valid()) {
+      m_rtState.geometry.futureBoundingBox.cancel();
+    }
   }
 
   RtxGeometryStatus RtxContext::commitGeometryToRT(const DrawParameters& params){
@@ -795,7 +810,7 @@ namespace dxvk {
       geoData.numBonesPerVertex = skinningData.numBonesPerVertex;
 
       // Reset the future
-      m_rtState.futureSkinningData = std::shared_future<SkinningData>();
+      m_rtState.futureSkinningData = Future<SkinningData>();
     }
 
     if (!geoData.positionBuffer.defined()) {
@@ -913,8 +928,10 @@ namespace dxvk {
     uint32_t instanceCount,
     uint32_t firstVertex,
     uint32_t firstInstance) {
-    if (RtxOptions::Get()->skipDrawCallsPostRTXInjection() && m_frameLastInjected == m_device->getCurrentFrameId())
+    if (RtxOptions::Get()->skipDrawCallsPostRTXInjection() && m_frameLastInjected == m_device->getCurrentFrameId()) {
+      cancelFutureData();
       return;
+    }
 
     if (requiresDrawCall()) {
       ScopedGpuProfileZone(this, "Draw");
@@ -936,6 +953,7 @@ namespace dxvk {
       m_rtState.geometryStatus = RtxGeometryStatus::Ignored;
       m_drawCallID++;
     }
+    cancelFutureData();
   }
 
   void RtxContext::drawIndexed(
@@ -944,8 +962,10 @@ namespace dxvk {
     uint32_t firstIndex,
     uint32_t vertexOffset,
     uint32_t firstInstance) {
-    if (RtxOptions::Get()->skipDrawCallsPostRTXInjection() && m_frameLastInjected == m_device->getCurrentFrameId())
+    if (RtxOptions::Get()->skipDrawCallsPostRTXInjection() && m_frameLastInjected == m_device->getCurrentFrameId()) {
+      cancelFutureData();
       return;
+    }
 
     if (requiresDrawCall()) {
       ScopedGpuProfileZone(this, "DrawIndexed");
@@ -968,7 +988,8 @@ namespace dxvk {
       m_rtState.geometryStatus = RtxGeometryStatus::Ignored;
       m_drawCallID++;
     }
-  } 
+    cancelFutureData();
+  }
 
   static uint32_t jenkinsHash(uint32_t a) {
     // http://burtleburtle.net/bob/hash/integer.html

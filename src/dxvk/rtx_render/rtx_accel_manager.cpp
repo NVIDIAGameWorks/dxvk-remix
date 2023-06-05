@@ -357,6 +357,9 @@ namespace dxvk {
     std::vector<VkAccelerationStructureBuildGeometryInfoKHR> blasToBuild;
     std::vector<VkAccelerationStructureBuildRangeInfoKHR*> blasRangesToBuild;
 
+    blasToBuild.reserve(instances.size());
+    blasRangesToBuild.reserve(instances.size());
+
     m_reorderedSurfaces.clear();
     m_reorderedSurfacesFirstIndexOffset.clear();
     for (auto& instances : m_mergedInstances) {
@@ -373,6 +376,8 @@ namespace dxvk {
       opacityMicromapManager->onFrameStart(ctx, cmdList);
 
     std::vector<std::unique_ptr<BlasBucket>> blasBuckets;
+    blasBuckets.reserve(instances.size());
+
     for (RtInstance* instance : instances) {
       // If the instance has zero mask, do not build BLAS for it: no ray can intersect this instance.
       if (instance->getVkInstance().mask == 0) {

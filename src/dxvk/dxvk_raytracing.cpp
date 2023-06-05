@@ -118,7 +118,7 @@ namespace dxvk {
       }
     }
 
-    std::shared_future<VkResult> finalize(const Rc<vk::DeviceFn>& vkd,
+    Future<VkResult> finalize(const Rc<vk::DeviceFn>& vkd,
                                           VkDeferredOperationKHR deferredOp) {
       std::lock_guard<sync::Spinlock> lock(m_mutex);
 
@@ -127,9 +127,9 @@ namespace dxvk {
         m_threadPool = new ThreadPoolType(numCpuCores / 4, "dxvk-deferredop-finalizer");
       }
 
-      std::shared_future<VkResult> future;
+      Future<VkResult> future;
       do {
-        future = m_threadPool->Schedule([vkd, deferredOp]() -> VkResult {
+        future = m_threadPool->Schedule([vkd = vkd.ptr(), deferredOp]() -> VkResult {
           return vkd->vkDeferredOperationJoinKHR(vkd->device(), deferredOp);
         });
 
@@ -332,7 +332,7 @@ namespace dxvk {
     if (result != VK_OPERATION_NOT_DEFERRED_KHR) {
       uint32_t numLaunches = m_vkd->vkGetDeferredOperationMaxConcurrencyKHR(m_vkd->device(), deferredOp);
 
-      std::vector<std::shared_future<VkResult>> joins;
+      std::vector<Future<VkResult>> joins;
       while (numLaunches > 1) {
         joins.emplace_back(DxvkDeferredOpFinalizer::get().finalize(m_vkd, deferredOp));
         --numLaunches;
