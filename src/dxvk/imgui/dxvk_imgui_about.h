@@ -29,6 +29,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <chrono>
 
 namespace dxvk {
   class DxvkContext;
@@ -44,6 +45,8 @@ namespace dxvk {
     void show(const Rc<DxvkContext>& ctx);
 
   private:
+    std::chrono::time_point<std::chrono::steady_clock> m_copiedNotificationTimeout{};
+
     class Credits {
     public:
       Credits();

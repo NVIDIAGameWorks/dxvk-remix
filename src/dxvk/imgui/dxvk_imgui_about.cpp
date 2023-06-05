@@ -21,6 +21,8 @@
 */
 #include "dxvk_imgui_about.h"
 
+#include <version.h>
+
 #include "imgui.h"
 #include "dxvk_device.h"
 #include "dxvk_context.h"
@@ -41,13 +43,48 @@ namespace dxvk {
 
   void ImGuiAbout::show(const Rc<DxvkContext>& ctx) {
     ImGui::PushItemWidth(250);
-    ImGui::Text("NVIDIA Lightspeed Studios");
+
+    // Remix Version Information
+
+    ImGui::TextUnformatted("RTX Remix Version: " DXVK_VERSION);
+    ImGui::SameLine();
+
+    const auto currentTime = std::chrono::steady_clock::now();
+    const char* copyText;
+
+    // Note: Somewhat wasteful to be checking the clock every frame like this when the copied timeout is not even
+    // active, but simpler than keeping duplicate state around, and this code is only invoked when the About menu
+    // is open anyways so it will have no performance impact on actual games using Remix.
+    if (currentTime < m_copiedNotificationTimeout) {
+      copyText = "Copied!";
+    } else {
+      copyText = "Copy to clipboard";
+    }
+
+    if (ImGui::SmallButton(copyText)) {
+      ImGui::SetClipboardText(DXVK_VERSION);
+
+      // Set a 2 second timeout for the copied notification
+      m_copiedNotificationTimeout = currentTime + std::chrono::seconds(2);
+    }
+
+    // Remix Credits
+
     if (ImGui::CollapsingHeader("Credits", collapsingHeaderFlags)) {
+      ImGui::TextUnformatted("Produced by NVIDIA Lightspeed Studios");
+      ImGui::TextUnformatted("Based on the DXVK project");
+
+      ImGui::Separator();
+
       m_credits.show();
     }
+
+    // Secret Code Section
+
     if (ImGui::CollapsingHeader("Secrets", collapsingHeaderClosedFlags)) {
       m_secrets.show(ctx);
     }
+
     ImGui::PopItemWidth();
   }
 
@@ -134,10 +171,10 @@ namespace dxvk {
 
   void ImGuiAbout::Credits::show() {
     for (const auto& creditSection : m_sections) {
-      ImGui::Text(creditSection.sectionName);
+      ImGui::TextUnformatted(creditSection.sectionName);
       ImGui::Indent();
       for (const auto& name : creditSection.names) {
-        ImGui::Text(name);
+        ImGui::TextUnformatted(name);
       }
       ImGui::Unindent();
     }
@@ -200,7 +237,7 @@ namespace dxvk {
               }
             } else if (secret.replacement.bDisplayBeforeUnlocked) {
               ImGui::Indent();
-              ImGui::Text(secret.replacement.name.c_str());
+              ImGui::TextUnformatted(secret.replacement.name.c_str());
               ImGui::Unindent();
             }
           }
@@ -211,7 +248,7 @@ namespace dxvk {
   }
 
   void ImGuiAbout::Secrets::showCodeHashEntry() {
-    ImGui::Text("Codeword:");
+    ImGui::TextUnformatted("Codeword:");
     ImGui::SameLine();
     static char codewordBuf[32] = "";
     static auto sameLineAndButton = [&]() {
