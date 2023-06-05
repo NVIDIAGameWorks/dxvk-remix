@@ -301,7 +301,7 @@ namespace dxvk {
       RtInstance*& pInstance = m_instances[i];
       assert(pInstance != nullptr);
 
-      const XXH64_hash_t topologicalHash = pInstance->getBlas()->input.getGeometryData().getHashForRule(rules::TopologicalHash);
+      const XXH64_hash_t topologicalHash = pInstance->getBlas()->input.getGeometryData().getHashForRule<rules::TopologicalHash>();
       const LegacyMaterialData& materialData = pInstance->getBlas()->input.getMaterialData();
       const bool isHighlightedInstance = (RtxOptions::Get()->highlightedTexture() != kEmptyHash) &&
                                        ((RtxOptions::Get()->highlightedTexture() == materialData.getColorTexture().getImageHash()) ||

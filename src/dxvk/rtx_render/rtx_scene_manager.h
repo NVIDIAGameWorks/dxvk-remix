@@ -60,30 +60,10 @@ class TerrainBaker;
 // The resource cache can be *searched* by other users
 class ResourceCache {
 public:
-  bool find(const RaytraceBuffer& buf, uint32_t& outIdx) const { return m_bufferCache.find(buf, outIdx); }
   bool find(const RtSurfaceMaterial& surf, uint32_t& outIdx) const { return m_surfaceMaterialCache.find(surf, outIdx); }
 
 protected:
-  struct BufferHashFn {
-    [[nodiscard]] size_t operator()(const RaytraceBuffer& slice) const noexcept {
-      if (!slice.defined()) {
-        return kEmptyHash;
-      }
-
-      auto hashValue = [](auto value, XXH64_hash_t seed) {
-        return XXH3_64bits_withSeed(&value, sizeof(value), seed);
-      };
-
-      XXH64_hash_t h = kEmptyHash;
-
-      h = hashValue(reinterpret_cast<uintptr_t>(slice.buffer()->getBufferRaw()), h);
-      h = hashValue(slice.getDynamicOffset(), h);
-      h = hashValue(slice.length(), h);
-
-      return h;
-    }
-  };
-  SparseUniqueCache<RaytraceBuffer, BufferHashFn> m_bufferCache;
+  BufferRefTable<RaytraceBuffer> m_bufferCache;
 
   struct SurfaceMaterialHashFn {
     size_t operator() (const RtSurfaceMaterial& mat) const {

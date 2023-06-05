@@ -103,10 +103,9 @@ namespace dxvk {
     public:
       AxisAlignedBoundingBoxLink(const DrawCallState& drawCallState);
       AxisAlignedBoundingBox calculateAABBInWorldSpace();
-      bool isValid();
 
     private:
-      const std::shared_future<AxisAlignedBoundingBox> aabbObjectSpace;
+      const AxisAlignedBoundingBox aabbObjectSpace;
       const Matrix4 objectToWorld;
     };
 

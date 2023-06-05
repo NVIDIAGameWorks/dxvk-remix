@@ -31,7 +31,7 @@ namespace {
       return false;
 
     return drawCall.getMaterialData().getHash() == blas.input.getMaterialData().getHash()
-        && drawCall.getGeometryData().getHashForRule(rules::FullGeometryHash) == blas.input.getGeometryData().getHashForRule(rules::FullGeometryHash)
+        && drawCall.getGeometryData().getHashForRule<rules::FullGeometryHash>() == blas.input.getGeometryData().getHashForRule<rules::FullGeometryHash>()
         && drawCall.getSkinningState().boneHash == blas.input.getSkinningState().boneHash;
   }
 }
@@ -43,7 +43,7 @@ DrawCallCache::~DrawCallCache() {}
 
 DrawCallCache::CacheState DrawCallCache::get(const DrawCallState& drawCall, BlasEntry** out) {
   // First, find the right bucket:
-  const XXH64_hash_t hash = drawCall.getGeometryData().getHashForRule(rules::TopologicalHash);
+  const XXH64_hash_t hash = drawCall.getGeometryData().getHashForRule<rules::TopologicalHash>();
   auto range = m_entries.equal_range(hash);
   if (range.first == m_entries.end()) {
     // New bucket
@@ -58,7 +58,7 @@ DrawCallCache::CacheState DrawCallCache::get(const DrawCallState& drawCall, Blas
     BlasEntry& entry = range.first->second;
 
     const bool updatedThisFrame = entry.frameLastTouched == m_device->getCurrentFrameId();
-    const bool vertexDataMatches = entry.input.getGeometryData().getHashForRule(rules::VertexDataHash) == drawCall.getGeometryData().getHashForRule(rules::VertexDataHash);
+    const bool vertexDataMatches = entry.input.getGeometryData().getHashForRule<rules::VertexDataHash>() == drawCall.getGeometryData().getHashForRule<rules::VertexDataHash>();
     const bool boneHashesMatch = entry.input.getSkinningState().boneHash == drawCall.getSkinningState().boneHash;
     const bool materialHashesMatch = entry.input.getMaterialData().getHash() == drawCall.getMaterialData().getHash();
 

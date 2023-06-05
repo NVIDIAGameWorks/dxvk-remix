@@ -48,21 +48,22 @@ namespace dxvk {
 
   // Set of predefined, useful hash rules
   namespace rules {
-    const HashRule TopologicalHash = (1 << (uint32_t)HashComponents::Indices)
+    const uint32_t TopologicalHash = (1 << (uint32_t)HashComponents::Indices)
                                    | (1 << (uint32_t)HashComponents::GeometryDescriptor);    
     
-    const HashRule VertexDataHash  = (1 << (uint32_t)HashComponents::VertexPosition)
+    const uint32_t VertexDataHash  = (1 << (uint32_t)HashComponents::VertexPosition)
                                    | (1 << (uint32_t)HashComponents::VertexTexcoord)
                                    | (1 << (uint32_t)HashComponents::VertexLayout)
                                    | (1 << (uint32_t)HashComponents::VertexShader);
 
-    const HashRule FullGeometryHash = VertexDataHash | TopologicalHash;
+    const uint32_t FullGeometryHash = VertexDataHash | TopologicalHash;
 
-    const HashRule LegacyAssetHash0 = (1 << (uint32_t)HashComponents::LegacyPositions0)
+    const uint32_t LegacyAssetHash0 = (1 << (uint32_t)HashComponents::LegacyPositions0)
                                     | (1 << (uint32_t)HashComponents::LegacyIndices);
 
-    const HashRule LegacyAssetHash1 = (1 << (uint32_t)HashComponents::LegacyPositions1)
+    const uint32_t LegacyAssetHash1 = (1 << (uint32_t)HashComponents::LegacyPositions1)
                                     | (1 << (uint32_t)HashComponents::LegacyIndices);
+    const uint32_t Total = 5;
   }
 
   // Structure contains data required to perform a hash operation on specific data
@@ -71,7 +72,8 @@ namespace dxvk {
     size_t size;              // length of the memory in bytes
     size_t stride;            // byte stride elements within buffer
     size_t elementSize;       // byte stride of the specific elements to hash
-    Rc<class DxvkBuffer> ref; // reference to the buffer (for ref counting purposes)
+    class DxvkBuffer* ref;    // a pointer to the buffer for ref counting purposes
+                              // Note: buffer object is refcounted manually using incRef/decRef.
   };
 
   // Structure containing the various hashes used for geometry
@@ -84,9 +86,79 @@ namespace dxvk {
     const XXH64_hash_t& operator[](const HashComponents& field) const { return fields[(uint32_t) field]; }
           XXH64_hash_t& operator[](const HashComponents& field)       { return fields[(uint32_t) field]; }
 
+    void precombine() {
+      precombined[0] = getHashForRuleImpl<rules::TopologicalHash>();
+      precombined[1] = getHashForRuleImpl<rules::VertexDataHash>();
+      precombined[2] = getHashForRuleImpl<rules::FullGeometryHash>();
+      if (operator[](HashComponents::LegacyPositions0) != kEmptyHash) {
+        precombined[3] = getHashForRuleImpl<rules::LegacyAssetHash0>();
+      }
+      if (operator[](HashComponents::LegacyPositions1) != kEmptyHash) {
+        precombined[4] = getHashForRuleImpl<rules::LegacyAssetHash1>();
+      }
+    }
+
+    template<uint32_t rule>
+    XXH64_hash_t getHashForRule() const {
+      switch (rule) {
+      case rules::TopologicalHash:
+        return precombined[0];
+      case rules::VertexDataHash:
+        return precombined[1];
+      case rules::FullGeometryHash:
+        return precombined[2];
+      case rules::LegacyAssetHash0:
+        return precombined[3];
+      case rules::LegacyAssetHash1:
+        return precombined[4];
+      }
+      return getHashForRuleImpl<rule>();
+    }
+
+    XXH64_hash_t getHashForRule(const HashRule& rule) const {
+      switch (rule.raw()) {
+      case rules::TopologicalHash:
+        return getHashForRule<rules::TopologicalHash>();
+      case rules::VertexDataHash:
+        return getHashForRule<rules::VertexDataHash>();
+      case rules::FullGeometryHash:
+        return getHashForRule<rules::FullGeometryHash>();
+      case rules::LegacyAssetHash0:
+        return getHashForRule<rules::LegacyAssetHash0>();
+      case rules::LegacyAssetHash1:
+        return getHashForRule<rules::LegacyAssetHash1>();
+      }
+      return getHashForRuleImpl(rule);
+    }
+
   private:
+    // Legacy hash combiner
+    XXH64_hash_t getHashForRuleImpl(const HashRule& rule) const {
+      XXH64_hash_t hashResult = kEmptyHash;
+      for (uint32_t i = 0; i < (uint32_t) HashComponents::Count; i++) {
+        const HashComponents component = (HashComponents) i;
+
+        if (rule.test(component)) {
+          if (hashResult == kEmptyHash)
+            // For the first entry, we use the hash directly
+            hashResult = fields[i];
+          else
+            // For all other entries, we combine the hash via seeding
+            hashResult = XXH64(&(fields[i]), sizeof(XXH64_hash_t), hashResult);
+        }
+      }
+      assert(hashResult != kEmptyHash);
+      return hashResult;
+    }
+
+    template<uint32_t rule>
+    XXH64_hash_t getHashForRuleImpl() const {
+      return getHashForRuleImpl(rule);
+    }
+
     // Array of hashes, indexed by HashComponent
     XXH64_hash_t fields[HashComponents::Count];
+    XXH64_hash_t precombined[rules::Total];
   };
 
   /**

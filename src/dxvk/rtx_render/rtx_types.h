@@ -25,6 +25,7 @@
 #include "rtx_materials.h"
 #include "rtx_hashing.h"
 #include "vulkan/vulkan_core.h"
+#include "../../util/util_threadpool.h"
 
 #include <inttypes.h>
 #include <vector>
@@ -60,17 +61,6 @@ struct SkinningData {
     } else {
       boneHash = 0;
     }
-  }
-
-  SkinningData& operator=(const SkinningData& skinningData) {
-    if (this != &skinningData) {
-      pBoneMatrices = skinningData.pBoneMatrices;
-      numBones = skinningData.numBones;
-      numBonesPerVertex = skinningData.numBonesPerVertex;
-      boneHash = skinningData.boneHash;
-      minBoneIndex = skinningData.minBoneIndex;
-    }
-    return *this;
   }
 };
 
@@ -136,7 +126,7 @@ struct AxisAlignedBoundingBox {
 //          generated from has finished executing on the GPU
 struct RasterGeometry {
   GeometryHashes hashes;
-  std::shared_future<GeometryHashes> futureGeometryHashes;
+  Future<GeometryHashes> futureGeometryHashes;
 
   // Actual vertex/index count (when applicable) as calculated by geo-engine
   uint32_t vertexCount = 0;
@@ -163,29 +153,16 @@ struct RasterGeometry {
   RasterBuffer blendIndicesBuffer;
 
   AxisAlignedBoundingBox boundingBox;
-  std::shared_future<AxisAlignedBoundingBox> futureBoundingBox;
+  Future<AxisAlignedBoundingBox> futureBoundingBox;
 
-  const XXH64_hash_t getHashForRule(const HashRule& rule) const {
-    XXH64_hash_t hashResult = kEmptyHash;
-
-    // TODO: Can be optimized to not iterate over all component indices
-    for (uint32_t i = 0; i < (uint32_t)HashComponents::Count; i++) {
-      const HashComponents component = (HashComponents) i;
-
-      if (rule.test(component)) {
-        if (hashResult == kEmptyHash)
-          // For the first entry, we use the hash directly
-          hashResult = hashes[component];
-        else
-          // For all other entries, we combine the hash via seeding
-          hashResult = XXH64(&(hashes[component]), sizeof(XXH64_hash_t), hashResult);
-      }
-    }
-
-    assert(hashResult != kEmptyHash);
-    return hashResult;
+  template<uint32_t rule>
+  const XXH64_hash_t getHashForRule() const {
+    return hashes.getHashForRule<rule>();
   }
 
+  const XXH64_hash_t getHashForRule(const HashRule& rule) const {
+    return hashes.getHashForRule(rule);
+  }
 
   const XXH64_hash_t getHashForRuleLegacy(const HashRule& rule) const {
     // Note: Only information relating to how the geometry is structured should be included here.
@@ -603,7 +580,7 @@ enum class RtxGeometryStatus {
 struct DxvkRaytracingInstanceState {
   RasterGeometry geometry;
   RtxGeometryStatus geometryStatus;
-  std::shared_future<SkinningData> futureSkinningData;
+  Future<SkinningData> futureSkinningData;
   bool useProgrammableVS;
   bool useProgrammablePS;
   Matrix4 world;

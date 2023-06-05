@@ -38,7 +38,7 @@ test('fastop_parallelmemcpy', exe, env: nomalloc)
 tests += exe
 
 exe = executable('util_threadpool',  files('test_util_threadpool.cpp'),  dependencies : test_unit_deps, install : true, win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
-test('util_threadpool', exe, env: nomalloc)
+test('util_threadpool', exe, env: nomalloc, timeout: 60)
 tests += exe
 
 

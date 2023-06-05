@@ -20,7 +20,11 @@ namespace dxvk {
   D3D9Rtx::D3D9Rtx(D3D9DeviceEx* d3d9Device)
     : m_rtStagingData(d3d9Device->GetDXVKDevice(), (VkMemoryPropertyFlagBits) (VK_MEMORY_PROPERTY_HOST_CACHED_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT))
     , m_parent(d3d9Device)
-    , m_gpeWorkers(popcnt_uint8(D3D9Rtx::kAllThreads), "geometry-processing") { }
+    , m_gpeWorkers(popcnt_uint8(D3D9Rtx::kAllThreads), "geometry-processing") {
+
+    // Add space for 256 objects skinned with 256 bones each.
+    m_stagedBones.resize(256 * 256);
+  }
 
   void D3D9Rtx::Initialize() {
     m_vsVertexCaptureData = m_parent->CreateConstantBuffer(false,
@@ -482,6 +486,8 @@ namespace dxvk {
         static_cast<RtxContext*>(ctx)->injectRTX();
       });
 
+      m_parent->FlushCsChunk();
+
       m_rtxInjectTriggered = true;
       return true;
     }
@@ -539,11 +545,11 @@ namespace dxvk {
     // Copy all the vertices into a staging buffer.  Assign fields of the geoData structure.
     processVertices(vertexContext, vertexIndexOffset, idealTexcoordIndex, geoData);
     geoData.futureGeometryHashes = computeHash(geoData, (maxIndex - minIndex));
-    std::shared_future<SkinningData> futureSkinningData = processSkinning(geoData);
+    Future<SkinningData> futureSkinningData = processSkinning(geoData);
     if (RtxOptions::Get()->needsMeshBoundingBox()) {
       geoData.futureBoundingBox = computeAxisAlignedBoundingBox(geoData);
     } else {
-      geoData.futureBoundingBox = std::shared_future<AxisAlignedBoundingBox>();
+      geoData.futureBoundingBox = Future<AxisAlignedBoundingBox>();
     }
 
     // For shader based drawcalls we also want to capture the vertex shader output
@@ -570,10 +576,10 @@ namespace dxvk {
     return true;
   }
 
-  std::shared_future<SkinningData> D3D9Rtx::processSkinning(const RasterGeometry& geoData) {
+  Future<SkinningData> D3D9Rtx::processSkinning(const RasterGeometry& geoData) {
     ScopedCpuProfileZone();
 
-    static const auto kEmptySkinningFuture = std::shared_future<SkinningData>();
+    static const auto kEmptySkinningFuture = Future<SkinningData>();
 
     if (m_parent->UseProgrammableVS()) {
       return kEmptySkinningFuture;
@@ -607,47 +613,71 @@ namespace dxvk {
     case D3DVBF_3WEIGHTS: numBonesPerVertex = 4; break;
     }
 
-    RasterBuffer blendIndices;
+    const uint32_t vertexCount = geoData.vertexCount;
+
+    HashQuery blendIndices;
     // Analyze the vertex data and find the min and max bone indices used in this mesh.
     // The min index is used to detect a case when vertex blend is enabled but there is just one bone used in the mesh,
     // so we can drop the skinning pass. That is processed in RtxContext::commitGeometryToRT(...)
     if (indexedVertexBlend && geoData.blendIndicesBuffer.defined()) {
-      blendIndices = geoData.blendIndicesBuffer;
-      // Acquire prevents the staging allocator from re-using this memory
-      blendIndices.buffer()->acquire(DxvkAccess::Read);
-    }
-      
-    const uint32_t vertexCount = geoData.vertexCount;
+      auto& buffer = geoData.blendIndicesBuffer;
 
-    return m_gpeWorkers.Schedule([cBoneMatrices = d3d9State().transforms, blendIndices, numBonesPerVertex, vertexCount]() -> SkinningData {
+      blendIndices.pBase = (uint8_t*) buffer.mapPtr(buffer.offsetFromSlice());
+      blendIndices.elementSize = imageFormatInfo(buffer.vertexFormat())->elementSize;
+      blendIndices.stride = buffer.stride();
+      blendIndices.size = blendIndices.stride * vertexCount;
+      blendIndices.ref = buffer.buffer().ptr();
+
+      // Acquire prevents the staging allocator from re-using this memory
+      blendIndices.ref->acquire(DxvkAccess::Read);
+      // Make sure we hold on to this reference while the hashing is in flight
+      blendIndices.ref->incRef();
+    } else {
+      blendIndices.ref = nullptr;
+    }
+
+    // Copy bones up to the max bone we have registered so far.
+    const uint32_t maxBone = m_maxBone > 0 ? m_maxBone : 255;
+    const uint32_t startBoneTransform = GetTransformIndex(D3DTS_WORLDMATRIX(0));
+
+    if (m_stagedBonesCount + maxBone >= m_stagedBones.size()) {
+      throw DxvkError("Bones temp storage is too small.");
+    }
+
+    Matrix4* boneMatrices = m_stagedBones.data() + m_stagedBonesCount;
+    memcpy(boneMatrices, d3d9State().transforms.data() + startBoneTransform, sizeof(Matrix4)*(maxBone + 1));
+    m_stagedBonesCount += maxBone + 1;
+
+    return m_gpeWorkers.Schedule([boneMatrices, blendIndices, numBonesPerVertex, vertexCount]()->SkinningData {
       ScopedCpuProfileZone();
       uint32_t numBones = numBonesPerVertex;
 
       int minBoneIndex = 0;
-      if (blendIndices.defined()) {
-        const uint8_t* pBlendIndices = (uint8_t*)blendIndices.mapPtr(blendIndices.offsetFromSlice());
+      if (blendIndices.ref) {
+        const uint8_t* pBlendIndices = blendIndices.pBase;
         // Find out how many bone indices are specified for each vertex.
         // This is needed to find out the min bone index and ignore the padding zeroes.
         int maxBoneIndex = -1;
-        if (!getMinMaxBoneIndices(pBlendIndices, blendIndices.stride(), vertexCount, numBonesPerVertex, minBoneIndex, maxBoneIndex)) {
+        if (!getMinMaxBoneIndices(pBlendIndices, blendIndices.stride, vertexCount, numBonesPerVertex, minBoneIndex, maxBoneIndex)) {
           minBoneIndex = 0;
           maxBoneIndex = 0;
         }
         numBones = maxBoneIndex + 1;
 
         // Release this memory back to the staging allocator
-        blendIndices.buffer()->release(DxvkAccess::Read);
+        blendIndices.ref->release(DxvkAccess::Read);
+        blendIndices.ref->decRef();
       }
 
       // Pass bone data to RT back-end
-      std::vector<Matrix4> bones;
-      bones.resize(numBones);
-      for (uint32_t i = 0; i < numBones; i++) {
-        bones[i] = cBoneMatrices[GetTransformIndex(D3DTS_WORLDMATRIX(i))];
-      }
 
       SkinningData skinningData;
-      skinningData.pBoneMatrices = bones;
+      skinningData.pBoneMatrices.reserve(numBones);
+
+      for (uint32_t n = 0; n < numBones; n++) {
+        skinningData.pBoneMatrices.push_back(boneMatrices[n]);
+      }
+
       skinningData.minBoneIndex = minBoneIndex;
       skinningData.numBones = numBones;
       skinningData.numBonesPerVertex = numBonesPerVertex;
@@ -877,5 +907,7 @@ namespace dxvk {
     // Reset for the next frame
     m_rtxInjectTriggered = false;
     m_drawCallID = 0;
+
+    m_stagedBonesCount = 0;
   }
 }

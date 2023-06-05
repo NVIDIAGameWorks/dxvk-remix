@@ -36,12 +36,17 @@ using namespace chrono;
 class ThreadPoolTestApp {
 public:
   static void run() { 
-    cout << "Begin test" << endl;
-    test_smoke();
+    cout << "Begin smoke test" << endl;
+    test_smoke<0>();
+    cout << "Begin task cancellation test" << endl;
+    test_smoke<4>();
+    cout << "Begin misc tests" << endl;
+    test_misc();
     cout << "WorkerThreadPool successfully smoke tested" << endl;
   }
   
 private:
+  template<uint32_t cancelPeriod>
   static void test_smoke() {
     ZoneScoped;
     // We'll need to size the pool according to the number of tasks
@@ -52,45 +57,129 @@ private:
     WorkerThreadPool<numTasks> threadPool(numThreads);
     cout << "Created thread pool with " << numThreads << " threads" << endl;
 
-    vector<shared_future<uint32_t>> results;
+    // Create params for lambda ahead of schedule
+    random_device rd;
+    mt19937 rng(rd());
+    uniform_int_distribution<uint32_t> uni(0, 100);
+    uint32_t a[numTasks], b[numTasks], c[numTasks], d[numTasks];
+
+    for (uint32_t i = 0; i < numTasks; i++) {
+      a[i] = uni(rng);
+      b[i] = uni(rng);
+      c[i] = uni(rng);
+      d[i] = uni(rng);
+    }
+
+    vector<Future<uint32_t>> results(numTasks);
     {
       Timer t;
-      results.resize(numTasks);
+      const uint64_t s = __rdtsc();
+
       for (uint32_t i = 0; i < numTasks; i++) {
         // Spawn N tasks that sleep a bit, and return a 1
-        auto future = threadPool.Schedule([]() -> uint32_t {
-            ZoneScoped;
-            random_device rd;
-            mt19937 rng(rd());
-            uniform_int_distribution<DWORD> uni(0, 100);
-            // Create some varying workloads 
-            double sleepFor = (double) uni(rng);
-            auto start = high_resolution_clock::now();
-            while (duration_cast<milliseconds>(high_resolution_clock::now() - start).count() < sleepFor);
+        auto future = threadPool.Schedule([a = a[i], b = b[i], c = c[i], d = d[i]]()->uint32_t {
+          ZoneScoped;
+          // Create some varying workloads 
+          double sleepFor = (double) (a + b + c + d) / 4;
+          auto start = high_resolution_clock::now();
+          while (duration_cast<milliseconds>(high_resolution_clock::now() - start).count() < sleepFor);
 
-            return 1;
-          });
+          return 1;
+        });
 
-        if (!future.valid())
+        if (!future.valid()) {
           throw DxvkError("Failed to schedule task");
+        }
 
         results[i] = future;
+
+        if (cancelPeriod > 0 && (i % cancelPeriod) == 0) {
+          future.cancel();
+        }
       }
-      cout << "Scheduled " << numTasks << " tasks" << endl;
+
+      const uint64_t e = __rdtsc();
+
+      cout << "Scheduled " << numTasks << " tasks in " << e - s << " clocks" << endl;
     }
 
     // Count all the return values (1's) and make sure everyone made it home
     uint32_t resultCount = 0;
-    for (shared_future<uint32_t> result : results) {
-      resultCount += result.get();
+    for (Future<uint32_t>& result : results) {
+      if (result.valid()) {
+        resultCount += result.get();
+      }
     }
-    FrameMark;
+
+    const uint32_t expectedNumTasks = cancelPeriod > 0 ? (numTasks - numTasks / cancelPeriod) : numTasks;
+
+    if (resultCount != expectedNumTasks) {
+      throw DxvkError("Results didnt match");
+    }
 
     // Check for ABA problem by making sure the correct count returned
-    cout << "Counted the result, expected:" << numTasks << ", got:" << resultCount << endl;
+    cout << "Counted the result, expected:" << expectedNumTasks << ", got:" << resultCount << endl;
 
-    if (resultCount != numTasks)
-      throw DxvkError("Results didnt match");
+    FrameMark;
+  }
+
+  static void test_misc() {
+    const uint32_t numThreads = 4;
+    const uint32_t numTasks = 32;
+
+    auto* threadPool = new WorkerThreadPool<numTasks>(numThreads);
+    cout << "Created thread pool with " << numThreads << " threads" << endl;
+
+    uint32_t result = 0;
+    auto future = threadPool->Schedule([&result]() {
+      cout << "Hello from a void() future!" << endl;
+      result += 1;
+    });
+
+    if (!future.valid()) {
+      throw DxvkError("Failed to schedule task");
+    }
+
+    future.get();
+
+    if (result != 1) {
+      throw DxvkError("Result didnt match");
+    }
+
+    class DestuctorTester {
+      // Using unique ptr to emulate a destructive move
+      std::unique_ptr<uint32_t> param;
+    public:
+      DestuctorTester(DestuctorTester&& v) = default;
+      DestuctorTester& operator =(DestuctorTester&&) = default;
+
+      explicit DestuctorTester(uint32_t& param)
+      : param { &param }
+      { }
+
+      ~DestuctorTester() {
+        if (auto v = param.get()) {
+          ++(*v);
+          cout << "Hello from task destructor!" << endl;
+          param.release();
+        }
+      }
+    };
+
+    DestuctorTester tester(result);
+    future = threadPool->Schedule([tester = std::move(tester)]() {});
+
+    if (!future.valid()) {
+      throw DxvkError("Failed to schedule task");
+    }
+
+    // The lambda destructor is executed _after_ the future result is set.
+    // We need to either wait for the result to update, or finalize the thread pool.
+    delete threadPool;
+
+    if (result != 2) {
+      throw DxvkError("Result didnt match");
+    }
   }
 };
 
