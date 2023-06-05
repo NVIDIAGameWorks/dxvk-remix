@@ -145,6 +145,50 @@ class GeometryBuffer : public DxvkBufferSlice {
   Format m_format = {VkFormat(0)};
 };
 
+// Geometry buffer reference table. Maps a buffer to an index in the table.
+// Acts as a tape with a trivial last buffer filter in track(). The default buffer filter only takes
+// the DxvkBufferSlice information into matching which is good enough for bindless manager purposes.
+// It is a drop-in replacement for SparseUniqueCache<RaytraceBuffer> where references cannot
+// be removed one-by-one, however the whole container can be cleared of references using clear() method.
+template<typename BufferType>
+struct BufferRefTable {
+  struct DefaultMatcher {
+    bool operator() (const BufferType& a, const BufferType& b) {
+      return a.matches(b);
+    }
+  };
+
+  void clear() {
+    m_table.clear();
+  }
+
+  template<typename Matcher = DefaultMatcher>
+  uint32_t track(const BufferType& b, Matcher&& eq = DefaultMatcher()) {
+    const uint32_t idx = m_table.size();
+
+    if (idx > 0 && eq(b, m_table.back())) {
+      return idx - 1;
+    }
+
+    m_table.push_back(b);
+    return idx;
+  }
+
+  const std::vector<BufferType>& getObjectTable() const {
+    return m_table;
+  }
+
+  uint32_t getActiveCount() const {
+    return m_table.size();
+  }
+
+  uint32_t getTotalCount() const {
+    return m_table.size();
+  }
+
+  std::vector<BufferType> m_table;
+};
+
 inline uint32_t setBit(uint32_t target, bool value, uint32_t oneBitMask) {
   return (target & ~oneBitMask) | (value ? oneBitMask : 0);
 }

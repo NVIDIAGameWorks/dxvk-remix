@@ -199,7 +199,7 @@ namespace dxvk {
           const Matrix4 objectToView = getCamera().getWorldToView(false) * instance->getBlas()->input.getTransformData().objectToWorld;
 
           bool isInsideFrustum = true;
-          if (instance->getBlas()->input.getGeometryData().futureBoundingBox.valid()) {
+          if (RtxOptions::Get()->needsMeshBoundingBox()) {
             const AxisAlignedBoundingBox& boundingBox = instance->getBlas()->input.getGeometryData().boundingBox;
             isInsideFrustum = boundingBoxIntersectsFrustum(cameraFrustum, boundingBox.minPos, boundingBox.maxPos, objectToView);
           }

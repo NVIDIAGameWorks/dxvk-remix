@@ -39,6 +39,8 @@ class DxvkDevice;
 // is erased by sceneManager's garbage collection.
 class DrawCallCache {
 public:
+  using MultimapType = std::unordered_multimap<XXH64_hash_t, BlasEntry, XXH64_hash_passthrough>;
+
   enum class CacheState
   {
     kNew = 0,
@@ -53,14 +55,14 @@ public:
 
   CacheState get(const DrawCallState& drawCall, BlasEntry** out);
 
-  std::unordered_multimap<XXH64_hash_t, BlasEntry>& getEntries() {return m_entries;}
+  MultimapType& getEntries() {return m_entries;}
 
   void clear() {
     m_entries.clear();
   }
 
 private:
-  std::unordered_multimap<XXH64_hash_t, BlasEntry> m_entries;
+  MultimapType m_entries;
 
   Rc<DxvkDevice> m_device;
 

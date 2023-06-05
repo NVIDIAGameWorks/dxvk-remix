@@ -37,7 +37,11 @@ std::vector<AssetReplacement>* AssetReplacer::getReplacementsForMesh(XXH64_hash_
   if (!RtxOptions::Get()->getEnableReplacementMeshes())
     return nullptr;
 
-  const auto variantHash = hash + m_variantInfos[hash].selectedVariant;
+  auto variantInfo = m_variantInfos.find(hash);
+
+  if (variantInfo != m_variantInfos.end()) {
+    hash += variantInfo->second.selectedVariant;
+  }
 
   for (auto& mod : m_modManager.mods()) {
     if (auto replacement = mod->replacements().get<AssetReplacement::eMesh>(hash)) {

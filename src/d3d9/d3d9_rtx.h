@@ -78,6 +78,10 @@ namespace dxvk {
         SetDirty(D3D9RtxFlag::DirtyCameraTransforms);
         break;
       }
+
+      if (transformIdx > GetTransformIndex(D3DTS_WORLD)) {
+        m_maxBone = std::max(m_maxBone, transformIdx - GetTransformIndex(D3DTS_WORLD));
+      }
     }
 
     /**
@@ -151,6 +155,10 @@ namespace dxvk {
 
     uint32_t m_drawCallID = 0;
 
+    std::vector<Matrix4> m_stagedBones;
+    uint32_t m_stagedBonesCount = 0;
+    uint32_t m_maxBone = 0;
+
     bool m_rtxInjectTriggered = false;
     bool m_forceGeometryCopy = false;
 
@@ -205,10 +213,10 @@ namespace dxvk {
 
     bool isRenderingUI();
 
-    std::shared_future<SkinningData> processSkinning(const RasterGeometry& geoData);
+    Future<SkinningData> processSkinning(const RasterGeometry& geoData);
 
-    std::shared_future<AxisAlignedBoundingBox> computeAxisAlignedBoundingBox(const RasterGeometry& geoData);
+    Future<AxisAlignedBoundingBox> computeAxisAlignedBoundingBox(const RasterGeometry& geoData);
 
-    std::shared_future<GeometryHashes> computeHash(const RasterGeometry& geoData, const uint32_t maxIndexValue);
+    Future<GeometryHashes> computeHash(const RasterGeometry& geoData, const uint32_t maxIndexValue);
   };
 }
