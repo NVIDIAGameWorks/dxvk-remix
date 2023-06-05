@@ -201,26 +201,14 @@ namespace dxvk {
   }
 
   void TerrainBaker::calculateTerrainBBOX(const uint32_t currentFrameIndex) {
-
     m_bakedTerrainBBOX.invalidate();
-    bool terrainBBOXIsValid = m_terrainMeshBBOXes.size() > 0;
 
     // Find the union of all terrain mesh BBOXes
     if (m_terrainMeshBBOXes.size() > 0) {
       for (auto& meshBBOX : m_terrainMeshBBOXes) {
-        if (!meshBBOX.isValid()) {
-          // Fallback to defaults if any terrain bbox is invalid
-          ONCE(Logger::warn(str::format("[RTX Terrain Baker] Mesh bounding box was not ready in time. Falling back to default bounding box around the camera.")));
-          terrainBBOXIsValid = false;
-          break;
-        }
-
         m_bakedTerrainBBOX.unionWith(meshBBOX.calculateAABBInWorldSpace());
       }
       m_terrainMeshBBOXes.clear();
-    }
-
-    if (terrainBBOXIsValid) {
       m_terrainBBOXFrameIndex = currentFrameIndex;
     }
   }
@@ -243,21 +231,15 @@ namespace dxvk {
   }
 
   TerrainBaker::AxisAlignedBoundingBoxLink::AxisAlignedBoundingBoxLink(const DrawCallState& drawCallState)
-    : aabbObjectSpace(drawCallState.getGeometryData().futureBoundingBox)
+    : aabbObjectSpace(drawCallState.getGeometryData().boundingBox)
     , objectToWorld(drawCallState.getTransformData().objectToWorld) {
   }
 
   AxisAlignedBoundingBox TerrainBaker::AxisAlignedBoundingBoxLink::calculateAABBInWorldSpace() {
     AxisAlignedBoundingBox aabb;
-    assert(aabbObjectSpace.valid() && "Bounding box is expected to be calculated by this point.");
-    aabb.minPos = (objectToWorld * Vector4(aabbObjectSpace.get().minPos, 1.f)).xyz();
-    aabb.maxPos = (objectToWorld * Vector4(aabbObjectSpace.get().maxPos, 1.f)).xyz();
-
+    aabb.minPos = (objectToWorld * Vector4(aabbObjectSpace.minPos, 1.f)).xyz();
+    aabb.maxPos = (objectToWorld * Vector4(aabbObjectSpace.maxPos, 1.f)).xyz();
     return aabb;
-  }
-
-  bool TerrainBaker::AxisAlignedBoundingBoxLink::isValid() {
-    return aabbObjectSpace.valid();
   }
 
   bool TerrainBaker::needsTerrainBaking() {

@@ -185,7 +185,7 @@ namespace dxvk {
     // hashing makes the hash more stable. But the discretization function becomes
     // a significant bottleneck when it uses regular roundf(), so use an SSE-optimized
     // version of the discretize function below, if supported.
-    const bool sse41supported = fast::getSimdSupportLevel() == fast::SIMD::SSE4_1;
+    const bool sse41supported = fast::getSimdSupportLevel() >= fast::SIMD::SSE4_1;
     if (sse41supported) {
       // Prefetch the first vertex
       _mm_prefetch((char const*) query.pBase, 0);
