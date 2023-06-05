@@ -49,6 +49,7 @@ namespace dxvk::hud {
       m_enableFull = true;
     
     if (m_enabled.find("1") != m_enabled.end()) {
+      m_enabled.insert("version");
       m_enabled.insert("devinfo");
       m_enabled.insert("raytracingMode");
       m_enabled.insert("fps");
