@@ -47,7 +47,7 @@ namespace dxvk {
 
     void setRaytraceArgs(RaytraceArgs& raytraceArgs) const;
 
-    RW_RTX_OPTION("rtx.neeCache", bool, enable, true, "Enable NEE cache. The integrator will perform NEE on emissive triangles, which usually have significant light contributions, stored in the cache.");
+    RW_RTX_OPTION("rtx.neeCache", bool, enable, false, "[Experimental] Enable NEE cache. The integrator will perform NEE on emissive triangles, which usually have significant light contributions, stored in the cache.");
     RTX_OPTION("rtx.neeCache", bool, enableImportanceSampling, true, "Enable importance sampling.");
     RTX_OPTION("rtx.neeCache", bool, enableMIS, true, "Enable MIS.");
     RTX_OPTION("rtx.neeCache", bool, enableJittering, true, "Enable jittering in cell look up.");
