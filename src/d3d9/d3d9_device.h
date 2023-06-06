@@ -834,6 +834,12 @@ namespace dxvk {
 
     void BindSampler(DWORD Sampler);
 
+    // NV-DXVK start: Extract texture preparation for re-use
+    void PrepareTextures();
+
+    D3D9SamplerKey CreateSamplerKey(DWORD SamplerStage) const;
+    // NV-DXVK end
+
     void BindTexture(DWORD SamplerSampler);
 
     void UnbindTextures(uint32_t mask);
@@ -850,8 +856,6 @@ namespace dxvk {
       UINT             InstanceCount);
     
     uint32_t GetInstanceCount() const;
-
-    void PrepareVertexCapture(const UINT BaseVertex, const UINT NumVertices);
 
     void PrepareDraw(D3DPRIMITIVETYPE PrimitiveType);
 
@@ -1124,6 +1128,10 @@ namespace dxvk {
     void UpdateFetch4SpecConstant(uint32_t value);
 
     void UpdateSamplerDepthModeSpecConstant(uint32_t value);
+
+    // NV-DXVK start: Extract texture preparation for re-use
+    DxvkSamplerCreateInfo DecodeSamplerKey(const D3D9SamplerKey& key);
+    // NV-DXVK end
 
     Com<D3D9InterfaceEx>            m_parent;
     D3DDEVTYPE                      m_deviceType;

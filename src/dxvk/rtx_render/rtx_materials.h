@@ -40,21 +40,6 @@ constexpr static uint32_t kSurfaceInvalidSurfaceMaterialIndex = 0xFFFFu;
 
 // Note: Use caution when changing this enum, must match the values defined on the MDL side of things.
 
-// Material color source, correspond to D3DMATERIALCOLORSOURCE
-enum class DxvkRtColorSource {
-  None,
-  Color0,
-};
-
-// Texture stage argument source, correspond to D3DTA_* macros
-enum class DxvkRtTextureArgSource {
-  None,
-  Texture,
-  Diffuse,
-  Specular,
-  TFactor,
-};
-
 static bool isBlendTypeEmissive(const BlendType type) {
   switch (type) {
   default:
@@ -1118,9 +1103,7 @@ struct LegacyMaterialData {
   { }
 
   LegacyMaterialData(const TextureRef& colorTexture, const TextureRef& colorTexture2, const D3DMATERIAL9 material)
-    : m_colorTexture{ colorTexture }
-    , m_colorTexture2 { colorTexture2 }
-    , m_d3dMaterial{ material }
+    : d3dMaterial{ material }
   {
     // Note: Texture required to be populated for hashing to function
     assert(!colorTexture.isImageEmpty());
@@ -1133,15 +1116,15 @@ struct LegacyMaterialData {
   }
 
   const TextureRef& getColorTexture() const {
-    return m_colorTexture;
+    return colorTextures[0];
   }
 
   const TextureRef& getColorTexture2() const {
-    return m_colorTexture2;
+    return colorTextures[1];
   }
 
   const D3DMATERIAL9& getLegacyMaterial() const {
-    return m_d3dMaterial;
+    return d3dMaterial;
   }
 
   inline const bool usesTexture() const {
@@ -1174,8 +1157,8 @@ struct LegacyMaterialData {
       // " m_d3dMaterial.Specular: ", m_d3dMaterial.Specular,
       // " m_d3dMaterial.Emissive: ", m_d3dMaterial.Emissive,
       // " m_d3dMaterial.Power: ", m_d3dMaterial.Power,
-      std::hex, " m_colorTexture: 0x", m_colorTexture.getImageHash(),
-      " m_colorTexture2: 0x", m_colorTexture2.getImageHash(),
+      std::hex, " m_colorTexture: 0x", colorTextures[0].getImageHash(),
+      " m_colorTexture2: 0x", colorTextures[1].getImageHash(),
       " m_cachedHash: 0x", m_cachedHash, std::dec));
 #endif
   }
@@ -1187,6 +1170,8 @@ struct LegacyMaterialData {
   VkBlendFactor srcColorBlendFactor = VkBlendFactor::VK_BLEND_FACTOR_ONE;
   VkBlendFactor dstColorBlendFactor = VkBlendFactor::VK_BLEND_FACTOR_ZERO;
   VkBlendOp colorBlendOp = VkBlendOp::VK_BLEND_OP_ADD;
+  RtTextureArgSource diffuseColorSource= RtTextureArgSource::None;
+  RtTextureArgSource specularColorSource = RtTextureArgSource::None;
   RtTextureArgSource textureColorArg1Source = RtTextureArgSource::Texture;
   RtTextureArgSource textureColorArg2Source = RtTextureArgSource::None;
   DxvkRtTextureOperation textureColorOperation = DxvkRtTextureOperation::Modulate;
@@ -1195,22 +1180,24 @@ struct LegacyMaterialData {
   DxvkRtTextureOperation textureAlphaOperation = DxvkRtTextureOperation::SelectArg1;
   uint32_t tFactor = 0xffffffff;  // Value for D3DRS_TEXTUREFACTOR, default value of is opaque white
   bool isBlendedTerrain = false;
+  D3DMATERIAL9 d3dMaterial = {};
   bool isTextureFactorBlend = false;
 
 private:
   friend class RtxContext;
+  friend struct D3D9Rtx;
 
   void updateCachedHash() {
     // Note: Currently only based on the color texture's data hash. This may have to be changed later to
     // incorporate more textures used to identify a material uniquely. Note this is not the same as the
     // plain data hash used by the RtSurfaceMaterial for storage in map-like data structures, but rather
     // one used to identify a material and compare to user-provided hashes.
-    m_cachedHash = m_colorTexture.getImageHash();
+    m_cachedHash = colorTextures[0].getImageHash();
   }
 
-  TextureRef m_colorTexture;
-  TextureRef m_colorTexture2;
-  D3DMATERIAL9 m_d3dMaterial;
+  const static uint32_t kMaxSupportedTextures = 2;
+  TextureRef colorTextures[kMaxSupportedTextures] = {};
+  uint32_t colorTextureSlot[kMaxSupportedTextures] = {};
 
   XXH64_hash_t m_cachedHash;
 };

@@ -27,7 +27,7 @@ namespace dxvk
 
 namespace {
   bool exactMatch(const DrawCallState& drawCall, BlasEntry& blas) {
-    if (drawCall.getIsSky() != blas.input.getIsSky())
+    if (drawCall.isSky != blas.input.isSky)
       return false;
 
     return drawCall.getMaterialData().getHash() == blas.input.getMaterialData().getHash()

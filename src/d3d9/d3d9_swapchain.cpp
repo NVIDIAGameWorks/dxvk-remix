@@ -355,7 +355,7 @@ namespace dxvk {
     ScopedCpuProfileZone();
 
     // NV-DXVK start: Restart RTX capture on the new frame
-    m_parent->m_rtx.EndFrame();
+    m_parent->m_rtx.EndFrame(m_backBuffers[0]->GetCommonTexture()->GetImage());
     // NV-DXVK end
 
     D3D9DeviceLock lock = m_parent->LockDevice();

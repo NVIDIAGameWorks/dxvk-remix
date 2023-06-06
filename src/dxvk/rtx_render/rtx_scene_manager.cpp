@@ -617,15 +617,10 @@ namespace dxvk {
         transforms.textureTransform = Matrix4();
         transforms.texgenMode = TexGenMode::None;
 
-        const DrawCallState newDrawCallState{
-          *replacement.geometryData, // Note: Geometry Data replaced
-          input->getMaterialData(), // Note: Original legacy material data preserved
-          transforms,
-          input->getSkinningState(),
-          input->getFogState(),
-          input->getStencilEnabledState()
-        };
-
+        DrawCallState newDrawCallState(*input);
+        newDrawCallState.geometryData = *replacement.geometryData; // Note: Geometry Data replaced
+        newDrawCallState.transformData = transforms;
+          
         // Note: Material Data replaced if a replacement is specified in the Mesh Replacement
         if (replacement.materialData != nullptr) {
           overrideMaterialData = replacement.materialData;

@@ -44,7 +44,6 @@ namespace dxvk {
     uint32_t instanceCount = 0;
     uint32_t firstIndex = 0;
     uint32_t vertexOffset = 0;
-    uint32_t firstInstance = 0;
   };
   /** 
    * \brief RTX context
@@ -84,75 +83,11 @@ namespace dxvk {
     void injectRTX(Rc<DxvkImage> targetImage = nullptr);
 
     /**
-      * \brief Sets the user clip planes from a fixed-function renderer
+      * \brief Set D3D9 specific constant buffers
       *
-      * This function does not affect normal rendering and is only used by RTX
-      * to pull the clip plane data.
-      *
-      * \param [in] enableMask Bitmask of enabled clip planes
-      * \param [in] planes Array of clip plane data
+      * \param [in] vsFixedFunctionConstants: resource idx of the constant buffer for FF vertex shaders
       */
-    void setClipPlanes(uint32_t enableMask, const Vector4 planes[MaxClipPlanes]);
-
-    /**
-      * \brief Sets the active shader state for context
-      *
-      * \param [in] useProgrammableVS: Using shader or fixed function
-      * \param [in] useProgrammablePS: Using shader or fixed function
-      */
-    void setShaderState(const bool useProgrammableVS, const bool useProgrammablePS);
-
-    /**
-      * \brief Sets the geometry state for the context
-      *
-      * \param [in] geometry: A collection of vertex and index buffers required for raytracing
-      */
-    void setGeometry(const RasterGeometry& geometry, RtxGeometryStatus status);
-
-    /**
-      * \brief Sets the active textures on context
-      *
-      * \param [in] colorTextureSlot: Index into m_rc containing 1st texture
-      * \param [in] colorTextureSlot2: Index into m_rc containing 2nd texture
-      */
-    void setTextureSlots(const uint32_t colorTextureSlot, const uint32_t colorTextureSlot2);
-
-    /**
-      * \brief Set the current object2world transform on context
-      *
-      * \param [in] objectToWorld: matrix containing the object to world transform
-      */
-    void setObjectTransform(const Matrix4& objectToWorld);
-
-    /**
-      * \brief Set the current camera matrices on context
-      *
-      * \param [in] worldToView: matrix containing the view transform
-      * \param [in] viewToProjection: matrix containing the projection transform
-      */
-    void setCameraTransforms(const Matrix4& worldToView, const Matrix4& viewToProjection);
     void setConstantBuffers(const uint32_t vsFixedFunctionConstants);
-
-    /**
-      * \brief Set future skinning data
-      *
-      * \param [in] skinningData: shared future containing skinning data
-      */
-    void setSkinningData(Future<SkinningData> skinningData);
-
-    /**
-      * \brief Set legacy rendering state on the context
-      *
-      * \param [in] stage: structure containing state to set
-      */
-    void setLegacyState(const DxvkRtxLegacyState& stage);
-
-    /**
-      * \brief Sets the current legacy texture stage state on context
-      *
-      * \param [in] stage: structure containing the legacy state
-      */
-    void setTextureStageState(const DxvkRtxTextureStageState& stage);
 
     /**
       * \brief Adds a batch of lights to the scene context
@@ -162,22 +97,10 @@ namespace dxvk {
       */
     void addLights(const D3DLIGHT9* pLights, const uint32_t numLights);
 
-    /**
-      * \brief Updates the current fixed function fog state on context
-      *
-      * \param [in] fogState: fog state information
-      */
-    void setFogState(const FogState& fogState);
-
     void clearRenderTarget(const Rc<DxvkImageView>& imageView, VkImageAspectFlags clearAspects, VkClearValue clearValue);
     void clearImageView(const Rc<DxvkImageView>& imageView, VkOffset3D offset, VkExtent3D extent, VkImageAspectFlags aspect, VkClearValue value);
 
-    RtxGeometryStatus commitGeometryToRT(const DrawParameters& params);
-
-    virtual void beginRecording(const Rc<DxvkCommandList>& cmdList) override;
-    virtual void draw(uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance) override;
-    virtual void drawIndexed(uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, uint32_t vertexOffset, uint32_t firstInstance) override;
-    virtual void flushCommandList() override;
+    void commitGeometryToRT(const DrawParameters& params, DrawCallState& drawCallState);
 
     void blitImageHelper(const Rc<DxvkImage>& srcImage, const Rc<DxvkImage>& dstImage, VkFilter filter);
 
@@ -195,6 +118,10 @@ namespace dxvk {
                                           const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent);
 
     static bool checkIsShaderExecutionReorderingSupported(Rc<DxvkDevice> device);
+
+    static bool shouldBakeSky(const DrawCallState& drawCallState);
+    static bool shouldBakeTerrain(const DrawCallState& drawCallState);
+
   protected:
     virtual void updateComputeShaderResources() override;
     virtual void updateRaytracingShaderResources() override;
@@ -225,16 +152,11 @@ namespace dxvk {
     void dispatchDebugView(Rc<DxvkImage>& srcImage, const Resources::RaytracingOutput& rtOutput, bool captureScreenImage);
     void updateMetrics(const float frameTimeSecs, const float gpuIdleTimeSecs) const;
 
-    bool isStencilShadowVolumeState();
-
     void rasterizeToSkyMatte(const DrawParameters& params);
     void initSkyProbe();
     void rasterizeToSkyProbe(const DrawParameters& params);
     bool rasterizeSky(const DrawParameters& params, const DrawCallState& drawCallState);
-    void bakeTerrain(const DrawParameters& params, DrawCallState& drawCallState, DrawCallTransforms& transformData);
-
-    void enableRtxCapture();
-    void disableRtxCapture();
+    void bakeTerrain(const DrawParameters& params, DrawCallState& drawCallState);
 
     uint32_t m_frameLastInjected = kInvalidFrameIndex;
     bool m_captureStateForRTX = true;
@@ -248,13 +170,10 @@ namespace dxvk {
 
     void updateReflexConstants();
 
-    bool requiresDrawCall() const;
-
     bool shouldUseDLSS() const;
     bool shouldUseNIS() const;
     bool shouldUseTAA() const;
     bool shouldUseUpscaler() const { return shouldUseDLSS() || shouldUseNIS() || shouldUseTAA(); }
-    void cancelFutureData();
 
     inline static bool s_triggerScreenshot = false;
     inline static bool s_triggerUsdCapture = false;
@@ -264,7 +183,6 @@ namespace dxvk {
     bool m_dlssSupported;
 
     bool m_resetHistory = true;    // Discards use of temporal data in passes
-    int32_t m_drawCallID = 0;
 
     std::chrono::time_point<std::chrono::system_clock> m_prevRunningTime;
     uint64_t m_prevGpuIdleTicks;

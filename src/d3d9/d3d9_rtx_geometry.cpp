@@ -218,6 +218,10 @@ namespace dxvk {
   Future<AxisAlignedBoundingBox> D3D9Rtx::computeAxisAlignedBoundingBox(const RasterGeometry& geoData) {
     ScopedCpuProfileZone();
 
+    if (!RtxOptions::Get()->needsMeshBoundingBox()) {
+      return Future<AxisAlignedBoundingBox>();
+    }
+
     const void* pVertexData = geoData.positionBuffer.mapPtr((size_t)geoData.positionBuffer.offsetFromSlice());
     const uint32_t vertexCount = geoData.vertexCount;
     const size_t vertexStride = geoData.positionBuffer.stride();

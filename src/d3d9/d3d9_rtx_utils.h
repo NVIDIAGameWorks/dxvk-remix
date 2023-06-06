@@ -8,7 +8,6 @@ namespace dxvk {
   struct DxvkVertexInputState;
   class DxvkBuffer;
 
-
   /**
     * \brief: Gets the min and max bone indices referenced in a vertex buffer
     *
@@ -38,10 +37,9 @@ namespace dxvk {
     *         from the input device.
     * 
     * \param [in] pDevice: parent D3D9 device
-    * 
-    * \returns: desired legacy state object
+    * \param [out] materialData: material data structure to update
     */
-  DxvkRtxLegacyState createLegacyState(D3D9DeviceEx* pDevice);
+  void setLegacyMaterialState(D3D9DeviceEx* pDevice, LegacyMaterialData& materialData);
 
   /**
     * \brief: This function creates a legacy state object by taking the Direct3D 9 state information
@@ -49,18 +47,17 @@ namespace dxvk {
     * 
     * \param [in] d3d9State: state object from the parent D3D9 device
     * \param [in] stageIdx: desired texture stage (0~7)
-    * \param [in] useTextureFactorBlending: support tFactor blending for stage 1~7
-    * 
-    * \returns: desired texture stage state object
+    * \param [in] useTextureFactorBlend: D3D9 uses the texture factor for any stage
+    * \param [out] materialData: material data structure to update
+    * \param [out] transformData: transform structure to update
     */
-  DxvkRtxTextureStageState createTextureStageState(const Direct3DState9& d3d9State, const uint32_t stageIdx, const bool useTextureFactorBlending);
+  void setTextureStageState(const Direct3DState9& d3d9State, const uint32_t stageIdx, bool useTextureFactorBlend, LegacyMaterialData& materialData, DrawCallTransforms& transformData);
 
   /**
     * \brief: This function creates a fog state object by reading D3D9 state info from input device
     *
     * \param [in] pDevice: parent D3D9 device
-    *
-    * \returns: desired og state object
+    * \param [out] fogState: fog structure to update
     */
-  FogState createFogState(D3D9DeviceEx* pDevice);
+  void setFogState(D3D9DeviceEx* pDevice, FogState& fogState);
 }

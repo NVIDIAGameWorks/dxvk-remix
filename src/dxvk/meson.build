@@ -306,6 +306,8 @@ dxvk_src = files([
   'rtx_render/rtx_volume_preintegrate.cpp',
   'rtx_render/rtx_volume_preintegrate.h',
 
+  'rtx_render/rtx_constants.h',
+
   'platform/dxvk_win32_exts.cpp',
   
   'hud/dxvk_hud.cpp',

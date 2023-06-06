@@ -23,6 +23,8 @@
 
 #include <vector>
 
+#include "rtx_constants.h"
+
 #include "../util/xxHash/xxhash.h"
 #include "../util/rc/util_rc_ptr.h"
 #include "../util/util_flags.h"
@@ -42,9 +44,6 @@ namespace dxvk {
   };
 
   using HashRule = Flags<HashComponents>;
-
-  // Sentinel value representing a null hash
-  static constexpr XXH64_hash_t kEmptyHash = 0;
 
   // Set of predefined, useful hash rules
   namespace rules {
