@@ -1302,7 +1302,7 @@ void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cach
     return variantCounts.count(hash) ? variantCounts.at(hash) : 1u;
   };
 
-  static constexpr XXH64_hash_t kStorageCubeHash = 0x9B9B00D1861E9B54;
+  static constexpr XXH64_hash_t kStorageCubeHash = 0xc728cfe75526c741;
   uint32_t numVariants = lookupCount(kStorageCubeHash);
   m_owner.m_replacements->storeObject(kStorageCubeHash, SecretReplacement{
     "Storage Cubes","Ice","",
@@ -1369,7 +1369,7 @@ void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cach
     true,
     numVariants++});
 
-  static constexpr XXH64_hash_t kCompanionCubeHash = 0x3242AA8DAD33D907;
+  static constexpr XXH64_hash_t kCompanionCubeHash = 0x6ef165bb7e0b8512;
   numVariants = lookupCount(kCompanionCubeHash);
   m_owner.m_replacements->storeObject(kCompanionCubeHash, SecretReplacement{
     "Companion Cubes","Pillow","",
