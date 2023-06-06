@@ -56,7 +56,7 @@ namespace dxvk {
               resourceManager.getTerrainTexture(ctx).view != nullptr;
     }
      
-    if (rtState.useProgrammableVS) {
+    if (drawCallState.usesVertexShader) {
       ONCE(Logger::warn(str::format("[RTX Terrain Baker] Terrain mesh is using programmable Vertex Shaders. Skipping it.")));
       return false;
     }
@@ -140,9 +140,9 @@ namespace dxvk {
       }
 
       if (drawParams.indexCount == 0) {
-        ctx->DxvkContext::draw(drawParams.vertexCount, drawParams.instanceCount, drawParams.vertexOffset, drawParams.firstInstance);
+        ctx->DxvkContext::draw(drawParams.vertexCount, drawParams.instanceCount, drawParams.vertexOffset, 0);
       } else {
-        ctx->DxvkContext::drawIndexed(drawParams.indexCount, drawParams.instanceCount, drawParams.firstIndex, drawParams.vertexOffset, drawParams.firstInstance);
+        ctx->DxvkContext::drawIndexed(drawParams.indexCount, drawParams.instanceCount, drawParams.firstIndex, drawParams.vertexOffset, 0);
       }
     }
 

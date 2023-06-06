@@ -51,46 +51,70 @@ namespace dxvk {
     }
   }
 
-  DxvkRtTextureArgSource convertTextureArg(uint32_t arg) {
-    // TODO: support more D3DTA_* macro when necessary
-    switch (arg) {
-    default:
-    case D3DTA_CURRENT:
-    case D3DTA_DIFFUSE: return DxvkRtTextureArgSource::Diffuse;
-    case D3DTA_SPECULAR: return DxvkRtTextureArgSource::Specular;
-    case D3DTA_TEXTURE: return DxvkRtTextureArgSource::Texture;
-    case D3DTA_TFACTOR: return DxvkRtTextureArgSource::TFactor;
-    }
-  }
-
-  DxvkRtColorSource convertColorSource(uint32_t source) {
+  RtTextureArgSource convertColorSource(uint32_t source) {
     switch (source) {
     default:
     case D3DMCS_COLOR2: // TODO: support 2nd vertex color array
-    case D3DMCS_MATERIAL: return DxvkRtColorSource::None;
-    case D3DMCS_COLOR1: return DxvkRtColorSource::Color0;
+    case D3DMCS_MATERIAL: return RtTextureArgSource::None;
+    case D3DMCS_COLOR1: return RtTextureArgSource::VertexColor0;
     }
   }
 
-  DxvkRtxTextureStageState createTextureStageState(const Direct3DState9& d3d9State, const uint32_t stageIdx, const bool useTextureFactorBlending) {
-    DxvkRtxTextureStageState stage;
-    stage.colorOperation = convertTextureOp(d3d9State.textureStages[stageIdx][DXVK_TSS_COLOROP]);
-    stage.colorArg1Source = convertTextureArg(d3d9State.textureStages[stageIdx][DXVK_TSS_COLORARG1]);
-    stage.colorArg2Source = convertTextureArg(d3d9State.textureStages[stageIdx][DXVK_TSS_COLORARG2]);
-
-    stage.alphaOperation = convertTextureOp(d3d9State.textureStages[stageIdx][DXVK_TSS_ALPHAOP]);
-    stage.alphaArg1Source = convertTextureArg(d3d9State.textureStages[stageIdx][DXVK_TSS_ALPHAARG1]);
-    stage.alphaArg2Source = convertTextureArg(d3d9State.textureStages[stageIdx][DXVK_TSS_ALPHAARG2]);
-
-    stage.texcoordIndex = d3d9State.textureStages[stageIdx][DXVK_TSS_TEXCOORDINDEX];
-
-    stage.transformFlags = d3d9State.textureStages[stageIdx][DXVK_TSS_TEXTURETRANSFORMFLAGS];
-    stage.transform = d3d9State.transforms[GetTransformIndex(D3DTS_TEXTURE0) + stageIdx];
-    stage.useTextureFactorBlend = useTextureFactorBlending;
-    return stage;
+  RtTextureArgSource convertTextureArg(uint32_t arg, RtTextureArgSource color0, RtTextureArgSource color1) {
+    // TODO: support more D3DTA_* macro when necessary
+    switch (arg) {
+    default: return RtTextureArgSource::None;
+    case D3DTA_CURRENT:
+    case D3DTA_DIFFUSE: return color0;
+    case D3DTA_SPECULAR: return color1;
+    case D3DTA_TEXTURE: return RtTextureArgSource::Texture;
+    case D3DTA_TFACTOR: return RtTextureArgSource::TFactor;
+    }
   }
 
-  DxvkRtxLegacyState createLegacyState(D3D9DeviceEx* pDevice) {
+  void setTextureStageState(const Direct3DState9& d3d9State, const uint32_t stageIdx, bool useTextureFactorBlend, LegacyMaterialData& materialData, DrawCallTransforms& transformData) {
+    materialData.textureColorOperation = convertTextureOp(d3d9State.textureStages[stageIdx][DXVK_TSS_COLOROP]);
+    materialData.textureColorArg1Source = convertTextureArg(d3d9State.textureStages[stageIdx][DXVK_TSS_COLORARG1], materialData.diffuseColorSource, materialData.specularColorSource);
+    materialData.textureColorArg2Source = convertTextureArg(d3d9State.textureStages[stageIdx][DXVK_TSS_COLORARG2], materialData.diffuseColorSource, materialData.specularColorSource);
+
+    materialData.textureAlphaOperation = convertTextureOp(d3d9State.textureStages[stageIdx][DXVK_TSS_ALPHAOP]);
+    materialData.textureAlphaArg1Source = convertTextureArg(d3d9State.textureStages[stageIdx][DXVK_TSS_ALPHAARG1], materialData.diffuseColorSource, materialData.specularColorSource);
+    materialData.textureAlphaArg2Source = convertTextureArg(d3d9State.textureStages[stageIdx][DXVK_TSS_ALPHAARG2], materialData.diffuseColorSource, materialData.specularColorSource);
+    materialData.isTextureFactorBlend = useTextureFactorBlend;
+
+    const DWORD texcoordIndex = d3d9State.textureStages[stageIdx][DXVK_TSS_TEXCOORDINDEX];
+    const DWORD transformFlags = d3d9State.textureStages[stageIdx][DXVK_TSS_TEXTURETRANSFORMFLAGS];
+
+    if ((transformFlags & 0x3) != D3DTTFF_DISABLE) {
+      transformData.textureTransform = d3d9State.transforms[GetTransformIndex(D3DTS_TEXTURE0) + stageIdx];
+    } else {
+      transformData.textureTransform = Matrix4();
+    }
+
+    if (transformFlags & D3DTTFF_PROJECTED) {
+      ONCE(Logger::info(str::format("[RTX-Compatibility-Info] Use of projected texture transform detected, but it's not supported in Remix yet.")));
+    }
+
+    switch (texcoordIndex) {
+    default:
+    case D3DTSS_TCI_PASSTHRU:
+      transformData.texgenMode = TexGenMode::None;
+      break;
+    case D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR:
+    case D3DTSS_TCI_SPHEREMAP:
+      transformData.texgenMode = TexGenMode::None;
+      ONCE(Logger::info(str::format("[RTX-Compatibility-Info] Use of special TCI flags detected, but they're not supported in Remix yet.")));
+      break;
+    case D3DTSS_TCI_CAMERASPACEPOSITION:
+      transformData.texgenMode = TexGenMode::ViewPositions;
+      break;
+    case D3DTSS_TCI_CAMERASPACENORMAL:
+      transformData.texgenMode = TexGenMode::ViewNormals;
+      break;
+    }
+  }
+
+  void setLegacyMaterialState(D3D9DeviceEx* pDevice, LegacyMaterialData& materialData) {
     assert(pDevice != nullptr);
     const Direct3DState9& d3d9State = *pDevice->GetRawState();
 
@@ -109,45 +133,36 @@ namespace dxvk {
       specularSource = d3d9State.renderStates[D3DRS_SPECULARMATERIALSOURCE] & mask;
     }
 
-    DxvkRtxLegacyState state;
-    state.alphaTestEnabled = pDevice->IsAlphaTestEnabled();
-    state.alphaTestCompareOp = state.alphaTestEnabled ? DecodeCompareOp(D3DCMPFUNC(d3d9State.renderStates[D3DRS_ALPHAFUNC])) : VK_COMPARE_OP_ALWAYS;
-    state.alphaTestReferenceValue = d3d9State.renderStates[D3DRS_ALPHAREF] & 0xFF; // Note: Only bottom 8 bits should be used as per the standard.
+    materialData.alphaTestEnabled = pDevice->IsAlphaTestEnabled();
+    materialData.alphaTestCompareOp = materialData.alphaTestEnabled ? DecodeCompareOp(D3DCMPFUNC(d3d9State.renderStates[D3DRS_ALPHAFUNC])) : VK_COMPARE_OP_ALWAYS;
+    materialData.alphaTestReferenceValue = d3d9State.renderStates[D3DRS_ALPHAREF] & 0xFF; // Note: Only bottom 8 bits should be used as per the standard.
 
-    state.diffuseColorSource = convertColorSource(diffuseSource);
-    state.specularColorSource = convertColorSource(specularSource);
+    materialData.diffuseColorSource = convertColorSource(diffuseSource);
+    materialData.specularColorSource = convertColorSource(specularSource);
 
-    state.tFactor = d3d9State.renderStates[D3DRS_TEXTUREFACTOR];
+    materialData.tFactor = d3d9State.renderStates[D3DRS_TEXTUREFACTOR];
 
-    state.alphaBlendEnabled = d3d9State.renderStates[D3DRS_ALPHABLENDENABLE] != FALSE;
+    materialData.alphaBlendEnabled = d3d9State.renderStates[D3DRS_ALPHABLENDENABLE] != FALSE;
 
-    if (state.alphaBlendEnabled) {
+    if (materialData.alphaBlendEnabled) {
       D3D9BlendState color;
       color.Src = D3DBLEND(d3d9State.renderStates[D3DRS_SRCBLEND]);
       color.Dst = D3DBLEND(d3d9State.renderStates[D3DRS_DESTBLEND]);
       color.Op = D3DBLENDOP(d3d9State.renderStates[D3DRS_BLENDOP]);
       FixupBlendState(color);
 
-      state.srcColorBlendFactor = DecodeBlendFactor(color.Src, false);
-      state.dstColorBlendFactor = DecodeBlendFactor(color.Dst, false);
-      state.colorBlendOp = DecodeBlendOp(color.Op);
+      materialData.srcColorBlendFactor = DecodeBlendFactor(color.Src, false);
+      materialData.dstColorBlendFactor = DecodeBlendFactor(color.Dst, false);
+      materialData.colorBlendOp = DecodeBlendOp(color.Op);
     }
 
-    state.stencilEnabled = d3d9State.renderStates[D3DRS_STENCILENABLE];
-
-    state.d3dMaterial = d3d9State.material;
-
-    return state;
+    materialData.d3dMaterial = d3d9State.material;
   }
 
-  FogState createFogState(D3D9DeviceEx* pDevice) {
+  void setFogState(D3D9DeviceEx* pDevice, FogState& fogState) {
     const Direct3DState9& d3d9State = *pDevice->GetRawState();
 
-    FogState fogState;
-
-    const bool fogEnabled = d3d9State.renderStates[D3DRS_FOGENABLE];
-
-    if (fogEnabled) {
+    if (d3d9State.renderStates[D3DRS_FOGENABLE]) {
       Vector4 color;
       DecodeD3DCOLOR(D3DCOLOR(d3d9State.renderStates[D3DRS_FOGCOLOR]), color.data);
 
@@ -159,8 +174,8 @@ namespace dxvk {
       fogState.scale = 1.0f / (end - start);
       fogState.end = end;
       fogState.density = bit::cast<float>(d3d9State.renderStates[D3DRS_FOGDENSITY]);
+    } else {
+      fogState.mode = D3DFOG_NONE;
     }
-
-    return fogState;
   }
 }

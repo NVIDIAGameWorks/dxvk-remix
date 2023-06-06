@@ -101,7 +101,7 @@ namespace dxvk {
     return DxvkBufferSlice(m_parent->GetDXVKDevice()->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppBuffer));
   }
 
-  void D3D9Rtx::prepareVertexCapture(RasterGeometry& geoData, const int vertexIndexOffset) {
+  void D3D9Rtx::prepareVertexCapture(const int vertexIndexOffset) {
     ScopedCpuProfileZone();
 
     struct CapturedVertex {
@@ -125,6 +125,8 @@ namespace dxvk {
 
     // Get common shaders to query what data we can capture
     const D3D9CommonShader* vertexShader = d3d9State().vertexShader.ptr() != nullptr ? d3d9State().vertexShader->GetCommonShader() : nullptr;
+
+    RasterGeometry& geoData = m_activeDrawCallState.geometryData;
 
     // Known stride for vertex capture buffers
     const uint32_t stride = sizeof(CapturedVertex);
@@ -163,9 +165,9 @@ namespace dxvk {
 
     auto constants = m_vsVertexCaptureData->allocSlice();
 
-    m_parent->EmitCs([cProjection = d3d9State().transforms[GetTransformIndex(D3DTS_PROJECTION)],
-                      cView = d3d9State().transforms[GetTransformIndex(D3DTS_VIEW)],
-                      cWorld = m_objectToWorldTransform,
+    m_parent->EmitCs([cProjection = m_activeDrawCallState.transformData.viewToProjection,
+                      cView = m_activeDrawCallState.transformData.worldToView,
+                      cWorld = m_activeDrawCallState.transformData.objectToWorld,
                       cBuffer = bufferView,
                       cConstantBuffer = m_vsVertexCaptureData,
                       cConstants = constants,
@@ -191,7 +193,7 @@ namespace dxvk {
     });
   }
 
-  void D3D9Rtx::processVertices(const VertexContext vertexContext[caps::MaxStreams], int vertexIndexOffset, uint32_t idealTexcoordIndex, RasterGeometry& geoData) {
+  void D3D9Rtx::processVertices(const VertexContext vertexContext[caps::MaxStreams], int vertexIndexOffset, RasterGeometry& geoData) {
     DxvkBufferSlice streamCopies[caps::MaxStreams] {};
 
     // Process vertex buffers from CPU
@@ -234,7 +236,7 @@ namespace dxvk {
           targetBuffer = &geoData.normalBuffer;
         break;
       case D3DDECLUSAGE_TEXCOORD:
-        if (idealTexcoordIndex <= MAXD3DDECLUSAGEINDEX && element.UsageIndex == idealTexcoordIndex)
+        if (m_texcoordIndex <= MAXD3DDECLUSAGEINDEX && element.UsageIndex == m_texcoordIndex)
           targetBuffer = &geoData.texcoordBuffer;
         break;
       case D3DDECLUSAGE_COLOR:
@@ -257,6 +259,9 @@ namespace dxvk {
 
           if (canUseBuffer && !isOrphan) {
             // Use the buffer directly if it is not an orphan
+            if (ctx.pVBO != nullptr && ctx.pVBO->NeedsUpload())
+              m_parent->FlushBuffer(ctx.pVBO);
+
             streamCopies[element.Stream] = ctx.buffer.subSlice(vertexOffset, numVertexBytes);
           } else if (canUseBuffer && numVertexBytes > kMinSizeToClone) {
             // Create a clone for the orphaned physical slice
@@ -279,19 +284,46 @@ namespace dxvk {
     }
   }
 
-  uint32_t D3D9Rtx::processRenderState() {
+  bool D3D9Rtx::processRenderState() {
+    DrawCallTransforms& transformData = m_activeDrawCallState.transformData;
+
     // When games use vertex shaders, the object to world transforms can be unreliable, and so we can ignore them.
     const bool useObjectToWorldTransform = !m_parent->UseProgrammableVS() || (m_parent->UseProgrammableVS() && useVertexCapture() && useWorldMatricesForShaders());
-    m_objectToWorldTransform = useObjectToWorldTransform ? d3d9State().transforms[GetTransformIndex(D3DTS_WORLD)] : Matrix4();
+    transformData.objectToWorld = useObjectToWorldTransform ? d3d9State().transforms[GetTransformIndex(D3DTS_WORLD)] : Matrix4();
 
-    if (m_flags.test(D3D9RtxFlag::DirtyCameraTransforms)) {
-      m_flags.clr(D3D9RtxFlag::DirtyCameraTransforms);
+    transformData.worldToView = d3d9State().transforms[GetTransformIndex(D3DTS_VIEW)];
+    transformData.viewToProjection = d3d9State().transforms[GetTransformIndex(D3DTS_PROJECTION)];
+    transformData.objectToView = transformData.worldToView * transformData.objectToWorld;
 
-      m_parent->EmitCs([cWorldToView = d3d9State().transforms[GetTransformIndex(D3DTS_VIEW)],
-                        cViewToProjection = d3d9State().transforms[GetTransformIndex(D3DTS_PROJECTION)]
-                        ](DxvkContext* ctx) {
-        static_cast<RtxContext*>(ctx)->setCameraTransforms(cWorldToView, cViewToProjection);
-      });
+    // Some games pass invalid matrices which D3D9 apparently doesnt care about.
+    // since we'll be doing inversions and other matrix operations, we need to 
+    // sanitize those or there be nans.
+    transformData.sanitize();
+
+    if (m_flags.test(D3D9RtxFlag::DirtyClipPlanes)) {
+      m_flags.clr(D3D9RtxFlag::DirtyClipPlanes);
+
+      // Find one truly enabled clip plane because we don't support more than one
+      transformData.enableClipPlane = false;
+      if (d3d9State().renderStates[D3DRS_CLIPPLANEENABLE] != 0) {
+        for (int i = 0; i < caps::MaxClipPlanes; ++i) {
+          // Check the enable bit
+          if ((d3d9State().renderStates[D3DRS_CLIPPLANEENABLE] & (1 << i)) == 0)
+            continue;
+
+          // Make sure that the plane equation is not degenerate
+          const Vector4 plane = Vector4(d3d9State().clipPlanes[i].coeff);
+          if (lengthSqr(plane.xyz()) > 0.f) {
+            if (transformData.enableClipPlane) {
+              ONCE(Logger::info(str::format("[RTX-Compatibility-Info] Using more than 1 user clip plane is not supported.")));
+              break;
+            }
+
+            transformData.enableClipPlane = true;
+            transformData.clipPlane = plane;
+          }
+        }
+      }
     }
 
     if (m_flags.test(D3D9RtxFlag::DirtyLights)) {
@@ -311,21 +343,10 @@ namespace dxvk {
         });
     }
 
-    if (m_flags.test(D3D9RtxFlag::DirtyClipPlanes)) {
-      m_flags.clr(D3D9RtxFlag::DirtyClipPlanes);
+    // Stencil state is important to Remix
+    m_activeDrawCallState.stencilEnabled = d3d9State().renderStates[D3DRS_STENCILENABLE];
 
-      std::vector<D3D9ClipPlane> planes(caps::MaxClipPlanes);
-      for (uint32_t i = 0; i < caps::MaxClipPlanes; i++) {
-        planes[i] = (d3d9State().renderStates[D3DRS_CLIPPLANEENABLE] & (1 << i)) ? d3d9State().clipPlanes[i] : D3D9ClipPlane();
-      }
-
-      m_parent->EmitCs([cMask = d3d9State().renderStates[D3DRS_CLIPPLANEENABLE],
-                        cPlanes = planes](DxvkContext* ctx) {
-        static_assert(caps::MaxClipPlanes == dxvk::MaxClipPlanes, "MaxClipPlanes values mismatch");
-        static_cast<RtxContext*>(ctx)->setClipPlanes(cMask, (Vector4*) cPlanes.data());
-      });
-    }
-
+    // Process textures
     if (m_parent->UseProgrammablePS()) {
       return processTextures<false>();
     } else {
@@ -333,10 +354,12 @@ namespace dxvk {
     }
   }
 
-  D3D9Rtx::DrawCallType D3D9Rtx::makeDrawCallType(const Draw& drawContext) {
-    int currentDrawCallID = m_drawCallID++;
-    if (currentDrawCallID < RtxOptions::Get()->getDrawCallRange().x || 
-        currentDrawCallID > RtxOptions::Get()->getDrawCallRange().y) {
+  D3D9Rtx::DrawCallType D3D9Rtx::makeDrawCallType(const DrawContext& drawContext) {
+    // Track the drawcall index so we can use it in rtx_context
+    m_activeDrawCallState.drawCallID = m_drawCallID++;
+
+    if (m_drawCallID < (uint32_t)RtxOptions::Get()->getDrawCallRange().x ||
+        m_drawCallID > (uint32_t)RtxOptions::Get()->getDrawCallRange().y) {
       return { RtxGeometryStatus::Ignored, false };
     }
 
@@ -388,7 +411,7 @@ namespace dxvk {
     // Attempt to detect shadow mask draws and ignore them
     // Conditions: non-textured flood-fill draws into a small quad render target
     if (((d3d9State().textureStages[0][D3DTSS_COLOROP] == D3DTOP_SELECTARG1 && d3d9State().textureStages[0][D3DTSS_COLORARG1] != D3DTA_TEXTURE) ||
-        (d3d9State().textureStages[0][D3DTSS_COLOROP] == D3DTOP_SELECTARG2 && d3d9State().textureStages[0][D3DTSS_COLORARG2] != D3DTA_TEXTURE))) {
+         (d3d9State().textureStages[0][D3DTSS_COLOROP] == D3DTOP_SELECTARG2 && d3d9State().textureStages[0][D3DTSS_COLORARG2] != D3DTA_TEXTURE))) {
       auto rtExt = d3d9State().renderTargets[kRenderTargetIndex]->GetSurfaceExtent();
       // If rt is a quad at least 4 times smaller than backbuffer it is likely a shadow mask
       if (rtExt.width == rtExt.height && rtExt.width < m_activePresentParams.BackBufferWidth / 4) {
@@ -412,7 +435,7 @@ namespace dxvk {
     if (d3d9State().renderStates[D3DRS_STENCILENABLE] == TRUE &&
         d3d9State().renderStates[D3DRS_STENCILFUNC] == D3DCMP_ALWAYS &&
         (d3d9State().renderStates[D3DRS_STENCILZFAIL] == D3DSTENCILOP_DECR || d3d9State().renderStates[D3DRS_STENCILZFAIL] == D3DSTENCILOP_INCR ||
-        d3d9State().renderStates[D3DRS_STENCILZFAIL] == D3DSTENCILOP_DECRSAT || d3d9State().renderStates[D3DRS_STENCILZFAIL] == D3DSTENCILOP_INCRSAT) &&
+         d3d9State().renderStates[D3DRS_STENCILZFAIL] == D3DSTENCILOP_DECRSAT || d3d9State().renderStates[D3DRS_STENCILZFAIL] == D3DSTENCILOP_INCRSAT) &&
         d3d9State().renderStates[D3DRS_ZWRITEENABLE] == FALSE) {
       ONCE(Logger::info("[RTX-Compatibility-Info] Skipped stencil shadow drawcall."));
       return { RtxGeometryStatus::Ignored, false };
@@ -437,6 +460,21 @@ namespace dxvk {
     return { RtxGeometryStatus::RayTraced, false };
   }
 
+  bool D3D9Rtx::checkBoundTextureCategory(const fast_unordered_set& textureCategory) const {
+    const uint32_t usedSamplerMask = m_parent->m_psShaderMasks.samplerMask | m_parent->m_vsShaderMasks.samplerMask;
+    const uint32_t usedTextureMask = m_parent->m_activeTextures & usedSamplerMask;
+    for (uint32_t idx : bit::BitMask(usedTextureMask)) {
+      auto texture = GetCommonTexture(d3d9State().textures[idx]);
+
+      const XXH64_hash_t texHash = texture->GetSampleView(false)->image()->getHash();
+      if (textureCategory.find(texHash) != textureCategory.end()) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   bool D3D9Rtx::isRenderingUI() {
     if (!m_parent->UseProgrammableVS()) {
       // Here we assume drawcalls with an orthographic projection are UI calls (as this pattern is common, and we can't raytrace these objects).
@@ -448,28 +486,15 @@ namespace dxvk {
     }
 
     // Check if UI texture bound
-    for (uint32_t idx = 0; idx < caps::TextureStageCount; idx++) {
-      // Textures must be contiguously bound
-      if (d3d9State().textures[idx] == nullptr)
-        break;
-
-      auto texture = GetCommonTexture(d3d9State().textures[idx]);
-
-      const XXH64_hash_t texHash = texture->GetSampleView(false)->image()->getHash();
-      if (RtxOptions::Get()->isUiTexture(texHash)) {
-        return true;
-      }
-    }
-
-    return false;
+    return checkBoundTextureCategory(RtxOptions::Get()->uiTextures());
   }
 
-  bool D3D9Rtx::internalPrepareDraw(const IndexContext& indexContext, const VertexContext vertexContext[caps::MaxStreams], const Draw& drawContext) {
+  D3D9Rtx::PrepareDrawType D3D9Rtx::internalPrepareDraw(const IndexContext& indexContext, const VertexContext vertexContext[caps::MaxStreams], const DrawContext& drawContext) {
     ScopedCpuProfileZone();
 
     // RTX was injected => treat everything else as rasterized 
     if (m_rtxInjectTriggered) {
-      return true;
+      return { !RtxOptions::Get()->skipDrawCallsPostRTXInjection(), false };
     }
 
     auto [status, triggerRtxInjection] = makeDrawCallType(drawContext);
@@ -478,10 +503,11 @@ namespace dxvk {
     const bool processIgnoredDraws = !RtxOptions::Get()->enableRaytracing();
 
     if (status == RtxGeometryStatus::Ignored) {
-      return processIgnoredDraws;
+      return { processIgnoredDraws, false };
     }
 
     if (triggerRtxInjection) {
+      m_parent->PrepareDraw(drawContext.PrimitiveType);
       m_parent->EmitCs([](DxvkContext* ctx) {
         static_cast<RtxContext*>(ctx)->injectRTX();
       });
@@ -489,16 +515,21 @@ namespace dxvk {
       m_parent->FlushCsChunk();
 
       m_rtxInjectTriggered = true;
-      return true;
+      return { true, false };
     }
 
-    assert(status == RtxGeometryStatus::RayTraced || status == RtxGeometryStatus::Rasterized);
+    if (status == RtxGeometryStatus::Rasterized) {
+      return { true, false };
+    }
+
+    assert(status == RtxGeometryStatus::RayTraced);
 
     m_forceGeometryCopy = RtxOptions::Get()->useBuffersDirectly() == false;
     m_forceGeometryCopy |= m_parent->GetOptions()->allowDiscard == false;
 
     // The packet we'll send to RtxContext with information about geometry
-    RasterGeometry geoData;
+    RasterGeometry& geoData = m_activeDrawCallState.geometryData;
+    geoData = {};
     geoData.cullMode = DecodeCullMode(D3DCULL(d3d9State().renderStates[D3DRS_CULLMODE]));
     geoData.frontFace = VK_FRONT_FACE_CLOCKWISE;
     geoData.topology = DecodeInputAssemblyState(drawContext.PrimitiveType).primitiveTopology;
@@ -519,7 +550,7 @@ namespace dxvk {
       // Unlikely, but invalid
       if (maxIndex == minIndex) {
         ONCE(Logger::info("[RTX-Compatibility-Info] Skipped invalid drawcall, no triangles detected in index buffer."));
-        return processIgnoredDraws;
+        return { processIgnoredDraws, false };
       }
 
       geoData.vertexCount = maxIndex - minIndex + 1;
@@ -530,50 +561,70 @@ namespace dxvk {
 
     if (geoData.vertexCount == 0) {
       ONCE(Logger::info("[RTX-Compatibility-Info] Skipped invalid drawcall, no vertices detected."));
-      return processIgnoredDraws;
+      return { processIgnoredDraws, false };
     }
+
+    m_activeDrawCallState.materialData = {};
 
     // Fetch all the legacy state (colour modes, alpha test, etc...)
-    const DxvkRtxLegacyState legacyState = createLegacyState(m_parent);
-
-    // Fetch all the render state and send it to rtx context (textures, transforms, etc.)
-    const uint32_t idealTexcoordIndex = processRenderState();
+    setLegacyMaterialState(m_parent, m_activeDrawCallState.materialData);
 
     // Fetch fog state 
-    const FogState fogState = createFogState(m_parent);
+    setFogState(m_parent, m_activeDrawCallState.fogState);
+
+    // Fetch all the render state and send it to rtx context (textures, transforms, etc.)
+    if (!processRenderState()) {
+      return { processIgnoredDraws, false };
+    }
 
     // Copy all the vertices into a staging buffer.  Assign fields of the geoData structure.
-    processVertices(vertexContext, vertexIndexOffset, idealTexcoordIndex, geoData);
+    processVertices(vertexContext, vertexIndexOffset, geoData);
     geoData.futureGeometryHashes = computeHash(geoData, (maxIndex - minIndex));
-    Future<SkinningData> futureSkinningData = processSkinning(geoData);
-    if (RtxOptions::Get()->needsMeshBoundingBox()) {
-      geoData.futureBoundingBox = computeAxisAlignedBoundingBox(geoData);
-    } else {
-      geoData.futureBoundingBox = Future<AxisAlignedBoundingBox>();
-    }
+    geoData.futureBoundingBox = computeAxisAlignedBoundingBox(geoData);
+    
+    // Process skinning data
+    m_activeDrawCallState.futureSkinningData = processSkinning(geoData);
+
+    // Hash material data
+    m_activeDrawCallState.materialData.updateCachedHash();
+
+    // When skybox geometries are defined, we don't know if we will or won't need the draw call ahead of time, so assume we do
+    bool hasDrawDependencies = (RtxOptions::Get()->skyBoxGeometries().size() != 0) 
+                             || RtxContext::shouldBakeSky(m_activeDrawCallState) 
+                             || RtxContext::shouldBakeTerrain(m_activeDrawCallState);
+
+    bool preserveOriginalDraw = hasDrawDependencies || status == RtxGeometryStatus::Rasterized;
 
     // For shader based drawcalls we also want to capture the vertex shader output
     if (m_parent->UseProgrammableVS() && useVertexCapture()) {
-      prepareVertexCapture(geoData, vertexIndexOffset);
+      prepareVertexCapture(vertexIndexOffset);
+      preserveOriginalDraw = true;
     }
 
-    // Send it
-    m_parent->EmitCs([geoData, futureSkinningData, legacyState, status, fogState,
-                      cObjectToWorld = m_objectToWorldTransform,
-                      cUseVS = m_parent->UseProgrammableVS(),
-                      cUsePS = m_parent->UseProgrammablePS()](DxvkContext* ctx) {
+    m_activeDrawCallState.usesVertexShader = m_parent->UseProgrammableVS();
+    m_activeDrawCallState.usesPixelShader = m_parent->UseProgrammablePS();
+
+    return { preserveOriginalDraw, true };
+  }
+
+  void D3D9Rtx::CommitGeometryToRT(const DrawContext& drawContext) {
+    ScopedCpuProfileZone();
+    auto drawInfo = m_parent->GenerateDrawInfo(drawContext.PrimitiveType, drawContext.PrimitiveCount, m_parent->GetInstanceCount());
+
+    DrawParameters params;
+    params.instanceCount = drawInfo.instanceCount;
+    params.vertexOffset = drawContext.BaseVertexIndex;
+    params.vertexCount = params.indexCount = drawInfo.vertexCount; // DXVK overloads the vertexCount in DrawInfo
+    params.firstIndex = drawContext.StartIndex;
+
+    m_drawCallStateQueue.push(std::move(m_activeDrawCallState));
+
+    m_parent->EmitCs([params, this](DxvkContext* ctx) {
       assert(dynamic_cast<RtxContext*>(ctx));
-      RtxContext* rtxCtx = static_cast<RtxContext*>(ctx);
-
-      rtxCtx->setObjectTransform(cObjectToWorld);
-      rtxCtx->setShaderState(cUseVS, cUsePS);
-      rtxCtx->setLegacyState(legacyState);
-      rtxCtx->setGeometry(geoData, status);
-      rtxCtx->setSkinningData(futureSkinningData);
-      rtxCtx->setFogState(fogState);
+      DrawCallState drawCallState;
+      m_drawCallStateQueue.pop(drawCallState);
+      static_cast<RtxContext*>(ctx)->commitGeometryToRT(params, drawCallState);
     });
-
-    return true;
   }
 
   Future<SkinningData> D3D9Rtx::processSkinning(const RasterGeometry& geoData) {
@@ -584,7 +635,7 @@ namespace dxvk {
     if (m_parent->UseProgrammableVS()) {
       return kEmptySkinningFuture;
     }
-      
+
     // Some games set vertex blend without enough data to actually do the blending, handle that logic below.
 
     const bool hasBlendWeight = d3d9State().vertexDecl != nullptr ? d3d9State().vertexDecl->TestFlag(D3D9VertexDeclFlag::HasBlendWeight) : false;
@@ -688,7 +739,7 @@ namespace dxvk {
   }
 
   template<bool FixedFunction>
-  uint32_t D3D9Rtx::processTextures() {
+  bool D3D9Rtx::processTextures() {
     // We don't support full legacy materials in fixed function mode yet..
     // This implementation finds the most relevant textures bound from the
     // following criteria:
@@ -716,8 +767,7 @@ namespace dxvk {
     };
 
     // Currently we only support 2 textures
-    constexpr uint32_t kMaxTextureBindings = 2;
-    constexpr uint32_t NumTexcoordBins = FixedFunction ? (D3DDP_MAXTEXCOORD * kMaxTextureBindings) : kMaxTextureBindings;
+    constexpr uint32_t NumTexcoordBins = FixedFunction ? (D3DDP_MAXTEXCOORD * LegacyMaterialData::kMaxSupportedTextures) : LegacyMaterialData::kMaxSupportedTextures;
 
     bool useTextureFactorBlend = false;
 
@@ -746,11 +796,11 @@ namespace dxvk {
         // Subsequent stages do not occur if this is true.
         if (data[DXVK_TSS_COLOROP] == D3DTOP_DISABLE)
           break;
-        
+
         const uint32_t argsMask = ArgsMask(data[DXVK_TSS_COLOROP]) | ArgsMask(data[DXVK_TSS_ALPHAOP]);
         const uint32_t texMask = ((data[DXVK_TSS_COLORARG0] & D3DTA_SELECTMASK) == D3DTA_TEXTURE) || ((data[DXVK_TSS_ALPHAARG0] & D3DTA_SELECTMASK) == D3DTA_TEXTURE) ? 0b001 : 0
-                               | ((data[DXVK_TSS_COLORARG1] & D3DTA_SELECTMASK) == D3DTA_TEXTURE) || ((data[DXVK_TSS_ALPHAARG1] & D3DTA_SELECTMASK) == D3DTA_TEXTURE) ? 0b010 : 0
-                               | ((data[DXVK_TSS_COLORARG2] & D3DTA_SELECTMASK) == D3DTA_TEXTURE) || ((data[DXVK_TSS_ALPHAARG2] & D3DTA_SELECTMASK) == D3DTA_TEXTURE) ? 0b100 : 0;
+          | ((data[DXVK_TSS_COLORARG1] & D3DTA_SELECTMASK) == D3DTA_TEXTURE) || ((data[DXVK_TSS_ALPHAARG1] & D3DTA_SELECTMASK) == D3DTA_TEXTURE) ? 0b010 : 0
+          | ((data[DXVK_TSS_COLORARG2] & D3DTA_SELECTMASK) == D3DTA_TEXTURE) || ((data[DXVK_TSS_ALPHAARG2] & D3DTA_SELECTMASK) == D3DTA_TEXTURE) ? 0b100 : 0;
 
         // Is texture used?
         if ((argsMask & texMask) == 0)
@@ -761,7 +811,7 @@ namespace dxvk {
         // Remix can only handle 2D textures - no cubemaps or volumes.
         if (texture->GetType() != D3DRTYPE_TEXTURE)
           continue;
-          
+
         const XXH64_hash_t texHash = texture->GetSampleView(true)->image()->getHash();
 
         // Currently we only support regular textures, skip lightmaps.
@@ -770,62 +820,96 @@ namespace dxvk {
 
         // Allow for two stage candidates per texcoord index
         const uint32_t texcoordIndex = data[DXVK_TSS_TEXCOORDINDEX] & 0b111;
-        const uint32_t candidateIndex = texcoordIndex * kMaxTextureBindings;
+        const uint32_t candidateIndex = texcoordIndex * LegacyMaterialData::kMaxSupportedTextures;
         const uint32_t subIndex = (texcoordIndexToStage[candidateIndex] == kInvalidStage) ? 0 : 1;
 
         // Don't override if candidate exists
-        if(texcoordIndexToStage[candidateIndex + subIndex] == kInvalidStage)
+        if (texcoordIndexToStage[candidateIndex + subIndex] == kInvalidStage)
           texcoordIndexToStage[candidateIndex + subIndex] = stage;
       }
     }
 
     // Find the ideal textures for raytracing, initialize the data to invalid (out of range) to unbind unused textures
-    uint32_t texSlotsForRT[kMaxTextureBindings];
-    memset(&texSlotsForRT[0], 0xFFFFffff, sizeof(texSlotsForRT));
-
     uint32_t firstStage = 0;
-    for (uint32_t idx = 0, textureID = 0; idx < NumTexcoordBins && textureID < kMaxTextureBindings; idx++) {
+    for (uint32_t idx = 0, textureID = 0; idx < NumTexcoordBins && textureID < LegacyMaterialData::kMaxSupportedTextures; idx++) {
       const uint8_t stage = FixedFunction ? texcoordIndexToStage[idx] : textureID;
       if (stage == kInvalidStage || d3d9State().textures[stage] == nullptr)
         continue;
 
+      D3D9CommonTexture* pTexInfo = GetCommonTexture(d3d9State().textures[stage]);
+      assert(pTexInfo != nullptr);
+
       // Send the texture stage state for first texture slot (or 0th stage if no texture)
-      if (FixedFunction && textureID == 0)
-        firstStage = stage;
+      if (textureID == 0) {
+        // ColorTexture2 is optional and currently only used as RayPortal material, the material type will be checked in the submitDrawState.
+        // So we don't use it to check valid drawcall or not here.
+        if (pTexInfo->GetImage()->getHash() == kEmptyHash) {
+          ONCE(Logger::info("[RTX-Compatibility-Info] Texture 0 without valid hash detected, skipping drawcall."));
+          return false;
+        }
+
+        if (FixedFunction) {
+          firstStage = stage;
+        }
+      }
+
+      D3D9SamplerKey key = m_parent->CreateSamplerKey(stage);
+      XXH64_hash_t samplerHash = XXH3_64bits(&key, sizeof(key));
+
+      Rc<DxvkSampler> sampler;
+      auto samplerIt = m_samplerCache.find(samplerHash);
+      if (samplerIt != m_samplerCache.end()) {
+        sampler = samplerIt->second;
+      } else {
+        const auto samplerInfo = m_parent->DecodeSamplerKey(key);
+        sampler = m_parent->GetDXVKDevice()->createSampler(samplerInfo);
+        m_samplerCache.insert(std::make_pair(samplerHash, sampler));
+      }
 
       // Cache the slot we want to bind
+      const bool srgb = d3d9State().samplerStates[stage][D3DSAMP_SRGBTEXTURE] & 0x1;
+      m_activeDrawCallState.materialData.colorTextures[textureID] = TextureRef(sampler, pTexInfo->GetSampleView(srgb));
+
       auto shaderSampler = RemapStateSamplerShader(stage);
-      texSlotsForRT[textureID++] = computeResourceSlotId(shaderSampler.first, DxsoBindingType::Image, uint32_t(shaderSampler.second));
+      m_activeDrawCallState.materialData.colorTextureSlot[textureID] = computeResourceSlotId(shaderSampler.first, DxsoBindingType::Image, uint32_t(shaderSampler.second));
+
+      ++textureID;
     }
 
-    DxvkRtxTextureStageState texStageState = createTextureStageState(d3d9State(), firstStage, useTextureFactorBlend);
+    // Update the drawcall state with texture stage info
+    setTextureStageState(d3d9State(), firstStage, useTextureFactorBlend, m_activeDrawCallState.materialData, m_activeDrawCallState.transformData);
 
-    if (!m_forceGeometryCopy) {
-      if (auto texture = d3d9State().textures[firstStage]) {
-        auto commonTexture = GetCommonTexture(texture);
-        auto hash = commonTexture->GetImage()->getHash();
+    if (auto texture = d3d9State().textures[firstStage]) {
+      auto commonTexture = GetCommonTexture(texture);
+      auto hash = commonTexture->GetImage()->getHash();
 
-        if (RtxOptions::Get()->alwaysCopyDecalGeometries()) {
-          // Only poke decal hashes when option is enabled.
-          m_forceGeometryCopy |= RtxOptions::Get()->isDecalTexture(hash) ||
-                                 RtxOptions::Get()->isDynamicDecalTexture(hash) ||
-                                 RtxOptions::Get()->isNonOffsetDecalTexture(hash) ||
-                                 // Fixme: atm terrain and world-space ui are considered decals..
-                                 RtxOptions::Get()->isTerrainTexture(hash) ||
-                                 RtxOptions::Get()->isWorldSpaceUiTexture(hash);
-        }
+      // Check if an ignore texture is bound
+      if (RtxOptions::Get()->shouldIgnoreTexture(hash)) {
+        return false;
+      }
+
+      if (!m_forceGeometryCopy && RtxOptions::Get()->alwaysCopyDecalGeometries()) {
+        // Only poke decal hashes when option is enabled.
+        m_forceGeometryCopy |= RtxOptions::Get()->isDecalTexture(hash) ||
+          RtxOptions::Get()->isDynamicDecalTexture(hash) ||
+          RtxOptions::Get()->isNonOffsetDecalTexture(hash) ||
+          // Fixme: atm terrain and world-space ui are considered decals..
+          RtxOptions::Get()->isTerrainTexture(hash) ||
+          RtxOptions::Get()->isWorldSpaceUiTexture(hash);
       }
     }
 
-    m_parent->EmitCs([texSlotsForRT, texStageState](DxvkContext* ctx) {
-      static_cast<RtxContext*>(ctx)->setTextureStageState(texStageState);
-      static_cast<RtxContext*>(ctx)->setTextureSlots(texSlotsForRT[0], texSlotsForRT[1]);
-    });
+    m_texcoordIndex = d3d9State().textureStages[firstStage][DXVK_TSS_TEXCOORDINDEX];
 
-    return FixedFunction ? texStageState.texcoordIndex : 0;
+    return true;
   }
 
-  bool D3D9Rtx::PrepareDrawGeometryForRT(const bool indexed, const Draw& context) {
+  D3D9Rtx::PrepareDrawType D3D9Rtx::PrepareDrawGeometryForRT(const bool indexed, const DrawContext& context) {
+    if (!RtxOptions::Get()->enableRaytracing())
+      return { true, false };
+
+    m_parent->PrepareTextures();
+
     IndexContext indices;
     if (indexed) {
       D3D9CommonBuffer* ibo = GetCommonBuffer(d3d9State().indices);
@@ -845,6 +929,8 @@ namespace dxvk {
         vertices[i].offset = dx9Vbo.offset;
         vertices[i].buffer = vbo->GetBufferSlice<D3D9_COMMON_BUFFER_TYPE_MAPPING>();
         vertices[i].mappedSlice = vbo->GetMappedSlice();
+        vertices[i].pVBO = vbo;
+
         // If staging upload has been enabled on a buffer then previous buffer lock:
         //   a) triggered a pipeline stall (overlapped mapped ranges, improper flags etc)
         //   b) does not have D3DLOCK_DONOTWAIT, or was in use at Map()
@@ -858,14 +944,19 @@ namespace dxvk {
     return internalPrepareDraw(indices, vertices, context);
   }
 
-  bool D3D9Rtx::PrepareDrawUPGeometryForRT(const bool indexed, 
-                                           const D3D9BufferSlice& buffer,
-                                           const D3DFORMAT indexFormat,
-                                           const uint32_t indexSize,
-                                           const uint32_t indexOffset,
-                                           const uint32_t vertexSize,
-                                           const uint32_t vertexStride,
-                                           const Draw& drawContext) {
+  D3D9Rtx::PrepareDrawType D3D9Rtx::PrepareDrawUPGeometryForRT(const bool indexed,
+                                                               const D3D9BufferSlice& buffer,
+                                                               const D3DFORMAT indexFormat,
+                                                               const uint32_t indexSize,
+                                                               const uint32_t indexOffset,
+                                                               const uint32_t vertexSize,
+                                                               const uint32_t vertexStride,
+                                                               const DrawContext& drawContext) {
+    if (!RtxOptions::Get()->enableRaytracing())                
+      return { true, false };
+
+    m_parent->PrepareTextures();
+
     // 'buffer' - contains vertex + index data (packed in that order)
 
     IndexContext indices;
@@ -900,9 +991,9 @@ namespace dxvk {
     });
   }
 
-  void D3D9Rtx::EndFrame() {
+  void D3D9Rtx::EndFrame(const Rc<DxvkImage>& targetImage) {
     // Inform backend of end-frame
-    m_parent->EmitCs([](DxvkContext* ctx) { static_cast<RtxContext*>(ctx)->endFrame(); });
+    m_parent->EmitCs([targetImage](DxvkContext* ctx) { static_cast<RtxContext*>(ctx)->endFrame(targetImage); });
 
     // Reset for the next frame
     m_rtxInjectTriggered = false;

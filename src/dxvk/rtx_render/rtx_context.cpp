@@ -126,8 +126,7 @@ namespace dxvk {
   }
 
   RtxContext::RtxContext(const Rc<DxvkDevice>& device)
-    : DxvkContext(device)
-    , m_captureStateForRTX(true) {
+    : DxvkContext(device) {
     // Note: This may not be the best place to check for these features/properties, they ideally would be specified as
     // required upfront, but there's no good place to do that for this RTX extension (the D3D9 stuff does it before device
     // creation), so instead we just check for what is needed.
@@ -182,20 +181,6 @@ namespace dxvk {
   }
   Resources& RtxContext::getResourceManager() {
     return getCommonObjects()->getResources();
-  }
-
-  void RtxContext::beginRecording(const Rc<DxvkCommandList>& cmdList)   {
-    DxvkContext::beginRecording(cmdList);
-
-    enableRtxCapture();
-  }
-
-  void RtxContext::enableRtxCapture()  {
-    m_captureStateForRTX = true;
-  }
-
-  void RtxContext::disableRtxCapture() {
-    m_captureStateForRTX = false;
   }
 
   // Returns wall time between calls to this in seconds
@@ -264,6 +249,8 @@ namespace dxvk {
   // Hooked into D3D9 presentImage (same place HUD rendering is)
   void RtxContext::injectRTX(Rc<DxvkImage> targetImage) {
     ScopedCpuProfileZone();
+
+    commitGraphicsState<true, false>();
 
     m_device->setPresentThrottleDelay(RtxOptions::Get()->getPresentThrottleDelay());
 
@@ -524,9 +511,6 @@ namespace dxvk {
       m_previousInjectRtxHadScene = false;
     }
 
-    // The rest of the frame should render without RTX capture - at the moment that means UI stuff should raster on top of the RTX output
-    disableRtxCapture();
-
     // Reset the fog state to get it re-discovered on the next frame
     getSceneManager().clearFogState();
 
@@ -538,9 +522,6 @@ namespace dxvk {
 
   // Called right before D3D9 present
   void RtxContext::endFrame(Rc<DxvkImage> targetImage) {
-    // Reset drawcall counter
-    m_drawCallID = 0;
-
     // Fallback inject (is a no-op if already injected this frame, or no valid RT scene)
     injectRTX(targetImage);
 
@@ -573,9 +554,6 @@ namespace dxvk {
 
       env::killProcess();
     }
-
-    // Enable this again for the next frame
-    enableRtxCapture();
   }
 
   void RtxContext::updateMetrics(const float frameTimeSecs, const float gpuIdleTimeSecs) const {
@@ -599,50 +577,8 @@ namespace dxvk {
     Metrics::log(Metric::sys_memory_usage, static_cast<float>(sysUsageMib)); // In MB
   }
 
-  void RtxContext::setClipPlanes(uint32_t enableMask, const Vector4 planes[MaxClipPlanes]) {
-    m_rtState.clipPlaneMask = enableMask;
-    if (enableMask != 0)
-      memcpy(m_rtState.clipPlanes, planes, MaxClipPlanes * sizeof(Vector4));
-  }
-
-  void RtxContext::setShaderState(const bool useProgrammableVS, const bool useProgrammablePS) {
-    m_rtState.useProgrammableVS = useProgrammableVS;
-    m_rtState.useProgrammablePS = useProgrammablePS;
-  }
-
-  void RtxContext::setGeometry(const RasterGeometry& geometry, RtxGeometryStatus status) {
-    m_rtState.geometry = geometry;
-    m_rtState.geometryStatus = status;
-  }
-
-  void RtxContext::setTextureSlots(const uint32_t colorTextureSlot, const uint32_t colorTextureSlot2) {
-    m_rtState.colorTextureSlot = colorTextureSlot;
-    m_rtState.colorTextureSlot2 = colorTextureSlot2;
-  }
-
-  void RtxContext::setObjectTransform(const Matrix4& objectToWorld) {
-    m_rtState.world = objectToWorld;
-  }
-
-  void RtxContext::setCameraTransforms(const Matrix4& worldToView, const Matrix4& viewToProjection) {
-    m_rtState.view = worldToView;
-    m_rtState.projection = viewToProjection;
-  }
-
   void RtxContext::setConstantBuffers(const uint32_t vsFixedFunctionConstants) {
     m_rtState.vsFixedFunctionCB = m_rc[vsFixedFunctionConstants].bufferSlice.buffer();
-  }
-
-  void RtxContext::setSkinningData(Future<SkinningData> skinningData) {
-    m_rtState.futureSkinningData = skinningData;
-  }
-
-  void RtxContext::setLegacyState(const DxvkRtxLegacyState& state) {
-    m_rtState.legacyState = state;
-  }
-
-  void RtxContext::setTextureStageState(const DxvkRtxTextureStageState& stage) {
-    m_rtState.texStage = stage;
   }
 
   void RtxContext::addLights(const D3DLIGHT9* pLights, const uint32_t numLights) {
@@ -651,114 +587,14 @@ namespace dxvk {
     }
   }
 
-  void RtxContext::setFogState(const FogState& fogState) {
-    m_rtState.fogState = fogState;
-  }
-
-  void RtxContext::cancelFutureData() {
-    // Cancel any future data that was not used as early
-    // as possible so we do not waste cycles on it
-
-    if (m_rtState.futureSkinningData.valid()) {
-      m_rtState.futureSkinningData.cancel();
-    }
-    if (m_rtState.geometry.futureGeometryHashes.valid()) {
-      m_rtState.geometry.futureGeometryHashes.cancel();
-    }
-    if (m_rtState.geometry.futureBoundingBox.valid()) {
-      m_rtState.geometry.futureBoundingBox.cancel();
-    }
-  }
-
-  RtxGeometryStatus RtxContext::commitGeometryToRT(const DrawParameters& params){
+  void RtxContext::commitGeometryToRT(const DrawParameters& params, DrawCallState& drawCallState){
     ScopedCpuProfileZone();
 
-    if (!m_captureStateForRTX || !RtxOptions::Get()->enableRaytracing())
-      return RtxGeometryStatus::Ignored;
+    RasterGeometry& geoData = drawCallState.geometryData;
+    DrawCallTransforms& transformData = drawCallState.transformData;
 
-    if (m_rtState.geometryStatus != RtxGeometryStatus::RayTraced) {
-      return m_rtState.geometryStatus;
-    }
-
-    const uint32_t indexCount = m_rtState.geometry.indexCount;
-    const uint32_t vertexCount = m_rtState.geometry.vertexCount;
-
-    if(indexCount == 0 && vertexCount == 0)
-      return RtxGeometryStatus::Ignored;
-
-    // We'll need these later
-    if (!m_rtState.geometry.futureGeometryHashes.valid())
-      return RtxGeometryStatus::Ignored;
-    
-    DrawCallState drawCallState;
-    drawCallState.m_geometryData = m_rtState.geometry;
-
-    DrawCallTransforms& transformData = drawCallState.m_transformData;
-
-    transformData.objectToWorld = m_rtState.world;
-    transformData.worldToView = m_rtState.view;
-    transformData.objectToView = m_rtState.view * m_rtState.world;
-    transformData.viewToProjection = m_rtState.projection;
-
-    // Some games pass invalid matrices which D3D9 apparently doesnt care about.
-    // since we'll be doing inversions and other matrix operations, we need to 
-    // sanitize those or there be nans.
-    transformData.sanitize();
-
-    if ((m_rtState.texStage.transformFlags & 0x3) != D3DTTFF_DISABLE) {
-      transformData.textureTransform = m_rtState.texStage.transform;
-    }
-
-    if (m_rtState.texStage.transformFlags & D3DTTFF_PROJECTED) {
-      ONCE(Logger::info(str::format("[RTX-Compatibility-Info] Use of projected texture transform detected, but it's not supported in Remix yet.")));
-    }
-
-    switch (m_rtState.texStage.texcoordIndex) {
-    default:
-    case D3DTSS_TCI_PASSTHRU:
-      transformData.texgenMode = TexGenMode::None;
-      break;
-    case D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR:
-    case D3DTSS_TCI_SPHEREMAP:
-      transformData.texgenMode = TexGenMode::None;
-      ONCE(Logger::info(str::format("[RTX-Compatibility-Info] Use of special TCI flags detected, but they're not supported in Remix yet.")));
-      break;
-    case D3DTSS_TCI_CAMERASPACEPOSITION:
-      transformData.texgenMode = TexGenMode::ViewPositions;
-      break;
-    case D3DTSS_TCI_CAMERASPACENORMAL:
-      // Only available when normals are defined
-      if(drawCallState.m_geometryData.normalBuffer.defined())
-        transformData.texgenMode = TexGenMode::ViewNormals;
-      break;
-    }
-
-    // Find one truly enabled clip plane because we don't support more than one
-    transformData.enableClipPlane = false;
-    if (m_rtState.clipPlaneMask != 0) {
-      for (int i = 0; i < MaxClipPlanes; ++i) {
-        // Check the enable bit and make sure that the plane equation is not degenerate
-        if (m_rtState.clipPlaneMask & (1 << i) && lengthSqr(m_rtState.clipPlanes[i].xyz()) > 0.f) {
-          if (transformData.enableClipPlane) {
-            ONCE(Logger::info(str::format("[RTX-Compatibility-Info] Using more than 1 user clip plane is not supported.")));
-            break;
-          }
-
-          transformData.enableClipPlane = true;
-          transformData.clipPlane = m_rtState.clipPlanes[i];
-        }
-      }
-    }
-
-    LegacyMaterialData& originalMaterialData = drawCallState.m_materialData;
-
-    // Modify the bound geometry data
-    RasterGeometry& geoData = drawCallState.m_geometryData;
-
-    if (!m_rtState.useProgrammableVS) {
-      // This is fixed function vertex pipeline.
-      originalMaterialData.m_d3dMaterial = m_rtState.legacyState.d3dMaterial;
-    }
+    assert(geoData.futureGeometryHashes.valid());
+    assert(geoData.positionBuffer.defined());
 
     const auto fusedMode = RtxOptions::Get()->fusedWorldViewMode();
     if (unlikely(fusedMode != FusedWorldViewMode::None)) {
@@ -772,223 +608,17 @@ namespace dxvk {
       }
     }
 
-    if (m_rtState.futureSkinningData.valid())  {
-      // Update the proposed skinning data from the future
-      drawCallState.m_skinningData = m_rtState.futureSkinningData.get();
-
-      SkinningData& skinningData = drawCallState.m_skinningData;
-
-      assert(geoData.blendWeightBuffer.defined());
-      assert(skinningData.numBonesPerVertex <= 4);
-
-      const RtCamera& camera = m_common->getSceneManager().getCameraManager().getLastSetCamera();
-      if (camera.isValid(m_device->getCurrentFrameId())) {
-        if (likely(fusedMode == FusedWorldViewMode::None)) {
-          transformData.objectToView = transformData.worldToView;
-          // Do not bother when transform is fused. Camera matrices are identity and so is worldToView.
-        }
-        transformData.objectToWorld = camera.getViewToWorld(false) * transformData.objectToView;
-        transformData.worldToView = camera.getWorldToView(false);
-      } else {
-        ONCE(Logger::warn("[RTX-Compatibility-Warn] Cannot decompose the matrices for a skinned mesh because the camera is not set."));
-      }
-
-      // In rare cases when the mesh is skinned but has only one active bone, skip the skinning pass
-      // and bake that single bone into the objectToWorld/View matrices.
-      if (skinningData.minBoneIndex + 1 == skinningData.numBones) {
-        const Matrix4& skinningMatrix = skinningData.pBoneMatrices[skinningData.minBoneIndex];
-
-        transformData.objectToWorld = transformData.objectToWorld * skinningMatrix;
-        transformData.objectToView = transformData.objectToView * skinningMatrix;
-
-        skinningData.boneHash = 0;
-        skinningData.numBones = 0;
-        skinningData.numBonesPerVertex = 0;
-      }
-      
-      // Store the numBonesPerVertex in the RasterGeometry as well to allow it to be overridden
-      geoData.numBonesPerVertex = skinningData.numBonesPerVertex;
-
-      // Reset the future
-      m_rtState.futureSkinningData = Future<SkinningData>();
-    }
-
-    if (!geoData.positionBuffer.defined()) {
-      // Intentionally an error - this one's bad.
-      ONCE(Logger::err(str::format("[RTX-Compatibility-Info] Trying to raytrace an object without a valid position buffer is not valid.")));
-      return RtxGeometryStatus::Ignored;
-    }
-
-    // Assigns textures for raytracing and handles various texture based rules for rt capture
-    auto assignTexture = [this](const uint32_t textureSlot, TextureRef& target, bool isOptionalTexture) -> RtxGeometryStatus {
-      if (textureSlot < m_rc.size() &&
-          m_rc[textureSlot].imageView != nullptr &&
-          m_rc[textureSlot].imageView->type() == VK_IMAGE_VIEW_TYPE_2D) {
-        const XXH64_hash_t texHash = m_rc[textureSlot].imageView->image()->getHash();
-
-        // Texture hash can be empty if the texture is a render-target or other unsupported texture type.
-        if (texHash == kEmptyHash && !isOptionalTexture) {
-          ONCE(Logger::info("[RTX-Compatibility-Info] Texture without valid hash detected, skipping drawcall."));
-          return RtxGeometryStatus::Ignored;
-        }
-
-        target = TextureRef(m_rc[textureSlot]);
-      }
-
-      return RtxGeometryStatus::RayTraced;
-    };
-
-    {
-      RtxGeometryStatus status = RtxGeometryStatus::RayTraced;
-      if ((status = assignTexture(m_rtState.colorTextureSlot, originalMaterialData.m_colorTexture, false)) != RtxGeometryStatus::RayTraced)
-        return status;
-
-      // ColorTexture2 is optional and currently only used as RayPortal material, the material type will be checked in the submitDrawState.
-      // So we don't use it to check valid drawcall or not here.
-      assignTexture(m_rtState.colorTextureSlot2, originalMaterialData.m_colorTexture2, true);
-    }
-
-    originalMaterialData.updateCachedHash();
-
-    // Set Alpha Test information
-
-    originalMaterialData.alphaTestEnabled = m_rtState.legacyState.alphaTestEnabled;
-    originalMaterialData.alphaTestReferenceValue = m_rtState.legacyState.alphaTestReferenceValue;
-    originalMaterialData.alphaTestCompareOp = m_rtState.legacyState.alphaTestCompareOp;
-
-    // Set Alpha Blend information
-
-    originalMaterialData.alphaBlendEnabled = m_rtState.legacyState.alphaBlendEnabled;
-    originalMaterialData.srcColorBlendFactor = m_rtState.legacyState.srcColorBlendFactor;
-    originalMaterialData.dstColorBlendFactor = m_rtState.legacyState.dstColorBlendFactor;
-    originalMaterialData.colorBlendOp = m_rtState.legacyState.colorBlendOp;
-
-    // Set Stencil Test information
-
-    drawCallState.m_stencilEnabled = m_rtState.legacyState.stencilEnabled;
-
-    // Set color source information
-    auto toTextureArgSource = [&](DxvkRtColorSource colorSource) {
-      switch (colorSource) {
-      default:
-      case DxvkRtColorSource::None: return RtTextureArgSource::None;
-      case DxvkRtColorSource::Color0: return RtTextureArgSource::VertexColor0;
-      }
-    };
-
-    auto getTextureArgSource = [&](DxvkRtTextureArgSource texture, DxvkRtColorSource color0, DxvkRtColorSource color1) {
-      if (texture == DxvkRtTextureArgSource::Texture)
-        return RtTextureArgSource::Texture;
-      else if (texture == DxvkRtTextureArgSource::Diffuse)
-        return toTextureArgSource(color0);
-      else if (texture == DxvkRtTextureArgSource::Specular)
-        return toTextureArgSource(color1);
-      else if (texture == DxvkRtTextureArgSource::TFactor)
-        return RtTextureArgSource::TFactor;
-      else
-        return RtTextureArgSource::None;
-    };
-
-    auto& rtState = m_rtState;
-    originalMaterialData.textureColorArg1Source = getTextureArgSource(rtState.texStage.colorArg1Source, rtState.legacyState.diffuseColorSource, rtState.legacyState.specularColorSource);
-    originalMaterialData.textureColorArg2Source = getTextureArgSource(rtState.texStage.colorArg2Source, rtState.legacyState.diffuseColorSource, rtState.legacyState.specularColorSource);
-    originalMaterialData.textureColorOperation = m_rtState.texStage.colorOperation;
-    originalMaterialData.textureAlphaArg1Source = getTextureArgSource(rtState.texStage.alphaArg1Source, rtState.legacyState.diffuseColorSource, rtState.legacyState.specularColorSource);
-    originalMaterialData.textureAlphaArg2Source = getTextureArgSource(rtState.texStage.alphaArg2Source, rtState.legacyState.diffuseColorSource, rtState.legacyState.specularColorSource);
-    originalMaterialData.textureAlphaOperation = m_rtState.texStage.alphaOperation;
-    originalMaterialData.tFactor = m_rtState.legacyState.tFactor;
-    originalMaterialData.isTextureFactorBlend = m_rtState.texStage.useTextureFactorBlend;
-
-    if (RtxOptions::Get()->shouldIgnoreTexture(originalMaterialData.getHash()))
-      return RtxGeometryStatus::Ignored;
-
-    // Set fog information
-    drawCallState.m_fogState = m_rtState.fogState;
-
     // Sync any pending work with geometry processing threads
-    if (drawCallState.finalizePendingFutures()) {
+    const RtCamera& camera = m_common->getSceneManager().getCameraManager().getLastSetCamera();
+    if (drawCallState.finalizePendingFutures(camera.isValid(m_device->getCurrentFrameId()) ? &camera : nullptr)) {
       // Handle the sky
-      drawCallState.m_isSky = rasterizeSky(params, drawCallState);
+      drawCallState.isSky = rasterizeSky(params, drawCallState);
 
       // Bake the terrain
-      bakeTerrain(params, drawCallState, transformData);
+      bakeTerrain(params, drawCallState);
 
       getSceneManager().submitDrawState(this, m_cmd, drawCallState);
     }
-
-    return RtxGeometryStatus::RayTraced;
-  }
-
-  bool RtxContext::requiresDrawCall() const {
-    return m_rtState.useProgrammableVS || !m_captureStateForRTX || !RtxOptions::Get()->enableRaytracing();
-  }
-
-  void RtxContext::draw(
-    uint32_t vertexCount,
-    uint32_t instanceCount,
-    uint32_t firstVertex,
-    uint32_t firstInstance) {
-    if (RtxOptions::Get()->skipDrawCallsPostRTXInjection() && m_frameLastInjected == m_device->getCurrentFrameId()) {
-      cancelFutureData();
-      return;
-    }
-
-    if (requiresDrawCall()) {
-      ScopedGpuProfileZone(this, "Draw");
-      DxvkContext::draw(vertexCount, instanceCount, firstVertex, firstInstance);
-    }
-
-    if (m_captureStateForRTX && RtxOptions::Get()->enableRaytracing()) {
-      DrawParameters params;
-      params.vertexCount = vertexCount;
-      params.instanceCount = instanceCount;
-      params.vertexOffset = firstVertex;
-      params.firstInstance = firstInstance;
-      if (commitGeometryToRT(params) == RtxGeometryStatus::Rasterized && !RtxOptions::Get()->skipDrawCallsPostRTXInjection()) {
-        // This is the first UI or full screen effect draw call - draw it because it was skipped above
-        DxvkContext::draw(vertexCount, instanceCount, firstVertex, firstInstance);
-      }
-      m_rtState.geometry.indexCount = 0;
-      m_rtState.geometry.vertexCount = 0;
-      m_rtState.geometryStatus = RtxGeometryStatus::Ignored;
-      m_drawCallID++;
-    }
-    cancelFutureData();
-  }
-
-  void RtxContext::drawIndexed(
-    uint32_t indexCount,
-    uint32_t instanceCount,
-    uint32_t firstIndex,
-    uint32_t vertexOffset,
-    uint32_t firstInstance) {
-    if (RtxOptions::Get()->skipDrawCallsPostRTXInjection() && m_frameLastInjected == m_device->getCurrentFrameId()) {
-      cancelFutureData();
-      return;
-    }
-
-    if (requiresDrawCall()) {
-      ScopedGpuProfileZone(this, "DrawIndexed");
-      DxvkContext::drawIndexed(indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
-    }
-
-    if (m_captureStateForRTX && RtxOptions::Get()->enableRaytracing()) {
-      DrawParameters params;
-      params.indexCount = indexCount;
-      params.instanceCount = instanceCount;
-      params.vertexOffset = vertexOffset;
-      params.firstInstance = firstInstance;
-      params.firstIndex = firstIndex;
-      if (commitGeometryToRT(params) == RtxGeometryStatus::Rasterized && !RtxOptions::Get()->skipDrawCallsPostRTXInjection()) {
-        // This is the first UI or full screen effect draw call - draw it because it was skipped above
-        DxvkContext::drawIndexed(indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
-      }
-      m_rtState.geometry.indexCount = 0;
-      m_rtState.geometry.vertexCount = 0;
-      m_rtState.geometryStatus = RtxGeometryStatus::Ignored;
-      m_drawCallID++;
-    }
-    cancelFutureData();
   }
 
   static uint32_t jenkinsHash(uint32_t a) {
@@ -1308,7 +938,40 @@ namespace dxvk {
     return isSERExtensionSupported && isSERReorderingEnabled;
   }
 
-  void RtxContext::checkShaderExecutionReorderingSupport() {    
+  bool RtxContext::shouldBakeSky(const DrawCallState& drawCallState) {
+    const XXH64_hash_t colorTextureHash = drawCallState.getMaterialData().colorTextures[0].getImageHash();
+
+    // NOTE: we use color texture hash for sky detection, however the replacement is hashed with
+    // the whole legacy material hash (which, as of 12/9/2022, equals to color texture hash). Adding a check just in case.
+    assert(colorTextureHash == drawCallState.getMaterialData().getHash() && "Texture or material hash method changed!");
+
+    if (drawCallState.getMaterialData().usesTexture()) {
+      if (!RtxOptions::Get()->isSkyboxTexture(colorTextureHash)) {
+        return false;
+      }
+    } else {
+      if (drawCallState.drawCallID >= RtxOptions::Get()->skyDrawcallIdThreshold()) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  bool RtxContext::shouldBakeTerrain(const DrawCallState& drawCallState) {
+    if (!TerrainBaker::needsTerrainBaking())
+      return false;
+
+    // Check if the hash is marked as a terrain texture
+    const XXH64_hash_t colorTextureHash = drawCallState.getMaterialData().colorTextures[0].getImageHash();
+    if (!(colorTextureHash && RtxOptions::Get()->isTerrainTexture(colorTextureHash))) {
+      return false;
+    }
+
+    return true;
+  }
+
+  void RtxContext::checkShaderExecutionReorderingSupport() {
     const bool isSERSupported = checkIsShaderExecutionReorderingSupported(m_device);
     
     RtxOptions::Get()->setIsShaderExecutionReorderingSupported(isSERSupported);
@@ -1681,19 +1344,6 @@ namespace dxvk {
       takeScreenshot("rtxImageDebugView", debugView.getDebugOutput()->image());
   }
 
-  void RtxContext::flushCommandList() {
-    ScopedCpuProfileZone();
-
-    const bool wasCapturingForRtx = m_captureStateForRTX;
-
-    DxvkContext::flushCommandList();
-
-    if (wasCapturingForRtx)
-      enableRtxCapture();
-    else
-      disableRtxCapture();
-  }
-
   void RtxContext::updateComputeShaderResources() {
     ScopedCpuProfileZone();
     DxvkContext::updateComputeShaderResources();
@@ -1768,9 +1418,9 @@ namespace dxvk {
     }
 
     if (params.indexCount == 0) {
-      DxvkContext::draw(params.vertexCount, params.instanceCount, params.vertexOffset, params.firstInstance);
+      DxvkContext::draw(params.vertexCount, params.instanceCount, params.vertexOffset, 0);
     } else {
-      DxvkContext::drawIndexed(params.indexCount, params.instanceCount, params.firstIndex, params.vertexOffset, params.firstInstance);
+      DxvkContext::drawIndexed(params.indexCount, params.instanceCount, params.firstIndex, params.vertexOffset, 0);
     }
   }
 
@@ -1905,9 +1555,9 @@ namespace dxvk {
       }
 
       if (params.indexCount == 0) {
-        DxvkContext::draw(params.vertexCount, params.instanceCount, params.vertexOffset, params.firstInstance);
+        DxvkContext::draw(params.vertexCount, params.instanceCount, params.vertexOffset, 0);
       } else {
-        DxvkContext::drawIndexed(params.indexCount, params.instanceCount, params.firstIndex, params.vertexOffset, params.firstInstance);
+        DxvkContext::drawIndexed(params.indexCount, params.instanceCount, params.firstIndex, params.vertexOffset, 0);
       }
 
       ++plane;
@@ -1923,15 +1573,11 @@ namespace dxvk {
     *static_cast<D3D9FixedFunctionVS*>(slice.mapPtr) = vs;
   }
 
-  void RtxContext::bakeTerrain(const DrawParameters& params, DrawCallState& drawCallState, DrawCallTransforms& transformData) {
-    if (!TerrainBaker::needsTerrainBaking())
+  void RtxContext::bakeTerrain(const DrawParameters& params, DrawCallState& drawCallState) {
+    if (!shouldBakeTerrain(drawCallState))
       return;
 
-    // Check if the hash is marked as a terrain texture
-    const XXH64_hash_t colorTextureHash = drawCallState.getMaterialData().m_colorTexture.getImageHash();
-    if (!(colorTextureHash && RtxOptions::Get()->isTerrainTexture(colorTextureHash))) {
-      return;
-    }
+    DrawCallTransforms& transformData = drawCallState.transformData;
 
     Rc<DxvkImageView> previousColorView;
 
@@ -1950,13 +1596,16 @@ namespace dxvk {
           getSceneManager().trackTexture(this, albedoOpacity, textureIndex, true, false);
           albedoOpacity.finalizePendingPromotion();
 
+          // Original 0th colour texture slot
+          const uint32_t colorTextureSlot = drawCallState.materialData.colorTextureSlot[0];
+
           // Save current color texture first
-          if (m_rtState.colorTextureSlot < m_rc.size() &&
-              m_rc[m_rtState.colorTextureSlot].imageView != nullptr) {
-            previousColorView = m_rc[m_rtState.colorTextureSlot].imageView;
+          if (colorTextureSlot < m_rc.size() &&
+              m_rc[colorTextureSlot].imageView != nullptr) {
+            previousColorView = m_rc[colorTextureSlot].imageView;
           }
 
-          bindResourceView(m_rtState.colorTextureSlot, albedoOpacity.getImageView(), nullptr);
+          bindResourceView(colorTextureSlot, albedoOpacity.getImageView(), nullptr);
         }
       }
     }
@@ -1980,8 +1629,8 @@ namespace dxvk {
         auto terrainSampler = getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
 
         LegacyMaterialData overrideMaterial;
-        overrideMaterial.m_colorTexture = TextureRef(terrainSampler, terrainTexture.view);
-        drawCallState.m_materialData = overrideMaterial;
+        overrideMaterial.colorTextures[0] = TextureRef(terrainSampler, terrainTexture.view);
+        drawCallState.materialData = overrideMaterial;
 
         // Generate texcoords in the RT shader
         transformData.texgenMode = TexGenMode::CascadedViewPositions;
@@ -1995,7 +1644,7 @@ namespace dxvk {
 
         // Restore color texture
         if (previousColorView != nullptr) {
-          bindResourceView(m_rtState.colorTextureSlot, previousColorView, nullptr);
+          bindResourceView(drawCallState.materialData.colorTextureSlot[0], previousColorView, nullptr);
         }
 
         // Restore vertex state
@@ -2011,22 +1660,9 @@ namespace dxvk {
   bool RtxContext::rasterizeSky(const DrawParameters& params, const DrawCallState& drawCallState) {
     auto& options = RtxOptions::Get();
 
-    const XXH64_hash_t colorTextureHash = drawCallState.getMaterialData().m_colorTexture.getImageHash();
-
-    // NOTE: we use color texture hash for sky detection, however the replacement is hashed with
-    // the whole legacy material hash (which, as of 12/9/2022, equals to color texture hash). Adding a check just in case.
-    assert(colorTextureHash == drawCallState.getMaterialData().getHash() && "Texture or material hash method changed!");
-
-    if (drawCallState.getMaterialData().usesTexture()) {
-      if (!options->isSkyboxTexture(colorTextureHash)) {
-        return false;
-      }
-    } else {
-      const XXH64_hash_t geometryHash = drawCallState.getHash(RtxOptions::Get()->GeometryAssetHashRule);
-      if (m_drawCallID >= options->skyDrawcallIdThreshold() && !options->isSkyboxGeometry(geometryHash)) {
-        return false;
-      }
-    }
+    const XXH64_hash_t geometryHash = drawCallState.getHash(RtxOptions::Get()->GeometryAssetHashRule);
+    if (!shouldBakeSky(drawCallState) && !RtxOptions::Get()->isSkyboxGeometry(geometryHash))
+      return false;
 
     ScopedGpuProfileZone(this, "rasterizeSky");
 
@@ -2044,13 +1680,16 @@ namespace dxvk {
         getSceneManager().trackTexture(this, albedoOpacity, textureIndex, true, false);
         albedoOpacity.finalizePendingPromotion();
 
+        // Original 0th colour texture slot
+        const uint32_t colorTextureSlot = drawCallState.materialData.colorTextureSlot[0];
+
         // Save current color texture first
-        if (m_rtState.colorTextureSlot < m_rc.size() &&
-            m_rc[m_rtState.colorTextureSlot].imageView != nullptr) {
-          curColorView = m_rc[m_rtState.colorTextureSlot].imageView;
+        if (colorTextureSlot < m_rc.size() &&
+            m_rc[colorTextureSlot].imageView != nullptr) {
+          curColorView = m_rc[colorTextureSlot].imageView;
         }
 
-        bindResourceView(m_rtState.colorTextureSlot, albedoOpacity.getImageView(), nullptr);
+        bindResourceView(colorTextureSlot, albedoOpacity.getImageView(), nullptr);
         replacemenIsLDR = TextureUtils::isLDR(albedoOpacity.getImageView()->info().format);
       }
     }
@@ -2090,7 +1729,7 @@ namespace dxvk {
 
     // Restore color texture
     if (curColorView != nullptr) {
-      bindResourceView(m_rtState.colorTextureSlot, curColorView, nullptr);
+      bindResourceView(drawCallState.materialData.colorTextureSlot[0], curColorView, nullptr);
     }
 
     return true;

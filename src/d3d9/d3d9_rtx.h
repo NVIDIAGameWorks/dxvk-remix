@@ -10,7 +10,6 @@ namespace dxvk {
   class DxvkDevice;
 
   enum class D3D9RtxFlag : uint32_t {
-    DirtyCameraTransforms,
     DirtyLights,
     DirtyClipPlanes,
   };
@@ -28,7 +27,7 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, useWorldMatricesForShaders, true, "When enabled, Remix will utilize the world matrices being passed from the game via D3D9 fixed function API, even when running with shaders.  Sometimes games pass these matrices and they are useful, however for some games they are very unreliable, and should be filtered out.  If you're seeing precision related issues with shader vertex capture, try disabling this setting.");
 
     // Copy of the parameters issued to D3D9 on DrawXXX
-    struct Draw {
+    struct DrawContext {
       D3DPRIMITIVETYPE PrimitiveType;
       INT              BaseVertexIndex;
       UINT             MinVertexIndex;
@@ -36,6 +35,7 @@ namespace dxvk {
       UINT             StartIndex;
       UINT             PrimitiveCount;
     };
+    static_assert(sizeof(DrawContext) == 24, "Please, recheck initializer usages if this changes.");
 
     /**
       * \brief: Initialize the D3D9 RTX interface
@@ -66,19 +66,17 @@ namespace dxvk {
       m_flags.set(flag);
     }
 
+    struct PrepareDrawType {
+      bool preserveOriginal;
+      bool pendingCommit;
+    };
+    
     /**
       * \brief: Signal that a transform has updated
       *
       * \param [in] idx: index of transform
       */
     void SetTransformDirty(const uint32_t transformIdx) {
-      switch (transformIdx) {
-      case GetTransformIndex(D3DTS_VIEW):
-      case GetTransformIndex(D3DTS_PROJECTION):
-        SetDirty(D3D9RtxFlag::DirtyCameraTransforms);
-        break;
-      }
-
       if (transformIdx > GetTransformIndex(D3DTS_WORLD)) {
         m_maxBone = std::max(m_maxBone, transformIdx - GetTransformIndex(D3DTS_WORLD));
       }
@@ -93,7 +91,7 @@ namespace dxvk {
       *
       * Returns false if this drawcall should be removed from further processing, returns true otherwise.
       */
-    bool PrepareDrawGeometryForRT(const bool indexed, const Draw& context);
+    PrepareDrawType PrepareDrawGeometryForRT(const bool indexed, const DrawContext& context);
 
     /**
       * \brief: This function is responsible for preparing the geometry for rendering in Direct3D 9 
@@ -110,14 +108,21 @@ namespace dxvk {
       *
       * Returns false if this drawcall should be removed from further processing, returns true otherwise.
       */
-    bool PrepareDrawUPGeometryForRT(const bool indexed,
-                                    const D3D9BufferSlice& buffer,
-                                    const D3DFORMAT indexFormat,
-                                    const uint32_t indexSize,
-                                    const uint32_t indexOffset,
-                                    const uint32_t vertexSize,
-                                    const uint32_t vertexStride,
-                                    const Draw& context);
+    PrepareDrawType PrepareDrawUPGeometryForRT(const bool indexed,
+                                               const D3D9BufferSlice& buffer,
+                                               const D3DFORMAT indexFormat,
+                                               const uint32_t indexSize,
+                                               const uint32_t indexOffset,
+                                               const uint32_t vertexSize,
+                                               const uint32_t vertexStride,
+                                               const DrawContext& context);
+
+    /**
+      * \brief: Sends the pending drawcall geometry/state for raytracing, if nothing pending, does nothing.
+      *
+      * \param [in] drawContext : An object of type Draw that contains the context for the draw call.
+      */
+    void CommitGeometryToRT(const DrawContext& drawContext);
 
     /**
       * \brief: Signal that a swapchain has been resized or reconfigured.
@@ -129,7 +134,7 @@ namespace dxvk {
     /**
       * \brief: Signal that we've reached the end of the frame.
       */
-    void EndFrame();
+    void EndFrame(const Rc<DxvkImage>& targetImage);
 
   private: 
     // Give threads specific tasks, to reduce the chance of 
@@ -144,14 +149,19 @@ namespace dxvk {
       kHashingThreads = (kHashingThread0 | kHashingThread1 | kHashingThread2),
       kAllThreads = (kHashingThreads | kSkinningThread)
     };
-    WorkerThreadPool<4 * 1024> m_gpeWorkers;
+
+    inline static const uint32_t kMaxConcurrentDraws = 4 * 1024;
+    WorkerThreadPool<kMaxConcurrentDraws> m_gpeWorkers;
+    AtomicQueue<DrawCallState, kMaxConcurrentDraws> m_drawCallStateQueue;
+
+    DrawCallState m_activeDrawCallState;
 
     DxvkStagingDataAlloc m_rtStagingData;
     D3D9DeviceEx* m_parent;
 
     D3DPRESENT_PARAMETERS m_activePresentParams;
 
-    D3D9RtxFlags m_flags;
+    D3D9RtxFlags m_flags = 0xFFFFffff;
 
     uint32_t m_drawCallID = 0;
 
@@ -161,12 +171,13 @@ namespace dxvk {
 
     bool m_rtxInjectTriggered = false;
     bool m_forceGeometryCopy = false;
+    DWORD m_texcoordIndex = 0;
 
     int m_activeOcclusionQueries = 0;
 
     Rc<DxvkBuffer> m_vsVertexCaptureData;
 
-    Matrix4 m_objectToWorldTransform;
+    fast_unordered_cache<Rc<DxvkSampler>> m_samplerCache;
 
     struct IndexContext {
       VkIndexType indexType = VK_INDEX_TYPE_NONE_KHR;
@@ -178,6 +189,7 @@ namespace dxvk {
       uint32_t offset = 0;
       DxvkBufferSlice buffer;
       DxvkBufferSliceHandle mappedSlice;
+      D3D9CommonBuffer* pVBO = nullptr;
       bool canUseBuffer;
     };
 
@@ -194,22 +206,24 @@ namespace dxvk {
     DxvkBufferSlice processIndexBuffer(const uint32_t indexCount, const uint32_t startIndex, const DxvkBufferSliceHandle& indexSlice, uint32_t& minIndex, uint32_t& maxIndex);
 
     DxvkBufferSlice allocVertexCaptureBuffer(const VkDeviceSize size);
-    void prepareVertexCapture(RasterGeometry& geoData, const int vertexIndexOffset);
+    void prepareVertexCapture(const int vertexIndexOffset);
 
-    void processVertices(const VertexContext vertexContext[caps::MaxStreams], int vertexIndexOffset, uint32_t idealTexcoordIndex, RasterGeometry& geoData);
+    void processVertices(const VertexContext vertexContext[caps::MaxStreams], int vertexIndexOffset, RasterGeometry& geoData);
 
-    uint32_t processRenderState();
+    bool processRenderState();
 
     template<bool FixedFunction>
-    uint32_t processTextures();
+    bool processTextures();
 
-    bool internalPrepareDraw(const IndexContext& indexContext, const VertexContext vertexContext[caps::MaxStreams], const Draw& drawContext);
+    PrepareDrawType internalPrepareDraw(const IndexContext& indexContext, const VertexContext vertexContext[caps::MaxStreams], const DrawContext& drawContext);
     
     struct DrawCallType {
       RtxGeometryStatus status;
       bool triggerRtxInjection;
     };
-    DrawCallType makeDrawCallType(const Draw& drawContext);
+    DrawCallType makeDrawCallType(const DrawContext& drawContext);
+
+    bool checkBoundTextureCategory(const fast_unordered_set& textureCategory) const;
 
     bool isRenderingUI();
 
