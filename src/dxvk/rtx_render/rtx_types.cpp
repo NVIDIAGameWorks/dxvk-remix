@@ -22,63 +22,106 @@
 #pragma once
 
 #include "rtx_types.h"
+#include "rtx_options.h"
 
-namespace dxvk 
-{
-  DrawCallState::DrawCallState(
-    const RasterGeometry& geometryData, const LegacyMaterialData& materialData, const DrawCallTransforms& transformData,
-    const SkinningData& skinningData, const FogState& fogState, bool stencilEnabled) :
-    m_geometryData { geometryData },
-    m_materialData { materialData },
-    m_transformData { transformData },
-    m_skinningData { skinningData },
-    m_fogState { fogState },
-    m_stencilEnabled { stencilEnabled }
-  {}
-
+namespace dxvk {
   DrawCallState::DrawCallState(const DrawCallState& _input)
-    : m_geometryData(_input.m_geometryData)
-    , m_materialData(_input.m_materialData)
-    , m_transformData(_input.m_transformData)
-    , m_skinningData(_input.m_skinningData)
-    , m_fogState(_input.m_fogState)
-    , m_isSky(_input.m_isSky) { }
+    : geometryData(_input.geometryData)
+    , materialData(_input.materialData)
+    , transformData(_input.transformData)
+    , skinningData(_input.skinningData)
+    , fogState(_input.fogState)
+    , isSky(_input.isSky)
+    , futureSkinningData(_input.futureSkinningData)
+    , usesVertexShader(_input.usesVertexShader)
+    , usesPixelShader(_input.usesPixelShader)
+    , drawCallID(_input.drawCallID) { }
 
   DrawCallState& DrawCallState::operator=(const DrawCallState& drawCallState) {
     if (this != &drawCallState) {
-      m_geometryData = drawCallState.m_geometryData;
-      m_materialData = drawCallState.m_materialData;
-      m_transformData = drawCallState.m_transformData;
-      m_skinningData = drawCallState.m_skinningData;
-      m_fogState = drawCallState.m_fogState;
-      m_stencilEnabled = drawCallState.m_stencilEnabled;
+      geometryData = drawCallState.geometryData;
+      materialData = drawCallState.materialData;
+      transformData = drawCallState.transformData;
+      skinningData = drawCallState.skinningData;
+      fogState = drawCallState.fogState;
+      stencilEnabled = drawCallState.stencilEnabled;
+      isSky = drawCallState.isSky;
+      futureSkinningData = drawCallState.futureSkinningData;
+      usesPixelShader = drawCallState.usesPixelShader;
+      futureSkinningData = drawCallState.futureSkinningData;
+      drawCallID = drawCallState.drawCallID;
     }
 
     return *this;
   }
 
-  bool DrawCallState::finalizePendingFutures() {
-    // Bounding boxes (if enabled) will be finalized here, default is FLT_MAX bounds
-    finalizeGeometryBoundingBox();
-
+  bool DrawCallState::finalizePendingFutures(const RtCamera* pLastCamera) {
     // Geometry hashes are vital, and cannot be disabled, so its important we get valid data (hence the return type)
-    return finalizeGeometryHashes();
+    const bool valid = finalizeGeometryHashes();
+    if (valid) {
+      // Bounding boxes (if enabled) will be finalized here, default is FLT_MAX bounds
+      finalizeGeometryBoundingBox();
+
+      // Skinning processing will be finalized here, if object requires skinning
+      finalizeSkinningData(pLastCamera);
+
+      return true;
+    }
+
+    return false;
   }
 
   bool DrawCallState::finalizeGeometryHashes() {
-    if (!m_geometryData.futureGeometryHashes.valid())
+    if (!geometryData.futureGeometryHashes.valid())
       return false;
 
-    m_geometryData.hashes = m_geometryData.futureGeometryHashes.get();
+    geometryData.hashes = geometryData.futureGeometryHashes.get();
 
-    if (m_geometryData.hashes[HashComponents::VertexPosition] == kEmptyHash)
+    if (geometryData.hashes[HashComponents::VertexPosition] == kEmptyHash)
       throw DxvkError("Position hash should never be empty");
 
     return true;
   }
 
   void DrawCallState::finalizeGeometryBoundingBox() {
-    if (m_geometryData.futureBoundingBox.valid())
-      m_geometryData.boundingBox = m_geometryData.futureBoundingBox.get();
+    if (geometryData.futureBoundingBox.valid())
+      geometryData.boundingBox = geometryData.futureBoundingBox.get();
+  }
+
+  void DrawCallState::finalizeSkinningData(const RtCamera* pLastCamera) {
+    if (futureSkinningData.valid()) {
+      skinningData = futureSkinningData.get();
+
+      assert(geometryData.blendWeightBuffer.defined());
+      assert(skinningData.numBonesPerVertex <= 4);
+
+      if (pLastCamera != nullptr) {
+        const auto fusedMode = RtxOptions::Get()->fusedWorldViewMode();
+        if (likely(fusedMode == FusedWorldViewMode::None)) {
+          transformData.objectToView = transformData.worldToView;
+          // Do not bother when transform is fused. Camera matrices are identity and so is worldToView.
+        }
+        transformData.objectToWorld = pLastCamera->getViewToWorld(false) * transformData.objectToView;
+        transformData.worldToView = pLastCamera->getWorldToView(false);
+      } else {
+        ONCE(Logger::warn("[RTX-Compatibility-Warn] Cannot decompose the matrices for a skinned mesh because the camera is not set."));
+      }
+
+      // In rare cases when the mesh is skinned but has only one active bone, skip the skinning pass
+      // and bake that single bone into the objectToWorld/View matrices.
+      if (skinningData.minBoneIndex + 1 == skinningData.numBones) {
+        const Matrix4& skinningMatrix = skinningData.pBoneMatrices[skinningData.minBoneIndex];
+
+        transformData.objectToWorld = transformData.objectToWorld * skinningMatrix;
+        transformData.objectToView = transformData.objectToView * skinningMatrix;
+
+        skinningData.boneHash = 0;
+        skinningData.numBones = 0;
+        skinningData.numBonesPerVertex = 0;
+      }
+
+      // Store the numBonesPerVertex in the RasterGeometry as well to allow it to be overridden
+      geometryData.numBonesPerVertex = skinningData.numBonesPerVertex;
+    }
   }
 } // namespace dxvk

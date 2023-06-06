@@ -797,7 +797,7 @@ namespace dxvk {
 
     // Hide the sky instance since it is not raytraced.
     // Sky mesh and material are only good for capture and replacement purposes.
-    currentInstance.m_isHidden |= drawCall.getIsSky();
+    currentInstance.m_isHidden |= drawCall.isSky;
 
     const CameraType::Enum cameraType = cameraManager.getLastSetCameraType();
 

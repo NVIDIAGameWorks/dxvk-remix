@@ -1683,10 +1683,6 @@ namespace dxvk {
     if (idx == GetTransformIndex(D3DTS_VIEW) || idx >= GetTransformIndex(D3DTS_WORLD))
       m_flags.set(D3D9DeviceFlag::DirtyFFVertexBlend);
 
-    // NV-DXVK start: signal that a transform has updated
-    m_rtx.SetTransformDirty(idx);
-    // NV-DXVK end
-
     return D3D_OK;
   }
 
@@ -2500,29 +2496,34 @@ namespace dxvk {
     if (unlikely(!PrimitiveCount))
       return S_OK;
 
-    PrepareDraw(PrimitiveType);
-
     // NV-DXVK start: geometry processing
-    if (!m_rtx.PrepareDrawGeometryForRT(false, { PrimitiveType, (INT)StartVertex, 0, 0, 0, PrimitiveCount })) {
-      return D3D_OK;
+    const D3D9Rtx::DrawContext drawContext { PrimitiveType, (INT) StartVertex, 0, 0, 0, PrimitiveCount };
+    const auto [preserveOriginalDraw, pendingCommit] = m_rtx.PrepareDrawGeometryForRT(false, drawContext);
+
+    if (preserveOriginalDraw) {
+      PrepareDraw(PrimitiveType);
+
+      EmitCs([this,
+        cPrimType = PrimitiveType,
+        cPrimCount = PrimitiveCount,
+        cStartVertex = StartVertex,
+        cInstanceCount = GetInstanceCount()
+      ](DxvkContext* ctx) {
+        auto drawInfo = GenerateDrawInfo(cPrimType, cPrimCount, cInstanceCount);
+
+        ApplyPrimitiveType(ctx, cPrimType);
+
+        ctx->setPushConstantBank(DxvkPushConstantBank::D3D9);
+        ctx->draw(
+          drawInfo.vertexCount, drawInfo.instanceCount,
+          cStartVertex, 0);
+      });
+    }
+
+    if (pendingCommit) {
+      m_rtx.CommitGeometryToRT(drawContext);
     }
     // NV-DXVK end
-
-    EmitCs([this,
-      cPrimType    = PrimitiveType,
-      cPrimCount   = PrimitiveCount,
-      cStartVertex = StartVertex,
-      cInstanceCount = GetInstanceCount()
-    ](DxvkContext* ctx) {
-      auto drawInfo = GenerateDrawInfo(cPrimType, cPrimCount, cInstanceCount);
-
-      ApplyPrimitiveType(ctx, cPrimType);
-
-      ctx->setPushConstantBank(DxvkPushConstantBank::D3D9);
-      ctx->draw(
-        drawInfo.vertexCount, drawInfo.instanceCount,
-        cStartVertex, 0);
-    });
 
     return D3D_OK;
   }
@@ -2545,31 +2546,36 @@ namespace dxvk {
     if (unlikely(!PrimitiveCount))
       return S_OK;
 
-    PrepareDraw(PrimitiveType);
-
     // NV-DXVK start: geometry processing
-    if (!m_rtx.PrepareDrawGeometryForRT(true, { PrimitiveType, BaseVertexIndex, MinVertexIndex, NumVertices, StartIndex, PrimitiveCount })) {
-      return D3D_OK;
+    const D3D9Rtx::DrawContext drawContext = { PrimitiveType, BaseVertexIndex, MinVertexIndex, NumVertices, StartIndex, PrimitiveCount };
+    const auto [preserveOriginalDraw, pendingCommit] = m_rtx.PrepareDrawGeometryForRT(true, drawContext);
+
+    if (preserveOriginalDraw) {
+      PrepareDraw(PrimitiveType);
+
+      EmitCs([this,
+        cPrimType = PrimitiveType,
+        cPrimCount = PrimitiveCount,
+        cStartIndex = StartIndex,
+        cBaseVertexIndex = BaseVertexIndex,
+        cInstanceCount = GetInstanceCount()
+      ](DxvkContext* ctx) {
+        auto drawInfo = GenerateDrawInfo(cPrimType, cPrimCount, cInstanceCount);
+
+        ApplyPrimitiveType(ctx, cPrimType);
+
+        ctx->setPushConstantBank(DxvkPushConstantBank::D3D9);
+        ctx->drawIndexed(
+          drawInfo.vertexCount, drawInfo.instanceCount,
+          cStartIndex,
+          cBaseVertexIndex, 0);
+      });
+    }
+
+    if (pendingCommit) {
+      m_rtx.CommitGeometryToRT(drawContext);
     }
     // NV-DXVK end
-
-    EmitCs([this,
-      cPrimType        = PrimitiveType,
-      cPrimCount       = PrimitiveCount,
-      cStartIndex      = StartIndex,
-      cBaseVertexIndex = BaseVertexIndex,
-      cInstanceCount   = GetInstanceCount()
-    ](DxvkContext* ctx) {
-      auto drawInfo = GenerateDrawInfo(cPrimType, cPrimCount, cInstanceCount);
-
-      ApplyPrimitiveType(ctx, cPrimType);
-
-      ctx->setPushConstantBank(DxvkPushConstantBank::D3D9);
-      ctx->drawIndexed(
-        drawInfo.vertexCount, drawInfo.instanceCount,
-        cStartIndex,
-        cBaseVertexIndex, 0);
-    });
 
     return D3D_OK;
   }
@@ -2590,8 +2596,6 @@ namespace dxvk {
     if (unlikely(!PrimitiveCount))
       return S_OK;
 
-    PrepareDraw(PrimitiveType);
-
     auto drawInfo = GenerateDrawInfo(PrimitiveType, PrimitiveCount, 0);
 
     const uint32_t dataSize = GetUPDataSize(drawInfo.vertexCount, VertexStreamZeroStride);
@@ -2601,31 +2605,38 @@ namespace dxvk {
     FillUPVertexBuffer(upSlice.mapPtr, pVertexStreamZeroData, dataSize, bufferSize);
 
     // NV-DXVK start: geometry processing
-    if (!m_rtx.PrepareDrawUPGeometryForRT(false, upSlice, D3DFMT_UNKNOWN, 0, 0, dataSize, VertexStreamZeroStride, { PrimitiveType, 0, 0, 0, 0, PrimitiveCount })) {
-      return D3D_OK;
+    const D3D9Rtx::DrawContext drawContext = { PrimitiveType, 0, 0, 0, 0, PrimitiveCount };
+    const auto [preserveOriginalDraw, pendingCommit] = m_rtx.PrepareDrawUPGeometryForRT(false, upSlice, D3DFMT_UNKNOWN, 0, 0, dataSize, VertexStreamZeroStride, drawContext);
+
+    if (preserveOriginalDraw) {
+      PrepareDraw(PrimitiveType);
+
+      EmitCs([this,
+        cBufferSlice = std::move(upSlice.slice),
+        cPrimType = PrimitiveType,
+        cPrimCount = PrimitiveCount,
+        cInstanceCount = GetInstanceCount(),
+        cStride = VertexStreamZeroStride
+      ](DxvkContext* ctx) {
+        auto drawInfo = GenerateDrawInfo(cPrimType, cPrimCount, cInstanceCount);
+
+        ApplyPrimitiveType(ctx, cPrimType);
+
+        ctx->setPushConstantBank(DxvkPushConstantBank::D3D9);
+        ctx->bindVertexBuffer(0, cBufferSlice, cStride);
+        ctx->draw(drawInfo.vertexCount, drawInfo.instanceCount, 0, 0);
+        ctx->bindVertexBuffer(0, DxvkBufferSlice(), 0);
+      });
+
+      m_state.vertexBuffers[0].vertexBuffer = nullptr;
+      m_state.vertexBuffers[0].offset = 0;
+      m_state.vertexBuffers[0].stride = 0;
+    }
+
+    if (pendingCommit) {
+      m_rtx.CommitGeometryToRT(drawContext);
     }
     // NV-DXVK end
-
-    EmitCs([this,
-      cBufferSlice  = std::move(upSlice.slice),
-      cPrimType     = PrimitiveType,
-      cPrimCount    = PrimitiveCount,
-      cInstanceCount = GetInstanceCount(),
-      cStride       = VertexStreamZeroStride
-    ](DxvkContext* ctx) {
-      auto drawInfo = GenerateDrawInfo(cPrimType, cPrimCount, cInstanceCount);
-
-      ApplyPrimitiveType(ctx, cPrimType);
-
-      ctx->setPushConstantBank(DxvkPushConstantBank::D3D9);
-      ctx->bindVertexBuffer(0, cBufferSlice, cStride);
-      ctx->draw(drawInfo.vertexCount, drawInfo.instanceCount, 0, 0);
-      ctx->bindVertexBuffer(0, DxvkBufferSlice(), 0);
-    });
-
-    m_state.vertexBuffers[0].vertexBuffer = nullptr;
-    m_state.vertexBuffers[0].offset       = 0;
-    m_state.vertexBuffers[0].stride       = 0;
 
     return D3D_OK;
   }
@@ -2650,8 +2661,6 @@ namespace dxvk {
     if (unlikely(!PrimitiveCount))
       return S_OK;
 
-    PrepareDraw(PrimitiveType);
-
     auto drawInfo = GenerateDrawInfo(PrimitiveType, PrimitiveCount, 0);
 
     const uint32_t vertexDataSize = GetUPDataSize(MinVertexIndex + NumVertices, VertexStreamZeroStride);
@@ -2668,36 +2677,43 @@ namespace dxvk {
     std::memcpy(data + vertexBufferSize, pIndexData, indicesSize);
 
     // NV-DXVK start: geometry processing
-    if (!m_rtx.PrepareDrawUPGeometryForRT(true, upSlice, IndexDataFormat, indicesSize, vertexDataSize, vertexDataSize, VertexStreamZeroStride, { PrimitiveType, 0, MinVertexIndex, NumVertices, 0, PrimitiveCount })) {
-      return D3D_OK;
+    const D3D9Rtx::DrawContext drawContext = { PrimitiveType, 0, MinVertexIndex, NumVertices, 0, PrimitiveCount };
+    const auto [preserveOriginalDraw, pendingCommit] = m_rtx.PrepareDrawUPGeometryForRT(true, upSlice, IndexDataFormat, indicesSize, vertexDataSize, vertexDataSize, VertexStreamZeroStride, drawContext);
+
+    if (preserveOriginalDraw) {
+      PrepareDraw(PrimitiveType);
+
+      EmitCs([this,
+        cVertexSize = vertexBufferSize,
+        cBufferSlice = std::move(upSlice.slice),
+        cPrimType = PrimitiveType,
+        cPrimCount = PrimitiveCount,
+        cStride = VertexStreamZeroStride,
+        cInstanceCount = GetInstanceCount(),
+        cIndexType = DecodeIndexType(static_cast<D3D9Format>(IndexDataFormat))
+      ](DxvkContext* ctx) {
+        auto drawInfo = GenerateDrawInfo(cPrimType, cPrimCount, cInstanceCount);
+
+        ApplyPrimitiveType(ctx, cPrimType);
+        ctx->setPushConstantBank(DxvkPushConstantBank::D3D9);
+        ctx->bindVertexBuffer(0, cBufferSlice.subSlice(0, cVertexSize), cStride);
+        ctx->bindIndexBuffer(cBufferSlice.subSlice(cVertexSize, cBufferSlice.length() - cVertexSize), cIndexType);
+        ctx->drawIndexed(drawInfo.vertexCount, drawInfo.instanceCount, 0, 0, 0);
+        ctx->bindVertexBuffer(0, DxvkBufferSlice(), 0);
+        ctx->bindIndexBuffer(DxvkBufferSlice(), VK_INDEX_TYPE_UINT32);
+      });
+
+      m_state.vertexBuffers[0].vertexBuffer = nullptr;
+      m_state.vertexBuffers[0].offset = 0;
+      m_state.vertexBuffers[0].stride = 0;
+
+      m_state.indices = nullptr;
+    }
+
+    if (pendingCommit) {
+      m_rtx.CommitGeometryToRT(drawContext);
     }
     // NV-DXVK end
-
-    EmitCs([this,
-      cVertexSize   = vertexBufferSize,
-      cBufferSlice  = std::move(upSlice.slice),
-      cPrimType     = PrimitiveType,
-      cPrimCount    = PrimitiveCount,
-      cStride       = VertexStreamZeroStride,
-      cInstanceCount = GetInstanceCount(),
-      cIndexType    = DecodeIndexType(static_cast<D3D9Format>(IndexDataFormat))
-    ](DxvkContext* ctx) {
-      auto drawInfo = GenerateDrawInfo(cPrimType, cPrimCount, cInstanceCount);
-
-      ApplyPrimitiveType(ctx, cPrimType);
-      ctx->setPushConstantBank(DxvkPushConstantBank::D3D9);
-      ctx->bindVertexBuffer(0, cBufferSlice.subSlice(0, cVertexSize), cStride);
-      ctx->bindIndexBuffer(cBufferSlice.subSlice(cVertexSize, cBufferSlice.length() - cVertexSize), cIndexType);
-      ctx->drawIndexed(drawInfo.vertexCount, drawInfo.instanceCount, 0, 0, 0);
-      ctx->bindVertexBuffer(0, DxvkBufferSlice(), 0);
-      ctx->bindIndexBuffer(DxvkBufferSlice(), VK_INDEX_TYPE_UINT32);
-    });
-
-    m_state.vertexBuffers[0].vertexBuffer = nullptr;
-    m_state.vertexBuffers[0].offset       = 0;
-    m_state.vertexBuffers[0].stride       = 0;
-
-    m_state.indices = nullptr;
 
     return D3D_OK;
   }
@@ -3986,6 +4002,105 @@ namespace dxvk {
   HWND D3D9DeviceEx::GetWindow() {
     return m_window;
   }
+
+  // NV-DXVK start: Extract texture preparation for re-use
+  D3D9SamplerKey D3D9DeviceEx::CreateSamplerKey(DWORD SamplerStage) const {
+    auto& state = m_state.samplerStates[SamplerStage];
+
+    D3D9SamplerKey key;
+    key.AddressU = D3DTEXTUREADDRESS(state[D3DSAMP_ADDRESSU]);
+    key.AddressV = D3DTEXTUREADDRESS(state[D3DSAMP_ADDRESSV]);
+    key.AddressW = D3DTEXTUREADDRESS(state[D3DSAMP_ADDRESSW]);
+    key.MagFilter = D3DTEXTUREFILTERTYPE(state[D3DSAMP_MAGFILTER]);
+    key.MinFilter = D3DTEXTUREFILTERTYPE(state[D3DSAMP_MINFILTER]);
+    key.MipFilter = D3DTEXTUREFILTERTYPE(state[D3DSAMP_MIPFILTER]);
+    key.MaxAnisotropy = state[D3DSAMP_MAXANISOTROPY];
+    key.MipmapLodBias = bit::cast<float>(state[D3DSAMP_MIPMAPLODBIAS]);
+    key.MaxMipLevel = state[D3DSAMP_MAXMIPLEVEL];
+    key.BorderColor = D3DCOLOR(state[D3DSAMP_BORDERCOLOR]);
+    key.Depth = m_depthTextures & (1u << SamplerStage);
+
+    if (m_d3d9Options.samplerAnisotropy != -1) {
+      if (key.MagFilter == D3DTEXF_LINEAR)
+        key.MagFilter = D3DTEXF_ANISOTROPIC;
+
+      if (key.MinFilter == D3DTEXF_LINEAR)
+        key.MinFilter = D3DTEXF_ANISOTROPIC;
+
+      key.MaxAnisotropy = m_d3d9Options.samplerAnisotropy;
+    }
+
+    // NV-DXVK start: Override filtering to be anisotropic for RTX Remix
+    // Todo: Control this override behavior with some sort of option for the RTX Remastering project, ideally
+    // shouldn't be forced at all times.
+    if (key.MagFilter != D3DTEXF_POINT || key.MinFilter != D3DTEXF_POINT) {
+      // Note: Default to anisotropic filtering when any sort of non-point filtering is requested
+      key.MagFilter = D3DTEXF_ANISOTROPIC;
+      key.MinFilter = D3DTEXF_ANISOTROPIC;
+      key.MipFilter = D3DTEXF_LINEAR;
+      key.MaxAnisotropy = 8;
+    }
+    // NV-DXVK end
+
+    NormalizeSamplerKey(key);
+
+    return key;
+  }
+
+
+  DxvkSamplerCreateInfo D3D9DeviceEx::DecodeSamplerKey(const D3D9SamplerKey& key) {
+    DxvkSamplerCreateInfo info;
+    info.addressModeU = DecodeAddressMode(key.AddressU);
+    info.addressModeV = DecodeAddressMode(key.AddressV);
+    info.addressModeW = DecodeAddressMode(key.AddressW);
+    info.compareToDepth = key.Depth;
+    info.compareOp = key.Depth ? VK_COMPARE_OP_LESS_OR_EQUAL : VK_COMPARE_OP_NEVER;
+    info.magFilter = DecodeFilter(key.MagFilter);
+    info.minFilter = DecodeFilter(key.MinFilter);
+    auto mipFilter = DecodeMipFilter(key.MipFilter);
+    info.mipmapMode = mipFilter.MipFilter;
+    // NV-DXVK start: Override filtering to be anisotropic for RTX Remix
+    // Todo: Ideally limit by m_device->properties().core.properties.limits.maxSamplerAnisotropy and m_device->features().core.features.samplerAnisotropy
+    // unsure how to get the device from here though (context has it protected)
+    // NV-DXVK end
+    info.maxAnisotropy = float(key.MaxAnisotropy);
+    info.useAnisotropy = key.MaxAnisotropy > 1;
+    info.mipmapLodBias = key.MipmapLodBias;
+    info.mipmapLodMin = mipFilter.MipsEnabled ? float(key.MaxMipLevel) : 0;
+    info.mipmapLodMax = mipFilter.MipsEnabled ? FLT_MAX : 0;
+    info.usePixelCoord = VK_FALSE;
+
+    DecodeD3DCOLOR(key.BorderColor, info.borderColor.float32);
+
+    if (!m_dxvkDevice->features().extCustomBorderColor.customBorderColorWithoutFormat) {
+      // HACK: Let's get OPAQUE_WHITE border color over
+      // TRANSPARENT_BLACK if the border RGB is white.
+      if (info.borderColor.float32[0] == 1.0f
+      && info.borderColor.float32[1] == 1.0f
+      && info.borderColor.float32[2] == 1.0f
+      && !m_dxvkDevice->features().extCustomBorderColor.customBorderColors) {
+        // Then set the alpha to 1.
+        info.borderColor.float32[3] = 1.0f;
+      }
+    }
+
+    return info;
+  }
+
+
+  void D3D9DeviceEx::PrepareTextures() {
+    const uint32_t usedSamplerMask = m_psShaderMasks.samplerMask | m_vsShaderMasks.samplerMask;
+    const uint32_t usedTextureMask = m_activeTextures & usedSamplerMask;
+
+    const uint32_t texturesToUpload = m_activeTexturesToUpload & usedTextureMask;
+    if (unlikely(texturesToUpload != 0))
+      UploadManagedTextures(texturesToUpload);
+
+    const uint32_t texturesToGen = m_activeTexturesToGen & usedTextureMask;
+    if (unlikely(texturesToGen != 0))
+      GenerateTextureMips(texturesToGen);
+  }
+  // NV-DXVK end
 
 
   DxvkDeviceFeatures D3D9DeviceEx::GetDeviceFeatures(const Rc<DxvkAdapter>& adapter) {
@@ -6013,42 +6128,7 @@ namespace dxvk {
   void D3D9DeviceEx::BindSampler(DWORD Sampler) {
     auto& state = m_state.samplerStates[Sampler];
 
-    D3D9SamplerKey key;
-    key.AddressU      = D3DTEXTUREADDRESS(state[D3DSAMP_ADDRESSU]);
-    key.AddressV      = D3DTEXTUREADDRESS(state[D3DSAMP_ADDRESSV]);
-    key.AddressW      = D3DTEXTUREADDRESS(state[D3DSAMP_ADDRESSW]);
-    key.MagFilter     = D3DTEXTUREFILTERTYPE(state[D3DSAMP_MAGFILTER]);
-    key.MinFilter     = D3DTEXTUREFILTERTYPE(state[D3DSAMP_MINFILTER]);
-    key.MipFilter     = D3DTEXTUREFILTERTYPE(state[D3DSAMP_MIPFILTER]);
-    key.MaxAnisotropy = state[D3DSAMP_MAXANISOTROPY];
-    key.MipmapLodBias = bit::cast<float>(state[D3DSAMP_MIPMAPLODBIAS]);
-    key.MaxMipLevel   = state[D3DSAMP_MAXMIPLEVEL];
-    key.BorderColor   = D3DCOLOR(state[D3DSAMP_BORDERCOLOR]);
-    key.Depth         = m_depthTextures & (1u << Sampler);
-
-    if (m_d3d9Options.samplerAnisotropy != -1) {
-      if (key.MagFilter == D3DTEXF_LINEAR)
-        key.MagFilter = D3DTEXF_ANISOTROPIC;
-
-      if (key.MinFilter == D3DTEXF_LINEAR)
-        key.MinFilter = D3DTEXF_ANISOTROPIC;
-
-      key.MaxAnisotropy = m_d3d9Options.samplerAnisotropy;
-    }
-
-    // NV-DXVK start: Override filtering to be anisotropic for RTX Remix
-    // Todo: Control this override behavior with some sort of option for the RTX Remastering project, ideally
-    // shouldn't be forced at all times.
-    if (key.MagFilter != D3DTEXF_POINT || key.MinFilter != D3DTEXF_POINT) {
-      // Note: Default to anisotropic filtering when any sort of non-point filtering is requested
-      key.MagFilter = D3DTEXF_ANISOTROPIC;
-      key.MinFilter = D3DTEXF_ANISOTROPIC;
-      key.MipFilter = D3DTEXF_LINEAR;
-      key.MaxAnisotropy = 8;
-    }
-    // NV-DXVK end
-
-    NormalizeSamplerKey(key);
+    const D3D9SamplerKey key = CreateSamplerKey(Sampler);
 
     auto samplerInfo = RemapStateSamplerShader(Sampler);
 
@@ -6066,41 +6146,7 @@ namespace dxvk {
         return;
       }
 
-      auto mipFilter = DecodeMipFilter(cKey.MipFilter);
-
-      DxvkSamplerCreateInfo info;
-      info.addressModeU   = DecodeAddressMode(cKey.AddressU);
-      info.addressModeV   = DecodeAddressMode(cKey.AddressV);
-      info.addressModeW   = DecodeAddressMode(cKey.AddressW);
-      info.compareToDepth = cKey.Depth;
-      info.compareOp      = cKey.Depth ? VK_COMPARE_OP_LESS_OR_EQUAL : VK_COMPARE_OP_NEVER;
-      info.magFilter      = DecodeFilter(cKey.MagFilter);
-      info.minFilter      = DecodeFilter(cKey.MinFilter);
-      info.mipmapMode     = mipFilter.MipFilter;
-      // NV-DXVK start: Override filtering to be anisotropic for RTX Remix
-      // Todo: Ideally limit by m_device->properties().core.properties.limits.maxSamplerAnisotropy and m_device->features().core.features.samplerAnisotropy
-      // unsure how to get the device from here though (context has it protected)
-      // NV-DXVK end
-      info.maxAnisotropy  = float(cKey.MaxAnisotropy);
-      info.useAnisotropy  = cKey.MaxAnisotropy > 1;
-      info.mipmapLodBias  = cKey.MipmapLodBias;
-      info.mipmapLodMin   = mipFilter.MipsEnabled ? float(cKey.MaxMipLevel) : 0;
-      info.mipmapLodMax   = mipFilter.MipsEnabled ? FLT_MAX                 : 0;
-      info.usePixelCoord  = VK_FALSE;
-
-      DecodeD3DCOLOR(cKey.BorderColor, info.borderColor.float32);
-
-      if (!m_dxvkDevice->features().extCustomBorderColor.customBorderColorWithoutFormat) {
-        // HACK: Let's get OPAQUE_WHITE border color over
-        // TRANSPARENT_BLACK if the border RGB is white.
-        if (info.borderColor.float32[0] == 1.0f
-        && info.borderColor.float32[1] == 1.0f
-        && info.borderColor.float32[2] == 1.0f
-        && !m_dxvkDevice->features().extCustomBorderColor.customBorderColors) {
-          // Then set the alpha to 1.
-          info.borderColor.float32[3] = 1.0f;
-        }
-      }
+      DxvkSamplerCreateInfo info = DecodeSamplerKey(cKey);
 
       try {
         auto sampler = m_dxvkDevice->createSampler(info);
@@ -6229,16 +6275,12 @@ namespace dxvk {
       }
     }
 
+    // NV-DXVK start: Extract texture preparation for re-use
     const uint32_t usedSamplerMask = m_psShaderMasks.samplerMask | m_vsShaderMasks.samplerMask;
     const uint32_t usedTextureMask = m_activeTextures & usedSamplerMask;
 
-    const uint32_t texturesToUpload = m_activeTexturesToUpload & usedTextureMask;
-    if (unlikely(texturesToUpload != 0))
-      UploadManagedTextures(texturesToUpload);
-
-    const uint32_t texturesToGen = m_activeTexturesToGen & usedTextureMask;
-    if (unlikely(texturesToGen != 0))
-      GenerateTextureMips(texturesToGen);
+    PrepareTextures();
+    // NV-DXVK end
 
     auto* ibo = GetCommonBuffer(m_state.indices);
     if (ibo != nullptr) {
