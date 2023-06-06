@@ -215,7 +215,7 @@ namespace dxvk {
       denoiseDirectAndIndirectLightingSeparatelyRef() = true;
       minReplacementTextureMipMapLevelRef() = 0;
       enableUnorderedResolveInIndirectRaysRef() = true;
-      NeeCachePass::enableRef() = true;
+      NeeCachePass::enableRef() = false;
 
       russianRouletteMaxContinueProbabilityRef() = 0.9f;
       russianRoulette1stBounceMinContinueProbabilityRef() = 0.6f;
