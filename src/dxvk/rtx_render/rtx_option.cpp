@@ -25,7 +25,7 @@ namespace dxvk {
   Config RtxOptionImpl::s_startupOptions;
   Config RtxOptionImpl::s_customOptions;
 
-  void fillHashTable(const std::vector<std::string>& rawInput, std::unordered_set<XXH64_hash_t>& hashTableOutput) {
+  void fillHashTable(const std::vector<std::string>& rawInput, fast_unordered_set& hashTableOutput) {
     for (auto&& hashStr : rawInput) {
       const XXH64_hash_t h = std::stoull(hashStr, nullptr, 16);
       hashTableOutput.insert(h);
@@ -39,7 +39,7 @@ namespace dxvk {
     }
   }
 
-  std::string hashTableToString(const std::unordered_set<XXH64_hash_t>& hashTable) {
+  std::string hashTableToString(const fast_unordered_set& hashTable) {
     std::stringstream ss;
     for (auto&& hash : hashTable) {
       if (ss.tellp() != std::streampos(0))
