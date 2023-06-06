@@ -1074,7 +1074,7 @@ namespace dxvk {
       restirGiRayQuery.biasCorrectionModeRef() = ReSTIRGIBiasCorrection::PairwiseRaytrace;
       restirGiRayQuery.useReflectionReprojectionRef() = true;
       common->metaComposite().enableStochasticAlphaBlendRef() = true;
-      neeCache.enableRef() = RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Ultra;
+      neeCache.enableRef() = false;
       postFx.enableRef() = true;
     } else if (RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Medium ||
                RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Low) {
