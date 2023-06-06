@@ -131,7 +131,7 @@ namespace dxvk {
   struct RtxTextureOption {
     char* uniqueId;
     char* displayName;
-    RtxOption<std::unordered_set<XXH64_hash_t>>* textureSetOption;
+    RtxOption<fast_unordered_set>* textureSetOption;
     XXH64_hash_t bufferTextureHash;
     bool bufferToggle;
   };
@@ -1484,7 +1484,7 @@ namespace dxvk {
     ImGui::PopID();
   }
 
-  void ImGUI::toggleTextureSelection(XXH64_hash_t textureHash, const char* uniqueId, std::unordered_set<XXH64_hash_t>& textureSet) {
+  void ImGUI::toggleTextureSelection(XXH64_hash_t textureHash, const char* uniqueId, fast_unordered_set& textureSet) {
     const char* action;
     if (textureSet.find(textureHash) != textureSet.end()) {
       textureSet.erase(textureHash);

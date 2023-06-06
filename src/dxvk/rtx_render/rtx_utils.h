@@ -37,6 +37,7 @@
 #include "dxvk_bind_mask.h"
 #include <d3d9types.h>
 #include <type_traits>
+#include <unordered_set>
 
 namespace dxvk 
 {
@@ -246,6 +247,10 @@ struct fast_unordered_cache : public std::unordered_map<XXH64_hash_t, T, XXH64_h
       }
     }
   }
+};
+
+// A fast set for use ONLY with already hashed keys.
+struct fast_unordered_set : public std::unordered_set<XXH64_hash_t, XXH64_hash_passthrough> {
 };
 
 } // namespace dxvk
