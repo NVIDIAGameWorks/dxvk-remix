@@ -61,7 +61,7 @@ namespace dxvk {
     Vector2* v2;
     Vector3* v3;
     Vector2i* v2i;
-    std::unordered_set<XXH64_hash_t>* hashSet;
+    fast_unordered_set* hashSet;
     std::vector<XXH64_hash_t>* hashVector;
     std::string* string;
     int64_t value;
@@ -201,7 +201,7 @@ namespace dxvk {
                     std::is_same_v<T, size_t> || std::is_same_v<T, char>) 
         return OptionType::Int;
       if constexpr (std::is_same_v<T, float>) return OptionType::Float;
-      if constexpr (std::is_same_v<T, std::unordered_set<XXH64_hash_t>>) return OptionType::HashSet;
+      if constexpr (std::is_same_v<T, fast_unordered_set>) return OptionType::HashSet;
       if constexpr (std::is_same_v<T, std::vector<XXH64_hash_t>>) return OptionType::HashVector;
       if constexpr (std::is_same_v<T, Vector2>) return OptionType::Vector2;
       if constexpr (std::is_same_v<T, Vector3>) return OptionType::Vector3;

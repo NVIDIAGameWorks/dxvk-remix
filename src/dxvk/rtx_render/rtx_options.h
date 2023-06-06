@@ -135,66 +135,66 @@ namespace dxvk {
     friend class RtxContext; // <-- we want to modify these values directly.
     friend class RtxInitializer; // <-- we want to modify these values directly.
 
-    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, lightmapTextures, {},
+    RW_RTX_OPTION("rtx", fast_unordered_set, lightmapTextures, {},
                   "Textures used for lightmapping (baked static lighting on surfaces) in older games.\n"
                   "These textures will be ignored when attempting to determine the desired textures from a draw to use for ray tracing.");
-    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, skyBoxTextures, {},
+    RW_RTX_OPTION("rtx", fast_unordered_set, skyBoxTextures, {},
                   "Textures on draw calls used for the sky or are otherwise intended to be very far away from the camera at all times (no parallax).\n"
                   "Any draw calls using a texture in this list will be treated as sky and rendered as such in a manner different from typical geometry.");    
-    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, skyBoxGeometries, {},
+    RW_RTX_OPTION("rtx", fast_unordered_set, skyBoxGeometries, {},
                   "Geometries from draw calls used for the sky or are otherwise intended to be very far away from the camera at all times (no parallax).\n"
                   "Any draw calls using a geometry hash in this list will be treated as sky and rendered as such in a manner different from typical geometry.\n"
                   "The geometry hash being used for sky detection is based off of the asset hash rule, see: \"rtx.geometryAssetHashRuleString\".");
-    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, ignoreTextures, {},
+    RW_RTX_OPTION("rtx", fast_unordered_set, ignoreTextures, {},
                   "Textures on draw calls that should be ignored.\n"
                   "Any draw call using an ignore texture will be skipped and not ray traced, useful for removing undesirable rasterized effects or geometry not suitable for ray tracing.");
-    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, ignoreLights, {},
+    RW_RTX_OPTION("rtx", fast_unordered_set, ignoreLights, {},
                   "Lights that should be ignored.\nAny matching light will be skipped and not added to be ray traced.");
-    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, uiTextures, {},
+    RW_RTX_OPTION("rtx", fast_unordered_set, uiTextures, {},
                   "Textures on draw calls that should be treated as screenspace UI elements.\n"
                   "All exclusively UI-related textures should be classified this way and doing so allows the UI to be rasterized on top of the ray traced scene like usual.\n"
                   "Note that currently the first UI texture encountered triggers RTX injection (though this may change in the future as this does cause issues with games that draw UI mid-frame).");
-    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, worldSpaceUiTextures, {},
+    RW_RTX_OPTION("rtx", fast_unordered_set, worldSpaceUiTextures, {},
                   "Textures on draw calls that should be treated as worldspace UI elements.\n"
                   "Unlike typical UI textures this option is useful for improved rendering of UI elements which appear as part of the scene (moving around in 3D space rather than as a screenspace element).");
-    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, worldSpaceUiBackgroundTextures, {}, "");
-    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, hideInstanceTextures, {},
+    RW_RTX_OPTION("rtx", fast_unordered_set, worldSpaceUiBackgroundTextures, {}, "");
+    RW_RTX_OPTION("rtx", fast_unordered_set, hideInstanceTextures, {},
                   "Textures on draw calls that should be hidden from rendering, but not totally ignored.\n"
                   "This is similar to rtx.ignoreTextures but instead of completely ignoring such draw calls they are only hidden from rendering, allowing for the hidden objects to still appear in captures.\n"
                   "As such, this is mostly only a development tool to hide objects during development until they are properly replaced, otherwise the objects should be ignored with rtx.ignoreTextures instead for better performance.");
-    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, playerModelTextures, {}, "");
-    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, playerModelBodyTextures, {}, "");
-    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, lightConverter, {}, "");
-    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, particleTextures, {},
+    RW_RTX_OPTION("rtx", fast_unordered_set, playerModelTextures, {}, "");
+    RW_RTX_OPTION("rtx", fast_unordered_set, playerModelBodyTextures, {}, "");
+    RW_RTX_OPTION("rtx", fast_unordered_set, lightConverter, {}, "");
+    RW_RTX_OPTION("rtx", fast_unordered_set, particleTextures, {},
                   "Textures on draw calls that should be treated as particles.\n"
                   "When objects are marked as particles more approximate rendering methods are leveraged allowing for more effecient and typically better looking particle rendering.\n"
                   "Generally any billboard-like blended particle objects in the original application should be classified this way.");
-    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, beamTextures, {},
+    RW_RTX_OPTION("rtx", fast_unordered_set, beamTextures, {},
                   "Textures on draw calls that are already particles or emissively blended and have beam-like geometry.\n"
                   "Typically objects marked as particles or objects using emissive blending will be rendered with a special method which allows re-orientation of the billboard geometry assumed to make up the draw call in indirect rays (reflections for example).\n"
                   "This method works fine for typical particles, but some (e.g. a laser beam) may not be well-represented with the typical billboard assumption of simply needing to rotate around its centroid to face the view direction.\n"
                   "To handle such cases a different beam mode is used to treat objects as more of a cylindrical beam and re-orient around its main spanning axis, allowing for better rendering of these beam-like effect objects.");
-    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, decalTextures, {},
+    RW_RTX_OPTION("rtx", fast_unordered_set, decalTextures, {},
                   "Textures on draw calls used for static geometric decals or decals with complex topology.\n"
                   "These materials will be blended over the materials underneath them when decal material blending is enabled.\n"
                   "A small configurable offset is applied to each flat part of these decals to prevent coplanar geometric cases (which poses problems for ray tracing).");
-    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, dynamicDecalTextures, {},
+    RW_RTX_OPTION("rtx", fast_unordered_set, dynamicDecalTextures, {},
                   "Textures on draw calls used for dynamically spawned geometric decals, such as bullet holes.\n"
                   "These materials will be blended over the materials underneath them when decal material blending is enabled.\n"
                   "A small configurable offset is applied to each flat part of these decals to prevent coplanar geometric cases (which poses problems for ray tracing).");
-    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, nonOffsetDecalTextures, {},
+    RW_RTX_OPTION("rtx", fast_unordered_set, nonOffsetDecalTextures, {},
                   "Textures on draw calls used for geometric decals with arbitrary topology that are already offset from the base geometry.\n"
                   "These materials will be blended over the materials underneath them when decal material blending is enabled.\n"
                   "Unlike typical decals however these decals have no offset applied to them due assuming the offset is already being done by whatever is passing data to Remix.");
-    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, terrainTextures, {}, "Albedo textures that are baked blended together to form a unified terrain texture used during ray tracing.\n"
-                                                                                "Put albedo textures into this category if the game renders terrain as a blend of multiple textures.");
-    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, cutoutTextures, {}, "");
-    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, opacityMicromapIgnoreTextures, {}, "Textures to ignore when generating Opacity Micromaps. This generally does not have to be set and is only useful for black listing problematic cases for Opacity Micromap usage.");
-    RW_RTX_OPTION("rtx", std::unordered_set<XXH64_hash_t>, animatedWaterTextures, {},
+    RW_RTX_OPTION("rtx", fast_unordered_set, terrainTextures, {}, "Albedo textures that are baked blended together to form a unified terrain texture used during ray tracing.\n"
+                                                                  "Put albedo textures into this category if the game renders terrain as a blend of multiple textures.");
+    RW_RTX_OPTION("rtx", fast_unordered_set, cutoutTextures, {}, "");
+    RW_RTX_OPTION("rtx", fast_unordered_set, opacityMicromapIgnoreTextures, {}, "Textures to ignore when generating Opacity Micromaps. This generally does not have to be set and is only useful for black listing problematic cases for Opacity Micromap usage.");
+    RW_RTX_OPTION("rtx", fast_unordered_set, animatedWaterTextures, {},
                   "Textures on draw calls to be treated as \"animated water\".\n"
                   "Objects with this flag applied will animate their normals to fake a basic water effect based on the layered water material parameters, and only when rtx.opaqueMaterial.layeredWaterNormalEnable is set to true.\n"
                   "Should typically be used on static water planes that the original application may have relied on shaders to animate water on.");
-    RW_RTX_OPTION("rtx.antiCulling", std::unordered_set<XXH64_hash_t>, antiCullingTextures, {},
+    RW_RTX_OPTION("rtx.antiCulling", fast_unordered_set, antiCullingTextures, {},
                   "[Experimental] Textures that are forced to extend life length when anti-culling is enabled.\n"
                   "Some games use different culling methods we can't fully match, use this option to manually add textures to force extend their life when anti-culling fails.");
 
