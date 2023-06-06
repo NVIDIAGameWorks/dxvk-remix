@@ -21,9 +21,11 @@
 */
 #pragma once
 
+#include "rtx_constants.h"
 #include "rtx_utils.h"
 #include "rtx_materials.h"
 #include "rtx_hashing.h"
+#include "rtx_camera.h"
 #include "vulkan/vulkan_core.h"
 #include "../../util/util_threadpool.h"
 
@@ -33,14 +35,12 @@
 
 namespace dxvk 
 {
+class RtCamera;
 class RtInstance;
 struct D3D9FixedFunctionVS;
 
 using RasterBuffer = GeometryBuffer<Raster>;
 using RaytraceBuffer = GeometryBuffer<Raytrace>;
-
-constexpr uint32_t MaxClipPlanes = 6;
-constexpr uint32_t kInvalidFrameIndex = UINT32_MAX;
 
 // NOTE: Needed to move this here in order to avoid
 // circular includes.  This probably requires a 
@@ -368,81 +368,77 @@ struct FogState {
 
 
 struct DrawCallState {
-  DrawCallState()
-    : m_stencilEnabled(false) { }
-
-  DrawCallState(
-    const RasterGeometry& geometryData, const LegacyMaterialData& materialData, const DrawCallTransforms& transformData,
-    const SkinningData& skinningData, const FogState& fogState, bool stencilEnabled);
+  DrawCallState() { }
   DrawCallState(const DrawCallState& _input);
   DrawCallState& operator=(const DrawCallState& drawCallState);
 
   // Note: This uses the original material for the hash, not the replaced material
   const XXH64_hash_t getHash(const HashRule& rule) const {
-    return m_geometryData.getHashForRule(rule) ^ m_materialData.getHash();
+    return geometryData.getHashForRule(rule) ^ materialData.getHash();
   }
 
   [[deprecated("(REMIX-656): Remove this once we can transition content to new hash")]]
   const XXH64_hash_t getHashLegacy(const HashRule& rule) const {
-    return m_geometryData.getHashForRuleLegacy(rule) ^ m_materialData.getHash();
+    return geometryData.getHashForRuleLegacy(rule) ^ materialData.getHash();
   }
 
   const RasterGeometry& getGeometryData() const {
-    return m_geometryData;
+    return geometryData;
   }
 
   const LegacyMaterialData& getMaterialData() const {
-    return m_materialData;
+    return materialData;
   }
 
   const DrawCallTransforms& getTransformData() const {
-    return m_transformData;
+    return transformData;
   }
 
   const SkinningData& getSkinningState() const {
-    return m_skinningData;
+    return skinningData;
   }
 
   const FogState& getFogState() const {
-    return m_fogState;
+    return fogState;
   }
 
-  bool getStencilEnabledState() const {
-    return m_stencilEnabled;
-  }
-
-  bool getIsSky() const {
-    return m_isSky;
-  }
-
-  bool finalizePendingFutures();
+  bool finalizePendingFutures(const RtCamera* pLastCamera);
 
   bool hasTextureCoordinates() const {
     return getGeometryData().texcoordBuffer.defined() || getTransformData().texgenMode != TexGenMode::None;
   }
 
+  bool stencilEnabled = false;
+
+  // Note: used for early sky detection and removing sky draws from raytracing scene and camera detection.
+  bool isSky = false;
+
+  bool usesVertexShader = false, usesPixelShader = false;
+
+  uint32_t drawCallID = 0;
+
 private:
   friend class RtxContext;
+  friend class SceneManager;
+  friend struct D3D9Rtx;
 
   bool finalizeGeometryHashes();
   void finalizeGeometryBoundingBox();
+  void finalizeSkinningData(const RtCamera* pLastCamera);
 
-  RasterGeometry m_geometryData;
+  RasterGeometry geometryData;
 
   // Note: This represents the original material from the D3D9 side, which will always be a LegacyMaterialData
   // whereas the replacement material data used for rendering will be a full MaterialData.
-  LegacyMaterialData m_materialData;
+  LegacyMaterialData materialData;
 
-  DrawCallTransforms m_transformData;
+  DrawCallTransforms transformData;
 
   // Note: Set these pointers to nullptr when not used
-  SkinningData m_skinningData;
+  SkinningData skinningData;
+  Future<SkinningData> futureSkinningData;
 
-  FogState m_fogState;
-  bool m_stencilEnabled;
-
-  // Note: used for early sky detection and removing sky draws from raytracing scene and camera detection.
-  bool m_isSky = false;
+  FogState fogState;
 };
 
  // A BLAS and its data buffer that can be pooled and used for various geometries
@@ -540,37 +536,6 @@ struct Tlas {
   Rc<DxvkAccelStructure> previousAccelStructure = nullptr;
 };
 
-
-
-struct DxvkRtxLegacyState {
-  bool alphaTestEnabled = false;
-  uint8_t alphaTestReferenceValue = 0;
-  VkCompareOp alphaTestCompareOp = VkCompareOp::VK_COMPARE_OP_ALWAYS;
-  // Material color source
-  DxvkRtColorSource diffuseColorSource = DxvkRtColorSource::None;
-  DxvkRtColorSource specularColorSource = DxvkRtColorSource::None;
-  uint32_t tFactor = 0xffffffff; // Value for D3DRS_TEXTUREFACTOR, default value of is opaque white
-  bool alphaBlendEnabled = false;
-  VkBlendFactor srcColorBlendFactor = VkBlendFactor::VK_BLEND_FACTOR_ONE;
-  VkBlendFactor dstColorBlendFactor = VkBlendFactor::VK_BLEND_FACTOR_ZERO;
-  VkBlendOp colorBlendOp = VkBlendOp::VK_BLEND_OP_ADD;
-  bool stencilEnabled = false;
-  D3DMATERIAL9 d3dMaterial = {};
-};
-
-struct DxvkRtxTextureStageState {
-  DxvkRtTextureArgSource colorArg1Source = DxvkRtTextureArgSource::Texture;
-  DxvkRtTextureArgSource colorArg2Source = DxvkRtTextureArgSource::Diffuse;
-  DxvkRtTextureOperation colorOperation = DxvkRtTextureOperation::Modulate;
-  DxvkRtTextureArgSource alphaArg1Source = DxvkRtTextureArgSource::Texture;
-  DxvkRtTextureArgSource alphaArg2Source = DxvkRtTextureArgSource::Diffuse;
-  DxvkRtTextureOperation alphaOperation = DxvkRtTextureOperation::Modulate;
-  uint32_t texcoordIndex = 0;
-  uint32_t transformFlags = 0;
-  Matrix4 transform;
-  bool useTextureFactorBlend;
-};
-
 enum class RtxGeometryStatus {
   Ignored,
   RayTraced,
@@ -578,22 +543,7 @@ enum class RtxGeometryStatus {
 };
 
 struct DxvkRaytracingInstanceState {
-  RasterGeometry geometry;
-  RtxGeometryStatus geometryStatus;
-  Future<SkinningData> futureSkinningData;
-  bool useProgrammableVS;
-  bool useProgrammablePS;
-  Matrix4 world;
-  Matrix4 view;
-  Matrix4 projection;
   Rc<DxvkBuffer> vsFixedFunctionCB;
-  uint32_t colorTextureSlot = UINT32_MAX;
-  uint32_t colorTextureSlot2 = UINT32_MAX;
-  DxvkRtxLegacyState legacyState;
-  DxvkRtxTextureStageState texStage;
-  uint32_t clipPlaneMask = 0;
-  Vector4 clipPlanes[MaxClipPlanes] = { 0.f };
-  FogState fogState;
 };
 
 } // namespace dxvk

@@ -304,7 +304,7 @@ void GameCapturer::captureInstances(const Rc<DxvkContext> ctx) {
   for (const RtInstance* rtInstancePtr : m_sceneManager.getInstanceTable()) {
     assert(rtInstancePtr->getBlas() != nullptr);
 
-    if (rtInstancePtr->getBlas()->input.getIsSky()) {
+    if (rtInstancePtr->getBlas()->input.isSky) {
       if (!m_cap.bSkyProbeBaked) {
         m_exporter.bakeSkyProbe(ctx, basePath() + relPath::remixCaptureTexturesDir, commonFileName::bakedSkyProbe);
         m_cap.bSkyProbeBaked = true;
@@ -337,7 +337,7 @@ void GameCapturer::captureInstances(const Rc<DxvkContext> ctx) {
       }
     }
     instance.lssData.finalTime = m_cap.currentFrameNum;
-    instance.lssData.isSky = rtInstancePtr->getBlas()->input.getIsSky();
+    instance.lssData.isSky = rtInstancePtr->getBlas()->input.isSky;
   }
 }
 

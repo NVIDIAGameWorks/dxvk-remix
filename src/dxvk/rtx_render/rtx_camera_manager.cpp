@@ -75,7 +75,7 @@ namespace dxvk {
   // Returns true on camera cut
   bool CameraManager::processCameraData(const DrawCallState& input) {
     // Skip camera processing for the sky to prevent camera manager from latching to incorrect main camera.
-    if (input.getIsSky())
+    if (input.isSky)
       return false;
 
     // If theres no real camera data here - bail
@@ -150,7 +150,7 @@ namespace dxvk {
     // ToDo: we should default to unknown camera and discard renders that don't match with cameras
     CameraType::Enum cameraType = CameraType::Main;  
 
-    XXH64_hash_t cameraHash = calculateCameraHash(fov, input.getTransformData().worldToView, input.getStencilEnabledState());
+    XXH64_hash_t cameraHash = calculateCameraHash(fov, input.getTransformData().worldToView, input.stencilEnabled);
     {
       auto isTheCameraTypeKnownAlready = [&](CameraType::Enum type) {
         for (auto& it : m_cameraHashToType) {
