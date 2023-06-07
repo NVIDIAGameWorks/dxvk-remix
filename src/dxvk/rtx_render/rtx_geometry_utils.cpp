@@ -122,19 +122,25 @@ namespace dxvk {
     PREWARM_SHADER_PIPELINE(InterleaveGeometryShader);
   }
 
-  RtxGeometryUtils::RtxGeometryUtils(DxvkDevice* pDevice) {
+  RtxGeometryUtils::RtxGeometryUtils(DxvkDevice* pDevice){
     m_pCbData = std::make_unique<DxvkStagingDataAlloc>(
       pDevice,
       (VkMemoryPropertyFlagBits) (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT),
       VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+
+    m_skinningContext = pDevice->createContext();
   }
 
   RtxGeometryUtils::~RtxGeometryUtils() { }
 
-  void RtxGeometryUtils::dispatchSkinning(Rc<DxvkCommandList> cmdList,
-                                          Rc<DxvkContext> ctx,
-                                          const DrawCallState& drawCallState,
+  void RtxGeometryUtils::dispatchSkinning(const DrawCallState& drawCallState,
                                           const RaytraceGeometry& geo) const {
+    const Rc<DxvkContext> ctx = m_skinningContext;
+    // Create command list for the initial skinning dispatch (e.g. The first frame we get skinning mesh draw calls)
+    if (ctx->getCommandList() == nullptr) {
+      ctx->beginRecording(ctx->getDevice()->createCommandList());
+    }
+
     ScopedGpuProfileZone(ctx, "performSkinning");
 
     SkinningArgs params {};
@@ -181,7 +187,7 @@ namespace dxvk {
 
       DxvkBufferSlice cb = m_pCbData->alloc(alignment, sizeof(SkinningArgs));
       memcpy(cb.mapPtr(0), &params, sizeof(SkinningArgs));
-      cmdList->trackResource<DxvkAccess::Write>(cb.buffer());
+      m_skinningContext->getCommandList()->trackResource<DxvkAccess::Write>(cb.buffer());
 
       ctx->bindResourceBuffer(BINDING_SKINNING_CONSTANTS, cb);
       ctx->bindResourceBuffer(BINDING_POSITION_OUTPUT, geo.positionBuffer);
@@ -197,7 +203,7 @@ namespace dxvk {
 
       const VkExtent3D workgroups = util::computeBlockCount(VkExtent3D { params.numVertices, 1, 1 }, VkExtent3D { 128, 1, 1 });
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
-      cmdList->trackResource<DxvkAccess::Read>(cb.buffer());
+      m_skinningContext->getCommandList()->trackResource<DxvkAccess::Read>(cb.buffer());
     } else {
       const float* srcPosition = reinterpret_cast<float*>(drawCallState.getGeometryData().positionBuffer.mapPtr(0));
       const float* srcNormal = reinterpret_cast<float*>(drawCallState.getGeometryData().normalBuffer.mapPtr(0));
