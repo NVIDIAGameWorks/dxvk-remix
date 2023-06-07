@@ -16,6 +16,9 @@
 
 namespace dxvk {
   static const bool s_isDxvkResolutionEnvVarSet = (env::getEnvVar("DXVK_RESOLUTION_WIDTH") != "") || (env::getEnvVar("DXVK_RESOLUTION_HEIGHT") != "");
+  
+  // We only look at RT 0 currently.
+  const uint32_t kRenderTargetIndex = 0;
 
   D3D9Rtx::D3D9Rtx(D3D9DeviceEx* d3d9Device)
     : m_rtStagingData(d3d9Device->GetDXVKDevice(), (VkMemoryPropertyFlagBits) (VK_MEMORY_PROPERTY_HOST_CACHED_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT))
@@ -394,9 +397,6 @@ namespace dxvk {
       return { RtxGeometryStatus::Rasterized, false };
     }
 
-    // We only look at RT 0 currently.
-    const uint32_t kRenderTargetIndex = 0;
-
     if (d3d9State().renderTargets[kRenderTargetIndex] == nullptr) {
       ONCE(Logger::info("[RTX-Compatibility-Info] Skipped drawcall, as no color render target bound."));
       return { RtxGeometryStatus::Ignored, false };
@@ -567,7 +567,7 @@ namespace dxvk {
     m_activeDrawCallState.materialData = {};
 
     // Fetch all the legacy state (colour modes, alpha test, etc...)
-    setLegacyMaterialState(m_parent, m_activeDrawCallState.materialData);
+    setLegacyMaterialState(m_parent, m_parent->m_alphaSwizzleRTs & (1 << kRenderTargetIndex), m_activeDrawCallState.materialData);
 
     // Fetch fog state 
     setFogState(m_parent, m_activeDrawCallState.fogState);

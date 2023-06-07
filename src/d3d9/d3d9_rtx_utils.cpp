@@ -114,7 +114,7 @@ namespace dxvk {
     }
   }
 
-  void setLegacyMaterialState(D3D9DeviceEx* pDevice, LegacyMaterialData& materialData) {
+  void setLegacyMaterialState(D3D9DeviceEx* pDevice, const bool alphaSwizzle, LegacyMaterialData& materialData) {
     assert(pDevice != nullptr);
     const Direct3DState9& d3d9State = *pDevice->GetRawState();
 
@@ -154,6 +154,19 @@ namespace dxvk {
       materialData.srcColorBlendFactor = DecodeBlendFactor(color.Src, false);
       materialData.dstColorBlendFactor = DecodeBlendFactor(color.Dst, false);
       materialData.colorBlendOp = DecodeBlendOp(color.Op);
+
+      auto NormalizeFactor = [alphaSwizzle](VkBlendFactor Factor) {
+        if (alphaSwizzle) {
+          if (Factor == VK_BLEND_FACTOR_DST_ALPHA)
+            return VK_BLEND_FACTOR_ONE;
+          else if (Factor == VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA)
+            return VK_BLEND_FACTOR_ZERO;
+        }
+
+        return Factor;
+      };
+      materialData.srcColorBlendFactor = NormalizeFactor(materialData.srcColorBlendFactor);
+      materialData.dstColorBlendFactor = NormalizeFactor(materialData.dstColorBlendFactor);
     }
 
     materialData.d3dMaterial = d3d9State.material;
