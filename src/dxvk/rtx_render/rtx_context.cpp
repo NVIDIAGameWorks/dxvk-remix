@@ -326,6 +326,8 @@ namespace dxvk {
 
       m_execBarriers.recordCommands(m_cmd);
 
+      flushCommandList();
+
       ScopedGpuProfileZone(this, "InjectRTX");
 
       // Update all the GPU buffers needed to describe the scene
@@ -1342,6 +1344,14 @@ namespace dxvk {
 
     if (captureScreenImage)
       takeScreenshot("rtxImageDebugView", debugView.getDebugOutput()->image());
+  }
+
+  void RtxContext::flushCommandList() {
+    ScopedCpuProfileZone();
+
+    DxvkContext::flushCommandList();
+
+    getCommonObjects()->metaGeometryUtils().flushCommandList();
   }
 
   void RtxContext::updateComputeShaderResources() {

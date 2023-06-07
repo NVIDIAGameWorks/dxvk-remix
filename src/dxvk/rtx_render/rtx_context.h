@@ -104,6 +104,8 @@ namespace dxvk {
 
     void blitImageHelper(const Rc<DxvkImage>& srcImage, const Rc<DxvkImage>& dstImage, VkFilter filter);
 
+    virtual void flushCommandList() override;
+
     SceneManager& getSceneManager();
     Resources& getResourceManager();
   

@@ -45,6 +45,7 @@ namespace dxvk {
   */
   class RtxGeometryUtils {
     std::unique_ptr<DxvkStagingDataAlloc> m_pCbData;
+    Rc<DxvkContext> m_skinningContext;
 
   public:
     RtxGeometryUtils(DxvkDevice* pDevice);
@@ -60,10 +61,7 @@ namespace dxvk {
     /**
      * \brief Execute a compute shader to perform skinning
      */
-    void dispatchSkinning(
-      Rc<DxvkCommandList> cmdList,
-      Rc<DxvkContext> ctx,
-      const DrawCallState& drawCallState, const RaytraceGeometry& geo) const;
+    void dispatchSkinning(const DrawCallState& drawCallState, const RaytraceGeometry& geo) const;
 
     /**
      * \brief Execute a compute shader to perform view model perspective correction
@@ -151,5 +149,11 @@ namespace dxvk {
       const Rc<DxvkContext>& ctx,
       const RasterGeometry& input,
       InterleavedGeometryDescriptor& output) const;
+
+    inline void flushCommandList() {
+      if (m_skinningContext->getCommandList() != nullptr) {
+        m_skinningContext->flushCommandList();
+      }
+    }
   };
 }
