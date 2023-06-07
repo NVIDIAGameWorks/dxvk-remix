@@ -136,9 +136,7 @@ namespace dxvk {
    * Stores a list of commands.
    */
   class DxvkCsChunk : public RcObject {
-    // NV-DXVK start: less cs flushes in heavy scenes
-    constexpr static size_t MaxBlockSize = 16384 * 4;
-    // NV-DXVK end
+    constexpr static size_t MaxBlockSize = 16384;
   public:
     
     DxvkCsChunk();
