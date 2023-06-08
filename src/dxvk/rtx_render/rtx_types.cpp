@@ -25,36 +25,6 @@
 #include "rtx_options.h"
 
 namespace dxvk {
-  DrawCallState::DrawCallState(const DrawCallState& _input)
-    : geometryData(_input.geometryData)
-    , materialData(_input.materialData)
-    , transformData(_input.transformData)
-    , skinningData(_input.skinningData)
-    , fogState(_input.fogState)
-    , isSky(_input.isSky)
-    , futureSkinningData(_input.futureSkinningData)
-    , usesVertexShader(_input.usesVertexShader)
-    , usesPixelShader(_input.usesPixelShader)
-    , drawCallID(_input.drawCallID) { }
-
-  DrawCallState& DrawCallState::operator=(const DrawCallState& drawCallState) {
-    if (this != &drawCallState) {
-      geometryData = drawCallState.geometryData;
-      materialData = drawCallState.materialData;
-      transformData = drawCallState.transformData;
-      skinningData = drawCallState.skinningData;
-      fogState = drawCallState.fogState;
-      stencilEnabled = drawCallState.stencilEnabled;
-      isSky = drawCallState.isSky;
-      futureSkinningData = drawCallState.futureSkinningData;
-      usesPixelShader = drawCallState.usesPixelShader;
-      futureSkinningData = drawCallState.futureSkinningData;
-      drawCallID = drawCallState.drawCallID;
-    }
-
-    return *this;
-  }
-
   bool DrawCallState::finalizePendingFutures(const RtCamera* pLastCamera) {
     // Geometry hashes are vital, and cannot be disabled, so its important we get valid data (hence the return type)
     const bool valid = finalizeGeometryHashes();
