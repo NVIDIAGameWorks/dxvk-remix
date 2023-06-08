@@ -289,7 +289,7 @@ namespace dxvk {
 
     ShaderManager::getInstance()->checkForShaderChanges();
 
-    const float frameTimeSecs = getWallTimeSinceLastCall();
+    const float frameTimeSecs = RtxOptions::Get()->timeDeltaBetweenFrames() == 0.f ? getWallTimeSinceLastCall() : RtxOptions::Get()->timeDeltaBetweenFrames();
     const float gpuIdleTimeSecs = getGpuIdleTimeSinceLastCall();
 
     const bool isRaytracingEnabled = RtxOptions::Get()->enableRaytracing();
