@@ -368,9 +368,9 @@ struct FogState {
 
 
 struct DrawCallState {
-  DrawCallState() { }
-  DrawCallState(const DrawCallState& _input);
-  DrawCallState& operator=(const DrawCallState& drawCallState);
+  DrawCallState() = default;
+  DrawCallState(const DrawCallState& _input) = default;
+  DrawCallState& operator=(const DrawCallState& drawCallState) = default;
 
   // Note: This uses the original material for the hash, not the replaced material
   const XXH64_hash_t getHash(const HashRule& rule) const {
