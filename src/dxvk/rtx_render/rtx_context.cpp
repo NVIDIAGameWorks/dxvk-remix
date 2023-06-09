@@ -579,8 +579,9 @@ namespace dxvk {
     Metrics::log(Metric::sys_memory_usage, static_cast<float>(sysUsageMib)); // In MB
   }
 
-  void RtxContext::setConstantBuffers(const uint32_t vsFixedFunctionConstants) {
+  void RtxContext::setConstantBuffers(const uint32_t vsFixedFunctionConstants, Rc<DxvkBuffer> vertexCaptureCB) {
     m_rtState.vsFixedFunctionCB = m_rc[vsFixedFunctionConstants].bufferSlice.buffer();
+    m_rtState.vertexCaptureCB = vertexCaptureCB;
   }
 
   void RtxContext::addLights(const D3DLIGHT9* pLights, const uint32_t numLights) {
@@ -1398,6 +1399,20 @@ namespace dxvk {
     return RtxOptions::Get()->isTAAEnabled();
   }
 
+  D3D9RtxVertexCaptureData& RtxContext::allocAndMapVertexCaptureConstantBuffer() {
+    DxvkBufferSliceHandle slice = m_rtState.vertexCaptureCB->allocSlice();
+    invalidateBuffer(m_rtState.vertexCaptureCB, slice);
+
+    return *static_cast<D3D9RtxVertexCaptureData*>(slice.mapPtr);
+  }
+
+  D3D9FixedFunctionVS& RtxContext::allocAndMapFixedFunctionConstantBuffer() {
+    DxvkBufferSliceHandle slice = m_rtState.vsFixedFunctionCB->allocSlice();
+    invalidateBuffer(m_rtState.vsFixedFunctionCB, slice);
+
+    return *static_cast<D3D9FixedFunctionVS*>(slice.mapPtr);
+  }
+
   void RtxContext::rasterizeToSkyMatte(const DrawParameters& params) {
     ScopedGpuProfileZone(this, "rasterizeToSkyMatte");
 
@@ -1529,12 +1544,9 @@ namespace dxvk {
     // TODO: add multiview rendering in future.
     uint32_t plane = 0;
     for (auto& skyView : m_skyProbeViews) {
-      auto slice = m_rtState.vsFixedFunctionCB->allocSlice();
-      invalidateBuffer(m_rtState.vsFixedFunctionCB, slice);
-
       // Push new state
-      auto newState = static_cast<D3D9FixedFunctionVS*>(slice.mapPtr);
-      *newState = vs;
+      D3D9FixedFunctionVS& newState = allocAndMapFixedFunctionConstantBuffer();
+      newState = vs;
 
       Matrix4 view;
       {
@@ -1550,9 +1562,9 @@ namespace dxvk {
         view[3] = Vector4(translation.x, translation.y, translation.z, 1.f);
       }
 
-      newState->View = view;
-      newState->WorldView = view * vs.World;
-      newState->Projection = proj;
+      newState.View = view;
+      newState.WorldView = view * vs.World;
+      newState.Projection = proj;
 
       DxvkRenderTargets skyRt;
       skyRt.color[0].view = skyView;
@@ -1578,9 +1590,7 @@ namespace dxvk {
     setRasterizerState(newRs);
 
     // Restore vertex state
-    auto slice = m_rtState.vsFixedFunctionCB->allocSlice();
-    invalidateBuffer(m_rtState.vsFixedFunctionCB, slice);
-    *static_cast<D3D9FixedFunctionVS*>(slice.mapPtr) = vs;
+    allocAndMapFixedFunctionConstantBuffer() = vs;
   }
 
   void RtxContext::bakeTerrain(const DrawParameters& params, DrawCallState& drawCallState) {
@@ -1590,8 +1600,6 @@ namespace dxvk {
     DrawCallTransforms& transformData = drawCallState.transformData;
 
     Rc<DxvkImageView> previousColorView;
-
-    const D3D9FixedFunctionVS& vs = *static_cast<D3D9FixedFunctionVS*>(m_rtState.vsFixedFunctionCB->mapPtr(0));
 
     if (!TerrainBaker::debugDisableBaking()) {
       // Grab and apply replacement texture if any
@@ -1620,14 +1628,6 @@ namespace dxvk {
       }
     }
 
-    // Save current RTs
-    DxvkRenderTargets currentRenderTargets = m_state.om.renderTargets;
-
-    // Save state
-    const uint32_t previousViewportCount = m_state.gp.state.rs.viewportCount();
-    const DxvkViewportState previousViewportState = m_state.vp;
-    const DxvkContextState previousContextState = getContextState();
-
     // Bake the texture
     const bool isBaked = getSceneManager().getTerrainBaker().bakeDrawCall(this, m_state, m_rtState, params, drawCallState, transformData.textureTransform);
 
@@ -1635,8 +1635,8 @@ namespace dxvk {
       // Bind the baked terrain texture to the mesh
       if (!TerrainBaker::debugDisableBinding()) {
         // Update the material data
-        auto terrainTexture = getResourceManager().getTerrainTexture(Rc<DxvkContext>(this));
-        auto terrainSampler = getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+        const Resources::Resource& terrainTexture = getResourceManager().getTerrainTexture(Rc<DxvkContext>(this));
+        const Rc<DxvkSampler> terrainSampler = getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
 
         LegacyMaterialData overrideMaterial;
         overrideMaterial.colorTextures[0] = TextureRef(terrainSampler, terrainTexture.view);
@@ -1648,19 +1648,11 @@ namespace dxvk {
 
       // Restore state modified during baking
       if (!TerrainBaker::debugDisableBaking()) {
-        setContextState(previousContextState);
-        setViewports(previousViewportCount, previousViewportState.viewports.data(), previousViewportState.scissorRects.data());
-        bindRenderTargets(currentRenderTargets);
 
         // Restore color texture
         if (previousColorView != nullptr) {
           bindResourceView(drawCallState.materialData.colorTextureSlot[0], previousColorView, nullptr);
         }
-
-        // Restore vertex state
-        auto slice = m_rtState.vsFixedFunctionCB->allocSlice();
-        invalidateBuffer(m_rtState.vsFixedFunctionCB, slice);
-        *static_cast<D3D9FixedFunctionVS*>(slice.mapPtr) = vs;
       }
     }
 
