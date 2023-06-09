@@ -677,6 +677,7 @@ namespace dxvk {
     constants.lightCount = static_cast<uint16_t>(getSceneManager().getLightManager().getActiveCount());
 
     constants.fireflyFilteringLuminanceThreshold = RtxOptions::Get()->fireflyFilteringLuminanceThreshold();
+    constants.secondarySpecularFireflyFilteringThreshold = RtxOptions::Get()->secondarySpecularFireflyFilteringThreshold();
     constants.primaryRayMaxInteractions = RtxOptions::Get()->getPrimaryRayMaxInteractions();
     constants.psrRayMaxInteractions = RtxOptions::Get()->getPSRRayMaxInteractions();
     constants.secondaryRayMaxInteractions = RtxOptions::Get()->getSecondaryRayMaxInteractions();

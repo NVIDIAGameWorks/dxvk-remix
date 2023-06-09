@@ -103,7 +103,8 @@ struct RaytraceArgs {
   uint8_t secondaryRayMaxInteractions;
   // The number of active Ray Portals (Used for Ray Portal sampling). Always <= RAY_PORTAL_MAX_COUNT
   uint8_t numActiveRayPortals;
-  vec2 pad6;
+  float pad6;
+  float secondarySpecularFireflyFilteringThreshold;
 
   // Note: Packed as float16, uses uint16_t due to being shared on C++ side
   uint16_t emissiveBlendOverrideEmissiveIntensity;

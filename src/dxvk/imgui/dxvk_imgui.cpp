@@ -2007,6 +2007,7 @@ namespace dxvk {
         ImGui::DragInt("Minimum Path Bounces", &RtxOptions::Get()->pathMinBouncesObject(), 1.0f, 0, 15, "%d", sliderFlags);
         ImGui::DragInt("Maximum Path Bounces", &RtxOptions::Get()->pathMaxBouncesObject(), 1.0f, RtxOptions::Get()->pathMinBounces(), 15, "%d", sliderFlags);
         ImGui::DragFloat("Firefly Filtering Luminance Threshold", &RtxOptions::Get()->fireflyFilteringLuminanceThresholdObject(), 0.1f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
+        ImGui::DragFloat("Secondary Specular Firefly Filtering Threshold", &RtxOptions::Get()->secondarySpecularFireflyFilteringThresholdObject(), 0.1f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
         ImGui::DragFloat("Opaque Diffuse Lobe Probability Zero Threshold", &RtxOptions::Get()->opaqueDiffuseLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
         ImGui::DragFloat("Min Opaque Diffuse Lobe Probability", &RtxOptions::Get()->minOpaqueDiffuseLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
         ImGui::DragFloat("Opaque Specular Lobe Probability Zero Threshold", &RtxOptions::Get()->opaqueSpecularLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
