@@ -25,6 +25,8 @@
 #define NEE_CACHE_ELEMENTS 16
 // Element size in bytes
 #define NEE_CACHE_ELEMENT_SIZE 4 * 2
+#define NEE_CACHE_TASK_SIZE 4
+#define NEE_CACHE_EMPTY_TASK 0xffffffff
 
 #ifndef __cplusplus
 
@@ -119,33 +121,104 @@ struct NEECell
     return (idx + 1) * NEE_CACHE_ELEMENT_SIZE;
   }
 
-  bool isValid() { return m_baseAddress != -1; }
-
-  void setTaskCount(int count)
+  int getTaskAddress(int idx)
   {
-    NeeCacheTask.Store(m_baseAddress, count);
+    return m_baseAddress + idx * NEE_CACHE_TASK_SIZE;
   }
+
+  bool isValid() { return m_baseAddress != -1; }
 
   int getTaskCount()
   {
-    uint count = NeeCacheTask.Load(m_baseAddress);
-    return min(count, NEE_CACHE_ELEMENTS - 1);
-  }
-
-  int2 getTask(int idx)
-  {
-    return NeeCacheTask.Load2(m_baseAddress + indexToOffset(idx));
-  }
-
-  bool insertTask(uint2 task)
-  {
-    uint oldLength;
-    NeeCacheTask.InterlockedAdd(m_baseAddress, 1, oldLength);
-
-    if (oldLength < NEE_CACHE_ELEMENTS - 1)
+    int count = 0;
+    for (int i = 0; i < getMaxTaskCount(); ++i)
     {
-      NeeCacheTask.Store2(m_baseAddress + indexToOffset(oldLength), task);
-      return true;
+      uint taskData = NeeCacheTask.Load(getTaskAddress(i));
+      if (taskData != NEE_CACHE_EMPTY_TASK)
+      {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  void clearTasks()
+  {
+    for (int i = 0; i < getMaxTaskCount(); ++i)
+    {
+      NeeCacheTask.Store(getTaskAddress(i), NEE_CACHE_EMPTY_TASK);
+    }
+  }
+
+  uint getTask(int idx)
+  {
+    int count = 0;
+    for (int i = 0; i < getMaxTaskCount(); ++i)
+    {
+      uint taskData = NeeCacheTask.Load(getTaskAddress(i));
+      if (taskData == NEE_CACHE_EMPTY_TASK)
+      {
+        continue;
+      }
+      if (count == idx)
+      {
+        return taskData & 0xffffff;
+      }
+      count++;
+    }
+    return NEE_CACHE_EMPTY_TASK;
+  }
+
+  static uint getTaskHash(uint task)
+  {
+    return task;
+  }
+
+  static uint getBinHash(uint x)
+  {
+    x = ((x >> 16) ^ x) * 0x45d9f3b;
+    x = ((x >> 16) ^ x) * 0x45d9f3b;
+    x = (x >> 16) ^ x;
+    return x & 0xf;
+  }
+
+  bool insertTask(uint task, uint value)
+  {
+    uint index = getBinHash(task + cb.frameIdx);
+    int taskAddress = getTaskAddress(index);
+    task |= (value << 24);
+
+    // Remove duplicated tasks
+    uint oldTask = NeeCacheTask.Load(taskAddress);
+    if (oldTask == task || (oldTask != NEE_CACHE_EMPTY_TASK && getTaskHash(oldTask) >= getTaskHash(task)))
+    {
+      return false;
+    }
+
+    // Insert task with the largest hash value
+    uint expectTask = NEE_CACHE_EMPTY_TASK;
+    uint insertTask = task;
+    while(true)
+    {
+      uint originalTask;
+      NeeCacheTask.InterlockedCompareExchange(taskAddress, expectTask, insertTask, originalTask);
+      if (originalTask == expectTask)
+      {
+        // successfully inserted
+        return true;
+      }
+
+      // Only insert a task when its hash is larger
+      // Because the value is in high bits, tasks with higher values will have higher priority
+      uint insertTaskHash   = getTaskHash(insertTask);
+      uint originalTaskHash = getTaskHash(originalTask);
+      if (originalTaskHash >= insertTaskHash)
+      {
+        return false;
+      }
+
+      // Prefare for next insertion
+      expectTask = originalTask;
     }
     return false;
   }
@@ -208,6 +281,11 @@ struct NEECell
   static int getMaxCandidateCount()
   {
     return NEE_CACHE_ELEMENTS-1;
+  }
+
+  static int getMaxTaskCount()
+  {
+    return NEE_CACHE_ELEMENTS;
   }
 }
 

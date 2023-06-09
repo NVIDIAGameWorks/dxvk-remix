@@ -73,6 +73,8 @@ public:
 
   const Rc<DxvkBuffer> getSurfaceMappingBuffer() const { return m_surfaceMappingBuffer; }
 
+  const Rc<DxvkBuffer> getPrimitiveIDPrefixSumBuffer() const { return m_primitiveIDPrefixSumBuffer; }
+
   const Rc<DxvkBuffer> getBillboardsBuffer() const { return m_billboardsBuffer; }
 
   // Clear all instances currently tracked by manager
@@ -114,7 +116,8 @@ private:
   template<Tlas::Type type>
   void internalBuildTlas(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList);
   std::vector<RtInstance*> m_reorderedSurfaces;
-  std::vector<uint32_t> m_reorderedSurfacesFirstIndexOffset; 
+  std::vector<uint32_t> m_reorderedSurfacesFirstIndexOffset;
+  std::vector<uint32_t> m_reorderedSurfacesPrimitiveIDPrefixSum;
   std::vector<VkAccelerationStructureInstanceKHR> m_mergedInstances[Tlas::Count];
   std::vector<Rc<PooledBlas>> m_blasPool;
 
@@ -123,6 +126,7 @@ private:
   Rc<DxvkBuffer> m_surfaceMappingBuffer;
   Rc<DxvkDevice> m_device;
   Rc<DxvkBuffer> m_transformBuffer;
+  Rc<DxvkBuffer> m_primitiveIDPrefixSumBuffer;
 
   Rc<PooledBlas> m_intersectionBlas;
   Rc<DxvkBuffer> m_aabbBuffer;
