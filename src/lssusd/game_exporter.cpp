@@ -21,7 +21,6 @@
 */
 #include "game_exporter.h"
 #include "game_exporter_common.h"
-#include "game_exporter_paths.h"
 #include "../util/log/log.h"
 
 #include "usd_include_begin.h"
@@ -158,14 +157,12 @@ void GameExporter::exportUsdInternal(const Export& exportData) {
 
 pxr::UsdStageRefPtr GameExporter::createInstanceStage(const Export& exportData) {
   assert(exportData.bExportInstanceStage);
-  std::stringstream stagePathSS;
-  stagePathSS << exportData.baseExportPath << "/";
-  if(exportData.instanceExportName.compare("") == 0) {
-    stagePathSS << "export" << lss::ext::usd;
-  } else {
-    stagePathSS << exportData.instanceExportName;
-  }
-  pxr::UsdStageRefPtr instanceStage = createStageAndRootPrim(stagePathSS.str());
+  const auto stageName = buildInstanceStageName(exportData.baseExportPath, exportData.instanceExportName);
+  pxr::UsdStageRefPtr instanceStage = pxr::UsdStage::CreateNew(stageName);
+  assert(instanceStage);
+  const auto rootPrim = instanceStage->DefinePrim(gRootNodePath);
+  assert(rootPrim);
+  instanceStage->SetDefaultPrim(rootPrim);
   const auto rootLightsPrim = instanceStage->DefinePrim(gRootLightsPath);
   assert(rootLightsPrim);
   const auto rootMeshesPrim = instanceStage->DefinePrim(gRootMeshesPath);
@@ -189,15 +186,6 @@ pxr::UsdStageRefPtr GameExporter::createInstanceStage(const Export& exportData) 
   instanceStage->GetRootLayer()->SetCustomLayerData(customLayerData);
 
   return instanceStage;
-}
-
-pxr::UsdStageRefPtr GameExporter::createStageAndRootPrim(const std::string& path) {
-  pxr::UsdStageRefPtr newStage = pxr::UsdStage::CreateNew(path);
-  assert(newStage);
-  const auto rootPrim = newStage->DefinePrim(gRootNodePath);
-  assert(rootPrim);
-  newStage->SetDefaultPrim(rootPrim);
-  return newStage;
 }
 
 void GameExporter::setCommonStageMetaData(pxr::UsdStageRefPtr stage, const Export& exportData) {
