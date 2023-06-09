@@ -31,6 +31,8 @@
 
 #include "../d3d9/d3d9_state.h"
 #include "../d3d9/d3d9_spec_constants.h"
+#include "../dxso/dxso_util.h"
+#include "../../d3d9/d3d9_rtx.h"
 
 namespace dxvk {
   bool TerrainBaker::bakeDrawCall(Rc<RtxContext> ctx,
@@ -55,17 +57,15 @@ namespace dxvk {
       return (debugDisableBinding() ? false : true) &&
               resourceManager.getTerrainTexture(ctx).view != nullptr;
     }
-     
-    if (drawCallState.usesVertexShader) {
-      ONCE(Logger::warn(str::format("[RTX Terrain Baker] Terrain mesh is using programmable Vertex Shaders. Skipping it.")));
+
+    if (drawCallState.usesVertexShader && !D3D9Rtx::useVertexCapture()) {
+      ONCE(Logger::warn(str::format("[RTX Terrain Baker] Terrain texture corresponds to a draw call with programmable Vertex Shader usage. Vertex capture must be enabled to support baking of such draw calls. Ignoring the draw call.")));
       return false;
     }
 
     // Register mesh and preprocess state for baking
     registerTerrainMesh(ctx, dxvkCtxState, drawCallState);
 
-    DxvkRenderTargets currentRenderTargets = dxvkCtxState.om.renderTargets;
-    const D3D9FixedFunctionVS& vs = *static_cast<D3D9FixedFunctionVS*>(rtState.vsFixedFunctionCB->mapPtr(0));
     const Rc<DxvkImageView>& terrainView =
       resourceManager.getTerrainTexture(ctx, textureManger, m_bakingParams.cascadeMapResolution.width, m_bakingParams.cascadeMapResolution.height,
                                         m_terrainRtColorFormat).view;
@@ -75,6 +75,24 @@ namespace dxvk {
       return false;
     }
 
+    // Store previous state
+    const DxvkContextState previousContextState = dxvkCtxState;
+
+    union UnifiedCB {
+      D3D9RtxVertexCaptureData programmablePipeline;
+      D3D9FixedFunctionVS fixedFunction;
+
+      UnifiedCB() { }
+    };
+
+    UnifiedCB prevCB;
+
+    if (drawCallState.usesVertexShader) {
+      prevCB.programmablePipeline = *static_cast<D3D9RtxVertexCaptureData*>(rtState.vertexCaptureCB->mapPtr(0));
+    } else {
+      prevCB.fixedFunction = *static_cast<D3D9FixedFunctionVS*>(rtState.vsFixedFunctionCB->mapPtr(0));
+    }
+    
     const float2 float2CascadeLevelResolution = float2 { 
       static_cast<float>(m_bakingParams.cascadeLevelResolution.width), 
       static_cast<float>(m_bakingParams.cascadeLevelResolution.height) 
@@ -85,13 +103,18 @@ namespace dxvk {
     ctx->setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, D3D9SpecConstantId::VertexFogMode, D3DFOG_NONE);
     ctx->setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, D3D9SpecConstantId::PixelFogMode, D3DFOG_NONE);
 
+    if (drawCallState.usesVertexShader) {
+      ctx->setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, D3D9SpecConstantId::CustomVertexTransformEnabled, true);
+    }
+
     // Bind the target terrain texture as render target
     DxvkRenderTargets terrainRt;
     terrainRt.color[0].view = resourceManager.getCompatibleViewForView(terrainView, m_terrainRtColorFormat);
     terrainRt.color[0].layout = VK_IMAGE_LAYOUT_GENERAL;
     ctx->bindRenderTargets(terrainRt);
 
-    Matrix4 worldSceneView = m_bakingParams.sceneView * vs.World;
+    const Matrix4& world = drawCallState.usesVertexShader ? prevCB.programmablePipeline.normalTransform : prevCB.fixedFunction.World;
+    Matrix4 worldSceneView = m_bakingParams.sceneView * world;
 
     // Render into all cascade levels. 
     // The levels are tiled left to right top to bottom in the combined render target texture
@@ -120,29 +143,49 @@ namespace dxvk {
 
       ctx->setViewports(1, &viewport, &scissor);
 
-      auto slice = rtState.vsFixedFunctionCB->allocSlice();
-      ctx->invalidateBuffer(rtState.vsFixedFunctionCB, slice);
+      // Update constant buffers
+      // 
+      // Programmable VS path
+      if (drawCallState.usesVertexShader) {
+        D3D9RtxVertexCaptureData& cbData = ctx->allocAndMapVertexCaptureConstantBuffer();
+        cbData = prevCB.programmablePipeline;
+        cbData.customWorldToProjection = m_bakingParams.bakingCameraOrthoProjection[iCascade] * worldSceneView;
+      }
+      else { // Fixed function path
+        D3D9FixedFunctionVS& cbData = ctx->allocAndMapFixedFunctionConstantBuffer();
+        cbData = prevCB.fixedFunction;
 
-      // Push new state
-      D3D9FixedFunctionVS* newState = static_cast<D3D9FixedFunctionVS*>(slice.mapPtr);
-      *newState = vs;
+        cbData.InverseView = m_bakingParams.inverseSceneView;
+        cbData.View = m_bakingParams.sceneView;
+        cbData.WorldView = worldSceneView;
+        cbData.Projection = m_bakingParams.bakingCameraOrthoProjection[iCascade];
 
-      newState->InverseView = m_bakingParams.inverseSceneView;
-      newState->View = m_bakingParams.sceneView;
-      newState->WorldView = worldSceneView;
-      newState->Projection = m_bakingParams.bakingCameraOrthoProjection[iCascade];
-
-      // Disable lighting
-      for (auto& light : newState->Lights) {
-        light.Diffuse = Vector4(0.f);
-        light.Specular = Vector4(0.f);
-        light.Ambient = Vector4(1.f);
+        // Disable lighting
+        for (auto& light : cbData.Lights) {
+          light.Diffuse = Vector4(0.f);
+          light.Specular = Vector4(0.f);
+          light.Ambient = Vector4(1.f);
+        }
       }
 
       if (drawParams.indexCount == 0) {
         ctx->DxvkContext::draw(drawParams.vertexCount, drawParams.instanceCount, drawParams.vertexOffset, 0);
       } else {
         ctx->DxvkContext::drawIndexed(drawParams.indexCount, drawParams.instanceCount, drawParams.firstIndex, drawParams.vertexOffset, 0);
+      }
+    }
+
+    // Restore previous state
+    {
+      ctx->setContextState(previousContextState);
+      ctx->setViewports(previousContextState.gp.state.rs.viewportCount(), previousContextState.vp.viewports.data(), previousContextState.vp.scissorRects.data());
+      ctx->bindRenderTargets(previousContextState.om.renderTargets);
+
+      if (drawCallState.usesVertexShader) {
+        ctx->allocAndMapVertexCaptureConstantBuffer() = prevCB.programmablePipeline;
+        ctx->setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, D3D9SpecConstantId::CustomVertexTransformEnabled, false);
+      } else {
+        ctx->allocAndMapFixedFunctionConstantBuffer() = prevCB.fixedFunction;
       }
     }
 

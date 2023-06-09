@@ -36,9 +36,9 @@ namespace dxvk {
                                         DxsoConstantBuffers::VSVertexCaptureData);
 
     // Get constant buffer bindings from D3D9
-    m_parent->EmitCs([](DxvkContext* ctx) {
+    m_parent->EmitCs([vertexCaptureCB = m_vsVertexCaptureData](DxvkContext* ctx) {
       const uint32_t vsFixedFunctionConstants = computeResourceSlotId(DxsoProgramType::VertexShader, DxsoBindingType::ConstantBuffer, DxsoConstantBuffers::VSFixedFunction);
-      static_cast<RtxContext*>(ctx)->setConstantBuffers(vsFixedFunctionConstants);
+      static_cast<RtxContext*>(ctx)->setConstantBuffers(vsFixedFunctionConstants, vertexCaptureCB);
     });
   }
 
@@ -191,6 +191,9 @@ namespace dxvk {
       data.projectionToWorld = inverse(ObjectToProjection);
       data.normalTransform = cWorld;
       data.baseVertex = vertexIndexOffset;
+
+      // Invalidate rest of the members
+      // customWorldToProjection is not invalidated as its use is controlled by D3D9SpecConstantId::CustomVertexTransformEnabled being enabled
 
       rtxCtx->bindResourceView(getVertexCaptureBufferSlot(), nullptr, cBuffer);
     });
