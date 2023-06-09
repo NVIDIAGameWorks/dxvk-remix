@@ -178,12 +178,11 @@ private:
                                   lss::Export& exportPrep);
   static void prepExportLights(const Capture& cap,
                                lss::Export& exportPrep);
+  static void flattenExport(const lss::Export& exportPrep);
 
   static bool checkInstanceUpdateFlag(const uint8_t flags, const InstFlag flag) {
     return flags & (1 << uint8_t(flag));
   }
-
-  static std::string basePath();
 
   enum class StateFlag : uint8_t {
     InitCaptureSingle = 1 << 0,
@@ -231,6 +230,8 @@ private:
   } m_cap;
   dxvk::mutex exportThreadMutex;
   size_t numOutstandingExportThreads = 0;
+  
+  static const std::string s_baseDir;
 };
 
 }
