@@ -20,9 +20,6 @@
 * DEALINGS IN THE SOFTWARE.
 */
 
-// NOTE: Comment this line out to use demo functions
-#define IMGUI_DISABLE_DEMO_WINDOWS
-
 // dear imgui, v1.88 WIP
 // (demo code)
 

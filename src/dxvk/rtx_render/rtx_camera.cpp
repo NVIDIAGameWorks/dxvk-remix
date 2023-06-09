@@ -345,10 +345,6 @@ namespace dxvk
     return customTransform;
   }
 
-  static bool IsKeyDown(const ImGuiKey key) {
-    return ImGui::GetIO().KeysDown[key];
-  }
-
   bool RtCamera::update(
     uint32_t frameIdx, const Matrix4& newWorldToView, const Matrix4& newViewToProjection,
     float fov, float aspectRatio, float nearPlane, float farPlane, bool isLHS
@@ -529,16 +525,16 @@ namespace dxvk
 
     if (!ImGui::GetIO().WantCaptureMouse) {
       // Speed booster
-      if (IsKeyDown(ImGuiKey_LeftShift)) {
+      if (ImGui::IsKeyDown(ImGuiKey_LeftShift)) {
         speed *= 4;
       }
 
       // Typical WASD controls with EQ up-down
       bool isKeyAvailable =
-        !IsKeyDown(ImGuiKey_LeftCtrl) &&
-        !IsKeyDown(ImGuiKey_RightCtrl) &&
-        !IsKeyDown(ImGuiKey_LeftAlt) &&
-        !IsKeyDown(ImGuiKey_RightAlt) && !lockFreeCamera();
+        !ImGui::IsKeyDown(ImGuiKey_LeftCtrl) &&
+        !ImGui::IsKeyDown(ImGuiKey_RightCtrl) &&
+        !ImGui::IsKeyDown(ImGuiKey_LeftAlt) &&
+        !ImGui::IsKeyDown(ImGuiKey_RightAlt) && !lockFreeCamera();
 
       if (!isKeyAvailable) {
         speed = 0;
@@ -546,22 +542,22 @@ namespace dxvk
 
       float coordSystemScale = m_isLHS ? -1.f : 1.f;
 
-      if (IsKeyDown(ImGuiKey_A)) {
+      if (ImGui::IsKeyDown(ImGuiKey_A)) {
         moveLeftRight -= speed;
       }
-      if (IsKeyDown(ImGuiKey_D)) {
+      if (ImGui::IsKeyDown(ImGuiKey_D)) {
         moveLeftRight += speed;
       }
-      if (IsKeyDown(ImGuiKey_W)) {
+      if (ImGui::IsKeyDown(ImGuiKey_W)) {
         moveBackForward += coordSystemScale * speed;
       }
-      if (IsKeyDown(ImGuiKey_S)) {
+      if (ImGui::IsKeyDown(ImGuiKey_S)) {
         moveBackForward -= coordSystemScale * speed;
       }
-      if (IsKeyDown(ImGuiKey_E)) {
+      if (ImGui::IsKeyDown(ImGuiKey_E)) {
         moveDownUp += speed;
       }
-      if (IsKeyDown(ImGuiKey_Q)) {
+      if (ImGui::IsKeyDown(ImGuiKey_Q)) {
         moveDownUp -= speed;
       }
 
