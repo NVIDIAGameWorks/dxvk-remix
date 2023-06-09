@@ -492,6 +492,7 @@ namespace dxvk {
       std::array<uint32_t, uint32_t(D3D9RtxVertexCaptureMembers::MemberCount)> members = {
         mat4Type,
         mat4Type,
+        mat4Type,
         uintType
       };
 
@@ -505,7 +506,7 @@ namespace dxvk {
       auto SetMemberName = [&](const char* name, uint32_t offset) {
         m_module.setDebugMemberName(structType, memberIdx, name);
         m_module.memberDecorateOffset(structType, memberIdx, offset);
-        if (memberIdx == (uint32_t) D3D9RtxVertexCaptureMembers::ProjectionToWorld || memberIdx == (uint32_t) D3D9RtxVertexCaptureMembers::NormalTransform) {
+        if (members[memberIdx] == mat4Type) {
           m_module.memberDecorateMatrixStride(structType, memberIdx, 16);
           m_module.memberDecorate(structType, memberIdx, spv::DecorationRowMajor);
         }
@@ -514,6 +515,7 @@ namespace dxvk {
       };
       SetMemberName("normal_transform", offsetof(D3D9RtxVertexCaptureData, normalTransform));
       SetMemberName("proj_to_world", offsetof(D3D9RtxVertexCaptureData, projectionToWorld));
+      SetMemberName("custom_world_to_proj", offsetof(D3D9RtxVertexCaptureData, customWorldToProjection));
       SetMemberName("base_vertex", offsetof(D3D9RtxVertexCaptureData, baseVertex));
 
       m_vs.vertexCaptureConstants = m_module.newVar(
@@ -3571,11 +3573,11 @@ void DxsoCompiler::emitControlFlowGenericLoop(
     const uint32_t projPosId = m_module.opLoad(vec4typeId, m_vs.oPos.id);
 
     // Perform clip space to world space
-    const uint32_t texelId = m_module.opVectorTimesMatrix(vec4typeId, projPosId, projToWorldRefId);
+    const uint32_t worldPosId = m_module.opVectorTimesMatrix(vec4typeId, projPosId, projToWorldRefId);
 
     // Write the data to buffer
     SpirvImageOperands defaultOperands;
-    m_module.opImageWrite(vertexOutBufferId, writeAddress, texelId, defaultOperands);
+    m_module.opImageWrite(vertexOutBufferId, writeAddress, worldPosId, defaultOperands);
     
     // Get the next slot
     writeAddress = m_module.opIAdd(getScalarTypeId(DxsoScalarType::Uint32), writeAddress, m_module.constu32(1));
@@ -3634,6 +3636,36 @@ void DxsoCompiler::emitControlFlowGenericLoop(
 
       // Write normal
       m_module.opImageWrite(vertexOutBufferId, writeAddress, normal0, defaultOperands);
+    }
+
+    // Apply custom vertex transform if it's enabled
+    {
+      uint32_t labelIf = m_module.allocateId();
+      uint32_t labelEnd = m_module.allocateId();
+
+      // Prepare customVertexTransformEnabled condition
+      uint32_t customVertexTransformEnabledId = m_module.specConstBool(false);
+      m_module.setDebugName(customVertexTransformEnabledId, "custom_vertex_transform_enabled");
+      m_module.decorateSpecId(customVertexTransformEnabledId, getSpecId(D3D9SpecConstantId::CustomVertexTransformEnabled));
+
+      // if (customVertexTransformEnabled) { ... }
+      m_module.opSelectionMerge(labelEnd, spv::SelectionControlMaskNone);
+      m_module.opBranchConditional(customVertexTransformEnabledId, labelIf, labelEnd);
+      {
+        m_module.opLabel(labelIf);
+
+        // Load the transform
+        const uint32_t customWorldToProjRefId = LoadConstant(mat4type, (uint32_t) (D3D9RtxVertexCaptureMembers::CustomWorldToProjection));
+
+        // Project the vertex in world space
+        const uint32_t projPosId = m_module.opVectorTimesMatrix(vec4typeId, worldPosId, customWorldToProjRefId);
+
+        // Update the projected position (gl_Position) with the new one
+        m_module.opStore(m_vs.oPos.id, projPosId);
+
+        m_module.opBranch(labelEnd);
+        m_module.opLabel(labelEnd);
+      }
     }
   }
   // NV-DXVK end

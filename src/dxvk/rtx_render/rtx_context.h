@@ -37,6 +37,8 @@ namespace dxvk {
   class AssetExporter;
   class SceneManager;
   class TerrainBaker;
+
+  struct D3D9RtxVertexCaptureData;
   
   struct DrawParameters {
     uint32_t vertexCount = 0;
@@ -86,8 +88,9 @@ namespace dxvk {
       * \brief Set D3D9 specific constant buffers
       *
       * \param [in] vsFixedFunctionConstants: resource idx of the constant buffer for FF vertex shaders
+      * \param [in] vertexCaptureCB: constant buffer for vertex capture
       */
-    void setConstantBuffers(const uint32_t vsFixedFunctionConstants);
+    void setConstantBuffers(const uint32_t vsFixedFunctionConstants, Rc<DxvkBuffer> vertexCaptureCB);
 
     /**
       * \brief Adds a batch of lights to the scene context
@@ -118,6 +121,9 @@ namespace dxvk {
     void getDenoiseArgs(NrdArgs& outPrimaryDirectNrdArgs, NrdArgs& outPrimaryIndirectNrdArgs, NrdArgs& outSecondaryNrdArgs);
     void updateRaytraceArgsConstantBuffer(Rc<DxvkCommandList> cmdList, Resources::RaytracingOutput& rtOutput, float frameTimeSecs,
                                           const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent);
+
+    D3D9RtxVertexCaptureData& allocAndMapVertexCaptureConstantBuffer();
+    D3D9FixedFunctionVS& allocAndMapFixedFunctionConstantBuffer();
 
     static bool checkIsShaderExecutionReorderingSupported(Rc<DxvkDevice> device);
 

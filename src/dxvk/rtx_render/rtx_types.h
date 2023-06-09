@@ -544,6 +544,7 @@ enum class RtxGeometryStatus {
 
 struct DxvkRaytracingInstanceState {
   Rc<DxvkBuffer> vsFixedFunctionCB;
+  Rc<DxvkBuffer> vertexCaptureCB;
 };
 
 } // namespace dxvk
