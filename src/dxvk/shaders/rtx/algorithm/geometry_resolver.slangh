@@ -1783,11 +1783,24 @@ void geometryPSRResolverPass(ivec2 pixelCoordinate) {
 
   // Early out if the PSR pass currently executing does not handle a requested PSR type
 
+  /*
   if (!push.isTransmissionPSR && !geometryFlags.performPSRR)
   {
     return;
   }
   else if (push.isTransmissionPSR && !geometryFlags.performPSTR)
+  {
+    return;
+  }
+  */
+
+  // Hack: This code is the same as the code commented out above, but is done this way to trick the Intel shader compiler
+  // into avoiding a bug which causes this conditional to behave incorrectly. See REMIX-1637 for more info or this issue:
+  // https://github.com/IGCIT/Intel-GPU-Community-Issue-Tracker-IGCIT/issues/318
+  if (
+    uint(!push.isTransmissionPSR) * uint(!geometryFlags.performPSRR) +
+    uint(push.isTransmissionPSR) * uint(!geometryFlags.performPSTR)
+  )
   {
     return;
   }
