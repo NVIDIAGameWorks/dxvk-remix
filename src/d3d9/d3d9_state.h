@@ -34,6 +34,7 @@ namespace dxvk {
   struct D3D9RtxVertexCaptureData {
     Matrix4 normalTransform;
     Matrix4 projectionToWorld;
+    Matrix4 customWorldToProjection;
     int baseVertex = 0;
     int padding[3];
   };
@@ -41,6 +42,7 @@ namespace dxvk {
   enum class D3D9RtxVertexCaptureMembers {
     NormalTransform = 0,
     ProjectionToWorld,
+    CustomWorldToProjection,
     BaseVertex,
 
     MemberCount
