@@ -587,7 +587,26 @@ namespace dxvk {
       // Append the bucket's instances to the reordered surface list
       m_reorderedSurfaces.insert(m_reorderedSurfaces.end(), blasBucket->originalInstances.begin(), blasBucket->originalInstances.end());
       m_reorderedSurfacesFirstIndexOffset.insert(m_reorderedSurfacesFirstIndexOffset.end(), blasBucket->indexOffsets.begin(), blasBucket->indexOffsets.end());
-      
+    }
+
+    // Build prefix sum array
+    // Collect primitive count for each surface object
+    m_reorderedSurfacesPrimitiveIDPrefixSum.resize(m_reorderedSurfaces.size());
+    for (uint32_t i = 0; i < m_reorderedSurfaces.size(); i++) {
+      auto surface = m_reorderedSurfaces[i];
+      int primitiveCount = 0;
+      for (const auto& buildRange: surface->buildRanges) {
+        primitiveCount += buildRange.primitiveCount;
+      }
+      m_reorderedSurfacesPrimitiveIDPrefixSum[i] = primitiveCount;
+    }
+
+    // Calculate prefix sum
+    uint totalPrimitiveIDOffset = 0;
+    for (uint32_t i = 0; i < m_reorderedSurfacesPrimitiveIDPrefixSum.size(); i++) {
+      uint primitiveCount = m_reorderedSurfacesPrimitiveIDPrefixSum[i];
+      m_reorderedSurfacesPrimitiveIDPrefixSum[i] += totalPrimitiveIDOffset;
+      totalPrimitiveIDOffset += primitiveCount;
     }
 
     buildBlases(ctx, cmdList, execBarriers, cameraManager, opacityMicromapManager, instanceManager, 
@@ -870,6 +889,13 @@ namespace dxvk {
         surface.setPreviousSurfaceIndex(surfaceIndex);
       }
     }
+
+    // Create and upload the primitive id prefix sum buffer
+    info.size = align(m_reorderedSurfacesPrimitiveIDPrefixSum.size() * sizeof(m_reorderedSurfacesPrimitiveIDPrefixSum[0]), kBufferAlignment);
+    if (m_primitiveIDPrefixSumBuffer == nullptr || info.size > m_primitiveIDPrefixSumBuffer->info().size) {
+      m_primitiveIDPrefixSumBuffer = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXAccelerationStructure);
+    }
+    ctx->updateBuffer(m_primitiveIDPrefixSumBuffer, 0, m_reorderedSurfacesPrimitiveIDPrefixSum.size() * sizeof(m_reorderedSurfacesPrimitiveIDPrefixSum[0]), m_reorderedSurfacesPrimitiveIDPrefixSum.data());
 
     // Create and upload the surface mapping buffer
     if (!surfaceIndexMapping.empty()) {

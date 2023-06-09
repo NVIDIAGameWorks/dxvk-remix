@@ -54,45 +54,6 @@ uint2 mapIDData(uint2 data)
   return newData;
 }
 
-float getGeometricTerm(vec3 surfacePosition, vec3 samplePosition, f16vec3 sampleNormal)
-{
-  float cellSize = NEECache.getCellSize() * 1;
-  vec3 offset = samplePosition - surfacePosition;
-  float cellDistance = length(offset);
-  float cosTheta = lerp(1.0, abs(dot(sampleNormal, normalize(offset))), saturate(cellDistance / cellSize - 1));
-  cellDistance = max(cellDistance, cellSize);
-  return cosTheta / (cellDistance * cellDistance);
-}
-
-float getTriangleLight(uint2 data, uint age, vec3 cellCenter)
-{
-  int surfaceIndex = data.x;
-  int primitiveIndex = data.y;
-  float triangleLight = 0;
-  if (surfaceIndex >= 0 && surfaceIndex != BINDING_INDEX_INVALID && /*surfaceIndex < cb.surfaceCount &&*/ primitiveIndex >= 0)
-  {
-    vec3 triangleCenter;
-    vec3 lightFlux;
-    f16vec3  triangleNormal;
-    NEECacheUtils.calculateTriangleLightIntensity(surfaceIndex, primitiveIndex, triangleCenter, triangleNormal, lightFlux);
-
-    vec3 offset = triangleCenter - cellCenter;
-    float cellSize = NEECache.getCellSize() * 0.5;
-    float g = 0;
-    g += getGeometricTerm(cellCenter + vec3(cellSize, 0, 0), triangleCenter, triangleNormal);
-    g += getGeometricTerm(cellCenter + vec3(-cellSize, 0, 0), triangleCenter, triangleNormal);
-    g += getGeometricTerm(cellCenter + vec3(0, cellSize, 0), triangleCenter, triangleNormal);
-    g += getGeometricTerm(cellCenter + vec3(0, -cellSize, 0), triangleCenter, triangleNormal);
-    g += getGeometricTerm(cellCenter + vec3(0, 0, cellSize), triangleCenter, triangleNormal);
-    g += getGeometricTerm(cellCenter + vec3(0, 0, -cellSize), triangleCenter, triangleNormal);
-    g /= 6.0;
-
-    triangleLight = calcBt709Luminance(lightFlux) * g * pow(1.0 - cb.neeCacheArgs.ageCullingSpeed, float(age) + 1);
-    triangleLight = clamp(triangleLight, 0, floatMax / 32.0);
-  }
-  return triangleLight;
-}
-
 [shader("compute")]
 [numthreads(NEE_CACHE_ELEMENTS, 1, 1)]
 void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupThreadID)
@@ -111,8 +72,13 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
 
   // load new id to shared memory
   int taskCount = cell.getTaskCount();
-  int taskID = localIndex.x;  
-  int2 task = taskID < taskCount ? mapIDData(cell.getTask(taskID)) : -1;
+  int taskID = localIndex.x;
+  int prefixSumTask = taskID < taskCount ? cell.getTask(taskID) : -1;
+  int2 task;
+  if(!NEECacheUtils.convertPrefixSumIDToID(prefixSumTask, PrimitiveIDPrefixSum, task.x, task.y))
+  {
+    task = -1;
+  }
   s_srcTaskList[taskID] = task;
 
   // load old id to shared memory
@@ -121,9 +87,8 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   {
     int oldCount = 0;
     NEECandidate candidate = cell.getCandidate(localIndex.x);
-    uint2 newID = mapIDData(candidate.getIDData());
-    candidate.setSurfaceID(newID.x);
-    candidate.setPrimitiveID(newID.y);
+    uint newSurfaceID = NEECacheUtils.convertToCurrentSurfaceID(candidate.getSurfaceID());
+    candidate.setSurfaceID(newSurfaceID);
     candidate.setAge(candidate.getAge() + 1);
     s_candidateList[localIndex.x] = candidate;
   }
@@ -169,17 +134,18 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   GroupMemoryBarrierWithGroupSync();
 
   // get triangle light
+  float cellSize = NEECache.getCellSize();
   uint triangleID = localIndex.x;
   if (triangleID < s_candidateCount)
   {
     NEECandidate candidate = s_candidateList[triangleID];
-    s_candidateLight[triangleID] = getTriangleLight(candidate.getIDData(), candidate.getAge(), cellCenter);
+    s_candidateLight[triangleID] = NEECacheUtils.calculateTriangleLightToCell(candidate.getIDData(), candidate.getAge(), cellCenter, cellSize);
   }
   triangleID = localIndex.x + NEE_CACHE_ELEMENTS;
   if (triangleID < s_candidateCount)
   {
     NEECandidate candidate = s_candidateList[triangleID];
-    s_candidateLight[triangleID] = getTriangleLight(candidate.getIDData(), candidate.getAge(), cellCenter);
+    s_candidateLight[triangleID] = NEECacheUtils.calculateTriangleLightToCell(candidate.getIDData(), candidate.getAge(), cellCenter, cellSize);
   }
   GroupMemoryBarrierWithGroupSync();
 
@@ -224,7 +190,6 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
     }
 
     s_candidateCount = cb.neeCacheArgs.enable != 0 ? min(s_candidateCount, NEECell.getMaxCandidateCount()) : 0;
-    cell.setTaskCount(0);
     cell.setCandidateCount(s_candidateCount);
 
     float totalLight0 = 0;
@@ -266,5 +231,10 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
     candidate.setSampleThreshold(sampleThreshold);
 
     cell.setCandidate(candidateID, candidate);
+  }
+
+  if (localIndex.x == 0 && localIndex.y == 0)
+  {
+    cell.clearTasks();
   }
 }

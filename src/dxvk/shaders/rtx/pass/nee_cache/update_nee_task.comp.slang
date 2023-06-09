@@ -59,6 +59,7 @@ void main(int2 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupThr
   // Load recorded task for each pixel
   uint cellOffset, surfaceID, primitiveID;
   NEECache.loadThreadTask(threadIndex, cellOffset, surfaceID, primitiveID);
+  surfaceID = NEECacheUtils.convertToCurrentSurfaceID(surfaceID);
   uint3 threadTask = uint3(cellOffset, surfaceID, primitiveID);
   if (threadTask.y != 0xffffffff && threadTask.z != 0xffffffff)
   {
@@ -86,6 +87,7 @@ void main(int2 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupThr
   }
 
   // Add remaining tasks to the pixel's corresponding cell
+  uint lightToCellI = -1;
   if (shouldBeAdded)
   {
     int3 cellID = NEECache.offsetToCell(localTask.x);
@@ -94,8 +96,25 @@ void main(int2 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupThr
       NEECell cell = NEECache.getCell(cellID);
       if (cell.isValid())
       {
-        cell.insertTask(localTask.yz);
+        int prefixTask = NEECacheUtils.convertIDToPrefixSumID(localTask.y, localTask.z, PrimitiveIDPrefixSum);
+        if (prefixTask != -1)
+        {
+          vec3 cellCenter = NEECache.cellToCenterPoint(cellID);
+          float cellSize = NEECache.getCellSize();
+          float lightToCell = NEECacheUtils.calculateTriangleLightToCell(localTask.yz, 0, cellCenter, cellSize);
+          lightToCellI = clamp(log(lightToCell + 1e-10) + 10, 0, 255);
+          cell.insertTask(prefixTask, lightToCellI);
+        }
       }
     }
+  }
+
+
+  switch(cb.debugView)
+  {
+  case DEBUG_VIEW_NEE_CACHE_TASK:
+    vec3 color = lightToCellI == -1 ? vec3(0,0,0.5) : lightToCellI.xxx;
+    storeInDebugView(ivec2(threadIndex), color);
+    break;
   }
 }
