@@ -340,6 +340,12 @@ dxvk_src = files([
   'imgui/imstb_rectpack.h',
   'imgui/imstb_textedit.h',
   'imgui/imstb_truetype.h',
+  'imgui/imstb_truetype.h',
+  'imgui/implot.cpp',
+  'imgui/implot.h',
+  'imgui/implot_demo.cpp',
+  'imgui/implot_internal.h',
+  'imgui/implot_items.cpp',
 ])
 
 thread_dep = dependency('threads')

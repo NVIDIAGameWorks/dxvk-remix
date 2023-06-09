@@ -392,7 +392,12 @@ namespace dxvk {
 
         Resources::RaytracingOutput& rtOutput = getResourceManager().getRaytracingOutput();
 
-        updateReflexConstants();
+        // Add Reflex simulation/rendering transition
+        // Note: This effectively indicates that simulation has completed and to move on to the rendering submission
+        // stage, so most rendering operations should come after this point. Additionally this implicitly updates
+        // the Reflex mode.
+        RtxReflex& reflex = m_common->metaReflex();
+        reflex.endSimulationBeginRendering(m_device->getCurrentFrameId());
 
         // Generate ray tracing constant buffer
         updateRaytraceArgsConstantBuffer(m_cmd, rtOutput, frameTimeSecs, downscaledExtent, targetImage->info().extent);
@@ -1767,19 +1772,11 @@ namespace dxvk {
     DxvkContext::clearImageView(imageView, offset, extent, aspect, value);
   }
 
-  void RtxContext::updateReflexConstants() {
-    if (RtxOptions::Get()->isReflexSupported()) {
-      RtxReflex& reflex = m_common->metaReflex();
-      reflex.updateConstants();
-      reflex.setMarker(m_device->getCurrentFrameId(), VK_SIMULATION_END);
-      reflex.setMarker(m_device->getCurrentFrameId(), VK_RENDERSUBMIT_START);
-    } else {
-      RtxOptions::Get()->reflexModeRef() = ReflexMode::None;
-    }
-  }
-
   void RtxContext::reportCpuSimdSupport() {
     switch (fast::getSimdSupportLevel()) {
+    case fast::AVX512:
+      dxvk::Logger::info("CPU supports SIMD: AVX512");
+      break;
     case fast::AVX2:
       dxvk::Logger::info("CPU supports SIMD: AVX2");
       break;

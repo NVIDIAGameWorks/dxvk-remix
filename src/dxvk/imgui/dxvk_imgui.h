@@ -118,6 +118,14 @@ namespace dxvk {
     float                 m_userWindowHeight = 550.f;
     const char*           m_userGraphicsWindowTitle = "User Graphics Settings";
     bool                  m_userGraphicsSettingChanged = false;
+    bool m_reflexRangesInitialized = false;
+    float m_currentGameToRenderDurationMin;
+    float m_currentGameToRenderDurationMax;
+    float m_currentCombinedDurationMin;
+    float m_currentCombinedDurationMax;
+    float m_reflexLatencyStatsWindowWidth = 500.f;
+    float m_reflexLatencyStatsWindowHeight = 650.f;
+    bool m_reflexLatencyStatsOpen = false;
 
     void update(const Rc<DxvkContext>& ctx);
 
@@ -152,7 +160,8 @@ namespace dxvk {
 
     void showRenderingSettings(const Rc<DxvkContext>& ctx);
 
-    void showReflexOptions();
+    void showReflexOptions(bool displayStatsWindowToggle);
+    void showReflexLatencyStats();
 
     void showSetupWindow(const Rc<DxvkContext>& ctx);
 
@@ -177,6 +186,8 @@ namespace dxvk {
     void showMemoryStats() const;
 
     RTX_OPTION("rtx.gui", bool, showLegacyTextureGui, false, "A setting to toggle the old texture selection GUI, where each texture category is represented as its own list.");
+    RTX_OPTION("rtx.gui", float, reflexStatRangeInterpolationRate, 0.05f, "A value controlling the interpolation rate applied to the Reflex stat graph ranges for smoother visualization.");
+    RTX_OPTION("rtx.gui", float, reflexStatRangePaddingRatio, 0.05f, "A value specifying the amount of padding applied to the Reflex stat graph ranges as a ratio to the calculated range.");
   };
   
 }

@@ -22,72 +22,396 @@
 #include "rtx_reflex.h"
 #include "dxvk_device.h"
 
+#include <limits>
+#include <cassert>
+
 #include "NvLowLatencyVk.h"
 #include "pclstats.h"
 PCLSTATS_DEFINE();
 
 namespace dxvk {
+
+  const char* NvLLStatusToString(NvLL_VK_Status status) {
+    // Note: Currently set to match the documentation in the NvLL_VK_Status enum. May need to be updated if more values
+    // are added.
+    switch (status) {
+    case NvLL_VK_Status::NVLL_VK_OK: return "Success. Request is completed.";
+    case NvLL_VK_Status::NVLL_VK_ERROR: return "Generic error.";
+    case NvLL_VK_Status::NVLL_VK_LIBRARY_NOT_FOUND: return "NvLLVk support library cannot be loaded.";
+    case NvLL_VK_Status::NVLL_VK_NO_IMPLEMENTATION: return "Not implemented in current driver installation.";
+    case NvLL_VK_Status::NVLL_VK_API_NOT_INITIALIZED: return "NvLL_VK_Initialize has not been called (successfully).";
+    case NvLL_VK_Status::NVLL_VK_INVALID_ARGUMENT: return "The argument/parameter value is not valid or NULL.";
+    case NvLL_VK_Status::NVLL_VK_INVALID_HANDLE: return "Invalid handle.";
+    case NvLL_VK_Status::NVLL_VK_INCOMPATIBLE_STRUCT_VERSION: return "An argument's structure version is not supported.";
+    case NvLL_VK_Status::NVLL_VK_INVALID_POINTER: return "An invalid pointer, usually NULL, was passed as a parameter.";
+    case NvLL_VK_Status::NVLL_VK_OUT_OF_MEMORY: return "Could not allocate sufficient memory to complete the call.";
+    case NvLL_VK_Status::NVLL_VK_API_IN_USE: return "An API is still being called.";
+    case NvLL_VK_Status::NVLL_VK_NO_VULKAN: return "No Vulkan support.";
+    default: return "Unknown error.";
+    }
+  }
+
   // Reflex uses global variables for PCL init, so if a game uses multiple devices, we need to ensure we only do PCL init once.
-  static std::atomic<uint32_t> s_initPclRefcount = 0;
+  static std::atomic<std::uint32_t> s_initPclRefcount = 0;
 
   RtxReflex::RtxReflex(DxvkDevice* device) : m_device(device) {
-    // Initialize Reflex
-    NvLL_VK_Status status = NvLL_VK_Initialize();
-    assert(status == NVLL_VK_OK);
-    VkSemaphoreTypeCreateInfo timelineSemaphoreCreateInfo;
-    timelineSemaphoreCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
-    timelineSemaphoreCreateInfo.pNext = nullptr;
-    timelineSemaphoreCreateInfo.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
-    timelineSemaphoreCreateInfo.initialValue = 0;
-
-    VkSemaphoreCreateInfo createInfo;
-    createInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    createInfo.pNext = &timelineSemaphoreCreateInfo;
-    createInfo.flags = 0;
-    Rc<vk::DeviceFn>vkd = m_device->vkd();
-    if (vkd->vkCreateSemaphore(vkd->device(), &createInfo, nullptr, &m_lowLatencySemaphore) != VK_SUCCESS)
-      throw DxvkError("DxvkDevice: Failed to allocate low latency semaphore");
-    VkSemaphore* pSemaphore = &m_lowLatencySemaphore;
-    if ((status = NvLL_VK_InitLowLatencyDevice(m_device->vkd()->device(), (HANDLE*) pSemaphore)) != VK_SUCCESS)
-      throw DxvkError("DxvkDevice: Failed to initialize vulkan device as a low latency device");
-    updateConstants();
-    NVLL_VK_GET_SLEEP_STATUS_PARAMS getParams = {};
-    if ((status = NvLL_VK_GetSleepStatus(vkd->device(), &getParams)) != VK_SUCCESS)
-      throw DxvkError("DxvkDevice: Failed to initialize vulkan device as a low latency device");
-    Logger::info(str::format("Reflex enable attempt, mode=", getParams.bLowLatencyMode ? "true" : "false"));
+    // Initialize PCL stats
+    // Note: PCL stats are always desired even if Reflex itself is disabled, so this is done before any checks for Reflex enablement/support.
 
     ++s_initPclRefcount;
 
     if (s_initPclRefcount == 1) {
-      // Initialize PCL Stats
       PCLSTATS_SET_ID_THREAD(-1);
       PCLSTATS_INIT(0);
     }
-  }
 
-  RtxReflex::~RtxReflex() {
-    Rc<vk::DeviceFn> vkd = m_device->vkd();
+    // Determine Reflex enablement
 
-    // Close Reflex
-    vkd->vkDestroySemaphore(vkd->device(), m_lowLatencySemaphore, nullptr);
-    NvLL_VK_DestroyLowLatencyDevice(vkd->device());
-    NvLL_VK_Unload();
+    m_enabled = RtxOptions::Get()->isReflexEnabled();
 
-    --s_initPclRefcount;
-    if (s_initPclRefcount == 0) {
-      // Close PCL Stats
-      PCLSTATS_SHUTDOWN();
-    }
-  }
-
-  void RtxReflex::updateConstants() {
-    static ReflexMode oldMode = ReflexMode::None;
-    ReflexMode newMode = RtxOptions::Get()->reflexMode();
-    if (newMode == oldMode) {
+    // Note: Skip initializing Reflex if it is globally disabled at the time of construction.
+    if (!reflexEnabled()) {
       return;
     }
 
+    // Initialize Reflex
+
+    NvLL_VK_Status status = NvLL_VK_Initialize();
+
+    if (status != NVLL_VK_OK) {
+      Logger::err(str::format("Unable to initialize Reflex: ", NvLLStatusToString(status)));
+
+      return;
+    }
+
+    // Initialize the Vulkan Device as a Low Latency device
+
+    status = NvLL_VK_InitLowLatencyDevice(m_device->vkd()->device(), reinterpret_cast<HANDLE*>(&m_lowLatencySemaphore));
+
+    if (status != NVLL_VK_OK) {
+      Logger::err(str::format("Failed to initialize the Vulkan device as a Reflex low latency device: ", NvLLStatusToString(status)));
+
+      // Clean up partial initialization on failure
+
+      NvLL_VK_Unload();
+
+      return;
+    }
+
+    updateMode();
+
+    // Mark Reflex as initialized
+
+    m_initialized = true;
+
+    Logger::info("Reflex initialized successfully.");
+  }
+
+  RtxReflex::~RtxReflex() {
+    // Deinitialize PCL stats
+    // Note: Deinitialize always even if Reflex was not initialized as PCL stats are initialized always.
+
+    --s_initPclRefcount;
+
+    if (s_initPclRefcount == 0) {
+      PCLSTATS_SHUTDOWN();
+    }
+
+    // Early out if Reflex was not initialized
+
+    if (!reflexInitialized()) {
+      return;
+    }
+
+    // Deinitialize Reflex
+
+    NvLL_VK_DestroyLowLatencyDevice(m_device->vkd()->device());
+    NvLL_VK_Unload();
+  }
+
+  void RtxReflex::beginSimulation(std::uint64_t frameId) {
+    // Handle Reflex sleeping if initialized
+
+    if (reflexInitialized()) {
+      Rc<vk::DeviceFn> vkd = m_device->vkd();
+
+      // Query semaphore
+      uint64_t signalValue = 0;
+      vkGetSemaphoreCounterValue(vkd->device(), m_lowLatencySemaphore, &signalValue);
+      signalValue += 1;
+
+      // Sleep
+      if (RtxOptions::Get()->reflexMode() != ReflexMode::None) {
+        VkSemaphoreWaitInfo semaphoreWaitInfo;
+        semaphoreWaitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO;
+        semaphoreWaitInfo.pNext = NULL;
+        semaphoreWaitInfo.flags = 0;
+        semaphoreWaitInfo.semaphoreCount = 1;
+        semaphoreWaitInfo.pSemaphores = &m_lowLatencySemaphore;
+        semaphoreWaitInfo.pValues = &signalValue;
+
+        NvLL_VK_Status status = NVLL_VK_OK;
+
+        {
+          ScopedCpuProfileZoneN("Reflex_Sleep");
+          status = NvLL_VK_Sleep(vkd->device(), signalValue);
+        }
+
+        if (status == NVLL_VK_OK) {
+          ScopedCpuProfileZoneN("Reflex_WaitSemaphore");
+          vkWaitSemaphores(vkd->device(), &semaphoreWaitInfo, 500000000);
+        } else {
+          Logger::warn(str::format("Unable to invoke Reflex sleep function: ", NvLLStatusToString(status)));
+        }
+      }
+    }
+
+    // Place simulation start marker
+    // With DLFG, should put this marker before sleep code so that presents can overlap with the start of the next frame
+    setMarker(frameId, VK_SIMULATION_START); // cannot find the counter part of sl::eReflexMarkerSleep
+
+    // Place latency ping marker when requested
+
+    MSG msg;
+    const HWND kCurrentThreadId = (HWND) (-1);
+    bool sendPclPing = false;
+
+    // Note: This peek will remove messages from the queue so it should be allowed to go over all of them rather than breaking early.
+    while (PeekMessage(&msg, kCurrentThreadId, g_PCLStatsWindowMessage, g_PCLStatsWindowMessage, PM_REMOVE)) {
+      sendPclPing = true;
+
+      assert(PCLSTATS_IS_PING_MSG_ID(msg.message));
+    }
+
+    if (sendPclPing) {
+      setMarker(frameId, VK_PC_LATENCY_PING);
+    }
+  }
+
+  void RtxReflex::endSimulationBeginRendering(std::uint64_t frameId) {
+    updateMode();
+
+    setMarker(frameId, VK_SIMULATION_END);
+    setMarker(frameId, VK_RENDERSUBMIT_START);
+  }
+
+  void RtxReflex::endRendering(std::uint64_t frameId) {
+    // Note: Reflex initialization not checked here as setMarker checks internally and needs to be called even when Reflex is not
+    // initialized for PCL stats.
+    setMarker(frameId, VK_RENDERSUBMIT_END);
+  }
+
+  void RtxReflex::beginPresentation(std::uint64_t frameId) {
+    // Note: Reflex initialization not checked here as setMarker checks internally and needs to be called even when Reflex is not
+    // initialized for PCL stats.
+    setMarker(frameId, VK_PRESENT_START);
+  }
+
+  void RtxReflex::endPresentation(std::uint64_t frameId) {
+    // Note: Reflex initialization not checked here as setMarker checks internally and needs to be called even when Reflex is not
+    // initialized for PCL stats.
+    setMarker(frameId, VK_PRESENT_END);
+  }
+  
+  LatencyStats RtxReflex::getLatencyStats() const {
+    // Note: Initialize all stats to zero in case Reflex is not initialized or getting latency params fails.
+    LatencyStats latencyStats{};
+
+    // Early out if Reflex was not initialized
+
+    if (!reflexInitialized()) {
+      return latencyStats;
+    }
+
+    // Get Reflex latency information
+
+    NVLL_VK_LATENCY_RESULT_PARAMS latencyResultParams = {};
+
+    const auto status = NvLL_VK_GetLatency(m_device->vkd()->device(), &latencyResultParams);
+
+    if (status != NVLL_VK_OK) {
+      // Note: Only logged once to avoid log spam as this function may be called every frame to get stats.
+      ONCE(Logger::warn(str::format("Unable to get Reflex latency stats: ", NvLLStatusToString(status))));
+    }
+
+    // Transform data into custom latency stats struct
+    // Note: This transformation is done primairly to allow for easier graphing of the data compared to its
+    // standard memory layout.
+
+    constexpr float microsecondsPerMillisecond{ 1000.0f };
+
+    std::uint64_t frameIDMin = std::numeric_limits<std::uint64_t>::max();
+    std::uint64_t frameIDMax = 0;
+    std::uint64_t inputSampleTimeMin = std::numeric_limits<std::uint64_t>::max();
+    std::uint64_t inputSampleTimeMax = 0;
+    float simDurationMin = std::numeric_limits<float>::max();
+    float simDurationMax = 0.0f;
+    float renderSubmitDurationMin = std::numeric_limits<float>::max();
+    float renderSubmitDurationMax = 0.0f;
+    float presentDurationMin = std::numeric_limits<float>::max();
+    float presentDurationMax = 0.0f;
+    float driverDurationMin = std::numeric_limits<float>::max();
+    float driverDurationMax = 0.0f;
+    float osRenderQueueDurationMin = std::numeric_limits<float>::max();
+    float osRenderQueueDurationMax = 0.0f;
+    float gpuRenderDurationMin = std::numeric_limits<float>::max();
+    float gpuRenderDurationMax = 0.0f;
+    float gameToRenderDurationMin = std::numeric_limits<float>::max();
+    float gameToRenderDurationMax = 0.0f;
+
+    for (unsigned int i = 0; i < LatencyStats::statFrames; ++i) {
+      const auto& currentFrameReport = latencyResultParams.frameReport[i];
+      
+      // Note: Guard duration calculation against out of order times (even though this shouldn't be possible in
+      // normal operation).
+      const auto simDuration =
+        currentFrameReport.simEndTime >= currentFrameReport.simStartTime ?
+        static_cast<float>(currentFrameReport.simEndTime - currentFrameReport.simStartTime) / microsecondsPerMillisecond :
+        0.0f;
+      const auto renderSubmitDuration =
+        currentFrameReport.renderSubmitEndTime >= currentFrameReport.renderSubmitStartTime ?
+        static_cast<float>(currentFrameReport.renderSubmitEndTime - currentFrameReport.renderSubmitStartTime) / microsecondsPerMillisecond :
+        0.0f;
+      const auto presentDuration =
+        currentFrameReport.presentEndTime >= currentFrameReport.presentStartTime ?
+        static_cast<float>(currentFrameReport.presentEndTime - currentFrameReport.presentStartTime) / microsecondsPerMillisecond :
+        0.0f;
+      const auto driverDuration =
+        currentFrameReport.driverEndTime >= currentFrameReport.driverStartTime ?
+        static_cast<float>(currentFrameReport.driverEndTime - currentFrameReport.driverStartTime) / microsecondsPerMillisecond :
+        0.0f;
+      const auto osRenderQueueDuration =
+        currentFrameReport.osRenderQueueEndTime >= currentFrameReport.osRenderQueueStartTime ?
+        static_cast<float>(currentFrameReport.osRenderQueueEndTime - currentFrameReport.osRenderQueueStartTime) / microsecondsPerMillisecond :
+        0.0f;
+      const auto gpuRenderDuration =
+        currentFrameReport.gpuRenderEndTime >= currentFrameReport.gpuRenderStartTime ?
+        static_cast<float>(currentFrameReport.gpuRenderEndTime - currentFrameReport.gpuRenderStartTime) / microsecondsPerMillisecond :
+        0.0f;
+      const auto gameToRenderDuration =
+        currentFrameReport.gpuRenderEndTime >= currentFrameReport.simStartTime ?
+        static_cast<float>(currentFrameReport.gpuRenderEndTime - currentFrameReport.simStartTime) / microsecondsPerMillisecond :
+        0.0f;
+
+      latencyStats.frameID[i] = currentFrameReport.frameID;
+      latencyStats.simDuration[i] = simDuration;
+      latencyStats.renderSubmitDuration[i] = renderSubmitDuration;
+      latencyStats.presentDuration[i] = presentDuration;
+      latencyStats.driverDuration[i] = driverDuration;
+      latencyStats.osRenderQueueDuration[i] = osRenderQueueDuration;
+      latencyStats.gpuRenderDuration[i] = gpuRenderDuration;
+      latencyStats.gameToRenderDuration[i] = gameToRenderDuration;
+
+      frameIDMin = std::min(frameIDMin, currentFrameReport.frameID);
+      frameIDMax = std::max(frameIDMax, currentFrameReport.frameID);
+      inputSampleTimeMin = std::min(inputSampleTimeMin, currentFrameReport.inputSampleTime);
+      inputSampleTimeMax = std::max(inputSampleTimeMax, currentFrameReport.inputSampleTime);
+      simDurationMin = std::min(simDurationMin, simDuration);
+      simDurationMax = std::max(simDurationMax, simDuration);
+      renderSubmitDurationMin = std::min(renderSubmitDurationMin, renderSubmitDuration);
+      renderSubmitDurationMax = std::max(renderSubmitDurationMax, renderSubmitDuration);
+      presentDurationMin = std::min(presentDurationMin, presentDuration);
+      presentDurationMax = std::max(presentDurationMax, presentDuration);
+      driverDurationMin = std::min(driverDurationMin, driverDuration);
+      driverDurationMax = std::max(driverDurationMax, driverDuration);
+      osRenderQueueDurationMin = std::min(osRenderQueueDurationMin, osRenderQueueDuration);
+      osRenderQueueDurationMax = std::max(osRenderQueueDurationMax, osRenderQueueDuration);
+      gpuRenderDurationMin = std::min(gpuRenderDurationMin, gpuRenderDuration);
+      gpuRenderDurationMax = std::max(gpuRenderDurationMax, gpuRenderDuration);
+      gameToRenderDurationMin = std::min(gameToRenderDurationMin, gameToRenderDuration);
+      gameToRenderDurationMax = std::max(gameToRenderDurationMax, gameToRenderDuration);
+    }
+
+    // Note: The last element of the frame report array will be the most recent frame's latency information.
+    const auto& currentFrameReport = latencyResultParams.frameReport[63];
+
+    latencyStats.frameIDMin = frameIDMin;
+    latencyStats.frameIDMax = frameIDMax;
+    latencyStats.inputSampleCurrentTime = currentFrameReport.inputSampleTime;
+    latencyStats.inputSampleTimeMin = inputSampleTimeMin;
+    latencyStats.inputSampleTimeMax = inputSampleTimeMax;
+    latencyStats.simCurrentStartTime = currentFrameReport.simStartTime;
+    latencyStats.simCurrentEndTime = currentFrameReport.simEndTime;
+    latencyStats.simDurationMin = simDurationMin;
+    latencyStats.simDurationMax = simDurationMax;
+    latencyStats.renderSubmitCurrentStartTime = currentFrameReport.renderSubmitStartTime;
+    latencyStats.renderSubmitCurrentEndTime = currentFrameReport.renderSubmitEndTime;
+    latencyStats.renderSubmitDurationMin = renderSubmitDurationMin;
+    latencyStats.renderSubmitDurationMax = renderSubmitDurationMax;
+    latencyStats.presentCurrentStartTime = currentFrameReport.presentStartTime;
+    latencyStats.presentCurrentEndTime = currentFrameReport.presentEndTime;
+    latencyStats.presentDurationMin = presentDurationMin;
+    latencyStats.presentDurationMax = presentDurationMax;
+    latencyStats.driverCurrentStartTime = currentFrameReport.driverStartTime;
+    latencyStats.driverCurrentEndTime = currentFrameReport.driverEndTime;
+    latencyStats.driverDurationMin = driverDurationMin;
+    latencyStats.driverDurationMax = driverDurationMax;
+    latencyStats.osRenderQueueCurrentStartTime = currentFrameReport.osRenderQueueStartTime;
+    latencyStats.osRenderQueueCurrentEndTime = currentFrameReport.osRenderQueueEndTime;
+    latencyStats.osRenderQueueDurationMin = osRenderQueueDurationMin;
+    latencyStats.osRenderQueueDurationMax = osRenderQueueDurationMax;
+    latencyStats.gpuRenderCurrentStartTime = currentFrameReport.gpuRenderStartTime;
+    latencyStats.gpuRenderCurrentEndTime = currentFrameReport.gpuRenderEndTime;
+    latencyStats.gpuRenderDurationMin = gpuRenderDurationMin;
+    latencyStats.gpuRenderDurationMax = gpuRenderDurationMax;
+    latencyStats.gameToRenderDurationMin = gameToRenderDurationMin;
+    latencyStats.gameToRenderDurationMax = gameToRenderDurationMax;
+    latencyStats.combinedCurrentTimeMin = std::min({
+      latencyStats.simCurrentStartTime, latencyStats.simCurrentEndTime,
+      latencyStats.renderSubmitCurrentStartTime, latencyStats.renderSubmitCurrentEndTime,
+      latencyStats.presentCurrentStartTime, latencyStats.presentCurrentEndTime,
+      latencyStats.driverCurrentStartTime, latencyStats.driverCurrentEndTime,
+      latencyStats.osRenderQueueCurrentStartTime, latencyStats.osRenderQueueCurrentEndTime,
+      latencyStats.gpuRenderCurrentStartTime, latencyStats.gpuRenderCurrentEndTime,
+    });
+    latencyStats.combinedCurrentTimeMax = std::max({
+      latencyStats.simCurrentStartTime, latencyStats.simCurrentEndTime,
+      latencyStats.renderSubmitCurrentStartTime, latencyStats.renderSubmitCurrentEndTime,
+      latencyStats.presentCurrentStartTime, latencyStats.presentCurrentEndTime,
+      latencyStats.driverCurrentStartTime, latencyStats.driverCurrentEndTime,
+      latencyStats.osRenderQueueCurrentStartTime, latencyStats.osRenderQueueCurrentEndTime,
+      latencyStats.gpuRenderCurrentStartTime, latencyStats.gpuRenderCurrentEndTime,
+    });
+    latencyStats.combinedDurationMin = std::min({
+      simDurationMin, simDurationMax,
+      renderSubmitDurationMin, renderSubmitDurationMax,
+      presentDurationMin, presentDurationMax,
+      driverDurationMin, driverDurationMax,
+      osRenderQueueDurationMin, osRenderQueueDurationMax,
+      gpuRenderDurationMin, osRenderQueueDurationMax,
+    });
+    latencyStats.combinedDurationMax = std::max({
+      simDurationMin, simDurationMax,
+      renderSubmitDurationMin, renderSubmitDurationMax,
+      presentDurationMin, presentDurationMax,
+      driverDurationMin, driverDurationMax,
+      osRenderQueueDurationMin, osRenderQueueDurationMax,
+      gpuRenderDurationMin, osRenderQueueDurationMax,
+    });
+
+    return latencyStats;
+  }
+
+  void RtxReflex::updateMode() {
+    if (!reflexInitialized()) {
+      return;
+    }
+
+    // Check the current Reflex Mode
+
+    const auto newMode = RtxOptions::Get()->reflexMode();
+
+    if (newMode == m_currentReflexMode) {
+      return;
+    }
+
+    // Update Reflex's sleep mode based on the specified mode
+
     NVLL_VK_SET_SLEEP_MODE_PARAMS sleepParams = {};
+
+    // Note: No framerate limit.
+    sleepParams.minimumIntervalUs = 0;
+
     switch (newMode) {
     case ReflexMode::None:
       sleepParams.bLowLatencyMode = false;
@@ -103,82 +427,48 @@ namespace dxvk {
       break;
     }
 
-    NvLL_VK_SetSleepMode(m_device->vkd()->device(), &sleepParams);
-    oldMode = newMode;
-  }
+    const auto status = NvLL_VK_SetSleepMode(m_device->vkd()->device(), &sleepParams);
 
-  void RtxReflex::beforePresent(int frameId) {
-    if (RtxOptions::Get()->isReflexSupported()) {
-      setMarker(frameId, VK_RENDERSUBMIT_END);
-    }
-  }
-  
-  void RtxReflex::afterPresent(int frameId) {
-    if (RtxOptions::Get()->isReflexSupported()) {
-      // Query semaphore
-      uint64_t signalValue = 0;
-      Rc<vk::DeviceFn> vkd = m_device->vkd();
-      vkGetSemaphoreCounterValue(vkd->device(), m_lowLatencySemaphore, &signalValue);
-      signalValue += 1;
+    if (status != NVLL_VK_OK) {
+      Logger::warn(str::format("Unable to set Reflex sleep mode: ", NvLLStatusToString(status)));
 
-      // Sleep
-      if (RtxOptions::Get()->reflexMode() != ReflexMode::None) {
-        VkSemaphoreWaitInfo semaphoreWaitInfo;
-        semaphoreWaitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO;
-        semaphoreWaitInfo.pNext = NULL;
-        semaphoreWaitInfo.flags = 0;
-        semaphoreWaitInfo.semaphoreCount = 1;
-        semaphoreWaitInfo.pSemaphores = &m_lowLatencySemaphore;
-        semaphoreWaitInfo.pValues = &signalValue;
-        NvLL_VK_Status status = NVLL_VK_OK;
-        {
-          ScopedCpuProfileZoneN("Reflex_Sleep");
-          status = NvLL_VK_Sleep(vkd->device(), signalValue);
-        }
-        if(status == NVLL_VK_OK)
-        {
-          ScopedCpuProfileZoneN("Reflex_WaitSemaphore");
-          vkWaitSemaphores(vkd->device(), &semaphoreWaitInfo, 500000000);
-        }
-      }
-
-      // Place simulation start marker
-      // With DLFG, should put this marker before sleep code so that presents can overlap with the start of the next frame
-      setMarker(frameId, VK_SIMULATION_START); // cannot find the counter part of sl::eReflexMarkerSleep
-
-      // Place latency ping marker
-      MSG msg;
-      const HWND kCurrentThreadId = (HWND) (-1);
-      bool sendPclPing = false;
-      while (PeekMessage(&msg, kCurrentThreadId, g_PCLStatsWindowMessage, g_PCLStatsWindowMessage, PM_REMOVE)) {
-        sendPclPing = true;
-      }
-      if (sendPclPing) {
-        setMarker(frameId, VK_PC_LATENCY_PING);
-      }
-    }
-  }
-  
-  void RtxReflex::setMarker(int frameId, uint32_t marker) {
-    if (!RtxOptions::Get()->isReflexSupported()) {
-      return;
+      // Note: A return early here could be done to avoid setting the current Reflex mode so that it can be attempted to be set
+      // again the next time this function is called. This may not be a good idea however if the mode refuses to be set
+      // as it will just attempt to be set every frame which may be wasteful, instead just log a warning and allow the user to
+      // try to set the mode to something else.
     }
 
+    m_currentReflexMode = newMode;
+  }
+
+  void RtxReflex::setMarker(std::uint64_t frameId, std::uint32_t marker) {
     // Set PCL markers
+
     if (g_PCLStatsIdThread == -1) {
       PCLSTATS_SET_ID_THREAD(::GetCurrentThreadId());
     }
+
     PCLSTATS_MARKER(marker, frameId);
 
+    // Early out if Reflex was not initialized
+
+    if (!reflexInitialized()) {
+      return;
+    }
+
+    Rc<vk::DeviceFn> vkd = m_device->vkd();
+
     // Set reflex markers
-    Rc<vk::DeviceFn>vkd = m_device->vkd();
-    NvLL_VK_Status status = NVLL_VK_OK;
-    NVLL_VK_LATENCY_MARKER_PARAMS params = { };
+
+    NVLL_VK_LATENCY_MARKER_PARAMS params = {};
     params.frameID = frameId;
     params.markerType = static_cast<NVLL_VK_LATENCY_MARKER_TYPE>(marker);
-    status = NvLL_VK_SetLatencyMarker(vkd->device(), &params);
+
+    const auto status = NvLL_VK_SetLatencyMarker(vkd->device(), &params);
+
     if (status != NVLL_VK_OK) {
-      Logger::warn("Failed to set reflex marker");
+      Logger::warn(str::format("Unable to set Reflex marker: ", NvLLStatusToString(status)));
     }
   }
+
 }

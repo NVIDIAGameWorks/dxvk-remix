@@ -21,27 +21,123 @@
 */
 #pragma once
 
+#include <cstdint>
+
 #include "rtx_resources.h"
+#include "rtx_options.h"
 
 namespace dxvk {
 
+  // A set of various Reflex-related stats. Note that duration values are floating point millisecond times (due to being mostly near 0),
+  // wereas all other times are integer microsecond time values.
+  struct LatencyStats {
+    static constexpr std::size_t statFrames = 64;
+
+    std::uint64_t frameID[statFrames];
+    std::uint64_t frameIDMin;
+    std::uint64_t frameIDMax;
+
+    std::uint64_t inputSampleCurrentTime;
+    std::uint64_t inputSampleTimeMin;
+    std::uint64_t inputSampleTimeMax;
+
+    std::uint64_t simCurrentStartTime;
+    std::uint64_t simCurrentEndTime;
+    float simDuration[statFrames];
+    float simDurationMin;
+    float simDurationMax;
+
+    std::uint64_t renderSubmitCurrentStartTime;
+    std::uint64_t renderSubmitCurrentEndTime;
+    float renderSubmitDuration[statFrames];
+    float renderSubmitDurationMin;
+    float renderSubmitDurationMax;
+
+    std::uint64_t presentCurrentStartTime;
+    std::uint64_t presentCurrentEndTime;
+    float presentDuration[statFrames];
+    float presentDurationMin;
+    float presentDurationMax;
+
+    std::uint64_t driverCurrentStartTime;
+    std::uint64_t driverCurrentEndTime;
+    float driverDuration[statFrames];
+    float driverDurationMin;
+    float driverDurationMax;
+
+    std::uint64_t osRenderQueueCurrentStartTime;
+    std::uint64_t osRenderQueueCurrentEndTime;
+    float osRenderQueueDuration[statFrames];
+    float osRenderQueueDurationMin;
+    float osRenderQueueDurationMax;
+
+    std::uint64_t gpuRenderCurrentStartTime;
+    std::uint64_t gpuRenderCurrentEndTime;
+    float gpuRenderDuration[statFrames];
+    float gpuRenderDurationMin;
+    float gpuRenderDurationMax;
+
+    // Note: The difference between renderSubmitCurrentStartTime and gpuRenderCurrentEndTime
+    // as this is classified as the game to render latency. It has been observed that the driver
+    // end time occasionally ends beyond the GPU render end time, but not sure if this should be
+    // counted as latency or not (might just be a measuring artifact).
+    float gameToRenderDuration[statFrames];
+    float gameToRenderDurationMin;
+    float gameToRenderDurationMax;
+
+    // Note: Does not include input sampling time.
+    std::uint64_t combinedCurrentTimeMin;
+    std::uint64_t combinedCurrentTimeMax;
+    // Note: Does not include the "total" GPU render duration, only the various other region durations.
+    float combinedDurationMin;
+    float combinedDurationMax;
+  };
+
   class RtxReflex {
-
   public:
-
     RtxReflex(DxvkDevice* device);
     ~RtxReflex();
 
-    void updateConstants();
+    void beginSimulation(std::uint64_t frameId);
+    void endSimulationBeginRendering(std::uint64_t frameId);
+    void endRendering(std::uint64_t frameId);
+    void beginPresentation(std::uint64_t frameId);
+    void endPresentation(std::uint64_t frameId);
 
-    void beforePresent(int frameId);
+    /**
+      * \brief: Gets latency stats from Reflex. Stats are initialized to all zeros when Reflex has not been initialized (due to
+      * failing to initialize or due to being disabled), if stats fail to be acquired, or if Reflex has not run for enough
+      * frames to generate reliable stats.
+      */
+    LatencyStats getLatencyStats() const;
 
-    void afterPresent(int frameId);
-
-    void setMarker(int frameId, uint32_t marker);
+    /**
+      * \brief: Returns true if Reflex is requested to be enabled. This does not mean Reflex is in use
+      * as it may be using the None Reflex mode or was unable to initialize successfully.
+      */
+    bool reflexEnabled() const { return m_enabled; }
+    /**
+      * \brief: Returns true if Reflex is enabled and was initialized successfully. Much like the enabled
+      * check this does not mean Reflex is in use as it may be using the None Reflex mode.
+      */
+    bool reflexInitialized() const { return m_initialized; }
 
   private:
     VkSemaphore m_lowLatencySemaphore;
     Rc<DxvkDevice> m_device;
+
+    // Note: Cached from options determining this state on construction as Reflex currently only has 1
+    // chance to be initialized, meaning this state cannot be changed at runtime past the point of construction.
+    bool m_enabled = false;
+    bool m_initialized = false;
+
+    // Note: Cached mode to track mode changes. Set to None initially as presumably this is the state
+    // Reflex starts in by default (low latency mode disabled and boost disabled, the documentation doesn't
+    // say this anywhere but it is reasonable to assume).
+    ReflexMode m_currentReflexMode = ReflexMode::None;
+
+    void updateMode();
+    void setMarker(std::uint64_t frameId, std::uint32_t marker);
   };
+
 }
