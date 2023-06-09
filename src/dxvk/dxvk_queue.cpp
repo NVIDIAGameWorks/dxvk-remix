@@ -144,12 +144,15 @@ namespace dxvk {
             entry.submit.wakeSync);
         } else if (entry.present.presenter != nullptr) {
           
-          RtxReflex& reflex = m_device->getCommon()->metaReflex();
-          reflex.setMarker(entry.present.frameId, VK_PRESENT_START);
+          // NV-DXVK start: Reflex present start
+          m_device->getCommon()->metaReflex().beginPresentation(entry.present.frameId);
+          // NV-DXVK end
 
           status = entry.present.presenter->presentImage();
 
-          reflex.setMarker(entry.present.frameId, VK_PRESENT_END);
+          // NV-DXVK start: Reflex present end
+          m_device->getCommon()->metaReflex().endPresentation(entry.present.frameId);
+          // NV-DXVK end
 
           if (m_device->config().presentThrottleDelay > 0) {
             Sleep(m_device->config().presentThrottleDelay);

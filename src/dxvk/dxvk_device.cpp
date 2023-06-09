@@ -309,7 +309,7 @@ namespace dxvk {
     status->result = VK_NOT_READY;
 
     // NV-DXVK start: Integrate Reflex
-    m_objects.metaReflex().beforePresent(getCurrentFrameId());
+    m_objects.metaReflex().endRendering(getCurrentFrameId());
 
     DxvkPresentInfo presentInfo;
     presentInfo.presenter = presenter;
@@ -321,7 +321,7 @@ namespace dxvk {
       m_statCounters.addCtr(DxvkStatCounter::QueuePresentCount, 1); // Increase getCurrentFrameId()
     }
 
-    m_objects.metaReflex().afterPresent(getCurrentFrameId());
+    m_objects.metaReflex().beginSimulation(getCurrentFrameId());
     // NV-DXVK end
   }
   
