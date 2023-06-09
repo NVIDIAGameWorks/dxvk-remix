@@ -600,6 +600,10 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID, uint2 localIndex : SV_Gro
     else
       secondaryCombinedDiffuseInput = sanitizeRadianceHitDistance(
         secondaryCombinedDiffuseInput.xyz + indirectRadianceHitDistance.xyz, indirectRadianceHitDistance.w);
+
+    // The secondary signal doesn't have advanced techniques like ReSTIR and has more noise and fireflies, especially for specular signal.
+    // A more restrictive clamping threshold is needed to remove fireflies.
+    secondaryCombinedSpecularInput.xyz = fireflyFiltering(secondaryCombinedSpecularInput.xyz, cb.secondarySpecularFireflyFilteringThreshold);
   }
 
   // Overwrite the direct specular HitT with the indirect specular HitT.
