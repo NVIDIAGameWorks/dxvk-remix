@@ -696,8 +696,14 @@ namespace dxvk {
                      "a ground densely covered with grass blades or steam consisting of many particles.");
     } opacityMicromap;
 
-    RTX_OPTION("rtx", ReflexMode, reflexMode, ReflexMode::LowLatency, "Reflex mode selection, enabling it helps minimize input latency, boost mode may further reduce latency by boosting GPU clocks in CPU-bound cases."); // default to low-latency (not boost)
-    RTX_OPTION_FLAG("rtx", bool, isReflexSupported, true, RtxOptionFlags::NoSave, "");// default to true, we will do a compat check during init and disable if not supported
+    RTX_OPTION("rtx", ReflexMode, reflexMode, ReflexMode::LowLatency,
+               "Reflex mode selection, enabling it helps minimize input latency, boost mode may further reduce latency by boosting GPU clocks in CPU-bound cases.\n"
+               "Supported enum values are 0 = None (Disabled), 1 = LowLatency (Enabled), 2 = LowLatencyBoost (Enabled + Boost).\n"
+               "Note that even when using the \"None\" Reflex mode Reflex will attempt to be initialized. Use rtx.isReflexEnabled to fully disable to skip this initialization if needed.");
+    RTX_OPTION_FLAG("rtx", bool, isReflexEnabled, true, RtxOptionFlags::NoSave,
+                    "Enables or disables Reflex globally.\n"
+                    "Note that this option when set to false will prevent Reflex from even attempting to initialize, unlike setting the Reflex mode to \"None\" which simply tells an initialized Reflex not to take effect.\n"
+                    "Additionally, this setting must be set at startup and changing it will not take effect at runtime.");
 
     RTX_OPTION_FLAG("rtx", bool, forceVsyncOff, false, RtxOptionFlags::NoSave, "Forces V-Sync to off by setting the present interval to 0 and ignores requests from the application to change the present interval.");
 

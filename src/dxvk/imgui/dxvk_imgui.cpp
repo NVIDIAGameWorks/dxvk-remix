@@ -30,6 +30,7 @@
 #include "imgui_internal.h"
 #include "imgui_impl_vulkan.h"
 #include "imgui_impl_win32.h"
+#include "implot.h"
 #include "dxvk_imgui.h"
 #include "rtx_render/rtx_imgui.h"
 #include "dxvk_device.h"
@@ -290,12 +291,18 @@ namespace dxvk {
   constexpr ImGuiTreeNodeFlags collapsingHeaderClosedFlags = ImGuiTreeNodeFlags_CollapsingHeader;
   constexpr ImGuiTreeNodeFlags collapsingHeaderFlags = collapsingHeaderClosedFlags | ImGuiTreeNodeFlags_DefaultOpen;
   constexpr ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus;
+  constexpr ImGuiWindowFlags popupWindowFlags = ImGuiWindowFlags_NoSavedSettings;
 
   ImGUI::ImGUI(const Rc<DxvkDevice>& device, const HWND& hwnd)
   : m_device (device)
   , m_hwnd   (hwnd)
   , m_about  (new ImGuiAbout)
   , m_splash  (new ImGuiSplash) {
+    // Clamp Option ranges
+
+    RTX_OPTION_CLAMP(reflexStatRangeInterpolationRate, 0.0f, 1.0f);
+    RTX_OPTION_CLAMP_MIN(reflexStatRangePaddingRatio, 0.0f);
+
     // Set up constant state
     m_rsState.polygonMode       = VK_POLYGON_MODE_FILL;
     m_rsState.cullMode          = VK_CULL_MODE_BACK_BIT;
@@ -345,10 +352,11 @@ namespace dxvk {
 
     m_device->vkd()->vkCreateDescriptorPool(m_device->handle(), &pool_info, nullptr, &m_imguiPool);
 
-    //this initializes the core structures of imgui
+    // Initialize the core structures of ImGui and ImPlot
     ImGui::CreateContext();
+    ImPlot::CreateContext();
 
-    //this initializes imgui for SDL
+    // Initialize imgui for SDL
     ImGui_ImplWin32_Init(hwnd);
 
     // Setup custom style
@@ -376,6 +384,10 @@ namespace dxvk {
       ImGui_ImplVulkan_Shutdown();
       m_init = false;
     }
+
+    // Destroy the ImGui and ImPlot context
+    ImPlot::DestroyContext();
+    ImGui::DestroyContext();
   }
   
   void ImGUI::AddTexture(const XXH64_hash_t hash, const Rc<DxvkImageView>& imageView) {
@@ -624,15 +636,23 @@ namespace dxvk {
 
     m_about->update(ctx);
 
-    if (RtxOptions::Get()->showUI() == UIType::Advanced) {
+    const auto showUI = RtxOptions::Get()->showUI();
+
+    if (showUI == UIType::Advanced) {
       showMainMenu(ctx);
 
       // Uncomment to see the ImGUI demo, good reference!  Also, need to undefine IMGUI_DISABLE_DEMO_WINDOWS (in "imgui_demo.cpp")
       // ImGui::ShowDemoWindow();
     }
 
-    if (RtxOptions::Get()->showUI() == UIType::Basic) {
+    if (showUI == UIType::Basic) {
       showUserMenu(ctx);
+    }
+
+    // Note: Only display the latency stats window when the Advanced UI is active as the Basic UI acts as a modal which blocks other
+    // windows from being interacted with.
+    if (showUI == UIType::Advanced && m_reflexLatencyStatsOpen) {
+      showReflexLatencyStats();
     }
 
     showErrorStatus(ctx);
@@ -1024,7 +1044,9 @@ namespace dxvk {
     {
       ImGui::BeginDisabled(disableNonPresetSettings);
 
-      showReflexOptions();
+      // Note: Option to toggle the stats window is set to false here as this window is currently
+      // set up to display only when the "advanced" developer settings UI is active.
+      showReflexOptions(false);
 
       ImGui::EndDisabled();
     }
@@ -1705,10 +1727,166 @@ namespace dxvk {
     style->TabRounding = 1;
   }
 
-  void ImGUI::showReflexOptions() {
-    if (RtxOptions::Get()->isReflexSupported()) {
-      m_userGraphicsSettingChanged |= ImGui::Combo("Reflex", &RtxOptions::Get()->reflexModeObject(), "Disabled\0Enabled\0Enabled + Boost\0");
+  void ImGUI::showReflexOptions(bool displayStatsWindowToggle) {
+    RtxReflex& reflex = m_device->getCommon()->metaReflex();
+
+    // Note: Skip Reflex ImGUI options if Reflex is not initialized (either fully disabled or failed to be initialized).
+    if (!reflex.reflexInitialized()) {
+      ImGui::Text("Reflex failed to initialize or is disabled.");
+
+      return;
     }
+
+    // Display Reflex mode selector
+
+    m_userGraphicsSettingChanged |= ImGui::Combo("Reflex", &RtxOptions::Get()->reflexModeObject(), "Disabled\0Enabled\0Enabled + Boost\0");
+
+    // Add a button to toggle the Reflex latency stats Window if requested
+
+    if (displayStatsWindowToggle) {
+      if (ImGui::Button("Toggle Latency Stats Window")) {
+        m_reflexLatencyStatsOpen = !m_reflexLatencyStatsOpen;
+      }
+    }
+  }
+
+  void ImGUI::showReflexLatencyStats() {
+    // Set up the latency stats Window
+
+    ImGui::SetNextWindowSize(ImVec2(m_reflexLatencyStatsWindowWidth, m_reflexLatencyStatsWindowHeight), ImGuiCond_Once);
+
+    if (!ImGui::Begin("Reflex Latency Stats", &m_reflexLatencyStatsOpen, popupWindowFlags)) {
+      ImGui::End();
+
+      return;
+    }
+
+    RtxReflex& reflex = m_device->getCommon()->metaReflex();
+    const auto latencyStats = reflex.getLatencyStats();
+
+    constexpr ImPlotFlags druationGraphFlags = ImPlotFlags_NoMouseText | ImPlotFlags_NoInputs | ImPlotFlags_NoMenus | ImPlotFlags_NoBoxSelect;
+    constexpr ImPlotAxisFlags graphFrameAxisFlags = ImPlotAxisFlags_NoGridLines | ImPlotAxisFlags_NoTickMarks | ImPlotAxisFlags_NoTickLabels | ImPlotAxisFlags_Lock;
+    constexpr ImPlotAxisFlags graphDurationAxisFlags = ImPlotAxisFlags_Lock;
+
+    constexpr ImPlotFlags timingGraphFlags = ImPlotFlags_NoMouseText | ImPlotFlags_NoInputs | ImPlotFlags_NoMenus | ImPlotFlags_NoBoxSelect | ImPlotFlags_NoLegend;
+    constexpr ImPlotAxisFlags graphTimeAxisFlags = ImPlotAxisFlags_Lock;
+    constexpr ImPlotAxisFlags graphRegionAxisFlags = ImPlotAxisFlags_NoGridLines | ImPlotAxisFlags_NoTickMarks;
+
+    // Update Reflex stat ranges
+
+    const auto& interpolationRate = reflexStatRangeInterpolationRate();
+    const auto& paddingRatio = reflexStatRangePaddingRatio();
+
+    const auto newCurrentGameToRenderDurationMin = std::max(latencyStats.gameToRenderDurationMin - latencyStats.gameToRenderDurationMin * paddingRatio, 0.0f);
+    const auto newCurrentGameToRenderDurationMax = latencyStats.gameToRenderDurationMax + latencyStats.gameToRenderDurationMax * paddingRatio;
+    const auto newCurrentCombinedDurationMin = std::max(latencyStats.combinedDurationMin - latencyStats.combinedDurationMin * paddingRatio, 0.0f);
+    const auto newCurrentcombinedDurationMax = latencyStats.combinedDurationMax + latencyStats.combinedDurationMax * paddingRatio;
+
+    // Note: Check if the various range members have been initialized yet to allow the first frame to set them rather than interpolate (since they are
+    // left as undefined values right now, and even if they were set to 0 or some other value it might give slightly jarring initial behavior).
+    if (m_reflexRangesInitialized) {
+      // Note: Exponential-esque moving averages.
+      m_currentGameToRenderDurationMin = lerp(m_currentGameToRenderDurationMin, newCurrentGameToRenderDurationMin, interpolationRate);
+      m_currentGameToRenderDurationMax = lerp(m_currentGameToRenderDurationMax, newCurrentGameToRenderDurationMax, interpolationRate);
+      m_currentCombinedDurationMin = lerp(m_currentCombinedDurationMin, newCurrentCombinedDurationMin, interpolationRate);
+      m_currentCombinedDurationMax = lerp(m_currentCombinedDurationMax, newCurrentcombinedDurationMax, interpolationRate);
+    } else {
+      m_currentGameToRenderDurationMin = newCurrentGameToRenderDurationMin;
+      m_currentGameToRenderDurationMax = newCurrentGameToRenderDurationMax;
+      m_currentCombinedDurationMin = newCurrentCombinedDurationMin;
+      m_currentCombinedDurationMax = newCurrentcombinedDurationMax;
+
+      m_reflexRangesInitialized = true;
+    }
+
+    // Draw Total Duration Plot
+
+    if (ImPlot::BeginPlot("Total Duration", ImVec2(-1, 200), druationGraphFlags)) {
+      ImPlot::SetupAxes("Frame", "Duration (ms)", graphFrameAxisFlags, graphDurationAxisFlags);
+      ImPlot::SetupAxisLimits(ImAxis_X1, static_cast<double>(latencyStats.frameIDMin), static_cast<double>(latencyStats.frameIDMax), ImGuiCond_Always);
+      ImPlot::SetupAxisLimits(ImAxis_Y1, static_cast<double>(m_currentGameToRenderDurationMin), static_cast<double>(m_currentGameToRenderDurationMax), ImPlotCond_Always);
+
+      ImPlot::PlotLine("Game to Render", latencyStats.frameID, latencyStats.gameToRenderDuration, LatencyStats::statFrames, 0, 0);
+
+      ImPlot::EndPlot();
+    }
+
+    ImGui::Text("Game to Render Duration: %.2f ms", latencyStats.gameToRenderDuration[LatencyStats::statFrames - 1]);
+    ImGui::SameLine();
+    ImGui::TextDisabled("(?)");
+    ImGui::SetTooltipToLastWidgetOnHover("This measures the time from the start of the simulation to the end of the GPU rendering as a total game to render latency.");
+
+    ImGui::Separator();
+
+    // Draw Region Duration Plot
+
+    if (ImPlot::BeginPlot("Region Durations", ImVec2(-1, 250), druationGraphFlags)) {
+      ImPlot::SetupAxes("Frame", "Duration (ms)", graphFrameAxisFlags, graphDurationAxisFlags);
+      ImPlot::SetupAxisLimits(ImAxis_X1, static_cast<double>(latencyStats.frameIDMin), static_cast<double>(latencyStats.frameIDMax), ImGuiCond_Always);
+      ImPlot::SetupAxisLimits(ImAxis_Y1, static_cast<double>(m_currentCombinedDurationMin), static_cast<double>(m_currentCombinedDurationMax), ImPlotCond_Always);
+
+      ImPlot::PlotLine("Simulation", latencyStats.frameID, latencyStats.simDuration, LatencyStats::statFrames, 0, 0);
+      ImPlot::PlotLine("Render Submit", latencyStats.frameID, latencyStats.renderSubmitDuration, LatencyStats::statFrames, 0, 0);
+      ImPlot::PlotLine("Present", latencyStats.frameID, latencyStats.presentDuration, LatencyStats::statFrames, 0, 0);
+      ImPlot::PlotLine("Driver", latencyStats.frameID, latencyStats.driverDuration, LatencyStats::statFrames, 0, 0);
+      ImPlot::PlotLine("OS Queue", latencyStats.frameID, latencyStats.osRenderQueueDuration, LatencyStats::statFrames, 0, 0);
+      ImPlot::PlotLine("GPU Render", latencyStats.frameID, latencyStats.gpuRenderDuration, LatencyStats::statFrames, 0, 0);
+
+      ImPlot::EndPlot();
+    }
+
+    ImGui::Text("Simulation Duration: %.2f ms", latencyStats.simDuration[LatencyStats::statFrames - 1]);
+    ImGui::Text("Render Submit Duration: %.2f ms", latencyStats.renderSubmitDuration[LatencyStats::statFrames - 1]);
+    ImGui::Text("Present Duration: %.2f ms", latencyStats.presentDuration[LatencyStats::statFrames - 1]);
+    ImGui::Text("Driver Duration: %.2f ms", latencyStats.driverDuration[LatencyStats::statFrames - 1]);
+    ImGui::Text("OS Queue Duration: %.2f ms", latencyStats.osRenderQueueDuration[LatencyStats::statFrames - 1]);
+    ImGui::Text("GPU Render Duration: %.2f ms", latencyStats.gpuRenderDuration[LatencyStats::statFrames - 1]);
+
+    ImGui::Separator();
+
+    // Draw Region Timing Plot
+
+    constexpr float microsecondsPerMillisecond { 1000.0f };
+
+    if (ImPlot::BeginPlot("Region Timings", ImVec2(-1, 150), timingGraphFlags)) {
+      ImPlot::SetupAxes(nullptr, nullptr, graphTimeAxisFlags, graphRegionAxisFlags);
+      ImPlot::SetupAxisLimits(ImAxis_X1, 0.0f, static_cast<double>(static_cast<float>(latencyStats.combinedCurrentTimeMax - latencyStats.combinedCurrentTimeMin) / microsecondsPerMillisecond), ImPlotCond_Always);
+
+      constexpr const char* regions[]{ "Simulation", "Render Submit", "Present", "Driver", "OS Queue", "GPU Render" };
+      ImPlot::SetupAxisTicks(ImAxis_Y1, 0, 5, 6, regions, false);
+
+      // Note: Name needed to color label.
+      constexpr const char* labels[]{ "", "Time", "" };
+      const float timeData[]{
+        // Pre-Span
+        static_cast<float>(latencyStats.simCurrentStartTime - latencyStats.combinedCurrentTimeMin) / microsecondsPerMillisecond,
+        static_cast<float>(latencyStats.renderSubmitCurrentStartTime - latencyStats.combinedCurrentTimeMin) / microsecondsPerMillisecond,
+        static_cast<float>(latencyStats.presentCurrentStartTime - latencyStats.combinedCurrentTimeMin) / microsecondsPerMillisecond,
+        static_cast<float>(latencyStats.driverCurrentStartTime - latencyStats.combinedCurrentTimeMin) / microsecondsPerMillisecond,
+        static_cast<float>(latencyStats.osRenderQueueCurrentStartTime - latencyStats.combinedCurrentTimeMin) / microsecondsPerMillisecond,
+        static_cast<float>(latencyStats.gpuRenderCurrentStartTime - latencyStats.combinedCurrentTimeMin) / microsecondsPerMillisecond,
+        // Current Span
+        latencyStats.simDuration[LatencyStats::statFrames - 1],
+        latencyStats.renderSubmitDuration[LatencyStats::statFrames - 1],
+        latencyStats.presentDuration[LatencyStats::statFrames - 1],
+        latencyStats.driverDuration[LatencyStats::statFrames - 1],
+        latencyStats.osRenderQueueDuration[LatencyStats::statFrames - 1],
+        latencyStats.gpuRenderDuration[LatencyStats::statFrames - 1],
+        // Post-Span
+        static_cast<float>(latencyStats.combinedCurrentTimeMax - latencyStats.simCurrentEndTime) / microsecondsPerMillisecond,
+        static_cast<float>(latencyStats.combinedCurrentTimeMax - latencyStats.renderSubmitCurrentEndTime) / microsecondsPerMillisecond,
+        static_cast<float>(latencyStats.combinedCurrentTimeMax - latencyStats.presentCurrentEndTime) / microsecondsPerMillisecond,
+        static_cast<float>(latencyStats.combinedCurrentTimeMax - latencyStats.driverCurrentEndTime) / microsecondsPerMillisecond,
+        static_cast<float>(latencyStats.combinedCurrentTimeMax - latencyStats.osRenderQueueCurrentEndTime) / microsecondsPerMillisecond,
+        static_cast<float>(latencyStats.combinedCurrentTimeMax - latencyStats.gpuRenderCurrentEndTime) / microsecondsPerMillisecond,
+      };
+
+      ImPlot::PlotBarGroups(labels, timeData, 3, 6, 0.75, 0, ImPlotBarGroupsFlags_Stacked | ImPlotBarGroupsFlags_Horizontal);
+
+      ImPlot::EndPlot();
+    }
+
+    ImGui::End();
   }
 
   void ImGUI::showRenderingSettings(const Rc<DxvkContext>& ctx) {
@@ -1737,7 +1915,9 @@ namespace dxvk {
       ImGui::Separator();
 #endif
 
-      showReflexOptions();
+      showReflexOptions(true);
+
+      ImGui::Separator();
 
       if (ctx->getCommonObjects()->metaDLSS().supportsDLSS()) {
         upscalerCombo.getKey(&RtxOptions::Get()->upscalerTypeObject());

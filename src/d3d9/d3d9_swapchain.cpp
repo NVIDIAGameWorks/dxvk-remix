@@ -1043,7 +1043,7 @@ namespace dxvk {
     m_parent->m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
 
     // NV-DXVK start: Reflex integration
-    if (RtxOptions::Get()->isReflexSupported() && RtxOptions::Get()->reflexMode() > ReflexMode::None) {
+    if (m_device->getCommon()->metaReflex().reflexInitialized() && RtxOptions::Get()->reflexMode() != ReflexMode::None) {
       // When using Reflex, we should synchronize the present with client thread, this reduces latency
       //   by backpressuring the client until presentation has complete
       m_parent->SynchronizeCsThread();

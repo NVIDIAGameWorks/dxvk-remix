@@ -176,7 +176,7 @@ namespace dxvk {
     VkClearValue m_skyClearValue;
     bool m_skyClearDirty = false;
 
-    void updateReflexConstants();
+    bool requiresDrawCall() const;
 
     bool shouldUseDLSS() const;
     bool shouldUseNIS() const;
