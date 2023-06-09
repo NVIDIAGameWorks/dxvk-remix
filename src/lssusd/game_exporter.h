@@ -28,6 +28,7 @@
 
 #include "game_exporter_common.h"
 #include "game_exporter_types.h"
+#include "game_exporter_paths.h"
 
 #include <mutex>
 
@@ -38,6 +39,16 @@ class GameExporter
 public:
   static void setMultiThreadSafety(const bool enable) {
     s_bMultiThreadSafety = enable;
+  }
+  static std::string buildInstanceStageName(const std::string& baseDir, const std::string& name) {
+    std::stringstream stagePathSS;
+    stagePathSS << baseDir << "/";
+    if(name.empty()) {
+      stagePathSS << "export" << lss::ext::usd;
+    } else {
+      stagePathSS << name;
+    }
+    return stagePathSS.str();
   }
   static bool loadUsdPlugins(const std::string& path);
   static void exportUsd(const Export& exportData);
@@ -54,7 +65,6 @@ private:
   };
   static void exportUsdInternal(const Export& exportData);
   static pxr::UsdStageRefPtr createInstanceStage(const Export& exportData);
-  static pxr::UsdStageRefPtr createStageAndRootPrim(const std::string& path);
   static void setCommonStageMetaData(pxr::UsdStageRefPtr stage, const Export& exportData);
   static void createApertureMdls(const std::string& baseExportPath);
   static void exportMaterials(const Export& exportData, ExportContext& ctx);
