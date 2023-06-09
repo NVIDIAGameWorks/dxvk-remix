@@ -51,6 +51,7 @@ namespace dxvk {
         RW_STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_NEE_CACHE)
         RW_STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_TASK)
         RW_TEXTURE2D(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_THREAD_TASK)
+        STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_PRIMITIVE_ID_PREFIX_SUM)
       END_PARAMETER()
     };
 
@@ -67,6 +68,7 @@ namespace dxvk {
         RW_STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_NEE_CACHE)
         RW_STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_TASK)
         RW_TEXTURE2D(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_THREAD_TASK)
+        STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_PRIMITIVE_ID_PREFIX_SUM)
       END_PARAMETER()
     };
 
@@ -106,8 +108,13 @@ namespace dxvk {
   }
 
   void NeeCachePass::dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
+    if (!enable()) {
+      return;
+    }
+
     const auto& numRaysExtent = rtOutput.m_compositeOutputExtent;
     VkExtent3D workgroups = util::computeBlockCount(numRaysExtent, VkExtent3D{ 16, 8, 1 });
+    Rc<DxvkBuffer> primitiveIDPrefixSumBuffer = ctx->getSceneManager().getPrimitiveIDPrefixSumBuffer();
 
     ScopedGpuProfileZone(ctx, "NEE Cache");
 
@@ -116,6 +123,7 @@ namespace dxvk {
       ctx->bindCommonRayTracingResources(rtOutput);
       ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_NEE_CACHE, DxvkBufferSlice(rtOutput.m_neeCache, 0, rtOutput.m_neeCache->info().size));
       ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_TASK, DxvkBufferSlice(rtOutput.m_neeCacheTask, 0, rtOutput.m_neeCacheTask->info().size));
+      ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_PRIMITIVE_ID_PREFIX_SUM, DxvkBufferSlice(primitiveIDPrefixSumBuffer, 0, primitiveIDPrefixSumBuffer->info().size));
       ctx->bindResourceView(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_THREAD_TASK, rtOutput.m_neeCacheThreadTask.view, nullptr);
 
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, UpdateNEETaskShader::getShader());
@@ -126,6 +134,7 @@ namespace dxvk {
       ctx->bindCommonRayTracingResources(rtOutput);
       ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_NEE_CACHE, DxvkBufferSlice(rtOutput.m_neeCache, 0, rtOutput.m_neeCache->info().size));
       ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_TASK, DxvkBufferSlice(rtOutput.m_neeCacheTask, 0, rtOutput.m_neeCacheTask->info().size));
+      ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_PRIMITIVE_ID_PREFIX_SUM, DxvkBufferSlice(primitiveIDPrefixSumBuffer, 0, primitiveIDPrefixSumBuffer->info().size));
       ctx->bindResourceView(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_THREAD_TASK, rtOutput.m_neeCacheThreadTask.view, nullptr);
 
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, UpdateNEECacheShader::getShader());

@@ -125,6 +125,7 @@ namespace dxvk {
         {DEBUG_VIEW_NEE_CACHE_CANDIDATE_ID, "NEE Cache Candidate"},
         {DEBUG_VIEW_NEE_CACHE_HISTOGRAM, "NEE Cache Histogram"},
         {DEBUG_VIEW_NEE_CACHE_SAMPLE_RADIANCE, "NEE Cache Sample Radiance"},
+        {DEBUG_VIEW_NEE_CACHE_TASK, "NEE Cache Task"},
 
         {DEBUG_VIEW_RTXDI_GRADIENTS, "RTXDI Gradients"},
         {DEBUG_VIEW_RTXDI_CONFIDENCE, "RTXDI Confidence"},

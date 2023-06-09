@@ -31,3 +31,6 @@ RWByteAddressBuffer NeeCacheTask;
 
 layout(rg32ui, binding = UPDATE_NEE_CACHE_BINDING_NEE_CACHE_THREAD_TASK)
 RWTexture2D<uint2> NeeCacheThreadTask;
+
+layout(binding = UPDATE_NEE_CACHE_BINDING_PRIMITIVE_ID_PREFIX_SUM) 
+StructuredBuffer<uint> PrimitiveIDPrefixSum;
