@@ -818,6 +818,7 @@ namespace dxvk {
       { "rtx.viewModel.scale",                    "0.4" },
       { "rtx.effectLightPlasmaBall",              "True" },
       { "rtx.enableVolumetricLighting",           "True" },
+      { "rtx.secondarySpecularFireflyFilteringThreshold",  "120.0" },
       { "rtx.volumetricTransmittanceColor",       "0.953238, 0.948409, 0.943550" }, // Slight blue tint to act more like water vapor for now
       { "rtx.volumetricTransmittanceMeasurementDistance", "20000.0" },
       { "rtx.froxelGridResolutionScale",          "16" },
