@@ -144,30 +144,27 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(threadIndex, SharedFlags);
   const bool gBufferMiss = isGBufferMiss(threadIndex, PrimaryConeRadius);
 
-  vec4 initialDiffuseOutput = vec4(0);
-  vec4 initialSpecularOutput = vec4(0);
-  const vec4 indirectRadianceHitDistance = IndirectRadianceHitDistance[threadIndex];
-  if (!gBufferMiss)
-  {    
-    if (geometryFlags.firstSampledLobeIsSpecular) 
-    {
-      initialSpecularOutput = indirectRadianceHitDistance;
-      initialSpecularOutput.xyz = clamp(initialSpecularOutput.xyz, 0, cb.reSTIRGIFireflyThreshold);
-    }
-    else
-    {
-      initialDiffuseOutput = indirectRadianceHitDistance;
-    }
-  }
-
-  PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex] = initialDiffuseOutput;
-  PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex] = initialSpecularOutput;
-
   // Early out if the primary surface was a miss or if the indirect integrator was not selected
   // to output indirect lighting information
   if (gBufferMiss)
   {
     return;
+  }
+
+  vec4 indirectDiffuseOutput = vec4(0);
+  vec4 indirectSpecularOutput = vec4(0);
+  if (geometryFlags.primarySelectedIntegrationSurface)
+  {
+    const vec4 indirectRadianceHitDistance = IndirectRadianceHitDistance[threadIndex];   
+    if (geometryFlags.firstSampledLobeIsSpecular) 
+    {
+      indirectSpecularOutput = indirectRadianceHitDistance;
+      indirectSpecularOutput.xyz = clamp(indirectSpecularOutput.xyz, 0, cb.reSTIRGIFireflyThreshold);
+    }
+    else
+    {
+      indirectDiffuseOutput = indirectRadianceHitDistance;
+    }
   }
 
   // Deserialize the Ray
@@ -230,8 +227,8 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
               surface.isViewModel, primaryRay, minimalRayInteraction, minimalSurfaceInteraction,
               diffuseLight, specularLight);
 
-            PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex].xyz += diffuseLight;
-            PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex].xyz += specularLight;
+            indirectDiffuseOutput.xyz += diffuseLight;
+            indirectSpecularOutput.xyz += specularLight;
           }
 
           if (cb.enableReSTIRGI && isVisible)
@@ -255,6 +252,9 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
     }
   }
   RAB_StoreGIReservoir(resultReservoir, threadIndex, ReSTIRGI_GetInitSamplePage());
+
+  PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex] = indirectDiffuseOutput;
+  PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex] = indirectSpecularOutput;
 
   showDebugViews(threadIndex, geometryFlags, minimalSurfaceInteraction, surface);
 }

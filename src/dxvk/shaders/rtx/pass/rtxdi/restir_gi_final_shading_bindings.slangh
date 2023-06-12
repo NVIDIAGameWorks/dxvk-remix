@@ -65,21 +65,18 @@ Texture2D<float4> PrimaryWorldPositionWorldTriangleNormal;
 layout(r32f, binding = RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_POSITION_ERROR_INPUT)
 Texture2D<float> PrimaryPositionError;
 
-layout(rgba16f, binding = RESTIR_GI_FINAL_SHADING_BINDING_INDIRECT_RADIANCE_HIT_DISTANCE_INPUT)
-Texture2D<float4> IndirectRadianceHitDistance;
-
 // Primary Inputs/Outputs
 
 layout(rgb10_a2, binding = RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_BASE_REFLECTIVITY_INPUT_OUTPUT)
 RWTexture2D<float4> PrimaryBaseReflectivity;
 
-// Outputs
-
-layout(rgba16f, binding = RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_INDIRECT_DIFFUSE_RADIANCE_HIT_DISTANCE_OUTPUT)
+layout(rgba16f, binding = RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_INDIRECT_DIFFUSE_RADIANCE_HIT_DISTANCE_INPUT_OUTPUT)
 RWTexture2D<float4> PrimaryIndirectDiffuseLobeRadianceHitDistance;
 
-layout(rgba16f, binding = RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_INDIRECT_SPECULAR_RADIANCE_HIT_DISTANCE_OUTPUT)
+layout(rgba16f, binding = RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_INDIRECT_SPECULAR_RADIANCE_HIT_DISTANCE_INPUT_OUTPUT)
 RWTexture2D<float4> PrimaryIndirectSpecularLobeRadianceHitDistance;
+
+// Outputs
 
 layout(binding = RESTIR_GI_FINAL_SHADING_BINDING_RESTIR_GI_RESERVOIR_OUTPUT)
 RWStructuredBuffer<ReSTIRGI_PackedReservoir> RestirGIReservoirBuffer;
