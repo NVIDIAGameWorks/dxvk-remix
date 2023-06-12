@@ -277,8 +277,8 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
     RAB_StoreGIReservoir(spatialReservoir, threadIndex, ReSTIRGI_GetSpatialOutputPage());
   }
   
-  // Restir GI processes only the primary surface data, the pixels for secondary surfaces are skipped above 
-  // Note: IndirectRadianceHitDistance is resource shared by primary and secondary surfaces
+  // Restir GI processes only the primary surface data, the pixels for secondary surfaces are skipped above
+  // Add ReSTIR GI contribution to indirect light buffers, MIS is needed here.
   if (geometryFlags.primarySelectedIntegrationSurface)
   {
     float hitDistance = length(spatialReservoir.position - minimalSurfaceInteraction.position);
