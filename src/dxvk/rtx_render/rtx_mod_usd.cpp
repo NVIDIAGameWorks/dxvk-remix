@@ -243,17 +243,32 @@ static std::string resolveTexturePath(
   for (auto spec : shader.GetPrimStack()) {
     auto attribs = spec->GetAttributes();
     if (attribs.find(textureToken) != attribs.end()) {
-      // Trim special path chars.
+      std::filesystem::path sourcePath(spec->GetLayer()->GetRealPath());
+      std::filesystem::path resolvedPath = sourcePath.parent_path();
+
+      // Process special path symbols.
       // Note: we could use filesystem::weakly_canonical() to make the resulting path
       // canonical but unfortunately it is extremly expensive.
       size_t pathStartPos = 0;
-      while (textureAssetPath[pathStartPos] == '.') {
-        ++pathStartPos;
+      while (pathStartPos < textureAssetPath.size()) {
+        // Check for current folder symbol
+        if (textureAssetPath[pathStartPos] == '.') {
+          // Skip it
+          ++pathStartPos;
+          // Check for parent folder symbol
+          if (textureAssetPath[pathStartPos] == '.') {
+            resolvedPath = resolvedPath.parent_path();
+            ++pathStartPos;
+          }
+        } else if (textureAssetPath[pathStartPos] == '\\' || textureAssetPath[pathStartPos] == '/') {
+          // Skip path separator
+          ++pathStartPos;
+        } else {
+          break;
+        }
       }
 
-      std::filesystem::path sourcePath(spec->GetLayer()->GetRealPath());
-      std::filesystem::path resolvedPath = sourcePath.parent_path();
-      resolvedPath += textureAssetPath.data() + pathStartPos;
+      resolvedPath /= textureAssetPath.data() + pathStartPos;
       resolvedPath.make_preferred();
 
       return resolvedPath.string();
@@ -1135,6 +1150,7 @@ void UsdMod::Impl::unload() {
     m_usdChangeWatchdog.stop();
 
     m_owner.m_replacements->clear();
+    AssetDataManager::get().clearSearchPaths();
 
     m_owner.setState(State::Unloaded);
   }
@@ -1190,7 +1206,18 @@ void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
   std::filesystem::path modBaseDirectory = std::filesystem::path(replacementsUsdPath).remove_filename();
   m_openedFilePath = replacementsUsdPath;
 
-  AssetDataManager::get().initialize(modBaseDirectory);
+  // Iterate sublayers in the strength order, resolve the base paths and
+  // populate asset manager search paths.
+  auto sublayers = stage->GetRootLayer()->GetSubLayerPaths();
+  for (size_t i = 0, s = sublayers.size(); i < s; i++) {
+    const std::string& identifier = sublayers[i];
+    auto layerBasePath = std::filesystem::path(identifier).remove_filename();
+    auto fullLayerBasePath = std::filesystem::weakly_canonical(modBaseDirectory / layerBasePath);
+    AssetDataManager::get().addSearchPath(i, fullLayerBasePath);
+  }
+
+  // Add stage's base path last.
+  AssetDataManager::get().addSearchPath(sublayers.size(), modBaseDirectory);
 
   m_fileModificationTime = fs::last_write_time(fs::path(m_openedFilePath));
   pxr::UsdGeomXformCache xformCache;
