@@ -476,32 +476,49 @@ namespace dxvk {
   AssetDataManager::~AssetDataManager() {
   }
 
-  void AssetDataManager::initialize(const std::filesystem::path& basePath) {
-    if (!m_basePath.empty()) {
-      return;
+  void AssetDataManager::addSearchPath(uint32_t priority, const std::filesystem::path& path) {
+    // Make base path preferred and lowercase
+    auto searchPath = std::filesystem::absolute(path).make_preferred().string();
+    std::for_each(searchPath.begin(), searchPath.end(), [](char& c) { c = tolower(c); });
+
+    if (searchPath.back() != '\\' && searchPath.back() != '/') {
+      searchPath.push_back('\\');
     }
 
-    // Make base path preferred and lowercase
-    m_basePath = std::filesystem::absolute(basePath).make_preferred().string();
-    std::for_each(m_basePath.begin(), m_basePath.end(), [](char& c) { c = tolower(c); });
+    for (const auto& [p, curSearchPath] : m_searchPaths) {
+      if (curSearchPath == searchPath) {
+        // We already have this path - bail out
+        return;
+      }
+    }
 
-    Logger::info(str::format("Base asset path: ", m_basePath));
+    if (m_searchPaths.count(priority) > 0) {
+      Logger::warn(str::format("Overriding asset search path from: ",
+                               m_searchPaths[priority], " to: ", searchPath));
+    } else {
+      Logger::info(str::format("Adding asset search path: ", searchPath));
+    }
 
+    m_searchPaths[priority] = searchPath;
+
+    // Find the packages
     if (RtxIo::enabled()) {
-      // Find the packages
-      for (const auto& entry : std::filesystem::directory_iterator(basePath)) {
-        if (entry.path().extension() == ".pkg") {
+      PackageSet packageSet;
+      for (const auto& entry : std::filesystem::directory_iterator(path)) {
+        if (entry.path().extension() == ".pkg" || entry.path().extension() == ".rtxio") {
           const auto packagePath = entry.path().string();
           // Try to initialize the replacements packages
           Rc<AssetPackage> package = new AssetPackage(packagePath);
           if (package->initialize()) {
-            m_packages.emplace(packagePath, std::move(package));
-            Logger::debug(str::format("Mounted a package at: ", entry.path()));
+            packageSet.emplace(packagePath, std::move(package));
+            Logger::info(str::format("Mounted a package at: ", entry.path()));
           } else {
             Logger::warn(str::format("Corrupted package discovered at: ", entry.path()));
           }
         }
       }
+      m_packageSets.emplace(std::piecewise_construct, std::forward_as_tuple(priority),
+        std::forward_as_tuple(searchPath, std::move(packageSet)));
     }
   }
 
@@ -525,27 +542,24 @@ namespace dxvk {
       }
     }
 
-    if (RtxIo::enabled() && !m_packages.empty()) {
-      // Trim base path.
-      // Note: we could use std::filesystem::relative() but it might be is very
-      // expensive in some cases.
-      std::string relativePath = filename;
+    if (RtxIo::enabled() && !m_packageSets.empty()) {
+      // Iterate package sets in search priority order
+      for (auto itBase = m_packageSets.rbegin(); itBase != m_packageSets.rend(); ++itBase) {
+        const auto& basePath = std::get<0>(itBase->second);
 
-      // Make the base path part lowercase
-      if (m_basePath.length() < relativePath.length()) {
-        std::for_each(relativePath.begin(), relativePath.begin() + m_basePath.length(),
-                      [](char& c) { c = tolower(c); });
-      }
+        // The base path is shorter - we can try to use it
+        if (basePath.length() < filename.length()) {
+          const std::string relativePath = filename.substr(basePath.length());
 
-      size_t basePos = relativePath.find(m_basePath);
-      if (basePos != std::string::npos) {
-        relativePath = relativePath.substr(basePos + m_basePath.length());
-      }
+          auto& packages = std::get<1>(itBase->second);
 
-      for (auto it = m_packages.rbegin(); it != m_packages.rend(); ++it) {
-        uint32_t assetIdx = it->second->findAsset(relativePath);
-        if (AssetPackage::kNoAssetIdx != assetIdx) {
-          return new PackagedAssetData(it->second, assetIdx);
+          // Iterate package set in reverse alphabetical order
+          for (auto it = packages.rbegin(); it != packages.rend(); ++it) {
+            uint32_t assetIdx = it->second->findAsset(relativePath);
+            if (AssetPackage::kNoAssetIdx != assetIdx) {
+              return new PackagedAssetData(it->second, assetIdx);
+            }
+          }
         }
       }
     }
