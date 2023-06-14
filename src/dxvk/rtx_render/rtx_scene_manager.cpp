@@ -167,27 +167,35 @@ namespace dxvk {
 
   void SceneManager::garbageCollection() {
     ScopedCpuProfileZone();
+
+    const size_t oldestFrame = m_device->getCurrentFrameId() - RtxOptions::Get()->numFramesToKeepGeometryData();
+    auto blasEntryGarbageCollection = [&](auto& iter, auto& entries) -> void {
+      if (iter->second.frameLastTouched < oldestFrame) {
+        onSceneObjectDestroyed(iter->second);
+        iter = entries.erase(iter);
+      } else {
+        ++iter;
+      }
+    };
+
     // Garbage collection for BLAS/Scene objects
-    if (!RtxOptions::AntiCulling::Object::enable())
-    {
+    //
+    // When anti-culling is enabled, we need to check if any instances are outside frustum. Because in such
+    // case the life of the instances will be extended and we need to keep the BLAS as well.
+    if (!RtxOptions::AntiCulling::Object::enable()) {
       if (m_device->getCurrentFrameId() > RtxOptions::Get()->numFramesToKeepGeometryData()) {
         auto& entries = m_drawCallCache.getEntries();
-        const size_t oldestFrame = m_device->getCurrentFrameId() - RtxOptions::Get()->numFramesToKeepGeometryData();
         for (auto& iter = entries.begin(); iter != entries.end(); ) {
-          if (iter->second.frameLastTouched < oldestFrame) {
-            onSceneObjectDestroyed(iter->second);
-            iter = entries.erase(iter);
-          } else {
-            ++iter;
-          }
+          blasEntryGarbageCollection(iter, entries);
         }
       }
     }
-    else { // Implement anti-culling object GC
+    else { // Implement anti-culling BLAS/Scene object GC
       cFrustum& cameraFrustum = getCamera().getFrustum();
 
-      const auto& entries = m_drawCallCache.getEntries();
-      for (auto& iter = entries.begin(); iter != entries.end(); ++iter) {
+      auto& entries = m_drawCallCache.getEntries();
+      for (auto& iter = entries.begin(); iter != entries.end();) {
+        bool isAllInstancesInCurrentBlasInsideFrustum = true;
         for (const RtInstance* instance : iter->second.getLinkedInstances()) {
           // No need to do frustum check for instances under the keeping threshold
           const uint32_t numFramesToKeepInstances = RtxOptions::Get()->getNumFramesToKeepInstances();
@@ -214,7 +222,16 @@ namespace dxvk {
             instance->markAsInsideFrustum();
           } else {
             instance->markAsOutsideFrustum();
+            isAllInstancesInCurrentBlasInsideFrustum = false;
           }
+        }
+
+        // If all instances in current BLAS are inside the frustum, then use original GC logic to recycle BLAS Objects
+        if (isAllInstancesInCurrentBlasInsideFrustum &&
+            m_device->getCurrentFrameId() > RtxOptions::Get()->numFramesToKeepGeometryData()) {
+          blasEntryGarbageCollection(iter, entries);
+        } else { // If any instances are outside of the frustum in current BLAS, we need to keep the entity
+          ++iter;
         }
       }
     }
