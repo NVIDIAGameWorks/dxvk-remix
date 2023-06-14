@@ -33,6 +33,13 @@
 
 #ifdef RT_SHADER_EXECUTION_REORDERING
 
+// Adds a coherence hint to the lowest/least impront bit
+void addCoherenceHintAsLeastImportant1Bit(uint coherenceHintToAdd, inout uint coherenceHints, inout uint numCoherenceHints)
+{
+  coherenceHints = coherenceHintToAdd | (coherenceHints << 1);
+  ++numCoherenceHints;
+}
+
 // Use unique Reorder IDs in coherence hints to distinguish ReorderThread callsites
 #if 0 // Currently ReorderThread is only called right before InvokeHitObject so this is not needed yet
 #define SER_REORDER_ID_INTEGRATE_TRACERAY 0
