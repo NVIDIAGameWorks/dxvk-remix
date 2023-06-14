@@ -247,7 +247,7 @@ namespace dxvk {
   }
 
   // Hooked into D3D9 presentImage (same place HUD rendering is)
-  void RtxContext::injectRTX(Rc<DxvkImage> targetImage) {
+  void RtxContext::injectRTX(std::uint64_t cachedReflexFrameId, Rc<DxvkImage> targetImage) {
     ScopedCpuProfileZone();
 
     commitGraphicsState<true, false>();
@@ -330,6 +330,19 @@ namespace dxvk {
 
       ScopedGpuProfileZone(this, "InjectRTX");
 
+      // Signal Reflex rendering start
+
+      RtxReflex& reflex = m_common->metaReflex();
+
+      // Note: Update the Reflex mode in case the option has changed.
+      reflex.updateMode();
+
+      // Note: This indicates the start of the bulk of the rendering submission stage, so most rendering operations should
+      // come after this point (BLAS building, various rendering passes, etc). Since this is called on the CS thread the Reflex
+      // end rendering call should also happen on this same thread for consistency (which it does later when presenting is
+      // dispatched to the submit thread as this marks the end of rendering).
+      reflex.beginRendering(cachedReflexFrameId);
+
       // Update all the GPU buffers needed to describe the scene
       getSceneManager().prepareSceneData(this, m_cmd, m_execBarriers, frameTimeSecs);
       
@@ -391,13 +404,6 @@ namespace dxvk {
         getResourceManager().onFrameBegin(this, getCommonObjects()->getTextureManager(), downscaledExtent, targetImage->info().extent);
 
         Resources::RaytracingOutput& rtOutput = getResourceManager().getRaytracingOutput();
-
-        // Add Reflex simulation/rendering transition
-        // Note: This effectively indicates that simulation has completed and to move on to the rendering submission
-        // stage, so most rendering operations should come after this point. Additionally this implicitly updates
-        // the Reflex mode.
-        RtxReflex& reflex = m_common->metaReflex();
-        reflex.endSimulationBeginRendering(m_device->getCurrentFrameId());
 
         // Generate ray tracing constant buffer
         updateRaytraceArgsConstantBuffer(m_cmd, rtOutput, frameTimeSecs, downscaledExtent, targetImage->info().extent);
@@ -528,9 +534,9 @@ namespace dxvk {
   }
 
   // Called right before D3D9 present
-  void RtxContext::endFrame(Rc<DxvkImage> targetImage) {
+  void RtxContext::endFrame(std::uint64_t cachedReflexFrameId, Rc<DxvkImage> targetImage) {
     // Fallback inject (is a no-op if already injected this frame, or no valid RT scene)
-    injectRTX(targetImage);
+    injectRTX(cachedReflexFrameId, targetImage);
 
     // If injectRTX couldn't screenshot a final image,
     // take a screenshot of a present image (with UI and others)

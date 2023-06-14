@@ -474,10 +474,13 @@ namespace dxvk {
      * Invokes the presenter's \c presentImage method on
      * the submission thread. The status of this operation
      * can be retrieved with \ref waitForSubmission.
+     * \param [in] cachedReflexFrameId The Reflex frame ID at the time of calling, cached so Reflex can have
+     * consistent frame IDs throughout the dispatches of an application frame.
      * \param [in] presenter The presenter
      * \param [out] status Present status
      */
     void presentImage(
+      std::uint64_t                   cachedReflexFrameId,
       const Rc<vk::Presenter>&        presenter,
             DxvkSubmitStatus*         status);
     

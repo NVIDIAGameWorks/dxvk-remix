@@ -510,9 +510,11 @@ namespace dxvk {
     }
 
     if (triggerRtxInjection) {
+      const auto currentReflexFrameId = GetReflexFrameId();
+
       m_parent->PrepareDraw(drawContext.PrimitiveType);
-      m_parent->EmitCs([](DxvkContext* ctx) {
-        static_cast<RtxContext*>(ctx)->injectRTX();
+      m_parent->EmitCs([currentReflexFrameId](DxvkContext* ctx) {
+        static_cast<RtxContext*>(ctx)->injectRTX(currentReflexFrameId);
       });
 
       m_parent->FlushCsChunk();
@@ -995,8 +997,10 @@ namespace dxvk {
   }
 
   void D3D9Rtx::EndFrame(const Rc<DxvkImage>& targetImage) {
+    const auto currentReflexFrameId = GetReflexFrameId();
+
     // Inform backend of end-frame
-    m_parent->EmitCs([targetImage](DxvkContext* ctx) { static_cast<RtxContext*>(ctx)->endFrame(targetImage); });
+    m_parent->EmitCs([currentReflexFrameId, targetImage](DxvkContext* ctx) { static_cast<RtxContext*>(ctx)->endFrame(currentReflexFrameId, targetImage); });
 
     // Reset for the next frame
     m_rtxInjectTriggered = false;
