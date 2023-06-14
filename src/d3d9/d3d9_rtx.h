@@ -136,6 +136,23 @@ namespace dxvk {
       */
     void EndFrame(const Rc<DxvkImage>& targetImage);
 
+    /**
+      * \brief: Increments the Reflex frame ID. Should be called after presentation and only after every Reflex related marker
+      * call for the current frame (this typically means other threads running in parallel will need to cache this value from the
+      * frame they were dispatched on).
+      */
+    void IncrementReflexFrameId() {
+      ++m_reflexFrameId;
+    }
+
+    /**
+      * \brief: Gets the Reflex frame ID for the current frame on the main thread. This is incremented after each present.
+      * Only intended for use with Reflex, other methods for getting a frame ID exist which may make more sense for other systems.
+      */
+    uint64_t GetReflexFrameId() const {
+      return m_reflexFrameId;
+    }
+
   private: 
     // Give threads specific tasks, to reduce the chance of 
     //  critical work being pre-empted.
@@ -164,6 +181,10 @@ namespace dxvk {
     D3D9RtxFlags m_flags = 0xFFFFffff;
 
     uint32_t m_drawCallID = 0;
+    // Note: A frame identifier the the main thread holds on to passed down into thread invocations such that
+    // Reflex markers have a consistent ID despite executing in parallel (as typical methods of getting a frame ID
+    // in DXVK depend on say when the submit thread's present happens which is unpredictable).
+    uint64_t m_reflexFrameId = 0;
 
     std::vector<Matrix4> m_stagedBones;
     uint32_t m_stagedBonesCount = 0;

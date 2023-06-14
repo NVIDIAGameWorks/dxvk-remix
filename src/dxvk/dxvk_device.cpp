@@ -302,6 +302,7 @@ namespace dxvk {
   
   
   void DxvkDevice::presentImage(
+    std::uint64_t                   cachedReflexFrameId,
     const Rc<vk::Presenter>&        presenter,
           DxvkSubmitStatus*         status) {
     ScopedCpuProfileZone();
@@ -309,19 +310,24 @@ namespace dxvk {
     status->result = VK_NOT_READY;
 
     // NV-DXVK start: Integrate Reflex
-    m_objects.metaReflex().endRendering(getCurrentFrameId());
+
+    // Note: End rendering now that presentation is desired to be queued up. This presentImage call is done on the
+    // same CS thread that rendering was started on so this should be consistent with when a frame starts versus ends.
+    // Additionally, it is possible that this could be called without a matching startRendering call for this frame due
+    // to all the early outs injectRtx does, but Reflex should be able to deal with missing markers on a given frame.
+    // If this becomes a problem in the future then we may need to handle adding in missing end markers in our own Reflex
+    // integration somehow.
+    m_objects.metaReflex().endRendering(cachedReflexFrameId);
 
     DxvkPresentInfo presentInfo;
     presentInfo.presenter = presenter;
-    presentInfo.frameId = getCurrentFrameId();
+    presentInfo.cachedReflexFrameId = cachedReflexFrameId;
     m_submissionQueue.present(presentInfo, status);
     
     {
       std::lock_guard<sync::Spinlock> statLock(m_statLock);
       m_statCounters.addCtr(DxvkStatCounter::QueuePresentCount, 1); // Increase getCurrentFrameId()
     }
-
-    m_objects.metaReflex().beginSimulation(getCurrentFrameId());
     // NV-DXVK end
   }
   

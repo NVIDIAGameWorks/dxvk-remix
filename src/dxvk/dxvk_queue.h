@@ -46,7 +46,7 @@ namespace dxvk {
    */
   struct DxvkPresentInfo {
     Rc<vk::Presenter>   presenter;
-    uint32_t            frameId;
+    uint64_t            cachedReflexFrameId;
   };
 
 

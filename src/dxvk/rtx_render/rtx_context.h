@@ -26,6 +26,7 @@
 #include "rtx_asset_exporter.h"
 #include "rtx/pass/nrd_args.h"
 
+#include <cstdint>
 #include <chrono>
 #include "rtx_options.h"
 
@@ -65,8 +66,6 @@ namespace dxvk {
     float getWallTimeSinceLastCall();
     float getGpuIdleTimeSinceLastCall();
 
-    void endFrame(Rc<DxvkImage> targetImage = nullptr);
-
     /**
       * \brief Reset screen resolution, and resize all screen
       *        buffers to specified resolution if required.
@@ -80,9 +79,12 @@ namespace dxvk {
       *        and the currently bound render target if not.
       *        Will flush the scene and perform other non rendering tasks.
       * 
+      * \param [in] cachedReflexFrameId: The Reflex frame ID at the time of calling, cached so Reflex can have
+      * consistent frame IDs throughout the dispatches of an application frame.
       * \param [in] targetImage: Image to store raytraced result in
       */
-    void injectRTX(Rc<DxvkImage> targetImage = nullptr);
+    void injectRTX(std::uint64_t cachedReflexFrameId, Rc<DxvkImage> targetImage = nullptr);
+    void endFrame(std::uint64_t cachedReflexFrameId, Rc<DxvkImage> targetImage = nullptr);
 
     /**
       * \brief Set D3D9 specific constant buffers
