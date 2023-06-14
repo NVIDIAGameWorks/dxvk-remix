@@ -98,11 +98,37 @@ namespace dxvk {
     RtxReflex(DxvkDevice* device);
     ~RtxReflex();
 
-    void beginSimulation(std::uint64_t frameId);
-    void endSimulationBeginRendering(std::uint64_t frameId);
-    void endRendering(std::uint64_t frameId);
-    void beginPresentation(std::uint64_t frameId);
-    void endPresentation(std::uint64_t frameId);
+    /**
+      * \brief: Performs a Reflex sleep, should be placed typically right before the present function finishes to block the
+      * application from starting its next frame (since input sampling typically happens near the start of an application frame).
+      */
+    void sleep() const;
+    /**
+      * \brief: Adds a marker for the start of the simulation. Thread-safe with respect to Reflex.
+      */
+    void beginSimulation(std::uint64_t frameId) const;
+    /**
+      * \brief: Adds a marker for the end of the simulation. Thread-safe with respect to Reflex.
+      */
+    void endSimulation(std::uint64_t frameId) const;
+    /**
+      * \brief: Adds a marker for the start of render command submission. Thread-safe with respect to Reflex.
+      */
+    void beginRendering(std::uint64_t frameId) const;
+    /**
+      * \brief: Adds a marker for the end of render command submission. Thread-safe with respect to Reflex.
+      */
+    void endRendering(std::uint64_t frameId) const;
+    /**
+      * \brief: Adds a marker for the start of presentation. Thread-safe with respect to Reflex.
+      */
+    void beginPresentation(std::uint64_t frameId) const;
+    /**
+      * \brief: Adds a marker for the end of presentation. Thread-safe with respect to Reflex.
+      */
+    void endPresentation(std::uint64_t frameId) const;
+
+    void updateMode();
 
     /**
       * \brief: Gets latency stats from Reflex. Stats are initialized to all zeros when Reflex has not been initialized (due to
@@ -136,8 +162,7 @@ namespace dxvk {
     // say this anywhere but it is reasonable to assume).
     ReflexMode m_currentReflexMode = ReflexMode::None;
 
-    void updateMode();
-    void setMarker(std::uint64_t frameId, std::uint32_t marker);
+    void setMarker(std::uint64_t frameId, std::uint32_t marker) const;
   };
 
 }

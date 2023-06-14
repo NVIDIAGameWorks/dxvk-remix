@@ -113,8 +113,6 @@ namespace dxvk {
 
 
   void DxvkSubmissionQueue::submitCmdLists() {
-    ScopedCpuProfileZone();
-
     env::setThreadName("dxvk-submit");
 
     std::unique_lock<dxvk::mutex> lock(m_mutex);
@@ -126,7 +124,9 @@ namespace dxvk {
       
       if (m_stopped.load())
         return;
-      
+
+      ScopedCpuProfileZone();
+
       DxvkSubmitEntry entry = std::move(m_submitQueue.front());
       lock.unlock();
 
@@ -145,13 +145,13 @@ namespace dxvk {
         } else if (entry.present.presenter != nullptr) {
           
           // NV-DXVK start: Reflex present start
-          m_device->getCommon()->metaReflex().beginPresentation(entry.present.frameId);
+          m_device->getCommon()->metaReflex().beginPresentation(entry.present.cachedReflexFrameId);
           // NV-DXVK end
 
           status = entry.present.presenter->presentImage();
 
           // NV-DXVK start: Reflex present end
-          m_device->getCommon()->metaReflex().endPresentation(entry.present.frameId);
+          m_device->getCommon()->metaReflex().endPresentation(entry.present.cachedReflexFrameId);
           // NV-DXVK end
 
           if (m_device->config().presentThrottleDelay > 0) {
@@ -205,7 +205,6 @@ namespace dxvk {
   
   
   void DxvkSubmissionQueue::finishCmdLists() {
-    ScopedCpuProfileZone();
     env::setThreadName("dxvk-queue");
 
     std::unique_lock<dxvk::mutex> lock(m_mutex);
@@ -224,6 +223,8 @@ namespace dxvk {
 
       if (m_stopped.load())
         return;
+
+      ScopedCpuProfileZone();
       
       DxvkSubmitEntry entry = std::move(m_finishQueue.front());
       lock.unlock();
