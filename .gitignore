@@ -34,4 +34,4 @@
 /dxvk.conf
 .vscode/
 /external
-
+**/_regress_output/**

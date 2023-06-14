@@ -1,10 +1,6 @@
 import argparse
-import sys
-import os
 import pathlib
-import pxr
 from pxr import Usd
-from pxr import UsdLux
 from enum import Enum
 
 parser = argparse.ArgumentParser()
@@ -30,7 +26,7 @@ class CaptureDiff:
             print("SUCCESS: Stages are the same!")
         else:
             print("ERROR: Stages are different!")
-            diff.__printErrors()
+            diff.__print_errors()
 
     def passed(self):
         return self.__result == CaptureDiff.Result.Success
@@ -138,41 +134,80 @@ class CaptureDiff:
                 goldenVal = pathlib.Path(str(goldenVal)).name
                 otherVal = "".join(str(goldenVal).split("@"))
                 otherVal = pathlib.Path(str(goldenVal)).name
-            if not self.__compareValues(goldenType, goldenVal, otherType, otherVal): 
+            if not CaptureDiff.Attribute.__compareValues(goldenType, goldenVal, otherVal): 
                 self.goldenVal = goldenVal
                 self.otherVal = otherVal
                 return CaptureDiff.Result.Diff
             return CaptureDiff.Result.Success
         
-        def __compareValues(self, goldenType, goldenVal, otherType, otherVal):
-            def floatDiff(golden, other):
-                absDiff = abs(golden-other)
-                if(golden != 0):
-                    if absDiff / golden > CaptureDiff.floatTolerance:
-                        return False
-                elif absDiff > CaptureDiff.floatTolerance:
-                    return False
-                return True
-            if goldenType.isArray:
-                if goldenVal is None or otherVal is None:
+        @staticmethod
+        def __compareValues(type, goldenVal, otherVal):
+            if type.isArray:
+                return CaptureDiff.Attribute.__compare_array(type, goldenVal, otherVal)
+            else:
+                return CaptureDiff.Attribute.__compare_scalar(type, goldenVal, otherVal)
+
+        @staticmethod
+        def __compare_array(type, goldenArray, otherArray):
+            if not CaptureDiff.Attribute.__is_not_none(goldenArray, otherArray):
+                if CaptureDiff.Attribute.__is_valid_none(goldenArray, otherArray):
                     return True
-                if len(goldenVal) != len(otherVal):
+                else:
                     return False
-                for i in range(len(goldenVal)-1):
-                    if goldenType == "float[]":
-                        if not floatDiff(goldenVal[i], otherVal[i]):
-                            return False
-                    else:
-                        if goldenVal[i] != otherVal[i]:
-                            return False
+            if len(goldenArray) != len(otherArray):
+                return False
+            if len(goldenArray) == 0:
                 return True
-            if goldenType == "float":
-                if not floatDiff(goldenVal, otherVal):
+            bMemberIsArray = False
+            if CaptureDiff.Attribute.__is_py_array(goldenArray[0]) > 0:
+                bMemberIsArray = True
+            for i in range(len(goldenArray)-1):
+                if bMemberIsArray:
+                    if not CaptureDiff.Attribute.__compare_array(type, goldenArray[i], otherArray[i]):
+                        return False
+                elif not CaptureDiff.Attribute.__compare_scalar(type, goldenArray[i], otherArray[i]):
                     return False
-            return goldenVal == otherVal
+            return True
+        
+        @staticmethod
+        def __is_py_array(goldenArray):
+            return hasattr(goldenArray, "__len__") and not isinstance(goldenArray, str)
+        
+        @staticmethod
+        def __compare_scalar(type, goldenScalar, otherScalar):
+            if not CaptureDiff.Attribute.__is_not_none(goldenScalar, otherScalar):
+                if CaptureDiff.Attribute.__is_valid_none(goldenScalar, otherScalar):
+                    return True
+                else:
+                    return False
+            if type == "float":
+                if not CaptureDiff.Attribute.__float_diff(goldenScalar, otherScalar):
+                    return False
+            return goldenScalar == otherScalar
+        
+        @staticmethod
+        def __is_not_none(golden, other):
+            if golden is not None and other is not None:
+                return True
+
+        @staticmethod
+        def __is_valid_none(golden, other):
+            if golden is None and other is None:
+                return True
+            return False
+
+        @staticmethod
+        def __float_diff(golden, other):
+            absDiff = abs(golden-other)
+            if(golden != 0):
+                if absDiff / golden > CaptureDiff.floatTolerance:
+                    return False
+            elif absDiff > CaptureDiff.floatTolerance:
+                return False
+            return True
 
     
-    def __printErrors(self):
+    def __print_errors(self):
         missingPrims = []
         extraPrims = []
         diffPrims = []
@@ -194,7 +229,7 @@ class CaptureDiff:
         if(len(diffPrims) > 0):
             print("DIFF PRIMS")
             for diffPrim in diffPrims:
-                print("  " + str(diffPrim.sdfPath))
+                # print("  " + str(diffPrim.sdfPath))
                 missingAttrs = []
                 extraAttrs = []
                 diffAttrs = []
