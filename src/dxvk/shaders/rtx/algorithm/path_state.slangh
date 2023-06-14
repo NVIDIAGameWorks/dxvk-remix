@@ -24,6 +24,7 @@
 #include "rtx/concept/ray_portal/ray_portal.slangh"
 #include "rtx/utility/packing.slangh"
 #include "rtx/concept/payload/payload.slangh"
+#include "rtx/algorithm/resolve_expanded.slangh"
 
 // RNG state is not carried via PathState from RayGen to Hit shader, 
 // but instead it is reconstructed using following explicit constants.
@@ -195,16 +196,29 @@ struct MemoryPathState : IPayload
 
     return pathState;
   }
-
+#ifdef RT_SHADER_EXECUTION_REORDERING
   bool shouldReorder(out uint coherenceHints, out uint numCoherenceHints)
   {
-    // PathState pathState = unpack();
-
     coherenceHints = 0;
     numCoherenceHints = 0;
 
+    // getSeparateUnorderedApproximationsActive(...)
+    if (cb.enableSeparateUnorderedApproximations &&
+        cb.enableUnorderedResolveInIndirectRays) 
+    {
+      PathState pathState = unpack();
+      addCoherenceHintAsLeastImportant1Bit(pathState.bounceIteration <= 1, coherenceHints, numCoherenceHints);
+    }
+
     return true;
   }
+
+#else
+  bool shouldReorder(out uint coherenceHints, out uint numCoherenceHints)
+  {
+    return false;
+  }
+#endif
 
 #endif // defined(RAY_PIPELINE)
 }
