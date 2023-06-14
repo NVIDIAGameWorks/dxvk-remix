@@ -982,6 +982,20 @@ namespace dxvk {
     ScopedCpuProfileZone();
     m_parent->Flush();
 
+    // NV-DXVK start: Reflex integration
+    auto& reflex = m_device->getCommon()->metaReflex();
+    auto& d3d9Rtx = m_parent->m_rtx;
+
+    // Note: Simulation ended on the same thread it started on (the main thread). This is put here specifically as when the application
+    // calls into DXVK's Present this typically means it is done all its work for the frame. The application's own rendering calls are counted
+    // as simulation here not rendering as they are really just mapped into Remix's geometry and other processing rather than rendering directly,
+    // instead the actual rendering happens on the DXVK side once the CS thread kicks off Vulkan work. The Reflex markers for rendering
+    // are tracked on that thread in parallel which may mean some overlap with the simulation region occurs, but this is allowed in Reflex (same
+    // goes for the present markers).
+    reflex.endSimulation(d3d9Rtx.GetReflexFrameId());
+
+    // NV-DXVK end
+
     // Retrieve the image and image view to present
     auto swapImage = m_backBuffers[0]->GetCommonTexture()->GetImage();
     auto swapImageView = m_backBuffers[0]->GetImageView(false);
@@ -1043,22 +1057,37 @@ namespace dxvk {
     m_parent->m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
 
     // NV-DXVK start: Reflex integration
-    if (m_device->getCommon()->metaReflex().reflexInitialized() && RtxOptions::Get()->reflexMode() != ReflexMode::None) {
-      // When using Reflex, we should synchronize the present with client thread, this reduces latency
-      //   by backpressuring the client until presentation has complete
-      m_parent->SynchronizeCsThread();
-    }
+    // Note: Sleeping here in the present function essentially makes it so when the application calls into a D3D Present function it will block for the desired amount of time Reflex indicates.
+    // This helps accomplish what Reflex desires by delaying the point at which the application does input sampling likely near the start of its simulation on the next frame, thus reducing latency.
+    reflex.sleep();
+
+    // Note: Increment the Reflex Frame ID to prepare for the next frame, now that this Reflex frame has ended.
+    // Take care to ensure this happens after all other application thread operations call GetReflexFrameId for this frame
+    // otherwise inconsistent frame IDs may be passed to Reflex.
+    d3d9Rtx.IncrementReflexFrameId();
+
+    // Note: After presentation is typically where the application calling into DXVK will start its next frame simulation wise, so we put the marker here
+    // on the main thread after the Reflex sleep has completed to encompass this region.
+    reflex.beginSimulation(d3d9Rtx.GetReflexFrameId());
     // NV-DXVK end
   }
 
 
   void D3D9SwapChainEx::SubmitPresent(const vk::PresenterSync& Sync, uint32_t FrameId) {
     ScopedCpuProfileZone();
+
+    // NV-DXVK start: Reflex integration
+    auto& d3d9Rtx = m_parent->m_rtx;
+
+    const auto currentReflexFrameId = d3d9Rtx.GetReflexFrameId();
+    // NV-DXVK end
+
     // Present from CS thread so that we don't
     // have to synchronize with it first.
     m_presentStatus.result = VK_NOT_READY;
 
     m_parent->EmitCs([this,
+      cReflexFrameId = currentReflexFrameId,
       cFrameId     = FrameId,
       cSync        = Sync,
       cHud         = m_hud,
@@ -1072,7 +1101,7 @@ namespace dxvk {
       if (cHud != nullptr && !cFrameId)
         cHud->update();
 
-      m_device->presentImage(m_presenter, &m_presentStatus);
+      m_device->presentImage(cReflexFrameId, m_presenter, &m_presentStatus);
     });
 
     m_parent->FlushCsChunk();

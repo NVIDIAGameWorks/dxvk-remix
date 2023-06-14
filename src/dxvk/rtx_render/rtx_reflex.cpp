@@ -29,6 +29,13 @@
 #include "pclstats.h"
 PCLSTATS_DEFINE();
 
+// Note: Useful for validating that a frame's markers are being placed in reasonable locations and have consistent
+// Frame ID numbering. Note though the dynamic markers used by Reflex are somewhat expensive so this should only be
+// enabled if debugging is needed. Additionally due to the type of markers in use, they will only take effect when
+// REMIX_DEVELOPMENT is defined as well, in addition to TRACY_ENABLE (required to build with Tracy to begin with
+// though, so this is implicit).
+// #define REFLEX_TRACY_MARKERS
+
 namespace dxvk {
 
   const char* NvLLStatusToString(NvLL_VK_Status status) {
@@ -129,46 +136,54 @@ namespace dxvk {
     NvLL_VK_Unload();
   }
 
-  void RtxReflex::beginSimulation(std::uint64_t frameId) {
-    // Handle Reflex sleeping if initialized
+  void RtxReflex::sleep() const {
+    // Early out if Reflex was not initialized or if the Reflex mode is set to None
 
-    if (reflexInitialized()) {
-      Rc<vk::DeviceFn> vkd = m_device->vkd();
-
-      // Query semaphore
-      uint64_t signalValue = 0;
-      vkGetSemaphoreCounterValue(vkd->device(), m_lowLatencySemaphore, &signalValue);
-      signalValue += 1;
-
-      // Sleep
-      if (RtxOptions::Get()->reflexMode() != ReflexMode::None) {
-        VkSemaphoreWaitInfo semaphoreWaitInfo;
-        semaphoreWaitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO;
-        semaphoreWaitInfo.pNext = NULL;
-        semaphoreWaitInfo.flags = 0;
-        semaphoreWaitInfo.semaphoreCount = 1;
-        semaphoreWaitInfo.pSemaphores = &m_lowLatencySemaphore;
-        semaphoreWaitInfo.pValues = &signalValue;
-
-        NvLL_VK_Status status = NVLL_VK_OK;
-
-        {
-          ScopedCpuProfileZoneN("Reflex_Sleep");
-          status = NvLL_VK_Sleep(vkd->device(), signalValue);
-        }
-
-        if (status == NVLL_VK_OK) {
-          ScopedCpuProfileZoneN("Reflex_WaitSemaphore");
-          vkWaitSemaphores(vkd->device(), &semaphoreWaitInfo, 500000000);
-        } else {
-          Logger::warn(str::format("Unable to invoke Reflex sleep function: ", NvLLStatusToString(status)));
-        }
-      }
+    if (!reflexInitialized() || RtxOptions::Get()->reflexMode() == ReflexMode::None) {
+      return;
     }
 
+    Rc<vk::DeviceFn> vkd = m_device->vkd();
+
+    // Query semaphore
+
+    uint64_t signalValue = 0;
+    vkGetSemaphoreCounterValue(vkd->device(), m_lowLatencySemaphore, &signalValue);
+    signalValue += 1;
+
+    // Sleep
+
+    VkSemaphoreWaitInfo semaphoreWaitInfo;
+    semaphoreWaitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO;
+    semaphoreWaitInfo.pNext = NULL;
+    semaphoreWaitInfo.flags = 0;
+    semaphoreWaitInfo.semaphoreCount = 1;
+    semaphoreWaitInfo.pSemaphores = &m_lowLatencySemaphore;
+    semaphoreWaitInfo.pValues = &signalValue;
+
+    NvLL_VK_Status status = NVLL_VK_OK;
+
+    {
+      ScopedCpuProfileZoneN("Reflex_Sleep");
+      status = NvLL_VK_Sleep(vkd->device(), signalValue);
+    }
+
+    if (status == NVLL_VK_OK) {
+      ScopedCpuProfileZoneN("Reflex_WaitSemaphore");
+      vkWaitSemaphores(vkd->device(), &semaphoreWaitInfo, 500000000);
+    } else {
+      Logger::warn(str::format("Unable to invoke Reflex sleep function: ", NvLLStatusToString(status)));
+    }
+  }
+
+  void RtxReflex::beginSimulation(std::uint64_t frameId) const {
+#ifdef REFLEX_TRACY_MARKERS
+    ScopedCpuProfileZoneDynamic(str::format("Begin Simulation ", frameId));
+#endif
+
     // Place simulation start marker
-    // With DLFG, should put this marker before sleep code so that presents can overlap with the start of the next frame
-    setMarker(frameId, VK_SIMULATION_START); // cannot find the counter part of sl::eReflexMarkerSleep
+
+    setMarker(frameId, VK_SIMULATION_START);
 
     // Place latency ping marker when requested
 
@@ -188,26 +203,51 @@ namespace dxvk {
     }
   }
 
-  void RtxReflex::endSimulationBeginRendering(std::uint64_t frameId) {
-    updateMode();
+  void RtxReflex::endSimulation(std::uint64_t frameId) const {
+#ifdef REFLEX_TRACY_MARKERS
+    ScopedCpuProfileZoneDynamic(str::format("End Simulation ", frameId));
+#endif
 
+    // Note: Reflex initialization not checked here as setMarker checks internally and needs to be called even when Reflex is not
+    // initialized for PCL stats.
     setMarker(frameId, VK_SIMULATION_END);
+  }
+
+  void RtxReflex::beginRendering(std::uint64_t frameId) const {
+#ifdef REFLEX_TRACY_MARKERS
+    ScopedCpuProfileZoneDynamic(str::format("Begin Rendering ", frameId));
+#endif
+
+    // Note: Reflex initialization not checked here as setMarker checks internally and needs to be called even when Reflex is not
+    // initialized for PCL stats.
     setMarker(frameId, VK_RENDERSUBMIT_START);
   }
 
-  void RtxReflex::endRendering(std::uint64_t frameId) {
+  void RtxReflex::endRendering(std::uint64_t frameId) const {
+#ifdef REFLEX_TRACY_MARKERS
+    ScopedCpuProfileZoneDynamic(str::format("End Rendering ", frameId));
+#endif
+
     // Note: Reflex initialization not checked here as setMarker checks internally and needs to be called even when Reflex is not
     // initialized for PCL stats.
     setMarker(frameId, VK_RENDERSUBMIT_END);
   }
 
-  void RtxReflex::beginPresentation(std::uint64_t frameId) {
+  void RtxReflex::beginPresentation(std::uint64_t frameId) const {
+#ifdef REFLEX_TRACY_MARKERS
+    ScopedCpuProfileZoneDynamic(str::format("Begin Presentation ", frameId));
+#endif
+
     // Note: Reflex initialization not checked here as setMarker checks internally and needs to be called even when Reflex is not
     // initialized for PCL stats.
     setMarker(frameId, VK_PRESENT_START);
   }
 
-  void RtxReflex::endPresentation(std::uint64_t frameId) {
+  void RtxReflex::endPresentation(std::uint64_t frameId) const {
+#ifdef REFLEX_TRACY_MARKERS
+    ScopedCpuProfileZoneDynamic(str::format("End Presentation ", frameId));
+#endif
+
     // Note: Reflex initialization not checked here as setMarker checks internally and needs to be called even when Reflex is not
     // initialized for PCL stats.
     setMarker(frameId, VK_PRESENT_END);
@@ -441,7 +481,7 @@ namespace dxvk {
     m_currentReflexMode = newMode;
   }
 
-  void RtxReflex::setMarker(std::uint64_t frameId, std::uint32_t marker) {
+  void RtxReflex::setMarker(std::uint64_t frameId, std::uint32_t marker) const {
     // Set PCL markers
 
     if (g_PCLStatsIdThread == -1) {
