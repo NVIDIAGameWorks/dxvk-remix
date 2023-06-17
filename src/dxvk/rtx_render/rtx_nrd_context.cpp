@@ -599,7 +599,7 @@ namespace dxvk {
         const nrd::PipelineDesc& pipelineDesc = denoiserDesc.pipelines[dispatchDesc.pipelineIndex];
         const ComputePipeline& computePipeline = m_computePipelines[dispatchDesc.pipelineIndex];
 
-        ScopedGpuProfileZoneDynamic(ctx, dispatchDesc.name);
+        ScopedGpuProfileZoneDynamicZ(ctx, dispatchDesc.name);
 
         VkDescriptorSet descriptorSet = ctx->allocateDescriptorSet(computePipeline.descriptorSetLayout, "NRD descriptor set");
 

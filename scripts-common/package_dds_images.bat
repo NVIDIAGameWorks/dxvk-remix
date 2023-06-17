@@ -21,8 +21,8 @@ if not exist %modPath% (
 call :normalizePath %modPath%
 set modFullPath=%RETVAL%
 
-dir /s /b %modFullPath%\*.dds > dds_files_list
-..\external\rtxio\bin\RtxIoResourcePackager.exe -l dds_files_list -o %modFullPath%\mod_00.pkg -b %modFullPath% -c 12 -v -m 8
+dir /s /b "%modFullPath%\*.dds" > dds_files_list
+..\external\rtxio\bin\RtxIoResourcePackager.exe -l dds_files_list -o "%modFullPath%\mod_00.pkg" -b "%modFullPath%" -c 12 -v -m 8
 del dds_files_list
 
 :exit
