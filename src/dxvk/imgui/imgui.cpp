@@ -9040,10 +9040,14 @@ ImGuiWindow* ImGui::GetTopMostAndVisiblePopupModal()
     return NULL;
 }
 
-void ImGui::OpenPopup(const char* str_id, ImGuiPopupFlags popup_flags)
-{
-    ImGuiContext& g = *GImGui;
+void ImGui::OpenPopup(const char* str_id, ImGuiPopupFlags popup_flags) {
+  ImGuiContext& g = *GImGui;
+  if (g.CurrentWindow != nullptr) {
     OpenPopupEx(g.CurrentWindow->GetID(str_id), popup_flags);
+  }
+  else {
+    //Logger::warn("Attempted to open a nullptr ImGui window, ignoring.");
+  }
 }
 
 void ImGui::OpenPopup(ImGuiID id, ImGuiPopupFlags popup_flags)
