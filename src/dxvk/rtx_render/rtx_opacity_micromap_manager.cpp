@@ -26,6 +26,7 @@
 #include "dxvk_device.h"
 #include "dxvk_scoped_annotation.h"
 #include "rtx_options.h"
+#include "rtx_hash_collision_detection.h"
 
 #include "rtx_imgui.h"
 
@@ -43,27 +44,6 @@ const VkDeviceSize kOmmBufferAlignment = 16;
 const VkDeviceSize kMicromapBufferAlignment = 256;
 
 namespace dxvk {
-
-  XXH64_hash_t calculateMaterialSourceHash(const RtInstance& instance) {
-    XXH64_hash_t h = kEmptyHash;
-#define ADD_TO_HASH(x) h = XXH3_64bits_withSeed(&x, sizeof(x), h)
-
-    ADD_TO_HASH(instance.getMaterialHash());
-    ADD_TO_HASH(instance.surface.alphaState);
-    // ToDo: needed?
-    ADD_TO_HASH(instance.surface.textureColorArg1Source);
-    ADD_TO_HASH(instance.surface.textureColorArg2Source);
-    ADD_TO_HASH(instance.surface.textureColorOperation);
-    ADD_TO_HASH(instance.surface.textureAlphaArg1Source);
-    ADD_TO_HASH(instance.surface.textureAlphaArg2Source);
-    ADD_TO_HASH(instance.surface.textureAlphaOperation);
-    const uint8_t tFactorAlpha = instance.surface.tFactor >> 24;
-    ADD_TO_HASH(tFactorAlpha);
-    ADD_TO_HASH(instance.surface.textureTransform);
-
-    return h;
-  }
-
   DxvkOpacityMicromap::DxvkOpacityMicromap(Rc<DxvkDevice> device) : m_device(device) { }
 
   DxvkOpacityMicromap::~DxvkOpacityMicromap() {
@@ -225,42 +205,62 @@ namespace dxvk {
   OmmRequest::OmmRequest(const RtInstance& _instance, const InstanceManager& instanceManager, uint32_t _quadSliceIndex)
     : instance(_instance)
     , quadSliceIndex(_quadSliceIndex) {
-    ommSrcHash = calculateMaterialSourceHash(instance);
 
-    if (isBillboardOmmRequest()) {
-      const IntersectionBillboard& billboard = instanceManager.getBillboards()[instance.getFirstBillboardIndex() + quadSliceIndex];
-      ommSrcHash = XXH3_64bits_withSeed(&billboard.texCoordHash, sizeof(billboard.texCoordHash), ommSrcHash);
-      ommSrcHash = XXH3_64bits_withSeed(&billboard.vertexOpacityHash, sizeof(billboard.vertexOpacityHash), ommSrcHash);
-      numTriangles = 2;
-    } 
-    else {
-      numTriangles = instance.getBlas()->modifiedGeometryData.calculatePrimitiveCount();
-      
-      assert(instance.getTexcoordHash() != kEmptyHash);
+    OpacityMicromapHashSourceData hashSourceData;
 
-      ommSrcHash = XXH3_64bits_withSeed(&instance.getTexcoordHash(), sizeof(instance.getTexcoordHash()), ommSrcHash);
-      // ToDo: is this already included in any of the previous hashes added up to this point?
-      ommSrcHash = XXH3_64bits_withSeed(&instance.surface.textureTransform, sizeof(instance.surface.textureTransform), ommSrcHash);
+    // Fill material properties
+    {
+      hashSourceData.materialHash = instance.getMaterialHash();
+      hashSourceData.alphaState = instance.surface.alphaState;
+      hashSourceData.textureColorArg1Source = instance.surface.textureColorArg1Source;
+      hashSourceData.textureColorArg2Source = instance.surface.textureColorArg2Source;
+      hashSourceData.textureColorOperation = instance.surface.textureColorOperation;
+      hashSourceData.textureAlphaArg1Source = instance.surface.textureAlphaArg1Source;
+      hashSourceData.textureAlphaArg2Source = instance.surface.textureAlphaArg2Source;
+      hashSourceData.textureAlphaOperation = instance.surface.textureAlphaOperation;
+      hashSourceData.tFactorAlpha = instance.surface.tFactor >> 24;
+      hashSourceData.textureTransform = instance.surface.textureTransform;
     }
 
-    ommSrcHash = XXH3_64bits_withSeed(&numTriangles, sizeof(numTriangles), ommSrcHash);
+    if (isBillboardOmmRequest()) {
+      hashSourceData.numTriangles = 2;
 
-    // Select OmmFormat for the OMM request and add it to the hash
+      const IntersectionBillboard& billboard = instanceManager.getBillboards()[instance.getFirstBillboardIndex() + quadSliceIndex];
+      hashSourceData.texCoordHash = billboard.texCoordHash;
+      hashSourceData.vertexOpacityHash = billboard.vertexOpacityHash;
+    } 
+    else {
+      hashSourceData.numTriangles = instance.getBlas()->modifiedGeometryData.calculatePrimitiveCount();
+      hashSourceData.texCoordHash = instance.getTexcoordHash();
+      // ToDo add vertexOpacityHash
+    }
+
+    // Select OmmFormat for the OMM request
     {
-      ommFormat = VK_OPACITY_MICROMAP_FORMAT_4_STATE_EXT;
+      hashSourceData.ommFormat = VK_OPACITY_MICROMAP_FORMAT_4_STATE_EXT;
 
       auto& alphaState = instance.surface.alphaState;
 
       if (OpacityMicromapOptions::Building::allow2StateOpacityMicromaps() && (
         isBillboardOmmRequest() ||
         (!alphaState.isFullyOpaque && (alphaState.isParticle || alphaState.isDecal)) || alphaState.emissiveBlend))
-        ommFormat = VK_OPACITY_MICROMAP_FORMAT_2_STATE_EXT;
+        hashSourceData.ommFormat = VK_OPACITY_MICROMAP_FORMAT_2_STATE_EXT;
 
       if (OpacityMicromapOptions::Building::force2StateOpacityMicromaps())
-        ommFormat = VK_OPACITY_MICROMAP_FORMAT_2_STATE_EXT;
-
-      ommSrcHash = XXH3_64bits_withSeed(&ommFormat, sizeof(ommFormat), ommSrcHash);
+        hashSourceData.ommFormat = VK_OPACITY_MICROMAP_FORMAT_2_STATE_EXT;
     }
+
+    if (OpacityMicromapOptions::Cache::hashInstanceIndexOnly()) {
+      ommSrcHash = instance.getId();
+    }
+    else { // Generate a hash from the gathered source data
+      ommSrcHash = XXH3_64bits(&hashSourceData, sizeof(hashSourceData));
+
+      HashCollisionDetection::registerHashedSourceData(ommSrcHash, static_cast<void*>(&hashSourceData), HashSourceDataCategory::OpacityMicromap);
+    }
+  
+    numTriangles = hashSourceData.numTriangles;
+    ommFormat = hashSourceData.ommFormat;
   }
 
   OpacityMicromapManager::CachedSourceData::~CachedSourceData() {
@@ -478,12 +478,14 @@ namespace dxvk {
       ImGui::DragInt("Budget: Max Allowed Size [MB]", &OpacityMicromapOptions::Cache::maxBudgetSizeMBObject(), 8.f, 0, 256 * 1024, "%d", sliderFlags);
       ImGui::DragInt("Budget: Min Vidmem Free To Not Allocate [MB]", &OpacityMicromapOptions::Cache::minFreeVidmemMBToNotAllocateObject(), 16.f, 0, 256 * 1024, "%d", sliderFlags);
       ADVANCED(ImGui::DragInt("Min Usage Frame Age Before Eviction", &OpacityMicromapOptions::Cache::minUsageFrameAgeBeforeEvictionObject(), 1.f, 0, 60 * 3600, "%d", sliderFlags));
+      ADVANCED(ImGui::Checkbox("Hash Instance Index Only", &OpacityMicromapOptions::Cache::hashInstanceIndexOnlyObject()));
       ImGui::Unindent();
     }
 
 
     if (ImGui::CollapsingHeader("Requests Filter", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
+      ImGui::Checkbox("Enable Filtering", &OpacityMicromapOptions::BuildRequests::filteringObject());
       ImGui::Checkbox("Animated Instances", &OpacityMicromapOptions::BuildRequests::enableAnimatedInstancesObject());
       ImGui::Checkbox("Particles", &OpacityMicromapOptions::BuildRequests::enableParticlesObject());
       ADVANCED(ImGui::Checkbox("Custom Filters for Billboards", &OpacityMicromapOptions::BuildRequests::customFiltersForBillboardsObject()));
@@ -719,38 +721,40 @@ namespace dxvk {
           m_blackListedList.find(ommSrcHash) != m_blackListedList.end())
         return false;
   
-      uint32_t minInstanceFrameAge = OpacityMicromapOptions::BuildRequests::minInstanceFrameAge();
-      uint32_t minNumRequests = OpacityMicromapOptions::BuildRequests::minNumRequests();
-      uint32_t minNumFramesRequested = OpacityMicromapOptions::BuildRequests::minNumFramesRequested();
+      if (OpacityMicromapOptions::BuildRequests::filtering()) {
+        uint32_t minInstanceFrameAge = OpacityMicromapOptions::BuildRequests::minInstanceFrameAge();
+        uint32_t minNumRequests = OpacityMicromapOptions::BuildRequests::minNumRequests();
+        uint32_t minNumFramesRequested = OpacityMicromapOptions::BuildRequests::minNumFramesRequested();
 
-      if (instance.getBillboardCount() > 0 && OpacityMicromapOptions::BuildRequests::customFiltersForBillboards()) {
-        // Lower the filter requirements for particles since they are dynamic
-        // But still we want to avoid baking particles that do not get reused for now
-        minInstanceFrameAge = 0;
-        minNumRequests = 2;
-        minNumFramesRequested = 0;
-      }
-
-      if (!ommRequest.isBillboardOmmRequest()) {
-        const uint32_t currentFrameIndex = m_device->getCurrentFrameId();
-
-        OMMBuildRequestStatistics& ommBuildRequestStatistics = m_ommBuildRequestStatistics[ommSrcHash];
-        ommBuildRequestStatistics.numTimesRequested = 1 + std::min<uint16_t>(UINT16_MAX - 1, ommBuildRequestStatistics.numTimesRequested);
-
-        if (currentFrameIndex != ommBuildRequestStatistics.lastRequestFrameId) {
-          ommBuildRequestStatistics.lastRequestFrameId = currentFrameIndex;
-          ommBuildRequestStatistics.numFramesRequested = 1 + std::min<uint16_t>(UINT16_MAX - 1, minNumFramesRequested);
+        if (instance.getBillboardCount() > 0 && OpacityMicromapOptions::BuildRequests::customFiltersForBillboards()) {
+          // Lower the filter requirements for particles since they are dynamic
+          // But still we want to avoid baking particles that do not get reused for now
+          minInstanceFrameAge = 0;
+          minNumRequests = 2;
+          minNumFramesRequested = 0;
         }
 
-        if (instance.getFrameAge() < minInstanceFrameAge)
-          return false;
+        if (!ommRequest.isBillboardOmmRequest()) {
+          const uint32_t currentFrameIndex = m_device->getCurrentFrameId();
 
-        if (ommBuildRequestStatistics.numTimesRequested < minNumRequests ||
-            ommBuildRequestStatistics.numFramesRequested < minNumFramesRequested)
-          return false;
+          OMMBuildRequestStatistics& ommBuildRequestStatistics = m_ommBuildRequestStatistics[ommSrcHash];
+          ommBuildRequestStatistics.numTimesRequested = 1 + std::min<uint16_t>(UINT16_MAX - 1, ommBuildRequestStatistics.numTimesRequested);
 
-        // Request passed the check, don't track statistics for it no more
-        m_ommBuildRequestStatistics.erase(ommSrcHash);
+          if (currentFrameIndex != ommBuildRequestStatistics.lastRequestFrameId) {
+            ommBuildRequestStatistics.lastRequestFrameId = currentFrameIndex;
+            ommBuildRequestStatistics.numFramesRequested = 1 + std::min<uint16_t>(UINT16_MAX - 1, minNumFramesRequested);
+          }
+
+          if (instance.getFrameAge() < minInstanceFrameAge)
+            return false;
+
+          if (ommBuildRequestStatistics.numTimesRequested < minNumRequests ||
+              ommBuildRequestStatistics.numFramesRequested < minNumFramesRequested)
+            return false;
+
+          // Request passed the check, don't track statistics for it no more
+          m_ommBuildRequestStatistics.erase(ommSrcHash);
+        }
       }
     }
 
