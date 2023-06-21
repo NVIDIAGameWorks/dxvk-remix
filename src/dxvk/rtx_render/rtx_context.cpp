@@ -244,6 +244,11 @@ namespace dxvk {
     // 14 of the 16 bits of an integer will be used for these pixel coordinates to pack additional data
     // into the free bits in memory payload structures on the GPU.
     assert((renderSize[0] < (1 << 14)) && (renderSize[1] < (1 << 14)));
+
+    // Update memory systems budgets for texture manager
+    getCommonObjects()->getTextureManager().clear();
+    m_device->waitForIdle();
+    getCommonObjects()->getTextureManager().updateMemoryBudgets(this);
   }
 
   // Hooked into D3D9 presentImage (same place HUD rendering is)

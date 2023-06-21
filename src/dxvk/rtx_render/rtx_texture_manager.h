@@ -90,6 +90,11 @@ namespace dxvk {
     void finalizeAllPendingTexturePromotions();
 
     /**
+      * \brief Demotes all resident material textures from high resolution
+      */
+    void demoteAllTextures();
+
+    /**
       * \brief Clears all resources managed by the resource manager.
       */
     void clear();
@@ -98,6 +103,12 @@ namespace dxvk {
       * \brief Performs garbage collection on the resource manager.
       */
     void garbageCollection();
+
+    /**
+      * \brief Recalculates the available memory for texture data
+      * \param [in] context Active dxvk context
+      */
+    void updateMemoryBudgets(const Rc<DxvkContext>& context);
 
     /**
       * \brief Calculates the number of mip levels to preload based on the number of total mip levels.
@@ -158,8 +169,6 @@ namespace dxvk {
     bool isTextureSuboptimal(const Rc<ManagedTexture>& texture) const;
     void scheduleTextureLoad(TextureRef& texture, Rc<DxvkContext>& immediateContext, bool allowAsync);
     void loadTexture(const Rc<ManagedTexture>& texture, Rc<DxvkContext>& ctx);
-
-    void updateMemoryBudgets(const Rc<DxvkContext>& context);
 
     VkDeviceSize overBudgetMib(VkDeviceSize percentageOfBudget = 100) const;
   };
