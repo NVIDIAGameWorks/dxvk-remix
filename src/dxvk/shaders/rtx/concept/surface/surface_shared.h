@@ -21,7 +21,7 @@
 */
 #pragma once
 
-enum class BlendType {
+enum class BlendType : uint8_t {
   kAlpha = 0,
   kAlphaEmissive = 1,
   kReverseAlphaEmissive = 2,
@@ -41,7 +41,7 @@ static const uint8_t surfaceBlendTypeMask = uint8_t(0xfu);
 // Note: Use caution when changing this enum, must match the values defined on the MDL side of things
 // as well as matching Vulkan's alpha compare operations due to conversions from these values at some points
 // in the code.
-enum class AlphaTestType {
+enum class AlphaTestType : uint8_t {
   kNever = 0,
   kLess = 1,
   kEqual = 2,
@@ -57,7 +57,7 @@ enum class AlphaTestType {
 
 static const uint8_t alphaTestTypeMask = uint8_t(0x7u);
 
-enum class RtTextureArgSource {
+enum class RtTextureArgSource : uint8_t {
   None = 0,
   Texture,
   VertexColor0,
@@ -65,7 +65,7 @@ enum class RtTextureArgSource {
 };
 
 // Texture stage operation, correspond to D3DTEXTUREOP
-enum class DxvkRtTextureOperation {
+enum class DxvkRtTextureOperation : uint8_t {
   Disable = 0,
   SelectArg1,
   SelectArg2,
@@ -75,7 +75,7 @@ enum class DxvkRtTextureOperation {
   Add,
 };
 
-enum class TexGenMode {
+enum class TexGenMode : uint8_t {
   None = 0,
   ViewPositions,
   CascadedViewPositions,

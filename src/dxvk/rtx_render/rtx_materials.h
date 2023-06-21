@@ -274,20 +274,10 @@ struct RtSurface {
     bool isParticle = false;
     bool isDecal = false;
     bool isBlendedTerrain = false;
-    uint8_t pad0 = 0;
-
-    bool operator==(const AlphaState& alphaState) const {
-      return alphaState.isFullyOpaque == isFullyOpaque
-          && alphaState.alphaTestType == alphaTestType
-          && alphaState.alphaTestReferenceValue == alphaTestReferenceValue
-          && alphaState.blendType == blendType
-          && alphaState.invertedBlend == invertedBlend
-          && alphaState.emissiveBlend == emissiveBlend
-          && alphaState.isParticle == isParticle
-          && alphaState.isDecal == isDecal
-          && alphaState.isBlendedTerrain == isBlendedTerrain;
-    }
   } alphaState;
+
+  // Static validation to detect any changes that require an alignment re-check
+  static_assert(sizeof(AlphaState) == 10);
 
   Matrix4 objectToWorld;
   Matrix4 prevObjectToWorld;
