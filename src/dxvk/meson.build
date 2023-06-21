@@ -218,6 +218,8 @@ dxvk_src = files([
   'rtx_render/rtx_geometry_utils.h',
   'rtx_render/rtx_hashing.cpp',
   'rtx_render/rtx_hashing.h',
+  'rtx_render/rtx_hash_collision_detection.cpp',
+  'rtx_render/rtx_hash_collision_detection.h',
   'rtx_render/rtx_image_utils.cpp',
   'rtx_render/rtx_image_utils.h',
   'rtx_render/rtx_imgui.cpp',

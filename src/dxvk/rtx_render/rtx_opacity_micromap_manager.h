@@ -60,6 +60,8 @@ namespace dxvk {
       RTX_OPTION("rtx.opacityMicromap.cache", int, minUsageFrameAgeBeforeEviction, 60 * 15, 
                  "Min Opacity Micromap usage frame age before eviction.\n"
                  "Opacity Micromaps unused longer than this can be evicted when freeing up memory for new Opacity Micromaps.");
+      RTX_OPTION("rtx.opacityMicromap.cache", bool, hashInstanceIndexOnly, false,
+                 "Uses instance index as an Opacity Micromap hash.");
 
     };
 
@@ -67,6 +69,7 @@ namespace dxvk {
     struct BuildRequests {
       friend class OpacityMicromapManager;
 
+      RTX_OPTION("rtx.opacityMicromap.buildRequests", bool, filtering, true, "Enables filtering of Opacity Micromap requests. Filtering reduces and slows down acceptance of Opacity Micromap requests to maximize resources to requests that are more likely to be reused across instances and frames.");
       RTX_OPTION("rtx.opacityMicromap.buildRequests", int, maxRequests, 5 * 1000,
                  "Max number of staged unique Opacity Micromap build requests.\n"
                  "Any further requests will simply be discarded until the number of staged requests decreases below this threshold.\n"
@@ -162,6 +165,36 @@ namespace dxvk {
 
     eUnknown
   };
+
+  // All parameters contributing to an OmmSrcHash
+  // Ensure the struct is fully padded and default initialized
+  struct OpacityMicromapHashSourceData {
+
+    Matrix4 textureTransform = {};        // 16B alignment
+
+    RtSurface::AlphaState alphaState = {};
+    RtTextureArgSource textureColorArg1Source = RtTextureArgSource::None;
+    RtTextureArgSource textureColorArg2Source = RtTextureArgSource::None;
+    DxvkRtTextureOperation textureColorOperation = DxvkRtTextureOperation::Disable;
+    RtTextureArgSource textureAlphaArg1Source = RtTextureArgSource::None;
+    RtTextureArgSource textureAlphaArg2Source = RtTextureArgSource::None;
+    DxvkRtTextureOperation textureAlphaOperation = DxvkRtTextureOperation::Disable;
+
+    XXH64_hash_t materialHash = kEmptyHash;
+    XXH64_hash_t texCoordHash = kEmptyHash;
+
+    XXH64_hash_t vertexOpacityHash = kEmptyHash;
+    VkOpacityMicromapFormatEXT ommFormat = VK_OPACITY_MICROMAP_FORMAT_4_STATE_EXT;         // 4B
+    uint32_t numTriangles = 0;
+
+    uint8_t tFactorAlpha = 0;
+    uint8_t pad8[3] = {};
+    uint32_t pad32[3] = {};
+  };
+
+  // Static validation to detect any changes that require OmmHashData alignment re-check
+  static_assert(sizeof(OpacityMicromapHashSourceData) == 128);
+  static_assert(sizeof(RtSurface::AlphaState) == 10);
 
   class OmmRequest {
   public:

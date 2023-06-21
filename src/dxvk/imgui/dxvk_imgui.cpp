@@ -37,6 +37,7 @@
 #include "rtx_render/rtx_shader_manager.h"
 #include "rtx_render/rtx_camera.h"
 #include "rtx_render/rtx_context.h"
+#include "rtx_render/rtx_hash_collision_detection.h"
 #include "rtx_render/rtx_options.h"
 #include "rtx_render/rtx_terrain_baker.h"
 #include "dxvk_image.h"
@@ -1347,6 +1348,7 @@ namespace dxvk {
         ImGui::SliderInt("Present delay (ms)", &RtxOptions::Get()->presentThrottleDelayObject(), 1, 100, "%d", sliderFlags);
         ImGui::Unindent();
       }
+      ImGui::Checkbox("Hash Collision Detection", &HashCollisionDetectionOptions::enableObject());
       ImGui::Checkbox("Validate CPU index data", &RtxOptions::Get()->validateCPUIndexDataObject());
     }
 
