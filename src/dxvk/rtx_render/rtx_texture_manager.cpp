@@ -205,11 +205,19 @@ namespace dxvk {
     cachedTexture.frameLastUsed = m_pDevice->getCurrentFrameId();
   }
 
-  void RtxTextureManager::clear() {
+
+  void RtxTextureManager::demoteAllTextures() {
     ScopedCpuProfileZone();
+
     for (const auto& pair : m_assetHashToTextures) {
       pair.second->demote();
     }
+  }
+
+  void RtxTextureManager::clear() {
+    ScopedCpuProfileZone();
+
+    demoteAllTextures();
 
     m_textureCache.clear();
   }
