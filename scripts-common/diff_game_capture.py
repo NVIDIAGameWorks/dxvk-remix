@@ -159,52 +159,43 @@ class CaptureDiff:
             if len(goldenArray) == 0:
                 return True
             bMemberIsArray = False
-            if CaptureDiff.Attribute.__is_py_array(goldenArray[0]) > 0:
+            if CaptureDiff.Attribute.__is_py_array(goldenArray[0]):
                 bMemberIsArray = True
-            for i in range(len(goldenArray)-1):
+            for i in range(len(goldenArray)):
                 if bMemberIsArray:
-                    if not CaptureDiff.Attribute.__compare_array(type, goldenArray[i], otherArray[i]):
-                        return False
-                elif not CaptureDiff.Attribute.__compare_scalar(type, goldenArray[i], otherArray[i]):
-                    return False
-            return True
+                    return CaptureDiff.Attribute.__compare_array(type, goldenArray[i], otherArray[i])
+                else:
+                    scalarType = str(type).split("[]")[0]
+                    return CaptureDiff.Attribute.__compare_scalar(scalarType, goldenArray[i], otherArray[i])
+            return False
         
         @staticmethod
-        def __is_py_array(goldenArray):
-            return hasattr(goldenArray, "__len__") and not isinstance(goldenArray, str)
+        def __is_py_array(array):
+            return hasattr(array, "__len__") and not isinstance(array, str)
         
         @staticmethod
         def __compare_scalar(type, goldenScalar, otherScalar):
             if not CaptureDiff.Attribute.__is_not_none(goldenScalar, otherScalar):
-                if CaptureDiff.Attribute.__is_valid_none(goldenScalar, otherScalar):
-                    return True
-                else:
-                    return False
-            if type == "float":
-                if not CaptureDiff.Attribute.__float_diff(goldenScalar, otherScalar):
-                    return False
+                return CaptureDiff.Attribute.__is_valid_none(goldenScalar, otherScalar)
+            if type == "float" or type == "texCoord2f":
+                return CaptureDiff.Attribute.__float_diff(goldenScalar, otherScalar)
             return goldenScalar == otherScalar
         
         @staticmethod
         def __is_not_none(golden, other):
-            if golden is not None and other is not None:
-                return True
+            return golden is not None and other is not None
 
         @staticmethod
         def __is_valid_none(golden, other):
-            if golden is None and other is None:
-                return True
-            return False
+            return golden is None and other is None
 
         @staticmethod
         def __float_diff(golden, other):
             absDiff = abs(golden-other)
             if(golden != 0):
-                if absDiff / golden > CaptureDiff.floatTolerance:
-                    return False
-            elif absDiff > CaptureDiff.floatTolerance:
-                return False
-            return True
+                return (absDiff / golden) < CaptureDiff.floatTolerance
+            else:
+                return absDiff < CaptureDiff.floatTolerance
 
     
     def __print_errors(self):
