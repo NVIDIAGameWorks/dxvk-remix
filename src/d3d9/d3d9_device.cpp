@@ -87,6 +87,7 @@ namespace dxvk {
     , m_isSWVP         ( (BehaviorFlags & D3DCREATE_SOFTWARE_VERTEXPROCESSING) ? true : false )
     , m_csThread       ( dxvkDevice, dxvkDevice->createRtxContext() )
     , m_csChunk        ( AllocCsChunk() )
+    , m_submissionFence (new sync::Fence())
 // NV-DXVK start: unbound light indices
     , m_state          ( Direct3DState9 { D3D9CapturableState{ static_cast<uint32_t>(std::max(m_d3d9Options.maxEnabledLights, 0)) } } )
 // NV-DXVK end
@@ -94,6 +95,26 @@ namespace dxvk {
 // NV-DXVK start: external API
     , m_withExternalSwapchain { WithExternalSwapchain } {
 // NV-DXVK end
+          Rc<DxvkDevice>         dxvkDevice)
+    : m_parent          ( pParent )
+    , m_deviceType      ( DeviceType )
+    , m_window          ( hFocusWindow )
+    , m_behaviorFlags   ( BehaviorFlags )
+    , m_adapter         ( pAdapter )
+    , m_dxvkDevice      ( dxvkDevice )
+    , m_memoryAllocator ( )
+    , m_shaderAllocator ( )
+    , m_shaderModules   ( new D3D9ShaderModuleSet )
+    , m_stagingBuffer   ( dxvkDevice, StagingBufferSize )
+    , m_d3d9Options     ( dxvkDevice, pParent->GetInstance()->config() )
+    , m_multithread     ( BehaviorFlags & D3DCREATE_MULTITHREADED )
+    , m_isSWVP          ( (BehaviorFlags & D3DCREATE_SOFTWARE_VERTEXPROCESSING) ? true : false )
+    , m_csThread        ( dxvkDevice, dxvkDevice->createContext(DxvkContextType::Primary) )
+    , m_csChunk         ( AllocCsChunk() )
+    , m_submissionFence (new sync::Fence())
+    , m_d3d9Interop     ( this )
+    , m_d3d9On12        ( this )
+    , m_d3d8Bridge      ( this ) {
     // If we can SWVP, then we use an extended constant set
     // as SWVP has many more slots available than HWVP.
     bool canSWVP = CanSWVP();
@@ -935,7 +956,7 @@ namespace dxvk {
     if (dstTexInfo->IsAutomaticMip() && mipLevels != dstTexInfo->Desc()->MipLevels)
       MarkTextureMipsDirty(dstTexInfo);
 
-    FlushImplicit(false);
+    ConsiderFlush(GpuFlushType::ImplicitWeakHint);
 
     return D3D_OK;
   }
@@ -1361,7 +1382,9 @@ namespace dxvk {
       return D3D_OK;
 
     // Do a strong flush if the first render target is changed.
-    FlushImplicit(RenderTargetIndex == 0 ? TRUE : FALSE);
+    ConsiderFlush(RenderTargetIndex == 0 
+      ? GpuFlushType::ImplicitStrongHint
+      : GpuFlushType::ImplicitWeakHint);
     m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
 
     m_state.renderTargets[RenderTargetIndex] = rt;
@@ -1456,7 +1479,7 @@ namespace dxvk {
     if (m_state.depthStencil == ds)
       return D3D_OK;
 
-    FlushImplicit(FALSE);
+    ConsiderFlush(GpuFlushType::ImplicitWeakHint);
     m_flags.set(D3D9DeviceFlag::DirtyFramebuffer);
 
     if (ds != nullptr) {
@@ -1512,7 +1535,7 @@ namespace dxvk {
     if (unlikely(!m_flags.test(D3D9DeviceFlag::InScene)))
       return D3DERR_INVALIDCALL;
 
-    FlushImplicit(true);
+    ConsiderFlush(GpuFlushType::ImplicitStrongHint);
 
     m_flags.clr(D3D9DeviceFlag::InScene);
 
@@ -4388,7 +4411,7 @@ namespace dxvk {
         // We don't have to wait, but misbehaving games may
         // still try to spin on `Map` until the resource is
         // idle, so we should flush pending commands
-        FlushImplicit(FALSE);
+        ConsiderFlush(GpuFlushType::ImplicitWeakHint);
         return false;
       }
       else {
@@ -5032,7 +5055,7 @@ namespace dxvk {
     pResource->GPUReadingRange().Conjoin(pResource->DirtyRange());
     pResource->DirtyRange().Clear();
 
-    FlushImplicit(FALSE);
+    ConsiderFlush(GpuFlushType::ImplicitWeakHint);
 
     return D3D_OK;
   }
@@ -5063,34 +5086,23 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::EmitCsChunk(DxvkCsChunkRef&& chunk) {
-    m_csThread.dispatchChunk(std::move(chunk));
-    m_csIsBusy = true;
+    m_csSeqNum = m_csThread.dispatchChunk(std::move(chunk));
   }
 
 
-  void D3D9DeviceEx::FlushImplicit(BOOL StrongHint) {
+  void D3D9DeviceEx::ConsiderFlush(GpuFlushType FlushType) {
     // NV-DXVK start: deterministic CI runs
     // While testing in CI, it's important to achieve timing determinism.
     if (s_explicitFlush) {
       Flush();
       return;
-    }
     // NV-DXVK end
+    
+    uint64_t chunkId = GetCurrentSequenceNumber();
+    uint64_t submissionId = m_submissionFence->value();
 
-    // Flush only if the GPU is about to go idle, in
-    // order to keep the number of submissions low.
-    uint32_t pending = m_dxvkDevice->pendingSubmissions();
-
-    if (StrongHint || pending <= MaxPendingSubmits) {
-      auto now = dxvk::high_resolution_clock::now();
-
-      uint32_t delay = MinFlushIntervalUs
-        + IncFlushIntervalUs * pending;
-
-      // Prevent flushing too often in short intervals.
-      if (now - m_lastFlush >= std::chrono::microseconds(delay))
-        Flush();
-    }
+    if (m_flushTracker.considerFlush(FlushType, chunkId, submissionId))
+      Flush();
   }
 
 
@@ -5529,19 +5541,24 @@ namespace dxvk {
     m_initializer->Flush();
     m_converter->Flush();
 
-    if (m_csIsBusy || !m_csChunk->empty()) {
-      // Add commands to flush the threaded
-      // context, then flush the command list
-      EmitCs([](DxvkContext* ctx) {
-        ctx->flushCommandList();
-      });
+    EmitStagingBufferMarker();
 
-      FlushCsChunk();
+    // Add commands to flush the threaded
+    // context, then flush the command list
+    uint64_t submissionId = ++m_submissionId;
 
-      // Reset flush timer used for implicit flushes
-      m_lastFlush = dxvk::high_resolution_clock::now();
-      m_csIsBusy = false;
-    }
+    EmitCs<false>([
+      cSubmissionFence  = m_submissionFence,
+      cSubmissionId     = submissionId
+    ] (DxvkContext* ctx) {
+      ctx->signal(cSubmissionFence, cSubmissionId);
+      ctx->flushCommandList(nullptr);
+    });
+
+    FlushCsChunk();
+
+    m_flushSeqNum = m_csSeqNum;
+    m_flushTracker.notifyFlush(m_flushSeqNum, submissionId);
   }
 
 
@@ -6714,9 +6731,9 @@ namespace dxvk {
     if (unlikely(pQuery->IsEvent())) {
       pQuery->IsStalling()
         ? Flush()
-        : FlushImplicit(TRUE);
+        : ConsiderFlush(GpuFlushType::ImplicitStrongHint);
     } else if (pQuery->IsStalling()) {
-      FlushImplicit(FALSE);
+      ConsiderFlush(GpuFlushType::ImplicitWeakHint);
     }
   }
 
