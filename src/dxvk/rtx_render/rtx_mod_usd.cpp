@@ -593,6 +593,9 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
       albedoTexture = TextureRef(getTexture(args, shader, kAlbedoTextureToken, true));
     }
 
+    // We need to use a custom sampler for this texture
+    albedoTexture.sampler = args.context->getDevice()->getCommon()->getResources().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT);
+
     const RayPortalMaterialData rayPortalMaterialData{
       albedoTexture, albedoTexture,
       static_cast<uint8_t>(rayPortalIndex), static_cast<uint8_t>(spriteSheetRows),
