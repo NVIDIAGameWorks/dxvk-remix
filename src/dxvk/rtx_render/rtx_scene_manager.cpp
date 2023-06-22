@@ -436,8 +436,6 @@ namespace dxvk {
 
     m_bufferCache.clear();
 
-    m_materialTextureSampler = nullptr;
-
     if (TerrainBaker::needsTerrainBaking())
       m_terrainBaker->onFrameEnd(m_device->getCurrentFrameId());
   }
@@ -785,7 +783,7 @@ namespace dxvk {
   }
 
   // Helper to populate the texture cache with this resource (and patch sampler if required for texture)
-  void SceneManager::trackTexture(Rc<DxvkContext> ctx, TextureRef inputTexture, uint32_t& textureIndex, bool hasTexcoords, bool patchSampler, bool allowAsync) {
+  void SceneManager::trackTexture(Rc<DxvkContext> ctx, TextureRef inputTexture, uint32_t& textureIndex, bool hasTexcoords, DxvkSampler* patchSampler, bool allowAsync) {
     // If no texcoords, no need to bind the texture
     if (!hasTexcoords) {
       ONCE(Logger::info(str::format("[RTX-Compatibility-Info] Trying to bind a texture to a mesh without UVs.  Was this intended?")));
@@ -793,7 +791,21 @@ namespace dxvk {
     }
 
     auto& textureManager = m_device->getCommon()->getTextureManager();
-    textureManager.addTexture(ctx, inputTexture, (patchSampler ? m_materialTextureSampler : inputTexture.sampler), allowAsync, textureIndex);
+
+    Rc<DxvkSampler> sampler = inputTexture.sampler;
+    if (patchSampler) {
+      auto& resourceManager = m_device->getCommon()->getResources();
+
+      // Create a sampler to account for DLSS lod bias and any custom filtering overrides the user has set
+      const bool temporalUpscaling = RtxOptions::Get()->isDLSSEnabled() || RtxOptions::Get()->isTAAEnabled();
+      const float totalUpscaleMipBias = temporalUpscaling ? (log2(resourceManager.getUpscaleRatio()) + RtxOptions::Get()->upscalingMipBias()) : 0.0f;
+      const float totalMipBias = totalUpscaleMipBias + RtxOptions::Get()->getNativeMipBias();
+
+      const DxvkSamplerCreateInfo& originalInfo = patchSampler->info();
+
+      sampler = resourceManager.getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, originalInfo.addressModeU, originalInfo.addressModeV, originalInfo.addressModeW, originalInfo.borderColor, totalMipBias, RtxOptions::Get()->getAnisotropicFilteringEnabled());
+    }
+    textureManager.addTexture(ctx, inputTexture, sampler, allowAsync, textureIndex);
   }
 
   uint64_t SceneManager::processDrawCallState(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmd, const DrawCallState& drawCallState, const MaterialData* overrideMaterialData) {
@@ -823,22 +835,14 @@ namespace dxvk {
     assert(pBlas != nullptr);
     assert(result != ObjectCacheState::kInvalid);
 
-    if (!m_materialTextureSampler.ptr()) {
-      auto& resourceManager = m_device->getCommon()->getResources();
-
-      // Create a sampler to account for DLSS lod bias and any custom filtering overrides the user has set
-      const bool temporalUpscaling = RtxOptions::Get()->isDLSSEnabled() || RtxOptions::Get()->isTAAEnabled();
-      const float totalUpscaleMipBias = temporalUpscaling ? (log2(resourceManager.getUpscaleRatio()) + RtxOptions::Get()->upscalingMipBias()) : 0.0f;
-      const float totalTipBias = totalUpscaleMipBias + RtxOptions::Get()->getNativeMipBias();
-
-      m_materialTextureSampler = resourceManager.getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, VK_SAMPLER_ADDRESS_MODE_REPEAT, totalTipBias, RtxOptions::Get()->getAnisotropicFilteringEnabled());
-    }
-
     // Note: Use either the specified override Material Data or the original draw calls state's Material Data to create a Surface Material if no override is specified
     const auto renderMaterialDataType = renderMaterialData.getType();
     std::optional<RtSurfaceMaterial> surfaceMaterial{};
 
     const bool hasTexcoords = drawCallState.hasTextureCoordinates();
+
+    // We're going to use this to create a modified sampler for textures.
+    DxvkSampler* pOriginalSampler = drawCallState.getMaterialData().getColorTexture().sampler.ptr();
 
     if (renderMaterialDataType == MaterialDataType::Legacy || renderMaterialDataType == MaterialDataType::Opaque) {
       uint32_t albedoOpacityTextureIndex = kSurfaceMaterialInvalidTextureIndex;
@@ -887,7 +891,7 @@ namespace dxvk {
           roughnessConstant = 1.f;
         } else {
           if(defaults.useAlbedoTextureIfPresent())
-            trackTexture(ctx, legacyMaterialData.getColorTexture(), albedoOpacityTextureIndex, hasTexcoords, false); // NOTE: Do not patch original sampler
+            trackTexture(ctx, legacyMaterialData.getColorTexture(), albedoOpacityTextureIndex, hasTexcoords, nullptr); // NOTE: Do not patch original sampler
         }
 
         if (RtxOptions::Get()->getHighlightLegacyModeEnabled()) {
@@ -923,18 +927,18 @@ namespace dxvk {
           metallicConstant = 0.f;
           roughnessConstant = 1.f;
         } else {
-          trackTexture(ctx, opaqueMaterialData.getAlbedoOpacityTexture(), albedoOpacityTextureIndex, hasTexcoords);
-          trackTexture(ctx, opaqueMaterialData.getRoughnessTexture(), roughnessTextureIndex, hasTexcoords);
-          trackTexture(ctx, opaqueMaterialData.getMetallicTexture(), metallicTextureIndex, hasTexcoords);
+          trackTexture(ctx, opaqueMaterialData.getAlbedoOpacityTexture(), albedoOpacityTextureIndex, hasTexcoords, pOriginalSampler);
+          trackTexture(ctx, opaqueMaterialData.getRoughnessTexture(), roughnessTextureIndex, hasTexcoords, pOriginalSampler);
+          trackTexture(ctx, opaqueMaterialData.getMetallicTexture(), metallicTextureIndex, hasTexcoords, pOriginalSampler);
 
           albedoOpacityConstant = opaqueMaterialData.getAlbedoOpacityConstant();
           metallicConstant = opaqueMaterialData.getMetallicConstant();
           roughnessConstant = opaqueMaterialData.getRoughnessConstant();
         }
 
-        trackTexture(ctx, opaqueMaterialData.getNormalTexture(), normalTextureIndex, hasTexcoords);
-        trackTexture(ctx, opaqueMaterialData.getTangentTexture(), tangentTextureIndex, hasTexcoords);
-        trackTexture(ctx, opaqueMaterialData.getEmissiveColorTexture(), emissiveColorTextureIndex, hasTexcoords);
+        trackTexture(ctx, opaqueMaterialData.getNormalTexture(), normalTextureIndex, hasTexcoords, pOriginalSampler);
+        trackTexture(ctx, opaqueMaterialData.getTangentTexture(), tangentTextureIndex, hasTexcoords, pOriginalSampler);
+        trackTexture(ctx, opaqueMaterialData.getEmissiveColorTexture(), emissiveColorTextureIndex, hasTexcoords, pOriginalSampler);
 
         emissiveIntensity = opaqueMaterialData.getEmissiveIntensity();
         emissiveColorConstant = opaqueMaterialData.getEmissiveColorConstant();
@@ -978,11 +982,11 @@ namespace dxvk {
       bool enableEmissive = RtxOptions::Get()->getSharedMaterialDefaults().EnableEmissive;
       float emissiveIntensity = RtxOptions::Get()->getSharedMaterialDefaults().EmissiveIntensity;
 
-      trackTexture(ctx, translucentMaterialData.getNormalTexture(), normalTextureIndex, hasTexcoords);
+      trackTexture(ctx, translucentMaterialData.getNormalTexture(), normalTextureIndex, hasTexcoords, pOriginalSampler);
 
       refractiveIndex = translucentMaterialData.getRefractiveIndex();
 
-      trackTexture(ctx, translucentMaterialData.getTransmittanceTexture(), transmittanceTextureIndex, hasTexcoords);
+      trackTexture(ctx, translucentMaterialData.getTransmittanceTexture(), transmittanceTextureIndex, hasTexcoords, pOriginalSampler);
 
       transmittanceColor = translucentMaterialData.getTransmittanceColor();
       transmittanceMeasureDistance = translucentMaterialData.getTransmittanceMeasurementDistance();
@@ -1005,9 +1009,9 @@ namespace dxvk {
       const auto& rayPortalMaterialData = renderMaterialData.getRayPortalMaterialData();
 
       uint32_t maskTextureIndex = kSurfaceMaterialInvalidTextureIndex;
-      trackTexture(ctx, rayPortalMaterialData.getMaskTexture(), maskTextureIndex, hasTexcoords, true, false);
+      trackTexture(ctx, rayPortalMaterialData.getMaskTexture(), maskTextureIndex, hasTexcoords, rayPortalMaterialData.getMaskTexture().sampler.ptr(), false);
       uint32_t maskTextureIndex2 = kSurfaceMaterialInvalidTextureIndex;
-      trackTexture(ctx, rayPortalMaterialData.getMaskTexture2(), maskTextureIndex2, hasTexcoords, true, false);
+      trackTexture(ctx, rayPortalMaterialData.getMaskTexture2(), maskTextureIndex2, hasTexcoords, rayPortalMaterialData.getMaskTexture().sampler.ptr(), false);
 
       uint8_t rayPortalIndex = rayPortalMaterialData.getRayPortalIndex();
       uint8_t spriteSheetRows = rayPortalMaterialData.getSpriteSheetRows();

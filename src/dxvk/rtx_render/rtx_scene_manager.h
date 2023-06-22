@@ -160,7 +160,7 @@ public:
   void triggerUsdCapture() const;
   bool isGameCapturerIdle() const;
 
-  void trackTexture(Rc<DxvkContext> ctx, TextureRef inputTexture, uint32_t& textureIndex, bool hasTexcoords, bool patchSampler = true, bool allowAsync = true);
+  void trackTexture(Rc<DxvkContext> ctx, TextureRef inputTexture, uint32_t& textureIndex, bool hasTexcoords, DxvkSampler* patchSampler = nullptr, bool allowAsync = true);
 
 private:
   enum class ObjectCacheState
@@ -226,8 +226,6 @@ private:
   Rc<DxvkBuffer> m_volumeMaterialBuffer;
 
   Rc<DxvkDevice> m_device;
-
-  Rc<DxvkSampler> m_materialTextureSampler;
 
   uint32_t m_currentFrameIdx = -1;
   bool m_useFixedFrameTime = false;
