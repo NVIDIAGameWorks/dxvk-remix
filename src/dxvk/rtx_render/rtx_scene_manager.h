@@ -36,6 +36,7 @@
 #include "../util/util_hashtable.h"
 
 #include "rtx_types.h"
+#include "rtx_common_object.h"
 #include "rtx_camera_manager.h"
 #include "rtx_draw_call_cache.h"
 #include "rtx_sparse_unique_cache.h"
@@ -84,17 +85,17 @@ protected:
 // along with managing the operation of other caches, scene manager also manages the cache
 // directly for "SceneObject"'s - which are "unique meshes/geometry", which map 1-to-1 with
 // BLAS entries in raytracing terminology.
-class SceneManager : public ResourceCache {
+class SceneManager : public CommonDeviceObject, public ResourceCache {
 public:
   SceneManager(SceneManager const&) = delete;
   SceneManager& operator=(SceneManager const&) = delete;
 
-  SceneManager(Rc<DxvkDevice> device);
+  explicit SceneManager(DxvkDevice* device);
   ~SceneManager();
 
   void initialize(Rc<DxvkContext> ctx);
 
-  void destroy();
+  void onDestroy();
 
   void submitDrawState(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmd, const DrawCallState& input);
   
@@ -224,8 +225,6 @@ private:
   // TODO: Move the following resources and getters to RtResources class
   Rc<DxvkBuffer> m_surfaceMaterialBuffer;
   Rc<DxvkBuffer> m_volumeMaterialBuffer;
-
-  Rc<DxvkDevice> m_device;
 
   uint32_t m_currentFrameIdx = -1;
   bool m_useFixedFrameTime = false;

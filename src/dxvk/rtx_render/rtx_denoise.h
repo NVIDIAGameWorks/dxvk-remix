@@ -34,7 +34,7 @@ namespace dxvk {
   class NRDContext;
   class DxvkDevice;
 
-  class DxvkDenoise {
+  class DxvkDenoise : public CommonDeviceObject {
   public:
     /**
        * \brief Input
@@ -73,12 +73,11 @@ namespace dxvk {
     };
 
 
-    DxvkDenoise(const DxvkDevice* device, DenoiserType type);
+    DxvkDenoise(DxvkDevice* device, DenoiserType type);
     ~DxvkDenoise();
 
     void dispatch(
       Rc<DxvkCommandList> cmdList,
-      Rc<DxvkDevice> device,
       Rc<DxvkContext> ctx,
       DxvkBarrierSet& barriers,
       const Resources::RaytracingOutput& rtOutput,
@@ -90,6 +89,8 @@ namespace dxvk {
     bool isReferenceDenoiserEnabled() const;
     void copyNrdSettingsFrom(const DxvkDenoise& refDenoiser);
     const NRDContext& getNrdContext() const;
+
+    void onDestroy();
 
   private:
     std::unique_ptr<NRDContext> m_nrdContext;

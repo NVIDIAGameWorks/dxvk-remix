@@ -207,13 +207,12 @@ struct IntersectionBillboard {
 
 // InstanceManager is responsible for maintaining the active set of scene instances
 //  and the GPU buffers which are required by VK for instancing.
-class InstanceManager
-{
+class InstanceManager : public CommonDeviceObject {
 public:
   InstanceManager(InstanceManager const&) = delete;
   InstanceManager& operator=(InstanceManager const&) = delete;
 
-  InstanceManager(Rc<DxvkDevice> device, ResourceCache* pResourceCache);
+  InstanceManager(DxvkDevice* device, ResourceCache* pResourceCache);
   ~InstanceManager();
 
   // Return a list of instances currently active in the scene
@@ -275,7 +274,6 @@ private:
   std::vector<RtInstance*> m_playerModelInstances;
   std::vector<IntersectionBillboard> m_billboards;
 
-  Rc<DxvkDevice> m_device;
   bool m_previousViewModelState = false;
   RtInstance* targetInstance = nullptr;
 

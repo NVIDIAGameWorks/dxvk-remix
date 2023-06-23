@@ -36,12 +36,11 @@ namespace dxvk {
 
   class DxvkLocalToneMapping: public RtxPass {
   public:
-    DxvkLocalToneMapping(DxvkDevice* device);
+    explicit DxvkLocalToneMapping(DxvkDevice* device);
     ~DxvkLocalToneMapping();
 
     void dispatch(
       Rc<DxvkCommandList> cmdList,
-      Rc<DxvkDevice> device,
       Rc<DxvkContext> ctx,
       Rc<DxvkSampler> linearSampler,
       Rc<DxvkImageView> exposureView,

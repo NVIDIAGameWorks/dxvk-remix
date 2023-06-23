@@ -31,16 +31,12 @@
 #include "dxvk_raytracing.h"
 
 namespace dxvk {
-  RtxInitializer::RtxInitializer(const Rc<DxvkDevice>& device)
-  : m_device(device) { 
+  RtxInitializer::RtxInitializer(DxvkDevice* device)
+  : CommonDeviceObject(device) { 
   }
 
   void RtxInitializer::initialize() {
-    // WAR: RtxInitializer::release() is not always called
-    // TODO: replace with assert check
-    ShaderManager::destroyInstance();
-
-    ShaderManager::getInstance()->setDevice(m_device.ptr());
+    ShaderManager::getInstance()->setDevice(m_device);
 
 #ifdef WITH_RTXIO
     if (RtxIo::enabled()) {
@@ -81,13 +77,10 @@ namespace dxvk {
     // Load assets (if any) as early as possible
     if (m_asyncAssetLoading.getValue()) {
       // Async asset loading (USD)
-      dxvk::thread asyncAssetLoadThread([this] {
+      m_asyncAssetLoadThread = dxvk::thread([this] {
         env::setThreadName("rtx-initialize-assets");
         loadAssets();
       });
-
-      // Note: Detach the thread to allow it to load asynchronously until it is finished.
-      asyncAssetLoadThread.detach();
     } else {
       loadAssets();
     }
@@ -107,6 +100,8 @@ namespace dxvk {
   }
 
   void RtxInitializer::loadAssets() {
+    m_assetsLoaded = false;
+
     Rc<DxvkContext> ctx = m_device->createContext();
 
     ctx->beginRecording(m_device->createCommandList());
@@ -115,6 +110,8 @@ namespace dxvk {
     pCommon->getSceneManager().initialize(ctx);
 
     ctx->flushCommandList();
+
+    m_assetsLoaded = true;
   }
 
   void RtxInitializer::startPrewarmShaders() {

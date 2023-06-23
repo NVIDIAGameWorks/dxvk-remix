@@ -93,9 +93,9 @@ namespace dxvk {
     float combinedDurationMax;
   };
 
-  class RtxReflex {
+  class RtxReflex : public CommonDeviceObject {
   public:
-    RtxReflex(DxvkDevice* device);
+    explicit RtxReflex(DxvkDevice* device);
     ~RtxReflex();
 
     /**
@@ -150,7 +150,6 @@ namespace dxvk {
 
   private:
     VkSemaphore m_lowLatencySemaphore;
-    Rc<DxvkDevice> m_device;
 
     // Note: Cached from options determining this state on construction as Reflex currently only has 1
     // chance to be initialized, meaning this state cannot be changed at runtime past the point of construction.

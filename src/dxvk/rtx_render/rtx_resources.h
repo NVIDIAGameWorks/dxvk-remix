@@ -28,7 +28,7 @@
 #include "vulkan/vulkan_core.h"
 #include "rtx_utils.h"
 #include "rtx/pass/raytrace_args.h"
-#include "rtx_render/rtx_utils.h"
+#include "rtx_common_object.h"
 
 namespace dxvk 
 {
@@ -62,7 +62,7 @@ namespace dxvk
     std::shared_ptr<FrameBeginEvent> onFrameBegin = nullptr;
   };
 
-  struct Resources {
+  struct Resources : public CommonDeviceObject {
     class AliasedResource;
 
     struct Resource {
@@ -337,7 +337,7 @@ namespace dxvk
       bool m_swapTextures = false;
     };
 
-    Resources(Rc<DxvkDevice> device);
+    explicit Resources(DxvkDevice* device);
 
     void addEventHandler(const EventHandler& events) {
       // NOTE: Implicit conversion to weak ptr
@@ -426,8 +426,6 @@ namespace dxvk
     fast_unordered_cache<std::pair<Rc<DxvkImageView>, uint32_t>> m_viewCache;
 
     Tlas m_tlas[Tlas::Type::Count];
-
-    DxvkDevice* m_device;
 
     VkExtent3D m_downscaledExtent = { 0, 0, 0 };
     VkExtent3D m_targetExtent = { 0, 0, 0 };

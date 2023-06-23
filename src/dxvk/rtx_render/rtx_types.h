@@ -453,7 +453,7 @@ struct PooledBlas : public RcObject {
   // Note: only used for tracking of OMMs for static BLASes
   XXH64_hash_t opacityMicromapSourceHash = kEmptyHash;
 
-  PooledBlas(Rc<DxvkDevice> device);
+  explicit PooledBlas();
   ~PooledBlas();
 };
 

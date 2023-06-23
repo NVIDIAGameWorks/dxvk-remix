@@ -29,15 +29,16 @@
 #include "rtx_scene_manager.h"
 
 namespace dxvk {
-  class NRDContext {
+  class NRDContext : public CommonDeviceObject {
 
   public:
-    NRDContext(const DxvkDevice* device, DenoiserType type);
+    NRDContext(DxvkDevice* device, DenoiserType type);
     ~NRDContext();
+
+    void onDestroy();
 
     void dispatch(
       Rc<DxvkCommandList> cmdList,
-      Rc<DxvkDevice> device,
       Rc<DxvkContext> ctx,
       DxvkBarrierSet& barriers,
       const SceneManager& sceneManager,
@@ -58,12 +59,11 @@ namespace dxvk {
 
     void prepareResources(
       Rc<DxvkCommandList> cmdList,
-      Rc<DxvkDevice> device,
       Rc<DxvkContext> ctx,
       const Resources::RaytracingOutput& rtOutput);
 
-    void createResources(Rc<DxvkCommandList> cmdList, Rc<DxvkDevice> device, Rc<DxvkContext> ctx, const Resources::RaytracingOutput& rtOutput);
-    void createPipelines(Rc<DxvkDevice> device);
+    void createResources(Rc<DxvkCommandList> cmdList, Rc<DxvkContext> ctx, const Resources::RaytracingOutput& rtOutput);
+    void createPipelines();
 
     const Resources::Resource* getTexture(
       const nrd::ResourceDesc& resource,
@@ -74,7 +74,6 @@ namespace dxvk {
     void destroyPipelines();
 
     void updateNRDSettings(
-      const Rc<DxvkDevice>& device,
       const SceneManager& sceneManager,
       const DxvkDenoise::Input& inputs,
       const Resources::RaytracingOutput& rtOutput);

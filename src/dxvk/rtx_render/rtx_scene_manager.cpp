@@ -45,8 +45,8 @@
 
 namespace dxvk {
 
-  SceneManager::SceneManager(Rc<DxvkDevice> device)
-    : m_device(device)
+  SceneManager::SceneManager(DxvkDevice* device)
+    : CommonDeviceObject(device)
     , m_instanceManager(device, this)
     , m_accelManager(device)
     , m_lightManager(device)
@@ -54,7 +54,7 @@ namespace dxvk {
     , m_drawCallCache(device)
     , m_bindlessResourceManager(device)
     , m_volumeManager(device)
-    , m_pReplacer(new AssetReplacer(device))
+    , m_pReplacer(new AssetReplacer())
     , m_terrainBaker(new TerrainBaker())
     , m_gameCapturer(new GameCapturer(*this, device->getCommon()->metaExporter()))
     , m_cameraManager(device)
@@ -282,7 +282,11 @@ namespace dxvk {
     m_rayPortalManager.garbageCollection();
   }
 
-  void SceneManager::destroy() {
+  void SceneManager::onDestroy() {
+    m_accelManager.onDestroy();
+    if (m_opacityMicromapManager) {
+      m_opacityMicromapManager->onDestroy();
+    }
   }
 
   template<bool isNew>

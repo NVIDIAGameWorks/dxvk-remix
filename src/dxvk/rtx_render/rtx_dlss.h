@@ -44,14 +44,14 @@ namespace dxvk {
 
   const char* dlssProfileToString(DLSSProfile dlssProfile);
 
-  class DxvkDLSS {
+  class DxvkDLSS : public CommonDeviceObject {
   public:
     enum class MotionVectorScale : uint32_t {
       Absolute,   ///< Motion vectors are provided in absolute screen space length (pixels).
       Relative,   ///< Motion vectors are provided in relative screen space length (pixels divided by screen width/height).
     };
 
-    DxvkDLSS(DxvkDevice* device);
+    explicit DxvkDLSS(DxvkDevice* device);
     ~DxvkDLSS();
 
     bool supportsDLSS() const;
@@ -67,7 +67,6 @@ namespace dxvk {
 
     void dispatch(
       Rc<DxvkCommandList> cmdList,
-      Rc<DxvkDevice> device,
       Rc<RtxContext> ctx,
       DxvkBarrierSet& barriers,
       const Resources::RaytracingOutput& rtOutput,
@@ -80,7 +79,7 @@ namespace dxvk {
 
     void initializeDLSS(Rc<DxvkContext> pRenderContext, Rc<DxvkCommandList> cmdList);
 
-    bool useDlssAutoExposure(Rc<DxvkDevice>& device) const;
+    bool useDlssAutoExposure() const;
 
     // Options
     bool                        mEnabled = true;
@@ -98,7 +97,6 @@ namespace dxvk {
 
     bool                        mBiasCurrentColorEnabled = true;
 
-    DxvkDevice* m_device;
     Rc<DxvkShader> m_shader;
     Rc<DxvkBuffer> m_constants;
   };

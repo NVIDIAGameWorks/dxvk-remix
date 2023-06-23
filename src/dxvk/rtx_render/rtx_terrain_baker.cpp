@@ -335,7 +335,7 @@ namespace dxvk {
     }
   }
 
-  void TerrainBaker::calculateCascadeMapResolution(Rc<DxvkDevice> device) {
+  void TerrainBaker::calculateCascadeMapResolution(const Rc<DxvkDevice>& device) {
     // ToDo: switch to using vkGetPhysicalDeviceImageFormatProperties which may allow larger dimensions for a given image config
     const VkPhysicalDeviceLimits& limits = device->adapter()->deviceProperties().limits;
     const uint32_t maxDimension = limits.maxImageDimension2D;
