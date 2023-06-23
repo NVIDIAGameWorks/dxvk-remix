@@ -27,6 +27,7 @@
 #include <unordered_map>
 #include "../util/rc/util_rc_ptr.h"
 #include "rtx_types.h"
+#include "rtx_common_object.h"
 #include "../util/util_vector.h"
 #include "../util/util_matrix.h"
 
@@ -39,8 +40,7 @@ class CameraManager;
 class OpacityMicromapManager;
 
 // AccelManager is responsible for maintaining the acceleration structures (BLAS and TLAS)
-class AccelManager
-{
+class AccelManager : public CommonDeviceObject {
   class BlasBucket {
   public:
     std::vector<VkAccelerationStructureGeometryKHR> geometries {};
@@ -66,7 +66,12 @@ public:
   AccelManager(AccelManager const&) = delete;
   AccelManager& operator=(AccelManager const&) = delete;
 
-  AccelManager(Rc<DxvkDevice> device);
+  explicit AccelManager(DxvkDevice* device);
+
+  // Release internal objects
+  void onDestroy() {
+    m_scratchAllocator = nullptr;
+  }
 
   // Returns a GPU buffer containing the surface data for active instances
   const Rc<DxvkBuffer> getSurfaceBuffer() const { return m_surfaceBuffer; }
@@ -124,7 +129,6 @@ private:
   Rc<DxvkBuffer> m_vkInstanceBuffer; // Note: Holds Vulkan AS Instances, not RtInstances
   Rc<DxvkBuffer> m_surfaceBuffer;
   Rc<DxvkBuffer> m_surfaceMappingBuffer;
-  Rc<DxvkDevice> m_device;
   Rc<DxvkBuffer> m_transformBuffer;
   Rc<DxvkBuffer> m_primitiveIDPrefixSumBuffer;
 
@@ -136,7 +140,7 @@ private:
   Rc<PooledBlas> createPooledBlas(size_t bufferSize) const;
 
   VkDeviceSize m_scratchAlignment;
-  DxvkStagingDataAlloc m_scratchAllocator;
+  std::unique_ptr<DxvkStagingDataAlloc> m_scratchAllocator;
 };
 
 }  // namespace dxvk

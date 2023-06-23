@@ -32,15 +32,15 @@
 
 namespace dxvk {
 
-  BindlessResourceManager::BindlessResourceManager(const Rc<DxvkDevice>& device)
-      : m_device(device) { 
-      for (int i = 0; i < kMaxFramesInFlight; i++) {
-       m_tables[Table::Textures][i].reset(new BindlessTable(this));
-       m_tables[Table::Buffers][i].reset(new BindlessTable(this));
-      }
-
-      createGlobalBindlessDescPool();
+  BindlessResourceManager::BindlessResourceManager(DxvkDevice* device)
+  : CommonDeviceObject(device) { 
+    for (int i = 0; i < kMaxFramesInFlight; i++) {
+      m_tables[Table::Textures][i].reset(new BindlessTable(this));
+      m_tables[Table::Buffers][i].reset(new BindlessTable(this));
     }
+
+    createGlobalBindlessDescPool();
+  }
 
   const Rc<vk::DeviceFn> BindlessResourceManager::BindlessTable::vkd() const {
     return m_pManager->m_device->vkd();
@@ -131,6 +131,12 @@ namespace dxvk {
     }
 
     m_frameLastUpdated = m_device->getCurrentFrameId();
+  }
+
+  BindlessResourceManager::BindlessTable::~BindlessTable() {
+    if (layout != VK_NULL_HANDLE) {
+      vkd()->vkDestroyDescriptorSetLayout(vkd()->device(), layout, nullptr);
+    }
   }
 
   void BindlessResourceManager::BindlessTable::createLayout(const VkDescriptorType type) {

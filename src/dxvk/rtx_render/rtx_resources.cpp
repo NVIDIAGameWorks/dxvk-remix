@@ -286,8 +286,8 @@ namespace dxvk {
     return m_view.ptr() == other.m_view.ptr();
   }
 
-  Resources::Resources(Rc<DxvkDevice> device)
-    : m_device(device.ptr()) { }
+  Resources::Resources(DxvkDevice* device)
+    : CommonDeviceObject(device) { }
 
   void Resources::createRaytracingOutput(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent) {
     ScopedCpuProfileZone();

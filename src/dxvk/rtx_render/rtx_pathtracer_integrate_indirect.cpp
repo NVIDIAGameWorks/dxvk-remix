@@ -148,14 +148,14 @@ namespace dxvk {
     PREWARM_SHADER_PIPELINE(IntegrateNEEShader);
   }
 
-  DxvkPathtracerIntegrateIndirect::DxvkPathtracerIntegrateIndirect(DxvkDevice* device) : m_device(device) {
+  DxvkPathtracerIntegrateIndirect::DxvkPathtracerIntegrateIndirect(DxvkDevice* device) : CommonDeviceObject(device) {
   }
 
   void DxvkPathtracerIntegrateIndirect::prewarmShaders(DxvkPipelineManager& pipelineManager) const {
 
-    const bool isOpacityMicromapSupported = OpacityMicromapManager::checkIsOpacityMicromapSupported(m_device);
+    const bool isOpacityMicromapSupported = OpacityMicromapManager::checkIsOpacityMicromapSupported(*m_device);
     const bool isShaderExecutionReorderingSupported = 
-      RtxContext::checkIsShaderExecutionReorderingSupported(m_device) &&
+      RtxContext::checkIsShaderExecutionReorderingSupported(*m_device) &&
       RtxOptions::Get()->isShaderExecutionReorderingInPathtracerIntegrateIndirectEnabled();
 
     for (int32_t useRayQuery = 1; useRayQuery >= 0; useRayQuery--)

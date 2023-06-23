@@ -54,13 +54,25 @@ namespace dxvk {
     }
 
     ~RenderProcessor() {
-      {
+      onDestroy();
+    }
+
+    /**
+      * \brief Called before destruction.
+      */
+    void onDestroy() {
+      if (!m_stopped) {
         std::unique_lock<dxvk::mutex> lock(m_mutex);
         m_stopped.store(true);
+        m_condOnAdd.notify_one();
       }
 
-      if (m_thread.joinable())
+      if (m_thread.joinable()) {
         m_thread.join();
+      }
+
+      m_cmd = nullptr;
+      m_ctx = nullptr;
     }
 
     /**

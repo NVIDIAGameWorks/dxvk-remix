@@ -74,8 +74,8 @@ namespace dxvk {
   // to represent something such as a new light index.
   static_assert(LIGHT_INDEX_INVALID == kNewLightIdx, "New light index must match invalid light sentinel value");
 
-  LightManager::LightManager(Rc<DxvkDevice> device)
-    : m_device(device) {
+  LightManager::LightManager(DxvkDevice* device)
+    : CommonDeviceObject(device) {
     // Legacy light translation Options
     fallbackLightRadianceRef().x = std::max(fallbackLightRadiance().x, 0.0f);
     fallbackLightRadianceRef().y = std::max(fallbackLightRadiance().y, 0.0f);

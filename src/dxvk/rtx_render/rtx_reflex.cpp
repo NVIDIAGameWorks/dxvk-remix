@@ -61,7 +61,7 @@ namespace dxvk {
   // Reflex uses global variables for PCL init, so if a game uses multiple devices, we need to ensure we only do PCL init once.
   static std::atomic<std::uint32_t> s_initPclRefcount = 0;
 
-  RtxReflex::RtxReflex(DxvkDevice* device) : m_device(device) {
+  RtxReflex::RtxReflex(DxvkDevice* device) : CommonDeviceObject(device) {
     // Initialize PCL stats
     // Note: PCL stats are always desired even if Reflex itself is disabled, so this is done before any checks for Reflex enablement/support.
 
@@ -148,7 +148,7 @@ namespace dxvk {
     // Query semaphore
 
     uint64_t signalValue = 0;
-    vkGetSemaphoreCounterValue(vkd->device(), m_lowLatencySemaphore, &signalValue);
+    vkd->vkGetSemaphoreCounterValue(vkd->device(), m_lowLatencySemaphore, &signalValue);
     signalValue += 1;
 
     // Sleep
@@ -170,7 +170,7 @@ namespace dxvk {
 
     if (status == NVLL_VK_OK) {
       ScopedCpuProfileZoneN("Reflex_WaitSemaphore");
-      vkWaitSemaphores(vkd->device(), &semaphoreWaitInfo, 500000000);
+      vkd->vkWaitSemaphores(vkd->device(), &semaphoreWaitInfo, 500000000);
     } else {
       Logger::warn(str::format("Unable to invoke Reflex sleep function: ", NvLLStatusToString(status)));
     }

@@ -81,8 +81,8 @@ namespace dxvk {
     }
   }
 
-  NRDContext::NRDContext(const DxvkDevice* device, DenoiserType type)
-    : m_vkd(device->vkd()), m_type(type) {
+  NRDContext::NRDContext(DxvkDevice* device, DenoiserType type)
+    : CommonDeviceObject(device), m_vkd(device->vkd()), m_type(type) {
     m_settings.initialize(device->instance()->config(), type);
     
     // Disable the replace direct specular HitT with indirect specular HitT if we are using combined denoiser.
@@ -96,15 +96,18 @@ namespace dxvk {
     destroyPipelines();
   }
 
+  void NRDContext::onDestroy() {
+    m_cbData = nullptr;
+  }
+
   void NRDContext::prepareResources(
     Rc<DxvkCommandList> cmdList,
-    Rc<DxvkDevice> device,
     Rc<DxvkContext> ctx,
     const Resources::RaytracingOutput& rtOutput) {
 
     if (!m_cbData) {
       m_cbData = std::make_unique<DxvkStagingDataAlloc>(
-        device,
+        device(),
         (VkMemoryPropertyFlagBits) (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT),
         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
     }
@@ -144,9 +147,9 @@ namespace dxvk {
 
         THROW_IF_FALSE(nrd::CreateDenoiser(denoiserCreationDesc, m_denoiser) == nrd::Result::SUCCESS);
 
-        createPipelines(device);
+        createPipelines();
 
-        createResources(cmdList, device, ctx, rtOutput);
+        createResources(cmdList, ctx, rtOutput);
 
         m_settings.m_resetHistory = true;
       }
@@ -198,7 +201,6 @@ namespace dxvk {
 
   void NRDContext::createResources(
     Rc<DxvkCommandList> cmdList,
-    Rc<DxvkDevice> device,
     Rc<DxvkContext> ctx,
     const Resources::RaytracingOutput& rtOutput) {
     const nrd::DenoiserDesc& denoiserDesc = nrd::GetDenoiserDesc(*m_denoiser);
@@ -243,8 +245,8 @@ namespace dxvk {
       if (isPermanent) {
         // Always allocate these
         Resources::Resource resource;
-        resource.image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget, "nrd permament tex");
-        resource.view = device->createImageView(resource.image, viewInfo);
+        resource.image = device()->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget, "nrd permament tex");
+        resource.view = device()->createImageView(resource.image, viewInfo);
 
         ctx->changeImageLayout(resource.image, VK_IMAGE_LAYOUT_GENERAL);
         m_permanentTex.emplace_back(std::move(resource));
@@ -270,8 +272,8 @@ namespace dxvk {
             m_sharedTransientTex.erase(imageHash);
           }
           Resources::Resource resource;
-          resource.image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget, "nrd transient tex");
-          resource.view = device->createImageView(resource.image, viewInfo);
+          resource.image = device()->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget, "nrd transient tex");
+          resource.view = device()->createImageView(resource.image, viewInfo);
 
           ctx->changeImageLayout(resource.image, VK_IMAGE_LAYOUT_GENERAL);
 
@@ -289,7 +291,7 @@ namespace dxvk {
     }
   }
 
-  void NRDContext::createPipelines(Rc<DxvkDevice> device) {
+  void NRDContext::createPipelines() {
 
     const nrd::DenoiserDesc& denoiserDesc = nrd::GetDenoiserDesc(*m_denoiser);
 
@@ -320,7 +322,7 @@ namespace dxvk {
         samplerInfo = getSamplerInfo(denoiserDesc.samplers[i]);
 
         // Create sampler 
-        m_staticSamplers[i] = device->createSampler(samplerInfo);
+        m_staticSamplers[i] = device()->createSampler(samplerInfo);
 
         // Bind info
         const uint32_t reg = (uint32_t)(denoiserDesc.samplers[i]);
@@ -516,7 +518,6 @@ namespace dxvk {
 
   void NRDContext::dispatch(
     Rc<DxvkCommandList> cmdList,
-    Rc<DxvkDevice> device,
     Rc<DxvkContext> ctx,
     DxvkBarrierSet& barriers,
     const SceneManager& sceneManager,
@@ -528,9 +529,9 @@ namespace dxvk {
 
     ScopedGpuProfileZone(ctx, "NRD");
 
-    prepareResources(cmdList, device, ctx, rtOutput);
+    prepareResources(cmdList, ctx, rtOutput);
 
-    updateNRDSettings(device, sceneManager, inputs, rtOutput);
+    updateNRDSettings(sceneManager, inputs, rtOutput);
 
     std::vector<Rc<DxvkImageView>> pInputs, pOutputs;
     if (m_settings.m_methodDesc.method == nrd::Method::REFERENCE) {
@@ -626,7 +627,7 @@ namespace dxvk {
         if (dispatchDesc.constantBufferDataSize > 0) {
           // Setting alignment to device limit minUniformBufferOffsetAlignment because the offset value should be its multiple.
           // See https://vulkan.lunarg.com/doc/view/1.2.189.2/windows/1.2-extensions/vkspec.html#VUID-VkWriteDescriptorSet-descriptorType-00327
-          const auto& devInfo = device->properties().core.properties;
+          const auto& devInfo = device()->properties().core.properties;
           VkDeviceSize alignment = devInfo.limits.minUniformBufferOffsetAlignment;
           DxvkBufferSlice cbSlice = m_cbData->alloc(alignment, dispatchDesc.constantBufferDataSize);
           cmdList->trackResource<DxvkAccess::Write>(cbSlice.buffer());
@@ -664,7 +665,7 @@ namespace dxvk {
 
           if (needsCustomView(texture->view, resource.mipOffset, resource.mipNum, bStorage)) {
             DxvkImageViewCreateInfo viewCreateInfo = createImageViewCreateInfo(*texture->image.ptr(), resource.mipOffset, resource.mipNum, bStorage);
-            imageView = device->createImageView(texture->image, viewCreateInfo);
+            imageView = device()->createImageView(texture->image, viewCreateInfo);
           }
           else {
             imageView = texture->view;
@@ -728,7 +729,6 @@ namespace dxvk {
   }
 
   void NRDContext::updateNRDSettings(
-    const Rc<DxvkDevice>& device,
     const SceneManager& sceneManager,
     const DxvkDenoise::Input& inputs,
     const Resources::RaytracingOutput& rtOutput) {
@@ -793,7 +793,7 @@ namespace dxvk {
       commonSettings.cameraJitter[1] = jitterVec[1] / (float)m_settings.m_methodDesc.fullResolutionHeight;
       commonSettings.timeDeltaBetweenFrames = m_settings.m_groupedSettings.timeDeltaBetweenFrames != 0 
         ? m_settings.m_groupedSettings.timeDeltaBetweenFrames : inputs.frameTimeMs;
-      commonSettings.frameIndex = device->getCurrentFrameId();
+      commonSettings.frameIndex = device()->getCurrentFrameId();
       commonSettings.accumulationMode = m_settings.m_resetHistory ? nrd::AccumulationMode::RESTART : nrd::AccumulationMode::CONTINUE;
 
       auto* cameraTeleportDirectionInfo = sceneManager.getRayPortalManager().getCameraTeleportationRayPortalDirectionInfo();

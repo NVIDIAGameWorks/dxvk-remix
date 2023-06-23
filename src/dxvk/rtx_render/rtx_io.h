@@ -97,7 +97,7 @@ namespace dxvk {
       const DxvkDeviceQueue& queue;
     };
 
-    bool initialize(const Rc<DxvkDevice>& device);
+    bool initialize(DxvkDevice* device);
     void release();
 
     bool openFile(const char* filename, Handle* handle);

@@ -21,13 +21,13 @@
 */
 #pragma once
 #include "rtx_utils.h"
-
+#include "rtx_common_object.h"
 
 namespace dxvk {
   class DxvkDevice;
   class DxvkCommandList;
 
-  class BindlessResourceManager  {
+  class BindlessResourceManager : public CommonDeviceObject {
   public:
     friend struct BindlessTable;
 
@@ -41,7 +41,7 @@ namespace dxvk {
 
     BindlessResourceManager() = delete;
 
-    BindlessResourceManager(const Rc<DxvkDevice>& device);
+    explicit BindlessResourceManager(DxvkDevice* device);
 
     void prepareSceneData(const Rc<DxvkCommandList>& cmd, const std::vector<TextureRef>& rtTextures, const std::vector<RaytraceBuffer>& rtBuffers);
 
@@ -58,6 +58,7 @@ namespace dxvk {
 
       BindlessTable(BindlessResourceManager* pManager)
         : m_pManager(pManager) { }
+      ~BindlessTable();
 
       VkDescriptorSetLayout layout = VK_NULL_HANDLE;
       VkDescriptorSet bindlessDescSet = VK_NULL_HANDLE;
@@ -70,8 +71,6 @@ namespace dxvk {
 
       BindlessResourceManager* m_pManager = nullptr;
     };
-
-    Rc<DxvkDevice> m_device;
 
     // Persistent desc pool, our sets can be updated after bind (should be no need to reset this pool)
     Rc<DxvkDescriptorPool> m_globalBindlessPool[kMaxFramesInFlight];

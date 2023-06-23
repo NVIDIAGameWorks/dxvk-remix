@@ -22,11 +22,10 @@
 #include "rtx_camera_manager.h"
 #include "dxvk_device.h"
 #include "rtx_matrix_helpers.h"
-//#include "rtx_options.h"
 
 namespace dxvk {
 
-  CameraManager::CameraManager(Rc<DxvkDevice> device) : m_device(device) {
+  CameraManager::CameraManager(DxvkDevice* device) : CommonDeviceObject(device) {
     initSettings(m_device->instance()->config());
   }
 

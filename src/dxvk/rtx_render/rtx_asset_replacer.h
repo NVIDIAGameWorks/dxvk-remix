@@ -171,9 +171,6 @@ namespace dxvk {
   };
 
   struct AssetReplacer {
-    AssetReplacer(Rc<DxvkDevice>& device) {
-    }
-
     std::vector<AssetReplacement>* getReplacementsForMesh(XXH64_hash_t hash);
     std::vector<AssetReplacement>* getReplacementsForLight(XXH64_hash_t hash);
     MaterialData* getReplacementMaterial(XXH64_hash_t hash);

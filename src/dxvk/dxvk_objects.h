@@ -300,6 +300,23 @@ namespace dxvk {
       return m_exporter.get();
     }
 
+    void onDestroy() {
+      getRtxInitializer().onDestroy();
+
+      metaGeometryUtils().onDestroy();
+      getSceneManager().onDestroy();
+      getTextureManager().onDestroy();
+
+      m_primaryDirectLightDenoiser.get().onDestroy();
+      m_primaryIndirectLightDenoiser.get().onDestroy();
+      m_primaryCombinedLightDenoiser.get().onDestroy();
+      m_secondaryCombinedLightDenoiser.get().onDestroy();
+      m_referenceDenoiser.get().onDestroy();
+      m_referenceDenoiserSecondLobe0.get().onDestroy();
+      m_referenceDenoiserSecondLobe1.get().onDestroy();
+      m_referenceDenoiserSecondLobe2.get().onDestroy();
+    }
+
   private:
 
     DxvkDevice*                       m_device;

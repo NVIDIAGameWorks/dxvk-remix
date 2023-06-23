@@ -27,9 +27,9 @@
 #include "rtx_types.h"
 #include "rtx/concept/ray_portal/ray_portal.h"
 #include "rtx_camera.h"
+#include "rtx_common_object.h"
 
-namespace dxvk 
-{
+namespace dxvk {
 class DxvkContext;
 class DxvkDevice;
 class CameraManager;
@@ -63,8 +63,7 @@ struct RayPortalPairInfo {
   SingleRayPortalDirectionInfo pairInfos[2];   // infos for {P0->P1, P1->P0}
 };
 
-class RayPortalManager
-{
+class RayPortalManager : public CommonDeviceObject {
 public:
   using RayPortalInfosType = std::array<std::optional<RayPortalInfo>, maxRayPortalCount>;
   // Portals get chain paired => max pairs == numPortals - 1
@@ -87,7 +86,7 @@ public:
   RayPortalManager(RayPortalManager const&) = delete;
   RayPortalManager& operator=(RayPortalManager const&) = delete;
 
-  RayPortalManager(Rc<DxvkDevice> device, ResourceCache* pResourceCache);
+  RayPortalManager(DxvkDevice* device, ResourceCache* pResourceCache);
   ~RayPortalManager();
 
   // Called whenever an instance is updated, used to set new Ray Portal information each frame
@@ -127,8 +126,6 @@ private:
   SceneData m_sceneData;
 
   ResourceCache* m_pResourceCache;
-
-  Rc<DxvkDevice> m_device;
 
   // Active portal state during frame recording
   RayPortalInfosType m_rayPortalInfos{};

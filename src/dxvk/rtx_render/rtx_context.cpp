@@ -174,6 +174,11 @@ namespace dxvk {
   }
 
   RtxContext::~RtxContext() {
+    getCommonObjects()->metaExporter().waitForAllExportsToComplete();
+
+    if (m_screenshotFrameNum != -1 || m_terminateAppFrameNum != -1) {
+      Metrics::serialize();
+    }
   }
 
   SceneManager& RtxContext::getSceneManager() {
@@ -936,14 +941,14 @@ namespace dxvk {
   }
 
   void RtxContext::checkOpacityMicromapSupport() {
-    bool isOpacityMicromapSupported = OpacityMicromapManager::checkIsOpacityMicromapSupported(m_device);
+    bool isOpacityMicromapSupported = OpacityMicromapManager::checkIsOpacityMicromapSupported(*m_device);
 
     RtxOptions::Get()->setIsOpacityMicromapSupported(isOpacityMicromapSupported);
 
     Logger::info(str::format("[RTX info] Opacity Micromap: ", isOpacityMicromapSupported ? "supported" : "not supported"));
   }
 
-  bool RtxContext::checkIsShaderExecutionReorderingSupported(Rc<DxvkDevice> device) {
+  bool RtxContext::checkIsShaderExecutionReorderingSupported(DxvkDevice& device) {
     const bool allowSER = RtxOptions::Get()->isShaderExecutionReorderingSupported();
 
     if (!allowSER) {
@@ -951,9 +956,9 @@ namespace dxvk {
     }
 
     // SER Extension support check
-    const bool isSERExtensionSupported = device->extensions().nvRayTracingInvocationReorder;
+    const bool isSERExtensionSupported = device.extensions().nvRayTracingInvocationReorder;
     const bool isSERReorderingEnabled =
-      VK_RAY_TRACING_INVOCATION_REORDER_MODE_REORDER_NV == device->properties().nvRayTracingInvocationReorderProperties.rayTracingInvocationReorderReorderingHint;
+      VK_RAY_TRACING_INVOCATION_REORDER_MODE_REORDER_NV == device.properties().nvRayTracingInvocationReorderProperties.rayTracingInvocationReorderReorderingHint;
       
     return isSERExtensionSupported && isSERReorderingEnabled;
   }
@@ -992,7 +997,7 @@ namespace dxvk {
   }
 
   void RtxContext::checkShaderExecutionReorderingSupport() {
-    const bool isSERSupported = checkIsShaderExecutionReorderingSupported(m_device);
+    const bool isSERSupported = checkIsShaderExecutionReorderingSupported(*m_device);
     
     RtxOptions::Get()->setIsShaderExecutionReorderingSupported(isSERSupported);
 
@@ -1083,7 +1088,7 @@ namespace dxvk {
         DxvkContextFlag::CpDirtyDescriptorBinding);
     }
 
-    denoiser.dispatch(m_cmd, m_device, this, m_execBarriers, rtOutput, denoiseInput, denoiseOutput);
+    denoiser.dispatch(m_cmd, this, m_execBarriers, rtOutput, denoiseInput, denoiseOutput);
   }
 
   void RtxContext::dispatchDenoise(const Resources::RaytracingOutput& rtOutput, float frameTimeSecs) {
@@ -1108,15 +1113,15 @@ namespace dxvk {
       if (denoiser.isReferenceDenoiserEnabled()) {
         denoiseInput.reference = denoiseInput.diffuse_hitT;
         denoiseOutput.reference = denoiseOutput.diffuse_hitT;
-        denoiser.dispatch(m_cmd, m_device, this, m_execBarriers, rtOutput, denoiseInput, denoiseOutput);
+        denoiser.dispatch(m_cmd, this, m_execBarriers, rtOutput, denoiseInput, denoiseOutput);
 
         // Reference denoiser accumulates internally, so the second signal has to be denoised through a separate reference denoiser
         secondLobeReferenceDenoiser.copyNrdSettingsFrom(denoiser);
         denoiseInput.reference = denoiseInput.specular_hitT;
         denoiseOutput.reference = denoiseOutput.specular_hitT;
-        secondLobeReferenceDenoiser.dispatch(m_cmd, m_device, this, m_execBarriers, rtOutput, denoiseInput, denoiseOutput);
+        secondLobeReferenceDenoiser.dispatch(m_cmd, this, m_execBarriers, rtOutput, denoiseInput, denoiseOutput);
       } else
-        denoiser.dispatch(m_cmd, m_device, this, m_execBarriers, rtOutput, denoiseInput, denoiseOutput);
+        denoiser.dispatch(m_cmd, this, m_execBarriers, rtOutput, denoiseInput, denoiseOutput);
     };
 
     // Primary direct denoiser used for primary direct lighting when separated, otherwise a special combined direct+indirect denoiser is used when both direct and indirect signals are combined.
@@ -1199,7 +1204,7 @@ namespace dxvk {
   void RtxContext::dispatchDLSS(const Resources::RaytracingOutput& rtOutput) {
     DxvkDLSS& dlss = m_common->metaDLSS();
 
-    dlss.dispatch(m_cmd, m_device, this, m_execBarriers, rtOutput, m_resetHistory);
+    dlss.dispatch(m_cmd, this, m_execBarriers, rtOutput, m_resetHistory);
   }
 
   void RtxContext::dispatchNIS(const Resources::RaytracingOutput& rtOutput) {
@@ -1266,7 +1271,7 @@ namespace dxvk {
     adjustedDeltaTime = std::max(0.f, adjustedDeltaTime);
 
     DxvkAutoExposure& autoExposure = m_common->metaAutoExposure();    
-    autoExposure.dispatch(m_cmd, m_device, this, 
+    autoExposure.dispatch(m_cmd, this, 
       getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER),
       rtOutput, adjustedDeltaTime, performSRGBConversion);
 
@@ -1276,14 +1281,14 @@ namespace dxvk {
     // until it converges and thus making comparison of raytracing mode outputs more difficult    
     if(RtxOptions::Get()->tonemappingMode() == TonemappingMode::Global) {
       DxvkToneMapping& toneMapper = m_common->metaToneMapping();
-      toneMapper.dispatch(m_cmd, m_device, this, 
+      toneMapper.dispatch(m_cmd, this, 
         getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER),
         autoExposure.getExposureTexture().view,
         rtOutput, adjustedDeltaTime, performSRGBConversion, autoExposure.enabled());
     }
     DxvkLocalToneMapping& localTonemapper = m_common->metaLocalToneMapping();
     if (localTonemapper.shouldDispatch()){
-      localTonemapper.dispatch(m_cmd, m_device, this,
+      localTonemapper.dispatch(m_cmd, this,
         getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE),
         autoExposure.getExposureTexture().view,
         rtOutput, adjustedDeltaTime, performSRGBConversion, autoExposure.enabled());

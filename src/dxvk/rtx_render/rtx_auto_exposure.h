@@ -34,14 +34,13 @@ namespace dxvk {
 
   class DxvkDevice;
 
-  class DxvkAutoExposure {
+  class DxvkAutoExposure: public CommonDeviceObject {
   public:
-    DxvkAutoExposure(DxvkDevice* device);
+    explicit DxvkAutoExposure(DxvkDevice* device);
     ~DxvkAutoExposure();
 
     void dispatch(
       Rc<DxvkCommandList> cmdList,
-      Rc<DxvkDevice> device,
       Rc<DxvkContext> ctx,
       Rc<DxvkSampler> linearSampler,
       const Resources::RaytracingOutput& rtOutput,
@@ -54,11 +53,10 @@ namespace dxvk {
     const Resources::Resource& getExposureTexture() const { return m_exposure; }
 
   private:
-    void createResources(Rc<DxvkDevice> device, Rc<DxvkContext> ctx);
+    void createResources(Rc<DxvkContext> ctx);
 
     void dispatchAutoExposure(
       Rc<DxvkCommandList> cmdList,
-      Rc<DxvkDevice> device,
       Rc<DxvkContext> ctx,
       Rc<DxvkSampler> linearSampler,
       const Resources::RaytracingOutput& rtOutput,

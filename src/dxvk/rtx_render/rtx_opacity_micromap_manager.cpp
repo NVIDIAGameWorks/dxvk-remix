@@ -44,11 +44,11 @@ const VkDeviceSize kOmmBufferAlignment = 16;
 const VkDeviceSize kMicromapBufferAlignment = 256;
 
 namespace dxvk {
-  DxvkOpacityMicromap::DxvkOpacityMicromap(Rc<DxvkDevice> device) : m_device(device) { }
+  DxvkOpacityMicromap::DxvkOpacityMicromap(DxvkDevice& device) : m_vkd(device.vkd()) { }
 
   DxvkOpacityMicromap::~DxvkOpacityMicromap() {
     if (opacityMicromap != VK_NULL_HANDLE) {
-      m_device->vkd()->vkDestroyMicromapEXT(m_device->vkd()->device(), opacityMicromap, nullptr);
+      m_vkd->vkDestroyMicromapEXT(m_vkd->device(), opacityMicromap, nullptr);
       opacityMicromap = VK_NULL_HANDLE;
     }
 
@@ -63,7 +63,7 @@ namespace dxvk {
     Logger::err("[RTX Opacity Micromap] Encountered inconsistent state. Default constructor for OpacityMicromapCacheItem should never be called.");
   }
 
-  OpacityMicromapCacheItem::OpacityMicromapCacheItem(Rc<DxvkDevice> device,
+  OpacityMicromapCacheItem::OpacityMicromapCacheItem(DxvkDevice& device,
                                                      OpacityMicromapCacheState _cacheState,
                                                      const uint32_t inputSubdivisionLevel,
                                                      const bool enableVertexAndTextureOperations, 
@@ -81,8 +81,8 @@ namespace dxvk {
     useVertexAndTextureOperations = enableVertexAndTextureOperations;
     const uint32_t maxSubdivisionLevel =
       ommFormat == VkOpacityMicromapFormatEXT::VK_OPACITY_MICROMAP_FORMAT_2_STATE_EXT
-      ? device->properties().extOpacityMicromapProperties.maxOpacity2StateSubdivisionLevel
-      : device->properties().extOpacityMicromapProperties.maxOpacity4StateSubdivisionLevel;
+      ? device.properties().extOpacityMicromapProperties.maxOpacity2StateSubdivisionLevel
+      : device.properties().extOpacityMicromapProperties.maxOpacity4StateSubdivisionLevel;
     subdivisionLevel = std::min(inputSubdivisionLevel, maxSubdivisionLevel);
   }
 
@@ -95,9 +95,8 @@ namespace dxvk {
     return blasOmmBuffersDeviceSize + arrayBufferDeviceSize;
   }
 
-  OpacityMicromapMemoryManager::OpacityMicromapMemoryManager(
-    const Rc<DxvkDevice>& device)
-    : m_device(device)
+  OpacityMicromapMemoryManager::OpacityMicromapMemoryManager(DxvkDevice* device)
+    : CommonDeviceObject(device)
     , m_memoryProperties(device->adapter()->memoryProperties()) {
     // +1 to account for OMMs used in a previous TLAS
     const uint32_t kMaxFramesOMMResourcesAreUsed = kMaxFramesInFlight + 1;
@@ -196,10 +195,18 @@ namespace dxvk {
     return m_pendingReleaseSize.back();
   }
 
-  OpacityMicromapManager::OpacityMicromapManager(Rc<DxvkDevice> device)
-    : m_device(device)
-    , m_memoryManager(device)
-    , m_scratchAllocator(device, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR) {
+  OpacityMicromapManager::OpacityMicromapManager(DxvkDevice* device)
+    : CommonDeviceObject(device)
+    , m_memoryManager(device) {
+    m_scratchAllocator = std::make_unique<DxvkStagingDataAlloc>(
+      device,
+      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+      VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
+      VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR);
+  }
+
+  void OpacityMicromapManager::onDestroy() {
+    m_scratchAllocator = nullptr;
   }
 
   OmmRequest::OmmRequest(const RtInstance& _instance, const InstanceManager& instanceManager, uint32_t _quadSliceIndex)
@@ -529,11 +536,11 @@ namespace dxvk {
     }
   }
 
-  bool OpacityMicromapManager::checkIsOpacityMicromapSupported(Rc<DxvkDevice> device) {
-    bool isOpacityMicromapSupported = device->extensions().khrSynchronization2 &&
-                                      device->extensions().extOpacityMicromap;
+  bool OpacityMicromapManager::checkIsOpacityMicromapSupported(DxvkDevice& device) {
+    bool isOpacityMicromapSupported = device.extensions().khrSynchronization2 &&
+                                      device.extensions().extOpacityMicromap;
 
-    if (device->instance()->areVulkanValidationLayersEnabled() && isOpacityMicromapSupported) {
+    if (device.instance()->areVulkanValidationLayersEnabled() && isOpacityMicromapSupported) {
       Logger::warn(str::format("[RTX] Opacity Micromap vendor extension is not compatible with VK Validation Layers. Disabling Opacity Micromap extension."));
       isOpacityMicromapSupported = false;
     }
@@ -768,7 +775,7 @@ namespace dxvk {
     m_ommCache.emplace(
       std::piecewise_construct,
       std::forward_as_tuple(ommSrcHash),
-      std::forward_as_tuple(m_device, OpacityMicromapCacheState::eStep0_Unprocessed, OpacityMicromapOptions::Building::subdivisionLevel(), 
+      std::forward_as_tuple(*m_device, OpacityMicromapCacheState::eStep0_Unprocessed, OpacityMicromapOptions::Building::subdivisionLevel(), 
                             OpacityMicromapOptions::Building::enableVertexAndTextureOperations(), m_device->getCurrentFrameId(),
                             lastElementIterator, cacheStateListIter, ommRequest));
 
@@ -1035,7 +1042,7 @@ namespace dxvk {
 
   template <typename IndexType>
   OpacityMicromapManager::OmmResult initializeOpacityMicromapTriangleArrayBuffers(
-    Rc<DxvkDevice> device,
+    DxvkDevice* device,
     Rc<DxvkContext> ctx,
     Rc<DxvkCommandList> cmdList,
     VkOpacityMicromapFormatEXT ommFormat,
@@ -1247,7 +1254,7 @@ namespace dxvk {
         desc.resolveTransparencyThreshold = std::max(desc.resolveTransparencyThreshold, OpacityMicromapOptions::Building::decalsMinResolveTransparencyThreshold());
 
       ctx->getCommonObjects()->metaGeometryUtils().dispatchBakeOpacityMicromap(
-        m_device, cmdList, ctx, blasEntry.modifiedGeometryData, 
+        cmdList, ctx, blasEntry.modifiedGeometryData, 
         textures, instance.getAlbedoOpacityTextureIndex(), instance.getSecondaryOpacityTextureIndex(),
         desc, ommCacheItem.bakingState, ommCacheItem.ommArrayBuffer);
 
@@ -1288,7 +1295,7 @@ namespace dxvk {
     const uint32_t opacityMicromapBufferSize = numTriangles * opacityMicromapPerTriangleBufferSize;
     const VkIndexType triangleIndexType = numTriangles <= UINT16_MAX ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
     const uint32_t numBytesPerIndexElement = triangleIndexType == VK_INDEX_TYPE_UINT16 ? 2 : 4;
-    ommCacheItem.blasOmmBuffers = new DxvkOpacityMicromap(m_device);
+    ommCacheItem.blasOmmBuffers = new DxvkOpacityMicromap(*m_device);
 
     // Micromap forward definitions
     Rc<DxvkBuffer> triangleArrayBuffer;     // VkMicromapTriangleEXT per triangle
@@ -1355,7 +1362,7 @@ namespace dxvk {
     
     // Allocate the scratch memory
     uint32_t scratchAlignment = m_device->properties().khrDeviceAccelerationStructureProperties.minAccelerationStructureScratchOffsetAlignment;
-    DxvkBufferSlice scratchSlice = m_scratchAllocator.alloc(scratchAlignment, sizeInfo.buildScratchSize);
+    DxvkBufferSlice scratchSlice = m_scratchAllocator->alloc(scratchAlignment, sizeInfo.buildScratchSize);
 
     // Build the array with vkBuildMicromapsEXT
     {

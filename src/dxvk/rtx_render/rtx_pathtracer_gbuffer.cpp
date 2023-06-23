@@ -136,13 +136,13 @@ namespace dxvk {
     };
   }
 
-  DxvkPathtracerGbuffer::DxvkPathtracerGbuffer(DxvkDevice* device) : m_device(device) {
+  DxvkPathtracerGbuffer::DxvkPathtracerGbuffer(DxvkDevice* device) : CommonDeviceObject(device) {
   }
 
   void DxvkPathtracerGbuffer::prewarmShaders(DxvkPipelineManager& pipelineManager) const {
-    const bool isOpacityMicromapSupported = OpacityMicromapManager::checkIsOpacityMicromapSupported(m_device);
+    const bool isOpacityMicromapSupported = OpacityMicromapManager::checkIsOpacityMicromapSupported(*m_device);
     const bool isShaderExecutionReorderingSupported = 
-      RtxContext::checkIsShaderExecutionReorderingSupported(m_device) && 
+      RtxContext::checkIsShaderExecutionReorderingSupported(*m_device) && 
       RtxOptions::Get()->isShaderExecutionReorderingInPathtracerGbufferEnabled();
 
     for (int32_t isPSRPass = 1; isPSRPass >= 0; isPSRPass--) {

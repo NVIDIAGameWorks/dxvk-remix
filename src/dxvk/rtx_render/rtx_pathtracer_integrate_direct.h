@@ -27,8 +27,7 @@ namespace dxvk {
 
   class DxvkDevice;
 
-  class DxvkPathtracerIntegrateDirect {
-
+  class DxvkPathtracerIntegrateDirect : public CommonDeviceObject {
   public:
     enum class RaytraceMode {
       RayQuery = 0,
@@ -36,7 +35,7 @@ namespace dxvk {
       Count
     };
 
-    DxvkPathtracerIntegrateDirect(DxvkDevice* device);
+    explicit DxvkPathtracerIntegrateDirect(DxvkDevice* device);
     ~DxvkPathtracerIntegrateDirect() = default;
 
     void prewarmShaders(DxvkPipelineManager& pipelineManager) const;
@@ -48,7 +47,5 @@ namespace dxvk {
   private:
     static DxvkRaytracingPipelineShaders getPipelineShaders(const bool useRayQuery, const bool ommEnabled);
     Rc<DxvkShader> getComputeShader() const;
-
-    Rc<DxvkDevice> m_device;
   };
 }

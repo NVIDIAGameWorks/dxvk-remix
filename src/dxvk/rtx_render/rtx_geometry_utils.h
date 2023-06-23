@@ -28,6 +28,7 @@
 #include "../util/util_matrix.h"
 #include "rtx/pass/gen_tri_list_index_buffer_indices.h"
 #include "rtx_types.h"
+#include "rtx_common_object.h"
 
 struct SkinningArgs;
 
@@ -43,13 +44,18 @@ namespace dxvk {
   * compute pipelines that are going to be used
   * for geometry operations.
   */
-  class RtxGeometryUtils {
+  class RtxGeometryUtils : public CommonDeviceObject {
     std::unique_ptr<DxvkStagingDataAlloc> m_pCbData;
     Rc<DxvkContext> m_skinningContext;
 
   public:
-    RtxGeometryUtils(DxvkDevice* pDevice);
+    explicit RtxGeometryUtils(DxvkDevice* pDevice);
     ~RtxGeometryUtils();
+
+    /**
+     * \brief Called before destruction
+     */
+    void onDestroy();
 
     /**
      * \brief Currently we only support these texcoord formats...
@@ -102,7 +108,6 @@ namespace dxvk {
      *              internal alignments
      */
     void dispatchBakeOpacityMicromap(
-      Rc<DxvkDevice> device,
       Rc<DxvkCommandList> cmdList,
       Rc<DxvkContext> ctx,
       const RaytraceGeometry& geo,

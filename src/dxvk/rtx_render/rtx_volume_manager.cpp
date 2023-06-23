@@ -33,8 +33,8 @@
 
 namespace dxvk {
 
-  VolumeManager::VolumeManager(Rc<DxvkDevice> device)
-    : m_device(device) {
+  VolumeManager::VolumeManager(DxvkDevice* device)
+    : CommonDeviceObject(device) {
   }
 
   VolumeManager::~VolumeManager() {

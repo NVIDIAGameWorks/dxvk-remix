@@ -213,7 +213,7 @@ namespace dxvk {
     }
   }
 
-  bool RtxIo::initialize(const Rc<DxvkDevice>& device) {
+  bool RtxIo::initialize(DxvkDevice* device) {
     const auto& queues = device->queues();
 
     if (useAsyncQueue() && queues.asyncCompute.queueHandle != VK_NULL_HANDLE) {
@@ -250,7 +250,7 @@ namespace dxvk {
       throw DxvkError(str::format("RTX IO creation failed with: ", result));
     }
 
-    m_device = device.ptr();
+    m_device = device;
 
     updateMemoryStats(memoryBudgetMB());
 

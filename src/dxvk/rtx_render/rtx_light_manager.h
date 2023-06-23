@@ -30,22 +30,20 @@
 #include "rtx/concept/light/light_types.h"
 #include "rtx_lights.h"
 #include "rtx_camera_manager.h"
+#include "rtx_common_object.h"
 
 struct RaytraceArgs;
 
-namespace dxvk
-{
+namespace dxvk {
 class DxvkContext;
 class DxvkDevice;
 
-struct LightRange
-{
+struct LightRange {
   uint32_t offset;
   uint32_t count;
 };
 
-struct LightManager
-{
+struct LightManager : public CommonDeviceObject {
 public:
   enum class FallbackLightMode : int {
     Never = 0,
@@ -61,7 +59,7 @@ public:
   LightManager(LightManager const&) = delete;
   LightManager& operator=(LightManager const&) = delete;
 
-  LightManager(Rc<DxvkDevice> device);
+  explicit LightManager(DxvkDevice* device);
   ~LightManager();
 
   void showImguiSettings();
@@ -97,7 +95,6 @@ private:
   Rc<DxvkBuffer> m_lightBuffer;
   Rc<DxvkBuffer> m_previousLightBuffer;
   Rc<DxvkBuffer> m_lightMappingBuffer;
-  Rc<DxvkDevice> m_device;
 
   uint32_t m_currentActiveLightCount = 0;
   std::array<LightRange, lightTypeCount> m_lightTypeRanges;
