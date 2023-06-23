@@ -122,16 +122,21 @@ namespace dxvk {
     PREWARM_SHADER_PIPELINE(InterleaveGeometryShader);
   }
 
-  RtxGeometryUtils::RtxGeometryUtils(DxvkDevice* pDevice){
+  RtxGeometryUtils::RtxGeometryUtils(DxvkDevice* device) : CommonDeviceObject(device) {
     m_pCbData = std::make_unique<DxvkStagingDataAlloc>(
-      pDevice,
+      device,
       (VkMemoryPropertyFlagBits) (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT),
       VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
-    m_skinningContext = pDevice->createContext();
+    m_skinningContext = device->createContext();
   }
 
   RtxGeometryUtils::~RtxGeometryUtils() { }
+
+  void RtxGeometryUtils::onDestroy() {
+    m_pCbData = nullptr;
+    m_skinningContext = nullptr;
+  }
 
   void RtxGeometryUtils::dispatchSkinning(const DrawCallState& drawCallState,
                                           const RaytraceGeometry& geo) const {
@@ -270,7 +275,6 @@ namespace dxvk {
   }
 
   void RtxGeometryUtils::dispatchBakeOpacityMicromap(
-    Rc<DxvkDevice> device,
     Rc<DxvkCommandList> cmdList,
     Rc<DxvkContext> ctx,
     const RaytraceGeometry& geo,
@@ -314,14 +318,14 @@ namespace dxvk {
     {
       const DxvkSamplerCreateInfo& samplerInfo = opacityTexture.sampler->info();
 
-      opacitySampler = device->getCommon()->getResources().getSampler(
+      opacitySampler = device()->getCommon()->getResources().getSampler(
         VK_FILTER_NEAREST, VK_SAMPLER_MIPMAP_MODE_NEAREST,
         samplerInfo.addressModeU, samplerInfo.addressModeV, samplerInfo.addressModeW,
         samplerInfo.borderColor);
 
       if (secondaryOpacityTexture) {
         const DxvkSamplerCreateInfo& secondarySamplerInfo = secondaryOpacityTexture->sampler->info();
-          secondaryOpacitySampler = device->getCommon()->getResources().getSampler(
+          secondaryOpacitySampler = device()->getCommon()->getResources().getSampler(
           VK_FILTER_NEAREST, VK_SAMPLER_MIPMAP_MODE_NEAREST,
           secondarySamplerInfo.addressModeU, secondarySamplerInfo.addressModeV, secondarySamplerInfo.addressModeW,
           secondarySamplerInfo.borderColor);
@@ -339,7 +343,7 @@ namespace dxvk {
                           secondaryOpacityTexture ? secondaryOpacityTexture->getImageView() : opacityTexture.getImageView(), nullptr);
     ctx->bindResourceSampler(BINDING_BAKE_OPACITY_MICROMAP_SECONDARY_OPACITY_INPUT, secondaryOpacitySampler);
     ctx->bindResourceBuffer(BINDING_BAKE_OPACITY_MICROMAP_BINDING_SURFACE_DATA_INPUT,
-                            DxvkBufferSlice(device->getCommon()->getSceneManager().getSurfaceBuffer()));
+                            DxvkBufferSlice(device()->getCommon()->getSceneManager().getSurfaceBuffer()));
     ctx->bindResourceBuffer(BINDING_BAKE_OPACITY_MICROMAP_ARRAY_OUTPUT,
                             DxvkBufferSlice(opacityMicromapBuffer, 0, opacityMicromapBuffer->info().size));
 
@@ -355,7 +359,7 @@ namespace dxvk {
 
     const uint32_t numMicroTrianglesPerWord = args.is2StateOMMFormat ? 32 : 16;
     const uint32_t kNumMicroTrianglesPerComputeBlock = BAKE_OPACITY_MICROMAP_NUM_THREAD_PER_COMPUTE_BLOCK;
-    const VkPhysicalDeviceLimits& limits = device->properties().core.properties.limits;
+    const VkPhysicalDeviceLimits& limits = device()->properties().core.properties.limits;
     // Workgroup count limit can be high (i.e. 2 Billion), so avoid overflowing uint32_t limit 
     const uint32_t maxThreadsPerDispatch = std::min(limits.maxComputeWorkGroupCount[0], UINT32_MAX / kNumMicroTrianglesPerComputeBlock) * 
                                            kNumMicroTrianglesPerComputeBlock;

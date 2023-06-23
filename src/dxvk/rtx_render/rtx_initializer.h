@@ -22,13 +22,23 @@
 #pragma once
 #include "../../util/rc/util_rc_ptr.h"
 #include "rtx_option.h"
+#include "rtx_common_object.h"
 
 namespace dxvk {
   class DxvkDevice;
 
-  class RtxInitializer {
+  class RtxInitializer : public CommonDeviceObject {
   public:
-    RtxInitializer(const Rc<DxvkDevice>& device);
+    explicit RtxInitializer(DxvkDevice* device);
+
+    void onDestroy() override {
+      if (m_asyncAssetLoadThread.joinable()) {
+        if (!m_assetsLoaded) {
+          Logger::warn("Async asset loading thread is running while device is being destroyed! Attempting to join...");
+        }
+        m_asyncAssetLoadThread.join();
+      }
+    }
 
     void initialize();
     void release();
@@ -36,11 +46,13 @@ namespace dxvk {
     void waitForShaderPrewarm();
 
   private:
-    Rc<DxvkDevice> m_device;
     bool m_warmupComplete = false;
+    bool m_assetsLoaded = false;
 
     void loadAssets();
     void startPrewarmShaders();
+
+    dxvk::thread m_asyncAssetLoadThread;
 
     RTX_OPTION("rtx.initializer", bool, asyncAssetLoading, true, "");
     RTX_OPTION("rtx.initializer", bool, asyncShaderPrewarming, true, "");

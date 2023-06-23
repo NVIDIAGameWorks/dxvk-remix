@@ -34,14 +34,13 @@ namespace dxvk {
 
   class DxvkDevice;
 
-  class DxvkToneMapping {
+  class DxvkToneMapping: public CommonDeviceObject {
   public:
-    DxvkToneMapping(DxvkDevice* device);
+    explicit DxvkToneMapping(DxvkDevice* device);
     ~DxvkToneMapping();
 
     void dispatch(
       Rc<DxvkCommandList> cmdList,
-      Rc<DxvkDevice> device,
       Rc<DxvkContext> ctx,
       Rc<DxvkSampler> linearSampler,
       Rc<DxvkImageView> exposureView,
@@ -56,11 +55,10 @@ namespace dxvk {
     void showImguiSettings();
 
   private:
-    void createResources(Rc<DxvkDevice> device, Rc<DxvkContext> ctx);
+    void createResources(Rc<DxvkContext> ctx);
 
     void dispatchHistogram(
       Rc<DxvkCommandList> cmdList,
-      Rc<DxvkDevice> device,
       Rc<DxvkContext> ctx,
       Rc<DxvkImageView> exposureView,
       const Resources::Resource& colorBuffer,
@@ -68,12 +66,10 @@ namespace dxvk {
 
     void dispatchToneCurve(
       Rc<DxvkCommandList> cmdList,
-      Rc<DxvkDevice> device,
       Rc<DxvkContext> ctx);
 
     void dispatchApplyToneMapping(
       Rc<DxvkCommandList> cmdList,
-      Rc<DxvkDevice> device,
       Rc<DxvkContext> ctx,
       Rc<DxvkSampler> linearSampler,
       Rc<DxvkImageView> exposureView,

@@ -71,8 +71,7 @@ namespace dxvk {
     }
 
     ~Watchdog() {
-      if (m_thread.joinable())
-        m_thread.join();
+      stop();
     }
 
     // Start the watchdog thread.

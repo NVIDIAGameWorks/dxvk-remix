@@ -36,7 +36,7 @@ namespace {
   }
 }
 
-DrawCallCache::DrawCallCache(Rc<DxvkDevice> device) : m_device(device) {
+DrawCallCache::DrawCallCache(DxvkDevice* device) : CommonDeviceObject(device) {
   m_entries.reserve(1024);
 }
 DrawCallCache::~DrawCallCache() {}

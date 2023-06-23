@@ -70,11 +70,7 @@ namespace dxvk {
     };
   }
 
-  DxvkDLSS::DxvkDLSS(DxvkDevice* device)
-  {
-
-    m_device = device;
-
+  DxvkDLSS::DxvkDLSS(DxvkDevice* device) : CommonDeviceObject(device) {
     DxvkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
     info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
@@ -83,13 +79,11 @@ namespace dxvk {
     m_constants = device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
   }
 
-  DxvkDLSS::~DxvkDLSS()
-  {
+  DxvkDLSS::~DxvkDLSS() {
     NGXWrapper::releaseInstance();
   }
 
-  NVSDK_NGX_PerfQuality_Value profileToQuality(DLSSProfile profile)
-  {
+  NVSDK_NGX_PerfQuality_Value profileToQuality(DLSSProfile profile) {
     NVSDK_NGX_PerfQuality_Value perfQuality = NVSDK_NGX_PerfQuality_Value_Balanced;
     switch (profile)
     {
@@ -184,9 +178,9 @@ namespace dxvk {
     height = mDLSSOutputSize[1];
   }
 
-  bool DxvkDLSS::useDlssAutoExposure(Rc<DxvkDevice>& device) const {
+  bool DxvkDLSS::useDlssAutoExposure() const {
     // Force internal auto-exposure when external exposure is not available
-    const DxvkAutoExposure& autoExposure = device->getCommon()->metaAutoExposure();
+    const DxvkAutoExposure& autoExposure = device()->getCommon()->metaAutoExposure();
     if (autoExposure.enabled() && autoExposure.getExposureTexture().image != nullptr) {
       return false;
     }
@@ -196,7 +190,6 @@ namespace dxvk {
 
   void DxvkDLSS::dispatch(
     Rc<DxvkCommandList> cmdList,
-    Rc<DxvkDevice> device,
     Rc<RtxContext> ctx,
     DxvkBarrierSet& barriers,
     const Resources::RaytracingOutput& rtOutput,
@@ -207,7 +200,7 @@ namespace dxvk {
     if (!mEnabled)
       return;
 
-    bool dlssAutoExposure = useDlssAutoExposure(device);
+    bool dlssAutoExposure = useDlssAutoExposure();
     mRecreate |= (mAutoExposure != dlssAutoExposure);
     mAutoExposure = dlssAutoExposure;
 
@@ -216,7 +209,7 @@ namespace dxvk {
       mRecreate = false;
     }
 
-    SceneManager& sceneManager = device->getCommon()->getSceneManager();
+    SceneManager& sceneManager = device()->getCommon()->getSceneManager();
 
     {
       // The DLSS y coordinate is pointing down
@@ -235,7 +228,7 @@ namespace dxvk {
         rtOutput.m_sharedBiasCurrentColorMask.view(Resources::AccessType::Read)
       };
 
-      const DxvkAutoExposure& autoExposure = device->getCommon()->metaAutoExposure();
+      const DxvkAutoExposure& autoExposure = device()->getCommon()->metaAutoExposure();
       if (!mAutoExposure)
         pInputs.push_back(autoExposure.getExposureTexture().view);
 

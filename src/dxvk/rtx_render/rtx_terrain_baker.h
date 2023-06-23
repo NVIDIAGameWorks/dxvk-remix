@@ -93,7 +93,7 @@ namespace dxvk {
     void calculateTerrainBBOX(const uint32_t currentFrameIndex);
     void calculateBakingParameters(Rc<RtxContext> ctx, const DxvkContextState& dxvkCtxState);
     void updateTextureFormat(const DxvkContextState& dxvkCtxState);
-    void calculateCascadeMapResolution(Rc<DxvkDevice> device);
+    void calculateCascadeMapResolution(const Rc<DxvkDevice>& device);
 
     BakingParameters m_bakingParams;
 

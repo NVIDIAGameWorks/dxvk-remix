@@ -68,7 +68,7 @@ namespace dxvk {
   }
   
   DxvkAutoExposure::DxvkAutoExposure(DxvkDevice* device)
-  : m_vkd(device->vkd())  {
+  : CommonDeviceObject(device), m_vkd(device->vkd())  {
   }
   
   DxvkAutoExposure::~DxvkAutoExposure()  {  }
@@ -151,7 +151,7 @@ namespace dxvk {
     }
   }
 
-  void DxvkAutoExposure::createResources(Rc<DxvkDevice> device, Rc<DxvkContext> ctx) {
+  void DxvkAutoExposure::createResources(Rc<DxvkContext> ctx) {
     DxvkImageCreateInfo desc;
     desc.type = VK_IMAGE_TYPE_1D;
     desc.flags = 0;
@@ -176,28 +176,27 @@ namespace dxvk {
 
     viewInfo.format = desc.format = VK_FORMAT_R32_SFLOAT;
     viewInfo.usage = desc.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    m_exposure.image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget, "autoexposure");
-    m_exposure.view = device->createImageView(m_exposure.image, viewInfo);
+    m_exposure.image = device()->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget, "autoexposure");
+    m_exposure.view = device()->createImageView(m_exposure.image, viewInfo);
     ctx->changeImageLayout(m_exposure.image, VK_IMAGE_LAYOUT_GENERAL);
 
     desc.extent = VkExtent3D { EXPOSURE_HISTOGRAM_SIZE, 1, 1 };
     viewInfo.format = desc.format = VK_FORMAT_R32_UINT;
     viewInfo.usage = desc.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    m_exposureHistogram.image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget, "autoexposure histogram");
-    m_exposureHistogram.view = device->createImageView(m_exposureHistogram.image, viewInfo);
+    m_exposureHistogram.image = device()->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget, "autoexposure histogram");
+    m_exposureHistogram.view = device()->createImageView(m_exposureHistogram.image, viewInfo);
     ctx->changeImageLayout(m_exposureHistogram.image, VK_IMAGE_LAYOUT_GENERAL);
 
     desc.extent = VkExtent3D { EXPOSURE_HISTOGRAM_SIZE, 1, 1 };
     viewInfo.format = desc.format = VK_FORMAT_R32_SFLOAT;
     viewInfo.usage = desc.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-    m_exposureWeightCurve.image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget, "autoexposure weight curve");
-    m_exposureWeightCurve.view = device->createImageView(m_exposureWeightCurve.image, viewInfo);
+    m_exposureWeightCurve.image = device()->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget, "autoexposure weight curve");
+    m_exposureWeightCurve.view = device()->createImageView(m_exposureWeightCurve.image, viewInfo);
     ctx->changeImageLayout(m_exposureWeightCurve.image, VK_IMAGE_LAYOUT_GENERAL);
   }
 
   void DxvkAutoExposure::dispatchAutoExposure(
     Rc<DxvkCommandList> cmdList,
-    Rc<DxvkDevice> device,
     Rc<DxvkContext> ctx,
     Rc<DxvkSampler> linearSampler,
     const Resources::RaytracingOutput& rtOutput,
@@ -280,7 +279,6 @@ namespace dxvk {
 
   void DxvkAutoExposure::dispatch(
     Rc<DxvkCommandList> cmdList,
-    Rc<DxvkDevice> device,
     Rc<DxvkContext> ctx,
     Rc<DxvkSampler> linearSampler,
     const Resources::RaytracingOutput& rtOutput,
@@ -296,11 +294,11 @@ namespace dxvk {
 
     // TODO : set reset on significant camera changes as well
     if (m_exposureHistogram.image.ptr() == nullptr) {
-      createResources(device, ctx);
+      createResources(ctx);
       m_resetState = true;
     }
 
-    dispatchAutoExposure(cmdList, device, ctx, linearSampler, rtOutput, deltaTime);
+    dispatchAutoExposure(cmdList, ctx, linearSampler, rtOutput, deltaTime);
 
     m_resetState = false;
   }

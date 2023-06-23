@@ -29,6 +29,7 @@
 #include "dxvk_scoped_annotation.h"
 
 #include "rtx_types.h"
+#include "rtx_common_object.h"
 #include <d3d9types.h>
 
 namespace dxvk 
@@ -37,7 +38,7 @@ class DxvkDevice;
 
 // A cache of the BlasEntries across frames.  This maintains stable BlasEntry pointers until that BlasEntry
 // is erased by sceneManager's garbage collection.
-class DrawCallCache {
+class DrawCallCache : public CommonDeviceObject {
 public:
   using MultimapType = std::unordered_multimap<XXH64_hash_t, BlasEntry, XXH64_hash_passthrough>;
 
@@ -50,7 +51,7 @@ public:
   DrawCallCache(DrawCallCache const&) = delete;
   DrawCallCache& operator=(DrawCallCache const&) = delete;
 
-  DrawCallCache(Rc<DxvkDevice> device);
+  explicit DrawCallCache(DxvkDevice* device);
   ~DrawCallCache();
 
   CacheState get(const DrawCallState& drawCall, BlasEntry** out);
@@ -63,8 +64,6 @@ public:
 
 private:
   MultimapType m_entries;
-
-  Rc<DxvkDevice> m_device;
 
   BlasEntry* allocateEntry(XXH64_hash_t hash, const DrawCallState& drawCall);
 };

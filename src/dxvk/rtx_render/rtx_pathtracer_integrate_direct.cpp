@@ -91,12 +91,12 @@ namespace dxvk {
     };
   }
 
-  DxvkPathtracerIntegrateDirect::DxvkPathtracerIntegrateDirect(DxvkDevice* device) : m_device(device) {
+  DxvkPathtracerIntegrateDirect::DxvkPathtracerIntegrateDirect(DxvkDevice* device) : CommonDeviceObject(device) {
   }
 
   void DxvkPathtracerIntegrateDirect::prewarmShaders(DxvkPipelineManager& pipelineManager) const {
 
-    const bool isOpacityMicromapSupported = OpacityMicromapManager::checkIsOpacityMicromapSupported(m_device);
+    const bool isOpacityMicromapSupported = OpacityMicromapManager::checkIsOpacityMicromapSupported(*m_device);
 
     for (int32_t ommEnabled = isOpacityMicromapSupported; ommEnabled > 0; ommEnabled--)
       pipelineManager.registerRaytracingShaders(getPipelineShaders(true, ommEnabled));

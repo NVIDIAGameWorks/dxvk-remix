@@ -25,6 +25,7 @@
 #include "rtx_types.h"
 #include "rtx_geometry_utils.h"
 #include "rtx_option.h"
+#include "rtx_common_object.h"
 #include <vector>
 #include <list>
 #include <unordered_map>
@@ -149,11 +150,11 @@ namespace dxvk {
     Rc<DxvkBuffer> opacityMicromapBuffer;
     VkMicromapEXT opacityMicromap = VK_NULL_HANDLE;      // Built micromap handle
 
-    DxvkOpacityMicromap(Rc<DxvkDevice> device);
+    explicit DxvkOpacityMicromap(DxvkDevice& device);
     ~DxvkOpacityMicromap();
 
   private:
-    Rc<DxvkDevice> m_device;
+    Rc<vk::DeviceFn> m_vkd;
   };
 
   enum class OpacityMicromapCacheState {
@@ -245,7 +246,7 @@ namespace dxvk {
     VkDeviceSize arrayBufferDeviceSize = 0;
 
     OpacityMicromapCacheItem();
-    OpacityMicromapCacheItem(Rc<DxvkDevice> device, OpacityMicromapCacheState _cacheState, const uint32_t subdivisionLevel, const bool enableVertexAndTextureOperations,     
+    OpacityMicromapCacheItem(DxvkDevice& device, OpacityMicromapCacheState _cacheState, const uint32_t subdivisionLevel, const bool enableVertexAndTextureOperations,     
                              uint32_t currentFrameIndex, std::list<XXH64_hash_t>::iterator _mostRecentlyUsedListIter, std::list<XXH64_hash_t>::iterator _cacheStateListIter,
                              const OmmRequest& ommRequest);
     OpacityMicromapCacheItem(const OpacityMicromapCacheItem& src) 
@@ -264,9 +265,9 @@ namespace dxvk {
     bool isCompatibleWithOmmRequest(const OmmRequest& ommRequest);
   };
 
-  class OpacityMicromapMemoryManager {
+  class OpacityMicromapMemoryManager : public CommonDeviceObject {
   public:
-    OpacityMicromapMemoryManager(const Rc<DxvkDevice>& device);
+    explicit OpacityMicromapMemoryManager(DxvkDevice* device);
 
     void onFrameStart();
     void updateMemoryBudget(Rc<DxvkContext> ctx);
@@ -287,7 +288,6 @@ namespace dxvk {
     VkDeviceSize m_used = 0;
     VkDeviceSize m_budget;
 
-    Rc<DxvkDevice>                    m_device;
     VkPhysicalDeviceMemoryProperties  m_memoryProperties;
 
     // Stores amount of memory released per frame. The release memory is added back to the pool
@@ -296,7 +296,7 @@ namespace dxvk {
   };
 
   // OpacityMicromapManager generates and manages Opacity Micromap data
-  class OpacityMicromapManager {
+  class OpacityMicromapManager : public CommonDeviceObject {
   public:
     enum class OmmResult {
       Success,
@@ -306,8 +306,10 @@ namespace dxvk {
       DependenciesUnavailable
     };
 
-    OpacityMicromapManager(Rc<DxvkDevice> device);
+    explicit OpacityMicromapManager(DxvkDevice* device);
     ~OpacityMicromapManager() { }
+
+    void onDestroy();
 
     // Calculates hash that distinguishes source data used for Opacity Micromap generation
     static XXH64_hash_t calculateSourceHash(XXH64_hash_t geometryHash, XXH64_hash_t materialHash, const RtSurface::AlphaState& alphaState);
@@ -341,7 +343,7 @@ namespace dxvk {
 
     void showImguiSettings() const;
 
-    static bool checkIsOpacityMicromapSupported(Rc<DxvkDevice> device);
+    static bool checkIsOpacityMicromapSupported(DxvkDevice& device);
 
     bool doesInstanceUseOpacityMicromap(const RtInstance& instance) const;
 
@@ -421,8 +423,6 @@ namespace dxvk {
                                    const std::vector<TextureRef>& textures, uint32_t& maxMicroTrianglesToBake);
     void buildOpacityMicromapsInternal(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, uint32_t& maxMicroTrianglesToBuild);
 
-    Rc<DxvkDevice> m_device;
-
     // Bound built OMMs need to be synchronized once before being used. 
     // This tracks if any such OMMs have been bound
     bool m_boundOmmsRequireSynchronization = false;
@@ -460,7 +460,7 @@ namespace dxvk {
 
     VkDeviceSize m_amountOfMemoryMissing = 0;    // Records how much memory was missing in a frame
     OpacityMicromapMemoryManager m_memoryManager;
-    DxvkStagingDataAlloc m_scratchAllocator;
+    std::unique_ptr<DxvkStagingDataAlloc> m_scratchAllocator;
   };
 }  // namespace dxvk
 

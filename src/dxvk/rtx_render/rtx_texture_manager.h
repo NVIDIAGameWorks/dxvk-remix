@@ -34,7 +34,7 @@ namespace dxvk {
   class DxvkContext;
   struct ManagedTexture;
 
-  class RtxTextureManager : RenderProcessor<Rc<ManagedTexture>> {
+  class RtxTextureManager : public RenderProcessor<Rc<ManagedTexture>> {
   public:
     RtxTextureManager(DxvkDevice* device);
     ~RtxTextureManager();
