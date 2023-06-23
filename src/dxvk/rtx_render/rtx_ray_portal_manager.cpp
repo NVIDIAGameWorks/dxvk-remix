@@ -57,8 +57,8 @@ namespace dxvk {
     result.pad = 0;
   }
 
-  RayPortalManager::RayPortalManager(Rc<DxvkDevice> device, ResourceCache* pResourceCache)
-    : m_device(device)
+  RayPortalManager::RayPortalManager(DxvkDevice* device, ResourceCache* pResourceCache)
+    : CommonDeviceObject(device)
     , kCameraDepthPenetrationThreshold(RtxOptions::Get()->rayPortalCameraInBetweenPortalsCorrectionThreshold() * RtxOptions::Get()->getMeterToWorldUnitScale())
     , m_pResourceCache(pResourceCache) {
   }

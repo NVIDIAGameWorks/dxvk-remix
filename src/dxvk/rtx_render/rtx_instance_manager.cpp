@@ -245,8 +245,8 @@ namespace dxvk {
     return m_vkInstance.mask & OBJECT_MASK_VIEWMODEL_VIRTUAL;
   }
 
-  InstanceManager::InstanceManager(Rc<DxvkDevice> device, ResourceCache* pResourceCache)
-    : m_device(device)
+  InstanceManager::InstanceManager(DxvkDevice* device, ResourceCache* pResourceCache)
+    : CommonDeviceObject(device)
     , m_pResourceCache(pResourceCache) {
     m_previousViewModelState = RtxOptions::Get()->isViewModelEnabled();
   }

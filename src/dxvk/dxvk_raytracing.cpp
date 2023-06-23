@@ -35,7 +35,7 @@ namespace dxvk {
         return result == 1;
       }
 
-      if (!OpacityMicromapManager::checkIsOpacityMicromapSupported(device)) {
+      if (!OpacityMicromapManager::checkIsOpacityMicromapSupported(*device)) {
         result = 2;
         return false;
       }

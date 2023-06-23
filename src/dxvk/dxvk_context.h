@@ -45,7 +45,7 @@ namespace dxvk {
   public:
     
     DxvkContext(const Rc<DxvkDevice>& device);
-    ~DxvkContext();
+    virtual ~DxvkContext();
     
     /**
      * \brief Begins command buffer recording

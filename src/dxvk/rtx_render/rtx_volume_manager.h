@@ -34,19 +34,15 @@ namespace dxvk
 class RtxContext;
 class DxvkDevice;
 
-struct VolumeManager
-{
+struct VolumeManager : public CommonDeviceObject {
 public:
   VolumeManager(VolumeManager const&) = delete;
   VolumeManager& operator=(VolumeManager const&) = delete;
 
-  VolumeManager(Rc<DxvkDevice> device);
+  VolumeManager(DxvkDevice* device);
   ~VolumeManager();
 
   VolumeArgs getVolumeArgs(CameraManager const& cameraManager, VkExtent3D froxelGridDimensions, uint32_t numFroxelVolumes, FogState const& fogState, bool enablePortalVolumes) const;
-
-private:
-  Rc<DxvkDevice> m_device;
 };
 
 }  // namespace dxvk

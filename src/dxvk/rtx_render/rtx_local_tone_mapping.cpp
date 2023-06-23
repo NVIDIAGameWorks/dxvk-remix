@@ -147,7 +147,6 @@ namespace dxvk {
 
    void DxvkLocalToneMapping::dispatch(
      Rc<DxvkCommandList> cmdList,
-     Rc<DxvkDevice> device,
      Rc<DxvkContext> ctx,
      Rc<DxvkSampler> linearSampler,
      Rc<DxvkImageView> exposureView,
@@ -157,8 +156,12 @@ namespace dxvk {
      bool resetHistory,
      bool enableAutoExposure) {
 
-     VkExtent3D finalResolution = rtOutput.m_finalOutput.view->imageInfo().extent;
-     VkExtent3D downscaledResolution = rtOutput.m_compositeOutputExtent;
+    if (m_mips.view.size() == 0) {
+      return;
+    }
+
+    VkExtent3D finalResolution = rtOutput.m_finalOutput.view->imageInfo().extent;
+    VkExtent3D downscaledResolution = rtOutput.m_compositeOutputExtent;
 
     ScopedGpuProfileZone(ctx, "Local Tone Mapping");
     const VkExtent3D workgroups = util::computeBlockCount(finalResolution, VkExtent3D { 16, 16, 1 });

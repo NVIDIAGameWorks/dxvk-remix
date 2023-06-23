@@ -127,7 +127,7 @@ namespace dxvk {
     D3D9RtxVertexCaptureData& allocAndMapVertexCaptureConstantBuffer();
     D3D9FixedFunctionVS& allocAndMapFixedFunctionConstantBuffer();
 
-    static bool checkIsShaderExecutionReorderingSupported(Rc<DxvkDevice> device);
+    static bool checkIsShaderExecutionReorderingSupported(DxvkDevice& device);
 
     static bool shouldBakeSky(const DrawCallState& drawCallState);
     static bool shouldBakeTerrain(const DrawCallState& drawCallState);

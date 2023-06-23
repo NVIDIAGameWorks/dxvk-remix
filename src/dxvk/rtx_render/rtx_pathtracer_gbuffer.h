@@ -28,8 +28,7 @@ namespace dxvk {
 
   class DxvkDevice;
 
-  class DxvkPathtracerGbuffer {
-
+  class DxvkPathtracerGbuffer : public CommonDeviceObject {
   public:
     enum class RaytraceMode {
       RayQuery = 0,
@@ -38,7 +37,7 @@ namespace dxvk {
       Count
     };
 
-    DxvkPathtracerGbuffer(DxvkDevice* device);
+    explicit DxvkPathtracerGbuffer(DxvkDevice* device);
     ~DxvkPathtracerGbuffer() = default;
 
     void prewarmShaders(DxvkPipelineManager& pipelineManager) const;
@@ -49,6 +48,5 @@ namespace dxvk {
   private:
     static DxvkRaytracingPipelineShaders getPipelineShaders(const bool isPSRPass, const bool useRayQuery, const bool serEnabled, const bool ommEnabled);
     Rc<DxvkShader> getComputeShader(const bool isPSRPass) const;
-    Rc<DxvkDevice> m_device;
   };
 }

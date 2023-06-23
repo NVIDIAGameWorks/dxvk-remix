@@ -1294,7 +1294,7 @@ namespace dxvk {
 
   void D3D9SwapChainEx::CreateHud() {
     m_hud = hud::Hud::createHud(m_device);
-    m_imgui = ImGUI::createGUI(m_device, m_window);
+    m_imgui = ImGUI::createGUI(m_device.ptr(), m_window);
 
     if (m_hud != nullptr) {
       m_hud->addItem<hud::HudClientApiItem>("api", 1, GetApiName());

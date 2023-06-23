@@ -86,7 +86,7 @@ namespace dxvk {
   }
   
   DxvkToneMapping::DxvkToneMapping(DxvkDevice* device)
-  : m_vkd(device->vkd())  {
+  : CommonDeviceObject(device), m_vkd(device->vkd())  {
   }
   
   DxvkToneMapping::~DxvkToneMapping()  {  }
@@ -131,7 +131,7 @@ namespace dxvk {
     }
   }
 
-  void DxvkToneMapping::createResources(Rc<DxvkDevice> device, Rc<DxvkContext> ctx) {
+  void DxvkToneMapping::createResources(Rc<DxvkContext> ctx) {
     DxvkImageCreateInfo desc;
     desc.type = VK_IMAGE_TYPE_1D;
     desc.flags = 0;
@@ -156,20 +156,19 @@ namespace dxvk {
 
     viewInfo.format = desc.format = VK_FORMAT_R32_UINT;
     viewInfo.usage = desc.usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    m_toneHistogram.image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget, "tone mapper histogram");
-    m_toneHistogram.view = device->createImageView(m_toneHistogram.image, viewInfo);
+    m_toneHistogram.image = device()->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget, "tone mapper histogram");
+    m_toneHistogram.view = device()->createImageView(m_toneHistogram.image, viewInfo);
     ctx->changeImageLayout(m_toneHistogram.image, VK_IMAGE_LAYOUT_GENERAL);
 
     viewInfo.format = desc.format = VK_FORMAT_R32_SFLOAT;
     viewInfo.usage = desc.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
-    m_toneCurve.image = device->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget, "tone mapper curve");
-    m_toneCurve.view = device->createImageView(m_toneCurve.image, viewInfo);
+    m_toneCurve.image = device()->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget, "tone mapper curve");
+    m_toneCurve.view = device()->createImageView(m_toneCurve.image, viewInfo);
     ctx->changeImageLayout(m_toneCurve.image, VK_IMAGE_LAYOUT_GENERAL);
   }
 
   void DxvkToneMapping::dispatchHistogram(
     Rc<DxvkCommandList> cmdList,
-    Rc<DxvkDevice> device,
     Rc<DxvkContext> ctx,
     Rc<DxvkImageView> exposureView,
     const Resources::Resource& colorBuffer,
@@ -210,7 +209,6 @@ namespace dxvk {
 
   void DxvkToneMapping::dispatchToneCurve(
     Rc<DxvkCommandList> cmdList,
-    Rc<DxvkDevice> device,
     Rc<DxvkContext> ctx) {
 
     ScopedGpuProfileZone(ctx, "Tonemap: Calculate Tone Curve");
@@ -238,7 +236,6 @@ namespace dxvk {
 
   void DxvkToneMapping::dispatchApplyToneMapping(
     Rc<DxvkCommandList> cmdList,
-    Rc<DxvkDevice> device,
     Rc<DxvkContext> ctx,
     Rc<DxvkSampler> linearSampler,
     Rc<DxvkImageView> exposureView,
@@ -285,7 +282,6 @@ namespace dxvk {
 
   void DxvkToneMapping::dispatch(
     Rc<DxvkCommandList> cmdList,
-    Rc<DxvkDevice> device,
     Rc<DxvkContext> ctx,
     Rc<DxvkSampler> linearSampler,
     Rc<DxvkImageView> exposureView,
@@ -303,17 +299,17 @@ namespace dxvk {
 
     // TODO : set reset on significant camera changes as well
     if (m_toneHistogram.image.ptr() == nullptr) {
-      createResources(device, ctx);
+      createResources(ctx);
       m_resetState = true;
     }
 
     const Resources::Resource& inputColorBuffer = rtOutput.m_finalOutput;
     if (tonemappingEnabled()) {
-      dispatchHistogram(cmdList, device, ctx, exposureView, inputColorBuffer, autoExposureEnabled);
-      dispatchToneCurve(cmdList, device, ctx);
+      dispatchHistogram(cmdList, ctx, exposureView, inputColorBuffer, autoExposureEnabled);
+      dispatchToneCurve(cmdList, ctx);
     }
 
-    dispatchApplyToneMapping(cmdList, device, ctx, linearSampler, exposureView, inputColorBuffer, rtOutput.m_finalOutput, performSRGBConversion, autoExposureEnabled);
+    dispatchApplyToneMapping(cmdList, ctx, linearSampler, exposureView, inputColorBuffer, rtOutput.m_finalOutput, performSRGBConversion, autoExposureEnabled);
 
     m_resetState = false;
   }

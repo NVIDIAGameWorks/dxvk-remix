@@ -152,6 +152,9 @@ namespace dxvk {
     delete m_converter;
 
     m_dxvkDevice->waitForIdle(); // Sync Device
+    // NV-DXVK start: clean exit
+    m_dxvkDevice->getCommon()->onDestroy();
+    // NV-DXVK end
   }
 
 

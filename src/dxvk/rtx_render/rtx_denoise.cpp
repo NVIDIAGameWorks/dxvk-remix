@@ -26,28 +26,29 @@
 
 namespace dxvk {
   
-  DxvkDenoise::DxvkDenoise(const DxvkDevice* device, DenoiserType type)
-  {
+  DxvkDenoise::DxvkDenoise(DxvkDevice* device, DenoiserType type)
+  : CommonDeviceObject(device) {
     m_nrdContext = std::make_unique<NRDContext>(device, type);
   }
-  
-  DxvkDenoise::~DxvkDenoise() 
-  {
-    m_nrdContext.release();
+
+  DxvkDenoise::~DxvkDenoise() {
   }
-  
+
+  void DxvkDenoise::onDestroy() {
+    m_nrdContext->onDestroy();
+  }
+
   void DxvkDenoise::dispatch(
     Rc<DxvkCommandList> cmdList,
-    Rc<DxvkDevice> device,
     Rc<DxvkContext> ctx,
     DxvkBarrierSet& barriers,
     const Resources::RaytracingOutput& rtOutput,
     const Input& inputs,
     Output& outputs) 
   {
-    const SceneManager& sceneManager = device->getCommon()->getSceneManager();
+    const SceneManager& sceneManager = device()->getCommon()->getSceneManager();
 
-    m_nrdContext->dispatch(cmdList, device, ctx, barriers, sceneManager, rtOutput, inputs, outputs);
+    m_nrdContext->dispatch(cmdList, ctx, barriers, sceneManager, rtOutput, inputs, outputs);
   }
 
   void DxvkDenoise::copyNrdSettingsFrom(

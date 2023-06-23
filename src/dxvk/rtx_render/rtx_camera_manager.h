@@ -25,9 +25,9 @@
 
 #include "rtx_types.h"
 #include "rtx_option.h"
+#include "rtx_common_object.h"
 
-namespace dxvk
-{
+namespace dxvk {
   class RtCamera;
   class DxvkDevice;
   class RayPortalManager;
@@ -46,9 +46,9 @@ namespace dxvk
     };
   }
 
-  class CameraManager {
+  class CameraManager : public CommonDeviceObject {
   public:
-    CameraManager(Rc<DxvkDevice> device);
+    explicit CameraManager(DxvkDevice* device);
     ~CameraManager() = default;
 
     const RtCamera& getCamera(CameraType::Enum cameraType) const { return **m_cameras[cameraType]; }
@@ -73,8 +73,6 @@ namespace dxvk
 
   private:
     XXH64_hash_t calculateCameraHash(float fov, const Matrix4& worldToView, bool stencilEnabledState);
-
-    Rc<DxvkDevice> m_device;
 
     std::array<std::optional<Rc<RtCamera>>, CameraType::Count> m_cameras;
     std::unordered_map<XXH64_hash_t, CameraType::Enum> m_cameraHashToType;

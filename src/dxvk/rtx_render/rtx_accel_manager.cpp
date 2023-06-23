@@ -45,10 +45,10 @@ namespace dxvk {
   // Make this static and not a member of AccelManager to make it safe updating the count from ~PooledBlas()
   static int g_blasCount = 0;
 
-  AccelManager::AccelManager(Rc<DxvkDevice> device)
-    : m_device(device)
-    , m_scratchAlignment(device->properties().khrDeviceAccelerationStructureProperties.minAccelerationStructureScratchOffsetAlignment)
-    , m_scratchAllocator(
+  AccelManager::AccelManager(DxvkDevice* device)
+    : CommonDeviceObject(device)
+    , m_scratchAlignment(device->properties().khrDeviceAccelerationStructureProperties.minAccelerationStructureScratchOffsetAlignment) {
+    m_scratchAllocator = std::make_unique<DxvkStagingDataAlloc>(
         device,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
@@ -60,7 +60,7 @@ namespace dxvk {
         // this alignment override created issues on Intel GPUs where the min scratch alignment is 128 bytes but the underlying buffer was
         // only allocated with a 64 byte alignment.
         // Note: This could use the value of m_scratchAlignment, but this is duplicated to avoid potential future initialization order issues.
-        device->properties().khrDeviceAccelerationStructureProperties.minAccelerationStructureScratchOffsetAlignment) {
+        device->properties().khrDeviceAccelerationStructureProperties.minAccelerationStructureScratchOffsetAlignment);
   }
 
   void AccelManager::clear() {
@@ -90,7 +90,7 @@ namespace dxvk {
     }
   }
   
-  PooledBlas::PooledBlas(Rc<DxvkDevice> device) {
+  PooledBlas::PooledBlas() {
     ++g_blasCount;
   }
 
@@ -276,7 +276,7 @@ namespace dxvk {
 
     geometry.geometry.aabbs.data.deviceAddress = m_aabbBuffer->getDeviceAddress();
 
-    const DxvkBufferSlice scratchSlice = m_scratchAllocator.alloc(m_scratchAlignment, sizeInfo.buildScratchSize + m_scratchAlignment);
+    const DxvkBufferSlice scratchSlice = m_scratchAllocator->alloc(m_scratchAlignment, sizeInfo.buildScratchSize + m_scratchAlignment);
     buildInfo.scratchData.deviceAddress = scratchSlice.getDeviceAddress();
 
     assert(buildInfo.scratchData.deviceAddress % m_scratchAlignment == 0); // Note: Required by the Vulkan specification.
@@ -291,7 +291,7 @@ namespace dxvk {
   }
 
   Rc<PooledBlas> AccelManager::createPooledBlas(size_t bufferSize) const {
-    auto newBlas = new PooledBlas(m_device);
+    auto newBlas = new PooledBlas();
 
     DxvkBufferCreateInfo bufferCreateInfo {};
     bufferCreateInfo.size = bufferSize;
@@ -477,7 +477,7 @@ namespace dxvk {
           buildInfo.dstAccelerationStructure = blasEntry->staticBlas->accelStructure->getAccelStructure();
 
           // Allocate a scratch buffer slice
-          const DxvkBufferSlice scratchSlice = m_scratchAllocator.alloc(m_scratchAlignment, sizeInfo.buildScratchSize + m_scratchAlignment);
+          const DxvkBufferSlice scratchSlice = m_scratchAllocator->alloc(m_scratchAlignment, sizeInfo.buildScratchSize + m_scratchAlignment);
           buildInfo.scratchData.deviceAddress = scratchSlice.getDeviceAddress();
 
           assert(buildInfo.scratchData.deviceAddress % m_scratchAlignment == 0); // Note: Required by the Vulkan specification.
@@ -665,7 +665,7 @@ namespace dxvk {
       buildInfo.dstAccelerationStructure = selectedBlas->accelStructure->getAccelStructure();
 
       // Allocate a scratch buffer slice
-      const DxvkBufferSlice scratchSlice = m_scratchAllocator.alloc(m_scratchAlignment, sizeInfo.buildScratchSize);
+      const DxvkBufferSlice scratchSlice = m_scratchAllocator->alloc(m_scratchAlignment, sizeInfo.buildScratchSize);
       buildInfo.scratchData.deviceAddress = scratchSlice.getDeviceAddress();
 
       assert(buildInfo.scratchData.deviceAddress % m_scratchAlignment == 0); // Note: Required by the Vulkan specification.
@@ -1040,7 +1040,7 @@ namespace dxvk {
     }
 
     // Allocate the scratch memory
-    const auto scratchSlice = m_scratchAllocator.alloc(m_scratchAlignment, sizeInfo.buildScratchSize);
+    const auto scratchSlice = m_scratchAllocator->alloc(m_scratchAlignment, sizeInfo.buildScratchSize);
 
     // Update build information
     buildInfo.srcAccelerationStructure = nullptr;
