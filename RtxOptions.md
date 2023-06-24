@@ -83,9 +83,9 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.camera.freeCameraYaw|float|0|Free camera's position\.|
 |rtx.camera.lockFreeCamera|bool|False|Locks free camera\.|
 |rtx.camera.trackCamerasSeenStats|bool|False|Enables tracking and reporting of statistics for Cameras seen within a frame\.|
-|rtx.cameraAnimationAmplitude|float|2||
-|rtx.cameraAnimationMode|int|3||
-|rtx.cameraShakePeriod|int|20||
+|rtx.cameraAnimationAmplitude|float|2|Amplitude of the free camera's animation\.|
+|rtx.cameraAnimationMode|int|3|Free camera's animation mode\.|
+|rtx.cameraShakePeriod|int|20|Period of the free camera's animation\.|
 |rtx.captureDebugImage|bool|False||
 |rtx.captureFramesPerSecond|int|24||
 |rtx.captureMaxFrames|int|1||
@@ -120,7 +120,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.demodulate.enableDirectLightBoilingFilter|bool|True|Boiling filter removing direct light sample when its luminance is too high\.|
 |rtx.denoiseDirectAndIndirectLightingSeparately|bool|True|Denoising quality, high uses separate denoising of direct and indirect lighting for higher quality at the cost of performance\.|
 |rtx.denoiser.maxDirectHitTContribution|float|-1||
-|rtx.denoiser.nrd.timeDeltaBetweenFrames|float|0|Frame time to use for denoising\. Setting this to 0 will use actual frame time for a given frame\. 0 is primarily used for automation to ensure image output determinism\.|
+|rtx.denoiser.nrd.timeDeltaBetweenFrames|float|0|Frame time to use for denoising\. Setting this to 0 will use actual frame time for a given frame\. Non\-zero value is primarily used for automation to ensure image output determinism\.|
 |rtx.denoiserIndirectMode|int|16||
 |rtx.denoiserMode|int|16||
 |rtx.di.confidenceGradientPower|float|8||
@@ -247,7 +247,10 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.froxelReservoirSamplesStabilityHistoryPower|float|2|The power to apply to the Reservoir sample stability history weight\.|
 |rtx.fusedWorldViewMode|int|0|Set if game uses a fused World\-View transform matrix\.|
 |rtx.graphicsPreset|int|5|Overall rendering preset, higher presets result in higher image quality, lower presets result in better performance\.|
+|rtx.gui.reflexStatRangeInterpolationRate|float|0.05|A value controlling the interpolation rate applied to the Reflex stat graph ranges for smoother visualization\.|
+|rtx.gui.reflexStatRangePaddingRatio|float|0.05|A value specifying the amount of padding applied to the Reflex stat graph ranges as a ratio to the calculated range\.|
 |rtx.gui.showLegacyTextureGui|bool|False|A setting to toggle the old texture selection GUI, where each texture category is represented as its own list\.|
+|rtx.hashCollisionDetection.enable|bool|False|Enables hash collision detection\.|
 |rtx.hideSplashMessage|bool|False|A flag to disable the splash message indicating how to use Remix from appearing when the application starts\.<br>When set to true this message will be hidden, otherwise it will be displayed on every launch\.|
 |rtx.highlightedTexture|int|0|Hash of a texture that should be highlighted\.|
 |rtx.ignoreGameDirectionalLights|bool|False|Ignores any directional lights coming from the original game \(lights added via toolkit still work\)\.|
@@ -265,7 +268,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.io.memoryBudgetMB|int|256||
 |rtx.io.useAsyncQueue|bool|True||
 |rtx.isLHS|bool|False||
-|rtx.isReflexSupported|bool|True||
+|rtx.isReflexEnabled|bool|True|Enables or disables Reflex globally\.<br>Note that this option when set to false will prevent Reflex from even attempting to initialize, unlike setting the Reflex mode to "None" which simply tells an initialized Reflex not to take effect\.<br>Additionally, this setting must be set at startup and changing it will not take effect at runtime\.|
 |rtx.isShaderExecutionReorderingSupported|bool|True|Enables support of Shader Execution Reordering \(SER\) if it is supported by the target HW and SW\.|
 |rtx.keepTexturesForTagging|bool|False|A flag to keep all textures in video memory, which can drastically increase VRAM consumption\. Intended to assist with tagging textures that are only used for a short period of time \(such as loading screens\)\. Use only when necessary\!|
 |rtx.legacyMaterial.albedoConstant|float3|1, 1, 1|The default albedo constant to use for non\-replaced "legacy" materials\. Should be a color in sRGB colorspace with gamma encoding\.|
@@ -311,7 +314,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.nearPlaneOverride|float|0.1|The near plane value to use for the Camera when the near plane override is enabled\.<br>Only takes effect when rtx\.enableNearPlaneOverride is enabled, see that option for more information about why this is useful\.|
 |rtx.neeCache.ageCullingSpeed|float|0.02|This threshold determines culling speed of an old triangle\. A triangle that is not detected for several frames will be deemed less important and culled quicker\.|
 |rtx.neeCache.emissiveTextureSampleFootprintScale|float|1|Emissive texture sample footprint scale\.|
-|rtx.neeCache.enable|bool|True|Enable NEE cache\. The integrator will perform NEE on emissive triangles, which usually have significant light contributions, stored in the cache\.|
+|rtx.neeCache.enable|bool|True|\[Experimental\] Enable NEE cache\. The integrator will perform NEE on emissive triangles, which usually have significant light contributions, stored in the cache\.|
 |rtx.neeCache.enableAfterFirstBounce|bool|True|Enable NEE Cache on a second and higher bounces\.|
 |rtx.neeCache.enableImportanceSampling|bool|True|Enable importance sampling\.|
 |rtx.neeCache.enableJittering|bool|True|Enable jittering in cell look up\.|
@@ -328,6 +331,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.opacityMicromap.buildRequests.customFiltersForBillboards|bool|True|Applies custom filters for staged Billboard requests\.|
 |rtx.opacityMicromap.buildRequests.enableAnimatedInstances|bool|False|Enables Opacity Micromaps for animated instances\.|
 |rtx.opacityMicromap.buildRequests.enableParticles|bool|True|Enables Opacity Micromaps for particles\.|
+|rtx.opacityMicromap.buildRequests.filtering|bool|True|Enables filtering of Opacity Micromap requests\. Filtering reduces and slows down acceptance of Opacity Micromap requests to maximize resources to requests that are more likely to be reused across instances and frames\.|
 |rtx.opacityMicromap.buildRequests.maxRequestFrameAge|int|300|Max request frame age to allow building Opacity Micromaps for\. Any requests older than this are purged\.|
 |rtx.opacityMicromap.buildRequests.maxRequests|int|5000|Max number of staged unique Opacity Micromap build requests\.<br>Any further requests will simply be discarded until the number of staged requests decreases below this threshold\.<br>Once a staged request passes filters for building, it is removed from the staging list\.|
 |rtx.opacityMicromap.buildRequests.minInstanceFrameAge|int|1|Min instance's frame age which to allow building Opacity Micromaps for\.|
@@ -346,6 +350,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.opacityMicromap.building.numFramesAtStartToBuildWithHighWorkload|int|0|Number of frames at start to to bake and build Opacity Micromaps with high workload multiplier\.<br>This is used for testing to decrease frame latency for Opacity Micromaps being ready\.|
 |rtx.opacityMicromap.building.splitBillboardGeometry|bool|True|Splits billboard geometry and corresponding Opacity Micromaps to quads for higher reuse\.<br>Games often batch instanced geometry that reuses same geometry and textures, such as for particles\.<br>Splitting such batches into unique subgeometries then allows higher reuse of build Opacity Micromaps\.|
 |rtx.opacityMicromap.building.subdivisionLevel|int|8|Opacity Micromap subdivision level per triangle\. |
+|rtx.opacityMicromap.cache.hashInstanceIndexOnly|bool|False|Uses instance index as an Opacity Micromap hash\.|
 |rtx.opacityMicromap.cache.maxBudgetSizeMB|int|1536|Budget: Max Allowed Size \[MB\]\.|
 |rtx.opacityMicromap.cache.maxVidmemSizePercentage|float|0.15|Budget: Max Video Memory Size %\.|
 |rtx.opacityMicromap.cache.minBudgetSizeMB|int|512|Budget: Min Video Memory \[MB\] required\.<br>If the min amount is not available, then the budget will be set to 0\.|
@@ -424,7 +429,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.rayPortalSamplingWeightMinDistance|float|10|The minimum distance from a portal which the interpolation of the probability of light sampling through portals will begin \(and is at its maximum value\)\.<br>Currently unimplemented, kept here for future use\.|
 |rtx.raytraceModePreset|int|1||
 |rtx.recompileShadersOnLaunch|bool|False|When set to true runtime shader recompilation will execute on the first frame after launch\.|
-|rtx.reflexMode|int|1|Reflex mode selection, enabling it helps minimize input latency, boost mode may further reduce latency by boosting GPU clocks in CPU\-bound cases\.|
+|rtx.reflexMode|int|1|Reflex mode selection, enabling it helps minimize input latency, boost mode may further reduce latency by boosting GPU clocks in CPU\-bound cases\.<br>Supported enum values are 0 = None \(Disabled\), 1 = LowLatency \(Enabled\), 2 = LowLatencyBoost \(Enabled \+ Boost\)\.<br>Note that even when using the "None" Reflex mode Reflex will attempt to be initialized\. Use rtx\.isReflexEnabled to fully disable to skip this initialization if needed\.|
 |rtx.renderPassGBufferRaytraceMode|int|2|The ray tracing mode to use for the G\-Buffer pass which resolves the initial primary and secondary surfaces to apply lighting to\.|
 |rtx.renderPassIntegrateDirectRaytraceMode|int|0|The ray tracing mode to use for the Direct Lighting pass which applies lighting to the primary/secondary surfaces\.|
 |rtx.renderPassIntegrateIndirectRaytraceMode|int|2|The ray tracing mode to use for the Indirect Lighting pass which applies lighting to the primary/secondary surfaces\.|
@@ -472,8 +477,9 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.russianRouletteMaxContinueProbability|float|0.9|The maximum probability of continuing a path when Russian Roulette is being used\.<br>This ensures all rays have a small probability of terminating each bounce, mostly to prevent infinite paths in perfectly reflective mirror rooms \(though the maximum path bounce count will also ensure this\)\.|
 |rtx.sceneScale|float|1|Defines the ratio of rendering unit \(1cm\) to game unit, i\.e\. sceneScale = 1cm / GameUnit\.|
 |rtx.secondaryRayMaxInteractions|int|8|The maximum number of resolver interactions to use for secondary \(indirect\) rays\.<br>This affects how many Decals, Ray Portals and potentially particles \(if unordered approximations are not enabled\) may be interacted with along a ray at the cost of performance for higher amounts of interactions\.<br>This value is recommended to be set lower than the primary/PSR max ray interactions as secondary ray interactions are less visually relevant relative to the performance cost of resolving them\.|
+|rtx.secondarySpecularFireflyFilteringThreshold|float|1000|Firefly luminance clamping threshold for secondary specular signal\.|
 |rtx.serializeChangedOptionOnly|bool|True||
-|rtx.shakeCamera|bool|False||
+|rtx.shakeCamera|bool|False|Enables animation of the free camera\.|
 |rtx.showUI|int|0|0 = Don't Show, 1 = Show Simple, 2 = Show Advanced\.|
 |rtx.showUICursor|bool|True||
 |rtx.skipDrawCallsPostRTXInjection|bool|False|Ignores all draw calls recorded after RTX Injection, the location of which varies but is currently based on when tagged UI textures begin to draw\.|
@@ -514,6 +520,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.terrainBaker.enableBaking|bool|True|\[Experimental\] Enables runtime baking of blended terrains from top down \(i\.e\. in an opposite direction of "rtx\.zUp"\)\.<br>It bakes multiple blended albedo terrain textures into a single texture sampled during ray tracing\. The system requires "Terrain Textures" to contain hashes of the terrain textures to apply\.<br>Only use this system if the game renders terrain surfaces with multiple blended surfaces on top of each other \(i\.e\. sand mixed with dirt, grass, snow, etc\.\)\.<br>Requirement: the baked terrain surfaces must not be placed vertically in the game world\. Horizontal surfaces will have the best image quality\. Requires "rtx\.zUp" to be set properly\.|
 |rtx.texturemanager.budgetPercentageOfAvailableVram|int|50|The percentage of available VRAM we should use for material textures\.  If material textures are required beyond this budget, then those textures will be loaded at lower quality\.  Important note, it's impossible to perfectly match the budget while maintaining reasonable quality levels, so use this as more of a guideline\.  If the replacements assets are simply too large for the target GPUs available vid mem, we may end up going overbudget regularly\.  Defaults to 50% of the available VRAM\.|
 |rtx.texturemanager.showProgress|bool|False|Show texture loading progress in the HUD\.|
+|rtx.timeDeltaBetweenFrames|float|0|Frame time delta to use during scene processing\. Setting this to 0 will use actual frame time delta for a given frame\. Non\-zero value is primarily used for automation to ensure determinism run to run\.|
 |rtx.tonemap.colorBalance|float3|1, 1, 1||
 |rtx.tonemap.colorGradingEnabled|bool|False||
 |rtx.tonemap.contrast|float|1||

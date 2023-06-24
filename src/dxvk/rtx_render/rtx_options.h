@@ -270,10 +270,10 @@ namespace dxvk {
     RTX_OPTION("rtx", uint32_t, maxPrimsInMergedBLAS, 50000, "");
 
     // Camera
-    RTX_OPTION("rtx", bool, shakeCamera, false, "");
-    RTX_OPTION("rtx", CameraAnimationMode, cameraAnimationMode, CameraAnimationMode::CameraShake_Pitch, "");
-    RTX_OPTION("rtx", int, cameraShakePeriod, 20, "");
-    RTX_OPTION("rtx", float, cameraAnimationAmplitude, 2.0f, "");
+    RTX_OPTION_ENV("rtx", bool, shakeCamera, false, "RTX_FREE_CAMERA_ENABLE_ANIMATION", "Enables animation of the free camera.");
+    RTX_OPTION_ENV("rtx", CameraAnimationMode, cameraAnimationMode, CameraAnimationMode::CameraShake_Pitch, "RTX_FREE_CAMERA_ANIMATION_MODE", "Free camera's animation mode.");
+    RTX_OPTION_ENV("rtx", int, cameraShakePeriod, 20, "RTX_FREE_CAMERA_ANIMATION_PERIOD", "Period of the free camera's animation.");
+    RTX_OPTION_ENV("rtx", float, cameraAnimationAmplitude, 2.0f, "RTX_FREE_CAMERA_ANIMATION_AMPLITUDE", "Amplitude of the free camera's animation.");
     RTX_OPTION("rtx", bool, skipObjectsWithUnknownCamera, false, "");
     RTX_OPTION("rtx", bool, enableNearPlaneOverride, false,
                "A flag to enable or disable the Camera's near plane override feature.\n"
