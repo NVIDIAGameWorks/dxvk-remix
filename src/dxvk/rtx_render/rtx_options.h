@@ -197,6 +197,7 @@ namespace dxvk {
     RW_RTX_OPTION("rtx.antiCulling", fast_unordered_set, antiCullingTextures, {},
                   "[Experimental] Textures that are forced to extend life length when anti-culling is enabled.\n"
                   "Some games use different culling methods we can't fully match, use this option to manually add textures to force extend their life when anti-culling fails.");
+    RW_RTX_OPTION("rtx.postfx", fast_unordered_set, motionBlurMaskOutTextures, {}, "Disable motion blur for meshes with specific texture.");
 
     RW_RTX_OPTION("rtx", std::string, geometryGenerationHashRuleString, "positions,indices,texcoords,geometrydescriptor,vertexlayout,vertexshader",
                   "Defines which asset hashes we need to generate via the geometry processing engine.");
@@ -1116,6 +1117,10 @@ namespace dxvk {
 
     bool isAnimatedWaterTexture(const XXH64_hash_t& h) const {
       return animatedWaterTextures().find(h) != animatedWaterTextures().end();
+    }
+
+    bool isMotionBlurMaskOutTexture(const XXH64_hash_t& h) const {
+      return motionBlurMaskOutTextures().find(h) != motionBlurMaskOutTextures().end();
     }
 
     bool isAntiCullingTexture(const XXH64_hash_t& h) const {

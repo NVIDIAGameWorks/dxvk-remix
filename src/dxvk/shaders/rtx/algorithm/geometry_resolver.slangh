@@ -89,8 +89,21 @@ void geometryResolverOutputMiss(
 
   if (primarySurface)
   {
+    const float farPlane = cameraGetFarPlane(cb.camera);
+
+    const Ray originalCameraRay = rayCreatePrimaryFromPixel(cb.camera, pixelCoordinate, false);
+    const vec3 virtualHitPosition = rayEvaluate(originalCameraRay, farPlane);
+    vec4 prevWorldPosition = vec4(virtualHitPosition, 1.0f);
+    vec4 prevNDC = mul(cb.camera.prevWorldToProjection, prevWorldPosition);
+    prevNDC /= prevNDC.w;
+
+    vec2 ndc = cameraPixelCoordinateToNDC(cb.camera, pixelCoordinate);
+    vec2 motionVectorNDC = prevNDC.xy - ndc.xy;
+    vec2 motionVectorUVOffset = motionVectorNDC * vec2(0.5, -0.5);
+    vec2 motionVectorPixel = motionVectorUVOffset * cb.camera.resolution;
+
     PrimaryHitDistance[pixelCoordinate] = missHitDistance;
-    PrimaryScreenSpaceMotionVector[pixelCoordinate] = 0;
+    PrimaryScreenSpaceMotionVector[pixelCoordinate] = motionVectorPixel;
     PrimarySurfaceFlags[pixelCoordinate] = 0;
     PrimaryDisocclusionThresholdMix[pixelCoordinate] = 0;
     PrimaryDepth[pixelCoordinate] = 0.f;

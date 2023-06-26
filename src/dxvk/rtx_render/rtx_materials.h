@@ -134,6 +134,7 @@ struct RtSurface {
     flags |= isClipPlaneEnabled ?            (1 << 25) : 0;
     flags |= isMatte ?                       (1 << 26) : 0;
     flags |= isTextureFactorBlend ?          (1 << 27) : 0;
+    flags |= isMotionBlurMaskOut ?           (1 << 28) : 0;
 
     writeGPUHelper(data, offset, flags);
 
@@ -238,6 +239,7 @@ struct RtSurface {
   bool isAnimatedWater = false;
   bool isClipPlaneEnabled = false;
   bool isTextureFactorBlend = false;
+  bool isMotionBlurMaskOut = false;
 
   RtTextureArgSource textureColorArg1Source = RtTextureArgSource::Texture;
   RtTextureArgSource textureColorArg2Source = RtTextureArgSource::None;
