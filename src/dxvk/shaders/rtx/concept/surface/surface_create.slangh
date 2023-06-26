@@ -82,6 +82,7 @@ Surface surfaceCreate(MemorySurface memorySurface)
   surface.isClipPlaneEnabled   = (flagData & (1u << 25)) != 0u;
   surface.isMatte              = (flagData & (1u << 26)) != 0u;
   surface.isTextureFactorBlend = (flagData & (1u << 27)) != 0u;
+  surface.isMotionBlurMaskOut  = (flagData & (1u << 28)) != 0u;
 
   const vec4 prevObjectToWorldData0 = uintBitsToFloat(memorySurface.data3);
   const vec4 prevObjectToWorldData1 = uintBitsToFloat(memorySurface.data4);

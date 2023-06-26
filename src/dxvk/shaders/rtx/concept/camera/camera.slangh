@@ -206,3 +206,10 @@ vec3 translatedWorldToPreviousTranslatedWorld(VolumeDefinitionCamera camera, vec
 {
   return translatedWorldPosition + camera.translatedWorldOffset - camera.previousTranslatedWorldOffset;
 }
+
+float cameraGetFarPlane(Camera camera)
+{
+  const float nearPlane = camera.nearPlane;
+  const float wFactor = camera.viewToProjection[2][3]; // The w factor for z in prespective projection matrix fn / (n - f)
+  return wFactor * nearPlane / (wFactor + nearPlane);
+}
