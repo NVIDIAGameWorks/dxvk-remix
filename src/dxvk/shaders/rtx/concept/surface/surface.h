@@ -100,6 +100,7 @@ struct Surface
   bool isClipPlaneEnabled;
   bool isMatte;
   bool isTextureFactorBlend;
+  bool isMotionBlurMaskOut;
 
   mat4x3 objectToWorld;
   mat4x3 prevObjectToWorld;

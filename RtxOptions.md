@@ -403,7 +403,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.postfx.enableMotionBlurNoiseSample|bool|True|Enable random distance sampling for every step along the motion vector\. The random pattern is generated with interleaved gradient noise\.|
 |rtx.postfx.enableVignette|bool|True|Enables vignette post\-processing effect\.|
 |rtx.postfx.exposureFraction|float|0.4|Simulate the camera exposure, the longer exposure will cause stronger motion blur\.|
-|rtx.postfx.motionBlurDynamicDeduction|float|0.075|The deduction of motion blur for dynamic objects\.|
+|rtx.postfx.motionBlurDynamicDeduction|float|1|The deduction of motion blur for dynamic objects\.|
 |rtx.postfx.motionBlurJitterStrength|float|0.6|The jitter strength of every sample along the motion vector\.|
 |rtx.postfx.motionBlurMinimumVelocityThresholdInPixel|float|1|The minimum motion vector distance that enable the motion blur\. The unit is pixel size\.|
 |rtx.postfx.motionBlurSampleCount|int|4|The number of samples along the motion vector\. More samples could help to reduce motion blur noise\.|
@@ -617,6 +617,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.particleTextures|hash set||Textures on draw calls that should be treated as particles\.<br>When objects are marked as particles more approximate rendering methods are leveraged allowing for more effecient and typically better looking particle rendering\.<br>Generally any billboard\-like blended particle objects in the original application should be classified this way\.|
 |rtx.playerModelBodyTextures|hash set|||
 |rtx.playerModelTextures|hash set|||
+|rtx.postfx.motionBlurMaskOutTextures|hash set||Disable motion blur for meshes with specific texture\.|
 |rtx.rayPortalModelTextureHashes|hash vector||Texture hashes identifying ray portals\. Allowed number of hashes: \{0, 2\}\.|
 |rtx.skyBoxGeometries|hash set||Geometries from draw calls used for the sky or are otherwise intended to be very far away from the camera at all times \(no parallax\)\.<br>Any draw calls using a geometry hash in this list will be treated as sky and rendered as such in a manner different from typical geometry\.<br>The geometry hash being used for sky detection is based off of the asset hash rule, see: "rtx\.geometryAssetHashRuleString"\.|
 |rtx.skyBoxTextures|hash set||Textures on draw calls used for the sky or are otherwise intended to be very far away from the camera at all times \(no parallax\)\.<br>Any draw calls using a texture in this list will be treated as sky and rendered as such in a manner different from typical geometry\.|
