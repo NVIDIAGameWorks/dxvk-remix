@@ -852,6 +852,7 @@ namespace dxvk {
         currentInstance.surface.isAnimatedWater = RtxOptions::Get()->isAnimatedWaterTexture(drawCall.getMaterialData().getHash());
         currentInstance.surface.associatedGeometryHash = drawCall.getHash(RtxOptions::Get()->GeometryAssetHashRule);
         currentInstance.surface.isTextureFactorBlend = drawCall.getMaterialData().isTextureFactorBlend;
+        currentInstance.surface.isMotionBlurMaskOut = RtxOptions::Get()->isMotionBlurMaskOutTexture(drawCall.getMaterialData().getHash());
 
         // For worldspace UI, we want to show the UI (unlit) in the world.  So configure the blend mode if blending is used accordingly.
         if (currentInstance.m_isWorldSpaceUI) {

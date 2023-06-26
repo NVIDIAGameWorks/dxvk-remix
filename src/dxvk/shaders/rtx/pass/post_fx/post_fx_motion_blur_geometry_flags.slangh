@@ -29,6 +29,7 @@ struct MotionBlurSurfaceFlags
   bool isViewModel;
   bool isStatic;
   bool isEmissive;
+  bool isMaskOut;
 };
 
 void motionBlurSurfaceFlagsWriteToGBuffer(
@@ -40,6 +41,7 @@ void motionBlurSurfaceFlagsWriteToGBuffer(
   encodedFlags = packedFlagSet(encodedFlags, motionBlurSurfaceFlags.isViewModel ? (1 << 0) : 0);
   encodedFlags = packedFlagSet(encodedFlags, motionBlurSurfaceFlags.isStatic ? (1 << 1) : 0);
   encodedFlags = packedFlagSet(encodedFlags, motionBlurSurfaceFlags.isEmissive ? (1 << 2) : 0);
+  encodedFlags = packedFlagSet(encodedFlags, motionBlurSurfaceFlags.isMaskOut ? (1 << 3) : 0);
 
   motionBlurSurfaceFlagsTexture[position] = encodedFlags;
 }
@@ -50,6 +52,7 @@ MotionBlurSurfaceFlags motionBlurSurfaceFlagsReadFromGBuffer(const uint encodedF
   motionBlurSurfaceFlags.isViewModel   = packedFlagGet(encodedFlags, (1 << 0));
   motionBlurSurfaceFlags.isStatic      = packedFlagGet(encodedFlags, (1 << 1));
   motionBlurSurfaceFlags.isEmissive    = packedFlagGet(encodedFlags, (1 << 2));
+  motionBlurSurfaceFlags.isMaskOut     = packedFlagGet(encodedFlags, (1 << 3));
 
   return motionBlurSurfaceFlags;
 }

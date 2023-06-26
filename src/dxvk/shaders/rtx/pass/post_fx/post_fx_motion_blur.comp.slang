@@ -110,7 +110,7 @@ bool isValidMotionBlurPixel(const uint2 pixelPos, inout bool isStaticPixel)
   isStaticPixel = motionBlurSurfaceFlags.isStatic;
 
   // Valid motion blur pixels: emissive opaque (if it's enabled by setting), non-ViewModel
-  return (cb.enableMotionBlurEmissive || !motionBlurSurfaceFlags.isEmissive) && (!motionBlurSurfaceFlags.isViewModel);
+  return (cb.enableMotionBlurEmissive || !motionBlurSurfaceFlags.isEmissive) && (!motionBlurSurfaceFlags.isViewModel) && (!motionBlurSurfaceFlags.isMaskOut);
 }
 
 float3 calculatedBlurredColor(
