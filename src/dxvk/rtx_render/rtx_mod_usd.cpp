@@ -1199,7 +1199,7 @@ void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
   pxr::UsdStageRefPtr stage = pxr::UsdStage::Open(replacementsUsdPath, pxr::UsdStage::LoadAll);
 
   if (!stage) {
-    Logger::info(str::format("No USD mod files were found, no meshes / materials will be replaced."));
+    Logger::err(str::format("USD mod file failed parsing: ", std::filesystem::weakly_canonical(replacementsUsdPath).string()));
     m_openedFilePath.clear();
     m_fileModificationTime = fs::file_time_type();
     m_owner.setState(State::Unloaded);
