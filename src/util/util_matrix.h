@@ -129,11 +129,12 @@ namespace dxvk {
 #ifdef _M_X64
     // Identity vector
     __m128 iv = _mm_set_ss(1.f);
-    auto data =  reinterpret_cast<const __m128*>(&m.data[0]);
 
-    for (uint32_t n = 0; n < _countof(m.data); n++) {
+    for (const Vector4& unalignedVec : m.data) {
+      const __m128 vec = _mm_loadu_ps(unalignedVec.data);
+
       // Check if current vector is not equal to identity vector
-      const __m128 eq = _mm_cmpeq_ps(*data, iv);
+      const __m128 eq = _mm_cmpeq_ps(vec, iv);
 
       if (_mm_movemask_epi8(_mm_castps_si128(eq)) != 0xffff) {
         return false;
@@ -141,8 +142,6 @@ namespace dxvk {
 
       // Shift identity vector left
       iv = _mm_shuffle_ps(iv, iv, _MM_SHUFFLE(2, 1, 0, 3));
-
-      ++data;
     }
 
     return true;
