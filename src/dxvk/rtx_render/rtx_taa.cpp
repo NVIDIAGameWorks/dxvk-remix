@@ -55,6 +55,10 @@ namespace dxvk {
 
   DxvkTemporalAA::DxvkTemporalAA(DxvkDevice* device)
   : RtxPass(device), m_vkd(device->vkd()) {
+    // TAA Options
+    RTX_OPTION_CLAMP_MIN(maximumRadiance, 0.0f);
+    RTX_OPTION_CLAMP(newFrameWeight, 0.0f, 1.0f);
+    RTX_OPTION_CLAMP_MIN(colorClampingFactor, 0.0f);
   }
 
   DxvkTemporalAA::~DxvkTemporalAA() {
@@ -63,7 +67,7 @@ namespace dxvk {
   void DxvkTemporalAA::showImguiSettings() {
     ImGui::DragFloat("Maximum Radiance", &maximumRadianceObject(), 0.01f, 1e8f, 100.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::DragFloat("New Frame Weight", &newFrameWeightObject(), 0.001f, 1.0f, 0.001f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-    ImGui::DragFloat("TAA Color Clamping Factor", &colorClampingFactorObject(), 0.01f, 0.01f, 2.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+    ImGui::DragFloat("Color Clamping Factor", &colorClampingFactorObject(), 0.001f, 0.005f, FLT_MAX, "%.2f", ImGuiSliderFlags_AlwaysClamp);
   }
 
   void DxvkTemporalAA::dispatch(
@@ -76,7 +80,7 @@ namespace dxvk {
     const Resources::Resource& primaryScreenSpaceMotionVector,
     const Resources::Resource& colorTextureOutput,
     const bool isUpscale) {
-    ScopedGpuProfileZone(ctx, "Taa");
+    ScopedGpuProfileZone(ctx, "TAA");
 
     const VkExtent3D& inputSize = colorTextureInput.image->info().extent;
     const VkExtent3D& outputSize = colorTextureOutput.image->info().extent;
@@ -116,7 +120,7 @@ namespace dxvk {
   void DxvkTemporalAA::createTargetResource(Rc<DxvkContext>& ctx, const VkExtent3D& targetExtent) {
     // TAA intermediate textures
     for(uint32_t i=0 ; i<2 ; i++)
-      m_taaFeedbackTexture[i] = Resources::createImageResource(ctx, "taa feedback texture", targetExtent, VK_FORMAT_R32G32B32A32_SFLOAT);
+      m_taaFeedbackTexture[i] = Resources::createImageResource(ctx, "TAA feedback texture", targetExtent, VK_FORMAT_R32G32B32A32_SFLOAT);
   }
 
   void DxvkTemporalAA::releaseTargetResource() {

@@ -65,9 +65,16 @@ namespace dxvk {
 
     Resources::Resource m_taaFeedbackTexture[2];
 
-    RTX_OPTION("rtx.temporalAA", float, maximumRadiance, 10000.0f, "");
-    RTX_OPTION("rtx.temporalAA", float, newFrameWeight, 1.0f, "");
-    RTX_OPTION("rtx.temporalAA", float, colorClampingFactor, 1.0f, "");
+    RTX_OPTION("rtx.temporalAA", float, maximumRadiance, 10000.0f,
+               "The maximum value to use in TAA-U's perceptual quantizer color transformation, measured in cd/m^2.\n"
+               "The typical value used for the PQ transformation is 10,000 and usually shouldn't be changed.");
+    RTX_OPTION("rtx.temporalAA", float, newFrameWeight, 0.1f,
+               "The maximum amount of the current frame to use as part of the temporal anti-aliasing process. Must be in the range 0-1.\n"
+               "Values closer to 0 will result in better image stability (less jittering) and less aliasing, values closer to 1 will result in more responsive results (less ghosting).");
+    RTX_OPTION("rtx.temporalAA", float, colorClampingFactor, 1.0f,
+               "A scalar factor to apply to the standard deviation of the neighborhood of pixels in the color signal used for clamping. Should be in the range 0-infinity.\n"
+               "This value essentially represents how many standard deviations of tolerance from the current frame's colors around each pixel pixel the temporally accumulated color signal may have.\n"
+               "Higher values will cause more ghosting whereas lower values may reduce ghosting but will impact image quality (less ability to upscale effectively) and reduce stability (more jittering).");
   };
 
 }
