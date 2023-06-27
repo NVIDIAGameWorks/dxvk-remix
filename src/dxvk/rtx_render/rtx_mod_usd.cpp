@@ -691,7 +691,14 @@ void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
   static const pxr::TfToken kFaceVertexIndices("faceVertexIndices");
   static const pxr::TfToken kNormals("normals");
   static const pxr::TfToken kPoints("points");
-  static const pxr::TfToken kInvertedUvs("invertedUvs");
+  // We only support one UV parameter at runtime, but in USD the UVs can have multiple names.  We just use the first one that is found from this list.
+  static const pxr::TfToken kUvs[] = {
+    pxr::TfToken("primvars:st"),
+    pxr::TfToken("primvars:uv"),
+    pxr::TfToken("primvars:st0"),
+    pxr::TfToken("primvars:st1"),
+    pxr::TfToken("primvars:st2")
+  };
   static const pxr::TfToken kDoubleSided("doubleSided");
   static const pxr::TfToken kOrientation("orientation");
   static const pxr::TfToken kRightHanded("rightHanded");
@@ -730,7 +737,12 @@ void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
     prim.GetAttribute(kFaceVertexCounts).Get(&vecFaceCounts);
     prim.GetAttribute(kPoints).Get(&points);
     prim.GetAttribute(kNormals).Get(&normals);
-    prim.GetAttribute(kInvertedUvs).Get(&uvs);
+    for (const pxr::TfToken& uvName : kUvs) {
+      if (prim.HasAttribute(uvName)) {
+        prim.GetAttribute(uvName).Get(&uvs);
+        break;
+      }
+    }
     
     size_t numBones = 0;
     if (prim.HasAPI<pxr::UsdSkelBindingAPI>()) {
@@ -862,7 +874,7 @@ void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
 
       if (isUVValid) {
         (*pBaseVertexData++) = uvs[i][0];
-        (*pBaseVertexData++) = uvs[i][1];
+        (*pBaseVertexData++) = -uvs[i][1];
       }
 
       if (isJointIndicesValid) {
