@@ -228,7 +228,10 @@ void main(
   colorMoment1.rgb /= colorMoment1.w;
   colorMoment2.rgb /= colorMoment2.w;
   const float3 colorVariance = colorMoment2.rgb - colorMoment1.rgb * colorMoment1.rgb;
-  const float3 colorSigma = sqrt(max(0, colorVariance))* cb.colorClampingFactor;
+  // Note: Square root of variance represents the standard deviation of the neighborhood color signal. Scaling this by
+  // the clamping factor is essentially how many standard deviations of tolerence to allow for the temporally accumulated
+  // color signal.
+  const float3 colorSigma = sqrt(max(0, colorVariance)) * cb.colorClampingFactor;
   const float3 colorMin = colorMoment1.rgb - colorSigma;
   const float3 colorMax = colorMoment1.rgb + colorSigma;
 
