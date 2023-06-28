@@ -2772,6 +2772,9 @@ namespace dxvk {
     VkPipelineBindPoint pipeline,
     uint32_t            index,
     uint32_t            value) {
+    // NV-DXVK start: terrain baking
+    static_assert(D3D9SpecConstantId::Count <= DxvkLimits::MaxNumSpecConstants);
+    // NV-DXVK end
     auto& specConst =
       pipeline == VK_PIPELINE_BIND_POINT_GRAPHICS
       ? m_state.gp.state.sc.specConstants[index]

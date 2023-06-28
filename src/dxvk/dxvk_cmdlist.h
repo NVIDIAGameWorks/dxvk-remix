@@ -676,7 +676,9 @@ namespace dxvk {
             uint32_t                queryId,
             VkEvent                 event) {
       if (event == VK_NULL_HANDLE) {
+        // NV-DXVK start: commented out as it hits an AV. Need to update dxvk that handles resets differently
         //m_vkd->vkResetQueryPoolEXT(m_vkd->device(), queryPool, queryId, 1);
+        // NV-DXVK end
       } else {
         m_cmdBuffersUsed.set(DxvkCmdBuffer::InitBuffer);
 
