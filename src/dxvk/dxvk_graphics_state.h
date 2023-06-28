@@ -618,6 +618,16 @@ namespace dxvk {
    */
   struct DxvkScInfo {
     uint32_t specConstants[DxvkLimits::MaxNumSpecConstants];
+
+    // NV-DXVK start: terrain baking
+    bool operator== (const DxvkScInfo& other) {
+      return memcmp(this, &other, sizeof(DxvkScInfo)) == 0;
+    }
+
+    bool operator!= (const DxvkScInfo& other) {
+      return !(*this == other);
+    }
+    // NV-DXVK end
   };
 
 

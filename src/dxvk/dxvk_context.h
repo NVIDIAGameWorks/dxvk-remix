@@ -977,42 +977,6 @@ namespace dxvk {
      */
     void setInputAssemblyState(
       const DxvkInputAssemblyState& ia);
-    
-    const DxvkContextState& getContextState() {
-      return m_state;
-    }
-
-    void setContextState(const DxvkContextState& state) {
-      m_state = state;
-      markContextDirty();
-    }
-
-    void markContextDirty() {
-      m_flags.clr(
-        DxvkContextFlag::GpRenderPassBound,
-        DxvkContextFlag::GpXfbActive);
-
-      m_flags.set(
-        DxvkContextFlag::GpDirtyFramebuffer,
-        DxvkContextFlag::GpDirtyPipeline,
-        DxvkContextFlag::GpDirtyPipelineState,
-        DxvkContextFlag::GpDirtyResources,
-        DxvkContextFlag::GpDirtyVertexBuffers,
-        DxvkContextFlag::GpDirtyIndexBuffer,
-        DxvkContextFlag::GpDirtyXfbBuffers,
-        DxvkContextFlag::GpDirtyBlendConstants,
-        DxvkContextFlag::GpDirtyStencilRef,
-        DxvkContextFlag::GpDirtyViewport,
-        DxvkContextFlag::GpDirtyDepthBias,
-        DxvkContextFlag::GpDirtyDepthBounds,
-        DxvkContextFlag::CpDirtyPipeline,
-        DxvkContextFlag::CpDirtyPipelineState,
-        DxvkContextFlag::CpDirtyResources,
-        DxvkContextFlag::RpDirtyPipeline,
-        DxvkContextFlag::RpDirtyPipelineState,
-        DxvkContextFlag::RpDirtyResources,
-        DxvkContextFlag::DirtyDrawBuffer);
-    }
 
     /**
      * \brief Sets input layout

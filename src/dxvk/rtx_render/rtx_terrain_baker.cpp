@@ -75,9 +75,6 @@ namespace dxvk {
       return false;
     }
 
-    // Store previous state
-    const DxvkContextState previousContextState = dxvkCtxState;
-
     union UnifiedCB {
       D3D9RtxVertexCaptureData programmablePipeline;
       D3D9FixedFunctionVS fixedFunction;
@@ -98,14 +95,26 @@ namespace dxvk {
       static_cast<float>(m_bakingParams.cascadeLevelResolution.height) 
     };
 
-    // Disable fog
-    ctx->setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, D3D9SpecConstantId::FogEnabled, false);
-    ctx->setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, D3D9SpecConstantId::VertexFogMode, D3DFOG_NONE);
-    ctx->setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, D3D9SpecConstantId::PixelFogMode, D3DFOG_NONE);
+    // Update spec constants
+    DxvkScInfo prevSpecConstantsInfo = ctx->getSpecConstantsInfo(VK_PIPELINE_BIND_POINT_GRAPHICS);
+    {
+      // Disable fog
 
-    if (drawCallState.usesVertexShader) {
-      ctx->setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, D3D9SpecConstantId::CustomVertexTransformEnabled, true);
+      ctx->setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, D3D9SpecConstantId::FogEnabled, false);
+      ctx->setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, D3D9SpecConstantId::VertexFogMode, D3DFOG_NONE);
+      ctx->setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, D3D9SpecConstantId::PixelFogMode, D3DFOG_NONE);
+
+      if (drawCallState.usesVertexShader) {
+        ctx->setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, D3D9SpecConstantId::CustomVertexTransformEnabled, true);
+      }
     }
+
+    // Save viewports
+    const uint32_t prevViewportCount = dxvkCtxState.gp.state.rs.viewportCount();
+    const DxvkViewportState prevViewportState = dxvkCtxState.vp;
+
+    // Save previous render targets
+    DxvkRenderTargets prevRenderTargets = dxvkCtxState.om.renderTargets;
 
     // Bind the target terrain texture as render target
     DxvkRenderTargets terrainRt;
@@ -175,15 +184,14 @@ namespace dxvk {
       }
     }
 
-    // Restore previous state
+    // Restore prev state
     {
-      ctx->setContextState(previousContextState);
-      ctx->setViewports(previousContextState.gp.state.rs.viewportCount(), previousContextState.vp.viewports.data(), previousContextState.vp.scissorRects.data());
-      ctx->bindRenderTargets(previousContextState.om.renderTargets);
+      ctx->setViewports(prevViewportCount, prevViewportState.viewports.data(), prevViewportState.scissorRects.data());
+      ctx->bindRenderTargets(prevRenderTargets);
+      ctx->setSpecConstantsInfo(VK_PIPELINE_BIND_POINT_GRAPHICS, prevSpecConstantsInfo);
 
       if (drawCallState.usesVertexShader) {
         ctx->allocAndMapVertexCaptureConstantBuffer() = prevCB.programmablePipeline;
-        ctx->setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, D3D9SpecConstantId::CustomVertexTransformEnabled, false);
       } else {
         ctx->allocAndMapFixedFunctionConstantBuffer() = prevCB.fixedFunction;
       }
@@ -312,6 +320,7 @@ namespace dxvk {
       }
     }
   }
+
   void TerrainBaker::registerTerrainMesh(Rc<RtxContext> ctx, const DxvkContextState& dxvkCtxState, const DrawCallState& drawCallState) {
     const uint32_t currentFrameIndex = ctx->getDevice()->getCurrentFrameId();
 

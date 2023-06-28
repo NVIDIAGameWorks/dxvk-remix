@@ -271,8 +271,16 @@ namespace dxvk {
      * \returns The shader's name
      */
     std::string debugName() const {
-      return m_key.toString();
+      // NV-DXVK start
+      return m_debugName ? m_debugName : m_key.toString();
+      // NV-DXVK end
     }
+
+    // NV-DXVK start
+    void setDebugName(const char* debugName) {
+      m_debugName = debugName;
+    }
+    // NV-DXVK end
 
     /**
      * \brief Get lookup hash for a shader
@@ -308,6 +316,10 @@ namespace dxvk {
 
     size_t m_o1IdxOffset = 0;
     size_t m_o1LocOffset = 0;
+
+    // NV-DXVK start
+    const char* m_debugName = nullptr;
+    // NV-DXVK end
 
     static void eliminateInput(SpirvCodeBuffer& code, uint32_t location);
 
