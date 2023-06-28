@@ -132,6 +132,9 @@ namespace dxvk {
     static bool shouldBakeSky(const DrawCallState& drawCallState);
     static bool shouldBakeTerrain(const DrawCallState& drawCallState);
 
+    const DxvkScInfo& getSpecConstantsInfo(VkPipelineBindPoint pipeline) const;
+    void setSpecConstantsInfo(VkPipelineBindPoint pipeline, const DxvkScInfo& newSpecConstantInfo);
+
   protected:
     virtual void updateComputeShaderResources() override;
     virtual void updateRaytracingShaderResources() override;

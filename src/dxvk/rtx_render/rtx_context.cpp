@@ -1677,8 +1677,6 @@ namespace dxvk {
         }
       }
     }
-
-    return;
   }
 
   bool RtxContext::rasterizeSky(const DrawParameters& params, const DrawCallState& drawCallState) {
@@ -1812,6 +1810,37 @@ namespace dxvk {
     default:
       Logger::err("Invalid SIMD state");
       break;
+    }
+  }
+
+  const DxvkScInfo& RtxContext::getSpecConstantsInfo(VkPipelineBindPoint pipeline) const {
+    return
+      pipeline == VK_PIPELINE_BIND_POINT_GRAPHICS
+      ? m_state.gp.state.sc
+      : pipeline == VK_PIPELINE_BIND_POINT_COMPUTE
+      ? m_state.cp.state.sc
+      : m_state.rp.state.sc;
+  }
+
+  void RtxContext::setSpecConstantsInfo(
+    VkPipelineBindPoint pipeline,
+    const DxvkScInfo& newSpecConstantInfo) {
+    DxvkScInfo& specConstantInfo =
+      pipeline == VK_PIPELINE_BIND_POINT_GRAPHICS
+      ? m_state.gp.state.sc
+      : pipeline == VK_PIPELINE_BIND_POINT_COMPUTE
+      ? m_state.cp.state.sc
+      : m_state.rp.state.sc;
+
+    if (specConstantInfo != newSpecConstantInfo) {
+      specConstantInfo = newSpecConstantInfo;
+
+      m_flags.set(
+        pipeline == VK_PIPELINE_BIND_POINT_GRAPHICS
+        ? DxvkContextFlag::GpDirtyPipelineState
+        : pipeline == VK_PIPELINE_BIND_POINT_COMPUTE
+          ? DxvkContextFlag::CpDirtyPipelineState
+          : DxvkContextFlag::RpDirtyPipelineState);
     }
   }
 
