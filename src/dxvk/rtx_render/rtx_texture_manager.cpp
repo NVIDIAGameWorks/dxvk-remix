@@ -385,8 +385,11 @@ namespace dxvk {
         continue;
       }
 
+      VkDeviceSize remixFreeMemMib = (m_pDevice->getMemoryStats(i).totalAllocated() >> 20) -
+        (m_pDevice->getMemoryStats(i).totalUsed() >> 20);
+
       VkDeviceSize memSizeMib = memHeapInfo.heaps[i].memoryBudget >> 20;
-      VkDeviceSize memUsedMib = memHeapInfo.heaps[i].memoryAllocated >> 20;
+      VkDeviceSize memUsedMib = (memHeapInfo.heaps[i].memoryAllocated >> 20) - remixFreeMemMib;
 
       availableMemorySizeMib = std::max(memSizeMib - memUsedMib, availableMemorySizeMib);
     }
