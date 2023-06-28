@@ -207,9 +207,9 @@ vec3 translatedWorldToPreviousTranslatedWorld(VolumeDefinitionCamera camera, vec
   return translatedWorldPosition + camera.translatedWorldOffset - camera.previousTranslatedWorldOffset;
 }
 
+// We are using default D3D_NDC, so directly extract farPlane to avoid overheads (need to check OGL_NDC and reverse projection in more general cases)
 float cameraGetFarPlane(Camera camera)
 {
-  const float nearPlane = camera.nearPlane;
-  const float wFactor = camera.viewToProjection[2][3]; // The w factor for z in prespective projection matrix fn / (n - f)
-  return wFactor * nearPlane / (wFactor + nearPlane);
+  float4 farPlane = camera.viewToProjection[3] - camera.viewToProjection[2]; // = [0, 0, n / (f - n), fn / (f - n)]
+  return farPlane.w / farPlane.z;
 }
