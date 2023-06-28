@@ -151,6 +151,43 @@ namespace dxvk {
     return nullptr;
   }
 
+  // At the moment RTX IO can only load mip tail all at once.
+  // We need to adjust the number of texture mips if it is less
+  // than the number of mips in the asset mip tail.
+  // This should not happen since in this case we'll use the preloaded assets,
+  // adding a check and a warning message for future proofing.
+  static void validateMipTailRtxIo(
+    Rc<ManagedTexture>&  texture,
+    DxvkImageCreateInfo& createInfo,
+    int                  baseLevel) {
+
+    // Check if we're dealing with the mip tail first.
+    if (texture->assetData->info().looseLevels != 0) {
+      return;
+    }
+
+    // Reset base level to get the original asset data
+    texture->assetData->setMinLevel(0);
+
+    const uint32_t numTailMips = texture->mipCount - texture->assetData->info().looseLevels;
+
+    if (createInfo.mipLevels < numTailMips) {
+      ONCE(Logger::warn(str::format("[RTXIO-Compatibility-Info] The number of mip levels in texture (",
+        createInfo.mipLevels, ") is smaller than the number of mip levels in the asset mip tail (",
+        numTailMips, ")! Adjusting texture creation description.")));
+
+      // Set asset base level to the first tail level
+      baseLevel = texture->assetData->info().looseLevels;
+
+      // Adjust image create info
+      createInfo.extent = texture->assetData->info().extent;
+      createInfo.mipLevels = texture->assetData->info().mipLevels;
+    }
+
+    // Restore base level
+    texture->assetData->setMinLevel(baseLevel);
+  }
+
   Rc<DxvkImageView> loadTextureToVidmem(
         const Rc<ManagedTexture>&  texture,
         const Rc<DxvkContext>&     ctx,
@@ -271,6 +308,15 @@ namespace dxvk {
       texture->minPreloadedMip = baseLevel;
     }
 
+    if (!isPreloading && texture->minPreloadedMip >= 0 && texture->minPreloadedMip <= baseLevel) {
+      // The texture has been preloaded and the preloaded levels are larger
+      // or equal to the base level of the incoming request.
+      // There's no point in loading same texture again, we can just
+      // set all mips view to the small mips view.
+      texture->allMipsImageView = texture->smallMipsImageView;
+      return;
+    }
+
     // Adjust image create info
     texture->futureImageDesc.extent = texture->assetData->info().extent;
     texture->futureImageDesc.mipLevels = texture->assetData->info().mipLevels;
@@ -278,6 +324,7 @@ namespace dxvk {
     Rc<DxvkImageView> viewTarget;
 
     if (RtxIo::enabled()) {
+      validateMipTailRtxIo(texture, texture->futureImageDesc, baseLevel);
       viewTarget = loadTextureRtxIo(texture, ctx, texture->futureImageDesc, isPreloading);
     } else {
       viewTarget = loadTextureToVidmem(texture, ctx, texture->futureImageDesc, isPreloading);
