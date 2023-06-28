@@ -42,7 +42,11 @@ public: \
   static size_t getStaticCodeSize() { return sizeof(code); } \
   static const char* getName() { return #code; } \
   static const VkShaderStageFlagBits getStage() { return stage; } \
-  static Rc<DxvkShader> getShader() { return ShaderManager::getInstance()->getShader<className>(); } \
+  static Rc<DxvkShader> getShader() { \
+    Rc<DxvkShader> shader = ShaderManager::getInstance()->getShader<className>(); \
+    shader->setDebugName(getName()); \
+    return shader; \
+   } \
   struct Ctor { Ctor() { if (getStage() == VK_SHADER_STAGE_COMPUTE_BIT) AutoShaderPipelinePrewarmer::registerComputeShaderForPrewarm([]{ return className::getShader(); }); }}; \
   static Ctor ctor;
 
@@ -292,6 +296,7 @@ namespace dxvk {
         info.m_slots.size(), info.m_slots.data(), { 0u, 0u, 0u, info.m_pushBufferSize }, info.m_staticCode,
         options, DxvkShaderConstData());
 
+      shader->setDebugName(info.m_name);
       shader->generateShaderKey();
       m_device->registerShader(shader);
 
