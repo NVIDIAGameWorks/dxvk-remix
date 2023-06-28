@@ -874,7 +874,7 @@ void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
 
       if (isUVValid) {
         (*pBaseVertexData++) = uvs[i][0];
-        (*pBaseVertexData++) = -uvs[i][1];
+        (*pBaseVertexData++) = 1.0 - uvs[i][1];
       }
 
       if (isJointIndicesValid) {
