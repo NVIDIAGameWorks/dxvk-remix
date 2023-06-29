@@ -1008,4 +1008,9 @@ namespace dxvk {
 
     m_stagedBonesCount = 0;
   }
+
+  void D3D9Rtx::OnPresent(const Rc<DxvkImage>& targetImage) {
+    // Inform backend of present
+    m_parent->EmitCs([targetImage](DxvkContext* ctx) { static_cast<RtxContext*>(ctx)->onPresent(targetImage); });
+  }
 }

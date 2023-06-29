@@ -310,7 +310,7 @@ namespace dxvk {
       }
 
       const bool captureTestScreenshot = (m_screenshotFrameEnabled && m_device->getCurrentFrameId() == m_screenshotFrameNum);
-      const bool captureScreenImage = s_triggerScreenshot || captureTestScreenshot;
+      const bool captureScreenImage = s_triggerScreenshot || (captureTestScreenshot && !s_capturePrePresentTestScreenshot);
       const bool captureDebugImage = RtxOptions::Get()->shouldCaptureDebugImage();
       s_lastCameraPosition = getSceneManager().getCamera().getPosition();
       
@@ -325,7 +325,9 @@ namespace dxvk {
         Logger::info(str::format("RTX: Use rtxdi ", RtxOptions::Get()->useRTXDI()));
         Logger::info(str::format("RTX: Use dlss ", RtxOptions::Get()->isDLSSEnabled()));
         Logger::info(str::format("RTX: Use nis ", RtxOptions::Get()->isNISEnabled()));
-        m_screenshotFrameEnabled = false;
+        if (!s_capturePrePresentTestScreenshot) {
+          m_screenshotFrameEnabled = false;
+        }
       }
 
       if (captureScreenImage && captureDebugImage) {
@@ -543,18 +545,20 @@ namespace dxvk {
     m_resetHistory = false;
   }
 
-  // Called right before D3D9 present
   void RtxContext::endFrame(std::uint64_t cachedReflexFrameId, Rc<DxvkImage> targetImage) {
     // Fallback inject (is a no-op if already injected this frame, or no valid RT scene)
     injectRTX(cachedReflexFrameId, targetImage);
+  }
 
-    // If injectRTX couldn't screenshot a final image,
+  // Called right before D3D9 present
+  void RtxContext::onPresent(Rc<DxvkImage> targetImage) {
+    // If injectRTX couldn't screenshot a final image or a pre-present screenshot is requested,
     // take a screenshot of a present image (with UI and others)
     {
       const bool isRaytracingEnabled = RtxOptions::Get()->enableRaytracing();
       const bool isCameraValid = getSceneManager().getCamera().isValid(m_device->getCurrentFrameId());
 
-      if (!isRaytracingEnabled || !isCameraValid) {
+      if (!isRaytracingEnabled || !isCameraValid || s_capturePrePresentTestScreenshot) {
         const bool captureTestScreenshot = (m_screenshotFrameEnabled && m_device->getCurrentFrameId() == m_screenshotFrameNum);
         const bool captureDxvkScreenImage = s_triggerScreenshot || captureTestScreenshot;
         if (captureDxvkScreenImage) {

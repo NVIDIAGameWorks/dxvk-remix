@@ -289,10 +289,12 @@ namespace dxvk {
 
 #define RTX_OPTION_ENV(category, type, name, value, environment, description) RTX_OPTION_FULL(category, type, name, value, environment, 0, description)
 #define RTX_OPTION_FLAG(category, type, name, value, flags, description) RTX_OPTION_FULL(category, type, name, value, "", static_cast<uint32_t>(flags), description)
+#define RTX_OPTION_FLAG_ENV(category, type, name, value, flags, environment, description) RTX_OPTION_FULL(category, type, name, value, environment, static_cast<uint32_t>(flags), description)
 #define RTX_OPTION(category, type, name, value, description) RTX_OPTION_FULL(category, type, name, value, "", 0, description)
 
 #define RW_RTX_OPTION_ENV(category, type, name, value, environment, description) RW_RTX_OPTION_FULL(category, type, name, value, environment, 0, description)
 #define RW_RTX_OPTION_FLAG(category, type, name, value, flags, description) RW_RTX_OPTION_FULL(category, type, name, value, "", static_cast<uint32_t>(flags), description)
+#define RW_RTX_OPTION_FLAG_ENV(category, type, name, value, flags, environment, description) RW_RTX_OPTION_FULL(category, type, name, value, environment, static_cast<uint32_t>(flags), description)
 #define RW_RTX_OPTION(category, type, name, value, description) RW_RTX_OPTION_FULL(category, type, name, value, "", 0, description)
 
 #define RTX_OPTION_CLAMP(name, minValue, maxValue) name##Ref() = std::clamp(name(), minValue, maxValue);

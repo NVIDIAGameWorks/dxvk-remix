@@ -137,6 +137,11 @@ namespace dxvk {
     void EndFrame(const Rc<DxvkImage>& targetImage);
 
     /**
+      * \brief: Signal that we're about to present the image.
+      */
+    void OnPresent(const Rc<DxvkImage>& targetImage);
+
+    /**
       * \brief: Increments the Reflex frame ID. Should be called after presentation and only after every Reflex related marker
       * call for the current frame (this typically means other threads running in parallel will need to cache this value from the
       * frame they were dispatched on).

@@ -71,6 +71,8 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.autoExposure.exposureWeightCurve4|float|1|Curve control point 4\.|
 |rtx.autoExposure.useExposureCompensation|bool|False|Uses a curve to determine the importance of different exposure levels when calculating average exposure\.|
 |rtx.automation.disableBlockingDialogBoxes|bool|False|Disables various blocking blocking dialog boxes \(such as popup windows\) requiring user interaction when set to true, otherwise uses default behavior when set to false\.<br>This option is typically meant for automation\-driven execution of Remix where such dialog boxes if present may cause the application to hang due to blocking waiting for user input\.|
+|rtx.automation.disableDisplayMemoryStatistics|bool|False|Disables display of memory statistics in the Remix window\.<br>This option is typically meant for automation of tests for which we don't want non\-deterministic runtime memory statistics to be shown in GUI that is included as part of test image output\.|
+|rtx.automation.disableUpdateUpscaleFromDlssPreset|bool|False|Disables updating upscaler from DLSS preset\.<br>This option is typically meant for automation of tests for which we don't want upscaler to be updated based on a DLSS preset\.|
 |rtx.blockInputToGameInUI|bool|True||
 |rtx.bloom.enable|bool|True||
 |rtx.bloom.intensity|float|0.06||
