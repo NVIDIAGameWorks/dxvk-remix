@@ -29,6 +29,10 @@ namespace dxvk {
   std::unique_ptr<RtxOptions> RtxOptions::pInstance = nullptr;
 
   void RtxOptions::updateUpscalerFromDlssPreset() {
+    if (RtxOptions::Automation::disableUpdateUpscaleFromDlssPreset()) {
+      return;
+    }
+
     switch (dlssPreset()) {
       case DlssPreset::Off:
         upscalerTypeRef() = UpscalerType::None;

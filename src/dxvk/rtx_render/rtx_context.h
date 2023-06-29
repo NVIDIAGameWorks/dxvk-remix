@@ -86,6 +86,8 @@ namespace dxvk {
     void injectRTX(std::uint64_t cachedReflexFrameId, Rc<DxvkImage> targetImage = nullptr);
     void endFrame(std::uint64_t cachedReflexFrameId, Rc<DxvkImage> targetImage = nullptr);
 
+    void onPresent(Rc<DxvkImage> targetImage = nullptr);
+
     /**
       * \brief Set D3D9 specific constant buffers
       *
@@ -190,6 +192,7 @@ namespace dxvk {
 
     inline static bool s_triggerScreenshot = false;
     inline static bool s_triggerUsdCapture = false;
+    inline static const bool s_capturePrePresentTestScreenshot = env::getEnvVar("RTX_TAKE_PRE_PRESENT_SCREENSHOT_FRAME") != "";
     inline static Vector3 s_lastCameraPosition = 0.f;
 
     bool m_rayTracingSupported;

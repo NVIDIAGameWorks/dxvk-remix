@@ -30,7 +30,7 @@ namespace dxvk {
   void messageBox(const char* text, const char* caption, uint32_t type) {
     // Note: Respect the blocking dialog box disable flag when attempting to open this message box to not
     // cause blocking on user input when not desired.
-    if (!RtxOptions::Get()->disableBlockingDialogBoxes()) {
+    if (!RtxOptions::Automation::disableBlockingDialogBoxes()) {
       MessageBox(NULL, text, caption, type);
     }
   }
