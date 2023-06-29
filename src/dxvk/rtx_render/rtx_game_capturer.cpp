@@ -205,13 +205,19 @@ namespace dxvk {
                           m_cap.camera.aspectRatio,
                           m_cap.camera.fov,
                           m_cap.camera.nearPlane,
-                          m_cap.camera.farPlane, shearX, shearY, m_cap.camera.isLHS, m_cap.camera.isReverseZ);
-
+                          m_cap.camera.farPlane,
+                          shearX,
+                          shearY,
+                          m_cap.camera.isLHS,
+                          m_cap.camera.isReverseZ);
       // Infinite projection is legit, but USD doesnt take kindly to it
       if (isinf(m_cap.camera.farPlane)) {
         m_cap.camera.farPlane = 100000000;
       }
-
+      if(m_cap.camera.aspectRatio < 0) {
+        m_cap.camera.aspectRatio = abs(m_cap.camera.aspectRatio);
+        m_cap.camera.bFlipVertAperture = true;
+      }
       m_cap.camera.firstTime = m_cap.currentFrameNum;
     }
     assert(!isnan(m_cap.camera.fov));
@@ -800,8 +806,7 @@ namespace dxvk {
   void GameCapturer::exportStep() {
     if (getState(StateFlag::BeginExport)) {
       static auto exportThreadTask = [](Capture cap,
-                                        dxvk::mutex* pMutex,
-                                        size_t* pNumOutstandingExportThreads,
+                                        std::atomic<size_t>* pNumOutstandingExportThreads,
                                         const float framesPerSecond,
                                         const bool bUseLssUsdPlugins) {
         const auto exportPrep = prepExport(cap, framesPerSecond, bUseLssUsdPlugins);
@@ -811,31 +816,26 @@ namespace dxvk {
         Logger::info("[GameCapturer][" + cap.idStr + "] End USD export");
 
         // Necessary step for being able to properly diff and check for regressions
-        if (!env::getEnvVar("DXVK_CAPTURE_FLATTEN").empty()) {
+        const auto flattenCaptureEnvStr = env::getEnvVar("DXVK_CAPTURE_FLATTEN");
+        if (!flattenCaptureEnvStr.empty()) {
           flattenExport(exportPrep);
         }
 
-        {
-          std::lock_guard lock(*pMutex);
-          (*pNumOutstandingExportThreads)--;
-        }
+        (*pNumOutstandingExportThreads)--;
       };
       std::thread(exportThreadTask,
                   std::move(m_cap),
-                  &exportThreadMutex,
-                  &numOutstandingExportThreads,
+                  &m_numOutstandingExportThreads,
                   m_framesPerSecond,
                   m_bUseLssUsdPlugins).detach();
-      {
-        std::lock_guard lock(exportThreadMutex);
-        numOutstandingExportThreads++;
-      }
+      m_numOutstandingExportThreads++;
+
       m_cap = Capture(); // reset to default
       setState(StateFlag::Exporting, true);
       setState(StateFlag::BeginExport, false);
     }
 
-    if (numOutstandingExportThreads == 0) {
+    if (m_numOutstandingExportThreads.load() == 0) {
       setState(StateFlag::Exporting, false);
     }
   }
