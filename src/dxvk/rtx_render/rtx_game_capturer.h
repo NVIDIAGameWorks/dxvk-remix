@@ -228,8 +228,7 @@ private:
     std::unordered_map<XXH64_hash_t, Instance> instances;
     std::unordered_map<XXH64_hash_t, uint8_t> instanceFlags;
   } m_cap;
-  dxvk::mutex exportThreadMutex;
-  size_t numOutstandingExportThreads = 0;
+  std::atomic<size_t> m_numOutstandingExportThreads = 0;
   
   static const std::string s_baseDir;
 };

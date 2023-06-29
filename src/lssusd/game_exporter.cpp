@@ -92,7 +92,7 @@ inline pxr::GfMatrix4d ToRHS(const pxr::GfMatrix4d& xform) {
 
 pxr::VtMatrix4dArray sanitizeBoneXforms(const pxr::SdfPath& sdfPath,
                                                const pxr::VtMatrix4dArray& xforms,
-                                               const lss::ExportMetaData& meta) {
+                                               const lss::Export::Meta& meta) {
   pxr::VtMatrix4dArray sanitizedXforms;
   sanitizedXforms.reserve(xforms.size());
   for (const pxr::GfMatrix4d& xform: xforms) {
@@ -773,7 +773,11 @@ void GameExporter::exportCamera(const Export& exportData, ExportContext& ctx) {
 
   // Set Vertical aperture
   auto verticalAperture = geomCamera.CreateVerticalApertureAttr();
-  verticalAperture.Set(simpleCam.GetVerticalAperture());
+  float verticalApertureVal = simpleCam.GetVerticalAperture();
+  if(exportData.camera.bFlipVertAperture) {
+    verticalApertureVal *= (-1.f);
+  }
+  verticalAperture.Set(verticalApertureVal);
 
   // Set focal length
   auto focalLength = geomCamera.CreateFocalLengthAttr();
@@ -1006,7 +1010,7 @@ void GameExporter::setTimeSampledXforms(const pxr::UsdStageRefPtr stage,
                                         const float firstTime,
                                         const float finalTime,
                                         const SampledXforms& xforms,
-                                        const ExportMetaData& meta,
+                                        const Export::Meta& meta,
                                         const bool teleportAway) {
   assert(stage);
   assert(sdfPath != pxr::SdfPath());

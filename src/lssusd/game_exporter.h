@@ -96,7 +96,7 @@ private:
                                    const float firstTime,
                                    const float finalTime,
                                    const SampledXforms& xforms,
-                                   const ExportMetaData& meta,
+                                   const Export::Meta& meta,
                                    const bool teleportAway = false);
   static void setVisibilityTimeSpan(const pxr::UsdStageRefPtr stage,
                                     const pxr::SdfPath sdfPath,
