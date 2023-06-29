@@ -64,6 +64,7 @@ struct Camera {
   float         finalTime = NAN;
   bool          isLHS = false;
   bool          isReverseZ = false;
+  bool          bFlipVertAperture = false; // WAR until able to expect flipped meshes
   SampledXforms xforms;
 };
 
@@ -140,26 +141,24 @@ struct Instance {
   SampledBoneXforms boneXForms;
 };
 
-struct ExportMetaData {
-  std::string windowTitle;
-  std::string exeName;
-  std::string iconPath;
-  std::string geometryHashRule;
-  double metersPerUnit;
-  double timeCodesPerSecond;
-  double startTimeCode;
-  double endTimeCode;
-  size_t numFramesCaptured;
-  bool bUseLssUsdPlugins;
-  bool bReduceMeshBuffers;
-  bool isZUp;
-  bool isLHS;
-};
-
 template <typename T>
 using IdMap = std::unordered_map<Id,T>;
 struct Export {
-  ExportMetaData meta;
+  struct Meta {
+    std::string windowTitle;
+    std::string exeName;
+    std::string iconPath;
+    std::string geometryHashRule;
+    double metersPerUnit;
+    double timeCodesPerSecond;
+    double startTimeCode;
+    double endTimeCode;
+    size_t numFramesCaptured;
+    bool bUseLssUsdPlugins;
+    bool bReduceMeshBuffers;
+    bool isZUp;
+    bool isLHS;
+  } meta;
   std::string debugId;
   std::string baseExportPath;
   bool bExportInstanceStage;
