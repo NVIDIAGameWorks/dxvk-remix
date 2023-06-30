@@ -227,7 +227,7 @@ namespace dxvk {
       pathMinBouncesRef() = 0;
       pathMaxBouncesRef() = 2;
       enableVolumetricLightingRef() = true;
-      enableUnorderedEmissiveParticlesInIndirectRaysRef() = true;
+      enableUnorderedEmissiveParticlesInIndirectRaysRef() = false;
       denoiseDirectAndIndirectLightingSeparatelyRef() = false;
       minReplacementTextureMipMapLevelRef() = 1;
       enableUnorderedResolveInIndirectRaysRef() = true;
