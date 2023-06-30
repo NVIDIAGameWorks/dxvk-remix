@@ -185,6 +185,11 @@ namespace dxvk {
 
     /// Use device local memory for constant buffers.
     bool deviceLocalConstantBuffers;
+
+    // NV-DXVK start: adapter override conf
+    /// Override the adapter/GPU used for D3D9 (-1 = use application defined)
+    int adapterOverride;
+    // NV-DXVK end
   };
 
 }
