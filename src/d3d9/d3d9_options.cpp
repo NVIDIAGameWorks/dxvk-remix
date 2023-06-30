@@ -95,7 +95,10 @@ namespace dxvk {
     this->apitraceMode                  = config.getOption<bool>        ("d3d9.apitraceMode",                  false);
     this->deviceLocalConstantBuffers    = config.getOption<bool>        ("d3d9.deviceLocalConstantBuffers",    false);
     this->maxEnabledLights              = config.getOption<int32_t>     ("d3d9.maxEnabledLights",              caps::MaxEnabledLights);
-    
+    // NV-DXVK start: adapter override conf
+    this->adapterOverride = config.getOption<int32_t>("d3d9.adapterOverride", -1);
+    // NV-DXVK end
+
     // If we are not Nvidia, enable general hazards.
     this->generalHazards = adapter != nullptr
                         && !adapter->matchesDriver(

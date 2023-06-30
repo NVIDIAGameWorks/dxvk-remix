@@ -356,6 +356,13 @@ namespace dxvk {
     if (ppReturnedDeviceInterface == nullptr
     || pPresentationParameters    == nullptr)
       return D3DERR_INVALIDCALL;
+
+    // NV-DXVK start: adapter override conf
+    if (m_d3d9Options.adapterOverride != -1) {
+      Adapter = (UINT) std::min((int) m_adapters.size() - 1, std::max(0, m_d3d9Options.adapterOverride));
+    }
+    // NV-DXVK end
+
     auto* adapter = GetAdapter(Adapter);
 
     if (adapter == nullptr)
