@@ -2480,7 +2480,6 @@ namespace dxvk {
       auto& rayReconstruction = common->metaRayReconstruction();
       ImGui::Indent();
 
-#ifdef REMIX_DEVELOPMENT
       ImGui::Checkbox("Raytracing Enabled", & RtxOptions::Get()->enableRaytracingObject()); 
 
       renderPassGBufferRaytraceModeCombo.getKey(&RtxOptions::Get()->renderPassGBufferRaytraceModeObject());
@@ -2488,7 +2487,6 @@ namespace dxvk {
       renderPassIntegrateIndirectRaytraceModeCombo.getKey(&RtxOptions::Get()->renderPassIntegrateIndirectRaytraceModeObject());
 
       ImGui::Separator();
-#endif
 
       showDLFGOptions(ctx);
 
