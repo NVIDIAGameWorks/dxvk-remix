@@ -315,11 +315,11 @@ namespace dxvk {
     m_rsState.sampleCount       = VK_SAMPLE_COUNT_1_BIT;
 
     m_blendMode.enableBlending  = VK_TRUE;
-    m_blendMode.colorSrcFactor  = VK_BLEND_FACTOR_SRC_ALPHA;
+    m_blendMode.colorSrcFactor  = VK_BLEND_FACTOR_ONE;
     m_blendMode.colorDstFactor  = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
     m_blendMode.colorBlendOp    = VK_BLEND_OP_ADD;
-    m_blendMode.alphaSrcFactor  = VK_BLEND_FACTOR_SRC_ALPHA;
-    m_blendMode.alphaDstFactor  = VK_BLEND_FACTOR_ZERO;
+    m_blendMode.alphaSrcFactor  = VK_BLEND_FACTOR_ONE;
+    m_blendMode.alphaDstFactor  = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
     m_blendMode.alphaBlendOp    = VK_BLEND_OP_ADD;
     m_blendMode.writeMask       = VK_COLOR_COMPONENT_R_BIT
                                 | VK_COLOR_COMPONENT_G_BIT
@@ -2506,9 +2506,6 @@ namespace dxvk {
     ctx->setBlendMode(0, m_blendMode);
 
     ctx->setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, 0, isSrgb);
-
-    // Issue dummy draw to flush the state
-    ctx->draw(0, 0, 0, 0);
   }
 
   void ImGUI::resetRendererState(const Rc<DxvkContext>& ctx) {
