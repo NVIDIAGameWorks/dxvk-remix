@@ -15,6 +15,8 @@ jobs:
         include:
           - build-flavour: debug
             output-subdir: _Comp64Debug
+          - build-flavour: debugoptimized
+            output-subdir: _Comp64DebugOptimized
           - build-flavour: release
             output-subdir: _Comp64Release
 
