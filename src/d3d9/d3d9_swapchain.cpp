@@ -999,7 +999,6 @@ namespace dxvk {
     // Retrieve the image and image view to present
     auto swapImage = m_backBuffers[0]->GetCommonTexture()->GetImage();
     auto swapImageView = m_backBuffers[0]->GetImageView(false);
-    auto swapImageRT = m_backBuffers[0]->GetRenderTargetView(false); 
 
     // Bump our frame id.
     ++m_frameId;
@@ -1034,12 +1033,9 @@ namespace dxvk {
         {  int32_t(m_dstRect.left),                    int32_t(m_dstRect.top)                    },
         { uint32_t(m_dstRect.right - m_dstRect.left), uint32_t(m_dstRect.bottom - m_dstRect.top) } };
 
-      // NV-DXVK start
-      DxvkRenderTargets renderTargets;
-      renderTargets.color[0].view = swapImageRT;
-      renderTargets.color[0].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-      m_context->bindRenderTargets(renderTargets);
-      // NV-DXVK end
+      m_blitter->presentImage(m_context.ptr(),
+        m_imageViews.at(imageIndex), dstRect,
+        swapImageView, srcRect);
 
       if (m_hud != nullptr)
         m_hud->render(m_context, info.format, info.imageExtent);
@@ -1048,11 +1044,7 @@ namespace dxvk {
         m_imgui->render(m_window, m_context, info.format, info.imageExtent);
 
       // NV-DXVK start
-      m_parent->m_rtx.OnPresent(m_backBuffers[0]->GetCommonTexture()->GetImage());
-
-      m_blitter->presentImage(m_context.ptr(),
-        m_imageViews.at(imageIndex), dstRect,
-        swapImageView, srcRect);
+      m_parent->m_rtx.OnPresent(m_imageViews.at(imageIndex)->image());
       // NV-DXVK end
 
       if (i + 1 >= SyncInterval)
