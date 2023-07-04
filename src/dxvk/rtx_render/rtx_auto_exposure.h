@@ -50,10 +50,10 @@ namespace dxvk {
 
     void showImguiSettings();
 
+    void createResources(Rc<DxvkContext> ctx);
     const Resources::Resource& getExposureTexture() const { return m_exposure; }
 
   private:
-    void createResources(Rc<DxvkContext> ctx);
 
     void dispatchAutoExposure(
       Rc<DxvkCommandList> cmdList,

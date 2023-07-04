@@ -307,7 +307,8 @@ namespace dxvk
     evalParams.Feature.pInColor = &unresolvedColorResource;
     evalParams.Feature.pInOutput = &resolvedColorResource;
     evalParams.pInDepth = &depthResource;
-    evalParams.pInExposureTexture = autoExposure ? &exposureResource : nullptr;
+    // xxxnsubtil: the DLSS indicator reads the exposure texture even when DLSS autoexposure is on
+    evalParams.pInExposureTexture = &exposureResource;
     evalParams.pInMotionVectors = &motionVectorsResource;
     evalParams.pInBiasCurrentColorMask = antiGhost ? &biasCurrentColorMaskResource : nullptr;
     evalParams.InJitterOffsetX = jitterOffset[0];
