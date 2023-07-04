@@ -152,6 +152,10 @@ namespace dxvk {
   }
 
   void DxvkAutoExposure::createResources(Rc<DxvkContext> ctx) {
+    if (m_exposure.image != nullptr) {
+      return;
+    }
+
     DxvkImageCreateInfo desc;
     desc.type = VK_IMAGE_TYPE_1D;
     desc.flags = 0;

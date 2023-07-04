@@ -473,6 +473,9 @@ namespace dxvk {
 
         // Upscaling if DLSS/NIS enabled, or the Composition Pass will do upscaling
         if (shouldUseDLSS()) {
+          // xxxnsubtil: the DLSS indicator reads our exposure texture even with DLSS autoexposure on
+          // make sure it has been created, otherwise we run into trouble on the first frame
+          m_common->metaAutoExposure().createResources(this);
           dispatchDLSS(rtOutput);
         } else if (shouldUseNIS()) {
           dispatchNIS(rtOutput);
