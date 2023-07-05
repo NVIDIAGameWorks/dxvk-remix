@@ -20,6 +20,14 @@
 * DEALINGS IN THE SOFTWARE.
 */
 
+//!variant integrate_indirect_miss.rmiss
+//!>       NEE_CACHE_ENABLE=0
+
+//!variant integrate_indirect_miss_neeCache.rmiss
+//!>       NEE_CACHE_ENABLE=1
+
+//!end-variants
+
 #define RAY_PIPELINE
 #define INTEGRATE_INDIRECT
 #define RAB_HAS_PREVIOUS_GBUFFER 1
