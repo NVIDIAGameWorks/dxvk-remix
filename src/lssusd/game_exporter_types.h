@@ -53,7 +53,13 @@ struct SampledBoneXform {
   pxr::VtMatrix4dArray xforms;
 };
 using SampledBoneXforms = std::vector<SampledBoneXform>;
-  
+
+struct Skeleton {
+  pxr::VtArray<pxr::TfToken> jointNames;
+  pxr::VtMatrix4dArray bindPose;
+  pxr::VtMatrix4dArray restPose;
+};
+
 struct Camera {
   // Note: FoV in radians.
   float         fov = NAN;

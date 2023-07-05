@@ -431,7 +431,7 @@ namespace dxvk {
       std::lock_guard lock(m_meshMutex);
       pMesh = m_cap.meshes[currentMeshHash];
     }
-
+          
     // Note: Ensures that reading a Vec3 from the position buffer will result in the proper values. This can be extended if
     // games use odd formats like R32G32B32A32 in the future, but cannot be less than 3 components unless the code is modified
     // to accomodate other strange formats.
@@ -461,13 +461,21 @@ namespace dxvk {
     }
 
     if (bCapturePositions && geomData.positionBuffer.defined()) {
-      captureMeshPositions(ctx, geomData, m_cap.currentFrameNum, pMesh);
+      if (skinData.numBones > 0) {
+        captureMeshPositions(ctx, rasterGeomData.vertexCount, rasterGeomData.positionBuffer, m_cap.currentFrameNum, pMesh);
+      } else {
+        captureMeshPositions(ctx, geomData.vertexCount, geomData.positionBuffer, m_cap.currentFrameNum, pMesh);
+      }
     }
-
+    
     if (bCaptureNormals && geomData.normalBuffer.defined()) {
-      captureMeshNormals(ctx, geomData, m_cap.currentFrameNum, pMesh);
+      if (skinData.numBones > 0) {
+        captureMeshNormals(ctx, rasterGeomData.vertexCount, rasterGeomData.normalBuffer, m_cap.currentFrameNum, pMesh);
+      } else {
+        captureMeshNormals(ctx, geomData.vertexCount, geomData.normalBuffer, m_cap.currentFrameNum, pMesh);
+      }
     }
-
+    
     if (bCaptureIndices && geomData.indexBuffer.defined()) {
       captureMeshIndices(ctx, geomData, m_cap.currentFrameNum, pMesh);
     }
@@ -486,22 +494,23 @@ namespace dxvk {
     }
   }
 
+  template <typename T>
   void GameCapturer::captureMeshPositions(const Rc<DxvkContext> ctx,
-                                          const RaytraceGeometry& geomData,
+                                          const size_t numVertices,
+                                          const T& inputPositionBuffer,
                                           const float currentFrameNum,
                                           std::shared_ptr<Mesh> pMesh) {
-
-    AssetExporter::BufferCallback captureMeshPositionsAsync = [ctx, geomData, currentFrameNum, pMesh](Rc<DxvkBuffer> posBuf) {
+                                            
+    AssetExporter::BufferCallback captureMeshPositionsAsync = [ctx, numVertices, inputPositionBuffer, currentFrameNum, pMesh](Rc<DxvkBuffer> posBuf) {
       // Prep helper vars
-      const size_t numVertices = geomData.vertexCount;
       constexpr size_t positionSubElementSize = sizeof(float);
-      const size_t positionStride = geomData.positionBuffer.stride() / positionSubElementSize;
+      const size_t positionStride = inputPositionBuffer.stride() / positionSubElementSize;
       const DxvkBufferSlice positionBuffer(posBuf, 0, posBuf->info().size);
       // Ensure no reads are out of bounds
-      assert(((size_t) (numVertices - 1) * (size_t) geomData.positionBuffer.stride() + sizeof(pxr::GfVec3f)) <=
-             (positionBuffer.length() - geomData.positionBuffer.offsetFromSlice()));
+      assert(((size_t) (numVertices - 1) * (size_t)inputPositionBuffer.stride() + sizeof(pxr::GfVec3f)) <=
+            (positionBuffer.length() - inputPositionBuffer.offsetFromSlice()));
       // Get copied-to-CPU GPU buffer
-      const float* pVkPosBuf = (float*) positionBuffer.mapPtr((size_t) geomData.positionBuffer.offsetFromSlice());
+      const float* pVkPosBuf = (float*) positionBuffer.mapPtr((size_t)inputPositionBuffer.offsetFromSlice());
       assert(pVkPosBuf);
       // Copy GPU buffer to local VtArray
       pxr::VtArray<pxr::GfVec3f> positions;
@@ -520,26 +529,27 @@ namespace dxvk {
       evalNewBufferAndCache(pMesh, pMesh->lssData.buffers.positionBufs, positions, currentFrameNum, positionsDifferentEnough);
     };
     pMesh->meshSync.numOutstandingInc();
-    m_exporter.copyBufferFromGPU(ctx, geomData.positionBuffer, captureMeshPositionsAsync);
+    m_exporter.copyBufferFromGPU(ctx, inputPositionBuffer, captureMeshPositionsAsync);
   }
 
+  template <typename T>
   void GameCapturer::captureMeshNormals(const Rc<DxvkContext> ctx,
-                                        const RaytraceGeometry& geomData,
+                                        const size_t numVertices,
+                                        const T& inputNormalBuffer,
                                         const float currentFrameNum,
                                         std::shared_ptr<Mesh> pMesh) {
-
-    AssetExporter::BufferCallback captureMeshNormalsAsync = [ctx, geomData, currentFrameNum, pMesh](Rc<DxvkBuffer> norBuf) {
-      assert(geomData.normalBuffer.vertexFormat() == VK_FORMAT_R32G32B32_SFLOAT);
+                                          
+    AssetExporter::BufferCallback captureMeshNormalsAsync = [ctx, numVertices, inputNormalBuffer, currentFrameNum, pMesh](Rc<DxvkBuffer> norBuf) {
+      assert(inputNormalBuffer.vertexFormat() == VK_FORMAT_R32G32B32_SFLOAT);
       // Prep helper vars
-      const size_t numVertices = geomData.vertexCount;
       constexpr size_t normalSubElementSize = sizeof(float);
-      const size_t normalStride = geomData.normalBuffer.stride() / normalSubElementSize;
-      const DxvkBufferSlice normalBuffer(norBuf, 0, norBuf->info().size);
+      const size_t normalStride = inputNormalBuffer.stride() / normalSubElementSize;
+      const DxvkBufferSlice normalBuffer(norBuf, 0, norBuf->info().size );
       // Ensure no reads are out of bounds
-      assert(((size_t) (numVertices - 1) * (size_t) geomData.normalBuffer.stride() + sizeof(pxr::GfVec3f)) <=
-             (normalBuffer.length() - geomData.normalBuffer.offsetFromSlice()));
+      assert(((size_t) (numVertices - 1) * (size_t)inputNormalBuffer.stride() + sizeof(pxr::GfVec3f)) <=
+            (normalBuffer.length() - inputNormalBuffer.offsetFromSlice()));
       // Get copied-to-CPU GPU buffer
-      const float* pVkNormalBuf = (float*) normalBuffer.mapPtr((size_t) geomData.normalBuffer.offsetFromSlice());
+      const float* pVkNormalBuf = (float*) normalBuffer.mapPtr((size_t)inputNormalBuffer.offsetFromSlice());
       assert(pVkNormalBuf);
       // Copy GPU buffer to local VtArray
       pxr::VtArray<pxr::GfVec3f> normals;
@@ -558,7 +568,7 @@ namespace dxvk {
       evalNewBufferAndCache(pMesh, pMesh->lssData.buffers.normalBufs, normals, currentFrameNum, normalsDifferentEnough);
     };
     pMesh->meshSync.numOutstandingInc();
-    m_exporter.copyBufferFromGPU(ctx, geomData.normalBuffer, captureMeshNormalsAsync);
+    m_exporter.copyBufferFromGPU(ctx, inputNormalBuffer, captureMeshNormalsAsync);
   }
 
   template<typename T>

@@ -62,6 +62,8 @@ private:
     pxr::UsdStageRefPtr instanceStage;
     IdMap<Reference> matReferences;
     IdMap<Reference> meshReferences;
+    IdMap<Skeleton> skeletons;
+    
   };
   static void exportUsdInternal(const Export& exportData);
   static pxr::UsdStageRefPtr createInstanceStage(const Export& exportData);
