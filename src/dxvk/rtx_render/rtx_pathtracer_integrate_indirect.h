@@ -49,7 +49,7 @@ namespace dxvk {
     static const char* raytraceModeToString(RaytraceMode raytraceMode);
 
   private:
-    static DxvkRaytracingPipelineShaders getPipelineShaders(const bool useRayQuery, const bool serEnabled, const bool ommEnabled);
-    Rc<DxvkShader> getComputeShader() const;
+    static DxvkRaytracingPipelineShaders getPipelineShaders(const bool useRayQuery, const bool serEnabled, const bool ommEnabled, const bool useNeeCache);
+    Rc<DxvkShader> getComputeShader(const bool useNeeCache) const;
   };
 }
