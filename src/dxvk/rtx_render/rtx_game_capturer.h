@@ -131,12 +131,16 @@ private:
                    const bool bCapturePositions,
                    const bool bCaptureNormals,
                    const bool bCaptureIndices);
+  template <typename T>
   void captureMeshPositions(const Rc<DxvkContext> ctx,
-                            const RaytraceGeometry& geomData,
+                            const size_t numVertices,
+                            const T& inputPositionBuffer,
                             const float currentCaptureTime,
                             std::shared_ptr<Mesh> pMesh);
+  template <typename T>
   void captureMeshNormals(const Rc<DxvkContext> ctx,
-                          const RaytraceGeometry& geomData,
+                          const size_t numVertices,
+                          const T& inputNormalBuffer,
                           const float currentCaptureTime,
                           std::shared_ptr<Mesh> pMesh);
   void captureMeshIndices(const Rc<DxvkContext> ctx,

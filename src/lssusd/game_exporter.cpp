@@ -74,14 +74,6 @@
 #include "../util/util_env.h"
 
 namespace {
-pxr::VtArray<pxr::TfToken> generateJointsList(size_t numBones) {
-  pxr::VtArray<pxr::TfToken> result(numBones);
-  for (int i = 0; i < numBones; ++i) {
-    result[i] = pxr::TfToken(dxvk::str::format("joint", i));
-  }
-  return result;
-}
-
 inline pxr::GfMatrix4d ToRHS(const pxr::GfMatrix4d& xform) {
   static pxr::GfMatrix4d XYflip(pxr::GfVec4d(1.0, 1.0, -1.0, 1.0));
 
@@ -90,15 +82,81 @@ inline pxr::GfMatrix4d ToRHS(const pxr::GfMatrix4d& xform) {
   return XYflip * xform * XYflip;
 }
 
-pxr::VtMatrix4dArray sanitizeBoneXforms(const pxr::SdfPath& sdfPath,
-                                               const pxr::VtMatrix4dArray& xforms,
-                                               const lss::Export::Meta& meta) {
+pxr::VtMatrix4dArray sanitizeBoneXforms(const pxr::VtMatrix4dArray& xforms,
+                                        const pxr::VtMatrix4dArray& bindPose,
+                                        const lss::Export::Meta& meta) {
+  const size_t numBones = xforms.size();
   pxr::VtMatrix4dArray sanitizedXforms;
-  sanitizedXforms.reserve(xforms.size());
-  for (const pxr::GfMatrix4d& xform: xforms) {
-    sanitizedXforms.push_back(meta.isLHS ? ToRHS(xform) : xform);
+  sanitizedXforms.resize(numBones);
+  pxr::GfMatrix4d worldFromRoot(1);
+
+
+  if (numBones > 0) {
+    const pxr::GfMatrix4d rootFromWorld = bindPose[0] * xforms[0];
+    worldFromRoot = rootFromWorld.GetInverse();
+    sanitizedXforms[0] = meta.isLHS ? ToRHS(rootFromWorld) : rootFromWorld;
   }
+  for (int i = 1; i < numBones; ++i) {
+    const pxr::GfMatrix4d xformFromRoot = bindPose[i] * xforms[i] * worldFromRoot;
+    sanitizedXforms[i] = meta.isLHS ? ToRHS(xformFromRoot) : xformFromRoot;
+  }
+
   return sanitizedXforms;
+}
+
+lss::Skeleton generateSkeleton(const size_t numBones,
+                              const size_t bonesPerVertex,
+                              const lss::PositionBuffer& points,
+                              const lss::BlendWeightBuffer* weights,
+                              const lss::BlendIndicesBuffer* indices) {
+  lss::Skeleton output;
+  output.bindPose.resize(numBones);
+  output.restPose.resize(numBones);
+  output.jointNames.resize(numBones);
+
+  pxr::VtMatrix4dArray boneXforms;
+  std::vector<pxr::GfVec3d> weightedPosSums;
+  std::vector<float> totalWeights(numBones, 0);
+  weightedPosSums.resize(numBones);
+  const float equalBlend = 1.f / bonesPerVertex;
+
+  if (numBones > 0) {
+    for (int i = 0; i < points.size(); ++i) {
+      for (int j = 0; j < bonesPerVertex; ++j) {
+        const float weight = weights == nullptr ? equalBlend : (*weights)[i * bonesPerVertex + j];
+        if (weight > 0.00001) {
+          const int ind = indices == nullptr ? j : (*indices)[i * bonesPerVertex + j];
+          weightedPosSums[ind] += points[i] * weight;
+          totalWeights[ind] += weight;
+        }
+      }
+    }
+    //Note: Bind pose is global transforms, restPose is local transforms.
+
+    pxr::GfVec3d rootBindPos(0);
+    if (totalWeights[0] == 0) {
+      output.bindPose[0].SetIdentity();
+    } else {
+      rootBindPos = weightedPosSums[0] / totalWeights[0];
+      output.bindPose[0].SetTranslate(rootBindPos);
+    }
+    output.restPose[0] = output.bindPose[0];
+
+    for (int i = 1; i < numBones; ++i) {
+      if (totalWeights[i] == 0) {
+        output.bindPose[i].SetIdentity();
+        output.restPose[i].SetIdentity();
+      } else {
+        output.bindPose[i].SetTranslate(weightedPosSums[i] / totalWeights[i]);
+        output.restPose[i].SetTranslate(weightedPosSums[i] / totalWeights[i] - rootBindPos);
+      }
+    }
+  }
+  output.jointNames[0] = pxr::TfToken("root");
+  for (int i = 1; i < numBones; ++i) {
+    output.jointNames[i] = pxr::TfToken(dxvk::str::format("root/joint", i));
+  }
+  return output;
 }
 }
 
@@ -384,14 +442,19 @@ void GameExporter::exportSkeletons(const Export& exportData, ExportContext& ctx)
     // Set bindTransforms attribute
     auto bindTransformsAttr = skelSchema.CreateBindTransformsAttr();
     assert(bindTransformsAttr);
-    pxr::VtMatrix4dArray boneXforms = sanitizeBoneXforms(skeletonSdfPath, mesh.boneXForms, exportData.meta);
-    bindTransformsAttr.Set(boneXforms);
+    ctx.skeletons[meshId] = generateSkeleton(mesh.numBones,
+                                             mesh.bonesPerVertex,
+                                             mesh.buffers.positionBufs.begin()->second,
+                                             mesh.buffers.blendWeightBufs.empty() ? nullptr : &mesh.buffers.blendWeightBufs.begin()->second,
+                                             mesh.buffers.blendIndicesBufs.empty() ? nullptr : &mesh.buffers.blendIndicesBufs.begin()->second);
+    const Skeleton& skel = ctx.skeletons[meshId];
+    // pxr::VtMatrix4dArray identities(mesh.numBones, pxr::GfMatrix4d(1));
+    bindTransformsAttr.Set(skel.bindPose);
 
     // Set restTransforms attribute
     auto restTransformsAttr = skelSchema.CreateRestTransformsAttr();
     assert(restTransformsAttr);
-    pxr::VtMatrix4dArray identities(mesh.numBones, pxr::GfMatrix4d(1));
-    restTransformsAttr.Set(identities);
+    restTransformsAttr.Set(skel.restPose);
 
     // Create SkelAnimation prim with a pose
     const auto skelPoseSdfPath = defaultPrimPath.AppendChild(gTokPose);
@@ -399,17 +462,16 @@ void GameExporter::exportSkeletons(const Export& exportData, ExportContext& ctx)
     assert(skelAnimationSchema);
 
     // set the rotations, scales, and translations attributes on the pose
-    skelAnimationSchema.SetTransforms(identities);
+    skelAnimationSchema.SetTransforms(skel.restPose);
 
     // Set joints attribute on both the skeleton and the pose
-    const pxr::VtArray<pxr::TfToken> jointsList = generateJointsList(mesh.numBones);
     auto jointsAttr = skelSchema.CreateJointsAttr();
     assert(jointsAttr);
-    jointsAttr.Set(jointsList);
+    jointsAttr.Set(skel.jointNames);
 
     auto jointsAttr2 = skelAnimationSchema.CreateJointsAttr();
     assert(jointsAttr2);
-    jointsAttr2.Set(jointsList);
+    jointsAttr2.Set(skel.jointNames);
 
     // Bind the pose to the skeleton
     pxr::UsdSkelBindingAPI skelBindingSchema = pxr::UsdSkelBindingAPI::Apply(skelSchema.GetPrim());
@@ -737,11 +799,14 @@ void GameExporter::exportInstances(const Export& exportData, ExportContext& ctx)
       const auto skelPoseSdfPath = fullInstancePath.AppendChild(gTokPose);
       auto skelAnimationSchema = pxr::UsdSkelAnimation::Define(ctx.instanceStage, skelPoseSdfPath);
       assert(skelAnimationSchema);
+      const lss::Skeleton& skel = ctx.skeletons[instanceData.meshId];
+
+      skelAnimationSchema.CreateJointsAttr().Set(skel.jointNames);
 
       // set the rotations, scales, and translations attributes on the pose
       for (auto sample : instanceData.boneXForms) {
         skelAnimationSchema.SetTransforms(
-            sanitizeBoneXforms(skelPoseSdfPath, sample.xforms, exportData.meta),
+            sanitizeBoneXforms(sample.xforms, skel.bindPose, exportData.meta),
             exportData.meta.numFramesCaptured == 1 ? pxr::UsdTimeCode::Default() : pxr::UsdTimeCode(sample.time));
       }
     }
