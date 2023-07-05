@@ -93,6 +93,11 @@ namespace dxvk {
   }
 
   void RtxInitializer::release() {
+    if (m_asyncShaderFinalizing.getValue()) {
+      // Wait for all prewarming to complete 
+      waitForShaderPrewarm();
+    }
+
     ShaderManager::destroyInstance();
 #ifdef WITH_RTXIO
     RtxIo::get().release();

@@ -125,7 +125,7 @@ void showDebugViews(uint2 threadIndex, GeometryFlags geometryFlags, MinimalSurfa
 }
 
 [shader("compute")]
-[numthreads(8, 8, 1)]
+[numthreads(16, 8, 1)]
 void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupThreadID)
 {
   if (any(threadIndex >= cb.camera.resolution))
@@ -133,15 +133,6 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
     return;
   }
 
-  const Camera camera = cb.camera;
-
-  // Note: Re-derive the original primary ray direction.
-  const Ray originalPrimaryRay = rayCreatePrimaryFromPixel(camera, threadIndex);
-
-  RNG rng = createRNG(uvec2(threadIndex), cb.frameIdx);
-  RAB_RandomSamplerState rtxdiRNG = RAB_InitRandomSampler(threadIndex, cb.frameIdx, 7);
-  RAB_Surface surface = RAB_GetGBufferSurface(threadIndex, false);
-  const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(threadIndex, SharedFlags);
   const bool gBufferMiss = isGBufferMiss(threadIndex, PrimaryConeRadius);
 
   // Early out if the primary surface was a miss or if the indirect integrator was not selected
@@ -150,6 +141,8 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   {
     return;
   }
+
+  const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(threadIndex, SharedFlags);
 
   vec4 indirectDiffuseOutput = vec4(0);
   vec4 indirectSpecularOutput = vec4(0);
@@ -166,6 +159,21 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
       indirectDiffuseOutput = indirectRadianceHitDistance;
     }
   }
+
+  // Early out in case when NEE cache is disabled.
+  if(!cb.neeCacheArgs.enable)
+  {
+    PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex] = indirectDiffuseOutput;
+    PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex] = indirectSpecularOutput;
+    return;
+  }
+
+  // Note: Re-derive the original primary ray direction.
+  const Ray originalPrimaryRay = rayCreatePrimaryFromPixel(cb.camera, threadIndex);
+
+  RNG rng = createRNG(uvec2(threadIndex), cb.frameIdx);
+  RAB_RandomSamplerState rtxdiRNG = RAB_InitRandomSampler(threadIndex, cb.frameIdx, 7);
+  RAB_Surface surface = RAB_GetGBufferSurface(threadIndex, false);
 
   // Deserialize the Ray
   GBufferMemoryMinimalRay gBufferMemoryMinimalRay;

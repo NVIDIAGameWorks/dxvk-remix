@@ -333,8 +333,9 @@ void integratePathVertex(
   // Add Emission
   vec3 emissiveLight = polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(polymorphicSurfaceMaterialInteraction);
   float16_t lightSelectionPDF = 0;
+
   bool isNeeEnabledOnBounce = (pathState.bounceIteration == 1 && cb.neeCacheArgs.enableOnFirstBounce) || (pathState.bounceIteration > 1 && cb.neeCacheArgs.enableAfterFirstBounce);
-  if (cb.neeCacheArgs.enable && isNeeEnabledOnBounce && any(emissiveLight) > 0)
+  if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && isNeeEnabledOnBounce && any(emissiveLight) > 0)
   {
     uint cellOffset, surfaceID, primitiveID;
     NEECache.loadThreadTask(pathState.pixelCoordinate, cellOffset, surfaceID, primitiveID);
@@ -350,7 +351,7 @@ void integratePathVertex(
         {
           NEECache.storeThreadTask(pathState.pixelCoordinate, cellOffset, rayInteraction.surfaceIndex, rayInteraction.primitiveIndex);
         }
-
+  
         float16_t lastSampleThreshold = 0;
         for (int i = 0; i < cell.getCandidateCount(); ++i)
         {
@@ -413,13 +414,16 @@ void integratePathVertex(
     pathState.direction = sampledRay.direction;
     pathState.solidAnglePdf = solidAnglePdf;
 
-    // If there is no task recorded, record new cell offset
-    uint cellOffset, surfaceID, primitiveID;
-    NEECache.loadThreadTask(pathState.pixelCoordinate, cellOffset, surfaceID, primitiveID);
-    if (surfaceID == 0xffffffff && primitiveID == 0xffffffff)
+    if (NEE_CACHE_ENABLE) 
     {
-      cellOffset = NEECache.pointToOffset(pathState.origin, true);
-      NEECache.storeThreadTask(pathState.pixelCoordinate, cellOffset, surfaceID, primitiveID);
+      // If there is no task recorded, record new cell offset
+      uint cellOffset, surfaceID, primitiveID;
+      NEECache.loadThreadTask(pathState.pixelCoordinate, cellOffset, surfaceID, primitiveID);
+      if (surfaceID == 0xffffffff && primitiveID == 0xffffffff)
+      {
+        cellOffset = NEECache.pointToOffset(pathState.origin, true);
+        NEECache.storeThreadTask(pathState.pixelCoordinate, cellOffset, surfaceID, primitiveID);
+      }
     }
   }
 
@@ -501,7 +505,8 @@ void integratePathVertex(
     vec3 diffuseLight, specularLight;
     evaluateUnshadowedLight(lightSample, opaqueSurfaceMaterialInteraction, rayInteraction, normalize(lightSample.position - surfaceInteraction.position), diffuseLight, specularLight);
 
-    if(cb.neeCacheArgs.enable && cb.neeCacheArgs.enableAfterFirstBounce)
+
+    if(NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && cb.neeCacheArgs.enableAfterFirstBounce)
     {
       NEECell cell = NEECache.findCell(surfaceInteraction.position, true);
       if (cell.isValid() && cell.getCandidateCount() > 0)
@@ -823,8 +828,11 @@ void integrateIndirectPath(
 
   pathState.coneSpreadAngle = calculateSpreadAngleFromSolidAnglePdf(pathState.coneSpreadAngle, firstSampledSolidAnglePdf);
 
-  uint cellOffset = NEECache.pointToOffset(rayOrigin, true);
-  NEECache.storeThreadTask(pixelCoordinate, cellOffset, 0xffffffff, 0xffffffff);
+  if (NEE_CACHE_ENABLE) 
+  {
+    uint cellOffset = NEECache.pointToOffset(rayOrigin, true);
+    NEECache.storeThreadTask(pixelCoordinate, cellOffset, 0xffffffff, 0xffffffff);
+  }
 
   if (cb.enableReSTIRGI && geometryFlags.primarySelectedIntegrationSurface)
   {

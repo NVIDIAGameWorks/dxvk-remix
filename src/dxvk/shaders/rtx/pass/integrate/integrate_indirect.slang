@@ -20,19 +20,41 @@
 * DEALINGS IN THE SOFTWARE.
 */
 
+//!variant integrate_indirect_raygen_neeCache.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       NEE_CACHE_ENABLE=1
+ 
+//!variant integrate_indirect_raygen_ser_neeCache.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       RT_SHADER_EXECUTION_REORDERING
+//!>       NEE_CACHE_ENABLE=1
+
+//!variant integrate_indirect_rayquery_neeCache.comp
+//!>       NEE_CACHE_ENABLE=1
+
+//!variant integrate_indirect_rayquery_raygen_neeCache.rgen
+//!>       RAY_PIPELINE
+//!>       NEE_CACHE_ENABLE=1
+
+//!variant integrate_indirect_rayquery.comp
+//!>       NEE_CACHE_ENABLE=0
+
+//!variant integrate_indirect_rayquery_raygen.rgen
+//!>       RAY_PIPELINE
+//!>       NEE_CACHE_ENABLE=0
+
 //!variant integrate_indirect_raygen.rgen
 //!>       RT_TRACE_RAY
 //!>       RAY_PIPELINE
+//!>       NEE_CACHE_ENABLE=0
 
 //!variant integrate_indirect_raygen_ser.rgen
 //!>       RT_TRACE_RAY
 //!>       RAY_PIPELINE
 //!>       RT_SHADER_EXECUTION_REORDERING
-
-//!variant integrate_indirect_rayquery.comp
-
-//!variant integrate_indirect_rayquery_raygen.rgen
-//!>       RAY_PIPELINE
+//!>       NEE_CACHE_ENABLE=0
 
 //!end-variants
 
