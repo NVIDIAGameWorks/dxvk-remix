@@ -254,6 +254,7 @@ void sampleAndStoreIndirectRayPathSample(
     const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(primaryPolymorphicSurfaceMaterialInteraction);
     totalPdf = NEECacheUtils.calculateBSDFSampleTotalPDF(opaqueSurfaceMaterialInteraction, primaryMinimalRayInteraction.viewDirection, sampledRay.direction, firstSampledSolidAnglePdf, firstSampledLobeIsSpecular);
   }
+  
   NeeCacheThreadTask[pixelCoordinate] = asuint(vec2(totalPdf, 0));
 
   // Store the Geometry Flags with the new path information if it changed
