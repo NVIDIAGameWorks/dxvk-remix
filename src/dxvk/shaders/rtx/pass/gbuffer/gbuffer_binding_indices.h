@@ -99,7 +99,7 @@
 #error "Increase the base index of G-buffer bindings to avoid overlap with common bindings!"
 #endif
 
-#define GBUFFER_SBT_OFFSET_STANDARD (0 * HIT_GROUP_MATERIAL_COUNT)
+#define GBUFFER_SBT_OFFSET_STANDARD 0
 
 struct GbufferPushConstants
 {

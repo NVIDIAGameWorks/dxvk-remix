@@ -327,6 +327,8 @@ void integratePathVertex(
     accumulateThroughput(pathState, volumeTransmittance);
   }
 
+  const uint materialType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
+
   // Construct RNG
   RNG randomState = createRNG(pathState.pixelCoordinate, cb.frameIdx, pathState.calculateRNGOffset(kRNGOffsetSampleClosestHitShader));
 
@@ -334,40 +336,46 @@ void integratePathVertex(
   vec3 emissiveLight = polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(polymorphicSurfaceMaterialInteraction);
   float16_t lightSelectionPDF = 0;
 
-  bool isNeeEnabledOnBounce = (pathState.bounceIteration == 1 && cb.neeCacheArgs.enableOnFirstBounce) || (pathState.bounceIteration > 1 && cb.neeCacheArgs.enableAfterFirstBounce);
-  if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && isNeeEnabledOnBounce && any(emissiveLight) > 0)
-  {
-    uint cellOffset, surfaceID, primitiveID;
-    NEECache.loadThreadTask(pathState.pixelCoordinate, cellOffset, surfaceID, primitiveID);
-    int3 cellID = NEECache.offsetToCell(cellOffset);
-    if (all(cellID != -1))
-    {      
-      NEECell cell = NEECache.getCell(cellID);
-      if (cell.isValid())
-      {
-        uint2 task = uint2(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex);
-        bool isEmpty = (surfaceID == 0xffffffff || primitiveID == 0xffffffff);
-        if (isEmpty || getNextSampleBlueNoise(randomState) < 0.5)
+#if (SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_RAY_PORTAL) != 0
+  if(materialType == surfaceMaterialTypeOpaque || materialType == surfaceMaterialTypeTranslucent) {
+#endif // SURFACE_MATERIAL_RESOLVE_TYPE_RAY_PORTAL
+    bool isNeeEnabledOnBounce = (pathState.bounceIteration == 1 && cb.neeCacheArgs.enableOnFirstBounce) || (pathState.bounceIteration > 1 && cb.neeCacheArgs.enableAfterFirstBounce);
+    if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && isNeeEnabledOnBounce && any(emissiveLight) > 0)
+    {
+      uint cellOffset, surfaceID, primitiveID;
+      NEECache.loadThreadTask(pathState.pixelCoordinate, cellOffset, surfaceID, primitiveID);
+      int3 cellID = NEECache.offsetToCell(cellOffset);
+      if (all(cellID != -1))
+      {      
+        NEECell cell = NEECache.getCell(cellID);
+        if (cell.isValid())
         {
-          NEECache.storeThreadTask(pathState.pixelCoordinate, cellOffset, rayInteraction.surfaceIndex, rayInteraction.primitiveIndex);
-        }
-  
-        float16_t lastSampleThreshold = 0;
-        for (int i = 0; i < cell.getCandidateCount(); ++i)
-        {
-          NEECandidate candidate = cell.getCandidate(i);
-          int2 candidateID = candidate.getIDData();
-          float16_t sampleThreshold = candidate.getSampleThreshold();
-          if (all(candidateID == task) && sampleThreshold > lastSampleThreshold)
+          uint2 task = uint2(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex);
+          bool isEmpty = (surfaceID == 0xffffffff || primitiveID == 0xffffffff);
+          if (isEmpty || getNextSampleBlueNoise(randomState) < 0.5)
           {
-            lightSelectionPDF = sampleThreshold - lastSampleThreshold;
-            break;
+            NEECache.storeThreadTask(pathState.pixelCoordinate, cellOffset, rayInteraction.surfaceIndex, rayInteraction.primitiveIndex);
           }
-          lastSampleThreshold = sampleThreshold;
+    
+          float16_t lastSampleThreshold = 0;
+          for (int i = 0; i < cell.getCandidateCount(); ++i)
+          {
+            NEECandidate candidate = cell.getCandidate(i);
+            int2 candidateID = candidate.getIDData();
+            float16_t sampleThreshold = candidate.getSampleThreshold();
+            if (all(candidateID == task) && sampleThreshold > lastSampleThreshold)
+            {
+              lightSelectionPDF = sampleThreshold - lastSampleThreshold;
+              break;
+            }
+            lastSampleThreshold = sampleThreshold;
+          }
         }
       }
     }
+#if (SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_RAY_PORTAL) != 0
   }
+#endif // SURFACE_MATERIAL_RESOLVE_TYPE_RAY_PORTAL
 
   // Check if resolving should continue, and if a surface was hit
 
@@ -389,346 +397,348 @@ void integratePathVertex(
   accumulateRadiance(pathState, emissiveLight * misWeight);
 
 // We don't need to sample lights or surface rays in the portal closest hit shader
-#if (SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT) != 0
-
-  float16_t restirHitT = float16_t(kMissHitDistance);
-  updateReSTIRGIHitDistance(oldLuminance, calcBt709Luminance(pathState.radiance), restirHitT, pathState.accumulatedHitDistance);
-
-  const bool oldInsideMedium = pathState.insideMedium;
-  vec3 continuationThroughput = f16vec3(1.0);
-  uint8_t continuationLobe = 0;
-  f16vec3 incomingDirection = pathState.direction;
-  {
-    // Sample a new direction
-    float16_t sampledLobePdf, solidAnglePdf;
-    const Ray sampledRay = sampleDirection(
-      randomState, pathState.insideMedium, continuationThroughput,
-      ray, rayInteraction, surfaceInteraction,
-      polymorphicSurfaceMaterialInteraction,
-      continuationLobe, sampledLobePdf, solidAnglePdf,
-      false);
-
-    // Set the ray into the path vertex state
-    pathState.origin = sampledRay.origin;
-    pathState.coneRadius = sampledRay.coneRadius;
-    pathState.direction = sampledRay.direction;
-    pathState.solidAnglePdf = solidAnglePdf;
-
-    if (NEE_CACHE_ENABLE) 
+#if (SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_RAY_PORTAL) != 0
+  if(materialType == surfaceMaterialTypeOpaque || materialType == surfaceMaterialTypeTranslucent) {
+#endif // SURFACE_MATERIAL_RESOLVE_TYPE_RAY_PORTAL
+    float16_t restirHitT = float16_t(kMissHitDistance);
+    updateReSTIRGIHitDistance(oldLuminance, calcBt709Luminance(pathState.radiance), restirHitT, pathState.accumulatedHitDistance);
+    
+    const bool oldInsideMedium = pathState.insideMedium;
+    vec3 continuationThroughput = f16vec3(1.0);
+    uint8_t continuationLobe = 0;
+    f16vec3 incomingDirection = pathState.direction;
     {
-      // If there is no task recorded, record new cell offset
-      uint cellOffset, surfaceID, primitiveID;
-      NEECache.loadThreadTask(pathState.pixelCoordinate, cellOffset, surfaceID, primitiveID);
-      if (surfaceID == 0xffffffff && primitiveID == 0xffffffff)
+      // Sample a new direction
+      float16_t sampledLobePdf, solidAnglePdf;
+      const Ray sampledRay = sampleDirection(
+        randomState, pathState.insideMedium, continuationThroughput,
+        ray, rayInteraction, surfaceInteraction,
+        polymorphicSurfaceMaterialInteraction,
+        continuationLobe, sampledLobePdf, solidAnglePdf,
+        false);
+    
+      // Set the ray into the path vertex state
+      pathState.origin = sampledRay.origin;
+      pathState.coneRadius = sampledRay.coneRadius;
+      pathState.direction = sampledRay.direction;
+      pathState.solidAnglePdf = solidAnglePdf;
+    
+      if (NEE_CACHE_ENABLE) 
       {
-        cellOffset = NEECache.pointToOffset(pathState.origin, true);
-        NEECache.storeThreadTask(pathState.pixelCoordinate, cellOffset, surfaceID, primitiveID);
+        // If there is no task recorded, record new cell offset
+        uint cellOffset, surfaceID, primitiveID;
+        NEECache.loadThreadTask(pathState.pixelCoordinate, cellOffset, surfaceID, primitiveID);
+        if (surfaceID == 0xffffffff && primitiveID == 0xffffffff)
+        {
+          cellOffset = NEECache.pointToOffset(pathState.origin, true);
+          NEECache.storeThreadTask(pathState.pixelCoordinate, cellOffset, surfaceID, primitiveID);
+        }
       }
     }
-  }
-
-  // Set the material medium index if a medium was entered or exited
-
-  evalMediumChange(
-    oldInsideMedium, pathState.insideMedium,
-    polymorphicSurfaceMaterialInteraction, pathState.mediumMaterialIndex);
-
-  // Get Opaque material information for future reference
-
-  const bool isOpaqueMaterial = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque;
-  const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
-  // polymorphicSurfaceMaterialInteraction is no longer live since this point.
-
-  // Perform NEE
-
-  if (isOpaqueMaterial)
-  {
-    LightSample lightSample;
-    float invSelectionPdf;
-    bool lightSampleValid = false;
-    bool isWithinGbuffer = false;
-    // Only steal rtxdi sample on rough surfaces with weak specular lobe, otherwise specular highlight will get lost.
-    // The value is based on experiment.
-    const float16_t baseReflectivityFactor = 3.0f;
-    if (cb.enableRtxdi && cb.enableRtxdiSampleStealing &&
-      calcBt709Luminance(opaqueSurfaceMaterialInteraction.baseReflectivity) < baseReflectivityFactor * opaqueSurfaceMaterialInteraction.isotropicRoughness) 
+    
+    // Set the material medium index if a medium was entered or exited
+    
+    evalMediumChange(
+      oldInsideMedium, pathState.insideMedium,
+      polymorphicSurfaceMaterialInteraction, pathState.mediumMaterialIndex);
+    
+    // Get Opaque material information for future reference
+    
+    const bool isOpaqueMaterial = materialType == surfaceMaterialTypeOpaque;
+    const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+    // polymorphicSurfaceMaterialInteraction is no longer live since this point.
+    
+    // Perform NEE
+    
+    if (isOpaqueMaterial)
     {
-      // Perform some safety checks, and if lucky, steal some high quality samples from RTX-DI reservoirs
+      LightSample lightSample;
+      float invSelectionPdf;
+      bool lightSampleValid = false;
+      bool isWithinGbuffer = false;
+      // Only steal rtxdi sample on rough surfaces with weak specular lobe, otherwise specular highlight will get lost.
+      // The value is based on experiment.
+      const float16_t baseReflectivityFactor = 3.0f;
+      if (cb.enableRtxdi && cb.enableRtxdiSampleStealing &&
+        calcBt709Luminance(opaqueSurfaceMaterialInteraction.baseReflectivity) < baseReflectivityFactor * opaqueSurfaceMaterialInteraction.isotropicRoughness) 
+      {
+        // Perform some safety checks, and if lucky, steal some high quality samples from RTX-DI reservoirs
+        ivec2 pixelCoordinate;
+        isWithinGbuffer = calculateScreenBoundedPixelCoordinate(
+          cb.camera.worldToProjectionJittered,
+          surfaceInteraction.position, pixelCoordinate);
+    
+        if (cb.enableRtxdiStealBoundaryPixelSamplesWhenOutsideOfScreen && !isWithinGbuffer)
+        {
+          pixelCoordinate = jitterBoundaryPixels(pixelCoordinate, pathState.pixelCoordinate);
+          isWithinGbuffer = true;
+        }
+    
+        if (isWithinGbuffer)
+        {
+          MinimalSurfaceInteraction gbuffer = minimalSurfaceInteractionReadFromGBuffer(pixelCoordinate, indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal);
+          float3 relativePosition = gbuffer.position - surfaceInteraction.position;
+          float relativeLength = length(relativePosition);
+          float cameraDistance = length(surfaceInteraction.position - cameraGetWorldPosition(cb.camera));
+          const float planeTolerance = 0.1;
+          const float distanceTolerance = 0.01;
+          isWithinGbuffer = dot(surfaceInteraction.interpolatedNormal, gbuffer.triangleNormal) > 0.8f &&   // sane normal difference?
+                            (relativeLength < cameraDistance * distanceTolerance ||
+                             abs(dot(relativePosition, surfaceInteraction.interpolatedNormal)) < planeTolerance * relativeLength);
+        }
+    
+        if (isWithinGbuffer)
+        {
+          uint8_t sampledTransportPortalIndex = invalidRayPortalIndex;
+    
+          // Select and sample a light for NEE via RTXDI
+    
+          lightSampleValid = sampleLightRTXDI(
+            pixelCoordinate,
+            surfaceInteraction,
+            lightSample, invSelectionPdf, sampledTransportPortalIndex);
+        }
+      }
+    
+      if (!isWithinGbuffer)
+      {
+        // Select and sample a light for NEE via RIS
+    
+        lightSampleValid = sampleLightRIS(
+          randomState,
+          surfaceInteraction, opaqueSurfaceMaterialInteraction, rayInteraction.viewDirection,
+          lightSample, invSelectionPdf);
+      }
+    
+      lightSample.solidAnglePdf /= invSelectionPdf;
+      vec3 diffuseLight, specularLight;
+      evaluateUnshadowedLight(lightSample, opaqueSurfaceMaterialInteraction, rayInteraction, normalize(lightSample.position - surfaceInteraction.position), diffuseLight, specularLight);
+    
+    
+      if(NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && cb.neeCacheArgs.enableAfterFirstBounce)
+      {
+        NEECell cell = NEECache.findCell(surfaceInteraction.position, true);
+        if (cell.isValid() && cell.getCandidateCount() > 0)
+        {
+          // Sample cached triangles
+          float lightObjectPdf = 0;
+          NEECandidate candidate = cell.sampleCandidate(getNextSampleBlueNoise(randomState), lightObjectPdf);
+    
+          if (candidate.isValid())
+          {
+            // Sample the selected triangle
+            vec2 uv = vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState));
+            LightSample lightSampleTriangle = NEECacheUtils.calculateLightSampleFromTriangle(
+              candidate.getSurfaceID(), candidate.getPrimitiveID(), uv, lightObjectPdf, surfaceInteraction.position, rayInteraction.coneRadius, hackState.coneSpreadAngle);
+    
+            // Calculate cached triangle NEE sample's MIS light contribution
+            vec3 diffuseLightTriangle, specularLightTriangle;
+            f16vec3 inputDirection = normalize(lightSampleTriangle.position - surfaceInteraction.position);
+            evaluateUnshadowedLight(lightSampleTriangle, opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection, diffuseLightTriangle, specularLightTriangle);
+            vec2 misWeight = NEECacheUtils.calculateLightSampleMISWeight(opaqueSurfaceMaterialInteraction, inputDirection, rayInteraction.viewDirection, lightSampleTriangle.solidAnglePdf);
+            diffuseLightTriangle *= misWeight.x;
+            specularLightTriangle *= misWeight.y;
+    
+            // Use RIS to choose between the light NEE sample and the cached triangle NEE sample
+            float weightLight = lightSampleValid && lightSample.solidAnglePdf > 0 ? calcBt709Luminance(diffuseLight + specularLight) / lightSample.solidAnglePdf : 0;
+            float weightTriangle = lightSampleTriangle.solidAnglePdf > 0 ? calcBt709Luminance(diffuseLightTriangle + specularLightTriangle) / lightSampleTriangle.solidAnglePdf : 0;
+            float r = getNextSampleBlueNoise(randomState);
+            if (r * (weightLight + weightTriangle) > weightLight)
+            {
+              lightSample = lightSampleTriangle;
+              diffuseLight = diffuseLightTriangle;
+              specularLight = specularLightTriangle;
+            }
+    
+            // Finalize the chosen sample
+            float targetPdf = calcBt709Luminance(diffuseLight + specularLight);
+            lightSample.solidAnglePdf = targetPdf / (weightLight + weightTriangle);
+            lightSampleValid = true;
+          }
+        }
+      }
+    
+      if (lightSampleValid)
+      {
+        const bool isViewModel = pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
+    
+        // Todo: Ray Portal transport sampling in the future.
+        evalNEESecondary(
+          lightSample, invalidRayPortalIndex, pathState.portalSpace, pathState.rayMask,
+          isViewModel, ray, rayInteraction, surfaceInteraction,
+          diffuseLight, specularLight);
+    
+        vec3 neeLight = diffuseLight + specularLight;
+        float16_t specularPortion = calcBt709Luminance(specularLight) / calcBt709Luminance(neeLight);
+        pathState.radiance += pathState.throughput * neeLight;
+    
+        float hitT = pathState.accumulatedHitDistance;
+        if (opaqueSurfaceMaterialInteraction.isotropicRoughness <= cb.reSTIRGIVirtualSampleRoughnessThreshold
+          && specularPortion >= cb.reSTIRGIVirtualSampleSpecularThreshold)
+        {
+          hitT += length(lightSample.position - surfaceInteraction.position);
+        }
+    
+        updateReSTIRGIHitDistance(oldLuminance, calcBt709Luminance(pathState.radiance), restirHitT, min(hitT, float16Max));
+      }
+    }
+    
+    // Check for path termination
+    // Note: Bounce iteration refers to the index of the current vertex in the path,
+    // 0 = Primary Hit, 1 = 1st Indirect Hit (1 bounce), etc. The decision to terminate here
+    // represents if the path should terminate at this current bounce iteration and not
+    // cast another ray. Note since the primary hit logic is hardcoded (for now) the path
+    // will always be extended to a bounce iteration of 1, so this is the minimum bounce
+    // number that can be set.
+    
+    // Todo: Allow minimum/maximum bounce iterations to be set by ray tracing args.
+    if (pathState.bounceIteration >= cb.pathMaxBounces)
+    {
+      pathState.continuePath = false;
+    }
+    else if (pathState.bounceIteration >= cb.pathMinBounces)
+    {
+      // Russian Roulette
+      // Note: This logic will conditionally terminate paths based on the effective throughput, allowing for
+      // paths which contribute little to the final image to be shorter while paths which are more important
+      // are allowed to be longer.
+    
+      float continueProbability = min(
+        calcBt709Luminance(pathState.throughput),
+        cb.russianRouletteMaxContinueProbability);
+      const float continueSample = getNextSampleBlueNoise(randomState);
+      // Note: < used to ensure path never continues if the probability is 0 (and to avoid NaNs in the
+      // throughput when the probability is divided into it).
+      bool continueResult = continueSample < continueProbability;
+    
+      if (!cb.enableRussianRoulette)
+      {
+        continueProbability = 1.f;
+        continueResult = true;
+      }   
+    
+      // Note: Factor the probability of continuing the path into the throughput. This causes odd brightness
+      // in denoising when the continue probability is very low, but this math has been validated to be
+      // correct as far as I can tell.
+      if (continueResult)
+      {
+        continuationThroughput /= continueProbability;
+      }
+    
+      pathState.continuePath = continueResult;
+    }
+    else
+    {
+      pathState.continuePath = true;
+    }
+    
+    // Steal samples from restir gi
+    if (cb.enableReSTIRGI
+      && cb.enableReSTIRGISampleStealing > 0
+      && isOpaqueMaterial)
+    {
+      // Perform some safety checks, and if lucky, steal some high quality samples from ReSTIR GI reservoirs
       ivec2 pixelCoordinate;
-      isWithinGbuffer = calculateScreenBoundedPixelCoordinate(
-        cb.camera.worldToProjectionJittered,
+      bool isWithinGbuffer = calculateScreenBoundedPixelCoordinate(
+        cb.camera.prevWorldToProjectionJittered,
         surfaceInteraction.position, pixelCoordinate);
-
-      if (cb.enableRtxdiStealBoundaryPixelSamplesWhenOutsideOfScreen && !isWithinGbuffer)
+    
+      if (cb.enableReSTIRGIStealBoundaryPixelSamplesWhenOutsideOfScreen && !isWithinGbuffer)
       {
         pixelCoordinate = jitterBoundaryPixels(pixelCoordinate, pathState.pixelCoordinate);
         isWithinGbuffer = true;
       }
-
+    
       if (isWithinGbuffer)
       {
-        MinimalSurfaceInteraction gbuffer = minimalSurfaceInteractionReadFromGBuffer(pixelCoordinate, indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal);
-        float3 relativePosition = gbuffer.position - surfaceInteraction.position;
+        const MinimalSurfaceInteraction prevSurfaceInteraction = minimalSurfaceInteractionReadFromGBuffer(
+          pixelCoordinate, PreviousWorldPosition_WorldTriangleNormal);
+    
+        float prevHitDistance = length(prevSurfaceInteraction.position - cameraGetWorldPosition(cb.camera));
+        float3 relativePosition = prevSurfaceInteraction.position - surfaceInteraction.position;
         float relativeLength = length(relativePosition);
-        float cameraDistance = length(surfaceInteraction.position - cameraGetWorldPosition(cb.camera));
         const float planeTolerance = 0.1;
-        const float distanceTolerance = 0.01;
-        isWithinGbuffer = dot(surfaceInteraction.interpolatedNormal, gbuffer.triangleNormal) > 0.8f &&   // sane normal difference?
-                          (relativeLength < cameraDistance * distanceTolerance ||
-                           abs(dot(relativePosition, surfaceInteraction.interpolatedNormal)) < planeTolerance * relativeLength);
+        const float distanceTolerance = 0.05;
+    
+        isWithinGbuffer =
+          dot(surfaceInteraction.triangleNormal, prevSurfaceInteraction.triangleNormal) > 0.8f &&
+          (relativeLength < prevHitDistance * distanceTolerance ||
+            abs(dot(prevSurfaceInteraction.triangleNormal, relativePosition)) < relativeLength * planeTolerance);
       }
-
-      if (isWithinGbuffer)
+    
+      vec3 indirectLight = vec3(0);
+      if (isWithinGbuffer && opaqueSurfaceMaterialInteraction.opacity == float16_t(1))
       {
-        uint8_t sampledTransportPortalIndex = invalidRayPortalIndex;
-
-        // Select and sample a light for NEE via RTXDI
-
-        lightSampleValid = sampleLightRTXDI(
-          pixelCoordinate,
-          surfaceInteraction,
-          lightSample, invSelectionPdf, sampledTransportPortalIndex);
-      }
-    }
-
-    if (!isWithinGbuffer)
-    {
-      // Select and sample a light for NEE via RIS
-
-      lightSampleValid = sampleLightRIS(
-        randomState,
-        surfaceInteraction, opaqueSurfaceMaterialInteraction, rayInteraction.viewDirection,
-        lightSample, invSelectionPdf);
-    }
-
-    lightSample.solidAnglePdf /= invSelectionPdf;
-    vec3 diffuseLight, specularLight;
-    evaluateUnshadowedLight(lightSample, opaqueSurfaceMaterialInteraction, rayInteraction, normalize(lightSample.position - surfaceInteraction.position), diffuseLight, specularLight);
-
-
-    if(NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && cb.neeCacheArgs.enableAfterFirstBounce)
-    {
-      NEECell cell = NEECache.findCell(surfaceInteraction.position, true);
-      if (cell.isValid() && cell.getCandidateCount() > 0)
-      {
-        // Sample cached triangles
-        float lightObjectPdf = 0;
-        NEECandidate candidate = cell.sampleCandidate(getNextSampleBlueNoise(randomState), lightObjectPdf);
-
-        if (candidate.isValid())
+        if (cb.enableReSTIRGISampleStealing == 2)
         {
-          // Sample the selected triangle
-          vec2 uv = vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState));
-          LightSample lightSampleTriangle = NEECacheUtils.calculateLightSampleFromTriangle(
-            candidate.getSurfaceID(), candidate.getPrimitiveID(), uv, lightObjectPdf, surfaceInteraction.position, rayInteraction.coneRadius, hackState.coneSpreadAngle);
-
-          // Calculate cached triangle NEE sample's MIS light contribution
-          vec3 diffuseLightTriangle, specularLightTriangle;
-          f16vec3 inputDirection = normalize(lightSampleTriangle.position - surfaceInteraction.position);
-          evaluateUnshadowedLight(lightSampleTriangle, opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection, diffuseLightTriangle, specularLightTriangle);
-          vec2 misWeight = NEECacheUtils.calculateLightSampleMISWeight(opaqueSurfaceMaterialInteraction, inputDirection, rayInteraction.viewDirection, lightSampleTriangle.solidAnglePdf);
-          diffuseLightTriangle *= misWeight.x;
-          specularLightTriangle *= misWeight.y;
-
-          // Use RIS to choose between the light NEE sample and the cached triangle NEE sample
-          float weightLight = lightSampleValid && lightSample.solidAnglePdf > 0 ? calcBt709Luminance(diffuseLight + specularLight) / lightSample.solidAnglePdf : 0;
-          float weightTriangle = lightSampleTriangle.solidAnglePdf > 0 ? calcBt709Luminance(diffuseLightTriangle + specularLightTriangle) / lightSampleTriangle.solidAnglePdf : 0;
-          float r = getNextSampleBlueNoise(randomState);
-          if (r * (weightLight + weightTriangle) > weightLight)
+          if (cb.isLastCompositeOutputValid)
           {
-            lightSample = lightSampleTriangle;
-            diffuseLight = diffuseLightTriangle;
-            specularLight = specularLightTriangle;
-          }
-
-          // Finalize the chosen sample
-          float targetPdf = calcBt709Luminance(diffuseLight + specularLight);
-          lightSample.solidAnglePdf = targetPdf / (weightLight + weightTriangle);
-          lightSampleValid = true;
-        }
-      }
-    }
-
-    if (lightSampleValid)
-    {
-      const bool isViewModel = pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
-
-      // Todo: Ray Portal transport sampling in the future.
-      evalNEESecondary(
-        lightSample, invalidRayPortalIndex, pathState.portalSpace, pathState.rayMask,
-        isViewModel, ray, rayInteraction, surfaceInteraction,
-        diffuseLight, specularLight);
-
-      vec3 neeLight = diffuseLight + specularLight;
-      float16_t specularPortion = calcBt709Luminance(specularLight) / calcBt709Luminance(neeLight);
-      pathState.radiance += pathState.throughput * neeLight;
-
-      float hitT = pathState.accumulatedHitDistance;
-      if (opaqueSurfaceMaterialInteraction.isotropicRoughness <= cb.reSTIRGIVirtualSampleRoughnessThreshold
-        && specularPortion >= cb.reSTIRGIVirtualSampleSpecularThreshold)
-      {
-        hitT += length(lightSample.position - surfaceInteraction.position);
-      }
-
-      updateReSTIRGIHitDistance(oldLuminance, calcBt709Luminance(pathState.radiance), restirHitT, min(hitT, float16Max));
-    }
-  }
-
-  // Check for path termination
-  // Note: Bounce iteration refers to the index of the current vertex in the path,
-  // 0 = Primary Hit, 1 = 1st Indirect Hit (1 bounce), etc. The decision to terminate here
-  // represents if the path should terminate at this current bounce iteration and not
-  // cast another ray. Note since the primary hit logic is hardcoded (for now) the path
-  // will always be extended to a bounce iteration of 1, so this is the minimum bounce
-  // number that can be set.
-
-  // Todo: Allow minimum/maximum bounce iterations to be set by ray tracing args.
-  if (pathState.bounceIteration >= cb.pathMaxBounces)
-  {
-    pathState.continuePath = false;
-  }
-  else if (pathState.bounceIteration >= cb.pathMinBounces)
-  {
-    // Russian Roulette
-    // Note: This logic will conditionally terminate paths based on the effective throughput, allowing for
-    // paths which contribute little to the final image to be shorter while paths which are more important
-    // are allowed to be longer.
-
-    float continueProbability = min(
-      calcBt709Luminance(pathState.throughput),
-      cb.russianRouletteMaxContinueProbability);
-    const float continueSample = getNextSampleBlueNoise(randomState);
-    // Note: < used to ensure path never continues if the probability is 0 (and to avoid NaNs in the
-    // throughput when the probability is divided into it).
-    bool continueResult = continueSample < continueProbability;
-
-    if (!cb.enableRussianRoulette)
-    {
-      continueProbability = 1.f;
-      continueResult = true;
-    }   
-
-    // Note: Factor the probability of continuing the path into the throughput. This causes odd brightness
-    // in denoising when the continue probability is very low, but this math has been validated to be
-    // correct as far as I can tell.
-    if (continueResult)
-    {
-      continuationThroughput /= continueProbability;
-    }
-
-    pathState.continuePath = continueResult;
-  }
-  else
-  {
-    pathState.continuePath = true;
-  }
-
-  // Steal samples from restir gi
-  if (cb.enableReSTIRGI
-    && cb.enableReSTIRGISampleStealing > 0
-    && isOpaqueMaterial)
-  {
-    // Perform some safety checks, and if lucky, steal some high quality samples from ReSTIR GI reservoirs
-    ivec2 pixelCoordinate;
-    bool isWithinGbuffer = calculateScreenBoundedPixelCoordinate(
-      cb.camera.prevWorldToProjectionJittered,
-      surfaceInteraction.position, pixelCoordinate);
-
-    if (cb.enableReSTIRGIStealBoundaryPixelSamplesWhenOutsideOfScreen && !isWithinGbuffer)
-    {
-      pixelCoordinate = jitterBoundaryPixels(pixelCoordinate, pathState.pixelCoordinate);
-      isWithinGbuffer = true;
-    }
-
-    if (isWithinGbuffer)
-    {
-      const MinimalSurfaceInteraction prevSurfaceInteraction = minimalSurfaceInteractionReadFromGBuffer(
-        pixelCoordinate, PreviousWorldPosition_WorldTriangleNormal);
-
-      float prevHitDistance = length(prevSurfaceInteraction.position - cameraGetWorldPosition(cb.camera));
-      float3 relativePosition = prevSurfaceInteraction.position - surfaceInteraction.position;
-      float relativeLength = length(relativePosition);
-      const float planeTolerance = 0.1;
-      const float distanceTolerance = 0.05;
-
-      isWithinGbuffer =
-        dot(surfaceInteraction.triangleNormal, prevSurfaceInteraction.triangleNormal) > 0.8f &&
-        (relativeLength < prevHitDistance * distanceTolerance ||
-          abs(dot(prevSurfaceInteraction.triangleNormal, relativePosition)) < relativeLength * planeTolerance);
-    }
-
-    vec3 indirectLight = vec3(0);
-    if (isWithinGbuffer && opaqueSurfaceMaterialInteraction.opacity == float16_t(1))
-    {
-      if (cb.enableReSTIRGISampleStealing == 2)
-      {
-        if (cb.isLastCompositeOutputValid)
-        {
-          vec4 lastColor = LastComposite[pixelCoordinate];
-          accumulateRadiance(pathState, lastColor.xyz * opaqueSurfaceMaterialInteraction.albedo + lastColor.w * opaqueSurfaceMaterialInteraction.baseReflectivity);
-        }
-      }
-      else
-      {
-        ReSTIRGI_Reservoir spatialReservoir = RAB_LoadGIReservoir(pixelCoordinate, ReSTIRGI_GetSpatialOutputPage());
-          
-        if (!spatialReservoir.getFlag(RESTIR_GI_FLAG_OCCLUDED_SAMPLE))
-        {
-          MinimalRayInteraction minimalRayInteraction2;
-          minimalRayInteraction2.coneRadius = 0.0;
-          minimalRayInteraction2.viewDirection = -incomingDirection;
-          vec3 L2 = normalize(spatialReservoir.position - surfaceInteraction.position);
-          SurfaceMaterialInteractionSplitWeight brdf2 = opaqueSurfaceMaterialInteractionCalcProjectedWeight(opaqueSurfaceMaterialInteraction, minimalRayInteraction2, L2);
-          indirectLight += spatialReservoir.radiance * brdf2.diffuseReflectionWeight * spatialReservoir.avgWeight;        
-          if (opaqueSurfaceMaterialInteraction.isotropicRoughness > RAB_RESTIR_GI_MIN_ROUGHNESS)
-          {
-            indirectLight += spatialReservoir.radiance * brdf2.specularReflectionWeight * spatialReservoir.avgWeight;
+            vec4 lastColor = LastComposite[pixelCoordinate];
+            accumulateRadiance(pathState, lastColor.xyz * opaqueSurfaceMaterialInteraction.albedo + lastColor.w * opaqueSurfaceMaterialInteraction.baseReflectivity);
           }
         }
-        accumulateRadiance(pathState, indirectLight);
+        else
+        {
+          ReSTIRGI_Reservoir spatialReservoir = RAB_LoadGIReservoir(pixelCoordinate, ReSTIRGI_GetSpatialOutputPage());
+            
+          if (!spatialReservoir.getFlag(RESTIR_GI_FLAG_OCCLUDED_SAMPLE))
+          {
+            MinimalRayInteraction minimalRayInteraction2;
+            minimalRayInteraction2.coneRadius = 0.0;
+            minimalRayInteraction2.viewDirection = -incomingDirection;
+            vec3 L2 = normalize(spatialReservoir.position - surfaceInteraction.position);
+            SurfaceMaterialInteractionSplitWeight brdf2 = opaqueSurfaceMaterialInteractionCalcProjectedWeight(opaqueSurfaceMaterialInteraction, minimalRayInteraction2, L2);
+            indirectLight += spatialReservoir.radiance * brdf2.diffuseReflectionWeight * spatialReservoir.avgWeight;        
+            if (opaqueSurfaceMaterialInteraction.isotropicRoughness > RAB_RESTIR_GI_MIN_ROUGHNESS)
+            {
+              indirectLight += spatialReservoir.radiance * brdf2.specularReflectionWeight * spatialReservoir.avgWeight;
+            }
+          }
+          accumulateRadiance(pathState, indirectLight);
+        }
+    
+        if (opaqueSurfaceMaterialInteraction.isotropicRoughness > RAB_RESTIR_GI_MIN_ROUGHNESS)
+        {
+          // For high roughness surface, restir gi can provide full indirect light and hence no more rays are needed.
+          pathState.continuePath = false;
+        }
+        else
+        {
+          // For low roughness surface, restir gi cannot sample specular light effectively, so we need to trace specular ray.
+          pathState.continuePath &= (continuationLobe != opaqueLobeTypeDiffuseReflection);
+        }
+    
+        updateReSTIRGIHitDistance(oldLuminance, calcBt709Luminance(pathState.radiance), restirHitT, pathState.accumulatedHitDistance);
       }
-
-      if (opaqueSurfaceMaterialInteraction.isotropicRoughness > RAB_RESTIR_GI_MIN_ROUGHNESS)
-      {
-        // For high roughness surface, restir gi can provide full indirect light and hence no more rays are needed.
-        pathState.continuePath = false;
-      }
-      else
-      {
-        // For low roughness surface, restir gi cannot sample specular light effectively, so we need to trace specular ray.
-        pathState.continuePath &= (continuationLobe != opaqueLobeTypeDiffuseReflection);
-      }
-
-      updateReSTIRGIHitDistance(oldLuminance, calcBt709Luminance(pathState.radiance), restirHitT, pathState.accumulatedHitDistance);
     }
-  }
-
-  // Update RestirGI hit distance until a rough surface is hit
-  if (cb.enableReSTIRGI &&
-      !pathState.restirGiHasFoundRoughSurface && 
-      restirHitT > 0.h)
-  {
-    if (opaqueSurfaceMaterialInteraction.isotropicRoughness > cb.reSTIRGIVirtualSampleRoughnessThreshold ||
-        continuationLobe == opaqueLobeTypeDiffuseReflection)
+    
+    // Update RestirGI hit distance until a rough surface is hit
+    if (cb.enableReSTIRGI &&
+        !pathState.restirGiHasFoundRoughSurface && 
+        restirHitT > 0.h)
     {
-      restirHitT = max(restirHitT, pathState.accumulatedHitDistance);
-      pathState.restirGiHasFoundRoughSurface = true;
+      if (opaqueSurfaceMaterialInteraction.isotropicRoughness > cb.reSTIRGIVirtualSampleRoughnessThreshold ||
+          continuationLobe == opaqueLobeTypeDiffuseReflection)
+      {
+        restirHitT = max(restirHitT, pathState.accumulatedHitDistance);
+        pathState.restirGiHasFoundRoughSurface = true;
+      }
+    
+      RestirGIRadiance[pathState.pixelCoordinate].a = restirHitT;
     }
-
-    RestirGIRadiance[pathState.pixelCoordinate].a = restirHitT;
+    
+    // Terminate the path if requested
+    // Note: Terminating here ensures no sampling is done for the final iteration.
+    
+    if (!pathState.continuePath)
+    {
+      return;
+    }
+    
+    accumulateThroughput(pathState, continuationThroughput);
+#if (SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_RAY_PORTAL) != 0
   }
-
-  // Terminate the path if requested
-  // Note: Terminating here ensures no sampling is done for the final iteration.
-
-  if (!pathState.continuePath)
-  {
-    return;
-  }
-
-  accumulateThroughput(pathState, continuationThroughput);
-
-#endif // SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT
+#endif // SURFACE_MATERIAL_RESOLVE_TYPE_RAY_PORTAL
 }
 
 // Update the hit distance when a significant contribution to the final result is found
