@@ -285,6 +285,16 @@ namespace dxvk {
             VkDeviceSize  offset,
             VkDeviceSize  length);
     
+    // NV-DXVK start: Free unused memory
+    /**
+     * \brief Queries if an entire chunk is considered free.
+     * 
+     * Returns true if no allocations exist
+     *   on this chunk.
+     */
+    bool isWholeChunkFree() const;
+    // NV-DXVK end
+
   private:
     
     struct FreeSlice {
@@ -376,6 +386,16 @@ namespace dxvk {
     std::array<DxvkMemoryHeap, VK_MAX_MEMORY_HEAPS>& getMemoryHeaps() {
       return m_memHeaps;
     }
+    // NV-DXVK end
+
+    // NV-DXVK start: Free unused memory
+    /**
+     * \brief Free's any chunks from memory that 
+     *   are completely unused.
+     *   This call may be expensive, it should
+     *   be used very sparingly.
+     */
+    void freeUnusedChunks();
     // NV-DXVK end
 
   private:
