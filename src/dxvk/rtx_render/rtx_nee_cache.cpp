@@ -120,6 +120,7 @@ namespace dxvk {
 
     // Bind resources
     {
+      ScopedGpuProfileZone(ctx, "UpdateNEETaskShader");
       ctx->bindCommonRayTracingResources(rtOutput);
       ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_NEE_CACHE, DxvkBufferSlice(rtOutput.m_neeCache, 0, rtOutput.m_neeCache->info().size));
       ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_TASK, DxvkBufferSlice(rtOutput.m_neeCacheTask, 0, rtOutput.m_neeCacheTask->info().size));
@@ -131,6 +132,7 @@ namespace dxvk {
     }
 
     {
+      ScopedGpuProfileZone(ctx, "UpdateNEECacheShader");
       ctx->bindCommonRayTracingResources(rtOutput);
       ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_NEE_CACHE, DxvkBufferSlice(rtOutput.m_neeCache, 0, rtOutput.m_neeCache->info().size));
       ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_TASK, DxvkBufferSlice(rtOutput.m_neeCacheTask, 0, rtOutput.m_neeCacheTask->info().size));
@@ -138,7 +140,7 @@ namespace dxvk {
       ctx->bindResourceView(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_THREAD_TASK, rtOutput.m_neeCacheThreadTask.view, nullptr);
 
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, UpdateNEECacheShader::getShader());
-      ctx->dispatch(NEE_CACHE_PROBE_RESOLUTION, NEE_CACHE_PROBE_RESOLUTION, NEE_CACHE_PROBE_RESOLUTION);
+      ctx->dispatch(NEE_CACHE_PROBE_RESOLUTION, NEE_CACHE_PROBE_RESOLUTION/8, NEE_CACHE_PROBE_RESOLUTION);
     }
   }
   
