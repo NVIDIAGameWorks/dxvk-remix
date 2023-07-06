@@ -253,6 +253,11 @@ namespace dxvk {
     // Update memory systems budgets for texture manager
     getCommonObjects()->getTextureManager().clear();
     m_device->waitForIdle();
+
+    // DXVK doesnt free chunks for us by default (its high water mark) so force release some memory back to the system here.
+    DxvkMemoryAllocator& memoryManager = m_device->getCommon()->memoryManager();
+    memoryManager.freeUnusedChunks();
+
     getCommonObjects()->getTextureManager().updateMemoryBudgets(this);
   }
 
