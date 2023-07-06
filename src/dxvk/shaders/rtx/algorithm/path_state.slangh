@@ -162,6 +162,11 @@ struct MemoryPathState : IPayload
     return ret;
   }
 
+  uint bounceIteration() 
+  {
+    return data0 & 0xf;
+  }
+
 #ifdef RAY_PIPELINE
   PathState unpack()
   {
@@ -169,7 +174,7 @@ struct MemoryPathState : IPayload
 
     pathState.pixelCoordinate = DispatchRaysIndex().xy;
 
-    pathState.bounceIteration = data0 & 0xf;
+    pathState.bounceIteration = bounceIteration();
     pathState.coneSpreadAngle = uint16BitsToHalf(data0 >> 8);
     pathState.origin = origin;
     pathState.direction = snorm2x16ToSphereDirection(encodedDirection);
@@ -206,8 +211,7 @@ struct MemoryPathState : IPayload
     if (cb.enableSeparateUnorderedApproximations &&
         cb.enableUnorderedResolveInIndirectRays) 
     {
-      PathState pathState = unpack();
-      addCoherenceHintAsLeastImportant1Bit(pathState.bounceIteration <= 1, coherenceHints, numCoherenceHints);
+      addCoherenceHintAsLeastImportant1Bit(bounceIteration() <= 1, coherenceHints, numCoherenceHints);
     }
 
     return true;

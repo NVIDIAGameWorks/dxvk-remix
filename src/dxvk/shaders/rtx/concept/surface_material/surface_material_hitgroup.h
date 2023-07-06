@@ -21,18 +21,6 @@
 */
 #pragma once
 
-// The main reason for per material hitGroups is because rayPortal material shader path
-// strains the resolve for other materials. Therefore rayPortal is split away into its own hitGroup for
-// more optimized code for each path 
-#define HIT_GROUP_MATERIAL_OPAQUE_TRANSLUCENT 0
-#define HIT_GROUP_MATERIAL_RAYPORTAL 1
-
-#define HIT_GROUP_MATERIAL_COUNT 2
-
-#define ADD_HIT_GROUPS(ShaderClass, variant_prefix) \
-  shaders.addHitGroup(GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, ShaderClass, variant_prefix ## _material_opaque_translucent_closestHit), nullptr, nullptr); \
-  shaders.addHitGroup(GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, ShaderClass, variant_prefix ## _material_rayportal_closestHit), nullptr, nullptr); \
-
 // Material resolves to be included in shader code paths set by
 // #define SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK 
 // to some or a combination of below

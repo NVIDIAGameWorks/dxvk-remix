@@ -79,7 +79,7 @@ void TraceRayCustom<payload_t : IPayload>(
   {
     // addGlobalReorderIDCoherenceHint(coherenceHints, numCoherenceHints, SER_REORDER_ID_INTEGRATE_TRACERAY);
     ReorderThread(hitObject, coherenceHints, numCoherenceHints);
-  }        
+  }
 
   HitObject::Invoke(accelerationStructure, hitObject, payload);
 }
