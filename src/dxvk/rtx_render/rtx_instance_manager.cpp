@@ -914,17 +914,8 @@ namespace dxvk {
       }
     }
 
-    // Associate instances with hitGroups according to their material
-
-    switch (material.getType()) {
-    case RtSurfaceMaterialType::Opaque:
-    case RtSurfaceMaterialType::Translucent:
-      currentInstance.m_vkInstance.instanceShaderBindingTableRecordOffset = HIT_GROUP_MATERIAL_OPAQUE_TRANSLUCENT;
-      break;
-    case RtSurfaceMaterialType::RayPortal:
-      currentInstance.m_vkInstance.instanceShaderBindingTableRecordOffset = HIT_GROUP_MATERIAL_RAYPORTAL;
-      break;
-    };
+    // We only have 1 hit shader.
+    currentInstance.m_vkInstance.instanceShaderBindingTableRecordOffset = 0;
 
     // Update instance flags.
     // Note: this should happen on instance updates and not creation because the same geometry can be drawn
@@ -1515,7 +1506,7 @@ namespace dxvk {
         clonedInstance->setPrevTransform(prevObjectToWorld);
       }
 
-      // Use a clip plane to make sure that the cloned instance doesn't stick through a thin slab
+      // Use a clip plane to make sure that the cloned instance doesn't stick through a slab
       // that the other portal might be placed on.
       clonedInstance->surface.isClipPlaneEnabled = true;
       clonedInstance->surface.clipPlane = Vector4(farPortalInfo->entryPortalInfo.planeNormal,
