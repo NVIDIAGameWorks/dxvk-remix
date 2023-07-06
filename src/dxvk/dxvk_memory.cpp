@@ -322,7 +322,21 @@ DxvkMemory::DxvkMemory() { }
     m_freeList.push_back({ offset, length });
   }
   
-  
+  // NV-DXVK start: Free unused memory
+  bool DxvkMemoryChunk::isWholeChunkFree() const {
+    if (m_freeList.size() != 1)
+      return false;
+
+    if (m_freeList[0].offset != 0)
+      return false;
+
+    if (m_freeList[0].length != m_memory.memSize)
+      return false;
+
+    return true;
+  }
+  // NV-DXVK end
+
   DxvkMemoryAllocator::DxvkMemoryAllocator(const DxvkDevice* device)
   : m_vkd             (device->vkd()),
     m_device          (device),
@@ -440,7 +454,26 @@ DxvkMemory::DxvkMemory() { }
     return result;
   }
   
-  
+  // NV-DXVK start: Free unused memory
+  void DxvkMemoryAllocator::freeUnusedChunks() {
+    for (auto& type : m_memTypes) {
+      std::lock_guard<dxvk::mutex> lock(type.mutex);
+
+      auto curr = type.chunks.begin();
+
+      while (curr != type.chunks.end()) {
+        if ((*curr)->isWholeChunkFree()) {
+          std::swap((*curr), type.chunks.back());
+          type.chunks.pop_back();
+          Logger::debug("Free unused chunk");
+        } else {
+          curr++;
+        }
+      }
+    }
+  }
+  // NV-DXVK end
+
   DxvkMemory DxvkMemoryAllocator::tryAlloc(
     const VkMemoryRequirements*             req,
     const VkMemoryDedicatedAllocateInfo*    dedAllocInfo,
