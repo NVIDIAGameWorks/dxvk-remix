@@ -173,7 +173,7 @@ namespace dxvk {
     void showMaterialOptions();
 
     void showEnhancementsWindow(const Rc<DxvkContext>& ctx);
-    void showAppConfig();
+    void showAppConfig(const Rc<DxvkContext>& ctx);
 
     // helper to display a configurable grid of all textures currently hooked to ImGUI
     void showTextureSelectionGrid(const Rc<DxvkContext>& ctx, const char* uniqueId, const uint32_t texturesPerRow, const float thumbnailSize);
