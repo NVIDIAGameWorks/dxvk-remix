@@ -295,7 +295,7 @@ private:
   void mergeInstanceHeuristics(RtInstance& instanceToModify, const DrawCallState& drawCall, const RtSurfaceMaterial& material, const RtSurface::AlphaState& alphaState) const;
 
   // Finds the "closest" matching instance to a set of inputs, returns a pointer (can be null if not found) to closest instance
-  RtInstance* findSimilarInstance(const BlasEntry& blas, const DrawCallState& drawCall, const RtSurfaceMaterial& material, const Matrix4& transform, const CameraManager& cameraManager, const RayPortalManager& rayPortalManager);
+  RtInstance* findSimilarInstance(const BlasEntry& blas, const RtSurfaceMaterial& material, const Matrix4& transform, CameraType::Enum cameraType, const RayPortalManager& rayPortalManager);
 
   RtInstance* addInstance(BlasEntry& blas, const DrawCallState& drawCall, const RtSurfaceMaterial& material, const Matrix4& transform);
   void processInstanceBuffers(const BlasEntry& blas, RtInstance& currentInstance) const;

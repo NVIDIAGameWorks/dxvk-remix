@@ -21,38 +21,52 @@
 */
 #pragma once
 
+#include "rtx_constants.h"
 #include "rtx_option.h"
+
+#include "rtx/concept/camera/camera.h"
+
 #include "../util/util_vector.h"
 #include "../util/util_matrix.h"
-#include "../util/rc/util_rc.h"
+
 #include <chrono>
-#include "glm/glm.hpp"
-#include "rtx/concept/camera/camera.h"
-#include "rtx_types.h"
 
 namespace dxvk
 {
+  namespace CameraType {
+    enum Enum : uint32_t {
+      Main = 0,     // Main camera
+      ViewModel,    // Camera for view model rendering
+      Portal0,      // Camera associated with rendering portal 0
+      Portal1,      // Camera associated with rendering portal 1
+      Sky,          // Some renderers have separate world / sky cameras
+      Unknown,      // Unset camera state, used mainly for state tracking. Its camera object is aliased 
+                    // with the Main camera object, so on access it retrieves the Main camera
+
+      Count
+    };
+  }
 
   class HaltonSamplePattern
   {
   public:
-    HaltonSamplePattern(uint32_t sampleCount);
+    explicit HaltonSamplePattern(uint32_t sampleCount);
 
     HaltonSamplePattern() = default;
     ~HaltonSamplePattern() = default;
 
     uint32_t getSampleCount() const { return mSampleCount; }
 
-    void reset(uint32_t startID = 0) { mCurSample = 0; }
+    void reset() { mCurSample = 0; }
 
     glm::vec2 next();
 
   protected:
     uint32_t mCurSample = 0;
-    uint32_t mSampleCount;
+    uint32_t mSampleCount = 0;
   };
 
-  class RtCamera : public RcObject
+  class RtCamera
   {
     RTX_OPTION_ENV("rtx.camera", bool, enableFreeCamera, false, "RTX_ENABLE_FREE_CAMERA", "Enables free camera.");
     RW_RTX_OPTION_ENV("rtx.camera", Vector3, freeCameraPosition, Vector3(0.f, 0.f, 0.f), "RTX_FREE_CAMERA_POSITION", "Free camera's position.");
@@ -63,13 +77,13 @@ namespace dxvk
     RW_RTX_OPTION("rtx", float, freeCameraSpeed, 200, "Free camera speed [GameUnits/s].");
 
     long m_mouseX = 0, m_mouseY = 0;
-    uint32_t m_renderResolution[2] = { 0 };
-    uint32_t m_finalResolution[2] = { 0 };
-    float m_jitter[2] = { 0 };
+    uint32_t m_renderResolution[2] = { 0, 0 };
+    uint32_t m_finalResolution[2] = { 0, 0 };
+    float m_jitter[2] = { 0, 0 };
     bool m_isLHS = false;
     float m_nearPlane = 0.0f;
     float m_farPlane = 0.0f;
-    HaltonSamplePattern m_halton;
+    HaltonSamplePattern m_halton = {};
     bool m_firstUpdate = true;
     int m_cameraShakeFrameCount = 0;
     int m_cameraRotationFrameCount = 0;
@@ -118,9 +132,9 @@ namespace dxvk
       Count
     };
 
-    Matrix4 m_matCache[MatrixType::Count];
+    Matrix4 m_matCache[MatrixType::Count] = {};
 
-    cFrustum m_frustum;
+    cFrustum m_frustum = {};
     cFrustum m_lightAntiCullingFrustum;
 
     // Captures any artificial offsets applied on top of the input transfrom 
@@ -130,15 +144,22 @@ namespace dxvk
 
     // Note: Start the camera off as invalid until it is set properly.
     uint32_t m_frameLastTouched = kInvalidFrameIndex;
-    std::chrono::time_point<std::chrono::system_clock> m_prevRunningTime;
+    std::chrono::time_point<std::chrono::system_clock> m_prevRunningTime = {};
 
   public:
+    RtCamera() = default;
+    ~RtCamera() = default;
 
-    RtCamera();
+    // Restrict copying
+    RtCamera(const RtCamera& other) = delete;
+    RtCamera& operator=(const RtCamera& other) = delete;
+
+    RtCamera(RtCamera&& other) noexcept = default;
+    RtCamera& operator=(RtCamera&& other) noexcept = default;
 
     // Gets the Y axis (vertical) FoV of the camera's projection matrix in radians. Note this value will be positive always (even with strange camera types).
-    inline const float getFov() const { return m_fov; }
-    inline const float getAspectRatio() const { return m_aspectRatio; }
+    float getFov() const { return m_fov; }
+    float getAspectRatio() const { return m_aspectRatio; }
 
     const Matrix4& getWorldToView(bool freecam = true) const;
     const Matrix4& getPreviousWorldToView(bool freecam = true) const;
@@ -157,8 +178,8 @@ namespace dxvk
     const Matrix4& getProjectionToView() const { return m_matCache[MatrixType::ProjectionToView]; }
     const Matrix4& getPreviousProjectionToView() const { return m_matCache[MatrixType::PreviousProjectionToView]; }
 
-    inline const cFrustum& getFrustum() const { return m_frustum; }
-    inline cFrustum& getFrustum() { return m_frustum; }
+    const cFrustum& getFrustum() const { return m_frustum; }
+    cFrustum& getFrustum() { return m_frustum; }
 
     inline const cFrustum& getLightAntiCullingFrustum() const { return m_lightAntiCullingFrustum; }
     inline cFrustum& getLightAntiCullingFrustum() { return m_lightAntiCullingFrustum; }
