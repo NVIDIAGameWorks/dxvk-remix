@@ -21,71 +21,76 @@
 */
 #pragma once
 
-#include <optional>
-
-#include "rtx_types.h"
+#include "rtx_camera.h"
 #include "rtx_option.h"
+#include "rtx_types.h"
 #include "rtx_common_object.h"
 
 namespace dxvk {
-  class RtCamera;
   class DxvkDevice;
   class RayPortalManager;
   class Config;
 
-  namespace CameraType {
-    enum Enum : uint32_t {
-      Main = 0,     // Main camera
-      ViewModel,    // Camera for view model rendering
-      Portal0,      // Camera associated with rendering portal 0
-      Portal1,      // Camera associated with rendering portal 1
-      Unknown,      // Unset camera state, used mainly for state tracking. Its camera object is aliased 
-                    // with the Main camera object, so on access it retrieves the Main camera
-
-      Count
-    };
-  }
-
   class CameraManager : public CommonDeviceObject {
   public:
     explicit CameraManager(DxvkDevice* device);
-    ~CameraManager() = default;
+    ~CameraManager() override = default;
 
-    const RtCamera& getCamera(CameraType::Enum cameraType) const { return **m_cameras[cameraType]; }
-    RtCamera& getCamera(CameraType::Enum cameraType) { return **m_cameras[cameraType]; }
+    CameraManager(const CameraManager& other) = delete;
+    CameraManager(CameraManager&& other) noexcept = delete;
+    CameraManager& operator=(const CameraManager& other) = delete;
+    CameraManager& operator=(CameraManager&& other) noexcept = delete;
+
+    const RtCamera& getCamera(CameraType::Enum cameraType) const { return accessCamera(*this, cameraType); }
+    RtCamera& getCamera(CameraType::Enum cameraType) { return accessCamera(*this, cameraType); }
 
     const RtCamera& getMainCamera() const { return getCamera(CameraType::Main); }
     RtCamera& getMainCamera() { return getCamera(CameraType::Main); }
 
-    const RtCamera& getLastSetCamera() const { return getCamera(m_lastSetCameraType); }
-    RtCamera& getLastSetCamera() { return getCamera(m_lastSetCameraType); }
     CameraType::Enum getLastSetCameraType() const { return m_lastSetCameraType; }
     
     bool isCameraValid(CameraType::Enum cameraType) const;
 
-    void initSettings(const dxvk::Config& config);
     void onFrameEnd();
 
-    bool processCameraData(const DrawCallState& input);
+    // Calculates a camera type for the specified draw call.
+    CameraType::Enum processCameraData(const DrawCallState& input);
 
     uint32_t getLastCameraCutFrameId() const { return m_lastCameraCutFrameId; }
     bool isCameraCutThisFrame() const;
 
-  private:
-    XXH64_hash_t calculateCameraHash(float fov, const Matrix4& worldToView, bool stencilEnabledState);
+    bool was3DSkyInPrevFrame() const { return m_was3DSkyInPrevFrame; }
 
-    std::array<std::optional<Rc<RtCamera>>, CameraType::Count> m_cameras;
-    std::unordered_map<XXH64_hash_t, CameraType::Enum> m_cameraHashToType;
+  private:
+    template<
+      typename T,
+      std::enable_if_t<std::is_same_v<T, CameraManager> || std::is_same_v<T, const CameraManager>, bool> = true>
+    static auto& accessCamera(T& cameraManager, CameraType::Enum cameraType) {
+      assert(cameraType < CameraType::Count);
+      // Default Unknown to Main camera object
+      // since cameras can get rejected but rtx pipeline can
+      // still try to retrieve a camera corresponding to a DrawCall object.
+      // In that case it will read from the Main camera.
+      // This is OK as we never update Unknown camera directly.
+      if (cameraType == CameraType::Unknown) {
+        return cameraManager.m_cameras[CameraType::Main];
+      }
+      return cameraManager.m_cameras[cameraType];
+    }
+
+  private:
+    std::array<RtCamera, CameraType::Count> m_cameras;
     CameraType::Enum m_lastSetCameraType = CameraType::Unknown;
+    uint32_t m_lastCameraCutFrameId = -1;
+
+    bool m_was3DSkyInPrevFrame = false;
+
+    struct CameraInfoAccum {
+      Vector3 lastPosition;
+      uint32_t uniquePositions;
+    } m_camerasInfoAccum = {};
 
     RTX_OPTION("rtx", bool, rayPortalEnabled, false, "Enables ray portal support. Note this requires portal texture hashes to be set for the ray portal geometries in rtx.rayPortalModelTextureHashes.");
-    RTX_OPTION("rtx.camera", bool, trackCamerasSeenStats, false, "Enables tracking and reporting of statistics for Cameras seen within a frame.");
-
-    std::string m_projParamsSeen;
-    std::string m_lastProjParamsSeen;
-    std::string m_viewTransformSeen;
-    std::string m_lastViewTransformParamsSeen;
-    uint32_t m_lastCameraCutFrameId = -1;
   };
 }  // namespace dxvk
 

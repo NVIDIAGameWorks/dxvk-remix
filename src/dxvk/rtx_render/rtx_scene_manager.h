@@ -139,7 +139,7 @@ public:
 
   void addLight(const D3DLIGHT9& light);
   
-  bool processCameraData(const DrawCallState& input) {
+  CameraType::Enum processCameraData(const DrawCallState& input) {
     return m_cameraManager.processCameraData(input);
   }
 
@@ -156,6 +156,7 @@ public:
   void prepareSceneData(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, class DxvkBarrierSet& execBarriers, const float frameTimeSecs);
 
   void onFrameEnd(Rc<DxvkContext> ctx);
+  void onFrameEndNoRTX();
 
   // GameCapturer
   void triggerUsdCapture() const;

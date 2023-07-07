@@ -489,6 +489,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.skyBrightness|float|1||
 |rtx.skyDrawcallIdThreshold|int|0|It's common in games to render the skybox first, and so, this value provides a simple mechanism to identify those early draw calls that are untextured \(textured draw calls can still use the Sky Textures functionality\.|
 |rtx.skyForceHDR|bool|False|By default sky will be rasterized in the color format used by the game\. Set the checkbox to force sky to be rasterized in HDR intermediate format\. This may be important when sky textures replaced with HDR textures\.|
+|rtx.skyMinZThreshold|float|1|If a draw call's viewport has min depth greater than or equal to this threshold, then assume that it's a sky\.|
 |rtx.skyProbeSide|int|1024||
 |rtx.skyUiDrawcallCount|int|0||
 |rtx.stochasticAlphaBlendDepthDifference|float|0.1|Max depth difference for a valid neighbor\.|
@@ -580,6 +581,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.viewDistance.noiseScale|float|3|The scale per meter value applied to ther world space position fed into the noise generation function for generating the fade in Coherent Noise view distance mode\.|
 |rtx.viewModel.enable|bool|False|If true, try to resolve view models \(e\.g\. first\-person weapons\)\. World geometry doesn't have shadows / reflections / etc from the view models\.|
 |rtx.viewModel.enableVirtualInstances|bool|True|If true, virtual instances are created to render the view models behind a portal\.|
+|rtx.viewModel.maxZThreshold|float|0|If a draw call's viewport has max depth less than or equal to this threshold, then assume that it's a view model\.|
 |rtx.viewModel.perspectiveCorrection|bool|True|If true, apply correction to view models \(e\.g\. different FOV is used for view models\)\.|
 |rtx.viewModel.rangeMeters|float|1|\[meters\] Max distance at which to find a portal for view model virtual instances\. If rtx\.viewModel\.separateRays is true, this is also max length of view model rays\.|
 |rtx.viewModel.scale|float|1|Scale for view models\. Minimize to prevent clipping\.|

@@ -318,7 +318,7 @@ namespace dxvk {
     for (const RtInstance* rtInstancePtr : m_sceneManager.getInstanceTable()) {
       assert(rtInstancePtr->getBlas() != nullptr);
 
-      if (rtInstancePtr->getBlas()->input.isSky) {
+      if (rtInstancePtr->getBlas()->input.cameraType == CameraType::Sky) {
         if (!m_cap.bSkyProbeBaked) {
           m_exporter.bakeSkyProbe(ctx, BASE_DIR + relPath::remixCaptureTexturesDir, commonFileName::bakedSkyProbe);
           m_cap.bSkyProbeBaked = true;
@@ -351,7 +351,7 @@ namespace dxvk {
         }
       }
       instance.lssData.finalTime = m_cap.currentFrameNum;
-      instance.lssData.isSky = rtInstancePtr->getBlas()->input.isSky;
+      instance.lssData.isSky = (rtInstancePtr->getBlas()->input.cameraType == CameraType::Sky);
     }
   }
 
