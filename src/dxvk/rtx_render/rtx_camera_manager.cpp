@@ -20,72 +20,59 @@
 * DEALINGS IN THE SOFTWARE.
 */
 #include "rtx_camera_manager.h"
-#include "dxvk_device.h"
+
 #include "rtx_matrix_helpers.h"
+
+#include "dxvk_device.h"
+
+namespace {
+  constexpr float kFovToleranceRadians = 0.001f;
+
+  constexpr float kCameraSimilarityDistanceThreshold = 1.0f;
+
+  auto areClose(const dxvk::Vector3& a, const dxvk::Vector3& b) {
+    return lengthSqr(a - b) < kCameraSimilarityDistanceThreshold;
+  }
+}
 
 namespace dxvk {
 
-  CameraManager::CameraManager(DxvkDevice* device) : CommonDeviceObject(device) {
-    initSettings(m_device->instance()->config());
-  }
+  CameraManager::CameraManager(DxvkDevice* device) : CommonDeviceObject(device) {}
 
   bool CameraManager::isCameraValid(CameraType::Enum cameraType) const {
-    return m_cameras[cameraType].has_value() &&
-      (**m_cameras[cameraType]).isValid(m_device->getCurrentFrameId());
-  }
-
-  void CameraManager::initSettings(const dxvk::Config& config) {
-
-    m_cameras[CameraType::Main] = new RtCamera();
-
-    if (m_rayPortalEnabled.getValue()) {
-      m_cameras[CameraType::Portal0] = new RtCamera();
-      m_cameras[CameraType::Portal1] = new RtCamera();
-    }
-
-    // Default Uknown to Main camera object
-    // since cameras can get rejected but rtx pipeline can 
-    // still try to retrieve a camera corresponding to a DrawCall object.
-    // In that case it will read from the Main camera.
-    // This is OK as we never update Unknown camera directly.
-    m_cameras[CameraType::Unknown] = m_cameras[CameraType::Main];
-
+    assert(cameraType < CameraType::Enum::Count);
+    return accessCamera(*this, cameraType).isValid(m_device->getCurrentFrameId());
   }
 
   void CameraManager::onFrameEnd() {
+    m_was3DSkyInPrevFrame = (m_camerasInfoAccum.uniquePositions >= 2);
+    m_camerasInfoAccum.uniquePositions = 0;
+
     m_lastSetCameraType = CameraType::Unknown;
-    m_cameraHashToType.clear();
-
-    if (m_trackCamerasSeenStats.getValue()) {
-
-      Logger::info("[RTX] CameraManager: view transforms seen this frame:");
-      Logger::info(m_viewTransformSeen);
-
-      Logger::info("[RTX] CameraManager: proj params seen this frame:");
-      Logger::info(m_projParamsSeen);
-
-      m_projParamsSeen = "";
-      m_lastProjParamsSeen = "";
-      m_viewTransformSeen = "";
-      m_lastViewTransformParamsSeen = "";
-    }
   }
 
-  // Returns true on camera cut
-  bool CameraManager::processCameraData(const DrawCallState& input) {
-    // Skip camera processing for the sky to prevent camera manager from latching to incorrect main camera.
-    if (input.isSky)
+  CameraType::Enum CameraManager::processCameraData(const DrawCallState& input) {
+    static auto forceSky = [](const DrawCallState& state) {
+      if (RtxContext::shouldBakeSky(state)) {
+        return true;
+      }
+      const XXH64_hash_t geometryHash = state.getHash(RtxOptions::Get()->GeometryAssetHashRule);
+      if (RtxOptions::Get()->isSkyboxGeometry(geometryHash)) {
+        return true;
+      }
       return false;
+    };
 
     // If theres no real camera data here - bail
-    if (isIdentityExact(input.getTransformData().viewToProjection))
-      return false;
+    if (isIdentityExact(input.getTransformData().viewToProjection)) {
+      return forceSky(input) ? CameraType::Sky : CameraType::Unknown;
+    }
 
     switch (RtxOptions::Get()->fusedWorldViewMode()) {
     case FusedWorldViewMode::None:
       if (input.getTransformData().objectToView == input.getTransformData().objectToWorld &&
           !isIdentityExact(input.getTransformData().objectToView)) {
-        return false;
+        return forceSky(input) ? CameraType::Sky : CameraType::Unknown;
       }
       break;
     case FusedWorldViewMode::View:
@@ -110,120 +97,142 @@ namespace dxvk {
     bool isReverseZ;
     decomposeProjection(input.getTransformData().viewToProjection, aspectRatio, fov, nearPlane, farPlane, shearX, shearY, isLHS, isReverseZ);
 
-    if (m_trackCamerasSeenStats.getValue()) {
-      std::string projParamsDesc = str::format("fv:", fov, ", np : ", nearPlane, ", fp : ", farPlane, ", lhs : ", isLHS, ", reverseZ : ", isReverseZ, " }");
-
-      if (projParamsDesc != m_lastProjParamsSeen) {
-        m_projParamsSeen += "\n" + projParamsDesc;
-        m_lastProjParamsSeen = projParamsDesc;
-      }
-
-      auto& v0 = input.getTransformData().worldToView.data[0];
-      auto& v1 = input.getTransformData().worldToView.data[1];
-      auto& v2 = input.getTransformData().worldToView.data[2];
-      auto& v3 = input.getTransformData().worldToView.data[3];
-
-      auto printVector = [=](Vector4 v) {
-        return str::format("{", v.x, ",", v.y, ",", v.z, ",", v.w, "}");
-      };
-
-      std::string viewTransformDesc = str::format("{", 
-        printVector(v0), ",", printVector(v1), ",", printVector(v2), ",", printVector(v3), "}");
-
-      if (viewTransformDesc != m_lastViewTransformParamsSeen) {
-        m_viewTransformSeen += "\n" + viewTransformDesc;
-        m_lastViewTransformParamsSeen = viewTransformDesc;
-      }
-    }
-
     // Filter invalid cameras, extreme shearing
-    constexpr float kFovToleranceRadians = 0.001f;
-    if (abs(shearX) > 0.01f || fov < kFovToleranceRadians) {
-      ONCE(Logger::warn("[RTX] Camera Manager: rejected an invalid camera"));
-      return false;
+    static auto isFovValid = [](float fovA) {
+      return fovA >= kFovToleranceRadians;
+    };
+    static auto areFovsClose = [](float fovA, const RtCamera& cameraB) {
+      return std::abs(fovA - cameraB.getFov()) < kFovToleranceRadians;
+    };
+
+    if (abs(shearX) > 0.01f || !isFovValid(fov)) {
+      ONCE(Logger::warn("[RTX] CameraManager: rejected an invalid camera"));
+      return forceSky(input) ? CameraType::Sky : CameraType::Unknown;
     }
 
     const uint32_t frameId = m_device->getCurrentFrameId();
-
-    // Classify the camera
-    // ToDo: we should default to unknown camera and discard renders that don't match with cameras
-    CameraType::Enum cameraType = CameraType::Main;  
-
-    XXH64_hash_t cameraHash = calculateCameraHash(fov, input.getTransformData().worldToView, input.stencilEnabled);
-    {
-      auto isTheCameraTypeKnownAlready = [&](CameraType::Enum type) {
-        for (auto& it : m_cameraHashToType) {
-          if (it.second == type) {
+    
+    auto isViewModel = [this](float fov, float maxZ, uint32_t frameId) {
+      if (RtxOptions::ViewModel::enable()) {
+        // Note: max Z check is the top-priority
+        if (maxZ <= RtxOptions::ViewModel::maxZThreshold()) {
+          return true;
+        }
+        if (getCamera(CameraType::Main).isValid(frameId)) {
+          // FOV is different from Main camera => assume that it's a ViewModel one
+          if (!areFovsClose(fov, getCamera(CameraType::Main))) {
             return true;
           }
         }
+      }
+      return false;
+    };
+
+    auto isSky = [this](const DrawCallState& state, uint32_t frameId, bool zEnable, const auto& drawCallCameraPos) {
+      if (forceSky(state)) {
+        return true;
+      }
+
+      if (RtxOptions::skyAutoDetect() == SkyAutoDetectMode::None) {
         return false;
-      };
+      }
 
-      // First valid camera in a frame, we currently expect it to be the main camera
-      // If FOV is 0, just default to the main camera
-      if (m_lastSetCameraType == CameraType::Unknown || fov < kFovToleranceRadians) {
-        cameraType = CameraType::Main;
-      } 
-      else {
-        // See if the camera is already registered
-        auto cameraTypeIter = m_cameraHashToType.find(cameraHash);
-        if (cameraTypeIter != m_cameraHashToType.end()) {
-          cameraType = cameraTypeIter->second;
-        } else {
-          // FOV is different from Main camera => consider it View Model
-          if (abs(fov - getCamera(CameraType::Main).getFov()) > kFovToleranceRadians) {
-            if (RtxOptions::Get()->isViewModelEnabled()) {
-              if (!m_cameras[CameraType::ViewModel].has_value())
-                m_cameras[CameraType::ViewModel] = new RtCamera();
+      // if already done with sky, assume all consequent draw calls as non-sky
+      if (getCamera(CameraType::Main).isValid(frameId) || getCamera(CameraType::ViewModel).isValid(frameId)) {
+        return false;
+      }
 
-              if (getCamera(CameraType::ViewModel).isValid(frameId) && (fov - getCamera(CameraType::ViewModel).getFov() > kFovToleranceRadians)) {
-                ONCE(Logger::warn("[RTX] Camera Manager: Multiple ViewModel camera candidates found. Secondary candidates are defaulted to Main camera. "));
-                cameraType = CameraType::Main;
-              } else {
-                cameraType = CameraType::ViewModel;
-              }
-            }
-          }
+      const auto isFirstDrawCall = !getCamera(CameraType::Sky).isValid(frameId);
 
-          if (isTheCameraTypeKnownAlready(cameraType))
-            ONCE(Logger::warn("[RTX] CameraManager: Multiple different cameras were matched against a same camera type"));
-        } 
+      if (RtxOptions::skyAutoDetect() == SkyAutoDetectMode::CameraPositionAndDepthFlags) {
+        // if first processable draw call, or if there was no sky at all
+        if (isFirstDrawCall || !m_was3DSkyInPrevFrame) {
+          // z disabled: frame starts with a sky
+          // z enabled: frame starts with a world, no sky
+          return !zEnable;
+        }
+      } else if (RtxOptions::skyAutoDetect() == SkyAutoDetectMode::CameraPosition) {
+        if (isFirstDrawCall) {
+          // assume first camera to be sky
+          return true;
+        }
+        if (!m_was3DSkyInPrevFrame) {
+          // if there was no sky camera at all => assume no sky
+          return false;
+        }
+      } else {
+        ONCE(Logger::warn("[RTX] Found incorrect skyAutoDetect value"));
+        return false;
+      }
+
+      assert(m_was3DSkyInPrevFrame);
+      if (drawCallCameraPos) {
+        // if new camera is far from existing sky camera => found a new camera that should not be sky
+        if (!areClose(getCamera(CameraType::Sky).getPosition(false), *drawCallCameraPos)) {
+          return false;
+        }
+      }
+
+      return true;
+    };
+
+    static auto makeCameraPosition = [](const Matrix4& worldToView, bool zWrite, bool alphaBlend) -> std::optional<Vector3> {
+      // particles
+      if (!zWrite && alphaBlend) {
+        return {};
+      }
+      // identity matrix
+      if (isIdentityExact(worldToView)) {
+        return {};
+      }
+      return (inverse(worldToView))[3].xyz();
+    };
+
+    // Note: don't calculate position, if sky detect is not automatic
+    const auto drawCallCameraPos =
+      RtxOptions::skyAutoDetect() != SkyAutoDetectMode::None
+        ? makeCameraPosition(input.getTransformData().worldToView, input.zWriteEnable, input.alphaBlendEnable)
+        : std::nullopt;
+    
+    if (drawCallCameraPos) {
+      if (m_camerasInfoAccum.uniquePositions == 0 || !areClose(m_camerasInfoAccum.lastPosition, *drawCallCameraPos)) {
+        m_camerasInfoAccum.uniquePositions++;
+        m_camerasInfoAccum.lastPosition = *drawCallCameraPos;
+      }
+    }
+    
+    assert(isFovValid(fov));
+
+    const auto cameraType =
+      isSky(input, frameId, input.zEnable, drawCallCameraPos) ? CameraType::Sky
+      : isViewModel(fov, input.maxZ, frameId)
+        ? CameraType::ViewModel
+        : CameraType::Main;
+    
+    // Check fov consistency across frames
+    if (frameId > 0) {
+      if (getCamera(cameraType).isValid(frameId - 1) && !areFovsClose(fov, getCamera(cameraType))) {
+        ONCE(Logger::warn("[RTX] CameraManager: FOV of a camera changed between frames"));
       }
     }
 
-    // Check fov consistency accross frames
-    if (frameId > 0 && getCamera(cameraType).isValid(frameId - 1) && (fov - getCamera(cameraType).getFov() > kFovToleranceRadians))
-      ONCE(Logger::warn("[RTX] Camera Manager: FOV of a camera changed between frames"));
-
-    m_cameraHashToType[cameraHash] = cameraType;
-    m_lastSetCameraType = cameraType;
-
-    // Don't update unknown camera, it's only used for last set camera state tracking
-    if (cameraType == CameraType::Unknown) {
-      ONCE(Logger::warn("[RTX] Camera Manager: failed to match a camera"));
-      return false;
-    }
-
-    const bool isCameraCut = getLastSetCamera().update(
-      frameId, input.getTransformData().worldToView, input.getTransformData().viewToProjection,
-      fov, aspectRatio, nearPlane, farPlane, isLHS);
+    const bool isCameraCut = getCamera(cameraType)
+                               .update(frameId,
+                                       input.getTransformData().worldToView,
+                                       input.getTransformData().viewToProjection,
+                                       fov,
+                                       aspectRatio,
+                                       nearPlane,
+                                       farPlane,
+                                       isLHS);
 
     // Register camera cut when there are significant interruptions to the view (like changing level, or opening a menu)
-    if (isCameraCut && getLastSetCameraType() == CameraType::Main) {
+    if (isCameraCut && cameraType == CameraType::Main) {
       m_lastCameraCutFrameId = m_device->getCurrentFrameId();
     }
+    m_lastSetCameraType = cameraType;
 
-    return isCameraCut;
-  }
-
-  XXH64_hash_t CameraManager::calculateCameraHash(float fov, const Matrix4& worldToView, bool stencilEnabledState) {
-    XXH64_hash_t h = 0;
-    h = XXH64(&fov, sizeof(fov), h);
-    h = XXH64(&worldToView, sizeof(worldToView), h);
-    h = XXH64(&stencilEnabledState, sizeof(stencilEnabledState), h);
-
-    return h;
+    return cameraType;
   }
 
   bool CameraManager::isCameraCutThisFrame() const {

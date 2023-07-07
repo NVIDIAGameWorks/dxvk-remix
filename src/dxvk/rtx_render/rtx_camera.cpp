@@ -183,11 +183,6 @@ namespace dxvk
     return result;
   }
 
-
-  RtCamera::RtCamera()
-  {
-  }
-
   void RtCamera::setResolution(const uint32_t renderResolution[2], const uint32_t finalResolution[2])
   {
     if (finalResolution[0] != m_finalResolution[0] ||

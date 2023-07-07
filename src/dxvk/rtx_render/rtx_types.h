@@ -410,10 +410,17 @@ struct DrawCallState {
 
   bool stencilEnabled = false;
 
-  // Note: used for early sky detection and removing sky draws from raytracing scene and camera detection.
-  bool isSky = false;
+  // Camera type associated with the draw call
+  CameraType::Enum cameraType = CameraType::Unknown;
 
   bool usesVertexShader = false, usesPixelShader = false;
+
+  float minZ = 0.0f;
+  float maxZ = 1.0f;
+
+  bool zWriteEnable = false;
+  bool alphaBlendEnable = false;
+  bool zEnable = false;
 
   uint32_t drawCallID = 0;
 

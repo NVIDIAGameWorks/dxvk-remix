@@ -128,6 +128,12 @@ namespace dxvk {
     View,
     World
   };
+  
+  enum class SkyAutoDetectMode : int {
+    None = 0,
+    CameraPosition,
+    CameraPositionAndDepthFlags
+  };
 
   class RtxOptions {
     friend class ImGUI; // <-- we want to modify these values directly.
@@ -249,6 +255,7 @@ namespace dxvk {
       RTX_OPTION("rtx.viewModel", float, scale, 1.0f, "Scale for view models. Minimize to prevent clipping.");
       RTX_OPTION("rtx.viewModel", bool, enableVirtualInstances, true, "If true, virtual instances are created to render the view models behind a portal.");
       RTX_OPTION("rtx.viewModel", bool, perspectiveCorrection, true, "If true, apply correction to view models (e.g. different FOV is used for view models).");
+      RTX_OPTION("rtx.viewModel", float, maxZThreshold, 0.0f, "If a draw call's viewport has max depth less than or equal to this threshold, then assume that it's a view model.");
     } viewModel;
 
   public:
@@ -780,6 +787,13 @@ namespace dxvk {
     RTX_OPTION("rtx", uint32_t, skyProbeSide, 1024, "");
     RTX_OPTION_FLAG("rtx", uint32_t, skyUiDrawcallCount, 0, RtxOptionFlags::NoSave, "");
     RTX_OPTION("rtx", uint32_t, skyDrawcallIdThreshold, 0, "It's common in games to render the skybox first, and so, this value provides a simple mechanism to identify those early draw calls that are untextured (textured draw calls can still use the Sky Textures functionality.");
+    RTX_OPTION("rtx", float, skyMinZThreshold, 1.f, "If a draw call's viewport has min depth greater than or equal to this threshold, then assume that it's a sky.");
+    RTX_OPTION("rtx", SkyAutoDetectMode, skyAutoDetect, SkyAutoDetectMode::None, 
+               "Automatically tag sky draw calls using various heuristics.\n"
+               "0 = None\n"
+               "1 = CameraPosition - assume the first seen camera position is a sky camera.\n"
+               "2 = CameraPositionAndDepthFlags - assume the first seen camera position is a sky camera, if its draw call's depth test is disabled. If it's enabled, assume no sky camera.\n"
+               "Note: if all draw calls are marked as sky, then assume that there's no sky camera at all.");
 
     // TODO (REMIX-656): Remove this once we can transition content to new hash
     RTX_OPTION("rtx", bool, logLegacyHashReplacementMatches, false, "");
@@ -1199,13 +1213,6 @@ namespace dxvk {
     RenderPassGBufferRaytraceMode getRenderPassGBufferRaytraceMode() const { return renderPassGBufferRaytraceMode(); }
     RenderPassIntegrateDirectRaytraceMode getRenderPassIntegrateDirectRaytraceMode() const { return renderPassIntegrateDirectRaytraceMode(); }
     RenderPassIntegrateIndirectRaytraceMode getRenderPassIntegrateIndirectRaytraceMode() const { return renderPassIntegrateIndirectRaytraceMode(); }
-
-    // View Model
-    bool isViewModelEnabled() const { return viewModel.enable(); }
-    float getViewModelRangeMeters() const { return viewModel.rangeMeters(); }
-    float getViewModelScale() const { return viewModel.scale(); }
-    bool isViewModelVirtualInstancesEnabled() const { return viewModel.enableVirtualInstances(); }
-    bool isViewModelPerspectiveCorrectionEnabled() const { return viewModel.perspectiveCorrection(); }
 
     // Resolve Options
     uint8_t getPrimaryRayMaxInteractions() const { return primaryRayMaxInteractions(); }

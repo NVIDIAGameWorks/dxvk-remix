@@ -288,6 +288,14 @@ namespace dxvk {
       {FusedWorldViewMode::World, "In World Transform"},
   } });
 
+  static auto skyAutoDetectCombo = ImGui::ComboWithKey<SkyAutoDetectMode>(
+    "Sky Auto-Detect",
+    ImGui::ComboWithKey<SkyAutoDetectMode>::ComboEntries{ {
+      {SkyAutoDetectMode::None, "Off"},
+      {SkyAutoDetectMode::CameraPosition, "By Camera Position"},
+      {SkyAutoDetectMode::CameraPositionAndDepthFlags, "By Camera Position and Depth Flags"}
+  } });
+
   // Styles 
   constexpr ImGuiSliderFlags sliderFlags = ImGuiSliderFlags_AlwaysClamp;
   constexpr ImGuiTreeNodeFlags collapsingHeaderClosedFlags = ImGuiTreeNodeFlags_CollapsingHeader;
@@ -782,7 +790,7 @@ namespace dxvk {
               m_about->show(ctx);
               break;
             case Tabs::kDevelopment:
-              showAppConfig();
+              showAppConfig(ctx);
               break;
             }
             ImGui::EndTabItem();
@@ -1260,7 +1268,7 @@ namespace dxvk {
     }
   }
 
-  void ImGUI::showAppConfig() {
+  void ImGUI::showAppConfig(const Rc<DxvkContext>& ctx) {
     ImGui::PushItemWidth(250);
     if (ImGui::Button("Take Screenshot")) {
       RtxContext::triggerScreenshot();
@@ -1307,10 +1315,57 @@ namespace dxvk {
     if (ImGui::CollapsingHeader("Camera", collapsingHeaderFlags)) {
       ImGui::Indent();
 
-      const Vector3& cameraPosition = RtxContext::getLastCameraPosition();
-      ImGui::Text("Camera at: %.2f %.2f %.2f", cameraPosition.x, cameraPosition.y, cameraPosition.z);
-
       RtCamera::showImguiSettings();
+
+      {
+        ImGui::PushID("CameraInfos");
+        auto& cameraManager = ctx->getCommonObjects()->getSceneManager().getCameraManager();
+        if (ImGui::CollapsingHeader("Types", collapsingHeaderClosedFlags)) {
+          ImGui::Indent();
+          constexpr static std::pair<CameraType::Enum, const char*> cameras[] = {
+            { CameraType::Main,      "Main" },
+            { CameraType::ViewModel, "ViewModel" },
+            { CameraType::Portal0,   "Portal0" },
+            { CameraType::Portal1,   "Portal1" },
+            { CameraType::Sky,       "Sky" },
+          };
+          // C++20: should be static_assert with std::ranges::find_if
+          assert(
+            std::find_if(
+              std::begin(cameras),
+              std::end(cameras),
+              [](const auto& p) { return p.first == CameraType::Unknown; })
+            == std::end(cameras));
+          static_assert(std::size(cameras) == CameraType::Count - 1);
+
+          static auto printCamera = [](const char* name, const RtCamera* c) {
+            if (ImGui::CollapsingHeader(name, collapsingHeaderFlags)) {
+              ImGui::Indent();
+              if (c) {
+                ImGui::Text("Position: %.2f %.2f %.2f", c->getPosition().x, c->getPosition().y, c->getPosition().z);
+                ImGui::Text("Direction: %.2f %.2f %.2f", c->getDirection().x, c->getDirection().y, c->getDirection().z);
+                ImGui::Text("Vertical FOV: %.1f", c->getFov() * kRadiansToDegrees);
+                ImGui::Text("Near / Far plane: %.1f / %.1f", c->getNearPlane(), c->getFarPlane());
+                ImGui::Text(c->isLHS() ? "Left-handed" : "Right-handed");
+              } else {
+                ImGui::Text("Position: -");
+                ImGui::Text("Direction: -");
+                ImGui::Text("Vertical FOV: -");
+                ImGui::Text("Near / Far plane: -");
+                ImGui::Text("-");
+              }
+              ImGui::Unindent();
+            }
+          };
+
+          for (const auto& [type, name] : cameras) {
+            printCamera(name, cameraManager.isCameraValid(type) ? &cameraManager.getCamera(type) : nullptr);
+          }
+          ImGui::Text("3D sky detected: %s", cameraManager.was3DSkyInPrevFrame() ? "Yes" : "No");
+          ImGui::Unindent();
+        }
+        ImGui::PopID();
+      }
 
       if (ImGui::CollapsingHeader("Camera Animation", collapsingHeaderClosedFlags)) {
         ImGui::Checkbox("Animate Camera", &RtxOptions::Get()->shakeCameraObject());
@@ -1616,10 +1671,11 @@ namespace dxvk {
 
       if (ImGui::CollapsingHeader("View Model", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
-        ImGui::Checkbox("Enable View Model", &RtxOptions::Get()->viewModel.enableObject());
-        ImGui::Checkbox("Virtual Instances", &RtxOptions::Get()->viewModel.enableVirtualInstancesObject());
-        ImGui::Checkbox("Perspective Correction", &RtxOptions::Get()->viewModel.perspectiveCorrectionObject());
-        ImGui::DragFloat("Scale", &RtxOptions::Get()->viewModel.scaleObject(), 0.01f, 0.01f, 2.0f);
+        ImGui::Checkbox("Enable View Model", &RtxOptions::ViewModel::enableObject());
+        ImGui::SliderFloat("Max Z Threshold", &RtxOptions::ViewModel::maxZThresholdObject(), 0.0f, 1.0f);
+        ImGui::Checkbox("Virtual Instances", &RtxOptions::ViewModel::enableVirtualInstancesObject());
+        ImGui::Checkbox("Perspective Correction", &RtxOptions::ViewModel::perspectiveCorrectionObject());
+        ImGui::DragFloat("Scale", &RtxOptions::ViewModel::scaleObject(), 0.01f, 0.01f, 2.0f);
         ImGui::Unindent();
       }
 
@@ -1627,6 +1683,8 @@ namespace dxvk {
         ImGui::Indent();
         ImGui::DragFloat("Sky Brightness", &RtxOptions::Get()->skyBrightnessObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
         ImGui::InputInt("First N untextured drawcalls", &RtxOptions::Get()->skyDrawcallIdThresholdObject(), 1, 1, 0);
+        ImGui::SliderFloat("Sky Min Z Threshold", &RtxOptions::Get()->skyMinZThresholdObject(), 0.0f, 1.0f);
+        skyAutoDetectCombo.getKey(&RtxOptions::Get()->skyAutoDetectObject());
 
         if (ImGui::CollapsingHeader("Advanced", collapsingHeaderClosedFlags)) {
           ImGui::Checkbox("Force HDR sky", &RtxOptions::Get()->skyForceHDRObject());

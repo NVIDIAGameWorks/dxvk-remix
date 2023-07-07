@@ -248,7 +248,7 @@ namespace dxvk {
   InstanceManager::InstanceManager(DxvkDevice* device, ResourceCache* pResourceCache)
     : CommonDeviceObject(device)
     , m_pResourceCache(pResourceCache) {
-    m_previousViewModelState = RtxOptions::Get()->isViewModelEnabled();
+    m_previousViewModelState = RtxOptions::ViewModel::enable();
   }
 
   InstanceManager::~InstanceManager() {
@@ -283,7 +283,7 @@ namespace dxvk {
 
     // Need to release all instances when ViewModel enablement changes
     // This is a big hammer but it's fine, it's a debugging feature
-    const bool isViewModelEnabled = RtxOptions::Get()->isViewModelEnabled();
+    const bool isViewModelEnabled = RtxOptions::ViewModel::enable();
     if (isViewModelEnabled != m_previousViewModelState) {
       for (auto* instance : m_instances) {
         removeInstance(instance);
@@ -353,12 +353,19 @@ namespace dxvk {
     // An attempt to resolve cases where games pre-combine view and world matrices
     if (RtxOptions::Get()->resolvePreCombinedMatrices() &&
       isIdentityExact(drawCall.getTransformData().worldToView)) {
-      objectToWorld = cameraManager.getLastSetCamera().getViewToWorld(false) * drawCall.getTransformData().objectToView;
-      worldToProjection = drawCall.getTransformData().viewToProjection * cameraManager.getLastSetCamera().getWorldToView(false);
+      const auto* referenceCamera = &cameraManager.getCamera(drawCall.cameraType);
+      // Note: we may accept a data even from a prev frame, as we need any information to restore;
+      // but if camera data is stale, it introduces an scene object transform's lag
+      if (!referenceCamera->isValid(m_device->getCurrentFrameId()) &&
+        !referenceCamera->isValid(m_device->getCurrentFrameId() - 1)) {
+        referenceCamera = &cameraManager.getCamera(CameraType::Main);
+      }
+      objectToWorld = referenceCamera->getViewToWorld(false) * drawCall.getTransformData().objectToView;
+      worldToProjection = drawCall.getTransformData().viewToProjection * referenceCamera->getWorldToView(false);
     }
 
     // Search for an existing instance matching our input
-    RtInstance* currentInstance = findSimilarInstance(blas, drawCall, material, objectToWorld, cameraManager, rayPortalManager);
+    RtInstance* currentInstance = findSimilarInstance(blas, material, objectToWorld, drawCall.cameraType, rayPortalManager);
 
     if (currentInstance == nullptr) {
       // No existing match - so need to create one
@@ -577,7 +584,7 @@ namespace dxvk {
     // NOTE: In the future we could extend this with heuristics as needed...
   }
 
-  RtInstance* InstanceManager::findSimilarInstance(const BlasEntry& blas, const DrawCallState& drawCall, const RtSurfaceMaterial& material, const Matrix4& transform, const CameraManager& cameraManager, const RayPortalManager& rayPortalManager) {
+  RtInstance* InstanceManager::findSimilarInstance(const BlasEntry& blas, const RtSurfaceMaterial& material, const Matrix4& transform, CameraType::Enum cameraType, const RayPortalManager& rayPortalManager) {
 
     // Disable temporal correlation between instances so that duplicate instances are not created
     // should a developer option change instance enough for it not to match anymore
@@ -635,7 +642,7 @@ namespace dxvk {
     // For portal gun and other objects that were drawn in the ViewModel, need to check the
     // virtual version of the instance from previous frame.
     if (nearestDistSqr > 0.0f &&
-        cameraManager.getLastSetCameraType() == CameraType::ViewModel && 
+        cameraType == CameraType::ViewModel && 
         RtxOptions::Get()->isRayPortalVirtualInstanceMatchingEnabled() ) {
       for (const RtInstance* instance : blas.getLinkedInstances()) {
         if (instance->m_frameLastUpdated != currentFrameIdx - 1 || 
@@ -797,15 +804,15 @@ namespace dxvk {
 
     // Hide the sky instance since it is not raytraced.
     // Sky mesh and material are only good for capture and replacement purposes.
-    currentInstance.m_isHidden |= drawCall.isSky;
-
-    const CameraType::Enum cameraType = cameraManager.getLastSetCameraType();
+    if (drawCall.cameraType == CameraType::Sky) {
+      currentInstance.m_isHidden = true;
+    }
 
     // Register camera
-    bool isNewCameraSet = currentInstance.registerCamera(cameraType, m_device->getCurrentFrameId());
+    bool isNewCameraSet = currentInstance.registerCamera(drawCall.cameraType, m_device->getCurrentFrameId());
 
     const bool overridePreviousCameraUpdate = isNewCameraSet &&
-      (cameraType == CameraType::Main ||
+      (drawCall.cameraType == CameraType::Main ||
        // Don't overwrite transform from when the instance was seen with the main camera
        !currentInstance.isCameraRegistered(CameraType::Main));
 
@@ -989,7 +996,7 @@ namespace dxvk {
     {
       uint mask = isFirstUpdateThisFrame ? 0 : currentInstance.m_vkInstance.mask;
 
-      if (currentInstance.m_isPlayerModel && cameraType != CameraType::ViewModel) {
+      if (currentInstance.m_isPlayerModel && drawCall.cameraType != CameraType::ViewModel) {
         mask |= OBJECT_MASK_PLAYER_MODEL;
         m_playerModelInstances.push_back(&currentInstance);
       } else {
@@ -1037,11 +1044,11 @@ namespace dxvk {
 
     currentInstance.m_billboardCount = 0;
 
-    if (cameraType == CameraType::ViewModel && !currentInstance.m_isHidden && isFirstUpdateThisFrame)
+    if (drawCall.cameraType == CameraType::ViewModel && !currentInstance.m_isHidden && isFirstUpdateThisFrame)
       m_viewModelCandidates.push_back(&currentInstance);
 
     if (RtxOptions::Get()->enableSeparateUnorderedApproximations() &&
-        (cameraType == CameraType::Main || cameraType == CameraType::ViewModel) &&
+        (drawCall.cameraType == CameraType::Main || drawCall.cameraType == CameraType::ViewModel) &&
         currentInstance.m_isUnordered &&
         !currentInstance.m_isHidden &&
         currentInstance.getVkInstance().mask != 0) {
@@ -1084,7 +1091,7 @@ namespace dxvk {
     // View model instances are recreated every frame
     viewModelInstance->markForGarbageCollection();
 
-    if (RtxOptions::Get()->isViewModelPerspectiveCorrectionEnabled()) {
+    if (RtxOptions::ViewModel::perspectiveCorrection()) {
       // A transform that looks "correct" only from a main camera's point of view
       const auto corrected = perspectiveCorrection * reference.getTransform();
       const auto prevCorrected = prevPerspectiveCorrection * reference.getPrevTransform();
@@ -1131,7 +1138,7 @@ namespace dxvk {
                                                  const RayPortalManager& rayPortalManager) {
     ScopedGpuProfileZone(ctx, "ViewModel");
 
-    if (!RtxOptions::Get()->isViewModelEnabled())
+    if (!RtxOptions::ViewModel::enable())
       return;
 
     if (!cameraManager.isCameraValid(CameraType::ViewModel))
@@ -1159,7 +1166,7 @@ namespace dxvk {
 
     // Apply an extra scaling matrix to the view-space positions of view model to make it less likely to interact with world geometry.
     Matrix4 scaleMatrix {};
-    scaleMatrix[0][0] = scaleMatrix[1][1] = scaleMatrix[2][2] = RtxOptions::Get()->getViewModelScale();
+    scaleMatrix[0][0] = scaleMatrix[1][1] = scaleMatrix[2][2] = RtxOptions::ViewModel::scale();
     scaleMatrix[3][3] = 1.f;
 
     // Compute the view-model perspective correction matrix.
@@ -1535,7 +1542,7 @@ namespace dxvk {
 
     const Vector3& camPos = cameraManager.getCamera(CameraType::Main).getPosition(/* freecam = */ false);
 
-    const float kMaxDistanceToPortal = RtxOptions::Get()->getViewModelRangeMeters() * RtxOptions::Get()->getMeterToWorldUnitScale();
+    const float kMaxDistanceToPortal = RtxOptions::ViewModel::rangeMeters() * RtxOptions::Get()->getMeterToWorldUnitScale();
 
     // Find the closest valid portal to generate the instances for since we can generate 
     // virtual instances only for one of the portals due to instance mask bit allocation.
@@ -1569,7 +1576,7 @@ namespace dxvk {
       return;
     }
 
-    if (!RtxOptions::Get()->isViewModelVirtualInstancesEnabled())
+    if (!RtxOptions::ViewModel::enableVirtualInstances())
       return;
 
     const SingleRayPortalDirectionInfo& closestPortalInfo = rayPortalManager.getRayPortalPairInfos()[0]->pairInfos[m_virtualInstancePortalIndex];
