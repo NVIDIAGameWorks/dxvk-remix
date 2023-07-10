@@ -84,7 +84,6 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.camera.freeCameraViewRelative|bool|True|Free camera transform is relative to the view\.|
 |rtx.camera.freeCameraYaw|float|0|Free camera's position\.|
 |rtx.camera.lockFreeCamera|bool|False|Locks free camera\.|
-|rtx.camera.trackCamerasSeenStats|bool|False|Enables tracking and reporting of statistics for Cameras seen within a frame\.|
 |rtx.cameraAnimationAmplitude|float|2|Amplitude of the free camera's animation\.|
 |rtx.cameraAnimationMode|int|3|Free camera's animation mode\.|
 |rtx.cameraShakePeriod|int|20|Period of the free camera's animation\.|
@@ -486,6 +485,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.showUICursor|bool|True||
 |rtx.skipDrawCallsPostRTXInjection|bool|False|Ignores all draw calls recorded after RTX Injection, the location of which varies but is currently based on when tagged UI textures begin to draw\.|
 |rtx.skipObjectsWithUnknownCamera|bool|False||
+|rtx.skyAutoDetect|int|0|Automatically tag sky draw calls using various heuristics\.<br>0 = None<br>1 = CameraPosition \- assume the first seen camera position is a sky camera\.<br>2 = CameraPositionAndDepthFlags \- assume the first seen camera position is a sky camera, if its draw call's depth test is disabled\. If it's enabled, assume no sky camera\.<br>Note: if all draw calls are marked as sky, then assume that there's no sky camera at all\.|
 |rtx.skyBrightness|float|1||
 |rtx.skyDrawcallIdThreshold|int|0|It's common in games to render the skybox first, and so, this value provides a simple mechanism to identify those early draw calls that are untextured \(textured draw calls can still use the Sky Textures functionality\.|
 |rtx.skyForceHDR|bool|False|By default sky will be rasterized in the color format used by the game\. Set the checkbox to force sky to be rasterized in HDR intermediate format\. This may be important when sky textures replaced with HDR textures\.|
