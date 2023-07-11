@@ -141,8 +141,11 @@ namespace dxvk {
   std::vector<RtxTextureOption> rtxTextureOptions = {
     {"uitextures", "UI Texture", &RtxOptions::Get()->uiTexturesObject()},
     {"worldspaceuitextures", "World Space UI Texture", &RtxOptions::Get()->worldSpaceUiTexturesObject()},
+   // {"worldspaceuibackgroundtextures", "World Space UI Background Texture", &RtxOptions::Get()->worldSpaceUiBackgroundTexturesObject()},
     {"skytextures", "Sky Texture", &RtxOptions::Get()->skyBoxTexturesObject()},
     {"ignoretextures", "Ignore Texture (optional)", &RtxOptions::Get()->ignoreTexturesObject()},
+    {"hidetextures", "Hide Texture Instance (optional)", &RtxOptions::Get()->hideInstanceTexturesObject()},
+    {"lightmaptextures","Lightmap Textures (optional)", &RtxOptions::Get()->lightmapTexturesObject()},
     {"ignorelights", "Ignore Lights (optional)", &RtxOptions::Get()->ignoreLightsObject()},
     {"particletextures", "Particle Texture (optional)", &RtxOptions::Get()->particleTexturesObject()},
     {"beamtextures", "Beam Texture (optional)", &RtxOptions::Get()->beamTexturesObject()},
