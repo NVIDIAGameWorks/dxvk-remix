@@ -235,10 +235,14 @@ namespace dxvk {
       const IntersectionBillboard& billboard = instanceManager.getBillboards()[instance.getFirstBillboardIndex() + quadSliceIndex];
       hashSourceData.texCoordHash = billboard.texCoordHash;
       hashSourceData.vertexOpacityHash = billboard.vertexOpacityHash;
+
+      // Index hash is not explicitly included for billboards as it's already part of texcoordHash,
+      // which is generated using actual triangle order in a billboard quad
     } 
     else {
       hashSourceData.numTriangles = instance.getBlas()->modifiedGeometryData.calculatePrimitiveCount();
       hashSourceData.texCoordHash = instance.getTexcoordHash();
+      hashSourceData.indexHash = instance.getIndexHash();
       // ToDo add vertexOpacityHash
     }
 
@@ -265,7 +269,7 @@ namespace dxvk {
 
       HashCollisionDetection::registerHashedSourceData(ommSrcHash, static_cast<void*>(&hashSourceData), HashSourceDataCategory::OpacityMicromap);
     }
-  
+
     numTriangles = hashSourceData.numTriangles;
     ommFormat = hashSourceData.ommFormat;
   }
