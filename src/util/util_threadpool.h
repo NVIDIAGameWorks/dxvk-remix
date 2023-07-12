@@ -316,6 +316,7 @@ namespace dxvk {
       m_stopWork = true;
 
       if constexpr (!LowLatency) {
+        std::unique_lock<TaskMutex> lock(m_taskMutex);
         m_condOnAdd.notify_all();
       }
 
@@ -368,6 +369,7 @@ namespace dxvk {
         m_workerTasks[thread]->push(std::move(taskId));
 
         if constexpr (!LowLatency) {
+          std::unique_lock<TaskMutex> lock(m_taskMutex);
           if constexpr (WorkStealing) {
             // Notify only one worker when workers can steal from the others
             m_condOnAdd.notify_one();
