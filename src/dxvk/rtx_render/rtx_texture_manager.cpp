@@ -162,6 +162,11 @@ namespace dxvk {
     if (m_itemsPending == 0) {
       m_kickoff = true;
       m_condOnAdd.notify_one();
+    } else if (m_preloadInflight) {
+      // If there's any preloads in-flight dispatch the RTX IO job immediately to improve
+      // visual responsiveness when image assets are processed asynchronously.
+      flushRtxIo(false);
+      m_preloadInflight = false;
     }
 
     m_pDevice->statCounters().setCtr(DxvkStatCounter::RtxTexturesInFlight, m_itemsPending.load());
@@ -360,6 +365,8 @@ namespace dxvk {
       if (!RtxIo::enabled()) {
         context->flushCommandList();
       }
+
+      m_preloadInflight |= !forceLoad;
 
 #ifdef _DEBUG
       Logger::debug(str::format(forceLoad ? "Loaded" : "Preloaded", " texture ", hash, " at ",
