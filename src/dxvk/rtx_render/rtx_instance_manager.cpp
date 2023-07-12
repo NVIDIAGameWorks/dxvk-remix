@@ -843,6 +843,7 @@ namespace dxvk {
         currentInstance.m_materialDataHash = drawCall.getMaterialData().getHash();
         currentInstance.m_materialHash = material.getHash();
         currentInstance.m_texcoordHash = drawCall.getGeometryData().hashes[HashComponents::VertexTexcoord];
+        currentInstance.m_indexHash = drawCall.getGeometryData().hashes[HashComponents::Indices];
 
         // Surface meta data
         currentInstance.surface.isEmissive = false;

@@ -1643,7 +1643,97 @@ namespace dxvk {
     ImGui::Checkbox("Preserve discarded textures", &RtxOptions::Get()->keepTexturesForTaggingObject());
 
     if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 1: Categorize Textures", collapsingHeaderClosedFlags), "Select texture definitions for Remix")) {
-      showTextureSelectionGrid(ctx, "textures", numThumbnailsPerRow, thumbnailSize);
+
+      ImGui::Checkbox("Split Texture Category List", &showLegacyTextureGuiObject());
+
+      if (!showLegacyTextureGui()) {
+        showTextureSelectionGrid(ctx, "textures", numThumbnailsPerRow, thumbnailSize);
+      }
+      else {
+        if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 1: UI Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->uiTexturesDescription())) {
+          showTextureSelectionGrid(ctx, "uitextures", numThumbnailsPerRow, thumbnailSize);
+        }
+
+        if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 1.2: Worldspace UI Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->worldSpaceUiTexturesDescription())) {
+          showTextureSelectionGrid(ctx, "worldspaceuitextures", numThumbnailsPerRow, thumbnailSize);
+        }
+
+        if (ImGui::CollapsingHeader("Step 3: Sky Parameters (optional)", collapsingHeaderClosedFlags)) {
+          ImGui::Indent();
+
+          if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Sky Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->skyBoxTexturesDescription())) {
+            showTextureSelectionGrid(ctx, "skytextures", numThumbnailsPerRow, thumbnailSize);
+          }
+
+          ImGui::Unindent();
+        }
+
+        if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 4: Ignore Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->ignoreTexturesDescription())) {
+          showTextureSelectionGrid(ctx, "ignoretextures", numThumbnailsPerRow, thumbnailSize);
+        }
+
+        if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 5: Ignore Lights (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->ignoreLightsDescription())) {
+          showTextureSelectionGrid(ctx, "ignorelights", numThumbnailsPerRow, thumbnailSize);
+        }
+
+        if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 6: Particle Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->particleTexturesDescription())) {
+          showTextureSelectionGrid(ctx, "particletextures", numThumbnailsPerRow, thumbnailSize);
+        }
+
+        if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 6.1: Beam Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->beamTexturesDescription())) {
+          showTextureSelectionGrid(ctx, "beamtextures", numThumbnailsPerRow, thumbnailSize);
+        }
+
+        if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 6.2: Add Lights to Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->lightConverterDescription())) {
+          showTextureSelectionGrid(ctx, "lightconvertertextures", numThumbnailsPerRow, thumbnailSize);
+        }
+
+        if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 7: Decal Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->decalTexturesDescription())) {
+          showTextureSelectionGrid(ctx, "decaltextures", numThumbnailsPerRow, thumbnailSize);
+        }
+
+        if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 7.1: Dynamic Decal Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->dynamicDecalTexturesDescription())) {
+          showTextureSelectionGrid(ctx, "dynamicdecaltextures", numThumbnailsPerRow, thumbnailSize);
+        }
+
+        if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 7.2: Non-Offset Decal Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->nonOffsetDecalTexturesDescription())) {
+          showTextureSelectionGrid(ctx, "nonoffsetdecaltextures", numThumbnailsPerRow, thumbnailSize);
+        }
+
+        if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 8.1: Legacy Cutout Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->cutoutTexturesDescription())) {
+          ImGui::DragFloat("Force Cutout Alpha", &RtxOptions::Get()->forceCutoutAlphaObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
+          showTextureSelectionGrid(ctx, "cutouttextures", numThumbnailsPerRow, thumbnailSize);
+        }
+
+        if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 8.2: Terrain Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->terrainTexturesDescription())) {
+          showTextureSelectionGrid(ctx, "terraintextures", numThumbnailsPerRow, thumbnailSize);
+        }
+
+        if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 8.3: Water Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->animatedWaterTexturesDescription())) {
+          showTextureSelectionGrid(ctx, "watertextures", numThumbnailsPerRow, thumbnailSize);
+        }
+
+        if (RtxOptions::AntiCulling::Object::enable() &&
+          IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 8.4: Anti-Culling Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->antiCullingTexturesDescription())) {
+          showTextureSelectionGrid(ctx, "antiCullingTextures", numThumbnailsPerRow, thumbnailSize);
+        }
+
+        if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 8.5: Motion Blur Mask-Out Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->motionBlurMaskOutTexturesDescription())) {
+          showTextureSelectionGrid(ctx, "motionBlurMaskOutTextures", numThumbnailsPerRow, thumbnailSize);
+        }
+
+        if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 9.1: Player Model Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->playerModelTexturesDescription())) {
+          showTextureSelectionGrid(ctx, "playermodeltextures", numThumbnailsPerRow, thumbnailSize);
+        }
+
+        if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 9.2: Player Model Body Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->playerModelBodyTexturesDescription())) {
+          showTextureSelectionGrid(ctx, "playermodelbodytextures", numThumbnailsPerRow, thumbnailSize);
+        }
+
+        if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 10: Opacity Micromap Ignore Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->opacityMicromapIgnoreTexturesDescription())) {
+          showTextureSelectionGrid(ctx, "opacitymicromapignoretextures", numThumbnailsPerRow, thumbnailSize);
+        }
+      }
     }
 
     if (ImGui::CollapsingHeader("Step 2: Parameter Tuning", collapsingHeaderClosedFlags)) {
@@ -1708,92 +1798,6 @@ namespace dxvk {
     }
 
     showMaterialOptions();
-
-    if (showLegacyTextureGui()) {
-      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 1: UI Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->uiTexturesDescription())) {
-        showTextureSelectionGrid(ctx, "uitextures", numThumbnailsPerRow, thumbnailSize);
-      }
-
-      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 1.2: Worldspace UI Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->worldSpaceUiTexturesDescription())) {
-        showTextureSelectionGrid(ctx, "worldspaceuitextures", numThumbnailsPerRow, thumbnailSize);
-      }
-
-      if (ImGui::CollapsingHeader("Step 3: Sky Parameters (optional)", collapsingHeaderClosedFlags)) {
-        ImGui::Indent();
-
-        if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Sky Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->skyBoxTexturesDescription())) {
-          showTextureSelectionGrid(ctx, "skytextures", numThumbnailsPerRow, thumbnailSize);
-        }
-
-        ImGui::Unindent();
-      }
-
-      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 4: Ignore Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->ignoreTexturesDescription())) {
-        showTextureSelectionGrid(ctx, "ignoretextures", numThumbnailsPerRow, thumbnailSize);
-      }
-
-      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 5: Ignore Lights (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->ignoreLightsDescription())) {
-        showTextureSelectionGrid(ctx, "ignorelights", numThumbnailsPerRow, thumbnailSize);
-      }
-
-      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 6: Particle Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->particleTexturesDescription())) {
-        showTextureSelectionGrid(ctx, "particletextures", numThumbnailsPerRow, thumbnailSize);
-      }
-
-      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 6.1: Beam Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->beamTexturesDescription())) {
-        showTextureSelectionGrid(ctx, "beamtextures", numThumbnailsPerRow, thumbnailSize);
-      }
-
-      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 6.2: Add Lights to Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->lightConverterDescription())) {
-        showTextureSelectionGrid(ctx, "lightconvertertextures", numThumbnailsPerRow, thumbnailSize);
-      }
-
-      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 7: Decal Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->decalTexturesDescription())) {
-        showTextureSelectionGrid(ctx, "decaltextures", numThumbnailsPerRow, thumbnailSize);
-      }
-
-      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 7.1: Dynamic Decal Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->dynamicDecalTexturesDescription())) {
-        showTextureSelectionGrid(ctx, "dynamicdecaltextures", numThumbnailsPerRow, thumbnailSize);
-      }
-
-      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 7.2: Non-Offset Decal Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->nonOffsetDecalTexturesDescription())) {
-        showTextureSelectionGrid(ctx, "nonoffsetdecaltextures", numThumbnailsPerRow, thumbnailSize);
-      }
-
-      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 8.1: Legacy Cutout Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->cutoutTexturesDescription())) {
-        ImGui::DragFloat("Force Cutout Alpha", &RtxOptions::Get()->forceCutoutAlphaObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
-        showTextureSelectionGrid(ctx, "cutouttextures", numThumbnailsPerRow, thumbnailSize);
-      }
-
-      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 8.2: Terrain Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->terrainTexturesDescription())) {
-        showTextureSelectionGrid(ctx, "terraintextures", numThumbnailsPerRow, thumbnailSize);
-      }
-
-      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 8.3: Water Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->animatedWaterTexturesDescription())) {
-        showTextureSelectionGrid(ctx, "watertextures", numThumbnailsPerRow, thumbnailSize);
-      }
-
-      if (RtxOptions::AntiCulling::Object::enable() &&
-        IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 8.4: Anti-Culling Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->antiCullingTexturesDescription())) {
-        showTextureSelectionGrid(ctx, "antiCullingTextures", numThumbnailsPerRow, thumbnailSize);
-      }
-
-      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 8.5: Motion Blur Mask-Out Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->motionBlurMaskOutTexturesDescription())) {
-        showTextureSelectionGrid(ctx, "motionBlurMaskOutTextures", numThumbnailsPerRow, thumbnailSize);
-      }
-
-      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 9.1: Player Model Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->playerModelTexturesDescription())) {
-        showTextureSelectionGrid(ctx, "playermodeltextures", numThumbnailsPerRow, thumbnailSize);
-      }
-
-      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 9.2: Player Model Body Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->playerModelBodyTexturesDescription())) {
-        showTextureSelectionGrid(ctx, "playermodelbodytextures", numThumbnailsPerRow, thumbnailSize);
-      }
-
-      if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 10: Opacity Micromap Ignore Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->opacityMicromapIgnoreTexturesDescription())) {
-        showTextureSelectionGrid(ctx, "opacitymicromapignoretextures", numThumbnailsPerRow, thumbnailSize);
-      }
-    }
 
     ImGui::PopItemWidth();
   }
