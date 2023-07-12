@@ -211,8 +211,9 @@ namespace dxvk {
                           m_cap.camera.isLHS,
                           m_cap.camera.isReverseZ);
       // Infinite projection is legit, but USD doesnt take kindly to it
-      if (isinf(m_cap.camera.farPlane)) {
-        m_cap.camera.farPlane = 100000000;
+      constexpr float kMaxFarPlane = 100000000;
+      if (m_cap.camera.farPlane > kMaxFarPlane) {
+        m_cap.camera.farPlane = kMaxFarPlane;
       }
       if(m_cap.camera.aspectRatio < 0) {
         m_cap.camera.aspectRatio = abs(m_cap.camera.aspectRatio);
