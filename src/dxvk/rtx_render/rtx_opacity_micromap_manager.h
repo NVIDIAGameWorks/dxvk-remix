@@ -184,13 +184,16 @@ namespace dxvk {
     XXH64_hash_t materialHash = kEmptyHash;
     XXH64_hash_t texCoordHash = kEmptyHash;
 
+    // OMM triangle order has to match geometry's triangle order in a BLAS so the index order is critical.
+    // Since TexCoord hash is calculated using sorted indices, index hash as has to be explcitly included.
+    XXH64_hash_t indexHash = kEmptyHash; 
     XXH64_hash_t vertexOpacityHash = kEmptyHash;
+
     VkOpacityMicromapFormatEXT ommFormat = VK_OPACITY_MICROMAP_FORMAT_4_STATE_EXT;         // 4B
     uint32_t numTriangles = 0;
-
     uint8_t tFactorAlpha = 0;
     uint8_t pad8[3] = {};
-    uint32_t pad32[3] = {};
+    uint32_t pad32[1] = {};
   };
 
   // Static validation to detect any changes that require OmmHashData alignment re-check
