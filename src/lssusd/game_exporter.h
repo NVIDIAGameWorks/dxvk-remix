@@ -73,11 +73,10 @@ private:
   static void exportMeshes(const Export& exportData, ExportContext& ctx);
   static void exportSkeletons(const Export& exportData, ExportContext& ctx);
   struct ReducedIdxBufSet {
-    // Per-timecode reduced bufset
     std::map<float,IndexBuffer> bufSet;
-    // Per-timecode offset from original index buffer, where offset == min(original)
-    //   e.g. original={1,2,4,5}, reduced={{0,1,3,4}, offset=1}
-    std::map<float,int> idxOffsets;
+    // Per-timecode idx mapping
+    using IdxMap = std::unordered_map<int,int>;
+    std::map<float,IdxMap> redToOgSet;
   };
   static ReducedIdxBufSet reduceIdxBufferSet(const std::map<float,IndexBuffer>& idxBufSet);
   template<typename T>
