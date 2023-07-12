@@ -57,6 +57,7 @@ public:
   const XXH64_hash_t& getMaterialHash() const { return m_materialHash; }
   const XXH64_hash_t& getMaterialDataHash() const { return m_materialDataHash; }
   const XXH64_hash_t& getTexcoordHash() const { return m_texcoordHash; }
+  const XXH64_hash_t& getIndexHash() const { return m_indexHash; }
   Matrix4 getTransform() const { return transpose(dxvk::Matrix4(m_vkInstance.transform)); }
   const Matrix4& getPrevTransform() const { return surface.prevObjectToWorld; }
   Vector3 getWorldPosition() const { return { m_vkInstance.transform.matrix[0][3], m_vkInstance.transform.matrix[1][3], m_vkInstance.transform.matrix[2][3] }; }
@@ -152,9 +153,10 @@ private:
   bool m_objectToWorldMirrored = false;
   bool m_isCreatedByRenderer = false;
   BlasEntry* m_linkedBlas = nullptr;
-  XXH64_hash_t m_materialHash = 0;
-  XXH64_hash_t m_materialDataHash = 0;
-  XXH64_hash_t m_texcoordHash = 0;
+  XXH64_hash_t m_materialHash = kEmptyHash;
+  XXH64_hash_t m_materialDataHash = kEmptyHash;
+  XXH64_hash_t m_texcoordHash = kEmptyHash;
+  XXH64_hash_t m_indexHash = kEmptyHash;
   VkAccelerationStructureInstanceKHR m_vkInstance;
   VkGeometryFlagsKHR m_geometryFlags = 0;
   uint32_t m_firstBillboard = 0;
