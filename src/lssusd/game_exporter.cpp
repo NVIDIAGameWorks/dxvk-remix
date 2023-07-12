@@ -687,14 +687,18 @@ void GameExporter::exportMeshes(const Export& exportData, ExportContext& ctx) {
 GameExporter::ReducedIdxBufSet GameExporter::reduceIdxBufferSet(const std::map<float,IndexBuffer>& idxBufSet) {
   ReducedIdxBufSet reducedIdxBufSet;
   for(const auto& [timeCode, idxBuf] : idxBufSet) {
-    int minIdx = std::numeric_limits<int>::max();
-    for(const int idx : idxBuf) {
-      minIdx = std::min(idx, minIdx);
+    const std::set<int> orderedIndices(idxBuf.cbegin(), idxBuf.cend());
+    int newIdx = 0;
+    ReducedIdxBufSet::IdxMap ogToRed;
+    for(const auto index : orderedIndices) {
+      ogToRed[index] = newIdx++;
     }
-    for(const int idx : idxBuf) {
-      reducedIdxBufSet.bufSet[timeCode].push_back(idx - minIdx);
+    for(const auto ogIdx : idxBuf) {
+      const auto redIdx = ogToRed[ogIdx];
+      assert(redIdx <= ogIdx);
+      reducedIdxBufSet.bufSet[timeCode].push_back(redIdx);
+      reducedIdxBufSet.redToOgSet[timeCode][redIdx] = ogIdx;
     }
-    reducedIdxBufSet.idxOffsets[timeCode] = minIdx;
   }
   return reducedIdxBufSet;
 }
@@ -703,35 +707,34 @@ template<typename T>
 std::map<float,pxr::VtArray<T>> GameExporter::reduceBufferSet(const std::map<float,pxr::VtArray<T>>& bufSet,
                                                               const ReducedIdxBufSet& reducedIdxBufSet,
                                                               size_t elemsPerIdx) {
-  static const auto getIdxBufTimeCode =
-    [](const ReducedIdxBufSet& reducedIdxBufSet, const float bufTimeCode)
-  {
-    if(reducedIdxBufSet.bufSet.size() > 1) {
-      auto itr = reducedIdxBufSet.bufSet.lower_bound(bufTimeCode);
-      assert(itr != reducedIdxBufSet.bufSet.cend());
-      const float idxTimeCode = itr->first;
-      return itr->first;
-    } else {
-      return reducedIdxBufSet.bufSet.cbegin()->first;
-    }
-  };
   std::map<float,pxr::VtArray<T>> reducedBufSet;
   for(const auto& [timeCode, buf] : bufSet) {
     // There may not be a 1:1 mapping in timecodes b/w index buffers and other buffers
-    const float idxBufTimeCode = getIdxBufTimeCode(reducedIdxBufSet, timeCode);
-    const IndexBuffer& idxBuf = reducedIdxBufSet.bufSet.at(idxBufTimeCode);
-    const int idxBufReductionOffset = reducedIdxBufSet.idxOffsets.at(idxBufTimeCode) * elemsPerIdx;
-    // Sort indices
-    std::set<int> sortedIdxSet(idxBuf.cbegin(), idxBuf.cend());
+    float idxBufTimeCode = -1.f;
+    if(reducedIdxBufSet.bufSet.size() > 1) {
+      const auto iPair_timeCode_idxBuf = reducedIdxBufSet.bufSet.lower_bound(timeCode);
+      assert(iPair_timeCode_idxBuf != reducedIdxBufSet.bufSet.cend());
+      const float idxTimeCode = iPair_timeCode_idxBuf->first;
+      idxBufTimeCode = iPair_timeCode_idxBuf->first;
+    } else {
+      idxBufTimeCode = reducedIdxBufSet.bufSet.cbegin()->first;
+    }
+    assert(idxBufTimeCode >= 0.f);
+
     // Create a scratch space to assign values for new, reduce VtArray, in case there are holes in the indices
-    const int maxIdx = *(--sortedIdxSet.cend());
-    const size_t numElems = (maxIdx + 1) * elemsPerIdx;
+    const auto& redIdxToOgIdx = reducedIdxBufSet.redToOgSet.at(idxBufTimeCode);
+    const int numIdxs = redIdxToOgIdx.size();
+    const size_t numElems = numIdxs * elemsPerIdx;
     T* const reducedBufScratch = new T[numElems];
+    
     // Init potential holes to 0
     memset(reducedBufScratch, 0, sizeof(T) * numElems);
-    for(const int index : sortedIdxSet) {
-      for (int elem = 0; elem < elemsPerIdx; ++elem) {
-        reducedBufScratch[(index * elemsPerIdx) + elem] = buf[(index * elemsPerIdx + idxBufReductionOffset ) + elem];
+    for(const auto [redIndex,ogIndex] : redIdxToOgIdx) {
+      for (int elemNum = 0; elemNum < elemsPerIdx; ++elemNum) {
+        const auto ogIdx = (ogIndex * elemsPerIdx) + elemNum;
+        const auto redIdx = (redIndex * elemsPerIdx) + elemNum;
+        assert(redIdx <= ogIdx);
+        reducedBufScratch[redIdx] = buf[ogIdx];
       }
     }
     reducedBufSet[timeCode] = pxr::VtArray<T>(reducedBufScratch, reducedBufScratch + numElems);
