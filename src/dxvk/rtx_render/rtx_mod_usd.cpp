@@ -1227,7 +1227,7 @@ void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
   for (size_t i = 0, s = sublayers.size(); i < s; i++) {
     const std::string& identifier = sublayers[i];
     auto layerBasePath = std::filesystem::path(identifier).remove_filename();
-    auto fullLayerBasePath = std::filesystem::weakly_canonical(modBaseDirectory / layerBasePath);
+    auto fullLayerBasePath = modBaseDirectory / layerBasePath;
     AssetDataManager::get().addSearchPath(i, fullLayerBasePath);
   }
 
