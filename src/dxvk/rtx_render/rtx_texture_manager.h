@@ -160,6 +160,7 @@ namespace dxvk {
     dxvk::high_resolution_clock::duration m_lastBatchDuration { dxvk::high_resolution_clock::duration(0) };
 
     VkDeviceSize m_textureBudgetMib = 0;
+    uint32_t m_promotionStartFrame = 0;
     bool m_preloadInflight = false;
 
     fast_unordered_cache<Rc<ManagedTexture>> m_assetHashToTextures;
