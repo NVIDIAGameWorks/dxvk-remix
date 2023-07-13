@@ -32,6 +32,11 @@
 
 namespace dxvk {
   constexpr VkDeviceSize MiBPerGiB = 1024;
+  // Remix needs at least two frames to completely evict the demoted textures.
+  // After a global texture demotion event, texture manager will delay future texture promotions
+  // by this number of frames to make sure the previously used memory is released and there
+  // will be no overcommit.
+  constexpr uint32_t kPromotionDelayFrames = 2;
 
   void RtxTextureManager::work(Rc<ManagedTexture>& texture, Rc<DxvkContext>& ctx, Rc<DxvkCommandList>& cmd) {
     if (m_dropRequests) {
@@ -66,8 +71,6 @@ namespace dxvk {
   }
 
   void RtxTextureManager::initialize(const Rc<DxvkContext>& ctx) {
-    updateMemoryBudgets(ctx);
-
     // Kick off upload thread
     RenderProcessor::start();
   }
@@ -96,6 +99,10 @@ namespace dxvk {
   }
 
   void RtxTextureManager::scheduleTextureLoad(TextureRef& texture, Rc<DxvkContext>& immediateContext, bool allowAsync) {
+    if (m_pDevice->getCurrentFrameId() < m_promotionStartFrame) {
+      return;
+    }
+
     const auto managedState = processManagedTextureState(texture);
 
     if (managedState == ManagedTexture::State::kVidMem) {
@@ -225,6 +232,16 @@ namespace dxvk {
     demoteAllTextures();
 
     m_textureCache.clear();
+
+    // Reset texture budget.
+    m_textureBudgetMib = 0;
+
+    // Throttle future promotions so that the cleared textures
+    // have time to move out and release memory, but do not delay
+    // promotions for the first frame to have stable image tests.
+    if (m_pDevice->getCurrentFrameId() > 0) {
+      m_promotionStartFrame = m_pDevice->getCurrentFrameId() + kPromotionDelayFrames;
+    }
   }
 
   void RtxTextureManager::garbageCollection() {
@@ -273,6 +290,10 @@ namespace dxvk {
 
     if (texture->state != ManagedTexture::State::kQueuedForUpload)
       return;
+
+    if (m_textureBudgetMib == 0) {
+      updateMemoryBudgets(ctx);
+    }
 
     try {
       uint32_t largestMipToLoad = 0;
@@ -395,10 +416,12 @@ namespace dxvk {
       VkDeviceSize remixFreeMemMib = (m_pDevice->getMemoryStats(i).totalAllocated() >> 20) -
         (m_pDevice->getMemoryStats(i).totalUsed() >> 20);
 
-      VkDeviceSize memSizeMib = memHeapInfo.heaps[i].memoryBudget >> 20;
+      VkDeviceSize memBudgetMib = memHeapInfo.heaps[i].memoryBudget >> 20;
       VkDeviceSize memUsedMib = (memHeapInfo.heaps[i].memoryAllocated >> 20) - remixFreeMemMib;
 
-      availableMemorySizeMib = std::max(memSizeMib - memUsedMib, availableMemorySizeMib);
+      if (memBudgetMib > memUsedMib) {
+        availableMemorySizeMib = std::max(memBudgetMib - memUsedMib, availableMemorySizeMib);
+      }
     }
 
     if (!context->getCommonObjects()->getResources().isResourceReady()) {

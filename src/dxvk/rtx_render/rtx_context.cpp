@@ -250,15 +250,11 @@ namespace dxvk {
     // into the free bits in memory payload structures on the GPU.
     assert((renderSize[0] < (1 << 14)) && (renderSize[1] < (1 << 14)));
 
-    // Update memory systems budgets for texture manager
     getCommonObjects()->getTextureManager().clear();
-    m_device->waitForIdle();
 
     // DXVK doesnt free chunks for us by default (its high water mark) so force release some memory back to the system here.
     DxvkMemoryAllocator& memoryManager = m_device->getCommon()->memoryManager();
     memoryManager.freeUnusedChunks();
-
-    getCommonObjects()->getTextureManager().updateMemoryBudgets(this);
   }
 
   // Hooked into D3D9 presentImage (same place HUD rendering is)
