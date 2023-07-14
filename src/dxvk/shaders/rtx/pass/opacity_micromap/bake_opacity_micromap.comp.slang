@@ -169,20 +169,31 @@ void sampleOpacityConservative(Surface surface,
   // Find texcoord bbox for the utriangle
   float2 texcoordsMin = calculateTriangleTexcoordBBoxMin(microTriangleVertexTexcoords);
   float2 texcoordsMax = calculateTriangleTexcoordBBoxMax(microTriangleVertexTexcoords);
-
+  
+  // Check for invalid values should garbage texcoord data be fed in
+  if (!isValidValue(texcoordsMin) || !isValidValue(texcoordsMax)) {
+    minOpacity = 0;
+    maxOpacity = 1;
+    return;
+  }
+  
   // Align bbox to actual texel centers that fully cover the bbox 
   // Align with a top left pixel relative to the bbox min
-  const int2 texcoordsIndexMin = floor(texcoordsMin * cb.textureResolution - 0.5);  
+  const float2 texcoordsIndexMin = floor(texcoordsMin * cb.textureResolution - 0.5);  
   // Align with a bottom right pixel relative to the bbox max
-  const int2 texcoordsIndexMax = floor(texcoordsMax * cb.textureResolution + 0.5);
+  const float2 texcoordsIndexMax = floor(texcoordsMax * cb.textureResolution + 0.5);
   
-  // The texcoords bbox has been already aligned to texel coords, but apply an extra round() to avoid precision issues in the expression
+  // Calculate number of texels in the given texcoord bbox
   // +1: include the end point of the bbox
-  const uint2 texelSampleDims = texcoordsIndexMax - texcoordsIndexMin + 1;
+  const float2 texelSampleDimsFloat = texcoordsIndexMax - texcoordsIndexMin + 1;
+  const uint2 texelSampleDims = texelSampleDimsFloat;
   texcoordsMin = (texcoordsIndexMin + 0.5) * cb.rcpTextureResolution;
 
   // Check for sampling count overflow
-  if (texelSampleDims.x * texelSampleDims.y > cb.conservativeEstimationMaxTexelTapsPerMicroTriangle)
+  if (// Check float variant to be within valid range first to handle integer overflow case
+      texelSampleDimsFloat.x > cb.conservativeEstimationMaxTexelTapsPerMicroTriangle ||
+      texelSampleDimsFloat.y > cb.conservativeEstimationMaxTexelTapsPerMicroTriangle ||
+      texelSampleDims.x * texelSampleDims.y > cb.conservativeEstimationMaxTexelTapsPerMicroTriangle)
   {
     // Sampling budget overflowed, mark the microtriangle state as unknown/anyHit
     minOpacity = 0;
