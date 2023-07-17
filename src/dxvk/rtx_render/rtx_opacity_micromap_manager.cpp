@@ -585,6 +585,10 @@ namespace dxvk {
       return false;
     }
 
+    if (RtxOptions::Get()->shouldOpacityMicromapIgnoreTexture(instance.getMaterialDataHash())) {
+      return false;
+    }
+
     bool useOpacityMicromap = false;
 
     auto& surface = instance.surface;
@@ -720,17 +724,10 @@ namespace dxvk {
 
     // Check if the request passes OMM build request filter settings
     {
-      // Ignore non-reference view model instance requests for adding new OMM requests
-      // Their OMM data will be generated via OMM requests for reference ViewModel instances instead
-      // Non-reference view mode instances can only bind available OMMs. 
-      // The reason why they cannot be registered for building is that instance manager 
-      // does not call destroyInstance callbacks when they are destroyed, plus reference instances
-      // are kept across frames which is better for OMM building with a per frame budget.
-      if (instance.isViewModelNonReference() ||
-          RtxOptions::Get()->shouldOpacityMicromapIgnoreTexture(instance.getMaterialDataHash()) ||
-          // Ignore black listed OMM source hashes
-          m_blackListedList.find(ommSrcHash) != m_blackListedList.end())
+      // Ignore black listed OMM source hashes
+      if (m_blackListedList.find(ommSrcHash) != m_blackListedList.end()) {
         return false;
+      }
   
       if (OpacityMicromapOptions::BuildRequests::filtering()) {
         uint32_t minInstanceFrameAge = OpacityMicromapOptions::BuildRequests::minInstanceFrameAge();
@@ -867,7 +864,16 @@ namespace dxvk {
 
     if (!areInstanceTexturesResident(instance, textures))
       return false;
-    
+
+    // Ignore non-reference view model instance requests for adding new OMM requests.
+    // Their OMM data will be generated via OMM requests for reference ViewModel instances.
+    // The reason why they cannot be registered for building is that instance manager 
+    // does not call destroyInstance callbacks when they are destroyed. Also reference instances
+    // are kept across frames which is more fitting for OMM generation with a per frame building budget.
+    if (instance.isViewModelNonReference()) {
+      return false;
+    }
+
     InstanceOmmRequests ommRequests;
 
     generateInstanceOmmRequests(instance, instanceManager, ommRequests.ommRequests);
