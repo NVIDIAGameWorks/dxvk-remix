@@ -22,12 +22,10 @@
 
 project(
   'dxvk', ['c', 'cpp'],
-  version : 'remix-0.2.0',
+  version : 'v1.9.3',
   meson_version : '>= 0.58',
   default_options : ['werror=true', 'b_vscrt=static_from_buildtype']
 )
-
-global_src_root_norm = meson.global_source_root().replace('\\', '/')
 
 # Fetch dependencies
 #   `get_dependencies` is intentionally called twice. Why?:
@@ -40,7 +38,7 @@ global_src_root_norm = meson.global_source_root().replace('\\', '/')
 #   Implications: in very rare circumstances (clean clone, editing meson), get_dependencies
 #     script will be called twice on the same build. This will not be noticeable as packman
 #     early outs if everything's already fetched, so the waste is negligible + forgiveable.
-get_dependencies_script_path = global_src_root_norm + '/scripts-common/update-deps.cmd'
+get_dependencies_script_path = meson.global_source_root().replace('\\', '/') + '/scripts-common/update-deps.cmd'
 message('Downloading dependencies...')
 packman_out = run_command(get_dependencies_script_path)
 message(packman_out.stdout().strip())
@@ -99,8 +97,8 @@ endif
 # Note: Runtime shader recompilation requires source paths based on the project root, so making a build-time define is the easiest way
 # to give it this information reliably for a local build (when distributing a build to others a manual source root must be specified in the runtime
 # configuration).
-add_global_arguments('/DBUILD_SOURCE_ROOT="' + global_src_root_norm + '/"', language : 'cpp')
-vs_project_defines += 'BUILD_SOURCE_ROOT=' + global_src_root_norm + '/"' + ';'
+add_global_arguments('/DBUILD_SOURCE_ROOT="' + meson.global_source_root().replace('\\', '/') + '/"', language : 'cpp')
+vs_project_defines += 'BUILD_SOURCE_ROOT=' + meson.global_source_root().replace('\\', '/') + '/"' + ';'
 
 # c++17 was added in 15.3, older version needs c++latest
 if dxvk_is_msvc and dxvk_compiler.version().version_compare('<15.3')
@@ -218,7 +216,7 @@ lib_shlwapi  = dxvk_compiler.find_library('shlwapi')
 dxvk_extradep += lib_shlwapi
 
 if enable_rtxio == true
-  rtxio_bin_path = global_src_root_norm + '/external/rtxio/bin'
+  rtxio_bin_path = meson.global_source_root().replace('\\', '/') + '/external/rtxio/bin'
   rtxio_lib = dxvk_compiler.find_library('rtxio', dirs : join_paths(meson.global_source_root(), 'external/rtxio/lib'))
   rtxio_include_path = include_directories(join_paths(meson.global_source_root(), 'external/rtxio/include'))
   dxvk_extradep += rtxio_lib
@@ -272,7 +270,7 @@ else
 endif
 
 dxvk_version = vcs_tag(
-  command: ['python', global_src_root_norm + './scripts-common/version.py', meson.project_version()],
+  command: ['git', 'describe', '--dirty=+'],
   input:  'version.h.in',
   output: 'version.h')
 
@@ -280,7 +278,7 @@ dxvk_version = vcs_tag(
 # Handle external dependencies ##
 #################################
 
-output_dir = global_src_root_norm + '/_output/'
+output_dir = meson.global_source_root().replace('\\', '/') + '/_output/'
 
 # Get script paths
 if build_os == 'windows'
@@ -292,8 +290,8 @@ elif build_os == 'linux'
 else
   script_extension = ''
 endif
-copy_script_path = global_src_root_norm + '/scripts-common/copy' + script_extension
-recursive_copy_path = global_src_root_norm + '/scripts-common/recursive_copy' + script_extension
+copy_script_path = meson.global_source_root().replace('\\', '/') + '/scripts-common/copy' + script_extension
+recursive_copy_path = meson.global_source_root().replace('\\', '/') + '/scripts-common/recursive_copy' + script_extension
 
 if get_option('enable_tracy')
   add_project_arguments('-DTRACY_ENABLE', language : 'cpp')
@@ -503,11 +501,11 @@ if dxvk_is_ninja
   # meson seems to force / as the path separator in custom_target
   # ... except in the case where the path separators are inconsistent, in which case it does nothing
   # force / as the path separator here to make sure it stays consistent
-  nrd_lib_path = global_src_root_norm + '/external/nrd/Lib/Release/'
+  nrd_lib_path = meson.global_source_root().replace('\\', '/') + '/external/nrd/Lib/Release/'
   if get_option('buildtype') == 'debug'  
-    nrd_lib_path = global_src_root_norm + '/external/nrd/Lib/Debug/'
+    nrd_lib_path = meson.global_source_root().replace('\\', '/') + '/external/nrd/Lib/Debug/'
   endif
-  dlss_lib_path = global_src_root_norm + '/' + dlss_root_path + '/Lib/Windows_x86_64/rel/'
+  dlss_lib_path = meson.global_source_root().replace('\\', '/') + '/' + dlss_root_path + '/Lib/Windows_x86_64/rel/'
   
   apic_copy_targets = []
   sln_project_targets = []
