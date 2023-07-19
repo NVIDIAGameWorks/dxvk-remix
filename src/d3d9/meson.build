@@ -1,6 +1,6 @@
 d3d9_version = vcs_tag(
-  command: ['git', 'describe', '--dirty=+'],
-  input:    'version.rc.in', 
+  command: ['python', global_src_root_norm + './scripts-common/echo.py', full_version],
+  input:    'version.rc.in',
   output:  'version.rc')
 
 d3d9_res = wrc_generator.process(d3d9_version)
@@ -89,7 +89,7 @@ d3d9_src = [
   'd3d9_rtx_geometry.cpp',
 ]
 
-d3d9_dll = shared_library('d3d9', d3d9_src, glsl_generator.process(d3d9_shaders), d3d9_res,
+d3d9_dll = shared_library('d3d9', d3d9_src, dxvk_version, glsl_generator.process(d3d9_shaders), d3d9_res,
   name_prefix         : '',
   link_with           : [ util_lib ],
   dependencies        : [ dxso_dep, dxvk_dep, util_dep ],
