@@ -22,10 +22,12 @@
 
 project(
   'dxvk', ['c', 'cpp'],
-  version : 'v1.9.3',
+  version : 'remix-0.2.0',
   meson_version : '>= 0.58',
   default_options : ['werror=true', 'b_vscrt=static_from_buildtype']
 )
+
+global_src_root_norm = meson.global_source_root().replace('\\', '/')
 
 # Fetch dependencies
 #   `get_dependencies` is intentionally called twice. Why?:
@@ -38,7 +40,7 @@ project(
 #   Implications: in very rare circumstances (clean clone, editing meson), get_dependencies
 #     script will be called twice on the same build. This will not be noticeable as packman
 #     early outs if everything's already fetched, so the waste is negligible + forgiveable.
-get_dependencies_script_path = meson.global_source_root().replace('\\', '/') + '/scripts-common/update-deps.cmd'
+get_dependencies_script_path = global_src_root_norm + '/scripts-common/update-deps.cmd'
 message('Downloading dependencies...')
 packman_out = run_command(get_dependencies_script_path)
 message(packman_out.stdout().strip())
@@ -97,8 +99,8 @@ endif
 # Note: Runtime shader recompilation requires source paths based on the project root, so making a build-time define is the easiest way
 # to give it this information reliably for a local build (when distributing a build to others a manual source root must be specified in the runtime
 # configuration).
-add_global_arguments('/DBUILD_SOURCE_ROOT="' + meson.global_source_root().replace('\\', '/') + '/"', language : 'cpp')
-vs_project_defines += 'BUILD_SOURCE_ROOT=' + meson.global_source_root().replace('\\', '/') + '/"' + ';'
+add_global_arguments('/DBUILD_SOURCE_ROOT="' + global_src_root_norm + '/"', language : 'cpp')
+vs_project_defines += 'BUILD_SOURCE_ROOT=' + global_src_root_norm + '/"' + ';'
 
 # c++17 was added in 15.3, older version needs c++latest
 if dxvk_is_msvc and dxvk_compiler.version().version_compare('<15.3')
@@ -216,7 +218,7 @@ lib_shlwapi  = dxvk_compiler.find_library('shlwapi')
 dxvk_extradep += lib_shlwapi
 
 if enable_rtxio == true
-  rtxio_bin_path = meson.global_source_root().replace('\\', '/') + '/external/rtxio/bin'
+  rtxio_bin_path = global_src_root_norm + '/external/rtxio/bin'
   rtxio_lib = dxvk_compiler.find_library('rtxio', dirs : join_paths(meson.global_source_root(), 'external/rtxio/lib'))
   rtxio_include_path = include_directories(join_paths(meson.global_source_root(), 'external/rtxio/include'))
   dxvk_extradep += rtxio_lib
@@ -269,8 +271,67 @@ else
   arguments : [ '-i', '@INPUT@', '-o', '@OUTPUT@' ])
 endif
 
+message('##############')
+message('# Versioning #')
+message('##############')
+
+full_version = meson.project_version()
+
+git_rev_parse_out = run_command('git',['rev-parse','--verify','--short=8', 'HEAD'])
+git_hash = ''
+if git_rev_parse_out.returncode() != 0
+  error('Failed to get current git hash')
+else
+  git_hash = git_rev_parse_out.stdout().replace('\n','')
+  message('Current git hash: ' + git_hash)
+endif
+
+found_tag = ''
+ci_commit_tag = ''
+get_env_out = run_command('python',[global_src_root_norm + './scripts-common/get_env.py', 'CI_COMMIT_TAG'])
+if get_env_out.returncode() != 0
+  error('get_env.py failed, which is unexpected')
+else
+  ci_commit_tag = get_env_out.stdout().replace('\n','')
+endif
+b_found_ci_commit_tag = (ci_commit_tag != '')
+
+if b_found_ci_commit_tag
+  message('Found tag in CI_COMMIT_TAG envvar: ' + ci_commit_tag)
+  found_tag = ci_commit_tag
+else
+  git_describe_tag = ''
+  git_describe_out = run_command('git',['describe','--always','--exact-match', git_hash])
+  if git_describe_out.returncode() == 0
+    git_describe_tag = git_describe_out.stdout().replace('\n','')
+    message('Found tag via git describe: ' + git_describe_tag)
+  endif
+  found_tag = git_describe_tag
+endif
+
+b_found_tag = found_tag != ''
+b_found_tag_matches = false
+if b_found_tag
+  b_found_tag_matches = found_tag == meson.project_version()
+endif
+
+if b_found_tag
+  if not b_found_tag_matches
+    warning('Tag does not match current version: ' + meson.project_version() + '. Please reconcile tag with version in meson.build.')
+  else
+    message('Found tag matches current version: ' + meson.project_version())
+    message('This is a release version.')
+  endif
+else
+  message('No tag found at current commit.')
+  message('This is NOT a release version')
+  full_version += '+' + git_hash
+endif
+
+message('Full version: ' + full_version)
+
 dxvk_version = vcs_tag(
-  command: ['git', 'describe', '--dirty=+'],
+  command: ['python', global_src_root_norm + './scripts-common/echo.py', full_version],
   input:  'version.h.in',
   output: 'version.h')
 
@@ -278,7 +339,7 @@ dxvk_version = vcs_tag(
 # Handle external dependencies ##
 #################################
 
-output_dir = meson.global_source_root().replace('\\', '/') + '/_output/'
+output_dir = global_src_root_norm + '/_output/'
 
 # Get script paths
 if build_os == 'windows'
@@ -290,8 +351,8 @@ elif build_os == 'linux'
 else
   script_extension = ''
 endif
-copy_script_path = meson.global_source_root().replace('\\', '/') + '/scripts-common/copy' + script_extension
-recursive_copy_path = meson.global_source_root().replace('\\', '/') + '/scripts-common/recursive_copy' + script_extension
+copy_script_path = global_src_root_norm + '/scripts-common/copy' + script_extension
+recursive_copy_path = global_src_root_norm + '/scripts-common/recursive_copy' + script_extension
 
 if get_option('enable_tracy')
   add_project_arguments('-DTRACY_ENABLE', language : 'cpp')
@@ -501,11 +562,11 @@ if dxvk_is_ninja
   # meson seems to force / as the path separator in custom_target
   # ... except in the case where the path separators are inconsistent, in which case it does nothing
   # force / as the path separator here to make sure it stays consistent
-  nrd_lib_path = meson.global_source_root().replace('\\', '/') + '/external/nrd/Lib/Release/'
+  nrd_lib_path = global_src_root_norm + '/external/nrd/Lib/Release/'
   if get_option('buildtype') == 'debug'  
-    nrd_lib_path = meson.global_source_root().replace('\\', '/') + '/external/nrd/Lib/Debug/'
+    nrd_lib_path = global_src_root_norm + '/external/nrd/Lib/Debug/'
   endif
-  dlss_lib_path = meson.global_source_root().replace('\\', '/') + '/' + dlss_root_path + '/Lib/Windows_x86_64/rel/'
+  dlss_lib_path = global_src_root_norm + '/' + dlss_root_path + '/Lib/Windows_x86_64/rel/'
   
   apic_copy_targets = []
   sln_project_targets = []
