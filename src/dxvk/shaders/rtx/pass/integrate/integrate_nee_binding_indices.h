@@ -41,8 +41,9 @@
 #define INTEGRATE_NEE_BINDING_PRIMARY_WORLD_INTERPOLATED_NORMAL_INPUT          53
 #define INTEGRATE_NEE_BINDING_INDIRECT_RADIANCE_HIT_DISTANCE_INPUT             54
 
-#define INTEGRATE_NEE_BINDING_NEE_CACHE                                      57
-#define INTEGRATE_NEE_BINDING_NEE_CACHE_TASK                                 58
+#define INTEGRATE_NEE_BINDING_NEE_CACHE                                      56
+#define INTEGRATE_NEE_BINDING_NEE_CACHE_TASK                                 57
+#define INTEGRATE_NEE_BINDING_NEE_CACHE_SAMPLE                               58
 #define INTEGRATE_NEE_BINDING_NEE_CACHE_THREAD_TASK                          59
 
 #define INTEGRATE_NEE_BINDING_RADIANCE_INPUT                                      60

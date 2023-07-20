@@ -310,6 +310,7 @@ namespace dxvk
       Rc<DxvkBuffer> m_restirGIReservoirBuffer;
       Rc<DxvkBuffer> m_neeCache;
       Rc<DxvkBuffer> m_neeCacheTask;
+      Rc<DxvkBuffer> m_neeCacheSample;
       Resource m_neeCacheThreadTask;
 
       VkExtent3D m_froxelVolumeExtent;
