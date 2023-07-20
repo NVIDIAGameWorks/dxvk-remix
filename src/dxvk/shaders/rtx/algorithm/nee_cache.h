@@ -21,16 +21,64 @@
 */
 #pragma once
 
-#define NEE_CACHE_PROBE_RESOLUTION 32
-#define NEE_CACHE_ELEMENTS 16
-// Element size in bytes
-#define NEE_CACHE_ELEMENT_SIZE 4 * 2
-#define NEE_CACHE_TASK_SIZE 4
-#define NEE_CACHE_EMPTY_TASK 0xffffffff
-
-#ifndef __cplusplus
-
 #include "rtx/algorithm/nee_cache_light.slangh"
+#include "rtx/algorithm/nee_cache_data.h"
+
+struct NEESample
+{
+  vec3 position;
+  float pdf;
+  f16vec3 normal;
+  f16vec3 radiance;
+
+  NeeCache_PackedSample pack()
+  {
+    NeeCache_PackedSample packed;
+    packed.hitGeometry.xyz = asuint(position);
+    packed.hitGeometry.w = float2x32ToSnorm2x16(sphereDirectionToSignedOctahedral(normal));
+    packed.lightInfo.x = f32tof16(radiance.x) | (f32tof16(radiance.y) << 16);
+    packed.lightInfo.y = f32tof16(radiance.z);
+    packed.lightInfo.z = asuint(pdf);
+    return packed;
+  }
+
+  [mutating] void unpack(const NeeCache_PackedSample packed)
+  {
+    position = asfloat(packed.hitGeometry.xyz);
+    normal = signedOctahedralToSphereDirection(snorm2x16ToFloat2x32(packed.hitGeometry.w));
+    radiance.x = f16tof32(packed.lightInfo.x & 0xffff);
+    radiance.y = f16tof32(packed.lightInfo.x >> 16);
+    radiance.z = f16tof32(packed.lightInfo.y & 0xffff);
+    pdf = asfloat(packed.lightInfo.z);
+  }
+
+  static NEESample createEmpty()
+  {
+    NEESample sample = {};
+    sample.position = float3(0.f, 0.f, 1.f);
+    sample.normal = float3(0.f, 0.f, -1.f);
+    sample.radiance = float3(0.f);
+    sample.pdf = 0.f;
+    return sample;
+  }
+
+  static NEESample createFromPacked(const NeeCache_PackedSample packed)
+  {
+    NEESample sample = {};
+    sample.unpack(packed);
+    return sample;
+  }
+
+  LightSample convertToLightSample()
+  {
+    LightSample sample = {};
+    sample.position = position;
+    sample.normal = normal;
+    sample.radiance = radiance;
+    sample.solidAnglePdf = pdf;
+    return sample;
+  }
+}
 
 struct NEECandidate
 {
@@ -114,19 +162,25 @@ struct NEECandidate
 
 struct NEECell
 {
-  int m_baseAddress;
+  static const uint16_t s_invalidOffset = 0xffff;
+  int m_offset;
 
-  static int indexToOffset(int idx)
+  int getBaseAddress()
   {
-    return (idx + 1) * NEE_CACHE_ELEMENT_SIZE;
+    return m_offset > 0 ? m_offset * NEE_CACHE_ELEMENTS * NEE_CACHE_ELEMENT_SIZE : -1;
   }
 
   int getTaskAddress(int idx)
   {
-    return m_baseAddress + idx * NEE_CACHE_TASK_SIZE;
+    return getBaseAddress() + idx * NEE_CACHE_TASK_SIZE;
   }
 
-  bool isValid() { return m_baseAddress != -1; }
+  int getCandidateAddress(int idx)
+  {
+    return getBaseAddress() + (idx + 1) * NEE_CACHE_ELEMENT_SIZE;
+  }
+
+  bool isValid() { return m_offset != NEECell.s_invalidOffset; }
 
   int getTaskCount()
   {
@@ -223,25 +277,42 @@ struct NEECell
     return false;
   }
 
+  int getSampleAddress(int i)
+  {
+    return m_offset * NEE_CACHE_SAMPLES + i;
+  }
+
+  NEESample getSample(int idx)
+  {
+    NeeCache_PackedSample packed = NeeCacheSample[getSampleAddress(idx)];
+    return NEESample.createFromPacked(packed);
+  }
+
+  void setSample(int idx, NEESample sample)
+  {
+    NeeCache_PackedSample packed = sample.pack();
+    NeeCacheSample[getSampleAddress(idx)] = packed;
+  }
+
   int getCandidateCount()
   {
-    uint count = NeeCache.Load(m_baseAddress);
+    uint count = NeeCache.Load(getBaseAddress());
     return min(count, getMaxCandidateCount());
   }
 
   void setCandidateCount(int count)
   {
-    NeeCache.Store(m_baseAddress, count);
+    NeeCache.Store(getBaseAddress(), count);
   }
 
   NEECandidate getCandidate(int idx)
   {
-    return NEECandidate.create(NeeCache.Load2(m_baseAddress + indexToOffset(idx)));
+    return NEECandidate.create(NeeCache.Load2(getCandidateAddress(idx)));
   }
 
   void setCandidate(int idx, NEECandidate candidate)
   {
-    return NeeCache.Store2(m_baseAddress + indexToOffset(idx), candidate.m_data);
+    return NeeCache.Store2(getCandidateAddress(idx), candidate.m_data);
   }
 
   NEECandidate sampleCandidate(float sampleThreshold, out float pdf)
@@ -287,27 +358,40 @@ struct NEECell
   {
     return NEE_CACHE_ELEMENTS;
   }
+
+  LightSample getLightSample(vec3 randomNumber, vec3 position, float16_t coneRadius, float16_t coneSpreadAngle, bool useCachedSamples = true)
+  {
+    LightSample lightSampleTriangle;
+    if(useCachedSamples)
+    {
+      int sampleIdx = randomNumber.x * NEE_CACHE_SAMPLES;
+      NEESample sample = getSample(sampleIdx);
+      lightSampleTriangle = sample.convertToLightSample();
+      lightSampleTriangle.solidAnglePdf *= NEECacheUtils.calculateLightSamplingSolidAnglePDF(1.0, lightSampleTriangle.position, lightSampleTriangle.normal, position);
+    }
+    else
+    {
+      // Sample cached triangles
+      float lightObjectPdf = 0;
+      NEECandidate candidate = sampleCandidate(randomNumber.x, lightObjectPdf);
+      // Sample the selected triangle
+      vec2 uv = vec2(randomNumber.y, randomNumber.z);
+      lightSampleTriangle = NEECacheUtils.calculateLightSampleFromTriangle(
+        candidate.getSurfaceID(), candidate.getPrimitiveID(), uv, lightObjectPdf, position, coneRadius, coneSpreadAngle);
+    }
+    return lightSampleTriangle;
+  }
 }
 
 struct NEECache
 {
-  static int cellToAddress(int3 cellID)
+  static int cellToOffset(int3 cellID)
   {
     if (any(cellID == -1))
     {
-      return -1;
+      return NEECell.s_invalidOffset;
     }
 
-    int idx =
-      cellID.z * NEE_CACHE_PROBE_RESOLUTION * NEE_CACHE_PROBE_RESOLUTION +
-      cellID.y * NEE_CACHE_PROBE_RESOLUTION +
-      cellID.x;
-
-    return idx * NEE_CACHE_ELEMENTS * NEE_CACHE_ELEMENT_SIZE;
-  }
-
-  static int cellToOffset(int3 cellID)
-  {
     int idx =
       cellID.z * NEE_CACHE_PROBE_RESOLUTION * NEE_CACHE_PROBE_RESOLUTION +
       cellID.y * NEE_CACHE_PROBE_RESOLUTION +
@@ -317,7 +401,7 @@ struct NEECache
 
   static int3 offsetToCell(int offset)
   {
-    if (offset == -1)
+    if (offset == NEECell.s_invalidOffset)
     {
       return int3(-1);
     }
@@ -335,25 +419,23 @@ struct NEECache
     return cellID;
   }
 
-  static int3 pointToCell(vec3 position, bool jittered)
+  static int3 pointToCell(vec3 position, bool jittered, vec3 jitteredNumber)
   {
     float extend = cb.neeCacheArgs.range;
     vec3 cameraPos = cameraGetWorldPosition(cb.camera);
     vec3 origin = cameraPos - extend * 0.5;
     vec3 UVW = (position - origin) / extend;
+    vec3 UVWi = UVW * NEE_CACHE_PROBE_RESOLUTION;
 
     // jitter cell ID
-    if(jittered && cb.neeCacheArgs.enableJittering)
+    if(jittered)
     {
-      vec3 UVWi = UVW * NEE_CACHE_PROBE_RESOLUTION - 0.5;
       vec3 fracUVWi = fract(UVWi);
-
-      RNG rng = createRNGPosition(position, cb.frameIdx);
-      ivec3 offset;
-      offset.x = getNextSampleBlueNoise(rng) > fracUVWi.x ? 0 : 1;
-      offset.y = getNextSampleBlueNoise(rng) > fracUVWi.y ? 0 : 1;
-      offset.z = getNextSampleBlueNoise(rng) > fracUVWi.z ? 0 : 1;
-      ivec3 cellID = ivec3(UVWi) + offset;
+      ivec3 cellID = ivec3(UVWi);
+      cellID.x += jitteredNumber.x > fracUVWi.x ? 0 : 1;
+      cellID.y += jitteredNumber.y > fracUVWi.y ? 0 : 1;
+      cellID.z += jitteredNumber.z > fracUVWi.z ? 0 : 1;
+      
       if (any(cellID < 0) || any(cellID > NEE_CACHE_PROBE_RESOLUTION-1))
       {
         return int3(-1);
@@ -362,7 +444,7 @@ struct NEECache
     }
     else
     {
-      ivec3 UVWi = UVW * NEE_CACHE_PROBE_RESOLUTION;
+      UVWi += 0.5;
       if (any(UVWi < 0) || any(UVWi > NEE_CACHE_PROBE_RESOLUTION-1))
       {
         return int3(-1);
@@ -371,14 +453,10 @@ struct NEECache
     }
   }
 
-  static int pointToOffset(vec3 position, bool jittered)
+  static int pointToOffset(vec3 position, bool jittered, vec3 jitteredNumber)
   {
-    int3 cellID = pointToCell(position, jittered);
-    if (all(cellID >= 0) && all(cellID < NEE_CACHE_PROBE_RESOLUTION))
-    {
-      return cellToOffset(cellID);
-    }
-    return -1;
+    int3 cellID = pointToCell(position, jittered, jitteredNumber);
+    return cellToOffset(cellID);
   }
 
   static float getCellSize()
@@ -396,31 +474,27 @@ struct NEECache
     float extend = cb.neeCacheArgs.range;
     vec3 cameraPos = cameraGetWorldPosition(cb.camera);
     vec3 origin = cameraPos - extend * 0.5;
-    vec3 UVW = vec3(cellID + 0.5) / NEE_CACHE_PROBE_RESOLUTION;
+    vec3 UVW = vec3(cellID) / NEE_CACHE_PROBE_RESOLUTION;
     vec3 position = UVW * extend + origin;
     return position;
-  }
-
-  static int pointToAddress(vec3 position, bool jittered)
-  {
-    ivec3 UVWi = pointToCell(position, jittered);
-    if (any(UVWi == -1))
-    {
-      return -1;
-    }
-    return cellToAddress(UVWi);
   }
 
   static NEECell getCell(int3 cellID)
   {
     NEECell cell = {};
-    cell.m_baseAddress = cellToAddress(cellID);
+    cell.m_offset = cellToOffset(cellID);
     return cell;
   }
 
-  static NEECell findCell(vec3 point, bool jittered)
+  static NEECell getCell(int offset) {
+    NEECell cell = {};
+    cell.m_offset = offset;
+    return cell;
+  }
+
+  static NEECell findCell(vec3 point, bool jittered, vec3 jitteredNumber)
   {
-    return getCell(pointToCell(point, jittered));
+    return getCell(pointToCell(point, jittered, jitteredNumber));
   }
 
   static void storeThreadTask(int2 pixel, uint cellOffset, uint surfaceID, uint primitiveID)
@@ -442,6 +516,14 @@ struct NEECache
     }
     cellOffset = (data.x >> 24) | ((data.y & 0xff000000) >> 16);
   }
+
+  static bool shouldUseHigherBounceNeeCache(bool isSpecularLobe, float16_t isotropicRoughness)
+  {
+    // ReSTIR GI can handle diffuse rays quite well, but not for highly specular surfaces.
+    // Skip diffuse and rough specular surfaces to improve performance.
+    // The roughness threshold here is based on experiment.
+    const float16_t minRoughness = 0.1;
+    return cb.neeCacheArgs.enableModeAfterFirstBounce == NeeEnableMode::SpecularOnly ? isSpecularLobe && isotropicRoughness < minRoughness : true;
+  }
 }
 
-#endif

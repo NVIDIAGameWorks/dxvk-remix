@@ -104,13 +104,6 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   if (taskID < taskCount && all(task != -1))
   {
     bool isNewTask = true;
-    for (int i = 0; i < taskID -1; ++i)
-    {
-      if (all(s_srcTaskList[i][localIndex.y] == task))
-      {
-        isNewTask = false;
-      }
-    }
     for (int i = 0; i < s_candidateCount[localIndex.y]; ++i)
     {
       NEECandidate candidate = s_candidateList[i][localIndex.y];
@@ -152,39 +145,19 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   // sort tasks
   if (localIndex.x == 0)
   {
-    if(!cb.neeCacheArgs.enableRandomReplacement)
+    for (int i = 0; i < s_candidateCount[localIndex.y]-1; ++i)
     {
-      for (int i = 0; i < s_candidateCount[localIndex.y]-1; ++i)
+      for (int j = i+1; j < s_candidateCount[localIndex.y]; ++j)
       {
-        for (int j = i+1; j < s_candidateCount[localIndex.y]; ++j)
+        if (s_candidateLight[i][localIndex.y] < s_candidateLight[j][localIndex.y])
         {
-          if (s_candidateLight[i][localIndex.y] < s_candidateLight[j][localIndex.y])
-          {
-            float lightI = s_candidateLight[i][localIndex.y];
-            s_candidateLight[i][localIndex.y] = s_candidateLight[j][localIndex.y];
-            s_candidateLight[j][localIndex.y] = lightI;
+          float lightI = s_candidateLight[i][localIndex.y];
+          s_candidateLight[i][localIndex.y] = s_candidateLight[j][localIndex.y];
+          s_candidateLight[j][localIndex.y] = lightI;
 
-            NEECandidate tempCandidate = s_candidateList[i][localIndex.y];
-            s_candidateList[i][localIndex.y] = s_candidateList[j][localIndex.y];
-            s_candidateList[j][localIndex.y] = tempCandidate;
-          }
-        }
-      }
-    }
-    else
-    {
-      int validCount = min(s_candidateCount[localIndex.y], NEECell.getMaxCandidateCount());
-      int fixedCount = 0;
-      for (int i = NEECell.getMaxCandidateCount(); i < s_candidateCount[localIndex.y]; ++i)
-      {
-        int targetID = fixedCount + (cb.frameIdx + i) % (validCount - fixedCount);
-        float ft = s_candidateLight[i][localIndex.y];
-        float fs = s_candidateLight[targetID][localIndex.y];
-        float rnd = getNextSampleBlueNoise(rng);
-        if (rnd * fs < ft)
-        {
-          s_candidateLight[targetID][localIndex.y] = s_candidateLight[i][localIndex.y];
-          s_candidateList[targetID][localIndex.y] = s_candidateList[i][localIndex.y];
+          NEECandidate tempCandidate = s_candidateList[i][localIndex.y];
+          s_candidateList[i][localIndex.y] = s_candidateList[j][localIndex.y];
+          s_candidateList[j][localIndex.y] = tempCandidate;
         }
       }
     }
@@ -237,4 +210,31 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   {
     cell.clearTasks();
   }
+
+  GroupMemoryBarrierWithGroupSync();
+
+  vec3 cameraPosition = cameraGetWorldPosition(cb.camera);
+  for (int i = localIndex.x; i < NEE_CACHE_SAMPLES; i += NEE_CACHE_ELEMENTS)
+  {
+    float lightObjectPdf = 0;
+    NEESample sample = NEESample.createEmpty();
+    float randomNumber = float(i + getNextSampleBlueNoise(rng)) / NEE_CACHE_SAMPLES;
+    NEECandidate candidate = cell.sampleCandidate(randomNumber, lightObjectPdf);
+    if (candidate.isValid())
+    {
+      float16_t spreadAngle = float16_t(cb.screenSpacePixelSpreadHalfAngle);
+      float16_t coneRadius = spreadAngle * length(cellCenter - cameraPosition);
+      vec2 uv = vec2(getNextSampleBlueNoise(rng), getNextSampleBlueNoise(rng));
+      LightSample lightSample = NEECacheUtils.calculateLightSampleFromTriangle(
+        candidate.getSurfaceID(), candidate.getPrimitiveID(), uv, lightObjectPdf, 
+        cellCenter, coneRadius, spreadAngle, false, kFootprintFromTextureCoordDiff);
+
+      sample.position = lightSample.position;
+      sample.normal = lightSample.normal;
+      sample.pdf = lightSample.solidAnglePdf;
+      sample.radiance = lightSample.radiance;
+    }
+    cell.setSample(i, sample);
+  }
+
 }
