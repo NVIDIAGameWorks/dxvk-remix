@@ -31,13 +31,21 @@
 #include "rtx_context.h"
 #include "rtx_imgui.h"
 #include "rtx/pass/raytrace_args.h"
-#include "rtx/algorithm/nee_cache.h"
 
 #include <rtx_shaders/demodulate.h>
 #include <rtx_shaders/update_nee_cache.h>
 #include <rtx_shaders/update_nee_task.h>
 
 namespace dxvk {
+
+  ImGui::ComboWithKey<NeeEnableMode> enableModeAfterFirstBounceCombo {
+    "Enable Mode After First Bounce",
+    ImGui::ComboWithKey<NeeEnableMode>::ComboEntries { {
+        {NeeEnableMode::None, "None"},
+        {NeeEnableMode::SpecularOnly, "Specular Only"},
+        {NeeEnableMode::All, "All"},
+    } }
+  };
 
   // Defined within an unnamed namespace to ensure unique definition across binary
   namespace {
@@ -50,6 +58,7 @@ namespace dxvk {
         COMMON_RAYTRACING_BINDINGS
         RW_STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_NEE_CACHE)
         RW_STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_TASK)
+        RW_STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_SAMPLE)
         RW_TEXTURE2D(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_THREAD_TASK)
         STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_PRIMITIVE_ID_PREFIX_SUM)
       END_PARAMETER()
@@ -67,6 +76,7 @@ namespace dxvk {
         COMMON_RAYTRACING_BINDINGS
         RW_STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_NEE_CACHE)
         RW_STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_TASK)
+        RW_STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_SAMPLE)
         RW_TEXTURE2D(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_THREAD_TASK)
         STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_PRIMITIVE_ID_PREFIX_SUM)
       END_PARAMETER()
@@ -85,10 +95,9 @@ namespace dxvk {
     ImGui::Checkbox("Enable NEE Cache", &enableObject());
     ImGui::Checkbox("Enable Importance Sampling", &enableImportanceSamplingObject());
     ImGui::Checkbox("Enable MIS", &enableMISObject());
-    ImGui::Checkbox("Enable Jittering", &enableJitteringObject());
+    ImGui::Checkbox("Enable Update", &enableUpdateObject());
     ImGui::Checkbox("Enable On First Bounce", &enableOnFirstBounceObject());
-    ImGui::Checkbox("Enable After First Bounce", &enableAfterFirstBounceObject());
-    ImGui::Checkbox("Enable Random Replacement", &enableRandomReplacementObject());
+    enableModeAfterFirstBounceCombo.getKey(&enableModeAfterFirstBounceObject());
     ImGui::DragFloat("Emissive Texture Sample Footprint Scale", &emissiveTextureSampleFootprintScaleObject(), 0.001f, 0.f, 20.f, "%.3f");
     ImGui::DragFloat("Age Culling Speed", &ageCullingSpeedObject(), 0.001f, 0.0f, 0.99f, "%.3f");
     ImGui::DragFloat("Cache Range", &rangeObject(), 1.f, 0.1f, 10000000.0f, "%.3f");
@@ -99,16 +108,14 @@ namespace dxvk {
     constants.neeCacheArgs.enableImportanceSampling = enableImportanceSampling();
     constants.neeCacheArgs.enableMIS = enableMIS();
     constants.neeCacheArgs.enableOnFirstBounce = enableOnFirstBounce();
-    constants.neeCacheArgs.enableAfterFirstBounce = enableAfterFirstBounce();
-    constants.neeCacheArgs.enableRandomReplacement = enableRandomReplacement();
+    constants.neeCacheArgs.enableModeAfterFirstBounce = enableModeAfterFirstBounce();
     constants.neeCacheArgs.range = range();
     constants.neeCacheArgs.emissiveTextureSampleFootprintScale = emissiveTextureSampleFootprintScale();
     constants.neeCacheArgs.ageCullingSpeed = ageCullingSpeed();
-    constants.neeCacheArgs.enableJittering = enableJittering();
   }
 
   void NeeCachePass::dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
-    if (!enable()) {
+    if (!enable() || !enableUpdate()) {
       return;
     }
 
@@ -124,6 +131,7 @@ namespace dxvk {
       ctx->bindCommonRayTracingResources(rtOutput);
       ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_NEE_CACHE, DxvkBufferSlice(rtOutput.m_neeCache, 0, rtOutput.m_neeCache->info().size));
       ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_TASK, DxvkBufferSlice(rtOutput.m_neeCacheTask, 0, rtOutput.m_neeCacheTask->info().size));
+      ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_SAMPLE, DxvkBufferSlice(rtOutput.m_neeCacheSample, 0, rtOutput.m_neeCacheSample->info().size));
       ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_PRIMITIVE_ID_PREFIX_SUM, DxvkBufferSlice(primitiveIDPrefixSumBuffer, 0, primitiveIDPrefixSumBuffer->info().size));
       ctx->bindResourceView(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_THREAD_TASK, rtOutput.m_neeCacheThreadTask.view, nullptr);
 
@@ -136,6 +144,7 @@ namespace dxvk {
       ctx->bindCommonRayTracingResources(rtOutput);
       ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_NEE_CACHE, DxvkBufferSlice(rtOutput.m_neeCache, 0, rtOutput.m_neeCache->info().size));
       ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_TASK, DxvkBufferSlice(rtOutput.m_neeCacheTask, 0, rtOutput.m_neeCacheTask->info().size));
+      ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_SAMPLE, DxvkBufferSlice(rtOutput.m_neeCacheSample, 0, rtOutput.m_neeCacheSample->info().size));
       ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_PRIMITIVE_ID_PREFIX_SUM, DxvkBufferSlice(primitiveIDPrefixSumBuffer, 0, primitiveIDPrefixSumBuffer->info().size));
       ctx->bindResourceView(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_THREAD_TASK, rtOutput.m_neeCacheThreadTask.view, nullptr);
 

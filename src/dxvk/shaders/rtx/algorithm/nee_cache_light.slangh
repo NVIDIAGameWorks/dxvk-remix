@@ -93,7 +93,7 @@ struct NEECacheUtils
     return true;
   }
 
-  static LightSample calculateLightSampleFromTriangle(int surfaceIndex, int primitiveIndex, vec2 uv, float trianglePdf, vec3 shadingPosition, float16_t coneRadius, float16_t spreadAngle)
+  static LightSample calculateLightSampleFromTriangle(int surfaceIndex, int primitiveIndex, vec2 uv, float trianglePdf, vec3 shadingPosition, float16_t coneRadius, float16_t spreadAngle, bool useSolidAnglePdf = true, int footprintMode = kFootprintFromRayOrigin)
   {
   #define USE_SIMIPLIFIED_MODEL 1
 
@@ -121,8 +121,10 @@ struct NEECacheUtils
     rayInteracton.coneRadius = coneRadius * cb.neeCacheArgs.emissiveTextureSampleFootprintScale;
     Ray ray = {};
     ray.origin = shadingPosition;
-    ray.spreadAngle = spreadAngle * cb.neeCacheArgs.emissiveTextureSampleFootprintScale;
-    SurfaceInteraction surfaceInteraction = surfaceInteractionCreate(surface, rayInteracton, ray, false, kFootprintFromRayOrigin);
+    ray.spreadAngle = spreadAngle;
+    SurfaceInteraction surfaceInteraction = surfaceInteractionCreate(surface, rayInteracton, ray, false, footprintMode);
+    surfaceInteraction.textureGradientX *= cb.neeCacheArgs.emissiveTextureSampleFootprintScale;
+    surfaceInteraction.textureGradientY *= cb.neeCacheArgs.emissiveTextureSampleFootprintScale;
   #if USE_SIMIPLIFIED_MODEL
     surfaceInteraction.positionError = 0;
     surfaceInteraction.motion = 0;
@@ -139,8 +141,16 @@ struct NEECacheUtils
     LightSample lightSample = {};
     lightSample.position = surfaceInteraction.position;
     lightSample.normal = surfaceInteraction.interpolatedNormal;
-    float lightPdf = trianglePdf * calculateLightSamplingSolidAnglePDF(
+    float lightPdf = trianglePdf;
+    if(useSolidAnglePdf)
+    {
+      lightPdf *= calculateLightSamplingSolidAnglePDF(
       surfaceInteraction.triangleArea, surfaceInteraction.position, surfaceInteraction.triangleNormal, shadingPosition);
+    }
+    else
+    {
+      lightPdf /= surfaceInteraction.triangleArea;
+    }
     lightSample.solidAnglePdf = lightPdf;
     lightSample.radiance = 0;
     if (dot(lightSample.normal, shadingPosition - lightSample.position) < 0)
