@@ -102,6 +102,9 @@ RWByteAddressBuffer NeeCache;
 layout(binding = INTEGRATE_INDIRECT_BINDING_NEE_CACHE_TASK)
 RWByteAddressBuffer NeeCacheTask;
 
+layout(binding = INTEGRATE_INDIRECT_BINDING_NEE_CACHE_SAMPLE)
+RWStructuredBuffer<NeeCache_PackedSample> NeeCacheSample;
+
 layout(rg32ui, binding = INTEGRATE_INDIRECT_BINDING_NEE_CACHE_THREAD_TASK)
 RWTexture2D<uint2> NeeCacheThreadTask;
 

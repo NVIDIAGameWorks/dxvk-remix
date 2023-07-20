@@ -35,6 +35,7 @@
 #include "rtx/pass/material_args.h"
 #include "rtx/pass/view_distance_args.h"
 #include "rtx/concept/light/light_types.h"
+#include "rtx/algorithm/nee_cache_data.h"
 
 struct LightRangeInfo {
   uint offset;
@@ -61,14 +62,10 @@ struct NeeCacheArgs {
   uint enableMIS;
   uint enableOnFirstBounce;
 
-  uint enableAfterFirstBounce;
-  uint enableRandomReplacement;
+  NeeEnableMode enableModeAfterFirstBounce;
+  float ageCullingSpeed;
   float range;
   float emissiveTextureSampleFootprintScale;
-
-  uint2 padding;
-  uint enableJittering;
-  float ageCullingSpeed;
 };
 
 // Constant buffer

@@ -21,19 +21,24 @@
 */
 #pragma once
 
-#include "rtx/pass/nee_cache/update_nee_cache_binding_indices.h"
+#define NEE_CACHE_PROBE_RESOLUTION 32
+#define NEE_CACHE_ELEMENTS 16
+// Element size in bytes
+#define NEE_CACHE_ELEMENT_SIZE 4 * 2
+#define NEE_CACHE_TASK_SIZE 4
+#define NEE_CACHE_EMPTY_TASK 0xffffffff
 
-layout(binding = UPDATE_NEE_CACHE_BINDING_NEE_CACHE)
-globallycoherent RWByteAddressBuffer NeeCache;
+#define NEE_CACHE_SAMPLES 16
 
-layout(binding = UPDATE_NEE_CACHE_BINDING_NEE_CACHE_TASK)
-RWByteAddressBuffer NeeCacheTask;
+struct NeeCache_PackedSample
+{
+  uint4 hitGeometry;              ///< position and normal.
+  uint4 lightInfo;                ///< radiance and pdf
+};
 
-layout(binding = UPDATE_NEE_CACHE_BINDING_NEE_CACHE_SAMPLE)
-RWStructuredBuffer<NeeCache_PackedSample> NeeCacheSample;
-
-layout(rg32ui, binding = UPDATE_NEE_CACHE_BINDING_NEE_CACHE_THREAD_TASK)
-RWTexture2D<uint2> NeeCacheThreadTask;
-
-layout(binding = UPDATE_NEE_CACHE_BINDING_PRIMITIVE_ID_PREFIX_SUM) 
-StructuredBuffer<uint> PrimitiveIDPrefixSum;
+enum class NeeEnableMode
+{
+  None = 0,
+  SpecularOnly = 1,
+  All = 2,
+};
