@@ -288,7 +288,7 @@ endif
 
 found_tag = ''
 ci_commit_tag = ''
-get_env_out = run_command('python',[global_src_root_norm + './scripts-common/get_env.py', 'CI_COMMIT_TAG'])
+get_env_out = run_command(python_interpreter.full_path(),[global_src_root_norm + './scripts-common/get_env.py', 'CI_COMMIT_TAG'])
 if get_env_out.returncode() != 0
   error('get_env.py failed, which is unexpected')
 else
@@ -331,7 +331,7 @@ endif
 message('Full version: ' + full_version)
 
 dxvk_version = vcs_tag(
-  command: ['python', global_src_root_norm + './scripts-common/echo.py', full_version],
+  command: [python_interpreter.full_path(), global_src_root_norm + './scripts-common/echo.py', full_version],
   input:  'version.h.in',
   output: 'version.h')
 
