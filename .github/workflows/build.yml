@@ -68,9 +68,10 @@ jobs:
             output-subdir: _Comp64Release
     steps:
     - uses: "marvinpinto/action-automatic-releases@latest"
+      permissions: write-all
       with:
         repo_token: "${{ secrets.GITHUB_TOKEN }}"
-        automatic_release_tag: "automatic-${{matrix.build-flavour}}"
+        automatic_release_tag: "automatic${{matrix.build-flavour}}"
         prerelease: true
         title: "dxvk-remix-${{env.GITHUB_SHA_SHORT}}-${{github.run_number}}-${{matrix.build-flavour}}"
         files: | 
