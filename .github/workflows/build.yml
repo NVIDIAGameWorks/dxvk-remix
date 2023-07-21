@@ -53,7 +53,16 @@ jobs:
           _output\*.pdb
           _output\*.txt
 
-    - name: "Automate GitHub release"
+    - name: "Prune automatic CI/CD releases to latest"
+      uses: dev-drprasad/delete-older-releases@v0.2
+      with:
+      repo: anchorlightforge/dxvk-remix # defaults to current repo
+      keep_latest: 2
+      delete_tag_pattern: automatic # defaults to ""
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: "Create new CI/CD release"
       uses: "marvinpinto/action-automatic-releases@latest"
       with:
         repo_token: "${{ secrets.GITHUB_TOKEN }}"
@@ -61,6 +70,6 @@ jobs:
         prerelease: true
         title: "dxvk-remix-${{env.GITHUB_SHA_SHORT}}-${{github.run_number}}-${{matrix.build-flavour}}"
         files: | 
-          ${{matrix.output-subdir}}/*.dll
-          ${{matrix.output-subdir}}/*.pdb
-          ${{matrix.output-subdir}}/*.txt
+          _output/*.dll
+          _output/*.pdb
+          _output/*.txt
