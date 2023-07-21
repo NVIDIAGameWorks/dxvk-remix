@@ -44,10 +44,10 @@ Texture2D<float4> InColorTexture;
 layout(rgba16f, binding = POST_FX_MOTION_BLUR_OUTPUT)
 RWTexture2D<float4> OutColorTexture;
 
-layout(rgba16f, binding = POST_FX_MOTION_BLUR_NEAREST_SAMPLER)
+layout(binding = POST_FX_MOTION_BLUR_NEAREST_SAMPLER)
 SamplerState NearestSampler;
 
-layout(rgba16f, binding = POST_FX_MOTION_BLUR_LINEAR_SAMPLER)
+layout(binding = POST_FX_MOTION_BLUR_LINEAR_SAMPLER)
 SamplerState LinearSampler;
 
 layout(push_constant)
