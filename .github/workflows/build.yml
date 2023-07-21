@@ -44,7 +44,7 @@ jobs:
     - name: Copy readme
       run: copy artifacts_readme.txt _output
     
-    - name: Upload binaries
+    - name: Upload binaries as artifact
       uses: actions/upload-artifact@v3
       with:
         name: dxvk-remix-${{env.GITHUB_SHA_SHORT}}-${{github.run_number}}-${{matrix.build-flavour}}
@@ -67,7 +67,7 @@ jobs:
     - name: "Prune automatic CI/CD releases to latest"
       uses: dev-drprasad/delete-older-releases@v0.2.1
       with:
-        keep_latest: 2
+        keep_latest: 3
         delete_tag_pattern: automatic # defaults to ""
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
