@@ -54,7 +54,7 @@ jobs:
           _output\*.txt
 
     - name: "Prune automatic CI/CD releases to latest"
-      uses: dev-drprasad/delete-older-releases@latest
+      uses: dev-drprasad/delete-older-releases@v0.2.1
       with:
         repo: anchorlightforge/dxvk-remix # defaults to current repo
         keep_latest: 2
