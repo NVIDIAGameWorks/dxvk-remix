@@ -9,7 +9,7 @@ on:
 jobs:
   build-windows:
     runs-on: windows-2022
-
+    permissions: write-all
     strategy:
       matrix:
         include:
@@ -53,22 +53,8 @@ jobs:
           _output\*.pdb
           _output\*.txt
 
-
-  release:
-    runs-on: windows-2022
-    needs: [ build-windows ]
-    strategy:
-      matrix:
-        include:
-          - build-flavour: debug
-            output-subdir: _Comp64Debug
-          - build-flavour: debugoptimized
-            output-subdir: _Comp64DebugOptimized
-          - build-flavour: release
-            output-subdir: _Comp64Release
-    permissions: write-all
-    steps:
-    - uses: "marvinpinto/action-automatic-releases@latest"
+    - name: "Automate GitHub release"
+      uses: "marvinpinto/action-automatic-releases@latest"
       with:
         repo_token: "${{ secrets.GITHUB_TOKEN }}"
         automatic_release_tag: "automatic-${{matrix.build-flavour}}"
