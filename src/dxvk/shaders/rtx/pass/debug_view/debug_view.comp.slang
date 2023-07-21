@@ -60,13 +60,13 @@ RWTexture2D<uint> HDRWaveformGreenInputOutput;
 layout(r32ui, binding = DEBUG_VIEW_BINDING_HDR_WAVEFORM_BLUE_INPUT_OUTPUT)
 RWTexture2D<uint> HDRWaveformBlueInputOutput;
 
-layout(rgba16f, binding = DEBUG_VIEW_BINDING_NEAREST_SAMPLER)
+layout(binding = DEBUG_VIEW_BINDING_NEAREST_SAMPLER)
 SamplerState NearestSampler;
 
-layout(rgba16f, binding = DEBUG_VIEW_BINDING_LINEAR_SAMPLER)
+layout(binding = DEBUG_VIEW_BINDING_LINEAR_SAMPLER)
 SamplerState LinearSampler;
 
-layout(binding = DEBUG_VIEW_BINDING_TERRAIN_INPUT)
+layout(rgba16f, binding = DEBUG_VIEW_BINDING_TERRAIN_INPUT)
 Texture2D<float4> TerrainTexture;
 
 layout(binding = DEBUG_VIEW_BINDING_CONSTANTS_INPUT)
@@ -82,17 +82,22 @@ ConstantBuffer<DebugViewArgs> cb;
 float4 sampleTexture(Texture2D<float4> texture, ivec2 threadId)
 {
   const float2 uv = (threadId + 0.5f) / float2(cb.debugViewResolution);
+  float4 sampledColor = float4(0.0f);
 
+  // Note: sampledColor variable written to rather than returning from each of these cases directly as for
+  // some reason directly causes a crash when attempting to execute this shader on AMD's (current) drivers
+  // (may be fixed at some point though).
   switch(cb.samplerType)
   {
   case DebugViewSamplerType::Nearest:
-    return texture[threadId];
+    sampledColor = texture[threadId];
   case DebugViewSamplerType::NormalizedNearest:
-    return texture.SampleLevel(NearestSampler, uv, 0.0f);
+    sampledColor = texture.SampleLevel(NearestSampler, uv, 0.0f);
   case DebugViewSamplerType::NormalizedLinear:
-    return texture.SampleLevel(LinearSampler, uv, 0.0f);
+    sampledColor = texture.SampleLevel(LinearSampler, uv, 0.0f);
   }
-  return 0;
+
+  return sampledColor;
 }
 
 float nrdGetHitT(float normalizedHitT, float primaryHitPerceptualRoughness, float linearViewZ)

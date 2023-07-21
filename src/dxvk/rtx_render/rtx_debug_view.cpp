@@ -625,7 +625,7 @@ namespace dxvk {
         ctx->bindResourceSampler(DEBUG_VIEW_BINDING_NEAREST_SAMPLER, nearestSampler);
         ctx->bindResourceSampler(DEBUG_VIEW_BINDING_LINEAR_SAMPLER, linearSampler);
 
-        const auto terrain = m_device->getCommon()->getResources().getTerrainTexture(ctx);
+        const auto& terrain = m_device->getCommon()->getResources().getTerrainTexture(ctx);
         ctx->bindResourceView(DEBUG_VIEW_BINDING_TERRAIN_INPUT, terrain.view, nullptr);
 
         ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, DebugViewShader::getShader());
