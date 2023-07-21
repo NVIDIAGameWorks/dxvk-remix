@@ -66,9 +66,9 @@ jobs:
             output-subdir: _Comp64DebugOptimized
           - build-flavour: release
             output-subdir: _Comp64Release
+    permissions: write-all
     steps:
     - uses: "marvinpinto/action-automatic-releases@latest"
-      permissions: write-all
       with:
         repo_token: "${{ secrets.GITHUB_TOKEN }}"
         automatic_release_tag: "automatic${{matrix.build-flavour}}"
