@@ -52,3 +52,28 @@ jobs:
           _output\*.dll
           _output\*.pdb
           _output\*.txt
+
+
+  release:
+    runs-on: windows-2022
+    needs: [ build ]
+    strategy:
+      matrix:
+        include:
+          - build-flavour: debug
+            output-subdir: _Comp64Debug
+          - build-flavour: debugoptimized
+            output-subdir: _Comp64DebugOptimized
+          - build-flavour: release
+            output-subdir: _Comp64Release
+    steps:
+    - uses: "marvinpinto/action-automatic-releases@latest"
+      with:
+        repo_token: "${{ secrets.GITHUB_TOKEN }}"
+        automatic_release_tag: "latest"
+        prerelease: true
+        title: "dxvk-remix-${{env.GITHUB_SHA_SHORT}}-${{github.run_number}}-${{matrix.build-flavour}}"
+        files: | 
+          _output/*.dll
+          _output/*.pdb
+          _output/*.txt
