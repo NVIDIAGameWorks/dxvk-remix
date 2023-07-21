@@ -499,6 +499,7 @@ namespace dxvk {
         "aa16c42fa367111c"
       },
       { "rtx.lightmapTextures",
+        "441282E47FE7CB64,"
         "050173DFF733DBE1,"
         "913E194A071E2720,"
         "8D39476483C92F63,"
