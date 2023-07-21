@@ -71,10 +71,10 @@ jobs:
     - uses: "marvinpinto/action-automatic-releases@latest"
       with:
         repo_token: "${{ secrets.GITHUB_TOKEN }}"
-        automatic_release_tag: "automatic${{matrix.build-flavour}}"
+        automatic_release_tag: "automatic-${{matrix.build-flavour}}"
         prerelease: true
         title: "dxvk-remix-${{env.GITHUB_SHA_SHORT}}-${{github.run_number}}-${{matrix.build-flavour}}"
         files: | 
-          _output/*.dll
-          _output/*.pdb
-          _output/*.txt
+          ${{matrix.output-subdir}}/*.dll
+          ${{matrix.output-subdir}}/*.pdb
+          ${{matrix.output-subdir}}/*.txt
