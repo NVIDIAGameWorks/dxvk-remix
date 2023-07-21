@@ -53,10 +53,20 @@ jobs:
           _output\*.pdb
           _output\*.txt
 
+    - name: Create clean directory for CI/CD release 
+      shell: pwsh
+      run: |
+        New-Item ".\_release" -Type Directory
+        cd ".\_release"
+        Get-ChildItem -Path "..\_output" -Recurse -Filter *.pdb | Copy-Item
+        Get-ChildItem -Path "..\_output" -Recurse -Filter *.dll | Copy-Item
+        Get-ChildItem -Path "..\_output" -Recurse -Filter *.txt | Copy-Item
+        cd ".."
+        Compress-Archive -Path ".\_release\*" -DestinationPath "dxvk-remix-${{env.GITHUB_SHA_SHORT}}-${{github.run_number}}-${{matrix.build-flavour}}.zip"
+
     - name: "Prune automatic CI/CD releases to latest"
       uses: dev-drprasad/delete-older-releases@v0.2.1
       with:
-        repo: anchorlightforge/dxvk-remix # defaults to current repo
         keep_latest: 2
         delete_tag_pattern: automatic # defaults to ""
       env:
@@ -70,6 +80,5 @@ jobs:
         prerelease: true
         title: "dxvk-remix-${{env.GITHUB_SHA_SHORT}}-${{github.run_number}}-${{matrix.build-flavour}}"
         files: | 
-          _output/*.dll
-          _output/*.pdb
-          _output/*.txt
+          *.zip
+          _release/*.txt
