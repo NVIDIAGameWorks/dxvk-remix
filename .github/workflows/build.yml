@@ -9,7 +9,8 @@ on:
 jobs:
   build-windows:
     runs-on: windows-2022
-
+    permissions: 
+      contents: write
     strategy:
       matrix:
         include:
@@ -44,11 +45,46 @@ jobs:
     - name: Copy readme
       run: copy artifacts_readme.txt _output
     
-    - name: Upload binaries
+    - name: Upload binaries as artifact
       uses: actions/upload-artifact@v3
       with:
-        name: dxvk-remix-${{env.GITHUB_SHA_SHORT}}-${{github.run_number}}-${{matrix.build-flavour}}
+        name: dxvk-remix-${{github.run_number}}-${{env.GITHUB_SHA_SHORT}}-${{matrix.build-flavour}}
         path: |
           _output\*.dll
           _output\*.pdb
           _output\*.txt
+
+    - name: Create clean directory for CI/CD release 
+      shell: pwsh
+      run: |
+        New-Item ".\_upload" -Type Directory
+        cd ".\_upload"
+        Get-ChildItem -Path "..\_output" -Recurse -Filter *.pdb | Copy-Item
+        Get-ChildItem -Path "..\_output" -Recurse -Filter *.dll | Copy-Item
+        Get-ChildItem -Path "..\_output" -Recurse -Filter *.txt | Copy-Item
+        New-Item ".\.trex" -Type Directory
+        cd ".\.trex"
+        Get-ChildItem -Path "..\*.dll" | Move-Item
+        Get-ChildItem -Path "..\*.pdb" | Move-Item
+        cd "..\.."
+        Compress-Archive -Path ".\_upload\*" -DestinationPath "dxvk-remix-${{github.run_number}}-${{env.GITHUB_SHA_SHORT}}-${{matrix.build-flavour}}.zip"
+
+    - name: "Prune automatic CI/CD releases to latest"
+      uses: dev-drprasad/delete-older-releases@v0.2.1
+      with:
+        keep_latest: 3
+        delete_tag_pattern: automatic # defaults to ""
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: "Create new CI/CD release"
+      uses: "softprops/action-gh-release@v1"
+      with:
+        token: "${{ secrets.GITHUB_TOKEN }}"
+        tag_name: "automatic-${{matrix.build-flavour}}"
+        prerelease: true
+        generate_release_notes: true
+        name: "dxvk-remix-automatic-${{matrix.build-flavour}}"
+        files: | 
+          *.zip
+          _upload/*.txt
