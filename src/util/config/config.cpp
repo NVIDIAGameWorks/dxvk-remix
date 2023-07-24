@@ -802,7 +802,6 @@ namespace dxvk {
       { "rtx.animatedWaterTextures",
         "522E5513DB9638B6,"
       },        
-      { "d3d9.maxEnabledLights",     "32" }, // This game seems to read this caps bit and push more lights accordingly.
       { "rtx.zUp",                   "True" },
       { "rtx.uniqueObjectDistance",  "300.0" }, // Game is 1unit=1cm - picking up objects can move them very quickly, 3m should be sufficient.
       { "rtx.rayPortalModelTextureHashes",        "5EC61BC800744B26, DFDACB6DE1C7741E" }, // Orange and Blue Portal textures
