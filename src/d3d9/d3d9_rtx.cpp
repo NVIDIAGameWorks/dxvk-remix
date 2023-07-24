@@ -337,8 +337,7 @@ namespace dxvk {
 
       std::vector<D3DLIGHT9> activeLightsRT;
       uint32_t lightIdx = 0;
-      for (uint32_t i = 0; i < caps::MaxEnabledLights; i++) {
-        auto idx = d3d9State().enabledLightIndices[i];
+      for (auto idx : d3d9State().enabledLightIndices) {
         if (idx == UINT32_MAX)
           continue;
         activeLightsRT.push_back(d3d9State().lights[idx].value());

@@ -4,7 +4,9 @@
 
 namespace dxvk {
 
-  D3D9CapturableState::D3D9CapturableState() {
+  // NV-DXVK start: unbound light indices
+  D3D9CapturableState::D3D9CapturableState(uint32_t maxEnabledLights) {
+  // NV-DXVK end
     for (uint32_t i = 0; i < textures.size(); i++)
       textures[i] = nullptr;
 
@@ -13,6 +15,10 @@ namespace dxvk {
 
     for (uint32_t i = 0; i < streamFreq.size(); i++)
       streamFreq[i] = 1;
+
+    // NV-DXVK start: unbound light indices
+    enabledLightIndices.resize(maxEnabledLights);
+    // NV-DXVK end
 
     for (uint32_t i = 0; i < enabledLightIndices.size(); i++)
       enabledLightIndices[i] = UINT32_MAX;
