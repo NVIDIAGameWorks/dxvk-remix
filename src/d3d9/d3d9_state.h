@@ -203,7 +203,9 @@ namespace dxvk {
   };
 
   struct D3D9CapturableState {
-    D3D9CapturableState();
+    // NV-DXVK start: unbound light indices
+    explicit D3D9CapturableState(uint32_t maxEnabledLights);
+    // NV-DXVK end
 
     ~D3D9CapturableState();
 
@@ -246,7 +248,9 @@ namespace dxvk {
     D3DMATERIAL9                                     material = D3DMATERIAL9();
 
     std::vector<std::optional<D3DLIGHT9>>            lights;
-    std::array<DWORD, caps::MaxEnabledLights>        enabledLightIndices;
+    // NV-DXVK start: unbound light indices
+    std::vector<DWORD>                               enabledLightIndices;
+    // NV-DXVK end
 
     bool IsLightEnabled(DWORD Index) {
       const auto& indices = enabledLightIndices;

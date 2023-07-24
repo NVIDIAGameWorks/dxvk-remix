@@ -79,6 +79,9 @@ namespace dxvk {
     , m_isSWVP         ( (BehaviorFlags & D3DCREATE_SOFTWARE_VERTEXPROCESSING) ? true : false )
     , m_csThread       ( dxvkDevice->createRtxContext() )
     , m_csChunk        ( AllocCsChunk() )
+    // NV-DXVK start: unbound light indices
+    , m_state          ( Direct3DState9 { D3D9CapturableState{ static_cast<uint32_t>(std::max(m_d3d9Options.maxEnabledLights, 0)) } } )
+    // NV-DXVK end
     , m_rtx            ( this ) {
     // If we can SWVP, then we use an extended constant set
     // as SWVP has many more slots available than HWVP.
@@ -6805,7 +6808,9 @@ namespace dxvk {
       uint32_t lightCount = 0;
 
       if (key.Data.Contents.UseLighting) {
-        for (uint32_t i = 0; i < caps::MaxEnabledLights; i++) {
+        // NV-DXVK start: unbound light indices
+        for (uint32_t i = 0; i < caps::MaxEnabledLights && m_state.enabledLightIndices.size(); i++) {
+        // NV-DXVK end
           if (m_state.enabledLightIndices[i] != UINT32_MAX)
             lightCount++;
         }
@@ -6908,7 +6913,9 @@ namespace dxvk {
       DecodeD3DCOLOR(m_state.renderStates[D3DRS_AMBIENT], data->GlobalAmbient.data);
 
       uint32_t lightIdx = 0;
-      for (uint32_t i = 0; i < caps::MaxEnabledLights; i++) {
+      // NV-DXVK start: unbound light indices
+      for (uint32_t i = 0; i < data->Lights.size() && i < m_state.enabledLightIndices.size(); i++) {
+      // NV-DXVK end
         auto idx = m_state.enabledLightIndices[i];
         if (idx == UINT32_MAX)
           continue;
