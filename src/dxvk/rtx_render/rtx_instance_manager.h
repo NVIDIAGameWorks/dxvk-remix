@@ -161,7 +161,10 @@ private:
   VkGeometryFlagsKHR m_geometryFlags = 0;
   uint32_t m_firstBillboard = 0;
   uint32_t m_billboardCount = 0;
-  uint64_t m_lastDecalOffsetVertexDataVersion = 0;
+
+  // Used decal offsetting parameters
+  XXH64_hash_t m_lastDecalOffsetVertexDataVersion = kEmptyHash;
+  uint32_t m_currentDecalOffsetDifference = UINT32_MAX;
 
 public:
 
@@ -279,14 +282,8 @@ private:
   bool m_previousViewModelState = false;
   RtInstance* targetInstance = nullptr;
 
-  // The "index" is just a multiplier for the offset that is applied to each decal along normal.
-  // Index of 1 means the offset is "rtx.decalNormalOffset" units, 2 is double that, etc.
-  // Start with 1 so that all decals receive at least some offset, to handle cases when they are coplanar with walls.
-  static constexpr uint32_t c_firstDecalIndex = 1;
-  // This is the maximum value of m_currentDecalIndex after which it is reset back to c_firstDecalIndex.
-  static constexpr uint32_t c_decalIndexWraparound = 64;
-  uint32_t m_currentDecalIndex = c_firstDecalIndex;
-  
+  uint32_t m_currentDecalOffsetIndex;
+    
   // Controls active portal space for which virtual view model or player model instances have been generated for.
   // Negative values mean there is no portal that's close enough to the camera.
   int m_virtualInstancePortalIndex = 0;    

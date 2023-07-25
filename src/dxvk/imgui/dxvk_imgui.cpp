@@ -149,6 +149,7 @@ namespace dxvk {
     {"lightconvertertextures", "Add Light to Textures (optional)", &RtxOptions::Get()->lightConverterObject()},
     {"decaltextures", "Decal Texture (optional)", &RtxOptions::Get()->decalTexturesObject()},
     {"dynamicdecaltextures", "Dynamic Decal Texture", &RtxOptions::Get()->dynamicDecalTexturesObject()},
+    {"singleoffsetdecaltextures", "Single Offset Decal Texture", &RtxOptions::Get()->singleOffsetDecalTexturesObject()},
     {"nonoffsetdecaltextures", "Non-Offset Decal Texture", &RtxOptions::Get()->nonOffsetDecalTexturesObject()},
     {"cutouttextures", "Legacy Cutout Texture (optional)", &RtxOptions::Get()->cutoutTexturesObject()},
     {"terraintextures", "Terrain Texture", &RtxOptions::Get()->terrainTexturesObject()},
@@ -1696,7 +1697,11 @@ namespace dxvk {
           showTextureSelectionGrid(ctx, "dynamicdecaltextures", numThumbnailsPerRow, thumbnailSize);
         }
 
-        if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 7.2: Non-Offset Decal Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->nonOffsetDecalTexturesDescription())) {
+        if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 7.2: Single Offset Decal Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->singleOffsetDecalTexturesDescription())) {
+          showTextureSelectionGrid(ctx, "singleoffsetdecaltextures", numThumbnailsPerRow, thumbnailSize);
+        }
+
+        if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Step 7.3: Non-Offset Decal Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->nonOffsetDecalTexturesDescription())) {
           showTextureSelectionGrid(ctx, "nonoffsetdecaltextures", numThumbnailsPerRow, thumbnailSize);
         }
 
@@ -2402,12 +2407,26 @@ namespace dxvk {
 
     if (ImGui::CollapsingHeader("Geometry", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
+
       ImGui::Checkbox("Enable Triangle Culling (Globally)", &RtxOptions::Get()->enableCullingObject());
       ImGui::Checkbox("Enable Triangle Culling (Override Secondary Rays)", &RtxOptions::Get()->enableCullingInSecondaryRaysObject());
       ImGui::Separator();
       ImGui::DragInt("Min Prims in Static BLAS", &RtxOptions::Get()->minPrimsInStaticBLASObject(), 1.f, 100, 0);
       ImGui::Checkbox("Portals: Virtual Instance Matching", &RtxOptions::Get()->useRayPortalVirtualInstanceMatchingObject());
       ImGui::Checkbox("Portals: Fade In Effect", &RtxOptions::Get()->enablePortalFadeInEffectObject());
+      
+      if (ImGui::CollapsingHeader("Decals", collapsingHeaderClosedFlags)) {
+        ImGui::Indent();
+
+        ImGui::TextWrapped("Warning: changes to these parameters will only apply to new geometry. Existing geometry needs to be invalidated by either a game reload or gameplay and/or camera view change if the game uses runtime or view dependent geometry batching per draw call.");
+
+        ImGui::DragFloat("Offset Multiplier [m]", &RtxOptions::Decals::offsetMultiplierMetersObject(), 0.0001f, 0.f, 0.f, "%.5f");
+        ImGui::DragInt("Base Offset Index", &RtxOptions::Decals::baseOffsetIndexObject(), 1.f, 1, 1000);
+        ImGui::DragInt("Max Offset Index", &RtxOptions::Decals::maxOffsetIndexObject(), 1.f, 1, 10000);
+        ImGui::DragInt("Offset Increase Between Decal Draw Calls", &RtxOptions::Decals::offsetIndexIncreaseBetweenDrawCallsObject(), 1.f, 1, 1000);
+        ImGui::Unindent();
+      }
+
       ImGui::Unindent();
     }
 
@@ -2466,8 +2485,6 @@ namespace dxvk {
         ImGui::DragFloat("Max Anisotropy Samples", &RtxOptions::Get()->maxAnisotropySamplesObject(), 0.5f, 1.0f, 16.f, "%.3f", sliderFlags);
       }
       ImGui::DragFloat("Translucent Decal Albedo Factor", &RtxOptions::Get()->translucentDecalAlbedoFactorObject(), 0.01f);
-      ImGui::DragFloat("Decal Normal Offset", &RtxOptions::Get()->decalNormalOffsetObject(), 0.0001f, 0.f, 0.f, "%.4f");
-
       ImGui::Unindent();
     }
 

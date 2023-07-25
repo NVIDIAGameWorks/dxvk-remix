@@ -40,7 +40,7 @@
 #include "rtx/pass/instance_definitions.h"
 
 namespace dxvk {
-
+  
   static bool isMirrorTransform(const Matrix4& m) {
     // Note: Identify if the winding is inverted by checking if the z axis is ever flipped relative to what it's expected to be for clockwise vertices in a lefthanded space
     // (x cross y) through the series of transformations
@@ -121,7 +121,9 @@ namespace dxvk {
     , m_geometryFlags(src.m_geometryFlags)
     , m_objectToWorldMirrored(src.m_objectToWorldMirrored)
     , m_firstBillboard(src.m_firstBillboard)
-    , m_billboardCount(src.m_billboardCount) {
+    , m_billboardCount(src.m_billboardCount)
+    , m_lastDecalOffsetVertexDataVersion(src.m_lastDecalOffsetVertexDataVersion)
+    , m_currentDecalOffsetDifference(src.m_currentDecalOffsetDifference) {
     // Members for which state carry over is intentionally skipped
     /*
        m_isMarkedForGC
@@ -249,6 +251,7 @@ namespace dxvk {
     : CommonDeviceObject(device)
     , m_pResourceCache(pResourceCache) {
     m_previousViewModelState = RtxOptions::ViewModel::enable();
+    m_currentDecalOffsetIndex = RtxOptions::Decals::baseOffsetIndex();
   }
 
   InstanceManager::~InstanceManager() {
@@ -339,7 +342,7 @@ namespace dxvk {
   void InstanceManager::onFrameEnd() {
     m_viewModelCandidates.clear();
     m_playerModelInstances.clear();
-    m_currentDecalIndex = c_firstDecalIndex;
+    m_currentDecalOffsetIndex = RtxOptions::Decals::baseOffsetIndex();
     resetSurfaceIndices();
     m_billboards.clear();
   }
@@ -1630,50 +1633,64 @@ namespace dxvk {
 
   // This function goes over all decals and offsets each one along its normal.
   // The offset is different per-decal and generally grows with every draw call and every decal in a draw call,
-  // only wrapping around to 0 when some limit is reached.
+  // only wrapping around to start offset index when some limit is reached.
   // This offsetting takes care of procedural decals that are entirely coplanar, which doesn't work with
   // ray tracing because we want to hit every decal with a closest-hit shader, and without offsets we can't do that.
   // Some map geometry has static decals that are tessellated as odd non-quad meshes, but they still need to be offset,
   // so the second part of this function takes care of that.
   void InstanceManager::applyDecalOffsets(RtInstance& instance, const RasterGeometry& geometryData) {
-    const float offsetIncrement = RtxOptions::Get()->getDecalNormalOffset();
-    if (offsetIncrement == 0.f)
+    if (RtxOptions::Decals::offsetMultiplierMeters() == 0.f) {
       return;
+    }
 
     if (RtxOptions::Get()->isNonOffsetDecalTexture(instance.getMaterialDataHash()))
       return;
 
-    auto getNextOffset = [this, offsetIncrement]() {
-      float offset = float(m_currentDecalIndex) * offsetIncrement;
-
-      // Increment decal index and wrap around to avoid moving them too far away from walls
-      if (++m_currentDecalIndex > c_decalIndexWraparound)
-        m_currentDecalIndex = c_firstDecalIndex;
-
-      return offset;
-    };
-    
     constexpr int indicesPerTriangle = 3;
 
     // Check if this is a supported geometry first
     if (geometryData.indexCount < indicesPerTriangle || geometryData.indexBuffer.indexType() != VK_INDEX_TYPE_UINT16)
       return;
 
-    // Exit if this instnace has already been processed in its current version, to prevent applying offsets to the same geometry multiple times.
+    const bool hasDecalBeenOffset = geometryData.hashes[HashComponents::VertexPosition] == instance.m_lastDecalOffsetVertexDataVersion;
+
+    // Exit if this instance has already been processed in its current version and the decal offset paramterization matches that of the last time it was offset
+    // to prevent applying offsets to the same geometry multiple times.
     // This fixes the chamber information panels in Portal when you reload the same map multiple times in a row.
     // TODO: Move this to geom utils, only do on build
-    if (geometryData.hashes[HashComponents::VertexPosition] == instance.m_lastDecalOffsetVertexDataVersion)
+    if (hasDecalBeenOffset) {
+      // Apply the decal offset difference that was applied to this instance previously to the global offset index 
+      m_currentDecalOffsetIndex += instance.m_currentDecalOffsetDifference
+                                 + RtxOptions::Decals::offsetIndexIncreaseBetweenDrawCalls();
+      if (m_currentDecalOffsetIndex > RtxOptions::Decals::maxOffsetIndex()) {
+        m_currentDecalOffsetIndex = RtxOptions::Decals::baseOffsetIndex();
+      }
       return;
-    instance.m_lastDecalOffsetVertexDataVersion = geometryData.hashes[HashComponents::VertexPosition];
+    }
 
     const GeometryBufferData bufferData(geometryData);
-    
+
     // Check if the necessary buffers exist
     if (!bufferData.indexData || !bufferData.positionData)
       return;
-    
+
+    const bool isSingleOffsetDecalBatch = RtxOptions::isSingleOffsetDecalTexture(instance.getMaterialDataHash());
+    const uint32_t currentOffsetDecalBatchStartIndex = m_currentDecalOffsetIndex;
+    const float offsetMultiplier = RtxOptions::Decals::offsetMultiplierMeters() * RtxOptions::Get()->getMeterToWorldUnitScale();
+
+    auto getNextOffset = [this, &instance, isSingleOffsetDecalBatch, offsetMultiplier]() {
+      const float offset = m_currentDecalOffsetIndex * offsetMultiplier;
+
+      // Increment decal index and wrap it around to avoid moving them too far away from walls
+      if (!isSingleOffsetDecalBatch && ++m_currentDecalOffsetIndex > RtxOptions::Decals::maxOffsetIndex()) {
+        m_currentDecalOffsetIndex = RtxOptions::Decals::baseOffsetIndex();
+      }
+
+      return offset;
+    };
+
     if (RtxOptions::Get()->isDynamicDecalTexture(instance.getMaterialDataHash())) {
-      // It's a dynamic decal. Find all triangle fans and offset each fan individually.
+      // It's a dynamic decal. Find all triangle quads and offset each quad individually.
       int fanStartIndexOffset = 0;
       bool fanNormalFound = false;
       Vector3 normal;
@@ -1714,7 +1731,7 @@ namespace dxvk {
           (bufferData.getIndex(indexOffset + indicesPerTriangle + 1) != indices[2]);
         if (!endOfFan)
           continue;
-        
+
         if (fanNormalFound) {
           // Compute the offset
           const Vector3 positionOffset = normal * getNextOffset();
@@ -1802,6 +1819,29 @@ namespace dxvk {
       }
 
       planeIndices.clear();
+    }
+
+    // Record the geometry hash to mark this decal is offsetted
+    instance.m_lastDecalOffsetVertexDataVersion = geometryData.hashes[HashComponents::VertexPosition];
+
+    // Increment the decal index now if it is a single offset decal batch
+    if (isSingleOffsetDecalBatch) {
+      ++m_currentDecalOffsetIndex;
+    }
+
+    const int32_t currentDecalOffsetDifference = static_cast<int32_t>(m_currentDecalOffsetIndex) - currentOffsetDecalBatchStartIndex;
+
+    // Set to wrap around limit if wrap around (i.e. negative offset index difference is seen) occured
+    instance.m_currentDecalOffsetDifference = instance.m_currentDecalOffsetDifference < 1
+      ? RtxOptions::Decals::maxOffsetIndex()
+      : currentDecalOffsetDifference;
+
+    // We're done processing all the batched decals for the current instance. 
+    // Apply the custom offsetting between decal draw calls.
+    // -1 since the offset index has already been incremented after calculating offset for the previous decal
+    m_currentDecalOffsetIndex += RtxOptions::Decals::offsetIndexIncreaseBetweenDrawCalls() - 1;
+    if (m_currentDecalOffsetIndex > RtxOptions::Decals::maxOffsetIndex()) {
+      m_currentDecalOffsetIndex = RtxOptions::Decals::baseOffsetIndex();
     }
   }
 
