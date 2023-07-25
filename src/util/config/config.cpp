@@ -849,6 +849,7 @@ namespace dxvk {
       { "rtx.upscalingMipBias",                                 "-0.4"  },
       { "rtx.legacyMaterial.roughnessConstant",                 "0.1"   },
       { "rtx.opacityMicromap.enable",                           "True"  },
+      { "rtx.decals.maxOffsetIndex",                            "64" },
       // TODO (REMIX-656): Remove this once we can transition content to new hash
       { "rtx.geometryGenerationHashRuleString", "positions,"
                                                 "indices,"

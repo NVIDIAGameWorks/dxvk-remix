@@ -183,11 +183,18 @@ namespace dxvk {
     RW_RTX_OPTION("rtx", fast_unordered_set, decalTextures, {},
                   "Textures on draw calls used for static geometric decals or decals with complex topology.\n"
                   "These materials will be blended over the materials underneath them when decal material blending is enabled.\n"
-                  "A small configurable offset is applied to each flat part of these decals to prevent coplanar geometric cases (which poses problems for ray tracing).");
+                  "A small configurable offset is applied to each flat/co-planar part of these decals to prevent coplanar geometric cases (which poses problems for ray tracing).");
     RW_RTX_OPTION("rtx", fast_unordered_set, dynamicDecalTextures, {},
                   "Textures on draw calls used for dynamically spawned geometric decals, such as bullet holes.\n"
                   "These materials will be blended over the materials underneath them when decal material blending is enabled.\n"
-                  "A small configurable offset is applied to each flat part of these decals to prevent coplanar geometric cases (which poses problems for ray tracing).");
+                  "A small configurable offset is applied to each quad part of these decals to prevent coplanar geometric cases (which poses problems for ray tracing).");
+    RW_RTX_OPTION("rtx", fast_unordered_set, singleOffsetDecalTextures, {},
+                  "Textures on draw calls used for geometric decals that don't inter-overlap for a given texture hash. Textures must be tagged as \"Decal Texture\" or \"Dynamic Decal Texture\" to apply.\n"
+                  "Applies a single shared offset to all the batched decal geometry rendered in a given draw call, rather than increasing offset per decal within the batch (i.e. a quad in case of \"Dynamic Decal Texture\").\n"
+                  "Note, the offset adds to the global offset among all decals drawn with different draw calls.\n"
+                  "The decal textures tagged this way must not inter-overlap within a batch / single draw call since the same offset is applied to all of them.\n"
+                  "Applying a single offset is useful for stabilizing decal offsets when a game dynamically batches decals together.\n"
+                  "In addition, it makes the global decal offset index grow slower and thus it minimizes a chance of hitting the \"rtx.decals.maxOffsetIndex limit\".");
     RW_RTX_OPTION("rtx", fast_unordered_set, nonOffsetDecalTextures, {},
                   "Textures on draw calls used for geometric decals with arbitrary topology that are already offset from the base geometry.\n"
                   "These materials will be blended over the materials underneath them when decal material blending is enabled.\n"
@@ -509,7 +516,22 @@ namespace dxvk {
                "A global scale factor applied to the albedo of decals that are applied to a translucent base material, to make the decals more visible.\n"
                "This is generally needed as albedo values for decals may be fairly low when dealing with opaque surfaces, but the translucent diffuse layer requires a fairly high albedo value to result in an expected look.\n"
                "The need for this option could be avoided by simply authoring decals applied to translucent materials with a higher albedo to begin with, but sometimes applications may share decals between different material types.");
-    RTX_OPTION("rtx", float, decalNormalOffset, 0.003f, "Distance along normal to offset between two adjacent decals to prevent coplanar rendering issues such as Z-fighting.");
+
+    struct Decals {
+      friend class RtxOptions;
+      friend class ImGUI;
+
+      RTX_OPTION("rtx.decals", float, offsetMultiplierMeters, 0.00003f, 
+                 "[meters] Distance along a normal to offset between two adjacent decal offset indices to prevent coplanar rendering issues such as Z-fighting.\n"
+                 "This value is multiplied by a decal offset index. The value should be kept small so as not make decals appear floating in front of their target backgrounds.");
+      RTX_OPTION("rtx.decals", uint32_t, baseOffsetIndex, 1, "Offset index of a first decal.");
+      RTX_OPTION("rtx.decals", uint32_t, maxOffsetIndex, 256, 
+                 "Max decal offset index. The offset index wraps around when this value is reached and is set to baseOffsetIndex again.\n"
+                 "The value should be kept small so as not to offset decals too far from their target backgrounds.");
+      RTX_OPTION("rtx.decals", uint32_t, offsetIndexIncreaseBetweenDrawCalls, 1, "Index offset increase between decal draw calls. This can be useful to increase if default index of 1 is not enough to move decals from different draw calls apart enough.");
+
+    };
+
     RTX_OPTION("rtx", float, worldSpaceUiBackgroundOffset, -0.01f, "Distance along normal to offset objects rendered as worldspace UI, specifically for the background of screens.");
 
     // Light Selection/Sampling Options
@@ -1125,6 +1147,10 @@ namespace dxvk {
       return dynamicDecalTextures().find(h) != dynamicDecalTextures().end();
     }
 
+    static bool isSingleOffsetDecalTexture(const XXH64_hash_t& h) {
+      return singleOffsetDecalTextures().find(h) != singleOffsetDecalTextures().end();
+    }
+
     bool isNonOffsetDecalTexture(const XXH64_hash_t& h) const {
       return nonOffsetDecalTextures().find(h) != nonOffsetDecalTextures().end();
     }
@@ -1248,7 +1274,6 @@ namespace dxvk {
     bool isUnorderedResolveInIndirectRaysEnabled() const { return enableUnorderedResolveInIndirectRays(); }
     bool isDecalMaterialBlendingEnabled() const { return enableDecalMaterialBlending(); }
     float getTranslucentDecalAlbedoFactor() const { return translucentDecalAlbedoFactor(); }
-    float getDecalNormalOffset() const { return decalNormalOffset(); }
     float getRussianRouletteMaxContinueProbability() const { return russianRouletteMaxContinueProbability(); }
     float getRussianRoulette1stBounceMinContinueProbability() const { return russianRoulette1stBounceMinContinueProbability(); }
     float getRussianRoulette1stBounceMaxContinueProbability() const { return russianRoulette1stBounceMaxContinueProbability(); }
