@@ -838,6 +838,9 @@ namespace dxvk {
       RTX_OPTION_FLAG_ENV("rtx.automation", bool, disableUpdateUpscaleFromDlssPreset, false, RtxOptionFlags::NoSave, "RTX_AUTOMATION_DISABLE_UPDATE_UPSCALER_FROM_DLSS_PRESET",
                           "Disables updating upscaler from DLSS preset.\n"
                           "This option is typically meant for automation of tests for which we don't want upscaler to be updated based on a DLSS preset.");
+      RTX_OPTION_FLAG_ENV("rtx.automation", bool, suppressAssetLoadingErrors, false, RtxOptionFlags::NoSave, "RTX_AUTOMATION_SUPPRESS_ASSET_LOADING_ERRORS",
+                          "Suppresses asset loading errors by turning them into warnings.\n"
+                          "This option is typically meant for automation of tests for which acceptable asset loading issues are known.");
     };
 
   public:
