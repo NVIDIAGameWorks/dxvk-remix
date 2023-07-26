@@ -303,6 +303,8 @@ Rc<ManagedTexture> UsdMod::Impl::getTexture(const Args& args, const pxr::UsdPrim
       auto device = args.context->getDevice();
       auto& textureManager = device->getCommon()->getTextureManager();
       return textureManager.preloadTextureAsset(assetData, colorSpace, args.context, forcePreload);
+    } else if (RtxOptions::Automation::suppressAssetLoadingErrors()) {
+      Logger::warn(str::format("Texture ", resolvedTexturePath, " asset data cannot be found or corrupted."));
     } else {
       Logger::err(str::format("Texture ", resolvedTexturePath, " asset data cannot be found or corrupted."));
     }
