@@ -289,6 +289,24 @@ namespace dxvk {
      */
     void logOptions(const char* configName) const;
     // NV-DXVK end
+    
+    // NV-DXVK start: Generic config parsing, reduce duped code
+    enum Type {
+      Type_User,
+      Type_App,
+      Type_RtxUser,
+      Type_RtxMod,
+      Type_kSize
+    };
+    struct Desc{
+      std::string name;
+      std::string env;
+      std::string confName;
+    };
+    static const Desc& getDesc(const Type& type) { return m_descs[type]; }
+    template<Type type>
+    static Config getConfig(const std::string& configPath = "");
+    // NV-DXVK end
 
     /**
      * \brief Retrieves default options for an app
@@ -297,24 +315,6 @@ namespace dxvk {
      * \returns Default options for the application
      */
     static Config getAppConfig(const std::string& appName);
-
-    /**
-     * \brief Retrieves user configuration
-     * 
-     * Reads options from the configuration file,
-     * if it can be found, or an empty option set.
-     * \returns User-defined configuration options
-     */
-    static Config getUserConfig();
-
-    /**
-     * \brief Retrieves rtx user configuration
-     *
-     * Reads options from the configuration file,
-     * if it can be found, or an empty option set.
-     * \returns User-defined configuration options
-     */
-    static Config getRtxUserConfig(const std::string& baseGameModPath = "");
 
     static std::string toLower(std::string str);
 
@@ -395,6 +395,15 @@ namespace dxvk {
 
     std::string getOptionValue(
       const char*         option) const;
+      
+    // NV-DXVK start: Generic config parsing, reduce duped code
+    static const inline std::array<Desc,Type_kSize> m_descs {
+      Desc{"User","DXVK_CONFIG_FILE","dxvk.conf"},
+      Desc{"App","",""},
+      Desc{"RtxUser","DXVK_RTX_CONFIG_FILE","rtx.conf"},
+      Desc{"RtxMod","","rtx.conf"}
+    };
+    // NV-DXVK end
 
   };
 

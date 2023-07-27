@@ -138,7 +138,6 @@ namespace dxvk {
     // NV-DXVK end
 
   private:
-
     Config              m_config;
     DxvkOptions         m_options;
     // NV-DXVK start: Integrate Aftermath
@@ -162,6 +161,12 @@ namespace dxvk {
     
     static void logNameList(const DxvkNameList& names);
     
+    // NV-DXVK start: Custom config loading/logging
+    std::array<Config,Config::Type_kSize> m_confs;
+    void initConfigs();
+    template<Config::Type type>
+    void initConfig();
+    // NV-DXVK end 
   };
   
 }
