@@ -25,6 +25,7 @@
 #include <iostream>
 #include <regex>
 #include <utility>
+#include <filesystem>
 
 #include "config.h"
 
@@ -1006,8 +1007,10 @@ namespace dxvk {
     // Open the file if it exists
     std::ifstream stream(str::tows(filePath.c_str()).c_str());
 
-    if (!stream)
+    if (!stream) {
+      Logger::info(str::format("No config file found at: ", filePath));
       return config;
+    }
     
     // Inform the user that we loaded a file, might
     // help when debugging configuration issues
@@ -1023,6 +1026,7 @@ namespace dxvk {
     while (std::getline(stream, line))
       parseUserConfigLine(config, ctx, line);
     
+    Logger::info("Parsed config file.");
     return config;
   }
   // NV-DXVK end
@@ -1354,6 +1358,44 @@ namespace dxvk {
     return false;
   }
 
+  // NV-DXVK start: Generic config parsing, reduce duped code
+  template<Config::Type type>
+  Config Config::getConfig(const std::string& configPath) {
+    const Desc& desc = getDesc(type);
+    const std::string envVarName(desc.env);
+    Logger::info(str::format("Looking for config: ", desc.name));
+    // Getting a default "App" Config doesn't require parsing a file.
+    if constexpr(type == Type_App) {
+      const auto exePath = env::getExePath();
+      return getAppConfig(exePath);
+    // A previous conf file has explicitly stated a future conf file must be used...
+    } else if(!configPath.empty()) {
+      const std::string filePath = configPath + "/" + desc.confName;
+      Logger::info(str::format("Attempting to parse: ", filePath, "..."));
+      return parseConfigFile(filePath);
+    // A relevant env var has been set
+    } else if (!envVarName.empty()) {
+      std::stringstream filePathsSS(env::getEnvVar(envVarName.c_str()));
+      Logger::info(str::format("Env[", desc.env, "]: ", filePathsSS.str()));
+      std::string filePath;
+      Config config;
+      while(std::getline(filePathsSS, filePath, ',')) {
+        Logger::info(str::format("Attempting to parse: ", filePath, "..."));
+        config.merge(parseConfigFile(filePath));
+      }
+      return config;
+    // As a last resort, look in the CWD for the conf file
+    } else {
+      Logger::info(str::format("Attempting to parse: ", desc.confName,
+                               " at CWD(", std::filesystem::current_path(), ")..."));
+      return parseConfigFile(desc.confName);
+    }
+  }
+  template Config Config::getConfig<Config::Type_User>(const std::string& adtlPath);
+  template Config Config::getConfig<Config::Type_App>(const std::string& adtlPath);
+  template Config Config::getConfig<Config::Type_RtxUser>(const std::string& adtlPath);
+  template Config Config::getConfig<Config::Type_RtxMod>(const std::string& adtlPath);
+  // NV-DXVK end 
 
   Config Config::getAppConfig(const std::string& appName) {
     auto appConfig = std::find_if(g_appDefaults.begin(), g_appDefaults.end(),
@@ -1363,40 +1405,14 @@ namespace dxvk {
       });
     
     if (appConfig != g_appDefaults.end()) {
-      // NV-DXVK deletion: Move logging of loaded built-in configuration outside this function
+      // NV-DXVK change: Update getAppConfig logging
+      Logger::info(str::format("Found app config for executable: ", appName));
       return appConfig->second;
     }
 
+    // NV-DXVK addition: Update getAppConfig logging
+    Logger::info(str::format("Did not find app config for executable: ", appName));
     return Config();
-  }
-
-
-  Config Config::getUserConfig() {
-    // Load either $DXVK_CONFIG_FILE or $PWD/dxvk.conf
-    std::string filePath = env::getEnvVar("DXVK_CONFIG_FILE");
-
-    if (filePath == "")
-      filePath = "dxvk.conf";
-
-    return parseConfigFile(filePath);
-  }
-
-
-  Config Config::getRtxUserConfig(const std::string& baseGameModPath) {
-    // Load either $DXVK_RTX_CONFIG_FILE or $PWD/rtx.conf
-    std::string filePath = env::getEnvVar("DXVK_RTX_CONFIG_FILE");
-
-    if (filePath == "")
-      filePath = "rtx.conf";
-
-    auto config = parseConfigFile(filePath);
-
-    // Load baseGameModPath/rtx.conf and merge into RTX user config if present
-    if (baseGameModPath != "") {
-      config.merge(parseConfigFile(baseGameModPath + "/rtx.conf"));
-    }
-
-    return config;
   }
 
   void Config::serializeCustomConfig(const Config& config, std::string filePath, std::string filterStr) {
