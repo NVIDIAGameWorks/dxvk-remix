@@ -1319,6 +1319,8 @@ namespace dxvk {
 
 
   void D3D9SwapChainEx::SyncFrameLatency() {
+    ScopedCpuProfileZone();
+
     // Wait for the sync event so that we respect the maximum frame latency
     m_frameLatencySignal->wait(m_frameId - GetActualFrameLatency());
   }

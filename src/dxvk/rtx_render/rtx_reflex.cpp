@@ -137,9 +137,13 @@ namespace dxvk {
   }
 
   void RtxReflex::sleep() const {
-    // Early out if Reflex was not initialized or if the Reflex mode is set to None
+    // Early out if Reflex was not initialized
+    // Note: This Reflex sleep code is run even when the Reflex mode is set to None as this is the recommendation from the
+    // Reflex team as the API expects the sleep function to be called even in this case. Do note however that this does have
+    // a very slight performance cost which is why previously an early out was done here when the Reflex mode was set to None,
+    // though it is nothing major though that'd affect the framerate (at least in current testing).
 
-    if (!reflexInitialized() || RtxOptions::Get()->reflexMode() == ReflexMode::None) {
+    if (!reflexInitialized()) {
       return;
     }
 
