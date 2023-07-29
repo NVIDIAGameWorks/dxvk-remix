@@ -1363,6 +1363,7 @@ namespace dxvk {
   Config Config::getConfig(const std::string& configPath) {
     const Desc& desc = getDesc(type);
     const std::string envVarName(desc.env);
+    const std::string envVarPath = !envVarName.empty() ? env::getEnvVar(envVarName.c_str()) : "";
     Logger::info(str::format("Looking for config: ", desc.name));
     // Getting a default "App" Config doesn't require parsing a file.
     if constexpr(type == Type_App) {
@@ -1374,8 +1375,8 @@ namespace dxvk {
       Logger::info(str::format("Attempting to parse: ", filePath, "..."));
       return parseConfigFile(filePath);
     // A relevant env var has been set
-    } else if (!envVarName.empty()) {
-      std::stringstream filePathsSS(env::getEnvVar(envVarName.c_str()));
+    } else if (!envVarPath.empty()) {
+      std::stringstream filePathsSS(envVarPath);
       Logger::info(str::format("Env[", desc.env, "]: ", filePathsSS.str()));
       std::string filePath;
       Config config;
