@@ -651,15 +651,18 @@ namespace dxvk {
         if (rootInstanceId == UINT64_MAX) {
           rootInstanceId = instanceId;
         }
-      } else {
+      }
+    }
+    for (auto&& replacement : *pReplacements) {
+      if (replacement.type == AssetReplacement::eLight) {
         if (rootInstanceId == UINT64_MAX) {
           // TODO(TREX-1141) if we refactor instancing to depend on the pre-replacement drawcall instead
           // of the fully processed draw call, we can remove this requirement.
           Logger::err(str::format(
-              "Light prims attached to replacement meshes must come after a mesh prim.  mesh hash: ",
+              "Light prims anchored to a mesh replacement must also include actual meshes.  mesh hash: ",
               std::hex, input->getHash(RtxOptions::Get()->GeometryHashGenerationRule)
           ));
-          continue;
+          break;
         }
         RtLight localLight(replacement.lightData);
         localLight.setRootInstanceId(rootInstanceId);
