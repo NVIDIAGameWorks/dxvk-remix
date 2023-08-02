@@ -456,27 +456,10 @@ void GameExporter::exportSkeletons(const Export& exportData, ExportContext& ctx)
     assert(restTransformsAttr);
     restTransformsAttr.Set(skel.restPose);
 
-    // Create SkelAnimation prim with a pose
-    const auto skelPoseSdfPath = defaultPrimPath.AppendChild(gTokPose);
-    auto skelAnimationSchema = pxr::UsdSkelAnimation::Define(stage, skelPoseSdfPath);
-    assert(skelAnimationSchema);
-
-    // set the rotations, scales, and translations attributes on the pose
-    skelAnimationSchema.SetTransforms(skel.restPose);
-
     // Set joints attribute on both the skeleton and the pose
     auto jointsAttr = skelSchema.CreateJointsAttr();
     assert(jointsAttr);
     jointsAttr.Set(skel.jointNames);
-
-    auto jointsAttr2 = skelAnimationSchema.CreateJointsAttr();
-    assert(jointsAttr2);
-    jointsAttr2.Set(skel.jointNames);
-
-    // Bind the pose to the skeleton
-    pxr::UsdSkelBindingAPI skelBindingSchema = pxr::UsdSkelBindingAPI::Apply(skelSchema.GetPrim());
-    auto animationSource = skelBindingSchema.CreateAnimationSourceRel();
-    animationSource.AddTarget(skelAnimationSchema.GetPath());
 
     stage->Save();
 
@@ -484,10 +467,11 @@ void GameExporter::exportSkeletons(const Export& exportData, ExportContext& ctx)
     if (ctx.instanceStage != nullptr) {
       const std::string mesh_name = prefix::mesh + mesh.meshName;
       const std::string relSkelStagePath = relDirPath + name + lss::ext::usd;
+      const pxr::SdfPath skelInstancePath = gRootMeshesPath.AppendElementString(mesh_name).AppendElementString(gTokSkel);
 
-      pxr::UsdPrim mesh_prim = ctx.instanceStage->GetPrimAtPath(gRootMeshesPath.AppendElementString(mesh_name));
-      auto meshInstanceUsdReferences = mesh_prim.GetReferences();
-      meshInstanceUsdReferences.AddReference(relSkelStagePath);
+      auto skelSchema = pxr::UsdSkelSkeleton::Define(ctx.instanceStage, skelInstancePath);
+      auto skelInstanceUsdReferences = skelSchema.GetPrim().GetReferences();
+      skelInstanceUsdReferences.AddReference(relSkelStagePath, skeletonSdfPath);
     }
   }
   dxvk::Logger::debug("[GameExporter][" + exportData.debugId + "][exportSkeletons] End");
@@ -800,6 +784,7 @@ void GameExporter::exportInstances(const Export& exportData, ExportContext& ctx)
     if (isSkeleton) {
       // Set instance skeleton pose / animation
       const auto skelPoseSdfPath = fullInstancePath.AppendChild(gTokPose);
+      const auto skelSkelSdfPath = fullInstancePath.AppendChild(gTokSkel);
       auto skelAnimationSchema = pxr::UsdSkelAnimation::Define(ctx.instanceStage, skelPoseSdfPath);
       assert(skelAnimationSchema);
       const lss::Skeleton& skel = ctx.skeletons[instanceData.meshId];
@@ -812,6 +797,11 @@ void GameExporter::exportInstances(const Export& exportData, ExportContext& ctx)
             sanitizeBoneXforms(sample.xforms, skel.bindPose, exportData.meta),
             exportData.meta.numFramesCaptured == 1 ? pxr::UsdTimeCode::Default() : pxr::UsdTimeCode(sample.time));
       }
+
+      pxr::UsdPrim skelPrim = ctx.instanceStage->GetPrimAtPath(skelSkelSdfPath);
+      pxr::UsdSkelBindingAPI skelBindingSchema = pxr::UsdSkelBindingAPI::Apply(skelPrim);
+      auto animationSource = skelBindingSchema.CreateAnimationSourceRel();
+      animationSource.SetTargets({skelPoseSdfPath});
     }
 
     setTimeSampledXforms<true>(ctx.instanceStage, fullInstancePath, instanceData.firstTime, instanceData.finalTime, instanceData.xforms, exportData.meta);
