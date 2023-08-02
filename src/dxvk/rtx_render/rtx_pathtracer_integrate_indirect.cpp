@@ -45,6 +45,7 @@
 #include <rtx_shaders/integrate_indirect_miss.h>
 #include <rtx_shaders/integrate_indirect_miss_neeCache.h>
 #include <rtx_shaders/integrate_nee.h>
+#include <rtx_shaders/visualize_nee.h>
 
 #include "dxvk_scoped_annotation.h"
 #include "rtx_opacity_micromap_manager.h"
@@ -153,6 +154,48 @@ namespace dxvk {
     };
 
     PREWARM_SHADER_PIPELINE(IntegrateNEEShader);
+
+    class VisualizeNEEShader : public ManagedShader {
+      SHADER_SOURCE(VisualizeNEEShader, VK_SHADER_STAGE_COMPUTE_BIT, visualize_nee)
+      
+      BINDLESS_ENABLED()
+
+      BEGIN_PARAMETER()
+        COMMON_RAYTRACING_BINDINGS
+
+        TEXTURE2D(INTEGRATE_NEE_BINDING_SHARED_FLAGS_INPUT)
+        TEXTURE2D(INTEGRATE_NEE_BINDING_SHARED_MATERIAL_DATA0_INPUT)
+        TEXTURE2D(INTEGRATE_NEE_BINDING_SHARED_MATERIAL_DATA1_INPUT)
+
+        TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT)
+        TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_WORLD_INTERPOLATED_NORMAL_INPUT)
+        TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_PERCEPTUAL_ROUGHNESS_INPUT)
+        TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_HIT_DISTANCE_INPUT)
+        TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_ALBEDO_INPUT)
+        TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_VIEW_DIRECTION_INPUT)
+        TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_CONE_RADIUS_INPUT)
+        TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_WORLD_POSITION_INPUT)
+        TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_POSITION_ERROR_INPUT)
+        TEXTURE2D(INTEGRATE_NEE_BINDING_INDIRECT_RADIANCE_HIT_DISTANCE_INPUT)
+        TEXTURE2D(INTEGRATE_NEE_BINDING_HIT_GEOMETRY_INPUT)
+        TEXTURE2D(INTEGRATE_NEE_BINDING_RADIANCE_INPUT)
+
+
+        RW_TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_BASE_REFLECTIVITY_INPUT_OUTPUT)
+
+        RW_TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_INDIRECT_DIFFUSE_RADIANCE_HIT_DISTANCE_OUTPUT)
+        RW_TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_INDIRECT_SPECULAR_RADIANCE_HIT_DISTANCE_OUTPUT)
+        STRUCTURED_BUFFER(INTEGRATE_NEE_BINDING_RESTIR_GI_RESERVOIR_OUTPUT)
+        RW_TEXTURE2D(INTEGRATE_NEE_BINDING_BSDF_FACTOR2_OUTPUT)
+
+        RW_STRUCTURED_BUFFER(INTEGRATE_NEE_BINDING_NEE_CACHE)
+        RW_STRUCTURED_BUFFER(INTEGRATE_NEE_BINDING_NEE_CACHE_TASK)
+        RW_STRUCTURED_BUFFER(INTEGRATE_NEE_BINDING_NEE_CACHE_SAMPLE)
+        RW_TEXTURE2D(INTEGRATE_NEE_BINDING_NEE_CACHE_THREAD_TASK)
+      END_PARAMETER()
+    };
+
+    PREWARM_SHADER_PIPELINE(VisualizeNEEShader);
   }
 
   DxvkPathtracerIntegrateIndirect::DxvkPathtracerIntegrateIndirect(DxvkDevice* device) : CommonDeviceObject(device) {
@@ -311,6 +354,14 @@ namespace dxvk {
 
     ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, IntegrateNEEShader::getShader());
     ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
+
+    // Visualize the nee cache when debug view is chosen.
+    uint32_t debugViewIndex = ctx->getCommonObjects()->metaDebugView().debugViewIdx();
+    if (debugViewIndex == DEBUG_VIEW_NEE_CACHE_LIGHT_HISTOGRAM || debugViewIndex == DEBUG_VIEW_NEE_CACHE_HISTOGRAM)
+    {
+      ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, VisualizeNEEShader::getShader());
+      ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
+    }
   }
 
   DxvkRaytracingPipelineShaders DxvkPathtracerIntegrateIndirect::getPipelineShaders(const bool useRayQuery,

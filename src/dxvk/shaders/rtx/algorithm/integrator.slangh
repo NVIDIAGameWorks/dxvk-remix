@@ -236,7 +236,7 @@ bool evalNEESecondary(
   }
 
   // Accumulate throughput and hit distance
-  const float lightSampleThroughput = 1.0 / lightSample.solidAnglePdf;
+  const float lightSampleThroughput = lightSample.solidAnglePdf > 0 ? 1.0 / lightSample.solidAnglePdf : 0.0;
 
   // Accumulate Radiance
 

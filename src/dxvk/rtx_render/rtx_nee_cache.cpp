@@ -98,6 +98,10 @@ namespace dxvk {
     ImGui::Checkbox("Enable Update", &enableUpdateObject());
     ImGui::Checkbox("Enable On First Bounce", &enableOnFirstBounceObject());
     enableModeAfterFirstBounceCombo.getKey(&enableModeAfterFirstBounceObject());
+    ImGui::Checkbox("Enable Analytical Light", &enableAnalyticalLightObject());
+    ImGui::DragFloat("Specular Factor", &specularFactorObject(), 0.01f, 0.f, 20.f, "%.3f");
+    ImGui::DragFloat("Uniform Sampling Probability", &uniformSamplingProbabilityObject(), 0.01f, 0.f, 1.f, "%.3f");
+    ImGui::DragFloat("Culling Threshold", &cullingThresholdObject(), 0.001f, 0.f, 1.f, "%.3f");
     ImGui::DragFloat("Emissive Texture Sample Footprint Scale", &emissiveTextureSampleFootprintScaleObject(), 0.001f, 0.f, 20.f, "%.3f");
     ImGui::DragFloat("Age Culling Speed", &ageCullingSpeedObject(), 0.001f, 0.0f, 0.99f, "%.3f");
     ImGui::DragFloat("Cache Range", &rangeObject(), 1.f, 0.1f, 10000000.0f, "%.3f");
@@ -108,10 +112,14 @@ namespace dxvk {
     constants.neeCacheArgs.enableImportanceSampling = enableImportanceSampling();
     constants.neeCacheArgs.enableMIS = enableMIS();
     constants.neeCacheArgs.enableOnFirstBounce = enableOnFirstBounce();
+    constants.neeCacheArgs.enableAnalyticalLight = enableAnalyticalLight();
+    constants.neeCacheArgs.specularFactor = specularFactor();
+    constants.neeCacheArgs.uniformSamplingProbability = uniformSamplingProbability();
     constants.neeCacheArgs.enableModeAfterFirstBounce = enableModeAfterFirstBounce();
-    constants.neeCacheArgs.range = range();
+    constants.neeCacheArgs.range = range() * RtxOptions::Get()->sceneScale();
     constants.neeCacheArgs.emissiveTextureSampleFootprintScale = emissiveTextureSampleFootprintScale();
     constants.neeCacheArgs.ageCullingSpeed = ageCullingSpeed();
+    constants.neeCacheArgs.cullingThreshold = cullingThreshold();
   }
 
   void NeeCachePass::dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {

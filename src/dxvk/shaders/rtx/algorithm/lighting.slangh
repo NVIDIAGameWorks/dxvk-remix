@@ -35,13 +35,14 @@
 // Type 1: Generate light samples and use RIS to filter them. Compared to type 0, this option can preserve more specular samples.
 // Type 2: Naive light sampler, used for reference.
 static const int kSurfaceRISType = 1;
+static const uint16_t kInvalidLightIdx = 0xffff;
 
 // Selects and samples from a light using RTXDI. Returns if the sample and the is valid or not
 // Note: Camera used only for resolution purposes in RTXDI offset calculations.
 bool sampleLightRTXDI(
   ivec2 pixelCoordinate,
   MinimalSurfaceInteraction primarySurfaceInteraction,
-  inout LightSample lightSample, inout float inverseSelectionPdf, inout uint8_t portalID)
+  inout LightSample lightSample, inout float inverseSelectionPdf, inout uint8_t portalID, inout uint16_t lightIdx)
 {
   // Load the reservoir for this pixel from RTXDI
 
@@ -60,6 +61,7 @@ bool sampleLightRTXDI(
   
   inverseSelectionPdf = reservoir.weightSum;
   portalID = reservoir.portalIdx;
+  lightIdx = reservoir.lightIdx;
 
   // Check if the light sample has a valid PDF
 
@@ -178,7 +180,7 @@ bool sampleLightAdvancedRIS(
   MinimalSurfaceInteraction surfaceInteraction,
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
   f16vec3 viewDirection,
-  inout LightSample lightSample, inout float inverseSelectionPdf)
+  inout LightSample lightSample, inout float inverseSelectionPdf, inout uint16_t outLightIndex)
 {
   if (cb.risTotalSampleCount == 0) {
     return false;
@@ -238,6 +240,7 @@ bool sampleLightAdvancedRIS(
       {
         selectedLightTargetPdf = targetPdf;
         lightSample = candidateSample;
+        outLightIndex = id;
       }
     }
   }
@@ -271,7 +274,7 @@ bool sampleLightAdvancedRIS(
 bool sampleLightNaive(
   inout RNG randomState,
   MinimalSurfaceInteraction surfaceInteraction,
-  inout LightSample lightSample, inout float inverseSelectionPdf)
+  inout LightSample lightSample, inout float inverseSelectionPdf, out uint16_t lightIndex)
 {
   if (cb.risTotalSampleCount == 0) {
     return false;
@@ -279,7 +282,8 @@ bool sampleLightNaive(
 
   int lightCount = cb.lightRanges[lightTypeCount-1].offset + cb.lightRanges[lightTypeCount-1].count;
   const float risRnd = getNextSampleBlueNoise(randomState);
-  MemoryPolymorphicLight memoryPolymorphicLight = lights[clamp(risRnd * lightCount, 0, lightCount-1)];
+  lightIndex = clamp(risRnd * lightCount, 0, lightCount-1);
+  MemoryPolymorphicLight memoryPolymorphicLight = lights[lightIndex];
   float2 sampleCoordinates0 = float2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState));
   lightSample = memoryPolymorphicLightSampleArea(memoryPolymorphicLight, sampleCoordinates0, surfaceInteraction);
   inverseSelectionPdf = float(lightCount);
@@ -295,16 +299,16 @@ bool sampleLightRIS(
   MinimalSurfaceInteraction surfaceInteraction,
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
   f16vec3 viewDirection,
-  inout LightSample lightSample, inout float inverseSelectionPdf)
+  inout LightSample lightSample, inout float inverseSelectionPdf, inout uint16_t lightIndex)
 {
   switch(kSurfaceRISType)
   {
   case 0:
     return sampleLightBasicRIS(randomState, surfaceInteraction, lightSample, inverseSelectionPdf);
   case 1:    
-    return sampleLightAdvancedRIS(randomState, surfaceInteraction, opaqueSurfaceMaterialInteraction, viewDirection, lightSample, inverseSelectionPdf);
+    return sampleLightAdvancedRIS(randomState, surfaceInteraction, opaqueSurfaceMaterialInteraction, viewDirection, lightSample, inverseSelectionPdf, lightIndex);
   case 2:
-    return sampleLightNaive(randomState, surfaceInteraction, lightSample, inverseSelectionPdf);
+    return sampleLightNaive(randomState, surfaceInteraction, lightSample, inverseSelectionPdf, lightIndex);
   default:
     return false;
   }

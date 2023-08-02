@@ -42,7 +42,7 @@
 #include "rtx/algorithm/nee_cache.h"
 #include "rtx/external/nrd.slangh"
 
-groupshared uint3 s_task[16*8];
+groupshared ThreadTask s_task[16*8];
 groupshared int s_tarTaskCount;
 
 [shader("compute")]
@@ -57,28 +57,26 @@ void main(int2 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupThr
   GroupMemoryBarrierWithGroupSync();
 
   // Load recorded task for each pixel
-  uint cellOffset, surfaceID, primitiveID;
-  NEECache.loadThreadTask(threadIndex, cellOffset, surfaceID, primitiveID);
-  surfaceID = NEECacheUtils.convertToCurrentSurfaceID(surfaceID);
-  uint3 threadTask = uint3(cellOffset, surfaceID, primitiveID);
-  if (threadTask.y != 0xffffffff && threadTask.z != 0xffffffff)
+  ThreadTask task = NEECache.loadThreadTask(threadIndex);
+  if (task.isValid())
   {
     int oldCount;
     InterlockedAdd(s_tarTaskCount, 1, oldCount);
-    s_task[oldCount] = threadTask;
+    s_task[oldCount] = task;
   }
   GroupMemoryBarrierWithGroupSync();
 
   // Skip repeated tasks
   bool shouldBeAdded = false;
   int localTaskID = localIndex.y * 16 + localIndex.x;
-  uint3 localTask = s_task[localTaskID];
+  ThreadTask localTask = ThreadTask.createEmpty();
   if (localTaskID < s_tarTaskCount)
   {
+    localTask = s_task[localTaskID];
     bool isNew = true;
     for (int i = 0; i < localTaskID-1; ++i)
     {
-      if (all(s_task[i] == localTask))
+      if (all(s_task[i].m_data == localTask.m_data))
       {
         isNew = false;
       }
@@ -90,31 +88,67 @@ void main(int2 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupThr
   uint lightToCellI = -1;
   if (shouldBeAdded)
   {
-    int3 cellID = NEECache.offsetToCell(localTask.x);
+    int3 cellID = NEECache.offsetToCell(localTask.getCellOffset());
     if (all(cellID != -1))
-    {      
+    {
       NEECell cell = NEECache.getCell(cellID);
       if (cell.isValid())
       {
-        int prefixTask = NEECacheUtils.convertIDToPrefixSumID(localTask.y, localTask.z, PrimitiveIDPrefixSum);
-        if (prefixTask != -1)
+        vec3 cellCenter = NEECache.cellToCenterPoint(cellID);
+        float cellSize = NEECache.getCellSize();
+        float lightToCell = 0;
+        uint encodedTask = 0;
+
+        if (localTask.isLightTask())
         {
-          vec3 cellCenter = NEECache.cellToCenterPoint(cellID);
-          float cellSize = NEECache.getCellSize();
-          float lightToCell = NEECacheUtils.calculateTriangleLightToCell(localTask.yz, 0, cellCenter, cellSize);
+          uint lightIdx = localTask.getLightTask();
+          encodedTask = NEECache.encodeAnalyticalLight(lightIdx);
+          lightToCell = NEECacheUtils.calculateAnalyticLightToCell(lightIdx, 0, cellCenter, cellSize);
+        }
+        else
+        {
+          uint surfaceID, primitiveID;
+          if(localTask.getTriangleTask(surfaceID, primitiveID))
+          {
+            surfaceID = NEECacheUtils.convertToCurrentSurfaceID(surfaceID);
+            if (surfaceID != 0xffffffff)
+            {
+              int prefixTask = NEECacheUtils.convertIDToPrefixSumID(surfaceID, primitiveID, PrimitiveIDPrefixSum);
+              if (prefixTask != -1)
+              {
+                lightToCell = NEECacheUtils.calculateTriangleLightToCell(uint2(surfaceID, primitiveID), 0, cellCenter, cellSize);
+                encodedTask = prefixTask;
+              }
+            }
+          }
+        }
+
+        if (lightToCell > 0)
+        {
           lightToCellI = clamp(log(lightToCell + 1e-10) + 10, 0, 255);
-          cell.insertTask(prefixTask, lightToCellI);
+          cell.insertTask(encodedTask, lightToCellI);
         }
       }
     }
   }
 
-
   switch(cb.debugView)
   {
-  case DEBUG_VIEW_NEE_CACHE_TASK:
-    vec3 color = lightToCellI == -1 ? vec3(0,0,0.5) : lightToCellI.xxx;
-    storeInDebugView(ivec2(threadIndex), color);
-    break;
+    case DEBUG_VIEW_NEE_CACHE_TASK:
+    {
+      vec3 color = 0;
+
+      if (task.isLightTask())
+      {
+        color = vec3(0,0,1);
+      }
+      else if(task.isTriangleTask())
+      {
+        color = vec3(1,0,0);
+      }
+
+      storeInDebugView(ivec2(threadIndex), color);
+      break;
+    }
   }
 }
