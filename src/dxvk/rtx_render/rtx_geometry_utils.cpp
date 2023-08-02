@@ -213,7 +213,7 @@ namespace dxvk {
       const float* srcPosition = reinterpret_cast<float*>(drawCallState.getGeometryData().positionBuffer.mapPtr(0));
       const float* srcNormal = reinterpret_cast<float*>(drawCallState.getGeometryData().normalBuffer.mapPtr(0));
       const float* srcBlendWeight = reinterpret_cast<float*>(drawCallState.getGeometryData().blendWeightBuffer.mapPtr(0));
-      const uint32_t* srcBlendIndices = reinterpret_cast<uint32_t*>(drawCallState.getGeometryData().blendIndicesBuffer.mapPtr(0));
+      const uint8_t* srcBlendIndices = reinterpret_cast<uint8_t*>(drawCallState.getGeometryData().blendIndicesBuffer.mapPtr(0));
 
       // For CPU we are going to update a single entry at a time...
       params.dstPositionStride = 0;
