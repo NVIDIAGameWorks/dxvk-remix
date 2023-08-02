@@ -38,7 +38,7 @@ layout(binding = BINDING_BLEND_WEIGHT_INPUT)
 StructuredBuffer<float> srcBlendWeight;
 
 layout(binding = BINDING_BLEND_INDICES_INPUT) 
-StructuredBuffer<uint> srcBlendIndices;
+ByteAddressBuffer srcBlendIndices;
 
 layout(binding = BINDING_NORMAL_INPUT)
 StructuredBuffer<float> srcNormal;
