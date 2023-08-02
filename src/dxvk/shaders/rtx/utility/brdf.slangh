@@ -294,7 +294,7 @@ float16_t evalGGXNormalDistribution(f16vec2 anisotropicRoughness,
 
 // Normal Distribution (D): Isotropic GGX
 // [Heitz 2014, "Understanding the Masking-Shadowing Function in Microfacet Based BRDFs"]
-float16_t evalGGXNormalDistributionIsotropic(float16_t isotropicRoughness,
+float evalGGXNormalDistributionIsotropic(float16_t isotropicRoughness,
                                              float16_t /* n.h */ normalDotMicrofacetNormal)
 {
   // Note: Full floating point precision used here to match the anisotropic GGX NDF (for the same reasons).
@@ -306,7 +306,7 @@ float16_t evalGGXNormalDistributionIsotropic(float16_t isotropicRoughness,
     cosThetaMSq * roughnessProduct + sinThetaMSq,
     materialHighPrecisionEpsilon);
 
-  return float16_t(1.0f / pi * body * body);
+  return (1.0f / pi * body * body);
 }
 
 // Shadowing (G1): Smith Anisotropic GGX

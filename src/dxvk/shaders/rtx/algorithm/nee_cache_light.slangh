@@ -22,6 +22,7 @@
 #pragma once
 
 #include "rtx/concept/light/light_helper.slangh"
+#include "rtx/concept/light/light.slangh"
 #define NEE_CACHE_INVALID_ID -1
 
 struct NEECacheUtils
@@ -125,6 +126,7 @@ struct NEECacheUtils
     SurfaceInteraction surfaceInteraction = surfaceInteractionCreate(surface, rayInteracton, ray, false, footprintMode);
     surfaceInteraction.textureGradientX *= cb.neeCacheArgs.emissiveTextureSampleFootprintScale;
     surfaceInteraction.textureGradientY *= cb.neeCacheArgs.emissiveTextureSampleFootprintScale;
+
   #if USE_SIMIPLIFIED_MODEL
     surfaceInteraction.positionError = 0;
     surfaceInteraction.motion = 0;
@@ -216,7 +218,7 @@ struct NEECacheUtils
 
       lightIntensity = opaqueSurfaceMaterialInteraction.emissiveRadiance * surfaceInteraction.triangleArea;
     }
-  }
+  }  
 
   static float calculateGeometricTerm(vec3 surfacePosition, vec3 samplePosition, f16vec3 sampleNormal, float cellSize)
   {
@@ -225,6 +227,11 @@ struct NEECacheUtils
     float cosTheta = lerp(1.0, abs(dot(sampleNormal, normalize(offset))), saturate(cellDistance / cellSize - 1));
     cellDistance = max(cellDistance, cellSize);
     return cosTheta / (cellDistance * cellDistance);
+  }
+
+  static float calculateAgingFactor(uint age)
+  {
+    return pow(1.0 - cb.neeCacheArgs.ageCullingSpeed, float(age) + 1);
   }
 
   static float calculateTriangleLightToCell(uint2 data, uint age, vec3 cellCenter, float cellSize)
@@ -250,10 +257,49 @@ struct NEECacheUtils
       g += calculateGeometricTerm(cellCenter + vec3(0, 0, -halfCellSize), triangleCenter, triangleNormal, halfCellSize);
       g /= 6.0;
 
-      triangleLight = calcBt709Luminance(lightFlux) * g * pow(1.0 - cb.neeCacheArgs.ageCullingSpeed, float(age) + 1);
+      triangleLight = calcBt709Luminance(lightFlux) * g * calculateAgingFactor(age);
       triangleLight = clamp(triangleLight, 0, floatMax / 32.0);
     }
     return triangleLight;
+  }
+
+  static float calculateAnalyticLightToCell(int lightIndex, uint age, vec3 cellCenter, float cellSize)
+  {
+    MemoryPolymorphicLight memoryPolymorphicLight = lights[lightIndex];
+    DecodedPolymorphicLight decodedPolymorphicLight = decodePolymorphicLight(memoryPolymorphicLight);
+    VolumeInteraction volumeInteraction;
+    volumeInteraction.position = cellCenter;
+    float weight = decodedPolymorphicLightCalcWeight(decodedPolymorphicLight, volumeInteraction);
+    return weight * calculateAgingFactor(age);
+  }
+
+  static void calculateLightSampleInfo(int lightIndex, f16vec2 uv, uint age, vec3 cellCenter, float cellSize, out float16_t radiance, out vec3 offset/*direction*/)
+  {
+    float halfCellSize = cellSize * 0.5;
+
+    float totalRadiance = 0;
+    vec3 totalPosition = 0;
+    MemoryPolymorphicLight memoryPolymorphicLight = lights[lightIndex];
+    DecodedPolymorphicLight decodedPolymorphicLight = decodePolymorphicLight(memoryPolymorphicLight);
+    for (int i = 0; i < 8; ++i)
+    {
+      vec3 cellOffset = vec3(i & 1, (i >> 1) & 1, (i >> 2) & 1);
+      cellOffset = cellOffset * 2 -1;
+      cellOffset *= halfCellSize;
+
+      VolumeInteraction volumeInteraction;
+      volumeInteraction.position = cellCenter + cellOffset;
+
+      LightSample sample = memoryPolymorphicLightSampleArea(
+        memoryPolymorphicLight, uv,
+        volumeInteraction);
+
+      float r = sample.solidAnglePdf > 0.0f ? min(calcBt709Luminance(sample.radiance) / sample.solidAnglePdf, float16Max) : 0.0;
+      totalRadiance += r;
+      totalPosition += sample.position;
+    }
+    radiance = clamp(totalRadiance / 8 * calculateAgingFactor(age), 0, float16Max);
+    offset = totalPosition / 8 - cellCenter;
   }
 
   static vec2 calculateLightSampleMISWeight(OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction, vec3 inputDirection, vec3 viewDirection, float lightSampleSolidAnglePDF)

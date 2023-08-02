@@ -43,7 +43,7 @@
 #include "rtx/external/nrd.slangh"
 
 groupshared uint2 s_srcTaskList[NEE_CACHE_ELEMENTS][8];
-groupshared NEECandidate s_candidateList[NEE_CACHE_ELEMENTS * 2][8];
+groupshared uint2 s_candidateList[NEE_CACHE_ELEMENTS * 2][8];
 groupshared float s_candidateLight[NEE_CACHE_ELEMENTS * 2][8];
 groupshared int s_candidateCount[8];
 
@@ -73,9 +73,10 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   // load new id to shared memory
   int taskCount = cell.getTaskCount();
   int taskID = localIndex.x;
-  int prefixSumTask = taskID < taskCount ? cell.getTask(taskID) : -1;
-  int2 task;
-  if(!NEECacheUtils.convertPrefixSumIDToID(prefixSumTask, PrimitiveIDPrefixSum, task.x, task.y))
+  int encodedTask = taskID < taskCount ? cell.getTask(taskID) : -1;
+  int2 task = -1;
+  bool isLightSample = NEECache.isAnalyticalLight(encodedTask);
+  if (!isLightSample && !NEECacheUtils.convertPrefixSumIDToID(encodedTask, PrimitiveIDPrefixSum, task.x, task.y))
   {
     task = -1;
   }
@@ -90,7 +91,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
     uint newSurfaceID = NEECacheUtils.convertToCurrentSurfaceID(candidate.getSurfaceID());
     candidate.setSurfaceID(newSurfaceID);
     candidate.setAge(candidate.getAge() + 1);
-    s_candidateList[localIndex.x][localIndex.y] = candidate;
+    s_candidateList[localIndex.x][localIndex.y] = candidate.m_data;
   }
 
   if (localIndex.x == 0)
@@ -106,10 +107,11 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
     bool isNewTask = true;
     for (int i = 0; i < s_candidateCount[localIndex.y]; ++i)
     {
-      NEECandidate candidate = s_candidateList[i][localIndex.y];
+      NEECandidate candidate = NEECandidate.create(s_candidateList[i][localIndex.y]);
       if (all(candidate.getIDData() == task))
       {
-        s_candidateList[i][localIndex.y].setAge(0);
+        candidate.setAge(0);
+        s_candidateList[i][localIndex.y] = candidate.m_data;
         isNewTask = false;
       }
     }
@@ -122,23 +124,23 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
     int oldCount = 0;
     InterlockedAdd(s_candidateCount[localIndex.y], 1, oldCount);
     NEECandidate newCandidate = NEECandidate.create(task.x, task.y);
-    s_candidateList[oldCount][localIndex.y] = newCandidate;
+    s_candidateList[oldCount][localIndex.y] = newCandidate.m_data;
   }
   GroupMemoryBarrierWithGroupSync();
 
   // get triangle light
-  float cellSize = NEECache.getCellSize();
-  uint triangleID = localIndex.x;
-  if (triangleID < s_candidateCount[localIndex.y])
+  float neeCellSize = NEECache.getCellSize();
+  int ithTriangle = localIndex.x;
+  if (ithTriangle < s_candidateCount[localIndex.y])
   {
-    NEECandidate candidate = s_candidateList[triangleID][localIndex.y];
-    s_candidateLight[triangleID][localIndex.y] = NEECacheUtils.calculateTriangleLightToCell(candidate.getIDData(), candidate.getAge(), cellCenter, cellSize);
+    NEECandidate candidate = NEECandidate.create(s_candidateList[ithTriangle][localIndex.y]);
+    s_candidateLight[ithTriangle][localIndex.y] = NEECacheUtils.calculateTriangleLightToCell(candidate.getIDData(), candidate.getAge(), cellCenter, neeCellSize);
   }
-  triangleID = localIndex.x + NEE_CACHE_ELEMENTS;
-  if (triangleID < s_candidateCount[localIndex.y])
+  ithTriangle = localIndex.x + NEE_CACHE_ELEMENTS;
+  if (ithTriangle < s_candidateCount[localIndex.y])
   {
-    NEECandidate candidate = s_candidateList[triangleID][localIndex.y];
-    s_candidateLight[triangleID][localIndex.y] = NEECacheUtils.calculateTriangleLightToCell(candidate.getIDData(), candidate.getAge(), cellCenter, cellSize);
+    NEECandidate candidate = NEECandidate.create(s_candidateList[ithTriangle][localIndex.y]);
+    s_candidateLight[ithTriangle][localIndex.y] = NEECacheUtils.calculateTriangleLightToCell(candidate.getIDData(), candidate.getAge(), cellCenter, neeCellSize);
   }
   GroupMemoryBarrierWithGroupSync();
 
@@ -155,7 +157,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
           s_candidateLight[i][localIndex.y] = s_candidateLight[j][localIndex.y];
           s_candidateLight[j][localIndex.y] = lightI;
 
-          NEECandidate tempCandidate = s_candidateList[i][localIndex.y];
+          uint2 tempCandidate = s_candidateList[i][localIndex.y];
           s_candidateList[i][localIndex.y] = s_candidateList[j][localIndex.y];
           s_candidateList[j][localIndex.y] = tempCandidate;
         }
@@ -165,12 +167,6 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
     s_candidateCount[localIndex.y] = cb.neeCacheArgs.enable != 0 ? min(s_candidateCount[localIndex.y], NEECell.getMaxCandidateCount()) : 0;
     cell.setCandidateCount(s_candidateCount[localIndex.y]);
 
-    float totalLight0 = 0;
-    for (int i = 0; i < s_candidateCount[localIndex.y]; ++i)
-    {
-      totalLight0 += s_candidateLight[i][localIndex.y];
-    }
-    float avgLight = s_candidateCount[localIndex.y] == 0 ? 0 : totalLight0 / s_candidateCount[localIndex.y];
     float totalLight = 0;
     for (int i = 0; i < s_candidateCount[localIndex.y]; ++i)
     {
@@ -194,7 +190,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   if (localIndex.x < s_candidateCount[localIndex.y])
   {
     int candidateID = localIndex.x;
-    NEECandidate candidate = s_candidateList[candidateID][localIndex.y];
+    NEECandidate candidate = NEECandidate.create(s_candidateList[candidateID][localIndex.y]);
 
     float sampleThreshold = 0;
     for (int i = 0; i <= candidateID; ++i)
@@ -204,11 +200,6 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
     candidate.setSampleThreshold(sampleThreshold);
 
     cell.setCandidate(candidateID, candidate);
-  }
-
-  if (localIndex.x == 0)
-  {
-    cell.clearTasks();
   }
 
   GroupMemoryBarrierWithGroupSync();
@@ -237,4 +228,166 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
     cell.setSample(i, sample);
   }
 
+  // update light candidate
+  // load new id to shared memory
+  task = -1;
+  if (isLightSample)
+  {
+    task = NEECache.decodeAnalyticalLight(encodedTask);
+    task = RAB_TranslateLightIndex(task.x, false);
+    if (task.x == RTXDI_INVALID_LIGHT_INDEX)
+    {
+      task = -1;
+    }
+  }
+  taskID = localIndex.x;
+  s_srcTaskList[taskID][localIndex.y] = task;
+
+  // load old id to shared memory
+  oldIDCount = cell.getLightCandidateCount();
+  if (localIndex.x < oldIDCount)
+  {
+    int oldCount = 0;
+    NEELightCandidate candidate = cell.getLightCandidate(localIndex.x);
+    int lightID = candidate.getLightID();
+    lightID = RAB_TranslateLightIndex(lightID, false);
+    if (lightID == RTXDI_INVALID_LIGHT_INDEX)
+    {
+      lightID = -1;
+    }
+    candidate.setLightID(lightID);
+    candidate.setAge(candidate.getAge() + 1);
+    s_candidateList[localIndex.x][localIndex.y] = candidate.m_data;
+  }
+
+  if (localIndex.x == 0)
+  {
+    s_candidateCount[localIndex.y] = oldIDCount;
+  }
+  GroupMemoryBarrierWithGroupSync();
+
+  // merge tasks
+  insertTask = false;
+  if (taskID < taskCount && all(task != -1))
+  {
+    bool isNewTask = true;
+    for (int i = 0; i < taskID -1; ++i)
+    {
+      if (all(s_srcTaskList[i][localIndex.y] == task))
+      {
+        isNewTask = false;
+      }
+    }
+    for (int i = 0; i < s_candidateCount[localIndex.y]; ++i)
+    {
+      NEELightCandidate candidate = NEELightCandidate.createFromPacked(s_candidateList[i][localIndex.y]);
+      if (all(candidate.getLightID() == task.x))
+      {
+        candidate.setAge(0);
+        s_candidateList[i][localIndex.y] = candidate.m_data;
+        isNewTask = false;
+      }
+    }
+    insertTask = isNewTask;
+  }
+  GroupMemoryBarrierWithGroupSync();
+
+  if (insertTask)
+  {
+    int oldCount = 0;
+    InterlockedAdd(s_candidateCount[localIndex.y], 1, oldCount);
+    NEELightCandidate newCandidate = NEELightCandidate.create(task.x);
+    s_candidateList[oldCount][localIndex.y] = newCandidate.m_data;
+  }
+  GroupMemoryBarrierWithGroupSync();
+
+  // get triangle light
+  float cellSize = NEECache.getCellSize();
+  uint triangleID = localIndex.x;
+  if (triangleID < s_candidateCount[localIndex.y])
+  {
+    NEELightCandidate candidate = NEELightCandidate.createFromPacked(s_candidateList[triangleID][localIndex.y]);
+
+    float16_t radiance;
+    vec3 offset;
+    NEECacheUtils.calculateLightSampleInfo(candidate.getLightID(), vec2(0.5), candidate.getAge(), cellCenter, cellSize, radiance, offset);
+    candidate.setRadiance(radiance);
+    candidate.setOffset(offset);
+
+    s_candidateList[triangleID][localIndex.y] = candidate.m_data;
+    s_candidateLight[triangleID][localIndex.y] = radiance;
+  }
+  triangleID = localIndex.x + NEE_CACHE_ELEMENTS;
+  if (triangleID < s_candidateCount[localIndex.y])
+  {
+    NEELightCandidate candidate = NEELightCandidate.createFromPacked(s_candidateList[triangleID][localIndex.y]);
+
+    float16_t radiance;
+    vec3 offset;
+    NEECacheUtils.calculateLightSampleInfo(candidate.getLightID(), vec2(0.5), candidate.getAge(), cellCenter, cellSize, radiance, offset);
+    candidate.setRadiance(radiance);
+    candidate.setOffset(offset);
+
+    s_candidateList[triangleID][localIndex.y] = candidate.m_data;
+    s_candidateLight[triangleID][localIndex.y] = radiance;
+  }
+  GroupMemoryBarrierWithGroupSync();
+
+  // sort tasks
+  if (localIndex.x == 0)
+  {
+    for (int i = 0; i < s_candidateCount[localIndex.y]-1; ++i)
+    {
+      for (int j = i+1; j < s_candidateCount[localIndex.y]; ++j)
+      {
+        if (s_candidateLight[i][localIndex.y] < s_candidateLight[j][localIndex.y])
+        {
+          float lightI = s_candidateLight[i][localIndex.y];
+          s_candidateLight[i][localIndex.y] = s_candidateLight[j][localIndex.y];
+          s_candidateLight[j][localIndex.y] = lightI;
+
+          uint2 tempCandidate = s_candidateList[i][localIndex.y];
+          s_candidateList[i][localIndex.y] = s_candidateList[j][localIndex.y];
+          s_candidateList[j][localIndex.y] = tempCandidate;
+        }
+      }
+    }
+
+    int totalLightCount = cb.neeCacheArgs.enable != 0 ? min(s_candidateCount[localIndex.y], NEECell.getMaxLightCandidateCount()) : 0;
+    float totalLight = 0;
+    for (int i = 0; i < totalLightCount; ++i)
+    {
+      totalLight += s_candidateLight[i][localIndex.y];
+    }
+
+    float cullingThreshold = totalLight * cb.neeCacheArgs.cullingThreshold;
+    int validLightCount = 0;
+    float validTotalLight = 0;
+    for (int i = 0; i < totalLightCount; ++i)
+    {
+      if (s_candidateLight[i][localIndex.y] > cullingThreshold)
+      {
+        validTotalLight += s_candidateLight[i][localIndex.y];
+        validLightCount++;
+      }
+    }
+    totalLight = validTotalLight;
+    totalLightCount = validLightCount;
+    s_candidateCount[localIndex.y] = totalLightCount;
+    cell.setLightCandidateCount(totalLightCount);
+  }
+  GroupMemoryBarrierWithGroupSync();
+
+  // update nee cache
+  if (localIndex.x < s_candidateCount[localIndex.y])
+  {
+    int candidateID = localIndex.x;
+    NEELightCandidate candidate = NEELightCandidate.createFromPacked(s_candidateList[candidateID][localIndex.y]);
+    cell.setLightCandidate(candidateID, candidate);
+  }
+
+  if (localIndex.x == 0)
+  {
+    cell.clearTasks();
+  }
 }
