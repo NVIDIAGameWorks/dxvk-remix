@@ -33,14 +33,31 @@ typedef Vector4 float4;
 
 #define WriteBuffer(T) T*
 #define ReadBuffer(T) const T*
+#define ReadByteBuffer const uint8_t*
 #define ConstBuffer(T) const T&
+
+uint4 get(ReadByteBuffer buf, uint index) {
+  return uint4(buf[index], buf[index+1], buf[index+2], buf[index+3]);
+}
 #else
 #define toMatrix4(x) x
 #define Matrix4 float4x4
 
 #define WriteBuffer(T) RWStructuredBuffer<T>
 #define ReadBuffer(T) StructuredBuffer<T>
+#define ReadByteBuffer ByteAddressBuffer
 #define ConstBuffer(T) ConstantBuffer<T>
+
+uint4 get(ReadByteBuffer buf, uint index) {
+  uint packedIndices = buf.Load(index);
+  uint4 blendIndices;
+  blendIndices.x = (packedIndices >> 0) & 0xff;
+  blendIndices.y = (packedIndices >> 8) & 0xff;
+  blendIndices.z = (packedIndices >> 16) & 0xff;
+  blendIndices.w = (packedIndices >> 24) & 0xff;
+  return blendIndices;
+  // return buf.Load4(index);
+}
 #endif
 
 void skinning(const uint32_t idx,
@@ -48,33 +65,16 @@ void skinning(const uint32_t idx,
               WriteBuffer(float) dstNormal,
               ReadBuffer(float) srcPosition,
               ReadBuffer(float) srcBlendWeight,
-              ReadBuffer(uint) srcBlendIndices,
+              ReadByteBuffer srcBlendIndices,
               ReadBuffer(float) srcNormal,
               ConstBuffer(SkinningArgs) cb) {
   const uint32_t baseWeightsOffset = (cb.blendWeightOffset + idx * cb.blendWeightStride) / 4;
-  float4 blendWeights = float4(srcBlendWeight[baseWeightsOffset + 0],
-                               srcBlendWeight[baseWeightsOffset + 1],
-                               srcBlendWeight[baseWeightsOffset + 2],
-                               srcBlendWeight[baseWeightsOffset + 3]);
-
-  // When bone index buffer not used, indices default to the below
-  uint4 blendIndices = uint4(0, 1, 2, 3);
-
-  if (cb.useIndices) {
-    const uint baseIndicesOffset = (cb.blendIndicesOffset + idx * cb.blendIndicesStride) / 4;
-    const uint packedIndices = srcBlendIndices[baseIndicesOffset];
-    blendIndices.x = (packedIndices >> 0) & 0xff;
-    blendIndices.y = (packedIndices >> 8) & 0xff;
-    blendIndices.z = (packedIndices >> 16) & 0xff;
-    blendIndices.w = (packedIndices >> 24) & 0xff;
-  }
 
   // Weights are normalized to 1, the last weight is equal to the remainder
-  float totalWeight = 0;
+  float lastWeight = 1.f;
   for (uint i = 0; i < cb.numBones - 1; i++) {
-    totalWeight += blendWeights[i];
+    lastWeight -= srcBlendWeight[baseWeightsOffset + i];
   }
-  blendWeights[cb.numBones - 1] = 1.f - totalWeight;
 
   const uint baseSrcPositionOffset = (cb.srcPositionOffset + idx * cb.srcPositionStride) / 4;
   float4 position = float4(srcPosition[baseSrcPositionOffset + 0],
@@ -88,11 +88,33 @@ void skinning(const uint32_t idx,
   // Do the skinning
   float4 positionOut = 0.f;
   float4 normalOut = 0.f;
-  for (uint i = 0; i < cb.numBones; i++) {
-    if (blendWeights[i] > 0) {
-      Matrix4 bone = toMatrix4(cb.bones[blendIndices[i]]);
-      positionOut += mul(bone, position) * blendWeights[i];
-      normalOut += mul(bone, normal) * blendWeights[i];
+  if (cb.useIndices) {
+    const uint baseIndicesOffset = cb.blendIndicesOffset + idx * cb.blendIndicesStride;
+    for (uint j = 0; j < cb.numBones; j+=4) {
+      uint4 blendIndices = get(srcBlendIndices, baseIndicesOffset + j);
+      for (uint i = 0; i < 4 && i + j < cb.numBones; ++i) {
+        float blendWeight = i + j == cb.numBones - 1 ? lastWeight : srcBlendWeight[baseWeightsOffset + i + j];
+        if (blendWeight > 0) {
+          Matrix4 bone = toMatrix4(cb.bones[blendIndices[i]]);
+          positionOut += mul(bone, position) * blendWeight;
+          normalOut += mul(bone, normal) * blendWeight;
+        }
+      }
+    }
+  } else {
+    for (uint i = 0; i < cb.numBones - 1; ++i) {
+      float blendWeight = srcBlendWeight[baseWeightsOffset + i];
+      if (blendWeight > 0.f) {
+        Matrix4 bone = toMatrix4(cb.bones[i]);
+        positionOut += mul(bone, position) * blendWeight;
+        normalOut += mul(bone, normal) * blendWeight;
+      }
+    }
+    // Unwrap the last bone, since blendWeights only contains numBones - 1 weights
+    if (lastWeight > 0.f) {
+      Matrix4 bone = toMatrix4(cb.bones[cb.numBones - 1]);
+      positionOut += mul(bone, position) * lastWeight;
+      normalOut += mul(bone, normal) * lastWeight;
     }
   }
 

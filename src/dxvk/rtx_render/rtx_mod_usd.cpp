@@ -752,11 +752,6 @@ void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
       pxr::UsdGeomPrimvar jointIndicesPV = skelBinding.GetJointIndicesPrimvar();
       pxr::UsdGeomPrimvar jointWeightsPV = skelBinding.GetJointWeightsPrimvar();
       numBones = jointIndicesPV.GetElementSize();
-      if (numBones > 4) {
-        Logger::err(str::format("Prim: ", prim.GetPath().GetString(), ", has more than 4 bones per vertex.  Falling back to 4 bones per vertex."));
-        // Should be safe to fall back to just 4 bones, though vertices with more bound bones will animate wrong.
-        numBones = 4;
-      }
       if (!jointWeightsPV.HasValue()) {
         Logger::err(str::format("Prim: ", prim.GetPath().GetString(), ", has Skeleton API but no joint weights."));
       }
@@ -800,7 +795,7 @@ void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
     const size_t pointsSize = sizeof(pxr::GfVec3f);
     const size_t normalsSize = isNormalValid ? sizeof(pxr::GfVec3f) : 0;
     const size_t uvSize = isUVValid ? sizeof(pxr::GfVec2f) : 0;
-    const size_t jointIndicesSize = isJointIndicesValid ? sizeof(uint32_t): 0;
+    const size_t jointIndicesSize = isJointIndicesValid ? align(numBones, 4): 0;
     const size_t jointWeightsSize = isJointWeightsValid ? sizeof(float) * (numBones - 1) : 0; // last weight is 1 minus the other weights
     const size_t vertexStructureSize = pointsSize + normalsSize + uvSize + jointIndicesSize + jointWeightsSize;
 
@@ -880,12 +875,14 @@ void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
       }
 
       if (isJointIndicesValid) {
-        uint32_t vertIndices = 0;
-        for (int j = 0; j < numBones; ++j) {
-          vertIndices |= jointIndices[i * numBones + j] << 8 * j;
+        for (int j = 0; j < numBones; j += 4) {
+          uint32_t vertIndices = 0;
+          for (int k = 0; k < 4 && j + k < numBones; ++k) {
+            vertIndices |= jointIndices[i * numBones + j + k] << 8 * k;
+          }
+          memcpy(pBaseVertexData, &vertIndices, sizeof(float));
+          pBaseVertexData++;
         }
-        memcpy(pBaseVertexData, &vertIndices, sizeof(float));
-        pBaseVertexData++;
       }
 
       if (isJointWeightsValid) {
