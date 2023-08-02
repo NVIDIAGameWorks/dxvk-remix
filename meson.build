@@ -290,7 +290,7 @@ found_tag = ''
 ci_commit_tag = ''
 get_env_out = run_command(python_interpreter.full_path(),[global_src_root_norm + './scripts-common/get_env.py', 'CI_COMMIT_TAG'])
 if get_env_out.returncode() != 0
-  error('get_env.py failed, which is unexpected')
+  warning('get_env.py failed, ' + get_env_out.stderr().strip())
 else
   ci_commit_tag = get_env_out.stdout().replace('\n','')
 endif
