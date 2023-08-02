@@ -39,6 +39,10 @@ static const uint kRNGOffsetSampleClosestHitShader = 4;
 // Approximate number of rng samples per bounce
 static const uint kApproxRNGSamplesPerBounce = 16;
 
+#define NEE_CACHE_STATE_DISABLED 0
+#define NEE_CACHE_STATE_LAST_ENABLED 1
+#define NEE_CACHE_STATE_ENABLED 2
+
 // Path state to be passed to functions (or the CHS) handling a path vertex.
 struct PathState
 {
