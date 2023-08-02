@@ -141,6 +141,8 @@ namespace dxvk {
 
     RTX_OPTION("rtx.io", size_t, memoryBudgetMB, 256, "");
     RTX_OPTION("rtx.io", bool, useAsyncQueue, true, "");
+    RTX_OPTION_ENV("rtx.io", bool, forceCpuDecoding, false, "DXVK_RTXIO_FORCE_CPU_DECODING",
+      "Force CPU decoding in RTX IO.");
   };
 
 #else

@@ -240,6 +240,11 @@ namespace dxvk {
     instanceDesc.queueCapacity = 2048;
     instanceDesc.shareDevice = &vkDevice;
 
+    if (forceCpuDecoding()) {
+      Logger::info("Forcing RTX IO decoding on CPU.");
+      instanceDesc.flags |= RTXIO_FORCE_CPU;
+    }
+
     if (!m_isQueueDedicated) {
       instanceDesc.flags += RTXIO_VULKAN_SHARED_QUEUE;
       instanceDesc.onEvent = OnEvent;
