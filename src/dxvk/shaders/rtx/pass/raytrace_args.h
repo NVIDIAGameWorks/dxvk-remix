@@ -62,6 +62,11 @@ struct NeeCacheArgs {
   uint enableMIS;
   uint enableOnFirstBounce;
 
+  uint enableAnalyticalLight;
+  float specularFactor;
+  float uniformSamplingProbability;
+  float cullingThreshold;
+
   NeeEnableMode enableModeAfterFirstBounce;
   float ageCullingSpeed;
   float range;

@@ -304,16 +304,16 @@ void integrateDirectPath(
     // Note: Use RTXDI for NEE only if it is requested and if the primary surface is being integrated as
     // running RTXDI on secondary surfaces will attempt to use lights from the primary surface which results
     // in poor quality lighting if the surface is in a significantly different spatial location.
+    uint16_t lightIdx = kInvalidLightIdx;
     if (
       cb.enableRtxdi &&
       geometryFlags.primarySelectedIntegrationSurface)
     {
       // Select and sample a light for NEE via RTXDI
-
       rtxdiLightSampleValid = sampleLightRTXDI(
         pixelCoordinate,
         primarySurfaceInteraction,
-        lightSample, inverseSelectionPdf, sampledTransportPortalIndex);
+        lightSample, inverseSelectionPdf, sampledTransportPortalIndex, lightIdx);
     }
     else
     {
@@ -322,7 +322,7 @@ void integrateDirectPath(
       risLightSampleValid = sampleLightRIS(
         randomState,
         primarySurfaceInteraction, opaqueSurfaceMaterialInteraction, primaryMinimalRayInteraction.viewDirection,
-        lightSample, inverseSelectionPdf);
+        lightSample, inverseSelectionPdf, lightIdx);
     }
 
     // Evaluate NEE

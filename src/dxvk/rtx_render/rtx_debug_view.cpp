@@ -122,8 +122,8 @@ namespace dxvk {
         {DEBUG_VIEW_RESTIR_GI_FINAL_SHADING, "ReSTIR GI Final Shading MIS Weight"},
         {DEBUG_VIEW_RESTIR_GI_VIRTUAL_HIT_T, "ReSTIR GI Virtual Hit Distance"},
 
-        {DEBUG_VIEW_NEE_CACHE_CANDIDATE_ID, "NEE Cache Candidate"},
-        {DEBUG_VIEW_NEE_CACHE_HISTOGRAM, "NEE Cache Histogram"},
+        {DEBUG_VIEW_NEE_CACHE_LIGHT_HISTOGRAM, "NEE Cache Light Histogram"},
+        {DEBUG_VIEW_NEE_CACHE_HISTOGRAM, "NEE Cache Triangle Histogram"},
         {DEBUG_VIEW_NEE_CACHE_SAMPLE_RADIANCE, "NEE Cache Sample Radiance"},
         {DEBUG_VIEW_NEE_CACHE_TASK, "NEE Cache Task"},
 

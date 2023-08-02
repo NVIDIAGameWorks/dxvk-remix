@@ -53,6 +53,10 @@ namespace dxvk {
     RTX_OPTION("rtx.neeCache", bool, enableUpdate, true, "Enable Update.");
     RTX_OPTION("rtx.neeCache", bool, enableOnFirstBounce, true, "Enable NEE Cache on a first bounce.");
     RTX_OPTION("rtx.neeCache", NeeEnableMode, enableModeAfterFirstBounce, NeeEnableMode::SpecularOnly, "NEE Cache enable mode on a second and higher bounces. 0 means off, 1 means enabled for specular rays only, 2 means always enabled.");
+    RTX_OPTION("rtx.neeCache", bool, enableAnalyticalLight, true, "Enable NEE Cache on analytical light.");
+    RTX_OPTION("rtx.neeCache", float, specularFactor, 1.0, "Specular component factor.");
+    RTX_OPTION("rtx.neeCache", float, uniformSamplingProbability, 0.1, "Uniform sampling probability.");
+    RTX_OPTION("rtx.neeCache", float, cullingThreshold, 0.001, "Culling threshold.");
     RTX_OPTION("rtx.neeCache", float, range, 3000, "World space range.");
     RTX_OPTION("rtx.neeCache", float, emissiveTextureSampleFootprintScale, 1.0, "Emissive texture sample footprint scale.");
     RTX_OPTION("rtx.neeCache", float, ageCullingSpeed, 0.02, "This threshold determines culling speed of an old triangle. A triangle that is not detected for several frames will be deemed less important and culled quicker.");

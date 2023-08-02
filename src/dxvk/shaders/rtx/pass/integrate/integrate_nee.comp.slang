@@ -31,107 +31,6 @@
 #include "rtx/algorithm/nee_cache.h"
 #include "rtx/algorithm/integrator.slangh"
 
-
-void showDebugViews(uint2 threadIndex, GeometryFlags geometryFlags, MinimalSurfaceInteraction minimalSurfaceInteraction, RAB_Surface surface)
-{
-  // Debug views
-  switch(cb.debugView)
-  {
-  case DEBUG_VIEW_NEE_CACHE_CANDIDATE_ID:
-    if (geometryFlags.primarySelectedIntegrationSurface)
-    {
-      ivec3 cellID = NEECache.pointToCell(minimalSurfaceInteraction.position, false, vec3(0));
-      vec3 color = 0;
-      if (all(cellID != -1))
-      {
-        color = vec3(cellID + 1) / NEE_CACHE_PROBE_RESOLUTION;
-      }
-      storeInDebugView(ivec2(threadIndex), color);
-    }
-    break;
-  case DEBUG_VIEW_NEE_CACHE_HISTOGRAM:
-    if (geometryFlags.primarySelectedIntegrationSurface)
-    {
-      NEECell cell = NEECache.findCell(minimalSurfaceInteraction.position, false, vec3(0));
-      ivec3 cellID = NEECache.pointToCell(minimalSurfaceInteraction.position, false, vec3(0));
-      vec3 color = (surface.opaqueSurfaceMaterialInteraction.albedo + surface.opaqueSurfaceMaterialInteraction.baseReflectivity);
-      if (all(cellID != -1))
-      {
-        color = lerp(color, (dot(cellID, 1) & 0x1) ? vec3(1) : vec3(0), 0.3);
-      }
-      if (cell.isValid())
-      {
-        const ivec2 histogramSize = ivec2(100);
-        const ivec2 histogramPixel = vec2(threadIndex.x, cb.camera.resolution.y - threadIndex.y) % histogramSize;
-        const int padding = 2;
-        if (all(histogramPixel >= ivec2(padding)) && all(histogramPixel < ivec2(histogramSize - padding)))
-        {
-          // Get bin index
-          int legendHeight = 24;
-          int maxBinCount = NEECell.getMaxCandidateCount();
-          const ivec2 binPixel = histogramPixel - padding;
-          const float binWidth = float(histogramSize.x - padding * 2) / maxBinCount;
-          const int binHeight = histogramSize.y - padding * 2 - legendHeight;
-          int binIndex = binPixel.x / binWidth;
-
-          // Get bin threshold
-          NEECandidate candidiate = cell.getCandidate(binIndex);
-          float sampleThreshold = candidiate.getSampleThreshold();
-          float lastSampleThreshold = 0;
-          if (binIndex > 0)
-          {
-            NEECandidate candidiate = cell.getCandidate(binIndex - 1);
-            lastSampleThreshold = candidiate.getSampleThreshold();
-          }
-          float probability = sampleThreshold - lastSampleThreshold;
-
-          // Calculate histogram          
-          const ivec2 pdfPixel = binPixel - ivec2(0, legendHeight);
-          const int legendContentHeight = legendHeight - padding * 2;
-          if (binPixel.y < legendContentHeight / 3)
-          {
-            int age = candidiate.getAge();
-            color = lerp(vec3(0,1,0), vec3(1,0,0), saturate(age / 255.0));
-          }
-          else if (binPixel.y < legendContentHeight * 2 / 3)
-          {
-            // Triangle color
-            vec3 triangleCenter;
-            f16vec3 triangleNormal;
-            vec3 lightIntensity;
-            NEECacheUtils.calculateTriangleLightIntensity(candidiate.getSurfaceID(), candidiate.getPrimitiveID(), triangleCenter, triangleNormal, lightIntensity);
-            color = lightIntensity / calcBt709Luminance(lightIntensity) * 0.7;
-          }
-          else if (binPixel.y < legendContentHeight)
-          {
-            int maxSampleCount = NEE_CACHE_SAMPLES;
-            const float binWidth = float(histogramSize.x - padding * 2) / maxSampleCount;
-            int binIndex = binPixel.x / binWidth;
-            NEESample sample = cell.getSample(binIndex);
-            color = sample.radiance / (calcBt709Luminance(sample.radiance) + 1e-5) * 0.7;
-          }
-          else if(binPixel.y < legendHeight)
-          {
-            // Padding line
-            color *= 0.8;
-          }
-          else if (pdfPixel.y < binHeight * probability)
-          {
-            // Histogram
-            color = (dot(cellID, 1) & 0x1) ? vec3(1,0.5,0) : vec3(0,0,1);
-          }
-        }
-        else
-        {
-          color *= 0.8;
-        }
-      }
-      storeInDebugView(ivec2(threadIndex), color);
-    }
-    break;
-  }
-}
-
 [shader("compute")]
 [numthreads(16, 8, 1)]
 void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupThreadID)
@@ -270,6 +169,4 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
 
   PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex] = indirectDiffuseOutput;
   PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex] = indirectSpecularOutput;
-
-  showDebugViews(threadIndex, geometryFlags, minimalSurfaceInteraction, surface);
 }

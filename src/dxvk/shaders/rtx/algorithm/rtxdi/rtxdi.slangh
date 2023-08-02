@@ -11,3 +11,4 @@
 // It compares the length of world-space motion vectors to the position error scaled by this factor.
 // The value was determined experimentally.
 static const float kMaxStaticObjectMotionErrorScale = 1e-6f;
+

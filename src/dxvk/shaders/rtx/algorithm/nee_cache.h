@@ -23,6 +23,7 @@
 
 #include "rtx/algorithm/nee_cache_light.slangh"
 #include "rtx/algorithm/nee_cache_data.h"
+#include "rtx/algorithm/rtxdi/rtxdi.slangh"
 
 struct NEESample
 {
@@ -77,6 +78,124 @@ struct NEESample
     sample.radiance = radiance;
     sample.solidAnglePdf = pdf;
     return sample;
+  }
+}
+
+struct NEELightCandidate
+{
+  uint2 m_data;
+
+  static float getOffsetRange()
+  {
+    const float rangeCellCount = 16;
+    return cb.neeCacheArgs.range * (rangeCellCount / NEE_CACHE_PROBE_RESOLUTION);
+  }
+
+  static float getOffsetDelta()
+  {
+    return getOffsetRange() / 128.0;
+  }
+
+  static uint encodeOffset(vec3 offset)
+  {
+    float range = getOffsetRange();
+    float maxOffset = max(max(abs(offset.x), abs(offset.y)), abs(offset.z));
+    float scaleFactor = max(maxOffset, range);
+    offset /= scaleFactor;
+    vec3 uvw = offset * 0.5 + 0.5;
+
+    uint encodedOffset = 0;
+    encodedOffset |= uint(uvw.x * 255 + 0.5);
+    encodedOffset <<= 8;
+    encodedOffset |= uint(uvw.y * 255 + 0.5);
+    encodedOffset <<= 8;
+    encodedOffset |= uint(uvw.z * 255 + 0.5);
+    return encodedOffset;
+  }
+
+  static vec3 decodeOffset(uint encodedOffset)
+  {
+    float range = getOffsetRange();
+    vec3 uvw;
+    uvw.z = (encodedOffset & 0xff);
+    encodedOffset >>= 8;
+    uvw.y = (encodedOffset & 0xff);
+    encodedOffset >>= 8;
+    uvw.x = (encodedOffset & 0xff);
+    uvw /= 255.0;
+    uvw = uvw * 2.0 - 1.0;
+    return uvw * range;
+  }
+
+  bool isValid()
+  {
+    return m_data.x != 0xffffffff;
+  }
+
+  [mutating] void setInvalid()
+  {
+    m_data.x = 0xffffffff;
+  }
+
+  int getLightID()
+  {
+    return m_data.x & 0xffff;
+  }
+
+  [mutating] void setLightID(int lightIdx)
+  {
+    m_data.x = (m_data.x & 0xffff0000) | lightIdx;
+  }
+
+  float16_t getRadiance()
+  {
+    return uint16BitsToHalf(m_data.x >> 16);
+  }
+
+  [mutating] void setRadiance(float16_t radiance)
+  {
+    uint encodedRadiance = float16BitsToUint16(radiance);
+    m_data.x = (encodedRadiance << 16) | (m_data.x & 0xffff);
+  }
+
+  vec3 getOffset()
+  {
+    return decodeOffset(m_data.y);
+  }
+
+  [mutating] void setOffset(vec3 offset)
+  {
+    uint encodedOffset = encodeOffset(offset);
+    m_data.y = (m_data.y & 0xff000000) | encodedOffset;
+  }
+
+  uint getAge()
+  {
+    return (m_data.y >> 24) & 0xff;
+  }
+
+  [mutating] void setAge(uint age)
+  {
+    age = min(age, 255);
+    m_data.y = (m_data.y & 0xffffff) | (age << 24);
+  }
+
+  static NEELightCandidate create(uint lightIdx)
+  {
+    NEELightCandidate nee;
+    nee.m_data = 0;
+    nee.setLightID(lightIdx);
+    nee.setAge(0);
+    nee.setOffset(0.0);
+    nee.setRadiance(0);
+    return nee;
+  }
+
+  static NEELightCandidate createFromPacked(uint2 data)
+  {
+    NEELightCandidate nee;
+    nee.m_data = data;
+    return nee;
   }
 }
 
@@ -165,19 +284,34 @@ struct NEECell
   static const uint16_t s_invalidOffset = 0xffff;
   int m_offset;
 
-  int getBaseAddress()
+  uint getBaseAddress()
   {
-    return m_offset > 0 ? m_offset * NEE_CACHE_ELEMENTS * NEE_CACHE_ELEMENT_SIZE : -1;
+    return m_offset * NEE_CACHE_CELL_CANDIDATE_TOTAL_SIZE;
   }
 
-  int getTaskAddress(int idx)
+  uint getTaskBaseAddress()
   {
-    return getBaseAddress() + idx * NEE_CACHE_TASK_SIZE;
+    return m_offset * (NEE_CACHE_ELEMENTS * NEE_CACHE_ELEMENT_SIZE);
   }
 
-  int getCandidateAddress(int idx)
+  uint getTaskAddress(uint idx)
+  {
+    return getTaskBaseAddress() + idx * NEE_CACHE_TASK_SIZE;
+  }
+
+  uint getCandidateAddress(uint idx)
   {
     return getBaseAddress() + (idx + 1) * NEE_CACHE_ELEMENT_SIZE;
+  }
+
+  uint getLightCandidateBaseAddress()
+  {
+    return getBaseAddress() + NEE_CACHE_ELEMENTS * NEE_CACHE_ELEMENT_SIZE;
+  }
+
+  uint getLightCandidateAddress(uint idx)
+  {
+    return getLightCandidateBaseAddress() + (idx + 1) * NEE_CACHE_LIGHT_ELEMENT_SIZE;
   }
 
   bool isValid() { return m_offset != NEECell.s_invalidOffset; }
@@ -221,6 +355,18 @@ struct NEECell
       count++;
     }
     return NEE_CACHE_EMPTY_TASK;
+  }
+
+  uint getTaskFromIdx(int idx)
+  {
+    uint taskData = NeeCacheTask.Load(getTaskAddress(idx));
+    return taskData & 0xffffff;
+  }
+
+  void setTaskFromIdx(int idx, uint task, uint value)
+  {
+    task |= (value << 24);
+    NeeCacheTask.Store(getTaskAddress(idx), task);
   }
 
   static uint getTaskHash(uint task)
@@ -292,6 +438,116 @@ struct NEECell
   {
     NeeCache_PackedSample packed = sample.pack();
     NeeCacheSample[getSampleAddress(idx)] = packed;
+  }
+
+  static int getMaxLightCandidateCount()
+  {
+    return NEE_CACHE_LIGHT_ELEMENTS-1;
+  }
+
+  int getLightCandidateCount()
+  {
+    uint count = NeeCache.Load(getLightCandidateBaseAddress());
+    return min(count, getMaxLightCandidateCount());
+  }
+
+  void setLightCandidateCount(int count)
+  {
+    NeeCache.Store(getLightCandidateBaseAddress(), count);
+  }
+
+  NEELightCandidate getLightCandidate(int idx)
+  {
+    return NEELightCandidate.createFromPacked(NeeCache.Load2(getLightCandidateAddress(idx)));
+  }
+
+  void setLightCandidate(int idx, NEELightCandidate candidate)
+  {
+    return NeeCache.Store2(getLightCandidateAddress(idx), candidate.m_data);
+  }
+
+  float calculateLightCandidateWeight(NEELightCandidate candidate, vec3 cellCenter, vec3 surfacePoint, f16vec3 viewDirection, f16vec3 normal, float16_t specularRatio, float16_t roughness)
+  {
+    vec3 candidatePosition = candidate.getOffset() + cellCenter;
+    f16vec3 inputDirection = normalize(candidatePosition - surfacePoint + normal * NEELightCandidate.getOffsetDelta());
+
+    // Use a simplified GGX model to calculate light contribution
+    // Offset diffuse so that light at grazing angles will not be culled due to low precision input direction.
+    const float16_t cosOffset = 0.3;
+    float16_t ndoti = saturate((dot(inputDirection, normal) + cosOffset) / (float16_t(1) + cosOffset));
+    float16_t diffuseTerm = (1.0 - specularRatio) / pi;
+
+    // The specular term consists of there parts: D, G, F
+    // We simplify some of them to improve performance.
+    // For D term, we use GGX normal distribution
+    // For G term, we simply assume it to be 1
+    // For F term, we assume it's the baseReflectivity, fresnel effect is not considered.
+    f16vec3 halfVector = normalize(inputDirection + viewDirection);
+    float ndotm = saturate(dot(halfVector, normal));
+    float specularTerm = specularRatio * evalGGXNormalDistributionIsotropic(roughness, ndotm) * cb.neeCacheArgs.specularFactor * 0.25;
+
+    float radiance = candidate.getRadiance();
+    return radiance * (diffuseTerm + specularTerm) * ndoti;
+  }
+
+  void calculateLightCandidateNormalizedWeight(int ithCandidate, vec3 cellCenter, vec3 surfacePoint, f16vec3 viewDirection, f16vec3 normal, float16_t specularRatio, float16_t roughness, out float pdf)
+  {
+    int count = getLightCandidateCount();
+    float totalWeight = 0;
+    float chosenWeight = 0;
+    for (int i = 0; i < count; ++i)
+    {
+      NEELightCandidate candidate = getLightCandidate(i);
+      float weight = calculateLightCandidateWeight(candidate, cellCenter, surfacePoint, viewDirection, normal, specularRatio, roughness);
+      totalWeight += weight;
+      if (i == ithCandidate)
+      {
+        chosenWeight = weight;
+      }
+    }
+    pdf = chosenWeight / totalWeight;
+  }
+
+  void sampleLightCandidate(inout RAB_RandomSamplerState rtxdiRNG, vec2 uniformRandomNumber, vec3 cellCenter, vec3 surfacePoint, f16vec3 viewDirection, f16vec3 normal, float16_t specularRatio, float16_t roughness, inout uint16_t lightIdx, out float invPdf)
+  {
+    int lightCount = cb.lightRanges[lightTypeCount-1].offset + cb.lightRanges[lightTypeCount-1].count;
+    uint uniformLightIdx = clamp(uniformRandomNumber.y * lightCount, 0, lightCount-1);
+
+    // Use weighted reservoir sampling to cached lights.
+    // See "Spatiotemporal reservoir resampling for real-time ray tracing with dynamic direct lighting" for more details.
+    int count = getLightCandidateCount();
+    float totalWeight = 0;
+    float chosenWeight = 0;
+    float uniformWeight = 0;
+    for (int i = 0; i < count; ++i)
+    {
+      NEELightCandidate candidate = getLightCandidate(i);
+      float weight = calculateLightCandidateWeight(candidate, cellCenter, surfacePoint, viewDirection, normal, specularRatio, roughness);
+      totalWeight += weight;
+      if (weight > totalWeight * RAB_GetNextRandom(rtxdiRNG))
+      {
+        lightIdx = candidate.getLightID();
+        chosenWeight = weight;
+      }
+      if (candidate.getLightID() == uniformLightIdx)
+      {
+        uniformWeight = weight;
+      }
+    }
+
+    // Conditionally use uniform sampling to ensure unbiasedness
+    float uniformProbability = totalWeight > 0.0 ? cb.neeCacheArgs.uniformSamplingProbability : 1.0;
+    if (uniformRandomNumber.x <= uniformProbability)
+    {
+      lightIdx = uniformLightIdx;
+      chosenWeight = uniformWeight;
+    }
+
+    // wrsPdf is the probability for a given light chosen by WRS.
+    // It would be 0 if a light is not in the cache.
+    float wrsPdf = totalWeight > 0 ? chosenWeight / totalWeight : 0.0;
+    float pdf = lerp(wrsPdf, 1.0 / lightCount, uniformProbability);
+    invPdf = 1.0 / pdf;
   }
 
   int getCandidateCount()
@@ -383,8 +639,91 @@ struct NEECell
   }
 }
 
+struct ThreadTask
+{
+  uint2 m_data;
+
+  static const uint s_lightOffset   = (1 << 23);
+  static const uint s_surfaceMask   = 0xffffff;
+  static const uint s_primitiveMask = 0xffffff;
+  static const uint s_invalidTask  = 0xffffffff;
+
+  bool isValid()
+  {
+    return any(m_data != s_invalidTask);
+  }
+
+  bool isTriangleTask()
+  {
+    return isValid() && (m_data.x & 0xffffff) < s_lightOffset;
+  }
+
+  bool isLightTask()
+  {
+    return isValid() && (m_data.x & 0xffffff) >= s_lightOffset;
+  }
+
+  bool getTriangleTask(out uint surfaceID, out uint primitiveID)
+  {
+    surfaceID   = m_data.x & s_surfaceMask;
+    primitiveID = m_data.y & s_primitiveMask;
+    return surfaceID != s_surfaceMask && primitiveID != s_primitiveMask;
+  }
+
+  uint getLightTask()
+  {
+    return (m_data.x & s_surfaceMask) - s_lightOffset;
+  }
+
+  uint getCellOffset()
+  {
+    return ((m_data.y >> 24) << 8) | (m_data.x >> 24);
+  }
+
+  [mutating] void packFromTriangleTask(uint cellOffset, uint surfaceID, uint primitiveID)
+  {
+    m_data.x = ((cellOffset & 0xff) << 24) | (surfaceID & s_surfaceMask);
+    m_data.y = ((cellOffset >> 8)   << 24) | (primitiveID & s_primitiveMask);
+  }
+
+  [mutating] void packFromLightTask(uint cellOffset, uint lightID)
+  {
+    lightID += s_lightOffset;
+    m_data.x = ((cellOffset & 0xff) << 24) | (lightID & s_surfaceMask);
+    m_data.y = ((cellOffset >> 8)   << 24);
+  }
+
+  static ThreadTask createFromTriangleTask(uint cellOffset, uint surfaceID, uint primitiveID)
+  {
+    ThreadTask task;
+    task.packFromTriangleTask(cellOffset, surfaceID, primitiveID);
+    return task;
+  }
+
+  static ThreadTask createFromLightTask(uint cellOffset, uint lightID)
+  {
+    ThreadTask task;
+    task.packFromLightTask(cellOffset, lightID);
+    return task;
+  }
+
+  static ThreadTask createEmpty()
+  {
+    ThreadTask task;
+    task.m_data = s_invalidTask;
+    return task;
+  }
+}
+
 struct NEECache
 {
+  static bool isInsideCache(vec3 position)
+  {
+    vec3 cameraPos = cameraGetWorldPosition(cb.camera);
+    vec3 offset = abs(position - cameraPos);
+    return all(offset < cb.neeCacheArgs.range * 0.5);
+  }
+
   static int cellToOffset(int3 cellID)
   {
     if (any(cellID == -1))
@@ -497,6 +836,23 @@ struct NEECache
     return getCell(pointToCell(point, jittered, jitteredNumber));
   }
 
+  static const uint s_analyticalLightStartIdx = 0xff0000;
+
+  static bool isAnalyticalLight(uint idx)
+  {
+    return idx >= s_analyticalLightStartIdx;
+  }
+
+  static uint encodeAnalyticalLight(uint lightIdx)
+  {
+    return s_analyticalLightStartIdx + lightIdx;
+  }
+
+  static uint decodeAnalyticalLight(uint idx)
+  {
+    return idx - s_analyticalLightStartIdx;
+  }
+
   static void storeThreadTask(int2 pixel, uint cellOffset, uint surfaceID, uint primitiveID)
   {
     uint2 data = uint2(surfaceID, primitiveID) & 0xffffff;
@@ -515,6 +871,18 @@ struct NEECache
       surfaceID = primitiveID = 0xffffffff;
     }
     cellOffset = (data.x >> 24) | ((data.y & 0xff000000) >> 16);
+  }
+
+  static void storeThreadTask(int2 pixel, ThreadTask task)
+  {
+    NeeCacheThreadTask[pixel] = task.m_data;
+  }
+
+  static ThreadTask loadThreadTask(int2 pixel)
+  {
+    ThreadTask task;
+    task.m_data = NeeCacheThreadTask[pixel];
+    return task;
   }
 
   static bool shouldUseHigherBounceNeeCache(bool isSpecularLobe, float16_t isotropicRoughness)
