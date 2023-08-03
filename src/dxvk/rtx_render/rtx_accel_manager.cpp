@@ -170,7 +170,7 @@ namespace dxvk {
       triangleData.vertexData.deviceAddress = blasEntry.modifiedGeometryData.positionBuffer.getDeviceAddress() + blasEntry.modifiedGeometryData.positionBuffer.offsetFromSlice();
       triangleData.vertexStride = blasEntry.modifiedGeometryData.positionBuffer.stride();
       triangleData.vertexFormat = blasEntry.modifiedGeometryData.positionBuffer.vertexFormat();
-      triangleData.maxVertex = blasEntry.modifiedGeometryData.vertexCount;
+      triangleData.maxVertex = blasEntry.modifiedGeometryData.vertexCount - 1;
 
       assert((blasEntry.modifiedGeometryData.calculatePrimitiveCount() & 1) == 0);
       VkAccelerationStructureBuildRangeInfoKHR buildRange = {};
@@ -209,7 +209,7 @@ namespace dxvk {
       triangleData.vertexData.deviceAddress = blasEntry.modifiedGeometryData.positionBuffer.getDeviceAddress() + blasEntry.modifiedGeometryData.positionBuffer.offsetFromSlice();
       triangleData.vertexStride = blasEntry.modifiedGeometryData.positionBuffer.stride();
       triangleData.vertexFormat = blasEntry.modifiedGeometryData.positionBuffer.vertexFormat();
-      triangleData.maxVertex = blasEntry.modifiedGeometryData.vertexCount;
+      triangleData.maxVertex = blasEntry.modifiedGeometryData.vertexCount - 1;
 
       VkAccelerationStructureBuildRangeInfoKHR buildRange = {};
       buildRange.primitiveCount = blasEntry.modifiedGeometryData.calculatePrimitiveCount();
