@@ -159,7 +159,6 @@ namespace dxvk {
     m_lightManager.clear();
     m_rayPortalManager.clear();
     m_drawCallCache.clear();
-    m_drawCallCache.clear();
     textureManager.clear();
 
     m_previousFrameSceneAvailable = false;
@@ -193,17 +192,12 @@ namespace dxvk {
     else { // Implement anti-culling BLAS/Scene object GC
       cFrustum& cameraFrustum = getCamera().getFrustum();
 
+      fast_unordered_cache<const RtInstance*> outsideFrustumInstancesCache;
+
       auto& entries = m_drawCallCache.getEntries();
       for (auto& iter = entries.begin(); iter != entries.end();) {
         bool isAllInstancesInCurrentBlasInsideFrustum = true;
         for (const RtInstance* instance : iter->second.getLinkedInstances()) {
-          // No need to do frustum check for instances under the keeping threshold
-          const uint32_t numFramesToKeepInstances = RtxOptions::Get()->getNumFramesToKeepInstances();
-          const uint32_t currentFrame = m_device->getCurrentFrameId();
-          if (instance->getFrameLastUpdated() + numFramesToKeepInstances > currentFrame) {
-            continue;
-          }
-
           const Matrix4 objectToView = getCamera().getWorldToView(false) * instance->getBlas()->input.getTransformData().objectToWorld;
 
           bool isInsideFrustum = true;
@@ -223,6 +217,31 @@ namespace dxvk {
           } else {
             instance->markAsOutsideFrustum();
             isAllInstancesInCurrentBlasInsideFrustum = false;
+
+            // Anti-Culling GC extension:
+            // Eliminate duplicated instances that are outside of the game frustum.
+            // This is used to handle cases:
+            //   1. The game frustum is different to our frustum
+            //   2. The game culling method is NOT frustum culling
+            const XXH64_hash_t materialHash = instance->getMaterialDataHash();
+            const Vector3 pos = instance->getWorldPosition();
+            const XXH64_hash_t posHash = XXH3_64bits(&pos, sizeof(pos));
+            const XXH64_hash_t cacheHash = XXH64(&materialHash, sizeof(XXH64_hash_t), posHash);
+
+            auto it = outsideFrustumInstancesCache.find(cacheHash);
+            if (it == outsideFrustumInstancesCache.end()) {
+              // No duplication, just cache the current instance
+              outsideFrustumInstancesCache[cacheHash] = instance;
+            } else {
+              // Find potential duplication, only keep the instance that is latest updated
+              const RtInstance* cachedInstance = it->second;
+              if (instance->getFrameLastUpdated() <= cachedInstance->getFrameLastUpdated()) {
+                instance->markAsInsideFrustum();
+              } else {
+                cachedInstance->markAsInsideFrustum();
+                it->second = instance;
+              }
+            }
           }
         }
 
@@ -751,6 +770,7 @@ namespace dxvk {
   void SceneManager::onSceneObjectDestroyed(const BlasEntry& blas) {
     for (const RtInstance* instance : blas.getLinkedInstances()) {
       instance->markForGarbageCollection();
+      instance->markAsUnlinkedFromBlasEntryForGarbageCollection();
     }
   }
 

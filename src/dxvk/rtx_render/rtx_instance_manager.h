@@ -79,6 +79,7 @@ public:
   uint32_t getFrameAge() const { return m_frameLastUpdated - m_frameCreated; }
   // Signal this object should be collected on the next GC pass
   void markForGarbageCollection() const;
+  void markAsUnlinkedFromBlasEntryForGarbageCollection() const;
   void markAsInsideFrustum() const;
   void markAsOutsideFrustum() const;
   // Returns true if a new camera type was registered
@@ -129,6 +130,7 @@ private:
   mutable uint32_t m_instanceVectorId; // Index within instance vector in instance manager
 
   mutable bool m_isMarkedForGC = false;
+  mutable bool m_isUnlinkedForGC = false;
   mutable bool m_isInsideFrustum = true;
   mutable uint32_t m_frameLastUpdated = kInvalidFrameIndex;
   mutable uint32_t m_frameCreated = kInvalidFrameIndex;

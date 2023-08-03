@@ -127,6 +127,7 @@ namespace dxvk {
     // Members for which state carry over is intentionally skipped
     /*
        m_isMarkedForGC
+       m_isInsideFrustum
        m_frameLastUpdated
        m_frameCreated
        m_isCreatedByRenderer
@@ -200,6 +201,10 @@ namespace dxvk {
 
   void RtInstance::markForGarbageCollection() const {
     m_isMarkedForGC = true;
+  }
+
+  void RtInstance::markAsUnlinkedFromBlasEntryForGarbageCollection() const {
+    m_isUnlinkedForGC = true;
   }
 
   void RtInstance::markAsInsideFrustum() const {
@@ -307,8 +312,8 @@ namespace dxvk {
       const XXH64_hash_t topologicalHash = pInstance->getBlas()->input.getGeometryData().getHashForRule<rules::TopologicalHash>();
       const LegacyMaterialData& materialData = pInstance->getBlas()->input.getMaterialData();
       const bool isHighlightedInstance = (RtxOptions::Get()->highlightedTexture() != kEmptyHash) &&
-                                       ((RtxOptions::Get()->highlightedTexture() == materialData.getColorTexture().getImageHash()) ||
-                                        (RtxOptions::Get()->highlightedTexture() == materialData.getColorTexture2().getImageHash()));
+                                         ((RtxOptions::Get()->highlightedTexture() == materialData.getColorTexture().getImageHash()) ||
+                                          (RtxOptions::Get()->highlightedTexture() == materialData.getColorTexture2().getImageHash()));
       const bool enableGarbageCollection =
         !RtxOptions::AntiCulling::Object::enable() || // It's always True if anti-culling is disabled
         (pInstance->m_isInsideFrustum) ||
@@ -329,12 +334,11 @@ namespace dxvk {
         m_instances[i]->m_instanceVectorId = i;
 
         delete m_instances.back();
-        
+
         // Remove the last element
         m_instances.pop_back();
         continue;
       }
-
       ++i;
     }
   }
@@ -724,6 +728,9 @@ namespace dxvk {
     for (auto& event : m_eventHandlers)
       event.onInstanceAddedCallback(*currentInstance);
 
+    // onInstanceAddedCallback will link current instance to the BLAS
+    currentInstance->m_isUnlinkedForGC = false;
+
     return currentInstance;
   }
 
@@ -1065,13 +1072,21 @@ namespace dxvk {
   }
 
   void InstanceManager::removeInstance(RtInstance* instance) {
-    // Some view model and player instances are created in the renderer and don't have onInstanceAdded called,
-    // so not call onInstanceDestroyed either.
-    if (instance->m_isCreatedByRenderer)
+    // In these cases we skip calling onInstanceDestroyed:
+    //   1. Some view model and player instances are created in the renderer and don't have onInstanceAdded called,
+    //   so not call onInstanceDestroyed either.
+    //
+    //   2. Some BLAS were cleared in the SceneManager::garbageCollection().
+    //   When a BLAS is destroyed, all instances that linked to it will be automatically unlinked. In such case we don't need to
+    //   call onInstanceDestroyed to double unlink the instances.
+    //   Note: This case often happens when BLAS are destroyed faster than instances. (e.g. numFramesToKeepGeometryData >= numFramesToKeepInstances)
+    if (instance->m_isCreatedByRenderer || instance->m_isUnlinkedForGC) {
       return;
+    }
 
-    for (auto& event : m_eventHandlers)
+    for (auto& event : m_eventHandlers) {
       event.onInstanceDestroyedCallback(*instance);
+    }
   }
 
   RtInstance* InstanceManager::createViewModelInstance(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList,
