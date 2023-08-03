@@ -460,7 +460,7 @@ namespace dxvk {
     pushArgs.topology = (uint32_t) input.topology;
     pushArgs.useIndexBuffer = (input.indexBuffer.defined() && input.indexCount > 0) ? 1 : 0;
     pushArgs.minVertex = 0;
-    pushArgs.maxVertex = input.vertexCount;
+    pushArgs.maxVertex = input.vertexCount - 1;
 
     ctx->getCommonObjects()->metaGeometryUtils().dispatchGenTriList(ctx, pushArgs, DxvkBufferSlice(output), pushArgs.useIndexBuffer ? &input.indexBuffer : nullptr);
 
