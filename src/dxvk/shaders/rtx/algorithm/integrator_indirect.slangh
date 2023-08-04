@@ -341,7 +341,7 @@ void integratePathVertex(
 #endif // SURFACE_MATERIAL_RESOLVE_TYPE_RAY_PORTAL
     bool isNeeEnabledOnBounce = (pathState.bounceIteration == 1 && cb.neeCacheArgs.enableOnFirstBounce) ||
      (pathState.bounceIteration > 1 && cb.neeCacheArgs.enableModeAfterFirstBounce != NeeEnableMode::None && pathState.enableNeeCacheAfterFirstBounce);
-    if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && isNeeEnabledOnBounce && any(emissiveLight) > 0 && pathState.neeCacheCellOffset != NEECell.s_invalidOffset)
+    if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && isNeeEnabledOnBounce && any(emissiveLight > 0) && pathState.neeCacheCellOffset != NEECell.s_invalidOffset)
     {
       uint cellOffset = pathState.neeCacheCellOffset;
       NEECell cell = NEECache.getCell(cellOffset);
@@ -838,7 +838,7 @@ void integrateIndirectPath(
   if (firstSampledSolidAnglePdf == float16_t(0))
     pathState.continuePath = false;
 
-  pathState.continuePath &= any(pathState.throughput) > 0;
+  pathState.continuePath &= any(pathState.throughput > 0);
 
   // Integrate Secondary Vertices
 
