@@ -230,6 +230,8 @@ struct MemoryPathState : IPayload
 #else
   bool shouldReorder(out uint coherenceHints, out uint numCoherenceHints)
   {
+    coherenceHints = 0;
+    numCoherenceHints = 0;
     return false;
   }
 #endif
