@@ -40,8 +40,8 @@
 #define omm_validation_assert(x)
 #endif
 
-const VkDeviceSize kOmmBufferAlignment = 16;
-const VkDeviceSize kMicromapBufferAlignment = 256;
+const VkDeviceSize kBufferAlignment = 16;
+const VkDeviceSize kBufferInBlasUsageAlignment = 256;
 
 namespace dxvk {
   DxvkOpacityMicromap::DxvkOpacityMicromap(DxvkDevice& device) : m_vkd(device.vkd()) { }
@@ -1080,6 +1080,8 @@ namespace dxvk {
         ONCE(Logger::warn(str::format("[RTX - Opacity Micromap] Failed to allocate triangle buffers due to m_device->createBuffer() failing to allocate a buffer for size: ", ommBufferInfo.size)));
         return OpacityMicromapManager::OmmResult::OutOfMemory;
       }
+
+      ommBufferInfo.usage |= VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
       
       ommBufferInfo.size = triangleIndexBufferSize;
       triangleIndexBuffer = device->createBuffer(ommBufferInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXOpacityMicromap);
@@ -1148,7 +1150,7 @@ namespace dxvk {
     const uint32_t opacityMicromapBufferSize = numTriangles * opacityMicromapPerTriangleBufferSize;
 
     // Account for any alignments at start and the end of buffers
-    arrayBufferDeviceSize = opacityMicromapBufferSize + 2 * kOmmBufferAlignment;
+    arrayBufferDeviceSize = opacityMicromapBufferSize + 2 * kBufferAlignment;
 
     // Fill out VkMicromapUsageEXT with size information
     // For now all triangles are in the same micromap group
@@ -1171,11 +1173,11 @@ namespace dxvk {
 
     // Account for any alignments at start and the end of buffers
     blasOmmBuffersDeviceSize =
-      triangleArrayBufferSize + 2 * kOmmBufferAlignment +
-      triangleIndexBufferSize + 2 * kOmmBufferAlignment +
-      sizeInfo.micromapSize + 2 * kMicromapBufferAlignment;
+      triangleArrayBufferSize + 2 * kBufferAlignment +
+      triangleIndexBufferSize + 2 * kBufferInBlasUsageAlignment +
+      sizeInfo.micromapSize + 2 * kBufferInBlasUsageAlignment;
   }
-  
+
   OpacityMicromapManager::OmmResult OpacityMicromapManager::bakeOpacityMicromapArray(
     Rc<DxvkContext> ctx,
     Rc<DxvkCommandList> cmdList,
@@ -1343,7 +1345,7 @@ namespace dxvk {
     {
       // Create buffer
       DxvkBufferCreateInfo ommBufferInfo = { VK_STRUCTURE_TYPE_MICROMAP_CREATE_INFO_EXT };
-      ommBufferInfo.usage = VK_BUFFER_USAGE_MICROMAP_STORAGE_BIT_EXT;
+      ommBufferInfo.usage = VK_BUFFER_USAGE_MICROMAP_STORAGE_BIT_EXT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
       // ToDo: revisit. Access should be VK_ACCESS_2_MICROMAP_WRITE_BIT_EXT, but the EXT flag is not compatible here
       // The access is covered by a proper VkMemoryBarrier2 later
       ommBufferInfo.access = VK_ACCESS_MEMORY_WRITE_BIT;
