@@ -52,6 +52,8 @@ layout(r32ui, binding = DEBUG_VIEW_BINDING_INSTRUMENTATION_INPUT)
 Texture2D<uint> Instrumentation;
 layout(rgba16f, binding = DEBUG_VIEW_BINDING_COMPOSITE_OUTPUT_INPUT)
 Texture2D<float4> CompositeOutput;
+layout(rgba16f, binding = DEBUG_VIEW_BINDING_TERRAIN_INPUT)
+Texture2D<float4> TerrainTexture;
 
 layout(r32ui, binding = DEBUG_VIEW_BINDING_HDR_WAVEFORM_RED_INPUT_OUTPUT)
 RWTexture2D<uint> HDRWaveformRedInputOutput;
@@ -66,8 +68,6 @@ SamplerState NearestSampler;
 layout(binding = DEBUG_VIEW_BINDING_LINEAR_SAMPLER)
 SamplerState LinearSampler;
 
-layout(rgba16f, binding = DEBUG_VIEW_BINDING_TERRAIN_INPUT)
-Texture2D<float4> TerrainTexture;
 
 layout(binding = DEBUG_VIEW_BINDING_CONSTANTS_INPUT)
 ConstantBuffer<DebugViewArgs> cb;
