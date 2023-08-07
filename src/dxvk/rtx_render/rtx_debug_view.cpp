@@ -99,6 +99,8 @@ namespace dxvk {
         {DEBUG_VIEW_VIRTUAL_HIT_DISTANCE, "Virtual Hit Distance"},
         {DEBUG_VIEW_PRIMARY_DEPTH, "Primary Depth" },
 
+        {DEBUG_VIEW_SHARED_BIAS_CURRENT_COLOR_MASK, "DLSS Bias Color Mask"},
+
         {DEBUG_VIEW_BLUE_NOISE, "Blue Noise"},
         {DEBUG_VIEW_PIXEL_CHECKERBOARD, "Pixel Checkerboard"},
         {DEBUG_VIEW_VOLUME_RADIANCE_DEPTH_LAYERS, "Volume Radiance Depth Layers"},
@@ -617,6 +619,9 @@ namespace dxvk {
         ctx->bindResourceView(DEBUG_VIEW_BINDING_FINAL_SHADING_INPUT, rtOutput.m_finalOutput.view, nullptr);
         ctx->bindResourceView(DEBUG_VIEW_BINDING_COMPOSITE_OUTPUT_INPUT, rtOutput.m_compositeOutput.view(Resources::AccessType::Read), nullptr);
         ctx->bindResourceView(DEBUG_VIEW_BINDING_INSTRUMENTATION_INPUT, m_instrumentation.view, nullptr);
+        const auto& terrain = m_device->getCommon()->getResources().getTerrainTexture(ctx);
+        ctx->bindResourceView(DEBUG_VIEW_BINDING_TERRAIN_INPUT, terrain.view, nullptr);
+
         ctx->bindResourceView(DEBUG_VIEW_BINDING_HDR_WAVEFORM_RED_INPUT_OUTPUT, m_hdrWaveformRed.view, nullptr);
         ctx->bindResourceView(DEBUG_VIEW_BINDING_HDR_WAVEFORM_GREEN_INPUT_OUTPUT, m_hdrWaveformGreen.view, nullptr);
         ctx->bindResourceView(DEBUG_VIEW_BINDING_HDR_WAVEFORM_BLUE_INPUT_OUTPUT, m_hdrWaveformBlue.view, nullptr);
@@ -625,8 +630,6 @@ namespace dxvk {
         ctx->bindResourceSampler(DEBUG_VIEW_BINDING_NEAREST_SAMPLER, nearestSampler);
         ctx->bindResourceSampler(DEBUG_VIEW_BINDING_LINEAR_SAMPLER, linearSampler);
 
-        const auto& terrain = m_device->getCommon()->getResources().getTerrainTexture(ctx);
-        ctx->bindResourceView(DEBUG_VIEW_BINDING_TERRAIN_INPUT, terrain.view, nullptr);
 
         ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, DebugViewShader::getShader());
 

@@ -306,7 +306,7 @@ void geometryResolverOutputSurface(
   }
 }
 
-void geometryResolverOutputDebugView(
+void geometryResolverVertexOutputDebugView(
   uvec2 pixelCoordinate,
   Ray ray, RayInteraction rayInteraction,
   Surface surface, SurfaceInteraction surfaceInteraction,
@@ -839,6 +839,28 @@ void geometryResolverOutputDebugView(
   }
 }
 
+void geometryResolverOutputDebugView(uvec2 pixelCoordinate, 
+                                     float sharedBiasCurrentColorMask)
+{
+  switch(cb.debugView)
+  {
+  default:
+    break;
+  case DEBUG_VIEW_SHARED_BIAS_CURRENT_COLOR_MASK:
+    storeInDebugView(pixelCoordinate, sharedBiasCurrentColorMask.x);
+    break;
+  case DEBUG_VIEW_NAN:
+    {
+      bool isValid = true;
+      // DEBUG_VIEW_SHARED_BIAS_CURRENT_COLOR_MASK
+      isValid &= isValidValue(sharedBiasCurrentColorMask);
+      
+      accumulateInDebugViewAnd(pixelCoordinate, isValid);
+      break;
+    }
+  }
+}
+
 // Note: This function adds in a diffuse layer contribution for the surface from a combined diffuse layer weight. Do note this weight is typically
 // made up of a shared component and a component from the reflection and/or translucent side of things. This should be added in regardless of if reflection
 // or transmission PSR is actually done, just since there's no need to make this contribution noisy for no reason. This contribution does not work quite
@@ -1210,7 +1232,7 @@ void geometryResolverVertex(
   // Output Debug View
   // Note: This is always done on the first hit rather than the resolved "primary" hits due to the branching potential.
 
-  geometryResolverOutputDebugView(
+  geometryResolverVertexOutputDebugView(
     geometryResolverState.pixelCoordinate,
     ray, rayInteraction,
     surface, surfaceInteraction,
@@ -1776,11 +1798,13 @@ void geometryResolver(ivec2 pixelCoordinate) {
 
   geometryFlagsWriteToGBuffer(geometryFlags, ivec2(pixelCoordinate), SharedFlags);
 
-  // Resolve Reflection and Transmission PSR
-
+  // Store bias color mask
   const float luminance = calcBt709Luminance(geometryResolverState.radiance);
   const bool isRadianceOutput = luminance > 0.0f;
-  SharedBiasCurrentColorMask[pixelCoordinate] = isRadianceOutput ? 1.0f : 0.0f;
+  const float sharedBiasCurrentColorMask = isRadianceOutput ? 1.0f : 0.0f;
+  SharedBiasCurrentColorMask[pixelCoordinate] = sharedBiasCurrentColorMask;
+
+  // Store Motion Blur Surface flags
 
   MotionBlurSurfaceFlags cachedMotionBlurSurfaceFlags = motionBlurSurfaceFlagsReadFromGBuffer(PrimarySurfaceFlags[pixelCoordinate]);
 
@@ -1789,6 +1813,9 @@ void geometryResolver(ivec2 pixelCoordinate) {
   motionBlurSurfaceFlags.isStatic = cachedMotionBlurSurfaceFlags.isStatic;
   motionBlurSurfaceFlags.isEmissive = isRadianceOutput;
   motionBlurSurfaceFlagsWriteToGBuffer(motionBlurSurfaceFlags, ivec2(pixelCoordinate), PrimarySurfaceFlags);
+
+  // Output to debug view
+  geometryResolverOutputDebugView(pixelCoordinate, sharedBiasCurrentColorMask);
 }
 
 void geometryPSRResolverPass(ivec2 pixelCoordinate) {
