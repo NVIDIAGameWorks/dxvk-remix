@@ -204,8 +204,10 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
 
 
   // Boiling filter
+  // Apply a boiling filter only to thread groups that fully fit within screen bounds
   float boilingFilterMultiplier = lerp(cb.boilingFilterLowerThreshold, cb.boilingFilterHigherThreshold, VdotN);
-  if(cb.enableReSTIRGIBoilingFilter)
+  uint2 groupCornerThreadID = threadIndex & ~(RESTIR_GI_BOILING_FILTER_GROUP_SIZE - 1);
+  if(cb.enableReSTIRGIBoilingFilter && all(groupCornerThreadID + RESTIR_GI_BOILING_FILTER_GROUP_SIZE - 1 < cb.camera.resolution))
   {
     // The following code is borrowed from RTXDI SDK. Unlike RTXDI, we use boiling filter to
     // filter fireflies in the ReSTIR output data. Those fireflies may not be filtered by denoisers
