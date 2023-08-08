@@ -174,7 +174,7 @@ XXH64_hash_t getLightHash(const pxr::UsdPrim& prim) {
   return getNamedHash(prim.GetName().GetString(), prefix, len);
 }
 
-XXH64_hash_t getMaterialHash(const pxr::UsdPrim& prim) {
+XXH64_hash_t getMaterialHash(const pxr::UsdPrim& prim, const pxr::UsdPrim& shader) {
   static const pxr::TfToken kMaterialType("Material");
   static const char* prefix = lss::prefix::mat.c_str();
   static const size_t len = strlen(prefix);
@@ -186,10 +186,12 @@ XXH64_hash_t getMaterialHash(const pxr::UsdPrim& prim) {
   if (prim.GetTypeName() != kMaterialType) {
     return 0;
   }
-  // TODO this is just using prim name, will break if the same shader is overridden multiple ways in different places
-  // Need to use file name of usd with opinion being used as well as the prim name.
+
+  if (!shader.IsValid()) {
+    return 0;
+  }
   
-  XXH64_hash_t usdOriginHash = getStrongestOpinionatedPathHash(prim);
+  XXH64_hash_t usdOriginHash = getStrongestOpinionatedPathHash(shader);
 
   return usdOriginHash;
 }
@@ -374,17 +376,6 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
   static const pxr::TfToken kLegacyRayPortalIndexToken("rayPortalIndex");
   static const pxr::TfToken kLegacySpriteRotationSpeedToken("rotationSpeed"); 
 
-  XXH64_hash_t materialHash = getMaterialHash(matPrim);
-  if (materialHash == 0) {
-    return nullptr;
-  }
-
-  // Check if the material has already been processed
-  MaterialData* materialData;
-  if (m_owner.m_replacements->getObject(materialHash, materialData)) {
-    return materialData;
-  }
-
   pxr::UsdPrim shader = matPrim.GetChild(kShaderToken);
   if (!shader.IsValid() || !shader.IsA<pxr::UsdShadeShader>()) {
     auto children = matPrim.GetFilteredChildren(pxr::UsdPrimIsActive);
@@ -398,6 +389,18 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
   if (!shader.IsValid()) {
     return nullptr;
   }
+
+  XXH64_hash_t materialHash = getMaterialHash(matPrim, shader);
+  if (materialHash == 0) {
+    return nullptr;
+  }
+
+  // Check if the material has already been processed
+  MaterialData* materialData;
+  if (m_owner.m_replacements->getObject(materialHash, materialData)) {
+    return materialData;
+  }
+
 
   int spriteSheetRows = RtxOptions::Get()->getSharedMaterialDefaults().SpriteSheetRows;
   int spriteSheetCols = RtxOptions::Get()->getSharedMaterialDefaults().SpriteSheetCols;
@@ -1321,8 +1324,6 @@ void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
     Args args = {context, xformCache, materialRoot, placeholder};
 
     for (pxr::UsdPrim materialPrim : children) {
-      XXH64_hash_t hash = getMaterialHash(materialPrim);
-
       processMaterial(args, materialPrim);
     }
   }
