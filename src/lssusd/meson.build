@@ -19,8 +19,8 @@ libusd_embedded_data_files = files([
 libusd_generated_embedded_files = embedding_compiler.process(libusd_embedded_data_files)
 
 lssUsd_lib = static_library('lssUsd', lssUsd_src,[libusd_generated_embedded_files],
-  dependencies        : [ usd_dep, omni_client_dep, embedded_dep ],
-  include_directories : [ usd_include_paths, omni_client_include_path ],
+  dependencies        : [ usd_dep, embedded_dep ],
+  include_directories : [ usd_include_paths ],
   override_options    : ['cpp_std='+dxvk_cpp_std],
   cpp_args            : lss_Usd_args,)
 
