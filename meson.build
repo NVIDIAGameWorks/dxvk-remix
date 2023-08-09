@@ -377,9 +377,6 @@ embedding_compiler = generator(xxd_exe,
 
 mdl_include_dir = include_directories(join_paths(meson.global_source_root(), 'external/omni_core_materials'))
 
-# Cache include dir paths
-omni_client_include_path = include_directories('external/omni_client_library/include/')
-
 # we always use the release headers to avoid having two copies of Boost in the tree
 nv_usd_include_path = include_directories('external/nv_usd/release/include/')
 boost_include_path = include_directories('external/nv_usd/release/include/boost-1_70/')
@@ -492,10 +489,6 @@ usd_dep = declare_dependency(
   dependencies : [ usd_lib, tbb_lib ],
   # link_args : ['-L'+usd_lib_path],
   include_directories : usd_include_paths
-)
-omni_client_dep = declare_dependency(
-  dependencies : [ ],
-  include_directories : omni_client_include_path
 )
 
 reflex_dep = declare_dependency(
