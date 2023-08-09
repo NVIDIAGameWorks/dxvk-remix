@@ -22,9 +22,6 @@
     <dependency name="nv_usd" linkPath="external/nv_usd">
         <package name="rtx-remix-nv_usd" version="2" />
     </dependency>
-    <dependency name="omni_client_library" linkPath="external/omni_client_library">
-        <package name="rtx-remix-omni_client_library" version="1" />
-    </dependency>
     <dependency name="omni_core_materials" linkPath="external/omni_core_materials">
         <package name="rtx-remix-omni_core_materials" version="2" />
     </dependency>
