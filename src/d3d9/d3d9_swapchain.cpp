@@ -986,6 +986,11 @@ namespace dxvk {
     auto& reflex = m_device->getCommon()->metaReflex();
     auto& d3d9Rtx = m_parent->m_rtx;
 
+    // Note: Set the latency ping thread to this thread. This is not a great place to do this as this will be called every present, but this operation
+    // should be fairly cheap. Additionally this thread can be changed dynamically without issue so not setting it further in advance on the thread
+    // this function is called on is fine too.
+    reflex.setLatencyPingThread();
+
     // Note: Simulation ended on the same thread it started on (the main thread). This is put here specifically as when the application
     // calls into DXVK's Present this typically means it is done all its work for the frame. The application's own rendering calls are counted
     // as simulation here not rendering as they are really just mapped into Remix's geometry and other processing rather than rendering directly,
@@ -1073,6 +1078,7 @@ namespace dxvk {
     // Note: After presentation is typically where the application calling into DXVK will start its next frame simulation wise, so we put the marker here
     // on the main thread after the Reflex sleep has completed to encompass this region.
     reflex.beginSimulation(d3d9Rtx.GetReflexFrameId());
+    reflex.latencyPing(d3d9Rtx.GetReflexFrameId());
     // NV-DXVK end
   }
 

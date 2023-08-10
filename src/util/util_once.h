@@ -61,7 +61,7 @@ namespace dxvk {
   }
 }
 
-// Be sure to make sure you're within dxvk namespace 
+// Be sure to make sure you're within dxvk namespace. Additionally, this macro is not thread safe.
 #define ONCE(thing) once([=](){ thing; })
 #define WHILE_TRUE(cond, thing) whileTrue([&]() -> bool { return cond; }, [&](){ thing; })
 #define ONCE_IF_FALSE(cond, thing) onceIfFalse([&]() -> bool { return cond; }, [&](){ thing; })
