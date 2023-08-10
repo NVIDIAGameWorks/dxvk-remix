@@ -196,8 +196,7 @@ XXH64_hash_t getMaterialHash(const pxr::UsdPrim& prim, const pxr::UsdPrim& shade
   return usdOriginHash;
 }
 
-bool getVector3(const pxr::UsdPrim& prim, const pxr::TfToken& token, Vector3& vector) {
-    pxr::UsdAttribute attr = prim.GetAttribute(token);
+bool getVector3(const pxr::UsdAttribute& attr, Vector3& vector) {
     if (attr.HasValue()) {
       pxr::GfVec3f vec;
       attr.Get(&vec);
@@ -207,25 +206,46 @@ bool getVector3(const pxr::UsdPrim& prim, const pxr::TfToken& token, Vector3& ve
     return false;
 }
 
+bool getVector3(const pxr::UsdPrim& prim, const pxr::TfToken& token, Vector3& vector) {
+  return getVector3(prim.GetAttribute(token), vector);
+}
+
+// USD transitioned from `intensity` to `inputs:intensity` for all its light attributes, we need to support content
+// authored before and after that change.
+const pxr::UsdAttribute getLightAttribute(const pxr::UsdPrim& prim, const pxr::TfToken& token, const pxr::TfToken& inputToken) {
+  const pxr::UsdAttribute& attr = prim.GetAttribute(inputToken);
+  if (!attr.HasValue()) {
+    const pxr::UsdAttribute& old_attr = prim.GetAttribute(token);
+    if (old_attr.HasValue()) {
+      ONCE(Logger::warn(str::format("Legacy light attribute detected: ", old_attr.GetPath())));
+    }
+    return old_attr;
+  }
+  return attr;
+}
+
 RtLightShaping getLightShaping(const pxr::UsdPrim& lightPrim, Vector3 zAxis) {
   static const pxr::TfToken kConeAngleToken("shaping:cone:angle");
   static const pxr::TfToken kConeSoftnessToken("shaping:cone:softness");
   static const pxr::TfToken kFocusToken("shaping:focus");
+  static const pxr::TfToken kInputsConeAngleToken("inputs:shaping:cone:angle");
+  static const pxr::TfToken kInputsConeSoftnessToken("inputs:shaping:cone:softness");
+  static const pxr::TfToken kInputsFocusToken("inputs:shaping:focus");
 
   RtLightShaping shaping;
 
   shaping.primaryAxis = zAxis;
 
   float angle = 180.f;
-  lightPrim.GetAttribute(kConeAngleToken).Get(&angle);
+  getLightAttribute(lightPrim, kConeAngleToken, kInputsConeAngleToken).Get(&angle);
   shaping.cosConeAngle = cos(angle * kDegreesToRadians);
   
   float softness = 0.0f;
-  lightPrim.GetAttribute(kConeSoftnessToken).Get(&softness);
+  getLightAttribute(lightPrim, kConeSoftnessToken, kInputsConeSoftnessToken).Get(&softness);
   shaping.coneSoftness = softness;
 
   float focus = 0.0f;
-  lightPrim.GetAttribute(kFocusToken).Get(&focus);
+  getLightAttribute(lightPrim, kFocusToken, kInputsFocusToken).Get(&focus);
   shaping.focusExponent = focus;
   
   if (shaping.cosConeAngle != -1.f || shaping.coneSoftness != 0.0f || shaping.focusExponent != 0.0f ) {
@@ -1028,6 +1048,11 @@ void UsdMod::Impl::processLight(Args& args, const pxr::UsdPrim& lightPrim) {
   static const pxr::TfToken kHeightToken("height");
   static const pxr::TfToken kLengthToken("length");
   static const pxr::TfToken kAngleToken("angle");
+  static const pxr::TfToken kInputsRadiusToken("inputs:radius");
+  static const pxr::TfToken kInputsWidthToken("inputs:width");
+  static const pxr::TfToken kInputsHeightToken("inputs:height");
+  static const pxr::TfToken kInputsLengthToken("inputs:length");
+  static const pxr::TfToken kInputsAngleToken("inputs:angle");
   static constexpr float degreesToRadians = float(M_PI / 180.0);
   RtLight genericLight;
   if (args.rootPrim.IsA<pxr::UsdGeomMesh>() && lightPrim.IsA<pxr::UsdLuxDistantLight>()) {
@@ -1066,16 +1091,21 @@ void UsdMod::Impl::processLight(Args& args, const pxr::UsdPrim& lightPrim) {
   static const pxr::TfToken kColorTemperatureToken("colorTemperature");
   static const pxr::TfToken kIntensityToken("intensity");
   static const pxr::TfToken kExposureToken("exposure");
+  static const pxr::TfToken kInputsEnableColorTemperatureToken("inputs:enableColorTemperature");
+  static const pxr::TfToken kInputsColorToken("inputs:color");
+  static const pxr::TfToken kInputsColorTemperatureToken("inputs:colorTemperature");
+  static const pxr::TfToken kInputsIntensityToken("inputs:intensity");
+  static const pxr::TfToken kInputsExposureToken("inputs:exposure");
   Vector3 radiance(1.f);
   Vector3 temperature(1.f);
   float exposure = 0.0f;
   float intensity = 0.0f;
 
-  getVector3(lightPrim, kColorToken, radiance);
+  getVector3(getLightAttribute(lightPrim, kColorToken, kInputsColorToken), radiance);
   bool enableColorTemperature = false;
-  lightPrim.GetAttribute(kEnableColorTemperatureToken).Get(&enableColorTemperature);
+  getLightAttribute(lightPrim, kEnableColorTemperatureToken, kInputsEnableColorTemperatureToken).Get(&enableColorTemperature);
   if (enableColorTemperature) {
-    pxr::UsdAttribute colorTempAttr = lightPrim.GetAttribute(kColorTemperatureToken);
+    pxr::UsdAttribute colorTempAttr = getLightAttribute(lightPrim, kColorTemperatureToken, kInputsColorTemperatureToken);
     if (colorTempAttr.HasValue()) {
       float temp = 6500.f;
       colorTempAttr.Get(&temp);
@@ -1083,42 +1113,39 @@ void UsdMod::Impl::processLight(Args& args, const pxr::UsdPrim& lightPrim) {
       temperature = Vector3(vec.data());
     }
   }
-  lightPrim.GetAttribute(kExposureToken).Get(&exposure);
-
-  // Default Intensity value is different per type of light, and Kit always includes it.
-  assert(lightPrim.HasAttribute(kIntensityToken)); 
-  lightPrim.GetAttribute(kIntensityToken).Get(&intensity);
+  getLightAttribute(lightPrim, kExposureToken, kInputsExposureToken).Get(&exposure);
+  getLightAttribute(lightPrim, kIntensityToken, kInputsIntensityToken).Get(&intensity);
   
   radiance = radiance * intensity * pow(2, exposure) * temperature;
 
   // Per Light type properties.
   if (lightPrim.IsA<pxr::UsdLuxSphereLight>()) {
     float radius;
-    lightPrim.GetAttribute(kRadiusToken).Get(&radius);
+    getLightAttribute(lightPrim, kRadiusToken, kInputsRadiusToken).Get(&radius);
     RtLightShaping shaping = getLightShaping(lightPrim, -zAxis);
     genericLight = RtLight(RtSphereLight(position, radiance, radius, shaping));
   } else if (lightPrim.IsA<pxr::UsdLuxRectLight>()) {
     float width, height = 0.0f;
-    lightPrim.GetAttribute(kWidthToken).Get(&width);
-    lightPrim.GetAttribute(kHeightToken).Get(&height);
+    getLightAttribute(lightPrim, kWidthToken, kInputsWidthToken).Get(&width);
+    getLightAttribute(lightPrim, kHeightToken, kInputsHeightToken).Get(&height);
     Vector2 dimensions(width * xScale, height * yScale);
     RtLightShaping shaping = getLightShaping(lightPrim, zAxis);
     genericLight = RtLight(RtRectLight(position, dimensions, xAxis, yAxis, radiance, shaping));
   } else if (lightPrim.IsA<pxr::UsdLuxDiskLight>()) {
     float radius;
-    lightPrim.GetAttribute(kRadiusToken).Get(&radius);
+    getLightAttribute(lightPrim, kRadiusToken, kInputsRadiusToken).Get(&radius);
     Vector2 halfDimensions(radius * xScale, radius * yScale);
     RtLightShaping shaping = getLightShaping(lightPrim, zAxis);
     genericLight = RtLight(RtDiskLight(position, halfDimensions, xAxis, yAxis, radiance, shaping));
   } else if (lightPrim.IsA<pxr::UsdLuxCylinderLight>()) {
     float radius;
-    lightPrim.GetAttribute(kRadiusToken).Get(&radius);
+    getLightAttribute(lightPrim, kRadiusToken, kInputsRadiusToken).Get(&radius);
     float axisLength;
-    lightPrim.GetAttribute(kLengthToken).Get(&axisLength);
+    getLightAttribute(lightPrim, kLengthToken, kInputsLengthToken).Get(&axisLength);
     genericLight = RtLight(RtCylinderLight(position, radius, xAxis, axisLength * xScale, radiance));
   } else if (lightPrim.IsA<pxr::UsdLuxDistantLight>()) {
     float halfAngle;
-    lightPrim.GetAttribute(kAngleToken).Get(&halfAngle);
+    getLightAttribute(lightPrim, kAngleToken, kInputsAngleToken).Get(&halfAngle);
     halfAngle = halfAngle * degreesToRadians / 2.0f;
     genericLight = RtLight(RtDistantLight(zAxis, halfAngle, radiance));
   } else {
