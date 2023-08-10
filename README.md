@@ -18,7 +18,7 @@ While dxvk-remix is a fork of DXVK, please report bugs encountered with dxvk-rem
     - Note that our build system will always use the most recent version available on the system
 3. [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/sdk-archive/)
     - 10.0.19041.0 is tested
-4. [Meson](https://mesonbuild.com/) - v0.61.4 has been tested, latest version should work
+4. [Meson](https://mesonbuild.com/) - v0.61.4 has been tested, v1.2.0 does not work (missing library)
     - Follow [instructions](https://mesonbuild.com/SimpleStart.html#installing-meson) on how to install and reboot the PC before moving on (Meson will indicate as much)
 5. [Vulkan SDK](https://vulkan.lunarg.com/sdk/home#windows) - 1.3.211.0 or newer
     - You may need to uninstall previous SDK if you have an old version
