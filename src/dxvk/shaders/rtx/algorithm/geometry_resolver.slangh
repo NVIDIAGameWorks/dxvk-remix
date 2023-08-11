@@ -146,7 +146,7 @@ void geometryResolverOutputSurface(
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
   vec3 radiance, f16vec3 attenuation, f16mat3 accumulatedVectorTransform,
   uint16_t mediumMaterialIndex, float virtualHitDistance, bool directionAltered,
-  bool useAlternateDisocclusionThreshold)
+  bool useAlternateDisocclusionThreshold, bool isViewModel)
 {
   // Output Attenuation (Primary/secondary surface coherent)
 
@@ -218,11 +218,14 @@ void geometryResolverOutputSurface(
     // Write out screen-space motion.
     PrimaryScreenSpaceMotionVector[pixelCoordinate] = motionVectorPixel;
 
+    const float luminance = calcBt709Luminance(radiance);
+    const bool isRadianceOutput = luminance > 0.0f;
+
     // Write out screen-space static bit in surface flags
     MotionBlurSurfaceFlags motionBlurSurfaceFlags;
-    motionBlurSurfaceFlags.isViewModel = false;
+    motionBlurSurfaceFlags.isViewModel = isViewModel;
     motionBlurSurfaceFlags.isStatic = surface.isStatic;
-    motionBlurSurfaceFlags.isEmissive = false;
+    motionBlurSurfaceFlags.isEmissive = isRadianceOutput;
     motionBlurSurfaceFlagsWriteToGBuffer(motionBlurSurfaceFlags, ivec2(pixelCoordinate), PrimarySurfaceFlags);
   }
   else
@@ -839,21 +842,20 @@ void geometryResolverVertexOutputDebugView(
   }
 }
 
-void geometryResolverOutputDebugView(uvec2 pixelCoordinate, 
-                                     float sharedBiasCurrentColorMask)
+void geometryResolverOutputDebugView(uvec2 pixelCoordinate)
 {
   switch(cb.debugView)
   {
   default:
     break;
   case DEBUG_VIEW_SHARED_BIAS_CURRENT_COLOR_MASK:
-    storeInDebugView(pixelCoordinate, sharedBiasCurrentColorMask.x);
+    storeInDebugView(pixelCoordinate, SharedBiasCurrentColorMask[pixelCoordinate]);
     break;
   case DEBUG_VIEW_NAN:
     {
       bool isValid = true;
       // DEBUG_VIEW_SHARED_BIAS_CURRENT_COLOR_MASK
-      isValid &= isValidValue(sharedBiasCurrentColorMask);
+      isValid &= isValidValue(SharedBiasCurrentColorMask[pixelCoordinate]);
       
       accumulateInDebugViewAnd(pixelCoordinate, isValid);
       break;
@@ -986,6 +988,8 @@ void geometryResolverVertex(
   geometryResolverState.portalSpace = hackState.portalSpace;
   geometryResolverState.accumulatedVectorTransform = hackState.accumulatedVectorTransform;
   geometryResolverState.decalEncountered = hackState.decalEncountered;
+
+  bool isUnorderedEmissive = any(emissiveRadiance > 0.0f);
 
   bool isStochasticAlphaBlend = hackState.isStochasticAlphaBlend;
 
@@ -1213,13 +1217,17 @@ void geometryResolverVertex(
       geometryResolverState.radiance, geometryResolverState.attenuation,
       geometryResolverState.accumulatedVectorTransform, BINDING_INDEX_INVALID,
       geometryResolverState.accumulatedHitDistance, geometryResolverState.directionAltered,
-      geometryResolverState.useAlternateDisocclusionThreshold);
+      geometryResolverState.useAlternateDisocclusionThreshold,
+      geometryResolverState.isViewModelSurface);
   }
-  
+
   // Output Emissive Radiance
-    
+
   SharedRadianceRG[geometryResolverState.pixelCoordinate] = geometryResolverState.radiance.rg;
   SharedRadianceB[geometryResolverState.pixelCoordinate] = geometryResolverState.radiance.b;
+
+  // Output DLSS bias color mask
+  SharedBiasCurrentColorMask[geometryResolverState.pixelCoordinate] = isUnorderedEmissive ? 1.0f : 0.0f;
 
   // Output the Integration Surface PDF
   // Note: This is written out so the integrator can use this as a starting point due to basing itself off this stochastic choice
@@ -1591,7 +1599,8 @@ void geometryPSRResolverVertex(
       geometryPSRResolverState.radiance, geometryPSRResolverState.attenuation,
       geometryPSRResolverState.accumulatedVectorTransform, geometryPSRResolverState.mediumMaterialIndex,
       geometryPSRResolverState.accumulatedHitDistance, true,
-      geometryPSRResolverState.useAlternateDisocclusionThreshold);
+      geometryPSRResolverState.useAlternateDisocclusionThreshold,
+      geometryPSRResolverState.isViewModelSurface);
 
     // Output Emissive Radiance
 
@@ -1798,24 +1807,8 @@ void geometryResolver(ivec2 pixelCoordinate) {
 
   geometryFlagsWriteToGBuffer(geometryFlags, ivec2(pixelCoordinate), SharedFlags);
 
-  // Store bias color mask
-  const float luminance = calcBt709Luminance(geometryResolverState.radiance);
-  const bool isRadianceOutput = luminance > 0.0f;
-  const float sharedBiasCurrentColorMask = isRadianceOutput ? 1.0f : 0.0f;
-  SharedBiasCurrentColorMask[pixelCoordinate] = sharedBiasCurrentColorMask;
-
-  // Store Motion Blur Surface flags
-
-  MotionBlurSurfaceFlags cachedMotionBlurSurfaceFlags = motionBlurSurfaceFlagsReadFromGBuffer(PrimarySurfaceFlags[pixelCoordinate]);
-
-  MotionBlurSurfaceFlags motionBlurSurfaceFlags;
-  motionBlurSurfaceFlags.isViewModel = geometryFlags.isViewModel;
-  motionBlurSurfaceFlags.isStatic = cachedMotionBlurSurfaceFlags.isStatic;
-  motionBlurSurfaceFlags.isEmissive = isRadianceOutput;
-  motionBlurSurfaceFlagsWriteToGBuffer(motionBlurSurfaceFlags, ivec2(pixelCoordinate), PrimarySurfaceFlags);
-
   // Output to debug view
-  geometryResolverOutputDebugView(pixelCoordinate, sharedBiasCurrentColorMask);
+  geometryResolverOutputDebugView(pixelCoordinate);
 }
 
 void geometryPSRResolverPass(ivec2 pixelCoordinate) {
