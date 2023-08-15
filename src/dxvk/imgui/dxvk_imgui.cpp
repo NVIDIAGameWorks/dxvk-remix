@@ -1447,6 +1447,7 @@ namespace dxvk {
         break;
       }
     }
+
     const ImVec2 availableSize = ImGui::GetContentRegionAvail();
     const float childWindowHeight = availableSize.y < 600 ? 600 : availableSize.y;
     ImGuiWindowFlags window_flags = ImGuiWindowFlags_None;
@@ -1650,6 +1651,7 @@ namespace dxvk {
       ImGui::Checkbox("Split Texture Category List", &showLegacyTextureGuiObject());
       ImGui::DragFloat("Texture Thumbnail Scale", &RtxOptions::Get()->textureGridThumbnailScaleObject(), 0.25f, 0.25f, 3.f, "%.2f", sliderFlags);
       ImGui::Separator();
+
       if (!showLegacyTextureGui()) {
         showTextureSelectionGrid(ctx, "textures", numThumbnailsPerRow, thumbnailSize);
       }
@@ -1661,7 +1663,6 @@ namespace dxvk {
           ImGui::Unindent();
           showTextureSelectionGrid(ctx, "uitextures", numThumbnailsPerRow, thumbnailSize);
           ImGui::Indent();
-
         }
 
         if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Worldspace UI Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->worldSpaceUiTexturesDescription())) {
@@ -1693,6 +1694,7 @@ namespace dxvk {
           showTextureSelectionGrid(ctx, "hidetextures", numThumbnailsPerRow, thumbnailSize);
           ImGui::Indent();
         }
+
         if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Lightmap Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->lightmapTexturesDescription())) {
           ImGui::Unindent();
           showTextureSelectionGrid(ctx, "lightmaptextures", numThumbnailsPerRow, thumbnailSize);
@@ -1806,17 +1808,20 @@ namespace dxvk {
       ImGui::Checkbox("Scene Left-Handed", &RtxOptions::Get()->isLHSObject());
       fusedWorldViewModeCombo.getKey(&RtxOptions::Get()->fusedWorldViewModeRef());
       ImGui::Separator();
-      
+
       ImGui::DragFloat("Unique Object Search Distance", &RtxOptions::Get()->uniqueObjectDistanceObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
       ImGui::Separator();
+
       ImGui::DragFloat("Vertex Color Strength", &RtxOptions::Get()->vertexColorStrengthObject(), 0.001f, 0.0f, 1.0f);
       ImGui::Separator();
+
       if (ImGui::CollapsingHeader("Texture Parameters", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
         ImGui::DragFloat("Force Cutout Alpha", &RtxOptions::Get()->forceCutoutAlphaObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
         ImGui::DragFloat("World Space UI Background Offset", &RtxOptions::Get()->worldSpaceUiBackgroundOffsetObject(), 0.01f, -FLT_MAX, FLT_MAX, "%.3f", sliderFlags);
         ImGui::Unindent();
       }
+
       if (ImGui::CollapsingHeader("Shader Support (Experimental)", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
         ImGui::Checkbox("Capture Vertices from Shader", &D3D9Rtx::useVertexCaptureObject());
