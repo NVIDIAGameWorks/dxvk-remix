@@ -466,6 +466,12 @@ DxvkMemory::DxvkMemory() { }
           std::swap((*curr), type.chunks.back());
           type.chunks.pop_back();
           Logger::debug("Free unused chunk");
+
+          // Exit if the container is empty since the
+          // curr iterator got invalidated with pop_back() when the size was 1
+          if (type.chunks.empty()) {
+            break;
+          }
         } else {
           curr++;
         }
