@@ -467,8 +467,8 @@ DxvkMemory::DxvkMemory() { }
           type.chunks.pop_back();
           Logger::debug("Free unused chunk");
 
-          // Exit if the container is empty
-          // curr iterator was deleted and invalidated with pop_back() when the size was 1
+          // Exit if the container is empty since the
+          // curr iterator got invalidated with pop_back() when the size was 1
           if (type.chunks.empty()) {
             break;
           }
