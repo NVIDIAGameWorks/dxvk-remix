@@ -222,6 +222,7 @@ namespace dxvk::vk {
     VULKAN_FN(vkCreateQueryPool);
     VULKAN_FN(vkDestroyQueryPool);
     VULKAN_FN(vkGetQueryPoolResults);
+    VULKAN_FN(vkResetQueryPool);
     VULKAN_FN(vkCreateBuffer);
     VULKAN_FN(vkDestroyBuffer);
     VULKAN_FN(vkCreateBufferView);

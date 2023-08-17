@@ -22,6 +22,7 @@
 #pragma once
 
 #include <cstdint>
+#include <vulkan/vulkan.h>
 
 #include "rtx_resources.h"
 #include "rtx_options.h"
@@ -135,6 +136,10 @@ namespace dxvk {
       * \brief: Adds a marker for the end of presentation. Thread-safe with respect to Reflex.
       */
     void endPresentation(std::uint64_t frameId) const;
+    void beginOutOfBandRendering(std::uint64_t frameId) const;
+    void endOutOfBandRendering(std::uint64_t frameId) const;
+    void beginOutOfBandPresent(std::uint64_t frameId) const;
+    void endOutOfBandPresent(std::uint64_t frameId) const;
 
     void updateMode();
 
@@ -155,6 +160,13 @@ namespace dxvk {
       * check this does not mean Reflex is in use as it may be using the None Reflex mode.
       */
     bool reflexInitialized() const { return m_initialized; }
+
+    /**
+      * \brief: Marks a specified queue as the out of band present queue, indicating to Reflex that out of band
+      * presents will come from this queue (typically from a frame interpolation method like DLFG).
+      */
+    void markOutOfBandPresentQueue(VkQueue queueHandle);
+  
   private:
     VkSemaphore m_lowLatencySemaphore;
 

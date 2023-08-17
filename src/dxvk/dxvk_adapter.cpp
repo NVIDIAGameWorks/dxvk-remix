@@ -150,14 +150,31 @@ namespace dxvk {
       VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT,
       VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT);
 
-    queues.asyncCompute = VK_QUEUE_FAMILY_IGNORED;
-
     if (asyncComputeQueue != VK_QUEUE_FAMILY_IGNORED &&
         asyncComputeQueue != graphicsQueue &&
         asyncComputeQueue != transferQueue) {
       queues.asyncCompute = asyncComputeQueue;
     }
     // NV-DXVK end
+
+    // NV-DXVK start: DLFG integration
+    uint32_t opticalFlowQueue = findQueueFamily(VK_QUEUE_OPTICAL_FLOW_BIT_NV, VK_QUEUE_OPTICAL_FLOW_BIT_NV);
+
+    if (opticalFlowQueue != VK_QUEUE_FAMILY_IGNORED &&
+        opticalFlowQueue != graphicsQueue &&
+        opticalFlowQueue != asyncComputeQueue &&
+        opticalFlowQueue != transferQueue) {
+      queues.opticalFlow = opticalFlowQueue;
+    }
+
+    // xxxnsubtil: this doesn't actually check for present support, because we don't have a surface here!
+    uint32_t presentQueue = findQueueFamily(VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT,
+                                            VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT);
+
+    if (presentQueue != VK_QUEUE_FAMILY_IGNORED) {
+      queues.present = presentQueue;
+    }
+    // NV_DXVK end
 
     return queues;
   }
@@ -411,6 +428,24 @@ namespace dxvk {
     }
     // NV-DXVK end
 
+    // NV-DXVK start: DLFG integration
+    // enable DLFG extensions if available
+    std::array devDlfgExtensions = {
+      &devExtensions.khrMaintenance4,
+      &devExtensions.khrExternalMemory,
+      &devExtensions.khrExternalMemoryWin32,
+      &devExtensions.khrExternalSemaphore,
+      &devExtensions.khrExternalSemaphoreWin32,
+      &devExtensions.nvOpticalFlow,
+      &devExtensions.extCalibratedTimestamps,
+    };
+
+    m_deviceExtensions.enableExtensions(
+      devDlfgExtensions.size(),
+      devDlfgExtensions.data(),
+      extensionsEnabled);
+    // NV-DXVK end
+
     // Enable additional extensions if necessary
     extensionsEnabled.merge(m_extraExtensions);
     DxvkNameList extensionNameList = extensionsEnabled.toNameList();
@@ -550,6 +585,22 @@ namespace dxvk {
     }
     // NV-DXVK end
 
+    // NV-DXVK start: opacity micromap
+    if (devExtensions.khrSynchronization2) {
+      enabledFeatures.khrSynchronization2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR;
+      enabledFeatures.khrSynchronization2.pNext = std::exchange(enabledFeatures.core.pNext, &enabledFeatures.khrSynchronization2);
+      enabledFeatures.khrSynchronization2.synchronization2 = VK_TRUE;
+    }
+    // NV-DXVK end
+
+    // NV-DXVK start: DLFG integration
+    if (devExtensions.nvOpticalFlow) {
+      enabledFeatures.nvOpticalFlow.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_OPTICAL_FLOW_FEATURES_NV;
+      enabledFeatures.nvOpticalFlow.pNext = std::exchange(enabledFeatures.core.pNext, &enabledFeatures.nvOpticalFlow);
+      enabledFeatures.nvOpticalFlow.opticalFlow = VK_TRUE;
+    }
+    // NV-DXVK end
+
     // NV-DXVK start: Moved logging to where it is on more recent DXVK to properly show enabled features, also added more information to be logged
     // (Still needs driver version from latest DXVK though at the time of writing this, but we can wait on that since it needs larger changes)
 
@@ -628,31 +679,47 @@ namespace dxvk {
     // NV-DXVK end
 
     // Create the requested queues
-    float queuePriority = 1.0f;
+    uint32_t numQueuePriorities = 0;
     std::vector<VkDeviceQueueCreateInfo> queueInfos;
 
-    std::unordered_set<uint32_t> queueFamiliySet;
+    // NV-DXVK begin: DLFG integration + RTXIO
+    std::map<uint32_t, uint32_t> queueCounts; // maps queue family indices to a count of queues for that family
 
     DxvkAdapterQueueIndices queueFamilies = findQueueFamilies();
-    queueFamiliySet.insert(queueFamilies.graphics);
-    queueFamiliySet.insert(queueFamilies.transfer);
-    // NV-DXVK start: RTXIO
+    numQueuePriorities = std::max(numQueuePriorities, ++queueCounts[queueFamilies.graphics]);
+    numQueuePriorities = std::max(numQueuePriorities, ++queueCounts[queueFamilies.transfer]);
+
     if (queueFamilies.asyncCompute != VK_QUEUE_FAMILY_IGNORED) {
-      queueFamiliySet.insert(queueFamilies.asyncCompute);
+      numQueuePriorities = std::max(numQueuePriorities, ++queueCounts[queueFamilies.asyncCompute]);
     }
-    // NV-DXVK end
+
+    if (queueFamilies.opticalFlow != VK_QUEUE_FAMILY_IGNORED) {
+      numQueuePriorities = std::max(numQueuePriorities, ++queueCounts[queueFamilies.opticalFlow]);
+    }
+
+    if (queueFamilies.present != VK_QUEUE_FAMILY_IGNORED) {
+      numQueuePriorities = std::max(numQueuePriorities, ++queueCounts[queueFamilies.present]);
+    }
+
+    std::vector<float> queuePriorities(numQueuePriorities);
+    std::fill(queuePriorities.begin(), queuePriorities.end(), 1.0f);
+
     this->logQueueFamilies(queueFamilies);
 
-    for (uint32_t family : queueFamiliySet) {
+    for (auto queueInfo : queueCounts) {
+      uint32_t queueFamily = queueInfo.first;
+      uint32_t queueCount = queueInfo.second;
+      
       VkDeviceQueueCreateInfo graphicsQueue;
       graphicsQueue.sType             = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
       graphicsQueue.pNext             = nullptr;
       graphicsQueue.flags             = 0;
-      graphicsQueue.queueFamilyIndex  = family;
-      graphicsQueue.queueCount        = 1;
-      graphicsQueue.pQueuePriorities  = &queuePriority;
+      graphicsQueue.queueFamilyIndex  = queueFamily;
+      graphicsQueue.queueCount        = queueCount;
+      graphicsQueue.pQueuePriorities  = queuePriorities.data();
       queueInfos.push_back(graphicsQueue);
     }
+    // NV-DXVK end
 
     VkDeviceCreateInfo info;
     info.sType                      = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -1049,7 +1116,11 @@ namespace dxvk {
       "\n  vertexAttributeInstanceRateDivisor     : ", features.extVertexAttributeDivisor.vertexAttributeInstanceRateDivisor ? "1" : "0",
       "\n  vertexAttributeInstanceRateZeroDivisor : ", features.extVertexAttributeDivisor.vertexAttributeInstanceRateZeroDivisor ? "1" : "0",
       "\n", VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
-      "\n  bufferDeviceAddress                    : ", features.khrBufferDeviceAddress.bufferDeviceAddress));
+      "\n  bufferDeviceAddress                    : ", features.khrBufferDeviceAddress.bufferDeviceAddress,
+      // NV-DXVK begin: DLFG integration
+      "\n", VK_NV_OPTICAL_FLOW_EXTENSION_NAME,
+      "\n  nvOpticalFlow                            : ", features.nvOpticalFlow.opticalFlow));
+      // NV-DXVK end
   }
 
 
@@ -1060,6 +1131,15 @@ namespace dxvk {
     // NV-DXVK start: RTXIO
     if (queues.asyncCompute != VK_QUEUE_FAMILY_IGNORED) {
       Logger::info(str::format("  Async Compute : ", queues.asyncCompute));
+    }
+    // NV-DXVK end
+    // NV-DXVK start: DLFG integration
+    if (queues.opticalFlow != VK_QUEUE_FAMILY_IGNORED) {
+      Logger::info(str::format("  Optical flow : ", queues.opticalFlow));
+    }
+
+    if (queues.present != VK_QUEUE_FAMILY_IGNORED) {
+      Logger::info(str::format("  Present : ", queues.present));
     }
     // NV-DXVK end
   }

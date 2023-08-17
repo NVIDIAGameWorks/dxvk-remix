@@ -223,7 +223,7 @@ namespace dxvk::hud {
 
 
   void HudFpsItem::update(dxvk::high_resolution_clock::time_point time) {
-    m_frameCount += 1;
+    m_frameCount += DxvkDLFG::enable() ? DxvkDLFGPresenter::getPresentFrameCount() : 1;
 
     auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(time - m_lastUpdate);
 

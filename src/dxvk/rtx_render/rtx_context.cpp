@@ -229,6 +229,9 @@ namespace dxvk {
     }
     downscaleExtent.width = std::max(downscaleExtent.width, 1u);
     downscaleExtent.height = std::max(downscaleExtent.height, 1u);
+
+    m_common->metaDLFG().setDisplaySize(uint2(upscaleExtent.width, upscaleExtent.height));
+
     return downscaleExtent;
   }
 
@@ -298,6 +301,10 @@ namespace dxvk {
       RtxOptions::Get()->upscalerTypeRef() = UpscalerType::TAAU;
     }
 
+    if (DxvkDLFG::enable() && !getCommonObjects()->metaDLFG().supportsDLFG()) {
+      DxvkDLFG::enableRef() = false;
+    }
+    
     ShaderManager::getInstance()->checkForShaderChanges();
 
     const float frameTimeSecs = RtxOptions::Get()->timeDeltaBetweenFrames() == 0.f ? getWallTimeSinceLastCall() : RtxOptions::Get()->timeDeltaBetweenFrames();
@@ -417,6 +424,14 @@ namespace dxvk {
 
         Resources::RaytracingOutput& rtOutput = getResourceManager().getRaytracingOutput();
 
+        if (getCommonObjects()->metaNGXContext().supportsDLFG()) {
+          rtOutput.m_primaryDepthQueue.next();
+          rtOutput.m_primaryScreenSpaceMotionVectorQueue.next();
+        }
+
+        rtOutput.m_primaryDepth = rtOutput.m_primaryDepthQueue.get();
+        rtOutput.m_primaryScreenSpaceMotionVector = rtOutput.m_primaryScreenSpaceMotionVectorQueue.get();
+
         // Generate ray tracing constant buffer
         updateRaytraceArgsConstantBuffer(m_cmd, rtOutput, frameTimeSecs, downscaledExtent, targetImage->info().extent);
 
@@ -518,6 +533,7 @@ namespace dxvk {
         // Debug view overrides
         dispatchDebugView(srcImage, rtOutput, captureScreenImage);
 
+        dispatchDLFG();
         {
           ScopedGpuProfileZone(this, "Blit to Game");
 
@@ -1401,6 +1417,28 @@ namespace dxvk {
 
     if (captureScreenImage)
       takeScreenshot("rtxImageDebugView", debugView.getDebugOutput()->image());
+  }
+
+  void RtxContext::dispatchDLFG() {
+    if (!isDLFGEnabled()) {
+      return;
+    }
+
+    // force vsync off if DLFG is enabled, as we don't properly support FG + vsync
+    RtxOptions::Get()->enableVsyncRef() = EnableVsync::Off;
+
+    Resources::RaytracingOutput& rtOutput = getResourceManager().getRaytracingOutput();
+
+    DxvkFrameInterpolationInfo dlfgInfo = {
+      m_device->getCurrentFrameId(),
+      m_device->getCommon()->getSceneManager().getCamera(),
+      rtOutput.m_primaryScreenSpaceMotionVector.view,
+      rtOutput.m_primaryScreenSpaceMotionVector.image->info().layout,
+      rtOutput.m_primaryDepth.view,
+      rtOutput.m_primaryDepth.image->info().layout,
+      false
+    };
+    m_device->setupFrameInterpolation(dlfgInfo);
   }
 
   void RtxContext::flushCommandList() {

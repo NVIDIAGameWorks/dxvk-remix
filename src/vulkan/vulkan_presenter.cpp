@@ -65,8 +65,13 @@ namespace dxvk::vk {
     return m_images.at(index);
   }
 
+  //VkSemaphore Presenter::getCurrentPresentWaitSemaphore() const {
+  //  return m_semaphores.at(m_frameIndex).present;
+  //}
 
   VkResult Presenter::acquireNextImage(PresenterSync& sync, uint32_t& index) {
+    ScopedCpuProfileZone();
+
     sync = m_semaphores.at(m_frameIndex);
 
     // Don't acquire more than one image at a time
@@ -86,7 +91,13 @@ namespace dxvk::vk {
     return m_acquireStatus;
   }
 
-  VkResult Presenter::presentImage() {
+  VkResult Presenter::presentImage(
+    // NV-DXVK start: DLFG integration
+    std::atomic<VkResult>*,
+    const DxvkPresentInfo&,
+    const DxvkFrameInterpolationInfo&
+    // NV-DXVK end
+  ) {
     ScopedCpuProfileZone();
     PresenterSync sync = m_semaphores.at(m_frameIndex);
 
@@ -168,6 +179,7 @@ namespace dxvk::vk {
     m_info.presentMode  = pickPresentMode(modes.size(), modes.data(), desc.numPresentModes, desc.presentModes);
     m_info.imageExtent  = pickImageExtent(caps, desc.imageExtent);
     m_info.imageCount   = pickImageCount(caps, m_info.presentMode, desc.imageCount);
+
     // NV-DXVK start: App controlled FSE
     m_info.appOwnedFSE  = m_device.features.fullScreenExclusive && (desc.fullScreenExclusive == VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT);
     // NV-DXVK end
@@ -204,7 +216,10 @@ namespace dxvk::vk {
     swapInfo.imageExtent            = m_info.imageExtent;
     swapInfo.imageArrayLayers       = 1;
     swapInfo.imageUsage             = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
-                                    | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+                                    | VK_IMAGE_USAGE_TRANSFER_DST_BIT
+    // NV-DXVK start: Add storage bit for Frameview because it runs computer shader
+                                    | VK_IMAGE_USAGE_STORAGE_BIT;
+    // NV-DXVK end
     swapInfo.imageSharingMode       = VK_SHARING_MODE_EXCLUSIVE;
     swapInfo.queueFamilyIndexCount  = 0;
     swapInfo.pQueueFamilyIndices    = nullptr;

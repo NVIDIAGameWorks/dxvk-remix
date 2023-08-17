@@ -22,14 +22,26 @@
 #include "rtx_semaphore.h"
 
 namespace dxvk {
-  RtxSemaphore::RtxSemaphore(const Rc<DxvkDevice>& device)
-  : m_device(device.ptr()) {
+  RtxSemaphore* RtxSemaphore::createTimeline(DxvkDevice* device, const char* name, uint64_t initialValue, bool win32Shared) {
+    RtxSemaphore* ret = new RtxSemaphore();
+    ret->m_device = device;
+    ret->m_isTimeline = true;
+    
     VkSemaphoreTypeCreateInfo timelineCreateInfo;
     timelineCreateInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
     timelineCreateInfo.pNext = nullptr;
     timelineCreateInfo.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
-    timelineCreateInfo.initialValue = 0;
+    timelineCreateInfo.initialValue = initialValue;
 
+    VkExportSemaphoreCreateInfo sharedInfo;
+    if (win32Shared) {
+      sharedInfo.sType = VK_STRUCTURE_TYPE_EXPORT_SEMAPHORE_CREATE_INFO;
+      sharedInfo.pNext = nullptr;
+      sharedInfo.handleTypes = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+
+      timelineCreateInfo.pNext = &sharedInfo;
+    }
+      
     VkSemaphoreCreateInfo createInfo;
     createInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
     createInfo.pNext = &timelineCreateInfo;
@@ -37,10 +49,48 @@ namespace dxvk {
 
     VkResult result = device->vkd()->vkCreateSemaphore(device->handle(),
                                                        &createInfo,
-                                                       nullptr, &m_sema);
+                                                       nullptr, &ret->m_sema);
     if (result != VK_SUCCESS) {
       throw DxvkError(str::format("Timeline semaphore creation failed with: ",
                                   result));
+    }
+
+    ret->labelSemaphore(name);
+    
+    return ret;
+  }
+
+  RtxSemaphore* RtxSemaphore::createBinary(DxvkDevice* device, const char* name) {
+    RtxSemaphore* ret = new RtxSemaphore();
+    ret->m_device = device;
+    ret->m_isTimeline = false;
+
+    VkSemaphoreCreateInfo createInfo;
+    createInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    createInfo.pNext = nullptr;
+    createInfo.flags = 0;
+    
+    VkResult result = device->vkd()->vkCreateSemaphore(device->handle(),
+                                                   &createInfo,
+                                                   nullptr, &ret->m_sema);
+    if (result != VK_SUCCESS) {
+      throw DxvkError(str::format("Binary semaphore creation failed with: ",
+                                  result));
+    }
+
+    ret->labelSemaphore(name);
+    return ret;
+  }
+
+  void RtxSemaphore::labelSemaphore(const char* name) {
+    if (m_device->vkd()->vkSetDebugUtilsObjectNameEXT) {
+      VkDebugUtilsObjectNameInfoEXT nameInfo;
+      nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+      nameInfo.pNext = nullptr;
+      nameInfo.objectType = VK_OBJECT_TYPE_SEMAPHORE;
+      nameInfo.objectHandle = (uint64_t) m_sema;
+      nameInfo.pObjectName = name;
+      m_device->vkd()->vkSetDebugUtilsObjectNameEXT(m_device->handle(), &nameInfo);
     }
   }
 
@@ -89,5 +139,24 @@ namespace dxvk {
         throw DxvkError("Timeline semaphore wait failed!");
       }
     } while (true);
+  }
+
+  RtxFence::RtxFence(DxvkDevice* device)
+    : m_device(device) {
+    VkFenceCreateInfo info;
+    info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    info.pNext = nullptr;
+    info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+    if (device->vkd()->vkCreateFence(device->handle(), &info, nullptr, &m_fence) != VK_SUCCESS) {
+      throw DxvkError("RtxFence: vkCreateFence failed");
+    }
+  }
+
+  RtxFence::~RtxFence() {
+    if (m_fence) {
+      m_device->vkd()->vkDestroyFence(m_device->handle(), m_fence, nullptr);
+      m_fence = nullptr;
+    }
   }
 }
