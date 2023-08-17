@@ -208,6 +208,24 @@ namespace dxvk
 #endif
     };
 
+    // a queue of N resources used over N frames
+    struct ResourceQueue : public std::array<Resource, kDLFGMaxGPUFramesInFlight> {
+      Resource& get() {
+        return (*this)[idx];
+      }
+
+      const Resource& get() const {
+        return (*this)[idx];
+      }
+
+      void next() {
+        idx = (idx + 1) % size();
+      }
+
+    private:
+      int idx = 0;
+    };
+
     struct RaytracingOutput {
 
       Resource m_volumeReservoirs[2];
@@ -229,11 +247,13 @@ namespace dxvk
       Resource m_primaryWorldInterpolatedNormal;
       Resource m_primaryPerceptualRoughness;
       Resource m_primaryLinearViewZ;
-      Resource m_primaryDepth;
+      ResourceQueue m_primaryDepthQueue;
+      Resource m_primaryDepth;  // points at a resource from m_primaryDepthQueue
       Resource m_primaryAlbedo;
       AliasedResource m_primaryBaseReflectivity;
       AliasedResource m_primarySpecularAlbedo;
       Resource m_primaryVirtualMotionVector;
+      ResourceQueue m_primaryScreenSpaceMotionVectorQueue;
       Resource m_primaryScreenSpaceMotionVector;
       Resource m_primaryVirtualWorldShadingNormalPerceptualRoughness;
       Resource m_primaryVirtualWorldShadingNormalPerceptualRoughnessDenoising;
@@ -290,6 +310,7 @@ namespace dxvk
       VkExtent3D m_compositeOutputExtent;
       AliasedResource m_compositeOutput;
       AliasedResource m_lastCompositeOutput;
+
       Resource m_finalOutput;
 
       Resource m_postFxIntermediateTexture;

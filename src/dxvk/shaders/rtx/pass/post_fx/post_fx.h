@@ -68,7 +68,7 @@ struct PostFxArgs {
   float  motionBlurDynamicDeduction;
   bool   enableMotionBlurEmissive;
   float  jitterStrength;
-  float  pad0;
+  float  motionBlurDlfgDeduction;
 };
 
 struct PostFxMotionBlurPrefilterArgs {

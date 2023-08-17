@@ -10,9 +10,6 @@
     <dependency name="fonts" linkPath="external/fonts">
         <package name="rtx-remix-fonts" version="1" />
     </dependency>
-    <dependency name="ngx_sdk" linkPath="external/ngx_sdk">
-        <package name="rtx-remix-ngx_sdk" version="1" />
-    </dependency>
     <dependency name="nrd" linkPath="external/nrd">
         <package name="rtx-remix-nrd" version="4" />
     </dependency>
@@ -39,5 +36,11 @@
     </dependency>
     <dependency name="nv_xxd" linkPath="external/nv_xxd">
         <package name="rtx-remix-nv_xxd" version="1" />
+    </dependency>
+    <dependency name="ngx_sdk_dlss" linkPath="external/ngx_sdk_dlss">
+        <package name="ngx_sdk_dlss" version="dlss_0602_2" />
+    </dependency>
+    <dependency name="ngx_sdk_dlfg" linkPath="external/ngx_sdk_dlfg">
+        <package name="ngx_sdk_dlfg" version="dlfg_0602_2" />
     </dependency>
 </project>

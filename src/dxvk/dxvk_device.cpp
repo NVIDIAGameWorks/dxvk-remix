@@ -44,16 +44,32 @@ namespace dxvk {
     m_objects           (this),
     m_submissionQueue   (this) {
     auto queueFamilies = m_adapter->findQueueFamilies();
-    m_queues.graphics = getQueue(queueFamilies.graphics, 0);
-    m_queues.transfer = getQueue(queueFamilies.transfer, 0);
 
-    // NV-DXVK start: RTXIO
+    // NV-DXVK start: DLFG + RTXIO
+    std::map<uint32_t /* queue family index */, uint32_t /* queue object count */> queueIndices;
+
+    m_queues.graphics = getQueue(queueFamilies.graphics, queueIndices[queueFamilies.graphics]++);
+    m_queues.transfer = getQueue(queueFamilies.transfer, queueIndices[queueFamilies.transfer]++);
+
     if (queueFamilies.asyncCompute != VK_QUEUE_FAMILY_IGNORED) {
-      m_queues.asyncCompute = getQueue(queueFamilies.asyncCompute, 0);
+      m_queues.asyncCompute = getQueue(queueFamilies.asyncCompute, queueIndices[queueFamilies.asyncCompute]++);
+    }
+
+    if (queueFamilies.present != VK_QUEUE_FAMILY_IGNORED) {
+      m_queues.present = getQueue(queueFamilies.present, queueIndices[queueFamilies.present]++);
+    }
+
+    if (queueFamilies.__DLFG_QUEUE != VK_QUEUE_FAMILY_IGNORED) {
+      // Note: When DLFG is active a separate queue is used for out of band rendering/presentation, so it should be marked accordingly.
+      // Additionally, we do not mark the out of band render queue here as apparently it should only be marked when the out of band rendering
+      // is sequential to application work, whereas out DLFG rendering work is overlapped with application rendering work.
+      // Todo: Should we be calling this even when DLFG is disabled? Probably shouldn't matter since no OOB Presents
+      // will be used in such a case, but something to consider if Reflex behaves weirdly when DLFG is disabled.
+      m_objects.metaReflex().markOutOfBandPresentQueue(m_queues.__DLFG_QUEUE.queueHandle);
     }
     // NV-DXVK end
 
-#ifdef TRACY_ENABLE
+ #ifdef TRACY_ENABLE
     VkCommandPoolCreateInfo poolInfo;
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     poolInfo.pNext = nullptr;
@@ -80,6 +96,26 @@ namespace dxvk {
                                                           m_vkd->vkGetPhysicalDeviceCalibrateableTimeDomainsEXT,
                                                           m_vkd->vkGetCalibratedTimestampsEXT);
     TracyVkContextName(m_queues.graphics.tracyCtx, "Graphics Queue", strlen("Graphics Queue"));
+
+    if (m_queues.present.queueHandle) {
+      poolInfo.queueFamilyIndex = m_queues.present.queueFamily;
+
+      if (m_vkd->vkCreateCommandPool(m_vkd->device(), &poolInfo, nullptr, &m_queues.present.tracyPool) != VK_SUCCESS)
+        throw DxvkError("DxvkCommandList: Failed to create present command pool");
+
+      cmdInfoTracy.commandPool = m_queues.present.tracyPool;
+
+      if (m_vkd->vkAllocateCommandBuffers(m_vkd->device(), &cmdInfoTracy, &m_queues.present.tracyCmdList) != VK_SUCCESS)
+        throw DxvkError("DxvkCommandList: Failed to allocate command buffer");
+
+      m_queues.present.tracyCtx = TracyVkContextCalibrated(m_adapter->handle(),
+                                                           m_vkd->device(),
+                                                           m_queues.present.queueHandle,
+                                                           m_queues.present.tracyCmdList,
+                                                           m_vkd->vkGetPhysicalDeviceCalibrateableTimeDomainsEXT,
+                                                           m_vkd->vkGetCalibratedTimestampsEXT);
+      TracyVkContextName(m_queues.present.tracyCtx, "Present Queue", strlen("Present Queue"));
+    }
 #endif
   }
 
@@ -97,6 +133,11 @@ namespace dxvk {
 #ifdef TRACY_ENABLE
     TracyVkDestroy(m_queues.graphics.tracyCtx);
     m_vkd->vkDestroyCommandPool(m_vkd->device(), m_queues.graphics.tracyPool, nullptr);
+
+    if (m_queues.present.queueHandle) {
+      TracyVkDestroy(m_queues.present.tracyCtx);
+      m_vkd->vkDestroyCommandPool(m_vkd->device(), m_queues.present.tracyPool, nullptr);
+    }
 #endif
     // Stop workers explicitly in order to prevent
     // access to structures that are being destroyed.
@@ -303,8 +344,10 @@ namespace dxvk {
   
   void DxvkDevice::presentImage(
     std::uint64_t                   cachedReflexFrameId,
+    bool                            insertReflexPresentMarkers,
     const Rc<vk::Presenter>&        presenter,
-          DxvkSubmitStatus*         status) {
+          DxvkSubmitStatus*         status
+          ) {
     ScopedCpuProfileZone();
     
     status->result = VK_NOT_READY;
@@ -317,20 +360,30 @@ namespace dxvk {
     // to all the early outs injectRtx does, but Reflex should be able to deal with missing markers on a given frame.
     // If this becomes a problem in the future then we may need to handle adding in missing end markers in our own Reflex
     // integration somehow.
+    // Finally do note that the actual queue submission for rendering operations happens on the submit thread and may happen
+    // after this call due to how threads behave. This is fine for the end Rendering marker though as Reflex seems to only
+    // use the end Present marker to deliminate frames (which is important in how it identifies which frame the render queue
+    // submission belongs to).
     m_objects.metaReflex().endRendering(cachedReflexFrameId);
 
     DxvkPresentInfo presentInfo;
     presentInfo.presenter = presenter;
     presentInfo.cachedReflexFrameId = cachedReflexFrameId;
+    presentInfo.insertReflexPresentMarkers = insertReflexPresentMarkers;
     m_submissionQueue.present(presentInfo, status);
-    
+
     {
       std::lock_guard<sync::Spinlock> statLock(m_statLock);
       m_statCounters.addCtr(DxvkStatCounter::QueuePresentCount, 1); // Increase getCurrentFrameId()
     }
     // NV-DXVK end
   }
-  
+
+  // NV-DXVK start: DLFG integration
+  void DxvkDevice::setupFrameInterpolation(DxvkFrameInterpolationInfo parameters) {
+    m_submissionQueue.setupFrameInterpolation(parameters);
+  }
+  // NV-DXVK end
 
   void DxvkDevice::submitCommandList(
     const Rc<DxvkCommandList>&      commandList,

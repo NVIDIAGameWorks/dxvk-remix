@@ -56,6 +56,11 @@ namespace dxvk {
 
   }
 
+  // NV-DXVK start: DLFG integration
+  bool DxvkContext::isDLFGEnabled() const {
+    return m_common->metaNGXContext().supportsDLFG() && DxvkDLFG::enable();
+  }
+  // NV-DXVK end
 
   void DxvkContext::beginRecording(const Rc<DxvkCommandList>& cmdList) {
     m_cmd = cmdList;

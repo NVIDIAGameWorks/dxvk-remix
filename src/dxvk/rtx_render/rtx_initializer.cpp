@@ -85,6 +85,7 @@ namespace dxvk {
       loadAssets();
     }
     pCommon->metaDLSS(); // Lazy allocator triggers init in ctor
+    pCommon->metaDLFG();
 
     if (!m_asyncShaderFinalizing.getValue()) {
       // Wait for all prewarming to complete before calling "RTX initialized"

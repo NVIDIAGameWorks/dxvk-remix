@@ -42,6 +42,10 @@ struct D3D9FixedFunctionVS;
 using RasterBuffer = GeometryBuffer<Raster>;
 using RaytraceBuffer = GeometryBuffer<Raytrace>;
 
+// DLFG async compute overlap: max of 2 frames in flight
+// (set to 1 to serialize graphics and async compute queues)
+constexpr uint32_t kDLFGMaxGPUFramesInFlight = 2;
+
 // NOTE: Needed to move this here in order to avoid
 // circular includes.  This probably requires a 
 // general cleanup.

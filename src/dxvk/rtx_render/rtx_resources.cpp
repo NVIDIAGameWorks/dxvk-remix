@@ -312,6 +312,24 @@ namespace dxvk {
   void Resources::onFrameBegin(Rc<DxvkContext> ctx, RtxTextureManager& textureManager, const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent) {
     executeFrameBeginEventList(m_onFrameBegin, ctx, downscaledExtent, targetExtent);
 
+    if (ctx->isDLFGEnabled()) {
+      const uint32_t currentFrameId = ctx->getDevice()->getCurrentFrameId();
+      const Rc<RtxSemaphore>& frameEndSemaphore = ctx->getCommonObjects()->metaDLFG().getFrameEndSemaphore();
+
+      // if we've launched N frames, wait on the current - Nth frame
+      if (currentFrameId >= kDLFGMaxGPUFramesInFlight) {
+        // xxxnsubtil: lots of problems when toggling the enable here and during init, leaving disabled for now
+        // at worst this may cause transient corruption
+        //ctx->getCommandList()->addWaitSemaphore(frameEndSemaphore->handle(), currentFrameId - kDLFGMaxGPUFramesInFlight);
+      } else {
+        // CPU sync when semaphore wraps around
+        if (currentFrameId == 0) {
+          ctx->getDevice()->waitForIdle();
+          // xxxnsubtil: spec does not allow signaling back to zero, but not clear how this should be handled --- recreate the semaphore?
+        }
+      }
+    }
+    
     // Alias resources that alias to different resources frame to frame
     m_raytracingOutput.m_secondaryConeRadius = AliasedResource(m_raytracingOutput.getCurrentRtxdiConfidence(), ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "Secondary Cone Radius");
     m_raytracingOutput.m_sharedIntegrationSurfacePdf = AliasedResource(m_raytracingOutput.getCurrentRtxdiIlluminance(), ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "Shared Integration Surface PDF");
@@ -793,12 +811,22 @@ namespace dxvk {
     m_raytracingOutput.m_primaryWorldInterpolatedNormal = createImageResource(ctx, "primary world interpolated normal", m_downscaledExtent, VK_FORMAT_R32_UINT);
     m_raytracingOutput.m_primaryPerceptualRoughness = createImageResource(ctx, "primary perceptual roughness", m_downscaledExtent, VK_FORMAT_R8_UNORM);
     m_raytracingOutput.m_primaryLinearViewZ = createImageResource(ctx, "primary linear view Z", m_downscaledExtent, VK_FORMAT_R32_SFLOAT);
-    m_raytracingOutput.m_primaryDepth = createImageResource(ctx, "primary depth", m_downscaledExtent, VK_FORMAT_R32_SFLOAT);
+    for (auto& i : m_raytracingOutput.m_primaryDepthQueue) {
+      i = createImageResource(ctx, "primary depth", m_downscaledExtent, VK_FORMAT_R32_SFLOAT);
+      if (!ctx->getCommonObjects()->metaNGXContext().supportsDLFG()) {
+        break;
+      }
+    }
     m_raytracingOutput.m_primaryAlbedo = createImageResource(ctx, "primary albedo", m_downscaledExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32);
     m_raytracingOutput.m_primaryBaseReflectivity = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32, "Primary Base Reflectivity");
     m_raytracingOutput.m_primarySpecularAlbedo = AliasedResource(m_raytracingOutput.m_primaryBaseReflectivity, ctx, m_downscaledExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32, "Primary Specular Albedo");
     m_raytracingOutput.m_primaryVirtualMotionVector = createImageResource(ctx, "primary virtual motion vector", m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT);
-    m_raytracingOutput.m_primaryScreenSpaceMotionVector = createImageResource(ctx, "primary screen space motion vector", m_downscaledExtent, VK_FORMAT_R16G16_SFLOAT);
+    for (auto& i : m_raytracingOutput.m_primaryScreenSpaceMotionVectorQueue) {
+      i = createImageResource(ctx, "primary screen space motion vector", m_downscaledExtent, VK_FORMAT_R16G16_SFLOAT);
+      if (!ctx->getCommonObjects()->metaNGXContext().supportsDLFG()) {
+        break;
+      }
+    }
     m_raytracingOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughness = createImageResource(ctx, "primary virtual world shading normal perceptual roughness", m_downscaledExtent, VK_FORMAT_R16G16B16A16_UNORM);
     m_raytracingOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughnessDenoising = createImageResource(ctx, "primary virtual world shading normal perceptual roughness denoising", m_downscaledExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32);
     m_raytracingOutput.m_primaryHitDistance = createImageResource(ctx, "primary hit distance", m_downscaledExtent, VK_FORMAT_R32_SFLOAT);

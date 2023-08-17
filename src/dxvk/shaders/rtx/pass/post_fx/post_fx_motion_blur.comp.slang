@@ -196,7 +196,7 @@ void main(
   const float2 velocity =
     PrimaryScreenSpaceMotionVector.SampleLevel(LinearSampler, uv, 0.0f).xy * cb.exposureFraction * cb.invMainCameraResolution * dynamicMotionBlurDeduction * 0.5f ;
   const float velocityLength = length(velocity);
-  const float2 adjustedVelocity = velocityLength > 1e-7f ? normalize(velocity) * min(velocityLength, cb.blurDiameterFraction) : velocity;
+  const float2 adjustedVelocity = velocityLength > 1e-7f ? normalize(velocity) * min(velocityLength, cb.blurDiameterFraction) * cb.motionBlurDlfgDeduction : velocity;
   const float2 minimunVelocity = (float2)cb.invImageSize * cb.motionBlurMinimumVelocityThresholdInPixel.xx;
 
   // Mask out pixels if the primary ray hits viewModel, player hold model or the velocity less than 1 pixel in all dimensions
