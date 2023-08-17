@@ -27,7 +27,7 @@
 
 namespace dxvk {
 
-  class NGXWrapper;
+  class NGXDLSSContext;
   class DxvkCommandList;
   class DxvkBarrierSet;
   class DxvkContext;
@@ -82,7 +82,6 @@ namespace dxvk {
     bool useDlssAutoExposure() const;
 
     // Options
-    bool                        mEnabled = true;
     DLSSProfile                 mProfile = DLSSProfile::Invalid;
     DLSSProfile                 mActualProfile = DLSSProfile::Invalid;
     MotionVectorScale           mMotionVectorScale = MotionVectorScale::Absolute;
@@ -99,5 +98,7 @@ namespace dxvk {
 
     Rc<DxvkShader> m_shader;
     Rc<DxvkBuffer> m_constants;
+
+    std::unique_ptr<NGXDLSSContext> m_dlssContext;
   };
 }  // namespace dxvk

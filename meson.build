@@ -405,12 +405,15 @@ aftermath_lib_path = join_paths(meson.global_source_root(), 'external/aftermath/
 aftermath_lib = dxvk_compiler.find_library('GFSDK_Aftermath_Lib.x64', dirs : aftermath_lib_path)
 
 # this is repeated below, since we overwrite dlss_lib_path in src/dxvk/meson.build for some reason
-dlss_root_path = 'external/ngx_sdk'
+dlss_root_path = 'external/ngx_sdk_dlss'
+dlss_lib_path = meson.global_source_root() + '/' + dlss_root_path + '/Lib/Windows_x86_64/rel/'
+dlfg_root_path = 'external/ngx_sdk_dlfg'
+dlfg_lib_path = meson.global_source_root() + '/' + dlfg_root_path + '/Lib/Windows_x86_64/rel/'
+
 nrd_lib_path = meson.global_source_root() + '/external/nrd/Lib/Release/'
 if get_option('buildtype') == 'debug'  
   nrd_lib_path = meson.global_source_root() + '/external/nrd/Lib/Debug/'
 endif
-dlss_lib_path = meson.global_source_root() + '/' + dlss_root_path + '/Lib/Windows_x86_64/rel/'
 lss_usd_plugins_path = meson.global_source_root() + '/usd_plugins/'
 
 rtxdi_include_path = include_directories(join_paths(meson.global_source_root(), 'submodules/rtxdi/rtxdi-sdk/include'))
@@ -456,7 +459,12 @@ if not dxvk_is_ninja
   copy_dlss_dll_target = custom_target('copy_dlss_dll',
     output           : ['copy_dlss_dll'],
     build_by_default : true,
-    command          : [copy_script_path, dlss_lib_path, output_dir, 'nvngx_*.*'] )
+    command          : [copy_script_path, dlss_lib_path, output_dir, 'nvngx_dlss.dll'] )
+
+  copy_dlfg_dll_target = custom_target('copy_dlfg_dll',
+    output           : ['copy_dlfg_dll'],
+    build_by_default : true,
+    command          : [copy_script_path, dlfg_lib_path, output_dir, 'nvngx_dlssg.dll'] )
   
   copy_reflex_dll_target = custom_target('copy_reflex_dll',
   output           : ['copy_reflex_dll'],
@@ -550,7 +558,10 @@ if dxvk_is_ninja
   fs.read('vsgen/vsutil.py')
 
   # ... and now we do this again, because src/dxvk/meson.build overwrites this for some reason
-  dlss_root_path = 'external/ngx_sdk'
+  dlss_root_path = 'external/ngx_sdk_dlss'
+  dlss_lib_path = meson.global_source_root().replace('\\', '/') + '/' + dlss_root_path + '/Lib/Windows_x86_64/rel/'
+  dlfg_root_path = 'external/ngx_sdk_dlfg'
+  dlfg_lib_path = meson.global_source_root().replace('\\', '/') + '/' + dlfg_root_path + '/Lib/Windows_x86_64/rel/'
 
   # meson seems to force / as the path separator in custom_target
   # ... except in the case where the path separators are inconsistent, in which case it does nothing
@@ -559,7 +570,6 @@ if dxvk_is_ninja
   if get_option('buildtype') == 'debug'  
     nrd_lib_path = global_src_root_norm + '/external/nrd/Lib/Debug/'
   endif
-  dlss_lib_path = global_src_root_norm + '/' + dlss_root_path + '/Lib/Windows_x86_64/rel/'
   
   apic_copy_targets = []
   sln_project_targets = []
@@ -660,7 +670,14 @@ if dxvk_is_ninja
       command          : [copy_script_path,
                           dlss_lib_path, 
                           output_path,
-                          'nvngx_*.*'] )
+                          'nvngx_dlss.dll'] )
+
+    copy_dlfg_dll = custom_target('copy_dlfg_dll_' + target_suffix,
+      output           : ['copy_dlfg_dll_' + target_suffix],
+      command          : [copy_script_path,
+                          dlfg_lib_path, 
+                          output_path,
+                          'nvngx_dlssg.dll'] )
 
     copy_reflex_dll = custom_target('copy_reflex_dll_' + target_suffix,
       output           : ['copy_reflex_dll_' + target_suffix],
@@ -697,6 +714,7 @@ if dxvk_is_ninja
                             copy_tbbmalloc_dll,
                             copy_nrd_dll,
                             copy_dlss_dll,
+                            copy_dlfg_dll,
                             copy_aftermath_dll,
                             d3d9_dll ]
                             

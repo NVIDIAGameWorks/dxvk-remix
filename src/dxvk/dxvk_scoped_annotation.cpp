@@ -41,4 +41,26 @@ namespace dxvk {
   __ScopedAnnotation::~__ScopedAnnotation() {
     m_ctx->endDebugLabel();
   }
+
+  __ScopedQueueAnnotation::__ScopedQueueAnnotation(DxvkDevice* dev, VkCommandBuffer cmdBuf, const char* name)
+    : m_device(dev)
+    , m_cmdBuf(cmdBuf) {
+    VkDebugUtilsLabelEXT info = {
+      VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT, nullptr, name, { 1.0f, 0.0f, 0.0f, 1.0f } // Red color
+    };
+
+    if (m_device->instance()->extensions().extDebugUtils) {
+      m_device->vkd()->vkCmdBeginDebugUtilsLabelEXT(m_cmdBuf, &info);
+    }
+
+    if (m_device->extensions().nvDeviceDiagnosticCheckpoints) {
+      m_device->vkd()->vkCmdSetCheckpointNV(m_cmdBuf, (const void*)name);
+    }
+  }
+
+  __ScopedQueueAnnotation::~__ScopedQueueAnnotation() {
+    if (m_device->instance()->extensions().extDebugUtils) {
+      m_device->vkd()->vkCmdEndDebugUtilsLabelEXT(m_cmdBuf);
+    }
+  }
 }

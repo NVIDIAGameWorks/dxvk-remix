@@ -60,12 +60,17 @@ namespace dxvk {
    */
   struct DxvkQueueSubmission {
     uint32_t              waitCount;
-    VkSemaphore           waitSync[2];
-    VkPipelineStageFlags  waitMask[2];
+    VkSemaphore           waitSync[3];
+    VkPipelineStageFlags  waitMask[3];
     uint32_t              wakeCount;
-    VkSemaphore           wakeSync[2];
+    VkSemaphore           wakeSync[3];
     uint32_t              cmdBufferCount;
     VkCommandBuffer       cmdBuffers[4];
+
+    // NV-DXVK: DLFG integration
+    uint64_t              waitValue[3] = { uint64_t(-1), uint64_t(-1), uint64_t(-1) };
+    uint64_t              wakeValue[3] = { uint64_t(-1), uint64_t(-1), uint64_t(-1) };
+    // NV-DXVK end
   };
 
   /**
@@ -83,6 +88,17 @@ namespace dxvk {
     
     DxvkCommandList(DxvkDevice* device);
     ~DxvkCommandList();
+
+    // NV-DXVK start: DLFG integration
+    /**
+     * \brief Adds an extra wait semaphore to this command list
+     */
+    void addWaitSemaphore(VkSemaphore waitSemaphore, uint64_t waitSemaphoreValue = -1);
+    /**
+     * \brief Adds an extra signal semaphore to this command list
+     */
+    void addSignalSemaphore(VkSemaphore signalSemaphore, uint64_t signalSemaphoreValue = -1);
+    // NV-DXVK end
     
     /**
      * \brief Submits command list
@@ -94,7 +110,12 @@ namespace dxvk {
      */
     VkResult submit(
             VkSemaphore     waitSemaphore,
-            VkSemaphore     wakeSemaphore);
+            VkSemaphore     wakeSemaphore,
+            // NV-DXVK: DLFG integration
+            uint64_t        waitSemaphoreValue = -1,
+            uint64_t        wakeSemaphoreValue = -1
+            // NV-DXVK: DLFG integration
+    );
     
     /**
      * \brief Synchronizes command buffer execution
@@ -882,6 +903,7 @@ namespace dxvk {
       if (cmdBuffer == DxvkCmdBuffer::SdmaBuffer) return m_sdmaBuffer;
       return VK_NULL_HANDLE;
     }
+  
   private:
     
     DxvkDevice*         m_device;
@@ -912,7 +934,13 @@ namespace dxvk {
             VkQueue               queue,
             VkFence               fence,
       const DxvkQueueSubmission&  info);
-    
+
+    // NV-DXVK start: DLFG integration
+    VkSemaphore m_additionalWaitSemaphore = nullptr;
+    uint64_t m_additionalWaitSemaphoreValue = uint64_t(-1);
+    VkSemaphore m_additionalSignalSemaphore = nullptr;
+    uint64_t m_additionalSignalSemaphoreValue = uint64_t(-1);
+    // NV-DXVK end
   };
   
 }

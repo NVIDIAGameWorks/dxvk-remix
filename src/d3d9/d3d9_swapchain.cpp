@@ -28,6 +28,10 @@
 #include "../dxvk/rtx_render/rtx_bridge_message_channel.h"
 #include "../dxvk/dxvk_scoped_annotation.h"
 
+// NV-DXVK start: DLFG integration
+#include "../dxvk/rtx_render/rtx_dlfg.h"
+// NV-DXVK end
+
 namespace dxvk {
   // NV-DXVK start: App Controlled FSE
   enum FSEState {
@@ -297,6 +301,13 @@ namespace dxvk {
     m_presentParams = *pPresentParams;
     m_window = m_presentParams.hDeviceWindow;
 
+    // NV-DXVK start: DLFG integration
+    if (RtxOptions::Get()->enableVsync() == EnableVsync::WaitingForImplicitSwapchain) {
+      // save the vsync state when the first swapchain is created, to act as the default
+      RtxOptions::Get()->enableVsyncRef() = m_presentParams.PresentationInterval ? EnableVsync::On : EnableVsync::Off;
+    }
+    // NV-DXVK end
+
     UpdatePresentRegion(nullptr, nullptr);
     if (!pDevice->GetOptions()->deferSurfaceCreation)
       CreatePresenter();
@@ -323,6 +334,14 @@ namespace dxvk {
     RestoreDisplayMode(m_monitor);
 
     m_device->waitForSubmission(&m_presentStatus);
+
+    // NV-DXVK start: DLFG integration
+    if (m_dlfgPresenter != nullptr) {
+      // if the DLFG presenter is running, idle it before waitForIdle, otherwise we'll violate synchronization requirements on VkQueue
+      m_dlfgPresenter->synchronize();
+    }
+    // NV-DXVK end
+
     m_device->waitForIdle();
   }
 
@@ -345,6 +364,28 @@ namespace dxvk {
     return E_NOINTERFACE;
   }
 
+
+  // NV-DXVK start: DLFG integration
+  bool D3D9SwapChainEx::NeedRecreatePresenter() {
+    if (m_context->isDLFGEnabled()) {
+      if (m_dlfgPresenter == nullptr) {
+        return true;
+      }
+    } else {
+      if (m_presenter == nullptr) {
+        return true;
+      }
+    }
+
+    // one must be null, one must be non-null
+    assert(m_presenter != nullptr || m_dlfgPresenter != nullptr);
+    assert(m_presenter == nullptr || m_dlfgPresenter == nullptr);
+    return false;
+  }
+
+  vk::Presenter* D3D9SwapChainEx::GetPresenter() const {
+    return m_presenter != nullptr ? m_presenter.ptr() : m_dlfgPresenter.ptr();
+  }
 
   HRESULT STDMETHODCALLTYPE D3D9SwapChainEx::Present(
     const RECT*    pSourceRect,
@@ -376,8 +417,20 @@ namespace dxvk {
       presentInterval = options->presentInterval;
 
     // NV-DXVK start: Reflex integration
-    if (RtxOptions::Get()->forceVsyncOff())
+    switch (RtxOptions::Get()->enableVsync()) {
+    case EnableVsync::Off:
       presentInterval = 0;
+      break;
+
+    case EnableVsync::On:
+      presentInterval = 1;
+      break;
+
+    default:
+      // this should never happen
+      assert(!"invalid vsync enable state");
+      break;
+    }
     // NV-DXVK end
 
     bool vsync  = presentInterval != 0;
@@ -387,7 +440,9 @@ namespace dxvk {
       window    = hDestWindowOverride;
 
     bool recreate = false;
-    recreate   |= m_presenter == nullptr;
+    // NV-DXVK start: DLFG integration
+    recreate    = NeedRecreatePresenter();
+    // NV-DXVK end
     recreate   |= window != m_window;    
     recreate   |= m_dialog != m_lastDialog;
 
@@ -403,8 +458,10 @@ namespace dxvk {
     m_dirty    |= vsync != m_vsync;
     m_dirty    |= UpdatePresentRegion(pSourceRect, pDestRect);
     m_dirty    |= recreate;
-    m_dirty    |= m_presenter != nullptr &&
-                 !m_presenter->hasSwapChain();
+    // NV-DXVK start: DLFG integration
+    m_dirty    |= GetPresenter() != nullptr &&
+                  !GetPresenter()->hasSwapChain();
+    // NV-DXVK end
 
     m_vsync     = vsync;
 
@@ -420,7 +477,10 @@ namespace dxvk {
       // We aren't going to device loss simply because
       // 99% of D3D9 games don't handle this properly and
       // just end up crashing (like with alt-tab loss)
-      if (!m_presenter->hasSwapChain())
+      
+      // NV-DXVK start: DLFG integration
+      if (!GetPresenter()->hasSwapChain())
+      // NV-DXVK end
         return D3D_OK;
 
       PresentImage(presentInterval);
@@ -908,7 +968,16 @@ namespace dxvk {
       hWindow = m_parent->GetWindow();
 
     if (m_presentParams.hDeviceWindow == hWindow) {
-      m_presenter = nullptr;
+      // NV-DXVK start: DLFG integration
+      if (m_presenter != nullptr) {
+        assert(m_dlfgPresenter == nullptr);
+        m_presenter = nullptr;
+      }
+
+      if (m_dlfgPresenter != nullptr) {
+        assert(m_presenter == nullptr);
+        m_dlfgPresenter = nullptr;
+      }
 
       m_device->waitForSubmission(&m_presentStatus);
       m_device->waitForIdle();
@@ -1012,19 +1081,29 @@ namespace dxvk {
     for (uint32_t i = 0; i < SyncInterval || i < 1; i++) {
       SynchronizePresent();
 
+      // NV-DXVK start: DLFG integration
+      vk::Presenter* presenter = GetPresenter();
+      // NV-DXVK end
+      
       // Presentation semaphores and WSI swap chain image
-      vk::PresenterInfo info = m_presenter->info();
+      // NV-DXVK start: DLFG integration
+      vk::PresenterInfo info = presenter->info();
+      // NV-DXVK end
       vk::PresenterSync sync;
 
       uint32_t imageIndex = 0;
 
-      VkResult status = m_presenter->acquireNextImage(sync, imageIndex);
-
+      // NV-DXVK start: DLFG integration
+      VkResult status = presenter->acquireNextImage(sync, imageIndex);
+      // NV-DXVK end
+      
       while (status != VK_SUCCESS && status != VK_SUBOPTIMAL_KHR) {
         RecreateSwapChain(m_vsync);
-        
-        info = m_presenter->info();
-        status = m_presenter->acquireNextImage(sync, imageIndex);
+
+        // NV-DXVK start: DLFG integration
+        info = presenter->info();
+        status = presenter->acquireNextImage(sync, imageIndex);
+        // NV-DXVK end
       }
 
       m_context->beginRecording(
@@ -1037,6 +1116,7 @@ namespace dxvk {
       VkRect2D dstRect = {
         {  int32_t(m_dstRect.left),                    int32_t(m_dstRect.top)                    },
         { uint32_t(m_dstRect.right - m_dstRect.left), uint32_t(m_dstRect.bottom - m_dstRect.top) } };
+      
 
       m_blitter->presentImage(m_context.ptr(),
         m_imageViews.at(imageIndex), dstRect,
@@ -1046,7 +1126,7 @@ namespace dxvk {
         m_hud->render(m_context, info.format, info.imageExtent);
 
       if (m_imgui != nullptr)
-        m_imgui->render(m_window, m_context, info.format, info.imageExtent);
+        m_imgui->render(m_window, m_context, info.format, info.imageExtent, m_vsync);
 
       // NV-DXVK start
       m_parent->m_rtx.OnPresent(m_imageViews.at(imageIndex)->image());
@@ -1111,27 +1191,48 @@ namespace dxvk {
       if (cHud != nullptr && !cFrameId)
         cHud->update();
 
-      m_device->presentImage(cReflexFrameId, m_presenter, &m_presentStatus);
+      // NV-DXVK start: DLFG integration
+      // Note: Do not insert Reflex present markers when DLFG is enabled, the DLFG Presenter will insert its own Reflex markers
+      // (unless the workaround is enabled as this requires that the Present markers stay where they usually are).
+      const bool insertReflexPresentMarkers = !m_context->isDLFGEnabled() || (__DLFG_REFLEX_WORKAROUND != 0);
+
+      m_device->presentImage(cReflexFrameId, insertReflexPresentMarkers, GetPresenter(), &m_presentStatus);
+      // NV-DXVK end
     });
 
     m_parent->FlushCsChunk();
   }
-
 
   void D3D9SwapChainEx::SynchronizePresent() {
     ScopedCpuProfileZone();
     // Recreate swap chain if the previous present call failed
     VkResult status = m_device->waitForSubmission(&m_presentStatus);
 
-    if (status != VK_SUCCESS)
+    if (status != VK_SUCCESS
+        // NV-DXVK start: DLFG integration
+        && status != VK_EVENT_SET
+        )
       RecreateSwapChain(m_vsync);
   }
 
 
   void D3D9SwapChainEx::RecreateSwapChain(BOOL Vsync) {
     // Ensure that we can safely destroy the swap chain
-    m_device->waitForSubmission(&m_presentStatus);
-    m_device->waitForIdle();
+    VkResult status = m_device->waitForSubmission(&m_presentStatus);
+
+    // NV-DXVK start: DLFG integration
+    if (m_dlfgPresenter != nullptr) {
+      // synchronize DLFG presenter after flushing the submit queue to ensure m_presentStatus is up to date
+      m_dlfgPresenter->synchronize();
+
+      if (status == VK_EVENT_SET) {
+        // if we got a present queued status from DLFG, it must have updated it now
+        assert(m_presentStatus.result != VK_EVENT_SET);
+      }
+    } else {
+      assert(status != VK_EVENT_SET);
+    }
+    // NV-DXVK end
 
     m_presentStatus.result = VK_SUCCESS;
 
@@ -1142,9 +1243,17 @@ namespace dxvk {
     presenterDesc.numPresentModes = PickPresentModes(Vsync, presenterDesc.presentModes);
     presenterDesc.fullScreenExclusive = PickFullscreenMode();
 
-    if (m_presenter->recreateSwapChain(presenterDesc) != VK_SUCCESS)
+    // NV-DXVK start: DLFG integration
+    const bool dlfgEnabled = m_context->isDLFGEnabled();
+    if (dlfgEnabled && m_dlfgPresenter != nullptr) {
+      // DLFG presents 2 times (1 more frame) in each real frame,
+      // increase image count by 1 to avoid resource waiting.
+      presenterDesc.imageCount++;
+    }
+
+    if (GetPresenter()->recreateSwapChain(presenterDesc) != VK_SUCCESS)
       throw DxvkError("D3D9SwapChainEx: Failed to recreate swap chain");
-    
+    // NV-DXVK end
     
 
     CreateRenderTargetViews();
@@ -1154,15 +1263,29 @@ namespace dxvk {
   void D3D9SwapChainEx::CreatePresenter() {
     // Ensure that we can safely destroy the swap chain
     m_device->waitForSubmission(&m_presentStatus);
+    
+    // NV-DXVK start: DLFG integration
+    if (m_dlfgPresenter != nullptr) {
+      // need to synchronize DLFG presenter explicitly
+      // to ensure pacer thread is idle
+      m_dlfgPresenter->synchronize();
+    }
+    // NV-DXVK end
+
     m_device->waitForIdle();
 
+    m_presenter = nullptr;
     m_presentStatus.result = VK_SUCCESS;
 
-    DxvkDeviceQueue graphicsQueue = m_device->queues().graphics;
-
+    // NV-DXVK start: DLFG integration
+    m_dlfgPresenter = nullptr;
+    const bool dlfgEnabled = m_context->isDLFGEnabled();
+    DxvkDeviceQueue presentQueue = dlfgEnabled ? m_device->queues().present : m_device->queues().graphics;
+    
     vk::PresenterDevice presenterDevice;
-    presenterDevice.queueFamily   = graphicsQueue.queueFamily;
-    presenterDevice.queue         = graphicsQueue.queueHandle;
+    presenterDevice.queueFamily   = presentQueue.queueFamily;
+    presenterDevice.queue         = presentQueue.queueHandle;
+    // NV-DXVK end
     presenterDevice.adapter       = m_device->adapter()->handle();
     presenterDevice.features.fullScreenExclusive = m_device->extensions().extFullScreenExclusive;
 
@@ -1173,22 +1296,39 @@ namespace dxvk {
     presenterDesc.numPresentModes = PickPresentModes(false, presenterDesc.presentModes);
     presenterDesc.fullScreenExclusive = PickFullscreenMode();
 
-    m_presenter = new vk::Presenter(m_window,
-      m_device->adapter()->vki(),
-      m_device->vkd(),
-      presenterDevice,
-      presenterDesc);
+    // NV-DXVK start: DLFG integration
+    if (dlfgEnabled) {
+      // DLFG presents 2 times (1 more frame) in each real frame,
+      // increase image count by 1 to avoid resource waiting.
+      presenterDesc.imageCount++;
+      m_dlfgPresenter = new DxvkDLFGPresenter(m_device,
+                                              m_context,
+                                              m_window,
+                                              m_device->adapter()->vki(),
+                                              m_device->vkd(),
+                                              presenterDevice,
+                                              presenterDesc);
+    } else {
+      m_presenter = new vk::Presenter(m_window,
+        m_device->adapter()->vki(),
+        m_device->vkd(),
+        presenterDevice,
+        presenterDesc);
+    }
 
-    m_presenter->setFrameRateLimit(m_parent->GetOptions()->maxFrameRate);
-    m_presenter->setFrameRateLimiterRefreshRate(m_displayRefreshRate);
+    GetPresenter()->setFrameRateLimit(m_parent->GetOptions()->maxFrameRate);
+    GetPresenter()->setFrameRateLimiterRefreshRate(m_displayRefreshRate);
+    // NV-DXVK end
 
     CreateRenderTargetViews();
   }
 
 
   void D3D9SwapChainEx::CreateRenderTargetViews() {
-    vk::PresenterInfo info = m_presenter->info();
-
+    // NV-DXVK start: DLFG integration
+    vk::PresenterInfo info = GetPresenter()->info();
+    // NV-DXVK end
+    
     m_imageViews.clear();
     m_imageViews.resize(info.imageCount);
 
@@ -1218,8 +1358,10 @@ namespace dxvk {
     viewInfo.numLayers    = 1;
 
     for (uint32_t i = 0; i < info.imageCount; i++) {
-      VkImage imageHandle = m_presenter->getImage(i).image;
-      
+      // NV-DXVK start: DLFG integration
+      VkImage imageHandle = GetPresenter()->getImage(i).image;
+      // NV-DXVK end
+
       Rc<DxvkImage> image = new DxvkImage(
         m_device->vkd(), imageInfo, imageHandle);
 
@@ -1413,8 +1555,9 @@ namespace dxvk {
           double                  RefreshRate) {
     m_displayRefreshRate = RefreshRate;
 
-    if (m_presenter != nullptr)
-      m_presenter->setFrameRateLimiterRefreshRate(RefreshRate);
+    // NV-DXVK start: DLFG integration
+    if (GetPresenter() != nullptr)
+      GetPresenter()->setFrameRateLimiterRefreshRate(RefreshRate);
   }
 
 
@@ -1464,7 +1607,7 @@ namespace dxvk {
     
     m_monitor = GetDefaultMonitor();
 
-    m_presenter->acquireFullscreenExclusive();
+    GetPresenter()->acquireFullscreenExclusive();
 
     return D3D_OK;
   }
@@ -1501,7 +1644,7 @@ namespace dxvk {
         SWP_FRAMECHANGED | SWP_NOZORDER | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
     }
 
-    m_presenter->releaseFullscreenExclusive();
+    GetPresenter()->releaseFullscreenExclusive();
     
     return D3D_OK;
   }

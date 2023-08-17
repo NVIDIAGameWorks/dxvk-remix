@@ -45,7 +45,17 @@ namespace dxvk {
   public:
     
     DxvkContext(const Rc<DxvkDevice>& device);
+
     virtual ~DxvkContext();
+
+    // NV-DXVK start: DLFG integration
+    /**
+     * \brief Returns true if DLFG is enabled
+     *
+     * This is a combination of the setting being enabled and the device supporting it.
+     */
+    bool isDLFGEnabled() const;
+    // NV-DXVK end
     
     /**
      * \brief Begins command buffer recording

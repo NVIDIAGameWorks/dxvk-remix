@@ -94,6 +94,10 @@ namespace dxvk {
     // NV-DXVK start: RTXIO
     DxvkDeviceQueue asyncCompute;
     // NV-DXVK end
+
+    // NV-DXVK start: DLFG integration
+    DxvkDeviceQueue present;  // we run DLFG + presents in this queue
+    // NV-DXVK end
   };
   
   /**
@@ -478,11 +482,25 @@ namespace dxvk {
      * consistent frame IDs throughout the dispatches of an application frame.
      * \param [in] presenter The presenter
      * \param [out] status Present status
+     * \param [in] swapchainImage DxvkImageView for the swapchain image being presented
      */
     void presentImage(
       std::uint64_t                   cachedReflexFrameId,
+      bool                            insertReflexPresentMarkers,
       const Rc<vk::Presenter>&        presenter,
-            DxvkSubmitStatus*         status);
+            DxvkSubmitStatus*         status
+            );
+
+    // NV-DXVK start: DLFG integration
+    /**
+     * \brief Setup frame interpolation parameters for current frame
+     *
+     * These are used in the submit queue to trigger frame interpolation
+     * when the next present call comes in.
+     */
+    void setupFrameInterpolation(
+      DxvkFrameInterpolationInfo parameters);
+    // NV-DXVK end: DLFG integration
     
     /**
      * \brief Submits a command list

@@ -304,7 +304,47 @@ namespace dxvk {
     // initialized for PCL stats.
     setMarker(frameId, VK_PRESENT_END);
   }
-  
+
+  void RtxReflex::beginOutOfBandRendering(std::uint64_t frameId) const {
+#ifdef REFLEX_TRACY_MARKERS
+    ScopedCpuProfileZoneDynamic(str::format("Begin Async Rendering ", frameId));
+#endif
+
+    // Note: Reflex initialization not checked here as setMarker checks internally and needs to be called even when Reflex is not
+    // initialized for PCL stats.
+    setMarker(frameId, VK_OUT_OF_BAND_RENDERSUBMIT_START);
+  }
+
+  void RtxReflex::endOutOfBandRendering(std::uint64_t frameId) const {
+#ifdef REFLEX_TRACY_MARKERS
+    ScopedCpuProfileZoneDynamic(str::format("End Async Rendering ", frameId));
+#endif
+
+    // Note: Reflex initialization not checked here as setMarker checks internally and needs to be called even when Reflex is not
+    // initialized for PCL stats.
+    setMarker(frameId, VK_OUT_OF_BAND_RENDERSUBMIT_END);
+  }
+
+  void RtxReflex::beginOutOfBandPresent(std::uint64_t frameId) const {
+#ifdef REFLEX_TRACY_MARKERS
+    ScopedCpuProfileZoneDynamic(str::format("Begin Async Present ", frameId));
+#endif
+
+    // Note: Reflex initialization not checked here as setMarker checks internally and needs to be called even when Reflex is not
+    // initialized for PCL stats.
+    setMarker(frameId, VK_OUT_OF_BAND_PRESENT_START);
+  }
+
+  void RtxReflex::endOutOfBandPresent(std::uint64_t frameId) const {
+#ifdef REFLEX_TRACY_MARKERS
+    ScopedCpuProfileZoneDynamic(str::format("End Async Present ", frameId));
+#endif
+
+    // Note: Reflex initialization not checked here as setMarker checks internally and needs to be called even when Reflex is not
+    // initialized for PCL stats.
+    setMarker(frameId, VK_OUT_OF_BAND_PRESENT_END);
+  }
+
   LatencyStats RtxReflex::getLatencyStats() const {
     // Note: Initialize all stats to zero in case Reflex is not initialized or getting latency params fails.
     LatencyStats latencyStats{};
@@ -559,4 +599,12 @@ namespace dxvk {
     }
   }
 
+  void RtxReflex::markOutOfBandPresentQueue(VkQueue queueHandle) {
+    if (!reflexInitialized()) {
+      return;
+    }
+
+    // Note: This is marking that the queue in question is used for OOB presenting, not that it is a queue from a present queue family.
+    NvLL_VK_NotifyOutOfBandQueue(m_device->handle(), queueHandle, VK_OUT_OF_BAND_QUEUE_TYPE_PRESENT);
+  }
 }

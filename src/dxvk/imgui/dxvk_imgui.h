@@ -74,12 +74,14 @@ namespace dxvk {
      * \param [in] hwnd Window currently being drawn into
      * \param [in] ctx Device context
      * \param [in] surfaceSize Image size, in pixels
+     * \param [in] vsync swapchain vsync enabled
      */
     void render(
             const HWND hwnd,
             const Rc<DxvkContext>&  ctx,
             VkSurfaceFormatKHR surfaceFormat,
-            VkExtent2D         surfaceSize);
+            VkExtent2D         surfaceSize,
+            bool               vsync);
 
     /**
      * \brief Creates the GUI
@@ -131,6 +133,7 @@ namespace dxvk {
     float m_reflexLatencyStatsWindowWidth = 500.f;
     float m_reflexLatencyStatsWindowHeight = 650.f;
     bool m_reflexLatencyStatsOpen = false;
+    bool m_lastRenderVsyncStatus = false;
 
     void update(const Rc<DxvkContext>& ctx);
 
@@ -165,7 +168,8 @@ namespace dxvk {
 
     void showRenderingSettings(const Rc<DxvkContext>& ctx);
 
-    void showReflexOptions(bool displayStatsWindowToggle);
+    void showDLFGOptions(const Rc<DxvkContext>& ctx);
+    void showReflexOptions(const Rc<DxvkContext>& ctx, bool displayStatsWindowToggle);
     void showReflexLatencyStats();
 
     void showSetupWindow(const Rc<DxvkContext>& ctx);
@@ -183,6 +187,7 @@ namespace dxvk {
     void createFontsTexture(const Rc<DxvkContext>& ctx);
 
     void setupStyle(ImGuiStyle* dst = NULL);      // custom style
+    void showVsyncOptions();
 
     void processHotkeys();
 

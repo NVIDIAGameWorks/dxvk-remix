@@ -76,6 +76,12 @@ namespace dxvk {
 
       // cmdResetQuery has reset commented out since it hits an AV on initial reset - need to update dxvk that handles resets differently
       ".*? After query pool creation, each query must be reset before it is used. Queries must also be reset between uses.$",
+      
+      // VL bug: it thinks we're using VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT when we're not
+      ".*? MessageID = 0x769aa5a9 .*?",
+
+      // VL does not know about VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_OPTICAL_FLOW_FEATURES_NV
+      ".*? MessageID = 0x901f59ec .*?\\(1000464000\\).*?",
     };
 
     for(auto& exp : ignoredErrors) {
@@ -378,6 +384,14 @@ namespace dxvk {
     // Enable additional extensions if necessary
     for (const auto& provider : m_extProviders)
       extensionsEnabled.merge(provider->getInstanceExtensions());
+
+    // NV-DXVK start: DLFG integration
+    std::vector<DxvkExt*> dlfgExtList = { {
+      &insExtensions.khrExternalMemoryCapabilities,
+      &insExtensions.khrExternalSemaphoreCapabilities
+    } };
+    extensionsAvailable.enableExtensions(dlfgExtList.size(), dlfgExtList.data(), extensionsEnabled);
+    // NV-DXVK end
 
     DxvkNameList extensionNameList = extensionsEnabled.toNameList();
     

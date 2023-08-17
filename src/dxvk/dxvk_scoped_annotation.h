@@ -12,10 +12,30 @@
 #define ScopedCpuProfileZone() \
         ScopedCpuProfileZoneN(__FUNCTION__)
 
+#define ProfilerPlotValue(name, val) \
+        TracyPlot(name, val)
+
+#define ProfilerPlotValueF32(name, val) \
+        TracyPlot(name, float(val))
+
+#define ProfilerPlotValueF64(name, val) \
+        TracyPlot(name, double(val))
+
+#define ProfilerPlotValueI64(name, val) \
+        TracyPlot(name, int64_t(val))
+
 #define ScopedGpuProfileZone(ctx, name) \
         ScopedCpuProfileZoneN(name); \
         TracyVkZone(ctx->getDevice()->queues().graphics.tracyCtx, ctx->getCmdBuffer(DxvkCmdBuffer::ExecBuffer), name); \
         __ScopedAnnotation __scopedAnnotation(ctx, name)
+
+#define ScopedGpuProfileZoneQ(device, cmdbuf, queue, name) \
+        ScopedCpuProfileZoneN(name); \
+        TracyVkZone(device->queues().queue.tracyCtx, cmdbuf, name); \
+        __ScopedQueueAnnotation __scopedQueueAnnotation(device, cmdbuf, name)
+
+#define ScopedGpuProfileZone_Present(device, cmdbuf, name) \
+        ScopedGpuProfileZoneQ(device, cmdbuf, present, name)
 
 #ifdef REMIX_DEVELOPMENT
   // NOTE: Since this uses dynamic strings to write variables to profiler, it can be more expensive than constexpr above, and so is only enabled in REMIX_DEVELOPMENT
@@ -37,6 +57,7 @@
 namespace dxvk {
 
   class DxvkContext;
+  class DxvkDevice;
 
   /**
    * A helper class to add annotation/profiler ranges as renderOps into cmd buffer.
@@ -48,5 +69,15 @@ namespace dxvk {
 
   private:
     Rc<DxvkContext> m_ctx;
+  };
+
+  class __ScopedQueueAnnotation {
+  public:
+    __ScopedQueueAnnotation(DxvkDevice* dev, VkCommandBuffer cmdBuf, const char* name);
+    ~__ScopedQueueAnnotation();
+
+  private:
+    DxvkDevice* m_device;
+    VkCommandBuffer m_cmdBuf;
   };
 }

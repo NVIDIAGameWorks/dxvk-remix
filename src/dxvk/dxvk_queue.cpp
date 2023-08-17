@@ -32,7 +32,6 @@ namespace dxvk {
   : m_device(device),
     m_submitThread([this] () { submitCmdLists(); }),
     m_finishThread([this] () { finishCmdLists(); }) {
-
   }
   
   
@@ -73,11 +72,22 @@ namespace dxvk {
     DxvkSubmitEntry entry = { };
     entry.status  = status;
     entry.present = std::move(presentInfo);
-
     m_submitQueue.push(std::move(entry));
     m_appendCond.notify_all();
   }
 
+
+// NV-DXVK begin: DLFG integration
+  void DxvkSubmissionQueue::setupFrameInterpolation(DxvkFrameInterpolationInfo frameInterpolationInfo) {
+    ZoneScoped;
+    std::unique_lock<dxvk::mutex> lock(m_mutex);
+
+    DxvkSubmitEntry entry = { };
+    entry.frameInterpolation = std::move(frameInterpolationInfo);
+    m_submitQueue.push(std::move(entry));
+    m_appendCond.notify_all();
+  }
+// NV-DXVK end
 
   void DxvkSubmissionQueue::synchronizeSubmission(
           DxvkSubmitStatus*   status) {
@@ -97,6 +107,13 @@ namespace dxvk {
     m_submitCond.wait(lock, [this] {
       return m_submitQueue.empty();
     });
+
+    // NV-DXVK start: DLFG integration
+    if (m_lastPresenter != nullptr) {
+      m_lastPresenter->synchronize();
+      m_lastPresenter = nullptr;
+    }
+    // NV-DXVK end
   }
 
 
@@ -110,7 +127,6 @@ namespace dxvk {
     ScopedCpuProfileZone();
     m_mutexQueue.unlock();
   }
-
 
   void DxvkSubmissionQueue::submitCmdLists() {
     env::setThreadName("dxvk-submit");
@@ -129,7 +145,7 @@ namespace dxvk {
 
       DxvkSubmitEntry entry = std::move(m_submitQueue.front());
       lock.unlock();
-
+      
       // Submit command buffer to device
       VkResult status = VK_NOT_READY;
 
@@ -142,17 +158,41 @@ namespace dxvk {
           status = entry.submit.cmdList->submit(
             entry.submit.waitSync,
             entry.submit.wakeSync);
-        } else if (entry.present.presenter != nullptr) {
-          
+        }
+        // NV-DXVK start: DLFG integration
+        else if (entry.frameInterpolation.valid()) {
+          // stash frame interpolation data for next present call
+          m_currentFrameInterpolationData = entry.frameInterpolation;
+        }
+        else if (entry.present.presenter != nullptr) {
+          m_lastPresenter = entry.present.presenter;
+
           // NV-DXVK start: Reflex present start
-          m_device->getCommon()->metaReflex().beginPresentation(entry.present.cachedReflexFrameId);
+          const auto insertReflexPresentMarkers = entry.present.insertReflexPresentMarkers;
+          const auto cachedReflexFrameId = entry.present.cachedReflexFrameId;
+          const auto& reflex = m_device->getCommon()->metaReflex();
+
+          // Note: Only insert Reflex Present markers around the Presenter's present call if requested.
+          if (insertReflexPresentMarkers) {
+            reflex.beginPresentation(cachedReflexFrameId);
+          }
           // NV-DXVK end
 
-          status = entry.present.presenter->presentImage();
+          // m_device->vkd()->vkQueueWaitIdle(m_device->queues().graphics.queueHandle);
+          status = entry.present.presenter->presentImage(&entry.status->result, entry.present, m_currentFrameInterpolationData);
+          // if both submit and DLFG+present run on the same queue, then we need to wait for present to avoid racing on the queue
+#if __DLFG_USE_GRAPHICS_QUEUE
+          entry.present.presenter->synchronize();
+#endif
 
           // NV-DXVK start: Reflex present end
-          m_device->getCommon()->metaReflex().endPresentation(entry.present.cachedReflexFrameId);
+          // Note: Only insert Reflex Present markers around the Presenter's present call if requested.
+          if (insertReflexPresentMarkers) {
+            reflex.endPresentation(cachedReflexFrameId);
+          }
           // NV-DXVK end
+
+          m_currentFrameInterpolationData.reset();
 
           if (m_device->config().presentThrottleDelay > 0) {
             Sleep(m_device->config().presentThrottleDelay);
@@ -165,8 +205,13 @@ namespace dxvk {
       }
 
       if (entry.status)
-        entry.status->result = status;
-      
+        // NV-DXVK start: DLFG integration
+        // if we queued for interpolation, then don't touch the output status here; DLFG presenter thread will update it (and may have already done so)
+        if (status != VK_EVENT_SET) {
+          entry.status->result = status;
+        }
+        // NV-DXVK end
+
       // On success, pass it on to the queue thread
       lock = std::unique_lock<dxvk::mutex>(m_mutex);
 
@@ -251,5 +296,4 @@ namespace dxvk {
       m_finishCond.notify_all();
     }
   }
-  
 }

@@ -24,7 +24,7 @@ namespace dxvk {
     VkCommandPoolCreateInfo poolInfo;
     poolInfo.sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     poolInfo.pNext            = nullptr;
-    poolInfo.flags            = 0;
+    poolInfo.flags            = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     poolInfo.queueFamilyIndex = graphicsQueue.queueFamily;
     
     if (m_vkd->vkCreateCommandPool(m_vkd->device(), &poolInfo, nullptr, &m_graphicsPool) != VK_SUCCESS)
@@ -78,11 +78,26 @@ namespace dxvk {
     
     m_vkd->vkDestroyFence(m_vkd->device(), m_fence, nullptr);
   }
-  
-  
+
+  // NV-DXVK start: DLFG integration
+  void DxvkCommandList::addWaitSemaphore(VkSemaphore waitSemaphore, uint64_t waitSemaphoreValue) {
+    assert(!m_additionalWaitSemaphore);
+    m_additionalWaitSemaphore = waitSemaphore;
+    m_additionalWaitSemaphoreValue = waitSemaphoreValue;
+  }
+
+  void DxvkCommandList::addSignalSemaphore(VkSemaphore signalSemaphore, uint64_t signalSemaphoreValue) {
+    assert(!m_additionalSignalSemaphore);
+    m_additionalSignalSemaphore = signalSemaphore;
+    m_additionalSignalSemaphoreValue = signalSemaphoreValue;
+  }
+  // NV-DXVK end
+
   VkResult DxvkCommandList::submit(
           VkSemaphore     waitSemaphore,
-          VkSemaphore     wakeSemaphore) {
+          VkSemaphore     wakeSemaphore,
+          uint64_t        waitSemaphoreValue,
+          uint64_t        wakeSemaphoreValue) {
     const auto& graphics = m_device->queues().graphics;
     const auto& transfer = m_device->queues().transfer;
 
@@ -111,14 +126,42 @@ namespace dxvk {
       info.cmdBuffers[info.cmdBufferCount++] = m_execBuffer;
     
     if (waitSemaphore) {
+      assert(info.waitCount < (sizeof(info.waitSync) / sizeof(info.waitSync[0])));
       info.waitSync[info.waitCount] = waitSemaphore;
       info.waitMask[info.waitCount] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+      info.waitValue[info.waitCount] = waitSemaphoreValue;
       info.waitCount += 1;
     }
 
-    if (wakeSemaphore)
-      info.wakeSync[info.wakeCount++] = wakeSemaphore;
-    
+    if (wakeSemaphore) {
+      assert(info.wakeCount < (sizeof(info.wakeSync) / sizeof(info.wakeSync[0])));
+      info.wakeSync[info.wakeCount] = wakeSemaphore;
+      info.wakeValue[info.wakeCount] = wakeSemaphoreValue;
+      info.wakeCount++;
+    }
+
+    // NV-DXVK start: DLFG integration
+    if (m_additionalWaitSemaphore) {
+      assert(info.waitCount < (sizeof(info.waitSync) / sizeof(info.waitSync[0])));
+      info.waitSync[info.waitCount] = m_additionalWaitSemaphore;
+      info.waitMask[info.waitCount] = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+      info.waitValue[info.waitCount] = m_additionalWaitSemaphoreValue;
+      info.waitCount += 1;
+
+      m_additionalWaitSemaphore = nullptr;
+      m_additionalWaitSemaphoreValue = uint64_t(-1);
+    }
+    if (m_additionalSignalSemaphore) {
+      assert(info.wakeCount < (sizeof(info.wakeSync) / sizeof(info.wakeSync[0])));
+      info.wakeSync[info.wakeCount] = m_additionalSignalSemaphore;
+      info.wakeValue[info.wakeCount] = m_additionalSignalSemaphoreValue;
+      info.wakeCount += 1;
+
+      m_additionalSignalSemaphore = nullptr;
+      m_additionalSignalSemaphoreValue = uint64_t(-1);
+    }
+    // NV-DXVK end
+
     return submitToQueue(graphics.queueHandle, m_fence, info);
   }
   
@@ -197,9 +240,22 @@ namespace dxvk {
           VkQueue               queue,
           VkFence               fence,
     const DxvkQueueSubmission&  info) {
+
+    // NV-DXVK: DLFG integration
+    VkTimelineSemaphoreSubmitInfo timelineInfo;
+    timelineInfo.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
+    timelineInfo.pNext = nullptr;
+    timelineInfo.waitSemaphoreValueCount = info.waitCount;
+    timelineInfo.pWaitSemaphoreValues = info.waitValue;
+    timelineInfo.signalSemaphoreValueCount = info.wakeCount;
+    timelineInfo.pSignalSemaphoreValues = info.wakeValue;
+    // NV-DXVK end
+    
     VkSubmitInfo submitInfo;
     submitInfo.sType                = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.pNext                = nullptr;
+    // NV-DXVK: DLFG integration
+    submitInfo.pNext                = &timelineInfo;
+    // NV-DXVK end
     submitInfo.waitSemaphoreCount   = info.waitCount;
     submitInfo.pWaitSemaphores      = info.waitSync;
     submitInfo.pWaitDstStageMask    = info.waitMask;

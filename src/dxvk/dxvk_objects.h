@@ -23,6 +23,8 @@
 #include "rtx_render/rtx_demodulate.h"
 #include "rtx_render/rtx_nee_cache.h"
 #include "rtx_render/rtx_denoise.h"
+#include "rtx_render/rtx_ngx_wrapper.h"
+#include "rtx_render/rtx_dlfg.h"
 #include "rtx_render/rtx_dlss.h"
 #include "rtx_render/rtx_nis.h"
 #include "rtx_render/rtx_taa.h"
@@ -56,6 +58,8 @@ namespace dxvk {
   class DxvkPostFx;
   class OpacityMicromapManager;
 
+  class NGXContext;
+
   class DxvkObjects {
 
   public:
@@ -87,6 +91,8 @@ namespace dxvk {
       m_primaryCombinedLightDenoiser(device, DenoiserType::DirectAndIndirectLight),
       m_secondaryCombinedLightDenoiser(device, DenoiserType::Secondaries),
       m_referenceDenoiser(device, DenoiserType::Reference),
+      m_ngxContext(device),
+      m_dlfg(device),
       m_referenceDenoiserSecondLobe0(device, DenoiserType::Reference),
       m_referenceDenoiserSecondLobe1(device, DenoiserType::Reference),
       m_referenceDenoiserSecondLobe2(device, DenoiserType::Reference),
@@ -208,6 +214,10 @@ namespace dxvk {
       return m_referenceDenoiser.get();
     }
 
+    NGXContext& metaNGXContext() {
+      return m_ngxContext.get();
+    }
+    
     DxvkDenoise& metaReferenceDenoiserSecondLobe0() {
       return m_referenceDenoiserSecondLobe0.get();
     }
@@ -222,6 +232,10 @@ namespace dxvk {
 
     DxvkDLSS& metaDLSS() {
       return m_dlss.get();
+    }
+
+    DxvkDLFG& metaDLFG() {
+      return m_dlfg.get();
     }
 
     DxvkNIS& metaNIS() {
@@ -315,6 +329,7 @@ namespace dxvk {
       m_referenceDenoiserSecondLobe0.get().onDestroy();
       m_referenceDenoiserSecondLobe1.get().onDestroy();
       m_referenceDenoiserSecondLobe2.get().onDestroy();
+      m_dlfg.get().onDestroy();
     }
 
   private:
@@ -362,6 +377,8 @@ namespace dxvk {
     Active<DxvkDenoise>                     m_primaryCombinedLightDenoiser;
     Active<DxvkDenoise>                     m_secondaryCombinedLightDenoiser;
     Active<DxvkDenoise>                     m_referenceDenoiser;
+    Active<NGXContext>                      m_ngxContext;
+    Active<DxvkDLFG>                        m_dlfg;
     // Secondary reference denoisers used for a second lobe when non-combined signal reference denoising is enabled
     Active<DxvkDenoise>                     m_referenceDenoiserSecondLobe0;
     Active<DxvkDenoise>                     m_referenceDenoiserSecondLobe1;

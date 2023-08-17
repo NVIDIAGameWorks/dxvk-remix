@@ -954,8 +954,10 @@ namespace dxvk {
     const int subItemIndent) {
     auto common = ctx->getCommonObjects();
     DxvkDLSS& dlss = common->metaDLSS();
+    DxvkDLFG& dlfg = common->metaDLFG();
 
     const bool dlssSupported = dlss.supportsDLSS();
+    const bool dlfgSupported = dlfg.supportsDLFG();
 
     // Describe the tab
 
@@ -973,7 +975,7 @@ namespace dxvk {
     // Preset Settings
 
     if (dlssSupported) {
-      const char* dlssPresetText = "DLSS 2.0 Preset";
+      const char* dlssPresetText = dlfgSupported ? "DLSS 3.0 Preset" : "DLSS 2.0 Preset";
       const DlssPreset prevDlssPreset = RtxOptions::Get()->dlssPreset();
 
       ImGui::TextSeparator("Preset Settings");
@@ -1065,6 +1067,10 @@ namespace dxvk {
     }
 
     // Latency Reduction Settings
+    if (dlfgSupported) {
+      ImGui::TextSeparator("Frame Generation Settings");
+      showDLFGOptions(ctx);
+    }
 
     ImGui::TextSeparator("Latency Reduction Settings");
 
@@ -1073,7 +1079,7 @@ namespace dxvk {
 
       // Note: Option to toggle the stats window is set to false here as this window is currently
       // set up to display only when the "advanced" developer settings UI is active.
-      showReflexOptions(false);
+      showReflexOptions(ctx, false);
 
       ImGui::EndDisabled();
     }
@@ -1314,7 +1320,7 @@ namespace dxvk {
     ImGui::SameLine(200.f);
     ImGui::Checkbox("Live shader edit mode", &RtxOptions::Get()->useLiveShaderEditModeObject());
 
-    ImGui::Checkbox("Force V-Sync Off?", &RtxOptions::Get()->forceVsyncOffObject());
+    showVsyncOptions();
 
     if (ImGui::CollapsingHeader("Camera", collapsingHeaderFlags)) {
       ImGui::Indent();
@@ -1881,7 +1887,59 @@ namespace dxvk {
     style->TabRounding = 1;
   }
 
-  void ImGUI::showReflexOptions(bool displayStatsWindowToggle) {
+  void ImGUI::showVsyncOptions() {
+    // we should never get here without a swapchain, so we must have latched the vsync value already
+    assert(RtxOptions::Get()->enableVsync() != EnableVsync::WaitingForImplicitSwapchain);
+    
+    bool vsyncEnabled = RtxOptions::Get()->enableVsync() == EnableVsync::On;
+    ImGui::Checkbox("Enable V-Sync", &vsyncEnabled);
+    RtxOptions::Get()->enableVsyncRef() = vsyncEnabled ? EnableVsync::On : EnableVsync::Off;
+  }
+
+  void ImGUI::showDLFGOptions(const Rc<DxvkContext>& ctx) {
+    if (!ctx->getCommonObjects()->metaNGXContext().supportsDLFG()) {
+      ImGui::BeginDisabled();
+    }
+
+    m_userGraphicsSettingChanged |= ImGui::Checkbox("Enable DLSS Frame Generation", &DxvkDLFG::enableObject());
+    const auto& reason = ctx->getCommonObjects()->metaNGXContext().getDLFGNotSupportedReason();
+    if (reason.size()) {
+      ImGui::SetTooltipToLastWidgetOnHover(reason.c_str());
+      ImGui::TextWrapped(reason.c_str());
+    }
+
+    if (!ctx->getCommonObjects()->metaNGXContext().supportsDLFG()) {
+      ImGui::EndDisabled();
+    }
+
+    if (DxvkDLFG::enable()) {
+      ImGui::BeginDisabled();
+    }
+
+    showVsyncOptions();
+    ImGui::BeginDisabled();
+    ImGui::Indent();
+    ImGui::TextWrapped("This setting overrides the native game's V-Sync setting.");
+    ImGui::Unindent();
+    ImGui::EndDisabled();
+    
+    if (DxvkDLFG::enable()) {
+      ImGui::Indent();
+      ImGui::TextWrapped("When Frame Generation is active, V-Sync is automatically disabled.");
+      ImGui::Unindent();
+
+      ImGui::EndDisabled();
+    }
+
+    // Force Reflex on when using G
+    if (ctx->isDLFGEnabled()) {
+      RtxOptions::Get()->reflexModeRef() = ReflexMode::LowLatency;
+    } else {
+      DxvkDLFG::enableRef() = false;
+    }
+  }
+
+  void ImGUI::showReflexOptions(const Rc<DxvkContext>& ctx, bool displayStatsWindowToggle) {
     RtxReflex& reflex = m_device->getCommon()->metaReflex();
 
     // Note: Skip Reflex ImGUI options if Reflex is not initialized (either fully disabled or failed to be initialized).
@@ -1893,7 +1951,12 @@ namespace dxvk {
 
     // Display Reflex mode selector
 
-    m_userGraphicsSettingChanged |= ImGui::Combo("Reflex", &RtxOptions::Get()->reflexModeObject(), "Disabled\0Enabled\0Enabled + Boost\0");
+    {
+      bool disableReflexUI = ctx->isDLFGEnabled();
+      ImGui::BeginDisabled(disableReflexUI);
+      m_userGraphicsSettingChanged |= ImGui::Combo("Reflex", &RtxOptions::Get()->reflexModeObject(), "Disabled\0Enabled\0Enabled + Boost\0");
+      ImGui::EndDisabled();
+    }
 
     // Add a button to toggle the Reflex latency stats Window if requested
 
@@ -1902,6 +1965,7 @@ namespace dxvk {
         m_reflexLatencyStatsOpen = !m_reflexLatencyStatsOpen;
       }
     }
+
   }
 
   void ImGUI::showReflexLatencyStats() {
@@ -2069,7 +2133,11 @@ namespace dxvk {
       ImGui::Separator();
 #endif
 
-      showReflexOptions(true);
+      showDLFGOptions(ctx);
+
+      ImGui::Separator();
+
+      showReflexOptions(ctx, true);
 
       ImGui::Separator();
 
@@ -2581,8 +2649,11 @@ namespace dxvk {
     const HWND hwnd,
     const Rc<DxvkContext>& ctx,
     VkSurfaceFormatKHR surfaceFormat,
-    VkExtent2D        surfaceSize) {
+    VkExtent2D         surfaceSize,
+    bool               vsync) {
     ScopedGpuProfileZone(ctx, "ImGUI Render");
+
+    m_lastRenderVsyncStatus = vsync;
 
     ImGui::SetCurrentContext(m_context);
     ImPlot::SetCurrentContext(m_plotContext);

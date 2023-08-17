@@ -32,6 +32,13 @@
 
 #include "vulkan_loader.h"
 
+// NV-DXVK start: DLFG integration
+namespace dxvk {
+  struct DxvkPresentInfo;
+  struct DxvkFrameInterpolationInfo;
+};
+// NV-DXVK end
+
 namespace dxvk::vk {
 
   /**
@@ -122,7 +129,10 @@ namespace dxvk::vk {
       const Rc<DeviceFn>&   vkd,
             PresenterDevice device,
       const PresenterDesc&  desc);
-    
+
+    // NV-DXVK start: DLFG integration
+    virtual
+      // NV-DXVK end
     ~Presenter();
 
     /**
@@ -138,8 +148,21 @@ namespace dxvk::vk {
      * \param [in] index Image index
      * \returns Image handle
      */
+    // NV-DXVK start: DLFG integration
+    virtual
+    // NV-DXVK end
     PresenterImage getImage(
             uint32_t        index) const;
+
+    // NV-DXVK start: DLFG integration
+    /**
+     * \brief Retrieves the current present wait semaphore
+     *
+     * Used when injecting work at present time from the
+     * submit thread, for frame interpolation.
+     */
+    //VkSemaphore getCurrentPresentWaitSemaphore() const;
+    // NV-DXVK end
 
     /**
      * \brief Acquires next image
@@ -152,6 +175,9 @@ namespace dxvk::vk {
      * \param [out] index Acquired image index
      * \returns Status of the operation
      */
+    // NV-DXVK start: DLFG integration
+    virtual
+    // NV-DXVK end
     VkResult acquireNextImage(
             PresenterSync&  sync,
             uint32_t&       index);
@@ -162,9 +188,24 @@ namespace dxvk::vk {
      * Presents the current image. If this returns
      * an error, the swap chain must be recreated,
      * but do not present before acquiring an image.
+     *
+     * DLFG integration: this may result VK_EVENT_SET if present was queued for execution in a separate thread,
+     * status will be updated once the corresponding present operation has landed
+     *
+     * \param [in] waitSemaphore Semaphore to wait on before present (if not present, uses the internal present semaphore)
      * \returns Status of the operation
      */
-    VkResult presentImage();
+    // NV-DXVK start: DLFG integration
+    virtual
+    // NV-DXVK end
+    VkResult presentImage(
+      // NV-DXVK start: DLFG integration
+      // xxxnsubtil: these are never used by vk::Presenter, only the DLFG presenter needs them --- split this method!
+      std::atomic<VkResult>* presentStatus,
+      const DxvkPresentInfo& presentInfo,
+      const DxvkFrameInterpolationInfo& frameInterpolationInfo
+      // NV-DXVK end
+    );
     
     /**
      * \brief Changes presenter properties
@@ -174,6 +215,9 @@ namespace dxvk::vk {
      * GPU at the time this is called.
      * \param [in] desc Swap chain description
      */
+    // NV-DXVK start: DLFG integration
+    virtual
+    // NV-DXVK end
     VkResult recreateSwapChain(
       const PresenterDesc&  desc);
 
@@ -223,7 +267,11 @@ namespace dxvk::vk {
      */
     VkResult releaseFullscreenExclusive();
 
-  private:
+  // NV-DXVK start: DLFG integration
+    virtual void synchronize() { }
+
+  protected:
+  // NV-DXVK end
 
     Rc<InstanceFn>    m_vki;
     Rc<DeviceFn>      m_vkd;
@@ -272,6 +320,9 @@ namespace dxvk::vk {
       const VkSurfaceCapabilitiesKHR& caps,
             VkExtent2D                desired);
 
+    // NV-DXVK start: DLFG integration
+    virtual
+    // NV-DXVK end
     uint32_t pickImageCount(
       const VkSurfaceCapabilitiesKHR& caps,
             VkPresentModeKHR          presentMode,

@@ -269,6 +269,9 @@ namespace dxvk {
     postFxArgs.motionBlurMinimumVelocityThresholdInPixel = motionBlurMinimumVelocityThresholdInPixel();
     postFxArgs.motionBlurDynamicDeduction = motionBlurDynamicDeduction();
     postFxArgs.jitterStrength = motionBlurJitterStrength();
+    postFxArgs.motionBlurDlfgDeduction =
+      ctx->getCommonObjects()->metaNGXContext().supportsDLFG() && DxvkDLFG::enable() ?
+      1.0f / static_cast<float>(DxvkDLFGPresenter::getPresentFrameCount()) : 1.0f;
     postFxArgs.chromaticCenterAttenuationAmount = chromaticCenterAttenuationAmount();
     postFxArgs.chromaticAberrationScale = calculateChromaticAberrationScale(isChromaticAberrationEnabled() ? chromaticAberrationAmount() : 0.0f);
     postFxArgs.vignetteIntensity = isVignetteEnabled() ? vignetteIntensity() : 0.0f;
