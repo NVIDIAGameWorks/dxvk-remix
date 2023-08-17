@@ -110,10 +110,10 @@ namespace dxvk {
 
     // NV-DXVK start: App Controlled FSE
     bool AcquireFullscreenExclusive() const {
-      return m_presenter->acquireFullscreenExclusive() == VK_SUCCESS;
+      return GetPresenter()->acquireFullscreenExclusive() == VK_SUCCESS;
     }
     bool ReleaseFullscreenExclusive() const {
-      return m_presenter->releaseFullscreenExclusive() == VK_SUCCESS;
+      return GetPresenter()->releaseFullscreenExclusive() == VK_SUCCESS;
     }
     // NV-DXVK end
 
@@ -141,6 +141,10 @@ namespace dxvk {
     Rc<DxvkSwapchainBlitter>  m_blitter;
 
     Rc<vk::Presenter>         m_presenter;
+
+    // NV-DXVK begin: DLFG integration
+    Rc <DxvkDLFGPresenter>    m_dlfgPresenter;
+    // NV-DXVK end
 
     Rc<hud::Hud>              m_hud;
     Rc<ImGUI>                 m_imgui;
@@ -178,7 +182,7 @@ namespace dxvk {
     double                    m_displayRefreshRate = 0.0;
 
     void PresentImage(UINT PresentInterval);
-
+    
     void SubmitPresent(const vk::PresenterSync& Sync, uint32_t FrameId);
 
     void SynchronizePresent();
@@ -238,6 +242,11 @@ namespace dxvk {
     VkFullScreenExclusiveEXT PickFullscreenMode();
 
     std::string GetApiName();
+
+    // NV-DXVK start: DLFG integration
+    bool NeedRecreatePresenter();
+    vk::Presenter* GetPresenter() const;
+    // NV-DXVK end
   };
 
 }

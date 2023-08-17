@@ -150,12 +150,34 @@ namespace dxvk
     RtCamera() = default;
     ~RtCamera() = default;
 
-    // Restrict copying
-    RtCamera(const RtCamera& other) = delete;
-    RtCamera& operator=(const RtCamera& other) = delete;
+    RtCamera(const RtCamera& other) {
+      *this = other;
+    }
 
-    RtCamera(RtCamera&& other) noexcept = default;
-    RtCamera& operator=(RtCamera&& other) noexcept = default;
+    // Overload operator = to avoid copying RcObject's ref counter in RtCamera's copy constructor
+    RtCamera& operator=(const RtCamera& other) {
+      m_mouseX = other.m_mouseX;
+      m_mouseY = other.m_mouseY;
+      m_renderResolution[0] = other.m_renderResolution[0];
+      m_renderResolution[1] = other.m_renderResolution[1];
+      m_finalResolution[0] = other.m_finalResolution[0];
+      m_finalResolution[1] = other.m_finalResolution[1];
+      m_jitter[0] = other.m_jitter[0];
+      m_jitter[1] = other.m_jitter[1];
+      m_isLHS = other.m_isLHS;
+      m_nearPlane = other.m_nearPlane;
+      m_farPlane = other.m_farPlane;
+      m_halton = other.m_halton;
+      m_firstUpdate = other.m_firstUpdate;
+      m_cameraShakeFrameCount = other.m_cameraShakeFrameCount;
+      m_cameraRotationFrameCount = other.m_cameraRotationFrameCount;
+      m_shakeOffset = other.m_shakeOffset;
+      m_shakeYaw = other.m_shakeYaw;
+      m_fov = other.m_fov;
+      m_aspectRatio = other.m_aspectRatio;
+
+      return *this;
+    }
 
     // Gets the Y axis (vertical) FoV of the camera's projection matrix in radians. Note this value will be positive always (even with strange camera types).
     float getFov() const { return m_fov; }

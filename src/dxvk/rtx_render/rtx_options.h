@@ -135,6 +135,12 @@ namespace dxvk {
     CameraPositionAndDepthFlags
   };
 
+  enum class EnableVsync : int {
+    Off = 0,
+    On = 1,
+    WaitingForImplicitSwapchain = 2   // waiting for the app to create the device + implicit swapchain, we latch the vsync setting from there
+  };
+
   class RtxOptions {
     friend class ImGUI; // <-- we want to modify these values directly.
     friend class ImGuiSplash; // <-- we want to modify these values directly.
@@ -742,7 +748,7 @@ namespace dxvk {
                     "Note that this option when set to false will prevent Reflex from even attempting to initialize, unlike setting the Reflex mode to \"None\" which simply tells an initialized Reflex not to take effect.\n"
                     "Additionally, this setting must be set at startup and changing it will not take effect at runtime.");
 
-    RTX_OPTION_FLAG("rtx", bool, forceVsyncOff, false, RtxOptionFlags::NoSave, "Forces V-Sync to off by setting the present interval to 0 and ignores requests from the application to change the present interval.");
+    RW_RTX_OPTION_FLAG("rtx", EnableVsync, enableVsync, EnableVsync::WaitingForImplicitSwapchain, RtxOptionFlags::NoSave, "Controls the game's V-Sync setting. Native game's V-Sync settings are ignored.");
 
     // Replacement options
     RTX_OPTION("rtx", bool, enableReplacementAssets, true, "Globally enables or disables all enhanced asset replacement (materials, meshes, lights) functionality.");

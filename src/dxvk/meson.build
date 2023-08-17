@@ -204,7 +204,8 @@ dxvk_src = files([
   'rtx_render/rtx_denoise.cpp',
   'rtx_render/rtx_denoise.h',
   'rtx_render/rtx_denoise_type.h',
-  'rtx_render/rtx_dlss.cpp',
+  'rtx_render/rtx_dlfg.cpp',
+  'rtx_render/rtx_dlfg.h',
   'rtx_render/rtx_dlss.cpp', 
   'rtx_render/rtx_dlss.h',
   'rtx_render/rtx_draw_call_cache.cpp',
@@ -366,6 +367,7 @@ nrd_dep = declare_dependency(
 
 dlss_include_dir = include_directories(join_paths(meson.global_source_root(), dlss_root_path + '/Include'))
 dlss_lib_path = join_paths(meson.global_source_root(), dlss_root_path + '/Lib/Windows_x86_64/x86_64')
+dlfg_include_dir = include_directories(join_paths(meson.global_source_root(), dlfg_root_path + '/Include'))
 cc = meson.get_compiler('c')
 dlss_lib_name = 'nvsdk_ngx_s'
 if get_option('buildtype') == 'debug'  
@@ -374,7 +376,7 @@ endif
 dlss_lib = cc.find_library(dlss_lib_name, dirs : dlss_lib_path)
 dlss_dep = declare_dependency(
   dependencies : [ dlss_lib ],
-  include_directories : dlss_include_dir
+  include_directories : [ dlss_include_dir, dlfg_include_dir ]
 )
 
 generated_dxvk_shaders = glsl_generator.process(dxvk_shaders)

@@ -9,6 +9,7 @@
 #include "../vulkan/vulkan_presenter.h"
 
 #include "dxvk_cmdlist.h"
+#include "rtx_camera.h"
 
 namespace dxvk {
   
@@ -47,8 +48,42 @@ namespace dxvk {
   struct DxvkPresentInfo {
     Rc<vk::Presenter>   presenter;
     uint64_t            cachedReflexFrameId;
+    // Note: This flag is specifically used when the DXVK Queue should insert Reflex present
+    // markers rather than the presenter currently in use. This is done because some presenters
+    // (namely the DLFG Presenter) will insert their own Reflex markers due to having more complex
+    // requirements.
+    bool                insertReflexPresentMarkers;
   };
 
+
+  // NV-DXVK start: DLFG integration
+  /**
+   * \brief Frame interpolation info
+   *
+   * Stores parameters used to run frame
+   * interpolation in the submit queue at present time.
+   */
+  struct DxvkFrameInterpolationInfo {
+    uint32_t          frameId;
+    RtCamera          camera;
+    Rc<DxvkImageView> motionVectors;
+    VkImageLayout     motionVectorsLayout;
+    Rc<DxvkImageView> depth;
+    VkImageLayout     depthLayout;
+    bool              resetHistory;
+    
+    bool valid() const {
+      return motionVectors.ptr() &&
+        depth.ptr();
+    }
+
+    void reset() {
+      motionVectors = nullptr;
+      depth = nullptr;
+      resetHistory = false;
+    }
+  };
+  // NV-DXVK end
 
   /**
    * \brief Submission queue entry
@@ -57,8 +92,11 @@ namespace dxvk {
     DxvkSubmitStatus*   status;
     DxvkSubmitInfo      submit;
     DxvkPresentInfo     present;
+    // NV-DXVK start: DLFG integration
+    // sent down to stash frame interpolation parameters before present
+    DxvkFrameInterpolationInfo frameInterpolation;
+    // NV-DXVK end
   };
-
 
   /**
    * \brief Submission queue
@@ -127,7 +165,31 @@ namespace dxvk {
     void present(
             DxvkPresentInfo     presentInfo,
             DxvkSubmitStatus*   status);
+
+    // NV-DXVK start: DLFG integration
+    /**
+     * \brief Set up frame interpolation parameters for next present
+     *
+     * Used to send down all data required to do frame interpolation
+     * at present time, except for the final output image.
+     * If not called on a given frame, or called with an invalid input,
+     * frame interpolation won't be done.
+     */
+    void setupFrameInterpolation(
+      DxvkFrameInterpolationInfo frameInterpolationInfo);
+
+    /**
+     * \brief Checks if the next present will trigger frame interpolation
+     * \returns true if frame interpolation is set up for the current frame
+     */
+    //bool frameInterpolationOnNextPresent();
     
+    /**
+     * \brief Does a busy-wait in the current thread
+     */
+    //void threadWaitUs(int64_t us);
+    // NV-DXVK end
+
     /**
      * \brief Synchronizes with one queue submission
      * 
@@ -163,7 +225,7 @@ namespace dxvk {
      * queue used for command buffer submission.
      */
     void unlockDeviceQueue();
-    
+  
   private:
 
     DxvkDevice*             m_device;
@@ -194,6 +256,11 @@ namespace dxvk {
 
     void finishCmdLists();
     
+    // NV-DXVK start: DLFG integration
+    DxvkFrameInterpolationInfo m_currentFrameInterpolationData;
+    // stash a reference to the last presenter object in case we need to flush
+    // this is reset when we flush
+    Rc<vk::Presenter> m_lastPresenter = nullptr;
+    // NV-DXVK end
   };
-  
 }

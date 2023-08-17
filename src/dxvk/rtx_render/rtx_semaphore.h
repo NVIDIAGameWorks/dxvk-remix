@@ -27,8 +27,16 @@ namespace dxvk {
   class RtxSemaphore : public sync::Signal {
     DxvkDevice* m_device;
     VkSemaphore m_sema;
+    bool m_isTimeline;
+    
+    RtxSemaphore() = default;
+
+    void labelSemaphore(const char* name);
+
   public:
-    explicit RtxSemaphore(const Rc<DxvkDevice>& device);
+    static RtxSemaphore* createTimeline(DxvkDevice* device, const char* name, uint64_t initialValue = 0, bool win32Shared = false);
+    static RtxSemaphore* createBinary(DxvkDevice* device, const char* name);
+    
     ~RtxSemaphore() override;
 
     uint64_t value() const override;
@@ -37,6 +45,19 @@ namespace dxvk {
 
     inline VkSemaphore handle() const {
       return m_sema;
+    }
+  };
+
+  class RtxFence : public RcObject {
+    DxvkDevice* m_device;
+    VkFence m_fence = nullptr;
+
+  public:
+    RtxFence(DxvkDevice* device);
+    ~RtxFence();
+
+    inline VkFence handle() const {
+      return m_fence;
     }
   };
 }

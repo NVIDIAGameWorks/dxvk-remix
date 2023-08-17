@@ -67,10 +67,17 @@ namespace dxvk {
    * \brief Retrieves queue indices
    */
   struct DxvkAdapterQueueIndices {
-    uint32_t graphics;
-    uint32_t transfer;
+    // Note: All queue families initialized to ignored here as this is used to check for a queue family's
+    // presence (and initializing these is easy to forget otherwise). Be sure to initialize any new additions
+    // to ignored as well in the future.
+    uint32_t graphics = VK_QUEUE_FAMILY_IGNORED;
+    uint32_t transfer = VK_QUEUE_FAMILY_IGNORED;
     // NV-DXVK start: RTXIO
-    uint32_t asyncCompute;
+    uint32_t asyncCompute = VK_QUEUE_FAMILY_IGNORED;
+    // NV-DXVK end
+    // NV-DXVK start: DLFG integration
+    uint32_t opticalFlow = VK_QUEUE_FAMILY_IGNORED;
+    uint32_t present = VK_QUEUE_FAMILY_IGNORED;
     // NV-DXVK end
   };
   
@@ -304,7 +311,8 @@ namespace dxvk {
 
     uint32_t findQueueFamily(
             VkQueueFlags          mask,
-            VkQueueFlags          flags) const;
+            VkQueueFlags          flags
+      ) const;
     
     static void logNameList(const DxvkNameList& names);
     static void logFeatures(const DxvkDeviceFeatures& features);
