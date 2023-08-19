@@ -357,16 +357,18 @@ void resolveVertex(
 
   // Process user clip planes and view distance
 
-  if (
-    (isSurfaceClipped(surface, surfaceInteraction) && resolveVertexState.continueResolving) ||
-    !evalViewDistance(cb.viewDistanceArgs, cb.isZUp, camera, surfaceInteraction.position)
-  )
+  if (isSurfaceClipped(surface, surfaceInteraction) && resolveVertexState.continueResolving)
   {
-    // Note: Treat various raster-related clipping and view distance interactions as misses as no
-    // geometry should be processed past them (since these operations essentially clip out everything
-    // beyond them in a specific direction).
-    resolveVertexFinalMiss<true>(resolveVertexState, rayInteraction, radianceAttenuation);
+    // Continue resolving when we hit a clipped geometry to find possible objects behind it.
+    resolveVertexFinalContinue(ray, surfaceInteraction, teleport, teleportMatrix, resolveVertexState);
+    return;
+  }
 
+  if (!evalViewDistance(cb.viewDistanceArgs, cb.isZUp, camera, surfaceInteraction.position))
+  {
+    // Note: Treat view distance interactions as misses as no geometry should be processed past them
+    // (since these operations essentially clip out everything beyond them in a specific direction).
+    resolveVertexFinalMiss<true>(resolveVertexState, rayInteraction, radianceAttenuation);
     return;
   }
 
@@ -864,9 +866,9 @@ void resolveVertexUnordered(
     if (isTriangle)
       surfaceInteraction = surfaceInteractionCreate(surface, rayInteraction, ray);
 
-    // Test the hit surface against view distance clipping
+    // Test the hit surface against view distance and ignored surface clipping
 
-    if (!evalViewDistance(cb.viewDistanceArgs, cb.isZUp, cb.camera, surfaceInteraction.position))
+    if (!evalViewDistance(cb.viewDistanceArgs, cb.isZUp, cb.camera, surfaceInteraction.position) || isSurfaceClipped(surface, surfaceInteraction))
     {
       // Note: Iteration skipped, we unfortunately cannot break the loop here as the hits are processed
       // in an undefined order rather than from closest to furthest like they are in the usual resovle loop,
