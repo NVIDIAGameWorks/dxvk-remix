@@ -565,8 +565,7 @@ namespace dxvk {
     return debugViewArgs;
   }
 
-  void DebugView::dispatch(Rc<DxvkCommandList> cmdList, 
-                           Rc<DxvkContext> ctx,
+  void DebugView::dispatch(Rc<DxvkContext> ctx,
                            Rc<DxvkSampler> nearestSampler,
                            Rc<DxvkSampler> linearSampler,
                            Rc<DxvkImage>& outputImage,
@@ -583,7 +582,7 @@ namespace dxvk {
 
       Rc<DxvkBuffer> cb = getDebugViewConstantsBuffer();
       ctx->updateBuffer(cb, 0, sizeof(DebugViewArgs), &debugViewArgs);
-      cmdList->trackResource<DxvkAccess::Read>(cb);
+      ctx->getCommandList()->trackResource<DxvkAccess::Read>(cb);
 
       if (displayType() == DebugViewDisplayType::HDRWaveform) {
         // Clear HDR Waveform textures when in use before accumulated into

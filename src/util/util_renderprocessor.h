@@ -33,7 +33,6 @@
 
 namespace dxvk {
   class DxvkDevice;
-  class DxvkCommandList;
   class DxvkContext;
 
   /**
@@ -71,7 +70,6 @@ namespace dxvk {
         m_thread.join();
       }
 
-      m_cmd = nullptr;
       m_ctx = nullptr;
     }
 
@@ -83,8 +81,7 @@ namespace dxvk {
       if (m_thread.joinable())
         return;
 
-      m_cmd = m_ctx->getDevice()->createCommandList();
-      m_ctx->beginRecording(m_cmd);
+      m_ctx->beginRecording(m_ctx->getDevice()->createCommandList());
 
       m_thread = dxvk::thread([this] {
         env::setThreadName(m_threadName);
@@ -137,7 +134,7 @@ namespace dxvk {
     /**
       * \brief Work to be processed, must be handled by the implementation.
       */
-    virtual void work(T& item, Rc<DxvkContext>& ctx, Rc<DxvkCommandList>& cmd) = 0;
+    virtual void work(T& item, Rc<DxvkContext>& ctx) = 0;
 
     /**
       * \brief Conditions under which to wake worker, can be augmented by implementation.
@@ -157,7 +154,6 @@ namespace dxvk {
     std::string m_threadName;
 
     Rc<DxvkContext> m_ctx;
-    Rc<DxvkCommandList> m_cmd;
 
     std::queue<T> m_itemQueue;
 
@@ -198,7 +194,7 @@ namespace dxvk {
 
           T& item = optItem.value();
 
-          work(item, m_ctx, m_cmd);
+          work(item, m_ctx);
         }
       } catch (const DxvkError& e) {
         Logger::err(str::format("Exception on, ", m_threadName, ", thread!"));

@@ -234,7 +234,6 @@ namespace dxvk {
   }
 
   void RtxGeometryUtils::dispatchViewModelCorrection(
-    Rc<DxvkCommandList> cmdList,
     Rc<DxvkContext> ctx,
     const RaytraceGeometry& geo,
     const Matrix4& positionTransform) const {
@@ -255,7 +254,7 @@ namespace dxvk {
 
     DxvkBufferSlice cb = m_pCbData->alloc(alignment, sizeof(ViewModelCorrectionArgs));
     memcpy(cb.mapPtr(0), &args, sizeof(ViewModelCorrectionArgs));
-    cmdList->trackResource<DxvkAccess::Write>(cb.buffer());
+    ctx->getCommandList()->trackResource<DxvkAccess::Write>(cb.buffer());
 
     // Bind other resources
     ctx->bindResourceBuffer(BINDING_VMC_CONSTANTS, cb);
@@ -269,13 +268,12 @@ namespace dxvk {
     ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
 
     // Make sure the geom buffers are tracked for liveness
-    cmdList->trackResource<DxvkAccess::Write>(geo.positionBuffer.buffer());
+    ctx->getCommandList()->trackResource<DxvkAccess::Write>(geo.positionBuffer.buffer());
     if (geo.normalBuffer.defined())
-      cmdList->trackResource<DxvkAccess::Write>(geo.normalBuffer.buffer());
+      ctx->getCommandList()->trackResource<DxvkAccess::Write>(geo.normalBuffer.buffer());
   }
 
   void RtxGeometryUtils::dispatchBakeOpacityMicromap(
-    Rc<DxvkCommandList> cmdList,
     Rc<DxvkContext> ctx,
     const RaytraceGeometry& geo,
     const std::vector<TextureRef>& textures,
@@ -402,7 +400,7 @@ namespace dxvk {
     bakeState.numMicroTrianglesBakedInLastBake = numMicroTrianglesToBakeAligned;
 
     // Make sure the geom buffers are tracked for liveness
-    cmdList->trackResource<DxvkAccess::Write>(opacityMicromapBuffer);
+    ctx->getCommandList()->trackResource<DxvkAccess::Write>(opacityMicromapBuffer);
   }
 
   uint32_t RtxGeometryUtils::getOptimalTriangleListSize(const RasterGeometry& input) {

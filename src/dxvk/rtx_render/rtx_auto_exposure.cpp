@@ -200,7 +200,6 @@ namespace dxvk {
   }
 
   void DxvkAutoExposure::dispatchAutoExposure(
-    Rc<DxvkCommandList> cmdList,
     Rc<DxvkContext> ctx,
     Rc<DxvkSampler> linearSampler,
     const Resources::RaytracingOutput& rtOutput,
@@ -282,7 +281,6 @@ namespace dxvk {
   }
 
   void DxvkAutoExposure::dispatch(
-    Rc<DxvkCommandList> cmdList,
     Rc<DxvkContext> ctx,
     Rc<DxvkSampler> linearSampler,
     const Resources::RaytracingOutput& rtOutput,
@@ -302,7 +300,7 @@ namespace dxvk {
       m_resetState = true;
     }
 
-    dispatchAutoExposure(cmdList, ctx, linearSampler, rtOutput, deltaTime);
+    dispatchAutoExposure(ctx, linearSampler, rtOutput, deltaTime);
 
     m_resetState = false;
   }

@@ -40,7 +40,6 @@ namespace dxvk {
     ~DxvkLocalToneMapping();
 
     void dispatch(
-      Rc<DxvkCommandList> cmdList,
       Rc<DxvkContext> ctx,
       Rc<DxvkSampler> linearSampler,
       Rc<DxvkImageView> exposureView,
