@@ -1126,6 +1126,9 @@ namespace dxvk {
     if (m_pReplacer->checkForChanges(ctx)) {
       // Delay release of textures to the end of the frame, when all commands are executed.
       m_enqueueDelayedClear = true;
+      // Texture loads during USD reloading can invalidate the cmdList pointer.
+      // TODO(REMIX-1948) remove cmdList entirely in a wider refactor.
+      cmdList = ctx->getCommandList();
     }
 
     // Initialize/remove opacity micromap manager
