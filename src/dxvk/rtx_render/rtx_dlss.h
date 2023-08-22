@@ -66,7 +66,6 @@ namespace dxvk {
     void getOutputSize(uint32_t& width, uint32_t& height) const;
 
     void dispatch(
-      Rc<DxvkCommandList> cmdList,
       Rc<RtxContext> ctx,
       DxvkBarrierSet& barriers,
       const Resources::RaytracingOutput& rtOutput,
@@ -77,7 +76,7 @@ namespace dxvk {
   private:
     static DLSSProfile getAutoProfile(uint32_t displayWidth, uint32_t displayHeight);
 
-    void initializeDLSS(Rc<DxvkContext> pRenderContext, Rc<DxvkCommandList> cmdList);
+    void initializeDLSS(Rc<DxvkContext> pRenderContext);
 
     bool useDlssAutoExposure() const;
 

@@ -222,7 +222,7 @@ namespace dxvk {
     }
   }
 
-  void AccelManager::createAndBuildIntersectionBlas(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, DxvkBarrierSet& execBarriers) {
+  void AccelManager::createAndBuildIntersectionBlas(Rc<DxvkContext> ctx, DxvkBarrierSet& execBarriers) {
     if (m_intersectionBlas.ptr())
       return;
 
@@ -263,7 +263,7 @@ namespace dxvk {
 
     m_aabbBuffer = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXAccelerationStructure);
     // Note: don't use ctx->updateBuffer() because that will place the command on the InitBuffer, not ExecBuffer.
-    cmdList->cmdUpdateBuffer(DxvkCmdBuffer::ExecBuffer, m_aabbBuffer->getBufferRaw(), m_aabbBuffer->getSliceHandle().offset, sizeof(aabbPositions), &aabbPositions);
+    ctx->getCommandList()->cmdUpdateBuffer(DxvkCmdBuffer::ExecBuffer, m_aabbBuffer->getBufferRaw(), m_aabbBuffer->getSliceHandle().offset, sizeof(aabbPositions), &aabbPositions);
     
     execBarriers.accessBuffer(
       m_aabbBuffer->getSliceHandle(),
@@ -272,7 +272,7 @@ namespace dxvk {
       VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
       VK_ACCESS_SHADER_READ_BIT);
 
-    execBarriers.recordCommands(cmdList);
+    execBarriers.recordCommands(ctx->getCommandList());
 
     geometry.geometry.aabbs.data.deviceAddress = m_aabbBuffer->getDeviceAddress();
 
@@ -285,9 +285,9 @@ namespace dxvk {
     buildRange.primitiveCount = 1;
     const VkAccelerationStructureBuildRangeInfoKHR* pBuildRange = &buildRange;
     
-    cmdList->vkCmdBuildAccelerationStructuresKHR(1, &buildInfo, &pBuildRange);
+    ctx->getCommandList()->vkCmdBuildAccelerationStructuresKHR(1, &buildInfo, &pBuildRange);
 
-    cmdList->trackResource<DxvkAccess::Write>(scratchSlice.buffer());
+    ctx->getCommandList()->trackResource<DxvkAccess::Write>(scratchSlice.buffer());
   }
 
   Rc<PooledBlas> AccelManager::createPooledBlas(size_t bufferSize) const {
@@ -305,10 +305,10 @@ namespace dxvk {
     return newBlas;
   }
 
-  static void trackBlasBuildResources(Rc<DxvkCommandList> cmdList, DxvkBarrierSet& execBarriers, const BlasEntry* blasEntry) {
+  static void trackBlasBuildResources(Rc<DxvkContext> ctx, DxvkBarrierSet& execBarriers, const BlasEntry* blasEntry) {
     ScopedCpuProfileZone();
-    cmdList->trackResource<DxvkAccess::Read>(blasEntry->modifiedGeometryData.positionBuffer.buffer());
-    cmdList->trackResource<DxvkAccess::Read>(blasEntry->modifiedGeometryData.indexBuffer.buffer());
+    ctx->getCommandList()->trackResource<DxvkAccess::Read>(blasEntry->modifiedGeometryData.positionBuffer.buffer());
+    ctx->getCommandList()->trackResource<DxvkAccess::Read>(blasEntry->modifiedGeometryData.indexBuffer.buffer());
 
     execBarriers.accessBuffer(
       blasEntry->modifiedGeometryData.positionBuffer.getSliceHandle(),
@@ -326,7 +326,6 @@ namespace dxvk {
   }
 
   void AccelManager::mergeInstancesIntoBlas(Rc<DxvkContext> ctx, 
-                                            Rc<DxvkCommandList> cmdList, 
                                             DxvkBarrierSet& execBarriers, 
                                             const std::vector<TextureRef>& textures,
                                             const CameraManager& cameraManager,
@@ -373,7 +372,7 @@ namespace dxvk {
     }
 
     if (opacityMicromapManager)
-      opacityMicromapManager->onFrameStart(ctx, cmdList);
+      opacityMicromapManager->onFrameStart(ctx);
 
     std::vector<std::unique_ptr<BlasBucket>> blasBuckets;
     blasBuckets.reserve(instances.size());
@@ -422,7 +421,7 @@ namespace dxvk {
         // Note: since opacity micromaps for this frame are scheduled later 
         //       this will only pickup Opacity Micromaps built in previous frames
         if (opacityMicromapManager) {
-          boundOpacityMicromapHash = opacityMicromapManager->tryBindOpacityMicromap(cmdList, *instance, 0, instance->buildGeometries[0], instanceManager);
+          boundOpacityMicromapHash = opacityMicromapManager->tryBindOpacityMicromap(ctx, *instance, 0, instance->buildGeometries[0], instanceManager);
           hasTriedToBindOpacityMicromap = true;
         }
 
@@ -453,7 +452,7 @@ namespace dxvk {
           // Note: since opacity micromaps for this frame are scheduled later 
           //       this will only pickup Opacity Micromaps built in previous frames
           if (!hasTriedToBindOpacityMicromap && opacityMicromapManager) {
-            boundOpacityMicromapHash = opacityMicromapManager->tryBindOpacityMicromap(cmdList, *instance, 0, instance->buildGeometries[0], instanceManager);
+            boundOpacityMicromapHash = opacityMicromapManager->tryBindOpacityMicromap(ctx, *instance, 0, instance->buildGeometries[0], instanceManager);
             hasTriedToBindOpacityMicromap = true;
           }
 
@@ -487,12 +486,12 @@ namespace dxvk {
           blasRangesToBuild.push_back(&instance->buildRanges[0]);
 
           // Track the lifetime of the scratch and BLAS buffers
-          cmdList->trackResource<DxvkAccess::Write>(scratchSlice.buffer());
-          cmdList->trackResource<DxvkAccess::Read>(scratchSlice.buffer());
-          cmdList->trackResource<DxvkAccess::Write>(blasEntry->staticBlas->accelStructure);
+          ctx->getCommandList()->trackResource<DxvkAccess::Write>(scratchSlice.buffer());
+          ctx->getCommandList()->trackResource<DxvkAccess::Read>(scratchSlice.buffer());
+          ctx->getCommandList()->trackResource<DxvkAccess::Write>(blasEntry->staticBlas->accelStructure);
 
           // Track the lifetime and states of the source geometry buffers
-          trackBlasBuildResources(cmdList, execBarriers, blasEntry);
+          trackBlasBuildResources(ctx, execBarriers, blasEntry);
         }
       } else { // Non-static blas instance
         // Previously static BLAS is no longer considered static (i.e. because it started getting animated)
@@ -528,7 +527,7 @@ namespace dxvk {
 
         blasEntry->staticBlas->frameLastTouched = currentFrame;
 
-        cmdList->trackResource<DxvkAccess::Read>(blasEntry->staticBlas->accelStructure);
+        ctx->getCommandList()->trackResource<DxvkAccess::Read>(blasEntry->staticBlas->accelStructure);
       }
       else {
         // Calculate the device address for the current instance's transform and write the transform data
@@ -558,7 +557,7 @@ namespace dxvk {
         }
 
         // Track the lifetime and states of the source geometry buffers
-        trackBlasBuildResources(cmdList, execBarriers, blasEntry);
+        trackBlasBuildResources(ctx, execBarriers, blasEntry);
       }
     }
 
@@ -566,8 +565,8 @@ namespace dxvk {
     if(instanceTransforms.size() > 0)
       ctx->updateBuffer(m_transformBuffer, 0, instanceTransforms.size() * sizeof(VkTransformMatrixKHR), instanceTransforms.data());
 
-    cmdList->trackResource<DxvkAccess::Write>(m_transformBuffer);
-    cmdList->trackResource<DxvkAccess::Read>(m_transformBuffer);
+    ctx->getCommandList()->trackResource<DxvkAccess::Write>(m_transformBuffer);
+    ctx->getCommandList()->trackResource<DxvkAccess::Read>(m_transformBuffer);
 
     // Place a barrier on the transform buffer
     DxvkBufferSliceHandle transformBufferSlice;
@@ -609,12 +608,11 @@ namespace dxvk {
       totalPrimitiveIDOffset += primitiveCount;
     }
 
-    buildBlases(ctx, cmdList, execBarriers, cameraManager, opacityMicromapManager, instanceManager, 
+    buildBlases(ctx, execBarriers, cameraManager, opacityMicromapManager, instanceManager, 
                 textures, instances, blasBuckets, blasToBuild, blasRangesToBuild, frameTimeSecs);
   }
 
   void AccelManager::createBlasBuffersAndInstances(Rc<DxvkContext> ctx, 
-                                                   Rc<DxvkCommandList> cmdList,
                                                    const std::vector<std::unique_ptr<BlasBucket>>& blasBuckets,
                                                    std::vector<VkAccelerationStructureBuildGeometryInfoKHR>& blasToBuild,
                                                    std::vector<VkAccelerationStructureBuildRangeInfoKHR*>& blasRangesToBuild) {
@@ -671,9 +669,9 @@ namespace dxvk {
       assert(buildInfo.scratchData.deviceAddress % m_scratchAlignment == 0); // Note: Required by the Vulkan specification.
 
       // Track the lifetime of the scratch and BLAS buffers
-      cmdList->trackResource<DxvkAccess::Write>(scratchSlice.buffer());
-      cmdList->trackResource<DxvkAccess::Read>(scratchSlice.buffer());
-      cmdList->trackResource<DxvkAccess::Write>(selectedBlas->accelStructure);
+      ctx->getCommandList()->trackResource<DxvkAccess::Write>(scratchSlice.buffer());
+      ctx->getCommandList()->trackResource<DxvkAccess::Read>(scratchSlice.buffer());
+      ctx->getCommandList()->trackResource<DxvkAccess::Write>(selectedBlas->accelStructure);
 
       // Put the merged BLAS into the build queue
       blasToBuild.push_back(buildInfo);
@@ -703,7 +701,7 @@ namespace dxvk {
     }
   }
 
-  void AccelManager::prepareSceneData(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, DxvkBarrierSet& execBarriers, InstanceManager& instanceManager) {
+  void AccelManager::prepareSceneData(Rc<DxvkContext> ctx, DxvkBarrierSet& execBarriers, InstanceManager& instanceManager) {
     ScopedCpuProfileZone();
     bool haveInstances = false;
     for (const auto& instances : m_mergedInstances) {
@@ -716,7 +714,7 @@ namespace dxvk {
     if (!haveInstances && instanceManager.getBillboards().empty())
       return;
 
-    createAndBuildIntersectionBlas(ctx, cmdList, execBarriers);
+    createAndBuildIntersectionBlas(ctx, execBarriers);
 
     // Prepare billboard data and instances
     std::vector<MemoryBillboard> memoryBillboards;
@@ -909,7 +907,6 @@ namespace dxvk {
   }
 
   void AccelManager::buildBlases(Rc<DxvkContext> ctx,
-                                 Rc<DxvkCommandList> cmdList,
                                  DxvkBarrierSet& execBarriers,
                                  const CameraManager& cameraManager,
                                  OpacityMicromapManager* opacityMicromapManager,
@@ -926,26 +923,26 @@ namespace dxvk {
 
     // Build and bind opacity micromaps
     if (opacityMicromapManager) {
-      opacityMicromapManager->buildOpacityMicromaps(ctx, cmdList, textures, cameraManager.getLastCameraCutFrameId(), frameTimeSecs);
+      opacityMicromapManager->buildOpacityMicromaps(ctx, textures, cameraManager.getLastCameraCutFrameId(), frameTimeSecs);
 
       // Bind opacity micromaps
       for (auto& blasBucket : blasBuckets) {
         for (uint32_t i = 0; i < blasBucket->geometries.size(); i++) {
-          opacityMicromapManager->tryBindOpacityMicromap(cmdList, *blasBucket->originalInstances[i], blasBucket->instanceBillboardIndices[i],
+          opacityMicromapManager->tryBindOpacityMicromap(ctx, *blasBucket->originalInstances[i], blasBucket->instanceBillboardIndices[i],
                                                          blasBucket->geometries[i], instanceManager);
         }
       }
 
-      opacityMicromapManager->onBlasBuild(cmdList);
+      opacityMicromapManager->onBlasBuild(ctx);
     }
 
     // Blas buffers must be created after opacity micromaps were generated to calculate correct acceleration structure sizes
-    createBlasBuffersAndInstances(ctx, cmdList, blasBuckets, blasToBuild, blasRangesToBuild);
+    createBlasBuffersAndInstances(ctx, blasBuckets, blasToBuild, blasRangesToBuild);
 
     // Execute all barriers generated to this point as part of:
     //  o mergeInstancesIntoBlas()
     //  o Opacity micromap generation above
-    execBarriers.recordCommands(cmdList);
+    execBarriers.recordCommands(ctx->getCommandList());
 
     // Build the BLASes
     if (!blasToBuild.empty()) {
@@ -954,7 +951,7 @@ namespace dxvk {
     }
   }
 
-  void AccelManager::buildTlas(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList) {
+  void AccelManager::buildTlas(Rc<DxvkContext> ctx) {
     if (m_vkInstanceBuffer == nullptr)
       return;
 
@@ -970,11 +967,11 @@ namespace dxvk {
       VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR);
 
     for (auto&& blas : m_blasPool) {
-      cmdList->trackResource<DxvkAccess::Read>(blas->accelStructure);
+      ctx->getCommandList()->trackResource<DxvkAccess::Read>(blas->accelStructure);
     }
 
-    internalBuildTlas<Tlas::Opaque>(ctx, cmdList);
-    internalBuildTlas<Tlas::Unordered>(ctx, cmdList);
+    internalBuildTlas<Tlas::Opaque>(ctx);
+    internalBuildTlas<Tlas::Unordered>(ctx);
 
     ctx->emitMemoryBarrier(0,
       VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
@@ -984,7 +981,7 @@ namespace dxvk {
   }
 
   template<Tlas::Type type>
-  void AccelManager::internalBuildTlas(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList) {
+  void AccelManager::internalBuildTlas(Rc<DxvkContext> ctx) {
     static constexpr char* names[] = { "buildTLAS_Opaque", "buildTLAS_NonOpaque" };
     ScopedGpuProfileZone(ctx, names[type]);
     const VkBuildAccelerationStructureFlagsKHR flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR;
@@ -1054,9 +1051,9 @@ namespace dxvk {
     const VkAccelerationStructureBuildRangeInfoKHR* pBuildOffsetInfo = &buildOffsetInfo;
 
     // Build the TLAS
-    cmdList->vkCmdBuildAccelerationStructuresKHR(1, &buildInfo, &pBuildOffsetInfo);
+    ctx->getCommandList()->vkCmdBuildAccelerationStructuresKHR(1, &buildInfo, &pBuildOffsetInfo);
 
-    cmdList->trackResource<DxvkAccess::Write>(tlas.accelStructure);
-    cmdList->trackResource<DxvkAccess::Write>(scratchSlice.buffer());
+    ctx->getCommandList()->trackResource<DxvkAccess::Write>(tlas.accelStructure);
+    ctx->getCommandList()->trackResource<DxvkAccess::Write>(scratchSlice.buffer());
   }
 }  // namespace dxvk

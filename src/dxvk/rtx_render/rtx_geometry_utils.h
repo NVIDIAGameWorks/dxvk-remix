@@ -73,7 +73,6 @@ namespace dxvk {
      * \brief Execute a compute shader to perform view model perspective correction
      */
     void dispatchViewModelCorrection(
-      Rc<DxvkCommandList> cmdList,
       Rc<DxvkContext> ctx,
       const RaytraceGeometry& geo,
       const Matrix4& positionTransform) const;
@@ -108,7 +107,6 @@ namespace dxvk {
      *              internal alignments
      */
     void dispatchBakeOpacityMicromap(
-      Rc<DxvkCommandList> cmdList,
       Rc<DxvkContext> ctx,
       const RaytraceGeometry& geo,
       const std::vector<TextureRef>& textures,

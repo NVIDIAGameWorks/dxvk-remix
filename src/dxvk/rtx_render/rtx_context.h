@@ -123,7 +123,7 @@ namespace dxvk {
     void bindCommonRayTracingResources(const Resources::RaytracingOutput& rtOutput);
 
     void getDenoiseArgs(NrdArgs& outPrimaryDirectNrdArgs, NrdArgs& outPrimaryIndirectNrdArgs, NrdArgs& outSecondaryNrdArgs);
-    void updateRaytraceArgsConstantBuffer(Rc<DxvkCommandList> cmdList, Resources::RaytracingOutput& rtOutput, float frameTimeSecs,
+    void updateRaytraceArgsConstantBuffer(Resources::RaytracingOutput& rtOutput, float frameTimeSecs,
                                           const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent);
 
     D3D9RtxVertexCaptureData& allocAndMapVertexCaptureConstantBuffer();

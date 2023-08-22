@@ -190,7 +190,6 @@ namespace dxvk {
   }
 
   void DxvkDLSS::dispatch(
-    Rc<DxvkCommandList> cmdList,
     Rc<RtxContext> ctx,
     DxvkBarrierSet& barriers,
     const Resources::RaytracingOutput& rtOutput,
@@ -202,7 +201,7 @@ namespace dxvk {
     mAutoExposure = dlssAutoExposure;
 
     if (mRecreate) {
-      initializeDLSS(ctx, cmdList);
+      initializeDLSS(ctx);
       mRecreate = false;
     }
 
@@ -260,7 +259,7 @@ namespace dxvk {
           VK_ACCESS_SHADER_WRITE_BIT);
       }
 
-      barriers.recordCommands(cmdList);
+      barriers.recordCommands(ctx->getCommandList());
 
       auto motionVectorInput = &rtOutput.m_primaryScreenSpaceMotionVector;
       auto depthInput = &rtOutput.m_primaryDepth;
@@ -269,8 +268,7 @@ namespace dxvk {
       auto specularAlbedoInput = &rtOutput.m_primarySpecularAlbedo.resource(Resources::AccessType::Read);
 
       // Note: Add texture inputs added here to the pInputs array above to properly access the images.
-      m_dlssContext->evaluate(cmdList,
-                              ctx,
+      m_dlssContext->evaluate(ctx,
                               &rtOutput.m_compositeOutput.resource(Resources::AccessType::Read),  // pUnresolvedColor
                               &rtOutput.m_finalOutput,                                            // pResolvedColor
                               motionVectorInput,                                                  // pMotionVectors
@@ -301,10 +299,10 @@ namespace dxvk {
           output->imageInfo().stages,
           output->imageInfo().access);
 
-        cmdList->trackResource<DxvkAccess::None>(output);
-        cmdList->trackResource<DxvkAccess::Write>(output->image());
+        ctx->getCommandList()->trackResource<DxvkAccess::None>(output);
+        ctx->getCommandList()->trackResource<DxvkAccess::Write>(output->image());
       }
-      barriers.recordCommands(cmdList);
+      barriers.recordCommands(ctx->getCommandList());
     }
   }
 
@@ -312,13 +310,13 @@ namespace dxvk {
     ImGui::Checkbox("Anti-Ghost", &mBiasCurrentColorEnabled);
   }
 
-  void DxvkDLSS::initializeDLSS(Rc<DxvkContext> renderContext, Rc<DxvkCommandList> cmdList) {
+  void DxvkDLSS::initializeDLSS(Rc<DxvkContext> renderContext) {
     m_dlssContext->releaseNGXFeature();
 
     NVSDK_NGX_PerfQuality_Value perfQuality = profileToQuality(mProfile);
 
     auto optimalSettings = m_dlssContext->queryOptimalSettings(mInputSize, perfQuality);
 
-    m_dlssContext->initialize(renderContext, cmdList, mInputSize, mDLSSOutputSize, mIsHDR, mInverseDepth, mAutoExposure, false, perfQuality);
+    m_dlssContext->initialize(renderContext, mInputSize, mDLSSOutputSize, mIsHDR, mInverseDepth, mAutoExposure, false, perfQuality);
   }
 }

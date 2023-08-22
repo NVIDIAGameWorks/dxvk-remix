@@ -101,7 +101,6 @@ namespace dxvk {
   }
 
   void NRDContext::prepareResources(
-    Rc<DxvkCommandList> cmdList,
     Rc<DxvkContext> ctx,
     const Resources::RaytracingOutput& rtOutput) {
 
@@ -149,7 +148,7 @@ namespace dxvk {
 
         createPipelines();
 
-        createResources(cmdList, ctx, rtOutput);
+        createResources(ctx, rtOutput);
 
         m_settings.m_resetHistory = true;
       }
@@ -200,7 +199,6 @@ namespace dxvk {
   }
 
   void NRDContext::createResources(
-    Rc<DxvkCommandList> cmdList,
     Rc<DxvkContext> ctx,
     const Resources::RaytracingOutput& rtOutput) {
     const nrd::DenoiserDesc& denoiserDesc = nrd::GetDenoiserDesc(*m_denoiser);
@@ -517,7 +515,6 @@ namespace dxvk {
   }
 
   void NRDContext::dispatch(
-    Rc<DxvkCommandList> cmdList,
     Rc<DxvkContext> ctx,
     DxvkBarrierSet& barriers,
     const SceneManager& sceneManager,
@@ -529,7 +526,7 @@ namespace dxvk {
 
     ScopedGpuProfileZone(ctx, "NRD");
 
-    prepareResources(cmdList, ctx, rtOutput);
+    prepareResources(ctx, rtOutput);
 
     updateNRDSettings(sceneManager, inputs, rtOutput);
 
@@ -555,7 +552,7 @@ namespace dxvk {
         output->imageInfo().layout, output->imageInfo().stages, output->imageInfo().access,
         output->imageInfo().layout, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT);
     }
-    barriers.recordCommands(cmdList);
+    barriers.recordCommands(ctx->getCommandList());
 
     auto needsCustomView = [&](const Rc<DxvkImageView>& view, uint32_t mipOffset, uint16_t mipCount, bool bStorage) {
 
@@ -617,7 +614,7 @@ namespace dxvk {
           samplerDescs[i].imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
           descriptorWriteSets.emplace_back(DxvkDescriptor::texture(descriptorSet, samplerDescs[i], binding.descriptorType, binding.binding));
           
-          cmdList->trackResource<DxvkAccess::None>(m_staticSamplers[i]);
+          ctx->getCommandList()->trackResource<DxvkAccess::None>(m_staticSamplers[i]);
         }
 
         // Update constants
@@ -630,7 +627,7 @@ namespace dxvk {
           const auto& devInfo = device()->properties().core.properties;
           VkDeviceSize alignment = devInfo.limits.minUniformBufferOffsetAlignment;
           DxvkBufferSlice cbSlice = m_cbData->alloc(alignment, dispatchDesc.constantBufferDataSize);
-          cmdList->trackResource<DxvkAccess::Write>(cbSlice.buffer());
+          ctx->getCommandList()->trackResource<DxvkAccess::Write>(cbSlice.buffer());
           memcpy(cbSlice.mapPtr(0), dispatchDesc.constantBufferData, dispatchDesc.constantBufferDataSize);
 
           const VkDescriptorSetLayoutBinding& cb = computePipeline.bindings[computePipeline.constantBufferIndex];
@@ -672,11 +669,11 @@ namespace dxvk {
           }
 
           // Ensure resources are kept alive
-          cmdList->trackResource<DxvkAccess::None>(imageView);
+          ctx->getCommandList()->trackResource<DxvkAccess::None>(imageView);
           if (bStorage)
-            cmdList->trackResource<DxvkAccess::Write>(texture->image);
+            ctx->getCommandList()->trackResource<DxvkAccess::Write>(texture->image);
           else
-            cmdList->trackResource<DxvkAccess::Read>(texture->image);
+            ctx->getCommandList()->trackResource<DxvkAccess::Read>(texture->image);
 
           descriptorWriteSets.emplace_back(DxvkDescriptor::texture(descriptorSet, &imageDesc[i], *imageView, binding.descriptorType, binding.binding));
 
@@ -692,18 +689,18 @@ namespace dxvk {
             bStorage ? VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT : VK_ACCESS_SHADER_READ_BIT);
         }
 
-        barriers.recordCommands(cmdList);
+        barriers.recordCommands(ctx->getCommandList());
 
-        cmdList->updateDescriptorSets(descriptorWriteSets.size(), descriptorWriteSets.data());
+        ctx->getCommandList()->updateDescriptorSets(descriptorWriteSets.size(), descriptorWriteSets.data());
 
-        cmdList->cmdBindPipeline(VK_PIPELINE_BIND_POINT_COMPUTE, computePipeline.pipeline);
-        cmdList->cmdBindDescriptorSet(VK_PIPELINE_BIND_POINT_COMPUTE, computePipeline.pipelineLayout, descriptorSet, 0, nullptr);
+        ctx->getCommandList()->cmdBindPipeline(VK_PIPELINE_BIND_POINT_COMPUTE, computePipeline.pipeline);
+        ctx->getCommandList()->cmdBindDescriptorSet(VK_PIPELINE_BIND_POINT_COMPUTE, computePipeline.pipelineLayout, descriptorSet, 0, nullptr);
 
-        cmdList->cmdDispatch(dispatchDesc.gridWidth, dispatchDesc.gridHeight, 1);
+        ctx->getCommandList()->cmdDispatch(dispatchDesc.gridWidth, dispatchDesc.gridHeight, 1);
 
         for (auto output : pOutputs) {
-          cmdList->trackResource<DxvkAccess::None>(output);
-          cmdList->trackResource<DxvkAccess::Write>(output->image());
+          ctx->getCommandList()->trackResource<DxvkAccess::None>(output);
+          ctx->getCommandList()->trackResource<DxvkAccess::Write>(output->image());
         }
       }
     }

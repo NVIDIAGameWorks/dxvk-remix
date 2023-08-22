@@ -46,8 +46,7 @@ namespace dxvk {
     DebugView(dxvk::DxvkDevice* device);
     ~DebugView() = default;
 
-    void dispatch(Rc<DxvkCommandList> cmdList, 
-                  Rc<DxvkContext> ctx,
+    void dispatch(Rc<DxvkContext> ctx,
                   Rc<DxvkSampler> nearestSampler,
                   Rc<DxvkSampler> linearSampler, 
                   Rc<DxvkImage>& outputImage, 

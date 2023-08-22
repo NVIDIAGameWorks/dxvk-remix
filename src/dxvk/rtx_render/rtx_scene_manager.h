@@ -32,7 +32,6 @@
 #include "../dxvk_image.h"
 #include "../dxvk_staging.h"
 #include "../dxvk_bind_mask.h"
-#include "../dxvk_cmdlist.h"
 #include "../util/util_hashtable.h"
 
 #include "rtx_types.h"
@@ -97,7 +96,7 @@ public:
 
   void onDestroy();
 
-  void submitDrawState(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmd, const DrawCallState& input);
+  void submitDrawState(Rc<DxvkContext> ctx, const DrawCallState& input);
   
   bool areReplacementsLoaded() const;
   bool areReplacementsLoading() const;
@@ -153,7 +152,7 @@ public:
   // ISceneManager but not really
   void clear(Rc<DxvkContext> ctx, bool needWfi);
   void garbageCollection();
-  void prepareSceneData(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, class DxvkBarrierSet& execBarriers, const float frameTimeSecs);
+  void prepareSceneData(Rc<DxvkContext> ctx, class DxvkBarrierSet& execBarriers, const float frameTimeSecs);
 
   void onFrameEnd(Rc<DxvkContext> ctx);
   void onFrameEndNoRTX();
@@ -174,17 +173,17 @@ private:
   };
   // Handles conversion of geometry data coming from a draw call, to the data used by the raytracing backend
   template<bool isNew>
-  ObjectCacheState processGeometryInfo(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmd, const DrawCallState& drawCallState, RaytraceGeometry& modifiedGeometryData);
+  ObjectCacheState processGeometryInfo(Rc<DxvkContext> ctx, const DrawCallState& drawCallState, RaytraceGeometry& modifiedGeometryData);
 
   // Consumes a draw call state and updates the scene state accordingly
-  uint64_t processDrawCallState(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmd, const DrawCallState& blasInput, const MaterialData* replacementMaterialData);
+  uint64_t processDrawCallState(Rc<DxvkContext> ctx, const DrawCallState& blasInput, const MaterialData* replacementMaterialData);
   // Updates ref counts for new buffers
   void updateBufferCache(RaytraceGeometry& newGeoData);
 
   // Called whenever a new BLAS scene object is added to the cache
-  ObjectCacheState onSceneObjectAdded(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmd, const DrawCallState& drawCallState, BlasEntry* pBlas);
+  ObjectCacheState onSceneObjectAdded(Rc<DxvkContext> ctx, const DrawCallState& drawCallState, BlasEntry* pBlas);
   // Called whenever a BLAS scene object is updated
-  ObjectCacheState onSceneObjectUpdated(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmd, const DrawCallState& drawCallState, BlasEntry* pBlas);
+  ObjectCacheState onSceneObjectUpdated(Rc<DxvkContext> ctx, const DrawCallState& drawCallState, BlasEntry* pBlas);
   // Called whenever a BLAS scene object is destroyed
   void onSceneObjectDestroyed(const BlasEntry& pBlas);
 
@@ -195,7 +194,7 @@ private:
   // Called whenever an instance has been removed from the database
   void onInstanceDestroyed(const RtInstance& instance);
 
-  uint64_t drawReplacements(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmd, const DrawCallState* input, const std::vector<AssetReplacement>* pReplacements, const MaterialData* overrideMaterialData);
+  uint64_t drawReplacements(Rc<DxvkContext> ctx, const DrawCallState* input, const std::vector<AssetReplacement>* pReplacements, const MaterialData* overrideMaterialData);
 
   void createEffectLight(Rc<DxvkContext> ctx, const DrawCallState& input, const RtInstance* instance);
 

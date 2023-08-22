@@ -77,7 +77,6 @@ namespace dxvk {
     ~DxvkDenoise();
 
     void dispatch(
-      Rc<DxvkCommandList> cmdList,
       Rc<DxvkContext> ctx,
       DxvkBarrierSet& barriers,
       const Resources::RaytracingOutput& rtOutput,
