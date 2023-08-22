@@ -434,7 +434,6 @@ namespace dxvk {
     std::array devDlfgExtensions = {
       &devExtensions.khrMaintenance4,
       &devExtensions.khrExternalMemory,
-      &devExtensions.khrExternalMemoryWin32,
       &devExtensions.khrExternalSemaphore,
       &devExtensions.khrExternalSemaphoreWin32,
       &devExtensions.nvOpticalFlow,
