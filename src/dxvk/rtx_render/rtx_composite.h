@@ -55,7 +55,6 @@ namespace dxvk {
     ~CompositePass();
 
     void dispatch(
-      Rc<DxvkCommandList> cmdList,
       Rc<RtxContext> ctx,
       SceneManager& sceneManager,
       const Resources::RaytracingOutput& rtOutput,

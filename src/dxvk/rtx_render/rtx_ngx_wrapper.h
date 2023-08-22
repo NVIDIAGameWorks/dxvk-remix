@@ -55,7 +55,6 @@ namespace dxvk {
   class RtCamera;
   class DxvkDevice;
   class DxvkContext;
-  class DxvkCommandList;
 
   class NGXDLSSContext;
   class NGXDLFGContext;
@@ -128,7 +127,6 @@ namespace dxvk {
     // initialize DLSS context, throws exception on failure
     void initialize(
       Rc<DxvkContext> renderContext,
-      Rc<DxvkCommandList> cmdList,
       uint32_t maxRenderSize[2],
       uint32_t displayOutSize[2],
       //Texture* pTarget,
@@ -139,7 +137,6 @@ namespace dxvk {
       NVSDK_NGX_PerfQuality_Value perfQuality = NVSDK_NGX_PerfQuality_Value_MaxPerf);
 
     bool evaluate(
-      Rc<DxvkCommandList> commandList,
       Rc<DxvkContext> renderContext,
       const Resources::Resource* pUnresolvedColor,
       const Resources::Resource* pResolvedColor,
@@ -197,7 +194,7 @@ namespace dxvk {
 
     void initialize(
       Rc<DxvkContext> renderContext,
-      VkCommandBuffer commandList,
+VkCommandBuffer commandList,
       uint32_t displayOutSize[2],
       VkFormat outputFormat,
       AppCreateTimelineSyncObjectsCallback_t createTimelineSyncObjectsCallback,
@@ -212,7 +209,7 @@ namespace dxvk {
     // the first kNumWarmUpFrames won't be interpolated so interpolatedOutput may not be valid, this function returns true if interpolation happened
     EvaluateResult evaluate(
       Rc<DxvkContext> renderContext,
-      VkCommandBuffer clientCommandList,
+VkCommandBuffer clientCommandList,
       Rc<DxvkImageView> interpolatedOutput,
       Rc<DxvkImageView> compositedColorBuffer,
       Rc<DxvkImageView> motionVectors,

@@ -38,7 +38,7 @@ namespace dxvk {
   // will be no overcommit.
   constexpr uint32_t kPromotionDelayFrames = 2;
 
-  void RtxTextureManager::work(Rc<ManagedTexture>& texture, Rc<DxvkContext>& ctx, Rc<DxvkCommandList>& cmd) {
+  void RtxTextureManager::work(Rc<ManagedTexture>& texture, Rc<DxvkContext>& ctx) {
     if (m_dropRequests) {
       flushRtxIo(false);
     }

@@ -1089,7 +1089,7 @@ namespace dxvk {
     }
   }
 
-  RtInstance* InstanceManager::createViewModelInstance(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList,
+  RtInstance* InstanceManager::createViewModelInstance(Rc<DxvkContext> ctx,
                                                        const RtInstance& reference,
                                                        const Matrix4& perspectiveCorrection,
                                                        const Matrix4& prevPerspectiveCorrection) {
@@ -1136,7 +1136,7 @@ namespace dxvk {
           const Matrix4 worldToObject = inverse(reference.getTransform());
           const Matrix4 instancePositionTransform = worldToObject * perspectiveCorrection * reference.getTransform();
 
-          ctx->getCommonObjects()->metaGeometryUtils().dispatchViewModelCorrection(cmdList, ctx,
+          ctx->getCommonObjects()->metaGeometryUtils().dispatchViewModelCorrection(ctx,
             viewModelInstance->getBlas()->modifiedGeometryData, instancePositionTransform);
         }
       }
@@ -1152,7 +1152,7 @@ namespace dxvk {
     return viewModelInstance;
   }
 
-  void InstanceManager::createViewModelInstances(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList,
+  void InstanceManager::createViewModelInstances(Rc<DxvkContext> ctx,
                                                  const CameraManager& cameraManager,
                                                  const RayPortalManager& rayPortalManager) {
     ScopedGpuProfileZone(ctx, "ViewModel");
@@ -1211,7 +1211,7 @@ namespace dxvk {
       // Tag the instance as ViewModel so it can be checked for it being a reference view model instance
       candidateInstance->setCustomIndexBit(CUSTOM_INDEX_IS_VIEW_MODEL, true);
 
-      viewModelInstances.push_back(createViewModelInstance(ctx, cmdList, *candidateInstance, perspectiveCorrection, prevPerspectiveCorrection));
+      viewModelInstances.push_back(createViewModelInstance(ctx, *candidateInstance, perspectiveCorrection, prevPerspectiveCorrection));
     }
 
     // Create virtual instances for the view model instances

@@ -43,7 +43,7 @@ namespace dxvk {
 
     explicit BindlessResourceManager(DxvkDevice* device);
 
-    void prepareSceneData(const Rc<DxvkCommandList>& cmd, const std::vector<TextureRef>& rtTextures, const std::vector<RaytraceBuffer>& rtBuffers);
+    void prepareSceneData(const Rc<DxvkContext> ctx, const std::vector<TextureRef>& rtTextures, const std::vector<RaytraceBuffer>& rtBuffers);
 
     VkDescriptorSet getGlobalBindlessTableSet(Table type) const;
 

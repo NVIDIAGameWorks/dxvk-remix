@@ -92,7 +92,6 @@ namespace dxvk {
   }
 
   void DxvkBloom::dispatch(
-    Rc<DxvkCommandList> cmdList,
     Rc<RtxContext> ctx,
     Rc<DxvkSampler> linearSampler,
     const Resources::Resource& inOutColorBuffer)
@@ -101,14 +100,13 @@ namespace dxvk {
 
     ctx->setPushConstantBank(DxvkPushConstantBank::RTX);
 
-    dispatchDownscale(cmdList, ctx, inOutColorBuffer, m_bloomBuffer0);
-    dispatchBlur<false>(cmdList, ctx, linearSampler, m_bloomBuffer0, m_bloomBuffer1);
-    dispatchBlur<true>(cmdList, ctx, linearSampler, m_bloomBuffer1, m_bloomBuffer0);
-    dispatchComposite(cmdList, ctx, linearSampler, inOutColorBuffer, m_bloomBuffer0);
+    dispatchDownscale(ctx, inOutColorBuffer, m_bloomBuffer0);
+    dispatchBlur<false>(ctx, linearSampler, m_bloomBuffer0, m_bloomBuffer1);
+    dispatchBlur<true>(ctx, linearSampler, m_bloomBuffer1, m_bloomBuffer0);
+    dispatchComposite(ctx, linearSampler, inOutColorBuffer, m_bloomBuffer0);
   }
 
   void DxvkBloom::dispatchDownscale(
-    Rc<DxvkCommandList> cmdList,
     Rc<DxvkContext> ctx,
     const Resources::Resource& inputBuffer,
     const Resources::Resource& outputBuffer)
@@ -132,7 +130,6 @@ namespace dxvk {
 
   template<bool isVertical>
   void DxvkBloom::dispatchBlur(
-    Rc<DxvkCommandList> cmdList,
     Rc<DxvkContext> ctx,
     Rc<DxvkSampler> linearSampler,
     const Resources::Resource& inputBuffer,
@@ -173,7 +170,6 @@ namespace dxvk {
   }
 
   void DxvkBloom::dispatchComposite(
-    Rc<DxvkCommandList> cmdList,
     Rc<DxvkContext> ctx,
     Rc<DxvkSampler> linearSampler,
     const Resources::Resource& inOutColorBuffer,

@@ -352,7 +352,6 @@ namespace dxvk
   }
 
   void NGXDLSSContext::initialize(Rc<DxvkContext> renderContext,
-                                  Rc<DxvkCommandList> cmdList,
                                   uint32_t maxRenderSize[2],
                                   uint32_t displayOutSize[2],
                                   bool isContentHDR,
@@ -386,7 +385,7 @@ namespace dxvk
     createParams.InFeatureCreateFlags = createFlags;
 
 
-    VkCommandBuffer vkCommandBuffer = cmdList->getCmdBuffer(dxvk::DxvkCmdBuffer::ExecBuffer);
+    VkCommandBuffer vkCommandBuffer = renderContext->getCommandList()->getCmdBuffer(dxvk::DxvkCmdBuffer::ExecBuffer);
 
     NVSDK_NGX_Result result = NGX_VULKAN_CREATE_DLSS_EXT1(m_device->handle(), vkCommandBuffer, CreationNodeMask, VisibilityNodeMask, &m_feature, m_parameters, &createParams);
 
@@ -396,8 +395,7 @@ namespace dxvk
     }
   }
 
-  bool NGXDLSSContext::evaluate(Rc<DxvkCommandList> commandList,
-                                Rc<DxvkContext> renderContext,
+  bool NGXDLSSContext::evaluate(Rc<DxvkContext> renderContext,
                                 const Resources::Resource* pUnresolvedColor,
                                 const Resources::Resource* pResolvedColor,
                                 const Resources::Resource* pMotionVectors,
@@ -428,7 +426,7 @@ namespace dxvk
 
     bool success = true;
 
-    VkCommandBuffer vkCommandbuffer = commandList->getCmdBuffer(DxvkCmdBuffer::ExecBuffer);
+    VkCommandBuffer vkCommandbuffer = renderContext->getCommandList()->getCmdBuffer(DxvkCmdBuffer::ExecBuffer);
 
     NVSDK_NGX_Resource_VK unresolvedColorResource = TextureToResourceVK(pUnresolvedColor, false);
     NVSDK_NGX_Resource_VK resolvedColorResource = TextureToResourceVK(pResolvedColor, true);

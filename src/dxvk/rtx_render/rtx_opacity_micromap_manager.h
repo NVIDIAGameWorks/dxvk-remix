@@ -33,7 +33,6 @@
 namespace dxvk {
   class DxvkContext;
   class DxvkDevice;
-  class DxvkCommandList;
   class DxvkBarrierSet;
   class RtInstance;
   class InstanceManager;
@@ -332,14 +331,14 @@ namespace dxvk {
     // it binds it as well updates VK instance flags in the instance.
     // Returns bound opacity micromap source hash
     // Returns kEmptyHash otherwise
-    XXH64_hash_t tryBindOpacityMicromap(Rc<DxvkCommandList> cmdList, const RtInstance& instance, uint32_t billboardIndex, 
+    XXH64_hash_t tryBindOpacityMicromap(Rc<DxvkContext> ctx, const RtInstance& instance, uint32_t billboardIndex, 
                                         VkAccelerationStructureGeometryKHR& targetGeometry, const InstanceManager& instanceManager);
 
     // Called once per frame to build pending Opacity Micromap items in Opacity Micromap Manager
-    void buildOpacityMicromaps(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, const std::vector<TextureRef>& textures, uint32_t lastCameraCutFrameId, float frameTimeSecs);
+    void buildOpacityMicromaps(Rc<DxvkContext> ctx, const std::vector<TextureRef>& textures, uint32_t lastCameraCutFrameId, float frameTimeSecs);
 
     // Called once per frame before any calls to Opacity Micromap Manager
-    void onFrameStart(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList);
+    void onFrameStart(Rc<DxvkContext> ctx);
 
     // Clears all built data and tracked instance state
     void clear();
@@ -354,7 +353,7 @@ namespace dxvk {
     // Should be called sparingly/once a frame after opacity micromaps have been bound to BLASes
     // and corresponding batched BLASes are about to be built. 
     // It is OK for batched BLASes to contain a mix of BLASes with and without bound opacity micromaps
-    void onBlasBuild(Rc<DxvkCommandList> cmdList);
+    void onBlasBuild(Rc<DxvkContext> ctx);
 
   private:
     typedef fast_unordered_cache<OpacityMicromapCacheItem> OpacityMicromapCache;
@@ -381,7 +380,7 @@ namespace dxvk {
       const RtInstance* instance = nullptr;
     };
 
-    XXH64_hash_t bindOpacityMicromap(Rc<DxvkCommandList> cmdList, const RtInstance& instance, uint32_t billboardIndex, VkAccelerationStructureGeometryKHR& targetGeometry, const InstanceManager& instanceManager);
+    XXH64_hash_t bindOpacityMicromap(Rc<DxvkContext> ctx, const RtInstance& instance, uint32_t billboardIndex, VkAccelerationStructureGeometryKHR& targetGeometry, const InstanceManager& instanceManager);
 
     void updateMemoryBudget();
     void generateInstanceOmmRequests(RtInstance& instance, const InstanceManager& instanceManager, std::vector<OmmRequest>& ommRequests);
@@ -408,7 +407,7 @@ namespace dxvk {
 
     // Needs to be called before a BLAS build with any bound OMMs
     // Will do nothing if no synchronization is needed
-    void addBarriersForBuiltOMMs(Rc<DxvkCommandList> cmdList);
+    void addBarriersForBuiltOMMs(Rc<DxvkContext> ctx);
 
     bool areInstanceTexturesResident(const RtInstance& instance, const std::vector<TextureRef>& textures) const;
 
@@ -418,13 +417,12 @@ namespace dxvk {
 
     void calculateRequiredVRamSize(uint32_t numTriangles, uint16_t subdivisionLevel, VkOpacityMicromapFormatEXT ommFormat, VkIndexType triangleIndexType, VkDeviceSize& arrayBufferDeviceSize, VkDeviceSize& blasOmmBuffersDeviceSize);
 
-    OmmResult bakeOpacityMicromapArray(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, XXH64_hash_t ommSrcHash,
+    OmmResult bakeOpacityMicromapArray(Rc<DxvkContext> ctx, XXH64_hash_t ommSrcHash,
                                   OpacityMicromapCacheItem& ommCacheItem, CachedSourceData& sourceData,
                                   const std::vector<TextureRef>& textures, uint32_t& maxMicroTrianglesToBake);
-    OmmResult buildOpacityMicromap(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, XXH64_hash_t ommSrcHash, OpacityMicromapCacheItem& ommCacheItem, VkMicromapUsageEXT& ommUsageGroup, VkMicromapBuildInfoEXT& ommBuildInfo, uint32_t& maxMicroTrianglesToBuild, bool forceBuild);
-    void bakeOpacityMicromapArrays(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList,
-                                   const std::vector<TextureRef>& textures, uint32_t& maxMicroTrianglesToBake);
-    void buildOpacityMicromapsInternal(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, uint32_t& maxMicroTrianglesToBuild);
+    OmmResult buildOpacityMicromap(Rc<DxvkContext> ctx, XXH64_hash_t ommSrcHash, OpacityMicromapCacheItem& ommCacheItem, VkMicromapUsageEXT& ommUsageGroup, VkMicromapBuildInfoEXT& ommBuildInfo, uint32_t& maxMicroTrianglesToBuild, bool forceBuild);
+    void bakeOpacityMicromapArrays(Rc<DxvkContext> ctx, const std::vector<TextureRef>& textures, uint32_t& maxMicroTrianglesToBake);
+    void buildOpacityMicromapsInternal(Rc<DxvkContext> ctx, uint32_t& maxMicroTrianglesToBuild);
 
     // Bound built OMMs need to be synchronized once before being used. 
     // This tracks if any such OMMs have been bound

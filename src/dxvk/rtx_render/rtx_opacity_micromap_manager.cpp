@@ -644,8 +644,8 @@ namespace dxvk {
     return useOpacityMicromap;
   }
 
-  void OpacityMicromapManager::onBlasBuild(Rc<DxvkCommandList> cmdList) {
-    addBarriersForBuiltOMMs(cmdList);
+  void OpacityMicromapManager::onBlasBuild(Rc<DxvkContext> ctx) {
+    addBarriersForBuiltOMMs(ctx);
   }
 
   static bool isIndexOfFullyResidentTexture(uint32_t index, const std::vector<TextureRef>& textures) {
@@ -938,17 +938,17 @@ namespace dxvk {
     return true;
   }
 
-  XXH64_hash_t OpacityMicromapManager::tryBindOpacityMicromap(Rc<DxvkCommandList> cmdList,
+  XXH64_hash_t OpacityMicromapManager::tryBindOpacityMicromap(Rc<DxvkContext> ctx,
                                                               const RtInstance& instance, uint32_t billboardIndex,
                                                               VkAccelerationStructureGeometryKHR& targetGeometry,
                                                               const InstanceManager& instanceManager) {
     if (!doesInstanceUseOpacityMicromap(instance))
       return kEmptyHash;
 
-    return bindOpacityMicromap(cmdList, instance, billboardIndex, targetGeometry, instanceManager);
+    return bindOpacityMicromap(ctx, instance, billboardIndex, targetGeometry, instanceManager);
   }
   
-  XXH64_hash_t OpacityMicromapManager::bindOpacityMicromap(Rc<DxvkCommandList> cmdList,
+  XXH64_hash_t OpacityMicromapManager::bindOpacityMicromap(Rc<DxvkContext> ctx,
                                                            const RtInstance& instance, 
                                                            uint32_t billboardIndex,
                                                            VkAccelerationStructureGeometryKHR& targetGeometry,
@@ -1001,7 +1001,7 @@ namespace dxvk {
       m_numBoundOMMs++;
 
       // Track the lifetime of the used buffers
-      cmdList->trackResource<DxvkAccess::Read>(ommCacheItem.blasOmmBuffers);
+      ctx->getCommandList()->trackResource<DxvkAccess::Read>(ommCacheItem.blasOmmBuffers);
       m_boundOMMs.push_back(ommCacheItem.blasOmmBuffers);
       break;
     }
@@ -1013,7 +1013,7 @@ namespace dxvk {
     return boundOMM ? ommRequest.ommSrcHash : kEmptyHash;
   }
 
-  void OpacityMicromapManager::addBarriersForBuiltOMMs(Rc<DxvkCommandList> cmdList) {
+  void OpacityMicromapManager::addBarriersForBuiltOMMs(Rc<DxvkContext> ctx) {
 
     if (m_boundOmmsRequireSynchronization) {
 
@@ -1027,7 +1027,7 @@ namespace dxvk {
         dependencyInfo.memoryBarrierCount = 1;
         dependencyInfo.pMemoryBarriers = &memoryBarrier;
 
-        cmdList->vkCmdPipelineBarrier2KHR(&dependencyInfo);
+        ctx->getCommandList()->vkCmdPipelineBarrier2KHR(&dependencyInfo);
       }
 
       // All built instances have been synchronized, remove them from the built list
@@ -1054,7 +1054,6 @@ namespace dxvk {
   OpacityMicromapManager::OmmResult initializeOpacityMicromapTriangleArrayBuffers(
     DxvkDevice* device,
     Rc<DxvkContext> ctx,
-    Rc<DxvkCommandList> cmdList,
     VkOpacityMicromapFormatEXT ommFormat,
     uint16_t subdivisionLevel,
     uint32_t numTriangles,
@@ -1180,7 +1179,6 @@ namespace dxvk {
 
   OpacityMicromapManager::OmmResult OpacityMicromapManager::bakeOpacityMicromapArray(
     Rc<DxvkContext> ctx,
-    Rc<DxvkCommandList> cmdList,
     XXH64_hash_t ommSrcHash,
     OpacityMicromapCacheItem& ommCacheItem,
     CachedSourceData& sourceData,
@@ -1266,11 +1264,11 @@ namespace dxvk {
         desc.resolveTransparencyThreshold = std::max(desc.resolveTransparencyThreshold, OpacityMicromapOptions::Building::decalsMinResolveTransparencyThreshold());
 
       ctx->getCommonObjects()->metaGeometryUtils().dispatchBakeOpacityMicromap(
-        cmdList, ctx, blasEntry.modifiedGeometryData, 
+        ctx, blasEntry.modifiedGeometryData, 
         textures, instance.getAlbedoOpacityTextureIndex(), instance.getSecondaryOpacityTextureIndex(),
         desc, ommCacheItem.bakingState, ommCacheItem.ommArrayBuffer);
 
-      cmdList->trackResource<DxvkAccess::Write>(ommCacheItem.ommArrayBuffer);
+      ctx->getCommandList()->trackResource<DxvkAccess::Write>(ommCacheItem.ommArrayBuffer);
 
       maxMicroTrianglesToBake -= std::min(ommCacheItem.bakingState.numMicroTrianglesBakedInLastBake, maxMicroTrianglesToBake);
     }
@@ -1282,7 +1280,6 @@ namespace dxvk {
 
   OpacityMicromapManager::OmmResult OpacityMicromapManager::buildOpacityMicromap(
     Rc<DxvkContext> ctx,
-    Rc<DxvkCommandList> cmdList,
     XXH64_hash_t ommSrcHash,
     OpacityMicromapCacheItem& ommCacheItem,
     VkMicromapUsageEXT& ommUsageGroup,
@@ -1330,11 +1327,11 @@ namespace dxvk {
       OmmResult result;
       if (triangleIndexType == VK_INDEX_TYPE_UINT16)
         result = initializeOpacityMicromapTriangleArrayBuffers<uint16_t>(
-          m_device, ctx, cmdList, ommCacheItem.ommFormat, ommCacheItem.subdivisionLevel, numTriangles, opacityMicromapPerTriangleBufferSize,
+          m_device, ctx, ommCacheItem.ommFormat, ommCacheItem.subdivisionLevel, numTriangles, opacityMicromapPerTriangleBufferSize,
           triangleArrayBuffer, ommCacheItem.blasOmmBuffers->opacityMicromapTriangleIndexBuffer);
       else
         result = initializeOpacityMicromapTriangleArrayBuffers<uint32_t>(
-          m_device, ctx, cmdList, ommCacheItem.ommFormat, ommCacheItem.subdivisionLevel, numTriangles, opacityMicromapPerTriangleBufferSize,
+          m_device, ctx, ommCacheItem.ommFormat, ommCacheItem.subdivisionLevel, numTriangles, opacityMicromapPerTriangleBufferSize,
           triangleArrayBuffer, ommCacheItem.blasOmmBuffers->opacityMicromapTriangleIndexBuffer);
 
       if (result != OmmResult::Success)
@@ -1391,9 +1388,9 @@ namespace dxvk {
       ommBuildInfo.scratchData.deviceAddress = scratchSlice.getDeviceAddress();
       ommBuildInfo.triangleArrayStride = sizeof(VkMicromapTriangleEXT);
       
-      cmdList->trackResource<DxvkAccess::Read>(ommCacheItem.ommArrayBuffer);
-      cmdList->trackResource<DxvkAccess::Read>(triangleArrayBuffer);
-      cmdList->trackResource<DxvkAccess::Write>(scratchSlice.buffer());
+      ctx->getCommandList()->trackResource<DxvkAccess::Read>(ommCacheItem.ommArrayBuffer);
+      ctx->getCommandList()->trackResource<DxvkAccess::Read>(triangleArrayBuffer);
+      ctx->getCommandList()->trackResource<DxvkAccess::Write>(scratchSlice.buffer());
 
       // Release OMM array memory as it's no longer needed after the build
       {
@@ -1418,7 +1415,7 @@ namespace dxvk {
     }
   
     // Track the lifetime of all the build buffers needed for BLAS, including non-ref counted .opacityMicromap
-    cmdList->trackResource<DxvkAccess::Write>(ommCacheItem.blasOmmBuffers);
+    ctx->getCommandList()->trackResource<DxvkAccess::Write>(ommCacheItem.blasOmmBuffers);
 
     m_numMicroTrianglesBuilt += numMicroTriangles;
     maxMicroTrianglesToBuild -= std::min(numMicroTriangles, maxMicroTrianglesToBuild);
@@ -1434,7 +1431,6 @@ namespace dxvk {
   }
 
   void OpacityMicromapManager::bakeOpacityMicromapArrays(Rc<DxvkContext> ctx,
-                                                         Rc<DxvkCommandList> cmdList,
                                                          const std::vector<TextureRef>& textures,
                                                          uint32_t& maxMicroTrianglesToBake) {
 
@@ -1484,7 +1480,7 @@ namespace dxvk {
       OpacityMicromapCacheItem& ommCacheItem = cacheItemIter->second;
       ommCacheItem.cacheState = OpacityMicromapCacheState::eStep1_Baking;
 
-      OmmResult result = bakeOpacityMicromapArray(ctx, cmdList, ommSrcHash, ommCacheItem, sourceData, textures, maxMicroTrianglesToBake);
+      OmmResult result = bakeOpacityMicromapArray(ctx, ommSrcHash, ommCacheItem, sourceData, textures, maxMicroTrianglesToBake);
 
       if (result == OmmResult::Success) {
         // Use >= as the number of baked micro triangles is aligned up
@@ -1531,7 +1527,6 @@ namespace dxvk {
   }
 
   void OpacityMicromapManager::buildOpacityMicromapsInternal(Rc<DxvkContext> ctx,
-                                                             Rc<DxvkCommandList> cmdList,
                                                              uint32_t& maxMicroTrianglesToBuild) {
 
     if (!OpacityMicromapOptions::enableBuilding())
@@ -1575,7 +1570,7 @@ namespace dxvk {
       auto& ommCacheItemIter = m_ommCache.find(ommSrcHash);
       OpacityMicromapCacheItem& ommCacheItem = ommCacheItemIter->second;
 
-      OmmResult result = buildOpacityMicromap(ctx, cmdList, *ommSrcHashIter, ommCacheItem, micromapUsageGroups[buildItemCount],
+      OmmResult result = buildOpacityMicromap(ctx, *ommSrcHashIter, ommCacheItem, micromapUsageGroups[buildItemCount],
                                               micromapBuildInfos[buildItemCount], maxMicroTrianglesToBuild, forceOmmBuild);
       
       if (result == OmmResult::Success) {
@@ -1623,15 +1618,15 @@ namespace dxvk {
         dependencyInfo.memoryBarrierCount = 1;
         dependencyInfo.pMemoryBarriers = &memoryBarrier;
 
-        cmdList->vkCmdPipelineBarrier2KHR(&dependencyInfo);
+        ctx->getCommandList()->vkCmdPipelineBarrier2KHR(&dependencyInfo);
       }
 
       // Build the micromaps
-      cmdList->vkCmdBuildMicromapsEXT(buildItemCount, micromapBuildInfos.data());
+      ctx->getCommandList()->vkCmdBuildMicromapsEXT(buildItemCount, micromapBuildInfos.data());
     }
   }
 
-  void OpacityMicromapManager::onFrameStart(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList) {
+  void OpacityMicromapManager::onFrameStart(Rc<DxvkContext> ctx) {
     ScopedCpuProfileZone();
     const uint32_t currentFrameIndex = m_device->getCurrentFrameId();
 
@@ -1675,7 +1670,7 @@ namespace dxvk {
     // Account for OMM usage in BLASes in a previous TLAS
     // Tag the previously bound OMMs as used in this frame as well
     for (auto& previousFrameBoundOMM : m_boundOMMs)
-      cmdList->trackResource<DxvkAccess::Read>(previousFrameBoundOMM);
+      ctx->getCommandList()->trackResource<DxvkAccess::Read>(previousFrameBoundOMM);
     m_boundOMMs.clear();
 
     // Update memory management
@@ -1745,7 +1740,6 @@ namespace dxvk {
   }
 
   void OpacityMicromapManager::buildOpacityMicromaps(Rc<DxvkContext> ctx,
-                                                     Rc<DxvkCommandList> cmdList,
                                                      const std::vector<TextureRef>& textures,
                                                      uint32_t lastCameraCutFrameId,
                                                      float frameTimeSecs) {
@@ -1804,8 +1798,8 @@ namespace dxvk {
     if (!m_unprocessedList.empty() || !m_bakedList.empty()) {
       ScopedGpuProfileZone(ctx, "Process Opacity Micromaps");
 
-      bakeOpacityMicromapArrays(ctx, cmdList, textures, numMicroTrianglesToBakeAvailable);
-      buildOpacityMicromapsInternal(ctx, cmdList, numMicroTrianglesToBuildAvailable);
+      bakeOpacityMicromapArrays(ctx, textures, numMicroTrianglesToBakeAvailable);
+      buildOpacityMicromapsInternal(ctx, numMicroTrianglesToBuildAvailable);
     }
   }
 }  // namespace dxvk
