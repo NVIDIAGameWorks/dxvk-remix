@@ -40,7 +40,6 @@ namespace dxvk {
     ~DxvkPostFx();
 
     void dispatch(
-      Rc<DxvkCommandList> cmdList,
       Rc<RtxContext> ctx,
       Rc<DxvkSampler> nearestSampler,
       Rc<DxvkSampler> linearSampler,

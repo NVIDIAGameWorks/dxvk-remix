@@ -53,7 +53,7 @@ namespace dxvk {
     return m_tables[type][currentIdx()]->bindlessDescSet;
   }
 
-  void BindlessResourceManager::prepareSceneData(const Rc<DxvkCommandList>& cmd, const std::vector<TextureRef>& rtTextures, const std::vector<RaytraceBuffer>& rtBuffers) {
+  void BindlessResourceManager::prepareSceneData(const Rc<DxvkContext> ctx, const std::vector<TextureRef>& rtTextures, const std::vector<RaytraceBuffer>& rtBuffers) {
     ScopedCpuProfileZone();
     if (m_frameLastUpdated == m_device->getCurrentFrameId()) {
       Logger::debug("Updating bindless tables multiple times per frame...");
@@ -75,7 +75,7 @@ namespace dxvk {
           imageInfo[idx].sampler = texRef.sampler->handle();
           imageInfo[idx].imageView = imageView->handle();
           imageInfo[idx].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-          cmd->trackResource<DxvkAccess::Read>(imageView);
+          ctx->getCommandList()->trackResource<DxvkAccess::Read>(imageView);
         } else {
           imageInfo[idx] = m_device->getCommon()->dummyResources().samplerDescriptor();
         }
@@ -106,7 +106,7 @@ namespace dxvk {
       for (auto&& bufRef : rtBuffers) {
         if (bufRef.defined()) {
           bufferInfo[idx] = bufRef.getDescriptor().buffer;
-          cmd->trackResource<DxvkAccess::Read>(bufRef.buffer());
+          ctx->getCommandList()->trackResource<DxvkAccess::Read>(bufRef.buffer());
         } else {
           bufferInfo[idx] = m_device->getCommon()->dummyResources().bufferDescriptor();
         }

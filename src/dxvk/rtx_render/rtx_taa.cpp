@@ -71,7 +71,6 @@ namespace dxvk {
   }
 
   void DxvkTemporalAA::dispatch(
-    Rc<DxvkCommandList> cmdList,
     Rc<DxvkContext> ctx,
     Rc<DxvkSampler> linearSampler,
     const uvec2& mainCameraResolution,

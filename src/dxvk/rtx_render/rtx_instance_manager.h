@@ -253,10 +253,10 @@ public:
   RtInstance* createInstanceCopy(const RtInstance& reference, bool generateValidID = true);
 
   // Creates a view model instance from the reference and adds it to the instance pool
-  RtInstance* createViewModelInstance(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, const RtInstance& reference, const Matrix4& perspectiveCorrection, const Matrix4& prevPerspectiveCorrection);
+  RtInstance* createViewModelInstance(Rc<DxvkContext> ctx, const RtInstance& reference, const Matrix4& perspectiveCorrection, const Matrix4& prevPerspectiveCorrection);
 
   // Creates view model instances and their virtual counterparts
-  void createViewModelInstances(Rc<DxvkContext> ctx, Rc<DxvkCommandList> cmdList, const CameraManager& cameraManager, const RayPortalManager& rayPortalManager);
+  void createViewModelInstances(Rc<DxvkContext> ctx, const CameraManager& cameraManager, const RayPortalManager& rayPortalManager);
 
   void createPlayerModelVirtualInstances(Rc<DxvkContext> ctx, const CameraManager& cameraManager, const RayPortalManager& rayPortalManager);
 

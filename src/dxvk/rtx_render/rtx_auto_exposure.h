@@ -40,7 +40,6 @@ namespace dxvk {
     ~DxvkAutoExposure();
 
     void dispatch(
-      Rc<DxvkCommandList> cmdList,
       Rc<DxvkContext> ctx,
       Rc<DxvkSampler> linearSampler,
       const Resources::RaytracingOutput& rtOutput,
@@ -56,7 +55,6 @@ namespace dxvk {
   private:
 
     void dispatchAutoExposure(
-      Rc<DxvkCommandList> cmdList,
       Rc<DxvkContext> ctx,
       Rc<DxvkSampler> linearSampler,
       const Resources::RaytracingOutput& rtOutput,

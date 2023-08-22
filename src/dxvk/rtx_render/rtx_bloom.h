@@ -41,7 +41,6 @@ namespace dxvk {
     ~DxvkBloom();
 
     void dispatch(
-      Rc<DxvkCommandList> cmdList,
       Rc<RtxContext> ctx,
       Rc<DxvkSampler> linearSampler,
       const Resources::Resource& inOutColorBuffer);
@@ -52,21 +51,18 @@ namespace dxvk {
     
   private:
     void dispatchDownscale(
-      Rc<DxvkCommandList> cmdList,
       Rc<DxvkContext> ctx,
       const Resources::Resource& inputBuffer,
       const Resources::Resource& outputBuffer);
 
     template<bool isVertical>
     void dispatchBlur(
-      Rc<DxvkCommandList> cmdList,
       Rc<DxvkContext> ctx,
       Rc<DxvkSampler> linearSampler,
       const Resources::Resource& inputBuffer,
       const Resources::Resource& outputBuffer);
 
     void dispatchComposite(
-      Rc<DxvkCommandList> cmdList,
       Rc<DxvkContext> ctx,
       Rc<DxvkSampler> linearSampler,
       const Resources::Resource& inOutColorBuffer,

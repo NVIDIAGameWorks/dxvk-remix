@@ -38,7 +38,6 @@ namespace dxvk {
     void onDestroy();
 
     void dispatch(
-      Rc<DxvkCommandList> cmdList,
       Rc<DxvkContext> ctx,
       DxvkBarrierSet& barriers,
       const SceneManager& sceneManager,
@@ -58,11 +57,10 @@ namespace dxvk {
     void updateRuntimeSettings(const DxvkDenoise::Input& inputs);
 
     void prepareResources(
-      Rc<DxvkCommandList> cmdList,
       Rc<DxvkContext> ctx,
       const Resources::RaytracingOutput& rtOutput);
 
-    void createResources(Rc<DxvkCommandList> cmdList, Rc<DxvkContext> ctx, const Resources::RaytracingOutput& rtOutput);
+    void createResources(Rc<DxvkContext> ctx, const Resources::RaytracingOutput& rtOutput);
     void createPipelines();
 
     const Resources::Resource* getTexture(

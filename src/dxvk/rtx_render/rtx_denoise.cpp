@@ -39,7 +39,6 @@ namespace dxvk {
   }
 
   void DxvkDenoise::dispatch(
-    Rc<DxvkCommandList> cmdList,
     Rc<DxvkContext> ctx,
     DxvkBarrierSet& barriers,
     const Resources::RaytracingOutput& rtOutput,
@@ -48,7 +47,7 @@ namespace dxvk {
   {
     const SceneManager& sceneManager = device()->getCommon()->getSceneManager();
 
-    m_nrdContext->dispatch(cmdList, ctx, barriers, sceneManager, rtOutput, inputs, outputs);
+    m_nrdContext->dispatch(ctx, barriers, sceneManager, rtOutput, inputs, outputs);
   }
 
   void DxvkDenoise::copyNrdSettingsFrom(

@@ -40,7 +40,6 @@ namespace dxvk {
     ~DxvkToneMapping();
 
     void dispatch(
-      Rc<DxvkCommandList> cmdList,
       Rc<DxvkContext> ctx,
       Rc<DxvkSampler> linearSampler,
       Rc<DxvkImageView> exposureView,
@@ -58,18 +57,15 @@ namespace dxvk {
     void createResources(Rc<DxvkContext> ctx);
 
     void dispatchHistogram(
-      Rc<DxvkCommandList> cmdList,
       Rc<DxvkContext> ctx,
       Rc<DxvkImageView> exposureView,
       const Resources::Resource& colorBuffer,
       bool autoExposureEnabled);
 
     void dispatchToneCurve(
-      Rc<DxvkCommandList> cmdList,
       Rc<DxvkContext> ctx);
 
     void dispatchApplyToneMapping(
-      Rc<DxvkCommandList> cmdList,
       Rc<DxvkContext> ctx,
       Rc<DxvkSampler> linearSampler,
       Rc<DxvkImageView> exposureView,

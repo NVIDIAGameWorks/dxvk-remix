@@ -133,7 +133,7 @@ namespace dxvk {
     }
 
   protected:
-    void work(Rc<ManagedTexture>& item, Rc<DxvkContext>& ctx, Rc<DxvkCommandList>& cmd) override;
+    void work(Rc<ManagedTexture>& item, Rc<DxvkContext>& ctx) override;
 
     bool wakeWorkerCondition() override;
 

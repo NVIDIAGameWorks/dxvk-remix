@@ -168,7 +168,6 @@ namespace dxvk {
   }
 
   void DxvkToneMapping::dispatchHistogram(
-    Rc<DxvkCommandList> cmdList,
     Rc<DxvkContext> ctx,
     Rc<DxvkImageView> exposureView,
     const Resources::Resource& colorBuffer,
@@ -208,7 +207,6 @@ namespace dxvk {
   }
 
   void DxvkToneMapping::dispatchToneCurve(
-    Rc<DxvkCommandList> cmdList,
     Rc<DxvkContext> ctx) {
 
     ScopedGpuProfileZone(ctx, "Tonemap: Calculate Tone Curve");
@@ -235,7 +233,6 @@ namespace dxvk {
   }
 
   void DxvkToneMapping::dispatchApplyToneMapping(
-    Rc<DxvkCommandList> cmdList,
     Rc<DxvkContext> ctx,
     Rc<DxvkSampler> linearSampler,
     Rc<DxvkImageView> exposureView,
@@ -281,7 +278,6 @@ namespace dxvk {
   }
 
   void DxvkToneMapping::dispatch(
-    Rc<DxvkCommandList> cmdList,
     Rc<DxvkContext> ctx,
     Rc<DxvkSampler> linearSampler,
     Rc<DxvkImageView> exposureView,
@@ -305,11 +301,11 @@ namespace dxvk {
 
     const Resources::Resource& inputColorBuffer = rtOutput.m_finalOutput;
     if (tonemappingEnabled()) {
-      dispatchHistogram(cmdList, ctx, exposureView, inputColorBuffer, autoExposureEnabled);
-      dispatchToneCurve(cmdList, ctx);
+      dispatchHistogram(ctx, exposureView, inputColorBuffer, autoExposureEnabled);
+      dispatchToneCurve(ctx);
     }
 
-    dispatchApplyToneMapping(cmdList, ctx, linearSampler, exposureView, inputColorBuffer, rtOutput.m_finalOutput, performSRGBConversion, autoExposureEnabled);
+    dispatchApplyToneMapping(ctx, linearSampler, exposureView, inputColorBuffer, rtOutput.m_finalOutput, performSRGBConversion, autoExposureEnabled);
 
     m_resetState = false;
   }

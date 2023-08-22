@@ -205,7 +205,6 @@ namespace dxvk {
   }
 
   void CompositePass::dispatch(
-    Rc<DxvkCommandList> cmdList,
     Rc<RtxContext> ctx,
     SceneManager& sceneManager,
     const Resources::RaytracingOutput& rtOutput,
@@ -350,7 +349,7 @@ namespace dxvk {
     
     Rc<DxvkBuffer> cb = getCompositeConstantsBuffer();
     ctx->updateBuffer(cb, 0, sizeof(CompositeArgs), &compositeArgs);
-    cmdList->trackResource<DxvkAccess::Read>(cb);
+    ctx->getCommandList()->trackResource<DxvkAccess::Read>(cb);
 
     ctx->bindResourceBuffer(COMPOSITE_CONSTANTS_INPUT, DxvkBufferSlice(cb, 0, cb->info().size));
     VkExtent3D workgroups = util::computeBlockCount(rtOutput.m_compositeOutputExtent, VkExtent3D { 16, 8, 1 });

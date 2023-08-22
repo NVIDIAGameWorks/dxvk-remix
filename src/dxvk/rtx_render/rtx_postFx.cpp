@@ -126,7 +126,6 @@ namespace dxvk {
   }
 
   void dispatchMotionBlurPrefilterPass(
-    Rc<DxvkCommandList> cmdList,
     Rc<RtxContext> ctx,
     const Resources::Resource& primarySurfaceFlags,
     const Resources::Resource& primarySurfaceFlagsFilteredOutput,
@@ -159,7 +158,6 @@ namespace dxvk {
   }
 
   void dispatchMotionBlur(
-    Rc<DxvkCommandList> cmdList,
     Rc<RtxContext> ctx,
     Rc<DxvkSampler> nearestSampler,
     Rc<DxvkSampler> linearSampler,
@@ -171,12 +169,12 @@ namespace dxvk {
   {
     ScopedGpuProfileZone(ctx, "PostFx Motion Blur");
 
-    dispatchMotionBlurPrefilterPass(cmdList, ctx,
+    dispatchMotionBlurPrefilterPass(ctx,
                                     rtOutput.m_primarySurfaceFlags,
                                     rtOutput.m_primarySurfaceFlagsIntermediateTexture1.resource(Resources::AccessType::Write),
                                     false);
 
-    dispatchMotionBlurPrefilterPass(cmdList, ctx,
+    dispatchMotionBlurPrefilterPass(ctx,
                                     rtOutput.m_primarySurfaceFlagsIntermediateTexture1.resource(Resources::AccessType::Read),
                                     rtOutput.m_primarySurfaceFlagsIntermediateTexture2.resource(Resources::AccessType::Write),
                                     true);
@@ -198,7 +196,6 @@ namespace dxvk {
   }
 
   void dispatchPostLensEffects(
-    Rc<DxvkCommandList> cmdList,
     Rc<DxvkContext> ctx,
     Rc<DxvkSampler> linearSampler,
     const PostFxArgs& postFxArgs,
@@ -220,7 +217,6 @@ namespace dxvk {
   }
 
   void DxvkPostFx::dispatch(
-    Rc<DxvkCommandList> cmdList,
     Rc<RtxContext> ctx,
     Rc<DxvkSampler> nearestSampler,
     Rc<DxvkSampler> linearSampler,
@@ -288,7 +284,7 @@ namespace dxvk {
       assert(motionBlurSampleCount() <= 10);
       lastPointer = &rtOutput.m_postFxIntermediateTexture;
       dispatchMotionBlur(
-        cmdList, ctx,
+        ctx,
         nearestSampler, linearSampler,
         postFxArgs,
         workgroups,
@@ -298,7 +294,7 @@ namespace dxvk {
 
     if (isChromaticAberrationEnabled() || isVignetteEnabled())
     {
-      dispatchPostLensEffects(cmdList, ctx, linearSampler, postFxArgs, workgroups, *lastPointer, inOutColorTexture);
+      dispatchPostLensEffects(ctx, linearSampler, postFxArgs, workgroups, *lastPointer, inOutColorTexture);
 
       lastPointer = &inOutColorTexture;
     }
