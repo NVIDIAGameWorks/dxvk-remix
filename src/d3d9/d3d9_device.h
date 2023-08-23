@@ -103,6 +103,9 @@ namespace dxvk {
     constexpr static uint32_t NullStreamIdx = caps::MaxStreams;
 
     friend class D3D9SwapChainEx;
+// NV-DXVK start: external API
+    friend class D3D9ExternalPresenter;
+// NV-DXVK end
     friend struct D3D9Rtx;
   public:
 
@@ -112,7 +115,10 @@ namespace dxvk {
             D3DDEVTYPE             DeviceType,
             HWND                   hFocusWindow,
             DWORD                  BehaviorFlags,
-            Rc<DxvkDevice>         dxvkDevice);
+            Rc<DxvkDevice>         dxvkDevice,
+// NV-DXVK start: external API
+            bool                   WithExternalSwapchain);
+// NV-DXVK end
 
     ~D3D9DeviceEx();
 
@@ -928,6 +934,9 @@ namespace dxvk {
       return m_samplerCount.load();
     }
 
+// NV-DXVK start: external API
+    D3D9ExternalPresenter* GetExternalPresenter();
+// NV-DXVK end
   private:
 
     DxvkCsChunkRef AllocCsChunk() {
@@ -1266,6 +1275,10 @@ namespace dxvk {
     Direct3DState9                  m_state;
 
     D3D9Rtx                         m_rtx;
+
+// NV-DXVK start: external API
+    bool                            m_withExternalSwapchain;
+// NV-DXVK end
 
   };
 

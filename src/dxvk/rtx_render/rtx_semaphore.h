@@ -28,6 +28,7 @@ namespace dxvk {
     DxvkDevice* m_device;
     VkSemaphore m_sema;
     bool m_isTimeline;
+    HANDLE m_handle = INVALID_HANDLE_VALUE;
     
     RtxSemaphore() = default;
 
@@ -35,13 +36,17 @@ namespace dxvk {
 
   public:
     static RtxSemaphore* createTimeline(DxvkDevice* device, const char* name, uint64_t initialValue = 0, bool win32Shared = false);
-    static RtxSemaphore* createBinary(DxvkDevice* device, const char* name);
+    static RtxSemaphore* createBinary(DxvkDevice* device, const char* name, const bool shared = false);
     
     ~RtxSemaphore() override;
 
     uint64_t value() const override;
     void signal(uint64_t value) override;
     void wait(uint64_t value) override;
+
+    HANDLE sharedHandle() const {
+      return m_handle;
+    }
 
     inline VkSemaphore handle() const {
       return m_sema;

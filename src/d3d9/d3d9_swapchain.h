@@ -41,7 +41,7 @@ namespace dxvk {
   class D3D9Surface;
 
   using D3D9SwapChainExBase = D3D9DeviceChild<IDirect3DSwapChain9Ex>;
-  class D3D9SwapChainEx final : public D3D9SwapChainExBase {
+  class D3D9SwapChainEx : public D3D9SwapChainExBase {
     static constexpr uint32_t NumControlPoints = 256;
   public:
 
@@ -81,7 +81,7 @@ namespace dxvk {
     HRESULT STDMETHODCALLTYPE GetDisplayModeEx(D3DDISPLAYMODEEX* pMode, D3DDISPLAYROTATION* pRotation);
 
     // NV-DXVK start
-    HRESULT Reset(
+   virtual HRESULT Reset(
             D3DPRESENT_PARAMETERS* pPresentParams,
             D3DDISPLAYMODEEX* pFullscreenDisplayMode,
             bool forceWindowReset = false);
@@ -121,7 +121,7 @@ namespace dxvk {
       return m_device;
     }
 
-  private:
+  protected:
 
     enum BindingIds : uint32_t {
       Image = 0,
@@ -200,6 +200,8 @@ namespace dxvk {
     void CreateBackBuffers(
             uint32_t            NumBackBuffers);
 
+    virtual int NumFrontBuffers();
+
     void CreateBlitter();
 
     void CreateHud();
@@ -248,6 +250,51 @@ namespace dxvk {
     bool NeedRecreatePresenter();
     vk::Presenter* GetPresenter() const;
     // NV-DXVK end
+  };
+
+  class D3D9ExternalPresenter final : public D3D9SwapChainEx {
+    Rc<RtxSemaphore> m_frameEndSemaphore;
+    Rc<RtxSemaphore> m_frameResumeSemaphore;
+
+  protected:
+    int NumFrontBuffers() override { return 0; };
+
+  public:
+
+    D3D9ExternalPresenter(
+            D3D9DeviceEx* pDevice,
+            D3DPRESENT_PARAMETERS* pPresentParams,
+      const D3DDISPLAYMODEEX* pFullscreenDisplayMode);
+
+    HRESULT Reset(
+            D3DPRESENT_PARAMETERS* pPresentParams,
+            D3DDISPLAYMODEEX* pFullscreenDisplayMode,
+            bool forceWindowReset = false) override;
+
+    HRESULT STDMETHODCALLTYPE Present(
+      const RECT* pSourceRect,
+      const RECT* pDestRect,
+            HWND     hDestWindowOverride,
+      const RGNDATA* pDirtyRegion,
+            DWORD    dwFlags) override;
+
+// NV-DXVK start: external API
+    VkImage GetVkImage(uint32_t Index) const {
+      D3D9DeviceLock lock = m_parent->LockDevice();
+      if (Index < m_backBuffers.size()) {
+        return m_backBuffers[Index]->GetCommonTexture()->GetImage()->handle();
+      }
+      return VK_NULL_HANDLE;
+    }
+
+    VkSemaphore GetFrameResumeVkSemaphore() const {
+      return m_frameEndSemaphore->handle();
+    }
+
+    VkSemaphore GetFrameCompleteVkSemaphore() const {
+      return m_frameResumeSemaphore->handle();
+    }
+// NV-DXVK end
   };
 
 }

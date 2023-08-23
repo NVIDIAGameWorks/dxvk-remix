@@ -67,7 +67,10 @@ namespace dxvk {
           D3DDEVTYPE             DeviceType,
           HWND                   hFocusWindow,
           DWORD                  BehaviorFlags,
-          Rc<DxvkDevice>         dxvkDevice)
+          Rc<DxvkDevice>         dxvkDevice,
+// NV-DXVK start: external API
+          bool                   WithExternalSwapchain)
+// NV-DXVK end
     : m_parent         ( pParent )
     , m_deviceType     ( DeviceType )
     , m_window         ( hFocusWindow )
@@ -83,7 +86,10 @@ namespace dxvk {
     // NV-DXVK start: unbound light indices
     , m_state          ( Direct3DState9 { D3D9CapturableState{ static_cast<uint32_t>(std::max(m_d3d9Options.maxEnabledLights, 0)) } } )
     // NV-DXVK end
-    , m_rtx            ( this ) {
+    , m_rtx            ( this )
+// NV-DXVK start: external API
+    , m_withExternalSwapchain { WithExternalSwapchain } {
+// NV-DXVK end
     // If we can SWVP, then we use an extended constant set
     // as SWVP has many more slots available than HWVP.
     bool canSWVP = CanSWVP();
@@ -7650,9 +7656,15 @@ namespace dxvk {
     if (m_implicitSwapchain != nullptr) {
       if (FAILED(m_implicitSwapchain->Reset(pPresentationParameters, pFullscreenDisplayMode)))
         return D3DERR_INVALIDCALL;
+    } else {
+// NV-DXVK start: external API
+      if (m_withExternalSwapchain) {
+        m_implicitSwapchain = new D3D9ExternalPresenter(this, pPresentationParameters, pFullscreenDisplayMode);
+      } else {
+// NV-DXVK end
+        m_implicitSwapchain = new D3D9SwapChainEx(this, pPresentationParameters, pFullscreenDisplayMode);
+      }
     }
-    else
-      m_implicitSwapchain = new D3D9SwapChainEx(this, pPresentationParameters, pFullscreenDisplayMode);
 
     if (pPresentationParameters->EnableAutoDepthStencil) {
       D3D9_COMMON_TEXTURE_DESC desc;
@@ -7701,4 +7713,14 @@ namespace dxvk {
 
     return D3D_OK;
   }
+
+// NV-DXVK start: external API
+  D3D9ExternalPresenter* D3D9DeviceEx::GetExternalPresenter()
+  {
+    if (m_withExternalSwapchain) {
+      return static_cast<D3D9ExternalPresenter*>(m_implicitSwapchain.ptr());
+    }
+    return nullptr;
+  }
+// NV-DXVK end
 }
