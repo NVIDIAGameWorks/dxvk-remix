@@ -315,7 +315,7 @@ namespace dxvk {
     // NV-DXVK end
 
     UpdatePresentRegion(nullptr, nullptr);
-    if (!pDevice->GetOptions()->deferSurfaceCreation)
+    if (!pDevice->GetOptions()->deferSurfaceCreation && m_window != 0)
       CreatePresenter();
 
     CreateBackBuffers(m_presentParams.BackBufferCount);
@@ -325,7 +325,8 @@ namespace dxvk {
     InitRamp();
 
     // Apply initial window mode and fullscreen state
-    if (!m_presentParams.Windowed && FAILED(EnterFullscreenMode(pPresentParams, pFullscreenDisplayMode))) {
+    const bool modifyWindow = !(m_parent->m_behaviorFlags & D3DCREATE_NOWINDOWCHANGES);
+    if (!m_presentParams.Windowed && (modifyWindow && FAILED(EnterFullscreenMode(pPresentParams, pFullscreenDisplayMode)))) {
       throw DxvkError("D3D9: Failed to set initial fullscreen state");
     } else {
       HookWindowProc(m_window, this);
@@ -803,6 +804,24 @@ namespace dxvk {
     return D3D_OK;
   }
 
+  HRESULT D3D9ExternalPresenter::Reset(D3DPRESENT_PARAMETERS* pPresentParams, D3DDISPLAYMODEEX* pFullscreenDisplayMode, bool forceWindowReset) {
+    D3D9DeviceLock lock = m_parent->LockDevice();
+
+    this->SynchronizePresent();
+    this->NormalizePresentParameters(pPresentParams);
+
+    if (pPresentParams->hDeviceWindow != nullptr && m_window != pPresentParams->hDeviceWindow) {
+      ResetWindowProc(m_window);
+      m_window = m_parent->m_window = pPresentParams->hDeviceWindow;
+      HookWindowProc(m_window, this);
+    }
+
+    m_presentParams = *pPresentParams;
+
+    CreateBackBuffers(m_presentParams.BackBufferCount);
+
+    return S_OK;
+  }
 
   HRESULT D3D9SwapChainEx::Reset(
           D3DPRESENT_PARAMETERS* pPresentParams,
@@ -816,10 +835,12 @@ namespace dxvk {
     m_dirty    |= m_presentParams.BackBufferFormat   != pPresentParams->BackBufferFormat
                || m_presentParams.BackBufferCount    != pPresentParams->BackBufferCount;
 
+    const bool modifyWindow = !(m_parent->m_behaviorFlags & D3DCREATE_NOWINDOWCHANGES);
+
     bool changeFullscreen = m_presentParams.Windowed != pPresentParams->Windowed;
 
     if (pPresentParams->Windowed) {
-      if (changeFullscreen)
+      if (modifyWindow && changeFullscreen)
         this->LeaveFullscreenMode();
 
       // NV-DXVK start: Adjust window pos only on backbuffer resolution changes to minimize
@@ -833,9 +854,9 @@ namespace dxvk {
       // the present extent != adjusted window client extent even though there was no intent
       // from d3d client to actually change the present extent.
       //
-      if (forceWindowReset ||
+      if (modifyWindow && (forceWindowReset ||
           pPresentParams->BackBufferWidth != m_presentParams.BackBufferWidth ||
-          pPresentParams->BackBufferHeight != m_presentParams.BackBufferHeight) {
+          pPresentParams->BackBufferHeight != m_presentParams.BackBufferHeight)) {
         // Adjust window position and size
         RECT newRect = { 0, 0, 0, 0 };
         RECT oldRect = { 0, 0, 0, 0 };
@@ -855,25 +876,27 @@ namespace dxvk {
       
       // NV-DXVK end
     } else {
-      if (changeFullscreen) {
+      if (modifyWindow && changeFullscreen) {
         if (FAILED(this->EnterFullscreenMode(pPresentParams, pFullscreenDisplayMode)))
           return D3DERR_INVALIDCALL;
       }
 
       D3D9WindowMessageFilter filter(m_window);
 
-      if (!changeFullscreen) {
-        if (FAILED(ChangeDisplayMode(pPresentParams, pFullscreenDisplayMode)))
-          return D3DERR_INVALIDCALL;
-      }
+      if (modifyWindow) {
+        if (!changeFullscreen) {
+          if (FAILED(ChangeDisplayMode(pPresentParams, pFullscreenDisplayMode)))
+            return D3DERR_INVALIDCALL;
+        }
 
-      // Move the window so that it covers the entire output
-      RECT rect;
-      GetMonitorRect(GetDefaultMonitor(), &rect);
-    
-      ::SetWindowPos(m_window, HWND_TOPMOST,
-        rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
-        SWP_FRAMECHANGED | SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
+        // Move the window so that it covers the entire output
+        RECT rect;
+        GetMonitorRect(GetDefaultMonitor(), &rect);
+
+        ::SetWindowPos(m_window, HWND_TOPMOST,
+          rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top,
+          SWP_FRAMECHANGED | SWP_SHOWWINDOW | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS);
+      }
 
       if (changeFullscreen) {
         // Reinstall window hook that was removed in LeaveFullscreenMode() above
@@ -883,7 +906,7 @@ namespace dxvk {
 
     m_presentParams = *pPresentParams;
 
-    if (changeFullscreen)
+    if (modifyWindow && changeFullscreen)
       SetGammaRamp(0, &m_ramp);
 
     CreateBackBuffers(m_presentParams.BackBufferCount);
@@ -1397,7 +1420,8 @@ namespace dxvk {
     // creating a new one to free up resources
     DestroyBackBuffers();
 
-    int NumFrontBuffer = m_parent->GetOptions()->noExplicitFrontBuffer ? 0 : 1;
+    int NumFrontBuffer = NumFrontBuffers();
+
     m_backBuffers.resize(NumBackBuffers + NumFrontBuffer);
 
     // Create new back buffer
@@ -1451,6 +1475,10 @@ namespace dxvk {
       VK_NULL_HANDLE);
   }
 
+
+  int D3D9SwapChainEx::NumFrontBuffers() {
+    return m_parent->GetOptions()->noExplicitFrontBuffer ? 0 : 1;
+  }
 
   void D3D9SwapChainEx::CreateBlitter() {
     m_blitter = new DxvkSwapchainBlitter(m_device);

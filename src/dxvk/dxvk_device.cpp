@@ -372,11 +372,14 @@ namespace dxvk {
     presentInfo.insertReflexPresentMarkers = insertReflexPresentMarkers;
     m_submissionQueue.present(presentInfo, status);
 
-    {
-      std::lock_guard<sync::Spinlock> statLock(m_statLock);
-      m_statCounters.addCtr(DxvkStatCounter::QueuePresentCount, 1); // Increase getCurrentFrameId()
-    }
+    incrementPresentCount();
+
     // NV-DXVK end
+  }
+
+  void DxvkDevice::incrementPresentCount() {
+    std::lock_guard<sync::Spinlock> statLock(m_statLock);
+    m_statCounters.addCtr(DxvkStatCounter::QueuePresentCount, 1); // Increase getCurrentFrameId()
   }
 
   // NV-DXVK start: DLFG integration
