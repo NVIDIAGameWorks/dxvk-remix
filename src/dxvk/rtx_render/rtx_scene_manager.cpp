@@ -1111,9 +1111,12 @@ namespace dxvk {
 
     m_rayPortalManager.prepareSceneData(ctx, frameTimeSecs);
     // Note: only main camera needs to be teleportation corrected as only that one is used for ray tracing & denoising
-    m_rayPortalManager.fixCameraInBetweenPortals(getCamera());
+    m_rayPortalManager.fixCameraInBetweenPortals(m_cameraManager.getCamera(CameraType::Main));
+    m_rayPortalManager.fixCameraInBetweenPortals(m_cameraManager.getCamera(CameraType::ViewModel));
     m_rayPortalManager.createVirtualCameras(m_cameraManager);
-    const bool didTeleport = m_rayPortalManager.detectTeleportationAndCorrectCameraHistory(getCamera());
+    const bool didTeleport = m_rayPortalManager.detectTeleportationAndCorrectCameraHistory(
+      m_cameraManager.getCamera(CameraType::Main),
+      m_cameraManager.isCameraValid(CameraType::ViewModel) ? &m_cameraManager.getCamera(CameraType::ViewModel) : nullptr);
 
     if (m_cameraManager.isCameraCutThisFrame()) {
       // Ignore camera cut events on teleportation so we don't flush the caches

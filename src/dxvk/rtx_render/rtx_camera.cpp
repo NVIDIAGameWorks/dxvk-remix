@@ -48,8 +48,8 @@
 
 namespace dxvk
 {
-  const Vector3& RtCamera::getPosition(bool freecam) const {
-    return getViewToWorld(freecam)[3].xyz();
+  Vector3 RtCamera::getPosition(bool freecam) const {
+    return Vector3{ getViewToWorld(freecam)[3].xyz() };
   }
 
   Vector3 RtCamera::getDirection(bool freecam) const {
@@ -57,18 +57,18 @@ namespace dxvk
     // is used, but unlike the up/right vectors we must consider which direction the projection matrix is treating as
     // forwards. With left handed projection matrices this is the +Z axis, but with right handed matrices this is -Z.
     if (m_isLHS) {
-      return getViewToWorld(freecam)[2].xyz();
+      return Vector3{ getViewToWorld(freecam)[2].xyz() };
     } else {
-      return -getViewToWorld(freecam)[2].xyz();
+      return -Vector3{ getViewToWorld(freecam)[2].xyz() };
     }
   }
 
   Vector3 RtCamera::getUp(bool freecam) const {
-    return getViewToWorld(freecam)[1].xyz();
+    return Vector3{ getViewToWorld(freecam)[1].xyz() };
   }
 
   Vector3 RtCamera::getRight(bool freecam) const {
-    return getViewToWorld(freecam)[0].xyz();
+    return Vector3{ getViewToWorld(freecam)[0].xyz() };
   }
 
   bool RtCamera::isCameraCut() const {
@@ -201,73 +201,73 @@ namespace dxvk
     }
   }
 
-  const Matrix4& RtCamera::getWorldToView(bool freecam) const { 
+  const Matrix4d& RtCamera::getWorldToView(bool freecam) const { 
     return (freecam && isFreeCameraEnabled()) 
       ? m_matCache[MatrixType::FreeCamWorldToView] 
       : m_matCache[MatrixType::WorldToView]; 
   }
 
-  const Matrix4& RtCamera::getPreviousWorldToView(bool freecam) const { 
+  const Matrix4d& RtCamera::getPreviousWorldToView(bool freecam) const { 
     return (freecam && isFreeCameraEnabled()) 
       ? m_matCache[MatrixType::FreeCamPreviousWorldToView] 
       : m_matCache[MatrixType::PreviousWorldToView]; 
   }
 
-  const Matrix4& RtCamera::getPreviousPreviousWorldToView(bool freecam) const { 
+  const Matrix4d& RtCamera::getPreviousPreviousWorldToView(bool freecam) const { 
     return (freecam && isFreeCameraEnabled()) 
       ? m_matCache[MatrixType::FreeCamPreviousPreviousViewToWorld]
       : m_matCache[MatrixType::PreviousPreviousWorldToView];
   }
 
-  const Matrix4& RtCamera::getViewToWorld(bool freecam) const { 
+  const Matrix4d& RtCamera::getViewToWorld(bool freecam) const { 
     return (freecam && isFreeCameraEnabled()) 
       ? m_matCache[MatrixType::FreeCamViewToWorld] 
       : m_matCache[MatrixType::ViewToWorld]; 
   }
 
-  const Matrix4& RtCamera::getPreviousViewToWorld(bool freecam) const { 
+  const Matrix4d& RtCamera::getPreviousViewToWorld(bool freecam) const { 
     return (freecam && isFreeCameraEnabled()) 
       ? m_matCache[MatrixType::FreeCamPreviousViewToWorld] 
       : m_matCache[MatrixType::PreviousViewToWorld]; 
   }
   
-  const Matrix4& RtCamera::getPreviousPreviousViewToWorld(bool freecam) const {
+  const Matrix4d& RtCamera::getPreviousPreviousViewToWorld(bool freecam) const {
     return (freecam && isFreeCameraEnabled())
       ? m_matCache[MatrixType::FreeCamPreviousPreviousViewToWorld]
       : m_matCache[MatrixType::PreviousPreviousViewToWorld];
   }
 
-  const Matrix4& RtCamera::getTranslatedWorldToView(bool freecam) const {
+  const Matrix4d& RtCamera::getTranslatedWorldToView(bool freecam) const {
     return (freecam && isFreeCameraEnabled())
       ? m_matCache[MatrixType::FreeCamTranslatedWorldToView]
       : m_matCache[MatrixType::TranslatedWorldToView];
   }
 
-  const Matrix4& RtCamera::getPreviousTranslatedWorldToView(bool freecam) const {
+  const Matrix4d& RtCamera::getPreviousTranslatedWorldToView(bool freecam) const {
     return (freecam && isFreeCameraEnabled())
       ? m_matCache[MatrixType::FreeCamPreviousTranslatedWorldToView]
       : m_matCache[MatrixType::PreviousTranslatedWorldToView];
   }
 
-  const Matrix4& RtCamera::getViewToTranslatedWorld(bool freecam) const {
+  const Matrix4d& RtCamera::getViewToTranslatedWorld(bool freecam) const {
     return (freecam && isFreeCameraEnabled())
       ? m_matCache[MatrixType::FreeCamViewToTranslatedWorld]
       : m_matCache[MatrixType::ViewToTranslatedWorld];
   }
 
-  const Matrix4& RtCamera::getPreviousViewToTranslatedWorld(bool freecam) const {
+  const Matrix4d& RtCamera::getPreviousViewToTranslatedWorld(bool freecam) const {
     return (freecam && isFreeCameraEnabled())
       ? m_matCache[MatrixType::FreeCamPreviousViewToTranslatedWorld]
       : m_matCache[MatrixType::PreviousViewToTranslatedWorld];
   }
 
-  void RtCamera::setPreviousWorldToView(const Matrix4& worldToView, bool freecam) {
-    dxvk::Matrix4 viewToWorld = inverse(worldToView);
+  void RtCamera::setPreviousWorldToView(const Matrix4d& worldToView, bool freecam) {
+    dxvk::Matrix4d viewToWorld = inverse(worldToView);
 
-    Matrix4 viewToTranslatedWorld = viewToWorld;
-    viewToTranslatedWorld[3] = Vector4(0.0f, 0.0f, 0.0f, viewToTranslatedWorld[3].w);
+    Matrix4d viewToTranslatedWorld = viewToWorld;
+    viewToTranslatedWorld[3] = Vector4d(0.0, 0.0, 0.0, viewToTranslatedWorld[3].w);
 
-    dxvk::Matrix4 translatedWorldToView = inverse(viewToTranslatedWorld);
+    dxvk::Matrix4d translatedWorldToView = inverse(viewToTranslatedWorld);
 
     if (freecam && isFreeCameraEnabled()) {
       m_matCache[MatrixType::FreeCamPreviousViewToWorld] = viewToWorld;
@@ -290,12 +290,12 @@ namespace dxvk
     m_previousArtificalWorldOffset = Vector3(0.f);
   }
 
-  void RtCamera::setPreviousViewToWorld(const Matrix4& viewToWorld, bool freecam) {
-    Matrix4 viewToTranslatedWorld = viewToWorld;
-    viewToTranslatedWorld[3] = Vector4(0.0f, 0.0f, 0.0f, viewToTranslatedWorld[3].w);
+  void RtCamera::setPreviousViewToWorld(const Matrix4d& viewToWorld, bool freecam) {
+    Matrix4d viewToTranslatedWorld = viewToWorld;
+    viewToTranslatedWorld[3] = Vector4d(0.0, 0.0, 0.0, viewToTranslatedWorld[3].w);
 
-    dxvk::Matrix4 worldToView = inverse(viewToWorld);
-    dxvk::Matrix4 translatedWorldToView = inverse(viewToTranslatedWorld);
+    dxvk::Matrix4d worldToView = inverse(viewToWorld);
+    dxvk::Matrix4d translatedWorldToView = inverse(viewToTranslatedWorld);
 
     if (freecam && isFreeCameraEnabled()) {
       m_matCache[MatrixType::FreeCamPreviousViewToWorld] = viewToWorld;
@@ -319,7 +319,7 @@ namespace dxvk
   }
 
   void RtCamera::applyArtificialWorldOffset(const Vector3& worldOffset) {
-    m_matCache[MatrixType::ViewToWorld][3].xyz() += worldOffset;
+    m_matCache[MatrixType::ViewToWorld][3].xyz() += Vector3d{ worldOffset };
     m_matCache[MatrixType::WorldToView] = inverse(m_matCache[MatrixType::ViewToWorld]);
     // Note: Translated world space matrices do not get offset here as they do not need a world offset, only
     // the current to previous frame translated world space offset needs to be updated, but this is currently
@@ -370,7 +370,7 @@ namespace dxvk
     m_matCache[MatrixType::PreviousWorldToView] = m_matCache[MatrixType::WorldToView];
     m_matCache[MatrixType::PreviousViewToWorld] = m_matCache[MatrixType::ViewToWorld];
     m_matCache[MatrixType::UncorrectedPreviousViewToWorld] = m_matCache[MatrixType::ViewToWorld];
-    m_matCache[MatrixType::WorldToView] = freeCameraViewRelative() ? newWorldToView : Matrix4();
+    m_matCache[MatrixType::WorldToView] = freeCameraViewRelative() ? Matrix4d{ newWorldToView } : Matrix4d();
     m_matCache[MatrixType::ViewToWorld] = inverse(m_matCache[MatrixType::WorldToView]);
 
     // Setup Translated World/View Matrix Data
@@ -379,10 +379,10 @@ namespace dxvk
     m_matCache[MatrixType::PreviousViewToTranslatedWorld] = m_matCache[MatrixType::ViewToTranslatedWorld];
     m_matCache[MatrixType::UncorrectedPreviousTranslatedWorldToView] = m_matCache[MatrixType::TranslatedWorldToView];
 
-    Matrix4 viewToTranslatedWorld = m_matCache[MatrixType::ViewToWorld];
+    auto viewToTranslatedWorld = m_matCache[MatrixType::ViewToWorld];
     viewToTranslatedWorld[3] = Vector4(0.0f, 0.0f, 0.0f, viewToTranslatedWorld[3].w);
 
-    m_matCache[MatrixType::ViewToTranslatedWorld] = freeCameraViewRelative() ? viewToTranslatedWorld : Matrix4();
+    m_matCache[MatrixType::ViewToTranslatedWorld] = freeCameraViewRelative() ? viewToTranslatedWorld : Matrix4d();
     // Note: Slightly non-ideal to have to inverse an already inverted matrix when we have the original world to view matrix,
     // but this is the safest way to ensure a proper inversion when modifying the view to world transform manually.
     m_matCache[MatrixType::TranslatedWorldToView] = inverse(m_matCache[MatrixType::ViewToTranslatedWorld]);
@@ -392,7 +392,7 @@ namespace dxvk
     m_matCache[MatrixType::PreviousViewToProjection] = m_matCache[MatrixType::ViewToProjection];
     m_matCache[MatrixType::PreviousProjectionToView] = m_matCache[MatrixType::ProjectionToView];
 
-    Matrix4 modifiedViewToProj = newViewToProjection;
+    auto modifiedViewToProj = Matrix4d{ newViewToProjection };
 
     // Create Anti-Culling frustum
     if (RtxOptions::AntiCulling::Object::enable()) {
@@ -411,19 +411,24 @@ namespace dxvk
 
     // Sometimes we want to modify the near plane for RT.  See DevSettings->Camera->Advanced
     if(RtxOptions::Get()->enableNearPlaneOverride()) {
+      // Note: Converted to floats to interface with MathLib. Ideally this should be a double still.
+      Matrix4 floatModifiedViewToProj{ modifiedViewToProj };
+
       // Check size since struct padding can impact this memcpy
-      static_assert(sizeof(float4x4) == sizeof(Matrix4));
+      static_assert(sizeof(float4x4) == sizeof(floatModifiedViewToProj));
 
       uint32_t flags;
       float cameraParams[PROJ_NUM];
-      DecomposeProjection(NDC_D3D, NDC_D3D, *reinterpret_cast<float4x4*>(&modifiedViewToProj), &flags, cameraParams, nullptr, nullptr, nullptr, nullptr);
+      DecomposeProjection(NDC_D3D, NDC_D3D, *reinterpret_cast<float4x4*>(&floatModifiedViewToProj), &flags, cameraParams, nullptr, nullptr, nullptr, nullptr);
 
       // Prevent user controls exceeding the near plane distance from original projection
       const float minNearPlane = std::min(RtxOptions::Get()->nearPlaneOverride(), cameraParams[PROJ_ZNEAR]);
 
       float4x4 newProjection;
       newProjection.SetupByAngles(cameraParams[PROJ_ANGLEMINX], cameraParams[PROJ_ANGLEMAXX], cameraParams[PROJ_ANGLEMINY], cameraParams[PROJ_ANGLEMAXY], minNearPlane, cameraParams[PROJ_ZFAR], flags);
-      memcpy(&modifiedViewToProj, &newProjection, sizeof(float4x4));
+      memcpy(&floatModifiedViewToProj, &newProjection, sizeof(float4x4));
+
+      modifiedViewToProj = Matrix4d{ floatModifiedViewToProj };
     }
     
     m_matCache[MatrixType::ViewToProjection] = modifiedViewToProj;
@@ -432,9 +437,9 @@ namespace dxvk
     // Apply free camera shaking
 
     if (!enableFreeCamera() && RtxOptions::Get()->isCameraShaking()) {
-      Matrix4 newViewToWorld = getShakenViewToWorldMatrix(m_matCache[MatrixType::ViewToWorld]);
-      Matrix4 newViewToTranslatedWorld = newViewToWorld;
-      newViewToTranslatedWorld[3] = Vector4(0.0f, 0.0f, 0.0f, newViewToTranslatedWorld[3].w);
+      auto newViewToWorld = getShakenViewToWorldMatrix(m_matCache[MatrixType::ViewToWorld]);
+      auto newViewToTranslatedWorld = newViewToWorld;
+      newViewToTranslatedWorld[3] = Vector4d(0.0, 0.0, 0.0, newViewToTranslatedWorld[3].w);
 
       // Note: Error added here from an extra inverse operation, but should be fine as camera shaking is only used as a debugging path.
       m_matCache[MatrixType::WorldToView] = inverse(newViewToWorld);
@@ -445,7 +450,7 @@ namespace dxvk
 
     // Apply jittering
 
-    Matrix4 newViewToProjectionJittered = modifiedViewToProj;
+    auto newViewToProjectionJittered = modifiedViewToProj;
 
     // Only apply jittering when DLSS/TAA is enabled, or if forced by settings
     if (RtxOptions::Get()->isDLSSEnabled() ||
@@ -587,14 +592,14 @@ namespace dxvk
 
     // Calculate Free Camera matrix information
 
-    Matrix4 freeCamViewToWorld(m_matCache[MatrixType::ViewToWorld]);
+    auto freeCamViewToWorld(m_matCache[MatrixType::ViewToWorld]);
 
-    freeCamViewToWorld[3] = Vector4(0.0);
+    freeCamViewToWorld[3] = Vector4d(0.0);
     freeCamViewToWorld *= getMatrixFromEulerAngles(freeCameraPitch(), freeCameraYaw());
 
-    freeCameraPositionRef() += moveLeftRight * freeCamViewToWorld.data[0].xyz();
-    freeCameraPositionRef() += moveDownUp * freeCamViewToWorld.data[1].xyz();
-    freeCameraPositionRef() -= moveBackForward * freeCamViewToWorld.data[2].xyz();
+    freeCameraPositionRef() += static_cast<double>(moveLeftRight) * freeCamViewToWorld.data[0].xyz();
+    freeCameraPositionRef() += static_cast<double>(moveDownUp) * freeCamViewToWorld.data[1].xyz();
+    freeCameraPositionRef() -= static_cast<double>(moveBackForward) * freeCamViewToWorld.data[2].xyz();
 
     freeCamViewToWorld[3] = m_matCache[MatrixType::ViewToWorld][3] + Vector4(freeCameraPosition(), 0.f);
 
@@ -602,7 +607,7 @@ namespace dxvk
       freeCamViewToWorld = getShakenViewToWorldMatrix(freeCamViewToWorld);
     }
 
-    Matrix4 freeCamViewToTranslatedWorld = freeCamViewToWorld;
+    auto freeCamViewToTranslatedWorld = freeCamViewToWorld;
     freeCamViewToTranslatedWorld[3] = Vector4(0.0f, 0.0f, 0.0f, freeCamViewToTranslatedWorld[3].w);
 
     m_matCache[MatrixType::FreeCamPreviousPreviousWorldToView] = m_matCache[MatrixType::FreeCamPreviousWorldToView];
@@ -725,7 +730,7 @@ namespace dxvk
     }
   }
 
-  Matrix4 RtCamera::getShakenViewToWorldMatrix(Matrix4& viewToWorld) {
+  Matrix4d RtCamera::getShakenViewToWorldMatrix(Matrix4d& viewToWorld) {
     float moveLeftRight = 0;
     float moveBackForward = 0;
     int period = RtxOptions::Get()->getCameraShakePeriod();
@@ -756,12 +761,12 @@ namespace dxvk
     m_cameraShakeFrameCount = (m_cameraShakeFrameCount + 1) % (2 * period);
     ++m_cameraRotationFrameCount;
 
-    Matrix4 viewRot = viewToWorld;
+    Matrix4d viewRot = viewToWorld;
     viewRot[3] = Vector4(0.0);
     viewRot *= getMatrixFromEulerAngles(m_shakePitch, m_shakeYaw);
 
-    m_shakeOffset = moveLeftRight * viewRot.data[0];
-    m_shakeOffset += moveBackForward * viewRot.data[2];
+    m_shakeOffset = static_cast<double>(moveLeftRight) * viewRot.data[0];
+    m_shakeOffset += static_cast<double>(moveBackForward) * viewRot.data[2];
     viewRot[3] = viewToWorld[3] + m_shakeOffset;
 
     return viewRot;

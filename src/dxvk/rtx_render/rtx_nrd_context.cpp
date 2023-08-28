@@ -764,24 +764,36 @@ namespace dxvk {
 
     nrd::CommonSettings& commonSettings = m_settings.m_commonSettings;
     {
-      dxvk::Matrix4 viewMatrix = sceneManager.getCamera().getWorldToView();
-      dxvk::Matrix4 prevViewMatrix = sceneManager.getCamera().getPreviousWorldToView();
+      const auto& camera = sceneManager.getCamera();
+
+      // Note: Convert camera matrices to Matrix4 for the sake of NRD (only accepts float matrices).
+      const Matrix4 viewMatrix = camera.getWorldToView();
+      const Matrix4 prevViewMatrix = camera.getPreviousWorldToView();
+      const Matrix4 viewToProjectionMatrix = camera.getViewToProjection();
+      const Matrix4 prevViewToProjectionMatrix = camera.getPreviousViewToProjection();
 
       // Check whether camera is changed
       if (m_settings.m_methodDesc.method == nrd::Method::REFERENCE &&
           (memcmp(commonSettings.worldToViewMatrix, viewMatrix.data, sizeof(Matrix4)) != 0 ||
-           memcmp(commonSettings.viewToClipMatrix, sceneManager.getCamera().getViewToProjection().data, sizeof(Matrix4)) != 0)) {
+           memcmp(commonSettings.viewToClipMatrix, viewToProjectionMatrix.data, sizeof(Matrix4)) != 0)) {
         m_settings.m_resetHistory = true;
       }
 
       // Pass non-jittered camera matrices
       memcpy(commonSettings.worldToViewMatrix, viewMatrix.data, sizeof(Matrix4));
       memcpy(commonSettings.worldToViewMatrixPrev, prevViewMatrix.data, sizeof(Matrix4));
-      memcpy(commonSettings.viewToClipMatrix, sceneManager.getCamera().getViewToProjection().data, sizeof(Matrix4));
-      memcpy(commonSettings.viewToClipMatrixPrev, sceneManager.getCamera().getPreviousViewToProjection().data, sizeof(Matrix4));
+      memcpy(commonSettings.viewToClipMatrix, viewToProjectionMatrix.data, sizeof(Matrix4));
+      memcpy(commonSettings.viewToClipMatrixPrev, prevViewToProjectionMatrix.data, sizeof(Matrix4));
+
+      // Note: Ensure matrix sizes are compatible (this could be done better with C++20's std::bit_cast rather than using
+      // std::memcpy).
+      static_assert(sizeof(commonSettings.worldToViewMatrix) == sizeof(viewMatrix));
+      static_assert(sizeof(commonSettings.worldToViewMatrixPrev) == sizeof(prevViewMatrix));
+      static_assert(sizeof(commonSettings.viewToClipMatrix) == sizeof(viewToProjectionMatrix));
+      static_assert(sizeof(commonSettings.viewToClipMatrixPrev) == sizeof(prevViewToProjectionMatrix));
 
       float jitterVec[2];
-      sceneManager.getCamera().getJittering(jitterVec);
+      camera.getJittering(jitterVec);
       commonSettings.isMotionVectorInWorldSpace = true;
       commonSettings.motionVectorScale[0] = commonSettings.isMotionVectorInWorldSpace ? 1.0f : 1.0f / m_settings.m_methodDesc.fullResolutionWidth;
       commonSettings.motionVectorScale[1] = commonSettings.isMotionVectorInWorldSpace ? 1.0f : 1.0f / m_settings.m_methodDesc.fullResolutionHeight;

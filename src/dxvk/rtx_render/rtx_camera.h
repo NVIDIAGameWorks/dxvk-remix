@@ -132,7 +132,11 @@ namespace dxvk
       Count
     };
 
-    Matrix4 m_matCache[MatrixType::Count] = {};
+    // Note: All camera matricies stored as double precision. While this does not do much for some matricies (which were provided
+    // by the application in floating point precision), it does help for preserving matrix stability on those which have been inverted,
+    // as well as in code using these matrices which may do further inversions or combination operations. If such precision is not needed
+    // the matrices retreived from the various getter functions can be casted to float matrices for a minor upfront performance cost.
+    Matrix4d m_matCache[MatrixType::Count] = {};
 
     cFrustum m_frustum = {};
     cFrustum m_lightAntiCullingFrustum;
@@ -183,22 +187,22 @@ namespace dxvk
     float getFov() const { return m_fov; }
     float getAspectRatio() const { return m_aspectRatio; }
 
-    const Matrix4& getWorldToView(bool freecam = true) const;
-    const Matrix4& getPreviousWorldToView(bool freecam = true) const;
-    const Matrix4& getPreviousPreviousWorldToView(bool freecam = true) const;
-    const Matrix4& getViewToWorld(bool freecam = true) const;
-    const Matrix4& getPreviousViewToWorld(bool freecam = true) const;
-    const Matrix4& getPreviousPreviousViewToWorld(bool freecam = true) const;
+    const Matrix4d& getWorldToView(bool freecam = true) const;
+    const Matrix4d& getPreviousWorldToView(bool freecam = true) const;
+    const Matrix4d& getPreviousPreviousWorldToView(bool freecam = true) const;
+    const Matrix4d& getViewToWorld(bool freecam = true) const;
+    const Matrix4d& getPreviousViewToWorld(bool freecam = true) const;
+    const Matrix4d& getPreviousPreviousViewToWorld(bool freecam = true) const;
 
-    const Matrix4& getTranslatedWorldToView(bool freecam = true) const;
-    const Matrix4& getPreviousTranslatedWorldToView(bool freecam = true) const;
-    const Matrix4& getViewToTranslatedWorld(bool freecam = true) const;
-    const Matrix4& getPreviousViewToTranslatedWorld(bool freecam = true) const;
+    const Matrix4d& getTranslatedWorldToView(bool freecam = true) const;
+    const Matrix4d& getPreviousTranslatedWorldToView(bool freecam = true) const;
+    const Matrix4d& getViewToTranslatedWorld(bool freecam = true) const;
+    const Matrix4d& getPreviousViewToTranslatedWorld(bool freecam = true) const;
 
-    const Matrix4& getViewToProjection() const { return m_matCache[MatrixType::ViewToProjection]; }
-    const Matrix4& getPreviousViewToProjection() const { return m_matCache[MatrixType::PreviousViewToProjection]; }
-    const Matrix4& getProjectionToView() const { return m_matCache[MatrixType::ProjectionToView]; }
-    const Matrix4& getPreviousProjectionToView() const { return m_matCache[MatrixType::PreviousProjectionToView]; }
+    const Matrix4d& getViewToProjection() const { return m_matCache[MatrixType::ViewToProjection]; }
+    const Matrix4d& getPreviousViewToProjection() const { return m_matCache[MatrixType::PreviousViewToProjection]; }
+    const Matrix4d& getProjectionToView() const { return m_matCache[MatrixType::ProjectionToView]; }
+    const Matrix4d& getPreviousProjectionToView() const { return m_matCache[MatrixType::PreviousProjectionToView]; }
 
     const cFrustum& getFrustum() const { return m_frustum; }
     cFrustum& getFrustum() { return m_frustum; }
@@ -206,8 +210,8 @@ namespace dxvk
     inline const cFrustum& getLightAntiCullingFrustum() const { return m_lightAntiCullingFrustum; }
     inline cFrustum& getLightAntiCullingFrustum() { return m_lightAntiCullingFrustum; }
 
-    void setPreviousWorldToView(const Matrix4& worldToView, bool freecam = true);
-    void setPreviousViewToWorld(const Matrix4& viewToWorld, bool freecam = true);
+    void setPreviousWorldToView(const Matrix4d& worldToView, bool freecam = true);
+    void setPreviousViewToWorld(const Matrix4d& viewToWorld, bool freecam = true);
 
     // Applies a world offset to the current frame on top of a transform set by the engine during update()
     // This must be called after any camera transform changes of the camera in a frame.
@@ -218,7 +222,7 @@ namespace dxvk
 
     bool isValid(const uint32_t frameIdx) const { return m_frameLastTouched == frameIdx; }
 
-    const Vector3& getPosition(bool freecam = true) const;
+    Vector3 getPosition(bool freecam = true) const;
     Vector3 getDirection(bool freecam = true) const;
     Vector3 getUp(bool freecam = true) const;
     Vector3 getRight(bool freecam = true) const;
@@ -229,10 +233,10 @@ namespace dxvk
     static bool isFreeCameraEnabled();
     Vector3 getHorizontalForwardDirection() const;
 
-    const Matrix4& getViewToProjectionJittered() const { return m_matCache[MatrixType::ViewToProjectionJittered]; }
-    const Matrix4& getPreviousViewToProjectionJittered() const { return m_matCache[MatrixType::PreviousViewToProjectionJittered]; }
-    const Matrix4& getProjectionToViewJittered() const { return m_matCache[MatrixType::ProjectionToViewJittered]; }
-    const Matrix4& getPreviousProjectionToViewJittered() const { return m_matCache[MatrixType::PreviousProjectionToViewJittered]; }
+    const Matrix4d& getViewToProjectionJittered() const { return m_matCache[MatrixType::ViewToProjectionJittered]; }
+    const Matrix4d& getPreviousViewToProjectionJittered() const { return m_matCache[MatrixType::PreviousViewToProjectionJittered]; }
+    const Matrix4d& getProjectionToViewJittered() const { return m_matCache[MatrixType::ProjectionToViewJittered]; }
+    const Matrix4d& getPreviousProjectionToViewJittered() const { return m_matCache[MatrixType::PreviousProjectionToViewJittered]; }
 
     void setResolution(const uint32_t renderResolution[2], const uint32_t finalResolution[2]);
     bool update(
@@ -247,6 +251,6 @@ namespace dxvk
 
     static void showImguiSettings();
   private:
-    Matrix4 getShakenViewToWorldMatrix(Matrix4& viewToWorld);
+    Matrix4d getShakenViewToWorldMatrix(Matrix4d& viewToWorld);
   };
 }

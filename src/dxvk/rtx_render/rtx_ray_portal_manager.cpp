@@ -309,7 +309,7 @@ namespace dxvk {
     m_sceneData.numActiveRayPortals = activeRayPortalCount;
   }
 
-  void RayPortalManager::fixCameraInBetweenPortals(RtCamera& camera) {
+  void RayPortalManager::fixCameraInBetweenPortals(RtCamera& camera) const {
     ScopedCpuProfileZone();
 
     if (!RtxOptions::Get()->getRayPortalCameraInBetweenPortalsCorrection())
@@ -372,13 +372,12 @@ namespace dxvk {
   // and looking through it the same way the previous camera looked through it via entering portal. 
   // This is required for correct temporal reprojection lookup of data that was seen
   // through the portal in the previous frame.
-  bool RayPortalManager::detectTeleportationAndCorrectCameraHistory(RtCamera& camera) {
-
+  bool RayPortalManager::detectTeleportationAndCorrectCameraHistory(RtCamera& camera, RtCamera* viewmodelCamera) {
     m_cameraTeleportationRayPortalDirectionInfo = nullptr;
 
     if (!RtxOptions::Get()->getRayPortalCameraHistoryCorrection())
       return false;
-
+    
     // Safe guard: let temporal camera fix its t1, t0 frames history
     // in-case of false teleportation detection. This is to prevent
     // t0 & t1 states being invalid due to a failure case 
@@ -395,9 +394,6 @@ namespace dxvk {
       return false;
 
     // Camera matrices for time steps t2 (current), t1 (current - 1), t0 (current - 2)
-    const Matrix4& worldToViewT2 = camera.getWorldToView();
-    const Matrix4& worldToViewT1 = camera.getPreviousWorldToView();
-    const Matrix4& worldToViewT0 = camera.getPreviousPreviousWorldToView();
     const Matrix4& viewToWorldT2 = camera.getViewToWorld();
     const Matrix4& viewToWorldT1 = camera.getPreviousViewToWorld();
     const Matrix4& viewToWorldT0 = camera.getPreviousPreviousViewToWorld();
@@ -536,8 +532,16 @@ namespace dxvk {
     }
 
     if (m_cameraTeleportationRayPortalDirectionInfo) {
-      Matrix4 virtualViewToWorldT1inExitCoordSystem = m_cameraTeleportationRayPortalDirectionInfo->portalToOpposingPortalDirection * viewToWorldT1;
-      camera.setPreviousViewToWorld(virtualViewToWorldT1inExitCoordSystem);
+      auto applyCorrection = [](RtCamera& c, const Matrix4& portalToOpposingPortalDirection) {
+        Matrix4 virtualViewToWorldT1inExitCoordSystem = portalToOpposingPortalDirection * c.getPreviousViewToWorld();
+        c.setPreviousViewToWorld(virtualViewToWorldT1inExitCoordSystem);
+      };
+
+      applyCorrection(camera, m_cameraTeleportationRayPortalDirectionInfo->portalToOpposingPortalDirection);
+      if (viewmodelCamera) {
+        applyCorrection(*viewmodelCamera, m_cameraTeleportationRayPortalDirectionInfo->portalToOpposingPortalDirection);
+      }
+
       m_numFramesSinceTeleportationWasDetected = 0;
       Logger::info("[RTX] Portal teleportation was detected");
 

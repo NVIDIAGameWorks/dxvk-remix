@@ -49,7 +49,6 @@ struct RaytraceGeometry;
 struct MaterialData;
 struct DrawCallState;
 struct LegacyMaterialData;
-class Matrix4;
 
 class GameCapturer : public RcObject
 {
