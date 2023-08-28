@@ -237,6 +237,12 @@ namespace dxvk {
 
     Vector3Base(const Vector3Base<T>& other) = default;
 
+    template<typename TOther>
+    Vector3Base(const Vector3Base<TOther>& other) :
+      x(static_cast<T>(other.x)),
+      y(static_cast<T>(other.y)),
+      z(static_cast<T>(other.z)) { }
+
     Vector3Base(const Vector2Base<T>&other, T z);
 
     inline       T& operator[](size_t index) { return data[index]; }
@@ -403,6 +409,7 @@ namespace dxvk {
   }
 
   using Vector3  = Vector3Base<float>;
+  using Vector3d = Vector3Base<double>;
   using Vector3i = Vector3Base<int>;
 
   static_assert(sizeof(Vector3)  == sizeof(float) * 3);

@@ -6894,6 +6894,17 @@ namespace dxvk {
         ctx->invalidateBuffer(cBuffer, cSlice);
       });
 
+      // NV-DXVK start: sanitize matrices
+      {
+        // SetStateTransform / MultiplyTransform set DirtyFFVertexDatam for D3DTS_VIEW,
+        // sanitize the finalized matrices here, just before a draw call
+        Matrix4& view = m_state.transforms[GetTransformIndex(D3DTS_VIEW)];
+        if (view[3][3] == 0.0f) {
+          view[3][3] = 1.0f;
+        }
+      }
+      // NV-DXVK end
+
       auto WorldView    = m_state.transforms[GetTransformIndex(D3DTS_VIEW)] * m_state.transforms[GetTransformIndex(D3DTS_WORLD)];
       auto NormalMatrix = inverse(WorldView);
 

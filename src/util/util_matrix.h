@@ -24,14 +24,17 @@
 #include "util_vector.h"
 #include "vulkan/vulkan_core.h"
 
+#include <cassert>
+
 namespace dxvk {
 
-  class Matrix4 {
+  template<typename T>
+  class Matrix4Base {
 
     public:
 
     // Identity
-    inline Matrix4() {
+    inline Matrix4Base() {
       data[0] = { 1, 0, 0, 0 };
       data[1] = { 0, 1, 0, 0 };
       data[2] = { 0, 0, 1, 0 };
@@ -39,92 +42,338 @@ namespace dxvk {
     }
 
     // Produces a scalar matrix, x * Identity
-    inline explicit Matrix4(float x) {
+    inline explicit Matrix4Base(T x) {
       data[0] = { x, 0, 0, 0 };
       data[1] = { 0, x, 0, 0 };
       data[2] = { 0, 0, x, 0 };
       data[3] = { 0, 0, 0, x };
     }
 
-    inline Matrix4(
-      const Vector4& v0,
-      const Vector4& v1,
-      const Vector4& v2,
-      const Vector4& v3) {
+    inline Matrix4Base(
+      const Vector4Base<T>& v0,
+      const Vector4Base<T>& v1,
+      const Vector4Base<T>& v2,
+      const Vector4Base<T>& v3) {
       data[0] = v0;
       data[1] = v1;
       data[2] = v2;
       data[3] = v3;
     }
 
-    inline Matrix4(const float matrix[4][4]) {
-      data[0] = Vector4(matrix[0]);
-      data[1] = Vector4(matrix[1]);
-      data[2] = Vector4(matrix[2]);
-      data[3] = Vector4(matrix[3]);
+    inline Matrix4Base(const T matrix[4][4]) {
+      data[0] = Vector4Base<T>(matrix[0]);
+      data[1] = Vector4Base<T>(matrix[1]);
+      data[2] = Vector4Base<T>(matrix[2]);
+      data[3] = Vector4Base<T>(matrix[3]);
     }
 
-    inline Matrix4(const VkTransformMatrixKHR matrix) {
-      data[0] = Vector4(matrix.matrix[0]);
-      data[1] = Vector4(matrix.matrix[1]);
-      data[2] = Vector4(matrix.matrix[2]);
-      data[3] = Vector4(0, 0, 0, 1);
+    inline Matrix4Base(const VkTransformMatrixKHR matrix) {
+      data[0] = Vector4Base<T>(matrix.matrix[0]);
+      data[1] = Vector4Base<T>(matrix.matrix[1]);
+      data[2] = Vector4Base<T>(matrix.matrix[2]);
+      data[3] = Vector4Base<T>(0, 0, 0, 1);
     }
     
-    inline Matrix4(const float m00, const float m01, const float m02, const float m03,
-                   const float m10, const float m11, const float m12, const float m13,
-                   const float m20, const float m21, const float m22, const float m23,
-                   const float m30, const float m31, const float m32, const float m33) {
-      data[0] = Vector4(m00, m01, m02, m03);
-      data[1] = Vector4(m10, m11, m12, m13);
-      data[2] = Vector4(m20, m21, m22, m23);
-      data[3] = Vector4(m30, m31, m32, m33);
+    inline Matrix4Base(const T m00, const T m01, const T m02, const T m03,
+                   const T m10, const T m11, const T m12, const T m13,
+                   const T m20, const T m21, const T m22, const T m23,
+                   const T m30, const T m31, const T m32, const T m33) {
+      data[0] = Vector4Base<T>(m00, m01, m02, m03);
+      data[1] = Vector4Base<T>(m10, m11, m12, m13);
+      data[2] = Vector4Base<T>(m20, m21, m22, m23);
+      data[3] = Vector4Base<T>(m30, m31, m32, m33);
     }
 
-    Matrix4(const Matrix4& other) = default;
+    Matrix4Base(const Matrix4Base<T>& other) = default;
 
-    Vector4& operator[](size_t index);
-    const Vector4& operator[](size_t index) const;
+    template<typename TOther>
+    Matrix4Base(const Matrix4Base<TOther>& other) {
+      data[0] = other.data[0];
+      data[1] = other.data[1];
+      data[2] = other.data[2];
+      data[3] = other.data[3];
+    }
 
-    bool operator==(const Matrix4& m2) const;
-    bool operator!=(const Matrix4& m2) const;
+    Vector4Base<T>& operator[](size_t index) {
+      return data[index];
+    }
 
-    Matrix4 operator+(const Matrix4& other) const;
-    Matrix4 operator-(const Matrix4& other) const;
+    const Vector4Base<T>& operator[](size_t index) const {
+      return data[index];
+    }
 
-    Matrix4 operator*(const Matrix4& m2) const;
-    Vector4 operator*(const Vector4& v) const;
-    Matrix4 operator*(float scalar) const;
+    bool operator==(const Matrix4Base<T>& m2) const {
+      const auto& m1 = *this;
+      for (uint32_t i = 0; i < 4; i++) {
+        if (m1[i] != m2[i])
+          return false;
+      }
+      return true;
+    }
 
-    Matrix4 operator/(float scalar) const;
+    bool operator!=(const Matrix4Base<T>& m2) const {
+      return !operator==(m2);
+    }
 
-    Matrix4& operator+=(const Matrix4& other);
-    Matrix4& operator-=(const Matrix4& other);
+    Matrix4Base<T> operator+(const Matrix4Base<T>& other) const {
+      Matrix4Base<T> mat;
+      for (uint32_t i = 0; i < 4; i++)
+        mat[i] = data[i] + other.data[i];
+      return mat;
+    }
 
-    Matrix4& operator*=(const Matrix4& other);
+    Matrix4Base<T> operator-(const Matrix4Base<T>& other) const {
+      Matrix4Base<T> mat;
+      for (uint32_t i = 0; i < 4; i++)
+        mat[i] = data[i] - other.data[i];
+      return mat;
+    }
 
-    Vector4 data[4];
+    Matrix4Base<T> operator*(const Matrix4Base<T>& m2) const {
+      const auto& m1 = *this;
+
+      const auto srcA0 = m1[0];
+      const auto srcA1 = m1[1];
+      const auto srcA2 = m1[2];
+      const auto srcA3 = m1[3];
+
+      const auto srcB0 = m2[0];
+      const auto srcB1 = m2[1];
+      const auto srcB2 = m2[2];
+      const auto srcB3 = m2[3];
+
+      Matrix4Base<T> result;
+      result[0] = srcA0 * srcB0[0] + srcA1 * srcB0[1] + srcA2 * srcB0[2] + srcA3 * srcB0[3];
+      result[1] = srcA0 * srcB1[0] + srcA1 * srcB1[1] + srcA2 * srcB1[2] + srcA3 * srcB1[3];
+      result[2] = srcA0 * srcB2[0] + srcA1 * srcB2[1] + srcA2 * srcB2[2] + srcA3 * srcB2[3];
+      result[3] = srcA0 * srcB3[0] + srcA1 * srcB3[1] + srcA2 * srcB3[2] + srcA3 * srcB3[3];
+      return result;
+    }
+
+    Vector4Base<T> operator*(const Vector4Base<T>& v) const {
+      const auto& m = *this;
+
+      const auto mul0 = m[0] * v[0];
+      const auto mul1 = m[1] * v[1];
+      const auto mul2 = m[2] * v[2];
+      const auto mul3 = m[3] * v[3];
+
+      const auto add0 = mul0 + mul1;
+      const auto add1 = mul2 + mul3;
+
+      return add0 + add1;
+    }
+
+    Matrix4Base<T> operator*(T scalar) const {
+      Matrix4Base<T> mat;
+      for (uint32_t i = 0; i < 4; i++)
+        mat[i] = data[i] * scalar;
+      return mat;
+    }
+
+    Matrix4Base<T> operator/(T scalar) const {
+      Matrix4Base<T> mat;
+      for (uint32_t i = 0; i < 4; i++)
+        mat[i] = data[i] / scalar;
+      return mat;
+    }
+
+    Matrix4Base<T>& operator+=(const Matrix4Base<T>& other) {
+      for (uint32_t i = 0; i < 4; i++)
+        data[i] += other.data[i];
+      return *this;
+    }
+
+    Matrix4Base<T>& operator-=(const Matrix4Base<T>& other) {
+      for (uint32_t i = 0; i < 4; i++)
+        data[i] -= other.data[i];
+      return *this;
+    }
+
+    Matrix4Base<T>& operator*=(const Matrix4Base<T>& other) {
+      return (*this = (*this) * other);
+    }
+
+    Vector4Base<T> data[4];
 
   };
   
+
+  template<typename T>
+  inline Matrix4Base<T> operator*(T scalar, const Matrix4Base<T>& m) { return m * scalar; }
+
+  template<typename T>
+  Matrix4Base<T> transpose(const Matrix4Base<T>& m) {
+    Matrix4Base<T> result;
+
+    for (uint32_t i = 0; i < 4; i++) {
+      for (uint32_t j = 0; j < 4; j++)
+        result[i][j] = m.data[j][i];
+    }
+    return result;
+  }
+
+  // Note: From GLM
+  template<typename T>
+  double determinant(const Matrix4Base<T>& m) {
+    // Note: Double precision used here always for better precision.
+    double coef00 = m[2][2] * m[3][3] - m[3][2] * m[2][3];
+    double coef02 = m[1][2] * m[3][3] - m[3][2] * m[1][3];
+    double coef03 = m[1][2] * m[2][3] - m[2][2] * m[1][3];
+    double coef04 = m[2][1] * m[3][3] - m[3][1] * m[2][3];
+    double coef06 = m[1][1] * m[3][3] - m[3][1] * m[1][3];
+    double coef07 = m[1][1] * m[2][3] - m[2][1] * m[1][3];
+    double coef08 = m[2][1] * m[3][2] - m[3][1] * m[2][2];
+    double coef10 = m[1][1] * m[3][2] - m[3][1] * m[1][2];
+    double coef11 = m[1][1] * m[2][2] - m[2][1] * m[1][2];
+    double coef12 = m[2][0] * m[3][3] - m[3][0] * m[2][3];
+    double coef14 = m[1][0] * m[3][3] - m[3][0] * m[1][3];
+    double coef15 = m[1][0] * m[2][3] - m[2][0] * m[1][3];
+    double coef16 = m[2][0] * m[3][2] - m[3][0] * m[2][2];
+    double coef18 = m[1][0] * m[3][2] - m[3][0] * m[1][2];
+    double coef19 = m[1][0] * m[2][2] - m[2][0] * m[1][2];
+    double coef20 = m[2][0] * m[3][1] - m[3][0] * m[2][1];
+    double coef22 = m[1][0] * m[3][1] - m[3][0] * m[1][1];
+    double coef23 = m[1][0] * m[2][1] - m[2][0] * m[1][1];
+
+    Vector4d fac0 = { coef00, coef00, coef02, coef03 };
+    Vector4d fac1 = { coef04, coef04, coef06, coef07 };
+    Vector4d fac2 = { coef08, coef08, coef10, coef11 };
+    Vector4d fac3 = { coef12, coef12, coef14, coef15 };
+    Vector4d fac4 = { coef16, coef16, coef18, coef19 };
+    Vector4d fac5 = { coef20, coef20, coef22, coef23 };
+
+    Vector4d vec0 = { m[1][0], m[0][0], m[0][0], m[0][0] };
+    Vector4d vec1 = { m[1][1], m[0][1], m[0][1], m[0][1] };
+    Vector4d vec2 = { m[1][2], m[0][2], m[0][2], m[0][2] };
+    Vector4d vec3 = { m[1][3], m[0][3], m[0][3], m[0][3] };
+
+    Vector4d inv0 = { vec1 * fac0 - vec2 * fac1 + vec3 * fac2 };
+    Vector4d inv1 = { vec0 * fac0 - vec2 * fac3 + vec3 * fac4 };
+    Vector4d inv2 = { vec0 * fac1 - vec1 * fac3 + vec3 * fac5 };
+    Vector4d inv3 = { vec0 * fac2 - vec1 * fac4 + vec2 * fac5 };
+
+    Vector4d signA = { +1, -1, +1, -1 };
+    Vector4d signB = { -1, +1, -1, +1 };
+
+    Vector4d inverse[4];
+    inverse[0] = inv0 * signA;
+    inverse[1] = inv1 * signB;
+    inverse[2] = inv2 * signA;
+    inverse[3] = inv3 * signB;
+
+    Vector4d row0 = { inverse[0][0], inverse[1][0], inverse[2][0], inverse[3][0] };
+
+    Vector4d dot0 = { Vector4d(m[0].x,m[0].y,m[0].z,m[0].w) * row0 };
+
+    return (dot0.x + dot0.y) + (dot0.z + dot0.w);
+  }
+
+  // Note: From GLM
+  template<typename T>
+  Matrix4Base<T> inverse(const Matrix4Base<T>& m) {
+    // Note: Double precision used here always for better precision.
+    double coef00 = (double) m[2][2] * m[3][3] - (double) m[3][2] * m[2][3];
+    double coef02 = (double) m[1][2] * m[3][3] - (double) m[3][2] * m[1][3];
+    double coef03 = (double) m[1][2] * m[2][3] - (double) m[2][2] * m[1][3];
+    double coef04 = (double) m[2][1] * m[3][3] - (double) m[3][1] * m[2][3];
+    double coef06 = (double) m[1][1] * m[3][3] - (double) m[3][1] * m[1][3];
+    double coef07 = (double) m[1][1] * m[2][3] - (double) m[2][1] * m[1][3];
+    double coef08 = (double) m[2][1] * m[3][2] - (double) m[3][1] * m[2][2];
+    double coef10 = (double) m[1][1] * m[3][2] - (double) m[3][1] * m[1][2];
+    double coef11 = (double) m[1][1] * m[2][2] - (double) m[2][1] * m[1][2];
+    double coef12 = (double) m[2][0] * m[3][3] - (double) m[3][0] * m[2][3];
+    double coef14 = (double) m[1][0] * m[3][3] - (double) m[3][0] * m[1][3];
+    double coef15 = (double) m[1][0] * m[2][3] - (double) m[2][0] * m[1][3];
+    double coef16 = (double) m[2][0] * m[3][2] - (double) m[3][0] * m[2][2];
+    double coef18 = (double) m[1][0] * m[3][2] - (double) m[3][0] * m[1][2];
+    double coef19 = (double) m[1][0] * m[2][2] - (double) m[2][0] * m[1][2];
+    double coef20 = (double) m[2][0] * m[3][1] - (double) m[3][0] * m[2][1];
+    double coef22 = (double) m[1][0] * m[3][1] - (double) m[3][0] * m[1][1];
+    double coef23 = (double) m[1][0] * m[2][1] - (double) m[2][0] * m[1][1];
+
+    Vector4d fac0 = { coef00, coef00, coef02, coef03 };
+    Vector4d fac1 = { coef04, coef04, coef06, coef07 };
+    Vector4d fac2 = { coef08, coef08, coef10, coef11 };
+    Vector4d fac3 = { coef12, coef12, coef14, coef15 };
+    Vector4d fac4 = { coef16, coef16, coef18, coef19 };
+    Vector4d fac5 = { coef20, coef20, coef22, coef23 };
+
+    Vector4d vec0 = { m[1][0], m[0][0], m[0][0], m[0][0] };
+    Vector4d vec1 = { m[1][1], m[0][1], m[0][1], m[0][1] };
+    Vector4d vec2 = { m[1][2], m[0][2], m[0][2], m[0][2] };
+    Vector4d vec3 = { m[1][3], m[0][3], m[0][3], m[0][3] };
+
+    Vector4d inv0 = { vec1 * fac0 - vec2 * fac1 + vec3 * fac2 };
+    Vector4d inv1 = { vec0 * fac0 - vec2 * fac3 + vec3 * fac4 };
+    Vector4d inv2 = { vec0 * fac1 - vec1 * fac3 + vec3 * fac5 };
+    Vector4d inv3 = { vec0 * fac2 - vec1 * fac4 + vec2 * fac5 };
+
+    Vector4d signA = { +1, -1, +1, -1 };
+    Vector4d signB = { -1, +1, -1, +1 };
+
+    Vector4d inverse[4];
+    inverse[0] = inv0 * signA;
+    inverse[1] = inv1 * signB;
+    inverse[2] = inv2 * signA;
+    inverse[3] = inv3 * signB;
+
+    Vector4d row0 = { inverse[0][0], inverse[1][0], inverse[2][0], inverse[3][0] };
+
+    Vector4d dot0 = { Vector4d(m[0].x,m[0].y,m[0].z,m[0].w) * row0 };
+    double dot1 = (dot0.x + dot0.y) + (dot0.z + dot0.w);
+
+    // Note: Ensure the matrix is invertable.
+    assert(dot1 != 0.0);
+
+    Matrix4Base<T> output;
+    for (uint32_t i = 0; i < 16; i++)
+      output[i / 4][i % 4] = inverse[i / 4][i % 4] / dot1;
+    return output;
+  }
+
+  template<typename T>
+  Matrix4Base<T> hadamardProduct(const Matrix4Base<T>& a, const Matrix4Base<T>& b) {
+    Matrix4Base<T> result;
+
+    for (uint32_t i = 0; i < 4; i++)
+      result[i] = a[i] * b[i];
+
+    return result;
+  }
+
+  template<typename T>
+  Matrix4Base<T> translationMatrix(const Vector3Base<T>& v) {
+    return Matrix4Base<T>{
+      1.0, 0.0, 0.0, 0.0,
+      0.0, 1.0, 0.0, 0.0,
+      0.0, 0.0, 1.0, 0.0,
+      v.x, v.y, v.z, 1.0
+    };
+  }
+
+  template<typename T>
+  std::ostream& operator<<(std::ostream& os, const Matrix4Base<T>& m) {
+    os << "Matrix4(";
+    for (uint32_t i = 0; i < 4; i++) {
+      os << "\n\t" << m[i];
+      if (i < 3)
+        os << ", ";
+    }
+    os << "\n)";
+
+    return os;
+  }
+
+  using Matrix4 = Matrix4Base<float>;
+  using Matrix4d = Matrix4Base<double>;
+
   static_assert(sizeof(Matrix4) == sizeof(Vector4) * 4);
-
-  inline Matrix4 operator*(float scalar, const Matrix4& m) { return m * scalar; }
-
-  Matrix4 transpose(const Matrix4& m);
-
-  double determinant(const Matrix4& m);
-
-  Matrix4 inverse(const Matrix4& m);
-
-  Matrix4 hadamardProduct(const Matrix4& a, const Matrix4& b);
-
-  std::ostream& operator<<(std::ostream& os, const Matrix4& m);
-
-  Matrix4 translationMatrix(const Vector3& v);
+  static_assert(sizeof(Matrix4d) == sizeof(Vector4d) * 4);
 
   // NV-DXVK start
-  // Fast check if Matrix4 is an exact identity matrix
+  // Fast check if Matrix4 is an exact identity matrix (specifically for floats only right now, no double
+  // version implemented yet).
   static inline bool isIdentityExact(const Matrix4& m) {
 #ifdef _M_X64
     // Identity vector
