@@ -182,32 +182,39 @@ namespace dxvk {
     // When anti-culling is enabled, we need to check if any instances are outside frustum. Because in such
     // case the life of the instances will be extended and we need to keep the BLAS as well.
     if (!RtxOptions::AntiCulling::Object::enable()) {
+      auto& entries = m_drawCallCache.getEntries();
       if (m_device->getCurrentFrameId() > RtxOptions::Get()->numFramesToKeepGeometryData()) {
-        auto& entries = m_drawCallCache.getEntries();
         for (auto& iter = entries.begin(); iter != entries.end(); ) {
           blasEntryGarbageCollection(iter, entries);
         }
       }
     }
     else { // Implement anti-culling BLAS/Scene object GC
-      cFrustum& cameraFrustum = getCamera().getFrustum();
-
       fast_unordered_cache<const RtInstance*> outsideFrustumInstancesCache;
 
       auto& entries = m_drawCallCache.getEntries();
       for (auto& iter = entries.begin(); iter != entries.end();) {
         bool isAllInstancesInCurrentBlasInsideFrustum = true;
         for (const RtInstance* instance : iter->second.getLinkedInstances()) {
-          const Matrix4 objectToView = getCamera().getWorldToView(false) * instance->getBlas()->input.getTransformData().objectToWorld;
+          const Matrix4 objectToView = getCamera().getWorldToView(false) * instance->getTransform();
 
           bool isInsideFrustum = true;
           if (RtxOptions::Get()->needsMeshBoundingBox()) {
             const AxisAlignedBoundingBox& boundingBox = instance->getBlas()->input.getGeometryData().boundingBox;
-            isInsideFrustum = boundingBoxIntersectsFrustum(cameraFrustum, boundingBox.minPos, boundingBox.maxPos, objectToView);
+            if (RtxOptions::AntiCulling::Object::enableHighPrecisionAntiCulling()) {
+              isInsideFrustum = boundingBoxIntersectsFrustumSAT(
+                getCamera(),
+                boundingBox.minPos,
+                boundingBox.maxPos,
+                objectToView,
+                RtxOptions::AntiCulling::Object::enableInfinityFarFrustum());
+            } else {
+              isInsideFrustum = boundingBoxIntersectsFrustum(getCamera().getFrustum(), boundingBox.minPos, boundingBox.maxPos, objectToView);
+            }
           }
           else {
             // Fallback to check object center under view space
-            isInsideFrustum = cameraFrustum.CheckSphere(float3(objectToView[3][0], objectToView[3][1], objectToView[3][2]), 0);
+            isInsideFrustum = getCamera().getFrustum().CheckSphere(float3(objectToView[3][0], objectToView[3][1], objectToView[3][2]), 0);
           }
 
           // Only GC the objects inside the frustum to anti-frustum culling, this could cause significant performance impact

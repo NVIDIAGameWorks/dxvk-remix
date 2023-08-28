@@ -382,9 +382,13 @@ namespace dxvk {
         friend class RtxOptions;
         // Anti-Culling Options
         RTX_OPTION_ENV("rtx.antiCulling.object", bool, enable, false, "RTX_ANTI_CULLING_OBJECTS", "[Experimental] Extends lifetime of objects that go outside the camera frustum (anti-culling frustum).");
+        RTX_OPTION("rtx.antiCulling.object", bool, enableHighPrecisionAntiCulling, 1.0f, "[Experimental] Use robust intersection check with Separate Axis Theorem.\n"
+                   "This method is slightly expensive but it effectively addresses object flickering issues that arise from corner cases in the fast intersection check method.\n"
+                   "Typically, it's advisable to enable this option unless it results in a notable performance drop; otherwise, the presence of flickering artifacts could significantly diminish the overall image quality.");
+        RTX_OPTION("rtx.antiCulling.object", bool, enableInfinityFarFrustum, true, "[Experimental]Enable infinity far plane frustum for anti-culling.");
         // TODO: This should be a threshold of memory size
         RTX_OPTION("rtx.antiCulling.object", uint32_t, numObjectsToKeep, 1000, "[Experimental] The maximum number of RayTracing instances to keep when Anti-Culling is enabled.");
-        RTX_OPTION("rtx.antiCulling.object", float, fovScale, 1.15f, "[Experimental] Scalar of the FOV of Anti-Culling Frustum.");
+        RTX_OPTION("rtx.antiCulling.object", float, fovScale, 1.0f, "[Experimental] Scalar of the FOV of Anti-Culling Frustum.");
       };
       struct Light {
         friend class ImGUI;
