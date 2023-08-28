@@ -53,7 +53,9 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.antiCulling.light.numFramesToExtendLightLifetime|int|1000|\[Experimental\] Maximum number of frames to keep  when Anti\-Culling is enabled\. Make sure neither set this too low then the anti\-culling won't work, nor too high which will hurt the performance\.|
 |rtx.antiCulling.light.numLightsToKeep|int|1000|\[Experimental\] Maximum number of lights to keep when Anti\-Culling is enabled\.|
 |rtx.antiCulling.object.enable|bool|False|\[Experimental\] Extends lifetime of objects that go outside the camera frustum \(anti\-culling frustum\)\.|
-|rtx.antiCulling.object.fovScale|float|1.15|\[Experimental\] Scalar of the FOV of Anti\-Culling Frustum\.|
+|rtx.antiCulling.object.enableHighPrecisionAntiCulling|bool|True|\[Experimental\] Use robust intersection check with Separate Axis Theorem\.<br>This method is slightly expensive but it effectively addresses object flickering issues that arise from corner cases in the fast intersection check method\.<br>Typically, it's advisable to enable this option unless it results in a notable performance drop; otherwise, the presence of flickering artifacts could significantly diminish the overall image quality\.|
+|rtx.antiCulling.object.enableInfinityFarFrustum|bool|True|\[Experimental\]Enable infinity far plane frustum for anti\-culling\.|
+|rtx.antiCulling.object.fovScale|float|1|\[Experimental\] Scalar of the FOV of Anti\-Culling Frustum\.|
 |rtx.antiCulling.object.numObjectsToKeep|int|1000|\[Experimental\] The maximum number of RayTracing instances to keep when Anti\-Culling is enabled\.|
 |rtx.applicationId|int|102100511|Used to uniquely identify the application to DLSS\. Generally should not be changed without good reason\.|
 |rtx.asyncTextureUploadPreloadMips|int|8||
@@ -73,6 +75,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.automation.disableBlockingDialogBoxes|bool|False|Disables various blocking blocking dialog boxes \(such as popup windows\) requiring user interaction when set to true, otherwise uses default behavior when set to false\.<br>This option is typically meant for automation\-driven execution of Remix where such dialog boxes if present may cause the application to hang due to blocking waiting for user input\.|
 |rtx.automation.disableDisplayMemoryStatistics|bool|False|Disables display of memory statistics in the Remix window\.<br>This option is typically meant for automation of tests for which we don't want non\-deterministic runtime memory statistics to be shown in GUI that is included as part of test image output\.|
 |rtx.automation.disableUpdateUpscaleFromDlssPreset|bool|False|Disables updating upscaler from DLSS preset\.<br>This option is typically meant for automation of tests for which we don't want upscaler to be updated based on a DLSS preset\.|
+|rtx.automation.suppressAssetLoadingErrors|bool|False|Suppresses asset loading errors by turning them into warnings\.<br>This option is typically meant for automation of tests for which acceptable asset loading issues are known\.|
 |rtx.blockInputToGameInUI|bool|True||
 |rtx.bloom.enable|bool|True||
 |rtx.bloom.intensity|float|0.06||
@@ -152,6 +155,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.di.permutationSamplingNthFrame|int|0|Apply permutation sampling when \(frameIdx % this == 0\), 0 means off\.|
 |rtx.di.spatialSamples|int|2|The number of spatial reuse samples in converged areas\.|
 |rtx.di.stealBoundaryPixelSamplesWhenOutsideOfScreen|bool|True|Steal screen boundary samples when a hit point is outside the screen\.|
+|rtx.dlfg.enable|bool|True|Enables DLSS 3\.0 frame generation which generates interpolated frames to increase framerate at the cost of slightly more latency\.|
 |rtx.dlssEnhancementDirectLightMaxValue|float|10|The maximum strength of direct lighting enhancement\.|
 |rtx.dlssEnhancementDirectLightPower|float|0.7|The overall strength of direct lighting enhancement\.|
 |rtx.dlssEnhancementIndirectLightMaxValue|float|1.5|The maximum strength of indirect lighting enhancement\.|
@@ -210,6 +214,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.enableUnorderedResolveInIndirectRays|bool|True|A flag to enable or disable unordered resolve approximations in indirect rays\.<br>This allows for the presence of unordered approximations in resolving to be overridden in indirect rays and as such requires separate unordered approximations to be enabled to have any effect\.<br>This option should be enabled if objects which can be resolvered in an unordered way in indirect rays are expected for higher quality in reflections, but may come at a performance cost\.<br>Note that even with this option enabled, unordered resolve approximations are only done on the first indirect bounce for the sake of performance overall\.|
 |rtx.enableVolumetricLighting|bool|False|Enabling volumetric lighting provides higher quality ray traced physical volumetrics, disabling falls back to cheaper depth based fog\.<br>Note that disabling this option does not disable the froxel radiance cache as a whole as it is still needed for other non\-volumetric lighting approximations\.|
 |rtx.enableVolumetricsInPortals|bool|True|Enables using extra frustum\-aligned volumes for lighting in portals\.<br>Note that enabling this option will require 3x the memory of the typical froxel grid as well as degrade performance in some cases\.<br>This option should be enabled always in games using ray portals for proper looking volumetrics through them, but should be disabled on any game not using ray portals\.<br>Additionally, this setting must be set at startup and changing it will not take effect at runtime\.|
+|rtx.enableVsync|int|2|Controls the game's V\-Sync setting\. Native game's V\-Sync settings are ignored\.|
 |rtx.fallbackLightAngle|float|5|The spread angle to use for the fallback light \(used only for Distant light types\)\.|
 |rtx.fallbackLightConeAngle|float|25|The cone angle to use for the fallback light shaping \(used only for non\-Distant light types with shaping enabled\)\.|
 |rtx.fallbackLightConeSoftness|float|0.1|The cone softness to use for the fallback light shaping \(used only for non\-Distant light types with shaping enabled\)\.|
@@ -231,7 +236,6 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.forceCameraJitter|bool|False||
 |rtx.forceCutoutAlpha|float|0.5|When an object is added to the cutout textures list it will have a cutout alpha mode forced on it, using this value for the alpha test\.<br>This is meant to improve the look of some legacy mode materials using low\-resolution textures and alpha blending instead of alpha cutout as this can cause blurry halos around edges due to the difficulty of handling this sort of blending in Remix\.<br>Such objects are generally better handled with actual replacement assets using fully opaque geometry replacements or alpha cutout with higher resolution textures, so this should only be relied on until proper replacements can be authored\.|
 |rtx.forceHighResolutionReplacementTextures|bool|False|A flag to enable or disable forcing high resolution replacement textures\.<br>When enabled this mode overrides all other methods of mip calculation \(adaptive resolution and the minimum mipmap level\) and forces it to be 0 to always load in the highest quality of textures\.<br>This generally should not be used other than for various forms of debugging or visual comparisons as this mode will ignore any constraints on CPU or GPU memory which may starve the system or Remix of memory\.<br>Additionally, this setting must be set at startup and changing it will not take effect at runtime\.|
-|rtx.forceVsyncOff|bool|False|Forces V\-Sync to off by setting the present interval to 0 and ignores requests from the application to change the present interval\.|
 |rtx.freeCameraSpeed|float|200|Free camera speed \[GameUnits/s\]\.|
 |rtx.froxelDepthSliceDistributionExponent|float|2|The exponent to use on depth values to nonlinearly distribute froxels away from the camera\. Higher values bias more froxels closer to the camera with 1 being linear\.|
 |rtx.froxelDepthSlices|int|48|The z dimension of the froxel grid\. Must be constant after initialization\.|
@@ -254,6 +258,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.gui.reflexStatRangeInterpolationRate|float|0.05|A value controlling the interpolation rate applied to the Reflex stat graph ranges for smoother visualization\.|
 |rtx.gui.reflexStatRangePaddingRatio|float|0.05|A value specifying the amount of padding applied to the Reflex stat graph ranges as a ratio to the calculated range\.|
 |rtx.gui.showLegacyTextureGui|bool|False|A setting to toggle the old texture selection GUI, where each texture category is represented as its own list\.|
+|rtx.gui.textureGridThumbnailScale|float|1|A float to set the scale of thumbnails while selecting textures\.<br>This will be scaled by the default value of 120 pixels\.<br>This value must always be greater than zero\.|
 |rtx.hashCollisionDetection.enable|bool|False|Enables hash collision detection\.|
 |rtx.hideSplashMessage|bool|False|A flag to disable the splash message indicating how to use Remix from appearing when the application starts\.<br>When set to true this message will be hidden, otherwise it will be displayed on every launch\.|
 |rtx.highlightedTexture|int|0|Hash of a texture that should be highlighted\.|
@@ -269,6 +274,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.instanceOverrideSelectedInstancePrintMaterialHash|bool|False||
 |rtx.instanceOverrideWorldOffset|float3|0, 0, 0||
 |rtx.io.enabled|bool|False|When this option is enabled the assets will be loaded \(and optionally decompressed on GPU\) using high performance RTX IO runtime\. RTX IO must be enabled for loading compressed assets, but is not necessary for working with loose uncompressed assets\.|
+|rtx.io.forceCpuDecoding|bool|False|Force CPU decoding in RTX IO\.|
 |rtx.io.memoryBudgetMB|int|256||
 |rtx.io.useAsyncQueue|bool|True||
 |rtx.isLHS|bool|False||
@@ -317,14 +323,18 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.nativeMipBias|float|0|Specifies a mipmapping level bias to add to all material texture filtering\. Stacks with the upscaling mip bias\.<br>Mipmaps are determined based on how far away a texture is, using this can bias the desired level in a lower quality direction \(positive bias\), or a higher quality direction with potentially more aliasing \(negative bias\)\.<br>Note that mipmaps are also important for good spatial caching of textures, so too far negative of a mip bias may start to significantly affect performance, therefore changing this value is not recommended|
 |rtx.nearPlaneOverride|float|0.1|The near plane value to use for the Camera when the near plane override is enabled\.<br>Only takes effect when rtx\.enableNearPlaneOverride is enabled, see that option for more information about why this is useful\.|
 |rtx.neeCache.ageCullingSpeed|float|0.02|This threshold determines culling speed of an old triangle\. A triangle that is not detected for several frames will be deemed less important and culled quicker\.|
+|rtx.neeCache.cullingThreshold|float|0.001|Culling threshold\.|
 |rtx.neeCache.emissiveTextureSampleFootprintScale|float|1|Emissive texture sample footprint scale\.|
 |rtx.neeCache.enable|bool|True|\[Experimental\] Enable NEE cache\. The integrator will perform NEE on emissive triangles, which usually have significant light contributions, stored in the cache\.|
+|rtx.neeCache.enableAnalyticalLight|bool|True|Enable NEE Cache on analytical light\.|
 |rtx.neeCache.enableImportanceSampling|bool|True|Enable importance sampling\.|
 |rtx.neeCache.enableMIS|bool|True|Enable MIS\.|
 |rtx.neeCache.enableModeAfterFirstBounce|int|1|NEE Cache enable mode on a second and higher bounces\. 0 means off, 1 means enabled for specular rays only, 2 means always enabled\.|
 |rtx.neeCache.enableOnFirstBounce|bool|True|Enable NEE Cache on a first bounce\.|
 |rtx.neeCache.enableUpdate|bool|True|Enable Update\.|
 |rtx.neeCache.range|float|3000|World space range\.|
+|rtx.neeCache.specularFactor|float|1|Specular component factor\.|
+|rtx.neeCache.uniformSamplingProbability|float|0.1|Uniform sampling probability\.|
 |rtx.nisPreset|int|1|Adjusts NIS scaling factor, trades quality for performance\.|
 |rtx.numFramesToKeepBLAS|int|4||
 |rtx.numFramesToKeepGeometryData|int|5||
@@ -631,5 +641,5 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.sourceRootPath|string||A path pointing at the root folder of the project, used to override the path to the root of the project generated at build\-time \(as this path is only valid for the machine the project was originally compiled on\)\. Used primarily for locating shader source files for runtime shader recompilation\.|
 |rtx.terrainTextures|hash set||Albedo textures that are baked blended together to form a unified terrain texture used during ray tracing\.<br>Put albedo textures into this category if the game renders terrain as a blend of multiple textures\.|
 |rtx.uiTextures|hash set||Textures on draw calls that should be treated as screenspace UI elements\.<br>All exclusively UI\-related textures should be classified this way and doing so allows the UI to be rasterized on top of the ray traced scene like usual\.<br>Note that currently the first UI texture encountered triggers RTX injection \(though this may change in the future as this does cause issues with games that draw UI mid\-frame\)\.|
-|rtx.worldSpaceUiBackgroundTextures|hash set|||
+|rtx.worldSpaceUiBackgroundTextures|hash set||Hack/workaround option for dynamic world space UI textures with a coplanar background\.<br>Apply to backgrounds if the foreground material is a dynamic world texture rendered in UI that is unpredictable and rapidly changing\.<br>This offsets the background texture backwards\.|
 |rtx.worldSpaceUiTextures|hash set||Textures on draw calls that should be treated as worldspace UI elements\.<br>Unlike typical UI textures this option is useful for improved rendering of UI elements which appear as part of the scene \(moving around in 3D space rather than as a screenspace element\)\.|

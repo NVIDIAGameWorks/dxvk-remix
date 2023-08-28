@@ -23,6 +23,7 @@
 
 #include "MathLib/MathLib.h"
 #include "../util/util_matrix.h"
+#include "rtx_camera.h"
 
 static inline bool rayIntersectsPlane(
   const dxvk::Vector3& s0,  // ray segment start
@@ -128,6 +129,14 @@ static inline bool boundingBoxIntersectsFrustum(
   }
   return true;
 }
+
+// Robust BoundingBox-Frustum intersection check with Separation Axis Theorem (SAT)
+bool boundingBoxIntersectsFrustumSAT(
+  dxvk::RtCamera& camera,            // The main camera
+  const dxvk::Vector3& minPos,       // The minimum position of AABB bounding box of the object
+  const dxvk::Vector3& maxPos,       // The maximum position of AABB bounding box of the object
+  const dxvk::Matrix4& objectToView, // Object to viewspace transform matrix
+  const bool isInfFrustum);          // Is the camera frustum has infinity far plane
 
 static inline bool rectIntersectsFrustum(
   cFrustum& frustum,               // The frustum check for intersection

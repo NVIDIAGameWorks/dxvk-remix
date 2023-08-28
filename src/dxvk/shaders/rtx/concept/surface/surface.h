@@ -101,6 +101,7 @@ struct Surface
   bool isMatte;
   bool isTextureFactorBlend;
   bool isMotionBlurMaskOut;
+  bool isInsideFrustum;
 
   mat4x3 objectToWorld;
   mat4x3 prevObjectToWorld;

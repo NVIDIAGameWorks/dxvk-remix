@@ -135,6 +135,8 @@ struct RtSurface {
     flags |= isMatte ?                       (1 << 26) : 0;
     flags |= isTextureFactorBlend ?          (1 << 27) : 0;
     flags |= isMotionBlurMaskOut ?           (1 << 28) : 0;
+    // Note: This flag is purely for debug view purpose. If we need to add more functional flags and running out of bits, we should move this flag to other place.
+    flags |= isInsideFrustum ?               (1 << 29) : 0;
 
     writeGPUHelper(data, offset, flags);
 
@@ -241,6 +243,7 @@ struct RtSurface {
   bool isClipPlaneEnabled = false;
   bool isTextureFactorBlend = false;
   bool isMotionBlurMaskOut = false;
+  bool isInsideFrustum = false;
 
   RtTextureArgSource textureColorArg1Source = RtTextureArgSource::Texture;
   RtTextureArgSource textureColorArg2Source = RtTextureArgSource::None;

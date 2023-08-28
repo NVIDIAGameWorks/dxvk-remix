@@ -230,6 +230,7 @@ dxvk_src = files([
   'rtx_render/rtx_instance_manager.cpp',
   'rtx_render/rtx_instance_manager.h',
   'rtx_render/rtx_intersection_test_helpers.h',
+  'rtx_render/rtx_intersection_test_helpers.cpp',
   'rtx_render/rtx_io.cpp',
   'rtx_render/rtx_io.h',
   'rtx_render/rtx_light_manager.cpp',
