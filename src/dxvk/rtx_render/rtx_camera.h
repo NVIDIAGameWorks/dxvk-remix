@@ -66,6 +66,42 @@ namespace dxvk
     uint32_t mSampleCount = 0;
   };
 
+  class RtFrustum final : public cFrustum
+  {
+  public:
+    void calculateFrustumGeometry(const float nearPlane, const float farPlane, const float fov, const float aspectRatio, const bool isLHS);
+
+    inline const Vector3& getNearPlaneFrustumVertex(const uint32_t index) const {
+      assert(index >= 0 && index <= 4);
+      return nearPlaneFrustumVertices[index];
+    }
+
+    inline const Vector3& getFarPlaneFrustumVertex(const uint32_t index) const {
+      assert(index >= 0 && index <= 4);
+      return farPlaneFrustumVertices[index];
+    }
+
+    inline const Vector3& getFrustumEdgeVector(const uint32_t index) const {
+      assert(index >= 0 && index <= 4);
+      return frustumEdgeVectors[index];
+    }
+
+    inline const float getNearPlaneRightExtent() const { return nearPlaneRightExtent; }
+    inline const float getNearPlaneUpExtent() const { return nearPlaneUpExtent; }
+    inline const float getFarPlaneRightExtent() const { return farPlaneRightExtent; }
+    inline const float getFarPlaneUpExtent() const { return farPlaneUpExtent; }
+
+  private:
+    // View Space Frustum data caches
+    Vector3 nearPlaneFrustumVertices[4];
+    Vector3 farPlaneFrustumVertices[4];
+    Vector3 frustumEdgeVectors[4];
+    float nearPlaneRightExtent = 0.0f;
+    float nearPlaneUpExtent = 0.0f;
+    float farPlaneRightExtent = 0.0f;
+    float farPlaneUpExtent = 0.0f;
+  };
+
   class RtCamera
   {
     RTX_OPTION_ENV("rtx.camera", bool, enableFreeCamera, false, "RTX_ENABLE_FREE_CAMERA", "Enables free camera.");
@@ -138,7 +174,7 @@ namespace dxvk
     // the matrices retreived from the various getter functions can be casted to float matrices for a minor upfront performance cost.
     Matrix4d m_matCache[MatrixType::Count] = {};
 
-    cFrustum m_frustum = {};
+    RtFrustum m_frustum;
     cFrustum m_lightAntiCullingFrustum;
 
     // Captures any artificial offsets applied on top of the input transfrom 
@@ -204,8 +240,8 @@ namespace dxvk
     const Matrix4d& getProjectionToView() const { return m_matCache[MatrixType::ProjectionToView]; }
     const Matrix4d& getPreviousProjectionToView() const { return m_matCache[MatrixType::PreviousProjectionToView]; }
 
-    const cFrustum& getFrustum() const { return m_frustum; }
-    cFrustum& getFrustum() { return m_frustum; }
+    const RtFrustum& getFrustum() const { return m_frustum; }
+    RtFrustum& getFrustum() { return m_frustum; }
 
     inline const cFrustum& getLightAntiCullingFrustum() const { return m_lightAntiCullingFrustum; }
     inline cFrustum& getLightAntiCullingFrustum() { return m_lightAntiCullingFrustum; }

@@ -871,6 +871,7 @@ namespace dxvk {
         currentInstance.surface.associatedGeometryHash = drawCall.getHash(RtxOptions::Get()->GeometryAssetHashRule);
         currentInstance.surface.isTextureFactorBlend = drawCall.getMaterialData().isTextureFactorBlend;
         currentInstance.surface.isMotionBlurMaskOut = RtxOptions::Get()->isMotionBlurMaskOutTexture(drawCall.getMaterialData().getHash());
+        currentInstance.surface.isInsideFrustum = RtxOptions::AntiCulling::Object::enable() ? currentInstance.m_isInsideFrustum : true;
 
         // For worldspace UI, we want to show the UI (unlit) in the world.  So configure the blend mode if blending is used accordingly.
         if (currentInstance.m_isWorldSpaceUI) {

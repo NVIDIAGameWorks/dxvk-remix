@@ -2628,6 +2628,10 @@ namespace dxvk {
 
       ImGui::Checkbox("Anti-Culling", &RtxOptions::AntiCulling::Object::enableObject());
       if (RtxOptions::AntiCulling::Object::enable()) {
+        ImGui::Checkbox("High precision Anti-Culling", &RtxOptions::AntiCulling::Object::enableHighPrecisionAntiCullingObject());
+        if (RtxOptions::AntiCulling::Object::enableHighPrecisionAntiCulling()) {
+          ImGui::Checkbox("Infinity Far Frustum", &RtxOptions::AntiCulling::Object::enableInfinityFarFrustumObject());
+        }
         ImGui::InputInt("Instance Max Size", &RtxOptions::AntiCulling::Object::numObjectsToKeepObject(), 1, 1, 0);
         ImGui::DragFloat("Anti-Culling Fov Scale", &RtxOptions::AntiCulling::Object::fovScaleObject(), 0.01f, 0.1f, 2.0f);
       }

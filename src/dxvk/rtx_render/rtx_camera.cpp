@@ -398,8 +398,14 @@ namespace dxvk
     if (RtxOptions::AntiCulling::Object::enable()) {
       const float fovScale = RtxOptions::AntiCulling::Object::fovScale();
       float4x4 frustumMatrix;
-      frustumMatrix.SetupByHalfFovyInf((float)(fov * fovScale * 0.5), aspectRatio, nearPlane, (isLHS ? PROJ_LEFT_HANDED : 0));
+      if (RtxOptions::AntiCulling::Object::enableInfinityFarFrustum()) {
+        frustumMatrix.SetupByHalfFovyInf((float) (fov * fovScale * 0.5), aspectRatio, nearPlane, (isLHS ? PROJ_LEFT_HANDED : 0));
+      } else {
+        frustumMatrix.SetupByHalfFovy((float) (fov * fovScale * 0.5), aspectRatio, nearPlane, farPlane, (isLHS ? PROJ_LEFT_HANDED : 0));
+      }
       m_frustum.Setup(NDC_OGL, frustumMatrix);
+
+      m_frustum.calculateFrustumGeometry(m_nearPlane, m_farPlane, fov, aspectRatio, isLHS);
     }
 
     if (RtxOptions::AntiCulling::Light::enable()) {
@@ -770,5 +776,34 @@ namespace dxvk
     viewRot[3] = viewToWorld[3] + m_shakeOffset;
 
     return viewRot;
+  }
+
+  void RtFrustum::calculateFrustumGeometry(const float nearPlane, const float farPlane, const float fov, const float aspectRatio, const bool isLHS) {
+    // Calculate frustum near and far plane extents
+    const float tanHalfFov = std::tan(fov * 0.5f);
+    nearPlaneUpExtent = nearPlane * tanHalfFov;
+    nearPlaneRightExtent = nearPlaneUpExtent * aspectRatio;
+    farPlaneUpExtent = farPlane * tanHalfFov;
+    farPlaneRightExtent = farPlaneUpExtent * aspectRatio;
+
+    const float N = isLHS ? nearPlane : -nearPlane;
+    const float F = isLHS ? farPlane : -farPlane;
+
+    // Near Plane Vertices
+    nearPlaneFrustumVertices[0] = Vector3(-nearPlaneRightExtent, -nearPlaneUpExtent, N);
+    nearPlaneFrustumVertices[1] = Vector3(-nearPlaneRightExtent,  nearPlaneUpExtent, N);
+    nearPlaneFrustumVertices[2] = Vector3( nearPlaneRightExtent,  nearPlaneUpExtent, N);
+    nearPlaneFrustumVertices[3] = Vector3( nearPlaneRightExtent, -nearPlaneUpExtent, N);
+
+    // Far Plane Vertices
+    farPlaneFrustumVertices[0] = Vector3(-farPlaneRightExtent, -farPlaneUpExtent, F);
+    farPlaneFrustumVertices[1] = Vector3(-farPlaneRightExtent,  farPlaneUpExtent, F);
+    farPlaneFrustumVertices[2] = Vector3( farPlaneRightExtent,  farPlaneUpExtent, F);
+    farPlaneFrustumVertices[3] = Vector3( farPlaneRightExtent, -farPlaneUpExtent, F);
+
+    // Edge Vectors (Normalized)
+    for (int i = 0; i < 4; ++i) {
+      frustumEdgeVectors[i] = normalize(farPlaneFrustumVertices[i] - nearPlaneFrustumVertices[i]);
+    }
   }
 }
