@@ -101,6 +101,8 @@ namespace dxvk {
 
         {DEBUG_VIEW_SHARED_BIAS_CURRENT_COLOR_MASK, "DLSS Bias Color Mask"},
 
+        {DEBUG_VIEW_IS_INSIDE_FRUSTUM, "Is Inside Frustum" },
+
         {DEBUG_VIEW_BLUE_NOISE, "Blue Noise"},
         {DEBUG_VIEW_PIXEL_CHECKERBOARD, "Pixel Checkerboard"},
         {DEBUG_VIEW_VOLUME_RADIANCE_DEPTH_LAYERS, "Volume Radiance Depth Layers"},

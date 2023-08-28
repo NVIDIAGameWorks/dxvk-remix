@@ -839,6 +839,9 @@ void geometryResolverVertexOutputDebugView(
       accumulateInDebugViewAnd(pixelCoordinate, isValid);
       break;
     }
+  case DEBUG_VIEW_IS_INSIDE_FRUSTUM:
+    storeInDebugView(pixelCoordinate, surface.isInsideFrustum ? vec3(0.0f, 1.0f ,0.0f) : vec3(1.0f, 0.0f, 0.0f));
+    break;
   }
 }
 
