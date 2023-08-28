@@ -94,10 +94,10 @@ public:
 
   // Updates the camera state due to any teleportation frame to frame
   // Returns true if teleportation occured and was handled
-  bool detectTeleportationAndCorrectCameraHistory(RtCamera& camera);
+  bool detectTeleportationAndCorrectCameraHistory(RtCamera& camera, RtCamera* viewmodelCamera);
 
   // Fixes camera in-between portals by pushing it out to closest portal plane
-  void fixCameraInBetweenPortals(RtCamera& camera);
+  void fixCameraInBetweenPortals(RtCamera& camera) const;
 
   bool tryMatchCameraToPortal(const CameraManager& cameraManager, const Matrix4& worldToView, uint8_t& portalIndex) const;
 

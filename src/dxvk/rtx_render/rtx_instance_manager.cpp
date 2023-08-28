@@ -1091,8 +1091,8 @@ namespace dxvk {
 
   RtInstance* InstanceManager::createViewModelInstance(Rc<DxvkContext> ctx,
                                                        const RtInstance& reference,
-                                                       const Matrix4& perspectiveCorrection,
-                                                       const Matrix4& prevPerspectiveCorrection) {
+                                                       const Matrix4d& perspectiveCorrection,
+                                                       const Matrix4d& prevPerspectiveCorrection) {
 
     // Create a view model instance corresponding to the reference instance, for one frame 
 
@@ -1115,14 +1115,14 @@ namespace dxvk {
       const auto corrected = perspectiveCorrection * reference.getTransform();
       const auto prevCorrected = prevPerspectiveCorrection * reference.getPrevTransform();
 
-      auto isOrdinary = [](const Matrix4& m) {
+      auto isOrdinary = [](const Matrix4d& m) {
         auto isCloseTo = [](auto a, auto b) {
-          return std::abs(a - b) < 0.001f;
+          return std::abs(a - b) < 0.001;
         };
-        return isCloseTo(m[0][3], 0.0f)
-          && isCloseTo(m[1][3], 0.0f)
-          && isCloseTo(m[2][3], 0.0f)
-          && isCloseTo(m[3][3], 1.0f);
+        return isCloseTo(m[0][3], 0.0)
+          && isCloseTo(m[1][3], 0.0)
+          && isCloseTo(m[2][3], 0.0)
+          && isCloseTo(m[3][3], 1.0);
       };
 
       // If matrices are not convoluted, don't modify the vertex data: just set the transforms directly
@@ -1133,8 +1133,8 @@ namespace dxvk {
         ONCE(Logger::info("[RTX-Compatibility-Info] Unexpected values in the perspective-corrected transform of a view model. Fallback to geometry modification"));
         // Only need to run this on BVH op (maybe this could be moved to geometry processing?)
         if (viewModelInstance->getBlas()->frameLastUpdated == frameId) {
-          const Matrix4 worldToObject = inverse(reference.getTransform());
-          const Matrix4 instancePositionTransform = worldToObject * perspectiveCorrection * reference.getTransform();
+          const auto worldToObject = inverse(reference.getTransform());
+          const auto instancePositionTransform = worldToObject * perspectiveCorrection * reference.getTransform();
 
           ctx->getCommonObjects()->metaGeometryUtils().dispatchViewModelCorrection(ctx,
             viewModelInstance->getBlas()->modifiedGeometryData, instancePositionTransform);
@@ -1177,16 +1177,22 @@ namespace dxvk {
     // Use the FOV (XY scaling) from the view-model matrix and the near/far planes (ZW scaling) from the main matrix.
     // The view-model camera has different near/far planes, so if that projection matrix is used naively,
     // the gun ends up being scaled up by a factor of 7 or so (in Portal).
-    const Matrix4& mainProjectionMatrix = camera.getViewToProjection();
-    Matrix4 viewModelProjectionMatrix = viewModelCamera.getViewToProjection();
+    const auto& mainProjectionMatrix = camera.getViewToProjection();
+    auto viewModelProjectionMatrix = viewModelCamera.getViewToProjection();
     viewModelProjectionMatrix[2][2] = mainProjectionMatrix[2][2];
     viewModelProjectionMatrix[2][3] = mainProjectionMatrix[2][3];
     viewModelProjectionMatrix[3][2] = mainProjectionMatrix[3][2];
 
+    const auto& mainPreviousProjectionMatrix = camera.getPreviousViewToProjection();
+    auto previousViewModelProjectionMatrix = viewModelCamera.getPreviousViewToProjection();
+    previousViewModelProjectionMatrix[2][2] = mainPreviousProjectionMatrix[2][2];
+    previousViewModelProjectionMatrix[2][3] = mainPreviousProjectionMatrix[2][3];
+    previousViewModelProjectionMatrix[3][2] = mainPreviousProjectionMatrix[3][2];
+
     // Apply an extra scaling matrix to the view-space positions of view model to make it less likely to interact with world geometry.
-    Matrix4 scaleMatrix {};
+    Matrix4d scaleMatrix {};
     scaleMatrix[0][0] = scaleMatrix[1][1] = scaleMatrix[2][2] = RtxOptions::ViewModel::scale();
-    scaleMatrix[3][3] = 1.f;
+    scaleMatrix[3][3] = 1.0;
 
     // Compute the view-model perspective correction matrix.
     // This expression (read right-to-left) is a solution to the following equation:
@@ -1194,9 +1200,9 @@ namespace dxvk {
     // where 'position' is the original vertex data supplied by the game, and 'transformedPosition' is what we need to compute in order to make
     // the view model project into the same screen positions using the main camera.
     // The 'objectToWorld' matrices are applied later, in createViewModelInstance, because they're different per-instance.
-    const Matrix4 perspectiveCorrection = camera.getViewToWorld(false) * (camera.getProjectionToView() * viewModelProjectionMatrix * scaleMatrix) * viewModelCamera.getWorldToView(false);
-    const Matrix4 prevPerspectiveCorrection = camera.getPreviousViewToWorld(false) * (camera.getPreviousProjectionToView() * viewModelProjectionMatrix * scaleMatrix) * viewModelCamera.getPreviousWorldToView(false);
-    
+    const auto perspectiveCorrection = camera.getViewToWorld(false) * (camera.getProjectionToView() * viewModelProjectionMatrix * scaleMatrix) * viewModelCamera.getWorldToView(false);
+    const auto prevPerspectiveCorrection = camera.getPreviousViewToWorld(false) * (camera.getPreviousProjectionToView() * previousViewModelProjectionMatrix * scaleMatrix) * viewModelCamera.getPreviousWorldToView(false);
+
     // Create any valid view model instances from the list of candidates
     std::vector<RtInstance*> viewModelInstances;
     for (auto* candidateInstance : m_viewModelCandidates) {
