@@ -115,6 +115,24 @@ Surface surfaceCreate(MemorySurface memorySurface)
 
   const vec4 textureTransformData0 = uintBitsToFloat(memorySurface.data11);
   const vec4 textureTransformData1 = uintBitsToFloat(memorySurface.data12);
+  // Note: data13.x and data15 free here.
+
+  // Note: 4 columns and 2 rows, initialized row by row though because this is really an alias for a Slang
+  // row-major matrix...
+  surface.textureTransform = mat4x2(
+    textureTransformData0,
+    textureTransformData1);
+
+  // Note: Old implementation preserved in case we need to store the "full" 4x4 matrix
+  // again. Do note that the bottom right corner of this matrix may be able to be turned into a
+  // single bit (1 or 0) to save space by dividing the entire matrix by this value as long as a
+  // perspective divide is done on the resulting coordinate (which is the case when projection
+  // texture transforms are enabled), otherwise it may be able to be ignored (since we probably
+  // won't ever use anything with 4D texture coordinates let alone 3D, only use case is probably
+  // projecting 3D coordinates down to 2D).
+  /*
+  const vec4 textureTransformData0 = uintBitsToFloat(memorySurface.data11);
+  const vec4 textureTransformData1 = uintBitsToFloat(memorySurface.data12);
   const float textureTransformData2 = uintBitsToFloat(memorySurface.data13.x);
   const vec4 textureTransformData3 = uintBitsToFloat(memorySurface.data15);
 
@@ -123,6 +141,7 @@ Surface surfaceCreate(MemorySurface memorySurface)
     vec4(textureTransformData0.w, textureTransformData1.xy, 0),
     vec4(textureTransformData1.zw, textureTransformData2, 0),
     textureTransformData3));
+  */
 
   surface.tFactor = memorySurface.data13.y;
   const uint32_t textureFlagData = memorySurface.data13.z;

@@ -105,7 +105,11 @@ struct Surface
   mat4x3 objectToWorld;
   mat4x3 prevObjectToWorld;
   mat3x3 normalObjectToWorld;
-  float4x4 textureTransform;
+  // Note: This is only a 4x2 matrix as currently our texture transform implementation only supports <= 2 elements, so the 3rd and 4th
+  // elements this matrix may generate are currently never used (nor is the perspective division when projection is enabled, though this may
+  // justify increasing this to a 4x3 matrix in the future for things projecting 3D coordinates down to 2D coordinates as this should be doable
+  // to support).
+  mat4x2 textureTransform;
 
   vec4 clipPlane;
 };

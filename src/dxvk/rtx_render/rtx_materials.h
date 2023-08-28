@@ -172,15 +172,18 @@ struct RtSurface {
     writeGPUHelper(data, offset, objectToWorld.data[3].y);
     writeGPUHelper(data, offset, objectToWorld.data[3].z);
 
+    // Note: Only 2 rows of texture transform written for now due to limit of 2 element restriction.
     writeGPUHelper(data, offset, textureTransform.data[0].x);
-    writeGPUHelper(data, offset, textureTransform.data[0].y);
-    writeGPUHelper(data, offset, textureTransform.data[0].z);
     writeGPUHelper(data, offset, textureTransform.data[1].x);
-    writeGPUHelper(data, offset, textureTransform.data[1].y);
-    writeGPUHelper(data, offset, textureTransform.data[1].z);
     writeGPUHelper(data, offset, textureTransform.data[2].x);
+    writeGPUHelper(data, offset, textureTransform.data[3].x);
+    writeGPUHelper(data, offset, textureTransform.data[0].y);
+    writeGPUHelper(data, offset, textureTransform.data[1].y);
     writeGPUHelper(data, offset, textureTransform.data[2].y);
-    writeGPUHelper(data, offset, textureTransform.data[2].z);
+    writeGPUHelper(data, offset, textureTransform.data[3].y);
+
+    // 4 bytes padding
+    writeGPUPadding<4>(data, offset);
 
     writeGPUHelper(data, offset, tFactor);
 
@@ -202,10 +205,8 @@ struct RtSurface {
 
     writeGPUHelper(data, offset, clipPlane);
 
-    writeGPUHelper(data, offset, textureTransform.data[3].x);
-    writeGPUHelper(data, offset, textureTransform.data[3].y);
-    writeGPUHelper(data, offset, textureTransform.data[3].z);
-    writeGPUHelper(data, offset, textureTransform.data[3].w);
+    // 16 bytes padding
+    writeGPUPadding<16>(data, offset);
 
     assert(offset - oldOffset == kSurfaceGPUSize);
   }
