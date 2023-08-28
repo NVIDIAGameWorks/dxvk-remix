@@ -331,16 +331,22 @@ SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayI
 
   if (surface.texcoordBufferIndex != BINDING_INDEX_INVALID || surface.texcoordGenerationMode != uint(TexGenMode::None))
   {
+    // Note: This can be potentially extended to vec3 or vec4 if we ever want to support more than 2 texture transform elements
+    // (potentially useful for say cubemap sampling, but Remix has little use to actually render cubemaps properly outside
+    // of say sky capturing since ray traced reflections will replace most cubemap effects).
     vec2 texcoords[3];
     
     for (uint i = 0; i < 3; i++)
     {
+      vec4 rawTextureCoordinate;
+
       if (surface.texcoordGenerationMode == uint(TexGenMode::ViewPositions) ||
           // For now, calculate texcoords for the first cascade. The texcoords for an appropriate cascade will get adjusted based on the interpolated texcoord later
           surface.texcoordGenerationMode == uint(TexGenMode::CascadedViewPositions))
       {
-        float4 viewPos = mul(cb.camera.worldToView, float4(worldPositions[i], 1.f));
-        texcoords[i] = mul(surface.textureTransform, viewPos).xy;
+        const float4 viewPos = mul(cb.camera.worldToView, float4(worldPositions[i], 1.f));
+
+        rawTextureCoordinate = viewPos;
       }
       else if (surface.texcoordGenerationMode == uint(TexGenMode::ViewNormals)) 
       {
@@ -355,19 +361,39 @@ SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayI
 
         normal = normalize(mul(surface.normalObjectToWorld, normal));
 
-        float4 viewPos = mul(cb.camera.worldToView, float4(normal, 0.f));
-        texcoords[i] = mul(surface.textureTransform, viewPos).xy;
+        const float4 viewPos = mul(cb.camera.worldToView, float4(normal, 0.f));
+
+        // Todo: Use the full vec4 viewPos here if rawTextureCoordinate is ever expanded to be a vec4 (right
+        // now the other 2 components will never matter in our current implementation).
+        rawTextureCoordinate = viewPos;
       }
       else
       {
         const uint currentIndex = idx[i];
         uint texcoordBufferIndex = surface.texcoordBufferIndex;
         const uint texcoordElementIndex = (currentIndex * uint(surface.texcoordStride) + surface.texcoordOffset) / 4;
-      
-        texcoords[i].x = BUFFER_ARRAY(geometries, texcoordBufferIndex, texcoordElementIndex + 0);
-        texcoords[i].y = BUFFER_ARRAY(geometries, texcoordBufferIndex, texcoordElementIndex + 1);
-        texcoords[i] = mul(surface.textureTransform, float4(texcoords[i], 1.f, 1.f)).xy;
+
+        const vec2 loadedTextureCoordinate = vec2(
+          BUFFER_ARRAY(geometries, texcoordBufferIndex, texcoordElementIndex + 0),
+          BUFFER_ARRAY(geometries, texcoordBufferIndex, texcoordElementIndex + 1)
+        );
+
+        // Todo: This will likely need to load more than a vec2 of texture coordinates too if we ever support anything more complex.
+        // A value of 1 is added to every component beyond what is loaded, though it really should be a value of 0 up to the texture
+        // transform element count and 1 past that I think, check DXVK's d3d9_fixed_function.cpp for more info.
+        rawTextureCoordinate = float4(loadedTextureCoordinate, 1.0f, 1.0f);
       }
+
+      const vec2 transformedTextureCoordinate = mul(surface.textureTransform, rawTextureCoordinate);
+
+      // Todo: Perspective division here on the proper component (as specified by the number of elements the transform is expected to output)
+      // when projective texture transforms are enabled.
+
+      // Todo: Use the full vec4 here if transformedTextureCoordinate is ever expanded to be a vec4 (right
+      // now the other 2 components will never matter in our current implementation, and this covers the
+      // 1 component case as sampling from a 1D texture will just ignore the second coordinate, though not sure
+      // what would happen with a 2D texture given only a 1D transform result...).
+      texcoords[i] = transformedTextureCoordinate;
     }
 
     surfaceInteraction.textureCoordinates = interpolateHitAttribute(texcoords, bary);

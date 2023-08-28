@@ -85,31 +85,46 @@ namespace dxvk {
     const DWORD texcoordIndex = d3d9State.textureStages[stageIdx][DXVK_TSS_TEXCOORDINDEX];
     const DWORD transformFlags = d3d9State.textureStages[stageIdx][DXVK_TSS_TEXTURETRANSFORMFLAGS];
 
-    if ((transformFlags & 0x3) != D3DTTFF_DISABLE) {
+    const auto textureTransformCount = transformFlags & 0x3;
+
+    if (textureTransformCount != D3DTTFF_DISABLE) {
       transformData.textureTransform = d3d9State.transforms[GetTransformIndex(D3DTS_TEXTURE0) + stageIdx];
+
+      if (textureTransformCount > 2) {
+        ONCE(Logger::info(str::format("[RTX-Compatibility-Info] Use of texture transform element counts beyond 2 is not supported in Remix yet (and thus will be clamped to 2 elements).")));
+      }
+
+      // Todo: Store texture transform element count (1-4) in the future.
     } else {
       transformData.textureTransform = Matrix4();
     }
 
     if (transformFlags & D3DTTFF_PROJECTED) {
       ONCE(Logger::info(str::format("[RTX-Compatibility-Info] Use of projected texture transform detected, but it's not supported in Remix yet.")));
+
+      // Todo: Store texture transform projection flag in the future.
     }
 
     switch (texcoordIndex) {
     default:
     case D3DTSS_TCI_PASSTHRU:
       transformData.texgenMode = TexGenMode::None;
+
       break;
     case D3DTSS_TCI_CAMERASPACEREFLECTIONVECTOR:
     case D3DTSS_TCI_SPHEREMAP:
       transformData.texgenMode = TexGenMode::None;
-      ONCE(Logger::info(str::format("[RTX-Compatibility-Info] Use of special TCI flags detected, but they're not supported in Remix yet.")));
+
+      ONCE(Logger::info(str::format("[RTX-Compatibility-Info] Use of special TCI flags detected (spheremap or camera space reflection vector), but they're not supported in Remix yet.")));
+
       break;
     case D3DTSS_TCI_CAMERASPACEPOSITION:
       transformData.texgenMode = TexGenMode::ViewPositions;
+
       break;
     case D3DTSS_TCI_CAMERASPACENORMAL:
       transformData.texgenMode = TexGenMode::ViewNormals;
+
       break;
     }
   }

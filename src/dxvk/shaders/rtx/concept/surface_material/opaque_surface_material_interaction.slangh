@@ -78,7 +78,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
     const vec2 motionScale = vec2(cb.opaqueMaterialArgs.layeredWaterNormalMotionX, cb.opaqueMaterialArgs.layeredWaterNormalMotionY) * cb.opaqueMaterialArgs.layeredWaterNormalMotionScale;
     const float lodBias = cb.opaqueMaterialArgs.layeredWaterNormalLodBias;
 
-    float4x4 xform = surface.textureTransform;
+    mat4x2 xform = surface.textureTransform;
     xform[0][2] *= motionScale.x;
     xform[1][2] *= motionScale.y;
 
