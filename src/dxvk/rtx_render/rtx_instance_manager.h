@@ -298,7 +298,7 @@ private:
   // Finds the "closest" matching instance to a set of inputs, returns a pointer (can be null if not found) to closest instance
   RtInstance* findSimilarInstance(const BlasEntry& blas, const RtSurfaceMaterial& material, const Matrix4& transform, CameraType::Enum cameraType, const RayPortalManager& rayPortalManager);
 
-  RtInstance* addInstance(BlasEntry& blas, const DrawCallState& drawCall, const RtSurfaceMaterial& material, const Matrix4& transform);
+  RtInstance* addInstance(BlasEntry& blas);
   void processInstanceBuffers(const BlasEntry& blas, RtInstance& currentInstance) const;
 
   void updateInstance(

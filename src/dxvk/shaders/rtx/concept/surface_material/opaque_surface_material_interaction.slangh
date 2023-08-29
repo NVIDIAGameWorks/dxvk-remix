@@ -972,7 +972,7 @@ SurfaceMaterialInteractionPSRSample opaqueSurfaceMaterialInteractionCalcPSRTrans
 {
   SurfaceMaterialInteractionPSRSample materialPSRSample;
 
-  // Todo: Expierementally test transmission PSR for opaacity in the future, for now not needed though.
+  // Todo: Experimentally test transmission PSR for opacity in the future, for now not needed though.
   materialPSRSample.performPSR = false;
 
   return materialPSRSample;

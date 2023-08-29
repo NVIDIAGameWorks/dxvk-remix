@@ -607,6 +607,7 @@ private:
     h = XXH64(&m_metallicTextureIndex, sizeof(m_metallicTextureIndex), h);
     h = XXH64(&m_emissiveColorTextureIndex, sizeof(m_emissiveColorTextureIndex), h);
     h = XXH64(&m_anisotropy, sizeof(m_anisotropy), h);
+    h = XXH64(&m_emissiveIntensity, sizeof(m_emissiveIntensity), h);
     h = XXH64(&m_albedoOpacityConstant, sizeof(m_albedoOpacityConstant), h);
     h = XXH64(&m_roughnessConstant, sizeof(m_roughnessConstant), h);
     h = XXH64(&m_metallicConstant, sizeof(m_metallicConstant), h);
@@ -746,6 +747,7 @@ private:
     h = XXH64(&m_transmittanceColor, sizeof(m_transmittanceColor), h);
     h = XXH64(&m_transmittanceMeasurementDistance, sizeof(m_transmittanceMeasurementDistance), h);
     h = XXH64(&m_enableEmission, sizeof(m_enableEmission), h);
+    h = XXH64(&m_emissiveIntensity, sizeof(m_emissiveIntensity), h);
     h = XXH64(&m_emissiveColorConstant, sizeof(m_emissiveColorConstant), h);
     h = XXH64(&m_isThinWalled, sizeof(m_isThinWalled), h);
     h = XXH64(&m_thinWallThickness, sizeof(m_thinWallThickness), h);
@@ -881,6 +883,7 @@ private:
     h = XXH64(&m_spriteSheetFPS, sizeof(m_spriteSheetFPS), h);
     h = XXH64(&m_rotationSpeed, sizeof(m_rotationSpeed), h);
     h = XXH64(&m_enableEmission, sizeof(m_enableEmission), h);
+    h = XXH64(&m_emissiveIntensity, sizeof(m_emissiveIntensity), h);
 
     m_cachedHash = h;
   }
@@ -1332,6 +1335,7 @@ struct OpaqueMaterialData {
   uint8_t getAlphaTestReferenceValue() const {
     return m_alphaTestReferenceValue;
   }
+
 private:
   // Note: Ensures the data falls within the desired valid ranges in case its source was malformed (e.g.
   // manual USD editing).
@@ -1368,6 +1372,7 @@ private:
     h ^= m_emissiveColorTexture.getImageHash();
 
     h = XXH64(&m_anisotropy, sizeof(m_anisotropy), h);
+    h = XXH64(&m_emissiveIntensity, sizeof(m_emissiveIntensity), h);
     h = XXH64(&m_albedoOpacityConstant[0], sizeof(m_albedoOpacityConstant), h);
     h = XXH64(&m_roughnessConstant, sizeof(m_roughnessConstant), h);
     h = XXH64(&m_metallicConstant, sizeof(m_metallicConstant), h);
@@ -1524,6 +1529,7 @@ private:
     h = XXH64(&m_transmittanceColor[0], sizeof(m_transmittanceColor), h);
     h = XXH64(&m_transmittanceMeasurementDistance, sizeof(m_transmittanceMeasurementDistance), h);
     h = XXH64(&m_enableEmission, sizeof(m_enableEmission), h);
+    h = XXH64(&m_emissiveIntensity, sizeof(m_emissiveIntensity), h);
     h = XXH64(&m_emissiveColorConstant[0], sizeof(m_emissiveColorConstant), h);
     h = XXH64(&m_isThinWalled, sizeof(m_isThinWalled), h);
     h = XXH64(&m_thinWallThickness, sizeof(m_thinWallThickness), h);
@@ -1608,6 +1614,7 @@ private:
     h = XXH64(&m_spriteSheetFPS, sizeof(m_spriteSheetFPS), h);
     h = XXH64(&m_rotationSpeed, sizeof(m_rotationSpeed), h);
     h = XXH64(&m_enableEmission, sizeof(m_enableEmission), h);
+    h = XXH64(&m_emissiveIntensity, sizeof(m_emissiveIntensity), h);
 
     m_cachedHash = h;
   }

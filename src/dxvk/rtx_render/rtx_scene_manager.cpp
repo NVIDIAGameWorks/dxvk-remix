@@ -871,7 +871,10 @@ namespace dxvk {
 
     const bool hasTexcoords = drawCallState.hasTextureCoordinates();
 
-    // We're going to use this to create a modified sampler for textures.
+    // We're going to use this to create a modified sampler for replacement textures.
+    // Legacy and replacement materials should follow same filtering but due to lack of override capability per texture
+    // legacy textures use original sampler to stay true to the orignal intent while replacements use more advanced filtering
+    // for better quality by default.
     DxvkSampler* pOriginalSampler = drawCallState.getMaterialData().getColorTexture().sampler.ptr();
 
     if (renderMaterialDataType == MaterialDataType::Legacy || renderMaterialDataType == MaterialDataType::Opaque) {
@@ -920,8 +923,10 @@ namespace dxvk {
           metallicConstant = 0.f;
           roughnessConstant = 1.f;
         } else {
-          if(defaults.useAlbedoTextureIfPresent())
-            trackTexture(ctx, legacyMaterialData.getColorTexture(), albedoOpacityTextureIndex, hasTexcoords, nullptr); // NOTE: Do not patch original sampler
+          if (defaults.useAlbedoTextureIfPresent()) {
+            // NOTE: Do not patch original sampler to preserve filtering behavior of the legacy material
+            trackTexture(ctx, legacyMaterialData.getColorTexture(), albedoOpacityTextureIndex, hasTexcoords, nullptr);
+          }
         }
 
         if (RtxOptions::Get()->getHighlightLegacyModeEnabled()) {
