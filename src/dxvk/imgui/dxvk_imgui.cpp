@@ -534,7 +534,7 @@ namespace dxvk {
         LegacyMaterialDefaults& legacyMaterial = RtxOptions::Get()->legacyMaterial;
         ImGui::Checkbox("Use Albedo/Opacity Texture (if present)", &legacyMaterial.useAlbedoTextureIfPresentObject());
         ImGui::ColorEdit3("Albedo", &legacyMaterial.albedoConstantObject());
-        ImGui::DragFloat("Opacity", &legacyMaterial.opacityConstantObject());
+        ImGui::DragFloat("Opacity", &legacyMaterial.opacityConstantObject(), 0.01f, 0.f, 1.f);
         ImGui::ColorEdit3("Emissive Color", &legacyMaterial.emissiveColorConstantObject());
         ImGui::DragFloat("Emissive Intensity", &legacyMaterial.emissiveIntensityObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
         ImGui::DragFloat("Roughness", &legacyMaterial.roughnessConstantObject(), 0.01f, 0.02f, 1.f, "%.3f", sliderFlags);
@@ -2435,7 +2435,7 @@ namespace dxvk {
       ImGui::Unindent();
     }
 
-    if (ImGui::CollapsingHeader("Denoising", collapsingHeaderFlags)) {
+    if (ImGui::CollapsingHeader("Denoising", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
       ImGui::Checkbox("Denoising Enabled", &RtxOptions::Get()->useDenoiserObject());
       ImGui::Checkbox("Reference Mode", &RtxOptions::Get()->useDenoiserReferenceModeObject());
@@ -2534,7 +2534,7 @@ namespace dxvk {
       ImGui::Unindent();
     }
 
-    if (ImGui::CollapsingHeader("Debug", collapsingHeaderFlags)) {
+    if (ImGui::CollapsingHeader("Debug", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
       common->metaDebugView().showImguiSettings();
       ImGui::Unindent();
