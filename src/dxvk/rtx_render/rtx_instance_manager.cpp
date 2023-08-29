@@ -376,7 +376,7 @@ namespace dxvk {
 
     if (currentInstance == nullptr) {
       // No existing match - so need to create one
-      currentInstance = addInstance(blas, drawCall, material, objectToWorld);
+      currentInstance = addInstance(blas);
     }
 
     updateInstance(*currentInstance, cameraManager, blas, drawCall, materialData, material, objectToWorld, worldToProjection);
@@ -699,10 +699,7 @@ namespace dxvk {
     return foundResult.instance; 
   }
 
-  RtInstance* InstanceManager::addInstance(BlasEntry& blas, 
-                                           const DrawCallState& drawCall,
-                                           const RtSurfaceMaterial& material, 
-                                           const Matrix4& transform) {
+  RtInstance* InstanceManager::addInstance(BlasEntry& blas) {
     const uint32_t currentFrameIdx = m_device->getCurrentFrameId();
 
     const uint32_t instanceIdx = m_instances.size();
