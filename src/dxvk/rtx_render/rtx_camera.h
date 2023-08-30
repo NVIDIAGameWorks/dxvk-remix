@@ -127,6 +127,7 @@ namespace dxvk
     float m_shakeYaw = 0.0f, m_shakePitch = 0.0f;
     float m_fov = 0.f;
     float m_aspectRatio = 0.f;
+    CameraType::Enum m_type;
 
     enum MatrixType {
       WorldToView = 0,
@@ -264,6 +265,10 @@ namespace dxvk
     Vector3 getRight(bool freecam = true) const;
     float getNearPlane() const { return m_nearPlane; }
     float getFarPlane() const { return m_farPlane; }
+
+    void setCameraType(CameraType::Enum type) {
+      m_type = type;
+    }
 
     bool isCameraCut() const;
     static bool isFreeCameraEnabled();
