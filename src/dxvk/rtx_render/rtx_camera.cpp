@@ -509,7 +509,8 @@ namespace dxvk
       m_firstUpdate = false;
     }
 
-    if (!enableFreeCamera())
+    // Only calculate free camera matrices for main camera
+    if (!enableFreeCamera() || m_type != CameraType::Main)
       return isCameraCut();
 
     auto currTime = std::chrono::system_clock::now();
