@@ -337,15 +337,6 @@ namespace dxvk {
       m_raytracingOutput.m_secondaryConeRadius.sharesTheSameView(m_raytracingOutput.getCurrentRtxdiConfidence()) &&
       m_raytracingOutput.m_sharedIntegrationSurfacePdf.sharesTheSameView(m_raytracingOutput.getCurrentRtxdiIlluminance()) &&
       "New view for an aliased resource was created on the fly. Avoid doing that or ensure it has no negative side effects.");
-
-    // Release terrain texture if it terrain baking is disabled.
-    // Improvement: listen for an event it being disabled and doing this once rather than checking it every frame
-    if (m_terrain.isValid() && !TerrainBaker::needsTerrainBaking()) {
-      // WAR (REMIX-1557) to force release terrain texture reference from texture cache since it doesn't do it automatically resulting in a leak
-      TextureRef textureRef = TextureRef(nullptr, m_terrain.view);
-      m_terrain.reset();
-      textureManager.releaseTexture(textureRef);
-    }
   }
 
   void Resources::onResize(Rc<DxvkContext> ctx, const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent) {
@@ -550,33 +541,6 @@ namespace dxvk {
     assert(m_blueNoiseTexView != nullptr);
 
     return m_blueNoiseTexView;
-  }
-
-  const Resources::Resource& Resources::getTerrainTexture(Rc<DxvkContext> ctx) {
-    return m_terrain;
-  }
-
-  const Resources::Resource& Resources::getTerrainTexture(Rc<DxvkContext> ctx, RtxTextureManager& textureManager, uint32_t width, uint32_t height, VkFormat format) {
-    VkExtent3D resolution = { width, height, 1 };
-
-    if (!m_terrain.isValid() || 
-        m_terrain.image->info().extent != resolution ||
-        m_terrain.image->info().format != format) {
-
-      // WAR (REMIX-1557) to force release previous terrain texture reference from texture cache since it doesn't do it automatically resulting in a leak
-      if (m_terrain.isValid()) {
-        TextureRef textureRef = TextureRef(nullptr, m_terrain.view);
-        textureManager.releaseTexture(textureRef);
-      }
-
-      m_terrain = createImageResource(ctx, "baked terrain", resolution, format,
-                                      1, VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D,
-                                      VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT, true);
-    }
-
-    assert(m_terrain.isValid());
-
-    return m_terrain;
   }
 
   Resources::Resource Resources::getSkyMatte(Rc<DxvkContext> ctx, VkFormat format) {

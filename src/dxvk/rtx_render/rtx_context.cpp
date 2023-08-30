@@ -684,10 +684,12 @@ namespace dxvk {
         rasterizeSky(params, drawCallState);
       }
 
-      // Bake the terrain
-      bakeTerrain(params, drawCallState);
+      const MaterialData* overrideMaterialData = nullptr;
 
-      getSceneManager().submitDrawState(this, drawCallState);
+      // Bake the terrain
+      bakeTerrain(params, drawCallState, &overrideMaterialData);
+
+      getSceneManager().submitDrawState(this, drawCallState, overrideMaterialData);
     }
   }
 
@@ -1687,26 +1689,24 @@ namespace dxvk {
     allocAndMapFixedFunctionConstantBuffer() = vs;
   }
 
-  void RtxContext::bakeTerrain(const DrawParameters& params, DrawCallState& drawCallState) {
+  void RtxContext::bakeTerrain(const DrawParameters& params, DrawCallState& drawCallState, const MaterialData** outOverrideMaterialData) {
     if (!shouldBakeTerrain(drawCallState))
       return;
 
     DrawCallTransforms& transformData = drawCallState.transformData;
 
-    Rc<DxvkImageView> previousColorView;
+    Rc<DxvkImageView> previousColorView;      
+    OpaqueMaterialData* opaqueReplacementMaterial = nullptr;
+    TerrainBaker& terrainBaker = getSceneManager().getTerrainBaker();
 
     if (!TerrainBaker::debugDisableBaking()) {
-      // Grab and apply replacement texture if any
-      // NOTE: only the original color texture will be replaced with albedo-opacity texture
-      auto replacementMaterial = getSceneManager().getAssetReplacer()->getReplacementMaterial(drawCallState.getMaterialData().getHash());
+
+      // Retrieve the replacement material
+      MaterialData* replacementMaterial = getSceneManager().getAssetReplacer()->getReplacementMaterial(drawCallState.getMaterialData().getHash());
 
       if (replacementMaterial) {
-        auto albedoOpacity = replacementMaterial->getOpaqueMaterialData().getAlbedoOpacityTexture();
-
-        if (albedoOpacity.isValid()) {
-          uint32_t textureIndex;
-          getSceneManager().trackTexture(this, albedoOpacity, textureIndex, true, false);
-          albedoOpacity.finalizePendingPromotion();
+        if (replacementMaterial->getType() == MaterialDataType::Opaque) {
+          opaqueReplacementMaterial = &replacementMaterial->getOpaqueMaterialData();
 
           // Original 0th colour texture slot
           const uint32_t colorTextureSlot = drawCallState.materialData.colorTextureSlot[0];
@@ -1716,28 +1716,33 @@ namespace dxvk {
               m_rc[colorTextureSlot].imageView != nullptr) {
             previousColorView = m_rc[colorTextureSlot].imageView;
           }
-
-          bindResourceView(colorTextureSlot, albedoOpacity.getImageView(), nullptr);
+        } else {
+          ONCE(Logger::warn(str::format("[RTX Texture Baker] Only opaque replacement materials are supported for terrain baking. Texture hash ",
+                                        drawCallState.getMaterialData().getHash(),
+                                        " has a non-opaque replacement material set. Baking the texture with legacy material instead.")));
         }
       }
     }
 
-    // Bake the texture
-    const bool isBaked = getSceneManager().getTerrainBaker().bakeDrawCall(this, m_state, m_rtState, params, drawCallState, transformData.textureTransform);
+    // Bake the material
+    const bool isBaked = terrainBaker.bakeDrawCall(this, m_state, m_rtState, params, drawCallState, opaqueReplacementMaterial, transformData.textureTransform);
 
     if (isBaked) {
       // Bind the baked terrain texture to the mesh
       if (!TerrainBaker::debugDisableBinding()) {
-        // Update the material data
-        const Resources::Resource& terrainTexture = getResourceManager().getTerrainTexture(Rc<DxvkContext>(this));
-        const Rc<DxvkSampler> terrainSampler = getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
 
-        LegacyMaterialData overrideMaterial;
-        overrideMaterial.colorTextures[0] = TextureRef(terrainSampler, terrainTexture.view);
-        drawCallState.materialData = overrideMaterial;
+        // Set the terrain's baked material data
+        *outOverrideMaterialData = terrainBaker.getMaterialData();
 
         // Generate texcoords in the RT shader
         transformData.texgenMode = TexGenMode::CascadedViewPositions;
+
+        // Update the legacy material data with legacy value defaults as well as set the color textur since some of its data 
+        // is still used through the Rt pipeline even though overrideMaterialData is specifide. 
+        // Also SceneManager uses sampler associated with the color texture to patch samplers for the textures in the opaque material.
+        LegacyMaterialData overrideMaterial;
+        overrideMaterial.colorTextures[0] = (*outOverrideMaterialData)->getOpaqueMaterialData().getAlbedoOpacityTexture();
+        drawCallState.materialData = overrideMaterial;
       }
 
       // Restore state modified during baking

@@ -96,7 +96,7 @@ public:
 
   void onDestroy();
 
-  void submitDrawState(Rc<DxvkContext> ctx, const DrawCallState& input);
+  void submitDrawState(Rc<DxvkContext> ctx, const DrawCallState& input, const MaterialData* overrideMaterialData);
   
   bool areReplacementsLoaded() const;
   bool areReplacementsLoading() const;

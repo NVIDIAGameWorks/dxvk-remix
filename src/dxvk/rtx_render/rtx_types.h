@@ -432,6 +432,7 @@ private:
   friend class RtxContext;
   friend class SceneManager;
   friend struct D3D9Rtx;
+  friend class TerrainBaker;
 
   bool finalizeGeometryHashes();
   void finalizeGeometryBoundingBox();
