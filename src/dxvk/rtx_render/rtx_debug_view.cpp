@@ -33,6 +33,7 @@
 #include "rtx_imgui.h"
 #include "dxvk_scoped_annotation.h"
 #include "rtx_context.h"
+#include "rtx_terrain_baker.h"
 
 #include <rtx_shaders/debug_view.h>
 #include <rtx_shaders/debug_view_waveform_render.h>
@@ -620,7 +621,12 @@ namespace dxvk {
         ctx->bindResourceView(DEBUG_VIEW_BINDING_FINAL_SHADING_INPUT, rtOutput.m_finalOutput.view, nullptr);
         ctx->bindResourceView(DEBUG_VIEW_BINDING_COMPOSITE_OUTPUT_INPUT, rtOutput.m_compositeOutput.view(Resources::AccessType::Read), nullptr);
         ctx->bindResourceView(DEBUG_VIEW_BINDING_INSTRUMENTATION_INPUT, m_instrumentation.view, nullptr);
-        const auto& terrain = m_device->getCommon()->getResources().getTerrainTexture(ctx);
+        
+        const ReplacementMaterialTextureType::Enum terrainTextureType = static_cast<ReplacementMaterialTextureType::Enum>(
+          clamp<uint32_t>(static_cast<uint32_t>(minValue()),
+                          ReplacementMaterialTextureType::AlbedoOpacity,
+                          ReplacementMaterialTextureType::Count - 1));
+        Resources::Resource terrain = m_device->getCommon()->getSceneManager().getTerrainBaker().getTerrainTexture(terrainTextureType);
         ctx->bindResourceView(DEBUG_VIEW_BINDING_TERRAIN_INPUT, terrain.view, nullptr);
 
         ctx->bindResourceView(DEBUG_VIEW_BINDING_HDR_WAVEFORM_RED_INPUT_OUTPUT, m_hdrWaveformRed.view, nullptr);

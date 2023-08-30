@@ -1162,6 +1162,10 @@ struct LegacyMaterialData {
 #endif
   }
 
+  uint32_t getColorTextureSlot(uint32_t slot) const {
+    return colorTextureSlot[slot];
+  }
+
   bool alphaTestEnabled = false;
   uint8_t alphaTestReferenceValue = 0;
   VkCompareOp alphaTestCompareOp = VkCompareOp::VK_COMPARE_OP_ALWAYS;
@@ -1185,6 +1189,7 @@ struct LegacyMaterialData {
 private:
   friend class RtxContext;
   friend struct D3D9Rtx;
+  friend class TerrainBaker;
 
   void updateCachedHash() {
     // Note: Currently only based on the color texture's data hash. This may have to be changed later to
@@ -1240,7 +1245,15 @@ struct OpaqueMaterialData {
     return m_albedoOpacityTexture;
   }
 
+  TextureRef& getAlbedoOpacityTexture() {
+    return m_albedoOpacityTexture;
+  }
+
   const TextureRef& getNormalTexture() const {
+    return m_normalTexture;
+  }
+
+  TextureRef& getNormalTexture() {
     return m_normalTexture;
   }
 
@@ -1248,15 +1261,31 @@ struct OpaqueMaterialData {
     return m_tangentTexture;
   }
 
+  TextureRef& getTangentTexture() {
+    return m_tangentTexture;
+  }
+
   const TextureRef& getRoughnessTexture() const {
     return m_roughnessTexture;
   }
 
+  TextureRef& getRoughnessTexture() {
+    return m_roughnessTexture;
+  }
+  
   const TextureRef& getMetallicTexture() const {
     return m_metallicTexture;
   }
 
+  TextureRef& getMetallicTexture() {
+    return m_metallicTexture;
+  }
+
   const TextureRef& getEmissiveColorTexture() const {
+    return m_emissiveColorTexture;
+  }
+
+  TextureRef& getEmissiveColorTexture() {
     return m_emissiveColorTexture;
   }
 
@@ -1746,6 +1775,12 @@ struct MaterialData {
   }
 
   const OpaqueMaterialData& getOpaqueMaterialData() const {
+    assert(m_type == MaterialDataType::Opaque);
+
+    return m_opaqueMaterialData;
+  }
+
+  OpaqueMaterialData& getOpaqueMaterialData() {
     assert(m_type == MaterialDataType::Opaque);
 
     return m_opaqueMaterialData;

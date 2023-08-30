@@ -68,7 +68,6 @@ SamplerState NearestSampler;
 layout(binding = DEBUG_VIEW_BINDING_LINEAR_SAMPLER)
 SamplerState LinearSampler;
 
-
 layout(binding = DEBUG_VIEW_BINDING_CONSTANTS_INPUT)
 ConstantBuffer<DebugViewArgs> cb;
 
