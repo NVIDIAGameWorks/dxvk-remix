@@ -28,6 +28,7 @@
 #include "dxvk_scoped_annotation.h"
 #include "rtx_imgui.h"
 #include "rtx_option.h"
+#include "rtx_texture.h"
 
 #include "../d3d9/d3d9_state.h"
 #include "../d3d9/d3d9_spec_constants.h"
@@ -35,11 +36,177 @@
 #include "../../d3d9/d3d9_rtx.h"
 
 namespace dxvk {
+  VkFormat getTextureFormat(ReplacementMaterialTextureType::Enum textureType) {
+    switch (textureType) {
+    case ReplacementMaterialTextureType::Normal:
+    case ReplacementMaterialTextureType::Tangent:
+      return VK_FORMAT_R8G8B8A8_SNORM;
+      break;
+
+    case ReplacementMaterialTextureType::AlbedoOpacity:
+    case ReplacementMaterialTextureType::Emissive:
+      return VK_FORMAT_R8G8B8A8_UNORM;
+      break;
+
+      // R16
+    case ReplacementMaterialTextureType::Roughness:
+    case ReplacementMaterialTextureType::Metallic:
+      return VK_FORMAT_R8_UNORM;
+      break;
+
+    default:
+      assert(0);
+      return VK_FORMAT_UNDEFINED;
+      break;
+    }
+  }
+
+  // Gathers available textures from a replacement material and 
+  // runs a compute shader to convert them into a compatible format for baking
+  bool TerrainBaker::gatherAndPreprocessReplacementTextures(Rc<RtxContext> ctx,
+                                                            const DrawCallState& drawCallState,
+                                                            OpaqueMaterialData* replacementMaterial,
+                                                            std::vector<RtxGeometryUtils::TextureConversionInfo>& replacementTextures) {
+    if (!replacementMaterial) {
+      return false;
+    }
+
+    SceneManager& sceneManager = ctx->getSceneManager();
+    Resources& resourceManager = ctx->getResourceManager();
+    const bool hasTexcoords = drawCallState.hasTextureCoordinates();
+    // We're going to use this to create a modified sampler for textures.
+    DxvkSampler* pOriginalSampler = drawCallState.getMaterialData().getColorTexture().sampler.ptr();
+    Rc<DxvkContext> dxvkCtx = ctx;
+
+    // Opacity texture is currently required for blending to work. 
+    // Scenarios where blending does not require a colorOpacity texture or 
+    // replacement material is using a colorOpacity constant are not currently supported
+    if (!replacementMaterial->getAlbedoOpacityTexture().isValid()) {
+      ONCE(Logger::warn(str::format("[RTX Texture Baker] Replacement material for ", drawCallState.getMaterialData().getHash(), " does not have a color opacity texture.",
+                                    " This scenario is not currently supported by the texture baker. Ignoring the replacement material.")));
+      return false;
+    }
+
+    if (!drawCallState.getMaterialData().getColorTexture2().isValid()) {
+      ONCE(Logger::warn(str::format("[RTX Texture Baker] Legacy material for ", drawCallState.getMaterialData().getHash(), " has a second color texture.",
+                                    "Only single texture legacy materials are supported. Ignoring the second color texture.")));
+    }
+
+    // Ensures a texture stays in VidMem
+    auto trackAndFinalizeTexture = [&](TextureRef& texture) {
+      uint32_t unusedTextureIndex;
+      sceneManager.trackTexture(ctx, texture, unusedTextureIndex, hasTexcoords, nullptr);
+      // Force the full resolution promotion
+      if (texture.isPromotable()) {
+        texture.finalizePendingPromotion();
+      }
+    };
+
+    // Track the source albedo opacity texture to keep it in VidMem as it's needed for baking
+    trackAndFinalizeTexture(replacementMaterial->getAlbedoOpacityTexture());
+
+    const DxvkImageCreateInfo& aoImageInfo = replacementMaterial->getAlbedoOpacityTexture().getImageView()->imageInfo();
+
+    // Returns a scaled down the extent that fits within the max resolution constraint preserving the aspect ratio (barring float to integer conversion errors)
+    auto calculateScaledResolution2D = [&](VkExtent3D extent, const uint32_t maxResolutionPerDimension) {
+      const float scalingFactor = 
+        std::min(
+          1.f,     // Don't scale up the input dimensions
+          1 / std::max(
+            extent.width / static_cast<float>(maxResolutionPerDimension),
+            extent.height / static_cast<float>(maxResolutionPerDimension)));
+
+      extent.width = static_cast<uint32_t>(extent.width * scalingFactor);
+      extent.height = static_cast<uint32_t>(extent.height * scalingFactor);
+
+      return extent;
+    };
+
+    auto addValidTexture = [&](TextureRef& texture, ReplacementMaterialTextureType::Enum textureType) {
+
+      if (!texture.isValid()) {
+        return;
+      }
+
+      // Track the source material texture to keep it in VidMem while it's being used for baking.
+      // This needs to be done prior to checking for having valid views 
+      // since the views are not created until the texture is promoted
+      trackAndFinalizeTexture(texture);
+
+      if (!texture.getImageView()) {
+        return;
+      }
+
+      RtxGeometryUtils::TextureConversionInfo& conversionInfo = replacementTextures.emplace_back();
+      conversionInfo.type = textureType;
+      conversionInfo.sourceTexture = &texture;
+
+      // ToDo add the resource to the cache and make it get released if not used on a next frame
+      const DxvkImageCreateInfo& imageInfo = texture.getImageView()->imageInfo();
+      const VkExtent3D& extent = imageInfo.extent;
+
+      const VkExtent3D adjustedExtent = calculateScaledResolution2D(extent, Material::maxResolutionToUseForReplacementMaterials());
+
+      TextureKey textureKey;
+      textureKey.width = adjustedExtent.width;
+      textureKey.height = adjustedExtent.height;
+      textureKey.textureType = textureType;
+      XXH64_hash_t textureKeyHash = textureKey.calculateHash();
+
+      auto textureIter = m_stagingTextureCache.find(textureKeyHash);
+
+      // Staging texture must be 4 channel as the 4th channel will contain opacity
+      VkFormat format = VK_FORMAT_R8G8B8A8_UNORM;
+      
+      if (textureType == ReplacementMaterialTextureType::Normal ||
+          textureType == ReplacementMaterialTextureType::Tangent) {
+        format = VK_FORMAT_R8G8B8A8_SNORM;
+      }
+
+      // No matching cached texture found, create a new one
+      if (textureIter == m_stagingTextureCache.end()) {
+        textureIter =
+          m_stagingTextureCache.emplace(
+            textureKeyHash,
+            Resources::createImageResource(dxvkCtx, "terrain baking: staging replacement texture", adjustedExtent, 
+                                           format, 1, VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, 0)).first;
+      }
+
+      conversionInfo.targetTexture = TextureRef(nullptr, textureIter->second.view);
+
+      // Track lifetime of the resource now since targetTexture object is about to get destroyed
+      ctx->getCommandList()->trackResource<DxvkAccess::Write>(textureIter->second.image);
+    };
+
+    // Gather all replacement textures that need to be preprocessed
+    replacementTextures.reserve(ReplacementMaterialTextureType::Count);
+
+    if (Material::bakeSecondaryPBRTextures()) {
+      addValidTexture(replacementMaterial->getNormalTexture(), ReplacementMaterialTextureType::Normal);
+      addValidTexture(replacementMaterial->getTangentTexture(), ReplacementMaterialTextureType::Tangent);
+      addValidTexture(replacementMaterial->getRoughnessTexture(), ReplacementMaterialTextureType::Roughness);
+      addValidTexture(replacementMaterial->getMetallicTexture(), ReplacementMaterialTextureType::Metallic);
+      addValidTexture(replacementMaterial->getEmissiveColorTexture(), ReplacementMaterialTextureType::Emissive);
+
+      // Pre-process textures to be compatible with baking
+      ctx->getCommonObjects()->metaGeometryUtils().decodeAndAddOpacity(ctx, replacementMaterial->getAlbedoOpacityTexture(), replacementTextures);
+    }
+
+    // Add the remaining albedo opacity which does not needed to be preprocessed to the texture list for baking
+    RtxGeometryUtils::TextureConversionInfo& conversionInfo = replacementTextures.emplace_back();
+    conversionInfo.type = ReplacementMaterialTextureType::AlbedoOpacity;
+    conversionInfo.sourceTexture = nullptr;
+    conversionInfo.targetTexture = replacementMaterial->getAlbedoOpacityTexture();
+
+    return true;
+  }
+
   bool TerrainBaker::bakeDrawCall(Rc<RtxContext> ctx,
                                   const DxvkContextState& dxvkCtxState,
                                   DxvkRaytracingInstanceState& rtState,
                                   const DrawParameters& drawParams,
                                   const DrawCallState& drawCallState,
+                                  OpaqueMaterialData* replacementMaterial,
                                   Matrix4& textureTransformOut) {
 
     ScopedGpuProfileZone(ctx, "Terrain Baker: Bake Draw Call");
@@ -54,8 +221,16 @@ namespace dxvk {
     }
 
     if (debugDisableBaking()) {
-      return (debugDisableBinding() ? false : true) &&
-              resourceManager.getTerrainTexture(ctx).view != nullptr;
+      const bool isBaked =
+        (debugDisableBinding() ? false : true) &&
+        getTerrainTexture(ReplacementMaterialTextureType::AlbedoOpacity).view != nullptr;
+
+      // Recreate material data as it will be needed and textures are available even though baking is currently disabled
+      if (isBaked) {
+        updateMaterialData(ctx);
+      }
+      
+      return isBaked;
     }
 
     if (drawCallState.usesVertexShader && !D3D9Rtx::useVertexCapture()) {
@@ -63,17 +238,12 @@ namespace dxvk {
       return false;
     }
 
+    if (!Material::bakeReplacementMaterials()) {
+      replacementMaterial = nullptr;
+    }
+
     // Register mesh and preprocess state for baking
     registerTerrainMesh(ctx, dxvkCtxState, drawCallState);
-
-    const Rc<DxvkImageView>& terrainView =
-      resourceManager.getTerrainTexture(ctx, textureManger, m_bakingParams.cascadeMapResolution.width, m_bakingParams.cascadeMapResolution.height,
-                                        m_terrainRtColorFormat).view;
-
-    if (terrainView == nullptr) {
-      ONCE(Logger::err(str::format("[RTX Terrain Baker] Failed to retrieve a terrain texture. Ignoring terrain baking draw call.")));
-      return false;
-    }
 
     union UnifiedCB {
       D3D9RtxVertexCaptureData programmablePipeline;
@@ -89,10 +259,10 @@ namespace dxvk {
     } else {
       prevCB.fixedFunction = *static_cast<D3D9FixedFunctionVS*>(rtState.vsFixedFunctionCB->mapPtr(0));
     }
-    
-    const float2 float2CascadeLevelResolution = float2 { 
-      static_cast<float>(m_bakingParams.cascadeLevelResolution.width), 
-      static_cast<float>(m_bakingParams.cascadeLevelResolution.height) 
+
+    const float2 float2CascadeLevelResolution = float2 {
+      static_cast<float>(m_bakingParams.cascadeLevelResolution.width),
+      static_cast<float>(m_bakingParams.cascadeLevelResolution.height)
     };
 
     // Update spec constants
@@ -116,71 +286,108 @@ namespace dxvk {
     // Save previous render targets
     DxvkRenderTargets prevRenderTargets = dxvkCtxState.om.renderTargets;
 
-    // Bind the target terrain texture as render target
-    DxvkRenderTargets terrainRt;
-    terrainRt.color[0].view = resourceManager.getCompatibleViewForView(terrainView, m_terrainRtColorFormat);
-    terrainRt.color[0].layout = VK_IMAGE_LAYOUT_GENERAL;
-    ctx->bindRenderTargets(terrainRt);
+    // Gather replacement textures, if available, to be used for baking
+    std::vector<RtxGeometryUtils::TextureConversionInfo> replacementTextures;
+    bool bakeReplacementTextures = gatherAndPreprocessReplacementTextures(ctx, drawCallState, replacementMaterial, replacementTextures);
 
-    const Matrix4& world = drawCallState.usesVertexShader ? prevCB.programmablePipeline.normalTransform : prevCB.fixedFunction.World;
-    Matrix4 worldSceneView = m_bakingParams.sceneView * world;
+    const uint32_t numTexturesToBake = bakeReplacementTextures ? replacementTextures.size() : 1;
 
-    // Render into all cascade levels. 
-    // The levels are tiled left to right top to bottom in the combined render target texture
-    for (uint32_t iCascade = 0; iCascade < m_bakingParams.numCascades; iCascade++) {
+    // Bake all material textures
+    for (uint32_t iTexture = 0; iTexture < numTexturesToBake; iTexture++) {
+      
+      ReplacementMaterialTextureType::Enum textureType = ReplacementMaterialTextureType::AlbedoOpacity;
 
-      Vector2i cascade2DIndex;
-      cascade2DIndex.y = iCascade / m_bakingParams.cascadeMapSize.x;
-      cascade2DIndex.x = iCascade - cascade2DIndex.y * m_bakingParams.cascadeMapSize.x;
+      // Bind a source replacement texture to bake, if available.
+      // Otherwise the legacy albedoOpacity texture that's already bound will be baked
+      if (bakeReplacementTextures) {
+        TextureRef& replacementTexture = replacementTextures[iTexture].targetTexture;
+        textureType = replacementTextures[iTexture].type;
 
-      // Set viewport which maps clip space <-1, 1> to screen space <0, resolution>.
-      // Accounts for inverted y coordinate in Vulkan
-      VkViewport viewport {
-        cascade2DIndex.x * float2CascadeLevelResolution.x,
-        (cascade2DIndex.y + 1) * float2CascadeLevelResolution.y,
-        float2CascadeLevelResolution.x,
-        -float2CascadeLevelResolution.y,
-        0.f, 1.f
-      };
-
-      VkOffset2D cascadeOffset = VkOffset2D {
-        static_cast<int>(cascade2DIndex.x * m_bakingParams.cascadeLevelResolution.width),
-        static_cast<int>(cascade2DIndex.y * m_bakingParams.cascadeLevelResolution.height) };
-
-      // Set scissor window which clips the screen space
-      VkRect2D scissor = { cascadeOffset, m_bakingParams.cascadeLevelResolution };
-
-      ctx->setViewports(1, &viewport, &scissor);
-
-      // Update constant buffers
-      // 
-      // Programmable VS path
-      if (drawCallState.usesVertexShader) {
-        D3D9RtxVertexCaptureData& cbData = ctx->allocAndMapVertexCaptureConstantBuffer();
-        cbData = prevCB.programmablePipeline;
-        cbData.customWorldToProjection = m_bakingParams.bakingCameraOrthoProjection[iCascade] * worldSceneView;
+        const uint32_t colorTextureSlot = drawCallState.getMaterialData().getColorTextureSlot(0);
+        ctx->bindResourceView(colorTextureSlot, replacementTexture.getImageView(), nullptr);
       }
-      else { // Fixed function path
-        D3D9FixedFunctionVS& cbData = ctx->allocAndMapFixedFunctionConstantBuffer();
-        cbData = prevCB.fixedFunction;
 
-        cbData.InverseView = m_bakingParams.inverseSceneView;
-        cbData.View = m_bakingParams.sceneView;
-        cbData.WorldView = worldSceneView;
-        cbData.Projection = m_bakingParams.bakingCameraOrthoProjection[iCascade];
+      // Bind terrain texture as render target 
+      {
+        const Rc<DxvkImageView>& terrainTextureView =
+          getTerrainTexture(ctx, textureManger, textureType, m_bakingParams.cascadeMapResolution.width,
+                            m_bakingParams.cascadeMapResolution.height).view;
 
-        // Disable lighting
-        for (auto& light : cbData.Lights) {
-          light.Diffuse = Vector4(0.f);
-          light.Specular = Vector4(0.f);
-          light.Ambient = Vector4(1.f);
+        // ToDo: double check behavior here as we still return true. What if all lookups for all texture types fail? => should default to non-baked material. Should probalby require albedoOpacity to succeed at the very least
+        if (terrainTextureView == nullptr) {
+          ONCE(Logger::err(str::format("[RTX Terrain Baker] Failed to retrieve a terrain texture of type ", static_cast<uint32_t>(textureType), ". Skipping terrain baking draw call for the texture.")));
+          continue;
         }
+
+        // Bind the target terrain texture as render target
+        DxvkRenderTargets terrainRt;
+        terrainRt.color[0].view = terrainTextureView;
+        terrainRt.color[0].layout = VK_IMAGE_LAYOUT_GENERAL;
+        ctx->bindRenderTargets(terrainRt);
+      
+        m_materialTextures[textureType].markAsBaked();
       }
 
-      if (drawParams.indexCount == 0) {
-        ctx->DxvkContext::draw(drawParams.vertexCount, drawParams.instanceCount, drawParams.vertexOffset, 0);
-      } else {
-        ctx->DxvkContext::drawIndexed(drawParams.indexCount, drawParams.instanceCount, drawParams.firstIndex, drawParams.vertexOffset, 0);
+      const Matrix4& world = drawCallState.usesVertexShader ? prevCB.programmablePipeline.normalTransform : prevCB.fixedFunction.World;
+      Matrix4 worldSceneView = m_bakingParams.sceneView * world;
+
+      // Render into all cascade levels. 
+      // The levels are tiled left to right top to bottom in the combined render target texture
+      for (uint32_t iCascade = 0; iCascade < m_bakingParams.numCascades; iCascade++) {
+
+        Vector2i cascade2DIndex;
+        cascade2DIndex.y = iCascade / m_bakingParams.cascadeMapSize.x;
+        cascade2DIndex.x = iCascade - cascade2DIndex.y * m_bakingParams.cascadeMapSize.x;
+
+        // Set viewport which maps clip space <-1, 1> to screen space <0, resolution>.
+        // Accounts for inverted y coordinate in Vulkan
+        VkViewport viewport {
+          cascade2DIndex.x * float2CascadeLevelResolution.x,
+          (cascade2DIndex.y + 1) * float2CascadeLevelResolution.y,
+          float2CascadeLevelResolution.x,
+          -float2CascadeLevelResolution.y,
+          0.f, 1.f
+        };
+
+        VkOffset2D cascadeOffset = VkOffset2D {
+          static_cast<int>(cascade2DIndex.x * m_bakingParams.cascadeLevelResolution.width),
+          static_cast<int>(cascade2DIndex.y * m_bakingParams.cascadeLevelResolution.height) };
+
+        // Set scissor window which clips the screen space
+        VkRect2D scissor = { cascadeOffset, m_bakingParams.cascadeLevelResolution };
+
+        ctx->setViewports(1, &viewport, &scissor);
+
+        // Update constant buffers
+        // 
+        // Programmable VS path
+        if (drawCallState.usesVertexShader) {
+          D3D9RtxVertexCaptureData& cbData = ctx->allocAndMapVertexCaptureConstantBuffer();
+          cbData = prevCB.programmablePipeline;
+          cbData.customWorldToProjection = m_bakingParams.bakingCameraOrthoProjection[iCascade] * worldSceneView;
+        } 
+        else { // Fixed function path
+          D3D9FixedFunctionVS& cbData = ctx->allocAndMapFixedFunctionConstantBuffer();
+          cbData = prevCB.fixedFunction;
+
+          cbData.InverseView = m_bakingParams.inverseSceneView;
+          cbData.View = m_bakingParams.sceneView;
+          cbData.WorldView = worldSceneView;
+          cbData.Projection = m_bakingParams.bakingCameraOrthoProjection[iCascade];
+
+          // Disable lighting
+          for (auto& light : cbData.Lights) {
+            light.Diffuse = Vector4(0.f);
+            light.Specular = Vector4(0.f);
+            light.Ambient = Vector4(1.f);
+          }
+        }
+
+        if (drawParams.indexCount == 0) {
+          ctx->DxvkContext::draw(drawParams.vertexCount, drawParams.instanceCount, drawParams.vertexOffset, 0);
+        } else {
+          ctx->DxvkContext::drawIndexed(drawParams.indexCount, drawParams.instanceCount, drawParams.firstIndex, drawParams.vertexOffset, 0);
+        }
       }
     }
 
@@ -195,9 +402,110 @@ namespace dxvk {
       } else {
         ctx->allocAndMapFixedFunctionConstantBuffer() = prevCB.fixedFunction;
       }
+
+      // Input color texture will be restored in RtxContext::bakeTerrain
     }
 
+    updateMaterialData(ctx);
+
     return true;
+  }
+
+  void TerrainBaker::updateMaterialData(Rc<RtxContext> ctx) {
+    if (m_hasInitializedMaterialDataThisFrame && !m_needsMaterialDataUpdate) {
+      return;
+    }
+
+    Resources& resourceManager = ctx->getResourceManager();
+
+    // We're going to use this to create a modified sampler for terrain textures.
+    // Terrain textures have only mip 0, so use nearest for mip filtering
+    Rc<DxvkSampler> linearSampler = resourceManager.getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+
+    // ToDo use TerrainBaker's material defaults
+    const LegacyMaterialDefaults& defaults = RtxOptions::Get()->legacyMaterial;
+    const OpaqueMaterialDefaults& opaqueMaterialDefaults = RtxOptions::Get()->getOpaqueMaterialDefaults();
+    
+    auto createTextureRef = [&](ReplacementMaterialTextureType::Enum textureType) {
+      return m_materialTextures[textureType].isBaked()
+        ? TextureRef(linearSampler, m_materialTextures[textureType].texture.view)
+        : TextureRef();
+    };
+
+    // Create a material with the baked material textures
+    m_materialData.emplace(OpaqueMaterialData(
+      createTextureRef(ReplacementMaterialTextureType::AlbedoOpacity),
+      createTextureRef(ReplacementMaterialTextureType::Normal),
+      createTextureRef(ReplacementMaterialTextureType::Tangent),
+      createTextureRef(ReplacementMaterialTextureType::Roughness),
+      createTextureRef(ReplacementMaterialTextureType::Metallic),
+      createTextureRef(ReplacementMaterialTextureType::Emissive),
+      Material::Properties::roughnessAnisotropy(),
+      Material::Properties::emissiveIntensity(),
+      Vector4(1, 1, 1, 1), // AlbedoOpacityConstant - unused since the AlbedoOpacity texture must be always present for baking
+      Material::Properties::roughnessConstant(),
+      Material::Properties::metallicConstant(),
+      Material::Properties::emissiveColorConstant(),
+      Material::Properties::enableEmission(),
+      // Setting expected constant values. Baked terrain should not need to have other values for the below material parameters set
+      1, 1, 0, /* spriteSheet* */
+      false, // defaults.enableThinFilm(),
+      false, // defaults.alphaIsThinFilmThickness(),
+      defaults.thinFilmThicknessConstant(),
+      false, // Set to false for now, otherwise the baked terrain is not fully opaque - opaqueMaterialDefaults.UseLegacyAlphaState
+      false, // opaqueMaterialDefaults.BlendEnabled,
+      opaqueMaterialDefaults.DefaultBlendType,
+      false, // opaqueMaterialDefaults.InvertedBlend,
+      opaqueMaterialDefaults.DefaultAlphaTestType,
+      0)); //opaqueMaterialDefaults.AlphaReferenceValue));
+
+    m_hasInitializedMaterialDataThisFrame = true;
+    m_needsMaterialDataUpdate = false;
+  }
+
+  const Resources::Resource& TerrainBaker::getTerrainTexture(ReplacementMaterialTextureType::Enum textureType) const {
+    return m_materialTextures[textureType].texture;
+  }
+
+  const Resources::Resource& TerrainBaker::getTerrainTexture(
+    Rc<DxvkContext> ctx, 
+    RtxTextureManager& textureManager, 
+    ReplacementMaterialTextureType::Enum textureType, 
+    uint32_t width, 
+    uint32_t height) {
+    VkExtent3D resolution = { width, height, 1 };
+
+    Resources::Resource& texture = m_materialTextures[static_cast<uint32_t>(textureType)].texture;
+
+    // Recreate the texture
+    if (!texture.isValid() ||
+        texture.image->info().extent != resolution) {
+
+      // WAR (REMIX-1557) to force release previous terrain texture reference from texture cache since it doesn't do it automatically resulting in a leak
+      if (texture.isValid()) {
+        TextureRef textureRef = TextureRef(nullptr, texture.view);
+        textureManager.releaseTexture(textureRef);
+      }
+
+      texture = Resources::createImageResource(
+        ctx, "baked terrain texture", resolution, getTextureFormat(textureType), 1, VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, 0, true);
+
+      if (clearTerrainBeforeBaking()) {
+        clearMaterialTexture(ctx, textureType);
+      }
+
+      m_needsMaterialDataUpdate = true;
+    }
+
+    return texture;
+  }
+
+  const MaterialData* TerrainBaker::getMaterialData() const {
+    if (m_materialData.has_value()) {
+      return &(*m_materialData);
+    }
+
+    return nullptr;
   }
 
   TerrainArgs TerrainBaker::getTerrainArgs() const {
@@ -217,30 +525,61 @@ namespace dxvk {
   void TerrainBaker::showImguiSettings() const {
 
     constexpr ImGuiTreeNodeFlags collapsingHeaderClosedFlags = ImGuiTreeNodeFlags_CollapsingHeader;
+    constexpr ImGuiTreeNodeFlags collapsingHeaderFlags = collapsingHeaderClosedFlags | ImGuiTreeNodeFlags_DefaultOpen;
+    constexpr ImGuiSliderFlags sliderFlags = ImGuiSliderFlags_AlwaysClamp;
 
     if (ImGui::CollapsingHeader("Terrain System [Experimental]", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
 
       ImGui::Checkbox("Enable Runtime Terrain Baking", &enableBakingObject());
       ImGui::Checkbox("Use Terrain Bounding Box", &cascadeMap.useTerrainBBOXObject());
-      ImGui::Checkbox("Clear Terrain Texture Before Terrain Baking", &clearTerrainBeforeBakingObject());
-      ImGui::DragFloat("Cascade Map's Default Half Width [meters]", &cascadeMap.defaultHalfWidthObject(), 1.f, 0.1f, 10000.f);
-      ImGui::DragFloat("Cascade Map's Default Height [meters]", &cascadeMap.defaultHeightObject(), 1.f, 0.1f, 10000.f);
-      ImGui::DragFloat("First Cascade Level's Half Width [meters]", &cascadeMap.levelHalfWidthObject(), 1.f, 0.1f, 10000.f);
+      ImGui::Checkbox("Clear Terrain Textures Before Terrain Baking", &clearTerrainBeforeBakingObject());
 
-      ImGui::DragInt("Max Cascade Levels", &cascadeMap.maxLevelsObject(), 1.f, 1, 16);
-      RTX_OPTION_CLAMP(cascadeMap.maxLevels, 1u, 16u);
-      ImGui::DragInt("Texture Resolution Per Cascade Level", &cascadeMap.levelResolutionObject(), 8.f, 1, 32 * 1024);
-      RTX_OPTION_CLAMP(cascadeMap.levelResolution, 1u, 32 * 1024u);
-      ImGui::Checkbox("Expand Last Cascade Level", &cascadeMap.expandLastCascadeObject());
-
-      if (ImGui::CollapsingHeader("Statistics", collapsingHeaderClosedFlags)) {
+      if (ImGui::CollapsingHeader("Material", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
+
+        ImGui::Checkbox("Bake Replacement Materials", &Material::bakeReplacementMaterialsObject());
+        ImGui::Checkbox("Bake Secondary PBR Textures", &Material::bakeSecondaryPBRTexturesObject());
+        ImGui::DragInt("Max Resolution (except for colorOpacity)", &Material::maxResolutionToUseForReplacementMaterialsObject(), 1.f, 1, 16384);
+
+        if (ImGui::CollapsingHeader("Properties", collapsingHeaderFlags)) {
+          ImGui::Indent();
+
+          ImGui::ColorEdit3("Emissive Color", &Material::Properties::emissiveColorConstantObject());
+          ImGui::Checkbox("Enable Emission", &Material::Properties::enableEmissionObject());
+          ImGui::DragFloat("Emissive Intensity", &Material::Properties::emissiveIntensityObject(), 0.01f, 0.f, FLT_MAX, "%.3f", sliderFlags);
+          ImGui::DragFloat("Roughness", &Material::Properties::roughnessConstantObject(), 0.01f, 0.f, 1.f, "%.3f", sliderFlags);
+          ImGui::DragFloat("Metallic", &Material::Properties::metallicConstantObject(), 0.01f, 0.f, 1.f, "%.3f", sliderFlags);
+          ImGui::DragFloat("Anisotropy", &Material::Properties::roughnessAnisotropyObject(), 0.01f, -1.0f, 1.f, "%.3f", sliderFlags);
+
+          ImGui::Unindent();
+        }
+        ImGui::Unindent();
+      }
+
+      if (ImGui::CollapsingHeader("Cascade Map", collapsingHeaderClosedFlags)) {
+        ImGui::Indent();
+
+        ImGui::DragFloat("Cascade Map's Default Half Width [meters]", &cascadeMap.defaultHalfWidthObject(), 1.f, 0.1f, 10000.f);
+        ImGui::DragFloat("Cascade Map's Default Height [meters]", &cascadeMap.defaultHeightObject(), 1.f, 0.1f, 10000.f);
+        ImGui::DragFloat("First Cascade Level's Half Width [meters]", &cascadeMap.levelHalfWidthObject(), 1.f, 0.1f, 10000.f);
+
+        ImGui::DragInt("Max Cascade Levels", &cascadeMap.maxLevelsObject(), 1.f, 1, 16);
+        RTX_OPTION_CLAMP(cascadeMap.maxLevels, 1u, 16u);
+        ImGui::DragInt("Texture Resolution Per Cascade Level", &cascadeMap.levelResolutionObject(), 8.f, 1, 32 * 1024);
+        RTX_OPTION_CLAMP(cascadeMap.levelResolution, 1u, 32 * 1024u);
+        ImGui::Checkbox("Expand Last Cascade Level", &cascadeMap.expandLastCascadeObject());
+
+        if (ImGui::CollapsingHeader("Statistics", collapsingHeaderClosedFlags)) {
+          ImGui::Indent();
         
-        ImGui::Text("Cascade Levels: %u", m_bakingParams.numCascades);
-        ImGui::Text("Cascade Level Resolution: %u, %u", m_bakingParams.cascadeLevelResolution.width, m_bakingParams.cascadeLevelResolution.height);
-        ImGui::Text("Cascade Map Resolution: %u, %u", m_bakingParams.cascadeMapResolution.width, m_bakingParams.cascadeMapResolution.height);
+          ImGui::Text("Cascade Levels: %u", m_bakingParams.numCascades);
+          ImGui::Text("Cascade Level Resolution: %u, %u", m_bakingParams.cascadeLevelResolution.width, m_bakingParams.cascadeLevelResolution.height);
+          ImGui::Text("Cascade Map Resolution: %u, %u", m_bakingParams.cascadeMapResolution.width, m_bakingParams.cascadeMapResolution.height);
         
+          ImGui::Unindent();
+        }
+
         ImGui::Unindent();
       }
 
@@ -264,21 +603,77 @@ namespace dxvk {
     }
   }
 
-  void TerrainBaker::onFrameEnd(const uint32_t currentFrameIndex) {
+  void TerrainBaker::onFrameEnd(Rc<DxvkContext> ctx) {
+    RtxTextureManager& textureManager = ctx->getCommonObjects()->getTextureManager();
+    const uint32_t currentFrameIndex = ctx->getDevice()->getCurrentFrameId();
+
     // Expects the mesh BBOXes to be calculated by this point
     calculateTerrainBBOX(currentFrameIndex);
+
+    m_hasInitializedMaterialDataThisFrame = false;
+
+    for (BakedTexture& texture : m_materialTextures) {
+      texture.onFrameEnd(ctx);
+    }
+
+    m_stagingTextureCache.clear();
+
+    // Destroy material data every frame so as not keep texture references around.
+    // Materila data gets recreated every frame on baking
+    m_materialData.reset();
+  }
+
+  void TerrainBaker::BakedTexture::onFrameEnd(Rc<DxvkContext> ctx) {
+
+    auto releaseTexture = [&](Resources::Resource& texture) {
+      if (!texture.isValid()) {
+        return;
+      }
+
+      RtxTextureManager& textureManager = ctx->getCommonObjects()->getTextureManager();
+
+      // WAR (REMIX-1557) to force release terrain texture reference from texture cache since it doesn't do it automatically resulting in a leak
+      TextureRef textureRef = TextureRef(nullptr, texture.view);
+      texture.reset();
+      textureManager.releaseTexture(textureRef);
+    };
+
+    // Retain textures when baking is disabled as they are not being refreshed and can still be used
+    if (!debugDisableBaking()) {
+      if (numFramesToRetain > 0) {
+        numFramesToRetain--;
+      }
+    }
+
+    // Release the texture if it has not been baked to recently
+    if (numFramesToRetain == 0) {
+      releaseTexture(texture);
+    }
   }
 
   void TerrainBaker::updateTextureFormat(const DxvkContextState& dxvkCtxState) {
     DxvkRenderTargets currentRenderTargets = dxvkCtxState.om.renderTargets;
 
-    m_terrainRtColorFormat = currentRenderTargets.color[0].view->image()->info().format;
-    VkFormat terrainSrgbColorFormat = TextureUtils::toSRGB(m_terrainRtColorFormat);
+    VkFormat terrainRtColorFormat = currentRenderTargets.color[0].view->image()->info().format;
+    VkFormat terrainSrgbColorFormat = TextureUtils::toSRGB(terrainRtColorFormat);
 
     // RT shaders expect the textures in sRGB format but but as linear targets
-    if (m_terrainRtColorFormat == terrainSrgbColorFormat) {
-      ONCE(Logger::warn(str::format("[RTX Terrain Baker] Terrain render target is of sRGB format ", m_terrainRtColorFormat, ". Instead, it is expected to be of linear format.")));
+    if (terrainRtColorFormat == terrainSrgbColorFormat) {
+      ONCE(Logger::warn(str::format("[RTX Terrain Baker] Terrain render target is of sRGB format ", terrainRtColorFormat, ". Instead, it is expected to be of linear format.")));
     }
+  }
+
+  void TerrainBaker::clearMaterialTexture(Rc<DxvkContext> ctx, ReplacementMaterialTextureType::Enum textureType) {
+    Resources::Resource& texture = m_materialTextures[textureType].texture;
+
+    VkClearColorValue clear = { 0.f, 0.f, 0.f, 0.f };
+
+    VkImageSubresourceRange subRange = {};
+    subRange.layerCount = 1;
+    subRange.levelCount = 1;
+    subRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+
+    ctx->clearColorImage(texture.image, clear, subRange);
   }
 
   TerrainBaker::AxisAlignedBoundingBoxLink::AxisAlignedBoundingBoxLink(const DrawCallState& drawCallState)
@@ -301,22 +696,18 @@ namespace dxvk {
     Resources& resourceManager = ctx->getResourceManager();
     RtxTextureManager& textureManger = ctx->getCommonObjects()->getTextureManager();
 
+    // Force material data update every frame to pick up any material parameter changes
+    m_needsMaterialDataUpdate = true;
+
     updateTextureFormat(dxvkCtxState);
     calculateBakingParameters(ctx, dxvkCtxState);
 
+    // Clear terrain textures
     if (clearTerrainBeforeBaking() && !debugDisableBaking()) {
-      const Rc<DxvkImageView>& view = resourceManager.getTerrainTexture(ctx, textureManger, m_bakingParams.cascadeMapResolution.width, 
-                                                                        m_bakingParams.cascadeMapResolution.height, 
-                                                                        m_terrainRtColorFormat).view;
-
-      if (view != nullptr) {
-        VkClearValue clear;
-        clear.color.float32[0] = 0.f;
-        clear.color.float32[1] = 0.f;
-        clear.color.float32[2] = 0.f;
-        clear.color.float32[3] = 0.f;
-
-        ctx->DxvkContext::clearRenderTarget(view, VK_IMAGE_ASPECT_COLOR_BIT, clear);
+      for (uint32_t i = 0; i < ReplacementMaterialTextureType::Count; i++) {
+        if (m_materialTextures[i].texture.isValid()) {
+          clearMaterialTexture(ctx, static_cast<ReplacementMaterialTextureType::Enum>(i));
+        }
       }
     }
   }
@@ -331,16 +722,6 @@ namespace dxvk {
 
     if (cascadeMap.useTerrainBBOX()) { 
       m_terrainMeshBBOXes.emplace_back(AxisAlignedBoundingBoxLink(drawCallState));
-    }
-
-    // Check for terrain format consistency within the frame
-    {
-      DxvkRenderTargets currentRenderTargets = dxvkCtxState.om.renderTargets;
-      VkFormat terrainRtColorFormat = currentRenderTargets.color[0].view->image()->info().format;
-
-      if (terrainRtColorFormat != m_terrainRtColorFormat) {
-        ONCE(Logger::warn(str::format("[RTX Terrain Baker] Terrain draw call's render target format is ", terrainRtColorFormat, " which is different from the first seen and accepted format ", m_terrainRtColorFormat, ". Disregarding  the format change.")));
-      }
     }
   }
 

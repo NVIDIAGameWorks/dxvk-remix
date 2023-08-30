@@ -29,6 +29,7 @@
 #include "rtx_utils.h"
 #include "rtx/pass/raytrace_args.h"
 #include "rtx_common_object.h"
+#include "rtx_geometry_utils.h"
 
 namespace dxvk 
 {
@@ -388,8 +389,6 @@ namespace dxvk
     Rc<DxvkImageView> getWhiteTexture(Rc<DxvkContext> ctx);
     Resources::Resource getSkyProbe(Rc<DxvkContext> ctx, VkFormat format = VK_FORMAT_UNDEFINED);
     Resources::Resource getSkyMatte(Rc<DxvkContext> ctx, VkFormat format = VK_FORMAT_UNDEFINED);
-    const Resources::Resource& getTerrainTexture(Rc<DxvkContext> ctx, RtxTextureManager& textureManager, uint32_t width, uint32_t height, VkFormat format);
-    const Resources::Resource& getTerrainTexture(Rc<DxvkContext> ctx);
     Rc<DxvkImageView> getCompatibleViewForView(const Rc<DxvkImageView>& view, VkFormat format);
 
     Rc<DxvkSampler> getSampler(const VkFilter filter, const VkSamplerMipmapMode mipFilter,
@@ -441,8 +440,6 @@ namespace dxvk
 
     Resources::Resource m_skyProbe;
     Resources::Resource m_skyMatte;
-    
-    Resources::Resource m_terrain;
 
     fast_unordered_cache<Rc<DxvkSampler>> m_samplerCache;
     fast_unordered_cache<std::pair<Rc<DxvkImageView>, uint32_t>> m_viewCache;

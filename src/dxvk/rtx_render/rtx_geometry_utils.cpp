@@ -19,6 +19,7 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
+
 #include "rtx_geometry_utils.h"
 #include "dxvk_device.h"
 #include "rtx_render/rtx_shader_manager.h"
@@ -27,6 +28,7 @@
 #include <rtx_shaders/gpu_skinning.h>
 #include <rtx_shaders/view_model_correction.h>
 #include <rtx_shaders/bake_opacity_micromap.h>
+#include <rtx_shaders/decode_and_add_opacity.h>
 #include <rtx_shaders/interleave_geometry.h>
 #include "dxvk_scoped_annotation.h"
 
@@ -35,6 +37,7 @@
 
 #include "rtx/pass/view_model/view_model_correction_binding_indices.h"
 #include "rtx/pass/opacity_micromap/bake_opacity_micromap_binding_indices.h"
+#include "rtx/pass/terrain_baking/decode_and_add_opacity_binding_indices.h"
 #include "rtx/pass/gpu_skinning_binding_indices.h"
 #include "rtx/pass/skinning.h"
 #include "rtx/pass/gen_tri_list_index_buffer.h"
@@ -104,6 +107,21 @@ namespace dxvk {
     };
 
     PREWARM_SHADER_PIPELINE(BakeOpacityMicromapShader);
+
+    class DecodeAndAddOpacityShader : public ManagedShader {
+      SHADER_SOURCE(DecodeAndAddOpacityShader, VK_SHADER_STAGE_COMPUTE_BIT, decode_and_add_opacity)
+
+      PUSH_CONSTANTS(DecodeAndAddOpacityArgs)
+
+      BEGIN_PARAMETER()
+        TEXTURE2D(DECODE_AND_ADD_OPACITY_BINDING_TEXTURE_INPUT)
+        TEXTURE2D(DECODE_AND_ADD_OPACITY_BINDING_ALBEDO_OPACITY_TEXTURE_INPUT)
+        RW_TEXTURE2D(DECODE_AND_ADD_OPACITY_BINDING_TEXTURE_OUTPUT)
+        SAMPLER(DECODE_AND_ADD_OPACITY_BINDING_LINEAR_SAMPLER)
+      END_PARAMETER()
+    };
+
+    PREWARM_SHADER_PIPELINE(DecodeAndAddOpacityShader);
 
     class InterleaveGeometryShader : public ManagedShader {
       SHADER_SOURCE(InterleaveGeometryShader, VK_SHADER_STAGE_COMPUTE_BIT, interleave_geometry)
@@ -401,6 +419,46 @@ namespace dxvk {
 
     // Make sure the geom buffers are tracked for liveness
     ctx->getCommandList()->trackResource<DxvkAccess::Write>(opacityMicromapBuffer);
+  }
+
+  void RtxGeometryUtils::decodeAndAddOpacity(
+      Rc<DxvkContext> ctx,
+      const TextureRef& albedoOpacityTexture,
+      const std::vector<TextureConversionInfo>& conversionInfos) {
+
+    ScopedGpuProfileZone(ctx, "Decode And Add Opacity");
+
+    Resources& resourceManager = ctx->getCommonObjects()->getResources();
+    Rc<DxvkSampler> linearSampler = resourceManager.getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+
+    // Bind resources
+    ctx->bindResourceView(DECODE_AND_ADD_OPACITY_BINDING_ALBEDO_OPACITY_TEXTURE_INPUT, albedoOpacityTexture.getImageView(), nullptr);
+    ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, DecodeAndAddOpacityShader::getShader());
+    ctx->bindResourceSampler(DECODE_AND_ADD_OPACITY_BINDING_LINEAR_SAMPLER, linearSampler);
+    
+    ctx->setPushConstantBank(DxvkPushConstantBank::RTX);
+
+    for (uint32_t i = 0; i < conversionInfos.size(); i++) {
+      const TextureConversionInfo& conversionInfo = conversionInfos[i];
+
+      // Bind resources
+      ctx->bindResourceView(DECODE_AND_ADD_OPACITY_BINDING_TEXTURE_INPUT, conversionInfo.sourceTexture->getImageView(), nullptr);
+      ctx->bindResourceView(DECODE_AND_ADD_OPACITY_BINDING_TEXTURE_OUTPUT, conversionInfo.targetTexture.getImageView(), nullptr);
+
+      // Fill out args
+      DecodeAndAddOpacityArgs args {};
+      args.textureType = conversionInfo.type;
+      const VkExtent3D& extent = conversionInfo.targetTexture.getImageView()->imageInfo().extent;
+      args.resolution = uint2(extent.width, extent.height);
+      args.rcpResolution = float2(1.f / extent.width, 1.f / extent.height);
+      args.normalIntensity = OpaqueMaterialOptions::normalIntensity();
+
+      ctx->pushConstants(0, sizeof(args), &args);
+
+      // Run the shader
+      const VkExtent3D workgroups = util::computeBlockCount(extent, VkExtent3D { DECODE_AND_ADD_OPACITY_CS_DIMENSIONS });
+      ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
+    }
   }
 
   uint32_t RtxGeometryUtils::getOptimalTriangleListSize(const RasterGeometry& input) {
