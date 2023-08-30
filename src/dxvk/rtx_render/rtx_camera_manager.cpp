@@ -37,7 +37,11 @@ namespace {
 
 namespace dxvk {
 
-  CameraManager::CameraManager(DxvkDevice* device) : CommonDeviceObject(device) {}
+  CameraManager::CameraManager(DxvkDevice* device) : CommonDeviceObject(device) {
+    for (int i = 0; i < CameraType::Count; i++) {
+      m_cameras[i].setCameraType(CameraType::Enum(i));
+    }
+  }
 
   bool CameraManager::isCameraValid(CameraType::Enum cameraType) const {
     assert(cameraType < CameraType::Enum::Count);
