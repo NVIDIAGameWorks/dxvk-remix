@@ -27,6 +27,7 @@
 
 #include "../util/util_matrix.h"
 #include "rtx/pass/gen_tri_list_index_buffer_indices.h"
+#include "rtx/pass/terrain_baking/decode_and_add_opacity_binding_indices.h"
 #include "rtx_types.h"
 #include "rtx_common_object.h"
 
@@ -115,6 +116,18 @@ namespace dxvk {
       const BakeOpacityMicromapDesc& desc,
       BakeOpacityMicromapState& bakeState,
       Rc<DxvkBuffer> opacityMicromapBuffer) const;
+
+    struct TextureConversionInfo {
+      ReplacementMaterialTextureType::Enum type = ReplacementMaterialTextureType::Count;
+      const TextureRef* sourceTexture = nullptr;
+      Rc<DxvkImageView> sourceView = nullptr;
+      TextureRef targetTexture;
+    };
+
+    void decodeAndAddOpacity(
+      Rc<DxvkContext> ctx,
+      const TextureRef& colorOpacityTexture,
+      const std::vector<TextureConversionInfo>& conversionInfos);
 
     struct InterleavedGeometryDescriptor {
       Rc<DxvkBuffer> buffer = nullptr;

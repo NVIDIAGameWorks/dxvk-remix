@@ -467,7 +467,7 @@ namespace dxvk {
     m_bufferCache.clear();
 
     if (TerrainBaker::needsTerrainBaking())
-      m_terrainBaker->onFrameEnd(m_device->getCurrentFrameId());
+      m_terrainBaker->onFrameEnd(ctx);
   }
 
   void SceneManager::onFrameEndNoRTX() {
@@ -477,7 +477,7 @@ namespace dxvk {
   std::unordered_set<XXH64_hash_t> uniqueHashes;
 
 
-  void SceneManager::submitDrawState(Rc<DxvkContext> ctx, const DrawCallState& input) {
+  void SceneManager::submitDrawState(Rc<DxvkContext> ctx, const DrawCallState& input, const MaterialData* overrideMaterialData) {
     ScopedCpuProfileZone();
     const uint32_t kBufferCacheLimit = kSurfaceInvalidBufferIndex - 10; // Limit for unique buffers minus some padding
     if (m_bufferCache.getTotalCount() >= kBufferCacheLimit && m_bufferCache.getActiveCount() >= kBufferCacheLimit) {
@@ -491,7 +491,9 @@ namespace dxvk {
 
     // Get Material and Mesh replacements
     // NOTE: Next refactor we move this into a material manager
-    const MaterialData* overrideMaterialData = m_pReplacer->getReplacementMaterial(input.getMaterialData().getHash());
+    if (overrideMaterialData == nullptr) {
+      overrideMaterialData = m_pReplacer->getReplacementMaterial(input.getMaterialData().getHash());
+    }
 
     const XXH64_hash_t activeReplacementHash = input.getHash(RtxOptions::Get()->GeometryAssetHashRule);
     std::vector<AssetReplacement>* pReplacements = m_pReplacer->getReplacementsForMesh(activeReplacementHash);

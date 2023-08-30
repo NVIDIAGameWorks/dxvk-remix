@@ -172,7 +172,7 @@ namespace dxvk {
     void initSkyProbe();
     void rasterizeToSkyProbe(const DrawParameters& params);
     void rasterizeSky(const DrawParameters& params, const DrawCallState& drawCallState);
-    void bakeTerrain(const DrawParameters& params, DrawCallState& drawCallState);
+    void bakeTerrain(const DrawParameters& params, DrawCallState& drawCallState, const MaterialData** outOverrideMaterialData);
 
     uint32_t m_frameLastInjected = kInvalidFrameIndex;
     bool m_captureStateForRTX = true;
