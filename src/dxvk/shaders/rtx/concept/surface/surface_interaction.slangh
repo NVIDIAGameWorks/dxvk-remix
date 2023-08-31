@@ -284,7 +284,10 @@ SurfaceInteraction surfaceInteractionCreate(
   const vec3 ac = worldPositions[2] - worldPositions[0];
   const vec3 worldTriangleVector = cross(ab, ac);
 
-  const vec3 worldTriangleNormal = normalize(worldTriangleVector);
+  // Note: Fall back to an arbitrary vector for degenerate triangles where a triangle normal cannot be derived. Note this
+  // will not produce a valid normal for cases where the positional data itself is NaN/Inf, but these cases likely indicate
+  // corruption in the original data to begin with.
+  const vec3 worldTriangleNormal = safeNormalize(worldTriangleVector, vec3(0.0f, 0.0f, 1.0f));
   // Note: Ideally cheaper than using length to get the magnitude of the cross product's result (no sqrt required).
   const float worldTwoTriangleArea = dot(worldTriangleVector, worldTriangleNormal);
   surfaceInteraction.triangleArea = worldTwoTriangleArea * 0.5;
@@ -316,7 +319,10 @@ SurfaceInteraction surfaceInteractionCreate(
       normals[i].z = BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex + 2);
     }
   
-    const vec3 objectInterpolatedNormal = normalize(interpolateHitAttribute(normals, bary));
+    // Note: Fall back to the triangle normal when an interpolated normal cannot be derived. Note this will not produce a
+    // valid normal for cases where the positional data itself is NaN/Inf, but these cases likely indicate corruption in
+    // the original data to begin with.
+    const vec3 objectInterpolatedNormal = safeNormalize(interpolateHitAttribute(normals, bary), triangleNormal);
   
     // Note: Second normalization required as vector may be scaled through a normal transformation
     const f16vec3 interpolatedNormal = f16vec3(normalize(mul(surface.normalObjectToWorld, objectInterpolatedNormal)));
@@ -474,7 +480,7 @@ SurfaceInteraction surfaceInteractionCreate(
     // TNB frame in local space, but since we generate the TNB frame in world space this is more applicable. Additionally
     // it removes the need to keep the object space positions around which should ideally reduce register pressure.
     genTangSpace(
-      texcoords, worldPositions, surfaceInteraction.triangleNormal, surfaceInteraction.interpolatedNormal,
+      texcoords, worldPositions, surfaceInteraction.interpolatedNormal,
       interpolatedTangent, interpolatedBitangent);
 
     surfaceInteraction.interpolatedTangent = interpolatedTangent;
