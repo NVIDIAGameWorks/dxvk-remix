@@ -163,6 +163,15 @@ dxvk_include_dirs = [
 dxvk_include_path = include_directories(dxvk_include_dirs)
 dxvk_shader_include_path = include_directories('./src/dxvk/shaders')
 
+test_include_dirs = [
+  './include',
+  './include/vulkan/include',
+  './src/dxvk',
+  './src/dxvk/shaders'
+]
+
+test_include_path = include_directories(test_include_dirs)
+
 if (cpu_family == 'x86_64')
   dxvk_library_path = meson.global_source_root() + '/lib'
 else
