@@ -36,5 +36,5 @@ typedef uint8_t PortalSpace2BitsType;     // Using 2 bits only
 #define PORTAL_SPACE_PORTAL_COMBINED  3   // Portal spaces beyond 2nd portal hit with a same portal index
 
 #if PORTAL_SPACE_PORTAL_1 != PORTAL_SPACE_PORTAL_0 + 1
-  PORTAL_SPACE_PORTAL_1 must equal (PORTAL_SPACE_PORTAL_0 + 1)
+  #error PORTAL_SPACE_PORTAL_1 must equal (PORTAL_SPACE_PORTAL_0 + 1)
 #endif

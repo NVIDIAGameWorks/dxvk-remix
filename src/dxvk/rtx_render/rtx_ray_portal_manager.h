@@ -30,6 +30,7 @@
 #include "rtx_common_object.h"
 
 namespace dxvk {
+
 class DxvkContext;
 class DxvkDevice;
 class CameraManager;
@@ -50,13 +51,16 @@ struct RayPortalInfo {
   uint32_t materialIndex;
 
   Matrix4 textureTransform;
+
+  uint8_t spriteSheetRows;
+  uint8_t spriteSheetCols;
+  uint8_t spriteSheetFPS;
 };
 
 struct SingleRayPortalDirectionInfo {
   RayPortalInfo entryPortalInfo;
   Matrix4 portalToOpposingPortalDirectionWithoutRayOffset;  // W/o ray offset
   Matrix4 portalToOpposingPortalDirection;      // Includes ray offset
-
 };
 
 struct RayPortalPairInfo {

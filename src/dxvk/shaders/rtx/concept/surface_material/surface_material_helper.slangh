@@ -81,7 +81,11 @@ struct SurfaceMaterialInteractionPSRSample
 // Note: Forward declared to solve strange issue with function not being defined (likely due to include cycle between Ray and Surface Material)
 f16vec4 textureRead(uint16_t textureIndex, SurfaceInteraction surfaceInteraction, float lodBias);
 
-bool surfaceMaterialInteractionTextureReadHelper(uint16_t textureIndex, SurfaceInteraction surfaceInteraction, inout f16vec4 textureSample, float lodBias = 0.0)
+bool surfaceMaterialInteractionTextureReadHelper(
+  uint16_t textureIndex,
+  SurfaceInteraction surfaceInteraction,
+  inout f16vec4 textureSample,
+  float lodBias = 0.0)
 {
   // Return if no texture is available
 
@@ -91,86 +95,6 @@ bool surfaceMaterialInteractionTextureReadHelper(uint16_t textureIndex, SurfaceI
   }
 
   textureSample = textureRead(textureIndex, surfaceInteraction, lodBias);
-
-  return true;
-}
-
-// Adjusts the surface material's texture coordinates and gradients with respect to specified spritesheet information.
-void surfaceMaterialInteractionSpriteSheetAdjustmentHelper(
-  inout SurfaceInteraction surfaceInteraction,
-  uint32_t timeSinceStartMS,
-  uint8_t spriteSheetRows,
-  uint8_t spriteSheetCols,
-  uint8_t spriteSheetFPS)
-{
-  if (spriteSheetFPS == 0)
-  { 
-    return;
-  }
-
-  const uint numSprites = (spriteSheetCols * spriteSheetRows);
-  const uint frame = timeSinceStartMS * spriteSheetFPS / 1000 % numSprites;
-  const vec2 uvSize = vec2(1.0f / spriteSheetCols, 1.0f / spriteSheetRows);
-
-  const vec2 uvBias = vec2(frame % spriteSheetCols, frame / spriteSheetCols) * uvSize;
-  surfaceInteraction.textureCoordinates = uvBias + surfaceInteraction.textureCoordinates * uvSize;
-  surfaceInteraction.textureGradientX *= uvSize;
-  surfaceInteraction.textureGradientY *= uvSize;
-}
-
-bool surfaceMaterialInteractionPortalSpriteSheetReadHelper(
-  uint16_t textureIndex,
-  SurfaceInteraction surfaceInteraction,
-  uint32_t timeSinceStartMS,
-  uint8_t spriteSheetRows,
-  uint8_t spriteSheetCols,
-  uint8_t spriteSheetFPS,
-  float16_t rotationSpeed,
-  inout f16vec4 textureSample)
-{
-  // Return if no texture is available
-  if (textureIndex == BINDING_INDEX_INVALID)
-  {
-    return false;
-  }
-
-  vec2 originalCoord = surfaceInteraction.textureCoordinates;
-  
-  const float timeSinceStartSecs = timeSinceStartMS * 0.001f;
-
-  // Some constant to slow down, and a unique direction for opposing Portals
-  const float t = float(rotationSpeed) * timeSinceStartSecs;
-  float2x2 rot = float2x2(cos(t), -sin(t), sin(t), cos(t));
-
-  // Rotate around the center
-  originalCoord = mul(rot, originalCoord - float2(0.5f)) + float2(0.5f);
-
-  // Make sure we don't sample from neighbouring sprite sheet cells
-  originalCoord = saturate(originalCoord);
-
-  const uint numSprites = (spriteSheetCols * spriteSheetRows);
-  const float frameWithFraction = (timeSinceStartSecs * spriteSheetFPS) % numSprites;
-  uint frame = floor(frameWithFraction);
-  const float frameFraction = frac(frameWithFraction);
-  const vec2 uvSize = vec2(1.0f / spriteSheetCols, 1.0f / spriteSheetRows);
-
-  // Scale the gradients according to the spritesheet size
-  surfaceInteraction.textureGradientX *= uvSize;
-  surfaceInteraction.textureGradientY *= uvSize;
-
-  // get prev frame sample
-  vec2 uvBias = vec2(frame % spriteSheetCols, frame / spriteSheetCols) * uvSize;
-  surfaceInteraction.textureCoordinates = uvBias + originalCoord * uvSize;
-  f16vec4 prevSample = textureRead(textureIndex, surfaceInteraction);
-
-  // get next frame sample
-  frame = (frame + 1) % numSprites;
-  uvBias = vec2(frame % spriteSheetRows, frame / spriteSheetCols) * uvSize;
-  surfaceInteraction.textureCoordinates = uvBias + originalCoord * uvSize;
-  f16vec4 futureSample = textureRead(textureIndex, surfaceInteraction);
-
-  // combine them
-  textureSample = mix(prevSample, futureSample, frameFraction);
 
   return true;
 }

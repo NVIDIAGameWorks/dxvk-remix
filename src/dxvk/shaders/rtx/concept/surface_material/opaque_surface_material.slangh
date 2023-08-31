@@ -56,11 +56,7 @@ OpaqueSurfaceMaterial opaqueSurfaceMaterialCreate(uint16_t surfaceMaterialIndex,
   opaqueSurfaceMaterial.roughnessConstant = unorm8ToF16(uint8_t(data11.y));
   opaqueSurfaceMaterial.metallicConstant = unorm8ToF16(uint8_t(data11.y >> 8u));
 
-  opaqueSurfaceMaterial.spriteSheetRows = uint8_t(data12.x);
-  opaqueSurfaceMaterial.spriteSheetCols = uint8_t(data12.x >> 8u);
-  opaqueSurfaceMaterial.spriteSheetFPS = uint8_t(data12.y);
-
-  opaqueSurfaceMaterial.thinFilmThicknessConstant = unorm8ToF16(uint8_t(data12.y >> 8u));
+  opaqueSurfaceMaterial.thinFilmThicknessConstant = unorm8ToF16(uint8_t(data12.x));
 
   opaqueSurfaceMaterial.flags = (data13.x & 0xFF);
 

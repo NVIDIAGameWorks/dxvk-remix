@@ -430,6 +430,7 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
 
   shader.GetAttribute(kEnableEmission).Get(&enableEmission);
   shader.GetAttribute(kEmissiveIntensity).Get(&emissiveIntensity);
+
   if (shader.HasAttribute(kSpriteSheetFPSToken)) {
     shader.GetAttribute(kSpriteSheetRowsToken).Get(&spriteSheetRows);
     shader.GetAttribute(kSpriteSheetColsToken).Get(&spriteSheetCols);
@@ -495,11 +496,21 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
 
     const TextureRef normalTexture(getTexture(args, shader, kNormalTextureToken));
     const TextureRef transmittanceTexture(getTexture(args, shader, kTransmittanceTexture));
+    // Note: Only set if in use to avoid sampling from this texture if emission is disabled.
+    TextureRef emissiveColorTexture {};
+
+    if (enableEmission) {
+      emissiveColorTexture = TextureRef{ getTexture(args, shader, kEmissiveMaskTextureToken) };
+    }
 
     const TranslucentMaterialData translucentMaterialData{
-      normalTexture, refractiveIndex,
-      transmittanceTexture, transmittanceColor, transmittanceMeasureDistance,
+      normalTexture, transmittanceTexture, emissiveColorTexture,
+      refractiveIndex,
+      transmittanceColor, transmittanceMeasureDistance,
       enableEmission, emissiveIntensity, emissiveColorConstant,
+      static_cast<uint8_t>(spriteSheetRows),
+      static_cast<uint8_t>(spriteSheetCols),
+      static_cast<uint8_t>(spriteSheetFPS),
       isThinWalled, thinWallThickness, useDiffuseLayer
     };
 
@@ -522,13 +533,11 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
     shader.GetAttribute(kOpacityConstant).Get(&albedoOpacityConstant.a);
 
     shader.GetAttribute(kAnisotropy).Get(&anisotropy);
-    shader.GetAttribute(kEmissiveIntensity).Get(&emissiveIntensity);
 
     getVector3(shader, kAlbedoConstant, albedoOpacityConstant.xyz());
 
     shader.GetAttribute(kRoughnessConstant).Get(&roughnessConstant);
     shader.GetAttribute(kMetallicConstant).Get(&metallicConstant);
-    shader.GetAttribute(kEnableEmission).Get(&enableEmission);
 
     getVector3(shader, kEmissiveColorConstant, emissiveColorConstant);
 
@@ -537,7 +546,12 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
     const TextureRef tangentTexture(getTexture(args, shader, kTangentTextureToken));
     const TextureRef roughnessTexture(getTexture(args, shader, kRoughnessTextureToken));
     const TextureRef metallicTexture(getTexture(args, shader, kMetallicTextureToken));
-    const TextureRef emissiveColorTexture(getTexture(args, shader, kEmissiveMaskTextureToken));
+    // Note: Only set if in use to avoid sampling from this texture if emission is disabled.
+    TextureRef emissiveColorTexture{};
+
+    if (enableEmission) {
+      emissiveColorTexture = TextureRef{ getTexture(args, shader, kEmissiveMaskTextureToken) };
+    }
 
     bool thinFilmEnable = false;
     shader.GetAttribute(kEnableThinFilm).Get(&thinFilmEnable);

@@ -102,7 +102,7 @@ public:
   bool areReplacementsLoading() const;
   const std::string getReplacementStatus() const;
 
-  uint32_t getGameTimeSinceStartMS();
+  uint64_t getGameTimeSinceStartMS();
 
   Rc<DxvkBuffer> getSurfaceMaterialBuffer() { return m_surfaceMaterialBuffer; }
   Rc<DxvkBuffer> getVolumeMaterialBuffer() { return m_volumeMaterialBuffer; }
@@ -228,7 +228,7 @@ private:
 
   uint32_t m_currentFrameIdx = -1;
   bool m_useFixedFrameTime = false;
-  std::chrono::time_point<std::chrono::system_clock> m_startTime;
+  std::chrono::time_point<std::chrono::steady_clock> m_startTime;
 };
 
 }  // namespace nvvk

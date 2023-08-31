@@ -98,7 +98,12 @@ struct RtSurface {
     writeGPUHelperExplicit<2>(data, offset, color0BufferIndex);
     writeGPUHelperExplicit<2>(data, offset, surfaceMaterialIndex);
 
-    const uint16_t packedHash = (uint16_t) (associatedGeometryHash >> 48) ^ (uint16_t) (associatedGeometryHash >> 32) ^ (uint16_t) (associatedGeometryHash >> 16) ^ (uint16_t) associatedGeometryHash;
+    const uint16_t packedHash =
+      (uint16_t) (associatedGeometryHash >> 48) ^
+      (uint16_t) (associatedGeometryHash >> 32) ^
+      (uint16_t) (associatedGeometryHash >> 16) ^
+      (uint16_t) associatedGeometryHash;
+
     writeGPUHelper(data, offset, packedHash);
 
     writeGPUHelper(data, offset, positionOffset);
@@ -114,6 +119,11 @@ struct RtSurface {
 
     writeGPUHelperExplicit<3>(data, offset, firstIndex);
     writeGPUHelperExplicit<1>(data, offset, indexStride);
+
+    // Note: Ensure alpha state values fit in the intended amount of bits allocated in the flags bitfield.
+    assert(static_cast<uint32_t>(alphaState.alphaTestType) < (1 << 3));
+    assert(static_cast<uint32_t>(alphaState.alphaTestReferenceValue) < (1 << 8));
+    assert(static_cast<uint32_t>(alphaState.blendType) < (1 << 4));
 
     uint32_t flags = 0;
 
@@ -135,8 +145,9 @@ struct RtSurface {
     flags |= isMatte ?                       (1 << 26) : 0;
     flags |= isTextureFactorBlend ?          (1 << 27) : 0;
     flags |= isMotionBlurMaskOut ?           (1 << 28) : 0;
+    flags |= skipSurfaceInteractionSpritesheetAdjustment ? (1 << 29) : 0;
     // Note: This flag is purely for debug view purpose. If we need to add more functional flags and running out of bits, we should move this flag to other place.
-    flags |= isInsideFrustum ?               (1 << 29) : 0;
+    flags |= isInsideFrustum ?               (1 << 30) : 0;
 
     writeGPUHelper(data, offset, flags);
 
@@ -184,12 +195,18 @@ struct RtSurface {
     writeGPUHelper(data, offset, textureTransform.data[2].y);
     writeGPUHelper(data, offset, textureTransform.data[3].y);
 
-    // 4 bytes padding
-    writeGPUPadding<4>(data, offset);
+    std::uint32_t textureSpritesheetData = 0;
+
+    textureSpritesheetData |= (static_cast<uint32_t>(spriteSheetRows) << 0);
+    textureSpritesheetData |= (static_cast<uint32_t>(spriteSheetCols) << 8);
+    textureSpritesheetData |= (static_cast<uint32_t>(spriteSheetFPS) << 16);
+
+    writeGPUHelper(data, offset, textureSpritesheetData);
 
     writeGPUHelper(data, offset, tFactor);
 
-    uint32_t textureFlags = 0;
+    std::uint32_t textureFlags = 0;
+
     textureFlags |= ((static_cast<uint32_t>(textureColorArg1Source) & 0x3));
     textureFlags |= ((static_cast<uint32_t>(textureColorArg2Source) & 0x3) << 2);
     textureFlags |= ((static_cast<uint32_t>(textureColorOperation)  & 0x7) << 4);
@@ -243,6 +260,7 @@ struct RtSurface {
   bool isClipPlaneEnabled = false;
   bool isTextureFactorBlend = false;
   bool isMotionBlurMaskOut = false;
+  bool skipSurfaceInteractionSpritesheetAdjustment = false;
   bool isInsideFrustum = false;
 
   RtTextureArgSource textureColorArg1Source = RtTextureArgSource::Texture;
@@ -290,6 +308,10 @@ struct RtSurface {
   Matrix3 normalObjectToWorld;
   Matrix4 textureTransform;
   Vector4 clipPlane;
+
+  uint8_t spriteSheetRows = 1;
+  uint8_t spriteSheetCols = 1;
+  uint8_t spriteSheetFPS = 0;
 
   XXH64_hash_t associatedGeometryHash; // NOTE: This is used for the debug view
 };
@@ -458,7 +480,6 @@ struct RtOpaqueSurfaceMaterial {
     const Vector4& albedoOpacityConstant,
     float roughnessConstant, float metallicConstant,
     const Vector3& emissiveColorConstant, bool enableEmission,
-    uint8_t spriteSheetRows, uint8_t spriteSheetCols, uint8_t spriteSheetFPS,
     bool enableThinFilm, bool alphaIsThinFilmThickness, float thinFilmThicknessConstant) :
     m_albedoOpacityTextureIndex{ albedoOpacityTextureIndex }, m_normalTextureIndex{ normalTextureIndex },
     m_tangentTextureIndex{ tangentTextureIndex }, m_roughnessTextureIndex{ roughnessTextureIndex },
@@ -467,9 +488,6 @@ struct RtOpaqueSurfaceMaterial {
     m_albedoOpacityConstant{ albedoOpacityConstant },
     m_roughnessConstant{ roughnessConstant }, m_metallicConstant{ metallicConstant },
     m_emissiveColorConstant{ emissiveColorConstant }, m_enableEmission{ enableEmission },
-    m_spriteSheetRows { spriteSheetRows },
-    m_spriteSheetCols { spriteSheetCols },
-    m_spriteSheetFPS { spriteSheetFPS },
     m_enableThinFilm { enableThinFilm }, m_alphaIsThinFilmThickness { alphaIsThinFilmThickness }, m_thinFilmThicknessConstant { thinFilmThicknessConstant } {
     updateCachedData();
     updateCachedHash();
@@ -507,10 +525,7 @@ struct RtOpaqueSurfaceMaterial {
     writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_roughnessConstant));
     writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_metallicConstant));
 
-    // 3 Bytes
-    writeGPUHelper(data, offset, m_spriteSheetRows);
-    writeGPUHelper(data, offset, m_spriteSheetCols);
-    writeGPUHelper(data, offset, m_spriteSheetFPS);
+    writeGPUPadding<3>(data, offset); // Note: Padding for unused space
     
     // 1 byte
     writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_cachedThinFilmNormalizedThicknessConstant));
@@ -592,10 +607,6 @@ struct RtOpaqueSurfaceMaterial {
     return m_enableEmission;
   }
 
-  uint8_t getSpriteSheetFPS() const {
-    return m_spriteSheetFPS;
-  }
-
 private:
   void updateCachedHash() {
     XXH64_hash_t h = 0;
@@ -613,9 +624,6 @@ private:
     h = XXH64(&m_metallicConstant, sizeof(m_metallicConstant), h);
     h = XXH64(&m_emissiveColorConstant, sizeof(m_emissiveColorConstant), h);
     h = XXH64(&m_enableEmission, sizeof(m_enableEmission), h);
-    h = XXH64(&m_spriteSheetRows, sizeof(m_spriteSheetRows), h);
-    h = XXH64(&m_spriteSheetCols, sizeof(m_spriteSheetCols), h);
-    h = XXH64(&m_spriteSheetFPS, sizeof(m_spriteSheetFPS), h);
     h = XXH64(&m_enableThinFilm, sizeof(m_enableThinFilm), h);
     h = XXH64(&m_alphaIsThinFilmThickness, sizeof(m_alphaIsThinFilmThickness), h);
     h = XXH64(&m_thinFilmThicknessConstant, sizeof(m_thinFilmThicknessConstant), h);
@@ -651,10 +659,6 @@ private:
 
   bool m_enableEmission;
 
-  uint8_t m_spriteSheetRows;
-  uint8_t m_spriteSheetCols;
-  uint8_t m_spriteSheetFPS;
-
   bool m_enableThinFilm;
   bool m_alphaIsThinFilmThickness;
   float m_thinFilmThicknessConstant;
@@ -669,13 +673,17 @@ private:
 struct RtTranslucentSurfaceMaterial {
   RtTranslucentSurfaceMaterial(
     uint32_t normalTextureIndex,
-    float refractiveIndex, float transmittanceMeasurementDistance,
-    uint32_t transmittanceTextureIndex, const Vector3& transmittanceColor,
+    uint32_t transmittanceTextureIndex,
+    uint32_t emissiveColorTextureIndex,
+    float refractiveIndex,
+    float transmittanceMeasurementDistance, const Vector3& transmittanceColor,
     bool enableEmission, float emissiveIntensity, const Vector3& emissiveColorConstant,
     bool isThinWalled, float thinWallThickness, bool useDiffuseLayer) :
     m_normalTextureIndex(normalTextureIndex),
-    m_refractiveIndex(refractiveIndex), m_transmittanceMeasurementDistance(transmittanceMeasurementDistance),
-    m_transmittanceTextureIndex(transmittanceTextureIndex), m_transmittanceColor(transmittanceColor),
+    m_transmittanceTextureIndex(transmittanceTextureIndex),
+    m_emissiveColorTextureIndex(emissiveColorTextureIndex),
+    m_refractiveIndex(refractiveIndex),
+    m_transmittanceMeasurementDistance(transmittanceMeasurementDistance), m_transmittanceColor(transmittanceColor),
     m_enableEmission(enableEmission), m_emissiveIntensity(emissiveIntensity), m_emissiveColorConstant(emissiveColorConstant),
     m_isThinWalled(isThinWalled), m_thinWallThickness(thinWallThickness), m_useDiffuseLayer(useDiffuseLayer)
   {
@@ -687,35 +695,40 @@ struct RtTranslucentSurfaceMaterial {
     [[maybe_unused]] const std::size_t oldOffset = offset;
 
     // For decode process, see translucent_surface_material.slangh
-    // 4 Bytes
+    // 8 Bytes
     writeGPUHelperExplicit<2>(data, offset, m_normalTextureIndex);                          // data00.x
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_cachedBaseReflectivity));          // data00.y & 0xff
+    writeGPUHelperExplicit<2>(data, offset, m_transmittanceTextureIndex);                   // data00.y
+    writeGPUHelperExplicit<2>(data, offset, m_emissiveColorTextureIndex);                   // data01.x
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_cachedBaseReflectivity));          // data01.y & 0xff
     // Note: Ensure IoR falls in the range expected by the encoding/decoding logic for the GPU (this should also be
     // enforced in the MDL and relevant content pipeline to prevent this assert from being triggered).
     assert(m_refractiveIndex >= 1.0f && m_refractiveIndex <= 3.0f);
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>((m_refractiveIndex - 1.0f) / 2.0f)); // data00.y & 0xff00
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>((m_refractiveIndex - 1.0f) / 2.0f)); // data01.y & 0xff00
 
     // 6 Bytes
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_transmittanceColor.x)); // data01.x
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_transmittanceColor.y)); // data01.y
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_transmittanceColor.z)); // data02.x
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_transmittanceColor.x)); // data02.x
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_transmittanceColor.y)); // data02.y
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_transmittanceColor.z)); // data03.x
 
-    // 6 Bytes
-    assert(m_cachedEmissiveRadiance.x <= FLOAT16_MAX);
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedEmissiveRadiance.x));    // data02.y
-    assert(m_cachedEmissiveRadiance.y <= FLOAT16_MAX);
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedEmissiveRadiance.y));    // data03.x
-    assert(m_cachedEmissiveRadiance.z <= FLOAT16_MAX);
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedEmissiveRadiance.z));    // data03.y
+    // 1 Byte Padding
+    // Note: This padding is here just to align the m_emissiveColorConstant information better so that
+    // reads beyond it do not need a bunch of bit shifting. Can be removed safely if more space is needed.
+    writeGPUPadding<1>(data, offset);
+
+    // 3 Bytes
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.x)); // data03.y & 0x00ff
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.y)); // data10.x & 0xff
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.z)); // data10.x & 0x00ff
 
     // 2 Bytes
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedTransmittanceMeasurementDistanceOrThickness));        // data10.x
+    assert(m_cachedEmissiveIntensity <= FLOAT16_MAX);
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedEmissiveIntensity)); // data10.y
 
     // 2 Bytes
-    writeGPUHelperExplicit<2>(data, offset, m_transmittanceTextureIndex);
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedTransmittanceMeasurementDistanceOrThickness)); // data11.x
 
-    // 8 Bytes padding
-    writeGPUPadding<8>(data, offset);
+    // 6 Bytes padding
+    writeGPUPadding<6>(data, offset);
 
     uint32_t flags = (1 << 30); // bit 30 set to 1 for translucent material type
 
@@ -742,8 +755,9 @@ private:
     XXH64_hash_t h = 0;
 
     h = XXH64(&m_normalTextureIndex, sizeof(m_normalTextureIndex), h);
-    h = XXH64(&m_refractiveIndex, sizeof(m_refractiveIndex), h);
     h = XXH64(&m_transmittanceTextureIndex, sizeof(m_transmittanceTextureIndex), h);
+    h = XXH64(&m_emissiveColorTextureIndex, sizeof(m_emissiveColorTextureIndex), h);
+    h = XXH64(&m_refractiveIndex, sizeof(m_refractiveIndex), h);
     h = XXH64(&m_transmittanceColor, sizeof(m_transmittanceColor), h);
     h = XXH64(&m_transmittanceMeasurementDistance, sizeof(m_transmittanceMeasurementDistance), h);
     h = XXH64(&m_enableEmission, sizeof(m_enableEmission), h);
@@ -763,21 +777,13 @@ private:
     // https://en.wikipedia.org/wiki/Fresnel_equations#Special_cases
     const float x = (1.0f - m_refractiveIndex) / (1.0f + m_refractiveIndex);
 
-    const float kSRGBGamma = 2.2f;
-    // Note: Convert gamma to linear here similar to how we gamma correct the emissive color constant on the GPU for opaque materials
-    // (since it cannot vary per-pixel unlike the opaque material).
-    const auto linearEmissiveColor = sRGBGammaToLinear(m_emissiveColorConstant);
-
     m_cachedBaseReflectivity = x * x;
     m_cachedTransmittanceMeasurementDistanceOrThickness =
       m_isThinWalled ? -m_thinWallThickness : m_transmittanceMeasurementDistance;
-    // Note: Global emissive intensity scalar from options applied here as in the opaque material it is applied on the GPU
-    // side, but since we calculate the emissive radiance on the CPU for translucent materials it must be done here.
-    m_cachedEmissiveRadiance = m_enableEmission ? getEmissiveIntensity() * m_emissiveIntensity * linearEmissiveColor : 0.0f;
 
-    m_cachedEmissiveRadiance.x = std::min(m_cachedEmissiveRadiance.x, FLOAT16_MAX);
-    m_cachedEmissiveRadiance.y = std::min(m_cachedEmissiveRadiance.y, FLOAT16_MAX);
-    m_cachedEmissiveRadiance.z = std::min(m_cachedEmissiveRadiance.z, FLOAT16_MAX);
+    // Note: Translucent material does not take an emissive radiance directly, so zeroing out the intensity works
+    // fine as a way to disable it (in case a texture is in use).
+    m_cachedEmissiveIntensity = std::min(m_enableEmission ? m_emissiveIntensity : 0.0f, FLOAT16_MAX);
 
     // Note: Ensure the transmittance measurement distance or thickness was encoded properly by ensuring
     // it is not 0. This is because we currently do not actually check the sign bit but just use a less than
@@ -786,8 +792,10 @@ private:
   }
 
   uint32_t m_normalTextureIndex;
-  float m_refractiveIndex;
   uint32_t m_transmittanceTextureIndex;
+  uint32_t m_emissiveColorTextureIndex;
+
+  float m_refractiveIndex;
   Vector3 m_transmittanceColor;
   float m_transmittanceMeasurementDistance;
   bool m_enableEmission;
@@ -802,14 +810,15 @@ private:
   // Note: Cached values are not involved in the hash as they are derived from the input data
   float m_cachedBaseReflectivity;
   float m_cachedTransmittanceMeasurementDistanceOrThickness;
-  Vector3 m_cachedEmissiveRadiance;
+  float m_cachedEmissiveIntensity;
 };
 
 struct RtRayPortalSurfaceMaterial {
-  RtRayPortalSurfaceMaterial(uint32_t maskTextureIndex, uint32_t maskTextureIndex2, uint8_t rayPortalIndex,
-        uint8_t spriteSheetRows, uint8_t spriteSheetCols, uint8_t spriteSheetFPS, float rotationSpeed, bool enableEmission, float emissiveIntensity) :
+  RtRayPortalSurfaceMaterial(
+    uint32_t maskTextureIndex, uint32_t maskTextureIndex2, uint8_t rayPortalIndex,
+    float rotationSpeed, bool enableEmission, float emissiveIntensity) :
     m_maskTextureIndex{ maskTextureIndex }, m_maskTextureIndex2 { maskTextureIndex2 }, m_rayPortalIndex{ rayPortalIndex },
-    m_spriteSheetRows { spriteSheetRows }, m_spriteSheetCols { spriteSheetCols }, m_spriteSheetFPS { spriteSheetFPS }, m_rotationSpeed { rotationSpeed }, m_enableEmission(enableEmission), m_emissiveIntensity(emissiveIntensity) {
+    m_rotationSpeed { rotationSpeed }, m_enableEmission(enableEmission), m_emissiveIntensity(emissiveIntensity) {
     updateCachedHash();
   }
 
@@ -820,15 +829,13 @@ struct RtRayPortalSurfaceMaterial {
     writeGPUHelperExplicit<2>(data, offset, m_maskTextureIndex2);
 
     writeGPUHelper(data, offset, m_rayPortalIndex);
-    writeGPUHelper(data, offset, m_spriteSheetRows);
-    writeGPUHelper(data, offset, m_spriteSheetCols);
-    writeGPUHelper(data, offset, m_spriteSheetFPS);
+    writeGPUPadding<1>(data, offset); // Note: Padding for unused space, here for now just to align other members better.
     assert(m_rotationSpeed < FLOAT16_MAX);
     writeGPUHelper(data, offset, glm::packHalf1x16(m_rotationSpeed));
     float emissiveIntensity = m_enableEmission ? m_emissiveIntensity : 1.0f;
     writeGPUHelper(data, offset, glm::packHalf1x16(emissiveIntensity));
 
-    writeGPUPadding<16>(data, offset); // Note: Padding for unused space
+    writeGPUPadding<18>(data, offset); // Note: Padding for unused space
 
     writeGPUHelper(data, offset, static_cast<uint32_t>(2 << 30)); // Note: Bit 30 and 31 of last word set to 2 for ray portal material type
 
@@ -867,10 +874,6 @@ struct RtRayPortalSurfaceMaterial {
     return m_emissiveIntensity;
   }
 
-  uint8_t getSpriteSheetFPS() const {
-    return m_spriteSheetFPS;
-  }
-
 private:
   void updateCachedHash() {
     XXH64_hash_t h = 0;
@@ -878,9 +881,6 @@ private:
     h = XXH64(&m_maskTextureIndex, sizeof(m_maskTextureIndex), h);
     h = XXH64(&m_maskTextureIndex2, sizeof(m_maskTextureIndex2), h);
     h = XXH64(&m_rayPortalIndex, sizeof(m_rayPortalIndex), h);
-    h = XXH64(&m_spriteSheetRows, sizeof(m_spriteSheetRows), h);
-    h = XXH64(&m_spriteSheetCols, sizeof(m_spriteSheetCols), h);
-    h = XXH64(&m_spriteSheetFPS, sizeof(m_spriteSheetFPS), h);
     h = XXH64(&m_rotationSpeed, sizeof(m_rotationSpeed), h);
     h = XXH64(&m_enableEmission, sizeof(m_enableEmission), h);
     h = XXH64(&m_emissiveIntensity, sizeof(m_emissiveIntensity), h);
@@ -892,9 +892,6 @@ private:
   uint32_t m_maskTextureIndex2;
 
   uint8_t m_rayPortalIndex;
-  uint8_t m_spriteSheetRows;
-  uint8_t m_spriteSheetCols;
-  uint8_t m_spriteSheetFPS;
   float m_rotationSpeed;
   bool m_enableEmission;
   float m_emissiveIntensity;
@@ -920,6 +917,8 @@ struct RtSurfaceMaterial {
     switch (m_type) {
     default:
       assert(false);
+
+      [[fallthrough]];
     case RtSurfaceMaterialType::Opaque:
       new (&m_opaqueSurfaceMaterial) RtOpaqueSurfaceMaterial{ surfaceMaterial.m_opaqueSurfaceMaterial };
       break;
@@ -936,6 +935,8 @@ struct RtSurfaceMaterial {
     switch (m_type) {
     default:
       assert(false);
+
+      [[fallthrough]];
     case RtSurfaceMaterialType::Opaque:
       m_opaqueSurfaceMaterial.~RtOpaqueSurfaceMaterial();
       break;
@@ -952,6 +953,8 @@ struct RtSurfaceMaterial {
     switch (m_type) {
     default:
       assert(false);
+
+      [[fallthrough]];
     case RtSurfaceMaterialType::Opaque:
       m_opaqueSurfaceMaterial.writeGPUData(data, offset);
       break;
@@ -971,6 +974,8 @@ struct RtSurfaceMaterial {
       switch (rtSurfaceMaterial.m_type) {
       default:
         assert(false);
+
+        [[fallthrough]];
       case RtSurfaceMaterialType::Opaque:
         m_opaqueSurfaceMaterial = rtSurfaceMaterial.m_opaqueSurfaceMaterial;
         break;
@@ -995,6 +1000,8 @@ struct RtSurfaceMaterial {
     switch (m_type) {
     default:
       assert(false);
+
+      [[fallthrough]];
     case RtSurfaceMaterialType::Opaque:
       return m_opaqueSurfaceMaterial == rhs.m_opaqueSurfaceMaterial;
     case RtSurfaceMaterialType::Translucent:
@@ -1008,6 +1015,8 @@ struct RtSurfaceMaterial {
     switch (m_type) {
     default:
       assert(false);
+
+      [[fallthrough]];
     case RtSurfaceMaterialType::Opaque:
       return m_opaqueSurfaceMaterial.getHash();
     case RtSurfaceMaterialType::Translucent:
@@ -1466,13 +1475,20 @@ private:
 struct TranslucentMaterialData {
   TranslucentMaterialData(
     const TextureRef& normalTexture,
-    float refractiveIndex, const TextureRef& transmittanceTexture, const Vector3& transmittanceColor,
+    const TextureRef& transmittanceTexture,
+    const TextureRef& emissiveColorTexture,
+    float refractiveIndex, const Vector3& transmittanceColor,
     float transmittanceMeasureDistance,
     bool enableEmission, float emissiveIntensity, const Vector3& emissiveColorConstant,
+    uint8_t spriteSheetRows,
+    uint8_t spriteSheetCols,
+    uint8_t spriteSheetFPS,
     bool thinWalled, float thinWallThickness, bool useDiffuseLayer) :
-    m_normalTexture(normalTexture), m_refractiveIndex(refractiveIndex),
-    m_transmittanceTexture(transmittanceTexture), m_transmittanceColor(transmittanceColor), m_transmittanceMeasurementDistance(transmittanceMeasureDistance),
+    m_normalTexture(normalTexture), m_transmittanceTexture(transmittanceTexture), m_emissiveColorTexture(emissiveColorTexture),
+    m_refractiveIndex(refractiveIndex),
+    m_transmittanceColor(transmittanceColor), m_transmittanceMeasurementDistance(transmittanceMeasureDistance),
     m_enableEmission(enableEmission), m_emissiveIntensity(emissiveIntensity), m_emissiveColorConstant(emissiveColorConstant),
+    m_spriteSheetRows { spriteSheetRows }, m_spriteSheetCols { spriteSheetCols }, m_spriteSheetFPS { spriteSheetFPS },
     m_isThinWalled(thinWalled), m_thinWallThickness(thinWallThickness), m_useDiffuseLayer(useDiffuseLayer) {
     sanitizeData();
     // Note: Called after data is sanitized to have the hashed value reflect the adjusted values.
@@ -1487,12 +1503,16 @@ struct TranslucentMaterialData {
     return m_normalTexture;
   }
 
-  float getRefractiveIndex() const {
-    return m_refractiveIndex;
-  }
-
   const TextureRef& getTransmittanceTexture() const {
     return m_transmittanceTexture;
+  }
+
+  const TextureRef& getEmissiveColorTexture() const {
+    return m_emissiveColorTexture;
+  }
+
+  float getRefractiveIndex() const {
+    return m_refractiveIndex;
   }
 
   const Vector3& getTransmittanceColor() const {
@@ -1513,6 +1533,18 @@ struct TranslucentMaterialData {
 
   const Vector3& getEmissiveColorConstant() const {
     return m_emissiveColorConstant;
+  }
+
+  uint8_t getSpriteSheetRows() const {
+    return m_spriteSheetRows;
+  }
+
+  uint8_t getSpriteSheetCols() const {
+    return m_spriteSheetCols;
+  }
+
+  uint8_t getSpriteSheetFPS() const {
+    return m_spriteSheetFPS;
   }
 
   bool getIsThinWalled() const {
@@ -1550,16 +1582,18 @@ private:
     XXH64_hash_t h = 0;
 
     h ^= m_normalTexture.getImageHash();
+    h ^= m_transmittanceTexture.getImageHash();
+    h ^= m_emissiveColorTexture.getImageHash();
 
     h = XXH64(&m_refractiveIndex, sizeof(m_refractiveIndex), h);
-    
-    h ^= m_transmittanceTexture.getImageHash();
-
     h = XXH64(&m_transmittanceColor[0], sizeof(m_transmittanceColor), h);
     h = XXH64(&m_transmittanceMeasurementDistance, sizeof(m_transmittanceMeasurementDistance), h);
     h = XXH64(&m_enableEmission, sizeof(m_enableEmission), h);
     h = XXH64(&m_emissiveIntensity, sizeof(m_emissiveIntensity), h);
     h = XXH64(&m_emissiveColorConstant[0], sizeof(m_emissiveColorConstant), h);
+    h = XXH64(&m_spriteSheetRows, sizeof(m_spriteSheetRows), h);
+    h = XXH64(&m_spriteSheetCols, sizeof(m_spriteSheetCols), h);
+    h = XXH64(&m_spriteSheetFPS, sizeof(m_spriteSheetFPS), h);
     h = XXH64(&m_isThinWalled, sizeof(m_isThinWalled), h);
     h = XXH64(&m_thinWallThickness, sizeof(m_thinWallThickness), h);
     h = XXH64(&m_useDiffuseLayer, sizeof(m_useDiffuseLayer), h);
@@ -1568,13 +1602,19 @@ private:
   }
 
   TextureRef m_normalTexture;
-  float m_refractiveIndex;
   TextureRef m_transmittanceTexture;
+  TextureRef m_emissiveColorTexture;
+  float m_refractiveIndex;
   Vector3 m_transmittanceColor;
   float m_transmittanceMeasurementDistance;
   bool m_enableEmission;
   float m_emissiveIntensity;
   Vector3 m_emissiveColorConstant;
+
+  uint8_t m_spriteSheetRows;
+  uint8_t m_spriteSheetCols;
+  uint8_t m_spriteSheetFPS;
+
   bool m_isThinWalled;
   float m_thinWallThickness;
   bool m_useDiffuseLayer;
@@ -1583,10 +1623,13 @@ private:
 };
 
 struct RayPortalMaterialData {
-  RayPortalMaterialData(const TextureRef& maskTexture, const TextureRef& maskTexture2, uint8_t rayPortalIndex,
-        uint8_t spriteSheetRows, uint8_t spriteSheetCols, uint8_t spriteSheetFPS, float rotationSpeed, bool enableEmission, float emissiveIntensity) :
+  RayPortalMaterialData(
+    const TextureRef& maskTexture, const TextureRef& maskTexture2, uint8_t rayPortalIndex,
+    uint8_t spriteSheetRows, uint8_t spriteSheetCols, uint8_t spriteSheetFPS, float rotationSpeed,
+    bool enableEmission, float emissiveIntensity) :
     m_maskTexture{ maskTexture }, m_maskTexture2 { maskTexture2 }, m_rayPortalIndex{ rayPortalIndex },
-    m_spriteSheetRows { spriteSheetRows }, m_spriteSheetCols { spriteSheetCols }, m_spriteSheetFPS { spriteSheetFPS }, m_rotationSpeed { rotationSpeed }, m_enableEmission(enableEmission), m_emissiveIntensity(emissiveIntensity) {
+    m_spriteSheetRows { spriteSheetRows }, m_spriteSheetCols { spriteSheetCols }, m_spriteSheetFPS { spriteSheetFPS }, m_rotationSpeed { rotationSpeed },
+    m_enableEmission(enableEmission), m_emissiveIntensity(emissiveIntensity) {
     updateCachedHash();
   }
 
@@ -1686,6 +1729,8 @@ struct MaterialData {
     switch (m_type) {
     default:
       assert(false);
+
+      [[fallthrough]];
     case MaterialDataType::Legacy:
       new (&m_legacyMaterialData) LegacyMaterialData{ materialData.m_legacyMaterialData };
       break;
@@ -1705,6 +1750,8 @@ struct MaterialData {
     switch (m_type) {
     default:
       assert(false);
+
+      [[fallthrough]];
     case MaterialDataType::Legacy:
       m_legacyMaterialData.~LegacyMaterialData();
       break;
@@ -1727,6 +1774,8 @@ struct MaterialData {
       switch (materialData.m_type) {
       default:
         assert(false);
+
+        [[fallthrough]];
       case MaterialDataType::Legacy:
         m_legacyMaterialData = materialData.m_legacyMaterialData;
         break;
@@ -1753,6 +1802,8 @@ struct MaterialData {
     switch (m_type) {
     default:
       assert(false);
+
+      [[fallthrough]];
     case MaterialDataType::Legacy:
       return m_legacyMaterialData.getHash();
     case MaterialDataType::Opaque:

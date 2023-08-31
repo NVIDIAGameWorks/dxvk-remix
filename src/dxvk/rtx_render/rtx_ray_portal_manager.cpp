@@ -43,18 +43,25 @@ namespace dxvk {
     result.materialIndex = info.materialIndex;
 
     result.normal = info.planeNormal;
-    result.sampleThreshold = 1.f;
+    result.sampleThreshold = 1.0f;
 
     result.xAxis = info.planeBasis[0];
-    result.inverseHalfWidth = 1.f / info.planeHalfExtents.x;
+    result.inverseHalfWidth = (info.planeHalfExtents.x == 0.0f) ?
+      0.0f :
+      1.0f / info.planeHalfExtents.x;
 
     result.yAxis = info.planeBasis[1];
-    result.inverseHalfHeight = 1.f / info.planeHalfExtents.y;
+    result.inverseHalfHeight = (info.planeHalfExtents.y == 0.0f) ?
+      0.0f :
+      1.0f / info.planeHalfExtents.y;
 
     result.textureTransform.x = glm::packHalf2x16(glm::vec2(info.textureTransform[0][0], info.textureTransform[0][1]));
     result.textureTransform.y = glm::packHalf2x16(glm::vec2(info.textureTransform[1][0], info.textureTransform[1][1]));
     result.textureTransform.z = glm::packHalf2x16(glm::vec2(info.textureTransform[2][0], info.textureTransform[2][1]));
-    result.pad = 0;
+
+    result.spriteSheetRows = info.spriteSheetRows;
+    result.spriteSheetCols = info.spriteSheetCols;
+    result.spriteSheetFPS = info.spriteSheetFPS;
   }
 
   RayPortalManager::RayPortalManager(DxvkDevice* device, ResourceCache* pResourceCache)
@@ -189,6 +196,9 @@ namespace dxvk {
     newRayPortalInfo.isCreatedThisFrame = instance.isCreatedThisFrame(m_device->getCurrentFrameId());
     newRayPortalInfo.materialIndex = materialIndex;
     newRayPortalInfo.textureTransform = instance.surface.textureTransform;
+    newRayPortalInfo.spriteSheetRows = instance.surface.spriteSheetRows;
+    newRayPortalInfo.spriteSheetCols = instance.surface.spriteSheetCols;
+    newRayPortalInfo.spriteSheetFPS = instance.surface.spriteSheetFPS;
 
     rayPortalInfo.emplace(newRayPortalInfo);
   }

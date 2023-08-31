@@ -58,7 +58,7 @@ namespace dxvk {
     , m_terrainBaker(new TerrainBaker())
     , m_gameCapturer(new GameCapturer(*this, device->getCommon()->metaExporter()))
     , m_cameraManager(device)
-    , m_startTime(std::chrono::system_clock::now()) {
+    , m_startTime(std::chrono::steady_clock::now()) {
     InstanceEventHandler instanceEvents(this);
     instanceEvents.onInstanceAddedCallback = [this](const RtInstance& instance) { onInstanceAdded(instance); };
     instanceEvents.onInstanceUpdatedCallback = [this](RtInstance& instance, const RtSurfaceMaterial& material, bool hasTransformChanged, bool hasVerticesChanged) { onInstanceUpdated(instance, material, hasTransformChanged, hasVerticesChanged); };
@@ -89,19 +89,22 @@ namespace dxvk {
   }
 
   // Returns wall time between start of app and current time.
-  uint32_t SceneManager::getGameTimeSinceStartMS() {
+  uint64_t SceneManager::getGameTimeSinceStartMS() {
     // Used in testing
     if (m_useFixedFrameTime) {
-      float deltaTimeMS = 1000.f / 60; // Assume 60 fps
-      return (uint32_t) (m_device->getCurrentFrameId() * deltaTimeMS);
+      const double deltaTimeMS = 1000.0 / 60.0; // Assume 60 fps
+
+      return static_cast<uint64_t>(static_cast<double>(m_device->getCurrentFrameId()) * deltaTimeMS);
     }
 
     // TODO(TREX-1004) find a way to 'pause' this when a game is paused.
-    auto currTime = std::chrono::system_clock::now();
+    // Note: steady_clock used here rather than system_clock as on Windows at least it uses a higher precision time source
+    // (QueryPerformanceCounter rather than GetSystemTimePreciseAsFileTime), and additionally it is monotonic which is better
+    // for this sort of game-based timekeeping (we don't care about NTP adjustments or other things that'd cause discontinuities).
+    const auto currTime = std::chrono::steady_clock::now();
+    const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(currTime - m_startTime);
 
-    auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(currTime - m_startTime);
-
-    return static_cast<uint32_t>(elapsedMs.count());
+    return elapsedMs.count();
   }
 
   void SceneManager::initialize(Rc<DxvkContext> ctx) {
@@ -625,7 +628,8 @@ namespace dxvk {
     const Vector3 lightPosition = Vector3(worldPos.x, worldPos.y, worldPos.z);
     Vector3 lightRadiance;
     if (RtxOptions::Get()->getEffectLightPlasmaBall()) {
-      const double timeMilliseconds = getGameTimeSinceStartMS();
+      // Todo: Make these options more configurable via config options.
+      const double timeMilliseconds = static_cast<double>(getGameTimeSinceStartMS());
       const double animationPhase = sin(timeMilliseconds * 0.006) * 0.5 + 0.5;
       lightRadiance = lerp(Vector3(1.f, 0.921f, 0.738f), Vector3(1.f, 0.521f, 0.238f), animationPhase) * radianceFactor;
     } else {
@@ -894,9 +898,6 @@ namespace dxvk {
       float metallicConstant;
       Vector3 emissiveColorConstant;
       bool enableEmissive;
-      uint8_t spriteSheetRows;
-      uint8_t spriteSheetCols;
-      uint8_t spriteSheetFPS;
       bool thinFilmEnable = false;
       bool alphaIsThinFilmThickness = false;
       float thinFilmThicknessConstant = 0.0f;
@@ -940,10 +941,6 @@ namespace dxvk {
         // Todo: Incorporate this and the color texture into emissive conditionally
         // emissiveColorTextureIndex != kSurfaceMaterialInvalidTextureIndex ? 100.0f
 
-        spriteSheetRows = RtxOptions::Get()->getSharedMaterialDefaults().SpriteSheetRows;
-        spriteSheetCols = RtxOptions::Get()->getSharedMaterialDefaults().SpriteSheetCols;
-        spriteSheetFPS = RtxOptions::Get()->getSharedMaterialDefaults().SpriteSheetFPS;
-
         thinFilmEnable = defaults.enableThinFilm();
         alphaIsThinFilmThickness = defaults.alphaIsThinFilmThickness();
         thinFilmThicknessConstant = defaults.thinFilmThicknessConstant();
@@ -981,9 +978,6 @@ namespace dxvk {
         emissiveColorConstant = opaqueMaterialData.getEmissiveColorConstant();
         enableEmissive = opaqueMaterialData.getEnableEmission();
         anisotropy = opaqueMaterialData.getAnisotropy();
-        spriteSheetRows = opaqueMaterialData.getSpriteSheetRows();
-        spriteSheetCols = opaqueMaterialData.getSpriteSheetCols();
-        spriteSheetFPS = opaqueMaterialData.getSpriteSheetFPS();
         
         thinFilmEnable = opaqueMaterialData.getEnableThinFilm();
         alphaIsThinFilmThickness = opaqueMaterialData.getAlphaIsThinFilmThickness();
@@ -998,7 +992,6 @@ namespace dxvk {
         albedoOpacityConstant,
         roughnessConstant, metallicConstant,
         emissiveColorConstant, enableEmissive,
-        spriteSheetRows, spriteSheetCols, spriteSheetFPS,
         thinFilmEnable, alphaIsThinFilmThickness, thinFilmThicknessConstant
       };
 
@@ -1007,8 +1000,9 @@ namespace dxvk {
       const auto& translucentMaterialData = renderMaterialData.getTranslucentMaterialData();
 
       uint32_t normalTextureIndex = kSurfaceMaterialInvalidTextureIndex;
-      float refractiveIndex = RtxOptions::Get()->getTranslucentMaterialDefaults().RefractiveIndex;
       uint32_t transmittanceTextureIndex = kSurfaceMaterialInvalidTextureIndex;
+      uint32_t emissiveColorTextureIndex = kSurfaceMaterialInvalidTextureIndex;
+      float refractiveIndex = RtxOptions::Get()->getTranslucentMaterialDefaults().RefractiveIndex;
       Vector3 transmittanceColor = RtxOptions::Get()->getTranslucentMaterialDefaults().TransmittanceColor;
       float transmittanceMeasureDistance = RtxOptions::Get()->getTranslucentMaterialDefaults().TransmittanceMeasurementDistance;
       Vector3 emissiveColorConstant = RtxOptions::Get()->getTranslucentMaterialDefaults().EmissiveColorConstant;
@@ -1020,10 +1014,10 @@ namespace dxvk {
       float emissiveIntensity = RtxOptions::Get()->getSharedMaterialDefaults().EmissiveIntensity;
 
       trackTexture(ctx, translucentMaterialData.getNormalTexture(), normalTextureIndex, hasTexcoords, pOriginalSampler);
+      trackTexture(ctx, translucentMaterialData.getTransmittanceTexture(), transmittanceTextureIndex, hasTexcoords, pOriginalSampler);
+      trackTexture(ctx, translucentMaterialData.getEmissiveColorTexture(), emissiveColorTextureIndex, hasTexcoords, pOriginalSampler);
 
       refractiveIndex = translucentMaterialData.getRefractiveIndex();
-
-      trackTexture(ctx, translucentMaterialData.getTransmittanceTexture(), transmittanceTextureIndex, hasTexcoords, pOriginalSampler);
 
       transmittanceColor = translucentMaterialData.getTransmittanceColor();
       transmittanceMeasureDistance = translucentMaterialData.getTransmittanceMeasurementDistance();
@@ -1035,8 +1029,9 @@ namespace dxvk {
       useDiffuseLayer = translucentMaterialData.getUseDiffuseLayer();
 
       const RtTranslucentSurfaceMaterial translucentSurfaceMaterial{
-        normalTextureIndex, refractiveIndex,
-        transmittanceMeasureDistance, transmittanceTextureIndex, transmittanceColor,
+        normalTextureIndex, transmittanceTextureIndex, emissiveColorTextureIndex,
+        refractiveIndex,
+        transmittanceMeasureDistance, transmittanceColor,
         enableEmissive, emissiveIntensity, emissiveColorConstant,
         isThinWalled, thinWallThickness, useDiffuseLayer
       };
@@ -1051,13 +1046,14 @@ namespace dxvk {
       trackTexture(ctx, rayPortalMaterialData.getMaskTexture2(), maskTextureIndex2, hasTexcoords, rayPortalMaterialData.getMaskTexture().sampler.ptr(), false);
 
       uint8_t rayPortalIndex = rayPortalMaterialData.getRayPortalIndex();
-      uint8_t spriteSheetRows = rayPortalMaterialData.getSpriteSheetRows();
-      uint8_t spriteSheetCols = rayPortalMaterialData.getSpriteSheetCols();
-      uint8_t spriteSheetFPS = rayPortalMaterialData.getSpriteSheetFPS();
       float rotationSpeed = rayPortalMaterialData.getRotationSpeed();
       bool enableEmissive = rayPortalMaterialData.getEnableEmission();
       float emissiveIntensity = rayPortalMaterialData.getEmissiveIntensity();
-      const RtRayPortalSurfaceMaterial rayPortalSurfaceMaterial(maskTextureIndex, maskTextureIndex2, rayPortalIndex, spriteSheetRows, spriteSheetCols, spriteSheetFPS, rotationSpeed, enableEmissive, emissiveIntensity);
+
+      const RtRayPortalSurfaceMaterial rayPortalSurfaceMaterial{
+        maskTextureIndex, maskTextureIndex2, rayPortalIndex,
+        rotationSpeed, enableEmissive, emissiveIntensity
+      };
 
       surfaceMaterial.emplace(rayPortalSurfaceMaterial);
     }
