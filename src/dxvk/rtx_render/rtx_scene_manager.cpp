@@ -39,7 +39,7 @@
 
 #include "rtx_game_capturer.h"
 #include "rtx_matrix_helpers.h"
-#include "rtx_intersection_test_helpers.h"
+#include "rtx_intersection_test.h"
 
 #include "dxvk_scoped_annotation.h"
 
