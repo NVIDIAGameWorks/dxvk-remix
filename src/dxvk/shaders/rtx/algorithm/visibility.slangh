@@ -129,35 +129,55 @@ float16_t getRayPortalTransparency(
 
   if (0 <= t && t <= ray.tMax && NdotD < 0)
   {
-    vec3 p = ray.origin + ray.direction * t;
-    vec3 cToP = p - portal.centroid.xyz;
+    const vec3 p = ray.origin + ray.direction * t;
+    const vec3 cToP = p - portal.centroid.xyz;
     vec2 uv;
     uv.x = dot(cToP, portal.xAxis.xyz) * portal.inverseHalfWidth;
     uv.y = dot(cToP, portal.yAxis.xyz) * portal.inverseHalfHeight;
 
     if (max(abs(uv.x), abs(uv.y)) < 1.0)
     {
-      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[portal.materialIndex];
-  
-      const RayPortalSurfaceMaterial rayPortalSurfaceMaterial = rayPortalSurfaceMaterialCreate(portal.materialIndex, memoryPolymorphicSurfaceMaterial);
+      // Create a Surface for the intersection with the Portal
+      // Note: This is a rather ad-hoc way of creating a Surface/Surface Interaction as doing a full Surface deserialization just for
+      // visibility rays is probably too costly. As such though this code may break in the future if the way Surface Interactions
+      // are constructed changes, so it is rather fragile and ideally a better way to do this should be devised. With Slang generics this
+      // can be improved such that it can use duck typing rather than having things accidently read uninitialized members and cause bugs
+      // silently (note that we leave the other values in these structs uninitialized so they will cause bugs faster if a regression happens).
+      // Also note that this does not set up texture gradients properly so this will always likely sample from the lowest mip level
+      // which is also probably not great for performance.
 
-      SurfaceInteraction surfaceInteraction = (SurfaceInteraction)0;
-      surfaceInteraction.textureCoordinates = uv * 0.5 + 0.5;
+      Surface surface;
+      surface.spriteSheetRows = portal.spriteSheetRows;
+      surface.spriteSheetCols = portal.spriteSheetCols;
+      surface.spriteSheetFPS = portal.spriteSheetFPS;
+
+      SurfaceInteraction surfaceInteraction;
+      surfaceInteraction.textureCoordinates = uv * 0.5f + 0.5f;
+      surfaceInteraction.textureGradientX = vec2(0.0f);
+      surfaceInteraction.textureGradientY = vec2(0.0f);
 
       applyPortalTextureTransform(portal, surfaceInteraction.textureCoordinates);
+      // Note: No spritesheet adjustment done here as this is skipped for Surfaces using a Ray Portal material anyways
+      // as it is done in the Surface Material Interaction construction instead.
 
+      // Calculate the transparency from the Portal's material
+
+      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[portal.materialIndex];
+      const RayPortalSurfaceMaterial rayPortalSurfaceMaterial =
+        rayPortalSurfaceMaterialCreate(portal.materialIndex, memoryPolymorphicSurfaceMaterial);
       const RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction =
-        rayPortalSurfaceMaterialInteractionCreate(rayPortalSurfaceMaterial, surfaceInteraction);
+        rayPortalSurfaceMaterialInteractionCreate(rayPortalSurfaceMaterial, surface, surfaceInteraction);
 
-      float16_t transparency = saturate(float16_t(1) - rayPortalSurfaceMaterialInteraction.mask.a);
       if (!rayPortalSurfaceMaterialInteraction.isInsidePortal)
-        transparency = float16_t(0);
+      {
+        return 0.0h;
+      }
 
-      return transparency;
+      return saturate(1.0h - rayPortalSurfaceMaterialInteraction.mask.a);
     }
   }
 
-  return 0;
+  return 0.0h;
 }
 
 struct VisibilityResult {

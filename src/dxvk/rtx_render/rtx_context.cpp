@@ -924,9 +924,11 @@ namespace dxvk {
     RtxOptions::Get()->translucentMaterialOptions.fillShaderParams(constants.translucentMaterialArgs);
     RtxOptions::Get()->viewDistanceOptions.fillShaderParams(constants.viewDistanceArgs, RtxOptions::Get()->getMeterToWorldUnitScale());
 
-    // We are going to use this value to perform some animations on GPU, to mitigate precision related issues loop time every 24 hours.
-    const uint32_t kOneDayMS = 24 * 60 * 60 * 1000;
-    constants.timeSinceStartMS = getSceneManager().getGameTimeSinceStartMS() % kOneDayMS;
+    // We are going to use this value to perform some animations on GPU, to mitigate precision related issues loop time
+    // at the 24 bit boundary (as we use a 8 bit scalar on top of this time which we want to fit into 32 bits without issues,
+    // plus we also convert this value to a floating point value at some point as well which has 23 bits of precision).
+    // Bitwise and used rather than modulus as well for slightly better performance.
+    constants.timeSinceStartMS = static_cast<uint32_t>(getSceneManager().getGameTimeSinceStartMS()) & ((1U << 24U) - 1U);
 
     m_common->metaRtxdiRayQuery().setRaytraceArgs(rtOutput);
     getSceneManager().getLightManager().setRaytraceArgs(

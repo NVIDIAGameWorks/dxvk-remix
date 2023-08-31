@@ -34,7 +34,7 @@ static const uint32_t maxRayPortalCount = 2;
 // or 3 pairs of 2 which should be enough for most things.
 static const uint8_t invalidRayPortalIndex = uint8_t(0x7);
 
-struct PortalTransform 
+struct PortalTransform
 {
 #define PORTAL_TRANSFORM_INACTIVE_VALUE 3.402823466e+38f
 
@@ -58,7 +58,7 @@ struct PortalTransform
 
 #else
 
-  mat4 unpack() 
+  mat4 unpack()
   {
     mat4 ret;
 
@@ -70,7 +70,7 @@ struct PortalTransform
     return ret;
   }
 
-  f16mat3 unpackAsf16mat3() 
+  f16mat3 unpackAsf16mat3()
   {
     f16mat3 ret;
 
@@ -103,7 +103,10 @@ struct RayPortalHitInfo
   float inverseHalfHeight;
 
   uvec3 textureTransform; // packed f16mat3x2
-  uint pad;
+  uint8_t spriteSheetRows;
+  uint8_t spriteSheetCols;
+  uint8_t spriteSheetFPS;
+  uint8_t pad;
 };
 
 #ifdef __cplusplus

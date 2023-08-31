@@ -141,7 +141,9 @@ private:
   uint32_t m_albedoOpacityTextureIndex = kSurfaceMaterialInvalidTextureIndex;
   uint32_t m_secondaryOpacityTextureIndex = kSurfaceMaterialInvalidTextureIndex;
 
-  // Extra instance meta data needed for Opacity Micromap Manager 
+  // Extra instance meta data needed for Opacity Micromap Manager, generally describes if animated spritesheets are in use
+  // on a given instance (though the applicability to OMMs are only relevant for Opaque and Ray Portal materials currently
+  // where cutout opacity can be animated, translucent materials do not have any relation right now to OMMs).
   bool m_isAnimated = false;
   XXH64_hash_t m_opacityMicromapSourceHash = kEmptyHash;   // Hash for the source data to Opacity Micromap
 
