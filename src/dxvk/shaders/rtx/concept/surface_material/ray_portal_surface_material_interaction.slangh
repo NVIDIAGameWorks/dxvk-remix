@@ -21,54 +21,138 @@
 */
 #pragma once
 
+// Reads from a texture with respect to specified spritesheet information for Ray Portals specifically. This differs from
+// the usual spritesheet adjustment in the Surface as this function incorporates rotation and blends between 2 frames of the
+// spritesheet smoothly over time and is thus more expensive. Do note that the gamma correction flag passed to this function
+// should be set if the texture being sampled from is encoded in gamma space.
+bool rayPortalSurfaceMaterialInteractionSpriteSheetReadHelper(
+  uint16_t textureIndex,
+  bool textureGammaCorrect,
+  SurfaceInteraction surfaceInteraction,
+  uint32_t timeSinceStartMS,
+  uint8_t spriteSheetRows,
+  uint8_t spriteSheetCols,
+  uint8_t spriteSheetFPS,
+  float16_t rotationSpeed,
+  inout f16vec4 textureSample)
+{
+  // Return if no texture is available
+  if (textureIndex == BINDING_INDEX_INVALID)
+  {
+    return false;
+  }
+
+  // Note: No early out for spriteSheetFPS == 0 case because Ray Portals will commonly use animated textures.
+
+  const float timeSinceStartSecs = timeSinceStartMS * 0.001f;
+
+  // Some constant to slow down, and a unique direction for opposing Portals
+  const float t = float(rotationSpeed) * timeSinceStartSecs;
+  const float2x2 rot = float2x2(cos(t), -sin(t), sin(t), cos(t));
+
+  vec2 originalCoord = surfaceInteraction.textureCoordinates;
+
+  // Rotate around the center
+  originalCoord = mul(rot, originalCoord - float2(0.5f)) + float2(0.5f);
+
+  // Make sure we don't sample from neighbouring sprite sheet cells
+  originalCoord = saturate(originalCoord);
+
+  const uint numSprites = (spriteSheetCols * spriteSheetRows);
+  const float frameWithFraction = (timeSinceStartSecs * spriteSheetFPS) % numSprites;
+  uint frame = floor(frameWithFraction);
+  const float frameFraction = frac(frameWithFraction);
+  const vec2 uvSize = vec2(1.0f / spriteSheetCols, 1.0f / spriteSheetRows);
+
+  // Scale the gradients according to the spritesheet size
+  surfaceInteraction.textureGradientX *= uvSize;
+  surfaceInteraction.textureGradientY *= uvSize;
+
+  // get prev frame sample
+  vec2 uvBias = vec2(frame % spriteSheetCols, frame / spriteSheetCols) * uvSize;
+  surfaceInteraction.textureCoordinates = uvBias + originalCoord * uvSize;
+  const f16vec4 prevSample = textureRead(textureIndex, surfaceInteraction);
+
+  // get next frame sample
+  frame = (frame + 1) % numSprites;
+  uvBias = vec2(frame % spriteSheetCols, frame / spriteSheetCols) * uvSize;
+  surfaceInteraction.textureCoordinates = uvBias + originalCoord * uvSize;
+  const f16vec4 futureSample = textureRead(textureIndex, surfaceInteraction);
+
+  // Gamma correct the color component of the samples if requested
+  const f16vec4 correctedPrevSample = textureGammaCorrect ?
+    vec4(gammaToLinear(prevSample.rgb), prevSample.a) :
+    prevSample;
+  const f16vec4 correctedFutureSample = textureGammaCorrect ?
+    vec4(gammaToLinear(futureSample.rgb), futureSample.a) :
+    futureSample;
+
+  // combine them
+  textureSample = mix(correctedPrevSample, correctedFutureSample, frameFraction);
+
+  return true;
+}
+
 // Ray Portal Surface Material Interaction Functions
 
 RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteractionCreate(
   RayPortalSurfaceMaterial rayPortalSurfaceMaterial,
+  Surface surface,
   SurfaceInteraction surfaceInteraction)
 {
   RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction;
 
   // Sample from each Ray Portal Surface Material texture
 
-  // Load Color
   f16vec4 maskSample;
-  const bool maskLoaded = surfaceMaterialInteractionPortalSpriteSheetReadHelper(
-    rayPortalSurfaceMaterial.maskTextureIndex, 
+  f16vec4 maskSample2;
+
+  const bool maskLoaded = rayPortalSurfaceMaterialInteractionSpriteSheetReadHelper(
+    rayPortalSurfaceMaterial.maskTextureIndex,
+    true,
     surfaceInteraction,
     cb.timeSinceStartMS,
-    rayPortalSurfaceMaterial.spriteSheetRows,
-    rayPortalSurfaceMaterial.spriteSheetCols,
-    rayPortalSurfaceMaterial.spriteSheetFPS,
+    surface.spriteSheetRows,
+    surface.spriteSheetCols,
+    surface.spriteSheetFPS,
     rayPortalSurfaceMaterial.rotationSpeed,
     maskSample);
+  // Note: Only load the second mask if the texture coordinates are in a valid range (they often go out of this range
+  // when opening a Portal). To be sure the texture is not being loaded it would be good to short circut the evaluation of the texture read helper,
+  // but this complicates the determination of the default mask color a bit (without moving the invalid texture check out at least), so we instead just
+  // hope the optimizer will remove the texture load when any code referencing it is behind a conditional.
+  const bool shouldUseMask2Texture = all(surfaceInteraction.textureCoordinates >= f16vec2(0.0f)) && all(surfaceInteraction.textureCoordinates <= f16vec2(1.0f));
+  const bool maskLoaded2 = surfaceMaterialInteractionTextureReadHelper(rayPortalSurfaceMaterial.maskTextureIndex2, surfaceInteraction, maskSample2);
 
-  // Gamma correction.
-  maskSample = gammaToLinear(maskSample);
+  // Load Color
 
   f16vec4 mask = f16vec4(1.0f, 1.0f, 1.0f, 0.0f);
+
   if (maskLoaded)
   {
     mask = maskSample;
     mask.rgb *= uint16BitsToHalf(cb.emissiveIntensity) * rayPortalSurfaceMaterial.emissiveIntensity;
   }
 
+  // Note: Mask sample color (not alpha) is gamma corrected implicitly by the spritesheet read helper, no need
+  // to gamma correct here.
+
   // Load Portal mask
-  f16vec4 maskSample2;
-  f16vec2 uvOffset = surfaceInteraction.textureCoordinates - f16vec2(0.5);
-  surfaceInteraction.textureCoordinates = saturate(uvOffset + f16vec2(0.5));
-  const bool maskLoaded2 = surfaceMaterialInteractionTextureReadHelper(rayPortalSurfaceMaterial.maskTextureIndex2, surfaceInteraction, maskSample2);
-  f16vec4 mask2 = f16vec4(1.0f, 1.0f, 1.0f, 0.0f);
-  if (maskLoaded2)
+
+  float16_t mask2 = maskLoaded2 ? 0.0h : 1.0h;
+
+  if (shouldUseMask2Texture && maskLoaded2)
   {
-    mask2 = maskSample2;
+    mask2 = maskSample2.r;
   }
+
+  // Note: Portal mask is linear data and has no need to be gamma corrected.
 
   // Transform to desired Ray Portal Material Interaction values
 
   rayPortalSurfaceMaterialInteraction.mask = mask;
   rayPortalSurfaceMaterialInteraction.rayPortalIndex = rayPortalSurfaceMaterial.rayPortalIndex;
-  rayPortalSurfaceMaterialInteraction.isInsidePortal = mask2.r > float16_t(0.5) ? 1 : 0;
+  rayPortalSurfaceMaterialInteraction.isInsidePortal = mask2 > 0.5h ? 1 : 0;
 
   return rayPortalSurfaceMaterialInteraction;
 }

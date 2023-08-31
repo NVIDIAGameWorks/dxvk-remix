@@ -49,10 +49,13 @@ GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfa
   const float16_t emissiveIntensity = max(opaqueSurfaceMaterialInteraction.emissiveRadiance.x,
     max(opaqueSurfaceMaterialInteraction.emissiveRadiance.y, opaqueSurfaceMaterialInteraction.emissiveRadiance.z));
   const f16vec3 emissiveColor = (emissiveIntensity > float16_t(0.0)) ? opaqueSurfaceMaterialInteraction.emissiveRadiance / emissiveIntensity : float16_t(0.0);
+  // Note: Encoding done in approximate gamma space to better quantize with human perception.
+  const f16vec3 gammaEmissiveColor = linearToGammaFast(emissiveColor);
 
   const bool enableThinFilm = opaqueSurfaceMaterialInteraction.thinFilmThickness > 0.0;
-  const float16_t encodedOpacity =  enableThinFilm ?
-                                    opaqueSurfaceMaterialInteraction.thinFilmThickness : opaqueSurfaceMaterialInteraction.opacity;
+  const float16_t opacityOrThinFilmThickness = enableThinFilm ?
+    opaqueSurfaceMaterialInteraction.thinFilmThickness :
+    opaqueSurfaceMaterialInteraction.opacity;
 
   const uint8_t flagsAndType = (enableThinFilm ? OPAQUE_SURFACE_MATERIAL_FLAG_USE_THIN_FILM_LAYER : 0) |
                                // Note: Type takes 2 bits currently
@@ -60,15 +63,15 @@ GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfa
 
   gBufferMemoryPolymorphicSurfaceMaterialInteraction.data0 =
     (uint32_t(f16ToSnorm8(anisotropy)) << 0) |
-    (uint32_t(f16ToUnorm8(encodedOpacity)) << 8) |
-    (uint32_t(f16ToUnorm8(emissiveColor.r)) << 16) |
+    (uint32_t(f16ToUnorm8(opacityOrThinFilmThickness)) << 8) |
+    (uint32_t(f16ToUnorm8(gammaEmissiveColor.r)) << 16) |
     (uint32_t(flagsAndType) << 24);
   // Note: Second word entierly dominated by emissive-related values. This should in theory allow things that don't use emissive
   // to optimize this read out entierly without needing a whole additional reduced material model and serialization logic just
   // for that pass. Of course that can be done if needed in the future, but it is avoided for now for the sake of less code.
   gBufferMemoryPolymorphicSurfaceMaterialInteraction.data1 =
-    (uint32_t(f16ToUnorm8(emissiveColor.g)) << 0) |
-    (uint32_t(f16ToUnorm8(emissiveColor.b)) << 8) |
+    (uint32_t(f16ToUnorm8(gammaEmissiveColor.g)) << 0) |
+    (uint32_t(f16ToUnorm8(gammaEmissiveColor.b)) << 8) |
     (uint32_t(float16BitsToUint16(emissiveIntensity)) << 16);
 
   return gBufferMemoryPolymorphicSurfaceMaterialInteraction;
@@ -90,45 +93,32 @@ GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfa
   // for completeness (the actual deserialization will not read from this value, but it could if it wanted to).
   gBufferMemoryPolymorphicSurfaceMaterialInteraction.baseReflectivity = f16vec3(translucentSurfaceMaterialInteraction.baseReflectivity);
 
-  const bool useDiffuseLayer = (translucentSurfaceMaterialInteraction.flags & TRANSLUCENT_SURFACE_MATERIAL_FLAG_USE_DIFFUSE_LAYER);
-  // diffuse albedo and transmittance textures are mutually exclusive; if the diffuse layer is enabled, then
-  // trasmittanceColor is always read from the material buffer directly, and we only encode one of them here
-  const f16vec3 encodedColor = useDiffuseLayer ?
-      translucentSurfaceMaterialInteraction.diffuseColor :
-      translucentSurfaceMaterialInteraction.transmittanceColor;
+  const bool useDiffuseLayer = (translucentSurfaceMaterialInteraction.flags & TRANSLUCENT_SURFACE_MATERIAL_FLAG_USE_DIFFUSE_LAYER) != 0;
+  // Diffuse albedo and transmittance color textures are mutually exclusive; if the diffuse layer is enabled, then
+  // trasmittanceColor is always read from the material buffer directly, and we only encode one of them here.
+  const f16vec3 variableColor = useDiffuseLayer ?
+    translucentSurfaceMaterialInteraction.diffuseColor :
+    translucentSurfaceMaterialInteraction.transmittanceColor;
 
-  // we're out of bits, so drop the LSB here to make room
-  const uint8_t diffuseOpacityU8 = f16ToUnorm7(translucentSurfaceMaterialInteraction.diffuseOpacity);
-  uint16_t encodedThicknessOrMeasurmentDistance = float16BitsToUint16(translucentSurfaceMaterialInteraction.thicknessOrMeasurementDistance);
-
-  if (useDiffuseLayer)
-  {
-    // Note: Drop the lowest 2 bits of the measurement distance when a diffuse layer is requested to fit 2 remaining
-    // bits of the diffuse opacity. This reduces precision slightly of the thickness/measurement distance but it should
-    // be fine as long as we don't expect to encode very tiny numbers (which can be prevented on the CPU side).
-    encodedThicknessOrMeasurmentDistance =
-      (encodedThicknessOrMeasurmentDistance & 0xFFFC) |
-      ((diffuseOpacityU8 & 0x3) >> 14);
-  }
+  // Note: Encoding done in approximate gamma space to better quantize with human perception.
+  const uint16_t encodedGammaVariableColor = colorToR5G6B5(linearToGammaFast(variableColor));
+  const uint8_t encodedDiffuseOpacity = f16ToUnorm8(translucentSurfaceMaterialInteraction.diffuseOpacity);
 
   gBufferMemoryPolymorphicSurfaceMaterialInteraction.data0 =
+    // bits 0-15: Material index
     (uint32_t(translucentSurfaceMaterialInteraction.sourceSurfaceMaterialIndex) << 0) |
-    // stash red transmittance/diffuse color above sourceSurfaceMaterialIndex
-    (uint32_t(f16ToUnorm8(encodedColor.r)) << 16) |
-    // bits 31-30: material type
-    (uint32_t(surfaceMaterialTypeTranslucent) << 30) |
-    // bit 29: TRANSLUCENT_SURFACE_MATERIAL_FLAG_USE_DIFFUSE_LAYER
+    // bits 16-23: Material index
+    (uint32_t(encodedDiffuseOpacity) << 16) |
+    // Note: 5 bits free here reserved for future use or precision improvements.
+    // bit 29: Use diffuse layer flag
     (useDiffuseLayer ? 0 : (1 << 29)) |
-    // bits 28-24: high 5 bits of 7-bit alpha
-    (uint32_t(diffuseOpacityU8 & 0x7C) << (24 - 3));
-
+    // bits 31-30: material type
+    (uint32_t(surfaceMaterialTypeTranslucent) << 30);
   gBufferMemoryPolymorphicSurfaceMaterialInteraction.data1 =
-    // bits 0-15
-    uint32_t(encodedThicknessOrMeasurmentDistance) |
-    // bits 16-23
-    (uint32_t(f16ToUnorm8(encodedColor.b)) << 16) |
-    // bits 24-31
-    (uint32_t(f16ToUnorm8(encodedColor.g)) << 24);
+    // bits 0-15: Variable Color (In approximate gamma space)
+    (uint32_t(encodedGammaVariableColor) << 0) |
+    // bits 16-31: Emissive Color (In approximate gamma space)
+    (uint32_t(translucentSurfaceMaterialInteraction.sourcePackedGammaEmissiveColor) << 16);
 
   return gBufferMemoryPolymorphicSurfaceMaterialInteraction;
 }

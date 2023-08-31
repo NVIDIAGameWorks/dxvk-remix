@@ -93,7 +93,7 @@
 #define GBUFFER_BINDING_REFLECTION_PSR_DATA_STORAGE_1   (GBUFFER_BINDING_ALIASED_DATA_1 + 1)
 
 #define GBUFFER_MIN_BINDING                         GBUFFER_BINDING_SKYMATTE
-#define GBUFFER_MAX_BINDING                         GBUFFER_BINDING_SHARED_BIAS_CURRENT_COLOR_MASK_OUTPUT
+#define GBUFFER_MAX_BINDING                         GBUFFER_BINDING_REFLECTION_PSR_DATA_STORAGE_1
 
 #if GBUFFER_MIN_BINDING <= COMMON_MAX_BINDING
 #error "Increase the base index of G-buffer bindings to avoid overlap with common bindings!"

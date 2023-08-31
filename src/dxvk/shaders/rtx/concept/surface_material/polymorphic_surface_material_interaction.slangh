@@ -65,6 +65,7 @@ PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionCreat
   polymorphicSurfaceMaterialInteraction.fdata3 = translucentSurfaceMaterialInteraction.diffuseOpacity;
   polymorphicSurfaceMaterialInteraction.fdata4 = translucentSurfaceMaterialInteraction.normalDetail;
   polymorphicSurfaceMaterialInteraction.idata0 = translucentSurfaceMaterialInteraction.sourceSurfaceMaterialIndex;
+  polymorphicSurfaceMaterialInteraction.idata1 = translucentSurfaceMaterialInteraction.sourcePackedGammaEmissiveColor;
   polymorphicSurfaceMaterialInteraction.bdata0 = translucentSurfaceMaterialInteraction.flags;
   polymorphicSurfaceMaterialInteraction.type = surfaceMaterialTypeTranslucent;
 

@@ -23,14 +23,16 @@
 
 // Translucent Surface Material Interaction Helper Functions
 
-bool translucentSurfaceMaterialInteractionIsThinWalled(TranslucentSurfaceMaterialInteraction ti)
+bool translucentSurfaceMaterialInteractionIsThinWalled(
+  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction)
 {
-  return ti.thicknessOrMeasurementDistance < 0.0f;
+  return translucentSurfaceMaterialInteraction.thicknessOrMeasurementDistance < 0.0f;
 }
 
-float16_t translucentSurfaceMaterialInteractionGetThinWallThickness(TranslucentSurfaceMaterialInteraction ti)
+float16_t translucentSurfaceMaterialInteractionGetThinWallThickness(
+  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction)
 {
-  return -ti.thicknessOrMeasurementDistance;
+  return -translucentSurfaceMaterialInteraction.thicknessOrMeasurementDistance;
 }
 
 // Translucent Surface Material Interaction Functions
@@ -47,11 +49,13 @@ TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreat
 
   f16vec4 normalSample;
   f16vec4 transmittanceOrDiffuseSample;
+  f16vec4 emissiveColorSample;
 
   const bool normalLoaded = surfaceMaterialInteractionTextureReadHelper(translucentSurfaceMaterial.normalTextureIndex, surfaceInteraction, normalSample);
   // Note: Premultiplied alpha should really be used here for the transmittance or diffuse color as without it "transparent" regions of the texture in the diffuse color case for
   // example may cause incorrect coloration on the edges of more opaque regions due to texture filtering. This is hard to ensure on the art pipeline side of things however.
   const bool transmittanceOrDiffuseLoaded = surfaceMaterialInteractionTextureReadHelper(translucentSurfaceMaterial.transmittanceOrDiffuseTextureIndex, surfaceInteraction, transmittanceOrDiffuseSample);
+  const bool emissiveColorLoaded = surfaceMaterialInteractionTextureReadHelper(translucentSurfaceMaterial.emissiveColorTextureIndex, surfaceInteraction, emissiveColorSample);
 
   // Create a tangent to world space matrix for future calculations
 
@@ -103,6 +107,20 @@ TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreat
   transmittanceColor = gammaToLinear(transmittanceColor);
   diffuseColor = gammaToLinear(diffuseColor);
 
+  // Load Emissive Color
+
+  f16vec3 emissiveColor = translucentSurfaceMaterial.emissiveColorConstant;
+
+  if (emissiveColorLoaded)
+  {
+    emissiveColor = emissiveColorSample.xyz;
+  }
+
+  // Note: Gamma correct emissive color input (be it from a constant or a texture). Currently assuming all textures are not using sRGB formats which
+  // automatically do this conversion.
+  // Todo: Disable this for when a sRGB texture is the source of the emissive color.
+  emissiveColor = gammaToLinear(emissiveColor);
+
   // Transform to desired Translucent Material Interaction values
 
   translucentSurfaceMaterialInteraction.shadingNormal = getBentNormal(surfaceInteraction.triangleNormal, normal, -minimalRayInteraction.viewDirection);
@@ -114,10 +132,18 @@ TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreat
   translucentSurfaceMaterialInteraction.diffuseColor = diffuseColor;
   translucentSurfaceMaterialInteraction.diffuseOpacity = diffuseOpacity;
   translucentSurfaceMaterialInteraction.thicknessOrMeasurementDistance = translucentSurfaceMaterial.thicknessOrMeasurementDistance;
-  // Note: Already gamma corrected on the CPU side, no need to do so here unlike the opaque material model.
-  translucentSurfaceMaterialInteraction.emissiveRadiance = translucentSurfaceMaterial.emissiveRadiance;
+  // Note: Global emissive intensity scalar on top of everything else similar to how this is done in the Opaque material for consistency.
+  // Additionally, this logic is duplicated in creating a translucent surface material interaction from the G-Buffer, so remember to
+  // update that logic as well if this logic is changed.
+  translucentSurfaceMaterialInteraction.emissiveRadiance =
+    emissiveColor * translucentSurfaceMaterial.emissiveIntensity * uint16BitsToHalf(cb.emissiveIntensity);
 
   translucentSurfaceMaterialInteraction.sourceSurfaceMaterialIndex = translucentSurfaceMaterial.sourceSurfaceMaterialIndex;
+  // Note: This could only be set when the emissive color is sourced from a texture, but we just do it always to simplify the encoding/decoding logic for now (as these ALU instructions
+  // should likely not take too long anyways). Slightly non idea to have to store this information here, but there's no way for the GBuffer serialization to know what the original emissive
+  // color making up the emissive radiance was. Additionally, fast linear to gamma transform done here to minimize perceptual quantization (could use the raw gamma value before the gamma
+  // correction earlier but this would require slightly more costly instructions in decoding).
+  translucentSurfaceMaterialInteraction.sourcePackedGammaEmissiveColor = colorToR5G6B5(linearToGammaFast(emissiveColor));
 
   translucentSurfaceMaterialInteraction.flags = translucentSurfaceMaterial.flags;
 
@@ -142,6 +168,7 @@ TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreat
   translucentSurfaceMaterialInteraction.normalDetail = polymorphicSurfaceMaterialInteraction.fdata4;
   translucentSurfaceMaterialInteraction.flags = polymorphicSurfaceMaterialInteraction.bdata0;
   translucentSurfaceMaterialInteraction.sourceSurfaceMaterialIndex = polymorphicSurfaceMaterialInteraction.idata0;
+  translucentSurfaceMaterialInteraction.sourcePackedGammaEmissiveColor = polymorphicSurfaceMaterialInteraction.idata1;
 
   return translucentSurfaceMaterialInteraction;
 }
@@ -149,6 +176,13 @@ TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreat
 TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreate(
   GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfaceMaterialInteraction)
 {
+  // Todo: There's a lot of wasted bits here in "normal" translucent material usage (for instance when not using the diffuse
+  // layer, not using a variable transmittance/diffuse color and not using a variable emissive color). We could do some better
+  // encoding based on the various combinations of these variable factors, but it complicates decoding by needing to copy logic
+  // from the surface material interaction construction which is not ideal. It may just be better to fully re-derive the translucent
+  // material from surface information in the future to eliminate all this encoding in general, but if this is a good idea or not is
+  // still unclear (an expierement for later to see if despite the larger amount of data it must read is better cached and etc).
+
   // Decode the Translucent Surface Material Interaction from its polymorphic GBuffer Memory representation
   // Note: Translucent type is known in advance
 
@@ -169,52 +203,49 @@ TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreat
     translucentSurfaceMaterialCreate(sourceSurfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
 
   translucentSurfaceMaterialInteraction.shadingNormal = gBufferMemoryPolymorphicSurfaceMaterialInteraction.worldShadingNormal;
+  // Note: We don't store this in the G-buffer, so set it to 0.
+  translucentSurfaceMaterialInteraction.normalDetail = 0.0h;
   translucentSurfaceMaterialInteraction.baseReflectivity = translucentSurfaceMaterial.baseReflectivity;
   translucentSurfaceMaterialInteraction.refractiveIndex = translucentSurfaceMaterial.refractiveIndex;
-  translucentSurfaceMaterialInteraction.emissiveRadiance = translucentSurfaceMaterial.emissiveRadiance;
-
   translucentSurfaceMaterialInteraction.sourceSurfaceMaterialIndex = sourceSurfaceMaterialIndex;
+  translucentSurfaceMaterialInteraction.thicknessOrMeasurementDistance =
+    translucentSurfaceMaterial.thicknessOrMeasurementDistance;
 
-  const bool useDiffuseLayer = data0 & (1 << 29);
-  const f16vec3 decodedColor = f16vec3(
-    unorm8ToF16(uint8_t(data0 >> 16)),
-    unorm8ToF16(uint8_t(data1 >> 24)),
-    unorm8ToF16(uint8_t(data1 >> 16)));
-  uint16_t encodedThicknessOrMeasurmentDistance;
+  const bool useDiffuseLayer = (data0 & (1 << 29)) != 0;
+  const float16_t diffuseOpacity = unorm8ToF16(uint8_t(data0 >> 16));
+  const f16vec3 gammaVariableColor = r5g6b5ToColor(uint16_t(data1 >> 0));
+  const f16vec3 gammaEmissiveColor = r5g6b5ToColor(uint16_t(data1 >> 16));
+  const f16vec3 variableColor = gammaToLinearFast(gammaVariableColor);
+  const f16vec3 emissiveColor = gammaToLinearFast(gammaEmissiveColor);
+
+  // Note: Re-derive emissive radiance in the same way translucent surface material interaction creation is done (should match
+  // the implementation in the creation function).
+  const f16vec3 emissiveRadiance =
+    emissiveColor * translucentSurfaceMaterial.emissiveIntensity * uint16BitsToHalf(cb.emissiveIntensity);;
+
+  translucentSurfaceMaterialInteraction.emissiveRadiance = emissiveRadiance;
 
   if (useDiffuseLayer)
   {
-    // transmittance color is constant
+    // Transmittance color is constant when diffuse layer is in use
     translucentSurfaceMaterialInteraction.transmittanceColor = translucentSurfaceMaterial.transmittanceColor;
 
-    const uint8_t diffuseOpacity =
-      ((data0 >> (24 - 3)) & 0x1F) |
-      ((data1 >> 14) & 0x3);
-
-    // color encoded in the GBuffer is the diffuse albedo color
-    translucentSurfaceMaterialInteraction.diffuseColor = decodedColor;
-    translucentSurfaceMaterialInteraction.diffuseOpacity = unorm7ToF16(diffuseOpacity);
-
-    encodedThicknessOrMeasurmentDistance = uint16_t(data1) & 0xFFFC;
+    // Color encoded in the GBuffer is the diffuse albedo color
+    translucentSurfaceMaterialInteraction.diffuseColor = variableColor;
+    translucentSurfaceMaterialInteraction.diffuseOpacity = diffuseOpacity;
   }
   else
   {
     // GBuffer contains the transmittance color
-    translucentSurfaceMaterialInteraction.transmittanceColor = decodedColor;
-    
-    translucentSurfaceMaterialInteraction.diffuseColor = f16vec3(0);
-    translucentSurfaceMaterialInteraction.diffuseOpacity = 0.0;
+    translucentSurfaceMaterialInteraction.transmittanceColor = variableColor;
 
-    encodedThicknessOrMeasurmentDistance = uint16_t(data1);
+    // Diffuse Layer is not used in this case
+    translucentSurfaceMaterialInteraction.diffuseColor = f16vec3(0.0h);
+    translucentSurfaceMaterialInteraction.diffuseOpacity = 0.0h;
   }
-  
+
   translucentSurfaceMaterialInteraction.flags =
     (useDiffuseLayer ? TRANSLUCENT_SURFACE_MATERIAL_FLAG_USE_DIFFUSE_LAYER : 0);
-  translucentSurfaceMaterialInteraction.thicknessOrMeasurementDistance =
-    uint16BitsToHalf(encodedThicknessOrMeasurmentDistance);
-
-  // We don't store this in the G-buffer
-  translucentSurfaceMaterialInteraction.normalDetail = float16_t(0.0f);
 
   return translucentSurfaceMaterialInteraction;
 }

@@ -42,11 +42,9 @@ RayPortalSurfaceMaterial rayPortalSurfaceMaterialCreate(uint16_t surfaceMaterial
   rayPortalSurfaceMaterial.maskTextureIndex = data00.x;
   rayPortalSurfaceMaterial.maskTextureIndex2 = data00.y;
   rayPortalSurfaceMaterial.rayPortalIndex = uint8_t(data01.x);
-  rayPortalSurfaceMaterial.spriteSheetRows = uint8_t(data01.x >> 8u);
-  rayPortalSurfaceMaterial.spriteSheetCols = uint8_t(data01.y);
-  rayPortalSurfaceMaterial.spriteSheetFPS = uint8_t(data01.y >> 8u);
-  rayPortalSurfaceMaterial.rotationSpeed = uint16BitsToHalf(data02.x);
-  rayPortalSurfaceMaterial.emissiveIntensity = uint16BitsToHalf(data02.y);
+  // Note: 8 bit unused here in data01.x.
+  rayPortalSurfaceMaterial.rotationSpeed = uint16BitsToHalf(data01.y);
+  rayPortalSurfaceMaterial.emissiveIntensity = uint16BitsToHalf(data02.x);
 
   return rayPortalSurfaceMaterial;
 }

@@ -28,9 +28,12 @@
 #include "rtx/pass/common_bindings.slangh"
 #include "rtx/utility/debug_view_indices.h"
 
-static const int kFootprintFromRayOrigin = 0;
-static const int kFootprintFromRayDirection = 1;
-static const int kFootprintFromTextureCoordDiff = 2;
+// Surface Interaction Constants
+
+static const uint kFootprintFromRayOrigin = 0u;
+static const uint kFootprintFromRayDirection = 1u;
+static const uint kFootprintFromTextureCoordDiff = 2u;
+
 // Surface Interaction Helper Functions
 
 // Texture Gradient from Ray Cone Helper
@@ -133,10 +136,42 @@ void convert1stCascadeTexCoordsToTargetCascadeLevel(uint targetCascadeLevel, ino
 
   [unroll]
   for (uint i = 0; i < 3; i++)
+  {
     texcoords[i] = convert1stCascadeTexCoordToTiledTexCoord(cascade2DIndex, rcpTargetCascadeLevelScale, texcoords[i]);
+  }
 }
 
-SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayInteraction, Ray ray, bool usePreviousPositions = false, int footprintMode = kFootprintFromRayDirection)
+// Adjusts a specified set of texture coordinates and gradients with respect to specified spritesheet information.
+void calcSpriteSheetAdjustment(
+  inout vec2 textureCoordinates,
+  inout vec2 textureGradientX,
+  inout vec2 textureGradientY,
+  uint32_t timeSinceStartMS,
+  uint8_t spriteSheetRows,
+  uint8_t spriteSheetCols,
+  uint8_t spriteSheetFPS)
+{
+  // Note: Fast path for most materials which do not actually use animated spritesheets.
+  if (spriteSheetFPS == 0)
+  {
+    return;
+  }
+
+  const uint numSprites = spriteSheetCols * spriteSheetRows;
+  // Note: timeSinceStartMS is clamped to 2^24 - 1 on the CPU side so this multiplication shouldn't overflow.
+  const uint frame = ((timeSinceStartMS * spriteSheetFPS) / 1000) % numSprites;
+
+  const vec2 uvSize = vec2(1.0f / spriteSheetCols, 1.0f / spriteSheetRows);
+  const vec2 uvBias = vec2(frame % spriteSheetCols, frame / spriteSheetCols) * uvSize;
+
+  textureCoordinates = uvBias + textureCoordinates * uvSize;
+  textureGradientX *= uvSize;
+  textureGradientY *= uvSize;
+}
+
+SurfaceInteraction surfaceInteractionCreate(
+  Surface surface, RayInteraction rayInteraction, Ray ray,
+  bool usePreviousPositions = false, uint footprintMode = kFootprintFromRayDirection)
 {
   // Compute vertex indicies
 
@@ -335,7 +370,7 @@ SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayI
     // (potentially useful for say cubemap sampling, but Remix has little use to actually render cubemaps properly outside
     // of say sky capturing since ray traced reflections will replace most cubemap effects).
     vec2 texcoords[3];
-    
+
     for (uint i = 0; i < 3; i++)
     {
       vec4 rawTextureCoordinate;
@@ -353,7 +388,7 @@ SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayI
         const uint currentIndex = idx[i];
         const uint normalBufferIndex = surface.normalBufferIndex;
         const uint normalElementIndex = (currentIndex * uint(surface.normalStride) + surface.normalOffset) / 4;
-        
+
         float3 normal;
         normal.x = BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex + 0);
         normal.y = BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex + 1);
@@ -397,12 +432,12 @@ SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayI
     }
 
     surfaceInteraction.textureCoordinates = interpolateHitAttribute(texcoords, bary);
-   
+
     // Convert texcoords from the 1st cascade to a corresponding cascade in a combined tiled cascades texture space
     if (surface.texcoordGenerationMode == uint(TexGenMode::CascadedViewPositions))
     {
       uint cascadeLevel = 0;
-      
+
       // Calculate the texcoords for cascade maps with more than one cascade.
       // Texcoords for the first cascade are already correct if there's only a single cascade in the map
       if (cb.terrainArgs.maxCascadeLevel > 0) 
@@ -410,7 +445,6 @@ SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayI
         const vec2 textureCenterOffset = texcoordToOffsetFromTextureCenter(surfaceInteraction.textureCoordinates);
         const float maxTextureCenterOffset = length(textureCenterOffset);
 
-      
         // Calculate a cascade level if sampling outside the first cascade
         if (maxTextureCenterOffset >= 0.5)
         {
@@ -422,7 +456,7 @@ SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayI
         }
         convert1stCascadeTexCoordsToTargetCascadeLevel(cascadeLevel, surfaceInteraction.textureCoordinates, texcoords);
       }
-        
+
 #if defined(RAY_TRACING_PRIMARY_RAY) && defined(RAY_PIPELINE)
       if (cb.debugView == DEBUG_VIEW_CASCADE_LEVEL)
       {
@@ -432,7 +466,7 @@ SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayI
       {
         storeInDebugView(DispatchRaysIndex().xy, 1);
       }
-#endif    
+#endif
     }
 
     f16vec3 interpolatedTangent, interpolatedBitangent;
@@ -442,20 +476,21 @@ SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayI
     genTangSpace(
       texcoords, worldPositions, surfaceInteraction.triangleNormal, surfaceInteraction.interpolatedNormal,
       interpolatedTangent, interpolatedBitangent);
-    
+
     surfaceInteraction.interpolatedTangent = interpolatedTangent;
     surfaceInteraction.interpolatedBitangent = interpolatedBitangent;
-    
+
     // Compute texture gradients
     // Note: This is done here as it depends on the triangle normal and texture coordinates being calculated first
-    
+
     // Note: Non-flipped world space triangle normal passed in to be consistent with the calculations done internally (rather
     // than worrying about if the flipped vector could break it)
     if (footprintMode != kFootprintFromTextureCoordDiff)
     {
-      vec3 positionOffset = surfaceInteraction.position - ray.origin;
-      f16vec3 direction = footprintMode == kFootprintFromRayDirection ? ray.direction : normalize(positionOffset);
-      float16_t coneRadius = footprintMode == kFootprintFromRayDirection ? rayInteraction.coneRadius : rayInteraction.coneRadius + length(positionOffset) * ray.spreadAngle;
+      const vec3 positionOffset = surfaceInteraction.position - ray.origin;
+      const f16vec3 direction = footprintMode == kFootprintFromRayDirection ? ray.direction : normalize(positionOffset);
+      const float16_t coneRadius = footprintMode == kFootprintFromRayDirection ? rayInteraction.coneRadius : rayInteraction.coneRadius + length(positionOffset) * ray.spreadAngle;
+
       computeAnisotropicEllipseAxes(
         hitPosition, triangleNormal, worldTwoTriangleArea, direction,
         rayInteraction.coneRadius, worldPositions, texcoords, surfaceInteraction.textureCoordinates,
@@ -480,6 +515,20 @@ SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayI
       surfaceInteraction.interpolatedBitangent);
   }
 
+  // Adjust texture coordinates and gradients for animated sprite sheet logic
+
+  if (!surface.skipSurfaceInteractionSpritesheetAdjustment)
+  {
+    calcSpriteSheetAdjustment(
+      surfaceInteraction.textureCoordinates,
+      surfaceInteraction.textureGradientX,
+      surfaceInteraction.textureGradientY,
+      cb.timeSinceStartMS,
+      surface.spriteSheetRows,
+      surface.spriteSheetCols,
+      surface.spriteSheetFPS);
+  }
+
   // Baked terrain is the only surface using cascaded view positions, so key off of that. 
   const bool isBakedTerrain = surface.texcoordGenerationMode == uint(TexGenMode::CascadedViewPositions);
 
@@ -491,6 +540,7 @@ SurfaceInteraction surfaceInteractionCreate(Surface surface, RayInteraction rayI
      !isBakedTerrain)
   {
     f16vec4 color[3];
+
     for (uint i = 0; i < 3; i++)
     {
       const uint currentIndex = idx[i];
