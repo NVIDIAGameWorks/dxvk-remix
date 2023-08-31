@@ -64,10 +64,6 @@ struct OpaqueSurfaceMaterial
   float16_t metallicConstant;
   f16vec3 emissiveColorConstant;
 
-  uint8_t spriteSheetRows;
-  uint8_t spriteSheetCols;
-  uint8_t spriteSheetFPS;
-
   float16_t thinFilmThicknessConstant; // note: [0-1] range
 
   // bitmask of OPAQUE_SURFACE_MATERIAL_FLAG_* bits
@@ -79,11 +75,14 @@ struct OpaqueSurfaceMaterial
 struct TranslucentSurfaceMaterial
 {
   uint16_t normalTextureIndex;
+  uint16_t transmittanceOrDiffuseTextureIndex;
+  uint16_t emissiveColorTextureIndex;
 
   float16_t baseReflectivity;
   float16_t refractiveIndex;
   f16vec3 transmittanceColor;
-  f16vec3 emissiveRadiance;
+  float16_t emissiveIntensity;
+  f16vec3 emissiveColorConstant;
 
   // Note: Source values only used for serialization purposes.
   uint16_t sourceSurfaceMaterialIndex;
@@ -92,8 +91,6 @@ struct TranslucentSurfaceMaterial
   // thin-walled thickness is represented as a negative number
   float16_t thicknessOrMeasurementDistance;
 
-  uint16_t transmittanceOrDiffuseTextureIndex;
-  
   // bitmask of TRANSLUCENT_SURFACE_MATERIAL_FLAG_* bits
   uint8_t flags;
 };
@@ -104,9 +101,6 @@ struct RayPortalSurfaceMaterial
   uint16_t maskTextureIndex2;
 
   uint8_t rayPortalIndex;
-  uint8_t spriteSheetRows;
-  uint8_t spriteSheetCols;
-  uint8_t spriteSheetFPS;
 
   float16_t rotationSpeed;
   float16_t emissiveIntensity;
@@ -160,11 +154,14 @@ struct TranslucentSurfaceMaterialInteraction
   float16_t diffuseOpacity;
 
   // Note: Source values only used for serialization purposes.
-  // Note: Used as almost everything in a translucent material is constant and typically reading from the material even
+  // Note: Used as much of a translucent material is constant and typically reading from the material even
   // if it requires an indirection should be better than reading/writing more data to per-pixel buffers. Additionally the
   // lack of the original values such as the transmittance measurement distance and color make it hard to send this compactly
   // without otherwise having to upload those to the Translucent Surface Material (could be done if needed though).
   uint16_t sourceSurfaceMaterialIndex;
+  // Note: Raw (gamma encoded) emissive color packed in R5G6B5 needed for more tight packing, not ideal as this carries live state
+  // across other code but this is an easy way to get the required info.
+  uint16_t sourcePackedGammaEmissiveColor;
 
   // encodes either the thin-walled thickness or the transmittance measurement distance
   // thin-walled thickness is represented as a negative number
@@ -211,6 +208,7 @@ struct PolymorphicSurfaceMaterialInteraction
   float16_t fdata4;
 
   uint16_t idata0;
+  uint16_t idata1;
 
   uint8_t bdata0;
 

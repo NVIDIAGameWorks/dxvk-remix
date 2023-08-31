@@ -551,7 +551,7 @@ void resolveVertex(
     const RayPortalSurfaceMaterial rayPortalSurfaceMaterial = rayPortalSurfaceMaterialCreate(surface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
 
     const RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction =
-      rayPortalSurfaceMaterialInteractionCreate(rayPortalSurfaceMaterial, surfaceInteraction);
+      rayPortalSurfaceMaterialInteractionCreate(rayPortalSurfaceMaterial, surface, surfaceInteraction);
 
     polymorphicSurfaceMaterialInteraction =
       polymorphicSurfaceMaterialInteractionCreateInternal(rayPortalSurfaceMaterialInteraction);

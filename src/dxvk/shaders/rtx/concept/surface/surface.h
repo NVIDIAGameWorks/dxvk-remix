@@ -25,6 +25,9 @@
 
 struct MemorySurface
 {
+  // Note: Currently aligned nicely to 256 bytes, avoid changing the size of this structure (as it will require
+  // more 128 byte cachelines to be brought in for a single Surface read).
+
   uvec4 data0;
   uvec4 data1;
   uvec4 data2;
@@ -101,6 +104,10 @@ struct Surface
   bool isMatte;
   bool isTextureFactorBlend;
   bool isMotionBlurMaskOut;
+  // Note: A flag to indicate that spritesheet adjustment shouldn't be done in the Surface Interaction, typically
+  // because it will be done elsewhere for another reason (e.g. for the Ray Portal case where it is done in the Surface
+  // Material Interaction instead).
+  bool skipSurfaceInteractionSpritesheetAdjustment;
   bool isInsideFrustum;
 
   mat4x3 objectToWorld;
@@ -113,6 +120,10 @@ struct Surface
   mat4x2 textureTransform;
 
   vec4 clipPlane;
+
+  uint8_t spriteSheetRows;
+  uint8_t spriteSheetCols;
+  uint8_t spriteSheetFPS;
 };
 
 // Note: Minimal version of typical Surface Interaction for transmission across passes.

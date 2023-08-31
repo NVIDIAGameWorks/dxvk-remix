@@ -868,7 +868,41 @@ namespace dxvk {
         currentInstance.surface.associatedGeometryHash = drawCall.getHash(RtxOptions::Get()->GeometryAssetHashRule);
         currentInstance.surface.isTextureFactorBlend = drawCall.getMaterialData().isTextureFactorBlend;
         currentInstance.surface.isMotionBlurMaskOut = RtxOptions::Get()->isMotionBlurMaskOutTexture(drawCall.getMaterialData().getHash());
+        // Note: Skip the spritesheet adjustment logic in the surface interaction when using Ray Portal materials as this logic
+        // is done later in the Surface Material Interaction (and doing it in both places will just double up the animation).
+        currentInstance.surface.skipSurfaceInteractionSpritesheetAdjustment = (materialData.getType() == MaterialDataType::RayPortal);
         currentInstance.surface.isInsideFrustum = RtxOptions::AntiCulling::Object::enable() ? currentInstance.m_isInsideFrustum : true;
+
+        uint8_t spriteSheetRows = RtxOptions::Get()->getSharedMaterialDefaults().SpriteSheetRows;
+        uint8_t spriteSheetCols = RtxOptions::Get()->getSharedMaterialDefaults().SpriteSheetCols;
+        uint8_t spriteSheetFPS = RtxOptions::Get()->getSharedMaterialDefaults().SpriteSheetFPS;
+
+        // Note: Extract spritesheet information from the associated material data as it ends up stored in the Surface
+        // not in the Surface Material like most material information.
+        switch (materialData.getType()) {
+        case MaterialDataType::Opaque:
+          spriteSheetRows = materialData.getOpaqueMaterialData().getSpriteSheetRows();
+          spriteSheetCols = materialData.getOpaqueMaterialData().getSpriteSheetCols();
+          spriteSheetFPS = materialData.getOpaqueMaterialData().getSpriteSheetFPS();
+
+          break;
+        case MaterialDataType::Translucent:
+          spriteSheetRows = materialData.getTranslucentMaterialData().getSpriteSheetRows();
+          spriteSheetCols = materialData.getTranslucentMaterialData().getSpriteSheetCols();
+          spriteSheetFPS = materialData.getTranslucentMaterialData().getSpriteSheetFPS();
+
+          break;
+        case MaterialDataType::RayPortal:
+          spriteSheetRows = materialData.getRayPortalMaterialData().getSpriteSheetRows();
+          spriteSheetCols = materialData.getRayPortalMaterialData().getSpriteSheetCols();
+          spriteSheetFPS = materialData.getRayPortalMaterialData().getSpriteSheetFPS();
+
+          break;
+        }
+
+        currentInstance.surface.spriteSheetRows = spriteSheetRows;
+        currentInstance.surface.spriteSheetCols = spriteSheetCols;
+        currentInstance.surface.spriteSheetFPS = spriteSheetFPS;
 
         // For worldspace UI, we want to show the UI (unlit) in the world.  So configure the blend mode if blending is used accordingly.
         if (currentInstance.m_isWorldSpaceUI) {
@@ -989,15 +1023,19 @@ namespace dxvk {
 
     // Extra instance meta data needed for Opacity Micromap Manager 
     {
-      switch (material.getType()) {
-      case RtSurfaceMaterialType::Opaque:
-        currentInstance.m_isAnimated = material.getOpaqueSurfaceMaterial().getSpriteSheetFPS() != 0;
+      switch (materialData.getType()) {
+      case MaterialDataType::Opaque:
+        currentInstance.m_isAnimated = materialData.getOpaqueMaterialData().getSpriteSheetFPS() != 0;
         break;
-      case RtSurfaceMaterialType::RayPortal:
-        currentInstance.m_isAnimated = material.getRayPortalSurfaceMaterial().getSpriteSheetFPS() != 0;
+      case MaterialDataType::Translucent:
+        currentInstance.m_isAnimated = materialData.getTranslucentMaterialData().getSpriteSheetFPS() != 0;
+        break;
+      case MaterialDataType::RayPortal:
+        currentInstance.m_isAnimated = materialData.getRayPortalMaterialData().getSpriteSheetFPS() != 0;
         break;
       default:
         currentInstance.m_isAnimated = false;
+        break;
       }
     }
 
