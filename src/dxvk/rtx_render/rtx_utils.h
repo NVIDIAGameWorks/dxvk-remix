@@ -34,6 +34,7 @@
 #include "../util/util_matrix.h"
 #include "../util/util_quat.h"
 #include "../util/util_pack.h"
+#include "../util/util_fast_cache.h"
 #include "dxvk_bind_mask.h"
 #include <d3d9types.h>
 #include <type_traits>
@@ -207,50 +208,5 @@ template<typename T>
 void releaseVectorMemory(std::vector<T>& v) {
   std::vector<T>().swap(v);
 }
-
-// A passthrough hash class compatible with std c++ containers.
-struct XXH64_hash_passthrough {
-  [[nodiscard]] size_t operator()(const XXH64_hash_t keyval) const noexcept {
-    static_assert(sizeof(size_t) == sizeof(XXH64_hash_t), "Hash value size != size_t size.");
-    return keyval;
-  }
-};
-
-// A hash class compatible with std c++ containers.
-template<typename T>
-struct XXH64_std_hash {
-  [[nodiscard]] size_t operator()(const T keyval) const noexcept {
-    static_assert(sizeof(size_t) == sizeof(XXH64_hash_t), "Hash value size != size_t size.");
-    static_assert((std::is_enum_v<T> || std::is_integral_v<T> || std::is_pointer_v<T>), "Uncompatible key type.");
-
-    return XXH3_64bits(&keyval, sizeof(keyval));
-  }
-};
-
-template<>
-struct XXH64_std_hash<std::string> {
-  [[nodiscard]] size_t operator()(const std::string& keyval) const noexcept {
-    return XXH3_64bits(keyval.c_str(), keyval.length());
-  }
-};
-
-// A fast caching structure for use ONLY with already hashed keys.
-template<class T>
-struct fast_unordered_cache : public std::unordered_map<XXH64_hash_t, T, XXH64_hash_passthrough> {
-  template<typename P>
-  void erase_if(P&& p) {
-    for (auto it = begin(); it != end();) {
-      if (!p(it)) {
-        ++it;
-      } else {
-        it = erase(it);
-      }
-    }
-  }
-};
-
-// A fast set for use ONLY with already hashed keys.
-struct fast_unordered_set : public std::unordered_set<XXH64_hash_t, XXH64_hash_passthrough> {
-};
 
 } // namespace dxvk
