@@ -306,6 +306,43 @@ f16vec3 QuaternionToHexadecachoron(f16vec4 q)
   return q.xyz / (abs(q.x) + abs(q.y) + abs(q.z) + abs(q.w));
 }
 
+uint32_t quaternionToUint32(f16vec4 quaternion)
+{
+  // Hexadecachoron packing assumes w is positive, so need to extract the righthanded flag
+  const uint16_t oldRightHandedFlag = float16BitsToUint16(quaternion.w) & 0x8000;
+  quaternion = uint16BitsToHalf(float16BitsToUint16(quaternion) ^ oldRightHandedFlag);
+  
+  const f16vec3 hexadecachoron = QuaternionToHexadecachoron(quaternion);
+
+  // Store as 10/10/11/1
+  return uint32_t(f16ToSnorm10(hexadecachoron.x)) << 0 |
+    uint32_t(f16ToSnorm10(hexadecachoron.y)) << 10 |
+    uint32_t(f16ToSnorm11(hexadecachoron.z)) << 20 |
+    uint32_t(oldRightHandedFlag) << 16; // moved over to put the largest bit of a uint16 into the largest bit of a uint32
+}
+
+f16vec4 uint32ToQuaternion(uint32_t packed)
+{
+  const f16vec3 hexadecachoron = f16vec3(
+    snorm10ToF16((packed & 0x000003FF) >> 0),
+    snorm10ToF16((packed & 0x000FFC00) >> 10),
+    snorm11ToF16((packed & 0x7FF00000) >> 20));
+  
+  f16vec4 quaternion = HexadecachoronToQuaternion(hexadecachoron);
+  
+  // Restore the rightHanded flag based on the last bit.
+  // Note that `HexadecachoronToQuaternion` can produce quaternions with `-w`,
+  // so we need to flip the quaternion if the w sign doesn't match our desired sign.
+  const uint16_t desiredSignBit = (packed & 0x80000000) >> 16;
+  const uint16_t currentSignBit = float16BitsToUint16(quaternion.w) & 0x8000;
+  // flipBit will be 0x0000 if signs match, 0x8000 if they dont.
+  const uint16_t flipBit = desiredSignBit ^ currentSignBit;
+  quaternion = uint16BitsToHalf(float16BitsToUint16(quaternion) ^ flipBit);
+
+  return quaternion;
+}
+
+
 // Matrix Packing Helpers
 
 // Converts a snorm 3x3 matrix (all elements [-1, 1]) to 2 32 bit integers
