@@ -70,6 +70,8 @@ namespace dxvk {
         {DEBUG_VIEW_VIRTUAL_MOTION_VECTOR, "Virtual Motion Vector"},
         {DEBUG_VIEW_SCREEN_SPACE_MOTION_VECTOR, "Screen-Space Motion Vector"},
         {DEBUG_VIEW_TRIANGLE_NORMAL, "Triangle Normal"},
+        {DEBUG_VIEW_TRIANGLE_TANGENT, "Triangle Tangent"},
+        {DEBUG_VIEW_TRIANGLE_BITANGENT, "Triangle Bitangent"},
         {DEBUG_VIEW_INTERPOLATED_NORMAL, "Interpolated Normal"},
         {DEBUG_VIEW_INTERPOLATED_TANGENT, "Interpolated Tangent"},
         {DEBUG_VIEW_INTERPOLATED_BITANGENT, "Interpolated Bitangent"},

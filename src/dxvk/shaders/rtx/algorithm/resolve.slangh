@@ -851,6 +851,8 @@ void resolveVertexUnordered(
       surfaceInteraction.position = p;
       surfaceInteraction.positionError = 0;
       surfaceInteraction.triangleNormal = normal;
+      surfaceInteraction.triangleTangent = billboard.xAxis;
+      surfaceInteraction.triangleBitangent = billboard.yAxis;
       surfaceInteraction.motion = 0;
       surfaceInteraction.textureCoordinates = uv;
       surfaceInteraction.textureGradientX = 0;

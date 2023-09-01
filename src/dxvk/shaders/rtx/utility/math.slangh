@@ -454,3 +454,94 @@ float3 BicubicSampleCatmullRom(Texture2D tex, SamplerState samp, float2 samplePo
 
   return max(0, result);
 }
+
+f16mat3 quaternionToRotMat3(f16vec4 q)
+{
+  return f16mat3(
+    quaternionToTangent(q),
+    quaternionToBitangent(q),
+    quaternionToNormal(q));
+}
+
+f16vec3 quaternionToTangent(f16vec4 q)
+{
+  return quaternionTransformVector(q, f16vec3(1,0,0));
+}
+
+f16vec3 quaternionToBitangent(f16vec4 q)
+{
+  if (isQuatRightHanded(q)) {
+    return quaternionTransformVector(q, f16vec3(0,1,0));
+  } else {
+    return quaternionTransformVector(q, f16vec3(0,-1,0));
+  }
+}
+
+f16vec3 quaternionToNormal(f16vec4 q)
+{
+  return quaternionTransformVector(q, f16vec3(0,0,1));
+}
+
+// Because quaternion == -quaternion, we can use the sign bit of the w
+// component of the quaternion to encode the handedness of the original TBN matrix.
+bool isQuatRightHanded(f16vec4 q) {
+  return float16BitsToUint16(q.w) & 0x8000;
+}
+
+// This produces a quaternion with a positive w, then inverts the quaternion if the input
+// TBN was right handed.  As q == -q for rotation purposes, this is a safe way to store
+// an extra flag along with the quaternion.
+// `isQuatRightHanded` can be used to easily check if the input TBN was right handed.
+f16vec4 tbnFrameToQuaternion(f16vec3 tangent, f16vec3 biTangent, f16vec3 normal)
+{
+    const bool rightHanded = (dot(cross(tangent,biTangent), normal) >= 0.0);
+    if (!rightHanded)
+    {
+      biTangent = -biTangent;
+    }
+    f16mat3 rotationMatrix = { tangent, biTangent, normal };
+    rotationMatrix = transpose(rotationMatrix);
+
+    const float tr = rotationMatrix[0][0] + rotationMatrix[1][1] + rotationMatrix[2][2];
+    f16vec4 quaternion;
+    if (tr > 0)
+    {
+        float s = sqrt(tr + 1.0) * 2; // s=4*qw
+        quaternion.w = 0.25 * s;
+        quaternion.x = (rotationMatrix[2][1] - rotationMatrix[1][2]) / s;
+        quaternion.y = (rotationMatrix[0][2] - rotationMatrix[2][0]) / s;
+        quaternion.z = (rotationMatrix[1][0] - rotationMatrix[0][1]) / s;
+    }
+    else if ((rotationMatrix[0][0] > rotationMatrix[1][1]) && (rotationMatrix[0][0] > rotationMatrix[2][2]))
+    {
+        float s = sqrt(1.0 + rotationMatrix[0][0] - rotationMatrix[1][1] - rotationMatrix[2][2]) * 2; // s=4*qx
+        quaternion.w = (rotationMatrix[2][1] - rotationMatrix[1][2]) / s;
+        quaternion.x = 0.25 * s;
+        quaternion.y = (rotationMatrix[0][1] + rotationMatrix[1][0]) / s;
+        quaternion.z = (rotationMatrix[0][2] + rotationMatrix[2][0]) / s;
+    }
+    else if (rotationMatrix[1][1] > rotationMatrix[2][2])
+    {
+        float s = sqrt(1.0 + rotationMatrix[1][1] - rotationMatrix[0][0] - rotationMatrix[2][2]) * 2; // s=4*qy
+        quaternion.w = (rotationMatrix[0][2] - rotationMatrix[2][0]) / s;
+        quaternion.x = (rotationMatrix[0][1] + rotationMatrix[1][0]) / s;
+        quaternion.y = 0.25 * s;
+        quaternion.z = (rotationMatrix[1][2] + rotationMatrix[2][1]) / s;
+    }
+    else
+    {
+        float s = sqrt(1.0 + rotationMatrix[2][2] - rotationMatrix[0][0] - rotationMatrix[1][1]) * 2; // s=4*qz
+        quaternion.w = (rotationMatrix[1][0] - rotationMatrix[0][1]) / s;
+        quaternion.x = (rotationMatrix[0][2] + rotationMatrix[2][0]) / s;
+        quaternion.y = (rotationMatrix[1][2] + rotationMatrix[2][1]) / s;
+        quaternion.z = 0.25 * s;
+    }
+
+    // If sign bit of w is negative but the original TBN was right handed 
+    // (or vice versa) flip the quaternion.
+    if (isQuatRightHanded(quaternion) != rightHanded) {
+      quaternion = uint16BitsToHalf(float16BitsToUint16(quaternion) ^ 0x8000);
+    }
+
+    return quaternion;
+}
