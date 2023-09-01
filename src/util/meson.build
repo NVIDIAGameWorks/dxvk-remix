@@ -34,6 +34,8 @@ util_src = files([
   'util_fastops.cpp',
   'util_fastops.h',
 
+  'util_fast_cache.h',
+
   'util_threadpool.h',
   'util_atomic_queue.h',
 
