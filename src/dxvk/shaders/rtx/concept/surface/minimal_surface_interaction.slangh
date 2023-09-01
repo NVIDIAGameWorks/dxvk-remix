@@ -27,14 +27,15 @@ MinimalSurfaceInteraction minimalSurfaceInteractionCreate(GBufferMemoryMinimalSu
 {
   MinimalSurfaceInteraction minimalSurfaceInteraction;
 
-  const uint32_t packedTriangleNormal =
-    floatBitsToUint(gBufferMemoryMinimalSurfaceInteraction.encodedWorldPositionWorldTriangleNormal.w);
-  const vec2 octahedralTriangleNormal = snorm2x16ToFloat2x32(packedTriangleNormal);
-  const f16vec3 triangleNormal = signedOctahedralToSphereDirection(octahedralTriangleNormal);
+  const uint32_t packedTriangleTBN =
+    floatBitsToUint(gBufferMemoryMinimalSurfaceInteraction.encodedWorldPositionWorldTriangleTBN.w);
+  const f16vec4 quaternion = uint32ToQuaternion(packedTriangleTBN);
 
-  minimalSurfaceInteraction.position = gBufferMemoryMinimalSurfaceInteraction.encodedWorldPositionWorldTriangleNormal.xyz;
+  minimalSurfaceInteraction.position = gBufferMemoryMinimalSurfaceInteraction.encodedWorldPositionWorldTriangleTBN.xyz;
   minimalSurfaceInteraction.positionError = gBufferMemoryMinimalSurfaceInteraction.positionError;
-  minimalSurfaceInteraction.triangleNormal = triangleNormal;
+  minimalSurfaceInteraction.triangleTangent = quaternionToTangent(quaternion);
+  minimalSurfaceInteraction.triangleBitangent = quaternionToBitangent(quaternion);
+  minimalSurfaceInteraction.triangleNormal = quaternionToNormal(quaternion);
 
   return minimalSurfaceInteraction;
 }
@@ -44,5 +45,7 @@ MinimalSurfaceInteraction minimalSurfaceInteractionAffineTransform(MinimalSurfac
   minimalSurfaceInteraction.position = (mul(transformMatrix, vec4(minimalSurfaceInteraction.position, 1))).xyz;
   minimalSurfaceInteraction.positionError = max(minimalSurfaceInteraction.positionError, calculatePositionError(minimalSurfaceInteraction.position));
   minimalSurfaceInteraction.triangleNormal = f16vec3(mul(mat3(transformMatrix), vec3(minimalSurfaceInteraction.triangleNormal)));
+  minimalSurfaceInteraction.triangleTangent = f16vec3(mul(mat3(transformMatrix), vec3(minimalSurfaceInteraction.triangleTangent)));
+  minimalSurfaceInteraction.triangleBitangent = f16vec3(mul(mat3(transformMatrix), vec3(minimalSurfaceInteraction.triangleBitangent)));
   return minimalSurfaceInteraction;
 }

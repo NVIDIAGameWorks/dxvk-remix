@@ -27,13 +27,16 @@ GBufferMemoryMinimalSurfaceInteraction gBufferMemoryMinimalSurfaceInteractionCre
 {
   GBufferMemoryMinimalSurfaceInteraction gBufferMemoryMinimalSurfaceInteraction;
 
-  const vec2 octahedralTriangleNormal = sphereDirectionToSignedOctahedral(minimalSurfaceInteraction.triangleNormal);
-  const uint32_t packedTriangleNormal = float2x32ToSnorm2x16(octahedralTriangleNormal);
+  const f16vec4 quaternion = tbnFrameToQuaternion(
+    minimalSurfaceInteraction.triangleTangent,
+    minimalSurfaceInteraction.triangleBitangent,
+    minimalSurfaceInteraction.triangleNormal);
+  const uint32_t packedTriangleTBN = quaternionToUint32(quaternion);
 
   // Note: Stores the x/y of the octahedral normal in the final channel of the 4 component 32 bit float (as this is to
   // be stored in a RGBA 32 bit float texture).
-  gBufferMemoryMinimalSurfaceInteraction.encodedWorldPositionWorldTriangleNormal = vec4(
-    minimalSurfaceInteraction.position, uintBitsToFloat(packedTriangleNormal));
+  gBufferMemoryMinimalSurfaceInteraction.encodedWorldPositionWorldTriangleTBN = vec4(
+    minimalSurfaceInteraction.position, uintBitsToFloat(packedTriangleTBN));
   gBufferMemoryMinimalSurfaceInteraction.positionError = minimalSurfaceInteraction.positionError;
 
   return gBufferMemoryMinimalSurfaceInteraction;

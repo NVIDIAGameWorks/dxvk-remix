@@ -61,11 +61,11 @@ void minimalRayInteractionWriteToGBuffer(
 
 MinimalSurfaceInteraction minimalSurfaceInteractionReadFromGBuffer(
   ivec2 position,
-  Texture2D<float4> worldPositionWorldTriangleNormalTexture)
+  Texture2D<float4> worldPositionWorldTriangleTBNTexture)
 {
   GBufferMemoryMinimalSurfaceInteraction memory;
 
-  memory.encodedWorldPositionWorldTriangleNormal = worldPositionWorldTriangleNormalTexture[position];
+  memory.encodedWorldPositionWorldTriangleTBN = worldPositionWorldTriangleTBNTexture[position];
   memory.positionError = 0;
 
   return minimalSurfaceInteractionCreate(memory);
@@ -73,12 +73,12 @@ MinimalSurfaceInteraction minimalSurfaceInteractionReadFromGBuffer(
 
 MinimalSurfaceInteraction minimalSurfaceInteractionReadFromGBufferWithError(
   ivec2 position,
-  Texture2D<float4> worldPositionWorldTriangleNormalTexture,
+  Texture2D<float4> worldPositionWorldTriangleTBNTexture,
   Texture2D<float> positionErrorTexture)
 {
   GBufferMemoryMinimalSurfaceInteraction memory;
 
-  memory.encodedWorldPositionWorldTriangleNormal = worldPositionWorldTriangleNormalTexture[position];
+  memory.encodedWorldPositionWorldTriangleTBN = worldPositionWorldTriangleTBNTexture[position];
   memory.positionError = positionErrorTexture[position];
 
   return minimalSurfaceInteractionCreate(memory);
@@ -87,13 +87,13 @@ MinimalSurfaceInteraction minimalSurfaceInteractionReadFromGBufferWithError(
 void minimalSurfaceInteractionWriteToGBuffer(
   MinimalSurfaceInteraction minimalSurfaceInteraction,
   ivec2 position,
-  RWTexture2D<float4> worldPositionWorldTriangleNormalTexture,
+  RWTexture2D<float4> worldPositionWorldTriangleTBNTexture,
   RWTexture2D<float> positionErrorTexture)
 {
   const GBufferMemoryMinimalSurfaceInteraction gBufferMemoryMinimalSurfaceInteraction =
     gBufferMemoryMinimalSurfaceInteractionCreate(minimalSurfaceInteraction);
 
-  worldPositionWorldTriangleNormalTexture[position] = vec4(gBufferMemoryMinimalSurfaceInteraction.encodedWorldPositionWorldTriangleNormal);
+  worldPositionWorldTriangleTBNTexture[position] = vec4(gBufferMemoryMinimalSurfaceInteraction.encodedWorldPositionWorldTriangleTBN);
   positionErrorTexture[position] = gBufferMemoryMinimalSurfaceInteraction.positionError;
 }
 

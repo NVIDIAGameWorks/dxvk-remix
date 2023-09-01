@@ -398,19 +398,21 @@ void geometryResolverVertexOutputDebugView(
     break;
   case DEBUG_VIEW_TRIANGLE_NORMAL:
     storeInDebugView(pixelCoordinate, surfaceInteraction.triangleNormal);
-
+    break;
+  case DEBUG_VIEW_TRIANGLE_TANGENT:
+    storeInDebugView(pixelCoordinate, surfaceInteraction.triangleTangent);
+    break;
+  case DEBUG_VIEW_TRIANGLE_BITANGENT:
+    storeInDebugView(pixelCoordinate, surfaceInteraction.triangleBitangent);
     break;
   case DEBUG_VIEW_INTERPOLATED_NORMAL:
     storeInDebugView(pixelCoordinate, surfaceInteraction.interpolatedNormal);
-
     break;
   case DEBUG_VIEW_INTERPOLATED_TANGENT:
     storeInDebugView(pixelCoordinate, surfaceInteraction.interpolatedTangent);
-
     break;
   case DEBUG_VIEW_INTERPOLATED_BITANGENT:
     storeInDebugView(pixelCoordinate, surfaceInteraction.interpolatedBitangent);
-
     break;
   case DEBUG_VIEW_SHADING_NORMAL:
     f16vec3 shadingNormal = f16vec3(0.0f);
@@ -700,6 +702,12 @@ void geometryResolverVertexOutputDebugView(
       // DEBUG_VIEW_TRIANGLE_NORMAL
       isValid &= isValidValue(surfaceInteraction.triangleNormal);
 
+      // DEBUG_VIEW_TRIANGLE_TANGENT
+      isValid &= isValidValue(surfaceInteraction.triangleTangent);
+
+      // DEBUG_VIEW_TRIANGLE_BITANGENT
+      isValid &= isValidValue(surfaceInteraction.triangleBitangent);
+
       // DEBUG_VIEW_INTERPOLATED_NORMAL
       isValid &= isValidValue(surfaceInteraction.interpolatedNormal);
 
@@ -711,14 +719,14 @@ void geometryResolverVertexOutputDebugView(
 
       // DEBUG_VIEW_SHADING_NORMAL
       f16vec3 shadingNormal = f16vec3(0.0f);
-      if (materialType == surfaceMaterialTypeOpaque)
-      {
-        shadingNormal = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction).shadingNormal;
-      }
-      else if (materialType == surfaceMaterialTypeTranslucent)
-      {
-        shadingNormal = translucentSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction).shadingNormal;
-      }
+    if (materialType == surfaceMaterialTypeOpaque)
+    {
+      shadingNormal = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction).shadingNormal;
+    }
+    else if (materialType == surfaceMaterialTypeTranslucent)
+    {
+      shadingNormal = translucentSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction).shadingNormal;
+    }
       isValid &= isValidValue(shadingNormal);
 
       // DEBUG_VIEW_VERTEX_COLOR
@@ -1223,9 +1231,8 @@ void geometryResolverVertex(
       geometryResolverState.useAlternateDisocclusionThreshold,
       geometryResolverState.isViewModelSurface);
   }
-
+  
   // Output Emissive Radiance
-
   SharedRadianceRG[geometryResolverState.pixelCoordinate] = geometryResolverState.radiance.rg;
   SharedRadianceB[geometryResolverState.pixelCoordinate] = geometryResolverState.radiance.b;
 

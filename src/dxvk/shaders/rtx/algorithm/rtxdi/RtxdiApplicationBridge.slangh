@@ -179,6 +179,8 @@ RAB_Surface RAB_EmptySurface()
   RAB_Surface surface = (RAB_Surface)0;
   surface.minimalRayInteraction.viewDirection = f16vec3(0, 0, 1);
   surface.minimalSurfaceInteraction.triangleNormal = f16vec3(0, 0, 1);
+  surface.minimalSurfaceInteraction.triangleTangent = f16vec3(1, 0, 0);
+  surface.minimalSurfaceInteraction.triangleBitangent = f16vec3(0, 1, 0);
   surface.opaqueSurfaceMaterialInteraction.shadingNormal = f16vec3(0, 0, 1);
   surface.opaqueSurfaceMaterialInteraction.albedo = f16vec3(0, 0, 1);
   surface.opaqueSurfaceMaterialInteraction.baseReflectivity = f16vec3(0, 0, 1);
@@ -491,6 +493,8 @@ RAB_Surface RAB_GetSurfaceForTemporalBiasCorrection(RAB_Surface currentSurface, 
         prevPixelID, PreviousWorldPosition_WorldTriangleNormal);
       temporalSurface.minimalSurfaceInteraction.position = temporalSurfaceInteraction.position;
       temporalSurface.minimalSurfaceInteraction.triangleNormal = temporalSurfaceInteraction.triangleNormal;
+      temporalSurface.minimalSurfaceInteraction.triangleTangent = temporalSurfaceInteraction.triangleTangent;
+      temporalSurface.minimalSurfaceInteraction.triangleBitangent = temporalSurfaceInteraction.triangleBitangent;
       // Note: don't copy the positionError field because it's zero.
     }
 #endif
