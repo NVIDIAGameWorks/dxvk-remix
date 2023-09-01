@@ -1,5 +1,10 @@
 lssUsd_src = files([
-  'game_exporter.cpp'
+  'game_exporter.cpp',
+  'usd_mesh_importer.cpp',
+  'usd_mesh_importer.h',
+  'usd_mesh_samplers.h',
+  'hd/usd_mesh_util.cpp',
+  'hd/usd_mesh_util.h',
 ])
 
 if not dxvk_is_msvc
