@@ -55,6 +55,8 @@
 #include "../../lssusd/usd_include_end.h"
 #include "../util/util_watchdog.h"
 
+#include "../../lssusd/usd_mesh_importer.h"
+
 namespace fs = std::filesystem;
 
 namespace dxvk {
@@ -91,8 +93,9 @@ private:
   Rc<ManagedTexture> getTexture(const Args& args, const pxr::UsdPrim& shader, const pxr::TfToken& textureToken, bool forcePreload = false);
   MaterialData* processMaterial(Args& args, const pxr::UsdPrim& matPrim);
   MaterialData* processMaterialUser(Args& args, const pxr::UsdPrim& prim);
-  bool processGeomSubset(Args& args, const pxr::UsdPrim& subPrim, RasterGeometry& geometryData, MaterialData*& materialData);
+  bool processMesh(const pxr::UsdPrim& prim, Args& args);
   void processPrim(Args& args, pxr::UsdPrim& prim);
+
   void processLight(Args& args, const pxr::UsdPrim& lightPrim);
   void processReplacement(Args& args);
 
@@ -657,331 +660,17 @@ MaterialData* UsdMod::Impl::processMaterialUser(Args& args, const pxr::UsdPrim& 
   return nullptr;
 }
 
-bool UsdMod::Impl::processGeomSubset(Args& args, const pxr::UsdPrim& subPrim, RasterGeometry& geometryData, MaterialData*& materialData) {
-  static const pxr::TfToken kIndices("triangleIndices");
-  static const pxr::TfToken kFaceVertexIndices("faceVertexIndices");
-
-  // Create a new indexBuffer, with just the faces used by the subset
-  if (!subPrim.HasAttribute(kIndices)) {
-    Logger::err(str::format("Subprims missing triangleIndices attribute - make sure the USD was processed by the LSS Tools. path: ", subPrim.GetPath().GetText()));
-    return false;
-  }
-  pxr::VtArray<int> vecIndices;
-  subPrim.GetAttribute(kIndices).Get(&vecIndices);
-
-  assert(vecIndices.size() != 0);
-
-  size_t vertexIndicesSize = vecIndices.size();
-  int maxIndex = 0;
-
-  std::vector<uint16_t> newIndices16(vertexIndicesSize);
-  for (int i = 0; i < vecIndices.size(); ++i) {
-    newIndices16[i] = static_cast<uint16_t>(vecIndices[i]);
-    maxIndex = std::max(maxIndex, vecIndices[i]);
-  }
-
-  const bool use16bitIndices = (maxIndex < kMaxU16Indices);
-  const size_t unalignedSize = vertexIndicesSize * (use16bitIndices ? sizeof(uint16_t) : sizeof(uint32_t));
-  const size_t totalSize = dxvk::align(unalignedSize, CACHE_LINE_SIZE);
-
-  // Allocate the instance buffer and copy its contents from host to device memory
-  DxvkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
-  info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | 
-      VK_BUFFER_USAGE_TRANSFER_DST_BIT | 
-      VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-      VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | 
-      VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
-  info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
-  info.access = VK_ACCESS_TRANSFER_WRITE_BIT;
-  info.size = totalSize;
-
-  // Buffer contains:
-  // |---INDICES---|
-  Rc<DxvkBuffer> buffer = args.context->getDevice()->createBuffer(info, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT, DxvkMemoryStats::Category::RTXBuffer);
-
-  const DxvkBufferSlice& bufferSlice = DxvkBufferSlice(buffer);
-
-  if (use16bitIndices) {
-    memcpy(buffer->mapPtr(0), &newIndices16[0], unalignedSize);
-    geometryData.indexBuffer = RasterBuffer(bufferSlice, 0, sizeof(uint16_t), VK_INDEX_TYPE_UINT16);
-  } else {
-    memcpy(buffer->mapPtr(0), &vecIndices[0], unalignedSize);
-    geometryData.indexBuffer = RasterBuffer(bufferSlice, 0, sizeof(uint32_t), VK_INDEX_TYPE_UINT32);
-  }
-
-  geometryData.indexCount = vertexIndicesSize;
-  // Set these as hashed so that the geometryData acts like it's static.
-  geometryData.hashes[HashComponents::VertexPosition] = getNextGeomHash();
-  geometryData.hashes[HashComponents::Indices] = geometryData.hashes[HashComponents::VertexPosition];
-  geometryData.hashes.precombine();
-
-  MaterialData* mat = processMaterialUser(args, subPrim);
-  if (mat) {
-    materialData = mat;
-  }
-
-  return true;
-}
-
 void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
   ScopedCpuProfileZone();
 
-  static const pxr::TfToken kFaceVertexCounts("faceVertexCounts");
-  static const pxr::TfToken kFaceVertexIndices("faceVertexIndices");
-  static const pxr::TfToken kNormals("normals");
-  static const pxr::TfToken kPoints("points");
-  // We only support one UV parameter at runtime, but in USD the UVs can have multiple names.  We just use the first one that is found from this list.
-  static const pxr::TfToken kUvs[] = {
-    pxr::TfToken("primvars:st"),
-    pxr::TfToken("primvars:uv"),
-    pxr::TfToken("primvars:st0"),
-    pxr::TfToken("primvars:st1"),
-    pxr::TfToken("primvars:st2")
-  };
-  static const pxr::TfToken kDoubleSided("doubleSided");
-  static const pxr::TfToken kOrientation("orientation");
-  static const pxr::TfToken kRightHanded("rightHanded");
-  static const pxr::TfToken kMaterialBinding("material:binding");
+  const XXH64_hash_t usdOriginHash = getStrongestOpinionatedPathHash(prim);
 
-  auto children = prim.GetFilteredChildren(pxr::UsdPrimIsActive);
-  size_t numSubsets = 0;
-  for (auto child : children) {
-    if (child.IsA<pxr::UsdGeomSubset>()) {
-      numSubsets++;
-    }
-  }
-
-  XXH64_hash_t usdOriginHash = getStrongestOpinionatedPathHash(prim);
-
-  RasterGeometry* geometryData;
-  if (!m_owner.m_replacements->getObject(usdOriginHash, geometryData)) {
-    RasterGeometry& newGeomData = m_owner.m_replacements->storeObject(usdOriginHash, RasterGeometry());
-    geometryData = &newGeomData;
-
-    pxr::VtArray<int> vecFaceCounts;
-    pxr::VtArray<int> vecIndices;
-    pxr::VtArray<pxr::GfVec3f> points;
-    pxr::VtArray<pxr::GfVec3f> normals;
-    pxr::VtArray<pxr::GfVec2f> uvs;
-    pxr::VtArray<float> jointWeights;
-    pxr::VtArray<int> jointIndices;
-
-    const bool hasIndices = prim.HasAttribute(kFaceVertexIndices);
-    if ((numSubsets <= 1) && !hasIndices) {
-      Logger::err(str::format("Prim: ", prim.GetPath().GetString(), ", does not have indices, this is currently a requirement."));
+  RasterGeometry* pTemp;
+  if (!m_owner.m_replacements->getObject(usdOriginHash, pTemp)) {
+    // First time seeing this mesh, then process it.
+    if (!processMesh(prim, args)) {
       return;
     }
-
-    prim.GetAttribute(kFaceVertexIndices).Get(&vecIndices);
-    prim.GetAttribute(kFaceVertexCounts).Get(&vecFaceCounts);
-    prim.GetAttribute(kPoints).Get(&points);
-    prim.GetAttribute(kNormals).Get(&normals);
-    for (const pxr::TfToken& uvName : kUvs) {
-      if (prim.HasAttribute(uvName)) {
-        prim.GetAttribute(uvName).Get(&uvs);
-        break;
-      }
-    }
-    
-    size_t numBones = 0;
-    if (prim.HasAPI<pxr::UsdSkelBindingAPI>()) {
-      pxr::UsdSkelBindingAPI skelBinding(prim);
-      pxr::UsdGeomPrimvar jointIndicesPV = skelBinding.GetJointIndicesPrimvar();
-      pxr::UsdGeomPrimvar jointWeightsPV = skelBinding.GetJointWeightsPrimvar();
-      numBones = jointIndicesPV.GetElementSize();
-      if (!jointWeightsPV.HasValue()) {
-        Logger::err(str::format("Prim: ", prim.GetPath().GetString(), ", has Skeleton API but no joint weights."));
-      }
-      if (jointWeightsPV.GetElementSize() != numBones) {
-        Logger::err(str::format("Prim: ", prim.GetPath().GetString(), ", joint indices and joint weights must have matching element sizes."));
-      }
-      // TODO need to check that jointWeights exists.
-      jointIndicesPV.Get(&jointIndices);
-      jointWeightsPV.Get(&jointWeights);
-    }
-
-    if (points.size() == 0) {
-      Logger::err(str::format("Prim: ", prim.GetPath().GetString(), ", does not have positional vertices, this is currently a requirement."));
-      return;
-    }
-
-    if (!normals.empty() && points.size() != normals.size()) {
-      Logger::warn(str::format("Prim: ", prim.GetPath().GetString(), "'s position array length doesn't match normal array's, skip normal data."));
-    }
-
-    if (!uvs.empty() && points.size() != uvs.size()) {
-      Logger::warn(str::format("Prim: ", prim.GetPath().GetString(), "'s position array length doesn't match uv array's, skip uv data."));
-    }
-
-    if (!jointIndices.empty() && points.size() * numBones != jointIndices.size()) {
-      Logger::warn(str::format("Prim: ", prim.GetPath().GetString(), "'s num positions (", points.size(),") * bonesPerVertex (", numBones,") doesn't match num jointIndices (", jointIndices.size(),"), skip jointIndices data."));
-    }
-
-    if (!jointWeights.empty() && points.size() * numBones != jointWeights.size()) {
-      Logger::warn(str::format("Prim: ", prim.GetPath().GetString(), "'s num positions (", points.size(), ") * bonesPerVertex (", numBones, ") doesn't match num jointWeights (", jointIndices.size(), "), skip jointWeights data."));
-    }
-
-    bool isNormalValid = !normals.empty() && points.size() == normals.size();
-    bool isUVValid = !uvs.empty() && points.size() == uvs.size();
-    bool isJointIndicesValid = !jointIndices.empty() && points.size() * numBones == jointIndices.size();
-    bool isJointWeightsValid = !jointWeights.empty() && points.size() * numBones == jointWeights.size();
-
-    newGeomData.vertexCount = points.size();
-
-    const size_t indexSize = numSubsets <= 1 ? vecIndices.size() * sizeof(uint32_t) : 0; // allocate the worse case here (32-bit indices) - this leaves room for optimization but it should break the bank
-    const size_t pointsSize = sizeof(pxr::GfVec3f);
-    const size_t normalsSize = isNormalValid ? sizeof(pxr::GfVec3f) : 0;
-    const size_t uvSize = isUVValid ? sizeof(pxr::GfVec2f) : 0;
-    const size_t jointIndicesSize = isJointIndicesValid ? align(numBones, 4): 0;
-    const size_t jointWeightsSize = isJointWeightsValid ? sizeof(float) * (numBones - 1) : 0; // last weight is 1 minus the other weights
-    const size_t vertexStructureSize = pointsSize + normalsSize + uvSize + jointIndicesSize + jointWeightsSize;
-
-    const size_t indexOffset = 0;
-    const size_t pointsOffset = dxvk::align(indexSize, CACHE_LINE_SIZE);
-    const size_t normalsOffset = pointsOffset + pointsSize;
-    const size_t uvOffset = normalsOffset + normalsSize;
-    const size_t jointIndicesOffset = uvOffset + uvSize;
-    const size_t jointWeightsOffset = jointIndicesOffset + jointIndicesSize;
-
-    const size_t indexSliceSize = dxvk::align(indexSize, CACHE_LINE_SIZE);
-    const size_t vertexSliceSize = dxvk::align(vertexStructureSize * newGeomData.vertexCount, CACHE_LINE_SIZE);
-    const size_t totalSize = indexSliceSize + vertexSliceSize;
-
-    // Allocate the instance buffer and copy its contents from host to device memory
-    DxvkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
-    info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | 
-        VK_BUFFER_USAGE_TRANSFER_DST_BIT | 
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | 
-        VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
-    info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
-    info.access = VK_ACCESS_TRANSFER_WRITE_BIT;
-    info.size = totalSize;
-
-    // Buffer contains:
-    // |---INDICES---||---POSITIONS---|---NORMALS---|---UVS---|| (VERTEX DATA INTERLEAVED)
-    Rc<DxvkBuffer> buffer = args.context->getDevice()->createBuffer(info, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT, DxvkMemoryStats::Category::RTXBuffer);
-    const DxvkBufferSlice& indexSlice = DxvkBufferSlice(buffer, indexOffset, indexSliceSize);
-    int maxIndex = 0;
-
-    if (indexSize > 0) {
-      if (vecFaceCounts[0] != 3 || vecIndices.size() % 3 != 0) {
-        Logger::err(str::format("RTX Asset Replacer only handles triangle meshes. prim: ", prim.GetPath().GetString(), " had this many faceVertexIndices: ", vecIndices.size()));
-        return;
-      }
-      std::vector<uint16_t> newIndices16(vecIndices.size());
-      for (int i = 0; i < vecIndices.size(); ++i) {
-        newIndices16[i] = static_cast<uint16_t>(vecIndices[i]);
-        maxIndex = std::max(maxIndex, vecIndices[i]);
-      }
-      
-      if (maxIndex < kMaxU16Indices) {
-        memcpy(indexSlice.mapPtr(0), &newIndices16[0], vecIndices.size() * sizeof(uint16_t));
-        newGeomData.indexBuffer = RasterBuffer(indexSlice, 0, sizeof(uint16_t), VK_INDEX_TYPE_UINT16);
-      } else {
-        memcpy(indexSlice.mapPtr(0), &vecIndices[0], vecIndices.size() * sizeof(uint32_t));
-        newGeomData.indexBuffer = RasterBuffer(indexSlice, 0, sizeof(uint32_t), VK_INDEX_TYPE_UINT32);
-      }
-
-      newGeomData.indexCount = vecIndices.size();
-    }
-
-    static_assert(sizeof(pxr::GfVec3f) == sizeof(float) * 3);
-    static_assert(sizeof(pxr::GfVec2f) == sizeof(float) * 2);
-
-    const DxvkBufferSlice& vertexSlice = DxvkBufferSlice(buffer, pointsOffset, vertexSliceSize);
-
-    float* pBaseVertexData = (float*) vertexSlice.mapPtr(0);
-
-    // Interleave vertex data
-    for (uint32_t i = 0; i < newGeomData.vertexCount; i++) {
-
-      (*pBaseVertexData++) = points[i][0];
-      (*pBaseVertexData++) = points[i][1];
-      (*pBaseVertexData++) = points[i][2];
-
-      if (isNormalValid) {
-        (*pBaseVertexData++) = normals[i][0];
-        (*pBaseVertexData++) = normals[i][1];
-        (*pBaseVertexData++) = normals[i][2];
-      }
-
-      if (isUVValid) {
-        (*pBaseVertexData++) = uvs[i][0];
-        (*pBaseVertexData++) = 1.0 - uvs[i][1];
-      }
-
-      if (isJointIndicesValid) {
-        for (int j = 0; j < numBones; j += 4) {
-          uint32_t vertIndices = 0;
-          for (int k = 0; k < 4 && j + k < numBones; ++k) {
-            vertIndices |= jointIndices[i * numBones + j + k] << 8 * k;
-          }
-          memcpy(pBaseVertexData, &vertIndices, sizeof(float));
-          pBaseVertexData++;
-        }
-      }
-
-      if (isJointWeightsValid) {
-        for (int j = 0; j < numBones - 1; ++j) {
-          (*pBaseVertexData++) = jointWeights[i * numBones + j];
-        }
-      }
-    }
-
-    // Create the snapshots
-    newGeomData.positionBuffer = RasterBuffer(vertexSlice, pointsOffset - vertexSlice.offset(), vertexStructureSize, VK_FORMAT_R32G32B32_SFLOAT);
-
-    if (isNormalValid) {
-      newGeomData.normalBuffer = RasterBuffer(vertexSlice, normalsOffset - vertexSlice.offset(), vertexStructureSize, VK_FORMAT_R32G32B32_SFLOAT);
-    }
-
-    if (isUVValid) {
-      newGeomData.texcoordBuffer = RasterBuffer(vertexSlice, uvOffset - vertexSlice.offset(), vertexStructureSize, VK_FORMAT_R32G32B32_SFLOAT);
-      newGeomData.hashes[HashComponents::VertexTexcoord] = getNextGeomHash();
-    }
-
-    if (isJointIndicesValid) {
-      newGeomData.blendIndicesBuffer = RasterBuffer(vertexSlice, jointIndicesOffset - vertexSlice.offset(), vertexStructureSize, VK_FORMAT_R8G8B8A8_USCALED);
-    }
-
-    if (isJointWeightsValid) {
-      VkFormat format = VK_FORMAT_R32_SFLOAT;
-      if (numBones == 3) {
-        format = VK_FORMAT_R32G32_SFLOAT;
-      } else if (numBones == 4) {
-        format = VK_FORMAT_R32G32B32_SFLOAT;
-      }
-      newGeomData.blendWeightBuffer = RasterBuffer(vertexSlice, jointWeightsOffset - vertexSlice.offset(), vertexStructureSize, format);
-      
-      // Note: only want to set this when there are actually weights, as it triggers the replacement to be skinned.
-      newGeomData.numBonesPerVertex = numBones;
-    }
-    
-    newGeomData.hashes[HashComponents::VertexPosition] = getNextGeomHash();
-    if (!vecIndices.empty() || !points.empty()) {
-      // Set these as hashed so that the geometry acts like it's static.
-      // TODO this will need to change to support skeleton meshes
-      newGeomData.hashes[HashComponents::Indices] = newGeomData.hashes[HashComponents::VertexPosition];
-    }
-
-    newGeomData.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    bool doubleSided = true;
-    if (prim.GetAttribute(kDoubleSided).Get(&doubleSided)) {
-      newGeomData.cullMode = doubleSided ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT;
-      newGeomData.forceCullBit = true; // Overrule the instance face culling rules
-    } else {
-      // In this case we use the face culling set from the application for this mesh
-      newGeomData.cullMode = VK_CULL_MODE_NONE;
-    }
-    
-    pxr::TfToken orientation;
-    newGeomData.frontFace = VK_FRONT_FACE_CLOCKWISE;
-    if (prim.GetAttribute(kOrientation).Get(&orientation) && orientation == kRightHanded) {
-      newGeomData.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-    }
-
-    newGeomData.hashes.precombine();
   }
 
   MaterialData* materialData = processMaterialUser(args, prim);
@@ -998,62 +687,34 @@ void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
   const auto& replacementToObjectAsArray = reinterpret_cast<const float(&)[4][4]>(localToRoot);
   const Matrix4 replacementToObject(replacementToObjectAsArray);
 
-  if (numSubsets == 1) {
-    // Just grab the material from the single subset, otherwise ignore it:
-    for (auto child : children) {
-      if (child.IsA<pxr::UsdGeomSubset>()) {
-        MaterialData* mat = processMaterialUser(args, child);
-        if (mat) {
-          materialData = mat;
-        }
-        break;
-      }
+  std::vector<pxr::UsdGeomSubset> geomSubsets;
+  auto children = prim.GetFilteredChildren(pxr::UsdPrimIsActive);
+  for (auto child : children) {
+    if (child.IsA<pxr::UsdGeomSubset>()) {
+      geomSubsets.emplace_back(child);
+    }
+  }
+
+  if (geomSubsets.empty()) {
+    RasterGeometry* pGeometryData;
+    if (m_owner.m_replacements->getObject(usdOriginHash, pGeometryData)) {
+      AssetReplacement newReplacementMesh(pGeometryData, materialData, replacementToObject);
+      args.meshes.push_back(newReplacementMesh);
     }
   } else {
-    bool isFirst = true;
-    Matrix4 identity;
-    for (auto child : children) {
-      if (child.IsA<pxr::UsdGeomSubset>()) {
-        if (isFirst) {
-          // Find the first successful geomSubset, call it first.
-          if (processGeomSubset(args, child, *geometryData, materialData))
-            isFirst = false;
-        } else {
-          XXH64_hash_t usdOriginHash = getStrongestOpinionatedPathHash(child);
-          RasterGeometry* childGeometryData;
-          if (m_owner.m_replacements->getObject(usdOriginHash, childGeometryData)) {
-            AssetReplacement newReplacementMesh(childGeometryData, materialData, replacementToObject);
-            MaterialData* mat = processMaterialUser(args, child);
-            if (mat) {
-              newReplacementMesh.materialData = mat;
-            }
-            args.meshes.push_back(newReplacementMesh);
-          } else {
-            RasterGeometry& newGeomData = m_owner.m_replacements->storeObject(usdOriginHash, RasterGeometry(*geometryData));
-
-            // Copy over all the data from the root prim
-            AssetReplacement newReplacementMesh(&newGeomData, materialData, replacementToObject);
-
-            // Only add this to the replacements if it was successful
-            if (processGeomSubset(args, child, *newReplacementMesh.geometryData, newReplacementMesh.materialData)) {
-              args.meshes.push_back(newReplacementMesh);
-            } else {
-              // Geom Subset failed to process, need to remove the placeholder from the map to prevent
-              // reusing an invalid version later.  This will only happen if there are invalid assets,
-              // and an error message is printed by processGeomSubset().
-              m_owner.m_replacements->removeObject<RasterGeometry>(usdOriginHash);
-            }
-          }
+    for (auto subset : geomSubsets) {
+      const XXH64_hash_t usdChildOriginHash = getStrongestOpinionatedPathHash(subset.GetPrim());
+      RasterGeometry* childGeometryData;
+      if (m_owner.m_replacements->getObject(usdChildOriginHash, childGeometryData)) {
+        AssetReplacement newReplacementMesh(childGeometryData, materialData, replacementToObject);
+        MaterialData* mat = processMaterialUser(args, subset.GetPrim());
+        if (mat) {
+          newReplacementMesh.materialData = mat;
         }
+        args.meshes.push_back(newReplacementMesh);
       }
     }
   }
-
-  if (geometryData->indexCount == 0) {
-    Logger::err(str::format("Prim: ", prim.GetPath().GetString(), ", does not have indices, this is currently a requirement."));
-    return;
-  }
-  args.meshes.emplace_back(geometryData, materialData, replacementToObject);
 }
 
 void UsdMod::Impl::processLight(Args& args, const pxr::UsdPrim& lightPrim) {
@@ -1486,6 +1147,107 @@ void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cach
     true,
     true,
     numVariants++});
+}
+
+bool UsdMod::Impl::processMesh(const pxr::UsdPrim& prim, Args& args) {
+  RasterGeometry geometryData;
+
+  std::unique_ptr<lss::UsdMeshImporter> processedMesh;
+
+  try {
+    processedMesh = std::make_unique<lss::UsdMeshImporter>(prim);
+  }
+  catch (DxvkError e) {
+    Logger::err(e.message());
+    return false;
+  }
+
+  geometryData.vertexCount = processedMesh->GetNumVertices();
+
+  if (processedMesh->GetNumVertices() == 0) {
+    throw DxvkError(str::format("Warning: No vertices on this mesh after processing, id=.", prim.GetName()));
+  }
+
+  const size_t vertexDataSize = processedMesh->GetNumVertices() * processedMesh->GetVertexStride();
+
+  // Allocate the instance buffer and copy its contents from host to device memory
+  DxvkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+  info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
+  info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
+  info.access = VK_ACCESS_TRANSFER_WRITE_BIT;
+  info.size = dxvk::align(vertexDataSize, CACHE_LINE_SIZE);
+
+  // Buffer contains:
+  // |---POSITIONS---|---NORMALS---|---UVS---| ... (VERTEX DATA INTERLEAVED)
+  Rc<DxvkBuffer> vertexBuffer = args.context->getDevice()->createBuffer(info, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT, DxvkMemoryStats::Category::RTXBuffer);
+  const DxvkBufferSlice& vertexSlice = DxvkBufferSlice(vertexBuffer);
+  memcpy(vertexSlice.mapPtr(0), processedMesh->GetVertexData().data(), vertexDataSize);
+
+  for (const auto& element : processedMesh->GetVertexDecl()) {
+    switch (element.attribute) {
+    case lss::UsdMeshImporter::VertexPositions:
+      geometryData.positionBuffer = RasterBuffer(vertexSlice, element.offset, processedMesh->GetVertexStride(), VK_FORMAT_R32G32B32_SFLOAT);
+      break;
+    case lss::UsdMeshImporter::Normals:
+      geometryData.normalBuffer = RasterBuffer(vertexSlice, element.offset, processedMesh->GetVertexStride(), VK_FORMAT_R32G32B32_SFLOAT);
+      break;
+    case lss::UsdMeshImporter::Texcoords:
+      geometryData.texcoordBuffer = RasterBuffer(vertexSlice, element.offset, processedMesh->GetVertexStride(), VK_FORMAT_R32G32_SFLOAT);
+      geometryData.hashes[HashComponents::VertexTexcoord] = getNextGeomHash();
+      break;
+    case lss::UsdMeshImporter::Colors:
+      geometryData.color0Buffer = RasterBuffer(vertexSlice, element.offset, processedMesh->GetVertexStride(), VK_FORMAT_R8G8B8A8_UNORM);
+      break;
+    case lss::UsdMeshImporter::BlendWeights:
+      geometryData.blendWeightBuffer = RasterBuffer(vertexSlice, element.offset, processedMesh->GetVertexStride(), VK_FORMAT_R32_SFLOAT);
+      // Note: only want to set this when there are actually weights, as it triggers the replacement to be skinned.
+      geometryData.numBonesPerVertex = processedMesh->GetNumBonesPerVertex(); // TODO: Implement this in UsdMesh
+      break;
+    case lss::UsdMeshImporter::BlendIndices:
+      geometryData.blendIndicesBuffer = RasterBuffer(vertexSlice, element.offset, processedMesh->GetVertexStride(), VK_FORMAT_R8G8B8A8_USCALED);
+      break;
+    }
+  }
+
+  geometryData.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+  if (processedMesh->GetDoubleSidedState() != lss::UsdMeshImporter::Inherit) {
+    const VkCullModeFlagBits singleSidedCullMode = processedMesh->IsRightHanded() ? VK_CULL_MODE_BACK_BIT : VK_CULL_MODE_FRONT_BIT;
+    geometryData.cullMode = processedMesh->GetDoubleSidedState() == lss::UsdMeshImporter::IsDoubleSided ? VK_CULL_MODE_NONE : singleSidedCullMode;
+    geometryData.forceCullBit = true; // Overrule the instance face culling rules
+  } else {
+    // In this case we use the face culling set from the application for this mesh
+    geometryData.cullMode = VK_CULL_MODE_NONE;
+  }
+
+  geometryData.frontFace = processedMesh->IsRightHanded() ? VK_FRONT_FACE_CLOCKWISE : VK_FRONT_FACE_COUNTER_CLOCKWISE;
+
+  for (const lss::UsdMeshImporter::SubMesh& submesh : processedMesh->GetSubMeshes()) {
+    if (submesh.GetNumIndices() == 0) {
+      Logger::err(str::format("Prim: ", submesh.prim.GetPath().GetString(), ", does not have indices, this is currently a requirement."));
+      continue;
+    }
+
+    XXH64_hash_t usdOriginHash = getStrongestOpinionatedPathHash(submesh.prim);
+    RasterGeometry* childGeometryData;
+    if (!m_owner.m_replacements->getObject(usdOriginHash, childGeometryData)) {
+      RasterGeometry& newGeomData = m_owner.m_replacements->storeObject(usdOriginHash, RasterGeometry(geometryData));
+
+      const size_t indexDataSize = submesh.GetNumIndices() * sizeof(uint32_t);
+      info.size = dxvk::align(indexDataSize, CACHE_LINE_SIZE);
+
+      // Buffer contains: indices
+      Rc<DxvkBuffer> indexBuffer = args.context->getDevice()->createBuffer(info, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT, DxvkMemoryStats::Category::RTXBuffer);
+      const DxvkBufferSlice& indexSlice = DxvkBufferSlice(indexBuffer);
+      memcpy(indexSlice.mapPtr(0), submesh.indexBuffer.data(), indexDataSize);
+      newGeomData.indexBuffer = RasterBuffer(indexSlice, 0, sizeof(uint32_t), VK_INDEX_TYPE_UINT32);
+      newGeomData.indexCount = submesh.GetNumIndices();
+      // Set these as hashed so that the geometryData acts like it's static.
+      newGeomData.hashes[HashComponents::Indices] = newGeomData.hashes[HashComponents::VertexPosition] = getNextGeomHash();
+      newGeomData.hashes.precombine();
+    }
+  }
+
+  return true;
 }
 
 UsdMod::UsdMod(const Mod::Path& usdFilePath)
