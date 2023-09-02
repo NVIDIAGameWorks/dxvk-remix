@@ -6905,16 +6905,31 @@ namespace dxvk {
       }
       // NV-DXVK end
 
-      auto WorldView    = m_state.transforms[GetTransformIndex(D3DTS_VIEW)] * m_state.transforms[GetTransformIndex(D3DTS_WORLD)];
-      auto NormalMatrix = inverse(WorldView);
+      // NV-DXVK start: Fallback on identity matrices for fixed function VS state when no matrices needed
+      const Matrix4 World = m_state.transforms[GetTransformIndex(D3DTS_WORLD)];
+      const Matrix4 View = m_state.transforms[GetTransformIndex(D3DTS_VIEW)];
+      const Matrix4 Projection = m_state.transforms[GetTransformIndex(D3DTS_PROJECTION)];
+      const Matrix4 WorldView = View * World; 
+      Matrix4 NormalMatrix{}; 
+      Matrix4 InverseView{}; 
+
+      // Note: Only calculate the inverses of various matrices if the vertex declaration does not use PositionT values. This essentially
+      // means "normal" position values, not pre-transformed positions like D3DFVF_XYZRHW which bypass the typical matrix pipeline.
+      // This has to be done as sometimes applications will provide an invalid world or view matrix during such draw calls and calculating
+      // the inverse of these matrices is sometimes not possible (which triggers assertions).
+      if (!hasPositionT) {
+        NormalMatrix = inverse(WorldView);
+        InverseView = transpose(inverse(View));
+      }
+      // NV-DXVK end
 
       D3D9FixedFunctionVS* data = reinterpret_cast<D3D9FixedFunctionVS*>(slice.mapPtr);
-      data->World        = m_state.transforms[GetTransformIndex(D3DTS_WORLD)];
-      data->View         = m_state.transforms[GetTransformIndex(D3DTS_VIEW)];
+      data->World        = World;
+      data->View         = View;
       data->WorldView    = WorldView;
       data->NormalMatrix = NormalMatrix;
-      data->InverseView  = transpose(inverse(m_state.transforms[GetTransformIndex(D3DTS_VIEW)]));
-      data->Projection   = m_state.transforms[GetTransformIndex(D3DTS_PROJECTION)];
+      data->InverseView  = InverseView;
+      data->Projection   = Projection;
 
       for (uint32_t i = 0; i < data->TexcoordMatrices.size(); i++)
         data->TexcoordMatrices[i] = m_state.transforms[GetTransformIndex(D3DTS_TEXTURE0) + i];
