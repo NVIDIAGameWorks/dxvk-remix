@@ -524,11 +524,11 @@ struct RtOpaqueSurfaceMaterial {
 
     writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_roughnessConstant));
     writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_metallicConstant));
-
-    writeGPUPadding<3>(data, offset); // Note: Padding for unused space
     
     // 1 byte
     writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_cachedThinFilmNormalizedThicknessConstant));
+
+    writeGPUPadding<3>(data, offset); // Note: Padding for unused space
 
     uint32_t flags = (0 << 30); // Note: Bit 30 and 31 of last word set to 0 for opaque material type
 
