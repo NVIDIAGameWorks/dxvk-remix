@@ -34,8 +34,9 @@ namespace dxvk {
       UINT             NumVertices;
       UINT             StartIndex;
       UINT             PrimitiveCount;
+      BOOL             Indexed;
     };
-    static_assert(sizeof(DrawContext) == 24, "Please, recheck initializer usages if this changes.");
+    static_assert(sizeof(DrawContext) == 28, "Please, recheck initializer usages if this changes.");
 
     /**
       * \brief: Initialize the D3D9 RTX interface
