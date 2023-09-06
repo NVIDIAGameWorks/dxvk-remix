@@ -428,8 +428,12 @@ namespace dxvk {
         // A previously built BLAS needs to be rebuild if a corresponding Opacity Micromap availability has changed
         const bool forceRebuildStaticBlas = boundOpacityMicromapHash != blasEntry->staticBlas->opacityMicromapSourceHash;
 
-        if (forceRebuildStaticBlas)
+        if (forceRebuildStaticBlas) {
+          // Move the BLAS used by this geometry to the common pool.
+          // This also ensures the static blas resource that's still being used by previous TLAS is properly tracked for the next frame
+          m_blasPool.push_back(blasEntry->staticBlas);
           blasEntry->staticBlas = nullptr;
+        }
       }
 
       // Figure out if this blas should be a static one
@@ -496,7 +500,8 @@ namespace dxvk {
       } else { // Non-static blas instance
         // Previously static BLAS is no longer considered static (i.e. because it started getting animated)
         if (blasEntry->staticBlas.ptr()) {
-          // Move the BLAS used by this geometry to the common pool
+          // Move the BLAS used by this geometry to the common pool.
+          // This also ensures the static blas resource that's still being used by previous TLAS is properly tracked for the next frame
           m_blasPool.push_back(blasEntry->staticBlas);
           blasEntry->staticBlas = nullptr;
         }
