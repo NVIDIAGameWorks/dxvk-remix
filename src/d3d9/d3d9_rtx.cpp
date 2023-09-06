@@ -630,8 +630,13 @@ namespace dxvk {
     DrawParameters params;
     params.instanceCount = drawInfo.instanceCount;
     params.vertexOffset = drawContext.BaseVertexIndex;
-    params.vertexCount = params.indexCount = drawInfo.vertexCount; // DXVK overloads the vertexCount in DrawInfo
     params.firstIndex = drawContext.StartIndex;
+    // DXVK overloads the vertexCount/indexCount in DrawInfo
+    if (drawContext.Indexed) {
+      params.indexCount = drawInfo.vertexCount; 
+    } else {
+      params.vertexCount = drawInfo.vertexCount;
+    }
 
     m_drawCallStateQueue.push(std::move(m_activeDrawCallState));
 
