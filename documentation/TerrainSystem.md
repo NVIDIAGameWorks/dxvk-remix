@@ -1,11 +1,12 @@
 # Terrain System
 
-Terrain is handled by baking original game draw calls into a single material for the terrain. This bakes multiple layers of terrain as the original game composited them into a single material. Then during ray tracing the surfaces associated with terrain textures sample from the shared terrain material rather than from different material layers. Textures that are to be considered as terrain need to be tagged as [rtx.terrainTextures](../RtxOptions.md). The baking is done along a single geometric direction. Namely it bakes material projecting downwards onto a terrain plane and, therefore, only multi-layer surfaces that are horizontal for the most part should be tagged as terrain textures. Some vertical slope is acceptable, though the steeper the slope the larger terrain resolution is needed to reconstruct the full detail of the input textures during ray tracing. The vertical axis in the game is determined via [rtx.zUp](../RtxOptions.md) option and. Terrain baker is resolution is parameterized off
+Terrain is handled by baking original game draw calls into a single material for the terrain. This bakes multiple layers of terrain as the original game composited them into a single material. Then during ray tracing the surfaces associated with terrain textures sample from the shared terrain material rather than from different material layers. Textures that are to be considered as terrain need to be tagged as [rtx.terrainTextures](../RtxOptions.md). The baking is done along a single geometric direction. Namely it bakes material projecting downwards onto a terrain plane and, therefore, only multi-layer surfaces that are horizontal for the most part should be tagged as terrain textures. Some vertical slope is acceptable, though the steeper the slope the larger terrain resolution is needed to reconstruct the full detail of the input textures during ray tracing. The vertical axis in the game is determined via [rtx.zUp](../RtxOptions.md) option. Terrain baker's texture resolution is keyed off from [rtx.sceneScale](../RtxOptions.md). Additionally, to remove original game's lighting data from the baked terrain, undesired textures can be marked as 'ignored' or 'lightmap'. This is beneficial, as the illumination needs to be handled by ray tracing alone, and a game's original lighting solution should be avoided.
 
 Game authoring steps:
 - set [rtx.zUp](../RtxOptions.md)
 - set [rtx.sceneScale](../RtxOptions.md)
 - tag terrain textures
+- (optional) tag ignore / lightmap textures
 - adjust Terrain Baker properties to reach desired resolution and performance for the terrain. 
 
 Supported:
