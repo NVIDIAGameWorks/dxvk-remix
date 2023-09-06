@@ -1674,10 +1674,10 @@ namespace dxvk {
         DxvkContext::clearRenderTarget(skyView, VK_IMAGE_ASPECT_COLOR_BIT, m_skyClearValue);
       }
 
-      if (params.indexCount == 0) {
-        DxvkContext::draw(params.vertexCount, params.instanceCount, params.vertexOffset, 0);
-      } else {
+      if (params.indexCount > 0) {
         DxvkContext::drawIndexed(params.indexCount, params.instanceCount, params.firstIndex, params.vertexOffset, 0);
+      } else {
+        DxvkContext::draw(params.vertexCount, params.instanceCount, params.vertexOffset, 0);
       }
 
       ++plane;

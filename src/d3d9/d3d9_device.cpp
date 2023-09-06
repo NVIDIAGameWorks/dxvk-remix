@@ -2503,7 +2503,7 @@ namespace dxvk {
       return S_OK;
 
     // NV-DXVK start: geometry processing
-    const D3D9Rtx::DrawContext drawContext { PrimitiveType, (INT) StartVertex, 0, 0, 0, PrimitiveCount };
+    const D3D9Rtx::DrawContext drawContext { PrimitiveType, (INT) StartVertex, 0, 0, 0, PrimitiveCount, FALSE };
     const auto [preserveOriginalDraw, pendingCommit] = m_rtx.PrepareDrawGeometryForRT(false, drawContext);
 
     if (preserveOriginalDraw) {
@@ -2553,7 +2553,7 @@ namespace dxvk {
       return S_OK;
 
     // NV-DXVK start: geometry processing
-    const D3D9Rtx::DrawContext drawContext = { PrimitiveType, BaseVertexIndex, MinVertexIndex, NumVertices, StartIndex, PrimitiveCount };
+    const D3D9Rtx::DrawContext drawContext = { PrimitiveType, BaseVertexIndex, MinVertexIndex, NumVertices, StartIndex, PrimitiveCount, TRUE };
     const auto [preserveOriginalDraw, pendingCommit] = m_rtx.PrepareDrawGeometryForRT(true, drawContext);
 
     if (preserveOriginalDraw) {
@@ -2611,7 +2611,7 @@ namespace dxvk {
     FillUPVertexBuffer(upSlice.mapPtr, pVertexStreamZeroData, dataSize, bufferSize);
 
     // NV-DXVK start: geometry processing
-    const D3D9Rtx::DrawContext drawContext = { PrimitiveType, 0, 0, 0, 0, PrimitiveCount };
+    const D3D9Rtx::DrawContext drawContext = { PrimitiveType, 0, 0, 0, 0, PrimitiveCount, FALSE };
     const auto [preserveOriginalDraw, pendingCommit] = m_rtx.PrepareDrawUPGeometryForRT(false, upSlice, D3DFMT_UNKNOWN, 0, 0, dataSize, VertexStreamZeroStride, drawContext);
 
     if (preserveOriginalDraw) {
@@ -2683,7 +2683,7 @@ namespace dxvk {
     std::memcpy(data + vertexBufferSize, pIndexData, indicesSize);
 
     // NV-DXVK start: geometry processing
-    const D3D9Rtx::DrawContext drawContext = { PrimitiveType, 0, MinVertexIndex, NumVertices, 0, PrimitiveCount };
+    const D3D9Rtx::DrawContext drawContext = { PrimitiveType, 0, MinVertexIndex, NumVertices, 0, PrimitiveCount, TRUE };
     const auto [preserveOriginalDraw, pendingCommit] = m_rtx.PrepareDrawUPGeometryForRT(true, upSlice, IndexDataFormat, indicesSize, vertexDataSize, vertexDataSize, VertexStreamZeroStride, drawContext);
 
     if (preserveOriginalDraw) {
