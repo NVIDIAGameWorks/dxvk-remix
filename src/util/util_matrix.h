@@ -24,8 +24,6 @@
 #include "util_vector.h"
 #include "vulkan/vulkan_core.h"
 
-#include <cassert>
-
 namespace dxvk {
 
   template<typename T>
@@ -322,9 +320,6 @@ namespace dxvk {
 
     Vector4d dot0 = { Vector4d(m[0].x,m[0].y,m[0].z,m[0].w) * row0 };
     double dot1 = (dot0.x + dot0.y) + (dot0.z + dot0.w);
-
-    // Note: Ensure the matrix is invertable.
-    assert(dot1 != 0.0);
 
     Matrix4Base<T> output;
     for (uint32_t i = 0; i < 16; i++)
