@@ -24,6 +24,7 @@
 #include "rtx_utils.h"
 #include "dxvk_context_state.h"
 #include "rtx_asset_data.h"
+#include "rtx_constants.h"
 
 namespace gli {
   class texture;
@@ -114,8 +115,14 @@ namespace dxvk {
       , m_imageView(std::move(image)) {
       // If a key has been provided, use it (i.e. has this RtTexture been created from a promotion).
       if (uniqueKey == kInvalidTextureKey) {
+        // We must modulate the unique key by the sampler hash, as the same texture can be used with multiple samplers!
+        XXH64_hash_t samplerHash = kEmptyHash;
+        if (sampler.ptr() != nullptr) {
+          samplerHash = XXH3_64bits(&sampler->info(), sizeof(DxvkSamplerCreateInfo));
+        }
+        // A unique key based on the VkImageView handle
         VkImageView view = m_imageView->handle();
-        this->m_uniqueKey = XXH64(&view, sizeof(view), 0);
+        this->m_uniqueKey = XXH3_64bits_withSeed(&view, sizeof(view), samplerHash);
       } else
         this->m_uniqueKey = uniqueKey;
     }
