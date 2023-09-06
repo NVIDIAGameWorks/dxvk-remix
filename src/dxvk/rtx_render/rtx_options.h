@@ -735,7 +735,7 @@ namespace dxvk {
       friend class RtxOptions;
       friend class ImGUI;
       bool isSupported = false;
-      RTX_OPTION_ENV("rtx.opacityMicromap", bool, enable, false, "DXVK_ENABLE_OPACITY_MICROMAP", 
+      RTX_OPTION_ENV("rtx.opacityMicromap", bool, enable, true, "DXVK_ENABLE_OPACITY_MICROMAP", 
                      "Enables Opacity Micromaps for geometries with textures that have alpha cutouts.\n"
                      "This is generally the case for geometries such as fences, foliage, particles, etc. .\n"
                      "Opacity Micromaps greatly speed up raytracing of partially opaque triangles.\n"
