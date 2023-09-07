@@ -33,6 +33,9 @@ Sampler3D<float3> VolumeFilteredRadiance;
 layout(binding = GBUFFER_BINDING_SKYMATTE)
 Sampler2D<float3> SkyMatte;
 
+layout(binding = GBUFFER_BINDING_SKYPROBE)
+SamplerCube<float3> SkyProbe;
+
 // Shared Outputs (Combined/Stochastic)
 // Note: Most of these buffers are stochastic, meaning one of the two mutually exclusive
 // paths (PSRR or PSTR when both are in use) will be selected randomly as the output. The
