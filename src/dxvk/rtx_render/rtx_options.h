@@ -381,22 +381,22 @@ namespace dxvk {
         friend class ImGUI;
         friend class RtxOptions;
         // Anti-Culling Options
-        RTX_OPTION_ENV("rtx.antiCulling.object", bool, enable, false, "RTX_ANTI_CULLING_OBJECTS", "[Experimental] Extends lifetime of objects that go outside the camera frustum (anti-culling frustum).");
-        RTX_OPTION("rtx.antiCulling.object", bool, enableHighPrecisionAntiCulling, 1.0f, "[Experimental] Use robust intersection check with Separate Axis Theorem.\n"
+        RTX_OPTION_ENV("rtx.antiCulling.object", bool, enable, false, "RTX_ANTI_CULLING_OBJECTS", "Extends lifetime of objects that go outside the camera frustum (anti-culling frustum).");
+        RTX_OPTION("rtx.antiCulling.object", bool, enableHighPrecisionAntiCulling, true, "Use robust intersection check with Separate Axis Theorem.\n"
                    "This method is slightly expensive but it effectively addresses object flickering issues that arise from corner cases in the fast intersection check method.\n"
                    "Typically, it's advisable to enable this option unless it results in a notable performance drop; otherwise, the presence of flickering artifacts could significantly diminish the overall image quality.");
-        RTX_OPTION("rtx.antiCulling.object", bool, enableInfinityFarFrustum, true, "[Experimental]Enable infinity far plane frustum for anti-culling.");
+        RTX_OPTION("rtx.antiCulling.object", bool, enableInfinityFarFrustum, true, "Enable infinity far plane frustum for anti-culling.");
         // TODO: This should be a threshold of memory size
-        RTX_OPTION("rtx.antiCulling.object", uint32_t, numObjectsToKeep, 1000, "[Experimental] The maximum number of RayTracing instances to keep when Anti-Culling is enabled.");
-        RTX_OPTION("rtx.antiCulling.object", float, fovScale, 1.0f, "[Experimental] Scalar of the FOV of Anti-Culling Frustum.");
+        RTX_OPTION("rtx.antiCulling.object", uint32_t, numObjectsToKeep, 1000, "The maximum number of RayTracing instances to keep when Anti-Culling is enabled.");
+        RTX_OPTION("rtx.antiCulling.object", float, fovScale, 1.0f, "Scalar of the FOV of Anti-Culling Frustum.");
       };
       struct Light {
         friend class ImGUI;
         friend class RtxOptions;
-        RTX_OPTION_ENV("rtx.antiCulling.light", bool, enable, false, "RTX_ANTI_CULLING_LIGHTS", "[Experimental] Enable Anti-Culling for lights.");
-        RTX_OPTION("rtx.antiCulling.light", uint32_t, numLightsToKeep, 1000, "[Experimental] Maximum number of lights to keep when Anti-Culling is enabled.");
-        RTX_OPTION("rtx.antiCulling.light", uint32_t, numFramesToExtendLightLifetime, 1000, "[Experimental] Maximum number of frames to keep  when Anti-Culling is enabled. Make sure neither set this too low then the anti-culling won't work, nor too high which will hurt the performance.");
-        RTX_OPTION("rtx.antiCulling.light", float, fovScale, 1.0f, "[Experimental] Scalar of the FOV of lights Anti-Culling Frustum.");
+        RTX_OPTION_ENV("rtx.antiCulling.light", bool, enable, false, "RTX_ANTI_CULLING_LIGHTS", "Enable Anti-Culling for lights.");
+        RTX_OPTION("rtx.antiCulling.light", uint32_t, numLightsToKeep, 1000, "Maximum number of lights to keep when Anti-Culling is enabled.");
+        RTX_OPTION("rtx.antiCulling.light", uint32_t, numFramesToExtendLightLifetime, 1000, "Maximum number of frames to keep  when Anti-Culling is enabled. Make sure not to set this too low (then the anti-culling won't work), nor too high (which will hurt the performance).");
+        RTX_OPTION("rtx.antiCulling.light", float, fovScale, 1.0f, "Scalar of the FOV of lights Anti-Culling Frustum.");
       };
     };
     // Resolve Options
