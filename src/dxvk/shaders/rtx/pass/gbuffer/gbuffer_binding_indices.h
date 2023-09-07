@@ -28,6 +28,7 @@
 #define USE_32BIT_RAY_DIRECTION 1
 
 // Inputs
+#define GBUFFER_BINDING_SKYPROBE                                                38
 #define GBUFFER_BINDING_SKYMATTE                                                39
 #define GBUFFER_BINDING_VOLUME_FILTERED_RADIANCE_INPUT                          40
 

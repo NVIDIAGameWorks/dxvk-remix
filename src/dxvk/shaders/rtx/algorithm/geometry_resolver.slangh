@@ -1438,9 +1438,6 @@ void geometryPSRResolverVertex(
 
   // Handle attenuation and emissive radiance from the Resolve function
 
-  // Note: Emissive radiance handled first so objects with opacity do not attenuate themselves.
-  geometryPSRResolverState.radiance += emissiveRadiance * geometryPSRResolverState.attenuation;
-  geometryPSRResolverState.attenuation *= radianceAttenuation;
 
   // Handle medium attenuation if needed
   // Note: This is done here to avoid needing to accumulate the total resolved hit distance. Slightly
@@ -1480,6 +1477,14 @@ void geometryPSRResolverVertex(
   {
     geometryPSRResolverState.accumulatedHitDistance += geometryPSRResolverState.segmentHitDistance;
   }
+  else
+  {
+    // Output radiance from sky probe
+    emissiveRadiance += cb.skyBrightness * SkyProbe.Sample(ray.direction);
+  }
+
+  // Note: Emissive radiance handled first so objects with opacity do not attenuate themselves.
+  geometryPSRResolverState.radiance += emissiveRadiance * geometryPSRResolverState.attenuation;
 
   // Check if resolving should continue, and if a surface was hit
 
@@ -1491,6 +1496,8 @@ void geometryPSRResolverVertex(
   if (!rayInteractionHasHit(rayInteraction))
   {
     // Output Miss
+    SharedRadianceRG[geometryPSRResolverState.pixelCoordinate] += geometryPSRResolverState.radiance.rg;
+    SharedRadianceB[geometryPSRResolverState.pixelCoordinate] += geometryPSRResolverState.radiance.b;
 
     geometryResolverOutputMiss(
       geometryPSRResolverState.primarySurface, geometryPSRResolverState.selectedIntegrationSurface,
@@ -1498,6 +1505,9 @@ void geometryPSRResolverVertex(
 
     return;
   }
+
+  // Now apply attenuation after dealing with the miss case (where attenuation is 0)
+  geometryPSRResolverState.attenuation *= radianceAttenuation;
 
   // Add in Emissive contribution
 
