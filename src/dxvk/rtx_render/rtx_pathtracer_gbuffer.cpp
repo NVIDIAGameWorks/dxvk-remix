@@ -108,6 +108,7 @@ namespace dxvk {
         RW_TEXTURE2D(GBUFFER_BINDING_SHARED_BIAS_CURRENT_COLOR_MASK_OUTPUT)
         RW_TEXTURE2D(GBUFFER_BINDING_ALPHA_BLEND_GBUFFER_OUTPUT)
         SAMPLER2D(GBUFFER_BINDING_SKYMATTE)
+        SAMPLERCUBE(GBUFFER_BINDING_SKYPROBE)
 
         RW_TEXTURE2D(GBUFFER_BINDING_DECAL_MATERIAL_STORAGE)
         RW_TEXTURE2D(GBUFFER_BINDING_REFLECTION_PSR_DATA_STORAGE_0)
@@ -177,6 +178,10 @@ namespace dxvk {
 
     ctx->bindResourceView(GBUFFER_BINDING_SKYMATTE, ctx->getResourceManager().getSkyMatte(ctx).view, nullptr);
     ctx->bindResourceSampler(GBUFFER_BINDING_SKYMATTE, linearSampler);
+
+    // Requires the probe too for PSRR/T miss
+    ctx->bindResourceView(GBUFFER_BINDING_SKYPROBE, ctx->getResourceManager().getSkyProbe(ctx).view, nullptr);
+    ctx->bindResourceSampler(GBUFFER_BINDING_SKYPROBE, linearSampler);
 
     ctx->bindResourceView(GBUFFER_BINDING_SHARED_FLAGS_OUTPUT, rtOutput.m_sharedFlags.view, nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_SHARED_RADIANCE_RG_OUTPUT, rtOutput.m_sharedRadianceRG.view, nullptr);
