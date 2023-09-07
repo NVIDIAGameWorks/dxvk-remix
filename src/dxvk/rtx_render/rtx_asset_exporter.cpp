@@ -34,22 +34,14 @@
 #include <functional>
 
 namespace {
-
-  bool shouldUseBlit(VkFormat format) {
-    switch (format) {
-
-    case VK_FORMAT_B8G8R8A8_UNORM:
-    case VK_FORMAT_B8G8R8A8_SRGB:
-      return true;
-
-    default:
-      return false;
-    }
-  }
-
   VkFormat normalizeTargetFormat(VkFormat format) {
     switch (format) {
 
+    case VK_FORMAT_R4G4B4A4_UNORM_PACK16:
+    case VK_FORMAT_B4G4R4A4_UNORM_PACK16:
+    case VK_FORMAT_A1R5G5B5_UNORM_PACK16:
+    case VK_FORMAT_R5G5B5A1_UNORM_PACK16:
+    case VK_FORMAT_B5G5R5A1_UNORM_PACK16:
     case VK_FORMAT_B8G8R8A8_UNORM:
       return VK_FORMAT_R8G8B8A8_UNORM;
 
@@ -125,7 +117,6 @@ namespace dxvk {
     DxvkImageCreateInfo dstDesc = image->info();
 
     // NOTE: Some image formats arent well supported by DDS tools, like B8G8R8A8...  So we might want to blit rather than copy for such formats.
-    const bool useBlit = shouldUseBlit(srcDesc.format);
 
     // TODO: Just use blit for swizzle conversion?
     gli::swizzles swizzle = gli::swizzles(gli::SWIZZLE_RED, gli::SWIZZLE_GREEN, gli::SWIZZLE_BLUE, gli::SWIZZLE_ALPHA);
@@ -135,6 +126,8 @@ namespace dxvk {
     }
 
     dstDesc.format = normalizeTargetFormat(dstDesc.format);
+
+    const bool useBlit = srcDesc.format != dstDesc.format;
 
     // Detect changes in GLI since we're casting the VK format to GLI
     assert(gli::format::FORMAT_LAST >= (gli::format)dstDesc.format);
