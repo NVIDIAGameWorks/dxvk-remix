@@ -2623,10 +2623,10 @@ namespace dxvk {
       ImGui::Unindent();
     }
 
-    if (ImGui::CollapsingHeader("Experimental Features", collapsingHeaderClosedFlags)) {
+    if (ImGui::CollapsingHeader("Anti-Culling", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
 
-      ImGui::Checkbox("Anti-Culling", &RtxOptions::AntiCulling::Object::enableObject());
+      ImGui::Checkbox("Anti-Culling Objects", &RtxOptions::AntiCulling::Object::enableObject());
       if (RtxOptions::AntiCulling::Object::enable()) {
         ImGui::Checkbox("High precision Anti-Culling", &RtxOptions::AntiCulling::Object::enableHighPrecisionAntiCullingObject());
         if (RtxOptions::AntiCulling::Object::enableHighPrecisionAntiCulling()) {
