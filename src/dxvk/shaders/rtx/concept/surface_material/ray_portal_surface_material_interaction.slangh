@@ -27,6 +27,7 @@
 // should be set if the texture being sampled from is encoded in gamma space.
 bool rayPortalSurfaceMaterialInteractionSpriteSheetReadHelper(
   uint16_t textureIndex,
+  uint16_t samplerIndex,
   bool textureGammaCorrect,
   SurfaceInteraction surfaceInteraction,
   uint32_t timeSinceStartMS,
@@ -71,13 +72,13 @@ bool rayPortalSurfaceMaterialInteractionSpriteSheetReadHelper(
   // get prev frame sample
   vec2 uvBias = vec2(frame % spriteSheetCols, frame / spriteSheetCols) * uvSize;
   surfaceInteraction.textureCoordinates = uvBias + originalCoord * uvSize;
-  const f16vec4 prevSample = textureRead(textureIndex, surfaceInteraction);
+  const f16vec4 prevSample = textureRead(textureIndex, samplerIndex, surfaceInteraction);
 
   // get next frame sample
   frame = (frame + 1) % numSprites;
   uvBias = vec2(frame % spriteSheetCols, frame / spriteSheetCols) * uvSize;
   surfaceInteraction.textureCoordinates = uvBias + originalCoord * uvSize;
-  const f16vec4 futureSample = textureRead(textureIndex, surfaceInteraction);
+  const f16vec4 futureSample = textureRead(textureIndex, samplerIndex, surfaceInteraction);
 
   // Gamma correct the color component of the samples if requested
   const f16vec4 correctedPrevSample = textureGammaCorrect ?
@@ -109,6 +110,7 @@ RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteractionCreate(
 
   const bool maskLoaded = rayPortalSurfaceMaterialInteractionSpriteSheetReadHelper(
     rayPortalSurfaceMaterial.maskTextureIndex,
+    rayPortalSurfaceMaterial.samplerIndex,
     true,
     surfaceInteraction,
     cb.timeSinceStartMS,
@@ -122,7 +124,7 @@ RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteractionCreate(
   // but this complicates the determination of the default mask color a bit (without moving the invalid texture check out at least), so we instead just
   // hope the optimizer will remove the texture load when any code referencing it is behind a conditional.
   const bool shouldUseMask2Texture = all(surfaceInteraction.textureCoordinates >= f16vec2(0.0f)) && all(surfaceInteraction.textureCoordinates <= f16vec2(1.0f));
-  const bool maskLoaded2 = surfaceMaterialInteractionTextureReadHelper(rayPortalSurfaceMaterial.maskTextureIndex2, surfaceInteraction, maskSample2);
+  const bool maskLoaded2 = surfaceMaterialInteractionTextureReadHelper(rayPortalSurfaceMaterial.maskTextureIndex2, rayPortalSurfaceMaterial.samplerIndex2, surfaceInteraction, maskSample2);
 
   // Load Color
 

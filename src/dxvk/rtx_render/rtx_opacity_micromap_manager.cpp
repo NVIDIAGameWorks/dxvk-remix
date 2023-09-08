@@ -1263,9 +1263,10 @@ namespace dxvk {
       if (instance.surface.alphaState.isDecal)
         desc.resolveTransparencyThreshold = std::max(desc.resolveTransparencyThreshold, OpacityMicromapOptions::Building::decalsMinResolveTransparencyThreshold());
 
+      const auto& samplers = ctx->getCommonObjects()->getSceneManager().getSamplerTable();
       ctx->getCommonObjects()->metaGeometryUtils().dispatchBakeOpacityMicromap(
         ctx, blasEntry.modifiedGeometryData, 
-        textures, instance.getAlbedoOpacityTextureIndex(), instance.getSecondaryOpacityTextureIndex(),
+        textures, samplers, instance.getAlbedoOpacityTextureIndex(), instance.getSamplerIndex(), instance.getSecondaryOpacityTextureIndex(), instance.getSecondarySamplerIndex(),
         desc, ommCacheItem.bakingState, ommCacheItem.ommArrayBuffer);
 
       ctx->getCommandList()->trackResource<DxvkAccess::Write>(ommCacheItem.ommArrayBuffer);

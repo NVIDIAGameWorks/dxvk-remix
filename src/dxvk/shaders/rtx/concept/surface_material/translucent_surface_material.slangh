@@ -59,6 +59,7 @@ TranslucentSurfaceMaterial translucentSurfaceMaterialCreate(uint16_t surfaceMate
   // or measruement distance is ever 0, as the comparisons we use cannot detect the sign of 0. No material should actually use such a value though as it
   // makes no sense for a measurement distance and is debatably useless for a thin surface just the same (as it'd make it invisible).
   translucentSurfaceMaterial.thicknessOrMeasurementDistance = uint16BitsToHalf(data11.x);
+  translucentSurfaceMaterial.samplerIndex = data11.y;
   translucentSurfaceMaterial.sourceSurfaceMaterialIndex = surfaceMaterialIndex;
   translucentSurfaceMaterial.flags = (data13.x & 0xFF);
 

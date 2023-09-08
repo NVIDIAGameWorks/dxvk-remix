@@ -23,7 +23,7 @@
 
 #include "rtx/concept/surface/surface.slangh"
 
-f16vec4 textureRead(uint16_t textureIndex, SurfaceInteraction surfaceInteraction, float lodBias = 0.0)
+f16vec4 textureRead(uint16_t textureIndex, uint16_t samplerIndex, SurfaceInteraction surfaceInteraction, float lodBias = 0.0)
 {
   const float gradBias = pow(2, lodBias);
 
@@ -32,7 +32,7 @@ f16vec4 textureRead(uint16_t textureIndex, SurfaceInteraction surfaceInteraction
   // As such, no functions are used here and SampleGrad is called directly on the retrieved Sampler2D rather than using the GLSL-style textureGrad
   // helper we had before. This ensures the nonuniform decoration will propagate correctly as otherwise all threads in a warp may potentially sample
   // from the same texture and cause blocky artifacts on some hardware.
-  return textures[nonuniformEXT(uint(textureIndex))].SampleGrad(
+  return textures[nonuniformEXT(uint(textureIndex))].SampleGrad(samplers[nonuniformEXT(uint(samplerIndex))],
     surfaceInteraction.textureCoordinates,
     surfaceInteraction.textureGradientX * gradBias,
     surfaceInteraction.textureGradientY * gradBias

@@ -480,15 +480,15 @@ struct RtOpaqueSurfaceMaterial {
     const Vector4& albedoOpacityConstant,
     float roughnessConstant, float metallicConstant,
     const Vector3& emissiveColorConstant, bool enableEmission,
-    bool enableThinFilm, bool alphaIsThinFilmThickness, float thinFilmThicknessConstant) :
-    m_albedoOpacityTextureIndex{ albedoOpacityTextureIndex }, m_normalTextureIndex{ normalTextureIndex },
-    m_tangentTextureIndex{ tangentTextureIndex }, m_roughnessTextureIndex{ roughnessTextureIndex },
-    m_metallicTextureIndex{ metallicTextureIndex }, m_emissiveColorTextureIndex{ emissiveColorTextureIndex },
-    m_anisotropy{ anisotropy }, m_emissiveIntensity{ emissiveIntensity },
-    m_albedoOpacityConstant{ albedoOpacityConstant },
-    m_roughnessConstant{ roughnessConstant }, m_metallicConstant{ metallicConstant },
-    m_emissiveColorConstant{ emissiveColorConstant }, m_enableEmission{ enableEmission },
-    m_enableThinFilm { enableThinFilm }, m_alphaIsThinFilmThickness { alphaIsThinFilmThickness }, m_thinFilmThicknessConstant { thinFilmThicknessConstant } {
+    bool enableThinFilm, bool alphaIsThinFilmThickness, float thinFilmThicknessConstant, uint32_t samplerIndex) :
+    m_albedoOpacityTextureIndex { albedoOpacityTextureIndex }, m_normalTextureIndex { normalTextureIndex },
+    m_tangentTextureIndex { tangentTextureIndex }, m_roughnessTextureIndex { roughnessTextureIndex },
+    m_metallicTextureIndex { metallicTextureIndex }, m_emissiveColorTextureIndex { emissiveColorTextureIndex },
+    m_anisotropy { anisotropy }, m_emissiveIntensity { emissiveIntensity },
+    m_albedoOpacityConstant { albedoOpacityConstant },
+    m_roughnessConstant { roughnessConstant }, m_metallicConstant { metallicConstant },
+    m_emissiveColorConstant { emissiveColorConstant }, m_enableEmission { enableEmission },
+    m_enableThinFilm { enableThinFilm }, m_alphaIsThinFilmThickness { alphaIsThinFilmThickness }, m_thinFilmThicknessConstant { thinFilmThicknessConstant }, m_samplerIndex{ samplerIndex } {
     updateCachedData();
     updateCachedHash();
   }
@@ -528,7 +528,9 @@ struct RtOpaqueSurfaceMaterial {
     // 1 byte
     writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_cachedThinFilmNormalizedThicknessConstant));
 
-    writeGPUPadding<3>(data, offset); // Note: Padding for unused space
+    writeGPUPadding<1>(data, offset); // Note: Padding for unused space
+
+    writeGPUHelperExplicit<2>(data, offset, m_samplerIndex);
 
     uint32_t flags = (0 << 30); // Note: Bit 30 and 31 of last word set to 0 for opaque material type
 
@@ -547,12 +549,27 @@ struct RtOpaqueSurfaceMaterial {
     assert(offset - oldOffset == kSurfaceMaterialGPUSize);
   }
 
+  bool validate() const {
+    const bool hasTexture = m_albedoOpacityTextureIndex != kSurfaceMaterialInvalidTextureIndex ||
+                            m_normalTextureIndex != kSurfaceMaterialInvalidTextureIndex ||
+                            m_tangentTextureIndex != kSurfaceMaterialInvalidTextureIndex ||
+                            m_roughnessTextureIndex != kSurfaceMaterialInvalidTextureIndex ||
+                            m_metallicTextureIndex != kSurfaceMaterialInvalidTextureIndex ||
+                            m_emissiveColorTextureIndex != kSurfaceMaterialInvalidTextureIndex;
+
+    return !hasTexture || m_samplerIndex != kSurfaceMaterialInvalidTextureIndex;
+  }
+
   bool operator==(const RtOpaqueSurfaceMaterial& r) const {
     return m_cachedHash == r.m_cachedHash;
   }
 
   XXH64_hash_t getHash() const {
     return m_cachedHash;
+  }
+
+  uint32_t getSamplerIndex() const {
+    return m_samplerIndex;
   }
 
   uint32_t getAlbedoOpacityTextureIndex() const {
@@ -627,6 +644,7 @@ private:
     h = XXH64(&m_enableThinFilm, sizeof(m_enableThinFilm), h);
     h = XXH64(&m_alphaIsThinFilmThickness, sizeof(m_alphaIsThinFilmThickness), h);
     h = XXH64(&m_thinFilmThicknessConstant, sizeof(m_thinFilmThicknessConstant), h);
+    h = XXH64(&m_samplerIndex, sizeof(m_samplerIndex), h);
 
     m_cachedHash = h;
   }
@@ -648,6 +666,7 @@ private:
   uint32_t m_roughnessTextureIndex;
   uint32_t m_metallicTextureIndex;
   uint32_t m_emissiveColorTextureIndex;
+  uint32_t m_samplerIndex;
 
   float m_anisotropy;
   float m_emissiveIntensity;
@@ -678,14 +697,14 @@ struct RtTranslucentSurfaceMaterial {
     float refractiveIndex,
     float transmittanceMeasurementDistance, const Vector3& transmittanceColor,
     bool enableEmission, float emissiveIntensity, const Vector3& emissiveColorConstant,
-    bool isThinWalled, float thinWallThickness, bool useDiffuseLayer) :
+    bool isThinWalled, float thinWallThickness, bool useDiffuseLayer, uint32_t samplerIndex) :
     m_normalTextureIndex(normalTextureIndex),
     m_transmittanceTextureIndex(transmittanceTextureIndex),
     m_emissiveColorTextureIndex(emissiveColorTextureIndex),
     m_refractiveIndex(refractiveIndex),
     m_transmittanceMeasurementDistance(transmittanceMeasurementDistance), m_transmittanceColor(transmittanceColor),
     m_enableEmission(enableEmission), m_emissiveIntensity(emissiveIntensity), m_emissiveColorConstant(emissiveColorConstant),
-    m_isThinWalled(isThinWalled), m_thinWallThickness(thinWallThickness), m_useDiffuseLayer(useDiffuseLayer)
+    m_isThinWalled(isThinWalled), m_thinWallThickness(thinWallThickness), m_useDiffuseLayer(useDiffuseLayer), m_samplerIndex(samplerIndex)
   {
     updateCachedData();
     updateCachedHash();
@@ -727,8 +746,11 @@ struct RtTranslucentSurfaceMaterial {
     // 2 Bytes
     writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedTransmittanceMeasurementDistanceOrThickness)); // data11.x
 
-    // 6 Bytes padding
-    writeGPUPadding<6>(data, offset);
+    // 2 bytes
+    writeGPUHelperExplicit<2>(data, offset, m_samplerIndex); // data11.y
+
+    // 4 Bytes padding
+    writeGPUPadding<4>(data, offset);
 
     uint32_t flags = (1 << 30); // bit 30 set to 1 for translucent material type
 
@@ -741,6 +763,14 @@ struct RtTranslucentSurfaceMaterial {
     writeGPUHelper(data, offset, flags);
 
     assert(offset - oldOffset == kSurfaceMaterialGPUSize);
+  }
+
+  bool validate() const {
+    const bool hasTexture = m_normalTextureIndex != kSurfaceMaterialInvalidTextureIndex ||
+                            m_transmittanceTextureIndex != kSurfaceMaterialInvalidTextureIndex ||
+                            m_emissiveColorTextureIndex != kSurfaceMaterialInvalidTextureIndex;
+
+    return !hasTexture || m_samplerIndex != kSurfaceMaterialInvalidTextureIndex;
   }
 
   bool operator==(const RtTranslucentSurfaceMaterial& r) const {
@@ -766,6 +796,7 @@ private:
     h = XXH64(&m_isThinWalled, sizeof(m_isThinWalled), h);
     h = XXH64(&m_thinWallThickness, sizeof(m_thinWallThickness), h);
     h = XXH64(&m_useDiffuseLayer, sizeof(m_useDiffuseLayer), h);
+    h = XXH64(&m_samplerIndex, sizeof(m_samplerIndex), h);
 
     m_cachedHash = h;
   }
@@ -794,6 +825,7 @@ private:
   uint32_t m_normalTextureIndex;
   uint32_t m_transmittanceTextureIndex;
   uint32_t m_emissiveColorTextureIndex;
+  uint32_t m_samplerIndex;
 
   float m_refractiveIndex;
   Vector3 m_transmittanceColor;
@@ -816,9 +848,9 @@ private:
 struct RtRayPortalSurfaceMaterial {
   RtRayPortalSurfaceMaterial(
     uint32_t maskTextureIndex, uint32_t maskTextureIndex2, uint8_t rayPortalIndex,
-    float rotationSpeed, bool enableEmission, float emissiveIntensity) :
+    float rotationSpeed, bool enableEmission, float emissiveIntensity, uint32_t samplerIndex, uint32_t samplerIndex2) :
     m_maskTextureIndex{ maskTextureIndex }, m_maskTextureIndex2 { maskTextureIndex2 }, m_rayPortalIndex{ rayPortalIndex },
-    m_rotationSpeed { rotationSpeed }, m_enableEmission(enableEmission), m_emissiveIntensity(emissiveIntensity) {
+    m_rotationSpeed { rotationSpeed }, m_enableEmission(enableEmission), m_emissiveIntensity(emissiveIntensity), m_samplerIndex(samplerIndex), m_samplerIndex2(samplerIndex2) {
     updateCachedHash();
   }
 
@@ -834,12 +866,26 @@ struct RtRayPortalSurfaceMaterial {
     writeGPUHelper(data, offset, glm::packHalf1x16(m_rotationSpeed));
     float emissiveIntensity = m_enableEmission ? m_emissiveIntensity : 1.0f;
     writeGPUHelper(data, offset, glm::packHalf1x16(emissiveIntensity));
+    writeGPUHelperExplicit<2>(data, offset, m_samplerIndex);
+    writeGPUHelperExplicit<2>(data, offset, m_samplerIndex2);
 
-    writeGPUPadding<18>(data, offset); // Note: Padding for unused space
+    writeGPUPadding<14>(data, offset); // Note: Padding for unused space
 
     writeGPUHelper(data, offset, static_cast<uint32_t>(2 << 30)); // Note: Bit 30 and 31 of last word set to 2 for ray portal material type
 
     assert(offset - oldOffset == kSurfaceMaterialGPUSize);
+  }
+
+  bool validate() const {
+    if (m_maskTextureIndex != kSurfaceMaterialInvalidTextureIndex && m_samplerIndex == kSurfaceMaterialInvalidTextureIndex) {
+      return false;
+    }
+
+    if (m_maskTextureIndex2 != kSurfaceMaterialInvalidTextureIndex && m_samplerIndex2 == kSurfaceMaterialInvalidTextureIndex) {
+      return false;
+    }
+
+    return true;
   }
 
   bool operator==(const RtRayPortalSurfaceMaterial& r) const {
@@ -856,6 +902,14 @@ struct RtRayPortalSurfaceMaterial {
 
   uint32_t getMaskTextureIndex2() const {
     return m_maskTextureIndex2;
+  }
+
+  uint32_t getSamplerIndex() const {
+    return m_samplerIndex;
+  }
+
+  uint32_t getSamplerIndex2() const {
+    return m_samplerIndex2;
   }
 
   uint8_t getRayPortalIndex() const {
@@ -884,12 +938,16 @@ private:
     h = XXH64(&m_rotationSpeed, sizeof(m_rotationSpeed), h);
     h = XXH64(&m_enableEmission, sizeof(m_enableEmission), h);
     h = XXH64(&m_emissiveIntensity, sizeof(m_emissiveIntensity), h);
+    h = XXH64(&m_samplerIndex, sizeof(m_samplerIndex), h);
+    h = XXH64(&m_samplerIndex2, sizeof(m_samplerIndex2), h);
 
     m_cachedHash = h;
   }
 
   uint32_t m_maskTextureIndex;
   uint32_t m_maskTextureIndex2;
+  uint32_t m_samplerIndex;
+  uint32_t m_samplerIndex2;
 
   uint8_t m_rayPortalIndex;
   float m_rotationSpeed;
@@ -965,6 +1023,23 @@ struct RtSurfaceMaterial {
       m_rayPortalSurfaceMaterial.writeGPUData(data, offset);
       break;
     }
+  }
+
+  bool validate() const {
+    switch (m_type) {
+    default:
+      assert(false);
+
+      [[fallthrough]];
+    case RtSurfaceMaterialType::Opaque:
+      return m_opaqueSurfaceMaterial.validate();
+    case RtSurfaceMaterialType::Translucent:
+      return m_translucentSurfaceMaterial.validate();
+    case RtSurfaceMaterialType::RayPortal:
+      return m_rayPortalSurfaceMaterial.validate();
+    }
+
+    return false;
   }
 
   RtSurfaceMaterial& operator=(const RtSurfaceMaterial& rtSurfaceMaterial) {
@@ -1131,6 +1206,14 @@ struct LegacyMaterialData {
     return colorTextures[1];
   }
 
+  const Rc<DxvkSampler>& getSampler() const {
+    return samplers[0];
+  }
+
+  const Rc<DxvkSampler>& getSampler2() const {
+    return samplers[1];
+  }
+
   const D3DMATERIAL9& getLegacyMaterial() const {
     return d3dMaterial;
   }
@@ -1210,6 +1293,7 @@ private:
 
   const static uint32_t kMaxSupportedTextures = 2;
   TextureRef colorTextures[kMaxSupportedTextures] = {};
+  Rc<DxvkSampler> samplers[kMaxSupportedTextures] = {};
   uint32_t colorTextureSlot[kMaxSupportedTextures] = {};
 
   XXH64_hash_t m_cachedHash;

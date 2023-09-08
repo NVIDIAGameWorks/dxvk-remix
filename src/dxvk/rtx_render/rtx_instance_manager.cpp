@@ -839,9 +839,12 @@ namespace dxvk {
 
         if (material.getType() == RtSurfaceMaterialType::Opaque) {
           currentInstance.m_albedoOpacityTextureIndex = material.getOpaqueSurfaceMaterial().getAlbedoOpacityTextureIndex();
+          currentInstance.m_samplerIndex = material.getOpaqueSurfaceMaterial().getSamplerIndex();
         } else if (material.getType() == RtSurfaceMaterialType::RayPortal) {
           currentInstance.m_albedoOpacityTextureIndex = material.getRayPortalSurfaceMaterial().getMaskTextureIndex();
+          currentInstance.m_samplerIndex = material.getRayPortalSurfaceMaterial().getSamplerIndex();
           currentInstance.m_secondaryOpacityTextureIndex = material.getRayPortalSurfaceMaterial().getMaskTextureIndex2();
+          currentInstance.m_secondarySamplerIndex = material.getRayPortalSurfaceMaterial().getSamplerIndex2();
         }
 
         // Fetch the material from the cache
