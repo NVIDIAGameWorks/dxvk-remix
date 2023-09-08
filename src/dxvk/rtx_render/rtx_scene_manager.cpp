@@ -469,8 +469,7 @@ namespace dxvk {
 
     m_bufferCache.clear();
 
-    if (TerrainBaker::needsTerrainBaking())
-      m_terrainBaker->onFrameEnd(ctx);
+    m_terrainBaker->onFrameEnd(ctx);
   }
 
   void SceneManager::onFrameEndNoRTX() {

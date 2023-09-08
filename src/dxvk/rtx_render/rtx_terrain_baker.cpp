@@ -612,8 +612,10 @@ namespace dxvk {
     RtxTextureManager& textureManager = ctx->getCommonObjects()->getTextureManager();
     const uint32_t currentFrameIndex = ctx->getDevice()->getCurrentFrameId();
 
-    // Expects the mesh BBOXes to be calculated by this point
-    calculateTerrainBBOX(currentFrameIndex);
+    if (TerrainBaker::needsTerrainBaking()) {
+      // Expects the mesh BBOXes to be calculated by this point
+      calculateTerrainBBOX(currentFrameIndex);
+    }
 
     m_hasInitializedMaterialDataThisFrame = false;
 
@@ -624,7 +626,7 @@ namespace dxvk {
     m_stagingTextureCache.clear();
 
     // Destroy material data every frame so as not keep texture references around.
-    // Materila data gets recreated every frame on baking
+    // Material data gets recreated every frame on baking
     m_materialData.reset();
   }
 
