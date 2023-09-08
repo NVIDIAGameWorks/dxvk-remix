@@ -29,6 +29,10 @@
 // bits for flags field in OpaqueSurfaceMaterial
 #define OPAQUE_SURFACE_MATERIAL_FLAG_USE_THIN_FILM_LAYER (1 << 0)
 #define OPAQUE_SURFACE_MATERIAL_FLAG_ALPHA_IS_THIN_FILM_THICKNESS (1 << 1)
+#define OPAQUE_SURFACE_MATERIAL_FLAG_HAS_ALBEDO_TEXTURE (1 << 2)
+#define OPAQUE_SURFACE_MATERIAL_FLAG_HAS_ROUGHNESS_TEXTURE (1 << 3)
+#define OPAQUE_SURFACE_MATERIAL_FLAG_HAS_METALLIC_TEXTURE (1 << 4)
+#define OPAQUE_SURFACE_MATERIAL_FLAG_HAS_EMISSIVE_TEXTURE (1 << 5)
 
 // Note: Bits for flags field in TranslucentSurfaceMaterial and TranslucentSurfaceMaterialInteraction
 // If set, then the texture bound to transmittanceOrDiffuseTextureIndex is an albedo map for the diffuse layer
