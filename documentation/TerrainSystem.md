@@ -7,7 +7,7 @@ Game authoring steps:
 - set [rtx.sceneScale](../RtxOptions.md)
 - tag terrain textures
 - (optional) tag ignore / lightmap textures
-- adjust Terrain Baker properties to reach desired resolution and performance for the terrain. 
+- adjust Terrain Baker properties to reach desired resolution and performance for the terrain
 
 Supported:
 - Programmable shaders
@@ -16,6 +16,7 @@ Supported:
 Caveates/limitations:
 - Material property constants [rtx.terrainBaker.material.properties.*](../RtxOptions.md) used by Terrain Baker are set for the material used for terrain rendering. These properties are not baked. If a replacement material for any of the input terrain texture layers replaces this constant (i.e. roughness, emissive, etc. ), then the shared constant will not be used. Therefore all materials tagged as terrain need to have this replacement texture type set. In the future this could be handled by baking the constant into a terrain texture if a replacement texture is specified for any of the active terrain meshes.
 - Using too high resolution replacement textures can have noticeable performance impact. Adjust [rtx.terrainBaker.material.maxResolutionToUseForReplacementMaterials](../RtxOptions.md) to balance quality vs performance cost of baking replacement textures.
+- Terrain baking is not free. It has a computational and memory cost. You can parametrize its properties to suit your needs and memory limitations. In the future there may be a more adaptive mechanism to fit in-game scenario and resource availability. Tune following settings to adjust resolution and memory overhead of the Terrain System [rtx.terrainBaker.cascadeMap.*](../RtxOptions.md) and [rtx.terrainBaker.material.maxResolutionToUseForReplacementMaterials](../RtxOptions.md).
 
 Future considerations / not supported (yet):
 - Material constants per input terrain replacement material.
