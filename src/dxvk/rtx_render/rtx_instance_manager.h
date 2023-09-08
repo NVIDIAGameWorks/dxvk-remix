@@ -95,7 +95,10 @@ public:
     return m_materialType;
   }
   uint32_t getAlbedoOpacityTextureIndex() const { return m_albedoOpacityTextureIndex; }
+  uint32_t getSamplerIndex() const { return m_samplerIndex; }
   uint32_t getSecondaryOpacityTextureIndex() const { return m_secondaryOpacityTextureIndex; }
+  uint32_t getSecondarySamplerIndex() const { return m_secondarySamplerIndex; }
+
   bool isAnimated() const {
     return m_isAnimated;
   }
@@ -139,7 +142,9 @@ private:
 
   RtSurfaceMaterialType m_materialType = RtSurfaceMaterialType::Count;
   uint32_t m_albedoOpacityTextureIndex = kSurfaceMaterialInvalidTextureIndex;
+  uint32_t m_samplerIndex = kSurfaceMaterialInvalidTextureIndex;
   uint32_t m_secondaryOpacityTextureIndex = kSurfaceMaterialInvalidTextureIndex;
+  uint32_t m_secondarySamplerIndex = kSurfaceMaterialInvalidTextureIndex;
 
   // Extra instance meta data needed for Opacity Micromap Manager, generally describes if animated spritesheets are in use
   // on a given instance (though the applicability to OMMs are only relevant for Opaque and Ray Portal materials currently

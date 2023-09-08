@@ -295,8 +295,11 @@ namespace dxvk {
     Rc<DxvkContext> ctx,
     const RaytraceGeometry& geo,
     const std::vector<TextureRef>& textures,
+    const std::vector<Rc<DxvkSampler>>& samplers,
     const uint32_t albedoOpacityTextureIndex,
+    const uint32_t samplerIndex,
     const uint32_t secondaryAlbedoOpacityTextureIndex,
+    const uint32_t secondarySamplerIndex,
     const BakeOpacityMicromapDesc& desc,
     BakeOpacityMicromapState& bakeState,
     Rc<DxvkBuffer> opacityMicromapBuffer) const {
@@ -332,7 +335,7 @@ namespace dxvk {
     Rc<DxvkSampler> opacitySampler;
     Rc<DxvkSampler> secondaryOpacitySampler;
     {
-      const DxvkSamplerCreateInfo& samplerInfo = opacityTexture.sampler->info();
+      const DxvkSamplerCreateInfo& samplerInfo = samplers[samplerIndex]->info();
 
       opacitySampler = device()->getCommon()->getResources().getSampler(
         VK_FILTER_NEAREST, VK_SAMPLER_MIPMAP_MODE_NEAREST,
@@ -340,7 +343,7 @@ namespace dxvk {
         samplerInfo.borderColor);
 
       if (secondaryOpacityTexture) {
-        const DxvkSamplerCreateInfo& secondarySamplerInfo = secondaryOpacityTexture->sampler->info();
+        const DxvkSamplerCreateInfo& secondarySamplerInfo = samplers[secondarySamplerIndex]->info();
           secondaryOpacitySampler = device()->getCommon()->getResources().getSampler(
           VK_FILTER_NEAREST, VK_SAMPLER_MIPMAP_MODE_NEAREST,
           secondarySamplerInfo.addressModeU, secondarySamplerInfo.addressModeV, secondarySamplerInfo.addressModeW,

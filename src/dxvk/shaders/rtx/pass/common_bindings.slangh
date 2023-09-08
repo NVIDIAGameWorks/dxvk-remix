@@ -38,7 +38,7 @@
 
 // Note: Texture array may only be up to a size of 2^16
 layout(set = BINDING_SET_BINDLESS_TEXTURE2D, binding = 0)
-Sampler2D textures[];
+Texture2D textures[];
 
 [allow("parameterBindingsOverlap")]
 layout(set = BINDING_SET_BINDLESS_RAW_BUFFER, binding = 0) 
@@ -52,6 +52,8 @@ StructuredBuffer<uint16_t> indices[];
 layout(set = BINDING_SET_BINDLESS_RAW_BUFFER, binding = 0)
 StructuredBuffer<uint32_t> indices32[];
 
+layout(set = BINDING_SET_BINDLESS_SAMPLER, binding = 0)
+SamplerState samplers[];
 
 layout(binding = BINDING_ACCELERATION_STRUCTURE)
 RaytracingAccelerationStructure topLevelAS;

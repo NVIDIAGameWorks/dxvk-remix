@@ -75,7 +75,7 @@ namespace dxvk {
     Resources& resourceManager = ctx->getResourceManager();
     const bool hasTexcoords = drawCallState.hasTextureCoordinates();
     // We're going to use this to create a modified sampler for textures.
-    DxvkSampler* pOriginalSampler = drawCallState.getMaterialData().getColorTexture().sampler.ptr();
+    DxvkSampler* pOriginalSampler = drawCallState.getMaterialData().getSampler().ptr();
     Rc<DxvkContext> dxvkCtx = ctx;
 
     // Opacity texture is currently required for blending to work. 
@@ -172,7 +172,7 @@ namespace dxvk {
                                            format, 1, VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, 0)).first;
       }
 
-      conversionInfo.targetTexture = TextureRef(nullptr, textureIter->second.view);
+      conversionInfo.targetTexture = TextureRef(textureIter->second.view);
 
       // Track lifetime of the resource now since targetTexture object is about to get destroyed
       ctx->getCommandList()->trackResource<DxvkAccess::Write>(textureIter->second.image);
@@ -416,11 +416,12 @@ namespace dxvk {
       return;
     }
 
-    Resources& resourceManager = ctx->getResourceManager();
-
     // We're going to use this to create a modified sampler for terrain textures.
     // Terrain textures have only mip 0, so use nearest for mip filtering
-    Rc<DxvkSampler> linearSampler = resourceManager.getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+    if (!m_terrainSampler.ptr()) {
+      Resources& resourceManager = ctx->getResourceManager();
+      m_terrainSampler = resourceManager.getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+    }
 
     // ToDo use TerrainBaker's material defaults
     const LegacyMaterialDefaults& defaults = RtxOptions::Get()->legacyMaterial;
@@ -428,7 +429,7 @@ namespace dxvk {
     
     auto createTextureRef = [&](ReplacementMaterialTextureType::Enum textureType) {
       return m_materialTextures[textureType].isBaked()
-        ? TextureRef(linearSampler, m_materialTextures[textureType].texture.view)
+        ? TextureRef(m_materialTextures[textureType].texture.view)
         : TextureRef();
     };
 
@@ -483,7 +484,7 @@ namespace dxvk {
 
       // WAR (REMIX-1557) to force release previous terrain texture reference from texture cache since it doesn't do it automatically resulting in a leak
       if (texture.isValid()) {
-        TextureRef textureRef = TextureRef(nullptr, texture.view);
+        TextureRef textureRef = TextureRef(texture.view);
         textureManager.releaseTexture(textureRef);
       }
 
@@ -498,6 +499,10 @@ namespace dxvk {
     }
 
     return texture;
+  }
+
+  const Rc<DxvkSampler>& TerrainBaker::getTerrainSampler() const {
+    return m_terrainSampler;
   }
 
   const MaterialData* TerrainBaker::getMaterialData() const {
@@ -633,7 +638,7 @@ namespace dxvk {
       RtxTextureManager& textureManager = ctx->getCommonObjects()->getTextureManager();
 
       // WAR (REMIX-1557) to force release terrain texture reference from texture cache since it doesn't do it automatically resulting in a leak
-      TextureRef textureRef = TextureRef(nullptr, texture.view);
+      TextureRef textureRef = TextureRef(texture.view);
       texture.reset();
       textureManager.releaseTexture(textureRef);
     };

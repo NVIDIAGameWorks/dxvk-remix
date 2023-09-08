@@ -110,27 +110,16 @@ namespace dxvk {
         
     // True vidmem texture-ref
     //  uniqueKey can be used to link this TextureRef to another TextureRef (e.g. HOST promoted TextureRef's)
-    TextureRef(Rc<DxvkSampler> sample, Rc<DxvkImageView> image, size_t uniqueKey = kInvalidTextureKey)
-      : sampler(std::move(sample))
-      , m_imageView(std::move(image)) {
+    TextureRef(Rc<DxvkImageView> image, size_t uniqueKey = kInvalidTextureKey)
+      : m_imageView(std::move(image)) {
       // If a key has been provided, use it (i.e. has this RtTexture been created from a promotion).
       if (uniqueKey == kInvalidTextureKey) {
-        // We must modulate the unique key by the sampler hash, as the same texture can be used with multiple samplers!
-        XXH64_hash_t samplerHash = kEmptyHash;
-        if (sampler.ptr() != nullptr) {
-          samplerHash = XXH3_64bits(&sampler->info(), sizeof(DxvkSamplerCreateInfo));
-        }
         // A unique key based on the VkImageView handle
         VkImageView view = m_imageView->handle();
-        this->m_uniqueKey = XXH3_64bits_withSeed(&view, sizeof(view), samplerHash);
+        this->m_uniqueKey = XXH3_64bits(&view, sizeof(view));
       } else
         this->m_uniqueKey = uniqueKey;
     }
-
-    // Convenience version of the above constructor
-    explicit TextureRef(const DxvkShaderResourceSlot& slot)
-      : TextureRef(slot.sampler, slot.imageView)
-    { }
 
     // Promised reference to a future texture
     explicit TextureRef(const Rc<ManagedTexture>& managedTexture)
@@ -205,8 +194,6 @@ namespace dxvk {
       }
       return isFullyResident();
     }
-
-    Rc<DxvkSampler> sampler;
 
     mutable uint32_t frameLastUsed = 0xFFFFFFFF;
 

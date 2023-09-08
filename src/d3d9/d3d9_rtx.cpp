@@ -889,7 +889,8 @@ namespace dxvk {
 
       // Cache the slot we want to bind
       const bool srgb = d3d9State().samplerStates[stage][D3DSAMP_SRGBTEXTURE] & 0x1;
-      m_activeDrawCallState.materialData.colorTextures[textureID] = TextureRef(sampler, pTexInfo->GetSampleView(srgb));
+      m_activeDrawCallState.materialData.colorTextures[textureID] = TextureRef(pTexInfo->GetSampleView(srgb));
+      m_activeDrawCallState.materialData.samplers[textureID] = sampler;
 
       auto shaderSampler = RemapStateSamplerShader(stage);
       m_activeDrawCallState.materialData.colorTextureSlot[textureID] = computeResourceSlotId(shaderSampler.first, DxsoBindingType::Image, uint32_t(shaderSampler.second));

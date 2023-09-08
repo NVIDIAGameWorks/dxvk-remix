@@ -50,6 +50,10 @@ namespace dxvk {
     if (m_vkd->vkCreateSampler(m_vkd->device(),
         &samplerInfo, nullptr, &m_sampler) != VK_SUCCESS)
       throw DxvkError("DxvkSampler::DxvkSampler: Failed to create sampler");
+
+    // NV-DXVK start
+    m_hash = XXH3_64bits(&m_createInfo, sizeof(DxvkSamplerCreateInfo));
+    // NV-DXVK end
   }
   
   

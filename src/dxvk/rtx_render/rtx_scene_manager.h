@@ -64,6 +64,7 @@ public:
 
 protected:
   BufferRefTable<RaytraceBuffer> m_bufferCache;
+  BufferRefTable<Rc<DxvkSampler>> m_materialSamplerCache;
 
   struct SurfaceMaterialHashFn {
     size_t operator() (const RtSurfaceMaterial& mat) const {
@@ -78,6 +79,13 @@ protected:
     }
   };
   SparseUniqueCache<RtVolumeMaterial, VolumeMaterialHashFn> m_volumeMaterialCache;
+
+  struct SamplerHashFn {
+    size_t operator() (const Rc<DxvkSampler>& sampler) const {
+      return (size_t) sampler->hash();
+    }
+  };
+  SparseUniqueCache<Rc<DxvkSampler>, SamplerHashFn> m_samplerCache;
 };
 
 // Scene manager is a super manager, it's the interface between rendering and world state
@@ -112,6 +120,7 @@ public:
   Rc<DxvkBuffer> getBillboardsBuffer() const { return m_accelManager.getBillboardsBuffer(); }
   bool isPreviousFrameSceneAvailable() const { return m_previousFrameSceneAvailable && getSurfaceMappingBuffer().ptr() != nullptr; }
 
+  const std::vector<Rc<DxvkSampler>>& getSamplerTable() const { return m_samplerCache.getObjectTable(); }
   const std::vector<RaytraceBuffer>& getBufferTable() const { return m_bufferCache.getObjectTable(); }
   const std::vector<RtInstance*>& getInstanceTable() const { return m_instanceManager.getInstanceTable(); }
   
@@ -161,7 +170,8 @@ public:
   void triggerUsdCapture() const;
   bool isGameCapturerIdle() const;
 
-  void trackTexture(Rc<DxvkContext> ctx, TextureRef inputTexture, uint32_t& textureIndex, bool hasTexcoords, DxvkSampler* patchSampler = nullptr, bool allowAsync = true);
+  void trackTexture(Rc<DxvkContext> ctx, TextureRef inputTexture, uint32_t& textureIndex, bool hasTexcoords, bool allowAsync = true);
+  void trackSampler(Rc<DxvkSampler> sampler, bool patchSampler, uint32_t& samplerIndex);
 
 private:
   enum class ObjectCacheState
@@ -177,6 +187,7 @@ private:
 
   // Consumes a draw call state and updates the scene state accordingly
   uint64_t processDrawCallState(Rc<DxvkContext> ctx, const DrawCallState& blasInput, const MaterialData* replacementMaterialData);
+
   // Updates ref counts for new buffers
   void updateBufferCache(RaytraceGeometry& newGeoData);
 

@@ -58,6 +58,8 @@ OpaqueSurfaceMaterial opaqueSurfaceMaterialCreate(uint16_t surfaceMaterialIndex,
 
   opaqueSurfaceMaterial.thinFilmThicknessConstant = unorm8ToF16(uint8_t(data12.x));
 
+  opaqueSurfaceMaterial.samplerIndex = data12.y;
+
   opaqueSurfaceMaterial.flags = (data13.x & 0xFF);
 
   return opaqueSurfaceMaterial;
