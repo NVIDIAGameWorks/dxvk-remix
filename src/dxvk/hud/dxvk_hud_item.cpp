@@ -719,6 +719,7 @@ namespace dxvk::hud {
                                    "# Surface Materials:" , 
                                    "# Volume Materials:" , 
                                    "# Lights:",
+                                   "# Samplers:",
                                    "# Textures in-flight:",
                                    "# Last tex. batch (ms):"}; 
     const uint64_t values[] = { counters.getCtr(DxvkStatCounter::QueuePresentCount),
@@ -729,6 +730,7 @@ namespace dxvk::hud {
                                 counters.getCtr(DxvkStatCounter::RtxSurfaceMaterialCount),
                                 counters.getCtr(DxvkStatCounter::RtxVolumeMaterialCount),
                                 counters.getCtr(DxvkStatCounter::RtxLightCount),
+                                counters.getCtr(DxvkStatCounter::RtxSamplers),
                                 counters.getCtr(DxvkStatCounter::RtxTexturesInFlight),
                                 counters.getCtr(DxvkStatCounter::RtxLastTextureBatchDuration)};
 

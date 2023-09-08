@@ -79,10 +79,11 @@ struct SurfaceMaterialInteractionPSRSample
 // Surface Material Interaction Helper Functions
 
 // Note: Forward declared to solve strange issue with function not being defined (likely due to include cycle between Ray and Surface Material)
-f16vec4 textureRead(uint16_t textureIndex, SurfaceInteraction surfaceInteraction, float lodBias);
+f16vec4 textureRead(uint16_t textureIndex, uint16_t samplerIndex, SurfaceInteraction surfaceInteraction, float lodBias);
 
 bool surfaceMaterialInteractionTextureReadHelper(
   uint16_t textureIndex,
+  uint16_t samplerIndex,
   SurfaceInteraction surfaceInteraction,
   inout f16vec4 textureSample,
   float lodBias = 0.0)
@@ -94,7 +95,7 @@ bool surfaceMaterialInteractionTextureReadHelper(
     return false;
   }
 
-  textureSample = textureRead(textureIndex, surfaceInteraction, lodBias);
+  textureSample = textureRead(textureIndex, samplerIndex, surfaceInteraction, lodBias);
 
   return true;
 }

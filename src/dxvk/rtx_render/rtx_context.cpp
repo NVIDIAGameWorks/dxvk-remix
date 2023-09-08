@@ -1466,6 +1466,10 @@ namespace dxvk {
       m_cmd->cmdBindDescriptorSet(VK_PIPELINE_BIND_POINT_COMPUTE, layout->pipelineLayout(), 
                                   getSceneManager().getBindlessResourceManager().getGlobalBindlessTableSet(BindlessResourceManager::Buffers),
                                   BINDING_SET_BINDLESS_RAW_BUFFER);
+
+      m_cmd->cmdBindDescriptorSet(VK_PIPELINE_BIND_POINT_COMPUTE, layout->pipelineLayout(),
+                                  getSceneManager().getBindlessResourceManager().getGlobalBindlessTableSet(BindlessResourceManager::Samplers),
+                                  BINDING_SET_BINDLESS_SAMPLER);
     }
   }
 
@@ -1482,6 +1486,10 @@ namespace dxvk {
       m_cmd->cmdBindDescriptorSet(VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, layout->pipelineLayout(), 
                                   getSceneManager().getBindlessResourceManager().getGlobalBindlessTableSet(BindlessResourceManager::Buffers),
                                   BINDING_SET_BINDLESS_RAW_BUFFER);
+
+      m_cmd->cmdBindDescriptorSet(VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, layout->pipelineLayout(), 
+                                  getSceneManager().getBindlessResourceManager().getGlobalBindlessTableSet(BindlessResourceManager::Samplers),
+                                  BINDING_SET_BINDLESS_SAMPLER);
     }
   }
 
@@ -1744,6 +1752,7 @@ namespace dxvk {
         // Also SceneManager uses sampler associated with the color texture to patch samplers for the textures in the opaque material.
         LegacyMaterialData overrideMaterial;
         overrideMaterial.colorTextures[0] = (*outOverrideMaterialData)->getOpaqueMaterialData().getAlbedoOpacityTexture();
+        overrideMaterial.samplers[0] = terrainBaker.getTerrainSampler();
         drawCallState.materialData = overrideMaterial;
       }
 

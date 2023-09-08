@@ -26,6 +26,7 @@
 // These are set indices - not bindings
 #define BINDING_SET_BINDLESS_RAW_BUFFER          1
 #define BINDING_SET_BINDLESS_TEXTURE2D           2
+#define BINDING_SET_BINDLESS_SAMPLER             3
 
 
 #define BINDING_ACCELERATION_STRUCTURE           0

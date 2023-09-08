@@ -67,11 +67,10 @@ namespace dxvk {
       * \brief Adds a texture to the resource manager.
       * \param [in] immediateContext The immediate context used to add the texture.
       * \param [in] inputTexture The texture to be added.
-      * \param [in] sampler The sampler used for the texture.
       * \param [in] allowAsync Whether asynchronous texture upload is allowed for this texture.
       * \param [out] textureIndexOut Index of the added texture in resource table.
     */
-    void addTexture(Rc<DxvkContext>& immediateContext, TextureRef inputTexture, Rc<DxvkSampler> sampler, bool allowAsync, uint32_t& textureIndexOut);
+    void addTexture(Rc<DxvkContext>& immediateContext, TextureRef inputTexture, bool allowAsync, uint32_t& textureIndexOut);
 
     /**
       * \brief Synchronizes the resource manager.

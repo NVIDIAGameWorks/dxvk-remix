@@ -49,6 +49,8 @@ struct MemoryPolymorphicSurfaceMaterial
 
 struct OpaqueSurfaceMaterial
 {
+  uint16_t samplerIndex;
+
   uint16_t albedoOpacityTextureIndex;
   uint16_t normalTextureIndex;
   uint16_t tangentTextureIndex;
@@ -74,6 +76,8 @@ struct OpaqueSurfaceMaterial
 
 struct TranslucentSurfaceMaterial
 {
+  uint16_t samplerIndex;
+
   uint16_t normalTextureIndex;
   uint16_t transmittanceOrDiffuseTextureIndex;
   uint16_t emissiveColorTextureIndex;
@@ -97,6 +101,9 @@ struct TranslucentSurfaceMaterial
 
 struct RayPortalSurfaceMaterial
 {
+  uint16_t samplerIndex;
+  uint16_t samplerIndex2;
+
   uint16_t maskTextureIndex;
   uint16_t maskTextureIndex2;
 

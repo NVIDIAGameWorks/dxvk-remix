@@ -111,8 +111,11 @@ namespace dxvk {
       Rc<DxvkContext> ctx,
       const RaytraceGeometry& geo,
       const std::vector<TextureRef>& textures,
+      const std::vector<Rc<DxvkSampler>>& samplers,
       const uint32_t albedoOpacityTextureIndex,
+      const uint32_t samplerIndex,
       const uint32_t secondaryAlbedoOpacityTextureIndex,
+      const uint32_t secondarySamplerIndex,
       const BakeOpacityMicromapDesc& desc,
       BakeOpacityMicromapState& bakeState,
       Rc<DxvkBuffer> opacityMicromapBuffer) const;

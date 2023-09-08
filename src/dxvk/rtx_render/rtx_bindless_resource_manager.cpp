@@ -37,6 +37,7 @@ namespace dxvk {
     for (int i = 0; i < kMaxFramesInFlight; i++) {
       m_tables[Table::Textures][i].reset(new BindlessTable(this));
       m_tables[Table::Buffers][i].reset(new BindlessTable(this));
+      m_tables[Table::Samplers][i].reset(new BindlessTable(this));
     }
 
     createGlobalBindlessDescPool();
@@ -53,7 +54,7 @@ namespace dxvk {
     return m_tables[type][currentIdx()]->bindlessDescSet;
   }
 
-  void BindlessResourceManager::prepareSceneData(const Rc<DxvkContext> ctx, const std::vector<TextureRef>& rtTextures, const std::vector<RaytraceBuffer>& rtBuffers) {
+  void BindlessResourceManager::prepareSceneData(const Rc<DxvkContext> ctx, const std::vector<TextureRef>& rtTextures, const std::vector<RaytraceBuffer>& rtBuffers, const std::vector<Rc<DxvkSampler>>& samplers) {
     ScopedCpuProfileZone();
     if (m_frameLastUpdated == m_device->getCurrentFrameId()) {
       Logger::debug("Updating bindless tables multiple times per frame...");
@@ -71,13 +72,13 @@ namespace dxvk {
       for (auto&& texRef : rtTextures) {
         DxvkImageView* imageView = texRef.getImageView();
 
-        if (imageView != nullptr && texRef.sampler != nullptr) {
-          imageInfo[idx].sampler = texRef.sampler->handle();
+        if (imageView != nullptr) {
+          imageInfo[idx].sampler = nullptr;
           imageInfo[idx].imageView = imageView->handle();
           imageInfo[idx].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
           ctx->getCommandList()->trackResource<DxvkAccess::Read>(imageView);
         } else {
-          imageInfo[idx] = m_device->getCommon()->dummyResources().samplerDescriptor();
+          imageInfo[idx] = m_device->getCommon()->dummyResources().imageViewDescriptor(VK_IMAGE_VIEW_TYPE_2D, true);
         }
 
         ++idx;
@@ -92,7 +93,7 @@ namespace dxvk {
       descWrites.dstBinding = 0;
       descWrites.dstArrayElement = 0;
       descWrites.descriptorCount = idx;
-      descWrites.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+      descWrites.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
       descWrites.pImageInfo = &imageInfo[0];
       descWrites.pBufferInfo = nullptr;
       descWrites.pTexelBufferView = nullptr;
@@ -128,6 +129,39 @@ namespace dxvk {
       descWrites.pBufferInfo = &bufferInfo[0];
       descWrites.pTexelBufferView = nullptr;
       m_tables[Table::Buffers][currentIdx()]->updateDescriptors(descWrites);
+    }
+
+    // Samplers
+    {
+      std::vector<VkDescriptorImageInfo> imageInfo(samplers.size());
+
+      uint32_t idx = 0;
+      for (auto&& sampler : samplers) {
+        if (sampler != nullptr) {
+          imageInfo[idx].sampler = sampler->handle();
+          imageInfo[idx].imageView = nullptr;
+          ctx->getCommandList()->trackResource<DxvkAccess::Read>(sampler);
+        } else {
+          imageInfo[idx] = m_device->getCommon()->dummyResources().samplerDescriptor();
+        }
+
+        ++idx;
+      }
+
+      assert(idx <= kMaxBindlessSamplers);
+
+      VkWriteDescriptorSet descWrites;
+      descWrites.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+      descWrites.pNext = nullptr;
+      descWrites.dstSet = 0;//  This will be filled in by the BindlessTable 
+      descWrites.dstBinding = 0;
+      descWrites.dstArrayElement = 0;
+      descWrites.descriptorCount = idx;
+      descWrites.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+      descWrites.pImageInfo = &imageInfo[0];
+      descWrites.pBufferInfo = nullptr;
+      descWrites.pTexelBufferView = nullptr;
+      m_tables[Table::Samplers][currentIdx()]->updateDescriptors(descWrites);
     }
 
     m_frameLastUpdated = m_device->getCurrentFrameId();
@@ -192,9 +226,10 @@ namespace dxvk {
 
   void BindlessResourceManager::createGlobalBindlessDescPool() {
     // Create bindless descriptor pool
-    static std::array<VkDescriptorPoolSize, 2> pools = { {
+    static std::array<VkDescriptorPoolSize, Table::Count> pools = { {
         { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kMaxBindlessResources * kMaxFramesInFlight },
-        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         kMaxBindlessResources * kMaxFramesInFlight }
+        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,         kMaxBindlessResources * kMaxFramesInFlight },
+        { VK_DESCRIPTOR_TYPE_SAMPLER,                kMaxBindlessResources * kMaxFramesInFlight }
     } };
 
     VkDescriptorPoolCreateInfo info;
@@ -208,8 +243,9 @@ namespace dxvk {
     // Create the global pool
     for (uint32_t i = 0; i < kMaxFramesInFlight; i++) {
       m_globalBindlessPool[i] = new DxvkDescriptorPool(m_device->instance()->vki(), m_device->vkd(), info);
-      m_tables[Table::Textures][i]->createLayout(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+      m_tables[Table::Textures][i]->createLayout(VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE);
       m_tables[Table::Buffers][i]->createLayout(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+      m_tables[Table::Samplers][i]->createLayout(VK_DESCRIPTOR_TYPE_SAMPLER);
     }
   }
 
