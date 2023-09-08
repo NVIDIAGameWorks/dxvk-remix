@@ -1,6 +1,9 @@
 #pragma once
 
 #include "dxvk_resource.h"
+// NV-DXVK start
+#include "../util/xxHash/xxhash.h"
+// NV-DXVK end
 
 namespace dxvk {
 
@@ -73,6 +76,10 @@ namespace dxvk {
     const DxvkSamplerCreateInfo& info() const {
       return m_createInfo;
     }
+
+    const XXH64_hash_t hash() const {
+      return m_hash;
+    }
     // NV-DXVK end
     
   private:
@@ -81,6 +88,7 @@ namespace dxvk {
     VkSampler             m_sampler = VK_NULL_HANDLE;
     // NV-DXVK start
     DxvkSamplerCreateInfo   m_createInfo;
+    XXH64_hash_t m_hash;
     // NV-DXVK end
 
     static VkBorderColor getBorderColor(

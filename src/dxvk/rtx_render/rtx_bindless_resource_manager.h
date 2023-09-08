@@ -34,16 +34,18 @@ namespace dxvk {
     enum Table {
       Textures = 0,
       Buffers,
+      Samplers,
       Count
     };
 
     static const uint32_t kMaxBindlessResources = 64 * 1024; // our indices are uint16_t...
+    static const uint32_t kMaxBindlessSamplers = 2048; // this is the lowest max number of samplers our device base supports for remix (VkPhysicalDeviceLimits::maxDescriptorSetSamplers)
 
     BindlessResourceManager() = delete;
 
     explicit BindlessResourceManager(DxvkDevice* device);
 
-    void prepareSceneData(const Rc<DxvkContext> ctx, const std::vector<TextureRef>& rtTextures, const std::vector<RaytraceBuffer>& rtBuffers);
+    void prepareSceneData(const Rc<DxvkContext> ctx, const std::vector<TextureRef>& rtTextures, const std::vector<RaytraceBuffer>& rtBuffers, const std::vector<Rc<DxvkSampler>>& samplers);
 
     VkDescriptorSet getGlobalBindlessTableSet(Table type) const;
 

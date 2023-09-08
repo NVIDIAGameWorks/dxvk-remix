@@ -42,6 +42,7 @@ namespace dxvk {
 
     const Resources::Resource& getTerrainTexture(ReplacementMaterialTextureType::Enum textureType) const;
     const MaterialData* getMaterialData() const;
+    const Rc<DxvkSampler>& getTerrainSampler() const;
 
     void showImguiSettings() const;
 
@@ -208,5 +209,7 @@ namespace dxvk {
     };
 
     BakedTexture m_materialTextures[ReplacementMaterialTextureType::Count];
+
+    Rc<DxvkSampler> m_terrainSampler;
   };
 }

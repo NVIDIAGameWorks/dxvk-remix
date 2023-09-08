@@ -196,7 +196,7 @@ namespace dxvk {
     }
   }
 
-  void RtxTextureManager::addTexture(Rc<DxvkContext>& immediateContext, TextureRef inputTexture, Rc<DxvkSampler> sampler, bool allowAsync, uint32_t& textureIndexOut) {
+  void RtxTextureManager::addTexture(Rc<DxvkContext>& immediateContext, TextureRef inputTexture, bool allowAsync, uint32_t& textureIndexOut) {
     // If theres valid texture backing this ref, then skip
     if (!inputTexture.isValid())
       return;
@@ -212,8 +212,6 @@ namespace dxvk {
       scheduleTextureLoad(cachedTexture, immediateContext, allowAsync);
     }
 
-    // Patch the sampler entry
-    cachedTexture.sampler = sampler;
     cachedTexture.frameLastUsed = m_pDevice->getCurrentFrameId();
   }
 

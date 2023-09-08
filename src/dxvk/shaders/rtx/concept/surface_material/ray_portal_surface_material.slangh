@@ -45,6 +45,8 @@ RayPortalSurfaceMaterial rayPortalSurfaceMaterialCreate(uint16_t surfaceMaterial
   // Note: 8 bit unused here in data01.x.
   rayPortalSurfaceMaterial.rotationSpeed = uint16BitsToHalf(data01.y);
   rayPortalSurfaceMaterial.emissiveIntensity = uint16BitsToHalf(data02.x);
+  rayPortalSurfaceMaterial.samplerIndex = data02.y;
+  rayPortalSurfaceMaterial.samplerIndex2 = data03.x;
 
   return rayPortalSurfaceMaterial;
 }
