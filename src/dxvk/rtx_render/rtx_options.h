@@ -291,6 +291,13 @@ namespace dxvk {
       RTX_OPTION("rtx.playerModel", float, intersectionCapsuleHeight, 68.f, "");
     } playerModel;
 
+    struct Displacement {
+      friend class ImGUI;
+      RTX_OPTION("rtx.displacement", bool, enableDirectLighting, true, "Whether direct lighting accounts for displacement mapping");
+      RTX_OPTION("rtx.displacement", bool, enableIndirectLighting, true, "Whether indirect lighting accounts for displacement mapping");
+      RTX_OPTION("rtx.displacement", float, displacementFactor, 1.0f, "Scaling factor for all displacement maps");
+    } displacement;
+
     RTX_OPTION("rtx", bool, resolvePreCombinedMatrices, true, "");
 
     RTX_OPTION("rtx", uint32_t, minPrimsInStaticBLAS, 1000, "");

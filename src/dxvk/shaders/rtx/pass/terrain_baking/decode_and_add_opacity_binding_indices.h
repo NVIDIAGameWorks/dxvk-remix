@@ -38,6 +38,7 @@ namespace ReplacementMaterialTextureType {
     AlbedoOpacity = 0,
     Normal,
     Tangent,
+    Height,
     Roughness,
     Metallic,
     Emissive,

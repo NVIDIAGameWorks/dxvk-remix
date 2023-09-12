@@ -31,6 +31,7 @@
 // Note: Use thin film in the direct integration pass for its usage in direct lighting (as this is where
 // the effect is most prominent outside of PSR).
 #define OPAQUE_MATERIAL_USE_THIN_FILM 1
+#define OPAQUE_MATERIAL_USE_POM 1
 #define RAB_HAS_RTXDI_RESERVOIRS 1
 
 #include "rtx/pass/common_binding_indices.h"

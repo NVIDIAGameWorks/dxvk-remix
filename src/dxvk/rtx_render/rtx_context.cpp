@@ -827,6 +827,10 @@ namespace dxvk {
     constants.enablePlayerModelPrimaryShadows = RtxOptions::Get()->playerModel.enablePrimaryShadows();
     constants.enablePreviousTLAS = RtxOptions::Get()->enablePreviousTLAS() && m_common->getSceneManager().isPreviousFrameSceneAvailable();
 
+    constants.pomEnable = getSceneManager().getActivePOMCount() > 0;
+    constants.pomEnableDirectLighting = RtxOptions::Displacement::enableDirectLighting();
+    constants.pomEnableIndirectLighting = RtxOptions::Displacement::enableIndirectLighting();
+
     constants.terrainArgs = getSceneManager().getTerrainBaker().getTerrainArgs();
 
     auto& restirGI = m_common->metaReSTIRGIRayQuery();

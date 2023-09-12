@@ -77,6 +77,7 @@ static_assert((int)AlphaTestType::kAlways == (int)VkCompareOp::VK_COMPARE_OP_ALW
 // due to cyclic includes. This should be removed once the rtx_materials implementation is moved to a source file.
 bool getEnableDiffuseLayerOverrideHack();
 float getEmissiveIntensity();
+float getDisplacementFactor();
 
 struct RtSurface {
   RtSurface() {
@@ -366,6 +367,7 @@ struct OpaqueMaterialDefaults {
   // Note: Default prefix used to not match AlphaTestType symbol name.
   AlphaTestType DefaultAlphaTestType = AlphaTestType::kAlways;
   uint8_t AlphaReferenceValue = 0;
+  float DisplaceIn = 1.0f;
 };
 
 struct TranslucentMaterialDefaults {
@@ -402,6 +404,7 @@ struct OpaqueMaterialMins {
   BlendType MinBlendType = BlendType::kMinValue;
   AlphaTestType MinAlphaTestType = AlphaTestType::kMinValue;
   uint8_t AlphaReferenceValue = 0;
+  float DisplaceIn = 0.0f;
 };
 
 struct OpaqueMaterialMaxes {
@@ -418,6 +421,8 @@ struct OpaqueMaterialMaxes {
   BlendType MaxBlendType = BlendType::kMaxValue;
   AlphaTestType MaxAlphaTestType = AlphaTestType::kMaxValue;
   uint8_t AlphaReferenceValue = std::numeric_limits<uint8_t>::max();
+  // Note: Maximum clamped to float 16 max due to GPU encoding requirements.
+  float DisplaceIn = 65504.0f;
 };
 
 struct TranslucentMaterialMins {
@@ -474,21 +479,23 @@ enum class RtSurfaceMaterialType {
 struct RtOpaqueSurfaceMaterial {
   RtOpaqueSurfaceMaterial(
     uint32_t albedoOpacityTextureIndex, uint32_t normalTextureIndex,
-    uint32_t tangentTextureIndex, uint32_t roughnessTextureIndex,
+    uint32_t tangentTextureIndex, uint32_t heightTextureIndex, uint32_t roughnessTextureIndex,
     uint32_t metallicTextureIndex, uint32_t emissiveColorTextureIndex,
     float anisotropy, float emissiveIntensity,
     const Vector4& albedoOpacityConstant,
     float roughnessConstant, float metallicConstant,
     const Vector3& emissiveColorConstant, bool enableEmission,
-    bool enableThinFilm, bool alphaIsThinFilmThickness, float thinFilmThicknessConstant, uint32_t samplerIndex) :
-    m_albedoOpacityTextureIndex { albedoOpacityTextureIndex }, m_normalTextureIndex { normalTextureIndex },
-    m_tangentTextureIndex { tangentTextureIndex }, m_roughnessTextureIndex { roughnessTextureIndex },
-    m_metallicTextureIndex { metallicTextureIndex }, m_emissiveColorTextureIndex { emissiveColorTextureIndex },
-    m_anisotropy { anisotropy }, m_emissiveIntensity { emissiveIntensity },
-    m_albedoOpacityConstant { albedoOpacityConstant },
-    m_roughnessConstant { roughnessConstant }, m_metallicConstant { metallicConstant },
-    m_emissiveColorConstant { emissiveColorConstant }, m_enableEmission { enableEmission },
-    m_enableThinFilm { enableThinFilm }, m_alphaIsThinFilmThickness { alphaIsThinFilmThickness }, m_thinFilmThicknessConstant { thinFilmThicknessConstant }, m_samplerIndex{ samplerIndex } {
+    bool enableThinFilm, bool alphaIsThinFilmThickness, float thinFilmThicknessConstant,
+    uint32_t samplerIndex, float displaceIn) :
+    m_albedoOpacityTextureIndex{ albedoOpacityTextureIndex }, m_normalTextureIndex{ normalTextureIndex },
+    m_tangentTextureIndex { tangentTextureIndex }, m_heightTextureIndex { heightTextureIndex }, m_roughnessTextureIndex{ roughnessTextureIndex },
+    m_metallicTextureIndex{ metallicTextureIndex }, m_emissiveColorTextureIndex{ emissiveColorTextureIndex },
+    m_anisotropy{ anisotropy }, m_emissiveIntensity{ emissiveIntensity },
+    m_albedoOpacityConstant{ albedoOpacityConstant },
+    m_roughnessConstant{ roughnessConstant }, m_metallicConstant{ metallicConstant },
+    m_emissiveColorConstant{ emissiveColorConstant }, m_enableEmission{ enableEmission },
+    m_enableThinFilm { enableThinFilm }, m_alphaIsThinFilmThickness { alphaIsThinFilmThickness },
+    m_thinFilmThicknessConstant { thinFilmThicknessConstant }, m_samplerIndex{ samplerIndex }, m_displaceIn{ displaceIn } {
     updateCachedData();
     updateCachedHash();
   }
@@ -554,11 +561,17 @@ struct RtOpaqueSurfaceMaterial {
     // Bytes 18-19
     writeGPUHelperExplicit<2>(data, offset, m_samplerIndex);
 
-    // Byte 20
+    // Bytes 20-23
+    float displaceIn = m_displaceIn * getDisplacementFactor();
+    assert(displaceIn <= FLOAT16_MAX);
+    writeGPUHelper(data, offset, glm::packHalf1x16(displaceIn));
+    writeGPUHelperExplicit<2>(data, offset, m_heightTextureIndex);
+
+    // Byte 24
     writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_cachedThinFilmNormalizedThicknessConstant));
 
-    // Bytes 21-27
-    writeGPUPadding<7>(data, offset); // Note: Padding for unused space
+    // Bytes 25-27
+    writeGPUPadding<3>(data, offset); // Note: Padding for unused space
 
     // Bytes 28-31
     if (m_enableThinFilm) {
@@ -580,6 +593,7 @@ struct RtOpaqueSurfaceMaterial {
     const bool hasTexture = m_albedoOpacityTextureIndex != kSurfaceMaterialInvalidTextureIndex ||
                             m_normalTextureIndex != kSurfaceMaterialInvalidTextureIndex ||
                             m_tangentTextureIndex != kSurfaceMaterialInvalidTextureIndex ||
+                            m_heightTextureIndex != kSurfaceMaterialInvalidTextureIndex ||
                             m_roughnessTextureIndex != kSurfaceMaterialInvalidTextureIndex ||
                             m_metallicTextureIndex != kSurfaceMaterialInvalidTextureIndex ||
                             m_emissiveColorTextureIndex != kSurfaceMaterialInvalidTextureIndex;
@@ -609,6 +623,10 @@ struct RtOpaqueSurfaceMaterial {
 
   uint32_t getTangentTextureIndex() const {
     return m_tangentTextureIndex;
+  }
+
+  uint32_t getHeightTextureIndex() const {
+    return m_heightTextureIndex;
   }
 
   uint32_t getRoughnessTextureIndex() const {
@@ -658,6 +676,7 @@ private:
     h = XXH64(&m_albedoOpacityTextureIndex, sizeof(m_albedoOpacityTextureIndex), h);
     h = XXH64(&m_normalTextureIndex, sizeof(m_normalTextureIndex), h);
     h = XXH64(&m_tangentTextureIndex, sizeof(m_tangentTextureIndex), h);
+    h = XXH64(&m_heightTextureIndex, sizeof(m_heightTextureIndex), h);
     h = XXH64(&m_roughnessTextureIndex, sizeof(m_roughnessTextureIndex), h);
     h = XXH64(&m_metallicTextureIndex, sizeof(m_metallicTextureIndex), h);
     h = XXH64(&m_emissiveColorTextureIndex, sizeof(m_emissiveColorTextureIndex), h);
@@ -672,6 +691,7 @@ private:
     h = XXH64(&m_alphaIsThinFilmThickness, sizeof(m_alphaIsThinFilmThickness), h);
     h = XXH64(&m_thinFilmThicknessConstant, sizeof(m_thinFilmThicknessConstant), h);
     h = XXH64(&m_samplerIndex, sizeof(m_samplerIndex), h);
+    h = XXH64(&m_displaceIn, sizeof(m_displaceIn), h);
 
     m_cachedHash = h;
   }
@@ -690,6 +710,7 @@ private:
   uint32_t m_albedoOpacityTextureIndex;
   uint32_t m_normalTextureIndex;
   uint32_t m_tangentTextureIndex;
+  uint32_t m_heightTextureIndex;
   uint32_t m_roughnessTextureIndex;
   uint32_t m_metallicTextureIndex;
   uint32_t m_emissiveColorTextureIndex;
@@ -708,6 +729,11 @@ private:
   bool m_enableThinFilm;
   bool m_alphaIsThinFilmThickness;
   float m_thinFilmThicknessConstant;
+
+  // How far inwards a height_texture value of 0 maps to.
+  // TODO: if we ever support a displacement algorithm that supports outwards displacements, we'll need
+  // to add a displaceOut parameter.  With POM, displaceOut is locked to 0.
+  float m_displaceIn;
 
   XXH64_hash_t m_cachedHash;
 
@@ -1329,7 +1355,7 @@ private:
 struct OpaqueMaterialData {
   OpaqueMaterialData(
     const TextureRef& albedoOpacityTexture, const TextureRef& normalTexture,
-    const TextureRef& tangentTexture, const TextureRef& roughnessTexture,
+    const TextureRef& tangentTexture, const TextureRef& heightTexture, const TextureRef& roughnessTexture,
     const TextureRef& metallicTexture, const TextureRef& emissiveColorTexture,
     float anisotropy, float emissiveIntensity,
     const Vector4& albedoOpacityConstant,
@@ -1340,9 +1366,9 @@ struct OpaqueMaterialData {
     uint8_t spriteSheetFPS,
     bool enableThinFilm, bool alphaIsThinFilmThickness, float thinFilmThicknessConstant,
     bool useLegacyAlphaState, bool blendEnabled, BlendType blendType, bool invertedBlend,
-    AlphaTestType alphaTestType, uint8_t alphaTestReferenceValue) :
+    AlphaTestType alphaTestType, uint8_t alphaTestReferenceValue, float displaceIn) :
     m_albedoOpacityTexture{ albedoOpacityTexture }, m_normalTexture{ normalTexture },
-    m_tangentTexture{ tangentTexture }, m_roughnessTexture{ roughnessTexture },
+    m_tangentTexture{ tangentTexture }, m_heightTexture { heightTexture }, m_roughnessTexture{ roughnessTexture },
     m_metallicTexture{ metallicTexture }, m_emissiveColorTexture{ emissiveColorTexture },
     m_anisotropy{ anisotropy }, m_emissiveIntensity{ emissiveIntensity },
     m_albedoOpacityConstant{ albedoOpacityConstant },
@@ -1351,7 +1377,8 @@ struct OpaqueMaterialData {
     m_spriteSheetRows { spriteSheetRows }, m_spriteSheetCols { spriteSheetCols }, m_spriteSheetFPS { spriteSheetFPS },
     m_enableThinFilm { enableThinFilm }, m_alphaIsThinFilmThickness { alphaIsThinFilmThickness }, m_thinFilmThicknessConstant { thinFilmThicknessConstant },
     m_useLegacyAlphaState{ useLegacyAlphaState }, m_blendEnabled{ blendEnabled }, m_blendType{ blendType }, m_invertedBlend{ invertedBlend },
-    m_alphaTestType{ alphaTestType }, m_alphaTestReferenceValue{ alphaTestReferenceValue } {
+    m_alphaTestType{ alphaTestType }, m_alphaTestReferenceValue{ alphaTestReferenceValue },
+    m_displaceIn{ displaceIn } {
     sanitizeData();
     // Note: Called after data is sanitized to have the hashed value reflect the adjusted values.
     updateCachedHash();
@@ -1383,6 +1410,14 @@ struct OpaqueMaterialData {
 
   TextureRef& getTangentTexture() {
     return m_tangentTexture;
+  }
+
+  const TextureRef& getHeightTexture() const {
+    return m_heightTexture;
+  }
+
+  TextureRef& getHeightTexture() {
+    return m_heightTexture;
   }
 
   const TextureRef& getRoughnessTexture() const {
@@ -1449,6 +1484,10 @@ struct OpaqueMaterialData {
     return m_thinFilmThicknessConstant;
   }
 
+  float getDisplaceIn() const {
+    return m_displaceIn;
+  }
+
   uint8_t getSpriteSheetRows() const {
     return m_spriteSheetRows;
   }
@@ -1508,6 +1547,7 @@ private:
     m_blendType = std::clamp(m_blendType, mins.MinBlendType, maxes.MaxBlendType);
     m_alphaTestType = std::clamp(m_alphaTestType, mins.MinAlphaTestType, maxes.MaxAlphaTestType);
     m_alphaTestReferenceValue = std::clamp(m_alphaTestReferenceValue, mins.AlphaReferenceValue, maxes.AlphaReferenceValue);
+    m_displaceIn = std::clamp(m_displaceIn, mins.DisplaceIn, maxes.DisplaceIn);
   }
 
   void updateCachedHash() {
@@ -1516,6 +1556,7 @@ private:
     h ^= m_albedoOpacityTexture.getImageHash();
     h ^= m_normalTexture.getImageHash();
     h ^= m_tangentTexture.getImageHash();
+    h ^= m_heightTexture.getImageHash();
     h ^= m_roughnessTexture.getImageHash();
     h ^= m_metallicTexture.getImageHash();
     h ^= m_emissiveColorTexture.getImageHash();
@@ -1539,6 +1580,7 @@ private:
     h = XXH64(&m_invertedBlend, sizeof(m_invertedBlend), h);
     h = XXH64(&m_alphaTestType, sizeof(m_alphaTestType), h);
     h = XXH64(&m_alphaTestReferenceValue, sizeof(m_alphaTestReferenceValue), h);
+    h = XXH64(&m_displaceIn, sizeof(m_displaceIn), h);
 
     m_cachedHash = h;
   }
@@ -1548,6 +1590,7 @@ private:
   TextureRef m_albedoOpacityTexture;
   TextureRef m_normalTexture;
   TextureRef m_tangentTexture;
+  TextureRef m_heightTexture;
   TextureRef m_roughnessTexture;
   TextureRef m_metallicTexture;
   TextureRef m_emissiveColorTexture;
@@ -1569,6 +1612,8 @@ private:
   bool m_enableThinFilm;
   bool m_alphaIsThinFilmThickness;
   float m_thinFilmThicknessConstant;
+
+  float m_displaceIn;
 
   // Todo: These overrides are applied to the Surface and are not technically part of the
   // material itself so should be removed or relocated some day, they are just here for now

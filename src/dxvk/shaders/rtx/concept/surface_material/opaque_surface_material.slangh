@@ -47,7 +47,6 @@ OpaqueSurfaceMaterial opaqueSurfaceMaterialCreate(uint16_t surfaceMaterialIndex,
     opaqueSurfaceMaterial.albedoOpacityTextureIndex = BINDING_INDEX_INVALID;
     opaqueSurfaceMaterial.albedoOpacityConstant = f16vec4(unorm8ToF16(uint8_t(data00.x)), unorm8ToF16(uint8_t(data00.x >> 8u)), unorm8ToF16(uint8_t(data00.y)), unorm8ToF16(uint8_t(data00.y >> 8u)));
   }
-
   opaqueSurfaceMaterial.tangentTextureIndex = data01.x;
 
   if (opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_HAS_ROUGHNESS_TEXTURE) {
@@ -78,7 +77,9 @@ OpaqueSurfaceMaterial opaqueSurfaceMaterialCreate(uint16_t surfaceMaterialIndex,
   opaqueSurfaceMaterial.normalTextureIndex = data03.y;
   opaqueSurfaceMaterial.emissiveIntensity = uint16BitsToHalf(data10.x);
   opaqueSurfaceMaterial.samplerIndex = data10.y;
-  opaqueSurfaceMaterial.thinFilmThicknessConstant = unorm8ToF16(uint8_t(data11.x));
+  opaqueSurfaceMaterial.displaceIn = uint16BitsToHalf(data11.x);
+  opaqueSurfaceMaterial.heightTextureIndex = data11.y;
+  opaqueSurfaceMaterial.thinFilmThicknessConstant = unorm8ToF16(uint8_t(data12.x));
 
   return opaqueSurfaceMaterial;
 }

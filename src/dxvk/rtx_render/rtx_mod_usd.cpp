@@ -347,6 +347,7 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
   static const pxr::TfToken kAlbedoTextureToken("inputs:diffuse_texture");
   static const pxr::TfToken kNormalTextureToken("inputs:normalmap_texture");
   static const pxr::TfToken kTangentTextureToken("inputs:tangent_texture");
+  static const pxr::TfToken kHeightTextureToken("inputs:height_texture");
   static const pxr::TfToken kRoughnessTextureToken("inputs:reflectionroughness_texture");
   static const pxr::TfToken kMetallicTextureToken("inputs:metallic_texture");
   static const pxr::TfToken kEmissiveMaskTextureToken("inputs:emissive_mask_texture");
@@ -372,6 +373,7 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
   static const pxr::TfToken kEnableThinFilm("inputs:enable_thin_film");
   static const pxr::TfToken kThinFilmThicknessFromAlbedoAlpha("inputs:thin_film_thickness_from_albedo_alpha");
   static const pxr::TfToken kThinFilmThicknessConstant("inputs:thin_film_thickness_constant");
+  static const pxr::TfToken kDisplaceIn("inputs:displace_in");
 
   // Alpha State Overrides
   // Todo: Likely remove these some day in favor of splitting the Opaque material into
@@ -532,6 +534,7 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
     bool invertedBlend = RtxOptions::Get()->getOpaqueMaterialDefaults().InvertedBlend;
     AlphaTestType alphaTestType = RtxOptions::Get()->getOpaqueMaterialDefaults().DefaultAlphaTestType;
     uint8_t alphaReferenceValue = RtxOptions::Get()->getOpaqueMaterialDefaults().AlphaReferenceValue;
+    float displaceIn = RtxOptions::Get()->getOpaqueMaterialDefaults().DisplaceIn;
 
     shader.GetAttribute(kOpacityConstant).Get(&albedoOpacityConstant.a);
 
@@ -541,12 +544,14 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
 
     shader.GetAttribute(kRoughnessConstant).Get(&roughnessConstant);
     shader.GetAttribute(kMetallicConstant).Get(&metallicConstant);
+    shader.GetAttribute(kDisplaceIn).Get(&displaceIn);
 
     getVector3(shader, kEmissiveColorConstant, emissiveColorConstant);
 
     const TextureRef albedoTexture(getTexture(args, shader, kAlbedoTextureToken));
     const TextureRef normalTexture(getTexture(args, shader, kNormalTextureToken));
     const TextureRef tangentTexture(getTexture(args, shader, kTangentTextureToken));
+    const TextureRef heightTexture(getTexture(args, shader, kHeightTextureToken));
     const TextureRef roughnessTexture(getTexture(args, shader, kRoughnessTextureToken));
     const TextureRef metallicTexture(getTexture(args, shader, kMetallicTextureToken));
     // Note: Only set if in use to avoid sampling from this texture if emission is disabled.
@@ -594,7 +599,7 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
 
     const OpaqueMaterialData opaqueMaterialData{
       albedoTexture, normalTexture,
-      tangentTexture, roughnessTexture,
+      tangentTexture, heightTexture, roughnessTexture,
       metallicTexture, emissiveColorTexture,
       anisotropy, emissiveIntensity,
       albedoOpacityConstant,
@@ -607,7 +612,7 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
       alphaIsThinFilmThickness,
       thinFilmThicknessConstant,
       useLegacyAlphaState, blendEnabled, blendType, invertedBlend,
-      alphaTestType, alphaReferenceValue,
+      alphaTestType, alphaReferenceValue, displaceIn
     };
 
     return &m_owner.m_replacements->storeObject(materialHash, MaterialData(opaqueMaterialData, shouldIgnore));

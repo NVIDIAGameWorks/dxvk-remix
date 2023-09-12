@@ -470,6 +470,8 @@ namespace dxvk {
     m_bufferCache.clear();
 
     m_terrainBaker->onFrameEnd(ctx);
+    
+    m_activePOMCount = 0;
   }
 
   void SceneManager::onFrameEndNoRTX() {
@@ -557,8 +559,8 @@ namespace dxvk {
     const bool highlightUnsafeAnchor = RtxOptions::Get()->getHighlightUnsafeAnchorModeEnabled() &&
         input.getGeometryData().indexBuffer.defined() && input.getGeometryData().vertexCount > input.getGeometryData().indexCount;
     if (highlightUnsafeAnchor) {
-      static MaterialData sHighlightMaterialData(OpaqueMaterialData(TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), 
-          0.f, 1.f, Vector4(0.2f, 0.2f, 0.2f, 1.0f), 0.1f, 0.1f, Vector3(0.46f, 0.26f, 0.31f), true, 1, 1, 0, false, false, 200.f, true, false, BlendType::kAlpha, false, AlphaTestType::kAlways, 0));
+      static MaterialData sHighlightMaterialData(OpaqueMaterialData(TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), 
+          0.f, 1.f, Vector4(0.2f, 0.2f, 0.2f, 1.0f), 0.1f, 0.1f, Vector3(0.46f, 0.26f, 0.31f), true, 1, 1, 0, false, false, 200.f, true, false, BlendType::kAlpha, false, AlphaTestType::kAlways, 0, 0.0f));
       overrideMaterialData = &sHighlightMaterialData;
     }
 
@@ -569,8 +571,8 @@ namespace dxvk {
       };
 
       if (isHighlighted(input.getMaterialData().getColorTexture()) || isHighlighted(input.getMaterialData().getColorTexture2())) {
-        static MaterialData sHighlightMaterialData(OpaqueMaterialData(TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(),
-            0.f, 1.f, Vector4(0.2f, 0.2f, 0.2f, 1.f), 0.1f, 0.1f, Vector3(0.f, 1.f, 0.f), true, 1, 1, 0, false, false, 200.f, true, false, BlendType::kAlpha, false, AlphaTestType::kAlways, 0));
+        static MaterialData sHighlightMaterialData(OpaqueMaterialData(TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(),
+            0.f, 1.f, Vector4(0.2f, 0.2f, 0.2f, 1.f), 0.1f, 0.1f, Vector3(0.f, 1.f, 0.f), true, 1, 1, 0, false, false, 200.f, true, false, BlendType::kAlpha, false, AlphaTestType::kAlways, 0, 0.0f));
         if (getGameTimeSinceStartMS() / 200 % 2 == 0) {
           overrideMaterialData = &sHighlightMaterialData;
         }
@@ -672,8 +674,8 @@ namespace dxvk {
           overrideMaterialData = replacement.materialData;
         }
         if (highlightUnsafeReplacement) {
-          static MaterialData sHighlightMaterialData(OpaqueMaterialData(TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), 
-              0.f, 1.f, Vector4(0.2f, 0.2f, 0.2f, 1.f), 0.1f, 0.1f, Vector3(1.f, 0.f, 0.f), true, 1, 1, 0, false, false, 200.f, true, false, BlendType::kAlpha, false, AlphaTestType::kAlways, 0));
+          static MaterialData sHighlightMaterialData(OpaqueMaterialData(TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), 
+              0.f, 1.f, Vector4(0.2f, 0.2f, 0.2f, 1.f), 0.1f, 0.1f, Vector3(1.f, 0.f, 0.f), true, 1, 1, 0, false, false, 200.f, true, false, BlendType::kAlpha, false, AlphaTestType::kAlways, 0, 0.0f));
           if (getGameTimeSinceStartMS() / 200 % 2 == 0) {
             overrideMaterialData = &sHighlightMaterialData;
           }
@@ -873,6 +875,7 @@ namespace dxvk {
       uint32_t albedoOpacityTextureIndex = kSurfaceMaterialInvalidTextureIndex;
       uint32_t normalTextureIndex = kSurfaceMaterialInvalidTextureIndex;
       uint32_t tangentTextureIndex = kSurfaceMaterialInvalidTextureIndex;
+      uint32_t heightTextureIndex = kSurfaceMaterialInvalidTextureIndex;
       uint32_t roughnessTextureIndex = kSurfaceMaterialInvalidTextureIndex;
       uint32_t metallicTextureIndex = kSurfaceMaterialInvalidTextureIndex;
       uint32_t emissiveColorTextureIndex = kSurfaceMaterialInvalidTextureIndex;
@@ -887,6 +890,7 @@ namespace dxvk {
       bool thinFilmEnable = false;
       bool alphaIsThinFilmThickness = false;
       float thinFilmThicknessConstant = 0.0f;
+      float displaceIn = 1.0f;
 
       constexpr Vector4 kWhiteModeAlbedo = Vector4(0.7f, 0.7f, 0.7f, 1.0f);
 
@@ -958,6 +962,7 @@ namespace dxvk {
 
         trackTexture(ctx, opaqueMaterialData.getNormalTexture(), normalTextureIndex, hasTexcoords);
         trackTexture(ctx, opaqueMaterialData.getTangentTexture(), tangentTextureIndex, hasTexcoords);
+        trackTexture(ctx, opaqueMaterialData.getHeightTexture(), heightTextureIndex, hasTexcoords);
         trackTexture(ctx, opaqueMaterialData.getEmissiveColorTexture(), emissiveColorTextureIndex, hasTexcoords);
 
         emissiveIntensity = opaqueMaterialData.getEmissiveIntensity();
@@ -968,17 +973,23 @@ namespace dxvk {
         thinFilmEnable = opaqueMaterialData.getEnableThinFilm();
         alphaIsThinFilmThickness = opaqueMaterialData.getAlphaIsThinFilmThickness();
         thinFilmThicknessConstant = opaqueMaterialData.getThinFilmThicknessConstant();
+        displaceIn = opaqueMaterialData.getDisplaceIn();
+
+        if (heightTextureIndex != kSurfaceMaterialInvalidTextureIndex && displaceIn > 0.0f) {
+          ++m_activePOMCount;
+        }
       }
 
       const RtOpaqueSurfaceMaterial opaqueSurfaceMaterial{
         albedoOpacityTextureIndex, normalTextureIndex,
-        tangentTextureIndex, roughnessTextureIndex,
+        tangentTextureIndex, heightTextureIndex, roughnessTextureIndex,
         metallicTextureIndex, emissiveColorTextureIndex,
         anisotropy, emissiveIntensity,
         albedoOpacityConstant,
         roughnessConstant, metallicConstant,
         emissiveColorConstant, enableEmissive,
-        thinFilmEnable, alphaIsThinFilmThickness, thinFilmThicknessConstant, samplerIndex
+        thinFilmEnable, alphaIsThinFilmThickness,
+        thinFilmThicknessConstant, samplerIndex, displaceIn
       };
 
       surfaceMaterial.emplace(opaqueSurfaceMaterial);

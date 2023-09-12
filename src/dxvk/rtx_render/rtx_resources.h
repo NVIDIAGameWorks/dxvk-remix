@@ -242,6 +242,8 @@ namespace dxvk
       Resource m_sharedMaterialData1;
       Resource m_sharedMediumMaterialIndex;
       AliasedResource m_sharedBiasCurrentColorMask;
+      Resource m_sharedTextureCoord;
+      Resource m_sharedSurfaceIndex;
 
       Resource m_primaryAttenuation;
       Resource m_primaryWorldShadingNormal;
