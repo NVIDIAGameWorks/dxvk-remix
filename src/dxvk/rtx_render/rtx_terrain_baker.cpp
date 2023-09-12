@@ -49,6 +49,7 @@ namespace dxvk {
       break;
 
       // R16
+    case ReplacementMaterialTextureType::Height:
     case ReplacementMaterialTextureType::Roughness:
     case ReplacementMaterialTextureType::Metallic:
       return VK_FORMAT_R8_UNORM;
@@ -184,6 +185,7 @@ namespace dxvk {
     if (Material::bakeSecondaryPBRTextures()) {
       addValidTexture(replacementMaterial->getNormalTexture(), ReplacementMaterialTextureType::Normal);
       addValidTexture(replacementMaterial->getTangentTexture(), ReplacementMaterialTextureType::Tangent);
+      addValidTexture(replacementMaterial->getHeightTexture(), ReplacementMaterialTextureType::Height);
       addValidTexture(replacementMaterial->getRoughnessTexture(), ReplacementMaterialTextureType::Roughness);
       addValidTexture(replacementMaterial->getMetallicTexture(), ReplacementMaterialTextureType::Metallic);
       addValidTexture(replacementMaterial->getEmissiveColorTexture(), ReplacementMaterialTextureType::Emissive);
@@ -438,6 +440,7 @@ namespace dxvk {
       createTextureRef(ReplacementMaterialTextureType::AlbedoOpacity),
       createTextureRef(ReplacementMaterialTextureType::Normal),
       createTextureRef(ReplacementMaterialTextureType::Tangent),
+      createTextureRef(ReplacementMaterialTextureType::Height),
       createTextureRef(ReplacementMaterialTextureType::Roughness),
       createTextureRef(ReplacementMaterialTextureType::Metallic),
       createTextureRef(ReplacementMaterialTextureType::Emissive),
@@ -458,7 +461,8 @@ namespace dxvk {
       opaqueMaterialDefaults.DefaultBlendType,
       false, // opaqueMaterialDefaults.InvertedBlend,
       opaqueMaterialDefaults.DefaultAlphaTestType,
-      0)); //opaqueMaterialDefaults.AlphaReferenceValue));
+      0,//opaqueMaterialDefaults.AlphaReferenceValue;
+      0.0f));  // opaqueMaterialDefaults.DisplaceIn
 
     m_hasInitializedMaterialDataThisFrame = true;
     m_needsMaterialDataUpdate = false;

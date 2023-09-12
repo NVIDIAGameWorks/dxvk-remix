@@ -122,6 +122,8 @@ void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
   ivec2 position,
   bool writeStochastic,
+  Surface surface,
+  SurfaceInteraction surfaceInteraction,
   bool directionAltered,
   f16mat3 virtualVectorTransform,
   RWTexture2D<uint> worldShadingNormalTexture,
@@ -131,7 +133,9 @@ void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
   RWTexture2D<float4> albedoTexture,
   RWTexture2D<float4> baseReflectivityTexture,
   RWTexture2D<uint> data0Texture,
-  RWTexture2D<uint> data1Texture)
+  RWTexture2D<uint> data1Texture,
+  RWTexture2D<float2> textureCoords,
+  RWTexture2D<uint> surfaceIndex)
 {
   const GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfaceMaterialInteraction =
     gBufferMemoryPolymorphicSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
@@ -179,6 +183,9 @@ void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
     perceptualRoughnessTexture[position] = gBufferMemoryPolymorphicSurfaceMaterialInteraction.perceptualRoughness;
     data0Texture[position] = gBufferMemoryPolymorphicSurfaceMaterialInteraction.data0;
     data1Texture[position] = gBufferMemoryPolymorphicSurfaceMaterialInteraction.data1;
+
+    textureCoords[position] = surfaceInteraction.textureCoordinates;
+    surfaceIndex[position] = uint32_t(surface.surfaceMaterialIndex);
   }
 }
 

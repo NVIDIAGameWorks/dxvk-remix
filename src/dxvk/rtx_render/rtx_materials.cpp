@@ -34,4 +34,8 @@ float getEmissiveIntensity() {
   return RtxOptions::Get()->emissiveIntensity();
 }
 
-} // namespace dxvk 
+float getDisplacementFactor() {
+  return RtxOptions::Displacement::displacementFactor();
+}
+
+} // namespace dxvk
