@@ -35,6 +35,100 @@ static const float16_t roughnessThreshold = float16_t(0.001h);
 
 // Opaque Surface Material Interaction Helper Functions
 
+#ifdef OPAQUE_MATERIAL_USE_POM
+// Parallax Occlusion Mapping Helper Functions
+
+float pomSampleHeight(uint16_t idx, uint16_t samplerIndex, float2 texcoord)
+{
+  // TODO: this is pretty basic, would be better to traverse a min/max pyramid stored in the mips of height texture
+  return textures[nonuniformEXT(uint(idx))].SampleLevel(samplers[nonuniformEXT(uint(samplerIndex))], texcoord, 0).r;
+}
+
+float2 pomGetStep(float3 direction, float layerSize, float displaceIn)
+{
+  // convert tangent space direction to texcoord
+  return direction.xy / direction.z * displaceIn * layerSize;
+}
+
+float pomGetNumSamples(float3 direction)
+{
+  const float minSamples = 16.0;
+  const float maxSamples = 64.0;
+
+  // more samples when viewing from oblique angle
+  return lerp(maxSamples, minSamples, abs(dot(float3(0.0, 0.0, 1.0), direction)));
+}
+
+float2 pomCalculateTexcoord(uint16_t heightTextureIdx, uint16_t samplerIndex, float2 texcoord, float3 viewDir, float displaceIn)
+{
+  float numLayers = pomGetNumSamples(viewDir);
+  float layerSize = rcp(numLayers);
+  float2 step = pomGetStep(viewDir, layerSize, displaceIn);
+
+  float2 currTexcoord = texcoord;
+  float currHeight = pomSampleHeight(heightTextureIdx, samplerIndex, currTexcoord);
+
+  // raymarch to find intersection
+  float currDepth = 0.0f, prevHeight = 0.0f;
+  while(currDepth < currHeight)
+  {
+    currTexcoord -= step;
+    prevHeight = currHeight;
+    currHeight = pomSampleHeight(heightTextureIdx, samplerIndex, currTexcoord);
+    currDepth += layerSize;
+  }
+
+  // interpolate last two samples to reduce sample aliasing
+  float depthNminus1 = prevHeight - currDepth + layerSize;
+  float depthN  = currHeight - currDepth;
+  float weight = saturate(depthN / (depthN - depthNminus1));
+  return currTexcoord + lerp(0..xx, step, weight);
+}
+
+float pomSampleVisibility(uint16_t heightTextureIdx, uint16_t samplerIndex, float2 texcoord, float3 rayDirection, float displaceIn)
+{
+  float numLayers = pomGetNumSamples(rayDirection);
+  float layerSize = rcp(numLayers);
+  float2 step = pomGetStep(rayDirection, layerSize, displaceIn);
+
+  float2 currTexcoord = texcoord;
+  float currHeight = pomSampleHeight(heightTextureIdx, samplerIndex, currTexcoord);
+  float currDepth = currHeight;
+
+  float visibility = 1.0f;
+  while (currDepth > 0.0f)
+  {
+    currTexcoord += step;
+    currHeight = pomSampleHeight(heightTextureIdx, samplerIndex, currTexcoord);
+    currDepth -= layerSize;
+
+    if(currHeight < currDepth)
+    {
+      visibility -= (currDepth - currHeight) / layerSize;
+    }
+  }
+
+  return saturate(visibility);
+}
+
+float opaqueSurfaceMaterialInteractionCalcHeightThroughput(
+  MinimalSurfaceInteraction minimalSurfaceInteraction,
+  f16vec3 rayDirection,
+  uint16_t heightTextureIdx,
+  uint16_t samplerIndex,
+  float2 texcoord,
+  float displaceIn)
+{
+  // rebuild tangent space
+  const f16mat3 worldToTangent = f16mat3(
+    minimalSurfaceInteraction.triangleNormal,
+    minimalSurfaceInteraction.triangleTangent,
+    minimalSurfaceInteraction.triangleBitangent);
+  const f16vec3 lightDirTangentSpace = normalize(mul(worldToTangent, rayDirection));
+  return pomSampleVisibility(heightTextureIdx, samplerIndex, texcoord, lightDirTangentSpace, displaceIn);
+}
+#endif
+
 // Opaque Surface Material Interaction Functions
 
 OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
@@ -44,6 +138,18 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   MinimalRayInteraction minimalRayInteraction)
 {
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction;
+
+  // Create a tangent to world space matrix for future calculations
+
+  const f16mat3 worldToTangent = f16mat3(surfaceInteraction.interpolatedTangent, surfaceInteraction.interpolatedBitangent, surfaceInteraction.interpolatedNormal);
+
+#ifdef OPAQUE_MATERIAL_USE_POM
+  if (cb.pomEnable && opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID && opaqueSurfaceMaterial.displaceIn > 0.0f)
+  {
+    const f16vec3 viewDirTangentSpace = normalize(mul(worldToTangent, minimalRayInteraction.viewDirection));
+    surfaceInteraction.textureCoordinates = pomCalculateTexcoord(opaqueSurfaceMaterial.heightTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction.textureCoordinates, viewDirTangentSpace, opaqueSurfaceMaterial.displaceIn);
+  }
+#endif
 
   // Sample from each Opaque Surface Material texture
 
@@ -79,10 +185,6 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   const bool roughnessLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.roughnessTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, roughnessSample);
   const bool metallicLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.metallicTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, metallicSample);
   const bool emissiveColorLoaded = surfaceMaterialInteractionTextureReadHelper(opaqueSurfaceMaterial.emissiveColorTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction, emissiveColorSample);
-
-  // Create a tangent to world space matrix for future calculations
-
-  const f16mat3 tangentToWorld = transpose(f16mat3(surfaceInteraction.interpolatedTangent, surfaceInteraction.interpolatedBitangent, surfaceInteraction.interpolatedNormal));
 
   // Load Albedo/Opacity
 
@@ -230,6 +332,8 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
     {
       tangentNormal = normalSample.xyz;
     }
+    
+    const f16mat3 tangentToWorld = transpose(worldToTangent);
 
     normal = normalize(mul(tangentToWorld, tangentNormal));
     
