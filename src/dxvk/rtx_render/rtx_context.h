@@ -170,7 +170,7 @@ namespace dxvk {
 
     void rasterizeToSkyMatte(const DrawParameters& params, float minZ, float maxZ);
     void initSkyProbe();
-    void rasterizeToSkyProbe(const DrawParameters& params);
+    void rasterizeToSkyProbe(const DrawParameters& params, const DrawCallState& drawCallState);
     void rasterizeSky(const DrawParameters& params, const DrawCallState& drawCallState);
     void bakeTerrain(const DrawParameters& params, DrawCallState& drawCallState, const MaterialData** outOverrideMaterialData);
 
