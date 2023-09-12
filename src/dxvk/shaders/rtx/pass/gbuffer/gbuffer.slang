@@ -67,6 +67,7 @@
 #define RESOLVE_OPACITY_LIGHTING_APPROXIMATION 1
 // Note: Use thin film in the GBuffer pass for its usage in PSR on mirrorlike surfaces.
 #define OPAQUE_MATERIAL_USE_THIN_FILM 1
+#define OPAQUE_MATERIAL_USE_POM 1
 // Note: This is done in primary rays only currently so that attenuation from volumetrics can be factored in
 // similar to how it was done previously when it was simply applied in compositing via the total virtual hit
 // distance, and ensuring that it does not attenuate secondary rays (since they do not receive inscattering and

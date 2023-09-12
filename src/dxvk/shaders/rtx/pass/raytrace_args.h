@@ -276,4 +276,8 @@ struct RaytraceArgs {
 
   u16vec2 gpuPrintThreadIndex;
   uint gpuPrintElementIndex;
+
+  uint pomEnable;
+  uint pomEnableDirectLighting;
+  uint pomEnableIndirectLighting;
 };

@@ -72,6 +72,7 @@ void main(uint2 thread_id : SV_DispatchThreadID)
   // R16
   case ReplacementMaterialTextureType::Enum::Roughness:
   case ReplacementMaterialTextureType::Enum::Metallic:
+  case ReplacementMaterialTextureType::Enum::Height:
     outSample.r = InputTexture.SampleLevel(LinearSampler, uv, 0.f).r;
     break;
 

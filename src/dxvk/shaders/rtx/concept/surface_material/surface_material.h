@@ -54,6 +54,7 @@ struct OpaqueSurfaceMaterial
   uint16_t albedoOpacityTextureIndex;
   uint16_t normalTextureIndex;
   uint16_t tangentTextureIndex;
+  uint16_t heightTextureIndex;
   uint16_t roughnessTextureIndex;
   uint16_t metallicTextureIndex;
   uint16_t emissiveColorTextureIndex;
@@ -65,6 +66,8 @@ struct OpaqueSurfaceMaterial
   float16_t roughnessConstant;
   float16_t metallicConstant;
   f16vec3 emissiveColorConstant;
+
+  float16_t displaceIn;
 
   float16_t thinFilmThicknessConstant; // note: [0-1] range
 

@@ -282,22 +282,24 @@ void geometryResolverOutputSurface(
     // Note: Always write to stochastic buffers in the primary surface case.
     polymorphicSurfaceMaterialInteractionWriteToGBuffer(
       polymorphicSurfaceMaterialInteraction, ivec2(pixelCoordinate), true,
+      surface, surfaceInteraction,
       directionAltered, accumulatedVectorTransform,
       PrimaryWorldShadingNormal, PrimaryPerceptualRoughness,
       PrimaryVirtualWorldShadingNormalPerceptualRoughness, PrimaryVirtualWorldShadingNormalPerceptualRoughnessDenoising,
       PrimaryAlbedo, PrimaryBaseReflectivity,
-      SharedMaterialData0, SharedMaterialData1);
+      SharedMaterialData0, SharedMaterialData1, SharedTextureCoord, SharedSurfaceIndex);
   }
   else
   {
     // Note: Only write to stochastic buffers if this is the selected surface in the secondary surface case.
     polymorphicSurfaceMaterialInteractionWriteToGBuffer(
       polymorphicSurfaceMaterialInteraction, ivec2(pixelCoordinate), selectedIntegrationSurface,
+      surface, surfaceInteraction,
       directionAltered, accumulatedVectorTransform,
       SecondaryWorldShadingNormal, SecondaryPerceptualRoughness,
       SecondaryVirtualWorldShadingNormalPerceptualRoughness, SecondaryVirtualWorldShadingNormalPerceptualRoughnessDenoising,
       SecondaryAlbedo, SecondaryBaseReflectivity,
-      SharedMaterialData0, SharedMaterialData1);
+      SharedMaterialData0, SharedMaterialData1, SharedTextureCoord, SharedSurfaceIndex);
   }
 
   if (cb.enableStochasticAlphaBlend && primarySurface)
