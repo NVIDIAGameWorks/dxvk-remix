@@ -1583,10 +1583,7 @@ namespace dxvk {
     }
   }
 
-  void RtxContext::rasterizeToSkyProbe(const DrawParameters& params) {
-    if (!m_rtState.vsFixedFunctionCB.ptr())
-      return;
-
+  void RtxContext::rasterizeToSkyProbe(const DrawParameters& params, const DrawCallState& drawCallState) {
     static Vector3 targets[6] = {
       {+1.0f, 0.0f, 0.0f}, {-1.0f, 0.0f, 0.0f},
       {0.0f, +1.0f, 0.0f}, {0.0f, -1.0f, 0.0f},
@@ -1606,7 +1603,26 @@ namespace dxvk {
 
     // Grab transforms
     
-    const auto vs = *static_cast<D3D9FixedFunctionVS*>(m_rtState.vsFixedFunctionCB->mapPtr(0));
+    union UnifiedCB {
+      D3D9RtxVertexCaptureData programmablePipeline;
+      D3D9FixedFunctionVS fixedFunction;
+
+      UnifiedCB() { }
+    };
+
+    UnifiedCB prevCB;
+
+    if (drawCallState.usesVertexShader) {
+      prevCB.programmablePipeline = *static_cast<D3D9RtxVertexCaptureData*>(m_rtState.vertexCaptureCB->mapPtr(0));
+    } else {
+      prevCB.fixedFunction = *static_cast<D3D9FixedFunctionVS*>(m_rtState.vsFixedFunctionCB->mapPtr(0));
+    }
+
+    const Matrix4& worldToView = drawCallState.usesVertexShader ? drawCallState.getTransformData().worldToView : prevCB.fixedFunction.View;
+    const Matrix4& viewToProj  = drawCallState.usesVertexShader ? drawCallState.getTransformData().viewToProjection : prevCB.fixedFunction.Projection;
+
+    // Figure out camera position
+    const auto camPos = inverse(worldToView).data[3].xyz();
 
     // Save rasterizer state
     const auto ri = m_state.gp.state.rs;
@@ -1622,15 +1638,13 @@ namespace dxvk {
     newRs.conservativeMode = ri.conservativeMode();
     setRasterizerState(newRs);
 
-    // Figure out camera position
-    const auto camPos = inverse(vs.View).data[3].xyz();
-
-    // Create cube plane projection
-    Matrix4 proj = vs.Projection;
-    proj[0][0] = 1.f;
-    proj[1][1] = 1.f;
-    proj[2][2] = 1.f;
-    proj[2][3] = 1.f;
+    // Update spec constants
+    DxvkScInfo prevSpecConstantsInfo = getSpecConstantsInfo(VK_PIPELINE_BIND_POINT_GRAPHICS);
+    {
+      if (drawCallState.usesVertexShader) {
+        setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, D3D9SpecConstantId::CustomVertexTransformEnabled, true);
+      }
+    }
 
     const auto& skyProbeExt = m_skyProbeImage->info().extent;
 
@@ -1654,10 +1668,6 @@ namespace dxvk {
     // TODO: add multiview rendering in future.
     uint32_t plane = 0;
     for (auto& skyView : m_skyProbeViews) {
-      // Push new state
-      D3D9FixedFunctionVS& newState = allocAndMapFixedFunctionConstantBuffer();
-      newState = vs;
-
       Matrix4 view;
       {
         const Vector3 z = normalize(targets[plane]);
@@ -1672,9 +1682,33 @@ namespace dxvk {
         view[3] = Vector4(translation.x, translation.y, translation.z, 1.f);
       }
 
-      newState.View = view;
-      newState.WorldView = view * vs.World;
-      newState.Projection = proj;
+      // Create cube plane projection
+      Matrix4 proj = viewToProj;
+      proj[0][0] = 1.f;
+      proj[1][1] = 1.f;
+      proj[2][2] = 1.f;
+      proj[2][3] = 1.f;
+
+      if (drawCallState.usesVertexShader) {
+        D3D9RtxVertexCaptureData& newState = allocAndMapVertexCaptureConstantBuffer();
+        newState = prevCB.programmablePipeline;
+        newState.customWorldToProjection = proj * view;
+      } else {
+        // Push new state to the fixed function constants
+        D3D9FixedFunctionVS& newState = allocAndMapFixedFunctionConstantBuffer();
+        newState = prevCB.fixedFunction;
+
+        // Create cube plane projection
+        Matrix4 proj = prevCB.fixedFunction.Projection;
+        proj[0][0] = 1.f;
+        proj[1][1] = 1.f;
+        proj[2][2] = 1.f;
+        proj[2][3] = 1.f;
+
+        newState.View = view;
+        newState.WorldView = view * prevCB.fixedFunction.World;
+        newState.Projection = proj;
+      }
 
       DxvkRenderTargets skyRt;
       skyRt.color[0].view = skyView;
@@ -1698,9 +1732,13 @@ namespace dxvk {
     // Restore rasterizer state
     newRs.cullMode = ri.cullMode();
     setRasterizerState(newRs);
+    setSpecConstantsInfo(VK_PIPELINE_BIND_POINT_GRAPHICS, prevSpecConstantsInfo);
 
-    // Restore vertex state
-    allocAndMapFixedFunctionConstantBuffer() = vs;
+    if (drawCallState.usesVertexShader) {
+      allocAndMapVertexCaptureConstantBuffer() = prevCB.programmablePipeline;
+    } else {
+      allocAndMapFixedFunctionConstantBuffer() = prevCB.fixedFunction;
+    }
   }
 
   void RtxContext::bakeTerrain(const DrawParameters& params, DrawCallState& drawCallState, const MaterialData** outOverrideMaterialData) {
@@ -1825,7 +1863,7 @@ namespace dxvk {
 
     rasterizeToSkyMatte(params, drawCallState.minZ, drawCallState.maxZ);
     // TODO: make probe optional?
-    rasterizeToSkyProbe(params);
+    rasterizeToSkyProbe(params, drawCallState);
 
     m_skyClearDirty = false;
 
