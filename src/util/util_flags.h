@@ -108,3 +108,49 @@ namespace dxvk {
   };
   
 }
+
+// Save assembly instructions for flag-related queries
+#define FLAGS(name, T, ...) \
+  struct name { \
+    enum Flag : T { \
+      __VA_ARGS__, \
+      kNumFlags \
+    }; \
+    bool isClear() const { return val.load() == 0x0; } \
+    void clear() { val.store(0x0); } \
+    template<Flag flag, bool b> \
+    void set() { \
+      static_assert(flag < kNumFlags); \
+      constexpr auto flagged = 1 << flag; \
+      if constexpr (b) val.fetch_or(flagged); \
+      else val.fetch_and(~flagged); \
+    } \
+    void set(const Flag flag, const bool b) { \
+      assert(flag < kNumFlags); \
+      const auto flagged = 1 << flag; \
+      if (b) val.fetch_or(flagged); \
+      else val.fetch_and(~flagged); \
+    } \
+    template<Flag flag> \
+    bool has() const { \
+      static_assert(flag < kNumFlags); \
+      constexpr auto flagged = 1 << flag; \
+      return val.load() & flagged; \
+    } \
+    bool has(const Flag flag) const { \
+      assert(flag < kNumFlags); \
+      const auto flagged = 1 << flag; \
+      return val.load() & flagged; \
+    } \
+    void operator=(const name& other) { \
+      return val.store(other.val.load()); \
+    } \
+    bool operator==(const name& other) const { \
+      return val.load() == other.val.load(); \
+    } \
+    bool operator!=(const name& other) const { \
+      return val.load() != other.val.load(); \
+    } \
+  private: \
+    std::atomic<T> val = 0x0; \
+  };

@@ -30,12 +30,15 @@
 #include "rtx_utils.h"
 #include "rtx_instance_manager.h"
 #include "rtx_scene_manager.h"
-#include "../../lssusd/game_exporter.h"
-#include "../../lssusd/game_exporter_paths.h"
+
+#include "../dxvk_device.h"
+
 #include "../../util/log/log.h"
 #include "../../util/config/config.h"
 #include "../../util/util_window.h"
 
+#include "../../lssusd/game_exporter.h"
+#include "../../lssusd/game_exporter_paths.h"
 #include "../../lssusd/usd_include_begin.h"
 #include <pxr/base/gf/matrix4f.h>
 #include <pxr/base/gf/rotation.h>
@@ -44,15 +47,31 @@
 #include "rtx_matrix_helpers.h"
 #include "rtx_lights.h"
 
-#define BASE_DIR (std::string(s_baseDir))
+#include <filesystem>
+
+#define BASE_DIR (std::string(GameCapturer::s_baseDir))
 
 namespace dxvk {
   const std::string GameCapturer::s_baseDir = []() {
-    std::string path = env::getEnvVar("DXVK_CAPTURE_PATH");
-    if (!path.empty() && *path.rbegin() != '/') {
-      path += '/';
+    std::string pathStr = env::getEnvVar("DXVK_CAPTURE_PATH");
+    if (!pathStr.empty()) {
+      if(*pathStr.rbegin() != '/') {
+        pathStr += '/';
+      }
+    } else {
+      pathStr = relPath::remixCaptureDir;
     }
-    return path;
+    {
+      using namespace std::filesystem;
+      const path wholePath = path(pathStr);
+      path ctorPath(".");
+      for (const auto& part : wholePath) {
+        ctorPath /= part;
+        ctorPath = absolute(ctorPath);
+        env::createDirectory(ctorPath.string());
+      }
+    }
+    return pathStr;
   }();
 
   namespace {
@@ -68,21 +87,29 @@ namespace dxvk {
       }
       return result;
     }
+    static inline std::string buildStagePath(const std::string& stageName) {
+      std::stringstream stagePathSS;
+      stagePathSS << BASE_DIR << "/" << stageName;
+      const auto stagePath =
+        std::filesystem::absolute(std::filesystem::path(stagePathSS.str()));
+      return stagePath.string();
+    }
   }
 
   size_t GameCapturer::Capture::nextId = 0;
 
-  GameCapturer::GameCapturer(SceneManager& sceneManager, AssetExporter& exporter)
-    : m_sceneManager(sceneManager)
+  GameCapturer::GameCapturer(DxvkDevice* const pDevice,
+                             SceneManager& sceneManager,
+                             AssetExporter& exporter)
+    : m_pDevice(pDevice)
+    , m_sceneManager(sceneManager)
     , m_exporter(exporter)
-    , m_maxFramesCapturable(RtxOptions::Get()->getCaptureMaxFrames())
-    , m_framesPerSecond(RtxOptions::Get()->getCaptureFramesPerSecond())
-    , m_bUseLssUsdPlugins(lss::GameExporter::loadUsdPlugins("./lss/usd_plugins/"))
-    , m_keyBindStartSingle { VirtualKey{VK_CONTROL},VirtualKey{VK_SHIFT},VirtualKey{'Q'} }
-    , m_keyBindToggleMulti { VirtualKey{VK_CONTROL},VirtualKey{VK_SHIFT},VirtualKey{'M'} } {
+    , m_options{ getOptions() }
+    , m_bUseLssUsdPlugins(lss::GameExporter::loadUsdPlugins("./lss/usd_plugins/")) {
     Logger::info(str::format("[GameCapturer] DXVK_RTX_CAPTURE_ENABLE_ON_FRAME: ", env::getEnvVar("DXVK_RTX_CAPTURE_ENABLE_ON_FRAME")));
-    env::createDirectory(BASE_DIR + relPath::rtxRemixDir);
-    env::createDirectory(BASE_DIR + relPath::remixCaptureDir);
+    env::createDirectory(BASE_DIR);
+    env::createDirectory(BASE_DIR + lss::commonDirName::texDir);
+    env::createDirectory(BASE_DIR + lss::commonDirName::matDir);
     lss::GameExporter::setMultiThreadSafety(true);
     if (m_bUseLssUsdPlugins) {
       Logger::debug("[GameCapturer] LSS USD Plugins successfully found and loaded.");
@@ -95,14 +122,16 @@ namespace dxvk {
   }
 
   void GameCapturer::step(const Rc<DxvkContext> ctx, const float frameTimeSecs) {
-    hotkeyStep(ctx);
-    if (getState(StateFlag::InitCapture)) {
-      initCaptureStep(ctx);
+    trigger(ctx);
+    if(m_state.has<State::Initializing>()) {
+      initCapture(ctx);
     }
-    if (getState(StateFlag::Capturing)) {
-      captureStep(ctx, frameTimeSecs);
+    if (m_state.has<State::Capturing>()) {
+      capture(ctx, frameTimeSecs);
     }
-    exportStep();
+    if (m_state.has<State::BeginExport>()) {
+      exportUsd(ctx);
+    }
   }
 
   void GameCapturer::setInstanceUpdateFlag(const RtInstance& rtInstance, const InstFlag flag) {
@@ -112,80 +141,63 @@ namespace dxvk {
     m_cap.instanceFlags[rtInstance.getId()] |= (1 << uint8_t(flag));
   }
 
-  void GameCapturer::hotkeyStep(const Rc<DxvkContext> ctx) {
-    const bool bStartSingle = ImGUI::checkHotkeyState(m_keyBindStartSingle);
-    const bool bToggleMulti = ImGUI::checkHotkeyState(m_keyBindToggleMulti);
-    if (bStartSingle || bToggleMulti) {
-      if (RtxOptions::Get()->getEnableAnyReplacements() && m_sceneManager.areReplacementsLoaded()) {
-        Logger::warn("[GameCapturer] Cannot begin capture when replacement assets are enabled/loaded.");
-      } else if (getState(StateFlag::Capturing)) {
-        Logger::warn("[GameCapturer] Cannot begin new capture, one currently in progress.");
-      } else {
-        if (bStartSingle) {
-          setState(StateFlag::InitCaptureSingle, true);
-        } else if (bToggleMulti) {
-          if (getState(StateFlag::CapturingMulti)) {
-            setState(StateFlag::BeginExport, true);
-            setState(StateFlag::CapturingMulti, false);
-          } else {
-            setState(StateFlag::InitCaptureMulti, true);
-          }
+  void GameCapturer::trigger(const Rc<DxvkContext> ctx) {
+    if (m_bTriggerCapture) {
+      m_bTriggerCapture = false;
+      if(isIdle()) {
+        if (RtxOptions::Get()->getEnableAnyReplacements() && m_sceneManager.areReplacementsLoaded()) {
+          Logger::warn("[GameCapturer] Cannot begin capture when replacement assets are enabled/loaded.");
+        } else if (m_state.has<State::Capturing>()) {
+          Logger::warn("[GameCapturer] Cannot begin new capture, one currently in progress.");
+        } else {
+          m_state.set<State::Initializing, true>();
         }
-        // TODO: Remove "else" from `else if` above if we want single frame concurrent with ongoing multiframe
       }
     }
   }
 
-  void GameCapturer::initCaptureStep(const Rc<DxvkContext> ctx) {
-    assert(getState(StateFlag::InitCapture));
-    assert(!getState(StateFlag::Capturing));
+  void GameCapturer::initCapture(const Rc<DxvkContext> ctx) {
+    assert(m_state.has<State::Initializing>());
+    assert(!m_state.has<State::Capturing>());
+    
+    m_options = getOptions();
 
     m_cap.idStr = hashToString(Capture::nextId++).substr(4, 4);
-    m_cap.bExportInstances = !RtxOptions::Get()->getCaptureNoInstance();
+    m_cap.bCaptureInstances = m_options.bCaptureInstances;
     m_cap.bSkyProbeBaked = false;
-    if (m_cap.bExportInstances) {
-      std::stringstream stagePathSS;
-      if (RtxOptions::Get()->getCaptureInstanceStageName().compare("") != 0) {
-        stagePathSS << RtxOptions::Get()->getCaptureInstanceStageName() << lss::ext::usd;
-      } else {
-        const std::time_t curTime = std::time(nullptr);
-        std::tm locTime;
-        // The vanilla versions of localtime are not thread safe, see:
-        // https://en.cppreference.com/w/cpp/chrono/c/localtime
-        localtime_s(&locTime, &curTime);
-        static const std::string kDefaultExportFilePrefix("capture_");
-        stagePathSS << kDefaultExportFilePrefix << std::put_time(&locTime, "%Y-%m-%d_%H-%M-%S") << lss::ext::usd;
-      }
-      m_cap.instanceStageName = stagePathSS.str();
-      m_exporter.generateSceneThumbnail(ctx, BASE_DIR + relPath::remixCaptureThumbnailsDir, m_cap.instanceStageName);
+    if (m_cap.bCaptureInstances) {
+      prepareInstanceStage(ctx);
     }
     Logger::info("[GameCapturer][" + m_cap.idStr + "] New capture");
     m_cap.instanceFlags.clear();
 
-    if (getState(StateFlag::InitCaptureSingle)) {
-      setState(StateFlag::CapturingSingle, true);
-    }
-    if (getState(StateFlag::InitCaptureMulti)) {
-      setState(StateFlag::CapturingMulti, true);
-    }
-    setState(StateFlag::InitCapture, false);
+    m_state.set<State::Capturing, true>();
+    m_state.set<State::Initializing, false>();
+    m_state.set<State::Complete, false>();
+  }
+  
+  void GameCapturer::prepareInstanceStage(const Rc<DxvkContext> ctx) {
+    const auto stagePathStr = buildStagePath(m_options.instanceStageName);
+    m_cap.instance.stageName = m_options.instanceStageName;
+    m_cap.instance.stagePath = stagePathStr;
+    m_exporter.generateSceneThumbnail(ctx, BASE_DIR + lss::commonDirName::thumbDir, m_options.instanceStageName);
   }
 
-  void GameCapturer::captureStep(const Rc<DxvkContext> ctx, const float dt) {
-    assert(getState(StateFlag::Capturing));
+  void GameCapturer::capture(const Rc<DxvkContext> ctx, const float dt) {
+    assert(m_state.has<State::Capturing>());
 
-    m_cap.currentFrameNum += dt * static_cast<float>(m_framesPerSecond);
+    m_cap.currentFrameNum += dt * static_cast<float>(m_options.fps);
     captureFrame(ctx);
 
-    if (getState(StateFlag::CapturingSingle) || m_cap.numFramesCaptured >= m_maxFramesCapturable) {
-      setState(StateFlag::BeginExport, true);
-      setState(StateFlag::Capturing, false);
+    if (m_cap.numFramesCaptured >= m_options.numFrames) {
+      m_state.set<State::BeginExport, true>();
+      m_state.set<State::Capturing, false>();
     }
   }
 
   void GameCapturer::captureFrame(const Rc<DxvkContext> ctx) {
     Logger::debug("[GameCapturer][" + m_cap.idStr + "] Begin frame capture");
-    if (m_cap.bExportInstances) {
+    if (m_cap.bCaptureInstances) {
       captureCamera();
       captureLights();
     }
@@ -201,7 +213,8 @@ namespace dxvk {
        isnan(m_cap.camera.farPlane)) {
       Logger::debug("[GameCapturer][" + m_cap.idStr + "][Camera] New");
       float shearX, shearY;
-      decomposeProjection(m_sceneManager.getCamera().getViewToProjection(),
+      const auto projMat = m_sceneManager.getCamera().getViewToProjection();
+      decomposeProjection(projMat,
                           m_cap.camera.aspectRatio,
                           m_cap.camera.fov,
                           m_cap.camera.nearPlane,
@@ -215,10 +228,8 @@ namespace dxvk {
       if (m_cap.camera.farPlane > kMaxFarPlane) {
         m_cap.camera.farPlane = kMaxFarPlane;
       }
-      if(m_cap.camera.aspectRatio < 0) {
-        m_cap.camera.aspectRatio = abs(m_cap.camera.aspectRatio);
-        m_cap.camera.bFlipVertAperture = true;
-      }
+      // If the app is being rendered upside-down, we need to plan accordingly
+      m_cap.camera.bFlipVertAperture = (projMat[0][0] * projMat[1][1] < 0.0f);
       m_cap.camera.firstTime = m_cap.currentFrameNum;
     }
     assert(!isnan(m_cap.camera.fov));
@@ -275,7 +286,7 @@ namespace dxvk {
       sphereLight.color[2] = colorAndIntensity.b;
       sphereLight.intensity = colorAndIntensity.w;
       sphereLight.radius = rtLight.getRadius();
-      sphereLight.xforms.reserve(m_maxFramesCapturable - m_cap.numFramesCaptured);
+      sphereLight.xforms.reserve(m_options.numFrames - m_cap.numFramesCaptured);
       sphereLight.firstTime = m_cap.currentFrameNum;
       const dxvk::RtLightShaping& shaping = rtLight.getShaping();
       if (shaping.enabled) {
@@ -321,7 +332,7 @@ namespace dxvk {
 
       if (rtInstancePtr->getBlas()->input.cameraType == CameraType::Sky) {
         if (!m_cap.bSkyProbeBaked) {
-          m_exporter.bakeSkyProbe(ctx, BASE_DIR + relPath::remixCaptureTexturesDir, commonFileName::bakedSkyProbe);
+          m_exporter.bakeSkyProbe(ctx, BASE_DIR + lss::commonDirName::texDir, commonFileName::bakedSkyProbe);
           m_cap.bSkyProbeBaked = true;
           Logger::debug("[GameCapturer][" + m_cap.idStr + "][SkyProbe] Bake scheduled to " +
                         commonFileName::bakedSkyProbe);
@@ -339,12 +350,12 @@ namespace dxvk {
       if (bIsNew) {
         newInstance(ctx, *rtInstancePtr);
       }
-      if (m_cap.bExportInstances && !bIsNew && (bPointsUpdate || bNormalsUpdate || bIndexUpdate)) {
+      if (m_cap.bCaptureInstances && !bIsNew && (bPointsUpdate || bNormalsUpdate || bIndexUpdate)) {
         const BlasEntry* pBlas = rtInstancePtr->getBlas();
         assert(pBlas != nullptr);
         captureMesh(ctx, instance.meshHash, *pBlas, false, bPointsUpdate, bNormalsUpdate, bIndexUpdate);
       }
-      if (m_cap.bExportInstances && (bIsNew || bXformUpdate)) {
+      if (m_cap.bCaptureInstances && (bIsNew || bXformUpdate)) {
         instance.lssData.xforms.push_back({ m_cap.currentFrameNum, matrix4ToGfMatrix4d(rtInstancePtr->getTransform()) });
         const SkinningData& skinData = rtInstancePtr->getBlas()->input.getSkinningState();
         if (skinData.numBones > 0) {
@@ -390,7 +401,7 @@ namespace dxvk {
     instance.matHash = matHash;
     instance.meshInstNum = instanceNum;
     instance.lssData.firstTime = m_cap.currentFrameNum;
-    instance.lssData.xforms.reserve(m_maxFramesCapturable - m_cap.numFramesCaptured);
+    instance.lssData.xforms.reserve(m_options.numFrames - m_cap.numFramesCaptured);
     Logger::debug("[GameCapturer][" + m_cap.idStr + "][Inst:" + hashToString(instanceId) + "] New");
   }
 
@@ -399,11 +410,11 @@ namespace dxvk {
 
     //Export Textures
     const std::string albedoTexFilename(matName + lss::ext::dds);
-    m_exporter.dumpImageToFile(ctx, BASE_DIR + relPath::remixCaptureTexturesDir,
+    m_exporter.dumpImageToFile(ctx, BASE_DIR + lss::commonDirName::texDir,
                          albedoTexFilename,
                          materialData.getColorTexture().getImageView()->image());
 
-    const std::string albedoTexPath = str::format(BASE_DIR + relPath::remixCaptureTexturesDir, albedoTexFilename);
+    const std::string albedoTexPath = str::format(BASE_DIR + lss::commonDirName::texDir, albedoTexFilename);
 
     // Export Material
     lss::Material lssMat;
@@ -814,41 +825,47 @@ namespace dxvk {
     pMesh->meshSync.cond.notify_all();
   }
 
-  void GameCapturer::exportStep() {
-    if (getState(StateFlag::BeginExport)) {
-      static auto exportThreadTask = [](Capture cap,
-                                        std::atomic<size_t>* pNumOutstandingExportThreads,
-                                        const float framesPerSecond,
-                                        const bool bUseLssUsdPlugins) {
-        const auto exportPrep = prepExport(cap, framesPerSecond, bUseLssUsdPlugins);
+  void GameCapturer::exportUsd(const Rc<DxvkContext> ctx) {
+    assert(m_state.has<State::BeginExport>());
+    assert(!m_state.has<State::PreppingExport>());
+    assert(!m_state.has<State::Exporting>());
+    static auto exportThreadTask = [](const Rc<DxvkContext> ctx,
+                                      Capture cap,
+                                      State* pState,
+                                      CompletedCapture* complete,
+                                      const float framesPerSecond,
+                                      const bool bUseLssUsdPlugins) {
+      assert(pState->has<State::PreppingExport>());
+      const auto exportPrep = prepExport(cap, framesPerSecond, bUseLssUsdPlugins);
+      pState->set<State::PreppingExport, false>();
+      pState->set<State::Exporting, true>();
 
-        Logger::info("[GameCapturer][" + cap.idStr + "] Begin USD export");
-        lss::GameExporter::exportUsd(exportPrep);
-        Logger::info("[GameCapturer][" + cap.idStr + "] End USD export");
+      Logger::info("[GameCapturer][" + cap.idStr + "] Begin USD export");
+      lss::GameExporter::exportUsd(exportPrep);
+      Logger::info("[GameCapturer][" + cap.idStr + "] End USD export");
 
-        // Necessary step for being able to properly diff and check for regressions
-        const auto flattenCaptureEnvStr = env::getEnvVar("DXVK_CAPTURE_FLATTEN");
-        if (!flattenCaptureEnvStr.empty()) {
-          flattenExport(exportPrep);
-        }
+      // Necessary step for being able to properly diff and check for regressions
+      const auto flattenCaptureEnvStr = env::getEnvVar("DXVK_CAPTURE_FLATTEN");
+      if (!flattenCaptureEnvStr.empty()) {
+        flattenExport(exportPrep);
+      }
 
-        (*pNumOutstandingExportThreads)--;
-      };
-      std::thread(exportThreadTask,
-                  std::move(m_cap),
-                  &m_numOutstandingExportThreads,
-                  m_framesPerSecond,
-                  m_bUseLssUsdPlugins).detach();
-      m_numOutstandingExportThreads++;
+      complete->stageName = cap.instance.stageName;
+      complete->stagePath = cap.instance.stagePath;
+      pState->set<State::Exporting, false>();
+      pState->set<State::Complete, true>();
+    };
 
-      m_cap = Capture(); // reset to default
-      setState(StateFlag::Exporting, true);
-      setState(StateFlag::BeginExport, false);
-    }
-
-    if (m_numOutstandingExportThreads.load() == 0) {
-      setState(StateFlag::Exporting, false);
-    }
+    m_state.set<State::PreppingExport, true>();
+    m_state.set<State::BeginExport, false>();
+    std::thread(exportThreadTask,
+                ctx,
+                std::move(m_cap),
+                &m_state,
+                &m_completeCapture,
+                static_cast<float>(m_options.fps),
+                m_bUseLssUsdPlugins).detach();
+    m_cap = Capture(); // reset to default
   }
 
   lss::Export GameCapturer::prepExport(const Capture& cap,
@@ -873,7 +890,7 @@ namespace dxvk {
     // Prep meta data
     exportPrep.meta.windowTitle = window::getWindowTitle();
     exportPrep.meta.exeName = env::getExeName();
-    exportPrep.meta.iconPath = BASE_DIR + relPath::remixCaptureDir + exportPrep.meta.exeName + "_icon.bmp";
+    exportPrep.meta.iconPath = BASE_DIR + exportPrep.meta.exeName + "_icon.bmp";
     exportPrep.meta.geometryHashRule = RtxOptions::Get()->geometryAssetHashRuleString();
     exportPrep.meta.metersPerUnit = RtxOptions::Get()->getSceneScale();
     exportPrep.meta.timeCodesPerSecond = framesPerSecond;
@@ -886,10 +903,10 @@ namespace dxvk {
     exportPrep.meta.isZUp = RtxOptions::Get()->isZUp();
     exportPrep.meta.isLHS = RtxOptions::Get()->isLHS();
     exportPrep.debugId = cap.idStr;
-    exportPrep.baseExportPath = BASE_DIR + relPath::remixCaptureDir;
-    exportPrep.bExportInstanceStage = cap.bExportInstances;
-    exportPrep.instanceExportName = cap.instanceStageName;
-    exportPrep.bakedSkyProbePath = cap.bSkyProbeBaked ? BASE_DIR + relPath::remixCaptureBakedSkyProbePath : "";
+    exportPrep.baseExportPath = BASE_DIR;
+    exportPrep.bExportInstanceStage = cap.bCaptureInstances;
+    exportPrep.instanceStagePath = cap.instance.stagePath;
+    exportPrep.bakedSkyProbePath = cap.bSkyProbeBaked ? BASE_DIR + relPath::bakedSkyProbe : "";
   }
 
   void GameCapturer::prepExportMaterials(const Capture& cap,
@@ -948,13 +965,10 @@ namespace dxvk {
 
   void GameCapturer::flattenExport(const lss::Export& exportPrep) {
     Logger::info("[GameCapturer][" + exportPrep.debugId + "] Flattening USD capture.");
-    const auto instanceStageName = lss::GameExporter::buildInstanceStageName(
-      exportPrep.baseExportPath, exportPrep.instanceExportName);
-    const auto pStage = pxr::UsdStage::Open(instanceStageName);
+    const auto pStage = pxr::UsdStage::Open(exportPrep.instanceStagePath);
     assert(pStage);
-    const auto flattenedStageName = lss::GameExporter::buildInstanceStageName(
-      BASE_DIR + relPath::remixCaptureDir, "flattened.usd");
-    const auto pFlattenedStage = pStage->Export(flattenedStageName, true);
+    const auto flattenedStagePath = buildStagePath("flattened.usd");
+    const auto pFlattenedStage = pStage->Export(flattenedStagePath, true);
     assert(pFlattenedStage);
     Logger::info("[GameCapturer][" + exportPrep.debugId + "] USD capture flattened.");
   }

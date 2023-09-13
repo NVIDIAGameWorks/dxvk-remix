@@ -40,16 +40,6 @@ public:
   static void setMultiThreadSafety(const bool enable) {
     s_bMultiThreadSafety = enable;
   }
-  static std::string buildInstanceStageName(const std::string& baseDir, const std::string& name) {
-    std::stringstream stagePathSS;
-    stagePathSS << baseDir << "/";
-    if(name.empty()) {
-      stagePathSS << "export" << lss::ext::usd;
-    } else {
-      stagePathSS << name;
-    }
-    return stagePathSS.str();
-  }
   static bool loadUsdPlugins(const std::string& path);
   static void exportUsd(const Export& exportData);
 private:

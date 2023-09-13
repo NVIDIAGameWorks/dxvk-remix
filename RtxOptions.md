@@ -91,14 +91,17 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.cameraAnimationMode|int|3|Free camera's animation mode\.|
 |rtx.cameraShakePeriod|int|20|Period of the free camera's animation\.|
 |rtx.captureDebugImage|bool|False||
-|rtx.captureFramesPerSecond|int|24||
-|rtx.captureMaxFrames|int|1||
+|rtx.captureEnableMultiframe|bool|False|Enables multi\-frame capturing\. THIS HAS NOT BEEN MAINTAINED AND SHOULD BE USED WITH EXTREME CAUTION\.|
+|rtx.captureFramesPerSecond|int|24|Playback rate marked in the USD stage\.<br>Will eventually determine frequency with which game state is captured and written\. Currently every frame \-\- even those at higher frame rates \-\- are recorded\.|
+|rtx.captureInstances|bool|True|If true, an instanced snapshot of the game scene will be captured and exported to a USD stage, in addition to all meshes, textures, materials, etc\.<br>If false, only meshes, etc will be captured\.|
+|rtx.captureMaxFrames|int|1|Max frames capturable when running a multi\-frame capture\. The capture can be toggled to completion manually\.|
 |rtx.captureMeshBlendWeightDelta|float|0.01|Inter\-frame blend weight min delta warrants new time sample\.|
 |rtx.captureMeshColorDelta|float|0.3|Inter\-frame color min delta warrants new time sample\.|
 |rtx.captureMeshNormalDelta|float|0.3|Inter\-frame normal min delta warrants new time sample\.|
 |rtx.captureMeshPositionDelta|float|0.3|Inter\-frame position min delta warrants new time sample\.|
 |rtx.captureMeshTexcoordDelta|float|0.3|Inter\-frame texcoord min delta warrants new time sample\.|
-|rtx.captureNoInstance|bool|False||
+|rtx.captureNoInstance|bool|False|Same as 'rtx\.captureInstances' except inverse\. This is the original/old variant, and will be deprecated, however is still functional\.|
+|rtx.captureShowMenuOnHotkey|bool|True|If true, then the capture menu will appear whenever one of the capture hotkeys are pressed\. A capture MUST be started by using a button in the menu, in that case\.<br>If false, the hotkeys behave as expected\. The user must manually open the menu in order to change any values\.|
 |rtx.compositePrimaryDirectDiffuse|bool|True|Enables direct lightning's diffuse signal for primary surfaces in the final composite\.|
 |rtx.compositePrimaryDirectSpecular|bool|True|Enables direct lightning's specular signal for primary surfaces in the final composite\.|
 |rtx.compositePrimaryIndirectDiffuse|bool|True|Enables indirect lightning's diffuse signal for primary surfaces in the final composite\.|
@@ -626,7 +629,8 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.baseGameModPathRegex|string||Regex used to redirect RTX Remix Runtime to another path for replacements and rtx\.conf\.|
 |rtx.baseGameModRegex|string||Regex used to determine if the base game is running a mod, like a sourcemod\.|
 |rtx.beamTextures|hash set||Textures on draw calls that are already particles or emissively blended and have beam\-like geometry\.<br>Typically objects marked as particles or objects using emissive blending will be rendered with a special method which allows re\-orientation of the billboard geometry assumed to make up the draw call in indirect rays \(reflections for example\)\.<br>This method works fine for typical particles, but some \(e\.g\. a laser beam\) may not be well\-represented with the typical billboard assumption of simply needing to rotate around its centroid to face the view direction\.<br>To handle such cases a different beam mode is used to treat objects as more of a cylindrical beam and re\-orient around its main spanning axis, allowing for better rendering of these beam\-like effect objects\.|
-|rtx.captureInstanceStageName|string|||
+|rtx.captureInstanceStageName|string|capture_{timestamp}.usd|Name of the 'instance' stage \(see: 'rtx\.captureInstances'\)|
+|rtx.captureTimestampReplacement|string|{timestamp}|String that can be used for auto\-replacing current time stamp in instance stage name|
 |rtx.cutoutTextures|hash set|||
 |rtx.decalTextures|hash set||Textures on draw calls used for static geometric decals or decals with complex topology\.<br>These materials will be blended over the materials underneath them when decal material blending is enabled\.<br>A small configurable offset is applied to each flat/co\-planar part of these decals to prevent coplanar geometric cases \(which poses problems for ray tracing\)\.|
 |rtx.dynamicDecalTextures|hash set||Textures on draw calls used for dynamically spawned geometric decals, such as bullet holes\.<br>These materials will be blended over the materials underneath them when decal material blending is enabled\.<br>A small configurable offset is applied to each quad part of these decals to prevent coplanar geometric cases \(which poses problems for ray tracing\)\.|

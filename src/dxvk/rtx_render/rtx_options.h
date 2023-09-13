@@ -26,6 +26,7 @@
 #include <cassert>
 #include <limits>
 
+#include "../util/util_keybind.h"
 #include "../util/config/config.h"
 #include "../util/xxHash/xxhash.h"
 #include "../util/util_math.h"
@@ -144,6 +145,7 @@ namespace dxvk {
   class RtxOptions {
     friend class ImGUI; // <-- we want to modify these values directly.
     friend class ImGuiSplash; // <-- we want to modify these values directly.
+    friend class ImGuiCapture; // <-- we want to modify these values directly.
     friend class RtxContext; // <-- we want to modify these values directly.
     friend class RtxInitializer; // <-- we want to modify these values directly.
 
@@ -807,10 +809,26 @@ namespace dxvk {
 
     // Capture Options
     //   General
-    RTX_OPTION("rtx", bool, captureNoInstance, false, "");
-    RTX_OPTION("rtx", std::string, captureInstanceStageName, "", "");
-    RTX_OPTION("rtx", uint32_t, captureMaxFrames, 1, "");
-    RTX_OPTION("rtx", uint32_t, captureFramesPerSecond, 24, "");
+    RTX_OPTION("rtx", bool, captureShowMenuOnHotkey, true,
+               "If true, then the capture menu will appear whenever one of the capture hotkeys are pressed. A capture MUST be started by using a button in the menu, in that case.\n"
+               "If false, the hotkeys behave as expected. The user must manually open the menu in order to change any values.");
+    inline static const VirtualKeys kDefaultCaptureMenuKeyBinds{VirtualKey{VK_CONTROL},VirtualKey{VK_SHIFT},VirtualKey{'Q'}};
+    RTX_OPTION("rtx", VirtualKeys, captureHotKey, kDefaultCaptureMenuKeyBinds,
+               "Hotkey to trigger a capture without bringing up the menu.");
+    RTX_OPTION("rtx", bool, captureInstances, true,
+               "If true, an instanced snapshot of the game scene will be captured and exported to a USD stage, in addition to all meshes, textures, materials, etc.\n"
+               "If false, only meshes, etc will be captured.");
+    RTX_OPTION("rtx", bool, captureNoInstance, false, "Same as \'rtx.captureInstances\' except inverse. This is the original/old variant, and will be deprecated, however is still functional.");
+    RTX_OPTION("rtx", std::string, captureTimestampReplacement, "{timestamp}",
+               "String that can be used for auto-replacing current time stamp in instance stage name");
+    RTX_OPTION("rtx", std::string, captureInstanceStageName,
+                (std::string("capture_") + m_captureTimestampReplacement.getValue() + std::string(".usd")),
+               "Name of the \'instance\' stage (see: \'rtx.captureInstances\')");
+    RTX_OPTION("rtx", bool, captureEnableMultiframe, false, "Enables multi-frame capturing. THIS HAS NOT BEEN MAINTAINED AND SHOULD BE USED WITH EXTREME CAUTION.");
+    RTX_OPTION("rtx", uint32_t, captureMaxFrames, 1, "Max frames capturable when running a multi-frame capture. The capture can be toggled to completion manually.");
+    RTX_OPTION("rtx", uint32_t, captureFramesPerSecond, 24,
+               "Playback rate marked in the USD stage.\n"
+               "Will eventually determine frequency with which game state is captured and written. Currently every frame -- even those at higher frame rates -- are recorded.");
     //   Mesh
     RTX_OPTION("rtx", float, captureMeshPositionDelta, 0.3f, "Inter-frame position min delta warrants new time sample.");
     RTX_OPTION("rtx", float, captureMeshNormalDelta, 0.3f, "Inter-frame normal min delta warrants new time sample.");
@@ -1397,11 +1415,24 @@ namespace dxvk {
 
     // Capture Options
     //   General
-    bool getCaptureNoInstance() const { return captureNoInstance(); }
+    bool getCaptureShowMenuOnHotkey() const { return m_captureShowMenuOnHotkey.getValue(); }
+    bool getCaptureInstances() const {
+      if(m_captureNoInstance.getValue() != m_captureNoInstance.getDefaultValue()) {
+        Logger::warn("rtx.captureNoInstance has been deprecated, but will still be respected for the time being, unless rtx.captureInstances is set.");
+        if(m_captureInstances.getValue() != m_captureInstances.getDefaultValue()) {
+          return m_captureInstances;
+        }
+        return !m_captureNoInstance;
+      }
+      return m_captureInstances;
+    }
     std::string getCaptureInstanceStageName() const { return captureInstanceStageName(); }
+    //   Multiframe
+    bool getCaptureEnableMultiframe() const { return m_captureEnableMultiframe.getValue(); }
     uint32_t getCaptureMaxFrames() const { return captureMaxFrames(); }
-    size_t getCaptureFramesPerSecond() const { return captureFramesPerSecond(); }
-    //   Mesh
+    //   Advanced
+    uint32_t getCaptureFramesPerSecond() const { return captureFramesPerSecond(); }
+    //     Mesh
     float getCaptureMeshPositionDelta() const { return captureMeshPositionDelta(); }
     float getCaptureMeshNormalDelta() const { return captureMeshNormalDelta(); }
     float getCaptureMeshTexcoordDelta() const { return captureMeshTexcoordDelta(); }

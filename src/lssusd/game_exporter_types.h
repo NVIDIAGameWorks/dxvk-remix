@@ -150,6 +150,7 @@ struct Instance {
 template <typename T>
 using IdMap = std::unordered_map<Id,T>;
 struct Export {
+  std::string debugId;
   struct Meta {
     std::string windowTitle;
     std::string exeName;
@@ -165,10 +166,9 @@ struct Export {
     bool isZUp;
     bool isLHS;
   } meta;
-  std::string debugId;
   std::string baseExportPath;
   bool bExportInstanceStage;
-  std::string instanceExportName;
+  std::string instanceStagePath;
   std::string bakedSkyProbePath;
   pxr::SdfPath omniDefaultCameraSdfPath;
   IdMap<Material> materials;
