@@ -52,6 +52,7 @@ namespace dxvk {
     Vector3,
     Vector2i,
     String,
+    VirtualKeys
   };
 
   union GenericValue {
@@ -207,6 +208,7 @@ namespace dxvk {
       if constexpr (std::is_same_v<T, Vector3>) return OptionType::Vector3;
       if constexpr (std::is_same_v<T, Vector2i>) return OptionType::Vector2i;
       if constexpr (std::is_same_v<T, std::string>) return OptionType::String;
+      if constexpr (std::is_same_v<T, VirtualKeys>) return OptionType::VirtualKeys;
       if constexpr (std::is_enum_v<T>) return OptionType::Int;
       assert(!"RtxOption - unsupported type");
       return OptionType::Int;
@@ -237,6 +239,10 @@ namespace dxvk {
         rtxOption.readOption(RtxOptionImpl::s_startupOptions, RtxOptionImpl::ValueType::DefaultValue);
         rtxOption.readOption(RtxOptionImpl::s_customOptions, RtxOptionImpl::ValueType::Value);
       }
+    }
+
+    operator T() const {
+      return getValue();
     }
 
   private:

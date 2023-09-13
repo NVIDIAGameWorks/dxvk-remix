@@ -56,7 +56,6 @@ namespace dxvk {
     , m_volumeManager(device)
     , m_pReplacer(new AssetReplacer())
     , m_terrainBaker(new TerrainBaker())
-    , m_gameCapturer(new GameCapturer(*this, device->getCommon()->metaExporter()))
     , m_cameraManager(device)
     , m_startTime(std::chrono::steady_clock::now()) {
     InstanceEventHandler instanceEvents(this);
@@ -796,13 +795,14 @@ namespace dxvk {
   }
 
   void SceneManager::onInstanceUpdated(RtInstance& instance, const RtSurfaceMaterial& material, const bool hasTransformChanged, const bool hasVerticesChanged) {
+    auto capturer = m_device->getCommon()->capturer();
     if (hasTransformChanged) {
-      m_gameCapturer->setInstanceUpdateFlag(instance, GameCapturer::InstFlag::XformUpdate);
+      capturer->setInstanceUpdateFlag(instance, GameCapturer::InstFlag::XformUpdate);
     }
 
     if (hasVerticesChanged) {
-      m_gameCapturer->setInstanceUpdateFlag(instance, GameCapturer::InstFlag::PositionsUpdate);
-      m_gameCapturer->setInstanceUpdateFlag(instance, GameCapturer::InstFlag::NormalsUpdate);
+      capturer->setInstanceUpdateFlag(instance, GameCapturer::InstFlag::PositionsUpdate);
+      capturer->setInstanceUpdateFlag(instance, GameCapturer::InstFlag::NormalsUpdate);
     }
 
     // This is a ray portal!
@@ -1269,18 +1269,14 @@ namespace dxvk {
     m_device->statCounters().setCtr(DxvkStatCounter::RtxLightCount, m_lightManager.getActiveCount());
     m_device->statCounters().setCtr(DxvkStatCounter::RtxSamplers, m_samplerCache.getActiveCount());
 
+    auto capturer = m_device->getCommon()->capturer();
     if (m_device->getCurrentFrameId() == m_beginUsdExportFrameNum) {
-      m_gameCapturer->toggleMultiFrameCapture();
+      capturer->triggerNewCapture();
     }
-    m_gameCapturer->step(ctx, frameTimeSecs);
+    capturer->step(ctx, frameTimeSecs);
 
     // Clear the ray portal data before the next frame
     m_rayPortalManager.clear();
   }
-  
-  bool SceneManager::isGameCapturerIdle() const { return m_gameCapturer->isIdle(); }
 
-  void SceneManager::triggerUsdCapture() const {
-    m_gameCapturer->startNewSingleFrameCapture();
-  }
 }  // namespace nvvk

@@ -23,7 +23,7 @@
 
 #include "../util/xxHash/xxhash.h"
 
-#include <WinUser.h>
+#include <windows.h>
 
 #include <array>
 #include <unordered_map>

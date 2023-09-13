@@ -39,9 +39,6 @@ namespace relPath {
   static const std::string captureDir("./captures/");
 
   static const std::string remixCaptureDir(rtxRemixDir + captureDir);
-  static const std::string remixCaptureThumbnailsDir(remixCaptureDir + lss::commonDirName::thumbDir);
-  static const std::string remixCaptureTexturesDir(remixCaptureDir + lss::commonDirName::texDir);
-  static const std::string remixCaptureMaterialsDir(remixCaptureDir + lss::commonDirName::matDir);
-  static const std::string remixCaptureBakedSkyProbePath(remixCaptureTexturesDir + commonFileName::bakedSkyProbe);
+  static const std::string bakedSkyProbe(lss::commonDirName::texDir + commonFileName::bakedSkyProbe);
 }
 }

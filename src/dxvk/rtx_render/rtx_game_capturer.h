@@ -21,9 +21,12 @@
 */
 #pragma once
 
+#include "rtx_options.h"
+
 #include "../../lssusd/game_exporter_types.h"
 #include "../../util/rc/util_rc_ptr.h"
 #include "../../util/rc/util_rc.h"
+#include "../../util/util_flags.h"
 #include "../../util/util_matrix.h"
 #include "../../util/xxHash/xxhash.h"
 #include "../imgui/dxvk_imgui.h"
@@ -37,6 +40,7 @@ namespace dxvk
 class DxvkContext;
 class SceneManager;
 class AssetExporter;
+class ImGUI;
 struct RtLight;
 struct RtSphereLight;
 struct RtRectLight;
@@ -53,16 +57,15 @@ struct LegacyMaterialData;
 class GameCapturer : public RcObject
 {
 public:
-  GameCapturer(SceneManager& sceneManager, AssetExporter& exporter);
+  GameCapturer(DxvkDevice* const pDevice, SceneManager& sceneManager, AssetExporter& exporter);
   ~GameCapturer();
 
   void step(const Rc<DxvkContext> ctx, const float dt);
-  void startNewSingleFrameCapture() {
-    setState(StateFlag::InitCaptureSingle, true);
+  void triggerNewCapture() {
+    m_bTriggerCapture = true;
   }
-  void toggleMultiFrameCapture() {
-    setState(StateFlag::InitCaptureMulti, !getState(StateFlag::InitCaptureMulti));
-  }
+  
+  // Instance Flags
   enum class InstFlag : uint8_t {
     PositionsUpdate = 0,
     NormalsUpdate = 1,
@@ -70,9 +73,32 @@ public:
     XformUpdate = 3
   };
   void setInstanceUpdateFlag(const RtInstance& rtInstance, const InstFlag flag);
-  bool isIdle() const {
-    return m_state == 0x0;
+
+  // State
+  FLAGS(State, uint8_t,
+    Initializing,
+    Capturing,
+    BeginExport,
+    PreppingExport,
+    Exporting,
+    Complete
+  );
+  const State& getState() const {
+    return m_state;
   }
+  bool isIdle() const {
+    return m_state.isClear() || m_state.has<State::Complete>();
+  }
+
+  struct CompletedCapture {
+    std::string stageName;
+    std::string stagePath;
+  } m_completeCapture;
+  const CompletedCapture& queryCompleteCapture() const {
+    return m_completeCapture;
+  }
+
+  static const std::string s_baseDir;
 
 private:
   GameCapturer() = delete;
@@ -112,9 +138,10 @@ private:
     size_t        meshInstNum = 0;
   };
 
-  void hotkeyStep(const Rc<DxvkContext> ctx);
-  void initCaptureStep(const Rc<DxvkContext> ctx);
-  void captureStep(const Rc<DxvkContext> ctx, const float dt);
+  void trigger(const Rc<DxvkContext> ctx);
+  void initCapture(const Rc<DxvkContext> ctx);
+  void prepareInstanceStage(const Rc<DxvkContext> ctx);
+  void capture(const Rc<DxvkContext> ctx, const float dt);
   void captureFrame(const Rc<DxvkContext> ctx);
   void captureCamera();
   void captureLights();
@@ -164,7 +191,7 @@ private:
                                     pxr::VtArray<T>& newBuffer,
                                     const float currentCaptureTime,
                                     CompareTReturnBool compareT);
-  void exportStep();
+  void exportUsd(const Rc<DxvkContext> ctx);
   struct Capture;
   static lss::Export prepExport(const Capture& cap,
                                 const float framesPerSecond,
@@ -186,41 +213,63 @@ private:
   static bool checkInstanceUpdateFlag(const uint8_t flags, const InstFlag flag) {
     return flags & (1 << uint8_t(flag));
   }
+  
+  // Options
+  struct Options {
+    // General
+    bool bShowMenu;
+    bool bCaptureInstances;
+    std::string instanceStageName;
+    // Multiframe
+    bool bEnableMultiframe;
+    uint32_t numFrames;
+    // Advanced
+    uint32_t fps;
+    //   Mesh capture deltas
+    float dPos;
+    float dNorm;
+    float dTexcoord;
+    float dColor;
+    float dBlendweight;
+  } m_options;
 
-  enum class StateFlag : uint8_t {
-    InitCaptureSingle = 1 << 0,
-    InitCaptureMulti  = 1 << 1,
-    InitCapture       = InitCaptureSingle | InitCaptureMulti,
-    CapturingSingle   = 1 << 2,
-    CapturingMulti    = 1 << 3,
-    Capturing         = CapturingSingle | CapturingMulti,
-    BeginExport       = 1 << 4,
-    Exporting         = 1 << 5
-  };
-  bool getState(const StateFlag flag) const {
-    return m_state & uint8_t(flag);
+  static Options getOptions() {
+    return { RtxOptions::Get()->getCaptureShowMenuOnHotkey(),
+             RtxOptions::Get()->getCaptureInstances(),
+             RtxOptions::Get()->getCaptureInstanceStageName(),
+             RtxOptions::Get()->getCaptureEnableMultiframe(),
+             RtxOptions::Get()->getCaptureMaxFrames(),
+             RtxOptions::Get()->getCaptureFramesPerSecond(),
+             RtxOptions::Get()->getCaptureMeshPositionDelta(),
+             RtxOptions::Get()->getCaptureMeshNormalDelta(),
+             RtxOptions::Get()->getCaptureMeshTexcoordDelta(),
+             RtxOptions::Get()->getCaptureMeshColorDelta(),
+             RtxOptions::Get()->getCaptureMeshBlendWeightDelta() };
   }
-  void setState(const StateFlag flag, const bool val) {
-    m_state = (val) ? m_state | uint8_t(flag) : m_state & ~uint8_t(flag);
-  }
+
+  // State
+  bool m_bTriggerCapture = false;
+  State m_state;
   
   // Constants
+  const bool m_bUseLssUsdPlugins;
+
+  // Handles
+  DxvkDevice* const m_pDevice;
   SceneManager& m_sceneManager; // We only use SceneManager get()ers, but none are const
   AssetExporter& m_exporter;
-  const size_t m_maxFramesCapturable = 1;
-  const uint32_t m_framesPerSecond = 24;
-  const bool m_bUseLssUsdPlugins = false;
-  const VirtualKeys m_keyBindStartSingle;
-  const VirtualKeys m_keyBindToggleMulti;
 
-  uint8_t m_state = 0x0;
+  // Capturing
   dxvk::mutex m_meshMutex;
   struct Capture {
     static size_t nextId;
     std::string idStr = "INVALID";
-    bool bExportInstances;
+    bool bCaptureInstances;
+    struct InstanceCapture {
+      std::string stageName;
+      std::string stagePath;
+    } instance;
     bool bSkyProbeBaked;
-    std::string instanceStageName;
     size_t numFramesCaptured = 0;
     float currentFrameNum = 0.f;
     lss::Camera camera;
@@ -231,9 +280,6 @@ private:
     std::unordered_map<XXH64_hash_t, Instance> instances;
     std::unordered_map<XXH64_hash_t, uint8_t> instanceFlags;
   } m_cap;
-  std::atomic<size_t> m_numOutstandingExportThreads = 0;
-  
-  static const std::string s_baseDir;
 };
 
 }

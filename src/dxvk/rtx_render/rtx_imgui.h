@@ -225,7 +225,7 @@ namespace ImGui {
   IMGUI_API bool SliderFloat4(const char* label, dxvk::RtxOption<dxvk::Vector4>* rtxOption, Args&& ... args) {
     return IMGUI_ADD_TOOLTIP(SliderFloat4(label, rtxOption->getValue().data, std::forward<Args>(args)...), rtxOption->getDescription());
   }
-
+  
   // Combo Box with unique key per combo entry
   // The combo entries are displayed in the order they appear in ComboEntries
   template<typename T>
