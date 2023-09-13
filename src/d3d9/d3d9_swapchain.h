@@ -106,8 +106,6 @@ namespace dxvk {
     float GetWidthScale() const { return m_widthScale; }
     float GetHeightScale() const { return m_heightScale; }
 
-    Rc<ImGUI> getGUI() const { return m_imgui; }
-
     // NV-DXVK start: App Controlled FSE
     bool AcquireFullscreenExclusive() const {
       return GetPresenter()->acquireFullscreenExclusive() == VK_SUCCESS;
@@ -118,6 +116,10 @@ namespace dxvk {
     // NV-DXVK end
 
     void SyncFrameLatency();
+
+    Rc<DxvkDevice> getDxvkDevice() {
+      return m_device;
+    }
 
   private:
 
@@ -147,7 +149,6 @@ namespace dxvk {
     // NV-DXVK end
 
     Rc<hud::Hud>              m_hud;
-    Rc<ImGUI>                 m_imgui;
 
     std::vector<Com<D3D9Surface, false>> m_backBuffers;
     

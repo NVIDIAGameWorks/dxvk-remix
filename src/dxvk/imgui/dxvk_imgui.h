@@ -44,6 +44,7 @@ struct ImPlotContext;
 namespace dxvk {
   class ImGuiAbout;
   class ImGuiSplash;
+  class ImGuiCapture;
   class DxvkDevice;
   class DxvkContext;
 
@@ -52,13 +53,16 @@ namespace dxvk {
    * 
    * GUI for manipulating settings at runtime
    */
-  class ImGUI : public RcObject {
+  class ImGUI {
     
   public:
     
-    ImGUI(DxvkDevice* device, const HWND& hwnd);
-    
+    ImGUI(DxvkDevice* device);
     ~ImGUI();
+
+    bool isInit() const {
+      return m_init;
+    }
     
     /**
      * \brief Handle windows messages
@@ -82,22 +86,34 @@ namespace dxvk {
             VkSurfaceFormatKHR surfaceFormat,
             VkExtent2D         surfaceSize,
             bool               vsync);
-
-    /**
-     * \brief Creates the GUI
-     *
-     * Creates and initializes the GUI if the
-     * \param [in] device The DXVK device
-     * \param [in] hwnd The window handle
-     * \returns GUI object, if it was created.
-     */
-    static Rc<ImGUI> createGUI(DxvkDevice* device, const HWND& hwnd);
     
     static void AddTexture(const XXH64_hash_t hash, const Rc<DxvkImageView>& imageView);
     static void ReleaseTexture(const XXH64_hash_t hash);
     static bool checkHotkeyState(const VirtualKeys& virtKeys);
 
     void switchMenu(UIType type, bool force = false);
+    
+    enum Tabs {
+      kTab_Rendering = 0,
+      kTab_Setup,
+      kTab_Enhancements,
+      kTab_About,
+      kTab_Development,
+      kTab_Count
+    };
+    template<Tabs tab>
+    void openTab() {
+      RtxOptions::Get()->m_showUI.getValue() = UIType::Advanced;
+      triggerTab(tab);
+    }
+    template<Tabs tab>
+    bool isTabOpen() const {
+      if(RtxOptions::Get()->m_showUI.getValue() != UIType::Advanced) {
+        return false;
+      } else {
+        return m_curTab == tab;
+      }
+    }
 
   private:
     
@@ -110,6 +126,7 @@ namespace dxvk {
     VkDescriptorPool      m_imguiPool;
     Rc<ImGuiAbout>        m_about;
     Rc<ImGuiSplash>       m_splash;
+    Rc<ImGuiCapture>      m_capture;
     // Note: May be NULL until the font loads, needs to be checked before use.
     ImFont*               m_largeFont = nullptr;
 
@@ -134,6 +151,13 @@ namespace dxvk {
     float m_reflexLatencyStatsWindowHeight = 650.f;
     bool m_reflexLatencyStatsOpen = false;
     bool m_lastRenderVsyncStatus = false;
+
+    static constexpr char* tabNames[] = { "Rendering", "Game Setup", "Enhancements", "About" , "Dev Settings"};
+    Tabs m_curTab = kTab_Count;
+    Tabs m_triggerTab = kTab_Count;
+    void triggerTab(const Tabs tab) {
+      m_triggerTab = tab;
+    }
 
     void update(const Rc<DxvkContext>& ctx);
 
@@ -177,6 +201,7 @@ namespace dxvk {
     void showMaterialOptions();
 
     void showEnhancementsWindow(const Rc<DxvkContext>& ctx);
+    void showEnhancementsTab(const Rc<DxvkContext>& ctx);
     void showAppConfig(const Rc<DxvkContext>& ctx);
 
     // helper to display a configurable grid of all textures currently hooked to ImGUI
@@ -198,6 +223,7 @@ namespace dxvk {
     RTX_OPTION("rtx.gui", bool, showLegacyTextureGui, false, "A setting to toggle the old texture selection GUI, where each texture category is represented as its own list.");
     RTX_OPTION("rtx.gui", float, reflexStatRangeInterpolationRate, 0.05f, "A value controlling the interpolation rate applied to the Reflex stat graph ranges for smoother visualization.");
     RTX_OPTION("rtx.gui", float, reflexStatRangePaddingRatio, 0.05f, "A value specifying the amount of padding applied to the Reflex stat graph ranges as a ratio to the calculated range.");
+  
   };
   
 }

@@ -47,6 +47,7 @@
 #include "rtx_render/rtx_bridge_message_channel.h"
 #include "dxvk_imgui_about.h"
 #include "dxvk_imgui_splash.h"
+#include "dxvk_imgui_capture.h"
 #include "dxvk_scoped_annotation.h"
 #include "../../d3d9/d3d9_rtx.h"
 
@@ -307,9 +308,9 @@ namespace dxvk {
   constexpr ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus;
   constexpr ImGuiWindowFlags popupWindowFlags = ImGuiWindowFlags_NoSavedSettings;
 
-  ImGUI::ImGUI(DxvkDevice* device, const HWND& hwnd)
+  ImGUI::ImGUI(DxvkDevice* device)
   : m_device (device)
-  , m_hwnd   (hwnd)
+  , m_hwnd   (nullptr)
   , m_about  (new ImGuiAbout)
   , m_splash  (new ImGuiSplash) {
     // Clamp Option ranges
@@ -373,15 +374,14 @@ namespace dxvk {
     ImGui::SetCurrentContext(m_context);
     ImPlot::SetCurrentContext(m_plotContext);
 
-    // Initialize imgui for SDL
-    ImGui_ImplWin32_Init(hwnd);
-
     // Setup custom style
     setupStyle();
 
     // Enable keyboard nav
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+
+    m_capture = new ImGuiCapture(this);
   }
 
   ImGUI::~ImGUI() {
@@ -390,7 +390,9 @@ namespace dxvk {
     ImGui::SetCurrentContext(m_context);
     ImPlot::SetCurrentContext(m_plotContext);
 
-    ImGui_ImplWin32_Shutdown();
+    if(m_init) {
+      ImGui_ImplWin32_Shutdown();
+    }
 
     //add the destroy the imgui created structures
     if(m_imguiPool != VK_NULL_HANDLE)
@@ -662,6 +664,8 @@ namespace dxvk {
     m_splash->update(m_largeFont);
 
     m_about->update(ctx);
+    
+    m_capture->update(ctx);
 
     const auto showUI = RtxOptions::Get()->showUI();
 
@@ -767,41 +771,40 @@ namespace dxvk {
       const static ImGuiTabItemFlags tab_item_flags = ImGuiTabItemFlags_NoCloseWithMiddleMouseButton;
 
       // Tab Bar
-      enum Tabs {
-        kRendering = 0,
-        kSetup,
-        kEnhancements,
-        kAbout,
-        kDevelopment,
-        kCount
-      };
-      const char* names[] = { "Rendering", "Game Setup", "Enhancements", "About" , "Dev Settings"};
-
       if (ImGui::BeginTabBar("Developer Tabs", tab_bar_flags)) {
-        for (int n = 0; n < Tabs::kCount; n++)
-          if (ImGui::BeginTabItem(names[n], nullptr, tab_item_flags)) {
-            switch ((Tabs) n) {
-            case Tabs::kRendering:
+        for (int n = 0; n < kTab_Count; n++) {
+          auto tabItemFlags = tab_item_flags;
+          if(n == m_triggerTab) {
+            tabItemFlags |= ImGuiTabItemFlags_SetSelected;
+            m_triggerTab = kTab_Count;
+          }
+          if (ImGui::BeginTabItem(tabNames[n], nullptr, tabItemFlags)) {
+            const Tabs tab = (Tabs) n;
+            switch (tab) {
+            case kTab_Rendering:
               showRenderingSettings(ctx);
               break;
-            case Tabs::kSetup:
+            case kTab_Setup:
               showSetupWindow(ctx);
               break;
-            case Tabs::kEnhancements:
+            case kTab_Enhancements:
               showEnhancementsWindow(ctx);
               break;
-            case Tabs::kAbout:
+            case kTab_About:
               m_about->show(ctx);
               break;
-            case Tabs::kDevelopment:
+            case kTab_Development:
               showAppConfig(ctx);
               break;
             }
+            m_curTab = tab;
             ImGui::EndTabItem();
           }
+        }
 
-        if (ImGui::TabItemButton(m_windowOnRight ? "<<" : ">>"))
+        if (ImGui::TabItemButton(m_windowOnRight ? "<<" : ">>")) {
           m_windowOnRight = !m_windowOnRight;
+        }
 
         ImGui::EndTabBar();
       }
@@ -1605,18 +1608,21 @@ namespace dxvk {
   void ImGUI::showEnhancementsWindow(const Rc<DxvkContext>& ctx) {
     ImGui::PushItemWidth(200);
 
-    auto common = ctx->getCommonObjects();
-
-    if (common->getSceneManager().areReplacementsLoaded() && RtxOptions::Get()->getEnableAnyReplacements()) {
-      ImGui::Text("Disable all asset enhancements to capture.");
-    } else if (ImGui::Button("Capture Frame in USD")) {
-      RtxContext::triggerUsdCapture();
+    m_capture->show(ctx);
+    
+    if(ImGui::CollapsingHeader("Enhancements", collapsingHeaderFlags | ImGuiTreeNodeFlags_DefaultOpen)) {
+      ImGui::Indent();
+      showEnhancementsTab(ctx);
+      ImGui::Unindent();
+    }
+  }
+  
+  void ImGUI::showEnhancementsTab(const Rc<DxvkContext>& ctx) {
+    if (!ctx->getCommonObjects()->getSceneManager().areReplacementsLoaded()) {
+      ImGui::Text("No USD enhancements detected, the following options have been disabled.  See documentation for how to use enhancements with Remix.");
     }
 
-    if (!common->getSceneManager().areReplacementsLoaded())
-      ImGui::Text("No USD enhancements detected, the following options have been disabled.  See documentation for how to use enhancements with Remix.");
-
-    ImGui::BeginDisabled(!common->getSceneManager().areReplacementsLoaded());
+    ImGui::BeginDisabled(!ctx->getCommonObjects()->getSceneManager().areReplacementsLoaded());
     ImGui::Checkbox("Enable Enhanced Assets", &RtxOptions::Get()->enableReplacementAssetsObject());
     {
       ImGui::Indent();
@@ -1640,6 +1646,7 @@ namespace dxvk {
     ImGui::Checkbox("Highlight Legacy Materials (flash red)", &RtxOptions::Get()->useHighlightLegacyModeObject());
     ImGui::Checkbox("Highlight Legacy Meshes with Shared Vertex Buffers (dull purple)", &RtxOptions::Get()->useHighlightUnsafeAnchorModeObject());
     ImGui::Checkbox("Highlight Replacements with Unstable Anchors (flash red)", &RtxOptions::Get()->useHighlightUnsafeReplacementModeObject());
+
   }
 
   void ImGUI::showSetupWindow(const Rc<DxvkContext>& ctx) {
@@ -2673,8 +2680,10 @@ namespace dxvk {
 
     // Sometimes games can change windows on us, so we need to check that here and tell ImGUI
     if (m_hwnd != hwnd) {
+      if(m_init) {
+        ImGui_ImplWin32_Shutdown();
+      }
       m_hwnd = hwnd;
-      ImGui_ImplWin32_Shutdown();
       ImGui_ImplWin32_Init(hwnd);
     }
 
@@ -2707,10 +2716,6 @@ namespace dxvk {
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), ctx->getCmdBuffer(DxvkCmdBuffer::ExecBuffer));
 
     this->resetRendererState(ctx);
-  }
-  
-  Rc<ImGUI> ImGUI::createGUI(DxvkDevice* device, const HWND& hwnd) {
-    return new ImGUI(device, hwnd);
   }
 
   void ImGUI::setupRendererState(
@@ -2804,6 +2809,7 @@ namespace dxvk {
 
     io.Fonts->Build();
 
+
     // Allocate/upload glyph cache...
 
     unsigned char* pixels;
@@ -2879,4 +2885,5 @@ namespace dxvk {
     }
     return result;
   }
+
 }

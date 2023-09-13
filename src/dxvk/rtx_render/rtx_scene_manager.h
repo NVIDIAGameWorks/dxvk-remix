@@ -51,7 +51,6 @@ namespace dxvk
 {
 class DxvkContext;
 class DxvkDevice;
-class GameCapturer;
 struct AssetReplacement;
 struct AssetReplacer;
 class OpacityMicromapManager;
@@ -211,7 +210,6 @@ private:
 
   void createEffectLight(Rc<DxvkContext> ctx, const DrawCallState& input, const RtInstance* instance);
 
-  Rc<GameCapturer> m_gameCapturer;
   uint32_t m_beginUsdExportFrameNum = -1;
   bool m_enqueueDelayedClear = false;
   bool m_previousFrameSceneAvailable = false;

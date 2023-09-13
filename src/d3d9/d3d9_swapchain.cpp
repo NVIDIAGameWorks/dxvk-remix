@@ -22,8 +22,10 @@
 #include "d3d9_swapchain.h"
 #include "d3d9_surface.h"
 #include "d3d9_monitor.h"
-
 #include "d3d9_hud.h"
+
+#include "../dxvk/dxvk_device.h"
+#include "../dxvk/dxvk_objects.h"
 #include "../util/util_env.h"
 #include "../dxvk/rtx_render/rtx_bridge_message_channel.h"
 #include "../dxvk/dxvk_scoped_annotation.h"
@@ -187,7 +189,8 @@ namespace dxvk {
 
       if (BridgeMessageChannel::get().init(window, D3D9WindowProc)) {
         // Send the initial state messages
-        swapchain->getGUI()->switchMenu(RtxOptions::Get()->showUI(), true);
+        auto& gui = swapchain->getDxvkDevice()->getCommon()->getImgui();
+        gui.switchMenu(RtxOptions::Get()->showUI(), true);
       } else {
         Logger::err("Unable to init bridge message channel. FSE and input capture may not work!");
       }
@@ -249,7 +252,10 @@ namespace dxvk {
         PostMessageW(window, WM_ACTIVATEAPP, 1, GetCurrentThreadId());
     }
 
-    windowData.swapchain->getGUI()->wndProcHandler(window, message, wParam, lParam);
+    auto& gui = windowData.swapchain->getDxvkDevice()->getCommon()->getImgui();
+    if(gui.isInit()) {
+      gui.wndProcHandler(window, message, wParam, lParam);
+    }
 
     if (!present_parms.Windowed && env::isRemixBridgeActive()) {
       FSEState state = ProcessFullscreenExclusiveMessages(window, message, wParam, lParam);
@@ -1125,8 +1131,8 @@ namespace dxvk {
       if (m_hud != nullptr)
         m_hud->render(m_context, info.format, info.imageExtent);
 
-      if (m_imgui != nullptr)
-        m_imgui->render(m_window, m_context, info.format, info.imageExtent, m_vsync);
+      auto& gui = m_device->getCommon()->getImgui();
+      gui.render(m_window, m_context, info.format, info.imageExtent, m_vsync);
 
       // NV-DXVK start
       m_parent->m_rtx.OnPresent(m_imageViews.at(imageIndex)->image());
@@ -1446,7 +1452,6 @@ namespace dxvk {
 
   void D3D9SwapChainEx::CreateHud() {
     m_hud = hud::Hud::createHud(m_device);
-    m_imgui = ImGUI::createGUI(m_device.ptr(), m_window);
 
     if (m_hud != nullptr) {
       m_hud->addItem<hud::HudClientApiItem>("api", 1, GetApiName());

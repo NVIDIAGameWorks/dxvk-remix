@@ -41,6 +41,7 @@
 #include "rtx_render/rtx_texture_manager.h"
 #include "rtx_render/rtx_scene_manager.h"
 #include "rtx_render/rtx_reflex.h"
+#include "rtx_render/rtx_game_Capturer.h"
 
 #include "rtx_render/rtx_denoise_type.h"
 #include "../util/util_lazy.h"
@@ -57,6 +58,7 @@ namespace dxvk {
   class DebugView;
   class DxvkPostFx;
   class OpacityMicromapManager;
+  class ImGUI;
 
   class NGXContext;
 
@@ -74,7 +76,8 @@ namespace dxvk {
       m_sceneManager    (device),
       m_rtResources     (device),
       m_rtInitializer   (device),
-      m_textureManager(device),
+      m_textureManager  (device),
+      m_imgui           (device),
       m_dummyResources  (device), 
       m_volumeIntegrate(device),
       m_volumeFilter(device),
@@ -107,7 +110,8 @@ namespace dxvk {
       m_bloom(device),
       m_geometryUtils(device),
       m_imageUtils(device),
-      m_postFx(device) {
+      m_postFx(device),
+      m_capturer(new GameCapturer(device, m_sceneManager, m_exporter.get())) {
     }
 
     DxvkMemoryAllocator& memoryManager() {
@@ -301,6 +305,10 @@ namespace dxvk {
     RtxTextureManager& getTextureManager() {
       return m_textureManager;
     }
+    
+    ImGUI& getImgui() {
+      return m_imgui;
+    }
 
     const OpacityMicromapManager* getOpacityMicromapManager() {
       return m_sceneManager.getOpacityMicromapManager();
@@ -312,6 +320,10 @@ namespace dxvk {
 
     AssetExporter& metaExporter() {
       return m_exporter.get();
+    }
+
+    Rc<GameCapturer> capturer() {
+      return m_capturer;
     }
 
     void onDestroy() {
@@ -360,6 +372,9 @@ namespace dxvk {
     Resources          m_rtResources;
     RtxInitializer     m_rtInitializer;
     RtxTextureManager  m_textureManager;
+    ImGUI              m_imgui;
+    Rc<GameCapturer>   m_capturer;
+
 
     // RTX Shaders
     Active<DxvkVolumeIntegrate>             m_volumeIntegrate;
