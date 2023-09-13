@@ -23,6 +23,7 @@
 
 #include "util_vector.h"
 #include "vulkan/vulkan_core.h"
+#include "util_once.h"
 
 namespace dxvk {
 
@@ -322,8 +323,16 @@ namespace dxvk {
     double dot1 = (dot0.x + dot0.y) + (dot0.z + dot0.w);
 
     Matrix4Base<T> output;
-    for (uint32_t i = 0; i < 16; i++)
-      output[i / 4][i % 4] = inverse[i / 4][i % 4] / dot1;
+
+    // Ensure the matrix is invertible
+    if (dot1 != 0.0) {
+      for (uint32_t i = 0; i < 16; i++) {
+        output[i / 4][i % 4] = inverse[i / 4][i % 4] / dot1;
+      }
+    } else {
+      ONCE(Logger::err("Tried to invert a non-invertible matrix."));
+    }
+
     return output;
   }
 
