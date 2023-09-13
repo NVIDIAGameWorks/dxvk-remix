@@ -215,8 +215,7 @@ void GameExporter::exportUsdInternal(const Export& exportData) {
 
 pxr::UsdStageRefPtr GameExporter::createInstanceStage(const Export& exportData) {
   assert(exportData.bExportInstanceStage);
-  const auto stageName = buildInstanceStageName(exportData.baseExportPath, exportData.instanceExportName);
-  pxr::UsdStageRefPtr instanceStage = pxr::UsdStage::CreateNew(stageName);
+  pxr::UsdStageRefPtr instanceStage = pxr::UsdStage::CreateNew(exportData.instanceStagePath);
   assert(instanceStage);
   const auto rootPrim = instanceStage->DefinePrim(gRootNodePath);
   assert(rootPrim);
@@ -236,9 +235,7 @@ pxr::UsdStageRefPtr GameExporter::createInstanceStage(const Export& exportData) 
   customLayerData.SetValueAtPath("lightspeed_layer_type", pxr::VtValue("capture"));
   customLayerData.SetValueAtPath("lightspeed_game_name", pxr::VtValue(exportData.meta.windowTitle));
   customLayerData.SetValueAtPath("lightspeed_exe_name", pxr::VtValue(exportData.meta.exeName));
-  static pxr::ArDefaultResolver arDefResolver;
-  const auto fullCapturePath = arDefResolver.ComputeLocalPath(exportData.baseExportPath);
-  const auto relToCaptureIconPath = std::filesystem::relative(exportData.meta.iconPath, fullCapturePath).string();
+  const auto relToCaptureIconPath = std::filesystem::relative(exportData.meta.iconPath, exportData.baseExportPath).string();
   customLayerData.SetValueAtPath("lightspeed_game_icon", pxr::VtValue(relToCaptureIconPath));
   customLayerData.SetValueAtPath("lightspeed_geometry_hash_rules", pxr::VtValue(exportData.meta.geometryHashRule));
   instanceStage->GetRootLayer()->SetCustomLayerData(customLayerData);

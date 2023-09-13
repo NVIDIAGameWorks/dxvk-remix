@@ -323,7 +323,7 @@ namespace dxvk {
       
       if(s_triggerUsdCapture) {
         s_triggerUsdCapture = false;
-        getSceneManager().triggerUsdCapture();
+        m_common->capturer()->triggerNewCapture();
       }
 
       if (captureTestScreenshot) {
@@ -595,7 +595,7 @@ namespace dxvk {
     // Some time in the future kill process
     if (m_triggerDelayedTerminate &&
         (m_device->getCurrentFrameId() > m_terminateAppFrameNum) &&
-        getSceneManager().isGameCapturerIdle()) {
+        m_common->capturer()->isIdle()) {
       Logger::info(str::format("RTX: Terminating application"));
       Metrics::serialize();
       getCommonObjects()->metaExporter().waitForAllExportsToComplete();
