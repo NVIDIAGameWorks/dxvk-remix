@@ -41,7 +41,7 @@ static const float16_t roughnessThreshold = float16_t(0.001h);
 float pomSampleHeight(uint16_t idx, uint16_t samplerIndex, float2 texcoord)
 {
   // TODO: this is pretty basic, would be better to traverse a min/max pyramid stored in the mips of height texture
-  return textures[nonuniformEXT(uint(idx))].SampleLevel(samplers[nonuniformEXT(uint(samplerIndex))], texcoord, 0).r;
+  return 1.0f - textures[nonuniformEXT(uint(idx))].SampleLevel(samplers[nonuniformEXT(uint(samplerIndex))], texcoord, 0).r;
 }
 
 float2 pomGetStep(float3 direction, float layerSize, float displaceIn)
@@ -121,9 +121,9 @@ float opaqueSurfaceMaterialInteractionCalcHeightThroughput(
 {
   // rebuild tangent space
   const f16mat3 worldToTangent = f16mat3(
-    minimalSurfaceInteraction.triangleNormal,
     minimalSurfaceInteraction.triangleTangent,
-    minimalSurfaceInteraction.triangleBitangent);
+    minimalSurfaceInteraction.triangleBitangent,
+    minimalSurfaceInteraction.triangleNormal);
   const f16vec3 lightDirTangentSpace = normalize(mul(worldToTangent, rayDirection));
   return pomSampleVisibility(heightTextureIdx, samplerIndex, texcoord, lightDirTangentSpace, displaceIn);
 }
@@ -134,7 +134,7 @@ float opaqueSurfaceMaterialInteractionCalcHeightThroughput(
 OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   OpaqueSurfaceMaterial opaqueSurfaceMaterial,
   Surface surface,
-  SurfaceInteraction surfaceInteraction,
+  inout SurfaceInteraction surfaceInteraction,
   MinimalRayInteraction minimalRayInteraction)
 {
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction;

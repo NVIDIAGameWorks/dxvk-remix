@@ -64,7 +64,8 @@ namespace lss {
     TfToken("primvars:uv"),
     TfToken("primvars:st0"),
     TfToken("primvars:st1"),
-    TfToken("primvars:st2")
+    TfToken("primvars:st2"),
+    TfToken("primvars:UVMap"),
   };
   inline static const TfToken kDoubleSided("doubleSided");
   inline static const TfToken kOrientation("orientation");
