@@ -115,6 +115,11 @@ void calcOpaqueSurfaceMaterialOpacity(
     emissiveBlendOverrideInfluence = alphaOpacity;
 
     break;
+  case uint(BlendType::kReverseAlpha):
+    // Note: Reverse Alpha blending acts emissive at 0 alpha and opaque at 1 alpha.
+    opacity = float16_t(1.0f) - alphaOpacity;
+
+    break;
   case uint(BlendType::kReverseAlphaEmissive):
     // Note: Reverse Alpha Emissive blending acts emissive at 0 alpha and opaque at 1 alpha.
     if (enableOpacityEmissiveBlendModes) 
@@ -135,6 +140,11 @@ void calcOpaqueSurfaceMaterialOpacity(
     else
       opacity = float16_t(0.0f);
     emissiveBlendOverrideInfluence = luminanceOpacity;
+
+    break;
+  case uint(BlendType::kReverseColor):
+    // Note: Reverse Color blending acts emissive at 0 alpha and opaque at 1 alpha.
+    opacity = float16_t(1.0f) - luminanceOpacity;
 
     break;
   case uint(BlendType::kReverseColorEmissive):
