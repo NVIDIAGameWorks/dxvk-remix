@@ -31,9 +31,11 @@ enum class BlendType : uint8_t {
   kEmissive = 6,
   kMultiplicative = 7,
   kDoubleMultiplicative = 8,
+  kReverseAlpha = 9,
+  kReverseColor = 10,
 
   kMinValue = 0, // kAlpha
-  kMaxValue = 8, // kDoubleMultiplicative
+  kMaxValue = 10, // kReverseColor
 };
 
 static const uint8_t surfaceBlendTypeMask = uint8_t(0xfu);
