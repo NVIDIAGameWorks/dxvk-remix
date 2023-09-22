@@ -1819,24 +1819,29 @@ namespace dxvk {
     Rc<DxvkImageView> curColorView;
 
     if (replacementMaterial) {
-      auto albedoOpacity = replacementMaterial->getOpaqueMaterialData().getAlbedoOpacityTexture();
+      // Must pull a ref because we will modify it for loading purposes below.
+      TextureRef& albedoOpacity = replacementMaterial->getOpaqueMaterialData().getAlbedoOpacityTexture();
 
       if (albedoOpacity.isValid()) {
         uint32_t textureIndex;
         getSceneManager().trackTexture(this, albedoOpacity, textureIndex, true, false);
         albedoOpacity.finalizePendingPromotion();
 
-        // Original 0th colour texture slot
-        const uint32_t colorTextureSlot = drawCallState.materialData.colorTextureSlot[0];
+        if (!albedoOpacity.isImageEmpty()) {
+          // Original 0th colour texture slot
+          const uint32_t colorTextureSlot = drawCallState.materialData.colorTextureSlot[0];
 
-        // Save current color texture first
-        if (colorTextureSlot < m_rc.size() &&
-            m_rc[colorTextureSlot].imageView != nullptr) {
-          curColorView = m_rc[colorTextureSlot].imageView;
+          // Save current color texture first
+          if (colorTextureSlot < m_rc.size() &&
+              m_rc[colorTextureSlot].imageView != nullptr) {
+            curColorView = m_rc[colorTextureSlot].imageView;
+          }
+
+          bindResourceView(colorTextureSlot, albedoOpacity.getImageView(), nullptr);
+          replacemenIsLDR = TextureUtils::isLDR(albedoOpacity.getImageView()->info().format);
+        } else {
+          ONCE(Logger::warn("A replacement texture for sky was specified, but it could not be loaded."));
         }
-
-        bindResourceView(colorTextureSlot, albedoOpacity.getImageView(), nullptr);
-        replacemenIsLDR = TextureUtils::isLDR(albedoOpacity.getImageView()->info().format);
       }
     }
 
