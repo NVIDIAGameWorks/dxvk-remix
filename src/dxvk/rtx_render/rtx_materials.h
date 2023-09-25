@@ -140,7 +140,7 @@ struct RtSurface {
     flags |= alphaState.emissiveBlend ?      (1 << 20) : 0;
     flags |= alphaState.isParticle ?         (1 << 21) : 0;
     flags |= alphaState.isDecal ?            (1 << 22) : 0;
-    flags |= alphaState.isBlendedTerrain ?   (1 << 23) : 0;
+    // 23rd bit is available
     flags |= isAnimatedWater ?               (1 << 24) : 0;
     flags |= isClipPlaneEnabled ?            (1 << 25) : 0;
     flags |= isMatte ?                       (1 << 26) : 0;
@@ -292,17 +292,15 @@ struct RtSurface {
     bool isFullyOpaque = false;
     AlphaTestType alphaTestType = AlphaTestType::kAlways;
     uint8_t alphaTestReferenceValue = 0;
-
     BlendType blendType = BlendType::kAlpha;
     bool invertedBlend = false;
     bool emissiveBlend = false;
     bool isParticle = false;
     bool isDecal = false;
-    bool isBlendedTerrain = false;
   } alphaState;
 
   // Static validation to detect any changes that require an alignment re-check
-  static_assert(sizeof(AlphaState) == 10);
+  static_assert(sizeof(AlphaState) == 9);
 
   Matrix4 objectToWorld;
   Matrix4 prevObjectToWorld;
@@ -1295,7 +1293,6 @@ struct LegacyMaterialData {
       // " textureAlphaArg2Source: ", textureAlphaArg2Source,
       // " textureAlphaOperation: ", textureAlphaOperation,
       " tFactor: ", tFactor,
-      " isBlendedTerrain: ", isBlendedTerrain,
       // " m_d3dMaterial.Diffuse: ", m_d3dMaterial.Diffuse,
       // " m_d3dMaterial.Ambient: ", m_d3dMaterial.Ambient,
       // " m_d3dMaterial.Specular: ", m_d3dMaterial.Specular,
@@ -1327,7 +1324,6 @@ struct LegacyMaterialData {
   RtTextureArgSource textureAlphaArg2Source = RtTextureArgSource::None;
   DxvkRtTextureOperation textureAlphaOperation = DxvkRtTextureOperation::SelectArg1;
   uint32_t tFactor = 0xffffffff;  // Value for D3DRS_TEXTUREFACTOR, default value of is opaque white
-  bool isBlendedTerrain = false;
   D3DMATERIAL9 d3dMaterial = {};
   bool isTextureFactorBlend = false;
 
