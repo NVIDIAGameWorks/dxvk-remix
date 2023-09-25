@@ -561,9 +561,7 @@ namespace dxvk {
       out.isDecal = 
         RtxOptions::Get()->isDecalTexture(drawCall.getMaterialData().getHash()) ||
         RtxOptions::Get()->isDynamicDecalTexture(drawCall.getMaterialData().getHash()) ||
-        RtxOptions::Get()->isNonOffsetDecalTexture(drawCall.getMaterialData().getHash()) ||
-        drawCall.getMaterialData().isBlendedTerrain;
-      out.isBlendedTerrain = drawCall.getMaterialData().isBlendedTerrain;
+        RtxOptions::Get()->isNonOffsetDecalTexture(drawCall.getMaterialData().getHash());
     } else {
       out.invertedBlend = false;
       out.emissiveBlend = false;

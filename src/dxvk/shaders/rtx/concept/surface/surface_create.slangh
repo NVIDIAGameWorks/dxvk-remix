@@ -76,7 +76,7 @@ Surface surfaceCreate(MemorySurface memorySurface)
   surface.isEmissiveBlend      = (flagData & (1u << 20)) != 0u;
   surface.isParticle           = (flagData & (1u << 21)) != 0u;
   surface.isDecal              = (flagData & (1u << 22)) != 0u;
-  surface.isBlendedTerrain     = (flagData & (1u << 23)) != 0u;
+  // 23rd bit is available
   surface.isAnimatedWater      = (flagData & (1u << 24)) != 0u;
   surface.isClipPlaneEnabled   = (flagData & (1u << 25)) != 0u;
   surface.isMatte              = (flagData & (1u << 26)) != 0u;

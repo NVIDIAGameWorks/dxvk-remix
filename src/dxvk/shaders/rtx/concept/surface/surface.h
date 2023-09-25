@@ -98,7 +98,6 @@ struct Surface
   bool isEmissiveBlend;
   bool isParticle;
   bool isDecal;
-  bool isBlendedTerrain;
   bool isAnimatedWater;
   bool isClipPlaneEnabled;
   bool isMatte;

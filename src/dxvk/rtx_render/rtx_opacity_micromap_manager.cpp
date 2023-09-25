@@ -580,6 +580,7 @@ namespace dxvk {
   }
 
   bool OpacityMicromapManager::doesInstanceUseOpacityMicromap(const RtInstance& instance) const {
+    // Texgen mode check excludes baked terrain as well
     if (instance.getTexcoordHash() == kEmptyHash || instance.surface.texgenMode != TexGenMode::None) {
       ONCE(Logger::info("[RTX Opacity Micromap] Instance does not have compatible texture coordinates. Ignoring the Opacity Micromap request."));
       return false;
