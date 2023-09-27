@@ -37,6 +37,7 @@
 #include "rtx/algorithm/volume_lighting.slangh"
 #include "rtx/pass/post_fx/post_fx_motion_blur_geometry_flags.slangh"
 #include "rtx/algorithm/nee_cache_light.slangh"
+#include "rtx/utility/gpu_printing.slangh"
 
 // Geometry Resolver Helper Constants
 
@@ -321,6 +322,12 @@ void geometryResolverVertexOutputDebugView(
   bool useAlternateDisocclusionThreshold)
 {
   const uint8_t materialType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
+
+  if (cb.enableTexturePicking != 0)
+  {
+    // Write material index for the texture selection
+    GpuPrint::write(u16vec2(pixelCoordinate), float4(uintBitsToFloat(surface.surfaceMaterialIndex), 0.0, 0.0, 0.0));
+  }
 
   switch(cb.debugView)
   {

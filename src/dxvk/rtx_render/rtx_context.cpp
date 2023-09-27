@@ -532,6 +532,7 @@ namespace dxvk {
 
         // Debug view overrides
         dispatchDebugView(srcImage, rtOutput, captureScreenImage);
+        dispatchHighlighting(rtOutput);
 
         dispatchDLFG();
         {
@@ -886,8 +887,19 @@ namespace dxvk {
       
       constants.gpuPrintThreadIndex = u16vec2 { kInvalidThreadIndex, kInvalidThreadIndex };
       constants.gpuPrintElementIndex = frameIdx % kMaxFramesInFlight;
-     
-      if (debugView.gpuPrint.enable() && ImGui::IsKeyDown(ImGuiKey_ModCtrl)) {
+      constants.enableTexturePicking = false;
+
+      if (auto pixToCheck = debugView.isFindSurfaceRequestActive(frameIdx)) {
+        auto toDownscaledExtentScale = Vector2 {
+          downscaledExtent.width / static_cast<float>(targetExtent.width),
+          downscaledExtent.height / static_cast<float>(targetExtent.height)
+        };
+        constants.gpuPrintThreadIndex = u16vec2 {
+          static_cast<uint16_t>(pixToCheck->x * toDownscaledExtentScale.x),
+          static_cast<uint16_t>(pixToCheck->y * toDownscaledExtentScale.y)
+        };
+        constants.enableTexturePicking = true;
+      } else if (debugView.gpuPrint.enable() && ImGui::IsKeyDown(ImGuiKey_ModCtrl)) {
         if (debugView.gpuPrint.useMousePosition()) {
           Vector2 toDownscaledExtentScale = {
             downscaledExtent.width / static_cast<float>(targetExtent.width),
@@ -1392,7 +1404,10 @@ namespace dxvk {
     const RaytraceArgs& constants = rtOutput.m_raytraceArgs;
     const uint32_t frameIdx = m_device->getCurrentFrameId();
 
-    if (debugView.gpuPrint.enable()) {
+    const bool findSurfaceRequestActive = bool { debugView.isFindSurfaceRequestActive(frameIdx) };
+
+    // FindSurfaceRequest uses gpuPrint buffer
+    if (debugView.gpuPrint.enable() && !findSurfaceRequestActive) {
       // Read from the oldest element as it is guaranteed to be written on the GPU by now
       VkDeviceSize offset = ((frameIdx + 1) % kMaxFramesInFlight) * sizeof(GpuPrintBufferElement);
       GpuPrintBufferElement* gpuPrintElement = reinterpret_cast<GpuPrintBufferElement*>(rtOutput.m_gpuPrintBuffer->mapPtr(offset));
@@ -1415,6 +1430,24 @@ namespace dxvk {
       }
     }
 
+    if (findSurfaceRequestActive) {
+      // Read from the oldest element as it is guaranteed to be written on the GPU by now
+      VkDeviceSize offset = ((frameIdx + 1) % kMaxFramesInFlight) * sizeof(GpuPrintBufferElement);
+      auto gpuPrintElement = static_cast<GpuPrintBufferElement*>(rtOutput.m_gpuPrintBuffer->mapPtr(offset));
+
+      if (gpuPrintElement && gpuPrintElement->isValid()) {
+        const auto surfaceMaterialIndex = static_cast<uint32_t>(floatBitsToInt(gpuPrintElement->writtenData.x));
+        debugView.placeFindSurfaceResult(FindSurfaceResult {
+          /* .surfaceMaterialIndex = */ surfaceMaterialIndex,
+          /* .legacyTextureHash = */ getSceneManager().findLegacyTextureHashBySurfaceMaterialIndex(surfaceMaterialIndex),
+        });
+      } else {
+        debugView.placeFindSurfaceResult({});
+      }
+    } else {
+      debugView.placeFindSurfaceResult({});
+    }
+
     if (!debugView.shouldDispatch())
       return;
 
@@ -1425,6 +1458,19 @@ namespace dxvk {
 
     if (captureScreenImage)
       takeScreenshot("rtxImageDebugView", debugView.getDebugOutput()->image());
+  }
+
+  void RtxContext::dispatchHighlighting(Resources::RaytracingOutput& rtOutput) {
+    ScopedCpuProfileZone();
+
+    if (auto surfMaterialIndexAndColor = m_common->getSceneManager().accessSurfaceMaterialIndexToHighlight(m_device->getCurrentFrameId())) {
+      m_common->metaPostFx().dispatchHighlighting(
+        this,
+        getSceneManager().getCamera().getShaderConstants().resolution,
+        rtOutput,
+        surfMaterialIndexAndColor->first,
+        surfMaterialIndexAndColor->second);
+    }
   }
 
   void RtxContext::dispatchDLFG() {

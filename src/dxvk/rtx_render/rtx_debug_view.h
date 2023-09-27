@@ -39,6 +39,12 @@ namespace dxvk {
   class DxvkContext;
   class DxvkObjects;
 
+  struct FindSurfaceResult {
+    uint32_t surfaceMaterialIndex { 0 };
+    // corresponding legacy texture hash for SurfaceMaterialIndex
+    std::future<XXH64_hash_t> legacyTextureHash{};
+  };
+
   class DebugView : public RtxPass {
 
   public:
@@ -138,5 +144,43 @@ namespace dxvk {
     Resources::Resource m_hdrWaveformGreen;
     Resources::Resource m_hdrWaveformBlue;
     Resources::Resource m_instrumentation;
+
+  public:
+    void requestFindSurfaceUnder(Vector2i pixel, uint32_t frameIdOfTheRequest) {
+      std::lock_guard lock{ m_texturePickMutex };
+      m_texturePickRequest = TexturePickingRequest { pixel, frameIdOfTheRequest };
+    }
+
+    std::optional<FindSurfaceResult>&& consumeLastAvailableFindSurfaceResult() {
+      std::lock_guard lock{ m_texturePickMutex };
+      return std::move(m_texturePickResult_prev);
+    }
+
+    std::optional<Vector2i> isFindSurfaceRequestActive(uint32_t currentFrameId) const {
+      std::lock_guard lock{ m_texturePickMutex };
+      constexpr auto numFramesToConsiderRequest = kMaxFramesInFlight * 2;
+      if (std::abs(int64_t { m_texturePickRequest.frameId } - int64_t{ currentFrameId }) < numFramesToConsiderRequest) {
+        return m_texturePickRequest.pixel;
+      }
+      return {};
+    }
+
+  private:
+    friend class RtxContext;
+    void placeFindSurfaceResult(std::optional<FindSurfaceResult>&& result) {
+      std::lock_guard lock{ m_texturePickMutex };
+      m_texturePickResult_prev = std::move(m_texturePickResult);
+      m_texturePickResult = std::move(result);
+    }
+
+  private:
+    mutable dxvk::mutex m_texturePickMutex{};
+    struct TexturePickingRequest {
+      Vector2i pixel { 0,0 };
+      uint32_t frameId { kInvalidFrameIndex };
+    };
+    TexturePickingRequest m_texturePickRequest{};
+    std::optional<FindSurfaceResult> m_texturePickResult{};
+    std::optional<FindSurfaceResult> m_texturePickResult_prev{};
   };
 } // namespace dxvk
