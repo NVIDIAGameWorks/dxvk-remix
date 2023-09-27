@@ -49,9 +49,9 @@ namespace dxvk {
   static const auto colormap75 = turboColormap(0.75f);
   static const auto colormap100 = turboColormap(1.0f);
 
-  ImGui::ComboWithKey<uint32_t> debugViewCombo = ImGui::ComboWithKey<uint32_t>(
+  static auto debugViewCombo = ImGui::ComboWithKey<uint32_t> {
     "Debug View",
-    ImGui::ComboWithKey<uint32_t>::ComboEntries{ {
+    {
         {DEBUG_VIEW_PRIMITIVE_INDEX, "Primitive Index"},
         {DEBUG_VIEW_GEOMETRY_HASH, "Geometry Hash"},
         {DEBUG_VIEW_CUSTOM_INDEX, "Custom Index"},
@@ -208,7 +208,7 @@ namespace dxvk {
         {DEBUG_VIEW_NAN,                                                   "Inf/NaN Check"},
         {DEBUG_SURFACE_LOBE_CONSISTENCY,                                   "Surface/Lobe Consistency Check"},
         {DEBUG_VIEW_SCROLLING_LINE,                                        "Scrolling Line"},
-    } });
+    } };
 
   ImGui::ComboWithKey<DebugViewDisplayType> displayTypeCombo = ImGui::ComboWithKey<DebugViewDisplayType>(
   "Display Type",

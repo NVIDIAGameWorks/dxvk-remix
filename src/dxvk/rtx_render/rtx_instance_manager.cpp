@@ -309,18 +309,12 @@ namespace dxvk {
       RtInstance*& pInstance = m_instances[i];
       assert(pInstance != nullptr);
 
-      const XXH64_hash_t topologicalHash = pInstance->getBlas()->input.getGeometryData().getHashForRule<rules::TopologicalHash>();
-      const LegacyMaterialData& materialData = pInstance->getBlas()->input.getMaterialData();
-      const bool isHighlightedInstance = (RtxOptions::Get()->highlightedTexture() != kEmptyHash) &&
-                                         ((RtxOptions::Get()->highlightedTexture() == materialData.getColorTexture().getImageHash()) ||
-                                          (RtxOptions::Get()->highlightedTexture() == materialData.getColorTexture2().getImageHash()));
       const bool enableGarbageCollection =
         !RtxOptions::AntiCulling::Object::enable() || // It's always True if anti-culling is disabled
         (pInstance->m_isInsideFrustum) ||
         (pInstance->getBlas()->input.getSkinningState().numBones > 0) ||
         (pInstance->m_isAnimated) ||
-        (pInstance->m_isPlayerModel) ||
-        isHighlightedInstance;
+        (pInstance->m_isPlayerModel);
 
       if (((forceGarbageCollection || enableGarbageCollection) &&
            pInstance->m_frameLastUpdated + numFramesToKeepInstances <= currentFrame) ||

@@ -165,6 +165,7 @@ namespace dxvk {
     void dispatchBloom(const Resources::RaytracingOutput& rtOutput);
     void dispatchPostFx(Resources::RaytracingOutput& rtOutput);
     void dispatchDebugView(Rc<DxvkImage>& srcImage, const Resources::RaytracingOutput& rtOutput, bool captureScreenImage);
+    void dispatchHighlighting(Resources::RaytracingOutput& rtOutput);
     void dispatchDLFG();
     void updateMetrics(const float frameTimeSecs, const float gpuIdleTimeSecs) const;
 

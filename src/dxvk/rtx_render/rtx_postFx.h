@@ -48,6 +48,13 @@ namespace dxvk {
       const Resources::RaytracingOutput& rtOutput,
       const bool cameraCutDetected);
 
+    void dispatchHighlighting(
+      Rc<RtxContext> ctx,
+      const uvec2& mainCameraResolution,
+      const Resources::RaytracingOutput& rtOutput,
+      uint32_t surfaceMaterialIndexToHighlight,
+      HighlightColor color);
+
     void showImguiSettings();
 
     inline bool isPostFxEnabled() const { return enable(); }

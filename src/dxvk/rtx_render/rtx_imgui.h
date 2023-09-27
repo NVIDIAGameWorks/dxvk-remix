@@ -231,15 +231,24 @@ namespace ImGui {
   template<typename T>
   class ComboWithKey {
   public:
-    typedef std::vector<std::pair<T /*key*/, const char* /*entry name*/>> ComboEntries;
+    using ComboEntries = std::vector<std::pair<T /*key*/, const char* /*entry name*/>>;
 
-    ComboWithKey(const char* widgetName, ComboEntries& comboEntries) : m_widgetName(widgetName), m_comboEntries(comboEntries) {
+    ComboWithKey(const char* widgetName, ComboEntries&& comboEntries)
+      : m_comboEntries { std::move(comboEntries) }
+      , m_widgetName { widgetName } {
       for (int i = 0; i < m_comboEntries.size(); i++) {
         T key = m_comboEntries[i].first;
         assert(m_keyToComboIdx.find(key) == m_keyToComboIdx.end() && "Duplicate key found");
         m_keyToComboIdx[key] = i;
       }
     }
+
+    ~ComboWithKey() = default;
+
+    ComboWithKey(const ComboWithKey&) = delete;
+    ComboWithKey(ComboWithKey&&) noexcept = delete;
+    ComboWithKey& operator=(const ComboWithKey&) = delete;
+    ComboWithKey& operator=(ComboWithKey&&) noexcept = delete;
 
     template <typename T, std::enable_if_t<std::is_integral_v<T> || std::is_enum_v<T>, bool> = true>
     bool getKey(T* key) {

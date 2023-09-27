@@ -27,6 +27,7 @@
 #include "rtx/pass/post_fx/post_fx.h"
 
 #include <rtx_shaders/post_fx.h>
+#include <rtx_shaders/post_fx_highlight.h>
 #include <rtx_shaders/post_fx_motion_blur.h>
 #include <rtx_shaders/post_fx_motion_blur_prefilter.h>
 #include <pxr/base/arch/math.h>
@@ -82,6 +83,21 @@ namespace dxvk {
     };
 
     PREWARM_SHADER_PIPELINE(PostFxMotionBlurPrefilterShader);
+
+    class PostFxHighlightShader : public ManagedShader {
+      SHADER_SOURCE(PostFxHighlightShader, VK_SHADER_STAGE_COMPUTE_BIT, post_fx_highlight)
+
+        PUSH_CONSTANTS(PostFxHighlightingArgs)
+
+        BEGIN_PARAMETER()
+        TEXTURE2D(POST_FX_HIGHLIGHT_INPUT)
+        TEXTURE2D(POST_FX_HIGHLIGHT_SHARED_SURFACE_INDEX_INPUT)
+        TEXTURE2D(POST_FX_HIGHLIGHT_PRIMARY_CONE_RADIUS_INPUT)
+        RW_TEXTURE2D(POST_FX_HIGHLIGHT_OUTPUT)
+        END_PARAMETER()
+    };
+
+    PREWARM_SHADER_PIPELINE(PostFxHighlightShader);
   }
 
   DxvkPostFx::DxvkPostFx(DxvkDevice* device)
@@ -302,6 +318,60 @@ namespace dxvk {
     if (lastPointer->image != inOutColorTexture.image)
     {
       // Copy to the output texture if the final output is not the input texture
+      ctx->copyImage(
+        inOutColorTexture.image,
+        { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+        { 0, 0, 0 },
+        rtOutput.m_postFxIntermediateTexture.image,
+        { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+        { 0, 0, 0 },
+        inputSize);
+    }
+  }
+
+  void DxvkPostFx::dispatchHighlighting(
+    Rc<RtxContext> ctx,
+    const uvec2& mainCameraResolution,
+    const Resources::RaytracingOutput& rtOutput,
+    uint32_t surfaceMaterialIndexToHighlight,
+    HighlightColor color) {
+    ScopedGpuProfileZone(ctx, "PostFx Highlight");
+
+    const Resources::Resource& inOutColorTexture = rtOutput.m_finalOutput;
+    const VkExtent3D& inputSize = inOutColorTexture.image->info().extent;
+
+    const auto workgroups = util::computeBlockCount(inputSize, VkExtent3D { POST_FX_TILE_SIZE , POST_FX_TILE_SIZE, 1 });
+
+    auto args = PostFxHighlightingArgs {};
+    {
+      args.imageSize = { inputSize.width, inputSize.height };
+      args.inputOverOutputViewSize = {
+        static_cast<float>(mainCameraResolution.x) / static_cast<float>(inputSize.width),
+        static_cast<float>(mainCameraResolution.y) / static_cast<float>(inputSize.height),
+      };
+      args.desaturateNonHighlighted = true;
+      args.timeSinceStartMS = static_cast<float>(ctx->getSceneManager().getGameTimeSinceStartMS());
+      args.surfaceMaterialIndexToHighlight = surfaceMaterialIndexToHighlight;
+      args.highlightColorId =
+        color == HighlightColor::World ? 1 :
+        color == HighlightColor::UI ? 2 :
+        0;
+    }
+
+    ctx->pushConstants(0, sizeof(args), &args);
+
+    const Resources::Resource* lastOutput = &rtOutput.m_postFxIntermediateTexture;
+
+    ctx->bindResourceView(POST_FX_HIGHLIGHT_INPUT, inOutColorTexture.view, nullptr);
+    ctx->bindResourceView(POST_FX_HIGHLIGHT_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view, nullptr);
+    ctx->bindResourceView(POST_FX_HIGHLIGHT_PRIMARY_CONE_RADIUS_INPUT, rtOutput.m_primaryConeRadius.view, nullptr);
+    ctx->bindResourceView(POST_FX_HIGHLIGHT_OUTPUT, lastOutput->view, nullptr);
+
+    ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, PostFxHighlightShader::getShader());
+    ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
+
+    // Copy to the output texture if the final output is not the input texture
+    if (lastOutput->image != inOutColorTexture.image) {
       ctx->copyImage(
         inOutColorTexture.image,
         { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },

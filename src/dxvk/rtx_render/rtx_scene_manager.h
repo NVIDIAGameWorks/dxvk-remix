@@ -27,6 +27,7 @@
 #include <unordered_set>
 #include <unordered_map>
 #include <list>
+#include <variant>
 
 #include "../dxvk_buffer.h"
 #include "../dxvk_image.h"
@@ -55,6 +56,23 @@ struct AssetReplacement;
 struct AssetReplacer;
 class OpacityMicromapManager;
 class TerrainBaker;
+
+struct Highlighting {
+  dxvk::mutex mutex{};
+  HighlightColor color {};
+
+  std::optional<uint32_t> finalSurfaceMaterialIndex{};
+  uint32_t finalWasUpdatedFrameId { kInvalidFrameIndex };
+
+  // if set, need to traverse draw calls to find a corresponding surfaceMaterialIndex
+  // for the given legacy texture hash, and if found, finalSurfaceMaterialIndex is updated
+  std::optional<XXH64_hash_t> findSurfaceForLegacyTextureHash{};
+
+  static bool keepRequest(uint32_t frameIdOfRequest, uint32_t curFrameId) {
+    constexpr auto numFramesConsiderHighlighting = kMaxFramesInFlight * 2;
+    return std::abs(int64_t { frameIdOfRequest } - int64_t{ curFrameId }) < numFramesConsiderHighlighting;
+  }
+};
 
 // The resource cache can be *searched* by other users
 class ResourceCache {
@@ -174,6 +192,13 @@ public:
   void trackTexture(Rc<DxvkContext> ctx, TextureRef inputTexture, uint32_t& textureIndex, bool hasTexcoords, bool allowAsync = true);
   void trackSampler(Rc<DxvkSampler> sampler, bool patchSampler, uint32_t& samplerIndex);
 
+  std::future<XXH64_hash_t> findLegacyTextureHashBySurfaceMaterialIndex(uint32_t surfaceMaterialIndex);
+
+  void requestHighlighting(std::variant<uint32_t, XXH64_hash_t> surfaceMaterialIndexOrLegacyTextureHash,
+                           HighlightColor color,
+                           uint32_t frameId);
+  std::optional<std::pair<uint32_t, HighlightColor>> accessSurfaceMaterialIndexToHighlight(uint32_t frameId);
+
 private:
   enum class ObjectCacheState
   {
@@ -241,6 +266,16 @@ private:
   bool m_useFixedFrameTime = false;
   std::chrono::time_point<std::chrono::steady_clock> m_startTime;
   uint32_t m_activePOMCount = 0;
+
+  Highlighting m_highlighting {};
+
+  struct PromisedSurfMaterialIndex
+  {
+    uint32_t targetSurfMaterialIndex { 0 };
+    std::promise<XXH64_hash_t> promise{};
+  };
+  std::optional<PromisedSurfMaterialIndex> m_findLegacyTexture {};
+  dxvk::mutex m_findLegacyTextureMutex{};
 };
 
 }  // namespace nvvk

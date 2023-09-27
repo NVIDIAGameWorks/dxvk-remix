@@ -563,21 +563,6 @@ namespace dxvk {
       overrideMaterialData = &sHighlightMaterialData;
     }
 
-    if (RtxOptions::Get()->highlightedTexture() != kEmptyHash)
-    {
-      auto isHighlighted = [](const TextureRef &t){
-        return RtxOptions::Get()->highlightedTexture() == t.getImageHash();
-      };
-
-      if (isHighlighted(input.getMaterialData().getColorTexture()) || isHighlighted(input.getMaterialData().getColorTexture2())) {
-        static MaterialData sHighlightMaterialData(OpaqueMaterialData(TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(),
-            0.f, 1.f, Vector4(0.2f, 0.2f, 0.2f, 1.f), 0.1f, 0.1f, Vector3(0.f, 1.f, 0.f), true, 1, 1, 0, false, false, 200.f, true, false, BlendType::kAlpha, false, AlphaTestType::kAlways, 0, 0.0f));
-        if (getGameTimeSinceStartMS() / 200 % 2 == 0) {
-          overrideMaterialData = &sHighlightMaterialData;
-        }
-      }
-    }
-
     uint64_t instanceId = UINT64_MAX;
     if (pReplacements != nullptr) {
       instanceId = drawReplacements(ctx, &input, pReplacements, overrideMaterialData);
@@ -1061,7 +1046,7 @@ namespace dxvk {
     assert(surfaceMaterial->validate());
 
     // Cache this
-    m_surfaceMaterialCache.track(*surfaceMaterial);
+    uint32_t surfaceMaterialIndex = m_surfaceMaterialCache.track(*surfaceMaterial);
 
     RtInstance* instance = m_instanceManager.processSceneObject(m_cameraManager, m_rayPortalManager, *pBlas, drawCallState, renderMaterialData, *surfaceMaterial);
 
@@ -1070,7 +1055,52 @@ namespace dxvk {
       createEffectLight(ctx, drawCallState, instance);
     }
 
+    // for highlighting: find a surface material index for a given legacy texture hash
+    // the requests are loose, may expand to many frames to suppress flickering
+    // NOTE: (!overrideMaterialData) -- to ignore replacements for now, as
+    // there might be multiple surface material indices for a single legacy texture hash,
+    // so highlighting involves a lot of flickering; need a better solution that
+    // can handle multiple surface material indices
+    if (!overrideMaterialData) {
+      std::lock_guard lock{ m_highlighting.mutex };
+      if (auto h = m_highlighting.findSurfaceForLegacyTextureHash) {
+        if (*h == drawCallState.getMaterialData().getColorTexture().getImageHash() ||
+            *h == drawCallState.getMaterialData().getColorTexture2().getImageHash()) {
+          m_highlighting.finalSurfaceMaterialIndex = surfaceMaterialIndex;
+          m_highlighting.finalWasUpdatedFrameId = m_device->getCurrentFrameId();
+          m_highlighting.findSurfaceForLegacyTextureHash = {};
+        }
+      }
+    }
+
+    // if requested, find a legacy texture for a given surface material index
+    {
+      std::lock_guard lock{ m_findLegacyTextureMutex };
+      if (m_findLegacyTexture) {
+        if (m_findLegacyTexture->targetSurfMaterialIndex == surfaceMaterialIndex) {
+          XXH64_hash_t legacyTextureHash = drawCallState.getMaterialData().getColorTexture().getImageHash();
+          m_findLegacyTexture->promise.set_value(legacyTextureHash);
+          // value is set, clean up
+          m_findLegacyTexture = {};
+        }
+      }
+    }
+
     return instance ? instance->getId() : UINT64_MAX;
+  }
+
+  std::future<XXH64_hash_t> SceneManager::findLegacyTextureHashBySurfaceMaterialIndex(uint32_t surfaceMaterialIndex) {
+    std::lock_guard lock{ m_findLegacyTextureMutex };
+    if (m_findLegacyTexture) {
+      // if previous promise was not satisfied, force it to end with any value; and clean it up
+      m_findLegacyTexture->promise.set_value(kEmptyHash);
+      m_findLegacyTexture = {};
+    }
+    m_findLegacyTexture = PromisedSurfMaterialIndex {
+      /* .targetSurfMaterialIndex = */ surfaceMaterialIndex,
+      /* .promise = */ {},
+    };
+    return m_findLegacyTexture->promise.get_future();
   }
 
   void SceneManager::trackSampler(Rc<DxvkSampler> sampler, bool patchSampler, uint32_t& samplerIndex) {
@@ -1277,6 +1307,29 @@ namespace dxvk {
 
     // Clear the ray portal data before the next frame
     m_rayPortalManager.clear();
+  }
+
+  void SceneManager::requestHighlighting(std::variant<uint32_t, XXH64_hash_t> surfaceMaterialIndexOrLegacyTextureHash,
+                                         HighlightColor color,
+                                         uint32_t frameId) {
+    std::lock_guard lock{ m_highlighting.mutex };
+    if (auto surfaceMaterialIndex = std::get_if<uint32_t>(&surfaceMaterialIndexOrLegacyTextureHash)) {
+      m_highlighting.finalSurfaceMaterialIndex = *surfaceMaterialIndex;
+      m_highlighting.finalWasUpdatedFrameId = frameId;
+    } else if (auto legacyTextureHash = std::get_if<XXH64_hash_t>(&surfaceMaterialIndexOrLegacyTextureHash)) {
+      m_highlighting.findSurfaceForLegacyTextureHash = *legacyTextureHash;
+    }
+    m_highlighting.color = color;
+  }
+
+  std::optional<std::pair<uint32_t, HighlightColor>> SceneManager::accessSurfaceMaterialIndexToHighlight(uint32_t frameId) {
+    std::lock_guard lock{ m_highlighting.mutex };
+    if (m_highlighting.finalSurfaceMaterialIndex) {
+      if (Highlighting::keepRequest(m_highlighting.finalWasUpdatedFrameId, frameId)) {
+        return std::pair{ *m_highlighting.finalSurfaceMaterialIndex, m_highlighting.color };
+      }
+    }
+    return {};
   }
 
 }  // namespace nvvk
