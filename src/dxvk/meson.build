@@ -372,9 +372,9 @@ dlss_include_dir = include_directories(join_paths(meson.global_source_root(), dl
 dlss_lib_path = join_paths(meson.global_source_root(), dlss_root_path + '/Lib/Windows_x86_64/x86_64')
 dlfg_include_dir = include_directories(join_paths(meson.global_source_root(), dlfg_root_path + '/Include'))
 cc = meson.get_compiler('c')
-dlss_lib_name = 'nvsdk_ngx_s'
+dlss_lib_name = 'nvsdk_ngx_d'
 if get_option('buildtype') == 'debug'  
-  dlss_lib_name = 'nvsdk_ngx_s_dbg'
+  dlss_lib_name = 'nvsdk_ngx_d_dbg'
 endif
 dlss_lib = cc.find_library(dlss_lib_name, dirs : dlss_lib_path)
 dlss_dep = declare_dependency(

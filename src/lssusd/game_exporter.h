@@ -24,6 +24,7 @@
 #include "usd_include_begin.h"
 #include <pxr/usd/usd/stage.h>
 #include <pxr/usd/usd/attribute.h>
+#include <pxr/usd/usdLux/lightapi.h>
 #include "usd_include_end.h"
 
 #include "game_exporter_common.h"
@@ -94,8 +95,7 @@ private:
                                     const double firstTime,
                                     const double finalTime,
                                     const size_t numFramesCaptured);
-  static void setLightIntensityOnTimeSpan(const pxr::UsdStageRefPtr stage,
-                                          const pxr::SdfPath sdfPath,
+  static void setLightIntensityOnTimeSpan(const pxr::UsdLuxLightAPI& luxLight,
                                           const float defaultLightIntensity,
                                           const double firstTime,
                                           const double finalTime,

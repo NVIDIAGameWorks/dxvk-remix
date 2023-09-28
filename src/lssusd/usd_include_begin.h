@@ -26,4 +26,5 @@
 #pragma warning(disable:4305) // argument truncation from double to float
 #pragma warning(disable:4800) // int to bool
 #pragma warning(disable:4996) // call to std::copy with parameters that may be unsafe
+#pragma warning(disable:4251) // struct 'std::atomic<T *>' needs to have dll-interface to be used by clients of class 
 #endif

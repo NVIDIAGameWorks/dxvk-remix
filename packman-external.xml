@@ -17,7 +17,7 @@
         <package name="rtx-remix-nvapi" version="1" />
     </dependency>
     <dependency name="nv_usd" linkPath="external/nv_usd">
-        <package name="rtx-remix-nv_usd" version="2" />
+        <package name="rtx-remix-nv_usd" version="5" />
     </dependency>
     <dependency name="omni_core_materials" linkPath="external/omni_core_materials">
         <package name="rtx-remix-omni_core_materials" version="4" />
