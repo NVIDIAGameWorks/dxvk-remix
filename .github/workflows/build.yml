@@ -52,3 +52,4 @@ jobs:
           _output\*.dll
           _output\*.pdb
           _output\*.txt
+          _output\usd\*
