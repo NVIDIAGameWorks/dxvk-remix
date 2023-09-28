@@ -50,7 +50,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.alwaysWaitForAsyncTextures|bool|False||
 |rtx.antiCulling.light.enable|bool|False|Enable Anti\-Culling for lights\.|
 |rtx.antiCulling.light.fovScale|float|1|Scalar of the FOV of lights Anti\-Culling Frustum\.|
-|rtx.antiCulling.light.numFramesToExtendLightLifetime|int|1000|Maximum number of frames to keep  when Anti\-Culling is enabled\. Make sure neither set this too low then the anti\-culling won't work, nor too high which will hurt the performance\.|
+|rtx.antiCulling.light.numFramesToExtendLightLifetime|int|1000|Maximum number of frames to keep  when Anti\-Culling is enabled\. Make sure not to set this too low \(then the anti\-culling won't work\), nor too high \(which will hurt the performance\)\.|
 |rtx.antiCulling.light.numLightsToKeep|int|1000|Maximum number of lights to keep when Anti\-Culling is enabled\.|
 |rtx.antiCulling.object.enable|bool|False|Extends lifetime of objects that go outside the camera frustum \(anti\-culling frustum\)\.|
 |rtx.antiCulling.object.enableHighPrecisionAntiCulling|bool|True|Use robust intersection check with Separate Axis Theorem\.<br>This method is slightly expensive but it effectively addresses object flickering issues that arise from corner cases in the fast intersection check method\.<br>Typically, it's advisable to enable this option unless it results in a notable performance drop; otherwise, the presence of flickering artifacts could significantly diminish the overall image quality\.|
@@ -93,6 +93,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.captureDebugImage|bool|False||
 |rtx.captureEnableMultiframe|bool|False|Enables multi\-frame capturing\. THIS HAS NOT BEEN MAINTAINED AND SHOULD BE USED WITH EXTREME CAUTION\.|
 |rtx.captureFramesPerSecond|int|24|Playback rate marked in the USD stage\.<br>Will eventually determine frequency with which game state is captured and written\. Currently every frame \-\- even those at higher frame rates \-\- are recorded\.|
+|rtx.captureHotKey|unknown type|unknown type|Hotkey to trigger a capture without bringing up the menu\.|
 |rtx.captureInstances|bool|True|If true, an instanced snapshot of the game scene will be captured and exported to a USD stage, in addition to all meshes, textures, materials, etc\.<br>If false, only meshes, etc will be captured\.|
 |rtx.captureMaxFrames|int|1|Max frames capturable when running a multi\-frame capture\. The capture can be toggled to completion manually\.|
 |rtx.captureMeshBlendWeightDelta|float|0.01|Inter\-frame blend weight min delta warrants new time sample\.|
@@ -108,7 +109,8 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.compositePrimaryIndirectSpecular|bool|True|Enables indirect lightning's specular signal for primary surfaces in the final composite\.|
 |rtx.compositeSecondaryCombinedDiffuse|bool|True|Enables combined direct and indirect lightning's diffuse signal for secondary surfaces in the final composite\.|
 |rtx.compositeSecondaryCombinedSpecular|bool|True|Enables combined direct and indirect lightning's specular signal for secondary surfaces in the final composite\.|
-|rtx.debugView.debugViewIdx|int|0||
+|rtx.debugView.composite.compositeViewIdx|int|0|Index of a composite view to show when Composite Debug View is enabled\. The index must be a a valid value from CompositeDebugView enumeration\. Value of 0 disables Composite Debug View\.|
+|rtx.debugView.debugViewIdx|int|0|Index of a debug view to show when Debug View is enabled\. The index must be a valid value from DEBUG\_VIEW\_\* macro defined indices\. Value of 0 disables Debug View\.|
 |rtx.debugView.displayType|int|0||
 |rtx.debugView.enablePseudoColor|bool|False|Enables RGB color coding of a scalar debug view value\.|
 |rtx.debugView.evMaxValue|int|4||
@@ -158,6 +160,9 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.di.permutationSamplingNthFrame|int|0|Apply permutation sampling when \(frameIdx % this == 0\), 0 means off\.|
 |rtx.di.spatialSamples|int|2|The number of spatial reuse samples in converged areas\.|
 |rtx.di.stealBoundaryPixelSamplesWhenOutsideOfScreen|bool|True|Steal screen boundary samples when a hit point is outside the screen\.|
+|rtx.displacement.displacementFactor|float|1|Scaling factor for all displacement maps|
+|rtx.displacement.enableDirectLighting|bool|True|Whether direct lighting accounts for displacement mapping|
+|rtx.displacement.enableIndirectLighting|bool|True|Whether indirect lighting accounts for displacement mapping|
 |rtx.dlfg.enable|bool|True|Enables DLSS 3\.0 frame generation which generates interpolated frames to increase framerate at the cost of slightly more latency\.|
 |rtx.dlssEnhancementDirectLightMaxValue|float|10|The maximum strength of direct lighting enhancement\.|
 |rtx.dlssEnhancementDirectLightPower|float|0.7|The overall strength of direct lighting enhancement\.|
@@ -185,6 +190,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.enableDirectLighting|bool|True|Enables direct lighting \(lighting directly from lights on to a surface\) on surfaces when set to true, otherwise disables it\.|
 |rtx.enableDirectTranslucentShadows|bool|False|Include OBJECT\_MASK\_TRANSLUCENT into primary visibility rays\.|
 |rtx.enableEmissiveBlendEmissiveOverride|bool|True|Override typical material emissive information on draw calls with any emissive blending modes to emulate their original look more accurately\.|
+|rtx.enableEmissiveBlendModeTranslation|bool|True|Treat incoming semi/additive D3D blend modes as emissive\.|
 |rtx.enableFallbackLightShaping|bool|False|Enables light shaping on the fallback light \(only used for non\-Distant light types\)\.|
 |rtx.enableFallbackLightViewPrimaryAxis|bool|False|Enables usage of the camera's view axis as the primary axis for the fallback light's shaping \(only used for non \- Distant light types\)\. Typically the shaping primary axis may be specified directly, but if desired it may be set to the camera's view axis for a "flashlight" effect\.|
 |rtx.enableFirstBounceLobeProbabilityDithering|bool|True|A flag to enable or disable screen\-space probability dithering on the first indirect lobe sampled\.<br>Generally sampling a diffuse, specular or other lobe relies on a random number generated against the probability of sampling each lobe, effectively focusing more rays/paths on lobes which matter more\.<br>This can cause issues however with denoisers which do not handle sparse stochastic signals \(like those from path tracing\) well as they may be expecting a more "complete" signal like those used in simpler branching ray tracing setups\.<br>To help solve this issue this option uses a temporal screenspace dithering based on the probability rather than a purely random choice to determine which lobe to sample from on the first indirect bounce\.<br>This as a result helps ensure there will always be a diffuse or specular sample within the dithering pattern's area and should help the denoising resolve a more stable result\.|
@@ -264,7 +270,6 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.gui.textureGridThumbnailScale|float|1|A float to set the scale of thumbnails while selecting textures\.<br>This will be scaled by the default value of 120 pixels\.<br>This value must always be greater than zero\.|
 |rtx.hashCollisionDetection.enable|bool|False|Enables hash collision detection\.|
 |rtx.hideSplashMessage|bool|False|A flag to disable the splash message indicating how to use Remix from appearing when the application starts\.<br>When set to true this message will be hidden, otherwise it will be displayed on every launch\.|
-|rtx.highlightedTexture|int|0|Hash of a texture that should be highlighted\.|
 |rtx.ignoreGameDirectionalLights|bool|False|Ignores any directional lights coming from the original game \(lights added via toolkit still work\)\.|
 |rtx.ignoreGamePointLights|bool|False|Ignores any point lights coming from the original game \(lights added via toolkit still work\)\.|
 |rtx.ignoreGameSpotLights|bool|False|Ignores any spot lights coming from the original game \(lights added via toolkit still work\)\.|
@@ -372,7 +377,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.opacityMicromap.cache.minBudgetSizeMB|int|512|Budget: Min Video Memory \[MB\] required\.<br>If the min amount is not available, then the budget will be set to 0\.|
 |rtx.opacityMicromap.cache.minFreeVidmemMBToNotAllocate|int|2560|Min Video Memory \[MB\] to keep free before allocating any for Opacity Micromaps\.|
 |rtx.opacityMicromap.cache.minUsageFrameAgeBeforeEviction|int|900|Min Opacity Micromap usage frame age before eviction\.<br>Opacity Micromaps unused longer than this can be evicted when freeing up memory for new Opacity Micromaps\.|
-|rtx.opacityMicromap.enable|bool|False|Enables Opacity Micromaps for geometries with textures that have alpha cutouts\.<br>This is generally the case for geometries such as fences, foliage, particles, etc\. \.<br>Opacity Micromaps greatly speed up raytracing of partially opaque triangles\.<br>Examples of scenes that benefit a lot: multiple trees with a lot of foliage,<br>a ground densely covered with grass blades or steam consisting of many particles\.|
+|rtx.opacityMicromap.enable|bool|True|Enables Opacity Micromaps for geometries with textures that have alpha cutouts\.<br>This is generally the case for geometries such as fences, foliage, particles, etc\. \.<br>Opacity Micromaps greatly speed up raytracing of partially opaque triangles\.<br>Examples of scenes that benefit a lot: multiple trees with a lot of foliage,<br>a ground densely covered with grass blades or steam consisting of many particles\.|
 |rtx.opacityMicromap.enableBakingArrays|bool|True|Enables baking of opacity textures into Opacity Micromap arrays per triangle\.|
 |rtx.opacityMicromap.enableBinding|bool|True|Enables binding of built Opacity Micromaps to bottom level acceleration structures\.|
 |rtx.opacityMicromap.enableBuilding|bool|True|Enables building of Opacity Micromap arrays\.|
