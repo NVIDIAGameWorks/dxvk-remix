@@ -48,6 +48,7 @@ namespace dxvk {
     Float,
     HashSet,
     HashVector,
+    IntVector,
     Vector2,
     Vector3,
     Vector2i,
@@ -64,6 +65,7 @@ namespace dxvk {
     Vector2i* v2i;
     fast_unordered_set* hashSet;
     std::vector<XXH64_hash_t>* hashVector;
+    std::vector<int32_t>* intVector;
     std::string* string;
     int64_t value;
     void* pointer;
@@ -157,6 +159,9 @@ namespace dxvk {
         case OptionType::HashVector:
           delete value.hashVector;
           break;
+        case OptionType::IntVector:
+          delete value.intVector;
+          break;
         case OptionType::Vector2:
           delete value.v2;
           break;
@@ -204,6 +209,7 @@ namespace dxvk {
       if constexpr (std::is_same_v<T, float>) return OptionType::Float;
       if constexpr (std::is_same_v<T, fast_unordered_set>) return OptionType::HashSet;
       if constexpr (std::is_same_v<T, std::vector<XXH64_hash_t>>) return OptionType::HashVector;
+      if constexpr (std::is_same_v<T, std::vector<int32_t>>) return OptionType::IntVector;
       if constexpr (std::is_same_v<T, Vector2>) return OptionType::Vector2;
       if constexpr (std::is_same_v<T, Vector3>) return OptionType::Vector3;
       if constexpr (std::is_same_v<T, Vector2i>) return OptionType::Vector2i;

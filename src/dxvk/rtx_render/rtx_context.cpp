@@ -1457,7 +1457,7 @@ namespace dxvk {
       srcImage, rtOutput, *m_common);
 
     if (captureScreenImage)
-      takeScreenshot("rtxImageDebugView", debugView.getDebugOutput()->image());
+      takeScreenshot("rtxImageDebugView", debugView.getFinalDebugOutput()->image());
   }
 
   void RtxContext::dispatchHighlighting(Resources::RaytracingOutput& rtOutput) {
