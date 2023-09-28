@@ -47,7 +47,7 @@
 #include <pxr/usd/usdLux/diskLight.h>
 #include <pxr/usd/usdLux/cylinderLight.h>
 #include <pxr/usd/usdLux/distantLight.h>
-#include "pxr/usd/usdLux/light.h"
+#include "pxr/usd/usdLux/lightapi.h"
 #include <pxr/usd/usdLux/blackbody.h>
 #include <pxr/usd/usdSkel/bindingAPI.h>
 #include <pxr/usd/usdShade/materialBindingAPI.h>
@@ -719,6 +719,14 @@ void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
   }
 }
 
+bool IsLight(const pxr::UsdPrim& lightPrim) {
+  return lightPrim.IsA<pxr::UsdLuxSphereLight>()
+      || lightPrim.IsA<pxr::UsdLuxRectLight>()
+      || lightPrim.IsA<pxr::UsdLuxDiskLight>()
+      || lightPrim.IsA<pxr::UsdLuxCylinderLight>()
+      || lightPrim.IsA<pxr::UsdLuxDistantLight>();
+}
+
 void UsdMod::Impl::processLight(Args& args, const pxr::UsdPrim& lightPrim) {
   static const pxr::TfToken kRadiusToken("radius");
   static const pxr::TfToken kWidthToken("width");
@@ -742,7 +750,7 @@ void UsdMod::Impl::processLight(Args& args, const pxr::UsdPrim& lightPrim) {
   // Lights being replaced are instances that need to exist in the same place as the drawcall they're replacing.
   // Meshes being replaced are assets that may have multiple instances, so any children need to be offset from the
   // asset root, instead of the world root.
-  if (args.rootPrim.IsA<pxr::UsdLuxLight>()) {
+  if (IsLight(args.rootPrim)) {
     localToRoot = pxr::GfMatrix4f(args.xformCache.GetLocalToWorldTransform(lightPrim));
   } else {
     bool resetXformStack; // unused
@@ -838,14 +846,14 @@ void UsdMod::Impl::processReplacement(Args& args) {
 
   if (args.rootPrim.IsA<pxr::UsdGeomMesh>()) {
     processPrim(args, args.rootPrim);
-  } else if (args.rootPrim.IsA<pxr::UsdLuxLight>()) {
+  } else if (IsLight(args.rootPrim)) {
     processLight(args, args.rootPrim);
   }
   auto descendents = args.rootPrim.GetFilteredDescendants(pxr::UsdPrimIsActive);
   for (auto desc : descendents) {
     if (desc.IsA<pxr::UsdGeomMesh>()) {
       processPrim(args, desc);
-    } else if (desc.IsA<pxr::UsdLuxLight>()) {
+    } else if (IsLight(desc)) {
       processLight(args, desc);
     }
   }

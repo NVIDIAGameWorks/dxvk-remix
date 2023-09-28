@@ -24,7 +24,7 @@ project(
   'dxvk', ['c', 'cpp'],
   version : 'remix-main',
   meson_version : '>= 0.58',
-  default_options : ['werror=true', 'b_vscrt=static_from_buildtype']
+  default_options : ['werror=true', 'b_vscrt=from_buildtype']
 )
 
 global_src_root_norm = meson.global_source_root().replace('\\', '/')
@@ -386,9 +386,8 @@ embedding_compiler = generator(xxd_exe,
 
 mdl_include_dir = include_directories(join_paths(meson.global_source_root(), 'external/omni_core_materials'))
 
-# we always use the release headers to avoid having two copies of Boost in the tree
-nv_usd_include_path = include_directories('external/nv_usd/release/include/')
-boost_include_path = include_directories('external/nv_usd/release/include/boost-1_70/')
+nv_usd_include_path = include_directories('external/nv_usd/include/')
+boost_include_path = include_directories('external/nv_usd/include/boost-1_78/')
 
 usd_include_paths = [nv_usd_include_path, boost_include_path] 
 
@@ -397,7 +396,7 @@ nvapi_lib_path = join_paths(meson.global_source_root(), 'external/nvapi/amd64')
 nvapi_lib = dxvk_compiler.find_library('nvapi64', dirs : nvapi_lib_path)
 
 # Cache lib locations
-usd_lib_path = meson.global_source_root() + '/external/nv_usd/'+ debug_or_release + '/lib/'
+usd_lib_path = meson.global_source_root() + '/external/nv_usd/'+ debug_or_release + '/'
 usd_lib = dxvk_compiler.find_library('usd_ms', dirs : usd_lib_path)
 if get_option('buildtype') == 'debug'
   tbb_lib = dxvk_compiler.find_library('tbb_debug', dirs : usd_lib_path)
@@ -435,7 +434,7 @@ if not dxvk_is_ninja
   recursive_copy_usd_target = custom_target('recursive_copy_usd',
     output           : ['recursive_copy_usd'],
     build_by_default : true,
-    command          : [recursive_copy_path,  usd_lib_path + 'usd/', output_dir + 'usd/'] )
+    command          : [recursive_copy_path,  usd_lib_path + '/usd/', output_dir + 'usd/'] )
 
   copy_usd_dll_target = custom_target('copy_usd_dll',
     output           : ['copy_usd_dll'],

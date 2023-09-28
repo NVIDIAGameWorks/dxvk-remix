@@ -25,6 +25,7 @@
 
 #include "usd_include_begin.h"
 #include <pxr/usd/ar/defaultResolver.h>
+#include <pxr/usd/ar/resolver.h>
 #include <pxr/usd/kind/registry.h>
 #include <pxr/usd/sdf/types.h>
 #include <pxr/usd/usd/attribute.h>
@@ -39,6 +40,7 @@
 #include <pxr/usd/usdGeom/camera.h>
 #include <pxr/usd/usdGeom/xform.h>
 #include <pxr/usd/usdGeom/xformCommonAPI.h>
+#include <pxr/usd/usdLux/lightapi.h>
 #include <pxr/usd/usdLux/sphereLight.h>
 #include <pxr/usd/usdLux/distantLight.h>
 #include <pxr/usd/usdLux/domeLight.h>
@@ -165,21 +167,27 @@ namespace lss {
 bool GameExporter::s_bMultiThreadSafety = false;
 std::mutex GameExporter::s_mutex;
 
+std::string computeLocalPath(const std::string& assetPath) {  
+  static pxr::ArResolver& resolver = pxr::ArGetResolver();
+  const std::string identifier = resolver.CreateIdentifierForNewAsset(assetPath);
+  pxr::ArResolvedPath resolvedPath = resolver.ResolveForNewAsset(identifier);
+  return resolvedPath.GetPathString();
+}
+
 bool GameExporter::loadUsdPlugins(const std::string& path) {
   static auto& pluginRegistry = pxr::PlugRegistry::GetInstance();
-  static pxr::ArDefaultResolver arDefResolver;
-  const auto fullPath = arDefResolver.ComputeLocalPath(path);
+  std::string fullPath = computeLocalPath(path);
   static auto plugins = pluginRegistry.RegisterPlugins(fullPath);
-  for(auto plugin : plugins) {
+  for (auto plugin : plugins) {
     if (plugin == nullptr)
       continue;
 
-    if(!plugin->IsLoaded() && !plugin->Load()) {
+    if (!plugin->IsLoaded() && !plugin->Load()) {
       return false;
     }
     dxvk::Logger::info("[GameExporter] Load plugin: " + plugin->GetName());
   }
-  return plugins.size() > 0;
+  return  plugins.size() > 0;
 }
 
 void GameExporter::exportUsd(const Export& exportData) {
@@ -270,9 +278,9 @@ void GameExporter::createApertureMdls(const std::string& baseExportPath) {
 
 void GameExporter::exportMaterials(const Export& exportData, ExportContext& ctx) {
   dxvk::Logger::debug("[GameExporter][" + exportData.debugId + "][exportMaterials] Begin");
-  static pxr::ArDefaultResolver arDefResolver;
   const std::string matDirPath = exportData.baseExportPath + "/" + commonDirName::matDir;
-  const std::string fullMaterialBasePath = arDefResolver.ComputeLocalPath(matDirPath);
+  const std::string fullMaterialBasePath = computeLocalPath(matDirPath);
+
   dxvk::env::createDirectory(matDirPath);
   for(const auto& [matId, matData] : exportData.materials) {
     // Build material stage
@@ -324,8 +332,7 @@ void GameExporter::exportMaterials(const Export& exportData, ExportContext& ctx)
     {
       const auto attr = shaderPrim.CreateAttribute(pxr::TfToken(attrName), pxr::SdfValueTypeNames->Asset, false, pxr::SdfVariabilityVarying);
       assert(attr);
-      static pxr::ArDefaultResolver arDefResolver;
-      const auto fullTexturePath = arDefResolver.ComputeLocalPath(relTexPath);
+      const auto fullTexturePath = computeLocalPath(relTexPath);
       const auto relToMaterialsTexPath = std::filesystem::relative(fullTexturePath,fullMaterialBasePath).string();
       const bool bSetSuccessful = attr.Set(pxr::SdfAssetPath(relToMaterialsTexPath));
       assert(bSetSuccessful);
@@ -399,11 +406,10 @@ void GameExporter::exportMaterials(const Export& exportData, ExportContext& ctx)
 
 void GameExporter::exportSkeletons(const Export& exportData, ExportContext& ctx) {
   dxvk::Logger::debug("[GameExporter][" + exportData.debugId + "][exportSkeletons] Begin");
-  static pxr::ArDefaultResolver arDefResolver;
   static const pxr::GfMatrix4d identity(1);
   const std::string relDirPath = commonDirName::skeletonDir + "/";
   const std::string dirPath = exportData.baseExportPath + "/" + relDirPath;
-  const std::string fullStagePath = arDefResolver.ComputeLocalPath(dirPath);
+  const std::string fullStagePath = computeLocalPath(dirPath);
   dxvk::env::createDirectory(dirPath);
   for (const auto& [meshId, mesh] : exportData.meshes) {
     if (mesh.numBones == 0) {
@@ -476,11 +482,10 @@ void GameExporter::exportSkeletons(const Export& exportData, ExportContext& ctx)
 
 void GameExporter::exportMeshes(const Export& exportData, ExportContext& ctx) {
   dxvk::Logger::debug("[GameExporter][" + exportData.debugId + "][exportMeshes] Begin");
-  static pxr::ArDefaultResolver arDefResolver;
   static const pxr::GfMatrix4d identity(1);
   const std::string relMeshDirPath = commonDirName::meshDir + "/";
   const std::string meshDirPath = exportData.baseExportPath + "/" + relMeshDirPath;
-  const std::string fullMeshStagePath = arDefResolver.ComputeLocalPath(meshDirPath);
+  const std::string fullMeshStagePath = computeLocalPath(meshDirPath);
   dxvk::env::createDirectory(meshDirPath);
   for(const auto& [meshId,mesh] : exportData.meshes) {
     assert(mesh.numVertices > 0);
@@ -517,7 +522,9 @@ void GameExporter::exportMeshes(const Export& exportData, ExportContext& ctx) {
 
     // Build mesh geometry prim under above xform
     const auto meshSchemaSdfPath = meshXformSdfPath.AppendChild(gTokMesh);
-    auto meshSchema = pxr::UsdGeomMesh::Define(meshStage, meshSchemaSdfPath);
+    pxr::UsdGeomMesh meshSchema = pxr::UsdGeomMesh::Define(meshStage, meshSchemaSdfPath);
+    pxr::UsdGeomPrimvarsAPI primvarsAPI(meshSchema.GetPrim());
+
     assert(meshSchema);
     auto meshVisibilityAttr = meshSchema.CreateVisibilityAttr();
     assert(meshVisibilityAttr);
@@ -562,7 +569,7 @@ void GameExporter::exportMeshes(const Export& exportData, ExportContext& ctx) {
     subdivAttr.Set(pxr::UsdGeomTokens->none);
     // Texture Coordinates
     static const pxr::TfToken kTokSt("st");
-    auto stAttr = meshSchema.CreatePrimvar(kTokSt, pxr::SdfValueTypeNames->TexCoord2fArray, pxr::UsdGeomTokens->vertex);
+    auto stAttr = primvarsAPI.CreatePrimvar(kTokSt, pxr::SdfValueTypeNames->TexCoord2fArray, pxr::UsdGeomTokens->vertex);
     assert(stAttr);
     exportBufferSet(reduce ? reduceBufferSet(mesh.buffers.texcoordBufs, reducedIdxBufSet) : mesh.buffers.texcoordBufs, stAttr);
     
@@ -610,7 +617,7 @@ void GameExporter::exportMeshes(const Export& exportData, ExportContext& ctx) {
       const auto shaderMatSchema = pxr::UsdShadeMaterial::Define(meshStage, matLssReference.ogSdfPath);
       assert(shaderMatSchema);
       auto shaderMatUsdReferences = shaderMatSchema.GetPrim().GetReferences();
-      const std::string fullMatStagePath = arDefResolver.ComputeLocalPath(matLssReference.stagePath);
+      const std::string fullMatStagePath = computeLocalPath(matLssReference.stagePath);
       const std::string relMatRefStagePath = std::filesystem::relative(fullMatStagePath,fullMeshStagePath).string();
       shaderMatUsdReferences.AddReference(relMatRefStagePath, matLssReference.ogSdfPath);
       pxr::UsdShadeMaterialBindingAPI(meshXformSchema.GetPrim()).Bind(shaderMatSchema);
@@ -854,15 +861,14 @@ void GameExporter::exportCamera(const Export& exportData, ExportContext& ctx) {
 }
 
 void GameExporter::exportSphereLights(const Export& exportData, ExportContext& ctx) {
-  static pxr::ArDefaultResolver arDefResolver;
   const std::string relLightDirPath = commonDirName::lightDir + "/";
   const std::string lightDirPath = exportData.baseExportPath + "/" + relLightDirPath;
-  const std::string fullLightStagePath = arDefResolver.ComputeLocalPath(lightDirPath);
+  const std::string fullLightStagePath = computeLocalPath(lightDirPath);
   dxvk::Logger::debug("[GameExporter][" + exportData.debugId + "][exportSphereLights] Begin");
   for(const auto& [id,sphereLightData] : exportData.sphereLights) {
     // Build light stage
     const std::string lightName = prefix::light + sphereLightData.lightName;
-    const std::string lightStagePath = lightDirPath + lightName + lss::ext::usd;
+    const std::string lightStagePath = lightDirPath + lightName + lss::ext::usda;
     pxr::UsdStageRefPtr lightStage = findOpenOrCreateStage(lightStagePath, true);
     assert(lightStage);
     setCommonStageMetaData(lightStage, exportData);
@@ -898,13 +904,17 @@ void GameExporter::exportSphereLights(const Export& exportData, ExportContext& c
       auto FocusExponentAttr = shaping.CreateShapingFocusAttr();
       assert(FocusExponentAttr);
       FocusExponentAttr.Set(sphereLightData.focusExponent);
+
+      shaping.Apply(sphereLight.GetPrim());
     }
 
     setTimeSampledXforms<false>(lightStage, lightAssetSdfPath, sphereLightData.firstTime, sphereLightData.finalTime, sphereLightData.xforms, exportData.meta);
-
-    setLightIntensityOnTimeSpan(lightStage, lightAssetSdfPath, sphereLightData.intensity, sphereLightData.firstTime, sphereLightData.finalTime, exportData.meta.numFramesCaptured);
     
-    lightStage->Save();
+    pxr::UsdLuxLightAPI lightAPI(sphereLight.GetPrim());
+    setLightIntensityOnTimeSpan(lightAPI, sphereLightData.intensity, sphereLightData.firstTime, sphereLightData.finalTime, exportData.meta.numFramesCaptured);
+    lightAPI.Apply(sphereLight.GetPrim());
+
+    lightStage->Save(); 
 
     // Cache light reference
     Reference lightLssReference;
@@ -916,7 +926,7 @@ void GameExporter::exportSphereLights(const Export& exportData, ExportContext& c
       const pxr::SdfPath fullSphereLightPath = gRootLightsPath.AppendElementString(lightName);
       auto sphereLightInstance = pxr::UsdLuxSphereLight::Define(ctx.instanceStage, fullSphereLightPath);
 
-      const std::string relLightStagePath = relLightDirPath + lightName + lss::ext::usd;
+      const std::string relLightStagePath = relLightDirPath + lightName + lss::ext::usda;
       auto lightInstanceUsdReferences = sphereLightInstance.GetPrim().GetReferences();
       lightInstanceUsdReferences.AddReference(relLightStagePath);
     }
@@ -950,7 +960,9 @@ void GameExporter::exportDistantLights(const Export& exportData, ExportContext& 
     assert(orientAttr);
     orientAttr.Set(directionQuatF);
 
-    setLightIntensityOnTimeSpan(ctx.instanceStage, distantLightPath, distantLightData.intensity, distantLightData.firstTime, distantLightData.finalTime, exportData.meta.numFramesCaptured);
+    pxr::UsdLuxLightAPI lightAPI(distantLightSchema.GetPrim());
+    setLightIntensityOnTimeSpan(lightAPI, distantLightData.intensity, distantLightData.firstTime, distantLightData.finalTime, exportData.meta.numFramesCaptured);
+    lightAPI.Apply(distantLightSchema.GetPrim());
   }
   dxvk::Logger::debug("[GameExporter][" + exportData.debugId + "][exportDistantLights] End");
 }
@@ -969,9 +981,8 @@ void GameExporter::exportSky(const Export& exportData, ExportContext& ctx) {
   auto textureAttr = domeLightSchema.CreateTextureFileAttr();
   assert(textureAttr);
 
-  static pxr::ArDefaultResolver arDefResolver;
-  const auto fullBasePath = arDefResolver.ComputeLocalPath(exportData.baseExportPath);
-  const auto fullTexturePath = arDefResolver.ComputeLocalPath(exportData.bakedSkyProbePath);
+  const auto fullBasePath = computeLocalPath(exportData.baseExportPath);
+  const auto fullTexturePath = computeLocalPath(exportData.bakedSkyProbePath);
   const auto relToMaterialsTexPath = std::filesystem::relative(fullTexturePath, fullBasePath).string();
   const bool bSetSuccessful = textureAttr.Set(pxr::SdfAssetPath(relToMaterialsTexPath));
   assert(bSetSuccessful);
@@ -1179,18 +1190,15 @@ void GameExporter::setVisibilityTimeSpan(const pxr::UsdStageRefPtr stage,
   }
 }
 
-void GameExporter::setLightIntensityOnTimeSpan(const pxr::UsdStageRefPtr stage,
-                                            const pxr::SdfPath sdfPath,
-                                            const float defaultLightIntensity,
-                                            const double firstTime,
-                                            const double finalTime,
-                                            const size_t numFramesCaptured) {
+void GameExporter::setLightIntensityOnTimeSpan(const pxr::UsdLuxLightAPI& luxLight,
+                                               const float defaultLightIntensity,
+                                               const double firstTime,
+                                               const double finalTime,
+                                               const size_t numFramesCaptured) {
   const bool isSingleFrame = numFramesCaptured == 1;
-  auto luxLightSchema = pxr::UsdLuxLight::Get(stage, sdfPath);
-  assert(luxLightSchema);
-  auto intensityAttr = luxLightSchema.GetIntensityAttr();
+  auto intensityAttr = luxLight.GetIntensityAttr();
   if(!intensityAttr) {
-    intensityAttr = luxLightSchema.CreateIntensityAttr();
+    intensityAttr = luxLight.CreateIntensityAttr();
   }
   assert(intensityAttr);
   if (isSingleFrame) {

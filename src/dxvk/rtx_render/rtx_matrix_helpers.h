@@ -23,7 +23,10 @@
 
 #include "MathLib/MathLib.h"
 #include "../util/util_matrix.h"
-#include "../../../external/nv_usd/release/include/pxr/base/arch/math.h"
+
+#include "../../lssusd/usd_include_begin.h"
+#include <pxr/base/arch/math.h>
+#include "../../lssusd/usd_include_end.h"
 
 static inline void copyDxvkMatrix4ToDouble4x4(const dxvk::Matrix4& src, double dest[][4]) {
   for (int i = 0; i < 4; i++) {
