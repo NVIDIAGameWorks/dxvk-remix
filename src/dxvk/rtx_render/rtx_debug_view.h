@@ -67,6 +67,12 @@ namespace dxvk {
       return m_debugView.view;
     }
 
+    const Rc<DxvkImageView>& getFinalDebugOutput() {
+      return static_cast<CompositeDebugView>(m_composite.compositeViewIdx()) != CompositeDebugView::Disabled
+        ? m_composite.compositeView.view
+        : m_debugView.view;
+    }
+
     const Rc<DxvkImageView>& getInstrumentation() {
       return m_instrumentation.view;
     }
@@ -88,6 +94,7 @@ namespace dxvk {
 
     DebugViewArgs getCommonDebugViewArgs(DxvkContext* ctx, const Resources::RaytracingOutput& rtOutput, DxvkObjects& common);
 
+    void generateCompositeImage(Rc<DxvkContext> ctx, Rc<DxvkImage>& outputImage);
     void createDownscaledResource(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent);
     void releaseDownscaledResource();
 
@@ -98,7 +105,7 @@ namespace dxvk {
     dxvk::DxvkDevice* m_device;
     std::chrono::time_point<std::chrono::system_clock> m_startTime;
 
-    RTX_OPTION_ENV("rtx.debugView", uint32_t, debugViewIdx, DEBUG_VIEW_DISABLED, "DXVK_RTX_DEBUG_VIEW_INDEX", "");
+    RTX_OPTION_ENV("rtx.debugView", uint32_t, debugViewIdx, DEBUG_VIEW_DISABLED, "DXVK_RTX_DEBUG_VIEW_INDEX", "Index of a debug view to show when Debug View is enabled. The index must be a valid value from DEBUG_VIEW_* macro defined indices. Value of 0 disables Debug View.");
     // Note: Used for preserving the debug view state only for ImGui purposes. Not to be used for anything else
     // and should not ever be set to the disabled debug view index.
     uint32_t m_lastDebugViewIdx;
@@ -108,6 +115,19 @@ namespace dxvk {
                                                                                                            "0: Nearest.\n"
                                                                                                            "1: Normalized Nearest.\n"
                                                                                                            "2: Normalized Linear.");
+
+    struct Composite {
+      friend class ImGUI; // <-- we want to modify these values directly.
+      friend class DebugView; // <-- we want to modify these values directly.
+
+      RTX_OPTION_ENV("rtx.debugView.composite", uint32_t, compositeViewIdx, CompositeDebugView::Disabled, "RTX_DEBUG_VIEW_COMPOSITE_VIEW_INDEX", "Index of a composite view to show when Composite Debug View is enabled. The index must be a a valid value from CompositeDebugView enumeration. Value of 0 disables Composite Debug View.");
+    
+      std::vector<uint32_t> debugViewIndices;
+      // Note: Used for preserving the debug view state only for ImGui purposes. Not to be used for anything else
+      // and should not ever be set to the disabled debug view index.
+      CompositeDebugView lastCompositeViewIdx = CompositeDebugView::FinalRenderWithMaterialProperties;
+      Resources::Resource compositeView;
+    } m_composite;
 
     // Common Display
     bool m_enableInfNanView = true;

@@ -210,6 +210,12 @@ namespace dxvk {
         {DEBUG_VIEW_SCROLLING_LINE,                                        "Scrolling Line"},
     } };
 
+  ImGui::ComboWithKey<CompositeDebugView> compositeDebugViewCombo = ImGui::ComboWithKey<CompositeDebugView>(
+    "Composite Debug View",
+    ImGui::ComboWithKey<CompositeDebugView>::ComboEntries { {
+        {CompositeDebugView::FinalRenderWithMaterialProperties, "Final Render + Material Properties"},
+    } });
+
   ImGui::ComboWithKey<DebugViewDisplayType> displayTypeCombo = ImGui::ComboWithKey<DebugViewDisplayType>(
   "Display Type",
   ImGui::ComboWithKey<DebugViewDisplayType>::ComboEntries{ {
@@ -292,6 +298,11 @@ namespace dxvk {
       m_lastDebugViewIdx = debugViewIdx();
     }
 
+    // Note: Set the last composite debug view index only if the debug view index was specified to be enabled to something (not disabled).
+    if (static_cast<CompositeDebugView>(Composite::compositeViewIdx()) != CompositeDebugView::Disabled) {
+      m_composite.lastCompositeViewIdx = static_cast<CompositeDebugView>(Composite::compositeViewIdx());
+    }
+
     displayTypeRef() = static_cast<DebugViewDisplayType>(std::min(static_cast<uint32_t>(displayType()), static_cast<uint32_t>(DebugViewDisplayType::Count) - 1));
   }
 
@@ -301,10 +312,12 @@ namespace dxvk {
     const ImGuiTreeNodeFlags collapsingHeaderFlags = ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_CollapsingHeader;
 
     // Note: Ensure the enable checkbox state matches what the debug index was set to externally (for example when loaded from settings).
-    bool enableDebugView = debugViewIdx() != DEBUG_VIEW_DISABLED;
+    bool enableCompositeDebugView = static_cast<CompositeDebugView>(Composite::compositeViewIdx()) != CompositeDebugView::Disabled;
+    bool enableDebugView = debugViewIdx() != DEBUG_VIEW_DISABLED || enableCompositeDebugView;
 
     // Note: Ensure the last debug view index wasn't incorrectly set to the disabled index somehow.
     assert(m_lastDebugViewIdx != DEBUG_VIEW_DISABLED);
+    assert(m_composite.lastCompositeViewIdx != CompositeDebugView::Disabled);
 
     if (ImGui::Button("Cache Current Image"))
       m_cacheCurrentImage = true;
@@ -314,12 +327,28 @@ namespace dxvk {
     ImGui::Checkbox("Enable Debug View", &enableDebugView);
 
     if (enableDebugView) {
-      // Note: Write to the last debug view index to prevent from being overridden when disabled and re-enabled.
-      debugViewCombo.getKey(&m_lastDebugViewIdx);
+      // Debug view is required for composite debug views, so put the enablement behind it
+      ImGui::Checkbox("Enable Composite Debug View", &enableCompositeDebugView);
 
-      debugViewIdxRef() = m_lastDebugViewIdx;
+      if (!enableCompositeDebugView) {
+        // Note: Write to the last debug view index to prevent it from being overridden when disabled and re-enabled.
+        debugViewCombo.getKey(&m_lastDebugViewIdx);
+
+        debugViewIdxRef() = m_lastDebugViewIdx;
+      }
     } else {
       debugViewIdxRef() = DEBUG_VIEW_DISABLED;
+      Composite::compositeViewIdxRef() = static_cast<uint32_t>(CompositeDebugView::Disabled);
+      enableCompositeDebugView = false;
+    }
+
+    if (enableCompositeDebugView) {
+      // Note: Write to the last composite debug view index to prevent it from being overridden when disabled and re-enabled.
+      compositeDebugViewCombo.getKey(&m_composite.lastCompositeViewIdx);
+
+      Composite::compositeViewIdxRef() = static_cast<uint32_t>(m_composite.lastCompositeViewIdx);
+    } else {
+      Composite::compositeViewIdxRef() = static_cast<uint32_t>(CompositeDebugView::Disabled);
     }
 
     ImGui::DragFloat4("Debug Knob", (float*)&m_debugKnob, 0.1f, -1000.f, 1000.f, "%.3f", sliderFlags);
@@ -469,6 +498,27 @@ namespace dxvk {
 
     RtxPass::onFrameBegin(ctx, downscaledExtent, targetExtent);
 
+    // Initialize composite view
+    if (static_cast<CompositeDebugView>(Composite::compositeViewIdx()) != CompositeDebugView::Disabled) {
+      switch (Composite::compositeViewIdx()) {
+      case CompositeDebugView::FinalRenderWithMaterialProperties:
+        m_composite.debugViewIndices = std::vector<uint32_t> { DEBUG_VIEW_POST_TONEMAP_OUTPUT, DEBUG_VIEW_ALBEDO, DEBUG_VIEW_SHADING_NORMAL, DEBUG_VIEW_PERCEPTUAL_ROUGHNESS, DEBUG_VIEW_EMISSIVE_RADIANCE };
+        break;
+      default:
+        break;
+      }
+
+      // Set active debug view index when composite view is active
+      if (static_cast<CompositeDebugView>(Composite::compositeViewIdx()) != CompositeDebugView::Disabled) {
+        if (!m_composite.debugViewIndices.empty()) {
+          uint32_t frameIndex = ctx->getDevice()->getCurrentFrameId();
+          debugViewIdxRef() = m_composite.debugViewIndices[frameIndex % m_composite.debugViewIndices.size()];
+        } else {
+          debugViewIdxRef() = DEBUG_VIEW_DISABLED;
+        }
+      }
+    }
+
     if (!isActive())
       return;
 
@@ -578,11 +628,12 @@ namespace dxvk {
                            DxvkObjects& common) {
 
     if (m_showCachedImage) {
-      if (m_cachedImage.image.ptr())
+      if (m_cachedImage.image.ptr()) {
         outputImage = m_cachedImage.image;
-    }
-    else if (debugViewIdx() != DEBUG_VIEW_DISABLED) {
-
+      }
+    } else if (debugViewIdx() != DEBUG_VIEW_DISABLED) {
+      // Dispatch a debug view pass
+    
       auto&& debugViewArgs = getCommonDebugViewArgs(ctx.ptr(), rtOutput, common);
 
       Rc<DxvkBuffer> cb = getDebugViewConstantsBuffer();
@@ -668,8 +719,12 @@ namespace dxvk {
       }
 
       outputImage = m_debugView.image;
+
+      // Generate a composite image
+      generateCompositeImage(ctx, outputImage);
     }
 
+    // Cache current output image
     if (m_cacheCurrentImage) {
       if (!m_cachedImage.image.ptr() ||
           m_cachedImage.image->info().extent.width != outputImage->info().extent.width ||
@@ -688,6 +743,91 @@ namespace dxvk {
 
       m_cacheCurrentImage = false;
     }
+
+  }
+
+  void DebugView::generateCompositeImage(Rc<DxvkContext> ctx,
+                                         Rc<DxvkImage>& outputImage) {
+    static CompositeDebugView sCompositeIdxUsedPreviousFrame = CompositeDebugView::Disabled;
+
+    // Blit the debug view image into the composite image 
+    if (static_cast<CompositeDebugView>(Composite::compositeViewIdx()) != CompositeDebugView::Disabled &&
+        !m_composite.debugViewIndices.empty()) {
+
+      // Ensure composite resource is valid
+      if (!m_composite.compositeView.image.ptr() ||
+            m_composite.compositeView.image->info().extent.width != outputImage->info().extent.width ||
+            m_composite.compositeView.image->info().extent.height != outputImage->info().extent.height ||
+            m_composite.compositeView.image->info().format != outputImage->info().format) {
+        m_composite.compositeView = Resources::createImageResource(ctx, "composite debug view", outputImage->info().extent, outputImage->info().format);
+      }
+
+      // Lookup src & dest image properties
+      DxvkImageCreateInfo srcDesc = m_debugView.image->info();
+      DxvkImageCreateInfo dstDesc = m_composite.compositeView.image->info();
+      const VkExtent3D srcExtent = srcDesc.extent;
+      const VkExtent3D dstExtent = srcDesc.extent;
+      const VkImageSubresourceLayers srcSubresourceLayers = { imageFormatInfo(srcDesc.format)->aspectMask, 0, 0, 1 };
+      const VkImageSubresourceLayers dstSubresourceLayers = { imageFormatInfo(dstDesc.format)->aspectMask, 0, 0, 1 };
+
+      // Calculate composite grid dimensions & current grid index 
+      const uint32_t numImages = m_composite.debugViewIndices.size();
+      uvec2 compositeGridDims;
+      compositeGridDims.x = static_cast<uint32_t>(ceilf(sqrtf(static_cast<float>(numImages))));
+      compositeGridDims.y = static_cast<uint32_t>(ceilf(static_cast<float>(numImages) / compositeGridDims.x));
+
+      uint32_t frameIndex = ctx->getDevice()->getCurrentFrameId();
+      uint32_t compositeIndex = frameIndex % m_composite.debugViewIndices.size();
+      uvec2 compositeGridIndex;
+      compositeGridIndex.y = compositeIndex / compositeGridDims.x;
+      compositeGridIndex.x = compositeIndex - compositeGridIndex.y * compositeGridDims.x;
+
+      VkExtent2D gridICellImageDims = {
+        dstExtent.width / compositeGridDims.x,
+        dstExtent.height / compositeGridDims.y
+      };
+
+      // Blit region extents
+      VkImageBlit region = {};
+      region.srcSubresource = srcSubresourceLayers;
+      region.srcOffsets[0] = VkOffset3D { 0,0,0 };
+      region.srcOffsets[1] = VkOffset3D { int32_t(srcExtent.width), int32_t(srcExtent.height), int32_t(srcExtent.depth) };
+      region.dstSubresource = dstSubresourceLayers;
+      region.dstOffsets[0] = {
+        int32_t(compositeGridIndex.x * gridICellImageDims.width),
+        int32_t(compositeGridIndex.y * gridICellImageDims.height),
+        0 };
+      region.dstOffsets[1] = {
+        int32_t(region.dstOffsets[0].x + gridICellImageDims.width),
+        int32_t(region.dstOffsets[0].y + gridICellImageDims.height),
+        int32_t(dstExtent.depth) };
+
+      // Clear the composite on first use for a given composite view type
+      if (static_cast<CompositeDebugView>(Composite::compositeViewIdx()) != sCompositeIdxUsedPreviousFrame) {
+        VkClearColorValue clearColor = { 0.f, 0.f, 0.f, 0.f };
+
+        VkImageSubresourceRange subRange = {};
+        subRange.layerCount = 1;
+        subRange.levelCount = 1;
+        subRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+
+        ctx->clearColorImage(m_composite.compositeView.image, clearColor, subRange);
+      }
+
+      VkComponentMapping identityMap = { VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY, VK_COMPONENT_SWIZZLE_IDENTITY };
+
+      // Blit debug view image to the composite image
+      // Using nearest filter as linear interpolation may produce invalid values for some debug view data (i.e. geometry hash)
+      ctx->blitImage(m_composite.compositeView.image, identityMap, m_debugView.image, identityMap, region, VK_FILTER_NEAREST);
+
+      outputImage = m_composite.compositeView.image;
+
+    } else if (m_composite.compositeView.image.ptr()) {
+      // Composite view is not used, release the resource
+      m_composite.compositeView.reset();
+    }
+
+    sCompositeIdxUsedPreviousFrame = static_cast<CompositeDebugView>(Composite::compositeViewIdx());
   }
 
   void DebugView::createDownscaledResource(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent) {
@@ -713,6 +853,8 @@ namespace dxvk {
   }
 
   bool DebugView::isActive() {
-    return debugViewIdx() != DEBUG_VIEW_DISABLED || m_showCachedImage || m_cacheCurrentImage;
+    return debugViewIdx() != DEBUG_VIEW_DISABLED || 
+      static_cast<CompositeDebugView>(m_composite.compositeViewIdx()) != CompositeDebugView::Disabled ||
+      m_showCachedImage || m_cacheCurrentImage;
   }
 } // namespace dxvk
