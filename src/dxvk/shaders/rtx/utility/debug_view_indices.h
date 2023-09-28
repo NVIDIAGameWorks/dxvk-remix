@@ -190,3 +190,8 @@
 
 // Anti-Culling Debugging
 #define DEBUG_VIEW_IS_INSIDE_FRUSTUM 700
+
+enum class CompositeDebugView : uint32_t {
+  Disabled = 0,
+  FinalRenderWithMaterialProperties
+};
