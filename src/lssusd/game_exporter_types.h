@@ -126,6 +126,7 @@ struct MeshBuffers {
 struct Mesh {
   std::string meshName;
   std::unordered_map<const char*, XXH64_hash_t> componentHashes;
+  std::unordered_map<const char*, bool> categoryFlags;
   uint32_t    numVertices = 0;
   uint32_t    numIndices = 0;
   bool        isDoubleSided = false;

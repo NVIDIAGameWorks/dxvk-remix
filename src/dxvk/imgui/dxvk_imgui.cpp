@@ -2017,6 +2017,12 @@ namespace dxvk {
       ImGui::DragFloat("Vertex Color Strength", &RtxOptions::Get()->vertexColorStrengthObject(), 0.001f, 0.0f, 1.0f);
       ImGui::Separator();
 
+      if (ImGui::CollapsingHeader("Heuristics", collapsingHeaderClosedFlags)) {
+        ImGui::Indent();
+        ImGui::Checkbox("Orthographic Is UI", &D3D9Rtx::orthographicIsUIObject());
+        ImGui::Unindent();
+      }
+
       if (ImGui::CollapsingHeader("Texture Parameters", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
         ImGui::DragFloat("Force Cutout Alpha", &RtxOptions::Get()->forceCutoutAlphaObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);

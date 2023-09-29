@@ -45,5 +45,4 @@ const pxr::SdfPath gRootLightsPath = gRootNodePath.AppendChild(gTokLights);
 const pxr::SdfPath gRootMeshesPath = gRootNodePath.AppendChild(gTokMeshes);
 const pxr::SdfPath gRootMaterialsPath = gRootNodePath.AppendChild(gTokLooks);
 const pxr::SdfPath gRootInstancesPath = gRootNodePath.AppendChild(gTokInstances);
-
 }

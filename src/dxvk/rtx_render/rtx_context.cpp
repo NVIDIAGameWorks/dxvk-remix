@@ -1029,43 +1029,6 @@ namespace dxvk {
     return isSERExtensionSupported && isSERReorderingEnabled;
   }
 
-  bool RtxContext::shouldBakeSky(const DrawCallState& drawCallState) {
-    if (drawCallState.minZ >= RtxOptions::skyMinZThreshold()) {
-      return true;
-    }
-
-    const XXH64_hash_t colorTextureHash = drawCallState.getMaterialData().colorTextures[0].getImageHash();
-
-    // NOTE: we use color texture hash for sky detection, however the replacement is hashed with
-    // the whole legacy material hash (which, as of 12/9/2022, equals to color texture hash). Adding a check just in case.
-    assert(colorTextureHash == drawCallState.getMaterialData().getHash() && "Texture or material hash method changed!");
-
-    if (drawCallState.getMaterialData().usesTexture()) {
-      if (!RtxOptions::Get()->isSkyboxTexture(colorTextureHash)) {
-        return false;
-      }
-    } else {
-      if (drawCallState.drawCallID >= RtxOptions::Get()->skyDrawcallIdThreshold()) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  bool RtxContext::shouldBakeTerrain(const DrawCallState& drawCallState) {
-    if (!TerrainBaker::needsTerrainBaking())
-      return false;
-
-    // Check if the hash is marked as a terrain texture
-    const XXH64_hash_t colorTextureHash = drawCallState.getMaterialData().colorTextures[0].getImageHash();
-    if (!(colorTextureHash && RtxOptions::Get()->isTerrainTexture(colorTextureHash))) {
-      return false;
-    }
-
-    return true;
-  }
-
   void RtxContext::checkShaderExecutionReorderingSupport() {
     const bool isSERSupported = checkIsShaderExecutionReorderingSupported(*m_device);
     
@@ -1788,7 +1751,7 @@ namespace dxvk {
   }
 
   void RtxContext::bakeTerrain(const DrawParameters& params, DrawCallState& drawCallState, const MaterialData** outOverrideMaterialData) {
-    if (!shouldBakeTerrain(drawCallState))
+    if (!drawCallState.testCategoryFlags(InstanceCategories::Terrain))
       return;
 
     DrawCallTransforms& transformData = drawCallState.transformData;

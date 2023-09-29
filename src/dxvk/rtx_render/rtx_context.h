@@ -131,9 +131,6 @@ namespace dxvk {
 
     static bool checkIsShaderExecutionReorderingSupported(DxvkDevice& device);
 
-    static bool shouldBakeSky(const DrawCallState& drawCallState);
-    static bool shouldBakeTerrain(const DrawCallState& drawCallState);
-
     const DxvkScInfo& getSpecConstantsInfo(VkPipelineBindPoint pipeline) const;
     void setSpecConstantsInfo(VkPipelineBindPoint pipeline, const DxvkScInfo& newSpecConstantInfo);
 
