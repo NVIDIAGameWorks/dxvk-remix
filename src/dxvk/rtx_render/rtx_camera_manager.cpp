@@ -56,27 +56,15 @@ namespace dxvk {
   }
 
   CameraType::Enum CameraManager::processCameraData(const DrawCallState& input) {
-    static auto forceSky = [](const DrawCallState& state) {
-      if (RtxContext::shouldBakeSky(state)) {
-        return true;
-      }
-      const XXH64_hash_t geometryHash = state.getHash(RtxOptions::Get()->GeometryAssetHashRule);
-      if (RtxOptions::Get()->isSkyboxGeometry(geometryHash)) {
-        return true;
-      }
-      return false;
-    };
-
     // If theres no real camera data here - bail
     if (isIdentityExact(input.getTransformData().viewToProjection)) {
-      return forceSky(input) ? CameraType::Sky : CameraType::Unknown;
+      return input.testCategoryFlags(InstanceCategories::Sky) ? CameraType::Sky : CameraType::Unknown;
     }
 
     switch (RtxOptions::Get()->fusedWorldViewMode()) {
     case FusedWorldViewMode::None:
-      if (input.getTransformData().objectToView == input.getTransformData().objectToWorld &&
-          !isIdentityExact(input.getTransformData().objectToView)) {
-        return forceSky(input) ? CameraType::Sky : CameraType::Unknown;
+      if (input.getTransformData().objectToView == input.getTransformData().objectToWorld && !isIdentityExact(input.getTransformData().objectToView)) {
+        return input.testCategoryFlags(InstanceCategories::Sky) ? CameraType::Sky : CameraType::Unknown;
       }
       break;
     case FusedWorldViewMode::View:
@@ -111,7 +99,7 @@ namespace dxvk {
 
     if (abs(shearX) > 0.01f || !isFovValid(fov)) {
       ONCE(Logger::warn("[RTX] CameraManager: rejected an invalid camera"));
-      return forceSky(input) ? CameraType::Sky : CameraType::Unknown;
+      return input.getCategoryFlags().test(InstanceCategories::Sky) ? CameraType::Sky : CameraType::Unknown;
     }
 
     const uint32_t frameId = m_device->getCurrentFrameId();
@@ -133,7 +121,7 @@ namespace dxvk {
     };
 
     auto isSky = [this](const DrawCallState& state, uint32_t frameId, bool zEnable, const auto& drawCallCameraPos) {
-      if (forceSky(state)) {
+      if (state.testCategoryFlags(InstanceCategories::Sky)) {
         return true;
       }
 

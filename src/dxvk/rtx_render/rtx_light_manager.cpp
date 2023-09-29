@@ -450,7 +450,7 @@ namespace dxvk {
   }
 
   void LightManager::addLight(const RtLight& rtLight, const DrawCallState& drawCallState) {
-    if (RtxOptions::Get()->shouldIgnoreLight(drawCallState.getMaterialData().getHash()))
+    if (drawCallState.getCategoryFlags().test(InstanceCategories::IgnoreLights))
       return;
 
     addLight(rtLight);

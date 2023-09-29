@@ -56,6 +56,7 @@
 #include "../util/util_watchdog.h"
 
 #include "../../lssusd/usd_mesh_importer.h"
+#include "../../lssusd/usd_common.h"
 
 namespace fs = std::filesystem;
 
@@ -98,6 +99,8 @@ private:
 
   void processLight(Args& args, const pxr::UsdPrim& lightPrim);
   void processReplacement(Args& args);
+
+  Categorizer processCategoryFlags(const pxr::UsdPrim& prim);
 
   // Returns next hash value compatible with geometry and drawcall hashing
   XXH64_hash_t getNextGeomHash() {
@@ -146,7 +149,6 @@ XXH64_hash_t getStrongestOpinionatedPathHash(const pxr::UsdPrim& prim) {
   // fall back to using the prim's path in replacements.usda.  Potentially worse performance, since it may lead to duplicates.
   std::string name = prim.GetPath().GetString();
   return XXH3_64bits(name.c_str(), name.size());
-
 }
 
 XXH64_hash_t getNamedHash(const std::string& name, const char* prefix, const size_t len) {
@@ -667,7 +669,8 @@ void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
 
   const XXH64_hash_t usdOriginHash = getStrongestOpinionatedPathHash(prim);
 
-  RasterGeometry* pTemp;
+
+  MeshReplacement* pTemp;
   if (!m_owner.m_replacements->getObject(usdOriginHash, pTemp)) {
     // First time seeing this mesh, then process it.
     if (!processMesh(prim, args)) {
@@ -697,18 +700,20 @@ void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
     }
   }
 
+  Categorizer categoryFlags = processCategoryFlags(prim);
+
   if (geomSubsets.empty()) {
-    RasterGeometry* pGeometryData;
+    MeshReplacement* pGeometryData;
     if (m_owner.m_replacements->getObject(usdOriginHash, pGeometryData)) {
-      AssetReplacement newReplacementMesh(pGeometryData, materialData, replacementToObject);
+      AssetReplacement newReplacementMesh(pGeometryData, materialData, categoryFlags, replacementToObject);
       args.meshes.push_back(newReplacementMesh);
     }
   } else {
     for (auto subset : geomSubsets) {
       const XXH64_hash_t usdChildOriginHash = getStrongestOpinionatedPathHash(subset.GetPrim());
-      RasterGeometry* childGeometryData;
+      MeshReplacement* childGeometryData;
       if (m_owner.m_replacements->getObject(usdChildOriginHash, childGeometryData)) {
-        AssetReplacement newReplacementMesh(childGeometryData, materialData, replacementToObject);
+        AssetReplacement newReplacementMesh(childGeometryData, materialData, categoryFlags, replacementToObject);
         MaterialData* mat = processMaterialUser(args, subset.GetPrim());
         if (mat) {
           newReplacementMesh.materialData = mat;
@@ -862,6 +867,11 @@ void UsdMod::Impl::processReplacement(Args& args) {
     int preserve = 0;
     args.rootPrim.GetAttribute(kPreserveOriginalToken).Get(&preserve);
     args.meshes[0].includeOriginal = preserve != 0;
+
+    // Read category flags if we include the original
+    if (args.meshes[0].includeOriginal) {
+      args.meshes[0].categories = processCategoryFlags(args.rootPrim);
+    }
   }
 }
 
@@ -1159,8 +1169,33 @@ void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cach
     numVariants++});
 }
 
+
+Categorizer UsdMod::Impl::processCategoryFlags(const pxr::UsdPrim& prim) {
+  Categorizer categoryFlags;
+  for (uint32_t i = 0; i < (uint32_t) InstanceCategories::Count; i++) {
+    const char* categoryName = getInstanceCategorySubKey((InstanceCategories) i);
+    pxr::TfToken token = pxr::TfToken(categoryName);
+    if (!prim.HasAttribute(token)) {
+      continue;
+    }
+
+    pxr::VtValue value;
+    if (!prim.GetAttribute(token).Get(&value)) {
+      continue;
+    }
+
+    categoryFlags.categoryExists.set((InstanceCategories) i);
+    if (value.Get<bool>()) {
+      categoryFlags.categoryFlags.set((InstanceCategories) i);
+    }
+  }
+
+  return categoryFlags;
+}
+
 bool UsdMod::Impl::processMesh(const pxr::UsdPrim& prim, Args& args) {
-  RasterGeometry geometryData;
+  MeshReplacement replacement;
+  RasterGeometry& geometryData = replacement.data;
 
   std::unique_ptr<lss::UsdMeshImporter> processedMesh;
 
@@ -1238,9 +1273,10 @@ bool UsdMod::Impl::processMesh(const pxr::UsdPrim& prim, Args& args) {
     }
 
     XXH64_hash_t usdOriginHash = getStrongestOpinionatedPathHash(submesh.prim);
-    RasterGeometry* childGeometryData;
+    MeshReplacement* childGeometryData;
     if (!m_owner.m_replacements->getObject(usdOriginHash, childGeometryData)) {
-      RasterGeometry& newGeomData = m_owner.m_replacements->storeObject(usdOriginHash, RasterGeometry(geometryData));
+      MeshReplacement& newReplacement = m_owner.m_replacements->storeObject(usdOriginHash, MeshReplacement(replacement));
+      RasterGeometry& newGeomData = newReplacement.data;
 
       const size_t indexDataSize = submesh.GetNumIndices() * sizeof(uint32_t);
       info.size = dxvk::align(indexDataSize, CACHE_LINE_SIZE);

@@ -411,7 +411,7 @@ namespace dxvk {
     // Handle Alpha Test State
 
     // Note: Even if the Alpha Test enable flag is set, we consider it disabled if the actual test type is set to always.
-    bool forceAlphaTest = RtxOptions::Get()->isCutoutTexture(drawCall.getMaterialData().getHash());
+    const bool forceAlphaTest = drawCall.getCategoryFlags().test(InstanceCategories::AlphaBlendToCutout);
     const bool alphaTestEnabled = forceAlphaTest || (AlphaTestType)drawCall.getMaterialData().alphaTestCompareOp != AlphaTestType::kAlways;
 
     // Note: Use the Opaque Material Data's alpha test state information directly if requested,
@@ -422,7 +422,7 @@ namespace dxvk {
     } else if (!useLegacyAlphaState) {
       const auto& opaqueMaterialData = materialData.getOpaqueMaterialData();
 
-      out.alphaTestType = opaqueMaterialData.getAlphaTestType();;
+      out.alphaTestType = opaqueMaterialData.getAlphaTestType();
       out.alphaTestReferenceValue = opaqueMaterialData.getAlphaTestReferenceValue();
     } else if (alphaTestEnabled) {
       out.alphaTestType = (AlphaTestType)drawCall.getMaterialData().alphaTestCompareOp;
@@ -551,11 +551,8 @@ namespace dxvk {
       // or through the manually specified alpha state.
 
       // Note: Particles are differentiated from typical objects with opacity by labeling their source material textures as being particle textures.
-      out.isParticle = RtxOptions::Get()->isParticleTexture(drawCall.getMaterialData().getHash());
-      out.isDecal = 
-        RtxOptions::Get()->isDecalTexture(drawCall.getMaterialData().getHash()) ||
-        RtxOptions::Get()->isDynamicDecalTexture(drawCall.getMaterialData().getHash()) ||
-        RtxOptions::Get()->isNonOffsetDecalTexture(drawCall.getMaterialData().getHash());
+      out.isParticle = drawCall.testCategoryFlags(InstanceCategories::Particle);
+      out.isDecal = drawCall.testCategoryFlags(DECAL_CATEGORY_FLAGS);
     } else {
       out.invertedBlend = false;
       out.emissiveBlend = false;
@@ -792,14 +789,15 @@ namespace dxvk {
                                        const RtSurfaceMaterial& material,
                                        const Matrix4& transform,
                                        const Matrix4& worldToProjection) {
+    currentInstance.m_categoryFlags = drawCall.getCategoryFlags();
 
     // setFrameLastUpdated() must be called first as it resets instance's state on a first call in a frame
     const bool isFirstUpdateThisFrame = currentInstance.setFrameLastUpdated(m_device->getCurrentFrameId());
 
     // These can change in the Runtime UI so need to check during update
-    currentInstance.m_isHidden = RtxOptions::Get()->isHideInstanceTexture(drawCall.getMaterialData().getHash());
-    currentInstance.m_isPlayerModel = RtxOptions::Get()->isPlayerModelTexture(drawCall.getMaterialData().getHash());
-    currentInstance.m_isWorldSpaceUI = RtxOptions::Get()->isWorldSpaceUiTexture(drawCall.getMaterialData().getHash());
+    currentInstance.m_isHidden = currentInstance.testCategoryFlags(InstanceCategories::Hidden);
+    currentInstance.m_isPlayerModel = currentInstance.testCategoryFlags(InstanceCategories::ThirdPersonPlayerModel);
+    currentInstance.m_isWorldSpaceUI = currentInstance.testCategoryFlags(InstanceCategories::WorldUI);
 
     // Hide the sky instance since it is not raytraced.
     // Sky mesh and material are only good for capture and replacement purposes.
@@ -859,10 +857,10 @@ namespace dxvk {
         currentInstance.surface.texgenMode = drawCall.getTransformData().texgenMode; // NOTE: Make it material data...
         currentInstance.surface.tFactor = drawCall.getMaterialData().tFactor;
         currentInstance.surface.alphaState = alphaState;
-        currentInstance.surface.isAnimatedWater = RtxOptions::Get()->isAnimatedWaterTexture(drawCall.getMaterialData().getHash());
+        currentInstance.surface.isAnimatedWater = currentInstance.testCategoryFlags(InstanceCategories::AnimatedWater);
         currentInstance.surface.associatedGeometryHash = drawCall.getHash(RtxOptions::Get()->GeometryAssetHashRule);
         currentInstance.surface.isTextureFactorBlend = drawCall.getMaterialData().isTextureFactorBlend;
-        currentInstance.surface.isMotionBlurMaskOut = RtxOptions::Get()->isMotionBlurMaskOutTexture(drawCall.getMaterialData().getHash());
+        currentInstance.surface.isMotionBlurMaskOut = currentInstance.testCategoryFlags(InstanceCategories::IgnoreMotionBlur);
         // Note: Skip the spritesheet adjustment logic in the surface interaction when using Ray Portal materials as this logic
         // is done later in the Surface Material Interaction (and doing it in both places will just double up the animation).
         currentInstance.surface.skipSurfaceInteractionSpritesheetAdjustment = (materialData.getType() == MaterialDataType::RayPortal);
@@ -913,8 +911,8 @@ namespace dxvk {
       {
         // Heuristic for MS5 - motion vectors on translucent surfaces cannot be trusted.  This will help with IQ, but need a longer term solution [TREX-634]
         const bool isMotionUnstable = material.getType() == RtSurfaceMaterialType::Translucent 
-                                   || RtxOptions::Get()->isParticleTexture(drawCall.getMaterialData().getHash())
-                                   || RtxOptions::Get()->isWorldSpaceUiTexture(drawCall.getMaterialData().getHash());
+                                   || currentInstance.testCategoryFlags(InstanceCategories::Particle)
+                                   || currentInstance.testCategoryFlags(InstanceCategories::WorldUI);
 
         const bool hasPreviousPositions = blas.modifiedGeometryData.previousPositionBuffer.defined() && !isMotionUnstable;
         const bool isFirstUpdateAfterCreation = currentInstance.isCreatedThisFrame(m_device->getCurrentFrameId()) && isFirstUpdateThisFrame;
@@ -927,7 +925,7 @@ namespace dxvk {
         // We cannot reliably determine the digits material because it's a dynamic texture rendered by vgui that contains all kinds of UI things.
         // So instead of offsetting the digits or making them live in unordered TLAS (either of which would solve the problem), we offset the screen background backwards.
         const float worldSpaceUiBackgroundOffset = RtxOptions::Get()->worldSpaceUiBackgroundOffset();
-        if (worldSpaceUiBackgroundOffset != 0.f && RtxOptions::Get()->isWorldSpaceUiBackgroundTexture(drawCall.getMaterialData().getHash())) {
+        if (worldSpaceUiBackgroundOffset != 0.f && currentInstance.testCategoryFlags(InstanceCategories::WorldMatte)) {
           objectToWorld[3] += objectToWorld[2] * worldSpaceUiBackgroundOffset;
         }
 
@@ -1095,10 +1093,11 @@ namespace dxvk {
         !currentInstance.m_isHidden &&
         currentInstance.getVkInstance().mask != 0) {
 
-      if (RtxOptions::Get()->isBeamTexture(currentInstance.getMaterialDataHash()))
+      if (currentInstance.testCategoryFlags(InstanceCategories::Beam)) {
         createBeams(currentInstance);
-      else
+      } else {
         createBillboards(currentInstance, cameraManager.getMainCamera().getDirection(false));
+      }
     }
   }
 
@@ -1437,7 +1436,7 @@ namespace dxvk {
     // Find the instance marked with the "playerBody" material
     const RtInstance* bodyInstance = nullptr;
     for (RtInstance* instance : m_playerModelInstances) {
-      if (RtxOptions::Get()->isPlayerModelBodyTexture(instance->getMaterialDataHash()))
+      if (instance->testCategoryFlags(InstanceCategories::ThirdPersonPlayerBody))
         bodyInstance = instance;
     }
 
@@ -1695,7 +1694,7 @@ namespace dxvk {
       return;
     }
 
-    if (RtxOptions::Get()->isNonOffsetDecalTexture(instance.getMaterialDataHash()))
+    if (instance.testCategoryFlags(InstanceCategories::DecalNoOffset))
       return;
 
     constexpr int indicesPerTriangle = 3;
@@ -1726,7 +1725,7 @@ namespace dxvk {
     if (!bufferData.indexData || !bufferData.positionData)
       return;
 
-    const bool isSingleOffsetDecalBatch = RtxOptions::isSingleOffsetDecalTexture(instance.getMaterialDataHash());
+    const bool isSingleOffsetDecalBatch = instance.testCategoryFlags(InstanceCategories::DecalSingleOffset);
     const uint32_t currentOffsetDecalBatchStartIndex = m_currentDecalOffsetIndex;
     const float offsetMultiplier = RtxOptions::Decals::offsetMultiplierMeters() * RtxOptions::Get()->getMeterToWorldUnitScale();
 
@@ -1741,7 +1740,7 @@ namespace dxvk {
       return offset;
     };
 
-    if (RtxOptions::Get()->isDynamicDecalTexture(instance.getMaterialDataHash())) {
+    if (instance.testCategoryFlags(InstanceCategories::DecalDynamic)) {
       // It's a dynamic decal. Find all triangle quads and offset each quad individually.
       int fanStartIndexOffset = 0;
       bool fanNormalFound = false;
