@@ -220,15 +220,40 @@ namespace dxvk {
       }
     }
 
-    const bool isCameraCut = getCamera(cameraType)
-                               .update(frameId,
-                                       input.getTransformData().worldToView,
-                                       input.getTransformData().viewToProjection,
-                                       fov,
-                                       aspectRatio,
-                                       nearPlane,
-                                       farPlane,
-                                       isLHS);
+    auto& camera = getCamera(cameraType);
+    auto cameraSequence = RtCameraSequence::getInstance();
+    bool shouldUpdateMainCamera = cameraType == CameraType::Main && camera.getLastUpdateFrame() != frameId;
+    bool isPlaying = RtCameraSequence::mode() == RtCameraSequence::Mode::Playback;
+    bool isBrowsing = RtCameraSequence::mode() == RtCameraSequence::Mode::Browse;
+    bool isCameraCut = false;
+    Matrix4 worldToView = input.getTransformData().worldToView;
+    Matrix4 viewToProjection = input.getTransformData().viewToProjection;
+    if (isPlaying || isBrowsing) {
+      if (shouldUpdateMainCamera) {
+        RtCamera::RtCameraSetting setting;
+        cameraSequence->getRecord(cameraSequence->currentFrame(), setting);
+        isCameraCut = camera.updateFromSetting(frameId, setting, 0);
+
+        if (isPlaying) {
+          cameraSequence->goToNextFrame();
+        }
+      }
+    } else {
+      isCameraCut = camera.update(frameId,
+                                          worldToView,
+                                          viewToProjection,
+                                          fov,
+                                          aspectRatio,
+                                          nearPlane,
+                                          farPlane,
+                                          isLHS);
+    }
+
+
+    if (shouldUpdateMainCamera && RtCameraSequence::mode() == RtCameraSequence::Mode::Record) {
+      auto& setting = camera.getSetting();
+      cameraSequence->addRecord(setting);
+    }
 
     // Register camera cut when there are significant interruptions to the view (like changing level, or opening a menu)
     if (isCameraCut && cameraType == CameraType::Main) {
