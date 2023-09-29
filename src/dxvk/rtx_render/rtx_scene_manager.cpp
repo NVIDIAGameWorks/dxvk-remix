@@ -221,7 +221,7 @@ namespace dxvk {
 
           // Only GC the objects inside the frustum to anti-frustum culling, this could cause significant performance impact
           // For the objects which can't be handled well with this algorithm, we will need game specific hash to force keeping them
-          if (isInsideFrustum && !RtxOptions::Get()->isAntiCullingTexture(instance->getMaterialDataHash())) {
+          if (isInsideFrustum && !instance->testCategoryFlags(InstanceCategories::IgnoreAntiCulling)) {
             instance->markAsInsideFrustum();
           } else {
             instance->markAsOutsideFrustum();
@@ -636,7 +636,9 @@ namespace dxvk {
     const bool highlightUnsafeReplacement = RtxOptions::Get()->getHighlightUnsafeReplacementModeEnabled() &&
         input->getGeometryData().indexBuffer.defined() && input->getGeometryData().vertexCount > input->getGeometryData().indexCount;
     if (!pReplacements->empty() && (*pReplacements)[0].includeOriginal) {
-      rootInstanceId = processDrawCallState(ctx, *input, overrideMaterialData);
+      DrawCallState newDrawCallState(*input);
+      newDrawCallState.categories = (*pReplacements)[0].categories.applyCategoryFlags(newDrawCallState.categories);
+      rootInstanceId = processDrawCallState(ctx, newDrawCallState, overrideMaterialData);
     }
     for (auto&& replacement : *pReplacements) {
       if (replacement.type == AssetReplacement::eMesh) {
@@ -650,9 +652,10 @@ namespace dxvk {
         transforms.texgenMode = TexGenMode::None;
 
         DrawCallState newDrawCallState(*input);
-        newDrawCallState.geometryData = *replacement.geometryData; // Note: Geometry Data replaced
+        newDrawCallState.geometryData = replacement.geometry->data; // Note: Geometry Data replaced
         newDrawCallState.transformData = transforms;
-          
+        newDrawCallState.categories = replacement.categories.applyCategoryFlags(newDrawCallState.categories);
+
         // Note: Material Data replaced if a replacement is specified in the Mesh Replacement
         if (replacement.materialData != nullptr) {
           overrideMaterialData = replacement.materialData;
@@ -1005,7 +1008,7 @@ namespace dxvk {
       transmittanceMeasureDistance = translucentMaterialData.getTransmittanceMeasurementDistance();
       emissiveColorConstant = translucentMaterialData.getEmissiveColorConstant();
       enableEmissive = translucentMaterialData.getEnableEmission();
-      emissiveIntensity = translucentMaterialData.getEmissiveIntensity();;
+      emissiveIntensity = translucentMaterialData.getEmissiveIntensity();
       isThinWalled = translucentMaterialData.getIsThinWalled();
       thinWallThickness = translucentMaterialData.getThinWallThickness();
       useDiffuseLayer = translucentMaterialData.getUseDiffuseLayer();

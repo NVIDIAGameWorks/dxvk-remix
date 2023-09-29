@@ -370,6 +370,34 @@ struct FogState {
   float density = 0.f;
 };
 
+enum class InstanceCategories : uint32_t {
+  WorldUI,
+  WorldMatte,
+  Sky,
+  Ignore,
+  IgnoreLights,
+  IgnoreAntiCulling,
+  IgnoreMotionBlur,
+  IgnoreOpacityMicromap,
+  Hidden,
+  Particle,
+  Beam,
+  DecalStatic,
+  DecalDynamic,
+  DecalSingleOffset,
+  DecalNoOffset,
+  AlphaBlendToCutout,
+  Terrain,
+  AnimatedWater,
+  ThirdPersonPlayerModel,
+  ThirdPersonPlayerBody,
+
+  Count,
+};
+
+using CategoryFlags = Flags<InstanceCategories>;
+
+#define DECAL_CATEGORY_FLAGS InstanceCategories::DecalStatic, InstanceCategories::DecalDynamic, InstanceCategories::DecalSingleOffset, InstanceCategories::DecalNoOffset
 
 struct DrawCallState {
   DrawCallState() = default;
@@ -406,6 +434,10 @@ struct DrawCallState {
     return fogState;
   }
 
+  const CategoryFlags getCategoryFlags() const {
+    return categories;
+  }
+
   bool finalizePendingFutures(const RtCamera* pLastCamera);
 
   bool hasTextureCoordinates() const {
@@ -428,6 +460,13 @@ struct DrawCallState {
 
   uint32_t drawCallID = 0;
 
+  void setupCategoriesForTexture();
+  void setupCategoriesForGeometry();
+  void setupCategoriesForHeuristics();
+
+  template<typename... InstanceCategories>
+  bool testCategoryFlags(InstanceCategories... cat) const { return categories.any(cat...); }
+
 private:
   friend class RtxContext;
   friend class SceneManager;
@@ -437,6 +476,8 @@ private:
   bool finalizeGeometryHashes();
   void finalizeGeometryBoundingBox();
   void finalizeSkinningData(const RtCamera* pLastCamera);
+
+  void setCategory(InstanceCategories category, bool set);
 
   RasterGeometry geometryData;
 
@@ -451,6 +492,8 @@ private:
   Future<SkinningData> futureSkinningData;
 
   FogState fogState;
+
+  CategoryFlags categories = 0;
 };
 
  // A BLAS and its data buffer that can be pooled and used for various geometries

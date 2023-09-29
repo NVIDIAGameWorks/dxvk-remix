@@ -586,7 +586,7 @@ namespace dxvk {
       return false;
     }
 
-    if (RtxOptions::Get()->shouldOpacityMicromapIgnoreTexture(instance.getMaterialDataHash())) {
+    if (instance.testCategoryFlags(InstanceCategories::IgnoreOpacityMicromap)) {
       return false;
     }
 

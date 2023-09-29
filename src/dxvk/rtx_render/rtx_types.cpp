@@ -23,6 +23,7 @@
 
 #include "rtx_types.h"
 #include "rtx_options.h"
+#include "rtx_terrain_baker.h"
 
 namespace dxvk {
   bool DrawCallState::finalizePendingFutures(const RtCamera* pLastCamera) {
@@ -34,6 +35,9 @@ namespace dxvk {
 
       // Skinning processing will be finalized here, if object requires skinning
       finalizeSkinningData(pLastCamera);
+
+      // Update any categories that require geometry hash
+      setupCategoriesForGeometry();
 
       return true;
     }
@@ -93,5 +97,80 @@ namespace dxvk {
       // Store the numBonesPerVertex in the RasterGeometry as well to allow it to be overridden
       geometryData.numBonesPerVertex = skinningData.numBonesPerVertex;
     }
+  }
+
+  void DrawCallState::setCategory(InstanceCategories category, bool doSet) {
+    if (doSet) {
+      categories.set(category);
+    }
+  }
+
+  void DrawCallState::setupCategoriesForTexture() {
+    // TODO (REMIX-231): It would probably be much more efficient to use a map of texture hash to category flags, rather
+    //                   than doing N lookups per texture hash for each category.
+    const XXH64_hash_t& textureHash = materialData.getColorTexture().getImageHash();
+
+    setCategory(InstanceCategories::WorldUI, lookupHash(RtxOptions::worldSpaceUiTextures(), textureHash));
+    setCategory(InstanceCategories::WorldMatte, lookupHash(RtxOptions::worldSpaceUiBackgroundTextures(), textureHash));
+
+    setCategory(InstanceCategories::Ignore, lookupHash(RtxOptions::ignoreTextures(), textureHash));
+    setCategory(InstanceCategories::IgnoreLights, lookupHash(RtxOptions::ignoreLights(), textureHash));
+    setCategory(InstanceCategories::IgnoreAntiCulling, lookupHash(RtxOptions::antiCullingTextures(), textureHash));
+    setCategory(InstanceCategories::IgnoreMotionBlur, lookupHash(RtxOptions::motionBlurMaskOutTextures(), textureHash));
+    setCategory(InstanceCategories::IgnoreOpacityMicromap, lookupHash(RtxOptions::opacityMicromapIgnoreTextures(), textureHash));
+
+    setCategory(InstanceCategories::Hidden, lookupHash(RtxOptions::hideInstanceTextures(), textureHash));
+
+    setCategory(InstanceCategories::Particle, lookupHash(RtxOptions::particleTextures(), textureHash));
+    setCategory(InstanceCategories::Beam, lookupHash(RtxOptions::beamTextures(), textureHash));
+
+    setCategory(InstanceCategories::DecalStatic, lookupHash(RtxOptions::decalTextures(), textureHash));
+    setCategory(InstanceCategories::DecalDynamic, lookupHash(RtxOptions::dynamicDecalTextures(), textureHash));
+    setCategory(InstanceCategories::DecalSingleOffset, lookupHash(RtxOptions::singleOffsetDecalTextures(), textureHash));
+    setCategory(InstanceCategories::DecalNoOffset, lookupHash(RtxOptions::nonOffsetDecalTextures(), textureHash));
+
+    setCategory(InstanceCategories::AnimatedWater, lookupHash(RtxOptions::animatedWaterTextures(), textureHash));
+
+    setCategory(InstanceCategories::ThirdPersonPlayerModel, lookupHash(RtxOptions::playerModelTextures(), textureHash));
+    setCategory(InstanceCategories::ThirdPersonPlayerBody, lookupHash(RtxOptions::playerModelBodyTextures(), textureHash));
+  }
+
+  void DrawCallState::setupCategoriesForGeometry() {
+    const XXH64_hash_t assetReplacementHash = getHash(RtxOptions::Get()->GeometryAssetHashRule);
+    setCategory(InstanceCategories::Sky, lookupHash(RtxOptions::skyBoxGeometries(), assetReplacementHash));
+  }
+
+  bool shouldBakeSky(const DrawCallState& drawCallState) {
+    if (drawCallState.minZ >= RtxOptions::skyMinZThreshold()) {
+      return true;
+    }
+
+    // NOTE: we use color texture hash for sky detection, however the replacement is hashed with
+    // the whole legacy material hash (which, as of 12/9/2022, equals to color texture hash). Adding a check just in case.
+    assert(drawCallState.getMaterialData().getColorTexture().getImageHash() == drawCallState.getMaterialData().getHash() && "Texture or material hash method changed!");
+
+    if (drawCallState.getMaterialData().usesTexture()) {
+      if (!lookupHash(RtxOptions::skyBoxTextures(), drawCallState.getMaterialData().getHash())) {
+        return false;
+      }
+    } else {
+      if (drawCallState.drawCallID >= RtxOptions::skyDrawcallIdThreshold()) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  bool shouldBakeTerrain(const DrawCallState& drawCallState) {
+    if (!TerrainBaker::needsTerrainBaking())
+      return false;
+
+    return lookupHash(RtxOptions::terrainTextures(), drawCallState.getMaterialData().getHash());
+  }
+
+  void DrawCallState::setupCategoriesForHeuristics() {
+    setCategory(InstanceCategories::Sky, shouldBakeSky(*this));
+    setCategory(InstanceCategories::Terrain, shouldBakeTerrain(*this));
   }
 } // namespace dxvk
