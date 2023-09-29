@@ -1409,6 +1409,13 @@ namespace dxvk {
       ImGui::Unindent();
     }
 
+
+    if (ImGui::CollapsingHeader("Camera Sequence", collapsingHeaderClosedFlags)) {
+      ImGui::Indent();
+      RtCameraSequence::getInstance()->showImguiSettings();
+      ImGui::Unindent();
+    }
+
     if (ImGui::CollapsingHeader("Developer Options", collapsingHeaderFlags)) {
       ImGui::Indent();
       ImGui::Checkbox("Enable", &RtxOptions::Get()->enableDeveloperOptionsObject());
@@ -2727,7 +2734,7 @@ namespace dxvk {
       ImGui::Unindent();
     }
 
-    if (ImGui::CollapsingHeader("Debug", collapsingHeaderClosedFlags)) {
+    if (ImGui::CollapsingHeader("Debug", collapsingHeaderFlags)) {
       ImGui::Indent();
       common->metaDebugView().showImguiSettings();
       ImGui::Unindent();

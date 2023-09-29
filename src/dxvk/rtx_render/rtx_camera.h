@@ -116,17 +116,8 @@ namespace dxvk
     uint32_t m_renderResolution[2] = { 0, 0 };
     uint32_t m_finalResolution[2] = { 0, 0 };
     float m_jitter[2] = { 0, 0 };
-    bool m_isLHS = false;
-    float m_nearPlane = 0.0f;
-    float m_farPlane = 0.0f;
     HaltonSamplePattern m_halton = {};
     bool m_firstUpdate = true;
-    int m_cameraShakeFrameCount = 0;
-    int m_cameraRotationFrameCount = 0;
-    Vector4 m_shakeOffset = { 0.0f,0.0f,0.0f,0.0f };
-    float m_shakeYaw = 0.0f, m_shakePitch = 0.0f;
-    float m_fov = 0.f;
-    float m_aspectRatio = 0.f;
     CameraType::Enum m_type;
 
     enum MatrixType {
@@ -169,6 +160,45 @@ namespace dxvk
       Count
     };
 
+    enum UpdateFlag {
+      IncrementShakingFrame = 0x1,
+      UpdateFreeCamera = 0x2,
+      UpdateJitterFrame = 0x4,
+      UpdateNormal = IncrementShakingFrame | UpdateFreeCamera | UpdateJitterFrame
+    };
+
+
+    struct RtCameraSetting {
+    public:
+      // Input matrix
+      Matrix4 worldToView;
+      Matrix4 viewToProjection;
+
+      // Free camera parameters
+      bool enableFreeCamera = false;
+      Vector3 freeCameraPosition;
+      float freeCameraYaw = 0.0f;
+      float freeCameraPitch = 0.0f;
+      bool freeCameraViewRelative = false;
+
+      // Jitter
+      float jitter[2];
+
+      // Shaking parameters
+      bool isCameraShaking = false;
+      int cameraShakeFrameCount = 0;
+      int cameraRotationFrameCount = 0;
+
+      // input parameter
+      uint32_t jitterFrameIdx = 0;
+      float fov;
+      float aspectRatio;
+      float nearPlane;
+      float farPlane;
+      bool isLHS;
+      uint32_t flags;
+    };
+
     // Note: All camera matricies stored as double precision. While this does not do much for some matricies (which were provided
     // by the application in floating point precision), it does help for preserving matrix stability on those which have been inverted,
     // as well as in code using these matrices which may do further inversions or combination operations. If such precision is not needed
@@ -205,24 +235,17 @@ namespace dxvk
       m_finalResolution[1] = other.m_finalResolution[1];
       m_jitter[0] = other.m_jitter[0];
       m_jitter[1] = other.m_jitter[1];
-      m_isLHS = other.m_isLHS;
-      m_nearPlane = other.m_nearPlane;
-      m_farPlane = other.m_farPlane;
       m_halton = other.m_halton;
       m_firstUpdate = other.m_firstUpdate;
-      m_cameraShakeFrameCount = other.m_cameraShakeFrameCount;
-      m_cameraRotationFrameCount = other.m_cameraRotationFrameCount;
-      m_shakeOffset = other.m_shakeOffset;
-      m_shakeYaw = other.m_shakeYaw;
-      m_fov = other.m_fov;
-      m_aspectRatio = other.m_aspectRatio;
+
+      m_context = other.m_context;
 
       return *this;
     }
 
     // Gets the Y axis (vertical) FoV of the camera's projection matrix in radians. Note this value will be positive always (even with strange camera types).
-    float getFov() const { return m_fov; }
-    float getAspectRatio() const { return m_aspectRatio; }
+    float getFov() const { return m_context.fov; }
+    float getAspectRatio() const { return m_context.aspectRatio; }
 
     const Matrix4d& getWorldToView(bool freecam = true) const;
     const Matrix4d& getPreviousWorldToView(bool freecam = true) const;
@@ -258,13 +281,14 @@ namespace dxvk
     const Vector3& getPreviousArtificialWorldOffset() const { return m_previousArtificalWorldOffset; }
 
     bool isValid(const uint32_t frameIdx) const { return m_frameLastTouched == frameIdx; }
+    uint32_t getLastUpdateFrame() { return m_frameLastTouched; }
 
     Vector3 getPosition(bool freecam = true) const;
     Vector3 getDirection(bool freecam = true) const;
     Vector3 getUp(bool freecam = true) const;
     Vector3 getRight(bool freecam = true) const;
-    float getNearPlane() const { return m_nearPlane; }
-    float getFarPlane() const { return m_farPlane; }
+    float getNearPlane() const { return m_context.nearPlane; }
+    float getFarPlane() const { return m_context.farPlane; }
 
     void setCameraType(CameraType::Enum type) {
       m_type = type;
@@ -282,16 +306,83 @@ namespace dxvk
     void setResolution(const uint32_t renderResolution[2], const uint32_t finalResolution[2]);
     bool update(
       uint32_t frameIdx, const Matrix4& newWorldToView, const Matrix4& newViewToProjection,
-      float fov, float aspectRatio, float nearPlane, float farPlane, bool isLHS
+      float fov, float aspectRatio, float nearPlane, float farPlane, bool isLHS, uint32_t flags = (uint32_t)UpdateFlag::UpdateNormal
     );
+    bool updateFromSetting(uint32_t frameIdx, const RtCameraSetting& setting, uint32_t flags = (uint32_t) UpdateFlag::UpdateNormal);
     void getJittering(float jitter[2]) const;
-    bool isLHS() const { return m_isLHS; }
+    bool isLHS() const { return m_context.isLHS; }
 
     Camera getShaderConstants() const;
     VolumeDefinitionCamera getVolumeShaderConstants() const;
 
     static void showImguiSettings();
+
+    const RtCameraSetting& getSetting();
+
   private:
-    Matrix4d getShakenViewToWorldMatrix(Matrix4d& viewToWorld);
+    Matrix4d getShakenViewToWorldMatrix(Matrix4d& viewToWorld, uint32_t flags);
+    Matrix4d updateFreeCamera(uint32_t flags);
+    void updateAntiCulling(float fov, float aspectRatio, float nearPlane, float farPlane, bool isLHS);
+    Matrix4d overrideNearPlane(const Matrix4d& modifiedViewToProj);
+
+    RtCameraSetting m_context;
+  };
+
+  class RtCameraSequence {
+  public:
+    enum class Mode {
+      None,
+      Record,
+      Playback,
+      Browse,
+    };
+
+    static RtCameraSequence* getInstance() {
+      if (s_instance == nullptr) {
+        s_instance = new RtCameraSequence();
+      }
+      return s_instance;
+    }
+
+    void reset() {
+      currentFrameRef() = 0;
+    }
+
+    void startRecord();
+    void addRecord(const RtCamera::RtCameraSetting& setting);
+    bool getRecord(int frame, RtCamera::RtCameraSetting& setting);
+
+    void goToNextFrame();
+
+    void showImguiSettings();
+
+    void load();
+    void save();
+
+    void startPlay();
+
+  private:
+    // File Blocks
+    // Allocate more space for future data
+    union Header {
+      int nElements;
+      char padding[256];
+    };
+
+    union FrameData {
+      RtCamera::RtCameraSetting setting;
+      char padding[1024];
+    };
+
+    RtCameraSequence() { }
+    ~RtCameraSequence() { }
+
+    RTX_OPTION_ENV("rtx.cameraSequence", std::string, filePath, "", "DXVK_CAMERA_SEQUENCE_PATH", "File path.");
+    RTX_OPTION_ENV("rtx.cameraSequence", bool, autoLoad, false, "DXVK_CAMERA_SEQUENCE_AUTO_LOAD", "Load camera sequence automatically.");
+    RTX_OPTION("rtx.cameraSequence", int, currentFrame, 0, "Current Frame.");
+    RTX_OPTION_ENV("rtx.cameraSequence", Mode, mode, Mode::None, "DXVK_CAMERA_SEQUENCE_MODE", "Current mode.");
+    
+    std::vector<RtCamera::RtCameraSetting> m_settings;
+    static RtCameraSequence* s_instance;
   };
 }
