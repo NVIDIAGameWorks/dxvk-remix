@@ -70,4 +70,8 @@ namespace dxvk {
 
   // A fast set for use ONLY with already hashed keys.
   struct fast_unordered_set : public std::unordered_set<XXH64_hash_t, XXH64_hash_passthrough> { };
+
+  static bool lookupHash(const fast_unordered_set& hashList, const XXH64_hash_t& h) {
+    return hashList.find(h) != hashList.end();
+  }
 }

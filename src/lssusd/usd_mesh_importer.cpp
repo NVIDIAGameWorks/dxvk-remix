@@ -30,6 +30,7 @@
 #include "hd/usd_mesh_util.h"
 #include "usd_mesh_samplers.h"
 #include "usd_mesh_importer.h"
+#include "game_exporter_common.h"
 
 #include "usd_include_begin.h"
 #include <pxr/pxr.h>

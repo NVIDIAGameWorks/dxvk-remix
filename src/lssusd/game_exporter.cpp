@@ -199,11 +199,16 @@ void GameExporter::exportUsd(const Export& exportData) {
   }
 }
 
+std::string getExtension(std::filesystem::path path) {
+  return path.extension().generic_string();
+}
+
 void GameExporter::exportUsdInternal(const Export& exportData) {
   dxvk::Logger::info("[GameExporter][" + exportData.debugId + "] Export start");
   ExportContext ctx;
   lss::GameExporter::createApertureMdls(exportData.baseExportPath);
   ctx.instanceStage = (exportData.bExportInstanceStage) ? createInstanceStage(exportData) : pxr::UsdStageRefPtr();
+  ctx.extension = (exportData.bExportInstanceStage) ? getExtension(exportData.instanceStagePath) : lss::ext::usd;
   exportMaterials(exportData, ctx);
   exportMeshes(exportData, ctx);
   exportSkeletons(exportData, ctx);
@@ -285,7 +290,7 @@ void GameExporter::exportMaterials(const Export& exportData, ExportContext& ctx)
   for(const auto& [matId, matData] : exportData.materials) {
     // Build material stage
     const std::string matName = prefix::mat + matData.matName;
-    const std::string matStageName = matName + lss::ext::usd;
+    const std::string matStageName = matName + ctx.extension;
     const std::string matStagePath = matDirPath + matStageName;
     pxr::UsdStageRefPtr matStage = findOpenOrCreateStage(matStagePath, true);
     assert(matStage);
@@ -392,7 +397,7 @@ void GameExporter::exportMaterials(const Export& exportData, ExportContext& ctx)
       auto matInstanceSchema = pxr::UsdShadeMaterial::Define(ctx.instanceStage, matInstanceSdfPath);
       assert(matInstanceSchema);
       
-      const std::string relMeshStagePath = commonDirName::matDir + matName + lss::ext::usd;
+      const std::string relMeshStagePath = commonDirName::matDir + matName + ctx.extension;
       auto matInstanceUsdReferences = matInstanceSchema.GetPrim().GetReferences();
       matInstanceUsdReferences.AddReference(relMeshStagePath, matSdfPath);
       
@@ -418,7 +423,7 @@ void GameExporter::exportSkeletons(const Export& exportData, ExportContext& ctx)
 
     // Build skeleton stage
     const std::string name = prefix::skeleton + mesh.meshName;
-    const std::string stagePath = dirPath + name + lss::ext::usd;
+    const std::string stagePath = dirPath + name + ctx.extension;
     pxr::UsdStageRefPtr stage = findOpenOrCreateStage(stagePath, true);
     assert(stage);
     setCommonStageMetaData(stage, exportData);
@@ -469,7 +474,7 @@ void GameExporter::exportSkeletons(const Export& exportData, ExportContext& ctx)
     // Build meshSchema prim on instance stage
     if (ctx.instanceStage != nullptr) {
       const std::string mesh_name = prefix::mesh + mesh.meshName;
-      const std::string relSkelStagePath = relDirPath + name + lss::ext::usd;
+      const std::string relSkelStagePath = relDirPath + name + ctx.extension;
       const pxr::SdfPath skelInstancePath = gRootMeshesPath.AppendElementString(mesh_name).AppendElementString(gTokSkel);
 
       auto skelSchema = pxr::UsdSkelSkeleton::Define(ctx.instanceStage, skelInstancePath);
@@ -495,7 +500,7 @@ void GameExporter::exportMeshes(const Export& exportData, ExportContext& ctx) {
 
     // Build mesh stage
     const std::string meshName = prefix::mesh + mesh.meshName;
-    const std::string meshStagePath = meshDirPath + meshName + lss::ext::usd;
+    const std::string meshStagePath = meshDirPath + meshName + ctx.extension;
     pxr::UsdStageRefPtr meshStage = findOpenOrCreateStage(meshStagePath, true);
     assert(meshStage);
     setCommonStageMetaData(meshStage, exportData);
@@ -547,6 +552,10 @@ void GameExporter::exportMeshes(const Export& exportData, ExportContext& ctx) {
     assert(faceVertexCountsAttr);
     faceVertexCountsAttr.Set(faceVertexCounts);
 
+    for (auto& pair : mesh.categoryFlags) {
+      const auto attribute = meshSchema.GetPrim().CreateAttribute(pxr::TfToken(pair.first), pxr::SdfValueTypeNames->Bool, true, pxr::SdfVariabilityUniform);
+      attribute.Set(pxr::VtValue(pair.second));
+    }
     // Indices
     const bool reduce = exportData.meta.bReduceMeshBuffers;
     ReducedIdxBufSet reducedIdxBufSet = reduce ? reduceIdxBufferSet(mesh.buffers.idxBufs) : ReducedIdxBufSet();
@@ -650,7 +659,7 @@ void GameExporter::exportMeshes(const Export& exportData, ExportContext& ctx) {
       }
       assert(meshInstanceXformSchema);
       
-      const std::string relMeshStagePath = relMeshDirPath + meshName + lss::ext::usd;
+      const std::string relMeshStagePath = relMeshDirPath + meshName + ctx.extension;
       auto meshInstanceUsdReferences = meshInstanceXformSchema.GetPrim().GetReferences();
       meshInstanceUsdReferences.AddReference(relMeshStagePath);
 
@@ -868,7 +877,7 @@ void GameExporter::exportSphereLights(const Export& exportData, ExportContext& c
   for(const auto& [id,sphereLightData] : exportData.sphereLights) {
     // Build light stage
     const std::string lightName = prefix::light + sphereLightData.lightName;
-    const std::string lightStagePath = lightDirPath + lightName + lss::ext::usda;
+    const std::string lightStagePath = lightDirPath + lightName + ctx.extension;
     pxr::UsdStageRefPtr lightStage = findOpenOrCreateStage(lightStagePath, true);
     assert(lightStage);
     setCommonStageMetaData(lightStage, exportData);
@@ -926,7 +935,7 @@ void GameExporter::exportSphereLights(const Export& exportData, ExportContext& c
       const pxr::SdfPath fullSphereLightPath = gRootLightsPath.AppendElementString(lightName);
       auto sphereLightInstance = pxr::UsdLuxSphereLight::Define(ctx.instanceStage, fullSphereLightPath);
 
-      const std::string relLightStagePath = relLightDirPath + lightName + lss::ext::usda;
+      const std::string relLightStagePath = relLightDirPath + lightName + ctx.extension;
       auto lightInstanceUsdReferences = sphereLightInstance.GetPrim().GetReferences();
       lightInstanceUsdReferences.AddReference(relLightStagePath);
     }

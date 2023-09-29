@@ -39,6 +39,7 @@
 
 #include "../../lssusd/game_exporter.h"
 #include "../../lssusd/game_exporter_paths.h"
+#include "../../lssusd/usd_common.h"
 #include "../../lssusd/usd_include_begin.h"
 #include <pxr/base/gf/matrix4f.h>
 #include <pxr/base/gf/rotation.h>
@@ -353,7 +354,7 @@ namespace dxvk {
       if (m_cap.bCaptureInstances && !bIsNew && (bPointsUpdate || bNormalsUpdate || bIndexUpdate)) {
         const BlasEntry* pBlas = rtInstancePtr->getBlas();
         assert(pBlas != nullptr);
-        captureMesh(ctx, instance.meshHash, *pBlas, false, bPointsUpdate, bNormalsUpdate, bIndexUpdate);
+        captureMesh(ctx, instance.meshHash, *pBlas, rtInstancePtr->getCategoryFlags(), false, bPointsUpdate, bNormalsUpdate, bIndexUpdate);
       }
       if (m_cap.bCaptureInstances && (bIsNew || bXformUpdate)) {
         instance.lssData.xforms.push_back({ m_cap.currentFrameNum, matrix4ToGfMatrix4d(rtInstancePtr->getTransform()) });
@@ -392,7 +393,7 @@ namespace dxvk {
       instanceNum = m_cap.meshes[meshHash]->instanceCount++;
     }
     if (bIsNewMesh) {
-      captureMesh(ctx, meshHash, *pBlas, true, true, true, true);
+      captureMesh(ctx, meshHash, *pBlas, rtInstance.getCategoryFlags(), true, true, true, true);
     }
 
     const XXH64_hash_t instanceId = rtInstance.getId();
@@ -425,9 +426,12 @@ namespace dxvk {
     Logger::debug("[GameCapturer][" + m_cap.idStr + "][Mat:" + matName + "] New");
   }
 
+
+
   void GameCapturer::captureMesh(const Rc<DxvkContext> ctx,
                                  const XXH64_hash_t currentMeshHash,
                                  const BlasEntry& blas,
+                                 const CategoryFlags& flags,
                                  const bool bIsNewMesh,
                                  const bool bCapturePositions,
                                  const bool bCaptureNormals,
@@ -463,6 +467,10 @@ namespace dxvk {
       for (uint32_t i = 0; i < (uint32_t) HashComponents::Count; i++) {
         const HashComponents component = (HashComponents) i;
         pMesh->lssData.componentHashes[getHashComponentName(component)] = geomData.hashes[component];
+      }
+      for (uint32_t i = 0; i < (uint32_t) InstanceCategories::Count; i++) {
+        const InstanceCategories flag = (InstanceCategories) i;
+        pMesh->lssData.categoryFlags[getInstanceCategorySubKey(flag)] = flags.test(flag);
       }
       pMesh->lssData.numVertices = numVertices;
       pMesh->lssData.numIndices = numIndices;

@@ -408,7 +408,7 @@ void resolveVertex(
       polymorphicSurfaceMaterialInteractionCreateInternal(opaqueSurfaceMaterialInteraction);
 
     // If the current surface is a decal, store it and continue resolving
-    if (decalMaterialBlending && surfaceIsDecal(surface) && resolveVertexState.continueResolving) 
+    if (decalMaterialBlending && surfaceIsDecal(surface) && resolveVertexState.continueResolving)
     {
       if (opaqueSurfaceMaterialInteraction.opacity > 0.f)
       {

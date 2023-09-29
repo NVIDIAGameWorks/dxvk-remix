@@ -50,6 +50,7 @@ private:
     pxr::SdfPath instanceSdfPath;
   };
   struct ExportContext {
+    std::string extension;
     pxr::UsdStageRefPtr instanceStage;
     IdMap<Reference> matReferences;
     IdMap<Reference> meshReferences;

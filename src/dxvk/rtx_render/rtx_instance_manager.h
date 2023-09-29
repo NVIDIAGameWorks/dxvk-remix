@@ -122,6 +122,10 @@ public:
 
   VkGeometryFlagsKHR getGeometryFlags() const { return m_geometryFlags; }
 
+  template<typename... InstanceCategories>
+  bool testCategoryFlags(InstanceCategories... cat) const { return m_categoryFlags.any(cat...); }
+  CategoryFlags getCategoryFlags() const { return m_categoryFlags; }
+
   bool isViewModel() const;
   bool isViewModelNonReference() const;
   bool isViewModelReference() const;
@@ -174,6 +178,8 @@ private:
   // Used decal offsetting parameters
   XXH64_hash_t m_lastDecalOffsetVertexDataVersion = kEmptyHash;
   uint32_t m_currentDecalOffsetDifference = UINT32_MAX;
+
+  CategoryFlags m_categoryFlags;
 
 public:
 

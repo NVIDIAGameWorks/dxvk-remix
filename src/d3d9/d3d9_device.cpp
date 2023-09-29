@@ -7014,7 +7014,7 @@ namespace dxvk {
       };
       auto isTerrainTextureAtStage = [&getTextureHashForStage](uint32_t stageIdx) {
         XXH64_hash_t texHash = getTextureHashForStage(stageIdx);
-        return texHash != kEmptyHash && RtxOptions::Get()->isTerrainTexture(texHash);
+        return texHash != kEmptyHash && lookupHash(RtxOptions::terrainTextures(), texHash);
       };
       bool primaryTextureStageIsTerrain = false;
       // NV-DXVK end
@@ -7079,7 +7079,7 @@ namespace dxvk {
         auto shouldOmitTextureAtStage = [&getTextureHashForStage](uint32_t stageIdx) {
           XXH64_hash_t texHash = getTextureHashForStage(stageIdx);
           return texHash != kEmptyHash
-            && (RtxOptions::Get()->shouldIgnoreTexture(texHash) || RtxOptions::Get()->isLightmapTexture(texHash));
+            && (lookupHash(RtxOptions::ignoreTextures(), texHash) || lookupHash(RtxOptions::lightmapTextures(), texHash));
         };
         const uint32_t lastStageIdx = idx - 1;
         if (shouldOmitTextureAtStage(lastStageIdx)) {
