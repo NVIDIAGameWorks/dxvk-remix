@@ -143,22 +143,32 @@ static bool boundingBoxIntersectsFrustumSATInternal(
   const bool isLHS,                            // Is the camera frustum left-hand system
   const bool isInfFrustum) {                   // Is the camera frustum has infinity far plane
 
-  // Calculate 3 OBB axis (And these are also treated as OBB edge vectors)
+  // Calculate 3 normalized Oriented Bounding-Box(OBB) axis, which are 3 normals that are not on the same line of OBB faces.
+  // These are also treated as OBB edge vectors, because they are all aligned to these 3 axis and no need to check again.
   const dxvk::Vector4 obbCenterView(objectToView * dxvk::Vector4((minPos + maxPos) * 0.5f, 1.0f));
 
+  // Note: When the OBB has same coordinate value on 1 or more dimensions, it will become a plane/line/point.
+  //       In such case, we still need to check the axis of the missing dimension(s).
+  //       So, we just set the unit length axis to represent axis direction (normalized axis), then revert extent back to 0 after transformation.
+  const dxvk::Vector3 extentScale = {
+    maxPos.x - minPos.x > FLT_EPSILON ? 0.5f : 0.0f,
+    maxPos.y - minPos.y > FLT_EPSILON ? 0.5f : 0.0f,
+    maxPos.z - minPos.z > FLT_EPSILON ? 0.5f : 0.0f
+  };
   const dxvk::Vector4 obbAxisView[3] = {
-    objectToView * dxvk::Vector4(maxPos.x - minPos.x, 0.0f, 0.0f, 0.0f),
-    objectToView * dxvk::Vector4(0.0f, maxPos.y - minPos.y, 0.0f, 0.0f),
-    objectToView * dxvk::Vector4(0.0f, 0.0f, maxPos.z - minPos.z, 0.0f)
+    objectToView * (extentScale.x != 0.0f ? dxvk::Vector4(maxPos.x - minPos.x, 0.0f, 0.0f, 0.0f) : dxvk::Vector4(1.0f, 0.0f, 0.0f, 0.0f)),
+    objectToView * (extentScale.y != 0.0f ? dxvk::Vector4(0.0f, maxPos.y - minPos.y, 0.0f, 0.0f) : dxvk::Vector4(0.0f, 1.0f, 0.0f, 0.0f)),
+    objectToView * (extentScale.z != 0.0f ? dxvk::Vector4(0.0f, 0.0f, maxPos.z - minPos.z, 0.0f) : dxvk::Vector4(0.0f, 0.0f, 1.0f, 0.0f))
   };
   dxvk::Vector4 obbExtents(dxvk::length(obbAxisView[0]), dxvk::length(obbAxisView[1]), dxvk::length(obbAxisView[2]), 0.0f);
 
+  // Calculate the view space OBB extent.
+  // Note: We scale the extents here to avoid dividing 0.
   const dxvk::Vector4 obbAxisNormalized[3] = {
-    obbExtents.x != 0.0f ? obbAxisView[0] / obbExtents.x : obbAxisView[0],
-    obbExtents.y != 0.0f ? obbAxisView[1] / obbExtents.y : obbAxisView[1],
-    obbExtents.z != 0.0f ? obbAxisView[2] / obbExtents.z : obbAxisView[2]
+    obbAxisView[0] / obbExtents.x * extentScale.x,
+    obbAxisView[1] / obbExtents.y * extentScale.y,
+    obbAxisView[2] / obbExtents.z * extentScale.z
   };
-  obbExtents *= 0.5f;
 
   // Project OBB extent to axis
   auto calProjectedObbExtent = [&](const dxvk::Vector4& axis) -> float {

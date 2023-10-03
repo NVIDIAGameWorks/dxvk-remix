@@ -232,23 +232,30 @@ namespace dxvk {
             // This is used to handle cases:
             //   1. The game frustum is different to our frustum
             //   2. The game culling method is NOT frustum culling
+            const AxisAlignedBoundingBox& boundingBox = instance->getBlas()->input.getGeometryData().boundingBox;
             const XXH64_hash_t materialHash = instance->getMaterialDataHash();
             const Vector3 pos = instance->getWorldPosition();
             const XXH64_hash_t posHash = XXH3_64bits(&pos, sizeof(pos));
-            const XXH64_hash_t cacheHash = XXH64(&materialHash, sizeof(XXH64_hash_t), posHash);
+            const XXH64_hash_t bboxMinHash = XXH3_64bits(&boundingBox.minPos, sizeof(boundingBox.minPos));
+            const XXH64_hash_t bboxMaxHash = XXH3_64bits(&boundingBox.maxPos, sizeof(boundingBox.maxPos));
+            XXH64_hash_t cacheHash = XXH64(&materialHash, sizeof(XXH64_hash_t), posHash);
+            cacheHash = XXH64(&bboxMinHash, sizeof(XXH64_hash_t), cacheHash);
+            cacheHash = XXH64(&bboxMaxHash, sizeof(XXH64_hash_t), cacheHash);
 
             auto it = outsideFrustumInstancesCache.find(cacheHash);
             if (it == outsideFrustumInstancesCache.end()) {
               // No duplication, just cache the current instance
               outsideFrustumInstancesCache[cacheHash] = instance;
             } else {
-              // Find potential duplication, only keep the instance that is latest updated
               const RtInstance* cachedInstance = it->second;
-              if (instance->getFrameLastUpdated() <= cachedInstance->getFrameLastUpdated()) {
-                instance->markAsInsideFrustum();
-              } else {
-                cachedInstance->markAsInsideFrustum();
-                it->second = instance;
+              if (instance->getId() != cachedInstance->getId()) {
+                // Only keep the instance that is latest updated
+                if (instance->getFrameLastUpdated() < cachedInstance->getFrameLastUpdated()) {
+                  instance->markAsInsideFrustum();
+                } else {
+                  cachedInstance->markAsInsideFrustum();
+                  it->second = instance;
+                }
               }
             }
           }
