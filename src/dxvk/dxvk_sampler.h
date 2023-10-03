@@ -37,10 +37,22 @@ namespace dxvk {
     VkCompareOp compareOp;
     
     /// Texture border color
-    VkClearColorValue borderColor;
+    VkClearColorValue borderColor;      // sizeof() == 4 * 4B
     
     /// Enables unnormalized coordinates
     VkBool32 usePixelCoord;
+
+    // NV-DXVK start
+    XXH64_hash_t calculateHash() const {
+      static_assert(sizeof(DxvkSamplerCreateInfo) == 72 && "DxvkSamplerCreateInfo changed. Double check the struct is still fully padded and initialized. This is needed for used hashing and comparison functions.");
+     
+      return XXH3_64bits(this, sizeof(DxvkSamplerCreateInfo));
+    }
+
+    bool operator== (const DxvkSamplerCreateInfo& other) const {
+      return memcmp(this, &other, sizeof(*this)) == 0;
+    }
+    // NV-DXVK end
   };
 
   
