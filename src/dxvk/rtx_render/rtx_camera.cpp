@@ -459,11 +459,12 @@ namespace dxvk
     // Create Anti-Culling frustum
     if (RtxOptions::AntiCulling::Object::enable()) {
       const float fovScale = RtxOptions::AntiCulling::Object::fovScale();
+      const float farPlaneScale = RtxOptions::AntiCulling::Object::farPlaneScale();
       float4x4 frustumMatrix;
       if (RtxOptions::AntiCulling::Object::enableInfinityFarFrustum()) {
         frustumMatrix.SetupByHalfFovyInf((float) (fov * fovScale * 0.5), aspectRatio, nearPlane, (isLHS ? PROJ_LEFT_HANDED : 0));
       } else {
-        frustumMatrix.SetupByHalfFovy((float) (fov * fovScale * 0.5), aspectRatio, nearPlane, farPlane, (isLHS ? PROJ_LEFT_HANDED : 0));
+        frustumMatrix.SetupByHalfFovy((float) (fov * fovScale * 0.5), aspectRatio, nearPlane, farPlane * farPlaneScale, (isLHS ? PROJ_LEFT_HANDED : 0));
       }
       m_frustum.Setup(NDC_OGL, frustumMatrix);
 
