@@ -439,19 +439,7 @@ namespace dxvk {
     samplerInfo.usePixelCoord = VK_FALSE;
     
     // Build a hash key to lookup the sampler in the cache.
-    // We only hash on values that can change
-    XXH64_hash_t key;
-    {
-      key = XXH3_64bits(&filter, sizeof(filter));
-      key = XXH3_64bits_withSeed(&mipFilter, sizeof(mipFilter), key);
-      key = XXH3_64bits_withSeed(&mipBias, sizeof(mipBias), key);
-      key = XXH3_64bits_withSeed(&useAnisotropy, sizeof(useAnisotropy), key);
-      key = XXH3_64bits_withSeed(&maxAniso, sizeof(maxAniso), key);
-      key = XXH3_64bits_withSeed(&addressModeU, sizeof(addressModeU), key);
-      key = XXH3_64bits_withSeed(&addressModeV, sizeof(addressModeV), key);
-      key = XXH3_64bits_withSeed(&addressModeW, sizeof(addressModeW), key);
-      key = XXH3_64bits_withSeed(&borderColor, sizeof(borderColor), key);
-    }
+    XXH64_hash_t key = samplerInfo.calculateHash();
 
     Rc<DxvkSampler> sampler;
 
