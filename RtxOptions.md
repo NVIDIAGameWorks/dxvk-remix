@@ -54,8 +54,9 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.antiCulling.light.numLightsToKeep|int|1000|Maximum number of lights to keep when Anti\-Culling is enabled\.|
 |rtx.antiCulling.object.enable|bool|False|Extends lifetime of objects that go outside the camera frustum \(anti\-culling frustum\)\.|
 |rtx.antiCulling.object.enableHighPrecisionAntiCulling|bool|True|Use robust intersection check with Separate Axis Theorem\.<br>This method is slightly expensive but it effectively addresses object flickering issues that arise from corner cases in the fast intersection check method\.<br>Typically, it's advisable to enable this option unless it results in a notable performance drop; otherwise, the presence of flickering artifacts could significantly diminish the overall image quality\.|
-|rtx.antiCulling.object.enableInfinityFarFrustum|bool|True|Enable infinity far plane frustum for anti\-culling\.|
-|rtx.antiCulling.object.fovScale|float|1|Scalar of the FOV of Anti\-Culling Frustum\.|
+|rtx.antiCulling.object.enableInfinityFarFrustum|bool|False|Enable infinity far plane frustum for anti\-culling\.|
+|rtx.antiCulling.object.farPlaneScale|float|10|Scale applied to the far plane for Anti\-Culling Frustum for matching the culling frustum in the original game\.|
+|rtx.antiCulling.object.fovScale|float|1|Scale applied to the FOV of Anti\-Culling Frustum for matching the culling frustum in the original game\.|
 |rtx.antiCulling.object.numObjectsToKeep|int|1000|The maximum number of RayTracing instances to keep when Anti\-Culling is enabled\.|
 |rtx.applicationId|int|102100511|Used to uniquely identify the application to DLSS\. Generally should not be changed without good reason\.|
 |rtx.asyncTextureUploadPreloadMips|int|8||
@@ -89,6 +90,9 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.camera.lockFreeCamera|bool|False|Locks free camera\.|
 |rtx.cameraAnimationAmplitude|float|2|Amplitude of the free camera's animation\.|
 |rtx.cameraAnimationMode|int|3|Free camera's animation mode\.|
+|rtx.cameraSequence.autoLoad|bool|False|Load camera sequence automatically\.|
+|rtx.cameraSequence.currentFrame|int|0|Current Frame\.|
+|rtx.cameraSequence.mode|int|0|Current mode\.|
 |rtx.cameraShakePeriod|int|20|Period of the free camera's animation\.|
 |rtx.captureDebugImage|bool|False||
 |rtx.captureEnableMultiframe|bool|False|Enables multi\-frame capturing\. THIS HAS NOT BEEN MAINTAINED AND SHOULD BE USED WITH EXTREME CAUTION\.|
@@ -399,6 +403,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.opaqueMaterial.thinFilmThicknessOverride|float|0|The thin\-film layer's thickness in nanometers for the opaque material when the thin\-film override is enabled\.<br>Should be any value larger than 0, typically within the wavelength of light, but must be less than or equal to OPAQUE\_SURFACE\_MATERIAL\_THIN\_FILM\_MAX\_THICKNESS \(\(1500\.0f\) nm\)\.<br>Should only be used for debugging or development\.|
 |rtx.opaqueOpacityTransmissionLobeSamplingProbabilityZeroThreshold|float|0.01|The threshold for which to zero opaque opacity probability weight values\.|
 |rtx.opaqueSpecularLobeSamplingProbabilityZeroThreshold|float|0.01|The threshold for which to zero opaque specular probability weight values\.|
+|rtx.orthographicIsUI|bool|True|When enabled, draw calls that are orthographic will be considered as UI\.|
 |rtx.particleSoftnessFactor|float|0.05|Multiplier for the view distance that is used to calculate the particle blending range\.|
 |rtx.pathMaxBounces|int|4|The maximum number of indirect bounces the path will be allowed to complete\. Must be \< 16\.<br>Higher values result in better indirect lighting quality due to biasing the signal less, lower values result in better performance\.<br>Very high values are not recommended however as while long paths may be technically needed for unbiased rendering, in practice the contributions from higher bounces have diminishing returns\.|
 |rtx.pathMinBounces|int|1|The minimum number of indirect bounces the path must complete before Russian Roulette can be used\. Must be \< 16\.<br>This value is recommended to stay fairly low \(1 for example\) as forcing longer paths when they carry little contribution quickly becomes detrimental to performance\.|
@@ -634,6 +639,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.baseGameModPathRegex|string||Regex used to redirect RTX Remix Runtime to another path for replacements and rtx\.conf\.|
 |rtx.baseGameModRegex|string||Regex used to determine if the base game is running a mod, like a sourcemod\.|
 |rtx.beamTextures|hash set||Textures on draw calls that are already particles or emissively blended and have beam\-like geometry\.<br>Typically objects marked as particles or objects using emissive blending will be rendered with a special method which allows re\-orientation of the billboard geometry assumed to make up the draw call in indirect rays \(reflections for example\)\.<br>This method works fine for typical particles, but some \(e\.g\. a laser beam\) may not be well\-represented with the typical billboard assumption of simply needing to rotate around its centroid to face the view direction\.<br>To handle such cases a different beam mode is used to treat objects as more of a cylindrical beam and re\-orient around its main spanning axis, allowing for better rendering of these beam\-like effect objects\.|
+|rtx.cameraSequence.filePath|string||File path\.|
 |rtx.captureInstanceStageName|string|capture_{timestamp}.usd|Name of the 'instance' stage \(see: 'rtx\.captureInstances'\)|
 |rtx.captureTimestampReplacement|string|{timestamp}|String that can be used for auto\-replacing current time stamp in instance stage name|
 |rtx.cutoutTextures|hash set|||
