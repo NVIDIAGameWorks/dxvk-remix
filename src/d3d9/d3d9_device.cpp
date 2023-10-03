@@ -7005,20 +7005,6 @@ namespace dxvk {
         }
       };
 
-      // NV-DXVK start: ignored textures for terrain
-      auto getTextureHashForStage = [this](uint32_t stageIdx) {
-        if (const auto tex = GetCommonTexture(m_state.textures[stageIdx])) {
-          return tex->GetImage()->getHash();
-        }
-        return kEmptyHash;
-      };
-      auto isTerrainTextureAtStage = [&getTextureHashForStage](uint32_t stageIdx) {
-        XXH64_hash_t texHash = getTextureHashForStage(stageIdx);
-        return texHash != kEmptyHash && lookupHash(RtxOptions::terrainTextures(), texHash);
-      };
-      bool primaryTextureStageIsTerrain = false;
-      // NV-DXVK end
-
       D3D9FFShaderKeyFS key;
 
       uint32_t textureID = 0;
@@ -7039,12 +7025,6 @@ namespace dxvk {
            || ((data[DXVK_TSS_COLORARG2] & D3DTA_SELECTMASK) == D3DTA_TEXTURE && (ArgsMask(data[DXVK_TSS_COLOROP]) & (1 << 2u))))
             break;
         }
-
-        // NV-DXVK start: ignored textures for terrain
-        if (RtxOptions::Get()->enableRaytracing() && TerrainBaker::needsTerrainBaking()) {
-          primaryTextureStageIsTerrain = primaryTextureStageIsTerrain || isTerrainTextureAtStage(idx);
-        }
-        // NV-DXVK end
 
         stage.ColorOp = data[DXVK_TSS_COLOROP];
         stage.AlphaOp = data[DXVK_TSS_ALPHAOP];
@@ -7068,21 +7048,30 @@ namespace dxvk {
         stage.ProjectedCount = (ttff & D3DTTFF_PROJECTED) ? count  : 0;
       }
 
-      // NV-DXVK start: ignored textures for terrain
-      // NOTE: The terrain baker reuses a draw call from rasterization with its
+      // NV-DXVK start: ignored secondary textures
+      // NOTE: The terrain baker and sky reuse a draw call from rasterization with its
       // bound textures and other effects like fixed function texture stages.
-      // However, we also would like to skip textures marked as ignored / lightmap for the terrain baker,
+      // However, we also would like to skip textures marked as ignored / lightmap for those techniques,
       // so a corresponding texture stage needs to be skipped in the draw call.
       // This involves modifying D3D9FFShaderKeyFS, by which DXVK chooses a pixel shader for a draw call.
-      // And because of that draw call re-usage, the checks are done here.
-      if (primaryTextureStageIsTerrain && idx > 1) {
-        auto shouldOmitTextureAtStage = [&getTextureHashForStage](uint32_t stageIdx) {
-          XXH64_hash_t texHash = getTextureHashForStage(stageIdx);
-          return texHash != kEmptyHash
-            && (lookupHash(RtxOptions::ignoreTextures(), texHash) || lookupHash(RtxOptions::lightmapTextures(), texHash));
+      // And because of that draw call re-usage, the checks are done here, and not in d3d9_rtx.
+      if (idx > 1 && RtxOptions::Get()->enableRaytracing()) {
+        auto shouldOmitTextureAtStage = [this](uint32_t stageIdx, bool isLast) {
+          if (const auto tex = GetCommonTexture(m_state.textures[stageIdx])) {
+            XXH64_hash_t texHash = tex->GetImage()->getHash();
+            if (texHash != kEmptyHash) {
+              if (isLast && RtxOptions::ignoreLastTextureStage()) {
+                return true;
+              }
+              if (lookupHash(RtxOptions::ignoreTextures(), texHash) || lookupHash(RtxOptions::lightmapTextures(), texHash)) {
+                return true;
+              }
+            }
+          }
+          return false;
         };
         const uint32_t lastStageIdx = idx - 1;
-        if (shouldOmitTextureAtStage(lastStageIdx)) {
+        if (shouldOmitTextureAtStage(lastStageIdx, true)) {
           D3D9FFShaderStage& lastStage = key.Stages[lastStageIdx];
           // make default
           memset(&lastStage, 0, sizeof(D3D9FFShaderStage));
