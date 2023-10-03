@@ -102,7 +102,14 @@ protected:
       return (size_t) sampler->hash();
     }
   };
-  SparseUniqueCache<Rc<DxvkSampler>, SamplerHashFn> m_samplerCache;
+
+  struct SamplerKeyEqual {
+    bool operator()(const Rc<DxvkSampler>& lhs, const Rc<DxvkSampler>& rhs) const {
+      return lhs->info() == rhs->info();
+    }
+  };
+
+  SparseUniqueCache<Rc<DxvkSampler>, SamplerHashFn, SamplerKeyEqual> m_samplerCache;
 };
 
 // Scene manager is a super manager, it's the interface between rendering and world state
