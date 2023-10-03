@@ -868,6 +868,10 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, useBuffersDirectly, true, "When enabled Remix will use the incoming vertex buffers directly where possible instead of copying data. Note: setting the d3d9.allowDiscard to False will disable this option.");
     RTX_OPTION("rtx", bool, alwaysCopyDecalGeometries, true, "When set to True tells the geometry processor to always copy decals geometry. This is an optimization flag to experiment with when rtx.useBuffersDirectly is True.");
 
+    RTX_OPTION("rtx", bool, ignoreLastTextureStage, false, 
+               "Removes the last texture bound to a draw call, when using fixed-function pipeline. Primary textures are untouched.\n"
+               "Might be set to true, if a game applies a lightmap as last shading step, to omit the original lightmap data.");
+
     // Automation Options
     struct Automation {
       RTX_OPTION_FLAG_ENV("rtx.automation", bool, disableBlockingDialogBoxes, false, RtxOptionFlags::NoSave, "RTX_AUTOMATION_DISABLE_BLOCKING_DIALOG_BOXES",
