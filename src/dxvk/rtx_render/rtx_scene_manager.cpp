@@ -232,20 +232,13 @@ namespace dxvk {
             // This is used to handle cases:
             //   1. The game frustum is different to our frustum
             //   2. The game culling method is NOT frustum culling
-            const AxisAlignedBoundingBox& boundingBox = instance->getBlas()->input.getGeometryData().boundingBox;
-            const XXH64_hash_t materialHash = instance->getMaterialDataHash();
-            const Vector3 pos = instance->getWorldPosition();
-            const XXH64_hash_t posHash = XXH3_64bits(&pos, sizeof(pos));
-            const XXH64_hash_t bboxMinHash = XXH3_64bits(&boundingBox.minPos, sizeof(boundingBox.minPos));
-            const XXH64_hash_t bboxMaxHash = XXH3_64bits(&boundingBox.maxPos, sizeof(boundingBox.maxPos));
-            XXH64_hash_t cacheHash = XXH64(&materialHash, sizeof(XXH64_hash_t), posHash);
-            cacheHash = XXH64(&bboxMinHash, sizeof(XXH64_hash_t), cacheHash);
-            cacheHash = XXH64(&bboxMaxHash, sizeof(XXH64_hash_t), cacheHash);
 
-            auto it = outsideFrustumInstancesCache.find(cacheHash);
+            const XXH64_hash_t antiCullingHash = instance->calculateAntiCullingHash();
+
+            auto it = outsideFrustumInstancesCache.find(antiCullingHash);
             if (it == outsideFrustumInstancesCache.end()) {
               // No duplication, just cache the current instance
-              outsideFrustumInstancesCache[cacheHash] = instance;
+              outsideFrustumInstancesCache[antiCullingHash] = instance;
             } else {
               const RtInstance* cachedInstance = it->second;
               if (instance->getId() != cachedInstance->getId()) {
@@ -809,7 +802,11 @@ namespace dxvk {
 
   void SceneManager::onInstanceDestroyed(const RtInstance& instance) {
     BlasEntry* pBlas = instance.getBlas();
-    if (pBlas != nullptr) {
+    // Some BLAS were cleared in the SceneManager::garbageCollection().
+    // When a BLAS is destroyed, all instances that linked to it will be automatically unlinked. In such case we don't need to
+    // call onInstanceDestroyed to double unlink the instances.
+    // Note: This case often happens when BLAS are destroyed faster than instances. (e.g. numFramesToKeepGeometryData >= numFramesToKeepInstances)
+    if (pBlas != nullptr && !instance.isUnlinkedForGC()) {
       pBlas->unlinkInstance(&instance);
     }
   }

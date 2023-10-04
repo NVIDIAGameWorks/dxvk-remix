@@ -57,7 +57,8 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.antiCulling.object.enableInfinityFarFrustum|bool|False|Enable infinity far plane frustum for anti\-culling\.|
 |rtx.antiCulling.object.farPlaneScale|float|10|Scale applied to the far plane for Anti\-Culling Frustum for matching the culling frustum in the original game\.|
 |rtx.antiCulling.object.fovScale|float|1|Scale applied to the FOV of Anti\-Culling Frustum for matching the culling frustum in the original game\.|
-|rtx.antiCulling.object.numObjectsToKeep|int|1000|The maximum number of RayTracing instances to keep when Anti\-Culling is enabled\.|
+|rtx.antiCulling.object.hashInstanceWithBoundingBoxHash|bool|True|Hash instances with bounding box hash for object duplication check\.<br> Disable this when the game using primitive culling which may cause flickering\.|
+|rtx.antiCulling.object.numObjectsToKeep|int|10000|The maximum number of RayTracing instances to keep when Anti\-Culling is enabled\.|
 |rtx.applicationId|int|102100511|Used to uniquely identify the application to DLSS\. Generally should not be changed without good reason\.|
 |rtx.asyncTextureUploadPreloadMips|int|8||
 |rtx.autoExposure.autoExposureSpeed|float|5|Average exposure changing speed when the image changes\.|
