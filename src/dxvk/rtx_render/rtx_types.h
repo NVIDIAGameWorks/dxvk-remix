@@ -123,6 +123,10 @@ struct AxisAlignedBoundingBox {
       maxPos[i] = std::max(maxPos[i], other.maxPos[i]);
     }
   }
+
+  const XXH64_hash_t calculateHash() const {
+    return XXH3_64bits(this, sizeof(AxisAlignedBoundingBox));
+  }
 };
 
 // Stores a snapshot of the geometry state for a draw call.
