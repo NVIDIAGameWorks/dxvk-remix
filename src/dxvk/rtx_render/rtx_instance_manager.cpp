@@ -1103,14 +1103,9 @@ namespace dxvk {
 
   void InstanceManager::removeInstance(RtInstance* instance) {
     // In these cases we skip calling onInstanceDestroyed:
-    //   1. Some view model and player instances are created in the renderer and don't have onInstanceAdded called,
+    //   Some view model and player instances are created in the renderer and don't have onInstanceAdded called,
     //   so not call onInstanceDestroyed either.
-    //
-    //   2. Some BLAS were cleared in the SceneManager::garbageCollection().
-    //   When a BLAS is destroyed, all instances that linked to it will be automatically unlinked. In such case we don't need to
-    //   call onInstanceDestroyed to double unlink the instances.
-    //   Note: This case often happens when BLAS are destroyed faster than instances. (e.g. numFramesToKeepGeometryData >= numFramesToKeepInstances)
-    if (instance->m_isCreatedByRenderer || instance->m_isUnlinkedForGC) {
+    if (instance->m_isCreatedByRenderer) {
       return;
     }
 
@@ -2154,5 +2149,23 @@ namespace dxvk {
     // - Beams cannot be parts of a player model;
     // - Beams should not be split into quads for OMM reuse.
     instance.m_billboardCount = 0;
+  }
+
+  const XXH64_hash_t RtInstance::calculateAntiCullingHash() const {
+    if (RtxOptions::AntiCulling::Object::enable()) {
+      const Vector3 pos = getWorldPosition();
+      const XXH64_hash_t posHash = XXH3_64bits(&pos, sizeof(pos));
+      XXH64_hash_t antiCullingHash = XXH3_64bits_withSeed(&m_materialDataHash, sizeof(XXH64_hash_t), posHash);
+
+      if (RtxOptions::AntiCulling::Object::hashInstanceWithBoundingBoxHash() &&
+          RtxOptions::Get()->needsMeshBoundingBox()) {
+        const AxisAlignedBoundingBox& boundingBox = getBlas()->input.getGeometryData().boundingBox;
+        const XXH64_hash_t bboxHash = boundingBox.calculateHash();
+        antiCullingHash = XXH3_64bits_withSeed(&bboxHash, sizeof(antiCullingHash), antiCullingHash);
+      }
+      return antiCullingHash;
+    }
+
+    return XXH64_hash_t();
   }
 }  // namespace dxvk
