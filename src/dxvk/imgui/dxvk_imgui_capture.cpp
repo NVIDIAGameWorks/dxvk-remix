@@ -60,8 +60,8 @@ namespace dxvk {
     constexpr auto headerFlagsDefaultOpen = kCollapsingHeaderFlags | ImGuiTreeNodeFlags_DefaultOpen;
     if(ImGui::CollapsingHeader("USD Scene Capture", headerFlagsDefaultOpen)) {
       ImGui::Indent();
-      ImGui::Text(!disableCapture ? "Disable enhanced assets to enable capturing." : "Ready to capture.");
-      ImGui::BeginDisabled(!disableCapture);
+      ImGui::Text(disableCapture ? "Disable enhanced assets to enable capturing." : "Ready to capture.");
+      ImGui::BeginDisabled(disableCapture);
       showSceneCapture(ctx);
       if(RtxOptions::Get()->m_captureEnableMultiframe) {
         showTimedCapture(ctx);
