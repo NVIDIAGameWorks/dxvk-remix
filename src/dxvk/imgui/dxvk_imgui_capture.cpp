@@ -57,29 +57,24 @@ namespace dxvk {
     const bool disableCapture =
       ctx->getCommonObjects()->getSceneManager().areReplacementsLoaded() &&
       RtxOptions::Get()->getEnableAnyReplacements();
-    if(!disableCapture) {
-      constexpr auto headerFlagsDefaultOpen = kCollapsingHeaderFlags | ImGuiTreeNodeFlags_DefaultOpen;
-      if(ImGui::CollapsingHeader("USD Scene Capture", headerFlagsDefaultOpen)) {
-        ImGui::Indent();
-        showSceneCapture(ctx);
-        if(RtxOptions::Get()->m_captureEnableMultiframe) {
-          showTimedCapture(ctx);
-          showContinuousCapture(ctx);
-        }
-        ImGui::Separator();
-        ImGui::Checkbox("Show menu on capture hotkey", &RtxOptions::Get()->m_captureShowMenuOnHotkey);
-        if(RtxOptions::Get()->m_captureShowMenuOnHotkey) {
-          ImGui::PushTextWrapPos(ImGui::GetCurrentWindow()->Size.x);
-          ImGui::PopTextWrapPos();
-        }
-        ImGui::Unindent();
+    constexpr auto headerFlagsDefaultOpen = kCollapsingHeaderFlags | ImGuiTreeNodeFlags_DefaultOpen;
+    if(ImGui::CollapsingHeader("USD Scene Capture", headerFlagsDefaultOpen)) {
+      ImGui::Indent();
+      ImGui::Text(!disableCapture ? "Disable enhanced assets to enable capturing." : "Ready to capture.");
+      ImGui::BeginDisabled(!disableCapture);
+      showSceneCapture(ctx);
+      if(RtxOptions::Get()->m_captureEnableMultiframe) {
+        showTimedCapture(ctx);
+        showContinuousCapture(ctx);
       }
-    } else {
-      constexpr auto headerFlagsDisabled = kCollapsingHeaderFlags | ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_Bullet;
-      ImGui::BeginDisabled(true);
-      ImGui::TreeNodeEx("USD Scene Capture (Disabled)", headerFlagsDisabled);
+      ImGui::Separator();
+      ImGui::Checkbox("Show menu on capture hotkey", &RtxOptions::Get()->m_captureShowMenuOnHotkey);
+      if(RtxOptions::Get()->m_captureShowMenuOnHotkey) {
+        ImGui::PushTextWrapPos(ImGui::GetCurrentWindow()->Size.x);
+        ImGui::PopTextWrapPos();
+      }
       ImGui::EndDisabled();
-      ImGui::Text("Disable all asset enhancements to capture.");
+      ImGui::Unindent();
     }
   }
   
