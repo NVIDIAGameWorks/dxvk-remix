@@ -814,7 +814,11 @@ namespace dxvk {
 
   void SceneManager::onInstanceDestroyed(const RtInstance& instance) {
     BlasEntry* pBlas = instance.getBlas();
-    if (pBlas != nullptr) {
+    // Some BLAS were cleared in the SceneManager::garbageCollection().
+    // When a BLAS is destroyed, all instances that linked to it will be automatically unlinked. In such case we don't need to
+    // call onInstanceDestroyed to double unlink the instances.
+    // Note: This case often happens when BLAS are destroyed faster than instances. (e.g. numFramesToKeepGeometryData >= numFramesToKeepInstances)
+    if (pBlas != nullptr && !instance.isUnlinkedForGC()) {
       pBlas->unlinkInstance(&instance);
     }
   }

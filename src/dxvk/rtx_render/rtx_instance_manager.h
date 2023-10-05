@@ -126,6 +126,8 @@ public:
   bool isViewModelNonReference() const;
   bool isViewModelReference() const;
   bool isViewModelVirtual() const;
+
+  bool isUnlinkedForGC() const { return m_isUnlinkedForGC; }
 private:
   friend class InstanceManager;
 
