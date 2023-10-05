@@ -23,10 +23,23 @@
 
 #include "../util_env.h"
 
+// NV-DXVK start: Don't double print every line
+namespace{
+  bool getDoublePrintToStdErr() {
+    const std::string str = dxvk::env::getEnvVar("DXVK_LOG_NO_DOUBLE_PRINT_STDERR");
+    return str.empty();
+  }
+}
+// NV-DXVK end
+
 namespace dxvk {
 
   Logger::Logger(const std::string& file_name)
-  : m_minLevel(getMinLogLevel()) {
+  : m_minLevel(getMinLogLevel())
+  // NV-DXVK start: Don't double print every line
+  , m_doublePrintToStdErr(getDoublePrintToStdErr())
+  // NV-DXVK end
+  {
     if (m_minLevel != LogLevel::None) {
       auto path = getFileName(file_name);
 
@@ -84,7 +97,11 @@ namespace dxvk {
       std::string       line;
 
       while (std::getline(stream, line, '\n')) {
-        std::cerr << prefix << line << std::endl;
+        // NV-DXVK start: Don't double print every line
+        if(m_doublePrintToStdErr) {
+          std::cerr << prefix << line << std::endl;
+        }
+        // NV-DXVK end
 
         if (m_fileStream)
           m_fileStream << prefix << line << std::endl;
@@ -103,7 +120,7 @@ namespace dxvk {
       { "none",  LogLevel::None  },
     }};
     
-	  const std::string logLevelStr = env::getEnvVar("DXVK_LOG_LEVEL");
+    const std::string logLevelStr = env::getEnvVar("DXVK_LOG_LEVEL");
     
     for (const auto& pair : logLevels) {
       if (logLevelStr == pair.first)
