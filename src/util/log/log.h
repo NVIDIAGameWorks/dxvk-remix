@@ -69,6 +69,9 @@ namespace dxvk {
     static Logger s_instance;
     
     const LogLevel m_minLevel;
+    // NV-DXVK start: Don't double print every line
+    const bool m_doublePrintToStdErr;
+    // NV-DXVK end
     
     dxvk::mutex   m_mutex;
     std::ofstream m_fileStream;
