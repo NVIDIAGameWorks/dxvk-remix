@@ -1112,14 +1112,9 @@ namespace dxvk {
 
   void InstanceManager::removeInstance(RtInstance* instance) {
     // In these cases we skip calling onInstanceDestroyed:
-    //   1. Some view model and player instances are created in the renderer and don't have onInstanceAdded called,
+    //   Some view model and player instances are created in the renderer and don't have onInstanceAdded called,
     //   so not call onInstanceDestroyed either.
-    //
-    //   2. Some BLAS were cleared in the SceneManager::garbageCollection().
-    //   When a BLAS is destroyed, all instances that linked to it will be automatically unlinked. In such case we don't need to
-    //   call onInstanceDestroyed to double unlink the instances.
-    //   Note: This case often happens when BLAS are destroyed faster than instances. (e.g. numFramesToKeepGeometryData >= numFramesToKeepInstances)
-    if (instance->m_isCreatedByRenderer || instance->m_isUnlinkedForGC) {
+    if (instance->m_isCreatedByRenderer) {
       return;
     }
 

@@ -52,7 +52,7 @@ namespace dxvk {
       throw DxvkError("DxvkSampler::DxvkSampler: Failed to create sampler");
 
     // NV-DXVK start
-    m_hash = XXH3_64bits(&m_createInfo, sizeof(DxvkSamplerCreateInfo));
+    m_hash = m_createInfo.calculateHash();
     // NV-DXVK end
   }
   
