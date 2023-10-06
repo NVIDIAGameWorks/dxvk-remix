@@ -41,6 +41,7 @@ namespace lss {
       Normals,
       Texcoords,
       Colors,
+      Opacity,
       BlendWeights,
       BlendIndices,
 

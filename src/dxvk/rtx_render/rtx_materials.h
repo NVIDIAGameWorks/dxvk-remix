@@ -299,6 +299,11 @@ struct RtSurface {
     bool isDecal = false;
   } alphaState;
 
+  // Original draw call state
+  VkBlendFactor srcColorBlendFactor = VkBlendFactor::VK_BLEND_FACTOR_ONE;
+  VkBlendFactor dstColorBlendFactor = VkBlendFactor::VK_BLEND_FACTOR_ZERO;
+  VkBlendOp colorBlendOp = VkBlendOp::VK_BLEND_OP_ADD;
+
   // Static validation to detect any changes that require an alignment re-check
   static_assert(sizeof(AlphaState) == 9);
 
