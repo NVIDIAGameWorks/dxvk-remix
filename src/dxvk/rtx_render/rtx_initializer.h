@@ -32,6 +32,8 @@ namespace dxvk {
     explicit RtxInitializer(DxvkDevice* device);
 
     void onDestroy() override {
+      waitForShaderPrewarm();
+
       if (m_asyncAssetLoadThread.joinable()) {
         if (!m_assetsLoaded) {
           Logger::warn("Async asset loading thread is running while device is being destroyed! Attempting to join...");
