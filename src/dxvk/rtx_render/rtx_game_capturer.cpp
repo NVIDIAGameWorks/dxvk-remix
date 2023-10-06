@@ -30,6 +30,7 @@
 #include "rtx_utils.h"
 #include "rtx_instance_manager.h"
 #include "rtx_scene_manager.h"
+#include "rtx_materials.h"
 
 #include "../dxvk_device.h"
 
@@ -94,6 +95,25 @@ namespace dxvk {
       const auto stagePath =
         std::filesystem::absolute(std::filesystem::path(stagePathSS.str()));
       return stagePath.string();
+    }
+    static lss::RenderingMetaData createDrawCallMetadata(const RtInstance& rtInstance) {
+      lss::RenderingMetaData meta;
+      meta.alphaTestEnabled = rtInstance.surface.alphaState.alphaTestType != AlphaTestType::kAlways;
+      meta.alphaTestReferenceValue = rtInstance.surface.alphaState.alphaTestReferenceValue;
+      meta.alphaTestCompareOp = (uint32_t) rtInstance.surface.alphaState.alphaTestType;
+      meta.alphaBlendEnabled = !rtInstance.surface.alphaState.isBlendingDisabled;
+      meta.srcColorBlendFactor = (uint32_t) rtInstance.surface.srcColorBlendFactor;
+      meta.dstColorBlendFactor = (uint32_t) rtInstance.surface.dstColorBlendFactor;
+      meta.colorBlendOp = (uint32_t) rtInstance.surface.colorBlendOp;
+      meta.textureColorArg1Source = (uint32_t) rtInstance.surface.textureColorArg1Source;
+      meta.textureColorArg2Source = (uint32_t) rtInstance.surface.textureColorArg2Source;
+      meta.textureColorOperation = (uint32_t) rtInstance.surface.textureColorOperation;
+      meta.textureAlphaArg1Source = (uint32_t) rtInstance.surface.textureAlphaArg1Source;
+      meta.textureAlphaArg2Source = (uint32_t) rtInstance.surface.textureAlphaArg2Source;
+      meta.textureAlphaOperation = (uint32_t) rtInstance.surface.textureAlphaOperation;
+      meta.tFactor = rtInstance.surface.tFactor;
+      meta.isTextureFactorBlend = rtInstance.surface.isTextureFactorBlend;
+      return meta;
     }
   }
 
@@ -354,6 +374,7 @@ namespace dxvk {
       if (m_cap.bCaptureInstances && !bIsNew && (bPointsUpdate || bNormalsUpdate || bIndexUpdate)) {
         const BlasEntry* pBlas = rtInstancePtr->getBlas();
         assert(pBlas != nullptr);
+
         captureMesh(ctx, instance.meshHash, *pBlas, rtInstancePtr->getCategoryFlags(), false, bPointsUpdate, bNormalsUpdate, bIndexUpdate);
       }
       if (m_cap.bCaptureInstances && (bIsNew || bXformUpdate)) {
@@ -365,6 +386,7 @@ namespace dxvk {
       }
       instance.lssData.finalTime = m_cap.currentFrameNum;
       instance.lssData.isSky = (rtInstancePtr->getBlas()->input.cameraType == CameraType::Sky);
+      instance.lssData.metadata = createDrawCallMetadata(*rtInstancePtr);
     }
   }
 
@@ -375,9 +397,11 @@ namespace dxvk {
     const XXH64_hash_t meshHash = pBlas->input.getHash(RtxOptions::Get()->GeometryAssetHashRule);
     assert(meshHash != 0);
 
+    const LegacyMaterialData& material = pBlas->getMaterialData(matHash);
+
     const bool bIsNewMat = (matHash != 0x0) && (m_cap.materials.count(matHash) == 0);
     if (bIsNewMat) {
-      captureMaterial(ctx, pBlas->getMaterialData(matHash), !rtInstance.surface.alphaState.isFullyOpaque);
+      captureMaterial(ctx, material, !rtInstance.surface.alphaState.isFullyOpaque);
     }
 
     bool bIsNewMesh = false;
@@ -403,6 +427,8 @@ namespace dxvk {
     instance.meshInstNum = instanceNum;
     instance.lssData.firstTime = m_cap.currentFrameNum;
     instance.lssData.xforms.reserve(m_options.numFrames - m_cap.numFramesCaptured);
+    instance.lssData.metadata = createDrawCallMetadata(rtInstance);
+
     Logger::debug("[GameCapturer][" + m_cap.idStr + "][Inst:" + hashToString(instanceId) + "] New");
   }
 
@@ -425,8 +451,6 @@ namespace dxvk {
     m_cap.materials[materialData.getHash()].lssData = lssMat;
     Logger::debug("[GameCapturer][" + m_cap.idStr + "][Mat:" + matName + "] New");
   }
-
-
 
   void GameCapturer::captureMesh(const Rc<DxvkContext> ctx,
                                  const XXH64_hash_t currentMeshHash,
@@ -697,16 +721,17 @@ namespace dxvk {
       const uint8_t* pVkColorBuf = (uint8_t*) colorBuffer.mapPtr((size_t) geomData.color0Buffer.offsetFromSlice());
       assert(pVkColorBuf);
       // Copy GPU buffer to local VtArray
-      pxr::VtArray<pxr::GfVec3f> colors;
+      pxr::VtArray<pxr::GfVec4f> colors;
       colors.reserve(numVertices);
       for (size_t idx = 0; idx < numVertices; ++idx) {
-        colors.push_back(pxr::GfVec3f((float) pVkColorBuf[idx * colorStride + 2] / 256.f,
-                                      (float) pVkColorBuf[idx * colorStride + 1] / 256.f,
-                                      (float) pVkColorBuf[idx * colorStride + 0] / 256.f));
+        colors.push_back(pxr::GfVec4f((float) pVkColorBuf[idx * colorStride + 2] / 255.f,
+                                      (float) pVkColorBuf[idx * colorStride + 1] / 255.f,
+                                      (float) pVkColorBuf[idx * colorStride + 0] / 255.f,
+                                      (float) pVkColorBuf[idx * colorStride + 3] / 255.f));
       }
       assert(colors.size() > 0);
       // Create comparison function that returns float
-      static auto colorsDifferentEnough = [](const pxr::GfVec3f& a, const pxr::GfVec3f& b) {
+      static auto colorsDifferentEnough = [](const pxr::GfVec4f& a, const pxr::GfVec4f& b) {
         const static float captureMeshColorDelta = RtxOptions::Get()->getCaptureMeshColorDelta();
         const static float captureMeshColorDeltaSq = captureMeshColorDelta * captureMeshColorDelta;
         return (a - b).GetLengthSq() > captureMeshColorDeltaSq;
