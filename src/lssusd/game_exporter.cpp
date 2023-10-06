@@ -556,6 +556,7 @@ void GameExporter::exportMeshes(const Export& exportData, ExportContext& ctx) {
       const auto attribute = meshSchema.GetPrim().CreateAttribute(pxr::TfToken(pair.first), pxr::SdfValueTypeNames->Bool, true, pxr::SdfVariabilityUniform);
       attribute.Set(pxr::VtValue(pair.second));
     }
+
     // Indices
     const bool reduce = exportData.meta.bReduceMeshBuffers;
     ReducedIdxBufSet reducedIdxBufSet = reduce ? reduceIdxBufferSet(mesh.buffers.idxBufs) : ReducedIdxBufSet();
@@ -581,17 +582,19 @@ void GameExporter::exportMeshes(const Export& exportData, ExportContext& ctx) {
     auto stAttr = primvarsAPI.CreatePrimvar(kTokSt, pxr::SdfValueTypeNames->TexCoord2fArray, pxr::UsdGeomTokens->vertex);
     assert(stAttr);
     exportBufferSet(reduce ? reduceBufferSet(mesh.buffers.texcoordBufs, reducedIdxBufSet) : mesh.buffers.texcoordBufs, stAttr);
-    
 
     // Vertex Colors
     if (mesh.buffers.colorBufs.size() > 0) {
       auto displayColorPrimvar = meshSchema.CreateDisplayColorPrimvar(pxr::UsdGeomTokens->vertex);
+      auto displayOpacityPrimvar = meshSchema.CreateDisplayOpacityPrimvar(pxr::UsdGeomTokens->vertex);
       assert(displayColorPrimvar);
+      assert(displayOpacityPrimvar);
       if (mesh.buffers.colorBufs.cbegin()->second.size() == 1) {
         // Constant Color
         displayColorPrimvar.SetInterpolation(pxr::UsdGeomTokens->constant);
+        displayOpacityPrimvar.SetInterpolation(pxr::UsdGeomTokens->constant);
       }
-      exportBufferSet(reduce ? reduceBufferSet(mesh.buffers.colorBufs, reducedIdxBufSet) : mesh.buffers.colorBufs, displayColorPrimvar);
+      exportColorOpacityBufferSet(reduce ? reduceBufferSet(mesh.buffers.colorBufs, reducedIdxBufSet) : mesh.buffers.colorBufs, displayColorPrimvar, displayOpacityPrimvar);
     }
     
     if (isSkeleton) {
@@ -752,13 +755,38 @@ void GameExporter::exportBufferSet(const std::map<float,pxr::VtArray<T>>& bufSet
   }
 }
 
+template<typename T>
+void GameExporter::exportColorOpacityBufferSet(const std::map<float, pxr::VtArray<T>>& bufSet, pxr::UsdAttribute color, pxr::UsdAttribute opacity) {
+  pxr::VtArray<pxr::GfVec3f> colorArray;
+  pxr::VtArray<float> opacityArray;
+
+  if (bufSet.size() == 1) {
+    for (const T& element : bufSet.cbegin()->second) {
+      colorArray.emplace_back(pxr::GfVec3f(element[0], element[1], element[2]));
+      opacityArray.emplace_back(element[3]);
+    }
+    color.Set(colorArray);
+    opacity.Set(opacityArray);
+  } else {
+    for (const auto& [timeCode, buf] : bufSet) {
+      for (const T& element : buf) {
+        colorArray.emplace_back(pxr::GfVec3f(element[0], element[1], element[2]));
+        opacityArray.emplace_back(element[3]);
+      }
+      const auto usdTimeCode = pxr::UsdTimeCode(timeCode);
+      color.Set(colorArray, usdTimeCode);
+      opacity.Set(opacityArray, usdTimeCode);
+    }
+  }
+}
+
 void GameExporter::exportInstances(const Export& exportData, ExportContext& ctx) {
   assert(exportData.bExportInstanceStage);
   dxvk::Logger::debug("[GameExporter][" + exportData.debugId + "][exportInstances] Begin");
   for(const auto& [instId,instanceData] : exportData.instances) {
     // Build base Xform prim for instance to reside in
     auto instanceName = (instanceData.isSky ? "sky_" : "inst_") + std::string(instanceData.instanceName);
-    const pxr::SdfPath fullInstancePath = gRootInstancesPath.AppendElementString(instanceName);
+    pxr::SdfPath fullInstancePath = gRootInstancesPath.AppendElementString(instanceName);
 
     const bool isSkeleton = !instanceData.boneXForms.empty();
 
@@ -815,6 +843,28 @@ void GameExporter::exportInstances(const Export& exportData, ExportContext& ctx)
       pxr::UsdSkelBindingAPI skelBindingSchema = pxr::UsdSkelBindingAPI::Apply(skelPrim);
       auto animationSource = skelBindingSchema.CreateAnimationSourceRel();
       animationSource.SetTargets({skelPoseSdfPath});
+    } else {
+      const auto meshSchemaSdfPath = fullInstancePath.AppendChild(gTokMesh);
+      pxr::UsdGeomMesh meshSchema = pxr::UsdGeomMesh::Define(ctx.instanceStage, meshSchemaSdfPath);
+      pxr::UsdGeomPrimvarsAPI primvarsAPI(meshSchema.GetPrim());
+
+#define _SetDrawMetadata(name, type)  primvarsAPI.CreatePrimvar(pxr::TfToken("_remix_metadata:" #name), pxr::SdfValueTypeNames->##type).Set(pxr::VtValue(instanceData.metadata.##name))
+      _SetDrawMetadata(alphaTestEnabled, Bool);
+      _SetDrawMetadata(alphaTestReferenceValue, UInt);
+      _SetDrawMetadata(alphaTestCompareOp, UInt);
+      _SetDrawMetadata(alphaBlendEnabled, Bool);
+      _SetDrawMetadata(srcColorBlendFactor, UInt);
+      _SetDrawMetadata(dstColorBlendFactor, UInt);
+      _SetDrawMetadata(colorBlendOp, UInt);
+      _SetDrawMetadata(textureColorArg1Source, UInt);
+      _SetDrawMetadata(textureColorArg2Source, UInt);
+      _SetDrawMetadata(textureColorOperation, UInt);
+      _SetDrawMetadata(textureAlphaArg1Source, UInt);
+      _SetDrawMetadata(textureAlphaArg2Source, UInt);
+      _SetDrawMetadata(textureAlphaOperation, UInt);
+      _SetDrawMetadata(tFactor, UInt);
+      _SetDrawMetadata(isTextureFactorBlend, Bool);
+#undef _SetDrawMetadata
     }
 
     setTimeSampledXforms<true>(ctx.instanceStage, fullInstancePath, instanceData.firstTime, instanceData.finalTime, instanceData.xforms, exportData.meta);

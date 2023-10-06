@@ -76,8 +76,9 @@ private:
                                                          const ReducedIdxBufSet& reducedIdxBufSet,
                                                          size_t elemsPerIdx = 1);
   template<typename T>
-  static void exportBufferSet(const std::map<float,pxr::VtArray<T>>& bufSet,
-                              pxr::UsdAttribute attr);
+  static void exportBufferSet(const std::map<float,pxr::VtArray<T>>& bufSet, pxr::UsdAttribute attr);
+  template<typename T>
+  static void exportColorOpacityBufferSet(const std::map<float, pxr::VtArray<T>>& bufSet, pxr::UsdAttribute color, pxr::UsdAttribute opacity);
   static void exportInstances(const Export& exportData, ExportContext& ctx);
   static void exportCamera(const Export& exportData, ExportContext& ctx);
   static void exportSphereLights(const Export& exportData, ExportContext& ctx);

@@ -866,6 +866,10 @@ namespace dxvk {
         currentInstance.surface.skipSurfaceInteractionSpritesheetAdjustment = (materialData.getType() == MaterialDataType::RayPortal);
         currentInstance.surface.isInsideFrustum = RtxOptions::AntiCulling::Object::enable() ? currentInstance.m_isInsideFrustum : true;
 
+        currentInstance.surface.srcColorBlendFactor = drawCall.getMaterialData().srcColorBlendFactor;
+        currentInstance.surface.dstColorBlendFactor = drawCall.getMaterialData().dstColorBlendFactor;
+        currentInstance.surface.colorBlendOp = drawCall.getMaterialData().colorBlendOp;
+
         uint8_t spriteSheetRows = RtxOptions::Get()->getSharedMaterialDefaults().SpriteSheetRows;
         uint8_t spriteSheetCols = RtxOptions::Get()->getSharedMaterialDefaults().SpriteSheetCols;
         uint8_t spriteSheetFPS = RtxOptions::Get()->getSharedMaterialDefaults().SpriteSheetFPS;

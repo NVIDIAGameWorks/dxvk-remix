@@ -110,7 +110,7 @@ using IndexBuffer = pxr::VtArray<int>;
 using PositionBuffer = pxr::VtArray<pxr::GfVec3f>;
 using NormalBuffer = pxr::VtArray<pxr::GfVec3f>;
 using TexcoordBuffer = pxr::VtArray<pxr::GfVec2f>;
-using ColorBuffer = pxr::VtArray<pxr::GfVec3f>;
+using ColorBuffer = pxr::VtArray<pxr::GfVec4f>;
 using BlendWeightBuffer = pxr::VtArray<float>;
 using BlendIndicesBuffer = pxr::VtArray<int>;
 struct MeshBuffers {
@@ -121,6 +121,24 @@ struct MeshBuffers {
   std::map<float,ColorBuffer> colorBufs;
   std::map<float,BlendWeightBuffer> blendWeightBufs;
   std::map<float,BlendIndicesBuffer> blendIndicesBufs;
+};
+
+struct RenderingMetaData {
+  bool alphaTestEnabled;
+  uint32_t alphaTestReferenceValue;
+  uint32_t alphaTestCompareOp;
+  bool alphaBlendEnabled;
+  uint32_t srcColorBlendFactor;
+  uint32_t dstColorBlendFactor;
+  uint32_t colorBlendOp;
+  uint32_t textureColorArg1Source;
+  uint32_t textureColorArg2Source;
+  uint32_t textureColorOperation;
+  uint32_t textureAlphaArg1Source;
+  uint32_t textureAlphaArg2Source;
+  uint32_t textureAlphaOperation;
+  uint32_t tFactor;
+  bool isTextureFactorBlend;
 };
 
 struct Mesh {
@@ -146,6 +164,7 @@ struct Instance {
   SampledXforms     xforms;
   bool              isSky;
   SampledBoneXforms boneXForms;
+  RenderingMetaData metadata;
 };
 
 template <typename T>
