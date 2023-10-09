@@ -303,7 +303,8 @@ namespace dxvk {
 #endif
   }
 
-  void NrdSettings::initialize(const dxvk::Config& config, DenoiserType type) {
+  void NrdSettings::initialize(const nrd::LibraryDesc& libraryDesc, const dxvk::Config& config, DenoiserType type) {
+    m_libraryDesc = libraryDesc;
     m_type = type;
 
     switch (type) {
@@ -373,9 +374,8 @@ namespace dxvk {
 
     // New settings
     {
-      const nrd::LibraryDesc& nrdLibraryDesc = nrd::GetLibraryDesc();
       ImGui::Separator();
-      ImGui::Text("NRD v%u.%u.%u", nrdLibraryDesc.versionMajor, nrdLibraryDesc.versionMinor, nrdLibraryDesc.versionBuild);
+      ImGui::Text("NRD v%u.%u.%u", m_libraryDesc.versionMajor, m_libraryDesc.versionMinor, m_libraryDesc.versionBuild);
       ImGui::PushItemWidth(160.f);
     }
 
