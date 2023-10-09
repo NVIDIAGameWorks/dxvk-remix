@@ -45,6 +45,7 @@ namespace dxvk {
 
     const static nrd::Method sDefaultMethod = nrd::Method::RELAX_DIFFUSE_SPECULAR;
     const static nrd::Method sDefaultIndirectMethod = nrd::Method::RELAX_DIFFUSE_SPECULAR;
+    nrd::LibraryDesc m_libraryDesc;
     nrd::MethodDesc m_methodDesc = { nrd::Method::MAX_NUM, 0, 0 };
     nrd::CommonSettings m_commonSettings;
     nrd::RelaxDiffuseSpecularSettings m_relaxSettings;
@@ -93,7 +94,7 @@ namespace dxvk {
     NrdSettings() = default;
     ~NrdSettings() = default;
 
-    void initialize(const dxvk::Config& config, DenoiserType type);
+    void initialize(const nrd::LibraryDesc& libraryDesc, const dxvk::Config& config, DenoiserType type);
     void showImguiSettings();
 
     static float getTimeDeltaBetweenFrames();
