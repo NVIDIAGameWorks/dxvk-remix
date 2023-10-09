@@ -357,14 +357,7 @@ dxvk_src = files([
 thread_dep = dependency('threads')
 
 nrd_include_dir = include_directories(join_paths(meson.global_source_root(), 'external/nrd/Include'))
-nrd_lib_path = join_paths(meson.global_source_root(), 'external/nrd/Lib/Release')
-if get_option('buildtype') == 'debug'  
-  nrd_lib_path = join_paths(meson.global_source_root(), 'external/nrd/Lib/Debug')
-endif
-cc = meson.get_compiler('c')
-nrd_lib = cc.find_library('NRD', dirs : nrd_lib_path)
 nrd_dep = declare_dependency(
-  dependencies : [ nrd_lib ],
   include_directories : nrd_include_dir
 )
 
