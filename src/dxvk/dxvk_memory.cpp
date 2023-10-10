@@ -459,23 +459,11 @@ DxvkMemory::DxvkMemory() { }
     for (auto& type : m_memTypes) {
       std::lock_guard<dxvk::mutex> lock(type.mutex);
 
-      auto curr = type.chunks.begin();
+      const auto new_end_iterator = std::remove_if(type.chunks.begin(), type.chunks.end(), [](const auto& chunk) {
+        return chunk->isWholeChunkFree();
+      });
 
-      while (curr != type.chunks.end()) {
-        if ((*curr)->isWholeChunkFree()) {
-          std::swap((*curr), type.chunks.back());
-          type.chunks.pop_back();
-          Logger::debug("Free unused chunk");
-
-          // Exit if the container is empty since the
-          // curr iterator got invalidated with pop_back() when the size was 1
-          if (type.chunks.empty()) {
-            break;
-          }
-        } else {
-          curr++;
-        }
-      }
+      type.chunks.erase(new_end_iterator, type.chunks.end());
     }
   }
   // NV-DXVK end
