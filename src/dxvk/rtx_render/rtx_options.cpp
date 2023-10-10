@@ -191,6 +191,13 @@ namespace dxvk {
 
         // Setup some other known good defaults for other IHVs.
         RtxOptions::Get()->resolutionScaleRef() = 0.5f;
+        // Todo: Currently this code is needed to allow the the non-DLSS upscaling paths to reflect the
+        // resolution scale setting otherwise the resolution scale may be automatically updated to match
+        // some other preset whenever something like updateUpscalerFromTaauPreset is called. Ideally the
+        // resolution scale and these presets would not be so disconnected like this (or maybe
+        // updatePresetFromUpscaler just needs to be called in the right places).
+        RtxOptions::Get()->nisPresetRef() = NisPreset::Performance;
+        RtxOptions::Get()->taauPresetRef() = TaauPreset::Performance;
       }
 
       RtxOptions::Get()->graphicsPresetRef() = preferredDefault;
