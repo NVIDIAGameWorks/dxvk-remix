@@ -251,4 +251,10 @@ namespace dxvk {
     return g_ffIsgn;
   }
 
+  uint32_t postprocessTextureReadForTerrainBaking(
+    SpirvModule& spvModule,
+    uint32_t textureValue,
+    std::function<uint32_t()> loadAlbedoOpacityFnc,
+    std::function<void(uint32_t vec4value)> storeVec4ValueToRegisterFnc,
+    std::function<uint32_t()> loadVec4ValueFromRegisterFnc);
 }

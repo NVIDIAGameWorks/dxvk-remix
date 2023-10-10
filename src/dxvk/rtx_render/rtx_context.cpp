@@ -1756,7 +1756,10 @@ namespace dxvk {
 
     DrawCallTransforms& transformData = drawCallState.transformData;
 
-    Rc<DxvkImageView> previousColorView;      
+    // Terrain Baker (may) update bound color textures, so preserve the views
+    Rc<DxvkImageView> previousColorView;
+    Rc<DxvkImageView> previousSecondaryColorView;
+
     OpaqueMaterialData* opaqueReplacementMaterial = nullptr;
     TerrainBaker& terrainBaker = getSceneManager().getTerrainBaker();
 
@@ -1773,10 +1776,10 @@ namespace dxvk {
           const uint32_t colorTextureSlot = drawCallState.materialData.colorTextureSlot[0];
 
           // Save current color texture first
-          if (colorTextureSlot < m_rc.size() &&
-              m_rc[colorTextureSlot].imageView != nullptr) {
+          if (colorTextureSlot < m_rc.size() && m_rc[colorTextureSlot].imageView != nullptr) {
             previousColorView = m_rc[colorTextureSlot].imageView;
-          }
+          }          
+          
         } else {
           ONCE(Logger::warn(str::format("[RTX Texture Baker] Only opaque replacement materials are supported for terrain baking. Texture hash ",
                                         drawCallState.getMaterialData().getHash(),
@@ -1810,7 +1813,7 @@ namespace dxvk {
       // Restore state modified during baking
       if (!TerrainBaker::debugDisableBaking()) {
 
-        // Restore color texture
+        // Restore bound color texture views
         if (previousColorView != nullptr) {
           bindResourceView(drawCallState.materialData.colorTextureSlot[0], previousColorView, nullptr);
         }

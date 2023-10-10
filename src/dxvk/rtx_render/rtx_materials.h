@@ -27,6 +27,7 @@
 #include "../../util/util_macro.h"
 #include "../shaders/rtx/utility/shared_constants.h"
 #include "../shaders/rtx/concept/surface/surface_shared.h"
+#include "../../dxso/dxso_util.h"
 
 namespace dxvk {
 // Surfaces
@@ -1348,7 +1349,8 @@ private:
   const static uint32_t kMaxSupportedTextures = 2;
   TextureRef colorTextures[kMaxSupportedTextures] = {};
   Rc<DxvkSampler> samplers[kMaxSupportedTextures] = {};
-  uint32_t colorTextureSlot[kMaxSupportedTextures] = {};
+  static_assert(kInvalidResourceSlot == 0 && "Below initialization of all array members is only valid for a value of 0.");
+  uint32_t colorTextureSlot[kMaxSupportedTextures] = { kInvalidResourceSlot };
 
   XXH64_hash_t m_cachedHash;
 };
