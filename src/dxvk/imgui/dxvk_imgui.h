@@ -210,7 +210,7 @@ namespace dxvk {
     void createFontsTexture(const Rc<DxvkContext>& ctx);
 
     void setupStyle(ImGuiStyle* dst = NULL);      // custom style
-    void showVsyncOptions();
+    void showVsyncOptions(bool enableDLFGGuard);
 
     void processHotkeys();
 
