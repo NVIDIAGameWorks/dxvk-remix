@@ -21,6 +21,7 @@ namespace dxvk {
     SamplerDepthMode  = 10,
 
     CustomVertexTransformEnabled = 11,
+    ReplacementTextureCategory = 12,
 
     Count
   };

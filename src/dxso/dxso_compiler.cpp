@@ -10,7 +10,7 @@
 #include "dxso_util.h"
 
 #include "../dxvk/dxvk_spec_const.h"
-#include "../dxvk/rtx_render/rtx_options.h"
+#include "../dxvk/rtx_render/rtx_terrain_baker.h"
 
 #include <cfloat>
 
@@ -3096,6 +3096,98 @@ void DxsoCompiler::emitControlFlowGenericLoop(
 
         result.id = m_module.opSelect(typeId, shouldProj, result.id, nonProjResult);
       }
+
+// NV-DXVK start: Replacement material texture support for Terrain Baking
+      auto postprocessColorOutputTextureRead = [&](uint32_t textureValue) -> uint32_t {
+
+        // Avoid injecting shader code if the support is disabled at launch
+        if (!TerrainBaker::Material::replacementSupportInPS_programmableShaders()) {
+          return textureValue;
+        }
+
+        // Only vec4 2D textures are supported
+        if (samplerType != SamplerTypeTexture2D || 
+            result.type.ctype != DxsoScalarType::Float32 || result.type.ccount != 4 ||
+            depth) {
+          return textureValue;
+        }
+
+        // Ensure we have a valid sampler
+        if (m_samplers[kTerrainBakerSecondaryTextureStage].color[SamplerTypeTexture2D].varId == 0) {
+          // SM < 1.x does not have dcl sampler type.
+          // Ensure m_samplers[kTerrainBakerSecondaryTextureStage].color[SamplerTypeTexture2D].varId is valid/non-zero
+          if (m_programInfo.majorVersion() < 2) {
+            emitDclSampler(kTerrainBakerSecondaryTextureStage, DxsoTextureType::Texture2D);
+          } else {
+            // Currently not supported - REMIX-2223 
+            // ToDo: get a valid sampler. For now, skip injecting secondary PBR texture support for terrain baking for this scenario. 
+            // We should be doing everything the same as the regular sampling above but the
+            // varId can still be a 0 for m_programInfo.majorVersion() >= 2
+            return textureValue;
+          }
+        }
+
+        // Types
+        uint32_t floatType = m_module.defFloatType(32);
+        uint32_t vec4Type = m_module.defVectorType(floatType, 4);
+
+        // Function to load albedo opacity from a texture
+        auto loadAlbedoOpacityFnc = [&]() -> uint32_t {
+
+          DxsoSampler samplerAlbedoOpacity = m_samplers.at(kTerrainBakerSecondaryTextureStage);
+          DxsoSamplerInfo samplerInfoAlbedoOpacity = samplerAlbedoOpacity.color[samplerType];
+
+          uint32_t albedoOpacity = this->emitSample(
+            projDivider != 0,
+            typeId,
+            samplerInfoAlbedoOpacity,
+            texcoordVar,
+            reference,
+            fetch4,
+            imageOperands);
+
+          if (switchProjResult) {
+            uint32_t nonProjAlbedoOpacity = this->emitSample(
+              0,
+              typeId,
+              samplerInfoAlbedoOpacity,
+              texcoordVar,
+              reference,
+              fetch4,
+              imageOperands);
+
+            uint32_t shouldProj = m_module.opBitFieldUExtract(
+              m_module.defIntType(32, 0), m_ps.projectionSpec,
+              m_module.consti32(samplerIdx), m_module.consti32(1));
+
+            shouldProj = m_module.opIEqual(m_module.defBoolType(), shouldProj, m_module.constu32(1));
+
+            albedoOpacity = m_module.opSelect(typeId, shouldProj, albedoOpacity, nonProjAlbedoOpacity);
+          }
+
+          return albedoOpacity;
+        };
+
+        // Functions to store/load a vec4 value to/from register storage
+
+        DxsoBaseRegister reg;
+        reg.id = { DxsoRegisterType::ColorOut, 0 };
+        DxsoRegisterPointer regPtr = emitGetOperandPtr(reg, nullptr);
+
+        auto storeVec4ValueToRegisterFnc = [&](uint32_t vec4value) {
+          m_module.opStore(regPtr.id, vec4value);
+        };
+
+        auto loadVec4ValueFromRegisterFnc = [&]() -> uint32_t {
+          return m_module.opLoad(vec4Type, regPtr.id);
+        };
+
+        return postprocessTextureReadForTerrainBaking(m_module, textureValue, loadAlbedoOpacityFnc, storeVec4ValueToRegisterFnc, loadVec4ValueFromRegisterFnc);
+      };
+
+      result.id = postprocessColorOutputTextureRead(result.id);
+// NV-DXVK end
+
 
       // If we are sampling depth we've already specc'ed this!
       // This path is always size 4 because it only hits on color.
