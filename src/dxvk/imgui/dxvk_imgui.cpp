@@ -957,9 +957,11 @@ namespace dxvk {
     auto common = ctx->getCommonObjects();
     DxvkDLSS& dlss = common->metaDLSS();
     DxvkDLFG& dlfg = common->metaDLFG();
+    const RtxReflex& reflex = m_device->getCommon()->metaReflex();
 
     const bool dlssSupported = dlss.supportsDLSS();
     const bool dlfgSupported = dlfg.supportsDLFG();
+    const bool reflexInitialized = reflex.reflexInitialized();
 
     // Describe the tab
 
@@ -1074,16 +1076,18 @@ namespace dxvk {
       showDLFGOptions(ctx);
     }
 
-    ImGui::TextSeparator("Latency Reduction Settings");
+    if (reflexInitialized) {
+      ImGui::TextSeparator("Latency Reduction Settings");
 
-    {
-      ImGui::BeginDisabled(disableNonPresetSettings);
+      {
+        ImGui::BeginDisabled(disableNonPresetSettings);
 
-      // Note: Option to toggle the stats window is set to false here as this window is currently
-      // set up to display only when the "advanced" developer settings UI is active.
-      showReflexOptions(ctx, false);
+        // Note: Option to toggle the stats window is set to false here as this window is currently
+        // set up to display only when the "advanced" developer settings UI is active.
+        showReflexOptions(ctx, false);
 
-      ImGui::EndDisabled();
+        ImGui::EndDisabled();
+      }
     }
 
     ImGui::Dummy(ImVec2(0.0f, 5.0f));
@@ -1189,6 +1193,14 @@ namespace dxvk {
       }
 
       ImGui::EndDisabled();
+    }
+
+    // Other Settings
+
+    ImGui::TextSeparator("Other Settings");
+
+    {
+      showVsyncOptions(true);
     }
 
     // Map indirect particle level back to settings
@@ -1322,7 +1334,7 @@ namespace dxvk {
     ImGui::SameLine(200.f);
     ImGui::Checkbox("Live shader edit mode", &RtxOptions::Get()->useLiveShaderEditModeObject());
 
-    showVsyncOptions();
+    showVsyncOptions(false);
 
     if (ImGui::CollapsingHeader("Camera", collapsingHeaderFlags)) {
       ImGui::Indent();
@@ -2090,13 +2102,31 @@ namespace dxvk {
     style->TabRounding = 1;
   }
 
-  void ImGUI::showVsyncOptions() {
+  void ImGUI::showVsyncOptions(bool enableDLFGGuard) {
     // we should never get here without a swapchain, so we must have latched the vsync value already
     assert(RtxOptions::Get()->enableVsync() != EnableVsync::WaitingForImplicitSwapchain);
     
+    if (enableDLFGGuard && DxvkDLFG::enable()) {
+      ImGui::BeginDisabled();
+    }
+
     bool vsyncEnabled = RtxOptions::Get()->enableVsync() == EnableVsync::On;
     ImGui::Checkbox("Enable V-Sync", &vsyncEnabled);
     RtxOptions::Get()->enableVsyncRef() = vsyncEnabled ? EnableVsync::On : EnableVsync::Off;
+
+    ImGui::BeginDisabled();
+    ImGui::Indent();
+    ImGui::TextWrapped("This setting overrides the native game's V-Sync setting.");
+    ImGui::Unindent();
+    ImGui::EndDisabled();
+    
+    if (enableDLFGGuard && DxvkDLFG::enable()) {
+      ImGui::Indent();
+      ImGui::TextWrapped("When Frame Generation is active, V-Sync is automatically disabled.");
+      ImGui::Unindent();
+
+      ImGui::EndDisabled();
+    }
   }
 
   void ImGUI::showDLFGOptions(const Rc<DxvkContext>& ctx) {
@@ -2115,25 +2145,6 @@ namespace dxvk {
       ImGui::EndDisabled();
     }
 
-    if (DxvkDLFG::enable()) {
-      ImGui::BeginDisabled();
-    }
-
-    showVsyncOptions();
-    ImGui::BeginDisabled();
-    ImGui::Indent();
-    ImGui::TextWrapped("This setting overrides the native game's V-Sync setting.");
-    ImGui::Unindent();
-    ImGui::EndDisabled();
-    
-    if (DxvkDLFG::enable()) {
-      ImGui::Indent();
-      ImGui::TextWrapped("When Frame Generation is active, V-Sync is automatically disabled.");
-      ImGui::Unindent();
-
-      ImGui::EndDisabled();
-    }
-
     // Force Reflex on when using G
     if (ctx->isDLFGEnabled()) {
       RtxOptions::Get()->reflexModeRef() = ReflexMode::LowLatency;
@@ -2147,8 +2158,6 @@ namespace dxvk {
 
     // Note: Skip Reflex ImGUI options if Reflex is not initialized (either fully disabled or failed to be initialized).
     if (!reflex.reflexInitialized()) {
-      ImGui::Text("Reflex failed to initialize or is disabled.");
-
       return;
     }
 
