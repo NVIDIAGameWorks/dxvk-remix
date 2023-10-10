@@ -62,6 +62,7 @@ namespace dxvk {
 
   // NV-DXVK start: Use a large base offset on all resources to avoid conflicting with ray tracing resources.
   const uint32_t baseSlotOffset = 1000;
+  constexpr uint32_t kInvalidResourceSlot = 0;
   // NV-DXVK end
 
   // TODO: Intergrate into compute resource slot ID/refactor all of this?

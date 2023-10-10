@@ -68,14 +68,29 @@ namespace dxvk {
       friend class ImGUI; // <-- we want to modify these values directly.
       friend class TerrainBaker; // <-- we want to modify these values directly.
 
+      RTX_OPTION("rtx.terrainBaker.material", bool, replacementSupportInPS, true, 
+                 "Enables reading of secondary PBR replacement textures in pixel shaders when supported.\n"
+                 "Current support is limitted to fixed function pipelines and programmable shaders with Shader Model 1.0.\n"
+                 "When set to false or unsupported, an extra compute shader is used to preproces the secondary textures to make them compatible at an expense of performance and quality instead.\n"
+                 "Requires \"rtx.terrainBaker.material.replacementSupportInPS_fixedFunction = True\" to apply for draw calls with fixed function graphics pipeline.\n"
+                 "Requires \"rtx.terrainBaker.material.replacementSupportInPS_programmableShaders = True\" to apply for draw calls with programmable graphics pipeline.");
+      RTX_OPTION("rtx.terrainBaker.material", bool, replacementSupportInPS_fixedFunction, true, 
+                 "Enables reading of secondary PBR replacement textures in pixel shaders for games with fixed function graphics pipelines.\n"
+                 "When set to false, an extra compute shader is used to preproces the secondary textures to make them compatible at an expense of performance and quality instead.\n"
+                 "This parameter must be set at launch to apply.");
+      RTX_OPTION_ENV("rtx.terrainBaker.material", bool, replacementSupportInPS_programmableShaders, true, "RTX_TERRAIN_BAKER_PS_REPLACEMENT_SUPPORT_IN_PROGRAMMABLE_SHADERS",
+                 "[Experimental] Enables reading of secondary PBR replacement textures in pixel shaders for games with programmable graphics pipelines.\""
+                 "When set to false, an extra compute shader is used to preproces the secondary textures to make them compatible at an expense of performance and quality instead.\n"
+                 "This parameter must be set at launch to apply. The current support for this is limitted to draw calls with programmable shaders with Shader Model 1.0 only.\n"
+                 "Draw calls with Shader Model 2.0+ will use the preprocessing compute pass.");
       RTX_OPTION("rtx.terrainBaker.material", bool, bakeReplacementMaterials, true, "Enables baking of replacement materials when they are present.");
       // ToDo disable by default
-      RTX_OPTION_ENV("rtx.terrainBaker.material", bool, bakeSecondaryPBRTextures, false, "RTX_TERRAIN_BAKER_BAKE_SECONDARY_PBR_TEXTURES", 
-                     "! Note: this features is under development. It works but performance and memory usage needs to be optimized further. !\n"
+      RTX_OPTION_ENV("rtx.terrainBaker.material", bool, bakeSecondaryPBRTextures, true, "RTX_TERRAIN_BAKER_BAKE_SECONDARY_PBR_TEXTURES", 
                      "Enables baking of secondary textures in replacement materials when they are present.\n"
                      "Secondary textures are all PBR textures except for albedoOpacity. So that includes normal, roughness, etc.");
       RTX_OPTION("rtx.terrainBaker.material", uint32_t, maxResolutionToUseForReplacementMaterials, 8192, 
                  "Max resolution to use for preprocessing and baking of input replacement material textures other than color opacity which is used as is.\n"
+                 "Applies only to a case when a preprocessing compute shader is used to support baking of secondary PBR materials.\n"
                  "Replacement materials need to be preprocessed prior to baking them and limitting the max resolution allows to balance the quality vs performance cost.");
 
       struct Properties {
@@ -135,6 +150,7 @@ namespace dxvk {
     void calculateCascadeMapResolution(const Rc<DxvkDevice>& device);
     const Resources::Resource& getTerrainTexture(Rc<DxvkContext> ctx, RtxTextureManager& textureManager, ReplacementMaterialTextureType::Enum textureType, uint32_t width, uint32_t height);
     void clearMaterialTexture(Rc<DxvkContext> ctx, ReplacementMaterialTextureType::Enum textureType);
+    static bool isPSReplacementSupportEnabled(const DrawCallState& drawCallState);
 
     BakingParameters m_bakingParams;
 

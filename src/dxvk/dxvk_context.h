@@ -1224,6 +1224,10 @@ namespace dxvk {
     DxvkObjects* getCommonObjects() const { return m_common; }
     const Rc<DxvkDevice>& getDevice() const { return m_device; }
 
+    DxvkShaderResourceSlot& getShaderResourceSlot(uint32_t slot) {
+      return m_rc[slot];
+    }
+
   protected:  
     Rc<DxvkDevice>          m_device;
     DxvkObjects*            m_common;

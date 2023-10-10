@@ -21,23 +21,31 @@
 */
 #pragma once
 
-#include "rtx/utility/shader_types.h"
-#include "../../../../rtx_render/rtx_replacement_material_texture_type.h"
+namespace ReplacementMaterialTextureType {
+  enum Enum {
+    AlbedoOpacity = 0,
+    Normal,
+    Tangent,
+    Height,
+    Roughness,
+    Metallic,
+    Emissive,
 
-// ToDo rename
-#define DECODE_AND_ADD_OPACITY_BINDING_TEXTURE_INPUT                  0
-#define DECODE_AND_ADD_OPACITY_BINDING_ALBEDO_OPACITY_TEXTURE_INPUT   1
+    Count
+  };
+}
 
-#define DECODE_AND_ADD_OPACITY_BINDING_TEXTURE_OUTPUT   10
+namespace ReplacementMaterialTextureCategory {
+  enum Enum {
+    AlbedoOpacity = 0,
+    SecondaryRaw,                // Height, Roughness, Metallic, Emissive
+    SecondaryOctahedralEncoded   // Normal, Tangent
+  };
+}
 
-#define DECODE_AND_ADD_OPACITY_BINDING_LINEAR_SAMPLER   20
-
-#define DECODE_AND_ADD_OPACITY_CS_DIMENSIONS 16, 8, 1
-
-struct DecodeAndAddOpacityArgs {
-  uint2 resolution;
-  float2 rcpResolution;
-      
-  float normalIntensity;
-  ReplacementMaterialTextureType::Enum textureType;
-};
+#ifdef __cplusplus
+// Texture stage used for secondary texture during terrain baking.
+// This could be made bound to a dynamic slot or to a different resource should it 
+// conflict in any game in the future.
+static const unsigned int kTerrainBakerSecondaryTextureStage = 7;
+#endif

@@ -318,25 +318,30 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
 
   if (normalLoaded)
   {
-    // Terrain baker produces decoded tangentNormal and (first) normal that need to be normalized.
-    // They are normalized after applying tangentToWorld transform below 
-    const bool isEncodedNormalSample = !isBakedTerrain;  
-
     f16vec3 tangentNormal;
-    if (isEncodedNormalSample) 
+
+    // Terrain baker produces decoded tangentNormal and (first) normal.
+    if (isBakedTerrain)  
+    {
+      // REMIX-2224: Normals blended during terrain baking using programmable shaders can sometimes end up being invalid so we sanitize them at this point
+      tangentNormal = sanitize(normalSample.xyz, cb.isZUp ? f16vec3(0.h, 0.h, 1.h) : f16vec3(0.h, 1.h, 0.h));
+    }
+    else // Decode encoded normal sample
     {
       // Note: Using f16 from texture to decode from is fine as the original texture is only 8 bits of precision.
       tangentNormal = unsignedOctahedralToHemisphereDirection(vec2(normalSample.xy), cb.opaqueMaterialArgs.normalIntensity);
-    } 
-    else 
-    {
-      tangentNormal = normalSample.xyz;
     }
     
     const f16mat3 tangentToWorld = transpose(worldToTangent);
 
     normal = normalize(mul(tangentToWorld, tangentNormal));
-    
+
+    // REMIX-2224: Normals blended during terrain baking using programmable shaders can sometimes end up being invalid
+    // after being transformed to world space so we sanitize them here
+    if (isBakedTerrain) {
+      normal = sanitize(normal, cb.isZUp ? f16vec3(0.h, 0.h, 1.h) : f16vec3(0.h, 1.h, 0.h));
+    }
+
     // Note: Only factoring in the initial normal map read as part of the normal map calculation as the second normal acts blends in worldspace which
     // would re-introduce the potential for precision issues that we're trying to avoid in this calculation. Additionally, the second normal is only used
     // currently for water effects and is sampled from a less detailed mip, so it is likely not too relevant for "detail" in the normal map with regards
