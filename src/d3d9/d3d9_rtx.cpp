@@ -605,6 +605,14 @@ namespace dxvk {
     m_activeDrawCallState.usesVertexShader = m_parent->UseProgrammableVS();
     m_activeDrawCallState.usesPixelShader = m_parent->UseProgrammablePS();
 
+    if (m_activeDrawCallState.usesVertexShader) {
+      m_activeDrawCallState.programmableVertexShaderInfo = d3d9State().vertexShader->GetCommonShader()->GetInfo();
+    }
+    
+    if (m_activeDrawCallState.usesPixelShader) {
+      m_activeDrawCallState.programmablePixelShaderInfo = d3d9State().pixelShader->GetCommonShader()->GetInfo();
+    }
+    
     m_activeDrawCallState.cameraType = CameraType::Unknown;
 
     m_activeDrawCallState.minZ = std::clamp(d3d9State().viewport.MinZ, 0.0f, 1.0f);

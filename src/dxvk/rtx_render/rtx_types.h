@@ -453,7 +453,12 @@ struct DrawCallState {
   // Camera type associated with the draw call
   CameraType::Enum cameraType = CameraType::Unknown;
 
+  // Uses programmamble VS/PS
   bool usesVertexShader = false, usesPixelShader = false;
+
+  // Contains valid values only if usesVertex/PixelShader is set
+  DxsoProgramInfo programmableVertexShaderInfo;
+  DxsoProgramInfo programmablePixelShaderInfo;
 
   float minZ = 0.0f;
   float maxZ = 1.0f;
