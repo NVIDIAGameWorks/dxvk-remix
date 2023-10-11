@@ -25,6 +25,20 @@
 #include "rtx/algorithm/nee_cache_data.h"
 #include "rtx/algorithm/rtxdi/rtxdi.slangh"
 
+#ifdef UPDATE_NEE_CACHE
+#define NEE_CACHE_READ_TASK 1
+#define NEE_CACHE_WRITE_TASK 1
+#define NEE_CACHE_WRITE_SAMPLE 1
+#define NEE_CACHE_WRITE_CANDIDATE 1
+#define NEE_CACHE_WRITE_THREAD_TASK 0
+#else
+#define NEE_CACHE_READ_TASK 0
+#define NEE_CACHE_WRITE_TASK 0
+#define NEE_CACHE_WRITE_SAMPLE 0
+#define NEE_CACHE_WRITE_CANDIDATE 0
+#define NEE_CACHE_WRITE_THREAD_TASK 1
+#endif
+
 struct NEESample
 {
   vec3 position;
@@ -316,6 +330,7 @@ struct NEECell
 
   bool isValid() { return m_offset != NEECell.s_invalidOffset; }
 
+#if NEE_CACHE_READ_TASK
   int getTaskCount()
   {
     int count = 0;
@@ -328,14 +343,6 @@ struct NEECell
       }
     }
     return count;
-  }
-
-  void clearTasks()
-  {
-    for (int i = 0; i < getMaxTaskCount(); ++i)
-    {
-      NeeCacheTask.Store(getTaskAddress(i), NEE_CACHE_EMPTY_TASK);
-    }
   }
 
   uint getTask(int idx)
@@ -362,12 +369,7 @@ struct NEECell
     uint taskData = NeeCacheTask.Load(getTaskAddress(idx));
     return taskData & 0xffffff;
   }
-
-  void setTaskFromIdx(int idx, uint task, uint value)
-  {
-    task |= (value << 24);
-    NeeCacheTask.Store(getTaskAddress(idx), task);
-  }
+#endif
 
   static uint getTaskHash(uint task)
   {
@@ -380,6 +382,18 @@ struct NEECell
     x = ((x >> 16) ^ x) * 0x45d9f3b;
     x = (x >> 16) ^ x;
     return x & 0xf;
+  }
+
+#if NEE_CACHE_WRITE_TASK
+  void setTaskFromIdx(int idx, uint task, uint value) {
+    task |= (value << 24);
+    NeeCacheTask.Store(getTaskAddress(idx), task);
+  }
+
+  void clearTasks() {
+    for (int i = 0; i < getMaxTaskCount(); ++i) {
+      NeeCacheTask.Store(getTaskAddress(i), NEE_CACHE_EMPTY_TASK);
+    }
   }
 
   bool insertTask(uint task, uint value)
@@ -422,6 +436,7 @@ struct NEECell
     }
     return false;
   }
+#endif
 
   int getSampleAddress(int i)
   {
@@ -434,11 +449,13 @@ struct NEECell
     return NEESample.createFromPacked(packed);
   }
 
+#if NEE_CACHE_WRITE_SAMPLE
   void setSample(int idx, NEESample sample)
   {
     NeeCache_PackedSample packed = sample.pack();
     NeeCacheSample[getSampleAddress(idx)] = packed;
   }
+#endif
 
   static int getMaxLightCandidateCount()
   {
@@ -451,20 +468,22 @@ struct NEECell
     return min(count, getMaxLightCandidateCount());
   }
 
-  void setLightCandidateCount(int count)
-  {
-    NeeCache.Store(getLightCandidateBaseAddress(), count);
-  }
-
   NEELightCandidate getLightCandidate(int idx)
   {
     return NEELightCandidate.createFromPacked(NeeCache.Load2(getLightCandidateAddress(idx)));
+  }
+
+#if NEE_CACHE_WRITE_CANDIDATE
+  void setLightCandidateCount(int count)
+  {
+    NeeCache.Store(getLightCandidateBaseAddress(), count);
   }
 
   void setLightCandidate(int idx, NEELightCandidate candidate)
   {
     return NeeCache.Store2(getLightCandidateAddress(idx), candidate.m_data);
   }
+#endif
 
   float calculateLightCandidateWeight(NEELightCandidate candidate, vec3 cellCenter, vec3 surfacePoint, f16vec3 viewDirection, f16vec3 normal, float16_t specularRatio, float16_t roughness)
   {
@@ -556,19 +575,21 @@ struct NEECell
     return min(count, getMaxCandidateCount());
   }
 
+#if NEE_CACHE_WRITE_CANDIDATE
   void setCandidateCount(int count)
   {
     NeeCache.Store(getBaseAddress(), count);
   }
 
-  NEECandidate getCandidate(int idx)
-  {
-    return NEECandidate.create(NeeCache.Load2(getCandidateAddress(idx)));
-  }
-
   void setCandidate(int idx, NEECandidate candidate)
   {
     return NeeCache.Store2(getCandidateAddress(idx), candidate.m_data);
+  }
+#endif
+
+  NEECandidate getCandidate(int idx)
+  {
+    return NEECandidate.create(NeeCache.Load2(getCandidateAddress(idx)));
   }
 
   NEECandidate sampleCandidate(float sampleThreshold, out float pdf)
@@ -853,14 +874,6 @@ struct NEECache
     return idx - s_analyticalLightStartIdx;
   }
 
-  static void storeThreadTask(int2 pixel, uint cellOffset, uint surfaceID, uint primitiveID)
-  {
-    uint2 data = uint2(surfaceID, primitiveID) & 0xffffff;
-    data.x = data.x | ((cellOffset & 0xff) << 24);
-    data.y = data.y | ((cellOffset & 0xff00) << 16);
-    NeeCacheThreadTask[pixel] = data;
-  }
-
   static void loadThreadTask(int2 pixel, out uint cellOffset, out uint surfaceID, out uint primitiveID)
   {
     uint2 data = NeeCacheThreadTask[pixel];
@@ -873,10 +886,19 @@ struct NEECache
     cellOffset = (data.x >> 24) | ((data.y & 0xff000000) >> 16);
   }
 
+#if NEE_CACHE_WRITE_THREAD_TASK
+  static void storeThreadTask(int2 pixel, uint cellOffset, uint surfaceID, uint primitiveID) {
+    uint2 data = uint2(surfaceID, primitiveID) & 0xffffff;
+    data.x = data.x | ((cellOffset & 0xff) << 24);
+    data.y = data.y | ((cellOffset & 0xff00) << 16);
+    NeeCacheThreadTask[pixel] = data;
+  }
+
   static void storeThreadTask(int2 pixel, ThreadTask task)
   {
     NeeCacheThreadTask[pixel] = task.m_data;
   }
+#endif
 
   static ThreadTask loadThreadTask(int2 pixel)
   {

@@ -39,8 +39,10 @@
 #include "rtx/concept/surface/surface.slangh"
 #include "rtx/concept/surface_material/surface_material.slangh"
 #include "rtx/algorithm/integrator_helpers.slangh"
-#include "rtx/algorithm/nee_cache.h"
 #include "rtx/external/nrd.slangh"
+
+#define UPDATE_NEE_CACHE 1
+#include "rtx/algorithm/nee_cache.h"
 
 groupshared uint2 s_srcTaskList[NEE_CACHE_ELEMENTS][8];
 groupshared uint2 s_candidateList[NEE_CACHE_ELEMENTS * 2][8];
