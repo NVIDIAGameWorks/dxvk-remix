@@ -49,9 +49,8 @@ namespace dxvk {
   static const auto colormap75 = turboColormap(0.75f);
   static const auto colormap100 = turboColormap(1.0f);
 
-  static auto debugViewCombo = ImGui::ComboWithKey<uint32_t> {
-    "Debug View",
-    {
+
+  ImGui::ComboWithKey<uint32_t>::ComboEntries debugViewEntries = { {
         {DEBUG_VIEW_PRIMITIVE_INDEX, "Primitive Index"},
         {DEBUG_VIEW_GEOMETRY_HASH, "Geometry Hash"},
         {DEBUG_VIEW_CUSTOM_INDEX, "Custom Index"},
@@ -306,6 +305,52 @@ namespace dxvk {
     displayTypeRef() = static_cast<DebugViewDisplayType>(std::min(static_cast<uint32_t>(displayType()), static_cast<uint32_t>(DebugViewDisplayType::Count) - 1));
   }
 
+  void getDebugViewCombo(std::string searchWord, uint32_t& lastView) {
+    // turn search word into lower case
+    auto toLowerCase = [](std::string& word) {
+      std::transform(word.begin(), word.end(), word.begin(),
+                     [](unsigned char c) { return std::tolower(c); });
+    };
+    toLowerCase(searchWord);
+    bool filterWords = searchWord.length() > 0;
+
+    // Hide unmatched options
+    std::vector<const char*> items;
+    items.reserve(debugViewEntries.size());
+    int itemIndex = -1;
+    for (int i = 0; i < debugViewEntries.size(); i++) {
+      if (debugViewEntries[i].first == lastView) {
+        itemIndex = items.size();
+      }
+
+      if (filterWords) {
+        std::string name(debugViewEntries[i].second);
+        toLowerCase(name);
+
+        if (debugViewEntries[i].first == lastView || name.find(searchWord) != std::string::npos) {
+          items.push_back(debugViewEntries[i].second);
+        }
+      } else {
+        items.push_back(debugViewEntries[i].second);
+      }
+    }
+
+    ImGui::Text("Debug Views");
+
+    const int indent = 50;
+    ImGui::PushItemWidth(ImGui::GetWindowWidth() - indent);
+    ImGui::PushID("Debug Views");
+    ImGui::ListBox("", &itemIndex, items.data(), items.size(), 4);
+    ImGui::PopID();
+    ImGui::PopItemWidth();
+
+    for (int i = 0; i < debugViewEntries.size(); i++) {
+      if (itemIndex != -1 && debugViewEntries[i].second == items[itemIndex]) {
+        lastView = debugViewEntries[i].first;
+      }
+    }
+  }
+
   void DebugView::showImguiSettings()
   {
     const ImGuiSliderFlags sliderFlags = ImGuiSliderFlags_AlwaysClamp;
@@ -331,8 +376,12 @@ namespace dxvk {
       ImGui::Checkbox("Enable Composite Debug View", &enableCompositeDebugView);
 
       if (!enableCompositeDebugView) {
-        // Note: Write to the last debug view index to prevent it from being overridden when disabled and re-enabled.
-        debugViewCombo.getKey(&m_lastDebugViewIdx);
+        static char codewordBuf[32] = "";
+        ImGui::InputText("Search Debug View", codewordBuf, IM_ARRAYSIZE(codewordBuf)-1, ImGuiInputTextFlags_EnterReturnsTrue);
+        codewordBuf[31] = '\0';
+        std::string searchWord(codewordBuf);
+        // Note: Write to the last debug view index to prevent from being overridden when disabled and re-enabled.
+        getDebugViewCombo(searchWord, m_lastDebugViewIdx);
 
         debugViewIdxRef() = m_lastDebugViewIdx;
       }
