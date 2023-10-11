@@ -47,9 +47,8 @@
 #define INTEGRATE_INDIRECT_BINDING_FIRST_SAMPLED_LOBE_DATA_INPUT                       56
 
 #define INTEGRATE_INDIRECT_BINDING_NEE_CACHE                                      57
-#define INTEGRATE_INDIRECT_BINDING_NEE_CACHE_TASK                                 58
-#define INTEGRATE_INDIRECT_BINDING_NEE_CACHE_SAMPLE                               59
-#define INTEGRATE_INDIRECT_BINDING_NEE_CACHE_THREAD_TASK                          60
+#define INTEGRATE_INDIRECT_BINDING_NEE_CACHE_SAMPLE                               58
+#define INTEGRATE_INDIRECT_BINDING_NEE_CACHE_THREAD_TASK                          59
 
 // Storage
 

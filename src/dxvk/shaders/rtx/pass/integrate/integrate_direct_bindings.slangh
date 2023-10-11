@@ -82,13 +82,10 @@ layout(r16f, binding = INTEGRATE_DIRECT_BINDING_PRIMARY_RTXDI_ILLUMINANCE_OUTPUT
 RWTexture2D<float> PrimaryRtxdiIlluminance;
 
 layout(binding = INTEGRATE_DIRECT_BINDING_NEE_CACHE)
-RWByteAddressBuffer NeeCache;
-
-layout(binding = INTEGRATE_DIRECT_BINDING_NEE_CACHE_TASK)
-RWByteAddressBuffer NeeCacheTask;
+ByteAddressBuffer NeeCache;
 
 layout(binding = INTEGRATE_DIRECT_BINDING_NEE_CACHE_SAMPLE)
-RWStructuredBuffer<NeeCache_PackedSample> NeeCacheSample;
+StructuredBuffer<NeeCache_PackedSample> NeeCacheSample;
 
 layout(rg32ui, binding = INTEGRATE_DIRECT_BINDING_NEE_CACHE_THREAD_TASK)
 RWTexture2D<uint2> NeeCacheThreadTask;
