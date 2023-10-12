@@ -717,6 +717,7 @@ namespace dxvk::hud {
                                    "# Textures:" , 
                                    "# Instances/Surfaces:" , 
                                    "# Surface Materials:" , 
+                                   "# Surface Material Extensions:" ,
                                    "# Volume Materials:" , 
                                    "# Lights:",
                                    "# Samplers:",
@@ -728,6 +729,7 @@ namespace dxvk::hud {
                                 counters.getCtr(DxvkStatCounter::RtxTextureCount),
                                 counters.getCtr(DxvkStatCounter::RtxInstanceCount),
                                 counters.getCtr(DxvkStatCounter::RtxSurfaceMaterialCount),
+                                counters.getCtr(DxvkStatCounter::RtxSurfaceMaterialExtensionCount),
                                 counters.getCtr(DxvkStatCounter::RtxVolumeMaterialCount),
                                 counters.getCtr(DxvkStatCounter::RtxLightCount),
                                 counters.getCtr(DxvkStatCounter::RtxSamplers),
@@ -753,7 +755,7 @@ namespace dxvk::hud {
         { 1.0f, 1.0f, 0.25f, 1.0f },
         labels[i]);
 
-      std::string text = str::format(std::setfill(' '), std::setw(5), values[i]);
+      std::string text = str::format(std::setfill(' '), std::setw(8), values[i]);
 
       renderer.drawText(14.0f,
         { position.x + xOffset + 250, position.y },

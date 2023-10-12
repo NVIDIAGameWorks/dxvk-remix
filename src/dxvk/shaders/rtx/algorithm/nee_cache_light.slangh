@@ -337,10 +337,10 @@ struct NEECacheUtils
 
   static float calculateBSDFSampleTotalPDF(OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction, f16vec3 viewDirection, f16vec3 sampleDirection, float firstSampledSolidAnglePdf, bool firstSampledLobeIsSpecular)
   {
-    float16_t diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability;
+    float16_t diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability, diffuseTransmissionProbability = 0.0f;
     bool isValid = opaqueSurfaceMaterialInteractionCalcLobeProbability(
       opaqueSurfaceMaterialInteraction, viewDirection,
-      diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability);
+      diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability, diffuseTransmissionProbability);
 
     MinimalRayInteraction minimalRayInteraction;
     minimalRayInteraction.viewDirection = viewDirection;

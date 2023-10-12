@@ -328,6 +328,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.maxFogDistance|float|65504||
 |rtx.maxPrimsInMergedBLAS|int|50000||
 |rtx.minOpaqueDiffuseLobeSamplingProbability|float|0.25|The minimum allowed non\-zero value for opaque diffuse probability weights\.|
+|rtx.minOpaqueDiffuseTransmissionLobeSamplingProbability|float|0.25|The minimum allowed non\-zero value for thin opaque diffuse transmission probability weights\.|
 |rtx.minOpaqueOpacityTransmissionLobeSamplingProbability|float|0.25|The minimum allowed non\-zero value for opaque opacity probability weights\.|
 |rtx.minOpaqueSpecularLobeSamplingProbability|float|0.25|The minimum allowed non\-zero value for opaque specular probability weights\.|
 |rtx.minPrimsInStaticBLAS|int|1000||
@@ -390,6 +391,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.opacityMicromap.enableResetEveryFrame|bool|False|Debug: resets Opacity Micromap runtime data every frame\. |
 |rtx.opacityMicromap.showAdvancedOptions|bool|False|Shows advanced options\.|
 |rtx.opaqueDiffuseLobeSamplingProbabilityZeroThreshold|float|0.01|The threshold for which to zero opaque diffuse probability weight values\.|
+|rtx.opaqueDiffuseTransmissionLobeSamplingProbabilityZeroThreshold|float|0.01|The threshold for which to zero thin opaque diffuse transmission probability weight values\.|
 |rtx.opaqueMaterial.albedoBias|float|0|A bias factor to add to all albedo values in the opaque material\. Should only be used for debugging or development\.|
 |rtx.opaqueMaterial.albedoScale|float|1|A scale factor to apply to all albedo values in the opaque material\. Should only be used for debugging or development\.|
 |rtx.opaqueMaterial.enableThinFilmOverride|bool|False|A flag to force the thin\-film layer on the opaque material to be enabled\. Should only be used for debugging or development\.|
@@ -533,6 +535,8 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.stochasticAlphaBlendShareNeighbors|bool|True|Share result with other pixels to accelerate search\.|
 |rtx.stochasticAlphaBlendUseNeighborSearch|bool|True|Get radiance from neighbor opaque pixels\.|
 |rtx.stochasticAlphaBlendUseRadianceVolume|bool|True|Get radiance from radiance volume\.|
+|rtx.subsurface.enableThinOpaque|bool|True|Enable thin opaque material\. The materials with th  in opaque properties will fallback to normal opaque material\.|
+|rtx.subsurface.surfaceThicknessScale|float|1|Scalar of the subsurface thickness\.|
 |rtx.taauPreset|int|1|Adjusts TAA\-U scaling factor, trades quality for performance\.|
 |rtx.temporalAA.colorClampingFactor|float|1|A scalar factor to apply to the standard deviation of the neighborhood of pixels in the color signal used for clamping\. Should be in the range 0\-infinity\.<br>This value essentially represents how many standard deviations of tolerance from the current frame's colors around each pixel pixel the temporally accumulated color signal may have\.<br>Higher values will cause more ghosting whereas lower values may reduce ghosting but will impact image quality \(less ability to upscale effectively\) and reduce stability \(more jittering\)\.|
 |rtx.temporalAA.maximumRadiance|float|10000|The maximum value to use in TAA\-U's perceptual quantizer color transformation, measured in cd/m^2\.<br>The typical value used for the PQ transformation is 10,000 and usually shouldn't be changed\.|

@@ -151,6 +151,7 @@ namespace dxvk {
     // We still need to clear caches even if the scene wasn't rendered
     m_bufferCache.clear();
     m_surfaceMaterialCache.clear();
+    m_surfaceMaterialExtensionCache.clear();
     m_volumeMaterialCache.clear();
     
     // Called before instance manager's clear, so that it resets all tracked instances in Opacity Micromap manager at once
@@ -559,7 +560,7 @@ namespace dxvk {
         input.getGeometryData().indexBuffer.defined() && input.getGeometryData().vertexCount > input.getGeometryData().indexCount;
     if (highlightUnsafeAnchor) {
       static MaterialData sHighlightMaterialData(OpaqueMaterialData(TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), 
-          0.f, 1.f, Vector4(0.2f, 0.2f, 0.2f, 1.0f), 0.1f, 0.1f, Vector3(0.46f, 0.26f, 0.31f), true, 1, 1, 0, false, false, 200.f, true, false, BlendType::kAlpha, false, AlphaTestType::kAlways, 0, 0.0f));
+          0.f, 1.f, Vector4(0.2f, 0.2f, 0.2f, 1.0f), 0.1f, 0.1f, Vector3(0.46f, 0.26f, 0.31f), true, 1, 1, 0, false, false, 200.f, true, false, BlendType::kAlpha, false, AlphaTestType::kAlways, 0, 0.0f, Vector3(), 0.0f, Vector3(), 0.0f));
       overrideMaterialData = &sHighlightMaterialData;
     }
 
@@ -662,7 +663,7 @@ namespace dxvk {
         }
         if (highlightUnsafeReplacement) {
           static MaterialData sHighlightMaterialData(OpaqueMaterialData(TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), 
-              0.f, 1.f, Vector4(0.2f, 0.2f, 0.2f, 1.f), 0.1f, 0.1f, Vector3(1.f, 0.f, 0.f), true, 1, 1, 0, false, false, 200.f, true, false, BlendType::kAlpha, false, AlphaTestType::kAlways, 0, 0.0f));
+              0.f, 1.f, Vector4(0.2f, 0.2f, 0.2f, 1.f), 0.1f, 0.1f, Vector3(1.f, 0.f, 0.f), true, 1, 1, 0, false, false, 200.f, true, false, BlendType::kAlpha, false, AlphaTestType::kAlways, 0, 0.0f, Vector3(), 0.0f, Vector3(), 0.0f));
           if (getGameTimeSinceStartMS() / 200 % 2 == 0) {
             overrideMaterialData = &sHighlightMaterialData;
           }
@@ -871,6 +872,7 @@ namespace dxvk {
       uint32_t roughnessTextureIndex = kSurfaceMaterialInvalidTextureIndex;
       uint32_t metallicTextureIndex = kSurfaceMaterialInvalidTextureIndex;
       uint32_t emissiveColorTextureIndex = kSurfaceMaterialInvalidTextureIndex;
+      uint32_t subsurfaceMaterialIndex = kSurfaceMaterialInvalidTextureIndex;
 
       float anisotropy;
       float emissiveIntensity;
@@ -883,6 +885,14 @@ namespace dxvk {
       bool alphaIsThinFilmThickness = false;
       float thinFilmThicknessConstant = 0.0f;
       float displaceIn = 1.0f;
+      float thinOpaqueThickness = 0.0f;
+      float thinOpaqueAttenuationCoefficient = 0.0f;
+      uint8_t thinOpaqueSingleScatteringAlbedoScale = 0;
+
+      Vector3 subsurfaceTransmittanceColor(0.0f, 0.0f, 0.0f);
+      float subsurfaceMeasurementDistance = 0.0f;
+      Vector3 subsurfaceSingleScatteringAlbedo(0.0f, 0.0f, 0.0f);
+      float subsurfaceVolumetricAnisotropy = 0.0f;
 
       constexpr Vector4 kWhiteModeAlbedo = Vector4(0.7f, 0.7f, 0.7f, 1.0f);
 
@@ -970,6 +980,17 @@ namespace dxvk {
         if (heightTextureIndex != kSurfaceMaterialInvalidTextureIndex && displaceIn > 0.0f) {
           ++m_activePOMCount;
         }
+
+        subsurfaceTransmittanceColor = opaqueMaterialData.getSubsurfaceTransmittanceColor();
+        subsurfaceMeasurementDistance = opaqueMaterialData.getSubsurfaceMeasurementDistance() * RtxOptions::SubsurfaceScattering::surfaceThicknessScale();
+        subsurfaceSingleScatteringAlbedo = opaqueMaterialData.getSubsurfaceSingleScatteringAlbedo();
+        subsurfaceVolumetricAnisotropy = opaqueMaterialData.getSubsurfaceVolumetricAnisotropy();
+
+        if (RtxOptions::SubsurfaceScattering::enableThinOpaque() && subsurfaceMeasurementDistance > 0.0f) {
+          const RtSubsurfaceMaterial subsurfaceMaterial(
+            subsurfaceTransmittanceColor, subsurfaceMeasurementDistance, subsurfaceSingleScatteringAlbedo, subsurfaceVolumetricAnisotropy);
+          subsurfaceMaterialIndex = m_surfaceMaterialExtensionCache.track(subsurfaceMaterial);
+        }
       }
 
       const RtOpaqueSurfaceMaterial opaqueSurfaceMaterial{
@@ -981,7 +1002,8 @@ namespace dxvk {
         roughnessConstant, metallicConstant,
         emissiveColorConstant, enableEmissive,
         thinFilmEnable, alphaIsThinFilmThickness,
-        thinFilmThicknessConstant, samplerIndex, displaceIn
+        thinFilmThicknessConstant, samplerIndex, displaceIn,
+        subsurfaceMaterialIndex
       };
 
       surfaceMaterial.emplace(opaqueSurfaceMaterial);
@@ -1253,16 +1275,38 @@ namespace dxvk {
         std::size_t dataOffset = 0;
         std::vector<unsigned char> surfaceMaterialsGPUData(surfaceMaterialsGPUSize);
 
-        int materialID = 0;
         for (auto&& surfaceMaterial : m_surfaceMaterialCache.getObjectTable()) {
           surfaceMaterial.writeGPUData(surfaceMaterialsGPUData.data(), dataOffset);
-          materialID++;
         }
 
         assert(dataOffset == surfaceMaterialsGPUSize);
         assert(surfaceMaterialsGPUData.size() == surfaceMaterialsGPUSize);
 
         ctx->updateBuffer(m_surfaceMaterialBuffer, 0, surfaceMaterialsGPUData.size(), surfaceMaterialsGPUData.data());
+      }
+
+      // Surface Material Extension Buffer
+      if (m_surfaceMaterialExtensionCache.getTotalCount() > 0) {
+        ScopedGpuProfileZone(ctx, "updateSurfaceMaterialExtensions");
+        const auto surfaceMaterialExtensionsGPUSize = m_surfaceMaterialExtensionCache.getTotalCount() * kSurfaceMaterialGPUSize;
+
+        info.size = align(surfaceMaterialExtensionsGPUSize, kBufferAlignment);
+        info.usage |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+        if (m_surfaceMaterialExtensionBuffer == nullptr || info.size > m_surfaceMaterialExtensionBuffer->info().size) {
+          m_surfaceMaterialExtensionBuffer = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
+        }
+
+        std::size_t dataOffset = 0;
+        std::vector<unsigned char> surfaceMaterialExtensionsGPUData(surfaceMaterialExtensionsGPUSize);
+
+        for (auto&& surfaceMaterialExtension : m_surfaceMaterialExtensionCache.getObjectTable()) {
+          surfaceMaterialExtension.writeGPUData(surfaceMaterialExtensionsGPUData.data(), dataOffset);
+        }
+
+        assert(dataOffset == surfaceMaterialExtensionsGPUSize);
+        assert(surfaceMaterialExtensionsGPUData.size() == surfaceMaterialExtensionsGPUSize);
+
+        ctx->updateBuffer(m_surfaceMaterialExtensionBuffer, 0, surfaceMaterialExtensionsGPUData.size(), surfaceMaterialExtensionsGPUData.data());
       }
 
       // Volume Material buffer
@@ -1302,6 +1346,7 @@ namespace dxvk {
     m_device->statCounters().setCtr(DxvkStatCounter::RtxTextureCount, textureManager.getTextureTable().size());
     m_device->statCounters().setCtr(DxvkStatCounter::RtxInstanceCount, m_instanceManager.getActiveCount());
     m_device->statCounters().setCtr(DxvkStatCounter::RtxSurfaceMaterialCount, m_surfaceMaterialCache.getActiveCount());
+    m_device->statCounters().setCtr(DxvkStatCounter::RtxSurfaceMaterialExtensionCount, m_surfaceMaterialExtensionCache.getActiveCount());
     m_device->statCounters().setCtr(DxvkStatCounter::RtxVolumeMaterialCount, m_volumeMaterialCache.getActiveCount());
     m_device->statCounters().setCtr(DxvkStatCounter::RtxLightCount, m_lightManager.getActiveCount());
     m_device->statCounters().setCtr(DxvkStatCounter::RtxSamplers, m_samplerCache.getActiveCount());

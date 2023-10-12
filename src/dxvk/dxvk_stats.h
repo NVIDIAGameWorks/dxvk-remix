@@ -11,27 +11,28 @@ namespace dxvk {
    * thogether with \ref DxvkStatCounters.
    */
   enum class DxvkStatCounter : uint32_t {
-    CmdDrawCalls,             ///< Number of draw calls
-    CmdDispatchCalls,         ///< Number of compute calls
-    CmdTraceRaysCalls,         ///< Number of traceRays calls
-    CmdRenderPassCount,       ///< Number of render passes
-    PipeCountGraphics,        ///< Number of graphics pipelines
-    PipeCountCompute,         ///< Number of compute pipelines
-    PipeCompilerBusy,         ///< Boolean indicating compiler activity
-    QueueSubmitCount,         ///< Number of command buffer submissions
-    QueuePresentCount,        ///< Number of present calls / frames
-    GpuIdleTicks,             ///< GPU idle time in microseconds
-    RtxBlasCount,             ///< Number of unique BLAS's in the scene/geometry cache
-    RtxBufferCount,           ///< Number of unique buffers being tracked for RT rendering
-    RtxTextureCount,          ///< Number of unique textures being tracked for RT rendering
-    RtxInstanceCount,         ///< Number of surfaces and TLAS instance nodes in the scene
-    RtxSurfaceMaterialCount,  ///< Number of surface materials in the scene
-    RtxVolumeMaterialCount,   ///< Number of volume materials in the scene
-    RtxLightCount,            ///< Number of lights currently present in the scene
-    RtxSamplers,              ///< Number of samplers currently present in the scene
-    RtxTexturesInFlight,      ///< Number of texture currently being loaded
-    RtxLastTextureBatchDuration, ///< Duration in ms of the last processed texture batch
-    NumCounters,              ///< Number of counters available
+    CmdDrawCalls,                      ///< Number of draw calls
+    CmdDispatchCalls,                  ///< Number of compute calls
+    CmdTraceRaysCalls,                 ///< Number of traceRays calls
+    CmdRenderPassCount,                ///< Number of render passes
+    PipeCountGraphics,                 ///< Number of graphics pipelines
+    PipeCountCompute,                  ///< Number of compute pipelines
+    PipeCompilerBusy,                  ///< Boolean indicating compiler activity
+    QueueSubmitCount,                  ///< Number of command buffer submissions
+    QueuePresentCount,                 ///< Number of present calls / frames
+    GpuIdleTicks,                      ///< GPU idle time in microseconds
+    RtxBlasCount,                      ///< Number of unique BLAS's in the scene/geometry cache
+    RtxBufferCount,                    ///< Number of unique buffers being tracked for RT rendering
+    RtxTextureCount,                   ///< Number of unique textures being tracked for RT rendering
+    RtxInstanceCount,                  ///< Number of surfaces and TLAS instance nodes in the scene
+    RtxSurfaceMaterialCount,           ///< Number of surface materials in the scene
+    RtxSurfaceMaterialExtensionCount,  ///< Number of surface material extensions in the scene
+    RtxVolumeMaterialCount,            ///< Number of volume materials in the scene
+    RtxLightCount,                     ///< Number of lights currently present in the scene
+    RtxSamplers,                       ///< Number of samplers currently present in the scene
+    RtxTexturesInFlight,               ///< Number of texture currently being loaded
+    RtxLastTextureBatchDuration,       ///< Duration in ms of the last processed texture batch
+    NumCounters,                       ///< Number of counters available
   };
   
   
