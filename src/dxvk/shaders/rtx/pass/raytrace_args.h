@@ -71,6 +71,9 @@ struct NeeCacheArgs {
   float ageCullingSpeed;
   float range;
   float emissiveTextureSampleFootprintScale;
+
+  uint3 pad0;
+  uint clearCache;
 };
 
 // Constant buffer
