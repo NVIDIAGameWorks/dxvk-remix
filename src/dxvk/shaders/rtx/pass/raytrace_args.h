@@ -160,6 +160,8 @@ struct RaytraceArgs {
   uint16_t minOpaqueSpecularLobeSamplingProbability;
   uint16_t opaqueOpacityTransmissionLobeSamplingProbabilityZeroThreshold;
   uint16_t minOpaqueOpacityTransmissionLobeSamplingProbability;
+  uint16_t opaqueDiffuseTransmissionLobeSamplingProbabilityZeroThreshold;
+  uint16_t minOpaqueDiffuseTransmissionLobeSamplingProbability;
 
   uint16_t translucentSpecularLobeSamplingProbabilityZeroThreshold;
   uint16_t minTranslucentSpecularLobeSamplingProbability;
@@ -281,4 +283,6 @@ struct RaytraceArgs {
   uint pomEnable;
   uint pomEnableDirectLighting;
   uint pomEnableIndirectLighting;
+
+  uint thinOpaqueEnable;
 };

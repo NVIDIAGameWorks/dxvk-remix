@@ -571,7 +571,11 @@ namespace dxvk {
       false, // opaqueMaterialDefaults.InvertedBlend,
       opaqueMaterialDefaults.DefaultAlphaTestType,
       0,//opaqueMaterialDefaults.AlphaReferenceValue;
-      0.0f));  // opaqueMaterialDefaults.DisplaceIn
+      0.0f,  // opaqueMaterialDefaults.DisplaceIn
+      Vector3(),  // opaqueMaterialDefaults.subsurfaceTransmittanceColor
+      0.0f,  // opaqueMaterialDefaults.subsurfaceMeasurementDistance
+      Vector3(),  // opaqueMaterialDefaults.subsurfaceSingleScatteringAlbedo
+      0.0f));  // opaqueMaterialDefaults.subsurfaceVolumetricAnisotropy
 
     m_hasInitializedMaterialDataThisFrame = true;
     m_needsMaterialDataUpdate = false;
