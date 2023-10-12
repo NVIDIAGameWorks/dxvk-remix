@@ -241,6 +241,18 @@ namespace dxvk {
     RtxTextureManager& textureManger = ctx->getCommonObjects()->getTextureManager();
     const RtCamera& camera = sceneManager.getCamera();
 
+    if (drawCallState.usesVertexShader && !D3D9Rtx::useVertexCapture()) {
+      ONCE(Logger::warn(str::format("[RTX Terrain Baker] Terrain texture corresponds to a draw call with programmable Vertex Shader usage. Vertex capture must be enabled to support baking of such draw calls. Ignoring the draw call.")));
+      return false;
+    }
+
+    if (!Material::bakeReplacementMaterials()) {
+      replacementMaterial = nullptr;
+    }
+
+    // Register mesh and preprocess state for baking for this frame
+    registerTerrainMesh(ctx, dxvkCtxState, drawCallState);
+
     if (!debugDisableBinding()) {
       textureTransformOut = m_bakingParams.viewToCascade0TextureSpace;
     }
@@ -257,18 +269,6 @@ namespace dxvk {
       
       return isBaked;
     }
-
-    if (drawCallState.usesVertexShader && !D3D9Rtx::useVertexCapture()) {
-      ONCE(Logger::warn(str::format("[RTX Terrain Baker] Terrain texture corresponds to a draw call with programmable Vertex Shader usage. Vertex capture must be enabled to support baking of such draw calls. Ignoring the draw call.")));
-      return false;
-    }
-
-    if (!Material::bakeReplacementMaterials()) {
-      replacementMaterial = nullptr;
-    }
-
-    // Register mesh and preprocess state for baking
-    registerTerrainMesh(ctx, dxvkCtxState, drawCallState);
 
     union UnifiedCB {
       D3D9RtxVertexCaptureData programmablePipeline;
@@ -935,9 +935,12 @@ namespace dxvk {
       const Vector3 forward = SceneManager::getSceneForward();
       const Vector3 right = SceneManager::calculateSceneRight();
 
+      // Set baking camera position just above the terrain
       // Offset by zNear so that zNear doesn't clip the terrain
       // Offset by epsilon so that it doesn't clip top of the terrain
-      const Vector3 bakingCameraPosition = camera.getPosition() + (cameraRelativeTerrainHeight * (1 + epsilon) + zNear) * up;
+      const Vector3 bakingCameraPosition = cameraRelativeTerrainHeight >= 0.f
+        ? camera.getPosition() + (cameraRelativeTerrainHeight * (1 + epsilon) + zNear) * up
+        : camera.getPosition() + (cameraRelativeTerrainHeight * (1 - epsilon) - zNear) * up;
 
       const Vector3 translation = Vector3(
         dot(right, -bakingCameraPosition),
