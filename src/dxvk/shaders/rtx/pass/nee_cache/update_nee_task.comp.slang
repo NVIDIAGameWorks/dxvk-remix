@@ -60,7 +60,7 @@ void main(int2 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupThr
 
   // Load recorded task for each pixel
   ThreadTask task = NEECache.loadThreadTask(threadIndex);
-  if (task.isValid())
+  if (!cb.neeCacheArgs.clearCache && task.isValid())
   {
     int oldCount;
     InterlockedAdd(s_tarTaskCount, 1, oldCount);

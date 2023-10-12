@@ -120,6 +120,10 @@ namespace dxvk {
     constants.neeCacheArgs.emissiveTextureSampleFootprintScale = emissiveTextureSampleFootprintScale();
     constants.neeCacheArgs.ageCullingSpeed = ageCullingSpeed();
     constants.neeCacheArgs.cullingThreshold = cullingThreshold();
+
+    static uvec2 oldResolution = constants.camera.resolution;
+    constants.neeCacheArgs.clearCache = oldResolution.x != constants.camera.resolution.x || oldResolution.y != constants.camera.resolution.y;
+    oldResolution = constants.camera.resolution;
   }
 
   void NeeCachePass::dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
