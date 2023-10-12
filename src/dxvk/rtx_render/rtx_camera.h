@@ -281,7 +281,7 @@ namespace dxvk
     const Vector3& getPreviousArtificialWorldOffset() const { return m_previousArtificalWorldOffset; }
 
     bool isValid(const uint32_t frameIdx) const { return m_frameLastTouched == frameIdx; }
-    uint32_t getLastUpdateFrame() { return m_frameLastTouched; }
+    uint32_t getLastUpdateFrame() const { return m_frameLastTouched; }
 
     Vector3 getPosition(bool freecam = true) const;
     Vector3 getDirection(bool freecam = true) const;

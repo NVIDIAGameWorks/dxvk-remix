@@ -267,7 +267,7 @@ namespace dxvk {
       return m_queryPoolDLFG;
     }
     
-    RW_RTX_OPTION("rtx.dlfg", bool, enable, true, "Enables DLSS 3.0 frame generation which generates interpolated frames to increase framerate at the cost of slightly more latency."); // note: always use DxvkDevice::isDLFGEnabled() to check if DLFG is enabled, not this option directly
+    RW_RTX_OPTION_ENV("rtx.dlfg", bool, enable, true, "RTX_DLFG_ENABLE", "Enables DLSS 3.0 frame generation which generates interpolated frames to increase framerate at the cost of slightly more latency."); // note: always use DxvkDevice::isDLFGEnabled() to check if DLFG is enabled, not this option directly
   
   private:
     std::unique_ptr<NGXDLFGContext> m_dlfgContext = nullptr;
