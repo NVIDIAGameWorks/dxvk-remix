@@ -859,6 +859,17 @@ void geometryResolverVertexOutputDebugView(
   case DEBUG_VIEW_IS_INSIDE_FRUSTUM:
     storeInDebugView(pixelCoordinate, surface.isInsideFrustum ? vec3(0.0f, 1.0f ,0.0f) : vec3(1.0f, 0.0f, 0.0f));
     break;
+  case DEBUG_VIEW_IS_THIN_OPAQUE:
+    // Green = thin opaque, Red = not thin opaque
+    bool isThinOpaque = false;
+    if (materialType == surfaceMaterialTypeOpaque)
+    {
+      isThinOpaque = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction).subsurfaceMaterialIndex != BINDING_INDEX_INVALID;
+    }
+    // Green = thin opaque, Red = not thin opaque
+    storeInDebugView(pixelCoordinate, isThinOpaque ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0));
+
+    break;
   }
 }
 

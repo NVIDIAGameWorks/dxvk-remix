@@ -74,6 +74,10 @@ StructuredBuffer<int32_t> surfaceMapping;
 layout(binding = BINDING_SURFACE_MATERIAL_DATA_BUFFER)
 StructuredBuffer<MemoryPolymorphicSurfaceMaterial> surfaceMaterials;
 
+// Note: Surface Material array may only be up to a size of 2^16
+layout(binding = BINDING_SURFACE_MATERIAL_EXT_DATA_BUFFER)
+StructuredBuffer<MemoryPolymorphicSurfaceMaterial> surfaceMaterialExtensions;
+
 // Todo: Volumes for consistency with surfaces and for multi-volume support in the future
 
 // Note: Volume Material array may only be up to a size of 2^16

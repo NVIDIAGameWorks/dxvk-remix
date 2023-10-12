@@ -372,6 +372,10 @@ struct OpaqueMaterialDefaults {
   AlphaTestType DefaultAlphaTestType = AlphaTestType::kAlways;
   uint8_t AlphaReferenceValue = 0;
   float DisplaceIn = 1.0f;
+  Vector3 SubsurfaceTransmittanceColor = { 0.5f, 0.5f, 0.5f };
+  float SubsurfaceMeasurementDistance = 0.0f;
+  Vector3 SubsurfaceSingleScatteringAlbedo = { 0.5f, 0.5f, 0.5f };
+  float SubsurfaceVolumetricAnisotropy = 0.0f;
 };
 
 struct TranslucentMaterialDefaults {
@@ -409,6 +413,10 @@ struct OpaqueMaterialMins {
   AlphaTestType MinAlphaTestType = AlphaTestType::kMinValue;
   uint8_t AlphaReferenceValue = 0;
   float DisplaceIn = 0.0f;
+  Vector3 SubsurfaceTransmittanceColor = { 0.0f, 0.0f, 0.0f };
+  float SubsurfaceMeasurementDistance = 0.0f;
+  Vector3 SubsurfaceSingleScatteringAlbedo = { 0.0f, 0.0f, 0.0f };
+  float SubsurfaceVolumetricAnisotropy = -1.0f;
 };
 
 struct OpaqueMaterialMaxes {
@@ -427,6 +435,10 @@ struct OpaqueMaterialMaxes {
   uint8_t AlphaReferenceValue = std::numeric_limits<uint8_t>::max();
   // Note: Maximum clamped to float 16 max due to GPU encoding requirements.
   float DisplaceIn = 65504.0f;
+  Vector3 SubsurfaceTransmittanceColor = { 1.0f, 1.0f, 1.0f };
+  float SubsurfaceMeasurementDistance = 65504.0f;
+  Vector3 SubsurfaceSingleScatteringAlbedo = { 1.0f, 1.0f, 1.0f };
+  float SubsurfaceVolumetricAnisotropy = 1.0f;
 };
 
 struct TranslucentMaterialMins {
@@ -475,6 +487,9 @@ enum class RtSurfaceMaterialType {
   Translucent,
   RayPortal,
 
+  // Extensions
+  Subsurface,
+
   Count
 };
 
@@ -490,7 +505,8 @@ struct RtOpaqueSurfaceMaterial {
     float roughnessConstant, float metallicConstant,
     const Vector3& emissiveColorConstant, bool enableEmission,
     bool enableThinFilm, bool alphaIsThinFilmThickness, float thinFilmThicknessConstant,
-    uint32_t samplerIndex, float displaceIn) :
+    uint32_t samplerIndex, float displaceIn,
+    uint32_t subsurfaceMaterialIndex) :
     m_albedoOpacityTextureIndex{ albedoOpacityTextureIndex }, m_normalTextureIndex{ normalTextureIndex },
     m_tangentTextureIndex { tangentTextureIndex }, m_heightTextureIndex { heightTextureIndex }, m_roughnessTextureIndex{ roughnessTextureIndex },
     m_metallicTextureIndex{ metallicTextureIndex }, m_emissiveColorTextureIndex{ emissiveColorTextureIndex },
@@ -499,7 +515,8 @@ struct RtOpaqueSurfaceMaterial {
     m_roughnessConstant{ roughnessConstant }, m_metallicConstant{ metallicConstant },
     m_emissiveColorConstant{ emissiveColorConstant }, m_enableEmission{ enableEmission },
     m_enableThinFilm { enableThinFilm }, m_alphaIsThinFilmThickness { alphaIsThinFilmThickness },
-    m_thinFilmThicknessConstant { thinFilmThicknessConstant }, m_samplerIndex{ samplerIndex }, m_displaceIn{ displaceIn } {
+    m_thinFilmThicknessConstant { thinFilmThicknessConstant }, m_samplerIndex{ samplerIndex }, m_displaceIn{ displaceIn },
+    m_subsurfaceMaterialIndex(subsurfaceMaterialIndex) {
     updateCachedData();
     updateCachedHash();
   }
@@ -571,11 +588,17 @@ struct RtOpaqueSurfaceMaterial {
     writeGPUHelper(data, offset, glm::packHalf1x16(displaceIn));
     writeGPUHelperExplicit<2>(data, offset, m_heightTextureIndex);
 
-    // Byte 24
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_cachedThinFilmNormalizedThicknessConstant));
+    // Bytes 24-26
+    if (m_subsurfaceMaterialIndex != kSurfaceMaterialInvalidTextureIndex) {
+      writeGPUHelperExplicit<2>(data, offset, m_subsurfaceMaterialIndex);
+      writeGPUPadding<1>(data, offset); // Note: Padding for unused space
+      flags |= OPAQUE_SURFACE_MATERIAL_FLAG_HAS_SUBSURFACE_MATERIAL;
+    } else {
+      writeGPUPadding<3>(data, offset); // Note: Padding for unused space
+    }
 
-    // Bytes 25-27
-    writeGPUPadding<3>(data, offset); // Note: Padding for unused space
+    // Byte 27
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_cachedThinFilmNormalizedThicknessConstant));
 
     // Bytes 28-31
     if (m_enableThinFilm) {
@@ -587,7 +610,6 @@ struct RtOpaqueSurfaceMaterial {
         flags |= OPAQUE_SURFACE_MATERIAL_FLAG_ALPHA_IS_THIN_FILM_THICKNESS;
       }
     }
-
     writeGPUHelper(data, offset, flags);
 
     assert(offset - oldOffset == kSurfaceMaterialGPUSize);
@@ -673,6 +695,10 @@ struct RtOpaqueSurfaceMaterial {
     return m_enableEmission;
   }
 
+  uint32_t getSubsurfaceMaterialIndex() const {
+    return m_subsurfaceMaterialIndex;
+  }
+
 private:
   void updateCachedHash() {
     XXH64_hash_t h = 0;
@@ -696,6 +722,7 @@ private:
     h = XXH64(&m_thinFilmThicknessConstant, sizeof(m_thinFilmThicknessConstant), h);
     h = XXH64(&m_samplerIndex, sizeof(m_samplerIndex), h);
     h = XXH64(&m_displaceIn, sizeof(m_displaceIn), h);
+    h = XXH64(&m_subsurfaceMaterialIndex, sizeof(m_subsurfaceMaterialIndex), h);
 
     m_cachedHash = h;
   }
@@ -738,6 +765,8 @@ private:
   // TODO: if we ever support a displacement algorithm that supports outwards displacements, we'll need
   // to add a displaceOut parameter.  With POM, displaceOut is locked to 0.
   float m_displaceIn;
+
+  uint32_t m_subsurfaceMaterialIndex;
 
   XXH64_hash_t m_cachedHash;
 
@@ -1014,6 +1043,103 @@ private:
   XXH64_hash_t m_cachedHash;
 };
 
+// Extension of the three basic types of materials.
+// Don't use material types below standalone. Instead, attach them to the materials above as side load data.
+
+// Subsurface Material
+struct RtSubsurfaceMaterial {
+  RtSubsurfaceMaterial(
+    const Vector3& subsurfaceTransmittanceColor, const float subsurfaceMeasurementDistance,
+    const Vector3& subsurfaceSingleScatteringAlbedo, const float subsurfaceVolumetricAnisotropy) :
+    m_subsurfaceTransmittanceColor { subsurfaceTransmittanceColor },
+    m_subsurfaceMeasurementDistance { subsurfaceMeasurementDistance },
+    m_subsurfaceSingleScatteringAlbedo { subsurfaceSingleScatteringAlbedo },
+    m_subsurfaceVolumetricAnisotropy { subsurfaceVolumetricAnisotropy },
+    m_subsurfaceVolumetricAttenuationCoefficient { Vector3(1.0f, 1.0f, 1.0f) / (subsurfaceTransmittanceColor * subsurfaceMeasurementDistance) }
+  {
+    updateCachedHash();
+  }
+
+  void writeGPUData(unsigned char* data, std::size_t& offset) const {
+    [[maybe_unused]] const std::size_t oldOffset = offset;
+
+    // Bytes 0-5
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAttenuationCoefficient.x));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAttenuationCoefficient.y));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAttenuationCoefficient.z));
+
+    // Bytes 6-7
+    assert(m_subsurfaceMeasurementDistance <= FLOAT16_MAX);
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceMeasurementDistance));
+
+    // Bytes 8-13
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceSingleScatteringAlbedo.x));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceSingleScatteringAlbedo.y));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceSingleScatteringAlbedo.z));
+
+    // Bytes 14-15
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAnisotropy));
+
+    // Padding 16-31
+    writeGPUPadding<16>(data, offset);
+  }
+
+  bool operator==(const RtSubsurfaceMaterial& r) const {
+    return m_cachedHash == r.m_cachedHash;
+  }
+
+  bool validate() const {
+    return true;
+  }
+
+  XXH64_hash_t getHash() const {
+    return m_cachedHash;
+  }
+
+  float getSubsurfaceMeasurementDistance() const {
+    return m_subsurfaceMeasurementDistance;
+  }
+
+  const Vector3& getSubsurfaceVolumetricScatteringAlbedo() const {
+    return m_subsurfaceSingleScatteringAlbedo;
+  }
+
+  float getSubsurfaceVolumetricAnisotropy() const {
+    return m_subsurfaceVolumetricAnisotropy;
+  }
+
+  const Vector3& getSubsurfaceVolumetricAttenuationCoefficient() const {
+    return m_subsurfaceVolumetricAttenuationCoefficient;
+  }
+
+private:
+  void updateCachedHash() {
+    XXH64_hash_t h = 0;
+
+    h = XXH64(&m_subsurfaceTransmittanceColor, sizeof(m_subsurfaceTransmittanceColor), h);
+    h = XXH64(&m_subsurfaceMeasurementDistance, sizeof(m_subsurfaceMeasurementDistance), h);
+    h = XXH64(&m_subsurfaceSingleScatteringAlbedo, sizeof(m_subsurfaceSingleScatteringAlbedo), h);
+    h = XXH64(&m_subsurfaceVolumetricAnisotropy, sizeof(m_subsurfaceVolumetricAnisotropy), h);
+    h = XXH64(&m_subsurfaceVolumetricAttenuationCoefficient, sizeof(m_subsurfaceVolumetricAttenuationCoefficient), h);
+
+    m_cachedHash = h;
+  }
+
+  // Thin Opaque Properties
+  Vector3 m_subsurfaceTransmittanceColor;
+  float m_subsurfaceMeasurementDistance;
+  Vector3 m_subsurfaceSingleScatteringAlbedo; // scatteringCoefficient / attenuationCoefficient
+  float m_subsurfaceVolumetricAnisotropy;
+
+  // Cache Volumetric Properties
+  Vector3 m_subsurfaceVolumetricAttenuationCoefficient; // scatteringCoefficient + absorptionCoefficient
+  // Currently no need to cache scattering and absorption coefficient for single scattering simulation
+
+  // Todo: SSS properties using Diffusion Profile
+
+  XXH64_hash_t m_cachedHash;
+};
+
 struct RtSurfaceMaterial {
   RtSurfaceMaterial(const RtOpaqueSurfaceMaterial& opaqueSurfaceMaterial) :
     m_type{ RtSurfaceMaterialType::Opaque },
@@ -1026,6 +1152,10 @@ struct RtSurfaceMaterial {
   RtSurfaceMaterial(const RtRayPortalSurfaceMaterial& rayPortalSurfaceMaterial) :
     m_type{ RtSurfaceMaterialType::RayPortal },
     m_rayPortalSurfaceMaterial{ rayPortalSurfaceMaterial } {}
+
+  RtSurfaceMaterial(const RtSubsurfaceMaterial& subsurfaceMaterial) :
+    m_type { RtSurfaceMaterialType::Subsurface },
+    m_subsurfaceMaterial { subsurfaceMaterial } {}
 
   RtSurfaceMaterial(const RtSurfaceMaterial& surfaceMaterial) :
     m_type{ surfaceMaterial.m_type } {
@@ -1042,6 +1172,9 @@ struct RtSurfaceMaterial {
       break;
     case RtSurfaceMaterialType::RayPortal:
       new (&m_rayPortalSurfaceMaterial) RtRayPortalSurfaceMaterial{ surfaceMaterial.m_rayPortalSurfaceMaterial };
+      break;
+    case RtSurfaceMaterialType::Subsurface:
+      new (&m_subsurfaceMaterial) RtSubsurfaceMaterial { surfaceMaterial.m_subsurfaceMaterial };
       break;
     }
   }
@@ -1061,6 +1194,9 @@ struct RtSurfaceMaterial {
     case RtSurfaceMaterialType::RayPortal:
       m_rayPortalSurfaceMaterial.~RtRayPortalSurfaceMaterial();
       break;
+    case RtSurfaceMaterialType::Subsurface:
+      m_subsurfaceMaterial.~RtSubsurfaceMaterial();
+      break;
     }
   }
 
@@ -1079,6 +1215,9 @@ struct RtSurfaceMaterial {
     case RtSurfaceMaterialType::RayPortal:
       m_rayPortalSurfaceMaterial.writeGPUData(data, offset);
       break;
+    case RtSurfaceMaterialType::Subsurface:
+      m_subsurfaceMaterial.writeGPUData(data, offset);
+      break;
     }
   }
 
@@ -1094,6 +1233,8 @@ struct RtSurfaceMaterial {
       return m_translucentSurfaceMaterial.validate();
     case RtSurfaceMaterialType::RayPortal:
       return m_rayPortalSurfaceMaterial.validate();
+    case RtSurfaceMaterialType::Subsurface:
+      return m_subsurfaceMaterial.validate();
     }
 
     return false;
@@ -1116,6 +1257,9 @@ struct RtSurfaceMaterial {
         break;
       case RtSurfaceMaterialType::RayPortal:
         m_rayPortalSurfaceMaterial = rtSurfaceMaterial.m_rayPortalSurfaceMaterial;
+        break;
+      case RtSurfaceMaterialType::Subsurface:
+        m_subsurfaceMaterial = rtSurfaceMaterial.m_subsurfaceMaterial;
         break;
       }
     }
@@ -1140,6 +1284,8 @@ struct RtSurfaceMaterial {
       return m_translucentSurfaceMaterial == rhs.m_translucentSurfaceMaterial;
     case RtSurfaceMaterialType::RayPortal:
       return m_rayPortalSurfaceMaterial == rhs.m_rayPortalSurfaceMaterial;
+    case RtSurfaceMaterialType::Subsurface:
+      return m_subsurfaceMaterial == rhs.m_subsurfaceMaterial;
     }
   }
 
@@ -1155,6 +1301,8 @@ struct RtSurfaceMaterial {
       return m_translucentSurfaceMaterial.getHash();
     case RtSurfaceMaterialType::RayPortal:
       return m_rayPortalSurfaceMaterial.getHash();
+    case RtSurfaceMaterialType::Subsurface:
+      return m_subsurfaceMaterial.getHash();
     }
   }
 
@@ -1187,6 +1335,7 @@ private:
     RtOpaqueSurfaceMaterial m_opaqueSurfaceMaterial;
     RtTranslucentSurfaceMaterial m_translucentSurfaceMaterial;
     RtRayPortalSurfaceMaterial m_rayPortalSurfaceMaterial;
+    RtSubsurfaceMaterial m_subsurfaceMaterial;
   };
 };
 
@@ -1369,7 +1518,8 @@ struct OpaqueMaterialData {
     uint8_t spriteSheetFPS,
     bool enableThinFilm, bool alphaIsThinFilmThickness, float thinFilmThicknessConstant,
     bool useLegacyAlphaState, bool blendEnabled, BlendType blendType, bool invertedBlend,
-    AlphaTestType alphaTestType, uint8_t alphaTestReferenceValue, float displaceIn) :
+    AlphaTestType alphaTestType, uint8_t alphaTestReferenceValue, float displaceIn,
+    Vector3 subsurfaceTransmittanceColor, float subsurfaceMeasurementDistance, Vector3 subsurfaceSingleScatteringAlbedo, float subsurfaceVolumetricAnisotropy) :
     m_albedoOpacityTexture{ albedoOpacityTexture }, m_normalTexture{ normalTexture },
     m_tangentTexture{ tangentTexture }, m_heightTexture { heightTexture }, m_roughnessTexture{ roughnessTexture },
     m_metallicTexture{ metallicTexture }, m_emissiveColorTexture{ emissiveColorTexture },
@@ -1381,7 +1531,9 @@ struct OpaqueMaterialData {
     m_enableThinFilm { enableThinFilm }, m_alphaIsThinFilmThickness { alphaIsThinFilmThickness }, m_thinFilmThicknessConstant { thinFilmThicknessConstant },
     m_useLegacyAlphaState{ useLegacyAlphaState }, m_blendEnabled{ blendEnabled }, m_blendType{ blendType }, m_invertedBlend{ invertedBlend },
     m_alphaTestType{ alphaTestType }, m_alphaTestReferenceValue{ alphaTestReferenceValue },
-    m_displaceIn{ displaceIn } {
+    m_displaceIn{ displaceIn },
+    m_subsurfaceTransmittanceColor { subsurfaceTransmittanceColor }, m_subsurfaceMeasurementDistance { subsurfaceMeasurementDistance },
+    m_subsurfaceSingleScatteringAlbedo { subsurfaceSingleScatteringAlbedo }, m_subsurfaceVolumetricAnisotropy { subsurfaceVolumetricAnisotropy } {
     sanitizeData();
     // Note: Called after data is sanitized to have the hashed value reflect the adjusted values.
     updateCachedHash();
@@ -1491,6 +1643,22 @@ struct OpaqueMaterialData {
     return m_displaceIn;
   }
 
+  float getSubsurfaceMeasurementDistance() const {
+    return m_subsurfaceMeasurementDistance;
+  }
+
+  const Vector3& getSubsurfaceTransmittanceColor() const {
+    return m_subsurfaceTransmittanceColor;
+  }
+
+  const Vector3& getSubsurfaceSingleScatteringAlbedo() const {
+    return m_subsurfaceSingleScatteringAlbedo;
+  }
+
+  float getSubsurfaceVolumetricAnisotropy() const {
+    return m_subsurfaceVolumetricAnisotropy;
+  }
+
   uint8_t getSpriteSheetRows() const {
     return m_spriteSheetRows;
   }
@@ -1551,6 +1719,10 @@ private:
     m_alphaTestType = std::clamp(m_alphaTestType, mins.MinAlphaTestType, maxes.MaxAlphaTestType);
     m_alphaTestReferenceValue = std::clamp(m_alphaTestReferenceValue, mins.AlphaReferenceValue, maxes.AlphaReferenceValue);
     m_displaceIn = std::clamp(m_displaceIn, mins.DisplaceIn, maxes.DisplaceIn);
+    m_subsurfaceTransmittanceColor = std::clamp(m_subsurfaceTransmittanceColor, mins.SubsurfaceTransmittanceColor, maxes.SubsurfaceTransmittanceColor);
+    m_subsurfaceMeasurementDistance = std::clamp(m_subsurfaceMeasurementDistance, mins.SubsurfaceMeasurementDistance, maxes.SubsurfaceMeasurementDistance);
+    m_subsurfaceSingleScatteringAlbedo = std::clamp(m_subsurfaceSingleScatteringAlbedo, mins.SubsurfaceSingleScatteringAlbedo, maxes.SubsurfaceSingleScatteringAlbedo);
+    m_subsurfaceVolumetricAnisotropy = std::clamp(m_subsurfaceVolumetricAnisotropy, mins.SubsurfaceVolumetricAnisotropy, maxes.SubsurfaceVolumetricAnisotropy);
   }
 
   void updateCachedHash() {
@@ -1584,6 +1756,10 @@ private:
     h = XXH64(&m_alphaTestType, sizeof(m_alphaTestType), h);
     h = XXH64(&m_alphaTestReferenceValue, sizeof(m_alphaTestReferenceValue), h);
     h = XXH64(&m_displaceIn, sizeof(m_displaceIn), h);
+    h = XXH64(&m_subsurfaceTransmittanceColor, sizeof(m_subsurfaceTransmittanceColor), h);
+    h = XXH64(&m_subsurfaceMeasurementDistance, sizeof(m_subsurfaceMeasurementDistance), h);
+    h = XXH64(&m_subsurfaceSingleScatteringAlbedo, sizeof(m_subsurfaceSingleScatteringAlbedo), h);
+    h = XXH64(&m_subsurfaceVolumetricAnisotropy, sizeof(m_subsurfaceVolumetricAnisotropy), h);
 
     m_cachedHash = h;
   }
@@ -1617,6 +1793,11 @@ private:
   float m_thinFilmThicknessConstant;
 
   float m_displaceIn;
+
+  Vector3 m_subsurfaceTransmittanceColor;
+  float m_subsurfaceMeasurementDistance;
+  Vector3 m_subsurfaceSingleScatteringAlbedo;
+  float m_subsurfaceVolumetricAnisotropy;
 
   // Todo: These overrides are applied to the Surface and are not technically part of the
   // material itself so should be removed or relocated some day, they are just here for now

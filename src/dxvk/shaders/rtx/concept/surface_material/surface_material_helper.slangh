@@ -115,3 +115,19 @@ void adjustProbabilityValue(inout float16_t value, float16_t zeroThreshold, floa
 
   value = max(value, minProbability);
 }
+
+bool subSurfaceMaterialReadHelper(
+  uint16_t subsurfaceMaterialIndex,
+  inout SubsurfaceMaterial subSurfaceMaterial)
+{
+  const MemoryPolymorphicSurfaceMaterial memorySubSurfaceMaterial = surfaceMaterialExtensions[subsurfaceMaterialIndex];
+
+  if (subsurfaceMaterialIndex == BINDING_INDEX_INVALID)
+  {
+    return false;
+  }
+
+  subSurfaceMaterial = subsurfaceMaterialCreate(memorySubSurfaceMaterial);
+
+  return true;
+}

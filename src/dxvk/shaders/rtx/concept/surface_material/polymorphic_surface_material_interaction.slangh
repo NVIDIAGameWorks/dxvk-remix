@@ -43,6 +43,7 @@ PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionCreat
   polymorphicSurfaceMaterialInteraction.fdata2 = opaqueSurfaceMaterialInteraction.anisotropicRoughness.x;
   polymorphicSurfaceMaterialInteraction.fdata3 = opaqueSurfaceMaterialInteraction.anisotropicRoughness.y;
   polymorphicSurfaceMaterialInteraction.fdata4 = opaqueSurfaceMaterialInteraction.normalDetail;
+  polymorphicSurfaceMaterialInteraction.idata0 = opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex;
 
   polymorphicSurfaceMaterialInteraction.type = surfaceMaterialTypeOpaque;
 
@@ -217,9 +218,13 @@ SurfaceMaterialInteractionSample polymorphicSurfaceMaterialInteractionCalcDiffus
   {
   default:
   case uint(surfaceMaterialTypeOpaque):
+    const f16vec4 tangentToWorldSpaceQuaternion =
+        quaternionCreateOrientation(materialTangentSpaceNormal, polymorphicSurfaceMaterialInteraction.shadingNormal);
+
     const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
 
-    return opaqueSurfaceMaterialInteractionCalcDiffuseTransmissionSample(opaqueSurfaceMaterialInteraction, minimalRayInteraction, insideMedium, penetrateSurface);
+    return opaqueSurfaceMaterialInteractionCalcDiffuseTransmissionSample(
+        opaqueSurfaceMaterialInteraction, randomState, tangentToWorldSpaceQuaternion, minimalRayInteraction, insideMedium, penetrateSurface);
   case uint(surfaceMaterialTypeTranslucent):
     const TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction = translucentSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
 

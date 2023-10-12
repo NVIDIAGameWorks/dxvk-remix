@@ -32,6 +32,7 @@ static const uint8_t surfaceMaterialTypeMask = uint8_t(0x3u);
 static const uint8_t opaqueLobeTypeDiffuseReflection = uint8_t(0u);
 static const uint8_t opaqueLobeTypeSpecularReflection = uint8_t(1u);
 static const uint8_t opaqueLobeTypeOpacityTransmission = uint8_t(2u);
+static const uint8_t opaqueLobeTypeDiffuseTransmission = uint8_t(3u);
 
 static const uint8_t translucentLobeTypeSpecularReflection = uint8_t(0u);
 static const uint8_t translucentLobeTypeSpecularTransmission = uint8_t(1u);
@@ -68,6 +69,8 @@ struct OpaqueSurfaceMaterial
   f16vec3 emissiveColorConstant;
 
   float16_t displaceIn;
+
+  uint16_t subsurfaceMaterialIndex;
 
   float16_t thinFilmThicknessConstant; // note: [0-1] range
 
@@ -116,6 +119,14 @@ struct RayPortalSurfaceMaterial
   float16_t emissiveIntensity;
 };
 
+struct SubsurfaceMaterial
+{
+  f16vec3 volumetricAttenuationCoefficient;
+  float16_t measurementDistance;
+  f16vec3 singleScatteringAlbedo;
+  float16_t volumetricAnisotropy;
+};
+
 struct OpaqueSurfaceMaterialInteraction
 {
   f16vec3 shadingNormal;
@@ -128,6 +139,7 @@ struct OpaqueSurfaceMaterialInteraction
   f16vec2 anisotropicRoughness;
   // Note: fp16 may not be sufficient here for high radiance values, potentially change if clamping
   f16vec3 emissiveRadiance;
+  uint16_t subsurfaceMaterialIndex;
   // Note: A value of 0 in the thin film thickness indicates the thin film is disabled.
   float16_t thinFilmThickness;
 };
