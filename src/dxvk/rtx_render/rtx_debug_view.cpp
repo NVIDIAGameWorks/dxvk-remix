@@ -58,6 +58,7 @@ namespace dxvk {
         {DEBUG_VIEW_IS_FRONT_HIT, "Is Front Hit"},
         {DEBUG_VIEW_IS_STATIC, "Is Static"},
         {DEBUG_VIEW_IS_OPAQUE, "Is Opaque"},
+        {DEBUG_VIEW_IS_THIN_OPAQUE, "Is Thin Opaque"},
         {DEBUG_VIEW_IS_DIRECTION_ALTERED, "Is Direction Altered"},
         {DEBUG_VIEW_IS_EMISSIVE_BLEND, "Is Emissive Blend"},
         {DEBUG_VIEW_VIEW_DIRECTION, "View Direction"},
@@ -738,7 +739,6 @@ namespace dxvk {
 
         ctx->bindResourceSampler(DEBUG_VIEW_BINDING_NEAREST_SAMPLER, nearestSampler);
         ctx->bindResourceSampler(DEBUG_VIEW_BINDING_LINEAR_SAMPLER, linearSampler);
-
 
         ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, DebugViewShader::getShader());
 

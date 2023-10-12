@@ -663,3 +663,16 @@ f16vec3 normalBlendRNM(in f16vec3 baseNormal, in f16vec3 detailNormal)
 
   return normalize(n1 * safePositiveDivide(dot(n1, n2), n1.z, materialEpsilon) - n2);
 }
+
+// Evaluates the Henyey-Greenstein phase function
+// [Henyey 1941, "Diffuse radiation in the Galaxy."]
+float evalHenyeyGreensteinPhaseFunction(in const float anisotropy,
+                                        in const float /* l.v */ inputDirectionDotOutputDirection)
+{
+  const float numerator = 1.0f - square(anisotropy);
+  const float denominator =
+    pow(1.0f + square(anisotropy) - 2 * anisotropy * inputDirectionDotOutputDirection, 3.0f / 2.0f);
+
+  // Note: Division clamped to avoid potential divisions by 0 when anisotropy is at an extreme
+  return 1.0f / (4.0f * pi) * safePositiveDivide(numerator, denominator, materialEpsilon);
+}

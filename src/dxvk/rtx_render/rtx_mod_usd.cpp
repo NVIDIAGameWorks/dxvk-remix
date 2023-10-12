@@ -376,6 +376,10 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
   static const pxr::TfToken kThinFilmThicknessFromAlbedoAlpha("inputs:thin_film_thickness_from_albedo_alpha");
   static const pxr::TfToken kThinFilmThicknessConstant("inputs:thin_film_thickness_constant");
   static const pxr::TfToken kDisplaceIn("inputs:displace_in");
+  static const pxr::TfToken kSubsurfaceTransmittanceColor("inputs:subsurface_transmittance_color");
+  static const pxr::TfToken kSubsurfaceSingleScatteringAlbedo("inputs:subsurface_single_scattering_albedo");
+  static const pxr::TfToken kSubsurfaceMeasurementDistance("inputs:subsurface_measurement_distance");
+  static const pxr::TfToken kSubsurfaceVolumetricAnisotropy("inputs:subsurface_volumetric_anisotropy");
 
   // Alpha State Overrides
   // Todo: Likely remove these some day in favor of splitting the Opaque material into
@@ -537,6 +541,10 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
     AlphaTestType alphaTestType = RtxOptions::Get()->getOpaqueMaterialDefaults().DefaultAlphaTestType;
     uint8_t alphaReferenceValue = RtxOptions::Get()->getOpaqueMaterialDefaults().AlphaReferenceValue;
     float displaceIn = RtxOptions::Get()->getOpaqueMaterialDefaults().DisplaceIn;
+    Vector3 subsurfaceTransmittanceColor = RtxOptions::Get()->getOpaqueMaterialDefaults().SubsurfaceTransmittanceColor;
+    Vector3 subsurfaceSingleScatteringAlbedo = RtxOptions::Get()->getOpaqueMaterialDefaults().SubsurfaceSingleScatteringAlbedo;
+    float subsurfaceMeasurementDistance = RtxOptions::Get()->getOpaqueMaterialDefaults().SubsurfaceMeasurementDistance;
+    float subsurfaceVolumetricAnisotropy = RtxOptions::Get()->getOpaqueMaterialDefaults().SubsurfaceVolumetricAnisotropy;
 
     shader.GetAttribute(kOpacityConstant).Get(&albedoOpacityConstant.a);
 
@@ -599,6 +607,12 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
       alphaReferenceValue = static_cast<uint8_t>(std::numeric_limits<uint8_t>::max() * normalizedAlphaReferenceValue);
     }
 
+    // Read Subsurface Material from USD
+    getVector3(shader, kSubsurfaceTransmittanceColor, subsurfaceTransmittanceColor);
+    shader.GetAttribute(kSubsurfaceMeasurementDistance).Get(&subsurfaceMeasurementDistance);
+    getVector3(shader, kSubsurfaceSingleScatteringAlbedo, subsurfaceSingleScatteringAlbedo);
+    shader.GetAttribute(kSubsurfaceVolumetricAnisotropy).Get(&subsurfaceVolumetricAnisotropy);
+
     const OpaqueMaterialData opaqueMaterialData{
       albedoTexture, normalTexture,
       tangentTexture, heightTexture, roughnessTexture,
@@ -614,7 +628,8 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
       alphaIsThinFilmThickness,
       thinFilmThicknessConstant,
       useLegacyAlphaState, blendEnabled, blendType, invertedBlend,
-      alphaTestType, alphaReferenceValue, displaceIn
+      alphaTestType, alphaReferenceValue, displaceIn,
+      subsurfaceTransmittanceColor, subsurfaceMeasurementDistance, subsurfaceSingleScatteringAlbedo, subsurfaceVolumetricAnisotropy
     };
 
     return &m_owner.m_replacements->storeObject(materialHash, MaterialData(opaqueMaterialData, shouldIgnore));

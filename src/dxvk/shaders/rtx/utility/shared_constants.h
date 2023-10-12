@@ -33,6 +33,7 @@
 #define OPAQUE_SURFACE_MATERIAL_FLAG_HAS_ROUGHNESS_TEXTURE (1 << 3)
 #define OPAQUE_SURFACE_MATERIAL_FLAG_HAS_METALLIC_TEXTURE (1 << 4)
 #define OPAQUE_SURFACE_MATERIAL_FLAG_HAS_EMISSIVE_TEXTURE (1 << 5)
+#define OPAQUE_SURFACE_MATERIAL_FLAG_HAS_SUBSURFACE_MATERIAL (1 << 6)
 
 // Note: Bits for flags field in TranslucentSurfaceMaterial and TranslucentSurfaceMaterialInteraction
 // If set, then the texture bound to transmittanceOrDiffuseTextureIndex is an albedo map for the diffuse layer

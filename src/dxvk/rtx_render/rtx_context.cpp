@@ -768,6 +768,10 @@ namespace dxvk {
       glm::packHalf1x16(RtxOptions::Get()->getOpaqueOpacityTransmissionLobeSamplingProbabilityZeroThreshold());
     constants.minOpaqueOpacityTransmissionLobeSamplingProbability =
       glm::packHalf1x16(RtxOptions::Get()->getMinOpaqueOpacityTransmissionLobeSamplingProbability());
+    constants.opaqueDiffuseTransmissionLobeSamplingProbabilityZeroThreshold =
+      glm::packHalf1x16(RtxOptions::Get()->opaqueDiffuseTransmissionLobeSamplingProbabilityZeroThreshold());
+    constants.minOpaqueDiffuseTransmissionLobeSamplingProbability =
+      glm::packHalf1x16(RtxOptions::Get()->minOpaqueDiffuseTransmissionLobeSamplingProbability());
     constants.translucentSpecularLobeSamplingProbabilityZeroThreshold =
       glm::packHalf1x16(RtxOptions::Get()->getTranslucentSpecularLobeSamplingProbabilityZeroThreshold());
     constants.minTranslucentSpecularLobeSamplingProbability =
@@ -833,6 +837,8 @@ namespace dxvk {
     constants.pomEnableIndirectLighting = RtxOptions::Displacement::enableIndirectLighting();
 
     constants.terrainArgs = getSceneManager().getTerrainBaker().getTerrainArgs();
+
+    constants.thinOpaqueEnable = RtxOptions::SubsurfaceScattering::enableThinOpaque();
 
     auto& restirGI = m_common->metaReSTIRGIRayQuery();
     constants.enableReSTIRGI = restirGI.shouldDispatch();
@@ -981,6 +987,7 @@ namespace dxvk {
     Rc<DxvkBuffer> surfaceMappingBuffer = getSceneManager().getSurfaceMappingBuffer();
     Rc<DxvkBuffer> billboardsBuffer = getSceneManager().getBillboardsBuffer();
     Rc<DxvkBuffer> surfaceMaterialBuffer = getSceneManager().getSurfaceMaterialBuffer();
+    Rc<DxvkBuffer> surfaceMaterialExtensionBuffer = getSceneManager().getSurfaceMaterialExtensionBuffer();
     Rc<DxvkBuffer> volumeMaterialBuffer = getSceneManager().getVolumeMaterialBuffer();
     Rc<DxvkBuffer> lightBuffer = getSceneManager().getLightManager().getLightBuffer();
     Rc<DxvkBuffer> previousLightBuffer = getSceneManager().getLightManager().getPreviousLightBuffer();
@@ -995,6 +1002,7 @@ namespace dxvk {
     bindResourceBuffer(BINDING_SURFACE_DATA_BUFFER, DxvkBufferSlice(surfaceBuffer, 0, surfaceBuffer->info().size));
     bindResourceBuffer(BINDING_SURFACE_MAPPING_BUFFER, DxvkBufferSlice(surfaceMappingBuffer, 0, surfaceMappingBuffer.ptr() ? surfaceMappingBuffer->info().size : 0));
     bindResourceBuffer(BINDING_SURFACE_MATERIAL_DATA_BUFFER, DxvkBufferSlice(surfaceMaterialBuffer, 0, surfaceMaterialBuffer->info().size));
+    bindResourceBuffer(BINDING_SURFACE_MATERIAL_EXT_DATA_BUFFER, surfaceMaterialExtensionBuffer.ptr() ? DxvkBufferSlice(surfaceMaterialExtensionBuffer, 0, surfaceMaterialExtensionBuffer->info().size) : DxvkBufferSlice());
     bindResourceBuffer(BINDING_VOLUME_MATERIAL_DATA_BUFFER, volumeMaterialBuffer.ptr() ? DxvkBufferSlice(volumeMaterialBuffer, 0, volumeMaterialBuffer->info().size) : DxvkBufferSlice());
     bindResourceBuffer(BINDING_LIGHT_DATA_BUFFER, DxvkBufferSlice(lightBuffer, 0, lightBuffer.ptr() ? lightBuffer->info().size : 0));
     bindResourceBuffer(BINDING_PREVIOUS_LIGHT_DATA_BUFFER, DxvkBufferSlice(previousLightBuffer, 0, previousLightBuffer.ptr() ? previousLightBuffer->info().size : 0));
