@@ -85,7 +85,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   s_srcTaskList[taskID][localIndex.y] = task;
 
   // load old id to shared memory
-  int oldIDCount = cell.getCandidateCount();
+  int oldIDCount = cb.neeCacheArgs.clearCache ? 0 : cell.getCandidateCount();
   if (localIndex.x < oldIDCount)
   {
     int oldCount = 0;
@@ -246,7 +246,7 @@ void main(uint3 threadIndex : SV_DispatchThreadID, uint2 localIndex : SV_GroupTh
   s_srcTaskList[taskID][localIndex.y] = task;
 
   // load old id to shared memory
-  oldIDCount = cell.getLightCandidateCount();
+  oldIDCount = cb.neeCacheArgs.clearCache ? 0 : cell.getLightCandidateCount();
   if (localIndex.x < oldIDCount)
   {
     int oldCount = 0;
