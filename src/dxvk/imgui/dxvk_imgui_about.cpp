@@ -193,10 +193,11 @@ namespace dxvk {
       m_validCodeHashesEntered.clear();
       for(auto [hash, secretReplacements] : secretReplacements) {
         for(auto& secretReplacement : secretReplacements) {
+          const bool bUnlocked = 
+            (m_validCodeHashesEntered.count(secretReplacement.unlockHash) > 0) ||
+            (secretReplacement.unlockHash == 0x0);
           m_organizedSecrets[secretReplacement.header].push_back(Secret{
-            secretReplacement,
-            false,
-            (m_validCodeHashesEntered.count(secretReplacement.unlockHash) > 0)});
+            secretReplacement, false, bUnlocked });
         }
       }
       for (auto& [header, secrets] : m_organizedSecrets) {
