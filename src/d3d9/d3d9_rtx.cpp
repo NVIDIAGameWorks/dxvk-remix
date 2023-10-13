@@ -657,8 +657,9 @@ namespace dxvk {
     m_parent->EmitCs([params, this](DxvkContext* ctx) {
       assert(dynamic_cast<RtxContext*>(ctx));
       DrawCallState drawCallState;
-      m_drawCallStateQueue.pop(drawCallState);
-      static_cast<RtxContext*>(ctx)->commitGeometryToRT(params, drawCallState);
+      if (m_drawCallStateQueue.pop(drawCallState)) {
+        static_cast<RtxContext*>(ctx)->commitGeometryToRT(params, drawCallState);
+      }
     });
   }
 
