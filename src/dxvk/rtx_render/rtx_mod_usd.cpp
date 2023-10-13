@@ -1149,6 +1149,30 @@ void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cach
     true,
     true,
     numVariants++});
+  m_owner.m_replacements->storeObject(kStorageCubeHash, SecretReplacement{
+    "Storage Cubes","Roll Cage","",
+    0x0,
+    kStorageCubeHash,
+    "./SubUSDs/SM_Prop_CompanionCube_RollCage.usd",
+    true,
+    true,
+    numVariants++});
+  m_owner.m_replacements->storeObject(kStorageCubeHash, SecretReplacement{
+    "Storage Cubes","Health Pack","",
+    0x0,
+    kStorageCubeHash,
+    "./SubUSDs/SM_Prop_CompanionCube_Healthpack.usd",
+    true,
+    true,
+    numVariants++});
+  m_owner.m_replacements->storeObject(kStorageCubeHash, SecretReplacement{
+    "Storage Cubes","Space","",
+    0x0,
+    kStorageCubeHash,
+    "./SubUSDs/SM_Prop_CompanionCube_Space.usd",
+    true,
+    true,
+    numVariants++});
 
   static constexpr XXH64_hash_t kCompanionCubeHash = 0x6ef165bb7e0b8512;
   numVariants = lookupCount(kCompanionCubeHash);
@@ -1181,6 +1205,30 @@ void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cach
     0xf2bda31c09fc42f6,
     kCompanionCubeHash,
     "./SubUSDs/SM_Prop_CompanionCubeDigital_A01_01.usd",
+    true,
+    true,
+    numVariants++});
+  m_owner.m_replacements->storeObject(kCompanionCubeHash, SecretReplacement{
+    "Companion Cubes","Steampunk","",
+    0x0,
+    kCompanionCubeHash,
+    "./SubUSDs/SM_Prop_CompanionCube_SteamPunk_A01.usd",
+    true,
+    true,
+    numVariants++});
+  m_owner.m_replacements->storeObject(kCompanionCubeHash, SecretReplacement{
+    "Companion Cubes","Arts and Crafts","",
+    0x0,
+    kCompanionCubeHash,
+    "./SubUSDs/SM_Prop_CompanionCube_ArtsAndCrafts.usd",
+    true,
+    true,
+    numVariants++});
+  m_owner.m_replacements->storeObject(kCompanionCubeHash, SecretReplacement{
+    "Companion Cubes","Cubus","",
+    0x0,
+    kCompanionCubeHash,
+    "./SubUSDs/SM_Prop_CompanionCube_Cubus.usd",
     true,
     true,
     numVariants++});
