@@ -781,6 +781,8 @@ void UsdMod::Impl::processLight(Args& args, const pxr::UsdPrim& lightPrim) {
   pxr::GfVec3f yVecUsd = localToRoot.TransformDir(pxr::GfVec3f(0.0f, 1.0f, 0.0f));
   pxr::GfVec3f zVecUsd = localToRoot.TransformDir(pxr::GfVec3f(0.0f, 0.0f, 1.0f));
   
+  // Note: These calls both normalize the X/Y/Z vectors and return their previous length. This is mandatory as the axis
+  // vectors used to construct lights with must be normalized.
   float xScale = xVecUsd.Normalize();
   float yScale = yVecUsd.Normalize();
   float zScale = zVecUsd.Normalize();

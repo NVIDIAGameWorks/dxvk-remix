@@ -1988,7 +1988,9 @@ namespace dxvk {
       const float xLength = length(xVector);
       const float yLength = length(yVector);
       const float dotAxes = dot(xVector, yVector) / (xLength * yLength);
-      const Vector3 normal = normalize(cross(xVector, yVector));
+      // Note: This could probably be handled in a better way (like skipping this quad) rather than just assigning
+      // a fallback normal, but this is simple enough.
+      const Vector3 normal = safeNormalize(cross(xVector, yVector), Vector3(0.0f, 0.0f, 1.0f));
       const float normalDotCamera = dot(normal, cameraViewDirection);
 
 

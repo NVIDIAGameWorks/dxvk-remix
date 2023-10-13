@@ -77,6 +77,9 @@ LightSample distantLightSampleArea(DistantLight distantLight, f16vec2 sampleCoor
 
   float uniformConeSolidAnglePdf;
   const f16vec3 rawDistantDirectionSample = calcUniformConeDirectionSample(sampleCoordinates, distantLight.cosHalfAngle, uniformConeSolidAnglePdf);
+  // Note: No normalization required here as calcUniformConeDirectionSample should produce a normalized direction and a normalized quaternion
+  // should preserve the normalization across a transformation. Do note however that if the quaternion is not normalized for some reason this will
+  // produce incorrect results (but currently the direction the quaternion is constructed with on the CPU side is ensured to be normalized).
   const f16vec3 distantDirectionSample = quaternionTransformVector(distantLight.orientation, rawDistantDirectionSample);
 
   // Calculate sample position on the distant light
