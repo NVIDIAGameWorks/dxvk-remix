@@ -145,6 +145,8 @@ f16vec2 calcConcentricDiskDirectionSample(f16vec2 rndSample)
   return r * f16vec2(cos(theta), sin(theta));
 }
 
+// Calculates a random (mostly normalized) direction vector sampled within a visible cone with a specified angular size around the Z axis.
+// Note the random sample should be in the range [0, 1] to prevent issues.
 // Note: 32 bit floats used instead of 16 bit for sines/cosines as cosines may get very close to 1 for narrow solid angles to sample from,
 // which cannot be adequately represented with 16 bit precision. This is not as big of a deal if sampling something like a Sphere light as
 // long as the PDF is calculated in a 32 bit way to avoid NaNs, but to get adequate Distant light softness with its small solid angles, it

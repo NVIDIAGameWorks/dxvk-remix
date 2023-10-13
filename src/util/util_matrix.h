@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2022, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -21,9 +21,10 @@
 */
 #pragma once
 
+#include "util_math.h"
 #include "util_vector.h"
 #include "vulkan/vulkan_core.h"
-#include "util_once.h"
+#include "log/log.h"
 
 namespace dxvk {
 
@@ -322,15 +323,13 @@ namespace dxvk {
     Vector4d dot0 = { Vector4d(m[0].x,m[0].y,m[0].z,m[0].w) * row0 };
     double dot1 = (dot0.x + dot0.y) + (dot0.z + dot0.w);
 
+    // Note: Ensure the matrix is invertable.
+    mathValidationAssert(dot1 != 0.0, "Attempted invert a non-invertible matrix.");
+
     Matrix4Base<T> output;
 
-    // Ensure the matrix is invertible
-    if (dot1 != 0.0) {
-      for (uint32_t i = 0; i < 16; i++) {
-        output[i / 4][i % 4] = inverse[i / 4][i % 4] / dot1;
-      }
-    } else {
-      ONCE(Logger::err("Tried to invert a non-invertible matrix."));
+    for (uint32_t i = 0; i < 16; i++) {
+      output[i / 4][i % 4] = inverse[i / 4][i % 4] / dot1;
     }
 
     return output;
