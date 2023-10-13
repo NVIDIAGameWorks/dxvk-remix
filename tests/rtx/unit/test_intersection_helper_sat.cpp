@@ -23,6 +23,11 @@
 #include "../../test_utils.h"
 #include "../../../src/dxvk/rtx_render/rtx_intersection_test_helpers.h"
 
+namespace dxvk {
+  // Note: Logger needed by some shared code used in this Unit Test.
+  Logger Logger::s_instance("test_intersection_helper_sat.log");
+}
+
 class SatTestApp {
   struct TestCamera {
     TestCamera() { }

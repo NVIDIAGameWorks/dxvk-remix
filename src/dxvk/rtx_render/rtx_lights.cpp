@@ -218,6 +218,8 @@ void RtLightShaping::applyTransform(Matrix3 transform) {
 void RtLightShaping::writeGPUData(unsigned char* data, std::size_t& offset) const {
   // occupies 12 bytes
   if (enabled) {
+    // Note: Ensure the normal vector is normalized as this is a requirement for the GPU encoding.
+    assert(isApproxNormalized(primaryAxis, 0.01f));
     assert(primaryAxis < Vector3(FLOAT16_MAX));
     writeGPUHelper(data, offset, glm::packHalf1x16(primaryAxis.x));
     writeGPUHelper(data, offset, glm::packHalf1x16(primaryAxis.y));
@@ -234,6 +236,23 @@ void RtLightShaping::writeGPUData(unsigned char* data, std::size_t& offset) cons
   }
 }
 
+// Note: Changing this code will alter "stable" light hashes from D3D9 and potentially break replacement assets.
+XXH64_hash_t RtLightShapingStable::getHash() const {
+  XXH64_hash_t h = 0;
+
+  if (enabled) {
+    h = XXH64(&originalPrimaryAxis[0], sizeof(originalPrimaryAxis), h);
+    // Note: Ideally we'd not include any "derived" values here such as this cosine value and the softness as these may change if the implementation
+    // behind the functions deriving them changes and instead rely only on data in the D3DLIGHT9 structure, but we cannot go back on how this hashing
+    // is done at this point without invalidating all the hashes.
+    h = XXH64(&cosConeAngle, sizeof(cosConeAngle), h);
+    h = XXH64(&coneSoftness, sizeof(coneSoftness), h);
+    h = XXH64(&focusExponent, sizeof(focusExponent), h);
+  }
+
+  return h;
+}
+
 RtSphereLight::RtSphereLight(const Vector3& position, const Vector3& radiance, float radius, const RtLightShaping& shaping)
   : m_position(position)
   , m_radiance(radiance)
@@ -243,26 +262,46 @@ RtSphereLight::RtSphereLight(const Vector3& position, const Vector3& radiance, f
 }
 
 RtSphereLight::RtSphereLight(const D3DLIGHT9& light) {
-  m_position[0] = light.Position.x;
-  m_position[1] = light.Position.y;
-  m_position[2] = light.Position.z;
+  const Vector3 originalPosition{ light.Position.x, light.Position.y, light.Position.z };
+
+  m_position = originalPosition;
 
   m_radius = LightManager::lightConversionSphereLightFixedRadius() * RtxOptions::Get()->getSceneScale();
   m_radiance = calculateRadiance(light, m_radius);
 
+  RtLightShapingStable originalLightShaping{};
+
   if (light.Type == D3DLIGHT_SPOT) {
+    const Vector3 originalDirection{ light.Direction.x, light.Direction.y, light.Direction.z };
+
+    // Set the Sphere Light's shaping
+
     m_shaping.enabled = true;
-    m_shaping.primaryAxis[0] = light.Direction.x;
-    m_shaping.primaryAxis[1] = light.Direction.y;
-    m_shaping.primaryAxis[2] = light.Direction.z;
+
+    // Note: D3D9 Spot light directions have no requirement on if the direction is normalized or not,
+    // so it must be normalized here for usage in the rendering (as the m_shaping primaryAxis is assumed to be normalized).
+    // Additionally, the direction may be the zero vector (even though D3D9 disallows this), so fall back to the
+    // Z axis in this case.
+    m_shaping.primaryAxis = safeNormalize(originalDirection, Vector3(0.0f, 0.0f, 1.0f));
+
     // cosConeAngle is the outer angle of the spotlight
-    m_shaping.cosConeAngle = std::cosf(light.Phi / 2.0f);
+    m_shaping.cosConeAngle = std::cos(light.Phi / 2.0f);
     // coneSoftness is how far in the transition region reaches
-    m_shaping.coneSoftness = std::cosf(light.Theta / 2.0f) - m_shaping.cosConeAngle;
+    m_shaping.coneSoftness = std::cos(light.Theta / 2.0f) - m_shaping.cosConeAngle;
     m_shaping.focusExponent = light.Falloff;
+
+    // Set the Stable Light Shaping
+
+    originalLightShaping.enabled = m_shaping.enabled;
+    // Note: Normalization bypassed in accordance with stable hashing policy.
+    originalLightShaping.originalPrimaryAxis = originalDirection;
+    originalLightShaping.cosConeAngle = m_shaping.cosConeAngle;
+    originalLightShaping.coneSoftness = m_shaping.coneSoftness;
+    originalLightShaping.focusExponent = m_shaping.focusExponent;
   }
 
-  updateCachedHash();
+  // Note: Stable version used for D3D9 light conversion path to ensure stable hashing regardless of code changes.
+  updateCachedHashStable(originalPosition, originalLightShaping);
 }
 
 void RtSphereLight::applyTransform(const Matrix4& lightToWorld) {
@@ -271,11 +310,13 @@ void RtSphereLight::applyTransform(const Matrix4& lightToWorld) {
 
   const Matrix3 transform(lightToWorld);
 
-  // scale radius by average of the 3 axes.
+  // Note: Scale radius by average of the 3 axes. For uniform scale all axis lengths will be the same, but for
+  // non-uniform scale the average is needed to approximate a new radius.
   const float radiusFactor = (length(transform[0]) + length(transform[1]) + length(transform[2])) / 3.f;
   m_radius *= radiusFactor;
 
   m_shaping.applyTransform(transform);
+
   updateCachedHash();
 }
 
@@ -292,7 +333,6 @@ void RtSphereLight::writeGPUData(unsigned char* data, std::size_t& offset) const
   writeGPUHelper(data, offset, packLogLuv32(m_radiance));
 
   m_shaping.writeGPUData(data, offset);
-
 
   writeGPUPadding<28>(data, offset);
 
@@ -317,6 +357,22 @@ Vector4 RtSphereLight::getColorAndIntensity() const {
   return out;
 }
 
+// Note: Changing this code will alter "stable" light hashes from D3D9 and potentially break replacement assets.
+void RtSphereLight::updateCachedHashStable(const Vector3& originalPosition, const RtLightShapingStable& shaping) {
+  XXH64_hash_t h = (XXH64_hash_t) RtLightType::Sphere;
+
+  // Note: A constant radius of 4.0f is used due to a legacy artifact of accidently including radius value in the
+  // hash for lights translated from D3D9 to Remix (which always inherited a value from the
+  // lightConversionSphereLightFixedRadius option.
+  const float legacyStableRadius = 4.0f;
+
+  h = XXH64(&originalPosition[0], sizeof(originalPosition), h);
+  h = XXH64(&legacyStableRadius, sizeof(legacyStableRadius), h);
+  h = XXH64(&h, sizeof(h), shaping.getHash());
+
+  m_cachedHash = h;
+}
+
 void RtSphereLight::updateCachedHash() {
   XXH64_hash_t h = (XXH64_hash_t)RtLightType::Sphere;
 
@@ -336,7 +392,9 @@ RtRectLight::RtRectLight(const Vector3& position, const Vector2& dimensions, con
   , m_yAxis(yAxis)
   , m_radiance(radiance)
   , m_shaping(shaping) {
-  m_normal = cross(m_yAxis, m_xAxis);
+  // Note: Normalization required as sometimes a cross product may not result in a normalized vector due to precision issues.
+  m_normal = normalize(cross(m_yAxis, m_xAxis));
+
   updateCachedHash();
 }
 
@@ -358,7 +416,7 @@ void RtRectLight::applyTransform(const Matrix4& lightToWorld) {
 
   m_shaping.applyTransform(transform);
   
-  m_normal = cross(m_yAxis, m_xAxis);
+  m_normal = normalize(cross(m_yAxis, m_xAxis));
   updateCachedHash();
 }
 
@@ -376,14 +434,20 @@ void RtRectLight::writeGPUData(unsigned char* data, std::size_t& offset) const {
 
   m_shaping.writeGPUData(data, offset);
 
+  // Note: Ensure the X axis vector is normalized as this is a requirement for the GPU encoding.
+  assert(isApproxNormalized(m_xAxis, 0.01f));
   assert(m_xAxis < Vector3(FLOAT16_MAX));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_xAxis.x));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_xAxis.y));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_xAxis.z));
+  // Note: Ensure the Y axis vector is normalized as this is a requirement for the GPU encoding.
+  assert(isApproxNormalized(m_yAxis, 0.01f));
   assert(m_yAxis < Vector3(FLOAT16_MAX));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_yAxis.x));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_yAxis.y));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_yAxis.z));
+  // Note: Ensure the normal vector is normalized as this is a requirement for the GPU encoding.
+  assert(isApproxNormalized(m_normal, 0.01f));
   assert(m_normal < Vector3(FLOAT16_MAX));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_normal.x));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_normal.y));
@@ -435,7 +499,9 @@ RtDiskLight::RtDiskLight(const Vector3& position, const Vector2& halfDimensions,
   , m_radiance(radiance)
   , m_shaping(shaping) {
   // Note: Cache a pre-computed normal vector to avoid doing it on the GPU since we have space in the Light to spare
-  m_normal = cross(m_yAxis, m_xAxis);
+  // Additionally, normalization required as sometimes a cross product may not result in a normalized vector due to precision issues.
+  m_normal = normalize(cross(m_yAxis, m_xAxis));
+
   updateCachedHash();
 }
 
@@ -459,7 +525,7 @@ void RtDiskLight::applyTransform(const Matrix4& lightToWorld) {
 
   m_shaping.applyTransform(transform);
 
-  m_normal = cross(m_yAxis, m_xAxis);
+  m_normal = normalize(cross(m_yAxis, m_xAxis));
   updateCachedHash();
 }
 
@@ -477,15 +543,21 @@ void RtDiskLight::writeGPUData(unsigned char* data, std::size_t& offset) const {
 
   m_shaping.writeGPUData(data, offset);
 
+  // Note: Ensure the X axis vector is normalized as this is a requirement for the GPU encoding.
+  assert(isApproxNormalized(m_xAxis, 0.01f));
   assert(m_xAxis < Vector3(FLOAT16_MAX));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_xAxis.x));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_xAxis.y));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_xAxis.z));
+  // Note: Ensure the Y axis vector is normalized as this is a requirement for the GPU encoding.
+  assert(isApproxNormalized(m_yAxis, 0.01f));
   assert(m_yAxis < Vector3(FLOAT16_MAX));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_yAxis.x));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_yAxis.y));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_yAxis.z));
   assert(m_normal < Vector3(FLOAT16_MAX));
+  // Note: Ensure the normal vector is normalized as this is a requirement for the GPU encoding.
+  assert(isApproxNormalized(m_normal, 0.01f));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_normal.x));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_normal.y));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_normal.z));
@@ -569,6 +641,8 @@ void RtCylinderLight::writeGPUData(unsigned char* data, std::size_t& offset) con
   writeGPUHelper(data, offset, packLogLuv32(m_radiance));
   writeGPUPadding<12>(data, offset); // no shaping
 
+  // Note: Ensure the axis vector is normalized as this is a requirement for the GPU encoding.
+  assert(isApproxNormalized(m_axis, 0.01f));
   assert(m_axis < Vector3(FLOAT16_MAX));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_axis.x));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_axis.y));
@@ -626,10 +700,13 @@ RtDistantLight::RtDistantLight(const Vector3& direction, float halfAngle, const 
 }
 
 RtDistantLight::RtDistantLight(const D3DLIGHT9& light) {
-  // Note: Assumed to be normalized
-  m_direction[0] = light.Direction.x;
-  m_direction[1] = light.Direction.y;
-  m_direction[2] = light.Direction.z;
+  const Vector3 originalDirection{ light.Direction.x, light.Direction.y, light.Direction.z };
+
+  // Note: D3D9 Directional lights have no requirement on if the direction is normalized or not,
+  // so it must be normalized here for usage in the rendering (as m_direction is assumed to be normalized).
+  // Additionally, the direction may be the zero vector (even though D3D9 disallows this), so fall back to the
+  // Z axis in this case.
+  m_direction = safeNormalize(originalDirection, Vector3(0.0f, 0.0f, 1.0f));
 
   m_halfAngle = LightManager::lightConversionDistantLightFixedAngle() / 2.f;
 
@@ -646,12 +723,15 @@ RtDistantLight::RtDistantLight(const D3DLIGHT9& light) {
   m_cosHalfAngle = std::cos(m_halfAngle);
   m_sinHalfAngle = std::sin(m_halfAngle);
 
-  updateCachedHash();
+  // Note: Stable version used for D3D9 light conversion path to ensure stable hashing regardless of code changes.
+  updateCachedHashStable(originalDirection);
 }
 
 void RtDistantLight::applyTransform(const Matrix4& lightToWorld) {
   const Matrix3 transform(lightToWorld);
+
   m_direction = normalize(transform * m_direction);
+
   updateCachedHash();
 }
 
@@ -662,11 +742,17 @@ void RtDistantLight::writeGPUData(unsigned char* data, std::size_t& offset) cons
   writeGPUHelper(data, offset, glm::packHalf1x16(m_direction.x));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_direction.y));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_direction.z));
+
+  // Note: Ensure the orientation quaternion is normalized as this is a requirement for the GPU encoding.
+  assert(isApproxNormalized(m_orientation, 0.01f));
   assert(m_orientation < Vector4(FLOAT16_MAX));
+  // Note: Orientation could be more heavily packed (down to snorms, or even other quaternion memory encodings), but
+  // there is enough space that no fancy encoding which would just waste performance on the GPU side is needed.
   writeGPUHelper(data, offset, glm::packHalf1x16(m_orientation.x));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_orientation.y));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_orientation.z));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_orientation.w));
+
   writeGPUPadding<2>(data, offset);
 
   writeGPUHelper(data, offset, packLogLuv32(m_radiance));
@@ -696,6 +782,23 @@ Vector4 RtDistantLight::getColorAndIntensity() const {
   out.y = m_radiance[1] / out.w;
   out.z = m_radiance[2] / out.w;
   return out;
+}
+
+// Note: Changing this code will alter "stable" light hashes from D3D9 and potentially break replacement assets.
+void RtDistantLight::updateCachedHashStable(const Vector3& originalDirection) {
+  XXH64_hash_t h = (XXH64_hash_t) RtLightType::Rect;
+
+  // Note: A constant half angle is used due to a legacy artifact of accidently including half angle value in the
+  // hash for lights translated from D3D9 to Remix (which always inherited a value from the
+  // lightConversionDistantLightFixedAngle option, divided by 2.
+  const float legacyStableHalfAngle = 0.0349f / 2.0f;
+
+  // Note: Radiance not included to somewhat uniquely identify lights when constructed
+  // from D3D9 Lights.
+  h = XXH64(&originalDirection[0], sizeof(originalDirection), h);
+  h = XXH64(&legacyStableHalfAngle, sizeof(legacyStableHalfAngle), h);
+
+  m_cachedHash = h;
 }
 
 void RtDistantLight::updateCachedHash() {
@@ -770,7 +873,10 @@ RtLight::RtLight(const D3DLIGHT9& light) {
   switch (light.Type) {
   default:
     assert(false);
+
+    [[fallthrough]];
   case D3DLIGHT_POINT:
+    [[fallthrough]];
   case D3DLIGHT_SPOT:
     new (&m_sphereLight) RtSphereLight{ light };
     m_cachedInitialHash = m_sphereLight.getHash();
@@ -794,6 +900,8 @@ RtLight::RtLight(const RtLight& light)
   switch (m_type) {
   default:
     assert(false);
+
+    [[fallthrough]];
   case RtLightType::Sphere:
     new (&m_sphereLight) RtSphereLight{ light.m_sphereLight };
     break;
@@ -816,6 +924,8 @@ RtLight::~RtLight() {
   switch (m_type) {
   default:
     assert(false);
+
+    [[fallthrough]];
   case RtLightType::Sphere:
     m_sphereLight.~RtSphereLight();
     break;
@@ -838,6 +948,8 @@ void RtLight::applyTransform(const Matrix4& lightToWorld) {
   switch (m_type) {
   default:
     assert(false);
+
+    [[fallthrough]];
   case RtLightType::Sphere:
     m_sphereLight.applyTransform(lightToWorld);
     break;
@@ -860,6 +972,8 @@ void RtLight::writeGPUData(unsigned char* data, std::size_t& offset) const {
   switch (m_type) {
   default:
     assert(false);
+
+    [[fallthrough]];
   case RtLightType::Sphere:
     m_sphereLight.writeGPUData(data, offset);
     break;
@@ -885,6 +999,8 @@ RtLight& RtLight::operator=(const RtLight& rtLight) {
     switch (rtLight.m_type) {
     default:
       assert(false);
+
+      [[fallthrough]];
     case RtLightType::Sphere:
       m_sphereLight = rtLight.m_sphereLight;
       break;
@@ -921,6 +1037,8 @@ bool RtLight::operator==(const RtLight& rhs) const {
   switch (m_type) {
   default:
     assert(false);
+
+    [[fallthrough]];
   case RtLightType::Sphere:
     return m_sphereLight == rhs.m_sphereLight;
   case RtLightType::Rect:
@@ -938,6 +1056,8 @@ Vector4 RtLight::getColorAndIntensity() const {
   switch (m_type) {
   default:
     assert(false);
+
+    [[fallthrough]];
   case RtLightType::Sphere:
     return m_sphereLight.getColorAndIntensity();
   case RtLightType::Rect:
@@ -955,6 +1075,8 @@ Vector3 RtLight::getPosition() const {
   switch (m_type) {
   default:
     assert(false);
+
+    [[fallthrough]];
   case RtLightType::Sphere:
     return m_sphereLight.getPosition();
   case RtLightType::Rect:
@@ -972,6 +1094,8 @@ Vector3 RtLight::getDirection() const {
   switch (m_type) {
   default:
     assert(false);
+
+    [[fallthrough]];
   case RtLightType::Sphere:
   case RtLightType::Rect:
   case RtLightType::Disk:
@@ -986,6 +1110,8 @@ XXH64_hash_t RtLight::getTransformedHash() const {
   switch (m_type) {
   default:
     assert(false);
+
+    [[fallthrough]];
   case RtLightType::Sphere:
     return m_sphereLight.getHash();
   case RtLightType::Rect:
@@ -1003,6 +1129,8 @@ Vector3 RtLight::getRadiance() const {
   switch (m_type) {
   default:
     assert(false);
+
+    [[fallthrough]];
   case RtLightType::Sphere:
     return m_sphereLight.getRadiance();
   case RtLightType::Rect:

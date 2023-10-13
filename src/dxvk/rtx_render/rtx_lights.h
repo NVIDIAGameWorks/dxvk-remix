@@ -71,6 +71,18 @@ struct RtLightShaping {
   void writeGPUData(unsigned char* data, std::size_t& offset) const;
 };
 
+struct RtLightShapingStable {
+  uint32_t enabled = false;
+
+  // Note: Should be the original (non-normalized) axis from the D3DLIGHT9 for stable hashing.
+  Vector3 originalPrimaryAxis;
+  float cosConeAngle;
+  float coneSoftness;
+  float focusExponent;
+
+  XXH64_hash_t getHash() const;
+};
+
 struct RtSphereLight {
   RtSphereLight() {
     m_position = Vector3();
@@ -111,6 +123,10 @@ struct RtSphereLight {
     return m_shaping;
   }
 private:
+  // Note: Takes specific arguments to calculate a stable hash which does not change due to other changes in the light's code.
+  // Expects an un-altered position directly from the D3DLIGHT9 Position, and a Stable Light Shaping structure with its primaryAxis member
+  // directly derived from the D3DLIGHT9 Direction (again a legacy artifact caused by not normalizing this in our initial implementation).
+  void updateCachedHashStable(const Vector3& originalPosition, const RtLightShapingStable& shaping);
   void updateCachedHash();
 
   Vector3 m_position;
@@ -298,6 +314,10 @@ struct RtDistantLight {
     return m_radiance;
   }
 private:
+  // Note: Takes specific arguments to calculate a stable hash which does not change due to other changes in the light's code.
+  // Expects an un-altered direction directly from the D3DLIGHT9 Direction (a legacy artifact caused by not normalizing this in
+  // our initial implementation).
+  void updateCachedHashStable(const Vector3& originalDirection);
   void updateCachedHash();
 
   Vector3 m_direction;
