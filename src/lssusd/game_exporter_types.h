@@ -185,6 +185,7 @@ struct Export {
     bool bReduceMeshBuffers;
     bool isZUp;
     bool isLHS;
+    std::unordered_map<std::string, std::string> renderingSettingsDict;
   } meta;
   std::string baseExportPath;
   bool bExportInstanceStage;
