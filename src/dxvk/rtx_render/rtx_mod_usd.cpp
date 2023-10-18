@@ -91,7 +91,7 @@ private:
   void processUSD(const Rc<DxvkContext>& context);
 
   void TEMP_parseSecretReplacementVariants(const fast_unordered_cache<uint32_t>& variants);
-  Rc<ManagedTexture> getTexture(const Args& args, const pxr::UsdPrim& shader, const pxr::TfToken& textureToken, bool forcePreload = false);
+  Rc<ManagedTexture> getTexture(const Args& args, const pxr::UsdPrim& shader, const pxr::TfToken& textureToken, bool forcePreload = false) const;
   MaterialData* processMaterial(Args& args, const pxr::UsdPrim& matPrim);
   MaterialData* processMaterialUser(Args& args, const pxr::UsdPrim& prim);
   bool processMesh(const pxr::UsdPrim& prim, Args& args);
@@ -305,7 +305,7 @@ static std::string resolveTexturePath(
   return textureAssetPath;
 }
 
-Rc<ManagedTexture> UsdMod::Impl::getTexture(const Args& args, const pxr::UsdPrim& shader, const pxr::TfToken& textureToken, bool forcePreload) {
+Rc<ManagedTexture> UsdMod::Impl::getTexture(const Args& args, const pxr::UsdPrim& shader, const pxr::TfToken& textureToken, bool forcePreload) const {
   static const pxr::TfToken kSRGBColorSpace("sRGB");
   static pxr::SdfAssetPath path;
   auto attr = shader.GetAttribute(textureToken);
@@ -344,68 +344,9 @@ Rc<ManagedTexture> UsdMod::Impl::getTexture(const Args& args, const pxr::UsdPrim
 MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matPrim) {
   ScopedCpuProfileZone();
 
-  // Textures
   static const pxr::TfToken kShaderToken("Shader");
-  static const pxr::TfToken kAlbedoTextureToken("inputs:diffuse_texture");
-  static const pxr::TfToken kNormalTextureToken("inputs:normalmap_texture");
-  static const pxr::TfToken kTangentTextureToken("inputs:tangent_texture");
-  static const pxr::TfToken kHeightTextureToken("inputs:height_texture");
-  static const pxr::TfToken kRoughnessTextureToken("inputs:reflectionroughness_texture");
-  static const pxr::TfToken kMetallicTextureToken("inputs:metallic_texture");
-  static const pxr::TfToken kEmissiveMaskTextureToken("inputs:emissive_mask_texture");
-  // Attributes
   static const pxr::TfToken kIgnore("inputs:ignore_material");  // Any draw call or replacement using a material with this flag will be skipped by the SceneManager
-  static const pxr::TfToken kAnisotropy("inputs:anisotropy");
-  static const pxr::TfToken kEmissiveIntensity("inputs:emissive_intensity");
-  static const pxr::TfToken kAlbedoConstant("inputs:diffuse_color_constant");
-  static const pxr::TfToken kRoughnessConstant("inputs:reflection_roughness_constant");
-  static const pxr::TfToken kMetallicConstant("inputs:metallic_constant");
-  static const pxr::TfToken kEmissiveColorConstant("inputs:emissive_color_constant");
-  static const pxr::TfToken kOpacityConstant("inputs:opacity_constant");
-
-  static const pxr::TfToken kIORConstant("inputs:ior_constant");
-  static const pxr::TfToken kEnableEmission("inputs:enable_emission");
-  static const pxr::TfToken kEmissiveColor("inputs:emissive_color");
-  static const pxr::TfToken kTransmittanceTexture("inputs:transmittance_texture");
-  static const pxr::TfToken kTransmittanceConstant("inputs:transmittance_color");
-  static const pxr::TfToken kTransmittanceDistanceConstant("inputs:transmittance_measurement_distance");
-  static const pxr::TfToken kIsThinWalled("inputs:thin_walled");
-  static const pxr::TfToken kThinWallThickness("inputs:thin_wall_thickness");
-  static const pxr::TfToken kUseDiffuseLayer("inputs:use_diffuse_layer");
-  static const pxr::TfToken kEnableThinFilm("inputs:enable_thin_film");
-  static const pxr::TfToken kThinFilmThicknessFromAlbedoAlpha("inputs:thin_film_thickness_from_albedo_alpha");
-  static const pxr::TfToken kThinFilmThicknessConstant("inputs:thin_film_thickness_constant");
-  static const pxr::TfToken kDisplaceIn("inputs:displace_in");
-  static const pxr::TfToken kSubsurfaceTransmittanceColor("inputs:subsurface_transmittance_color");
-  static const pxr::TfToken kSubsurfaceSingleScatteringAlbedo("inputs:subsurface_single_scattering_albedo");
-  static const pxr::TfToken kSubsurfaceMeasurementDistance("inputs:subsurface_measurement_distance");
-  static const pxr::TfToken kSubsurfaceVolumetricAnisotropy("inputs:subsurface_volumetric_anisotropy");
-
-  // Alpha State Overrides
-  // Todo: Likely remove these some day in favor of splitting the Opaque material into
-  // a legacy material which inherits alpha state information from the drawcall and an opaque material
-  // which always controls how its alpha state information is manually (which is what this flag allows).
-  static const pxr::TfToken kUseLegacyAlphaState("inputs:use_legacy_alpha_state");
-  static const pxr::TfToken kBlendEnabled("inputs:blend_enabled");
-  static const pxr::TfToken kBlendType("inputs:blend_type");
-  static const pxr::TfToken kInvertedBlend("inputs:inverted_blend");
-  static const pxr::TfToken kAlphaTestType("inputs:alpha_test_type");
-  static const pxr::TfToken kAlphaReferenceValue("inputs:alpha_test_reference_value");
-
-  // Sprite Sheet attributes
-  static const pxr::TfToken kSpriteSheetRowsToken("inputs:sprite_sheet_rows");
-  static const pxr::TfToken kSpriteSheetColsToken("inputs:sprite_sheet_cols");
-  static const pxr::TfToken kSpriteSheetFPSToken("inputs:sprite_sheet_fps");
-  // Portal specific
-  static const pxr::TfToken kRayPortalIndexToken("inputs:portal_index");
-  static const pxr::TfToken kSpriteRotationSpeedToken("inputs:rotation_speed"); // Radians per second
-
-  // TODO (TREX-1260) Remove legacy Translucent->RayPortal path.
-  static const pxr::TfToken kLegacySpriteSheetRowsToken("spriteSheetRows");
-  static const pxr::TfToken kLegacySpriteSheetColsToken("spriteSheetCols");
-  static const pxr::TfToken kLegacySpriteSheetFPSToken("spriteSheetFPS");
   static const pxr::TfToken kLegacyRayPortalIndexToken("rayPortalIndex");
-  static const pxr::TfToken kLegacySpriteRotationSpeedToken("rotationSpeed"); 
 
   pxr::UsdPrim shader = matPrim.GetChild(kShaderToken);
   if (!shader.IsValid() || !shader.IsA<pxr::UsdShadeShader>()) {
@@ -430,33 +371,6 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
   MaterialData* materialData;
   if (m_owner.m_replacements->getObject(materialHash, materialData)) {
     return materialData;
-  }
-
-
-  int spriteSheetRows = RtxOptions::Get()->getSharedMaterialDefaults().SpriteSheetRows;
-  int spriteSheetCols = RtxOptions::Get()->getSharedMaterialDefaults().SpriteSheetCols;
-  int spriteSheetFPS = RtxOptions::Get()->getSharedMaterialDefaults().SpriteSheetFPS;
-  bool enableEmission = RtxOptions::Get()->getSharedMaterialDefaults().EnableEmissive;
-  float emissiveIntensity = RtxOptions::Get()->getSharedMaterialDefaults().EmissiveIntensity;
-
-  shader.GetAttribute(kEnableEmission).Get(&enableEmission);
-  shader.GetAttribute(kEmissiveIntensity).Get(&emissiveIntensity);
-
-  if (shader.HasAttribute(kSpriteSheetFPSToken)) {
-    shader.GetAttribute(kSpriteSheetRowsToken).Get(&spriteSheetRows);
-    shader.GetAttribute(kSpriteSheetColsToken).Get(&spriteSheetCols);
-    shader.GetAttribute(kSpriteSheetFPSToken).Get(&spriteSheetFPS);
-  } else if (shader.HasAttribute(kLegacySpriteSheetFPSToken)) {
-    // TODO (TREX-1260) Remove legacy Translucent->RayPortal path.
-    uint legacySpriteSheetRows = spriteSheetRows;
-    uint legacySpriteSheetCols = spriteSheetCols;
-    uint legacySpriteSheetFPS = spriteSheetFPS;
-    shader.GetAttribute(kLegacySpriteSheetRowsToken).Get(&legacySpriteSheetRows);
-    shader.GetAttribute(kLegacySpriteSheetColsToken).Get(&legacySpriteSheetCols);
-    shader.GetAttribute(kLegacySpriteSheetFPSToken).Get(&legacySpriteSheetFPS);
-    spriteSheetRows = legacySpriteSheetRows;
-    spriteSheetCols = legacySpriteSheetCols;
-    spriteSheetFPS = legacySpriteSheetFPS;
   }
 
   bool shouldIgnore = false;
@@ -484,187 +398,17 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
     }
   }
 
-  if (materialType == RtSurfaceMaterialType::Translucent) {
-    float refractiveIndex = RtxOptions::Get()->getTranslucentMaterialDefaults().RefractiveIndex;
-    Vector3 transmittanceColor = RtxOptions::Get()->getTranslucentMaterialDefaults().TransmittanceColor;
-    float transmittanceMeasureDistance = RtxOptions::Get()->getTranslucentMaterialDefaults().TransmittanceMeasurementDistance;
-    Vector3 emissiveColorConstant = RtxOptions::Get()->getTranslucentMaterialDefaults().EmissiveColorConstant;
-    bool isThinWalled = RtxOptions::Get()->getTranslucentMaterialDefaults().ThinWalled;
-    float thinWallThickness = RtxOptions::Get()->getTranslucentMaterialDefaults().ThinWallThickness;
-    bool useDiffuseLayer = RtxOptions::Get()->getTranslucentMaterialDefaults().UseDiffuseLayer;
+  auto getTextureFunctor = [&](const pxr::UsdPrim& shader, const pxr::TfToken& name) {
+                             return getTexture(args, shader, name);
+                           };
 
-    shader.GetAttribute(kIORConstant).Get(&refractiveIndex);
-
-    getVector3(shader, kTransmittanceConstant, transmittanceColor);
-
-    shader.GetAttribute(kTransmittanceDistanceConstant).Get(&transmittanceMeasureDistance);
-
-    getVector3(shader, kEmissiveColorConstant, emissiveColorConstant);
-
-    shader.GetAttribute(kIsThinWalled).Get(&isThinWalled);
-    shader.GetAttribute(kThinWallThickness).Get(&thinWallThickness);
-    shader.GetAttribute(kUseDiffuseLayer).Get(&useDiffuseLayer);
-
-    const TextureRef normalTexture(getTexture(args, shader, kNormalTextureToken));
-    const TextureRef transmittanceTexture(getTexture(args, shader, kTransmittanceTexture));
-    // Note: Only set if in use to avoid sampling from this texture if emission is disabled.
-    TextureRef emissiveColorTexture {};
-
-    if (enableEmission) {
-      emissiveColorTexture = TextureRef{ getTexture(args, shader, kEmissiveMaskTextureToken) };
-    }
-
-    const TranslucentMaterialData translucentMaterialData{
-      normalTexture, transmittanceTexture, emissiveColorTexture,
-      refractiveIndex,
-      transmittanceColor, transmittanceMeasureDistance,
-      enableEmission, emissiveIntensity, emissiveColorConstant,
-      static_cast<uint8_t>(spriteSheetRows),
-      static_cast<uint8_t>(spriteSheetCols),
-      static_cast<uint8_t>(spriteSheetFPS),
-      isThinWalled, thinWallThickness, useDiffuseLayer
-    };
-
-    return &m_owner.m_replacements->storeObject(materialHash, MaterialData(translucentMaterialData, shouldIgnore));
-  } else if (materialType == RtSurfaceMaterialType::Opaque) {
-    float anisotropy = RtxOptions::Get()->getOpaqueMaterialDefaults().Anisotropy;
-    Vector4 albedoOpacityConstant = RtxOptions::Get()->getOpaqueMaterialDefaults().AlbedoOpacityConstant;
-    float roughnessConstant = RtxOptions::Get()->getOpaqueMaterialDefaults().RoughnessConstant;
-    float metallicConstant = RtxOptions::Get()->getOpaqueMaterialDefaults().MetallicConstant;
-    Vector3 emissiveColorConstant = RtxOptions::Get()->getOpaqueMaterialDefaults().EmissiveColorConstant;
-    float thinFilmThicknessConstant = RtxOptions::Get()->getOpaqueMaterialDefaults().ThinFilmThicknessConstant;
-    bool alphaIsThinFilmThickness = RtxOptions::Get()->getOpaqueMaterialDefaults().AlphaIsThinFilmThickness;
-    bool useLegacyAlphaState = RtxOptions::Get()->getOpaqueMaterialDefaults().UseLegacyAlphaState;
-    bool blendEnabled = RtxOptions::Get()->getOpaqueMaterialDefaults().BlendEnabled;
-    BlendType blendType = RtxOptions::Get()->getOpaqueMaterialDefaults().DefaultBlendType;
-    bool invertedBlend = RtxOptions::Get()->getOpaqueMaterialDefaults().InvertedBlend;
-    AlphaTestType alphaTestType = RtxOptions::Get()->getOpaqueMaterialDefaults().DefaultAlphaTestType;
-    uint8_t alphaReferenceValue = RtxOptions::Get()->getOpaqueMaterialDefaults().AlphaReferenceValue;
-    float displaceIn = RtxOptions::Get()->getOpaqueMaterialDefaults().DisplaceIn;
-    Vector3 subsurfaceTransmittanceColor = RtxOptions::Get()->getOpaqueMaterialDefaults().SubsurfaceTransmittanceColor;
-    Vector3 subsurfaceSingleScatteringAlbedo = RtxOptions::Get()->getOpaqueMaterialDefaults().SubsurfaceSingleScatteringAlbedo;
-    float subsurfaceMeasurementDistance = RtxOptions::Get()->getOpaqueMaterialDefaults().SubsurfaceMeasurementDistance;
-    float subsurfaceVolumetricAnisotropy = RtxOptions::Get()->getOpaqueMaterialDefaults().SubsurfaceVolumetricAnisotropy;
-
-    shader.GetAttribute(kOpacityConstant).Get(&albedoOpacityConstant.a);
-
-    shader.GetAttribute(kAnisotropy).Get(&anisotropy);
-
-    getVector3(shader, kAlbedoConstant, albedoOpacityConstant.xyz());
-
-    shader.GetAttribute(kRoughnessConstant).Get(&roughnessConstant);
-    shader.GetAttribute(kMetallicConstant).Get(&metallicConstant);
-    shader.GetAttribute(kDisplaceIn).Get(&displaceIn);
-
-    getVector3(shader, kEmissiveColorConstant, emissiveColorConstant);
-
-    const TextureRef albedoTexture(getTexture(args, shader, kAlbedoTextureToken));
-    const TextureRef normalTexture(getTexture(args, shader, kNormalTextureToken));
-    const TextureRef tangentTexture(getTexture(args, shader, kTangentTextureToken));
-    const TextureRef heightTexture(getTexture(args, shader, kHeightTextureToken));
-    const TextureRef roughnessTexture(getTexture(args, shader, kRoughnessTextureToken));
-    const TextureRef metallicTexture(getTexture(args, shader, kMetallicTextureToken));
-    // Note: Only set if in use to avoid sampling from this texture if emission is disabled.
-    TextureRef emissiveColorTexture{};
-
-    if (enableEmission) {
-      emissiveColorTexture = TextureRef{ getTexture(args, shader, kEmissiveMaskTextureToken) };
-    }
-
-    bool thinFilmEnable = false;
-    shader.GetAttribute(kEnableThinFilm).Get(&thinFilmEnable);
-
-    if (thinFilmEnable) {
-      shader.GetAttribute(kThinFilmThicknessFromAlbedoAlpha).Get(&alphaIsThinFilmThickness);
-      if (!alphaIsThinFilmThickness) {
-        shader.GetAttribute(kThinFilmThicknessConstant).Get(&thinFilmThicknessConstant);
-      }
-    }
-
-    shader.GetAttribute(kUseLegacyAlphaState).Get(&useLegacyAlphaState);
-
-    if (!useLegacyAlphaState) {
-      shader.GetAttribute(kBlendEnabled).Get(&blendEnabled);
-
-      if (blendEnabled) {
-        int rawBlendType;
-        shader.GetAttribute(kBlendType).Get(&rawBlendType);
-
-        blendType = static_cast<BlendType>(rawBlendType);
-
-        shader.GetAttribute(kInvertedBlend).Get(&invertedBlend);
-      }
-
-      int rawAlphaTestType;
-      shader.GetAttribute(kAlphaTestType).Get(&rawAlphaTestType);
-
-      alphaTestType = static_cast<AlphaTestType>(rawAlphaTestType);
-
-      float normalizedAlphaReferenceValue;
-      shader.GetAttribute(kAlphaReferenceValue).Get(&normalizedAlphaReferenceValue);
-
-      // Note: Convert 0-1 floating point alpha reference value in MDL to 0-255 uint8 used for rendering.
-      alphaReferenceValue = static_cast<uint8_t>(std::numeric_limits<uint8_t>::max() * normalizedAlphaReferenceValue);
-    }
-
-    // Read Subsurface Material from USD
-    getVector3(shader, kSubsurfaceTransmittanceColor, subsurfaceTransmittanceColor);
-    shader.GetAttribute(kSubsurfaceMeasurementDistance).Get(&subsurfaceMeasurementDistance);
-    getVector3(shader, kSubsurfaceSingleScatteringAlbedo, subsurfaceSingleScatteringAlbedo);
-    shader.GetAttribute(kSubsurfaceVolumetricAnisotropy).Get(&subsurfaceVolumetricAnisotropy);
-
-    const OpaqueMaterialData opaqueMaterialData{
-      albedoTexture, normalTexture,
-      tangentTexture, heightTexture, roughnessTexture,
-      metallicTexture, emissiveColorTexture,
-      anisotropy, emissiveIntensity,
-      albedoOpacityConstant,
-      roughnessConstant, metallicConstant,
-      emissiveColorConstant, enableEmission,
-      static_cast<uint8_t>(spriteSheetRows),
-      static_cast<uint8_t>(spriteSheetCols),
-      static_cast<uint8_t>(spriteSheetFPS),
-      thinFilmEnable,
-      alphaIsThinFilmThickness,
-      thinFilmThicknessConstant,
-      useLegacyAlphaState, blendEnabled, blendType, invertedBlend,
-      alphaTestType, alphaReferenceValue, displaceIn,
-      subsurfaceTransmittanceColor, subsurfaceMeasurementDistance, subsurfaceSingleScatteringAlbedo, subsurfaceVolumetricAnisotropy
-    };
-
-    return &m_owner.m_replacements->storeObject(materialHash, MaterialData(opaqueMaterialData, shouldIgnore));
-  } else if (materialType == RtSurfaceMaterialType::RayPortal) {
-    TextureRef albedoTexture;
-    
-    int rayPortalIndex = RtxOptions::Get()->getRayPortalMaterialDefaults().RayPortalIndex;
-    float rotationSpeed = RtxOptions::Get()->getRayPortalMaterialDefaults().RotationSpeed;
-
-    // we set the forcePreload flag in the calls to getTexture below to make sure the portal textures
-    // are loaded at init time, otherwise we get a hitch the first time a portal is placed
-    //
-    // in the future, we should try to get this info directly from the toolkit, to allow artists to tag textures
-    // for preloading instead of relying on material hash lists
-    if (shader.HasAttribute(kRayPortalIndexToken)){
-      shader.GetAttribute(kRayPortalIndexToken).Get(&rayPortalIndex);
-      shader.GetAttribute(kSpriteRotationSpeedToken).Get(&rotationSpeed);
-      albedoTexture = TextureRef(getTexture(args, shader, kEmissiveMaskTextureToken, true));
-    } else if (shader.HasAttribute(kLegacyRayPortalIndexToken)) {
-      // TODO (TREX-1260) Remove legacy Translucent->RayPortal path.
-      uint legacyIndex = rayPortalIndex;
-      shader.GetAttribute(kLegacyRayPortalIndexToken).Get(&legacyIndex);
-      rayPortalIndex = legacyIndex;
-      shader.GetAttribute(kLegacySpriteRotationSpeedToken).Get(&rotationSpeed);
-      albedoTexture = TextureRef(getTexture(args, shader, kAlbedoTextureToken, true));
-    }
-
-    const RayPortalMaterialData rayPortalMaterialData{
-      albedoTexture, albedoTexture,
-      static_cast<uint8_t>(rayPortalIndex), static_cast<uint8_t>(spriteSheetRows),
-      static_cast<uint8_t>(spriteSheetCols), static_cast<uint8_t>(spriteSheetFPS),
-      rotationSpeed, enableEmission, emissiveIntensity
-    };
-
-    return &m_owner.m_replacements->storeObject(materialHash, MaterialData(rayPortalMaterialData));
+  switch (materialType) {
+  case RtSurfaceMaterialType::Opaque:
+    return &m_owner.m_replacements->storeObject(materialHash, MaterialData(OpaqueMaterialData::deserialize(getTextureFunctor, shader), shouldIgnore));
+  case RtSurfaceMaterialType::Translucent:
+    return &m_owner.m_replacements->storeObject(materialHash, MaterialData(TranslucentMaterialData::deserialize(getTextureFunctor, shader), shouldIgnore));
+  case RtSurfaceMaterialType::RayPortal:
+    return &m_owner.m_replacements->storeObject(materialHash, MaterialData(RayPortalMaterialData::deserialize(getTextureFunctor, shader)));
   }
 
   return nullptr;

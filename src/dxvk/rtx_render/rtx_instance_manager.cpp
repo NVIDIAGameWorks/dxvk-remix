@@ -870,9 +870,7 @@ namespace dxvk {
         currentInstance.surface.dstColorBlendFactor = drawCall.getMaterialData().dstColorBlendFactor;
         currentInstance.surface.colorBlendOp = drawCall.getMaterialData().colorBlendOp;
 
-        uint8_t spriteSheetRows = RtxOptions::Get()->getSharedMaterialDefaults().SpriteSheetRows;
-        uint8_t spriteSheetCols = RtxOptions::Get()->getSharedMaterialDefaults().SpriteSheetCols;
-        uint8_t spriteSheetFPS = RtxOptions::Get()->getSharedMaterialDefaults().SpriteSheetFPS;
+        uint8_t spriteSheetRows = 0, spriteSheetCols = 0, spriteSheetFPS = 0;
 
         // Note: Extract spritesheet information from the associated material data as it ends up stored in the Surface
         // not in the Surface Material like most material information.
