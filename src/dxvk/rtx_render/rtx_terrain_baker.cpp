@@ -536,7 +536,6 @@ namespace dxvk {
 
     // ToDo use TerrainBaker's material defaults
     const LegacyMaterialDefaults& defaults = RtxOptions::Get()->legacyMaterial;
-    const OpaqueMaterialDefaults& opaqueMaterialDefaults = RtxOptions::Get()->getOpaqueMaterialDefaults();
     
     auto createTextureRef = [&](ReplacementMaterialTextureType::Enum textureType) {
       return m_materialTextures[textureType].isBaked()
@@ -555,7 +554,8 @@ namespace dxvk {
       createTextureRef(ReplacementMaterialTextureType::Emissive),
       Material::Properties::roughnessAnisotropy(),
       Material::Properties::emissiveIntensity(),
-      Vector4(1, 1, 1, 1), // AlbedoOpacityConstant - unused since the AlbedoOpacity texture must be always present for baking
+      Vector3(1, 1, 1), // AlbedoConstant - unused since the AlbedoOpacity texture must be always present for baking
+      1.f, // OpacityConstant - unused since the AlbedoOpacity texture must be always present for baking
       Material::Properties::roughnessConstant(),
       Material::Properties::metallicConstant(),
       Material::Properties::emissiveColorConstant(),
@@ -564,12 +564,12 @@ namespace dxvk {
       1, 1, 0, /* spriteSheet* */
       false, // defaults.enableThinFilm(),
       false, // defaults.alphaIsThinFilmThickness(),
-      defaults.thinFilmThicknessConstant(),
+      0.f,
       false, // Set to false for now, otherwise the baked terrain is not fully opaque - opaqueMaterialDefaults.UseLegacyAlphaState
       false, // opaqueMaterialDefaults.BlendEnabled,
-      opaqueMaterialDefaults.DefaultBlendType,
+      BlendType::kAlpha,
       false, // opaqueMaterialDefaults.InvertedBlend,
-      opaqueMaterialDefaults.DefaultAlphaTestType,
+      AlphaTestType::kAlways,
       0,//opaqueMaterialDefaults.AlphaReferenceValue;
       0.0f,  // opaqueMaterialDefaults.DisplaceIn
       Vector3(),  // opaqueMaterialDefaults.subsurfaceTransmittanceColor

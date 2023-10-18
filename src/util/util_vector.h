@@ -606,6 +606,16 @@ namespace dxvk {
       (aLength <= static_cast<T>(1.0) + threshold);
   }
 
+
+  template <template<typename> typename TVector, typename T>
+  std::enable_if_t<std::is_floating_point_v<T>, TVector<T>> clamp(const TVector<T>& a, const TVector<T>& lo, const TVector<T>& hi) {
+    Vector3 out;
+    out.x = std::clamp(a.x, lo.x, hi.x);
+    out.y = std::clamp(a.y, lo.y, hi.y);
+    out.z = std::clamp(a.z, lo.z, hi.z);
+    return out;
+  }
+
   // Class inter-dependent definitions
 
   template <typename T>

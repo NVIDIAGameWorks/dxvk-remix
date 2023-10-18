@@ -914,12 +914,6 @@ namespace dxvk {
     HashRule GeometryAssetHashRule = 0;
 
   private:
-    // These cannot be overridden, and should match the defaults in the respective MDLs
-    const OpaqueMaterialDefaults opaqueMaterialDefaults{};
-    const TranslucentMaterialDefaults translucentMaterialDefaults{};
-    const RayPortalMaterialDefaults rayPortalMaterialDefaults{};
-    const SharedMaterialDefaults sharedMaterialDefaults{};
-
     RTX_OPTION("rtx", float, effectLightIntensity, 1.f, "");
     RTX_OPTION("rtx", float, effectLightRadius, 5.f, "");
     RTX_OPTION("rtx", bool, effectLightPlasmaBall, false, "");
@@ -1371,11 +1365,6 @@ namespace dxvk {
     bool isUseVirtualShadingNormalsForDenoisingEnabled() const { return useVirtualShadingNormalsForDenoising(); }
     bool isResetDenoiserHistoryOnSettingsChangeEnabled() const { return resetDenoiserHistoryOnSettingsChange(); }
     
-    const OpaqueMaterialDefaults& getOpaqueMaterialDefaults() const { return opaqueMaterialDefaults; }
-    const TranslucentMaterialDefaults& getTranslucentMaterialDefaults() const { return translucentMaterialDefaults; }
-    const RayPortalMaterialDefaults& getRayPortalMaterialDefaults() const { return rayPortalMaterialDefaults; }
-    const SharedMaterialDefaults& getSharedMaterialDefaults() const { return sharedMaterialDefaults; }
-
     int32_t getPresentThrottleDelay() const { return enablePresentThrottle() ? presentThrottleDelay() : 0; }
     bool getValidateCPUIndexData() const { return validateCPUIndexData(); }
 
