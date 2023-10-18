@@ -142,6 +142,7 @@ struct OpaqueSurfaceMaterialInteraction
   uint16_t subsurfaceMaterialIndex;
   // Note: A value of 0 in the thin film thickness indicates the thin film is disabled.
   float16_t thinFilmThickness;
+  uint8_t flags;
 };
 
 struct DecalMaterialInteraction

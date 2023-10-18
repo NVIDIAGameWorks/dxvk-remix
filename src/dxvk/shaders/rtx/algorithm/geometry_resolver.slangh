@@ -288,7 +288,7 @@ void geometryResolverOutputSurface(
       PrimaryWorldShadingNormal, PrimaryPerceptualRoughness,
       PrimaryVirtualWorldShadingNormalPerceptualRoughness, PrimaryVirtualWorldShadingNormalPerceptualRoughnessDenoising,
       PrimaryAlbedo, PrimaryBaseReflectivity,
-      SharedMaterialData0, SharedMaterialData1, SharedTextureCoord, SharedSurfaceIndex);
+      SharedMaterialData0, SharedMaterialData1, DisplacementTextureCoord, SharedSurfaceIndex);
   }
   else
   {
@@ -300,7 +300,7 @@ void geometryResolverOutputSurface(
       SecondaryWorldShadingNormal, SecondaryPerceptualRoughness,
       SecondaryVirtualWorldShadingNormalPerceptualRoughness, SecondaryVirtualWorldShadingNormalPerceptualRoughnessDenoising,
       SecondaryAlbedo, SecondaryBaseReflectivity,
-      SharedMaterialData0, SharedMaterialData1, SharedTextureCoord, SharedSurfaceIndex);
+      SharedMaterialData0, SharedMaterialData1, DisplacementTextureCoord, SharedSurfaceIndex);
   }
 
   if (cb.enableStochasticAlphaBlend && primarySurface)
@@ -1096,11 +1096,13 @@ void geometryResolverVertex(
 
   const bool enablePSRR = cb.enablePSRR;
   const bool enablePSTR = cb.enablePSTR;
-  // Note: Only sample from PSR if either PSRR or PSTR are enabled, and if the hit is not a separately traced viewmodel.
+  // pomEnablePSR defaults to false, as PSR does not account for POM, and regular bounce rays will currently give a more accurate result.
+  const bool pomEnablePSR = cb.pomEnablePSR;
+  // Note: Only sample from PSR if either PSRR or PSTR are enabled, the hit is not a separately traced viewmodel, and the surface does not have displacement. 
   const bool samplePSR =
     (enablePSRR || enablePSTR) &&
-    !geometryResolverState.decalEncountered;
-
+    !geometryResolverState.decalEncountered &&
+    (pomEnablePSR || !polymorphicSurfaceMaterialInteractionHasHeightTexture(polymorphicSurfaceMaterialInteraction));
   // Check if the first hit surface is eligible for PSRR or PSTR by sampling it
 
   SurfaceMaterialInteractionPSRSample surfaceMaterialInteractionReflectionPSRSample;
@@ -1306,6 +1308,12 @@ void geometryPSRResolverEvaluateContinuation(
   {
     shouldTerminate = geometryPSRResolverState.bounceIteration > cb.pstrMaxBounces;
     isLastBounce = geometryPSRResolverState.bounceIteration >= cb.pstrMaxBounces;
+  }
+
+  // We currently don't support reflections off of POM
+  if (!cb.pomEnablePSR && polymorphicSurfaceMaterialInteractionHasHeightTexture(polymorphicSurfaceMaterialInteraction))
+  {
+    shouldTerminate = true;
   }
 
   if (shouldTerminate)

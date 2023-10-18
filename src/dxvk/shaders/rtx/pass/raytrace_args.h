@@ -286,6 +286,9 @@ struct RaytraceArgs {
   uint pomEnable;
   uint pomEnableDirectLighting;
   uint pomEnableIndirectLighting;
+  uint pomEnableNEECache;
+  uint pomEnableReSTIRGI;
+  uint pomEnablePSR;
 
   uint thinOpaqueEnable;
 };

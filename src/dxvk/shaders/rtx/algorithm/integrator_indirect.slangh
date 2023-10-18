@@ -31,6 +31,7 @@
 #include "rtx/pass/instance_definitions.slangh"
 #include "rtx/concept/surface/surface.slangh"
 #include "rtx/algorithm/integrator.slangh"
+#include "rtx/concept/surface_material/opaque_surface_material_interaction.slangh"
 
 // Input specular signal of low roughness material into restir gi
 static const uint kRestirGIAcceptLowRoughnessInput = false;
@@ -222,11 +223,12 @@ void integratePathVertex(
       numUnorderedInteractions);
 
     if (cb.debugView == DEBUG_VIEW_SECONDARY_UNORDERED_INTERACTIONS || cb.debugView == DEBUG_VIEW_SECONDARY_RAY_AND_UNORDERED_INTERACTIONS)
+    {
       accumulateInDebugViewAdd(pathState.pixelCoordinate, numUnorderedInteractions);
+    }
   }
 
   // Invoke the Resolve Vertex function
-
   Ray ray;
   RayInteraction rayInteraction;
   Surface surface;
@@ -256,6 +258,17 @@ void integratePathVertex(
     polymorphicSurfaceMaterialInteraction,
     radianceAttenuation, emissiveRadiance,
     DecalMaterial, aliasedData0.DecalEmissiveRadiance);
+
+  // Todo: Remove hack thing
+  vec3 oldOrigin = pathState.origin;
+  pathState.origin = hackState.origin;
+  pathState.coneRadius = hackState.coneRadius;
+  pathState.coneSpreadAngle = hackState.coneSpreadAngle;
+  pathState.direction = hackState.direction;
+  pathState.continueResolving = hackState.continueResolving;
+  pathState.portalSpace = hackState.portalSpace;
+  pathState.rayMask = hackState.rayMask;
+  pathState.decalEncountered = hackState.decalEncountered;
 
   // Output ReSTIR GI geometry information
 
@@ -288,16 +301,6 @@ void integratePathVertex(
       ReSTIRGI_StoreHitGeometry(indirectPathTextures.RestirGIHitGeometry, pathState.pixelCoordinate, hitPosition, hitNormal, pathState.indirectLightPortalID);
     }
   }
-
-  // Todo: Remove hack thing
-  vec3 oldOrigin = pathState.origin;
-  pathState.origin = hackState.origin;
-  pathState.coneRadius = hackState.coneRadius;
-  pathState.direction = hackState.direction;
-  pathState.continueResolving = hackState.continueResolving;
-  pathState.portalSpace = hackState.portalSpace;
-  pathState.rayMask = hackState.rayMask;
-  pathState.decalEncountered = hackState.decalEncountered;
 
   if (rayInteractionHasHit(rayInteraction))
   {
@@ -556,7 +559,7 @@ void integratePathVertex(
         if (cell.isValid() && cell.getCandidateCount() > 0)
         {
           vec3 randomNumber = vec3(RAB_GetNextRandom(rtxdiRNG));
-          LightSample lightSampleTriangle = cell.getLightSample(randomNumber, surfaceInteraction.position, rayInteraction.coneRadius, hackState.coneSpreadAngle, true);
+          LightSample lightSampleTriangle = cell.getLightSample(randomNumber, surfaceInteraction.position, rayInteraction.coneRadius, pathState.coneSpreadAngle, true);
           
           // Calculate cached triangle NEE sample's MIS light contribution
           vec3 diffuseLightTriangle, specularLightTriangle;
@@ -588,12 +591,14 @@ void integratePathVertex(
       if (lightSampleValid)
       {
         const bool isViewModel = pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
+        
+        uint16_t surfaceIndex = cb.pomEnableIndirectLighting ? surface.surfaceMaterialIndex : BINDING_INDEX_INVALID;
     
         // Todo: Ray Portal transport sampling in the future.
         evalNEESecondary(
           lightSample, invalidRayPortalIndex, pathState.portalSpace, pathState.rayMask,
           isViewModel, ray, rayInteraction, surfaceInteraction,
-          diffuseLight, specularLight);
+          diffuseLight, specularLight, surfaceIndex, surfaceInteraction.textureCoordinates);
 
         // Create a NEE Cache task for lights with non-zero contributions.
         // Both light task and emissive triangle task are using the same buffer, skip some pixels so that triangle tasks on them won't be overwritten by light tasks.
@@ -900,6 +905,36 @@ void integrateIndirectPath(
     pathState.continuePath = false;
 
   pathState.continuePath &= any(pathState.throughput > 0);
+
+#ifdef OPAQUE_MATERIAL_USE_POM
+  // set initial POM material and texcoords from textures.
+  if (pathState.continuePath && cb.pomEnable && cb.pomEnableIndirectLighting)
+  {
+    uint16_t primarySurfaceIndex = uint16_t(SharedSurfaceIndex[pixelCoordinate]);
+    if (primarySurfaceIndex != BINDING_INDEX_INVALID) {
+      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
+      const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
+      if (polymorphicType == surfaceMaterialTypeOpaque)
+      {
+        OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(primarySurfaceIndex, memoryPolymorphicSurfaceMaterial);
+        if (opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID)
+        {
+          MinimalSurfaceInteraction minimalSurfaceInteraction = minimalSurfaceInteractionReadFromGBuffer(
+            pixelCoordinate, indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal);
+
+          const float pomThroughput = opaqueSurfaceMaterialInteractionCalcHeightThroughput(
+            minimalSurfaceInteraction, pathState.direction, opaqueSurfaceMaterial.heightTextureIndex,
+            opaqueSurfaceMaterial.samplerIndex, DisplacementTextureCoord[pixelCoordinate], opaqueSurfaceMaterial.displaceIn
+          );
+
+          pathState.throughput = pathState.throughput * pomThroughput;
+          pathState.continuePath = any(pathState.throughput > 0.001f);
+          pathState.continueResolving = pathState.continuePath;
+        }
+      }
+    }
+  }
+#endif
 
   // Integrate Secondary Vertices
 

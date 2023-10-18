@@ -331,7 +331,8 @@ VisibilityResult traceVisibilityRay(
   float16_t coneRadius = 0, float16_t spreadAngle = 0, float16_t tMaxFactor = 1.0,
   // ViewModel instances shouldn't occlude anything but ViewModel surfaces and primary rays
   bool hasRayOriginatedFromViewModel = false,
-  bool usePreviousTLAS = false)
+  bool usePreviousTLAS = false,
+  uint16_t primarySurfaceIndex = BINDING_INDEX_INVALID, float2 texCoords = float2(0.f))
 {
   MinimalRayInteraction minimalRayInteraction = (MinimalRayInteraction)0;
   minimalRayInteraction.coneRadius = coneRadius;
@@ -344,5 +345,42 @@ VisibilityResult traceVisibilityRay(
 
   visibilityRay.tMax *= tMaxFactor;
 
-  return traceVisibilityRay(visibilityRay, rayMask, visibilityMode, expectedRayPortalIndex, rayOriginPortalSpace, hasRayOriginatedFromViewModel, usePreviousTLAS);
+#ifdef OPAQUE_MATERIAL_USE_POM
+
+  // Evaluate POM visibility
+  float pomAttenuation = 1.0f;
+  if (cb.pomEnable && primarySurfaceIndex != BINDING_INDEX_INVALID)
+  {
+    const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
+    const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
+    if (polymorphicType == surfaceMaterialTypeOpaque) {
+      OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(primarySurfaceIndex, memoryPolymorphicSurfaceMaterial);
+
+      if (opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID)
+      {
+        pomAttenuation = opaqueSurfaceMaterialInteractionCalcHeightThroughput(
+          minimalSurfaceInteraction, -visibilityRay.direction, opaqueSurfaceMaterial.heightTextureIndex,
+          opaqueSurfaceMaterial.samplerIndex, texCoords, opaqueSurfaceMaterial.displaceIn
+        );
+        if (pomAttenuation <= 0.001f)
+        {
+          VisibilityResult result;
+          result.attenuation = pomAttenuation;
+          result.hasOpaqueHit = true;
+          result.rayDirection = visibilityRay.direction;
+          result.hitDistance = visibilityRay.tMax; // TODO should refactor POM code to return?
+          return result;
+        }
+      }
+    }
+  }
+#endif
+
+  VisibilityResult result = traceVisibilityRay(visibilityRay, rayMask, visibilityMode, expectedRayPortalIndex, rayOriginPortalSpace, hasRayOriginatedFromViewModel, usePreviousTLAS);
+
+#ifdef OPAQUE_MATERIAL_USE_POM
+  result.attenuation = result.attenuation * pomAttenuation;
+#endif
+
+  return result;
 }

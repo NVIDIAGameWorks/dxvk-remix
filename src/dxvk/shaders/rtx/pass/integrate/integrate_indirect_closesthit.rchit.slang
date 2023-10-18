@@ -37,6 +37,26 @@
 //!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
 //!>       NEE_CACHE_ENABLE=1
 
+//!variant integrate_indirect_pom_material_opaque_translucent_closestHit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT
+//!>       NEE_CACHE_ENABLE=0
+//!>       OPAQUE_MATERIAL_USE_POM=1
+
+//!variant integrate_indirect_neeCache_pom_material_opaque_translucent_closestHit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT
+//!>       NEE_CACHE_ENABLE=1
+//!>       OPAQUE_MATERIAL_USE_POM=1
+
+//!variant integrate_indirect_pom_material_rayportal_closestHit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
+//!>       NEE_CACHE_ENABLE=0
+//!>       OPAQUE_MATERIAL_USE_POM=1
+
+//!variant integrate_indirect_neeCache_pom_material_rayportal_closestHit.rchit
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
+//!>       NEE_CACHE_ENABLE=1
+//!>       OPAQUE_MATERIAL_USE_POM=1
+
 //!end-variants
 
 #define RAY_PIPELINE
