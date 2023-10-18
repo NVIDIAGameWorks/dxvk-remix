@@ -41,10 +41,11 @@
 #include <pxr/usd/usdGeom/xform.h>
 #include <pxr/usd/usdGeom/xformCommonAPI.h>
 #include <pxr/usd/usdLux/lightapi.h>
-#include <pxr/usd/usdLux/sphereLight.h>
+#include <pxr/usd/usdLux/sphereLight.h> 
 #include <pxr/usd/usdLux/distantLight.h>
 #include <pxr/usd/usdLux/domeLight.h>
 #include <pxr/usd/usdLux/shapingAPI.h>
+#include <pxr/usd/usdRender/settings.h>
 #include <pxr/usd/usdSkel/animation.h>
 #include <pxr/usd/usdSkel/bindingAPI.h>
 #include <pxr/usd/usdSkel/root.h>
@@ -260,6 +261,18 @@ void GameExporter::setCommonStageMetaData(pxr::UsdStageRefPtr stage, const Expor
   stage->SetMetadata(pxr::TfToken("upAxis"), (exportData.meta.isZUp) ? pxr::TfToken("Z") : pxr::TfToken("Y"));
   stage->SetMetadata(pxr::TfToken("metersPerUnit"), exportData.meta.metersPerUnit);
   stage->SetTimeCodesPerSecond(exportData.meta.timeCodesPerSecond);
+
+  // Write rendering settings to USD.
+  if (exportData.meta.renderingSettingsDict.size() > 0) {
+    const auto remixSettingsSdfPath = gStageRootPath.AppendChild(gTokRemixSettings);
+    pxr::UsdRenderSettings settings = pxr::UsdRenderSettings::Define(stage, remixSettingsSdfPath);
+
+    pxr::VtArray<std::string> configs;
+    for (auto& pair : exportData.meta.renderingSettingsDict) {
+      configs.push_back(pair.first + " = " + pair.second);
+    }
+    settings.GetPrim().CreateAttribute(pxr::TfToken("remix_config"), pxr::SdfValueTypeNames->StringArray).Set(configs);
+  }
 }
 
 void GameExporter::createApertureMdls(const std::string& baseExportPath) {
