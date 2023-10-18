@@ -560,7 +560,7 @@ namespace dxvk {
         input.getGeometryData().indexBuffer.defined() && input.getGeometryData().vertexCount > input.getGeometryData().indexCount;
     if (highlightUnsafeAnchor) {
       static MaterialData sHighlightMaterialData(OpaqueMaterialData(TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), 
-          0.f, 1.f, Vector4(0.2f, 0.2f, 0.2f, 1.0f), 0.1f, 0.1f, Vector3(0.46f, 0.26f, 0.31f), true, 1, 1, 0, false, false, 200.f, true, false, BlendType::kAlpha, false, AlphaTestType::kAlways, 0, 0.0f, Vector3(), 0.0f, Vector3(), 0.0f));
+          0.f, 1.f, Vector3(0.2f, 0.2f, 0.2f), 1.0f, 0.1f, 0.1f, Vector3(0.46f, 0.26f, 0.31f), true, 1, 1, 0, false, false, 200.f, true, false, BlendType::kAlpha, false, AlphaTestType::kAlways, 0, 0.0f, Vector3(), 0.0f, Vector3(), 0.0f));
       overrideMaterialData = &sHighlightMaterialData;
     }
 
@@ -663,7 +663,7 @@ namespace dxvk {
         }
         if (highlightUnsafeReplacement) {
           static MaterialData sHighlightMaterialData(OpaqueMaterialData(TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), 
-              0.f, 1.f, Vector4(0.2f, 0.2f, 0.2f, 1.f), 0.1f, 0.1f, Vector3(1.f, 0.f, 0.f), true, 1, 1, 0, false, false, 200.f, true, false, BlendType::kAlpha, false, AlphaTestType::kAlways, 0, 0.0f, Vector3(), 0.0f, Vector3(), 0.0f));
+              0.f, 1.f, Vector3(0.2f, 0.2f, 0.2f), 1.f, 0.1f, 0.1f, Vector3(1.f, 0.f, 0.f), true, 1, 1, 0, false, false, 200.f, true, false, BlendType::kAlpha, false, AlphaTestType::kAlways, 0, 0.0f, Vector3(), 0.0f, Vector3(), 0.0f));
           if (getGameTimeSinceStartMS() / 200 % 2 == 0) {
             overrideMaterialData = &sHighlightMaterialData;
           }
@@ -939,15 +939,6 @@ namespace dxvk {
       } else if (renderMaterialDataType == MaterialDataType::Opaque) {
         const auto& opaqueMaterialData = renderMaterialData.getOpaqueMaterialData();
 
-        anisotropy = RtxOptions::Get()->getOpaqueMaterialDefaults().Anisotropy;
-        albedoOpacityConstant = RtxOptions::Get()->getOpaqueMaterialDefaults().AlbedoOpacityConstant;
-        roughnessConstant = RtxOptions::Get()->getOpaqueMaterialDefaults().RoughnessConstant;
-        metallicConstant = RtxOptions::Get()->getOpaqueMaterialDefaults().MetallicConstant;
-        emissiveColorConstant = RtxOptions::Get()->getOpaqueMaterialDefaults().EmissiveColorConstant;
-        
-        enableEmissive = RtxOptions::Get()->getSharedMaterialDefaults().EnableEmissive;
-        emissiveIntensity = RtxOptions::Get()->getSharedMaterialDefaults().EmissiveIntensity;
-
         if (RtxOptions::Get()->getWhiteMaterialModeEnabled()) {
           albedoOpacityConstant = kWhiteModeAlbedo;
           metallicConstant = 0.f;
@@ -957,7 +948,8 @@ namespace dxvk {
           trackTexture(ctx, opaqueMaterialData.getRoughnessTexture(), roughnessTextureIndex, hasTexcoords);
           trackTexture(ctx, opaqueMaterialData.getMetallicTexture(), metallicTextureIndex, hasTexcoords);
 
-          albedoOpacityConstant = opaqueMaterialData.getAlbedoOpacityConstant();
+          albedoOpacityConstant.xyz() = opaqueMaterialData.getAlbedoConstant();
+          albedoOpacityConstant.w = opaqueMaterialData.getOpacityConstant();
           metallicConstant = opaqueMaterialData.getMetallicConstant();
           roughnessConstant = opaqueMaterialData.getRoughnessConstant();
         }
@@ -970,7 +962,7 @@ namespace dxvk {
         emissiveIntensity = opaqueMaterialData.getEmissiveIntensity();
         emissiveColorConstant = opaqueMaterialData.getEmissiveColorConstant();
         enableEmissive = opaqueMaterialData.getEnableEmission();
-        anisotropy = opaqueMaterialData.getAnisotropy();
+        anisotropy = opaqueMaterialData.getAnisotropyConstant();
         
         thinFilmEnable = opaqueMaterialData.getEnableThinFilm();
         alphaIsThinFilmThickness = opaqueMaterialData.getAlphaIsThinFilmThickness();
@@ -1013,31 +1005,20 @@ namespace dxvk {
       uint32_t normalTextureIndex = kSurfaceMaterialInvalidTextureIndex;
       uint32_t transmittanceTextureIndex = kSurfaceMaterialInvalidTextureIndex;
       uint32_t emissiveColorTextureIndex = kSurfaceMaterialInvalidTextureIndex;
-      float refractiveIndex = RtxOptions::Get()->getTranslucentMaterialDefaults().RefractiveIndex;
-      Vector3 transmittanceColor = RtxOptions::Get()->getTranslucentMaterialDefaults().TransmittanceColor;
-      float transmittanceMeasureDistance = RtxOptions::Get()->getTranslucentMaterialDefaults().TransmittanceMeasurementDistance;
-      Vector3 emissiveColorConstant = RtxOptions::Get()->getTranslucentMaterialDefaults().EmissiveColorConstant;
-      bool isThinWalled = RtxOptions::Get()->getTranslucentMaterialDefaults().ThinWalled;
-      float thinWallThickness = RtxOptions::Get()->getTranslucentMaterialDefaults().ThinWallThickness;
-      bool useDiffuseLayer = RtxOptions::Get()->getTranslucentMaterialDefaults().UseDiffuseLayer;
-
-      bool enableEmissive = RtxOptions::Get()->getSharedMaterialDefaults().EnableEmissive;
-      float emissiveIntensity = RtxOptions::Get()->getSharedMaterialDefaults().EmissiveIntensity;
 
       trackTexture(ctx, translucentMaterialData.getNormalTexture(), normalTextureIndex, hasTexcoords);
       trackTexture(ctx, translucentMaterialData.getTransmittanceTexture(), transmittanceTextureIndex, hasTexcoords);
       trackTexture(ctx, translucentMaterialData.getEmissiveColorTexture(), emissiveColorTextureIndex, hasTexcoords);
 
-      refractiveIndex = translucentMaterialData.getRefractiveIndex();
-
-      transmittanceColor = translucentMaterialData.getTransmittanceColor();
-      transmittanceMeasureDistance = translucentMaterialData.getTransmittanceMeasurementDistance();
-      emissiveColorConstant = translucentMaterialData.getEmissiveColorConstant();
-      enableEmissive = translucentMaterialData.getEnableEmission();
-      emissiveIntensity = translucentMaterialData.getEmissiveIntensity();
-      isThinWalled = translucentMaterialData.getIsThinWalled();
-      thinWallThickness = translucentMaterialData.getThinWallThickness();
-      useDiffuseLayer = translucentMaterialData.getUseDiffuseLayer();
+      float refractiveIndex = translucentMaterialData.getRefractiveIndex();
+      Vector3 transmittanceColor = translucentMaterialData.getTransmittanceColor();
+      float transmittanceMeasureDistance = translucentMaterialData.getTransmittanceMeasurementDistance();
+      Vector3 emissiveColorConstant = translucentMaterialData.getEmissiveColorConstant();
+      bool enableEmissive = translucentMaterialData.getEnableEmission();
+      float emissiveIntensity = translucentMaterialData.getEmissiveIntensity();
+      bool isThinWalled = translucentMaterialData.getEnableThinWalled();
+      float thinWallThickness = translucentMaterialData.getThinWallThickness();
+      bool useDiffuseLayer = translucentMaterialData.getEnableDiffuseLayer();
 
       const RtTranslucentSurfaceMaterial translucentSurfaceMaterial{
         normalTextureIndex, transmittanceTextureIndex, emissiveColorTextureIndex,
