@@ -36,6 +36,12 @@ Texture2D<uint> SharedMaterialData0;
 layout(r32ui, binding = RESTIR_GI_FINAL_SHADING_BINDING_SHARED_MATERIAL_DATA1_INPUT)
 Texture2D<uint> SharedMaterialData1;
 
+layout(rg32f, binding = RESTIR_GI_FINAL_SHADING_BINDING_DISPLACEMENT_TEXTURE_COORD_INPUT)
+RWTexture2D<float2> DisplacementTextureCoord;
+
+layout(r16ui, binding = RESTIR_GI_FINAL_SHADING_BINDING_SHARED_SURFACE_INDEX_INPUT)
+RWTexture2D<uint> SharedSurfaceIndex;
+
 // Primary Inputs
 
 layout(r32ui, binding = RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT)

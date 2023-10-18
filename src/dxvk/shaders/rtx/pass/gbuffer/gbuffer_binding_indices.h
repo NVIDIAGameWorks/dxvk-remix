@@ -84,7 +84,7 @@
 #define GBUFFER_BINDING_TRANSMISSION_PSR_DATA_STORAGE_3                         87
 
 #define GBUFFER_BINDING_ALPHA_BLEND_GBUFFER_OUTPUT                              88
-#define GBUFFER_BINDING_SHARED_TEXTURE_COORD_OUTPUT                             89
+#define GBUFFER_BINDING_DISPLACEMENT_TEXTURE_COORD_OUTPUT                       89
 #define GBUFFER_BINDING_SHARED_SURFACE_INDEX_OUTPUT                             90
 
 #define GBUFFER_BINDING_ALIASED_DATA_0                                          91

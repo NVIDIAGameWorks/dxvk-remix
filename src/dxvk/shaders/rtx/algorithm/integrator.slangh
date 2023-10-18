@@ -214,7 +214,8 @@ bool evalNEESecondary(
   MinimalRayInteraction minimalRayInteraction, 
   MinimalSurfaceInteraction minimalSurfaceInteraction,
   inout vec3 diffuseLight,
-  inout vec3 specularLight)
+  inout vec3 specularLight,
+  uint16_t surfaceIndex, float2 texcoords)
 {
 
   // Setup and trace the visibility ray
@@ -226,7 +227,8 @@ bool evalNEESecondary(
     lightSample.position, false, rayMask,
     visibilityModeEnableTranslucentMaterials,
     sampledTransportPortalIndex, portalSpace,
-    minimalRayInteraction.coneRadius, viewRay.spreadAngle, 0.98, isViewModelSurface);
+    minimalRayInteraction.coneRadius, viewRay.spreadAngle, 0.98, isViewModelSurface, false,
+    surfaceIndex, texcoords);
 
 
   if (visibility.hasOpaqueHit)

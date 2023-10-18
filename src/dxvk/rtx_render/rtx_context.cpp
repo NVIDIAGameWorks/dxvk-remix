@@ -835,6 +835,9 @@ namespace dxvk {
     constants.pomEnable = getSceneManager().getActivePOMCount() > 0;
     constants.pomEnableDirectLighting = RtxOptions::Displacement::enableDirectLighting();
     constants.pomEnableIndirectLighting = RtxOptions::Displacement::enableIndirectLighting();
+    constants.pomEnableNEECache = RtxOptions::Displacement::enableNEECache();
+    constants.pomEnableReSTIRGI = RtxOptions::Displacement::enableReSTIRGI();
+    constants.pomEnablePSR = RtxOptions::Displacement::enablePSR() || !constants.pomEnable; // enable PSR for materials with heightmaps if POM is completely disabled.
 
     constants.terrainArgs = getSceneManager().getTerrainBaker().getTerrainArgs();
 
