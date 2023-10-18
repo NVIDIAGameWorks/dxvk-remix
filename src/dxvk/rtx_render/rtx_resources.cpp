@@ -757,7 +757,6 @@ namespace dxvk {
     // reads/writes to it do not bring in extra unneeded data into the cachelines (as we don't need that shared radiance information except in compositing).
     m_raytracingOutput.m_sharedMediumMaterialIndex = createImageResource(ctx, "shared medium material index", m_downscaledExtent, VK_FORMAT_R16_UINT);
     m_raytracingOutput.m_sharedBiasCurrentColorMask = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R8_UNORM, "Shared Attenuation", allowCompatibleFormatAliasing);
-    m_raytracingOutput.m_sharedTextureCoord = createImageResource(ctx, "shared texture coordinate", m_downscaledExtent, VK_FORMAT_R32G32_SFLOAT);
     m_raytracingOutput.m_sharedSurfaceIndex = createImageResource(ctx, "shared surface index", m_downscaledExtent, VK_FORMAT_R16_UINT);
 
     m_raytracingOutput.m_primaryAttenuation = createImageResource(ctx, "primary attenuation", m_downscaledExtent, VK_FORMAT_R32_UINT);
@@ -892,6 +891,9 @@ namespace dxvk {
     neeCacheInfo.size = cellCount * NEE_CACHE_SAMPLES * sizeof(NeeCache_PackedSample);
     m_raytracingOutput.m_neeCacheSample = m_device->createBuffer(neeCacheInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
     m_raytracingOutput.m_neeCacheThreadTask = createImageResource(ctx, "radiance cache thread task", m_downscaledExtent, VK_FORMAT_R32G32_UINT);
+
+    // Displacement
+    m_raytracingOutput.m_displacementTextureCoord = createImageResource(ctx, "displacement texture coordinate", m_downscaledExtent, VK_FORMAT_R32G32_SFLOAT);
 
     // Post Effect motion blur prefilter intermediate textures
     m_raytracingOutput.m_primarySurfaceFlagsIntermediateTexture1 = AliasedResource(m_raytracingOutput.m_secondaryPerceptualRoughness, ctx, m_downscaledExtent, VK_FORMAT_R8_UINT, "Primary Surface Flags Intermediate Texture 1");

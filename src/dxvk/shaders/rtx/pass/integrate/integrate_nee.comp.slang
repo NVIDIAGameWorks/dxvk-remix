@@ -21,6 +21,7 @@
 */
 #define RAB_HAS_CURRENT_GBUFFER 1
 #define RAB_HAS_RESTIR_GI_RESERVOIRS 1
+#define OPAQUE_MATERIAL_USE_POM 1
 
 #include "rtx/pass/common_bindings.slangh"
 #include "rtx/pass/integrate/integrate_nee_bindings.slangh"
@@ -118,7 +119,6 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
         LightSample lightSample;
         float lightObjectPdf = 0;
         NEECandidate candidate = cell.sampleCandidate(RAB_GetNextRandom(rtxdiRNG), lightObjectPdf);
-        int surfaceIndex = candidate.getSurfaceID();
         int primitiveIndex = candidate.getPrimitiveID();
         vec2 uv = vec2(RAB_GetNextRandom(rtxdiRNG), RAB_GetNextRandom(rtxdiRNG));
         lightSample = NEECacheUtils.calculateLightSampleFromTriangle(
@@ -137,10 +137,11 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
           evaluateUnshadowedLight(lightSample, opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection, diffuseLight, specularLight);
 
           uint8_t rayMask = OBJECT_MASK_OPAQUE | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC);
+          uint16_t surfaceIndex = cb.pomEnableNEECache && opaqueSurfaceMaterialInteractionHasHeightTexture(opaqueSurfaceMaterialInteraction) ? uint16_t(SharedSurfaceIndex[threadIndex]) : BINDING_INDEX_INVALID;
           isVisible = evalNEESecondary(
             lightSample, invalidRayPortalIndex, surface.portalSpace, rayMask,
             surface.isViewModel, primaryRay, minimalRayInteraction, minimalSurfaceInteraction,
-            diffuseLight, specularLight);
+            diffuseLight, specularLight, surfaceIndex, DisplacementTextureCoord[threadIndex]);
 
           indirectDiffuseOutput.xyz += diffuseLight;
           indirectSpecularOutput.xyz += specularLight;

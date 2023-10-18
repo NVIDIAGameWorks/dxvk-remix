@@ -38,10 +38,14 @@
 #include <rtx_shaders/integrate_indirect_rayquery_raygen_neeCache.h>
 #include <rtx_shaders/integrate_indirect_material_opaque_translucent_closestHit.h>
 #include <rtx_shaders/integrate_indirect_material_rayPortal_closestHit.h>
+#include <rtx_shaders/integrate_indirect_pom_material_opaque_translucent_closestHit.h>
+#include <rtx_shaders/integrate_indirect_pom_material_rayPortal_closestHit.h>
 #include <rtx_shaders/integrate_indirect_raygen_neeCache.h>
 #include <rtx_shaders/integrate_indirect_raygen_ser_neeCache.h>
 #include <rtx_shaders/integrate_indirect_neeCache_material_rayportal_closestHit.h>
 #include <rtx_shaders/integrate_indirect_neeCache_material_opaque_translucent_closestHit.h>
+#include <rtx_shaders/integrate_indirect_neeCache_pom_material_rayportal_closestHit.h>
+#include <rtx_shaders/integrate_indirect_neeCache_pom_material_opaque_translucent_closestHit.h>
 #include <rtx_shaders/integrate_indirect_miss.h>
 #include <rtx_shaders/integrate_indirect_miss_neeCache.h>
 #include <rtx_shaders/integrate_nee.h>
@@ -65,6 +69,8 @@ namespace dxvk {
 
         TEXTURE2D(INTEGRATE_INDIRECT_BINDING_SHARED_FLAGS_INPUT)
         TEXTURE2D(INTEGRATE_INDIRECT_BINDING_SHARED_MEDIUM_MATERIAL_INDEX_INPUT)
+        RW_TEXTURE2D(INTEGRATE_INDIRECT_BINDING_DISPLACEMENT_TEXTURE_COORD_INPUT)
+        RW_TEXTURE2D(INTEGRATE_INDIRECT_BINDING_SHARED_SURFACE_INDEX_INPUT)
 
         TEXTURE2D(INTEGRATE_INDIRECT_BINDING_PRIMARY_CONE_RADIUS_INPUT)
         TEXTURE2D(INTEGRATE_INDIRECT_BINDING_SECONDARY_CONE_RADIUS_INPUT)
@@ -123,6 +129,8 @@ namespace dxvk {
         TEXTURE2D(INTEGRATE_NEE_BINDING_SHARED_FLAGS_INPUT)
         TEXTURE2D(INTEGRATE_NEE_BINDING_SHARED_MATERIAL_DATA0_INPUT)
         TEXTURE2D(INTEGRATE_NEE_BINDING_SHARED_MATERIAL_DATA1_INPUT)
+        RW_TEXTURE2D(INTEGRATE_NEE_BINDING_DISPLACEMENT_TEXTURE_COORD_INPUT)
+        RW_TEXTURE2D(INTEGRATE_NEE_BINDING_SHARED_SURFACE_INDEX_INPUT)
 
         TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT)
         TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_WORLD_INTERPOLATED_NORMAL_INPUT)
@@ -165,6 +173,8 @@ namespace dxvk {
         TEXTURE2D(INTEGRATE_NEE_BINDING_SHARED_FLAGS_INPUT)
         TEXTURE2D(INTEGRATE_NEE_BINDING_SHARED_MATERIAL_DATA0_INPUT)
         TEXTURE2D(INTEGRATE_NEE_BINDING_SHARED_MATERIAL_DATA1_INPUT)
+        RW_TEXTURE2D(INTEGRATE_NEE_BINDING_DISPLACEMENT_TEXTURE_COORD_INPUT)
+        RW_TEXTURE2D(INTEGRATE_NEE_BINDING_SHARED_SURFACE_INDEX_INPUT)
 
         TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT)
         TEXTURE2D(INTEGRATE_NEE_BINDING_PRIMARY_WORLD_INTERPOLATED_NORMAL_INPUT)
@@ -212,7 +222,9 @@ namespace dxvk {
         for (int32_t useRayQuery = 1; useRayQuery >= 0; useRayQuery--) {
           for (int32_t serEnabled = isShaderExecutionReorderingSupported; serEnabled >= 0; serEnabled--) {
             for (int32_t ommEnabled = isOpacityMicromapSupported; ommEnabled >= 0; ommEnabled--) {
-              pipelineManager.registerRaytracingShaders(getPipelineShaders(useRayQuery, serEnabled, ommEnabled, useNeeCache, includesPortals));
+              for (int32_t pomEnable = 1; pomEnable >= 0; pomEnable--) {
+                pipelineManager.registerRaytracingShaders(getPipelineShaders(useRayQuery, serEnabled, ommEnabled, useNeeCache, includesPortals, pomEnable));
+              }
             }
           }
         }
@@ -240,6 +252,8 @@ namespace dxvk {
 
     ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);
     ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_SHARED_MEDIUM_MATERIAL_INDEX_INPUT, rtOutput.m_sharedMediumMaterialIndex.view, nullptr);
+    ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_DISPLACEMENT_TEXTURE_COORD_INPUT, rtOutput.m_displacementTextureCoord.view, nullptr);
+    ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view, nullptr);
 
     ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_PRIMARY_CONE_RADIUS_INPUT, rtOutput.m_primaryConeRadius.view, nullptr);
     ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_SECONDARY_CONE_RADIUS_INPUT, rtOutput.m_secondaryConeRadius.view(Resources::AccessType::Read), nullptr);
@@ -287,6 +301,7 @@ namespace dxvk {
     const bool serEnabled = RtxOptions::Get()->isShaderExecutionReorderingInPathtracerIntegrateIndirectEnabled();
     const bool ommEnabled = RtxOptions::Get()->getEnableOpacityMicromap();
     const bool includePortals = RtxOptions::Get()->rayPortalModelTextureHashes().size() > 0;
+    const bool pomEnabled = rtOutput.m_raytraceArgs.pomEnable && RtxOptions::Displacement::enableIndirectHit();
 
     // Trace indirect ray
     {
@@ -299,11 +314,11 @@ namespace dxvk {
         ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
         break;
       case RaytraceMode::RayQueryRayGen:
-        ctx->bindRaytracingPipelineShaders(getPipelineShaders(true, serEnabled, ommEnabled, neeCache.enable(), includePortals));
+        ctx->bindRaytracingPipelineShaders(getPipelineShaders(true, serEnabled, ommEnabled, neeCache.enable(), includePortals, pomEnabled));
         ctx->traceRays(rayDims.width, rayDims.height, rayDims.depth);
         break;
       case RaytraceMode::TraceRay:
-        ctx->bindRaytracingPipelineShaders(getPipelineShaders(false, serEnabled, ommEnabled, neeCache.enable(), includePortals));
+        ctx->bindRaytracingPipelineShaders(getPipelineShaders(false, serEnabled, ommEnabled, neeCache.enable(), includePortals, pomEnabled));
         ctx->traceRays(rayDims.width, rayDims.height, rayDims.depth);
         break;
       }
@@ -323,6 +338,8 @@ namespace dxvk {
     ctx->bindResourceView(INTEGRATE_NEE_BINDING_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);
     ctx->bindResourceView(INTEGRATE_NEE_BINDING_SHARED_MATERIAL_DATA0_INPUT, rtOutput.m_sharedMaterialData0.view, nullptr);
     ctx->bindResourceView(INTEGRATE_NEE_BINDING_SHARED_MATERIAL_DATA1_INPUT, rtOutput.m_sharedMaterialData1.view, nullptr);
+    ctx->bindResourceView(INTEGRATE_NEE_BINDING_DISPLACEMENT_TEXTURE_COORD_INPUT, rtOutput.m_displacementTextureCoord.view, nullptr);
+    ctx->bindResourceView(INTEGRATE_NEE_BINDING_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view, nullptr);
 
     ctx->bindResourceView(INTEGRATE_NEE_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT, rtOutput.m_primaryWorldShadingNormal.view, nullptr);
     ctx->bindResourceView(INTEGRATE_NEE_BINDING_PRIMARY_WORLD_INTERPOLATED_NORMAL_INPUT, rtOutput.m_primaryWorldInterpolatedNormal.view, nullptr);
@@ -366,7 +383,8 @@ namespace dxvk {
                                                                                     const bool serEnabled,
                                                                                     const bool ommEnabled,
                                                                                     const bool useNeeCache,
-                                                                                    const bool includePortals) {
+                                                                                    const bool includePortals,
+                                                                                    const bool pomEnabled) {
 
     DxvkRaytracingPipelineShaders shaders;
     if (useRayQuery) {
@@ -392,17 +410,33 @@ namespace dxvk {
 
       if (useNeeCache) {
         shaders.addGeneralShader(GET_SHADER_VARIANT(VK_SHADER_STAGE_MISS_BIT_KHR, IntegrateIndirectMissShader, integrate_indirect_miss_neeCache));
-        if (includePortals) {
-          shaders.addHitGroup(GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, IntegrateIndirectClosestHitShader, integrate_indirect_neeCache_material_rayportal_closestHit), nullptr, nullptr);
+        if (pomEnabled) {
+          if (includePortals) {
+            shaders.addHitGroup(GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, IntegrateIndirectClosestHitShader, integrate_indirect_neeCache_pom_material_rayportal_closestHit), nullptr, nullptr);
+          } else {
+            shaders.addHitGroup(GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, IntegrateIndirectClosestHitShader, integrate_indirect_neeCache_pom_material_opaque_translucent_closestHit), nullptr, nullptr);
+          }
         } else {
-          shaders.addHitGroup(GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, IntegrateIndirectClosestHitShader, integrate_indirect_neeCache_material_opaque_translucent_closestHit), nullptr, nullptr);
+          if (includePortals) {
+            shaders.addHitGroup(GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, IntegrateIndirectClosestHitShader, integrate_indirect_neeCache_material_rayportal_closestHit), nullptr, nullptr);
+          } else {
+            shaders.addHitGroup(GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, IntegrateIndirectClosestHitShader, integrate_indirect_neeCache_material_opaque_translucent_closestHit), nullptr, nullptr);
+          }
         }
       } else {
         shaders.addGeneralShader(GET_SHADER_VARIANT(VK_SHADER_STAGE_MISS_BIT_KHR, IntegrateIndirectMissShader, integrate_indirect_miss));
-        if (includePortals) {
-          shaders.addHitGroup(GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, IntegrateIndirectClosestHitShader, integrate_indirect_material_rayportal_closestHit), nullptr, nullptr);
+        if (pomEnabled) {
+          if (includePortals) {
+            shaders.addHitGroup(GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, IntegrateIndirectClosestHitShader, integrate_indirect_pom_material_rayportal_closestHit), nullptr, nullptr);
+          } else {
+            shaders.addHitGroup(GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, IntegrateIndirectClosestHitShader, integrate_indirect_pom_material_opaque_translucent_closestHit), nullptr, nullptr);
+          }
         } else {
-          shaders.addHitGroup(GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, IntegrateIndirectClosestHitShader, integrate_indirect_material_opaque_translucent_closestHit), nullptr, nullptr);
+          if (includePortals) {
+            shaders.addHitGroup(GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, IntegrateIndirectClosestHitShader, integrate_indirect_material_rayportal_closestHit), nullptr, nullptr);
+          } else {
+            shaders.addHitGroup(GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, IntegrateIndirectClosestHitShader, integrate_indirect_material_opaque_translucent_closestHit), nullptr, nullptr);
+          }
         }
       }
 
