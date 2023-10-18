@@ -44,6 +44,7 @@ PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionCreat
   polymorphicSurfaceMaterialInteraction.fdata3 = opaqueSurfaceMaterialInteraction.anisotropicRoughness.y;
   polymorphicSurfaceMaterialInteraction.fdata4 = opaqueSurfaceMaterialInteraction.normalDetail;
   polymorphicSurfaceMaterialInteraction.idata0 = opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex;
+  polymorphicSurfaceMaterialInteraction.bdata0 = opaqueSurfaceMaterialInteraction.flags;
 
   polymorphicSurfaceMaterialInteraction.type = surfaceMaterialTypeOpaque;
 
@@ -499,4 +500,13 @@ f16vec3 polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction)
 {
   return polymorphicSurfaceMaterialInteraction.emissiveRadiance;
+}
+
+bool polymorphicSurfaceMaterialInteractionHasHeightTexture(
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction)
+{
+  const uint8_t polymorphicType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
+  return polymorphicType == uint(surfaceMaterialTypeOpaque) ?
+    polymorphicSurfaceMaterialInteraction.bdata0 & OPAQUE_SURFACE_MATERIAL_INTERACTION_FLAG_HAS_HEIGHT_TEXTURE :
+    false;
 }

@@ -38,8 +38,8 @@ Texture2D<uint> SharedMaterialData0;
 layout(r32ui, binding = INTEGRATE_DIRECT_BINDING_SHARED_MATERIAL_DATA1_INPUT)
 Texture2D<uint> SharedMaterialData1;
 
-layout(rg32f, binding = INTEGRATE_DIRECT_BINDING_SHARED_TEXTURE_COORD_INPUT)
-RWTexture2D<float2> SharedTextureCoord;
+layout(rg32f, binding = INTEGRATE_DIRECT_BINDING_DISPLACEMENT_TEXTURE_COORD_INPUT)
+RWTexture2D<float2> DisplacementTextureCoord;
 
 layout(r16ui, binding = INTEGRATE_DIRECT_BINDING_SHARED_SURFACE_INDEX_INPUT)
 RWTexture2D<uint> SharedSurfaceIndex;

@@ -28,7 +28,7 @@ layout(binding = POST_FX_HIGHLIGHT_INPUT)
 Texture2D<float4> InColorTexture;
 
 layout(r16ui, binding = POST_FX_HIGHLIGHT_SHARED_SURFACE_INDEX_INPUT)
-Texture2D<uint> SharedSurfaceIndex;
+RWTexture2D<uint> SharedSurfaceIndex;
 
 layout(r16f, binding = POST_FX_HIGHLIGHT_PRIMARY_CONE_RADIUS_INPUT)
 Texture2D<float> PrimaryConeRadius;

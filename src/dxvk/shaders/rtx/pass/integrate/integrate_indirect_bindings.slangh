@@ -37,6 +37,12 @@ Texture2D<uint> SharedFlags;
 layout(r16ui, binding = INTEGRATE_INDIRECT_BINDING_SHARED_MEDIUM_MATERIAL_INDEX_INPUT)
 Texture2D<uint> SharedMediumMaterialIndex;
 
+layout(rg32f, binding = INTEGRATE_INDIRECT_BINDING_DISPLACEMENT_TEXTURE_COORD_INPUT)
+RWTexture2D<float2> DisplacementTextureCoord;
+
+layout(r16ui, binding = INTEGRATE_INDIRECT_BINDING_SHARED_SURFACE_INDEX_INPUT)
+RWTexture2D<uint> SharedSurfaceIndex;
+
 // Inputs
 
 layout(r16f, binding = INTEGRATE_INDIRECT_BINDING_PRIMARY_CONE_RADIUS_INPUT)

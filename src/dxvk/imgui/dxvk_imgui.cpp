@@ -2813,6 +2813,10 @@ namespace dxvk {
       ImGui::TextWrapped("Warning: This is currently implemented using POM with a simple height map, displacing inwards.  The implementation may change in the future, which could include changes to the texture format or displacing outwards.  We're also aware of several visual quality bugs with the current implementation.");
       ImGui::Checkbox("Enable Direct Lighting", &RtxOptions::Displacement::enableDirectLightingObject());
       ImGui::Checkbox("Enable Indirect Lighting", &RtxOptions::Displacement::enableIndirectLightingObject());
+      ImGui::Checkbox("Enable Indirect Hit", &RtxOptions::Displacement::enableIndirectHitObject());
+      ImGui::Checkbox("Enable NEE Cache", &RtxOptions::Displacement::enableNEECacheObject());
+      ImGui::Checkbox("Enable ReSTIR_GI", &RtxOptions::Displacement::enableReSTIRGIObject());
+      ImGui::Checkbox("Enable PSR", &RtxOptions::Displacement::enablePSRObject());
       ImGui::DragFloat("Global Displacement Factor", &RtxOptions::Displacement::displacementFactorObject(), 0.01f, 0.0f, 20.0f);
       ImGui::Unindent();
     }

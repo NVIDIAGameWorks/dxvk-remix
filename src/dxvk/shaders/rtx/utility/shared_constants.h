@@ -35,6 +35,12 @@
 #define OPAQUE_SURFACE_MATERIAL_FLAG_HAS_EMISSIVE_TEXTURE (1 << 5)
 #define OPAQUE_SURFACE_MATERIAL_FLAG_HAS_SUBSURFACE_MATERIAL (1 << 6)
 
+#define OPAQUE_SURFACE_MATERIAL_INTERACTION_FLAG_HAS_HEIGHT_TEXTURE (1 << 0)
+#define OPAQUE_SURFACE_MATERIAL_INTERACTION_FLAG_USE_THIN_FILM_LAYER (1 << 1)
+// flags overlap with type field when in gbuffer, which occupies last 2 bits.
+#define OPAQUE_SURFACE_MATERIAL_INTERACTION_FLAG_MASK 0x3F
+
+
 // Note: Bits for flags field in TranslucentSurfaceMaterial and TranslucentSurfaceMaterialInteraction
 // If set, then the texture bound to transmittanceOrDiffuseTextureIndex is an albedo map for the diffuse layer
 #define TRANSLUCENT_SURFACE_MATERIAL_FLAG_USE_DIFFUSE_LAYER (1 << 0)

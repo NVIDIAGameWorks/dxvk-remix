@@ -138,16 +138,25 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   MinimalRayInteraction minimalRayInteraction)
 {
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction;
+  // Note: need initialize the flags explicitely to get rid of garbage data.
+  opaqueSurfaceMaterialInteraction.flags = 0;
 
   // Create a tangent to world space matrix for future calculations
 
   const f16mat3 worldToTangent = f16mat3(surfaceInteraction.interpolatedTangent, surfaceInteraction.interpolatedBitangent, surfaceInteraction.interpolatedNormal);
+
+  // Note: Does not represent if the thin film is enabled in all cases, such as if the thin film enable override is specified, merely concerned with if
+  // it has been directly enabled by the material itself.
+  const bool thinFilmEnabled = opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_USE_THIN_FILM_LAYER;
+
+  opaqueSurfaceMaterialInteraction.flags |= thinFilmEnabled ? OPAQUE_SURFACE_MATERIAL_INTERACTION_FLAG_USE_THIN_FILM_LAYER : 0;
 
 #ifdef OPAQUE_MATERIAL_USE_POM
   if (cb.pomEnable && opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID && opaqueSurfaceMaterial.displaceIn > 0.0f)
   {
     const f16vec3 viewDirTangentSpace = normalize(mul(worldToTangent, minimalRayInteraction.viewDirection));
     surfaceInteraction.textureCoordinates = pomCalculateTexcoord(opaqueSurfaceMaterial.heightTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction.textureCoordinates, viewDirTangentSpace, opaqueSurfaceMaterial.displaceIn);
+    opaqueSurfaceMaterialInteraction.flags |= opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID ? OPAQUE_SURFACE_MATERIAL_INTERACTION_FLAG_HAS_HEIGHT_TEXTURE : 0;
   }
 #endif
 
@@ -198,10 +207,6 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
 
   // Texture operations have already been applied during terrain baking, so skip them for baked terrain surfaces
   const bool applyTextureOperations = !isBakedTerrain;
-
-  // Note: Does not represent if the thin film is enabled in all cases, such as if the thin film enable override is specified, merely concerned with if
-  // it has been directly enabled by the material itself.
-  const bool thinFilmEnabled = opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_USE_THIN_FILM_LAYER;
 
   // Note: Set thin film thickness constant fallback only if the thin film is enabled as a non-zero value here is responsible for indicating
   // if the thin film is in use by later code.
@@ -483,6 +488,8 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(Polymorp
   opaqueSurfaceMaterialInteraction.normalDetail = polymorphicSurfaceMaterialInteraction.fdata4;
 
   opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex = polymorphicSurfaceMaterialInteraction.idata0;
+  
+  opaqueSurfaceMaterialInteraction.flags = polymorphicSurfaceMaterialInteraction.bdata0;
 
   return opaqueSurfaceMaterialInteraction;
 }
@@ -512,7 +519,8 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   float16_t isotropicRoughness;
   f16vec2 anisotropicRoughness;
 
-  const bool thinFilmEnabled = (flagsAndType & OPAQUE_SURFACE_MATERIAL_FLAG_USE_THIN_FILM_LAYER);
+  opaqueSurfaceMaterialInteraction.flags = flagsAndType & OPAQUE_SURFACE_MATERIAL_INTERACTION_FLAG_MASK;
+  const bool thinFilmEnabled = (flagsAndType & OPAQUE_SURFACE_MATERIAL_INTERACTION_FLAG_USE_THIN_FILM_LAYER);
 
   calcRoughness(perceptualRoughness, sourceAnisotropy, isotropicRoughness, anisotropicRoughness);
 
@@ -1560,4 +1568,10 @@ f16vec3 opaqueSurfaceMaterialGetAdjustedBaseReflectivity(
     f16vec3(float16_t(1.0f) - opaqueSurfaceMaterialInteraction.opacity));
 
   return adjustedBaseReflectivity;
+}
+
+bool opaqueSurfaceMaterialInteractionHasHeightTexture(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction)
+{
+  return opaqueSurfaceMaterialInteraction.flags & OPAQUE_SURFACE_MATERIAL_INTERACTION_FLAG_HAS_HEIGHT_TEXTURE;
 }
