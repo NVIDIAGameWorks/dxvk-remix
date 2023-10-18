@@ -117,6 +117,9 @@ namespace dxvk {
     }
   }
 
+  // For capture tests, we cannot include the config data because it may contain paths/settings which are respective to the users PC.
+  static const bool s_captureRemixConfigs = env::getEnvVar("RTX_CAPTURE_REMIX_CONFIGS", true);
+
   size_t GameCapturer::Capture::nextId = 0;
 
   GameCapturer::GameCapturer(DxvkDevice* const pDevice,
@@ -935,6 +938,12 @@ namespace dxvk {
     exportPrep.meta.bReduceMeshBuffers = true;
     exportPrep.meta.isZUp = RtxOptions::Get()->isZUp();
     exportPrep.meta.isLHS = RtxOptions::Get()->isLHS();
+    if (s_captureRemixConfigs) {
+      for (auto& pair : RtxOptionImpl::getGlobalRtxOptionMap()) {
+        exportPrep.meta.renderingSettingsDict[pair.first] = pair.second->genericValueToString(RtxOptionImpl::ValueType::Value);
+      }
+    }
+
     exportPrep.debugId = cap.idStr;
     exportPrep.baseExportPath = BASE_DIR;
     exportPrep.bExportInstanceStage = cap.bCaptureInstances;

@@ -324,8 +324,6 @@ namespace dxvk {
     static void serializeCustomConfig(const Config& config, std::string filePath, std::string filterStr = std::string());
     // END
 
-  private:
-
     // START
     /**
      * \brief Retrieves custom configuration
