@@ -495,8 +495,17 @@ namespace dxvk {
 
     // Get Material and Mesh replacements
     // NOTE: Next refactor we move this into a material manager
+    std::optional<MaterialData> replacementMaterial {};
     if (overrideMaterialData == nullptr) {
-      overrideMaterialData = m_pReplacer->getReplacementMaterial(input.getMaterialData().getHash());
+      MaterialData* pReplacementMaterial = m_pReplacer->getReplacementMaterial(input.getMaterialData().getHash());
+      if (pReplacementMaterial != nullptr) {
+        // Make a copy
+        replacementMaterial.emplace(MaterialData(*pReplacementMaterial));
+        // merge in the input material from game
+        replacementMaterial->mergeLegacyMaterial(input.getMaterialData());
+        // bind as a material override for this draw
+        overrideMaterialData = &replacementMaterial.value();
+      }
     }
 
     const XXH64_hash_t activeReplacementHash = input.getHash(RtxOptions::Get()->GeometryAssetHashRule);
@@ -526,31 +535,27 @@ namespace dxvk {
     }
 
     // Check if a Ray Portal override is needed
-    std::optional<MaterialData> rayPortalMaterialData{};
+    std::optional<MaterialData> rayPortalMaterialData {};
     size_t rayPortalTextureIndex;
 
     if (RtxOptions::Get()->getRayPortalTextureIndex(input.getMaterialData().getHash(), rayPortalTextureIndex)) {
       assert(rayPortalTextureIndex < maxRayPortalCount);
       assert(rayPortalTextureIndex < std::numeric_limits<uint8_t>::max());
-      
+
       // Mask texture is required for Portal
       const bool materialHasMaskTexture = input.getMaterialData().getColorTexture2().isValid();
 
       if (materialHasMaskTexture) {
         const TextureRef& texture2 = input.getMaterialData().getColorTexture2();
 
-        if (overrideMaterialData != nullptr) {
-          assert(overrideMaterialData->getType() == MaterialDataType::RayPortal);
-          const RayPortalMaterialData& data = overrideMaterialData->getRayPortalMaterialData();
-          rayPortalMaterialData.emplace(RayPortalMaterialData { data.getMaskTexture(), texture2, data.getRayPortalIndex(), data.getSpriteSheetRows(), data.getSpriteSheetCols(), data.getSpriteSheetFPS(), data.getRotationSpeed(), true, data.getEmissiveIntensity() });
-        } else {
+        if (overrideMaterialData == nullptr) {
           // Note: Color texture used as mask texture for the Ray Portal
-          rayPortalMaterialData.emplace(RayPortalMaterialData { input.getMaterialData().getColorTexture(), texture2, static_cast<uint8_t>(rayPortalTextureIndex), 1, 1, 0, 0.f, true, 1.f });
-        }
+          rayPortalMaterialData.emplace(RayPortalMaterialData { input.getMaterialData().getColorTexture(), texture2, static_cast<uint8_t>(rayPortalTextureIndex), 1, 1, 0, 0.f,true, 1.f });
 
-        // Note: A bit dirty but since we use a pointer to the material data in processDrawCallState, we need a pointer to this locally created one on the
-        // stack in a place that doesn't go out of scope without actually allocating any heap memory.
-        overrideMaterialData = &*rayPortalMaterialData;
+          // Note: A bit dirty but since we use a pointer to the material data in processDrawCallState, we need a pointer to this locally created one on the
+          // stack in a place that doesn't go out of scope without actually allocating any heap memory.
+          overrideMaterialData = &*rayPortalMaterialData;
+        }
       }
     }
 

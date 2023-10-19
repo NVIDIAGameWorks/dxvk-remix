@@ -31,14 +31,14 @@
 
 // clang-format off
 #define LIST_OPAQUE_MATERIAL_TEXTURES(X) \
-  /*Parameter Name,       USD Token String,             Type,       UNUSED... */ \
-  X(AlbedoOpacityTexture, diffuse_texture,              TextureRef, void, void, void) \
-  X(NormalTexture,        normalmap_texture,            TextureRef, void, void, void) \
-  X(TangentTexture,       tangent_texture,              TextureRef, void, void, void) \
-  X(HeightTexture,        height_texture,               TextureRef, void, void, void) \
-  X(RoughnessTexture,     reflectionroughness_texture,  TextureRef, void, void, void) \
-  X(MetallicTexture,      metallic_texture,             TextureRef, void, void, void) \
-  X(EmissiveColorTexture, emissive_mask_texture,        TextureRef, void, void, void)
+  /*Parameter Name,       USD Token String,             Type,       UNUSED...   Default Value */ \
+  X(AlbedoOpacityTexture, diffuse_texture,              TextureRef, void, void, {}) \
+  X(NormalTexture,        normalmap_texture,            TextureRef, void, void, {}) \
+  X(TangentTexture,       tangent_texture,              TextureRef, void, void, {}) \
+  X(HeightTexture,        height_texture,               TextureRef, void, void, {}) \
+  X(RoughnessTexture,     reflectionroughness_texture,  TextureRef, void, void, {}) \
+  X(MetallicTexture,      metallic_texture,             TextureRef, void, void, {}) \
+  X(EmissiveColorTexture, emissive_mask_texture,        TextureRef, void, void, {})
 
 #define LIST_OPAQUE_MATERIAL_CONSTANTS(X) \
   /*Parameter Name,                   USD Token String,                       Type,           Min Value,    Max Value,    Default Value */ \
@@ -79,10 +79,10 @@
 
 
 #define LIST_TRANSLUCENT_MATERIAL_TEXTURES(X) \
-  /*Parameter Name,       USD Token String,       Type,       UNUSED... */ \
-  X(NormalTexture,        normalmap_texture,      TextureRef, void, void, void) \
-  X(TransmittanceTexture, transmittance_texture,  TextureRef, void, void, void) \
-  X(EmissiveColorTexture, emissive_mask_texture,  TextureRef, void, void, void)
+  /*Parameter Name,       USD Token String,       Type,       UNUSED...   Default Value */ \
+  X(NormalTexture,        normalmap_texture,      TextureRef, void, void, {}) \
+  X(TransmittanceTexture, transmittance_texture,  TextureRef, void, void, {}) \
+  X(EmissiveColorTexture, emissive_mask_texture,  TextureRef, void, void, {})
 
 #define LIST_TRANSLUCENT_MATERIAL_CONSTANTS(X) \
   /* Note: IoR values less than 1 are physically impossible for typical translucent materials. */ \
@@ -112,9 +112,9 @@
 
 
 #define LIST_PORTAL_MATERIAL_TEXTURES(X) \
-  /*Parameter Name, USD Token String,       Type,       UNUSED... */ \
-  X(MaskTexture,    emissive_mask_texture,  TextureRef, void, void, void) \
-  X(MaskTexture2,   unused,                 TextureRef, void, void, void)
+  /*Parameter Name, USD Token String,       Type,       UNUSED...   Default Value */ \
+  X(MaskTexture,    emissive_mask_texture,  TextureRef, void, void, {}) \
+  X(MaskTexture2,   unused_in_usd_so_dont,  TextureRef, void, void, {})
 
 #define LIST_PORTAL_MATERIAL_CONSTANTS(X) \
   /*Parameter Name,     USD Token String,   Type,     Min Value,  Max Value,  Default Value */ \
@@ -152,8 +152,6 @@
         pxr::VtValue val; \
         shader.GetAttribute(get##name##Token()).Get(&val); \
         target.m_##name = val.UncheckedGet<type>(); \
-      } else { \
-        target.m_##name = defaultVal; /*dont set the dirty flag here*/ \
       }
 
 #define WRITE_TEXTURE_DESERIALIZER(name, usd_attr, type, minVal, maxVal, defaultVal) \
@@ -163,8 +161,8 @@
       }
 
 #define WRITE_PARAMETER_MERGE(name, usd_attr, type, minVal, maxVal, defaultVal) \
-      if(m_dirty.test(DirtyFlags::k_##name)) { \
-        target.m_##name = m_##name; \
+      if(!m_dirty.test(DirtyFlags::k_##name)) { \
+        m_##name = input.m_##name; \
       }
 
 #define WRITE_CONSTANT_RANGES(name, usd_attr, type, minVal, maxVal, defaultVal) \
@@ -181,7 +179,7 @@
       h = XXH64(&m_##name, sizeof(m_##name), h);
 
 #define WRITE_PARAMETER_MEMBERS(name, usd_attr, type, minVal, maxVal, defaultVal) \
-      type m_##name;
+      type m_##name = defaultVal;
 
 #define WRITE_DIRTY_FLAGS(name, usd_attr, type, minVal, maxVal, defaultVal) \
       k_##name,
@@ -189,6 +187,9 @@
 
 #define REMIX_MATERIAL(name, X_CONSTANTS, X_TEXTURES, X_PARAMS)                                      \
 struct name##Data {                                                                                  \
+  /* Instantiates a material with all parameters set to default values */                            \
+  name##Data() = default;                                                                            \
+  /* Instantiates a material, must explicitly set all parameters */                                  \
   name##Data(                                                                                        \
     X_PARAMS(WRITE_CTOR_ARGS)                                                                        \
     uint32_t dirtyFlags = 0                                                                          \
@@ -215,11 +216,9 @@ struct name##Data {                                                             
     return target;                                                                                   \
   }                                                                                                  \
                                                                                                      \
-  name##Data mergeCopy(const name##Data& input) const {                                              \
-    name##Data target(input);                                                                        \
-    X_CONSTANTS(WRITE_PARAMETER_MERGE)                                                               \
-    target.updateCachedHash();                                                                       \
-    return target;                                                                                   \
+  void merge(const name##Data& input)  {                                                             \
+    X_PARAMS(WRITE_PARAMETER_MERGE)                                                                  \
+    updateCachedHash();                                                                              \
   }                                                                                                  \
                                                                                                      \
   const XXH64_hash_t getHash() const {                                                               \
@@ -227,7 +226,6 @@ struct name##Data {                                                             
   }                                                                                                  \
                                                                                                      \
 private:                                                                                             \
-  name##Data() = default;                                                                            \
                                                                                                      \
   struct Ranges {                                                                                    \
     X_CONSTANTS(WRITE_CONSTANT_RANGES)                                                               \
