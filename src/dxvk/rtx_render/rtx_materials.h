@@ -1300,7 +1300,24 @@ struct LegacyMaterialData {
     return ((getColorTexture().isValid()  && !getColorTexture().isImageEmpty()) ||
             (getColorTexture2().isValid() && !getColorTexture2().isImageEmpty()));
   }
-  
+
+  operator OpaqueMaterialData() const {
+    OpaqueMaterialData opaqueMat;
+    opaqueMat.getAlbedoOpacityTexture() = getColorTexture();
+    return opaqueMat;
+  }
+
+  operator TranslucentMaterialData() const {
+    return TranslucentMaterialData();
+  }
+
+  operator RayPortalMaterialData() const {
+    RayPortalMaterialData portalMat;
+    portalMat.getMaskTexture() = getColorTexture();
+    portalMat.getMaskTexture2() = getColorTexture2();
+    return portalMat;
+  }
+
   const void printDebugInfo(const char* name = "") const {
 #ifdef REMIX_DEVELOPMENT
     Logger::warn(str::format(
@@ -1518,6 +1535,23 @@ struct MaterialData {
     assert(m_type == MaterialDataType::RayPortal);
 
     return m_rayPortalMaterialData;
+  }
+
+  void mergeLegacyMaterial(const LegacyMaterialData& input) {
+    switch (m_type) {
+    default:
+      assert(false);
+      [[fallthrough]];
+    case MaterialDataType::Opaque:
+      m_opaqueMaterialData.merge(input);
+      break;
+    case MaterialDataType::Translucent:
+      m_translucentMaterialData.merge(input);
+      break;
+    case MaterialDataType::RayPortal:
+      m_rayPortalMaterialData.merge(input);
+      break;
+    }
   }
 
 private:
