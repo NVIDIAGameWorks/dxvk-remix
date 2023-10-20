@@ -924,9 +924,9 @@ namespace dxvk {
         return false;
       }
 
-      if (!m_forceGeometryCopy && RtxOptions::Get()->alwaysCopyDecalGeometries()) {
+      if (!m_forceGeometryCopy && RtxOptions::alwaysCopyDecalGeometries()) {
         // Only poke decal hashes when option is enabled.
-        m_forceGeometryCopy = m_activeDrawCallState.testCategoryFlags(CATEGORIES_REQUIRE_GEOMETRY_COPY);
+        m_forceGeometryCopy |= m_activeDrawCallState.testCategoryFlags(CATEGORIES_REQUIRE_GEOMETRY_COPY);
       }
     }
 
