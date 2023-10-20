@@ -271,7 +271,7 @@ namespace dxvk {
 
         VkImageSubresource subresource;
         subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        subresource.mipLevel = level;
+        subresource.mipLevel = 0; // pBlitDests is an array implicitly separated by mip levels, indexing into it selects the level
         subresource.arrayLayer = 0;
         const VkSubresourceLayout subresourceLayout = image->querySubresourceLayout(subresource);
 
