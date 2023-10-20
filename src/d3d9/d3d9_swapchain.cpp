@@ -1193,9 +1193,16 @@ namespace dxvk {
 
       m_device->submitCommandList(cCommandList,
         cSync.acquire, cSync.present);
-
-      if (cHud != nullptr && !cFrameId)
-        cHud->update();
+      
+      // NV-DXVK start: DLFG integration
+      if (cHud != nullptr && !cFrameId) {
+        if (m_dlfgPresenter != nullptr) {
+          cHud->update(m_dlfgPresenter->getPresentFrameCount());
+        } else {
+          cHud->update(1);
+        }
+      }
+      // NV-DXVK end
 
       // NV-DXVK start: DLFG integration
       // Note: Do not insert Reflex present markers when DLFG is enabled, the DLFG Presenter will insert its own Reflex markers
