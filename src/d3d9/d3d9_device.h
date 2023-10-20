@@ -2,6 +2,7 @@
 
 #include "../dxvk/dxvk_device.h"
 #include "../dxvk/dxvk_cs.h"
+#include "../dxvk/rtx_render/rtx_utils.h"
 
 #include "d3d9_include.h"
 #include "d3d9_cursor.h"
@@ -91,7 +92,9 @@ namespace dxvk {
 
   class D3D9DeviceEx final : public ComObjectClamp<IDirect3DDevice9Ex> {
     constexpr static uint32_t DefaultFrameLatency = 3;
-    constexpr static uint32_t MaxFrameLatency     = 20;
+    // NV-DXVK start: Cap Max Frame Latency to maximum supported Remix frames in flight.
+    constexpr static uint32_t MaxFrameLatency     = kMaxFramesInFlight;
+    // NV-DXVK end
 
     constexpr static uint32_t MinFlushIntervalUs = 750;
     constexpr static uint32_t IncFlushIntervalUs = 250;
