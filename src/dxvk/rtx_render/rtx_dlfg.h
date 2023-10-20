@@ -266,11 +266,16 @@ namespace dxvk {
     Rc<DxvkDLFGTimestampQueryPool>& getDLFGQueryPool() {
       return m_queryPoolDLFG;
     }
-    
+
+    bool hasDLFGFailed() const {
+      return m_hasDLFGFailed;
+    }
+
     RW_RTX_OPTION_ENV("rtx.dlfg", bool, enable, true, "RTX_DLFG_ENABLE", "Enables DLSS 3.0 frame generation which generates interpolated frames to increase framerate at the cost of slightly more latency."); // note: always use DxvkDevice::isDLFGEnabled() to check if DLFG is enabled, not this option directly
   
   private:
     std::unique_ptr<NGXDLFGContext> m_dlfgContext = nullptr;
+    std::atomic<bool> m_hasDLFGFailed = { false };
     uint32_t m_currentDisplaySize[2] = { 0,0 };
     bool m_contextDirty = true;
 
