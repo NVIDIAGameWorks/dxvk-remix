@@ -23,181 +23,9 @@
 #include "rtx_lights.h"
 #include "rtx_options.h"
 #include "rtx_light_manager.h"
+#include "rtx_light_utils.h"
 
 namespace dxvk {
-
-static float leastSquareIntensity(float intensity, float attenuation2, float attenuation1, float attenuation0, float range) {
-  // Calculate the distance where light intensity attenuates to 10%
-  constexpr float kEpsilon = 0.000001f;
-  float lowRange = 0.0f;
-  const float lowThreshold = 0.1f;
-  if (attenuation2 < kEpsilon) {
-    if (attenuation1 > kEpsilon) {
-      lowRange = (1.0f / lowThreshold - attenuation0) / attenuation1;
-    }
-  } else {
-    float a = attenuation2;
-    float b = attenuation1;
-    float c = attenuation0 - 1.0f / lowThreshold;
-    float discriminant = b * b - 4.0 * a * c;
-    if (discriminant >= 0) {
-      const float sqRoot = std::sqrt(discriminant);
-      const float root1 = (-b + sqRoot) / (2 * a);
-      const float root2 = (-b - sqRoot) / (2 * a);
-      if (root1 > 0) {
-        lowRange = root1;
-      }
-      if (root2 > 0) {
-        lowRange = root2;
-      }
-    }
-  }
-
-  // Calculate the sample range
-  if (lowRange > 0) {
-    range = std::min(range, lowRange);
-  }
-
-  // Place 5 samples between [0, range]
-  // Find newIntensity to minimize the error = Sigma((intensity / (a2*xi*xi + a1*xi + a0) - newIntensity / (xi * xi))^2)
-  const int kSamples = 5;
-  float numerator = 0;
-  float denominator = 0;
-
-  for (int i = 0; i < kSamples; i++) {
-    float xi = float(i + 1) / kSamples * range;
-    float xi2 = xi * xi;
-    float xi4 = xi2 * xi2;
-    float Ii = intensity / (attenuation2 * xi2 + attenuation1 * xi + attenuation0);
-    numerator += Ii / xi2;
-    denominator += 1 / xi4;
-  }
-
-  float newIntensity = numerator / denominator;
-  return newIntensity;
-}
-
-static float intensityToEndDistance(float intensity) {
-  float endDistanceSq = intensity / kLegacyLightEndValue;
-  return sqrt(endDistanceSq);
-}
-
-static float solveQuadraticEndDistance(float originalBrightness, float attenuation2, float attenuation1, float attenuation0, float range) {
-  const float a = attenuation2;
-  const float b = attenuation1;
-  const float c = attenuation0;
-  float endDistance = 0.0f;
-
-  // Solve for kLegacyLightEndValue using quadratic equation.
-  // originalBrightness/(a*d*d+b*d+c) = kLegacyLightEndValue
-  // a*d*d+b*d+c-originalBrightness/kLegacyLightEndValue = 0 
-  const float newC = c - originalBrightness / kLegacyLightEndValue;
-  const float discriminant = b * b - 4 * a * newC;
-
-  if (discriminant < 0) {
-    // Attenuation never reaches kLegacyLightEndValue.  Just use range.
-    endDistance = range;
-  } else if (discriminant == 0) {
-    const float root = -b / (2 * a);
-    if (root > 0) {
-      endDistance = root;
-    }
-  } else {
-    // Two roots, use the smaller positive root.
-    const float sqRoot = std::sqrt(discriminant);
-    const float root1 = (-b + sqRoot) / (2 * a);
-    const float root2 = (-b - sqRoot) / (2 * a);
-    if (root1 > 0) {
-      endDistance = root1;
-    }
-    if (root2 > 0) {
-      endDistance = root2;
-    }
-  }
-
-  return endDistance;
-}
-
-// Function to calculate a radiance value from a light.
-// This function will determine the distance from `light` that the brightness would fall below kLegacyLightEndValue, based on the attenuation function.
-// If the light would never attenuate to less than kLegacyLightEndValue, light.Range will be used instead.
-// It will then determine how bright the replacement light needs to be to have a brightness of kNewLightEndValue at the same distance.
-// Finally, it will combine that brightness with the original light's diffuse color to determine the radiance.
-static Vector3 calculateRadiance(const D3DLIGHT9& light, const float radius) {
-  constexpr float kEpsilon = 0.000001f;
-
-  // Calculate max distance based on attenuation.  We're looking to find when the light's attenuation is kLegacyLightEndValue.
-  // Attenuation in D3D9 for lights is calculated as 1/(light.Attenuation2*d*d + light.Attenuation1*d + light.Attenuation).
-  // This is calculated with respect to the max component of the light's 3 color components, and then is translated to RGB with the normalized color later.
-  // Note that the calculated max distance may be greater than the Light's original "Range" value. This is because often times in older games the
-  // Range was merely used in conjunction with a custom large color value and attenuation curve as an optimization to keep very bright lights from extending
-  // across the entire level when only needed in a small area, but physical lights must reflect the "intended" full max distance as calculated by the attenuation.
-  const float a = light.Attenuation2;
-  const float b = light.Attenuation1;
-  const float c = light.Attenuation0;
-
-  const float originalBrightness = std::max(light.Diffuse.r, std::max(light.Diffuse.g, light.Diffuse.b));
-
-  float endDistance = light.Range;
-
-  if (c > 0 && originalBrightness / c < kLegacyLightEndValue) {
-    // Light constant is already lower than our minimum right next to the light, so just set the radiance to 0.
-    endDistance = 0.f;
-  } else if (a < kEpsilon) {
-    // No squared attenuation term
-    if (b > kEpsilon) {
-      // linear falloff
-      if (LightManager::calculateLightIntensityUsingLeastSquares()) {
-        endDistance = intensityToEndDistance(leastSquareIntensity(originalBrightness, light.Attenuation2, light.Attenuation1, light.Attenuation0, light.Range));
-      } else {
-        // 1/(b*d + c) = kLegacyLightEndValue
-        endDistance = ((originalBrightness / kLegacyLightEndValue) - c) / b;
-      }
-    } else {
-      // No falloff - the light is at full power * c until the range runs out
-      // TODO may want to do something different here - the light is still fully bright at light.Range...
-    }
-  } else {
-    if (LightManager::calculateLightIntensityUsingLeastSquares()) {
-      endDistance = intensityToEndDistance(leastSquareIntensity(originalBrightness, light.Attenuation2, light.Attenuation1, light.Attenuation0, light.Range));
-    } else {
-      endDistance = solveQuadraticEndDistance(originalBrightness, light.Attenuation2, light.Attenuation1, light.Attenuation0, light.Range);
-    }
-  }
-
-  // Calculate the radiance of the Sphere light to reach the desired perceptible radiance threshold at the calculated range of the D3D light.
-  const float endDistanceSq = endDistance * endDistance;
-
-  // Conversion factor from a desired distance squared to a radiance value based on a desired fixed light radius and the desired ending radiance value.
-  // Derivation:
-  // t = Threshold (ending) radiance value
-  // i = Point Light Intensity
-  // d = Distance
-  // p = Power
-  // r = Radiance
-  // 
-  // i / d^2 = t (Inverse square law for intensity, solving for d to find the intensity of a point light to reach this radiance threshold)
-  // p = i * 4 * pi (Point Light Intensity to Power)
-  // r = p / ((4 * pi * r^2) * pi) (Power to Sphere Light Radiance)
-  // r = (d^2 * t) / (pi * r^2) (Solve and Substitute)
-  const float kDistanceSqToRadiance = kNewLightEndValue / (kPi * radius * radius);
-
-  const float radiance = kDistanceSqToRadiance * endDistanceSq;
-
-  // Convert the max component radiance to RGB using the normalized color of the light.
-  // Note: Many old games did their lighting entierly in gamma space (when sRGB textures and framebuffers were absent),
-  // meaning while the normalized light color value should be converted from gamma to linear space to have the lighting look more
-  // physically correct, this changes the look of lighting too much (which makes artists unhappy), so it is left unchanged.
-  // In the future a conversion may be needed if gamma corrected framebuffers were used in the original game, but for now this is fine.
-  Vector3 result;
-  result[0] = light.Diffuse.r / originalBrightness * radiance;
-  result[1] = light.Diffuse.g / originalBrightness * radiance;
-  result[2] = light.Diffuse.b / originalBrightness * radiance;
-
-  return result;
-}
-
-
 XXH64_hash_t RtLightShaping::getHash() const {
   XXH64_hash_t h = 0;
 
@@ -236,72 +64,16 @@ void RtLightShaping::writeGPUData(unsigned char* data, std::size_t& offset) cons
   }
 }
 
-// Note: Changing this code will alter "stable" light hashes from D3D9 and potentially break replacement assets.
-XXH64_hash_t RtLightShapingStable::getHash() const {
-  XXH64_hash_t h = 0;
-
-  if (enabled) {
-    h = XXH64(&originalPrimaryAxis[0], sizeof(originalPrimaryAxis), h);
-    // Note: Ideally we'd not include any "derived" values here such as this cosine value and the softness as these may change if the implementation
-    // behind the functions deriving them changes and instead rely only on data in the D3DLIGHT9 structure, but we cannot go back on how this hashing
-    // is done at this point without invalidating all the hashes.
-    h = XXH64(&cosConeAngle, sizeof(cosConeAngle), h);
-    h = XXH64(&coneSoftness, sizeof(coneSoftness), h);
-    h = XXH64(&focusExponent, sizeof(focusExponent), h);
-  }
-
-  return h;
-}
-
-RtSphereLight::RtSphereLight(const Vector3& position, const Vector3& radiance, float radius, const RtLightShaping& shaping)
+RtSphereLight::RtSphereLight(const Vector3& position, const Vector3& radiance, float radius, const RtLightShaping& shaping, const XXH64_hash_t forceHash)
   : m_position(position)
   , m_radiance(radiance)
   , m_radius(radius)
   , m_shaping(shaping) {
-  updateCachedHash();
-}
-
-RtSphereLight::RtSphereLight(const D3DLIGHT9& light) {
-  const Vector3 originalPosition{ light.Position.x, light.Position.y, light.Position.z };
-
-  m_position = originalPosition;
-
-  m_radius = LightManager::lightConversionSphereLightFixedRadius() * RtxOptions::Get()->getSceneScale();
-  m_radiance = calculateRadiance(light, m_radius);
-
-  RtLightShapingStable originalLightShaping{};
-
-  if (light.Type == D3DLIGHT_SPOT) {
-    const Vector3 originalDirection{ light.Direction.x, light.Direction.y, light.Direction.z };
-
-    // Set the Sphere Light's shaping
-
-    m_shaping.enabled = true;
-
-    // Note: D3D9 Spot light directions have no requirement on if the direction is normalized or not,
-    // so it must be normalized here for usage in the rendering (as the m_shaping primaryAxis is assumed to be normalized).
-    // Additionally, the direction may be the zero vector (even though D3D9 disallows this), so fall back to the
-    // Z axis in this case.
-    m_shaping.primaryAxis = safeNormalize(originalDirection, Vector3(0.0f, 0.0f, 1.0f));
-
-    // cosConeAngle is the outer angle of the spotlight
-    m_shaping.cosConeAngle = std::cos(light.Phi / 2.0f);
-    // coneSoftness is how far in the transition region reaches
-    m_shaping.coneSoftness = std::cos(light.Theta / 2.0f) - m_shaping.cosConeAngle;
-    m_shaping.focusExponent = light.Falloff;
-
-    // Set the Stable Light Shaping
-
-    originalLightShaping.enabled = m_shaping.enabled;
-    // Note: Normalization bypassed in accordance with stable hashing policy.
-    originalLightShaping.originalPrimaryAxis = originalDirection;
-    originalLightShaping.cosConeAngle = m_shaping.cosConeAngle;
-    originalLightShaping.coneSoftness = m_shaping.coneSoftness;
-    originalLightShaping.focusExponent = m_shaping.focusExponent;
+  if (forceHash == kEmptyHash) {
+    updateCachedHash();
+  } else {
+    m_cachedHash = forceHash;
   }
-
-  // Note: Stable version used for D3D9 light conversion path to ensure stable hashing regardless of code changes.
-  updateCachedHashStable(originalPosition, originalLightShaping);
 }
 
 void RtSphereLight::applyTransform(const Matrix4& lightToWorld) {
@@ -355,22 +127,6 @@ Vector4 RtSphereLight::getColorAndIntensity() const {
   out.y = m_radiance[1] / out.w;
   out.z = m_radiance[2] / out.w;
   return out;
-}
-
-// Note: Changing this code will alter "stable" light hashes from D3D9 and potentially break replacement assets.
-void RtSphereLight::updateCachedHashStable(const Vector3& originalPosition, const RtLightShapingStable& shaping) {
-  XXH64_hash_t h = (XXH64_hash_t) RtLightType::Sphere;
-
-  // Note: A constant radius of 4.0f is used due to a legacy artifact of accidently including radius value in the
-  // hash for lights translated from D3D9 to Remix (which always inherited a value from the
-  // lightConversionSphereLightFixedRadius option.
-  const float legacyStableRadius = 4.0f;
-
-  h = XXH64(&originalPosition[0], sizeof(originalPosition), h);
-  h = XXH64(&legacyStableRadius, sizeof(legacyStableRadius), h);
-  h = XXH64(&h, sizeof(h), shaping.getHash());
-
-  m_cachedHash = h;
 }
 
 void RtSphereLight::updateCachedHash() {
@@ -683,7 +439,7 @@ void RtCylinderLight::updateCachedHash() {
   m_cachedHash = h;
 }
 
-RtDistantLight::RtDistantLight(const Vector3& direction, float halfAngle, const Vector3& radiance)
+RtDistantLight::RtDistantLight(const Vector3& direction, float halfAngle, const Vector3& radiance, const XXH64_hash_t forceHash)
   // Note: Direction assumed to be normalized.
   : m_direction(direction)
   , m_halfAngle(halfAngle)
@@ -696,35 +452,11 @@ RtDistantLight::RtDistantLight(const Vector3& direction, float halfAngle, const 
   m_cosHalfAngle = std::cos(m_halfAngle);
   m_sinHalfAngle = std::sin(m_halfAngle);
 
-  updateCachedHash();
-}
-
-RtDistantLight::RtDistantLight(const D3DLIGHT9& light) {
-  const Vector3 originalDirection{ light.Direction.x, light.Direction.y, light.Direction.z };
-
-  // Note: D3D9 Directional lights have no requirement on if the direction is normalized or not,
-  // so it must be normalized here for usage in the rendering (as m_direction is assumed to be normalized).
-  // Additionally, the direction may be the zero vector (even though D3D9 disallows this), so fall back to the
-  // Z axis in this case.
-  m_direction = safeNormalize(originalDirection, Vector3(0.0f, 0.0f, 1.0f));
-
-  m_halfAngle = LightManager::lightConversionDistantLightFixedAngle() / 2.f;
-
-  const float fixedIntensity = LightManager::lightConversionDistantLightFixedIntensity();
-
-  m_radiance[0] = light.Diffuse.r * fixedIntensity;
-  m_radiance[1] = light.Diffuse.g * fixedIntensity;
-  m_radiance[2] = light.Diffuse.b * fixedIntensity;
-
-  // Note: Cache a pre-computed orientation quaternion to avoid doing it on the GPU since we have space in the Light to spare
-  m_orientation = getOrientation(Vector3(0.0f, 0.0f, 1.0f), m_direction);
-
-  // Note: Cache sine and cosine of the half angle to avoid doing it on the GPU as well
-  m_cosHalfAngle = std::cos(m_halfAngle);
-  m_sinHalfAngle = std::sin(m_halfAngle);
-
-  // Note: Stable version used for D3D9 light conversion path to ensure stable hashing regardless of code changes.
-  updateCachedHashStable(originalDirection);
+  if (forceHash == kEmptyHash) {
+    updateCachedHash();
+  } else {
+    m_cachedHash = forceHash;
+  }
 }
 
 void RtDistantLight::applyTransform(const Matrix4& lightToWorld) {
@@ -784,23 +516,6 @@ Vector4 RtDistantLight::getColorAndIntensity() const {
   return out;
 }
 
-// Note: Changing this code will alter "stable" light hashes from D3D9 and potentially break replacement assets.
-void RtDistantLight::updateCachedHashStable(const Vector3& originalDirection) {
-  XXH64_hash_t h = (XXH64_hash_t) RtLightType::Rect;
-
-  // Note: A constant half angle is used due to a legacy artifact of accidently including half angle value in the
-  // hash for lights translated from D3D9 to Remix (which always inherited a value from the
-  // lightConversionDistantLightFixedAngle option, divided by 2.
-  const float legacyStableHalfAngle = 0.0349f / 2.0f;
-
-  // Note: Radiance not included to somewhat uniquely identify lights when constructed
-  // from D3D9 Lights.
-  h = XXH64(&originalDirection[0], sizeof(originalDirection), h);
-  h = XXH64(&legacyStableHalfAngle, sizeof(legacyStableHalfAngle), h);
-
-  m_cachedHash = h;
-}
-
 void RtDistantLight::updateCachedHash() {
   XXH64_hash_t h = (XXH64_hash_t)RtLightType::Distant;
 
@@ -812,26 +527,6 @@ void RtDistantLight::updateCachedHash() {
   m_cachedHash = h;
 }
 
-std::optional<RtLight> RtLight::TryCreate(const D3DLIGHT9& light) {
-  // Ensure the D3D9 Light is of a valid type
-  // Note: This is done as some games will pass invalid data to various D3D9 calls and since the RtLight
-  // requires a valid light type for construction it needs to be checked in advance to avoid issues.
-
-  if (light.Type < D3DLIGHT_POINT || light.Type > D3DLIGHT_DIRECTIONAL) {
-    Logger::err(str::format(
-      "Attempted to convert a fixed function light with invalid light type: ",
-      light.Type
-    ));
-    ONCE(assert(false));
-
-    return {};
-  }
-
-  // Construct and return the light
-
-  return std::optional<RtLight>(std::in_place, light);
-}
-
 RtLight::RtLight() { 
   // Dummy light - this is used when lights are removed from the list to keep persistent ordering.
   m_type = RtLightType::Sphere;
@@ -839,55 +534,34 @@ RtLight::RtLight() {
   m_cachedInitialHash = m_sphereLight.getHash();
 }
 
-RtLight::RtLight(const RtSphereLight& light) { 
+RtLight::RtLight(const RtSphereLight& light) {
   m_type = RtLightType::Sphere;
   new (&m_sphereLight) RtSphereLight(light);
   m_cachedInitialHash = m_sphereLight.getHash();
 }
 
-RtLight::RtLight(const RtRectLight& light) { 
+RtLight::RtLight(const RtRectLight& light) {
   m_type = RtLightType::Rect;
   new (&m_rectLight) RtRectLight(light);
   m_cachedInitialHash = m_rectLight.getHash();
 }
 
-RtLight::RtLight(const RtDiskLight& light) { 
+RtLight::RtLight(const RtDiskLight& light) {
   m_type = RtLightType::Disk;
   new (&m_diskLight) RtDiskLight(light);
   m_cachedInitialHash = m_diskLight.getHash();
 }
 
-RtLight::RtLight(const RtCylinderLight& light) { 
+RtLight::RtLight(const RtCylinderLight& light) {
   m_type = RtLightType::Cylinder;
   new (&m_cylinderLight) RtCylinderLight(light);
   m_cachedInitialHash = m_cylinderLight.getHash();
 }
 
-RtLight::RtLight(const RtDistantLight& light) { 
+RtLight::RtLight(const RtDistantLight& light) {
   m_type = RtLightType::Distant;
   new (&m_distantLight) RtDistantLight(light);
   m_cachedInitialHash = m_distantLight.getHash();
-}
-
-RtLight::RtLight(const D3DLIGHT9& light) {
-  switch (light.Type) {
-  default:
-    assert(false);
-
-    [[fallthrough]];
-  case D3DLIGHT_POINT:
-    [[fallthrough]];
-  case D3DLIGHT_SPOT:
-    new (&m_sphereLight) RtSphereLight{ light };
-    m_cachedInitialHash = m_sphereLight.getHash();
-    m_type = RtLightType::Sphere;
-    break;
-  case D3DLIGHT_DIRECTIONAL:
-    new (&m_distantLight) RtDistantLight{ light };
-    m_cachedInitialHash = m_distantLight.getHash();
-    m_type = RtLightType::Distant;
-    break;
-  }
 }
 
 RtLight::RtLight(const RtLight& light)

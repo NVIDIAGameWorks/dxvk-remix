@@ -42,6 +42,7 @@
 #include "rtx_intersection_test.h"
 
 #include "dxvk_scoped_annotation.h"
+#include "rtx_lights_data.h"
 
 namespace dxvk {
 
@@ -690,10 +691,12 @@ namespace dxvk {
           ));
           break;
         }
-        RtLight localLight(replacement.lightData);
-        localLight.setRootInstanceId(rootInstanceId);
-        localLight.applyTransform(input->getTransformData().objectToWorld);
-        m_lightManager.addLight(localLight);
+        if (replacement.lightData.has_value()) {
+          RtLight localLight = replacement.lightData->toRtLight();
+          localLight.setRootInstanceId(rootInstanceId);
+          localLight.applyTransform(input->getTransformData().objectToWorld);
+          m_lightManager.addLight(localLight);
+        }
       }
     }
 
@@ -1144,26 +1147,32 @@ namespace dxvk {
     ScopedCpuProfileZone();
     // Attempt to convert the D3D9 light to RT
 
-    std::optional<RtLight> rtLight = RtLight::TryCreate(light);
+    std::optional<LightData> lightData = LightData::tryCreate(light);
 
     // Note: Skip adding this light if it is somehow malformed such that it could not be created.
-    if (!rtLight) {
+    if (!lightData.has_value()) {
       return;
     }
 
-    const std::vector<AssetReplacement>* pReplacements = m_pReplacer->getReplacementsForLight((*rtLight).getInitialHash());
+    const RtLight rtLight = lightData->toRtLight();
+
+    const std::vector<AssetReplacement>* pReplacements = m_pReplacer->getReplacementsForLight(rtLight.getInitialHash());
     if (pReplacements) {
       // TODO(TREX-1091) to implement meshes as light replacements, replace the below loop with a call to drawReplacements.
       for (auto&& replacement : *pReplacements) {
-        if (replacement.type == AssetReplacement::eLight) {          
-          m_lightManager.addLight(replacement.lightData);
+        if (replacement.type == AssetReplacement::eLight && replacement.lightData.has_value()) {
+          LightData replacementLight = replacement.lightData.value();
+          // Merge the d3d9 light into replacements based on overrides
+          replacementLight.merge(light);
+          // Apply the light
+          m_lightManager.addLight(replacementLight.toRtLight());
         } else {
           assert(false); // We don't support meshes as children of lights yet.
         }
       }
     } else {
       // This is a light coming from the game directly, so use the appropriate API for filter rules
-      m_lightManager.addGameLight(light.Type, *rtLight);
+      m_lightManager.addGameLight(light.Type, rtLight);
     }
   }
 
