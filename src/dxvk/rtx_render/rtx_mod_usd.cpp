@@ -58,6 +58,8 @@
 #include "../../lssusd/usd_mesh_importer.h"
 #include "../../lssusd/usd_common.h"
 
+#include "rtx_lights_data.h"
+
 namespace fs = std::filesystem;
 
 namespace dxvk {
@@ -199,64 +201,6 @@ XXH64_hash_t getMaterialHash(const pxr::UsdPrim& prim, const pxr::UsdPrim& shade
   XXH64_hash_t usdOriginHash = getStrongestOpinionatedPathHash(shader);
 
   return usdOriginHash;
-}
-
-bool getVector3(const pxr::UsdAttribute& attr, Vector3& vector) {
-    if (attr.HasValue()) {
-      pxr::GfVec3f vec;
-      attr.Get(&vec);
-      vector = Vector3(vec.data());
-      return true;
-    }
-    return false;
-}
-
-bool getVector3(const pxr::UsdPrim& prim, const pxr::TfToken& token, Vector3& vector) {
-  return getVector3(prim.GetAttribute(token), vector);
-}
-
-// USD transitioned from `intensity` to `inputs:intensity` for all its light attributes, we need to support content
-// authored before and after that change.
-const pxr::UsdAttribute getLightAttribute(const pxr::UsdPrim& prim, const pxr::TfToken& token, const pxr::TfToken& inputToken) {
-  const pxr::UsdAttribute& attr = prim.GetAttribute(inputToken);
-  if (!attr.HasValue()) {
-    const pxr::UsdAttribute& old_attr = prim.GetAttribute(token);
-    if (old_attr.HasValue()) {
-      ONCE(Logger::warn(str::format("Legacy light attribute detected: ", old_attr.GetPath())));
-    }
-    return old_attr;
-  }
-  return attr;
-}
-
-RtLightShaping getLightShaping(const pxr::UsdPrim& lightPrim, Vector3 zAxis) {
-  static const pxr::TfToken kConeAngleToken("shaping:cone:angle");
-  static const pxr::TfToken kConeSoftnessToken("shaping:cone:softness");
-  static const pxr::TfToken kFocusToken("shaping:focus");
-  static const pxr::TfToken kInputsConeAngleToken("inputs:shaping:cone:angle");
-  static const pxr::TfToken kInputsConeSoftnessToken("inputs:shaping:cone:softness");
-  static const pxr::TfToken kInputsFocusToken("inputs:shaping:focus");
-
-  RtLightShaping shaping;
-
-  shaping.primaryAxis = zAxis;
-
-  float angle = 180.f;
-  getLightAttribute(lightPrim, kConeAngleToken, kInputsConeAngleToken).Get(&angle);
-  shaping.cosConeAngle = cos(angle * kDegreesToRadians);
-  
-  float softness = 0.0f;
-  getLightAttribute(lightPrim, kConeSoftnessToken, kInputsConeSoftnessToken).Get(&softness);
-  shaping.coneSoftness = softness;
-
-  float focus = 0.0f;
-  getLightAttribute(lightPrim, kFocusToken, kInputsFocusToken).Get(&focus);
-  shaping.focusExponent = focus;
-  
-  if (shaping.cosConeAngle != -1.f || shaping.coneSoftness != 0.0f || shaping.focusExponent != 0.0f ) {
-    shaping.enabled = true;
-  }
-  return shaping;
 }
 }  // namespace
 
@@ -492,18 +436,6 @@ bool IsLight(const pxr::UsdPrim& lightPrim) {
 }
 
 void UsdMod::Impl::processLight(Args& args, const pxr::UsdPrim& lightPrim) {
-  static const pxr::TfToken kRadiusToken("radius");
-  static const pxr::TfToken kWidthToken("width");
-  static const pxr::TfToken kHeightToken("height");
-  static const pxr::TfToken kLengthToken("length");
-  static const pxr::TfToken kAngleToken("angle");
-  static const pxr::TfToken kInputsRadiusToken("inputs:radius");
-  static const pxr::TfToken kInputsWidthToken("inputs:width");
-  static const pxr::TfToken kInputsHeightToken("inputs:height");
-  static const pxr::TfToken kInputsLengthToken("inputs:length");
-  static const pxr::TfToken kInputsAngleToken("inputs:angle");
-  static constexpr float degreesToRadians = float(M_PI / 180.0);
-  RtLight genericLight;
   if (args.rootPrim.IsA<pxr::UsdGeomMesh>() && lightPrim.IsA<pxr::UsdLuxDistantLight>()) {
     Logger::err(str::format("A DistantLight detect under ", args.rootPrim.GetName(),
         " will be ignored.  DistantLights are only supported as part of light replacements, not mesh replacements."));
@@ -521,89 +453,10 @@ void UsdMod::Impl::processLight(Args& args, const pxr::UsdPrim& lightPrim) {
     localToRoot = pxr::GfMatrix4f(args.xformCache.ComputeRelativeTransform(lightPrim, args.rootPrim, &resetXformStack));
   }
 
-  pxr::GfVec3f xVecUsd = localToRoot.TransformDir(pxr::GfVec3f(1.0f, 0.0f, 0.0f));
-  pxr::GfVec3f yVecUsd = localToRoot.TransformDir(pxr::GfVec3f(0.0f, 1.0f, 0.0f));
-  pxr::GfVec3f zVecUsd = localToRoot.TransformDir(pxr::GfVec3f(0.0f, 0.0f, 1.0f));
-  
-  // Note: These calls both normalize the X/Y/Z vectors and return their previous length. This is mandatory as the axis
-  // vectors used to construct lights with must be normalized.
-  float xScale = xVecUsd.Normalize();
-  float yScale = yVecUsd.Normalize();
-  float zScale = zVecUsd.Normalize();
-
-  const Vector3 position(localToRoot.ExtractTranslation().data());
-  const Vector3 xAxis(xVecUsd.GetArray());
-  const Vector3 yAxis(yVecUsd.GetArray());
-  const Vector3 zAxis(zVecUsd.GetArray());
-  
-  // Calculate light color.  Based on `getFinalLightColor` in Kit's LightContext.cpp.
-  static const pxr::TfToken kEnableColorTemperatureToken("enableColorTemperature");
-  static const pxr::TfToken kColorToken("color");
-  static const pxr::TfToken kColorTemperatureToken("colorTemperature");
-  static const pxr::TfToken kIntensityToken("intensity");
-  static const pxr::TfToken kExposureToken("exposure");
-  static const pxr::TfToken kInputsEnableColorTemperatureToken("inputs:enableColorTemperature");
-  static const pxr::TfToken kInputsColorToken("inputs:color");
-  static const pxr::TfToken kInputsColorTemperatureToken("inputs:colorTemperature");
-  static const pxr::TfToken kInputsIntensityToken("inputs:intensity");
-  static const pxr::TfToken kInputsExposureToken("inputs:exposure");
-  Vector3 radiance(1.f);
-  Vector3 temperature(1.f);
-  float exposure = 0.0f;
-  float intensity = 0.0f;
-
-  getVector3(getLightAttribute(lightPrim, kColorToken, kInputsColorToken), radiance);
-  bool enableColorTemperature = false;
-  getLightAttribute(lightPrim, kEnableColorTemperatureToken, kInputsEnableColorTemperatureToken).Get(&enableColorTemperature);
-  if (enableColorTemperature) {
-    pxr::UsdAttribute colorTempAttr = getLightAttribute(lightPrim, kColorTemperatureToken, kInputsColorTemperatureToken);
-    if (colorTempAttr.HasValue()) {
-      float temp = 6500.f;
-      colorTempAttr.Get(&temp);
-      pxr::GfVec3f vec = pxr::UsdLuxBlackbodyTemperatureAsRgb(temp);
-      temperature = Vector3(vec.data());
-    }
+  const std::optional<LightData> lightData = LightData::tryCreate(lightPrim, localToRoot);
+  if(lightData.has_value()) {
+    args.meshes.emplace_back(lightData.value());
   }
-  getLightAttribute(lightPrim, kExposureToken, kInputsExposureToken).Get(&exposure);
-  getLightAttribute(lightPrim, kIntensityToken, kInputsIntensityToken).Get(&intensity);
-  
-  radiance = radiance * intensity * pow(2, exposure) * temperature;
-
-  // Per Light type properties.
-  if (lightPrim.IsA<pxr::UsdLuxSphereLight>()) {
-    float radius;
-    getLightAttribute(lightPrim, kRadiusToken, kInputsRadiusToken).Get(&radius);
-    RtLightShaping shaping = getLightShaping(lightPrim, -zAxis);
-    genericLight = RtLight(RtSphereLight(position, radiance, radius, shaping));
-  } else if (lightPrim.IsA<pxr::UsdLuxRectLight>()) {
-    float width, height = 0.0f;
-    getLightAttribute(lightPrim, kWidthToken, kInputsWidthToken).Get(&width);
-    getLightAttribute(lightPrim, kHeightToken, kInputsHeightToken).Get(&height);
-    Vector2 dimensions(width * xScale, height * yScale);
-    RtLightShaping shaping = getLightShaping(lightPrim, zAxis);
-    genericLight = RtLight(RtRectLight(position, dimensions, xAxis, yAxis, radiance, shaping));
-  } else if (lightPrim.IsA<pxr::UsdLuxDiskLight>()) {
-    float radius;
-    getLightAttribute(lightPrim, kRadiusToken, kInputsRadiusToken).Get(&radius);
-    Vector2 halfDimensions(radius * xScale, radius * yScale);
-    RtLightShaping shaping = getLightShaping(lightPrim, zAxis);
-    genericLight = RtLight(RtDiskLight(position, halfDimensions, xAxis, yAxis, radiance, shaping));
-  } else if (lightPrim.IsA<pxr::UsdLuxCylinderLight>()) {
-    float radius;
-    getLightAttribute(lightPrim, kRadiusToken, kInputsRadiusToken).Get(&radius);
-    float axisLength;
-    getLightAttribute(lightPrim, kLengthToken, kInputsLengthToken).Get(&axisLength);
-    genericLight = RtLight(RtCylinderLight(position, radius, xAxis, axisLength * xScale, radiance));
-  } else if (lightPrim.IsA<pxr::UsdLuxDistantLight>()) {
-    float halfAngle;
-    getLightAttribute(lightPrim, kAngleToken, kInputsAngleToken).Get(&halfAngle);
-    halfAngle = halfAngle * degreesToRadians / 2.0f;
-    genericLight = RtLight(RtDistantLight(zAxis, halfAngle, radiance));
-  } else {
-    return;
-  }
-  
-  args.meshes.emplace_back(genericLight);
 }
 
 void UsdMod::Impl::processReplacement(Args& args) {

@@ -71,18 +71,6 @@ struct RtLightShaping {
   void writeGPUData(unsigned char* data, std::size_t& offset) const;
 };
 
-struct RtLightShapingStable {
-  uint32_t enabled = false;
-
-  // Note: Should be the original (non-normalized) axis from the D3DLIGHT9 for stable hashing.
-  Vector3 originalPrimaryAxis;
-  float cosConeAngle;
-  float coneSoftness;
-  float focusExponent;
-
-  XXH64_hash_t getHash() const;
-};
-
 struct RtSphereLight {
   RtSphereLight() {
     m_position = Vector3();
@@ -91,9 +79,7 @@ struct RtSphereLight {
   }
 
   RtSphereLight(const Vector3& position, const Vector3& radiance, float radius,
-                const RtLightShaping& shaping);
-
-  RtSphereLight(const D3DLIGHT9& light);
+                const RtLightShaping& shaping, const XXH64_hash_t forceHash = kEmptyHash);
 
   void applyTransform(const Matrix4& lightToWorld);
 
@@ -122,11 +108,8 @@ struct RtSphereLight {
   const RtLightShaping& getShaping() const {
     return m_shaping;
   }
+
 private:
-  // Note: Takes specific arguments to calculate a stable hash which does not change due to other changes in the light's code.
-  // Expects an un-altered position directly from the D3DLIGHT9 Position, and a Stable Light Shaping structure with its primaryAxis member
-  // directly derived from the D3DLIGHT9 Direction (again a legacy artifact caused by not normalizing this in our initial implementation).
-  void updateCachedHashStable(const Vector3& originalPosition, const RtLightShapingStable& shaping);
   void updateCachedHash();
 
   Vector3 m_position;
@@ -172,6 +155,7 @@ struct RtRectLight {
   Vector3 getRadiance() const {
     return m_radiance;
   }
+
 private:
   void updateCachedHash();
 
@@ -223,6 +207,7 @@ struct RtDiskLight {
   Vector3 getRadiance() const {
     return m_radiance;
   }
+
 private:
   void updateCachedHash();
 
@@ -286,9 +271,7 @@ private:
 };
 
 struct RtDistantLight {
-  RtDistantLight(const Vector3& direction, float halfAngle, const Vector3& radiance);
-
-  RtDistantLight(const D3DLIGHT9& light);
+  RtDistantLight(const Vector3& direction, float halfAngle, const Vector3& radiance, const XXH64_hash_t forceHash = kEmptyHash);
 
   void applyTransform(const Matrix4& lightToWorld);
 
@@ -314,10 +297,6 @@ struct RtDistantLight {
     return m_radiance;
   }
 private:
-  // Note: Takes specific arguments to calculate a stable hash which does not change due to other changes in the light's code.
-  // Expects an un-altered direction directly from the D3DLIGHT9 Direction (a legacy artifact caused by not normalizing this in
-  // our initial implementation).
-  void updateCachedHashStable(const Vector3& originalDirection);
   void updateCachedHash();
 
   Vector3 m_direction;
@@ -334,9 +313,6 @@ private:
 };
 
 struct RtLight {
-  // Note: "Safe" version of RtLight(D3DLIGHT9&) to handle potentially invalid light data.
-  static std::optional<RtLight> TryCreate(const D3DLIGHT9& light);
-
   RtLight();
 
   RtLight(const RtSphereLight& light);
@@ -348,8 +324,6 @@ struct RtLight {
   RtLight(const RtCylinderLight& light);
 
   RtLight(const RtDistantLight& light);
-
-  RtLight(const D3DLIGHT9& light);
 
   RtLight(const RtLight& light);
 
