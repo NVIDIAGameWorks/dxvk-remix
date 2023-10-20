@@ -34,6 +34,7 @@
 #include "dxvk_imgui.h"
 #include "rtx_render/rtx_imgui.h"
 #include "dxvk_device.h"
+#include "rtx_render/rtx_utils.h"
 #include "rtx_render/rtx_shader_manager.h"
 #include "rtx_render/rtx_camera.h"
 #include "rtx_render/rtx_context.h"
@@ -2920,8 +2921,13 @@ namespace dxvk {
       init_info.Device = m_device->handle();
       init_info.Queue = m_device->queues().graphics.queueHandle;
       init_info.DescriptorPool = m_imguiPool;
-      init_info.MinImageCount = 2;
-      init_info.ImageCount = 2;
+      init_info.MinImageCount = 2; // Note: Required to be at least 2 by ImGui.
+      // Note: This image count is important for allocating multiple buffers for ImGui to support multiple frames
+      // in flight without causing corruptions or crashes. This should match ideally what is set in DXVK (via something
+      // like GetActualFrameLatency, but this can change at runtime. Instead we simply use the maximum number of frames
+      // in flight supported by the Remix side of DXVK as this should be enough (as DXVK is also clamped to this amount
+      // currently).
+      init_info.ImageCount = kMaxFramesInFlight;
       init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
 
       ImGui_ImplVulkan_Init(&init_info, ctx->getFramebufferInfo().renderPass()->getDefaultHandle());
