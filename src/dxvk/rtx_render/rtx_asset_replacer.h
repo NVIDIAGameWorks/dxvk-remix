@@ -25,6 +25,7 @@
 #include "rtx_lights.h"
 #include "rtx_mod_manager.h"
 #include "rtx_utils.h"
+#include "rtx_lights_data.h"
 
 namespace dxvk {
   class DxvkContext;
@@ -51,7 +52,7 @@ namespace dxvk {
     };
     Categorizer categories;
     MeshReplacement* geometry;
-    RtLight lightData;
+    std::optional<LightData> lightData;
     // Note: This is the material to use for this replacement, if any. Set to null if should use
     // the original material instead, similar to how getReplacementMaterial works.
     MaterialData* materialData;
@@ -61,7 +62,7 @@ namespace dxvk {
 
     AssetReplacement(MeshReplacement* geometryData, MaterialData* materialData, Categorizer categoryFlags, const Matrix4& replacementToObject)
         : geometry(geometryData), materialData(materialData), categories(categoryFlags), replacementToObject(replacementToObject), type(eMesh) {}
-    AssetReplacement(RtLight& lightData) : lightData(lightData), type(eLight) {}
+    AssetReplacement(const LightData& lightData) : lightData(lightData), type(eLight) {}
   };
 
   struct SecretReplacement {
