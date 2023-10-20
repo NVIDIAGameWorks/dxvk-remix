@@ -65,13 +65,16 @@ namespace dxvk::hud {
   }
 
 
-  void HudItemSet::update() {
+  // NV-DXVK start: DLFG integration
+  void HudItemSet::update(uint32_t presentCount) {
     auto time = dxvk::high_resolution_clock::now();
 
-    for (const auto& item : m_items)
+    for (const auto& item : m_items) {
+      item->setPresentCount(presentCount);
       item->update(time);
+    }
   }
-
+  // NV-DXVK end
 
   void HudItemSet::render(HudRenderer& renderer) {
     HudPos position = { 8.0f, 8.0f };
@@ -221,9 +224,16 @@ namespace dxvk::hud {
   HudFpsItem::HudFpsItem() { }
   HudFpsItem::~HudFpsItem() { }
 
+  // NV-DXVK start: DLFG integration
+  void HudFpsItem::setPresentCount(uint32_t presentCount) {
+    m_presentCount = presentCount;
+  }
+  // NV-DXVK end
 
   void HudFpsItem::update(dxvk::high_resolution_clock::time_point time) {
-    m_frameCount += DxvkDLFG::enable() ? DxvkDLFGPresenter::getPresentFrameCount() : 1;
+    // NV-DXVK start: DLFG integration
+    m_frameCount += m_presentCount;
+    // NV-DXVK end
 
     auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(time - m_lastUpdate);
 

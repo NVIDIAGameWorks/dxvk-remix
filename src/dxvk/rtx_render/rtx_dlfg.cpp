@@ -1203,6 +1203,7 @@ namespace dxvk {
       switch (res) {
       case NGXDLFGContext::EvaluateResult::Failure:
         Logger::err("NGX DLFG evaluate failed");
+        m_hasDLFGFailed = true;
         break;
 
       case NGXDLFGContext::EvaluateResult::Success:
