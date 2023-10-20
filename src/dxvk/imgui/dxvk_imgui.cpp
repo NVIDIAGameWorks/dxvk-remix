@@ -2131,7 +2131,8 @@ namespace dxvk {
   }
 
   void ImGUI::showDLFGOptions(const Rc<DxvkContext>& ctx) {
-    if (!ctx->getCommonObjects()->metaNGXContext().supportsDLFG()) {
+    const bool supportsDLFG = ctx->getCommonObjects()->metaNGXContext().supportsDLFG() && !ctx->getCommonObjects()->metaDLFG().hasDLFGFailed();
+    if (!supportsDLFG) {
       ImGui::BeginDisabled();
     }
 
@@ -2142,12 +2143,12 @@ namespace dxvk {
       ImGui::TextWrapped(reason.c_str());
     }
 
-    if (!ctx->getCommonObjects()->metaNGXContext().supportsDLFG()) {
+    if (!supportsDLFG) {
       ImGui::EndDisabled();
     }
 
     // Force Reflex on when using G
-    if (ctx->isDLFGEnabled()) {
+    if (supportsDLFG && ctx->isDLFGEnabled()) {
       RtxOptions::Get()->reflexModeRef() = ReflexMode::LowLatency;
     } else {
       DxvkDLFG::enableRef() = false;
