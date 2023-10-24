@@ -43,6 +43,7 @@
 
 #include "dxvk_scoped_annotation.h"
 #include "rtx_lights_data.h"
+#include "rtx_light_utils.h"
 
 namespace dxvk {
 
@@ -1158,14 +1159,22 @@ namespace dxvk {
 
     const std::vector<AssetReplacement>* pReplacements = m_pReplacer->getReplacementsForLight(rtLight.getInitialHash());
     if (pReplacements) {
+      const Matrix4 lightTransform = LightUtils::getLightTransform(light);
+
       // TODO(TREX-1091) to implement meshes as light replacements, replace the below loop with a call to drawReplacements.
       for (auto&& replacement : *pReplacements) {
         if (replacement.type == AssetReplacement::eLight && replacement.lightData.has_value()) {
           LightData replacementLight = replacement.lightData.value();
           // Merge the d3d9 light into replacements based on overrides
           replacementLight.merge(light);
+          // Convert to runtime light
+          RtLight rtLight = replacementLight.toRtLight();
+          // Transform the replacement light by the legacy light
+          if (replacementLight.relativeTransform()) {
+            rtLight.applyTransform(lightTransform);
+          }
           // Apply the light
-          m_lightManager.addLight(replacementLight.toRtLight());
+          m_lightManager.addLight(rtLight);
         } else {
           assert(false); // We don't support meshes as children of lights yet.
         }

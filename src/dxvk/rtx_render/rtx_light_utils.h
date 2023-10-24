@@ -34,5 +34,8 @@ namespace dxvk {
 
     // Variant of calculateIntensity but also combine that intensity with the original light's diffuse color to determine the radiance.
     static Vector3 calculateRadiance(const D3DLIGHT9& light, const float radius);
+
+    // Best fit light transform for a given legacy light
+    static Matrix4 getLightTransform(const D3DLIGHT9& light);
   };
 } // namespace dxvk

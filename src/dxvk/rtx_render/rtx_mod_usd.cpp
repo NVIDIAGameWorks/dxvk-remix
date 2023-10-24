@@ -38,6 +38,7 @@
 #include <pxr/usd/usd/tokens.h>
 #include <pxr/usd/usd/stage.h>
 #include <pxr/usd/usd/prim.h>
+#include <pxr/usd/usd/primCompositionQuery.h>
 #include <pxr/usd/usd/attribute.h>
 #include <pxr/usd/usdGeom/mesh.h>
 #include <pxr/usd/usdGeom/subset.h>
@@ -59,6 +60,8 @@
 #include "../../lssusd/usd_common.h"
 
 #include "rtx_lights_data.h"
+#include <filesystem>
+#include <algorithm>
 
 namespace fs = std::filesystem;
 
@@ -427,12 +430,8 @@ void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
   }
 }
 
-bool IsLight(const pxr::UsdPrim& lightPrim) {
-  return lightPrim.IsA<pxr::UsdLuxSphereLight>()
-      || lightPrim.IsA<pxr::UsdLuxRectLight>()
-      || lightPrim.IsA<pxr::UsdLuxDiskLight>()
-      || lightPrim.IsA<pxr::UsdLuxCylinderLight>()
-      || lightPrim.IsA<pxr::UsdLuxDistantLight>();
+bool hasExplicitTransform(const pxr::UsdPrim& prim) {
+  return prim.HasAttribute(pxr::TfToken("xformOp:rotateZYX")) || prim.HasAttribute(pxr::TfToken("xformOp:scale")) || prim.HasAttribute(pxr::TfToken("xformOp:translate")) || prim.HasAttribute(pxr::TfToken("xformOpOrder"));
 }
 
 void UsdMod::Impl::processLight(Args& args, const pxr::UsdPrim& lightPrim) {
@@ -440,47 +439,101 @@ void UsdMod::Impl::processLight(Args& args, const pxr::UsdPrim& lightPrim) {
     Logger::err(str::format("A DistantLight detect under ", args.rootPrim.GetName(),
         " will be ignored.  DistantLights are only supported as part of light replacements, not mesh replacements."));
   }
-  
-  pxr::GfMatrix4f localToRoot;
-  // Need to preserve the root's transform if it is a light, but ignore it if it's a mesh.
+
+  // Need to preserve the root's transform if it is a root light (with transform overrides), but ignore it if it's a mesh.
   // Lights being replaced are instances that need to exist in the same place as the drawcall they're replacing.
   // Meshes being replaced are assets that may have multiple instances, so any children need to be offset from the
   // asset root, instead of the world root.
-  if (IsLight(args.rootPrim)) {
-    localToRoot = pxr::GfMatrix4f(args.xformCache.GetLocalToWorldTransform(lightPrim));
-  } else {
-    bool resetXformStack; // unused
-    localToRoot = pxr::GfMatrix4f(args.xformCache.ComputeRelativeTransform(lightPrim, args.rootPrim, &resetXformStack));
+  bool resetXformStack; // unused
+  pxr::GfMatrix4d localToRoot = args.xformCache.ComputeRelativeTransform(lightPrim, args.rootPrim, &resetXformStack);
+
+  // Because this may be an 'over' with no prim type, we must compute its transformation and include it in the localToRoot calculation
+  const bool absoluteTransform = hasExplicitTransform(args.rootPrim);
+  if (LightData::isSupportedUsdLight(args.rootPrim) && absoluteTransform) {
+    pxr::GfMatrix4d parentToWorld;
+    pxr::UsdGeomXformable xform(args.rootPrim);
+    xform.GetLocalTransformation(&parentToWorld, &resetXformStack);
+    localToRoot *= parentToWorld;
   }
 
-  const std::optional<LightData> lightData = LightData::tryCreate(lightPrim, localToRoot);
+  const std::optional<LightData> lightData = LightData::tryCreate(lightPrim, pxr::GfMatrix4f(localToRoot), absoluteTransform);
   if(lightData.has_value()) {
     args.meshes.emplace_back(lightData.value());
   }
 }
 
+bool preserveGameObject(const pxr::UsdPrim& prim) {
+  // shortcut for legacy assets
+  static const pxr::TfToken kPreserveOriginalToken("preserveOriginalDrawCall");
+  if (prim.HasAttribute(kPreserveOriginalToken)) {
+    int preserve = 0;
+    prim.GetAttribute(kPreserveOriginalToken).Get(&preserve);
+    return preserve;
+  }
+
+  auto strFindNoCase = [](const std::string s1, const std::string s2) {
+    return std::search(s1.begin(), s1.end(), s2.begin(), s2.end(), [](const char a, const char b) { return (toupper(a) == toupper(b)); }) != s1.end();
+  };
+
+  auto legacyCaptureReferenceExists = [&](const std::string referencePath) {
+    std::filesystem::path asset(referencePath);
+    return strFindNoCase(asset.replace_extension(std::filesystem::path()).string(), "/captures/meshes/" + prim.GetName().GetString());
+  };
+
+  // determine draw call preservation by querying the references
+  for (const pxr::SdfPrimSpecHandle& primSpec : prim.GetPrimStack()) {
+    if (primSpec->HasReferences()) {
+      pxr::SdfReferenceListOp listOp;
+      pxr::SdfReferencesProxy referencesProxy = primSpec->GetReferenceList();
+      if (referencesProxy.IsExplicit()) {
+        return false;
+      }
+      // Check if the capture object is present in deleted items
+      for (const pxr::SdfReference& deletedItem : referencesProxy.GetDeletedItems()) {
+        if (legacyCaptureReferenceExists(deletedItem.GetAssetPath())) {
+          return false;
+        }
+      }
+    }
+  }
+
+  return true;
+}
+
+bool explicitlyNoReferences(const pxr::UsdPrim& prim) {
+  // does the references look something like: references = None or []
+  for (const pxr::SdfPrimSpecHandle& primSpec : prim.GetPrimStack()) {
+    if (primSpec->HasReferences()) {
+      pxr::SdfReferenceListOp listOp;
+      pxr::SdfReferencesProxy referencesProxy = primSpec->GetReferenceList();
+      if (referencesProxy.IsExplicit() && referencesProxy.GetExplicitItems().size() == 0) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 void UsdMod::Impl::processReplacement(Args& args) {
   ScopedCpuProfileZone();
-  static const pxr::TfToken kPreserveOriginalToken("preserveOriginalDrawCall");
 
   if (args.rootPrim.IsA<pxr::UsdGeomMesh>()) {
     processPrim(args, args.rootPrim);
-  } else if (IsLight(args.rootPrim)) {
+  } else if (LightData::isSupportedUsdLight(args.rootPrim) && !explicitlyNoReferences(args.rootPrim)) {
     processLight(args, args.rootPrim);
   }
   auto descendents = args.rootPrim.GetFilteredDescendants(pxr::UsdPrimIsActive);
   for (auto desc : descendents) {
     if (desc.IsA<pxr::UsdGeomMesh>()) {
       processPrim(args, desc);
-    } else if (IsLight(desc)) {
+    } else if (LightData::isSupportedUsdLight(desc)) {
       processLight(args, desc);
     }
   }
-  
-  if (!args.meshes.empty() && args.rootPrim.HasAttribute(kPreserveOriginalToken)) {
-    int preserve = 0;
-    args.rootPrim.GetAttribute(kPreserveOriginalToken).Get(&preserve);
-    args.meshes[0].includeOriginal = preserve != 0;
+
+  if (!args.meshes.empty()) {
+    args.meshes[0].includeOriginal = preserveGameObject(args.rootPrim);
 
     // Read category flags if we include the original
     if (args.meshes[0].includeOriginal) {
