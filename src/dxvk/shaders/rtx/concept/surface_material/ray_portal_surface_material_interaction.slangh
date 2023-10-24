@@ -384,6 +384,7 @@ SurfaceMaterialInteractionSplitWeight rayPortalSurfaceMaterialInteractionCalcPro
 
   splitWeight.diffuseReflectionWeight = f16vec3(0.0, 0.0, 0.0);
   splitWeight.specularReflectionWeight = f16vec3(0.0, 0.0, 0.0);
+  splitWeight.diffuseTransmissionWeight = f16vec3(0.0, 0.0, 0.0);
 
   return splitWeight;
 }

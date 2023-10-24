@@ -575,7 +575,7 @@ bool opaqueSurfaceMaterialInteractionCalcLobeProbability(
   // Calculate dot products used for evaluation
 
   SubsurfaceMaterial subSurfaceMaterial;
-  bool isThinOpaqueSurface = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
+  const bool isSubSurface = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
 
   // Note: Normal dot output direction used as a "best" approximation in this case, usually aligned with the actual sampled
   // microfacet normal on surfaces with low roughness (identical at 0), but will become more and more potentially inaccurate
@@ -598,8 +598,7 @@ bool opaqueSurfaceMaterialInteractionCalcLobeProbability(
   diffuseReflectionProbability = albedoLuminance;
   specularReflectionProbability = fresnelLuminance;
   opacityTransmissionProbability = 1.0h - opaqueSurfaceMaterialInteraction.opacity;
-  diffuseTransmissionProbability =
-    (cb.thinOpaqueEnable && isThinOpaqueSurface && subSurfaceMaterial.measurementDistance > 0.0h) ? 1.0h - fresnelLuminance : 0.0h;
+  diffuseTransmissionProbability = isSubSurface ? 1.0h - fresnelLuminance : 0.0h;
 
   // Todo: Pass raytraceArgs in in the future if accessing these constants poses a problem later.
   adjustProbabilityValue(
@@ -979,8 +978,6 @@ SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcDiffuseTran
   return materialSample;
 }
 
-// Implement First-Order Approximation for 1-layer virtual volume surface to simulate diffuse transmission of Thin Opaque Surface
-// [P. Hanrahan 1993, "Reflection from Layered Surfaces due to Subsurface Scattering"], Chapter 5.1
 SurfaceMaterialInteractionSample thinOpaqueSurfaceMaterialInteractionCalcDiffuseTransmissionSample(
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
   inout RNG randomState,
@@ -997,72 +994,36 @@ SurfaceMaterialInteractionSample thinOpaqueSurfaceMaterialInteractionCalcDiffuse
 
   const f16vec2 u = f16vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState));
   float cosineHemisphereSolidAnglePdf = 0.0f;
-  f16vec3 inputDirection = -calcCosineHemisphereDirectionSample(u, cosineHemisphereSolidAnglePdf);
+  const f16vec3 inputDirection = -calcCosineHemisphereDirectionSample(u, cosineHemisphereSolidAnglePdf);
 
-  // Simulate monochromatic base reflectivity from non-monochromatic case
-  const float16_t baseReflectivity = calcBt709Luminance(opaqueSurfaceMaterialInteraction.baseReflectivity);
-
-  const float16_t refractiveIndex = baseReflectivityToIoR(materialIoRVacuum, baseReflectivity);
-  const float16_t outsideRelativeRefractiveIndex = materialIoRVacuum / refractiveIndex;
-  const float16_t insideRelativeRefractiveIndex = refractiveIndex / materialIoRVacuum;
-
-  const float16_t /* v.h */ outputDirectionDotMicrofacetNormal = outputDirection.z;
+  const float16_t /* n.v */ normalDotOutputDirection = outputDirection.z;
   // Note: Negative as input direction always points into surface
-  const float16_t /* l.h */ inputDirectionDotMicrofacetNormal = -inputDirection.z;
+  const float16_t /*-n.l */ transmissionNormalDotInputDirection = -inputDirection.z;
   const float16_t /* v.l */ inputDirectionDotOutputDirection = dot(-outputDirection, inputDirection);
 
-  // Calculate path integral throughput/weight
-  const float16_t outsideFresnel = evalTranslucentSchlickFresnel(baseReflectivity, outputDirectionDotMicrofacetNormal);
-  const float16_t insideFresnel = evalTranslucentSchlickFresnelTIR(baseReflectivity, insideRelativeRefractiveIndex, inputDirectionDotMicrofacetNormal);
-  const float16_t attenuationDistance = subSurfaceMaterial.measurementDistance * subSurfaceMaterial.measurementDistance;
-  const f16vec3 attenuationCoefficient = subSurfaceMaterial.volumetricAttenuationCoefficient;
-  const float16_t firstOpticalDepthScale = 1.0f / outputDirectionDotMicrofacetNormal;
-  const float16_t secondOpticalDepthScale = 1.0f / inputDirectionDotMicrofacetNormal;
-  const f16vec3 firstAttenuation =
-    evalBeerLambertAttenuation(attenuationCoefficient, attenuationDistance * firstOpticalDepthScale);
-  const f16vec3 secondAttenuation =
-    evalBeerLambertAttenuation(attenuationCoefficient, attenuationDistance * secondOpticalDepthScale);
+  const f16vec3 weight = evalHanrahanSingleScatteringDiffuseTransmission(
+    opaqueSurfaceMaterialInteraction.baseReflectivity,
+    subSurfaceMaterial.volumetricAttenuationCoefficient, subSurfaceMaterial.measurementDistance,
+    subSurfaceMaterial.singleScatteringAlbedo, subSurfaceMaterial.volumetricAnisotropy,
+    normalDotOutputDirection,
+    transmissionNormalDotInputDirection,
+    inputDirectionDotOutputDirection);
 
-  const float16_t anisotropy = subSurfaceMaterial.volumetricAnisotropy;
-  const float16_t phaseWeight = evalHenyeyGreensteinPhaseFunction(anisotropy, inputDirectionDotOutputDirection);
-
-  if (inputDirectionDotMicrofacetNormal < materialEpsilon || insideFresnel >= 1.0f)
+  if (all(weight == 0.0h))
   {
     SurfaceMaterialInteractionSample materialSample;
-    materialSample.inputDirection = f16vec3(0.0, 0.0, 0.0);
-    materialSample.throughput = f16vec3(0.0, 0.0, 0.0);
-    materialSample.solidAnglePdf = 0.0f;
+    materialSample.inputDirection = f16vec3(0.0h, 0.0h, 0.0h);
+    materialSample.throughput = f16vec3(0.0h, 0.0h, 0.0h);
+    materialSample.solidAnglePdf = 0.0h;
 
     penetrateSurface = false;
 
     return materialSample;
   }
 
-  const f16vec3 singleScatteringAlbedo = subSurfaceMaterial.singleScatteringAlbedo;
-
-  f16vec3 weight = 0.0f;
-
-  if ((outputDirectionDotMicrofacetNormal - inputDirectionDotMicrofacetNormal) >= materialEpsilon)
-  {
-    // First-Order forward scattered radiance equation
-    weight = singleScatteringAlbedo * (1.0f - outsideFresnel) * (1.0f - insideFresnel) *
-             safePositiveDivide(outputDirectionDotMicrofacetNormal,
-              (outputDirectionDotMicrofacetNormal - inputDirectionDotMicrofacetNormal), materialEpsilon) *
-             phaseWeight * (firstAttenuation - secondAttenuation);
-  }
-  else
-  {
-    // Note: Derivative version of forward scattered radiance equation to handle singularity
-    //       when outputDirectionDotMicrofacetNormal and inputDirectionDotMicrofacetNormal are the same value
-    weight = singleScatteringAlbedo * (1.0f - outsideFresnel) * (1.0f - insideFresnel) *
-             safePositiveDivide((attenuationCoefficient * attenuationDistance),
-              inputDirectionDotMicrofacetNormal, materialEpsilon) *
-             phaseWeight * secondAttenuation;
-  }
-
   SurfaceMaterialInteractionSample materialSample;
   materialSample.inputDirection = quaternionTransformVector(tangentToWorldSpaceQuaternion, inputDirection);
-  materialSample.throughput = safePositiveDivide(weight, f16vec3(cosineHemisphereSolidAnglePdf), materialEpsilon) * inputDirectionDotMicrofacetNormal;
+  materialSample.throughput = safePositiveDivide(weight, f16vec3(cosineHemisphereSolidAnglePdf), materialEpsilon) * transmissionNormalDotInputDirection;
   materialSample.solidAnglePdf = cosineHemisphereSolidAnglePdf;
 
   // Note: Transmission rays penetrate the surface like translucent materials.
@@ -1432,12 +1393,31 @@ SurfaceMaterialInteractionSplitWeight opaqueSurfaceMaterialInteractionCalcApprox
   const float16_t /* n.l */ normalDotInputDirection = dot(inputDirection, opaqueSurfaceMaterialInteraction.shadingNormal);
   const float16_t /* n.v */ normalDotOutputDirection = dot(minimalRayInteraction.viewDirection, opaqueSurfaceMaterialInteraction.shadingNormal);
 
+  // Load Subsurface Material
+  SubsurfaceMaterial subSurfaceMaterial;
+  const bool sssEnabled = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
+
+  f16vec3 diffuseTransmissionWeight = f16vec3(0.0, 0.0, 0.0);
+  if (sssEnabled)
+  {
+    diffuseTransmissionWeight = subSurfaceMaterial.singleScatteringAlbedo;
+  }
+
   if (normalDotOutputDirection <= float16_t(0.0) || normalDotInputDirection <= float16_t(0.0))
   {
     SurfaceMaterialInteractionSplitWeight splitWeight;
 
     splitWeight.diffuseReflectionWeight = f16vec3(0.0, 0.0, 0.0);
     splitWeight.specularReflectionWeight = f16vec3(0.0, 0.0, 0.0);
+
+    if (normalDotOutputDirection <= float16_t(0.0))
+    {
+      splitWeight.diffuseTransmissionWeight = f16vec3(0.0, 0.0, 0.0);
+    }
+    else
+    {
+      splitWeight.diffuseTransmissionWeight = diffuseTransmissionWeight * (-normalDotInputDirection);
+    }
 
     return splitWeight;
   }
@@ -1453,6 +1433,7 @@ SurfaceMaterialInteractionSplitWeight opaqueSurfaceMaterialInteractionCalcApprox
   SurfaceMaterialInteractionSplitWeight splitWeight;
   splitWeight.diffuseReflectionWeight = diffuseReflectionWeight * normalDotInputDirection;
   splitWeight.specularReflectionWeight = specularReflectionWeight * normalDotInputDirection;
+  splitWeight.diffuseTransmissionWeight = f16vec3(0.0, 0.0, 0.0); // Will always be 0 when normalDotInputDirection >= 0
 
   return splitWeight;
 }
@@ -1489,13 +1470,29 @@ SurfaceMaterialInteractionSplitWeight opaqueSurfaceMaterialInteractionCalcProjec
   const float16_t /* t.h */ tangentDotMicrofacetNormal = microfacetNormal.x;
   const float16_t /* b.h */ bitangentDotMicrofacetNormal = microfacetNormal.y;
   const float16_t /* n.h */ normalDotMicrofacetNormal = microfacetNormal.z;
+  const float16_t /*-n.l */ transmissionNormalDotInputDirection = -tangentInputDirection.z;
 
-  if (normalDotOutputDirection <= float16_t(0.0) || normalDotInputDirection <= float16_t(0.0))
+  // Load Subsurface Material
+  SubsurfaceMaterial subSurfaceMaterial;
+  const bool sssEnabled = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
+
+  f16vec3 diffuseTransmissionWeight = f16vec3(0.0h, 0.0h, 0.0h);
+  if (sssEnabled && normalDotOutputDirection > 0.0h) {
+    diffuseTransmissionWeight = evalHanrahanSingleScatteringDiffuseTransmission(
+      opaqueSurfaceMaterialInteraction.baseReflectivity,
+      subSurfaceMaterial.volumetricAttenuationCoefficient, subSurfaceMaterial.measurementDistance,
+      subSurfaceMaterial.singleScatteringAlbedo, subSurfaceMaterial.volumetricAnisotropy,
+      normalDotOutputDirection,
+      transmissionNormalDotInputDirection,
+      inputDirectionDotOutputDirection);
+  }
+
+  if (normalDotOutputDirection <= 0.0h || normalDotInputDirection <= 0.0h)
   {
     SurfaceMaterialInteractionSplitWeight splitWeight;
-
     splitWeight.diffuseReflectionWeight = f16vec3(0.0, 0.0, 0.0);
     splitWeight.specularReflectionWeight = f16vec3(0.0, 0.0, 0.0);
+    splitWeight.diffuseTransmissionWeight = diffuseTransmissionWeight * transmissionNormalDotInputDirection;
 
     return splitWeight;
   }
@@ -1548,6 +1545,7 @@ SurfaceMaterialInteractionSplitWeight opaqueSurfaceMaterialInteractionCalcProjec
 
   splitWeight.diffuseReflectionWeight = diffuseReflectionWeight * normalDotInputDirection;
   splitWeight.specularReflectionWeight = specularReflectionWeight * normalDotInputDirection;
+  splitWeight.diffuseTransmissionWeight = diffuseTransmissionWeight * normalDotInputDirection;
 
   return splitWeight;
 }

@@ -894,9 +894,6 @@ namespace dxvk {
       bool alphaIsThinFilmThickness = false;
       float thinFilmThicknessConstant = 0.0f;
       float displaceIn = 1.0f;
-      float thinOpaqueThickness = 0.0f;
-      float thinOpaqueAttenuationCoefficient = 0.0f;
-      uint8_t thinOpaqueSingleScatteringAlbedoScale = 0;
 
       Vector3 subsurfaceTransmittanceColor(0.0f, 0.0f, 0.0f);
       float subsurfaceMeasurementDistance = 0.0f;
