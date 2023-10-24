@@ -1837,11 +1837,11 @@ namespace dxvk {
 
     // Grab and apply replacement texture if any
     // NOTE: only the original color texture will be replaced with albedo-opacity texture
-    auto replacementMaterial = getSceneManager().getAssetReplacer()->getReplacementMaterial(drawCallState.getMaterialData().getHash());
+    MaterialData* replacementMaterial = getSceneManager().getAssetReplacer()->getReplacementMaterial(drawCallState.getMaterialData().getHash());
     bool replacemenIsLDR = false;
     Rc<DxvkImageView> curColorView;
 
-    if (replacementMaterial) {
+    if (replacementMaterial && replacementMaterial->getType() == MaterialDataType::Opaque) {
       // Must pull a ref because we will modify it for loading purposes below.
       TextureRef& albedoOpacity = replacementMaterial->getOpaqueMaterialData().getAlbedoOpacityTexture();
 

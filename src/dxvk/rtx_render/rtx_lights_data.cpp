@@ -27,6 +27,7 @@
 #include "rtx_options.h"
 
 #include <d3d9types.h>
+#include <regex>
 
 #include "../../lssusd/usd_include_begin.h"
 #include <pxr/base/vt/value.h>
@@ -34,6 +35,7 @@
 #include <pxr/usd/usd/prim.h>
 #include <pxr/usd/usd/attribute.h>
 #include <pxr/base/gf/matrix4f.h>
+#include <pxr/base/gf/rotation.h>
 #include <pxr/usd/usdLux/sphereLight.h>
 #include <pxr/usd/usdLux/rectLight.h>
 #include <pxr/usd/usdLux/diskLight.h>
@@ -65,9 +67,12 @@
       m_##name = clamp(m_##name, minVal, maxVal);
 
 namespace dxvk {
-  LightData::LightData(const pxr::UsdPrim& lightPrim, const pxr::GfMatrix4f& localToRoot) :
+  LightData::LightData(const pxr::UsdPrim& lightPrim, const pxr::GfMatrix4f& localToRoot, const bool absoluteTransform) :
     LIST_LIGHT_CONSTANTS(WRITE_CTOR_INIT)
-    m_lightType(getLightType(lightPrim)) {
+    m_lightType(LightType::Unknown),
+    m_transformType(absoluteTransform ? TransformType::Absolute : TransformType::Relative),
+    m_dirty(absoluteTransform ? (1u << (uint32_t)DirtyFlags::k_Transform) : 0){
+    getLightType(lightPrim, m_lightType);
     extractTransform(localToRoot);
     deserialize(lightPrim);
     sanitizeData();
@@ -75,25 +80,25 @@ namespace dxvk {
 
   RtLight LightData::toRtLight() const {
     switch (m_lightType) {
-    case RtLightType::Sphere:
+    case LightType::Sphere:
     {
       return RtLight(RtSphereLight(m_position, calculateRadiance(), m_Radius, getLightShaping(m_zAxis), m_cachedHash));
     }
-    case RtLightType::Rect:
+    case LightType::Rect:
     {
       const Vector2 dimensions(m_Width * m_xScale, m_Height * m_yScale);
       return RtLight(RtRectLight(m_position, dimensions, m_xAxis, m_yAxis, calculateRadiance(), getLightShaping(m_zAxis)));
     }
-    case RtLightType::Disk:
+    case LightType::Disk:
     {
       const Vector2 halfDimensions(m_Radius * m_xScale, m_Radius * m_yScale);
       return RtLight(RtDiskLight(m_position, halfDimensions, m_xAxis, m_yAxis, calculateRadiance(), getLightShaping(m_zAxis)));
     }
-    case RtLightType::Cylinder:
+    case LightType::Cylinder:
     {
       return RtLight(RtCylinderLight(m_position, m_Radius, m_xAxis, m_Length * m_xScale, calculateRadiance()));
     }
-    case RtLightType::Distant:
+    case LightType::Distant:
     {
       const float halfAngle = m_AngleRadians / 2.0f;
       return RtLight(RtDistantLight(m_zAxis, halfAngle, calculateRadiance(), m_cachedHash));
@@ -108,15 +113,32 @@ namespace dxvk {
     if (m_dirty != DirtyFlags::AllDirty) {
       std::optional<LightData> input = tryCreate(light);
       if (input.has_value()) {
-        merge(input.value(), !m_dirty.test(DirtyFlags::k_Transform)); // when converting from legacy lights, we always use the games transform
+        merge(input.value()); // when converting from legacy lights, we always use the games transform
+      }
+    }
+
+    // Merge in the light type if it's currently unknown
+    if (m_lightType == LightType::Unknown) {
+      switch (light.Type) {
+      case D3DLIGHT_POINT:
+      case D3DLIGHT_SPOT:
+        m_lightType = LightType::Sphere;
+        break;
+      case D3DLIGHT_DIRECTIONAL:
+        m_lightType = LightType::Distant;
+        break;
       }
     }
   }
 
-  void LightData::merge(const LightData& input, const bool useInputTransform /*= false*/) {
+  bool LightData::isShapingEnabled() const {
+    return m_ConeAngleRadians != (180.f * kDegreesToRadians) || m_ConeSoftness != 0.0f || m_Focus != 0.0f;
+  }
+
+  void LightData::merge(const LightData& input) {
     LIST_LIGHT_CONSTANTS(WRITE_PARAMETER_MERGE);
 
-    if (useInputTransform) {
+    if (!m_dirty.test(DirtyFlags::k_Transform)) {
       m_position = input.m_position;
       m_xAxis = input.m_xAxis;
       m_yAxis = input.m_yAxis;
@@ -126,7 +148,6 @@ namespace dxvk {
       m_zScale = input.m_zScale;
     }
   }
-
 
   std::optional<LightData> LightData::tryCreate(const D3DLIGHT9& light) {
     // Ensure the D3D9 Light is of a valid type
@@ -155,26 +176,22 @@ namespace dxvk {
     return {};
   }
   
-  std::optional<LightData> LightData::tryCreate(const pxr::UsdPrim& lightPrim, const pxr::GfMatrix4f& localToRoot) {
+  std::optional<LightData> LightData::tryCreate(const pxr::UsdPrim& lightPrim, const pxr::GfMatrix4f& localToRoot, const bool absoluteTransform) {
     // Ensure the USD light is a supported type
 
-    try {
-      getLightType(lightPrim);
-    }
-    catch (const DxvkError& e) {
-      Logger::err(e.message());
+    if (!isSupportedUsdLight(lightPrim)) {
       return {};
     }
 
     // Construct and return the light
 
-    return std::optional<LightData>(std::in_place, LightData(lightPrim, localToRoot));
+    return std::optional<LightData>(std::in_place, LightData(lightPrim, localToRoot, absoluteTransform));
   }
 
   LightData LightData::createFromDirectional(const D3DLIGHT9& light) {
     LightData output;
 
-    output.m_lightType = RtLightType::Distant;
+    output.m_lightType = LightType::Distant;
 
     const Vector3 originalDirection { light.Direction.x, light.Direction.y, light.Direction.z };
 
@@ -209,7 +226,7 @@ namespace dxvk {
 
   LightData LightData::createFromPointSpot(const D3DLIGHT9& light) {
     LightData output;
-    output.m_lightType = RtLightType::Sphere;
+    output.m_lightType = LightType::Sphere;
 
     const Vector3 originalPosition { light.Position.x, light.Position.y, light.Position.z };
     const float originalBrightness = std::max(light.Diffuse.r, std::max(light.Diffuse.g, light.Diffuse.b));
@@ -261,23 +278,38 @@ namespace dxvk {
     return output;
   }
 
-  RtLightType LightData::getLightType(const pxr::UsdPrim& lightPrim) {
+  // When a light is being overridden in USD, we may not always get the light type.
+  // For these lights we rely on the prim path (which is standardized for captured lights)
+  //  and use the light determined by the game at runtime [See: merge(D3DLIGHT9)]
+  static const std::regex s_unknownLightPattern("^/RootNode/lights/light_[0-9A-Fa-f]{16}$");
+
+  bool LightData::getLightType(const pxr::UsdPrim& lightPrim, LightData::LightType& typeOut) {
     if (lightPrim.IsA<pxr::UsdLuxSphereLight>()) {
-      return RtLightType::Sphere;
+      typeOut = LightType::Sphere;
+      return true;
     } else if (lightPrim.IsA<pxr::UsdLuxRectLight>()) {
-      return RtLightType::Rect;
+      typeOut = LightType::Rect;
+      return true;
     } else if (lightPrim.IsA<pxr::UsdLuxDiskLight>()) {
-      return RtLightType::Disk;
+      typeOut = LightType::Disk;
+      return true;
     } else if (lightPrim.IsA<pxr::UsdLuxCylinderLight>()) {
-      return RtLightType::Cylinder;
+      typeOut = LightType::Cylinder;
+      return true;
     } else if (lightPrim.IsA<pxr::UsdLuxDistantLight>()) {
-      return RtLightType::Distant;
-    } else {
-      throw DxvkError(str::format(
-        "Attempted to create an unsupported light type from USD.  Prim=",
-        lightPrim.GetPath().GetAsString()
-      ));
+      typeOut = LightType::Distant;
+      return true;
+    } else if (std::regex_match(lightPrim.GetPath().GetAsString(), s_unknownLightPattern)) {
+      typeOut = LightType::Unknown;
+      return true;
     }
+
+    return false;
+  }
+
+  bool LightData::isSupportedUsdLight(const pxr::UsdPrim& lightPrim) {
+    LightType unused;
+    return getLightType(lightPrim, unused);
   }
 
   // USD transitioned from `intensity` to `inputs:intensity` for all its light attributes, we need to support content
@@ -300,7 +332,6 @@ namespace dxvk {
       const pxr::GfVec3f vec = pxr::UsdLuxBlackbodyTemperatureAsRgb(m_ColorTemp);
       temperature = Vector3(vec.data());
     }
-
     return m_Color * m_Intensity * pow(2, m_Exposure) * temperature;
   }
 
@@ -310,7 +341,7 @@ namespace dxvk {
     shaping.cosConeAngle = cos(m_ConeAngleRadians);
     shaping.coneSoftness = m_ConeSoftness;
     shaping.focusExponent = m_Focus;
-    shaping.enabled = m_ConeAngleRadians != (180.f * kDegreesToRadians) || shaping.coneSoftness != 0.0f || shaping.focusExponent != 0.0f;
+    shaping.enabled = isShapingEnabled();
     return shaping;
   }
 
@@ -331,7 +362,7 @@ namespace dxvk {
     m_zAxis = zVecUsd.GetArray();
 
     // NOTE: this negative on m_zAxis is clearly indicating a problem somewhere, but just preserving the existing behavior for now
-    if (m_lightType == RtLightType::Sphere) {
+    if (m_lightType == LightType::Sphere) {
       m_zAxis = -m_zAxis;
     }
   }
@@ -350,7 +381,7 @@ namespace dxvk {
     // If this light is fully defined (i.e. a child light) then we need to use all attributes
     if (prim.GetSpecifier() == pxr::SdfSpecifier::SdfSpecifierDef) {
       m_dirty = DirtyFlags::AllDirty;
-    }
+    } 
   }
 
   void LightData::sanitizeData() {
