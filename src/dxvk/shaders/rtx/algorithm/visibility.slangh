@@ -78,7 +78,41 @@ f16vec3 handleVisibilityVertex(Ray ray, RayHitInfo rayHitInfo, uint8_t visibilit
     const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
       opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteraction);
 
-    return float16_t(1.0) - opaqueSurfaceMaterialInteraction.opacity;
+    SubsurfaceMaterial subSurfaceMaterial;
+    const bool isSubsurface = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
+
+    if (!isSubsurface)
+    {
+      return 1.0h - opaqueSurfaceMaterialInteraction.opacity;
+    }
+    else
+    {
+      const float16_t normalDotOutputDirection = dot(-ray.direction, opaqueSurfaceMaterialInteraction.shadingNormal);
+      if (normalDotOutputDirection < materialEpsilon)
+      {
+        return 0.0h;
+      }
+
+      // Approximate the attenuation with assumption that input and output rays are on the same line and the volume is isotropic
+      const float16_t baseReflectivity = calcBt709Luminance(opaqueSurfaceMaterialInteraction.baseReflectivity);
+      const float16_t insideRelativeRefractiveIndex = baseReflectivityToIoR(materialIoRVacuum, baseReflectivity) / materialIoRVacuum;
+
+      // Calculate path integral throughput/weight
+      const float16_t outsideFresnel = evalTranslucentSchlickFresnel(baseReflectivity, normalDotOutputDirection);
+      const float16_t insideFresnel = evalTranslucentSchlickFresnelTIR(baseReflectivity, insideRelativeRefractiveIndex, normalDotOutputDirection);
+      const float16_t attenuationDistance = subSurfaceMaterial.measurementDistance * subSurfaceMaterial.measurementDistance;
+      const f16vec3 attenuation = evalBeerLambertAttenuation(subSurfaceMaterial.volumetricAttenuationCoefficient, attenuationDistance * rcp(float(normalDotOutputDirection)));
+
+      if (insideFresnel >= 1.0h)
+      {
+        return 0.0h;
+      }
+
+      return subSurfaceMaterial.singleScatteringAlbedo * (1.0f - outsideFresnel) * (1.0f - insideFresnel) *
+             safePositiveDivide((subSurfaceMaterial.volumetricAttenuationCoefficient * attenuationDistance),
+              normalDotOutputDirection, materialEpsilon) *
+             rcp(fourPi) * attenuation;
+    }
   }
   else if (polymorphicType == surfaceMaterialTypeTranslucent && packedFlagGet(visibilityMode, visibilityModeEnableTranslucentMaterials))
   {
@@ -326,13 +360,14 @@ VisibilityResult traceVisibilityRay(
 
 VisibilityResult traceVisibilityRay(
   MinimalSurfaceInteraction minimalSurfaceInteraction, float3 targetPosition,
-  bool penetrateSurface, uint8_t rayMask, uint8_t visibilityMode, uint8_t expectedRayPortalIndex,
-  PortalSpace2BitsType rayOriginPortalSpace,
-  float16_t coneRadius = 0, float16_t spreadAngle = 0, float16_t tMaxFactor = 1.0,
+  uint8_t rayMask, uint8_t visibilityMode,
+  uint8_t expectedRayPortalIndex, PortalSpace2BitsType rayOriginPortalSpace,
+  float16_t coneRadius = 0, float16_t spreadAngle = 0, float16_t tMaxFactor = 1.0h,
   // ViewModel instances shouldn't occlude anything but ViewModel surfaces and primary rays
   bool hasRayOriginatedFromViewModel = false,
   bool usePreviousTLAS = false,
-  uint16_t primarySurfaceIndex = BINDING_INDEX_INVALID, float2 texCoords = float2(0.f))
+  uint16_t primarySurfaceIndex = BINDING_INDEX_INVALID, float2 texCoords = f16vec2(0.0h),
+  bool isSubsurface = false, f16vec3 shadingNormal = f16vec3(0.0h))
 {
   MinimalRayInteraction minimalRayInteraction = (MinimalRayInteraction)0;
   minimalRayInteraction.coneRadius = coneRadius;
@@ -340,8 +375,17 @@ VisibilityResult traceVisibilityRay(
   Ray viewRay = (Ray)0;
   viewRay.spreadAngle = spreadAngle;
 
-  Ray visibilityRay = rayCreatePosition(
-    minimalRayInteraction, minimalSurfaceInteraction, viewRay, targetPosition, penetrateSurface);
+  Ray visibilityRay;
+  if (!isSubsurface)
+  {
+    visibilityRay = rayCreatePosition(
+      minimalRayInteraction, minimalSurfaceInteraction, viewRay, targetPosition, false);
+  }
+  else
+  {
+    visibilityRay = rayCreatePositionSubsurface(
+      minimalRayInteraction, minimalSurfaceInteraction, viewRay, targetPosition, shadingNormal);
+  }
 
   visibilityRay.tMax *= tMaxFactor;
 

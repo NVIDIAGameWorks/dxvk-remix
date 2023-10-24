@@ -55,6 +55,7 @@ struct SurfaceMaterialInteractionSplitWeight
   // Note: Only Diffuse and Specular reflection weights needed as weights are never evaluated separately on transmission lobes
   f16vec3 diffuseReflectionWeight;
   f16vec3 specularReflectionWeight;
+  f16vec3 diffuseTransmissionWeight;
 };
 
 struct SurfaceMaterialInteractionSample
@@ -120,14 +121,13 @@ bool subSurfaceMaterialReadHelper(
   uint16_t subsurfaceMaterialIndex,
   inout SubsurfaceMaterial subSurfaceMaterial)
 {
-  const MemoryPolymorphicSurfaceMaterial memorySubSurfaceMaterial = surfaceMaterialExtensions[subsurfaceMaterialIndex];
-
-  if (subsurfaceMaterialIndex == BINDING_INDEX_INVALID)
+  if (!cb.thinOpaqueEnable || subsurfaceMaterialIndex == BINDING_INDEX_INVALID)
   {
     return false;
   }
 
+  const MemoryPolymorphicSurfaceMaterial memorySubSurfaceMaterial = surfaceMaterialExtensions[subsurfaceMaterialIndex];
   subSurfaceMaterial = subsurfaceMaterialCreate(memorySubSurfaceMaterial);
 
-  return true;
+  return subSurfaceMaterial.measurementDistance > 0.0h;
 }

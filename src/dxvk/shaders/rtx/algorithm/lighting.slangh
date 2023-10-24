@@ -76,6 +76,7 @@ bool sampleLightRTXDI(
 bool sampleLightBasicRIS(
   inout RNG randomState,
   MinimalSurfaceInteraction surfaceInteraction,
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
   inout LightSample lightSample, inout float inverseSelectionPdf)
 {
   if (cb.risTotalSampleCount == 0)
@@ -88,6 +89,10 @@ bool sampleLightBasicRIS(
   MemoryPolymorphicLight selectedPolymorphicLight;
   float selectedLightTargetPdf = 0.0f;
   float weightSum = 0.0f;
+
+    // Load Subsurface Material
+  SubsurfaceMaterial subSurfaceMaterial;
+  const bool isSubSurface = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
 
   [unroll]
   for (uint lightType = 0; lightType < lightTypeCount; ++lightType)
@@ -118,7 +123,7 @@ bool sampleLightBasicRIS(
       // can effectively unroll the loop and remove the switch from decodedPolymorphicLightCalcWeight
       DecodedPolymorphicLight decodedPolymorphicLight = decodePolymorphicLight(memoryPolymorphicLight);
       decodedPolymorphicLight.polymorphicType = lightType;
-      const float targetPdf = decodedPolymorphicLightCalcWeight(decodedPolymorphicLight, surfaceInteraction);
+      const float targetPdf = decodedPolymorphicLightCalcWeight(decodedPolymorphicLight, surfaceInteraction, isSubSurface);
 
       // Accumulate the light's weight
 
@@ -227,7 +232,8 @@ bool sampleLightAdvancedRIS(
       const SurfaceMaterialInteractionSplitWeight splitWeight = opaqueSurfaceMaterialInteractionCalcApproxProjectedWeight(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
       // Note: Only divide by the light sample's PDF if it is non-zero (as it may be zero when sampling a light from a specific location is impossible).
       const float lightThroughput = candidateSample.solidAnglePdf > 0.0f ? 1.0f / candidateSample.solidAnglePdf : 0.0f;
-      const float targetPdf = calcBt709Luminance(candidateSample.radiance * (splitWeight.diffuseReflectionWeight + splitWeight.specularReflectionWeight));
+      const float targetPdf = calcBt709Luminance(candidateSample.radiance * (
+        splitWeight.diffuseReflectionWeight + splitWeight.specularReflectionWeight + splitWeight.diffuseTransmissionWeight));
 
       // Accumulate the light's weight
       const float risWeight = targetPdf * rangeInvSourcePdf * lightThroughput;
@@ -304,7 +310,7 @@ bool sampleLightRIS(
   switch(kSurfaceRISType)
   {
   case 0:
-    return sampleLightBasicRIS(randomState, surfaceInteraction, lightSample, inverseSelectionPdf);
+    return sampleLightBasicRIS(randomState, surfaceInteraction, opaqueSurfaceMaterialInteraction, lightSample, inverseSelectionPdf);
   case 1:    
     return sampleLightAdvancedRIS(randomState, surfaceInteraction, opaqueSurfaceMaterialInteraction, viewDirection, lightSample, inverseSelectionPdf, lightIndex);
   case 2:

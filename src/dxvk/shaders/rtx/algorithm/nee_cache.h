@@ -505,6 +505,7 @@ struct NEECell
     float ndotm = saturate(dot(halfVector, normal));
     float specularTerm = specularRatio * evalGGXNormalDistributionIsotropic(roughness, ndotm) * cb.neeCacheArgs.specularFactor * 0.25;
 
+    // TODO: SSS - Add transmission radiance
     float radiance = candidate.getRadiance();
     return radiance * (diffuseTerm + specularTerm) * ndoti;
   }

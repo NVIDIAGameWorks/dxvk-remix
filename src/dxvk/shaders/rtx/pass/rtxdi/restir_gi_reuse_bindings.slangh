@@ -72,3 +72,5 @@ Texture2D<uint> SharedFlags;
 layout(rgba32f, binding = RESTIR_GI_REUSE_BINDING_PREV_WORLD_POSITION_INPUT)
 Texture2D<float4> PreviousWorldPosition_WorldTriangleNormal;
 
+layout(r16ui, binding = RESTIR_GI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT)
+Texture2D<uint> SharedSurfaceIndex;

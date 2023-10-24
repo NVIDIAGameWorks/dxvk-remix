@@ -140,7 +140,8 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
           uint16_t surfaceIndex = cb.pomEnableNEECache && opaqueSurfaceMaterialInteractionHasHeightTexture(opaqueSurfaceMaterialInteraction) ? uint16_t(SharedSurfaceIndex[threadIndex]) : BINDING_INDEX_INVALID;
           isVisible = evalNEESecondary(
             lightSample, invalidRayPortalIndex, surface.portalSpace, rayMask,
-            surface.isViewModel, primaryRay, minimalRayInteraction, minimalSurfaceInteraction,
+            surface.isViewModel, primaryRay,
+            minimalRayInteraction, minimalSurfaceInteraction, opaqueSurfaceMaterialInteraction,
             diffuseLight, specularLight, surfaceIndex, DisplacementTextureCoord[threadIndex]);
 
           indirectDiffuseOutput.xyz += diffuseLight;

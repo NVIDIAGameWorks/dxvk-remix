@@ -51,10 +51,11 @@ void evalNEEPrimary(
   PortalSpace2BitsType portalSpace,
   uint8_t objectMask,
   bool isViewModelSurface,
-  Ray viewRay, 
-  MinimalRayInteraction minimalRayInteraction, 
+  Ray viewRay,
+  MinimalRayInteraction minimalRayInteraction,
   MinimalSurfaceInteraction minimalSurfaceInteraction,
-  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction)
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction
+  )
 {
   // Setup and trace the visibility ray
 
@@ -64,19 +65,27 @@ void evalNEEPrimary(
   const bool enablePOM = cb.pomEnableDirectLighting && opaqueSurfaceMaterialInteractionHasHeightTexture(opaqueSurfaceMaterialInteraction);
   const uint16_t primarySurfaceIndex = enablePOM ? uint16_t(SharedSurfaceIndex[pixelCoordinate]) : BINDING_INDEX_INVALID;
 
-  VisibilityResult visibility = traceVisibilityRay(minimalSurfaceInteraction,
-    lightSample.position, false, rayMask,
+  // Load Subsurface Material
+  SubsurfaceMaterial subSurfaceMaterial;
+  const bool isSubSurface = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
+
+  const VisibilityResult visibility = traceVisibilityRay(
+    minimalSurfaceInteraction,
+    lightSample.position, rayMask,
     visibilityModeAccurateHitDistance | visibilityModeEnableTranslucentMaterials,
     sampledTransportPortalIndex, portalSpace,
     minimalRayInteraction.coneRadius, viewRay.spreadAngle, 1.0, isViewModelSurface, false,
-    primarySurfaceIndex, DisplacementTextureCoord[pixelCoordinate]);
+    primarySurfaceIndex, DisplacementTextureCoord[pixelCoordinate],
+    isSubSurface, opaqueSurfaceMaterialInteraction.shadingNormal);
 
   hitDistance = visibility.hitDistance;
   hasOpaqueHit = visibility.hasOpaqueHit;
   illuminance = 0;
 
   if (visibility.hasOpaqueHit)
+  {
     return;
+  }
 
   // Evaluate the material and accumulate throughput and hit distance
 
@@ -89,16 +98,21 @@ void evalNEEPrimary(
 
   const f16vec3 diffuseLobeWeight = splitWeight.diffuseReflectionWeight;
   const f16vec3 specularLobeWeight = splitWeight.specularReflectionWeight;
+  const f16vec3 diffuseTransmissionLobeWeight = splitWeight.diffuseTransmissionWeight;
+
+  // TODO: Handle Transmission Weight
 
   // Accumulate Radiance
 
   const vec3 commonLightThroughput = lightSampleThroughput * vec3(visibility.attenuation);
   const vec3 diffuseLobeLightThroughput = vec3(diffuseLobeWeight) * commonLightThroughput;
   const vec3 specularLobeLightThroughput = vec3(specularLobeWeight) * commonLightThroughput;
+  const vec3 diffuseTransmissionLobeLightThroughput = vec3(diffuseTransmissionLobeWeight) * commonLightThroughput;
   const vec3 diffuseAttenuatedRadiance = lightSample.radiance * diffuseLobeLightThroughput;
   const vec3 specularAttenuatedRadiance = lightSample.radiance * specularLobeLightThroughput;
+  const vec3 diffuseTransmissionAttenuatedRadiance = lightSample.radiance * diffuseTransmissionLobeLightThroughput;
 
-  diffuseLobeRadiance += throughput * diffuseAttenuatedRadiance;
+  diffuseLobeRadiance += throughput * (diffuseAttenuatedRadiance + diffuseTransmissionAttenuatedRadiance);
   specularLobeRadiance += throughput * specularAttenuatedRadiance;
 
   // Illuminance for RTXDI gradients: just light sample radiance and visibility over sampling PDF
@@ -330,12 +344,13 @@ void integrateDirectPath(
         lightSample, inverseSelectionPdf, lightIdx);
     }
 
-    // Evaluate NEE
+    SubsurfaceMaterial subSurfaceMaterial;
+    const bool sssEnable = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
 
+    // Evaluate NEE
     if (rtxdiLightSampleValid || risLightSampleValid)
     {
       bool hasOpaqueHit = false;
-
       evalNEEPrimary(
         throughput, pixelCoordinate,
         diffuseLobeRadiance, specularLobeRadiance, lightHitDistance, hasOpaqueHit, illuminance,
@@ -390,7 +405,6 @@ void integrateDirectPath(
 
     directPathTextures.SecondaryCombinedDiffuseLobeRadianceHitDistance[pixelCoordinate] = secondaryCombinedDiffuseLobeRadianceHitDistance;
     directPathTextures.SecondaryCombinedSpecularLobeRadianceHitDistance[pixelCoordinate] = secondaryCombinedSpecularLobeRadianceHitDistance;
-
     directPathTextures.PrimaryRtxdiIlluminance[pixelCoordinate] = 0;
   }
   
