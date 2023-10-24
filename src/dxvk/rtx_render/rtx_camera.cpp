@@ -473,13 +473,9 @@ namespace dxvk
 
     if (RtxOptions::AntiCulling::Light::enable()) {
       const float fovScale = RtxOptions::AntiCulling::Light::fovScale();
-      const float projectionMatrixFovScale = std::tan(fov * 0.5f) / std::tan(fov * fovScale * 0.5f);
-      Matrix4 viewToProjection = getViewToProjection();
-      viewToProjection[0][0] *= projectionMatrixFovScale;
-      viewToProjection[1][1] *= projectionMatrixFovScale;
-
-      const Matrix4 worldToProj = viewToProjection * getWorldToView(false);
-      m_lightAntiCullingFrustum.Setup(NDC_OGL, *reinterpret_cast<const float4x4*>(&worldToProj));
+      float4x4 frustumMatrix;
+      frustumMatrix.SetupByHalfFovyInf((float) (fov * fovScale * 0.5), aspectRatio, nearPlane, (isLHS ? PROJ_LEFT_HANDED : 0));
+      m_lightAntiCullingFrustum.Setup(NDC_OGL, frustumMatrix);
     }
   }
 
