@@ -162,6 +162,21 @@ Ray rayCreatePosition(
   return rayCreateInternal(minimalRayInteraction, volumeInteraction, viewRay, direction, tMax);
 }
 
+Ray rayCreatePositionSubsurface(
+  MinimalRayInteraction minimalRayInteraction, MinimalSurfaceInteraction minimalSurfaceInteraction, Ray viewRay,
+  vec3 targetPosition, vec3 shadingNormal)
+{
+  const vec3 rayVector = targetPosition - minimalSurfaceInteraction.position;
+  const f16vec3 direction = f16vec3(normalize(rayVector));
+  const float tMax = length(rayVector);
+
+  // If the new tracing ray is on the other side of SSS surface, treat the surface as penetrateSurface 
+  const float NoR = dot(shadingNormal, direction);
+  const bool penetrateSurface = NoR <= 0.0f;
+
+  return rayCreateInternal(minimalRayInteraction, minimalSurfaceInteraction, viewRay, direction, tMax, penetrateSurface);
+}
+
 // Evaluates a position along the ray given a t value. Implicitly assumed to be within [tMin, tMax]
 vec3 rayEvaluate(Ray ray, float t)
 {

@@ -23,6 +23,7 @@
 
 // Opaque Surface Material Functions
 
+// TODO: Remove useless parameter surfaceMaterialIndex
 OpaqueSurfaceMaterial opaqueSurfaceMaterialCreate(uint16_t surfaceMaterialIndex, MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial)
 {
   // Decode the Opaque Surface Material from the packed memory representation
@@ -110,4 +111,19 @@ SubsurfaceMaterial subsurfaceMaterialCreate(MemoryPolymorphicSurfaceMaterial mem
   subsurfaceMaterial.volumetricAnisotropy = uint16BitsToHalf(data03.y);
 
   return subsurfaceMaterial;
+}
+
+uint16_t getSubsurfaceMaterialIndex(const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial)
+{
+  const u16vec2 data12 = unpack16(memoryPolymorphicSurfaceMaterial.data1.z);
+  const u16vec2 data13 = unpack16(memoryPolymorphicSurfaceMaterial.data1.w);
+  const uint8_t flags = (data13.x & 0xFF);
+  if (flags & OPAQUE_SURFACE_MATERIAL_FLAG_HAS_SUBSURFACE_MATERIAL)
+  {
+    return data12.x;
+  }
+  else
+  {
+    return BINDING_INDEX_INVALID;
+  }
 }

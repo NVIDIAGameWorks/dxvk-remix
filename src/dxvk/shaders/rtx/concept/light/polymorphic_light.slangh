@@ -180,7 +180,8 @@ LightSample memoryPolymorphicLightSampleArea(
 
 float decodedPolymorphicLightCalcWeight(
   DecodedPolymorphicLight decodedPolymorphicLight,
-  MinimalSurfaceInteraction viewSurfaceInteraction)
+  MinimalSurfaceInteraction viewSurfaceInteraction,
+  const bool isSubSurface)
 {
   switch (uint(decodedPolymorphicLight.polymorphicType))
   {
@@ -188,28 +189,28 @@ float decodedPolymorphicLightCalcWeight(
     case uint(lightTypeSphere):
       const SphereLight sphereLight = sphereLightCreate(decodedPolymorphicLight);
 
-      return sphereLightCalcWeight(sphereLight, viewSurfaceInteraction);
+      return sphereLightCalcWeight(sphereLight, viewSurfaceInteraction, isSubSurface);
 #endif
 
 #if ENABLE_RECT_LIGHTS
     case uint(lightTypeRect):
       const RectLight rectLight = rectLightCreate(decodedPolymorphicLight);
 
-      return rectLightCalcWeight(rectLight, viewSurfaceInteraction);
+      return rectLightCalcWeight(rectLight, viewSurfaceInteraction, isSubSurface);
 #endif
 
 #if ENABLE_DISK_LIGHTS
     case uint(lightTypeDisk):
       const DiskLight diskLight = diskLightCreate(decodedPolymorphicLight);
 
-      return diskLightCalcWeight(diskLight, viewSurfaceInteraction);
+      return diskLightCalcWeight(diskLight, viewSurfaceInteraction, isSubSurface);
 #endif
 
 #if ENABLE_CYLINDER_LIGHTS
     case uint(lightTypeCylinder):
       const CylinderLight cylinderLight = cylinderLightCreate(decodedPolymorphicLight);
 
-      return cylinderLightCalcWeight(cylinderLight, viewSurfaceInteraction);
+      return cylinderLightCalcWeight(cylinderLight, viewSurfaceInteraction, isSubSurface);
 #endif
 
 #if ENABLE_DISTANT_LIGHTS

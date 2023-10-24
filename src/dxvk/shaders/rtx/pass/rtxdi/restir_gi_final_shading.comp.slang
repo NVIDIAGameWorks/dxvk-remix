@@ -120,7 +120,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
       uint16_t primarySurfaceIndex = cb.pomEnableReSTIRGI && polymorphicSurfaceMaterialInteractionHasHeightTexture(polymorphicSurfaceMaterialInteraction) ?
         uint16_t(SharedSurfaceIndex[threadIndex]) : BINDING_INDEX_INVALID;
       VisibilityResult visibility = traceVisibilityRay(minimalSurfaceInteraction,
-        dstPosition, false, rayMask, visibilityModeNone, portalID,
+        dstPosition, rayMask, visibilityModeNone, portalID,
         geometryFlags.portalSpace, 0, 0, RAB_RESTIR_GI_VISIBILITY_SHORTENING, geometryFlags.isViewModel,
         false, primarySurfaceIndex, DisplacementTextureCoord[threadIndex]);
       filterColor = visibility.attenuation;
@@ -155,7 +155,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
       vec3 L = normalize(spatialReservoir.position - minimalSurfaceInteraction.position);
       SurfaceMaterialInteractionSplitWeight brdf = opaqueSurfaceMaterialInteractionCalcProjectedWeight(material, minimalRayInteraction, L);
 
-      diffuseLight  = spatialReservoir.radiance * brdf.diffuseReflectionWeight  * spatialReservoir.avgWeight;
+      diffuseLight  = spatialReservoir.radiance * (brdf.diffuseReflectionWeight + brdf.diffuseTransmissionWeight) * spatialReservoir.avgWeight;
       specularLight = spatialReservoir.radiance * brdf.specularReflectionWeight * spatialReservoir.avgWeight;
 
       // Calculate MIS weight
