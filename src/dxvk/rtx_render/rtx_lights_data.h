@@ -33,7 +33,7 @@
   X(EnableColorTemp,  enableColorTemperature, bool,    false,        true,         false) \
   X(Color,            color,                  Vector3, Vector3(0.f), Vector3(1.f), Vector3(1.f)) \
   X(ColorTemp,        colorTemperature,       float,   0.f,          FLT_MAX,      6500.f) \
-  X(Exposure,         exposure,               float,   0.f,          FLT_MAX,      0.f) \
+  X(Exposure,         exposure,               float,   -FLT_MAX,     FLT_MAX,      0.f) \
   X(Intensity,        intensity,              float,   0.f,          FLT_MAX,      1.f) \
   X(ConeAngleRadians, shaping:cone:angle,     float,   -FLT_MAX,     FLT_MAX,      180.f * kDegreesToRadians) \
   X(ConeSoftness,     shaping:cone:softness,  float,   0.f,          FLOAT16_MAX,  0.f) \
@@ -48,23 +48,37 @@
 namespace dxvk {
   struct LightData {
     static std::optional<LightData> tryCreate(const D3DLIGHT9& light);
-    static std::optional<LightData> tryCreate(const pxr::UsdPrim& lightPrim, const pxr::GfMatrix4f& localToRoot);
+    static std::optional<LightData> tryCreate(const pxr::UsdPrim& lightPrim, const pxr::GfMatrix4f& localToRoot, const bool absoluteTransform);
 
     RtLight toRtLight() const;
 
     void merge(const D3DLIGHT9& light);
 
+    static bool isSupportedUsdLight(const pxr::UsdPrim& lightPrim);
+
+    bool relativeTransform() const { return m_transformType == Relative; }
+
   private:
+    // Supported light data types
+    enum LightType {
+      Sphere,
+      Rect,
+      Disk,
+      Cylinder,
+      Distant,
+      Unknown
+    };
+
     LightData() = default;
-    LightData(const pxr::UsdPrim& lightPrim, const pxr::GfMatrix4f& localToRoot);
+    LightData(const pxr::UsdPrim& lightPrim, const pxr::GfMatrix4f& localToRoot, const bool absoluteTransform);
 
     static LightData createFromDirectional(const D3DLIGHT9& light);
 
     static LightData createFromPointSpot(const D3DLIGHT9& light);
 
-    void merge(const LightData& input, const bool useInputTransform = false);
+    void merge(const LightData& input);
 
-    static RtLightType getLightType(const pxr::UsdPrim& lightPrim);
+    static bool getLightType(const pxr::UsdPrim& lightPrim, LightType& typeOut);
 
     // USD transitioned from `intensity` to `inputs:intensity` for all its light attributes, we need to support content
     // authored before and after that change.
@@ -78,6 +92,8 @@ namespace dxvk {
 
     Vector3 calculateRadiance() const;
 
+    bool isShapingEnabled() const;
+
     RtLightShaping getLightShaping(Vector3 zAxis) const;
 
     enum class DirtyFlags : uint32_t {
@@ -88,8 +104,14 @@ namespace dxvk {
     
     LIST_LIGHT_CONSTANTS(WRITE_PARAMETER_MEMBERS)
 
+    enum TransformType {
+      Absolute,
+      Relative
+    };
+
     Flags<DirtyFlags> m_dirty { 0 };
-    RtLightType m_lightType;
+    LightType m_lightType;
+    TransformType m_transformType = TransformType::Absolute;
     XXH64_hash_t m_cachedHash = kEmptyHash;
     // NOTE: Just add params for these without USD deserializer
     Vector3 m_position = Vector3(0.f);

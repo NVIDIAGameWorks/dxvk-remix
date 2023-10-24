@@ -73,7 +73,30 @@ namespace dxvk {
       data[2] = Vector4Base<T>(matrix.matrix[2]);
       data[3] = Vector4Base<T>(0, 0, 0, 1);
     }
-    
+
+    inline Matrix4Base(const Vector4Base<T> quaternion, const Vector3Base<T> translation) {
+      data[0][0] = 1.0 - 2.0 * (quaternion.y * quaternion.y + quaternion.z * quaternion.z);
+      data[0][1] = 2.0 * (quaternion.x * quaternion.y + quaternion.z * quaternion.w);
+      data[0][2] = 2.0 * (quaternion.z * quaternion.x - quaternion.y * quaternion.w);
+
+      data[1][0] = 2.0 * (quaternion.x * quaternion.y - quaternion.z * quaternion.w);
+      data[1][1] = 1.0 - 2.0 * (quaternion.z * quaternion.z + quaternion.x * quaternion.x);
+      data[1][2] = 2.0 * (quaternion.y * quaternion.z + quaternion.x * quaternion.w);
+
+      data[2][0] = 2.0 * (quaternion.z * quaternion.x + quaternion.y * quaternion.w);
+      data[2][1] = 2.0 * (quaternion.y * quaternion.z - quaternion.x * quaternion.w);
+      data[2][2] = 1.0 - 2.0 * (quaternion.y * quaternion.y + quaternion.x * quaternion.x);
+
+      data[3] = Vector4Base<T>(translation.x, translation.y, translation.z, 1.f);
+    }
+
+    explicit inline Matrix4Base(const Vector3Base<T> translation) {
+      data[0] = { 1, 0, 0, 0 };
+      data[1] = { 0, 1, 0, 0 };
+      data[2] = { 0, 0, 1, 0 };
+      data[3] = Vector4Base<T>(translation.x, translation.y, translation.z, 1.f);
+    }
+
     inline Matrix4Base(const T m00, const T m01, const T m02, const T m03,
                    const T m10, const T m11, const T m12, const T m13,
                    const T m20, const T m21, const T m22, const T m23,
