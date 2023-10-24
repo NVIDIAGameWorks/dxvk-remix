@@ -174,7 +174,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
     const float infiniteHitT = 1e5;
     float3 dstPosition = worldPos + reflectionVector * infiniteHitT;
     VisibilityResult visibility = traceVisibilityRay(surface.minimalSurfaceInteraction,
-      dstPosition, false, rayMask, visibilityModeAccurateHitDistance, backupPortalID, surface.portalSpace,
+      dstPosition, rayMask, visibilityModeAccurateHitDistance, backupPortalID, surface.portalSpace,
       0, 0, RAB_RESTIR_GI_VISIBILITY_SHORTENING, surface.isViewModel);
     float reflectionHitT = visibility.hasOpaqueHit ? visibility.hitDistance : infiniteHitT;
 

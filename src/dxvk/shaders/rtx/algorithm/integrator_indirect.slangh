@@ -597,7 +597,7 @@ void integratePathVertex(
         // Todo: Ray Portal transport sampling in the future.
         evalNEESecondary(
           lightSample, invalidRayPortalIndex, pathState.portalSpace, pathState.rayMask,
-          isViewModel, ray, rayInteraction, surfaceInteraction,
+          isViewModel, ray, rayInteraction, surfaceInteraction, opaqueSurfaceMaterialInteraction,
           diffuseLight, specularLight, surfaceIndex, surfaceInteraction.textureCoordinates);
 
         // Create a NEE Cache task for lights with non-zero contributions.
@@ -728,7 +728,7 @@ void integratePathVertex(
             minimalRayInteraction2.viewDirection = -incomingDirection;
             vec3 L2 = normalize(spatialReservoir.position - surfaceInteraction.position);
             SurfaceMaterialInteractionSplitWeight brdf2 = opaqueSurfaceMaterialInteractionCalcProjectedWeight(opaqueSurfaceMaterialInteraction, minimalRayInteraction2, L2);
-            indirectLight += spatialReservoir.radiance * brdf2.diffuseReflectionWeight * spatialReservoir.avgWeight;        
+            indirectLight += spatialReservoir.radiance * (brdf2.diffuseReflectionWeight + brdf2.diffuseTransmissionWeight) * spatialReservoir.avgWeight;        
             if (opaqueSurfaceMaterialInteraction.isotropicRoughness > RAB_RESTIR_GI_MIN_ROUGHNESS)
             {
               indirectLight += spatialReservoir.radiance * brdf2.specularReflectionWeight * spatialReservoir.avgWeight;

@@ -75,6 +75,7 @@ namespace dxvk {
         TEXTURE2D(RESTIR_GI_REUSE_BINDING_HIT_GEOMETRY_INPUT)
         TEXTURE2D(RESTIR_GI_REUSE_BINDING_POSITION_ERROR_INPUT)
         TEXTURE2D(RESTIR_GI_REUSE_BINDING_SHARED_FLAGS_INPUT)
+        TEXTURE2D(RESTIR_GI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT)
         RW_TEXTURE2D(RESTIR_GI_REUSE_BINDING_LAST_GBUFFER)
       END_PARAMETER()
     };
@@ -107,6 +108,7 @@ namespace dxvk {
         TEXTURE2D(RESTIR_GI_REUSE_BINDING_HIT_GEOMETRY_INPUT)
         TEXTURE2D(RESTIR_GI_REUSE_BINDING_POSITION_ERROR_INPUT)
         TEXTURE2D(RESTIR_GI_REUSE_BINDING_SHARED_FLAGS_INPUT)
+        TEXTURE2D(RESTIR_GI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT)
         RW_TEXTURE2D(RESTIR_GI_REUSE_BINDING_LAST_GBUFFER)
       END_PARAMETER()
     };
@@ -218,6 +220,7 @@ namespace dxvk {
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_RADIANCE_INPUT, rtOutput.m_restirGIRadiance.view(Resources::AccessType::Read), nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_HIT_GEOMETRY_INPUT, rtOutput.m_restirGIHitGeometry.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_POSITION_ERROR_INPUT, rtOutput.m_primaryPositionError.view, nullptr);
+      ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);
 
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, ReSTIRGITemporalReuseShader::getShader());
@@ -242,6 +245,7 @@ namespace dxvk {
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_RADIANCE_INPUT, rtOutput.m_restirGIRadiance.view(Resources::AccessType::Read), nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_HIT_GEOMETRY_INPUT, rtOutput.m_restirGIHitGeometry.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_POSITION_ERROR_INPUT, rtOutput.m_primaryPositionError.view, nullptr);
+      ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);
 
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, ReSTIRGISpatialReuseShader::getShader());
