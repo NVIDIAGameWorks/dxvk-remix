@@ -316,12 +316,17 @@ static inline bool rectIntersectsFrustum(
   // Loop all planes. If all 4 vertices of rectangle are outside of any of these 6 planes,
   // the rectangle is not intersecting with the frustum.
   for (uint32_t planeIdx = 0; planeIdx < PLANES_NUM; ++planeIdx) {
+    bool insidePlane = false;
     const float4 plane = frustum.GetPlane(planeIdx);
     for (uint32_t vertexIdx = 0; vertexIdx < RectVerticeNumber; ++vertexIdx) {
       // Fast in-out plane check with SIMD
       if (Dot44(plane, verticesSimd[vertexIdx]) >= 0.0f) {
-        continue;
+        insidePlane = true;
+        break;
       }
+    }
+    if (!insidePlane) {
+      // Early out when find all 4 vertices of rectangle are outside of a plane
       return false;
     }
   }
