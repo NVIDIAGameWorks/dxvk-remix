@@ -151,7 +151,8 @@
         target.m_dirty.set(DirtyFlags::k_##name); \
         pxr::VtValue val; \
         shader.GetAttribute(get##name##Token()).Get(&val); \
-        target.m_##name = val.UncheckedGet<type>(); \
+        if(!val.IsEmpty()) \
+          target.m_##name = val.UncheckedGet<type>(); \
       }
 
 #define WRITE_TEXTURE_DESERIALIZER(name, usd_attr, type, minVal, maxVal, defaultVal) \

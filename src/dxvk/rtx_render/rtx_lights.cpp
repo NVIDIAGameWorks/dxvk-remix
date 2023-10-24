@@ -771,10 +771,13 @@ Vector3 RtLight::getDirection() const {
 
     [[fallthrough]];
   case RtLightType::Sphere:
+    return m_sphereLight.getShaping().primaryAxis;
   case RtLightType::Rect:
+    return m_rectLight.getShaping().primaryAxis;
   case RtLightType::Disk:
+    return m_diskLight.getShaping().primaryAxis;
   case RtLightType::Cylinder:
-    return Vector3();
+    return Vector3(0.f, 0.f, 1.f);
   case RtLightType::Distant:
     return m_distantLight.getDirection();
   }

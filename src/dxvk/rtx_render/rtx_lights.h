@@ -53,7 +53,7 @@ enum class RtLightType {
   Rect = lightTypeRect,
   Disk = lightTypeDisk,
   Cylinder = lightTypeCylinder,
-  Distant = lightTypeDistant
+  Distant = lightTypeDistant,
 };
 
 struct RtLightShaping {
@@ -156,6 +156,10 @@ struct RtRectLight {
     return m_radiance;
   }
 
+  const RtLightShaping& getShaping() const {
+    return m_shaping;
+  }
+
 private:
   void updateCachedHash();
 
@@ -206,6 +210,10 @@ struct RtDiskLight {
 
   Vector3 getRadiance() const {
     return m_radiance;
+  }
+
+  const RtLightShaping& getShaping() const {
+    return m_shaping;
   }
 
 private:

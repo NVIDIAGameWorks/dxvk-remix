@@ -200,4 +200,26 @@ Vector3 LightUtils::calculateRadiance(const D3DLIGHT9& light, const float radius
 }
 
 
+Matrix4 LightUtils::getLightTransform(const D3DLIGHT9& light) {
+
+  // Determine the optimal light transform from light
+  switch (light.Type) {
+  case D3DLIGHT_SPOT:
+  {
+    const Vector3 zAxis = safeNormalize({ light.Direction.x, light.Direction.y, light.Direction.z }, Vector3(0.0f, 0.0f, 1.0f));
+    return Matrix4(getOrientation(Vector3(0.f, 0.f, -1.f), zAxis), { light.Position.x, light.Position.y, light.Position.z });
+  }
+  case D3DLIGHT_POINT:
+  {
+    return Matrix4(Vector3(light.Position.x, light.Position.y, light.Position.z));
+  }
+  case D3DLIGHT_DIRECTIONAL:
+  {
+    const Vector3 zAxis = safeNormalize({ light.Direction.x, light.Direction.y, light.Direction.z }, Vector3(0.0f, 0.0f, 1.0f));
+    return Matrix4(getOrientation(Vector3(0.f, 0.f, -1.f), zAxis), Vector3(0.f));
+  }
+  default:
+    return Matrix4();
+  }
+}
 } // namespace dxvk 
