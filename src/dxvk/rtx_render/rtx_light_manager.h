@@ -64,6 +64,7 @@ public:
 
   void showImguiSettings();
   void showImguiLightOverview();
+  void showImguiDebugVisualization() const;
 
   const std::unordered_map<XXH64_hash_t, RtLight>& getLightTable() const { return m_lights; }
   const Rc<DxvkBuffer> getLightBuffer() const { return m_lightBuffer; }

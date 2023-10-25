@@ -667,6 +667,8 @@ namespace dxvk {
     
     m_capture->update(ctx);
 
+    showDebugVisualizations(ctx);
+
     const auto showUI = RtxOptions::Get()->showUI();
 
     if (showUI == UIType::Advanced) {
@@ -735,8 +737,12 @@ namespace dxvk {
   }
 
 
-  void ImGUI::showMainMenu(const Rc<DxvkContext>& ctx) {
+  void ImGUI::showDebugVisualizations(const Rc<DxvkContext>& ctx) {
+    auto common = ctx->getCommonObjects();
+    common->getSceneManager().getLightManager().showImguiDebugVisualization();
+  }
 
+  void ImGUI::showMainMenu(const Rc<DxvkContext>& ctx) {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(ImVec2(m_windowOnRight ? viewport->Size.x - m_windowWidth : 0.f, viewport->Pos.y));
     ImGui::SetNextWindowSize(ImVec2(m_windowWidth, viewport->Size.y));
