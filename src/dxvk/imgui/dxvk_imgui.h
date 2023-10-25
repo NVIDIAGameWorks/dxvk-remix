@@ -163,6 +163,8 @@ namespace dxvk {
 
     void updateQuickActions(const Rc<DxvkContext>& ctx);
 
+    void showDebugVisualizations(const Rc<DxvkContext>& ctx);
+
     void showMainMenu(const Rc<DxvkContext>& ctx);
 
     void showUserMenu(const Rc<DxvkContext>& ctx);
