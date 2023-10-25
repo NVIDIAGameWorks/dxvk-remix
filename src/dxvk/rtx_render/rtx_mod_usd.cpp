@@ -56,6 +56,8 @@
 #include "../../lssusd/usd_include_end.h"
 #include "../util/util_watchdog.h"
 
+#include "../../lssusd/game_exporter_common.h"
+#include "../../lssusd/game_exporter_paths.h"
 #include "../../lssusd/usd_mesh_importer.h"
 #include "../../lssusd/usd_common.h"
 
@@ -477,7 +479,7 @@ bool preserveGameObject(const pxr::UsdPrim& prim) {
 
   auto legacyCaptureReferenceExists = [&](const std::string referencePath) {
     std::filesystem::path asset(referencePath);
-    return strFindNoCase(asset.replace_extension(std::filesystem::path()).string(), "/captures/meshes/" + prim.GetName().GetString());
+    return strFindNoCase(asset.replace_extension(std::filesystem::path()).string(), "/captures" + lss::commonDirName::meshDir + prim.GetName().GetString());
   };
 
   // determine draw call preservation by querying the references
@@ -494,6 +496,12 @@ bool preserveGameObject(const pxr::UsdPrim& prim) {
           return false;
         }
       }
+    }
+  }
+
+  if (const pxr::UsdPrim child = prim.GetStage()->GetPrimAtPath(prim.GetPath().AppendChild(lss::gTokMesh))) {
+    if (child.HasAuthoredActive()) {
+      return child.IsActive();
     }
   }
 
