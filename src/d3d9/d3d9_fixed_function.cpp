@@ -2124,9 +2124,14 @@ namespace dxvk {
 
       D3DTEXTUREOP colorOp = (D3DTEXTUREOP)stage.ColorOp;
 
-      // This cancels all subsequent stages.
-      if (colorOp == D3DTOP_DISABLE)
-        break;
+      if (colorOp == D3DTOP_DISABLE) {
+        if (stage.allowActiveStagesBeyondDisabledStage) {
+          continue;
+        } else {
+          // Cancel subsequent stages on D3DTOP_DISABLE op by default
+          break;
+        }
+      }
 
       std::array<uint32_t, TextureArgCount> colorArgs = {
           stage.ColorArg0,
