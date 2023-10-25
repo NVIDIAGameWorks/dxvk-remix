@@ -7006,6 +7006,52 @@ namespace dxvk {
       };
 
       D3D9FFShaderKeyFS key;
+      // NV-DXVK start: skip stages for ignored textures
+      uint32_t lastActiveStageIdx = UINT32_MAX;
+      uint32_t numActiveStages = 0;
+
+      // NOTE: The terrain baker and sky reuse a draw call from rasterization with its
+      // bound textures and other effects like fixed function texture stages.
+      // However, we also would like to skip textures marked as ignored / lightmap for those techniques,
+      // so a corresponding texture stage needs to be skipped in the draw call.
+      // This involves modifying D3D9FFShaderKeyFS, by which DXVK chooses a pixel shader for a draw call.
+      // And because of that draw call re-usage, the checks are done here, and not in d3d9_rtx.
+      auto filterActiveTextureStage = [this, &key, &lastActiveStageIdx, &numActiveStages]
+                                      (uint32_t stageIdx, bool isLastStage) {
+        auto shouldOmitTextureAtStage = [this, &numActiveStages](uint32_t stageIdx, bool isLastStage) {
+          if (const auto tex = GetCommonTexture(m_state.textures[stageIdx])) {
+            XXH64_hash_t texHash = tex->GetImage()->getHash();
+            if (texHash != kEmptyHash) {
+              if (isLastStage && numActiveStages > 1 && RtxOptions::ignoreLastTextureStage()) {
+                return true;
+              }
+              if (lookupHash(RtxOptions::ignoreTextures(), texHash) || lookupHash(RtxOptions::lightmapTextures(), texHash)) {
+                return true;
+              }
+            }
+          }
+
+          return false;
+        };
+
+        if (RtxOptions::enableRaytracing()) {
+          if (shouldOmitTextureAtStage(stageIdx, isLastStage)) {
+            D3D9FFShaderStage& stage = key.Stages[stageIdx];
+            // make default
+            memset(&stage, 0, sizeof(D3D9FFShaderStage));
+            stage.Contents.ColorOp = D3DTOP_DISABLE;
+            stage.Contents.AlphaOp = D3DTOP_DISABLE;
+            stage.Contents.allowActiveStagesBeyondDisabledStage = true;
+            return false;
+          }
+        }
+
+        lastActiveStageIdx = stageIdx;
+        numActiveStages++;
+
+        return true;
+      };
+      // NV-DXVK end
 
       uint32_t textureID = 0;
       uint32_t idx;
@@ -7046,40 +7092,15 @@ namespace dxvk {
 
         stage.Projected      = (ttff & D3DTTFF_PROJECTED) ? 1      : 0;
         stage.ProjectedCount = (ttff & D3DTTFF_PROJECTED) ? count  : 0;
+
+        // NV-DXVK start: ignored secondary textures
+        stage.allowActiveStagesBeyondDisabledStage = 0;
+
+        filterActiveTextureStage(idx, false);
       }
 
-      // NV-DXVK start: ignored secondary textures
-      // NOTE: The terrain baker and sky reuse a draw call from rasterization with its
-      // bound textures and other effects like fixed function texture stages.
-      // However, we also would like to skip textures marked as ignored / lightmap for those techniques,
-      // so a corresponding texture stage needs to be skipped in the draw call.
-      // This involves modifying D3D9FFShaderKeyFS, by which DXVK chooses a pixel shader for a draw call.
-      // And because of that draw call re-usage, the checks are done here, and not in d3d9_rtx.
-      if (idx > 1 && RtxOptions::Get()->enableRaytracing()) {
-        auto shouldOmitTextureAtStage = [this](uint32_t stageIdx, bool isLast) {
-          if (const auto tex = GetCommonTexture(m_state.textures[stageIdx])) {
-            XXH64_hash_t texHash = tex->GetImage()->getHash();
-            if (texHash != kEmptyHash) {
-              if (isLast && RtxOptions::ignoreLastTextureStage()) {
-                return true;
-              }
-              if (lookupHash(RtxOptions::ignoreTextures(), texHash) || lookupHash(RtxOptions::lightmapTextures(), texHash)) {
-                return true;
-              }
-            }
-          }
-          return false;
-        };
-        const uint32_t lastStageIdx = idx - 1;
-        if (shouldOmitTextureAtStage(lastStageIdx, true)) {
-          D3D9FFShaderStage& lastStage = key.Stages[lastStageIdx];
-          // make default
-          memset(&lastStage, 0, sizeof(D3D9FFShaderStage));
-          lastStage.Contents.ColorOp = D3DTOP_DISABLE;
-          lastStage.Contents.AlphaOp = D3DTOP_DISABLE;
-          // reduce stage count
-          --idx;
-        }
+      if (idx > 0) {
+        filterActiveTextureStage(idx - 1, true);
       }
       // NV-DXVK end
 
@@ -7095,9 +7116,12 @@ namespace dxvk {
       stage0.GlobalSpecularEnable = m_state.renderStates[D3DRS_SPECULARENABLE];
       stage0.GlobalFlatShade      = m_state.renderStates[D3DRS_SHADEMODE] == D3DSHADE_FLAT;
 
+      // NV-DXVK start:
       // The last stage *always* writes to current.
-      if (idx >= 1)
-        key.Stages[idx - 1].Contents.ResultIsTemp = false;
+      if (lastActiveStageIdx != UINT32_MAX) {
+        key.Stages[lastActiveStageIdx].Contents.ResultIsTemp = false;
+      }
+      // NV-DXVK end
 
       EmitCs([
         this,

@@ -154,6 +154,10 @@ namespace dxvk {
         // Affects all stages.
         uint32_t     GlobalSpecularEnable : 1;
         uint32_t     GlobalFlatShade      : 1;
+
+        // NV-DXVK start:
+        uint32_t allowActiveStagesBeyondDisabledStage : 1; // Overrides D3DTOP_DISABLE behavior to allow subsequent stages
+        // NV-DXVK end
       } Contents;
 
       uint32_t Primitive[2];

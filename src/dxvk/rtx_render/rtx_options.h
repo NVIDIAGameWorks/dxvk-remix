@@ -236,7 +236,7 @@ namespace dxvk {
                    "Some artifacts may still appear however compared to the original game either due to issues with the underlying DXVK translation or issues in Remix itself.");
 #else
     // Shipping config
-    bool enableRaytracing() { return true; }
+    static bool enableRaytracing() { return true; }
 #endif
 
     RTX_OPTION_ENV("rtx", float, timeDeltaBetweenFrames, 0.f, "RTX_FRAME_TIME_DELTA_MS", "Frame time delta to use during scene processing. Setting this to 0 will use actual frame time delta for a given frame. Non-zero value is primarily used for automation to ensure determinism run to run.");
