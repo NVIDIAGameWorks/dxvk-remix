@@ -29,6 +29,9 @@
 #include <d3d9types.h>
 #include <regex>
 
+#include "../../lssusd/game_exporter_common.h"
+#include "../../lssusd/game_exporter_paths.h"
+
 #include "../../lssusd/usd_include_begin.h"
 #include <pxr/base/vt/value.h>
 #include <pxr/usd/usd/tokens.h>
@@ -281,7 +284,8 @@ namespace dxvk {
   // When a light is being overridden in USD, we may not always get the light type.
   // For these lights we rely on the prim path (which is standardized for captured lights)
   //  and use the light determined by the game at runtime [See: merge(D3DLIGHT9)]
-  static const std::regex s_unknownLightPattern("^/RootNode/lights/light_[0-9A-Fa-f]{16}$");
+  // Expanded: ^/RootNode/lights/light_[0-9A-Fa-f]{16}$
+  static const std::regex s_unknownLightPattern("^" + lss::gRootNodePath.GetAsString() + "/" + lss::gTokLights.GetString() + "/" + lss::prefix::light + "[0-9A-Fa-f]{16}$");
 
   bool LightData::getLightType(const pxr::UsdPrim& lightPrim, LightData::LightType& typeOut) {
     if (lightPrim.IsA<pxr::UsdLuxSphereLight>()) {
