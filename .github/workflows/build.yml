@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [ main ]
+    branches: [ imgui-scaleall ]
   pull_request:
     branches: [ main ]
 
