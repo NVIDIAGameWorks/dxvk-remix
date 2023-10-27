@@ -246,6 +246,10 @@ namespace dxvk {
                "A float to set the scale of thumbnails while selecting textures.\n"
                "This will be scaled by the default value of 120 pixels.\n"
                "This value must always be greater than zero.");
+    RTX_OPTION("rtx.gui", float, menuFontScale, 1.f,
+               "A float to set the scale of text and fonts.\n"
+                "This will be scaled relative to the default font size in pixels.\n"
+               "This value should always be greater than 0.");
     RTX_OPTION("rtx", bool, skipDrawCallsPostRTXInjection, false, "Ignores all draw calls recorded after RTX Injection, the location of which varies but is currently based on when tagged UI textures begin to draw.");
     RTX_OPTION_ENV("rtx", DlssPreset, dlssPreset, DlssPreset::On, "RTX_DLSS_PRESET", "Combined DLSS Preset for quickly controlling Upscaling, Frame Interpolation and Latency Reduction.");
     RTX_OPTION("rtx", NisPreset, nisPreset, NisPreset::Balanced, "Adjusts NIS scaling factor, trades quality for performance.");

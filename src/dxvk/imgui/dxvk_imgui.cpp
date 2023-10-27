@@ -119,6 +119,7 @@ namespace ImGui {
 
   // The value for width is arbitrary. But it looks nice.
   void TextSeparator(char* text, float pre_width = 10.0f) {
+    //pre_width *= RtxOptions::menuFontScale();
     ImGui::PreSeparator(pre_width);
     ImGui::Text(text);
     ImGui::SameLineSeparator();
@@ -1300,10 +1301,18 @@ namespace dxvk {
     }
 
     ImGui::SetTooltipToLastWidgetOnHover("Screenshot will be dumped to, '<exe-dir>/Screenshots'");
-
+    const float FontScale = RtxOptions::menuFontScale();
     ImGui::SameLine(200.f);
     ImGui::Checkbox("Include G-Buffer", &RtxOptions::Get()->captureDebugImageObject());
-        
+    ImGui::DragFloat("Font Scale", &RtxOptions::Get()->menuFontScaleObject(), 0.25f, 0.3f, 2.f, "%.2f", sliderFlags);
+    /*
+    ImGui::SameLine(250.f);
+    if(ImGui::Button("Apply Font Changes")) {
+      //BUGBUG: This button will crash Remix. This is because ImGui cannot rebuild an existing font while rendering.  
+      //This change must happen between Render and NewFrame or instead using the PushFont / PopFont API.
+      ImGUI::createFontsTexture(ctx);
+    }
+    */
     { // Recompile Shaders button and its status message
       using namespace std::chrono;
       static enum { None, OK, Error } shaderMessage = None;
@@ -1332,7 +1341,7 @@ namespace dxvk {
         }
       }
     }
-    ImGui::SameLine(200.f);
+    ImGui::SameLine(200.f*FontScale);
     ImGui::Checkbox("Live shader edit mode", &RtxOptions::Get()->useLiveShaderEditModeObject());
 
     showVsyncOptions(false);
@@ -2981,7 +2990,7 @@ namespace dxvk {
     ImGuiIO& io = ImGui::GetIO();
     ImGui_ImplVulkan_Data* bd = (ImGui_ImplVulkan_Data*)io.BackendRendererUserData;
     ImGui_ImplVulkan_InitInfo* v = &bd->VulkanInitInfo;
-    
+    const float FontScale = RtxOptions::menuFontScale();
     // Range of characters we want to use the primary font
     ImVector<ImWchar> characterRange;
     {
@@ -3001,7 +3010,7 @@ namespace dxvk {
     // Normal Size Font (Default)
 
     ImFontConfig normalFontCfg = ImFontConfig();
-    normalFontCfg.SizePixels = 16.f;
+    normalFontCfg.SizePixels = 16.f * FontScale;
     normalFontCfg.FontDataOwnedByAtlas = false;
 
     const size_t nvidiaSansLength = sizeof(___NVIDIASansMd) / sizeof(___NVIDIASansMd[0]);
@@ -3021,7 +3030,7 @@ namespace dxvk {
     // Large Size Font
 
     ImFontConfig largeFontCfg = ImFontConfig();
-    largeFontCfg.SizePixels = 24.f;
+    largeFontCfg.SizePixels = 24.f * FontScale;
     largeFontCfg.FontDataOwnedByAtlas = false;
 
     {
