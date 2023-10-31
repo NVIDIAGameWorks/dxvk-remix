@@ -56,6 +56,13 @@ enum class RtLightType {
   Distant = lightTypeDistant,
 };
 
+enum class RtLightAntiCullingType {
+  Ignore,
+  GameLight,
+  LightReplacement,
+  MeshReplacement
+};
+
 struct RtLightShaping {
   uint32_t enabled = false;   // Note: using uint instead of bool to avoid having unused padded memory, 
                           // which is an issue when calculating a hash from the struct's object
@@ -325,6 +332,8 @@ struct RtLight {
 
   RtLight(const RtSphereLight& light);
 
+  RtLight(const RtSphereLight& light, const RtSphereLight& replacementSphereLight);
+
   RtLight(const RtRectLight& light);
 
   RtLight(const RtDiskLight& light);
@@ -409,6 +418,26 @@ struct RtLight {
     return m_isInsideFrustum;
   }
 
+  const RtLightAntiCullingType getLightAntiCullingType() const {
+    return m_anticullingType;
+  }
+
+  const Matrix4& getMeshReplacementTransform() const {
+    return m_originalMeshTransform;
+  }
+
+  const AxisAlignedBoundingBox& getMeshReplacementBoundingBox() const {
+    return m_originalMeshBoundingBox;
+  }
+
+  const Vector3& getSphereLightReplacementOriginalPosition() const {
+    return m_originalPosition;
+  }
+
+  const float getSphereLightReplacementOriginalRadius() const {
+    return m_originalLightRadius;
+  }
+
   void setFrameLastTouched(const uint32_t frame) const {
     m_frameLastTouched = frame;
   }
@@ -431,6 +460,22 @@ struct RtLight {
 
   void markAsOutsideFrustum() const {
     m_isInsideFrustum = false;
+  }
+
+  void setLightAntiCullingType(const RtLightAntiCullingType antiCullingType) const {
+    m_anticullingType = antiCullingType;
+  }
+
+  void cacheMeshReplacementAntiCullingProperties(
+    const Matrix4& meshTransform,
+    const AxisAlignedBoundingBox& boundingBox) const {
+    m_originalMeshTransform = meshTransform;
+    m_originalMeshBoundingBox = boundingBox;
+  }
+
+  void cacheLightReplacementAntiCullingProperties(const RtSphereLight& sphereLight) const {
+    m_originalPosition = sphereLight.getPosition();
+    m_originalLightRadius = sphereLight.getRadius();
   }
 
   uint32_t isStaticCount = 0;
@@ -457,7 +502,23 @@ private:
   mutable uint32_t m_frameLastTouched = kInvalidFrameIndex;
   mutable uint32_t m_bufferIdx = kNewLightIdx; // index into the light list (RTX-DI needs to understand how light indices change over time)
 
+  // Anti-Culling Properties
   mutable bool m_isInsideFrustum = true;
+
+  mutable RtLightAntiCullingType m_anticullingType = RtLightAntiCullingType::Ignore;
+  union {
+    // Mesh->Light(s) Replacement Anti-Culling
+    struct {
+      // Note: Don't revert these 2 variables! Or the bbox may be polluted by sphere light data.
+      mutable Matrix4 m_originalMeshTransform;
+      mutable AxisAlignedBoundingBox m_originalMeshBoundingBox;
+    };
+    // Light->Light(s) Replacement Anti-Culling
+    struct {
+      mutable Vector3 m_originalPosition;
+      mutable float m_originalLightRadius;
+    };
+  };
 };
 
 } // namespace dxvk

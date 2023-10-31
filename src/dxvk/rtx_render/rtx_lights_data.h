@@ -50,7 +50,7 @@ namespace dxvk {
     static std::optional<LightData> tryCreate(const D3DLIGHT9& light);
     static std::optional<LightData> tryCreate(const pxr::UsdPrim& lightPrim, const pxr::GfMatrix4f& localToRoot, const bool absoluteTransform);
 
-    RtLight toRtLight() const;
+    RtLight toRtLight(const RtLight* const originalLight = nullptr) const;
 
     void merge(const D3DLIGHT9& light);
 

@@ -540,6 +540,16 @@ RtLight::RtLight(const RtSphereLight& light) {
   m_cachedInitialHash = m_sphereLight.getHash();
 }
 
+RtLight::RtLight(const RtSphereLight& light, const RtSphereLight& replacementSphereLight) {
+  assert(RtxOptions::AntiCulling::Light::enable());
+
+  m_type = RtLightType::Sphere;
+  new (&m_sphereLight) RtSphereLight(light);
+  m_cachedInitialHash = m_sphereLight.getHash();
+
+  cacheLightReplacementAntiCullingProperties(replacementSphereLight);
+}
+
 RtLight::RtLight(const RtRectLight& light) {
   m_type = RtLightType::Rect;
   new (&m_rectLight) RtRectLight(light);
@@ -697,6 +707,11 @@ RtLight& RtLight::operator=(const RtLight& rtLight) {
     m_rootInstanceId = rtLight.m_rootInstanceId;
     m_bufferIdx = rtLight.m_bufferIdx;
     isDynamic = rtLight.isDynamic;
+
+    m_isInsideFrustum = rtLight.m_isInsideFrustum;
+    m_anticullingType = rtLight.m_anticullingType;
+    m_originalMeshTransform = rtLight.m_originalMeshTransform;
+    m_originalMeshBoundingBox = rtLight.m_originalMeshBoundingBox;
   }
 
   return *this;

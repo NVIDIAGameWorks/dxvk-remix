@@ -112,6 +112,10 @@ struct AxisAlignedBoundingBox {
   Vector3 minPos = { FLT_MAX, FLT_MAX, FLT_MAX };
   Vector3 maxPos = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
 
+  const bool isValid() const {
+    return minPos.x <= maxPos.x && minPos.y <= maxPos.y && minPos.z <= maxPos.z;
+  }
+
   void invalidate() {
     minPos = { FLT_MAX, FLT_MAX, FLT_MAX };
     maxPos = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
