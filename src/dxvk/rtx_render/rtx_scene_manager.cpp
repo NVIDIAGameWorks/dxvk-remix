@@ -267,49 +267,12 @@ namespace dxvk {
       }
     }
 
-    if (RtxOptions::AntiCulling::Light::enable()) {
-      cFrustum& cameraLightAntiCullingFrustum = getCamera().getLightAntiCullingFrustum();
-      for (auto& [lightHash, rtLight] : m_lightManager.getLightTable()) {
-        bool isLightInsideFrustum = true;
-        switch (rtLight.getType()) {
-        case RtLightType::Sphere: {
-          const RtSphereLight& sphereLight = rtLight.getSphereLight();
-          isLightInsideFrustum = sphereIntersectsFrustum(cameraLightAntiCullingFrustum, sphereLight.getPosition(), sphereLight.getRadius());
-          break;
-        }
-        case RtLightType::Rect: {
-          const RtRectLight& rectLight = rtLight.getRectLight();
-          isLightInsideFrustum = rectIntersectsFrustum(
-            cameraLightAntiCullingFrustum, rectLight.getPosition(), rectLight.getDimensions(), rectLight.getXAxis(), rectLight.getYAxis());
-          break;
-        }
-        // TODO: Implement anti-culling for Disk and Cylinder
-        case RtLightType::Disk:
-          break;
-        case RtLightType::Cylinder:
-          break;
-        case RtLightType::Distant:
-          // Can't do anti-culling for directional lights
-          break;
-        default:
-          assert(false);
-          break;
-        }
-
-        if (isLightInsideFrustum) {
-          rtLight.markAsInsideFrustum();
-        } else {
-          rtLight.markAsOutsideFrustum();
-        }
-      }
-    }
-
     // Perform GC on the other managers
     auto& textureManager = m_device->getCommon()->getTextureManager();
     textureManager.garbageCollection();
     m_instanceManager.garbageCollection();
     m_accelManager.garbageCollection();
-    m_lightManager.garbageCollection();
+    m_lightManager.garbageCollection(getCamera());
     m_rayPortalManager.garbageCollection();
   }
 
@@ -633,7 +596,7 @@ namespace dxvk {
     RtLight rtLight(RtSphereLight(lightPosition, lightRadiance, lightRadius, shaping));
     rtLight.isDynamic = true;
 
-    m_lightManager.addLight(rtLight, input);
+    m_lightManager.addLight(rtLight, input, RtLightAntiCullingType::MeshReplacement);
   }
 
   uint64_t SceneManager::drawReplacements(Rc<DxvkContext> ctx, const DrawCallState* input, const std::vector<AssetReplacement>* pReplacements, const MaterialData* overrideMaterialData) {
@@ -696,7 +659,7 @@ namespace dxvk {
           RtLight localLight = replacement.lightData->toRtLight();
           localLight.setRootInstanceId(rootInstanceId);
           localLight.applyTransform(input->getTransformData().objectToWorld);
-          m_lightManager.addLight(localLight);
+          m_lightManager.addLight(localLight, *input, RtLightAntiCullingType::MeshReplacement);
         }
       }
     }
@@ -1153,7 +1116,6 @@ namespace dxvk {
     }
 
     const RtLight rtLight = lightData->toRtLight();
-
     const std::vector<AssetReplacement>* pReplacements = m_pReplacer->getReplacementsForLight(rtLight.getInitialHash());
     if (pReplacements) {
       const Matrix4 lightTransform = LightUtils::getLightTransform(light);
@@ -1165,13 +1127,20 @@ namespace dxvk {
           // Merge the d3d9 light into replacements based on overrides
           replacementLight.merge(light);
           // Convert to runtime light
-          RtLight rtLight = replacementLight.toRtLight();
+          RtLight rtReplacementLight = replacementLight.toRtLight(&rtLight);
           // Transform the replacement light by the legacy light
           if (replacementLight.relativeTransform()) {
-            rtLight.applyTransform(lightTransform);
+            rtReplacementLight.applyTransform(lightTransform);
           }
-          // Apply the light
-          m_lightManager.addLight(rtLight);
+
+          // Setup Light Replacement for Anti-Culling
+          if (RtxOptions::AntiCulling::Light::enable() && rtLight.getType() == RtLightType::Sphere) {
+            // Apply the light
+            m_lightManager.addLight(rtReplacementLight, RtLightAntiCullingType::LightReplacement);
+          } else {
+            // Apply the light
+            m_lightManager.addLight(rtReplacementLight, RtLightAntiCullingType::Ignore);
+          }
         } else {
           assert(false); // We don't support meshes as children of lights yet.
         }
