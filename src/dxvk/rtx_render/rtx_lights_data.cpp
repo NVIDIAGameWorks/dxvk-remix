@@ -81,11 +81,15 @@ namespace dxvk {
     sanitizeData();
   }
 
-  RtLight LightData::toRtLight() const {
+  RtLight LightData::toRtLight(const RtLight* const originalLight) const {
     switch (m_lightType) {
     case LightType::Sphere:
     {
-      return RtLight(RtSphereLight(m_position, calculateRadiance(), m_Radius, getLightShaping(m_zAxis), m_cachedHash));
+      if (!originalLight || originalLight->getType() != RtLightType::Sphere) {
+        return RtLight(RtSphereLight(m_position, calculateRadiance(), m_Radius, getLightShaping(m_zAxis), m_cachedHash));
+      } else {
+        return RtLight(RtSphereLight(m_position, calculateRadiance(), m_Radius, getLightShaping(m_zAxis), m_cachedHash), originalLight->getSphereLight());
+      }
     }
     case LightType::Rect:
     {
