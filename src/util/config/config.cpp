@@ -894,6 +894,18 @@ namespace dxvk {
     { R"(\\ROGame\.exe$)", {{
       { "d3d9.floatEmulation",              "Strict" },
     }} },
+    /* Bully: Scholarship Edition uses three untextured calls for its skybox */
+    { R"(\\Bully\.exe$)",{{
+      { "rtx.skyDrawcallIdThreshold",       "3"      },
+    }} },
+    /* Driver: Parallel Lines crash prevention  */
+    { R"(\\DriverParallelLines\.exe$)",{{
+      { "d3d9.deferSurfaceCreation",       "False"   },
+    }} },
+    /* Sword and Fairy 4 flickering fix         */
+    { R"(\\PAL4\.exe$)",{{
+    { "d3d9.noExplicitFrontBuffer",        "True"    },
+    }} },
     /* Dark Souls II                            */
     { R"(\\DarkSoulsII\.exe$)", {{
       { "d3d9.floatEmulation",              "Strict" },
