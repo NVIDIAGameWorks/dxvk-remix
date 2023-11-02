@@ -1390,7 +1390,7 @@ private:
   static_assert(kInvalidResourceSlot == 0 && "Below initialization of all array members is only valid for a value of 0.");
   uint32_t colorTextureSlot[kMaxSupportedTextures] = { kInvalidResourceSlot };
 
-  XXH64_hash_t m_cachedHash;
+  XXH64_hash_t m_cachedHash = kEmptyHash;
 };
 
 struct MaterialData {

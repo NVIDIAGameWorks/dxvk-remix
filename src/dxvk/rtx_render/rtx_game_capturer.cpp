@@ -441,8 +441,8 @@ namespace dxvk {
     //Export Textures
     const std::string albedoTexFilename(matName + lss::ext::dds);
     m_exporter.dumpImageToFile(ctx, BASE_DIR + lss::commonDirName::texDir,
-                         albedoTexFilename,
-                         materialData.getColorTexture().getImageView()->image());
+                               albedoTexFilename,
+                               materialData.getColorTexture().getImageView()->image());
 
     const std::string albedoTexPath = str::format(BASE_DIR + lss::commonDirName::texDir, albedoTexFilename);
 
@@ -865,12 +865,13 @@ namespace dxvk {
     assert(m_state.has<State::BeginExport>());
     assert(!m_state.has<State::PreppingExport>());
     assert(!m_state.has<State::Exporting>());
-    static auto exportThreadTask = [](const Rc<DxvkContext> ctx,
-                                      Capture cap,
-                                      State* pState,
-                                      CompletedCapture* complete,
-                                      const float framesPerSecond,
-                                      const bool bUseLssUsdPlugins) {
+    static auto exportThreadTask = [this](const Rc<DxvkContext> ctx,
+                                          Capture cap,
+                                          State* pState,
+                                          CompletedCapture* complete,
+                                          const float framesPerSecond,
+                                          const bool bUseLssUsdPlugins) {
+      m_exporter.waitForAllExportsToComplete();
       assert(pState->has<State::PreppingExport>());
       const auto exportPrep = prepExport(cap, framesPerSecond, bUseLssUsdPlugins);
       pState->set<State::PreppingExport, false>();
