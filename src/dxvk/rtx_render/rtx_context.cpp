@@ -1762,8 +1762,10 @@ namespace dxvk {
   }
 
   void RtxContext::bakeTerrain(const DrawParameters& params, DrawCallState& drawCallState, const MaterialData** outOverrideMaterialData) {
-    if (!drawCallState.testCategoryFlags(InstanceCategories::Terrain))
+    if (!getSceneManager().getTerrainBaker().enableBaking() ||
+        !drawCallState.testCategoryFlags(InstanceCategories::Terrain)) {
       return;
+    }
 
     DrawCallTransforms& transformData = drawCallState.transformData;
 
@@ -1818,6 +1820,7 @@ namespace dxvk {
         LegacyMaterialData overrideMaterial;
         overrideMaterial.colorTextures[0] = (*outOverrideMaterialData)->getOpaqueMaterialData().getAlbedoOpacityTexture();
         overrideMaterial.samplers[0] = terrainBaker.getTerrainSampler();
+        overrideMaterial.updateCachedHash();
         drawCallState.materialData = overrideMaterial;
       }
 
