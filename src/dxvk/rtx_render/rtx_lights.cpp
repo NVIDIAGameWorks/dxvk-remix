@@ -540,14 +540,12 @@ RtLight::RtLight(const RtSphereLight& light) {
   m_cachedInitialHash = m_sphereLight.getHash();
 }
 
-RtLight::RtLight(const RtSphereLight& light, const RtSphereLight& replacementSphereLight) {
-  assert(RtxOptions::AntiCulling::Light::enable());
-
+RtLight::RtLight(const RtSphereLight& light, const RtSphereLight& originalSphereLight) {
   m_type = RtLightType::Sphere;
   new (&m_sphereLight) RtSphereLight(light);
   m_cachedInitialHash = m_sphereLight.getHash();
 
-  cacheLightReplacementAntiCullingProperties(replacementSphereLight);
+  cacheLightReplacementAntiCullingProperties(originalSphereLight);
 }
 
 RtLight::RtLight(const RtRectLight& light) {
