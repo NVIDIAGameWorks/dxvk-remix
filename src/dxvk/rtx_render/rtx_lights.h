@@ -332,7 +332,7 @@ struct RtLight {
 
   RtLight(const RtSphereLight& light);
 
-  RtLight(const RtSphereLight& light, const RtSphereLight& replacementSphereLight);
+  RtLight(const RtSphereLight& light, const RtSphereLight& originalSphereLight);
 
   RtLight(const RtRectLight& light);
 
