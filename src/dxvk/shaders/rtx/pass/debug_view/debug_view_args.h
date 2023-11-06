@@ -88,4 +88,7 @@ struct DebugViewArgs {
 
   // Feature enablement
   uint isRTXDIConfidenceValid;
+
+  // Gamma flag
+  uint enableGammaCorrectionFlag;
 };
