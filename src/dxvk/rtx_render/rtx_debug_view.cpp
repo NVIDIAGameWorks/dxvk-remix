@@ -419,6 +419,7 @@ namespace dxvk {
 
         ImGui::Checkbox("Alpha Channel", &m_enableAlphaChannel);
         ImGui::Checkbox("Pseudo Color Mode", &enablePseudoColorObject());
+        ImGui::Checkbox("Gamma Correction", &enableGammaCorrectionObject());
 
         ImGui::DragFloat("Scale", &m_scale, 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
         ImGui::InputFloat("Min Value", &minValueObject(), std::max(0.01f, 0.02f * abs(minValue())), std::max(0.1f, 0.1f * abs(minValue())));
@@ -618,6 +619,7 @@ namespace dxvk {
     if (displayType() == DebugViewDisplayType::Standard) {
       debugViewArgs.enablePseudoColorFlag = enablePseudoColor();
       debugViewArgs.enableAlphaChannelFlag = m_enableAlphaChannel;
+      debugViewArgs.enableGammaCorrectionFlag = enableGammaCorrection();
 
       debugViewArgs.minValue = minValue();
       debugViewArgs.maxValue = maxValue();
