@@ -41,7 +41,6 @@ public:
   static void setMultiThreadSafety(const bool enable) {
     s_bMultiThreadSafety = enable;
   }
-  static bool loadUsdPlugins(const std::string& path);
   static void exportUsd(const Export& exportData);
 private:
   struct Reference {
