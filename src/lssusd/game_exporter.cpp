@@ -186,22 +186,6 @@ std::string computeLocalPath(const std::string& assetPath) {
   return resolvedPath.GetPathString();
 }
 
-bool GameExporter::loadUsdPlugins(const std::string& path) {
-  static auto& pluginRegistry = pxr::PlugRegistry::GetInstance();
-  std::string fullPath = computeLocalPath(path);
-  static auto plugins = pluginRegistry.RegisterPlugins(fullPath);
-  for (auto plugin : plugins) {
-    if (plugin == nullptr)
-      continue;
-
-    if (!plugin->IsLoaded() && !plugin->Load()) {
-      return false;
-    }
-    dxvk::Logger::info("[GameExporter] Load plugin: " + plugin->GetName());
-  }
-  return  plugins.size() > 0;
-}
-
 void GameExporter::exportUsd(const Export& exportData) {
   if(s_bMultiThreadSafety) {
     std::scoped_lock lock(s_mutex);
@@ -712,15 +696,6 @@ void GameExporter::exportMeshes(const Export& exportData, ExportContext& ctx) {
       const std::string relMatRefStagePath = std::filesystem::relative(fullMatStagePath,fullMeshStagePath).string();
       shaderMatUsdReferences.AddReference(relMatRefStagePath, matLssReference.ogSdfPath);
       pxr::UsdShadeMaterialBindingAPI(meshXformSchema.GetPrim()).Bind(shaderMatSchema);
-    }
-
-    // Kit metadata
-    if(exportData.meta.bUseLssUsdPlugins) {
-      meshXformSchema.GetPrim().SetMetadata(PXR_NS::SdfFieldKeys->Kind, PXR_NS::KindTokens->assembly);
-      static const pxr::TfToken kTokHideInStageWindow("hide_in_stage_window");
-      meshSchema.GetPrim().SetMetadata(kTokHideInStageWindow, true);
-      static const pxr::TfToken kTokNoDelete("no_delete");
-      meshSchema.GetPrim().SetMetadata(kTokNoDelete, true);
     }
 
     meshStage->Save();

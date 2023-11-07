@@ -206,7 +206,6 @@ struct Export {
     double startTimeCode;
     double endTimeCode;
     size_t numFramesCaptured;
-    bool bUseLssUsdPlugins;
     bool bReduceMeshBuffers;
     bool isZUp;
     std::unordered_map<std::string, std::string> renderingSettingsDict;
