@@ -316,9 +316,10 @@ struct NEECacheUtils
 
     float diffuseSolidAnglePdf  = opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
     float specularSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
+    float diffuseTransmissionSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcDiffuseTransmissionSolidAnglePdf(opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
 
     vec2 misWeight;
-    misWeight.x = saturate(lightSampleSolidAnglePDF / (lightSampleSolidAnglePDF + diffuseSolidAnglePdf));
+    misWeight.x = saturate(lightSampleSolidAnglePDF / (lightSampleSolidAnglePDF + diffuseSolidAnglePdf + diffuseTransmissionSolidAnglePdf));
     misWeight.y = saturate(lightSampleSolidAnglePDF / (lightSampleSolidAnglePDF + specularSolidAnglePdf));
     return misWeight;
   }

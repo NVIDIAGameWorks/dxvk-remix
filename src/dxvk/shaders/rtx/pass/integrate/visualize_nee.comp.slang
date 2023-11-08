@@ -176,12 +176,16 @@ void getLightCandidateInfo(NEECell cell, int binIndex, RAB_Surface surface, f16v
   float16_t specularRatio = calcBt709Luminance(surface.opaqueSurfaceMaterialInteraction.baseReflectivity)
     / calcBt709Luminance(surface.opaqueSurfaceMaterialInteraction.albedo + surface.opaqueSurfaceMaterialInteraction.baseReflectivity);
 
+  SubsurfaceMaterial subSurfaceMaterial;
+  const bool isSubsurface = subSurfaceMaterialReadHelper(surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
+
   cell.calculateLightCandidateNormalizedWeight(binIndex, cellCenter,
     surface.minimalSurfaceInteraction.position,
     viewDirection,
     surface.opaqueSurfaceMaterialInteraction.shadingNormal,
     specularRatio,
     surface.opaqueSurfaceMaterialInteraction.isotropicRoughness,
+    isSubsurface,
     probability);
   age = lightCandidate.getAge();
 
