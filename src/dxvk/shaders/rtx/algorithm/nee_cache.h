@@ -485,32 +485,42 @@ struct NEECell
   }
 #endif
 
-  float calculateLightCandidateWeight(NEELightCandidate candidate, vec3 cellCenter, vec3 surfacePoint, f16vec3 viewDirection, f16vec3 normal, float16_t specularRatio, float16_t roughness)
+  float calculateLightCandidateWeight(NEELightCandidate candidate, vec3 cellCenter, vec3 surfacePoint, f16vec3 viewDirection, f16vec3 normal, float16_t specularRatio, float16_t roughness, bool isSubsurface)
   {
     vec3 candidatePosition = candidate.getOffset() + cellCenter;
     f16vec3 inputDirection = normalize(candidatePosition - surfacePoint + normal * NEELightCandidate.getOffsetDelta());
 
     // Use a simplified GGX model to calculate light contribution
     // Offset diffuse so that light at grazing angles will not be culled due to low precision input direction.
-    const float16_t cosOffset = 0.3;
-    float16_t ndoti = saturate((dot(inputDirection, normal) + cosOffset) / (float16_t(1) + cosOffset));
-    float16_t diffuseTerm = (1.0 - specularRatio) / pi;
+    const float16_t cosOffset = 0.3h;
 
-    // The specular term consists of there parts: D, G, F
-    // We simplify some of them to improve performance.
-    // For D term, we use GGX normal distribution
-    // For G term, we simply assume it to be 1
-    // For F term, we assume it's the baseReflectivity, fresnel effect is not considered.
-    f16vec3 halfVector = normalize(inputDirection + viewDirection);
-    float ndotm = saturate(dot(halfVector, normal));
-    float specularTerm = specularRatio * evalGGXNormalDistributionIsotropic(roughness, ndotm) * cb.neeCacheArgs.specularFactor * 0.25;
+    float16_t ndoti = (dot(inputDirection, normal) + cosOffset) / (float16_t(1) + cosOffset);
+    float16_t diffuseTerm = !isSubsurface ? (1.0 - specularRatio) / pi : (1.0 - specularRatio) / twoPi;
+    float specularTerm = 0.0f;
 
-    // TODO: SSS - Add transmission radiance
-    float radiance = candidate.getRadiance();
+    if (!isSubsurface || ndoti > 0.0h)
+    {
+      ndoti = saturate(ndoti);
+
+      // The specular term consists of there parts: D, G, F
+      // We simplify some of them to improve performance.
+      // For D term, we use GGX normal distribution
+      // For G term, we simply assume it to be 1
+      // For F term, we assume it's the baseReflectivity, fresnel effect is not considered.
+      f16vec3 halfVector = normalize(inputDirection + viewDirection);
+      float ndotm = saturate(dot(halfVector, normal));
+      specularTerm = specularRatio * evalGGXNormalDistributionIsotropic(roughness, ndotm) * cb.neeCacheArgs.specularFactor * 0.25;
+    }
+    else // isSubsurface && ndoti < 0
+    {
+      ndoti = -ndoti;
+    }
+
+    const float radiance = candidate.getRadiance();
     return radiance * (diffuseTerm + specularTerm) * ndoti;
   }
 
-  void calculateLightCandidateNormalizedWeight(int ithCandidate, vec3 cellCenter, vec3 surfacePoint, f16vec3 viewDirection, f16vec3 normal, float16_t specularRatio, float16_t roughness, out float pdf)
+  void calculateLightCandidateNormalizedWeight(int ithCandidate, vec3 cellCenter, vec3 surfacePoint, f16vec3 viewDirection, f16vec3 normal, float16_t specularRatio, float16_t roughness, bool isSubsurface, out float pdf)
   {
     int count = getLightCandidateCount();
     float totalWeight = 0;
@@ -518,7 +528,7 @@ struct NEECell
     for (int i = 0; i < count; ++i)
     {
       NEELightCandidate candidate = getLightCandidate(i);
-      float weight = calculateLightCandidateWeight(candidate, cellCenter, surfacePoint, viewDirection, normal, specularRatio, roughness);
+      float weight = calculateLightCandidateWeight(candidate, cellCenter, surfacePoint, viewDirection, normal, specularRatio, roughness, isSubsurface);
       totalWeight += weight;
       if (i == ithCandidate)
       {
@@ -528,7 +538,7 @@ struct NEECell
     pdf = chosenWeight / totalWeight;
   }
 
-  void sampleLightCandidate(inout RAB_RandomSamplerState rtxdiRNG, vec2 uniformRandomNumber, vec3 cellCenter, vec3 surfacePoint, f16vec3 viewDirection, f16vec3 normal, float16_t specularRatio, float16_t roughness, inout uint16_t lightIdx, out float invPdf)
+  void sampleLightCandidate(inout RAB_RandomSamplerState rtxdiRNG, vec2 uniformRandomNumber, vec3 cellCenter, vec3 surfacePoint, f16vec3 viewDirection, f16vec3 normal, float16_t specularRatio, float16_t roughness, bool isSubsurface, inout uint16_t lightIdx, out float invPdf)
   {
     int lightCount = cb.lightRanges[lightTypeCount-1].offset + cb.lightRanges[lightTypeCount-1].count;
     uint uniformLightIdx = clamp(uniformRandomNumber.y * lightCount, 0, lightCount-1);
@@ -542,7 +552,7 @@ struct NEECell
     for (int i = 0; i < count; ++i)
     {
       NEELightCandidate candidate = getLightCandidate(i);
-      float weight = calculateLightCandidateWeight(candidate, cellCenter, surfacePoint, viewDirection, normal, specularRatio, roughness);
+      float weight = calculateLightCandidateWeight(candidate, cellCenter, surfacePoint, viewDirection, normal, specularRatio, roughness, isSubsurface);
       totalWeight += weight;
       if (weight > totalWeight * RAB_GetNextRandom(rtxdiRNG))
       {

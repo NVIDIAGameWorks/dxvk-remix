@@ -158,12 +158,19 @@ bool sampleLightNeeCache(inout RAB_RandomSamplerState rtxdiRNG, inout RNG random
   NEECell cell = NEECache.getCell(neeCellOffset);
   int3 cellID = NEECache.offsetToCell(neeCellOffset);
   vec3 cellCenter = NEECache.cellToCenterPoint(cellID);
+
+  SubsurfaceMaterial subSurfaceMaterial;
+  const bool isSubsurface = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
+
+  // Note: We are NOT taking transmission into consideration, because calculating probability of transmission have some costs.
+  //       Also, it's approximate importance and no need to be exact, we just skip the calculation here for better performance.
+
   float16_t specularRatio = calcBt709Luminance(opaqueSurfaceMaterialInteraction.baseReflectivity)
     / calcBt709Luminance(opaqueSurfaceMaterialInteraction.albedo + opaqueSurfaceMaterialInteraction.baseReflectivity);
   vec2 uniformRandomNumber = vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState));
   cell.sampleLightCandidate(rtxdiRNG, uniformRandomNumber, cellCenter,
     surfaceInteraction.position, viewDirection,
-    opaqueSurfaceMaterialInteraction.shadingNormal, specularRatio, opaqueSurfaceMaterialInteraction.isotropicRoughness, lightIdx, invSelectionPdf);
+    opaqueSurfaceMaterialInteraction.shadingNormal, specularRatio, opaqueSurfaceMaterialInteraction.isotropicRoughness, isSubsurface, lightIdx, invSelectionPdf);
 
   if (invSelectionPdf > 0)
   {
