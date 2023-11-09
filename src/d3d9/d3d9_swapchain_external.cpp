@@ -30,7 +30,7 @@
 
 namespace dxvk {
 
-  D3D9ExternalPresenter::D3D9ExternalPresenter(
+  D3D9SwapchainExternal::D3D9SwapchainExternal(
         D3D9DeviceEx* pDevice,
         D3DPRESENT_PARAMETERS* pPresentParams,
   const D3DDISPLAYMODEEX* pFullscreenDisplayMode)
@@ -39,7 +39,7 @@ namespace dxvk {
     m_frameResumeSemaphore = RtxSemaphore::createBinary(pDevice->GetDXVKDevice().ptr(), "ExternalPresenter::frameResume");
   }
 
-  HRESULT STDMETHODCALLTYPE D3D9ExternalPresenter::Present(const RECT*, const RECT*, HWND, const RGNDATA*,  DWORD) {
+  HRESULT STDMETHODCALLTYPE D3D9SwapchainExternal::Present(const RECT*, const RECT*, HWND, const RGNDATA*,  DWORD) {
     auto targetImage = m_backBuffers[0]->GetCommonTexture()->GetImage();
 
     auto& imageInfo = targetImage->info();

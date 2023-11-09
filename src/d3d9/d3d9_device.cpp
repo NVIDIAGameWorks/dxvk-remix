@@ -68,7 +68,7 @@ namespace dxvk {
           HWND                   hFocusWindow,
           DWORD                  BehaviorFlags,
           Rc<DxvkDevice>         dxvkDevice,
-// NV-DXVK start: external API
+// NV-DXVK start: external swapchain
           bool                   WithExternalSwapchain)
 // NV-DXVK end
     : m_parent         ( pParent )
@@ -7659,7 +7659,7 @@ namespace dxvk {
     } else {
 // NV-DXVK start: external API
       if (m_withExternalSwapchain) {
-        m_implicitSwapchain = new D3D9ExternalPresenter(this, pPresentationParameters, pFullscreenDisplayMode);
+        m_implicitSwapchain = new D3D9SwapchainExternal(this, pPresentationParameters, pFullscreenDisplayMode);
       } else {
 // NV-DXVK end
         m_implicitSwapchain = new D3D9SwapChainEx(this, pPresentationParameters, pFullscreenDisplayMode);
@@ -7715,10 +7715,10 @@ namespace dxvk {
   }
 
 // NV-DXVK start: external API
-  D3D9ExternalPresenter* D3D9DeviceEx::GetExternalPresenter()
+  D3D9SwapchainExternal* D3D9DeviceEx::GetExternalPresenter()
   {
     if (m_withExternalSwapchain) {
-      return static_cast<D3D9ExternalPresenter*>(m_implicitSwapchain.ptr());
+      return static_cast<D3D9SwapchainExternal*>(m_implicitSwapchain.ptr());
     }
     return nullptr;
   }

@@ -104,7 +104,7 @@ namespace dxvk {
 
     friend class D3D9SwapChainEx;
 // NV-DXVK start: external API
-    friend class D3D9ExternalPresenter;
+    friend class D3D9SwapchainExternal;
 // NV-DXVK end
     friend struct D3D9Rtx;
   public:
@@ -935,7 +935,7 @@ namespace dxvk {
     }
 
 // NV-DXVK start: external API
-    D3D9ExternalPresenter* GetExternalPresenter();
+    D3D9SwapchainExternal* GetExternalPresenter();
 // NV-DXVK end
   private:
 
