@@ -84,7 +84,7 @@ namespace dxvk {
     exporter.dumpImageToFile(this, path, str::format(imageName, "_", tm.tm_mday, tm.tm_mon, tm.tm_year, "-", tm.tm_hour, tm.tm_min, tm.tm_sec, ".dds"), image);
   }
 
-  void RtxContext::blitImageHelper(const Rc<DxvkImage>& srcImage, const Rc<DxvkImage>& dstImage, VkFilter filter) {
+  void RtxContext::blitImageHelper(Rc<DxvkContext> ctx, const Rc<DxvkImage>& srcImage, const Rc<DxvkImage>& dstImage, VkFilter filter) {
     const DxvkFormatInfo* dstFormatInfo = imageFormatInfo(dstImage->info().format);
     const DxvkFormatInfo* srcFormatInfo = imageFormatInfo(srcImage->info().format);
 
@@ -122,7 +122,7 @@ namespace dxvk {
       VK_COMPONENT_SWIZZLE_IDENTITY,
     };
 
-    blitImage(dstImage, swizzle, srcImage, swizzle, blitInfo, filter);
+    ctx->blitImage(dstImage, swizzle, srcImage, swizzle, blitInfo, filter);
   }
 
   RtxContext::RtxContext(const Rc<DxvkDevice>& device)
@@ -542,7 +542,7 @@ namespace dxvk {
 
           // Note: Nearest neighbor filtering used to give a precise view of debug buffer when DLSS is used. Otherwise the resolution should match 1:1 and
           // this should be the same as using bilinear filtering.
-          blitImageHelper(srcImage, dstImage, VkFilter::VK_FILTER_NEAREST);
+          blitImageHelper(this, srcImage, dstImage, VkFilter::VK_FILTER_NEAREST);
         }
 
         getSceneManager().onFrameEnd(this);

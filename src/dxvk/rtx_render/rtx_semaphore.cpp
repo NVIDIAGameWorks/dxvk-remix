@@ -60,7 +60,7 @@ namespace dxvk {
     return ret;
   }
 
-  RtxSemaphore* RtxSemaphore::createBinary(DxvkDevice* device, const char* name) {
+  RtxSemaphore* RtxSemaphore::createBinary(DxvkDevice* device, const char* name, const bool shared) {
     RtxSemaphore* ret = new RtxSemaphore();
     ret->m_device = device;
     ret->m_isTimeline = false;
@@ -69,10 +69,32 @@ namespace dxvk {
     createInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
     createInfo.pNext = nullptr;
     createInfo.flags = 0;
-    
+
+    VkExportSemaphoreCreateInfoKHR exportSemaphoreInfo = {};
+    if (shared) {
+      exportSemaphoreInfo.sType = VK_STRUCTURE_TYPE_EXPORT_SEMAPHORE_CREATE_INFO_KHR;
+      exportSemaphoreInfo.handleTypes = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR;
+      createInfo.pNext = &exportSemaphoreInfo;
+    }
+   
+
     VkResult result = device->vkd()->vkCreateSemaphore(device->handle(),
                                                    &createInfo,
                                                    nullptr, &ret->m_sema);
+    if (shared) {
+      // Retrieve Windows HANDLE from the semaphore
+      VkSemaphoreGetWin32HandleInfoKHR handleInfo = {};
+      handleInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_GET_WIN32_HANDLE_INFO_KHR; 
+      handleInfo.semaphore = ret->m_sema;
+      handleInfo.handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR;
+
+      HANDLE win32Handle;
+      if (device->vkd()->vkGetSemaphoreWin32HandleKHR(device->handle(), &handleInfo, &win32Handle) == VK_SUCCESS) {
+        ret->m_handle = win32Handle;
+      }
+    }
+
+
     if (result != VK_SUCCESS) {
       throw DxvkError(str::format("Binary semaphore creation failed with: ",
                                   result));
@@ -96,6 +118,7 @@ namespace dxvk {
 
   RtxSemaphore::~RtxSemaphore() {
     m_device->vkd()->vkDestroySemaphore(m_device->handle(), m_sema, nullptr);
+    CloseHandle(m_handle);
   }
 
   uint64_t RtxSemaphore::value() const {
