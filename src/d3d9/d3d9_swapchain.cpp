@@ -804,7 +804,7 @@ namespace dxvk {
     return D3D_OK;
   }
 
-  HRESULT D3D9ExternalPresenter::Reset(D3DPRESENT_PARAMETERS* pPresentParams, D3DDISPLAYMODEEX* pFullscreenDisplayMode, bool forceWindowReset) {
+  HRESULT D3D9SwapchainExternal::Reset(D3DPRESENT_PARAMETERS* pPresentParams, D3DDISPLAYMODEEX* pFullscreenDisplayMode, bool forceWindowReset) {
     D3D9DeviceLock lock = m_parent->LockDevice();
 
     this->SynchronizePresent();

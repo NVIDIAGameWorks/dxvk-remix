@@ -252,7 +252,7 @@ namespace dxvk {
     // NV-DXVK end
   };
 
-  class D3D9ExternalPresenter final : public D3D9SwapChainEx {
+  class D3D9SwapchainExternal final : public D3D9SwapChainEx {
     Rc<RtxSemaphore> m_frameEndSemaphore;
     Rc<RtxSemaphore> m_frameResumeSemaphore;
 
@@ -261,7 +261,7 @@ namespace dxvk {
 
   public:
 
-    D3D9ExternalPresenter(
+    D3D9SwapchainExternal(
             D3D9DeviceEx* pDevice,
             D3DPRESENT_PARAMETERS* pPresentParams,
       const D3DDISPLAYMODEEX* pFullscreenDisplayMode);
