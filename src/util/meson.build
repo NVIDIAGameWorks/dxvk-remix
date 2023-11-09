@@ -9,7 +9,9 @@ util_src = files([
   'util_window.cpp',
 
   'thread.cpp',
-
+  
+  'util_shared_res.cpp',
+  
   'com/com_guid.cpp',
   'com/com_private_data.cpp',
 

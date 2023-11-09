@@ -263,7 +263,7 @@ namespace dxvk {
           DxvkMemoryStats::Category category,
 // NV-DXVK start: add debug names to VkImage objects
           const char *name) {
-    return new DxvkImage(m_vkd, createInfo, m_objects.memoryManager(), memoryType, category, name);
+    return new DxvkImage(this, createInfo, m_objects.memoryManager(), memoryType, category, name);
 // NV-DXVK end
   }
   
@@ -271,7 +271,7 @@ namespace dxvk {
   Rc<DxvkImage> DxvkDevice::createImageFromVkImage(
     const DxvkImageCreateInfo&  createInfo,
           VkImage               image) {
-    return new DxvkImage(m_vkd, createInfo, image);
+    return new DxvkImage(this, createInfo, image);
   }
   
   Rc<DxvkImageView> DxvkDevice::createImageView(
@@ -372,11 +372,14 @@ namespace dxvk {
     presentInfo.insertReflexPresentMarkers = insertReflexPresentMarkers;
     m_submissionQueue.present(presentInfo, status);
 
-    {
-      std::lock_guard<sync::Spinlock> statLock(m_statLock);
-      m_statCounters.addCtr(DxvkStatCounter::QueuePresentCount, 1); // Increase getCurrentFrameId()
-    }
+    incrementPresentCount();
+
     // NV-DXVK end
+  }
+
+  void DxvkDevice::incrementPresentCount() {
+    std::lock_guard<sync::Spinlock> statLock(m_statLock);
+    m_statCounters.addCtr(DxvkStatCounter::QueuePresentCount, 1); // Increase getCurrentFrameId()
   }
 
   // NV-DXVK start: DLFG integration
