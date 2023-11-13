@@ -562,7 +562,7 @@ namespace dxvk {
     // Note: Fully opaque surfaces can only be signaled when no blending or alpha testing is done as well as no translucency material wise is used.
     // This is important for signaling when to not use the opacity channel in materials when it is not being used for anything.
 
-    out.isFullyOpaque = !blendEnabled && !alphaTestEnabled;
+    out.isFullyOpaque = !blendEnabled && out.alphaTestType == AlphaTestType::kAlways; // use the blend/test type from the output, rather than legacy for this so replacements can override
     out.isBlendingDisabled = !blendEnabled;
 
     return out;
