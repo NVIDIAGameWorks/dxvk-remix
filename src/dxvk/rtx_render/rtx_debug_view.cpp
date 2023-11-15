@@ -208,6 +208,8 @@ namespace dxvk {
         {DEBUG_VIEW_NAN,                                                   "Inf/NaN Check"},
         {DEBUG_SURFACE_LOBE_CONSISTENCY,                                   "Surface/Lobe Consistency Check"},
         {DEBUG_VIEW_SCROLLING_LINE,                                        "Scrolling Line"},
+        {DEBUG_VIEW_POM_ITERATIONS,                                        "POM Iterations" },
+        {DEBUG_VIEW_POM_DIRECT_HIT_POS,                                    "POM Direct Hit Position (Tangent Space)" },
     } };
 
   ImGui::ComboWithKey<CompositeDebugView> compositeDebugViewCombo = ImGui::ComboWithKey<CompositeDebugView>(

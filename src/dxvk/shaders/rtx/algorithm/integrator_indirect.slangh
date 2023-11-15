@@ -915,7 +915,7 @@ void integrateIndirectPath(
 
 #ifdef OPAQUE_MATERIAL_USE_POM
   // set initial POM material and texcoords from textures.
-  if (pathState.continuePath && cb.pomEnable && cb.pomEnableIndirectLighting)
+  if (pathState.continuePath && cb.pomEnableIndirectLighting)
   {
     uint16_t primarySurfaceIndex = uint16_t(SharedSurfaceIndex[pixelCoordinate]);
     if (primarySurfaceIndex != BINDING_INDEX_INVALID) {

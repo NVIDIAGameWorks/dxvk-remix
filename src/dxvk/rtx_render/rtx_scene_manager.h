@@ -186,6 +186,8 @@ public:
   
   uint32_t getActivePOMCount() {return m_activePOMCount;}
 
+  float getTotalMipBias();
+
   // ISceneManager but not really
   void clear(Rc<DxvkContext> ctx, bool needWfi);
   void garbageCollection();
