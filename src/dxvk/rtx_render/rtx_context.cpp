@@ -832,12 +832,23 @@ namespace dxvk {
     constants.enablePlayerModelPrimaryShadows = RtxOptions::Get()->playerModel.enablePrimaryShadows();
     constants.enablePreviousTLAS = RtxOptions::Get()->enablePreviousTLAS() && m_common->getSceneManager().isPreviousFrameSceneAvailable();
 
-    constants.pomEnable = getSceneManager().getActivePOMCount() > 0;
-    constants.pomEnableDirectLighting = RtxOptions::Displacement::enableDirectLighting();
-    constants.pomEnableIndirectLighting = RtxOptions::Displacement::enableIndirectLighting();
-    constants.pomEnableNEECache = RtxOptions::Displacement::enableNEECache();
-    constants.pomEnableReSTIRGI = RtxOptions::Displacement::enableReSTIRGI();
-    constants.pomEnablePSR = RtxOptions::Displacement::enablePSR() || !constants.pomEnable; // enable PSR for materials with heightmaps if POM is completely disabled.
+    constants.pomMode = getSceneManager().getActivePOMCount() > 0 ? RtxOptions::Displacement::mode() : DisplacementMode::Off;
+    if (constants.pomMode == DisplacementMode::Off) {
+      constants.pomEnableDirectLighting = false;
+      constants.pomEnableIndirectLighting = false;
+      constants.pomEnableNEECache = false;
+      constants.pomEnableReSTIRGI = false;
+      constants.pomEnablePSR = true; // enable PSR for materials with heightmaps if POM is completely disabled.
+    } else {
+      constants.pomEnableDirectLighting = RtxOptions::Displacement::enableDirectLighting();
+      constants.pomEnableIndirectLighting = RtxOptions::Displacement::enableIndirectLighting();
+      constants.pomEnableNEECache = RtxOptions::Displacement::enableNEECache();
+      constants.pomEnableReSTIRGI = RtxOptions::Displacement::enableReSTIRGI();
+      constants.pomEnablePSR = RtxOptions::Displacement::enablePSR();
+    }
+    constants.pomMaxIterations = RtxOptions::Displacement::maxIterations();
+
+    constants.totalMipBias = getSceneManager().getTotalMipBias(); 
 
     constants.terrainArgs = getSceneManager().getTerrainBaker().getTerrainArgs();
 

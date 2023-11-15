@@ -295,6 +295,9 @@ namespace dxvk {
 
     struct Displacement {
       friend class ImGUI;
+      RTX_OPTION("rtx.displacement", DisplacementMode, mode, DisplacementMode::RaymarchPOM, "What algorithm the displacement uses.\n"
+        "RaymarchPOM: advances the ray in linear steps until the ray is below the heightfield.\n"
+        "QuadtreePOM: Relies on special mipmaps with maximum values instead of average values.  Uses the mipmap as a quadtree.");
       RTX_OPTION("rtx.displacement", bool, enableDirectLighting, true, "Whether direct lighting accounts for displacement mapping");
       RTX_OPTION("rtx.displacement", bool, enableIndirectLighting, true, "Whether indirect lighting accounts for displacement mapping");
       RTX_OPTION("rtx.displacement", bool, enableNEECache, true, "Whether the NEE cache accounts for displacement mapping");
@@ -302,6 +305,7 @@ namespace dxvk {
       RTX_OPTION("rtx.displacement", bool, enableIndirectHit, false, "Whether indirect ray hits account for displacement mapping (Enabling this is expensive.  Without it, non-perfect reflections of displaced objects will not show displacement.)");
       RTX_OPTION("rtx.displacement", bool, enablePSR, false, "Enable PSR (perfect reflections) for materials with displacement.  Rays that have been perfectly reflected off a POM surface will not collide correctly with other parts of that same surface.");
       RTX_OPTION("rtx.displacement", float, displacementFactor, 1.0f, "Scaling factor for all displacement maps");
+      RTX_OPTION("rtx.displacement", uint, maxIterations, 64, "The max number of times the POM raymarch will iterate.");
     } displacement;
 
     RTX_OPTION("rtx", bool, resolvePreCombinedMatrices, true, "");

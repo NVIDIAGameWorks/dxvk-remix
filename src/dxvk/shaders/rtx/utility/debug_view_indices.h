@@ -193,6 +193,10 @@
 
 #define DEBUG_VIEW_IS_THIN_OPAQUE 800
 
+#define DEBUG_VIEW_POM_ITERATIONS 810
+#define DEBUG_VIEW_POM_DIRECT_HIT_POS 811
+
+
 enum class CompositeDebugView : uint32_t {
   Disabled = 0,
   FinalRenderWithMaterialProperties
