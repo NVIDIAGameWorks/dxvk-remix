@@ -393,7 +393,7 @@ VisibilityResult traceVisibilityRay(
 
   // Evaluate POM visibility
   float pomAttenuation = 1.0f;
-  if (cb.pomEnable && primarySurfaceIndex != BINDING_INDEX_INVALID)
+  if (cb.pomMode != DisplacementMode::Off && primarySurfaceIndex != BINDING_INDEX_INVALID)
   {
     const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
     const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
@@ -403,7 +403,7 @@ VisibilityResult traceVisibilityRay(
       if (opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID)
       {
         pomAttenuation = opaqueSurfaceMaterialInteractionCalcHeightThroughput(
-          minimalSurfaceInteraction, -visibilityRay.direction, opaqueSurfaceMaterial.heightTextureIndex,
+          minimalSurfaceInteraction, visibilityRay.direction, opaqueSurfaceMaterial.heightTextureIndex,
           opaqueSurfaceMaterial.samplerIndex, texCoords, opaqueSurfaceMaterial.displaceIn
         );
         if (pomAttenuation <= 0.001f)

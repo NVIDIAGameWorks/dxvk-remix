@@ -31,6 +31,7 @@
 #include "rtx/concept/ray/ray.slangh"
 #include "rtx/concept/surface/surface.slangh"
 #include "rtx/concept/surface_material/surface_material.slangh"
+#include "rtx/concept/surface_material/opaque_surface_material_interaction.slangh"
 #include "rtx/concept/surface/alpha_blend_surface.slangh"
 #include "rtx/concept/light/light.slangh"
 #include "rtx/algorithm/resolve.slangh"
@@ -869,6 +870,47 @@ void geometryResolverVertexOutputDebugView(
     // Green = thin opaque, Red = not thin opaque
     storeInDebugView(pixelCoordinate, isThinOpaque ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0));
 
+    break;
+  case DEBUG_VIEW_POM_ITERATIONS:
+#ifdef OPAQUE_MATERIAL_USE_POM
+    if (materialType == surfaceMaterialTypeOpaque && cb.pomMode != DisplacementMode::Off)
+    {
+      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
+      const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
+      OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
+      float3 hitPos = float3(0.f);
+      uint iterations = 0;
+      if (opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID && opaqueSurfaceMaterial.displaceIn > 0.0f)
+      {
+        SurfaceInteraction tempSurfaceInteraction = surfaceInteractionCreate(surface, rayInteraction, ray);
+        const f16mat3 worldToTangent = f16mat3(tempSurfaceInteraction.interpolatedTangent, tempSurfaceInteraction.interpolatedBitangent, tempSurfaceInteraction.interpolatedNormal);
+        const f16vec3 viewDirTangentSpace = normalize(mul(worldToTangent, rayInteraction.viewDirection));
+        hitPos = pomCalculateTexcoord(opaqueSurfaceMaterial, tempSurfaceInteraction, viewDirTangentSpace, iterations);
+      }
+      float iterFrac = ((float)iterations) / cb.pomMaxIterations;
+      storeInDebugView(pixelCoordinate, float3(iterFrac, 1.f-iterFrac, 0.f));
+    }
+#endif
+    break;
+  case DEBUG_VIEW_POM_DIRECT_HIT_POS:
+#ifdef OPAQUE_MATERIAL_USE_POM
+    if (materialType == surfaceMaterialTypeOpaque && cb.pomMode != DisplacementMode::Off)
+    {
+      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
+      const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
+      OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
+      float3 hitPos = float3(0.f);
+      if (opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID && opaqueSurfaceMaterial.displaceIn > 0.0f)
+      {
+        SurfaceInteraction tempSurfaceInteraction = surfaceInteractionCreate(surface, rayInteraction, ray);
+        const f16mat3 worldToTangent = f16mat3(tempSurfaceInteraction.interpolatedTangent, tempSurfaceInteraction.interpolatedBitangent, tempSurfaceInteraction.interpolatedNormal);
+        const f16vec3 viewDirTangentSpace = normalize(mul(worldToTangent, rayInteraction.viewDirection));
+        uint iterations = 0;
+        hitPos = pomCalculateTexcoord(opaqueSurfaceMaterial, tempSurfaceInteraction, viewDirTangentSpace, iterations);
+      }
+      storeInDebugView(pixelCoordinate, hitPos);
+    }
+#endif
     break;
   }
 }

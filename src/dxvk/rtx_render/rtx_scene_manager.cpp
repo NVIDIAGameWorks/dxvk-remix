@@ -137,6 +137,14 @@ namespace dxvk {
     return worldToSceneOrientedVector(sceneVector);
   }
 
+  float SceneManager::getTotalMipBias() {
+    auto& resourceManager = m_device->getCommon()->getResources();
+
+    const bool temporalUpscaling = RtxOptions::Get()->isDLSSEnabled() || RtxOptions::Get()->isTAAEnabled();
+    const float totalUpscaleMipBias = temporalUpscaling ? (log2(resourceManager.getUpscaleRatio()) + RtxOptions::Get()->upscalingMipBias()) : 0.0f;
+    return totalUpscaleMipBias + RtxOptions::Get()->getNativeMipBias();
+  }
+
   void SceneManager::clear(Rc<DxvkContext> ctx, bool needWfi) {
     ScopedCpuProfileZone();
 
@@ -1088,16 +1096,11 @@ namespace dxvk {
     if (sampler.ptr()) {
       if (patchSampler) {
         auto& resourceManager = m_device->getCommon()->getResources();
-
-        // Create a sampler to account for DLSS lod bias and any custom filtering overrides the user has set
-        const bool temporalUpscaling = RtxOptions::Get()->isDLSSEnabled() || RtxOptions::Get()->isTAAEnabled();
-        const float totalUpscaleMipBias = temporalUpscaling ? (log2(resourceManager.getUpscaleRatio()) + RtxOptions::Get()->upscalingMipBias()) : 0.0f;
-        const float totalMipBias = totalUpscaleMipBias + RtxOptions::Get()->getNativeMipBias();
-
         const DxvkSamplerCreateInfo& originalInfo = sampler->info();
 
+        // Create a sampler to account for DLSS lod bias and any custom filtering overrides the user has set
         // TODO: Note eventually we should support setting the filter mode (nearest/linear) for patched samplers based on material replacement data in USD.
-        sampler = resourceManager.getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, originalInfo.addressModeU, originalInfo.addressModeV, originalInfo.addressModeW, originalInfo.borderColor, totalMipBias, RtxOptions::Get()->getAnisotropicFilteringEnabled());
+        sampler = resourceManager.getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, originalInfo.addressModeU, originalInfo.addressModeV, originalInfo.addressModeW, originalInfo.borderColor, getTotalMipBias(), RtxOptions::Get()->getAnisotropicFilteringEnabled());
       }
 
       samplerIndex = m_samplerCache.track(sampler);
