@@ -301,7 +301,7 @@ namespace dxvk {
     const bool serEnabled = RtxOptions::Get()->isShaderExecutionReorderingInPathtracerIntegrateIndirectEnabled();
     const bool ommEnabled = RtxOptions::Get()->getEnableOpacityMicromap();
     const bool includePortals = RtxOptions::Get()->rayPortalModelTextureHashes().size() > 0;
-    const bool pomEnabled = rtOutput.m_raytraceArgs.pomEnable && RtxOptions::Displacement::enableIndirectHit();
+    const bool pomEnabled = rtOutput.m_raytraceArgs.pomMode != DisplacementMode::Off && RtxOptions::Displacement::enableIndirectHit();
 
     // Trace indirect ray
     {
