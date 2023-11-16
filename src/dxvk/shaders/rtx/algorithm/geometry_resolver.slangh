@@ -592,8 +592,9 @@ void geometryResolverVertexOutputDebugView(
     {
       float lightObjectPdf = 1.0;
       vec3 baryCentrics = uintToBarycentrics(rayInteraction.barycentricCoordinates);
+      float triangleAreaUnused;
       LightSample lightSample = NEECacheUtils.calculateLightSampleFromTriangle(
-        rayInteraction.surfaceIndex, rayInteraction.primitiveIndex, baryCentrics.yz, lightObjectPdf, cameraGetWorldPosition(cb.camera), rayInteraction.coneRadius, ray.spreadAngle);      
+        rayInteraction.surfaceIndex, rayInteraction.primitiveIndex, baryCentrics.yz, lightObjectPdf, cameraGetWorldPosition(cb.camera), rayInteraction.coneRadius, ray.spreadAngle, triangleAreaUnused);
       sampleRadiance = lightSample.radiance;
     }
 

@@ -131,6 +131,8 @@ namespace dxvk {
 
         {DEBUG_VIEW_NEE_CACHE_LIGHT_HISTOGRAM, "NEE Cache Light Histogram"},
         {DEBUG_VIEW_NEE_CACHE_HISTOGRAM, "NEE Cache Triangle Histogram"},
+        {DEBUG_VIEW_NEE_CACHE_HASH_MAP, "NEE Cache Hash Map"},
+        {DEBUG_VIEW_NEE_CACHE_ACCUMULATE_MAP, "NEE Cache Accumulate Map"},
         {DEBUG_VIEW_NEE_CACHE_SAMPLE_RADIANCE, "NEE Cache Sample Radiance"},
         {DEBUG_VIEW_NEE_CACHE_TASK, "NEE Cache Task"},
 
