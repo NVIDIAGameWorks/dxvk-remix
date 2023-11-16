@@ -366,6 +366,7 @@ namespace dxvk {
     // is not an issue and the buffers are allowed to keep whatever capacity they have allocated between calls for the sake of performance.
 
     m_lightsGPUData.resize(lightsGPUSize);
+    memset(m_lightsGPUData.data(), 0xff, sizeof(char)* m_lightsGPUData.size());
     m_lightMappingData.resize(lightMappingBufferEntries);
 
     // Clear all slots to new light

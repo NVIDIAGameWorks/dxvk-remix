@@ -51,6 +51,8 @@
 #define INTEGRATE_INDIRECT_BINDING_NEE_CACHE                                      57
 #define INTEGRATE_INDIRECT_BINDING_NEE_CACHE_SAMPLE                               58
 #define INTEGRATE_INDIRECT_BINDING_NEE_CACHE_THREAD_TASK                          59
+#define INTEGRATE_INDIRECT_BINDING_NEE_CACHE_TASK                                 60
+#define INTEGRATE_INDIRECT_BINDING_PRIMITIVE_ID_PREFIX_SUM                        62
 
 // Storage
 
