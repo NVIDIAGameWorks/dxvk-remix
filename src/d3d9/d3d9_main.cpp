@@ -14,11 +14,16 @@ namespace dxvk {
 
   HRESULT CreateD3D9(
           bool           Extended,
-          IDirect3D9Ex** ppDirect3D9Ex) {
+          IDirect3D9Ex** ppDirect3D9Ex,
+// NV-DXVK start: external API
+          bool           WithExternalSwapchain = false) {
+// NV-DXVK end
     if (!ppDirect3D9Ex)
       return D3DERR_INVALIDCALL;
 
-    *ppDirect3D9Ex = ref(new D3D9InterfaceEx( Extended ));
+// NV-DXVK start: external API
+    *ppDirect3D9Ex = ref(new D3D9InterfaceEx(Extended, WithExternalSwapchain));
+// NV-DXVK end
     return D3D_OK;
   }
 }

@@ -153,6 +153,7 @@ private:
   void captureMesh(const Rc<DxvkContext> ctx,
                    const XXH64_hash_t currentMeshHash,
                    const BlasEntry& blas,
+                   const CategoryFlags& flags,
                    const bool bIsNewMesh,
                    const bool bCapturePositions,
                    const bool bCaptureNormals,

@@ -470,6 +470,16 @@ namespace dxvk::vk {
     VULKAN_FN(vkSetDebugUtilsObjectTagEXT);
     #endif
     // NV-DXVK end
+
+    #ifdef VK_KHR_external_memory_win32
+    VULKAN_FN(vkGetMemoryWin32HandleKHR);
+    VULKAN_FN(vkGetMemoryWin32HandlePropertiesKHR);
+    #endif
+
+    #ifdef VK_KHR_external_semaphore_win32
+    VULKAN_FN(vkGetSemaphoreWin32HandleKHR);
+    #endif
+
   };
   
 }

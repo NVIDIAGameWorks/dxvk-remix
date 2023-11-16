@@ -34,6 +34,7 @@
 #include "dxvk_imgui.h"
 #include "rtx_render/rtx_imgui.h"
 #include "dxvk_device.h"
+#include "rtx_render/rtx_utils.h"
 #include "rtx_render/rtx_shader_manager.h"
 #include "rtx_render/rtx_camera.h"
 #include "rtx_render/rtx_context.h"
@@ -135,7 +136,6 @@ namespace dxvk {
     char* uniqueId;
     char* displayName;
     RtxOption<fast_unordered_set>* textureSetOption;
-    XXH64_hash_t bufferTextureHash;
     bool bufferToggle;
   };
 
@@ -667,6 +667,8 @@ namespace dxvk {
     
     m_capture->update(ctx);
 
+    showDebugVisualizations(ctx);
+
     const auto showUI = RtxOptions::Get()->showUI();
 
     if (showUI == UIType::Advanced) {
@@ -735,8 +737,12 @@ namespace dxvk {
   }
 
 
-  void ImGUI::showMainMenu(const Rc<DxvkContext>& ctx) {
+  void ImGUI::showDebugVisualizations(const Rc<DxvkContext>& ctx) {
+    auto common = ctx->getCommonObjects();
+    common->getSceneManager().getLightManager().showImguiDebugVisualization();
+  }
 
+  void ImGUI::showMainMenu(const Rc<DxvkContext>& ctx) {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(ImVec2(m_windowOnRight ? viewport->Size.x - m_windowWidth : 0.f, viewport->Pos.y));
     ImGui::SetNextWindowSize(ImVec2(m_windowWidth, viewport->Size.y));
@@ -958,9 +964,11 @@ namespace dxvk {
     auto common = ctx->getCommonObjects();
     DxvkDLSS& dlss = common->metaDLSS();
     DxvkDLFG& dlfg = common->metaDLFG();
+    const RtxReflex& reflex = m_device->getCommon()->metaReflex();
 
     const bool dlssSupported = dlss.supportsDLSS();
     const bool dlfgSupported = dlfg.supportsDLFG();
+    const bool reflexInitialized = reflex.reflexInitialized();
 
     // Describe the tab
 
@@ -1075,16 +1083,18 @@ namespace dxvk {
       showDLFGOptions(ctx);
     }
 
-    ImGui::TextSeparator("Latency Reduction Settings");
+    if (reflexInitialized) {
+      ImGui::TextSeparator("Latency Reduction Settings");
 
-    {
-      ImGui::BeginDisabled(disableNonPresetSettings);
+      {
+        ImGui::BeginDisabled(disableNonPresetSettings);
 
-      // Note: Option to toggle the stats window is set to false here as this window is currently
-      // set up to display only when the "advanced" developer settings UI is active.
-      showReflexOptions(ctx, false);
+        // Note: Option to toggle the stats window is set to false here as this window is currently
+        // set up to display only when the "advanced" developer settings UI is active.
+        showReflexOptions(ctx, false);
 
-      ImGui::EndDisabled();
+        ImGui::EndDisabled();
+      }
     }
 
     ImGui::Dummy(ImVec2(0.0f, 5.0f));
@@ -1190,6 +1200,14 @@ namespace dxvk {
       }
 
       ImGui::EndDisabled();
+    }
+
+    // Other Settings
+
+    ImGui::TextSeparator("Other Settings");
+
+    {
+      showVsyncOptions(true);
     }
 
     // Map indirect particle level back to settings
@@ -1323,7 +1341,7 @@ namespace dxvk {
     ImGui::SameLine(200.f);
     ImGui::Checkbox("Live shader edit mode", &RtxOptions::Get()->useLiveShaderEditModeObject());
 
-    showVsyncOptions();
+    showVsyncOptions(false);
 
     if (ImGui::CollapsingHeader("Camera", collapsingHeaderFlags)) {
       ImGui::Indent();
@@ -1410,6 +1428,13 @@ namespace dxvk {
       ImGui::Unindent();
     }
 
+
+    if (ImGui::CollapsingHeader("Camera Sequence", collapsingHeaderClosedFlags)) {
+      ImGui::Indent();
+      RtCameraSequence::getInstance()->showImguiSettings();
+      ImGui::Unindent();
+    }
+
     if (ImGui::CollapsingHeader("Developer Options", collapsingHeaderFlags)) {
       ImGui::Indent();
       ImGui::Checkbox("Enable", &RtxOptions::Get()->enableDeveloperOptionsObject());
@@ -1437,6 +1462,165 @@ namespace dxvk {
     ImGui::PopItemWidth();
   }
 
+  namespace {
+    bool isWorldTextureSelectionEnabled() {
+      // mouse cursor is not obstructed by any imgui window
+      return !ImGui::GetIO().WantCaptureMouse;
+    }
+
+    bool isMaterialReplacement(SceneManager& sceneManager, XXH64_hash_t texHash) {
+      return sceneManager.getAssetReplacer()->getReplacementMaterial(texHash) != nullptr;
+    }
+
+    std::string makeTextureInfo(XXH64_hash_t texHash, bool isMaterialReplacement) {
+      auto iter = g_imguiTextureMap.find(texHash);
+      if (iter == g_imguiTextureMap.end()) {
+        return {};
+      }
+      const auto& imageInfo = iter->second.imageView->imageInfo();
+
+      const auto isRT = (imageInfo.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+
+      const auto vkFormatName = (std::stringstream{} << imageInfo.format).str();
+      const auto formatName = std::string_view { vkFormatName }.substr(std::string_view{"VK_FORMAT_"}.length());
+
+      auto str = std::ostringstream {};
+      str << (isMaterialReplacement ? "Replaced material" : "Legacy material") << '\n';
+      str << (isRT ? "Render Target " : "Texture ") << imageInfo.extent.width << 'x' << imageInfo.extent.height << '\n';
+      str << formatName << '\n';
+      str << "Hash: " << hashToString(texHash) << '\n';
+      
+      return str.str();
+    }
+
+    void toggleTextureSelection(XXH64_hash_t textureHash, const char* uniqueId, fast_unordered_set& textureSet) {
+      const char* action;
+      if (textureSet.find(textureHash) != textureSet.end()) {
+        textureSet.erase(textureHash);
+        action = "removed";
+      } else {
+        textureSet.insert(textureHash);
+        action = "added";
+      }
+
+      char buffer[256];
+      sprintf_s(buffer, "%s - %s %016llX\n", uniqueId, action, textureHash);
+      Logger::info(buffer);
+    }
+
+    template<typename T>
+    std::optional<T> nonBlockingGet(std::future<T>& f) {
+      if (f.valid()) {
+        std::future_status s = f.wait_for(std::chrono::milliseconds(0));
+        if (s == std::future_status::ready) {
+          return f.get();
+        }
+      }
+      return std::nullopt;
+    }
+
+    template<typename T>
+    std::optional<T> nonBlockingGet(std::shared_future<T>& f) {
+      if (f.valid()) {
+        std::future_status s = f.wait_for(std::chrono::milliseconds(0));
+        if (s == std::future_status::ready) {
+          return f.get();
+        }
+      }
+      return std::nullopt;
+    }
+
+    template<typename T>
+    std::future<T> makeReadyFuture(const T& value) {
+      auto promise = std::promise<T> {};
+      promise.set_value(value);
+      return promise.get_future();
+    }
+
+    namespace texture_popup {
+      constexpr char POPUP_NAME[] = "rtx_texture_selection_popup";
+
+      // need to keep a reference to a texture that was passed to 'open()',
+      // as 'open()' is called only once, but popup needs to reference that texture throughout open-close
+      std::shared_future<XXH64_hash_t> g_holdingTexture = {};
+
+      void open(std::future<XXH64_hash_t>&& texHash) {
+        g_holdingTexture = texHash.share();
+        ImGui::OpenPopup(POPUP_NAME);
+      }
+
+      bool isOpened() {
+        return ImGui::IsPopupOpen(POPUP_NAME);
+      }
+
+      // Returns a texture hash that it holds, if the popup is opened.
+      // Must be called every frame.
+      std::optional<XXH64_hash_t> produce(SceneManager& sceneMgr) {
+        if (ImGui::BeginPopup(POPUP_NAME)) {
+          if (auto texHash = nonBlockingGet(g_holdingTexture)) {
+            if (texHash != kEmptyHash) {
+              ImGui::Text("Texture Info:\n%s", makeTextureInfo(*texHash, isMaterialReplacement(sceneMgr, *texHash)).c_str());
+              if (ImGui::Button("Copy Texture hash##texture_popup")) {
+                ImGui::SetClipboardText(hashToString(*texHash).c_str());
+              }
+              for (auto& rtxOption : rtxTextureOptions) {
+                rtxOption.bufferToggle = rtxOption.textureSetOption->getValue().count(*texHash) > 0;
+
+                if (IMGUI_ADD_TOOLTIP(ImGui::Checkbox(rtxOption.displayName, &rtxOption.bufferToggle), rtxOption.textureSetOption->getDescription())) {
+                  toggleTextureSelection(*texHash, rtxOption.uniqueId, rtxOption.textureSetOption->getValue());
+                }
+              }
+              ImGui::EndPopup();
+              return *texHash;
+            }
+          }
+          ImGui::EndPopup();
+          return {};
+        } else {
+          // popup is closed, forget future
+          g_holdingTexture = {};
+          return {};
+        }
+      }
+    }
+
+    // NOTE: this is temporary, might need to show a full replacement material info
+    namespace replacement_popup {
+      double g_startTime { 0 };
+
+      void open(uint32_t surfMaterialIndex) {
+        g_startTime = ImGui::GetTime();
+      }
+
+      // Must be called every frame.
+      std::optional< uint32_t > produce(SceneManager& sceneMgr) {
+        // if mouse is now over imgui windows or there was a click, close this tooltip
+        if (ImGui::GetIO().WantCaptureMouse ||
+            ImGui::IsMouseClicked(ImGuiMouseButton_Left) ||
+            ImGui::IsMouseClicked(ImGuiMouseButton_Middle) ||
+            ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+          g_startTime = 0;
+        }
+        if (ImGui::GetTime() - g_startTime < 1.5f) {
+          ImGui::SetTooltip("Replacement material");
+        }
+        return {};
+      }
+    }
+
+    float fract(float v) {
+      return v - std::floor(v);
+    }
+
+    // should be in sync with post_fx_highlight.comp.slang::highlightIntensity(),
+    // so animation of post-effect highlight and UI are same
+    float animatedHighlightIntensity(uint64_t timeSinceStartMS) {
+      const float ymax = 0.65f;
+      float t10 = 1.0f - fract(static_cast<float>(timeSinceStartMS) / 1000.0f);
+      return clamp(t10 > ymax ? t10 - (1.0f - ymax) : t10, 0.0f, 1.0f) / ymax;
+    }
+  } // anonymous namespace
+
   void ImGUI::showTextureSelectionGrid(const Rc<DxvkContext>& ctx, const char* uniqueId, const uint32_t texturesPerRow, const float thumbnailSize) {
     ImGui::PushID(uniqueId);
     auto common = ctx->getCommonObjects();
@@ -1462,43 +1646,48 @@ namespace dxvk {
     ImGuiWindowFlags window_flags = ImGuiWindowFlags_None;
     ImGui::BeginChild(str::format("Child", uniqueId).c_str(), ImVec2(availableSize.x, childWindowHeight), false, window_flags);
 
-    static char textureInfo[1024];
+    bool clickedOnTextureButton = false;
+    static auto s_jumpto = std::optional<XXH64_hash_t> {};
 
-    for (auto& pair : g_imguiTextureMap) {
+    auto foundTextureHash = std::optional<XXH64_hash_t> {};
+    auto highlightColor = HighlightColor::World;
+
+    for (auto& [texHash, texImgui] : g_imguiTextureMap) {
       bool textureHasSelection = false;
 
       if (isListFiltered) {
         auto& textureSet = listRtxOption.textureSetOption->getValue();
-        textureHasSelection = textureSet.find(pair.first) != textureSet.end();
+        textureHasSelection = textureSet.find(texHash) != textureSet.end();
       } else {
         for (const auto rtxOption : rtxTextureOptions) {
           auto& textureSet = rtxOption.textureSetOption->getValue();
-          textureHasSelection = textureSet.find(pair.first) != textureSet.end();
+          textureHasSelection = textureSet.find(texHash) != textureSet.end();
           if (textureHasSelection) {
             break;
           }
         }
       }
-
-      bool isLegacyMaterial = common->getSceneManager().getAssetReplacer()->getReplacementMaterial(pair.first) == nullptr;
-
-      if (textureHasSelection) {
+      
+      if (texHash == nonBlockingGet(texture_popup::g_holdingTexture) || texHash == s_jumpto) {
+        auto anim = Vector4 { 0.462745f, 0.725490f, 0.f, 1.f } * animatedHighlightIntensity(common->getSceneManager().getGameTimeSinceStartMS());
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(anim.r, anim.g, anim.b, anim.a));
+      } else if (textureHasSelection) {
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.996078f, 0.329412f, 0.f, 1.f));
       } else {
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.f, 0.f, 0.f, 1.00f));
       }
 
       // Lazily create the tex ID ImGUI wants
-      if (pair.second.texID == VK_NULL_HANDLE) {
-        pair.second.texID = ImGui_ImplVulkan_AddTexture(VK_NULL_HANDLE, pair.second.imageView->handle(), VK_IMAGE_LAYOUT_GENERAL);
+      if (texImgui.texID == VK_NULL_HANDLE) {
+        texImgui.texID = ImGui_ImplVulkan_AddTexture(VK_NULL_HANDLE, texImgui.imageView->handle(), VK_IMAGE_LAYOUT_GENERAL);
 
-        if (pair.second.texID == VK_NULL_HANDLE) {
+        if (texImgui.texID == VK_NULL_HANDLE) {
           ONCE(Logger::err("Failed to allocate ImGUI handle for texture, likely because we're trying to render more textures than VkDescriptorPoolCreateInfo::maxSets.  As such, we will truncate the texture list to show only what we can."));
           return;
         }
       }
 
-      const auto& imageInfo = pair.second.imageView->imageInfo();
+      const auto& imageInfo = texImgui.imageView->imageInfo();
 
       // Calculate thumbnail extent with respect to image aspect
       const float aspect = static_cast<float>(imageInfo.extent.width) / imageInfo.extent.height;
@@ -1512,52 +1701,42 @@ namespace dxvk {
       ImGui::SetCursorPosX(x + startX + (thumbnailSize - extent.x) / 2.f);
       ImGui::SetCursorPosY(y + (thumbnailSize - extent.y) / 2.f);
 
-      if (ImGui::ImageButton(pair.second.texID, extent)) {
-        if (isListFiltered)
-          toggleTextureSelection(pair.first, uniqueId, listRtxOption.textureSetOption->getValue());
-        else
-          ImGui::OpenPopup("rtx_texture_selection");
+      if (ImGui::ImageButton(texImgui.texID, extent)) {
+        if (isListFiltered) {
+          toggleTextureSelection(texHash, uniqueId, listRtxOption.textureSetOption->getValue());
+        } else {
+          clickedOnTextureButton = true;
+        }
       }
 
-      if (ImGui::IsItemHovered()) {
-        std::stringstream formatName;
-        formatName << imageInfo.format;
+      if (s_jumpto == texHash) {
+        ImGui::SetScrollHereY(0);
+        s_jumpto = {};
+      }
 
-        // list all selections for this texture
-        bool textureIsUnassigned = true;
-        std::string rtxTextureSelection;
-        for (auto& rtxOption : rtxTextureOptions) {
-          rtxOption.bufferTextureHash = pair.first;
-          rtxOption.bufferToggle = rtxOption.textureSetOption->getValue().find(pair.first) != rtxOption.textureSetOption->getValue().end();
-          if (rtxOption.bufferToggle) {
-            if (rtxTextureSelection.empty()) {
-              rtxTextureSelection = "\n";
+      if (!texture_popup::isOpened()) {
+        // if ImageButton is hovered
+        if (ImGui::IsItemHovered()) {
+          foundTextureHash = texHash;
+          highlightColor = HighlightColor::UI;
+
+          // show additional info
+          std::string rtxTextureSelection;
+          for (auto& rtxOption : rtxTextureOptions) {
+            if (rtxOption.textureSetOption->getValue().count(texHash) > 0) {
+              if (rtxTextureSelection.empty()) {
+                rtxTextureSelection = "\n";
+              }
+              rtxTextureSelection = str::format(rtxTextureSelection, " - ", rtxOption.displayName, "\n");
             }
-
-            rtxTextureSelection = str::format(rtxTextureSelection, " - ", rtxOption.displayName, "\n");
-            
-            textureIsUnassigned = false;
+          }
+          ImGui::SetTooltip("%s(Left click to assign categories. Middle click to copy a texture hash.)\n\nCurrent categories:%s",
+                            makeTextureInfo(texHash, isMaterialReplacement(common->getSceneManager(), texHash)).c_str(),
+                            rtxTextureSelection.empty() ? "\n - None\n" : rtxTextureSelection.c_str());
+          if (ImGui::IsMouseReleased(ImGuiMouseButton_Middle)) {
+            ImGui::SetClipboardText(hashToString(texHash).c_str());
           }
         }
-
-        if (textureIsUnassigned) {
-          rtxTextureSelection = "\n - None\n";
-        }
-
-        sprintf(textureInfo, "%s: %dx%d %s\nHash: 0x%" PRIx64 "\nStatus: %s\n\n",
-                (imageInfo.usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) ? "Render Target" : "Texture",
-                imageInfo.extent.width, imageInfo.extent.height,
-                formatName.str().c_str() + strlen("VK_FORMAT_"), pair.first,
-                isLegacyMaterial ? "Legacy Material" : "Replaced Material");
-
-        ImGui::SetTooltip("%s(Left click to assign categories.)\n\nCurrent categories:%s", textureInfo, rtxTextureSelection.c_str());
-        if (ImGui::IsMouseReleased(ImGuiMouseButton_Middle)) {
-          ImGui::LogToClipboard();
-          ImGui::LogText("%" PRIx64, pair.first);
-          ImGui::LogFinish();
-        }
-
-        RtxOptions::Get()->highlightedTextureRef() = pair.first;
       }
 
       ImGui::PopStyleColor(1);
@@ -1571,38 +1750,63 @@ namespace dxvk {
       }
     }
 
-    if (ImGui::BeginPopup("rtx_texture_selection")) {
-      ImGui::Text("Texture Info:\n");
-      ImGui::Text(textureInfo);
+    // popup for texture selection from world / ui
+    {
+      const bool wasUIClick = clickedOnTextureButton;
+      const bool wasWorldClick = !clickedOnTextureButton && (ImGui::IsMouseClicked(ImGuiMouseButton_Left) || ImGui::IsMouseClicked(ImGuiMouseButton_Right));
 
-      for (auto& rtxOption : rtxTextureOptions) {
-        if (IMGUI_ADD_TOOLTIP(ImGui::Checkbox(rtxOption.displayName, &rtxOption.bufferToggle), rtxOption.textureSetOption->getDescription())) {
-          toggleTextureSelection(rtxOption.bufferTextureHash, rtxOption.uniqueId, rtxOption.textureSetOption->getValue());
+
+      auto foundTextureHashInFuture = std::future<XXH64_hash_t> {};
+
+      if (!texture_popup::isOpened()) {
+        if (isWorldTextureSelectionEnabled()) {
+          static auto tovec2i = [](const ImVec2& v) { return Vector2i { static_cast<int>(v.x), static_cast<int>(v.y) }; };
+          // mouse cursor is over the texture in the world
+          common->metaDebugView().requestFindSurfaceUnder(tovec2i(ImGui::GetMousePos()), ctx->getDevice()->getCurrentFrameId());
+          // access an available result, it can be from previous frames
+          if (auto surf = common->metaDebugView().consumeLastAvailableFindSurfaceResult()) {
+            foundTextureHashInFuture = std::move(surf->legacyTextureHash);
+          }
         }
       }
 
-      ImGui::EndPopup();
+      if (wasUIClick || wasWorldClick) {
+        if (foundTextureHash) {
+          texture_popup::open(makeReadyFuture(*foundTextureHash));
+        } else if (foundTextureHashInFuture.valid()) {
+          texture_popup::open(std::move(foundTextureHashInFuture));
+        }
+      }
+
+      auto texHashToHighlight = std::optional<XXH64_hash_t>{};
+
+      // top priority for what's inside a currently open texture popup
+      if (auto texInPopup = texture_popup::produce(common->getSceneManager())) {
+        texHashToHighlight = *texInPopup;
+      } else {
+        if (foundTextureHash) {
+          texHashToHighlight = *foundTextureHash;
+        } else if (auto ft = nonBlockingGet(foundTextureHashInFuture)) {
+          if (ft != kEmptyHash) {
+            texHashToHighlight = *ft;
+          }
+        }
+      }
+
+      if (texHashToHighlight) {
+        common->getSceneManager().requestHighlighting(*texHashToHighlight, highlightColor, ctx->getDevice()->getCurrentFrameId());
+      }
+
+      // on world texture, move UI menu focus
+      if (isWorldTextureSelectionEnabled() && texHashToHighlight) {
+        s_jumpto = *texHashToHighlight;
+      }
     }
 
     ImGui::EndChild();
 
     ImGui::NewLine();
     ImGui::PopID();
-  }
-
-  void ImGUI::toggleTextureSelection(XXH64_hash_t textureHash, const char* uniqueId, fast_unordered_set& textureSet) {
-    const char* action;
-    if (textureSet.find(textureHash) != textureSet.end()) {
-      textureSet.erase(textureHash);
-      action = "removed";
-    } else {
-      textureSet.insert(textureHash);
-      action = "added";
-    }
-
-    char buffer[256];
-    sprintf_s(buffer, "%s - %s %016llX\n", uniqueId, action, textureHash);
-    Logger::info(buffer);
   }
 
   void ImGUI::showEnhancementsWindow(const Rc<DxvkContext>& ctx) {
@@ -1664,6 +1868,10 @@ namespace dxvk {
       ImGui::Checkbox("Split Texture Category List", &showLegacyTextureGuiObject());
       ImGui::DragFloat("Texture Thumbnail Scale", &RtxOptions::Get()->textureGridThumbnailScaleObject(), 0.25f, 0.25f, 3.f, "%.2f", sliderFlags);
       ImGui::Separator();
+
+      ImGui::TextUnformatted(
+        "Hover over an object on screen, or an icon in the grid below.\n"
+        "Left click to select.");
 
       if (!showLegacyTextureGui()) {
         showTextureSelectionGrid(ctx, "textures", numThumbnailsPerRow, thumbnailSize);
@@ -1828,10 +2036,17 @@ namespace dxvk {
       ImGui::DragFloat("Vertex Color Strength", &RtxOptions::Get()->vertexColorStrengthObject(), 0.001f, 0.0f, 1.0f);
       ImGui::Separator();
 
+      if (ImGui::CollapsingHeader("Heuristics", collapsingHeaderClosedFlags)) {
+        ImGui::Indent();
+        ImGui::Checkbox("Orthographic Is UI", &D3D9Rtx::orthographicIsUIObject());
+        ImGui::Unindent();
+      }
+
       if (ImGui::CollapsingHeader("Texture Parameters", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
         ImGui::DragFloat("Force Cutout Alpha", &RtxOptions::Get()->forceCutoutAlphaObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
         ImGui::DragFloat("World Space UI Background Offset", &RtxOptions::Get()->worldSpaceUiBackgroundOffsetObject(), 0.01f, -FLT_MAX, FLT_MAX, "%.3f", sliderFlags);
+        ImGui::Checkbox("Ignore last texture stage", &RtxOptions::ignoreLastTextureStageObject());
         ImGui::Unindent();
       }
 
@@ -1894,17 +2109,36 @@ namespace dxvk {
     style->TabRounding = 1;
   }
 
-  void ImGUI::showVsyncOptions() {
+  void ImGUI::showVsyncOptions(bool enableDLFGGuard) {
     // we should never get here without a swapchain, so we must have latched the vsync value already
     assert(RtxOptions::Get()->enableVsync() != EnableVsync::WaitingForImplicitSwapchain);
     
+    if (enableDLFGGuard && DxvkDLFG::enable()) {
+      ImGui::BeginDisabled();
+    }
+
     bool vsyncEnabled = RtxOptions::Get()->enableVsync() == EnableVsync::On;
     ImGui::Checkbox("Enable V-Sync", &vsyncEnabled);
     RtxOptions::Get()->enableVsyncRef() = vsyncEnabled ? EnableVsync::On : EnableVsync::Off;
+
+    ImGui::BeginDisabled();
+    ImGui::Indent();
+    ImGui::TextWrapped("This setting overrides the native game's V-Sync setting.");
+    ImGui::Unindent();
+    ImGui::EndDisabled();
+    
+    if (enableDLFGGuard && DxvkDLFG::enable()) {
+      ImGui::Indent();
+      ImGui::TextWrapped("When Frame Generation is active, V-Sync is automatically disabled.");
+      ImGui::Unindent();
+
+      ImGui::EndDisabled();
+    }
   }
 
   void ImGUI::showDLFGOptions(const Rc<DxvkContext>& ctx) {
-    if (!ctx->getCommonObjects()->metaNGXContext().supportsDLFG()) {
+    const bool supportsDLFG = ctx->getCommonObjects()->metaNGXContext().supportsDLFG() && !ctx->getCommonObjects()->metaDLFG().hasDLFGFailed();
+    if (!supportsDLFG) {
       ImGui::BeginDisabled();
     }
 
@@ -1915,31 +2149,12 @@ namespace dxvk {
       ImGui::TextWrapped(reason.c_str());
     }
 
-    if (!ctx->getCommonObjects()->metaNGXContext().supportsDLFG()) {
-      ImGui::EndDisabled();
-    }
-
-    if (DxvkDLFG::enable()) {
-      ImGui::BeginDisabled();
-    }
-
-    showVsyncOptions();
-    ImGui::BeginDisabled();
-    ImGui::Indent();
-    ImGui::TextWrapped("This setting overrides the native game's V-Sync setting.");
-    ImGui::Unindent();
-    ImGui::EndDisabled();
-    
-    if (DxvkDLFG::enable()) {
-      ImGui::Indent();
-      ImGui::TextWrapped("When Frame Generation is active, V-Sync is automatically disabled.");
-      ImGui::Unindent();
-
+    if (!supportsDLFG) {
       ImGui::EndDisabled();
     }
 
     // Force Reflex on when using G
-    if (ctx->isDLFGEnabled()) {
+    if (supportsDLFG && ctx->isDLFGEnabled()) {
       RtxOptions::Get()->reflexModeRef() = ReflexMode::LowLatency;
     } else {
       DxvkDLFG::enableRef() = false;
@@ -1951,8 +2166,6 @@ namespace dxvk {
 
     // Note: Skip Reflex ImGUI options if Reflex is not initialized (either fully disabled or failed to be initialized).
     if (!reflex.reflexInitialized()) {
-      ImGui::Text("Reflex failed to initialize or is disabled.");
-
       return;
     }
 
@@ -2243,6 +2456,8 @@ namespace dxvk {
         ImGui::DragFloat("Min Opaque Specular Lobe Probability", &RtxOptions::Get()->minOpaqueSpecularLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
         ImGui::DragFloat("Opaque Opacity Transmission Lobe Probability Zero Threshold", &RtxOptions::Get()->opaqueOpacityTransmissionLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
         ImGui::DragFloat("Min Opaque Opacity Transmission Lobe Probability", &RtxOptions::Get()->minOpaqueOpacityTransmissionLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        ImGui::DragFloat("Diffuse Transmission Lobe Probability Zero Threshold", &RtxOptions::Get()->opaqueDiffuseTransmissionLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
+        ImGui::DragFloat("Min Diffuse Transmission Lobe Probability", &RtxOptions::Get()->minOpaqueDiffuseTransmissionLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
         ImGui::DragFloat("Translucent Specular Lobe Probability Zero Threshold", &RtxOptions::Get()->translucentSpecularLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
         ImGui::DragFloat("Min Translucent Specular Lobe Probability", &RtxOptions::Get()->minTranslucentSpecularLobeSamplingProbabilityObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
         ImGui::DragFloat("Translucent Transmission Lobe Probability Zero Threshold", &RtxOptions::Get()->translucentTransmissionLobeSamplingProbabilityZeroThresholdObject(), 0.001f, 0.0f, 1.0f, "%.3f", sliderFlags);
@@ -2385,7 +2600,7 @@ namespace dxvk {
         ImGui::Checkbox("Enable Volumetric Lighting", &RtxOptions::Get()->enableVolumetricLightingObject());
 
         if (RtxOptions::Get()->enableVolumetricLighting()) {
-          ImGui::DragFloat3("Transmittance Color", &RtxOptions::Get()->volumetricTransmittanceColorObject(), 0.01f, 0.0f, 1.0f, "%.3f");
+          ImGui::DragFloat3("Transmittance Color", &RtxOptions::Get()->volumetricTransmittanceColorObject(), 0.01f, 0.0f, VolumeManager::MaxTransmittanceValue, "%.3f");
           ImGui::DragFloat("Transmittance Measurement Distance", &RtxOptions::Get()->volumetricTransmittanceMeasurementDistanceObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
           ImGui::DragFloat3("Single Scattering Albedo", &RtxOptions::Get()->volumetricSingleScatteringAlbedoObject(), 0.01f, 0.0f, 1.0f, "%.3f");
           ImGui::DragFloat("Anisotropy", &RtxOptions::Get()->volumetricAnisotropyObject(), 0.01f, -1.0f, 1.0f, "%.3f", sliderFlags);
@@ -2423,6 +2638,14 @@ namespace dxvk {
 
       // Note: Must be called if the volumetrics options changed.
       RtxOptions::Get()->updateCachedVolumetricOptions();
+
+      ImGui::Unindent();
+    }
+
+    if (ImGui::CollapsingHeader("Subsurface Scattering", collapsingHeaderClosedFlags)) {
+      ImGui::Indent();
+
+      ImGui::Checkbox("Enable Thin Opaque", &RtxOptions::SubsurfaceScattering::enableThinOpaqueObject());
 
       ImGui::Unindent();
     }
@@ -2545,7 +2768,7 @@ namespace dxvk {
       ImGui::Unindent();
     }
 
-    if (ImGui::CollapsingHeader("Debug", collapsingHeaderClosedFlags)) {
+    if (ImGui::CollapsingHeader("Debug", collapsingHeaderFlags)) {
       ImGui::Indent();
       common->metaDebugView().showImguiSettings();
       ImGui::Unindent();
@@ -2595,10 +2818,16 @@ namespace dxvk {
 
     if (ImGui::CollapsingHeader("Displacement [Experimental]", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
-      ImGui::TextWrapped("Warning: This is currently implemented using POM with a simple height map, displacing inwards.  The implementation may change in the future, which could include changes to the texture format or displacing outwards.  We're also aware of several visual quality bugs with the current implementation.");
+      ImGui::TextWrapped("Warning: This is currently implemented using POM with a simple height map, displacing inwards.  The implementation may change in the future, which could include changes to the texture format or displacing outwards.\nRaymarched POM will use a simple raymarch algorithm, and will show artifacts on thin features and at oblique angles.\nQuadtree POM depends on custom mipmaps with maximums instead of averages, which can be generated using `generate_max_mip.py`.");
+      ImGui::Combo("Mode", &RtxOptions::Displacement::modeObject(), "Off\0Raymarched POM\0Quadtree POM\0");
       ImGui::Checkbox("Enable Direct Lighting", &RtxOptions::Displacement::enableDirectLightingObject());
       ImGui::Checkbox("Enable Indirect Lighting", &RtxOptions::Displacement::enableIndirectLightingObject());
+      ImGui::Checkbox("Enable Indirect Hit", &RtxOptions::Displacement::enableIndirectHitObject());
+      ImGui::Checkbox("Enable NEE Cache", &RtxOptions::Displacement::enableNEECacheObject());
+      ImGui::Checkbox("Enable ReSTIR_GI", &RtxOptions::Displacement::enableReSTIRGIObject());
+      ImGui::Checkbox("Enable PSR", &RtxOptions::Displacement::enablePSRObject());
       ImGui::DragFloat("Global Displacement Factor", &RtxOptions::Displacement::displacementFactorObject(), 0.01f, 0.0f, 20.0f);
+      ImGui::DragInt("Max Iterations", &RtxOptions::Displacement::maxIterationsObject(), 1.f, 1, 256, "%d", sliderFlags);
       ImGui::Unindent();
     }
 
@@ -2652,8 +2881,10 @@ namespace dxvk {
         if (RtxOptions::AntiCulling::Object::enableHighPrecisionAntiCulling()) {
           ImGui::Checkbox("Infinity Far Frustum", &RtxOptions::AntiCulling::Object::enableInfinityFarFrustumObject());
         }
+        ImGui::Checkbox("Enable Bounding Box Hash For Duplication Check", &RtxOptions::AntiCulling::Object::hashInstanceWithBoundingBoxHashObject());
         ImGui::InputInt("Instance Max Size", &RtxOptions::AntiCulling::Object::numObjectsToKeepObject(), 1, 1, 0);
         ImGui::DragFloat("Anti-Culling Fov Scale", &RtxOptions::AntiCulling::Object::fovScaleObject(), 0.01f, 0.1f, 2.0f);
+        ImGui::DragFloat("Anti-Culling Far Plane Scale", &RtxOptions::AntiCulling::Object::farPlaneScaleObject(), 0.1f, 0.1f, 10000.0f);
       }
       ImGui::Separator();
       ImGui::Checkbox("Anti-Culling Lights", &RtxOptions::AntiCulling::Light::enableObject());
@@ -2699,8 +2930,13 @@ namespace dxvk {
       init_info.Device = m_device->handle();
       init_info.Queue = m_device->queues().graphics.queueHandle;
       init_info.DescriptorPool = m_imguiPool;
-      init_info.MinImageCount = 2;
-      init_info.ImageCount = 2;
+      init_info.MinImageCount = 2; // Note: Required to be at least 2 by ImGui.
+      // Note: This image count is important for allocating multiple buffers for ImGui to support multiple frames
+      // in flight without causing corruptions or crashes. This should match ideally what is set in DXVK (via something
+      // like GetActualFrameLatency, but this can change at runtime. Instead we simply use the maximum number of frames
+      // in flight supported by the Remix side of DXVK as this should be enough (as DXVK is also clamped to this amount
+      // currently).
+      init_info.ImageCount = kMaxFramesInFlight;
       init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
 
       ImGui_ImplVulkan_Init(&init_info, ctx->getFramebufferInfo().renderPass()->getDefaultHandle());
@@ -2710,8 +2946,6 @@ namespace dxvk {
 
       m_init = true;
     }
-
-    RtxOptions::Get()->highlightedTextureRef() = kEmptyHash;
 
     update(ctx);
 

@@ -31,12 +31,14 @@
 #include "rtx/concept/ray/ray.slangh"
 #include "rtx/concept/surface/surface.slangh"
 #include "rtx/concept/surface_material/surface_material.slangh"
+#include "rtx/concept/surface_material/opaque_surface_material_interaction.slangh"
 #include "rtx/concept/surface/alpha_blend_surface.slangh"
 #include "rtx/concept/light/light.slangh"
 #include "rtx/algorithm/resolve.slangh"
 #include "rtx/algorithm/volume_lighting.slangh"
 #include "rtx/pass/post_fx/post_fx_motion_blur_geometry_flags.slangh"
 #include "rtx/algorithm/nee_cache_light.slangh"
+#include "rtx/utility/gpu_printing.slangh"
 
 // Geometry Resolver Helper Constants
 
@@ -287,7 +289,7 @@ void geometryResolverOutputSurface(
       PrimaryWorldShadingNormal, PrimaryPerceptualRoughness,
       PrimaryVirtualWorldShadingNormalPerceptualRoughness, PrimaryVirtualWorldShadingNormalPerceptualRoughnessDenoising,
       PrimaryAlbedo, PrimaryBaseReflectivity,
-      SharedMaterialData0, SharedMaterialData1, SharedTextureCoord, SharedSurfaceIndex);
+      SharedMaterialData0, SharedMaterialData1, DisplacementTextureCoord, SharedSurfaceIndex);
   }
   else
   {
@@ -299,7 +301,7 @@ void geometryResolverOutputSurface(
       SecondaryWorldShadingNormal, SecondaryPerceptualRoughness,
       SecondaryVirtualWorldShadingNormalPerceptualRoughness, SecondaryVirtualWorldShadingNormalPerceptualRoughnessDenoising,
       SecondaryAlbedo, SecondaryBaseReflectivity,
-      SharedMaterialData0, SharedMaterialData1, SharedTextureCoord, SharedSurfaceIndex);
+      SharedMaterialData0, SharedMaterialData1, DisplacementTextureCoord, SharedSurfaceIndex);
   }
 
   if (cb.enableStochasticAlphaBlend && primarySurface)
@@ -321,6 +323,12 @@ void geometryResolverVertexOutputDebugView(
   bool useAlternateDisocclusionThreshold)
 {
   const uint8_t materialType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
+
+  if (cb.enableTexturePicking != 0)
+  {
+    // Write material index for the texture selection
+    GpuPrint::write(u16vec2(pixelCoordinate), float4(uintBitsToFloat(surface.surfaceMaterialIndex), 0.0, 0.0, 0.0));
+  }
 
   switch(cb.debugView)
   {
@@ -584,8 +592,9 @@ void geometryResolverVertexOutputDebugView(
     {
       float lightObjectPdf = 1.0;
       vec3 baryCentrics = uintToBarycentrics(rayInteraction.barycentricCoordinates);
+      float triangleAreaUnused;
       LightSample lightSample = NEECacheUtils.calculateLightSampleFromTriangle(
-        rayInteraction.surfaceIndex, rayInteraction.primitiveIndex, baryCentrics.yz, lightObjectPdf, cameraGetWorldPosition(cb.camera), rayInteraction.coneRadius, ray.spreadAngle);      
+        rayInteraction.surfaceIndex, rayInteraction.primitiveIndex, baryCentrics.yz, lightObjectPdf, cameraGetWorldPosition(cb.camera), rayInteraction.coneRadius, ray.spreadAngle, triangleAreaUnused);
       sampleRadiance = lightSample.radiance;
     }
 
@@ -852,6 +861,58 @@ void geometryResolverVertexOutputDebugView(
   case DEBUG_VIEW_IS_INSIDE_FRUSTUM:
     storeInDebugView(pixelCoordinate, surface.isInsideFrustum ? vec3(0.0f, 1.0f ,0.0f) : vec3(1.0f, 0.0f, 0.0f));
     break;
+  case DEBUG_VIEW_IS_THIN_OPAQUE:
+    // Green = thin opaque, Red = not thin opaque
+    bool isThinOpaque = false;
+    if (materialType == surfaceMaterialTypeOpaque)
+    {
+      isThinOpaque = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction).subsurfaceMaterialIndex != BINDING_INDEX_INVALID;
+    }
+    // Green = thin opaque, Red = not thin opaque
+    storeInDebugView(pixelCoordinate, isThinOpaque ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0));
+
+    break;
+  case DEBUG_VIEW_POM_ITERATIONS:
+#ifdef OPAQUE_MATERIAL_USE_POM
+    if (materialType == surfaceMaterialTypeOpaque && cb.pomMode != DisplacementMode::Off)
+    {
+      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
+      const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
+      OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
+      float3 hitPos = float3(0.f);
+      uint iterations = 0;
+      if (opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID && opaqueSurfaceMaterial.displaceIn > 0.0f)
+      {
+        SurfaceInteraction tempSurfaceInteraction = surfaceInteractionCreate(surface, rayInteraction, ray);
+        const f16mat3 worldToTangent = f16mat3(tempSurfaceInteraction.interpolatedTangent, tempSurfaceInteraction.interpolatedBitangent, tempSurfaceInteraction.interpolatedNormal);
+        const f16vec3 viewDirTangentSpace = normalize(mul(worldToTangent, rayInteraction.viewDirection));
+        hitPos = pomCalculateTexcoord(opaqueSurfaceMaterial, tempSurfaceInteraction, viewDirTangentSpace, iterations);
+      }
+      float iterFrac = ((float)iterations) / cb.pomMaxIterations;
+      storeInDebugView(pixelCoordinate, float3(iterFrac, 1.f-iterFrac, 0.f));
+    }
+#endif
+    break;
+  case DEBUG_VIEW_POM_DIRECT_HIT_POS:
+#ifdef OPAQUE_MATERIAL_USE_POM
+    if (materialType == surfaceMaterialTypeOpaque && cb.pomMode != DisplacementMode::Off)
+    {
+      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
+      const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
+      OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
+      float3 hitPos = float3(0.f);
+      if (opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID && opaqueSurfaceMaterial.displaceIn > 0.0f)
+      {
+        SurfaceInteraction tempSurfaceInteraction = surfaceInteractionCreate(surface, rayInteraction, ray);
+        const f16mat3 worldToTangent = f16mat3(tempSurfaceInteraction.interpolatedTangent, tempSurfaceInteraction.interpolatedBitangent, tempSurfaceInteraction.interpolatedNormal);
+        const f16vec3 viewDirTangentSpace = normalize(mul(worldToTangent, rayInteraction.viewDirection));
+        uint iterations = 0;
+        hitPos = pomCalculateTexcoord(opaqueSurfaceMaterial, tempSurfaceInteraction, viewDirTangentSpace, iterations);
+      }
+      storeInDebugView(pixelCoordinate, hitPos);
+    }
+#endif
+    break;
   }
 }
 
@@ -1078,11 +1139,13 @@ void geometryResolverVertex(
 
   const bool enablePSRR = cb.enablePSRR;
   const bool enablePSTR = cb.enablePSTR;
-  // Note: Only sample from PSR if either PSRR or PSTR are enabled, and if the hit is not a separately traced viewmodel.
+  // pomEnablePSR defaults to false, as PSR does not account for POM, and regular bounce rays will currently give a more accurate result.
+  const bool pomEnablePSR = cb.pomEnablePSR;
+  // Note: Only sample from PSR if either PSRR or PSTR are enabled, the hit is not a separately traced viewmodel, and the surface does not have displacement. 
   const bool samplePSR =
     (enablePSRR || enablePSTR) &&
-    !geometryResolverState.decalEncountered;
-
+    !geometryResolverState.decalEncountered &&
+    (pomEnablePSR || !polymorphicSurfaceMaterialInteractionHasHeightTexture(polymorphicSurfaceMaterialInteraction));
   // Check if the first hit surface is eligible for PSRR or PSTR by sampling it
 
   SurfaceMaterialInteractionPSRSample surfaceMaterialInteractionReflectionPSRSample;
@@ -1288,6 +1351,12 @@ void geometryPSRResolverEvaluateContinuation(
   {
     shouldTerminate = geometryPSRResolverState.bounceIteration > cb.pstrMaxBounces;
     isLastBounce = geometryPSRResolverState.bounceIteration >= cb.pstrMaxBounces;
+  }
+
+  // We currently don't support reflections off of POM
+  if (!cb.pomEnablePSR && polymorphicSurfaceMaterialInteractionHasHeightTexture(polymorphicSurfaceMaterialInteraction))
+  {
+    shouldTerminate = true;
   }
 
   if (shouldTerminate)

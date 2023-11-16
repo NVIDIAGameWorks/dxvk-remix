@@ -23,181 +23,9 @@
 #include "rtx_lights.h"
 #include "rtx_options.h"
 #include "rtx_light_manager.h"
+#include "rtx_light_utils.h"
 
 namespace dxvk {
-
-static float leastSquareIntensity(float intensity, float attenuation2, float attenuation1, float attenuation0, float range) {
-  // Calculate the distance where light intensity attenuates to 10%
-  constexpr float kEpsilon = 0.000001f;
-  float lowRange = 0.0f;
-  const float lowThreshold = 0.1f;
-  if (attenuation2 < kEpsilon) {
-    if (attenuation1 > kEpsilon) {
-      lowRange = (1.0f / lowThreshold - attenuation0) / attenuation1;
-    }
-  } else {
-    float a = attenuation2;
-    float b = attenuation1;
-    float c = attenuation0 - 1.0f / lowThreshold;
-    float discriminant = b * b - 4.0 * a * c;
-    if (discriminant >= 0) {
-      const float sqRoot = std::sqrt(discriminant);
-      const float root1 = (-b + sqRoot) / (2 * a);
-      const float root2 = (-b - sqRoot) / (2 * a);
-      if (root1 > 0) {
-        lowRange = root1;
-      }
-      if (root2 > 0) {
-        lowRange = root2;
-      }
-    }
-  }
-
-  // Calculate the sample range
-  if (lowRange > 0) {
-    range = std::min(range, lowRange);
-  }
-
-  // Place 5 samples between [0, range]
-  // Find newIntensity to minimize the error = Sigma((intensity / (a2*xi*xi + a1*xi + a0) - newIntensity / (xi * xi))^2)
-  const int kSamples = 5;
-  float numerator = 0;
-  float denominator = 0;
-
-  for (int i = 0; i < kSamples; i++) {
-    float xi = float(i + 1) / kSamples * range;
-    float xi2 = xi * xi;
-    float xi4 = xi2 * xi2;
-    float Ii = intensity / (attenuation2 * xi2 + attenuation1 * xi + attenuation0);
-    numerator += Ii / xi2;
-    denominator += 1 / xi4;
-  }
-
-  float newIntensity = numerator / denominator;
-  return newIntensity;
-}
-
-static float intensityToEndDistance(float intensity) {
-  float endDistanceSq = intensity / kLegacyLightEndValue;
-  return sqrt(endDistanceSq);
-}
-
-static float solveQuadraticEndDistance(float originalBrightness, float attenuation2, float attenuation1, float attenuation0, float range) {
-  const float a = attenuation2;
-  const float b = attenuation1;
-  const float c = attenuation0;
-  float endDistance = 0.0f;
-
-  // Solve for kLegacyLightEndValue using quadratic equation.
-  // originalBrightness/(a*d*d+b*d+c) = kLegacyLightEndValue
-  // a*d*d+b*d+c-originalBrightness/kLegacyLightEndValue = 0 
-  const float newC = c - originalBrightness / kLegacyLightEndValue;
-  const float discriminant = b * b - 4 * a * newC;
-
-  if (discriminant < 0) {
-    // Attenuation never reaches kLegacyLightEndValue.  Just use range.
-    endDistance = range;
-  } else if (discriminant == 0) {
-    const float root = -b / (2 * a);
-    if (root > 0) {
-      endDistance = root;
-    }
-  } else {
-    // Two roots, use the smaller positive root.
-    const float sqRoot = std::sqrt(discriminant);
-    const float root1 = (-b + sqRoot) / (2 * a);
-    const float root2 = (-b - sqRoot) / (2 * a);
-    if (root1 > 0) {
-      endDistance = root1;
-    }
-    if (root2 > 0) {
-      endDistance = root2;
-    }
-  }
-
-  return endDistance;
-}
-
-// Function to calculate a radiance value from a light.
-// This function will determine the distance from `light` that the brightness would fall below kLegacyLightEndValue, based on the attenuation function.
-// If the light would never attenuate to less than kLegacyLightEndValue, light.Range will be used instead.
-// It will then determine how bright the replacement light needs to be to have a brightness of kNewLightEndValue at the same distance.
-// Finally, it will combine that brightness with the original light's diffuse color to determine the radiance.
-static Vector3 calculateRadiance(const D3DLIGHT9& light, const float radius) {
-  constexpr float kEpsilon = 0.000001f;
-
-  // Calculate max distance based on attenuation.  We're looking to find when the light's attenuation is kLegacyLightEndValue.
-  // Attenuation in D3D9 for lights is calculated as 1/(light.Attenuation2*d*d + light.Attenuation1*d + light.Attenuation).
-  // This is calculated with respect to the max component of the light's 3 color components, and then is translated to RGB with the normalized color later.
-  // Note that the calculated max distance may be greater than the Light's original "Range" value. This is because often times in older games the
-  // Range was merely used in conjunction with a custom large color value and attenuation curve as an optimization to keep very bright lights from extending
-  // across the entire level when only needed in a small area, but physical lights must reflect the "intended" full max distance as calculated by the attenuation.
-  const float a = light.Attenuation2;
-  const float b = light.Attenuation1;
-  const float c = light.Attenuation0;
-
-  const float originalBrightness = std::max(light.Diffuse.r, std::max(light.Diffuse.g, light.Diffuse.b));
-
-  float endDistance = light.Range;
-
-  if (c > 0 && originalBrightness / c < kLegacyLightEndValue) {
-    // Light constant is already lower than our minimum right next to the light, so just set the radiance to 0.
-    endDistance = 0.f;
-  } else if (a < kEpsilon) {
-    // No squared attenuation term
-    if (b > kEpsilon) {
-      // linear falloff
-      if (LightManager::calculateLightIntensityUsingLeastSquares()) {
-        endDistance = intensityToEndDistance(leastSquareIntensity(originalBrightness, light.Attenuation2, light.Attenuation1, light.Attenuation0, light.Range));
-      } else {
-        // 1/(b*d + c) = kLegacyLightEndValue
-        endDistance = ((originalBrightness / kLegacyLightEndValue) - c) / b;
-      }
-    } else {
-      // No falloff - the light is at full power * c until the range runs out
-      // TODO may want to do something different here - the light is still fully bright at light.Range...
-    }
-  } else {
-    if (LightManager::calculateLightIntensityUsingLeastSquares()) {
-      endDistance = intensityToEndDistance(leastSquareIntensity(originalBrightness, light.Attenuation2, light.Attenuation1, light.Attenuation0, light.Range));
-    } else {
-      endDistance = solveQuadraticEndDistance(originalBrightness, light.Attenuation2, light.Attenuation1, light.Attenuation0, light.Range);
-    }
-  }
-
-  // Calculate the radiance of the Sphere light to reach the desired perceptible radiance threshold at the calculated range of the D3D light.
-  const float endDistanceSq = endDistance * endDistance;
-
-  // Conversion factor from a desired distance squared to a radiance value based on a desired fixed light radius and the desired ending radiance value.
-  // Derivation:
-  // t = Threshold (ending) radiance value
-  // i = Point Light Intensity
-  // d = Distance
-  // p = Power
-  // r = Radiance
-  // 
-  // i / d^2 = t (Inverse square law for intensity, solving for d to find the intensity of a point light to reach this radiance threshold)
-  // p = i * 4 * pi (Point Light Intensity to Power)
-  // r = p / ((4 * pi * r^2) * pi) (Power to Sphere Light Radiance)
-  // r = (d^2 * t) / (pi * r^2) (Solve and Substitute)
-  const float kDistanceSqToRadiance = kNewLightEndValue / (kPi * radius * radius);
-
-  const float radiance = kDistanceSqToRadiance * endDistanceSq;
-
-  // Convert the max component radiance to RGB using the normalized color of the light.
-  // Note: Many old games did their lighting entierly in gamma space (when sRGB textures and framebuffers were absent),
-  // meaning while the normalized light color value should be converted from gamma to linear space to have the lighting look more
-  // physically correct, this changes the look of lighting too much (which makes artists unhappy), so it is left unchanged.
-  // In the future a conversion may be needed if gamma corrected framebuffers were used in the original game, but for now this is fine.
-  Vector3 result;
-  result[0] = light.Diffuse.r / originalBrightness * radiance;
-  result[1] = light.Diffuse.g / originalBrightness * radiance;
-  result[2] = light.Diffuse.b / originalBrightness * radiance;
-
-  return result;
-}
-
-
 XXH64_hash_t RtLightShaping::getHash() const {
   XXH64_hash_t h = 0;
 
@@ -218,6 +46,8 @@ void RtLightShaping::applyTransform(Matrix3 transform) {
 void RtLightShaping::writeGPUData(unsigned char* data, std::size_t& offset) const {
   // occupies 12 bytes
   if (enabled) {
+    // Note: Ensure the normal vector is normalized as this is a requirement for the GPU encoding.
+    assert(isApproxNormalized(primaryAxis, 0.01f));
     assert(primaryAxis < Vector3(FLOAT16_MAX));
     writeGPUHelper(data, offset, glm::packHalf1x16(primaryAxis.x));
     writeGPUHelper(data, offset, glm::packHalf1x16(primaryAxis.y));
@@ -234,35 +64,16 @@ void RtLightShaping::writeGPUData(unsigned char* data, std::size_t& offset) cons
   }
 }
 
-RtSphereLight::RtSphereLight(const Vector3& position, const Vector3& radiance, float radius, const RtLightShaping& shaping)
+RtSphereLight::RtSphereLight(const Vector3& position, const Vector3& radiance, float radius, const RtLightShaping& shaping, const XXH64_hash_t forceHash)
   : m_position(position)
   , m_radiance(radiance)
   , m_radius(radius)
   , m_shaping(shaping) {
-  updateCachedHash();
-}
-
-RtSphereLight::RtSphereLight(const D3DLIGHT9& light) {
-  m_position[0] = light.Position.x;
-  m_position[1] = light.Position.y;
-  m_position[2] = light.Position.z;
-
-  m_radius = LightManager::lightConversionSphereLightFixedRadius() * RtxOptions::Get()->getSceneScale();
-  m_radiance = calculateRadiance(light, m_radius);
-
-  if (light.Type == D3DLIGHT_SPOT) {
-    m_shaping.enabled = true;
-    m_shaping.primaryAxis[0] = light.Direction.x;
-    m_shaping.primaryAxis[1] = light.Direction.y;
-    m_shaping.primaryAxis[2] = light.Direction.z;
-    // cosConeAngle is the outer angle of the spotlight
-    m_shaping.cosConeAngle = std::cosf(light.Phi / 2.0f);
-    // coneSoftness is how far in the transition region reaches
-    m_shaping.coneSoftness = std::cosf(light.Theta / 2.0f) - m_shaping.cosConeAngle;
-    m_shaping.focusExponent = light.Falloff;
+  if (forceHash == kEmptyHash) {
+    updateCachedHash();
+  } else {
+    m_cachedHash = forceHash;
   }
-
-  updateCachedHash();
 }
 
 void RtSphereLight::applyTransform(const Matrix4& lightToWorld) {
@@ -271,11 +82,13 @@ void RtSphereLight::applyTransform(const Matrix4& lightToWorld) {
 
   const Matrix3 transform(lightToWorld);
 
-  // scale radius by average of the 3 axes.
+  // Note: Scale radius by average of the 3 axes. For uniform scale all axis lengths will be the same, but for
+  // non-uniform scale the average is needed to approximate a new radius.
   const float radiusFactor = (length(transform[0]) + length(transform[1]) + length(transform[2])) / 3.f;
   m_radius *= radiusFactor;
 
   m_shaping.applyTransform(transform);
+
   updateCachedHash();
 }
 
@@ -292,7 +105,6 @@ void RtSphereLight::writeGPUData(unsigned char* data, std::size_t& offset) const
   writeGPUHelper(data, offset, packLogLuv32(m_radiance));
 
   m_shaping.writeGPUData(data, offset);
-
 
   writeGPUPadding<28>(data, offset);
 
@@ -336,7 +148,9 @@ RtRectLight::RtRectLight(const Vector3& position, const Vector2& dimensions, con
   , m_yAxis(yAxis)
   , m_radiance(radiance)
   , m_shaping(shaping) {
-  m_normal = cross(m_yAxis, m_xAxis);
+  // Note: Normalization required as sometimes a cross product may not result in a normalized vector due to precision issues.
+  m_normal = normalize(cross(m_yAxis, m_xAxis));
+
   updateCachedHash();
 }
 
@@ -358,7 +172,7 @@ void RtRectLight::applyTransform(const Matrix4& lightToWorld) {
 
   m_shaping.applyTransform(transform);
   
-  m_normal = cross(m_yAxis, m_xAxis);
+  m_normal = normalize(cross(m_yAxis, m_xAxis));
   updateCachedHash();
 }
 
@@ -376,14 +190,20 @@ void RtRectLight::writeGPUData(unsigned char* data, std::size_t& offset) const {
 
   m_shaping.writeGPUData(data, offset);
 
+  // Note: Ensure the X axis vector is normalized as this is a requirement for the GPU encoding.
+  assert(isApproxNormalized(m_xAxis, 0.01f));
   assert(m_xAxis < Vector3(FLOAT16_MAX));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_xAxis.x));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_xAxis.y));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_xAxis.z));
+  // Note: Ensure the Y axis vector is normalized as this is a requirement for the GPU encoding.
+  assert(isApproxNormalized(m_yAxis, 0.01f));
   assert(m_yAxis < Vector3(FLOAT16_MAX));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_yAxis.x));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_yAxis.y));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_yAxis.z));
+  // Note: Ensure the normal vector is normalized as this is a requirement for the GPU encoding.
+  assert(isApproxNormalized(m_normal, 0.01f));
   assert(m_normal < Vector3(FLOAT16_MAX));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_normal.x));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_normal.y));
@@ -435,7 +255,9 @@ RtDiskLight::RtDiskLight(const Vector3& position, const Vector2& halfDimensions,
   , m_radiance(radiance)
   , m_shaping(shaping) {
   // Note: Cache a pre-computed normal vector to avoid doing it on the GPU since we have space in the Light to spare
-  m_normal = cross(m_yAxis, m_xAxis);
+  // Additionally, normalization required as sometimes a cross product may not result in a normalized vector due to precision issues.
+  m_normal = normalize(cross(m_yAxis, m_xAxis));
+
   updateCachedHash();
 }
 
@@ -459,7 +281,7 @@ void RtDiskLight::applyTransform(const Matrix4& lightToWorld) {
 
   m_shaping.applyTransform(transform);
 
-  m_normal = cross(m_yAxis, m_xAxis);
+  m_normal = normalize(cross(m_yAxis, m_xAxis));
   updateCachedHash();
 }
 
@@ -477,15 +299,21 @@ void RtDiskLight::writeGPUData(unsigned char* data, std::size_t& offset) const {
 
   m_shaping.writeGPUData(data, offset);
 
+  // Note: Ensure the X axis vector is normalized as this is a requirement for the GPU encoding.
+  assert(isApproxNormalized(m_xAxis, 0.01f));
   assert(m_xAxis < Vector3(FLOAT16_MAX));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_xAxis.x));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_xAxis.y));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_xAxis.z));
+  // Note: Ensure the Y axis vector is normalized as this is a requirement for the GPU encoding.
+  assert(isApproxNormalized(m_yAxis, 0.01f));
   assert(m_yAxis < Vector3(FLOAT16_MAX));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_yAxis.x));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_yAxis.y));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_yAxis.z));
   assert(m_normal < Vector3(FLOAT16_MAX));
+  // Note: Ensure the normal vector is normalized as this is a requirement for the GPU encoding.
+  assert(isApproxNormalized(m_normal, 0.01f));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_normal.x));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_normal.y));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_normal.z));
@@ -569,6 +397,8 @@ void RtCylinderLight::writeGPUData(unsigned char* data, std::size_t& offset) con
   writeGPUHelper(data, offset, packLogLuv32(m_radiance));
   writeGPUPadding<12>(data, offset); // no shaping
 
+  // Note: Ensure the axis vector is normalized as this is a requirement for the GPU encoding.
+  assert(isApproxNormalized(m_axis, 0.01f));
   assert(m_axis < Vector3(FLOAT16_MAX));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_axis.x));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_axis.y));
@@ -609,7 +439,7 @@ void RtCylinderLight::updateCachedHash() {
   m_cachedHash = h;
 }
 
-RtDistantLight::RtDistantLight(const Vector3& direction, float halfAngle, const Vector3& radiance)
+RtDistantLight::RtDistantLight(const Vector3& direction, float halfAngle, const Vector3& radiance, const XXH64_hash_t forceHash)
   // Note: Direction assumed to be normalized.
   : m_direction(direction)
   , m_halfAngle(halfAngle)
@@ -622,36 +452,18 @@ RtDistantLight::RtDistantLight(const Vector3& direction, float halfAngle, const 
   m_cosHalfAngle = std::cos(m_halfAngle);
   m_sinHalfAngle = std::sin(m_halfAngle);
 
-  updateCachedHash();
-}
-
-RtDistantLight::RtDistantLight(const D3DLIGHT9& light) {
-  // Note: Assumed to be normalized
-  m_direction[0] = light.Direction.x;
-  m_direction[1] = light.Direction.y;
-  m_direction[2] = light.Direction.z;
-
-  m_halfAngle = LightManager::lightConversionDistantLightFixedAngle() / 2.f;
-
-  const float fixedIntensity = LightManager::lightConversionDistantLightFixedIntensity();
-
-  m_radiance[0] = light.Diffuse.r * fixedIntensity;
-  m_radiance[1] = light.Diffuse.g * fixedIntensity;
-  m_radiance[2] = light.Diffuse.b * fixedIntensity;
-
-  // Note: Cache a pre-computed orientation quaternion to avoid doing it on the GPU since we have space in the Light to spare
-  m_orientation = getOrientation(Vector3(0.0f, 0.0f, 1.0f), m_direction);
-
-  // Note: Cache sine and cosine of the half angle to avoid doing it on the GPU as well
-  m_cosHalfAngle = std::cos(m_halfAngle);
-  m_sinHalfAngle = std::sin(m_halfAngle);
-
-  updateCachedHash();
+  if (forceHash == kEmptyHash) {
+    updateCachedHash();
+  } else {
+    m_cachedHash = forceHash;
+  }
 }
 
 void RtDistantLight::applyTransform(const Matrix4& lightToWorld) {
   const Matrix3 transform(lightToWorld);
+
   m_direction = normalize(transform * m_direction);
+
   updateCachedHash();
 }
 
@@ -662,11 +474,17 @@ void RtDistantLight::writeGPUData(unsigned char* data, std::size_t& offset) cons
   writeGPUHelper(data, offset, glm::packHalf1x16(m_direction.x));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_direction.y));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_direction.z));
+
+  // Note: Ensure the orientation quaternion is normalized as this is a requirement for the GPU encoding.
+  assert(isApproxNormalized(m_orientation, 0.01f));
   assert(m_orientation < Vector4(FLOAT16_MAX));
+  // Note: Orientation could be more heavily packed (down to snorms, or even other quaternion memory encodings), but
+  // there is enough space that no fancy encoding which would just waste performance on the GPU side is needed.
   writeGPUHelper(data, offset, glm::packHalf1x16(m_orientation.x));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_orientation.y));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_orientation.z));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_orientation.w));
+
   writeGPUPadding<2>(data, offset);
 
   writeGPUHelper(data, offset, packLogLuv32(m_radiance));
@@ -709,26 +527,6 @@ void RtDistantLight::updateCachedHash() {
   m_cachedHash = h;
 }
 
-std::optional<RtLight> RtLight::TryCreate(const D3DLIGHT9& light) {
-  // Ensure the D3D9 Light is of a valid type
-  // Note: This is done as some games will pass invalid data to various D3D9 calls and since the RtLight
-  // requires a valid light type for construction it needs to be checked in advance to avoid issues.
-
-  if (light.Type < D3DLIGHT_POINT || light.Type > D3DLIGHT_DIRECTIONAL) {
-    Logger::err(str::format(
-      "Attempted to convert a fixed function light with invalid light type: ",
-      light.Type
-    ));
-    ONCE(assert(false));
-
-    return {};
-  }
-
-  // Construct and return the light
-
-  return std::optional<RtLight>(std::in_place, light);
-}
-
 RtLight::RtLight() { 
   // Dummy light - this is used when lights are removed from the list to keep persistent ordering.
   m_type = RtLightType::Sphere;
@@ -736,52 +534,42 @@ RtLight::RtLight() {
   m_cachedInitialHash = m_sphereLight.getHash();
 }
 
-RtLight::RtLight(const RtSphereLight& light) { 
+RtLight::RtLight(const RtSphereLight& light) {
   m_type = RtLightType::Sphere;
   new (&m_sphereLight) RtSphereLight(light);
   m_cachedInitialHash = m_sphereLight.getHash();
 }
 
-RtLight::RtLight(const RtRectLight& light) { 
+RtLight::RtLight(const RtSphereLight& light, const RtSphereLight& originalSphereLight) {
+  m_type = RtLightType::Sphere;
+  new (&m_sphereLight) RtSphereLight(light);
+  m_cachedInitialHash = m_sphereLight.getHash();
+
+  cacheLightReplacementAntiCullingProperties(originalSphereLight);
+}
+
+RtLight::RtLight(const RtRectLight& light) {
   m_type = RtLightType::Rect;
   new (&m_rectLight) RtRectLight(light);
   m_cachedInitialHash = m_rectLight.getHash();
 }
 
-RtLight::RtLight(const RtDiskLight& light) { 
+RtLight::RtLight(const RtDiskLight& light) {
   m_type = RtLightType::Disk;
   new (&m_diskLight) RtDiskLight(light);
   m_cachedInitialHash = m_diskLight.getHash();
 }
 
-RtLight::RtLight(const RtCylinderLight& light) { 
+RtLight::RtLight(const RtCylinderLight& light) {
   m_type = RtLightType::Cylinder;
   new (&m_cylinderLight) RtCylinderLight(light);
   m_cachedInitialHash = m_cylinderLight.getHash();
 }
 
-RtLight::RtLight(const RtDistantLight& light) { 
+RtLight::RtLight(const RtDistantLight& light) {
   m_type = RtLightType::Distant;
   new (&m_distantLight) RtDistantLight(light);
   m_cachedInitialHash = m_distantLight.getHash();
-}
-
-RtLight::RtLight(const D3DLIGHT9& light) {
-  switch (light.Type) {
-  default:
-    assert(false);
-  case D3DLIGHT_POINT:
-  case D3DLIGHT_SPOT:
-    new (&m_sphereLight) RtSphereLight{ light };
-    m_cachedInitialHash = m_sphereLight.getHash();
-    m_type = RtLightType::Sphere;
-    break;
-  case D3DLIGHT_DIRECTIONAL:
-    new (&m_distantLight) RtDistantLight{ light };
-    m_cachedInitialHash = m_distantLight.getHash();
-    m_type = RtLightType::Distant;
-    break;
-  }
 }
 
 RtLight::RtLight(const RtLight& light)
@@ -794,6 +582,8 @@ RtLight::RtLight(const RtLight& light)
   switch (m_type) {
   default:
     assert(false);
+
+    [[fallthrough]];
   case RtLightType::Sphere:
     new (&m_sphereLight) RtSphereLight{ light.m_sphereLight };
     break;
@@ -816,6 +606,8 @@ RtLight::~RtLight() {
   switch (m_type) {
   default:
     assert(false);
+
+    [[fallthrough]];
   case RtLightType::Sphere:
     m_sphereLight.~RtSphereLight();
     break;
@@ -838,6 +630,8 @@ void RtLight::applyTransform(const Matrix4& lightToWorld) {
   switch (m_type) {
   default:
     assert(false);
+
+    [[fallthrough]];
   case RtLightType::Sphere:
     m_sphereLight.applyTransform(lightToWorld);
     break;
@@ -860,6 +654,8 @@ void RtLight::writeGPUData(unsigned char* data, std::size_t& offset) const {
   switch (m_type) {
   default:
     assert(false);
+
+    [[fallthrough]];
   case RtLightType::Sphere:
     m_sphereLight.writeGPUData(data, offset);
     break;
@@ -885,6 +681,8 @@ RtLight& RtLight::operator=(const RtLight& rtLight) {
     switch (rtLight.m_type) {
     default:
       assert(false);
+
+      [[fallthrough]];
     case RtLightType::Sphere:
       m_sphereLight = rtLight.m_sphereLight;
       break;
@@ -907,6 +705,11 @@ RtLight& RtLight::operator=(const RtLight& rtLight) {
     m_rootInstanceId = rtLight.m_rootInstanceId;
     m_bufferIdx = rtLight.m_bufferIdx;
     isDynamic = rtLight.isDynamic;
+
+    m_isInsideFrustum = rtLight.m_isInsideFrustum;
+    m_anticullingType = rtLight.m_anticullingType;
+    m_originalMeshTransform = rtLight.m_originalMeshTransform;
+    m_originalMeshBoundingBox = rtLight.m_originalMeshBoundingBox;
   }
 
   return *this;
@@ -921,6 +724,8 @@ bool RtLight::operator==(const RtLight& rhs) const {
   switch (m_type) {
   default:
     assert(false);
+
+    [[fallthrough]];
   case RtLightType::Sphere:
     return m_sphereLight == rhs.m_sphereLight;
   case RtLightType::Rect:
@@ -938,6 +743,8 @@ Vector4 RtLight::getColorAndIntensity() const {
   switch (m_type) {
   default:
     assert(false);
+
+    [[fallthrough]];
   case RtLightType::Sphere:
     return m_sphereLight.getColorAndIntensity();
   case RtLightType::Rect:
@@ -955,6 +762,8 @@ Vector3 RtLight::getPosition() const {
   switch (m_type) {
   default:
     assert(false);
+
+    [[fallthrough]];
   case RtLightType::Sphere:
     return m_sphereLight.getPosition();
   case RtLightType::Rect:
@@ -972,11 +781,16 @@ Vector3 RtLight::getDirection() const {
   switch (m_type) {
   default:
     assert(false);
+
+    [[fallthrough]];
   case RtLightType::Sphere:
+    return m_sphereLight.getShaping().primaryAxis;
   case RtLightType::Rect:
+    return m_rectLight.getShaping().primaryAxis;
   case RtLightType::Disk:
+    return m_diskLight.getShaping().primaryAxis;
   case RtLightType::Cylinder:
-    return Vector3();
+    return Vector3(0.f, 0.f, 1.f);
   case RtLightType::Distant:
     return m_distantLight.getDirection();
   }
@@ -986,6 +800,8 @@ XXH64_hash_t RtLight::getTransformedHash() const {
   switch (m_type) {
   default:
     assert(false);
+
+    [[fallthrough]];
   case RtLightType::Sphere:
     return m_sphereLight.getHash();
   case RtLightType::Rect:
@@ -1003,6 +819,8 @@ Vector3 RtLight::getRadiance() const {
   switch (m_type) {
   default:
     assert(false);
+
+    [[fallthrough]];
   case RtLightType::Sphere:
     return m_sphereLight.getRadiance();
   case RtLightType::Rect:

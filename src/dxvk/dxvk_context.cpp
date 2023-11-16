@@ -58,7 +58,7 @@ namespace dxvk {
 
   // NV-DXVK start: DLFG integration
   bool DxvkContext::isDLFGEnabled() const {
-    return m_common->metaNGXContext().supportsDLFG() && DxvkDLFG::enable();
+    return m_common->metaNGXContext().supportsDLFG() && DxvkDLFG::enable() && !m_common->metaDLFG().hasDLFGFailed();
   }
   // NV-DXVK end
 

@@ -36,6 +36,11 @@
 #define POST_FX_INPUT  0
 #define POST_FX_OUTPUT 1
 
+#define POST_FX_HIGHLIGHT_INPUT                       0
+#define POST_FX_HIGHLIGHT_SHARED_SURFACE_INDEX_INPUT  1
+#define POST_FX_HIGHLIGHT_PRIMARY_CONE_RADIUS_INPUT   2
+#define POST_FX_HIGHLIGHT_OUTPUT                      3
+
 #define POST_FX_TILE_SIZE 8
 
 struct PostFxArgs {
@@ -74,4 +79,18 @@ struct PostFxArgs {
 struct PostFxMotionBlurPrefilterArgs {
   uint2 imageSize;
   int2  pixelStep;
+};
+
+struct PostFxHighlightingArgs
+{
+  // Display image information
+  uint2  imageSize;
+  // Camera Resolution
+  float2 inputOverOutputViewSize;
+  // Highlighting params
+  bool desaturateNonHighlighted;
+  float timeSinceStartMS;
+  // Material info
+  uint surfaceMaterialIndexToHighlight;
+  uint highlightColorId;
 };

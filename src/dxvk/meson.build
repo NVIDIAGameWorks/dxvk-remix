@@ -238,10 +238,15 @@ dxvk_src = files([
   'rtx_render/rtx_light_manager_gui.cpp',
   'rtx_render/rtx_lights.cpp',
   'rtx_render/rtx_lights.h',
+  'rtx_render/rtx_lights_data.cpp',
+  'rtx_render/rtx_lights_data.h',
+  'rtx_render/rtx_light_utils.cpp',
+  'rtx_render/rtx_light_utils.h',
   'rtx_render/rtx_local_tone_mapping.cpp',
   'rtx_render/rtx_local_tone_mapping.h',
   'rtx_render/rtx_materials.cpp',
   'rtx_render/rtx_materials.h',
+  'rtx_render/rtx_material_data.h',
   'rtx_render/rtx_matrix_helpers.h',
   'rtx_render/rtx_mod_manager.cpp',
   'rtx_render/rtx_mod_manager.h',
@@ -357,14 +362,7 @@ dxvk_src = files([
 thread_dep = dependency('threads')
 
 nrd_include_dir = include_directories(join_paths(meson.global_source_root(), 'external/nrd/Include'))
-nrd_lib_path = join_paths(meson.global_source_root(), 'external/nrd/Lib/Release')
-if get_option('buildtype') == 'debug'  
-  nrd_lib_path = join_paths(meson.global_source_root(), 'external/nrd/Lib/Debug')
-endif
-cc = meson.get_compiler('c')
-nrd_lib = cc.find_library('NRD', dirs : nrd_lib_path)
 nrd_dep = declare_dependency(
-  dependencies : [ nrd_lib ],
   include_directories : nrd_include_dir
 )
 
@@ -372,9 +370,9 @@ dlss_include_dir = include_directories(join_paths(meson.global_source_root(), dl
 dlss_lib_path = join_paths(meson.global_source_root(), dlss_root_path + '/Lib/Windows_x86_64/x86_64')
 dlfg_include_dir = include_directories(join_paths(meson.global_source_root(), dlfg_root_path + '/Include'))
 cc = meson.get_compiler('c')
-dlss_lib_name = 'nvsdk_ngx_s'
+dlss_lib_name = 'nvsdk_ngx_d'
 if get_option('buildtype') == 'debug'  
-  dlss_lib_name = 'nvsdk_ngx_s_dbg'
+  dlss_lib_name = 'nvsdk_ngx_d_dbg'
 endif
 dlss_lib = cc.find_library(dlss_lib_name, dirs : dlss_lib_path)
 dlss_dep = declare_dependency(

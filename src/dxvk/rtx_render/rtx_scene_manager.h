@@ -27,6 +27,7 @@
 #include <unordered_set>
 #include <unordered_map>
 #include <list>
+#include <variant>
 
 #include "../dxvk_buffer.h"
 #include "../dxvk_image.h"
@@ -56,6 +57,23 @@ struct AssetReplacer;
 class OpacityMicromapManager;
 class TerrainBaker;
 
+struct Highlighting {
+  dxvk::mutex mutex{};
+  HighlightColor color {};
+
+  std::optional<uint32_t> finalSurfaceMaterialIndex{};
+  uint32_t finalWasUpdatedFrameId { kInvalidFrameIndex };
+
+  // if set, need to traverse draw calls to find a corresponding surfaceMaterialIndex
+  // for the given legacy texture hash, and if found, finalSurfaceMaterialIndex is updated
+  std::optional<XXH64_hash_t> findSurfaceForLegacyTextureHash{};
+
+  static bool keepRequest(uint32_t frameIdOfRequest, uint32_t curFrameId) {
+    constexpr auto numFramesConsiderHighlighting = kMaxFramesInFlight * 2;
+    return std::abs(int64_t { frameIdOfRequest } - int64_t{ curFrameId }) < numFramesConsiderHighlighting;
+  }
+};
+
 // The resource cache can be *searched* by other users
 class ResourceCache {
 public:
@@ -71,6 +89,7 @@ protected:
     }
   };
   SparseUniqueCache<RtSurfaceMaterial, SurfaceMaterialHashFn> m_surfaceMaterialCache;
+  SparseUniqueCache<RtSurfaceMaterial, SurfaceMaterialHashFn> m_surfaceMaterialExtensionCache;
 
   struct VolumeMaterialHashFn {
     size_t operator() (const RtVolumeMaterial& mat) const {
@@ -119,10 +138,12 @@ public:
   uint64_t getGameTimeSinceStartMS();
 
   Rc<DxvkBuffer> getSurfaceMaterialBuffer() { return m_surfaceMaterialBuffer; }
+  Rc<DxvkBuffer> getSurfaceMaterialExtensionBuffer() { return m_surfaceMaterialExtensionBuffer; }
   Rc<DxvkBuffer> getVolumeMaterialBuffer() { return m_volumeMaterialBuffer; }
   Rc<DxvkBuffer> getSurfaceBuffer() const { return m_accelManager.getSurfaceBuffer(); }
   Rc<DxvkBuffer> getSurfaceMappingBuffer() const { return m_accelManager.getSurfaceMappingBuffer(); }
-  Rc<DxvkBuffer> getPrimitiveIDPrefixSumBuffer() const { return m_accelManager.getPrimitiveIDPrefixSumBuffer(); }
+  Rc<DxvkBuffer> getCurrentFramePrimitiveIDPrefixSumBuffer() const { return m_accelManager.getCurrentFramePrimitiveIDPrefixSumBuffer(); }
+  Rc<DxvkBuffer> getLastFramePrimitiveIDPrefixSumBuffer() const { return m_accelManager.getLastFramePrimitiveIDPrefixSumBuffer(); }
   Rc<DxvkBuffer> getBillboardsBuffer() const { return m_accelManager.getBillboardsBuffer(); }
   bool isPreviousFrameSceneAvailable() const { return m_previousFrameSceneAvailable && getSurfaceMappingBuffer().ptr() != nullptr; }
 
@@ -166,6 +187,8 @@ public:
   
   uint32_t getActivePOMCount() {return m_activePOMCount;}
 
+  float getTotalMipBias();
+
   // ISceneManager but not really
   void clear(Rc<DxvkContext> ctx, bool needWfi);
   void garbageCollection();
@@ -180,6 +203,13 @@ public:
 
   void trackTexture(Rc<DxvkContext> ctx, TextureRef inputTexture, uint32_t& textureIndex, bool hasTexcoords, bool allowAsync = true);
   void trackSampler(Rc<DxvkSampler> sampler, bool patchSampler, uint32_t& samplerIndex);
+
+  std::future<XXH64_hash_t> findLegacyTextureHashBySurfaceMaterialIndex(uint32_t surfaceMaterialIndex);
+
+  void requestHighlighting(std::variant<uint32_t, XXH64_hash_t> surfaceMaterialIndexOrLegacyTextureHash,
+                           HighlightColor color,
+                           uint32_t frameId);
+  std::optional<std::pair<uint32_t, HighlightColor>> accessSurfaceMaterialIndexToHighlight(uint32_t frameId);
 
 private:
   enum class ObjectCacheState
@@ -242,12 +272,23 @@ private:
 
   // TODO: Move the following resources and getters to RtResources class
   Rc<DxvkBuffer> m_surfaceMaterialBuffer;
+  Rc<DxvkBuffer> m_surfaceMaterialExtensionBuffer;
   Rc<DxvkBuffer> m_volumeMaterialBuffer;
 
   uint32_t m_currentFrameIdx = -1;
   bool m_useFixedFrameTime = false;
   std::chrono::time_point<std::chrono::steady_clock> m_startTime;
   uint32_t m_activePOMCount = 0;
+
+  Highlighting m_highlighting {};
+
+  struct PromisedSurfMaterialIndex
+  {
+    uint32_t targetSurfMaterialIndex { 0 };
+    std::promise<XXH64_hash_t> promise{};
+  };
+  std::optional<PromisedSurfMaterialIndex> m_findLegacyTexture {};
+  dxvk::mutex m_findLegacyTextureMutex{};
 };
 
 }  // namespace nvvk

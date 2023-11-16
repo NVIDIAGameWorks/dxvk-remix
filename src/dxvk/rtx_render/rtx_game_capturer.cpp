@@ -30,6 +30,7 @@
 #include "rtx_utils.h"
 #include "rtx_instance_manager.h"
 #include "rtx_scene_manager.h"
+#include "rtx_materials.h"
 
 #include "../dxvk_device.h"
 
@@ -39,6 +40,7 @@
 
 #include "../../lssusd/game_exporter.h"
 #include "../../lssusd/game_exporter_paths.h"
+#include "../../lssusd/usd_common.h"
 #include "../../lssusd/usd_include_begin.h"
 #include <pxr/base/gf/matrix4f.h>
 #include <pxr/base/gf/rotation.h>
@@ -94,7 +96,29 @@ namespace dxvk {
         std::filesystem::absolute(std::filesystem::path(stagePathSS.str()));
       return stagePath.string();
     }
+    static lss::RenderingMetaData createDrawCallMetadata(const RtInstance& rtInstance) {
+      lss::RenderingMetaData meta;
+      meta.alphaTestEnabled = rtInstance.surface.alphaState.alphaTestType != AlphaTestType::kAlways;
+      meta.alphaTestReferenceValue = rtInstance.surface.alphaState.alphaTestReferenceValue;
+      meta.alphaTestCompareOp = (uint32_t) rtInstance.surface.alphaState.alphaTestType;
+      meta.alphaBlendEnabled = !rtInstance.surface.alphaState.isBlendingDisabled;
+      meta.srcColorBlendFactor = (uint32_t) rtInstance.surface.srcColorBlendFactor;
+      meta.dstColorBlendFactor = (uint32_t) rtInstance.surface.dstColorBlendFactor;
+      meta.colorBlendOp = (uint32_t) rtInstance.surface.colorBlendOp;
+      meta.textureColorArg1Source = (uint32_t) rtInstance.surface.textureColorArg1Source;
+      meta.textureColorArg2Source = (uint32_t) rtInstance.surface.textureColorArg2Source;
+      meta.textureColorOperation = (uint32_t) rtInstance.surface.textureColorOperation;
+      meta.textureAlphaArg1Source = (uint32_t) rtInstance.surface.textureAlphaArg1Source;
+      meta.textureAlphaArg2Source = (uint32_t) rtInstance.surface.textureAlphaArg2Source;
+      meta.textureAlphaOperation = (uint32_t) rtInstance.surface.textureAlphaOperation;
+      meta.tFactor = rtInstance.surface.tFactor;
+      meta.isTextureFactorBlend = rtInstance.surface.isTextureFactorBlend;
+      return meta;
+    }
   }
+
+  // For capture tests, we cannot include the config data because it may contain paths/settings which are respective to the users PC.
+  static const bool s_captureRemixConfigs = env::getEnvVar("RTX_CAPTURE_REMIX_CONFIGS", true);
 
   size_t GameCapturer::Capture::nextId = 0;
 
@@ -353,7 +377,8 @@ namespace dxvk {
       if (m_cap.bCaptureInstances && !bIsNew && (bPointsUpdate || bNormalsUpdate || bIndexUpdate)) {
         const BlasEntry* pBlas = rtInstancePtr->getBlas();
         assert(pBlas != nullptr);
-        captureMesh(ctx, instance.meshHash, *pBlas, false, bPointsUpdate, bNormalsUpdate, bIndexUpdate);
+
+        captureMesh(ctx, instance.meshHash, *pBlas, rtInstancePtr->getCategoryFlags(), false, bPointsUpdate, bNormalsUpdate, bIndexUpdate);
       }
       if (m_cap.bCaptureInstances && (bIsNew || bXformUpdate)) {
         instance.lssData.xforms.push_back({ m_cap.currentFrameNum, matrix4ToGfMatrix4d(rtInstancePtr->getTransform()) });
@@ -364,6 +389,7 @@ namespace dxvk {
       }
       instance.lssData.finalTime = m_cap.currentFrameNum;
       instance.lssData.isSky = (rtInstancePtr->getBlas()->input.cameraType == CameraType::Sky);
+      instance.lssData.metadata = createDrawCallMetadata(*rtInstancePtr);
     }
   }
 
@@ -374,9 +400,11 @@ namespace dxvk {
     const XXH64_hash_t meshHash = pBlas->input.getHash(RtxOptions::Get()->GeometryAssetHashRule);
     assert(meshHash != 0);
 
+    const LegacyMaterialData& material = pBlas->getMaterialData(matHash);
+
     const bool bIsNewMat = (matHash != 0x0) && (m_cap.materials.count(matHash) == 0);
     if (bIsNewMat) {
-      captureMaterial(ctx, pBlas->getMaterialData(matHash), !rtInstance.surface.alphaState.isFullyOpaque);
+      captureMaterial(ctx, material, !rtInstance.surface.alphaState.isFullyOpaque);
     }
 
     bool bIsNewMesh = false;
@@ -392,7 +420,7 @@ namespace dxvk {
       instanceNum = m_cap.meshes[meshHash]->instanceCount++;
     }
     if (bIsNewMesh) {
-      captureMesh(ctx, meshHash, *pBlas, true, true, true, true);
+      captureMesh(ctx, meshHash, *pBlas, rtInstance.getCategoryFlags(), true, true, true, true);
     }
 
     const XXH64_hash_t instanceId = rtInstance.getId();
@@ -402,6 +430,8 @@ namespace dxvk {
     instance.meshInstNum = instanceNum;
     instance.lssData.firstTime = m_cap.currentFrameNum;
     instance.lssData.xforms.reserve(m_options.numFrames - m_cap.numFramesCaptured);
+    instance.lssData.metadata = createDrawCallMetadata(rtInstance);
+
     Logger::debug("[GameCapturer][" + m_cap.idStr + "][Inst:" + hashToString(instanceId) + "] New");
   }
 
@@ -411,8 +441,8 @@ namespace dxvk {
     //Export Textures
     const std::string albedoTexFilename(matName + lss::ext::dds);
     m_exporter.dumpImageToFile(ctx, BASE_DIR + lss::commonDirName::texDir,
-                         albedoTexFilename,
-                         materialData.getColorTexture().getImageView()->image());
+                               albedoTexFilename,
+                               materialData.getColorTexture().getImageView()->image());
 
     const std::string albedoTexPath = str::format(BASE_DIR + lss::commonDirName::texDir, albedoTexFilename);
 
@@ -428,6 +458,7 @@ namespace dxvk {
   void GameCapturer::captureMesh(const Rc<DxvkContext> ctx,
                                  const XXH64_hash_t currentMeshHash,
                                  const BlasEntry& blas,
+                                 const CategoryFlags& flags,
                                  const bool bIsNewMesh,
                                  const bool bCapturePositions,
                                  const bool bCaptureNormals,
@@ -463,6 +494,10 @@ namespace dxvk {
       for (uint32_t i = 0; i < (uint32_t) HashComponents::Count; i++) {
         const HashComponents component = (HashComponents) i;
         pMesh->lssData.componentHashes[getHashComponentName(component)] = geomData.hashes[component];
+      }
+      for (uint32_t i = 0; i < (uint32_t) InstanceCategories::Count; i++) {
+        const InstanceCategories flag = (InstanceCategories) i;
+        pMesh->lssData.categoryFlags[getInstanceCategorySubKey(flag)] = flags.test(flag);
       }
       pMesh->lssData.numVertices = numVertices;
       pMesh->lssData.numIndices = numIndices;
@@ -689,16 +724,17 @@ namespace dxvk {
       const uint8_t* pVkColorBuf = (uint8_t*) colorBuffer.mapPtr((size_t) geomData.color0Buffer.offsetFromSlice());
       assert(pVkColorBuf);
       // Copy GPU buffer to local VtArray
-      pxr::VtArray<pxr::GfVec3f> colors;
+      pxr::VtArray<pxr::GfVec4f> colors;
       colors.reserve(numVertices);
       for (size_t idx = 0; idx < numVertices; ++idx) {
-        colors.push_back(pxr::GfVec3f((float) pVkColorBuf[idx * colorStride + 2] / 256.f,
-                                      (float) pVkColorBuf[idx * colorStride + 1] / 256.f,
-                                      (float) pVkColorBuf[idx * colorStride + 0] / 256.f));
+        colors.push_back(pxr::GfVec4f((float) pVkColorBuf[idx * colorStride + 2] / 255.f,
+                                      (float) pVkColorBuf[idx * colorStride + 1] / 255.f,
+                                      (float) pVkColorBuf[idx * colorStride + 0] / 255.f,
+                                      (float) pVkColorBuf[idx * colorStride + 3] / 255.f));
       }
       assert(colors.size() > 0);
       // Create comparison function that returns float
-      static auto colorsDifferentEnough = [](const pxr::GfVec3f& a, const pxr::GfVec3f& b) {
+      static auto colorsDifferentEnough = [](const pxr::GfVec4f& a, const pxr::GfVec4f& b) {
         const static float captureMeshColorDelta = RtxOptions::Get()->getCaptureMeshColorDelta();
         const static float captureMeshColorDeltaSq = captureMeshColorDelta * captureMeshColorDelta;
         return (a - b).GetLengthSq() > captureMeshColorDeltaSq;
@@ -829,12 +865,13 @@ namespace dxvk {
     assert(m_state.has<State::BeginExport>());
     assert(!m_state.has<State::PreppingExport>());
     assert(!m_state.has<State::Exporting>());
-    static auto exportThreadTask = [](const Rc<DxvkContext> ctx,
-                                      Capture cap,
-                                      State* pState,
-                                      CompletedCapture* complete,
-                                      const float framesPerSecond,
-                                      const bool bUseLssUsdPlugins) {
+    static auto exportThreadTask = [this](const Rc<DxvkContext> ctx,
+                                          Capture cap,
+                                          State* pState,
+                                          CompletedCapture* complete,
+                                          const float framesPerSecond,
+                                          const bool bUseLssUsdPlugins) {
+      m_exporter.waitForAllExportsToComplete();
       assert(pState->has<State::PreppingExport>());
       const auto exportPrep = prepExport(cap, framesPerSecond, bUseLssUsdPlugins);
       pState->set<State::PreppingExport, false>();
@@ -902,6 +939,12 @@ namespace dxvk {
     exportPrep.meta.bReduceMeshBuffers = true;
     exportPrep.meta.isZUp = RtxOptions::Get()->isZUp();
     exportPrep.meta.isLHS = RtxOptions::Get()->isLHS();
+    if (s_captureRemixConfigs) {
+      for (auto& pair : RtxOptionImpl::getGlobalRtxOptionMap()) {
+        exportPrep.meta.renderingSettingsDict[pair.first] = pair.second->genericValueToString(RtxOptionImpl::ValueType::Value);
+      }
+    }
+
     exportPrep.debugId = cap.idStr;
     exportPrep.baseExportPath = BASE_DIR;
     exportPrep.bExportInstanceStage = cap.bCaptureInstances;

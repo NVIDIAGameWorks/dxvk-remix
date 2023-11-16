@@ -25,6 +25,68 @@
 #include "rtx.h"
 #include "rtx_options.h"
 #include "rtx/pass/nrd_args.h"
+#include "../../util/util_string.h"
+#include <Shlwapi.h>
+#include <filesystem>
+
+namespace nrd {
+  using pfnGetLibraryDesc        = const LibraryDesc& (*)();
+  using pfnCreateDenoiser        = Result (*)(const DenoiserCreationDesc& denoiserCreationDesc, Denoiser*& denoiser);
+  using pfnGetDenoiserDesc       = const DenoiserDesc& (*)(const Denoiser& denoiser);
+  using pfnSetMethodSettings     = Result (*)(Denoiser& denoiser, Method method, const void* methodSettings);
+  using pfnGetComputeDispatches  = void (*)(Denoiser& denoiser, const CommonSettings& commonSettings, const DispatchDesc*& dispatchDescs, uint32_t& dispatchDescNum);
+  using pfnDestroyDenoiser       = void (*)(Denoiser& denoiser);
+  using pfnGetResourceTypeString = const char* (*)(ResourceType resourceType);
+  using pfnGetMethodString       = const char* (*)(Method method);
+
+  struct DispatchNRD {
+    pfnGetLibraryDesc GetLibraryDesc;
+    pfnCreateDenoiser CreateDenoiser;
+    pfnGetDenoiserDesc GetDenoiserDesc;
+    pfnSetMethodSettings SetMethodSettings;
+    pfnGetComputeDispatches GetComputeDispatches;
+    pfnDestroyDenoiser DestroyDenoiser;
+    pfnGetResourceTypeString GetResourceTypeString;
+    pfnGetMethodString GetMethodString;
+  } dispatch;
+
+  HMODULE initialize() {
+    HMODULE hModule;
+    GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCSTR) &initialize, &hModule);
+
+    wchar_t modulePath[MAX_PATH];
+    GetModuleFileNameW(hModule, modulePath, MAX_PATH);
+    PathRemoveFileSpecW(modulePath);
+
+    std::filesystem::path path(modulePath);
+    path.append("NRD.dll");
+    HMODULE hNRD = LoadLibraryW(path.c_str());
+    if (hNRD == NULL) {
+      dxvk::Logger::err("Unable to load NRD, this feature will be disabled");
+      return NULL;
+    }
+
+#define GET_PROC_MACRO(proc)  dispatch.##proc = (pfn##proc)GetProcAddress(hNRD, #proc)
+    GET_PROC_MACRO(GetLibraryDesc);
+    GET_PROC_MACRO(CreateDenoiser);
+    GET_PROC_MACRO(GetDenoiserDesc);
+    GET_PROC_MACRO(SetMethodSettings);
+    GET_PROC_MACRO(GetComputeDispatches);
+    GET_PROC_MACRO(DestroyDenoiser);
+    GET_PROC_MACRO(GetResourceTypeString);
+    GET_PROC_MACRO(GetMethodString);
+#undef GET_PROC_MACRO
+
+    const LibraryDesc& desc = dispatch.GetLibraryDesc();
+    if (desc.versionMajor != NRD_VERSION_MAJOR || desc.versionMinor != NRD_VERSION_MINOR || desc.versionBuild != NRD_VERSION_BUILD) {
+      dxvk::Logger::err("Incorrect version of NRD has been loaded.  Ensure the correct DLLs have been copied to the Remix binary directory.  NRD disabled.");
+      FreeLibrary(hNRD);
+      return NULL;
+    }
+
+    return hNRD;
+  }
+}
 
 namespace dxvk {
   static void* NrdAllocate(void* userArg, size_t size, size_t alignment) {
@@ -83,7 +145,12 @@ namespace dxvk {
 
   NRDContext::NRDContext(DxvkDevice* device, DenoiserType type)
     : CommonDeviceObject(device), m_vkd(device->vkd()), m_type(type) {
-    m_settings.initialize(device->instance()->config(), type);
+    m_hNRD = nrd::initialize();
+
+    if (m_hNRD == NULL)
+      return;
+
+    m_settings.initialize(nrd::dispatch.GetLibraryDesc(), device->instance()->config(), type);
     
     // Disable the replace direct specular HitT with indirect specular HitT if we are using combined denoiser.
     // Because in combined denoiser the direct and indirect signals are denoised together,
@@ -94,6 +161,10 @@ namespace dxvk {
   NRDContext::~NRDContext() {
     destroyResources();
     destroyPipelines();
+
+    if (m_hNRD != NULL) {
+      FreeLibrary(m_hNRD);
+    }
   }
 
   void NRDContext::onDestroy() {
@@ -133,7 +204,7 @@ namespace dxvk {
         m_settings.m_methodDesc.fullResolutionHeight = height;
 
         if (m_denoiser) {
-          nrd::DestroyDenoiser(*m_denoiser);
+          nrd::dispatch.DestroyDenoiser(*m_denoiser);
           m_denoiser = nullptr;
         }
 
@@ -144,7 +215,7 @@ namespace dxvk {
         denoiserCreationDesc.requestedMethodsNum = 1;
         denoiserCreationDesc.requestedMethods = &m_settings.m_methodDesc;
 
-        THROW_IF_FALSE(nrd::CreateDenoiser(denoiserCreationDesc, m_denoiser) == nrd::Result::SUCCESS);
+        THROW_IF_FALSE(nrd::dispatch.CreateDenoiser(denoiserCreationDesc, m_denoiser) == nrd::Result::SUCCESS);
 
         createPipelines();
 
@@ -201,7 +272,7 @@ namespace dxvk {
   void NRDContext::createResources(
     Rc<DxvkContext> ctx,
     const Resources::RaytracingOutput& rtOutput) {
-    const nrd::DenoiserDesc& denoiserDesc = nrd::GetDenoiserDesc(*m_denoiser);
+    const nrd::DenoiserDesc& denoiserDesc = nrd::dispatch.GetDenoiserDesc(*m_denoiser);
 
     DxvkImageCreateInfo desc;
     desc.type = VK_IMAGE_TYPE_2D;
@@ -291,10 +362,10 @@ namespace dxvk {
 
   void NRDContext::createPipelines() {
 
-    const nrd::DenoiserDesc& denoiserDesc = nrd::GetDenoiserDesc(*m_denoiser);
+    const nrd::DenoiserDesc& denoiserDesc = nrd::dispatch.GetDenoiserDesc(*m_denoiser);
 
     const nrd::DescriptorPoolDesc& descriptorDesc = denoiserDesc.descriptorPoolDesc;
-    const nrd::SPIRVBindingOffsets spirvOffsets = nrd::GetLibraryDesc().spirvBindingOffsets;
+    const nrd::SPIRVBindingOffsets spirvOffsets = nrd::dispatch.GetLibraryDesc().spirvBindingOffsets;
 
     // Create constant buffer
     // With NRD, using width + height + method, you receive a description of the pipelines
@@ -521,6 +592,9 @@ namespace dxvk {
     const Resources::RaytracingOutput& rtOutput,
     const DxvkDenoise::Input& inputs,
     const DxvkDenoise::Output& outputs) {
+    if (m_hNRD == NULL) {
+      return;
+    }
 
     m_settings.m_resetHistory |= inputs.reset;
 
@@ -580,7 +654,7 @@ namespace dxvk {
     };
 
     // Prepare and run dispatches
-    const nrd::DenoiserDesc& denoiserDesc = nrd::GetDenoiserDesc(*m_denoiser);
+    const nrd::DenoiserDesc& denoiserDesc = nrd::dispatch.GetDenoiserDesc(*m_denoiser);
     {
       uint32_t dispatchDescNum = 0;
       const nrd::DispatchDesc* dispatchDescs = nullptr;
@@ -589,7 +663,7 @@ namespace dxvk {
       commonSettings.isHistoryConfidenceAvailable = inputs.confidence != nullptr;
       commonSettings.isDisocclusionThresholdMixAvailable = inputs.disocclusionThresholdMix != nullptr;
 
-      nrd::GetComputeDispatches(*m_denoiser, commonSettings, dispatchDescs, dispatchDescNum);
+      nrd::dispatch.GetComputeDispatches(*m_denoiser, commonSettings, dispatchDescs, dispatchDescNum);
 
       for (uint32_t i = 0; i < dispatchDescNum; i++) {
 
@@ -759,7 +833,7 @@ namespace dxvk {
         assert("Invalid option");
       };
 
-      THROW_IF_FALSE(nrd::SetMethodSettings(*m_denoiser, m_settings.m_methodDesc.method, methodSettings) == nrd::Result::SUCCESS);
+      THROW_IF_FALSE(nrd::dispatch.SetMethodSettings(*m_denoiser, m_settings.m_methodDesc.method, methodSettings) == nrd::Result::SUCCESS);
     }
 
     nrd::CommonSettings& commonSettings = m_settings.m_commonSettings;

@@ -17,7 +17,9 @@ namespace dxvk {
 
   public:
 
-    D3D9InterfaceEx(bool bExtended);
+// NV-DXVK start: external API
+    D3D9InterfaceEx(bool bExtended, bool WithExternalSwapchain = false);
+// NV-DXVK end
 
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject);
 
@@ -142,6 +144,10 @@ namespace dxvk {
     D3D9Options                   m_d3d9Options;
 
     std::vector<D3D9Adapter>      m_adapters;
+
+// NV-DXVK start: external API
+    bool                          m_withExternalSwapchain;
+// NV-DXVK end
 
   };
 

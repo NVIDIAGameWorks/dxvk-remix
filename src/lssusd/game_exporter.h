@@ -24,6 +24,7 @@
 #include "usd_include_begin.h"
 #include <pxr/usd/usd/stage.h>
 #include <pxr/usd/usd/attribute.h>
+#include <pxr/usd/usdLux/lightapi.h>
 #include "usd_include_end.h"
 
 #include "game_exporter_common.h"
@@ -49,6 +50,7 @@ private:
     pxr::SdfPath instanceSdfPath;
   };
   struct ExportContext {
+    std::string extension;
     pxr::UsdStageRefPtr instanceStage;
     IdMap<Reference> matReferences;
     IdMap<Reference> meshReferences;
@@ -74,8 +76,9 @@ private:
                                                          const ReducedIdxBufSet& reducedIdxBufSet,
                                                          size_t elemsPerIdx = 1);
   template<typename T>
-  static void exportBufferSet(const std::map<float,pxr::VtArray<T>>& bufSet,
-                              pxr::UsdAttribute attr);
+  static void exportBufferSet(const std::map<float,pxr::VtArray<T>>& bufSet, pxr::UsdAttribute attr);
+  template<typename T>
+  static void exportColorOpacityBufferSet(const std::map<float, pxr::VtArray<T>>& bufSet, pxr::UsdAttribute color, pxr::UsdAttribute opacity);
   static void exportInstances(const Export& exportData, ExportContext& ctx);
   static void exportCamera(const Export& exportData, ExportContext& ctx);
   static void exportSphereLights(const Export& exportData, ExportContext& ctx);
@@ -94,8 +97,7 @@ private:
                                     const double firstTime,
                                     const double finalTime,
                                     const size_t numFramesCaptured);
-  static void setLightIntensityOnTimeSpan(const pxr::UsdStageRefPtr stage,
-                                          const pxr::SdfPath sdfPath,
+  static void setLightIntensityOnTimeSpan(const pxr::UsdLuxLightAPI& luxLight,
                                           const float defaultLightIntensity,
                                           const double firstTime,
                                           const double finalTime,

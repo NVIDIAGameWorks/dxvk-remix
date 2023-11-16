@@ -33,6 +33,7 @@
 #include "rtx/pass/raytrace_args.h"
 #include "math.h"
 #include "rtx_lights.h"
+#include "rtx_intersection_test.h"
 
 /*  Light Manager (blurb)
 * 
@@ -99,7 +100,7 @@ namespace dxvk {
     m_lights.clear();
   }
 
-  void LightManager::garbageCollection() {
+  void LightManager::garbageCollectionInternal() {
     const uint32_t currentFrame = m_device->getCurrentFrameId();
     const uint32_t framesToKeep = RtxOptions::Get()->getNumFramesToKeepLights();
     const uint32_t framesToSleep = RtxOptions::Get()->getNumFramesToPutLightsToSleep();
@@ -123,6 +124,43 @@ namespace dxvk {
       }
       ++it;
     }
+  }
+
+  void LightManager::garbageCollection(RtCamera& camera) {
+    if (RtxOptions::AntiCulling::Light::enable()) {
+      cFrustum& cameraLightAntiCullingFrustum = camera.getLightAntiCullingFrustum();
+      for (auto& [lightHash, rtLight] : getLightTable()) {
+        bool isLightInsideFrustum = true;
+
+        // We have 3 situations for a light Anti-Culling:
+        // 1. Game Light: We only need to check sphere light (directional light will not be culled)
+        // 2. Light replaces original light: Same as 1, we only need to care about light that the ORIGINAL type is sphere
+        // 3. Light replaces mesh: Do the same as Object Anti-Culling for the original mesh
+        switch (rtLight.getLightAntiCullingType()) {
+        case RtLightAntiCullingType::GameLight:
+        case RtLightAntiCullingType::LightReplacement:
+          isLightInsideFrustum = sphereIntersectsFrustum(
+            cameraLightAntiCullingFrustum, rtLight.getSphereLightReplacementOriginalPosition(), rtLight.getSphereLightReplacementOriginalRadius());
+          break;
+        case RtLightAntiCullingType::MeshReplacement:
+          // Do Object-Anti-Culling if current light replaces original mesh
+          if (RtxOptions::Get()->needsMeshBoundingBox()) {
+            const AxisAlignedBoundingBox& boundingBox = rtLight.getMeshReplacementBoundingBox();
+            const Matrix4 objectToView = camera.getWorldToView(false) * rtLight.getMeshReplacementTransform();
+            isLightInsideFrustum = boundingBoxIntersectsFrustumSAT((RtCamera&)camera, boundingBox.minPos, boundingBox.maxPos, objectToView, false);
+          }
+          break;
+        }
+
+        if (isLightInsideFrustum) {
+          rtLight.markAsInsideFrustum();
+        } else {
+          rtLight.markAsOutsideFrustum();
+        }
+      }
+    }
+
+    garbageCollectionInternal();
   }
 
   void LightManager::dynamicLightMatching() {
@@ -328,6 +366,7 @@ namespace dxvk {
     // is not an issue and the buffers are allowed to keep whatever capacity they have allocated between calls for the sake of performance.
 
     m_lightsGPUData.resize(lightsGPUSize);
+    memset(m_lightsGPUData.data(), 0xff, sizeof(char)* m_lightsGPUData.size());
     m_lightMappingData.resize(lightMappingBufferEntries);
 
     // Clear all slots to new light
@@ -449,11 +488,17 @@ namespace dxvk {
     out.setBufferIdx(in.getBufferIdx());  // We remapped this light.
   }
 
-  void LightManager::addLight(const RtLight& rtLight, const DrawCallState& drawCallState) {
-    if (RtxOptions::Get()->shouldIgnoreLight(drawCallState.getMaterialData().getHash()))
+  void LightManager::addLight(const RtLight& rtLight, const DrawCallState& drawCallState, const RtLightAntiCullingType antiCullingType) {
+    if (drawCallState.getCategoryFlags().test(InstanceCategories::IgnoreLights))
       return;
 
-    addLight(rtLight);
+    // Mesh->Lights Replacement
+    if (antiCullingType == RtLightAntiCullingType::MeshReplacement) {
+      rtLight.cacheMeshReplacementAntiCullingProperties(
+        drawCallState.getTransformData().objectToWorld, drawCallState.getGeometryData().boundingBox);
+    }
+
+    addLight(rtLight, antiCullingType);
   }
 
   void LightManager::addGameLight(const D3DLIGHTTYPE type, const RtLight& rtLight) {
@@ -474,15 +519,24 @@ namespace dxvk {
       break;
     }
 
-    addLight(rtLight);
+    if (RtxOptions::AntiCulling::Light::enable() && type == D3DLIGHT_POINT) {
+      // Cache the sphere light data into replacement properties so we can unify the game light and light replacement into a single case in LightManager::garbageCollection
+      rtLight.cacheLightReplacementAntiCullingProperties(rtLight.getSphereLight());
+
+      addLight(rtLight, RtLightAntiCullingType::GameLight);
+    } else {
+      addLight(rtLight, RtLightAntiCullingType::Ignore);
+    }
   }
 
-  void LightManager::addLight(const RtLight& rtLight) {
+  void LightManager::addLight(const RtLight& rtLight, const RtLightAntiCullingType antiCullingType) {
     // This light is "off". This includes negative valued lights which in D3D games originally would act as subtractive lighting.
     const Vector3 originalRadiance = rtLight.getRadiance();
     if (originalRadiance.x < 0 || originalRadiance.y < 0 || originalRadiance.z < 0
         || (originalRadiance.x <= 0 && originalRadiance.y <= 0 && originalRadiance.z <= 0))
       return;
+
+    rtLight.setLightAntiCullingType(antiCullingType);
 
     const auto& foundLightIt = m_lights.find(rtLight.getInstanceHash());
     if (foundLightIt != m_lights.end()) {

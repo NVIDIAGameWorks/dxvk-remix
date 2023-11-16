@@ -32,6 +32,7 @@ const pxr::TfToken gTokSkel("skel");
 const pxr::TfToken gTokPose("pose");
 const pxr::TfToken gTokMeshes("meshes");
 const pxr::TfToken gTokLooks("Looks");
+const pxr::TfToken gTokRemixSettings("remix_settings");
 const pxr::TfToken gTokScope("Scope");
 const pxr::TfToken gTokInstances("instances");
 const pxr::TfToken gVisibilityInherited("inherited");
@@ -45,5 +46,4 @@ const pxr::SdfPath gRootLightsPath = gRootNodePath.AppendChild(gTokLights);
 const pxr::SdfPath gRootMeshesPath = gRootNodePath.AppendChild(gTokMeshes);
 const pxr::SdfPath gRootMaterialsPath = gRootNodePath.AppendChild(gTokLooks);
 const pxr::SdfPath gRootInstancesPath = gRootNodePath.AppendChild(gTokInstances);
-
 }

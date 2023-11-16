@@ -56,8 +56,8 @@ GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfa
   const float16_t opacityOrThinFilmThickness = enableThinFilm ?
     opaqueSurfaceMaterialInteraction.thinFilmThickness :
     opaqueSurfaceMaterialInteraction.opacity;
-
-  const uint8_t flagsAndType = (enableThinFilm ? OPAQUE_SURFACE_MATERIAL_FLAG_USE_THIN_FILM_LAYER : 0) |
+    
+  const uint8_t flagsAndType = (opaqueSurfaceMaterialInteraction.flags & OPAQUE_SURFACE_MATERIAL_INTERACTION_FLAG_MASK) |
                                // Note: Type takes 2 bits currently
                                (uint8_t(surfaceMaterialTypeOpaque) << 6);
 

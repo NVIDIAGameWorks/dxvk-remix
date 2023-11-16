@@ -37,10 +37,189 @@ static const float16_t roughnessThreshold = float16_t(0.001h);
 
 #ifdef OPAQUE_MATERIAL_USE_POM
 // Parallax Occlusion Mapping Helper Functions
+// Define a `box` as a region in tangent space that corresponds to a pixel in a mipmap level, with min_z = 0 and max_z equal to the max height in that region.
+
+// get the smaller corner of the box that contains 'pos'
+float2 pomGetBoxCorner(float2 pos, float2 boxSize)
+{
+  return floor(pos / boxSize) * boxSize;
+}
+
+// size in tangent space of a box at a given mip level
+float2 pomGetBoxSize(uint level, uint2 fullBoxSize)
+{
+  uint2 levelSize =  max(fullBoxSize >> level, 1u);
+  return 1.f / levelSize;
+}
+
+float pomGetBoxHeight(Texture2D texture, SamplerState sampler, float2 boxCenter, uint level) 
+{
+  return texture.SampleLevel(sampler, boxCenter, level - cb.totalMipBias).r;
+}
+
+float4 pomGetPatchCorners(Texture2D texture, SamplerState sampler, float2 boxCenter, float2 boxStep, float height, uint level)
+{
+  // Read the 3x3 patch around the current box
+  const float box00 = pomGetBoxHeight(texture, sampler, boxCenter + boxStep * float2(-1.f, -1.f), level);
+  const float box01 = pomGetBoxHeight(texture, sampler, boxCenter + boxStep * float2(-1.f,  0.f), level);
+  const float box02 = pomGetBoxHeight(texture, sampler, boxCenter + boxStep * float2(-1.f,  1.f), level);
+  const float box10 = pomGetBoxHeight(texture, sampler, boxCenter + boxStep * float2( 0.f, -1.f), level);
+  // const float box11 = height;
+  const float box12 = pomGetBoxHeight(texture, sampler, boxCenter + boxStep * float2( 0.f,  1.f), level);
+  const float box20 = pomGetBoxHeight(texture, sampler, boxCenter + boxStep * float2( 1.f, -1.f), level);
+  const float box21 = pomGetBoxHeight(texture, sampler, boxCenter + boxStep * float2( 1.f,  0.f), level);
+  const float box22 = pomGetBoxHeight(texture, sampler, boxCenter + boxStep * float2( 1.f,  1.f), level);
+
+  // Set each corner of the box to the min of the surrounding boxes.  This is needed because the mip values are maximum heights,
+  // and we want each box to share corners.
+  // returns a float4 representing the height of each corner, as 00, 01, 10, 11.
+  return float4(
+    min(min(box00, box01), min(box10, height)),
+    min(min(box01, box02), min(height, box12)),
+    min(min(box10, height), min(box20, box21)),
+    min(min(height, box12), min(box21, box22))
+  );
+}
+
+// cast a ray in tangent space.  return an intersection point in tangent point (or an exit point if z > 1.0f)
+float3 pomTraceRay(Texture2D texture, SamplerState sampler, float3 origin, float3 direction, float2 textureGradientX, float2 textureGradientY, inout uint iterations)
+{
+  // Potential future improvements for outwards rays:
+  // 1) calculate starting height the same way the box intersection code does instead of just sampling at a pixel.
+  // 2) allow rays to escape the surface, only do intersection on entering the surface.
+  uint fullWidth, fullHeight, numMipLevels = 0;
+  texture.GetDimensions(0, fullWidth, fullHeight, numMipLevels);
+  const uint2 fullBoxSize = uint2(fullWidth, fullHeight);
+  const bool isOutwardsRay = direction.z > 0.f;
+  const float2 ddx_tex = textureGradientX * fullBoxSize;
+  const float2 ddy_tex = textureGradientY * fullBoxSize;
+  const float dd_max_sq = max(dot(ddx_tex, ddx_tex), dot(ddy_tex, ddy_tex));
+  uint minMipLevel = max(0, min(numMipLevels, log2(sqrt(dd_max_sq)) + cb.totalMipBias));
+
+  // Starting halfway down the quadtree seems to generally lead to fewer iterations to resolve, especially for heights close to 1.
+  // Outwards rays start at 0, since they will just descend to 0 if they start anywhere else.
+  int level = isOutwardsRay ? 0 : max((numMipLevels - 1) / 2, minMipLevel);
+  float3 curPos = origin;
+
+  const float2 forwardStep = float2(direction.x >= 0.0f ? 1.f : -1.f, direction.y >= 0.0f ? 1.f : -1.f);
+  const float2 forwardHalfStep = forwardStep * 0.5f;
+  iterations = 0;
+  level = level;
+  float prevHeight = 1.f;
+  while (level >= minMipLevel && iterations < cb.pomMaxIterations && (!isOutwardsRay || curPos.z <= 1.f))
+  {
+    iterations++;
+    const float2 boxSize = pomGetBoxSize(level, fullBoxSize);
+    const float2 boxCenter = pomGetBoxCorner(curPos.xy, boxSize) + 0.5f * boxSize;
+    const float height = pomGetBoxHeight(texture, sampler, boxCenter, level);
+    if (level != minMipLevel && curPos.z <=  height) {
+      // For mip levels above the minimum, if the curPos is below the max height of the box, just descend a level.
+      level = level - 1;
+      continue;
+    }
+    // The axis aligned planes where the ray will exit the box.
+    const float2 boxFarCorner = boxCenter + forwardHalfStep * boxSize;
+
+    // The distance to intersect with the x, y, and z planes.
+    // origin.x + distance.x * m = bounds.x
+    // m = (bounds.x - origin.x) / distance.x
+    const float3 intersectDist = (float3(boxFarCorner, height) - origin) / direction;
+    const float boundsIntersect = min(intersectDist.x, intersectDist.y);
+
+    // The actual point where the ray exits the box.
+    const float3 boxExit = origin + boundsIntersect * direction;
+
+    if (!isOutwardsRay && intersectDist.z <= boundsIntersect)
+    {
+      // Hit the top of a box with an Inward ray.  
+      if (level == 0)
+      {
+        // When a single texel stretches across multiple on screen pixels, we intersect against a virtual mesh
+        // constructed from the height map.
+        // The virtual mesh needs to be water tight, and needs to be fully contained by the boxes of each mip
+        // level - meaning the max height in a pixel cannot be higher than the actual value of the pixel.  We also
+        // want this surface to be smooth, rather than being a series of boxes. Constructing this vitual surface
+        // as a quad where each vertex is at a corner of the box, and has a height equal to the minimum of the four
+        // surrounding pixels will meet those requirements, but does cut off a single pixel spike, and makes a
+        // single pixel pit have a flat bottom.
+
+        // NOTE: I tried improving this algorithm by colliding against a series of 4 triangles, where each triangle 
+        // is made of the center pixel value combined with 2 box corners from the above approach.  This unfortunately
+        // causes smooth slops to turn jagged. It may be an improvement to use that approach only when the current
+        // pixel is the largest or smallest of all the neighbors, but that seemed too complex to be worth pursuing.
+        
+        // Calculate the point where  the ray entered this box:
+        const float2 boxNearCorner = boxCenter - forwardHalfStep * boxSize;
+        const float2 boxEntranceDist = (boxNearCorner - origin.xy) / direction.xy;
+        const float3 boxEntrance = origin + max(0.0f, max(boxEntranceDist.x, boxEntranceDist.y)) * direction;
+
+        const float2 forwardBoxStep = boxSize * forwardStep;
+        const float4 corners = pomGetPatchCorners(texture, sampler, boxCenter, forwardBoxStep, height, minMipLevel);
+        iterations += 8; // 8 texture lookups for the patch corners, count it as 8 iterations.
+
+        // Normalize the entrance and exit coords to a 0-1 space for lerping.
+        const float2 normalEntranceCoord = (boxEntrance.xy - boxNearCorner.xy) / forwardBoxStep;
+        const float2 normalExitCoord = (boxExit.xy - boxNearCorner.xy) / forwardBoxStep;
+
+        // We expect one coord of the normalized entrance and exit coords to be 0.  Lerping like this becomes a linear interpolation
+        // across the two corners the coord sits between.
+        const float entranceHeight = lerp(lerp(corners[0], corners[2], normalEntranceCoord.x), lerp(corners[1], corners[3], normalEntranceCoord.x), normalEntranceCoord.y);
+        const float exitHeight = lerp(corners[2], lerp(corners[1], corners[3], normalExitCoord.x), normalExitCoord.y);
+
+        // intersect the ray against that line segment. (2d line intersection works here)
+        const float frac = (boxEntrance.z - entranceHeight) / ((exitHeight - entranceHeight) - (boxExit.z - boxEntrance.z));
+        const float3 interceptPos = boxEntrance + (boxExit - boxEntrance) * frac;
+        
+        if (entranceHeight > boxEntrance.z || (frac <= 1 && interceptPos.z <= height && frac >= 0)) {
+          // `entranceHeight > boxEntrance.z` return if ray is already under the surface at the near side of the box.
+          // `frac <= 1` reject all intersections past the far side of the box.
+          // `interceptPos.z <= maxGeoHeight` reject intersections that happen above the highest point of the surface in the box.
+          // `frac > 0` reject intersections that happened before the near side of the box.
+          return interceptPos;
+        }
+        // didn't hit the virtual surface, move to next box
+      }
+      else if (level == minMipLevel)
+      {
+        // Hit the top of the box at the min mip level, but far enough away that the min mip level is > 0.
+        // Use a very simple linear interpolation between prev cell height at entrance, and current cell height at exit to get a collision.
+        const float frac = (curPos.z - prevHeight) / ((height - prevHeight) - (boxExit.z - curPos.z));
+        return curPos + (boxExit - curPos) * frac;
+      }
+      else if (level > minMipLevel)
+      {
+        // Proceed to z intersection and reduce mip.
+        curPos = origin + intersectDist.z * direction;
+        level = level - 1;
+        continue;
+      }
+    } 
+    // intersected with sides of box
+    int nextLevel = min( numMipLevels - 1, level + 1);
+    // (note, ideally we would just use something like std::nextafterf on boundsIntersect)
+    const float3 nextPos = boxExit + direction * min(boxSize.x, boxSize.y) * 0.01f;
+
+    // Maybe don't move up level
+    float2 nextBoxSize = pomGetBoxSize(nextLevel, fullBoxSize);
+    if (any(pomGetBoxCorner(curPos.xy, nextBoxSize) != pomGetBoxCorner(nextPos.xy, nextBoxSize)))
+    {
+      level = nextLevel;
+    }
+    curPos = nextPos;
+    prevHeight = height;
+  }
+
+  // Outwards rays can go past the top of the POM surface, so limit it to there.
+  if (curPos.z > 1) {
+    float distToOne = (1.0f - origin.z) / direction.z;
+    return origin + distToOne * direction;
+  }
+  return curPos;
+}
+
 
 float pomSampleHeight(uint16_t idx, uint16_t samplerIndex, float2 texcoord)
 {
-  // TODO: this is pretty basic, would be better to traverse a min/max pyramid stored in the mips of height texture
   return 1.0f - textures[nonuniformEXT(uint(idx))].SampleLevel(samplers[nonuniformEXT(uint(samplerIndex))], texcoord, 0).r;
 }
 
@@ -52,48 +231,73 @@ float2 pomGetStep(float3 direction, float layerSize, float displaceIn)
 
 float pomGetNumSamples(float3 direction)
 {
-  const float minSamples = 16.0;
-  const float maxSamples = 64.0;
+  const float minSamples = cb.pomMaxIterations / 4.f;
+  const float maxSamples = cb.pomMaxIterations;
 
   // more samples when viewing from oblique angle
   return lerp(maxSamples, minSamples, abs(dot(float3(0.0, 0.0, 1.0), direction)));
 }
 
-float2 pomCalculateTexcoord(uint16_t heightTextureIdx, uint16_t samplerIndex, float2 texcoord, float3 viewDir, float displaceIn)
+float3 pomCalculateTexcoord(
+  OpaqueSurfaceMaterial opaqueSurfaceMaterial,
+  SurfaceInteraction surfaceInteraction,
+  float3 viewDir,
+  inout uint iterations)
 {
-  float numLayers = pomGetNumSamples(viewDir);
-  float layerSize = rcp(numLayers);
-  float2 step = pomGetStep(viewDir, layerSize, displaceIn);
+  if (cb.pomMode == DisplacementMode::RaymarchPOM) {
+    float numLayers = pomGetNumSamples(viewDir);
+    float layerSize = rcp(numLayers);
+    float2 step = pomGetStep(viewDir, layerSize, opaqueSurfaceMaterial.displaceIn);
 
-  float2 currTexcoord = texcoord;
-  float currHeight = pomSampleHeight(heightTextureIdx, samplerIndex, currTexcoord);
+    float2 currTexcoord = surfaceInteraction.textureCoordinates;
+    float currHeight = pomSampleHeight(opaqueSurfaceMaterial.heightTextureIndex, opaqueSurfaceMaterial.samplerIndex, currTexcoord);
 
-  // raymarch to find intersection
-  float currDepth = 0.0f, prevHeight = 0.0f;
-  while(currDepth < currHeight)
-  {
-    currTexcoord -= step;
-    prevHeight = currHeight;
-    currHeight = pomSampleHeight(heightTextureIdx, samplerIndex, currTexcoord);
-    currDepth += layerSize;
+    // raymarch to find intersection
+    float currDepth = 0.0f, prevHeight = 0.0f;
+    iterations = 0;
+    while(currDepth < currHeight)
+    {
+      iterations++;
+      currTexcoord -= step;
+      prevHeight = currHeight;
+      currHeight = pomSampleHeight(opaqueSurfaceMaterial.heightTextureIndex, opaqueSurfaceMaterial.samplerIndex, currTexcoord);
+      currDepth += layerSize;
+    }
+
+    // interpolate last two samples to reduce sample aliasing
+    float depthNminus1 = prevHeight - currDepth + layerSize;
+    float depthN  = currHeight - currDepth;
+    float weight = saturate(depthN / (depthN - depthNminus1));
+    return float3(currTexcoord + lerp(0..xx, step, weight), currHeight);
+  } else if (cb.pomMode == DisplacementMode::QuadtreePOM) {
+    return pomTraceRay(
+        textures[nonuniformEXT(uint(opaqueSurfaceMaterial.heightTextureIndex))],
+        samplers[nonuniformEXT(uint(opaqueSurfaceMaterial.samplerIndex))],
+        float3(surfaceInteraction.textureCoordinates, 1.0f),
+        -float3(viewDir.xy, viewDir.z / opaqueSurfaceMaterial.displaceIn),
+        surfaceInteraction.textureGradientX,
+        surfaceInteraction.textureGradientY,
+        iterations);
   }
-
-  // interpolate last two samples to reduce sample aliasing
-  float depthNminus1 = prevHeight - currDepth + layerSize;
-  float depthN  = currHeight - currDepth;
-  float weight = saturate(depthN / (depthN - depthNminus1));
-  return currTexcoord + lerp(0..xx, step, weight);
+  return float3(surfaceInteraction.textureCoordinates, 1.f);
 }
 
-float pomSampleVisibility(uint16_t heightTextureIdx, uint16_t samplerIndex, float2 texcoord, float3 rayDirection, float displaceIn)
+float pomSampleVisibility(
+    uint16_t heightTextureIdx,
+    uint16_t samplerIndex,
+    float2 texcoord,
+    float3 rayDirection,
+    float displaceIn)
 {
+  // NOTE: pomTraceRay could be used here, but testing found it was more expensive and had worse artifacts when
+  // doing visibility testing.
+  float2 currTexcoord = texcoord;
+  float currHeight = pomSampleHeight(heightTextureIdx, samplerIndex, currTexcoord);
+  float currDepth = currHeight;
   float numLayers = pomGetNumSamples(rayDirection);
   float layerSize = rcp(numLayers);
   float2 step = pomGetStep(rayDirection, layerSize, displaceIn);
 
-  float2 currTexcoord = texcoord;
-  float currHeight = pomSampleHeight(heightTextureIdx, samplerIndex, currTexcoord);
-  float currDepth = currHeight;
 
   float visibility = 1.0f;
   while (currDepth > 0.0f)
@@ -138,16 +342,30 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   MinimalRayInteraction minimalRayInteraction)
 {
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction;
+  // Note: need initialize the flags explicitely to get rid of garbage data.
+  opaqueSurfaceMaterialInteraction.flags = 0;
 
   // Create a tangent to world space matrix for future calculations
 
   const f16mat3 worldToTangent = f16mat3(surfaceInteraction.interpolatedTangent, surfaceInteraction.interpolatedBitangent, surfaceInteraction.interpolatedNormal);
 
+  // Note: Does not represent if the thin film is enabled in all cases, such as if the thin film enable override is specified, merely concerned with if
+  // it has been directly enabled by the material itself.
+  const bool thinFilmEnabled = opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_USE_THIN_FILM_LAYER;
+
+  opaqueSurfaceMaterialInteraction.flags |= thinFilmEnabled ? OPAQUE_SURFACE_MATERIAL_INTERACTION_FLAG_USE_THIN_FILM_LAYER : 0;
+
 #ifdef OPAQUE_MATERIAL_USE_POM
-  if (cb.pomEnable && opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID && opaqueSurfaceMaterial.displaceIn > 0.0f)
+  if (cb.pomMode != DisplacementMode::Off && opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID && opaqueSurfaceMaterial.displaceIn > 0.0f)
   {
     const f16vec3 viewDirTangentSpace = normalize(mul(worldToTangent, minimalRayInteraction.viewDirection));
-    surfaceInteraction.textureCoordinates = pomCalculateTexcoord(opaqueSurfaceMaterial.heightTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction.textureCoordinates, viewDirTangentSpace, opaqueSurfaceMaterial.displaceIn);
+    uint iterations = 0; // unused
+    surfaceInteraction.textureCoordinates = pomCalculateTexcoord(
+        opaqueSurfaceMaterial,
+        surfaceInteraction,
+        viewDirTangentSpace,
+        iterations).xy;
+    opaqueSurfaceMaterialInteraction.flags |= opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID ? OPAQUE_SURFACE_MATERIAL_INTERACTION_FLAG_HAS_HEIGHT_TEXTURE : 0;
   }
 #endif
 
@@ -198,10 +416,6 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
 
   // Texture operations have already been applied during terrain baking, so skip them for baked terrain surfaces
   const bool applyTextureOperations = !isBakedTerrain;
-
-  // Note: Does not represent if the thin film is enabled in all cases, such as if the thin film enable override is specified, merely concerned with if
-  // it has been directly enabled by the material itself.
-  const bool thinFilmEnabled = opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_USE_THIN_FILM_LAYER;
 
   // Note: Set thin film thickness constant fallback only if the thin film is enabled as a non-zero value here is responsible for indicating
   // if the thin film is in use by later code.
@@ -318,25 +532,30 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
 
   if (normalLoaded)
   {
-    // Terrain baker produces decoded tangentNormal and (first) normal that need to be normalized.
-    // They are normalized after applying tangentToWorld transform below 
-    const bool isEncodedNormalSample = !isBakedTerrain;  
-
     f16vec3 tangentNormal;
-    if (isEncodedNormalSample) 
+
+    // Terrain baker produces decoded tangentNormal and (first) normal.
+    if (isBakedTerrain)  
+    {
+      // REMIX-2224: Normals blended during terrain baking using programmable shaders can sometimes end up being invalid so we sanitize them at this point
+      tangentNormal = sanitize(normalSample.xyz, cb.isZUp ? f16vec3(0.h, 0.h, 1.h) : f16vec3(0.h, 1.h, 0.h));
+    }
+    else // Decode encoded normal sample
     {
       // Note: Using f16 from texture to decode from is fine as the original texture is only 8 bits of precision.
       tangentNormal = unsignedOctahedralToHemisphereDirection(vec2(normalSample.xy), cb.opaqueMaterialArgs.normalIntensity);
-    } 
-    else 
-    {
-      tangentNormal = normalSample.xyz;
     }
     
     const f16mat3 tangentToWorld = transpose(worldToTangent);
 
     normal = normalize(mul(tangentToWorld, tangentNormal));
-    
+
+    // REMIX-2224: Normals blended during terrain baking using programmable shaders can sometimes end up being invalid
+    // after being transformed to world space so we sanitize them here
+    if (isBakedTerrain) {
+      normal = sanitize(normal, cb.isZUp ? f16vec3(0.h, 0.h, 1.h) : f16vec3(0.h, 1.h, 0.h));
+    }
+
     // Note: Only factoring in the initial normal map read as part of the normal map calculation as the second normal acts blends in worldspace which
     // would re-introduce the potential for precision issues that we're trying to avoid in this calculation. Additionally, the second normal is only used
     // currently for water effects and is sampled from a less detailed mip, so it is likely not too relevant for "detail" in the normal map with regards
@@ -443,6 +662,9 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
 
   opaqueSurfaceMaterialInteraction.emissiveRadiance = derivedEmissiveColor * derivedEmissiveIntensity;
 
+  // Subsurface Material Index
+  opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex = opaqueSurfaceMaterial.subsurfaceMaterialIndex;
+
   return opaqueSurfaceMaterialInteraction;
 }
 
@@ -474,6 +696,10 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(Polymorp
   opaqueSurfaceMaterialInteraction.anisotropicRoughness.y = polymorphicSurfaceMaterialInteraction.fdata3;
   opaqueSurfaceMaterialInteraction.normalDetail = polymorphicSurfaceMaterialInteraction.fdata4;
 
+  opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex = polymorphicSurfaceMaterialInteraction.idata0;
+  
+  opaqueSurfaceMaterialInteraction.flags = polymorphicSurfaceMaterialInteraction.bdata0;
+
   return opaqueSurfaceMaterialInteraction;
 }
 
@@ -502,7 +728,8 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   float16_t isotropicRoughness;
   f16vec2 anisotropicRoughness;
 
-  const bool thinFilmEnabled = (flagsAndType & OPAQUE_SURFACE_MATERIAL_FLAG_USE_THIN_FILM_LAYER);
+  opaqueSurfaceMaterialInteraction.flags = flagsAndType & OPAQUE_SURFACE_MATERIAL_INTERACTION_FLAG_MASK;
+  const bool thinFilmEnabled = (flagsAndType & OPAQUE_SURFACE_MATERIAL_INTERACTION_FLAG_USE_THIN_FILM_LAYER);
 
   calcRoughness(perceptualRoughness, sourceAnisotropy, isotropicRoughness, anisotropicRoughness);
 
@@ -521,6 +748,8 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
 
   // We don't store this in the G-buffer
   opaqueSurfaceMaterialInteraction.normalDetail = float16_t(0.0f);
+
+  // Note thin opaque properties are stored later into PolymorphicSurfaceMaterialInteraction
 
   return opaqueSurfaceMaterialInteraction;
 }
@@ -549,9 +778,13 @@ bool opaqueSurfaceMaterialInteractionCalcLobeProbability(
   f16vec3 viewDirection,
   out float16_t diffuseReflectionProbability,
   out float16_t specularReflectionProbability,
-  out float16_t opacityTransmissionProbability)
+  out float16_t opacityTransmissionProbability,
+  out float16_t diffuseTransmissionProbability)
 {
   // Calculate dot products used for evaluation
+
+  SubsurfaceMaterial subSurfaceMaterial;
+  const bool isSubSurface = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
 
   // Note: Normal dot output direction used as a "best" approximation in this case, usually aligned with the actual sampled
   // microfacet normal on surfaces with low roughness (identical at 0), but will become more and more potentially inaccurate
@@ -573,7 +806,8 @@ bool opaqueSurfaceMaterialInteractionCalcLobeProbability(
 
   diffuseReflectionProbability = albedoLuminance;
   specularReflectionProbability = fresnelLuminance;
-  opacityTransmissionProbability = float16_t(1.0f) - opaqueSurfaceMaterialInteraction.opacity;
+  opacityTransmissionProbability = 1.0h - opaqueSurfaceMaterialInteraction.opacity;
+  diffuseTransmissionProbability = isSubSurface ? 1.0h - fresnelLuminance : 0.0h;
 
   // Todo: Pass raytraceArgs in in the future if accessing these constants poses a problem later.
   adjustProbabilityValue(
@@ -585,11 +819,16 @@ bool opaqueSurfaceMaterialInteractionCalcLobeProbability(
     uint16BitsToHalf(cb.opaqueSpecularLobeSamplingProbabilityZeroThreshold),
     uint16BitsToHalf(cb.minOpaqueSpecularLobeSamplingProbability));
   adjustProbabilityValue(
-    opacityTransmissionProbability,
-    uint16BitsToHalf(cb.opaqueOpacityTransmissionLobeSamplingProbabilityZeroThreshold),
-    uint16BitsToHalf(cb.minOpaqueOpacityTransmissionLobeSamplingProbability));
+      opacityTransmissionProbability,
+      uint16BitsToHalf(cb.opaqueOpacityTransmissionLobeSamplingProbabilityZeroThreshold),
+      uint16BitsToHalf(cb.minOpaqueOpacityTransmissionLobeSamplingProbability));
+  adjustProbabilityValue(
+      diffuseTransmissionProbability,
+      uint16BitsToHalf(cb.opaqueDiffuseTransmissionLobeSamplingProbabilityZeroThreshold),
+      uint16BitsToHalf(cb.minOpaqueDiffuseTransmissionLobeSamplingProbability));
 
-  const float16_t lobeProbabilitySum = opacityTransmissionProbability + specularReflectionProbability + diffuseReflectionProbability;
+  const float16_t lobeProbabilitySum =
+    opacityTransmissionProbability + diffuseTransmissionProbability + specularReflectionProbability + diffuseReflectionProbability;
 
   if (lobeProbabilitySum == float16_t(0.0f))
     return false;
@@ -598,6 +837,7 @@ bool opaqueSurfaceMaterialInteractionCalcLobeProbability(
   diffuseReflectionProbability *= lobeProbabilityNormalizationFactor;
   specularReflectionProbability *= lobeProbabilityNormalizationFactor;
   opacityTransmissionProbability *= lobeProbabilityNormalizationFactor;
+  diffuseTransmissionProbability *= lobeProbabilityNormalizationFactor;
   return true;
 }
 
@@ -607,12 +847,13 @@ SurfaceMaterialInteractionLobeSample opaqueSurfaceMaterialInteractionCalcLobeSam
   MinimalRayInteraction minimalRayInteraction,
   inout bool insideMedium)
 {
-  float16_t diffuseReflectionProbability;
-  float16_t specularReflectionProbability;
-  float16_t opacityTransmissionProbability;
+  float16_t diffuseReflectionProbability = 0.0f;
+  float16_t specularReflectionProbability = 0.0f;
+  float16_t opacityTransmissionProbability = 0.0f;
+  float16_t diffuseTransmissionProbability = 0.0f;
   bool isValid = opaqueSurfaceMaterialInteractionCalcLobeProbability(
     opaqueSurfaceMaterialInteraction, minimalRayInteraction.viewDirection,
-    diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability);
+    diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability, diffuseTransmissionProbability);
 
   SurfaceMaterialInteractionLobeSample surfaceMaterialInteractionLobeSample;
   if(!isValid)
@@ -636,7 +877,11 @@ SurfaceMaterialInteractionLobeSample opaqueSurfaceMaterialInteractionCalcLobeSam
     surfaceMaterialInteractionLobeSample.lobe = opaqueLobeTypeOpacityTransmission;
     surfaceMaterialInteractionLobeSample.pdf = opacityTransmissionProbability;
   }
-  else if (lobeSample < (opacityTransmissionProbability + specularReflectionProbability))
+  else if (lobeSample < (opacityTransmissionProbability + diffuseTransmissionProbability)) {
+    surfaceMaterialInteractionLobeSample.lobe = opaqueLobeTypeDiffuseTransmission;
+    surfaceMaterialInteractionLobeSample.pdf = diffuseTransmissionProbability;
+  }
+  else if (lobeSample < (opacityTransmissionProbability + diffuseTransmissionProbability + specularReflectionProbability))
   {
     surfaceMaterialInteractionLobeSample.lobe = opaqueLobeTypeSpecularReflection;
     surfaceMaterialInteractionLobeSample.pdf = specularReflectionProbability;
@@ -726,10 +971,16 @@ SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcDiffuseRefl
   
   // Calculate the throughput of the sample
 
+  SubsurfaceMaterial subSurfaceMaterial;
+  const bool isSubsurfaceMaterial = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
+  // If we have lambert diffuse transmission lobe, we are actually doing lambert sampling on the whole sphere, so the diffuse reflection weight should be weighted with 1/2pi for energy conservation.
+  // The original hammon diffuse does sampling on hemisphere, so we can just normalize the weight again with 1/2.
+  const f16vec3 lambertTransmissionWeight = (isSubsurfaceMaterial && subSurfaceMaterial.measurementDistance <= 0.05f) ? 0.5h : 1.0h;
+
   const f16vec3 weight =
     evalHammonDiffuse(opaqueSurfaceMaterialInteraction.albedo, opaqueSurfaceMaterialInteraction.isotropicRoughness,
       inputDirectionDotOutputDirection, normalDotInputDirection,
-      normalDotOutputDirection, normalDotMicrofacetNormal);
+      normalDotOutputDirection, normalDotMicrofacetNormal) * lambertTransmissionWeight;
   f16vec3 throughput = safePositiveDivide(weight, f16vec3(cosineHemisphereSolidAnglePdf), materialEpsilon) *
     normalDotInputDirection;
 
@@ -903,14 +1154,89 @@ SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcSpecularRef
 
 SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcDiffuseTransmissionSample(
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  inout RNG randomState,
+  f16vec4 tangentToWorldSpaceQuaternion,
   MinimalRayInteraction minimalRayInteraction,
   inout bool insideMedium, inout bool penetrateSurface)
 {
-  SurfaceMaterialInteractionSample materialSample;
+  const f16vec4 worldToTangentSpaceQuaternion = quaternionInverse(tangentToWorldSpaceQuaternion);
 
-  materialSample.inputDirection = f16vec3(0.0, 0.0, 0.0);
-  materialSample.throughput = f16vec3(0.0, 0.0, 0.0);
-  materialSample.solidAnglePdf = 0.0f;
+  // Set up relevant input vectors in tangent space
+
+  const f16vec3 outputDirection = quaternionTransformVector(worldToTangentSpaceQuaternion, minimalRayInteraction.viewDirection);
+
+  const f16vec2 u = f16vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState));
+  float cosineHemisphereSolidAnglePdf = 0.0f;
+  f16vec3 inputDirection = -calcCosineHemisphereDirectionSample(u, cosineHemisphereSolidAnglePdf);
+
+  const float16_t /* l.h */ inputDirectionDotMicrofacetNormal = -inputDirection.z;
+  const float16_t /* o.h */ outputDirectionDotMicrofacetNormal = outputDirection.z;
+
+  const f16vec3 fresnel = evalOpaqueSchlickFresnel(
+    opaqueSurfaceMaterialInteraction.baseReflectivity, outputDirectionDotMicrofacetNormal);
+  const f16vec3 transmissionFresnel = f16vec3(1.0h, 1.0h, 1.0h) - fresnel;
+
+  SurfaceMaterialInteractionSample materialSample;
+  materialSample.inputDirection = quaternionTransformVector(tangentToWorldSpaceQuaternion, inputDirection);
+  materialSample.throughput = safePositiveDivide(transmissionFresnel * opaqueSurfaceMaterialInteraction.albedo * rcp(twoPi), f16vec3(cosineHemisphereSolidAnglePdf), materialEpsilon) * inputDirectionDotMicrofacetNormal;
+  materialSample.solidAnglePdf = cosineHemisphereSolidAnglePdf;
+
+  // Note: Transmission rays penetrate the surface like translucent materials.
+  penetrateSurface = true;
+
+  return materialSample;
+}
+
+SurfaceMaterialInteractionSample thinOpaqueSurfaceMaterialInteractionCalcDiffuseTransmissionSample(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
+  inout RNG randomState,
+  f16vec4 tangentToWorldSpaceQuaternion,
+  MinimalRayInteraction minimalRayInteraction,
+  SubsurfaceMaterial subSurfaceMaterial,
+  inout bool insideMedium, inout bool penetrateSurface)
+{
+  const f16vec4 worldToTangentSpaceQuaternion = quaternionInverse(tangentToWorldSpaceQuaternion);
+
+  // Set up relevant input vectors in tangent space
+
+  const f16vec3 outputDirection = quaternionTransformVector(worldToTangentSpaceQuaternion, minimalRayInteraction.viewDirection);
+
+  const f16vec2 u = f16vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState));
+  float cosineHemisphereSolidAnglePdf = 0.0f;
+  const f16vec3 inputDirection = -calcCosineHemisphereDirectionSample(u, cosineHemisphereSolidAnglePdf);
+
+  const float16_t /* n.v */ normalDotOutputDirection = outputDirection.z;
+  // Note: Negative as input direction always points into surface
+  const float16_t /*-n.l */ transmissionNormalDotInputDirection = -inputDirection.z;
+  const float16_t /* v.l */ inputDirectionDotOutputDirection = dot(-outputDirection, inputDirection);
+
+  const f16vec3 weight = evalHanrahanSingleScatteringDiffuseTransmission(
+    opaqueSurfaceMaterialInteraction.baseReflectivity,
+    subSurfaceMaterial.volumetricAttenuationCoefficient, subSurfaceMaterial.measurementDistance,
+    subSurfaceMaterial.singleScatteringAlbedo, subSurfaceMaterial.volumetricAnisotropy,
+    normalDotOutputDirection,
+    transmissionNormalDotInputDirection,
+    inputDirectionDotOutputDirection);
+
+  if (all(weight == 0.0h))
+  {
+    SurfaceMaterialInteractionSample materialSample;
+    materialSample.inputDirection = f16vec3(0.0h, 0.0h, 0.0h);
+    materialSample.throughput = f16vec3(0.0h, 0.0h, 0.0h);
+    materialSample.solidAnglePdf = 0.0h;
+
+    penetrateSurface = false;
+
+    return materialSample;
+  }
+
+  SurfaceMaterialInteractionSample materialSample;
+  materialSample.inputDirection = quaternionTransformVector(tangentToWorldSpaceQuaternion, inputDirection);
+  materialSample.throughput = safePositiveDivide(weight, f16vec3(cosineHemisphereSolidAnglePdf), materialEpsilon) * transmissionNormalDotInputDirection;
+  materialSample.solidAnglePdf = cosineHemisphereSolidAnglePdf;
+
+  // Note: Transmission rays penetrate the surface like translucent materials.
+  penetrateSurface = true;
 
   return materialSample;
 }
@@ -925,6 +1251,9 @@ SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcSpecularTra
   materialSample.inputDirection = f16vec3(0.0, 0.0, 0.0);
   materialSample.throughput = f16vec3(0.0, 0.0, 0.0);
   materialSample.solidAnglePdf = 0.0f;
+
+  // Note: Transmission rays penetrate the surface like translucent materials.
+  penetrateSurface = true;
 
   return materialSample;
 }
@@ -945,7 +1274,7 @@ SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcOpacityTran
   // Note: Dirac delta PDF, always a probability of 1 to sample this singular direction.
   materialSample.solidAnglePdf = 1.0f;
 
-  // Note: Opacity rays pennetrate the surface like translucent materials.
+  // Note: Opacity rays penetrate the surface like translucent materials.
   penetrateSurface = true;
 
   return materialSample;
@@ -980,6 +1309,25 @@ void opaqueSurfaceMaterialInteractionCalcSample(
   case uint(opaqueLobeTypeOpacityTransmission):
     surfaceMaterialInteractionSample = opaqueSurfaceMaterialInteractionCalcOpacityTransmissionSample(
       opaqueSurfaceMaterialInteraction, minimalRayInteraction, insideMedium, penetrateSurface);
+
+    break;
+  case uint(opaqueLobeTypeDiffuseTransmission):
+    // Load Subsurface Material
+    SubsurfaceMaterial subSurfaceMaterial;
+    subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
+
+    // When the thickness of surface is thinner than this experimental threshold, we don't need to consider the volume of the surface.
+    // Instead, we use a cheaper 2-side sampling method with traditional LambertBTDF to simulate the effect.
+    if (subSurfaceMaterial.measurementDistance > 0.05f)
+    {
+      surfaceMaterialInteractionSample = thinOpaqueSurfaceMaterialInteractionCalcDiffuseTransmissionSample(
+        opaqueSurfaceMaterialInteraction, randomState, tangentToWorldSpaceQuaternion, minimalRayInteraction, subSurfaceMaterial, insideMedium, penetrateSurface);
+    }
+    else
+    {
+      surfaceMaterialInteractionSample = opaqueSurfaceMaterialInteractionCalcDiffuseTransmissionSample(
+        opaqueSurfaceMaterialInteraction, randomState, tangentToWorldSpaceQuaternion, minimalRayInteraction, insideMedium, penetrateSurface);
+    }
 
     break;
   }
@@ -1202,8 +1550,10 @@ float opaqueSurfaceMaterialInteractionCalcDiffuseTransmissionSolidAnglePdf(
   MinimalRayInteraction minimalRayInteraction,
   f16vec3 inputDirection)
 {
-  // Note: Diffuse Transmission never possible for Opaque materials
-  return 0.0f;
+  float cosTheta = dot(-inputDirection, opaqueSurfaceMaterialInteraction.shadingNormal);
+  float solidAnglePdf = getCosineHemisphereSolidAnglePdf(saturate(cosTheta));
+
+  return solidAnglePdf;
 }
 
 float opaqueSurfaceMaterialInteractionCalcSpecularTransmissionSolidAnglePdf(
@@ -1223,16 +1573,21 @@ float opaqueSurfaceMaterialInteractionCalcSolidAnglePdf(
   // Return the average of all the lobe PDFs
   // Note: Only lobes which are possible and specifically involved in reflections are included
 
-  float16_t diffuseReflectionProbability;
-  float16_t specularReflectionProbability;
-  float16_t opacityTransmissionProbability;
+  float16_t diffuseReflectionProbability = 0.0f;
+  float16_t specularReflectionProbability = 0.0f;
+  float16_t opacityTransmissionProbability = 0.0f;
+  float16_t diffuseTransmissionProbability = 0.0f;
   bool isValid = opaqueSurfaceMaterialInteractionCalcLobeProbability(
-    opaqueSurfaceMaterialInteraction, minimalRayInteraction.viewDirection, diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability);
+    opaqueSurfaceMaterialInteraction, minimalRayInteraction.viewDirection,
+    diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability, diffuseTransmissionProbability);
 
   float diffuseSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
   float specularSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
+  float diffuseTransmissionSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcDiffuseTransmissionSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
 
-  return diffuseSolidAnglePdf * diffuseReflectionProbability + specularSolidAnglePdf * specularReflectionProbability;
+  return diffuseSolidAnglePdf * diffuseReflectionProbability +
+         specularSolidAnglePdf * specularReflectionProbability +
+         diffuseTransmissionSolidAnglePdf * diffuseTransmissionProbability;
 }
 
 
@@ -1247,12 +1602,31 @@ SurfaceMaterialInteractionSplitWeight opaqueSurfaceMaterialInteractionCalcApprox
   const float16_t /* n.l */ normalDotInputDirection = dot(inputDirection, opaqueSurfaceMaterialInteraction.shadingNormal);
   const float16_t /* n.v */ normalDotOutputDirection = dot(minimalRayInteraction.viewDirection, opaqueSurfaceMaterialInteraction.shadingNormal);
 
+  // Load Subsurface Material
+  SubsurfaceMaterial subSurfaceMaterial;
+  const bool sssEnabled = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
+
+  f16vec3 diffuseTransmissionWeight = f16vec3(0.0, 0.0, 0.0);
+  if (sssEnabled)
+  {
+    diffuseTransmissionWeight = subSurfaceMaterial.singleScatteringAlbedo;
+  }
+
   if (normalDotOutputDirection <= float16_t(0.0) || normalDotInputDirection <= float16_t(0.0))
   {
     SurfaceMaterialInteractionSplitWeight splitWeight;
 
     splitWeight.diffuseReflectionWeight = f16vec3(0.0, 0.0, 0.0);
     splitWeight.specularReflectionWeight = f16vec3(0.0, 0.0, 0.0);
+
+    if (normalDotOutputDirection <= float16_t(0.0))
+    {
+      splitWeight.diffuseTransmissionWeight = f16vec3(0.0, 0.0, 0.0);
+    }
+    else
+    {
+      splitWeight.diffuseTransmissionWeight = diffuseTransmissionWeight * (-normalDotInputDirection);
+    }
 
     return splitWeight;
   }
@@ -1268,6 +1642,7 @@ SurfaceMaterialInteractionSplitWeight opaqueSurfaceMaterialInteractionCalcApprox
   SurfaceMaterialInteractionSplitWeight splitWeight;
   splitWeight.diffuseReflectionWeight = diffuseReflectionWeight * normalDotInputDirection;
   splitWeight.specularReflectionWeight = specularReflectionWeight * normalDotInputDirection;
+  splitWeight.diffuseTransmissionWeight = f16vec3(0.0, 0.0, 0.0); // Will always be 0 when normalDotInputDirection >= 0
 
   return splitWeight;
 }
@@ -1304,13 +1679,29 @@ SurfaceMaterialInteractionSplitWeight opaqueSurfaceMaterialInteractionCalcProjec
   const float16_t /* t.h */ tangentDotMicrofacetNormal = microfacetNormal.x;
   const float16_t /* b.h */ bitangentDotMicrofacetNormal = microfacetNormal.y;
   const float16_t /* n.h */ normalDotMicrofacetNormal = microfacetNormal.z;
+  const float16_t /*-n.l */ transmissionNormalDotInputDirection = -tangentInputDirection.z;
 
-  if (normalDotOutputDirection <= float16_t(0.0) || normalDotInputDirection <= float16_t(0.0))
+  // Load Subsurface Material
+  SubsurfaceMaterial subSurfaceMaterial;
+  const bool sssEnabled = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
+
+  f16vec3 diffuseTransmissionWeight = f16vec3(0.0h, 0.0h, 0.0h);
+  if (sssEnabled && normalDotOutputDirection > 0.0h) {
+    diffuseTransmissionWeight = evalHanrahanSingleScatteringDiffuseTransmission(
+      opaqueSurfaceMaterialInteraction.baseReflectivity,
+      subSurfaceMaterial.volumetricAttenuationCoefficient, subSurfaceMaterial.measurementDistance,
+      subSurfaceMaterial.singleScatteringAlbedo, subSurfaceMaterial.volumetricAnisotropy,
+      normalDotOutputDirection,
+      transmissionNormalDotInputDirection,
+      inputDirectionDotOutputDirection);
+  }
+
+  if (normalDotOutputDirection <= 0.0h || normalDotInputDirection <= 0.0h)
   {
     SurfaceMaterialInteractionSplitWeight splitWeight;
-
     splitWeight.diffuseReflectionWeight = f16vec3(0.0, 0.0, 0.0);
     splitWeight.specularReflectionWeight = f16vec3(0.0, 0.0, 0.0);
+    splitWeight.diffuseTransmissionWeight = diffuseTransmissionWeight * transmissionNormalDotInputDirection;
 
     return splitWeight;
   }
@@ -1363,6 +1754,7 @@ SurfaceMaterialInteractionSplitWeight opaqueSurfaceMaterialInteractionCalcProjec
 
   splitWeight.diffuseReflectionWeight = diffuseReflectionWeight * normalDotInputDirection;
   splitWeight.specularReflectionWeight = specularReflectionWeight * normalDotInputDirection;
+  splitWeight.diffuseTransmissionWeight = diffuseTransmissionWeight * normalDotInputDirection;
 
   return splitWeight;
 }
@@ -1383,4 +1775,10 @@ f16vec3 opaqueSurfaceMaterialGetAdjustedBaseReflectivity(
     f16vec3(float16_t(1.0f) - opaqueSurfaceMaterialInteraction.opacity));
 
   return adjustedBaseReflectivity;
+}
+
+bool opaqueSurfaceMaterialInteractionHasHeightTexture(
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction)
+{
+  return opaqueSurfaceMaterialInteraction.flags & OPAQUE_SURFACE_MATERIAL_INTERACTION_FLAG_HAS_HEIGHT_TEXTURE;
 }

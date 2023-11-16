@@ -57,8 +57,8 @@ namespace dxvk::hud {
   }
   
   
-  void Hud::update() {
-    m_hudItems.update();
+  void Hud::update(uint32_t presentCount) {
+    m_hudItems.update(presentCount);
   }
   
   

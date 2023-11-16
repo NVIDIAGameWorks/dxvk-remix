@@ -491,6 +491,8 @@ namespace dxvk {
             DxvkSubmitStatus*         status
             );
 
+    void incrementPresentCount();
+
     // NV-DXVK start: DLFG integration
     /**
      * \brief Setup frame interpolation parameters for current frame

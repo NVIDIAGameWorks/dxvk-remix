@@ -213,8 +213,10 @@ bool evalNEESecondary(
   Ray viewRay,
   MinimalRayInteraction minimalRayInteraction, 
   MinimalSurfaceInteraction minimalSurfaceInteraction,
+  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
   inout vec3 diffuseLight,
-  inout vec3 specularLight)
+  inout vec3 specularLight,
+  uint16_t surfaceIndex, float2 texcoords)
 {
 
   // Setup and trace the visibility ray
@@ -222,12 +224,17 @@ bool evalNEESecondary(
   uint8_t rayMask = OBJECT_MASK_OPAQUE | (objectMask & OBJECT_MASK_ALL_DYNAMIC);
   if (cb.enableIndirectTranslucentShadows) rayMask |= OBJECT_MASK_TRANSLUCENT;
 
+  // Load Subsurface Material
+  SubsurfaceMaterial subSurfaceMaterial;
+  const bool isSubSurface = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
+
   VisibilityResult visibility = traceVisibilityRay(minimalSurfaceInteraction,
-    lightSample.position, false, rayMask,
+    lightSample.position, rayMask,
     visibilityModeEnableTranslucentMaterials,
     sampledTransportPortalIndex, portalSpace,
-    minimalRayInteraction.coneRadius, viewRay.spreadAngle, 0.98, isViewModelSurface);
-
+    minimalRayInteraction.coneRadius, viewRay.spreadAngle, 0.98, isViewModelSurface, false,
+    surfaceIndex, texcoords,
+    isSubSurface, opaqueSurfaceMaterialInteraction.shadingNormal);
 
   if (visibility.hasOpaqueHit)
   {
@@ -257,7 +264,9 @@ void evaluateUnshadowedLight(
   out vec3 diffuseLight,
   out vec3 specularLight)
 {
-  if (dot(inputDirection, opaqueSurfaceMaterialInteraction.shadingNormal) < 0.0)
+  if (dot(inputDirection, opaqueSurfaceMaterialInteraction.shadingNormal) < 0.0 &&
+      (!cb.thinOpaqueEnable ||
+       opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex == BINDING_INDEX_INVALID))
   {
     diffuseLight = specularLight = 0;
     return;
@@ -266,6 +275,6 @@ void evaluateUnshadowedLight(
   const SurfaceMaterialInteractionSplitWeight splitWeight = opaqueSurfaceMaterialInteractionCalcProjectedWeight(
     opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
 
-  diffuseLight = lightSample.radiance * splitWeight.diffuseReflectionWeight;
+  diffuseLight = lightSample.radiance * (splitWeight.diffuseReflectionWeight + splitWeight.diffuseTransmissionWeight);
   specularLight = lightSample.radiance * splitWeight.specularReflectionWeight;
 }

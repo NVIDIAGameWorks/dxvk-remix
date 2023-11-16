@@ -307,7 +307,7 @@ namespace dxvk {
     for (uint32_t i = 0; i < m_info.imageCount; i++) {
       vk::PresenterImage swapImage = vk::Presenter::getImage(i);
 
-      m_swapchainImages[i] = new DxvkImage(m_device->vkd(), info, swapImage.image);
+      m_swapchainImages[i] = new DxvkImage(m_device, info, swapImage.image);
       m_swapchainImageViews[i] = new DxvkImageView(m_device->vkd(), m_swapchainImages[i], viewInfo);
       m_swapchainImageLayouts[i] = VK_IMAGE_LAYOUT_UNDEFINED;
     }
@@ -1203,6 +1203,7 @@ namespace dxvk {
       switch (res) {
       case NGXDLFGContext::EvaluateResult::Failure:
         Logger::err("NGX DLFG evaluate failed");
+        m_hasDLFGFailed = true;
         break;
 
       case NGXDLFGContext::EvaluateResult::Success:

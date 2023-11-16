@@ -134,9 +134,17 @@ namespace dxvk {
     const gli::format outFormat = (gli::format)dstDesc.format;
 
     if (thumbnail) {
+      constexpr uint16_t kDefaultExtentSize = 512;
+      uint16_t extentSize = kDefaultExtentSize;
+      // For games with a resolution dimension < 512, we need to make
+      // the thumbnail smaller
+      while((srcDesc.extent.width  < extentSize) ||
+            (srcDesc.extent.height < extentSize)) {
+        extentSize >>= 1;
+      }
       // Some default parameters for thumbnails
-      dstDesc.extent.width = 512;
-      dstDesc.extent.height = 512;
+      dstDesc.extent.width = extentSize;
+      dstDesc.extent.height = extentSize;
       dstDesc.extent.depth = 1;
       dstDesc.mipLevels = 1;
       assert(!gli::is_compressed(outFormat));
@@ -263,7 +271,7 @@ namespace dxvk {
 
         VkImageSubresource subresource;
         subresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        subresource.mipLevel = level;
+        subresource.mipLevel = 0; // pBlitDests is an array implicitly separated by mip levels, indexing into it selects the level
         subresource.arrayLayer = 0;
         const VkSubresourceLayout subresourceLayout = image->querySubresourceLayout(subresource);
 

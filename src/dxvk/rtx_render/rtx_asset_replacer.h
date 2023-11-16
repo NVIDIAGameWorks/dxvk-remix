@@ -25,19 +25,34 @@
 #include "rtx_lights.h"
 #include "rtx_mod_manager.h"
 #include "rtx_utils.h"
+#include "rtx_lights_data.h"
 
 namespace dxvk {
   class DxvkContext;
   class DxvkDevice;
   class DxvkCommandList;
 
+  struct Categorizer {
+    CategoryFlags categoryFlags;
+    CategoryFlags categoryExists;
+
+    CategoryFlags applyCategoryFlags(const CategoryFlags& input) const {
+      return (input.raw() & (~categoryExists.raw())) | categoryFlags.raw();
+    }
+  };
+
+  struct MeshReplacement {
+    RasterGeometry data;
+  };
+
   struct AssetReplacement {
     enum Type {
       eMesh,
       eLight
     };
-    RasterGeometry* geometryData;
-    RtLight lightData;
+    Categorizer categories;
+    MeshReplacement* geometry;
+    std::optional<LightData> lightData;
     // Note: This is the material to use for this replacement, if any. Set to null if should use
     // the original material instead, similar to how getReplacementMaterial works.
     MaterialData* materialData;
@@ -45,9 +60,9 @@ namespace dxvk {
     Type type;
     bool includeOriginal = false;
 
-    AssetReplacement(RasterGeometry* geometryData, MaterialData* materialData, const Matrix4& replacementToObject)
-        : geometryData(geometryData), materialData(materialData), replacementToObject(replacementToObject), type(eMesh) {}
-    AssetReplacement(RtLight& lightData) : lightData(lightData), type(eLight) {}
+    AssetReplacement(MeshReplacement* geometryData, MaterialData* materialData, Categorizer categoryFlags, const Matrix4& replacementToObject)
+        : geometry(geometryData), materialData(materialData), categories(categoryFlags), replacementToObject(replacementToObject), type(eMesh) {}
+    AssetReplacement(const LightData& lightData) : lightData(lightData), type(eLight) {}
   };
 
   struct SecretReplacement {
@@ -102,7 +117,7 @@ namespace dxvk {
           return true;
         }
         return false;
-      } else if constexpr (std::is_same_v<T, RasterGeometry>) {
+      } else if constexpr (std::is_same_v<T, MeshReplacement>) {
         auto it = m_geometries.find(hash);
         if (it != m_geometries.end()) {
           obj = &it->second;
@@ -119,7 +134,7 @@ namespace dxvk {
       std::lock_guard<sync::Spinlock> lock(m_spinlock);
       if constexpr (std::is_same_v<T, MaterialData>) {
         return m_materials.try_emplace(hash, std::move(obj)).first->second;
-      } else if constexpr (std::is_same_v<T, RasterGeometry>) {
+      } else if constexpr (std::is_same_v<T, MeshReplacement>) {
         return m_geometries.try_emplace(hash, std::move(obj)).first->second;
       } else {
         return m_secretReplacements[hash].emplace_back(obj);
@@ -132,7 +147,7 @@ namespace dxvk {
       std::lock_guard<sync::Spinlock> lock(m_spinlock);
       if constexpr (std::is_same_v<T, MaterialData>) {
         m_materials.erase(hash);
-      } else if constexpr (std::is_same_v<T, RasterGeometry>) {
+      } else if constexpr (std::is_same_v<T, MeshReplacement>) {
         m_geometries.erase(hash);
       } else {
         m_secretReplacements.erase(hash);
@@ -161,7 +176,7 @@ namespace dxvk {
     fast_unordered_cache<std::vector<AssetReplacement>> m_lightReplacers;
 
     // Replacement geometry storage
-    fast_unordered_cache<RasterGeometry> m_geometries;
+    fast_unordered_cache<MeshReplacement> m_geometries;
 
     // Replacement material storage
     fast_unordered_cache<MaterialData> m_materials;

@@ -48,6 +48,13 @@ namespace dxvk {
       const Resources::RaytracingOutput& rtOutput,
       const bool cameraCutDetected);
 
+    void dispatchHighlighting(
+      Rc<RtxContext> ctx,
+      const uvec2& mainCameraResolution,
+      const Resources::RaytracingOutput& rtOutput,
+      uint32_t surfaceMaterialIndexToHighlight,
+      HighlightColor color);
+
     void showImguiSettings();
 
     inline bool isPostFxEnabled() const { return enable(); }
@@ -56,7 +63,7 @@ namespace dxvk {
     inline bool isVignetteEnabled() const { return enable() && enableVignette() && vignetteIntensity() > 0.0f; }
 
     RW_RTX_OPTION("rtx.postfx", bool, enable, true, "Enables post-processing effects.");
-    RW_RTX_OPTION("rtx.postfx", bool, enableMotionBlur, true, "Enables motion blur post-processing effect.");
+    RW_RTX_OPTION_ENV("rtx.postfx", bool, enableMotionBlur, true, "RTX_POST_FX_MOTION_BLUR_ENABLE", "Enables motion blur post-processing effect.");
     RW_RTX_OPTION("rtx.postfx", bool, enableChromaticAberration, true, "Enables chromatic aberration post-processing effect.");
     RW_RTX_OPTION("rtx.postfx", bool, enableVignette, true, "Enables vignette post-processing effect.");
   private:

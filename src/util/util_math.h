@@ -22,12 +22,44 @@
 #pragma once
 
 #include <cmath>
+#include <cassert>
 #include <stdint.h>
+#include "util_once.h"
+#include "log/log.h"
 
 namespace dxvk {
+
+  enum class MathValidationLevel {
+    None,
+    ErrorOnce,
+    Assert,
+  };
   
+  // Note: Setting this to a Level that is not None checks various DXVK math utility functions for issues which may be
+  // worth fixing but also too common to always assert in Debug mode (due to accumulation of these problems over time without
+  // fixing them), so instead a more gentle error logging can be done instead. In Release this option should be disabled for
+  // performance of various math related functions.
+  // Todo: Switch to None when in Release, currently this way to log errors in Release builds to notify potential issues until such issues
+  // are generally fixed.
+  constexpr MathValidationLevel MATH_VALIDATION_LEVEL =
+#ifndef NDEBUG
+    MathValidationLevel::ErrorOnce;
+#else
+    MathValidationLevel::ErrorOnce;
+#endif
   constexpr size_t CACHE_LINE_SIZE = 64;
   constexpr float FLOAT16_MAX = 6.5504e+4f;
+
+  // Asserts that a condition is true, but changes behavior based on the MATH_VALIDATION_LEVEL.
+  // Note that this must be a macro due to the ONCE macro which injects code into the calling site.
+  #define mathValidationAssert(x, message)                                \
+  if (bool condition{ (x) }; !condition) {                                \
+    if constexpr (MATH_VALIDATION_LEVEL == MathValidationLevel::Assert) { \
+      assert(false);                                                      \
+    } else if (MATH_VALIDATION_LEVEL == MathValidationLevel::ErrorOnce) { \
+      ONCE(Logger::err(message));                                         \
+    }                                                                     \
+  }
   
   template<typename T>
   constexpr T clamp(T n, T lo, T hi) {
@@ -76,4 +108,5 @@ namespace dxvk {
     i = (i & 0x33) + ((i >> 2) & 0x33);
     return ((i + (i >> 4)) & 0x0F);
   }
+
 }

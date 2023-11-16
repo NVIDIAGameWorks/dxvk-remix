@@ -84,7 +84,7 @@ namespace dxvk {
     exporter.dumpImageToFile(this, path, str::format(imageName, "_", tm.tm_mday, tm.tm_mon, tm.tm_year, "-", tm.tm_hour, tm.tm_min, tm.tm_sec, ".dds"), image);
   }
 
-  void RtxContext::blitImageHelper(const Rc<DxvkImage>& srcImage, const Rc<DxvkImage>& dstImage, VkFilter filter) {
+  void RtxContext::blitImageHelper(Rc<DxvkContext> ctx, const Rc<DxvkImage>& srcImage, const Rc<DxvkImage>& dstImage, VkFilter filter) {
     const DxvkFormatInfo* dstFormatInfo = imageFormatInfo(dstImage->info().format);
     const DxvkFormatInfo* srcFormatInfo = imageFormatInfo(srcImage->info().format);
 
@@ -122,7 +122,7 @@ namespace dxvk {
       VK_COMPONENT_SWIZZLE_IDENTITY,
     };
 
-    blitImage(dstImage, swizzle, srcImage, swizzle, blitInfo, filter);
+    ctx->blitImage(dstImage, swizzle, srcImage, swizzle, blitInfo, filter);
   }
 
   RtxContext::RtxContext(const Rc<DxvkDevice>& device)
@@ -532,6 +532,7 @@ namespace dxvk {
 
         // Debug view overrides
         dispatchDebugView(srcImage, rtOutput, captureScreenImage);
+        dispatchHighlighting(rtOutput);
 
         dispatchDLFG();
         {
@@ -541,7 +542,7 @@ namespace dxvk {
 
           // Note: Nearest neighbor filtering used to give a precise view of debug buffer when DLSS is used. Otherwise the resolution should match 1:1 and
           // this should be the same as using bilinear filtering.
-          blitImageHelper(srcImage, dstImage, VkFilter::VK_FILTER_NEAREST);
+          blitImageHelper(this, srcImage, dstImage, VkFilter::VK_FILTER_NEAREST);
         }
 
         getSceneManager().onFrameEnd(this);
@@ -767,6 +768,10 @@ namespace dxvk {
       glm::packHalf1x16(RtxOptions::Get()->getOpaqueOpacityTransmissionLobeSamplingProbabilityZeroThreshold());
     constants.minOpaqueOpacityTransmissionLobeSamplingProbability =
       glm::packHalf1x16(RtxOptions::Get()->getMinOpaqueOpacityTransmissionLobeSamplingProbability());
+    constants.opaqueDiffuseTransmissionLobeSamplingProbabilityZeroThreshold =
+      glm::packHalf1x16(RtxOptions::Get()->opaqueDiffuseTransmissionLobeSamplingProbabilityZeroThreshold());
+    constants.minOpaqueDiffuseTransmissionLobeSamplingProbability =
+      glm::packHalf1x16(RtxOptions::Get()->minOpaqueDiffuseTransmissionLobeSamplingProbability());
     constants.translucentSpecularLobeSamplingProbabilityZeroThreshold =
       glm::packHalf1x16(RtxOptions::Get()->getTranslucentSpecularLobeSamplingProbabilityZeroThreshold());
     constants.minTranslucentSpecularLobeSamplingProbability =
@@ -827,11 +832,27 @@ namespace dxvk {
     constants.enablePlayerModelPrimaryShadows = RtxOptions::Get()->playerModel.enablePrimaryShadows();
     constants.enablePreviousTLAS = RtxOptions::Get()->enablePreviousTLAS() && m_common->getSceneManager().isPreviousFrameSceneAvailable();
 
-    constants.pomEnable = getSceneManager().getActivePOMCount() > 0;
-    constants.pomEnableDirectLighting = RtxOptions::Displacement::enableDirectLighting();
-    constants.pomEnableIndirectLighting = RtxOptions::Displacement::enableIndirectLighting();
+    constants.pomMode = getSceneManager().getActivePOMCount() > 0 ? RtxOptions::Displacement::mode() : DisplacementMode::Off;
+    if (constants.pomMode == DisplacementMode::Off) {
+      constants.pomEnableDirectLighting = false;
+      constants.pomEnableIndirectLighting = false;
+      constants.pomEnableNEECache = false;
+      constants.pomEnableReSTIRGI = false;
+      constants.pomEnablePSR = true; // enable PSR for materials with heightmaps if POM is completely disabled.
+    } else {
+      constants.pomEnableDirectLighting = RtxOptions::Displacement::enableDirectLighting();
+      constants.pomEnableIndirectLighting = RtxOptions::Displacement::enableIndirectLighting();
+      constants.pomEnableNEECache = RtxOptions::Displacement::enableNEECache();
+      constants.pomEnableReSTIRGI = RtxOptions::Displacement::enableReSTIRGI();
+      constants.pomEnablePSR = RtxOptions::Displacement::enablePSR();
+    }
+    constants.pomMaxIterations = RtxOptions::Displacement::maxIterations();
+
+    constants.totalMipBias = getSceneManager().getTotalMipBias(); 
 
     constants.terrainArgs = getSceneManager().getTerrainBaker().getTerrainArgs();
+
+    constants.thinOpaqueEnable = RtxOptions::SubsurfaceScattering::enableThinOpaque();
 
     auto& restirGI = m_common->metaReSTIRGIRayQuery();
     constants.enableReSTIRGI = restirGI.shouldDispatch();
@@ -866,7 +887,7 @@ namespace dxvk {
     constants.enableReSTIRGIDemodulatedTargetFunction = restirGI.useDemodulatedTargetFunction();
 
 
-    m_common->metaNeeCache().setRaytraceArgs(constants);
+    m_common->metaNeeCache().setRaytraceArgs(constants, m_resetHistory);
     constants.surfaceCount = getSceneManager().getAccelManager().getSurfaceCount();
 
     auto* cameraTeleportDirectionInfo = getSceneManager().getRayPortalManager().getCameraTeleportationRayPortalDirectionInfo();
@@ -886,8 +907,19 @@ namespace dxvk {
       
       constants.gpuPrintThreadIndex = u16vec2 { kInvalidThreadIndex, kInvalidThreadIndex };
       constants.gpuPrintElementIndex = frameIdx % kMaxFramesInFlight;
-     
-      if (debugView.gpuPrint.enable() && ImGui::IsKeyDown(ImGuiKey_ModCtrl)) {
+      constants.enableTexturePicking = false;
+
+      if (auto pixToCheck = debugView.isFindSurfaceRequestActive(frameIdx)) {
+        auto toDownscaledExtentScale = Vector2 {
+          downscaledExtent.width / static_cast<float>(targetExtent.width),
+          downscaledExtent.height / static_cast<float>(targetExtent.height)
+        };
+        constants.gpuPrintThreadIndex = u16vec2 {
+          static_cast<uint16_t>(pixToCheck->x * toDownscaledExtentScale.x),
+          static_cast<uint16_t>(pixToCheck->y * toDownscaledExtentScale.y)
+        };
+        constants.enableTexturePicking = true;
+      } else if (debugView.gpuPrint.enable() && ImGui::IsKeyDown(ImGuiKey_ModCtrl)) {
         if (debugView.gpuPrint.useMousePosition()) {
           Vector2 toDownscaledExtentScale = {
             downscaledExtent.width / static_cast<float>(targetExtent.width),
@@ -969,6 +1001,7 @@ namespace dxvk {
     Rc<DxvkBuffer> surfaceMappingBuffer = getSceneManager().getSurfaceMappingBuffer();
     Rc<DxvkBuffer> billboardsBuffer = getSceneManager().getBillboardsBuffer();
     Rc<DxvkBuffer> surfaceMaterialBuffer = getSceneManager().getSurfaceMaterialBuffer();
+    Rc<DxvkBuffer> surfaceMaterialExtensionBuffer = getSceneManager().getSurfaceMaterialExtensionBuffer();
     Rc<DxvkBuffer> volumeMaterialBuffer = getSceneManager().getVolumeMaterialBuffer();
     Rc<DxvkBuffer> lightBuffer = getSceneManager().getLightManager().getLightBuffer();
     Rc<DxvkBuffer> previousLightBuffer = getSceneManager().getLightManager().getPreviousLightBuffer();
@@ -983,6 +1016,7 @@ namespace dxvk {
     bindResourceBuffer(BINDING_SURFACE_DATA_BUFFER, DxvkBufferSlice(surfaceBuffer, 0, surfaceBuffer->info().size));
     bindResourceBuffer(BINDING_SURFACE_MAPPING_BUFFER, DxvkBufferSlice(surfaceMappingBuffer, 0, surfaceMappingBuffer.ptr() ? surfaceMappingBuffer->info().size : 0));
     bindResourceBuffer(BINDING_SURFACE_MATERIAL_DATA_BUFFER, DxvkBufferSlice(surfaceMaterialBuffer, 0, surfaceMaterialBuffer->info().size));
+    bindResourceBuffer(BINDING_SURFACE_MATERIAL_EXT_DATA_BUFFER, surfaceMaterialExtensionBuffer.ptr() ? DxvkBufferSlice(surfaceMaterialExtensionBuffer, 0, surfaceMaterialExtensionBuffer->info().size) : DxvkBufferSlice());
     bindResourceBuffer(BINDING_VOLUME_MATERIAL_DATA_BUFFER, volumeMaterialBuffer.ptr() ? DxvkBufferSlice(volumeMaterialBuffer, 0, volumeMaterialBuffer->info().size) : DxvkBufferSlice());
     bindResourceBuffer(BINDING_LIGHT_DATA_BUFFER, DxvkBufferSlice(lightBuffer, 0, lightBuffer.ptr() ? lightBuffer->info().size : 0));
     bindResourceBuffer(BINDING_PREVIOUS_LIGHT_DATA_BUFFER, DxvkBufferSlice(previousLightBuffer, 0, previousLightBuffer.ptr() ? previousLightBuffer->info().size : 0));
@@ -1015,43 +1049,6 @@ namespace dxvk {
       VK_RAY_TRACING_INVOCATION_REORDER_MODE_REORDER_NV == device.properties().nvRayTracingInvocationReorderProperties.rayTracingInvocationReorderReorderingHint;
       
     return isSERExtensionSupported && isSERReorderingEnabled;
-  }
-
-  bool RtxContext::shouldBakeSky(const DrawCallState& drawCallState) {
-    if (drawCallState.minZ >= RtxOptions::skyMinZThreshold()) {
-      return true;
-    }
-
-    const XXH64_hash_t colorTextureHash = drawCallState.getMaterialData().colorTextures[0].getImageHash();
-
-    // NOTE: we use color texture hash for sky detection, however the replacement is hashed with
-    // the whole legacy material hash (which, as of 12/9/2022, equals to color texture hash). Adding a check just in case.
-    assert(colorTextureHash == drawCallState.getMaterialData().getHash() && "Texture or material hash method changed!");
-
-    if (drawCallState.getMaterialData().usesTexture()) {
-      if (!RtxOptions::Get()->isSkyboxTexture(colorTextureHash)) {
-        return false;
-      }
-    } else {
-      if (drawCallState.drawCallID >= RtxOptions::Get()->skyDrawcallIdThreshold()) {
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-  bool RtxContext::shouldBakeTerrain(const DrawCallState& drawCallState) {
-    if (!TerrainBaker::needsTerrainBaking())
-      return false;
-
-    // Check if the hash is marked as a terrain texture
-    const XXH64_hash_t colorTextureHash = drawCallState.getMaterialData().colorTextures[0].getImageHash();
-    if (!(colorTextureHash && RtxOptions::Get()->isTerrainTexture(colorTextureHash))) {
-      return false;
-    }
-
-    return true;
   }
 
   void RtxContext::checkShaderExecutionReorderingSupport() {
@@ -1392,7 +1389,10 @@ namespace dxvk {
     const RaytraceArgs& constants = rtOutput.m_raytraceArgs;
     const uint32_t frameIdx = m_device->getCurrentFrameId();
 
-    if (debugView.gpuPrint.enable()) {
+    const bool findSurfaceRequestActive = bool { debugView.isFindSurfaceRequestActive(frameIdx) };
+
+    // FindSurfaceRequest uses gpuPrint buffer
+    if (debugView.gpuPrint.enable() && !findSurfaceRequestActive) {
       // Read from the oldest element as it is guaranteed to be written on the GPU by now
       VkDeviceSize offset = ((frameIdx + 1) % kMaxFramesInFlight) * sizeof(GpuPrintBufferElement);
       GpuPrintBufferElement* gpuPrintElement = reinterpret_cast<GpuPrintBufferElement*>(rtOutput.m_gpuPrintBuffer->mapPtr(offset));
@@ -1415,6 +1415,24 @@ namespace dxvk {
       }
     }
 
+    if (findSurfaceRequestActive) {
+      // Read from the oldest element as it is guaranteed to be written on the GPU by now
+      VkDeviceSize offset = ((frameIdx + 1) % kMaxFramesInFlight) * sizeof(GpuPrintBufferElement);
+      auto gpuPrintElement = static_cast<GpuPrintBufferElement*>(rtOutput.m_gpuPrintBuffer->mapPtr(offset));
+
+      if (gpuPrintElement && gpuPrintElement->isValid()) {
+        const auto surfaceMaterialIndex = static_cast<uint32_t>(floatBitsToInt(gpuPrintElement->writtenData.x));
+        debugView.placeFindSurfaceResult(FindSurfaceResult {
+          /* .surfaceMaterialIndex = */ surfaceMaterialIndex,
+          /* .legacyTextureHash = */ getSceneManager().findLegacyTextureHashBySurfaceMaterialIndex(surfaceMaterialIndex),
+        });
+      } else {
+        debugView.placeFindSurfaceResult({});
+      }
+    } else {
+      debugView.placeFindSurfaceResult({});
+    }
+
     if (!debugView.shouldDispatch())
       return;
 
@@ -1424,7 +1442,20 @@ namespace dxvk {
       srcImage, rtOutput, *m_common);
 
     if (captureScreenImage)
-      takeScreenshot("rtxImageDebugView", debugView.getDebugOutput()->image());
+      takeScreenshot("rtxImageDebugView", debugView.getFinalDebugOutput()->image());
+  }
+
+  void RtxContext::dispatchHighlighting(Resources::RaytracingOutput& rtOutput) {
+    ScopedCpuProfileZone();
+
+    if (auto surfMaterialIndexAndColor = m_common->getSceneManager().accessSurfaceMaterialIndexToHighlight(m_device->getCurrentFrameId())) {
+      m_common->metaPostFx().dispatchHighlighting(
+        this,
+        getSceneManager().getCamera().getShaderConstants().resolution,
+        rtOutput,
+        surfMaterialIndexAndColor->first,
+        surfMaterialIndexAndColor->second);
+    }
   }
 
   void RtxContext::dispatchDLFG() {
@@ -1742,12 +1773,17 @@ namespace dxvk {
   }
 
   void RtxContext::bakeTerrain(const DrawParameters& params, DrawCallState& drawCallState, const MaterialData** outOverrideMaterialData) {
-    if (!shouldBakeTerrain(drawCallState))
+    if (!getSceneManager().getTerrainBaker().enableBaking() ||
+        !drawCallState.testCategoryFlags(InstanceCategories::Terrain)) {
       return;
+    }
 
     DrawCallTransforms& transformData = drawCallState.transformData;
 
-    Rc<DxvkImageView> previousColorView;      
+    // Terrain Baker (may) update bound color textures, so preserve the views
+    Rc<DxvkImageView> previousColorView;
+    Rc<DxvkImageView> previousSecondaryColorView;
+
     OpaqueMaterialData* opaqueReplacementMaterial = nullptr;
     TerrainBaker& terrainBaker = getSceneManager().getTerrainBaker();
 
@@ -1764,10 +1800,10 @@ namespace dxvk {
           const uint32_t colorTextureSlot = drawCallState.materialData.colorTextureSlot[0];
 
           // Save current color texture first
-          if (colorTextureSlot < m_rc.size() &&
-              m_rc[colorTextureSlot].imageView != nullptr) {
+          if (colorTextureSlot < m_rc.size() && m_rc[colorTextureSlot].imageView != nullptr) {
             previousColorView = m_rc[colorTextureSlot].imageView;
-          }
+          }          
+          
         } else {
           ONCE(Logger::warn(str::format("[RTX Texture Baker] Only opaque replacement materials are supported for terrain baking. Texture hash ",
                                         drawCallState.getMaterialData().getHash(),
@@ -1795,13 +1831,14 @@ namespace dxvk {
         LegacyMaterialData overrideMaterial;
         overrideMaterial.colorTextures[0] = (*outOverrideMaterialData)->getOpaqueMaterialData().getAlbedoOpacityTexture();
         overrideMaterial.samplers[0] = terrainBaker.getTerrainSampler();
+        overrideMaterial.updateCachedHash();
         drawCallState.materialData = overrideMaterial;
       }
 
       // Restore state modified during baking
       if (!TerrainBaker::debugDisableBaking()) {
 
-        // Restore color texture
+        // Restore bound color texture views
         if (previousColorView != nullptr) {
           bindResourceView(drawCallState.materialData.colorTextureSlot[0], previousColorView, nullptr);
         }
@@ -1814,11 +1851,11 @@ namespace dxvk {
 
     // Grab and apply replacement texture if any
     // NOTE: only the original color texture will be replaced with albedo-opacity texture
-    auto replacementMaterial = getSceneManager().getAssetReplacer()->getReplacementMaterial(drawCallState.getMaterialData().getHash());
+    MaterialData* replacementMaterial = getSceneManager().getAssetReplacer()->getReplacementMaterial(drawCallState.getMaterialData().getHash());
     bool replacemenIsLDR = false;
     Rc<DxvkImageView> curColorView;
 
-    if (replacementMaterial) {
+    if (replacementMaterial && replacementMaterial->getType() == MaterialDataType::Opaque) {
       // Must pull a ref because we will modify it for loading purposes below.
       TextureRef& albedoOpacity = replacementMaterial->getOpaqueMaterialData().getAlbedoOpacityTexture();
 

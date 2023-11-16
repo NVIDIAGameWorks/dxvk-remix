@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2022, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -21,8 +21,10 @@
 */
 #pragma once
 
+#include <cmath>
 #include <iostream>
 #include <algorithm>
+#include <type_traits>
 
 #include "util_bit.h"
 #include "util_math.h"
@@ -33,6 +35,8 @@ namespace dxvk {
 
   template <typename T>
   struct Vector3Base;
+
+  // Vector 4
 
   template <typename T>
   struct Vector4Base {
@@ -189,15 +193,6 @@ namespace dxvk {
   }
 
   template <typename T>
-  T lengthSqr(const Vector4Base<T>& a) { return dot(a, a); }
-
-  template <typename T>
-  float length(const Vector4Base<T>& a) { return std::sqrt(float(lengthSqr(a))); }
-
-  template <typename T>
-  Vector4Base<T> normalize(const Vector4Base<T>& a) { return a * T(1.0f / length(a)); }
-
-  template <typename T>
   std::ostream& operator<<(std::ostream& os, const Vector4Base<T>& v) {
     return os << "Vector4(" << v[0] << ", " << v[1] << ", " << v[2] << ", " << v[3] << ")";
   }
@@ -217,6 +212,8 @@ namespace dxvk {
     _mm_store_ps(result.data, value);
     return result;
   }
+
+  // Vector 3
 
   template <typename T>
   struct Vector3Base {
@@ -395,15 +392,6 @@ namespace dxvk {
   }
 
   template <typename T>
-  T lengthSqr(const Vector3Base<T>& a) { return dot(a, a); }
-
-  template <typename T>
-  float length(const Vector3Base<T>& a) { return std::sqrt(float(lengthSqr(a))); }
-
-  template <typename T>
-  Vector3Base<T> normalize(const Vector3Base<T>& a) { return a * T(1.0f / length(a)); }
-
-  template <typename T>
   std::ostream& operator<<(std::ostream& os, const Vector3Base<T>& v) {
     return os << "Vector3(" << v[0] << ", " << v[1] << ", " << v[2] << ")";
   }
@@ -414,6 +402,8 @@ namespace dxvk {
 
   static_assert(sizeof(Vector3)  == sizeof(float) * 3);
   static_assert(sizeof(Vector3i) == sizeof(int)   * 3);
+
+  // Vector 2
 
   template <typename T>
   struct Vector2Base {
@@ -564,15 +554,6 @@ namespace dxvk {
   }
 
   template <typename T>
-  T lengthSqr(const Vector2Base<T>& a) { return dot(a, a); }
-
-  template <typename T>
-  float length(const Vector2Base<T>& a) { return std::sqrt(float(lengthSqr(a))); }
-
-  template <typename T>
-  Vector2Base<T> normalize(const Vector2Base<T>& a) { return a * T(1.0f / length(a)); }
-
-  template <typename T>
   std::ostream& operator<<(std::ostream& os, const Vector2Base<T>& v) {
     return os << "Vector2(" << v[0] << ", " << v[1] << ")";
   }
@@ -583,7 +564,59 @@ namespace dxvk {
   static_assert(sizeof(Vector2)  == sizeof(float) * 2);
   static_assert(sizeof(Vector2i) == sizeof(int)   * 2);
 
-  // Class inter dependent definitions
+  // Vector-generic Functions
+
+  template <template<typename> typename TVector, typename T>
+  T lengthSqr(const TVector<T>& a) {
+    return dot(a, a);
+  }
+
+  template <template<typename> typename TVector, typename T>
+  std::enable_if_t<std::is_floating_point_v<T>, T> length(const TVector<T>& a) {
+    return std::sqrt(lengthSqr(a));
+  }
+
+  template <template<typename> typename TVector, typename T>
+  std::enable_if_t<std::is_floating_point_v<T>, TVector<T>> normalize(const TVector<T>& a) {
+    const auto aLength = length(a);
+
+    // Note: Ensure the vector can be normalized (non-zero length).
+    mathValidationAssert(aLength != static_cast<T>(0.0), "Attempted to normalize a zero-length vector.");
+
+    return a * (static_cast<T>(1.0) / aLength);
+  }
+
+  template <template<typename> typename TVector, typename T>
+  std::enable_if_t<std::is_floating_point_v<T>, TVector<T>> safeNormalize(const TVector<T>& a, const TVector<T>& fallback) {
+    const auto aLength = length(a);
+
+    if (aLength == static_cast<T>(0.0)) {
+      return fallback;
+    }
+
+    return a * (static_cast<T>(1.0) / aLength);
+  }
+
+  template <template<typename> typename TVector, typename T>
+  std::enable_if_t<std::is_floating_point_v<T>, bool> isApproxNormalized(const TVector<T>& a, const T& threshold) {
+    const auto aLength = length(a);
+
+    return
+      (aLength >= static_cast<T>(1.0) - threshold) &&
+      (aLength <= static_cast<T>(1.0) + threshold);
+  }
+
+
+  template <template<typename> typename TVector, typename T>
+  std::enable_if_t<std::is_floating_point_v<T>, TVector<T>> clamp(const TVector<T>& a, const TVector<T>& lo, const TVector<T>& hi) {
+    Vector3 out;
+    out.x = std::clamp(a.x, lo.x, hi.x);
+    out.y = std::clamp(a.y, lo.y, hi.y);
+    out.z = std::clamp(a.z, lo.z, hi.z);
+    return out;
+  }
+
+  // Class inter-dependent definitions
 
   template <typename T>
   Vector2Base<T>& Vector3Base<T>::xy() {

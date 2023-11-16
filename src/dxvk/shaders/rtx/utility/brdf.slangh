@@ -663,3 +663,65 @@ f16vec3 normalBlendRNM(in f16vec3 baseNormal, in f16vec3 detailNormal)
 
   return normalize(n1 * safePositiveDivide(dot(n1, n2), n1.z, materialEpsilon) - n2);
 }
+
+// Evaluates the Henyey-Greenstein phase function
+// [Henyey 1941, "Diffuse radiation in the Galaxy."]
+float evalHenyeyGreensteinPhaseFunction(in const float anisotropy,
+                                        in const float /* l.v */ inputDirectionDotOutputDirection)
+{
+  const float numerator = 1.0f - square(anisotropy);
+  const float denominator =
+    pow(1.0f + square(anisotropy) - 2 * anisotropy * inputDirectionDotOutputDirection, 3.0f / 2.0f);
+
+  // Note: Division clamped to avoid potential divisions by 0 when anisotropy is at an extreme
+  return rcp(fourPi) * safePositiveDivide(numerator, denominator, materialEpsilon);
+}
+
+// Implement First-Order Approximation for 1-layer virtual volume surface to simulate diffuse transmission of Thin Opaque Surface
+// [P. Hanrahan 1993, "Reflection from Layered Surfaces due to Subsurface Scattering"], Chapter 5.1
+f16vec3 evalHanrahanSingleScatteringDiffuseTransmission(
+  const f16vec3 surfaceBaseReflectivity,
+  const f16vec3 attenuationCoefficient,
+  const float16_t measurementDistance,
+  const f16vec3 singleScatteringAlbedo,
+  const float16_t volumetricAnisotropy,
+  const float16_t /* n.v */ normalDotOutputDirection,
+  const float16_t /*-n.l */ transmissionNormalDotInputDirection,
+  const float16_t /* v.l */ inputDirectionDotOutputDirection)
+{
+  const float16_t baseReflectivity = calcBt709Luminance(surfaceBaseReflectivity);
+  const float16_t refractiveIndex = baseReflectivityToIoR(materialIoRVacuum, baseReflectivity);
+  const float16_t insideRelativeRefractiveIndex = refractiveIndex / materialIoRVacuum;
+
+  // Calculate path integral throughput/weight
+  const float16_t outsideFresnel = evalTranslucentSchlickFresnel(baseReflectivity, normalDotOutputDirection);
+  const float16_t insideFresnel = evalTranslucentSchlickFresnelTIR(baseReflectivity, insideRelativeRefractiveIndex, transmissionNormalDotInputDirection);
+  const float16_t attenuationDistance = measurementDistance * measurementDistance;
+  const f16vec3 firstAttenuation = evalBeerLambertAttenuation(attenuationCoefficient, attenuationDistance * rcp(float(normalDotOutputDirection)));
+  const f16vec3 secondAttenuation = evalBeerLambertAttenuation(attenuationCoefficient, attenuationDistance * rcp(float(transmissionNormalDotInputDirection)));
+
+  if (transmissionNormalDotInputDirection < materialEpsilon || insideFresnel >= 1.0h)
+  {
+    return f16vec3(0.0h, 0.0h, 0.0h);
+  }
+
+  const float16_t phaseWeight = evalHenyeyGreensteinPhaseFunction(volumetricAnisotropy, inputDirectionDotOutputDirection);
+
+  if ((normalDotOutputDirection - transmissionNormalDotInputDirection) >= materialEpsilon)
+  {
+    // First-Order forward scattered radiance equation
+    return singleScatteringAlbedo * (1.0f - outsideFresnel) * (1.0f - insideFresnel) *
+           safePositiveDivide(normalDotOutputDirection,
+            (normalDotOutputDirection - transmissionNormalDotInputDirection), materialEpsilon) *
+           phaseWeight * (firstAttenuation - secondAttenuation);
+  }
+  else
+  {
+    // Note: Derivative version of forward scattered radiance equation to handle singularity
+    //       when normalDotOutputDirection and transmissionNormalDotInputDirection are the same value
+    return singleScatteringAlbedo * (1.0f - outsideFresnel) * (1.0f - insideFresnel) *
+           safePositiveDivide((attenuationCoefficient * attenuationDistance),
+            transmissionNormalDotInputDirection, materialEpsilon) *
+           phaseWeight * secondAttenuation;
+  }
+}

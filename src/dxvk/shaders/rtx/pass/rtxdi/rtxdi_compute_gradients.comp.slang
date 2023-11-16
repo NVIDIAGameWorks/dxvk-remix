@@ -39,7 +39,7 @@ float getSurfaceIlluminance(
   if (cb.enableDirectTranslucentShadows) rayMask |= OBJECT_MASK_TRANSLUCENT;
 
   VisibilityResult visibility = traceVisibilityRay(minimalSurfaceInteraction,
-    lightSample.position, false, rayMask,
+    lightSample.position, rayMask,
     visibilityModeEnableTranslucentMaterials,
     sampledTransportPortalIndex, portalSpace,
     coneRadiusAtSurface, cb.screenSpacePixelSpreadHalfAngle, 

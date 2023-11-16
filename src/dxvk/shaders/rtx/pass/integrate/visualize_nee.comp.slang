@@ -148,7 +148,7 @@ struct Canvas
   }
 }
 
-void getTriangleCandidateInfo(NEECell cell, int binIndex, out float probability, out int age, out vec3 lightIntensity)
+void getTriangleCandidateInfo(NEECell cell, int binIndex, out float probability, out vec3 lightIntensity)
 {
   NEECandidate candidiate = cell.getCandidate(binIndex);
   float sampleThreshold = candidiate.getSampleThreshold();          
@@ -159,38 +159,72 @@ void getTriangleCandidateInfo(NEECell cell, int binIndex, out float probability,
     lastSampleThreshold = candidiate.getSampleThreshold();
   }
   probability = sampleThreshold - lastSampleThreshold;
-  age = candidiate.getAge();
 
   // Triangle color
   vec3 triangleCenter;
   f16vec3 triangleNormal;
   NEECacheUtils.calculateTriangleLightIntensity(candidiate.getSurfaceID(), candidiate.getPrimitiveID(), triangleCenter, triangleNormal, lightIntensity);
+  // Multiply 0.1 to show brighter lights
+  lightIntensity = log(calcBt709Luminance(lightIntensity) + 1) * 0.1;
 }
 
-void getLightCandidateInfo(NEECell cell, int binIndex, RAB_Surface surface, f16vec3 viewDirection, out float probability, out int age, out vec3 radiance, out vec3 direction)
+vec3 logarithmicColor(float value)
+{
+  if (value < 10)
+  {
+    return vec3(1,0,0);
+  }
+  else if(value < 100.0)
+  {
+    return vec3(1,0.5,0);
+  }
+  else if(value < 1000.0)
+  {
+    return vec3(1,1,0);
+  }
+  else if(value < 10000.0)
+  {
+    return vec3(0,1,0);
+  }
+  else if(value < 100000.0)
+  {
+    return vec3(0,1,1);
+  }
+  else if(value < 1000000.0)
+  {
+    return vec3(0,0,1);
+  }
+  else
+  {
+    return vec3(1);
+  }
+}
+
+void getLightCandidateInfo(NEECell cell, int binIndex, RAB_Surface surface, f16vec3 viewDirection, out float probability, out vec3 radiance, out vec3 direction)
 {
   NEELightCandidate lightCandidate = cell.getLightCandidate(binIndex);
-  int3 cellID = NEECache.offsetToCell(cell.m_offset);
-  vec3 cellCenter = NEECache.cellToCenterPoint(cellID);
 
   float16_t specularRatio = calcBt709Luminance(surface.opaqueSurfaceMaterialInteraction.baseReflectivity)
     / calcBt709Luminance(surface.opaqueSurfaceMaterialInteraction.albedo + surface.opaqueSurfaceMaterialInteraction.baseReflectivity);
 
-  cell.calculateLightCandidateNormalizedWeight(binIndex, cellCenter,
-    surface.minimalSurfaceInteraction.position,
-    viewDirection,
-    surface.opaqueSurfaceMaterialInteraction.shadingNormal,
-    specularRatio,
-    surface.opaqueSurfaceMaterialInteraction.isotropicRoughness,
-    probability);
-  age = lightCandidate.getAge();
+  SubsurfaceMaterial subSurfaceMaterial;
+  const bool isSubsurface = subSurfaceMaterialReadHelper(surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
+
+   cell.calculateLightCandidateNormalizedWeight(binIndex,
+     surface.minimalSurfaceInteraction.position,
+     viewDirection,
+     surface.opaqueSurfaceMaterialInteraction.shadingNormal,
+     specularRatio,
+     surface.opaqueSurfaceMaterialInteraction.isotropicRoughness,
+     isSubsurface,
+     probability);
 
   MemoryPolymorphicLight memoryPolymorphicLight = lights[lightCandidate.getLightID()];
   DecodedPolymorphicLight decodedPolymorphicLight = decodePolymorphicLight(memoryPolymorphicLight);
   radiance = decodedPolymorphicLight.radiance;
   float luminance = calcBt709Luminance(radiance);
   radiance = radiance / (1e-5 + luminance) * log(1 + luminance) * 0.1;
-  direction = abs(normalize(lightCandidate.getOffset()));
+  direction = abs(normalize(NEECache.getCenter() + lightCandidate.getOffset() - surface.minimalSurfaceInteraction.position));
 }
 
 [shader("compute")]
@@ -216,9 +250,9 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   RAB_Surface surface = RAB_GetGBufferSurface(threadIndex, false);
   vec3 diffuseLight = PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex].xyz;
   vec3 specularLight = PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex].xyz;
-  vec3 indirectLight = (diffuseLight + specularLight);
+  vec3 indirectLight = linearToGamma(diffuseLight + specularLight);
 
-  Canvas canvas = Canvas.create(threadIndex, 3);
+  Canvas canvas = Canvas.create(threadIndex, 2);
   ivec2 samplePixel = canvas.getSamplePixel();
   RAB_Surface sampleSurface = RAB_GetGBufferSurface(samplePixel, false);
 
@@ -233,17 +267,20 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   {
   case DEBUG_VIEW_NEE_CACHE_LIGHT_HISTOGRAM:
   case DEBUG_VIEW_NEE_CACHE_HISTOGRAM:
+  case DEBUG_VIEW_NEE_CACHE_ACCUMULATE_MAP:
+  case DEBUG_VIEW_NEE_CACHE_HASH_MAP:
     if (geometryFlags.primarySelectedIntegrationSurface)
     {
-      NEECell cell = NEECache.findCell(surface.minimalSurfaceInteraction.position, false, vec3(0));
-      ivec3 cellID = NEECache.pointToCell(surface.minimalSurfaceInteraction.position, false, vec3(0));
+      RAB_RandomSamplerState rtxdiRNG = RAB_InitRandomSampler(threadIndex, cb.frameIdx, 0);
+      uint jitter = 0;
+      int cellOffset = NEECache.pointToOffset(surface.minimalSurfaceInteraction.position, f16vec3(0), jitter);
+      NEECell cell = NEECache.getCell(cellOffset);
       canvas.drawBackground(indirectLight);
-      if (all(cellID != -1))
-      {
-        canvas.m_backgroundColor = lerp(canvas.m_backgroundColor, (dot(cellID, 1) & 0x1) ? vec3(abs(surface.opaqueSurfaceMaterialInteraction.shadingNormal)) : vec3(0), 0.2);
-      }
 
-      NEECell sampleCell = NEECache.findCell(sampleSurface.minimalSurfaceInteraction.position, false, vec3(0));
+      vec3 cellColor = vec3(uint3(cellOffset >> 10, cellOffset >> 5, cellOffset) & 31) / 31.0;
+      canvas.m_backgroundColor = lerp(canvas.m_backgroundColor, cellColor, 0.5);
+
+      NEECell sampleCell = NEECache.getCell(NEECache.pointToOffset(sampleSurface.minimalSurfaceInteraction.position, f16vec3(0), jitter));
       if (sampleCell.isValid())
       {
         if(!canvas.isPadding())
@@ -253,18 +290,34 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
           bool isBinValid = true;
 
           float probability;
-          int age;
           vec3 lightIntensity, direction;
           bool isLightHistogram = cb.debugView == DEBUG_VIEW_NEE_CACHE_LIGHT_HISTOGRAM;
+          vec3 histogramColor = vec3(1,0.5,0);
           if (isLightHistogram)
           {
             isBinValid = binIndex < sampleCell.getLightCandidateCount();
-            getLightCandidateInfo(sampleCell, binIndex, sampleSurface, minimalRayInteraction.viewDirection, probability, age, lightIntensity, direction);
+            getLightCandidateInfo(sampleCell, binIndex, sampleSurface, minimalRayInteraction.viewDirection, probability, lightIntensity, direction);
           }
           else
           {
             isBinValid = binIndex < sampleCell.getCandidateCount();
-            getTriangleCandidateInfo(sampleCell, binIndex, probability, age, lightIntensity);
+            getTriangleCandidateInfo(sampleCell, binIndex, probability, lightIntensity);
+          }
+
+          int slotBinIndex = canvas.getBin(32);
+          if (cb.debugView == DEBUG_VIEW_NEE_CACHE_ACCUMULATE_MAP)
+          {
+            isBinValid = true;          
+            uint2 thisValue = sampleCell.getSlotTaskValue(slotBinIndex);
+            probability = log(float(thisValue.y)) / (32);
+            histogramColor = logarithmicColor(thisValue.y);
+          }
+          else if (cb.debugView == DEBUG_VIEW_NEE_CACHE_HASH_MAP)
+          {
+            isBinValid = true;          
+            uint2 thisValue = sampleCell.getHashSlotTaskValue(slotBinIndex);
+            probability = log(float(thisValue.y)) / (32);
+            histogramColor = logarithmicColor(thisValue.y);
           }
 
           // Calculate histogram
@@ -272,27 +325,23 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
           {
             canvas.drawForeground(vec3(1,0,0));
           }
-          if(canvas.isLegend(2))
+          if(canvas.isLegend(1))
           {
             // Show samples
             int binIndex = canvas.getBin(NEE_CACHE_SAMPLES);
             NEESample sample = sampleCell.getSample(binIndex);
-            vec3 color = isLightHistogram ? direction : sample.radiance / (calcBt709Luminance(sample.radiance) + 1e-5) * 0.7;
+            vec3 color = isLightHistogram ? (isBinValid ? direction : vec3(0.0)) : sample.radiance / (calcBt709Luminance(sample.radiance) + 1e-5) * 0.7;
             float alpha = isLightHistogram ? (isBinValid ? 1.0 : 0.0) : 1.0;
             canvas.drawForeground(color, alpha);
           }
-          else if(canvas.isLegend(1))
-          {
-            canvas.drawForeground(lightIntensity, isBinValid ? 1.0 : 0.0);
-          }
           else if(canvas.isLegend(0))
           {
-            canvas.drawForeground(lerp(vec3(0,1,0), vec3(82,66,44)/255.0, saturate(age / 255.0)), isBinValid ? 1.0 : 0.0);
+            canvas.drawForeground(lightIntensity, isBinValid ? 1.0 : 0.0);
           }
           else if(canvas.isHistogram() && canvas.isHistogramBar(probability))
           {
             // Histogram
-            canvas.drawForeground(vec3(1,0.5,0), isBinValid ? 1.0 : 0.0);
+            canvas.drawForeground(histogramColor, isBinValid ? 1.0 : 0.0);
           }
         }
         else

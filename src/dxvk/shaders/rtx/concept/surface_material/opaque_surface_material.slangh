@@ -23,6 +23,7 @@
 
 // Opaque Surface Material Functions
 
+// TODO: Remove useless parameter surfaceMaterialIndex
 OpaqueSurfaceMaterial opaqueSurfaceMaterialCreate(uint16_t surfaceMaterialIndex, MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial)
 {
   // Decode the Opaque Surface Material from the packed memory representation
@@ -79,7 +80,50 @@ OpaqueSurfaceMaterial opaqueSurfaceMaterialCreate(uint16_t surfaceMaterialIndex,
   opaqueSurfaceMaterial.samplerIndex = data10.y;
   opaqueSurfaceMaterial.displaceIn = uint16BitsToHalf(data11.x);
   opaqueSurfaceMaterial.heightTextureIndex = data11.y;
-  opaqueSurfaceMaterial.thinFilmThicknessConstant = unorm8ToF16(uint8_t(data12.x));
+
+  if (opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_HAS_SUBSURFACE_MATERIAL) {
+    opaqueSurfaceMaterial.subsurfaceMaterialIndex = data12.x;
+  } else {
+    opaqueSurfaceMaterial.subsurfaceMaterialIndex = BINDING_INDEX_INVALID;
+  }
+
+  opaqueSurfaceMaterial.thinFilmThicknessConstant = unorm8ToF16(uint8_t(data12.y >> 8u));
 
   return opaqueSurfaceMaterial;
+}
+
+// Subsurface Material Functions
+SubsurfaceMaterial subsurfaceMaterialCreate(MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial)
+{
+  // Decode the Subsurface Surface Material from the packed memory representation
+  // Note: Subsurface type is known in advance
+
+  SubsurfaceMaterial subsurfaceMaterial;
+
+  const u16vec2 data00 = unpack16(memoryPolymorphicSurfaceMaterial.data0.x);
+  const u16vec2 data01 = unpack16(memoryPolymorphicSurfaceMaterial.data0.y);
+  const u16vec2 data02 = unpack16(memoryPolymorphicSurfaceMaterial.data0.z);
+  const u16vec2 data03 = unpack16(memoryPolymorphicSurfaceMaterial.data0.w);
+
+  subsurfaceMaterial.volumetricAttenuationCoefficient = f16vec3(uint16BitsToHalf(data00.x), uint16BitsToHalf(data00.y), uint16BitsToHalf(data01.x));
+  subsurfaceMaterial.measurementDistance = uint16BitsToHalf(data01.y);
+  subsurfaceMaterial.singleScatteringAlbedo = f16vec3(uint16BitsToHalf(data02.x), uint16BitsToHalf(data02.y), uint16BitsToHalf(data03.x));
+  subsurfaceMaterial.volumetricAnisotropy = uint16BitsToHalf(data03.y);
+
+  return subsurfaceMaterial;
+}
+
+uint16_t getSubsurfaceMaterialIndex(const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial)
+{
+  const u16vec2 data12 = unpack16(memoryPolymorphicSurfaceMaterial.data1.z);
+  const u16vec2 data13 = unpack16(memoryPolymorphicSurfaceMaterial.data1.w);
+  const uint8_t flags = (data13.x & 0xFF);
+  if (flags & OPAQUE_SURFACE_MATERIAL_FLAG_HAS_SUBSURFACE_MATERIAL)
+  {
+    return data12.x;
+  }
+  else
+  {
+    return BINDING_INDEX_INVALID;
+  }
 }

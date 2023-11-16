@@ -23,7 +23,7 @@
 
 #include "rtx/concept/light/light_helper.slangh"
 #include "rtx/concept/light/light.slangh"
-#define NEE_CACHE_INVALID_ID -1
+#define NEE_CACHE_INVALID_ID 0xffffff
 
 struct NEECacheUtils
 {
@@ -69,7 +69,8 @@ struct NEECacheUtils
   {
     if (cb.surfaceCount == 0 || prefixSumID == -1)
     {
-      surfaceID = primitiveID = NEE_CACHE_INVALID_ID;
+      surfaceID = NEE_CACHE_INVALID_ID;
+      primitiveID = NEE_CACHE_INVALID_ID;
       return false;
     }
 
@@ -94,7 +95,7 @@ struct NEECacheUtils
     return true;
   }
 
-  static LightSample calculateLightSampleFromTriangle(int surfaceIndex, int primitiveIndex, vec2 uv, float trianglePdf, vec3 shadingPosition, float16_t coneRadius, float16_t spreadAngle, bool useSolidAnglePdf = true, int footprintMode = kFootprintFromRayOrigin)
+  static LightSample calculateLightSampleFromTriangle(int surfaceIndex, int primitiveIndex, vec2 uv, float trianglePdf, vec3 shadingPosition, float16_t coneRadius, float16_t spreadAngle, out float triangleArea, bool useSolidAnglePdf = true, int footprintMode = kFootprintFromRayOrigin)
   {
   #define USE_SIMIPLIFIED_MODEL 1
 
@@ -147,6 +148,7 @@ struct NEECacheUtils
     lightSample.position = surfaceInteraction.position;
     lightSample.normal = surfaceInteraction.interpolatedNormal;
     float lightPdf = trianglePdf;
+    triangleArea = surfaceInteraction.triangleArea;
     if(useSolidAnglePdf)
     {
       lightPdf *= calculateLightSamplingSolidAnglePDF(
@@ -187,7 +189,7 @@ struct NEECacheUtils
       const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
         opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteracton);
 
-      lightSample.radiance = opaqueSurfaceMaterialInteraction.emissiveRadiance;
+      lightSample.radiance = sanitize(opaqueSurfaceMaterialInteraction.emissiveRadiance, 0.0);
     }
     return lightSample;
   }
@@ -316,9 +318,10 @@ struct NEECacheUtils
 
     float diffuseSolidAnglePdf  = opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
     float specularSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
+    float diffuseTransmissionSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcDiffuseTransmissionSolidAnglePdf(opaqueSurfaceMaterialInteraction, rayInteraction, inputDirection);
 
     vec2 misWeight;
-    misWeight.x = saturate(lightSampleSolidAnglePDF / (lightSampleSolidAnglePDF + diffuseSolidAnglePdf));
+    misWeight.x = saturate(lightSampleSolidAnglePDF / (lightSampleSolidAnglePDF + diffuseSolidAnglePdf + diffuseTransmissionSolidAnglePdf));
     misWeight.y = saturate(lightSampleSolidAnglePDF / (lightSampleSolidAnglePDF + specularSolidAnglePdf));
     return misWeight;
   }
@@ -337,10 +340,10 @@ struct NEECacheUtils
 
   static float calculateBSDFSampleTotalPDF(OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction, f16vec3 viewDirection, f16vec3 sampleDirection, float firstSampledSolidAnglePdf, bool firstSampledLobeIsSpecular)
   {
-    float16_t diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability;
+    float16_t diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability, diffuseTransmissionProbability = 0.0f;
     bool isValid = opaqueSurfaceMaterialInteractionCalcLobeProbability(
       opaqueSurfaceMaterialInteraction, viewDirection,
-      diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability);
+      diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability, diffuseTransmissionProbability);
 
     MinimalRayInteraction minimalRayInteraction;
     minimalRayInteraction.viewDirection = viewDirection;

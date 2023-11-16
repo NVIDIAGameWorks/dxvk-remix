@@ -30,6 +30,7 @@
 #include "hd/usd_mesh_util.h"
 #include "usd_mesh_samplers.h"
 #include "usd_mesh_importer.h"
+#include "game_exporter_common.h"
 
 #include "usd_include_begin.h"
 #include <pxr/pxr.h>
@@ -58,6 +59,7 @@ namespace lss {
   inline static const TfToken kNormalsPrimvar("primvars:normals");
   inline static const TfToken kNormalsAttribute("normals");
   inline static const TfToken kColorAttribute("displayColor");
+  inline static const TfToken kOpacityAttribute("displayOpacity");
   inline static const TfToken kPoints("points");
   inline static const TfToken kUvs[] = {
     TfToken("primvars:st"),
@@ -189,7 +191,7 @@ namespace lss {
       m_vertexDecl.emplace_back(VertexDeclaration { Attributes::Texcoords, offset, size });
       offset += size;
     }
-    if (ppMeshSamplers[Attributes::Colors]) {
+    if (ppMeshSamplers[Attributes::Colors] || ppMeshSamplers[Attributes::Opacity]) {
       const size_t size = sizeof(uint32_t);
       m_vertexDecl.emplace_back(VertexDeclaration { Attributes::Colors, offset, size });
       offset += size;
@@ -218,7 +220,7 @@ namespace lss {
     };
     std::vector<PrimvarDescriptor> primvars;
 
-    auto& addPrimvarFromAttribute = [&](const UsdAttribute& attribute, Attributes vertexAttribute, size_t expectedSize) -> bool {
+    auto addPrimvarFromAttribute = [&](const UsdAttribute& attribute, Attributes vertexAttribute, size_t expectedSize) -> bool {
       if (!attribute.HasValue())
         return false;
       const UsdGeomPrimvar primvar(attribute);
@@ -226,7 +228,7 @@ namespace lss {
       return true;
     };
 
-    auto& addPrimvarFromAttributeName = [&](const TfToken& name, Attributes vertexAttribute, size_t expectedSize) -> bool {
+    auto addPrimvarFromAttributeName = [&](const TfToken& name, Attributes vertexAttribute, size_t expectedSize) -> bool {
       if (!m_meshPrim.GetPrim().HasAttribute(name))
         return false;
       const UsdAttribute& attribute = m_meshPrim.GetPrim().GetAttribute(name);
@@ -241,7 +243,10 @@ namespace lss {
       addPrimvarFromAttributeName(kNormalsAttribute, Attributes::Normals, sizeof(float) * 3);
 
     if (!addPrimvarFromAttribute(m_meshPrim.GetDisplayColorAttr(), Attributes::Colors, 0))
-      addPrimvarFromAttributeName(kColorAttribute, Attributes::Normals, 0);
+      addPrimvarFromAttributeName(kColorAttribute, Attributes::Colors, 0);
+
+    if (!addPrimvarFromAttribute(m_meshPrim.GetDisplayOpacityAttr(), Attributes::Opacity, 0))
+      addPrimvarFromAttributeName(kOpacityAttribute, Attributes::Opacity, 0);
 
     for (const TfToken& uvName : kUvs) {
       if (addPrimvarFromAttributeName(uvName, Attributes::Texcoords, sizeof(float) * 2)) {
@@ -360,9 +365,18 @@ namespace lss {
             break;
           }
           case Attributes::Colors: {
-            GfVec4f color(1.0f); // default to white, some colors in USD will be 3 channel, some 4.
+            GfVec3f color(1.0f); // default to white
             ppMeshSamplers[Attributes::Colors]->SampleBuffer(idx, &color);
-            *(uint32_t*) &m_vertexData[vertexOffset] = D3DCOLOR_COLORVALUE(color[0], color[1], color[2], color[3]);
+            const uint32_t enColor = D3DCOLOR_COLORVALUE(color[0], color[1], color[2], 1.f);
+            uint32_t& vertexColor = *(uint32_t*) &m_vertexData[vertexOffset];
+            vertexColor = (vertexColor & 0xFF000000) | (enColor & 0x00FFFFFF);
+            break;
+          }
+          case Attributes::Opacity: {
+            float opacity = 1.0f; // default to opaque
+            ppMeshSamplers[Attributes::Opacity]->SampleBuffer(idx, &opacity);
+            uint32_t& vertexColor = *(uint32_t*) &m_vertexData[vertexOffset];
+            vertexColor = (vertexColor & 0x00FFFFFF) | (((uint32_t) (opacity * 255.f) & 0xFF) << 24);
             break;
           }
           case Attributes::Texcoords: {

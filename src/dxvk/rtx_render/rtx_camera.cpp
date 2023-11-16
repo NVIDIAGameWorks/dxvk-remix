@@ -48,6 +48,8 @@
 
 namespace dxvk
 {
+  RtCameraSequence* RtCameraSequence::s_instance = nullptr;
+
   Vector3 RtCamera::getPosition(bool freecam) const {
     return Vector3{ getViewToWorld(freecam)[3].xyz() };
   }
@@ -56,7 +58,7 @@ namespace dxvk
     // Note: To get a "forward" direction in world space, the basis vector mapping world to view space's Z axis
     // is used, but unlike the up/right vectors we must consider which direction the projection matrix is treating as
     // forwards. With left handed projection matrices this is the +Z axis, but with right handed matrices this is -Z.
-    if (m_isLHS) {
+    if (m_context.isLHS) {
       return Vector3{ getViewToWorld(freecam)[2].xyz() };
     } else {
       return -Vector3{ getViewToWorld(freecam)[2].xyz() };
@@ -340,179 +342,11 @@ namespace dxvk
     return customTransform;
   }
 
-  bool RtCamera::update(
-    uint32_t frameIdx, const Matrix4& newWorldToView, const Matrix4& newViewToProjection,
-    float fov, float aspectRatio, float nearPlane, float farPlane, bool isLHS
-  ) {
-    if (m_frameLastTouched == frameIdx)
-      return false;
+  const RtCamera::RtCameraSetting& RtCamera::getSetting() {
+    return m_context;
+  }
 
-    m_fov = fov;
-    m_aspectRatio = aspectRatio;
-    m_isLHS = isLHS;
-    m_nearPlane = nearPlane;
-    m_farPlane = farPlane;
-
-    m_previousArtificalWorldOffset = m_artificalWorldOffset;
-    m_artificalWorldOffset = Vector3(0.f);
-
-    if (!RtxOptions::Get()->isCameraShaking()) {
-      m_cameraShakeFrameCount = 0;
-      m_cameraRotationFrameCount = 0;
-      m_shakeYaw = m_shakePitch = 0.0f;
-      m_shakeOffset = { 0.0f, 0.0f, 0.0f, 0.0f };
-    }
-
-    // Setup World/View Matrix Data
-
-    m_matCache[MatrixType::PreviousPreviousWorldToView] = m_matCache[MatrixType::PreviousWorldToView];
-    m_matCache[MatrixType::PreviousPreviousViewToWorld] = m_matCache[MatrixType::PreviousViewToWorld];
-    m_matCache[MatrixType::PreviousWorldToView] = m_matCache[MatrixType::WorldToView];
-    m_matCache[MatrixType::PreviousViewToWorld] = m_matCache[MatrixType::ViewToWorld];
-    m_matCache[MatrixType::UncorrectedPreviousViewToWorld] = m_matCache[MatrixType::ViewToWorld];
-    m_matCache[MatrixType::WorldToView] = freeCameraViewRelative() ? Matrix4d{ newWorldToView } : Matrix4d();
-    m_matCache[MatrixType::ViewToWorld] = inverse(m_matCache[MatrixType::WorldToView]);
-
-    // Setup Translated World/View Matrix Data
-
-    m_matCache[MatrixType::PreviousTranslatedWorldToView] = m_matCache[MatrixType::TranslatedWorldToView];
-    m_matCache[MatrixType::PreviousViewToTranslatedWorld] = m_matCache[MatrixType::ViewToTranslatedWorld];
-    m_matCache[MatrixType::UncorrectedPreviousTranslatedWorldToView] = m_matCache[MatrixType::TranslatedWorldToView];
-
-    auto viewToTranslatedWorld = m_matCache[MatrixType::ViewToWorld];
-    viewToTranslatedWorld[3] = Vector4(0.0f, 0.0f, 0.0f, viewToTranslatedWorld[3].w);
-
-    m_matCache[MatrixType::ViewToTranslatedWorld] = freeCameraViewRelative() ? viewToTranslatedWorld : Matrix4d();
-    // Note: Slightly non-ideal to have to inverse an already inverted matrix when we have the original world to view matrix,
-    // but this is the safest way to ensure a proper inversion when modifying the view to world transform manually.
-    m_matCache[MatrixType::TranslatedWorldToView] = inverse(m_matCache[MatrixType::ViewToTranslatedWorld]);
-
-    // Setup View/Projection Matrix Data
-
-    m_matCache[MatrixType::PreviousViewToProjection] = m_matCache[MatrixType::ViewToProjection];
-    m_matCache[MatrixType::PreviousProjectionToView] = m_matCache[MatrixType::ProjectionToView];
-
-    auto modifiedViewToProj = Matrix4d{ newViewToProjection };
-
-    // Create Anti-Culling frustum
-    if (RtxOptions::AntiCulling::Object::enable()) {
-      const float fovScale = RtxOptions::AntiCulling::Object::fovScale();
-      float4x4 frustumMatrix;
-      if (RtxOptions::AntiCulling::Object::enableInfinityFarFrustum()) {
-        frustumMatrix.SetupByHalfFovyInf((float) (fov * fovScale * 0.5), aspectRatio, nearPlane, (isLHS ? PROJ_LEFT_HANDED : 0));
-      } else {
-        frustumMatrix.SetupByHalfFovy((float) (fov * fovScale * 0.5), aspectRatio, nearPlane, farPlane, (isLHS ? PROJ_LEFT_HANDED : 0));
-      }
-      m_frustum.Setup(NDC_OGL, frustumMatrix);
-
-      m_frustum.calculateFrustumGeometry(m_nearPlane, m_farPlane, fov, aspectRatio, isLHS);
-    }
-
-    if (RtxOptions::AntiCulling::Light::enable()) {
-      const float fovScale = RtxOptions::AntiCulling::Light::fovScale();
-      float4x4 frustumMatrix;
-      frustumMatrix.SetupByHalfFovyInf((float) (fov * fovScale * 0.5), aspectRatio, nearPlane, (isLHS ? PROJ_LEFT_HANDED : 0));
-      m_lightAntiCullingFrustum.Setup(NDC_OGL, frustumMatrix);
-    }
-
-    // Sometimes we want to modify the near plane for RT.  See DevSettings->Camera->Advanced
-    if(RtxOptions::Get()->enableNearPlaneOverride()) {
-      // Note: Converted to floats to interface with MathLib. Ideally this should be a double still.
-      Matrix4 floatModifiedViewToProj{ modifiedViewToProj };
-
-      // Check size since struct padding can impact this memcpy
-      static_assert(sizeof(float4x4) == sizeof(floatModifiedViewToProj));
-
-      uint32_t flags;
-      float cameraParams[PROJ_NUM];
-      DecomposeProjection(NDC_D3D, NDC_D3D, *reinterpret_cast<float4x4*>(&floatModifiedViewToProj), &flags, cameraParams, nullptr, nullptr, nullptr, nullptr);
-
-      // Prevent user controls exceeding the near plane distance from original projection
-      const float minNearPlane = std::min(RtxOptions::Get()->nearPlaneOverride(), cameraParams[PROJ_ZNEAR]);
-
-      float4x4 newProjection;
-      newProjection.SetupByAngles(cameraParams[PROJ_ANGLEMINX], cameraParams[PROJ_ANGLEMAXX], cameraParams[PROJ_ANGLEMINY], cameraParams[PROJ_ANGLEMAXY], minNearPlane, cameraParams[PROJ_ZFAR], flags);
-      memcpy(&floatModifiedViewToProj, &newProjection, sizeof(float4x4));
-
-      modifiedViewToProj = Matrix4d{ floatModifiedViewToProj };
-    }
-    
-    m_matCache[MatrixType::ViewToProjection] = modifiedViewToProj;
-    m_matCache[MatrixType::ProjectionToView] = inverse(modifiedViewToProj);
-
-    // Apply free camera shaking
-
-    if (!enableFreeCamera() && RtxOptions::Get()->isCameraShaking()) {
-      auto newViewToWorld = getShakenViewToWorldMatrix(m_matCache[MatrixType::ViewToWorld]);
-      auto newViewToTranslatedWorld = newViewToWorld;
-      newViewToTranslatedWorld[3] = Vector4d(0.0, 0.0, 0.0, newViewToTranslatedWorld[3].w);
-
-      // Note: Error added here from an extra inverse operation, but should be fine as camera shaking is only used as a debugging path.
-      m_matCache[MatrixType::WorldToView] = inverse(newViewToWorld);
-      m_matCache[MatrixType::ViewToWorld] = newViewToWorld;
-      m_matCache[MatrixType::TranslatedWorldToView] = inverse(newViewToTranslatedWorld);
-      m_matCache[MatrixType::ViewToTranslatedWorld] = newViewToTranslatedWorld;
-    }
-
-    // Apply jittering
-
-    auto newViewToProjectionJittered = modifiedViewToProj;
-
-    // Only apply jittering when DLSS/TAA is enabled, or if forced by settings
-    if (RtxOptions::Get()->isDLSSEnabled() ||
-        RtxOptions::Get()->isTAAEnabled() ||
-        RtxOptions::Get()->forceCameraJitter()) {
-      float xRatio = Sign(modifiedViewToProj[2][3]);
-      float yRatio = -Sign(modifiedViewToProj[2][3]);
-
-#define USE_DLSS_DEMO_JITTER_PATTERN 1
-#if USE_DLSS_DEMO_JITTER_PATTERN
-      glm::vec2 newJitter = getCurrentPixelOffset(frameIdx);
-#else
-      glm::vec2 newJitter = m_halton.next();
-#endif
-      m_jitter[0] = newJitter.x;
-      m_jitter[1] = newJitter.y;
-
-      if (m_renderResolution[0] != 0 && m_renderResolution[1] != 0) {
-        newViewToProjectionJittered[2][0] += m_jitter[0] / float(m_renderResolution[0]) * xRatio * 2.f;
-        newViewToProjectionJittered[2][1] += m_jitter[1] / float(m_renderResolution[1]) * yRatio * 2.f;
-      }
-    } else {
-      m_jitter[0] = m_jitter[1] = 0.0f;
-    }
-
-    m_matCache[MatrixType::PreviousViewToProjectionJittered] = m_matCache[MatrixType::ViewToProjectionJittered];
-    m_matCache[MatrixType::PreviousProjectionToViewJittered] = m_matCache[MatrixType::ProjectionToViewJittered];
-    m_matCache[MatrixType::ViewToProjectionJittered] = newViewToProjectionJittered;
-    m_matCache[MatrixType::ProjectionToViewJittered] = inverse(newViewToProjectionJittered);
-
-    m_frameLastTouched = frameIdx;
-
-    // For our first update, we should init both previous and current to the same value
-    if (m_firstUpdate) {
-      m_matCache[MatrixType::PreviousWorldToView] = m_matCache[MatrixType::WorldToView];
-      m_matCache[MatrixType::PreviousViewToWorld] = m_matCache[MatrixType::ViewToWorld];
-      m_matCache[MatrixType::PreviousPreviousWorldToView] = m_matCache[MatrixType::WorldToView];
-      m_matCache[MatrixType::PreviousPreviousViewToWorld] = m_matCache[MatrixType::ViewToWorld];
-
-      m_matCache[MatrixType::PreviousTranslatedWorldToView] = m_matCache[MatrixType::TranslatedWorldToView];
-      m_matCache[MatrixType::PreviousViewToTranslatedWorld] = m_matCache[MatrixType::ViewToTranslatedWorld];
-
-      m_matCache[MatrixType::PreviousViewToProjection] = m_matCache[MatrixType::ViewToProjection];
-      m_matCache[MatrixType::PreviousProjectionToView] = m_matCache[MatrixType::ProjectionToView];
-
-      m_matCache[MatrixType::PreviousViewToProjectionJittered] = m_matCache[MatrixType::ViewToProjectionJittered];
-      m_matCache[MatrixType::PreviousProjectionToViewJittered] = m_matCache[MatrixType::ProjectionToViewJittered];
-
-      // Never do this again
-      m_firstUpdate = false;
-    }
-
-    // Only calculate free camera matrices for main camera
-    if (!enableFreeCamera() || m_type != CameraType::Main)
-      return isCameraCut();
-
+  Matrix4d RtCamera::updateFreeCamera(uint32_t flags) {
     auto currTime = std::chrono::system_clock::now();
 
     std::chrono::duration<float> elapsedSec = currTime - m_prevRunningTime;
@@ -530,7 +364,7 @@ namespace dxvk
       GetWindowThreadProcessId(fgWin, &processId);
     }
 
-    if (!ImGui::GetIO().WantCaptureMouse) {
+    if (!ImGui::GetIO().WantCaptureMouse && (flags & (int)RtCamera::UpdateFlag::UpdateFreeCamera) != 0) {
       // Speed booster
       if (ImGui::IsKeyDown(ImGuiKey_LeftShift)) {
         speed *= 4;
@@ -547,7 +381,7 @@ namespace dxvk
         speed = 0;
       }
 
-      float coordSystemScale = m_isLHS ? -1.f : 1.f;
+      float coordSystemScale = m_context.isLHS ? -1.f : 1.f;
 
       if (ImGui::IsKeyDown(ImGuiKey_A)) {
         moveLeftRight -= speed;
@@ -604,14 +438,238 @@ namespace dxvk
     freeCamViewToWorld[3] = Vector4d(0.0);
     freeCamViewToWorld *= getMatrixFromEulerAngles(freeCameraPitch(), freeCameraYaw());
 
-    freeCameraPositionRef() += static_cast<double>(moveLeftRight) * freeCamViewToWorld.data[0].xyz();
-    freeCameraPositionRef() += static_cast<double>(moveDownUp) * freeCamViewToWorld.data[1].xyz();
-    freeCameraPositionRef() -= static_cast<double>(moveBackForward) * freeCamViewToWorld.data[2].xyz();
+    if (m_type == CameraType::Main && (flags & (uint32_t)UpdateFlag::UpdateFreeCamera)) {
+      freeCameraPositionRef() += moveLeftRight * Vector3(freeCamViewToWorld.data[0].xyz());
+      freeCameraPositionRef() += moveDownUp * Vector3(freeCamViewToWorld.data[1].xyz());
+      freeCameraPositionRef() -= moveBackForward * Vector3(freeCamViewToWorld.data[2].xyz());
+
+      // save free camera context
+      m_context.enableFreeCamera = enableFreeCamera();
+      m_context.freeCameraPosition = freeCameraPosition();
+      m_context.freeCameraYaw = freeCameraYaw();
+      m_context.freeCameraPitch = freeCameraPitch();
+      m_context.freeCameraViewRelative = freeCameraViewRelative();
+    }
 
     freeCamViewToWorld[3] = m_matCache[MatrixType::ViewToWorld][3] + Vector4(freeCameraPosition(), 0.f);
+    return freeCamViewToWorld;
+  }
+
+  void RtCamera::updateAntiCulling(float fov, float aspectRatio, float nearPlane, float farPlane, bool isLHS) {
+    // Create Anti-Culling frustum
+    if (RtxOptions::AntiCulling::Object::enable()) {
+      const float fovScale = RtxOptions::AntiCulling::Object::fovScale();
+      const float farPlaneScale = RtxOptions::AntiCulling::Object::farPlaneScale();
+      float4x4 frustumMatrix;
+      if (RtxOptions::AntiCulling::Object::enableInfinityFarFrustum()) {
+        frustumMatrix.SetupByHalfFovyInf((float) (fov * fovScale * 0.5), aspectRatio, nearPlane, (isLHS ? PROJ_LEFT_HANDED : 0));
+      } else {
+        frustumMatrix.SetupByHalfFovy((float) (fov * fovScale * 0.5), aspectRatio, nearPlane, farPlane * farPlaneScale, (isLHS ? PROJ_LEFT_HANDED : 0));
+      }
+      m_frustum.Setup(NDC_OGL, frustumMatrix);
+
+      m_frustum.calculateFrustumGeometry(nearPlane, farPlane, fov, aspectRatio, isLHS);
+    }
+
+    if (RtxOptions::AntiCulling::Light::enable()) {
+      const float fovScale = RtxOptions::AntiCulling::Light::fovScale();
+      const float scaledHalfFov = std::min(fov * fovScale * 0.5f, 1.55f); // Clamp to half fov to 89 degrees
+      const float projectionMatrixFovScale = std::tan(fov * 0.5f) / std::tan(scaledHalfFov);
+      Matrix4 viewToProjection = getViewToProjection();
+      viewToProjection[0][0] *= projectionMatrixFovScale;
+      viewToProjection[1][1] *= projectionMatrixFovScale;
+
+      const Matrix4 worldToProj = viewToProjection * getWorldToView(false);
+      m_lightAntiCullingFrustum.Setup(NDC_OGL, *reinterpret_cast<const float4x4*>(&worldToProj));
+    }
+  }
+
+  Matrix4d RtCamera::overrideNearPlane(const Matrix4d& modifiedViewToProj) {
+    // Note: Converted to floats to interface with MathLib. Ideally this should be a double still.
+    Matrix4 floatModifiedViewToProj { modifiedViewToProj };
+
+    // Check size since struct padding can impact this memcpy
+    static_assert(sizeof(float4x4) == sizeof(floatModifiedViewToProj));
+
+    uint32_t flags;
+    float cameraParams[PROJ_NUM];
+    DecomposeProjection(NDC_D3D, NDC_D3D, *reinterpret_cast<float4x4*>(&floatModifiedViewToProj), &flags, cameraParams, nullptr, nullptr, nullptr, nullptr);
+
+    // Prevent user controls exceeding the near plane distance from original projection
+    const float minNearPlane = std::min(RtxOptions::Get()->nearPlaneOverride(), cameraParams[PROJ_ZNEAR]);
+
+    float4x4 newProjection;
+    newProjection.SetupByAngles(cameraParams[PROJ_ANGLEMINX], cameraParams[PROJ_ANGLEMAXX], cameraParams[PROJ_ANGLEMINY], cameraParams[PROJ_ANGLEMAXY], minNearPlane, cameraParams[PROJ_ZFAR], flags);
+    memcpy(&floatModifiedViewToProj, &newProjection, sizeof(float4x4));
+
+    return Matrix4d { floatModifiedViewToProj };
+  }
+
+
+  bool RtCamera::updateFromSetting(uint32_t frameIdx, const RtCameraSetting& setting, uint32_t flags) {
+    enableFreeCameraRef() = setting.enableFreeCamera;
+    freeCameraPositionRef() = setting.freeCameraPosition;
+    freeCameraYawRef() = setting.freeCameraYaw;
+    freeCameraPitchRef() = setting.freeCameraPitch;
+    freeCameraViewRelativeRef() = setting.freeCameraViewRelative;
+
+    RtxOptions::Get()->shakeCameraRef() = setting.isCameraShaking;
+
+    m_context = setting;
+
+    return update(frameIdx, setting.worldToView, setting.viewToProjection, setting.fov, setting.aspectRatio, setting.nearPlane, setting.farPlane, setting.isLHS, flags);
+  }
+
+  bool RtCamera::update(
+    uint32_t frameIdx, const Matrix4& newWorldToView, const Matrix4& newViewToProjection,
+    float fov, float aspectRatio, float nearPlane, float farPlane, bool isLHS, uint32_t flags
+  ) {
+    if (m_frameLastTouched == frameIdx)
+      return false;
+
+    m_context.worldToView = newWorldToView;
+    m_context.viewToProjection = newViewToProjection;
+    m_context.fov = fov;
+    m_context.aspectRatio = aspectRatio;
+    m_context.nearPlane = nearPlane;
+    m_context.farPlane = farPlane;
+    m_context.isLHS = isLHS;
+    m_context.flags = flags;
+
+    m_previousArtificalWorldOffset = m_artificalWorldOffset;
+    m_artificalWorldOffset = Vector3(0.f);
+
+    if (!RtxOptions::Get()->isCameraShaking()) {
+      m_context.cameraShakeFrameCount = 0;
+      m_context.cameraRotationFrameCount = 0;
+    }
+
+    // Setup World/View Matrix Data
+
+    m_matCache[MatrixType::PreviousPreviousWorldToView] = m_matCache[MatrixType::PreviousWorldToView];
+    m_matCache[MatrixType::PreviousPreviousViewToWorld] = m_matCache[MatrixType::PreviousViewToWorld];
+    m_matCache[MatrixType::PreviousWorldToView] = m_matCache[MatrixType::WorldToView];
+    m_matCache[MatrixType::PreviousViewToWorld] = m_matCache[MatrixType::ViewToWorld];
+    m_matCache[MatrixType::UncorrectedPreviousViewToWorld] = m_matCache[MatrixType::ViewToWorld];
+    m_matCache[MatrixType::WorldToView] = freeCameraViewRelative() ? Matrix4d{ newWorldToView } : Matrix4d();
+    m_matCache[MatrixType::ViewToWorld] = inverse(m_matCache[MatrixType::WorldToView]);
+
+    // Setup Translated World/View Matrix Data
+
+    m_matCache[MatrixType::PreviousTranslatedWorldToView] = m_matCache[MatrixType::TranslatedWorldToView];
+    m_matCache[MatrixType::PreviousViewToTranslatedWorld] = m_matCache[MatrixType::ViewToTranslatedWorld];
+    m_matCache[MatrixType::UncorrectedPreviousTranslatedWorldToView] = m_matCache[MatrixType::TranslatedWorldToView];
+
+    auto viewToTranslatedWorld = m_matCache[MatrixType::ViewToWorld];
+    viewToTranslatedWorld[3] = Vector4(0.0f, 0.0f, 0.0f, viewToTranslatedWorld[3].w);
+
+    m_matCache[MatrixType::ViewToTranslatedWorld] = freeCameraViewRelative() ? viewToTranslatedWorld : Matrix4d();
+    // Note: Slightly non-ideal to have to inverse an already inverted matrix when we have the original world to view matrix,
+    // but this is the safest way to ensure a proper inversion when modifying the view to world transform manually.
+    m_matCache[MatrixType::TranslatedWorldToView] = inverse(m_matCache[MatrixType::ViewToTranslatedWorld]);
+
+    // Setup View/Projection Matrix Data
+
+    m_matCache[MatrixType::PreviousViewToProjection] = m_matCache[MatrixType::ViewToProjection];
+    m_matCache[MatrixType::PreviousProjectionToView] = m_matCache[MatrixType::ProjectionToView];
+
+    auto modifiedViewToProj = Matrix4d{ newViewToProjection };
+
+    updateAntiCulling(fov, aspectRatio, nearPlane, farPlane, isLHS);
+
+    // Sometimes we want to modify the near plane for RT.  See DevSettings->Camera->Advanced
+    if(RtxOptions::Get()->enableNearPlaneOverride()) {
+      modifiedViewToProj = overrideNearPlane(modifiedViewToProj);
+    }
+    
+    m_matCache[MatrixType::ViewToProjection] = modifiedViewToProj;
+    m_matCache[MatrixType::ProjectionToView] = inverse(modifiedViewToProj);
+
+    // Apply free camera shaking
+
+    if (!enableFreeCamera() && RtxOptions::Get()->isCameraShaking()) {
+      auto newViewToWorld = getShakenViewToWorldMatrix(m_matCache[MatrixType::ViewToWorld], flags);
+      auto newViewToTranslatedWorld = newViewToWorld;
+      newViewToTranslatedWorld[3] = Vector4d(0.0, 0.0, 0.0, newViewToTranslatedWorld[3].w);
+
+      // Note: Error added here from an extra inverse operation, but should be fine as camera shaking is only used as a debugging path.
+      m_matCache[MatrixType::WorldToView] = inverse(newViewToWorld);
+      m_matCache[MatrixType::ViewToWorld] = newViewToWorld;
+      m_matCache[MatrixType::TranslatedWorldToView] = inverse(newViewToTranslatedWorld);
+      m_matCache[MatrixType::ViewToTranslatedWorld] = newViewToTranslatedWorld;
+    }
+
+    // Apply jittering
+
+    auto newViewToProjectionJittered = modifiedViewToProj;
+
+    if (flags & (uint32_t) UpdateFlag::UpdateJitterFrame) {
+      m_context.jitterFrameIdx = frameIdx;
+    }
+
+    // Only apply jittering when DLSS/TAA is enabled, or if forced by settings
+    if (RtxOptions::Get()->isDLSSEnabled() ||
+        RtxOptions::Get()->isTAAEnabled() ||
+        RtxOptions::Get()->forceCameraJitter()) {
+      float xRatio = Sign(modifiedViewToProj[2][3]);
+      float yRatio = -Sign(modifiedViewToProj[2][3]);
+
+#define USE_DLSS_DEMO_JITTER_PATTERN 1
+#if USE_DLSS_DEMO_JITTER_PATTERN
+      glm::vec2 newJitter = getCurrentPixelOffset(m_context.jitterFrameIdx);
+#else
+      glm::vec2 newJitter = m_halton.next();
+#endif
+      m_jitter[0] = newJitter.x;
+      m_jitter[1] = newJitter.y;
+
+      if (m_renderResolution[0] != 0 && m_renderResolution[1] != 0) {
+        newViewToProjectionJittered[2][0] += m_jitter[0] / float(m_renderResolution[0]) * xRatio * 2.f;
+        newViewToProjectionJittered[2][1] += m_jitter[1] / float(m_renderResolution[1]) * yRatio * 2.f;
+      }
+    } else {
+      m_jitter[0] = m_jitter[1] = 0.0f;
+    }
+
+    m_context.jitter[0] = m_jitter[0];
+    m_context.jitter[1] = m_jitter[1];
+    m_context.isCameraShaking = RtxOptions::Get()->isCameraShaking();
+
+    m_matCache[MatrixType::PreviousViewToProjectionJittered] = m_matCache[MatrixType::ViewToProjectionJittered];
+    m_matCache[MatrixType::PreviousProjectionToViewJittered] = m_matCache[MatrixType::ProjectionToViewJittered];
+    m_matCache[MatrixType::ViewToProjectionJittered] = newViewToProjectionJittered;
+    m_matCache[MatrixType::ProjectionToViewJittered] = inverse(newViewToProjectionJittered);
+
+    m_frameLastTouched = frameIdx;
+
+    // For our first update, we should init both previous and current to the same value
+    if (m_firstUpdate) {
+      m_matCache[MatrixType::PreviousWorldToView] = m_matCache[MatrixType::WorldToView];
+      m_matCache[MatrixType::PreviousViewToWorld] = m_matCache[MatrixType::ViewToWorld];
+      m_matCache[MatrixType::PreviousPreviousWorldToView] = m_matCache[MatrixType::WorldToView];
+      m_matCache[MatrixType::PreviousPreviousViewToWorld] = m_matCache[MatrixType::ViewToWorld];
+
+      m_matCache[MatrixType::PreviousTranslatedWorldToView] = m_matCache[MatrixType::TranslatedWorldToView];
+      m_matCache[MatrixType::PreviousViewToTranslatedWorld] = m_matCache[MatrixType::ViewToTranslatedWorld];
+
+      m_matCache[MatrixType::PreviousViewToProjection] = m_matCache[MatrixType::ViewToProjection];
+      m_matCache[MatrixType::PreviousProjectionToView] = m_matCache[MatrixType::ProjectionToView];
+
+      m_matCache[MatrixType::PreviousViewToProjectionJittered] = m_matCache[MatrixType::ViewToProjectionJittered];
+      m_matCache[MatrixType::PreviousProjectionToViewJittered] = m_matCache[MatrixType::ProjectionToViewJittered];
+
+      // Never do this again
+      m_firstUpdate = false;
+    }
+
+    // Only calculate free camera matrices for main camera
+    if (!enableFreeCamera() || m_type != CameraType::Main)
+      return isCameraCut();
+
+    auto freeCamViewToWorld = updateFreeCamera(flags);
 
     if (RtxOptions::Get()->isCameraShaking()) {
-      freeCamViewToWorld = getShakenViewToWorldMatrix(freeCamViewToWorld);
+      freeCamViewToWorld = getShakenViewToWorldMatrix(freeCamViewToWorld, flags);
     }
 
     auto freeCamViewToTranslatedWorld = freeCamViewToWorld;
@@ -680,9 +738,9 @@ namespace dxvk
     camera.projectionToPrevProjectionJittered = prevViewToProjectionJittered * viewToPrevView * projectionToViewJittered;
     
     camera.resolution = uvec2 { m_renderResolution[0], m_renderResolution[1] };
-    camera.nearPlane = m_nearPlane;
+    camera.nearPlane = m_context.nearPlane;
 
-    camera.flags = ((!m_isLHS) ? rightHandedFlag : 0);
+    camera.flags = ((!m_context.isLHS) ? rightHandedFlag : 0);
 
     return camera;
   }
@@ -711,8 +769,8 @@ namespace dxvk
     
     camera.translatedWorldOffset = viewToWorld[3].xyz();
     camera.previousTranslatedWorldOffset = prevViewToWorld[3].xyz();
-    camera.nearPlane = m_nearPlane;
-    camera.flags = ((!m_isLHS) ? rightHandedFlag : 0);
+    camera.nearPlane = m_context.nearPlane;
+    camera.flags = ((!m_context.isLHS) ? rightHandedFlag : 0);
 
     return camera;
   }
@@ -737,15 +795,18 @@ namespace dxvk
     }
   }
 
-  Matrix4d RtCamera::getShakenViewToWorldMatrix(Matrix4d& viewToWorld) {
+  Matrix4d RtCamera::getShakenViewToWorldMatrix(Matrix4d& viewToWorld, uint32_t flags) {
     float moveLeftRight = 0;
     float moveBackForward = 0;
+    float shakeYaw = 0;
+    float shakePitch = 0;
+
     int period = RtxOptions::Get()->getCameraShakePeriod();
     float sceneScale = RtxOptions::Get()->getSceneScale();
     CameraAnimationMode animationMode = RtxOptions::Get()->getCameraAnimationMode();
     float amplitude = RtxOptions::Get()->getCameraAnimationAmplitude();
 
-    float offset = sin(float(m_cameraShakeFrameCount) / (2 * period) * 2.0f * M_PI);
+    float offset = sin(float(m_context.cameraShakeFrameCount) / (2 * period) * 2.0f * M_PI);
     switch (animationMode) {
     case CameraAnimationMode::CameraShake_LeftRight:
       moveLeftRight += amplitude * sceneScale * offset;
@@ -754,27 +815,30 @@ namespace dxvk
       moveBackForward += amplitude * sceneScale * offset;
       break;
     case CameraAnimationMode::CameraShake_Yaw:
-      m_shakeYaw = amplitude * 0.05 * offset;
+      shakeYaw = amplitude * 0.05 * offset;
       break;
     case CameraAnimationMode::CameraShake_Pitch:
-      m_shakePitch = amplitude * 0.05 * offset;
+      shakePitch = amplitude * 0.05 * offset;
       break;
     case CameraAnimationMode::YawRotation:
-      const float constSpeed = float(m_cameraRotationFrameCount) / (2 * period) * 2.0f * M_PI;
-      m_shakeYaw = amplitude * 0.05 * constSpeed;
+      const float constSpeed = float(m_context.cameraRotationFrameCount) / (2 * period) * 2.0f * M_PI;
+      shakeYaw = amplitude * 0.05 * constSpeed;
       break;
     }
 
-    m_cameraShakeFrameCount = (m_cameraShakeFrameCount + 1) % (2 * period);
-    ++m_cameraRotationFrameCount;
+    if (flags & (uint32_t)UpdateFlag::IncrementShakingFrame) {
+      ++m_context.cameraRotationFrameCount;
+      m_context.cameraShakeFrameCount = (m_context.cameraShakeFrameCount + 1) % (2 * period);
+    }
 
     Matrix4d viewRot = viewToWorld;
     viewRot[3] = Vector4(0.0);
-    viewRot *= getMatrixFromEulerAngles(m_shakePitch, m_shakeYaw);
+    viewRot *= getMatrixFromEulerAngles(shakePitch, shakeYaw);
 
-    m_shakeOffset = static_cast<double>(moveLeftRight) * viewRot.data[0];
-    m_shakeOffset += static_cast<double>(moveBackForward) * viewRot.data[2];
-    viewRot[3] = viewToWorld[3] + m_shakeOffset;
+    Vector4 shakeOffset = static_cast<double>(moveLeftRight) * viewRot.data[0];
+    shakeOffset += static_cast<double>(moveBackForward) * viewRot.data[2];
+
+    viewRot[3] = viewToWorld[3] + shakeOffset;
 
     return viewRot;
   }
@@ -806,5 +870,188 @@ namespace dxvk
     for (int i = 0; i < 4; ++i) {
       frustumEdgeVectors[i] = normalize(farPlaneFrustumVertices[i] - nearPlaneFrustumVertices[i]);
     }
+  }
+
+  void RtCameraSequence::startPlay() {
+    modeRef() = Mode::Playback;
+    currentFrameRef() = 0;
+  }
+
+  void RtCameraSequence::startRecord() {
+    modeRef() = Mode::Record;
+    currentFrameRef() = 0;
+    m_settings.clear();
+  }
+
+  void RtCameraSequence::addRecord(const RtCamera::RtCameraSetting& setting) {
+    m_settings.push_back(setting);
+    currentFrameRef() = m_settings.size() - 1;
+  }
+
+  void RtCameraSequence::save() {
+    std::ofstream file(filePath(), std::ios::out | std::ios::binary);
+
+    if (file.is_open()) {
+      int nElements = m_settings.size();
+      Header header;
+      memset(&header, 0, sizeof(header));
+      header.nElements = nElements;
+      file.write((char*)&header, sizeof(header));
+
+      for (int i = 0; i < nElements; i++) {
+        FrameData frameData = {};
+        memset(&frameData, 0, sizeof(frameData));
+        frameData.setting = m_settings[i];
+        file.write((char*)&frameData, sizeof(frameData));
+      }
+
+      file.close();
+    }
+  }
+
+  void RtCameraSequence::load() {
+    std::ifstream file(filePath(), std::ios::in | std::ios::binary);
+
+    if (file.is_open()) {
+      Header header;
+      file.read((char*) &header, sizeof(header));
+      int nElements = header.nElements;
+
+      m_settings.resize(nElements);
+      for (int i = 0; i < nElements; i++) {
+        FrameData frameData = {};
+        file.read((char*)&frameData, sizeof(frameData));
+        m_settings[i] = frameData.setting;
+      }
+    }
+  }
+
+  bool RtCameraSequence::getRecord(int frame, RtCamera::RtCameraSetting& setting) {
+    if (autoLoad() && m_settings.size() == 0 && filePath().size() > 0) {
+      load();
+    }
+    if (frame < 0 || frame >= m_settings.size()) {
+      return false;
+    }
+    setting = m_settings[frame];
+    return true;
+  }
+
+  void RtCameraSequence::goToNextFrame() {
+    if (m_settings.size() == 0) {
+      currentFrameRef() = 0;
+      return;
+    }
+    currentFrameRef() = (currentFrame() + 1) % (int) m_settings.size();
+  }
+
+  void RtCameraSequence::showImguiSettings() {
+    const int maxLength = 1024;
+    static char codewordBuf[maxLength] = "";
+    std::string path = filePath();
+    memcpy(codewordBuf, path.data(), path.size() + 1);
+    ImGui::InputText("File Path", codewordBuf, IM_ARRAYSIZE(codewordBuf) - 1, ImGuiInputTextFlags_EnterReturnsTrue);
+    codewordBuf[maxLength-1] = '\0';
+    std::string newPath(codewordBuf);
+    filePathRef() = newPath;
+
+    if (ImGui::Button("Load Sequence")) {
+      load();
+    }
+
+    ImGui::SameLine();
+
+    if (ImGui::Button("Save Sequence")) {
+      save();
+    }
+
+    int oldFrame = currentFrame();
+    ImGui::SliderInt("Current Frame", &currentFrameObject(), 0, m_settings.size() -1, "%d", ImGuiSliderFlags_AlwaysClamp);
+    currentFrameRef() = std::min(currentFrame(), (int)m_settings.size());
+
+    if (oldFrame != currentFrame() && mode() == Mode::None) {
+      modeRef() = Mode::Browse;
+    }
+
+    bool isRecording = mode() == Mode::Record;
+    bool isPlaying = mode() == Mode::Playback;
+    bool isBrowsing = mode() == Mode::Browse;
+    bool isStopping = mode() == Mode::None;
+
+    // Record Button
+    {
+      ImGui::BeginDisabled(isPlaying);
+
+      if (isRecording) {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.5, 0, 0, 1));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1, 0, 0, 1));
+      }
+
+      if (ImGui::Button("Record")) {
+        startRecord();
+      }
+
+      if (isRecording) {
+        ImGui::PopStyleColor(2);
+      }
+      ImGui::EndDisabled();
+    }
+
+    ImGui::SameLine();
+
+    // Play Button
+    {
+      ImGui::BeginDisabled(isRecording);
+
+      if (isPlaying) {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0.5, 0, 1));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0, 1.0, 0, 1));
+      }
+
+      if (ImGui::Button("Play")) {
+        startPlay();
+      }
+
+      if (isPlaying) {
+        ImGui::PopStyleColor(2);
+      }
+
+      ImGui::EndDisabled();
+    }
+
+    ImGui::SameLine();
+
+    // Stop Button
+    {
+      if (ImGui::Button("Stop")) {
+        modeRef() = Mode::None;
+        RtxOptions::Get()->shakeCameraRef() = false;
+      }
+    }
+
+    ImGui::SameLine();
+
+    // Browse Button
+    {
+      ImGui::BeginDisabled(isRecording || isPlaying);
+
+      if (isBrowsing) {
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.5, 0.5, 0, 1));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(1.0, 1.0, 0, 1));
+      }
+
+      if (ImGui::Button("Browse")) {
+        modeRef() = Mode::Browse;
+        currentFrameRef() = 0;
+      }
+
+      if (isBrowsing) {
+        ImGui::PopStyleColor(2);
+      }
+
+      ImGui::EndDisabled();
+    }
+
+    ImGui::Text("Total Frames: %d", m_settings.size());
   }
 }

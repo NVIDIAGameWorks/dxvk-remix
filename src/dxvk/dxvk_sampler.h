@@ -45,7 +45,7 @@ namespace dxvk {
     // NV-DXVK start
     XXH64_hash_t calculateHash() const {
       static_assert(sizeof(DxvkSamplerCreateInfo) == 72 && "DxvkSamplerCreateInfo changed. Double check the struct is still fully padded and initialized. This is needed for used hashing and comparison functions.");
-
+     
       return XXH3_64bits(this, sizeof(DxvkSamplerCreateInfo));
     }
 

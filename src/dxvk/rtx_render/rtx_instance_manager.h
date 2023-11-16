@@ -58,6 +58,7 @@ public:
   const XXH64_hash_t& getMaterialDataHash() const { return m_materialDataHash; }
   const XXH64_hash_t& getTexcoordHash() const { return m_texcoordHash; }
   const XXH64_hash_t& getIndexHash() const { return m_indexHash; }
+  const XXH64_hash_t calculateAntiCullingHash() const;
   Matrix4 getTransform() const { return transpose(dxvk::Matrix4(m_vkInstance.transform)); }
   const Matrix4& getPrevTransform() const { return surface.prevObjectToWorld; }
   Vector3 getWorldPosition() const { return { m_vkInstance.transform.matrix[0][3], m_vkInstance.transform.matrix[1][3], m_vkInstance.transform.matrix[2][3] }; }
@@ -122,6 +123,10 @@ public:
 
   VkGeometryFlagsKHR getGeometryFlags() const { return m_geometryFlags; }
 
+  template<typename... InstanceCategories>
+  bool testCategoryFlags(InstanceCategories... cat) const { return m_categoryFlags.any(cat...); }
+  CategoryFlags getCategoryFlags() const { return m_categoryFlags; }
+
   bool isViewModel() const;
   bool isViewModelNonReference() const;
   bool isViewModelReference() const;
@@ -176,6 +181,8 @@ private:
   // Used decal offsetting parameters
   XXH64_hash_t m_lastDecalOffsetVertexDataVersion = kEmptyHash;
   uint32_t m_currentDecalOffsetDifference = UINT32_MAX;
+
+  CategoryFlags m_categoryFlags;
 
 public:
 

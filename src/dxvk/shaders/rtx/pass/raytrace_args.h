@@ -35,6 +35,7 @@
 #include "rtx/pass/material_args.h"
 #include "rtx/pass/view_distance_args.h"
 #include "rtx/concept/light/light_types.h"
+#include "rtx/concept/surface/surface_shared.h"
 #include "rtx/algorithm/nee_cache_data.h"
 
 struct LightRangeInfo {
@@ -69,8 +70,13 @@ struct NeeCacheArgs {
 
   NeeEnableMode enableModeAfterFirstBounce;
   float ageCullingSpeed;
-  float range;
   float emissiveTextureSampleFootprintScale;
+  float padding;
+
+  float resolution;
+  float minRange;
+  float learningRate;
+  uint clearCache;
 };
 
 // Constant buffer
@@ -160,6 +166,8 @@ struct RaytraceArgs {
   uint16_t minOpaqueSpecularLobeSamplingProbability;
   uint16_t opaqueOpacityTransmissionLobeSamplingProbabilityZeroThreshold;
   uint16_t minOpaqueOpacityTransmissionLobeSamplingProbability;
+  uint16_t opaqueDiffuseTransmissionLobeSamplingProbabilityZeroThreshold;
+  uint16_t minOpaqueDiffuseTransmissionLobeSamplingProbability;
 
   uint16_t translucentSpecularLobeSamplingProbabilityZeroThreshold;
   uint16_t minTranslucentSpecularLobeSamplingProbability;
@@ -276,8 +284,17 @@ struct RaytraceArgs {
 
   u16vec2 gpuPrintThreadIndex;
   uint gpuPrintElementIndex;
+  uint enableTexturePicking;
 
-  uint pomEnable;
+  DisplacementMode pomMode;
   uint pomEnableDirectLighting;
   uint pomEnableIndirectLighting;
+  uint pomEnableNEECache;
+  uint pomEnableReSTIRGI;
+  uint pomEnablePSR;
+  uint pomMaxIterations;
+
+  uint thinOpaqueEnable;
+
+  float totalMipBias;
 };

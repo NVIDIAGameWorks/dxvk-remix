@@ -35,8 +35,10 @@ namespace dxvk::hud {
      * Updates the data to display.
      * Should be called once per frame.
      */
-    void update();
-
+    // NV-DXVK start: DLFG integration
+    void update(uint32_t presentCount);
+    // NV-DXVK end
+    
     /**
      * \brief Render HUD
      * 

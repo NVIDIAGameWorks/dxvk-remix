@@ -411,6 +411,11 @@ void postprocess(ivec2 threadId, inout vec4 outValue)
 
     if (cb.enablePseudoColorFlag)
       outValue.rgb = turboColormap(calcBt709Luminance(outValue.rgb));
+
+    if (cb.enableGammaCorrectionFlag)
+    {
+      outValue.rgb = linearToGamma(outValue.rgb);
+    }
   }
   else if (cb.displayType == DebugViewDisplayType::BGRExclusiveColor)
   {

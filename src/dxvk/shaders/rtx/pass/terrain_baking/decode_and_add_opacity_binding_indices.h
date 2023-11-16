@@ -22,6 +22,7 @@
 #pragma once
 
 #include "rtx/utility/shader_types.h"
+#include "../../../../rtx_render/rtx_replacement_material_texture_type.h"
 
 // ToDo rename
 #define DECODE_AND_ADD_OPACITY_BINDING_TEXTURE_INPUT                  0
@@ -32,20 +33,6 @@
 #define DECODE_AND_ADD_OPACITY_BINDING_LINEAR_SAMPLER   20
 
 #define DECODE_AND_ADD_OPACITY_CS_DIMENSIONS 16, 8, 1
-
-namespace ReplacementMaterialTextureType {
-  enum Enum {
-    AlbedoOpacity = 0,
-    Normal,
-    Tangent,
-    Height,
-    Roughness,
-    Metallic,
-    Emissive,
-
-    Count
-  };
-}
 
 struct DecodeAndAddOpacityArgs {
   uint2 resolution;
