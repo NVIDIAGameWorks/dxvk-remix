@@ -222,6 +222,10 @@ namespace dxvk {
     }
   }
 
+  int AccelManager::getCurrentFramePrimitiveIDPrefixSumBufferID() const {
+    return m_device->getCurrentFrameId() & 0x1;
+  }
+
   void AccelManager::createAndBuildIntersectionBlas(Rc<DxvkContext> ctx, DxvkBarrierSet& execBarriers) {
     if (m_intersectionBlas.ptr())
       return;
@@ -595,6 +599,7 @@ namespace dxvk {
 
     // Build prefix sum array
     // Collect primitive count for each surface object
+    m_reorderedSurfacesPrimitiveIDPrefixSumLastFrame = m_reorderedSurfacesPrimitiveIDPrefixSum;
     m_reorderedSurfacesPrimitiveIDPrefixSum.resize(m_reorderedSurfaces.size());
     for (uint32_t i = 0; i < m_reorderedSurfaces.size(); i++) {
       auto surface = m_reorderedSurfaces[i];
@@ -894,11 +899,20 @@ namespace dxvk {
     }
 
     // Create and upload the primitive id prefix sum buffer
-    info.size = align(m_reorderedSurfacesPrimitiveIDPrefixSum.size() * sizeof(m_reorderedSurfacesPrimitiveIDPrefixSum[0]), kBufferAlignment);
-    if (m_primitiveIDPrefixSumBuffer == nullptr || info.size > m_primitiveIDPrefixSumBuffer->info().size) {
-      m_primitiveIDPrefixSumBuffer = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXAccelerationStructure);
-    }
-    ctx->updateBuffer(m_primitiveIDPrefixSumBuffer, 0, m_reorderedSurfacesPrimitiveIDPrefixSum.size() * sizeof(m_reorderedSurfacesPrimitiveIDPrefixSum[0]), m_reorderedSurfacesPrimitiveIDPrefixSum.data());
+    auto updatePrefixSumBuffer = [&info, this, ctx](std::vector<uint32_t>& prefixSumList, Rc<DxvkBuffer>& prefixSumBuffer) {
+      info.size = std::max(prefixSumList.size(), 1llu) * sizeof(prefixSumList[0]);
+
+      if (prefixSumBuffer == nullptr || info.size > prefixSumBuffer->info().size) {
+        prefixSumBuffer = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXAccelerationStructure);
+      }
+
+      if (prefixSumList.size() > 0) {
+        ctx->updateBuffer(prefixSumBuffer, 0, prefixSumList.size() * sizeof(prefixSumList[0]), prefixSumList.data());
+      }
+    };
+
+    updatePrefixSumBuffer(m_reorderedSurfacesPrimitiveIDPrefixSum, m_primitiveIDPrefixSumBuffer);
+    updatePrefixSumBuffer(m_reorderedSurfacesPrimitiveIDPrefixSumLastFrame, m_primitiveIDPrefixSumBufferLastFrame);
 
     // Create and upload the surface mapping buffer
     if (!surfaceIndexMapping.empty()) {

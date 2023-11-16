@@ -99,6 +99,8 @@ namespace dxvk {
 
         STRUCTURED_BUFFER(INTEGRATE_INDIRECT_BINDING_NEE_CACHE)
         STRUCTURED_BUFFER(INTEGRATE_INDIRECT_BINDING_NEE_CACHE_SAMPLE)
+        STRUCTURED_BUFFER(INTEGRATE_INDIRECT_BINDING_PRIMITIVE_ID_PREFIX_SUM)
+        RW_STRUCTURED_BUFFER(INTEGRATE_INDIRECT_BINDING_NEE_CACHE_TASK)
         RW_TEXTURE2D(INTEGRATE_INDIRECT_BINDING_NEE_CACHE_THREAD_TASK)
 
         RW_TEXTURE2D(INTEGRATE_INSTRUMENTATION)
@@ -157,6 +159,7 @@ namespace dxvk {
         RW_STRUCTURED_BUFFER(INTEGRATE_NEE_BINDING_NEE_CACHE_TASK)
         RW_STRUCTURED_BUFFER(INTEGRATE_NEE_BINDING_NEE_CACHE_SAMPLE)
         RW_TEXTURE2D(INTEGRATE_NEE_BINDING_NEE_CACHE_THREAD_TASK)
+        STRUCTURED_BUFFER(INTEGRATE_NEE_BINDING_PRIMITIVE_ID_PREFIX_SUM)
       END_PARAMETER()
     };
 
@@ -201,6 +204,7 @@ namespace dxvk {
         RW_STRUCTURED_BUFFER(INTEGRATE_NEE_BINDING_NEE_CACHE_TASK)
         RW_STRUCTURED_BUFFER(INTEGRATE_NEE_BINDING_NEE_CACHE_SAMPLE)
         RW_TEXTURE2D(INTEGRATE_NEE_BINDING_NEE_CACHE_THREAD_TASK)
+        STRUCTURED_BUFFER(INTEGRATE_NEE_BINDING_PRIMITIVE_ID_PREFIX_SUM)
       END_PARAMETER()
     };
 
@@ -244,6 +248,7 @@ namespace dxvk {
 
     // Note: Clamp to edge used to avoid interpolation to black on the edges of the view.
     Rc<DxvkSampler> linearSampler = ctx->getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+    Rc<DxvkBuffer> primitiveIDPrefixSumBuffer = ctx->getSceneManager().getCurrentFramePrimitiveIDPrefixSumBuffer();
 
     ctx->bindCommonRayTracingResources(rtOutput);
 
@@ -285,6 +290,8 @@ namespace dxvk {
 
     ctx->bindResourceBuffer(INTEGRATE_INDIRECT_BINDING_NEE_CACHE, DxvkBufferSlice(rtOutput.m_neeCache, 0, rtOutput.m_neeCache->info().size));
     ctx->bindResourceBuffer(INTEGRATE_INDIRECT_BINDING_NEE_CACHE_SAMPLE, DxvkBufferSlice(rtOutput.m_neeCacheSample, 0, rtOutput.m_neeCacheSample->info().size));
+    ctx->bindResourceBuffer(INTEGRATE_INDIRECT_BINDING_PRIMITIVE_ID_PREFIX_SUM, DxvkBufferSlice(primitiveIDPrefixSumBuffer, 0, primitiveIDPrefixSumBuffer->info().size));
+    ctx->bindResourceBuffer(INTEGRATE_INDIRECT_BINDING_NEE_CACHE_TASK, DxvkBufferSlice(rtOutput.m_neeCacheTask, 0, rtOutput.m_neeCacheTask->info().size));
     ctx->bindResourceView(INTEGRATE_INDIRECT_BINDING_NEE_CACHE_THREAD_TASK, rtOutput.m_neeCacheThreadTask.view, nullptr);
 
     // Aliased resources
@@ -331,6 +338,7 @@ namespace dxvk {
     // Construct restir input sample
     const auto rayDims = rtOutput.m_compositeOutputExtent;
     VkExtent3D workgroups = util::computeBlockCount(rayDims, VkExtent3D { 16, 8, 1 });
+    Rc<DxvkBuffer> primitiveIDPrefixSumBuffer = ctx->getSceneManager().getCurrentFramePrimitiveIDPrefixSumBuffer();
 
     ScopedGpuProfileZone(ctx, "Integrate NEE");
     ctx->bindCommonRayTracingResources(rtOutput);
@@ -366,13 +374,15 @@ namespace dxvk {
     ctx->bindResourceBuffer(INTEGRATE_NEE_BINDING_NEE_CACHE_TASK, DxvkBufferSlice(rtOutput.m_neeCacheTask, 0, rtOutput.m_neeCacheTask->info().size));
     ctx->bindResourceBuffer(INTEGRATE_NEE_BINDING_NEE_CACHE_SAMPLE, DxvkBufferSlice(rtOutput.m_neeCacheSample, 0, rtOutput.m_neeCacheSample->info().size));
     ctx->bindResourceView(INTEGRATE_NEE_BINDING_NEE_CACHE_THREAD_TASK, rtOutput.m_neeCacheThreadTask.view, nullptr);
+    ctx->bindResourceBuffer(INTEGRATE_NEE_BINDING_PRIMITIVE_ID_PREFIX_SUM, DxvkBufferSlice(primitiveIDPrefixSumBuffer, 0, primitiveIDPrefixSumBuffer->info().size));
 
     ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, IntegrateNEEShader::getShader());
     ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
 
     // Visualize the nee cache when debug view is chosen.
     uint32_t debugViewIndex = ctx->getCommonObjects()->metaDebugView().debugViewIdx();
-    if (debugViewIndex == DEBUG_VIEW_NEE_CACHE_LIGHT_HISTOGRAM || debugViewIndex == DEBUG_VIEW_NEE_CACHE_HISTOGRAM)
+    if (debugViewIndex == DEBUG_VIEW_NEE_CACHE_LIGHT_HISTOGRAM || debugViewIndex == DEBUG_VIEW_NEE_CACHE_HISTOGRAM ||
+     debugViewIndex == DEBUG_VIEW_NEE_CACHE_ACCUMULATE_MAP || debugViewIndex == DEBUG_VIEW_NEE_CACHE_HASH_MAP)
     {
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, VisualizeNEEShader::getShader());
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
