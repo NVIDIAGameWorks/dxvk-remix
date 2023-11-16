@@ -48,6 +48,7 @@
 
 #define INTEGRATE_DIRECT_BINDING_NEE_CACHE                          57
 #define INTEGRATE_DIRECT_BINDING_NEE_CACHE_THREAD_TASK              58
+#define INTEGRATE_DIRECT_BINDING_NEE_CACHE_TASK                     59
 
 // Inputs/Outputs
 

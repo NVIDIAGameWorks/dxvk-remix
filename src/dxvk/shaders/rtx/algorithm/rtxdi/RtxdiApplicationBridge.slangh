@@ -102,6 +102,11 @@ float sampleUniformRng(inout RAB_RandomSamplerState r)
   return uintBitsToFloat((mask & v) | one) - 1.f;
 }
 
+uint sampleUniformIntRng(inout RAB_RandomSamplerState r)
+{
+  return murmur3(r);
+}
+
 
 // Depending on the surface type, the position/normal/viewDirection members are in different coordinate systems.
 // For a surface reflected in a mirror, they are in the virtual world space.

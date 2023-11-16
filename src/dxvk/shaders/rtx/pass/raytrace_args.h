@@ -70,10 +70,12 @@ struct NeeCacheArgs {
 
   NeeEnableMode enableModeAfterFirstBounce;
   float ageCullingSpeed;
-  float range;
   float emissiveTextureSampleFootprintScale;
+  float padding;
 
-  uint3 pad0;
+  float resolution;
+  float minRange;
+  float learningRate;
   uint clearCache;
 };
 

@@ -32,6 +32,16 @@
 #include "rtx/algorithm/nee_cache.h"
 #include "rtx/algorithm/integrator.slangh"
 
+float16_t getLobeAngleFromMaterial(OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction)
+{
+  const float perceptualRoughnessSquared = opaqueSurfaceMaterialInteraction.isotropicRoughness;
+  const float lobeAngleNorm = 2.0 * perceptualRoughnessSquared / (1.0 + perceptualRoughnessSquared);
+  const float specularRatio = calcBt709Luminance(opaqueSurfaceMaterialInteraction.baseReflectivity)
+                            / calcBt709Luminance(opaqueSurfaceMaterialInteraction.albedo + opaqueSurfaceMaterialInteraction.baseReflectivity);
+  const float finalLobeAngleNorm = lerp(1.0, lobeAngleNorm, specularRatio);
+  return pi * 0.25 * finalLobeAngleNorm;
+}
+
 [shader("compute")]
 [numthreads(16, 8, 1)]
 void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupThreadID)
@@ -107,8 +117,8 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   if (cb.neeCacheArgs.enable && cb.neeCacheArgs.enableOnFirstBounce &&
       polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque)
   {
-    vec3 jitterOffset = vec3(RAB_GetNextRandom(rtxdiRNG), RAB_GetNextRandom(rtxdiRNG), RAB_GetNextRandom(rtxdiRNG));
-    NEECell cell = NEECache.findCell(minimalSurfaceInteraction.position, true, jitterOffset);
+    uint jitter = sampleUniformIntRng(rtxdiRNG);
+    NEECell cell = NEECache.getCell(NEECache.pointToOffset(minimalSurfaceInteraction.position, minimalSurfaceInteraction.triangleNormal, jitter));
     if (cell.isValid())
     {
       int candidateCount = cell.getCandidateCount();
@@ -121,8 +131,11 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
         NEECandidate candidate = cell.sampleCandidate(RAB_GetNextRandom(rtxdiRNG), lightObjectPdf);
         int primitiveIndex = candidate.getPrimitiveID();
         vec2 uv = vec2(RAB_GetNextRandom(rtxdiRNG), RAB_GetNextRandom(rtxdiRNG));
+        float triangleArea;
+        float16_t spreadAngle = getLobeAngleFromMaterial(opaqueSurfaceMaterialInteraction);
         lightSample = NEECacheUtils.calculateLightSampleFromTriangle(
-          candidate.getSurfaceID(), candidate.getPrimitiveID(), uv, lightObjectPdf, minimalSurfaceInteraction.position, minimalRayInteraction.coneRadius, primaryRay.spreadAngle);
+          candidate.getSurfaceID(), candidate.getPrimitiveID(), uv, lightObjectPdf, minimalSurfaceInteraction.position,
+          minimalRayInteraction.coneRadius, spreadAngle, triangleArea, true, kFootprintFromRayOriginClamped);
           
         bool isVisible = false;
         vec3 diffuseLight = 0;
@@ -143,6 +156,15 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
             surface.isViewModel, primaryRay,
             minimalRayInteraction, minimalSurfaceInteraction, opaqueSurfaceMaterialInteraction,
             diffuseLight, specularLight, surfaceIndex, DisplacementTextureCoord[threadIndex]);
+
+          // Skip some pixels to reduce memory traffic, especially when large screen area is occupied by a single cell.
+          if (any(diffuseLight + specularLight) > 0 && (threadIndex.x + threadIndex.y) % 4 == 0)
+          {
+            float16_t accumulateValue = calcBt709Luminance(diffuseLight + specularLight);
+            int prefixTask = NEECacheUtils.convertIDToPrefixSumID(surfaceIndex, primitiveIndex, PrimitiveIDPrefixSum);
+            float16_t randomOffset = RAB_GetNextRandom(rtxdiRNG);
+            cell.insertSlotTask(prefixTask, accumulateValue, randomOffset, false);
+          }
 
           indirectDiffuseOutput.xyz += diffuseLight;
           indirectSpecularOutput.xyz += specularLight;
