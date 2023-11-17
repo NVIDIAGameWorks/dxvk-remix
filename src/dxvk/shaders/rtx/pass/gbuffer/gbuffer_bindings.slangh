@@ -178,11 +178,14 @@ RWTexture2D<float> SharedBiasCurrentColorMask;
 layout(rgba32ui, binding = GBUFFER_BINDING_ALPHA_BLEND_GBUFFER_OUTPUT)
 RWTexture2D<uint4> AlphaBlendGBuffer;
 
-layout(rg32f, binding = GBUFFER_BINDING_DISPLACEMENT_TEXTURE_COORD_OUTPUT)
-RWTexture2D<float2> DisplacementTextureCoord;
+layout(rg32f, binding = GBUFFER_BINDING_SHARED_TEXTURE_COORD_OUTPUT)
+RWTexture2D<float2> SharedTextureCoord;
 
 layout(r16ui, binding = GBUFFER_BINDING_SHARED_SURFACE_INDEX_OUTPUT)
 RWTexture2D<uint> SharedSurfaceIndex;
+
+layout(rgba16ui, binding = GBUFFER_BINDING_SHARED_SUBSURFACE_DATA_OUTPUT)
+RWTexture2D<uint4> SharedSubsurfaceData;
 
 layout(push_constant)
 ConstantBuffer<GbufferPushConstants> push;

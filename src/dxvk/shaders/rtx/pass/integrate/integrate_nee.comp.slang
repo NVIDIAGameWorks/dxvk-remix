@@ -109,7 +109,8 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
 
   // Deserialize the Surface Material Interaction
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction = polymorphicSurfaceMaterialInteractionReadFromGBuffer(
-    threadIndex, PrimaryWorldShadingNormal, PrimaryPerceptualRoughness, PrimaryAlbedo, PrimaryBaseReflectivity, SharedMaterialData0, SharedMaterialData1);
+    threadIndex, PrimaryWorldShadingNormal, PrimaryPerceptualRoughness, PrimaryAlbedo, PrimaryBaseReflectivity,
+    SharedMaterialData0, SharedMaterialData1, SharedSurfaceIndex, SharedSubsurfaceData);
 
   // Perform next event estimation on cached emissive triangle list
   // Also add NEE sample to sample reservoir
@@ -155,7 +156,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
             lightSample, invalidRayPortalIndex, surface.portalSpace, rayMask,
             surface.isViewModel, primaryRay,
             minimalRayInteraction, minimalSurfaceInteraction, opaqueSurfaceMaterialInteraction,
-            diffuseLight, specularLight, surfaceIndex, DisplacementTextureCoord[threadIndex]);
+            diffuseLight, specularLight, surfaceIndex, SharedTextureCoord[threadIndex]);
 
           // Skip some pixels to reduce memory traffic, especially when large screen area is occupied by a single cell.
           if (any(diffuseLight + specularLight) > 0 && (threadIndex.x + threadIndex.y) % 4 == 0)

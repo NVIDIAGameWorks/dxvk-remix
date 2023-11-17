@@ -74,3 +74,6 @@ Texture2D<float4> PreviousWorldPosition_WorldTriangleNormal;
 
 layout(r16ui, binding = RESTIR_GI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT)
 Texture2D<uint> SharedSurfaceIndex;
+
+layout(rgba16ui, binding = RESTIR_GI_REUSE_BINDING_SUBSURFACE_DATA_INPUT)
+Texture2D<uint4> SharedSubsurfaceData;

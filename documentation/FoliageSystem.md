@@ -10,6 +10,10 @@ User Instructions:
     b. [Subsurface Measurement Distance]: The thickness of the foliage surface in the range [0, 16]. Incidence radiance is attenuated proportionally to the thickness. The unit is [mm].
     c. [Subsurface Single Scattering Albedo]: The coefficient determines how much energy is scattered when trace through subsurface materials.
     d. [Subsurface Volumetric Anisotropy]: The anisotropy of the scattering phase function (-1 being backscattering, 0 being isotropic, 1 being forward scattering).
+4. Optional: Setup Foliage Texture Maps:
+    a. [Subsurface Transmittance Color Map]
+    b. [Subsurface Measurement Distance Map]
+    c. [Subsurface Single Scattering Albedo Map]
 
 Real-time debug interface:
 1. Debugging View: Enable [Is Thin Opaque](../RtxOptions.md) or [rtx.debugView.debugViewIdx = 800] to verify if thin opaque materials are correctly set up.

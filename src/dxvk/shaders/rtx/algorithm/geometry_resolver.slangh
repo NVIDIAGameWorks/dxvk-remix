@@ -289,7 +289,7 @@ void geometryResolverOutputSurface(
       PrimaryWorldShadingNormal, PrimaryPerceptualRoughness,
       PrimaryVirtualWorldShadingNormalPerceptualRoughness, PrimaryVirtualWorldShadingNormalPerceptualRoughnessDenoising,
       PrimaryAlbedo, PrimaryBaseReflectivity,
-      SharedMaterialData0, SharedMaterialData1, DisplacementTextureCoord, SharedSurfaceIndex);
+      SharedMaterialData0, SharedMaterialData1, SharedTextureCoord, SharedSurfaceIndex, SharedSubsurfaceData);
   }
   else
   {
@@ -301,7 +301,7 @@ void geometryResolverOutputSurface(
       SecondaryWorldShadingNormal, SecondaryPerceptualRoughness,
       SecondaryVirtualWorldShadingNormalPerceptualRoughness, SecondaryVirtualWorldShadingNormalPerceptualRoughnessDenoising,
       SecondaryAlbedo, SecondaryBaseReflectivity,
-      SharedMaterialData0, SharedMaterialData1, DisplacementTextureCoord, SharedSurfaceIndex);
+      SharedMaterialData0, SharedMaterialData1, SharedTextureCoord, SharedSurfaceIndex, SharedSubsurfaceData);
   }
 
   if (cb.enableStochasticAlphaBlend && primarySurface)
@@ -866,7 +866,7 @@ void geometryResolverVertexOutputDebugView(
     bool isThinOpaque = false;
     if (materialType == surfaceMaterialTypeOpaque)
     {
-      isThinOpaque = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction).subsurfaceMaterialIndex != BINDING_INDEX_INVALID;
+      isThinOpaque = isSubsurfaceMaterial(opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction));
     }
     // Green = thin opaque, Red = not thin opaque
     storeInDebugView(pixelCoordinate, isThinOpaque ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0));

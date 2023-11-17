@@ -121,10 +121,22 @@ struct RayPortalSurfaceMaterial
 
 struct SubsurfaceMaterial
 {
+  uint16_t subsurfaceTransmittanceTextureIndex;
+  uint16_t subsurfaceThicknessTextureIndex;
+  uint16_t subsurfaceSingleScatteringAlbedoTextureIndex;
+
   f16vec3 volumetricAttenuationCoefficient;
   float16_t measurementDistance;
   f16vec3 singleScatteringAlbedo;
   float16_t volumetricAnisotropy;
+};
+
+struct SubsurfaceMaterialInteraction
+{
+  uint16_t packedTransmittanceColor; // Pack with R5G6B5
+  float16_t measurementDistance;
+  uint16_t packedSingleScatteringAlbedo; // Pack with R5G6B5
+  uint8_t volumetricAnisotropy;
 };
 
 struct OpaqueSurfaceMaterialInteraction
@@ -139,7 +151,7 @@ struct OpaqueSurfaceMaterialInteraction
   f16vec2 anisotropicRoughness;
   // Note: fp16 may not be sufficient here for high radiance values, potentially change if clamping
   f16vec3 emissiveRadiance;
-  uint16_t subsurfaceMaterialIndex;
+  SubsurfaceMaterialInteraction subsurfaceMaterialInteraction;
   // Note: A value of 0 in the thin film thickness indicates the thin film is disabled.
   float16_t thinFilmThickness;
   uint8_t flags;
@@ -229,11 +241,13 @@ struct PolymorphicSurfaceMaterialInteraction
   float16_t fdata2;
   float16_t fdata3;
   float16_t fdata4;
+  float16_t fdata5;
 
   uint16_t idata0;
   uint16_t idata1;
 
   uint8_t bdata0;
+  uint8_t bdata1;
 
   uint8_t type;
 };
