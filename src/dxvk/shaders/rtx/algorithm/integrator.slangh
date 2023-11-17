@@ -225,8 +225,8 @@ bool evalNEESecondary(
   if (cb.enableIndirectTranslucentShadows) rayMask |= OBJECT_MASK_TRANSLUCENT;
 
   // Load Subsurface Material
-  SubsurfaceMaterial subSurfaceMaterial;
-  const bool isSubSurface = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
+  SubsurfaceMaterial subsurfaceMaterial;
+  const bool isSubSurface = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subsurfaceMaterial);
 
   VisibilityResult visibility = traceVisibilityRay(minimalSurfaceInteraction,
     lightSample.position, rayMask,
