@@ -207,8 +207,8 @@ void getLightCandidateInfo(NEECell cell, int binIndex, RAB_Surface surface, f16v
   float16_t specularRatio = calcBt709Luminance(surface.opaqueSurfaceMaterialInteraction.baseReflectivity)
     / calcBt709Luminance(surface.opaqueSurfaceMaterialInteraction.albedo + surface.opaqueSurfaceMaterialInteraction.baseReflectivity);
 
-  SubsurfaceMaterial subSurfaceMaterial;
-  const bool isSubsurface = subSurfaceMaterialReadHelper(surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
+  SubsurfaceMaterial subsurfaceMaterial;
+  const bool isSubsurface = subSurfaceMaterialReadHelper(surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subsurfaceMaterial);
 
    cell.calculateLightCandidateNormalizedWeight(binIndex,
      surface.minimalSurfaceInteraction.position,

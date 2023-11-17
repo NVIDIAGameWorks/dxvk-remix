@@ -66,8 +66,8 @@ void evalNEEPrimary(
   const uint16_t primarySurfaceIndex = enablePOM ? uint16_t(SharedSurfaceIndex[pixelCoordinate]) : BINDING_INDEX_INVALID;
 
   // Load Subsurface Material
-  SubsurfaceMaterial subSurfaceMaterial;
-  const bool isSubSurface = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
+  SubsurfaceMaterial subsurfaceMaterial;
+  const bool isSubSurface = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subsurfaceMaterial);
 
   const VisibilityResult visibility = traceVisibilityRay(
     minimalSurfaceInteraction,
@@ -344,8 +344,8 @@ void integrateDirectPath(
         lightSample, inverseSelectionPdf, lightIdx);
     }
 
-    SubsurfaceMaterial subSurfaceMaterial;
-    const bool sssEnable = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
+    SubsurfaceMaterial subsurfaceMaterial;
+    const bool sssEnable = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subsurfaceMaterial);
 
     // Evaluate NEE
     if (rtxdiLightSampleValid || risLightSampleValid)
