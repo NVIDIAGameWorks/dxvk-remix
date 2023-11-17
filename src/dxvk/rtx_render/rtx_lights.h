@@ -53,7 +53,14 @@ enum class RtLightType {
   Rect = lightTypeRect,
   Disk = lightTypeDisk,
   Cylinder = lightTypeCylinder,
-  Distant = lightTypeDistant
+  Distant = lightTypeDistant,
+};
+
+enum class RtLightAntiCullingType {
+  Ignore,
+  GameLight,
+  LightReplacement,
+  MeshReplacement
 };
 
 struct RtLightShaping {
@@ -79,9 +86,7 @@ struct RtSphereLight {
   }
 
   RtSphereLight(const Vector3& position, const Vector3& radiance, float radius,
-                const RtLightShaping& shaping);
-
-  RtSphereLight(const D3DLIGHT9& light);
+                const RtLightShaping& shaping, const XXH64_hash_t forceHash = kEmptyHash);
 
   void applyTransform(const Matrix4& lightToWorld);
 
@@ -110,6 +115,7 @@ struct RtSphereLight {
   const RtLightShaping& getShaping() const {
     return m_shaping;
   }
+
 private:
   void updateCachedHash();
 
@@ -156,6 +162,11 @@ struct RtRectLight {
   Vector3 getRadiance() const {
     return m_radiance;
   }
+
+  const RtLightShaping& getShaping() const {
+    return m_shaping;
+  }
+
 private:
   void updateCachedHash();
 
@@ -207,6 +218,11 @@ struct RtDiskLight {
   Vector3 getRadiance() const {
     return m_radiance;
   }
+
+  const RtLightShaping& getShaping() const {
+    return m_shaping;
+  }
+
 private:
   void updateCachedHash();
 
@@ -270,9 +286,7 @@ private:
 };
 
 struct RtDistantLight {
-  RtDistantLight(const Vector3& direction, float halfAngle, const Vector3& radiance);
-
-  RtDistantLight(const D3DLIGHT9& light);
+  RtDistantLight(const Vector3& direction, float halfAngle, const Vector3& radiance, const XXH64_hash_t forceHash = kEmptyHash);
 
   void applyTransform(const Matrix4& lightToWorld);
 
@@ -314,12 +328,11 @@ private:
 };
 
 struct RtLight {
-  // Note: "Safe" version of RtLight(D3DLIGHT9&) to handle potentially invalid light data.
-  static std::optional<RtLight> TryCreate(const D3DLIGHT9& light);
-
   RtLight();
 
   RtLight(const RtSphereLight& light);
+
+  RtLight(const RtSphereLight& light, const RtSphereLight& originalSphereLight);
 
   RtLight(const RtRectLight& light);
 
@@ -328,8 +341,6 @@ struct RtLight {
   RtLight(const RtCylinderLight& light);
 
   RtLight(const RtDistantLight& light);
-
-  RtLight(const D3DLIGHT9& light);
 
   RtLight(const RtLight& light);
 
@@ -407,6 +418,26 @@ struct RtLight {
     return m_isInsideFrustum;
   }
 
+  const RtLightAntiCullingType getLightAntiCullingType() const {
+    return m_anticullingType;
+  }
+
+  const Matrix4& getMeshReplacementTransform() const {
+    return m_originalMeshTransform;
+  }
+
+  const AxisAlignedBoundingBox& getMeshReplacementBoundingBox() const {
+    return m_originalMeshBoundingBox;
+  }
+
+  const Vector3& getSphereLightReplacementOriginalPosition() const {
+    return m_originalPosition;
+  }
+
+  const float getSphereLightReplacementOriginalRadius() const {
+    return m_originalLightRadius;
+  }
+
   void setFrameLastTouched(const uint32_t frame) const {
     m_frameLastTouched = frame;
   }
@@ -429,6 +460,22 @@ struct RtLight {
 
   void markAsOutsideFrustum() const {
     m_isInsideFrustum = false;
+  }
+
+  void setLightAntiCullingType(const RtLightAntiCullingType antiCullingType) const {
+    m_anticullingType = antiCullingType;
+  }
+
+  void cacheMeshReplacementAntiCullingProperties(
+    const Matrix4& meshTransform,
+    const AxisAlignedBoundingBox& boundingBox) const {
+    m_originalMeshTransform = meshTransform;
+    m_originalMeshBoundingBox = boundingBox;
+  }
+
+  void cacheLightReplacementAntiCullingProperties(const RtSphereLight& sphereLight) const {
+    m_originalPosition = sphereLight.getPosition();
+    m_originalLightRadius = sphereLight.getRadius();
   }
 
   uint32_t isStaticCount = 0;
@@ -455,7 +502,23 @@ private:
   mutable uint32_t m_frameLastTouched = kInvalidFrameIndex;
   mutable uint32_t m_bufferIdx = kNewLightIdx; // index into the light list (RTX-DI needs to understand how light indices change over time)
 
+  // Anti-Culling Properties
   mutable bool m_isInsideFrustum = true;
+
+  mutable RtLightAntiCullingType m_anticullingType = RtLightAntiCullingType::Ignore;
+  union {
+    // Mesh->Light(s) Replacement Anti-Culling
+    struct {
+      // Note: Don't revert these 2 variables! Or the bbox may be polluted by sphere light data.
+      mutable Matrix4 m_originalMeshTransform;
+      mutable AxisAlignedBoundingBox m_originalMeshBoundingBox;
+    };
+    // Light->Light(s) Replacement Anti-Culling
+    struct {
+      mutable Vector3 m_originalPosition;
+      mutable float m_originalLightRadius;
+    };
+  };
 };
 
 } // namespace dxvk

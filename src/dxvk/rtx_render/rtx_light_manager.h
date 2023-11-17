@@ -64,6 +64,7 @@ public:
 
   void showImguiSettings();
   void showImguiLightOverview();
+  void showImguiDebugVisualization() const;
 
   const std::unordered_map<XXH64_hash_t, RtLight>& getLightTable() const { return m_lights; }
   const Rc<DxvkBuffer> getLightBuffer() const { return m_lightBuffer; }
@@ -73,15 +74,15 @@ public:
 
   void clear();
 
-  void garbageCollection();
+  void garbageCollection(RtCamera& camera);
 
   void dynamicLightMatching();
 
   void prepareSceneData(Rc<DxvkContext> ctx, CameraManager const& cameraManager);
 
   void addGameLight(D3DLIGHTTYPE type, const RtLight& light);
-  void addLight(const RtLight& light);
-  void addLight(const RtLight& light, const DrawCallState& drawCallState);
+  void addLight(const RtLight& light, const RtLightAntiCullingType antiCullingType);
+  void addLight(const RtLight& light, const DrawCallState& drawCallState, const RtLightAntiCullingType antiCullingType);
 
   void setRaytraceArgs(RaytraceArgs& raytraceArgs, uint32_t rtxdiInitialLightSamples, uint32_t volumeRISInitialLightSamples, uint32_t risLightSamples) const;
   
@@ -105,6 +106,8 @@ private:
   std::vector<RtLight*> m_linearizedLights{};
   std::vector<unsigned char> m_lightsGPUData{};
   std::vector<uint16_t> m_lightMappingData{};
+
+  void garbageCollectionInternal();
 
   // Similarity check.
   //  Returns -1 if not similar

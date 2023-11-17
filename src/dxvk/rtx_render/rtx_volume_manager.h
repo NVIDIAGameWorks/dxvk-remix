@@ -36,6 +36,11 @@ class DxvkDevice;
 
 struct VolumeManager : public CommonDeviceObject {
 public:
+  // We'll be taking the log of transmittance, and so must protect against log(1) == 0, since this will be used in a division.  
+  // Care must also be taken to not end up with a number that will break FP16 assumptions internal to volumetrics system. 
+  // This number was found empirically.
+  static constexpr float MaxTransmittanceValue = 1.f - 1.f / 255.f;
+
   VolumeManager(VolumeManager const&) = delete;
   VolumeManager& operator=(VolumeManager const&) = delete;
 

@@ -75,6 +75,7 @@ namespace dxvk {
         TEXTURE2D(RESTIR_GI_REUSE_BINDING_HIT_GEOMETRY_INPUT)
         TEXTURE2D(RESTIR_GI_REUSE_BINDING_POSITION_ERROR_INPUT)
         TEXTURE2D(RESTIR_GI_REUSE_BINDING_SHARED_FLAGS_INPUT)
+        TEXTURE2D(RESTIR_GI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT)
         RW_TEXTURE2D(RESTIR_GI_REUSE_BINDING_LAST_GBUFFER)
       END_PARAMETER()
     };
@@ -107,6 +108,7 @@ namespace dxvk {
         TEXTURE2D(RESTIR_GI_REUSE_BINDING_HIT_GEOMETRY_INPUT)
         TEXTURE2D(RESTIR_GI_REUSE_BINDING_POSITION_ERROR_INPUT)
         TEXTURE2D(RESTIR_GI_REUSE_BINDING_SHARED_FLAGS_INPUT)
+        TEXTURE2D(RESTIR_GI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT)
         RW_TEXTURE2D(RESTIR_GI_REUSE_BINDING_LAST_GBUFFER)
       END_PARAMETER()
     };
@@ -124,6 +126,8 @@ namespace dxvk {
         TEXTURE2D(RESTIR_GI_FINAL_SHADING_BINDING_SHARED_FLAGS_INPUT)
         TEXTURE2D(RESTIR_GI_FINAL_SHADING_BINDING_SHARED_MATERIAL_DATA0_INPUT)
         TEXTURE2D(RESTIR_GI_FINAL_SHADING_BINDING_SHARED_MATERIAL_DATA1_INPUT)
+        RW_TEXTURE2D(RESTIR_GI_FINAL_SHADING_BINDING_DISPLACEMENT_TEXTURE_COORD_INPUT)
+        RW_TEXTURE2D(RESTIR_GI_FINAL_SHADING_BINDING_SHARED_SURFACE_INDEX_INPUT)
 
         TEXTURE2D(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT)
         TEXTURE2D(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_WORLD_INTERPOLATED_NORMAL_INPUT)
@@ -216,6 +220,7 @@ namespace dxvk {
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_RADIANCE_INPUT, rtOutput.m_restirGIRadiance.view(Resources::AccessType::Read), nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_HIT_GEOMETRY_INPUT, rtOutput.m_restirGIHitGeometry.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_POSITION_ERROR_INPUT, rtOutput.m_primaryPositionError.view, nullptr);
+      ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);
 
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, ReSTIRGITemporalReuseShader::getShader());
@@ -240,6 +245,7 @@ namespace dxvk {
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_RADIANCE_INPUT, rtOutput.m_restirGIRadiance.view(Resources::AccessType::Read), nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_HIT_GEOMETRY_INPUT, rtOutput.m_restirGIHitGeometry.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_POSITION_ERROR_INPUT, rtOutput.m_primaryPositionError.view, nullptr);
+      ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);
 
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, ReSTIRGISpatialReuseShader::getShader());
@@ -254,6 +260,8 @@ namespace dxvk {
       ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_SHARED_MATERIAL_DATA0_INPUT, rtOutput.m_sharedMaterialData0.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_SHARED_MATERIAL_DATA1_INPUT, rtOutput.m_sharedMaterialData1.view, nullptr);
+      ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_DISPLACEMENT_TEXTURE_COORD_INPUT, rtOutput.m_displacementTextureCoord.view, nullptr);
+      ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view, nullptr);
 
       ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT, rtOutput.m_primaryWorldShadingNormal.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_WORLD_INTERPOLATED_NORMAL_INPUT, rtOutput.m_primaryWorldInterpolatedNormal.view, nullptr);

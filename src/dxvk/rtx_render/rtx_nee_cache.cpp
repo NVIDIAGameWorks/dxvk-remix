@@ -34,7 +34,6 @@
 
 #include <rtx_shaders/demodulate.h>
 #include <rtx_shaders/update_nee_cache.h>
-#include <rtx_shaders/update_nee_task.h>
 
 namespace dxvk {
 
@@ -59,30 +58,13 @@ namespace dxvk {
         RW_STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_NEE_CACHE)
         RW_STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_TASK)
         RW_STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_SAMPLE)
-        RW_TEXTURE2D(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_THREAD_TASK)
+        TEXTURE2D(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_THREAD_TASK)
         STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_PRIMITIVE_ID_PREFIX_SUM)
+        STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_LAST_PRIMITIVE_ID_PREFIX_SUM)
       END_PARAMETER()
     };
 
     PREWARM_SHADER_PIPELINE(UpdateNEECacheShader);
-
-
-    class UpdateNEETaskShader : public ManagedShader {
-      SHADER_SOURCE(UpdateNEETaskShader, VK_SHADER_STAGE_COMPUTE_BIT, update_nee_task)
-
-      BINDLESS_ENABLED()
-
-      BEGIN_PARAMETER()
-        COMMON_RAYTRACING_BINDINGS
-        RW_STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_NEE_CACHE)
-        RW_STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_TASK)
-        RW_STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_SAMPLE)
-        RW_TEXTURE2D(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_THREAD_TASK)
-        STRUCTURED_BUFFER(UPDATE_NEE_CACHE_BINDING_PRIMITIVE_ID_PREFIX_SUM)
-      END_PARAMETER()
-    };
-
-    PREWARM_SHADER_PIPELINE(UpdateNEETaskShader);
   }
 
   NeeCachePass::NeeCachePass(dxvk::DxvkDevice* device)
@@ -100,14 +82,16 @@ namespace dxvk {
     enableModeAfterFirstBounceCombo.getKey(&enableModeAfterFirstBounceObject());
     ImGui::Checkbox("Enable Analytical Light", &enableAnalyticalLightObject());
     ImGui::DragFloat("Specular Factor", &specularFactorObject(), 0.01f, 0.f, 20.f, "%.3f");
+    ImGui::DragFloat("Learning Rate", &learningRateObject(), 0.01f, 0.f, 1.f, "%.3f");
     ImGui::DragFloat("Uniform Sampling Probability", &uniformSamplingProbabilityObject(), 0.01f, 0.f, 1.f, "%.3f");
     ImGui::DragFloat("Culling Threshold", &cullingThresholdObject(), 0.001f, 0.f, 1.f, "%.3f");
     ImGui::DragFloat("Emissive Texture Sample Footprint Scale", &emissiveTextureSampleFootprintScaleObject(), 0.001f, 0.f, 20.f, "%.3f");
     ImGui::DragFloat("Age Culling Speed", &ageCullingSpeedObject(), 0.001f, 0.0f, 0.99f, "%.3f");
-    ImGui::DragFloat("Cache Range", &rangeObject(), 1.f, 0.1f, 10000000.0f, "%.3f");
+    ImGui::DragFloat("Cell Resolution", &resolutionObject(), 0.01f, 0.01f, 100.0f, "%.3f");
+    ImGui::DragFloat("Min Range", &minRangeObject(), 1.f, 0.1f, 10000.0f, "%.3f");
   }
 
-  void NeeCachePass::setRaytraceArgs(RaytraceArgs& constants) const {    
+  void NeeCachePass::setRaytraceArgs(RaytraceArgs& constants, bool resetHistory) const {    
     constants.neeCacheArgs.enable = enable();
     constants.neeCacheArgs.enableImportanceSampling = enableImportanceSampling();
     constants.neeCacheArgs.enableMIS = enableMIS();
@@ -116,10 +100,16 @@ namespace dxvk {
     constants.neeCacheArgs.specularFactor = specularFactor();
     constants.neeCacheArgs.uniformSamplingProbability = uniformSamplingProbability();
     constants.neeCacheArgs.enableModeAfterFirstBounce = enableModeAfterFirstBounce();
-    constants.neeCacheArgs.range = range() * RtxOptions::Get()->sceneScale();
     constants.neeCacheArgs.emissiveTextureSampleFootprintScale = emissiveTextureSampleFootprintScale();
     constants.neeCacheArgs.ageCullingSpeed = ageCullingSpeed();
     constants.neeCacheArgs.cullingThreshold = cullingThreshold();
+    constants.neeCacheArgs.learningRate = learningRate();
+    constants.neeCacheArgs.resolution = resolution();
+    constants.neeCacheArgs.minRange = minRange() * RtxOptions::Get()->sceneScale();
+
+    static uvec2 oldResolution {0, 0};
+    constants.neeCacheArgs.clearCache = resetHistory || oldResolution.x != constants.camera.resolution.x || oldResolution.y != constants.camera.resolution.y;
+    oldResolution = constants.camera.resolution;
   }
 
   void NeeCachePass::dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
@@ -129,24 +119,12 @@ namespace dxvk {
 
     const auto& numRaysExtent = rtOutput.m_compositeOutputExtent;
     VkExtent3D workgroups = util::computeBlockCount(numRaysExtent, VkExtent3D{ 16, 8, 1 });
-    Rc<DxvkBuffer> primitiveIDPrefixSumBuffer = ctx->getSceneManager().getPrimitiveIDPrefixSumBuffer();
+    Rc<DxvkBuffer> primitiveIDPrefixSumBuffer = ctx->getSceneManager().getCurrentFramePrimitiveIDPrefixSumBuffer();
+    Rc<DxvkBuffer> lastPrimitiveIDPrefixSumBuffer = ctx->getSceneManager().getLastFramePrimitiveIDPrefixSumBuffer();
 
     ScopedGpuProfileZone(ctx, "NEE Cache");
 
     // Bind resources
-    {
-      ScopedGpuProfileZone(ctx, "UpdateNEETaskShader");
-      ctx->bindCommonRayTracingResources(rtOutput);
-      ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_NEE_CACHE, DxvkBufferSlice(rtOutput.m_neeCache, 0, rtOutput.m_neeCache->info().size));
-      ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_TASK, DxvkBufferSlice(rtOutput.m_neeCacheTask, 0, rtOutput.m_neeCacheTask->info().size));
-      ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_SAMPLE, DxvkBufferSlice(rtOutput.m_neeCacheSample, 0, rtOutput.m_neeCacheSample->info().size));
-      ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_PRIMITIVE_ID_PREFIX_SUM, DxvkBufferSlice(primitiveIDPrefixSumBuffer, 0, primitiveIDPrefixSumBuffer->info().size));
-      ctx->bindResourceView(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_THREAD_TASK, rtOutput.m_neeCacheThreadTask.view, nullptr);
-
-      ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, UpdateNEETaskShader::getShader());
-      ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
-    }
-
     {
       ScopedGpuProfileZone(ctx, "UpdateNEECacheShader");
       ctx->bindCommonRayTracingResources(rtOutput);
@@ -154,6 +132,7 @@ namespace dxvk {
       ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_TASK, DxvkBufferSlice(rtOutput.m_neeCacheTask, 0, rtOutput.m_neeCacheTask->info().size));
       ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_SAMPLE, DxvkBufferSlice(rtOutput.m_neeCacheSample, 0, rtOutput.m_neeCacheSample->info().size));
       ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_PRIMITIVE_ID_PREFIX_SUM, DxvkBufferSlice(primitiveIDPrefixSumBuffer, 0, primitiveIDPrefixSumBuffer->info().size));
+      ctx->bindResourceBuffer(UPDATE_NEE_CACHE_BINDING_LAST_PRIMITIVE_ID_PREFIX_SUM, DxvkBufferSlice(lastPrimitiveIDPrefixSumBuffer, 0, lastPrimitiveIDPrefixSumBuffer->info().size));
       ctx->bindResourceView(UPDATE_NEE_CACHE_BINDING_NEE_CACHE_THREAD_TASK, rtOutput.m_neeCacheThreadTask.view, nullptr);
 
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, UpdateNEECacheShader::getShader());

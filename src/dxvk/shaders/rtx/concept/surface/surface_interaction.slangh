@@ -33,6 +33,7 @@
 static const uint kFootprintFromRayOrigin = 0u;
 static const uint kFootprintFromRayDirection = 1u;
 static const uint kFootprintFromTextureCoordDiff = 2u;
+static const uint kFootprintFromRayOriginClamped = 3u;
 
 // Surface Interaction Helper Functions
 
@@ -501,8 +502,19 @@ SurfaceInteraction surfaceInteractionCreate(
 
       computeAnisotropicEllipseAxes(
         hitPosition, triangleNormal, worldTwoTriangleArea, direction,
-        rayInteraction.coneRadius, worldPositions, texcoords, surfaceInteraction.textureCoordinates,
+        coneRadius, worldPositions, texcoords, surfaceInteraction.textureCoordinates,
         surfaceInteraction.textureGradientX, surfaceInteraction.textureGradientY);
+
+      if (footprintMode == kFootprintFromRayOriginClamped)
+      {
+        vec2 dUV1 = texcoords[1] - texcoords[0];
+        vec2 dUV2 = texcoords[2] - texcoords[0];
+        float dUVCross = abs(dUV1.x * dUV2.y - dUV2.x * dUV1.y);
+        float radius = dUVCross / (length(dUV1) + length(dUV2) + length(dUV2 - dUV1));
+        float maxFootprint = radius * 1.5;
+        surfaceInteraction.textureGradientX *= min(1.0, maxFootprint / length(surfaceInteraction.textureGradientX));
+        surfaceInteraction.textureGradientY *= min(1.0, maxFootprint / length(surfaceInteraction.textureGradientY));
+      }
     }
     else
     {

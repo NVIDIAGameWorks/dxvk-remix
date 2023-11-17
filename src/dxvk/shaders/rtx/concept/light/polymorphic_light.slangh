@@ -180,7 +180,8 @@ LightSample memoryPolymorphicLightSampleArea(
 
 float decodedPolymorphicLightCalcWeight(
   DecodedPolymorphicLight decodedPolymorphicLight,
-  MinimalSurfaceInteraction viewSurfaceInteraction)
+  MinimalSurfaceInteraction viewSurfaceInteraction,
+  const bool isSubSurface)
 {
   switch (uint(decodedPolymorphicLight.polymorphicType))
   {
@@ -188,28 +189,28 @@ float decodedPolymorphicLightCalcWeight(
     case uint(lightTypeSphere):
       const SphereLight sphereLight = sphereLightCreate(decodedPolymorphicLight);
 
-      return sphereLightCalcWeight(sphereLight, viewSurfaceInteraction);
+      return sphereLightCalcWeight(sphereLight, viewSurfaceInteraction, isSubSurface);
 #endif
 
 #if ENABLE_RECT_LIGHTS
     case uint(lightTypeRect):
       const RectLight rectLight = rectLightCreate(decodedPolymorphicLight);
 
-      return rectLightCalcWeight(rectLight, viewSurfaceInteraction);
+      return rectLightCalcWeight(rectLight, viewSurfaceInteraction, isSubSurface);
 #endif
 
 #if ENABLE_DISK_LIGHTS
     case uint(lightTypeDisk):
       const DiskLight diskLight = diskLightCreate(decodedPolymorphicLight);
 
-      return diskLightCalcWeight(diskLight, viewSurfaceInteraction);
+      return diskLightCalcWeight(diskLight, viewSurfaceInteraction, isSubSurface);
 #endif
 
 #if ENABLE_CYLINDER_LIGHTS
     case uint(lightTypeCylinder):
       const CylinderLight cylinderLight = cylinderLightCreate(decodedPolymorphicLight);
 
-      return cylinderLightCalcWeight(cylinderLight, viewSurfaceInteraction);
+      return cylinderLightCalcWeight(cylinderLight, viewSurfaceInteraction, isSubSurface);
 #endif
 
 #if ENABLE_DISTANT_LIGHTS
@@ -268,4 +269,49 @@ float decodedPolymorphicLightCalcWeight(
     default:
       return 0;
   }
+}
+
+vec3 decodedPolymorphicLightGetPosition(DecodedPolymorphicLight decodedPolymorphicLight)
+{
+  switch (uint(decodedPolymorphicLight.polymorphicType))
+  {
+#if ENABLE_SPHERE_LIGHTS
+    case uint(lightTypeSphere):
+      const SphereLight sphereLight = sphereLightCreate(decodedPolymorphicLight);
+      return sphereLight.position;
+#endif
+
+#if ENABLE_RECT_LIGHTS
+    case uint(lightTypeRect):
+      const RectLight rectLight = rectLightCreate(decodedPolymorphicLight);
+      return rectLight.position;
+#endif
+
+#if ENABLE_DISK_LIGHTS
+    case uint(lightTypeDisk):
+      const DiskLight diskLight = diskLightCreate(decodedPolymorphicLight);
+      diskLight.position;
+#endif
+
+#if ENABLE_CYLINDER_LIGHTS
+    case uint(lightTypeCylinder):
+      const CylinderLight cylinderLight = cylinderLightCreate(decodedPolymorphicLight);
+      return cylinderLight.position;
+#endif
+
+#if ENABLE_DISTANT_LIGHTS
+    case uint(lightTypeDistant):
+      const DistantLight distantLight = distantLightCreate(decodedPolymorphicLight);
+      return vec3(distantLight.direction) * -100000.0;
+#endif
+
+    default:
+      return 0.0;
+  }
+}
+
+vec3 memoryPolymorphicLightGetPosition(MemoryPolymorphicLight memoryPolymorphicLight)
+{
+  const DecodedPolymorphicLight decodedPolymorphicLight = decodePolymorphicLight(memoryPolymorphicLight);  
+  return decodedPolymorphicLightGetPosition(decodedPolymorphicLight);
 }

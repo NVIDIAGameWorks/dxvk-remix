@@ -41,6 +41,9 @@ namespace dxvk::hud {
             HudRenderer&      renderer,
             HudPos            position) = 0;
 
+    // NV-DXVK start: DLFG integration
+    virtual void setPresentCount(uint32_t presentCount) { }
+    // NV-DXVK end
   };
 
 
@@ -61,7 +64,9 @@ namespace dxvk::hud {
      * \brief Updates the HUD
      * Updates all enabled HUD items.
      */
-    void update();
+    // NV-DXVK start: DLFG integration
+    void update(uint32_t presentCount);
+    // NV-DXVK end
 
     /**
      * \brief Renders the HUD
@@ -207,6 +212,10 @@ namespace dxvk::hud {
 
     ~HudFpsItem();
 
+    // NV-DXVK begin: DLFG integration
+    virtual void setPresentCount(uint32_t presentCount) override;
+    // NV-DXVK end
+
     void update(dxvk::high_resolution_clock::time_point time);
 
     HudPos render(
@@ -222,6 +231,9 @@ namespace dxvk::hud {
     std::string m_frameRate;
     std::string m_frameTime;
 
+    // NV-DXVK begin: DLFG integration
+    uint32_t m_presentCount = 0;
+    // NV-DXVK end
   };
 
 

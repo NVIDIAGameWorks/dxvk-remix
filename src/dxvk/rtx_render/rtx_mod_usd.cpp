@@ -38,6 +38,7 @@
 #include <pxr/usd/usd/tokens.h>
 #include <pxr/usd/usd/stage.h>
 #include <pxr/usd/usd/prim.h>
+#include <pxr/usd/usd/primCompositionQuery.h>
 #include <pxr/usd/usd/attribute.h>
 #include <pxr/usd/usdGeom/mesh.h>
 #include <pxr/usd/usdGeom/subset.h>
@@ -47,7 +48,7 @@
 #include <pxr/usd/usdLux/diskLight.h>
 #include <pxr/usd/usdLux/cylinderLight.h>
 #include <pxr/usd/usdLux/distantLight.h>
-#include "pxr/usd/usdLux/light.h"
+#include "pxr/usd/usdLux/lightapi.h"
 #include <pxr/usd/usdLux/blackbody.h>
 #include <pxr/usd/usdSkel/bindingAPI.h>
 #include <pxr/usd/usdShade/materialBindingAPI.h>
@@ -55,7 +56,14 @@
 #include "../../lssusd/usd_include_end.h"
 #include "../util/util_watchdog.h"
 
+#include "../../lssusd/game_exporter_common.h"
+#include "../../lssusd/game_exporter_paths.h"
 #include "../../lssusd/usd_mesh_importer.h"
+#include "../../lssusd/usd_common.h"
+
+#include "rtx_lights_data.h"
+#include <filesystem>
+#include <algorithm>
 
 namespace fs = std::filesystem;
 
@@ -90,7 +98,7 @@ private:
   void processUSD(const Rc<DxvkContext>& context);
 
   void TEMP_parseSecretReplacementVariants(const fast_unordered_cache<uint32_t>& variants);
-  Rc<ManagedTexture> getTexture(const Args& args, const pxr::UsdPrim& shader, const pxr::TfToken& textureToken, bool forcePreload = false);
+  Rc<ManagedTexture> getTexture(const Args& args, const pxr::UsdPrim& shader, const pxr::TfToken& textureToken, bool forcePreload = false) const;
   MaterialData* processMaterial(Args& args, const pxr::UsdPrim& matPrim);
   MaterialData* processMaterialUser(Args& args, const pxr::UsdPrim& prim);
   bool processMesh(const pxr::UsdPrim& prim, Args& args);
@@ -98,6 +106,8 @@ private:
 
   void processLight(Args& args, const pxr::UsdPrim& lightPrim);
   void processReplacement(Args& args);
+
+  Categorizer processCategoryFlags(const pxr::UsdPrim& prim);
 
   // Returns next hash value compatible with geometry and drawcall hashing
   XXH64_hash_t getNextGeomHash() {
@@ -146,7 +156,6 @@ XXH64_hash_t getStrongestOpinionatedPathHash(const pxr::UsdPrim& prim) {
   // fall back to using the prim's path in replacements.usda.  Potentially worse performance, since it may lead to duplicates.
   std::string name = prim.GetPath().GetString();
   return XXH3_64bits(name.c_str(), name.size());
-
 }
 
 XXH64_hash_t getNamedHash(const std::string& name, const char* prefix, const size_t len) {
@@ -198,64 +207,6 @@ XXH64_hash_t getMaterialHash(const pxr::UsdPrim& prim, const pxr::UsdPrim& shade
 
   return usdOriginHash;
 }
-
-bool getVector3(const pxr::UsdAttribute& attr, Vector3& vector) {
-    if (attr.HasValue()) {
-      pxr::GfVec3f vec;
-      attr.Get(&vec);
-      vector = Vector3(vec.data());
-      return true;
-    }
-    return false;
-}
-
-bool getVector3(const pxr::UsdPrim& prim, const pxr::TfToken& token, Vector3& vector) {
-  return getVector3(prim.GetAttribute(token), vector);
-}
-
-// USD transitioned from `intensity` to `inputs:intensity` for all its light attributes, we need to support content
-// authored before and after that change.
-const pxr::UsdAttribute getLightAttribute(const pxr::UsdPrim& prim, const pxr::TfToken& token, const pxr::TfToken& inputToken) {
-  const pxr::UsdAttribute& attr = prim.GetAttribute(inputToken);
-  if (!attr.HasValue()) {
-    const pxr::UsdAttribute& old_attr = prim.GetAttribute(token);
-    if (old_attr.HasValue()) {
-      ONCE(Logger::warn(str::format("Legacy light attribute detected: ", old_attr.GetPath())));
-    }
-    return old_attr;
-  }
-  return attr;
-}
-
-RtLightShaping getLightShaping(const pxr::UsdPrim& lightPrim, Vector3 zAxis) {
-  static const pxr::TfToken kConeAngleToken("shaping:cone:angle");
-  static const pxr::TfToken kConeSoftnessToken("shaping:cone:softness");
-  static const pxr::TfToken kFocusToken("shaping:focus");
-  static const pxr::TfToken kInputsConeAngleToken("inputs:shaping:cone:angle");
-  static const pxr::TfToken kInputsConeSoftnessToken("inputs:shaping:cone:softness");
-  static const pxr::TfToken kInputsFocusToken("inputs:shaping:focus");
-
-  RtLightShaping shaping;
-
-  shaping.primaryAxis = zAxis;
-
-  float angle = 180.f;
-  getLightAttribute(lightPrim, kConeAngleToken, kInputsConeAngleToken).Get(&angle);
-  shaping.cosConeAngle = cos(angle * kDegreesToRadians);
-  
-  float softness = 0.0f;
-  getLightAttribute(lightPrim, kConeSoftnessToken, kInputsConeSoftnessToken).Get(&softness);
-  shaping.coneSoftness = softness;
-
-  float focus = 0.0f;
-  getLightAttribute(lightPrim, kFocusToken, kInputsFocusToken).Get(&focus);
-  shaping.focusExponent = focus;
-  
-  if (shaping.cosConeAngle != -1.f || shaping.coneSoftness != 0.0f || shaping.focusExponent != 0.0f ) {
-    shaping.enabled = true;
-  }
-  return shaping;
-}
 }  // namespace
 
 // Resolves full path for a texture in a shader from texture USD asset path and source USD path.
@@ -303,7 +254,7 @@ static std::string resolveTexturePath(
   return textureAssetPath;
 }
 
-Rc<ManagedTexture> UsdMod::Impl::getTexture(const Args& args, const pxr::UsdPrim& shader, const pxr::TfToken& textureToken, bool forcePreload) {
+Rc<ManagedTexture> UsdMod::Impl::getTexture(const Args& args, const pxr::UsdPrim& shader, const pxr::TfToken& textureToken, bool forcePreload) const {
   static const pxr::TfToken kSRGBColorSpace("sRGB");
   static pxr::SdfAssetPath path;
   auto attr = shader.GetAttribute(textureToken);
@@ -342,64 +293,9 @@ Rc<ManagedTexture> UsdMod::Impl::getTexture(const Args& args, const pxr::UsdPrim
 MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matPrim) {
   ScopedCpuProfileZone();
 
-  // Textures
   static const pxr::TfToken kShaderToken("Shader");
-  static const pxr::TfToken kAlbedoTextureToken("inputs:diffuse_texture");
-  static const pxr::TfToken kNormalTextureToken("inputs:normalmap_texture");
-  static const pxr::TfToken kTangentTextureToken("inputs:tangent_texture");
-  static const pxr::TfToken kHeightTextureToken("inputs:height_texture");
-  static const pxr::TfToken kRoughnessTextureToken("inputs:reflectionroughness_texture");
-  static const pxr::TfToken kMetallicTextureToken("inputs:metallic_texture");
-  static const pxr::TfToken kEmissiveMaskTextureToken("inputs:emissive_mask_texture");
-  // Attributes
   static const pxr::TfToken kIgnore("inputs:ignore_material");  // Any draw call or replacement using a material with this flag will be skipped by the SceneManager
-  static const pxr::TfToken kAnisotropy("inputs:anisotropy");
-  static const pxr::TfToken kEmissiveIntensity("inputs:emissive_intensity");
-  static const pxr::TfToken kAlbedoConstant("inputs:diffuse_color_constant");
-  static const pxr::TfToken kRoughnessConstant("inputs:reflection_roughness_constant");
-  static const pxr::TfToken kMetallicConstant("inputs:metallic_constant");
-  static const pxr::TfToken kEmissiveColorConstant("inputs:emissive_color_constant");
-  static const pxr::TfToken kOpacityConstant("inputs:opacity_constant");
-
-  static const pxr::TfToken kIORConstant("inputs:ior_constant");
-  static const pxr::TfToken kEnableEmission("inputs:enable_emission");
-  static const pxr::TfToken kEmissiveColor("inputs:emissive_color");
-  static const pxr::TfToken kTransmittanceTexture("inputs:transmittance_texture");
-  static const pxr::TfToken kTransmittanceConstant("inputs:transmittance_color");
-  static const pxr::TfToken kTransmittanceDistanceConstant("inputs:transmittance_measurement_distance");
-  static const pxr::TfToken kIsThinWalled("inputs:thin_walled");
-  static const pxr::TfToken kThinWallThickness("inputs:thin_wall_thickness");
-  static const pxr::TfToken kUseDiffuseLayer("inputs:use_diffuse_layer");
-  static const pxr::TfToken kEnableThinFilm("inputs:enable_thin_film");
-  static const pxr::TfToken kThinFilmThicknessFromAlbedoAlpha("inputs:thin_film_thickness_from_albedo_alpha");
-  static const pxr::TfToken kThinFilmThicknessConstant("inputs:thin_film_thickness_constant");
-  static const pxr::TfToken kDisplaceIn("inputs:displace_in");
-
-  // Alpha State Overrides
-  // Todo: Likely remove these some day in favor of splitting the Opaque material into
-  // a legacy material which inherits alpha state information from the drawcall and an opaque material
-  // which always controls how its alpha state information is manually (which is what this flag allows).
-  static const pxr::TfToken kUseLegacyAlphaState("inputs:use_legacy_alpha_state");
-  static const pxr::TfToken kBlendEnabled("inputs:blend_enabled");
-  static const pxr::TfToken kBlendType("inputs:blend_type");
-  static const pxr::TfToken kInvertedBlend("inputs:inverted_blend");
-  static const pxr::TfToken kAlphaTestType("inputs:alpha_test_type");
-  static const pxr::TfToken kAlphaReferenceValue("inputs:alpha_test_reference_value");
-
-  // Sprite Sheet attributes
-  static const pxr::TfToken kSpriteSheetRowsToken("inputs:sprite_sheet_rows");
-  static const pxr::TfToken kSpriteSheetColsToken("inputs:sprite_sheet_cols");
-  static const pxr::TfToken kSpriteSheetFPSToken("inputs:sprite_sheet_fps");
-  // Portal specific
-  static const pxr::TfToken kRayPortalIndexToken("inputs:portal_index");
-  static const pxr::TfToken kSpriteRotationSpeedToken("inputs:rotation_speed"); // Radians per second
-
-  // TODO (TREX-1260) Remove legacy Translucent->RayPortal path.
-  static const pxr::TfToken kLegacySpriteSheetRowsToken("spriteSheetRows");
-  static const pxr::TfToken kLegacySpriteSheetColsToken("spriteSheetCols");
-  static const pxr::TfToken kLegacySpriteSheetFPSToken("spriteSheetFPS");
   static const pxr::TfToken kLegacyRayPortalIndexToken("rayPortalIndex");
-  static const pxr::TfToken kLegacySpriteRotationSpeedToken("rotationSpeed"); 
 
   pxr::UsdPrim shader = matPrim.GetChild(kShaderToken);
   if (!shader.IsValid() || !shader.IsA<pxr::UsdShadeShader>()) {
@@ -424,33 +320,6 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
   MaterialData* materialData;
   if (m_owner.m_replacements->getObject(materialHash, materialData)) {
     return materialData;
-  }
-
-
-  int spriteSheetRows = RtxOptions::Get()->getSharedMaterialDefaults().SpriteSheetRows;
-  int spriteSheetCols = RtxOptions::Get()->getSharedMaterialDefaults().SpriteSheetCols;
-  int spriteSheetFPS = RtxOptions::Get()->getSharedMaterialDefaults().SpriteSheetFPS;
-  bool enableEmission = RtxOptions::Get()->getSharedMaterialDefaults().EnableEmissive;
-  float emissiveIntensity = RtxOptions::Get()->getSharedMaterialDefaults().EmissiveIntensity;
-
-  shader.GetAttribute(kEnableEmission).Get(&enableEmission);
-  shader.GetAttribute(kEmissiveIntensity).Get(&emissiveIntensity);
-
-  if (shader.HasAttribute(kSpriteSheetFPSToken)) {
-    shader.GetAttribute(kSpriteSheetRowsToken).Get(&spriteSheetRows);
-    shader.GetAttribute(kSpriteSheetColsToken).Get(&spriteSheetCols);
-    shader.GetAttribute(kSpriteSheetFPSToken).Get(&spriteSheetFPS);
-  } else if (shader.HasAttribute(kLegacySpriteSheetFPSToken)) {
-    // TODO (TREX-1260) Remove legacy Translucent->RayPortal path.
-    uint legacySpriteSheetRows = spriteSheetRows;
-    uint legacySpriteSheetCols = spriteSheetCols;
-    uint legacySpriteSheetFPS = spriteSheetFPS;
-    shader.GetAttribute(kLegacySpriteSheetRowsToken).Get(&legacySpriteSheetRows);
-    shader.GetAttribute(kLegacySpriteSheetColsToken).Get(&legacySpriteSheetCols);
-    shader.GetAttribute(kLegacySpriteSheetFPSToken).Get(&legacySpriteSheetFPS);
-    spriteSheetRows = legacySpriteSheetRows;
-    spriteSheetCols = legacySpriteSheetCols;
-    spriteSheetFPS = legacySpriteSheetFPS;
   }
 
   bool shouldIgnore = false;
@@ -478,176 +347,17 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
     }
   }
 
-  if (materialType == RtSurfaceMaterialType::Translucent) {
-    float refractiveIndex = RtxOptions::Get()->getTranslucentMaterialDefaults().RefractiveIndex;
-    Vector3 transmittanceColor = RtxOptions::Get()->getTranslucentMaterialDefaults().TransmittanceColor;
-    float transmittanceMeasureDistance = RtxOptions::Get()->getTranslucentMaterialDefaults().TransmittanceMeasurementDistance;
-    Vector3 emissiveColorConstant = RtxOptions::Get()->getTranslucentMaterialDefaults().EmissiveColorConstant;
-    bool isThinWalled = RtxOptions::Get()->getTranslucentMaterialDefaults().ThinWalled;
-    float thinWallThickness = RtxOptions::Get()->getTranslucentMaterialDefaults().ThinWallThickness;
-    bool useDiffuseLayer = RtxOptions::Get()->getTranslucentMaterialDefaults().UseDiffuseLayer;
+  auto getTextureFunctor = [&](const pxr::UsdPrim& shader, const pxr::TfToken& name) {
+                             return getTexture(args, shader, name);
+                           };
 
-    shader.GetAttribute(kIORConstant).Get(&refractiveIndex);
-
-    getVector3(shader, kTransmittanceConstant, transmittanceColor);
-
-    shader.GetAttribute(kTransmittanceDistanceConstant).Get(&transmittanceMeasureDistance);
-
-    getVector3(shader, kEmissiveColorConstant, emissiveColorConstant);
-
-    shader.GetAttribute(kIsThinWalled).Get(&isThinWalled);
-    shader.GetAttribute(kThinWallThickness).Get(&thinWallThickness);
-    shader.GetAttribute(kUseDiffuseLayer).Get(&useDiffuseLayer);
-
-    const TextureRef normalTexture(getTexture(args, shader, kNormalTextureToken));
-    const TextureRef transmittanceTexture(getTexture(args, shader, kTransmittanceTexture));
-    // Note: Only set if in use to avoid sampling from this texture if emission is disabled.
-    TextureRef emissiveColorTexture {};
-
-    if (enableEmission) {
-      emissiveColorTexture = TextureRef{ getTexture(args, shader, kEmissiveMaskTextureToken) };
-    }
-
-    const TranslucentMaterialData translucentMaterialData{
-      normalTexture, transmittanceTexture, emissiveColorTexture,
-      refractiveIndex,
-      transmittanceColor, transmittanceMeasureDistance,
-      enableEmission, emissiveIntensity, emissiveColorConstant,
-      static_cast<uint8_t>(spriteSheetRows),
-      static_cast<uint8_t>(spriteSheetCols),
-      static_cast<uint8_t>(spriteSheetFPS),
-      isThinWalled, thinWallThickness, useDiffuseLayer
-    };
-
-    return &m_owner.m_replacements->storeObject(materialHash, MaterialData(translucentMaterialData, shouldIgnore));
-  } else if (materialType == RtSurfaceMaterialType::Opaque) {
-    float anisotropy = RtxOptions::Get()->getOpaqueMaterialDefaults().Anisotropy;
-    Vector4 albedoOpacityConstant = RtxOptions::Get()->getOpaqueMaterialDefaults().AlbedoOpacityConstant;
-    float roughnessConstant = RtxOptions::Get()->getOpaqueMaterialDefaults().RoughnessConstant;
-    float metallicConstant = RtxOptions::Get()->getOpaqueMaterialDefaults().MetallicConstant;
-    Vector3 emissiveColorConstant = RtxOptions::Get()->getOpaqueMaterialDefaults().EmissiveColorConstant;
-    float thinFilmThicknessConstant = RtxOptions::Get()->getOpaqueMaterialDefaults().ThinFilmThicknessConstant;
-    bool alphaIsThinFilmThickness = RtxOptions::Get()->getOpaqueMaterialDefaults().AlphaIsThinFilmThickness;
-    bool useLegacyAlphaState = RtxOptions::Get()->getOpaqueMaterialDefaults().UseLegacyAlphaState;
-    bool blendEnabled = RtxOptions::Get()->getOpaqueMaterialDefaults().BlendEnabled;
-    BlendType blendType = RtxOptions::Get()->getOpaqueMaterialDefaults().DefaultBlendType;
-    bool invertedBlend = RtxOptions::Get()->getOpaqueMaterialDefaults().InvertedBlend;
-    AlphaTestType alphaTestType = RtxOptions::Get()->getOpaqueMaterialDefaults().DefaultAlphaTestType;
-    uint8_t alphaReferenceValue = RtxOptions::Get()->getOpaqueMaterialDefaults().AlphaReferenceValue;
-    float displaceIn = RtxOptions::Get()->getOpaqueMaterialDefaults().DisplaceIn;
-
-    shader.GetAttribute(kOpacityConstant).Get(&albedoOpacityConstant.a);
-
-    shader.GetAttribute(kAnisotropy).Get(&anisotropy);
-
-    getVector3(shader, kAlbedoConstant, albedoOpacityConstant.xyz());
-
-    shader.GetAttribute(kRoughnessConstant).Get(&roughnessConstant);
-    shader.GetAttribute(kMetallicConstant).Get(&metallicConstant);
-    shader.GetAttribute(kDisplaceIn).Get(&displaceIn);
-
-    getVector3(shader, kEmissiveColorConstant, emissiveColorConstant);
-
-    const TextureRef albedoTexture(getTexture(args, shader, kAlbedoTextureToken));
-    const TextureRef normalTexture(getTexture(args, shader, kNormalTextureToken));
-    const TextureRef tangentTexture(getTexture(args, shader, kTangentTextureToken));
-    const TextureRef heightTexture(getTexture(args, shader, kHeightTextureToken));
-    const TextureRef roughnessTexture(getTexture(args, shader, kRoughnessTextureToken));
-    const TextureRef metallicTexture(getTexture(args, shader, kMetallicTextureToken));
-    // Note: Only set if in use to avoid sampling from this texture if emission is disabled.
-    TextureRef emissiveColorTexture{};
-
-    if (enableEmission) {
-      emissiveColorTexture = TextureRef{ getTexture(args, shader, kEmissiveMaskTextureToken) };
-    }
-
-    bool thinFilmEnable = false;
-    shader.GetAttribute(kEnableThinFilm).Get(&thinFilmEnable);
-
-    if (thinFilmEnable) {
-      shader.GetAttribute(kThinFilmThicknessFromAlbedoAlpha).Get(&alphaIsThinFilmThickness);
-      if (!alphaIsThinFilmThickness) {
-        shader.GetAttribute(kThinFilmThicknessConstant).Get(&thinFilmThicknessConstant);
-      }
-    }
-
-    shader.GetAttribute(kUseLegacyAlphaState).Get(&useLegacyAlphaState);
-
-    if (!useLegacyAlphaState) {
-      shader.GetAttribute(kBlendEnabled).Get(&blendEnabled);
-
-      if (blendEnabled) {
-        int rawBlendType;
-        shader.GetAttribute(kBlendType).Get(&rawBlendType);
-
-        blendType = static_cast<BlendType>(rawBlendType);
-
-        shader.GetAttribute(kInvertedBlend).Get(&invertedBlend);
-      }
-
-      int rawAlphaTestType;
-      shader.GetAttribute(kAlphaTestType).Get(&rawAlphaTestType);
-
-      alphaTestType = static_cast<AlphaTestType>(rawAlphaTestType);
-
-      float normalizedAlphaReferenceValue;
-      shader.GetAttribute(kAlphaReferenceValue).Get(&normalizedAlphaReferenceValue);
-
-      // Note: Convert 0-1 floating point alpha reference value in MDL to 0-255 uint8 used for rendering.
-      alphaReferenceValue = static_cast<uint8_t>(std::numeric_limits<uint8_t>::max() * normalizedAlphaReferenceValue);
-    }
-
-    const OpaqueMaterialData opaqueMaterialData{
-      albedoTexture, normalTexture,
-      tangentTexture, heightTexture, roughnessTexture,
-      metallicTexture, emissiveColorTexture,
-      anisotropy, emissiveIntensity,
-      albedoOpacityConstant,
-      roughnessConstant, metallicConstant,
-      emissiveColorConstant, enableEmission,
-      static_cast<uint8_t>(spriteSheetRows),
-      static_cast<uint8_t>(spriteSheetCols),
-      static_cast<uint8_t>(spriteSheetFPS),
-      thinFilmEnable,
-      alphaIsThinFilmThickness,
-      thinFilmThicknessConstant,
-      useLegacyAlphaState, blendEnabled, blendType, invertedBlend,
-      alphaTestType, alphaReferenceValue, displaceIn
-    };
-
-    return &m_owner.m_replacements->storeObject(materialHash, MaterialData(opaqueMaterialData, shouldIgnore));
-  } else if (materialType == RtSurfaceMaterialType::RayPortal) {
-    TextureRef albedoTexture;
-    
-    int rayPortalIndex = RtxOptions::Get()->getRayPortalMaterialDefaults().RayPortalIndex;
-    float rotationSpeed = RtxOptions::Get()->getRayPortalMaterialDefaults().RotationSpeed;
-
-    // we set the forcePreload flag in the calls to getTexture below to make sure the portal textures
-    // are loaded at init time, otherwise we get a hitch the first time a portal is placed
-    //
-    // in the future, we should try to get this info directly from the toolkit, to allow artists to tag textures
-    // for preloading instead of relying on material hash lists
-    if (shader.HasAttribute(kRayPortalIndexToken)){
-      shader.GetAttribute(kRayPortalIndexToken).Get(&rayPortalIndex);
-      shader.GetAttribute(kSpriteRotationSpeedToken).Get(&rotationSpeed);
-      albedoTexture = TextureRef(getTexture(args, shader, kEmissiveMaskTextureToken, true));
-    } else if (shader.HasAttribute(kLegacyRayPortalIndexToken)) {
-      // TODO (TREX-1260) Remove legacy Translucent->RayPortal path.
-      uint legacyIndex = rayPortalIndex;
-      shader.GetAttribute(kLegacyRayPortalIndexToken).Get(&legacyIndex);
-      rayPortalIndex = legacyIndex;
-      shader.GetAttribute(kLegacySpriteRotationSpeedToken).Get(&rotationSpeed);
-      albedoTexture = TextureRef(getTexture(args, shader, kAlbedoTextureToken, true));
-    }
-
-    const RayPortalMaterialData rayPortalMaterialData{
-      albedoTexture, albedoTexture,
-      static_cast<uint8_t>(rayPortalIndex), static_cast<uint8_t>(spriteSheetRows),
-      static_cast<uint8_t>(spriteSheetCols), static_cast<uint8_t>(spriteSheetFPS),
-      rotationSpeed, enableEmission, emissiveIntensity
-    };
-
-    return &m_owner.m_replacements->storeObject(materialHash, MaterialData(rayPortalMaterialData));
+  switch (materialType) {
+  case RtSurfaceMaterialType::Opaque:
+    return &m_owner.m_replacements->storeObject(materialHash, MaterialData(OpaqueMaterialData::deserialize(getTextureFunctor, shader), shouldIgnore));
+  case RtSurfaceMaterialType::Translucent:
+    return &m_owner.m_replacements->storeObject(materialHash, MaterialData(TranslucentMaterialData::deserialize(getTextureFunctor, shader), shouldIgnore));
+  case RtSurfaceMaterialType::RayPortal:
+    return &m_owner.m_replacements->storeObject(materialHash, MaterialData(RayPortalMaterialData::deserialize(getTextureFunctor, shader)));
   }
 
   return nullptr;
@@ -667,7 +377,8 @@ void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
 
   const XXH64_hash_t usdOriginHash = getStrongestOpinionatedPathHash(prim);
 
-  RasterGeometry* pTemp;
+
+  MeshReplacement* pTemp;
   if (!m_owner.m_replacements->getObject(usdOriginHash, pTemp)) {
     // First time seeing this mesh, then process it.
     if (!processMesh(prim, args)) {
@@ -697,18 +408,20 @@ void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
     }
   }
 
+  Categorizer categoryFlags = processCategoryFlags(prim);
+
   if (geomSubsets.empty()) {
-    RasterGeometry* pGeometryData;
+    MeshReplacement* pGeometryData;
     if (m_owner.m_replacements->getObject(usdOriginHash, pGeometryData)) {
-      AssetReplacement newReplacementMesh(pGeometryData, materialData, replacementToObject);
+      AssetReplacement newReplacementMesh(pGeometryData, materialData, categoryFlags, replacementToObject);
       args.meshes.push_back(newReplacementMesh);
     }
   } else {
     for (auto subset : geomSubsets) {
       const XXH64_hash_t usdChildOriginHash = getStrongestOpinionatedPathHash(subset.GetPrim());
-      RasterGeometry* childGeometryData;
+      MeshReplacement* childGeometryData;
       if (m_owner.m_replacements->getObject(usdChildOriginHash, childGeometryData)) {
-        AssetReplacement newReplacementMesh(childGeometryData, materialData, replacementToObject);
+        AssetReplacement newReplacementMesh(childGeometryData, materialData, categoryFlags, replacementToObject);
         MaterialData* mat = processMaterialUser(args, subset.GetPrim());
         if (mat) {
           newReplacementMesh.materialData = mat;
@@ -719,141 +432,121 @@ void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
   }
 }
 
+bool hasExplicitTransform(const pxr::UsdPrim& prim) {
+  return prim.HasAttribute(pxr::TfToken("xformOp:rotateZYX")) || prim.HasAttribute(pxr::TfToken("xformOp:scale")) || prim.HasAttribute(pxr::TfToken("xformOp:translate")) || prim.HasAttribute(pxr::TfToken("xformOpOrder"));
+}
+
 void UsdMod::Impl::processLight(Args& args, const pxr::UsdPrim& lightPrim) {
-  static const pxr::TfToken kRadiusToken("radius");
-  static const pxr::TfToken kWidthToken("width");
-  static const pxr::TfToken kHeightToken("height");
-  static const pxr::TfToken kLengthToken("length");
-  static const pxr::TfToken kAngleToken("angle");
-  static const pxr::TfToken kInputsRadiusToken("inputs:radius");
-  static const pxr::TfToken kInputsWidthToken("inputs:width");
-  static const pxr::TfToken kInputsHeightToken("inputs:height");
-  static const pxr::TfToken kInputsLengthToken("inputs:length");
-  static const pxr::TfToken kInputsAngleToken("inputs:angle");
-  static constexpr float degreesToRadians = float(M_PI / 180.0);
-  RtLight genericLight;
   if (args.rootPrim.IsA<pxr::UsdGeomMesh>() && lightPrim.IsA<pxr::UsdLuxDistantLight>()) {
     Logger::err(str::format("A DistantLight detect under ", args.rootPrim.GetName(),
         " will be ignored.  DistantLights are only supported as part of light replacements, not mesh replacements."));
   }
-  
-  pxr::GfMatrix4f localToRoot;
-  // Need to preserve the root's transform if it is a light, but ignore it if it's a mesh.
+
+  // Need to preserve the root's transform if it is a root light (with transform overrides), but ignore it if it's a mesh.
   // Lights being replaced are instances that need to exist in the same place as the drawcall they're replacing.
   // Meshes being replaced are assets that may have multiple instances, so any children need to be offset from the
   // asset root, instead of the world root.
-  if (args.rootPrim.IsA<pxr::UsdLuxLight>()) {
-    localToRoot = pxr::GfMatrix4f(args.xformCache.GetLocalToWorldTransform(lightPrim));
-  } else {
-    bool resetXformStack; // unused
-    localToRoot = pxr::GfMatrix4f(args.xformCache.ComputeRelativeTransform(lightPrim, args.rootPrim, &resetXformStack));
+  bool resetXformStack; // unused
+  pxr::GfMatrix4d localToRoot = args.xformCache.ComputeRelativeTransform(lightPrim, args.rootPrim, &resetXformStack);
+
+  // Because this may be an 'over' with no prim type, we must compute its transformation and include it in the localToRoot calculation
+  const bool absoluteTransform = hasExplicitTransform(args.rootPrim);
+  if (LightData::isSupportedUsdLight(args.rootPrim) && absoluteTransform) {
+    pxr::GfMatrix4d parentToWorld;
+    pxr::UsdGeomXformable xform(args.rootPrim);
+    xform.GetLocalTransformation(&parentToWorld, &resetXformStack);
+    localToRoot *= parentToWorld;
   }
 
-  pxr::GfVec3f xVecUsd = localToRoot.TransformDir(pxr::GfVec3f(1.0f, 0.0f, 0.0f));
-  pxr::GfVec3f yVecUsd = localToRoot.TransformDir(pxr::GfVec3f(0.0f, 1.0f, 0.0f));
-  pxr::GfVec3f zVecUsd = localToRoot.TransformDir(pxr::GfVec3f(0.0f, 0.0f, 1.0f));
-  
-  float xScale = xVecUsd.Normalize();
-  float yScale = yVecUsd.Normalize();
-  float zScale = zVecUsd.Normalize();
+  const std::optional<LightData> lightData = LightData::tryCreate(lightPrim, pxr::GfMatrix4f(localToRoot), absoluteTransform);
+  if(lightData.has_value()) {
+    args.meshes.emplace_back(lightData.value());
+  }
+}
 
-  const Vector3 position(localToRoot.ExtractTranslation().data());
-  const Vector3 xAxis(xVecUsd.GetArray());
-  const Vector3 yAxis(yVecUsd.GetArray());
-  const Vector3 zAxis(zVecUsd.GetArray());
-  
-  // Calculate light color.  Based on `getFinalLightColor` in Kit's LightContext.cpp.
-  static const pxr::TfToken kEnableColorTemperatureToken("enableColorTemperature");
-  static const pxr::TfToken kColorToken("color");
-  static const pxr::TfToken kColorTemperatureToken("colorTemperature");
-  static const pxr::TfToken kIntensityToken("intensity");
-  static const pxr::TfToken kExposureToken("exposure");
-  static const pxr::TfToken kInputsEnableColorTemperatureToken("inputs:enableColorTemperature");
-  static const pxr::TfToken kInputsColorToken("inputs:color");
-  static const pxr::TfToken kInputsColorTemperatureToken("inputs:colorTemperature");
-  static const pxr::TfToken kInputsIntensityToken("inputs:intensity");
-  static const pxr::TfToken kInputsExposureToken("inputs:exposure");
-  Vector3 radiance(1.f);
-  Vector3 temperature(1.f);
-  float exposure = 0.0f;
-  float intensity = 0.0f;
+bool preserveGameObject(const pxr::UsdPrim& prim) {
+  // shortcut for legacy assets
+  static const pxr::TfToken kPreserveOriginalToken("preserveOriginalDrawCall");
+  if (prim.HasAttribute(kPreserveOriginalToken)) {
+    int preserve = 0;
+    prim.GetAttribute(kPreserveOriginalToken).Get(&preserve);
+    return preserve;
+  }
 
-  getVector3(getLightAttribute(lightPrim, kColorToken, kInputsColorToken), radiance);
-  bool enableColorTemperature = false;
-  getLightAttribute(lightPrim, kEnableColorTemperatureToken, kInputsEnableColorTemperatureToken).Get(&enableColorTemperature);
-  if (enableColorTemperature) {
-    pxr::UsdAttribute colorTempAttr = getLightAttribute(lightPrim, kColorTemperatureToken, kInputsColorTemperatureToken);
-    if (colorTempAttr.HasValue()) {
-      float temp = 6500.f;
-      colorTempAttr.Get(&temp);
-      pxr::GfVec3f vec = pxr::UsdLuxBlackbodyTemperatureAsRgb(temp);
-      temperature = Vector3(vec.data());
+  auto strFindNoCase = [](const std::string s1, const std::string s2) {
+    return std::search(s1.begin(), s1.end(), s2.begin(), s2.end(), [](const char a, const char b) { return (toupper(a) == toupper(b)); }) != s1.end();
+  };
+
+  auto legacyCaptureReferenceExists = [&](const std::string referencePath) {
+    std::filesystem::path asset(referencePath);
+    return strFindNoCase(asset.replace_extension(std::filesystem::path()).string(), "/captures" + lss::commonDirName::meshDir + prim.GetName().GetString());
+  };
+
+  // determine draw call preservation by querying the references
+  for (const pxr::SdfPrimSpecHandle& primSpec : prim.GetPrimStack()) {
+    if (primSpec->HasReferences()) {
+      pxr::SdfReferenceListOp listOp;
+      pxr::SdfReferencesProxy referencesProxy = primSpec->GetReferenceList();
+      if (referencesProxy.IsExplicit()) {
+        return false;
+      }
+      // Check if the capture object is present in deleted items
+      for (const pxr::SdfReference& deletedItem : referencesProxy.GetDeletedItems()) {
+        if (legacyCaptureReferenceExists(deletedItem.GetAssetPath())) {
+          return false;
+        }
+      }
     }
   }
-  getLightAttribute(lightPrim, kExposureToken, kInputsExposureToken).Get(&exposure);
-  getLightAttribute(lightPrim, kIntensityToken, kInputsIntensityToken).Get(&intensity);
-  
-  radiance = radiance * intensity * pow(2, exposure) * temperature;
 
-  // Per Light type properties.
-  if (lightPrim.IsA<pxr::UsdLuxSphereLight>()) {
-    float radius;
-    getLightAttribute(lightPrim, kRadiusToken, kInputsRadiusToken).Get(&radius);
-    RtLightShaping shaping = getLightShaping(lightPrim, -zAxis);
-    genericLight = RtLight(RtSphereLight(position, radiance, radius, shaping));
-  } else if (lightPrim.IsA<pxr::UsdLuxRectLight>()) {
-    float width, height = 0.0f;
-    getLightAttribute(lightPrim, kWidthToken, kInputsWidthToken).Get(&width);
-    getLightAttribute(lightPrim, kHeightToken, kInputsHeightToken).Get(&height);
-    Vector2 dimensions(width * xScale, height * yScale);
-    RtLightShaping shaping = getLightShaping(lightPrim, zAxis);
-    genericLight = RtLight(RtRectLight(position, dimensions, xAxis, yAxis, radiance, shaping));
-  } else if (lightPrim.IsA<pxr::UsdLuxDiskLight>()) {
-    float radius;
-    getLightAttribute(lightPrim, kRadiusToken, kInputsRadiusToken).Get(&radius);
-    Vector2 halfDimensions(radius * xScale, radius * yScale);
-    RtLightShaping shaping = getLightShaping(lightPrim, zAxis);
-    genericLight = RtLight(RtDiskLight(position, halfDimensions, xAxis, yAxis, radiance, shaping));
-  } else if (lightPrim.IsA<pxr::UsdLuxCylinderLight>()) {
-    float radius;
-    getLightAttribute(lightPrim, kRadiusToken, kInputsRadiusToken).Get(&radius);
-    float axisLength;
-    getLightAttribute(lightPrim, kLengthToken, kInputsLengthToken).Get(&axisLength);
-    genericLight = RtLight(RtCylinderLight(position, radius, xAxis, axisLength * xScale, radiance));
-  } else if (lightPrim.IsA<pxr::UsdLuxDistantLight>()) {
-    float halfAngle;
-    getLightAttribute(lightPrim, kAngleToken, kInputsAngleToken).Get(&halfAngle);
-    halfAngle = halfAngle * degreesToRadians / 2.0f;
-    genericLight = RtLight(RtDistantLight(zAxis, halfAngle, radiance));
-  } else {
-    return;
+  if (const pxr::UsdPrim child = prim.GetStage()->GetPrimAtPath(prim.GetPath().AppendChild(lss::gTokMesh))) {
+    if (child.HasAuthoredActive()) {
+      return child.IsActive();
+    }
   }
-  
-  args.meshes.emplace_back(genericLight);
+
+  return true;
+}
+
+bool explicitlyNoReferences(const pxr::UsdPrim& prim) {
+  // does the references look something like: references = None or []
+  for (const pxr::SdfPrimSpecHandle& primSpec : prim.GetPrimStack()) {
+    if (primSpec->HasReferences()) {
+      pxr::SdfReferenceListOp listOp;
+      pxr::SdfReferencesProxy referencesProxy = primSpec->GetReferenceList();
+      if (referencesProxy.IsExplicit() && referencesProxy.GetExplicitItems().size() == 0) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 void UsdMod::Impl::processReplacement(Args& args) {
   ScopedCpuProfileZone();
-  static const pxr::TfToken kPreserveOriginalToken("preserveOriginalDrawCall");
 
   if (args.rootPrim.IsA<pxr::UsdGeomMesh>()) {
     processPrim(args, args.rootPrim);
-  } else if (args.rootPrim.IsA<pxr::UsdLuxLight>()) {
+  } else if (LightData::isSupportedUsdLight(args.rootPrim) && !explicitlyNoReferences(args.rootPrim)) {
     processLight(args, args.rootPrim);
   }
   auto descendents = args.rootPrim.GetFilteredDescendants(pxr::UsdPrimIsActive);
   for (auto desc : descendents) {
     if (desc.IsA<pxr::UsdGeomMesh>()) {
       processPrim(args, desc);
-    } else if (desc.IsA<pxr::UsdLuxLight>()) {
+    } else if (LightData::isSupportedUsdLight(desc)) {
       processLight(args, desc);
     }
   }
-  
-  if (!args.meshes.empty() && args.rootPrim.HasAttribute(kPreserveOriginalToken)) {
-    int preserve = 0;
-    args.rootPrim.GetAttribute(kPreserveOriginalToken).Get(&preserve);
-    args.meshes[0].includeOriginal = preserve != 0;
+
+  if (!args.meshes.empty()) {
+    args.meshes[0].includeOriginal = preserveGameObject(args.rootPrim);
+
+    // Read category flags if we include the original
+    if (args.meshes[0].includeOriginal) {
+      args.meshes[0].categories = processCategoryFlags(args.rootPrim);
+    }
   }
 }
 
@@ -1114,6 +807,30 @@ void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cach
     true,
     true,
     numVariants++});
+  m_owner.m_replacements->storeObject(kStorageCubeHash, SecretReplacement{
+    "Storage Cubes","Roll Cage","",
+    0x0,
+    kStorageCubeHash,
+    "./SubUSDs/SM_Prop_CompanionCube_RollCage.usd",
+    true,
+    true,
+    numVariants++});
+  m_owner.m_replacements->storeObject(kStorageCubeHash, SecretReplacement{
+    "Storage Cubes","Health Pack","",
+    0x0,
+    kStorageCubeHash,
+    "./SubUSDs/SM_Prop_CompanionCube_Healthpack.usd",
+    true,
+    true,
+    numVariants++});
+  m_owner.m_replacements->storeObject(kStorageCubeHash, SecretReplacement{
+    "Storage Cubes","Space","",
+    0x0,
+    kStorageCubeHash,
+    "./SubUSDs/SM_Prop_CompanionCube_Space.usd",
+    true,
+    true,
+    numVariants++});
 
   static constexpr XXH64_hash_t kCompanionCubeHash = 0x6ef165bb7e0b8512;
   numVariants = lookupCount(kCompanionCubeHash);
@@ -1149,10 +866,59 @@ void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cach
     true,
     true,
     numVariants++});
+  m_owner.m_replacements->storeObject(kCompanionCubeHash, SecretReplacement{
+    "Companion Cubes","Steampunk","",
+    0x0,
+    kCompanionCubeHash,
+    "./SubUSDs/SM_Prop_CompanionCube_SteamPunk_A01.usd",
+    true,
+    true,
+    numVariants++});
+  m_owner.m_replacements->storeObject(kCompanionCubeHash, SecretReplacement{
+    "Companion Cubes","Arts and Crafts","",
+    0x0,
+    kCompanionCubeHash,
+    "./SubUSDs/SM_Prop_CompanionCube_ArtsAndCrafts.usd",
+    true,
+    true,
+    numVariants++});
+  m_owner.m_replacements->storeObject(kCompanionCubeHash, SecretReplacement{
+    "Companion Cubes","Cubus","",
+    0x0,
+    kCompanionCubeHash,
+    "./SubUSDs/SM_Prop_CompanionCube_Cubus.usd",
+    true,
+    true,
+    numVariants++});
+}
+
+
+Categorizer UsdMod::Impl::processCategoryFlags(const pxr::UsdPrim& prim) {
+  Categorizer categoryFlags;
+  for (uint32_t i = 0; i < (uint32_t) InstanceCategories::Count; i++) {
+    const char* categoryName = getInstanceCategorySubKey((InstanceCategories) i);
+    pxr::TfToken token = pxr::TfToken(categoryName);
+    if (!prim.HasAttribute(token)) {
+      continue;
+    }
+
+    pxr::VtValue value;
+    if (!prim.GetAttribute(token).Get(&value)) {
+      continue;
+    }
+
+    categoryFlags.categoryExists.set((InstanceCategories) i);
+    if (value.Get<bool>()) {
+      categoryFlags.categoryFlags.set((InstanceCategories) i);
+    }
+  }
+
+  return categoryFlags;
 }
 
 bool UsdMod::Impl::processMesh(const pxr::UsdPrim& prim, Args& args) {
-  RasterGeometry geometryData;
+  MeshReplacement replacement;
+  RasterGeometry& geometryData = replacement.data;
 
   std::unique_ptr<lss::UsdMeshImporter> processedMesh;
 
@@ -1230,9 +996,10 @@ bool UsdMod::Impl::processMesh(const pxr::UsdPrim& prim, Args& args) {
     }
 
     XXH64_hash_t usdOriginHash = getStrongestOpinionatedPathHash(submesh.prim);
-    RasterGeometry* childGeometryData;
+    MeshReplacement* childGeometryData;
     if (!m_owner.m_replacements->getObject(usdOriginHash, childGeometryData)) {
-      RasterGeometry& newGeomData = m_owner.m_replacements->storeObject(usdOriginHash, RasterGeometry(geometryData));
+      MeshReplacement& newReplacement = m_owner.m_replacements->storeObject(usdOriginHash, MeshReplacement(replacement));
+      RasterGeometry& newGeomData = newReplacement.data;
 
       const size_t indexDataSize = submesh.GetNumIndices() * sizeof(uint32_t);
       info.size = dxvk::align(indexDataSize, CACHE_LINE_SIZE);

@@ -53,6 +53,14 @@ void deserializeInteractions(
     polymorphicSurfaceMaterialInteraction = polymorphicSurfaceMaterialInteractionReadFromGBuffer(
       pixelCoordinate, PrimaryWorldShadingNormal, PrimaryPerceptualRoughness, PrimaryAlbedo, PrimaryBaseReflectivity,
       SharedMaterialData0, SharedMaterialData1);
+
+    if (cb.thinOpaqueEnable)
+    {
+      const uint16_t primarySurfaceIndex = uint16_t(SharedSurfaceIndex[pixelCoordinate]);
+      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
+      const OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(primarySurfaceIndex, memoryPolymorphicSurfaceMaterial);
+      polymorphicSurfaceMaterialInteraction.idata0 = opaqueSurfaceMaterial.subsurfaceMaterialIndex;
+    }
   }
   else
   {
@@ -65,6 +73,14 @@ void deserializeInteractions(
     polymorphicSurfaceMaterialInteraction = polymorphicSurfaceMaterialInteractionReadFromGBuffer(
       pixelCoordinate, SecondaryWorldShadingNormal, aliasedData1.SecondaryPerceptualRoughness, SecondaryAlbedo, SecondaryBaseReflectivity,
       SharedMaterialData0, SharedMaterialData1);
+
+    if (cb.thinOpaqueEnable)
+    {
+      const uint16_t primarySurfaceIndex = uint16_t(SharedSurfaceIndex[pixelCoordinate]);
+      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
+      const OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(primarySurfaceIndex, memoryPolymorphicSurfaceMaterial);
+      polymorphicSurfaceMaterialInteraction.idata0 = opaqueSurfaceMaterial.subsurfaceMaterialIndex;
+    }
   }
 }
 

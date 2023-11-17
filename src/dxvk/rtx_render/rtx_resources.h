@@ -242,7 +242,6 @@ namespace dxvk
       Resource m_sharedMaterialData1;
       Resource m_sharedMediumMaterialIndex;
       AliasedResource m_sharedBiasCurrentColorMask;
-      Resource m_sharedTextureCoord;
       Resource m_sharedSurfaceIndex;
 
       Resource m_primaryAttenuation;
@@ -336,6 +335,8 @@ namespace dxvk
       Rc<DxvkBuffer> m_neeCacheTask;
       Rc<DxvkBuffer> m_neeCacheSample;
       Resource m_neeCacheThreadTask;
+      
+      Resource m_displacementTextureCoord;
 
       VkExtent3D m_froxelVolumeExtent;
       uint32_t m_numFroxelVolumes;

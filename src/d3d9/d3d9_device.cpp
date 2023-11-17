@@ -67,7 +67,10 @@ namespace dxvk {
           D3DDEVTYPE             DeviceType,
           HWND                   hFocusWindow,
           DWORD                  BehaviorFlags,
-          Rc<DxvkDevice>         dxvkDevice)
+          Rc<DxvkDevice>         dxvkDevice,
+// NV-DXVK start: external swapchain
+          bool                   WithExternalSwapchain)
+// NV-DXVK end
     : m_parent         ( pParent )
     , m_deviceType     ( DeviceType )
     , m_window         ( hFocusWindow )
@@ -83,7 +86,10 @@ namespace dxvk {
     // NV-DXVK start: unbound light indices
     , m_state          ( Direct3DState9 { D3D9CapturableState{ static_cast<uint32_t>(std::max(m_d3d9Options.maxEnabledLights, 0)) } } )
     // NV-DXVK end
-    , m_rtx            ( this ) {
+    , m_rtx            ( this )
+// NV-DXVK start: external API
+    , m_withExternalSwapchain { WithExternalSwapchain } {
+// NV-DXVK end
     // If we can SWVP, then we use an extended constant set
     // as SWVP has many more slots available than HWVP.
     bool canSWVP = CanSWVP();
@@ -474,12 +480,17 @@ namespace dxvk {
       return D3DERR_INVALIDCALL;
 
     try {
-      const Com<D3D9Texture2D> texture = new D3D9Texture2D(this, &desc);
-
       void* initialData = nullptr;
 
-      if (Pool == D3DPOOL_SYSTEMMEM && Levels == 1 && pSharedHandle != nullptr)
+      if (Pool == D3DPOOL_SYSTEMMEM && Levels == 1 && pSharedHandle != nullptr) {
         initialData = *(reinterpret_cast<void**>(pSharedHandle));
+        pSharedHandle = nullptr;
+      }
+
+      if (pSharedHandle != nullptr && Pool != D3DPOOL_DEFAULT)
+        return D3DERR_INVALIDCALL;
+
+      const Com<D3D9Texture2D> texture = new D3D9Texture2D(this, &desc, pSharedHandle);
 
       m_initializer->InitTexture(texture->GetCommonTexture(), initialData);
       *ppTexture = texture.ref();
@@ -507,6 +518,9 @@ namespace dxvk {
 
     if (unlikely(ppVolumeTexture == nullptr))
       return D3DERR_INVALIDCALL;
+
+    if (pSharedHandle)
+        Logger::err("CreateVolumeTexture: Shared volume textures not supported");
 
     D3D9_COMMON_TEXTURE_DESC desc;
     desc.Width              = Width;
@@ -553,6 +567,9 @@ namespace dxvk {
     if (unlikely(ppCubeTexture == nullptr))
       return D3DERR_INVALIDCALL;
 
+    if (pSharedHandle)
+        Logger::err("CreateCubeTexture: Shared cube textures not supported");
+
     D3D9_COMMON_TEXTURE_DESC desc;
     desc.Width              = EdgeLength;
     desc.Height             = EdgeLength;
@@ -597,6 +614,9 @@ namespace dxvk {
     if (unlikely(ppVertexBuffer == nullptr))
       return D3DERR_INVALIDCALL;
 
+    if (pSharedHandle)
+        Logger::err("CreateVertexBuffer: Shared vertex buffers not supported");
+
     D3D9_BUFFER_DESC desc;
     desc.Format = D3D9Format::VERTEXDATA;
     desc.FVF    = FVF;
@@ -632,6 +652,9 @@ namespace dxvk {
 
     if (unlikely(ppIndexBuffer == nullptr))
       return D3DERR_INVALIDCALL;
+
+    if (pSharedHandle)
+        Logger::err("CreateIndexBuffer: Shared index buffers not supported");
 
     D3D9_BUFFER_DESC desc;
     desc.Format = EnumerateFormat(Format); 
@@ -3639,7 +3662,7 @@ namespace dxvk {
       return D3DERR_INVALIDCALL;
 
     try {
-      const Com<D3D9Surface> surface = new D3D9Surface(this, &desc, nullptr);
+      const Com<D3D9Surface> surface = new D3D9Surface(this, &desc, nullptr, pSharedHandle);
       m_initializer->InitTexture(surface->GetCommonTexture());
       *ppSurface = surface.ref();
       return D3D_OK;
@@ -3682,8 +3705,11 @@ namespace dxvk {
     if (FAILED(D3D9CommonTexture::NormalizeTextureProperties(this, &desc)))
       return D3DERR_INVALIDCALL;
 
+    if (pSharedHandle != nullptr && Pool != D3DPOOL_DEFAULT)
+      return D3DERR_INVALIDCALL;
+
     try {
-      const Com<D3D9Surface> surface = new D3D9Surface(this, &desc, nullptr);
+      const Com<D3D9Surface> surface = new D3D9Surface(this, &desc, nullptr, pSharedHandle);
       m_initializer->InitTexture(surface->GetCommonTexture());
       *ppSurface = surface.ref();
       return D3D_OK;
@@ -3729,7 +3755,7 @@ namespace dxvk {
       return D3DERR_INVALIDCALL;
 
     try {
-      const Com<D3D9Surface> surface = new D3D9Surface(this, &desc, nullptr);
+      const Com<D3D9Surface> surface = new D3D9Surface(this, &desc, nullptr, pSharedHandle);
       m_initializer->InitTexture(surface->GetCommonTexture());
       *ppSurface = surface.ref();
       return D3D_OK;
@@ -7005,21 +7031,53 @@ namespace dxvk {
         }
       };
 
-      // NV-DXVK start: ignored textures for terrain
-      auto getTextureHashForStage = [this](uint32_t stageIdx) {
-        if (const auto tex = GetCommonTexture(m_state.textures[stageIdx])) {
-          return tex->GetImage()->getHash();
-        }
-        return kEmptyHash;
-      };
-      auto isTerrainTextureAtStage = [&getTextureHashForStage](uint32_t stageIdx) {
-        XXH64_hash_t texHash = getTextureHashForStage(stageIdx);
-        return texHash != kEmptyHash && RtxOptions::Get()->isTerrainTexture(texHash);
-      };
-      bool primaryTextureStageIsTerrain = false;
-      // NV-DXVK end
-
       D3D9FFShaderKeyFS key;
+      // NV-DXVK start: skip stages for ignored textures
+      uint32_t lastActiveStageIdx = UINT32_MAX;
+      uint32_t numActiveStages = 0;
+
+      // NOTE: The terrain baker and sky reuse a draw call from rasterization with its
+      // bound textures and other effects like fixed function texture stages.
+      // However, we also would like to skip textures marked as ignored / lightmap for those techniques,
+      // so a corresponding texture stage needs to be skipped in the draw call.
+      // This involves modifying D3D9FFShaderKeyFS, by which DXVK chooses a pixel shader for a draw call.
+      // And because of that draw call re-usage, the checks are done here, and not in d3d9_rtx.
+      auto filterActiveTextureStage = [this, &key, &lastActiveStageIdx, &numActiveStages]
+                                      (uint32_t stageIdx, bool isLastStage) {
+        auto shouldOmitTextureAtStage = [this, &numActiveStages](uint32_t stageIdx, bool isLastStage) {
+          if (const auto tex = GetCommonTexture(m_state.textures[stageIdx])) {
+            XXH64_hash_t texHash = tex->GetImage()->getHash();
+            if (texHash != kEmptyHash) {
+              if (isLastStage && numActiveStages > 1 && RtxOptions::ignoreLastTextureStage()) {
+                return true;
+              }
+              if (lookupHash(RtxOptions::ignoreTextures(), texHash) || lookupHash(RtxOptions::lightmapTextures(), texHash)) {
+                return true;
+              }
+            }
+          }
+
+          return false;
+        };
+
+        if (RtxOptions::enableRaytracing()) {
+          if (shouldOmitTextureAtStage(stageIdx, isLastStage)) {
+            D3D9FFShaderStage& stage = key.Stages[stageIdx];
+            // make default
+            memset(&stage, 0, sizeof(D3D9FFShaderStage));
+            stage.Contents.ColorOp = D3DTOP_DISABLE;
+            stage.Contents.AlphaOp = D3DTOP_DISABLE;
+            stage.Contents.allowActiveStagesBeyondDisabledStage = true;
+            return false;
+          }
+        }
+
+        lastActiveStageIdx = stageIdx;
+        numActiveStages++;
+
+        return true;
+      };
+      // NV-DXVK end
 
       uint32_t textureID = 0;
       uint32_t idx;
@@ -7039,12 +7097,6 @@ namespace dxvk {
            || ((data[DXVK_TSS_COLORARG2] & D3DTA_SELECTMASK) == D3DTA_TEXTURE && (ArgsMask(data[DXVK_TSS_COLOROP]) & (1 << 2u))))
             break;
         }
-
-        // NV-DXVK start: ignored textures for terrain
-        if (RtxOptions::Get()->enableRaytracing() && TerrainBaker::needsTerrainBaking()) {
-          primaryTextureStageIsTerrain = primaryTextureStageIsTerrain || isTerrainTextureAtStage(idx);
-        }
-        // NV-DXVK end
 
         stage.ColorOp = data[DXVK_TSS_COLOROP];
         stage.AlphaOp = data[DXVK_TSS_ALPHAOP];
@@ -7066,31 +7118,15 @@ namespace dxvk {
 
         stage.Projected      = (ttff & D3DTTFF_PROJECTED) ? 1      : 0;
         stage.ProjectedCount = (ttff & D3DTTFF_PROJECTED) ? count  : 0;
+
+        // NV-DXVK start: ignored secondary textures
+        stage.allowActiveStagesBeyondDisabledStage = 0;
+
+        filterActiveTextureStage(idx, false);
       }
 
-      // NV-DXVK start: ignored textures for terrain
-      // NOTE: The terrain baker reuses a draw call from rasterization with its
-      // bound textures and other effects like fixed function texture stages.
-      // However, we also would like to skip textures marked as ignored / lightmap for the terrain baker,
-      // so a corresponding texture stage needs to be skipped in the draw call.
-      // This involves modifying D3D9FFShaderKeyFS, by which DXVK chooses a pixel shader for a draw call.
-      // And because of that draw call re-usage, the checks are done here.
-      if (primaryTextureStageIsTerrain && idx > 1) {
-        auto shouldOmitTextureAtStage = [&getTextureHashForStage](uint32_t stageIdx) {
-          XXH64_hash_t texHash = getTextureHashForStage(stageIdx);
-          return texHash != kEmptyHash
-            && (RtxOptions::Get()->shouldIgnoreTexture(texHash) || RtxOptions::Get()->isLightmapTexture(texHash));
-        };
-        const uint32_t lastStageIdx = idx - 1;
-        if (shouldOmitTextureAtStage(lastStageIdx)) {
-          D3D9FFShaderStage& lastStage = key.Stages[lastStageIdx];
-          // make default
-          memset(&lastStage, 0, sizeof(D3D9FFShaderStage));
-          lastStage.Contents.ColorOp = D3DTOP_DISABLE;
-          lastStage.Contents.AlphaOp = D3DTOP_DISABLE;
-          // reduce stage count
-          --idx;
-        }
+      if (idx > 0) {
+        filterActiveTextureStage(idx - 1, true);
       }
       // NV-DXVK end
 
@@ -7106,9 +7142,12 @@ namespace dxvk {
       stage0.GlobalSpecularEnable = m_state.renderStates[D3DRS_SPECULARENABLE];
       stage0.GlobalFlatShade      = m_state.renderStates[D3DRS_SHADEMODE] == D3DSHADE_FLAT;
 
+      // NV-DXVK start:
       // The last stage *always* writes to current.
-      if (idx >= 1)
-        key.Stages[idx - 1].Contents.ResultIsTemp = false;
+      if (lastActiveStageIdx != UINT32_MAX) {
+        key.Stages[lastActiveStageIdx].Contents.ResultIsTemp = false;
+      }
+      // NV-DXVK end
 
       EmitCs([
         this,
@@ -7617,9 +7656,15 @@ namespace dxvk {
     if (m_implicitSwapchain != nullptr) {
       if (FAILED(m_implicitSwapchain->Reset(pPresentationParameters, pFullscreenDisplayMode)))
         return D3DERR_INVALIDCALL;
+    } else {
+// NV-DXVK start: external API
+      if (m_withExternalSwapchain) {
+        m_implicitSwapchain = new D3D9SwapchainExternal(this, pPresentationParameters, pFullscreenDisplayMode);
+      } else {
+// NV-DXVK end
+        m_implicitSwapchain = new D3D9SwapChainEx(this, pPresentationParameters, pFullscreenDisplayMode);
+      }
     }
-    else
-      m_implicitSwapchain = new D3D9SwapChainEx(this, pPresentationParameters, pFullscreenDisplayMode);
 
     if (pPresentationParameters->EnableAutoDepthStencil) {
       D3D9_COMMON_TEXTURE_DESC desc;
@@ -7640,7 +7685,7 @@ namespace dxvk {
       if (FAILED(D3D9CommonTexture::NormalizeTextureProperties(this, &desc)))
         return D3DERR_NOTAVAILABLE;
 
-      m_autoDepthStencil = new D3D9Surface(this, &desc, nullptr);
+      m_autoDepthStencil = new D3D9Surface(this, &desc, nullptr, nullptr);
       m_initializer->InitTexture(m_autoDepthStencil->GetCommonTexture());
       SetDepthStencilSurface(m_autoDepthStencil.ptr());
     }
@@ -7668,4 +7713,14 @@ namespace dxvk {
 
     return D3D_OK;
   }
+
+// NV-DXVK start: external API
+  D3D9SwapchainExternal* D3D9DeviceEx::GetExternalPresenter()
+  {
+    if (m_withExternalSwapchain) {
+      return static_cast<D3D9SwapchainExternal*>(m_implicitSwapchain.ptr());
+    }
+    return nullptr;
+  }
+// NV-DXVK end
 }

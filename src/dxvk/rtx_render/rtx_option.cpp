@@ -39,6 +39,13 @@ namespace dxvk {
     }
   }
 
+  void fillIntVector(const std::vector<std::string>& rawInput, std::vector<int32_t>& intVectorOutput) {
+    for (auto&& intStr : rawInput) {
+      const int32_t i = std::stoi(intStr);
+      intVectorOutput.emplace_back(i);
+    }
+  }
+
   std::string hashTableToString(const fast_unordered_set& hashTable) {
     std::stringstream ss;
     for (auto&& hash : hashTable) {
@@ -60,6 +67,17 @@ namespace dxvk {
     }
     return ss.str();
   }
+  
+  std::string vectorToString(const std::vector<int32_t>& intVector) {
+    std::stringstream ss;
+    for (auto&& element : intVector) {
+      if (ss.tellp() != std::streampos(0))
+        ss << ", ";
+
+      ss << element;
+    }
+    return ss.str();
+  }
 
   const char* RtxOptionImpl::getTypeString() const {
     switch (type) {
@@ -68,6 +86,7 @@ namespace dxvk {
     case OptionType::Float: return "float";
     case OptionType::HashSet: return "hash set"; 
     case OptionType::HashVector: return "hash vector";
+    case OptionType::IntVector: return "int vector";
     case OptionType::Vector2: return "float2";
     case OptionType::Vector3: return "float3";
     case OptionType::Vector2i: return "int2";
@@ -86,6 +105,7 @@ namespace dxvk {
     case OptionType::Float: return Config::generateOptionString(value.f);
     case OptionType::HashSet: return hashTableToString(*value.hashSet);
     case OptionType::HashVector: return hashVectorToString(*value.hashVector);
+    case OptionType::IntVector: return vectorToString(*value.intVector);
     case OptionType::Vector2: return Config::generateOptionString(*value.v2);
     case OptionType::Vector3: return Config::generateOptionString(*value.v3);
     case OptionType::Vector2i: return Config::generateOptionString(*value.v2i);
@@ -140,6 +160,9 @@ namespace dxvk {
     case OptionType::HashVector:
       fillHashVector(options.getOption<std::vector<std::string>>(fullName.c_str()), *value.hashVector);
       break;
+    case OptionType::IntVector:
+      fillIntVector(options.getOption<std::vector<std::string>>(fullName.c_str()), *value.intVector);
+      break;
     case OptionType::Vector2:
       *value.v2 = options.getOption<Vector2>(fullName.c_str(), *value.v2, env);
       break;
@@ -183,6 +206,9 @@ namespace dxvk {
       case OptionType::HashVector:
         isChanged = (*value.hashVector != *defaultValue.hashVector);
         break;
+      case OptionType::IntVector:
+        isChanged = (*value.intVector != *defaultValue.intVector);
+        break;
       case OptionType::Vector2:
         isChanged = (*value.v2 != *defaultValue.v2);
         break;
@@ -219,6 +245,9 @@ namespace dxvk {
       break;
     case OptionType::HashVector:
       options.setOption(fullName.c_str(), hashVectorToString(*value.hashVector));
+      break;
+    case OptionType::IntVector:
+      options.setOption(fullName.c_str(), vectorToString(*value.intVector));
       break;
     case OptionType::Vector2:
       options.setOption(fullName.c_str(), *value.v2);
@@ -259,6 +288,9 @@ namespace dxvk {
       break;
     case OptionType::HashVector:
       *value.hashVector = *defaultValue.hashVector;
+      break;
+    case OptionType::IntVector:
+      *value.intVector = *defaultValue.intVector;
       break;
     case OptionType::Vector2:
       *value.v2 = *defaultValue.v2;
@@ -352,6 +384,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
           switch (rtxOption.type) {
           case OptionType::HashSet:
           case OptionType::HashVector:
+          case OptionType::IntVector:
           case OptionType::String:
             isLongEntryType = true;
             break;

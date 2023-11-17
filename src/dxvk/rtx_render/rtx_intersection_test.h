@@ -47,7 +47,7 @@ static inline bool boundingBoxIntersectsFrustumSAT(
                                                  objectToView,
                                                  frustum,
                                                  camera.getNearPlane(),
-                                                 camera.getFarPlane(),
+                                                 frustum.GetPlane(ePlaneType::PLANE_FAR).w,
                                                  frustum.getNearPlaneRightExtent(),
                                                  frustum.getNearPlaneUpExtent(),
                                                  frustumEdgeVectors,

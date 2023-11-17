@@ -39,6 +39,12 @@ namespace dxvk {
   class DxvkContext;
   class DxvkObjects;
 
+  struct FindSurfaceResult {
+    uint32_t surfaceMaterialIndex { 0 };
+    // corresponding legacy texture hash for SurfaceMaterialIndex
+    std::future<XXH64_hash_t> legacyTextureHash{};
+  };
+
   class DebugView : public RtxPass {
 
   public:
@@ -59,6 +65,12 @@ namespace dxvk {
 
     const Rc<DxvkImageView>& getDebugOutput() {
       return m_debugView.view;
+    }
+
+    const Rc<DxvkImageView>& getFinalDebugOutput() {
+      return static_cast<CompositeDebugView>(m_composite.compositeViewIdx()) != CompositeDebugView::Disabled
+        ? m_composite.compositeView.view
+        : m_debugView.view;
     }
 
     const Rc<DxvkImageView>& getInstrumentation() {
@@ -82,6 +94,7 @@ namespace dxvk {
 
     DebugViewArgs getCommonDebugViewArgs(DxvkContext* ctx, const Resources::RaytracingOutput& rtOutput, DxvkObjects& common);
 
+    void generateCompositeImage(Rc<DxvkContext> ctx, Rc<DxvkImage>& outputImage);
     void createDownscaledResource(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent);
     void releaseDownscaledResource();
 
@@ -92,7 +105,7 @@ namespace dxvk {
     dxvk::DxvkDevice* m_device;
     std::chrono::time_point<std::chrono::system_clock> m_startTime;
 
-    RTX_OPTION_ENV("rtx.debugView", uint32_t, debugViewIdx, DEBUG_VIEW_DISABLED, "DXVK_RTX_DEBUG_VIEW_INDEX", "");
+    RTX_OPTION_ENV("rtx.debugView", uint32_t, debugViewIdx, DEBUG_VIEW_DISABLED, "DXVK_RTX_DEBUG_VIEW_INDEX", "Index of a debug view to show when Debug View is enabled. The index must be a valid value from DEBUG_VIEW_* macro defined indices. Value of 0 disables Debug View.");
     // Note: Used for preserving the debug view state only for ImGui purposes. Not to be used for anything else
     // and should not ever be set to the disabled debug view index.
     uint32_t m_lastDebugViewIdx;
@@ -103,12 +116,26 @@ namespace dxvk {
                                                                                                            "1: Normalized Nearest.\n"
                                                                                                            "2: Normalized Linear.");
 
+    struct Composite {
+      friend class ImGUI; // <-- we want to modify these values directly.
+      friend class DebugView; // <-- we want to modify these values directly.
+
+      RTX_OPTION_ENV("rtx.debugView.composite", uint32_t, compositeViewIdx, CompositeDebugView::Disabled, "RTX_DEBUG_VIEW_COMPOSITE_VIEW_INDEX", "Index of a composite view to show when Composite Debug View is enabled. The index must be a a valid value from CompositeDebugView enumeration. Value of 0 disables Composite Debug View.");
+    
+      std::vector<uint32_t> debugViewIndices;
+      // Note: Used for preserving the debug view state only for ImGui purposes. Not to be used for anything else
+      // and should not ever be set to the disabled debug view index.
+      CompositeDebugView lastCompositeViewIdx = CompositeDebugView::FinalRenderWithMaterialProperties;
+      Resources::Resource compositeView;
+    } m_composite;
+
     // Common Display
     bool m_enableInfNanView = true;
     int m_colorCodeRadius = 4;
 
     // Standard Display
     RTX_OPTION_ENV("rtx.debugView", bool, enablePseudoColor, false, "RTX_DEBUG_VIEW_ENABLE_PSEUDO_COLOR", "Enables RGB color coding of a scalar debug view value.");
+    RTX_OPTION_ENV("rtx.debugView", bool, enableGammaCorrection, false, "RTX_DEBUG_VIEW_ENABLE_GAMMA_CORRECTION", "Enables gamma correction of a debug view value.");
     bool m_enableAlphaChannel = false;
     float m_scale = 1.f;
     RTX_OPTION_ENV("rtx.debugView", float, minValue, 0.f, "DXVK_RTX_DEBUG_VIEW_MIN_VALUE", "");
@@ -138,5 +165,43 @@ namespace dxvk {
     Resources::Resource m_hdrWaveformGreen;
     Resources::Resource m_hdrWaveformBlue;
     Resources::Resource m_instrumentation;
+
+  public:
+    void requestFindSurfaceUnder(Vector2i pixel, uint32_t frameIdOfTheRequest) {
+      std::lock_guard lock{ m_texturePickMutex };
+      m_texturePickRequest = TexturePickingRequest { pixel, frameIdOfTheRequest };
+    }
+
+    std::optional<FindSurfaceResult>&& consumeLastAvailableFindSurfaceResult() {
+      std::lock_guard lock{ m_texturePickMutex };
+      return std::move(m_texturePickResult_prev);
+    }
+
+    std::optional<Vector2i> isFindSurfaceRequestActive(uint32_t currentFrameId) const {
+      std::lock_guard lock{ m_texturePickMutex };
+      constexpr auto numFramesToConsiderRequest = kMaxFramesInFlight * 2;
+      if (std::abs(int64_t { m_texturePickRequest.frameId } - int64_t{ currentFrameId }) < numFramesToConsiderRequest) {
+        return m_texturePickRequest.pixel;
+      }
+      return {};
+    }
+
+  private:
+    friend class RtxContext;
+    void placeFindSurfaceResult(std::optional<FindSurfaceResult>&& result) {
+      std::lock_guard lock{ m_texturePickMutex };
+      m_texturePickResult_prev = std::move(m_texturePickResult);
+      m_texturePickResult = std::move(result);
+    }
+
+  private:
+    mutable dxvk::mutex m_texturePickMutex{};
+    struct TexturePickingRequest {
+      Vector2i pixel { 0,0 };
+      uint32_t frameId { kInvalidFrameIndex };
+    };
+    TexturePickingRequest m_texturePickRequest{};
+    std::optional<FindSurfaceResult> m_texturePickResult{};
+    std::optional<FindSurfaceResult> m_texturePickResult_prev{};
   };
 } // namespace dxvk

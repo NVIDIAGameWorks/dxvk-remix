@@ -99,7 +99,11 @@ namespace dxvk {
 
       Position  = viewMtx * Vector4(light.Position.x,  light.Position.y,  light.Position.z,  1.0f);
       Direction = Vector4(light.Direction.x, light.Direction.y, light.Direction.z, 0.0f);
-      Direction = normalize(viewMtx * Direction);
+      // NV-DXVK start: Handle zero vector Light Direction cases
+      // Note: D3D9 spec disallows the Direction vector for a D3DLIGHT9 to be the zero vector, but various applications will pass this in anyways
+      // so it needs to be safely handled.
+      Direction = safeNormalize(viewMtx * Direction, Vector4(0.0f, 0.0f, 1.0f, 0.0f));
+      // NV-DXVK end
 
       Type         = light.Type;
       Range        = light.Range;

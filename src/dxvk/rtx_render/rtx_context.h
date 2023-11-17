@@ -110,7 +110,7 @@ namespace dxvk {
 
     void commitGeometryToRT(const DrawParameters& params, DrawCallState& drawCallState);
 
-    void blitImageHelper(const Rc<DxvkImage>& srcImage, const Rc<DxvkImage>& dstImage, VkFilter filter);
+    static void blitImageHelper(Rc<DxvkContext> ctx, const Rc<DxvkImage>& srcImage, const Rc<DxvkImage>& dstImage, VkFilter filter);
 
     virtual void flushCommandList() override;
 
@@ -130,9 +130,6 @@ namespace dxvk {
     D3D9FixedFunctionVS& allocAndMapFixedFunctionConstantBuffer();
 
     static bool checkIsShaderExecutionReorderingSupported(DxvkDevice& device);
-
-    static bool shouldBakeSky(const DrawCallState& drawCallState);
-    static bool shouldBakeTerrain(const DrawCallState& drawCallState);
 
     const DxvkScInfo& getSpecConstantsInfo(VkPipelineBindPoint pipeline) const;
     void setSpecConstantsInfo(VkPipelineBindPoint pipeline, const DxvkScInfo& newSpecConstantInfo);
@@ -165,6 +162,7 @@ namespace dxvk {
     void dispatchBloom(const Resources::RaytracingOutput& rtOutput);
     void dispatchPostFx(Resources::RaytracingOutput& rtOutput);
     void dispatchDebugView(Rc<DxvkImage>& srcImage, const Resources::RaytracingOutput& rtOutput, bool captureScreenImage);
+    void dispatchHighlighting(Resources::RaytracingOutput& rtOutput);
     void dispatchDLFG();
     void updateMetrics(const float frameTimeSecs, const float gpuIdleTimeSecs) const;
 

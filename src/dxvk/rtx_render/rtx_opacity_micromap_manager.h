@@ -173,6 +173,7 @@ namespace dxvk {
     Matrix4 textureTransform = {};        // 16B alignment
 
     RtSurface::AlphaState alphaState = {};
+    uint8_t tFactorAlpha = 0;
     RtTextureArgSource textureColorArg1Source = RtTextureArgSource::None;
     RtTextureArgSource textureColorArg2Source = RtTextureArgSource::None;
     DxvkRtTextureOperation textureColorOperation = DxvkRtTextureOperation::Disable;
@@ -190,14 +191,12 @@ namespace dxvk {
 
     VkOpacityMicromapFormatEXT ommFormat = VK_OPACITY_MICROMAP_FORMAT_4_STATE_EXT;         // 4B
     uint32_t numTriangles = 0;
-    uint8_t tFactorAlpha = 0;
-    uint8_t pad8[3] = {};
-    uint32_t pad32[1] = {};
+    uint32_t pad32[2] = {};
   };
 
   // Static validation to detect any changes that require OmmHashData alignment re-check
   static_assert(sizeof(OpacityMicromapHashSourceData) == 128);
-  static_assert(sizeof(RtSurface::AlphaState) == 10);
+  static_assert(sizeof(RtSurface::AlphaState) == 9);
 
   class OmmRequest {
   public:

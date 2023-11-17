@@ -86,3 +86,9 @@ enum class TexGenMode : uint8_t {
   Count
 };
 
+enum class DisplacementMode : uint32_t {
+  Off = 0,
+  RaymarchPOM = 1,
+  QuadtreePOM = 2
+};
+

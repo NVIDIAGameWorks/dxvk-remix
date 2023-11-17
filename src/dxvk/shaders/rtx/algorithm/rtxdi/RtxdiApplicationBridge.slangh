@@ -102,6 +102,11 @@ float sampleUniformRng(inout RAB_RandomSamplerState r)
   return uintBitsToFloat((mask & v) | one) - 1.f;
 }
 
+uint sampleUniformIntRng(inout RAB_RandomSamplerState r)
+{
+  return murmur3(r);
+}
+
 
 // Depending on the surface type, the position/normal/viewDirection members are in different coordinate systems.
 // For a surface reflected in a mirror, they are in the virtual world space.
@@ -186,6 +191,7 @@ RAB_Surface RAB_EmptySurface()
   surface.opaqueSurfaceMaterialInteraction.baseReflectivity = f16vec3(0, 0, 1);
   surface.opaqueSurfaceMaterialInteraction.isotropicRoughness = float16_t(1);
   surface.opaqueSurfaceMaterialInteraction.anisotropicRoughness = f16vec2(1, 1);
+  surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex = BINDING_INDEX_INVALID;
   surface.hitDistance = RAB_SURFACE_BACKGROUND_HIT_DISTANCE;
   surface.portalSpace = PORTAL_SPACE_NONE;
   surface.isViewModel = false;
@@ -283,6 +289,9 @@ RAB_Surface RAB_GetGBufferSurface(ivec2 pixel, bool previousFrame)
     surface.opaqueSurfaceMaterialInteraction.isotropicRoughness,
     surface.opaqueSurfaceMaterialInteraction.anisotropicRoughness);
 
+  const uint16_t primarySurfaceIndex = uint16_t(SharedSurfaceIndex[pixel]);
+  surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex = getSubsurfaceMaterialIndex(surfaceMaterials[primarySurfaceIndex]);
+
   GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixel, SharedFlags);
   surface.portalSpace = geometryFlags.portalSpace;
   surface.isViewModel = geometryFlags.isViewModel;
@@ -338,8 +347,12 @@ float RAB_GetLightSampleTargetPdfForSurface(RAB_LightSample lightSample, RAB_Sur
 
   f16vec3 L = f16vec3(normalize(lightSample.position - surface.minimalSurfaceInteraction.position));
 
-  if (dot(L, surface.minimalSurfaceInteraction.triangleNormal) <= float16_t(0))
+  // Need to compute the transmission pdf if the ray interact with SSS surface
+  if (dot(L, surface.minimalSurfaceInteraction.triangleNormal) <= float16_t(0) &&
+      (!cb.thinOpaqueEnable || surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex == BINDING_INDEX_INVALID))
+  {
     return 0;
+  }
 
   surface.opaqueSurfaceMaterialInteraction.albedo = max(surface.opaqueSurfaceMaterialInteraction.albedo, 0.2f);
   surface.opaqueSurfaceMaterialInteraction.isotropicRoughness = max(surface.opaqueSurfaceMaterialInteraction.isotropicRoughness, RAB_RTXDI_MIN_ROUGHNESS);
@@ -348,13 +361,13 @@ float RAB_GetLightSampleTargetPdfForSurface(RAB_LightSample lightSample, RAB_Sur
   SurfaceMaterialInteractionSplitWeight weight = opaqueSurfaceMaterialInteractionCalcProjectedWeight(
     surface.opaqueSurfaceMaterialInteraction, surface.minimalRayInteraction, L);
 
-  vec3 reflectedRadiance = lightSample.radiance * (weight.diffuseReflectionWeight + weight.specularReflectionWeight);
-  float targetPdf = calcBt709Luminance(reflectedRadiance) / lightSample.solidAnglePdf;
+  const vec3 scatteredRadiance = lightSample.radiance * (weight.diffuseReflectionWeight + weight.specularReflectionWeight + weight.diffuseTransmissionWeight);
+  float targetPdf = calcBt709Luminance(scatteredRadiance) / lightSample.solidAnglePdf;
 
   // Make sure we don't produce any weird PDF values which then propagate through ReSTIR
   if (isinf(targetPdf) || isnan(targetPdf))
     targetPdf = 0;
-  
+
   return max(targetPdf, 0);
 }
 
@@ -363,9 +376,13 @@ SurfaceMaterialInteractionSplitWeight RAB_CalculateBRDF(vec3 L, RAB_Surface surf
   SurfaceMaterialInteractionSplitWeight weight;
   weight.diffuseReflectionWeight = f16vec3(0);
   weight.specularReflectionWeight = f16vec3(0);
+  weight.diffuseTransmissionWeight = f16vec3(0);
 
-  if (dot(L, surface.minimalSurfaceInteraction.triangleNormal) <= float16_t(0))
+  if (dot(L, surface.minimalSurfaceInteraction.triangleNormal) <= float16_t(0) &&
+      (!cb.thinOpaqueEnable || surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex == BINDING_INDEX_INVALID))
+  {
     return weight;
+  }
 
   weight = opaqueSurfaceMaterialInteractionCalcProjectedWeight(
     surface.opaqueSurfaceMaterialInteraction, surface.minimalRayInteraction, L);
@@ -376,9 +393,13 @@ float RAB_GetGITargetPdfForSurface(vec3 radiance, vec3 position, RAB_Surface sur
 {
   f16vec3 L = f16vec3(normalize(position - surface.minimalSurfaceInteraction.position));
 
-  if (dot(L, surface.minimalSurfaceInteraction.triangleNormal) <= float16_t(0) ||
-      dot(L, surface.opaqueSurfaceMaterialInteraction.shadingNormal) <= float16_t(0))
+  if ((dot(L, surface.minimalSurfaceInteraction.triangleNormal) <= float16_t(0) ||
+       dot(L, surface.opaqueSurfaceMaterialInteraction.shadingNormal) <= float16_t(0)) &&
+      (!cb.thinOpaqueEnable ||
+       surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex == BINDING_INDEX_INVALID))
+  {
     return 0;
+  }
 
   surface.opaqueSurfaceMaterialInteraction.isotropicRoughness = max(surface.opaqueSurfaceMaterialInteraction.isotropicRoughness, cb.reSTIRGIRoughnessClamp);
   surface.opaqueSurfaceMaterialInteraction.anisotropicRoughness = max(surface.opaqueSurfaceMaterialInteraction.anisotropicRoughness, cb.reSTIRGIRoughnessClamp);
@@ -398,8 +419,8 @@ float RAB_GetGITargetPdfForSurface(vec3 radiance, vec3 position, RAB_Surface sur
     surface.opaqueSurfaceMaterialInteraction, surface.minimalRayInteraction, L);
   weight.specularReflectionWeight = clamp(weight.specularReflectionWeight, f16vec3(0), f16vec3(RAB_RESTIR_GI_MAX_SPECULAR_BRDF));
 
-  vec3 reflectedRadiance = radiance * (weight.diffuseReflectionWeight + weight.specularReflectionWeight);
-  return clamp(calcBt709Luminance(reflectedRadiance), 0, 1e4);
+  const vec3 scatteredRadiance = radiance * (weight.diffuseReflectionWeight + weight.specularReflectionWeight + weight.diffuseTransmissionWeight);
+  return clamp(calcBt709Luminance(scatteredRadiance), 0, 1e4);
 }
 
 float RAB_GetInitialSampleMISWeight(f16vec3 roughBRDF, f16vec3 trueBRDF)
@@ -685,8 +706,18 @@ bool RAB_TraceLightSampleVisibility(RAB_Surface surface, RAB_LightSample lightSa
   uint8_t rayMask = OBJECT_MASK_OPAQUE | (surface.objectMask & OBJECT_MASK_ALL_DYNAMIC);
   if (cb.enableDirectTranslucentShadows) rayMask |= OBJECT_MASK_TRANSLUCENT;
 
-  VisibilityResult visibility = traceVisibilityRay(surface.minimalSurfaceInteraction, samplePos, false,
-    rayMask, visibilityModeNone, expectedRayPortalIndex, surface.portalSpace, 0, 0, 1.0, surface.isViewModel, cb.enablePreviousTLAS && usePreviousTLAS);
+  SubsurfaceMaterial subSurfaceMaterial;
+  const bool isSubSurface = subSurfaceMaterialReadHelper(surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
+
+  const VisibilityResult visibility = traceVisibilityRay(
+    surface.minimalSurfaceInteraction, samplePos,
+    rayMask, visibilityModeNone,
+    expectedRayPortalIndex, surface.portalSpace,
+    0, 0, 1.0,
+    surface.isViewModel,
+    cb.enablePreviousTLAS && usePreviousTLAS,
+    BINDING_INDEX_INVALID, f16vec2(0.0h),
+    isSubSurface, surface.opaqueSurfaceMaterialInteraction.shadingNormal);
 
   attenuation = visibility.attenuation;
 
@@ -698,12 +729,16 @@ bool RAB_TraceGISampleVisibility(RAB_Surface surface, RAB_Surface neighborSurfac
   uint8_t portalID = ReSTIRGI_PortalID2BitTo8Bit(reservoir.getPortalID());
   if(portalID == RTXDI_INVALID_PORTAL_INDEX || portalID < numPortals)
   {
-    uint8_t rayMask = OBJECT_MASK_OPAQUE | (surface.objectMask & OBJECT_MASK_ALL_DYNAMIC);
+    const uint8_t rayMask = OBJECT_MASK_OPAQUE | (surface.objectMask & OBJECT_MASK_ALL_DYNAMIC);
 
-    float3 dstPosition = reservoir.getVisibilityPoint(neighborSurface.minimalSurfaceInteraction.position);
-    VisibilityResult visibility = traceVisibilityRay(neighborSurface.minimalSurfaceInteraction,
-      dstPosition, false, rayMask, visibilityModeNone, portalID, surface.portalSpace,
-      0, 0, RAB_RESTIR_GI_VISIBILITY_SHORTENING, surface.isViewModel);
+    const float3 dstPosition = reservoir.getVisibilityPoint(neighborSurface.minimalSurfaceInteraction.position);
+
+    const VisibilityResult visibility = traceVisibilityRay(
+      neighborSurface.minimalSurfaceInteraction, dstPosition,
+      rayMask, visibilityModeNone,
+      portalID, surface.portalSpace,
+      0, 0, RAB_RESTIR_GI_VISIBILITY_SHORTENING,
+      surface.isViewModel);
 
     return !visibility.hasOpaqueHit;
   }

@@ -65,13 +65,16 @@ namespace dxvk::hud {
   }
 
 
-  void HudItemSet::update() {
+  // NV-DXVK start: DLFG integration
+  void HudItemSet::update(uint32_t presentCount) {
     auto time = dxvk::high_resolution_clock::now();
 
-    for (const auto& item : m_items)
+    for (const auto& item : m_items) {
+      item->setPresentCount(presentCount);
       item->update(time);
+    }
   }
-
+  // NV-DXVK end
 
   void HudItemSet::render(HudRenderer& renderer) {
     HudPos position = { 8.0f, 8.0f };
@@ -221,9 +224,16 @@ namespace dxvk::hud {
   HudFpsItem::HudFpsItem() { }
   HudFpsItem::~HudFpsItem() { }
 
+  // NV-DXVK start: DLFG integration
+  void HudFpsItem::setPresentCount(uint32_t presentCount) {
+    m_presentCount = presentCount;
+  }
+  // NV-DXVK end
 
   void HudFpsItem::update(dxvk::high_resolution_clock::time_point time) {
-    m_frameCount += DxvkDLFG::enable() ? DxvkDLFGPresenter::getPresentFrameCount() : 1;
+    // NV-DXVK start: DLFG integration
+    m_frameCount += m_presentCount;
+    // NV-DXVK end
 
     auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(time - m_lastUpdate);
 
@@ -717,6 +727,7 @@ namespace dxvk::hud {
                                    "# Textures:" , 
                                    "# Instances/Surfaces:" , 
                                    "# Surface Materials:" , 
+                                   "# Surface Material Extensions:" ,
                                    "# Volume Materials:" , 
                                    "# Lights:",
                                    "# Samplers:",
@@ -728,6 +739,7 @@ namespace dxvk::hud {
                                 counters.getCtr(DxvkStatCounter::RtxTextureCount),
                                 counters.getCtr(DxvkStatCounter::RtxInstanceCount),
                                 counters.getCtr(DxvkStatCounter::RtxSurfaceMaterialCount),
+                                counters.getCtr(DxvkStatCounter::RtxSurfaceMaterialExtensionCount),
                                 counters.getCtr(DxvkStatCounter::RtxVolumeMaterialCount),
                                 counters.getCtr(DxvkStatCounter::RtxLightCount),
                                 counters.getCtr(DxvkStatCounter::RtxSamplers),
@@ -753,7 +765,7 @@ namespace dxvk::hud {
         { 1.0f, 1.0f, 0.25f, 1.0f },
         labels[i]);
 
-      std::string text = str::format(std::setfill(' '), std::setw(5), values[i]);
+      std::string text = str::format(std::setfill(' '), std::setw(8), values[i]);
 
       renderer.drawText(14.0f,
         { position.x + xOffset + 250, position.y },

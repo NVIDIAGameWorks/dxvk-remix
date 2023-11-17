@@ -27,6 +27,8 @@
 #include "../../util/util_macro.h"
 #include "../shaders/rtx/utility/shared_constants.h"
 #include "../shaders/rtx/concept/surface/surface_shared.h"
+#include "../../dxso/dxso_util.h"
+#include "rtx_material_data.h"
 
 namespace dxvk {
 // Surfaces
@@ -140,7 +142,7 @@ struct RtSurface {
     flags |= alphaState.emissiveBlend ?      (1 << 20) : 0;
     flags |= alphaState.isParticle ?         (1 << 21) : 0;
     flags |= alphaState.isDecal ?            (1 << 22) : 0;
-    flags |= alphaState.isBlendedTerrain ?   (1 << 23) : 0;
+    // 23rd bit is available
     flags |= isAnimatedWater ?               (1 << 24) : 0;
     flags |= isClipPlaneEnabled ?            (1 << 25) : 0;
     flags |= isMatte ?                       (1 << 26) : 0;
@@ -292,17 +294,20 @@ struct RtSurface {
     bool isFullyOpaque = false;
     AlphaTestType alphaTestType = AlphaTestType::kAlways;
     uint8_t alphaTestReferenceValue = 0;
-
     BlendType blendType = BlendType::kAlpha;
     bool invertedBlend = false;
     bool emissiveBlend = false;
     bool isParticle = false;
     bool isDecal = false;
-    bool isBlendedTerrain = false;
   } alphaState;
 
+  // Original draw call state
+  VkBlendFactor srcColorBlendFactor = VkBlendFactor::VK_BLEND_FACTOR_ONE;
+  VkBlendFactor dstColorBlendFactor = VkBlendFactor::VK_BLEND_FACTOR_ZERO;
+  VkBlendOp colorBlendOp = VkBlendOp::VK_BLEND_OP_ADD;
+
   // Static validation to detect any changes that require an alignment re-check
-  static_assert(sizeof(AlphaState) == 10);
+  static_assert(sizeof(AlphaState) == 9);
 
   Matrix4 objectToWorld;
   Matrix4 prevObjectToWorld;
@@ -318,14 +323,6 @@ struct RtSurface {
 };
 
 // Shared Material Defaults/Limits
-
-struct SharedMaterialDefaults {
-  uint8_t SpriteSheetRows = 1;
-  uint8_t SpriteSheetCols = 1;
-  uint8_t SpriteSheetFPS = 0;
-  float EmissiveIntensity = 40.0;
-  bool EnableEmissive = false;
-};
 
 struct LegacyMaterialDefaults {
   friend class ImGUI;
@@ -346,115 +343,6 @@ struct LegacyMaterialDefaults {
              "Should be any value larger than 0, typically within the wavelength of light, but must be less than or equal to OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS (" STRINGIFY(OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS) " nm).");
 };
 
-// Note: These material defaults should be kept in sync with the MDL defaults just in case data is not written out by the MDL
-// to ensure similarity between rendering with MDL in other programs vs in this runtime.
-
-struct OpaqueMaterialDefaults {
-  float Anisotropy = 0.0f;
-  Vector4 AlbedoOpacityConstant{ 0.2f, 0.2f, 0.2f, 1.0f };
-  float RoughnessConstant = 0.5f;
-  float MetallicConstant = 0.0f;
-  Vector3 EmissiveColorConstant{ 1.0f, 0.1f, 0.1f };
-  bool EnableThinFilm = false;
-  bool AlphaIsThinFilmThickness = false;
-  // Note: Should be something non-zero as 0 is an invalid thickness to have.
-  float ThinFilmThicknessConstant = 200.0f;
-  bool UseLegacyAlphaState = true;
-  bool BlendEnabled = false;
-  // Note: Default prefix used to not match BlendType symbol name.
-  BlendType DefaultBlendType = BlendType::kAlpha;
-  bool InvertedBlend = false;
-  // Note: Default prefix used to not match AlphaTestType symbol name.
-  AlphaTestType DefaultAlphaTestType = AlphaTestType::kAlways;
-  uint8_t AlphaReferenceValue = 0;
-  float DisplaceIn = 1.0f;
-};
-
-struct TranslucentMaterialDefaults {
-  // Note: Typical fair value for some kinds of glass, not too refractive but not enough to not be noticable.
-  float RefractiveIndex = 1.3f;
-  // Note: Slight default attenuation as no physical translucent materials are perfectly transparent.
-  Vector3 TransmittanceColor{ 0.97f, 0.97f, 0.97f };
-  float TransmittanceMeasurementDistance = 1.f;
-  Vector3 EmissiveColorConstant{ 1.0f, 0.1f, 0.1f };
-  bool ThinWalled = false;
-  float ThinWallThickness = 0.0;
-  bool UseDiffuseLayer = false;
-};
-
-struct RayPortalMaterialDefaults {
-  uint8_t RayPortalIndex = 0;
-  float RotationSpeed = 0.f;
-};
-
-// Note: These material ranges should be kept in sync with the MDL ranges to prevent mismatching between
-// how data is clamped.
-
-struct OpaqueMaterialMins {
-  float AlbedoConstant = 0.0f;
-  float OpacityConstant = 0.0f;
-  float RoughnessConstant = 0.0f;
-  float AnisotropyConstant = -1.0f;
-  float MetallicConstant = 0.0f;
-  float EmissiveColorConstant = 0.0f;
-  float EmissiveIntensity = 0.0f;
-  // Note: Thickness cannot be 0 so should be kept above this minimum small value (though in practice it'll likely be
-  // quantized to 0 with values this small anyways, but it's good to be careful about it for potential future changes).
-  float ThinFilmThicknessConstant = 0.001f;
-  BlendType MinBlendType = BlendType::kMinValue;
-  AlphaTestType MinAlphaTestType = AlphaTestType::kMinValue;
-  uint8_t AlphaReferenceValue = 0;
-  float DisplaceIn = 0.0f;
-};
-
-struct OpaqueMaterialMaxes {
-  float AlbedoConstant = 1.0f;
-  float OpacityConstant = 1.0f;
-  float RoughnessConstant = 1.0f;
-  float AnisotropyConstant = 1.0f;
-  float MetallicConstant = 1.0f;
-  float EmissiveColorConstant = 1.0f;
-  // Note: Maximum clamped to float 16 max due to GPU encoding requirements.
-  float EmissiveIntensity = 65504.0f;
-  // Note: Max thickness constant be less than the float 16 max due to float 16 usage on the GPU.
-  float ThinFilmThicknessConstant = OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS;
-  BlendType MaxBlendType = BlendType::kMaxValue;
-  AlphaTestType MaxAlphaTestType = AlphaTestType::kMaxValue;
-  uint8_t AlphaReferenceValue = std::numeric_limits<uint8_t>::max();
-  // Note: Maximum clamped to float 16 max due to GPU encoding requirements.
-  float DisplaceIn = 65504.0f;
-};
-
-struct TranslucentMaterialMins {
-  // Note: IoR values less than 1 are physically impossible for typical translucent materials.
-  float RefractiveIndex = 1.0f;
-  // Note: 0.001 to be safe around the minimum of float16 values, as well as due to the fact that we cut off
-  // 2 bits of the value in some cases.
-  float ThinWallThickness = 0.001f;
-  float TransmittanceColor = 0.0f;
-  // Note: 0.001 to be safe around the minimum of float16 values, as well as due to the fact that we cut off
-  // 2 bits of the value in some cases.
-  float TransmittanceMeasurementDistance = 0.001f;
-  float EmissiveColorConstant = 0.0f;
-  float EmissiveIntensity = 0.0f;
-};
-
-struct TranslucentMaterialMaxes {
-  // Note: 3 chosen due to virtually no physical materials having an IoR greater to this, and because this
-  // is currently the maximum IoR value the GPU supports encoding of as well.
-  float RefractiveIndex = 3.0f;
-  // Note: Maximum clamped to float16 max due to encoding limitations.
-  float ThinWallThickness = 65504.0f;
-  float TransmittanceColor = 1.0f;
-  // Note: Maximum clamped to float16 max due to encoding limitations.
-  float TransmittanceMeasurementDistance = 65504.0f;
-  float EmissiveColorConstant = 1.0f;
-  // Note: Maximum clamped to float 16 in case in the future we decide to encode Translucent material information
-  // with a float16 intensity plus a unorm8x3 color rather than a float16x3 radiance (better to anticipate the future
-  // rather than break assets later).
-  float EmissiveIntensity = 65504.0f;
-};
-
 // Surface Materials
 
 // Todo: Compute size directly from sizeof of GPU structure (by including it), for now computed by sum of members manually
@@ -471,6 +359,9 @@ enum class RtSurfaceMaterialType {
   Translucent,
   RayPortal,
 
+  // Extensions
+  Subsurface,
+
   Count
 };
 
@@ -486,7 +377,8 @@ struct RtOpaqueSurfaceMaterial {
     float roughnessConstant, float metallicConstant,
     const Vector3& emissiveColorConstant, bool enableEmission,
     bool enableThinFilm, bool alphaIsThinFilmThickness, float thinFilmThicknessConstant,
-    uint32_t samplerIndex, float displaceIn) :
+    uint32_t samplerIndex, float displaceIn,
+    uint32_t subsurfaceMaterialIndex) :
     m_albedoOpacityTextureIndex{ albedoOpacityTextureIndex }, m_normalTextureIndex{ normalTextureIndex },
     m_tangentTextureIndex { tangentTextureIndex }, m_heightTextureIndex { heightTextureIndex }, m_roughnessTextureIndex{ roughnessTextureIndex },
     m_metallicTextureIndex{ metallicTextureIndex }, m_emissiveColorTextureIndex{ emissiveColorTextureIndex },
@@ -495,7 +387,8 @@ struct RtOpaqueSurfaceMaterial {
     m_roughnessConstant{ roughnessConstant }, m_metallicConstant{ metallicConstant },
     m_emissiveColorConstant{ emissiveColorConstant }, m_enableEmission{ enableEmission },
     m_enableThinFilm { enableThinFilm }, m_alphaIsThinFilmThickness { alphaIsThinFilmThickness },
-    m_thinFilmThicknessConstant { thinFilmThicknessConstant }, m_samplerIndex{ samplerIndex }, m_displaceIn{ displaceIn } {
+    m_thinFilmThicknessConstant { thinFilmThicknessConstant }, m_samplerIndex{ samplerIndex }, m_displaceIn{ displaceIn },
+    m_subsurfaceMaterialIndex(subsurfaceMaterialIndex) {
     updateCachedData();
     updateCachedHash();
   }
@@ -567,11 +460,17 @@ struct RtOpaqueSurfaceMaterial {
     writeGPUHelper(data, offset, glm::packHalf1x16(displaceIn));
     writeGPUHelperExplicit<2>(data, offset, m_heightTextureIndex);
 
-    // Byte 24
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_cachedThinFilmNormalizedThicknessConstant));
+    // Bytes 24-26
+    if (m_subsurfaceMaterialIndex != kSurfaceMaterialInvalidTextureIndex) {
+      writeGPUHelperExplicit<2>(data, offset, m_subsurfaceMaterialIndex);
+      writeGPUPadding<1>(data, offset); // Note: Padding for unused space
+      flags |= OPAQUE_SURFACE_MATERIAL_FLAG_HAS_SUBSURFACE_MATERIAL;
+    } else {
+      writeGPUPadding<3>(data, offset); // Note: Padding for unused space
+    }
 
-    // Bytes 25-27
-    writeGPUPadding<3>(data, offset); // Note: Padding for unused space
+    // Byte 27
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_cachedThinFilmNormalizedThicknessConstant));
 
     // Bytes 28-31
     if (m_enableThinFilm) {
@@ -583,7 +482,6 @@ struct RtOpaqueSurfaceMaterial {
         flags |= OPAQUE_SURFACE_MATERIAL_FLAG_ALPHA_IS_THIN_FILM_THICKNESS;
       }
     }
-
     writeGPUHelper(data, offset, flags);
 
     assert(offset - oldOffset == kSurfaceMaterialGPUSize);
@@ -669,6 +567,10 @@ struct RtOpaqueSurfaceMaterial {
     return m_enableEmission;
   }
 
+  uint32_t getSubsurfaceMaterialIndex() const {
+    return m_subsurfaceMaterialIndex;
+  }
+
 private:
   void updateCachedHash() {
     XXH64_hash_t h = 0;
@@ -692,6 +594,7 @@ private:
     h = XXH64(&m_thinFilmThicknessConstant, sizeof(m_thinFilmThicknessConstant), h);
     h = XXH64(&m_samplerIndex, sizeof(m_samplerIndex), h);
     h = XXH64(&m_displaceIn, sizeof(m_displaceIn), h);
+    h = XXH64(&m_subsurfaceMaterialIndex, sizeof(m_subsurfaceMaterialIndex), h);
 
     m_cachedHash = h;
   }
@@ -734,6 +637,8 @@ private:
   // TODO: if we ever support a displacement algorithm that supports outwards displacements, we'll need
   // to add a displaceOut parameter.  With POM, displaceOut is locked to 0.
   float m_displaceIn;
+
+  uint32_t m_subsurfaceMaterialIndex;
 
   XXH64_hash_t m_cachedHash;
 
@@ -1010,6 +915,103 @@ private:
   XXH64_hash_t m_cachedHash;
 };
 
+// Extension of the three basic types of materials.
+// Don't use material types below standalone. Instead, attach them to the materials above as side load data.
+
+// Subsurface Material
+struct RtSubsurfaceMaterial {
+  RtSubsurfaceMaterial(
+    const Vector3& subsurfaceTransmittanceColor, const float subsurfaceMeasurementDistance,
+    const Vector3& subsurfaceSingleScatteringAlbedo, const float subsurfaceVolumetricAnisotropy) :
+    m_subsurfaceTransmittanceColor { subsurfaceTransmittanceColor },
+    m_subsurfaceMeasurementDistance { subsurfaceMeasurementDistance },
+    m_subsurfaceSingleScatteringAlbedo { subsurfaceSingleScatteringAlbedo },
+    m_subsurfaceVolumetricAnisotropy { subsurfaceVolumetricAnisotropy },
+    m_subsurfaceVolumetricAttenuationCoefficient { Vector3(1.0f, 1.0f, 1.0f) / (subsurfaceTransmittanceColor * subsurfaceMeasurementDistance) }
+  {
+    updateCachedHash();
+  }
+
+  void writeGPUData(unsigned char* data, std::size_t& offset) const {
+    [[maybe_unused]] const std::size_t oldOffset = offset;
+
+    // Bytes 0-5
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAttenuationCoefficient.x));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAttenuationCoefficient.y));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAttenuationCoefficient.z));
+
+    // Bytes 6-7
+    assert(m_subsurfaceMeasurementDistance <= FLOAT16_MAX);
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceMeasurementDistance));
+
+    // Bytes 8-13
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceSingleScatteringAlbedo.x));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceSingleScatteringAlbedo.y));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceSingleScatteringAlbedo.z));
+
+    // Bytes 14-15
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAnisotropy));
+
+    // Padding 16-31
+    writeGPUPadding<16>(data, offset);
+  }
+
+  bool operator==(const RtSubsurfaceMaterial& r) const {
+    return m_cachedHash == r.m_cachedHash;
+  }
+
+  bool validate() const {
+    return true;
+  }
+
+  XXH64_hash_t getHash() const {
+    return m_cachedHash;
+  }
+
+  float getSubsurfaceMeasurementDistance() const {
+    return m_subsurfaceMeasurementDistance;
+  }
+
+  const Vector3& getSubsurfaceVolumetricScatteringAlbedo() const {
+    return m_subsurfaceSingleScatteringAlbedo;
+  }
+
+  float getSubsurfaceVolumetricAnisotropy() const {
+    return m_subsurfaceVolumetricAnisotropy;
+  }
+
+  const Vector3& getSubsurfaceVolumetricAttenuationCoefficient() const {
+    return m_subsurfaceVolumetricAttenuationCoefficient;
+  }
+
+private:
+  void updateCachedHash() {
+    XXH64_hash_t h = 0;
+
+    h = XXH64(&m_subsurfaceTransmittanceColor, sizeof(m_subsurfaceTransmittanceColor), h);
+    h = XXH64(&m_subsurfaceMeasurementDistance, sizeof(m_subsurfaceMeasurementDistance), h);
+    h = XXH64(&m_subsurfaceSingleScatteringAlbedo, sizeof(m_subsurfaceSingleScatteringAlbedo), h);
+    h = XXH64(&m_subsurfaceVolumetricAnisotropy, sizeof(m_subsurfaceVolumetricAnisotropy), h);
+    h = XXH64(&m_subsurfaceVolumetricAttenuationCoefficient, sizeof(m_subsurfaceVolumetricAttenuationCoefficient), h);
+
+    m_cachedHash = h;
+  }
+
+  // Thin Opaque Properties
+  Vector3 m_subsurfaceTransmittanceColor;
+  float m_subsurfaceMeasurementDistance;
+  Vector3 m_subsurfaceSingleScatteringAlbedo; // scatteringCoefficient / attenuationCoefficient
+  float m_subsurfaceVolumetricAnisotropy;
+
+  // Cache Volumetric Properties
+  Vector3 m_subsurfaceVolumetricAttenuationCoefficient; // scatteringCoefficient + absorptionCoefficient
+  // Currently no need to cache scattering and absorption coefficient for single scattering simulation
+
+  // Todo: SSS properties using Diffusion Profile
+
+  XXH64_hash_t m_cachedHash;
+};
+
 struct RtSurfaceMaterial {
   RtSurfaceMaterial(const RtOpaqueSurfaceMaterial& opaqueSurfaceMaterial) :
     m_type{ RtSurfaceMaterialType::Opaque },
@@ -1022,6 +1024,10 @@ struct RtSurfaceMaterial {
   RtSurfaceMaterial(const RtRayPortalSurfaceMaterial& rayPortalSurfaceMaterial) :
     m_type{ RtSurfaceMaterialType::RayPortal },
     m_rayPortalSurfaceMaterial{ rayPortalSurfaceMaterial } {}
+
+  RtSurfaceMaterial(const RtSubsurfaceMaterial& subsurfaceMaterial) :
+    m_type { RtSurfaceMaterialType::Subsurface },
+    m_subsurfaceMaterial { subsurfaceMaterial } {}
 
   RtSurfaceMaterial(const RtSurfaceMaterial& surfaceMaterial) :
     m_type{ surfaceMaterial.m_type } {
@@ -1038,6 +1044,9 @@ struct RtSurfaceMaterial {
       break;
     case RtSurfaceMaterialType::RayPortal:
       new (&m_rayPortalSurfaceMaterial) RtRayPortalSurfaceMaterial{ surfaceMaterial.m_rayPortalSurfaceMaterial };
+      break;
+    case RtSurfaceMaterialType::Subsurface:
+      new (&m_subsurfaceMaterial) RtSubsurfaceMaterial { surfaceMaterial.m_subsurfaceMaterial };
       break;
     }
   }
@@ -1057,6 +1066,9 @@ struct RtSurfaceMaterial {
     case RtSurfaceMaterialType::RayPortal:
       m_rayPortalSurfaceMaterial.~RtRayPortalSurfaceMaterial();
       break;
+    case RtSurfaceMaterialType::Subsurface:
+      m_subsurfaceMaterial.~RtSubsurfaceMaterial();
+      break;
     }
   }
 
@@ -1075,6 +1087,9 @@ struct RtSurfaceMaterial {
     case RtSurfaceMaterialType::RayPortal:
       m_rayPortalSurfaceMaterial.writeGPUData(data, offset);
       break;
+    case RtSurfaceMaterialType::Subsurface:
+      m_subsurfaceMaterial.writeGPUData(data, offset);
+      break;
     }
   }
 
@@ -1090,6 +1105,8 @@ struct RtSurfaceMaterial {
       return m_translucentSurfaceMaterial.validate();
     case RtSurfaceMaterialType::RayPortal:
       return m_rayPortalSurfaceMaterial.validate();
+    case RtSurfaceMaterialType::Subsurface:
+      return m_subsurfaceMaterial.validate();
     }
 
     return false;
@@ -1112,6 +1129,9 @@ struct RtSurfaceMaterial {
         break;
       case RtSurfaceMaterialType::RayPortal:
         m_rayPortalSurfaceMaterial = rtSurfaceMaterial.m_rayPortalSurfaceMaterial;
+        break;
+      case RtSurfaceMaterialType::Subsurface:
+        m_subsurfaceMaterial = rtSurfaceMaterial.m_subsurfaceMaterial;
         break;
       }
     }
@@ -1136,6 +1156,8 @@ struct RtSurfaceMaterial {
       return m_translucentSurfaceMaterial == rhs.m_translucentSurfaceMaterial;
     case RtSurfaceMaterialType::RayPortal:
       return m_rayPortalSurfaceMaterial == rhs.m_rayPortalSurfaceMaterial;
+    case RtSurfaceMaterialType::Subsurface:
+      return m_subsurfaceMaterial == rhs.m_subsurfaceMaterial;
     }
   }
 
@@ -1151,6 +1173,8 @@ struct RtSurfaceMaterial {
       return m_translucentSurfaceMaterial.getHash();
     case RtSurfaceMaterialType::RayPortal:
       return m_rayPortalSurfaceMaterial.getHash();
+    case RtSurfaceMaterialType::Subsurface:
+      return m_subsurfaceMaterial.getHash();
     }
   }
 
@@ -1183,6 +1207,7 @@ private:
     RtOpaqueSurfaceMaterial m_opaqueSurfaceMaterial;
     RtTranslucentSurfaceMaterial m_translucentSurfaceMaterial;
     RtRayPortalSurfaceMaterial m_rayPortalSurfaceMaterial;
+    RtSubsurfaceMaterial m_subsurfaceMaterial;
   };
 };
 
@@ -1275,7 +1300,24 @@ struct LegacyMaterialData {
     return ((getColorTexture().isValid()  && !getColorTexture().isImageEmpty()) ||
             (getColorTexture2().isValid() && !getColorTexture2().isImageEmpty()));
   }
-  
+
+  operator OpaqueMaterialData() const {
+    OpaqueMaterialData opaqueMat;
+    opaqueMat.getAlbedoOpacityTexture() = getColorTexture();
+    return opaqueMat;
+  }
+
+  operator TranslucentMaterialData() const {
+    return TranslucentMaterialData();
+  }
+
+  operator RayPortalMaterialData() const {
+    RayPortalMaterialData portalMat;
+    portalMat.getMaskTexture() = getColorTexture();
+    portalMat.getMaskTexture2() = getColorTexture2();
+    return portalMat;
+  }
+
   const void printDebugInfo(const char* name = "") const {
 #ifdef REMIX_DEVELOPMENT
     Logger::warn(str::format(
@@ -1295,7 +1337,6 @@ struct LegacyMaterialData {
       // " textureAlphaArg2Source: ", textureAlphaArg2Source,
       // " textureAlphaOperation: ", textureAlphaOperation,
       " tFactor: ", tFactor,
-      " isBlendedTerrain: ", isBlendedTerrain,
       // " m_d3dMaterial.Diffuse: ", m_d3dMaterial.Diffuse,
       // " m_d3dMaterial.Ambient: ", m_d3dMaterial.Ambient,
       // " m_d3dMaterial.Specular: ", m_d3dMaterial.Specular,
@@ -1327,7 +1368,6 @@ struct LegacyMaterialData {
   RtTextureArgSource textureAlphaArg2Source = RtTextureArgSource::None;
   DxvkRtTextureOperation textureAlphaOperation = DxvkRtTextureOperation::SelectArg1;
   uint32_t tFactor = 0xffffffff;  // Value for D3DRS_TEXTUREFACTOR, default value of is opaque white
-  bool isBlendedTerrain = false;
   D3DMATERIAL9 d3dMaterial = {};
   bool isTextureFactorBlend = false;
 
@@ -1347,518 +1387,10 @@ private:
   const static uint32_t kMaxSupportedTextures = 2;
   TextureRef colorTextures[kMaxSupportedTextures] = {};
   Rc<DxvkSampler> samplers[kMaxSupportedTextures] = {};
-  uint32_t colorTextureSlot[kMaxSupportedTextures] = {};
+  static_assert(kInvalidResourceSlot == 0 && "Below initialization of all array members is only valid for a value of 0.");
+  uint32_t colorTextureSlot[kMaxSupportedTextures] = { kInvalidResourceSlot };
 
-  XXH64_hash_t m_cachedHash;
-};
-
-struct OpaqueMaterialData {
-  OpaqueMaterialData(
-    const TextureRef& albedoOpacityTexture, const TextureRef& normalTexture,
-    const TextureRef& tangentTexture, const TextureRef& heightTexture, const TextureRef& roughnessTexture,
-    const TextureRef& metallicTexture, const TextureRef& emissiveColorTexture,
-    float anisotropy, float emissiveIntensity,
-    const Vector4& albedoOpacityConstant,
-    float roughnessConstant, float metallicConstant,
-    const Vector3& emissiveColorConstant, bool enableEmission,
-    uint8_t spriteSheetRows,
-    uint8_t spriteSheetCols,
-    uint8_t spriteSheetFPS,
-    bool enableThinFilm, bool alphaIsThinFilmThickness, float thinFilmThicknessConstant,
-    bool useLegacyAlphaState, bool blendEnabled, BlendType blendType, bool invertedBlend,
-    AlphaTestType alphaTestType, uint8_t alphaTestReferenceValue, float displaceIn) :
-    m_albedoOpacityTexture{ albedoOpacityTexture }, m_normalTexture{ normalTexture },
-    m_tangentTexture{ tangentTexture }, m_heightTexture { heightTexture }, m_roughnessTexture{ roughnessTexture },
-    m_metallicTexture{ metallicTexture }, m_emissiveColorTexture{ emissiveColorTexture },
-    m_anisotropy{ anisotropy }, m_emissiveIntensity{ emissiveIntensity },
-    m_albedoOpacityConstant{ albedoOpacityConstant },
-    m_roughnessConstant{ roughnessConstant }, m_metallicConstant{ metallicConstant },
-    m_emissiveColorConstant{ emissiveColorConstant }, m_enableEmission(enableEmission),
-    m_spriteSheetRows { spriteSheetRows }, m_spriteSheetCols { spriteSheetCols }, m_spriteSheetFPS { spriteSheetFPS },
-    m_enableThinFilm { enableThinFilm }, m_alphaIsThinFilmThickness { alphaIsThinFilmThickness }, m_thinFilmThicknessConstant { thinFilmThicknessConstant },
-    m_useLegacyAlphaState{ useLegacyAlphaState }, m_blendEnabled{ blendEnabled }, m_blendType{ blendType }, m_invertedBlend{ invertedBlend },
-    m_alphaTestType{ alphaTestType }, m_alphaTestReferenceValue{ alphaTestReferenceValue },
-    m_displaceIn{ displaceIn } {
-    sanitizeData();
-    // Note: Called after data is sanitized to have the hashed value reflect the adjusted values.
-    updateCachedHash();
-  }
-
-  const XXH64_hash_t getHash() const {
-    return m_cachedHash;
-  }
-
-  const TextureRef& getAlbedoOpacityTexture() const {
-    return m_albedoOpacityTexture;
-  }
-
-  TextureRef& getAlbedoOpacityTexture() {
-    return m_albedoOpacityTexture;
-  }
-
-  const TextureRef& getNormalTexture() const {
-    return m_normalTexture;
-  }
-
-  TextureRef& getNormalTexture() {
-    return m_normalTexture;
-  }
-
-  const TextureRef& getTangentTexture() const {
-    return m_tangentTexture;
-  }
-
-  TextureRef& getTangentTexture() {
-    return m_tangentTexture;
-  }
-
-  const TextureRef& getHeightTexture() const {
-    return m_heightTexture;
-  }
-
-  TextureRef& getHeightTexture() {
-    return m_heightTexture;
-  }
-
-  const TextureRef& getRoughnessTexture() const {
-    return m_roughnessTexture;
-  }
-
-  TextureRef& getRoughnessTexture() {
-    return m_roughnessTexture;
-  }
-  
-  const TextureRef& getMetallicTexture() const {
-    return m_metallicTexture;
-  }
-
-  TextureRef& getMetallicTexture() {
-    return m_metallicTexture;
-  }
-
-  const TextureRef& getEmissiveColorTexture() const {
-    return m_emissiveColorTexture;
-  }
-
-  TextureRef& getEmissiveColorTexture() {
-    return m_emissiveColorTexture;
-  }
-
-  float getAnisotropy() const {
-    return m_anisotropy;
-  }
-
-  float getEmissiveIntensity() const {
-    return m_emissiveIntensity;
-  }
-
-  const Vector4& getAlbedoOpacityConstant() const {
-    return m_albedoOpacityConstant;
-  }
-
-  float getRoughnessConstant() const {
-    return m_roughnessConstant;
-  }
-
-  float getMetallicConstant() const {
-    return m_metallicConstant;
-  }
-
-  const Vector3& getEmissiveColorConstant() const {
-    return m_emissiveColorConstant;
-  }
-
-  bool getEnableEmission() const {
-    return m_enableEmission;
-  }
-
-  bool getEnableThinFilm() const {
-    return m_enableThinFilm;
-  }
-
-  bool getAlphaIsThinFilmThickness() const {
-    return m_alphaIsThinFilmThickness;
-  }
-
-  float getThinFilmThicknessConstant() const {
-    return m_thinFilmThicknessConstant;
-  }
-
-  float getDisplaceIn() const {
-    return m_displaceIn;
-  }
-
-  uint8_t getSpriteSheetRows() const {
-    return m_spriteSheetRows;
-  }
-
-  uint8_t getSpriteSheetCols() const {
-    return m_spriteSheetCols;
-  }
-
-  uint8_t getSpriteSheetFPS() const {
-    return m_spriteSheetFPS;
-  }
-
-  bool getUseLegacyAlphaState() const {
-    return m_useLegacyAlphaState;
-  }
-
-  bool getBlendEnabled() const {
-    return m_blendEnabled;
-  }
-
-  BlendType getBlendType() const {
-    return m_blendType;
-  }
-
-  bool getInvertedBlend() const {
-    return m_invertedBlend;
-  }
-
-  AlphaTestType getAlphaTestType() const {
-    return m_alphaTestType;
-  }
-
-  uint8_t getAlphaTestReferenceValue() const {
-    return m_alphaTestReferenceValue;
-  }
-
-private:
-  // Note: Ensures the data falls within the desired valid ranges in case its source was malformed (e.g.
-  // manual USD editing).
-  void sanitizeData() {
-    constexpr OpaqueMaterialMins mins{};
-    constexpr OpaqueMaterialMaxes maxes{};
-
-    m_anisotropy = std::clamp(m_anisotropy, mins.AnisotropyConstant, maxes.AnisotropyConstant);
-    m_emissiveIntensity = std::clamp(m_emissiveIntensity, mins.EmissiveIntensity, maxes.EmissiveIntensity);
-
-    m_albedoOpacityConstant.x = std::clamp(m_albedoOpacityConstant.x, mins.AlbedoConstant, maxes.AlbedoConstant);
-    m_albedoOpacityConstant.y = std::clamp(m_albedoOpacityConstant.y, mins.AlbedoConstant, maxes.AlbedoConstant);
-    m_albedoOpacityConstant.z = std::clamp(m_albedoOpacityConstant.z, mins.AlbedoConstant, maxes.AlbedoConstant);
-    m_albedoOpacityConstant.w = std::clamp(m_albedoOpacityConstant.w, mins.OpacityConstant, maxes.OpacityConstant);
-    m_roughnessConstant = std::clamp(m_roughnessConstant, mins.RoughnessConstant, maxes.RoughnessConstant);
-    m_metallicConstant = std::clamp(m_metallicConstant, mins.MetallicConstant, maxes.MetallicConstant);
-    m_emissiveColorConstant.x = std::clamp(m_emissiveColorConstant.x, mins.EmissiveColorConstant, maxes.EmissiveColorConstant);
-    m_emissiveColorConstant.y = std::clamp(m_emissiveColorConstant.y, mins.EmissiveColorConstant, maxes.EmissiveColorConstant);
-    m_emissiveColorConstant.z = std::clamp(m_emissiveColorConstant.z, mins.EmissiveColorConstant, maxes.EmissiveColorConstant);
-    m_thinFilmThicknessConstant = std::clamp(m_thinFilmThicknessConstant, mins.ThinFilmThicknessConstant, maxes.ThinFilmThicknessConstant);
-    m_blendType = std::clamp(m_blendType, mins.MinBlendType, maxes.MaxBlendType);
-    m_alphaTestType = std::clamp(m_alphaTestType, mins.MinAlphaTestType, maxes.MaxAlphaTestType);
-    m_alphaTestReferenceValue = std::clamp(m_alphaTestReferenceValue, mins.AlphaReferenceValue, maxes.AlphaReferenceValue);
-    m_displaceIn = std::clamp(m_displaceIn, mins.DisplaceIn, maxes.DisplaceIn);
-  }
-
-  void updateCachedHash() {
-    XXH64_hash_t h = 0;
-    
-    h ^= m_albedoOpacityTexture.getImageHash();
-    h ^= m_normalTexture.getImageHash();
-    h ^= m_tangentTexture.getImageHash();
-    h ^= m_heightTexture.getImageHash();
-    h ^= m_roughnessTexture.getImageHash();
-    h ^= m_metallicTexture.getImageHash();
-    h ^= m_emissiveColorTexture.getImageHash();
-
-    h = XXH64(&m_anisotropy, sizeof(m_anisotropy), h);
-    h = XXH64(&m_emissiveIntensity, sizeof(m_emissiveIntensity), h);
-    h = XXH64(&m_albedoOpacityConstant[0], sizeof(m_albedoOpacityConstant), h);
-    h = XXH64(&m_roughnessConstant, sizeof(m_roughnessConstant), h);
-    h = XXH64(&m_metallicConstant, sizeof(m_metallicConstant), h);
-    h = XXH64(&m_emissiveColorConstant[0], sizeof(m_emissiveColorConstant), h);
-    h = XXH64(&m_enableEmission, sizeof(m_enableEmission), h);
-    h = XXH64(&m_spriteSheetRows, sizeof(m_spriteSheetRows), h);
-    h = XXH64(&m_spriteSheetCols, sizeof(m_spriteSheetCols), h);
-    h = XXH64(&m_spriteSheetFPS, sizeof(m_spriteSheetFPS), h);
-    h = XXH64(&m_enableThinFilm, sizeof(m_enableThinFilm), h);
-    h = XXH64(&m_alphaIsThinFilmThickness, sizeof(m_alphaIsThinFilmThickness), h);
-    h = XXH64(&m_thinFilmThicknessConstant, sizeof(m_thinFilmThicknessConstant), h);
-    h = XXH64(&m_useLegacyAlphaState, sizeof(m_useLegacyAlphaState), h);
-    h = XXH64(&m_blendEnabled, sizeof(m_blendEnabled), h);
-    h = XXH64(&m_blendType, sizeof(m_blendType), h);
-    h = XXH64(&m_invertedBlend, sizeof(m_invertedBlend), h);
-    h = XXH64(&m_alphaTestType, sizeof(m_alphaTestType), h);
-    h = XXH64(&m_alphaTestReferenceValue, sizeof(m_alphaTestReferenceValue), h);
-    h = XXH64(&m_displaceIn, sizeof(m_displaceIn), h);
-
-    m_cachedHash = h;
-  }
-
-  // Note: Matches RtOpaqueSurfaceMaterial members
-
-  TextureRef m_albedoOpacityTexture;
-  TextureRef m_normalTexture;
-  TextureRef m_tangentTexture;
-  TextureRef m_heightTexture;
-  TextureRef m_roughnessTexture;
-  TextureRef m_metallicTexture;
-  TextureRef m_emissiveColorTexture;
-
-  float m_anisotropy;
-  float m_emissiveIntensity;
-
-  Vector4 m_albedoOpacityConstant;
-  float m_roughnessConstant;
-  float m_metallicConstant;
-  Vector3 m_emissiveColorConstant;
-
-  bool m_enableEmission;
-
-  uint8_t m_spriteSheetRows;
-  uint8_t m_spriteSheetCols;
-  uint8_t m_spriteSheetFPS;
-
-  bool m_enableThinFilm;
-  bool m_alphaIsThinFilmThickness;
-  float m_thinFilmThicknessConstant;
-
-  float m_displaceIn;
-
-  // Todo: These overrides are applied to the Surface and are not technically part of the
-  // material itself so should be removed or relocated some day, they are just here for now
-  // since they are specified in the Opaque MDL currently.
-  bool m_useLegacyAlphaState;
-  bool m_blendEnabled;
-  BlendType m_blendType;
-  bool m_invertedBlend;
-  AlphaTestType m_alphaTestType;
-  uint8_t m_alphaTestReferenceValue;
-
-  XXH64_hash_t m_cachedHash;
-};
-
-struct TranslucentMaterialData {
-  TranslucentMaterialData(
-    const TextureRef& normalTexture,
-    const TextureRef& transmittanceTexture,
-    const TextureRef& emissiveColorTexture,
-    float refractiveIndex, const Vector3& transmittanceColor,
-    float transmittanceMeasureDistance,
-    bool enableEmission, float emissiveIntensity, const Vector3& emissiveColorConstant,
-    uint8_t spriteSheetRows,
-    uint8_t spriteSheetCols,
-    uint8_t spriteSheetFPS,
-    bool thinWalled, float thinWallThickness, bool useDiffuseLayer) :
-    m_normalTexture(normalTexture), m_transmittanceTexture(transmittanceTexture), m_emissiveColorTexture(emissiveColorTexture),
-    m_refractiveIndex(refractiveIndex),
-    m_transmittanceColor(transmittanceColor), m_transmittanceMeasurementDistance(transmittanceMeasureDistance),
-    m_enableEmission(enableEmission), m_emissiveIntensity(emissiveIntensity), m_emissiveColorConstant(emissiveColorConstant),
-    m_spriteSheetRows { spriteSheetRows }, m_spriteSheetCols { spriteSheetCols }, m_spriteSheetFPS { spriteSheetFPS },
-    m_isThinWalled(thinWalled), m_thinWallThickness(thinWallThickness), m_useDiffuseLayer(useDiffuseLayer) {
-    sanitizeData();
-    // Note: Called after data is sanitized to have the hashed value reflect the adjusted values.
-    updateCachedHash();
-  }
-
-  const XXH64_hash_t getHash() const {
-    return m_cachedHash;
-  }
-
-  const TextureRef& getNormalTexture() const {
-    return m_normalTexture;
-  }
-
-  const TextureRef& getTransmittanceTexture() const {
-    return m_transmittanceTexture;
-  }
-
-  const TextureRef& getEmissiveColorTexture() const {
-    return m_emissiveColorTexture;
-  }
-
-  float getRefractiveIndex() const {
-    return m_refractiveIndex;
-  }
-
-  const Vector3& getTransmittanceColor() const {
-    return m_transmittanceColor;
-  }
-
-  float getTransmittanceMeasurementDistance() const {
-    return m_transmittanceMeasurementDistance;
-  }
-
-  bool getEnableEmission() const {
-    return m_enableEmission;
-  }
-
-  float getEmissiveIntensity() const {
-    return m_emissiveIntensity;
-  }
-
-  const Vector3& getEmissiveColorConstant() const {
-    return m_emissiveColorConstant;
-  }
-
-  uint8_t getSpriteSheetRows() const {
-    return m_spriteSheetRows;
-  }
-
-  uint8_t getSpriteSheetCols() const {
-    return m_spriteSheetCols;
-  }
-
-  uint8_t getSpriteSheetFPS() const {
-    return m_spriteSheetFPS;
-  }
-
-  bool getIsThinWalled() const {
-    return m_isThinWalled;
-  }
-
-  float getThinWallThickness() const {
-    return m_thinWallThickness;
-  }
-
-  bool getUseDiffuseLayer() const {
-    return m_useDiffuseLayer;
-  }
-
-private:
-  // Note: Ensures the data falls within the desired valid ranges in case its source was malformed (e.g.
-  // manual USD editing).
-  void sanitizeData() {
-    constexpr TranslucentMaterialMins mins {};
-    constexpr TranslucentMaterialMaxes maxes {};
-
-    m_refractiveIndex = std::clamp(m_refractiveIndex, mins.RefractiveIndex, maxes.RefractiveIndex);
-    m_transmittanceColor.x = std::clamp(m_transmittanceColor.x, mins.TransmittanceColor, maxes.TransmittanceColor);
-    m_transmittanceColor.y = std::clamp(m_transmittanceColor.y, mins.TransmittanceColor, maxes.TransmittanceColor);
-    m_transmittanceColor.z = std::clamp(m_transmittanceColor.z, mins.TransmittanceColor, maxes.TransmittanceColor);
-    m_transmittanceMeasurementDistance = std::clamp(m_transmittanceMeasurementDistance, mins.TransmittanceMeasurementDistance, maxes.TransmittanceMeasurementDistance);
-    m_emissiveIntensity = std::clamp(m_emissiveIntensity, mins.EmissiveIntensity, maxes.EmissiveIntensity);
-    m_emissiveColorConstant.x = std::clamp(m_emissiveColorConstant.x, mins.EmissiveColorConstant, maxes.EmissiveColorConstant);
-    m_emissiveColorConstant.y = std::clamp(m_emissiveColorConstant.y, mins.EmissiveColorConstant, maxes.EmissiveColorConstant);
-    m_emissiveColorConstant.z = std::clamp(m_emissiveColorConstant.z, mins.EmissiveColorConstant, maxes.EmissiveColorConstant);
-    m_thinWallThickness = std::clamp(m_thinWallThickness, mins.ThinWallThickness, maxes.ThinWallThickness);
-  }
-
-  void updateCachedHash() {
-    XXH64_hash_t h = 0;
-
-    h ^= m_normalTexture.getImageHash();
-    h ^= m_transmittanceTexture.getImageHash();
-    h ^= m_emissiveColorTexture.getImageHash();
-
-    h = XXH64(&m_refractiveIndex, sizeof(m_refractiveIndex), h);
-    h = XXH64(&m_transmittanceColor[0], sizeof(m_transmittanceColor), h);
-    h = XXH64(&m_transmittanceMeasurementDistance, sizeof(m_transmittanceMeasurementDistance), h);
-    h = XXH64(&m_enableEmission, sizeof(m_enableEmission), h);
-    h = XXH64(&m_emissiveIntensity, sizeof(m_emissiveIntensity), h);
-    h = XXH64(&m_emissiveColorConstant[0], sizeof(m_emissiveColorConstant), h);
-    h = XXH64(&m_spriteSheetRows, sizeof(m_spriteSheetRows), h);
-    h = XXH64(&m_spriteSheetCols, sizeof(m_spriteSheetCols), h);
-    h = XXH64(&m_spriteSheetFPS, sizeof(m_spriteSheetFPS), h);
-    h = XXH64(&m_isThinWalled, sizeof(m_isThinWalled), h);
-    h = XXH64(&m_thinWallThickness, sizeof(m_thinWallThickness), h);
-    h = XXH64(&m_useDiffuseLayer, sizeof(m_useDiffuseLayer), h);
-
-    m_cachedHash = h;
-  }
-
-  TextureRef m_normalTexture;
-  TextureRef m_transmittanceTexture;
-  TextureRef m_emissiveColorTexture;
-  float m_refractiveIndex;
-  Vector3 m_transmittanceColor;
-  float m_transmittanceMeasurementDistance;
-  bool m_enableEmission;
-  float m_emissiveIntensity;
-  Vector3 m_emissiveColorConstant;
-
-  uint8_t m_spriteSheetRows;
-  uint8_t m_spriteSheetCols;
-  uint8_t m_spriteSheetFPS;
-
-  bool m_isThinWalled;
-  float m_thinWallThickness;
-  bool m_useDiffuseLayer;
-
-  XXH64_hash_t m_cachedHash;
-};
-
-struct RayPortalMaterialData {
-  RayPortalMaterialData(
-    const TextureRef& maskTexture, const TextureRef& maskTexture2, uint8_t rayPortalIndex,
-    uint8_t spriteSheetRows, uint8_t spriteSheetCols, uint8_t spriteSheetFPS, float rotationSpeed,
-    bool enableEmission, float emissiveIntensity) :
-    m_maskTexture{ maskTexture }, m_maskTexture2 { maskTexture2 }, m_rayPortalIndex{ rayPortalIndex },
-    m_spriteSheetRows { spriteSheetRows }, m_spriteSheetCols { spriteSheetCols }, m_spriteSheetFPS { spriteSheetFPS }, m_rotationSpeed { rotationSpeed },
-    m_enableEmission(enableEmission), m_emissiveIntensity(emissiveIntensity) {
-    updateCachedHash();
-  }
-
-  const XXH64_hash_t getHash() const {
-    return m_cachedHash;
-  }
-
-  const TextureRef& getMaskTexture() const {
-    return m_maskTexture;
-  }
-
-  const TextureRef& getMaskTexture2() const {
-    return m_maskTexture2;
-  }
-
-  uint8_t getRayPortalIndex() const {
-    return m_rayPortalIndex;
-  }
-
-  uint8_t getSpriteSheetRows() const {
-    return m_spriteSheetRows;
-  }
-
-  uint8_t getSpriteSheetCols() const {
-    return m_spriteSheetCols;
-  }
-
-  uint8_t getSpriteSheetFPS() const {
-    return m_spriteSheetFPS;
-  }
-
-  float getRotationSpeed() const {
-    return m_rotationSpeed;
-  }
-
-  bool getEnableEmission() const {
-    return m_enableEmission;
-  }
-
-  float getEmissiveIntensity() const {
-    return m_emissiveIntensity;
-  }
-
-private:
-  void updateCachedHash() {
-    XXH64_hash_t h = 0;
-
-    h ^= m_maskTexture.getImageHash();
-    h ^= m_maskTexture2.getImageHash();
-
-    h = XXH64(&m_rayPortalIndex, sizeof(m_rayPortalIndex), h);
-    h = XXH64(&m_spriteSheetRows, sizeof(m_spriteSheetRows), h);
-    h = XXH64(&m_spriteSheetCols, sizeof(m_spriteSheetCols), h);
-    h = XXH64(&m_spriteSheetFPS, sizeof(m_spriteSheetFPS), h);
-    h = XXH64(&m_rotationSpeed, sizeof(m_rotationSpeed), h);
-    h = XXH64(&m_enableEmission, sizeof(m_enableEmission), h);
-    h = XXH64(&m_emissiveIntensity, sizeof(m_emissiveIntensity), h);
-
-    m_cachedHash = h;
-  }
-
-  TextureRef m_maskTexture;
-  TextureRef m_maskTexture2;
-
-  uint8_t m_rayPortalIndex;
-  uint8_t m_spriteSheetRows;
-  uint8_t m_spriteSheetCols;
-  uint8_t m_spriteSheetFPS;
-  float m_rotationSpeed;
-  bool m_enableEmission;
-  float m_emissiveIntensity;
-
-  XXH64_hash_t m_cachedHash;
+  XXH64_hash_t m_cachedHash = kEmptyHash;
 };
 
 struct MaterialData {
@@ -2005,6 +1537,23 @@ struct MaterialData {
     return m_rayPortalMaterialData;
   }
 
+  void mergeLegacyMaterial(const LegacyMaterialData& input) {
+    switch (m_type) {
+    default:
+      assert(false);
+      [[fallthrough]];
+    case MaterialDataType::Opaque:
+      m_opaqueMaterialData.merge(input);
+      break;
+    case MaterialDataType::Translucent:
+      m_translucentMaterialData.merge(input);
+      break;
+    case MaterialDataType::RayPortal:
+      m_rayPortalMaterialData.merge(input);
+      break;
+    }
+  }
+
 private:
   // Type-specific Material Data Information
   bool m_ignored = false;
@@ -2016,6 +1565,11 @@ private:
     TranslucentMaterialData m_translucentMaterialData;
     RayPortalMaterialData m_rayPortalMaterialData;
   };
+};
+
+enum class HighlightColor {
+  World,
+  UI,
 };
 
 } // namespace dxvk

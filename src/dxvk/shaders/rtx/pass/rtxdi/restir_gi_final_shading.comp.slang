@@ -21,6 +21,7 @@
 */
 #define RAB_HAS_CURRENT_GBUFFER 1
 #define RAB_HAS_RESTIR_GI_RESERVOIRS 1
+#define OPAQUE_MATERIAL_USE_POM 1
 
 #include "rtx/pass/common_bindings.slangh"
 #include "rtx/pass/rtxdi/restir_gi_final_shading_bindings.slangh"
@@ -116,9 +117,12 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
       uint8_t rayMask = OBJECT_MASK_OPAQUE | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC);
 
       vec3 dstPosition = spatialReservoir.getVisibilityPoint(minimalSurfaceInteraction.position);
+      uint16_t primarySurfaceIndex = cb.pomEnableReSTIRGI && polymorphicSurfaceMaterialInteractionHasHeightTexture(polymorphicSurfaceMaterialInteraction) ?
+        uint16_t(SharedSurfaceIndex[threadIndex]) : BINDING_INDEX_INVALID;
       VisibilityResult visibility = traceVisibilityRay(minimalSurfaceInteraction,
-        dstPosition, false, rayMask, visibilityModeNone, portalID,
-        geometryFlags.portalSpace, 0, 0, RAB_RESTIR_GI_VISIBILITY_SHORTENING, geometryFlags.isViewModel);
+        dstPosition, rayMask, visibilityModeNone, portalID,
+        geometryFlags.portalSpace, 0, 0, RAB_RESTIR_GI_VISIBILITY_SHORTENING, geometryFlags.isViewModel,
+        false, primarySurfaceIndex, DisplacementTextureCoord[threadIndex]);
       filterColor = visibility.attenuation;
     }
     else
@@ -151,7 +155,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
       vec3 L = normalize(spatialReservoir.position - minimalSurfaceInteraction.position);
       SurfaceMaterialInteractionSplitWeight brdf = opaqueSurfaceMaterialInteractionCalcProjectedWeight(material, minimalRayInteraction, L);
 
-      diffuseLight  = spatialReservoir.radiance * brdf.diffuseReflectionWeight  * spatialReservoir.avgWeight;
+      diffuseLight  = spatialReservoir.radiance * (brdf.diffuseReflectionWeight + brdf.diffuseTransmissionWeight) * spatialReservoir.avgWeight;
       specularLight = spatialReservoir.radiance * brdf.specularReflectionWeight * spatialReservoir.avgWeight;
 
       // Calculate MIS weight

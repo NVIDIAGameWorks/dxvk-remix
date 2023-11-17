@@ -22,8 +22,7 @@
 #pragma once
 
 #include "../util/config/config.h"
-
-#include "d3d9_include.h"
+#include "../util/rc/util_rc_ptr.h"
 
 namespace dxvk {
   class DxvkDevice;

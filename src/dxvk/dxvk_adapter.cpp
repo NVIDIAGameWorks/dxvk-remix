@@ -340,7 +340,7 @@ namespace dxvk {
           DxvkDeviceFeatures  enabledFeatures) {
     DxvkDeviceExtensions devExtensions;
 
-    std::array<DxvkExt*, 38> devExtensionList = {{
+    std::array<DxvkExt*, 42> devExtensionList = {{
       &devExtensions.amdMemoryOverallocationBehaviour,
       &devExtensions.amdShaderFragmentMask,
       &devExtensions.ext4444Formats,
@@ -362,6 +362,7 @@ namespace dxvk {
       &devExtensions.khrDepthStencilResolve,
       &devExtensions.khrDrawIndirectCount,
       &devExtensions.khrDriverProperties,
+      &devExtensions.khrExternalMemoryWin32,
       &devExtensions.khrImageFormatList,
       &devExtensions.khrSamplerMirrorClampToEdge,
       &devExtensions.khrShaderFloatControls,
@@ -381,6 +382,9 @@ namespace dxvk {
       &devExtensions.nvLowLatency,
       &devExtensions.nvxBinaryImport,
       &devExtensions.nvxImageViewHandle,
+      &devExtensions.khrExternalMemory,
+      &devExtensions.khrExternalSemaphore,
+      &devExtensions.khrExternalSemaphoreWin32,
     }};
 
     // Only enable Cuda interop extensions in 64-bit builds in
@@ -432,10 +436,6 @@ namespace dxvk {
     // enable DLFG extensions if available
     std::array devDlfgExtensions = {
       &devExtensions.khrMaintenance4,
-      &devExtensions.khrExternalMemory,
-      &devExtensions.khrExternalMemoryWin32,
-      &devExtensions.khrExternalSemaphore,
-      &devExtensions.khrExternalSemaphoreWin32,
       &devExtensions.nvOpticalFlow,
       &devExtensions.extCalibratedTimestamps,
     };

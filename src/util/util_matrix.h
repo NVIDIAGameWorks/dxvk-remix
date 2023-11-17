@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2022, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -21,9 +21,10 @@
 */
 #pragma once
 
+#include "util_math.h"
 #include "util_vector.h"
 #include "vulkan/vulkan_core.h"
-#include "util_once.h"
+#include "log/log.h"
 
 namespace dxvk {
 
@@ -72,7 +73,30 @@ namespace dxvk {
       data[2] = Vector4Base<T>(matrix.matrix[2]);
       data[3] = Vector4Base<T>(0, 0, 0, 1);
     }
-    
+
+    inline Matrix4Base(const Vector4Base<T> quaternion, const Vector3Base<T> translation) {
+      data[0][0] = 1.0 - 2.0 * (quaternion.y * quaternion.y + quaternion.z * quaternion.z);
+      data[0][1] = 2.0 * (quaternion.x * quaternion.y + quaternion.z * quaternion.w);
+      data[0][2] = 2.0 * (quaternion.z * quaternion.x - quaternion.y * quaternion.w);
+
+      data[1][0] = 2.0 * (quaternion.x * quaternion.y - quaternion.z * quaternion.w);
+      data[1][1] = 1.0 - 2.0 * (quaternion.z * quaternion.z + quaternion.x * quaternion.x);
+      data[1][2] = 2.0 * (quaternion.y * quaternion.z + quaternion.x * quaternion.w);
+
+      data[2][0] = 2.0 * (quaternion.z * quaternion.x + quaternion.y * quaternion.w);
+      data[2][1] = 2.0 * (quaternion.y * quaternion.z - quaternion.x * quaternion.w);
+      data[2][2] = 1.0 - 2.0 * (quaternion.y * quaternion.y + quaternion.x * quaternion.x);
+
+      data[3] = Vector4Base<T>(translation.x, translation.y, translation.z, 1.f);
+    }
+
+    explicit inline Matrix4Base(const Vector3Base<T> translation) {
+      data[0] = { 1, 0, 0, 0 };
+      data[1] = { 0, 1, 0, 0 };
+      data[2] = { 0, 0, 1, 0 };
+      data[3] = Vector4Base<T>(translation.x, translation.y, translation.z, 1.f);
+    }
+
     inline Matrix4Base(const T m00, const T m01, const T m02, const T m03,
                    const T m10, const T m11, const T m12, const T m13,
                    const T m20, const T m21, const T m22, const T m23,
@@ -322,15 +346,13 @@ namespace dxvk {
     Vector4d dot0 = { Vector4d(m[0].x,m[0].y,m[0].z,m[0].w) * row0 };
     double dot1 = (dot0.x + dot0.y) + (dot0.z + dot0.w);
 
+    // Note: Ensure the matrix is invertable.
+    mathValidationAssert(dot1 != 0.0, "Attempted invert a non-invertible matrix.");
+
     Matrix4Base<T> output;
 
-    // Ensure the matrix is invertible
-    if (dot1 != 0.0) {
-      for (uint32_t i = 0; i < 16; i++) {
-        output[i / 4][i % 4] = inverse[i / 4][i % 4] / dot1;
-      }
-    } else {
-      ONCE(Logger::err("Tried to invert a non-invertible matrix."));
+    for (uint32_t i = 0; i < 16; i++) {
+      output[i / 4][i % 4] = inverse[i / 4][i % 4] / dot1;
     }
 
     return output;

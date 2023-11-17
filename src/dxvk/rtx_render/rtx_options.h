@@ -236,7 +236,7 @@ namespace dxvk {
                    "Some artifacts may still appear however compared to the original game either due to issues with the underlying DXVK translation or issues in Remix itself.");
 #else
     // Shipping config
-    bool enableRaytracing() { return true; }
+    static bool enableRaytracing() { return true; }
 #endif
 
     RTX_OPTION_ENV("rtx", float, timeDeltaBetweenFrames, 0.f, "RTX_FRAME_TIME_DELTA_MS", "Frame time delta to use during scene processing. Setting this to 0 will use actual frame time delta for a given frame. Non-zero value is primarily used for automation to ensure determinism run to run.");
@@ -295,9 +295,17 @@ namespace dxvk {
 
     struct Displacement {
       friend class ImGUI;
+      RTX_OPTION("rtx.displacement", DisplacementMode, mode, DisplacementMode::RaymarchPOM, "What algorithm the displacement uses.\n"
+        "RaymarchPOM: advances the ray in linear steps until the ray is below the heightfield.\n"
+        "QuadtreePOM: Relies on special mipmaps with maximum values instead of average values.  Uses the mipmap as a quadtree.");
       RTX_OPTION("rtx.displacement", bool, enableDirectLighting, true, "Whether direct lighting accounts for displacement mapping");
       RTX_OPTION("rtx.displacement", bool, enableIndirectLighting, true, "Whether indirect lighting accounts for displacement mapping");
+      RTX_OPTION("rtx.displacement", bool, enableNEECache, true, "Whether the NEE cache accounts for displacement mapping");
+      RTX_OPTION("rtx.displacement", bool, enableReSTIRGI, true, "Whether ReSTIR GI accounts for displacement mapping");
+      RTX_OPTION("rtx.displacement", bool, enableIndirectHit, false, "Whether indirect ray hits account for displacement mapping (Enabling this is expensive.  Without it, non-perfect reflections of displaced objects will not show displacement.)");
+      RTX_OPTION("rtx.displacement", bool, enablePSR, false, "Enable PSR (perfect reflections) for materials with displacement.  Rays that have been perfectly reflected off a POM surface will not collide correctly with other parts of that same surface.");
       RTX_OPTION("rtx.displacement", float, displacementFactor, 1.0f, "Scaling factor for all displacement maps");
+      RTX_OPTION("rtx.displacement", uint, maxIterations, 64, "The max number of times the POM raymarch will iterate.");
     } displacement;
 
     RTX_OPTION("rtx", bool, resolvePreCombinedMatrices, true, "");
@@ -306,7 +314,7 @@ namespace dxvk {
     RTX_OPTION("rtx", uint32_t, maxPrimsInMergedBLAS, 50000, "");
 
     // Camera
-    RTX_OPTION_ENV("rtx", bool, shakeCamera, false, "RTX_FREE_CAMERA_ENABLE_ANIMATION", "Enables animation of the free camera.");
+    RW_RTX_OPTION_ENV("rtx", bool, shakeCamera, false, "RTX_FREE_CAMERA_ENABLE_ANIMATION", "Enables animation of the free camera.");
     RTX_OPTION_ENV("rtx", CameraAnimationMode, cameraAnimationMode, CameraAnimationMode::CameraShake_Pitch, "RTX_FREE_CAMERA_ANIMATION_MODE", "Free camera's animation mode.");
     RTX_OPTION_ENV("rtx", int, cameraShakePeriod, 20, "RTX_FREE_CAMERA_ANIMATION_PERIOD", "Period of the free camera's animation.");
     RTX_OPTION_ENV("rtx", float, cameraAnimationAmplitude, 2.0f, "RTX_FREE_CAMERA_ANIMATION_AMPLITUDE", "Amplitude of the free camera's animation.");
@@ -394,10 +402,12 @@ namespace dxvk {
         RTX_OPTION("rtx.antiCulling.object", bool, enableHighPrecisionAntiCulling, true, "Use robust intersection check with Separate Axis Theorem.\n"
                    "This method is slightly expensive but it effectively addresses object flickering issues that arise from corner cases in the fast intersection check method.\n"
                    "Typically, it's advisable to enable this option unless it results in a notable performance drop; otherwise, the presence of flickering artifacts could significantly diminish the overall image quality.");
-        RTX_OPTION("rtx.antiCulling.object", bool, enableInfinityFarFrustum, true, "Enable infinity far plane frustum for anti-culling.");
+        RTX_OPTION("rtx.antiCulling.object", bool, enableInfinityFarFrustum, false, "Enable infinity far plane frustum for anti-culling.");
+        RTX_OPTION("rtx.antiCulling.object", bool, hashInstanceWithBoundingBoxHash, true, "Hash instances with bounding box hash for object duplication check.\n Disable this when the game using primitive culling which may cause flickering.");
         // TODO: This should be a threshold of memory size
-        RTX_OPTION("rtx.antiCulling.object", uint32_t, numObjectsToKeep, 1000, "The maximum number of RayTracing instances to keep when Anti-Culling is enabled.");
-        RTX_OPTION("rtx.antiCulling.object", float, fovScale, 1.0f, "Scalar of the FOV of Anti-Culling Frustum.");
+        RTX_OPTION("rtx.antiCulling.object", uint32_t, numObjectsToKeep, 10000, "The maximum number of RayTracing instances to keep when Anti-Culling is enabled.");
+        RTX_OPTION("rtx.antiCulling.object", float, fovScale, 1.0f, "Scale applied to the FOV of Anti-Culling Frustum for matching the culling frustum in the original game.");
+        RTX_OPTION("rtx.antiCulling.object", float, farPlaneScale, 10.0f, "Scale applied to the far plane for Anti-Culling Frustum for matching the culling frustum in the original game.");
       };
       struct Light {
         friend class ImGUI;
@@ -503,6 +513,8 @@ namespace dxvk {
     RTX_OPTION("rtx", float, minOpaqueSpecularLobeSamplingProbability, 0.25f, "The minimum allowed non-zero value for opaque specular probability weights.");
     RTX_OPTION("rtx", float, opaqueOpacityTransmissionLobeSamplingProbabilityZeroThreshold, 0.01f, "The threshold for which to zero opaque opacity probability weight values.");
     RTX_OPTION("rtx", float, minOpaqueOpacityTransmissionLobeSamplingProbability, 0.25f, "The minimum allowed non-zero value for opaque opacity probability weights.");
+    RTX_OPTION("rtx", float, opaqueDiffuseTransmissionLobeSamplingProbabilityZeroThreshold, 0.01f, "The threshold for which to zero thin opaque diffuse transmission probability weight values.");
+    RTX_OPTION("rtx", float, minOpaqueDiffuseTransmissionLobeSamplingProbability, 0.25f, "The minimum allowed non-zero value for thin opaque diffuse transmission probability weights.");
     // Note: 0.01 chosen as mentioned before to avoid cutting off reflection lobe on most common types of glass when looking straight on (a base reflectivity
     // of 0.01 corresponds to an IoR of 1.22 or so). Avoid changing this default without good reason to prevent glass from losing its reflection contribution.
     RTX_OPTION("rtx", float, translucentSpecularLobeSamplingProbabilityZeroThreshold, 0.01f, "The threshold for which to zero translucent specular probability weight values.");
@@ -620,6 +632,15 @@ namespace dxvk {
                "Note that enabling this option will require 3x the memory of the typical froxel grid as well as degrade performance in some cases.\n"
                "This option should be enabled always in games using ray portals for proper looking volumetrics through them, but should be disabled on any game not using ray portals.\n"
                "Additionally, this setting must be set at startup and changing it will not take effect at runtime.");
+
+    // Subsurface Scattering
+    struct SubsurfaceScattering {
+      friend class RtxOptions;
+      friend class ImGUI;
+
+      RTX_OPTION("rtx.subsurface", bool, enableThinOpaque, true, "Enable thin opaque material. The materials with th  in opaque properties will fallback to normal opaque material.");
+      RTX_OPTION("rtx.subsurface", float, surfaceThicknessScale, 1.0f, "Scalar of the subsurface thickness.");
+    };
 
     // Note: Options for remapping legacy D3D9 fixed function fog parameters to volumetric lighting parameters and overwriting the global volumetric parameters when fixed function fog is enabled.
     // Useful for cases where dynamic fog parameters are used throughout a game (or very per-level) that cannot be captrued merely in a global set of volumetric parameters. To see remapped results
@@ -864,10 +885,12 @@ namespace dxvk {
 
     RTX_OPTION("rtx", FusedWorldViewMode, fusedWorldViewMode, FusedWorldViewMode::None, "Set if game uses a fused World-View transform matrix.");
 
-    RTX_OPTION_FLAG("rtx", XXH64_hash_t, highlightedTexture, kEmptyHash, RtxOptionFlags::NoSave, "Hash of a texture that should be highlighted.");
-
     RTX_OPTION("rtx", bool, useBuffersDirectly, true, "When enabled Remix will use the incoming vertex buffers directly where possible instead of copying data. Note: setting the d3d9.allowDiscard to False will disable this option.");
     RTX_OPTION("rtx", bool, alwaysCopyDecalGeometries, true, "When set to True tells the geometry processor to always copy decals geometry. This is an optimization flag to experiment with when rtx.useBuffersDirectly is True.");
+
+    RTX_OPTION("rtx", bool, ignoreLastTextureStage, false, 
+               "Removes the last texture bound to a draw call, when using fixed-function pipeline. Primary textures are untouched.\n"
+               "Might be set to true, if a game applies a lightmap as last shading step, to omit the original lightmap data.");
 
     // Automation Options
     struct Automation {
@@ -895,12 +918,6 @@ namespace dxvk {
     HashRule GeometryAssetHashRule = 0;
 
   private:
-    // These cannot be overridden, and should match the defaults in the respective MDLs
-    const OpaqueMaterialDefaults opaqueMaterialDefaults{};
-    const TranslucentMaterialDefaults translucentMaterialDefaults{};
-    const RayPortalMaterialDefaults rayPortalMaterialDefaults{};
-    const SharedMaterialDefaults sharedMaterialDefaults{};
-
     RTX_OPTION("rtx", float, effectLightIntensity, 1.f, "");
     RTX_OPTION("rtx", float, effectLightRadius, 5.f, "");
     RTX_OPTION("rtx", bool, effectLightPlasmaBall, false, "");
@@ -1128,98 +1145,6 @@ namespace dxvk {
 
     static std::unique_ptr<RtxOptions>& Get() { return pInstance; }
 
-    bool isLightmapTexture(const XXH64_hash_t& h) const {
-      return lightmapTextures().find(h) != lightmapTextures().end();
-    }
-
-    bool isSkyboxTexture(const XXH64_hash_t& h) const {
-      return skyBoxTextures().find(h) != skyBoxTextures().end();
-    }
-
-    bool isSkyboxGeometry(const XXH64_hash_t& h) const {
-      return skyBoxGeometries().find(h) != skyBoxGeometries().end();
-    }
-
-    bool shouldIgnoreTexture(const XXH64_hash_t& h) const {
-      return ignoreTextures().find(h) != ignoreTextures().end();
-    }
-    
-    bool shouldIgnoreLight(const XXH64_hash_t& h) const {
-      return ignoreLights().find(h) != ignoreLights().end();
-    }
-
-    bool isUiTexture(const XXH64_hash_t& h) const {
-      return uiTextures().find(h) != uiTextures().end();
-    }
-    
-    bool isWorldSpaceUiTexture(const XXH64_hash_t& h) const {
-      return worldSpaceUiTextures().find(h) != worldSpaceUiTextures().end();
-    }
-
-    bool isWorldSpaceUiBackgroundTexture(const XXH64_hash_t& h) const {
-      return worldSpaceUiBackgroundTextures().find(h) != worldSpaceUiBackgroundTextures().end();
-    }
-
-    bool isHideInstanceTexture(const XXH64_hash_t& h) const {
-      return hideInstanceTextures().find(h) != hideInstanceTextures().end();
-    }
-    
-    bool isPlayerModelTexture(const XXH64_hash_t& h) const {
-      return playerModelTextures().find(h) != playerModelTextures().end();
-    }
-
-    bool isPlayerModelBodyTexture(const XXH64_hash_t& h) const {
-      return playerModelBodyTextures().find(h) != playerModelBodyTextures().end();
-    }
-
-    bool isParticleTexture(const XXH64_hash_t& h) const {
-      return particleTextures().find(h) != particleTextures().end();
-    }
-
-    bool isBeamTexture(const XXH64_hash_t& h) const {
-      return beamTextures().find(h) != beamTextures().end();
-    }
-
-    bool isDecalTexture(const XXH64_hash_t& h) const {
-      return decalTextures().find(h) != decalTextures().end();
-    }
-
-    bool isCutoutTexture(const XXH64_hash_t& h) const {
-      return cutoutTextures().find(h) != cutoutTextures().end();
-    }
-
-    bool isDynamicDecalTexture(const XXH64_hash_t& h) const {
-      return dynamicDecalTextures().find(h) != dynamicDecalTextures().end();
-    }
-
-    static bool isSingleOffsetDecalTexture(const XXH64_hash_t& h) {
-      return singleOffsetDecalTextures().find(h) != singleOffsetDecalTextures().end();
-    }
-
-    bool isNonOffsetDecalTexture(const XXH64_hash_t& h) const {
-      return nonOffsetDecalTextures().find(h) != nonOffsetDecalTextures().end();
-    }
-
-    bool isTerrainTexture(const XXH64_hash_t& h) const {
-      return terrainTextures().find(h) != terrainTextures().end();
-    }
-
-    bool shouldOpacityMicromapIgnoreTexture(const XXH64_hash_t& h) const {
-      return opacityMicromapIgnoreTextures().find(h) != opacityMicromapIgnoreTextures().end();
-    }
-
-    bool isAnimatedWaterTexture(const XXH64_hash_t& h) const {
-      return animatedWaterTextures().find(h) != animatedWaterTextures().end();
-    }
-
-    bool isMotionBlurMaskOutTexture(const XXH64_hash_t& h) const {
-      return motionBlurMaskOutTextures().find(h) != motionBlurMaskOutTextures().end();
-    }
-
-    bool isAntiCullingTexture(const XXH64_hash_t& h) const {
-      return antiCullingTextures().find(h) != antiCullingTextures().end();
-    }
-
     bool getRayPortalTextureIndex(const XXH64_hash_t& h, std::size_t& index) const {
       const auto findResult = std::find(rayPortalModelTextureHashes().begin(), rayPortalModelTextureHashes().end(), h);
 
@@ -1444,11 +1369,6 @@ namespace dxvk {
     bool isUseVirtualShadingNormalsForDenoisingEnabled() const { return useVirtualShadingNormalsForDenoising(); }
     bool isResetDenoiserHistoryOnSettingsChangeEnabled() const { return resetDenoiserHistoryOnSettingsChange(); }
     
-    const OpaqueMaterialDefaults& getOpaqueMaterialDefaults() const { return opaqueMaterialDefaults; }
-    const TranslucentMaterialDefaults& getTranslucentMaterialDefaults() const { return translucentMaterialDefaults; }
-    const RayPortalMaterialDefaults& getRayPortalMaterialDefaults() const { return rayPortalMaterialDefaults; }
-    const SharedMaterialDefaults& getSharedMaterialDefaults() const { return sharedMaterialDefaults; }
-
     int32_t getPresentThrottleDelay() const { return enablePresentThrottle() ? presentThrottleDelay() : 0; }
     bool getValidateCPUIndexData() const { return validateCPUIndexData(); }
 

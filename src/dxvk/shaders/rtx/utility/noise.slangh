@@ -44,6 +44,18 @@ uint hashJenkinsOneAtATime(uint x) {
   return x;
 }
 
+// Alternative from https://nullprogram.com/blog/2018/07/31/
+uint prospectorHash(uint x) {
+  x ^= x >> 17;
+  x *= 0xed5ad4bbU;
+  x ^= x >> 11;
+  x *= 0xac4c1b51U;
+  x ^= x >> 15;
+  x *= 0x31848babU;
+  x ^= x >> 14;
+  return x;
+}
+
 vec2 R2(uint index) {
   // Generalized golden ratio to 2d.
   // Solution to x^3 = x + 1

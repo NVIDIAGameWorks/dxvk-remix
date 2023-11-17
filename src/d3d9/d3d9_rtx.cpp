@@ -20,6 +20,9 @@ namespace dxvk {
   // We only look at RT 0 currently.
   const uint32_t kRenderTargetIndex = 0;
 
+  #define CATEGORIES_REQUIRE_DRAW_CALL     InstanceCategories::Sky, InstanceCategories::Terrain
+  #define CATEGORIES_REQUIRE_GEOMETRY_COPY InstanceCategories::DecalStatic, InstanceCategories::DecalDynamic, InstanceCategories::DecalNoOffset, InstanceCategories::Terrain, InstanceCategories::WorldUI
+
   D3D9Rtx::D3D9Rtx(D3D9DeviceEx* d3d9Device)
     : m_rtStagingData(d3d9Device->GetDXVKDevice(), (VkMemoryPropertyFlagBits) (VK_MEMORY_PROPERTY_HOST_CACHED_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT))
     , m_parent(d3d9Device)
@@ -344,7 +347,7 @@ namespace dxvk {
       }
 
       m_parent->EmitCs([activeLightsRT, lightIdx](DxvkContext* ctx) {
-        static_cast<RtxContext*>(ctx)->addLights(activeLightsRT.data(), activeLightsRT.size());
+          static_cast<RtxContext*>(ctx)->addLights(activeLightsRT.data(), activeLightsRT.size());
         });
     }
 
@@ -466,6 +469,9 @@ namespace dxvk {
     const uint32_t usedSamplerMask = m_parent->m_psShaderMasks.samplerMask | m_parent->m_vsShaderMasks.samplerMask;
     const uint32_t usedTextureMask = m_parent->m_activeTextures & usedSamplerMask;
     for (uint32_t idx : bit::BitMask(usedTextureMask)) {
+      if (!d3d9State().textures[idx])
+        continue;
+
       auto texture = GetCommonTexture(d3d9State().textures[idx]);
 
       const XXH64_hash_t texHash = texture->GetSampleView(false)->image()->getHash();
@@ -478,7 +484,7 @@ namespace dxvk {
   }
 
   bool D3D9Rtx::isRenderingUI() {
-    if (!m_parent->UseProgrammableVS()) {
+    if (!m_parent->UseProgrammableVS() && orthographicIsUI()) {
       // Here we assume drawcalls with an orthographic projection are UI calls (as this pattern is common, and we can't raytrace these objects).
       const bool isOrthographic = (d3d9State().transforms[GetTransformIndex(D3DTS_PROJECTION)][3][3] == 1.0f);
       const bool zWriteEnabled = d3d9State().renderStates[D3DRS_ZWRITEENABLE];
@@ -488,7 +494,7 @@ namespace dxvk {
     }
 
     // Check if UI texture bound
-    return checkBoundTextureCategory(RtxOptions::Get()->uiTextures());
+    return checkBoundTextureCategory(RtxOptions::uiTextures());
   }
 
   D3D9Rtx::PrepareDrawType D3D9Rtx::internalPrepareDraw(const IndexContext& indexContext, const VertexContext vertexContext[caps::MaxStreams], const DrawContext& drawContext) {
@@ -568,6 +574,7 @@ namespace dxvk {
       return { processIgnoredDraws, false };
     }
 
+    m_activeDrawCallState.categories = 0;
     m_activeDrawCallState.materialData = {};
 
     // Fetch all the legacy state (colour modes, alpha test, etc...)
@@ -601,6 +608,14 @@ namespace dxvk {
     m_activeDrawCallState.usesVertexShader = m_parent->UseProgrammableVS();
     m_activeDrawCallState.usesPixelShader = m_parent->UseProgrammablePS();
 
+    if (m_activeDrawCallState.usesVertexShader) {
+      m_activeDrawCallState.programmableVertexShaderInfo = d3d9State().vertexShader->GetCommonShader()->GetInfo();
+    }
+    
+    if (m_activeDrawCallState.usesPixelShader) {
+      m_activeDrawCallState.programmablePixelShaderInfo = d3d9State().pixelShader->GetCommonShader()->GetInfo();
+    }
+    
     m_activeDrawCallState.cameraType = CameraType::Unknown;
 
     m_activeDrawCallState.minZ = std::clamp(d3d9State().viewport.MinZ, 0.0f, 1.0f);
@@ -609,6 +624,9 @@ namespace dxvk {
     m_activeDrawCallState.zWriteEnable = d3d9State().renderStates[D3DRS_ZWRITEENABLE];
     m_activeDrawCallState.alphaBlendEnable = d3d9State().renderStates[D3DRS_ALPHABLENDENABLE];
     m_activeDrawCallState.zEnable = d3d9State().renderStates[D3DRS_ZENABLE] == D3DZB_TRUE;
+    
+    // Now that the DrawCallState is complete, we can use heuristics for detection
+    m_activeDrawCallState.setupCategoriesForHeuristics();
 
     // Note: when skybox geometries are defined, we don't know if we will or won't need the draw call ahead of time, so assume we do
     // Same with automatic sky detection (requires camera data)
@@ -617,8 +635,7 @@ namespace dxvk {
       needVertexCapture ||
       !RtxOptions::skyBoxGeometries().empty() ||
       RtxOptions::skyAutoDetect() != SkyAutoDetectMode::None ||
-      RtxContext::shouldBakeSky(m_activeDrawCallState) ||
-      RtxContext::shouldBakeTerrain(m_activeDrawCallState);
+      m_activeDrawCallState.testCategoryFlags(CATEGORIES_REQUIRE_DRAW_CALL);
 
     return { preserveOriginalDraw, true };
   }
@@ -643,8 +660,9 @@ namespace dxvk {
     m_parent->EmitCs([params, this](DxvkContext* ctx) {
       assert(dynamic_cast<RtxContext*>(ctx));
       DrawCallState drawCallState;
-      m_drawCallStateQueue.pop(drawCallState);
-      static_cast<RtxContext*>(ctx)->commitGeometryToRT(params, drawCallState);
+      if (m_drawCallStateQueue.pop(drawCallState)) {
+        static_cast<RtxContext*>(ctx)->commitGeometryToRT(params, drawCallState);
+      }
     });
   }
 
@@ -836,7 +854,7 @@ namespace dxvk {
         const XXH64_hash_t texHash = texture->GetSampleView(true)->image()->getHash();
 
         // Currently we only support regular textures, skip lightmaps.
-        if (RtxOptions::Get()->isLightmapTexture(texHash))
+        if (lookupHash(RtxOptions::lightmapTextures(), texHash))
           continue;
 
         // Allow for two stage candidates per texcoord index
@@ -901,23 +919,17 @@ namespace dxvk {
     // Update the drawcall state with texture stage info
     setTextureStageState(d3d9State(), firstStage, useTextureFactorBlend, m_activeDrawCallState.materialData, m_activeDrawCallState.transformData);
 
-    if (auto texture = d3d9State().textures[firstStage]) {
-      auto commonTexture = GetCommonTexture(texture);
-      auto hash = commonTexture->GetImage()->getHash();
+    if (d3d9State().textures[firstStage]) {
+      m_activeDrawCallState.setupCategoriesForTexture();
 
       // Check if an ignore texture is bound
-      if (RtxOptions::Get()->shouldIgnoreTexture(hash)) {
+      if (m_activeDrawCallState.getCategoryFlags().test(InstanceCategories::Ignore)) {
         return false;
       }
 
-      if (!m_forceGeometryCopy && RtxOptions::Get()->alwaysCopyDecalGeometries()) {
+      if (!m_forceGeometryCopy && RtxOptions::alwaysCopyDecalGeometries()) {
         // Only poke decal hashes when option is enabled.
-        m_forceGeometryCopy |= RtxOptions::Get()->isDecalTexture(hash) ||
-          RtxOptions::Get()->isDynamicDecalTexture(hash) ||
-          RtxOptions::Get()->isNonOffsetDecalTexture(hash) ||
-          // Fixme: atm terrain and world-space ui are considered decals..
-          RtxOptions::Get()->isTerrainTexture(hash) ||
-          RtxOptions::Get()->isWorldSpaceUiTexture(hash);
+        m_forceGeometryCopy |= m_activeDrawCallState.testCategoryFlags(CATEGORIES_REQUIRE_GEOMETRY_COPY);
       }
     }
 

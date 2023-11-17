@@ -50,13 +50,15 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.alwaysWaitForAsyncTextures|bool|False||
 |rtx.antiCulling.light.enable|bool|False|Enable Anti\-Culling for lights\.|
 |rtx.antiCulling.light.fovScale|float|1|Scalar of the FOV of lights Anti\-Culling Frustum\.|
-|rtx.antiCulling.light.numFramesToExtendLightLifetime|int|1000|Maximum number of frames to keep  when Anti\-Culling is enabled\. Make sure neither set this too low then the anti\-culling won't work, nor too high which will hurt the performance\.|
+|rtx.antiCulling.light.numFramesToExtendLightLifetime|int|1000|Maximum number of frames to keep  when Anti\-Culling is enabled\. Make sure not to set this too low \(then the anti\-culling won't work\), nor too high \(which will hurt the performance\)\.|
 |rtx.antiCulling.light.numLightsToKeep|int|1000|Maximum number of lights to keep when Anti\-Culling is enabled\.|
 |rtx.antiCulling.object.enable|bool|False|Extends lifetime of objects that go outside the camera frustum \(anti\-culling frustum\)\.|
 |rtx.antiCulling.object.enableHighPrecisionAntiCulling|bool|True|Use robust intersection check with Separate Axis Theorem\.<br>This method is slightly expensive but it effectively addresses object flickering issues that arise from corner cases in the fast intersection check method\.<br>Typically, it's advisable to enable this option unless it results in a notable performance drop; otherwise, the presence of flickering artifacts could significantly diminish the overall image quality\.|
-|rtx.antiCulling.object.enableInfinityFarFrustum|bool|True|Enable infinity far plane frustum for anti\-culling\.|
-|rtx.antiCulling.object.fovScale|float|1|Scalar of the FOV of Anti\-Culling Frustum\.|
-|rtx.antiCulling.object.numObjectsToKeep|int|1000|The maximum number of RayTracing instances to keep when Anti\-Culling is enabled\.|
+|rtx.antiCulling.object.enableInfinityFarFrustum|bool|False|Enable infinity far plane frustum for anti\-culling\.|
+|rtx.antiCulling.object.farPlaneScale|float|10|Scale applied to the far plane for Anti\-Culling Frustum for matching the culling frustum in the original game\.|
+|rtx.antiCulling.object.fovScale|float|1|Scale applied to the FOV of Anti\-Culling Frustum for matching the culling frustum in the original game\.|
+|rtx.antiCulling.object.hashInstanceWithBoundingBoxHash|bool|True|Hash instances with bounding box hash for object duplication check\.<br> Disable this when the game using primitive culling which may cause flickering\.|
+|rtx.antiCulling.object.numObjectsToKeep|int|10000|The maximum number of RayTracing instances to keep when Anti\-Culling is enabled\.|
 |rtx.applicationId|int|102100511|Used to uniquely identify the application to DLSS\. Generally should not be changed without good reason\.|
 |rtx.asyncTextureUploadPreloadMips|int|8||
 |rtx.autoExposure.autoExposureSpeed|float|5|Average exposure changing speed when the image changes\.|
@@ -89,10 +91,14 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.camera.lockFreeCamera|bool|False|Locks free camera\.|
 |rtx.cameraAnimationAmplitude|float|2|Amplitude of the free camera's animation\.|
 |rtx.cameraAnimationMode|int|3|Free camera's animation mode\.|
+|rtx.cameraSequence.autoLoad|bool|False|Load camera sequence automatically\.|
+|rtx.cameraSequence.currentFrame|int|0|Current Frame\.|
+|rtx.cameraSequence.mode|int|0|Current mode\.|
 |rtx.cameraShakePeriod|int|20|Period of the free camera's animation\.|
 |rtx.captureDebugImage|bool|False||
 |rtx.captureEnableMultiframe|bool|False|Enables multi\-frame capturing\. THIS HAS NOT BEEN MAINTAINED AND SHOULD BE USED WITH EXTREME CAUTION\.|
 |rtx.captureFramesPerSecond|int|24|Playback rate marked in the USD stage\.<br>Will eventually determine frequency with which game state is captured and written\. Currently every frame \-\- even those at higher frame rates \-\- are recorded\.|
+|rtx.captureHotKey|unknown type|unknown type|Hotkey to trigger a capture without bringing up the menu\.|
 |rtx.captureInstances|bool|True|If true, an instanced snapshot of the game scene will be captured and exported to a USD stage, in addition to all meshes, textures, materials, etc\.<br>If false, only meshes, etc will be captured\.|
 |rtx.captureMaxFrames|int|1|Max frames capturable when running a multi\-frame capture\. The capture can be toggled to completion manually\.|
 |rtx.captureMeshBlendWeightDelta|float|0.01|Inter\-frame blend weight min delta warrants new time sample\.|
@@ -108,7 +114,8 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.compositePrimaryIndirectSpecular|bool|True|Enables indirect lightning's specular signal for primary surfaces in the final composite\.|
 |rtx.compositeSecondaryCombinedDiffuse|bool|True|Enables combined direct and indirect lightning's diffuse signal for secondary surfaces in the final composite\.|
 |rtx.compositeSecondaryCombinedSpecular|bool|True|Enables combined direct and indirect lightning's specular signal for secondary surfaces in the final composite\.|
-|rtx.debugView.debugViewIdx|int|0||
+|rtx.debugView.composite.compositeViewIdx|int|0|Index of a composite view to show when Composite Debug View is enabled\. The index must be a a valid value from CompositeDebugView enumeration\. Value of 0 disables Composite Debug View\.|
+|rtx.debugView.debugViewIdx|int|0|Index of a debug view to show when Debug View is enabled\. The index must be a valid value from DEBUG\_VIEW\_\* macro defined indices\. Value of 0 disables Debug View\.|
 |rtx.debugView.displayType|int|0||
 |rtx.debugView.enablePseudoColor|bool|False|Enables RGB color coding of a scalar debug view value\.|
 |rtx.debugView.evMaxValue|int|4||
@@ -158,6 +165,9 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.di.permutationSamplingNthFrame|int|0|Apply permutation sampling when \(frameIdx % this == 0\), 0 means off\.|
 |rtx.di.spatialSamples|int|2|The number of spatial reuse samples in converged areas\.|
 |rtx.di.stealBoundaryPixelSamplesWhenOutsideOfScreen|bool|True|Steal screen boundary samples when a hit point is outside the screen\.|
+|rtx.displacement.displacementFactor|float|1|Scaling factor for all displacement maps|
+|rtx.displacement.enableDirectLighting|bool|True|Whether direct lighting accounts for displacement mapping|
+|rtx.displacement.enableIndirectLighting|bool|True|Whether indirect lighting accounts for displacement mapping|
 |rtx.dlfg.enable|bool|True|Enables DLSS 3\.0 frame generation which generates interpolated frames to increase framerate at the cost of slightly more latency\.|
 |rtx.dlssEnhancementDirectLightMaxValue|float|10|The maximum strength of direct lighting enhancement\.|
 |rtx.dlssEnhancementDirectLightPower|float|0.7|The overall strength of direct lighting enhancement\.|
@@ -185,6 +195,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.enableDirectLighting|bool|True|Enables direct lighting \(lighting directly from lights on to a surface\) on surfaces when set to true, otherwise disables it\.|
 |rtx.enableDirectTranslucentShadows|bool|False|Include OBJECT\_MASK\_TRANSLUCENT into primary visibility rays\.|
 |rtx.enableEmissiveBlendEmissiveOverride|bool|True|Override typical material emissive information on draw calls with any emissive blending modes to emulate their original look more accurately\.|
+|rtx.enableEmissiveBlendModeTranslation|bool|True|Treat incoming semi/additive D3D blend modes as emissive\.|
 |rtx.enableFallbackLightShaping|bool|False|Enables light shaping on the fallback light \(only used for non\-Distant light types\)\.|
 |rtx.enableFallbackLightViewPrimaryAxis|bool|False|Enables usage of the camera's view axis as the primary axis for the fallback light's shaping \(only used for non \- Distant light types\)\. Typically the shaping primary axis may be specified directly, but if desired it may be set to the camera's view axis for a "flashlight" effect\.|
 |rtx.enableFirstBounceLobeProbabilityDithering|bool|True|A flag to enable or disable screen\-space probability dithering on the first indirect lobe sampled\.<br>Generally sampling a diffuse, specular or other lobe relies on a random number generated against the probability of sampling each lobe, effectively focusing more rays/paths on lobes which matter more\.<br>This can cause issues however with denoisers which do not handle sparse stochastic signals \(like those from path tracing\) well as they may be expecting a more "complete" signal like those used in simpler branching ray tracing setups\.<br>To help solve this issue this option uses a temporal screenspace dithering based on the probability rather than a purely random choice to determine which lobe to sample from on the first indirect bounce\.<br>This as a result helps ensure there will always be a diffuse or specular sample within the dithering pattern's area and should help the denoising resolve a more stable result\.|
@@ -264,10 +275,10 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.gui.textureGridThumbnailScale|float|1|A float to set the scale of thumbnails while selecting textures\.<br>This will be scaled by the default value of 120 pixels\.<br>This value must always be greater than zero\.|
 |rtx.hashCollisionDetection.enable|bool|False|Enables hash collision detection\.|
 |rtx.hideSplashMessage|bool|False|A flag to disable the splash message indicating how to use Remix from appearing when the application starts\.<br>When set to true this message will be hidden, otherwise it will be displayed on every launch\.|
-|rtx.highlightedTexture|int|0|Hash of a texture that should be highlighted\.|
 |rtx.ignoreGameDirectionalLights|bool|False|Ignores any directional lights coming from the original game \(lights added via toolkit still work\)\.|
 |rtx.ignoreGamePointLights|bool|False|Ignores any point lights coming from the original game \(lights added via toolkit still work\)\.|
 |rtx.ignoreGameSpotLights|bool|False|Ignores any spot lights coming from the original game \(lights added via toolkit still work\)\.|
+|rtx.ignoreLastTextureStage|bool|False|Removes the last texture bound to a draw call, when using fixed\-function pipeline\. Primary textures are untouched\.<br>Might be set to true, if a game applies a lightmap as last shading step, to omit the original lightmap data\.|
 |rtx.indirectRaySpreadAngleFactor|float|0.05|A tuning factor applied to the spread angle calculated from the sampled lobe solid angle PDF\. Should be 0\-1\.<br>This scaled spread angle is used to widen a ray's cone angle after indirect lighting BRDF samples to essentially prefilter the effects of the BRDF lobe's spread which potentially may reduce noise from indirect rays \(e\.g\. reflections\)\.<br>Prefiltering will overblur detail however compared to the ground truth of casting multiple samples especially given this calculated spread angle is a basic approximation and ray cones to begin with are a simple approximation for ray pixel footprint\.<br>As such rather than using the spread angle fully this spread angle factor allows it to be scaled down to something more narrow so that overblurring can be minimized\. Similarly, setting this factor to 0 disables this cone angle widening feature\.|
 |rtx.initializer.asyncAssetLoading|bool|True||
 |rtx.initializer.asyncShaderFinalizing|bool|True||
@@ -317,6 +328,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.maxFogDistance|float|65504||
 |rtx.maxPrimsInMergedBLAS|int|50000||
 |rtx.minOpaqueDiffuseLobeSamplingProbability|float|0.25|The minimum allowed non\-zero value for opaque diffuse probability weights\.|
+|rtx.minOpaqueDiffuseTransmissionLobeSamplingProbability|float|0.25|The minimum allowed non\-zero value for thin opaque diffuse transmission probability weights\.|
 |rtx.minOpaqueOpacityTransmissionLobeSamplingProbability|float|0.25|The minimum allowed non\-zero value for opaque opacity probability weights\.|
 |rtx.minOpaqueSpecularLobeSamplingProbability|float|0.25|The minimum allowed non\-zero value for opaque specular probability weights\.|
 |rtx.minPrimsInStaticBLAS|int|1000||
@@ -372,13 +384,14 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.opacityMicromap.cache.minBudgetSizeMB|int|512|Budget: Min Video Memory \[MB\] required\.<br>If the min amount is not available, then the budget will be set to 0\.|
 |rtx.opacityMicromap.cache.minFreeVidmemMBToNotAllocate|int|2560|Min Video Memory \[MB\] to keep free before allocating any for Opacity Micromaps\.|
 |rtx.opacityMicromap.cache.minUsageFrameAgeBeforeEviction|int|900|Min Opacity Micromap usage frame age before eviction\.<br>Opacity Micromaps unused longer than this can be evicted when freeing up memory for new Opacity Micromaps\.|
-|rtx.opacityMicromap.enable|bool|False|Enables Opacity Micromaps for geometries with textures that have alpha cutouts\.<br>This is generally the case for geometries such as fences, foliage, particles, etc\. \.<br>Opacity Micromaps greatly speed up raytracing of partially opaque triangles\.<br>Examples of scenes that benefit a lot: multiple trees with a lot of foliage,<br>a ground densely covered with grass blades or steam consisting of many particles\.|
+|rtx.opacityMicromap.enable|bool|True|Enables Opacity Micromaps for geometries with textures that have alpha cutouts\.<br>This is generally the case for geometries such as fences, foliage, particles, etc\. \.<br>Opacity Micromaps greatly speed up raytracing of partially opaque triangles\.<br>Examples of scenes that benefit a lot: multiple trees with a lot of foliage,<br>a ground densely covered with grass blades or steam consisting of many particles\.|
 |rtx.opacityMicromap.enableBakingArrays|bool|True|Enables baking of opacity textures into Opacity Micromap arrays per triangle\.|
 |rtx.opacityMicromap.enableBinding|bool|True|Enables binding of built Opacity Micromaps to bottom level acceleration structures\.|
 |rtx.opacityMicromap.enableBuilding|bool|True|Enables building of Opacity Micromap arrays\.|
 |rtx.opacityMicromap.enableResetEveryFrame|bool|False|Debug: resets Opacity Micromap runtime data every frame\. |
 |rtx.opacityMicromap.showAdvancedOptions|bool|False|Shows advanced options\.|
 |rtx.opaqueDiffuseLobeSamplingProbabilityZeroThreshold|float|0.01|The threshold for which to zero opaque diffuse probability weight values\.|
+|rtx.opaqueDiffuseTransmissionLobeSamplingProbabilityZeroThreshold|float|0.01|The threshold for which to zero thin opaque diffuse transmission probability weight values\.|
 |rtx.opaqueMaterial.albedoBias|float|0|A bias factor to add to all albedo values in the opaque material\. Should only be used for debugging or development\.|
 |rtx.opaqueMaterial.albedoScale|float|1|A scale factor to apply to all albedo values in the opaque material\. Should only be used for debugging or development\.|
 |rtx.opaqueMaterial.enableThinFilmOverride|bool|False|A flag to force the thin\-film layer on the opaque material to be enabled\. Should only be used for debugging or development\.|
@@ -394,6 +407,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.opaqueMaterial.thinFilmThicknessOverride|float|0|The thin\-film layer's thickness in nanometers for the opaque material when the thin\-film override is enabled\.<br>Should be any value larger than 0, typically within the wavelength of light, but must be less than or equal to OPAQUE\_SURFACE\_MATERIAL\_THIN\_FILM\_MAX\_THICKNESS \(\(1500\.0f\) nm\)\.<br>Should only be used for debugging or development\.|
 |rtx.opaqueOpacityTransmissionLobeSamplingProbabilityZeroThreshold|float|0.01|The threshold for which to zero opaque opacity probability weight values\.|
 |rtx.opaqueSpecularLobeSamplingProbabilityZeroThreshold|float|0.01|The threshold for which to zero opaque specular probability weight values\.|
+|rtx.orthographicIsUI|bool|True|When enabled, draw calls that are orthographic will be considered as UI\.|
 |rtx.particleSoftnessFactor|float|0.05|Multiplier for the view distance that is used to calculate the particle blending range\.|
 |rtx.pathMaxBounces|int|4|The maximum number of indirect bounces the path will be allowed to complete\. Must be \< 16\.<br>Higher values result in better indirect lighting quality due to biasing the signal less, lower values result in better performance\.<br>Very high values are not recommended however as while long paths may be technically needed for unbiased rendering, in practice the contributions from higher bounces have diminishing returns\.|
 |rtx.pathMinBounces|int|1|The minimum number of indirect bounces the path must complete before Russian Roulette can be used\. Must be \< 16\.<br>This value is recommended to stay fairly low \(1 for example\) as forcing longer paths when they carry little contribution quickly becomes detrimental to performance\.|
@@ -521,6 +535,8 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.stochasticAlphaBlendShareNeighbors|bool|True|Share result with other pixels to accelerate search\.|
 |rtx.stochasticAlphaBlendUseNeighborSearch|bool|True|Get radiance from neighbor opaque pixels\.|
 |rtx.stochasticAlphaBlendUseRadianceVolume|bool|True|Get radiance from radiance volume\.|
+|rtx.subsurface.enableThinOpaque|bool|True|Enable thin opaque material\. The materials with th  in opaque properties will fallback to normal opaque material\.|
+|rtx.subsurface.surfaceThicknessScale|float|1|Scalar of the subsurface thickness\.|
 |rtx.taauPreset|int|1|Adjusts TAA\-U scaling factor, trades quality for performance\.|
 |rtx.temporalAA.colorClampingFactor|float|1|A scalar factor to apply to the standard deviation of the neighborhood of pixels in the color signal used for clamping\. Should be in the range 0\-infinity\.<br>This value essentially represents how many standard deviations of tolerance from the current frame's colors around each pixel pixel the temporally accumulated color signal may have\.<br>Higher values will cause more ghosting whereas lower values may reduce ghosting but will impact image quality \(less ability to upscale effectively\) and reduce stability \(more jittering\)\.|
 |rtx.temporalAA.maximumRadiance|float|10000|The maximum value to use in TAA\-U's perceptual quantizer color transformation, measured in cd/m^2\.<br>The typical value used for the PQ transformation is 10,000 and usually shouldn't be changed\.|
@@ -537,14 +553,17 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.terrainBaker.debugDisableBinding|bool|False|Force disables binding of the baked terrain texture to the terrain meshes\. Used for debugging only\.|
 |rtx.terrainBaker.enableBaking|bool|True|\[Experimental\] Enables runtime baking of blended terrains from top down \(i\.e\. in an opposite direction of "rtx\.zUp"\)\.<br>It bakes multiple blended albedo terrain textures into a single texture sampled during ray tracing\. The system requires "Terrain Textures" to contain hashes of the terrain textures to apply\.<br>Only use this system if the game renders terrain surfaces with multiple blended surfaces on top of each other \(i\.e\. sand mixed with dirt, grass, snow, etc\.\)\.<br>Requirement: the baked terrain surfaces must not be placed vertically in the game world\. Horizontal surfaces will have the best image quality\. Requires "rtx\.zUp" to be set properly\.|
 |rtx.terrainBaker.material.bakeReplacementMaterials|bool|True|Enables baking of replacement materials when they are present\.|
-|rtx.terrainBaker.material.bakeSecondaryPBRTextures|bool|False|\! Note: this features is under development\. It works but performance and memory usage needs to be optimized further\. \!<br>Enables baking of secondary textures in replacement materials when they are present\.<br>Secondary textures are all PBR textures except for albedoOpacity\. So that includes normal, roughness, etc\.|
-|rtx.terrainBaker.material.maxResolutionToUseForReplacementMaterials|int|8192|Max resolution to use for preprocessing and baking of input replacement material textures other than color opacity which is used as is\.<br>Replacement materials need to be preprocessed prior to baking them and limitting the max resolution allows to balance the quality vs performance cost\.|
+|rtx.terrainBaker.material.bakeSecondaryPBRTextures|bool|True|Enables baking of secondary textures in replacement materials when they are present\.<br>Secondary textures are all PBR textures except for albedoOpacity\. So that includes normal, roughness, etc\.|
+|rtx.terrainBaker.material.maxResolutionToUseForReplacementMaterials|int|8192|Max resolution to use for preprocessing and baking of input replacement material textures other than color opacity which is used as is\.<br>Applies only to a case when a preprocessing compute shader is used to support baking of secondary PBR materials\.<br>Replacement materials need to be preprocessed prior to baking them and limitting the max resolution allows to balance the quality vs performance cost\.|
 |rtx.terrainBaker.material.properties.emissiveColorConstant|float3|0, 0, 0|Emissive color constant\. Should be a color in sRGB colorspace with gamma encoding\.|
 |rtx.terrainBaker.material.properties.emissiveIntensity|float|0|Emissive intensity\.|
 |rtx.terrainBaker.material.properties.enableEmission|bool|False|A flag to determine if emission is enabled\.|
 |rtx.terrainBaker.material.properties.metallicConstant|float|0.1|Metallic constant\. Valid range is \<0, 1\>\.|
 |rtx.terrainBaker.material.properties.roughnessAnisotropy|float|0|Roughness anisotropy\. Valid range is \<\-1, 1\>, where 0 is isotropic\.|
 |rtx.terrainBaker.material.properties.roughnessConstant|float|0.7|Perceptual roughness constant\. Valid range is \<0, 1\>\.|
+|rtx.terrainBaker.material.replacementSupportInPS|bool|True|Enables reading of secondary PBR replacement textures in pixel shaders when supported\.<br>Current support is limitted to fixed function pipelines and programmable shaders with Shader Model 1\.0\.<br>When set to false or unsupported, an extra compute shader is used to preproces the secondary textures to make them compatible at an expense of performance and quality instead\.<br>Requires "rtx\.terrainBaker\.material\.replacementSupportInPS\_fixedFunction = True" to apply for draw calls with fixed function graphics pipeline\.<br>Requires "rtx\.terrainBaker\.material\.replacementSupportInPS\_programmableShaders = True" to apply for draw calls with programmable graphics pipeline\.|
+|rtx.terrainBaker.material.replacementSupportInPS_fixedFunction|bool|True|Enables reading of secondary PBR replacement textures in pixel shaders for games with fixed function graphics pipelines\.<br>When set to false, an extra compute shader is used to preproces the secondary textures to make them compatible at an expense of performance and quality instead\.<br>This parameter must be set at launch to apply\.|
+|rtx.terrainBaker.material.replacementSupportInPS_programmableShaders|bool|True|\[Experimental\] Enables reading of secondary PBR replacement textures in pixel shaders for games with programmable graphics pipelines\."When set to false, an extra compute shader is used to preproces the secondary textures to make them compatible at an expense of performance and quality instead\.<br>This parameter must be set at launch to apply\. The current support for this is limitted to draw calls with programmable shaders with Shader Model 1\.0 only\.<br>Draw calls with Shader Model 2\.0\+ will use the preprocessing compute pass\.|
 |rtx.texturemanager.budgetPercentageOfAvailableVram|int|50|The percentage of available VRAM we should use for material textures\.  If material textures are required beyond this budget, then those textures will be loaded at lower quality\.  Important note, it's impossible to perfectly match the budget while maintaining reasonable quality levels, so use this as more of a guideline\.  If the replacements assets are simply too large for the target GPUs available vid mem, we may end up going overbudget regularly\.  Defaults to 50% of the available VRAM\.|
 |rtx.texturemanager.showProgress|bool|False|Show texture loading progress in the HUD\.|
 |rtx.timeDeltaBetweenFrames|float|0|Frame time delta to use during scene processing\. Setting this to 0 will use actual frame time delta for a given frame\. Non\-zero value is primarily used for automation to ensure determinism run to run\.|
@@ -629,6 +648,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.baseGameModPathRegex|string||Regex used to redirect RTX Remix Runtime to another path for replacements and rtx\.conf\.|
 |rtx.baseGameModRegex|string||Regex used to determine if the base game is running a mod, like a sourcemod\.|
 |rtx.beamTextures|hash set||Textures on draw calls that are already particles or emissively blended and have beam\-like geometry\.<br>Typically objects marked as particles or objects using emissive blending will be rendered with a special method which allows re\-orientation of the billboard geometry assumed to make up the draw call in indirect rays \(reflections for example\)\.<br>This method works fine for typical particles, but some \(e\.g\. a laser beam\) may not be well\-represented with the typical billboard assumption of simply needing to rotate around its centroid to face the view direction\.<br>To handle such cases a different beam mode is used to treat objects as more of a cylindrical beam and re\-orient around its main spanning axis, allowing for better rendering of these beam\-like effect objects\.|
+|rtx.cameraSequence.filePath|string||File path\.|
 |rtx.captureInstanceStageName|string|capture_{timestamp}.usd|Name of the 'instance' stage \(see: 'rtx\.captureInstances'\)|
 |rtx.captureTimestampReplacement|string|{timestamp}|String that can be used for auto\-replacing current time stamp in instance stage name|
 |rtx.cutoutTextures|hash set|||
