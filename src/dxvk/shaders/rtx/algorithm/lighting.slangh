@@ -91,8 +91,8 @@ bool sampleLightBasicRIS(
   float weightSum = 0.0f;
 
     // Load Subsurface Material
-  SubsurfaceMaterial subSurfaceMaterial;
-  const bool isSubSurface = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
+  SubsurfaceMaterial subsurfaceMaterial;
+  const bool isSubSurface = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subsurfaceMaterial);
 
   [unroll]
   for (uint lightType = 0; lightType < lightTypeCount; ++lightType)

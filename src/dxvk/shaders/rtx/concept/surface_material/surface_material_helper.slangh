@@ -119,7 +119,7 @@ void adjustProbabilityValue(inout float16_t value, float16_t zeroThreshold, floa
 
 bool subSurfaceMaterialReadHelper(
   uint16_t subsurfaceMaterialIndex,
-  inout SubsurfaceMaterial subSurfaceMaterial)
+  inout SubsurfaceMaterial subsurfaceMaterial)
 {
   if (!cb.thinOpaqueEnable || subsurfaceMaterialIndex == BINDING_INDEX_INVALID)
   {
@@ -127,7 +127,7 @@ bool subSurfaceMaterialReadHelper(
   }
 
   const MemoryPolymorphicSurfaceMaterial memorySubSurfaceMaterial = surfaceMaterialExtensions[subsurfaceMaterialIndex];
-  subSurfaceMaterial = subsurfaceMaterialCreate(memorySubSurfaceMaterial);
+  subsurfaceMaterial = subsurfaceMaterialCreate(memorySubSurfaceMaterial);
 
-  return subSurfaceMaterial.measurementDistance > 0.0h;
+  return subsurfaceMaterial.measurementDistance > 0.0h;
 }
