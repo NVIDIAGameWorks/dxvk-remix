@@ -224,9 +224,7 @@ bool evalNEESecondary(
   uint8_t rayMask = OBJECT_MASK_OPAQUE | (objectMask & OBJECT_MASK_ALL_DYNAMIC);
   if (cb.enableIndirectTranslucentShadows) rayMask |= OBJECT_MASK_TRANSLUCENT;
 
-  // Load Subsurface Material
-  SubsurfaceMaterial subsurfaceMaterial;
-  const bool isSubSurface = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subsurfaceMaterial);
+  const bool isSubsurface = isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
 
   VisibilityResult visibility = traceVisibilityRay(minimalSurfaceInteraction,
     lightSample.position, rayMask,
@@ -234,7 +232,7 @@ bool evalNEESecondary(
     sampledTransportPortalIndex, portalSpace,
     minimalRayInteraction.coneRadius, viewRay.spreadAngle, 0.98, isViewModelSurface, false,
     surfaceIndex, texcoords,
-    isSubSurface, opaqueSurfaceMaterialInteraction.shadingNormal);
+    isSubsurface, opaqueSurfaceMaterialInteraction.shadingNormal);
 
   if (visibility.hasOpaqueHit)
   {
@@ -265,8 +263,7 @@ void evaluateUnshadowedLight(
   out vec3 specularLight)
 {
   if (dot(inputDirection, opaqueSurfaceMaterialInteraction.shadingNormal) < 0.0 &&
-      (!cb.thinOpaqueEnable ||
-       opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex == BINDING_INDEX_INVALID))
+      (!cb.thinOpaqueEnable || !isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction)))
   {
     diffuseLight = specularLight = 0;
     return;

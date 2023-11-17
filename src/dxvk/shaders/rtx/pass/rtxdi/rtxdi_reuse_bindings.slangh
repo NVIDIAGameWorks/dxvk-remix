@@ -83,3 +83,6 @@ Texture2D<uint2> RtxdiBestLights;
 
 layout(r16ui, binding = RTXDI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT)
 Texture2D<uint> SharedSurfaceIndex;
+
+layout(rgba16ui, binding = RTXDI_REUSE_BINDING_SUBSURFACE_DATA_INPUT)
+Texture2D<uint4> SharedSubsurfaceData;

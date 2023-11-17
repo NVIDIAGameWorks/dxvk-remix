@@ -104,19 +104,64 @@ SubsurfaceMaterial subsurfaceMaterialCreate(MemoryPolymorphicSurfaceMaterial mem
   const u16vec2 data01 = unpack16(memoryPolymorphicSurfaceMaterial.data0.y);
   const u16vec2 data02 = unpack16(memoryPolymorphicSurfaceMaterial.data0.z);
   const u16vec2 data03 = unpack16(memoryPolymorphicSurfaceMaterial.data0.w);
+  const u16vec2 data10 = unpack16(memoryPolymorphicSurfaceMaterial.data1.x);
+  const u16vec2 data13 = unpack16(memoryPolymorphicSurfaceMaterial.data1.w);
 
-  subsurfaceMaterial.volumetricAttenuationCoefficient = f16vec3(uint16BitsToHalf(data00.x), uint16BitsToHalf(data00.y), uint16BitsToHalf(data01.x));
-  subsurfaceMaterial.measurementDistance = uint16BitsToHalf(data01.y);
-  subsurfaceMaterial.singleScatteringAlbedo = f16vec3(uint16BitsToHalf(data02.x), uint16BitsToHalf(data02.y), uint16BitsToHalf(data03.x));
-  subsurfaceMaterial.volumetricAnisotropy = uint16BitsToHalf(data03.y);
+  const uint8_t flags = (data13.x & 0xFF);
+
+  if (flags & SUBSURFACE_MATERIAL_FLAG_HAS_TRANSMITTANCE_TEXTURE)
+  {
+    subsurfaceMaterial.subsurfaceTransmittanceTextureIndex = data00.x;
+  }
+  else
+  {
+    subsurfaceMaterial.subsurfaceTransmittanceTextureIndex = BINDING_INDEX_INVALID;
+  }
+
+  if (flags & SUBSURFACE_MATERIAL_FLAG_HAS_THICKNESS_TEXTURE)
+  {
+    subsurfaceMaterial.subsurfaceThicknessTextureIndex = data00.y;
+  }
+  else
+  {
+    subsurfaceMaterial.subsurfaceThicknessTextureIndex = BINDING_INDEX_INVALID;
+    subsurfaceMaterial.measurementDistance = uint16BitsToHalf(data00.y);
+  }
+
+  if (flags & SUBSURFACE_MATERIAL_FLAG_HAS_SINGLE_SCATTERING_ALBEDO_TEXTURE)
+  {
+    subsurfaceMaterial.subsurfaceSingleScatteringAlbedoTextureIndex = data01.x;
+  }
+  else
+  {
+    subsurfaceMaterial.subsurfaceSingleScatteringAlbedoTextureIndex = BINDING_INDEX_INVALID;
+  }
+
+  subsurfaceMaterial.volumetricAttenuationCoefficient = f16vec3(uint16BitsToHalf(data01.y), uint16BitsToHalf(data02.x), uint16BitsToHalf(data02.y));
+  subsurfaceMaterial.singleScatteringAlbedo = f16vec3(uint16BitsToHalf(data03.x), uint16BitsToHalf(data03.y), uint16BitsToHalf(data10.x));
+  subsurfaceMaterial.volumetricAnisotropy = uint16BitsToHalf(data10.y);
 
   return subsurfaceMaterial;
 }
 
-uint16_t getSubsurfaceMaterialIndex(const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial)
+SubsurfaceMaterial subsurfaceMaterialCreate(const SubsurfaceMaterialInteraction subsurfaceMaterialInteraction)
 {
+  SubsurfaceMaterial subsurfaceMaterial;
+  subsurfaceMaterial.volumetricAttenuationCoefficient = transmittanceToAttenuationCoefficient(r5g6b5ToColor(subsurfaceMaterialInteraction.packedTransmittanceColor), subsurfaceMaterialInteraction.measurementDistance);
+  subsurfaceMaterial.measurementDistance = subsurfaceMaterialInteraction.measurementDistance;
+  subsurfaceMaterial.singleScatteringAlbedo = r5g6b5ToColor(subsurfaceMaterialInteraction.packedSingleScatteringAlbedo);
+  subsurfaceMaterial.volumetricAnisotropy = snorm8ToF16(subsurfaceMaterialInteraction.volumetricAnisotropy);
+
+  return subsurfaceMaterial;
+}
+
+uint16_t getSubsurfaceMaterialIndex(const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial, inout uint16_t samplerIndex)
+{
+  const u16vec2 data10 = unpack16(memoryPolymorphicSurfaceMaterial.data1.x);
   const u16vec2 data12 = unpack16(memoryPolymorphicSurfaceMaterial.data1.z);
   const u16vec2 data13 = unpack16(memoryPolymorphicSurfaceMaterial.data1.w);
+  samplerIndex = data10.y;
+
   const uint8_t flags = (data13.x & 0xFF);
   if (flags & OPAQUE_SURFACE_MATERIAL_FLAG_HAS_SUBSURFACE_MATERIAL)
   {

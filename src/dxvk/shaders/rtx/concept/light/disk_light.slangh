@@ -39,11 +39,11 @@ float diskLightCalcPositionalWeight(DiskLight diskLight, vec3 position, inout ve
   );
 }
 
-bool diskLightCalcVisibilityWeight(DiskLight diskLight, f16vec3 triangleNormal, vec3 lightVector, float16_t maxDiskRadius, const bool isSubSurface)
+bool diskLightCalcVisibilityWeight(DiskLight diskLight, f16vec3 triangleNormal, vec3 lightVector, float16_t maxDiskRadius, const bool isSubsurface)
 {
   // Cull the disks that are completely hidden below the surface or the surface has subsurface material,
   // and the disks that are oriented away from the surface.
-  const bool frontSideDisk = (isSubSurface || dot(lightVector, vec3(triangleNormal)) > float(-maxDiskRadius)) &&
+  const bool frontSideDisk = (isSubsurface || dot(lightVector, vec3(triangleNormal)) > float(-maxDiskRadius)) &&
                              (dot(lightVector, vec3(diskLight.normal)) < 0.0f);
 
   return frontSideDisk;

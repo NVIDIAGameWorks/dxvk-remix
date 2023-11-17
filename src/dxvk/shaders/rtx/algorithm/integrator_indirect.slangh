@@ -157,8 +157,7 @@ bool sampleLightNeeCache(inout RAB_RandomSamplerState rtxdiRNG, inout RNG random
 {
   NEECell cell = NEECache.getCell(neeCellOffset);
 
-  SubsurfaceMaterial subsurfaceMaterial;
-  const bool isSubsurface = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subsurfaceMaterial);
+  const bool isSubsurface = isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
 
   // Note: We are NOT taking transmission into consideration, because calculating probability of transmission have some costs.
   //       Also, it's approximate importance and no need to be exact, we just skip the calculation here for better performance.
@@ -927,7 +926,7 @@ void integrateIndirectPath(
 
           const float pomThroughput = opaqueSurfaceMaterialInteractionCalcHeightThroughput(
             minimalSurfaceInteraction, pathState.direction, opaqueSurfaceMaterial.heightTextureIndex,
-            opaqueSurfaceMaterial.samplerIndex, DisplacementTextureCoord[pixelCoordinate], opaqueSurfaceMaterial.displaceIn
+            opaqueSurfaceMaterial.samplerIndex, SharedTextureCoord[pixelCoordinate], opaqueSurfaceMaterial.displaceIn
           );
 
           pathState.throughput = pathState.throughput * pomThroughput;

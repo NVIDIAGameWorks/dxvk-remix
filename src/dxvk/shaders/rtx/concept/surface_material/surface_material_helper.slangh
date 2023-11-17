@@ -117,17 +117,38 @@ void adjustProbabilityValue(inout float16_t value, float16_t zeroThreshold, floa
   value = max(value, minProbability);
 }
 
-bool subSurfaceMaterialReadHelper(
+bool isSubsurfaceMaterial(OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction)
+{
+  return opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.measurementDistance > 0.0h;
+}
+
+SubsurfaceMaterialInteraction subSurfaceMaterialReadHelper(
   uint16_t subsurfaceMaterialIndex,
-  inout SubsurfaceMaterial subsurfaceMaterial)
+  SurfaceInteraction surfaceInteraction,
+  uint16_t samplerIndex)
 {
   if (!cb.thinOpaqueEnable || subsurfaceMaterialIndex == BINDING_INDEX_INVALID)
   {
-    return false;
+    SubsurfaceMaterialInteraction subsurfaceMaterialInteraction;
+    subsurfaceMaterialInteraction.packedTransmittanceColor = uint16_t(0);
+    subsurfaceMaterialInteraction.measurementDistance = 0.0h;
+    subsurfaceMaterialInteraction.packedSingleScatteringAlbedo = uint16_t(0);
+    subsurfaceMaterialInteraction.volumetricAnisotropy = uint8_t(0);
+
+    return subsurfaceMaterialInteraction;
   }
 
-  const MemoryPolymorphicSurfaceMaterial memorySubSurfaceMaterial = surfaceMaterialExtensions[subsurfaceMaterialIndex];
-  subsurfaceMaterial = subsurfaceMaterialCreate(memorySubSurfaceMaterial);
+  const MemoryPolymorphicSurfaceMaterial memorySubsurfaceMaterial = surfaceMaterialExtensions[subsurfaceMaterialIndex];
+  SubsurfaceMaterial subsurfaceMaterial = subsurfaceMaterialCreate(memorySubsurfaceMaterial);
+  return subsurfaceMaterialInteractionCreate(subsurfaceMaterial, surfaceInteraction, samplerIndex);
+}
 
-  return subsurfaceMaterial.measurementDistance > 0.0h;
+SubsurfaceMaterialInteraction subSurfaceMaterialReadHelper(uint4 subsurfaceData)
+{
+  SubsurfaceMaterialInteraction subsurfaceMaterialInteraction;
+  subsurfaceMaterialInteraction.packedTransmittanceColor = uint16_t(subsurfaceData.x);
+  subsurfaceMaterialInteraction.measurementDistance = uint16BitsToHalf(uint16_t(subsurfaceData.y));
+  subsurfaceMaterialInteraction.packedSingleScatteringAlbedo = uint16_t(subsurfaceData.z);
+  subsurfaceMaterialInteraction.volumetricAnisotropy = uint8_t(subsurfaceData.w);
+  return subsurfaceMaterialInteraction;
 }
