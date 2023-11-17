@@ -921,13 +921,21 @@ private:
 // Subsurface Material
 struct RtSubsurfaceMaterial {
   RtSubsurfaceMaterial(
+    const uint32_t subsurfaceTransmittanceTextureIndex,
+    const uint32_t subsurfaceThicknessTextureIndex,
+    const uint32_t subsurfaceSingleScatteringAlbedoTextureIndex,
     const Vector3& subsurfaceTransmittanceColor, const float subsurfaceMeasurementDistance,
     const Vector3& subsurfaceSingleScatteringAlbedo, const float subsurfaceVolumetricAnisotropy) :
+    m_subsurfaceTransmittanceTextureIndex(subsurfaceTransmittanceTextureIndex),
+    m_subsurfaceThicknessTextureIndex(subsurfaceThicknessTextureIndex),
+    m_subsurfaceSingleScatteringAlbedoTextureIndex(subsurfaceSingleScatteringAlbedoTextureIndex),
     m_subsurfaceTransmittanceColor { subsurfaceTransmittanceColor },
     m_subsurfaceMeasurementDistance { subsurfaceMeasurementDistance },
     m_subsurfaceSingleScatteringAlbedo { subsurfaceSingleScatteringAlbedo },
     m_subsurfaceVolumetricAnisotropy { subsurfaceVolumetricAnisotropy },
-    m_subsurfaceVolumetricAttenuationCoefficient { Vector3(1.0f, 1.0f, 1.0f) / (subsurfaceTransmittanceColor * subsurfaceMeasurementDistance) }
+    m_subsurfaceVolumetricAttenuationCoefficient { Vector3(-std::log(subsurfaceTransmittanceColor.x),
+                                                           -std::log(subsurfaceTransmittanceColor.y),
+                                                           -std::log(subsurfaceTransmittanceColor.z)) / subsurfaceMeasurementDistance }
   {
     updateCachedHash();
   }
@@ -935,25 +943,57 @@ struct RtSubsurfaceMaterial {
   void writeGPUData(unsigned char* data, std::size_t& offset) const {
     [[maybe_unused]] const std::size_t oldOffset = offset;
 
-    // Bytes 0-5
+    uint32_t flags = (1 << 31); // Set bit 31 to 1 for subsurface scattering type
+
+    // Bytes 0-1
+    if (m_subsurfaceTransmittanceTextureIndex != kSurfaceMaterialInvalidTextureIndex) {
+      writeGPUHelperExplicit<2>(data, offset, m_subsurfaceTransmittanceTextureIndex);
+      flags |= SUBSURFACE_MATERIAL_FLAG_HAS_TRANSMITTANCE_TEXTURE;
+    } else {
+      // Note: We currently have enough space in SSS material, so no need to compress transmittance from f16v3 to f8v3.
+      //       But it's an option if we run out of space in the future.
+
+      writeGPUPadding<2>(data, offset); // Note: Padding for unused space
+    }
+
+    // Bytes 2-3
+    if (m_subsurfaceThicknessTextureIndex != kSurfaceMaterialInvalidTextureIndex) {
+      writeGPUHelperExplicit<2>(data, offset, m_subsurfaceThicknessTextureIndex);
+      flags |= SUBSURFACE_MATERIAL_FLAG_HAS_THICKNESS_TEXTURE;
+    } else {
+      assert(m_subsurfaceMeasurementDistance <= FLOAT16_MAX);
+      writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceMeasurementDistance));
+    }
+
+    // Bytes 4-5
+    if (m_subsurfaceSingleScatteringAlbedoTextureIndex != kSurfaceMaterialInvalidTextureIndex) {
+      writeGPUHelperExplicit<2>(data, offset, m_subsurfaceSingleScatteringAlbedoTextureIndex);
+      flags |= SUBSURFACE_MATERIAL_FLAG_HAS_SINGLE_SCATTERING_ALBEDO_TEXTURE;
+    } else {
+      // Note: We currently have enough space in SSS material, so no need to compress scattering-albedo from f16v3 to f8v3.
+      //       But it's an option if we run out of space in the future.
+
+      writeGPUPadding<2>(data, offset); // Note: Padding for unused space
+    }
+
+    // Bytes 6-11
     writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAttenuationCoefficient.x));
     writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAttenuationCoefficient.y));
     writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAttenuationCoefficient.z));
 
-    // Bytes 6-7
-    assert(m_subsurfaceMeasurementDistance <= FLOAT16_MAX);
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceMeasurementDistance));
-
-    // Bytes 8-13
+    // Bytes 12-17
     writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceSingleScatteringAlbedo.x));
     writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceSingleScatteringAlbedo.y));
     writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceSingleScatteringAlbedo.z));
 
-    // Bytes 14-15
+    // Bytes 18-19
     writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAnisotropy));
 
-    // Padding 16-31
-    writeGPUPadding<16>(data, offset);
+    // 8 Bytes padding (20-27)
+    writeGPUPadding<8>(data, offset);
+
+    // Bytes 28-31
+    writeGPUHelper(data, offset, flags);
   }
 
   bool operator==(const RtSubsurfaceMaterial& r) const {
@@ -966,6 +1006,18 @@ struct RtSubsurfaceMaterial {
 
   XXH64_hash_t getHash() const {
     return m_cachedHash;
+  }
+
+  uint32_t getSubsurfaceTransmittanceTextureIndex() const {
+    return m_subsurfaceTransmittanceTextureIndex;
+  }
+
+  uint32_t getSubsurfaceThicknessTextureIndex() const {
+    return m_subsurfaceThicknessTextureIndex;
+  }
+
+  uint32_t getSubsurfaceSingleScatteringAlbedoTextureIndex() const {
+    return m_subsurfaceSingleScatteringAlbedoTextureIndex;
   }
 
   float getSubsurfaceMeasurementDistance() const {
@@ -985,17 +1037,39 @@ struct RtSubsurfaceMaterial {
   }
 
 private:
+  struct HashStruct {
+    uint32_t m_subsurfaceTransmittanceTextureIndex;
+    uint32_t m_subsurfaceThicknessTextureIndex;
+    uint32_t m_subsurfaceSingleScatteringAlbedoTextureIndex;
+    Vector3 m_subsurfaceTransmittanceColor;
+    float m_subsurfaceMeasurementDistance;
+    Vector3 m_subsurfaceSingleScatteringAlbedo;
+    float m_subsurfaceVolumetricAnisotropy;
+    Vector3 m_subsurfaceVolumetricAttenuationCoefficient;
+
+    XXH64_hash_t calculateHash() {
+      static_assert(sizeof(HashStruct) == sizeof(uint32_t) * 14);
+      return XXH3_64bits(this, sizeof(HashStruct));
+    }
+  };
+
   void updateCachedHash() {
-    XXH64_hash_t h = 0;
-
-    h = XXH64(&m_subsurfaceTransmittanceColor, sizeof(m_subsurfaceTransmittanceColor), h);
-    h = XXH64(&m_subsurfaceMeasurementDistance, sizeof(m_subsurfaceMeasurementDistance), h);
-    h = XXH64(&m_subsurfaceSingleScatteringAlbedo, sizeof(m_subsurfaceSingleScatteringAlbedo), h);
-    h = XXH64(&m_subsurfaceVolumetricAnisotropy, sizeof(m_subsurfaceVolumetricAnisotropy), h);
-    h = XXH64(&m_subsurfaceVolumetricAttenuationCoefficient, sizeof(m_subsurfaceVolumetricAttenuationCoefficient), h);
-
-    m_cachedHash = h;
+    HashStruct hashData = {
+      m_subsurfaceTransmittanceTextureIndex,
+      m_subsurfaceThicknessTextureIndex,
+      m_subsurfaceSingleScatteringAlbedoTextureIndex,
+      m_subsurfaceTransmittanceColor,
+      m_subsurfaceMeasurementDistance,
+      m_subsurfaceSingleScatteringAlbedo,
+      m_subsurfaceVolumetricAnisotropy,
+      m_subsurfaceVolumetricAttenuationCoefficient };
+    m_cachedHash = hashData.calculateHash();
   }
+
+  // Thin Opaque Textures Index
+  uint32_t m_subsurfaceTransmittanceTextureIndex;
+  uint32_t m_subsurfaceThicknessTextureIndex;
+  uint32_t m_subsurfaceSingleScatteringAlbedoTextureIndex;
 
   // Thin Opaque Properties
   Vector3 m_subsurfaceTransmittanceColor;

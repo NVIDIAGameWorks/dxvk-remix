@@ -537,7 +537,7 @@ namespace dxvk {
     const bool highlightUnsafeAnchor = RtxOptions::Get()->getHighlightUnsafeAnchorModeEnabled() &&
         input.getGeometryData().indexBuffer.defined() && input.getGeometryData().vertexCount > input.getGeometryData().indexCount;
     if (highlightUnsafeAnchor) {
-      static MaterialData sHighlightMaterialData(OpaqueMaterialData(TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), 
+      static MaterialData sHighlightMaterialData(OpaqueMaterialData(TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(),
           0.f, 1.f, Vector3(0.2f, 0.2f, 0.2f), 1.0f, 0.1f, 0.1f, Vector3(0.46f, 0.26f, 0.31f), true, 1, 1, 0, false, false, 200.f, true, false, BlendType::kAlpha, false, AlphaTestType::kAlways, 0, 0.0f, Vector3(), 0.0f, Vector3(), 0.0f));
       overrideMaterialData = &sHighlightMaterialData;
     }
@@ -640,7 +640,7 @@ namespace dxvk {
           overrideMaterialData = replacement.materialData;
         }
         if (highlightUnsafeReplacement) {
-          static MaterialData sHighlightMaterialData(OpaqueMaterialData(TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), 
+          static MaterialData sHighlightMaterialData(OpaqueMaterialData(TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(),
               0.f, 1.f, Vector3(0.2f, 0.2f, 0.2f), 1.f, 0.1f, 0.1f, Vector3(1.f, 0.f, 0.f), true, 1, 1, 0, false, false, 200.f, true, false, BlendType::kAlpha, false, AlphaTestType::kAlways, 0, 0.0f, Vector3(), 0.0f, Vector3(), 0.0f));
           if (getGameTimeSinceStartMS() / 200 % 2 == 0) {
             overrideMaterialData = &sHighlightMaterialData;
@@ -853,6 +853,9 @@ namespace dxvk {
       uint32_t metallicTextureIndex = kSurfaceMaterialInvalidTextureIndex;
       uint32_t emissiveColorTextureIndex = kSurfaceMaterialInvalidTextureIndex;
       uint32_t subsurfaceMaterialIndex = kSurfaceMaterialInvalidTextureIndex;
+      uint32_t subsurfaceTransmittanceTextureIndex = kSurfaceMaterialInvalidTextureIndex;
+      uint32_t subsurfaceThicknessTextureIndex = kSurfaceMaterialInvalidTextureIndex;
+      uint32_t subsurfaceSingleScatteringAlbedoTextureIndex = kSurfaceMaterialInvalidTextureIndex;
 
       float anisotropy;
       float emissiveIntensity;
@@ -950,13 +953,25 @@ namespace dxvk {
           ++m_activePOMCount;
         }
 
-        subsurfaceTransmittanceColor = opaqueMaterialData.getSubsurfaceTransmittanceColor();
         subsurfaceMeasurementDistance = opaqueMaterialData.getSubsurfaceMeasurementDistance() * RtxOptions::SubsurfaceScattering::surfaceThicknessScale();
-        subsurfaceSingleScatteringAlbedo = opaqueMaterialData.getSubsurfaceSingleScatteringAlbedo();
-        subsurfaceVolumetricAnisotropy = opaqueMaterialData.getSubsurfaceVolumetricAnisotropy();
 
-        if (RtxOptions::SubsurfaceScattering::enableThinOpaque() && subsurfaceMeasurementDistance > 0.0f) {
+        if (RtxOptions::SubsurfaceScattering::enableTextureMaps()) {
+          trackTexture(ctx, opaqueMaterialData.getSubsurfaceThicknessTexture(), subsurfaceThicknessTextureIndex, hasTexcoords);
+        }
+
+        if (RtxOptions::SubsurfaceScattering::enableThinOpaque() &&
+            (subsurfaceMeasurementDistance > 0.0f || subsurfaceTransmittanceTextureIndex != kSurfaceMaterialInvalidTextureIndex)) {
+          subsurfaceTransmittanceColor = opaqueMaterialData.getSubsurfaceTransmittanceColor();
+          subsurfaceSingleScatteringAlbedo = opaqueMaterialData.getSubsurfaceSingleScatteringAlbedo();
+          subsurfaceVolumetricAnisotropy = opaqueMaterialData.getSubsurfaceVolumetricAnisotropy();
+
+          if (RtxOptions::SubsurfaceScattering::enableTextureMaps()) {
+            trackTexture(ctx, opaqueMaterialData.getSubsurfaceTransmittanceTexture(), subsurfaceTransmittanceTextureIndex, hasTexcoords);
+            trackTexture(ctx, opaqueMaterialData.getSubsurfaceSingleScatteringAlbedoTexture(), subsurfaceSingleScatteringAlbedoTextureIndex, hasTexcoords);
+          }
+
           const RtSubsurfaceMaterial subsurfaceMaterial(
+            subsurfaceTransmittanceTextureIndex, subsurfaceThicknessTextureIndex, subsurfaceSingleScatteringAlbedoTextureIndex,
             subsurfaceTransmittanceColor, subsurfaceMeasurementDistance, subsurfaceSingleScatteringAlbedo, subsurfaceVolumetricAnisotropy);
           subsurfaceMaterialIndex = m_surfaceMaterialExtensionCache.track(subsurfaceMaterial);
         }

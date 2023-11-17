@@ -70,6 +70,7 @@ namespace dxvk {
         TEXTURE2D(RTXDI_REUSE_BINDING_SS_MVEC_INPUT)
         TEXTURE2D(RTXDI_REUSE_BINDING_POSITION_ERROR_INPUT)
         TEXTURE2D(RTXDI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_SUBSURFACE_DATA_INPUT)
         TEXTURE2D(RTXDI_REUSE_BINDING_SHARED_FLAGS_INPUT)
         RW_TEXTURE2D(RTXDI_REUSE_BINDING_LAST_GBUFFER)
         RW_TEXTURE2D(RTXDI_REUSE_BINDING_REPROJECTION_CONFIDENCE_OUTPUT)
@@ -105,6 +106,7 @@ namespace dxvk {
         TEXTURE2D(RTXDI_REUSE_BINDING_SS_MVEC_INPUT)
         TEXTURE2D(RTXDI_REUSE_BINDING_POSITION_ERROR_INPUT)
         TEXTURE2D(RTXDI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT)
+        TEXTURE2D(RTXDI_REUSE_BINDING_SUBSURFACE_DATA_INPUT)
         TEXTURE2D(RTXDI_REUSE_BINDING_SHARED_FLAGS_INPUT)
         RW_TEXTURE2D(RTXDI_REUSE_BINDING_LAST_GBUFFER)
         RW_TEXTURE2D(RTXDI_REUSE_BINDING_REPROJECTION_CONFIDENCE_OUTPUT)
@@ -256,6 +258,7 @@ namespace dxvk {
       ctx->bindResourceView(RTXDI_REUSE_BINDING_LAST_GBUFFER, rtOutput.m_gbufferLast.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_REPROJECTION_CONFIDENCE_OUTPUT, rtOutput.m_reprojectionConfidence.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view, nullptr);
+      ctx->bindResourceView(RTXDI_REUSE_BINDING_SUBSURFACE_DATA_INPUT, rtOutput.m_sharedSubsurfaceData.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_BSDF_FACTOR_OUTPUT, rtOutput.m_bsdfFactor.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_TEMPORAL_POSITION_OUTPUT, rtOutput.m_primaryRtxdiTemporalPosition.view, nullptr);
@@ -285,6 +288,7 @@ namespace dxvk {
       ctx->bindResourceView(RTXDI_REUSE_BINDING_LAST_GBUFFER, rtOutput.m_gbufferLast.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_REPROJECTION_CONFIDENCE_OUTPUT, rtOutput.m_reprojectionConfidence.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view, nullptr);
+      ctx->bindResourceView(RTXDI_REUSE_BINDING_SUBSURFACE_DATA_INPUT, rtOutput.m_sharedSubsurfaceData.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_BSDF_FACTOR_OUTPUT, rtOutput.m_bsdfFactor.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_TEMPORAL_POSITION_OUTPUT, rtOutput.m_primaryRtxdiTemporalPosition.view, nullptr);

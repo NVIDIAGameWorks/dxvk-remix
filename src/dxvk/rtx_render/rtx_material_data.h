@@ -31,14 +31,18 @@
 
 // clang-format off
 #define LIST_OPAQUE_MATERIAL_TEXTURES(X) \
-  /*Parameter Name,       USD Token String,             Type,       UNUSED...   Default Value */ \
-  X(AlbedoOpacityTexture, diffuse_texture,              TextureRef, void, void, {}) \
-  X(NormalTexture,        normalmap_texture,            TextureRef, void, void, {}) \
-  X(TangentTexture,       tangent_texture,              TextureRef, void, void, {}) \
-  X(HeightTexture,        height_texture,               TextureRef, void, void, {}) \
-  X(RoughnessTexture,     reflectionroughness_texture,  TextureRef, void, void, {}) \
-  X(MetallicTexture,      metallic_texture,             TextureRef, void, void, {}) \
-  X(EmissiveColorTexture, emissive_mask_texture,        TextureRef, void, void, {})
+  /*Parameter Name,                          USD Token String,                     Type,       UNUSED...   Default Value */ \
+  X(AlbedoOpacityTexture,                    diffuse_texture,                      TextureRef, void, void, {}) \
+  X(NormalTexture,                           normalmap_texture,                    TextureRef, void, void, {}) \
+  X(TangentTexture,                          tangent_texture,                      TextureRef, void, void, {}) \
+  X(HeightTexture,                           height_texture,                       TextureRef, void, void, {}) \
+  X(RoughnessTexture,                        reflectionroughness_texture,          TextureRef, void, void, {}) \
+  X(MetallicTexture,                         metallic_texture,                     TextureRef, void, void, {}) \
+  X(EmissiveColorTexture,                    emissive_mask_texture,                TextureRef, void, void, {}) \
+  X(SubsurfaceTransmittanceTexture,          subsurface_transmittance_texture,     TextureRef, void, void, {}) \
+  X(SubsurfaceThicknessTexture,              subsurface_thickness_texture,         TextureRef, void, void, {}) \
+  X(SubsurfaceSingleScatteringAlbedoTexture, subsurface_single_scattering_texture, TextureRef, void, void, {})
+
 
 #define LIST_OPAQUE_MATERIAL_CONSTANTS(X) \
   /*Parameter Name,                   USD Token String,                       Type,           Min Value,    Max Value,    Default Value */ \
@@ -148,6 +152,7 @@
 
 #define WRITE_CONSTANT_DESERIALIZER(name, usd_attr, type, minVal, maxVal, defaultVal) \
       if(shader.HasAttribute(get##name##Token())) { \
+        static_assert(uint64_t(DirtyFlags::k_##name) < 64); \
         target.m_dirty.set(DirtyFlags::k_##name); \
         pxr::VtValue val; \
         shader.GetAttribute(get##name##Token()).Get(&val); \
@@ -157,6 +162,7 @@
 
 #define WRITE_TEXTURE_DESERIALIZER(name, usd_attr, type, minVal, maxVal, defaultVal) \
       if(shader.HasAttribute(get##name##Token())) { \
+        static_assert(uint64_t(DirtyFlags::k_##name) < 64); \
         target.m_dirty.set(DirtyFlags::k_##name); \
         target.m_##name = TextureRef(getTexture(shader, get##name##Token())); \
       }
@@ -193,7 +199,7 @@ struct name##Data {                                                             
   /* Instantiates a material, must explicitly set all parameters */                                  \
   name##Data(                                                                                        \
     X_PARAMS(WRITE_CTOR_ARGS)                                                                        \
-    uint32_t dirtyFlags = 0                                                                          \
+    uint64_t dirtyFlags = 0                                                                          \
   )                                                                                                  \
     : X_PARAMS(WRITE_CTOR_INIT)                                                                      \
     m_dirty {dirtyFlags}                                                                             \
@@ -248,7 +254,7 @@ private:                                                                        
                                                                                                      \
   X_PARAMS(WRITE_PARAMETER_MEMBERS)                                                                  \
                                                                                                      \
-  enum class DirtyFlags : uint32_t {                                                                 \
+  enum class DirtyFlags : uint64_t {                                                                 \
     X_PARAMS(WRITE_DIRTY_FLAGS)                                                                      \
   };                                                                                                 \
                                                                                                      \

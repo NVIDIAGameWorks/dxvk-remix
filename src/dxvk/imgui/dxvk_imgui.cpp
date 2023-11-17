@@ -2647,6 +2647,14 @@ namespace dxvk {
 
       ImGui::Checkbox("Enable Thin Opaque", &RtxOptions::SubsurfaceScattering::enableThinOpaqueObject());
 
+      if (RtxOptions::SubsurfaceScattering::enableThinOpaque()) {
+        ImGui::Indent();
+
+        ImGui::Checkbox("Enable Texture Maps", &RtxOptions::SubsurfaceScattering::enableTextureMapsObject());
+
+        ImGui::Unindent();
+      }
+
       ImGui::Unindent();
     }
 

@@ -78,8 +78,8 @@ f16vec3 handleVisibilityVertex(Ray ray, RayHitInfo rayHitInfo, uint8_t visibilit
     const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
       opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteraction);
 
-    SubsurfaceMaterial subsurfaceMaterial;
-    const bool isSubsurface = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subsurfaceMaterial);
+    const SubsurfaceMaterial subsurfaceMaterial = subsurfaceMaterialCreate(opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction);
+    const bool isSubsurface = isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
 
     const bool handleStochasticAlphaBlend =
       cb.enableStochasticAlphaBlend &&
