@@ -117,6 +117,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.debugView.composite.compositeViewIdx|int|0|Index of a composite view to show when Composite Debug View is enabled\. The index must be a a valid value from CompositeDebugView enumeration\. Value of 0 disables Composite Debug View\.|
 |rtx.debugView.debugViewIdx|int|0|Index of a debug view to show when Debug View is enabled\. The index must be a valid value from DEBUG\_VIEW\_\* macro defined indices\. Value of 0 disables Debug View\.|
 |rtx.debugView.displayType|int|0||
+|rtx.debugView.enableGammaCorrection|bool|False|Enables gamma correction of a debug view value\.|
 |rtx.debugView.enablePseudoColor|bool|False|Enables RGB color coding of a scalar debug view value\.|
 |rtx.debugView.evMaxValue|int|4||
 |rtx.debugView.evMinValue|int|-4||
@@ -167,7 +168,11 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.di.stealBoundaryPixelSamplesWhenOutsideOfScreen|bool|True|Steal screen boundary samples when a hit point is outside the screen\.|
 |rtx.displacement.displacementFactor|float|1|Scaling factor for all displacement maps|
 |rtx.displacement.enableDirectLighting|bool|True|Whether direct lighting accounts for displacement mapping|
+|rtx.displacement.enableIndirectHit|bool|False|Whether indirect ray hits account for displacement mapping \(Enabling this is expensive\.  Without it, non\-perfect reflections of displaced objects will not show displacement\.\)|
 |rtx.displacement.enableIndirectLighting|bool|True|Whether indirect lighting accounts for displacement mapping|
+|rtx.displacement.enableNEECache|bool|True|Whether the NEE cache accounts for displacement mapping|
+|rtx.displacement.enablePSR|bool|False|Enable PSR \(perfect reflections\) for materials with displacement\.  Rays that have been perfectly reflected off a POM surface will not collide correctly with other parts of that same surface\.|
+|rtx.displacement.enableReSTIRGI|bool|True|Whether ReSTIR GI accounts for displacement mapping|
 |rtx.dlfg.enable|bool|True|Enables DLSS 3\.0 frame generation which generates interpolated frames to increase framerate at the cost of slightly more latency\.|
 |rtx.dlssEnhancementDirectLightMaxValue|float|10|The maximum strength of direct lighting enhancement\.|
 |rtx.dlssEnhancementDirectLightPower|float|0.7|The overall strength of direct lighting enhancement\.|
@@ -312,6 +317,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.lightConversionEqualityDirectionThreshold|float|0.99|The lower cosine angle threshold between two directions used to determine if two directional lights as the same light when uniquely identifying legacy lights for conversion\.|
 |rtx.lightConversionEqualityDistanceThreshold|float|0.05|The upper distance threshold between two positions used to determine if two positional lights as the same light when uniquely identifying legacy lights for conversion\.|
 |rtx.lightConversionSphereLightFixedRadius|float|4|The fixed radius in world units to use for legacy lights converted to sphere lights \(currently point and spot lights will convert to sphere lights\)\. Use caution with large light radii as many legacy lights will be placed close to geometry and intersect it, causing suboptimal light sampling performance or other visual artifacts \(lights clipping through walls, etc\)\.|
+|rtx.lights.enableDebugMode|bool|False|Enables light debug visualization\.|
 |rtx.localtonemap.boostLocalContrast|bool|False|Boosts contrast on local features\.|
 |rtx.localtonemap.displayMip|int|0|Bottom mip level of tone map pyramid\.|
 |rtx.localtonemap.exposure|float|0.75|Exposure factor applied on average exposure\.|
@@ -535,7 +541,8 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.stochasticAlphaBlendShareNeighbors|bool|True|Share result with other pixels to accelerate search\.|
 |rtx.stochasticAlphaBlendUseNeighborSearch|bool|True|Get radiance from neighbor opaque pixels\.|
 |rtx.stochasticAlphaBlendUseRadianceVolume|bool|True|Get radiance from radiance volume\.|
-|rtx.subsurface.enableThinOpaque|bool|True|Enable thin opaque material\. The materials with th  in opaque properties will fallback to normal opaque material\.|
+|rtx.subsurface.enableThinOpaque|bool|True|Enable thin opaque material\. The materials withthin opaque properties will fallback to normal opaque material\.|
+|rtx.subsurface.enableTextureMaps|bool|True|Enable texture maps such as thickness map or scattering albedo map\. The corresponding subsurface properties will fallback to per\-material constants if this is disabled\.|
 |rtx.subsurface.surfaceThicknessScale|float|1|Scalar of the subsurface thickness\.|
 |rtx.taauPreset|int|1|Adjusts TAA\-U scaling factor, trades quality for performance\.|
 |rtx.temporalAA.colorClampingFactor|float|1|A scalar factor to apply to the standard deviation of the neighborhood of pixels in the color signal used for clamping\. Should be in the range 0\-infinity\.<br>This value essentially represents how many standard deviations of tolerance from the current frame's colors around each pixel pixel the temporally accumulated color signal may have\.<br>Higher values will cause more ghosting whereas lower values may reduce ghosting but will impact image quality \(less ability to upscale effectively\) and reduce stability \(more jittering\)\.|

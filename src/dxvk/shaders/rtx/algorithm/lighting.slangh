@@ -90,9 +90,7 @@ bool sampleLightBasicRIS(
   float selectedLightTargetPdf = 0.0f;
   float weightSum = 0.0f;
 
-    // Load Subsurface Material
-  SubsurfaceMaterial subsurfaceMaterial;
-  const bool isSubSurface = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subsurfaceMaterial);
+  const bool isSubsurface = isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
 
   [unroll]
   for (uint lightType = 0; lightType < lightTypeCount; ++lightType)
@@ -123,7 +121,7 @@ bool sampleLightBasicRIS(
       // can effectively unroll the loop and remove the switch from decodedPolymorphicLightCalcWeight
       DecodedPolymorphicLight decodedPolymorphicLight = decodePolymorphicLight(memoryPolymorphicLight);
       decodedPolymorphicLight.polymorphicType = lightType;
-      const float targetPdf = decodedPolymorphicLightCalcWeight(decodedPolymorphicLight, surfaceInteraction, isSubSurface);
+      const float targetPdf = decodedPolymorphicLightCalcWeight(decodedPolymorphicLight, surfaceInteraction, isSubsurface);
 
       // Accumulate the light's weight
 
