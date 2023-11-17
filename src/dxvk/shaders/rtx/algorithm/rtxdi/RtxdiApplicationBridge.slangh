@@ -706,8 +706,8 @@ bool RAB_TraceLightSampleVisibility(RAB_Surface surface, RAB_LightSample lightSa
   uint8_t rayMask = OBJECT_MASK_OPAQUE | (surface.objectMask & OBJECT_MASK_ALL_DYNAMIC);
   if (cb.enableDirectTranslucentShadows) rayMask |= OBJECT_MASK_TRANSLUCENT;
 
-  SubsurfaceMaterial subSurfaceMaterial;
-  const bool isSubSurface = subSurfaceMaterialReadHelper(surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
+  SubsurfaceMaterial subsurfaceMaterial;
+  const bool isSubSurface = subSurfaceMaterialReadHelper(surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subsurfaceMaterial);
 
   const VisibilityResult visibility = traceVisibilityRay(
     surface.minimalSurfaceInteraction, samplePos,
