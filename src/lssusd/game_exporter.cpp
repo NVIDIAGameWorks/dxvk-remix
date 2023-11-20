@@ -77,6 +77,7 @@
 #include <AperturePBR_Translucent.mdl.h>
 #include <AperturePBR_Model.mdl.h>
 #include <AperturePBR_Normal.mdl.h>
+#include <AperturePBR_SpriteSheet.mdl.h>
 #include "../util/util_env.h"
 
 namespace {
@@ -304,6 +305,7 @@ void GameExporter::createApertureMdls(const std::string& baseExportPath) {
   writeFile(materialsDirPath + "AperturePBR_Translucent.mdl", ___AperturePBR_Translucent);
   writeFile(materialsDirPath + "AperturePBR_Model.mdl", ___AperturePBR_Model);
   writeFile(materialsDirPath + "AperturePBR_Normal.mdl", ___AperturePBR_Normal);
+  writeFile(materialsDirPath + "AperturePBR_SpriteSheet.mdl", ___AperturePBR_SpriteSheet);
 }
 
 void GameExporter::exportMaterials(const Export& exportData, ExportContext& ctx) {
