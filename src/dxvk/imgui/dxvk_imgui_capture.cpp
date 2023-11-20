@@ -54,6 +54,7 @@ namespace dxvk {
   }
 
   void ImGuiCapture::show(const Rc<DxvkContext>& ctx) {
+    auto capturer = ctx->getCommonObjects()->capturer();
     const bool disableCapture =
       ctx->getCommonObjects()->getSceneManager().areReplacementsLoaded() &&
       RtxOptions::Get()->getEnableAnyReplacements();
@@ -68,6 +69,7 @@ namespace dxvk {
         showContinuousCapture(ctx);
       }
       ImGui::Separator();
+      ImGui::Checkbox("Correct baked world transforms", &capturer->correctBakedTransformsRef());
       ImGui::Checkbox("Show menu on capture hotkey", &RtxOptions::Get()->m_captureShowMenuOnHotkey);
       if(RtxOptions::Get()->m_captureShowMenuOnHotkey) {
         ImGui::PushTextWrapPos(ImGui::GetCurrentWindow()->Size.x);
