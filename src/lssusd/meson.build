@@ -19,6 +19,7 @@ libusd_embedded_data_files = files([
   '../../external/omni_core_materials/Base/AperturePBR_Translucent.mdl',
   '../../external/omni_core_materials/Base/AperturePBR_Model.mdl',
   '../../external/omni_core_materials/Base/AperturePBR_Normal.mdl',
+  '../../external/omni_core_materials/Base/AperturePBR_SpriteSheet.mdl',
 ])
 
 libusd_generated_embedded_files = embedding_compiler.process(libusd_embedded_data_files)
