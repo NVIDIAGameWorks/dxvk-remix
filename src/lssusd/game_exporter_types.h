@@ -106,21 +106,25 @@ struct Material {
   // TODO: etc...
 };
 
-using IndexBuffer = pxr::VtArray<int>;
-using PositionBuffer = pxr::VtArray<pxr::GfVec3f>;
-using NormalBuffer = pxr::VtArray<pxr::GfVec3f>;
-using TexcoordBuffer = pxr::VtArray<pxr::GfVec2f>;
-using ColorBuffer = pxr::VtArray<pxr::GfVec4f>;
-using BlendWeightBuffer = pxr::VtArray<float>;
-using BlendIndicesBuffer = pxr::VtArray<int>;
+using Index = int;
+using Pos = pxr::GfVec3f;
+using Norm = pxr::GfVec3f;
+using Texcoord = pxr::GfVec2f;
+using Color = pxr::GfVec4f;
+using BlendWeight = float;
+using BlendIdx = int;
+template <typename BufferT>
+using Buf = pxr::VtArray<BufferT> ;
+template<typename BufferT>
+using BufSet = std::map<float,Buf<BufferT>>;
 struct MeshBuffers {
-  std::map<float,IndexBuffer> idxBufs;
-  std::map<float,PositionBuffer> positionBufs;
-  std::map<float,NormalBuffer> normalBufs;
-  std::map<float,TexcoordBuffer> texcoordBufs;
-  std::map<float,ColorBuffer> colorBufs;
-  std::map<float,BlendWeightBuffer> blendWeightBufs;
-  std::map<float,BlendIndicesBuffer> blendIndicesBufs;
+  BufSet<Index>       idxBufs;
+  BufSet<Pos>         positionBufs;
+  BufSet<Norm>        normalBufs;
+  BufSet<Texcoord>    texcoordBufs;
+  BufSet<Color>       colorBufs;
+  BufSet<BlendWeight> blendWeightBufs;
+  BufSet<BlendIdx>    blendIndicesBufs;
 };
 
 struct RenderingMetaData {
@@ -145,13 +149,14 @@ struct Mesh {
   std::string meshName;
   std::unordered_map<const char*, XXH64_hash_t> componentHashes;
   std::unordered_map<const char*, bool> categoryFlags;
-  uint32_t    numVertices = 0;
-  uint32_t    numIndices = 0;
-  bool        isDoubleSided = false;
-  Id          matId = kInvalidId;
-  MeshBuffers buffers;
-  uint32_t    numBones = 0;
-  uint32_t    bonesPerVertex = 0;
+  uint32_t     numVertices = 0;
+  uint32_t     numIndices = 0;
+  bool         isDoubleSided = false;
+  Id           matId = kInvalidId;
+  MeshBuffers  buffers;
+  pxr::GfVec3f origin = pxr::GfVec3f{0.f,0.f,0.f};
+  uint32_t     numBones = 0;
+  uint32_t     bonesPerVertex = 0;
   pxr::VtMatrix4dArray boneXForms;
 };
 
@@ -186,6 +191,7 @@ struct Export {
     bool isZUp;
     bool isLHS;
     std::unordered_map<std::string, std::string> renderingSettingsDict;
+    bool bCorrectBakedTransforms;
   } meta;
   std::string baseExportPath;
   bool bExportInstanceStage;
@@ -198,6 +204,7 @@ struct Export {
   Camera camera;
   IdMap<SphereLight> sphereLights;
   IdMap<DistantLight> distantLights;
+  pxr::GfVec3f stageOrigin = pxr::GfVec3f{0.f,0.f,0.f};
 };
 
 }

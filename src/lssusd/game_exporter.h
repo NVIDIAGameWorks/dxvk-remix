@@ -63,22 +63,23 @@ private:
   static void createApertureMdls(const std::string& baseExportPath);
   static void exportMaterials(const Export& exportData, ExportContext& ctx);
   static void exportMeshes(const Export& exportData, ExportContext& ctx);
-  static void exportSkeletons(const Export& exportData, ExportContext& ctx);
   struct ReducedIdxBufSet {
-    std::map<float,IndexBuffer> bufSet;
+    BufSet<Index> bufSet;
     // Per-timecode idx mapping
     using IdxMap = std::unordered_map<int,int>;
     std::map<float,IdxMap> redToOgSet;
   };
-  static ReducedIdxBufSet reduceIdxBufferSet(const std::map<float,IndexBuffer>& idxBufSet);
+  static ReducedIdxBufSet reduceIdxBufferSet(const BufSet<Index>& idxBufSet);
   template<typename T>
-  static std::map<float,pxr::VtArray<T>> reduceBufferSet(const std::map<float,pxr::VtArray<T>>& bufSet,
-                                                         const ReducedIdxBufSet& reducedIdxBufSet,
-                                                         size_t elemsPerIdx = 1);
-  template<typename T>
-  static void exportBufferSet(const std::map<float,pxr::VtArray<T>>& bufSet, pxr::UsdAttribute attr);
-  template<typename T>
-  static void exportColorOpacityBufferSet(const std::map<float, pxr::VtArray<T>>& bufSet, pxr::UsdAttribute color, pxr::UsdAttribute opacity);
+  static BufSet<T> reduceBufferSet(const BufSet<T>& bufSet,
+                                   const ReducedIdxBufSet& reducedIdxBufSet,
+                                   size_t elemsPerIdx = 1);
+  template<typename BufferT>
+  static void exportBufferSet(const BufSet<BufferT>& bufSet, pxr::UsdAttribute attr);
+  static void exportColorOpacityBufferSet(const BufSet<Color>& bufSet,
+                                          pxr::UsdAttribute color,
+                                          pxr::UsdAttribute opacity);
+  static void exportSkeletons(const Export& exportData, ExportContext& ctx);
   static void exportInstances(const Export& exportData, ExportContext& ctx);
   static void exportCamera(const Export& exportData, ExportContext& ctx);
   static void exportSphereLights(const Export& exportData, ExportContext& ctx);
@@ -91,7 +92,7 @@ private:
                                    const float finalTime,
                                    const SampledXforms& xforms,
                                    const Export::Meta& meta,
-                                   const bool teleportAway = false);
+                                   const pxr::GfMatrix4d& commonXform = pxr::GfMatrix4d{1.0});
   static void setVisibilityTimeSpan(const pxr::UsdStageRefPtr stage,
                                     const pxr::SdfPath sdfPath,
                                     const double firstTime,

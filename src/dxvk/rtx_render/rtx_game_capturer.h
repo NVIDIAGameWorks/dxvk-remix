@@ -21,6 +21,7 @@
 */
 #pragma once
 
+#include "rtx_game_capturer_utils.h"
 #include "rtx_options.h"
 
 #include "../../lssusd/game_exporter_types.h"
@@ -57,6 +58,13 @@ struct LegacyMaterialData;
 class GameCapturer : public RcObject
 {
 public:
+  RW_RTX_OPTION("rtx.capture", bool, correctBakedTransforms, false,
+                "Some games bake world transforms into mesh vertices. If individually captured\n"
+                "meshes appear to be way off in the middle of nowhere OR instanced meshes appear\n"
+                "to all have identity xform matrices, enabling will attempt to correct this and\n"
+                "improve stage + mesh viewability in tools.\n"
+                "Hashes are unaffected.");
+
   GameCapturer(DxvkDevice* const pDevice, SceneManager& sceneManager, AssetExporter& exporter);
   ~GameCapturer();
 
@@ -125,10 +133,11 @@ private:
   };
 
   struct Mesh {
-    lss::Mesh    lssData;
-    size_t       instanceCount = 0;
-    XXH64_hash_t matHash;
-    MeshSync     meshSync;
+    lss::Mesh        lssData;
+    size_t           instanceCount = 0;
+    XXH64_hash_t     matHash;
+    MeshSync         meshSync;
+    AtomicOriginCalc originCalc;
   };
 
   struct Instance {
@@ -280,7 +289,8 @@ private:
     std::unordered_map<XXH64_hash_t, Material> materials;
     std::unordered_map<XXH64_hash_t, Instance> instances;
     std::unordered_map<XXH64_hash_t, uint8_t> instanceFlags;
-  } m_cap;
+  };
+  std::unique_ptr<Capture> m_pCap;
 };
 
 }
