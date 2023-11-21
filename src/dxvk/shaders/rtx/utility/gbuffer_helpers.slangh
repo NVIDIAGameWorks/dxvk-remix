@@ -224,6 +224,10 @@ void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
         uint16_t(polymorphicSurfaceMaterialInteraction.bdata1)             // volumetricAnisotropy
       );
     }
+    else
+    {
+      subsurfaceDataTexture[position] = uint4(0, 0, 0, 0);
+    }
   }
 }
 
