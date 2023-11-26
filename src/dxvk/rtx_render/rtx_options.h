@@ -627,7 +627,7 @@ namespace dxvk {
                "The single scattering albedo (otherwise known as the particle albedo) representing the ratio of scattering to absorption.\n"
                "While color-like in many ways this value is assumed to be more of a mathematical albedo (unlike material albedo which is treated more as a color), and is therefore treated as linearly encoded data (not gamma).");
     RTX_OPTION("rtx", float, volumetricAnisotropy, 0.0f, "The anisotropy of the scattering phase function (-1 being backscattering, 0 being isotropic, 1 being forward scattering).");
-    RTX_OPTION("rtx", bool, enableVolumetricsInPortals, true,
+    RTX_OPTION("rtx", bool, enableVolumetricsInPortals, false,
                "Enables using extra frustum-aligned volumes for lighting in portals.\n"
                "Note that enabling this option will require 3x the memory of the typical froxel grid as well as degrade performance in some cases.\n"
                "This option should be enabled always in games using ray portals for proper looking volumetrics through them, but should be disabled on any game not using ray portals.\n"
