@@ -68,7 +68,8 @@ While dxvk-remix is a fork of DXVK, please report bugs encountered with dxvk-rem
 ## Project Documentation
 
 - [Rtx Options](/RtxOptions.md)
-- [Terrain System](/documentation/TerrainSystem.md)
 - [Anti-Culling System](/documentation/AntiCullingSystem.md)
 - [Foliage System](/documentation/FoliageSystem.md)
+- [Opacity Micromap](/documentation/OpacityMicromap.md)
+- [Terrain System](/documentation/TerrainSystem.md)
 - [Unit Test](/documentation/UnitTest.md)
