@@ -44,7 +44,7 @@ namespace dxvk {
     void setRaytraceArgs(Resources::RaytracingOutput& rtOutput) const;
     bool getEnableDenoiserConfidence() const { return enableTemporalReuse() && enableDenoiserConfidence(); }
     
-    RTX_OPTION("rtx.di", bool, enableCrossPortalLight, true, "");
+    RTX_OPTION("rtx.di", bool, enableCrossPortalLight, false, "");
     RTX_OPTION("rtx.di", bool, enableInitialVisibility, true, "Whether to trace a visibility ray for the light sample selected in the initial sampling pass.");
     RTX_OPTION("rtx.di", bool, enableBestLightSampling, true, "Whether to include a single best light from the previous frame's pixel neighborhood into initial sampling.");
     RW_RTX_OPTION("rtx.di", bool, enableRayTracedBiasCorrection, true, "Whether to use ray traced bias correction in the spatial reuse pass.");

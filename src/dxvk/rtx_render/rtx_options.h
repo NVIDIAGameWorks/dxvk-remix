@@ -274,7 +274,7 @@ namespace dxvk {
       RTX_OPTION("rtx.viewModel", bool, enable, false, "If true, try to resolve view models (e.g. first-person weapons). World geometry doesn't have shadows / reflections / etc from the view models.");
       RTX_OPTION("rtx.viewModel", float, rangeMeters, 1.0f, "[meters] Max distance at which to find a portal for view model virtual instances. If rtx.viewModel.separateRays is true, this is also max length of view model rays.");
       RTX_OPTION("rtx.viewModel", float, scale, 1.0f, "Scale for view models. Minimize to prevent clipping.");
-      RTX_OPTION("rtx.viewModel", bool, enableVirtualInstances, true, "If true, virtual instances are created to render the view models behind a portal.");
+      RTX_OPTION("rtx.viewModel", bool, enableVirtualInstances, false, "If true, virtual instances are created to render the view models behind a portal.");
       RTX_OPTION("rtx.viewModel", bool, perspectiveCorrection, true, "If true, apply correction to view models (e.g. different FOV is used for view models).");
       RTX_OPTION("rtx.viewModel", float, maxZThreshold, 0.0f, "If a draw call's viewport has max depth less than or equal to this threshold, then assume that it's a view model.");
     } viewModel;
@@ -329,7 +329,7 @@ namespace dxvk {
                "The near plane value to use for the Camera when the near plane override is enabled.\n"
                "Only takes effect when rtx.enableNearPlaneOverride is enabled, see that option for more information about why this is useful.");
 
-    RTX_OPTION("rtx", bool, useRayPortalVirtualInstanceMatching, true, "");
+    RTX_OPTION("rtx", bool, useRayPortalVirtualInstanceMatching, false, "");
     RTX_OPTION("rtx", bool, enablePortalFadeInEffect, false, "");
 
     RTX_OPTION_ENV("rtx", bool, useRTXDI, true, "DXVK_USE_RTXDI",
@@ -627,7 +627,7 @@ namespace dxvk {
                "The single scattering albedo (otherwise known as the particle albedo) representing the ratio of scattering to absorption.\n"
                "While color-like in many ways this value is assumed to be more of a mathematical albedo (unlike material albedo which is treated more as a color), and is therefore treated as linearly encoded data (not gamma).");
     RTX_OPTION("rtx", float, volumetricAnisotropy, 0.0f, "The anisotropy of the scattering phase function (-1 being backscattering, 0 being isotropic, 1 being forward scattering).");
-    RTX_OPTION("rtx", bool, enableVolumetricsInPortals, true,
+    RTX_OPTION("rtx", bool, enableVolumetricsInPortals, false,
                "Enables using extra frustum-aligned volumes for lighting in portals.\n"
                "Note that enabling this option will require 3x the memory of the typical froxel grid as well as degrade performance in some cases.\n"
                "This option should be enabled always in games using ray portals for proper looking volumetrics through them, but should be disabled on any game not using ray portals.\n"
