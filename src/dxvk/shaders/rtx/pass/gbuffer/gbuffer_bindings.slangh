@@ -218,3 +218,6 @@ RWTexture2D<uint2> TransmissionPSRData2;
 
 layout(rg32ui, binding = GBUFFER_BINDING_TRANSMISSION_PSR_DATA_STORAGE_3)
 RWTexture2D<uint2> TransmissionPSRData3;
+
+layout(r32ui, binding = GBUFFER_BINDING_PRIMARY_OBJECT_PICKING_OUTPUT)
+RWTexture2D<uint> PrimaryObjectPicking;

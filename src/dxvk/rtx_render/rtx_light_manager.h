@@ -32,6 +32,8 @@
 #include "rtx_camera_manager.h"
 #include "rtx_common_object.h"
 
+using remixapi_LightHandle = struct remixapi_LightHandle_T*;
+
 struct RaytraceArgs;
 
 namespace dxvk {
@@ -84,6 +86,9 @@ public:
   void addLight(const RtLight& light, const RtLightAntiCullingType antiCullingType);
   void addLight(const RtLight& light, const DrawCallState& drawCallState, const RtLightAntiCullingType antiCullingType);
 
+  void addExternalLight(remixapi_LightHandle handle, const RtLight& rtlight);
+  void removeExternalLight(remixapi_LightHandle handle);
+
   void setRaytraceArgs(RaytraceArgs& raytraceArgs, uint32_t rtxdiInitialLightSamples, uint32_t volumeRISInitialLightSamples, uint32_t risLightSamples) const;
   
   uint getLightCount(uint type);
@@ -93,6 +98,7 @@ private:
   // Note: A fallback light tracked seperately and handled specially to not be mixed up with
   // lights provided from the application.
   std::optional<RtLight> m_fallbackLight{};
+  std::unordered_map<remixapi_LightHandle, RtLight> m_externalLights;
   Rc<DxvkBuffer> m_lightBuffer;
   Rc<DxvkBuffer> m_previousLightBuffer;
   Rc<DxvkBuffer> m_lightMappingBuffer;

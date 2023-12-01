@@ -147,5 +147,7 @@ Surface surfaceCreate(MemorySurface memorySurface)
   surface.spriteSheetFPS = uint8_t((textureSpritesheetData >> 16) & 0xFF);
   // Note: 8 bits free here in the texture spritesheet data.
 
+  surface.objectPickingValue = memorySurface.data1.y;
+
   return surface;
 }

@@ -898,6 +898,7 @@ namespace dxvk {
         currentInstance.surface.spriteSheetRows = spriteSheetRows;
         currentInstance.surface.spriteSheetCols = spriteSheetCols;
         currentInstance.surface.spriteSheetFPS = spriteSheetFPS;
+        currentInstance.surface.objectPickingValue = drawCall.drawCallID;
 
         // For worldspace UI, we want to show the UI (unlit) in the world.  So configure the blend mode if blending is used accordingly.
         if (currentInstance.m_isWorldSpaceUI) {
