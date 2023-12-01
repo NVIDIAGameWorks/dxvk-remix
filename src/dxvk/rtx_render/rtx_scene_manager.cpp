@@ -841,8 +841,7 @@ namespace dxvk {
     // Legacy and replacement materials should follow same filtering but due to lack of override capability per texture
     // legacy textures use original sampler to stay true to the original intent while replacements use more advanced filtering
     // for better quality by default.
-    uint32_t samplerIndex;
-    trackSampler(drawCallState.getMaterialData().getSampler(), (renderMaterialDataType != MaterialDataType::Legacy), samplerIndex);
+    uint32_t samplerIndex = trackSampler(drawCallState.getMaterialData().getSampler(), (renderMaterialDataType != MaterialDataType::Legacy));
 
     if (renderMaterialDataType == MaterialDataType::Legacy || renderMaterialDataType == MaterialDataType::Opaque) {
       uint32_t albedoOpacityTextureIndex = kSurfaceMaterialInvalidTextureIndex;
@@ -1029,8 +1028,7 @@ namespace dxvk {
       uint32_t maskTextureIndex2 = kSurfaceMaterialInvalidTextureIndex;
       trackTexture(ctx, rayPortalMaterialData.getMaskTexture2(), maskTextureIndex2, hasTexcoords, false);
 
-      uint32_t samplerIndex2;
-      trackSampler(drawCallState.getMaterialData().getSampler2(), false, samplerIndex2);
+      uint32_t samplerIndex2 = trackSampler(drawCallState.getMaterialData().getSampler2(), false);
 
       uint8_t rayPortalIndex = rayPortalMaterialData.getRayPortalIndex();
       float rotationSpeed = rayPortalMaterialData.getRotationSpeed();
@@ -1105,21 +1103,46 @@ namespace dxvk {
     return m_findLegacyTexture->promise.get_future();
   }
 
-  void SceneManager::trackSampler(Rc<DxvkSampler> sampler, bool patchSampler, uint32_t& samplerIndex) {
-    samplerIndex = kSurfaceMaterialInvalidTextureIndex;
+  SceneManager::SamplerIndex SceneManager::trackSampler(Rc<DxvkSampler> sampler, bool patchSampler) {
+    auto makeSampler = [&](const VkSamplerAddressMode addressModeU,
+                           const VkSamplerAddressMode addressModeV,
+                           const VkSamplerAddressMode addressModeW,
+                           const VkClearColorValue borderColor) {
+      auto& resourceManager = m_device->getCommon()->getResources();
 
-    if (sampler.ptr()) {
-      if (patchSampler) {
-        auto& resourceManager = m_device->getCommon()->getResources();
-        const DxvkSamplerCreateInfo& originalInfo = sampler->info();
+      // Create a sampler to account for DLSS lod bias and any custom filtering overrides the user has set
+      return resourceManager.getSampler(
+        VK_FILTER_LINEAR,
+        VK_SAMPLER_MIPMAP_MODE_LINEAR,
+        addressModeU,
+        addressModeV,
+        addressModeW,
+        borderColor,
+        getTotalMipBias(),
+        RtxOptions::Get()->getAnisotropicFilteringEnabled());
+    };
 
-        // Create a sampler to account for DLSS lod bias and any custom filtering overrides the user has set
-        // TODO: Note eventually we should support setting the filter mode (nearest/linear) for patched samplers based on material replacement data in USD.
-        sampler = resourceManager.getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, originalInfo.addressModeU, originalInfo.addressModeV, originalInfo.addressModeW, originalInfo.borderColor, getTotalMipBias(), RtxOptions::Get()->getAnisotropicFilteringEnabled());
-      }
+    if (patchSampler && sampler != nullptr) {
+      const DxvkSamplerCreateInfo& originalInfo = sampler->info();
+      // TODO: Note eventually we should support setting the filter mode (nearest/linear) for patched samplers based on material replacement data in USD.
+      sampler = makeSampler(
+        originalInfo.addressModeU,
+        originalInfo.addressModeV,
+        originalInfo.addressModeW,
+        originalInfo.borderColor
+      );
+    }
 
-      samplerIndex = m_samplerCache.track(sampler);
-    }    
+    if (sampler == nullptr) {
+      ONCE(Logger::warn("Found a null sampler. Fallback to linear-repeat"));
+      sampler = makeSampler(
+        VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        VkClearColorValue {});
+    }
+
+    return m_samplerCache.track(sampler);
   }
 
   void SceneManager::addLight(const D3DLIGHT9& light) {
@@ -1370,6 +1393,53 @@ namespace dxvk {
       }
     }
     return {};
+  }
+
+  void SceneManager::submitExternalDraw(Rc<DxvkContext> ctx, ExternalDrawState&& state) {
+    if (m_externalSampler == nullptr) {
+      auto s = DxvkSamplerCreateInfo {};
+      {
+        s.magFilter = VK_FILTER_LINEAR;
+        s.minFilter = VK_FILTER_LINEAR;
+        s.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        s.mipmapLodBias = 0.f;
+        s.mipmapLodMin = 0.f;
+        s.mipmapLodMax = 0.f;
+        s.useAnisotropy = VK_FALSE;
+        s.maxAnisotropy = 1.f;
+        s.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        s.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        s.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        s.compareToDepth = VK_FALSE;
+        s.compareOp = VK_COMPARE_OP_NEVER;
+        s.borderColor = VkClearColorValue {};
+        s.usePixelCoord = VK_FALSE;
+      }
+      m_externalSampler = m_device->createSampler(s);
+    }
+
+    {
+      state.drawCall.materialData.samplers[0] = m_externalSampler;
+      state.drawCall.materialData.samplers[1] = m_externalSampler;
+    }
+    {
+      const RtCamera& rtCamera = ctx->getCommonObjects()->getSceneManager().getCameraManager()
+        .getCamera(state.cameraType);
+      state.drawCall.transformData.worldToView = Matrix4 { rtCamera.getWorldToView() };
+      state.drawCall.transformData.viewToProjection = Matrix4 { rtCamera.getViewToProjection() };
+      state.drawCall.transformData.objectToView = state.drawCall.transformData.worldToView * state.drawCall.transformData.objectToWorld;
+    }
+
+    for (const RasterGeometry& submesh : m_pReplacer->accessExternalMesh(state.mesh)) {
+      state.drawCall.geometryData = submesh;
+
+      const MaterialData* material = m_pReplacer->accessExternalMaterial(submesh.externalMaterial);
+      if (material != nullptr) {
+        state.drawCall.materialData.setHashOverride(material->getHash());
+      }
+
+      processDrawCallState(ctx, state.drawCall, material);
+    }
   }
 
 }  // namespace nvvk

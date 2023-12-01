@@ -324,6 +324,10 @@ namespace dxvk {
       m_linearizedLights.emplace_back(&light);
     }
 
+    for (auto& [handle, light] : m_externalLights) {
+      m_linearizedLights.emplace_back(&light);
+    }
+
     // Count the active light of each type
 
     m_lightTypeRanges.fill(LightRange {});
@@ -603,6 +607,21 @@ namespace dxvk {
       // Record we saw this light
       localLight.setFrameLastTouched(m_device->getCurrentFrameId());
     }
+  }
+
+  void LightManager::addExternalLight(remixapi_LightHandle handle, const RtLight& rtlight) {
+    auto found = m_externalLights.find(handle);
+    if (found != m_externalLights.end()) {
+      // TODO: warn the user about id collision,
+      //       or just overwriting existing one is fine?
+      found->second = rtlight;
+    } else {
+      m_externalLights.emplace(handle, rtlight);
+    }
+  }
+
+  void LightManager::removeExternalLight(remixapi_LightHandle handle) {
+    m_externalLights.erase(handle);
   }
 
   void LightManager::setRaytraceArgs(RaytraceArgs& raytraceArgs, uint32_t rtxdiInitialLightSamples, uint32_t volumeRISInitialLightSamples, uint32_t risLightSamples) const

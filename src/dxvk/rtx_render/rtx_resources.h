@@ -269,7 +269,8 @@ namespace dxvk
       Resource m_primaryRtxdiTemporalPosition;
       Resource m_primarySurfaceFlags;
       Resource m_primaryDisocclusionThresholdMix; // for NRD
-      
+      Resource m_primaryObjectPicking;
+
       Resource m_secondaryAttenuation;
       Resource m_secondaryWorldShadingNormal;
       AliasedResource m_secondaryPerceptualRoughness;
@@ -417,6 +418,10 @@ namespace dxvk
     const VkExtent3D& getTargetDimensions() const { return m_targetExtent; }
     const VkExtent3D& getDownscaleDimensions() const { return m_downscaledExtent; }
 
+    void requestObjectPickingImages(bool enable) {
+      m_objectPickingImagesRequired = enable;
+    }
+
     static const uint32_t kInvalidFormatCompatibilityCategoryIndex = UINT32_MAX;
     static uint32_t getFormatCompatibilityCategoryIndex(const VkFormat format);
     static bool areFormatsCompatible(const VkFormat format1, const VkFormat format2);
@@ -452,6 +457,8 @@ namespace dxvk
 
     VkExtent3D m_downscaledExtent = { 0, 0, 0 };
     VkExtent3D m_targetExtent = { 0, 0, 0 };
+
+    bool m_objectPickingImagesRequired = false;
 
     using ResizeEventList = std::vector<std::weak_ptr<EventHandler::ResizeEvent>>;
     using FrameBeginEventList = std::vector<std::weak_ptr<EventHandler::FrameBeginEvent>>;

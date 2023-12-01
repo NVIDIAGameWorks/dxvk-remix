@@ -936,6 +936,9 @@ namespace dxvk {
 
 // NV-DXVK start: external API
     D3D9SwapchainExternal* GetExternalPresenter();
+    D3D9Rtx& RTX() {
+      return m_rtx;
+    }
 // NV-DXVK end
   private:
 
@@ -944,6 +947,9 @@ namespace dxvk {
       return DxvkCsChunkRef(chunk, &m_csChunkPool);
     }
 
+// NV-DXVK start: external API
+  public:
+// NV-DXVK end
     template<typename Cmd>
     void EmitCs(Cmd&& command) {
       if (unlikely(!m_csChunk->push(command))) {
@@ -953,6 +959,9 @@ namespace dxvk {
         m_csChunk->push(command);
       }
     }
+// NV-DXVK start: external API
+  private:
+// NV-DXVK end
 
     void EmitCsChunk(DxvkCsChunkRef&& chunk);
 
