@@ -110,7 +110,7 @@ struct RtSurface {
     writeGPUHelper(data, offset, packedHash);
 
     writeGPUHelper(data, offset, positionOffset);
-    writeGPUPadding<4>(data, offset);
+    writeGPUHelper(data, offset, objectPickingValue);
     writeGPUHelper(data, offset, normalOffset);
     writeGPUHelper(data, offset, texcoordOffset);
     writeGPUHelper(data, offset, color0Offset);
@@ -320,6 +320,7 @@ struct RtSurface {
   uint8_t spriteSheetFPS = 0;
 
   XXH64_hash_t associatedGeometryHash; // NOTE: This is used for the debug view
+  uint32_t objectPickingValue = 0; // NOTE: a value to fill GBUFFER_BINDING_PRIMARY_OBJECT_PICKING_OUTPUT
 };
 
 // Shared Material Defaults/Limits
@@ -1445,10 +1446,16 @@ struct LegacyMaterialData {
   D3DMATERIAL9 d3dMaterial = {};
   bool isTextureFactorBlend = false;
 
+  void setHashOverride(XXH64_hash_t hash) {
+    m_cachedHash = hash;
+  }
+
 private:
   friend class RtxContext;
   friend struct D3D9Rtx;
   friend class TerrainBaker;
+  friend class SceneManager;
+  friend struct RemixAPIPrivateAccessor;
 
   void updateCachedHash() {
     // Note: Currently only based on the color texture's data hash. This may have to be changed later to

@@ -90,6 +90,7 @@ namespace dxvk {
         RW_TEXTURE2D(GBUFFER_BINDING_PRIMARY_CONE_RADIUS_OUTPUT)
         RW_TEXTURE2D(GBUFFER_BINDING_PRIMARY_WORLD_POSITION_OUTPUT)
         RW_TEXTURE2D(GBUFFER_BINDING_PRIMARY_POSITION_ERROR_OUTPUT)
+        RW_TEXTURE2D(GBUFFER_BINDING_PRIMARY_OBJECT_PICKING_OUTPUT)
 
         RW_TEXTURE2D(GBUFFER_BINDING_SECONDARY_ATTENUATION_OUTPUT)
         RW_TEXTURE2D(GBUFFER_BINDING_SECONDARY_WORLD_SHADING_NORMAL_OUTPUT)
@@ -217,6 +218,7 @@ namespace dxvk {
     ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_SURFACE_FLAGS_OUTPUT, rtOutput.m_primarySurfaceFlags.view, nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_DISOCCLUSION_THRESHOLD_MIX_OUTPUT, rtOutput.m_primaryDisocclusionThresholdMix.view, nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_DEPTH_OUTPUT, rtOutput.m_primaryDepth.view, nullptr);
+    ctx->bindResourceView(GBUFFER_BINDING_PRIMARY_OBJECT_PICKING_OUTPUT, rtOutput.m_primaryObjectPicking.view, nullptr);
 
     ctx->bindResourceView(GBUFFER_BINDING_SECONDARY_ATTENUATION_OUTPUT, rtOutput.m_secondaryAttenuation.view, nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_SECONDARY_WORLD_SHADING_NORMAL_OUTPUT, rtOutput.m_secondaryWorldShadingNormal.view, nullptr);
@@ -256,7 +258,7 @@ namespace dxvk {
 
     const bool serEnabled = RtxOptions::Get()->isShaderExecutionReorderingInPathtracerGbufferEnabled();
     const bool ommEnabled = RtxOptions::Get()->getEnableOpacityMicromap();
-    const bool includePortals = RtxOptions::Get()->rayPortalModelTextureHashes().size() > 0;
+    const bool includePortals = RtxOptions::Get()->rayPortalModelTextureHashes().size() > 0 || rtOutput.m_raytraceArgs.numActiveRayPortals > 0;
 
     GbufferPushConstants pushArgs = {};
     pushArgs.isTransmissionPSR = 0;
@@ -291,7 +293,6 @@ namespace dxvk {
     case RaytraceMode::RayQueryRayGen:
       {
         ScopedGpuProfileZone(ctx, "Primary Rays");
-        const bool includePortals = RtxOptions::Get()->rayPortalModelTextureHashes().size() > 0;
         ctx->bindRaytracingPipelineShaders(getPipelineShaders(false, true, serEnabled, ommEnabled, includePortals));
         ctx->traceRays(rayDims.width, rayDims.height, rayDims.depth);
       }

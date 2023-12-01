@@ -155,6 +155,9 @@ if not dxvk_is_msvc
   endif
 endif
 
+remix_api_include_path = include_directories('./public/include')
+add_global_arguments('/DREMIX_LIBRARY_EXPORTS=1', language : 'cpp')
+
 dxvk_include_dirs = [
   './include',
   './include/vulkan/include'

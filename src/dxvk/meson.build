@@ -281,6 +281,7 @@ dxvk_src = files([
   'rtx_render/rtx_ray_portal_manager.h',
   'rtx_render/rtx_reflex.cpp',
   'rtx_render/rtx_reflex.h',
+  'rtx_render/rtx_remix_api.cpp',
   'rtx_render/rtx_resources.cpp',
   'rtx_render/rtx_resources.h',
   'rtx_render/rtx_restir_gi_rayquery.cpp',
@@ -425,7 +426,7 @@ endif
 dxvk_lib = static_library('dxvk', dxvk_src, dxvk_version, [generated_dxvk_shaders, rtx_shaders, dxvk_generated_embedded_files],
   link_with           : [ util_lib, spirv_lib ], 
   dependencies        : [ dxvk_deps ],
-  include_directories : [ dxvk_include_path, dxvk_shader_include_path, rtxdi_include_path ],
+  include_directories : [ dxvk_include_path, dxvk_shader_include_path, rtxdi_include_path, remix_api_include_path ],
   override_options    : ['cpp_std='+dxvk_cpp_std])
 
 dxvk_dep = declare_dependency(

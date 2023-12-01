@@ -67,6 +67,8 @@ namespace dxvk {
 
   Metrics Metrics::s_instance;
 
+  bool g_allowSrgbConversionForOutput = true;
+
   void RtxContext::takeScreenshot(std::string imageName, Rc<DxvkImage> image) {
     // NOTE: Improve this, I'd like all textures from the same frame to have the same time code...  Currently sampling the time on each "dump op" results in different timecodes.
     auto t = std::time(nullptr);
@@ -513,7 +515,7 @@ namespace dxvk {
         // Tone mapping
         // WAR for TREX-553 - disable sRGB conversion as NVTT implicitly applies it during dds->png
         // conversion for 16bit float formats
-        const bool performSRGBConversion = !captureScreenImage;
+        const bool performSRGBConversion = !captureScreenImage && g_allowSrgbConversionForOutput;
         dispatchToneMapping(rtOutput, performSRGBConversion, frameTimeSecs);
 
         if (captureScreenImage) {
@@ -692,6 +694,10 @@ namespace dxvk {
 
       getSceneManager().submitDrawState(this, drawCallState, overrideMaterialData);
     }
+  }
+
+  void RtxContext::commitExternalGeometryToRT(ExternalDrawState&& state) {
+    getSceneManager().submitExternalDraw(this, std::move(state));
   }
 
   static uint32_t jenkinsHash(uint32_t a) {
