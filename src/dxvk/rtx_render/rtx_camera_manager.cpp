@@ -256,4 +256,16 @@ namespace dxvk {
     return m_lastCameraCutFrameId == m_device->getCurrentFrameId();
   }
 
+  void CameraManager::processExternalCamera(CameraType::Enum type,
+                                            const Matrix4& worldToView,
+                                            const Matrix4& viewToProjection) {
+    float fov, aspectRatio, nearPlane, farPlane, shearX, shearY;
+    bool isLHS;
+    bool isReverseZ;
+    decomposeProjection(viewToProjection, aspectRatio, fov, nearPlane, farPlane, shearX, shearY, isLHS, isReverseZ);
+
+    getCamera(type).update(
+      m_device->getCurrentFrameId(),
+      worldToView, viewToProjection, fov, aspectRatio, nearPlane, farPlane, isLHS);
+  }
 }  // namespace dxvk

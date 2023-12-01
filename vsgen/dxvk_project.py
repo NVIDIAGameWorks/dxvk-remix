@@ -16,7 +16,8 @@ def generate_dxvk_project(output_root_path, dxvk_cpp_defines):
     vcxproj_file_references = []
     vcxproj_include_paths = {
             "../include": 1,
-            "../include/vulkan/include": 1
+            "../include/vulkan/include": 1,
+            "../public/include": 1,
     }
 
     def add_file(dirpath, filename):

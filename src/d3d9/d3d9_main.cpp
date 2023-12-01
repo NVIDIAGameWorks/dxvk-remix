@@ -91,3 +91,12 @@ extern "C" {
     return 0;
   }
 }
+
+// NV-DXVK start: external API
+#include <remix/remix_c.h>
+
+void dummy() {
+  // need to reference a function so it's exported from d3d9.dll
+  remixapi_InitializeLibrary(nullptr, nullptr);
+}
+// NV-DXVK end

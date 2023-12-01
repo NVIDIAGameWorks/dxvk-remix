@@ -45,7 +45,7 @@ namespace dxvk {
      * \brief Executes embedded commands
      * \param [in] ctx The target context
      */
-    virtual void exec(DxvkContext* ctx) const = 0;
+    virtual void exec(DxvkContext* ctx) = 0;
     
   private:
     
@@ -71,7 +71,7 @@ namespace dxvk {
     DxvkCsTypedCmd             (DxvkCsTypedCmd&&) = delete;
     DxvkCsTypedCmd& operator = (DxvkCsTypedCmd&&) = delete;
     
-    void exec(DxvkContext* ctx) const {
+    void exec(DxvkContext* ctx) override {
       m_command(ctx);
     }
     
@@ -102,7 +102,7 @@ namespace dxvk {
     DxvkCsDataCmd             (DxvkCsDataCmd&&) = delete;
     DxvkCsDataCmd& operator = (DxvkCsDataCmd&&) = delete;
 
-    void exec(DxvkContext* ctx) const {
+    void exec(DxvkContext* ctx) override {
       m_command(ctx, &m_data);
     }
 

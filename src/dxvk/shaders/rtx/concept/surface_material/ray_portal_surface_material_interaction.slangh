@@ -147,6 +147,12 @@ RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteractionCreate(
   {
     mask2 = maskSample2.r;
   }
+  else
+  {
+    // Approximation for the Portal mask texture
+    float2 texcoord = surfaceInteraction.textureCoordinates * 2.f - 1.f;
+    mask2 = float16_t(1.f - saturate(0.6f * dot(texcoord, texcoord)));
+  }
 
   // Note: Portal mask is linear data and has no need to be gamma corrected.
 

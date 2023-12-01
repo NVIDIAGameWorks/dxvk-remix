@@ -19,7 +19,6 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
-#pragma once
 
 #include "rtx_asset_replacer.h"
 
@@ -160,6 +159,60 @@ void AssetReplacer::updateSecretReplacements() {
   }
 
   m_bSecretReplacementsUpdated = updated;
+}
+
+namespace {
+  std::string tostr(const remixapi_MaterialHandle& h) {
+    static_assert(sizeof h == sizeof uint64_t);
+    return std::to_string(reinterpret_cast<uint64_t>(h));
+  }
+  std::string tostr(const remixapi_MeshHandle& h) {
+    static_assert(sizeof h == sizeof uint64_t);
+    return std::to_string(reinterpret_cast<uint64_t>(h));
+  }
+}
+
+void AssetReplacer::makeMaterialWithTexturePreload(DxvkContext& ctx, remixapi_MaterialHandle handle, MaterialData&& data) {
+  auto [iter, isNew] = m_extMaterials.emplace(handle, std::move(data));
+
+  if (!isNew) {
+    Logger::info("Ignoring repeated material registration (handle=" + tostr(handle) + ") ");
+    return;
+  }
+}
+
+const MaterialData* AssetReplacer::accessExternalMaterial(remixapi_MaterialHandle handle) const {
+  auto found = m_extMaterials.find(handle);
+  if (found == m_extMaterials.end()) {
+    return nullptr;
+  }
+  return found->second ? &found->second.value() : nullptr;
+}
+
+void AssetReplacer::destroyExternalMaterial(remixapi_MaterialHandle handle) {
+  m_extMaterials.erase(handle);
+}
+
+void AssetReplacer::registerExternalMesh(remixapi_MeshHandle handle, std::vector<RasterGeometry>&& submeshes) {
+  if (m_extMeshes.count(handle) > 0) {
+    Logger::info("Ignoring repeated mesh registration (handle=" + tostr(handle) + ") ");
+    return;
+  }
+
+  m_extMeshes.emplace(handle, std::move(submeshes));
+}
+
+const std::vector<RasterGeometry>& AssetReplacer::accessExternalMesh(remixapi_MeshHandle handle) const {
+  auto found = m_extMeshes.find(handle);
+  if (found == m_extMeshes.end()) {
+    static const auto s_empty = std::vector<RasterGeometry> {};
+    return s_empty;
+  }
+  return found->second;
+}
+
+void AssetReplacer::destroyExternalMesh(remixapi_MeshHandle handle) {
+  m_extMeshes.erase(handle);
 }
 
 } // namespace dxvk

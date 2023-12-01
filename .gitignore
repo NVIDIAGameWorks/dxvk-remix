@@ -35,3 +35,4 @@
 .vscode/
 /external
 **/_batch_output/**
+/public/bin/

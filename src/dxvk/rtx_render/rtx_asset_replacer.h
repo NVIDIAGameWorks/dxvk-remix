@@ -217,6 +217,14 @@ namespace dxvk {
         (bEnabled) ? variantId : VariantInfo::kDefaultVariant;
     }
 
+    void makeMaterialWithTexturePreload(DxvkContext& ctx, remixapi_MaterialHandle handle, MaterialData&& data);
+    [[nodiscard]] const MaterialData* accessExternalMaterial(remixapi_MaterialHandle handle) const;
+    void destroyExternalMaterial(remixapi_MaterialHandle handle);
+
+    void registerExternalMesh(remixapi_MeshHandle handle, std::vector<RasterGeometry>&& submeshes);
+    [[nodiscard]] const std::vector<RasterGeometry>& accessExternalMesh(remixapi_MeshHandle handle) const;
+    void destroyExternalMesh(remixapi_MeshHandle handle);
+
   private:
     void updateSecretReplacements();
 
@@ -232,6 +240,9 @@ namespace dxvk {
     SecretReplacements m_secretReplacements;
 
     ModManager m_modManager;
+
+    std::unordered_map<remixapi_MaterialHandle, std::optional<MaterialData>> m_extMaterials {};
+    std::unordered_map<remixapi_MeshHandle, std::vector<RasterGeometry>> m_extMeshes {};
   };
 } // namespace dxvk
 
