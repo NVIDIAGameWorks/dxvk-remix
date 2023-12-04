@@ -381,6 +381,26 @@ SubsurfaceMaterialInteraction subsurfaceMaterialInteractionCreate(
   return subsurfaceMaterialInteraction;
 }
 
+void storeColorOverlayedWithTextureResolutionCheckersInDebugView(vec3 colorValue, uint textureIndex, SurfaceInteraction surfaceInteraction)
+{
+  if (textureIndex != BINDING_INDEX_INVALID)
+  {
+    uint2 texDims;
+    textures[nonuniformEXT(uint(textureIndex))].GetDimensions(texDims.x, texDims.y);
+
+    colorValue = 
+      tintColorValueWithTextureResolutionCheckers(
+        colorValue,
+        surfaceInteraction.textureCoordinates, 
+        surfaceInteraction.textureGradientX * cb.upscaleFactor,
+        surfaceInteraction.textureGradientY * cb.upscaleFactor,
+        texDims,
+        cb.debugKnob.x,
+        cb.debugKnob.y);
+    storeInDebugView(DispatchRaysIndex().xy, colorValue);
+  }
+}
+
 // Opaque Surface Material Interaction Functions
 
 OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
@@ -500,6 +520,11 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   {
     storeInDebugView(DispatchRaysIndex().xy, albedo.xyz);
   }
+
+  if (cb.debugView == DEBUG_VIEW_OPAQUE_RAW_ALBEDO_RESOLUTION_CHECKERS) 
+  {
+    storeColorOverlayedWithTextureResolutionCheckersInDebugView(albedo.xyz, opaqueSurfaceMaterial.albedoOpacityTextureIndex, surfaceInteraction);
+  } 
 #endif
 
   f16vec4 tFactor = 0.h;
@@ -618,7 +643,13 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
       normal = normalBlendRNM(normal2, normal);
     }
   }
-
+  
+#if defined(RAY_TRACING_PRIMARY_RAY) && defined(RAY_PIPELINE)
+  if (cb.debugView == DEBUG_VIEW_OPAQUE_NORMAL_RESOLUTION_CHECKERS) 
+  {
+    storeColorOverlayedWithTextureResolutionCheckersInDebugView(normal, opaqueSurfaceMaterial.normalTextureIndex, surfaceInteraction);
+  }
+#endif
   // Load Tangent
 
   // Todo
@@ -632,6 +663,12 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
     roughness = roughnessSample.x;
   }
 
+#if defined(RAY_TRACING_PRIMARY_RAY) && defined(RAY_PIPELINE)
+  if (cb.debugView == DEBUG_VIEW_OPAQUE_ROUGHNESS_RESOLUTION_CHECKERS) 
+  {
+    storeColorOverlayedWithTextureResolutionCheckersInDebugView(roughness.xxx, opaqueSurfaceMaterial.roughnessTextureIndex, surfaceInteraction);
+  }
+#endif  
   // Apply material modifiers
   roughness = saturate(roughness * cb.opaqueMaterialArgs.roughnessScale + cb.opaqueMaterialArgs.roughnessBias);
 
