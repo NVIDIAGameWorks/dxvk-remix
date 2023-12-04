@@ -297,4 +297,6 @@ struct RaytraceArgs {
   uint thinOpaqueEnable;
 
   float totalMipBias;
+
+  float2 upscaleFactor;   // Displayed(upscaled) / RT resolution
 };

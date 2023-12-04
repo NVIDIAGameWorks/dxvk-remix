@@ -405,6 +405,12 @@ void geometryResolverVertexOutputDebugView(
     storeInDebugView(pixelCoordinate, fract(surfaceInteraction.textureCoordinates));
 
     break;
+  case DEBUG_VIEW_TEXCOORDS_GRADIENT_X:
+    storeInDebugView(pixelCoordinate, surfaceInteraction.textureGradientX);
+    break;
+  case DEBUG_VIEW_TEXCOORDS_GRADIENT_Y:
+    storeInDebugView(pixelCoordinate, surfaceInteraction.textureGradientY);
+    break;
   case DEBUG_VIEW_TEXCOORD_GENERATION_MODE:
     storeInDebugView(pixelCoordinate, uint(surface.texcoordGenerationMode));
     break;

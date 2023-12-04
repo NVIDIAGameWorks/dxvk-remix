@@ -41,6 +41,11 @@ namespace ImGui {
 #define IMGUI_ADD_TOOLTIP(imguiCommand, tooltip) ImGui::addTooltipAndPassthroughValue((imguiCommand), tooltip)
 
   IMGUI_API bool Checkbox(const char* label, dxvk::RtxOption<bool>* rtxOption);
+  IMGUI_API bool Combo(const char* label, int* current_item, const std::pair<const char*, const char*> items[], int items_count, int popup_max_height_in_items = -1);
+  IMGUI_API bool Combo(const char* label, int* current_item, bool(*items_getter)(void* data, int idx, const char** out_text, const char** out_tooltip), void* data, int items_count, int popup_max_height_in_items = -1);
+  IMGUI_API bool ListBox(const char* label, int* current_item, const std::pair<const char*, const char*> items[], int items_count, int height_in_items = -1);
+  IMGUI_API bool ListBox(const char* label, int* current_item, bool (*items_getter)(void* data, int idx, const char** out_text, const char** out_tooltip), void* data, int items_count, int height_in_items = -1);
+
 
   // Variant handling RtxOption as input
   template <typename ... Args>
@@ -225,19 +230,24 @@ namespace ImGui {
   IMGUI_API bool SliderFloat4(const char* label, dxvk::RtxOption<dxvk::Vector4>* rtxOption, Args&& ... args) {
     return IMGUI_ADD_TOOLTIP(SliderFloat4(label, rtxOption->getValue().data, std::forward<Args>(args)...), rtxOption->getDescription());
   }
-  
+
   // Combo Box with unique key per combo entry
   // The combo entries are displayed in the order they appear in ComboEntries
   template<typename T>
   class ComboWithKey {
   public:
-    using ComboEntries = std::vector<std::pair<T /*key*/, const char* /*entry name*/>>;
+    struct ComboEntry {
+      T key;
+      const char* name = nullptr;
+      const char* tooltip = nullptr;
+    };
+    using ComboEntries = std::vector<ComboEntry>;
 
     ComboWithKey(const char* widgetName, ComboEntries&& comboEntries)
       : m_comboEntries { std::move(comboEntries) }
       , m_widgetName { widgetName } {
       for (int i = 0; i < m_comboEntries.size(); i++) {
-        T key = m_comboEntries[i].first;
+        T key = m_comboEntries[i].key;
         assert(m_keyToComboIdx.find(key) == m_keyToComboIdx.end() && "Duplicate key found");
         m_keyToComboIdx[key] = i;
       }
@@ -258,7 +268,7 @@ namespace ImGui {
 
       bool isChanged = Combo(m_widgetName, &comboIdx, getString, static_cast<void*>(&m_comboEntries), static_cast<int>(m_comboEntries.size()));
 
-      *key = m_comboEntries[comboIdx].first;
+      *key = m_comboEntries[comboIdx].key;
 
       return isChanged;
     }
@@ -270,13 +280,18 @@ namespace ImGui {
     }
 
   private:
-    static bool getString(void* data, int entryIdx, const char** out_text) {
+    static bool getString(void* data, int entryIdx, const char** out_text, const char** out_tooltip) {
       const ComboEntries& v = *reinterpret_cast<const ComboEntries*>(data);
 
       if (entryIdx >= v.size())
         return false;
 
-      *out_text = v[entryIdx].second;
+      if (out_text) {
+        *out_text = v[entryIdx].name;
+      }
+      if (out_tooltip) {
+        *out_tooltip = v[entryIdx].tooltip;
+      }
 
       return true;
     }
