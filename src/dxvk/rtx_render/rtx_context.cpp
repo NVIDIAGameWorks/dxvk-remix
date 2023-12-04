@@ -856,6 +856,11 @@ namespace dxvk {
 
     constants.totalMipBias = getSceneManager().getTotalMipBias(); 
 
+    const VkExtent3D& rtExtent = rtOutput.m_finalOutput.image->info().extent;
+    constants.upscaleFactor = float2 {
+      rtOutput.m_compositeOutputExtent.width / static_cast<float>(rtExtent.width),
+      rtOutput.m_compositeOutputExtent.height / static_cast<float>(rtExtent.height) };
+
     constants.terrainArgs = getSceneManager().getTerrainBaker().getTerrainArgs();
 
     constants.thinOpaqueEnable = RtxOptions::SubsurfaceScattering::enableThinOpaque();
