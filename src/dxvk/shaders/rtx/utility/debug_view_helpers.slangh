@@ -120,3 +120,106 @@ vec3 colorCodeIntoBGRexclusive(uint value, uint maxValue)
   // Reswizzle to show lowest values in Blue and highest in Red
   return color.bgr;
 }
+
+// Analytically integrated checkerboard (box filter).
+float filteredCheckers(
+  vec2 uv, vec2 duvdx, vec2 duvdy, vec2 rcpUvToBoxSize,
+  out float numPixelsInBox)
+{
+  uv *= rcpUvToBoxSize;
+  duvdx *= rcpUvToBoxSize;
+  duvdy *= rcpUvToBoxSize;
+
+  // Box filtered checkerboard
+  // Ref: http://iquilezles.org/www/articles/filterableprocedurals/filterableprocedurals.htm
+  float epsilon = 1e-6f;
+  vec2 w = max(max(abs(duvdx), abs(duvdy)), epsilon);
+  vec2 i = 2.0 * (abs(fract((uv - 0.5 * w) * 0.5) - 0.5)-
+                  abs(fract((uv + 0.5 * w) * 0.5 ) - 0.5)) / w;
+                  
+  numPixelsInBox = 1 / max(w.x, w.y);
+  
+  float checkers = 0.5 - 0.5 * i.x * i.y;
+
+  return checkers; 
+}
+
+float calculateNormalizedRelativeValue(float x, float minValue, float maxValue)
+{
+  return saturate((x - minValue) / (maxValue - minValue));
+}
+
+// Calculates a filtered checkers scale based on textures resolution.
+// boxSizeNumTexels: used only if >= 1. Otherwise, default is used
+// checkersStrength: used only if > 0. Otherwise, default is used
+// checkersValue: scale value for checkers with boxSizeNumTexels per box
+// texelCheckersStrength: scale value for checkers with 1 texel per box
+void calculateTextureResolutionCheckers(
+  vec2 uv, vec2 duvdx, vec2 duvdy, vec2 texDims, 
+  uint boxSizeNumTexels, float checkersStrength,
+  out float checkersValue,
+  out float texelCheckersValue,
+  out float texelCheckersStrength) 
+{
+  boxSizeNumTexels = boxSizeNumTexels >= 1 ? min(boxSizeNumTexels, 32 * 1024) : 64;
+  vec2 rcpUvToBoxSize = texDims / (float) boxSizeNumTexels;
+
+  // Calculate checkers value for multi-texel box
+  float numPixelsInMultiTexelBox;
+  checkersValue = filteredCheckers(uv, duvdx, duvdy, rcpUvToBoxSize, numPixelsInMultiTexelBox);
+
+  // Calculate checkers value for texel box
+  float numPixelsInTexelBox;
+  boxSizeNumTexels = 1;
+  rcpUvToBoxSize = texDims / (float) boxSizeNumTexels;
+  texelCheckersValue = filteredCheckers(uv, duvdx, duvdy, rcpUvToBoxSize, numPixelsInTexelBox);
+
+  // Modulate texel checkers value since it can be very high frequency.
+  // Start displaying per texel checkers when both the checker and texel checker boxes are large enough to avoid too much noise.
+  // The reason for taking the checker box size into consideration is to limit texel checker box strength when a checker box shows only a few texels   
+  const vec2 numPixelsPerMultiTexelBoxBounds = vec2(40, 120);
+  const vec2 numPixelsPerTexelBoxBounds = vec2(4, 20);
+  texelCheckersStrength = 
+    calculateNormalizedRelativeValue(numPixelsInMultiTexelBox, numPixelsPerMultiTexelBoxBounds.x, numPixelsPerMultiTexelBoxBounds.y) *
+    calculateNormalizedRelativeValue(numPixelsInTexelBox, numPixelsPerTexelBoxBounds.x, numPixelsPerTexelBoxBounds.y);
+
+  // Scale calculated checkers value with the input checkers strength
+  const float maxTexelCheckersStrength = 0.5;
+  checkersStrength = checkersStrength > 0 ? min(checkersStrength, 1) : 0.5;
+  texelCheckersStrength = min(texelCheckersStrength, min(maxTexelCheckersStrength, checkersStrength));
+  checkersValue = mix(1, checkersValue, checkersStrength);
+  texelCheckersValue = mix(1, texelCheckersValue, texelCheckersStrength);
+}
+
+vec3 tintColorValueWithTextureResolutionCheckers(
+  vec3 colorValue, vec2 uv, vec2 duvdx, vec2 duvdy, 
+  vec2 texDims, uint boxSizeNumTexels, float checkersStrength) {
+
+  // Ensure dealing with <0,1> color values so as to avoid dealing with  negatives and large inputs
+  // when tinting the color
+  colorValue = saturate(colorValue);
+
+  // Calculate checkers values
+  float checkersValue;
+  float texelCheckersValue;
+  float texelCheckersStrength;
+  calculateTextureResolutionCheckers(
+    uv, duvdx, duvdy, texDims, boxSizeNumTexels, checkersStrength, 
+    checkersValue, texelCheckersValue, texelCheckersStrength);
+
+  const float checkersColorWeight = 0.3;
+  const vec3 checkersTintColor = checkersColorWeight * vec3(0.6, 0.76, 0.93);
+
+  // Add a tint to checkers for very dark input colors so the checkers are always visible
+  const float luminance = calcBt709Luminance(colorValue);
+  colorValue = colorValue + pow((1 - luminance), 4) * checkersTintColor;
+
+  // Use 1 - color for texel checkers so that they always appear a bit different from the base checker using original color
+  const float texelCheckersColorWeight = 0.5;
+  const vec3 texelCheckersTintColor = texelCheckersColorWeight * (1 - (colorValue * checkersValue));
+
+  // Mix input color value with checkers' values
+  return colorValue * checkersValue * texelCheckersValue 
+    // Add a tint to texel checker areas
+    + texelCheckersTintColor * texelCheckersStrength;
+}
