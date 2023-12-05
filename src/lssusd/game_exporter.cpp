@@ -80,6 +80,12 @@
 #include <AperturePBR_SpriteSheet.mdl.h>
 #include "../util/util_env.h"
 
+#ifndef NDEBUG
+#define ASSERT_OR_EXECUTE(BODY) assert((BODY))
+#else
+#define ASSERT_OR_EXECUTE(BODY) (BODY)
+#endif
+
 namespace {
 inline pxr::GfMatrix4d ToRHS(const pxr::GfMatrix4d& xform) {
   static pxr::GfMatrix4d XYflip(pxr::GfVec4d(1.0, 1.0, -1.0, 1.0));
@@ -308,11 +314,87 @@ void GameExporter::createApertureMdls(const std::string& baseExportPath) {
   writeFile(materialsDirPath + "AperturePBR_SpriteSheet.mdl", ___AperturePBR_SpriteSheet);
 }
 
+namespace{
+struct AttrDesc {
+  pxr::TfToken                           attrName;
+  pxr::SdfValueTypeName                  typeName;
+  bool                                   custom;
+  pxr::SdfVariability                    sdfVariability;
+};
+#define AttrDescMapEntry(attrEnum, typeName, custom, sdfVariability) \
+{ \
+  attrEnum, \
+  AttrDesc{pxr::TfToken(attrNames[attrEnum]), \
+           pxr::SdfValueTypeNames->##typeName, \
+           custom, \
+           pxr::SdfVariability##sdfVariability} \
+}
+
+namespace ShaderAttr {
+enum Enum {
+  OutputsOut,
+  DiffuseTex,
+  ImplSrc,
+  MdlSrcAsset,
+  MdlSrcAssetSubId,
+  Opacity,
+  FilterMode,
+  WrapModeU,
+  WrapModeV,
+};
+static std::unordered_map<Enum,std::string> attrNames {
+  {OutputsOut,       "outputs:out"},
+  {DiffuseTex,       "inputs:diffuse_texture"},
+  {ImplSrc,          "info:implementationSource"},
+  {MdlSrcAsset,      "info:mdl:sourceAsset"},
+  {MdlSrcAssetSubId, "info:mdl:sourceAsset:subIdentifier"},
+  {Opacity,          "enable_opacity"},
+  {FilterMode,       "filter_mode"},
+  {WrapModeU,        "wrap_mode_u"},
+  {WrapModeV,        "wrap_mode_v"},
+};
+static std::unordered_map<Enum,AttrDesc> attrDescs{
+  AttrDescMapEntry(OutputsOut,       Token, false, Varying),
+  AttrDescMapEntry(DiffuseTex,       Asset, false, Varying),
+  AttrDescMapEntry(ImplSrc,          Token, false, Uniform),
+  AttrDescMapEntry(MdlSrcAsset,      Asset, false, Uniform),
+  AttrDescMapEntry(MdlSrcAssetSubId, Token, false, Uniform),
+  AttrDescMapEntry(Opacity,           Bool, false, Uniform),
+  AttrDescMapEntry(FilterMode,        UInt, false, Uniform),
+  AttrDescMapEntry(WrapModeU,         UInt, false, Uniform),
+  AttrDescMapEntry(WrapModeV,         UInt, false, Uniform),
+};
+}
+static inline uint32_t vkToMdlFilter(const VkFilter& vkFilter) {
+  enum MdlFilter : uint32_t {
+    Nearest = 0,
+    Linear = 1
+  };
+  return (vkFilter > VK_FILTER_LINEAR) ? Nearest : vkFilter;
+}
+static inline uint32_t vkToMdlAddrMode(const VkSamplerAddressMode& vkAddrMode) {
+  // https://raytracing-docs.nvidia.com/mdl/api/group__mi__neuray__mdl__compiler.html#ga852d194e585ada01cc272e85e367ca9b
+  enum MdlAddrMode : uint32_t {
+    Clamp = 0,
+    Repeat = 1,
+    Mirrored_Repeat = 2,
+    Clip = 3 // Clamp to border, where border always black
+  };
+  switch(vkAddrMode) {
+    case VK_SAMPLER_ADDRESS_MODE_REPEAT: return Repeat;
+    case VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT: return Mirrored_Repeat;
+    case VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE: return Clamp;
+    case VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER: return Clip; // Maybe don't support?
+    default: return Repeat;
+  };
+}
+}
+
 void GameExporter::exportMaterials(const Export& exportData, ExportContext& ctx) {
   dxvk::Logger::debug("[GameExporter][" + exportData.debugId + "][exportMaterials] Begin");
   const std::string matDirPath = exportData.baseExportPath + "/" + commonDirName::matDir;
   const std::string fullMaterialBasePath = computeLocalPath(matDirPath);
-
+  
   dxvk::env::createDirectory(matDirPath);
   for(const auto& [matId, matData] : exportData.materials) {
     // Build material stage
@@ -343,73 +425,42 @@ void GameExporter::exportMaterials(const Export& exportData, ExportContext& ctx)
     const auto shaderPrim = shader.GetPrim();
     assert(shaderPrim);
 
-    // Create shader prim outputs attr
-    static const pxr::TfToken kTokOutputsOutput("outputs:out");
-    const auto outputsOutAttr =
-      shaderPrim.CreateAttribute(kTokOutputsOutput, pxr::SdfValueTypeNames->Token, false, pxr::SdfVariabilityVarying);
+    std::unordered_map<ShaderAttr::Enum, pxr::UsdAttribute> shaderAttrs;
+    for(const auto& [attrEnum, desc] : ShaderAttr::attrDescs) {
+      shaderAttrs[attrEnum] =
+        shaderPrim.CreateAttribute(desc.attrName, desc.typeName, desc.custom, desc.sdfVariability);
+      // Cannot assert. Attr "outputs:out" asserts false, but authoring + Setting works just fine.
+      // assert(shaderAttrs[attrEnum]); 
+    }
 
     // Create and connect material outputs to shader outputs
     static const pxr::TfToken kTokOutputsMdlSurface("outputs:mdl:surface");
     const auto outputsMdlSurfaceAttr =
       matPrim.CreateAttribute(kTokOutputsMdlSurface, pxr::SdfValueTypeNames->Token, false, pxr::SdfVariabilityVarying);
-    outputsMdlSurfaceAttr.AddConnection(outputsOutAttr.GetPath(), pxr::UsdListPositionFrontOfAppendList);
+    outputsMdlSurfaceAttr.AddConnection(shaderAttrs[ShaderAttr::OutputsOut].GetPath(), pxr::UsdListPositionFrontOfAppendList);
 
     // Set shader "Kind"
     static const pxr::TfToken kTokMaterial("Material");
     pxr::UsdModelAPI(shader).SetKind(kTokMaterial);
 
     // Create and set textures asset paths on material
-    static const auto setTextureAttr =
-      [](const pxr::UsdPrim& shaderPrim, const pxr::TfToken attrName, const std::string& relTexPath, const std::string& fullMaterialBasePath)
-    {
-      const auto attr = shaderPrim.CreateAttribute(pxr::TfToken(attrName), pxr::SdfValueTypeNames->Asset, false, pxr::SdfVariabilityVarying);
-      assert(attr);
-      const auto fullTexturePath = computeLocalPath(relTexPath);
-      const auto relToMaterialsTexPath = std::filesystem::relative(fullTexturePath,fullMaterialBasePath).string();
-      const bool bSetSuccessful = attr.Set(pxr::SdfAssetPath(relToMaterialsTexPath));
-      assert(bSetSuccessful);
-      static const pxr::TfToken kTokColorSpaceAuto("auto");
-      attr.SetColorSpace(kTokColorSpaceAuto);
-      return true;
-    };
-    static const pxr::TfToken kTokenInputsDiffuseTex("inputs:diffuse_texture");
-
-    // Try to use an updated texture, if that doesn't work, try to use an old one
-    setTextureAttr(shaderPrim, kTokenInputsDiffuseTex, matData.albedoTexPath, fullMaterialBasePath);
+    const auto relToMaterialsTexPath =
+      std::filesystem::relative(computeLocalPath(matData.albedoTexPath), fullMaterialBasePath).string();
+    ASSERT_OR_EXECUTE(shaderAttrs[ShaderAttr::DiffuseTex].Set(pxr::SdfAssetPath(relToMaterialsTexPath)));
+    shaderAttrs[ShaderAttr::DiffuseTex].SetColorSpace(pxr::TfToken("auto"));
 
     // Create and set OmniPBR MDL boilerplate attributes on shader
-    static const pxr::TfToken kTokInfoImplSource("info:implementationSource");
-    static const pxr::TfToken kTokSourceAsset("sourceAsset");
-    const auto infoImplSourceAttr =
-      shaderPrim.CreateAttribute(kTokInfoImplSource, pxr::SdfValueTypeNames->Token, false, pxr::SdfVariabilityUniform);
-    assert(infoImplSourceAttr);
-    const bool bSetInfoImplSourceAttr = infoImplSourceAttr.Set(kTokSourceAsset);
-    assert(bSetInfoImplSourceAttr);
-
-    static const pxr::TfToken kTokInfoMdlSourceAsset("info:mdl:sourceAsset");
-
-    static const pxr::SdfAssetPath kSdfAssetPathOmniPBR("./AperturePBR_Opacity.mdl");
-    const auto infoMdlSourceAsset =
-      shaderPrim.CreateAttribute(kTokInfoMdlSourceAsset, pxr::SdfValueTypeNames->Asset, false, pxr::SdfVariabilityUniform);
-    assert(infoMdlSourceAsset);
-    const bool bSetInfoMdlSourceAsset = infoMdlSourceAsset.Set(kSdfAssetPathOmniPBR);
-    assert(bSetInfoMdlSourceAsset);
-
-    static const pxr::TfToken kTokInfoMdlSourceAssetSubId("info:mdl:sourceAsset:subIdentifier");
-    static const pxr::TfToken kTokOmniPBR("AperturePBR_Opacity");
-    const auto infoImplSourceSubIdAttr =
-      shaderPrim.CreateAttribute(kTokInfoMdlSourceAssetSubId, pxr::SdfValueTypeNames->Token, false, pxr::SdfVariabilityUniform);
-    assert(infoImplSourceSubIdAttr);
-    const bool bSetInfoMdlSourceAssetSubId = infoImplSourceSubIdAttr.Set(kTokOmniPBR);
-    assert(bSetInfoMdlSourceAssetSubId);
+    ASSERT_OR_EXECUTE(shaderAttrs[ShaderAttr::ImplSrc].Set(pxr::TfToken("sourceAsset")));
+    ASSERT_OR_EXECUTE(shaderAttrs[ShaderAttr::MdlSrcAsset].Set(pxr::SdfAssetPath("./AperturePBR_Opacity.mdl")));
+    ASSERT_OR_EXECUTE(shaderAttrs[ShaderAttr::MdlSrcAssetSubId].Set(pxr::TfToken("AperturePBR_Opacity")));
 
     // Mark whether to enable varying opacity
-    static const pxr::TfToken kTokEnableOpacity("enable_opacity");
-    const auto enableOpacityAttr =
-      shaderPrim.CreateAttribute(kTokEnableOpacity, pxr::SdfValueTypeNames->Bool, false, pxr::SdfVariabilityUniform);
-    assert(enableOpacityAttr);
-    const bool bSetEnableOpacityAttr = enableOpacityAttr.Set(matData.enableOpacity);
-    assert(bSetEnableOpacityAttr);
+    ASSERT_OR_EXECUTE(shaderAttrs[ShaderAttr::Opacity].Set(matData.enableOpacity));
+
+    // Sampler State
+    ASSERT_OR_EXECUTE(shaderAttrs[ShaderAttr::FilterMode].Set(vkToMdlFilter(matData.sampler.filter)));
+    ASSERT_OR_EXECUTE(shaderAttrs[ShaderAttr::WrapModeU].Set(vkToMdlAddrMode(matData.sampler.addrModeU)));
+    ASSERT_OR_EXECUTE(shaderAttrs[ShaderAttr::WrapModeV].Set(vkToMdlAddrMode(matData.sampler.addrModeV)));
 
     matStage->Save();
     
