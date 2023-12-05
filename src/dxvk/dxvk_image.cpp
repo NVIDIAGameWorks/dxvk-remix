@@ -137,7 +137,7 @@ namespace dxvk {
 
     m_vkd->vkGetImageMemoryRequirements2(
       m_vkd->device(), &memReqInfo, &memReq);
- 
+
     if (info.tiling != VK_IMAGE_TILING_LINEAR && !dedicatedRequirements.prefersDedicatedAllocation) {
       memReq.memoryRequirements.size      = align(memReq.memoryRequirements.size,       memAlloc.bufferImageGranularity());
       memReq.memoryRequirements.alignment = align(memReq.memoryRequirements.alignment , memAlloc.bufferImageGranularity());
@@ -151,8 +151,11 @@ namespace dxvk {
       VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT |
       VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT)) != 0;
     
-    float priority = isGpuWritable ? 1.0f : 0.5f;
+    DxvkMemoryFlags hints(DxvkMemoryFlag::GpuReadable);
 
+    if (isGpuWritable)
+      hints.set(DxvkMemoryFlag::GpuWritable);
+    
     if (m_shared) {
       dedicatedRequirements.prefersDedicatedAllocation  = VK_TRUE;
       dedicatedRequirements.requiresDedicatedAllocation = VK_TRUE;
@@ -160,7 +163,7 @@ namespace dxvk {
 
     // Ask driver whether we should be using a dedicated allocation
     m_image.memory = memAlloc.alloc(&memReq.memoryRequirements,
-      dedicatedRequirements, dedMemoryAllocInfo, memFlags, 0, priority, category);
+      dedicatedRequirements, dedMemoryAllocInfo, memFlags, hints, category);
     
     // Try to bind the allocated memory slice to the image
     if (m_vkd->vkBindImageMemory(m_vkd->device(), m_image.image,
