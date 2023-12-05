@@ -236,16 +236,14 @@ DxvkMemory::DxvkMemory() { }
   
   
   DxvkMemory DxvkMemoryChunk::alloc(
-          VkMemoryPropertyFlags    propertyFlags,
-          VkMemoryAllocateFlags    allocateFlags,
+          VkMemoryPropertyFlags    flags,
           VkDeviceSize             size,
           VkDeviceSize             align,
           float                    priority,
           DxvkMemoryStats::Category category) {
     // Property and allocate flags must be compatible. This could
     // be refined a bit in the future if necessary.
-    if (m_memory.memPropertyFlags != propertyFlags
-     || m_memory.memAllocateFlags != allocateFlags
+    if (m_memory.memPropertyFlags != flags
      || m_memory.priority != priority)
       return DxvkMemory();
     
@@ -392,8 +390,7 @@ DxvkMemory::DxvkMemory() { }
     const VkMemoryRequirements*             req,
     const VkMemoryDedicatedRequirements&    dedAllocReq,
     const VkMemoryDedicatedAllocateInfo&    dedAllocInfo,
-          VkMemoryPropertyFlags             propertyFlags,
-          VkMemoryAllocateFlags             allocateFlags,
+          VkMemoryPropertyFlags             flags,
           float                             priority,
           DxvkMemoryStats::Category         category) {
     ScopedCpuProfileZone();
@@ -404,11 +401,11 @@ DxvkMemory::DxvkMemory() { }
 
     // Try to allocate from a memory type which supports the given flags exactly
     auto dedAllocPtr = dedAllocReq.prefersDedicatedAllocation ? &dedAllocInfo : nullptr;
-    DxvkMemory result = this->tryAlloc(req, dedAllocPtr, propertyFlags, allocateFlags, priority, category);
+    DxvkMemory result = this->tryAlloc(req, dedAllocPtr, flags, priority, category);
 
     // If the first attempt failed, try ignoring the dedicated allocation
     if (!result && dedAllocPtr && !dedAllocReq.requiresDedicatedAllocation) {
-      result = this->tryAlloc(req, nullptr, propertyFlags, allocateFlags, priority, category);
+      result = this->tryAlloc(req, nullptr, flags, priority, category);
       dedAllocPtr = nullptr;
     }
 
@@ -417,11 +414,11 @@ DxvkMemory::DxvkMemory() { }
                                    | VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
     VkMemoryPropertyFlags remFlags = 0;
     
-    while (!result && (propertyFlags & optFlags)) {
+    while (!result && (flags & optFlags)) {
       remFlags |= optFlags & (0 - optFlags); // Note: 0 - x is a more well defined version of -x for unsigned values
       optFlags &= ~remFlags;
 
-      result = this->tryAlloc(req, dedAllocPtr, propertyFlags & ~remFlags, allocateFlags, priority, category);
+      result = this->tryAlloc(req, dedAllocPtr, flags & ~remFlags, priority, category);
     }
     
     if (!result) {
@@ -431,8 +428,7 @@ DxvkMemory::DxvkMemory() { }
         "DxvkMemoryAllocator: Memory allocation failed",
         "\n  Size:      ", req->size,
         "\n  Alignment: ", req->alignment,
-        "\n  Mem property flags: ", "0x", std::hex, propertyFlags,
-        "\n  Mem allocate flags: ", "0x", std::hex, allocateFlags,
+        "\n  Mem property flags: ", "0x", std::hex, flags,
         "\n  Mem types: ", "0x", std::hex, req->memoryTypeBits));
 
       for (uint32_t i = 0; i < m_memProps.memoryHeapCount; i++) {
@@ -471,19 +467,18 @@ DxvkMemory::DxvkMemory() { }
   DxvkMemory DxvkMemoryAllocator::tryAlloc(
     const VkMemoryRequirements*             req,
     const VkMemoryDedicatedAllocateInfo*    dedAllocInfo,
-          VkMemoryPropertyFlags             propertyFlags,
-          VkMemoryAllocateFlags             allocateFlags,
+          VkMemoryPropertyFlags             flags,
           float                             priority,
           DxvkMemoryStats::Category         category) {
     DxvkMemory result;
 
     for (uint32_t i = 0; i < m_memProps.memoryTypeCount && !result; i++) {
       const bool supported = (req->memoryTypeBits & (1u << i)) != 0;
-      const bool adequate  = (m_memTypes[i].memType.propertyFlags & propertyFlags) == propertyFlags;
+      const bool adequate  = (m_memTypes[i].memType.propertyFlags & flags) == flags;
       
       if (supported && adequate) {
         result = this->tryAllocFromType(&m_memTypes[i],
-                                        propertyFlags, allocateFlags, req->size, req->alignment, priority, dedAllocInfo, category);
+                                        flags, req->size, req->alignment, priority, dedAllocInfo, category);
       }
     }
     
@@ -493,8 +488,7 @@ DxvkMemory::DxvkMemory() { }
   
   DxvkMemory DxvkMemoryAllocator::tryAllocFromType(
           DxvkMemoryType*                   type,
-          VkMemoryPropertyFlags             propertyFlags,
-          VkMemoryAllocateFlags             allocateFlags,
+          VkMemoryPropertyFlags             flags,
           VkDeviceSize                      size,
           VkDeviceSize                      align,
           float                             priority,
@@ -506,7 +500,7 @@ DxvkMemory::DxvkMemory() { }
     // NV-DXVK end
 
     // Prevent unnecessary external host memory fragmentation
-    bool isDeviceLocal = (propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0;
+    bool isDeviceLocal = (flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0;
 
     if (!isDeviceLocal)
       priority = 0.0f;
@@ -515,23 +509,23 @@ DxvkMemory::DxvkMemory() { }
 
     if (size >= type->chunkSize || dedAllocInfo) {
       DxvkDeviceMemory devMem = this->tryAllocDeviceMemory(
-        type, propertyFlags, allocateFlags, size, priority, dedAllocInfo, category);
+        type, flags, size, priority, dedAllocInfo, category);
 
       if (devMem.memHandle != VK_NULL_HANDLE)
         memory = DxvkMemory(this, nullptr, type, devMem.memHandle, 0, size, devMem.memPointer, category);
     } else {
       for (uint32_t i = 0; i < type->chunks.size() && !memory; i++)
-        memory = type->chunks[i]->alloc(propertyFlags, allocateFlags, size, align, priority, category);
+        memory = type->chunks[i]->alloc(flags, size, align, priority, category);
       
       if (!memory) {
         DxvkDeviceMemory devMem;
         
         for (uint32_t i = 0; i < 6 && (type->chunkSize >> i) >= size && !devMem.memHandle; i++)
-          devMem = tryAllocDeviceMemory(type, propertyFlags, allocateFlags, type->chunkSize >> i, priority, nullptr, category);
+          devMem = tryAllocDeviceMemory(type, flags, type->chunkSize >> i, priority, nullptr, category);
 
         if (devMem.memHandle) {
           Rc<DxvkMemoryChunk> chunk = new DxvkMemoryChunk(this, type, devMem);
-          memory = chunk->alloc(propertyFlags, allocateFlags, size, align, priority, category);
+          memory = chunk->alloc(flags, size, align, priority, category);
 
           type->chunks.push_back(std::move(chunk));
         }
@@ -547,14 +541,13 @@ DxvkMemory::DxvkMemory() { }
   
   DxvkDeviceMemory DxvkMemoryAllocator::tryAllocDeviceMemory(
           DxvkMemoryType*                   type,
-          VkMemoryPropertyFlags             propertyFlags,
-          VkMemoryAllocateFlags             allocateFlags,
+          VkMemoryPropertyFlags             flags,
           VkDeviceSize                      size,
           float                             priority,
     const VkMemoryDedicatedAllocateInfo*    dedAllocInfo,
           DxvkMemoryStats::Category         category) {
     ScopedCpuProfileZone();
-    bool useMemoryPriority = (propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
+    bool useMemoryPriority = (flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
                           && (m_device->features().extMemoryPriority.memoryPriority);
     
     if (type->heap->budget && type->heap->stats.totalAllocated() + size > type->heap->budget)
@@ -562,14 +555,13 @@ DxvkMemory::DxvkMemory() { }
 
     DxvkDeviceMemory result;
     result.memSize  = size;
-    result.memPropertyFlags = propertyFlags;
-    result.memAllocateFlags = allocateFlags;
+    result.memPropertyFlags = flags;
     result.priority = priority;
 
     VkMemoryAllocateFlagsInfo allocateFlagsInfo;
     allocateFlagsInfo.sType      = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
     allocateFlagsInfo.pNext      = dedAllocInfo;
-    allocateFlagsInfo.flags      = allocateFlags;
+    allocateFlagsInfo.flags      = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
     allocateFlagsInfo.deviceMask = 0;
 
     VkMemoryPriorityAllocateInfoEXT prio;
@@ -586,7 +578,7 @@ DxvkMemory::DxvkMemory() { }
     if (m_vkd->vkAllocateMemory(m_vkd->device(), &info, nullptr, &result.memHandle) != VK_SUCCESS)
       return DxvkDeviceMemory();
     
-    if (propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
+    if (flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
       VkResult status = m_vkd->vkMapMemory(m_vkd->device(), result.memHandle, 0, VK_WHOLE_SIZE, 0, &result.memPointer);
 
       if (status != VK_SUCCESS) {

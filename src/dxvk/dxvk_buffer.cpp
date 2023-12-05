@@ -128,12 +128,6 @@ namespace dxvk {
         "\n  usage: ", info.usage));
     }
 
-    VkMemoryAllocateFlags memoryAllocateFlags = 0;
-
-    if (info.usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) {
-      memoryAllocateFlags |= VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
-    }
-    
     VkMemoryDedicatedRequirements dedicatedRequirements;
     dedicatedRequirements.sType                       = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS;
     dedicatedRequirements.pNext                       = VK_NULL_HANDLE;
@@ -181,7 +175,7 @@ namespace dxvk {
     
     // Ask driver whether we should be using a dedicated allocation
     handle.memory = m_memAlloc->alloc(&memReq.memoryRequirements,
-      dedicatedRequirements, dedMemoryAllocInfo, m_memFlags, memoryAllocateFlags, priority, category);
+      dedicatedRequirements, dedMemoryAllocInfo, m_memFlags, priority, category);
     
     if (vkd->vkBindBufferMemory(vkd->device(), handle.buffer,
         handle.memory.memory(), handle.memory.offset()) != VK_SUCCESS)

@@ -126,7 +126,6 @@ namespace dxvk {
     void*                 memPointer       = nullptr;
     VkDeviceSize          memSize          = 0;
     VkMemoryPropertyFlags memPropertyFlags = 0;
-    VkMemoryAllocateFlags memAllocateFlags = 0;
     float                 priority         = 0.0f;
   };
 
@@ -290,8 +289,7 @@ namespace dxvk {
      * \returns The allocated memory slice
      */
     DxvkMemory alloc(
-      VkMemoryPropertyFlags propertyFlags,
-      VkMemoryAllocateFlags allocateFlags,
+      VkMemoryPropertyFlags flags,
       VkDeviceSize size,
       VkDeviceSize align,
       float priority,
@@ -376,8 +374,7 @@ namespace dxvk {
       const VkMemoryRequirements*             req,
       const VkMemoryDedicatedRequirements&    dedAllocReq,
       const VkMemoryDedicatedAllocateInfo&    dedAllocInfo,
-            VkMemoryPropertyFlags             propertyFlags,
-            VkMemoryAllocateFlags             allocateFlags,
+            VkMemoryPropertyFlags             flags,
             float                             priority,
             DxvkMemoryStats::Category         category);
 
@@ -436,15 +433,13 @@ namespace dxvk {
     DxvkMemory tryAlloc(
       const VkMemoryRequirements* req,
       const VkMemoryDedicatedAllocateInfo* dedAllocInfo,
-      VkMemoryPropertyFlags propertyFlags,
-      VkMemoryAllocateFlags allocateFlags,
+      VkMemoryPropertyFlags flags,
       float priority,
       DxvkMemoryStats::Category category);
     
     DxvkMemory tryAllocFromType(
       DxvkMemoryType* type,
-      VkMemoryPropertyFlags propertyFlags,
-      VkMemoryAllocateFlags allocateFlags,
+      VkMemoryPropertyFlags flags,
       VkDeviceSize size,
       VkDeviceSize align,
       float priority,
@@ -453,8 +448,7 @@ namespace dxvk {
     
     DxvkDeviceMemory tryAllocDeviceMemory(
       DxvkMemoryType* type,
-      VkMemoryPropertyFlags propertyFlags,
-      VkMemoryAllocateFlags allocateFlags,
+      VkMemoryPropertyFlags flags,
       VkDeviceSize size,
       float priority,
       const VkMemoryDedicatedAllocateInfo* dedAllocInfo,

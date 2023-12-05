@@ -160,7 +160,7 @@ namespace dxvk {
 
     // Ask driver whether we should be using a dedicated allocation
     m_image.memory = memAlloc.alloc(&memReq.memoryRequirements,
-      dedicatedRequirements, dedMemoryAllocInfo, memFlags, 0, priority, category);
+      dedicatedRequirements, dedMemoryAllocInfo, memFlags, priority, category);
     
     // Try to bind the allocated memory slice to the image
     if (m_vkd->vkBindImageMemory(m_vkd->device(), m_image.image,
