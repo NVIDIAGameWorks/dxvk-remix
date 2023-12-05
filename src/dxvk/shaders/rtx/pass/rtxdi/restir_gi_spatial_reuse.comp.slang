@@ -71,7 +71,9 @@ void main(int2 thread_id : SV_DispatchThreadID)
   sparams.resolution = camera.resolution;
   sparams.sourceBufferIndex = ReSTIRGI_GetSpatialInputPage();
   sparams.pairwiseMISCentralWeight = cb.reSTIRGIMISModePairwiseMISCentralWeight;
-
+  // Use large search radius to ensure diffuse quality and suppress boiling, small radius to reduce noise. Values are based on experiment.
+  sparams.initialSearchRadius = spatialReservoir.M < cb.temporalHistoryLength || (cb.frameIdx + thread_id.x / 16 + thread_id.y / 8) % 2 == 0 ? 200.f : 85.f;
+  sparams.numSamples = spatialReservoir.M < cb.temporalHistoryLength ? 4 : 1;
   ReSTIRGI_Reservoir resultReservoir = ReSTIRGI_SpatialResampling(spatialReservoir, thread_id, surface, rtxdiRNG, sparams);
 
   if (cb.debugView == DEBUG_VIEW_RESTIR_GI_SPATIAL_REUSE)
