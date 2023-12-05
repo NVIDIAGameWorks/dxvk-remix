@@ -570,8 +570,8 @@ namespace dxvk::hud {
       bool isDeviceLocal = m_memory.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT;
 
       VkDeviceSize memSizeMib = m_memory.memoryHeaps[i].size >> 20;
-      VkDeviceSize memAllocatedMib = m_heaps[i].totalAllocated() >> 20;
       VkDeviceSize memUsedMib = m_heaps[i].totalUsed() >> 20;
+      VkDeviceSize memAllocatedMib = m_heaps[i].totalAllocated() >> 20;
       uint64_t percentage = (100 * memUsedMib) / memSizeMib;
 
       std::string label = str::format(isDeviceLocal ? "Vidmem" : "Sysmem", " heap ", i, ":");
