@@ -114,7 +114,8 @@ void main(int2 thread_id : SV_DispatchThreadID)
     const float neighborNormalThreshold = 0.998f;
     const float brdfClampMin = 0.001f;
     const float brdfClampMax = 1000.0f;
-    factor = RTXDI_GetDlssEnhancementDirectFactor(thread_id, finalSample.position, cameraPosition, neighborDepthThreshold, neighborNormalThreshold, brdfClampMin, brdfClampMax);
+    float3 finalSampleDirection = normalize(finalSample.position - surface.minimalSurfaceInteraction.position);
+    factor = RTXDI_GetDlssEnhancementDirectFactor(thread_id, finalSample.position, finalSampleDirection, false, cameraPosition, neighborDepthThreshold, neighborNormalThreshold, brdfClampMin, brdfClampMax);
 
     factor = pow(factor, float16_t(cb.enhanceBSDFDirectLightPower));
     factor = clamp(factor, f16vec2(0), f16vec2(cb.enhanceBSDFDirectLightMaxValue));
