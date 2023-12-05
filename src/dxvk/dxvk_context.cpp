@@ -2273,7 +2273,7 @@ namespace dxvk {
 
     bool replaceBuffer = !forceNoReplace
                       && (size == buffer->info().size)
-                      && (size <= (1 << 20))
+                      && (size <= (1 << 18))
                       && !isHostVisible;
 // NV-DXVK end:
 
