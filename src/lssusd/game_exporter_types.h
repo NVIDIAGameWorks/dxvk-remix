@@ -21,16 +21,19 @@
 */
 #pragma once
 
+#include "../dxvk/rtx_render/rtx_hashing.h"
+#include <vulkan/vulkan_core.h>
+
 #include "usd_include_begin.h"
 #include <pxr/base/gf/matrix4d.h>
 #include <pxr/usd/sdf/types.h>
 #include <pxr/usd/sdf/path.h>
 #include "usd_include_end.h"
 
+
 #include <stdint.h>
 #include <limits>
 #include <map>
-#include "../dxvk/rtx_render/rtx_hashing.h"
 
 static_assert(std::numeric_limits<float>::is_iec559);
 static_assert(std::numeric_limits<double>::is_iec559);
@@ -102,6 +105,12 @@ struct Material {
   std::string matName;
   std::string albedoTexPath;
   bool        enableOpacity = false;
+  struct Sampler {
+    VkSamplerAddressMode addrModeU;
+    VkSamplerAddressMode addrModeV;
+    VkFilter             filter;
+    VkClearColorValue    borderColor;
+  } sampler;
   // TODO: std::string normalTexPath;
   // TODO: etc...
 };
