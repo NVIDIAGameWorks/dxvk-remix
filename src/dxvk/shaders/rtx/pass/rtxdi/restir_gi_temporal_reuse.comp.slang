@@ -212,7 +212,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
   tparams.prevPixelCenter = prevPixelCenter;
   tparams.prevBackupPixelCenter = prevBackupPixelCenter;
   tparams.resolution = cb.camera.resolution;
-  tparams.expectedPrevHitDistance = expectedPrevHitDistance;
+  tparams.expectedPrevHitDistance = vec2(expectedPrevHitDistance);
   tparams.normalThreshold = normalThreshold;
   tparams.depthThreshold = depthThreshold;
   tparams.virtualMotionVector = virtualMotionVector;
@@ -222,6 +222,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
   tparams.teleportationPortalIndex = cb.teleportationPortalIndex;
   tparams.discardEnlargedPixels = discardEnlargedPixels;
   tparams.sourceBufferIndex = ReSTIRGI_GetTemporalInputPage();
+  tparams.initialSearchRadius = 0;
 
   bool isGBufferSimilar;
   bool isInitialSample;
