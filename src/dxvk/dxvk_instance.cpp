@@ -236,12 +236,8 @@ namespace dxvk {
     // NV-DXVK end 
 
     m_extProviders.push_back(&DxvkPlatformExts::s_instance);
-
-    if (m_options.enableOpenVR)
-      m_extProviders.push_back(&VrInstance::s_instance);
-
-    if (m_options.enableOpenXR)
-      m_extProviders.push_back(&DxvkXrProvider::s_instance);
+    m_extProviders.push_back(&VrInstance::s_instance);
+    m_extProviders.push_back(&DxvkXrProvider::s_instance);
 
     // NV-DXVK start: RTXIO
 #ifdef WITH_RTXIO
@@ -408,7 +404,7 @@ namespace dxvk {
     // NV-DXVK start: custom pEngineName
     appInfo.pEngineName           = "DXVK_NvRemix";
     // NV-DXVK end
-    appInfo.engineVersion         = VK_MAKE_VERSION(1, 9, 3);
+    appInfo.engineVersion         = VK_MAKE_VERSION(1, 9, 4);
     // NV-DXVK start: Require Vulkan 1.3
     appInfo.apiVersion            = VK_MAKE_VERSION(1, 3, 0);
     // NV-DXVK end
