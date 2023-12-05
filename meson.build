@@ -394,6 +394,10 @@ boost_include_path = include_directories('external/nv_usd/include/boost-1_78/')
 
 usd_include_paths = [nv_usd_include_path, boost_include_path] 
 
+vk_include_path = include_directories('./include/vulkan/include')
+
+lssusd_include_paths = [nv_usd_include_path, boost_include_path, vk_include_path]
+
 nvapi_include_paths = include_directories(join_paths(meson.global_source_root(), 'external/nvapi'))
 nvapi_lib_path = join_paths(meson.global_source_root(), 'external/nvapi/amd64')
 nvapi_lib = dxvk_compiler.find_library('nvapi64', dirs : nvapi_lib_path)

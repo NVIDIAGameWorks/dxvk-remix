@@ -352,10 +352,10 @@ namespace dxvk {
   }
 
   void GameCapturer::captureInstances(const Rc<DxvkContext> ctx) {
-    for (const RtInstance* rtInstancePtr : m_sceneManager.getInstanceTable()) {
-      assert(rtInstancePtr->getBlas() != nullptr);
+    for (const RtInstance* pRtInstance : m_sceneManager.getInstanceTable()) {
+      assert(pRtInstance->getBlas() != nullptr);
 
-      if (rtInstancePtr->getBlas()->input.cameraType == CameraType::Sky) {
+      if (pRtInstance->getBlas()->input.cameraType == CameraType::Sky) {
         if (!m_pCap->bSkyProbeBaked) {
           m_exporter.bakeSkyProbe(ctx, BASE_DIR + lss::commonDirName::texDir, commonFileName::bakedSkyProbe);
           m_pCap->bSkyProbeBaked = true;
@@ -364,7 +364,7 @@ namespace dxvk {
         }
       }
 
-      const XXH64_hash_t instanceId = rtInstancePtr->getId();
+      const XXH64_hash_t instanceId = pRtInstance->getId();
       const uint8_t instanceFlags = m_pCap->instanceFlags[instanceId];
       const bool bIsNew = m_pCap->instances.count(instanceId) == 0;
       const bool bPointsUpdate = checkInstanceUpdateFlag(instanceFlags, InstFlag::PositionsUpdate);
@@ -373,24 +373,24 @@ namespace dxvk {
       const bool bXformUpdate = checkInstanceUpdateFlag(instanceFlags, InstFlag::XformUpdate);
       Instance& instance = m_pCap->instances[instanceId];
       if (bIsNew) {
-        newInstance(ctx, *rtInstancePtr);
+        newInstance(ctx, *pRtInstance);
       }
       if (m_pCap->bCaptureInstances && !bIsNew && (bPointsUpdate || bNormalsUpdate || bIndexUpdate)) {
-        const BlasEntry* pBlas = rtInstancePtr->getBlas();
+        const BlasEntry* pBlas = pRtInstance->getBlas();
         assert(pBlas != nullptr);
 
-        captureMesh(ctx, instance.meshHash, *pBlas, rtInstancePtr->getCategoryFlags(), false, bPointsUpdate, bNormalsUpdate, bIndexUpdate);
+        captureMesh(ctx, instance.meshHash, *pBlas, pRtInstance->getCategoryFlags(), false, bPointsUpdate, bNormalsUpdate, bIndexUpdate);
       }
       if (m_pCap->bCaptureInstances && (bIsNew || bXformUpdate)) {
-        instance.lssData.xforms.push_back({ m_pCap->currentFrameNum, matrix4ToGfMatrix4d(rtInstancePtr->getTransform()) });
-        const SkinningData& skinData = rtInstancePtr->getBlas()->input.getSkinningState();
+        instance.lssData.xforms.push_back({ m_pCap->currentFrameNum, matrix4ToGfMatrix4d(pRtInstance->getTransform()) });
+        const SkinningData& skinData = pRtInstance->getBlas()->input.getSkinningState();
         if (skinData.numBones > 0) {
           instance.lssData.boneXForms.push_back({ m_pCap->currentFrameNum, matrix4VecToGfMatrix4dVec(skinData.pBoneMatrices) });
         }
       }
       instance.lssData.finalTime = m_pCap->currentFrameNum;
-      instance.lssData.isSky = (rtInstancePtr->getBlas()->input.cameraType == CameraType::Sky);
-      instance.lssData.metadata = createDrawCallMetadata(*rtInstancePtr);
+      instance.lssData.isSky = (pRtInstance->getBlas()->input.cameraType == CameraType::Sky);
+      instance.lssData.metadata = createDrawCallMetadata(*pRtInstance);
     }
   }
 
@@ -430,28 +430,33 @@ namespace dxvk {
     instance.matHash = matHash;
     instance.meshInstNum = instanceNum;
     instance.lssData.firstTime = m_pCap->currentFrameNum;
-    instance.lssData.xforms.reserve(m_options.numFrames - m_pCap->numFramesCaptured);
-    instance.lssData.metadata = createDrawCallMetadata(rtInstance);
 
     Logger::debug("[GameCapturer][" + m_pCap->idStr + "][Inst:" + hashToString(instanceId) + "] New");
   }
 
   void GameCapturer::captureMaterial(const Rc<DxvkContext> ctx, const LegacyMaterialData& materialData, const bool bEnableOpacity) {
-    const std::string matName = dxvk::hashToString(materialData.getHash());
+    lss::Material lssMat; // to be populated
 
-    //Export Textures
+    // Resolve material name
+    const std::string matName = dxvk::hashToString(materialData.getHash());
+    lssMat.matName = matName;
+    // Export Textures
     const std::string albedoTexFilename(matName + lss::ext::dds);
     m_exporter.dumpImageToFile(ctx, BASE_DIR + lss::commonDirName::texDir,
                                albedoTexFilename,
                                materialData.getColorTexture().getImageView()->image());
-
     const std::string albedoTexPath = str::format(BASE_DIR + lss::commonDirName::texDir, albedoTexFilename);
-
-    // Export Material
-    lss::Material lssMat;
-    lssMat.matName = matName;
     lssMat.albedoTexPath = albedoTexPath;
+    // Opacity
     lssMat.enableOpacity = bEnableOpacity;
+    // Collect sampler info
+    const auto& samplerCreateInfo = materialData.getSampler()->info();
+    lssMat.sampler.addrModeU = samplerCreateInfo.addressModeU;
+    lssMat.sampler.addrModeV = samplerCreateInfo.addressModeV;
+    lssMat.sampler.filter = samplerCreateInfo.magFilter;
+    lssMat.sampler.borderColor = samplerCreateInfo.borderColor;
+
+    // Set populated LSS Material in our cache
     m_pCap->materials[materialData.getHash()].lssData = lssMat;
     Logger::debug("[GameCapturer][" + m_pCap->idStr + "][Mat:" + matName + "] New");
   }
