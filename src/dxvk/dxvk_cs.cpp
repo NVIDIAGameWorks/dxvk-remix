@@ -113,26 +113,36 @@ namespace dxvk {
   }
   
   
-  void DxvkCsThread::dispatchChunk(DxvkCsChunkRef&& chunk) {
+  uint64_t DxvkCsThread::dispatchChunk(DxvkCsChunkRef&& chunk) {
     ScopedCpuProfileZone();
 
+    uint64_t seq;
+
     { std::unique_lock<dxvk::mutex> lock(m_mutex);
+      seq = ++m_chunksDispatched;
       m_chunksQueued.push(std::move(chunk));
-      m_chunksPending += 1;
     }
     
     m_condOnAdd.notify_one();
+    return seq;
   }
   
   
-  void DxvkCsThread::synchronize() {
+  void DxvkCsThread::synchronize(uint64_t seq) {
     ScopedCpuProfileZone();
 
-    std::unique_lock<dxvk::mutex> lock(m_mutex);
-    
-    m_condOnSync.wait(lock, [this] {
-      return !m_chunksPending.load();
-    });
+    // Avoid locking if we know the sync is a no-op, may
+    // reduce overhead if this is being called frequently
+    if (seq > m_chunksExecuted.load(std::memory_order_acquire)) {
+      std::unique_lock<dxvk::mutex> lock(m_mutex);
+
+      if (seq == SynchronizeAll)
+        seq = m_chunksDispatched.load();
+
+      m_condOnSync.wait(lock, [this, seq] {
+        return m_chunksExecuted.load() >= seq;
+      });
+    }
   }
   
   
@@ -147,8 +157,8 @@ namespace dxvk {
       while (!m_stopped.load()) {
         { std::unique_lock<dxvk::mutex> lock(m_mutex);
           if (chunk) {
-            if (--m_chunksPending == 0)
-              m_condOnSync.notify_one();
+            m_chunksExecuted++;
+            m_condOnSync.notify_one();
             
             chunk = DxvkCsChunkRef();
           }
