@@ -144,6 +144,7 @@ namespace pnext {
               detail::ToEnum< T > != REMIXAPI_STRUCT_TYPE_NONE && detail::CanBeLinkedTo< T, Root >
               , int > = 0 >
   detail::TryConst< T*, Root > find(Root* listStart) noexcept {
+    // NOTE: if compilation fails here, please ensure the structure is defined in rules: rtx_remix_specialization.inl
     auto next = static_cast< detail::TryConst< void*, Root > >(listStart);
     while (next) {
       remixapi_StructType sType = detail::getStructType(next);
