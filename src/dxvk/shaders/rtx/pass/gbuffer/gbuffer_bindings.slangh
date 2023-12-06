@@ -27,6 +27,9 @@
 
 // Inputs
 
+layout(binding = GBUFFER_BINDING_LINEAR_WRAP_SAMPLER)
+SamplerState LinearWrapSampler;
+
 layout(binding = GBUFFER_BINDING_VOLUME_FILTERED_RADIANCE_INPUT)
 Sampler3D<float3> VolumeFilteredRadiance;
 

@@ -632,6 +632,24 @@ namespace remix {
     }
   };
 
+  struct LightInfoDomeEXT : remixapi_LightInfoDomeEXT {
+    LightInfoDomeEXT() {
+      sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_DOME_EXT;
+      pNext = nullptr;
+      transform = {};
+      colorTexture = {};
+      static_assert(sizeof remixapi_LightInfoDomeEXT == 72);
+    }
+
+    void set_colorTexture(std::filesystem::path v) {
+      cpp_colorTexture = std::move(v);
+      colorTexture = cpp_colorTexture.c_str();
+    }
+
+  private:
+    std::filesystem::path cpp_colorTexture {};
+  };
+
   struct LightInfo : remixapi_LightInfo {
     LightInfo() {
       sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
