@@ -24,6 +24,7 @@
 #include "rtx/pass/common_binding_indices.h"
 
 // Inputs
+#define INTEGRATE_BINDING_LINEAR_WRAP_SAMPLER                           38
 #define INTEGRATE_INDIRECT_BINDING_SKYPROBE                             39
 
 #define INTEGRATE_INDIRECT_BINDING_SHARED_FLAGS_INPUT                   40

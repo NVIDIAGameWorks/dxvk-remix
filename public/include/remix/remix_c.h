@@ -82,6 +82,7 @@ extern "C" {
     REMIXAPI_STRUCT_TYPE_CAMERA_INFO_PARAMETERIZED_EXT        = 17,
     REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_SUBSURFACE_EXT  = 18,
     REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_OBJECT_PICKING_EXT     = 19,
+    REMIXAPI_STRUCT_TYPE_LIGHT_INFO_DOME_EXT                  = 20,
   } remixapi_StructType;
 
   typedef enum remixapi_ErrorCode {
@@ -432,6 +433,13 @@ extern "C" {
     remixapi_Float3D                direction;
     float                           angularDiameterDegrees;
   } remixapi_LightInfoDistantEXT;
+
+  typedef struct remixapi_LightInfoDomeEXT {
+    remixapi_StructType             sType;
+    void* pNext;
+    remixapi_Transform              transform;
+    remixapi_Path                   colorTexture;
+  } remixapi_LightInfoDomeEXT;
 
   typedef struct remixapi_LightInfo {
     remixapi_StructType             sType;

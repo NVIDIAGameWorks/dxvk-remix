@@ -1084,10 +1084,19 @@ void geometryResolverVertex(
   }
   else
   {
-    // Apply sky radiance on miss
-    // TODO: add jitter?
-    vec2 screenUV = cameraPixelCoordinateToScreenUV(cb.camera, geometryResolverState.pixelCoordinate);
-    emissiveRadiance += cb.skyBrightness * SkyMatte.Sample(screenUV);
+    if(cb.domeLightActive)
+    {
+        float3 domeSampleDirection = mul(cb.domeLightTransform, float4(geometryResolverState.direction, 0.0f)).xyz;
+        float2 sampleUV = cartesianDirectionToLatLongSphere(domeSampleDirection);
+        emissiveRadiance += cb.domeLightRadiance * textures[nonuniformEXT(uint(cb.domeLightTextureIndex))].SampleLevel(LinearWrapSampler, sampleUV, 0).xyz;
+    }
+    else
+    {
+        // Apply sky radiance on miss
+        // TODO: add jitter?
+        vec2 screenUV = cameraPixelCoordinateToScreenUV(cb.camera, geometryResolverState.pixelCoordinate);
+        emissiveRadiance += cb.skyBrightness * SkyMatte.Sample(screenUV);
+    }
   }
 
   // Handle attenuation and emissive radiance from the Resolve function
@@ -1558,8 +1567,17 @@ void geometryPSRResolverVertex(
   }
   else
   {
-    // Output radiance from sky probe
-    emissiveRadiance += cb.skyBrightness * SkyProbe.Sample(ray.direction);
+    if(cb.domeLightActive)
+    {
+        float3 domeSampleDirection = mul(cb.domeLightTransform, float4(ray.direction, 0.0f)).xyz;
+        float2 sampleUV = cartesianDirectionToLatLongSphere(domeSampleDirection);
+        emissiveRadiance += cb.domeLightRadiance * textures[nonuniformEXT(uint(cb.domeLightTextureIndex))].SampleLevel(LinearWrapSampler, sampleUV, 0).xyz;
+    }
+    else
+    {
+        // Output radiance from sky probe
+        emissiveRadiance += cb.skyBrightness * SkyProbe.Sample(ray.direction);
+    }
   }
 
   // Note: Emissive radiance handled first so objects with opacity do not attenuate themselves.
