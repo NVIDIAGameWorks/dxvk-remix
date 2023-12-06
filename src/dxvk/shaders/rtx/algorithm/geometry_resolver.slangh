@@ -191,7 +191,6 @@ void geometryResolverOutputSurface(
     // Note: May seem overkill to store a bool like this, but the denoiser expects an input unorm texture to lerp between the standard
     // and alternate disocclusion threshold so it must be expanded and stored to a texture like this at some point.
     imageStore(PrimaryDisocclusionThresholdMix, pixelCoordinate, disocclusionThresholdMix);
-    imageStore(PrimaryObjectPicking, pixelCoordinate, surface.objectPickingValue);
   }
   else
   {
@@ -1098,6 +1097,8 @@ void geometryResolverVertex(
         emissiveRadiance += cb.skyBrightness * SkyMatte.Sample(screenUV);
     }
   }
+
+  imageStore(PrimaryObjectPicking, geometryResolverState.pixelCoordinate, surface.objectPickingValue);
 
   // Handle attenuation and emissive radiance from the Resolve function
 
