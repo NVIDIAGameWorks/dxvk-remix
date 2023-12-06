@@ -440,6 +440,16 @@ namespace dxvk {
     // If there are no lights with >0 intensity, then clear the list...
     if (m_currentActiveLightCount == 0)
       clear();
+
+    // Generate a GPU dome light if necessary
+    DomeLight activeDomeLight;
+    if (getActiveDomeLight(activeDomeLight, m_activeDomeLightBindlessTextureIndex)) {
+      // Ensures a texture stays in VidMem
+      SceneManager& sceneManager = device()->getCommon()->getSceneManager();
+      sceneManager.trackTexture(ctx, activeDomeLight.texture, m_activeDomeLightBindlessTextureIndex, true, false);
+    } else {
+      m_activeDomeLightBindlessTextureIndex = UINT_MAX;
+    }
   }
 
   float LightManager::isSimilar(const RtLight& a, const RtLight& b, float distanceThreshold) {
@@ -622,6 +632,30 @@ namespace dxvk {
 
   void LightManager::removeExternalLight(remixapi_LightHandle handle) {
     m_externalLights.erase(handle);
+    m_externalDomeLights.erase(handle);
+  }
+
+  bool LightManager::getActiveDomeLight(DomeLight& domeLightOut, uint32_t& bindlessTextureIndexOut) const {
+    if (m_externalDomeLights.size() == 0) {
+      return false;
+    }
+
+    // We take the first dome light
+    domeLightOut = m_externalDomeLights.begin()->second;
+    bindlessTextureIndexOut = m_activeDomeLightBindlessTextureIndex;
+
+    return true;
+  }
+
+  void LightManager::addExternalDomeLight(remixapi_LightHandle handle, const DomeLight& domeLight) {
+    auto found = m_externalDomeLights.find(handle);
+    if (found != m_externalDomeLights.end()) {
+      // TODO: warn the user about id collision,
+      //       or just overwriting existing one is fine?
+      found->second = domeLight;
+    } else {
+      m_externalDomeLights.emplace(handle, domeLight);
+    }
   }
 
   void LightManager::setRaytraceArgs(RaytraceArgs& raytraceArgs, uint32_t rtxdiInitialLightSamples, uint32_t volumeRISInitialLightSamples, uint32_t risLightSamples) const

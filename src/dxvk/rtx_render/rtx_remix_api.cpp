@@ -812,10 +812,45 @@ namespace {
 
     // async load
     std::lock_guard lock { s_mutex };
-    remixDevice->EmitCs([cHandle = handle, cRtLight = convert::toRtLight(*info)](dxvk::DxvkContext* ctx) {
-      auto& lightMgr = ctx->getCommonObjects()->getSceneManager().getLightManager();
-      lightMgr.addExternalLight(cHandle, cRtLight);
-    });
+    if (auto src = pnext::find<remixapi_LightInfoDomeEXT>(info)) {
+      // Special case for dome lights
+      remixDevice->EmitCs([cHandle = handle, 
+                          cRadiance = convert::tovec3(info->radiance), 
+                          cTransform = convert::tomat4(src->transform), 
+                          cTexturePath = convert::topath(src->colorTexture)]
+                          (dxvk::DxvkContext* ctx) {
+        auto preloadTexture = [&ctx](const std::filesystem::path& path)->dxvk::TextureRef {
+          if (path.empty()) {
+            return {};
+          }
+          auto assetData = dxvk::AssetDataManager::get().findAsset(path.string().c_str());
+          if (assetData == nullptr) {
+            return {};
+          }
+          auto uploadedTexture = ctx->getCommonObjects()->getTextureManager()
+            .preloadTextureAsset(assetData, dxvk::ColorSpace::AUTO, ctx, true);
+          return dxvk::TextureRef { uploadedTexture };
+        };
+
+        dxvk::DomeLight domeLight;
+        domeLight.radiance = cRadiance;
+        domeLight.transform = cTransform;
+        domeLight.texture = preloadTexture(cTexturePath);
+
+        // Ensures a texture stays in VidMem
+        uint32_t unused;
+        ctx->getCommonObjects()->getSceneManager().trackTexture(ctx, domeLight.texture, unused, true, true);
+
+        auto& lightMgr = ctx->getCommonObjects()->getSceneManager().getLightManager();
+        lightMgr.addExternalDomeLight(cHandle, domeLight);
+      });
+    } else {
+      // Regular analytical light handling
+      remixDevice->EmitCs([cHandle = handle, cRtLight = convert::toRtLight(*info)](dxvk::DxvkContext* ctx) {
+        auto& lightMgr = ctx->getCommonObjects()->getSceneManager().getLightManager();
+        lightMgr.addExternalLight(cHandle, cRtLight);
+      });
+    }
 
     *out_handle = handle;
     return REMIXAPI_ERROR_CODE_SUCCESS;

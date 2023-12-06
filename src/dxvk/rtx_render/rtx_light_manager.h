@@ -74,6 +74,8 @@ public:
   const Rc<DxvkBuffer> getLightMappingBuffer() const { return m_lightMappingBuffer; }
   const uint32_t getActiveCount() const { return m_currentActiveLightCount; }
 
+  bool getActiveDomeLight(DomeLight& lightOut, uint32_t& bindlessTextureIndexOut) const;
+
   void clear();
 
   void garbageCollection(RtCamera& camera);
@@ -87,11 +89,13 @@ public:
   void addLight(const RtLight& light, const DrawCallState& drawCallState, const RtLightAntiCullingType antiCullingType);
 
   void addExternalLight(remixapi_LightHandle handle, const RtLight& rtlight);
+  void addExternalDomeLight(remixapi_LightHandle handle, const DomeLight& domeLight);
   void removeExternalLight(remixapi_LightHandle handle);
 
   void setRaytraceArgs(RaytraceArgs& raytraceArgs, uint32_t rtxdiInitialLightSamples, uint32_t volumeRISInitialLightSamples, uint32_t risLightSamples) const;
   
   uint getLightCount(uint type);
+
 
 private:
   std::unordered_map<XXH64_hash_t, RtLight> m_lights;
@@ -99,9 +103,12 @@ private:
   // lights provided from the application.
   std::optional<RtLight> m_fallbackLight{};
   std::unordered_map<remixapi_LightHandle, RtLight> m_externalLights;
+  std::unordered_map<remixapi_LightHandle, DomeLight> m_externalDomeLights;
   Rc<DxvkBuffer> m_lightBuffer;
   Rc<DxvkBuffer> m_previousLightBuffer;
   Rc<DxvkBuffer> m_lightMappingBuffer;
+
+  uint32_t m_activeDomeLightBindlessTextureIndex = UINT_MAX;
 
   uint32_t m_currentActiveLightCount = 0;
   std::array<LightRange, lightTypeCount> m_lightTypeRanges;
@@ -112,6 +119,7 @@ private:
   std::vector<RtLight*> m_linearizedLights{};
   std::vector<unsigned char> m_lightsGPUData{};
   std::vector<uint16_t> m_lightMappingData{};
+
 
   void garbageCollectionInternal();
 

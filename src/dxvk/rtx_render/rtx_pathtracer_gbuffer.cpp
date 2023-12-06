@@ -61,6 +61,8 @@ namespace dxvk {
       BEGIN_PARAMETER()
         COMMON_RAYTRACING_BINDINGS
 
+        SAMPLER(GBUFFER_BINDING_LINEAR_WRAP_SAMPLER)
+
         SAMPLER3D(GBUFFER_BINDING_VOLUME_FILTERED_RADIANCE_INPUT)
 
         RW_TEXTURE2D(GBUFFER_BINDING_SHARED_FLAGS_OUTPUT)
@@ -175,17 +177,20 @@ namespace dxvk {
     ctx->bindCommonRayTracingResources(rtOutput);
 
     // Note: Clamp to edge used to avoid interpolation to black on the edges of the view.
-    Rc<DxvkSampler> linearSampler = ctx->getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+    Rc<DxvkSampler> linearClampSampler = ctx->getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+    Rc<DxvkSampler> linearWrapSampler = ctx->getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_REPEAT);
+
+    ctx->bindResourceSampler(GBUFFER_BINDING_LINEAR_WRAP_SAMPLER, linearWrapSampler);
 
     ctx->bindResourceView(GBUFFER_BINDING_VOLUME_FILTERED_RADIANCE_INPUT, rtOutput.m_volumeFilteredRadiance.view, nullptr);
-    ctx->bindResourceSampler(GBUFFER_BINDING_VOLUME_FILTERED_RADIANCE_INPUT, linearSampler);
+    ctx->bindResourceSampler(GBUFFER_BINDING_VOLUME_FILTERED_RADIANCE_INPUT, linearClampSampler);
 
     ctx->bindResourceView(GBUFFER_BINDING_SKYMATTE, ctx->getResourceManager().getSkyMatte(ctx).view, nullptr);
-    ctx->bindResourceSampler(GBUFFER_BINDING_SKYMATTE, linearSampler);
+    ctx->bindResourceSampler(GBUFFER_BINDING_SKYMATTE, linearClampSampler);
 
     // Requires the probe too for PSRR/T miss
     ctx->bindResourceView(GBUFFER_BINDING_SKYPROBE, ctx->getResourceManager().getSkyProbe(ctx).view, nullptr);
-    ctx->bindResourceSampler(GBUFFER_BINDING_SKYPROBE, linearSampler);
+    ctx->bindResourceSampler(GBUFFER_BINDING_SKYPROBE, linearClampSampler);
 
     ctx->bindResourceView(GBUFFER_BINDING_SHARED_FLAGS_OUTPUT, rtOutput.m_sharedFlags.view, nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_SHARED_RADIANCE_RG_OUTPUT, rtOutput.m_sharedRadianceRG.view, nullptr);

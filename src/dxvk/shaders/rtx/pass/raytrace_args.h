@@ -293,10 +293,14 @@ struct RaytraceArgs {
   uint pomEnableReSTIRGI;
   uint pomEnablePSR;
   uint pomMaxIterations;
-
   uint thinOpaqueEnable;
-
   float totalMipBias;
 
+  mat4 domeLightTransform;
+
+  vec3 domeLightRadiance;
+  uint domeLightActive;
+
+  uint domeLightTextureIndex;
   float2 upscaleFactor;   // Displayed(upscaled) / RT resolution
 };
