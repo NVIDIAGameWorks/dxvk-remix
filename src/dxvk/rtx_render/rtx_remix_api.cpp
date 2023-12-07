@@ -834,7 +834,7 @@ namespace {
 
         dxvk::DomeLight domeLight;
         domeLight.radiance = cRadiance;
-        domeLight.transform = cTransform;
+        domeLight.worldToLight = inverse(cTransform);
         domeLight.texture = preloadTexture(cTexturePath);
 
         // Ensures a texture stays in VidMem

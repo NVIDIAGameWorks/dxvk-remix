@@ -1003,7 +1003,7 @@ namespace dxvk {
 
       constants.domeLightTextureIndex = domeLightTextureIndex;
       constants.domeLightRadiance = domeLight.radiance;
-      constants.domeLightTransform = domeLight.transform;
+      constants.worldToDomeLightTranform = domeLight.worldToLight;
     }
 
     // Upload the constants to the GPU
