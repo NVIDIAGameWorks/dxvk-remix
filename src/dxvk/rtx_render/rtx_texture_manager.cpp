@@ -368,6 +368,21 @@ namespace dxvk {
       return it->second;
     }
 
+    {
+      VkFormatProperties properties = m_pDevice->adapter()->formatProperties(assetData->info().format);
+
+      if (!(properties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) ||
+          !(properties.optimalTilingFeatures & VK_FORMAT_FEATURE_TRANSFER_DST_BIT)) {
+        std::ostringstream formatStr;
+        formatStr << assetData->info().format;
+
+        Logger::err(str::format(
+          "Ignoring replacement texture with unsupported format [", formatStr.str(), "]: ",
+          assetData->info().filename));
+        return {};
+      }
+    }
+
     // Create managed texture
     auto texture = TextureUtils::createTexture(assetData, colorSpace);
 
