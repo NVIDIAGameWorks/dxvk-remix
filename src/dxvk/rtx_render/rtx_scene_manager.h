@@ -118,6 +118,7 @@ struct ExternalDrawState {
   remixapi_MeshHandle mesh {};
   CameraType::Enum cameraType {};
   CategoryFlags categories {};
+  bool doubleSided {};
 };
 
 // Scene manager is a super manager, it's the interface between rendering and world state
