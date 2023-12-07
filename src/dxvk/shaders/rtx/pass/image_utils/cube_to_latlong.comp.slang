@@ -45,12 +45,8 @@ void main(uint2 idx : SV_DispatchThreadID) {
   }
 
   float3 dir = float3(cos(latlong.y) * cos(latlong.x),
-                      sin(latlong.y),
-                      cos(latlong.y) * sin(latlong.x));
-
-  if (cb.transform == LatLongTransform::ZUpToOpenEXR) {
-    dir = dir.xzy;
-  }
+                      cos(latlong.y) * sin(latlong.x),
+                      sin(latlong.y));
 
   LatLong[idx] = Cube.Sample(dir);
 }

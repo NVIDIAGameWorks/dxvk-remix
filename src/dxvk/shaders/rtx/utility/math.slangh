@@ -158,8 +158,8 @@ GENERIC_SQUARE_LENGTH(float, vec4)
 
 float2 cartesianDirectionToLatLongSphere(float3 direction)
 {
-  float theta = acos(direction.y);
-  float phi = atan2(direction.x, direction.z);
+  float theta = acos(direction.z);
+  float phi = atan2(direction.x, direction.y);
   return float2(0.5 + phi / twoPi, theta / pi);
 }
 

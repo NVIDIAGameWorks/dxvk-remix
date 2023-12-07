@@ -296,7 +296,7 @@ struct RaytraceArgs {
   uint thinOpaqueEnable;
   float totalMipBias;
 
-  mat4 domeLightTransform;
+  mat4 worldToDomeLightTranform;
 
   vec3 domeLightRadiance;
   uint domeLightActive;
