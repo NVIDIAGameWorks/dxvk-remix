@@ -292,6 +292,8 @@ namespace dxvk {
   void Resources::createRaytracingOutput(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent) {
     ScopedCpuProfileZone();
 
+    assert(targetExtent.width > 0 && targetExtent.height > 0 && targetExtent.depth > 0);
+
     if (m_downscaledExtent != downscaledExtent) {
       m_downscaledExtent = downscaledExtent;
 

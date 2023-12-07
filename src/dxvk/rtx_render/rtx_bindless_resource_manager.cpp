@@ -86,18 +86,20 @@ namespace dxvk {
 
       assert(idx <= kMaxBindlessResources);
 
-      VkWriteDescriptorSet descWrites;
-      descWrites.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-      descWrites.pNext = nullptr;
-      descWrites.dstSet = 0;//  This will be filled in by the BindlessTable 
-      descWrites.dstBinding = 0;
-      descWrites.dstArrayElement = 0;
-      descWrites.descriptorCount = idx;
-      descWrites.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-      descWrites.pImageInfo = &imageInfo[0];
-      descWrites.pBufferInfo = nullptr;
-      descWrites.pTexelBufferView = nullptr;
-      m_tables[Table::Textures][currentIdx()]->updateDescriptors(descWrites);
+      if (idx > 0) {
+        VkWriteDescriptorSet descWrites;
+        descWrites.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descWrites.pNext = nullptr;
+        descWrites.dstSet = 0;//  This will be filled in by the BindlessTable 
+        descWrites.dstBinding = 0;
+        descWrites.dstArrayElement = 0;
+        descWrites.descriptorCount = idx;
+        descWrites.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+        descWrites.pImageInfo = &imageInfo[0];
+        descWrites.pBufferInfo = nullptr;
+        descWrites.pTexelBufferView = nullptr;
+        m_tables[Table::Textures][currentIdx()]->updateDescriptors(descWrites);
+      }
     }
 
     // Buffers
@@ -117,18 +119,20 @@ namespace dxvk {
 
       assert(idx <= kMaxBindlessResources);
 
-      VkWriteDescriptorSet descWrites;
-      descWrites.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-      descWrites.pNext = nullptr;
-      descWrites.dstSet = 0;//  This will be filled in by the BindlessTable 
-      descWrites.dstBinding = 0;
-      descWrites.dstArrayElement = 0;
-      descWrites.descriptorCount = idx;
-      descWrites.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-      descWrites.pImageInfo = nullptr;
-      descWrites.pBufferInfo = &bufferInfo[0];
-      descWrites.pTexelBufferView = nullptr;
-      m_tables[Table::Buffers][currentIdx()]->updateDescriptors(descWrites);
+      if (idx > 0) {
+        VkWriteDescriptorSet descWrites;
+        descWrites.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descWrites.pNext = nullptr;
+        descWrites.dstSet = 0;//  This will be filled in by the BindlessTable 
+        descWrites.dstBinding = 0;
+        descWrites.dstArrayElement = 0;
+        descWrites.descriptorCount = idx;
+        descWrites.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        descWrites.pImageInfo = nullptr;
+        descWrites.pBufferInfo = &bufferInfo[0];
+        descWrites.pTexelBufferView = nullptr;
+        m_tables[Table::Buffers][currentIdx()]->updateDescriptors(descWrites);
+      }
     }
 
     // Samplers
@@ -150,18 +154,20 @@ namespace dxvk {
 
       assert(idx <= kMaxBindlessSamplers);
 
-      VkWriteDescriptorSet descWrites;
-      descWrites.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-      descWrites.pNext = nullptr;
-      descWrites.dstSet = 0;//  This will be filled in by the BindlessTable 
-      descWrites.dstBinding = 0;
-      descWrites.dstArrayElement = 0;
-      descWrites.descriptorCount = idx;
-      descWrites.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-      descWrites.pImageInfo = &imageInfo[0];
-      descWrites.pBufferInfo = nullptr;
-      descWrites.pTexelBufferView = nullptr;
-      m_tables[Table::Samplers][currentIdx()]->updateDescriptors(descWrites);
+      if (idx > 0) {
+        VkWriteDescriptorSet descWrites;
+        descWrites.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descWrites.pNext = nullptr;
+        descWrites.dstSet = 0;//  This will be filled in by the BindlessTable 
+        descWrites.dstBinding = 0;
+        descWrites.dstArrayElement = 0;
+        descWrites.descriptorCount = idx;
+        descWrites.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+        descWrites.pImageInfo = &imageInfo[0];
+        descWrites.pBufferInfo = nullptr;
+        descWrites.pTexelBufferView = nullptr;
+        m_tables[Table::Samplers][currentIdx()]->updateDescriptors(descWrites);
+      }
     }
 
     m_frameLastUpdated = m_device->getCurrentFrameId();
