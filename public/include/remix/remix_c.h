@@ -260,7 +260,6 @@ extern "C" {
     uint64_t                                 hash;
     const remixapi_MeshInfoSurfaceTriangles* surfaces_values;
     uint32_t                                 surfaces_count;
-    remixapi_Bool                            doubleSided;
   } remixapi_MeshInfo;
 
   typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_CreateMesh)(
@@ -371,6 +370,7 @@ extern "C" {
     remixapi_InstanceCategoryFlags categoryFlags;
     remixapi_MeshHandle            mesh;
     remixapi_Transform             transform;
+    remixapi_Bool                  doubleSided;
   } remixapi_InstanceInfo;
 
   typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_DrawInstance)(

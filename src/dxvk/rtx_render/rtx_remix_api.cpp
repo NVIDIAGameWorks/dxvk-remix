@@ -571,6 +571,7 @@ dxvk::ExternalDrawState dxvk::RemixAPIPrivateAccessor::toRtDrawState(const remix
     info.mesh,
     convert::categoryToCameraType(info.categoryFlags),
     convert::toRtCategories(info.categoryFlags),
+    convert::tobool(info.doubleSided)
   };
 }
 
@@ -713,7 +714,7 @@ namespace {
       {
         dst.externalMaterial = src.material;
         dst.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-        dst.cullMode = info->doubleSided ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT;
+        dst.cullMode = VK_CULL_MODE_NONE; // this will be overwritten by the instance info at draw time
         dst.frontFace = VK_FRONT_FACE_CLOCKWISE;
         dst.vertexCount = src.vertices_count; assert(src.vertices_count < std::numeric_limits<uint32_t>::max());
         dst.positionBuffer = dxvk::RasterBuffer { vertexSlice, offsetof(remixapi_HardcodedVertex, position), sizeof(remixapi_HardcodedVertex), VK_FORMAT_R32G32B32_SFLOAT };
