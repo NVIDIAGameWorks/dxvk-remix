@@ -1085,7 +1085,7 @@ void geometryResolverVertex(
   {
     if(cb.domeLightActive)
     {
-        float3 domeSampleDirection = mul(cb.domeLightTransform, float4(geometryResolverState.direction, 0.0f)).xyz;
+        float3 domeSampleDirection = mul(cb.worldToDomeLightTranform, float4(geometryResolverState.direction, 0.0f)).xyz;
         float2 sampleUV = cartesianDirectionToLatLongSphere(domeSampleDirection);
         emissiveRadiance += cb.domeLightRadiance * textures[nonuniformEXT(uint(cb.domeLightTextureIndex))].SampleLevel(LinearWrapSampler, sampleUV, 0).xyz;
     }
@@ -1570,7 +1570,7 @@ void geometryPSRResolverVertex(
   {
     if(cb.domeLightActive)
     {
-        float3 domeSampleDirection = mul(cb.domeLightTransform, float4(ray.direction, 0.0f)).xyz;
+        float3 domeSampleDirection = mul(cb.worldToDomeLightTranform, float4(ray.direction, 0.0f)).xyz;
         float2 sampleUV = cartesianDirectionToLatLongSphere(domeSampleDirection);
         emissiveRadiance += cb.domeLightRadiance * textures[nonuniformEXT(uint(cb.domeLightTextureIndex))].SampleLevel(LinearWrapSampler, sampleUV, 0).xyz;
     }
