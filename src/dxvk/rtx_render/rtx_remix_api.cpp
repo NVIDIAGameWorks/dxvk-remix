@@ -875,6 +875,10 @@ namespace {
     const char* value) {
     std::lock_guard lock { s_mutex };
 
+    if (!key || key[0] == '\0' || !value) {
+      return REMIXAPI_ERROR_CODE_WRONG_ARGUMENTS;
+    }
+
     auto& globalRtxOptions = dxvk::RtxOptionImpl::getGlobalRtxOptionMap();
 
     auto found = globalRtxOptions.find(key);
@@ -883,7 +887,7 @@ namespace {
     }
 
     dxvk::Config newSetting;
-    newSetting.setOption(key, value);
+    newSetting.setOption(key, std::string { value });
     found->second->readOption(newSetting, dxvk::RtxOptionImpl::ValueType::Value);
 
     // Make sure we dont step on required configs

@@ -153,6 +153,13 @@ namespace dxvk {
       const Tristate& value);
     // NV-DXVK end
 
+    // NV-DXVK start: setOption type safety
+    template< typename T >
+    void setOption(
+      const std::string& key,
+      const T& value) = delete;
+    // NV-DXVK end
+
     /**
      * \brief Sets an option
      * 
