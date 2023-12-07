@@ -1432,6 +1432,7 @@ namespace dxvk {
 
     for (const RasterGeometry& submesh : m_pReplacer->accessExternalMesh(state.mesh)) {
       state.drawCall.geometryData = submesh;
+      state.drawCall.geometryData.cullMode = state.doubleSided ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT;
 
       const MaterialData* material = m_pReplacer->accessExternalMaterial(submesh.externalMaterial);
       if (material != nullptr) {

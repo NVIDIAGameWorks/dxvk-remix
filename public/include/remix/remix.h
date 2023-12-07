@@ -423,7 +423,6 @@ namespace remix {
       hash = 0;
       surfaces_values = {};
       surfaces_count = 0;
-      doubleSided = false;
       static_assert(sizeof remixapi_MeshInfo == 40);
     }
   };
@@ -531,7 +530,8 @@ namespace remix {
       categoryFlags = 0;
       mesh = 0;
       transform = {};
-      static_assert(sizeof remixapi_InstanceInfo == 80);
+      doubleSided = false;
+      static_assert(sizeof remixapi_InstanceInfo == 88);
     }
   };
 
