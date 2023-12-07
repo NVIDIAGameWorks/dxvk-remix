@@ -330,7 +330,7 @@ private:
 struct DomeLight {
   Vector3 radiance;
   TextureRef texture;
-  Matrix4 transform;
+  Matrix4 worldToLight;
 };
 
 struct RtLight {
