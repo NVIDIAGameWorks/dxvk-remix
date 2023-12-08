@@ -576,7 +576,11 @@ namespace dxvk {
       Vector3(),  // opaqueMaterialDefaults.subsurfaceTransmittanceColor
       0.0f,  // opaqueMaterialDefaults.subsurfaceMeasurementDistance
       Vector3(),  // opaqueMaterialDefaults.subsurfaceSingleScatteringAlbedo
-      0.0f));  // opaqueMaterialDefaults.subsurfaceVolumetricAnisotropy
+      0.0f, // opaqueMaterialDefaults.subsurfaceVolumetricAnisotropy
+      lss::Mdl::Filter::Nearest,
+      lss::Mdl::WrapMode::Repeat, // U
+      lss::Mdl::WrapMode::Repeat  // V
+    ));  
 
     m_hasInitializedMaterialDataThisFrame = true;
     m_needsMaterialDataUpdate = false;

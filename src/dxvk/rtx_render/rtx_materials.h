@@ -29,6 +29,7 @@
 #include "../shaders/rtx/concept/surface/surface_shared.h"
 #include "../../dxso/dxso_util.h"
 #include "rtx_material_data.h"
+#include "../../lssusd/mdl_helpers.h"
 
 namespace dxvk {
 // Surfaces
@@ -1379,17 +1380,27 @@ struct LegacyMaterialData {
   operator OpaqueMaterialData() const {
     OpaqueMaterialData opaqueMat;
     opaqueMat.getAlbedoOpacityTexture() = getColorTexture();
+    opaqueMat.getFilterMode() = lss::Mdl::Filter::vkToMdl(getSampler()->info().magFilter);
+    opaqueMat.getWrapModeU() = lss::Mdl::WrapMode::vkToMdl(getSampler()->info().addressModeU);
+    opaqueMat.getWrapModeV() = lss::Mdl::WrapMode::vkToMdl(getSampler()->info().addressModeV);
     return opaqueMat;
   }
 
   operator TranslucentMaterialData() const {
-    return TranslucentMaterialData();
+    TranslucentMaterialData transluscentMat;
+    transluscentMat.getFilterMode() = lss::Mdl::Filter::vkToMdl(getSampler()->info().magFilter);
+    transluscentMat.getWrapModeU() = lss::Mdl::WrapMode::vkToMdl(getSampler()->info().addressModeU);
+    transluscentMat.getWrapModeV() = lss::Mdl::WrapMode::vkToMdl(getSampler()->info().addressModeV);
+    return transluscentMat;
   }
 
   operator RayPortalMaterialData() const {
     RayPortalMaterialData portalMat;
     portalMat.getMaskTexture() = getColorTexture();
     portalMat.getMaskTexture2() = getColorTexture2();
+    portalMat.getFilterMode() = lss::Mdl::Filter::vkToMdl(getSampler()->info().magFilter);
+    portalMat.getWrapModeU() = lss::Mdl::WrapMode::vkToMdl(getSampler()->info().addressModeU);
+    portalMat.getWrapModeV() = lss::Mdl::WrapMode::vkToMdl(getSampler()->info().addressModeV);
     return portalMat;
   }
 
@@ -1635,6 +1646,42 @@ struct MaterialData {
     }
   }
 
+#define POPULATE_SAMPLER_INFO(info, material) \
+  info.magFilter = \
+    lss::Mdl::Filter::mdlToVk(material.getFilterMode()); \
+  info.minFilter = \
+    lss::Mdl::Filter::mdlToVk(material.getFilterMode()); \
+  info.addressModeU = \
+    lss::Mdl::WrapMode::mdlToVk(material.getWrapModeU(), &info.borderColor); \
+  info.addressModeV = \
+    lss::Mdl::WrapMode::mdlToVk(material.getWrapModeV(), &info.borderColor);
+
+  const void populateSamplerInfo(DxvkSamplerCreateInfo& toPopulate) const {
+    switch (m_type) {
+    default:
+      assert(false);
+      [[fallthrough]];
+    case MaterialDataType::Opaque:
+      POPULATE_SAMPLER_INFO(toPopulate, m_opaqueMaterialData);
+      break;
+    case MaterialDataType::Translucent:
+      POPULATE_SAMPLER_INFO(toPopulate, m_translucentMaterialData);
+      break;
+    case MaterialDataType::RayPortal:
+      POPULATE_SAMPLER_INFO(toPopulate, m_rayPortalMaterialData);
+      break;
+    }
+  }
+#undef P_SAMPLER_INFO
+
+  void setReplacement() {
+    m_isReplacement = true;
+  }
+
+  bool isReplacement() const {
+    return m_isReplacement;
+  }
+
 private:
   // Type-specific Material Data Information
   bool m_ignored = false;
@@ -1646,6 +1693,8 @@ private:
     TranslucentMaterialData m_translucentMaterialData;
     RayPortalMaterialData m_rayPortalMaterialData;
   };
+  
+  bool m_isReplacement = false;
 };
 
 enum class HighlightColor {

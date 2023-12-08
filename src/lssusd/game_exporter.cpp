@@ -21,6 +21,7 @@
 */
 #include "game_exporter.h"
 #include "game_exporter_common.h"
+#include "mdl_helpers.h"
 #include "../util/log/log.h"
 
 #include "usd_include_begin.h"
@@ -365,29 +366,6 @@ static std::unordered_map<Enum,AttrDesc> attrDescs{
   AttrDescMapEntry(WrapModeV,         UInt, false, Uniform),
 };
 }
-static inline uint32_t vkToMdlFilter(const VkFilter& vkFilter) {
-  enum MdlFilter : uint32_t {
-    Nearest = 0,
-    Linear = 1
-  };
-  return (vkFilter > VK_FILTER_LINEAR) ? Nearest : vkFilter;
-}
-static inline uint32_t vkToMdlAddrMode(const VkSamplerAddressMode& vkAddrMode) {
-  // https://raytracing-docs.nvidia.com/mdl/api/group__mi__neuray__mdl__compiler.html#ga852d194e585ada01cc272e85e367ca9b
-  enum MdlAddrMode : uint32_t {
-    Clamp = 0,
-    Repeat = 1,
-    Mirrored_Repeat = 2,
-    Clip = 3 // Clamp to border, where border always black
-  };
-  switch(vkAddrMode) {
-    case VK_SAMPLER_ADDRESS_MODE_REPEAT: return Repeat;
-    case VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT: return Mirrored_Repeat;
-    case VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE: return Clamp;
-    case VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER: return Clip; // Maybe don't support?
-    default: return Repeat;
-  };
-}
 }
 
 void GameExporter::exportMaterials(const Export& exportData, ExportContext& ctx) {
@@ -458,9 +436,9 @@ void GameExporter::exportMaterials(const Export& exportData, ExportContext& ctx)
     ASSERT_OR_EXECUTE(shaderAttrs[ShaderAttr::Opacity].Set(matData.enableOpacity));
 
     // Sampler State
-    ASSERT_OR_EXECUTE(shaderAttrs[ShaderAttr::FilterMode].Set(vkToMdlFilter(matData.sampler.filter)));
-    ASSERT_OR_EXECUTE(shaderAttrs[ShaderAttr::WrapModeU].Set(vkToMdlAddrMode(matData.sampler.addrModeU)));
-    ASSERT_OR_EXECUTE(shaderAttrs[ShaderAttr::WrapModeV].Set(vkToMdlAddrMode(matData.sampler.addrModeV)));
+    ASSERT_OR_EXECUTE(shaderAttrs[ShaderAttr::FilterMode].Set((uint32_t)lss::Mdl::Filter::vkToMdl(matData.sampler.filter)));
+    ASSERT_OR_EXECUTE(shaderAttrs[ShaderAttr::WrapModeU].Set((uint32_t)lss::Mdl::WrapMode::vkToMdl(matData.sampler.addrModeU)));
+    ASSERT_OR_EXECUTE(shaderAttrs[ShaderAttr::WrapModeV].Set((uint32_t)lss::Mdl::WrapMode::vkToMdl(matData.sampler.addrModeV)));
 
     matStage->Save();
     
