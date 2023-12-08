@@ -334,9 +334,9 @@ namespace {
           extSubsurface ? extSubsurface->subsurfaceMeasurementDistance : 0.f,
           extSubsurface ? tovec3(extSubsurface->subsurfaceSingleScatteringAlbedo) : Vector3{ 0.5f, 0.5f, 0.5f },
           extSubsurface ? extSubsurface->subsurfaceVolumetricAnisotropy : 0.f,
-          extOpaque->filterMode,
-          extOpaque->wrapModeU,
-          extOpaque->wrapModeV,
+          info.filterMode,
+          info.wrapModeU,
+          info.wrapModeV,
         } };
       }
       if (auto extTranslucent = pnext::find<remixapi_MaterialInfoTranslucentEXT>(&info)) {
@@ -356,9 +356,9 @@ namespace {
           tobool(extTranslucent->thinWallThickness_hasvalue),
           extTranslucent->thinWallThickness_hasvalue ? extTranslucent->thinWallThickness_value : 0.001f, // default TranslucentMaterial::ThinWallThickness
           tobool(extTranslucent->useDiffuseLayer),
-          extTranslucent->filterMode,
-          extTranslucent->wrapModeU,
-          extTranslucent->wrapModeV,
+          info.filterMode,
+          info.wrapModeU,
+          info.wrapModeV,
         } };
       }
       if (auto extPortal = pnext::find<remixapi_MaterialInfoPortalEXT>(&info)) {
@@ -372,9 +372,9 @@ namespace {
           extPortal->rotationSpeed,
           info.emissiveIntensity > 0.f,
           info.emissiveIntensity,
-          extPortal->filterMode,
-          extPortal->wrapModeU,
-          extPortal->wrapModeV
+          info.filterMode,
+          info.wrapModeU,
+          info.wrapModeV,
         } };
       }
 

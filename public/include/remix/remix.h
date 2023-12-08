@@ -374,6 +374,9 @@ namespace remix {
       spriteSheetRow = 1;
       spriteSheetCol = 1;
       spriteSheetFps = 0;
+      filterMode = 1; // Linear
+      wrapModeU = 0; // Repeat
+      wrapModeV = 0; // Repeat
       static_assert(sizeof remixapi_MaterialInfo == 80);
     }
 
