@@ -47,7 +47,7 @@
 #define REMIXAPI_VERSION_GET_PATCH(version) (((uint64_t)(version)      ) & (uint64_t)0xFFFF)
 
 #define REMIXAPI_VERSION_MAJOR 0
-#define REMIXAPI_VERSION_MINOR 1
+#define REMIXAPI_VERSION_MINOR 2
 #define REMIXAPI_VERSION_PATCH 0
 
 
@@ -161,9 +161,6 @@ extern "C" {
     remixapi_Bool       invertedBlend;
     int                 alphaTestType;
     uint8_t             alphaReferenceValue;
-    uint8_t             filterMode;
-    uint8_t             wrapModeU;
-    uint8_t             wrapModeV;
   } remixapi_MaterialInfoOpaqueEXT;
 
   // Valid only if remixapi_MaterialInfo contains remixapi_MaterialInfoOpaqueEXT in pNext chain
@@ -189,9 +186,6 @@ extern "C" {
     remixapi_Bool       thinWallThickness_hasvalue;
     float               thinWallThickness_value;
     remixapi_Bool       useDiffuseLayer;
-    uint8_t             filterMode;
-    uint8_t             wrapModeU;
-    uint8_t             wrapModeV;
   } remixapi_MaterialInfoTranslucentEXT;
 
   typedef struct remixapi_MaterialInfoPortalEXT {
@@ -199,9 +193,6 @@ extern "C" {
     void*               pNext;
     uint8_t             rayPortalIndex;
     float               rotationSpeed;
-    uint8_t             filterMode;
-    uint8_t             wrapModeU;
-    uint8_t             wrapModeV;
   } remixapi_MaterialInfoPortalEXT;
 
   typedef struct remixapi_MaterialInfo {
@@ -217,6 +208,9 @@ extern "C" {
     uint8_t             spriteSheetRow;
     uint8_t             spriteSheetCol;
     uint8_t             spriteSheetFps;
+    uint8_t             filterMode;
+    uint8_t             wrapModeU;
+    uint8_t             wrapModeV;
   } remixapi_MaterialInfo;
 
 
