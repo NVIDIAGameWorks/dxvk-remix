@@ -476,6 +476,8 @@ namespace dxvk {
         replacementMaterial.emplace(MaterialData(*pReplacementMaterial));
         // merge in the input material from game
         replacementMaterial->mergeLegacyMaterial(input.getMaterialData());
+        // mark material as replacement so we know how to handle sampler state
+        replacementMaterial->setReplacement();
         // bind as a material override for this draw
         overrideMaterialData = &replacementMaterial.value();
       }
@@ -523,7 +525,7 @@ namespace dxvk {
 
         if (overrideMaterialData == nullptr) {
           // Note: Color texture used as mask texture for the Ray Portal
-          rayPortalMaterialData.emplace(RayPortalMaterialData { input.getMaterialData().getColorTexture(), texture2, static_cast<uint8_t>(rayPortalTextureIndex), 1, 1, 0, 0.f,true, 1.f });
+          rayPortalMaterialData.emplace(RayPortalMaterialData { input.getMaterialData().getColorTexture(), texture2, static_cast<uint8_t>(rayPortalTextureIndex), 1, 1, 0, 0.f,true, 1.f, 0, 0, 0 });
 
           // Note: A bit dirty but since we use a pointer to the material data in processDrawCallState, we need a pointer to this locally created one on the
           // stack in a place that doesn't go out of scope without actually allocating any heap memory.
@@ -538,7 +540,8 @@ namespace dxvk {
         input.getGeometryData().indexBuffer.defined() && input.getGeometryData().vertexCount > input.getGeometryData().indexCount;
     if (highlightUnsafeAnchor) {
       static MaterialData sHighlightMaterialData(OpaqueMaterialData(TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(),
-          0.f, 1.f, Vector3(0.2f, 0.2f, 0.2f), 1.0f, 0.1f, 0.1f, Vector3(0.46f, 0.26f, 0.31f), true, 1, 1, 0, false, false, 200.f, true, false, BlendType::kAlpha, false, AlphaTestType::kAlways, 0, 0.0f, Vector3(), 0.0f, Vector3(), 0.0f));
+          0.f, 1.f, Vector3(0.2f, 0.2f, 0.2f), 1.0f, 0.1f, 0.1f, Vector3(0.46f, 0.26f, 0.31f), true, 1, 1, 0, false, false, 200.f, true, false, BlendType::kAlpha, false, AlphaTestType::kAlways, 0, 0.0f, Vector3(), 0.0f, Vector3(), 0.0f,
+          lss::Mdl::Filter::Nearest, lss::Mdl::WrapMode::Repeat, lss::Mdl::WrapMode::Repeat));
       overrideMaterialData = &sHighlightMaterialData;
     }
 
@@ -641,7 +644,8 @@ namespace dxvk {
         }
         if (highlightUnsafeReplacement) {
           static MaterialData sHighlightMaterialData(OpaqueMaterialData(TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(),
-              0.f, 1.f, Vector3(0.2f, 0.2f, 0.2f), 1.f, 0.1f, 0.1f, Vector3(1.f, 0.f, 0.f), true, 1, 1, 0, false, false, 200.f, true, false, BlendType::kAlpha, false, AlphaTestType::kAlways, 0, 0.0f, Vector3(), 0.0f, Vector3(), 0.0f));
+              0.f, 1.f, Vector3(0.2f, 0.2f, 0.2f), 1.f, 0.1f, 0.1f, Vector3(1.f, 0.f, 0.f), true, 1, 1, 0, false, false, 200.f, true, false, BlendType::kAlpha, false, AlphaTestType::kAlways, 0, 0.0f, Vector3(), 0.0f, Vector3(), 0.0f,
+              lss::Mdl::Filter::Nearest, lss::Mdl::WrapMode::Repeat, lss::Mdl::WrapMode::Repeat));
           if (getGameTimeSinceStartMS() / 200 % 2 == 0) {
             overrideMaterialData = &sHighlightMaterialData;
           }
@@ -806,7 +810,9 @@ namespace dxvk {
 
   uint64_t SceneManager::processDrawCallState(Rc<DxvkContext> ctx, const DrawCallState& drawCallState, const MaterialData* overrideMaterialData) {
     ScopedCpuProfileZone();
-    const MaterialData& renderMaterialData = overrideMaterialData != nullptr ? *overrideMaterialData : drawCallState.getMaterialData();
+    const bool usingOverrideMaterial = overrideMaterialData != nullptr;
+    const MaterialData& renderMaterialData =
+      usingOverrideMaterial ? *overrideMaterialData : drawCallState.getMaterialData();
     if (renderMaterialData.getIgnored()) {
       return UINT64_MAX;
     }
@@ -841,9 +847,24 @@ namespace dxvk {
     // Legacy and replacement materials should follow same filtering but due to lack of override capability per texture
     // legacy textures use original sampler to stay true to the original intent while replacements use more advanced filtering
     // for better quality by default.
-    uint32_t samplerIndex = trackSampler(drawCallState.getMaterialData().getSampler(), (renderMaterialDataType != MaterialDataType::Legacy));
+    Rc<DxvkSampler> originalSampler = drawCallState.getMaterialData().getSampler(); // convenience variable for debug
+    Rc<DxvkSampler> sampler = originalSampler;
+    const bool isLegacyMaterial = (renderMaterialDataType == MaterialDataType::Legacy);
+    // If the original sampler if valid and the new rendering material is not legacy type
+    // go ahead with patching and maybe merging the sampler states
+    if(originalSampler != nullptr && !isLegacyMaterial) {
+      DxvkSamplerCreateInfo samplerInfo = originalSampler->info(); // Use sampler create info struct as convenience
+      // Only merge prior to patching if this is a replacement material
+      if(renderMaterialData.isReplacement()) { 
+        renderMaterialData.populateSamplerInfo(samplerInfo);
+      }
+      sampler = patchSampler(samplerInfo.magFilter,
+                             samplerInfo.addressModeU, samplerInfo.addressModeV, samplerInfo.addressModeW,
+                             samplerInfo.borderColor);
+    }
+    uint32_t samplerIndex = trackSampler(sampler);
 
-    if (renderMaterialDataType == MaterialDataType::Legacy || renderMaterialDataType == MaterialDataType::Opaque) {
+    if (isLegacyMaterial || renderMaterialDataType == MaterialDataType::Opaque) {
       uint32_t albedoOpacityTextureIndex = kSurfaceMaterialInvalidTextureIndex;
       uint32_t normalTextureIndex = kSurfaceMaterialInvalidTextureIndex;
       uint32_t tangentTextureIndex = kSurfaceMaterialInvalidTextureIndex;
@@ -1028,7 +1049,7 @@ namespace dxvk {
       uint32_t maskTextureIndex2 = kSurfaceMaterialInvalidTextureIndex;
       trackTexture(ctx, rayPortalMaterialData.getMaskTexture2(), maskTextureIndex2, hasTexcoords, false);
 
-      uint32_t samplerIndex2 = trackSampler(drawCallState.getMaterialData().getSampler2(), false);
+      uint32_t samplerIndex2 = trackSampler(drawCallState.getMaterialData().getSampler2());
 
       uint8_t rayPortalIndex = rayPortalMaterialData.getRayPortalIndex();
       float rotationSpeed = rayPortalMaterialData.getRotationSpeed();
@@ -1103,46 +1124,35 @@ namespace dxvk {
     return m_findLegacyTexture->promise.get_future();
   }
 
-  SceneManager::SamplerIndex SceneManager::trackSampler(Rc<DxvkSampler> sampler, bool patchSampler) {
-    auto makeSampler = [&](const VkSamplerAddressMode addressModeU,
-                           const VkSamplerAddressMode addressModeV,
-                           const VkSamplerAddressMode addressModeW,
-                           const VkClearColorValue borderColor) {
-      auto& resourceManager = m_device->getCommon()->getResources();
-
-      // Create a sampler to account for DLSS lod bias and any custom filtering overrides the user has set
-      return resourceManager.getSampler(
-        VK_FILTER_LINEAR,
-        VK_SAMPLER_MIPMAP_MODE_LINEAR,
-        addressModeU,
-        addressModeV,
-        addressModeW,
-        borderColor,
-        getTotalMipBias(),
-        RtxOptions::Get()->getAnisotropicFilteringEnabled());
-    };
-
-    if (patchSampler && sampler != nullptr) {
-      const DxvkSamplerCreateInfo& originalInfo = sampler->info();
-      // TODO: Note eventually we should support setting the filter mode (nearest/linear) for patched samplers based on material replacement data in USD.
-      sampler = makeSampler(
-        originalInfo.addressModeU,
-        originalInfo.addressModeV,
-        originalInfo.addressModeW,
-        originalInfo.borderColor
-      );
-    }
-
+  SceneManager::SamplerIndex SceneManager::trackSampler(Rc<DxvkSampler> sampler) {
     if (sampler == nullptr) {
       ONCE(Logger::warn("Found a null sampler. Fallback to linear-repeat"));
-      sampler = makeSampler(
+      sampler = patchSampler(
+        VK_FILTER_LINEAR,
         VK_SAMPLER_ADDRESS_MODE_REPEAT,
         VK_SAMPLER_ADDRESS_MODE_REPEAT,
         VK_SAMPLER_ADDRESS_MODE_REPEAT,
         VkClearColorValue {});
     }
-
     return m_samplerCache.track(sampler);
+  }
+
+  Rc<DxvkSampler> SceneManager::patchSampler( const VkFilter filterMode,
+                                              const VkSamplerAddressMode addressModeU,
+                                              const VkSamplerAddressMode addressModeV,
+                                              const VkSamplerAddressMode addressModeW,
+                                              const VkClearColorValue borderColor) {
+    auto& resourceManager = m_device->getCommon()->getResources();
+    // Create a sampler to account for DLSS lod bias and any custom filtering overrides the user has set
+    return resourceManager.getSampler(
+      filterMode,
+      VK_SAMPLER_MIPMAP_MODE_LINEAR,
+      addressModeU,
+      addressModeV,
+      addressModeW,
+      borderColor,
+      getTotalMipBias(),
+      RtxOptions::Get()->getAnisotropicFilteringEnabled());
   }
 
   void SceneManager::addLight(const D3DLIGHT9& light) {

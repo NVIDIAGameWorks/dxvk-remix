@@ -21,6 +21,8 @@
 */
 #pragma once
 
+#include "../../lssusd/mdl_helpers.h"
+
 #include "../../lssusd/usd_include_begin.h"
 #include <pxr/base/vt/value.h>
 #include <pxr/usd/usd/tokens.h>
@@ -45,37 +47,41 @@
 
 
 #define LIST_OPAQUE_MATERIAL_CONSTANTS(X) \
-  /*Parameter Name,                   USD Token String,                       Type,           Min Value,    Max Value,    Default Value */ \
-  X(AnisotropyConstant,               anisotropy,                             float,          0.f,          1.f,          0.f) \
+  /*Parameter Name,                   USD Token String,                       Type,           Min Value,                  Max Value,                 Default Value */ \
+  X(AnisotropyConstant,               anisotropy,                             float,          0.f,                        1.f,                       0.f) \
   /* Note: Maximum clamped to float 16 max due to GPU encoding requirements. */ \
-  X(EmissiveIntensity,                emissive_intensity,                     float,          0.f,          65504.0f,     40.f) \
-  X(AlbedoConstant,                   diffuse_color_constant,                 Vector3,        Vector3(0.f), Vector3(1.f), Vector3(0.2f, 0.2f, 0.2f)) \
-  X(OpacityConstant,                  opacity_constant,                       float,          0.f,          1.f,          1.f) \
-  X(RoughnessConstant,                reflection_roughness_constant,          float,          0.f,          1.f,          .5f) \
-  X(MetallicConstant,                 metallic_constant,                      float,          0.f,          1.f,          0.f) \
-  X(EmissiveColorConstant,            emissive_color_constant,                Vector3,        Vector3(0.f), Vector3(1.f), Vector3(1.0f, 0.1f, 0.1f)) \
-  X(EnableEmission,                   enable_emission,                        bool,           false,        true,         false) \
-  X(SpriteSheetRows,                  sprite_sheet_rows,                      uint8_t,        0,            255,          0) \
-  X(SpriteSheetCols,                  sprite_sheet_cols,                      uint8_t,        0,            255,          0) \
-  X(SpriteSheetFPS,                   sprite_sheet_fps,                       uint8_t,        0,            255,          0) \
-  X(EnableThinFilm,                   enable_thin_film,                       bool,           false,        true,         false) \
-  X(AlphaIsThinFilmThickness,         thin_film_thickness_from_albedo_alpha,  bool,           false,        true,         false) \
+  X(EmissiveIntensity,                emissive_intensity,                     float,          0.f,                        65504.0f,                  40.f) \
+  X(AlbedoConstant,                   diffuse_color_constant,                 Vector3,        Vector3(0.f),               Vector3(1.f),              Vector3(0.2f, 0.2f, 0.2f)) \
+  X(OpacityConstant,                  opacity_constant,                       float,          0.f,                        1.f,                       1.f) \
+  X(RoughnessConstant,                reflection_roughness_constant,          float,          0.f,                        1.f,                       .5f) \
+  X(MetallicConstant,                 metallic_constant,                      float,          0.f,                        1.f,                       0.f) \
+  X(EmissiveColorConstant,            emissive_color_constant,                Vector3,        Vector3(0.f),               Vector3(1.f),              Vector3(1.0f, 0.1f, 0.1f)) \
+  X(EnableEmission,                   enable_emission,                        bool,           false,                      true,                      false) \
+  X(SpriteSheetRows,                  sprite_sheet_rows,                      uint8_t,        0,                          255,                       0) \
+  X(SpriteSheetCols,                  sprite_sheet_cols,                      uint8_t,        0,                          255,                       0) \
+  X(SpriteSheetFPS,                   sprite_sheet_fps,                       uint8_t,        0,                          255,                       0) \
+  X(EnableThinFilm,                   enable_thin_film,                       bool,           false,                      true,                      false) \
+  X(AlphaIsThinFilmThickness,         thin_film_thickness_from_albedo_alpha,  bool,           false,                      true,                      false) \
   /* Note: Thickness cannot be 0 so should be kept above this minimum small value (though in practice it'll likely be   */ \
   /* quantized to 0 with values this small anyways, but it's good to be careful about it for potential future changes). */ \
   /* Note: Max thickness constant be less than the float 16 max due to float 16 usage on the GPU.                       */ \
-  X(ThinFilmThicknessConstant,        thin_film_thickness_constant,           float,          .001f,        OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS, 200.f) \
-  X(UseLegacyAlphaState,              use_legacy_alpha_state,                 bool,           false,        true,         true) \
-  X(BlendEnabled,                     blend_enabled,                          bool,           false,        true,         false) \
-  X(BlendType,                        blend_type,                             BlendType,      BlendType::kMinValue, BlendType::kMaxValue, BlendType::kAlpha) \
-  X(InvertedBlend,                    inverted_blend,                         bool,           false,        true,         false) \
-  X(AlphaTestType,                    alpha_test_type,                        AlphaTestType,  AlphaTestType::kMinValue, AlphaTestType::kMaxValue, AlphaTestType::kAlways) \
-  X(AlphaTestReferenceValue,          alpha_test_reference_value,             uint8_t,        0,            255,          0) \
+  X(ThinFilmThicknessConstant,        thin_film_thickness_constant,           float,          .001f,                      OPAQUE_SURFACE_MATERIAL_THIN_FILM_MAX_THICKNESS, 200.f) \
+  X(UseLegacyAlphaState,              use_legacy_alpha_state,                 bool,           false,                      true,                      true) \
+  X(BlendEnabled,                     blend_enabled,                          bool,           false,                      true,                      false) \
+  X(BlendType,                        blend_type,                             BlendType,      BlendType::kMinValue,       BlendType::kMaxValue,      BlendType::kAlpha) \
+  X(InvertedBlend,                    inverted_blend,                         bool,           false,                      true,                      false) \
+  X(AlphaTestType,                    alpha_test_type,                        AlphaTestType,  AlphaTestType::kMinValue,   AlphaTestType::kMaxValue,  AlphaTestType::kAlways) \
+  X(AlphaTestReferenceValue,          alpha_test_reference_value,             uint8_t,        0,                          255,                       0) \
   /* Note: Maximum clamped to float 16 max due to GPU encoding requirements. */ \
-  X(DisplaceIn,                       displace_in,                            float,          0.f,          65504.0f,     0.f) \
-  X(SubsurfaceTransmittanceColor,     subsurface_transmittance_color,         Vector3,        Vector3(0.f), Vector3(1.f), Vector3(0.5f, 0.5f, 0.5f)) \
-  X(SubsurfaceMeasurementDistance,    subsurface_measurement_distance,        float,          0.f,          65504.0f,     0.f) \
-  X(SubsurfaceSingleScatteringAlbedo, subsurface_single_scattering_albedo,    Vector3,        Vector3(0.f), Vector3(1.f), Vector3(0.5f, 0.5f, 0.5f)) \
-  X(SubsurfaceVolumetricAnisotropy,   subsurface_volumetric_anisotropy,       float,          -1.f,         1.f,          0.f)
+  X(DisplaceIn,                       displace_in,                            float,          0.f,                        65504.0f,                  0.f) \
+  X(SubsurfaceTransmittanceColor,     subsurface_transmittance_color,         Vector3,        Vector3(0.f),               Vector3(1.f),              Vector3(0.5f, 0.5f, 0.5f)) \
+  X(SubsurfaceMeasurementDistance,    subsurface_measurement_distance,        float,          0.f,                        65504.0f,                  0.f) \
+  X(SubsurfaceSingleScatteringAlbedo, subsurface_single_scattering_albedo,    Vector3,        Vector3(0.f),               Vector3(1.f),              Vector3(0.5f, 0.5f, 0.5f)) \
+  X(SubsurfaceVolumetricAnisotropy,   subsurface_volumetric_anisotropy,       float,          -1.f,                       1.f,                       0.f) \
+  /* Sampler State */ \
+  X(FilterMode,                       filter_mode,                            uint8_t,        lss::Mdl::Filter::Nearest,  lss::Mdl::Filter::Linear,  lss::Mdl::Filter::Nearest)  \
+  X(WrapModeU,                        wrap_mode_u,                            uint8_t,        lss::Mdl::WrapMode::Clamp,  lss::Mdl::WrapMode::Clip,  lss::Mdl::WrapMode::Repeat) \
+  X(WrapModeV,                        wrap_mode_v,                            uint8_t,        lss::Mdl::WrapMode::Clamp,  lss::Mdl::WrapMode::Clip,  lss::Mdl::WrapMode::Repeat)
 
 #define LIST_OPAQUE_MATERIAL_PARAMS(X)\
   LIST_OPAQUE_MATERIAL_TEXTURES(X) \
@@ -92,23 +98,27 @@
   /* Note: IoR values less than 1 are physically impossible for typical translucent materials. */ \
   /* Note: 3 chosen due to virtually no physical materials having an IoR greater to this, and because this */ \
   /* is currently the maximum IoR value the GPU supports encoding of as well.                              */ \
-  /*Parameter Name,                   USD Token String,                   Type,     Min Value,    Max Value,    Default Value */ \
-  X(RefractiveIndex,                  ior_constant,                       float,    1.f,          3.f,          1.3f) \
-  X(TransmittanceColor,               transmittance_color,                Vector3,  Vector3(0.f), Vector3(1.f), Vector3(0.97f, 0.97f, 0.97f)) \
-  X(TransmittanceMeasurementDistance, transmittance_measurement_distance, float,    .001f,        65504.0f,     1.f) \
-  X(EnableEmission,                   enable_emission,                    bool,     false,        true,         false) \
+  /*Parameter Name,                   USD Token String,                   Type,     Min Value,                  Max Value,                 Default Value */ \
+  X(RefractiveIndex,                  ior_constant,                       float,    1.f,                        3.f,                       1.3f) \
+  X(TransmittanceColor,               transmittance_color,                Vector3,  Vector3(0.f),               Vector3(1.f),              Vector3(0.97f, 0.97f, 0.97f)) \
+  X(TransmittanceMeasurementDistance, transmittance_measurement_distance, float,    .001f,                      65504.0f,                  1.f) \
+  X(EnableEmission,                   enable_emission,                    bool,     false,                      true,                      false) \
   /* Note: Maximum clamped to float 16 max due to GPU encoding requirements. */ \
-  X(EmissiveIntensity,                emissive_intensity,                 float,    0.f,          65504.0f,     40.f) \
-  X(EmissiveColorConstant,            emissive_color_constant,            Vector3,  Vector3(0.f), Vector3(1.f), Vector3(1.0f, 0.1f, 0.1f)) \
-  X(SpriteSheetRows,                  sprite_sheet_rows,                  uint8_t,  0,            255,          0) \
-  X(SpriteSheetCols,                  sprite_sheet_cols,                  uint8_t,  0,            255,          0) \
-  X(SpriteSheetFPS,                   sprite_sheet_fps,                   uint8_t,  0,            255,          0) \
-  X(EnableThinWalled,                 thin_walled,                        bool,     false,        true,         false) \
+  X(EmissiveIntensity,                emissive_intensity,                 float,    0.f,                        65504.0f,                  40.f) \
+  X(EmissiveColorConstant,            emissive_color_constant,            Vector3,  Vector3(0.f),               Vector3(1.f),              Vector3(1.0f, 0.1f, 0.1f)) \
+  X(SpriteSheetRows,                  sprite_sheet_rows,                  uint8_t,  0,                          255,                       0) \
+  X(SpriteSheetCols,                  sprite_sheet_cols,                  uint8_t,  0,                          255,                       0) \
+  X(SpriteSheetFPS,                   sprite_sheet_fps,                   uint8_t,  0,                          255,                       0) \
+  X(EnableThinWalled,                 thin_walled,                        bool,     false,                      true,                      false) \
   /* Note: 0.001 to be safe around the minimum of float16 values, as well as due to the fact that we cut off */ \
   /* 2 bits of the value in some cases.                                                                      */ \
   /* Note: Maximum clamped to float 16 max due to GPU encoding requirements. */ \
-  X(ThinWallThickness,                thin_wall_thickness,                float,    .001f,        65504.0f,     .001f) \
-  X(EnableDiffuseLayer,               use_diffuse_layer,                  bool,     false,        true,         false) 
+  X(ThinWallThickness,                thin_wall_thickness,                float,    .001f,                      65504.0f,                  .001f) \
+  X(EnableDiffuseLayer,               use_diffuse_layer,                  bool,     false,                      true,                      false) \
+  /* Sampler State */ \
+  X(FilterMode,                       filter_mode,                        uint8_t,  lss::Mdl::Filter::Nearest,  lss::Mdl::Filter::Linear,  lss::Mdl::Filter::Nearest)  \
+  X(WrapModeU,                        wrap_mode_u,                        uint8_t,  lss::Mdl::WrapMode::Clamp,  lss::Mdl::WrapMode::Clip,  lss::Mdl::WrapMode::Repeat) \
+  X(WrapModeV,                        wrap_mode_v,                        uint8_t,  lss::Mdl::WrapMode::Clamp,  lss::Mdl::WrapMode::Clip,  lss::Mdl::WrapMode::Repeat)
 
 #define LIST_TRANSLUCENT_MATERIAL_PARAMS(X)\
   LIST_TRANSLUCENT_MATERIAL_TEXTURES(X) \
@@ -121,14 +131,19 @@
   X(MaskTexture2,   unused_in_usd_so_dont,  TextureRef, void, void, {})
 
 #define LIST_PORTAL_MATERIAL_CONSTANTS(X) \
-  /*Parameter Name,     USD Token String,   Type,     Min Value,  Max Value,  Default Value */ \
-  X(RayPortalIndex,     portal_index,       uint8_t,  0,          255,        0) \
-  X(SpriteSheetRows,    sprite_sheet_rows,  uint8_t,  0,          255,        0) \
-  X(SpriteSheetCols,    sprite_sheet_cols,  uint8_t,  0,          255,        0) \
-  X(SpriteSheetFPS,     sprite_sheet_fps,   uint8_t,  0,          255,        0) \
-  X(RotationSpeed,      rotation_speed,     float,    0.f,        65504.0f,   0.f) \
-  X(EnableEmission,     enable_emission,    bool,     false,      true,       false) \
-  X(EmissiveIntensity,  emissive_intensity, float,    0.f,        65504.0f,   40.f) \
+  /*Parameter Name,     USD Token String,   Type,     Min Value,                  Max Value,                 Default Value */ \
+  X(RayPortalIndex,     portal_index,       uint8_t,  0,                          255,                       0) \
+  X(SpriteSheetRows,    sprite_sheet_rows,  uint8_t,  0,                          255,                       0) \
+  X(SpriteSheetCols,    sprite_sheet_cols,  uint8_t,  0,                          255,                       0) \
+  X(SpriteSheetFPS,     sprite_sheet_fps,   uint8_t,  0,                          255,                       0) \
+  X(RotationSpeed,      rotation_speed,     float,    0.f,                        65504.0f,                  0.f) \
+  X(EnableEmission,     enable_emission,    bool,     false,                      true,                      false) \
+  X(EmissiveIntensity,  emissive_intensity, float,    0.f,                        65504.0f,                  40.f) \
+    /* Sampler State */ \
+  X(FilterMode,         filter_mode,        uint8_t,  lss::Mdl::Filter::Nearest,  lss::Mdl::Filter::Linear,  lss::Mdl::Filter::Nearest) \
+  X(WrapModeU,          wrap_mode_u,        uint8_t,  lss::Mdl::WrapMode::Clamp,  lss::Mdl::WrapMode::Clip,  lss::Mdl::WrapMode::Repeat) \
+  X(WrapModeV,          wrap_mode_v,        uint8_t,  lss::Mdl::WrapMode::Clamp,  lss::Mdl::WrapMode::Clip,  lss::Mdl::WrapMode::Repeat)
+
 
 #define LIST_PORTAL_MATERIAL_PARAMS(X)\
   LIST_PORTAL_MATERIAL_TEXTURES(X) \
@@ -142,6 +157,7 @@
       m_##name{name},
 
 #define WRITE_CONSTANT_MEMBER_FUNC(name, usd_attr, type, minVal, maxVal, defaultVal) \
+      type& get##name() { return m_##name; } \
       const type& get##name() const { return m_##name; } \
       static pxr::TfToken get##name##Token() { return pxr::TfToken("inputs:"#usd_attr); }
 

@@ -20,7 +20,7 @@
         <package name="rtx-remix-nv_usd" version="5" />
     </dependency>
     <dependency name="omni_core_materials" linkPath="external/omni_core_materials">
-        <package name="rtx-remix-omni_core_materials" version="8" />
+        <package name="rtx-remix-omni_core_materials" version="9" />
     </dependency>
     <dependency name="reflex" linkPath="external/reflex">
         <package name="rtx-remix-reflex" version="1" />
