@@ -24,6 +24,9 @@
 
 #include "../../../src/dxvk/rtx_render/rtx_remix_pnext.h"
 
+// Note: including C++ wrapper to check consistency with C API
+#include <remix/remix.h>
+
 #include "../../test_utils.h"
 
 #ifdef _MSC_VER
