@@ -218,7 +218,7 @@ public:
   using SamplerIndex = uint32_t;
 
   void trackTexture(Rc<DxvkContext> ctx, TextureRef inputTexture, uint32_t& textureIndex, bool hasTexcoords, bool allowAsync = true);
-  [[nodiscard]] SamplerIndex trackSampler(Rc<DxvkSampler> sampler, bool patchSampler);
+  [[nodiscard]] SamplerIndex trackSampler(Rc<DxvkSampler> sampler);
 
   std::future<XXH64_hash_t> findLegacyTextureHashBySurfaceMaterialIndex(uint32_t surfaceMaterialIndex);
 
@@ -226,6 +226,12 @@ public:
                            HighlightColor color,
                            uint32_t frameId);
   std::optional<std::pair<uint32_t, HighlightColor>> accessSurfaceMaterialIndexToHighlight(uint32_t frameId);
+
+  Rc<DxvkSampler> patchSampler( const VkFilter filterMode,
+                                const VkSamplerAddressMode addressModeU,
+                                const VkSamplerAddressMode addressModeV,
+                                const VkSamplerAddressMode addressModeW,
+                                const VkClearColorValue borderColor);
 
 private:
   enum class ObjectCacheState
