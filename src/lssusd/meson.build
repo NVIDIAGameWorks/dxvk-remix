@@ -5,6 +5,7 @@ lssUsd_src = files([
   'usd_mesh_samplers.h',
   'hd/usd_mesh_util.cpp',
   'hd/usd_mesh_util.h',
+  'mdl_helpers.h'
 ])
 
 if not dxvk_is_msvc
