@@ -2270,13 +2270,8 @@ namespace dxvk {
     const void*                     data,
           bool                      forceNoReplace) {
     bool isHostVisible = buffer->memFlags() & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-
-    bool replaceBuffer = !forceNoReplace
-                      && (size == buffer->info().size)
-                      && (size <= (1 << 18))
-                      && !isHostVisible;
-// NV-DXVK end:
-
+    bool replaceBuffer = !forceNoReplace && size == buffer->info().size && !isHostVisible;
+    
     DxvkBufferSliceHandle bufferSlice;
     DxvkCmdBuffer         cmdBuffer;
 
@@ -2303,35 +2298,11 @@ namespace dxvk {
         m_execBarriers.recordCommands(m_cmd);
     }
 
-    // Vulkan specifies that small amounts of data (up to 64kB) can
-    // be copied to a buffer directly if the size is a multiple of
-    // four. Anything else must be copied through a staging buffer.
-    // We'll limit the size to 4kB in order to keep command buffers
-    // reasonably small, we do not know how much data apps may upload.
-    if ((size <= 4096) && ((size & 0x3) == 0) && ((offset & 0x3) == 0)) {
-      m_cmd->cmdUpdateBuffer(
-        cmdBuffer,
-        bufferSlice.handle,
-        bufferSlice.offset,
-        bufferSlice.length,
-        data);
-    }
-    else {
-      auto stagingSlice = m_staging.alloc(CACHE_LINE_SIZE, size);
-      auto stagingHandle = stagingSlice.getSliceHandle();
-
-      std::memcpy(stagingHandle.mapPtr, data, size);
-
-      VkBufferCopy region;
-      region.srcOffset = stagingHandle.offset;
-      region.dstOffset = bufferSlice.offset;
-      region.size = size;
-
-      m_cmd->cmdCopyBuffer(cmdBuffer,
-        stagingHandle.handle, bufferSlice.handle, 1, &region);
-
-      m_cmd->trackResource<DxvkAccess::Read>(stagingSlice.buffer());
-    }
+    m_cmd->cmdUpdateBuffer(cmdBuffer,
+      bufferSlice.handle,
+      bufferSlice.offset,
+      bufferSlice.length,
+      data);
 
     auto& barriers = replaceBuffer
       ? m_initBarriers

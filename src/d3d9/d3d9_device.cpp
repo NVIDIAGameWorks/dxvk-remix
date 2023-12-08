@@ -81,7 +81,7 @@ namespace dxvk {
     , m_d3d9Options    ( dxvkDevice, pParent->GetInstance()->config() )
     , m_multithread    ( BehaviorFlags & D3DCREATE_MULTITHREADED )
     , m_isSWVP         ( (BehaviorFlags & D3DCREATE_SOFTWARE_VERTEXPROCESSING) ? true : false )
-    , m_csThread       ( dxvkDevice->createRtxContext() )
+    , m_csThread       ( dxvkDevice, dxvkDevice->createRtxContext() )
     , m_csChunk        ( AllocCsChunk() )
     // NV-DXVK start: unbound light indices
     , m_state          ( Direct3DState9 { D3D9CapturableState{ static_cast<uint32_t>(std::max(m_d3d9Options.maxEnabledLights, 0)) } } )
@@ -2769,6 +2769,9 @@ namespace dxvk {
 
       return D3D_OK;
     }
+
+    if (!VertexCount)
+      return D3D_OK;
 
     D3D9CommonBuffer* dst  = static_cast<D3D9VertexBuffer*>(pDestBuffer)->GetCommonBuffer();
     D3D9VertexDecl*   decl = static_cast<D3D9VertexDecl*>  (pVertexDecl);
