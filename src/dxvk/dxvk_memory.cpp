@@ -618,7 +618,11 @@ DxvkMemory::DxvkMemory() { }
     VkMemoryAllocateFlagsInfo allocateFlagsInfo;
     allocateFlagsInfo.sType      = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_FLAGS_INFO;
     allocateFlagsInfo.pNext      = dedAllocInfo;
+    // NV-DXVK begin: use device address bit for allocations
+    // dxvk-remix requires buffer device addresses on some allocations; setting this bit
+    // is essentially free, so we set it unconditionally to avoid having to plumb it through
     allocateFlagsInfo.flags      = VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
+    // NV-DXVK end
     allocateFlagsInfo.deviceMask = 0;
 
     VkMemoryPriorityAllocateInfoEXT prio;
