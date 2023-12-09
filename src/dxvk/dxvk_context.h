@@ -857,6 +857,15 @@ namespace dxvk {
       bool                            forceNoReplace = false);
     // NV-DXVK end:
 
+    // NV-DXVK begin: utility function for partial buffer uploads
+    void writeToBuffer(
+      const Rc<DxvkBuffer>& buffer,
+            VkDeviceSize    offset,
+            VkDeviceSize    size,
+      const void*           data,
+            bool            forceNoReplace = false);
+    // NV-DXVK end
+    
     /**
      * \brief Updates an image
      * 

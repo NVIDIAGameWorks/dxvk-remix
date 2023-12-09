@@ -430,11 +430,11 @@ namespace dxvk {
     }
     
     if (!m_lightsGPUData.empty()) {
-      ctx->updateBuffer(m_lightBuffer, 0, m_lightsGPUData.size(), m_lightsGPUData.data());
+      ctx->writeToBuffer(m_lightBuffer, 0, m_lightsGPUData.size(), m_lightsGPUData.data());
     }
 
     if (!m_lightMappingData.empty()) {
-      ctx->updateBuffer(m_lightMappingBuffer, 0, m_lightMappingData.size() * sizeof(uint16_t), m_lightMappingData.data());
+      ctx->writeToBuffer(m_lightMappingBuffer, 0, m_lightMappingData.size() * sizeof(uint16_t), m_lightMappingData.data());
     }
 
     // If there are no lights with >0 intensity, then clear the list...
