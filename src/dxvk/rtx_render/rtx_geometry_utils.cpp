@@ -245,8 +245,8 @@ namespace dxvk {
       for (uint32_t idx = 0; idx < params.numVertices; idx++) {
         skinning(idx, &dstPosition[0], &dstNormal[0], srcPosition, srcBlendWeight, srcBlendIndices, srcNormal, params);
 
-        ctx->updateBuffer(geo.positionBuffer.buffer(), geo.positionBuffer.offsetFromSlice() + idx * geo.positionBuffer.stride(), sizeof(dstPosition), &dstPosition[0], true);
-        ctx->updateBuffer(geo.normalBuffer.buffer(), geo.normalBuffer.offsetFromSlice() + idx * geo.normalBuffer.stride(), sizeof(dstNormal), &dstNormal[0], true);
+        ctx->writeToBuffer(geo.positionBuffer.buffer(), geo.positionBuffer.offsetFromSlice() + idx * geo.positionBuffer.stride(), sizeof(dstPosition), &dstPosition[0], true);
+        ctx->writeToBuffer(geo.normalBuffer.buffer(), geo.normalBuffer.offsetFromSlice() + idx * geo.normalBuffer.stride(), sizeof(dstNormal), &dstNormal[0], true);
       }
     }
   }
@@ -560,7 +560,7 @@ namespace dxvk {
         generateIndices(idx, dst, src, cb);
       }
 
-      ctx->updateBuffer(dstSlice.buffer(), 0, cb.primCount * 3 * sizeof(uint16_t), dst, true);
+      ctx->writeToBuffer(dstSlice.buffer(), 0, cb.primCount * 3 * sizeof(uint16_t), dst, true);
     }
   }
 
@@ -733,7 +733,7 @@ namespace dxvk {
         interleaver::interleave(i, dst, inputData.positionData, inputData.normalData, inputData.texcoordData, inputData.vertexColorData, args);
       }
 
-      ctx->updateBuffer(output.buffer, 0, input.vertexCount * output.stride, dst, true);
+      ctx->writeToBuffer(output.buffer, 0, input.vertexCount * output.stride, dst, true);
     }
 
     uint32_t offset = 0;

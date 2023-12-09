@@ -572,7 +572,7 @@ namespace dxvk {
 
     // Copy the instance transform data to the device
     if(instanceTransforms.size() > 0)
-      ctx->updateBuffer(m_transformBuffer, 0, instanceTransforms.size() * sizeof(VkTransformMatrixKHR), instanceTransforms.data());
+      ctx->writeToBuffer(m_transformBuffer, 0, instanceTransforms.size() * sizeof(VkTransformMatrixKHR), instanceTransforms.data());
 
     ctx->getCommandList()->trackResource<DxvkAccess::Write>(m_transformBuffer);
     ctx->getCommandList()->trackResource<DxvkAccess::Read>(m_transformBuffer);
@@ -815,7 +815,7 @@ namespace dxvk {
     for (const auto& instances : m_mergedInstances) {
       if (!instances.empty()) {
         const size_t size = instances.size() * sizeof(VkAccelerationStructureInstanceKHR);
-        ctx->updateBuffer(m_vkInstanceBuffer, offset, size, instances.data());
+        ctx->writeToBuffer(m_vkInstanceBuffer, offset, size, instances.data());
         offset += size;
       }
     }
@@ -828,7 +828,7 @@ namespace dxvk {
       }
 
       // Write billboard data
-      ctx->updateBuffer(m_billboardsBuffer, 0, numActiveBillboards * sizeof(MemoryBillboard), memoryBillboards.data());
+      ctx->writeToBuffer(m_billboardsBuffer, 0, numActiveBillboards * sizeof(MemoryBillboard), memoryBillboards.data());
     }
   }
 
@@ -867,7 +867,7 @@ namespace dxvk {
     assert(dataOffset == surfacesGPUSize);
     assert(surfacesGPUData.size() == surfacesGPUSize);
 
-    ctx->updateBuffer(m_surfaceBuffer, 0, surfacesGPUData.size(), surfacesGPUData.data());
+    ctx->writeToBuffer(m_surfaceBuffer, 0, surfacesGPUData.size(), surfacesGPUData.data());
 
     // Find the size of the surface mapping buffer
     uint32_t maxPreviousSurfaceIndex = 0;
@@ -907,7 +907,7 @@ namespace dxvk {
       }
 
       if (prefixSumList.size() > 0) {
-        ctx->updateBuffer(prefixSumBuffer, 0, prefixSumList.size() * sizeof(prefixSumList[0]), prefixSumList.data());
+        ctx->writeToBuffer(prefixSumBuffer, 0, prefixSumList.size() * sizeof(prefixSumList[0]), prefixSumList.data());
       }
     };
 
@@ -921,7 +921,7 @@ namespace dxvk {
         m_surfaceMappingBuffer = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXAccelerationStructure);
       }
 
-      ctx->updateBuffer(m_surfaceMappingBuffer, 0, surfaceIndexMapping.size() * sizeof(surfaceIndexMapping[0]), surfaceIndexMapping.data());
+      ctx->writeToBuffer(m_surfaceMappingBuffer, 0, surfaceIndexMapping.size() * sizeof(surfaceIndexMapping[0]), surfaceIndexMapping.data());
     }
   }
 
