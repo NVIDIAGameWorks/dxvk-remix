@@ -156,6 +156,13 @@ GENERIC_SQUARE_LENGTH(float, vec2)
 GENERIC_SQUARE_LENGTH(float, vec3)
 GENERIC_SQUARE_LENGTH(float, vec4)
 
+float2 cartesianDirectionToLatLongSphere(float3 direction)
+{
+  float theta = acos(direction.z);
+  float phi = atan2(direction.x, direction.y);
+  return float2(0.5 + phi / twoPi, theta / pi);
+}
+
 // Calculates an orthonormal basis from a specified normal vector
 // [Duff et al. 17, Building An Orthonormal Basis, Revisited]
 void calcOrthonormalBasis(f16vec3 normal, out f16vec3 tangent, out f16vec3 bitangent)

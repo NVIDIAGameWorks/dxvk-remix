@@ -222,6 +222,10 @@ namespace dxvk {
     }
   }
 
+  int AccelManager::getCurrentFramePrimitiveIDPrefixSumBufferID() const {
+    return m_device->getCurrentFrameId() & 0x1;
+  }
+
   void AccelManager::createAndBuildIntersectionBlas(Rc<DxvkContext> ctx, DxvkBarrierSet& execBarriers) {
     if (m_intersectionBlas.ptr())
       return;
@@ -568,7 +572,7 @@ namespace dxvk {
 
     // Copy the instance transform data to the device
     if(instanceTransforms.size() > 0)
-      ctx->updateBuffer(m_transformBuffer, 0, instanceTransforms.size() * sizeof(VkTransformMatrixKHR), instanceTransforms.data());
+      ctx->writeToBuffer(m_transformBuffer, 0, instanceTransforms.size() * sizeof(VkTransformMatrixKHR), instanceTransforms.data());
 
     ctx->getCommandList()->trackResource<DxvkAccess::Write>(m_transformBuffer);
     ctx->getCommandList()->trackResource<DxvkAccess::Read>(m_transformBuffer);
@@ -595,6 +599,7 @@ namespace dxvk {
 
     // Build prefix sum array
     // Collect primitive count for each surface object
+    m_reorderedSurfacesPrimitiveIDPrefixSumLastFrame = m_reorderedSurfacesPrimitiveIDPrefixSum;
     m_reorderedSurfacesPrimitiveIDPrefixSum.resize(m_reorderedSurfaces.size());
     for (uint32_t i = 0; i < m_reorderedSurfaces.size(); i++) {
       auto surface = m_reorderedSurfaces[i];
@@ -810,7 +815,7 @@ namespace dxvk {
     for (const auto& instances : m_mergedInstances) {
       if (!instances.empty()) {
         const size_t size = instances.size() * sizeof(VkAccelerationStructureInstanceKHR);
-        ctx->updateBuffer(m_vkInstanceBuffer, offset, size, instances.data());
+        ctx->writeToBuffer(m_vkInstanceBuffer, offset, size, instances.data());
         offset += size;
       }
     }
@@ -823,7 +828,7 @@ namespace dxvk {
       }
 
       // Write billboard data
-      ctx->updateBuffer(m_billboardsBuffer, 0, numActiveBillboards * sizeof(MemoryBillboard), memoryBillboards.data());
+      ctx->writeToBuffer(m_billboardsBuffer, 0, numActiveBillboards * sizeof(MemoryBillboard), memoryBillboards.data());
     }
   }
 
@@ -862,7 +867,7 @@ namespace dxvk {
     assert(dataOffset == surfacesGPUSize);
     assert(surfacesGPUData.size() == surfacesGPUSize);
 
-    ctx->updateBuffer(m_surfaceBuffer, 0, surfacesGPUData.size(), surfacesGPUData.data());
+    ctx->writeToBuffer(m_surfaceBuffer, 0, surfacesGPUData.size(), surfacesGPUData.data());
 
     // Find the size of the surface mapping buffer
     uint32_t maxPreviousSurfaceIndex = 0;
@@ -894,11 +899,20 @@ namespace dxvk {
     }
 
     // Create and upload the primitive id prefix sum buffer
-    info.size = align(m_reorderedSurfacesPrimitiveIDPrefixSum.size() * sizeof(m_reorderedSurfacesPrimitiveIDPrefixSum[0]), kBufferAlignment);
-    if (m_primitiveIDPrefixSumBuffer == nullptr || info.size > m_primitiveIDPrefixSumBuffer->info().size) {
-      m_primitiveIDPrefixSumBuffer = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXAccelerationStructure);
-    }
-    ctx->updateBuffer(m_primitiveIDPrefixSumBuffer, 0, m_reorderedSurfacesPrimitiveIDPrefixSum.size() * sizeof(m_reorderedSurfacesPrimitiveIDPrefixSum[0]), m_reorderedSurfacesPrimitiveIDPrefixSum.data());
+    auto updatePrefixSumBuffer = [&info, this, ctx](std::vector<uint32_t>& prefixSumList, Rc<DxvkBuffer>& prefixSumBuffer) {
+      info.size = std::max(prefixSumList.size(), 1llu) * sizeof(prefixSumList[0]);
+
+      if (prefixSumBuffer == nullptr || info.size > prefixSumBuffer->info().size) {
+        prefixSumBuffer = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXAccelerationStructure);
+      }
+
+      if (prefixSumList.size() > 0) {
+        ctx->writeToBuffer(prefixSumBuffer, 0, prefixSumList.size() * sizeof(prefixSumList[0]), prefixSumList.data());
+      }
+    };
+
+    updatePrefixSumBuffer(m_reorderedSurfacesPrimitiveIDPrefixSum, m_primitiveIDPrefixSumBuffer);
+    updatePrefixSumBuffer(m_reorderedSurfacesPrimitiveIDPrefixSumLastFrame, m_primitiveIDPrefixSumBufferLastFrame);
 
     // Create and upload the surface mapping buffer
     if (!surfaceIndexMapping.empty()) {
@@ -907,7 +921,7 @@ namespace dxvk {
         m_surfaceMappingBuffer = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXAccelerationStructure);
       }
 
-      ctx->updateBuffer(m_surfaceMappingBuffer, 0, surfaceIndexMapping.size() * sizeof(surfaceIndexMapping[0]), surfaceIndexMapping.data());
+      ctx->writeToBuffer(m_surfaceMappingBuffer, 0, surfaceIndexMapping.size() * sizeof(surfaceIndexMapping[0]), surfaceIndexMapping.data());
     }
   }
 

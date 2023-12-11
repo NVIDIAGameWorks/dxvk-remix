@@ -113,6 +113,14 @@ protected:
   SparseUniqueCache<Rc<DxvkSampler>, SamplerHashFn, SamplerKeyEqual> m_samplerCache;
 };
 
+struct ExternalDrawState {
+  DrawCallState drawCall {};
+  remixapi_MeshHandle mesh {};
+  CameraType::Enum cameraType {};
+  CategoryFlags categories {};
+  bool doubleSided {};
+};
+
 // Scene manager is a super manager, it's the interface between rendering and world state
 // along with managing the operation of other caches, scene manager also manages the cache
 // directly for "SceneObject"'s - which are "unique meshes/geometry", which map 1-to-1 with
@@ -130,6 +138,7 @@ public:
   void onDestroy();
 
   void submitDrawState(Rc<DxvkContext> ctx, const DrawCallState& input, const MaterialData* overrideMaterialData);
+  void submitExternalDraw(Rc<DxvkContext> ctx, ExternalDrawState&& state);
   
   bool areReplacementsLoaded() const;
   bool areReplacementsLoading() const;
@@ -142,7 +151,8 @@ public:
   Rc<DxvkBuffer> getVolumeMaterialBuffer() { return m_volumeMaterialBuffer; }
   Rc<DxvkBuffer> getSurfaceBuffer() const { return m_accelManager.getSurfaceBuffer(); }
   Rc<DxvkBuffer> getSurfaceMappingBuffer() const { return m_accelManager.getSurfaceMappingBuffer(); }
-  Rc<DxvkBuffer> getPrimitiveIDPrefixSumBuffer() const { return m_accelManager.getPrimitiveIDPrefixSumBuffer(); }
+  Rc<DxvkBuffer> getCurrentFramePrimitiveIDPrefixSumBuffer() const { return m_accelManager.getCurrentFramePrimitiveIDPrefixSumBuffer(); }
+  Rc<DxvkBuffer> getLastFramePrimitiveIDPrefixSumBuffer() const { return m_accelManager.getLastFramePrimitiveIDPrefixSumBuffer(); }
   Rc<DxvkBuffer> getBillboardsBuffer() const { return m_accelManager.getBillboardsBuffer(); }
   bool isPreviousFrameSceneAvailable() const { return m_previousFrameSceneAvailable && getSurfaceMappingBuffer().ptr() != nullptr; }
 
@@ -176,6 +186,11 @@ public:
   CameraType::Enum processCameraData(const DrawCallState& input) {
     return m_cameraManager.processCameraData(input);
   }
+  void processExternalCamera(CameraType::Enum type,
+                             const Matrix4& worldToView,
+                             const Matrix4& viewToProjection) {
+    m_cameraManager.processExternalCamera(type, worldToView, viewToProjection);
+  }
 
   const CameraManager& getCameraManager() const { return m_cameraManager; }
   const RtCamera& getCamera() const { return m_cameraManager.getMainCamera(); }
@@ -200,8 +215,10 @@ public:
   void triggerUsdCapture() const;
   bool isGameCapturerIdle() const;
 
+  using SamplerIndex = uint32_t;
+
   void trackTexture(Rc<DxvkContext> ctx, TextureRef inputTexture, uint32_t& textureIndex, bool hasTexcoords, bool allowAsync = true);
-  void trackSampler(Rc<DxvkSampler> sampler, bool patchSampler, uint32_t& samplerIndex);
+  [[nodiscard]] SamplerIndex trackSampler(Rc<DxvkSampler> sampler);
 
   std::future<XXH64_hash_t> findLegacyTextureHashBySurfaceMaterialIndex(uint32_t surfaceMaterialIndex);
 
@@ -209,6 +226,12 @@ public:
                            HighlightColor color,
                            uint32_t frameId);
   std::optional<std::pair<uint32_t, HighlightColor>> accessSurfaceMaterialIndexToHighlight(uint32_t frameId);
+
+  Rc<DxvkSampler> patchSampler( const VkFilter filterMode,
+                                const VkSamplerAddressMode addressModeU,
+                                const VkSamplerAddressMode addressModeV,
+                                const VkSamplerAddressMode addressModeW,
+                                const VkClearColorValue borderColor);
 
 private:
   enum class ObjectCacheState
@@ -288,6 +311,9 @@ private:
   };
   std::optional<PromisedSurfMaterialIndex> m_findLegacyTexture {};
   dxvk::mutex m_findLegacyTextureMutex{};
+
+  // TODO: expand to many different
+  Rc<DxvkSampler> m_externalSampler = nullptr;
 };
 
 }  // namespace nvvk

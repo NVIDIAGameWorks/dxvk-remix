@@ -123,6 +123,8 @@ struct Surface
   uint8_t spriteSheetRows;
   uint8_t spriteSheetCols;
   uint8_t spriteSheetFPS;
+
+  uint32_t objectPickingValue;
 };
 
 // Note: Minimal version of typical Surface Interaction for transmission across passes.

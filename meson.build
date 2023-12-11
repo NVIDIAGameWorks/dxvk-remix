@@ -155,6 +155,9 @@ if not dxvk_is_msvc
   endif
 endif
 
+remix_api_include_path = include_directories('./public/include')
+add_global_arguments('/DREMIX_LIBRARY_EXPORTS=1', language : 'cpp')
+
 dxvk_include_dirs = [
   './include',
   './include/vulkan/include'
@@ -390,6 +393,10 @@ nv_usd_include_path = include_directories('external/nv_usd/include/')
 boost_include_path = include_directories('external/nv_usd/include/boost-1_78/')
 
 usd_include_paths = [nv_usd_include_path, boost_include_path] 
+
+vk_include_path = include_directories('./include/vulkan/include')
+
+lssusd_include_paths = [nv_usd_include_path, boost_include_path, vk_include_path]
 
 nvapi_include_paths = include_directories(join_paths(meson.global_source_root(), 'external/nvapi'))
 nvapi_lib_path = join_paths(meson.global_source_root(), 'external/nvapi/amd64')

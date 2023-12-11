@@ -552,6 +552,7 @@ namespace dxvk {
       createTextureRef(ReplacementMaterialTextureType::Roughness),
       createTextureRef(ReplacementMaterialTextureType::Metallic),
       createTextureRef(ReplacementMaterialTextureType::Emissive),
+      TextureRef(), TextureRef(), TextureRef(), // SSS textures
       Material::Properties::roughnessAnisotropy(),
       Material::Properties::emissiveIntensity(),
       Vector3(1, 1, 1), // AlbedoConstant - unused since the AlbedoOpacity texture must be always present for baking
@@ -575,7 +576,11 @@ namespace dxvk {
       Vector3(),  // opaqueMaterialDefaults.subsurfaceTransmittanceColor
       0.0f,  // opaqueMaterialDefaults.subsurfaceMeasurementDistance
       Vector3(),  // opaqueMaterialDefaults.subsurfaceSingleScatteringAlbedo
-      0.0f));  // opaqueMaterialDefaults.subsurfaceVolumetricAnisotropy
+      0.0f, // opaqueMaterialDefaults.subsurfaceVolumetricAnisotropy
+      lss::Mdl::Filter::Nearest,
+      lss::Mdl::WrapMode::Repeat, // U
+      lss::Mdl::WrapMode::Repeat  // V
+    ));  
 
     m_hasInitializedMaterialDataThisFrame = true;
     m_needsMaterialDataUpdate = false;

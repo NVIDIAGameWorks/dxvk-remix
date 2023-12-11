@@ -26,17 +26,11 @@
 #include "rtx/algorithm/rtxdi/rtxdi.slangh"
 
 #ifdef UPDATE_NEE_CACHE
-#define NEE_CACHE_READ_TASK 1
-#define NEE_CACHE_WRITE_TASK 1
 #define NEE_CACHE_WRITE_SAMPLE 1
 #define NEE_CACHE_WRITE_CANDIDATE 1
-#define NEE_CACHE_WRITE_THREAD_TASK 0
 #else
-#define NEE_CACHE_READ_TASK 0
-#define NEE_CACHE_WRITE_TASK 0
 #define NEE_CACHE_WRITE_SAMPLE 0
 #define NEE_CACHE_WRITE_CANDIDATE 0
-#define NEE_CACHE_WRITE_THREAD_TASK 1
 #endif
 
 struct NEESample
@@ -45,6 +39,7 @@ struct NEESample
   float pdf;
   f16vec3 normal;
   f16vec3 radiance;
+  uint triangleID;
 
   NeeCache_PackedSample pack()
   {
@@ -54,6 +49,7 @@ struct NEESample
     packed.lightInfo.x = f32tof16(radiance.x) | (f32tof16(radiance.y) << 16);
     packed.lightInfo.y = f32tof16(radiance.z);
     packed.lightInfo.z = asuint(pdf);
+    packed.lightInfo.w = triangleID;
     return packed;
   }
 
@@ -65,6 +61,7 @@ struct NEESample
     radiance.y = f16tof32(packed.lightInfo.x >> 16);
     radiance.z = f16tof32(packed.lightInfo.y & 0xffff);
     pdf = asfloat(packed.lightInfo.z);
+    triangleID = packed.lightInfo.w;
   }
 
   static NEESample createEmpty()
@@ -74,6 +71,7 @@ struct NEESample
     sample.normal = float3(0.f, 0.f, -1.f);
     sample.radiance = float3(0.f);
     sample.pdf = 0.f;
+    sample.triangleID = 0;
     return sample;
   }
 
@@ -101,44 +99,36 @@ struct NEELightCandidate
 
   static float getOffsetRange()
   {
-    const float rangeCellCount = 16;
-    return cb.neeCacheArgs.range * (rangeCellCount / NEE_CACHE_PROBE_RESOLUTION);
-  }
-
-  static float getOffsetDelta()
-  {
-    return getOffsetRange() / 128.0;
+    // Normalization factor for offset, in order to adapt to different scene scale.
+    // The 0.1 factor is based on experiment.
+    return cb.neeCacheArgs.minRange * 0.1;
   }
 
   static uint encodeOffset(vec3 offset)
   {
+    // Encode light position offset to the camera center.
+    // Put the encoding/decoding functions here because it's specific to NEE Cache.
     float range = getOffsetRange();
-    float maxOffset = max(max(abs(offset.x), abs(offset.y)), abs(offset.z));
-    float scaleFactor = max(maxOffset, range);
-    offset /= scaleFactor;
-    vec3 uvw = offset * 0.5 + 0.5;
-
-    uint encodedOffset = 0;
-    encodedOffset |= uint(uvw.x * 255 + 0.5);
-    encodedOffset <<= 8;
-    encodedOffset |= uint(uvw.y * 255 + 0.5);
-    encodedOffset <<= 8;
-    encodedOffset |= uint(uvw.z * 255 + 0.5);
-    return encodedOffset;
+    float offsetLength = length(offset);
+    offset /= (offsetLength + 1e-10);
+    vec2 uv = sphereDirectionToSignedOctahedral(offset);
+    uv = (uv + 1) * 0.5;
+    uint result = float16BitsToUint16(min(offsetLength / range, float16Max));
+    result |= (uint(uv.x * 255.0) << 24);
+    result |= (uint(uv.y * 255.0) << 16);
+    return result;
   }
 
   static vec3 decodeOffset(uint encodedOffset)
   {
+    // Decode light position offset to the camera center.
+    // Put the encoding/decoding functions here because it's specific to NEE Cache.
     float range = getOffsetRange();
-    vec3 uvw;
-    uvw.z = (encodedOffset & 0xff);
-    encodedOffset >>= 8;
-    uvw.y = (encodedOffset & 0xff);
-    encodedOffset >>= 8;
-    uvw.x = (encodedOffset & 0xff);
-    uvw /= 255.0;
-    uvw = uvw * 2.0 - 1.0;
-    return uvw * range;
+    vec2 uv = vec2(encodedOffset >> 24, (encodedOffset >> 16) & 0xff) / 255.0;
+    uv = uv * 2.0 - 1.0;
+    vec3 offset = signedOctahedralToSphereDirection(uv);
+    float offsetLength = float(uint16BitsToHalf(encodedOffset & 0xffff)) * range;
+    return offset * offsetLength;
   }
 
   bool isValid()
@@ -179,19 +169,7 @@ struct NEELightCandidate
 
   [mutating] void setOffset(vec3 offset)
   {
-    uint encodedOffset = encodeOffset(offset);
-    m_data.y = (m_data.y & 0xff000000) | encodedOffset;
-  }
-
-  uint getAge()
-  {
-    return (m_data.y >> 24) & 0xff;
-  }
-
-  [mutating] void setAge(uint age)
-  {
-    age = min(age, 255);
-    m_data.y = (m_data.y & 0xffffff) | (age << 24);
+    m_data.y = encodeOffset(offset);
   }
 
   static NEELightCandidate create(uint lightIdx)
@@ -199,7 +177,6 @@ struct NEELightCandidate
     NEELightCandidate nee;
     nee.m_data = 0;
     nee.setLightID(lightIdx);
-    nee.setAge(0);
     nee.setOffset(0.0);
     nee.setRadiance(0);
     return nee;
@@ -305,12 +282,17 @@ struct NEECell
 
   uint getTaskBaseAddress()
   {
-    return m_offset * (NEE_CACHE_ELEMENTS * NEE_CACHE_ELEMENT_SIZE);
+    return m_offset * NEE_CACHE_TASK_COUNT * NEE_CACHE_TASK_SIZE;
   }
 
   uint getTaskAddress(uint idx)
   {
     return getTaskBaseAddress() + idx * NEE_CACHE_TASK_SIZE;
+  }
+
+  uint getHashTaskAddress(uint idx)
+  {
+    return getTaskAddress(idx) + NEE_CACHE_HASH_TASK_BASE;
   }
 
   uint getCandidateAddress(uint idx)
@@ -330,47 +312,6 @@ struct NEECell
 
   bool isValid() { return m_offset != NEECell.s_invalidOffset; }
 
-#if NEE_CACHE_READ_TASK
-  int getTaskCount()
-  {
-    int count = 0;
-    for (int i = 0; i < getMaxTaskCount(); ++i)
-    {
-      uint taskData = NeeCacheTask.Load(getTaskAddress(i));
-      if (taskData != NEE_CACHE_EMPTY_TASK)
-      {
-        count++;
-      }
-    }
-    return count;
-  }
-
-  uint getTask(int idx)
-  {
-    int count = 0;
-    for (int i = 0; i < getMaxTaskCount(); ++i)
-    {
-      uint taskData = NeeCacheTask.Load(getTaskAddress(i));
-      if (taskData == NEE_CACHE_EMPTY_TASK)
-      {
-        continue;
-      }
-      if (count == idx)
-      {
-        return taskData & 0xffffff;
-      }
-      count++;
-    }
-    return NEE_CACHE_EMPTY_TASK;
-  }
-
-  uint getTaskFromIdx(int idx)
-  {
-    uint taskData = NeeCacheTask.Load(getTaskAddress(idx));
-    return taskData & 0xffffff;
-  }
-#endif
-
   static uint getTaskHash(uint task)
   {
     return task;
@@ -384,59 +325,79 @@ struct NEECell
     return x & 0xf;
   }
 
-#if NEE_CACHE_WRITE_TASK
-  void setTaskFromIdx(int idx, uint task, uint value) {
-    task |= (value << 24);
-    NeeCacheTask.Store(getTaskAddress(idx), task);
-  }
-
-  void clearTasks() {
-    for (int i = 0; i < getMaxTaskCount(); ++i) {
-      NeeCacheTask.Store(getTaskAddress(i), NEE_CACHE_EMPTY_TASK);
-    }
-  }
-
-  bool insertTask(uint task, uint value)
+  static uint getSlotBinHash(uint x)
   {
-    uint index = getBinHash(task + cb.frameIdx);
-    int taskAddress = getTaskAddress(index);
-    task |= (value << 24);
-
-    // Remove duplicated tasks
-    uint oldTask = NeeCacheTask.Load(taskAddress);
-    if (oldTask == task || (oldTask != NEE_CACHE_EMPTY_TASK && getTaskHash(oldTask) >= getTaskHash(task)))
-    {
-      return false;
-    }
-
-    // Insert task with the largest hash value
-    uint expectTask = NEE_CACHE_EMPTY_TASK;
-    uint insertTask = task;
-    while(true)
-    {
-      uint originalTask;
-      NeeCacheTask.InterlockedCompareExchange(taskAddress, expectTask, insertTask, originalTask);
-      if (originalTask == expectTask)
-      {
-        // successfully inserted
-        return true;
-      }
-
-      // Only insert a task when its hash is larger
-      // Because the value is in high bits, tasks with higher values will have higher priority
-      uint insertTaskHash   = getTaskHash(insertTask);
-      uint originalTaskHash = getTaskHash(originalTask);
-      if (originalTaskHash >= insertTaskHash)
-      {
-        return false;
-      }
-
-      // Prefare for next insertion
-      expectTask = originalTask;
-    }
-    return false;
+    x = ((x >> 16) ^ x) * 0x45d9f3b;
+    x = ((x >> 16) ^ x) * 0x45d9f3b;
+    x = (x >> 16) ^ x;
+    return x & 0x1f;
   }
-#endif
+
+  uint2 getSlotTaskValue(int index)
+  {
+    int taskAddress = getTaskAddress(index);
+    return NeeCacheTask.Load2(taskAddress);
+  }
+
+  void setSlotTaskValue(int index, uint2 value)
+  {
+    int taskAddress = getTaskAddress(index);
+    NeeCacheTask.Store2(taskAddress, value);
+  }
+
+  uint2 getLightSlotTaskValue(int index)
+  {
+    int taskAddress = getTaskAddress(index + 16);
+    return NeeCacheTask.Load2(taskAddress);
+  }
+
+  void setLightSlotTaskValue(int index, uint2 value)
+  {
+    int taskAddress = getTaskAddress(index + 16);
+    NeeCacheTask.Store2(taskAddress, value);
+  }
+
+  uint2 getHashSlotTaskValue(int index)
+  {
+    int taskAddress = getHashTaskAddress(index);
+    return NeeCacheTask.Load2(taskAddress);
+  }
+
+  void setHashSlotTaskValue(int index, uint2 value)
+  {
+    int taskAddress = getHashTaskAddress(index);
+    NeeCacheTask.Store2(taskAddress, value);
+  }
+
+  static bool isLightTask(uint2 value)
+  {
+    return (value.x & (1 << 24)) != 0;
+  }
+
+  void insertSlotTask(uint task, float16_t accumulateValue, float16_t randomOffset, bool isLightTask) {
+    uint index = getSlotBinHash(task + cb.frameIdx);
+    int taskAddress = getHashTaskAddress(index);
+    uint sortValueI = firstbithigh(uint(min(accumulateValue, 50) / 0.001));
+    task |= (sortValueI << 25) | (isLightTask ? (1 << 24) : 0);
+
+    // Clamp min/max value before accumulation to improve stability.
+    // The min value is required because floating point atomics is not supported on all platforms,
+    // so quantization is necessary to convert floating point values to integers.
+    // The max value is required to suppress the impact from fireflies, otherwise a firefly may inject a
+    // useless triangle / light to the cache.
+    const float16_t minValue = 0.05;
+    const float16_t maxValue = 5000;
+    int accumulateValueI = clamp(accumulateValue, 0.0, maxValue) / minValue + randomOffset;
+
+    if (accumulateValueI == 0)
+    {
+      return;
+    }
+
+    uint originalValue;
+    NeeCacheTask.InterlockedMax(taskAddress, task, originalValue);
+    NeeCacheTask.InterlockedAdd(taskAddress + 4, accumulateValueI, originalValue);
+  }
 
   int getSampleAddress(int i)
   {
@@ -487,19 +448,15 @@ struct NEECell
 
   float calculateLightCandidateWeight(NEELightCandidate candidate, vec3 cellCenter, vec3 surfacePoint, f16vec3 viewDirection, f16vec3 normal, float16_t specularRatio, float16_t roughness, bool isSubsurface)
   {
-    vec3 candidatePosition = candidate.getOffset() + cellCenter;
-    f16vec3 inputDirection = normalize(candidatePosition - surfacePoint + normal * NEELightCandidate.getOffsetDelta());
+    vec3 candidateOffset = candidate.getOffset();
+    f16vec3 inputDirection = normalize(candidateOffset + cellCenter + normal * length(candidateOffset) * 0.01 - surfacePoint);
 
     // Use a simplified GGX model to calculate light contribution
-    // Offset diffuse so that light at grazing angles will not be culled due to low precision input direction.
-    const float16_t cosOffset = 0.3h;
-
-    float16_t ndoti = (dot(inputDirection, normal) + cosOffset) / (float16_t(1) + cosOffset);
+    float16_t ndoti = dot(inputDirection, normal);
     float16_t diffuseTerm = !isSubsurface ? (1.0 - specularRatio) / pi : (1.0 - specularRatio) / twoPi;
     float specularTerm = 0.0f;
 
-    if (!isSubsurface || ndoti > 0.0h)
-    {
+    if (!isSubsurface || ndoti > 0.0h) {
       ndoti = saturate(ndoti);
 
       // The specular term consists of there parts: D, G, F
@@ -510,8 +467,7 @@ struct NEECell
       f16vec3 halfVector = normalize(inputDirection + viewDirection);
       float ndotm = saturate(dot(halfVector, normal));
       specularTerm = specularRatio * evalGGXNormalDistributionIsotropic(roughness, ndotm) * cb.neeCacheArgs.specularFactor * 0.25;
-    }
-    else // isSubsurface && ndoti < 0
+    } else // isSubsurface && ndoti < 0
     {
       ndoti = -ndoti;
     }
@@ -520,11 +476,13 @@ struct NEECell
     return radiance * (diffuseTerm + specularTerm) * ndoti;
   }
 
-  void calculateLightCandidateNormalizedWeight(int ithCandidate, vec3 cellCenter, vec3 surfacePoint, f16vec3 viewDirection, f16vec3 normal, float16_t specularRatio, float16_t roughness, bool isSubsurface, out float pdf)
+  void calculateLightCandidateNormalizedWeight(int ithCandidate, vec3 surfacePoint, f16vec3 viewDirection, f16vec3 normal, float16_t specularRatio, float16_t roughness, bool isSubsurface, out float pdf)
   {
     int count = getLightCandidateCount();
     float totalWeight = 0;
     float chosenWeight = 0;
+    vec3 cellCenter = NEECache.getCenter();
+    pdf = 0.0;
     for (int i = 0; i < count; ++i)
     {
       NEELightCandidate candidate = getLightCandidate(i);
@@ -538,7 +496,7 @@ struct NEECell
     pdf = chosenWeight / totalWeight;
   }
 
-  void sampleLightCandidate(inout RAB_RandomSamplerState rtxdiRNG, vec2 uniformRandomNumber, vec3 cellCenter, vec3 surfacePoint, f16vec3 viewDirection, f16vec3 normal, float16_t specularRatio, float16_t roughness, bool isSubsurface, inout uint16_t lightIdx, out float invPdf)
+  void sampleLightCandidate(inout RAB_RandomSamplerState rtxdiRNG, vec2 uniformRandomNumber, vec3 surfacePoint, f16vec3 viewDirection, f16vec3 normal, float16_t specularRatio, float16_t roughness, bool isSubsurface, inout uint16_t lightIdx, out float invPdf)
   {
     int lightCount = cb.lightRanges[lightTypeCount-1].offset + cb.lightRanges[lightTypeCount-1].count;
     uint uniformLightIdx = clamp(uniformRandomNumber.y * lightCount, 0, lightCount-1);
@@ -549,6 +507,7 @@ struct NEECell
     float totalWeight = 0;
     float chosenWeight = 0;
     float uniformWeight = 0;
+    vec3 cellCenter = NEECache.getCenter();
     for (int i = 0; i < count; ++i)
     {
       NEELightCandidate candidate = getLightCandidate(i);
@@ -647,7 +606,7 @@ struct NEECell
     return NEE_CACHE_ELEMENTS;
   }
 
-  LightSample getLightSample(vec3 randomNumber, vec3 position, float16_t coneRadius, float16_t coneSpreadAngle, bool useCachedSamples = true)
+  LightSample getLightSample(vec3 randomNumber, vec3 position, float16_t coneRadius, float16_t coneSpreadAngle, out uint triangleID, bool useCachedSamples = true)
   {
     LightSample lightSampleTriangle;
     if(useCachedSamples)
@@ -656,6 +615,7 @@ struct NEECell
       NEESample sample = getSample(sampleIdx);
       lightSampleTriangle = sample.convertToLightSample();
       lightSampleTriangle.solidAnglePdf *= NEECacheUtils.calculateLightSamplingSolidAnglePDF(1.0, lightSampleTriangle.position, lightSampleTriangle.normal, position);
+      triangleID = sample.triangleID;
     }
     else
     {
@@ -664,208 +624,165 @@ struct NEECell
       NEECandidate candidate = sampleCandidate(randomNumber.x, lightObjectPdf);
       // Sample the selected triangle
       vec2 uv = vec2(randomNumber.y, randomNumber.z);
+      float area;
       lightSampleTriangle = NEECacheUtils.calculateLightSampleFromTriangle(
-        candidate.getSurfaceID(), candidate.getPrimitiveID(), uv, lightObjectPdf, position, coneRadius, coneSpreadAngle);
+        candidate.getSurfaceID(), candidate.getPrimitiveID(), uv, lightObjectPdf, position, coneRadius, coneSpreadAngle, area);
+      triangleID = -1;
     }
     return lightSampleTriangle;
   }
 }
 
-struct ThreadTask
-{
-  uint2 m_data;
-
-  static const uint s_lightOffset   = (1 << 23);
-  static const uint s_surfaceMask   = 0xffffff;
-  static const uint s_primitiveMask = 0xffffff;
-  static const uint s_invalidTask  = 0xffffffff;
-
-  bool isValid()
-  {
-    return any(m_data != s_invalidTask);
-  }
-
-  bool isTriangleTask()
-  {
-    return isValid() && (m_data.x & 0xffffff) < s_lightOffset;
-  }
-
-  bool isLightTask()
-  {
-    return isValid() && (m_data.x & 0xffffff) >= s_lightOffset;
-  }
-
-  bool getTriangleTask(out uint surfaceID, out uint primitiveID)
-  {
-    surfaceID   = m_data.x & s_surfaceMask;
-    primitiveID = m_data.y & s_primitiveMask;
-    return surfaceID != s_surfaceMask && primitiveID != s_primitiveMask;
-  }
-
-  uint getLightTask()
-  {
-    return (m_data.x & s_surfaceMask) - s_lightOffset;
-  }
-
-  uint getCellOffset()
-  {
-    return ((m_data.y >> 24) << 8) | (m_data.x >> 24);
-  }
-
-  [mutating] void packFromTriangleTask(uint cellOffset, uint surfaceID, uint primitiveID)
-  {
-    m_data.x = ((cellOffset & 0xff) << 24) | (surfaceID & s_surfaceMask);
-    m_data.y = ((cellOffset >> 8)   << 24) | (primitiveID & s_primitiveMask);
-  }
-
-  [mutating] void packFromLightTask(uint cellOffset, uint lightID)
-  {
-    lightID += s_lightOffset;
-    m_data.x = ((cellOffset & 0xff) << 24) | (lightID & s_surfaceMask);
-    m_data.y = ((cellOffset >> 8)   << 24);
-  }
-
-  static ThreadTask createFromTriangleTask(uint cellOffset, uint surfaceID, uint primitiveID)
-  {
-    ThreadTask task;
-    task.packFromTriangleTask(cellOffset, surfaceID, primitiveID);
-    return task;
-  }
-
-  static ThreadTask createFromLightTask(uint cellOffset, uint lightID)
-  {
-    ThreadTask task;
-    task.packFromLightTask(cellOffset, lightID);
-    return task;
-  }
-
-  static ThreadTask createEmpty()
-  {
-    ThreadTask task;
-    task.m_data = s_invalidTask;
-    return task;
-  }
-}
-
 struct NEECache
 {
-  static bool isInsideCache(vec3 position)
+  static vec3 getCenter()
   {
-    vec3 cameraPos = cameraGetWorldPosition(cb.camera);
-    vec3 offset = abs(position - cameraPos);
-    return all(offset < cb.neeCacheArgs.range * 0.5);
+    return cameraGetWorldPosition(cb.camera);
   }
 
-  static int cellToOffset(int3 cellID)
+  // This is an advanced form from Johannes Jendersie (aligned log grid):
+  // https://confluence.nvidia.com/display/~jjendersie/Spatial+Cache+Placement
+  // It discretizes the transitions such that there are less degenerate cases at the LOD boundaries.
+  // triangleNormal: A normal to apply jittering in the tangential plane. If (0), jittering is disabled.
+  //      TODO: it would be possible to use an unidirectional jitter in this case... e.g. for volumes
+  // jitterScale: 1.0 will jitter by the cell width while larger numbers will increase the blur and 0 will disable jittering.
+  #define HASH_GRID_MIN_LOG_LEVEL -127 // Exponent bias. See hash function below, uses 8 Bits for the level
+  static int4 computeLogGridPos(
+      float3 samplePos,
+      const float3 cameraPos,
+      const float distance /*Euclidean*/,
+      const float base,
+      const float baseLog,
+      const float resolution,
+      const f16vec3 triangleNormal,
+      uint jitterRnd,        // 32 bit random number used for jittering
+      const float jitterScale)
   {
-    if (any(cellID == -1))
+    // Compute the initial level for the hit point.
+    float lvlRnd = 0.0;
+    if (jitterScale != 0)
     {
-      return NEECell.s_invalidOffset;
+        // Jittering the level helps when moving around. Caches from the next level are then discovered early and
+        // can be populated with new information, before they get the major contributor for the current queries.
+        // const float lvlRnd = ((jitterRnd & 0xFF) / float(0xFF)) - 0.5; // Linear interpolation
+        // More focussed on the central level than linear interpolation:
+        lvlRnd = ((jitterRnd & 0x7F) / float(0x7F));
+        lvlRnd = lvlRnd * lvlRnd * 0.5;
+        if (jitterRnd & 0x80)
+            lvlRnd = -lvlRnd;
+    }
+    int lvl = floor(log(max(1e-30f, distance)) / baseLog + lvlRnd);
+    lvl = max(lvl, HASH_GRID_MIN_LOG_LEVEL);  // Safetynet when log() returns something too small.
+    // Get the distance to where the level begins and derive a voxel size from it.
+    // (If we would use exp(lvl+1) we would get the distance to the end, but the resolution parameter is somewhat
+    // arbitrary anyways. However, we need this minimum distance below for the alignment.
+    float levelDist = exp(lvl * baseLog);
+    float voxelSize = levelDist / resolution;
+
+    // Jittering to reduce grid artifacts.
+    // Note that the current version is not working for volumes (which would be simple to add by sampling a general
+    // direction on the sphere).
+    if (jitterScale != 0 && dot(triangleNormal, triangleNormal) > 0.f)
+    {
+        // Add a translation in the geometric tangential plane to avoid jumping away from surfaces.
+        f16vec3 b0 = 0;
+        f16vec3 b1 = 0;
+        calcOrthonormalBasis(triangleNormal, b0, b1);
+        float continousSize = jitterScale * distance / resolution;
+        // We use 8 random bits per dimension which is enough for a cosmetic jittering
+        const float u0 = ((jitterRnd >> 8) & 0xFF) / float(0xFF);
+        const float u1 = ((jitterRnd >> 16) & 0xFF) / float(0xFF);
+        const float u2 = ((jitterRnd >> 24) & 0xFF) / float(0xFF);
+        samplePos += (vec3(u0, u1, u2) - 0.5) * 1.0 * continousSize;
     }
 
-    int idx =
-      cellID.z * NEE_CACHE_PROBE_RESOLUTION * NEE_CACHE_PROBE_RESOLUTION +
-      cellID.y * NEE_CACHE_PROBE_RESOLUTION +
-      cellID.x;
-    return idx;
+    // Add an irrational number as an offset to avoid that objects in the 0-planes will lie on the boundary
+    // between two voxels.
+    const float3 offPos = samplePos + 1.6180339887;
+    const float3 offCam = cameraPos + 1.6180339887;
+    const int3 gridPos = floor(offPos / voxelSize);
+    return int4(gridPos, lvl - HASH_GRID_MIN_LOG_LEVEL);
   }
 
-  static int3 offsetToCell(int offset)
+  static uint computeDirectionalHash(f16vec3 normal)
   {
-    if (offset == NEECell.s_invalidOffset)
-    {
-      return int3(-1);
-    }
-    int3 cellID;
-    const int zSize = NEE_CACHE_PROBE_RESOLUTION * NEE_CACHE_PROBE_RESOLUTION;
-    const int ySize = NEE_CACHE_PROBE_RESOLUTION;
-
-    cellID.z = offset / zSize;
-    offset -= cellID.z * zSize;
-
-    cellID.y = offset / ySize;
-    offset -= cellID.y * ySize;
-
-    cellID.x = offset;
-    return cellID;
+#if 1
+    return 0;
+#else
+    f16vec3 absNormal = abs(normal);
+    float16_t maxAbsNormal = max(absNormal.x, max(absNormal.y, absNormal.z));
+    uint result = 0;
+    result |= (maxAbsNormal == absNormal.x) ? 1 : 0;
+    result |= (maxAbsNormal == absNormal.y) ? 2 : 0;
+    result |= (maxAbsNormal == absNormal.z) ? 4 : 0;
+    maxAbsNormal = -maxAbsNormal;
+    result |= (maxAbsNormal == absNormal.x) ? 8 : 0;
+    result |= (maxAbsNormal == absNormal.y) ? 16 : 0;
+    result |= (maxAbsNormal == absNormal.z) ? 32 : 0;
+    return result;
+#endif
   }
 
-  static int3 pointToCell(vec3 position, bool jittered, vec3 jitteredNumber)
+  static uint getSpatialHashValue(float3 position, f16vec3 normal, uint jitterRnd)
   {
-    float extend = cb.neeCacheArgs.range;
-    vec3 cameraPos = cameraGetWorldPosition(cb.camera);
-    vec3 origin = cameraPos - extend * 0.5;
-    vec3 UVW = (position - origin) / extend;
-    vec3 UVWi = UVW * NEE_CACHE_PROBE_RESOLUTION;
+    float resolution = cb.neeCacheArgs.resolution;
+    float minDistance = cb.neeCacheArgs.minRange;
+    int4 spatialHash = computeLogGridPos(position,
+                                    getCenter(),
+                                    max(minDistance, length(position - getCenter())),// const float distance /*Euclidean*/,
+                                    0.0,                                             //const float base,
+                                    1.0,                                             //const float baseLog,
+                                    resolution,                                      //const float resolution,
+                                    normal,
+                                    jitterRnd,                                       // 32 bit random number used for jittering
+                                    1.0                                              //const float jitterScale
+                                    );
 
-    // jitter cell ID
-    if(jittered)
-    {
-      vec3 fracUVWi = fract(UVWi);
-      ivec3 cellID = ivec3(UVWi);
-      cellID.x += jitteredNumber.x > fracUVWi.x ? 0 : 1;
-      cellID.y += jitteredNumber.y > fracUVWi.y ? 0 : 1;
-      cellID.z += jitteredNumber.z > fracUVWi.z ? 0 : 1;
-      
-      if (any(cellID < 0) || any(cellID > NEE_CACHE_PROBE_RESOLUTION-1))
-      {
-        return int3(-1);
-      }
-      return cellID;
-    }
-    else
-    {
-      UVWi += 0.5;
-      if (any(UVWi < 0) || any(UVWi > NEE_CACHE_PROBE_RESOLUTION-1))
-      {
-        return int3(-1);
-      }
-      return UVWi;
-    }
+    uint hashDir8Bit = computeDirectionalHash(normal);
+
+    //
+    // 64 bit shading key:
+    // 16 bits x
+    // 16 bits y
+    // 16 bits z
+    //  8 bits logGridLevel
+    //  8 bits normal
+    //
+    // 16 bits per component are more than enough!
+    // It allows a resolution parameter of >20000 for base 1.5 or >16000 for base 2.
+    const uint shadingKey0 = ((spatialHash.x & 0xFFFF) << 16)
+                           | ((spatialHash.y & 0xFFFF));
+    const uint shadingKey1 = ((spatialHash.z & 0xFFFF) << 16)
+                           | ((spatialHash.w & 0xFF) << 8)
+                           | ((hashDir8Bit & 0xFF));
+    uint2 hashKey2 = uint2(shadingKey0, shadingKey1);
+    uint hashKey = prospectorHash(hashKey2.x) ^ prospectorHash(hashKey2.y);
+    return hashKey & (NEE_CACHE_TOTAL_PROBE - 1);
   }
 
-  static int pointToOffset(vec3 position, bool jittered, vec3 jitteredNumber)
+  static uint getHashValue(int3 positionI)
   {
-    int3 cellID = pointToCell(position, jittered, jitteredNumber);
-    return cellToOffset(cellID);
+    uint hash = 0;
+    hash ^= hashJenkins(positionI.x);
+    hash ^= hashJenkins(positionI.y);
+    hash ^= hashJenkins(positionI.z);
+    return hash & (NEE_CACHE_TOTAL_PROBE - 1);
   }
 
-  static float getCellSize()
+  static uint getAddressJittered(vec3 position, f16vec3 normal, uint jitter)
   {
-    return cb.neeCacheArgs.range / NEE_CACHE_PROBE_RESOLUTION;
+    return getSpatialHashValue(position, normal, jitter);
   }
 
-  static float getVolumeSize()
+  static int pointToOffset(vec3 position, f16vec3 normal, uint jitteredNumber)
   {
-    return cb.neeCacheArgs.range;
-  }
-
-  static vec3 cellToCenterPoint(ivec3 cellID)
-  {
-    float extend = cb.neeCacheArgs.range;
-    vec3 cameraPos = cameraGetWorldPosition(cb.camera);
-    vec3 origin = cameraPos - extend * 0.5;
-    vec3 UVW = vec3(cellID) / NEE_CACHE_PROBE_RESOLUTION;
-    vec3 position = UVW * extend + origin;
-    return position;
-  }
-
-  static NEECell getCell(int3 cellID)
-  {
-    NEECell cell = {};
-    cell.m_offset = cellToOffset(cellID);
-    return cell;
+    return getAddressJittered(position, normal, jitteredNumber);
   }
 
   static NEECell getCell(int offset) {
     NEECell cell = {};
     cell.m_offset = offset;
     return cell;
-  }
-
-  static NEECell findCell(vec3 point, bool jittered, vec3 jitteredNumber)
-  {
-    return getCell(pointToCell(point, jittered, jitteredNumber));
   }
 
   static const uint s_analyticalLightStartIdx = 0xff0000;
@@ -883,39 +800,6 @@ struct NEECache
   static uint decodeAnalyticalLight(uint idx)
   {
     return idx - s_analyticalLightStartIdx;
-  }
-
-  static void loadThreadTask(int2 pixel, out uint cellOffset, out uint surfaceID, out uint primitiveID)
-  {
-    uint2 data = NeeCacheThreadTask[pixel];
-    surfaceID   = data.x & 0xffffff;
-    primitiveID = data.y & 0xffffff;
-    if (surfaceID == 0xffffff || primitiveID == 0xffffff)
-    {
-      surfaceID = primitiveID = 0xffffffff;
-    }
-    cellOffset = (data.x >> 24) | ((data.y & 0xff000000) >> 16);
-  }
-
-#if NEE_CACHE_WRITE_THREAD_TASK
-  static void storeThreadTask(int2 pixel, uint cellOffset, uint surfaceID, uint primitiveID) {
-    uint2 data = uint2(surfaceID, primitiveID) & 0xffffff;
-    data.x = data.x | ((cellOffset & 0xff) << 24);
-    data.y = data.y | ((cellOffset & 0xff00) << 16);
-    NeeCacheThreadTask[pixel] = data;
-  }
-
-  static void storeThreadTask(int2 pixel, ThreadTask task)
-  {
-    NeeCacheThreadTask[pixel] = task.m_data;
-  }
-#endif
-
-  static ThreadTask loadThreadTask(int2 pixel)
-  {
-    ThreadTask task;
-    task.m_data = NeeCacheThreadTask[pixel];
-    return task;
   }
 
   static bool shouldUseHigherBounceNeeCache(bool isSpecularLobe, float16_t isotropicRoughness)

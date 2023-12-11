@@ -78,10 +78,19 @@ f16vec3 handleVisibilityVertex(Ray ray, RayHitInfo rayHitInfo, uint8_t visibilit
     const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
       opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteraction);
 
-    SubsurfaceMaterial subSurfaceMaterial;
-    const bool isSubsurface = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
+    const SubsurfaceMaterial subsurfaceMaterial = subsurfaceMaterialCreate(opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction);
+    const bool isSubsurface = isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
 
-    if (!isSubsurface)
+    const bool handleStochasticAlphaBlend =
+      cb.enableStochasticAlphaBlend &&
+      opaqueSurfaceMaterialInteraction.opacity > cb.resolveTransparencyThreshold &&
+      opaqueSurfaceMaterialInteraction.opacity <= cb.resolveStochasticAlphaBlendThreshold;
+
+    // We need to calculate the attenuation with opaque surface opacity in these 2 cases:
+    //   1. The surface doesn't have subsurface (do traditional alpha-blending)
+    //   2. The surface has subsurface, but the surface point need to be discarded because it fails the alpha-test.
+    //      This is necessary for subsurface material or the alpha-test will be ignored.
+    if (!isSubsurface || handleStochasticAlphaBlend || opaqueSurfaceMaterialInteraction.opacity <= cb.resolveTransparencyThreshold)
     {
       return 1.0h - opaqueSurfaceMaterialInteraction.opacity;
     }
@@ -100,16 +109,16 @@ f16vec3 handleVisibilityVertex(Ray ray, RayHitInfo rayHitInfo, uint8_t visibilit
       // Calculate path integral throughput/weight
       const float16_t outsideFresnel = evalTranslucentSchlickFresnel(baseReflectivity, normalDotOutputDirection);
       const float16_t insideFresnel = evalTranslucentSchlickFresnelTIR(baseReflectivity, insideRelativeRefractiveIndex, normalDotOutputDirection);
-      const float16_t attenuationDistance = subSurfaceMaterial.measurementDistance * subSurfaceMaterial.measurementDistance;
-      const f16vec3 attenuation = evalBeerLambertAttenuation(subSurfaceMaterial.volumetricAttenuationCoefficient, attenuationDistance * rcp(float(normalDotOutputDirection)));
+      const float16_t attenuationDistance = subsurfaceMaterial.measurementDistance * subsurfaceMaterial.measurementDistance;
+      const f16vec3 attenuation = evalBeerLambertAttenuation(subsurfaceMaterial.volumetricAttenuationCoefficient, attenuationDistance * rcp(float(normalDotOutputDirection)));
 
       if (insideFresnel >= 1.0h)
       {
         return 0.0h;
       }
 
-      return subSurfaceMaterial.singleScatteringAlbedo * (1.0f - outsideFresnel) * (1.0f - insideFresnel) *
-             safePositiveDivide((subSurfaceMaterial.volumetricAttenuationCoefficient * attenuationDistance),
+      return subsurfaceMaterial.singleScatteringAlbedo * (1.0f - outsideFresnel) * (1.0f - insideFresnel) *
+             safePositiveDivide((subsurfaceMaterial.volumetricAttenuationCoefficient * attenuationDistance),
               normalDotOutputDirection, materialEpsilon) *
              rcp(fourPi) * attenuation;
     }

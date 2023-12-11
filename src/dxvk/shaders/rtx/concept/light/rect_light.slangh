@@ -59,11 +59,11 @@ float rectLightCalcPositionalWeight(RectLight rectLight, vec3 position, inout ve
   );
 }
 
-bool rectLightCalcVisibilityWeight(RectLight rectLight, f16vec3 triangleNormal, vec3 lightVector, float16_t maxRectRadius, const bool isSubSurface)
+bool rectLightCalcVisibilityWeight(RectLight rectLight, f16vec3 triangleNormal, vec3 lightVector, float16_t maxRectRadius, const bool isSubsurface)
 {
   // Cull the rects that are completely hidden below the surface or the surface has subsurface material,
   // and the rects that are oriented away from the surface.
-  const bool frontSideRect = (isSubSurface || dot(lightVector, vec3(triangleNormal)) > float(-maxRectRadius)) &&
+  const bool frontSideRect = (isSubsurface || dot(lightVector, vec3(triangleNormal)) > float(-maxRectRadius)) &&
                              (dot(lightVector, vec3(rectLight.normal)) < 0.0f);
 
   return frontSideRect;

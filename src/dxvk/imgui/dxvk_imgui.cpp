@@ -2600,7 +2600,7 @@ namespace dxvk {
         ImGui::Checkbox("Enable Volumetric Lighting", &RtxOptions::Get()->enableVolumetricLightingObject());
 
         if (RtxOptions::Get()->enableVolumetricLighting()) {
-          ImGui::DragFloat3("Transmittance Color", &RtxOptions::Get()->volumetricTransmittanceColorObject(), 0.01f, 0.0f, 1.0f, "%.3f");
+          ImGui::DragFloat3("Transmittance Color", &RtxOptions::Get()->volumetricTransmittanceColorObject(), 0.01f, 0.0f, VolumeManager::MaxTransmittanceValue, "%.3f");
           ImGui::DragFloat("Transmittance Measurement Distance", &RtxOptions::Get()->volumetricTransmittanceMeasurementDistanceObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
           ImGui::DragFloat3("Single Scattering Albedo", &RtxOptions::Get()->volumetricSingleScatteringAlbedoObject(), 0.01f, 0.0f, 1.0f, "%.3f");
           ImGui::DragFloat("Anisotropy", &RtxOptions::Get()->volumetricAnisotropyObject(), 0.01f, -1.0f, 1.0f, "%.3f", sliderFlags);
@@ -2646,6 +2646,14 @@ namespace dxvk {
       ImGui::Indent();
 
       ImGui::Checkbox("Enable Thin Opaque", &RtxOptions::SubsurfaceScattering::enableThinOpaqueObject());
+
+      if (RtxOptions::SubsurfaceScattering::enableThinOpaque()) {
+        ImGui::Indent();
+
+        ImGui::Checkbox("Enable Texture Maps", &RtxOptions::SubsurfaceScattering::enableTextureMapsObject());
+
+        ImGui::Unindent();
+      }
 
       ImGui::Unindent();
     }

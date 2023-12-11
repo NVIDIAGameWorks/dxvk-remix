@@ -1109,8 +1109,8 @@ namespace dxvk {
       *(ommIndex++) = i;
     }
 
-    ctx->updateBuffer(triangleArrayBuffer, 0, triangleArrayBufferSize, hostTriangleArrayBuffer.data(), true);
-    ctx->updateBuffer(triangleIndexBuffer, 0, triangleIndexBufferSize, hostTriangleIndexBuffer.data(), true);
+    ctx->writeToBuffer(triangleArrayBuffer, 0, triangleArrayBufferSize, hostTriangleArrayBuffer.data(), true);
+    ctx->writeToBuffer(triangleIndexBuffer, 0, triangleIndexBufferSize, hostTriangleIndexBuffer.data(), true);
 
     return OpacityMicromapManager::OmmResult::Success;
   }

@@ -104,7 +104,9 @@ PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionReadF
   Texture2D<float4> albedoTexture,
   RWTexture2D<float4> baseReflectivityTexture,
   Texture2D<uint> data0Texture,
-  Texture2D<uint> data1Texture)
+  Texture2D<uint> data1Texture,
+  Texture2D<uint> surfaceIndexTexture,
+  Texture2D<uint4> subsurfaceData)
 {
   GBufferMemoryPolymorphicSurfaceMaterialInteraction memory;
 
@@ -115,7 +117,28 @@ PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionReadF
   memory.data0 = data0Texture[position].x;
   memory.data1 = data1Texture[position].x;
 
-  return polymorphicSurfaceMaterialInteractionCreate(memory);
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction = polymorphicSurfaceMaterialInteractionCreate(memory);
+  if (cb.thinOpaqueEnable)
+  {
+    const uint16_t primarySurfaceIndex = uint16_t(surfaceIndexTexture[position]);
+    const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
+    const OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(primarySurfaceIndex, memoryPolymorphicSurfaceMaterial);
+    const SubsurfaceMaterialInteraction subsurfaceMaterialInteraction = subSurfaceMaterialReadHelper(subsurfaceData[position]);
+
+    polymorphicSurfaceMaterialInteraction.fdata5 = subsurfaceMaterialInteraction.measurementDistance;
+    polymorphicSurfaceMaterialInteraction.idata0 = subsurfaceMaterialInteraction.packedTransmittanceColor;
+    polymorphicSurfaceMaterialInteraction.idata1 = subsurfaceMaterialInteraction.packedSingleScatteringAlbedo;
+    polymorphicSurfaceMaterialInteraction.bdata1 = subsurfaceMaterialInteraction.volumetricAnisotropy;
+  }
+  else
+  {
+    polymorphicSurfaceMaterialInteraction.fdata5 = 0.0h;
+    polymorphicSurfaceMaterialInteraction.idata0 = 0;
+    polymorphicSurfaceMaterialInteraction.idata1 = 0;
+    polymorphicSurfaceMaterialInteraction.bdata1 = 0;
+  }
+
+  return polymorphicSurfaceMaterialInteraction;
 }
 
 void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
@@ -134,8 +157,9 @@ void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
   RWTexture2D<float4> baseReflectivityTexture,
   RWTexture2D<uint> data0Texture,
   RWTexture2D<uint> data1Texture,
-  RWTexture2D<float2> pomTextureCoords,
-  RWTexture2D<uint> surfaceIndexTexture)
+  RWTexture2D<float2> sharedTextureCoords,
+  RWTexture2D<uint> surfaceIndexTexture,
+  RWTexture2D<uint4> subsurfaceDataTexture)
 {
   const GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfaceMaterialInteraction =
     gBufferMemoryPolymorphicSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
@@ -186,9 +210,23 @@ void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
 
     surfaceIndexTexture[position] = uint32_t(surface.surfaceMaterialIndex);
 
-    // Only write pomTextureCoords if the material has a height texture.
+    // Only write sharedTextureCoords if the material has a height texture, or the material has subsurface texture(s)
     if (polymorphicSurfaceMaterialInteractionHasHeightTexture(polymorphicSurfaceMaterialInteraction)) {
-      pomTextureCoords[position] = surfaceInteraction.textureCoordinates;
+      sharedTextureCoords[position] = surfaceInteraction.textureCoordinates;
+    }
+
+    if (polymorphicSurfaceMaterialInteractionHasSubsurface(polymorphicSurfaceMaterialInteraction))
+    {
+      subsurfaceDataTexture[position] = uint4(
+        polymorphicSurfaceMaterialInteraction.idata0,                      // transmittanceColor
+        float16BitsToUint16(polymorphicSurfaceMaterialInteraction.fdata5), // measurementDistance
+        polymorphicSurfaceMaterialInteraction.idata1,                      // singleScatteringAlbedo
+        uint16_t(polymorphicSurfaceMaterialInteraction.bdata1)             // volumetricAnisotropy
+      );
+    }
+    else
+    {
+      subsurfaceDataTexture[position] = uint4(0, 0, 0, 0);
     }
   }
 }

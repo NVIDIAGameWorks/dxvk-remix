@@ -37,3 +37,6 @@ Texture2D<uint2> NeeCacheThreadTask;
 
 layout(binding = UPDATE_NEE_CACHE_BINDING_PRIMITIVE_ID_PREFIX_SUM) 
 StructuredBuffer<uint> PrimitiveIDPrefixSum;
+
+layout(binding = UPDATE_NEE_CACHE_BINDING_LAST_PRIMITIVE_ID_PREFIX_SUM) 
+StructuredBuffer<uint> LastPrimitiveIDPrefixSum;

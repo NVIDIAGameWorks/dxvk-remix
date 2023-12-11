@@ -20,7 +20,7 @@
         <package name="rtx-remix-nv_usd" version="5" />
     </dependency>
     <dependency name="omni_core_materials" linkPath="external/omni_core_materials">
-        <package name="rtx-remix-omni_core_materials" version="6" />
+        <package name="rtx-remix-omni_core_materials" version="9" />
     </dependency>
     <dependency name="reflex" linkPath="external/reflex">
         <package name="rtx-remix-reflex" version="1" />
@@ -41,6 +41,6 @@
         <package name="ngx_sdk_dlss" version="dlss_0602_2" />
     </dependency>
     <dependency name="ngx_sdk_dlfg" linkPath="external/ngx_sdk_dlfg">
-        <package name="ngx_sdk_dlfg" version="dlfg_0602_2" />
+        <package name="rtx-remix-ngx_sdk_dlfg" version="1" />
     </dependency>
 </project>

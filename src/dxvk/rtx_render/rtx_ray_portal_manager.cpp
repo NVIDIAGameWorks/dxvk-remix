@@ -99,8 +99,8 @@ namespace dxvk {
       return;
     }
 
-    // TODO: ONLY HANDLING 16 bit indices
-    if (originalGeometryData.indexBuffer.indexType() != VK_INDEX_TYPE_UINT16)
+    // Portals must be simple plane like objects, and so have 6 or less indices (two triangles)
+    if (originalGeometryData.indexCount > 6)
       return;
 
     const GeometryBufferData bufferData(originalGeometryData);
@@ -117,8 +117,6 @@ namespace dxvk {
     // Make sure that the geometry matches our expected pattern, which is 1 quad as a triangle strip
     // Note: Portal (at least our modified version of it) has 4 vertices for the Portal object, each of which represents a corner.
     constexpr uint32_t indicesPerQuad = 4;
-    if (originalGeometryData.indexCount != indicesPerQuad || originalGeometryData.topology != VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP)
-      return;
 
     // Calculate world space vertices of the Ray Portal
 
@@ -127,8 +125,15 @@ namespace dxvk {
 
     Vector3 maxAbsVertexWorldCoords = Vector3(0.f);
 
-    for (size_t idx = 0; idx < indicesPerQuad; ++idx) {
-      const uint16_t currentIndex = bufferData.getIndex(idx);
+    const bool indices16bit = (originalGeometryData.indexBuffer.indexType() == VK_INDEX_TYPE_UINT16);
+
+    std::unordered_set<uint32_t> uniqueIndices;
+    for (size_t idx = 0; idx < originalGeometryData.indexCount; ++idx) {
+      const uint32_t currentIndex = indices16bit ? bufferData.getIndex(idx) : bufferData.getIndex32(idx);
+      if (uniqueIndices.find(currentIndex) != uniqueIndices.end()) {
+        continue;
+      }
+
       // Note: This may not be "model" coordinates as many games like to pre-transform the positions into worldspace 
       // to perhaps avoid needing a world matrix in legacy
       // API implementations where it may have had a more significant cost to apply.
@@ -137,11 +142,17 @@ namespace dxvk {
       const Vector3 currentWorldPosition((objectToWorld * currentPosition).xyz());
 
       centroid += currentWorldPosition;
-      worldVertices[idx] = currentWorldPosition;
+      worldVertices[uniqueIndices.size()] = currentWorldPosition;
 
       for (uint32_t i = 0; i < 3; i++)
         maxAbsVertexWorldCoords[i] = std::max(abs(currentWorldPosition[i]), maxAbsVertexWorldCoords[i]);
+
+      uniqueIndices.insert(currentIndex);
     }
+
+    // Not enough unique vertices to extract a Portal
+    if (uniqueIndices.size() < 3)
+      return;
 
     centroid /= static_cast<float>(indicesPerQuad);
 

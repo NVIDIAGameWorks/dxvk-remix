@@ -70,11 +70,22 @@ struct NeeCacheArgs {
 
   NeeEnableMode enableModeAfterFirstBounce;
   float ageCullingSpeed;
-  float range;
   float emissiveTextureSampleFootprintScale;
+  float padding;
 
-  uint3 pad0;
+  float resolution;
+  float minRange;
+  float learningRate;
   uint clearCache;
+};
+
+struct DomeLightArgs {
+  mat4 worldToLightTransform;
+
+  vec3 radiance;
+  uint active;
+
+  uint textureIndex;
 };
 
 // Constant buffer
@@ -291,8 +302,10 @@ struct RaytraceArgs {
   uint pomEnableReSTIRGI;
   uint pomEnablePSR;
   uint pomMaxIterations;
-
   uint thinOpaqueEnable;
-
   float totalMipBias;
+
+  DomeLightArgs domeLightArgs;
+
+  float2 upscaleFactor;   // Displayed(upscaled) / RT resolution
 };

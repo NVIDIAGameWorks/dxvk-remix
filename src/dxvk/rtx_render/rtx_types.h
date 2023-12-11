@@ -33,6 +33,9 @@
 #include <vector>
 #include <future>
 
+using remixapi_MaterialHandle = struct remixapi_MaterialHandle_T*;
+using remixapi_MeshHandle = struct remixapi_MeshHandle_T*;
+
 namespace dxvk 
 {
 class RtCamera;
@@ -166,6 +169,8 @@ struct RasterGeometry {
 
   AxisAlignedBoundingBox boundingBox;
   Future<AxisAlignedBoundingBox> futureBoundingBox;
+
+  remixapi_MaterialHandle externalMaterial = nullptr;
 
   template<uint32_t rule>
   const XXH64_hash_t getHashForRule() const {
@@ -335,6 +340,10 @@ struct GeometryBufferData {
     return indexData[i * indexStride];
   }
 
+  uint32_t getIndex32(uint32_t i) const {
+    return (uint32_t)indexData[i * indexStride];
+  }
+
   Vector3& getPosition(uint32_t index) const {
     return *(Vector3*) (positionData + index * positionStride);
   }
@@ -485,6 +494,7 @@ private:
   friend class SceneManager;
   friend struct D3D9Rtx;
   friend class TerrainBaker;
+  friend struct RemixAPIPrivateAccessor;
 
   bool finalizeGeometryHashes();
   void finalizeGeometryBoundingBox();

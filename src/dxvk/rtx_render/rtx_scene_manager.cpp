@@ -476,6 +476,8 @@ namespace dxvk {
         replacementMaterial.emplace(MaterialData(*pReplacementMaterial));
         // merge in the input material from game
         replacementMaterial->mergeLegacyMaterial(input.getMaterialData());
+        // mark material as replacement so we know how to handle sampler state
+        replacementMaterial->setReplacement();
         // bind as a material override for this draw
         overrideMaterialData = &replacementMaterial.value();
       }
@@ -523,7 +525,7 @@ namespace dxvk {
 
         if (overrideMaterialData == nullptr) {
           // Note: Color texture used as mask texture for the Ray Portal
-          rayPortalMaterialData.emplace(RayPortalMaterialData { input.getMaterialData().getColorTexture(), texture2, static_cast<uint8_t>(rayPortalTextureIndex), 1, 1, 0, 0.f,true, 1.f });
+          rayPortalMaterialData.emplace(RayPortalMaterialData { input.getMaterialData().getColorTexture(), texture2, static_cast<uint8_t>(rayPortalTextureIndex), 1, 1, 0, 0.f,true, 1.f, 0, 0, 0 });
 
           // Note: A bit dirty but since we use a pointer to the material data in processDrawCallState, we need a pointer to this locally created one on the
           // stack in a place that doesn't go out of scope without actually allocating any heap memory.
@@ -537,8 +539,9 @@ namespace dxvk {
     const bool highlightUnsafeAnchor = RtxOptions::Get()->getHighlightUnsafeAnchorModeEnabled() &&
         input.getGeometryData().indexBuffer.defined() && input.getGeometryData().vertexCount > input.getGeometryData().indexCount;
     if (highlightUnsafeAnchor) {
-      static MaterialData sHighlightMaterialData(OpaqueMaterialData(TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), 
-          0.f, 1.f, Vector3(0.2f, 0.2f, 0.2f), 1.0f, 0.1f, 0.1f, Vector3(0.46f, 0.26f, 0.31f), true, 1, 1, 0, false, false, 200.f, true, false, BlendType::kAlpha, false, AlphaTestType::kAlways, 0, 0.0f, Vector3(), 0.0f, Vector3(), 0.0f));
+      static MaterialData sHighlightMaterialData(OpaqueMaterialData(TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(),
+          0.f, 1.f, Vector3(0.2f, 0.2f, 0.2f), 1.0f, 0.1f, 0.1f, Vector3(0.46f, 0.26f, 0.31f), true, 1, 1, 0, false, false, 200.f, true, false, BlendType::kAlpha, false, AlphaTestType::kAlways, 0, 0.0f, Vector3(), 0.0f, Vector3(), 0.0f,
+          lss::Mdl::Filter::Nearest, lss::Mdl::WrapMode::Repeat, lss::Mdl::WrapMode::Repeat));
       overrideMaterialData = &sHighlightMaterialData;
     }
 
@@ -640,8 +643,9 @@ namespace dxvk {
           overrideMaterialData = replacement.materialData;
         }
         if (highlightUnsafeReplacement) {
-          static MaterialData sHighlightMaterialData(OpaqueMaterialData(TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), 
-              0.f, 1.f, Vector3(0.2f, 0.2f, 0.2f), 1.f, 0.1f, 0.1f, Vector3(1.f, 0.f, 0.f), true, 1, 1, 0, false, false, 200.f, true, false, BlendType::kAlpha, false, AlphaTestType::kAlways, 0, 0.0f, Vector3(), 0.0f, Vector3(), 0.0f));
+          static MaterialData sHighlightMaterialData(OpaqueMaterialData(TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(), TextureRef(),
+              0.f, 1.f, Vector3(0.2f, 0.2f, 0.2f), 1.f, 0.1f, 0.1f, Vector3(1.f, 0.f, 0.f), true, 1, 1, 0, false, false, 200.f, true, false, BlendType::kAlpha, false, AlphaTestType::kAlways, 0, 0.0f, Vector3(), 0.0f, Vector3(), 0.0f,
+              lss::Mdl::Filter::Nearest, lss::Mdl::WrapMode::Repeat, lss::Mdl::WrapMode::Repeat));
           if (getGameTimeSinceStartMS() / 200 % 2 == 0) {
             overrideMaterialData = &sHighlightMaterialData;
           }
@@ -806,7 +810,9 @@ namespace dxvk {
 
   uint64_t SceneManager::processDrawCallState(Rc<DxvkContext> ctx, const DrawCallState& drawCallState, const MaterialData* overrideMaterialData) {
     ScopedCpuProfileZone();
-    const MaterialData& renderMaterialData = overrideMaterialData != nullptr ? *overrideMaterialData : drawCallState.getMaterialData();
+    const bool usingOverrideMaterial = overrideMaterialData != nullptr;
+    const MaterialData& renderMaterialData =
+      usingOverrideMaterial ? *overrideMaterialData : drawCallState.getMaterialData();
     if (renderMaterialData.getIgnored()) {
       return UINT64_MAX;
     }
@@ -841,10 +847,24 @@ namespace dxvk {
     // Legacy and replacement materials should follow same filtering but due to lack of override capability per texture
     // legacy textures use original sampler to stay true to the original intent while replacements use more advanced filtering
     // for better quality by default.
-    uint32_t samplerIndex;
-    trackSampler(drawCallState.getMaterialData().getSampler(), (renderMaterialDataType != MaterialDataType::Legacy), samplerIndex);
+    Rc<DxvkSampler> originalSampler = drawCallState.getMaterialData().getSampler(); // convenience variable for debug
+    Rc<DxvkSampler> sampler = originalSampler;
+    const bool isLegacyMaterial = (renderMaterialDataType == MaterialDataType::Legacy);
+    // If the original sampler if valid and the new rendering material is not legacy type
+    // go ahead with patching and maybe merging the sampler states
+    if(originalSampler != nullptr && !isLegacyMaterial) {
+      DxvkSamplerCreateInfo samplerInfo = originalSampler->info(); // Use sampler create info struct as convenience
+      // Only merge prior to patching if this is a replacement material
+      if(renderMaterialData.isReplacement()) { 
+        renderMaterialData.populateSamplerInfo(samplerInfo);
+      }
+      sampler = patchSampler(samplerInfo.magFilter,
+                             samplerInfo.addressModeU, samplerInfo.addressModeV, samplerInfo.addressModeW,
+                             samplerInfo.borderColor);
+    }
+    uint32_t samplerIndex = trackSampler(sampler);
 
-    if (renderMaterialDataType == MaterialDataType::Legacy || renderMaterialDataType == MaterialDataType::Opaque) {
+    if (isLegacyMaterial || renderMaterialDataType == MaterialDataType::Opaque) {
       uint32_t albedoOpacityTextureIndex = kSurfaceMaterialInvalidTextureIndex;
       uint32_t normalTextureIndex = kSurfaceMaterialInvalidTextureIndex;
       uint32_t tangentTextureIndex = kSurfaceMaterialInvalidTextureIndex;
@@ -853,6 +873,9 @@ namespace dxvk {
       uint32_t metallicTextureIndex = kSurfaceMaterialInvalidTextureIndex;
       uint32_t emissiveColorTextureIndex = kSurfaceMaterialInvalidTextureIndex;
       uint32_t subsurfaceMaterialIndex = kSurfaceMaterialInvalidTextureIndex;
+      uint32_t subsurfaceTransmittanceTextureIndex = kSurfaceMaterialInvalidTextureIndex;
+      uint32_t subsurfaceThicknessTextureIndex = kSurfaceMaterialInvalidTextureIndex;
+      uint32_t subsurfaceSingleScatteringAlbedoTextureIndex = kSurfaceMaterialInvalidTextureIndex;
 
       float anisotropy;
       float emissiveIntensity;
@@ -950,13 +973,25 @@ namespace dxvk {
           ++m_activePOMCount;
         }
 
-        subsurfaceTransmittanceColor = opaqueMaterialData.getSubsurfaceTransmittanceColor();
         subsurfaceMeasurementDistance = opaqueMaterialData.getSubsurfaceMeasurementDistance() * RtxOptions::SubsurfaceScattering::surfaceThicknessScale();
-        subsurfaceSingleScatteringAlbedo = opaqueMaterialData.getSubsurfaceSingleScatteringAlbedo();
-        subsurfaceVolumetricAnisotropy = opaqueMaterialData.getSubsurfaceVolumetricAnisotropy();
 
-        if (RtxOptions::SubsurfaceScattering::enableThinOpaque() && subsurfaceMeasurementDistance > 0.0f) {
+        if (RtxOptions::SubsurfaceScattering::enableTextureMaps()) {
+          trackTexture(ctx, opaqueMaterialData.getSubsurfaceThicknessTexture(), subsurfaceThicknessTextureIndex, hasTexcoords);
+        }
+
+        if (RtxOptions::SubsurfaceScattering::enableThinOpaque() &&
+            (subsurfaceMeasurementDistance > 0.0f || subsurfaceTransmittanceTextureIndex != kSurfaceMaterialInvalidTextureIndex)) {
+          subsurfaceTransmittanceColor = opaqueMaterialData.getSubsurfaceTransmittanceColor();
+          subsurfaceSingleScatteringAlbedo = opaqueMaterialData.getSubsurfaceSingleScatteringAlbedo();
+          subsurfaceVolumetricAnisotropy = opaqueMaterialData.getSubsurfaceVolumetricAnisotropy();
+
+          if (RtxOptions::SubsurfaceScattering::enableTextureMaps()) {
+            trackTexture(ctx, opaqueMaterialData.getSubsurfaceTransmittanceTexture(), subsurfaceTransmittanceTextureIndex, hasTexcoords);
+            trackTexture(ctx, opaqueMaterialData.getSubsurfaceSingleScatteringAlbedoTexture(), subsurfaceSingleScatteringAlbedoTextureIndex, hasTexcoords);
+          }
+
           const RtSubsurfaceMaterial subsurfaceMaterial(
+            subsurfaceTransmittanceTextureIndex, subsurfaceThicknessTextureIndex, subsurfaceSingleScatteringAlbedoTextureIndex,
             subsurfaceTransmittanceColor, subsurfaceMeasurementDistance, subsurfaceSingleScatteringAlbedo, subsurfaceVolumetricAnisotropy);
           subsurfaceMaterialIndex = m_surfaceMaterialExtensionCache.track(subsurfaceMaterial);
         }
@@ -1014,8 +1049,7 @@ namespace dxvk {
       uint32_t maskTextureIndex2 = kSurfaceMaterialInvalidTextureIndex;
       trackTexture(ctx, rayPortalMaterialData.getMaskTexture2(), maskTextureIndex2, hasTexcoords, false);
 
-      uint32_t samplerIndex2;
-      trackSampler(drawCallState.getMaterialData().getSampler2(), false, samplerIndex2);
+      uint32_t samplerIndex2 = trackSampler(drawCallState.getMaterialData().getSampler2());
 
       uint8_t rayPortalIndex = rayPortalMaterialData.getRayPortalIndex();
       float rotationSpeed = rayPortalMaterialData.getRotationSpeed();
@@ -1090,21 +1124,35 @@ namespace dxvk {
     return m_findLegacyTexture->promise.get_future();
   }
 
-  void SceneManager::trackSampler(Rc<DxvkSampler> sampler, bool patchSampler, uint32_t& samplerIndex) {
-    samplerIndex = kSurfaceMaterialInvalidTextureIndex;
+  SceneManager::SamplerIndex SceneManager::trackSampler(Rc<DxvkSampler> sampler) {
+    if (sampler == nullptr) {
+      ONCE(Logger::warn("Found a null sampler. Fallback to linear-repeat"));
+      sampler = patchSampler(
+        VK_FILTER_LINEAR,
+        VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        VK_SAMPLER_ADDRESS_MODE_REPEAT,
+        VkClearColorValue {});
+    }
+    return m_samplerCache.track(sampler);
+  }
 
-    if (sampler.ptr()) {
-      if (patchSampler) {
-        auto& resourceManager = m_device->getCommon()->getResources();
-        const DxvkSamplerCreateInfo& originalInfo = sampler->info();
-
-        // Create a sampler to account for DLSS lod bias and any custom filtering overrides the user has set
-        // TODO: Note eventually we should support setting the filter mode (nearest/linear) for patched samplers based on material replacement data in USD.
-        sampler = resourceManager.getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR, originalInfo.addressModeU, originalInfo.addressModeV, originalInfo.addressModeW, originalInfo.borderColor, getTotalMipBias(), RtxOptions::Get()->getAnisotropicFilteringEnabled());
-      }
-
-      samplerIndex = m_samplerCache.track(sampler);
-    }    
+  Rc<DxvkSampler> SceneManager::patchSampler( const VkFilter filterMode,
+                                              const VkSamplerAddressMode addressModeU,
+                                              const VkSamplerAddressMode addressModeV,
+                                              const VkSamplerAddressMode addressModeW,
+                                              const VkClearColorValue borderColor) {
+    auto& resourceManager = m_device->getCommon()->getResources();
+    // Create a sampler to account for DLSS lod bias and any custom filtering overrides the user has set
+    return resourceManager.getSampler(
+      filterMode,
+      VK_SAMPLER_MIPMAP_MODE_LINEAR,
+      addressModeU,
+      addressModeV,
+      addressModeW,
+      borderColor,
+      getTotalMipBias(),
+      RtxOptions::Get()->getAnisotropicFilteringEnabled());
   }
 
   void SceneManager::addLight(const D3DLIGHT9& light) {
@@ -1255,7 +1303,7 @@ namespace dxvk {
         assert(dataOffset == surfaceMaterialsGPUSize);
         assert(surfaceMaterialsGPUData.size() == surfaceMaterialsGPUSize);
 
-        ctx->updateBuffer(m_surfaceMaterialBuffer, 0, surfaceMaterialsGPUData.size(), surfaceMaterialsGPUData.data());
+        ctx->writeToBuffer(m_surfaceMaterialBuffer, 0, surfaceMaterialsGPUData.size(), surfaceMaterialsGPUData.data());
       }
 
       // Surface Material Extension Buffer
@@ -1279,7 +1327,7 @@ namespace dxvk {
         assert(dataOffset == surfaceMaterialExtensionsGPUSize);
         assert(surfaceMaterialExtensionsGPUData.size() == surfaceMaterialExtensionsGPUSize);
 
-        ctx->updateBuffer(m_surfaceMaterialExtensionBuffer, 0, surfaceMaterialExtensionsGPUData.size(), surfaceMaterialExtensionsGPUData.data());
+        ctx->writeToBuffer(m_surfaceMaterialExtensionBuffer, 0, surfaceMaterialExtensionsGPUData.size(), surfaceMaterialExtensionsGPUData.data());
       }
 
       // Volume Material buffer
@@ -1303,7 +1351,7 @@ namespace dxvk {
         assert(dataOffset == volumeMaterialsGPUSize);
         assert(volumeMaterialsGPUData.size() == volumeMaterialsGPUSize);
 
-        ctx->updateBuffer(m_volumeMaterialBuffer, 0, volumeMaterialsGPUData.size(), volumeMaterialsGPUData.data());
+        ctx->writeToBuffer(m_volumeMaterialBuffer, 0, volumeMaterialsGPUData.size(), volumeMaterialsGPUData.data());
       }
     }
 
@@ -1355,6 +1403,54 @@ namespace dxvk {
       }
     }
     return {};
+  }
+
+  void SceneManager::submitExternalDraw(Rc<DxvkContext> ctx, ExternalDrawState&& state) {
+    if (m_externalSampler == nullptr) {
+      auto s = DxvkSamplerCreateInfo {};
+      {
+        s.magFilter = VK_FILTER_LINEAR;
+        s.minFilter = VK_FILTER_LINEAR;
+        s.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        s.mipmapLodBias = 0.f;
+        s.mipmapLodMin = 0.f;
+        s.mipmapLodMax = 0.f;
+        s.useAnisotropy = VK_FALSE;
+        s.maxAnisotropy = 1.f;
+        s.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        s.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        s.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        s.compareToDepth = VK_FALSE;
+        s.compareOp = VK_COMPARE_OP_NEVER;
+        s.borderColor = VkClearColorValue {};
+        s.usePixelCoord = VK_FALSE;
+      }
+      m_externalSampler = m_device->createSampler(s);
+    }
+
+    {
+      state.drawCall.materialData.samplers[0] = m_externalSampler;
+      state.drawCall.materialData.samplers[1] = m_externalSampler;
+    }
+    {
+      const RtCamera& rtCamera = ctx->getCommonObjects()->getSceneManager().getCameraManager()
+        .getCamera(state.cameraType);
+      state.drawCall.transformData.worldToView = Matrix4 { rtCamera.getWorldToView() };
+      state.drawCall.transformData.viewToProjection = Matrix4 { rtCamera.getViewToProjection() };
+      state.drawCall.transformData.objectToView = state.drawCall.transformData.worldToView * state.drawCall.transformData.objectToWorld;
+    }
+
+    for (const RasterGeometry& submesh : m_pReplacer->accessExternalMesh(state.mesh)) {
+      state.drawCall.geometryData = submesh;
+      state.drawCall.geometryData.cullMode = state.doubleSided ? VK_CULL_MODE_NONE : VK_CULL_MODE_BACK_BIT;
+
+      const MaterialData* material = m_pReplacer->accessExternalMaterial(submesh.externalMaterial);
+      if (material != nullptr) {
+        state.drawCall.materialData.setHashOverride(material->getHash());
+      }
+
+      processDrawCallState(ctx, state.drawCall, material);
+    }
   }
 
 }  // namespace nvvk

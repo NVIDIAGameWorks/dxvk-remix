@@ -324,6 +324,13 @@ namespace dxvk {
       m_linearizedLights.emplace_back(&light);
     }
 
+    for (auto& handle : m_externalActiveLightList) {
+      auto& found = m_externalLights.find(handle);
+      if (found != m_externalLights.end()) {
+        m_linearizedLights.emplace_back(&found->second);
+      }
+    }
+
     // Count the active light of each type
 
     m_lightTypeRanges.fill(LightRange {});
@@ -366,6 +373,7 @@ namespace dxvk {
     // is not an issue and the buffers are allowed to keep whatever capacity they have allocated between calls for the sake of performance.
 
     m_lightsGPUData.resize(lightsGPUSize);
+    memset(m_lightsGPUData.data(), 0xff, sizeof(char)* m_lightsGPUData.size());
     m_lightMappingData.resize(lightMappingBufferEntries);
 
     // Clear all slots to new light
@@ -425,16 +433,36 @@ namespace dxvk {
     }
     
     if (!m_lightsGPUData.empty()) {
-      ctx->updateBuffer(m_lightBuffer, 0, m_lightsGPUData.size(), m_lightsGPUData.data());
+      ctx->writeToBuffer(m_lightBuffer, 0, m_lightsGPUData.size(), m_lightsGPUData.data());
     }
 
     if (!m_lightMappingData.empty()) {
-      ctx->updateBuffer(m_lightMappingBuffer, 0, m_lightMappingData.size() * sizeof(uint16_t), m_lightMappingData.data());
+      ctx->writeToBuffer(m_lightMappingBuffer, 0, m_lightMappingData.size() * sizeof(uint16_t), m_lightMappingData.data());
     }
 
     // If there are no lights with >0 intensity, then clear the list...
     if (m_currentActiveLightCount == 0)
       clear();
+
+    // Generate a GPU dome light if necessary
+    DomeLight activeDomeLight;
+    if (getActiveDomeLight(activeDomeLight)) {
+      // Ensures a texture stays in VidMem
+      SceneManager& sceneManager = device()->getCommon()->getSceneManager();
+      sceneManager.trackTexture(ctx, activeDomeLight.texture, m_gpuDomeLightArgs.textureIndex, true, false);
+
+      m_gpuDomeLightArgs.active = true;
+      m_gpuDomeLightArgs.radiance = activeDomeLight.radiance;
+      m_gpuDomeLightArgs.worldToLightTransform = activeDomeLight.worldToLight;
+    } else {
+      m_gpuDomeLightArgs.active = false;
+      m_gpuDomeLightArgs.radiance = Vector3(0.0f);
+      m_gpuDomeLightArgs.textureIndex = BINDING_INDEX_INVALID;
+    }
+
+    // Reset external active light list.
+    m_externalActiveDomeLight = nullptr;
+    m_externalActiveLightList.clear();
   }
 
   float LightManager::isSimilar(const RtLight& a, const RtLight& b, float distanceThreshold) {
@@ -601,6 +629,58 @@ namespace dxvk {
 
       // Record we saw this light
       localLight.setFrameLastTouched(m_device->getCurrentFrameId());
+    }
+  }
+
+  void LightManager::addExternalLight(remixapi_LightHandle handle, const RtLight& rtlight) {
+    auto found = m_externalLights.find(handle);
+    if (found != m_externalLights.end()) {
+      // TODO: warn the user about id collision,
+      //       or just overwriting existing one is fine?
+      found->second = rtlight;
+    } else {
+      m_externalLights.emplace(handle, rtlight);
+    }
+  }
+
+  void LightManager::removeExternalLight(remixapi_LightHandle handle) {
+    m_externalLights.erase(handle);
+    m_externalDomeLights.erase(handle);
+  }
+
+  bool LightManager::getActiveDomeLight(DomeLight& domeLightOut) {
+    if (m_externalDomeLights.size() == 0 || m_externalActiveDomeLight == nullptr) {
+      return false;
+    }
+
+    auto found = m_externalDomeLights.find(m_externalActiveDomeLight);
+    if (found == m_externalDomeLights.end()) {
+      // Invalid active dome light, reset it
+      m_externalActiveDomeLight = nullptr;
+      return false;
+    }
+
+    domeLightOut = found->second;
+
+    return true;
+  }
+
+  void LightManager::addExternalDomeLight(remixapi_LightHandle handle, const DomeLight& domeLight) {
+    auto found = m_externalDomeLights.find(handle);
+    if (found != m_externalDomeLights.end()) {
+      // TODO: warn the user about id collision,
+      //       or just overwriting existing one is fine?
+      found->second = domeLight;
+    } else {
+      m_externalDomeLights.emplace(handle, domeLight);
+    }
+  }
+
+  void LightManager::addExternalLightInstance(remixapi_LightHandle enabledLight) {
+    if (m_externalLights.find(enabledLight) != m_externalLights.end()) {
+      m_externalActiveLightList.insert(enabledLight);
+    } else if (m_externalDomeLights.find(enabledLight) != m_externalDomeLights.end() && m_externalActiveDomeLight == nullptr) {
+      m_externalActiveDomeLight = enabledLight;
     }
   }
 

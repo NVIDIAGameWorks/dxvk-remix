@@ -100,7 +100,8 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
 
   // Deserialize the Surface Material Interaction
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction = polymorphicSurfaceMaterialInteractionReadFromGBuffer(
-    threadIndex, PrimaryWorldShadingNormal, PrimaryPerceptualRoughness, PrimaryAlbedo, PrimaryBaseReflectivity, SharedMaterialData0, SharedMaterialData1);
+    threadIndex, PrimaryWorldShadingNormal, PrimaryPerceptualRoughness, PrimaryAlbedo, PrimaryBaseReflectivity,
+    SharedMaterialData0, SharedMaterialData1, SharedSurfaceIndex, SharedSubsurfaceData);
 
   ReSTIRGI_Reservoir spatialReservoir = RAB_LoadGIReservoir(threadIndex, ReSTIRGI_GetSpatialOutputPage());
 
@@ -122,7 +123,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
       VisibilityResult visibility = traceVisibilityRay(minimalSurfaceInteraction,
         dstPosition, rayMask, visibilityModeNone, portalID,
         geometryFlags.portalSpace, 0, 0, RAB_RESTIR_GI_VISIBILITY_SHORTENING, geometryFlags.isViewModel,
-        false, primarySurfaceIndex, DisplacementTextureCoord[threadIndex]);
+        false, primarySurfaceIndex, SharedTextureCoord[threadIndex]);
       filterColor = visibility.attenuation;
     }
     else

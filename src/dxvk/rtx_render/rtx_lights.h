@@ -327,6 +327,12 @@ private:
   XXH64_hash_t m_cachedHash;
 };
 
+struct DomeLight {
+  Vector3 radiance;
+  TextureRef texture;
+  Matrix4 worldToLight;
+};
+
 struct RtLight {
   RtLight();
 

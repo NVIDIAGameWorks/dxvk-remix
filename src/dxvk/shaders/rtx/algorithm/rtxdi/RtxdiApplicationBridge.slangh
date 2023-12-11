@@ -102,6 +102,11 @@ float sampleUniformRng(inout RAB_RandomSamplerState r)
   return uintBitsToFloat((mask & v) | one) - 1.f;
 }
 
+uint sampleUniformIntRng(inout RAB_RandomSamplerState r)
+{
+  return murmur3(r);
+}
+
 
 // Depending on the surface type, the position/normal/viewDirection members are in different coordinate systems.
 // For a surface reflected in a mirror, they are in the virtual world space.
@@ -186,7 +191,10 @@ RAB_Surface RAB_EmptySurface()
   surface.opaqueSurfaceMaterialInteraction.baseReflectivity = f16vec3(0, 0, 1);
   surface.opaqueSurfaceMaterialInteraction.isotropicRoughness = float16_t(1);
   surface.opaqueSurfaceMaterialInteraction.anisotropicRoughness = f16vec2(1, 1);
-  surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex = BINDING_INDEX_INVALID;
+  surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.packedTransmittanceColor = 0;
+  surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.measurementDistance = 0.0h;
+  surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.packedSingleScatteringAlbedo = 0;
+  surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction.volumetricAnisotropy = 0.0h;
   surface.hitDistance = RAB_SURFACE_BACKGROUND_HIT_DISTANCE;
   surface.portalSpace = PORTAL_SPACE_NONE;
   surface.isViewModel = false;
@@ -285,7 +293,10 @@ RAB_Surface RAB_GetGBufferSurface(ivec2 pixel, bool previousFrame)
     surface.opaqueSurfaceMaterialInteraction.anisotropicRoughness);
 
   const uint16_t primarySurfaceIndex = uint16_t(SharedSurfaceIndex[pixel]);
-  surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex = getSubsurfaceMaterialIndex(surfaceMaterials[primarySurfaceIndex]);
+  uint16_t samplerIndex = 0;
+  const uint16_t subsurfaceMaterialIndex = getSubsurfaceMaterialIndex(surfaceMaterials[primarySurfaceIndex], samplerIndex);
+
+  surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialInteraction = subSurfaceMaterialReadHelper(SharedSubsurfaceData[pixel]);
 
   GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(pixel, SharedFlags);
   surface.portalSpace = geometryFlags.portalSpace;
@@ -344,7 +355,7 @@ float RAB_GetLightSampleTargetPdfForSurface(RAB_LightSample lightSample, RAB_Sur
 
   // Need to compute the transmission pdf if the ray interact with SSS surface
   if (dot(L, surface.minimalSurfaceInteraction.triangleNormal) <= float16_t(0) &&
-      (!cb.thinOpaqueEnable || surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex == BINDING_INDEX_INVALID))
+      (!cb.thinOpaqueEnable || !isSubsurfaceMaterial(surface.opaqueSurfaceMaterialInteraction)))
   {
     return 0;
   }
@@ -374,7 +385,7 @@ SurfaceMaterialInteractionSplitWeight RAB_CalculateBRDF(vec3 L, RAB_Surface surf
   weight.diffuseTransmissionWeight = f16vec3(0);
 
   if (dot(L, surface.minimalSurfaceInteraction.triangleNormal) <= float16_t(0) &&
-      (!cb.thinOpaqueEnable || surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex == BINDING_INDEX_INVALID))
+      (!cb.thinOpaqueEnable || !isSubsurfaceMaterial(surface.opaqueSurfaceMaterialInteraction)))
   {
     return weight;
   }
@@ -390,8 +401,7 @@ float RAB_GetGITargetPdfForSurface(vec3 radiance, vec3 position, RAB_Surface sur
 
   if ((dot(L, surface.minimalSurfaceInteraction.triangleNormal) <= float16_t(0) ||
        dot(L, surface.opaqueSurfaceMaterialInteraction.shadingNormal) <= float16_t(0)) &&
-      (!cb.thinOpaqueEnable ||
-       surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex == BINDING_INDEX_INVALID))
+      (!cb.thinOpaqueEnable || !isSubsurfaceMaterial(surface.opaqueSurfaceMaterialInteraction)))
   {
     return 0;
   }
@@ -701,8 +711,7 @@ bool RAB_TraceLightSampleVisibility(RAB_Surface surface, RAB_LightSample lightSa
   uint8_t rayMask = OBJECT_MASK_OPAQUE | (surface.objectMask & OBJECT_MASK_ALL_DYNAMIC);
   if (cb.enableDirectTranslucentShadows) rayMask |= OBJECT_MASK_TRANSLUCENT;
 
-  SubsurfaceMaterial subSurfaceMaterial;
-  const bool isSubSurface = subSurfaceMaterialReadHelper(surface.opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
+  const bool isSubsurface = isSubsurfaceMaterial(surface.opaqueSurfaceMaterialInteraction);
 
   const VisibilityResult visibility = traceVisibilityRay(
     surface.minimalSurfaceInteraction, samplePos,
@@ -712,7 +721,7 @@ bool RAB_TraceLightSampleVisibility(RAB_Surface surface, RAB_LightSample lightSa
     surface.isViewModel,
     cb.enablePreviousTLAS && usePreviousTLAS,
     BINDING_INDEX_INVALID, f16vec2(0.0h),
-    isSubSurface, surface.opaqueSurfaceMaterialInteraction.shadingNormal);
+    isSubsurface, surface.opaqueSurfaceMaterialInteraction.shadingNormal);
 
   attenuation = visibility.attenuation;
 

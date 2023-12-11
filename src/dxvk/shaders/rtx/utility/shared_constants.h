@@ -45,4 +45,9 @@
 // If set, then the texture bound to transmittanceOrDiffuseTextureIndex is an albedo map for the diffuse layer
 #define TRANSLUCENT_SURFACE_MATERIAL_FLAG_USE_DIFFUSE_LAYER (1 << 0)
 
+// bits for flags field in SubsurfaceMaterial
+#define SUBSURFACE_MATERIAL_FLAG_HAS_TRANSMITTANCE_TEXTURE            (1 << 0)
+#define SUBSURFACE_MATERIAL_FLAG_HAS_THICKNESS_TEXTURE                (1 << 1)
+#define SUBSURFACE_MATERIAL_FLAG_HAS_SINGLE_SCATTERING_ALBEDO_TEXTURE (1 << 2)
+
 #endif // ifndef SHARED_CONSTANTS_H

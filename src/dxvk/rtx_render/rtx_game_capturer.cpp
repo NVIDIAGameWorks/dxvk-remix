@@ -159,10 +159,10 @@ namespace dxvk {
   }
 
   void GameCapturer::setInstanceUpdateFlag(const RtInstance& rtInstance, const InstFlag flag) {
-    if (isIdle()) {
+    if (!m_state.has<State::Capturing>()) {
       return;
     }
-    m_cap.instanceFlags[rtInstance.getId()] |= (1 << uint8_t(flag));
+    m_pCap->instanceFlags[rtInstance.getId()] |= (1 << uint8_t(flag));
   }
 
   void GameCapturer::trigger(const Rc<DxvkContext> ctx) {
@@ -185,15 +185,16 @@ namespace dxvk {
     assert(!m_state.has<State::Capturing>());
     
     m_options = getOptions();
-
-    m_cap.idStr = hashToString(Capture::nextId++).substr(4, 4);
-    m_cap.bCaptureInstances = m_options.bCaptureInstances;
-    m_cap.bSkyProbeBaked = false;
-    if (m_cap.bCaptureInstances) {
+    
+    m_pCap = std::make_unique<Capture>();
+    m_pCap->idStr = hashToString(Capture::nextId++).substr(4, 4);
+    m_pCap->bCaptureInstances = m_options.bCaptureInstances;
+    m_pCap->bSkyProbeBaked = false;
+    if (m_pCap->bCaptureInstances) {
       prepareInstanceStage(ctx);
     }
-    Logger::info("[GameCapturer][" + m_cap.idStr + "] New capture");
-    m_cap.instanceFlags.clear();
+    Logger::info("[GameCapturer][" + m_pCap->idStr + "] New capture");
+    m_pCap->instanceFlags.clear();
 
     m_state.set<State::Capturing, true>();
     m_state.set<State::Initializing, false>();
@@ -202,67 +203,67 @@ namespace dxvk {
   
   void GameCapturer::prepareInstanceStage(const Rc<DxvkContext> ctx) {
     const auto stagePathStr = buildStagePath(m_options.instanceStageName);
-    m_cap.instance.stageName = m_options.instanceStageName;
-    m_cap.instance.stagePath = stagePathStr;
+    m_pCap->instance.stageName = m_options.instanceStageName;
+    m_pCap->instance.stagePath = stagePathStr;
     m_exporter.generateSceneThumbnail(ctx, BASE_DIR + lss::commonDirName::thumbDir, m_options.instanceStageName);
   }
 
   void GameCapturer::capture(const Rc<DxvkContext> ctx, const float dt) {
     assert(m_state.has<State::Capturing>());
 
-    m_cap.currentFrameNum += dt * static_cast<float>(m_options.fps);
+    m_pCap->currentFrameNum += dt * static_cast<float>(m_options.fps);
     captureFrame(ctx);
 
-    if (m_cap.numFramesCaptured >= m_options.numFrames) {
+    if (m_pCap->numFramesCaptured >= m_options.numFrames) {
       m_state.set<State::BeginExport, true>();
       m_state.set<State::Capturing, false>();
     }
   }
 
   void GameCapturer::captureFrame(const Rc<DxvkContext> ctx) {
-    Logger::debug("[GameCapturer][" + m_cap.idStr + "] Begin frame capture");
-    if (m_cap.bCaptureInstances) {
+    Logger::debug("[GameCapturer][" + m_pCap->idStr + "] Begin frame capture");
+    if (m_pCap->bCaptureInstances) {
       captureCamera();
       captureLights();
     }
     captureInstances(ctx);
-    ++m_cap.numFramesCaptured;
-    Logger::debug("[GameCapturer][" + m_cap.idStr + "] End frame capture");
+    ++m_pCap->numFramesCaptured;
+    Logger::debug("[GameCapturer][" + m_pCap->idStr + "] End frame capture");
   }
 
   void GameCapturer::captureCamera() {
-    if (isnan(m_cap.camera.fov) ||
-       isnan(m_cap.camera.aspectRatio) ||
-       isnan(m_cap.camera.nearPlane) ||
-       isnan(m_cap.camera.farPlane)) {
-      Logger::debug("[GameCapturer][" + m_cap.idStr + "][Camera] New");
+    if (isnan(m_pCap->camera.fov) ||
+       isnan(m_pCap->camera.aspectRatio) ||
+       isnan(m_pCap->camera.nearPlane) ||
+       isnan(m_pCap->camera.farPlane)) {
+      Logger::debug("[GameCapturer][" + m_pCap->idStr + "][Camera] New");
       float shearX, shearY;
       const auto projMat = m_sceneManager.getCamera().getViewToProjection();
       decomposeProjection(projMat,
-                          m_cap.camera.aspectRatio,
-                          m_cap.camera.fov,
-                          m_cap.camera.nearPlane,
-                          m_cap.camera.farPlane,
+                          m_pCap->camera.aspectRatio,
+                          m_pCap->camera.fov,
+                          m_pCap->camera.nearPlane,
+                          m_pCap->camera.farPlane,
                           shearX,
                           shearY,
-                          m_cap.camera.isLHS,
-                          m_cap.camera.isReverseZ);
+                          m_pCap->camera.isLHS,
+                          m_pCap->camera.isReverseZ);
       // Infinite projection is legit, but USD doesnt take kindly to it
       constexpr float kMaxFarPlane = 100000000;
-      if (m_cap.camera.farPlane > kMaxFarPlane) {
-        m_cap.camera.farPlane = kMaxFarPlane;
+      if (m_pCap->camera.farPlane > kMaxFarPlane) {
+        m_pCap->camera.farPlane = kMaxFarPlane;
       }
       // If the app is being rendered upside-down, we need to plan accordingly
-      m_cap.camera.bFlipVertAperture = (projMat[0][0] * projMat[1][1] < 0.0f);
-      m_cap.camera.firstTime = m_cap.currentFrameNum;
+      m_pCap->camera.bFlipMeshes = (projMat[0][0] * projMat[1][1] < 0.0f);
+      m_pCap->camera.firstTime = m_pCap->currentFrameNum;
     }
-    assert(!isnan(m_cap.camera.fov));
-    assert(!isnan(m_cap.camera.aspectRatio));
-    assert(!isnan(m_cap.camera.nearPlane));
-    assert(!isnan(m_cap.camera.farPlane));
+    assert(!isnan(m_pCap->camera.fov));
+    assert(!isnan(m_pCap->camera.aspectRatio));
+    assert(!isnan(m_pCap->camera.nearPlane));
+    assert(!isnan(m_pCap->camera.farPlane));
     const Matrix4 xform = m_sceneManager.getCamera().getViewToWorld();
-    m_cap.camera.finalTime = m_cap.currentFrameNum;
-    m_cap.camera.xforms.push_back({ m_cap.currentFrameNum, matrix4ToGfMatrix4d(xform) });
+    m_pCap->camera.finalTime = m_pCap->currentFrameNum;
+    m_pCap->camera.xforms.push_back({ m_pCap->currentFrameNum, matrix4ToGfMatrix4d(xform) });
   }
 
   void GameCapturer::captureLights() {
@@ -276,17 +277,17 @@ namespace dxvk {
         break;
       case RtLightType::Rect:
         // Todo: Handle Rect lights
-        Logger::err("[GameCapturer][" + m_cap.idStr + "] RectLight not implemented");
+        Logger::err("[GameCapturer][" + m_pCap->idStr + "] RectLight not implemented");
         assert(false);
         break;
       case RtLightType::Disk:
         // Todo: Handle Disk lights
-        Logger::err("[GameCapturer][" + m_cap.idStr + "] DiskLight not implemented");
+        Logger::err("[GameCapturer][" + m_pCap->idStr + "] DiskLight not implemented");
         assert(false);
         break;
       case RtLightType::Cylinder:
         // Todo: Handle Cylinder lights
-        Logger::err("[GameCapturer][" + m_cap.idStr + "] CylinderLight not implemented");
+        Logger::err("[GameCapturer][" + m_pCap->idStr + "] CylinderLight not implemented");
         assert(false);
         break;
       case RtLightType::Distant:
@@ -300,9 +301,9 @@ namespace dxvk {
     const auto hash = rtLight.getHash();
     pxr::GfRotation  rotation;
     rotation.SetIdentity();
-    if (m_cap.sphereLights.count(hash) == 0) {
+    if (m_pCap->sphereLights.count(hash) == 0) {
       const std::string name = dxvk::hashToString(hash);
-      lss::SphereLight& sphereLight = m_cap.sphereLights[hash];
+      lss::SphereLight& sphereLight = m_pCap->sphereLights[hash];
       sphereLight.lightName = name;
       const auto colorAndIntensity = rtLight.getColorAndIntensity();
       sphereLight.color[0] = colorAndIntensity.r;
@@ -310,8 +311,8 @@ namespace dxvk {
       sphereLight.color[2] = colorAndIntensity.b;
       sphereLight.intensity = colorAndIntensity.w;
       sphereLight.radius = rtLight.getRadius();
-      sphereLight.xforms.reserve(m_options.numFrames - m_cap.numFramesCaptured);
-      sphereLight.firstTime = m_cap.currentFrameNum;
+      sphereLight.xforms.reserve(m_options.numFrames - m_pCap->numFramesCaptured);
+      sphereLight.firstTime = m_pCap->currentFrameNum;
       const dxvk::RtLightShaping& shaping = rtLight.getShaping();
       if (shaping.enabled) {
         sphereLight.shapingEnabled = true;
@@ -320,21 +321,21 @@ namespace dxvk {
         sphereLight.focusExponent = shaping.focusExponent;
         rotation = pxr::GfRotation(-pxr::GfVec3d::ZAxis(), pxr::GfVec3f(&shaping.primaryAxis[0]));
       }
-      Logger::debug("[GameCapturer][" + m_cap.idStr + "][SphereLight:" + name + "] New");
+      Logger::debug("[GameCapturer][" + m_pCap->idStr + "][SphereLight:" + name + "] New");
     }
 
-    lss::SphereLight& sphereLight = m_cap.sphereLights[hash];
+    lss::SphereLight& sphereLight = m_pCap->sphereLights[hash];
     const auto position = rtLight.getPosition();
     pxr::GfMatrix4d usdXform(rotation, pxr::GfVec3f(&position[0]));
-    sphereLight.xforms.push_back({ m_cap.currentFrameNum, usdXform });
-    sphereLight.finalTime = m_cap.currentFrameNum;
+    sphereLight.xforms.push_back({ m_pCap->currentFrameNum, usdXform });
+    sphereLight.finalTime = m_pCap->currentFrameNum;
   }
 
   void GameCapturer::captureDistantLight(const RtDistantLight& rtLight) {
     const auto hash = rtLight.getHash();
-    if (m_cap.sphereLights.count(hash) == 0) {
+    if (m_pCap->sphereLights.count(hash) == 0) {
       const std::string name = dxvk::hashToString(hash);
-      lss::DistantLight& distantLight = m_cap.distantLights[hash];
+      lss::DistantLight& distantLight = m_pCap->distantLights[hash];
       distantLight.lightName = name;
       const auto colorAndIntensity = rtLight.getColorAndIntensity();
       distantLight.color[0] = colorAndIntensity.r;
@@ -343,53 +344,53 @@ namespace dxvk {
       distantLight.intensity = colorAndIntensity.w;
       distantLight.angle = rtLight.getHalfAngle() * 2.0;
       distantLight.direction = pxr::GfVec3f(rtLight.getDirection().data);
-      distantLight.firstTime = m_cap.currentFrameNum;
-      Logger::debug("[GameCapturer][" + m_cap.idStr + "][DistantLight:" + name + "] New");
+      distantLight.firstTime = m_pCap->currentFrameNum;
+      Logger::debug("[GameCapturer][" + m_pCap->idStr + "][DistantLight:" + name + "] New");
     }
-    lss::DistantLight& distantLight = m_cap.distantLights[hash];
-    distantLight.finalTime = m_cap.currentFrameNum;
+    lss::DistantLight& distantLight = m_pCap->distantLights[hash];
+    distantLight.finalTime = m_pCap->currentFrameNum;
   }
 
   void GameCapturer::captureInstances(const Rc<DxvkContext> ctx) {
-    for (const RtInstance* rtInstancePtr : m_sceneManager.getInstanceTable()) {
-      assert(rtInstancePtr->getBlas() != nullptr);
+    for (const RtInstance* pRtInstance : m_sceneManager.getInstanceTable()) {
+      assert(pRtInstance->getBlas() != nullptr);
 
-      if (rtInstancePtr->getBlas()->input.cameraType == CameraType::Sky) {
-        if (!m_cap.bSkyProbeBaked) {
+      if (pRtInstance->getBlas()->input.cameraType == CameraType::Sky) {
+        if (!m_pCap->bSkyProbeBaked) {
           m_exporter.bakeSkyProbe(ctx, BASE_DIR + lss::commonDirName::texDir, commonFileName::bakedSkyProbe);
-          m_cap.bSkyProbeBaked = true;
-          Logger::debug("[GameCapturer][" + m_cap.idStr + "][SkyProbe] Bake scheduled to " +
+          m_pCap->bSkyProbeBaked = true;
+          Logger::debug("[GameCapturer][" + m_pCap->idStr + "][SkyProbe] Bake scheduled to " +
                         commonFileName::bakedSkyProbe);
         }
       }
 
-      const XXH64_hash_t instanceId = rtInstancePtr->getId();
-      const uint8_t instanceFlags = m_cap.instanceFlags[instanceId];
-      const bool bIsNew = m_cap.instances.count(instanceId) == 0;
+      const XXH64_hash_t instanceId = pRtInstance->getId();
+      const uint8_t instanceFlags = m_pCap->instanceFlags[instanceId];
+      const bool bIsNew = m_pCap->instances.count(instanceId) == 0;
       const bool bPointsUpdate = checkInstanceUpdateFlag(instanceFlags, InstFlag::PositionsUpdate);
       const bool bNormalsUpdate = checkInstanceUpdateFlag(instanceFlags, InstFlag::NormalsUpdate);
       const bool bIndexUpdate = checkInstanceUpdateFlag(instanceFlags, InstFlag::IndexUpdate);
       const bool bXformUpdate = checkInstanceUpdateFlag(instanceFlags, InstFlag::XformUpdate);
-      Instance& instance = m_cap.instances[instanceId];
+      Instance& instance = m_pCap->instances[instanceId];
       if (bIsNew) {
-        newInstance(ctx, *rtInstancePtr);
+        newInstance(ctx, *pRtInstance);
       }
-      if (m_cap.bCaptureInstances && !bIsNew && (bPointsUpdate || bNormalsUpdate || bIndexUpdate)) {
-        const BlasEntry* pBlas = rtInstancePtr->getBlas();
+      if (m_pCap->bCaptureInstances && !bIsNew && (bPointsUpdate || bNormalsUpdate || bIndexUpdate)) {
+        const BlasEntry* pBlas = pRtInstance->getBlas();
         assert(pBlas != nullptr);
 
-        captureMesh(ctx, instance.meshHash, *pBlas, rtInstancePtr->getCategoryFlags(), false, bPointsUpdate, bNormalsUpdate, bIndexUpdate);
+        captureMesh(ctx, instance.meshHash, *pBlas, pRtInstance->getCategoryFlags(), false, bPointsUpdate, bNormalsUpdate, bIndexUpdate);
       }
-      if (m_cap.bCaptureInstances && (bIsNew || bXformUpdate)) {
-        instance.lssData.xforms.push_back({ m_cap.currentFrameNum, matrix4ToGfMatrix4d(rtInstancePtr->getTransform()) });
-        const SkinningData& skinData = rtInstancePtr->getBlas()->input.getSkinningState();
+      if (m_pCap->bCaptureInstances && (bIsNew || bXformUpdate)) {
+        instance.lssData.xforms.push_back({ m_pCap->currentFrameNum, matrix4ToGfMatrix4d(pRtInstance->getTransform()) });
+        const SkinningData& skinData = pRtInstance->getBlas()->input.getSkinningState();
         if (skinData.numBones > 0) {
-          instance.lssData.boneXForms.push_back({ m_cap.currentFrameNum, matrix4VecToGfMatrix4dVec(skinData.pBoneMatrices) });
+          instance.lssData.boneXForms.push_back({ m_pCap->currentFrameNum, matrix4VecToGfMatrix4dVec(skinData.pBoneMatrices) });
         }
       }
-      instance.lssData.finalTime = m_cap.currentFrameNum;
-      instance.lssData.isSky = (rtInstancePtr->getBlas()->input.cameraType == CameraType::Sky);
-      instance.lssData.metadata = createDrawCallMetadata(*rtInstancePtr);
+      instance.lssData.finalTime = m_pCap->currentFrameNum;
+      instance.lssData.isSky = (pRtInstance->getBlas()->input.cameraType == CameraType::Sky);
+      instance.lssData.metadata = createDrawCallMetadata(*pRtInstance);
     }
   }
 
@@ -402,7 +403,7 @@ namespace dxvk {
 
     const LegacyMaterialData& material = pBlas->getMaterialData(matHash);
 
-    const bool bIsNewMat = (matHash != 0x0) && (m_cap.materials.count(matHash) == 0);
+    const bool bIsNewMat = (matHash != 0x0) && (m_pCap->materials.count(matHash) == 0);
     if (bIsNewMat) {
       captureMaterial(ctx, material, !rtInstance.surface.alphaState.isFullyOpaque);
     }
@@ -411,48 +412,53 @@ namespace dxvk {
     size_t instanceNum = 0;
     {
       std::lock_guard lock(m_meshMutex);
-      bIsNewMesh = m_cap.meshes.count(meshHash) == 0;
+      bIsNewMesh = m_pCap->meshes.count(meshHash) == 0;
       if (bIsNewMesh) {
-        m_cap.meshes[meshHash] = std::make_shared<Mesh>();
-        m_cap.meshes[meshHash]->instanceCount = 0;
-        m_cap.meshes[meshHash]->matHash = matHash;
+        m_pCap->meshes[meshHash] = std::make_shared<Mesh>();
+        m_pCap->meshes[meshHash]->instanceCount = 0;
+        m_pCap->meshes[meshHash]->matHash = matHash;
       }
-      instanceNum = m_cap.meshes[meshHash]->instanceCount++;
+      instanceNum = m_pCap->meshes[meshHash]->instanceCount++;
     }
     if (bIsNewMesh) {
       captureMesh(ctx, meshHash, *pBlas, rtInstance.getCategoryFlags(), true, true, true, true);
     }
 
     const XXH64_hash_t instanceId = rtInstance.getId();
-    Instance& instance = m_cap.instances[instanceId];
+    Instance& instance = m_pCap->instances[instanceId];
     instance.meshHash = meshHash;
     instance.matHash = matHash;
     instance.meshInstNum = instanceNum;
-    instance.lssData.firstTime = m_cap.currentFrameNum;
-    instance.lssData.xforms.reserve(m_options.numFrames - m_cap.numFramesCaptured);
-    instance.lssData.metadata = createDrawCallMetadata(rtInstance);
+    instance.lssData.firstTime = m_pCap->currentFrameNum;
 
-    Logger::debug("[GameCapturer][" + m_cap.idStr + "][Inst:" + hashToString(instanceId) + "] New");
+    Logger::debug("[GameCapturer][" + m_pCap->idStr + "][Inst:" + hashToString(instanceId) + "] New");
   }
 
   void GameCapturer::captureMaterial(const Rc<DxvkContext> ctx, const LegacyMaterialData& materialData, const bool bEnableOpacity) {
-    const std::string matName = dxvk::hashToString(materialData.getHash());
+    lss::Material lssMat; // to be populated
 
-    //Export Textures
+    // Resolve material name
+    const std::string matName = dxvk::hashToString(materialData.getHash());
+    lssMat.matName = matName;
+    // Export Textures
     const std::string albedoTexFilename(matName + lss::ext::dds);
     m_exporter.dumpImageToFile(ctx, BASE_DIR + lss::commonDirName::texDir,
                                albedoTexFilename,
                                materialData.getColorTexture().getImageView()->image());
-
     const std::string albedoTexPath = str::format(BASE_DIR + lss::commonDirName::texDir, albedoTexFilename);
-
-    // Export Material
-    lss::Material lssMat;
-    lssMat.matName = matName;
     lssMat.albedoTexPath = albedoTexPath;
+    // Opacity
     lssMat.enableOpacity = bEnableOpacity;
-    m_cap.materials[materialData.getHash()].lssData = lssMat;
-    Logger::debug("[GameCapturer][" + m_cap.idStr + "][Mat:" + matName + "] New");
+    // Collect sampler info
+    const auto& samplerCreateInfo = materialData.getSampler()->info();
+    lssMat.sampler.addrModeU = samplerCreateInfo.addressModeU;
+    lssMat.sampler.addrModeV = samplerCreateInfo.addressModeV;
+    lssMat.sampler.filter = samplerCreateInfo.magFilter;
+    lssMat.sampler.borderColor = samplerCreateInfo.borderColor;
+
+    // Set populated LSS Material in our cache
+    m_pCap->materials[materialData.getHash()].lssData = lssMat;
+    Logger::debug("[GameCapturer][" + m_pCap->idStr + "][Mat:" + matName + "] New");
   }
 
   void GameCapturer::captureMesh(const Rc<DxvkContext> ctx,
@@ -472,7 +478,7 @@ namespace dxvk {
     std::shared_ptr<Mesh> pMesh;
     {
       std::lock_guard lock(m_meshMutex);
-      pMesh = m_cap.meshes[currentMeshHash];
+      pMesh = m_pCap->meshes[currentMeshHash];
     }
           
     // Note: Ensures that reading a Vec3 from the position buffer will result in the proper values. This can be extended if
@@ -504,39 +510,39 @@ namespace dxvk {
       pMesh->lssData.isDoubleSided = isDoubleSided;
       pMesh->lssData.numBones = skinData.numBones;
       pMesh->lssData.bonesPerVertex = skinData.numBonesPerVertex;
-      Logger::debug("[GameCapturer][" + m_cap.idStr + "][Mesh:" + pMesh->lssData.meshName + "] New");
+      Logger::debug("[GameCapturer][" + m_pCap->idStr + "][Mesh:" + pMesh->lssData.meshName + "] New");
     }
 
     if (bCapturePositions && geomData.positionBuffer.defined()) {
       if (skinData.numBones > 0) {
-        captureMeshPositions(ctx, rasterGeomData.vertexCount, rasterGeomData.positionBuffer, m_cap.currentFrameNum, pMesh);
+        captureMeshPositions(ctx, rasterGeomData.vertexCount, rasterGeomData.positionBuffer, m_pCap->currentFrameNum, pMesh);
       } else {
-        captureMeshPositions(ctx, geomData.vertexCount, geomData.positionBuffer, m_cap.currentFrameNum, pMesh);
+        captureMeshPositions(ctx, geomData.vertexCount, geomData.positionBuffer, m_pCap->currentFrameNum, pMesh);
       }
     }
     
     if (bCaptureNormals && geomData.normalBuffer.defined()) {
       if (skinData.numBones > 0) {
-        captureMeshNormals(ctx, rasterGeomData.vertexCount, rasterGeomData.normalBuffer, m_cap.currentFrameNum, pMesh);
+        captureMeshNormals(ctx, rasterGeomData.vertexCount, rasterGeomData.normalBuffer, m_pCap->currentFrameNum, pMesh);
       } else {
-        captureMeshNormals(ctx, geomData.vertexCount, geomData.normalBuffer, m_cap.currentFrameNum, pMesh);
+        captureMeshNormals(ctx, geomData.vertexCount, geomData.normalBuffer, m_pCap->currentFrameNum, pMesh);
       }
     }
     
     if (bCaptureIndices && geomData.indexBuffer.defined()) {
-      captureMeshIndices(ctx, geomData, m_cap.currentFrameNum, pMesh);
+      captureMeshIndices(ctx, geomData, m_pCap->currentFrameNum, pMesh);
     }
 
     if (bIsNewMesh && geomData.texcoordBuffer.defined()) {
-      captureMeshTexCoords(ctx, geomData, m_cap.currentFrameNum, pMesh);
+      captureMeshTexCoords(ctx, geomData, m_pCap->currentFrameNum, pMesh);
     }
 
     if (bIsNewMesh && geomData.color0Buffer.defined()) {
-      captureMeshColor(ctx, geomData, m_cap.currentFrameNum, pMesh);
+      captureMeshColor(ctx, geomData, m_pCap->currentFrameNum, pMesh);
     }
 
     if (bIsNewMesh && skinData.numBones > 0) {
-      captureMeshBlending(ctx, rasterGeomData, m_cap.currentFrameNum, pMesh);
+      captureMeshBlending(ctx, rasterGeomData, m_pCap->currentFrameNum, pMesh);
       pMesh->lssData.boneXForms = matrix4VecToGfMatrix4dVec(skinData.pBoneMatrices);
     }
   }
@@ -548,7 +554,7 @@ namespace dxvk {
                                           const float currentFrameNum,
                                           std::shared_ptr<Mesh> pMesh) {
                                             
-    AssetExporter::BufferCallback captureMeshPositionsAsync = [ctx, numVertices, inputPositionBuffer, currentFrameNum, pMesh](Rc<DxvkBuffer> posBuf) {
+    AssetExporter::BufferCallback captureMeshPositionsAsync = [this, ctx, numVertices, inputPositionBuffer, currentFrameNum, pMesh](Rc<DxvkBuffer> posBuf) {
       // Prep helper vars
       constexpr size_t positionSubElementSize = sizeof(float);
       const size_t positionStride = inputPositionBuffer.stride() / positionSubElementSize;
@@ -562,8 +568,16 @@ namespace dxvk {
       // Copy GPU buffer to local VtArray
       pxr::VtArray<pxr::GfVec3f> positions;
       positions.reserve(numVertices);
+      OriginCalc originCalc;
       for (size_t idx = 0; idx < numVertices; ++idx) {
-        positions.push_back(pxr::GfVec3f(&pVkPosBuf[idx * positionStride]));
+        const pxr::GfVec3f& pos = *reinterpret_cast<const pxr::GfVec3f*>(&pVkPosBuf[idx * positionStride]);
+        if(m_correctBakedTransforms) {
+          originCalc.compareAndSwap(pos);
+        }
+        positions.push_back(pos);
+      }
+      if(m_correctBakedTransforms) {
+        pMesh->originCalc.compareAndSwap(originCalc);
       }
       assert(positions.size() > 0);
       // Create comparison function that returns float
@@ -866,11 +880,12 @@ namespace dxvk {
     assert(!m_state.has<State::PreppingExport>());
     assert(!m_state.has<State::Exporting>());
     static auto exportThreadTask = [this](const Rc<DxvkContext> ctx,
-                                          Capture cap,
+                                          std::unique_ptr<Capture> pCap,
                                           State* pState,
                                           CompletedCapture* complete,
                                           const float framesPerSecond,
                                           const bool bUseLssUsdPlugins) {
+      Capture& cap = *pCap;
       m_exporter.waitForAllExportsToComplete();
       assert(pState->has<State::PreppingExport>());
       const auto exportPrep = prepExport(cap, framesPerSecond, bUseLssUsdPlugins);
@@ -897,17 +912,16 @@ namespace dxvk {
     m_state.set<State::BeginExport, false>();
     std::thread(exportThreadTask,
                 ctx,
-                std::move(m_cap),
+                std::move(m_pCap),
                 &m_state,
                 &m_completeCapture,
                 static_cast<float>(m_options.fps),
                 m_bUseLssUsdPlugins).detach();
-    m_cap = Capture(); // reset to default
   }
 
   lss::Export GameCapturer::prepExport(const Capture& cap,
-                                             const float framesPerSecond,
-                                             const bool bUseLssUsdPlugins) {
+                                       const float framesPerSecond,
+                                       const bool bUseLssUsdPlugins) {
     lss::Export exportPrep;
     prepExportMetaData(cap, framesPerSecond, bUseLssUsdPlugins, exportPrep);
     prepExportMaterials(cap, exportPrep);
@@ -944,6 +958,7 @@ namespace dxvk {
         exportPrep.meta.renderingSettingsDict[pair.first] = pair.second->genericValueToString(RtxOptionImpl::ValueType::Value);
       }
     }
+    exportPrep.meta.bCorrectBakedTransforms = m_correctBakedTransforms;
 
     exportPrep.debugId = cap.idStr;
     exportPrep.baseExportPath = BASE_DIR;
@@ -959,38 +974,45 @@ namespace dxvk {
     }
   }
 
-  void GameCapturer::prepExportMeshes(const Capture& cap,
-                                      lss::Export& exportPrep) {
+  void GameCapturer::prepExportMeshes(const Capture& cap, lss::Export& exportPrep) {
+    OriginCalc stageOriginCalc;
     for (auto& [hash, pMesh] : cap.meshes) {
       std::unique_lock lock(pMesh->meshSync.mutex);
       pMesh->meshSync.cond.wait(lock,
         [pNumOutstanding = &pMesh->meshSync.numOutstanding] { return *pNumOutstanding == 0; });
-      auto& exportMesh = exportPrep.meshes[hash];
       if (pMesh->lssData.numIndices == 0 && pMesh->lssData.numVertices == 0) {
         continue;
       }
       if (cap.materials.count(pMesh->matHash) > 0) {
         pMesh->lssData.matId = pMesh->matHash;
       }
-      exportMesh = pMesh->lssData;
+      if(m_correctBakedTransforms) {
+        pMesh->lssData.origin = pMesh->originCalc.calc();
+        stageOriginCalc.compareAndSwap(pMesh->lssData.origin);
+      }
+      exportPrep.meshes[hash] = pMesh->lssData;
+    }
+    if(m_correctBakedTransforms) {
+      exportPrep.stageOrigin = stageOriginCalc.calc();
     }
   }
 
-  void GameCapturer::prepExportInstances(const Capture& cap,
-                                         lss::Export& exportPrep) {
+  void GameCapturer::prepExportInstances(const Capture& cap, lss::Export& exportPrep) {
     for (auto& [hash, instance] : cap.instances) {
       if (instance.meshHash == 0) {
         continue;
       }
-      auto& exportInstance =
-        exportPrep.instances.emplace(hash, instance.lssData).first->second;
+      auto& exportInstance = exportPrep.instances[hash];
+      exportInstance = instance.lssData;
+
       assert(cap.meshes.count(instance.meshHash) > 0);
+      exportInstance.meshId = instance.meshHash;
+
       const auto pMesh = cap.meshes.at(instance.meshHash);
-      exportInstance.instanceName = pMesh->lssData.meshName + "_" + std::to_string(instance.meshInstNum);
       if (cap.materials.count(pMesh->matHash) > 0) {
         exportInstance.matId = instance.matHash;
       }
-      exportInstance.meshId = instance.meshHash;
+      exportInstance.instanceName = pMesh->lssData.meshName + "_" + std::to_string(instance.meshInstNum);
     }
   }
 
@@ -1015,5 +1037,4 @@ namespace dxvk {
     assert(pFlattenedStage);
     Logger::info("[GameCapturer][" + exportPrep.debugId + "] USD capture flattened.");
   }
-
 }

@@ -50,8 +50,9 @@ namespace dxvk {
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_SHARED_INTEGRATION_SURFACE_PDF_INPUT)
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_SHARED_MATERIAL_DATA0_INPUT)
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_SHARED_MATERIAL_DATA1_INPUT)
-        RW_TEXTURE2D(INTEGRATE_DIRECT_BINDING_DISPLACEMENT_TEXTURE_COORD_INPUT)
-        RW_TEXTURE2D(INTEGRATE_DIRECT_BINDING_SHARED_SURFACE_INDEX_INPUT)
+        TEXTURE2D(INTEGRATE_DIRECT_BINDING_SHARED_TEXTURE_COORD_INPUT)
+        TEXTURE2D(INTEGRATE_DIRECT_BINDING_SHARED_SURFACE_INDEX_INPUT)
+        TEXTURE2D(INTEGRATE_DIRECT_BINDING_SHARED_SUBSURFACE_DATA_INPUT)
 
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT)
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_PRIMARY_PERCEPTUAL_ROUGHNESS_INPUT)
@@ -83,6 +84,7 @@ namespace dxvk {
 
         STRUCTURED_BUFFER(INTEGRATE_DIRECT_BINDING_NEE_CACHE)
         STRUCTURED_BUFFER(INTEGRATE_DIRECT_BINDING_NEE_CACHE_SAMPLE)
+        RW_STRUCTURED_BUFFER(INTEGRATE_DIRECT_BINDING_NEE_CACHE_TASK)
         RW_TEXTURE2D(INTEGRATE_DIRECT_BINDING_NEE_CACHE_THREAD_TASK)
 
         RW_TEXTURE2D(INTEGRATE_DIRECT_BINDING_INDIRECT_RAY_ORIGIN_DIRECTION_OUTPUT)
@@ -123,8 +125,9 @@ namespace dxvk {
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_INTEGRATION_SURFACE_PDF_INPUT, rtOutput.m_sharedIntegrationSurfacePdf.view(Resources::AccessType::Read), nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_MATERIAL_DATA0_INPUT, rtOutput.m_sharedMaterialData0.view, nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_MATERIAL_DATA1_INPUT, rtOutput.m_sharedMaterialData1.view, nullptr);
-    ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_DISPLACEMENT_TEXTURE_COORD_INPUT, rtOutput.m_displacementTextureCoord.view, nullptr);
+    ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_TEXTURE_COORD_INPUT, rtOutput.m_sharedTextureCoord.view, nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view, nullptr);
+    ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_SUBSURFACE_DATA_INPUT, rtOutput.m_sharedSubsurfaceData.view, nullptr);
 
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT, rtOutput.m_primaryWorldShadingNormal.view, nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_PRIMARY_PERCEPTUAL_ROUGHNESS_INPUT, rtOutput.m_primaryPerceptualRoughness.view, nullptr);
@@ -154,6 +157,7 @@ namespace dxvk {
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_PRIMARY_RTXDI_ILLUMINANCE_OUTPUT, rtOutput.getCurrentRtxdiIlluminance().view(Resources::AccessType::Write), nullptr);
     ctx->bindResourceBuffer(INTEGRATE_DIRECT_BINDING_NEE_CACHE, DxvkBufferSlice(rtOutput.m_neeCache, 0, rtOutput.m_neeCache->info().size));
     ctx->bindResourceBuffer(INTEGRATE_DIRECT_BINDING_NEE_CACHE_SAMPLE, DxvkBufferSlice(rtOutput.m_neeCacheSample, 0, rtOutput.m_neeCacheSample->info().size));
+    ctx->bindResourceBuffer(INTEGRATE_DIRECT_BINDING_NEE_CACHE_TASK, DxvkBufferSlice(rtOutput.m_neeCacheTask, 0, rtOutput.m_neeCacheTask->info().size));
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_NEE_CACHE_THREAD_TASK, rtOutput.m_neeCacheThreadTask.view, nullptr);
 
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_INDIRECT_RAY_ORIGIN_DIRECTION_OUTPUT, rtOutput.m_indirectRayOriginDirection.view(Resources::AccessType::Write), nullptr);

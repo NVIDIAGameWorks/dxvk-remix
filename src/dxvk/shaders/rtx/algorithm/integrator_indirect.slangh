@@ -156,19 +156,16 @@ bool sampleLightNeeCache(inout RAB_RandomSamplerState rtxdiRNG, inout RNG random
   out uint16_t lightIdx)
 {
   NEECell cell = NEECache.getCell(neeCellOffset);
-  int3 cellID = NEECache.offsetToCell(neeCellOffset);
-  vec3 cellCenter = NEECache.cellToCenterPoint(cellID);
 
-  SubsurfaceMaterial subSurfaceMaterial;
-  const bool isSubsurface = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
+  const bool isSubsurface = isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
 
   // Note: We are NOT taking transmission into consideration, because calculating probability of transmission have some costs.
   //       Also, it's approximate importance and no need to be exact, we just skip the calculation here for better performance.
-
   float16_t specularRatio = calcBt709Luminance(opaqueSurfaceMaterialInteraction.baseReflectivity)
     / calcBt709Luminance(opaqueSurfaceMaterialInteraction.albedo + opaqueSurfaceMaterialInteraction.baseReflectivity);
   vec2 uniformRandomNumber = vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState));
-  cell.sampleLightCandidate(rtxdiRNG, uniformRandomNumber, cellCenter,
+
+  cell.sampleLightCandidate(rtxdiRNG, uniformRandomNumber,
     surfaceInteraction.position, viewDirection,
     opaqueSurfaceMaterialInteraction.shadingNormal, specularRatio, opaqueSurfaceMaterialInteraction.isotropicRoughness, isSubsurface, lightIdx, invSelectionPdf);
 
@@ -322,7 +319,14 @@ void integratePathVertex(
     // Note: True misses going out into infinity will have no hit in the ray interaction and the continue resolving flag set to false. This is in contrast to misses
     // which may require further resolving which may be needed in cases of skipping specific pieces of geometry while still wishing to continue traversal.
 
-    emissiveRadiance += cb.skyBrightness * SkyProbe.Sample(pathState.direction);
+    if(cb.domeLightArgs.active)
+    {
+      emissiveRadiance += cb.domeLightArgs.radiance * sampleDomeLightTexture(LinearWrapSampler, pathState.direction, cb.domeLightArgs.textureIndex, cb.domeLightArgs.worldToLightTransform);
+    }
+    else
+    {
+      emissiveRadiance += cb.skyBrightness * SkyProbe.Sample(pathState.direction);
+    }
   }
 
   // Handle emissive radiance and attenuation from the Resolve function
@@ -377,27 +381,20 @@ void integratePathVertex(
   if(materialType == surfaceMaterialTypeOpaque || materialType == surfaceMaterialTypeTranslucent) {
 #endif // SURFACE_MATERIAL_RESOLVE_TYPE_RAY_PORTAL
 
-    if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && any(emissiveLight) > 0)
-    {
-      // Create a NEE Cache task for emissive triangles.
-      // Both light task and emissive triangle task are using the same buffer, skip some pixels so that light tasks on them won't be overwritten by triangle tasks.
-      if (any((pathState.pixelCoordinate & 0x3) != 1))
-      {
-        ThreadTask threadTask = ThreadTask.createFromTriangleTask(pathState.neeCacheCellOffset, rayInteraction.surfaceIndex, rayInteraction.primitiveIndex);
-        NEECache.storeThreadTask(pathState.pixelCoordinate, threadTask);
-      }
-    }
-
     bool isNeeEnabledOnBounce = (pathState.bounceIteration == 1 && cb.neeCacheArgs.enableOnFirstBounce) ||
      (pathState.bounceIteration > 1 && cb.neeCacheArgs.enableModeAfterFirstBounce != NeeEnableMode::None && pathState.enableNeeCacheAfterFirstBounce);
     if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && isNeeEnabledOnBounce && any(emissiveLight > 0) && pathState.neeCacheCellOffset != NEECell.s_invalidOffset)
     {
       uint cellOffset = pathState.neeCacheCellOffset;
-      int3 cellID = NEECache.offsetToCell(pathState.neeCacheCellOffset);
-      NEECell cell = NEECache.getCell(cellID);
+      NEECell cell = NEECache.getCell(cellOffset);
+
+      // Insert new task
+      float16_t taskRadiance = calcBt709Luminance(emissiveLight * pathState.throughput);
+      int prefixTask = NEECacheUtils.convertIDToPrefixSumID(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex, PrimitiveIDPrefixSum);
+      float16_t randomOffset = getNextSampleBlueNoise(randomState);
+      cell.insertSlotTask(prefixTask, taskRadiance, randomOffset, false);
+
       uint2 task = uint2(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex);
-
-
       float16_t lastSampleThreshold = 0;
       for (int i = 0; i < cell.getCandidateCount(); ++i)
       {
@@ -533,14 +530,14 @@ void integratePathVertex(
       if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable)
       {
         rtxdiRNG = RAB_InitRandomSampler(pathState.pixelCoordinate, cb.frameIdx, pathState.bounceIteration);
-        vec3 jitterOffset = vec3(RAB_GetNextRandom(rtxdiRNG), RAB_GetNextRandom(rtxdiRNG), RAB_GetNextRandom(rtxdiRNG));
-        pathState.neeCacheCellOffset = NEECache.pointToOffset(surfaceInteraction.position, true, jitterOffset);
+        uint jitter = sampleUniformIntRng(rtxdiRNG);
+        pathState.neeCacheCellOffset = NEECache.pointToOffset(surfaceInteraction.position, surfaceInteraction.triangleNormal, jitter);
       }
 
       if (!isWithinGbuffer)
       {
         // Select and sample a light for NEE via RIS
-        if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && cb.neeCacheArgs.enableAnalyticalLight && NEECache.isInsideCache(surfaceInteraction.position))
+        if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && cb.neeCacheArgs.enableAnalyticalLight)
         {
           lightSampleValid = sampleLightNeeCache(rtxdiRNG, randomState, pathState.neeCacheCellOffset,
             surfaceInteraction, opaqueSurfaceMaterialInteraction, rayInteraction.viewDirection,
@@ -560,13 +557,15 @@ void integratePathVertex(
       evaluateUnshadowedLight(lightSample, opaqueSurfaceMaterialInteraction, rayInteraction, normalize(lightSample.position - surfaceInteraction.position), diffuseLight, specularLight);
     
     
+      uint lightTask = lightIdx;
       if(NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && cb.neeCacheArgs.enableModeAfterFirstBounce != NeeEnableMode::None && pathState.enableNeeCacheAfterFirstBounce)
       {
         NEECell cell = NEECache.getCell(pathState.neeCacheCellOffset);
         if (cell.isValid() && cell.getCandidateCount() > 0)
         {
           vec3 randomNumber = vec3(RAB_GetNextRandom(rtxdiRNG));
-          LightSample lightSampleTriangle = cell.getLightSample(randomNumber, surfaceInteraction.position, rayInteraction.coneRadius, pathState.coneSpreadAngle, true);
+          uint triangleID;
+          LightSample lightSampleTriangle = cell.getLightSample(randomNumber, surfaceInteraction.position, rayInteraction.coneRadius, pathState.coneSpreadAngle, triangleID, true);
           
           // Calculate cached triangle NEE sample's MIS light contribution
           vec3 diffuseLightTriangle, specularLightTriangle;
@@ -583,6 +582,7 @@ void integratePathVertex(
           if (r * (weightLight + weightTriangle) > weightLight)
           {
             lightIdx = kInvalidLightIdx;
+            lightTask = triangleID;
             lightSample = lightSampleTriangle;
             diffuseLight = diffuseLightTriangle;
             specularLight = specularLightTriangle;
@@ -609,10 +609,12 @@ void integratePathVertex(
 
         // Create a NEE Cache task for lights with non-zero contributions.
         // Both light task and emissive triangle task are using the same buffer, skip some pixels so that triangle tasks on them won't be overwritten by light tasks.
-        if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && any(diffuseLight + specularLight > 0) && lightIdx != kInvalidLightIdx && any((pathState.pixelCoordinate & 0x3) != 0))
+        if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && any(diffuseLight + specularLight > 0) && all((pathState.pixelCoordinate & 0x3) != 1))
         {
-          ThreadTask task = ThreadTask.createFromLightTask(pathState.neeCacheCellOffset, lightIdx);
-          NEECache.storeThreadTask(pathState.pixelCoordinate, task);
+          NEECell cell = NEECache.getCell(pathState.neeCacheCellOffset);
+          float16_t accumulateValue = calcBt709Luminance(diffuseLight + specularLight);
+          float16_t randomOffset = getNextSampleBlueNoise(randomState);
+          cell.insertSlotTask(lightTask, accumulateValue, randomOffset, lightIdx != kInvalidLightIdx);
         }
     
         vec3 neeLight = diffuseLight + specularLight;
@@ -890,9 +892,9 @@ void integrateIndirectPath(
   if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable) 
   {
     RAB_RandomSamplerState rtxdiRNG = RAB_InitRandomSampler(pathState.pixelCoordinate, cb.frameIdx, pathState.bounceIteration);
-    vec3 jitterOffset = vec3(RAB_GetNextRandom(rtxdiRNG), RAB_GetNextRandom(rtxdiRNG), RAB_GetNextRandom(rtxdiRNG));
-    pathState.neeCacheCellOffset = NEECache.pointToOffset(rayOrigin, true, jitterOffset);
-    NEECache.storeThreadTask(pixelCoordinate, ThreadTask.createEmpty());
+    uint jitter = sampleUniformIntRng(rtxdiRNG);
+    MinimalSurfaceInteraction gbuffer = minimalSurfaceInteractionReadFromGBuffer(pixelCoordinate, indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal);
+    pathState.neeCacheCellOffset = NEECache.pointToOffset(rayOrigin, gbuffer.triangleNormal, jitter);
   }
 
   if (cb.enableReSTIRGI && geometryFlags.primarySelectedIntegrationSurface)
@@ -931,7 +933,7 @@ void integrateIndirectPath(
 
           const float pomThroughput = opaqueSurfaceMaterialInteractionCalcHeightThroughput(
             minimalSurfaceInteraction, pathState.direction, opaqueSurfaceMaterial.heightTextureIndex,
-            opaqueSurfaceMaterial.samplerIndex, DisplacementTextureCoord[pixelCoordinate], opaqueSurfaceMaterial.displaceIn
+            opaqueSurfaceMaterial.samplerIndex, SharedTextureCoord[pixelCoordinate], opaqueSurfaceMaterial.displaceIn
           );
 
           pathState.throughput = pathState.throughput * pomThroughput;

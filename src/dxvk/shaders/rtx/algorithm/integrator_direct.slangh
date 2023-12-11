@@ -65,9 +65,7 @@ void evalNEEPrimary(
   const bool enablePOM = cb.pomEnableDirectLighting && opaqueSurfaceMaterialInteractionHasHeightTexture(opaqueSurfaceMaterialInteraction);
   const uint16_t primarySurfaceIndex = enablePOM ? uint16_t(SharedSurfaceIndex[pixelCoordinate]) : BINDING_INDEX_INVALID;
 
-  // Load Subsurface Material
-  SubsurfaceMaterial subSurfaceMaterial;
-  const bool isSubSurface = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
+  const bool isSubsurface = isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
 
   const VisibilityResult visibility = traceVisibilityRay(
     minimalSurfaceInteraction,
@@ -75,8 +73,8 @@ void evalNEEPrimary(
     visibilityModeAccurateHitDistance | visibilityModeEnableTranslucentMaterials,
     sampledTransportPortalIndex, portalSpace,
     minimalRayInteraction.coneRadius, viewRay.spreadAngle, 1.0, isViewModelSurface, false,
-    primarySurfaceIndex, DisplacementTextureCoord[pixelCoordinate],
-    isSubSurface, opaqueSurfaceMaterialInteraction.shadingNormal);
+    primarySurfaceIndex, SharedTextureCoord[pixelCoordinate],
+    isSubsurface, opaqueSurfaceMaterialInteraction.shadingNormal);
 
   hitDistance = visibility.hitDistance;
   hasOpaqueHit = visibility.hasOpaqueHit;
@@ -343,9 +341,6 @@ void integrateDirectPath(
         primarySurfaceInteraction, opaqueSurfaceMaterialInteraction, primaryMinimalRayInteraction.viewDirection,
         lightSample, inverseSelectionPdf, lightIdx);
     }
-
-    SubsurfaceMaterial subSurfaceMaterial;
-    const bool sssEnable = subSurfaceMaterialReadHelper(opaqueSurfaceMaterialInteraction.subsurfaceMaterialIndex, subSurfaceMaterial);
 
     // Evaluate NEE
     if (rtxdiLightSampleValid || risLightSampleValid)

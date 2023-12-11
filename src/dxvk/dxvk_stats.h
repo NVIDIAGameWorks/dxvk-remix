@@ -11,16 +11,21 @@ namespace dxvk {
    * thogether with \ref DxvkStatCounters.
    */
   enum class DxvkStatCounter : uint32_t {
-    CmdDrawCalls,                      ///< Number of draw calls
-    CmdDispatchCalls,                  ///< Number of compute calls
+    CmdDrawCalls,             ///< Number of draw calls
+    CmdDispatchCalls,         ///< Number of compute calls
+    CmdRenderPassCount,       ///< Number of render passes
+    PipeCountGraphics,        ///< Number of graphics pipelines
+    PipeCountCompute,         ///< Number of compute pipelines
+    PipeCompilerBusy,         ///< Boolean indicating compiler activity
+    QueueSubmitCount,         ///< Number of command buffer submissions
+    QueuePresentCount,        ///< Number of present calls / frames
+    GpuIdleTicks,             ///< GPU idle time in microseconds
+    CsSyncCount,              ///< CS thread synchronizations
+    CsSyncTicks,              ///< Time spent waiting on CS
+    CsChunkCount,             ///< Submitted CS chunks
+
+    // NV-DXVK begin: RTX Remix counters
     CmdTraceRaysCalls,                 ///< Number of traceRays calls
-    CmdRenderPassCount,                ///< Number of render passes
-    PipeCountGraphics,                 ///< Number of graphics pipelines
-    PipeCountCompute,                  ///< Number of compute pipelines
-    PipeCompilerBusy,                  ///< Boolean indicating compiler activity
-    QueueSubmitCount,                  ///< Number of command buffer submissions
-    QueuePresentCount,                 ///< Number of present calls / frames
-    GpuIdleTicks,                      ///< GPU idle time in microseconds
     RtxBlasCount,                      ///< Number of unique BLAS's in the scene/geometry cache
     RtxBufferCount,                    ///< Number of unique buffers being tracked for RT rendering
     RtxTextureCount,                   ///< Number of unique textures being tracked for RT rendering
@@ -32,7 +37,9 @@ namespace dxvk {
     RtxSamplers,                       ///< Number of samplers currently present in the scene
     RtxTexturesInFlight,               ///< Number of texture currently being loaded
     RtxLastTextureBatchDuration,       ///< Duration in ms of the last processed texture batch
-    NumCounters,                       ///< Number of counters available
+    // NV-DXVK end
+
+    NumCounters,              ///< Number of counters available
   };
   
   

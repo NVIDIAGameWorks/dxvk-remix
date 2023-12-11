@@ -28,6 +28,9 @@
 
 // Shared Inputs
 
+layout(binding = INTEGRATE_BINDING_LINEAR_WRAP_SAMPLER)
+SamplerState LinearWrapSampler;
+
 layout(binding = INTEGRATE_INDIRECT_BINDING_SKYPROBE)
 SamplerCube<float3> SkyProbe;
 
@@ -37,11 +40,14 @@ Texture2D<uint> SharedFlags;
 layout(r16ui, binding = INTEGRATE_INDIRECT_BINDING_SHARED_MEDIUM_MATERIAL_INDEX_INPUT)
 Texture2D<uint> SharedMediumMaterialIndex;
 
-layout(rg32f, binding = INTEGRATE_INDIRECT_BINDING_DISPLACEMENT_TEXTURE_COORD_INPUT)
-RWTexture2D<float2> DisplacementTextureCoord;
+layout(rg32f, binding = INTEGRATE_INDIRECT_BINDING_SHARED_TEXTURE_COORD_INPUT)
+Texture2D<float2> SharedTextureCoord;
 
 layout(r16ui, binding = INTEGRATE_INDIRECT_BINDING_SHARED_SURFACE_INDEX_INPUT)
-RWTexture2D<uint> SharedSurfaceIndex;
+Texture2D<uint> SharedSurfaceIndex;
+
+layout(rgba16ui, binding = INTEGRATE_INDIRECT_BINDING_SHARED_SUBSURFACE_DATA_INPUT)
+Texture2D<uint4> SharedSubsurfaceData;
 
 // Inputs
 
@@ -108,8 +114,14 @@ ByteAddressBuffer NeeCache;
 layout(binding = INTEGRATE_INDIRECT_BINDING_NEE_CACHE_SAMPLE)
 StructuredBuffer<NeeCache_PackedSample> NeeCacheSample;
 
+layout(binding = INTEGRATE_INDIRECT_BINDING_NEE_CACHE_TASK)
+RWByteAddressBuffer NeeCacheTask;
+
 layout(rg32ui, binding = INTEGRATE_INDIRECT_BINDING_NEE_CACHE_THREAD_TASK)
 RWTexture2D<uint2> NeeCacheThreadTask;
+
+layout(binding = INTEGRATE_INDIRECT_BINDING_PRIMITIVE_ID_PREFIX_SUM) 
+StructuredBuffer<uint> PrimitiveIDPrefixSum;
 
 // Aliased resources
 

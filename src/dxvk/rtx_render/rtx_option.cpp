@@ -186,46 +186,9 @@ namespace dxvk {
     
     std::string fullName = getFullName();
     auto& value = valueList[(int) ValueType::Value];
-    auto& defaultValue = valueList[(int) ValueType::DefaultValue];
 
     if (changedOptionOnly) {
-      bool isChanged = false;
-      switch (type) {
-      case OptionType::Bool:
-        isChanged = (value.b != defaultValue.b);
-        break;
-      case OptionType::Int:
-        isChanged = (value.i != defaultValue.i);
-        break;
-      case OptionType::Float:
-        isChanged = (value.f != defaultValue.f);
-        break;
-      case OptionType::HashSet:
-        isChanged = (*value.hashSet != *defaultValue.hashSet);
-        break;
-      case OptionType::HashVector:
-        isChanged = (*value.hashVector != *defaultValue.hashVector);
-        break;
-      case OptionType::IntVector:
-        isChanged = (*value.intVector != *defaultValue.intVector);
-        break;
-      case OptionType::Vector2:
-        isChanged = (*value.v2 != *defaultValue.v2);
-        break;
-      case OptionType::Vector3:
-        isChanged = (*value.v3 != *defaultValue.v3);
-        break;
-      case OptionType::Vector2i:
-        isChanged = (*value.v2i != *defaultValue.v2i);
-        break;
-      case OptionType::String:
-        isChanged = (*value.string != *defaultValue.string);
-        break;
-      default:
-        break;
-      }
-
-      if (!isChanged) {
+      if (isDefault()) {
         return;
       }
     }
@@ -264,6 +227,48 @@ namespace dxvk {
     default:
       break;
     }
+  }
+
+  bool RtxOptionImpl::isDefault() const {
+    auto& value = valueList[(int) ValueType::Value];
+    auto& defaultValue = valueList[(int) ValueType::DefaultValue];
+
+    bool isDefault = false;
+    switch (type) {
+    case OptionType::Bool:
+      isDefault = (value.b == defaultValue.b);
+      break;
+    case OptionType::Int:
+      isDefault = (value.i == defaultValue.i);
+      break;
+    case OptionType::Float:
+      isDefault = (value.f == defaultValue.f);
+      break;
+    case OptionType::HashSet:
+      isDefault = (*value.hashSet == *defaultValue.hashSet);
+      break;
+    case OptionType::HashVector:
+      isDefault = (*value.hashVector == *defaultValue.hashVector);
+      break;
+    case OptionType::IntVector:
+      isDefault = (*value.intVector == *defaultValue.intVector);
+      break;
+    case OptionType::Vector2:
+      isDefault = (*value.v2 == *defaultValue.v2);
+      break;
+    case OptionType::Vector3:
+      isDefault = (*value.v3 == *defaultValue.v3);
+      break;
+    case OptionType::Vector2i:
+      isDefault = (*value.v2i == *defaultValue.v2i);
+      break;
+    case OptionType::String:
+      isDefault = (*value.string == *defaultValue.string);
+      break;
+    default:
+      break;
+    }      
+    return isDefault;
   }
 
   void RtxOptionImpl::resetOption() {

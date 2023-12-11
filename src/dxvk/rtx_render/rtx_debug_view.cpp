@@ -66,6 +66,8 @@ namespace dxvk {
 
         {DEBUG_VIEW_POSITION, "Position"},
         {DEBUG_VIEW_TEXCOORDS, "Texture Coordinates"},
+        {DEBUG_VIEW_TEXCOORDS_GRADIENT_X, "Texture Coordinates Gradient X"},
+        {DEBUG_VIEW_TEXCOORDS_GRADIENT_Y, "Texture Coordinates Gradient Y"},
         {DEBUG_VIEW_TEXCOORD_GENERATION_MODE, "Texture Coordinates Generation Mode"},
         {DEBUG_VIEW_VIRTUAL_MOTION_VECTOR, "Virtual Motion Vector"},
         {DEBUG_VIEW_SCREEN_SPACE_MOTION_VECTOR, "Screen-Space Motion Vector"},
@@ -82,7 +84,19 @@ namespace dxvk {
 
         {DEBUG_VIEW_MATERIAL_TYPE, "Material Type"},
         {DEBUG_VIEW_ALBEDO, "Diffuse Albedo"},
-        {DEBUG_VIEW_RAW_ALBEDO, "Diffuse Raw Albedo (RGS only)"},        
+        {DEBUG_VIEW_RAW_ALBEDO, "Diffuse Raw Albedo (RGS only)"},     
+        {DEBUG_VIEW_OPAQUE_RAW_ALBEDO_RESOLUTION_CHECKERS, "Opaque Material Raw Albedo + Texture Resolution Checkers (RGS only)",
+                                                    "Parameterize via:\n"
+                                                    "Debug Knob [0]: num texels per checker box [Default: 64]\n"
+                                                    "Debug Knob [1]: checkers overlay strength [Default: 0.5]"},
+        {DEBUG_VIEW_OPAQUE_NORMAL_RESOLUTION_CHECKERS, "Opaque Material Normal + Texture Resolution Checkers (RGS only)",
+                                                    "Parameterize via:\n"
+                                                    "Debug Knob [0]: num texels per checker box [Default: 64]\n"
+                                                    "Debug Knob [1]: checkers overlay strength [Default: 0.5]"},
+        {DEBUG_VIEW_OPAQUE_ROUGHNESS_RESOLUTION_CHECKERS, "Opaque Material Roughness + Texture Resolution Checkers (RGS only)",
+                                                    "Parameterize via:\n"
+                                                    "Debug Knob [0]: num texels per checker box [Default: 64]\n"
+                                                    "Debug Knob [1]: checkers overlay strength [Default: 0.5]"},
         {DEBUG_VIEW_BASE_REFLECTIVITY, "Base Reflectivity"},
         {DEBUG_VIEW_ROUGHNESS, "Isotropic Roughness"},
         {DEBUG_VIEW_PERCEPTUAL_ROUGHNESS, "Perceptual Roughness"},
@@ -100,11 +114,11 @@ namespace dxvk {
         {DEBUG_VIEW_CASCADE_LEVEL, "Terrain: Cascade Level (RGS only)"},
 
         {DEBUG_VIEW_VIRTUAL_HIT_DISTANCE, "Virtual Hit Distance"},
-        {DEBUG_VIEW_PRIMARY_DEPTH, "Primary Depth" },
+        {DEBUG_VIEW_PRIMARY_DEPTH, "Primary Depth"},
 
         {DEBUG_VIEW_SHARED_BIAS_CURRENT_COLOR_MASK, "DLSS Bias Color Mask"},
 
-        {DEBUG_VIEW_IS_INSIDE_FRUSTUM, "Is Inside Frustum" },
+        {DEBUG_VIEW_IS_INSIDE_FRUSTUM, "Is Inside Frustum"},
 
         {DEBUG_VIEW_BLUE_NOISE, "Blue Noise"},
         {DEBUG_VIEW_PIXEL_CHECKERBOARD, "Pixel Checkerboard"},
@@ -131,6 +145,8 @@ namespace dxvk {
 
         {DEBUG_VIEW_NEE_CACHE_LIGHT_HISTOGRAM, "NEE Cache Light Histogram"},
         {DEBUG_VIEW_NEE_CACHE_HISTOGRAM, "NEE Cache Triangle Histogram"},
+        {DEBUG_VIEW_NEE_CACHE_HASH_MAP, "NEE Cache Hash Map"},
+        {DEBUG_VIEW_NEE_CACHE_ACCUMULATE_MAP, "NEE Cache Accumulate Map"},
         {DEBUG_VIEW_NEE_CACHE_SAMPLE_RADIANCE, "NEE Cache Sample Radiance"},
         {DEBUG_VIEW_NEE_CACHE_TASK, "NEE Cache Task"},
 
@@ -208,8 +224,8 @@ namespace dxvk {
         {DEBUG_VIEW_NAN,                                                   "Inf/NaN Check"},
         {DEBUG_SURFACE_LOBE_CONSISTENCY,                                   "Surface/Lobe Consistency Check"},
         {DEBUG_VIEW_SCROLLING_LINE,                                        "Scrolling Line"},
-        {DEBUG_VIEW_POM_ITERATIONS,                                        "POM Iterations" },
-        {DEBUG_VIEW_POM_DIRECT_HIT_POS,                                    "POM Direct Hit Position (Tangent Space)" },
+        {DEBUG_VIEW_POM_ITERATIONS,                                        "POM Iterations"},
+        {DEBUG_VIEW_POM_DIRECT_HIT_POS,                                    "POM Direct Hit Position (Tangent Space)"},
     } };
 
   ImGui::ComboWithKey<CompositeDebugView> compositeDebugViewCombo = ImGui::ComboWithKey<CompositeDebugView>(
@@ -318,23 +334,23 @@ namespace dxvk {
     bool filterWords = searchWord.length() > 0;
 
     // Hide unmatched options
-    std::vector<const char*> items;
+    std::vector<std::pair<const char* /*name*/, const char* /*tooltip*/>> items;
     items.reserve(debugViewEntries.size());
     int itemIndex = -1;
     for (int i = 0; i < debugViewEntries.size(); i++) {
-      if (debugViewEntries[i].first == lastView) {
+      if (debugViewEntries[i].key == lastView) {
         itemIndex = items.size();
       }
 
       if (filterWords) {
-        std::string name(debugViewEntries[i].second);
+        std::string name(debugViewEntries[i].name);
         toLowerCase(name);
 
-        if (debugViewEntries[i].first == lastView || name.find(searchWord) != std::string::npos) {
-          items.push_back(debugViewEntries[i].second);
+        if (debugViewEntries[i].key == lastView || name.find(searchWord) != std::string::npos) {
+          items.emplace_back(debugViewEntries[i].name, debugViewEntries[i].tooltip);
         }
       } else {
-        items.push_back(debugViewEntries[i].second);
+        items.emplace_back(debugViewEntries[i].name, debugViewEntries[i].tooltip);
       }
     }
 
@@ -348,8 +364,8 @@ namespace dxvk {
     ImGui::PopItemWidth();
 
     for (int i = 0; i < debugViewEntries.size(); i++) {
-      if (itemIndex != -1 && debugViewEntries[i].second == items[itemIndex]) {
-        lastView = debugViewEntries[i].first;
+      if (itemIndex != -1 && debugViewEntries[i].name == items[itemIndex].first) {
+        lastView = debugViewEntries[i].key;
       }
     }
   }
@@ -691,7 +707,7 @@ namespace dxvk {
       auto&& debugViewArgs = getCommonDebugViewArgs(ctx.ptr(), rtOutput, common);
 
       Rc<DxvkBuffer> cb = getDebugViewConstantsBuffer();
-      ctx->updateBuffer(cb, 0, sizeof(DebugViewArgs), &debugViewArgs);
+      ctx->writeToBuffer(cb, 0, sizeof(DebugViewArgs), &debugViewArgs);
       ctx->getCommandList()->trackResource<DxvkAccess::Read>(cb);
 
       if (displayType() == DebugViewDisplayType::HDRWaveform) {

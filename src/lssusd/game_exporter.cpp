@@ -21,6 +21,7 @@
 */
 #include "game_exporter.h"
 #include "game_exporter_common.h"
+#include "mdl_helpers.h"
 #include "../util/log/log.h"
 
 #include "usd_include_begin.h"
@@ -53,7 +54,10 @@
 #include <pxr/usd/usdShade/material.h>
 #include <pxr/usd/usdShade/materialBindingAPI.h>
 #include <pxr/base/gf/camera.h>
+#include <pxr/base/gf/vec3f.h>
+#include <pxr/base/gf/matrix3f.h>
 #include <pxr/base/gf/matrix4f.h>
+#include <pxr/base/gf/matrix4d.h>
 #include <pxr/base/gf/matrix4d.h>
 #include <pxr/base/gf/rotation.h>
 #include <pxr/base/tf/fileUtils.h>
@@ -74,7 +78,14 @@
 #include <AperturePBR_Translucent.mdl.h>
 #include <AperturePBR_Model.mdl.h>
 #include <AperturePBR_Normal.mdl.h>
+#include <AperturePBR_SpriteSheet.mdl.h>
 #include "../util/util_env.h"
+
+#ifndef NDEBUG
+#define ASSERT_OR_EXECUTE(BODY) assert((BODY))
+#else
+#define ASSERT_OR_EXECUTE(BODY) (BODY)
+#endif
 
 namespace {
 inline pxr::GfMatrix4d ToRHS(const pxr::GfMatrix4d& xform) {
@@ -93,7 +104,6 @@ pxr::VtMatrix4dArray sanitizeBoneXforms(const pxr::VtMatrix4dArray& xforms,
   sanitizedXforms.resize(numBones);
   pxr::GfMatrix4d worldFromRoot(1);
 
-
   if (numBones > 0) {
     const pxr::GfMatrix4d rootFromWorld = bindPose[0] * xforms[0];
     worldFromRoot = rootFromWorld.GetInverse();
@@ -108,10 +118,10 @@ pxr::VtMatrix4dArray sanitizeBoneXforms(const pxr::VtMatrix4dArray& xforms,
 }
 
 lss::Skeleton generateSkeleton(const size_t numBones,
-                              const size_t bonesPerVertex,
-                              const lss::PositionBuffer& points,
-                              const lss::BlendWeightBuffer* weights,
-                              const lss::BlendIndicesBuffer* indices) {
+                               const size_t bonesPerVertex,
+                               const lss::Buf<lss::Pos>& points,
+                               const lss::Buf<lss::BlendWeight>* weights,
+                               const lss::Buf<lss::BlendIdx>* indices) {
   lss::Skeleton output;
   output.bindPose.resize(numBones);
   output.restPose.resize(numBones);
@@ -160,6 +170,16 @@ lss::Skeleton generateSkeleton(const size_t numBones,
     output.jointNames[i] = pxr::TfToken(dxvk::str::format("root/joint", i));
   }
   return output;
+}
+
+void setStageOffsetXform(pxr::UsdGeomXform& parentXformSchema, const pxr::GfVec3d translate, const bool bDoLhsToRhs) {
+  pxr::GfMatrix4d moveToOrigin{1.0};
+  moveToOrigin.SetTranslateOnly(translate);
+  moveToOrigin = bDoLhsToRhs ? ToRHS(moveToOrigin) : moveToOrigin;
+  moveToOrigin = moveToOrigin.GetInverse();
+  auto transformOp = parentXformSchema.AddTransformOp();
+  assert(transformOp);
+  transformOp.Set(moveToOrigin);
 }
 }
 
@@ -234,14 +254,16 @@ pxr::UsdStageRefPtr GameExporter::createInstanceStage(const Export& exportData) 
   const auto rootPrim = instanceStage->DefinePrim(gRootNodePath);
   assert(rootPrim);
   instanceStage->SetDefaultPrim(rootPrim);
-  const auto rootLightsPrim = instanceStage->DefinePrim(gRootLightsPath);
+  const auto rootLightsPrim = pxr::UsdGeomXform::Define(instanceStage,gRootLightsPath);
   assert(rootLightsPrim);
   const auto rootMeshesPrim = instanceStage->DefinePrim(gRootMeshesPath);
   assert(rootMeshesPrim);
   const auto rootMaterialsPrim = instanceStage->DefinePrim(gRootMaterialsPath);
   assert(rootMaterialsPrim);
-  const auto rootInstancesPrim = instanceStage->DefinePrim(gRootInstancesPath);
+  const auto rootInstancesPrim = pxr::UsdGeomXform::Define(instanceStage,gRootInstancesPath);
   assert(rootInstancesPrim);
+  const auto rootCameraPrim = pxr::UsdGeomXform::Define(instanceStage, gRootLightCamera);
+  assert(rootCameraPrim);
   dxvk::Logger::debug("[GameExporter][" + exportData.debugId + "] Creating instance stage");
 
   // capture meta data
@@ -292,13 +314,67 @@ void GameExporter::createApertureMdls(const std::string& baseExportPath) {
   writeFile(materialsDirPath + "AperturePBR_Translucent.mdl", ___AperturePBR_Translucent);
   writeFile(materialsDirPath + "AperturePBR_Model.mdl", ___AperturePBR_Model);
   writeFile(materialsDirPath + "AperturePBR_Normal.mdl", ___AperturePBR_Normal);
+  writeFile(materialsDirPath + "AperturePBR_SpriteSheet.mdl", ___AperturePBR_SpriteSheet);
+}
+
+namespace{
+struct AttrDesc {
+  pxr::TfToken                           attrName;
+  pxr::SdfValueTypeName                  typeName;
+  bool                                   custom;
+  pxr::SdfVariability                    sdfVariability;
+};
+#define AttrDescMapEntry(attrEnum, typeName, custom, sdfVariability) \
+{ \
+  attrEnum, \
+  AttrDesc{pxr::TfToken(attrNames[attrEnum]), \
+           pxr::SdfValueTypeNames->##typeName, \
+           custom, \
+           pxr::SdfVariability##sdfVariability} \
+}
+
+namespace ShaderAttr {
+enum Enum {
+  OutputsOut,
+  DiffuseTex,
+  ImplSrc,
+  MdlSrcAsset,
+  MdlSrcAssetSubId,
+  Opacity,
+  FilterMode,
+  WrapModeU,
+  WrapModeV,
+};
+static std::unordered_map<Enum,std::string> attrNames {
+  {OutputsOut,       "outputs:out"},
+  {DiffuseTex,       "inputs:diffuse_texture"},
+  {ImplSrc,          "info:implementationSource"},
+  {MdlSrcAsset,      "info:mdl:sourceAsset"},
+  {MdlSrcAssetSubId, "info:mdl:sourceAsset:subIdentifier"},
+  {Opacity,          "enable_opacity"},
+  {FilterMode,       "filter_mode"},
+  {WrapModeU,        "wrap_mode_u"},
+  {WrapModeV,        "wrap_mode_v"},
+};
+static std::unordered_map<Enum,AttrDesc> attrDescs{
+  AttrDescMapEntry(OutputsOut,       Token, false, Varying),
+  AttrDescMapEntry(DiffuseTex,       Asset, false, Varying),
+  AttrDescMapEntry(ImplSrc,          Token, false, Uniform),
+  AttrDescMapEntry(MdlSrcAsset,      Asset, false, Uniform),
+  AttrDescMapEntry(MdlSrcAssetSubId, Token, false, Uniform),
+  AttrDescMapEntry(Opacity,           Bool, false, Uniform),
+  AttrDescMapEntry(FilterMode,        UInt, false, Uniform),
+  AttrDescMapEntry(WrapModeU,         UInt, false, Uniform),
+  AttrDescMapEntry(WrapModeV,         UInt, false, Uniform),
+};
+}
 }
 
 void GameExporter::exportMaterials(const Export& exportData, ExportContext& ctx) {
   dxvk::Logger::debug("[GameExporter][" + exportData.debugId + "][exportMaterials] Begin");
   const std::string matDirPath = exportData.baseExportPath + "/" + commonDirName::matDir;
   const std::string fullMaterialBasePath = computeLocalPath(matDirPath);
-
+  
   dxvk::env::createDirectory(matDirPath);
   for(const auto& [matId, matData] : exportData.materials) {
     // Build material stage
@@ -329,73 +405,42 @@ void GameExporter::exportMaterials(const Export& exportData, ExportContext& ctx)
     const auto shaderPrim = shader.GetPrim();
     assert(shaderPrim);
 
-    // Create shader prim outputs attr
-    static const pxr::TfToken kTokOutputsOutput("outputs:out");
-    const auto outputsOutAttr =
-      shaderPrim.CreateAttribute(kTokOutputsOutput, pxr::SdfValueTypeNames->Token, false, pxr::SdfVariabilityVarying);
+    std::unordered_map<ShaderAttr::Enum, pxr::UsdAttribute> shaderAttrs;
+    for(const auto& [attrEnum, desc] : ShaderAttr::attrDescs) {
+      shaderAttrs[attrEnum] =
+        shaderPrim.CreateAttribute(desc.attrName, desc.typeName, desc.custom, desc.sdfVariability);
+      // Cannot assert. Attr "outputs:out" asserts false, but authoring + Setting works just fine.
+      // assert(shaderAttrs[attrEnum]); 
+    }
 
     // Create and connect material outputs to shader outputs
     static const pxr::TfToken kTokOutputsMdlSurface("outputs:mdl:surface");
     const auto outputsMdlSurfaceAttr =
       matPrim.CreateAttribute(kTokOutputsMdlSurface, pxr::SdfValueTypeNames->Token, false, pxr::SdfVariabilityVarying);
-    outputsMdlSurfaceAttr.AddConnection(outputsOutAttr.GetPath(), pxr::UsdListPositionFrontOfAppendList);
+    outputsMdlSurfaceAttr.AddConnection(shaderAttrs[ShaderAttr::OutputsOut].GetPath(), pxr::UsdListPositionFrontOfAppendList);
 
     // Set shader "Kind"
     static const pxr::TfToken kTokMaterial("Material");
     pxr::UsdModelAPI(shader).SetKind(kTokMaterial);
 
     // Create and set textures asset paths on material
-    static const auto setTextureAttr =
-      [](const pxr::UsdPrim& shaderPrim, const pxr::TfToken attrName, const std::string& relTexPath, const std::string& fullMaterialBasePath)
-    {
-      const auto attr = shaderPrim.CreateAttribute(pxr::TfToken(attrName), pxr::SdfValueTypeNames->Asset, false, pxr::SdfVariabilityVarying);
-      assert(attr);
-      const auto fullTexturePath = computeLocalPath(relTexPath);
-      const auto relToMaterialsTexPath = std::filesystem::relative(fullTexturePath,fullMaterialBasePath).string();
-      const bool bSetSuccessful = attr.Set(pxr::SdfAssetPath(relToMaterialsTexPath));
-      assert(bSetSuccessful);
-      static const pxr::TfToken kTokColorSpaceAuto("auto");
-      attr.SetColorSpace(kTokColorSpaceAuto);
-      return true;
-    };
-    static const pxr::TfToken kTokenInputsDiffuseTex("inputs:diffuse_texture");
-
-    // Try to use an updated texture, if that doesn't work, try to use an old one
-    setTextureAttr(shaderPrim, kTokenInputsDiffuseTex, matData.albedoTexPath, fullMaterialBasePath);
+    const auto relToMaterialsTexPath =
+      std::filesystem::relative(computeLocalPath(matData.albedoTexPath), fullMaterialBasePath).string();
+    ASSERT_OR_EXECUTE(shaderAttrs[ShaderAttr::DiffuseTex].Set(pxr::SdfAssetPath(relToMaterialsTexPath)));
+    shaderAttrs[ShaderAttr::DiffuseTex].SetColorSpace(pxr::TfToken("auto"));
 
     // Create and set OmniPBR MDL boilerplate attributes on shader
-    static const pxr::TfToken kTokInfoImplSource("info:implementationSource");
-    static const pxr::TfToken kTokSourceAsset("sourceAsset");
-    const auto infoImplSourceAttr =
-      shaderPrim.CreateAttribute(kTokInfoImplSource, pxr::SdfValueTypeNames->Token, false, pxr::SdfVariabilityUniform);
-    assert(infoImplSourceAttr);
-    const bool bSetInfoImplSourceAttr = infoImplSourceAttr.Set(kTokSourceAsset);
-    assert(bSetInfoImplSourceAttr);
-
-    static const pxr::TfToken kTokInfoMdlSourceAsset("info:mdl:sourceAsset");
-
-    static const pxr::SdfAssetPath kSdfAssetPathOmniPBR("./AperturePBR_Opacity.mdl");
-    const auto infoMdlSourceAsset =
-      shaderPrim.CreateAttribute(kTokInfoMdlSourceAsset, pxr::SdfValueTypeNames->Asset, false, pxr::SdfVariabilityUniform);
-    assert(infoMdlSourceAsset);
-    const bool bSetInfoMdlSourceAsset = infoMdlSourceAsset.Set(kSdfAssetPathOmniPBR);
-    assert(bSetInfoMdlSourceAsset);
-
-    static const pxr::TfToken kTokInfoMdlSourceAssetSubId("info:mdl:sourceAsset:subIdentifier");
-    static const pxr::TfToken kTokOmniPBR("AperturePBR_Opacity");
-    const auto infoImplSourceSubIdAttr =
-      shaderPrim.CreateAttribute(kTokInfoMdlSourceAssetSubId, pxr::SdfValueTypeNames->Token, false, pxr::SdfVariabilityUniform);
-    assert(infoImplSourceSubIdAttr);
-    const bool bSetInfoMdlSourceAssetSubId = infoImplSourceSubIdAttr.Set(kTokOmniPBR);
-    assert(bSetInfoMdlSourceAssetSubId);
+    ASSERT_OR_EXECUTE(shaderAttrs[ShaderAttr::ImplSrc].Set(pxr::TfToken("sourceAsset")));
+    ASSERT_OR_EXECUTE(shaderAttrs[ShaderAttr::MdlSrcAsset].Set(pxr::SdfAssetPath("./AperturePBR_Opacity.mdl")));
+    ASSERT_OR_EXECUTE(shaderAttrs[ShaderAttr::MdlSrcAssetSubId].Set(pxr::TfToken("AperturePBR_Opacity")));
 
     // Mark whether to enable varying opacity
-    static const pxr::TfToken kTokEnableOpacity("enable_opacity");
-    const auto enableOpacityAttr =
-      shaderPrim.CreateAttribute(kTokEnableOpacity, pxr::SdfValueTypeNames->Bool, false, pxr::SdfVariabilityUniform);
-    assert(enableOpacityAttr);
-    const bool bSetEnableOpacityAttr = enableOpacityAttr.Set(matData.enableOpacity);
-    assert(bSetEnableOpacityAttr);
+    ASSERT_OR_EXECUTE(shaderAttrs[ShaderAttr::Opacity].Set(matData.enableOpacity));
+
+    // Sampler State
+    ASSERT_OR_EXECUTE(shaderAttrs[ShaderAttr::FilterMode].Set((uint32_t)lss::Mdl::Filter::vkToMdl(matData.sampler.filter)));
+    ASSERT_OR_EXECUTE(shaderAttrs[ShaderAttr::WrapModeU].Set((uint32_t)lss::Mdl::WrapMode::vkToMdl(matData.sampler.addrModeU)));
+    ASSERT_OR_EXECUTE(shaderAttrs[ShaderAttr::WrapModeV].Set((uint32_t)lss::Mdl::WrapMode::vkToMdl(matData.sampler.addrModeV)));
 
     matStage->Save();
     
@@ -538,6 +583,29 @@ void GameExporter::exportMeshes(const Export& exportData, ExportContext& ctx) {
     assert(meshXformVisibilityAttr);
     meshXformVisibilityAttr.Set(gVisibilityInherited);
 
+    // Visually undo world transform if it's baked into mesh vertices
+    if(exportData.meta.bCorrectBakedTransforms) {
+      auto meshXformOp = meshXformSchema.AddTransformOp();
+      assert(meshXformOp);
+      pxr::GfMatrix4d xform{1.0};
+      // Note: Don't call flipXForm for flipping here, because we need a post-flipping but SetScale function will clean-up the translation
+      if (!exportData.camera.bFlipMeshes) {
+        xform.SetTranslateOnly(pxr::GfVec3d(mesh.origin));
+        xform = xform.GetInverse();
+      } else {
+        if (!exportData.meta.isZUp) {
+          xform.SetTranslateOnly(pxr::GfVec3d(mesh.origin[0], -mesh.origin[1], mesh.origin[2]));
+          xform = xform.GetInverse();
+          xform[1][1] *= -1.0;
+        } else {
+          xform.SetTranslateOnly(pxr::GfVec3d(mesh.origin[0], mesh.origin[1], -mesh.origin[2]));
+          xform = xform.GetInverse();
+          xform[2][2] *= -1.0;
+        }
+      }
+      meshXformOp.Set(xform);
+    }
+
     // Build mesh geometry prim under above xform
     const auto meshSchemaSdfPath = meshXformSdfPath.AppendChild(gTokMesh);
     pxr::UsdGeomMesh meshSchema = pxr::UsdGeomMesh::Define(meshStage, meshSchemaSdfPath);
@@ -573,15 +641,15 @@ void GameExporter::exportMeshes(const Export& exportData, ExportContext& ctx) {
     // Indices
     const bool reduce = exportData.meta.bReduceMeshBuffers;
     ReducedIdxBufSet reducedIdxBufSet = reduce ? reduceIdxBufferSet(mesh.buffers.idxBufs) : ReducedIdxBufSet();
-    const std::map<float,IndexBuffer>& idxBufSet =
-      reduce ? reducedIdxBufSet.bufSet : mesh.buffers.idxBufs;
+    const BufSet<Index>& idxBufSet = reduce ? reducedIdxBufSet.bufSet : mesh.buffers.idxBufs;
     auto indexAttr = meshSchema.CreateFaceVertexIndicesAttr();
     assert(indexAttr);
     exportBufferSet(idxBufSet, indexAttr);
     // Vertices
+    const auto& posBufs = mesh.buffers.positionBufs;
     auto pointsAttr = meshSchema.CreatePointsAttr();
     assert(pointsAttr);
-    exportBufferSet(reduce ? reduceBufferSet(mesh.buffers.positionBufs, reducedIdxBufSet) : mesh.buffers.positionBufs, pointsAttr);
+    exportBufferSet(reduce ? reduceBufferSet(posBufs, reducedIdxBufSet) : posBufs, pointsAttr);
     // Normals
     auto normalsAttr = meshSchema.CreateNormalsAttr();
     assert(normalsAttr);
@@ -674,7 +742,7 @@ void GameExporter::exportMeshes(const Export& exportData, ExportContext& ctx) {
         meshInstanceXformSchema = pxr::UsdGeomXform::Define(ctx.instanceStage, meshInstanceXformSdfPath);
       }
       assert(meshInstanceXformSchema);
-      
+
       const std::string relMeshStagePath = relMeshDirPath + meshName + ctx.extension;
       auto meshInstanceUsdReferences = meshInstanceXformSchema.GetPrim().GetReferences();
       meshInstanceUsdReferences.AddReference(relMeshStagePath);
@@ -697,7 +765,7 @@ void GameExporter::exportMeshes(const Export& exportData, ExportContext& ctx) {
   dxvk::Logger::debug("[GameExporter][" + exportData.debugId + "][exportMeshes] End");
 }
 
-GameExporter::ReducedIdxBufSet GameExporter::reduceIdxBufferSet(const std::map<float,IndexBuffer>& idxBufSet) {
+GameExporter::ReducedIdxBufSet GameExporter::reduceIdxBufferSet(const BufSet<Index>& idxBufSet) {
   ReducedIdxBufSet reducedIdxBufSet;
   for(const auto& [timeCode, idxBuf] : idxBufSet) {
     const std::set<int> orderedIndices(idxBuf.cbegin(), idxBuf.cend());
@@ -717,10 +785,8 @@ GameExporter::ReducedIdxBufSet GameExporter::reduceIdxBufferSet(const std::map<f
 }
 
 template<typename T>
-std::map<float,pxr::VtArray<T>> GameExporter::reduceBufferSet(const std::map<float,pxr::VtArray<T>>& bufSet,
-                                                              const ReducedIdxBufSet& reducedIdxBufSet,
-                                                              size_t elemsPerIdx) {
-  std::map<float,pxr::VtArray<T>> reducedBufSet;
+BufSet<T> GameExporter::reduceBufferSet(const BufSet<T>& bufSet, const ReducedIdxBufSet& reducedIdxBufSet, size_t elemsPerIdx) {
+  BufSet<T> reducedBufSet;
   for(const auto& [timeCode, buf] : bufSet) {
     // There may not be a 1:1 mapping in timecodes b/w index buffers and other buffers
     float idxBufTimeCode = -1.f;
@@ -756,8 +822,7 @@ std::map<float,pxr::VtArray<T>> GameExporter::reduceBufferSet(const std::map<flo
 }
 
 template<typename T>
-void GameExporter::exportBufferSet(const std::map<float,pxr::VtArray<T>>& bufSet,
-                                       pxr::UsdAttribute attr) {
+void GameExporter::exportBufferSet(const BufSet<T>& bufSet, pxr::UsdAttribute attr) {
   if(bufSet.size() == 1) {
     attr.Set(bufSet.cbegin()->second);
   } else {
@@ -768,13 +833,12 @@ void GameExporter::exportBufferSet(const std::map<float,pxr::VtArray<T>>& bufSet
   }
 }
 
-template<typename T>
-void GameExporter::exportColorOpacityBufferSet(const std::map<float, pxr::VtArray<T>>& bufSet, pxr::UsdAttribute color, pxr::UsdAttribute opacity) {
+void GameExporter::exportColorOpacityBufferSet(const BufSet<Color>& bufSet, pxr::UsdAttribute color, pxr::UsdAttribute opacity) {
   pxr::VtArray<pxr::GfVec3f> colorArray;
   pxr::VtArray<float> opacityArray;
 
   if (bufSet.size() == 1) {
-    for (const T& element : bufSet.cbegin()->second) {
+    for (const Color& element : bufSet.cbegin()->second) {
       colorArray.emplace_back(pxr::GfVec3f(element[0], element[1], element[2]));
       opacityArray.emplace_back(element[3]);
     }
@@ -782,7 +846,7 @@ void GameExporter::exportColorOpacityBufferSet(const std::map<float, pxr::VtArra
     opacity.Set(opacityArray);
   } else {
     for (const auto& [timeCode, buf] : bufSet) {
-      for (const T& element : buf) {
+      for (const Color& element : buf) {
         colorArray.emplace_back(pxr::GfVec3f(element[0], element[1], element[2]));
         opacityArray.emplace_back(element[3]);
       }
@@ -796,28 +860,34 @@ void GameExporter::exportColorOpacityBufferSet(const std::map<float, pxr::VtArra
 void GameExporter::exportInstances(const Export& exportData, ExportContext& ctx) {
   assert(exportData.bExportInstanceStage);
   dxvk::Logger::debug("[GameExporter][" + exportData.debugId + "][exportInstances] Begin");
+  if(exportData.meta.bCorrectBakedTransforms) {
+    auto rootInstancesXformSchema = pxr::UsdGeomXform::Get(ctx.instanceStage,gRootInstancesPath);
+    assert(rootInstancesXformSchema);
+    setStageOffsetXform(rootInstancesXformSchema, exportData.stageOrigin, exportData.meta.isLHS);
+  }
   for(const auto& [instId,instanceData] : exportData.instances) {
     // Build base Xform prim for instance to reside in
     auto instanceName = (instanceData.isSky ? "sky_" : "inst_") + std::string(instanceData.instanceName);
-    pxr::SdfPath fullInstancePath = gRootInstancesPath.AppendElementString(instanceName);
-
+    pxr::SdfPath instancePath = gRootInstancesPath.AppendElementString(instanceName);
+    auto instanceXformSchema = pxr::UsdGeomXform::Define(ctx.instanceStage, instancePath);
+    
+    pxr::SdfPath meshRefPath = instancePath.AppendElementString("ref");
+    pxr::UsdGeomXformable meshRefXformSchema;
     const bool isSkeleton = !instanceData.boneXForms.empty();
-
-    pxr::UsdGeomXformable instanceXform;
     if (isSkeleton) {
-      instanceXform = pxr::UsdSkelRoot::Define(ctx.instanceStage, fullInstancePath);
+      meshRefXformSchema = pxr::UsdSkelRoot::Define(ctx.instanceStage, meshRefPath);
     } else {
-      instanceXform = pxr::UsdGeomXform::Define(ctx.instanceStage, fullInstancePath);
+      meshRefXformSchema = pxr::UsdGeomXform::Define(ctx.instanceStage, meshRefPath);
     }
-    assert(instanceXform);
+    assert(meshRefXformSchema);
 
     // Attach reference to mesh in question
     const Reference& meshLssReference = ctx.meshReferences[instanceData.meshId];
-    auto instanceUsdReferences = instanceXform.GetPrim().GetReferences();
+    auto instanceUsdReferences = meshRefXformSchema.GetPrim().GetReferences();
     instanceUsdReferences.AddInternalReference(meshLssReference.instanceSdfPath);
     
     // Set instanced mesh to now be visible
-    auto visibilityAttr = instanceXform.CreateVisibilityAttr();
+    auto visibilityAttr = meshRefXformSchema.CreateVisibilityAttr();
     assert(visibilityAttr);
     visibilityAttr.Set(gVisibilityInherited);
     
@@ -832,13 +902,13 @@ void GameExporter::exportInstances(const Export& exportData, ExportContext& ctx)
       const Reference& matLssReference = ctx.matReferences[instanceData.matId];
       const auto shaderMatSchema = pxr::UsdShadeMaterial::Get(ctx.instanceStage, matLssReference.instanceSdfPath);
       assert(shaderMatSchema);
-      pxr::UsdShadeMaterialBindingAPI(instanceXform.GetPrim()).Bind(shaderMatSchema);
+      pxr::UsdShadeMaterialBindingAPI(meshRefXformSchema.GetPrim()).Bind(shaderMatSchema);
     }
 
     if (isSkeleton) {
       // Set instance skeleton pose / animation
-      const auto skelPoseSdfPath = fullInstancePath.AppendChild(gTokPose);
-      const auto skelSkelSdfPath = fullInstancePath.AppendChild(gTokSkel);
+      const auto skelPoseSdfPath = meshRefPath.AppendChild(gTokPose);
+      const auto skelSkelSdfPath = meshRefPath.AppendChild(gTokSkel);
       auto skelAnimationSchema = pxr::UsdSkelAnimation::Define(ctx.instanceStage, skelPoseSdfPath);
       assert(skelAnimationSchema);
       const lss::Skeleton& skel = ctx.skeletons[instanceData.meshId];
@@ -857,7 +927,7 @@ void GameExporter::exportInstances(const Export& exportData, ExportContext& ctx)
       auto animationSource = skelBindingSchema.CreateAnimationSourceRel();
       animationSource.SetTargets({skelPoseSdfPath});
     } else {
-      const auto meshSchemaSdfPath = fullInstancePath.AppendChild(gTokMesh);
+      const auto meshSchemaSdfPath = meshRefPath.AppendChild(gTokMesh);
       pxr::UsdGeomMesh meshSchema = pxr::UsdGeomMesh::Define(ctx.instanceStage, meshSchemaSdfPath);
       pxr::UsdGeomPrimvarsAPI primvarsAPI(meshSchema.GetPrim());
 
@@ -880,17 +950,52 @@ void GameExporter::exportInstances(const Export& exportData, ExportContext& ctx)
 #undef _SetDrawMetadata
     }
 
-    setTimeSampledXforms<true>(ctx.instanceStage, fullInstancePath, instanceData.firstTime, instanceData.finalTime, instanceData.xforms, exportData.meta);
-    setVisibilityTimeSpan(ctx.instanceStage, fullInstancePath, instanceData.firstTime, instanceData.finalTime, exportData.meta.numFramesCaptured);
+    const auto& mesh = exportData.meshes.at(instanceData.meshId);
+    // Move instance back to its original positions by undoing the visual correction.
+    // a.k.a. Invert the invert done in exportMeshes
+    pxr::GfMatrix4d commonXform{1.0};
+    if (exportData.meta.bCorrectBakedTransforms) {
+      if (!exportData.camera.bFlipMeshes) {
+        commonXform.SetTranslateOnly(pxr::GfVec3d(mesh.origin));
+      } else {
+        // This translation actually combines 2 steps of translation corrections for bake-corrected + flipped meshes:
+        // 1. Move instance back to it's original position inside root by undoing the flipped visual correction (-mesh.origin[1] or -mesh.origin[2])
+        // 2. Cancel out the root translation on the flipped dimension (Y or Z), then move exactly the same distance to the other side of flip axis:
+        //    P         y/z         P'
+        //    |--------->|--------->|
+        //     stageOrigin[1/2] * 2
+        if (!exportData.meta.isZUp) {
+          commonXform.SetTranslateOnly(pxr::GfVec3d(mesh.origin[0], -mesh.origin[1] + exportData.stageOrigin[1] * 2, mesh.origin[2]));
+        } else {
+          commonXform.SetTranslateOnly(pxr::GfVec3d(mesh.origin[0], mesh.origin[1], -mesh.origin[2] + exportData.stageOrigin[2] * 2));
+        }
+      }
+    } else {
+      flipXForm(exportData, commonXform);
+    }
+
+    setTimeSampledXforms<true>(ctx.instanceStage, instancePath,
+                               instanceData.firstTime, instanceData.finalTime, instanceData.xforms,
+                               exportData.meta, commonXform);
+    setVisibilityTimeSpan(ctx.instanceStage, instancePath, instanceData.firstTime, instanceData.finalTime, exportData.meta.numFramesCaptured);
   }
   dxvk::Logger::debug("[GameExporter][" + exportData.debugId + "][exportInstances] End");
 }
 
 void GameExporter::exportCamera(const Export& exportData, ExportContext& ctx) {
   dxvk::Logger::debug("[GameExporter][" + exportData.debugId + "][exportCamera] Begin");
+
+  auto gRootCamerasPath = gRootNodePath.AppendChild(kTokCameras);
+
   static const pxr::TfToken kTokCamera("Camera");
-  const pxr::SdfPath cameraSdfPath = gRootNodePath.AppendChild(kTokCamera);
+  const pxr::SdfPath cameraSdfPath = gRootCamerasPath.AppendChild(kTokCamera);
   auto geomCamera = pxr::UsdGeomCamera::Define(ctx.instanceStage, cameraSdfPath);
+
+  if (exportData.camera.bFlipMeshes) {
+    auto rootCamerasXformSchema = pxr::UsdGeomXform::Get(ctx.instanceStage, gRootCamerasPath);
+    assert(rootCamerasXformSchema);
+    setStageOffsetXform(rootCamerasXformSchema, pxr::GfVec3f { 0.f,0.f,0.f }, exportData.meta.isLHS);
+  }
 
   // Create Gf Camera which will convert FOV + Aspect Ratio -> Usd Camera Attributes
   pxr::GfCamera simpleCam;
@@ -905,14 +1010,6 @@ void GameExporter::exportCamera(const Export& exportData, ExportContext& ctx) {
   auto horizontalAperture = geomCamera.CreateHorizontalApertureAttr();
   horizontalAperture.Set(simpleCam.GetHorizontalAperture());
 
-  // Set Vertical aperture
-  auto verticalAperture = geomCamera.CreateVerticalApertureAttr();
-  float verticalApertureVal = simpleCam.GetVerticalAperture();
-  if(exportData.camera.bFlipVertAperture) {
-    verticalApertureVal *= (-1.f);
-  }
-  verticalAperture.Set(verticalApertureVal);
-
   // Set focal length
   auto focalLength = geomCamera.CreateFocalLengthAttr();
   focalLength.Set(simpleCam.GetFocalLength());
@@ -920,8 +1017,21 @@ void GameExporter::exportCamera(const Export& exportData, ExportContext& ctx) {
   // Set clipping range
   auto clippingPlane = geomCamera.CreateClippingRangeAttr();
   clippingPlane.Set(pxr::GfVec2f(exportData.camera.nearPlane, exportData.camera.farPlane));
-  
-  setTimeSampledXforms<false>(ctx.instanceStage, cameraSdfPath, exportData.camera.firstTime, exportData.camera.finalTime, exportData.camera.xforms, exportData.meta);
+
+  // Camera position needs to be adjusted if we're visually correcting baked transforms
+  pxr::GfMatrix4d commonXform{1.0};
+  if(exportData.meta.bCorrectBakedTransforms) {
+    pxr::GfVec3f stageOrigin = exportData.stageOrigin;
+    flipXForm(exportData, commonXform);
+    commonXform.SetTranslateOnly(pxr::GfVec3d(stageOrigin));
+    commonXform = commonXform.GetInverse();
+  } else {
+    flipXForm(exportData, commonXform);
+  }
+
+  setCameraTimeSampledXforms(ctx.instanceStage, cameraSdfPath,
+                             exportData.camera.firstTime, exportData.camera.finalTime, exportData.camera.xforms[0],
+                             exportData.meta, commonXform);
 
   // Must modify here, since there may be existing data set earlier
   pxr::VtDictionary customLayerData = ctx.instanceStage->GetRootLayer()->GetCustomLayerData();
@@ -936,6 +1046,11 @@ void GameExporter::exportSphereLights(const Export& exportData, ExportContext& c
   const std::string relLightDirPath = commonDirName::lightDir + "/";
   const std::string lightDirPath = exportData.baseExportPath + "/" + relLightDirPath;
   const std::string fullLightStagePath = computeLocalPath(lightDirPath);
+  if(exportData.meta.bCorrectBakedTransforms) {
+    auto rootLightsXformSchema = pxr::UsdGeomXform::Get(ctx.instanceStage,gRootLightsPath);
+    assert(rootLightsXformSchema);
+    setStageOffsetXform(rootLightsXformSchema, exportData.stageOrigin, exportData.meta.isLHS);
+  }
   dxvk::Logger::debug("[GameExporter][" + exportData.debugId + "][exportSphereLights] Begin");
   for(const auto& [id,sphereLightData] : exportData.sphereLights) {
     // Build light stage
@@ -980,7 +1095,13 @@ void GameExporter::exportSphereLights(const Export& exportData, ExportContext& c
       shaping.Apply(sphereLight.GetPrim());
     }
 
-    setTimeSampledXforms<false>(lightStage, lightAssetSdfPath, sphereLightData.firstTime, sphereLightData.finalTime, sphereLightData.xforms, exportData.meta);
+    // Sphere light position needs to be adjusted if we're visually flipping back upside down issue
+    pxr::GfMatrix4d commonXform { 1.0 };
+    flipXForm(exportData, commonXform);
+
+    setTimeSampledXforms<false>(lightStage, lightAssetSdfPath,
+                                sphereLightData.firstTime, sphereLightData.finalTime, sphereLightData.xforms,
+                                exportData.meta, commonXform);
     
     pxr::UsdLuxLightAPI lightAPI(sphereLight.GetPrim());
     setLightIntensityOnTimeSpan(lightAPI, sphereLightData.intensity, sphereLightData.firstTime, sphereLightData.finalTime, exportData.meta.numFramesCaptured);
@@ -1027,7 +1148,15 @@ void GameExporter::exportDistantLights(const Export& exportData, ExportContext& 
     angleAttr.Set(distantLightData.angle);
 
     static const pxr::GfVec3d distantLightDefault(0.0,0.0,-1.0);
-    const auto directionQuatF = pxr::GfQuatf{pxr::GfRotation(distantLightDefault, distantLightData.direction).GetQuat()};
+    pxr::GfVec3f distantLightDirection = distantLightData.direction;
+    if (exportData.camera.bFlipMeshes) {
+      if (!exportData.meta.isZUp) {
+        distantLightDirection[1] *= -1.0f;
+      } else {
+        distantLightDirection[2] *= -1.0f;
+      }
+    }
+    const auto directionQuatF = pxr::GfQuatf{pxr::GfRotation(distantLightDefault, distantLightDirection).GetQuat()};
     auto orientAttr = distantLightSchema.AddOrientOp();
     assert(orientAttr);
     orientAttr.Set(directionQuatF);
@@ -1149,26 +1278,26 @@ void GameExporter::setTimeSampledXforms(const pxr::UsdStageRefPtr stage,
                                         const float finalTime,
                                         const SampledXforms& xforms,
                                         const Export::Meta& meta,
-                                        const bool teleportAway) {
+                                        const pxr::GfMatrix4d& commonXform) {
   assert(stage);
   assert(sdfPath != pxr::SdfPath());
   assert(xforms.size() > 0);
-  auto geomXform = pxr::UsdGeomXformCommonAPI::Get(stage, sdfPath);
-  assert(geomXform);
 
   const bool isSingleFrame = meta.numFramesCaptured == 1;
 
-  // [TODO]: make this game-programmable via RTX settings
-  static const pxr::GfVec3d defaultXform(-10000.0, -10000.0, -10000.0);
-  // If the first time this object is seen is not at t=0, we need it to be not visible
-  if(teleportAway && (firstTime > 0.0)) {
-    geomXform.SetTranslate(defaultXform, isSingleFrame ? pxr::UsdTimeCode::Default() : pxr::UsdTimeCode(0.0));
-  }
+  auto geomXformable = pxr::UsdGeomXformable::Get(stage, sdfPath);
+  auto translateOp = geomXformable.AddTranslateOp();
+  assert(translateOp);
+  auto rotateOp = geomXformable.AddRotateZYXOp();
+  assert(rotateOp);
+  auto scaleOp = geomXformable.AddScaleOp();
+  assert(scaleOp);
   for(const auto& sampledXform : xforms) { 
     const pxr::UsdTimeCode timeCode = isSingleFrame ? pxr::UsdTimeCode::Default() : pxr::UsdTimeCode(sampledXform.time);
 
-    const auto xform = meta.isLHS ? ToRHS(sampledXform.xform) : sampledXform.xform;
-
+    auto xform = sampledXform.xform;
+    xform *= commonXform;
+    xform = meta.isLHS ? ToRHS(xform) : xform;
     const pxr::GfVec3d translation = xform.ExtractTranslation();
     pxr::GfVec3f scale(xform.GetRow3(0).GetLength(), xform.GetRow3(1).GetLength(), xform.GetRow3(2).GetLength());
 
@@ -1227,13 +1356,9 @@ void GameExporter::setTimeSampledXforms(const pxr::UsdStageRefPtr stage,
       }
     }
 
-    geomXform.SetTranslate(translation, timeCode);
-    geomXform.SetRotate(rotation, pxr::UsdGeomXformCommonAPI::RotationOrderZYX, timeCode);
-    geomXform.SetScale(scale, timeCode);
-  }
-  // If the entity stops existing midway through capture, move it to where it's invisible
-  if(teleportAway) {
-    geomXform.SetTranslate(defaultXform, isSingleFrame ? pxr::UsdTimeCode::Default() : pxr::UsdTimeCode(std::nextafter(finalTime, finalTime + 1.0)));
+    translateOp.Set(translation, timeCode);
+    rotateOp.Set(rotation, timeCode);
+    scaleOp.Set(scale, timeCode);
   }
 }
 
@@ -1285,6 +1410,59 @@ void GameExporter::setLightIntensityOnTimeSpan(const pxr::UsdLuxLightAPI& luxLig
   }
 }
 
+void GameExporter::setCameraTimeSampledXforms(const pxr::UsdStageRefPtr stage,
+                                              const pxr::SdfPath sdfPath,
+                                              const float firstTime,
+                                              const float finalTime,
+                                              const SampledXform& cameraXform,
+                                              const Export::Meta& meta,
+                                              const pxr::GfMatrix4d& commonXform) {
+  assert(stage);
+  assert(sdfPath != pxr::SdfPath());
+
+  const bool isSingleFrame = meta.numFramesCaptured == 1;
+  const pxr::UsdTimeCode timeCode = isSingleFrame ? pxr::UsdTimeCode::Default() : pxr::UsdTimeCode(cameraXform.time);
+
+  auto xform = cameraXform.xform * commonXform;
+  xform = meta.isLHS ? ToRHS(xform) : xform;
+  const pxr::GfVec3d translation = xform.ExtractTranslation();
+  pxr::GfVec3f scale(xform.GetRow3(0).GetLength(), xform.GetRow3(1).GetLength(), xform.GetRow3(2).GetLength());
+
+  pxr::GfVec3f rotation;
+  const auto r = xform.GetOrthonormalized().ExtractRotationMatrix();
+
+  if (r.GetHandedness() > 0) {
+    // Proper pure rotation - easy case.
+    rotation = ToEuler<pxr::GfVec3f>(r);
+  } else {
+    // Doing Improper Rotation for flipped matrix
+    ExtractEulerImproper<true>(rotation, r, pxr::GfVec3d(-1.0, -1.0, -1.0));
+    // Rotate camera around camera Up axis with 180 degrees
+    if (!meta.isZUp) {
+      rotation[0] -= 180.0f;
+      rotation[1] = -rotation[1];
+      rotation[2] = 180.0f - rotation[2];
+    } else {
+      rotation[0] -= 180.0f;
+      rotation[1] = -rotation[1];
+      rotation[2] = -rotation[2] - 180.0f;
+    }
+  }
+
+  // Apply transformation OPs
+  auto geomXformable = pxr::UsdGeomXformable::Get(stage, sdfPath);
+  auto translateOp = geomXformable.AddTranslateOp();
+  assert(translateOp);
+  auto rotateOp = geomXformable.AddRotateZYXOp();
+  assert(rotateOp);
+  auto scaleOp = geomXformable.AddScaleOp();
+  assert(scaleOp);
+
+  translateOp.Set(translation, timeCode);
+  rotateOp.Set(rotation, timeCode);
+  scaleOp.Set(scale, timeCode);
+}
+
 pxr::UsdStageRefPtr GameExporter::findOpenOrCreateStage(const std::string path, const bool bClearIfExists) {
     const bool bLayerAlreadyExists = pxr::TfIsFile(path);
     pxr::SdfLayerRefPtr alreadyExistentLayer;
@@ -1298,6 +1476,17 @@ pxr::UsdStageRefPtr GameExporter::findOpenOrCreateStage(const std::string path, 
     auto stage = (bLayerAlreadyExists) ? pxr::UsdStage::Open(alreadyExistentLayer) : pxr::UsdStage::CreateNew(path);
     assert(stage);
     return stage;
+}
+
+void GameExporter::flipXForm(const Export& exportData,
+                             pxr::GfMatrix4d& commonXform) {
+  if (exportData.camera.bFlipMeshes) {
+    if (!exportData.meta.isZUp) {
+      commonXform.SetScale(pxr::GfVec3d(1.0, -1.0, 1.0));
+    } else {
+      commonXform.SetScale(pxr::GfVec3d(1.0, 1.0, -1.0));
+    }
+  }
 }
 
 }

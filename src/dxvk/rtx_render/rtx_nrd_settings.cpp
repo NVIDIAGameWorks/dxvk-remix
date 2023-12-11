@@ -27,7 +27,7 @@
 namespace dxvk {
   ImGui::ComboWithKey<nrd::Method> methodCombo = ImGui::ComboWithKey<nrd::Method>(
     "Denoiser",
-    ImGui::ComboWithKey<nrd::Method>::ComboEntries{ {
+    ImGui::ComboWithKey<nrd::Method>::ComboEntries { {
         {nrd::Method::REBLUR_DIFFUSE_SPECULAR, "ReBLUR"},
         {nrd::Method::RELAX_DIFFUSE_SPECULAR, "ReLAX"},
         {nrd::Method::REFERENCE, "Reference"},
