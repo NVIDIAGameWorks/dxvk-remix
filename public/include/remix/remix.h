@@ -157,6 +157,7 @@ namespace remix {
     Result< void >                    DrawInstance(const InstanceInfo& info);
     Result< remixapi_LightHandle >    CreateLight(const LightInfo& info);
     Result< void >                    DestroyLight(remixapi_LightHandle handle);
+    Result< void >                    DrawLightInstance(remixapi_LightHandle handle);
     Result< void >                    SetConfigVariable(const char* key, const char* value);
 
     // DXVK interoperability
@@ -676,7 +677,9 @@ namespace remix {
     return m_CInterface.DestroyLight(handle);
   }
 
-
+  inline Result< void > Interface::DrawLightInstance(remixapi_LightHandle handle) {
+    return m_CInterface.DrawLightInstance(handle);
+  }
 
   namespace detail {
     struct dxvk_ExternalSwapchain {
