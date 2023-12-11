@@ -1083,18 +1083,16 @@ void geometryResolverVertex(
   }
   else
   {
-    if(cb.domeLightActive)
+    if(cb.domeLightArgs.active)
     {
-        float3 domeSampleDirection = mul(cb.worldToDomeLightTranform, float4(geometryResolverState.direction, 0.0f)).xyz;
-        float2 sampleUV = cartesianDirectionToLatLongSphere(domeSampleDirection);
-        emissiveRadiance += cb.domeLightRadiance * textures[nonuniformEXT(uint(cb.domeLightTextureIndex))].SampleLevel(LinearWrapSampler, sampleUV, 0).xyz;
+      emissiveRadiance += cb.domeLightArgs.radiance * sampleDomeLightTexture(LinearWrapSampler, geometryResolverState.direction, cb.domeLightArgs.textureIndex, cb.domeLightArgs.worldToLightTransform);
     }
     else
     {
-        // Apply sky radiance on miss
-        // TODO: add jitter?
-        vec2 screenUV = cameraPixelCoordinateToScreenUV(cb.camera, geometryResolverState.pixelCoordinate);
-        emissiveRadiance += cb.skyBrightness * SkyMatte.Sample(screenUV);
+      // Apply sky radiance on miss
+      // TODO: add jitter?
+      vec2 screenUV = cameraPixelCoordinateToScreenUV(cb.camera, geometryResolverState.pixelCoordinate);
+      emissiveRadiance += cb.skyBrightness * SkyMatte.Sample(screenUV);
     }
   }
 
@@ -1568,16 +1566,14 @@ void geometryPSRResolverVertex(
   }
   else
   {
-    if(cb.domeLightActive)
+    if(cb.domeLightArgs.active)
     {
-        float3 domeSampleDirection = mul(cb.worldToDomeLightTranform, float4(ray.direction, 0.0f)).xyz;
-        float2 sampleUV = cartesianDirectionToLatLongSphere(domeSampleDirection);
-        emissiveRadiance += cb.domeLightRadiance * textures[nonuniformEXT(uint(cb.domeLightTextureIndex))].SampleLevel(LinearWrapSampler, sampleUV, 0).xyz;
+      emissiveRadiance += cb.domeLightArgs.radiance * sampleDomeLightTexture(LinearWrapSampler, ray.direction, cb.domeLightArgs.textureIndex, cb.domeLightArgs.worldToLightTransform);
     }
     else
     {
-        // Output radiance from sky probe
-        emissiveRadiance += cb.skyBrightness * SkyProbe.Sample(ray.direction);
+      // Output radiance from sky probe
+      emissiveRadiance += cb.skyBrightness * SkyProbe.Sample(ray.direction);
     }
   }
 

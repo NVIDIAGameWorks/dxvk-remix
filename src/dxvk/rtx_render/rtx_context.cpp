@@ -995,16 +995,7 @@ namespace dxvk {
     constants.isZUp = RtxOptions::Get()->isZUp();
     constants.enableCullingSecondaryRays = RtxOptions::Get()->enableCullingInSecondaryRays();
 
-    // Dome light handling
-    DomeLight domeLight;
-    uint32_t domeLightTextureIndex;
-    if (constants.domeLightActive = getSceneManager().getLightManager().getActiveDomeLight(domeLight, domeLightTextureIndex)) {
-      assert(domeLightTextureIndex != UINT_MAX);
-
-      constants.domeLightTextureIndex = domeLightTextureIndex;
-      constants.domeLightRadiance = domeLight.radiance;
-      constants.worldToDomeLightTranform = domeLight.worldToLight;
-    }
+    constants.domeLightArgs = getSceneManager().getLightManager().getDomeLightArgs();
 
     // Upload the constants to the GPU
     {
