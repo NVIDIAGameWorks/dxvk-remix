@@ -459,6 +459,9 @@ extern "C" {
     remixapi_LightHandle      handle);
 
 
+  typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_DrawLightInstance)(
+    remixapi_LightHandle lightHandle);
+
 
   typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_SetConfigVariable)(
     const char*         key,
@@ -511,6 +514,7 @@ extern "C" {
     PFN_remixapi_DrawInstance              DrawInstance;
     PFN_remixapi_CreateLight               CreateLight;
     PFN_remixapi_DestroyLight              DestroyLight;
+    PFN_remixapi_DrawLightInstance         DrawLightInstance;
     PFN_remixapi_SetConfigVariable         SetConfigVariable;
     // DXVK interoperability
     PFN_remixapi_dxvk_CreateD3D9           dxvk_CreateD3D9;

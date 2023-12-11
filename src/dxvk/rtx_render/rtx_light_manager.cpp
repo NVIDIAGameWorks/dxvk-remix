@@ -324,8 +324,11 @@ namespace dxvk {
       m_linearizedLights.emplace_back(&light);
     }
 
-    for (auto& [handle, light] : m_externalLights) {
-      m_linearizedLights.emplace_back(&light);
+    for (auto& handle : m_externalActiveLightList) {
+      auto& found = m_externalLights.find(handle);
+      if (found != m_externalLights.end()) {
+        m_linearizedLights.emplace_back(&found->second);
+      }
     }
 
     // Count the active light of each type
@@ -443,13 +446,23 @@ namespace dxvk {
 
     // Generate a GPU dome light if necessary
     DomeLight activeDomeLight;
-    if (getActiveDomeLight(activeDomeLight, m_activeDomeLightBindlessTextureIndex)) {
+    if (getActiveDomeLight(activeDomeLight)) {
       // Ensures a texture stays in VidMem
       SceneManager& sceneManager = device()->getCommon()->getSceneManager();
-      sceneManager.trackTexture(ctx, activeDomeLight.texture, m_activeDomeLightBindlessTextureIndex, true, false);
+      sceneManager.trackTexture(ctx, activeDomeLight.texture, m_gpuDomeLightArgs.textureIndex, true, false);
+
+      m_gpuDomeLightArgs.active = true;
+      m_gpuDomeLightArgs.radiance = activeDomeLight.radiance;
+      m_gpuDomeLightArgs.worldToLightTransform = activeDomeLight.worldToLight;
     } else {
-      m_activeDomeLightBindlessTextureIndex = UINT_MAX;
+      m_gpuDomeLightArgs.active = false;
+      m_gpuDomeLightArgs.radiance = Vector3(0.0f);
+      m_gpuDomeLightArgs.textureIndex = BINDING_INDEX_INVALID;
     }
+
+    // Reset external active light list.
+    m_externalActiveDomeLight = nullptr;
+    m_externalActiveLightList.clear();
   }
 
   float LightManager::isSimilar(const RtLight& a, const RtLight& b, float distanceThreshold) {
@@ -635,14 +648,19 @@ namespace dxvk {
     m_externalDomeLights.erase(handle);
   }
 
-  bool LightManager::getActiveDomeLight(DomeLight& domeLightOut, uint32_t& bindlessTextureIndexOut) const {
-    if (m_externalDomeLights.size() == 0) {
+  bool LightManager::getActiveDomeLight(DomeLight& domeLightOut) {
+    if (m_externalDomeLights.size() == 0 || m_externalActiveDomeLight == nullptr) {
       return false;
     }
 
-    // We take the first dome light
-    domeLightOut = m_externalDomeLights.begin()->second;
-    bindlessTextureIndexOut = m_activeDomeLightBindlessTextureIndex;
+    auto found = m_externalDomeLights.find(m_externalActiveDomeLight);
+    if (found == m_externalDomeLights.end()) {
+      // Invalid active dome light, reset it
+      m_externalActiveDomeLight = nullptr;
+      return false;
+    }
+
+    domeLightOut = found->second;
 
     return true;
   }
@@ -655,6 +673,14 @@ namespace dxvk {
       found->second = domeLight;
     } else {
       m_externalDomeLights.emplace(handle, domeLight);
+    }
+  }
+
+  void LightManager::addExternalLightInstance(remixapi_LightHandle enabledLight) {
+    if (m_externalLights.find(enabledLight) != m_externalLights.end()) {
+      m_externalActiveLightList.insert(enabledLight);
+    } else if (m_externalDomeLights.find(enabledLight) != m_externalDomeLights.end() && m_externalActiveDomeLight == nullptr) {
+      m_externalActiveDomeLight = enabledLight;
     }
   }
 

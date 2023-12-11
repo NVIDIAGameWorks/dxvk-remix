@@ -889,6 +889,28 @@ namespace {
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
 
+
+  remixapi_ErrorCode REMIXAPI_CALL remixapi_DrawLightInstance(
+    remixapi_LightHandle lightHandle) {
+    dxvk::D3D9DeviceEx* remixDevice = tryAsDxvk();
+    if (!remixDevice) {
+      return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
+    }
+    if (!lightHandle) {
+      return REMIXAPI_ERROR_CODE_WRONG_ARGUMENTS;
+    }
+
+    // async load
+    std::lock_guard lock { s_mutex };
+    remixDevice->EmitCs([lightHandle](dxvk::DxvkContext* ctx) {
+      auto& lightMgr = ctx->getCommonObjects()->getSceneManager().getLightManager();
+      lightMgr.addExternalLightInstance(lightHandle);
+    });
+
+    return REMIXAPI_ERROR_CODE_SUCCESS;
+  }
+
+
   remixapi_ErrorCode REMIXAPI_CALL remixapi_SetConfigVariable(
     const char* key,
     const char* value) {
@@ -1090,6 +1112,7 @@ extern "C"
       interf.DrawInstance = remixapi_DrawInstance;
       interf.CreateLight = remixapi_CreateLight;
       interf.DestroyLight = remixapi_DestroyLight;
+      interf.DrawLightInstance = remixapi_DrawLightInstance;
       interf.SetConfigVariable = remixapi_SetConfigVariable;
       interf.dxvk_CreateD3D9 = remixapi_dxvk_CreateD3D9;
       interf.dxvk_RegisterD3D9Device = remixapi_dxvk_RegisterD3D9Device;

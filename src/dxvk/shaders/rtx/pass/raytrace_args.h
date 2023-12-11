@@ -79,6 +79,15 @@ struct NeeCacheArgs {
   uint clearCache;
 };
 
+struct DomeLightArgs {
+  mat4 worldToLightTransform;
+
+  vec3 radiance;
+  uint active;
+
+  uint textureIndex;
+};
+
 // Constant buffer
 struct RaytraceArgs {
   Camera camera;
@@ -296,11 +305,7 @@ struct RaytraceArgs {
   uint thinOpaqueEnable;
   float totalMipBias;
 
-  mat4 worldToDomeLightTranform;
+  DomeLightArgs domeLightArgs;
 
-  vec3 domeLightRadiance;
-  uint domeLightActive;
-
-  uint domeLightTextureIndex;
   float2 upscaleFactor;   // Displayed(upscaled) / RT resolution
 };

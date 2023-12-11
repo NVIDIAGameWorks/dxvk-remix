@@ -31,6 +31,8 @@
 #include "rtx_lights.h"
 #include "rtx_camera_manager.h"
 #include "rtx_common_object.h"
+#include "rtx/pass/common_binding_indices.h"
+#include "rtx/pass/raytrace_args.h"
 
 using remixapi_LightHandle = struct remixapi_LightHandle_T*;
 
@@ -73,8 +75,7 @@ public:
   const Rc<DxvkBuffer> getPreviousLightBuffer() const { return m_previousLightBuffer.ptr() ? m_previousLightBuffer : m_lightBuffer; }
   const Rc<DxvkBuffer> getLightMappingBuffer() const { return m_lightMappingBuffer; }
   const uint32_t getActiveCount() const { return m_currentActiveLightCount; }
-
-  bool getActiveDomeLight(DomeLight& lightOut, uint32_t& bindlessTextureIndexOut) const;
+  const DomeLightArgs& getDomeLightArgs() const { return m_gpuDomeLightArgs; }
 
   void clear();
 
@@ -91,6 +92,7 @@ public:
   void addExternalLight(remixapi_LightHandle handle, const RtLight& rtlight);
   void addExternalDomeLight(remixapi_LightHandle handle, const DomeLight& domeLight);
   void removeExternalLight(remixapi_LightHandle handle);
+  void addExternalLightInstance(remixapi_LightHandle enabledLight);
 
   void setRaytraceArgs(RaytraceArgs& raytraceArgs, uint32_t rtxdiInitialLightSamples, uint32_t volumeRISInitialLightSamples, uint32_t risLightSamples) const;
   
@@ -104,11 +106,13 @@ private:
   std::optional<RtLight> m_fallbackLight{};
   std::unordered_map<remixapi_LightHandle, RtLight> m_externalLights;
   std::unordered_map<remixapi_LightHandle, DomeLight> m_externalDomeLights;
+  std::unordered_set<remixapi_LightHandle> m_externalActiveLightList;
+  remixapi_LightHandle m_externalActiveDomeLight = nullptr;
+  DomeLightArgs m_gpuDomeLightArgs;
+
   Rc<DxvkBuffer> m_lightBuffer;
   Rc<DxvkBuffer> m_previousLightBuffer;
   Rc<DxvkBuffer> m_lightMappingBuffer;
-
-  uint32_t m_activeDomeLightBindlessTextureIndex = UINT_MAX;
 
   uint32_t m_currentActiveLightCount = 0;
   std::array<LightRange, lightTypeCount> m_lightTypeRanges;
@@ -120,6 +124,7 @@ private:
   std::vector<unsigned char> m_lightsGPUData{};
   std::vector<uint16_t> m_lightMappingData{};
 
+  bool getActiveDomeLight(DomeLight& lightOut);
 
   void garbageCollectionInternal();
 

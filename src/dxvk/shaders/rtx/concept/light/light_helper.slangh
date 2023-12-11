@@ -36,3 +36,15 @@ struct LightSample
   // Note: 32 bit floating point used to avoid precision issues with some kinds of sampling on lights.
   float solidAnglePdf;
 };
+
+float3 sampleDomeLightTexture(SamplerState sampler, float3 worldDirection, uint32_t domeLightTextureIndex, float4x4 worldToDomeLightTransform)
+{
+  if(domeLightTextureIndex == BINDING_INDEX_INVALID)
+  {
+    return 1..xxx;
+  }
+
+  float3 domeSampleDirection = mul(worldToDomeLightTransform, float4(worldDirection, 0.0f)).xyz;
+  float2 sampleUV = cartesianDirectionToLatLongSphere(domeSampleDirection);
+  return textures[nonuniformEXT(uint(domeLightTextureIndex))].SampleLevel(sampler, sampleUV, 0).xyz;
+}
