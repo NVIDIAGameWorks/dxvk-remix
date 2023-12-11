@@ -857,6 +857,15 @@ namespace dxvk {
       bool                            forceNoReplace = false);
     // NV-DXVK end:
 
+    // NV-DXVK begin: utility function for partial buffer uploads
+    void writeToBuffer(
+      const Rc<DxvkBuffer>& buffer,
+            VkDeviceSize    offset,
+            VkDeviceSize    size,
+      const void*           data,
+            bool            forceNoReplace = false);
+    // NV-DXVK end
+    
     /**
      * \brief Updates an image
      * 
@@ -1213,6 +1222,19 @@ namespace dxvk {
      */
     void insertDebugLabel(VkDebugUtilsLabelEXT *label);
 
+    /**
+     * \brief Increments a given stat counter
+     *
+     * The stat counters will be merged into the global
+     * stat counters upon execution of the command list.
+     * \param [in] counter Stat counter to increment
+     * \param [in] value Increment value
+     */
+    void addStatCtr(DxvkStatCounter counter, uint64_t value) {
+      if (m_cmd != nullptr)
+        m_cmd->addStatCtr(counter, value);
+    }
+
     // NV-DXVK start: use EXT_debug_utils
     VkDescriptorSet allocateDescriptorSet(VkDescriptorSetLayout layout, const char *name = nullptr);
     // NV-DXVK end
@@ -1229,6 +1251,7 @@ namespace dxvk {
     }
 
   protected:  
+    
     Rc<DxvkDevice>          m_device;
     DxvkObjects*            m_common;
     

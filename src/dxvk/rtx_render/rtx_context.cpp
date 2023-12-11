@@ -1001,7 +1001,7 @@ namespace dxvk {
     {
       Rc<DxvkBuffer> cb = getResourceManager().getConstantsBuffer();
 
-      updateBuffer(cb, 0, sizeof(constants), &constants);
+      writeToBuffer(cb, 0, sizeof(constants), &constants);
 
       m_cmd->trackResource<DxvkAccess::Read>(cb);
     }

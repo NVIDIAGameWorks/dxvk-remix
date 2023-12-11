@@ -348,7 +348,7 @@ namespace dxvk {
     compositeArgs.stochasticAlphaBlendRadianceVolumeMultiplier = stochasticAlphaBlendRadianceVolumeMultiplier();
     
     Rc<DxvkBuffer> cb = getCompositeConstantsBuffer();
-    ctx->updateBuffer(cb, 0, sizeof(CompositeArgs), &compositeArgs);
+    ctx->writeToBuffer(cb, 0, sizeof(CompositeArgs), &compositeArgs);
     ctx->getCommandList()->trackResource<DxvkAccess::Read>(cb);
 
     ctx->bindResourceBuffer(COMPOSITE_CONSTANTS_INPUT, DxvkBufferSlice(cb, 0, cb->info().size));

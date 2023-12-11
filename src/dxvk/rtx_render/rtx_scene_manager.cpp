@@ -1303,7 +1303,7 @@ namespace dxvk {
         assert(dataOffset == surfaceMaterialsGPUSize);
         assert(surfaceMaterialsGPUData.size() == surfaceMaterialsGPUSize);
 
-        ctx->updateBuffer(m_surfaceMaterialBuffer, 0, surfaceMaterialsGPUData.size(), surfaceMaterialsGPUData.data());
+        ctx->writeToBuffer(m_surfaceMaterialBuffer, 0, surfaceMaterialsGPUData.size(), surfaceMaterialsGPUData.data());
       }
 
       // Surface Material Extension Buffer
@@ -1327,7 +1327,7 @@ namespace dxvk {
         assert(dataOffset == surfaceMaterialExtensionsGPUSize);
         assert(surfaceMaterialExtensionsGPUData.size() == surfaceMaterialExtensionsGPUSize);
 
-        ctx->updateBuffer(m_surfaceMaterialExtensionBuffer, 0, surfaceMaterialExtensionsGPUData.size(), surfaceMaterialExtensionsGPUData.data());
+        ctx->writeToBuffer(m_surfaceMaterialExtensionBuffer, 0, surfaceMaterialExtensionsGPUData.size(), surfaceMaterialExtensionsGPUData.data());
       }
 
       // Volume Material buffer
@@ -1351,7 +1351,7 @@ namespace dxvk {
         assert(dataOffset == volumeMaterialsGPUSize);
         assert(volumeMaterialsGPUData.size() == volumeMaterialsGPUSize);
 
-        ctx->updateBuffer(m_volumeMaterialBuffer, 0, volumeMaterialsGPUData.size(), volumeMaterialsGPUData.data());
+        ctx->writeToBuffer(m_volumeMaterialBuffer, 0, volumeMaterialsGPUData.size(), volumeMaterialsGPUData.data());
       }
     }
 

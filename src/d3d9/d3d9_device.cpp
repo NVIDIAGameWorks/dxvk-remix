@@ -81,7 +81,7 @@ namespace dxvk {
     , m_d3d9Options    ( dxvkDevice, pParent->GetInstance()->config() )
     , m_multithread    ( BehaviorFlags & D3DCREATE_MULTITHREADED )
     , m_isSWVP         ( (BehaviorFlags & D3DCREATE_SOFTWARE_VERTEXPROCESSING) ? true : false )
-    , m_csThread       ( dxvkDevice->createRtxContext() )
+    , m_csThread       ( dxvkDevice, dxvkDevice->createRtxContext() )
     , m_csChunk        ( AllocCsChunk() )
     // NV-DXVK start: unbound light indices
     , m_state          ( Direct3DState9 { D3D9CapturableState{ static_cast<uint32_t>(std::max(m_d3d9Options.maxEnabledLights, 0)) } } )
@@ -2770,6 +2770,9 @@ namespace dxvk {
       return D3D_OK;
     }
 
+    if (!VertexCount)
+      return D3D_OK;
+
     D3D9CommonBuffer* dst  = static_cast<D3D9VertexBuffer*>(pDestBuffer)->GetCommonBuffer();
     D3D9VertexDecl*   decl = static_cast<D3D9VertexDecl*>  (pVertexDecl);
 
@@ -3859,10 +3862,14 @@ namespace dxvk {
     constexpr DWORD Fetch4Disabled = MAKEFOURCC('G', 'E', 'T', '1');
 
     if (unlikely(Type == D3DSAMP_MIPMAPLODBIAS)) {
+      auto texture = GetCommonTexture(m_state.textures[StateSampler]);
+      bool textureSupportsFetch4 = texture != nullptr && texture->SupportsFetch4();
+
       if (unlikely(Value == Fetch4Enabled)) {
         m_fetch4Enabled |= 1u << StateSampler;
-        if (state[StateSampler][D3DSAMP_MAGFILTER] == D3DTEXF_POINT)
+        if (textureSupportsFetch4 && state[StateSampler][D3DSAMP_MAGFILTER] == D3DTEXF_POINT) {
           m_fetch4 |= 1u << StateSampler;
+        }
       }
       else if (unlikely(Value == Fetch4Disabled)) {
         m_fetch4Enabled &= ~(1u << StateSampler);
@@ -3871,7 +3878,10 @@ namespace dxvk {
     }
 
     if (unlikely(Type == D3DSAMP_MAGFILTER && (m_fetch4Enabled & (1u << StateSampler)))) {
-      if (Value == D3DTEXF_POINT)
+      auto texture = GetCommonTexture(m_state.textures[StateSampler]);
+      bool textureSupportsFetch4 = texture != nullptr && texture->SupportsFetch4();
+
+      if (Value == D3DTEXF_POINT && textureSupportsFetch4)
         m_fetch4 |=   1u << StateSampler;
       else
         m_fetch4 &= ~(1u << StateSampler);
@@ -3925,6 +3935,19 @@ namespace dxvk {
 
         m_dirtySamplerStates |= 1u << StateSampler;
       }
+
+      if (unlikely(m_fetch4Enabled & (1u << StateSampler) && !(m_fetch4 & (1u << StateSampler)))) {
+        bool textureSupportsFetch4 = newTexture->SupportsFetch4();
+        if (textureSupportsFetch4
+          && m_state.samplerStates[StateSampler][D3DSAMP_MAGFILTER] == D3DTEXF_POINT
+          && m_state.samplerStates[StateSampler][D3DSAMP_MINFILTER] == D3DTEXF_POINT) {
+          m_fetch4 |= 1u << StateSampler;
+          m_dirtySamplerStates |= 1u << StateSampler;
+        }
+      }
+    } else if (unlikely(m_fetch4 & (1u << StateSampler))) {
+      m_fetch4 &= ~(1u << StateSampler);
+      m_dirtySamplerStates |= 1u << StateSampler;
     }
 
     DWORD combinedUsage = oldUsage | newUsage;
@@ -5054,8 +5077,7 @@ namespace dxvk {
     // recorded prior to this function will be run
     FlushCsChunk();
 
-    if (m_csThread.isBusy())
-      m_csThread.synchronize();
+    m_csThread.synchronize(DxvkCsThread::SynchronizeAll);
   }
 
 
