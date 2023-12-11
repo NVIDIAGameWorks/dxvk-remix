@@ -707,7 +707,7 @@ namespace dxvk {
       auto&& debugViewArgs = getCommonDebugViewArgs(ctx.ptr(), rtOutput, common);
 
       Rc<DxvkBuffer> cb = getDebugViewConstantsBuffer();
-      ctx->updateBuffer(cb, 0, sizeof(DebugViewArgs), &debugViewArgs);
+      ctx->writeToBuffer(cb, 0, sizeof(DebugViewArgs), &debugViewArgs);
       ctx->getCommandList()->trackResource<DxvkAccess::Read>(cb);
 
       if (displayType() == DebugViewDisplayType::HDRWaveform) {

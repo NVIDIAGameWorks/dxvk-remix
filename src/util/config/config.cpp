@@ -161,14 +161,6 @@ namespace dxvk {
     { R"(\\SaintsRowTheThird_DX11\.exe$)", {{
       { "d3d11.constantBufferRangeCheck",   "True" },
     }} },
-    /* Metal Gear Solid 5                         */
-    { R"(\\mgsvtpp\.exe$)", {{
-      { "dxvk.enableOpenVR",                "False" },
-    }} },
-    /* Raft                                       */
-    { R"(\\Raft\.exe$)", {{
-      { "dxvk.enableOpenVR",                "False" },
-    }} },
     /* Crysis 3 - slower if it notices AMD card     *
      * Apitrace mode helps massively in cpu bound   *
      * game parts                                   */
@@ -216,10 +208,6 @@ namespace dxvk {
      * in a compute shader, causing artifacts     */
     { R"(\\F1_20(1[89]|[2-9][0-9])\.exe$)", {{
       { "d3d11.forceTgsmBarriers",          "True" },
-    }} },
-    /* Subnautica                                 */
-    { R"(\\Subnautica\.exe$)", {{
-      { "dxvk.enableOpenVR",                "False" },
     }} },
     /* Blue Reflection                            */
     { R"(\\BLUE_REFLECTION\.exe$)", {{
@@ -278,6 +266,17 @@ namespace dxvk {
     /* Final Fantasy XIV - Stuttering on NV       */
     { R"(\\ffxiv_dx11\.exe$)", {{
       { "dxvk.shrinkNvidiaHvvHeap",         "True" },
+    }} },
+    /* God of War - relies on NVAPI/AMDAGS for    *
+     * barrier stuff, needs nvapi for DLSS        */
+    { R"(\\GoW\.exe$)", {{
+      { "d3d11.ignoreGraphicsBarriers",     "True" },
+      { "d3d11.relaxedBarriers",            "True" },
+      { "dxgi.nvapiHack",                   "False" },
+    }} },
+    /* AoE 2 DE - runs poorly for some users      */
+    { R"(\\AoE2DE_s\.exe$)", {{
+      { "d3d11.apitraceMode",               "True" },
     }} },
 
     /**********************************************/
