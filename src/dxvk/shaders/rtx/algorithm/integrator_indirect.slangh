@@ -319,15 +319,13 @@ void integratePathVertex(
     // Note: True misses going out into infinity will have no hit in the ray interaction and the continue resolving flag set to false. This is in contrast to misses
     // which may require further resolving which may be needed in cases of skipping specific pieces of geometry while still wishing to continue traversal.
 
-    if(cb.domeLightActive)
+    if(cb.domeLightArgs.active)
     {
-        float3 domeSampleDirection = mul(cb.worldToDomeLightTranform, float4(ray.direction, 0.0f)).xyz;
-        float2 sampleUV = cartesianDirectionToLatLongSphere(domeSampleDirection);
-        emissiveRadiance += cb.domeLightRadiance * textures[nonuniformEXT(uint(cb.domeLightTextureIndex))].SampleLevel(LinearWrapSampler, sampleUV, 0).xyz;
+      emissiveRadiance += cb.domeLightArgs.radiance * sampleDomeLightTexture(LinearWrapSampler, pathState.direction, cb.domeLightArgs.textureIndex, cb.domeLightArgs.worldToLightTransform);
     }
     else
     {
-        emissiveRadiance += cb.skyBrightness * SkyProbe.Sample(pathState.direction);
+      emissiveRadiance += cb.skyBrightness * SkyProbe.Sample(pathState.direction);
     }
   }
 
