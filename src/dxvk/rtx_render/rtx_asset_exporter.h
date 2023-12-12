@@ -56,6 +56,10 @@ namespace dxvk {
 
     void bakeSkyProbe(Rc<DxvkContext> ctx, const std::string& dir, const std::string& filename);
 
+    size_t getNumExportsInFlights() const {
+      return m_numExportsInFlight.load();
+    }
+
   private:
     Rc<sync::Fence> m_readbackSignal = nullptr;
     std::atomic<uint64_t> m_signalValue = 1;
