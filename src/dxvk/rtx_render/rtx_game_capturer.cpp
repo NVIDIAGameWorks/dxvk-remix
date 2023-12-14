@@ -254,7 +254,7 @@ namespace dxvk {
         m_pCap->camera.farPlane = kMaxFarPlane;
       }
       // If the app is being rendered upside-down, we need to plan accordingly
-      m_pCap->camera.bFlipMeshes = (projMat[0][0] * projMat[1][1] < 0.0f);
+      m_pCap->camera.bFlipVertAperture = (projMat[0][0] * projMat[1][1] < 0.0f);
       m_pCap->camera.firstTime = m_pCap->currentFrameNum;
     }
     assert(!isnan(m_pCap->camera.fov));
@@ -489,7 +489,7 @@ namespace dxvk {
     const size_t numVertices = geomData.vertexCount;
     assert(numVertices > 0);
     const size_t numIndices = geomData.indexCount;
-    const bool isDoubleSided = geomData.cullMode == VK_CULL_MODE_FRONT_AND_BACK;
+    const bool isDoubleSided = geomData.cullMode == VK_CULL_MODE_NONE;
     if (bIsNewMesh) {
       assert(pMesh->lssData.buffers.positionBufs.size() == 0);
       assert(pMesh->lssData.buffers.normalBufs.size() == 0);
