@@ -714,6 +714,23 @@ void integratePathVertex(
           (relativeLength < prevHitDistance * distanceTolerance ||
             abs(dot(prevSurfaceInteraction.triangleNormal, relativePosition)) < relativeLength * planeTolerance);
       }
+
+      if (cb.enableReSTIRGISampleValidation > 0 && isWithinGbuffer)
+      {
+        ivec2 pixelCoordinateCurrentFrame;
+        bool isWithinGbufferCurrentFrame = calculateScreenBoundedPixelCoordinate(
+          cb.camera.worldToProjectionJittered,
+          surfaceInteraction.position, pixelCoordinateCurrentFrame);
+
+        if (isWithinGbufferCurrentFrame)
+        {
+          vec2 gradient = RtxdiGradients[uint3(pixelCoordinate / RTXDI_GRAD_FACTOR, 0)];
+          if (gradient.x > cb.reSTIRGISampleValidationThreshold)
+          {
+            isWithinGbuffer = false;
+          }
+        }
+      }
     
       vec3 indirectLight = vec3(0);
       if (isWithinGbuffer && opaqueSurfaceMaterialInteraction.opacity == float16_t(1))

@@ -77,3 +77,6 @@ Texture2D<uint> SharedSurfaceIndex;
 
 layout(rgba16ui, binding = RESTIR_GI_REUSE_BINDING_SUBSURFACE_DATA_INPUT)
 Texture2D<uint4> SharedSubsurfaceData;
+
+layout(rg16f, binding = RESTIR_GI_REUSE_BINDING_GRADIENTS_INPUT)
+Texture2DArray<float2> RtxdiGradients;
