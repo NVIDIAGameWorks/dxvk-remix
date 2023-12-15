@@ -40,6 +40,37 @@
 #include "rtx/algorithm/resolve.slangh"
 #include "rtx/algorithm/rtxdi/rtxdi.slangh"
 
+void validateSample(ReSTIRGI_Reservoir inputReservoir, inout ReSTIRGI_Reservoir resultReservoir, inout bool isGBufferSimilar)
+{
+  // Calculate screen space position of the sample point
+  // Note: NDC x/y coordinates are valid from [-1, 1], whereas the NDC z (depth) is valid from [0, 1]
+  vec4 ndc = mul(cb.camera.worldToProjectionJittered, vec4(resultReservoir.position, 1.0f));
+  ndc.xyz /= ndc.w;
+  bool isInsideScreen = all((ndc.xyz <= vec3(1.0f, 1.0f, 1.0f)) && (ndc.xyz >= vec3(-1.0f, -1.0f, 0.0f)));
+
+  if (isInsideScreen)
+  {
+    // Check the gradient value
+    ivec2 confidencePixel = cameraNDCToScreenUV(cb.camera, ndc.xy) * vec2(cb.camera.resolution);
+    vec2 gradient = RtxdiGradients[uint3(confidencePixel / RTXDI_GRAD_FACTOR, 0)];
+    if (gradient.x > cb.reSTIRGISampleValidationThreshold)
+    {
+      // Check if depth value is in the given tolerance
+      float sampleSurfaceDepth = gradient.y;
+      float reservoirDepth = length(resultReservoir.position - cameraGetWorldPosition(cb.camera));
+      const float depthTolerance = 0.05;
+
+      // Discard the sample if depth matches, and gradient is above given threshold
+      if (abs(sampleSurfaceDepth - reservoirDepth) < max(sampleSurfaceDepth, reservoirDepth) * depthTolerance)
+      {
+        // Recover input reservoir's weight, see the TODO above.
+        inputReservoir.avgWeight = inputReservoir.avgWeight > 0 ? 1.0 / inputReservoir.avgWeight : 0.0;
+        resultReservoir = inputReservoir;
+        isGBufferSimilar = false;
+      }
+    }
+  }
+}
 
 [shader("compute")]
 [numthreads(16, 8, 1)]
@@ -240,6 +271,13 @@ void main(int2 thread_id : SV_DispatchThreadID)
     bool isVisible = RAB_TraceGISampleVisibility(surface, surface, resultReservoir, cb.numActiveRayPortals);
     resultReservoir.clearFlag(RESTIR_GI_FLAG_OCCLUDED_SAMPLE);
     resultReservoir.setFlag(isVisible ? 0 : RESTIR_GI_FLAG_OCCLUDED_SAMPLE);
+  }
+
+  // Sample validation use rtxdi gradient to discard stale samples.
+  // Although it can only verify samples inside the screen, it still helps in many cases.
+  if(cb.enableReSTIRGISampleValidation > 0 && !isInitialSample)
+  {
+    validateSample(inputReservoir, resultReservoir, isGBufferSimilar);
   }
 
   if (!cb.enableReSTIRGITemporalReuse)
