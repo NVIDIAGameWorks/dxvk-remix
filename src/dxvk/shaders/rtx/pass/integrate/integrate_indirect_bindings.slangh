@@ -92,6 +92,9 @@ Texture2D<float4> LastComposite;
 layout(r32ui, binding = INTEGRATE_INDIRECT_BINDING_FIRST_SAMPLED_LOBE_DATA_INPUT)
 Texture2D<uint> FirstSampledLobeData;
 
+layout(rg16f, binding = INTEGRATE_INDIRECT_BINDING_GRADIENTS_INPUT)
+Texture2DArray<float2> RtxdiGradients;
+
 // Storage
 
 layout(rgba32ui, binding = INTEGRATE_INDIRECT_BINDING_DECAL_MATERIAL_STORAGE)

@@ -38,6 +38,7 @@ namespace dxvk {
     ~DxvkRtxdiRayQuery() = default;
 
     void dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput);
+    void dispatchGradient(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput);
     void dispatchConfidence(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput);
 
     void showImguiSettings();

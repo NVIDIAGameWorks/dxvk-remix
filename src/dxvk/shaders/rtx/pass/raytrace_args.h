@@ -274,6 +274,8 @@ struct RaytraceArgs {
   float reSTIRGIMISRoughness;
   float reSTIRGIMISParallaxAmount;
   uint enableReSTIRGIDemodulatedTargetFunction;
+  uint enableReSTIRGISampleValidation;
+  float reSTIRGISampleValidationThreshold;
 
   uint surfaceCount;
   uint teleportationPortalIndex; // 0 means no teleportation, 1+ means portal 0+
