@@ -56,9 +56,11 @@
 #define INTEGRATE_INDIRECT_BINDING_NEE_CACHE_TASK                                 61
 #define INTEGRATE_INDIRECT_BINDING_PRIMITIVE_ID_PREFIX_SUM                        62
 
+#define INTEGRATE_INDIRECT_BINDING_GRADIENTS_INPUT                                63
+
 // Storage
 
-#define INTEGRATE_INDIRECT_BINDING_DECAL_MATERIAL_STORAGE                              63
+#define INTEGRATE_INDIRECT_BINDING_DECAL_MATERIAL_STORAGE                              64
 
 // Outputs
 

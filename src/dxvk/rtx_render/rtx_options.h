@@ -726,7 +726,7 @@ namespace dxvk {
                "This value should stay small but be large enough to cover the gap between ray portals and the geometry behind them (if such a gap exists in the underlying application).\n"
                "Additionally, this setting must be set at startup and changing it will not take effect at runtime.");
 
-    RTX_OPTION("rtx", bool, useWhiteMaterialMode, false, "");
+    RTX_OPTION_ENV("rtx", bool, useWhiteMaterialMode, false, "RTX_USE_WHITE_MATERIAL_MODE", "Override all objects' materials by white material");
     RTX_OPTION("rtx", bool, useHighlightLegacyMode, false, "");
     RTX_OPTION("rtx", bool, useHighlightUnsafeAnchorMode, false, "");
     RTX_OPTION("rtx", bool, useHighlightUnsafeReplacementMode, false, "");

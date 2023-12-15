@@ -299,13 +299,11 @@ namespace dxvk {
     }
   }
 
-  void DxvkRtxdiRayQuery::dispatchConfidence(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
+  void DxvkRtxdiRayQuery::dispatchGradient(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
     
     if (!RtxOptions::Get()->useRTXDI() || 
         !getEnableDenoiserConfidence())
       return;
-
-    ScopedGpuProfileZone(ctx, "RTXDI Confidence");
 
     const uint32_t frameIdx = ctx->getDevice()->getCurrentFrameId(); 
     VkExtent3D numThreads = rtOutput.m_compositeOutputExtent;
@@ -344,6 +342,23 @@ namespace dxvk {
 
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
     }
+  }
+
+  void DxvkRtxdiRayQuery::dispatchConfidence(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
+    
+    if (!RtxOptions::Get()->useRTXDI() || 
+        !getEnableDenoiserConfidence())
+      return;
+
+    ScopedGpuProfileZone(ctx, "RTXDI Confidence");
+
+    const uint32_t frameIdx = ctx->getDevice()->getCurrentFrameId(); 
+    VkExtent3D numThreads = rtOutput.m_compositeOutputExtent;
+    VkExtent3D workgroups = util::computeBlockCount(numThreads, VkExtent3D { 16 * RTXDI_GRAD_FACTOR, 8 * RTXDI_GRAD_FACTOR, 1 });
+
+    ctx->bindCommonRayTracingResources(rtOutput);
+
+    ctx->setPushConstantBank(DxvkPushConstantBank::RTX);
 
     {
       ScopedGpuProfileZone(ctx, "Filter Gradients");

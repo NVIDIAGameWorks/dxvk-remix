@@ -78,6 +78,7 @@ namespace dxvk {
         TEXTURE2D(RESTIR_GI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT)
         TEXTURE2D(RESTIR_GI_REUSE_BINDING_SUBSURFACE_DATA_INPUT)
         RW_TEXTURE2D(RESTIR_GI_REUSE_BINDING_LAST_GBUFFER)
+        TEXTURE2DARRAY(RESTIR_GI_REUSE_BINDING_GRADIENTS_INPUT)
       END_PARAMETER()
     };
 
@@ -112,6 +113,7 @@ namespace dxvk {
         TEXTURE2D(RESTIR_GI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT)
         TEXTURE2D(RESTIR_GI_REUSE_BINDING_SUBSURFACE_DATA_INPUT)
         RW_TEXTURE2D(RESTIR_GI_REUSE_BINDING_LAST_GBUFFER)
+        TEXTURE2DARRAY(RESTIR_GI_REUSE_BINDING_GRADIENTS_INPUT)
       END_PARAMETER()
     };
 
@@ -191,6 +193,9 @@ namespace dxvk {
     ImGui::Checkbox("Discard Enlarged Pixels", &useDiscardEnlargedPixelsObject());
     ImGui::DragFloat("Firefly Threshold", &fireflyThresholdObject(), 0.01f, 1.f, 5000.f, "%.1f");
     ImGui::DragFloat("Roughness Clamp", &roughnessClampObject(), 0.001f, 0.f, 1.f, "%.3f");
+
+    ImGui::Checkbox("Sample Validation", &useSampleValidationObject());
+    ImGui::DragFloat("Sample Validation Threshold", &sampleValidationThresholdObject(), 0.001f, 0.f, 1.f, "%.3f");
   }
 
   void DxvkReSTIRGIRayQuery::dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
@@ -226,6 +231,7 @@ namespace dxvk {
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_SUBSURFACE_DATA_INPUT, rtOutput.m_sharedSubsurfaceData.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);
+      ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_GRADIENTS_INPUT, rtOutput.m_rtxdiGradients.view, nullptr);
 
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, ReSTIRGITemporalReuseShader::getShader());
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
@@ -252,6 +258,7 @@ namespace dxvk {
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_SUBSURFACE_DATA_INPUT, rtOutput.m_sharedSubsurfaceData.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);
+      ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_GRADIENTS_INPUT, rtOutput.m_rtxdiGradients.view, nullptr);
 
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, ReSTIRGISpatialReuseShader::getShader());
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
