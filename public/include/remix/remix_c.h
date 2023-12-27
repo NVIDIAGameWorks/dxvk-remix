@@ -496,6 +496,9 @@ extern "C" {
     IDirect3DSurface9*                    destination,
     remixapi_dxvk_CopyRenderingOutputType type);
 
+  typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_dxvk_SetDefaultOutput)(
+    remixapi_dxvk_CopyRenderingOutputType type,
+    remixapi_Float4D color);
 
 
   typedef struct remixapi_InitializeLibraryInfo {
@@ -522,6 +525,7 @@ extern "C" {
     PFN_remixapi_dxvk_GetExternalSwapchain dxvk_GetExternalSwapchain;
     PFN_remixapi_dxvk_GetVkImage           dxvk_GetVkImage;
     PFN_remixapi_dxvk_CopyRenderingOutput  dxvk_CopyRenderingOutput;
+    PFN_remixapi_dxvk_SetDefaultOutput     dxvk_SetDefaultOutput;
   } remixapi_Interface;
 
   REMIXAPI remixapi_ErrorCode REMIXAPI_CALL remixapi_InitializeLibrary(
