@@ -310,4 +310,9 @@ struct RaytraceArgs {
   DomeLightArgs domeLightArgs;
 
   float2 upscaleFactor;   // Displayed(upscaled) / RT resolution
+
+  // Values to use on a ray miss
+  float clearColorDepth;
+  uint32_t clearColorPicking;
+  vec3 clearColorNormal;
 };
