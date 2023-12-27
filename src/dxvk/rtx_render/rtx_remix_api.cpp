@@ -26,6 +26,7 @@
 #include "rtx_asset_replacer.h"
 #include "rtx_light_manager.h"
 #include "rtx_option.h"
+#include "rtx_globals.h"
 
 #include <remix/remix_c.h>
 #include "rtx_remix_pnext.h"
@@ -1063,6 +1064,39 @@ namespace {
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
 
+
+  remixapi_ErrorCode REMIXAPI_CALL remixapi_dxvk_SetDefaultOutput(
+    remixapi_dxvk_CopyRenderingOutputType type, remixapi_Float4D color) {
+    dxvk::D3D9DeviceEx* remixDevice = tryAsDxvk();
+    if (!remixDevice) {
+      return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
+    }
+
+    std::lock_guard lock { s_mutex };
+    remixDevice->EmitCs([type, color](dxvk::DxvkContext* ctx) {
+      dxvk::RtxGlobals& globals = ctx->getCommonObjects()->getSceneManager().getGlobals();
+      switch (type) {
+      case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_FINAL_COLOR:
+        globals.clearColorFinalColor = vec3(color.x, color.y, color.z);
+        break;
+      case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_DEPTH:
+        globals.clearColorDepth = color.x;
+        break;
+      case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_NORMALS:
+        globals.clearColorNormal = vec3(color.x, color.y, color.z);
+        break;
+      case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_OBJECT_PICKING:
+        // converting binary value of color.x into uint to avoid losing precision.
+        globals.clearColorPicking = reinterpret_cast<const uint&>(color.x);
+        break;
+      default:
+        break;
+      }
+    });
+    
+    return REMIXAPI_ERROR_CODE_SUCCESS;
+  }
+
   bool isVersionCompatible(uint64_t userVersion) {
     constexpr uint64_t compiledVersion = REMIXAPI_VERSION_MAKE(REMIXAPI_VERSION_MAJOR, REMIXAPI_VERSION_MINOR, REMIXAPI_VERSION_PATCH);
 
@@ -1119,6 +1153,7 @@ extern "C"
       interf.dxvk_GetExternalSwapchain = remixapi_dxvk_GetExternalSwapchain;
       interf.dxvk_GetVkImage = remixapi_dxvk_GetVkImage;
       interf.dxvk_CopyRenderingOutput = remixapi_dxvk_CopyRenderingOutput;
+      interf.dxvk_SetDefaultOutput = remixapi_dxvk_SetDefaultOutput;
     }
 
     *out_result = interf;

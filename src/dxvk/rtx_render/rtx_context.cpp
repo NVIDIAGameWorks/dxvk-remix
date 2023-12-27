@@ -999,6 +999,11 @@ namespace dxvk {
 
     constants.domeLightArgs = getSceneManager().getLightManager().getDomeLightArgs();
 
+    // Ray miss value handling
+    constants.clearColorDepth = getSceneManager().getGlobals().clearColorDepth;
+    constants.clearColorPicking = getSceneManager().getGlobals().clearColorPicking;
+    constants.clearColorNormal = getSceneManager().getGlobals().clearColorNormal;
+
     // Upload the constants to the GPU
     {
       Rc<DxvkBuffer> cb = getResourceManager().getConstantsBuffer();

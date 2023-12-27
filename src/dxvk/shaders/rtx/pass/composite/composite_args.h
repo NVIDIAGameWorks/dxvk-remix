@@ -81,14 +81,22 @@ struct CompositeArgs {
   uint stochasticAlphaBlendEnableFilter;
   uint stochasticAlphaBlendUseNeighborSearch;
   uint stochasticAlphaBlendSearchTheSameObject;
+
   uint stochasticAlphaBlendSearchIteration;
   float stochasticAlphaBlendInitialSearchRadius;
   float stochasticAlphaBlendRadiusExpandFactor;
   uint stochasticAlphaBlendShareNeighbors;
+
   float stochasticAlphaBlendNormalSimilarity;
   float stochasticAlphaBlendDepthDifference;
   float stochasticAlphaBlendPlanarDifference;
   uint stochasticAlphaBlendUseRadianceVolume;
+
   float stochasticAlphaBlendRadianceVolumeMultiplier;
   uint stochasticAlphaBlendDiscardBlackPixel;
+  uint pad1;
+  uint pad2;
+
+  vec3 clearColorFinalColor;
+  uint pad3;
 };

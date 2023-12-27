@@ -108,8 +108,8 @@ void geometryResolverOutputMiss(
     PrimaryScreenSpaceMotionVector[pixelCoordinate] = motionVectorPixel;
     PrimarySurfaceFlags[pixelCoordinate] = 0;
     PrimaryDisocclusionThresholdMix[pixelCoordinate] = 0;
-    PrimaryDepth[pixelCoordinate] = 0.f;
-    PrimaryObjectPicking[pixelCoordinate] = 0;
+    PrimaryDepth[pixelCoordinate] = cb.clearColorDepth;
+    PrimaryObjectPicking[pixelCoordinate] = cb.clearColorPicking;
 
     // Note: Always write to stochastic buffers in the primary surface case.
     writeMissToGBuffer(
