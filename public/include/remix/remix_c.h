@@ -498,7 +498,7 @@ extern "C" {
 
   typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_dxvk_SetDefaultOutput)(
     remixapi_dxvk_CopyRenderingOutputType type,
-    remixapi_Float4D color);
+    const remixapi_Float4D& color);
 
 
   typedef struct remixapi_InitializeLibraryInfo {

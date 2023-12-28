@@ -1066,7 +1066,7 @@ namespace {
 
 
   remixapi_ErrorCode REMIXAPI_CALL remixapi_dxvk_SetDefaultOutput(
-    remixapi_dxvk_CopyRenderingOutputType type, remixapi_Float4D color) {
+    remixapi_dxvk_CopyRenderingOutputType type, const remixapi_Float4D& color) {
     dxvk::D3D9DeviceEx* remixDevice = tryAsDxvk();
     if (!remixDevice) {
       return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
