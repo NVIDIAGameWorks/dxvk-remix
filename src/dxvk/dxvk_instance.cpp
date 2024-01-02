@@ -537,7 +537,39 @@ namespace dxvk {
     initConfig<Config::Type_RtxMod>();
 
     RtxOption<bool>::updateRtxOptions();
+
     m_config.logOptions("Effective (combined)");
+
+    // Output environment variable info
+    // Todo: This being here is kinda not great as this results in the Environment variables being parsed 3 times
+    // which is quite redundant. Unfortunately this logging can't go in Config::getOption as this function is called
+    // twice (again, redundant) resulting in duplicate messages. Ideally this system should be refactored to get all the
+    // relevant environment variable values for the desired RtxOptions in a loop like this, and then use those when
+    // setting the options up to avoid redundantly making a ton of syscalls. Luckily this code only happens in loading
+    // so it is not a huge performance overhead, and the value of seeing which environment variables are overriding options
+    // is currently more valuable (since they continue to cause problems when unseen in the log).
+
+    bool firstEnvironmentOverride = true;
+
+    for (auto&& option : RtxOptionImpl::getGlobalRtxOptionMap()) {
+      const auto optionName = option.second->getFullName();
+      const auto envVarName = option.second->environment;
+
+      if (envVarName) {
+        const std::string& envVarValue = env::getEnvVar(envVarName);
+
+        if (envVarValue != "") {
+          // Note: Only print out the section header if there's at least one environment variable override.
+          if (firstEnvironmentOverride) {
+            Logger::info("Environment variable option overrides:");
+
+            firstEnvironmentOverride = false;
+          }
+
+          Logger::info(str::format("  ", optionName, " overridden by environment variable: ", envVarName, "=", envVarValue));
+        }
+      }
+    }
   }
   
   template<Config::Type type>
