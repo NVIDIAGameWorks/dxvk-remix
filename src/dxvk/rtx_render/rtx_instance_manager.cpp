@@ -29,7 +29,6 @@
 #include "rtx_camera_manager.h"
 #include "rtx_options.h"
 #include "rtx_materials.h"
-#include "rtx_opacity_micromap_manager.h"
 
 #include "../d3d9/d3d9_state.h"
 #include "rtx_matrix_helpers.h"
@@ -814,6 +813,8 @@ namespace dxvk {
        !currentInstance.isCameraRegistered(CameraType::Main));
 
     const RtSurface::AlphaState alphaState = calculateAlphaState(drawCall, materialData, material);
+    bool hasTransformChanged = false;
+    bool hasPreviousPositions = false;
 
     if (!isFirstUpdateThisFrame)
       // This is probably the same instance, being drawn twice!  Merge it
@@ -917,9 +918,8 @@ namespace dxvk {
                                    || currentInstance.testCategoryFlags(InstanceCategories::Particle)
                                    || currentInstance.testCategoryFlags(InstanceCategories::WorldUI);
 
-        const bool hasPreviousPositions = blas.modifiedGeometryData.previousPositionBuffer.defined() && !isMotionUnstable;
+        hasPreviousPositions = blas.modifiedGeometryData.previousPositionBuffer.defined() && !isMotionUnstable;
         const bool isFirstUpdateAfterCreation = currentInstance.isCreatedThisFrame(m_device->getCurrentFrameId()) && isFirstUpdateThisFrame;
-        bool hasTransformChanged = false;
 
         // Note: objectToView is aliased on updates, since findSimilarInstance() doesn't discern it
         Matrix4 objectToWorld = transform;
@@ -953,10 +953,6 @@ namespace dxvk {
         // Apply developer options
         if (isFirstUpdateThisFrame)
           applyDeveloperOptions(currentInstance, drawCall);
-
-        // Inform the listeners
-        for (auto& event : m_eventHandlers)
-          event.onInstanceUpdatedCallback(currentInstance, material, hasTransformChanged, hasPreviousPositions);
       }
     }
 
@@ -1085,8 +1081,9 @@ namespace dxvk {
       applyDecalOffsets(currentInstance, drawCall.getGeometryData());
     }
 
+    bool billboardsGotGenerated = false;
     currentInstance.m_billboardCount = 0;
-
+    
     if (drawCall.cameraType == CameraType::ViewModel && !currentInstance.m_isHidden && isFirstUpdateThisFrame)
       m_viewModelCandidates.push_back(&currentInstance);
 
@@ -1100,6 +1097,17 @@ namespace dxvk {
         createBeams(currentInstance);
       } else {
         createBillboards(currentInstance, cameraManager.getMainCamera().getDirection(false));
+      }
+
+      billboardsGotGenerated = currentInstance.m_billboardCount != 0;
+    }
+
+    // Updates done only once a frame unless overriden due to an explicit state
+    if (isFirstUpdateThisFrame || overridePreviousCameraUpdate ||
+        (billboardsGotGenerated && RtxOptions::Get()->getEnableOpacityMicromap())) {
+      // Inform the listeners
+      for (auto& event : m_eventHandlers) {
+        event.onInstanceUpdatedCallback(currentInstance, material, hasTransformChanged, hasPreviousPositions);
       }
     }
   }

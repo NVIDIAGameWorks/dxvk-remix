@@ -588,9 +588,12 @@ namespace dxvk {
       return { processIgnoredDraws, false };
     }
 
+    // Max offseted index value within a buffer slice that geoData contains
+    const uint32_t maxOffsetedIndex = maxIndex - minIndex;
+
     // Copy all the vertices into a staging buffer.  Assign fields of the geoData structure.
     processVertices(vertexContext, vertexIndexOffset, geoData);
-    geoData.futureGeometryHashes = computeHash(geoData, (maxIndex - minIndex));
+    geoData.futureGeometryHashes = computeHash(geoData, maxOffsetedIndex);
     geoData.futureBoundingBox = computeAxisAlignedBoundingBox(geoData);
     
     // Process skinning data
