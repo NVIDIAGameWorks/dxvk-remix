@@ -291,14 +291,14 @@ namespace dxvk {
     }
   }
 
-  void OpacityMicromapManager::CachedSourceData::setInstance(const RtInstance* _instance, fast_unordered_cache<InstanceOmmRequests>& instanceOmmRequests, bool deleteParentInstanceIfEmpty) {
-    omm_validation_assert(instance != _instance && "Redundant call setting the same instance twice.");
+  void OpacityMicromapManager::CachedSourceData::setInstance(const RtInstance* newInstance, fast_unordered_cache<InstanceOmmRequests>& instanceOmmRequests, bool deleteParentInstanceIfEmpty) {
+    omm_validation_assert(instance != newInstance && "Redundant call setting the same instance twice.");
 
-    if (instance && _instance)
+    if (instance && newInstance)
       setInstance(nullptr, instanceOmmRequests, deleteParentInstanceIfEmpty);
 
-    if (_instance) {
-      instanceOmmRequests[_instance->getOpacityMicromapSourceHash()].numActiveRequests += 1;
+    if (newInstance) {
+      instanceOmmRequests[newInstance->getOpacityMicromapSourceHash()].numActiveRequests += 1;
     } 
     // instance should always be valid at this point, but let's check on previous instance being actually valid before unlinking it
     else if (instance) {
@@ -309,7 +309,7 @@ namespace dxvk {
         instanceOmmRequests.erase(instanceOmmRequestsIter);
     }
 
-    instance = _instance;
+    instance = newInstance;
   }  
 
   void OpacityMicromapManager::destroyOmmData(OpacityMicromapCache::iterator& ommCacheItemIter, bool destroyParentInstanceOmmRequestContainer) {
@@ -470,7 +470,7 @@ namespace dxvk {
       ADVANCED(ImGui::Text("# Black Listed Items: %d", m_blackListedList.size()));
       ImGui::Text("VRAM usage/budget [MB]: %d/%d", m_memoryManager.getUsed() / (1024 * 1024), m_memoryManager.getBudget() / (1024 * 1024));
 
-      ADVANCED(ImGui::Text("# Baked uTriagles [million]: %.1f", m_numMicroTrianglesBaked / 1e6 ));
+      ADVANCED(ImGui::Text("# Baked uTriagles [million]: %.1f", m_numMicroTrianglesBaked / 1e6));
 
       ADVANCED(ImGui::Text("# Built uTriagles [million]: %.1f", m_numMicroTrianglesBuilt / 1e6));
       ImGui::Unindent();
@@ -580,8 +580,10 @@ namespace dxvk {
   }
 
   bool OpacityMicromapManager::doesInstanceUseOpacityMicromap(const RtInstance& instance) const {
+    // Texcoord data is required
+    if (instance.getTexcoordHash() == kEmptyHash ||
     // Texgen mode check excludes baked terrain as well
-    if (instance.getTexcoordHash() == kEmptyHash || instance.surface.texgenMode != TexGenMode::None) {
+        instance.surface.texgenMode != TexGenMode::None) {
       ONCE(Logger::info("[RTX Opacity Micromap] Instance does not have compatible texture coordinates. Ignoring the Opacity Micromap request."));
       return false;
     }
@@ -596,27 +598,21 @@ namespace dxvk {
     auto& alphaState = instance.surface.alphaState;
 
     // Find valid OMM candidates
-    if (
-      (!alphaState.isFullyOpaque && alphaState.isParticle) || alphaState.emissiveBlend) {
-      // Alpha-blended and emissive particles go to the separate "unordered" TLAS as non-opaque geometry
+    if ((!alphaState.isFullyOpaque && alphaState.isParticle) || alphaState.emissiveBlend) {
+      // Alpha-blended and emissive particles
       useOpacityMicromap = true;
     } else if (instance.getMaterialType() == RtSurfaceMaterialType::Opaque && 
                !instance.surface.alphaState.isFullyOpaque && 
                instance.surface.alphaState.isBlendingDisabled) {
-      // Alpha-tested geometry goes to the primary TLAS as non-opaque geometry with potential duplicate hits.
+      // Alpha-tested geometry
       useOpacityMicromap = true;
     } else if (instance.getMaterialType() == RtSurfaceMaterialType::Opaque && !alphaState.isFullyOpaque) {
       useOpacityMicromap = true;
-    } else if (instance.getMaterialType() == RtSurfaceMaterialType::Translucent) {
-      // Translucent (e.g. glass) geometry goes to the primary TLAS as non-opaque geometry with no duplicate hits.
     } else if (instance.getMaterialType() == RtSurfaceMaterialType::RayPortal) {
-      // Portals go to the primary TLAS as opaque.
       useOpacityMicromap = true;
-    } else {
-      // All other fully opaques go to the primary TLAS as opaque.
     }
 
-    // Process Opacity Micromap enablement
+    // Filter by OMM settings
     {
       useOpacityMicromap &= !instance.isAnimated() || OpacityMicromapOptions::BuildRequests::enableAnimatedInstances();
       useOpacityMicromap &= !alphaState.isParticle || OpacityMicromapOptions::BuildRequests::enableParticles();
@@ -1187,7 +1183,7 @@ namespace dxvk {
     uint32_t& maxMicroTrianglesToBake) {
     
     const RtInstance& instance = *sourceData.getInstance();
-    
+
     if ((instance.getMaterialType() != RtSurfaceMaterialType::Opaque &&
          instance.getMaterialType() != RtSurfaceMaterialType::RayPortal)) {
       ONCE(Logger::warn("[RTX Opacity Micromap] Unsupported material type. Opacity lookup for the material type is not supported in the Opacity Micromap baker. Ignoring the bake request."));
