@@ -322,7 +322,7 @@ namespace dxvk {
     // but it is still desired to add the request to the build queue (i.e. in ViewModel reference 
     // instance case).
     // Returns true if the Opacity Micromap build request has been added now or previously. 
-    // Returns false if the Opacity Micromap build  request was rejected
+    // Returns false if the Opacity Micromap build request was rejected
     bool registerOpacityMicromapBuildRequest(RtInstance& instance, const InstanceManager& instanceManager, const std::vector<TextureRef>& textures);
 
     // Tries to bind an opacity micromap for a given instance to the target, 
@@ -370,7 +370,7 @@ namespace dxvk {
       ~CachedSourceData();
 
       void initialize(const OmmRequest& ommRequest, fast_unordered_cache<InstanceOmmRequests>& instanceOmmRequests);
-      void setInstance(const RtInstance* _instance, fast_unordered_cache<InstanceOmmRequests>& instanceOmmRequests, bool deleteParentInstanceIfEmpty = true);
+      void setInstance(const RtInstance* instance, fast_unordered_cache<InstanceOmmRequests>& instanceOmmRequests, bool deleteParentInstanceIfEmpty = true);
 
       const RtInstance* getInstance() const {
         return instance; 
