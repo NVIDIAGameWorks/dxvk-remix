@@ -70,6 +70,37 @@ DecalMaterialInteraction decalMaterialInteractionCreate(OpaqueSurfaceMaterialInt
 
 void decalMaterialInteractionBlend(
   DecalMaterialInteraction decalMaterialInteraction,
+  inout DecalMaterialInteraction decalMaterialInteractionOut)
+{
+  decalMaterialInteractionOut.shadingNormal = normalize(mix(decalMaterialInteractionOut.shadingNormal,
+    decalMaterialInteraction.shadingNormal, decalMaterialInteraction.opacity));
+
+  // Note: Treat albedo as if it is using premultiplied alpha as opacity is multiplied into it as part of the albedo derivation
+  // in the opaque material (see albedoToAdjustedAlbedo) which causes incorrect decal blending if not taken into account.
+  decalMaterialInteractionOut.albedo =
+    decalMaterialInteraction.albedo + decalMaterialInteractionOut.albedo * (1.0 - decalMaterialInteraction.opacity);
+
+  // Note: Like albedo, treat base reflectivity as if it is using premultiplied alpha as opacity is also multiplied into it as part of
+  // the base reflectivity derivation in the opaque material (see calcBaseReflectivity) which causes incorrect decal blending if not taken into account.
+  decalMaterialInteractionOut.baseReflectivity =
+    decalMaterialInteraction.baseReflectivity + decalMaterialInteractionOut.baseReflectivity * (1.0 - decalMaterialInteraction.opacity);
+
+  decalMaterialInteractionOut.roughness = mix(decalMaterialInteractionOut.roughness,
+    decalMaterialInteraction.roughness, decalMaterialInteraction.opacity);
+
+  decalMaterialInteractionOut.anisotropy = mix(decalMaterialInteractionOut.anisotropy,
+    decalMaterialInteraction.anisotropy, decalMaterialInteraction.opacity);
+
+  decalMaterialInteractionOut.emissiveRadiance = mix(decalMaterialInteractionOut.emissiveRadiance,
+    decalMaterialInteraction.emissiveRadiance, decalMaterialInteraction.opacity);
+
+  // Note: Alpha compositing equation for alpha applied to opacity.
+  decalMaterialInteractionOut.opacity =
+    decalMaterialInteraction.opacity + decalMaterialInteractionOut.opacity * (1.0 - decalMaterialInteraction.opacity);
+}
+
+void decalMaterialInteractionBlend(
+  DecalMaterialInteraction decalMaterialInteraction,
   inout OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction)
 {
   opaqueSurfaceMaterialInteraction.shadingNormal = normalize(mix(opaqueSurfaceMaterialInteraction.shadingNormal,

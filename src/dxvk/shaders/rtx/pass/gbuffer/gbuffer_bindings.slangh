@@ -107,9 +107,6 @@ RWTexture2D<float2> PrimaryViewDirection;
 layout(r16f, binding = GBUFFER_BINDING_PRIMARY_CONE_RADIUS_OUTPUT)
 RWTexture2D<float> PrimaryConeRadius;
 
-layout(rgba32f, binding = GBUFFER_BINDING_PRIMARY_WORLD_POSITION_OUTPUT)
-RWTexture2D<float4> PrimaryWorldPositionWorldTriangleNormal;
-
 layout(r32f, binding = GBUFFER_BINDING_PRIMARY_POSITION_ERROR_OUTPUT)
 RWTexture2D<float> PrimaryPositionError;
 
@@ -193,19 +190,15 @@ RWTexture2D<uint4> SharedSubsurfaceData;
 layout(push_constant)
 ConstantBuffer<GbufferPushConstants> push;
 
-layout(rgba32ui, binding = GBUFFER_BINDING_ALIASED_DATA_0)
+layout(rgba32f, binding = GBUFFER_BINDING_ALIASED_DATA_0)
 uniform struct AliasedData0
 {
-  REORDER_COHERENT RWTexture2D<uint4> DecalMaterial;          // Internal storage
-  RWTexture2D<uint4> ReflectionPSRData0;     // Output/Input
+  RWTexture2D<float4> PrimaryWorldPositionWorldTriangleNormal;
+  RWTexture2D<float4> ReflectionPSRData0;                      // Output/Input
 } aliasedData0;
 
-layout(rgba16f, binding = GBUFFER_BINDING_ALIASED_DATA_1)
-uniform struct AliasedData1
-{
-  REORDER_COHERENT RWTexture2D<float4> DecalEmissiveRadiance; // Internal storage
-  RWTexture2D<uint2> ReflectionPSRData1;     // Output/Input
-} aliasedData1;
+layout(rgba16f, binding = GBUFFER_BINDING_REFLECTION_PSR_DATA_STORAGE_1)
+RWTexture2D<uint2> ReflectionPSRData1;     // Output/Input
 
 layout(rg32ui, binding = GBUFFER_BINDING_REFLECTION_PSR_DATA_STORAGE_2)
 RWTexture2D<uint2> ReflectionPSRData2;
