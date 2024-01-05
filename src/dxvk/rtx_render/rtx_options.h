@@ -554,21 +554,6 @@ namespace dxvk {
                "This is generally needed as albedo values for decals may be fairly low when dealing with opaque surfaces, but the translucent diffuse layer requires a fairly high albedo value to result in an expected look.\n"
                "The need for this option could be avoided by simply authoring decals applied to translucent materials with a higher albedo to begin with, but sometimes applications may share decals between different material types.");
 
-    struct Decals {
-      friend class RtxOptions;
-      friend class ImGUI;
-
-      RTX_OPTION("rtx.decals", float, offsetMultiplierMeters, 0.00003f, 
-                 "[meters] Distance along a normal to offset between two adjacent decal offset indices to prevent coplanar rendering issues such as Z-fighting.\n"
-                 "This value is multiplied by a decal offset index. The value should be kept small so as not make decals appear floating in front of their target backgrounds.");
-      RTX_OPTION("rtx.decals", uint32_t, baseOffsetIndex, 1, "Offset index of a first decal.");
-      RTX_OPTION("rtx.decals", uint32_t, maxOffsetIndex, 256, 
-                 "Max decal offset index. The offset index wraps around when this value is reached and is set to baseOffsetIndex again.\n"
-                 "The value should be kept small so as not to offset decals too far from their target backgrounds.");
-      RTX_OPTION("rtx.decals", uint32_t, offsetIndexIncreaseBetweenDrawCalls, 1, "Index offset increase between decal draw calls. This can be useful to increase if default index of 1 is not enough to move decals from different draw calls apart enough.");
-
-    };
-
     RTX_OPTION("rtx", float, worldSpaceUiBackgroundOffset, -0.01f, "Distance along normal to offset objects rendered as worldspace UI, specifically for the background of screens.");
 
     // Light Selection/Sampling Options
@@ -1114,6 +1099,25 @@ namespace dxvk {
 
       GeometryHashGenerationRule = createRule("Geometry generation", geometryGenerationHashRuleString());
       GeometryAssetHashRule = createRule("Geometry asset", geometryAssetHashRuleString());
+
+      // We deprecated dynamicDecalTextures, singleOffsetDecalTextures, nonOffsetDecalTextures with this change
+      //  and replaced all decal texture lists with just a single list.
+      // TODO(REMIX-2554): Design a general deprecation solution for configs that are no longer required.
+      if (dynamicDecalTextures().size() > 0) {
+        decalTexturesRef().insert(dynamicDecalTextures().begin(), dynamicDecalTextures().end());
+        dynamicDecalTexturesRef().clear();
+        Logger::info("[Deprecated Config] rtx.dynamicDecalTextures has been deprecated, we have moved all your texture's from this list to rtx.decalTextures, no further action is required from you.  Please re-save your rtx config to get rid of this message.");
+      }
+      if (singleOffsetDecalTextures().size() > 0) {
+        decalTexturesRef().insert(singleOffsetDecalTextures().begin(), singleOffsetDecalTextures().end());
+        singleOffsetDecalTexturesRef().clear();
+        Logger::info("[Deprecated Config] rtx.singleOffsetDecalTextures has been deprecated, we have moved all your texture's from this list to rtx.decalTextures, no further action is required from you.  Please re-save your rtx config to get rid of this message.");
+      }
+      if (nonOffsetDecalTextures().size() > 0) {
+        decalTexturesRef().insert(nonOffsetDecalTextures().begin(), nonOffsetDecalTextures().end());
+        nonOffsetDecalTexturesRef().clear();
+        Logger::info("[Deprecated Config] rtx.nonOffsetDecalTextures has been deprecated, we have moved all your texture's from this list to rtx.decalTextures, no further action is required from you.  Please re-save your rtx config to get rid of this message.");
+      }
     }
 
     void updateUpscalerFromDlssPreset();

@@ -219,7 +219,7 @@ namespace dxvk {
         rtOutput.m_compositeOutput.view(Resources::AccessType::Read),
         rtOutput.m_primaryScreenSpaceMotionVector.view,
         rtOutput.m_primaryDepth.view,
-        rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view,
+        rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read),
         rtOutput.m_primaryAlbedo.view,
         rtOutput.m_sharedBiasCurrentColorMask.view(Resources::AccessType::Read)
       };
@@ -276,7 +276,6 @@ namespace dxvk {
                               &rtOutput.m_primaryAlbedo,                                          // pDiffuseAlbedo
                               specularAlbedoInput,                                                // pSpecularAlbedo
                               &autoExposure.getExposureTexture(),                                 // pExposure
-                              &rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal(),      // pPosition
                               normalsInput,                                                       // pNormals
                               &rtOutput.m_primaryPerceptualRoughness,                             // pRoughness
                               &rtOutput.m_sharedBiasCurrentColorMask.resource(Resources::AccessType::Read),// pBiasCurrentColorMask

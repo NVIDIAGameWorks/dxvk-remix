@@ -21,7 +21,7 @@ namespace dxvk {
   const uint32_t kRenderTargetIndex = 0;
 
   #define CATEGORIES_REQUIRE_DRAW_CALL     InstanceCategories::Sky, InstanceCategories::Terrain
-  #define CATEGORIES_REQUIRE_GEOMETRY_COPY InstanceCategories::DecalStatic, InstanceCategories::DecalDynamic, InstanceCategories::DecalNoOffset, InstanceCategories::Terrain, InstanceCategories::WorldUI
+  #define CATEGORIES_REQUIRE_GEOMETRY_COPY InstanceCategories::Terrain, InstanceCategories::WorldUI
 
   D3D9Rtx::D3D9Rtx(D3D9DeviceEx* d3d9Device)
     : m_rtStagingData(d3d9Device->GetDXVKDevice(), (VkMemoryPropertyFlagBits) (VK_MEMORY_PROPERTY_HOST_CACHED_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT))

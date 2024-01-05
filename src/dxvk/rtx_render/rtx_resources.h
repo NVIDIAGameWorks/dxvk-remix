@@ -263,7 +263,7 @@ namespace dxvk
       Resource m_primaryHitDistance;
       Resource m_primaryViewDirection;
       Resource m_primaryConeRadius;
-      Resource m_primaryWorldPositionWorldTriangleNormal[2];
+      AliasedResource m_primaryWorldPositionWorldTriangleNormal[2];
       Resource m_primaryPositionError;
       AliasedResource m_primaryRtxdiIlluminance[2];
       Resource m_primaryRtxdiTemporalPosition;
@@ -286,8 +286,6 @@ namespace dxvk
       AliasedResource m_secondaryConeRadius;
       AliasedResource m_secondaryWorldPositionWorldTriangleNormal;
       AliasedResource m_secondaryPositionError;
-      AliasedResource m_decalMaterial;
-      AliasedResource m_decalEmissiveRadiance;
       Resource m_alphaBlendGBuffer;
       AliasedResource m_alphaBlendRadiance;
 
@@ -354,8 +352,8 @@ namespace dxvk
       const AliasedResource& getPreviousRtxdiIlluminance() const { return m_primaryRtxdiIlluminance[!m_swapTextures]; }
       const AliasedResource& getCurrentRtxdiConfidence() const { return m_rtxdiConfidence[m_swapTextures]; }
       const AliasedResource& getPreviousRtxdiConfidence() const { return m_rtxdiConfidence[!m_swapTextures]; }
-      const Resource& getCurrentPrimaryWorldPositionWorldTriangleNormal() const { return m_primaryWorldPositionWorldTriangleNormal[m_swapTextures]; }
-      const Resource& getPreviousPrimaryWorldPositionWorldTriangleNormal() const { return m_primaryWorldPositionWorldTriangleNormal[!m_swapTextures]; }
+      const AliasedResource& getCurrentPrimaryWorldPositionWorldTriangleNormal() const { return m_primaryWorldPositionWorldTriangleNormal[m_swapTextures]; }
+      const AliasedResource& getPreviousPrimaryWorldPositionWorldTriangleNormal() const { return m_primaryWorldPositionWorldTriangleNormal[!m_swapTextures]; }
       const Resource& getCurrentVolumeReservoirs() const { return m_volumeReservoirs[m_swapTextures]; }
       const Resource& getPreviousVolumeReservoirs() const { return m_volumeReservoirs[!m_swapTextures]; }
       const Resource& getCurrentVolumeAccumulatedRadiance() const { return m_volumeAccumulatedRadiance[m_swapTextures]; }

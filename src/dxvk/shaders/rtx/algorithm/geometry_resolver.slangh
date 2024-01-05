@@ -257,7 +257,7 @@ void geometryResolverOutputSurface(
   {
     minimalSurfaceInteractionWriteToGBuffer(
       surfaceInteraction, ivec2(pixelCoordinate),
-      PrimaryWorldPositionWorldTriangleNormal,
+      aliasedData0.PrimaryWorldPositionWorldTriangleNormal,
       PrimaryPositionError);
     PrimaryWorldInterpolatedNormal[pixelCoordinate] = float2x32ToSnorm2x16(sphereDirectionToSignedOctahedral(surfaceInteraction.interpolatedNormal));
   }
@@ -1009,13 +1009,26 @@ void geometryResolverVertex(
   uint numUnorderedInteractions = 0;
   uint8_t unorderedRayMask = convertPrimaryRayMaskToUnordered(geometryResolverState.rayMask, OBJECT_MASK_ALL_UNORDERED);
 
+  bool unorderedDecalEncountered = false;
+  uint4 decalMemory = 0;
+  f16vec3 decalEmissiveRadiance = f16vec3(0);
   resolveVertexUnordered(
     resolveMode, unorderedResolveRay,
     unorderedRayMask, geometryResolverState.portalSpace,
     /* useIntersectionBillboards = */ cb.enableBillboardOrientationCorrection && (geometryResolverState.directionAltered || cb.useIntersectionBillboardsOnPrimaryRays),
     geometryResolverState.accumulatedVectorTransform, geometryResolverState.accumulatedHitDistance,
     radianceAttenuation, emissiveRadiance,
-    numUnorderedInteractions);
+    numUnorderedInteractions, 
+    unorderedDecalEncountered, decalMemory, decalEmissiveRadiance);
+
+  if (cb.debugView == DEBUG_VIEW_PRIMARY_DECAL_ALBEDO)
+  {
+    MemoryDecalMaterialInteraction memory;
+    memory.packed = decalMemory; 
+    memory.emissiveRadiance = decalEmissiveRadiance;
+    DecalMaterialInteraction decalMaterialInteraction = decalMaterialInteractionUnpack(memory);
+    storeInDebugView(geometryResolverState.pixelCoordinate, decalMaterialInteraction.albedo);
+  }
 
   // Note: Add to the number of unordered interactions in the debug view based on the number of unordered interactions in resolving.
   if (cb.debugView == DEBUG_VIEW_PRIMARY_UNORDERED_INTERACTIONS || cb.debugView == DEBUG_VIEW_PRIMARY_RAY_AND_UNORDERED_INTERACTIONS)
@@ -1045,7 +1058,7 @@ void geometryResolverVertex(
   hackState.rayMask = geometryResolverState.rayMask;
   hackState.portalSpace = geometryResolverState.portalSpace;
   hackState.accumulatedVectorTransform = geometryResolverState.accumulatedVectorTransform;
-  hackState.decalEncountered = geometryResolverState.decalEncountered;
+  hackState.decalEncountered = geometryResolverState.decalEncountered || unorderedDecalEncountered;
   hackState.pixelCoordinate = geometryResolverState.pixelCoordinate;
   hackState.isStochasticAlphaBlend = false;
 
@@ -1056,7 +1069,7 @@ void geometryResolverVertex(
     surface, surfaceInteraction,
     polymorphicSurfaceMaterialInteraction,
     radianceAttenuation, emissiveRadiance,
-    aliasedData0.DecalMaterial, aliasedData1.DecalEmissiveRadiance, false, true);
+    decalMemory, decalEmissiveRadiance, false, true);
 
   // Todo: Remove hack thing
   geometryResolverState.origin = hackState.origin;
@@ -1467,13 +1480,17 @@ void geometryPSRResolverVertex(
   uint numUnorderedInteractions = 0;
   uint8_t unorderedRayMask = convertPrimaryRayMaskToUnordered(geometryPSRResolverState.rayMask, OBJECT_MASK_ALL_UNORDERED);
 
+  bool unorderedDecalEncountered = false;
+  uint4 decalMemory = 0;
+  f16vec3 decalEmissiveRadiance = f16vec3(0);
   resolveVertexUnordered(
     resolveMode, unorderedResolveRay,
     unorderedRayMask, geometryPSRResolverState.portalSpace,
     /* useIntersectionBillboards = */ cb.enableBillboardOrientationCorrection,
     geometryPSRResolverState.accumulatedVectorTransform, geometryPSRResolverState.accumulatedHitDistance,
     radianceAttenuation, emissiveRadiance,
-    numUnorderedInteractions);
+    numUnorderedInteractions, 
+    unorderedDecalEncountered, decalMemory, decalEmissiveRadiance);
 
   // Note: Add to the number of unordered interactions in the debug view based on the number of unordered interactions in resolving.
   if (cb.debugView == DEBUG_VIEW_PRIMARY_UNORDERED_INTERACTIONS || cb.debugView == DEBUG_VIEW_PRIMARY_RAY_AND_UNORDERED_INTERACTIONS)
@@ -1500,7 +1517,7 @@ void geometryPSRResolverVertex(
   hackState.rayMask = geometryPSRResolverState.rayMask;
   hackState.portalSpace = geometryPSRResolverState.portalSpace;
   hackState.accumulatedVectorTransform = geometryPSRResolverState.accumulatedVectorTransform;
-  hackState.decalEncountered = geometryPSRResolverState.decalEncountered;
+  hackState.decalEncountered = geometryPSRResolverState.decalEncountered || unorderedDecalEncountered;
   hackState.pixelCoordinate = geometryPSRResolverState.pixelCoordinate;
 
   resolveVertex(
@@ -1510,7 +1527,7 @@ void geometryPSRResolverVertex(
     surface, surfaceInteraction,
     polymorphicSurfaceMaterialInteraction,
     radianceAttenuation, emissiveRadiance,
-    aliasedData0.DecalMaterial, aliasedData1.DecalEmissiveRadiance);
+    decalMemory, decalEmissiveRadiance);
 
   // Todo: Remove hack thing
   geometryPSRResolverState.origin = hackState.origin;

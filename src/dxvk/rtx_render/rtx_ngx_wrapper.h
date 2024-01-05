@@ -145,7 +145,6 @@ namespace dxvk {
       const Resources::Resource* pDiffuseAlbedo,
       const Resources::Resource* pSpecularAlbedo,
       const Resources::Resource* pExposure,
-      const Resources::Resource* pPosition,
       const Resources::Resource* pNormals,
       const Resources::Resource* pRoughness,
       const Resources::Resource* pBiasCurrentColorMask,
