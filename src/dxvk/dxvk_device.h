@@ -597,6 +597,16 @@ namespace dxvk {
       return &m_objects;
     }
 
+    // NV-DXVK start: DLFG integration
+    // release the current presenter stashed in the device
+    void releasePresenter() {
+      if (m_lastPresenter != nullptr) {
+        m_lastPresenter->synchronize();
+        m_lastPresenter = nullptr;
+      }
+    }
+    // NV-DXVK end
+
   private:
     
     DxvkOptions                 m_options;
@@ -605,6 +615,7 @@ namespace dxvk {
     Rc<DxvkAdapter>             m_adapter;
     Rc<vk::DeviceFn>            m_vkd;
     DxvkDeviceExtensions        m_extensions;
+    Rc<vk::Presenter>           m_lastPresenter;
 
     DxvkDeviceFeatures          m_features;
     DxvkDeviceInfo              m_properties;

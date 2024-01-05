@@ -193,7 +193,7 @@ namespace dxvk {
 
       // Destroy previous graphics state
       {
-        m_vkd->vkDeviceWaitIdle(m_vkd->device());
+        ctx->getDevice()->waitForIdle();
         destroyResources();
         destroyPipelines();
       }
