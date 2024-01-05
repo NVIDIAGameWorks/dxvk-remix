@@ -120,9 +120,7 @@ namespace dxvk {
     , m_geometryFlags(src.m_geometryFlags)
     , m_objectToWorldMirrored(src.m_objectToWorldMirrored)
     , m_firstBillboard(src.m_firstBillboard)
-    , m_billboardCount(src.m_billboardCount)
-    , m_lastDecalOffsetVertexDataVersion(src.m_lastDecalOffsetVertexDataVersion)
-    , m_currentDecalOffsetDifference(src.m_currentDecalOffsetDifference) {
+    , m_billboardCount(src.m_billboardCount) {
     // Members for which state carry over is intentionally skipped
     /*
        m_isMarkedForGC
@@ -255,7 +253,6 @@ namespace dxvk {
     : CommonDeviceObject(device)
     , m_pResourceCache(pResourceCache) {
     m_previousViewModelState = RtxOptions::ViewModel::enable();
-    m_currentDecalOffsetIndex = RtxOptions::Decals::baseOffsetIndex();
   }
 
   InstanceManager::~InstanceManager() {
@@ -339,9 +336,10 @@ namespace dxvk {
   void InstanceManager::onFrameEnd() {
     m_viewModelCandidates.clear();
     m_playerModelInstances.clear();
-    m_currentDecalOffsetIndex = RtxOptions::Decals::baseOffsetIndex();
     resetSurfaceIndices();
     m_billboards.clear();
+    // reset decal counter
+    m_decalSortOrderCounter = 0;
   }
 
   RtInstance* InstanceManager::processSceneObject(
@@ -964,13 +962,24 @@ namespace dxvk {
     // with different flags, and the instance manager can match an old instance of a geometry to a new one with different draw mode.
     currentInstance.m_vkInstance.flags = determineInstanceFlags(drawCall, worldToProjection, currentInstance.surface);
 
+    // Apply the decal sort index for this instance so we can approximate order correctness on the GPU in AHS
+    if (currentInstance.surface.alphaState.isDecal) {
+      currentInstance.surface.decalSortOrder = m_decalSortOrderCounter++;
+#if !NDEBUG
+      if (m_decalSortOrderCounter > 255) {
+        ONCE(Logger::err("Too many decals in this scene to sort correctly, may see some decal corruption issues."));
+      }
+#endif
+    }
+
     // Update the geometry and instance flags
     if (
-      !currentInstance.surface.alphaState.isFullyOpaque && currentInstance.surface.alphaState.isParticle ||
+      (!currentInstance.surface.alphaState.isFullyOpaque && currentInstance.surface.alphaState.isParticle) ||
+      (!currentInstance.surface.alphaState.isFullyOpaque && currentInstance.surface.alphaState.isDecal) ||
       // Note: include alpha blended geometry on the player model into the unordered TLAS. This is hacky as there might be
       // suitable geometry outside of the player model, but we don't have a way to distinguish it from alpha blended geometry
       // that should be alpha tested instead, like some metallic stairs in Portal -- those should be resolved normally.
-      !currentInstance.surface.alphaState.isFullyOpaque && !currentInstance.surface.alphaState.isBlendingDisabled && currentInstance.m_isPlayerModel ||
+      (!currentInstance.surface.alphaState.isFullyOpaque && !currentInstance.surface.alphaState.isBlendingDisabled && currentInstance.m_isPlayerModel) ||
       currentInstance.surface.alphaState.emissiveBlend
     ) {
       // Alpha-blended and emissive particles go to the separate "unordered" TLAS as non-opaque geometry
@@ -994,9 +1003,6 @@ namespace dxvk {
     } else if (material.getType() == RtSurfaceMaterialType::RayPortal) {
       // Portals go to the primary TLAS as opaque.
       currentInstance.m_geometryFlags = VK_GEOMETRY_OPAQUE_BIT_KHR;
-    } else if (currentInstance.surface.alphaState.isDecal) {
-      // Consider all decals as non opaque objects
-      currentInstance.m_geometryFlags = 0;
     } else if (currentInstance.surface.isClipPlaneEnabled) {
       // Use non-opaque hits to process clip planes on visibility rays.
       // To handle cases when the same *static* object is used both with and without clip planes,
@@ -1073,13 +1079,6 @@ namespace dxvk {
     //     but a geometry transform does.
     // https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkGeometryInstanceFlagBitsNV.html 
     currentInstance.m_objectToWorldMirrored = isMirrorTransform(transform);
-
-    // Offset decals along their normals.
-    // Do this *after* the instance transform is updated above.
-    if (alphaState.isDecal || currentInstance.m_isWorldSpaceUI) {
-      // In the event this modifies the CPU draw call geometry, the change will be applied next frame.
-      applyDecalOffsets(currentInstance, drawCall.getGeometryData());
-    }
 
     bool billboardsGotGenerated = false;
     currentInstance.m_billboardCount = 0;
@@ -1686,220 +1685,6 @@ namespace dxvk {
   void InstanceManager::resetSurfaceIndices() {
     for (auto instance : m_instances)
       instance->m_surfaceIndex = BINDING_INDEX_INVALID;
-  }
-
-  // This function goes over all decals and offsets each one along its normal.
-  // The offset is different per-decal and generally grows with every draw call and every decal in a draw call,
-  // only wrapping around to start offset index when some limit is reached.
-  // This offsetting takes care of procedural decals that are entirely coplanar, which doesn't work with
-  // ray tracing because we want to hit every decal with a closest-hit shader, and without offsets we can't do that.
-  // Some map geometry has static decals that are tessellated as odd non-quad meshes, but they still need to be offset,
-  // so the second part of this function takes care of that.
-  void InstanceManager::applyDecalOffsets(RtInstance& instance, const RasterGeometry& geometryData) {
-    if (RtxOptions::Decals::offsetMultiplierMeters() == 0.f) {
-      return;
-    }
-
-    if (instance.testCategoryFlags(InstanceCategories::DecalNoOffset))
-      return;
-
-    constexpr int indicesPerTriangle = 3;
-
-    // Check if this is a supported geometry first
-    if (geometryData.indexCount < indicesPerTriangle || geometryData.indexBuffer.indexType() != VK_INDEX_TYPE_UINT16)
-      return;
-
-    const bool hasDecalBeenOffset = geometryData.hashes[HashComponents::VertexPosition] == instance.m_lastDecalOffsetVertexDataVersion;
-
-    // Exit if this instance has already been processed in its current version and the decal offset paramterization matches that of the last time it was offset
-    // to prevent applying offsets to the same geometry multiple times.
-    // This fixes the chamber information panels in Portal when you reload the same map multiple times in a row.
-    // TODO: Move this to geom utils, only do on build
-    if (hasDecalBeenOffset) {
-      // Apply the decal offset difference that was applied to this instance previously to the global offset index 
-      m_currentDecalOffsetIndex += instance.m_currentDecalOffsetDifference
-                                 + RtxOptions::Decals::offsetIndexIncreaseBetweenDrawCalls();
-      if (m_currentDecalOffsetIndex > RtxOptions::Decals::maxOffsetIndex()) {
-        m_currentDecalOffsetIndex = RtxOptions::Decals::baseOffsetIndex();
-      }
-      return;
-    }
-
-    const GeometryBufferData bufferData(geometryData);
-
-    // Check if the necessary buffers exist
-    if (!bufferData.indexData || !bufferData.positionData)
-      return;
-
-    const bool isSingleOffsetDecalBatch = instance.testCategoryFlags(InstanceCategories::DecalSingleOffset);
-    const uint32_t currentOffsetDecalBatchStartIndex = m_currentDecalOffsetIndex;
-    const float offsetMultiplier = RtxOptions::Decals::offsetMultiplierMeters() * RtxOptions::Get()->getMeterToWorldUnitScale();
-
-    auto getNextOffset = [this, &instance, isSingleOffsetDecalBatch, offsetMultiplier]() {
-      const float offset = m_currentDecalOffsetIndex * offsetMultiplier;
-
-      // Increment decal index and wrap it around to avoid moving them too far away from walls
-      if (!isSingleOffsetDecalBatch && ++m_currentDecalOffsetIndex > RtxOptions::Decals::maxOffsetIndex()) {
-        m_currentDecalOffsetIndex = RtxOptions::Decals::baseOffsetIndex();
-      }
-
-      return offset;
-    };
-
-    if (instance.testCategoryFlags(InstanceCategories::DecalDynamic)) {
-      // It's a dynamic decal. Find all triangle quads and offset each quad individually.
-      int fanStartIndexOffset = 0;
-      bool fanNormalFound = false;
-      Vector3 normal;
-
-      // Go over all quads in this draw call.
-      // Note: decals are often batched into a few draw calls, and we want to offset each decal separately.
-      for (int indexOffset = 0; indexOffset + indicesPerTriangle <= geometryData.indexCount; indexOffset += indicesPerTriangle) {
-        // Load indices for the current triangle
-        uint16_t indices[indicesPerTriangle];
-        for (size_t idx = 0; idx < indicesPerTriangle; ++idx) {
-          indices[idx] = bufferData.getIndex(idx + indexOffset);
-        }
-
-        if (!fanNormalFound) {
-          // Load the triangle vertices
-          Vector3 triangleVertices[indicesPerTriangle];
-          for (int idx = 0; idx < indicesPerTriangle; ++idx) {
-            triangleVertices[idx] = bufferData.getPosition(indices[idx]);
-          }
-
-          // Compute the edges
-          const Vector3 xVector = triangleVertices[2] - triangleVertices[1];
-          const Vector3 yVector = triangleVertices[1] - triangleVertices[0];
-
-          // Compute the normal, set the valid flag if the triangle is not degenerate
-          normal = cross(xVector, yVector);
-          const float normalLength = length(normal);
-          if (normalLength > 0.f) {
-            normal /= normalLength;
-            fanNormalFound = true;
-          }
-        }
-
-        // Detect if this triangle is the last one in a triangle fan
-        const bool endOfStream = indexOffset + indicesPerTriangle * 2 > geometryData.indexCount;
-        const bool endOfFan = endOfStream ||
-          (bufferData.getIndex(indexOffset + indicesPerTriangle) != indices[0]) ||
-          (bufferData.getIndex(indexOffset + indicesPerTriangle + 1) != indices[2]);
-        if (!endOfFan)
-          continue;
-
-        if (fanNormalFound) {
-          // Compute the offset
-          const Vector3 positionOffset = normal * getNextOffset();
-
-          // Apply the offset to all vertices of the triangle fan
-          bufferData.getPosition(bufferData.getIndex(fanStartIndexOffset)) += positionOffset;
-          bufferData.getPosition(bufferData.getIndex(fanStartIndexOffset + 1)) += positionOffset;
-          for (int i = fanStartIndexOffset; i <= indexOffset; i += indicesPerTriangle) {
-            bufferData.getPosition(bufferData.getIndex(i + 2)) += positionOffset;
-          }
-        }
-
-        fanStartIndexOffset = indexOffset + indicesPerTriangle;
-        fanNormalFound = false;
-      }
-    }
-    else {
-      // Maybe it's a BSP decal with irregular geometry?
-      Vector3 decalNormal;
-      bool decalNormalFound = false;
-
-      // This set contains all indices of vertices that are used in a planar decal. The topology is unknown,
-      // so a set is necessary to avoid offsetting some vertices more than once.
-      // Use a static set to avoid freeing and re-allocating its memory on each decal.
-      // Note: this makes the function not thread-safe, but that's OK
-      static std::unordered_set<uint16_t> planeIndices;
-
-      // Go over all triangles and see if they are coplanar
-      for (int indexOffset = 0; indexOffset + indicesPerTriangle <= geometryData.indexCount; indexOffset += indicesPerTriangle) {
-        // Load the triangle vertices
-        uint16_t triangleIndices[indicesPerTriangle];
-        Vector3 worldVertices[indicesPerTriangle];
-        for (size_t idx = 0; idx < indicesPerTriangle; ++idx) {
-          triangleIndices[idx] = bufferData.getIndex(idx + indexOffset);
-          worldVertices[idx] = bufferData.getPosition(triangleIndices[idx]);
-        }
-
-        // Compute the edges
-        const Vector3 xVector = worldVertices[2] - worldVertices[1];
-        const Vector3 yVector = worldVertices[1] - worldVertices[0];
-
-        // Compute the normal, skip the triangle if it's degenerate
-        Vector3 normal = cross(xVector, yVector);
-        const float normalLength = length(normal);
-        if (normalLength == 0.f)
-          continue;
-        normal /= normalLength;
-
-        if (decalNormalFound) {
-          // If this is not the first valid triangle, compare its normal to a previously found one
-          const float dotNormals = dot(decalNormal, normal);
-          constexpr float kDegreesToRadians = float(M_PI / 180.0);
-          static const float kCosParallelThreshold = cos(5.f * kDegreesToRadians);
-
-          // Not coplanar - offset the previous plane and reset
-          if (dotNormals < kCosParallelThreshold) {
-            const Vector3 positionOffset = normal * getNextOffset();
-
-            for (uint16_t idx : planeIndices) {
-              bufferData.getPosition(idx) += positionOffset;
-            }
-
-            planeIndices.clear();
-            decalNormalFound = false;
-          }
-        }
-        else {
-          // If this is a valid triangle, store its normal and indices
-          decalNormalFound = true;
-          decalNormal = normal;
-        }
-
-        for (size_t idx = 0; idx < indicesPerTriangle; ++idx) {
-          planeIndices.insert(triangleIndices[idx]);
-        }
-      }
-
-      // Offset the last (or the only) plane at the end of the loop
-      if (decalNormalFound) {
-        const Vector3 positionOffset = decalNormal * getNextOffset();
-
-        for (uint16_t idx : planeIndices) {
-          bufferData.getPosition(idx) += positionOffset;
-        }
-      }
-
-      planeIndices.clear();
-    }
-
-    // Record the geometry hash to mark this decal is offsetted
-    instance.m_lastDecalOffsetVertexDataVersion = geometryData.hashes[HashComponents::VertexPosition];
-
-    // Increment the decal index now if it is a single offset decal batch
-    if (isSingleOffsetDecalBatch) {
-      ++m_currentDecalOffsetIndex;
-    }
-
-    const int32_t currentDecalOffsetDifference = static_cast<int32_t>(m_currentDecalOffsetIndex) - currentOffsetDecalBatchStartIndex;
-
-    // Set to wrap around limit if wrap around (i.e. negative offset index difference is seen) occured
-    instance.m_currentDecalOffsetDifference = instance.m_currentDecalOffsetDifference < 1
-      ? RtxOptions::Decals::maxOffsetIndex()
-      : currentDecalOffsetDifference;
-
-    // We're done processing all the batched decals for the current instance. 
-    // Apply the custom offsetting between decal draw calls.
-    // -1 since the offset index has already been incremented after calculating offset for the previous decal
-    m_currentDecalOffsetIndex += RtxOptions::Decals::offsetIndexIncreaseBetweenDrawCalls() - 1;
-    if (m_currentDecalOffsetIndex > RtxOptions::Decals::maxOffsetIndex()) {
-      m_currentDecalOffsetIndex = RtxOptions::Decals::baseOffsetIndex();
-    }
   }
 
   inline bool isFpSpecial(float x) {

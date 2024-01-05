@@ -228,8 +228,10 @@ struct RtSurface {
 
     writeGPUHelper(data, offset, clipPlane);
 
-    // 16 bytes padding
-    writeGPUPadding<16>(data, offset);
+    writeGPUHelperExplicit<1>(data, offset, decalSortOrder);
+
+    // 15 bytes padding
+    writeGPUPadding<15>(data, offset);
 
     assert(offset - oldOffset == kSurfaceGPUSize);
   }
@@ -322,6 +324,7 @@ struct RtSurface {
 
   XXH64_hash_t associatedGeometryHash; // NOTE: This is used for the debug view
   uint32_t objectPickingValue = 0; // NOTE: a value to fill GBUFFER_BINDING_PRIMARY_OBJECT_PICKING_OUTPUT
+  uint32_t decalSortOrder = 0; // see: InstanceManager::m_decalSortOrderCounter
 };
 
 // Shared Material Defaults/Limits

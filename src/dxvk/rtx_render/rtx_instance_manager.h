@@ -178,10 +178,6 @@ private:
   uint32_t m_firstBillboard = 0;
   uint32_t m_billboardCount = 0;
 
-  // Used decal offsetting parameters
-  XXH64_hash_t m_lastDecalOffsetVertexDataVersion = kEmptyHash;
-  uint32_t m_currentDecalOffsetDifference = UINT32_MAX;
-
   CategoryFlags m_categoryFlags;
 
 public:
@@ -300,8 +296,8 @@ private:
   bool m_previousViewModelState = false;
   RtInstance* targetInstance = nullptr;
 
-  uint32_t m_currentDecalOffsetIndex;
-    
+  uint32_t m_decalSortOrderCounter = 0;  // monotonically incrementing value indicating the draw call order of this decal on the frame
+
   // Controls active portal space for which virtual view model or player model instances have been generated for.
   // Negative values mean there is no portal that's close enough to the camera.
   int m_virtualInstancePortalIndex = 0;    
@@ -328,8 +324,6 @@ private:
 
   // Modifies an instance given active developer options. Returns true if the instance was modified
   bool applyDeveloperOptions(RtInstance& currentInstance, const DrawCallState& drawCall);
-
-  void applyDecalOffsets(RtInstance& instance, const RasterGeometry& geometryData);
 
   void createBillboards(RtInstance& instance, const Vector3& cameraViewDirection);
 
