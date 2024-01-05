@@ -232,11 +232,13 @@ namespace dxvk {
     if (!RtxOptions::Get()->useRTXDI())
       return;
 
+    const uint32_t frameIdx = ctx->getDevice()->getCurrentFrameId();
+
     const auto& numRaysExtent = rtOutput.m_compositeOutputExtent;
     VkExtent3D workgroups = util::computeBlockCount(numRaysExtent, VkExtent3D{ 16, 8, 1 });
 
     ctx->bindCommonRayTracingResources(rtOutput);
-
+    
     {
       ScopedGpuProfileZone(ctx, "RTXDI Initial & Temporal Reuse");
 
@@ -248,8 +250,8 @@ namespace dxvk {
       ctx->bindResourceView(RTXDI_REUSE_BINDING_ALBEDO_INPUT, rtOutput.m_primaryAlbedo.view, nullptr);
       // Note: Texture contains Base Reflectivity here (due to being before the demodulate pass)
       ctx->bindResourceView(RTXDI_REUSE_BINDING_BASE_REFLECTIVITY_INPUT, rtOutput.m_primaryBaseReflectivity.view(Resources::AccessType::Read), nullptr);
-      ctx->bindResourceView(RTXDI_REUSE_BINDING_WORLD_POSITION_INPUT, rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view, nullptr);
-      ctx->bindResourceView(RTXDI_REUSE_BINDING_PREV_WORLD_POSITION_INPUT, rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().view, nullptr);
+      ctx->bindResourceView(RTXDI_REUSE_BINDING_WORLD_POSITION_INPUT, rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read), nullptr);
+      ctx->bindResourceView(RTXDI_REUSE_BINDING_PREV_WORLD_POSITION_INPUT, rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read, rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().matchesWriteFrameIdx(frameIdx - 1)), nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_WS_MVEC_INPUT_OUTPUT, rtOutput.m_primaryVirtualMotionVector.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_SS_MVEC_INPUT, rtOutput.m_primaryScreenSpaceMotionVector.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_VIEW_DIRECTION_INPUT, rtOutput.m_primaryViewDirection.view, nullptr);
@@ -269,8 +271,7 @@ namespace dxvk {
     }
 
     {
-      ScopedGpuProfileZone(ctx, "RTXDI Spatial Reuse");
-
+      ScopedGpuProfileZone(ctx, "RTXDI Spatial Reuse"); 
       // Note: Primary buffers bound as these exhibit coherency for RTXDI and denoising.
       ctx->bindResourceBuffer(RTXDI_REUSE_BINDING_RTXDI_RESERVOIR, DxvkBufferSlice(rtOutput.m_rtxdiReservoirBuffer, 0, rtOutput.m_rtxdiReservoirBuffer->info().size));
       ctx->bindResourceView(RTXDI_REUSE_BINDING_WORLD_SHADING_NORMAL_INPUT, rtOutput.m_primaryWorldShadingNormal.view, nullptr);
@@ -278,8 +279,8 @@ namespace dxvk {
       ctx->bindResourceView(RTXDI_REUSE_BINDING_HIT_DISTANCE_INPUT, rtOutput.m_primaryHitDistance.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_ALBEDO_INPUT, rtOutput.m_primaryAlbedo.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_BASE_REFLECTIVITY_INPUT, rtOutput.m_primaryBaseReflectivity.view(Resources::AccessType::Read), nullptr);
-      ctx->bindResourceView(RTXDI_REUSE_BINDING_WORLD_POSITION_INPUT, rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view, nullptr);
-      ctx->bindResourceView(RTXDI_REUSE_BINDING_PREV_WORLD_POSITION_INPUT, rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().view, nullptr);
+      ctx->bindResourceView(RTXDI_REUSE_BINDING_WORLD_POSITION_INPUT, rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read), nullptr);
+      ctx->bindResourceView(RTXDI_REUSE_BINDING_PREV_WORLD_POSITION_INPUT, rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read, rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().matchesWriteFrameIdx(frameIdx - 1)), nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_WS_MVEC_INPUT_OUTPUT, rtOutput.m_primaryVirtualMotionVector.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_SS_MVEC_INPUT, rtOutput.m_primaryScreenSpaceMotionVector.view, nullptr);
       ctx->bindResourceView(RTXDI_REUSE_BINDING_VIEW_DIRECTION_INPUT, rtOutput.m_primaryViewDirection.view, nullptr);
@@ -317,8 +318,8 @@ namespace dxvk {
       ScopedGpuProfileZone(ctx, "Compute Gradients");
       
       ctx->bindResourceBuffer(RTXDI_COMPUTE_GRADIENTS_BINDING_RTXDI_RESERVOIR, DxvkBufferSlice(rtOutput.m_rtxdiReservoirBuffer, 0, rtOutput.m_rtxdiReservoirBuffer->info().size));
-      ctx->bindResourceView(RTXDI_COMPUTE_GRADIENTS_BINDING_CURRENT_WORLD_POSITION_INPUT, rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view, nullptr);
-      ctx->bindResourceView(RTXDI_COMPUTE_GRADIENTS_BINDING_PREVIOUS_WORLD_POSITION_INPUT, rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().view, nullptr);
+      ctx->bindResourceView(RTXDI_COMPUTE_GRADIENTS_BINDING_CURRENT_WORLD_POSITION_INPUT, rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read), nullptr);
+      ctx->bindResourceView(RTXDI_COMPUTE_GRADIENTS_BINDING_PREVIOUS_WORLD_POSITION_INPUT, rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read, rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().matchesWriteFrameIdx(frameIdx - 1)), nullptr);
       ctx->bindResourceView(RTXDI_COMPUTE_GRADIENTS_BINDING_CONE_RADIUS_INPUT, rtOutput.m_primaryConeRadius.view, nullptr);
       ctx->bindResourceView(RTXDI_COMPUTE_GRADIENTS_BINDING_MVEC_INPUT, rtOutput.m_primaryVirtualMotionVector.view, nullptr);
       ctx->bindResourceView(RTXDI_COMPUTE_GRADIENTS_BINDING_POSITION_ERROR_INPUT, rtOutput.m_primaryPositionError.view, nullptr);

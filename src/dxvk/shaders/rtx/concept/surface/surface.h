@@ -125,6 +125,8 @@ struct Surface
   uint8_t spriteSheetFPS;
 
   uint32_t objectPickingValue;
+
+  uint8_t decalSortOrder;
 };
 
 // Note: Minimal version of typical Surface Interaction for transmission across passes.

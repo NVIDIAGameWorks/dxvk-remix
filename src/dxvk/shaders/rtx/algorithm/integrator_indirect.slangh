@@ -204,6 +204,9 @@ void integratePathVertex(
   // between the origin and the hit point can be accumulated in advance.
 
   // Note: Only do unordered resolving when separate unordered approximations are desired for this bounce of the path.
+  bool unorderedDecalEncountered = false;
+  uint4 decalMemory = 0;
+  f16vec3 decalEmissiveRadiance = f16vec3(0);
   if (separateUnorderedApproximations)
   {
     Ray unorderedResolveRay;
@@ -224,7 +227,8 @@ void integratePathVertex(
       /* useIntersectionBillboards = */ cb.enableBillboardOrientationCorrection,
       pathState.accumulatedHitDistance,
       radianceAttenuation, emissiveRadiance,
-      numUnorderedInteractions);
+      numUnorderedInteractions, 
+      unorderedDecalEncountered, decalMemory, decalEmissiveRadiance);
 
     if (cb.debugView == DEBUG_VIEW_SECONDARY_UNORDERED_INTERACTIONS || cb.debugView == DEBUG_VIEW_SECONDARY_RAY_AND_UNORDERED_INTERACTIONS)
     {
@@ -251,7 +255,7 @@ void integratePathVertex(
   hackState.portalSpace = pathState.portalSpace;
   hackState.rayMask = pathState.rayMask;
   hackState.firstRayPortal = invalidRayPortalIndex;
-  hackState.decalEncountered = pathState.decalEncountered;
+  hackState.decalEncountered = pathState.decalEncountered || unorderedDecalEncountered;
   hackState.pixelCoordinate = pathState.pixelCoordinate;
 
   resolveVertex(
@@ -261,7 +265,7 @@ void integratePathVertex(
     surface, surfaceInteraction,
     polymorphicSurfaceMaterialInteraction,
     radianceAttenuation, emissiveRadiance,
-    DecalMaterial, aliasedData0.DecalEmissiveRadiance);
+    decalMemory, decalEmissiveRadiance);
 
   // Todo: Remove hack thing
   vec3 oldOrigin = pathState.origin;

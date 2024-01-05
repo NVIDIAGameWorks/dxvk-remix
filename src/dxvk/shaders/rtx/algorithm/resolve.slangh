@@ -303,8 +303,8 @@ void resolveVertex(
   inout Surface surface, inout SurfaceInteraction surfaceInteraction,
   inout PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
   inout f16vec3 radianceAttenuation, inout vec3 emissiveRadiance,
-  RWTexture2D<uint4> decalMaterialTexture,
-  RWTexture2D<float4> decalEmissiveRadianceTexture,
+  uint4 decalMemory,
+  f16vec3 decalEmissiveRadiance,
   // Forces enablement of ray portal resolve path regardless of global resolve mask 
   // Needed for RayQuery paths for visibility rays from CHS as they don't run material specific hit groups
   // Visibility rays are expected not to start from RayPortal surfaces, and thus only RayPortal path is force enabled
@@ -395,8 +395,8 @@ void resolveVertex(
     if (decalMaterialBlending && resolveVertexState.decalEncountered)
     {
       MemoryDecalMaterialInteraction memory;
-      memory.packed = decalMaterialTexture[resolveVertexState.pixelCoordinate];
-      memory.emissiveRadiance = decalEmissiveRadianceTexture[resolveVertexState.pixelCoordinate].rgb;
+      memory.packed = decalMemory;
+      memory.emissiveRadiance = decalEmissiveRadiance;
       DecalMaterialInteraction decalMaterialInteraction = decalMaterialInteractionUnpack(memory);
 
       decalMaterialInteractionBlend(decalMaterialInteraction, opaqueSurfaceMaterialInteraction);
@@ -404,27 +404,9 @@ void resolveVertex(
       resolveVertexState.decalEncountered = false;
     }
 
+    // must create this after decal has been composited to opaque surface material interaction
     polymorphicSurfaceMaterialInteraction =
       polymorphicSurfaceMaterialInteractionCreateInternal(opaqueSurfaceMaterialInteraction);
-
-    // If the current surface is a decal, store it and continue resolving
-    if (decalMaterialBlending && surfaceIsDecal(surface) && resolveVertexState.continueResolving)
-    {
-      if (opaqueSurfaceMaterialInteraction.opacity > 0.f)
-      {
-        const DecalMaterialInteraction decalMaterialInteraction = decalMaterialInteractionCreate(opaqueSurfaceMaterialInteraction);
-
-        MemoryDecalMaterialInteraction memory = decalMaterialInteractionPack(decalMaterialInteraction);
-        decalMaterialTexture[resolveVertexState.pixelCoordinate] = memory.packed;
-        decalEmissiveRadianceTexture[resolveVertexState.pixelCoordinate] = f16vec4(memory.emissiveRadiance, 0);
-
-        resolveVertexState.decalEncountered = true;
-      }
-
-      resolveVertexFinalContinue(ray, surfaceInteraction, teleport, teleportMatrix, resolveVertexState);
-
-      return;
-    }
 
     // Note: Fully opaque surfaces have no chance at needing further resolving (since they are gauranteed to have no opacity-related blending or translucency), so stopping here is fine.
     // Todo: Incorporate decals into this check so this can be moved above the decal logic for early outing sooner on most hits?
@@ -510,8 +492,8 @@ void resolveVertex(
     if (decalMaterialBlending && resolveVertexState.decalEncountered)
     {
       MemoryDecalMaterialInteraction memory;
-      memory.packed = decalMaterialTexture[resolveVertexState.pixelCoordinate];
-      memory.emissiveRadiance = decalEmissiveRadianceTexture[resolveVertexState.pixelCoordinate].rgb;
+      memory.packed = decalMemory;
+      memory.emissiveRadiance = decalEmissiveRadiance;
       DecalMaterialInteraction decalMaterialInteraction = decalMaterialInteractionUnpack(memory);
 
       decalMaterialInteractionBlend(decalMaterialInteraction, translucentSurfaceMaterialInteraction);
@@ -693,7 +675,10 @@ void resolveVertexUnordered(
 #endif
   float accumulatedHitDistance,
   inout f16vec3 radianceAttenuation, inout vec3 emissiveRadiance,
-  out uint numInteractions)
+  out uint numInteractions,
+  inout bool decalEncountered,
+  inout uint4 decalMemory,
+  inout f16vec3 decalEmissiveRadiance)
 {
   // Early out if approximations are not desired to be separated out
 
@@ -736,6 +721,8 @@ void resolveVertexUnordered(
     f16vec4(0.0f, 0.0f, 0.0f, 1.0f),
   );
   f16vec4 binDistances = f16vec4(-1.0f, -1.0f, -1.0f, -1.0f);
+
+  uint8_t lastDecalSortKey = 0;
 
   while (rayQuery.Proceed())
   {
@@ -897,12 +884,63 @@ void resolveVertexUnordered(
       const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
         opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteraction);
 
-      // Note: Return value ignored, should never return false in this path unless there is a bug. Additionally, incoming radiance attenuation
-      // set to 1.0 as attenuation will be manually added in later.
-      evaluateOpaqueApproximations(
-        resolveMode | resolveModeForceOpacityLightingApprox,
-        surface, surfaceInteraction, opaqueSurfaceMaterialInteraction, portalSpace,
-        f16vec3(1.0f), currentRadianceAttenuation, currentEmissiveRadiance);
+      if (isTriangle && surfaceIsDecal(surface))
+      {
+        if (opaqueSurfaceMaterialInteraction.opacity > 0.f && rayInteraction.frontHit)
+        {
+          DecalMaterialInteraction decalMaterialInteraction = decalMaterialInteractionCreate(opaqueSurfaceMaterialInteraction);
+
+          // If we have previously encountered a decal, must blend the new decal into our decal storage memory
+          if (decalEncountered)
+          {
+            MemoryDecalMaterialInteraction decalCompositedMemory;
+            decalCompositedMemory.packed = decalMemory;
+            decalCompositedMemory.emissiveRadiance = decalEmissiveRadiance;
+
+            DecalMaterialInteraction decalMaterialInteractionComposited = decalMaterialInteractionUnpack(decalCompositedMemory);
+            
+            // Approximate decal sorting, accurate to 2 layers, semi-accurate thereafter.  This works by maintaining a sort order (i.e. draw order) 
+            //   and switching between "over" or "under" blending based on the incoming sort key in relation to the previous.
+            if (lastDecalSortKey >= surface.decalSortOrder)
+            {
+              decalMaterialInteractionBlend(decalMaterialInteractionComposited, decalMaterialInteraction);
+              decalMaterialInteractionComposited = decalMaterialInteraction;
+            }
+            else
+            {
+              decalMaterialInteractionBlend(decalMaterialInteraction, decalMaterialInteractionComposited);
+            }
+            
+            MemoryDecalMaterialInteraction memory = decalMaterialInteractionPack(decalMaterialInteractionComposited);
+            decalMemory = memory.packed;
+            decalEmissiveRadiance = memory.emissiveRadiance;
+          }
+          else
+          {
+            MemoryDecalMaterialInteraction memory = decalMaterialInteractionPack(decalMaterialInteraction);
+            decalMemory = memory.packed;
+            decalEmissiveRadiance = memory.emissiveRadiance;
+          }
+
+          lastDecalSortKey = surface.decalSortOrder;
+          decalEncountered = true;
+        }
+        
+        // account for these interactions for debug view
+        numInteractions += 1;
+
+        // don't include decals in the opaque approximation.
+        continue;
+      }
+      else 
+      {
+        // Note: Return value ignored, should never return false in this path unless there is a bug. Additionally, incoming radiance attenuation
+        // set to 1.0 as attenuation will be manually added in later.
+        evaluateOpaqueApproximations(
+          resolveMode | resolveModeForceOpacityLightingApprox,
+          surface, surfaceInteraction, opaqueSurfaceMaterialInteraction, portalSpace,
+          f16vec3(1.0f), currentRadianceAttenuation, currentEmissiveRadiance);
+      }
     }
     else if (polymorphicType == surfaceMaterialTypeTranslucent)
     {
