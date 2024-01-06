@@ -658,7 +658,7 @@ namespace dxvk {
       params.vertexCount = drawInfo.vertexCount;
     }
 
-    m_drawCallStateQueue.push(std::move(m_activeDrawCallState));
+    submitActiveDrawCallState();
 
     m_parent->EmitCs([params, this](DxvkContext* ctx) {
       assert(dynamic_cast<RtxContext*>(ctx));
@@ -667,6 +667,15 @@ namespace dxvk {
         static_cast<RtxContext*>(ctx)->commitGeometryToRT(params, drawCallState);
       }
     });
+  }
+
+  void D3D9Rtx::submitActiveDrawCallState() {
+    // We must be prepared for `push` failing here, this can happen, since we're pushing to a circular buffer, which 
+    //  may not have room for new entries.  In such cases, we trust that the consumer thread will make space for us, and
+    //  so we may just need to wait a little bit.
+    while (!m_drawCallStateQueue.push(std::move(m_activeDrawCallState))) {
+      Sleep(0);
+    }
   }
 
   Future<SkinningData> D3D9Rtx::processSkinning(const RasterGeometry& geoData) {
