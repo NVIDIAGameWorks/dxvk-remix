@@ -287,6 +287,22 @@ namespace dxvk {
     std::shared_ptr<RtxOptionImpl> pImpl;
   };
 
+  // Checks if value has changed from prevValue and updates prevValue if it did.
+  // This can be used to check if an RtxOption value changed. 
+  // PrevValue variable should be declared as a local/member variable rather than a static one due to:
+  //      Using static variables with local initialization burns a branch predictor slot and 
+  //      does an extra memory load from an unrelated chunk of memory 
+  //      for every static variable declared this way. This is pretty wasteful.
+  template <typename T>
+  bool hasValueChanged(const T& value, T& prevValue) {
+    if (value == prevValue) {
+      return false;
+    } else {
+      prevValue = value;
+      return true;
+    }
+  }
+
 // The RTX_OPTION* macros provide a convenient way to declare a serializable option
 #define RTX_OPTION_FULL(category, type, name, value, environment, flags, description) \
   private: inline static RtxOption<type> m_##name = RtxOption<type>(category, #name, environment, type(value), static_cast<uint32_t>(flags), description); \

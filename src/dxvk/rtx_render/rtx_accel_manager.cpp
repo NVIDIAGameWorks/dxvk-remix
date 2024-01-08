@@ -153,10 +153,11 @@ namespace dxvk {
     const bool usesIndices = blasEntry.modifiedGeometryData.usesIndices();
 
     // Associate each billboard with a unique geometry entry
-    if (instance.getBillboardCount() > 0 && usesIndices && 
-        (opacityMicromapManager && 
-         OpacityMicromapOptions::Building::splitBillboardGeometry() &&
-         opacityMicromapManager->doesInstanceUseOpacityMicromap(instance))) {
+    // ToDo: get rid of usesIndices requirement, it's not needed to build OMMs. It's only used below
+    if (usesIndices && 
+        opacityMicromapManager &&
+        OpacityMicromapManager::usesOpacityMicromap(instance) &&
+        OpacityMicromapManager::usesSplitBillboardOpacityMicromap(instance)) {
 
       VkAccelerationStructureGeometryKHR geometry = {};
       geometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
@@ -405,18 +406,19 @@ namespace dxvk {
         continue;
       }
 
+      XXH64_hash_t boundOpacityMicromapHash = kEmptyHash;
+      bool hasTriedToBindOpacityMicromap = false;
+
+      if (opacityMicromapManager) {
+        opacityMicromapManager->registerOpacityMicromapBuildRequest(*instance, instanceManager, textures);
+      }
+
       // Find the blas entry for this instance.
       // Cannot store BlasEntry* directly in the RtInstance because the entries are owned and potentially moved by the hash table.
       BlasEntry* blasEntry = instance->getBlas();
       assert(blasEntry);
 
       fillGeometryInfoFromBlasEntry(*blasEntry, *instance, opacityMicromapManager);
-
-      XXH64_hash_t boundOpacityMicromapHash = kEmptyHash;
-      bool hasTriedToBindOpacityMicromap = false;
-
-      if (opacityMicromapManager)
-        opacityMicromapManager->registerOpacityMicromapBuildRequest(*instance, instanceManager, textures);
 
       // Check validity of a built BLAS
       if (blasEntry->staticBlas.ptr()) {
