@@ -298,11 +298,11 @@ namespace dxvk {
       setInstance(nullptr, instanceOmmRequests, deleteParentInstanceIfEmpty);
 
     if (newInstance) {
-      instanceOmmRequests[newInstance->getOpacityMicromapSourceHash()].numActiveRequests += 1;
+      instanceOmmRequests[getOpacityMicromapHash(*newInstance)].numActiveRequests += 1;
     } 
     // instance should always be valid at this point, but let's check on previous instance being actually valid before unlinking it
     else if (instance) {
-      auto instanceOmmRequestsIter = instanceOmmRequests.find(instance->getOpacityMicromapSourceHash());
+      auto instanceOmmRequestsIter = instanceOmmRequests.find(getOpacityMicromapHash(*instance));
       omm_validation_assert(instanceOmmRequestsIter->second.numActiveRequests > 0);
       instanceOmmRequestsIter->second.numActiveRequests -= 1;
       if (deleteParentInstanceIfEmpty && instanceOmmRequestsIter->second.numActiveRequests == 0)
@@ -401,7 +401,7 @@ namespace dxvk {
       destroyOmmData(ommCacheIterator, destroyParentInstanceOmmRequestContainer);
     };
 
-    XXH64_hash_t ommSrcHash = instance.getOpacityMicromapSourceHash();
+    XXH64_hash_t ommSrcHash = getOpacityMicromapHash(instance);
 
     // Invalid hash, ignore it
     if (ommSrcHash == kEmptyHash)
@@ -432,6 +432,12 @@ namespace dxvk {
 
     m_leastRecentlyUsedList.clear();
     m_ommCache.clear();
+
+#ifdef VALIDATION_MODE
+    for (auto& sourceData : m_cachedSourceData) {
+      sourceData.second.setInstance(nullptr, m_instanceOmmRequests);
+    }
+#endif
     m_cachedSourceData.clear();
     m_ommBuildRequestStatistics.clear();
 
@@ -567,6 +573,31 @@ namespace dxvk {
     // after the frame submissions
   }
 
+  // Requires registerOpacityMicromapBuildRequest() to be be called prior to this in a frame
+  bool OpacityMicromapManager::usesOpacityMicromap(const RtInstance& instance) {
+    const OpacityMicromapInstanceData& ommInstanceData = instance.getOpacityMicromapInstanceData();
+
+    return ommInstanceData.usesOMM;
+  }
+
+  bool OpacityMicromapManager::usesSplitBillboardOpacityMicromap(const RtInstance& instance) {
+    return
+      OpacityMicromapOptions::Building::splitBillboardGeometry() &&
+      // ToDo: this should be "> 1" since it is wasteful to split 1 billboard geos 
+      // but doing so prevents OMM getting applied to a particle for portal gun diode on top,
+      // so leaving it at "> 0" for now
+      instance.getBillboardCount() > 0 &&
+      instance.getBillboardCount() <= OpacityMicromapOptions::Building::maxAllowedBillboardsPerInstanceToSplit();
+  }
+
+  XXH64_hash_t OpacityMicromapManager::getOpacityMicromapHash(const RtInstance& instance) {
+    const OpacityMicromapInstanceData& ommInstanceData = instance.getOpacityMicromapInstanceData();
+    return ommInstanceData.ommSrcHash;
+  }
+
+  OpacityMicromapInstanceData::OpacityMicromapInstanceData()
+    : usesOMM(false) { }
+
   void OpacityMicromapManager::onInstanceUpdated(const RtInstance& instance, 
                                                  const RtSurfaceMaterial& material, 
                                                  const bool hasTransformChanged, 
@@ -579,7 +610,7 @@ namespace dxvk {
     destroyInstance(instance);
   }
 
-  bool OpacityMicromapManager::doesInstanceUseOpacityMicromap(const RtInstance& instance) const {
+  bool OpacityMicromapManager::calculateInstanceUsesOpacityMicromap(const RtInstance& instance) {
     // Texcoord data is required
     if (instance.getTexcoordHash() == kEmptyHash ||
     // Texgen mode check excludes baked terrain as well
@@ -589,6 +620,18 @@ namespace dxvk {
     }
 
     if (instance.testCategoryFlags(InstanceCategories::IgnoreOpacityMicromap)) {
+      return false;
+    }
+
+    if ((instance.getMaterialType() != RtSurfaceMaterialType::Opaque &&
+         instance.getMaterialType() != RtSurfaceMaterialType::RayPortal)) {
+      return false;
+    }
+
+    // Technically, we could generate OMMs without opacity texture present, but it's not currently supported
+    // and likely not a commonly useful scenario. This check may already be implicitly covered by 
+    // getTexcoordHash() being empty but it's not clear if it's guaranteed.
+    if (instance.getAlbedoOpacityTextureIndex() == kSurfaceMaterialInvalidTextureIndex) {
       return false;
     }
 
@@ -616,8 +659,6 @@ namespace dxvk {
     {
       useOpacityMicromap &= !instance.isAnimated() || OpacityMicromapOptions::BuildRequests::enableAnimatedInstances();
       useOpacityMicromap &= !alphaState.isParticle || OpacityMicromapOptions::BuildRequests::enableParticles();
-      if (OpacityMicromapOptions::Building::splitBillboardGeometry())
-        useOpacityMicromap &= instance.getBillboardCount() <= OpacityMicromapOptions::Building::maxAllowedBillboardsPerInstanceToSplit();
     }
 
     // Check if it needs per uTriangle opacity data
@@ -663,14 +704,15 @@ namespace dxvk {
   }
 
   void OpacityMicromapManager::updateSourceHash(RtInstance& instance, XXH64_hash_t ommSrcHash) {
-    XXH64_hash_t prevOmmSrcHash = instance.getOpacityMicromapSourceHash();
+    XXH64_hash_t prevOmmSrcHash = getOpacityMicromapHash(instance);
 
     if (prevOmmSrcHash != kEmptyHash && ommSrcHash != prevOmmSrcHash) {
       // Valid source hash changed, deassociate instance from the previous hash
       destroyInstance(instance);
     }
 
-    instance.setOpacityMicromapSourceHash(ommSrcHash);
+    OpacityMicromapInstanceData& ommInstanceData = instance.getOpacityMicromapInstanceData();
+    ommInstanceData.ommSrcHash = ommSrcHash;
   }
 
   fast_unordered_cache<OpacityMicromapManager::CachedSourceData>::iterator OpacityMicromapManager::registerCachedSourceData(const OmmRequest& ommRequest) {
@@ -731,7 +773,7 @@ namespace dxvk {
         uint32_t minNumRequests = OpacityMicromapOptions::BuildRequests::minNumRequests();
         uint32_t minNumFramesRequested = OpacityMicromapOptions::BuildRequests::minNumFramesRequested();
 
-        if (instance.getBillboardCount() > 0 && OpacityMicromapOptions::BuildRequests::customFiltersForBillboards()) {
+        if (usesSplitBillboardOpacityMicromap(instance) && OpacityMicromapOptions::BuildRequests::customFiltersForBillboards()) {
           // Lower the filter requirements for particles since they are dynamic
           // But still we want to avoid baking particles that do not get reused for now
           minInstanceFrameAge = 0;
@@ -803,7 +845,7 @@ namespace dxvk {
 
         if (sourceData.numTriangles < itemSourceData.numTriangles ||
             // insert in front of any billboard requests
-            itemSourceData.getInstance()->getBillboardCount() > 0) {
+            usesSplitBillboardOpacityMicromap(*itemSourceData.getInstance())) {
           cacheStateListIter = m_unprocessedList.insert(itemIter, ommSrcHash);
           return true;
         }
@@ -820,12 +862,13 @@ namespace dxvk {
                                                            const InstanceManager& instanceManager, 
                                                            std::vector<OmmRequest>& ommRequests) {
 
-    const uint32_t numOmmRequests = std::max(OpacityMicromapOptions::Building::splitBillboardGeometry() ? instance.getBillboardCount() : 1u, 1u);
+    const bool usesSplitBillboardOMM = usesSplitBillboardOpacityMicromap(instance);
+    const uint32_t numOmmRequests = std::max(usesSplitBillboardOMM ? instance.getBillboardCount() : 1u, 1u);
     ommRequests.reserve(numOmmRequests);
     XXH64_hash_t ommSrcHash;  // Compound hash for the instance
 
     // Create all OmmRequest objects corresponding to the instance
-    if (instance.getBillboardCount() > 0 && OpacityMicromapOptions::Building::splitBillboardGeometry()) {
+    if (usesSplitBillboardOMM) {
       const uint32_t numTriangles = instance.getBlas()->modifiedGeometryData.calculatePrimitiveCount();
       assert((numTriangles & 1) == 0 &&
              "Only compound omms consisting of multiples of quads are supported");
@@ -856,8 +899,14 @@ namespace dxvk {
   bool OpacityMicromapManager::registerOpacityMicromapBuildRequest(RtInstance& instance,
                                                                    const InstanceManager& instanceManager,
                                                                    const std::vector<TextureRef>& textures) {
-    if (!doesInstanceUseOpacityMicromap(instance))
+    ScopedCpuProfileZone();
+
+    OpacityMicromapInstanceData& ommInstanceData = const_cast<RtInstance&>(instance).getOpacityMicromapInstanceData();
+    ommInstanceData.usesOMM = calculateInstanceUsesOpacityMicromap(instance);
+
+    if (!ommInstanceData.usesOMM) {
       return false;
+    }
 
     if (!areInstanceTexturesResident(instance, textures))
       return false;
@@ -876,7 +925,7 @@ namespace dxvk {
     generateInstanceOmmRequests(instance, instanceManager, ommRequests.ommRequests);
 
     // Bookkeep the requests now so that they can be released should any registers fail below
-    m_instanceOmmRequests.emplace(instance.getOpacityMicromapSourceHash(), ommRequests);
+    m_instanceOmmRequests.emplace(getOpacityMicromapHash(instance), ommRequests);
 
     bool allRegistersSucceeded = true;
 
@@ -887,7 +936,7 @@ namespace dxvk {
     // Purge the instance omm requests that didn't end up with any active omm requests
     // ToDo: should avoid adding into the list in the first place as this happens for ommRequests that
     //   have already been completed as well
-    auto instanceOmmRequestsIter = m_instanceOmmRequests.find(instance.getOpacityMicromapSourceHash());
+    auto instanceOmmRequestsIter = m_instanceOmmRequests.find(getOpacityMicromapHash(instance));
     if (instanceOmmRequestsIter->second.numActiveRequests == 0)
       m_instanceOmmRequests.erase(instanceOmmRequestsIter);
       
@@ -939,8 +988,10 @@ namespace dxvk {
                                                               const RtInstance& instance, uint32_t billboardIndex,
                                                               VkAccelerationStructureGeometryKHR& targetGeometry,
                                                               const InstanceManager& instanceManager) {
-    if (!doesInstanceUseOpacityMicromap(instance))
+    ScopedCpuProfileZone();
+    if (!usesOpacityMicromap(instance)) {
       return kEmptyHash;
+    }
 
     return bindOpacityMicromap(ctx, instance, billboardIndex, targetGeometry, instanceManager);
   }
@@ -957,7 +1008,7 @@ namespace dxvk {
 
     // ToDo: avoid fixing up the index here
     billboardIndex = 
-      (instance.getBillboardCount() > 0 && OpacityMicromapOptions::Building::splitBillboardGeometry()) ? billboardIndex : OmmRequest::kInvalidIndex;
+      usesSplitBillboardOpacityMicromap(instance) ? billboardIndex : OmmRequest::kInvalidIndex;
     const OmmRequest ommRequest(instance, instanceManager, billboardIndex);
 
     auto& ommCacheItemIter = m_ommCache.find(ommRequest.ommSrcHash);
@@ -1183,12 +1234,6 @@ namespace dxvk {
     uint32_t& maxMicroTrianglesToBake) {
     
     const RtInstance& instance = *sourceData.getInstance();
-
-    if ((instance.getMaterialType() != RtSurfaceMaterialType::Opaque &&
-         instance.getMaterialType() != RtSurfaceMaterialType::RayPortal)) {
-      ONCE(Logger::warn("[RTX Opacity Micromap] Unsupported material type. Opacity lookup for the material type is not supported in the Opacity Micromap baker. Ignoring the bake request."));
-      return OmmResult::Failure;
-    }
 
     if (!areInstanceTexturesResident(instance, textures)) {
       return OmmResult::DependenciesUnavailable;
@@ -1466,6 +1511,9 @@ namespace dxvk {
       auto cacheItemIter = m_ommCache.find(ommSrcHash);
 
       if (sourceDataIter == m_cachedSourceData.end() || cacheItemIter == m_ommCache.end()) {
+        // Note: this shouldn't be hit anymore as it was triggered by destroying an instance
+        // on a baking failure and destroying source data for all OMMs associated with that instance.
+        // That included OMMs that were still in the unordered list. Now just the failed OMM gets destroyed.
         assert(0 && "OMM inconsistent state");
         ONCE(Logger::err("[RTX Opacity Micromap] Encountered inconsistent state. Opacity Micromap item listed for baking is missing required state data. Skipping it."));
         // First update the iterator, then destroy any omm data associated with it
@@ -1508,11 +1556,10 @@ namespace dxvk {
 #ifdef VALIDATION_MODE
         Logger::warn(str::format("[RTX Opacity Micromap] Baking Opacity Micromap Array failed for hash ", ommSrcHash, ". Ignoring and black listing the hash."));
 #endif
-        // Baking failed, ditch the instance
+        // Baking failed, ditch the OMM data
         // First update the iterator, then remove the element
-        const RtInstance* instanceToRemove = sourceData.getInstance();
         ommSrcHashIter++;
-        destroyInstance(*instanceToRemove, true);
+        destroyOmmData(cacheItemIter);
         m_blackListedList.insert(ommSrcHash);
     } else { // OutOfBudget
       omm_validation_assert(0 && "Should not be hit");
@@ -1633,25 +1680,21 @@ namespace dxvk {
 
     // Clear caches if we need to rebuild OMMs
     {
-      static bool prevEnableConservativeEstimation = OpacityMicromapOptions::Building::ConservativeEstimation::enable();
-      static uint32_t prevConservativeEstimationMaxTexelTapsPerMicroTriangle = OpacityMicromapOptions::Building::ConservativeEstimation::maxTexelTapsPerMicroTriangle();
-      static uint32_t prevSubdivisionLevel = OpacityMicromapOptions::Building::subdivisionLevel();
-      static bool prevEnableVertexAndTextureOperations = OpacityMicromapOptions::Building::enableVertexAndTextureOperations();
+      bool forceRebuildOMMs = OpacityMicromapOptions::enableResetEveryFrame();
+      forceRebuildOMMs |= hasValueChanged(OpacityMicromapOptions::Building::ConservativeEstimation::enable(), 
+                                          m_prevConservativeEstimationEnable);
+      forceRebuildOMMs |= hasValueChanged(OpacityMicromapOptions::Building::ConservativeEstimation::maxTexelTapsPerMicroTriangle(), 
+                                          m_prevConservativeEstimationMaxTexelTapsPerMicroTriangle);
+      forceRebuildOMMs |= hasValueChanged(OpacityMicromapOptions::Building::subdivisionLevel(), 
+                                          m_prevBuildingSubdivisionLevel);
+      forceRebuildOMMs |= hasValueChanged(OpacityMicromapOptions::Building::enableVertexAndTextureOperations(), 
+                                          m_prevBuildingEnableVertexAndTextureOperations);
 
-      bool forceRebuildOMMs =
-        OpacityMicromapOptions::Building::ConservativeEstimation::enable() != prevEnableConservativeEstimation ||
-        OpacityMicromapOptions::Building::ConservativeEstimation::maxTexelTapsPerMicroTriangle() != prevConservativeEstimationMaxTexelTapsPerMicroTriangle ||
-        prevSubdivisionLevel != OpacityMicromapOptions::Building::subdivisionLevel() ||
-        prevEnableVertexAndTextureOperations != OpacityMicromapOptions::Building::enableVertexAndTextureOperations() ||
-        OpacityMicromapOptions::enableResetEveryFrame();
-
-      prevEnableConservativeEstimation = OpacityMicromapOptions::Building::ConservativeEstimation::enable();
-      prevConservativeEstimationMaxTexelTapsPerMicroTriangle = OpacityMicromapOptions::Building::ConservativeEstimation::maxTexelTapsPerMicroTriangle();
-      prevSubdivisionLevel = OpacityMicromapOptions::Building::subdivisionLevel();
-      prevEnableVertexAndTextureOperations = OpacityMicromapOptions::Building::enableVertexAndTextureOperations();
-
-      if (forceRebuildOMMs)
+      if (forceRebuildOMMs) {
         clear();
+        // Reset the black listed list as well since black listing depends on the settings
+        m_blackListedList.clear();
+      }
     }
 
     // Purge obsolete OMM build requests
@@ -1741,8 +1784,6 @@ namespace dxvk {
                                                      const std::vector<TextureRef>& textures,
                                                      uint32_t lastCameraCutFrameId,
                                                      float frameTimeSecs) {
-
-
 
     float workloadScalePerSecond = frameTimeSecs / (1 / 60.f);
 
