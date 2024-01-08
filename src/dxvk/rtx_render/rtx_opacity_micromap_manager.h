@@ -296,6 +296,16 @@ namespace dxvk {
     std::list<VkDeviceSize> m_pendingReleaseSize;
   };
 
+  // Data stored in RtInstances for quick lookups
+  class OpacityMicromapInstanceData {
+    friend class OpacityMicromapManager;
+  public:
+    OpacityMicromapInstanceData();
+  private:
+    XXH64_hash_t ommSrcHash = kEmptyHash;
+    bool usesOMM : 1;
+  };
+
   // OpacityMicromapManager generates and manages Opacity Micromap data
   class OpacityMicromapManager : public CommonDeviceObject {
   public:
@@ -322,7 +332,7 @@ namespace dxvk {
     // but it is still desired to add the request to the build queue (i.e. in ViewModel reference 
     // instance case).
     // Returns true if the Opacity Micromap build request has been added now or previously. 
-    // Returns false if the Opacity Micromap build  request was rejected
+    // Returns false if the Opacity Micromap build request was rejected
     bool registerOpacityMicromapBuildRequest(RtInstance& instance, const InstanceManager& instanceManager, const std::vector<TextureRef>& textures);
 
     // Tries to bind an opacity micromap for a given instance to the target, 
@@ -346,13 +356,17 @@ namespace dxvk {
 
     static bool checkIsOpacityMicromapSupported(DxvkDevice& device);
 
-    bool doesInstanceUseOpacityMicromap(const RtInstance& instance) const;
+    static bool calculateInstanceUsesOpacityMicromap(const RtInstance& instance);
 
     // Must be called before a BLAS build is kicked off if an opacity micromap may have been bound for it
     // Should be called sparingly/once a frame after opacity micromaps have been bound to BLASes
     // and corresponding batched BLASes are about to be built. 
     // It is OK for batched BLASes to contain a mix of BLASes with and without bound opacity micromaps
     void onBlasBuild(Rc<DxvkContext> ctx);
+
+    static bool usesOpacityMicromap(const RtInstance& instance);
+    static bool usesSplitBillboardOpacityMicromap(const RtInstance& instance);
+    static XXH64_hash_t getOpacityMicromapHash(const RtInstance& instance);
 
   private:
     typedef fast_unordered_cache<OpacityMicromapCacheItem> OpacityMicromapCache;
@@ -370,7 +384,7 @@ namespace dxvk {
       ~CachedSourceData();
 
       void initialize(const OmmRequest& ommRequest, fast_unordered_cache<InstanceOmmRequests>& instanceOmmRequests);
-      void setInstance(const RtInstance* _instance, fast_unordered_cache<InstanceOmmRequests>& instanceOmmRequests, bool deleteParentInstanceIfEmpty = true);
+      void setInstance(const RtInstance* instance, fast_unordered_cache<InstanceOmmRequests>& instanceOmmRequests, bool deleteParentInstanceIfEmpty = true);
 
       const RtInstance* getInstance() const {
         return instance; 
@@ -461,6 +475,12 @@ namespace dxvk {
     VkDeviceSize m_amountOfMemoryMissing = 0;    // Records how much memory was missing in a frame
     OpacityMicromapMemoryManager m_memoryManager;
     std::unique_ptr<DxvkStagingDataAlloc> m_scratchAllocator;
+
+    // Prev RtxOption states
+    bool m_prevConservativeEstimationEnable = OpacityMicromapOptions::Building::ConservativeEstimation::enable();
+    int m_prevConservativeEstimationMaxTexelTapsPerMicroTriangle = OpacityMicromapOptions::Building::ConservativeEstimation::maxTexelTapsPerMicroTriangle();
+    int m_prevBuildingSubdivisionLevel = OpacityMicromapOptions::Building::subdivisionLevel();
+    bool m_prevBuildingEnableVertexAndTextureOperations = OpacityMicromapOptions::Building::enableVertexAndTextureOperations();
   };
 }  // namespace dxvk
 

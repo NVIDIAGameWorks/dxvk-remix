@@ -21,7 +21,7 @@ namespace dxvk {
   const uint32_t kRenderTargetIndex = 0;
 
   #define CATEGORIES_REQUIRE_DRAW_CALL     InstanceCategories::Sky, InstanceCategories::Terrain
-  #define CATEGORIES_REQUIRE_GEOMETRY_COPY InstanceCategories::DecalStatic, InstanceCategories::DecalDynamic, InstanceCategories::DecalNoOffset, InstanceCategories::Terrain, InstanceCategories::WorldUI
+  #define CATEGORIES_REQUIRE_GEOMETRY_COPY InstanceCategories::Terrain, InstanceCategories::WorldUI
 
   D3D9Rtx::D3D9Rtx(D3D9DeviceEx* d3d9Device)
     : m_rtStagingData(d3d9Device->GetDXVKDevice(), (VkMemoryPropertyFlagBits) (VK_MEMORY_PROPERTY_HOST_CACHED_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT))
@@ -588,9 +588,12 @@ namespace dxvk {
       return { processIgnoredDraws, false };
     }
 
+    // Max offseted index value within a buffer slice that geoData contains
+    const uint32_t maxOffsetedIndex = maxIndex - minIndex;
+
     // Copy all the vertices into a staging buffer.  Assign fields of the geoData structure.
     processVertices(vertexContext, vertexIndexOffset, geoData);
-    geoData.futureGeometryHashes = computeHash(geoData, (maxIndex - minIndex));
+    geoData.futureGeometryHashes = computeHash(geoData, maxOffsetedIndex);
     geoData.futureBoundingBox = computeAxisAlignedBoundingBox(geoData);
     
     // Process skinning data
@@ -655,7 +658,7 @@ namespace dxvk {
       params.vertexCount = drawInfo.vertexCount;
     }
 
-    m_drawCallStateQueue.push(std::move(m_activeDrawCallState));
+    submitActiveDrawCallState();
 
     m_parent->EmitCs([params, this](DxvkContext* ctx) {
       assert(dynamic_cast<RtxContext*>(ctx));
@@ -664,6 +667,15 @@ namespace dxvk {
         static_cast<RtxContext*>(ctx)->commitGeometryToRT(params, drawCallState);
       }
     });
+  }
+
+  void D3D9Rtx::submitActiveDrawCallState() {
+    // We must be prepared for `push` failing here, this can happen, since we're pushing to a circular buffer, which 
+    //  may not have room for new entries.  In such cases, we trust that the consumer thread will make space for us, and
+    //  so we may just need to wait a little bit.
+    while (!m_drawCallStateQueue.push(std::move(m_activeDrawCallState))) {
+      Sleep(0);
+    }
   }
 
   Future<SkinningData> D3D9Rtx::processSkinning(const RasterGeometry& geoData) {

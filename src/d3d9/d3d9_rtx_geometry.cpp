@@ -11,14 +11,16 @@ namespace dxvk {
   // Geometry indices should never be signed.  Using this to handle the non-indexed case for templates.
   typedef int NoIndices;
 
-  enum VertexRegions : uint32_t {
-    Position = 0,
-    Texcoord,
-    Count
-  };
+  namespace VertexRegions {
+    enum Type : uint32_t {
+      Position = 0,
+      Texcoord,
+      Count
+    };
+  }
 
   // NOTE: Intentionally leaving the legacy hashes out of here, because they are special (REMIX-656)
-  const std::map<HashComponents, VertexRegions> componentToRegionMap = {
+  const std::map<HashComponents, VertexRegions::Type> componentToRegionMap = {
     { HashComponents::VertexPosition,   VertexRegions::Position },
     { HashComponents::VertexTexcoord,   VertexRegions::Texcoord },
   };
@@ -69,7 +71,7 @@ namespace dxvk {
 
   template<typename T>
   void hashGeometryData(const size_t indexCount, const uint32_t maxIndexValue, const void* pIndexData,
-                        DxvkBuffer* indexBufferRef, const HashQuery vertexRegions[Count], GeometryHashes& hashesOut) {
+                        DxvkBuffer* indexBufferRef, const HashQuery vertexRegions[VertexRegions::Count], GeometryHashes& hashesOut) {
     ScopedCpuProfileZone();
 
     const HashRule& globalHashRule = RtxOptions::Get()->GeometryHashGenerationRule;
@@ -99,18 +101,18 @@ namespace dxvk {
       const HashComponents& component = (HashComponents) i;
 
       if (globalHashRule.test(component) && componentToRegionMap.count(component) > 0) {
-        const VertexRegions region = componentToRegionMap.at(component);
+        const VertexRegions::Type region = componentToRegionMap.at(component);
         hashesOut[component] = hashVertexRegionIndexed(vertexRegions[(uint32_t)region], uniqueIndices);
       }
     }
 
     // TODO (REMIX-656): Remove this once we can transition content to new hash
     if (globalHashRule.test(HashComponents::LegacyPositions0) || globalHashRule.test(HashComponents::LegacyPositions1)) {
-      hashRegionLegacy(vertexRegions[Position], hashesOut[HashComponents::LegacyPositions0], hashesOut[HashComponents::LegacyPositions1]);
+      hashRegionLegacy(vertexRegions[VertexRegions::Position], hashesOut[HashComponents::LegacyPositions0], hashesOut[HashComponents::LegacyPositions1]);
     }
 
     // Release this memory back to the staging allocator
-    for (uint32_t i = 0; i < Count; i++) {
+    for (uint32_t i = 0; i < VertexRegions::Count; i++) {
       const HashQuery& region = vertexRegions[i];
       if (region.size == 0)
         continue;
@@ -128,19 +130,19 @@ namespace dxvk {
     const uint32_t indexCount = geoData.indexCount;
     const uint32_t vertexCount = geoData.vertexCount;
 
-    HashQuery vertexRegions[Count];
+    HashQuery vertexRegions[VertexRegions::Count];
     memset(&vertexRegions[0], 0, sizeof(vertexRegions));
 
-    if (!getVertexRegion(geoData.positionBuffer, vertexCount, vertexRegions[Position]))
+    if (!getVertexRegion(geoData.positionBuffer, vertexCount, vertexRegions[VertexRegions::Position]))
       return Future<GeometryHashes>(); //invalid
 
     // Acquire prevents the staging allocator from re-using this memory
-    vertexRegions[Position].ref->acquire(DxvkAccess::Read);
-    vertexRegions[Position].ref->incRef();
+    vertexRegions[VertexRegions::Position].ref->acquire(DxvkAccess::Read);
+    vertexRegions[VertexRegions::Position].ref->incRef();
 
-    if (getVertexRegion(geoData.texcoordBuffer, vertexCount, vertexRegions[Texcoord])) {
-      vertexRegions[Texcoord].ref->acquire(DxvkAccess::Read);
-      vertexRegions[Texcoord].ref->incRef();
+    if (getVertexRegion(geoData.texcoordBuffer, vertexCount, vertexRegions[VertexRegions::Texcoord])) {
+      vertexRegions[VertexRegions::Texcoord].ref->acquire(DxvkAccess::Read);
+      vertexRegions[VertexRegions::Texcoord].ref->incRef();
     }
 
     // Make sure we hold a ref to the index buffer while hashing.

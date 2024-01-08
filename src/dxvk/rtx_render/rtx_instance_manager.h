@@ -31,6 +31,7 @@
 #include "../util/util_matrix.h"
 #include "rtx_camera_manager.h"
 #include "dxvk_cmdlist.h"
+#include "rtx_opacity_micromap_manager.h"
 
 namespace dxvk 
 {
@@ -115,8 +116,8 @@ public:
   uint32_t getPreviousSurfaceIndex() const {
     return m_previousSurfaceIndex;
   }
-  XXH64_hash_t getOpacityMicromapSourceHash() const { return m_opacityMicromapSourceHash; }
-  void setOpacityMicromapSourceHash(XXH64_hash_t opacityMicromapSourceHash) { m_opacityMicromapSourceHash = opacityMicromapSourceHash; }
+  OpacityMicromapInstanceData& getOpacityMicromapInstanceData() { return m_opacityMicromapInstanceData; }
+  const OpacityMicromapInstanceData& getOpacityMicromapInstanceData() const { return m_opacityMicromapInstanceData; }
 
   uint32_t getFirstBillboardIndex() const { return m_firstBillboard; }
   uint32_t getBillboardCount() const { return m_billboardCount; }
@@ -157,7 +158,9 @@ private:
   // on a given instance (though the applicability to OMMs are only relevant for Opaque and Ray Portal materials currently
   // where cutout opacity can be animated, translucent materials do not have any relation right now to OMMs).
   bool m_isAnimated = false;
-  XXH64_hash_t m_opacityMicromapSourceHash = kEmptyHash;   // Hash for the source data to Opacity Micromap
+  // Object with Opacity Micromap per-instance data maintained by Opacity Micromap Manager.
+  // Stored in instance object to avoid indirection of looking it up for an instance
+  OpacityMicromapInstanceData m_opacityMicromapInstanceData;
 
   uint32_t m_surfaceIndex;        // Material surface index for reordered surfaces by AccelManager
   uint32_t m_previousSurfaceIndex;
@@ -177,10 +180,6 @@ private:
   VkGeometryFlagsKHR m_geometryFlags = 0;
   uint32_t m_firstBillboard = 0;
   uint32_t m_billboardCount = 0;
-
-  // Used decal offsetting parameters
-  XXH64_hash_t m_lastDecalOffsetVertexDataVersion = kEmptyHash;
-  uint32_t m_currentDecalOffsetDifference = UINT32_MAX;
 
   CategoryFlags m_categoryFlags;
 
@@ -300,8 +299,8 @@ private:
   bool m_previousViewModelState = false;
   RtInstance* targetInstance = nullptr;
 
-  uint32_t m_currentDecalOffsetIndex;
-    
+  uint32_t m_decalSortOrderCounter = 0;  // monotonically incrementing value indicating the draw call order of this decal on the frame
+
   // Controls active portal space for which virtual view model or player model instances have been generated for.
   // Negative values mean there is no portal that's close enough to the camera.
   int m_virtualInstancePortalIndex = 0;    
@@ -328,8 +327,6 @@ private:
 
   // Modifies an instance given active developer options. Returns true if the instance was modified
   bool applyDeveloperOptions(RtInstance& currentInstance, const DrawCallState& drawCall);
-
-  void applyDecalOffsets(RtInstance& instance, const RasterGeometry& geometryData);
 
   void createBillboards(RtInstance& instance, const Vector3& cameraViewDirection);
 

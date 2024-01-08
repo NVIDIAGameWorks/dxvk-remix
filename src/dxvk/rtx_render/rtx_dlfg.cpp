@@ -653,7 +653,21 @@ namespace dxvk {
           m_cmdList->addSignalSemaphore(swapchainSync.present);
           m_cmdList->submit();
         }
-        
+
+        // kick off the pacer job for this frame
+        // we have to do this before present, since VK overlays may assume
+        // it's safe to idle the queue during present, which would otherwise cause
+        // the GPU to get stuck waiting on the pacer job
+        if (present.frameInterpolation.valid()) {
+          assert(pacer.lastCmdListFence != nullptr);
+          pacer.semaphoreSignalValue = ++m_dlfgPacerSemaphoreValue;
+          {
+            std::unique_lock<dxvk::mutex> lock(m_pacerThread.mutex);
+            m_pacerQueue.push(pacer);
+            m_pacerThread.condWorkAvailable.notify_all();
+          }
+        }
+
         // present the image (note: args unused)
 #if !__DLFG_REFLEX_WORKAROUND
         reflex.beginPresentation(present.present.cachedReflexFrameId);
@@ -669,17 +683,6 @@ namespace dxvk {
 #else
         reflex.endOutOfBandPresent(present.present.cachedReflexFrameId);
 #endif
-
-        // kick off the pacer job for this frame
-        if (present.frameInterpolation.valid()) {
-          assert(pacer.lastCmdListFence != nullptr);
-          pacer.semaphoreSignalValue = ++m_dlfgPacerSemaphoreValue;
-          {
-            std::unique_lock<dxvk::mutex> lock(m_pacerThread.mutex);
-            m_pacerQueue.push(pacer);
-            m_pacerThread.condWorkAvailable.notify_all();
-          }
-        }
       }
     }
   }

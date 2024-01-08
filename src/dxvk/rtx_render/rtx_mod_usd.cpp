@@ -113,7 +113,7 @@ private:
   XXH64_hash_t getNextGeomHash() {
     static size_t id;
     ++id;
-    return XXH64(&id, sizeof(id), 0);
+    return XXH64(&id, sizeof(id), kEmptyHash);
   }
 
   std::filesystem::file_time_type m_fileModificationTime;

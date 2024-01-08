@@ -78,6 +78,7 @@ namespace dxvk {
         TEXTURE2D(RESTIR_GI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT)
         TEXTURE2D(RESTIR_GI_REUSE_BINDING_SUBSURFACE_DATA_INPUT)
         RW_TEXTURE2D(RESTIR_GI_REUSE_BINDING_LAST_GBUFFER)
+        TEXTURE2DARRAY(RESTIR_GI_REUSE_BINDING_GRADIENTS_INPUT)
       END_PARAMETER()
     };
 
@@ -112,6 +113,7 @@ namespace dxvk {
         TEXTURE2D(RESTIR_GI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT)
         TEXTURE2D(RESTIR_GI_REUSE_BINDING_SUBSURFACE_DATA_INPUT)
         RW_TEXTURE2D(RESTIR_GI_REUSE_BINDING_LAST_GBUFFER)
+        TEXTURE2DARRAY(RESTIR_GI_REUSE_BINDING_GRADIENTS_INPUT)
       END_PARAMETER()
     };
 
@@ -191,6 +193,9 @@ namespace dxvk {
     ImGui::Checkbox("Discard Enlarged Pixels", &useDiscardEnlargedPixelsObject());
     ImGui::DragFloat("Firefly Threshold", &fireflyThresholdObject(), 0.01f, 1.f, 5000.f, "%.1f");
     ImGui::DragFloat("Roughness Clamp", &roughnessClampObject(), 0.001f, 0.f, 1.f, "%.3f");
+
+    ImGui::Checkbox("Sample Validation", &useSampleValidationObject());
+    ImGui::DragFloat("Sample Validation Threshold", &sampleValidationThresholdObject(), 0.001f, 0.f, 1.f, "%.3f");
   }
 
   void DxvkReSTIRGIRayQuery::dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
@@ -200,6 +205,7 @@ namespace dxvk {
 
     ScopedGpuProfileZone(ctx, "ReSTIR GI");
 
+    const uint32_t frameIdx = ctx->getDevice()->getCurrentFrameId();
     const auto& numRaysExtent = rtOutput.m_compositeOutputExtent;
     VkExtent3D workgroups = util::computeBlockCount(numRaysExtent, VkExtent3D { 16, 8, 1 });
 
@@ -214,8 +220,8 @@ namespace dxvk {
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_HIT_DISTANCE_INPUT, rtOutput.m_primaryHitDistance.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_ALBEDO_INPUT, rtOutput.m_primaryAlbedo.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_BASE_REFLECTIVITY_INPUT, rtOutput.m_primaryBaseReflectivity.view(Resources::AccessType::Read), nullptr);
-      ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_WORLD_POSITION_INPUT, rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view, nullptr);
-      ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_PREV_WORLD_POSITION_INPUT, rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().view, nullptr);
+      ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_WORLD_POSITION_INPUT, rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read), nullptr);
+      ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_PREV_WORLD_POSITION_INPUT, rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read, rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().matchesWriteFrameIdx(frameIdx - 1)), nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_VIEW_DIRECTION_INPUT, rtOutput.m_primaryViewDirection.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_CONE_RADIUS_INPUT, rtOutput.m_primaryConeRadius.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_LAST_GBUFFER, rtOutput.m_gbufferLast.view, nullptr);
@@ -226,6 +232,7 @@ namespace dxvk {
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_SUBSURFACE_DATA_INPUT, rtOutput.m_sharedSubsurfaceData.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);
+      ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_GRADIENTS_INPUT, rtOutput.m_rtxdiGradients.view, nullptr);
 
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, ReSTIRGITemporalReuseShader::getShader());
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
@@ -240,8 +247,8 @@ namespace dxvk {
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_HIT_DISTANCE_INPUT, rtOutput.m_primaryHitDistance.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_ALBEDO_INPUT, rtOutput.m_primaryAlbedo.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_BASE_REFLECTIVITY_INPUT, rtOutput.m_primaryBaseReflectivity.view(Resources::AccessType::Read), nullptr);
-      ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_WORLD_POSITION_INPUT, rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view, nullptr);
-      ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_PREV_WORLD_POSITION_INPUT, rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().view, nullptr);
+      ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_WORLD_POSITION_INPUT, rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read), nullptr);
+      ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_PREV_WORLD_POSITION_INPUT, rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read, rtOutput.getPreviousPrimaryWorldPositionWorldTriangleNormal().matchesWriteFrameIdx(frameIdx - 1)), nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_VIEW_DIRECTION_INPUT, rtOutput.m_primaryViewDirection.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_CONE_RADIUS_INPUT, rtOutput.m_primaryConeRadius.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_LAST_GBUFFER, rtOutput.m_gbufferLast.view, nullptr);
@@ -252,6 +259,7 @@ namespace dxvk {
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_SUBSURFACE_DATA_INPUT, rtOutput.m_sharedSubsurfaceData.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);
+      ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_GRADIENTS_INPUT, rtOutput.m_rtxdiGradients.view, nullptr);
 
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, ReSTIRGISpatialReuseShader::getShader());
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
@@ -276,7 +284,7 @@ namespace dxvk {
       ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_ALBEDO_INPUT, rtOutput.m_primaryAlbedo.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_VIEW_DIRECTION_INPUT, rtOutput.m_primaryViewDirection.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_CONE_RADIUS_INPUT, rtOutput.m_primaryConeRadius.view, nullptr);
-      ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_WORLD_POSITION_INPUT, rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view, nullptr);
+      ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_WORLD_POSITION_INPUT, rtOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal().view(Resources::AccessType::Read), nullptr);
       ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_POSITION_ERROR_INPUT, rtOutput.m_primaryPositionError.view, nullptr);
 
       ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_BASE_REFLECTIVITY_INPUT_OUTPUT, rtOutput.m_primaryBaseReflectivity.view(Resources::AccessType::ReadWrite), nullptr);

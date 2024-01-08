@@ -347,6 +347,8 @@ namespace dxvk {
     compositeArgs.stochasticAlphaBlendDiscardBlackPixel = stochasticAlphaBlendDiscardBlackPixel();
     compositeArgs.stochasticAlphaBlendRadianceVolumeMultiplier = stochasticAlphaBlendRadianceVolumeMultiplier();
     
+    compositeArgs.clearColorFinalColor = ctx->getCommonObjects()->getSceneManager().getGlobals().clearColorFinalColor;
+    
     Rc<DxvkBuffer> cb = getCompositeConstantsBuffer();
     ctx->writeToBuffer(cb, 0, sizeof(CompositeArgs), &compositeArgs);
     ctx->getCommandList()->trackResource<DxvkAccess::Read>(cb);

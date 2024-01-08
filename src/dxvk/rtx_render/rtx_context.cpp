@@ -445,7 +445,7 @@ namespace dxvk {
 
         // RTXDI
         m_common->metaRtxdiRayQuery().dispatch(this, rtOutput);
-        
+
         // NEE Cache
         dispatchNeeCache(rtOutput);
         
@@ -896,6 +896,8 @@ namespace dxvk {
     constants.reSTIRGIMISRoughness = restirGI.misRoughness();
     constants.reSTIRGIMISParallaxAmount = restirGI.parallaxAmount();
     constants.enableReSTIRGIDemodulatedTargetFunction = restirGI.useDemodulatedTargetFunction();
+    constants.enableReSTIRGISampleValidation = RtxOptions::Get()->useRTXDI() && rtxdi.enableDenoiserConfidence() && restirGI.useSampleValidation();
+    constants.reSTIRGISampleValidationThreshold = restirGI.sampleValidationThreshold();
 
 
     m_common->metaNeeCache().setRaytraceArgs(constants, m_resetHistory);
@@ -996,6 +998,11 @@ namespace dxvk {
     constants.enableCullingSecondaryRays = RtxOptions::Get()->enableCullingInSecondaryRays();
 
     constants.domeLightArgs = getSceneManager().getLightManager().getDomeLightArgs();
+
+    // Ray miss value handling
+    constants.clearColorDepth = getSceneManager().getGlobals().clearColorDepth;
+    constants.clearColorPicking = getSceneManager().getGlobals().clearColorPicking;
+    constants.clearColorNormal = getSceneManager().getGlobals().clearColorNormal;
 
     // Upload the constants to the GPU
     {
@@ -1108,6 +1115,9 @@ namespace dxvk {
     ScopedGpuProfileZone(this, "Integrate Raytracing");
     
     m_common->metaPathtracerIntegrateDirect().dispatch(this, rtOutput);
+
+    m_common->metaRtxdiRayQuery().dispatchGradient(this, rtOutput);
+
     m_common->metaPathtracerIntegrateIndirect().dispatch(this, rtOutput);
     m_common->metaPathtracerIntegrateIndirect().dispatchNEE(this, rtOutput);
   }

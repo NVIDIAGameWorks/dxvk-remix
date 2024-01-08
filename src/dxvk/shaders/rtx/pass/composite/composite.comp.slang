@@ -311,6 +311,8 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
       primaryCombinedSpecularRadiance * primarySpecularAlbedo / roughnessFactor;
     remodulatedTotalPrimaryRadiance *= primaryAttenuation;
 
+    remodulatedTotalPrimaryRadiance = primaryMiss ? cb.clearColorFinalColor : remodulatedTotalPrimaryRadiance;
+
     float specularWeight = pow(perceptualRoughness, cb.pixelHighlightReuseStrength);
     LastFinalOutput[thread_id.xy] = vec4(primaryCombinedDiffuseRadiance, calcBt709Luminance(primaryCombinedSpecularRadiance) / roughnessFactor * specularWeight);
   }
