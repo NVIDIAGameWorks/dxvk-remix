@@ -46,3 +46,9 @@
 #define RESTIR_GI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT  36
 #define RESTIR_GI_REUSE_BINDING_SUBSURFACE_DATA_INPUT       37
 #define RESTIR_GI_REUSE_BINDING_GRADIENTS_INPUT             38
+
+#define RESTIR_GI_REUSE_MIN_BINDING                           RESTIR_GI_REUSE_BINDING_RESERVOIR_INPUT_OUTPUT
+
+#if RESTIR_GI_REUSE_MIN_BINDING <= COMMON_MAX_BINDING
+#error "Increase the base index of ReSTIR GI bindings to avoid overlap with common bindings!"
+#endif

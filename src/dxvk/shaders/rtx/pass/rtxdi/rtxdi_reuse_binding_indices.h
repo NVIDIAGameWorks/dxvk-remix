@@ -48,4 +48,10 @@
 #define RTXDI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT      39
 #define RTXDI_REUSE_BINDING_SUBSURFACE_DATA_INPUT           40
 
+#define RTXDI_REUSE_MIN_BINDING                           RTXDI_REUSE_BINDING_RTXDI_RESERVOIR
+
+#if RTXDI_REUSE_MIN_BINDING <= COMMON_MAX_BINDING
+#error "Increase the base index of RTXDI bindings to avoid overlap with common bindings!"
+#endif
+
 #endif
