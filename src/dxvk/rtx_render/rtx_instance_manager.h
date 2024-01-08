@@ -31,6 +31,7 @@
 #include "../util/util_matrix.h"
 #include "rtx_camera_manager.h"
 #include "dxvk_cmdlist.h"
+#include "rtx_opacity_micromap_manager.h"
 
 namespace dxvk 
 {
@@ -115,8 +116,8 @@ public:
   uint32_t getPreviousSurfaceIndex() const {
     return m_previousSurfaceIndex;
   }
-  XXH64_hash_t getOpacityMicromapSourceHash() const { return m_opacityMicromapSourceHash; }
-  void setOpacityMicromapSourceHash(XXH64_hash_t opacityMicromapSourceHash) { m_opacityMicromapSourceHash = opacityMicromapSourceHash; }
+  OpacityMicromapInstanceData& getOpacityMicromapInstanceData() { return m_opacityMicromapInstanceData; }
+  const OpacityMicromapInstanceData& getOpacityMicromapInstanceData() const { return m_opacityMicromapInstanceData; }
 
   uint32_t getFirstBillboardIndex() const { return m_firstBillboard; }
   uint32_t getBillboardCount() const { return m_billboardCount; }
@@ -157,7 +158,9 @@ private:
   // on a given instance (though the applicability to OMMs are only relevant for Opaque and Ray Portal materials currently
   // where cutout opacity can be animated, translucent materials do not have any relation right now to OMMs).
   bool m_isAnimated = false;
-  XXH64_hash_t m_opacityMicromapSourceHash = kEmptyHash;   // Hash for the source data to Opacity Micromap
+  // Object with Opacity Micromap per-instance data maintained by Opacity Micromap Manager.
+  // Stored in instance object to avoid indirection of looking it up for an instance
+  OpacityMicromapInstanceData m_opacityMicromapInstanceData;
 
   uint32_t m_surfaceIndex;        // Material surface index for reordered surfaces by AccelManager
   uint32_t m_previousSurfaceIndex;

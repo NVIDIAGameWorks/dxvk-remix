@@ -106,7 +106,7 @@ namespace dxvk {
     , m_albedoOpacityTextureIndex(src.m_albedoOpacityTextureIndex)
     , m_secondaryOpacityTextureIndex(src.m_secondaryOpacityTextureIndex)
     , m_isAnimated(src.m_isAnimated)
-    , m_opacityMicromapSourceHash(src.m_opacityMicromapSourceHash)
+    , m_opacityMicromapInstanceData(src.m_opacityMicromapInstanceData)
     , m_surfaceIndex(src.m_surfaceIndex)
     , m_previousSurfaceIndex(src.m_previousSurfaceIndex)
     , m_isHidden(src.m_isHidden)
