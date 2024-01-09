@@ -59,6 +59,8 @@ fs = import('fs')
 cpu_family = target_machine.cpu_family()
 build_os = build_machine.system()
 
+assert(cpu_family != 'x86', 'dxvk-remix-nv can\'t be built in x86. Make sure you\'re running this from a regular Powershell window.')
+
 add_project_arguments('-DNOMINMAX', language : 'cpp')
 vs_project_defines = 'NOMINMAX;'
 
