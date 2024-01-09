@@ -80,6 +80,12 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   // to output indirect lighting information
   if (gBufferMiss)
   {
+    // Note: Ensure zeros and a proper miss value is written to the Primary Indirect Diffuse/Specular texture
+    // on miss to match logic in the typiacl Integration pass (as denoisers or other passes may get confused
+    // with uninitialized data in these textures in miss regions).
+    PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex] = vec4(vec3(0), kEmptyPixelHitDistance);
+    PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex] = vec4(vec3(0), kEmptyPixelHitDistance);
+
     return;
   }
 

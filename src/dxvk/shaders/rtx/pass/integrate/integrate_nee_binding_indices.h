@@ -67,5 +67,5 @@
 #define INTEGRATE_NEE_MIN_BINDING                           INTEGRATE_NEE_BINDING_SHARED_FLAGS_INPUT
 
 #if INTEGRATE_NEE_MIN_BINDING <= COMMON_MAX_BINDING
-#error "Increase the base index of ReSTIR GI Final Shading bindings to avoid overlap with common bindings!"
+#error "Increase the base index of integrate nee bindings to avoid overlap with common bindings!"
 #endif

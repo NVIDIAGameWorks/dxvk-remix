@@ -381,23 +381,20 @@ void unpackPSRData(GbufferPSRData psrData, inout GeometryPSRResolverState geomet
 
 void storeReflectionPSRData(GbufferPSRData psrData, uint2 pixelCoordinate)
 {
-  // Note: since PSRData0 and PSRData1 are aliased with DecalMaterial and DecalEmissiveRadiance,
-  // it is very important that the reflection PSR pass happens right after the primary rays.
-  // Otherwise, the transmission PSR pass would overwrite the reflection data with its decals.
-  aliasedData0.ReflectionPSRData0[pixelCoordinate] = uint4(psrData.origin.xyz, psrData.encodedDirection);
-  aliasedData1.ReflectionPSRData1[pixelCoordinate] = uint2(psrData.encodedAccumulatedVectorTransform.xy);
+  aliasedData0.ReflectionPSRData0[pixelCoordinate] = asfloat(uint4(psrData.origin.xyz, psrData.encodedDirection));
+  ReflectionPSRData1[pixelCoordinate] = uint2(psrData.encodedAccumulatedVectorTransform.xy);
   ReflectionPSRData2[pixelCoordinate] = uint2(psrData.attenuation, psrData.mediumMaterialIndexAndGeometryFlags);
 }
 
 GbufferPSRData loadReflectionPSRData(uint2 pixelCoordinate)
 {
-  uint4 data0 = aliasedData0.ReflectionPSRData0[pixelCoordinate];
-  uint2 data1 = aliasedData1.ReflectionPSRData1[pixelCoordinate];
+  uint4 data0 = asuint(aliasedData0.ReflectionPSRData0[pixelCoordinate]);
+  uint2 data1 = ReflectionPSRData1[pixelCoordinate];
   uint2 data2 = ReflectionPSRData2[pixelCoordinate];
 
   // Clear the PSR data to prevent storing NaNs in these aliased resources
   aliasedData0.ReflectionPSRData0[pixelCoordinate] = 0;
-  aliasedData1.ReflectionPSRData1[pixelCoordinate] = 0;
+  ReflectionPSRData1[pixelCoordinate] = 0;
   ReflectionPSRData2[pixelCoordinate] = 0;
 
   GbufferPSRData psrData;

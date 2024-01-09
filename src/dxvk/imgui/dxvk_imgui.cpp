@@ -152,9 +152,6 @@ namespace dxvk {
     {"beamtextures", "Beam Texture (optional)", &RtxOptions::Get()->beamTexturesObject()},
     {"lightconvertertextures", "Add Light to Textures (optional)", &RtxOptions::Get()->lightConverterObject()},
     {"decaltextures", "Decal Texture (optional)", &RtxOptions::Get()->decalTexturesObject()},
-    {"dynamicdecaltextures", "Dynamic Decal Texture", &RtxOptions::Get()->dynamicDecalTexturesObject()},
-    {"singleoffsetdecaltextures", "Single Offset Decal Texture", &RtxOptions::Get()->singleOffsetDecalTexturesObject()},
-    {"nonoffsetdecaltextures", "Non-Offset Decal Texture", &RtxOptions::Get()->nonOffsetDecalTexturesObject()},
     {"cutouttextures", "Legacy Cutout Texture (optional)", &RtxOptions::Get()->cutoutTexturesObject()},
     {"terraintextures", "Terrain Texture", &RtxOptions::Get()->terrainTexturesObject()},
     {"watertextures", "Water Texture (optional)", &RtxOptions::Get()->animatedWaterTexturesObject()},
@@ -1952,24 +1949,6 @@ namespace dxvk {
           ImGui::Indent();
         }
 
-        if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Dynamic Decal Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->dynamicDecalTexturesDescription())) {
-          ImGui::Unindent();
-          showTextureSelectionGrid(ctx, "dynamicdecaltextures", numThumbnailsPerRow, thumbnailSize);
-          ImGui::Indent();
-        }
-        
-        if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Single Offset Decal Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->singleOffsetDecalTexturesDescription())) {
-          ImGui::Unindent();
-          showTextureSelectionGrid(ctx, "singleoffsetdecaltextures", numThumbnailsPerRow, thumbnailSize);
-          ImGui::Indent();
-        }
-
-        if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Non-Offset Decal Textures", collapsingHeaderClosedFlags), RtxOptions::Get()->nonOffsetDecalTexturesDescription())) {
-          ImGui::Unindent();
-          showTextureSelectionGrid(ctx, "nonoffsetdecaltextures", numThumbnailsPerRow, thumbnailSize);
-          ImGui::Indent();
-        }
-
         if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Legacy Cutout Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->cutoutTexturesDescription())) {
           ImGui::Unindent();
           showTextureSelectionGrid(ctx, "cutouttextures", numThumbnailsPerRow, thumbnailSize);
@@ -2791,19 +2770,6 @@ namespace dxvk {
       ImGui::DragInt("Min Prims in Static BLAS", &RtxOptions::Get()->minPrimsInStaticBLASObject(), 1.f, 100, 0);
       ImGui::Checkbox("Portals: Virtual Instance Matching", &RtxOptions::Get()->useRayPortalVirtualInstanceMatchingObject());
       ImGui::Checkbox("Portals: Fade In Effect", &RtxOptions::Get()->enablePortalFadeInEffectObject());
-      
-      if (ImGui::CollapsingHeader("Decals", collapsingHeaderClosedFlags)) {
-        ImGui::Indent();
-
-        ImGui::TextWrapped("Warning: changes to these parameters will only apply to new geometry. Existing geometry needs to be invalidated by either a game reload or gameplay and/or camera view change if the game uses runtime or view dependent geometry batching per draw call.");
-
-        ImGui::DragFloat("Offset Multiplier [m]", &RtxOptions::Decals::offsetMultiplierMetersObject(), 0.0001f, 0.f, 0.f, "%.5f");
-        ImGui::DragInt("Base Offset Index", &RtxOptions::Decals::baseOffsetIndexObject(), 1.f, 1, 1000);
-        ImGui::DragInt("Max Offset Index", &RtxOptions::Decals::maxOffsetIndexObject(), 1.f, 1, 10000);
-        ImGui::DragInt("Offset Increase Between Decal Draw Calls", &RtxOptions::Decals::offsetIndexIncreaseBetweenDrawCallsObject(), 1.f, 1, 1000);
-        ImGui::Unindent();
-      }
-
       ImGui::Unindent();
     }
 

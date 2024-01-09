@@ -92,10 +92,8 @@ Texture2D<float4> LastComposite;
 layout(r32ui, binding = INTEGRATE_INDIRECT_BINDING_FIRST_SAMPLED_LOBE_DATA_INPUT)
 Texture2D<uint> FirstSampledLobeData;
 
-// Storage
-
-layout(rgba32ui, binding = INTEGRATE_INDIRECT_BINDING_DECAL_MATERIAL_STORAGE)
-REORDER_COHERENT RWTexture2D<uint4> DecalMaterial;
+layout(rg16f, binding = INTEGRATE_INDIRECT_BINDING_GRADIENTS_INPUT)
+Texture2DArray<float2> RtxdiGradients;
 
 // Outputs
 
@@ -129,7 +127,6 @@ layout(rgba16f, binding = INTEGRATE_INDIRECT_BINDING_ALIASED_DATA_0)
 uniform struct AliasedData0
 {
   Texture2D<float4> ThroughputConeRadius;                               // Input
-  REORDER_COHERENT RWTexture2D<float4> DecalEmissiveRadiance;           // Intermediate storage
   
   // Indirect radiance and hit distance output for an active target driven by GeometryFlags for a given pixel. 
   // It contains data for either {Primary / Secondary Surface, Diffuse / Specular Lobe}

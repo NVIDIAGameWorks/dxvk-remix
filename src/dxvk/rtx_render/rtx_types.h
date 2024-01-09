@@ -537,7 +537,17 @@ struct PooledBlas : public RcObject {
 
 // Information about a geometry, such as vertex buffers, and possibly a static BLAS for that geometry
 struct BlasEntry {
+  // input contains legacy or replacements (the data can be on CPU or GPU)
+  //  - Data on CPU is guaranteed to be alive during draw call's submission.
+  //  - Data can be made alive on CPU for longer with an explicit ref hold on it
+  //  - For shader based games the data may contain various unsupported formats a game might deliver the data in. 
+  //    That is converted and optimized in RtxGeometryUtils::interleaveGeometry. 
+  //    Fixed function games always use supported buffer formats/encodings etc...
   DrawCallState input; 
+  // modifiedGeometryData contains the same geometry as "input" but it (may) have been transformed (i.e.interleaved vertex data, 
+  // converted to optimal vertex formats [we prefer float32], will always be a triangle list and could be skinned)
+  // - Data is on GPU 
+  // - Data is not directly mappable on CPU
   RaytraceGeometry modifiedGeometryData;
 
   // Frame when this geometry was seen for the first time

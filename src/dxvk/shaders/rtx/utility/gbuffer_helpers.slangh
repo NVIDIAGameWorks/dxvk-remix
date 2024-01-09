@@ -251,11 +251,11 @@ void writeMissToGBuffer(
   RWTexture2D<float4> albedoTexture,
   RWTexture2D<float4> baseReflectivityTexture)
 {
-  const vec3 missNormal = vec3(0.0f, 0.0f, 1.0f);
+  const vec3 missNormal = cb.clearColorNormal;
   const float missPerceptualRoughness = 0.0f;
   const vec3 missMotionVector = vec3(0.0f, 0.0f, 0.0f);
-  const vec3 missAlbedo = vec3(0.0f, 0.0f, 0.0f);
-  const vec3 missBaseReflectivity = vec3(0.0f, 0.0f, 0.0f);
+  const vec4 missAlbedo = vec4(0.0f, 0.0f, 0.0f, 0.0f);
+  const vec4 missBaseReflectivity = vec4(0.0f, 0.0f, 0.0f, 0.0f);
   const float missConeRadius = 0.0f;
 
   linearViewZTexture[position] = missLinearViewZ;
@@ -265,8 +265,8 @@ void writeMissToGBuffer(
 
   if (writeStochastic)
   {
-    albedoTexture[position] = vec4(missAlbedo, 0.0f);
-    baseReflectivityTexture[position] = vec4(missBaseReflectivity, 0.0f);
+    albedoTexture[position] = missAlbedo;
+    baseReflectivityTexture[position] = missBaseReflectivity;
   }
 
   /* Note: Cone radius usually not needed for denoisers, only outputted here to give a low-cost signal to */

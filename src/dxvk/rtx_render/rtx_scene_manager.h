@@ -35,6 +35,7 @@
 #include "../dxvk_bind_mask.h"
 #include "../util/util_hashtable.h"
 
+#include "rtx_globals.h"
 #include "rtx_types.h"
 #include "rtx_common_object.h"
 #include "rtx_camera_manager.h"
@@ -145,6 +146,8 @@ public:
   const std::string getReplacementStatus() const;
 
   uint64_t getGameTimeSinceStartMS();
+
+  RtxGlobals& getGlobals() { return m_globals; }
 
   Rc<DxvkBuffer> getSurfaceMaterialBuffer() { return m_surfaceMaterialBuffer; }
   Rc<DxvkBuffer> getSurfaceMaterialExtensionBuffer() { return m_surfaceMaterialExtensionBuffer; }
@@ -272,6 +275,8 @@ private:
   uint32_t m_beginUsdExportFrameNum = -1;
   bool m_enqueueDelayedClear = false;
   bool m_previousFrameSceneAvailable = false;
+
+  RtxGlobals m_globals;
 
   // Hash/Cache's
   InstanceManager m_instanceManager;

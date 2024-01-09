@@ -167,6 +167,8 @@ namespace remix {
     Result< detail::dxvk_VkImage >           dxvk_GetVkImage(IDirect3DSurface9* source);
     Result< void >                           dxvk_CopyRenderingOutput(IDirect3DSurface9* destination,
                                                                       remixapi_dxvk_CopyRenderingOutputType type);
+    Result< void >                           dxvk_SetDefaultOutput(remixapi_dxvk_CopyRenderingOutputType type,
+                                                                   const remixapi_Float4D& color);
   };
 
   namespace lib {
@@ -730,5 +732,10 @@ namespace remix {
   inline Result< void > Interface::dxvk_CopyRenderingOutput(
       IDirect3DSurface9* destination, remixapi_dxvk_CopyRenderingOutputType type) {
     return m_CInterface.dxvk_CopyRenderingOutput(destination, type);
+  }
+
+  inline Result< void > Interface::dxvk_SetDefaultOutput(
+      remixapi_dxvk_CopyRenderingOutputType type, const remixapi_Float4D& color) {
+    return m_CInterface.dxvk_SetDefaultOutput(type, color);
   }
 }

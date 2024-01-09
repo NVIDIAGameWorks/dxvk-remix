@@ -115,5 +115,7 @@ namespace dxvk {
     RTX_OPTION("rtx.restirGI", int, permutationSamplingSize, 2, "Permutation sampling strength.");
     RTX_OPTION("rtx.restirGI", float, fireflyThreshold, 50.f, "Clamps specular input to suppress boiling.");
     RTX_OPTION("rtx.restirGI", float, roughnessClamp, 0.01f, "Clamps minimum roughness a sample's importance is evaluated.");
+    RTX_OPTION("rtx.restirGI", bool, useSampleValidation, true, "Validate samples when direct light has changed.");
+    RTX_OPTION_ENV("rtx.restirGI", float, sampleValidationThreshold, 0.5, "DXVK_RESTIR_GI_SAMPLE_VALIDATION_THRESHOLD", "Validate samples when normalized pixel change is above this value.");
   };
 }

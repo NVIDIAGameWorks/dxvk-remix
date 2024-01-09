@@ -174,7 +174,7 @@ namespace dxvk {
       kAllThreads = (kHashingThreads | kSkinningThread)
     };
 
-    inline static const uint32_t kMaxConcurrentDraws = 4 * 1024;
+    inline static const uint32_t kMaxConcurrentDraws = 6 * 1024; // some games issuing >3000 draw calls per frame...  account for some consumer thread lag with x2
     WorkerThreadPool<kMaxConcurrentDraws> m_gpeWorkers;
     AtomicQueue<DrawCallState, kMaxConcurrentDraws> m_drawCallStateQueue;
 
@@ -260,5 +260,7 @@ namespace dxvk {
     Future<AxisAlignedBoundingBox> computeAxisAlignedBoundingBox(const RasterGeometry& geoData);
 
     Future<GeometryHashes> computeHash(const RasterGeometry& geoData, const uint32_t maxIndexValue);
+
+    void submitActiveDrawCallState();
   };
 }

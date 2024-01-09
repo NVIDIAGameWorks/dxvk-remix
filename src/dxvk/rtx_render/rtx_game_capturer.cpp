@@ -886,7 +886,10 @@ namespace dxvk {
                                           const float framesPerSecond,
                                           const bool bUseLssUsdPlugins) {
       Capture& cap = *pCap;
-      m_exporter.waitForAllExportsToComplete();
+      const auto numTexExportsInProgress = m_exporter.getNumExportsInFlights();
+      constexpr float kTimePerTexExport = 0.0050f; // Liberally decided by inspection, derived from timed out tests
+      const float texExportTimeout = numTexExportsInProgress * kTimePerTexExport;
+      m_exporter.waitForAllExportsToComplete(texExportTimeout);
       assert(pState->has<State::PreppingExport>());
       const auto exportPrep = prepExport(cap, framesPerSecond, bUseLssUsdPlugins);
       pState->set<State::PreppingExport, false>();

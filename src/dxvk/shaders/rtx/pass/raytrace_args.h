@@ -274,6 +274,8 @@ struct RaytraceArgs {
   float reSTIRGIMISRoughness;
   float reSTIRGIMISParallaxAmount;
   uint enableReSTIRGIDemodulatedTargetFunction;
+  uint enableReSTIRGISampleValidation;
+  float reSTIRGISampleValidationThreshold;
 
   uint surfaceCount;
   uint teleportationPortalIndex; // 0 means no teleportation, 1+ means portal 0+
@@ -308,4 +310,9 @@ struct RaytraceArgs {
   DomeLightArgs domeLightArgs;
 
   float2 upscaleFactor;   // Displayed(upscaled) / RT resolution
+
+  // Values to use on a ray miss
+  float clearColorDepth;
+  uint32_t clearColorPicking;
+  vec3 clearColorNormal;
 };
