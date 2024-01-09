@@ -160,19 +160,91 @@ namespace dxvk {
     return !(positionPS.x < -1.f || positionPS.y < -1.f || positionPS.x > 1.f || positionPS.y > 1.f || positionPS.w < 0.f);
   }
 
-  void drawSphereLightDebug(const RtSphereLight& sphereLight, const Matrix4 worldToProj, const ImU32 colHex, cFrustum& frustum, ImDrawList* drawList) {
-    if (!sphereIntersectsFrustum(frustum, sphereLight.getPosition(), sphereLight.getRadius())) {
-      return;
+  void drawToolTip(const RtLight& light) {
+    const ImVec2 windowSize = ImVec2(100, 200); 
+    ImGui::SetNextWindowSize(windowSize, ImGuiCond_Once);
+    ImGui::SetNextWindowPos(ImVec2(ImGui::GetMousePos().x + windowSize.x / 2, ImGui::GetMousePos().y + windowSize.y / 2), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.f, 0.f, 0.f, 0.6f));
+    if (ImGui::Begin("Light Info", NULL, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
+      constexpr static std::pair<RtLightType, const char*> lightTypes[] = {
+            { RtLightType::Sphere,   "Sphere" },
+            { RtLightType::Rect,     "Rect" },
+            { RtLightType::Disk,     "Disk" },
+            { RtLightType::Cylinder, "Cylinder" },
+            { RtLightType::Distant,  "Distant" },
+          };
+      ImGui::Text("Position: %.2f %.2f %.2f", light.getPosition().x, light.getPosition().y, light.getPosition().z);
+      ImGui::Text("Direction: %.2f %.2f %.2f", light.getDirection().x, light.getDirection().y, light.getDirection().z);
+      ImGui::Text("Radiance: %.2f %.2f %.2f", light.getRadiance().x, light.getRadiance().y, light.getRadiance().z);
+      
+      ImGui::Text("Type: %s", lightTypes[(uint32_t) light.getType()].second);
+      const RtLightShaping* pShaping = nullptr;
+      switch (light.getType()) {
+      case RtLightType::Sphere:
+        pShaping = &light.getSphereLight().getShaping();
+        ImGui::Text("\tRadius: %.2f", light.getSphereLight().getRadius());
+        break;
+      case RtLightType::Rect:
+        pShaping = &light.getRectLight().getShaping();
+        ImGui::Text("\tDimensions: %.2f %.2f", light.getRectLight().getDimensions().x, light.getRectLight().getDimensions().y);
+        break;
+      case RtLightType::Disk:
+        pShaping = &light.getDiskLight().getShaping();
+        ImGui::Text("\tHalf-Dimensions: %.2f %.2f", light.getDiskLight().getHalfDimensions().x, light.getDiskLight().getHalfDimensions().y);
+        break;
+      case RtLightType::Cylinder:
+        ImGui::Text("\tRadius: %.2f", light.getCylinderLight().getRadius());
+        ImGui::Text("\tLength: %.2f", light.getCylinderLight().getAxisLength());
+        ImGui::Text("\tAxis: %.2f %.2f %.2f", light.getCylinderLight().getAxis().x, light.getCylinderLight().getAxis().y, light.getCylinderLight().getAxis().z);
+        break;
+      }
+
+      if (pShaping) {
+        if (pShaping->enabled) {
+          ImGui::Text("Light Shaping: Enabled");
+          ImGui::Text("\tPrimary Axis: %.2f %.2f %.2f", pShaping->primaryAxis.x, pShaping->primaryAxis.y, pShaping->primaryAxis.z);
+          ImGui::Text("\tCosine Cone Angle: %.2f", pShaping->cosConeAngle);
+          ImGui::Text("\tCone Softness: %.2f", pShaping->coneSoftness);
+          ImGui::Text("\tFocus Exponent: %.2f", pShaping->focusExponent);
+        } else {
+          ImGui::Text("Light Shaping: Disabled");
+        }
+      } else {
+        ImGui::Text("Light Shaping: Not Supported");
+      }
+
+      ImGui::Text("Initial Hash: 0x%" PRIx64, light.getInitialHash());
+      ImGui::Text("Instance Hash: 0x%" PRIx64, light.getInstanceHash());
+      ImGui::Text("Transformed Hash: 0x%" PRIx64, light.getTransformedHash());
+      ImGui::Separator();
+
+      if (ImGui::IsMouseClicked(ImGuiMouseButton_Middle)) {
+        ImGui::SetClipboardText(hashToString(light.getInitialHash()).c_str());
+      }
+
+      ImGui::End();
     }
-    ImVec2 screenPos;
-    const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    transformToScreen(worldToProj, { viewport->Size.x, viewport->Size.y }, sphereLight.getPosition(), screenPos);
-    drawList->AddCircleFilled(screenPos, sphereLight.getRadius(), colHex);
+    ImGui::PopStyleColor();
   }
 
-  void drawRectLightDebug(const Vector3& position, const Vector3& xAxis, const Vector3& yAxis, const Vector2& dimensions, const Matrix4 worldToProj, const ImU32 colHex, cFrustum& frustum, ImDrawList* drawList) {
+  bool drawSphereLightDebug(const RtSphereLight& sphereLight, const Matrix4 worldToProj, const Vector3& cameraRight, const ImU32 colHex, cFrustum& frustum, ImDrawList* drawList) {
+    if (!sphereIntersectsFrustum(frustum, sphereLight.getPosition(), sphereLight.getRadius())) {
+      return false;
+    }
+    ImVec2 screenPos[2];
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    transformToScreen(worldToProj, { viewport->Size.x, viewport->Size.y }, sphereLight.getPosition(), screenPos[0]);
+    transformToScreen(worldToProj, { viewport->Size.x, viewport->Size.y }, sphereLight.getPosition() + cameraRight * sphereLight.getRadius(), screenPos[1]);
+    const float radius = std::max(1.f, sqrtf(ImLengthSqr(ImVec2(screenPos[0].x - screenPos[1].x, screenPos[0].y - screenPos[1].y))));
+    drawList->AddCircleFilled(screenPos[0], radius, colHex);
+
+    return ImLengthSqr(ImVec2(screenPos[0].x - ImGui::GetMousePos().x, screenPos[0].y - ImGui::GetMousePos().y)) <= radius * radius;
+  }
+
+  bool drawRectLightDebug(const Vector3& position, const Vector3& xAxis, const Vector3& yAxis, const Vector2& dimensions, const Matrix4 worldToProj, const ImU32 colHex, cFrustum& frustum, ImDrawList* drawList) {
     if (!rectIntersectsFrustum(frustum, position, dimensions, xAxis, yAxis)) {
-      return;
+      return false;
     }
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     Vector3 rectBounds[4];
@@ -185,11 +257,12 @@ namespace dxvk {
       transformToScreen(worldToProj, { viewport->Size.x, viewport->Size.y }, rectBounds[i], screenPos[i]);
     }
     drawList->AddQuadFilled(screenPos[0], screenPos[1], screenPos[2], screenPos[3], colHex);
+    return ImTriangleContainsPoint(screenPos[0], screenPos[1], screenPos[2], ImGui::GetMousePos()) || ImTriangleContainsPoint(screenPos[1], screenPos[2], screenPos[3], ImGui::GetMousePos());
   }
 
-  void drawDiskLightDebug(const Vector3& position, const Vector3& xAxis, const Vector3& yAxis, const Vector2& radius, const Matrix4 worldToProj, const ImU32 colHex, cFrustum& frustum, ImDrawList* drawList) {
+  bool drawDiskLightDebug(const Vector3& position, const Vector3& xAxis, const Vector3& yAxis, const Vector2& radius, const Matrix4 worldToProj, const ImU32 colHex, cFrustum& frustum, ImDrawList* drawList) {
     if (!rectIntersectsFrustum(frustum, position, radius * 2, xAxis, yAxis)) {
-      return;
+      return false;
     }
     const uint32_t numPoints = 16;
     ImVec2 screenPos[numPoints];
@@ -200,9 +273,16 @@ namespace dxvk {
       transformToScreen(worldToProj, { viewport->Size.x, viewport->Size.y }, worldPos, screenPos[i]);
     }
     drawList->AddConvexPolyFilled(&screenPos[0], numPoints, colHex);
+
+    for (uint32_t i = 1; i < numPoints-1; i++) {
+      if (ImTriangleContainsPoint(screenPos[0], screenPos[i], screenPos[i+1], ImGui::GetMousePos())) {
+        return true;
+      }
+    }
+    return false;
   }
 
-  void drawCylinderLightDebug(const RtCylinderLight& cylinderLight, const Matrix4 worldToProj, const ImU32 colHex, cFrustum& frustum, ImDrawList* drawList) {
+  bool drawCylinderLightDebug(const RtCylinderLight& cylinderLight, const Matrix4 worldToProj, const ImU32 colHex, cFrustum& frustum, ImDrawList* drawList) {
     const Vector3 pos = cylinderLight.getPosition();
     const Vector3 axis = cylinderLight.getAxis();
     const float radius = cylinderLight.getRadius();
@@ -214,8 +294,9 @@ namespace dxvk {
     const Vector3 tangent = Vector3(1.0f + sign * axis.x * axis.x * a, sign * b, -sign * axis.x);
     const Vector3 bitangent = Vector3(b, sign + axis.y * axis.y * a, -axis.y);
 
-    drawDiskLightDebug(pos + axis * cylinderLight.getAxisLength() * 0.5, tangent, bitangent, Vector2(radius, radius), worldToProj, colHex, frustum, drawList);
-    drawDiskLightDebug(pos - axis * cylinderLight.getAxisLength() * 0.5, tangent, bitangent, Vector2(radius, radius), worldToProj, colHex, frustum, drawList);
+    bool mouseHover = false;
+    mouseHover |= drawDiskLightDebug(pos + axis * cylinderLight.getAxisLength() * 0.5, tangent, bitangent, Vector2(radius, radius), worldToProj, colHex, frustum, drawList);
+    mouseHover |= drawDiskLightDebug(pos - axis * cylinderLight.getAxisLength() * 0.5, tangent, bitangent, Vector2(radius, radius), worldToProj, colHex, frustum, drawList);
 
     const uint32_t numPoints = 16;
     for (uint32_t i = 0; i < numPoints; i++) {
@@ -223,8 +304,9 @@ namespace dxvk {
       float theta1 = (float) (i + 1) * kPi * 2 / numPoints;
       const Vector3 position = pos + radius * cos(theta) * tangent + radius * bitangent * sin(theta);
       const Vector3 position1 = pos + radius * cos(theta1) * tangent + radius * bitangent * sin(theta1);
-      drawRectLightDebug((position + position1) * 0.5f, normalize(position1 - position), axis, Vector2(length(position1 - position), cylinderLight.getAxisLength()), worldToProj, colHex, frustum, drawList);
+      mouseHover |= drawRectLightDebug((position + position1) * 0.5f, normalize(position1 - position), axis, Vector2(length(position1 - position), cylinderLight.getAxisLength()), worldToProj, colHex, frustum, drawList);
     }
+    return mouseHover;
   }
 
   void LightManager::showImguiDebugVisualization() const {
@@ -253,32 +335,37 @@ namespace dxvk {
         Vector4 color = light->getColorAndIntensity();
         const ImU32 colHex = ImColor(color.x, color.y, color.z);
 
+        bool mouseHover = false;
         switch (light->getType()) {
         case RtLightType::Sphere:
         {
-          drawSphereLightDebug(light->getSphereLight(), worldToProj, colHex, frustum, drawList);
+          mouseHover = drawSphereLightDebug(light->getSphereLight(), worldToProj, camera.getViewToWorld(true)[0].xyz(), colHex, frustum, drawList);
           break;
         }
         case RtLightType::Rect:
         {
           const RtRectLight& rectLight = light->getRectLight();
-          drawRectLightDebug(rectLight.getPosition(), rectLight.getXAxis(), rectLight.getYAxis(), rectLight.getDimensions(), worldToProj, colHex, frustum, drawList);
+          mouseHover = drawRectLightDebug(rectLight.getPosition(), rectLight.getXAxis(), rectLight.getYAxis(), rectLight.getDimensions(), worldToProj, colHex, frustum, drawList);
           break;
         }
         case RtLightType::Disk:
         {
           const RtDiskLight& diskLight = light->getDiskLight();
-          drawDiskLightDebug(diskLight.getPosition(), diskLight.getXAxis(), diskLight.getYAxis(), diskLight.getHalfDimensions(), worldToProj, colHex, frustum, drawList);
+          mouseHover = drawDiskLightDebug(diskLight.getPosition(), diskLight.getXAxis(), diskLight.getYAxis(), diskLight.getHalfDimensions(), worldToProj, colHex, frustum, drawList);
           break;
         }
         case RtLightType::Cylinder:
         {
-          drawCylinderLightDebug(light->getCylinderLight(), worldToProj, colHex, frustum, drawList);
+          mouseHover = drawCylinderLightDebug(light->getCylinderLight(), worldToProj, colHex, frustum, drawList);
           break;
         }
         default:
           break;
 
+        }
+
+        if (mouseHover) {
+          drawToolTip(*light);
         }
       }
 
