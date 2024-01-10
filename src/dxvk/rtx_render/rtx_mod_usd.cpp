@@ -104,7 +104,7 @@ private:
   bool processMesh(const pxr::UsdPrim& prim, Args& args);
   void processPrim(Args& args, pxr::UsdPrim& prim);
 
-  void processLight(Args& args, const pxr::UsdPrim& lightPrim);
+  void processLight(Args& args, const pxr::UsdPrim& lightPrim, const bool isOverride);
   void processReplacement(Args& args);
 
   Categorizer processCategoryFlags(const pxr::UsdPrim& prim);
@@ -436,7 +436,7 @@ bool hasExplicitTransform(const pxr::UsdPrim& prim) {
   return prim.HasAttribute(pxr::TfToken("xformOp:rotateZYX")) || prim.HasAttribute(pxr::TfToken("xformOp:scale")) || prim.HasAttribute(pxr::TfToken("xformOp:translate")) || prim.HasAttribute(pxr::TfToken("xformOpOrder"));
 }
 
-void UsdMod::Impl::processLight(Args& args, const pxr::UsdPrim& lightPrim) {
+void UsdMod::Impl::processLight(Args& args, const pxr::UsdPrim& lightPrim, const bool isOverride) {
   if (args.rootPrim.IsA<pxr::UsdGeomMesh>() && lightPrim.IsA<pxr::UsdLuxDistantLight>()) {
     Logger::err(str::format("A DistantLight detect under ", args.rootPrim.GetName(),
         " will be ignored.  DistantLights are only supported as part of light replacements, not mesh replacements."));
@@ -450,15 +450,18 @@ void UsdMod::Impl::processLight(Args& args, const pxr::UsdPrim& lightPrim) {
   pxr::GfMatrix4d localToRoot = args.xformCache.ComputeRelativeTransform(lightPrim, args.rootPrim, &resetXformStack);
 
   // Because this may be an 'over' with no prim type, we must compute its transformation and include it in the localToRoot calculation
-  const bool absoluteTransform = hasExplicitTransform(args.rootPrim);
-  if (LightData::isSupportedUsdLight(args.rootPrim) && absoluteTransform) {
+  const bool isTransformDefined = hasExplicitTransform(lightPrim);
+  const bool isParentTransformDefined = hasExplicitTransform(args.rootPrim);
+  if (LightData::isSupportedUsdLight(args.rootPrim) && isParentTransformDefined) {
     pxr::GfMatrix4d parentToWorld;
     pxr::UsdGeomXformable xform(args.rootPrim);
     xform.GetLocalTransformation(&parentToWorld, &resetXformStack);
     localToRoot *= parentToWorld;
   }
 
-  const std::optional<LightData> lightData = LightData::tryCreate(lightPrim, pxr::GfMatrix4f(localToRoot), absoluteTransform);
+  const pxr::GfMatrix4f lightTransform = pxr::GfMatrix4f(localToRoot);
+
+  const std::optional<LightData> lightData = LightData::tryCreate(lightPrim, isTransformDefined ? &lightTransform : nullptr, isOverride, isParentTransformDefined);
   if(lightData.has_value()) {
     args.meshes.emplace_back(lightData.value());
   }
@@ -529,14 +532,14 @@ void UsdMod::Impl::processReplacement(Args& args) {
   if (args.rootPrim.IsA<pxr::UsdGeomMesh>()) {
     processPrim(args, args.rootPrim);
   } else if (LightData::isSupportedUsdLight(args.rootPrim) && !explicitlyNoReferences(args.rootPrim)) {
-    processLight(args, args.rootPrim);
+    processLight(args, args.rootPrim, true);
   }
   auto descendents = args.rootPrim.GetFilteredDescendants(pxr::UsdPrimIsActive);
   for (auto desc : descendents) {
     if (desc.IsA<pxr::UsdGeomMesh>()) {
       processPrim(args, desc);
     } else if (LightData::isSupportedUsdLight(desc)) {
-      processLight(args, desc);
+      processLight(args, desc, false);
     }
   }
 

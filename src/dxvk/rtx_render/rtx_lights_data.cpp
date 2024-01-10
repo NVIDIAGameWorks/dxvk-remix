@@ -71,13 +71,14 @@
       m_##name = clamp(m_##name, minVal, maxVal);
 
 namespace dxvk {
-  LightData::LightData(const pxr::UsdPrim& lightPrim, const pxr::GfMatrix4f& localToRoot, const bool absoluteTransform) :
+  LightData::LightData(const pxr::UsdPrim& lightPrim, const pxr::GfMatrix4f* pLocalToRoot, const bool isOverrideLight, const bool absoluteTransform) :
     LIST_LIGHT_CONSTANTS(WRITE_CTOR_INIT)
     m_lightType(LightType::Unknown),
-    m_transformType(absoluteTransform ? TransformType::Absolute : TransformType::Relative),
-    m_dirty(absoluteTransform ? (1u << (uint32_t)DirtyFlags::k_Transform) : 0){
+    m_dirty(0),
+    m_isRelativeTransform(!absoluteTransform && !isOverrideLight),
+    m_isOverrideLight(isOverrideLight) {
     getLightType(lightPrim, m_lightType);
-    extractTransform(localToRoot);
+    extractTransform(pLocalToRoot);
     deserialize(lightPrim);
     sanitizeData();
   }
@@ -184,7 +185,7 @@ namespace dxvk {
     return {};
   }
   
-  std::optional<LightData> LightData::tryCreate(const pxr::UsdPrim& lightPrim, const pxr::GfMatrix4f& localToRoot, const bool absoluteTransform) {
+  std::optional<LightData> LightData::tryCreate(const pxr::UsdPrim& lightPrim, const pxr::GfMatrix4f* pLocalToRoot, const bool isOverrideLight, const bool absoluteTransform) {
     // Ensure the USD light is a supported type
 
     if (!isSupportedUsdLight(lightPrim)) {
@@ -193,7 +194,7 @@ namespace dxvk {
 
     // Construct and return the light
 
-    return std::optional<LightData>(std::in_place, LightData(lightPrim, localToRoot, absoluteTransform));
+    return std::optional<LightData>(std::in_place, LightData(lightPrim, pLocalToRoot, isOverrideLight, absoluteTransform));
   }
 
   LightData LightData::createFromDirectional(const D3DLIGHT9& light) {
@@ -354,10 +355,14 @@ namespace dxvk {
     return shaping;
   }
 
-  void LightData::extractTransform(const pxr::GfMatrix4f& localToRoot) {
-    pxr::GfVec3f xVecUsd = localToRoot.TransformDir(pxr::GfVec3f(1.0f, 0.0f, 0.0f));
-    pxr::GfVec3f yVecUsd = localToRoot.TransformDir(pxr::GfVec3f(0.0f, 1.0f, 0.0f));
-    pxr::GfVec3f zVecUsd = localToRoot.TransformDir(pxr::GfVec3f(0.0f, 0.0f, 1.0f));
+  void LightData::extractTransform(const pxr::GfMatrix4f* pLocalToRoot) {
+    if (pLocalToRoot == nullptr) {
+      return;
+    }
+
+    pxr::GfVec3f xVecUsd = pLocalToRoot->TransformDir(pxr::GfVec3f(1.0f, 0.0f, 0.0f));
+    pxr::GfVec3f yVecUsd = pLocalToRoot->TransformDir(pxr::GfVec3f(0.0f, 1.0f, 0.0f));
+    pxr::GfVec3f zVecUsd = pLocalToRoot->TransformDir(pxr::GfVec3f(0.0f, 0.0f, 1.0f));
 
     // Note: These calls both normalize the X/Y/Z vectors and return their previous length. This is mandatory as the axis
     // vectors used to construct lights with must be normalized.
@@ -365,15 +370,17 @@ namespace dxvk {
     m_yScale = yVecUsd.Normalize();
     m_zScale = zVecUsd.Normalize();
 
-    m_position = localToRoot.ExtractTranslation().data();
+    m_position = pLocalToRoot->ExtractTranslation().data();
     m_xAxis = xVecUsd.GetArray();
     m_yAxis = yVecUsd.GetArray();
     m_zAxis = zVecUsd.GetArray();
 
     // NOTE: this negative on m_zAxis is clearly indicating a problem somewhere, but just preserving the existing behavior for now
-    if (m_lightType == LightType::Sphere) {
+    if (m_lightType == LightType::Sphere || m_lightType == LightType::Unknown) {
       m_zAxis = -m_zAxis;
     }
+
+    m_dirty.set(DirtyFlags::k_Transform);
   }
 
   void LightData::deserialize(const pxr::UsdPrim& prim) {
@@ -390,7 +397,7 @@ namespace dxvk {
     // If this light is fully defined (i.e. a child light) then we need to use all attributes
     if (prim.GetSpecifier() == pxr::SdfSpecifier::SdfSpecifierDef) {
       m_dirty = DirtyFlags::AllDirty;
-    } 
+    }
   }
 
   void LightData::sanitizeData() {
