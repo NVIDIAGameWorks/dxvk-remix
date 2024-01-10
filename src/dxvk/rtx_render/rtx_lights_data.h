@@ -48,7 +48,7 @@
 namespace dxvk {
   struct LightData {
     static std::optional<LightData> tryCreate(const D3DLIGHT9& light);
-    static std::optional<LightData> tryCreate(const pxr::UsdPrim& lightPrim, const pxr::GfMatrix4f& localToRoot, const bool absoluteTransform);
+    static std::optional<LightData> tryCreate(const pxr::UsdPrim& lightPrim, const pxr::GfMatrix4f* pLocalToRoot, const bool isOverrideLight, const bool absoluteTransform);
 
     RtLight toRtLight(const RtLight* const originalLight = nullptr) const;
 
@@ -56,7 +56,11 @@ namespace dxvk {
 
     static bool isSupportedUsdLight(const pxr::UsdPrim& lightPrim);
 
-    bool relativeTransform() const { return m_transformType == Relative; }
+    // Do we transform this light relative to a game light?
+    bool relativeTransform() const { return m_isRelativeTransform; }
+
+    // Are we overriding an existing game light?
+    bool lightOverride() const { return m_isOverrideLight; }
 
   private:
     // Supported light data types
@@ -70,7 +74,7 @@ namespace dxvk {
     };
 
     LightData() = default;
-    LightData(const pxr::UsdPrim& lightPrim, const pxr::GfMatrix4f& localToRoot, const bool absoluteTransform);
+    LightData(const pxr::UsdPrim& lightPrim, const pxr::GfMatrix4f* pLocalToRoot, const bool isOverrideLight, const bool absoluteTransform);
 
     static LightData createFromDirectional(const D3DLIGHT9& light);
 
@@ -84,7 +88,7 @@ namespace dxvk {
     // authored before and after that change.
     const pxr::UsdAttribute getLightAttribute(const pxr::UsdPrim& prim, const pxr::TfToken& token, const pxr::TfToken& inputToken);
 
-    void extractTransform(const pxr::GfMatrix4f& localToRoot);
+    void extractTransform(const pxr::GfMatrix4f* pLocalToRoot);
 
     void deserialize(const pxr::UsdPrim& prim);
 
@@ -111,7 +115,6 @@ namespace dxvk {
 
     Flags<DirtyFlags> m_dirty { 0 };
     LightType m_lightType;
-    TransformType m_transformType = TransformType::Absolute;
     XXH64_hash_t m_cachedHash = kEmptyHash;
     // NOTE: Just add params for these without USD deserializer
     Vector3 m_position = Vector3(0.f);
@@ -119,6 +122,8 @@ namespace dxvk {
     Vector3 m_yAxis = Vector3(0.f, 1.f, 0.f);
     Vector3 m_zAxis = Vector3(0.f, 0.f, 1.f);
     float m_xScale = 1.f, m_yScale = 1.f, m_zScale = 1.f;
+    const bool m_isOverrideLight = false;
+    const bool m_isRelativeTransform = false;
   };
 } // namespace dxvk
 

@@ -1168,6 +1168,7 @@ namespace dxvk {
 
     const RtLight rtLight = lightData->toRtLight();
     const std::vector<AssetReplacement>* pReplacements = m_pReplacer->getReplacementsForLight(rtLight.getInitialHash());
+
     if (pReplacements) {
       const Matrix4 lightTransform = LightUtils::getLightTransform(light);
 
@@ -1175,22 +1176,28 @@ namespace dxvk {
       for (auto&& replacement : *pReplacements) {
         if (replacement.type == AssetReplacement::eLight && replacement.lightData.has_value()) {
           LightData replacementLight = replacement.lightData.value();
+
           // Merge the d3d9 light into replacements based on overrides
           replacementLight.merge(light);
+
           // Convert to runtime light
           RtLight rtReplacementLight = replacementLight.toRtLight(&rtLight);
+
           // Transform the replacement light by the legacy light
           if (replacementLight.relativeTransform()) {
-            rtReplacementLight.applyTransform(lightTransform);
+            rtReplacementLight.applyTransform(lightTransform); // note: we dont need to consider the transform of parent replacement light in this scenario, this is detected on mod load and so absolute transform is used
           }
+
+          // We may need to remove this light from the existing pool if we replace it
+          const XXH64_hash_t replaceExistingLight = replacementLight.lightOverride() ? rtLight.getInstanceHash() : kEmptyHash;
 
           // Setup Light Replacement for Anti-Culling
           if (RtxOptions::AntiCulling::Light::enable() && rtLight.getType() == RtLightType::Sphere) {
             // Apply the light
-            m_lightManager.addLight(rtReplacementLight, RtLightAntiCullingType::LightReplacement);
+            m_lightManager.addLight(rtReplacementLight, RtLightAntiCullingType::LightReplacement, replaceExistingLight);
           } else {
             // Apply the light
-            m_lightManager.addLight(rtReplacementLight, RtLightAntiCullingType::Ignore);
+            m_lightManager.addLight(rtReplacementLight, RtLightAntiCullingType::Ignore, replaceExistingLight);
           }
         } else {
           assert(false); // We don't support meshes as children of lights yet.

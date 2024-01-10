@@ -465,9 +465,9 @@ namespace dxvk {
     m_externalActiveLightList.clear();
   }
 
+  static const float kNotSimilar = -1.f;
   float LightManager::isSimilar(const RtLight& a, const RtLight& b, float distanceThreshold) {
     static const float kCosAngleSimilarityThreshold = cos(5.f * kPi / 180.f);
-    static const float kNotSimilar = -1.f;
 
     // Basic similarity check.
     const bool sameType = a.getType() == b.getType();
@@ -498,8 +498,12 @@ namespace dxvk {
           if (cosAxis < kCosAngleSimilarityThreshold) {
             return kNotSimilar;
           }
-          float coneAngleDelta = abs(aShaping.cosConeAngle - aShaping.cosConeAngle);
+          float coneAngleDelta = abs(aShaping.cosConeAngle - bShaping.cosConeAngle);
           if (coneAngleDelta > 0.01f) {
+            return kNotSimilar;
+          }
+          float coneSoftnessDelta = abs(aShaping.coneSoftness - bShaping.coneSoftness);
+          if (coneSoftnessDelta > 0.01f) {
             return kNotSimilar;
           }
         }
@@ -556,7 +560,7 @@ namespace dxvk {
     }
   }
 
-  void LightManager::addLight(const RtLight& rtLight, const RtLightAntiCullingType antiCullingType) {
+  void LightManager::addLight(const RtLight& rtLight, const RtLightAntiCullingType antiCullingType, const XXH64_hash_t lightToReplace) {
     // This light is "off". This includes negative valued lights which in D3D games originally would act as subtractive lighting.
     const Vector3 originalRadiance = rtLight.getRadiance();
     if (originalRadiance.x < 0 || originalRadiance.y < 0 || originalRadiance.z < 0
@@ -564,6 +568,15 @@ namespace dxvk {
       return;
 
     rtLight.setLightAntiCullingType(antiCullingType);
+
+    // Replacement lights can have a unique hash from game lights, and so, we need to remember and
+    //  remove the light specified as a parameter.
+    if (lightToReplace != kEmptyHash && lightToReplace != rtLight.getInstanceHash()) {
+      const auto& lightToReplaceIt = m_lights.find(lightToReplace);
+      if (lightToReplaceIt != m_lights.end()) {
+        m_lights.erase(lightToReplaceIt);
+      }
+    }
 
     const auto& foundLightIt = m_lights.find(rtLight.getInstanceHash());
     if (foundLightIt != m_lights.end()) {
@@ -602,21 +615,25 @@ namespace dxvk {
     } else {
       //  Try find a similar light
       std::optional<RtLight> similarLight;
+      float bestSimilarity = kNotSimilar;
       for (auto&& pair : m_lights) {
         const RtLight& light = pair.second;
 
         // Update the cached light if it's similar.  This should catch minor perturbations in static lights (e.g. due to precision loss)
         const float kDistanceThresholdMeters = 0.02f;
         const float kDistanceThresholdWorldUnits = kDistanceThresholdMeters * RtxOptions::Get()->getMeterToWorldUnitScale();
-        if (isSimilar(light, rtLight, kDistanceThresholdWorldUnits) >= 0.f) {
+        const float thisLightsSimilarity = isSimilar(light, rtLight, kDistanceThresholdWorldUnits);
+
+        if (thisLightsSimilarity >= 0.f && thisLightsSimilarity > bestSimilarity) {
           // Copy off light state.
           similarLight = light;
-
-          // Remove it, since we want to re-add it with a (potentially) new hash
-          m_lights.erase(pair.first);
-
-          break;
+          bestSimilarity = thisLightsSimilarity;
         } 
+      }
+
+      if (similarLight.has_value()) {
+        // Remove it, since we want to re-add it with a (potentially) new hash
+        m_lights.erase(similarLight->getInstanceHash());
       }
 
       // Add as a new light (with/out updated data depending on if a similar light was found)
