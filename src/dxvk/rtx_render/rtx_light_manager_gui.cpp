@@ -41,6 +41,7 @@
 namespace dxvk {
   struct LightManagerGuiSettings {
     RW_RTX_OPTION_FLAG("rtx.lights", bool, enableDebugMode, false, RtxOptionFlags::NoSave, "Enables light debug visualization.");
+    RW_RTX_OPTION_FLAG("rtx.lights", bool, debugDrawLightHashes, false, RtxOptionFlags::NoSave, "Draw light hashes of all visible ob screen lights, when enableDebugMode=true.");
   };
 
   ImGui::ComboWithKey<LightManager::FallbackLightMode> fallbackLightModeCombo {
@@ -71,6 +72,12 @@ namespace dxvk {
       ImGui::Text("Total Lights: %d", getActiveCount());
       ImGui::Separator();
       ImGui::Checkbox("Enable Debug Visualization", &LightManagerGuiSettings::enableDebugModeObject());
+      {
+        ImGui::BeginDisabled(!LightManagerGuiSettings::enableDebugMode());
+        ImGui::Checkbox("Draw Light Hashes", &LightManagerGuiSettings::debugDrawLightHashesObject());
+        ImGui::EndDisabled();
+      }
+      ImGui::Dummy({ 0,2 });
       ImGui::Unindent();
     }
   }
@@ -78,9 +85,33 @@ namespace dxvk {
 
   void LightManager::showImguiSettings() {
     if (ImGui::CollapsingHeader("Light Translation", ImGuiTreeNodeFlags_CollapsingHeader)) {
+      ImGui::Dummy({ 0,2 });
       ImGui::Indent();
 
+      auto separator = []() {
+        ImGui::Dummy({ 0,2 });
+        ImGui::Separator();
+        ImGui::Dummy({ 0,2 });
+      };
+
       bool lightSettingsDirty = false;
+
+      lightSettingsDirty |= ImGui::Checkbox("Suppress Light Keeping", &suppressLightKeepingObject());
+
+      separator();
+
+      const bool disableDirectional = ignoreGameDirectionalLights();
+      const bool disablePointSpot = ignoreGamePointLights() && ignoreGameSpotLights();
+
+      ImGui::BeginDisabled(disablePointSpot);
+      lightSettingsDirty |= ImGui::Checkbox("Use Least Squares Intensity for Sphere/Spot", &calculateLightIntensityUsingLeastSquaresObject());
+      lightSettingsDirty |= ImGui::DragFloat("Sphere/Spot Light Radius", &lightConversionSphereLightFixedRadiusObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+      ImGui::EndDisabled();
+
+      ImGui::BeginDisabled(disableDirectional);
+      lightSettingsDirty |= ImGui::DragFloat("Distant Light Fixed Intensity", &lightConversionDistantLightFixedIntensityObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+      lightSettingsDirty |= ImGui::DragFloat("Distant Light Fixed Angle", &lightConversionDistantLightFixedAngleObject(), 0.01f, 0.0f, kPi, "%.4f", ImGuiSliderFlags_AlwaysClamp);
+      ImGui::EndDisabled();
 
       ImGui::Text("Ignore Game Lights:");
       ImGui::Indent();
@@ -91,9 +122,12 @@ namespace dxvk {
       lightSettingsDirty |= ImGui::Checkbox("Spot", &ignoreGameSpotLightsObject());
       ImGui::Unindent();
 
+      separator();
+
       lightSettingsDirty |= fallbackLightModeCombo.getKey(&fallbackLightModeObject());
 
-      if (fallbackLightMode() != FallbackLightMode::Never) {
+      ImGui::BeginDisabled(fallbackLightMode() == FallbackLightMode::Never);
+      {
         lightSettingsDirty |= fallbackLightTypeCombo.getKey(&fallbackLightTypeObject());
 
         lightSettingsDirty |= ImGui::DragFloat3("Fallback Light Radiance", &fallbackLightRadianceObject(), 0.1f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
@@ -126,15 +160,7 @@ namespace dxvk {
           }
         }
       }
-
-      ImGui::Separator();
-
-      lightSettingsDirty |= ImGui::Checkbox("Least Squares Intensity Calculation", &calculateLightIntensityUsingLeastSquaresObject());
-      lightSettingsDirty |= ImGui::DragFloat("Sphere Light Fixed Radius", &lightConversionSphereLightFixedRadiusObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-      lightSettingsDirty |= ImGui::DragFloat("Distant Light Fixed Intensity", &lightConversionDistantLightFixedIntensityObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-      lightSettingsDirty |= ImGui::DragFloat("Distant Light Fixed Angle", &lightConversionDistantLightFixedAngleObject(), 0.01f, 0.0f, kPi, "%.4f", ImGuiSliderFlags_AlwaysClamp);
-      lightSettingsDirty |= ImGui::DragFloat("Equality Distance Threshold", &lightConversionEqualityDistanceThresholdObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-      lightSettingsDirty |= ImGui::DragFloat("Equality Direction Threshold", &lightConversionEqualityDirectionThresholdObject(), 0.01f, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+      ImGui::EndDisabled();
 
       ImGui::Unindent();
 
@@ -158,6 +184,51 @@ namespace dxvk {
 
     // Coarse culling
     return !(positionPS.x < -1.f || positionPS.y < -1.f || positionPS.x > 1.f || positionPS.y > 1.f || positionPS.w < 0.f);
+  }
+
+  void drawLightHash(XXH64_hash_t h,
+                     const Vector3& position,
+                     const Matrix4& worldToProj,
+                     ImDrawList* drawList,
+                     bool isFromInstance = false) {
+    constexpr auto safe = 2.0f;
+
+    const ImDrawListSharedData* data = ImGui::GetDrawListSharedData();
+    assert(data && data->Font && data->FontSize > 0);
+
+    ImVec2 screenPos;
+    {
+      const ImGuiViewport* viewport = ImGui::GetMainViewport();
+      transformToScreen(worldToProj, { viewport->Size.x, viewport->Size.y }, position, screenPos);
+    }
+    std::string str = hashToString(h);
+    ImU32 backColor = IM_COL32(0, 0, 0, 200);
+
+    screenPos.y += 24; // offset to not obstruct the original point
+    if (isFromInstance) {
+      screenPos.y += data->FontSize + safe * 2;
+      str = "Instance: " + str;
+      backColor = IM_COL32(0, 0, 70, 200);
+    }
+
+    const ImVec2 extent = data->Font->CalcTextSizeA(data->FontSize, FLT_MAX, 0, str.c_str());
+
+    const auto offsetText = ImVec2 { screenPos.x - (extent.x / 2), screenPos.y - (extent.y / 2) };
+    const auto offsetMin = ImVec2 { screenPos.x - (extent.x / 2 + safe), screenPos.y - (extent.y / 2 + safe) };
+    const auto offsetMax = ImVec2 { screenPos.x + (extent.x / 2 + safe), screenPos.y + (extent.y / 2 + safe) };
+
+    drawList->AddRectFilled(offsetMin, offsetMax, backColor);
+    drawList->AddText(data->Font, data->FontSize, offsetText, IM_COL32_WHITE, str.c_str());
+  }
+
+  void drawLightHashes(const RtLight& light, const Matrix4& worldToProj, ImDrawList* drawList) {
+    if (!LightManagerGuiSettings::debugDrawLightHashes()) {
+      return;
+    }
+    drawLightHash(light.getInitialHash(), light.getPosition(), worldToProj, drawList);
+    if (light.getInitialHash() != light.getInstanceHash()) {
+      drawLightHash(light.getInstanceHash(), light.getPosition(), worldToProj, drawList, true);
+    }
   }
 
   void drawToolTip(const RtLight& light) {
@@ -228,9 +299,20 @@ namespace dxvk {
     ImGui::PopStyleColor();
   }
 
-  bool drawSphereLightDebug(const RtSphereLight& sphereLight, const Matrix4 worldToProj, const Vector3& cameraRight, const ImU32 colHex, cFrustum& frustum, ImDrawList* drawList) {
+  struct DrawResult {
+    bool mouseHover { false };
+    bool isVisible { false };
+
+    DrawResult& operator |=(const DrawResult& other) {
+      this->mouseHover |= other.mouseHover;
+      this->isVisible |= other.isVisible;
+      return *this;
+    }
+  };
+
+  DrawResult drawSphereLightDebug(const RtSphereLight& sphereLight, const Matrix4& worldToProj, const Vector3& cameraRight, const ImU32 colHex, cFrustum& frustum, ImDrawList* drawList) {
     if (!sphereIntersectsFrustum(frustum, sphereLight.getPosition(), sphereLight.getRadius())) {
-      return false;
+      return {};
     }
     ImVec2 screenPos[2];
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -239,12 +321,15 @@ namespace dxvk {
     const float radius = std::max(1.f, sqrtf(ImLengthSqr(ImVec2(screenPos[0].x - screenPos[1].x, screenPos[0].y - screenPos[1].y))));
     drawList->AddCircleFilled(screenPos[0], radius, colHex);
 
-    return ImLengthSqr(ImVec2(screenPos[0].x - ImGui::GetMousePos().x, screenPos[0].y - ImGui::GetMousePos().y)) <= radius * radius;
+    return DrawResult {
+      ImLengthSqr(ImVec2(screenPos[0].x - ImGui::GetMousePos().x, screenPos[0].y - ImGui::GetMousePos().y)) <= radius * radius,
+      true,
+    };
   }
 
-  bool drawRectLightDebug(const Vector3& position, const Vector3& xAxis, const Vector3& yAxis, const Vector2& dimensions, const Matrix4 worldToProj, const ImU32 colHex, cFrustum& frustum, ImDrawList* drawList) {
+  DrawResult drawRectLightDebug(const Vector3& position, const Vector3& xAxis, const Vector3& yAxis, const Vector2& dimensions, const Matrix4& worldToProj, const ImU32 colHex, cFrustum& frustum, ImDrawList* drawList) {
     if (!rectIntersectsFrustum(frustum, position, dimensions, xAxis, yAxis)) {
-      return false;
+      return {};
     }
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     Vector3 rectBounds[4];
@@ -257,12 +342,15 @@ namespace dxvk {
       transformToScreen(worldToProj, { viewport->Size.x, viewport->Size.y }, rectBounds[i], screenPos[i]);
     }
     drawList->AddQuadFilled(screenPos[0], screenPos[1], screenPos[2], screenPos[3], colHex);
-    return ImTriangleContainsPoint(screenPos[0], screenPos[1], screenPos[2], ImGui::GetMousePos()) || ImTriangleContainsPoint(screenPos[1], screenPos[2], screenPos[3], ImGui::GetMousePos());
+    return DrawResult {
+      ImTriangleContainsPoint(screenPos[0], screenPos[1], screenPos[2], ImGui::GetMousePos()) || ImTriangleContainsPoint(screenPos[1], screenPos[2], screenPos[3], ImGui::GetMousePos()),
+      true,
+    };
   }
 
-  bool drawDiskLightDebug(const Vector3& position, const Vector3& xAxis, const Vector3& yAxis, const Vector2& radius, const Matrix4 worldToProj, const ImU32 colHex, cFrustum& frustum, ImDrawList* drawList) {
+  DrawResult drawDiskLightDebug(const Vector3& position, const Vector3& xAxis, const Vector3& yAxis, const Vector2& radius, const Matrix4& worldToProj, const ImU32 colHex, cFrustum& frustum, ImDrawList* drawList) {
     if (!rectIntersectsFrustum(frustum, position, radius * 2, xAxis, yAxis)) {
-      return false;
+      return {};
     }
     const uint32_t numPoints = 16;
     ImVec2 screenPos[numPoints];
@@ -276,13 +364,13 @@ namespace dxvk {
 
     for (uint32_t i = 1; i < numPoints-1; i++) {
       if (ImTriangleContainsPoint(screenPos[0], screenPos[i], screenPos[i+1], ImGui::GetMousePos())) {
-        return true;
+        return DrawResult { true, true };
       }
     }
-    return false;
+    return DrawResult { false, true };
   }
 
-  bool drawCylinderLightDebug(const RtCylinderLight& cylinderLight, const Matrix4 worldToProj, const ImU32 colHex, cFrustum& frustum, ImDrawList* drawList) {
+  DrawResult drawCylinderLightDebug(const RtCylinderLight& cylinderLight, const Matrix4& worldToProj, const ImU32 colHex, cFrustum& frustum, ImDrawList* drawList) {
     const Vector3 pos = cylinderLight.getPosition();
     const Vector3 axis = cylinderLight.getAxis();
     const float radius = cylinderLight.getRadius();
@@ -294,9 +382,9 @@ namespace dxvk {
     const Vector3 tangent = Vector3(1.0f + sign * axis.x * axis.x * a, sign * b, -sign * axis.x);
     const Vector3 bitangent = Vector3(b, sign + axis.y * axis.y * a, -axis.y);
 
-    bool mouseHover = false;
-    mouseHover |= drawDiskLightDebug(pos + axis * cylinderLight.getAxisLength() * 0.5, tangent, bitangent, Vector2(radius, radius), worldToProj, colHex, frustum, drawList);
-    mouseHover |= drawDiskLightDebug(pos - axis * cylinderLight.getAxisLength() * 0.5, tangent, bitangent, Vector2(radius, radius), worldToProj, colHex, frustum, drawList);
+    auto result = DrawResult{};
+    result |= drawDiskLightDebug(pos + axis * cylinderLight.getAxisLength() * 0.5, tangent, bitangent, Vector2(radius, radius), worldToProj, colHex, frustum, drawList);
+    result |= drawDiskLightDebug(pos - axis * cylinderLight.getAxisLength() * 0.5, tangent, bitangent, Vector2(radius, radius), worldToProj, colHex, frustum, drawList);
 
     const uint32_t numPoints = 16;
     for (uint32_t i = 0; i < numPoints; i++) {
@@ -304,15 +392,16 @@ namespace dxvk {
       float theta1 = (float) (i + 1) * kPi * 2 / numPoints;
       const Vector3 position = pos + radius * cos(theta) * tangent + radius * bitangent * sin(theta);
       const Vector3 position1 = pos + radius * cos(theta1) * tangent + radius * bitangent * sin(theta1);
-      mouseHover |= drawRectLightDebug((position + position1) * 0.5f, normalize(position1 - position), axis, Vector2(length(position1 - position), cylinderLight.getAxisLength()), worldToProj, colHex, frustum, drawList);
+      result |= drawRectLightDebug((position + position1) * 0.5f, normalize(position1 - position), axis, Vector2(length(position1 - position), cylinderLight.getAxisLength()), worldToProj, colHex, frustum, drawList);
     }
-    return mouseHover;
+    return result;
   }
 
   void LightManager::showImguiDebugVisualization() const {
-    if (!LightManagerGuiSettings::enableDebugMode())
+    if (!LightManagerGuiSettings::enableDebugMode()) {
       return;
-    
+    }
+
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->Pos);
     ImGui::SetNextWindowSize(viewport->Size);
@@ -335,28 +424,28 @@ namespace dxvk {
         Vector4 color = light->getColorAndIntensity();
         const ImU32 colHex = ImColor(color.x, color.y, color.z);
 
-        bool mouseHover = false;
+        auto result = DrawResult{};
         switch (light->getType()) {
         case RtLightType::Sphere:
         {
-          mouseHover = drawSphereLightDebug(light->getSphereLight(), worldToProj, camera.getViewToWorld(true)[0].xyz(), colHex, frustum, drawList);
+          result = drawSphereLightDebug(light->getSphereLight(), worldToProj, camera.getViewToWorld(true)[0].xyz(), colHex, frustum, drawList);
           break;
         }
         case RtLightType::Rect:
         {
           const RtRectLight& rectLight = light->getRectLight();
-          mouseHover = drawRectLightDebug(rectLight.getPosition(), rectLight.getXAxis(), rectLight.getYAxis(), rectLight.getDimensions(), worldToProj, colHex, frustum, drawList);
+          result = drawRectLightDebug(rectLight.getPosition(), rectLight.getXAxis(), rectLight.getYAxis(), rectLight.getDimensions(), worldToProj, colHex, frustum, drawList);
           break;
         }
         case RtLightType::Disk:
         {
           const RtDiskLight& diskLight = light->getDiskLight();
-          mouseHover = drawDiskLightDebug(diskLight.getPosition(), diskLight.getXAxis(), diskLight.getYAxis(), diskLight.getHalfDimensions(), worldToProj, colHex, frustum, drawList);
+          result = drawDiskLightDebug(diskLight.getPosition(), diskLight.getXAxis(), diskLight.getYAxis(), diskLight.getHalfDimensions(), worldToProj, colHex, frustum, drawList);
           break;
         }
         case RtLightType::Cylinder:
         {
-          mouseHover = drawCylinderLightDebug(light->getCylinderLight(), worldToProj, colHex, frustum, drawList);
+          result = drawCylinderLightDebug(light->getCylinderLight(), worldToProj, colHex, frustum, drawList);
           break;
         }
         default:
@@ -364,8 +453,11 @@ namespace dxvk {
 
         }
 
-        if (mouseHover) {
+        if (result.mouseHover) {
           drawToolTip(*light);
+        }
+        else if (result.isVisible) {
+          drawLightHashes(*light, worldToProj, drawList);
         }
       }
 

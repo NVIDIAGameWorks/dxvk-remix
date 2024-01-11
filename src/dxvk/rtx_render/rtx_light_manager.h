@@ -134,6 +134,11 @@ private:
   static float isSimilar(const RtLight& a, const RtLight& b, float distanceThreshold);
   static void updateLight(const RtLight& in, RtLight& out);
 
+  RTX_OPTION("rtx", bool, suppressLightKeeping, false, 
+             "If true, Remix doesn't keep game's original light sources for many frames. "
+             "For example, if a game switches a point light off, then, in Remix, the light might still be rendered as if it's enabled: "
+             "because the light would be cached (kept) for many consecutive frames. (So to solve this, set this option to True).");
+
   RTX_OPTION("rtx", bool, ignoreGameDirectionalLights, false, "Ignores any directional lights coming from the original game (lights added via toolkit still work).");
   RTX_OPTION("rtx", bool, ignoreGamePointLights, false, "Ignores any point lights coming from the original game (lights added via toolkit still work).");
   RTX_OPTION("rtx", bool, ignoreGameSpotLights, false, "Ignores any spot lights coming from the original game (lights added via toolkit still work).");
@@ -165,8 +170,6 @@ private:
   RTX_OPTION("rtx", float, lightConversionSphereLightFixedRadius, 4.f, "The fixed radius in world units to use for legacy lights converted to sphere lights (currently point and spot lights will convert to sphere lights). Use caution with large light radii as many legacy lights will be placed close to geometry and intersect it, causing suboptimal light sampling performance or other visual artifacts (lights clipping through walls, etc).");
   RTX_OPTION("rtx", float, lightConversionDistantLightFixedIntensity, 1.0f, "The fixed intensity (in W/sr) to use for legacy lights converted to distant lights (currently directional lights will convert to distant lights).");
   RTX_OPTION("rtx", float, lightConversionDistantLightFixedAngle, 0.0349f, "The angular size in radiance of the distant light source for legacy lights converted to distant lights. Set to ~2 degrees in radians by default.");
-  RTX_OPTION("rtx", float, lightConversionEqualityDistanceThreshold, 0.05f, "The upper distance threshold between two positions used to determine if two positional lights as the same light when uniquely identifying legacy lights for conversion.");
-  RTX_OPTION("rtx", float, lightConversionEqualityDirectionThreshold, 0.99f, "The lower cosine angle threshold between two directions used to determine if two directional lights as the same light when uniquely identifying legacy lights for conversion.");
 };
 
 }  // namespace dxvk
