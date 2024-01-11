@@ -89,8 +89,6 @@ namespace dxvk {
     RTX_OPTION_CLAMP_MIN(lightConversionSphereLightFixedRadius, 0.0f);
     RTX_OPTION_CLAMP_MIN(lightConversionDistantLightFixedIntensity, 0.0f);
     RTX_OPTION_CLAMP(lightConversionDistantLightFixedAngle, 0.0f, kPi);
-    RTX_OPTION_CLAMP_MIN(lightConversionEqualityDistanceThreshold, 0.0f);
-    RTX_OPTION_CLAMP(lightConversionEqualityDirectionThreshold, 0.0f, 1.0f);
   }
 
   LightManager::~LightManager() {
@@ -112,7 +110,7 @@ namespace dxvk {
       if (!RtxOptions::AntiCulling::Light::enable() || // It's always True if anti-culling is disabled
           (light.getIsInsideFrustum() ||
            frameLastTouched + RtxOptions::AntiCulling::Light::numFramesToExtendLightLifetime() <= currentFrame)) {
-        if (light.isChildOfMesh() || light.isDynamic) {
+        if (light.isChildOfMesh() || light.isDynamic || suppressLightKeeping()) {
           if (light.getFrameLastTouched() < currentFrame) {
             it = m_lights.erase(it);
             continue;
@@ -325,7 +323,7 @@ namespace dxvk {
     }
 
     for (auto& handle : m_externalActiveLightList) {
-      auto& found = m_externalLights.find(handle);
+      auto found = m_externalLights.find(handle);
       if (found != m_externalLights.end()) {
         m_linearizedLights.emplace_back(&found->second);
       }
@@ -589,7 +587,7 @@ namespace dxvk {
             foundLightIt->second = rtLight;
             foundLightIt->second.setBufferIdx(bufferIdx);
           }
-        } else if (!rtLight.isDynamic) {
+        } else if (!rtLight.isDynamic && !suppressLightKeeping()) {
           // Update the light - its an exact hash match (meaning it's static)
           const uint32_t isStaticCount = foundLightIt->second.isStaticCount;
 

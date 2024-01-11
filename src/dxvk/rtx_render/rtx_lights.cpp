@@ -116,10 +116,6 @@ void RtSphereLight::writeGPUData(unsigned char* data, std::size_t& offset) const
   assert(offset - oldOffset == kLightGPUSize);
 }
 
-bool RtSphereLight::operator==(const RtSphereLight& rhs) const {
-  return lengthSqr(m_position - rhs.m_position) < (LightManager::lightConversionEqualityDistanceThreshold() * LightManager::lightConversionEqualityDistanceThreshold());
-}
-
 Vector4 RtSphereLight::getColorAndIntensity() const {
   Vector4 out;
   out.w = std::max(std::max(m_radiance[0], m_radiance[1]), m_radiance[2]);
@@ -220,9 +216,6 @@ void RtRectLight::writeGPUData(unsigned char* data, std::size_t& offset) const {
   assert(offset - oldOffset == kLightGPUSize);
 }
 
-bool RtRectLight::operator==(const RtRectLight& rhs) const {
-  return lengthSqr(m_position - rhs.m_position) < (LightManager::lightConversionEqualityDistanceThreshold() * LightManager::lightConversionEqualityDistanceThreshold());
-}
 
 Vector4 RtRectLight::getColorAndIntensity() const {
   Vector4 out;
@@ -329,10 +322,6 @@ void RtDiskLight::writeGPUData(unsigned char* data, std::size_t& offset) const {
   assert(offset - oldOffset == kLightGPUSize);
 }
 
-bool RtDiskLight::operator==(const RtDiskLight& rhs) const {
-  return lengthSqr(m_position - rhs.m_position) < (LightManager::lightConversionEqualityDistanceThreshold() * LightManager::lightConversionEqualityDistanceThreshold());
-}
-
 Vector4 RtDiskLight::getColorAndIntensity() const {
   Vector4 out;
   out.w = std::max(std::max(m_radiance[0], m_radiance[1]), m_radiance[2]);
@@ -411,10 +400,6 @@ void RtCylinderLight::writeGPUData(unsigned char* data, std::size_t& offset) con
   writeGPUHelper(data, offset, static_cast<uint32_t>(lightTypeCylinder << 29));
 
   assert(offset - oldOffset == kLightGPUSize);
-}
-
-bool RtCylinderLight::operator==(const RtCylinderLight& rhs) const {
-  return lengthSqr(m_position - rhs.m_position) < (LightManager::lightConversionEqualityDistanceThreshold() * LightManager::lightConversionEqualityDistanceThreshold());
 }
 
 Vector4 RtCylinderLight::getColorAndIntensity() const {
@@ -501,10 +486,6 @@ void RtDistantLight::writeGPUData(unsigned char* data, std::size_t& offset) cons
   writeGPUHelper(data, offset, static_cast<uint32_t>(lightTypeDistant << 29));
 
   assert(offset - oldOffset == kLightGPUSize);
-}
-
-bool RtDistantLight::operator==(const RtDistantLight& rhs) const {
-  return dot(m_direction, rhs.m_direction) > (LightManager::lightConversionEqualityDistanceThreshold() * LightManager::lightConversionEqualityDistanceThreshold());
 }
 
 Vector4 RtDistantLight::getColorAndIntensity() const {
@@ -715,29 +696,6 @@ RtLight& RtLight::operator=(const RtLight& rtLight) {
   return *this;
 }
 
-bool RtLight::operator==(const RtLight& rhs) const {
-  // Note: Different light types are not the same light so comparison can return false
-  if (m_type != rhs.m_type) {
-    return false;
-  }
-
-  switch (m_type) {
-  default:
-    assert(false);
-
-    [[fallthrough]];
-  case RtLightType::Sphere:
-    return m_sphereLight == rhs.m_sphereLight;
-  case RtLightType::Rect:
-    return m_rectLight == rhs.m_rectLight;
-  case RtLightType::Disk:
-    return m_diskLight == rhs.m_diskLight;
-  case RtLightType::Cylinder:
-    return m_cylinderLight == rhs.m_cylinderLight;
-  case RtLightType::Distant:
-    return m_distantLight == rhs.m_distantLight;
-  }
-}
 
 Vector4 RtLight::getColorAndIntensity() const {
   switch (m_type) {

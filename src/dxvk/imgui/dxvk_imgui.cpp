@@ -2497,6 +2497,8 @@ namespace dxvk {
 
       common->getSceneManager().getLightManager().showImguiLightOverview();
 
+      ImGui::Separator();
+
       ImGui::DragFloat("Effect Light Intensity", &RtxOptions::Get()->effectLightIntensityObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
       ImGui::DragFloat("Effect Light Radius", &RtxOptions::Get()->effectLightRadiusObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
 
