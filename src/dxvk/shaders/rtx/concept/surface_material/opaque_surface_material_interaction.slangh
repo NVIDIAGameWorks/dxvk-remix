@@ -579,7 +579,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
     surfaceInteraction.vertexColor.rgb = gammaToLinear(surfaceInteraction.vertexColor.rgb);
 
     // Fixed function texture stage setting
-    f16vec3 textureArg1, textureArg2;
+    f16vec3 textureArg1 = f16vec3(1.0), textureArg2 = f16vec3(1.0);
     chooseTextureArgument(textureArg1, surface.textureColorArg1Source, albedo, surfaceInteraction.vertexColor.rgb, tFactor.rgb, f16vec3(1.0));
     chooseTextureArgument(textureArg2, surface.textureColorArg2Source, albedo, surfaceInteraction.vertexColor.rgb, tFactor.rgb, f16vec3(1.0));
     chooseTextureOperationColor(albedo, surface.textureColorOperation, textureArg1, textureArg2);

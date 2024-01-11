@@ -855,7 +855,7 @@ namespace dxvk {
         currentInstance.surface.textureAlphaOperation = drawCall.getMaterialData().textureAlphaOperation;
         currentInstance.surface.texgenMode = drawCall.getTransformData().texgenMode; // NOTE: Make it material data...
         currentInstance.surface.tFactor = drawCall.getMaterialData().tFactor;
-        currentInstance.surface.alphaState = alphaState;
+         currentInstance.surface.alphaState = alphaState;
         currentInstance.surface.isAnimatedWater = currentInstance.testCategoryFlags(InstanceCategories::AnimatedWater);
         currentInstance.surface.associatedGeometryHash = drawCall.getHash(RtxOptions::Get()->GeometryAssetHashRule);
         currentInstance.surface.isTextureFactorBlend = drawCall.getMaterialData().isTextureFactorBlend;
