@@ -72,15 +72,23 @@ namespace dxvk {
     }
   }
 
-  void setTextureStageState(const Direct3DState9& d3d9State, const uint32_t stageIdx, bool useTextureFactorBlend, LegacyMaterialData& materialData, DrawCallTransforms& transformData) {
+  void setTextureStageState(const Direct3DState9& d3d9State, const uint32_t stageIdx, bool useStageTextureFactorBlending, bool useMultipleStageTextureFactorBlending, LegacyMaterialData& materialData, DrawCallTransforms& transformData) {
     materialData.textureColorOperation = convertTextureOp(d3d9State.textureStages[stageIdx][DXVK_TSS_COLOROP]);
     materialData.textureColorArg1Source = convertTextureArg(d3d9State.textureStages[stageIdx][DXVK_TSS_COLORARG1], materialData.diffuseColorSource, materialData.specularColorSource);
     materialData.textureColorArg2Source = convertTextureArg(d3d9State.textureStages[stageIdx][DXVK_TSS_COLORARG2], materialData.diffuseColorSource, materialData.specularColorSource);
+    if (!useStageTextureFactorBlending) {
+      if (materialData.textureColorArg1Source == RtTextureArgSource::TFactor) {
+        materialData.textureColorArg1Source = RtTextureArgSource::None;
+      }
+      if (materialData.textureColorArg2Source == RtTextureArgSource::TFactor) {
+        materialData.textureColorArg2Source = RtTextureArgSource::None;
+      }
+    }
 
     materialData.textureAlphaOperation = convertTextureOp(d3d9State.textureStages[stageIdx][DXVK_TSS_ALPHAOP]);
     materialData.textureAlphaArg1Source = convertTextureArg(d3d9State.textureStages[stageIdx][DXVK_TSS_ALPHAARG1], materialData.diffuseColorSource, materialData.specularColorSource);
     materialData.textureAlphaArg2Source = convertTextureArg(d3d9State.textureStages[stageIdx][DXVK_TSS_ALPHAARG2], materialData.diffuseColorSource, materialData.specularColorSource);
-    materialData.isTextureFactorBlend = useTextureFactorBlend;
+    materialData.isTextureFactorBlend = useMultipleStageTextureFactorBlending;
 
     const DWORD texcoordIndex = d3d9State.textureStages[stageIdx][DXVK_TSS_TEXCOORDINDEX];
     const DWORD transformFlags = d3d9State.textureStages[stageIdx][DXVK_TSS_TEXTURETRANSFORMFLAGS];

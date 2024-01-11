@@ -820,23 +820,32 @@ namespace dxvk {
     // Currently we only support 2 textures
     constexpr uint32_t NumTexcoordBins = FixedFunction ? (D3DDP_MAXTEXCOORD * LegacyMaterialData::kMaxSupportedTextures) : LegacyMaterialData::kMaxSupportedTextures;
 
-    bool useTextureFactorBlend = false;
+    bool useStageTextureFactorBlending = true;
+    bool useMultipleStageTextureFactorBlending = false;
 
     // Build a mapping of texcoord indices to stage
     const uint8_t kInvalidStage = 0xFF;
     uint8_t texcoordIndexToStage[NumTexcoordBins];
     if constexpr (FixedFunction) {
       memset(&texcoordIndexToStage[0], kInvalidStage, sizeof(texcoordIndexToStage));
-
       for (uint32_t stage = 0; stage < caps::TextureStageCount; stage++) {
+        auto isTextureFactorBlendingEnabled = [](const auto& textureStageStates) -> bool {
+          return (textureStageStates[DXVK_TSS_COLORARG1] == D3DTA_TFACTOR ||
+                  textureStageStates[DXVK_TSS_COLORARG2] == D3DTA_TFACTOR) &&
+                 (textureStageStates[DXVK_TSS_COLOROP] == D3DTOP_MODULATE   ||
+                  textureStageStates[DXVK_TSS_COLOROP] == D3DTOP_MODULATE2X ||
+                  textureStageStates[DXVK_TSS_COLOROP] == D3DTOP_MODULATE4X);
+        };
+
         // Support texture factor blending besides the first stage. Currently, we only support 1 additional stage tFactor blending.
-        if (RtxOptions::Get()->enableMultiStageTextureFactorBlending() &&
+        // Note: If the tFactor is disabled for current texture (useStageTextureFactorBlending) then we should ignore the multiple stage tFactor blendings.
+        bool isCurrentStageTextureFactorBlendingEnabled = false;
+        if (useStageTextureFactorBlending &&
+            RtxOptions::Get()->enableMultiStageTextureFactorBlending() &&
             stage != 0 &&
-            d3d9State().textureStages[stage][DXVK_TSS_COLORARG2] == D3DTA_TFACTOR &&
-            (d3d9State().textureStages[stage][DXVK_TSS_COLOROP] == D3DTOP_MODULATE ||
-             d3d9State().textureStages[stage][DXVK_TSS_COLOROP] == D3DTOP_MODULATE2X ||
-             d3d9State().textureStages[stage][DXVK_TSS_COLOROP] == D3DTOP_MODULATE4X)) {
-          useTextureFactorBlend = true;
+            isTextureFactorBlendingEnabled(d3d9State().textureStages[stage])) {
+          isCurrentStageTextureFactorBlendingEnabled = true;
+          useMultipleStageTextureFactorBlending = true;
         }
 
         if (d3d9State().textures[stage] == nullptr)
@@ -866,8 +875,9 @@ namespace dxvk {
         const XXH64_hash_t texHash = texture->GetSampleView(true)->image()->getHash();
 
         // Currently we only support regular textures, skip lightmaps.
-        if (lookupHash(RtxOptions::lightmapTextures(), texHash))
+        if (lookupHash(RtxOptions::lightmapTextures(), texHash)) {
           continue;
+        }
 
         // Allow for two stage candidates per texcoord index
         const uint32_t texcoordIndex = data[DXVK_TSS_TEXCOORDINDEX] & 0b111;
@@ -877,6 +887,18 @@ namespace dxvk {
         // Don't override if candidate exists
         if (texcoordIndexToStage[candidateIndex + subIndex] == kInvalidStage)
           texcoordIndexToStage[candidateIndex + subIndex] = stage;
+
+        // Check if texture factor blending is enabled for the first stage
+        if (useStageTextureFactorBlending && stage == 0) {
+          isCurrentStageTextureFactorBlendingEnabled = isTextureFactorBlendingEnabled(d3d9State().textureStages[stage]);
+        }
+
+        // Check if texture factor blending is enabled
+        if (isCurrentStageTextureFactorBlendingEnabled &&
+            lookupHash(RtxOptions::ignoreTextureFactorBlendingTextures(), texHash)) {
+          useStageTextureFactorBlending = false;
+          useMultipleStageTextureFactorBlending = false;
+        }
       }
     }
 
@@ -929,7 +951,8 @@ namespace dxvk {
     }
 
     // Update the drawcall state with texture stage info
-    setTextureStageState(d3d9State(), firstStage, useTextureFactorBlend, m_activeDrawCallState.materialData, m_activeDrawCallState.transformData);
+    setTextureStageState(d3d9State(), firstStage, useStageTextureFactorBlending, useMultipleStageTextureFactorBlending,
+                         m_activeDrawCallState.materialData, m_activeDrawCallState.transformData);
 
     if (d3d9State().textures[firstStage]) {
       m_activeDrawCallState.setupCategoriesForTexture();
