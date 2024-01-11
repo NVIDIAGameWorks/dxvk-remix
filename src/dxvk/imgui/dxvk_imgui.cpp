@@ -159,7 +159,8 @@ namespace dxvk {
     {"motionBlurMaskOutTextures", "Motion Blur Mask-Out Textures (optional)", &RtxOptions::Get()->motionBlurMaskOutTexturesObject()},
     {"playermodeltextures", "Player Model Texture (optional)", &RtxOptions::Get()->playerModelTexturesObject()},
     {"playermodelbodytextures", "Player Model Body Texture (optional)", &RtxOptions::Get()->playerModelBodyTexturesObject()},
-    {"opacitymicromapignoretextures", "Opacity Micromap Ignore Texture (optional)", &RtxOptions::Get()->opacityMicromapIgnoreTexturesObject()}
+    {"opacitymicromapignoretextures", "Opacity Micromap Ignore Texture (optional)", &RtxOptions::Get()->opacityMicromapIgnoreTexturesObject()},
+    {"ignoreTextureFactorBlendingTextures","Ignore Texture Factor Blending Textures (optional)", &RtxOptions::Get()->ignoreTextureFactorBlendingTexturesObject()}
   };
 
   ImGui::ComboWithKey<RenderPassGBufferRaytraceMode> renderPassGBufferRaytraceModeCombo {
@@ -1997,6 +1998,12 @@ namespace dxvk {
           showTextureSelectionGrid(ctx, "opacitymicromapignoretextures", numThumbnailsPerRow, thumbnailSize);
           ImGui::Indent();
         }
+
+        if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Ignore Texture Factor Blending Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->ignoreTextureFactorBlendingTexturesDescription())) {
+          ImGui::Unindent();
+          showTextureSelectionGrid(ctx, "ignoreTextureFactorBlendingTextures", numThumbnailsPerRow, thumbnailSize);
+          ImGui::Indent();
+        }
         ImGui::Unindent();
       }
     }
@@ -2026,6 +2033,7 @@ namespace dxvk {
         ImGui::DragFloat("Force Cutout Alpha", &RtxOptions::Get()->forceCutoutAlphaObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
         ImGui::DragFloat("World Space UI Background Offset", &RtxOptions::Get()->worldSpaceUiBackgroundOffsetObject(), 0.01f, -FLT_MAX, FLT_MAX, "%.3f", sliderFlags);
         ImGui::Checkbox("Ignore last texture stage", &RtxOptions::ignoreLastTextureStageObject());
+        ImGui::Checkbox("Enable Multiple Stage Texture Factor Blending", &RtxOptions::enableMultiStageTextureFactorBlendingObject());
         ImGui::Unindent();
       }
 
