@@ -218,6 +218,16 @@ namespace dxvk {
                   "Textures on draw calls to be treated as \"animated water\".\n"
                   "Objects with this flag applied will animate their normals to fake a basic water effect based on the layered water material parameters, and only when rtx.opaqueMaterial.layeredWaterNormalEnable is set to true.\n"
                   "Should typically be used on static water planes that the original application may have relied on shaders to animate water on.");
+    RW_RTX_OPTION("rtx", fast_unordered_set, ignoreTextureFactorBlendingTextures, {},
+                  "Textures for which to ignore Texture Factor Blending at any texture stage.\n"
+                  "Using this feature on selected textures will eliminate the texture factors typically employed for simulating pre-baked lights in games.\n"
+                  "For instance, if a game bakes lighting information into the Texture Factor for particular textures, applying this option will remove them.\n"
+                  "This becomes useful when unexpected results occur due to the Texture Factor.\n"
+                  "Consider an example where the original texture contains red tints baked into the Texture Factor. If a user replaces the texture, it will blend with the red tints, resulting in an undesirable reddish outcome.\n"
+                  "In such cases, users can employ this option to eliminate the unwanted tints from their replacement textures.\n"
+                  "Similarly, users can tag textures if shadows are baked into the Texture Factor, causing the replacing texture to appear darker than anticipated.\n"
+                  "Note, enabling this setting will automatically disable multiple-stage texture factor blendings for the selected textures.\n"
+                  "Only using this option when necessary, as the Texture Factor can be used for simulating various texture effects, tagging a texture with this option will unexpectedly eliminate these effects.");
     RW_RTX_OPTION("rtx.antiCulling", fast_unordered_set, antiCullingTextures, {},
                   "[Experimental] Textures that are forced to extend life length when anti-culling is enabled.\n"
                   "Some games use different culling methods we can't fully match, use this option to manually add textures to force extend their life when anti-culling fails.");

@@ -48,11 +48,13 @@ namespace dxvk {
     * 
     * \param [in] d3d9State: state object from the parent D3D9 device
     * \param [in] stageIdx: desired texture stage (0~7)
-    * \param [in] useTextureFactorBlend: D3D9 uses the texture factor for any stage
+    * \param [in] useStageTextureFactorBlending: D3D9 uses the texture factor for any stages
+    * \param [in] useMultipleStageTextureFactorBlending: D3D9 uses the texture factor for any stages besides the first texture stage
     * \param [out] materialData: material data structure to update
     * \param [out] transformData: transform structure to update
     */
-  void setTextureStageState(const Direct3DState9& d3d9State, const uint32_t stageIdx, bool useTextureFactorBlend, LegacyMaterialData& materialData, DrawCallTransforms& transformData);
+  void setTextureStageState(const Direct3DState9& d3d9State, const uint32_t stageIdx, bool useStageTextureFactorBlending, bool useMultipleStageTextureFactorBlending,
+                            LegacyMaterialData& materialData, DrawCallTransforms& transformData);
 
   /**
     * \brief: This function creates a fog state object by reading D3D9 state info from input device

@@ -95,6 +95,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.cameraSequence.currentFrame|int|0|Current Frame\.|
 |rtx.cameraSequence.mode|int|0|Current mode\.|
 |rtx.cameraShakePeriod|int|20|Period of the free camera's animation\.|
+|rtx.capture.correctBakedTransforms|bool|False|Some games bake world transforms into mesh vertices\. If individually captured<br>meshes appear to be way off in the middle of nowhere OR instanced meshes appear<br>to all have identity xform matrices, enabling will attempt to correct this and<br>improve stage \+ mesh viewability in tools\.<br>Hashes are unaffected\.|
 |rtx.captureDebugImage|bool|False||
 |rtx.captureEnableMultiframe|bool|False|Enables multi\-frame capturing\. THIS HAS NOT BEEN MAINTAINED AND SHOULD BE USED WITH EXTREME CAUTION\.|
 |rtx.captureFramesPerSecond|int|24|Playback rate marked in the USD stage\.<br>Will eventually determine frequency with which game state is captured and written\. Currently every frame \-\- even those at higher frame rates \-\- are recorded\.|
@@ -127,10 +128,6 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.debugView.maxValue|float|1||
 |rtx.debugView.minValue|float|0||
 |rtx.debugView.samplerType|int|2|Sampler type for debug views that sample from a texture \(applies only to a subset of debug views\)\.<br>0: Nearest\.<br>1: Normalized Nearest\.<br>2: Normalized Linear\.|
-|rtx.decals.baseOffsetIndex|int|1|Offset index of a first decal\.|
-|rtx.decals.maxOffsetIndex|int|256|Max decal offset index\. The offset index wraps around when this value is reached and is set to baseOffsetIndex again\.<br>The value should be kept small so as not to offset decals too far from their target backgrounds\.|
-|rtx.decals.offsetIndexIncreaseBetweenDrawCalls|int|1|Index offset increase between decal draw calls\. This can be useful to increase if default index of 1 is not enough to move decals from different draw calls apart enough\.|
-|rtx.decals.offsetMultiplierMeters|float|3e-05|\[meters\] Distance along a normal to offset between two adjacent decal offset indices to prevent coplanar rendering issues such as Z\-fighting\.<br>This value is multiplied by a decal offset index\. The value should be kept small so as not make decals appear floating in front of their target backgrounds\.|
 |rtx.defaultToAdvancedUI|bool|False||
 |rtx.demodulate.demodulateRoughness|bool|True|Demodulate roughness to improve specular details\.|
 |rtx.demodulate.demodulateRoughnessOffset|float|0.1|Strength of roughness demodulation, lower values are stronger\.|
@@ -173,6 +170,8 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.displacement.enableNEECache|bool|True|Whether the NEE cache accounts for displacement mapping|
 |rtx.displacement.enablePSR|bool|False|Enable PSR \(perfect reflections\) for materials with displacement\.  Rays that have been perfectly reflected off a POM surface will not collide correctly with other parts of that same surface\.|
 |rtx.displacement.enableReSTIRGI|bool|True|Whether ReSTIR GI accounts for displacement mapping|
+|rtx.displacement.maxIterations|int|64|The max number of times the POM raymarch will iterate\.|
+|rtx.displacement.mode|int|1|What algorithm the displacement uses\.<br>RaymarchPOM: advances the ray in linear steps until the ray is below the heightfield\.<br>QuadtreePOM: Relies on special mipmaps with maximum values instead of average values\.  Uses the mipmap as a quadtree\.|
 |rtx.dlfg.enable|bool|True|Enables DLSS 3\.0 frame generation which generates interpolated frames to increase framerate at the cost of slightly more latency\.|
 |rtx.dlssEnhancementDirectLightMaxValue|float|10|The maximum strength of direct lighting enhancement\.|
 |rtx.dlssEnhancementDirectLightPower|float|0.7|The overall strength of direct lighting enhancement\.|
@@ -344,7 +343,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.nativeMipBias|float|0|Specifies a mipmapping level bias to add to all material texture filtering\. Stacks with the upscaling mip bias\.<br>Mipmaps are determined based on how far away a texture is, using this can bias the desired level in a lower quality direction \(positive bias\), or a higher quality direction with potentially more aliasing \(negative bias\)\.<br>Note that mipmaps are also important for good spatial caching of textures, so too far negative of a mip bias may start to significantly affect performance, therefore changing this value is not recommended|
 |rtx.nearPlaneOverride|float|0.1|The near plane value to use for the Camera when the near plane override is enabled\.<br>Only takes effect when rtx\.enableNearPlaneOverride is enabled, see that option for more information about why this is useful\.|
 |rtx.neeCache.ageCullingSpeed|float|0.02|This threshold determines culling speed of an old triangle\. A triangle that is not detected for several frames will be deemed less important and culled quicker\.|
-|rtx.neeCache.cullingThreshold|float|0.001|Culling threshold\.|
+|rtx.neeCache.cullingThreshold|float|0.01|Culling threshold\.|
 |rtx.neeCache.emissiveTextureSampleFootprintScale|float|1|Emissive texture sample footprint scale\.|
 |rtx.neeCache.enable|bool|True|\[Experimental\] Enable NEE cache\. The integrator will perform NEE on emissive triangles, which usually have significant light contributions, stored in the cache\.|
 |rtx.neeCache.enableAnalyticalLight|bool|True|Enable NEE Cache on analytical light\.|
@@ -353,7 +352,9 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.neeCache.enableModeAfterFirstBounce|int|1|NEE Cache enable mode on a second and higher bounces\. 0 means off, 1 means enabled for specular rays only, 2 means always enabled\.|
 |rtx.neeCache.enableOnFirstBounce|bool|True|Enable NEE Cache on a first bounce\.|
 |rtx.neeCache.enableUpdate|bool|True|Enable Update\.|
-|rtx.neeCache.range|float|3000|World space range\.|
+|rtx.neeCache.learningRate|float|0.02|Learning rate\. Higher values makes the cache adapt to lighting changes more quickly\.|
+|rtx.neeCache.minRange|float|400|The range for lowest level cells\.|
+|rtx.neeCache.resolution|float|8|Cell resolution\. Higher values mean smaller cells\.|
 |rtx.neeCache.specularFactor|float|1|Specular component factor\.|
 |rtx.neeCache.uniformSamplingProbability|float|0.1|Uniform sampling probability\.|
 |rtx.nisPreset|int|1|Adjusts NIS scaling factor, trades quality for performance\.|
@@ -487,6 +488,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.restirGI.permutationSamplingSize|int|2|Permutation sampling strength\.|
 |rtx.restirGI.reflectionMinParallax|float|3|When the parallax between normal and reflection reprojection is greater than this threshold, randomly choose one reprojected position and reuse the sample on it\. Otherwise, get a sample between the two positions\.|
 |rtx.restirGI.roughnessClamp|float|0.01|Clamps minimum roughness a sample's importance is evaluated\.|
+|rtx.restirGI.sampleValidationThreshold|float|0.5|Validate samples when normalized pixel change is above this value\.|
 |rtx.restirGI.stealBoundaryPixelSamplesWhenOutsideOfScreen|bool|True|Steals ReSTIR GI samples even a hit point is outside the screen\. This will further improve highly specular samples at the cost of some bias\.|
 |rtx.restirGI.temporalAdaptiveHistoryLengthMs|int|500|Temporal history time length, when adaptive temporal history is enabled\.|
 |rtx.restirGI.temporalFixedHistoryLength|int|30|Fixed temporal history length, when adaptive temporal history is disabled\.|
@@ -498,6 +500,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.restirGI.usePermutationSampling|bool|True|Uses permutation sample to perturb samples\. This will improve results in DLSS\.|
 |rtx.restirGI.useReflectionReprojection|bool|True|Uses reflection reprojection for reflective objects to achieve stable result when the camera is moving\.|
 |rtx.restirGI.useSampleStealing|int|2|Steals ReSTIR GI samples in path tracer\. This will improve highly specular results\.|
+|rtx.restirGI.useSampleValidation|bool|True|Validate samples when direct light has changed\.|
 |rtx.restirGI.useSpatialReuse|bool|True|Enables spatial reuse\.|
 |rtx.restirGI.useTemporalBiasCorrection|bool|True|Corrects bias caused by temporal reprojection\.|
 |rtx.restirGI.useTemporalJacobian|bool|True|Calculates Jacobian determinant in temporal reprojection\.|
@@ -541,8 +544,8 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.stochasticAlphaBlendShareNeighbors|bool|True|Share result with other pixels to accelerate search\.|
 |rtx.stochasticAlphaBlendUseNeighborSearch|bool|True|Get radiance from neighbor opaque pixels\.|
 |rtx.stochasticAlphaBlendUseRadianceVolume|bool|True|Get radiance from radiance volume\.|
-|rtx.subsurface.enableThinOpaque|bool|True|Enable thin opaque material\. The materials withthin opaque properties will fallback to normal opaque material\.|
 |rtx.subsurface.enableTextureMaps|bool|True|Enable texture maps such as thickness map or scattering albedo map\. The corresponding subsurface properties will fallback to per\-material constants if this is disabled\.|
+|rtx.subsurface.enableThinOpaque|bool|True|Enable thin opaque material\. The materials withthin opaque properties will fallback to normal opaque material\.|
 |rtx.subsurface.surfaceThicknessScale|float|1|Scalar of the subsurface thickness\.|
 |rtx.taauPreset|int|1|Adjusts TAA\-U scaling factor, trades quality for performance\.|
 |rtx.temporalAA.colorClampingFactor|float|1|A scalar factor to apply to the standard deviation of the neighborhood of pixels in the color signal used for clamping\. Should be in the range 0\-infinity\.<br>This value essentially represents how many standard deviations of tolerance from the current frame's colors around each pixel pixel the temporally accumulated color signal may have\.<br>Higher values will cause more ghosting whereas lower values may reduce ghosting but will impact image quality \(less ability to upscale effectively\) and reduce stability \(more jittering\)\.|
@@ -619,7 +622,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.useVertexCapture|bool|True|When enabled, injects code into the original vertex shader to capture final shaded vertex positions\.  Is useful for games using simple vertex shaders, that still also set the fixed function transform matrices\.|
 |rtx.useVertexCapturedNormals|bool|True|When enabled, vertex normals are read from the input assembler and used in raytracing\.  This doesn't always work as normals can be in any coordinate space, but can help sometimes\.|
 |rtx.useVirtualShadingNormalsForDenoising|bool|True|A flag to enable or disable the usage of virtual shading normals for denoising passes\.<br>This is primairly important for anything that modifies the direction of a primary ray, so mainly PSR and ray portals as both of these will view a surface from an angle different from the "virtual" viewing direction perceived by the camera\.<br>This can cause some issues with denoising due to the normals not matching the expected perception of what the normals should be, for example normals facing away from the camera direction due to being viewed from a different angle via refraction or portal teleportation\.<br>To correct this, virtual normals are calculcated such that they always are oriented relative to the primary camera ray as if its direction was never altered, matching the virtual perception of the surface from the camera's point of view\.<br>As an aside, virtual normals themselves can cause issues with denoising due to the normals suddenly changing from virtual to "real" normals upon traveling through a portal, causing surface consistency failures in the denoiser, but this is accounted for via a special transform given to the denoiser on camera ray portal teleportation events\.<br>As such, this option should generally always be enabled when rendering with ray portals in the scene to have good denoising quality\.|
-|rtx.useWhiteMaterialMode|bool|False||
+|rtx.useWhiteMaterialMode|bool|False|Override all objects' materials by white material|
 |rtx.useWorldMatricesForShaders|bool|True|When enabled, Remix will utilize the world matrices being passed from the game via D3D9 fixed function API, even when running with shaders\.  Sometimes games pass these matrices and they are useful, however for some games they are very unreliable, and should be filtered out\.  If you're seeing precision related issues with shader vertex capture, try disabling this setting\.|
 |rtx.validateCPUIndexData|bool|False||
 |rtx.vertexColorStrength|float|0.6|A scalar to apply to how strong vertex color influence should be on materials\.<br>A value of 1 indicates that it should be fully considered \(though do note the texture operation and relevant parameters still control how much it should be blended with the actual albedo color\), a value of 0 indicates that it should be fully ignored\.|
@@ -665,6 +668,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.geometryGenerationHashRuleString|string|positions,indices,texcoords,geometrydescriptor,vertexlayout,vertexshader|Defines which asset hashes we need to generate via the geometry processing engine\.|
 |rtx.hideInstanceTextures|hash set||Textures on draw calls that should be hidden from rendering, but not totally ignored\.<br>This is similar to rtx\.ignoreTextures but instead of completely ignoring such draw calls they are only hidden from rendering, allowing for the hidden objects to still appear in captures\.<br>As such, this is mostly only a development tool to hide objects during development until they are properly replaced, otherwise the objects should be ignored with rtx\.ignoreTextures instead for better performance\.|
 |rtx.ignoreLights|hash set||Lights that should be ignored\.<br>Any matching light will be skipped and not added to be ray traced\.|
+|rtx.ignoreTextureFactorBlendingTextures|hash set||Textures for which to ignore Texture Factor Blending at any texture stage\.<br>Using this feature on selected textures will eliminate the texture factors typically employed for simulating pre\-baked lights in games\.<br>For instance, if a game bakes lighting information into the Texture Factor for particular textures, applying this option will remove them\.<br>This becomes useful when unexpected results occur due to the Texture Factor\.<br>Consider an example where the original texture contains red tints baked into the Texture Factor\. If a user replaces the texture, it will blend with the red tints, resulting in an undesirable reddish outcome\.<br>In such cases, users can employ this option to eliminate the unwanted tints from their replacement textures\.<br>Similarly, users can tag textures if shadows are baked into the Texture Factor, causing the replacing texture to appear darker than anticipated\.<br>Note, enabling this setting will automatically disable multiple\-stage texture factor blendings for the selected textures\.<br>Only using this option when necessary, as the Texture Factor can be used for simulating various texture effects, tagging a texture with this option will unexpectedly eliminate these effects\.|
 |rtx.ignoreTextures|hash set||Textures on draw calls that should be ignored\.<br>Any draw call using an ignore texture will be skipped and not ray traced, useful for removing undesirable rasterized effects or geometry not suitable for ray tracing\.|
 |rtx.lightConverter|hash set|||
 |rtx.lightmapTextures|hash set||Textures used for lightmapping \(baked static lighting on surfaces\) in older games\.<br>These textures will be ignored when attempting to determine the desired textures from a draw to use for ray tracing\.|
