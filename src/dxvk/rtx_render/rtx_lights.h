@@ -92,7 +92,7 @@ struct RtSphereLight {
 
   void writeGPUData(unsigned char* data, std::size_t& offset) const;
 
-  bool operator==(const RtSphereLight& rhs) const;
+  bool operator==(const RtSphereLight& rhs) const = delete;
 
   Vector4 getColorAndIntensity() const;
 
@@ -135,7 +135,7 @@ struct RtRectLight {
 
   void writeGPUData(unsigned char* data, std::size_t& offset) const;
 
-  bool operator==(const RtRectLight& rhs) const;
+  bool operator==(const RtRectLight& rhs) const = delete;
 
   Vector4 getColorAndIntensity() const;
 
@@ -191,7 +191,7 @@ struct RtDiskLight {
 
   void writeGPUData(unsigned char* data, std::size_t& offset) const;
 
-  bool operator==(const RtDiskLight& rhs) const;
+  bool operator==(const RtDiskLight& rhs) const = delete;
 
   Vector4 getColorAndIntensity() const;
 
@@ -246,7 +246,7 @@ struct RtCylinderLight {
 
   void writeGPUData(unsigned char* data, std::size_t& offset) const;
 
-  bool operator==(const RtCylinderLight& rhs) const;
+  bool operator==(const RtCylinderLight& rhs) const = delete;
 
   Vector4 getColorAndIntensity() const;
 
@@ -292,7 +292,7 @@ struct RtDistantLight {
 
   void writeGPUData(unsigned char* data, std::size_t& offset) const;
 
-  bool operator==(const RtDistantLight& rhs) const;
+  bool operator==(const RtDistantLight& rhs) const = delete;
 
   Vector4 getColorAndIntensity() const;
 
@@ -358,7 +358,7 @@ struct RtLight {
 
   RtLight& operator=(const RtLight& rtLight);
 
-  bool operator==(const RtLight& rhs) const;
+  bool operator==(const RtLight& rhs) const = delete;
 
   Vector4 getColorAndIntensity() const;
 
