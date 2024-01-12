@@ -88,6 +88,15 @@ namespace dxvk {
     materialData.textureAlphaOperation = convertTextureOp(d3d9State.textureStages[stageIdx][DXVK_TSS_ALPHAOP]);
     materialData.textureAlphaArg1Source = convertTextureArg(d3d9State.textureStages[stageIdx][DXVK_TSS_ALPHAARG1], materialData.diffuseColorSource, materialData.specularColorSource);
     materialData.textureAlphaArg2Source = convertTextureArg(d3d9State.textureStages[stageIdx][DXVK_TSS_ALPHAARG2], materialData.diffuseColorSource, materialData.specularColorSource);
+    if (!useStageTextureFactorBlending) {
+      if (materialData.textureAlphaArg1Source == RtTextureArgSource::TFactor) {
+        materialData.textureAlphaArg1Source = RtTextureArgSource::None;
+      }
+      if (materialData.textureAlphaArg2Source == RtTextureArgSource::TFactor) {
+        materialData.textureAlphaArg2Source = RtTextureArgSource::None;
+      }
+    }
+
     materialData.isTextureFactorBlend = useMultipleStageTextureFactorBlending;
 
     const DWORD texcoordIndex = d3d9State.textureStages[stageIdx][DXVK_TSS_TEXCOORDINDEX];
