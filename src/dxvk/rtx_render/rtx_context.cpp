@@ -347,8 +347,6 @@ namespace dxvk {
 
       m_execBarriers.recordCommands(m_cmd);
 
-      flushCommandList();
-
       ScopedGpuProfileZone(this, "InjectRTX");
 
       // Signal Reflex rendering start
