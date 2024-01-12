@@ -830,11 +830,14 @@ namespace dxvk {
       memset(&texcoordIndexToStage[0], kInvalidStage, sizeof(texcoordIndexToStage));
       for (uint32_t stage = 0; stage < caps::TextureStageCount; stage++) {
         auto isTextureFactorBlendingEnabled = [](const auto& textureStageStates) -> bool {
+          const auto colorOp = textureStageStates[DXVK_TSS_COLOROP];
+          const auto alphaOp = textureStageStates[DXVK_TSS_ALPHAOP];
           return (textureStageStates[DXVK_TSS_COLORARG1] == D3DTA_TFACTOR ||
-                  textureStageStates[DXVK_TSS_COLORARG2] == D3DTA_TFACTOR) &&
-                 (textureStageStates[DXVK_TSS_COLOROP] == D3DTOP_MODULATE   ||
-                  textureStageStates[DXVK_TSS_COLOROP] == D3DTOP_MODULATE2X ||
-                  textureStageStates[DXVK_TSS_COLOROP] == D3DTOP_MODULATE4X);
+                  textureStageStates[DXVK_TSS_COLORARG2] == D3DTA_TFACTOR ||
+                  textureStageStates[DXVK_TSS_ALPHAARG1] == D3DTA_TFACTOR ||
+                  textureStageStates[DXVK_TSS_ALPHAARG2] == D3DTA_TFACTOR) &&
+                 (colorOp == D3DTOP_MODULATE || colorOp == D3DTOP_MODULATE2X || colorOp == D3DTOP_MODULATE4X ||
+                  alphaOp == D3DTOP_MODULATE || alphaOp == D3DTOP_MODULATE2X || alphaOp == D3DTOP_MODULATE4X);
         };
 
         // Support texture factor blending besides the first stage. Currently, we only support 1 additional stage tFactor blending.
