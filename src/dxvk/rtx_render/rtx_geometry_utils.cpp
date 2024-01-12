@@ -157,8 +157,8 @@ namespace dxvk {
   }
 
   void RtxGeometryUtils::dispatchSkinning(const DrawCallState& drawCallState,
-                                          const RaytraceGeometry& geo) const {
-    const Rc<DxvkContext> ctx = m_skinningContext;
+                                          const RaytraceGeometry& geo) {
+    const Rc<DxvkContext>& ctx = m_skinningContext;
     // Create command list for the initial skinning dispatch (e.g. The first frame we get skinning mesh draw calls)
     if (ctx->getCommandList() == nullptr) {
       ctx->beginRecording(ctx->getDevice()->createCommandList());
@@ -210,7 +210,7 @@ namespace dxvk {
 
       DxvkBufferSlice cb = m_pCbData->alloc(alignment, sizeof(SkinningArgs));
       memcpy(cb.mapPtr(0), &params, sizeof(SkinningArgs));
-      m_skinningContext->getCommandList()->trackResource<DxvkAccess::Write>(cb.buffer());
+      ctx->getCommandList()->trackResource<DxvkAccess::Write>(cb.buffer());
 
       ctx->bindResourceBuffer(BINDING_SKINNING_CONSTANTS, cb);
       ctx->bindResourceBuffer(BINDING_POSITION_OUTPUT, geo.positionBuffer);
@@ -226,7 +226,7 @@ namespace dxvk {
 
       const VkExtent3D workgroups = util::computeBlockCount(VkExtent3D { params.numVertices, 1, 1 }, VkExtent3D { 128, 1, 1 });
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
-      m_skinningContext->getCommandList()->trackResource<DxvkAccess::Read>(cb.buffer());
+      ctx->getCommandList()->trackResource<DxvkAccess::Read>(cb.buffer());
     } else {
       const float* srcPosition = reinterpret_cast<float*>(drawCallState.getGeometryData().positionBuffer.mapPtr(0));
       const float* srcNormal = reinterpret_cast<float*>(drawCallState.getGeometryData().normalBuffer.mapPtr(0));
@@ -249,6 +249,7 @@ namespace dxvk {
         ctx->writeToBuffer(geo.normalBuffer.buffer(), geo.normalBuffer.offsetFromSlice() + idx * geo.normalBuffer.stride(), sizeof(dstNormal), &dstNormal[0], true);
       }
     }
+    ++m_skinningCommands;
   }
 
   void RtxGeometryUtils::dispatchViewModelCorrection(

@@ -515,14 +515,10 @@ namespace dxvk {
     }
 
     if (triggerRtxInjection) {
-      const auto currentReflexFrameId = GetReflexFrameId();
-
+      // Bind all resources required for this drawcall to context first (i.e. render targets)
       m_parent->PrepareDraw(drawContext.PrimitiveType);
-      m_parent->EmitCs([currentReflexFrameId](DxvkContext* ctx) {
-        static_cast<RtxContext*>(ctx)->injectRTX(currentReflexFrameId);
-      });
 
-      m_parent->FlushCsChunk();
+      triggerInjectRTX();
 
       m_rtxInjectTriggered = true;
       return { true, false };
@@ -641,6 +637,16 @@ namespace dxvk {
       m_activeDrawCallState.testCategoryFlags(CATEGORIES_REQUIRE_DRAW_CALL);
 
     return { preserveOriginalDraw, true };
+  }
+
+  void D3D9Rtx::triggerInjectRTX() {
+    // Flush any pending game and RTX work
+    m_parent->Flush();
+
+    // Send command to inject RTX
+    m_parent->EmitCs([cReflexFrameId = GetReflexFrameId()](DxvkContext* ctx) {
+      static_cast<RtxContext*>(ctx)->injectRTX(cReflexFrameId);
+    });
   }
 
   void D3D9Rtx::CommitGeometryToRT(const DrawContext& drawContext) {
