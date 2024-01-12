@@ -244,7 +244,10 @@ namespace dxvk {
     bool processTextures();
 
     PrepareDrawType internalPrepareDraw(const IndexContext& indexContext, const VertexContext vertexContext[caps::MaxStreams], const DrawContext& drawContext);
-    
+
+    void triggerInjectRTX();
+
+
     struct DrawCallType {
       RtxGeometryStatus status;
       bool triggerRtxInjection;
