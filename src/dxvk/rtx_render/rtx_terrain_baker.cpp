@@ -577,9 +577,10 @@ namespace dxvk {
       0.0f,  // opaqueMaterialDefaults.subsurfaceMeasurementDistance
       Vector3(),  // opaqueMaterialDefaults.subsurfaceSingleScatteringAlbedo
       0.0f, // opaqueMaterialDefaults.subsurfaceVolumetricAnisotropy
-      lss::Mdl::Filter::Nearest,
-      lss::Mdl::WrapMode::Repeat, // U
-      lss::Mdl::WrapMode::Repeat  // V
+      // NOTE: The terrain defines it's own sampler, and these are the modes it uses.
+      lss::Mdl::Filter::Linear,
+      lss::Mdl::WrapMode::Clamp, // U
+      lss::Mdl::WrapMode::Clamp  // V
     ));  
 
     m_hasInitializedMaterialDataThisFrame = true;
