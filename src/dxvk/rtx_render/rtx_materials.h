@@ -1677,14 +1677,6 @@ struct MaterialData {
   }
 #undef P_SAMPLER_INFO
 
-  void setReplacement() {
-    m_isReplacement = true;
-  }
-
-  bool isReplacement() const {
-    return m_isReplacement;
-  }
-
 private:
   // Type-specific Material Data Information
   bool m_ignored = false;
@@ -1696,8 +1688,6 @@ private:
     TranslucentMaterialData m_translucentMaterialData;
     RayPortalMaterialData m_rayPortalMaterialData;
   };
-  
-  bool m_isReplacement = false;
 };
 
 enum class HighlightColor {
