@@ -69,7 +69,8 @@ namespace dxvk {
           DWORD                  BehaviorFlags,
           Rc<DxvkDevice>         dxvkDevice,
 // NV-DXVK start: external swapchain
-          bool                   WithExternalSwapchain)
+          bool                   WithExternalSwapchain,
+          bool                   WithDrawCallConversion)
 // NV-DXVK end
     : m_parent         ( pParent )
     , m_deviceType     ( DeviceType )
@@ -86,7 +87,7 @@ namespace dxvk {
     // NV-DXVK start: unbound light indices
     , m_state          ( Direct3DState9 { D3D9CapturableState{ static_cast<uint32_t>(std::max(m_d3d9Options.maxEnabledLights, 0)) } } )
     // NV-DXVK end
-    , m_rtx            ( this )
+    , m_rtx            ( this, WithDrawCallConversion)
 // NV-DXVK start: external API
     , m_withExternalSwapchain { WithExternalSwapchain } {
 // NV-DXVK end
