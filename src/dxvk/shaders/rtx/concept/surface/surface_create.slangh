@@ -148,6 +148,8 @@ Surface surfaceCreate(MemorySurface memorySurface)
   // Note: 8 bits free here in the texture spritesheet data.
 
   surface.decalSortOrder = memorySurface.data15.x & 0xFF;
+  
+  surface.objectPickingValue = memorySurface.data1.y;
 
   return surface;
 }

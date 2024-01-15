@@ -531,10 +531,11 @@ namespace dxvk {
     const bool isSupported = isDDS;
 
     if (!isSupported) {
+      const char* message = "Unsupported image file format, use the RTX-Remix toolkit and ingest the following asset: ";
       if (RtxOptions::Automation::suppressAssetLoadingErrors()) {
-        Logger::warn(str::format("Unsupported image file format, please convert to DDS using Remix Export: ", filename));
+        Logger::warn(str::format(message, filename));
       } else {
-        Logger::err(str::format("Unsupported image file format, please convert to DDS using Remix Export: ", filename));
+        Logger::err(str::format(message, filename));
       }
       return nullptr;
     }
