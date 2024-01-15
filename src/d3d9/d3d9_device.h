@@ -117,7 +117,8 @@ namespace dxvk {
             DWORD                  BehaviorFlags,
             Rc<DxvkDevice>         dxvkDevice,
 // NV-DXVK start: external API
-            bool                   WithExternalSwapchain);
+            bool                   WithExternalSwapchain,
+            bool                   WithDrawCallConversion);
 // NV-DXVK end
 
     ~D3D9DeviceEx();

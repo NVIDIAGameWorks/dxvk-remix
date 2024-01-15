@@ -20,7 +20,7 @@ namespace dxvk {
   struct D3D9Rtx {
     friend class ImGUI; // <-- we want to modify these values directly.
 
-    D3D9Rtx(D3D9DeviceEx* d3d9Device);
+    D3D9Rtx(D3D9DeviceEx* d3d9Device, bool enableDrawCallConversion = true);
 
     RTX_OPTION("rtx", bool, orthographicIsUI, true, "When enabled, draw calls that are orthographic will be considered as UI.");
     RTX_OPTION("rtx", bool, useVertexCapture, true, "When enabled, injects code into the original vertex shader to capture final shaded vertex positions.  Is useful for games using simple vertex shaders, that still also set the fixed function transform matrices.");
@@ -175,7 +175,8 @@ namespace dxvk {
     };
 
     inline static const uint32_t kMaxConcurrentDraws = 6 * 1024; // some games issuing >3000 draw calls per frame...  account for some consumer thread lag with x2
-    WorkerThreadPool<kMaxConcurrentDraws> m_gpeWorkers;
+    using GeometryProcessor = WorkerThreadPool<kMaxConcurrentDraws>;
+    const std::unique_ptr<GeometryProcessor> m_pGeometryWorkers;
     AtomicQueue<DrawCallState, kMaxConcurrentDraws> m_drawCallStateQueue;
 
     DrawCallState m_activeDrawCallState;
@@ -197,6 +198,7 @@ namespace dxvk {
     uint32_t m_stagedBonesCount = 0;
     uint32_t m_maxBone = 0;
 
+    const bool m_enableDrawCallConversion;
     bool m_rtxInjectTriggered = false;
     bool m_forceGeometryCopy = false;
     DWORD m_texcoordIndex = 0;
