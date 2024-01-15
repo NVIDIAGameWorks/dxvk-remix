@@ -66,7 +66,7 @@ namespace dxvk {
       VkDescriptorSet bindlessDescSet = VK_NULL_HANDLE;
 
       void createLayout(const VkDescriptorType type);
-      void updateDescriptors(VkWriteDescriptorSet& set);
+      void updateDescriptors(VkWriteDescriptorSet set);
 
     private:
       const Rc<vk::DeviceFn> vkd() const;
@@ -92,5 +92,8 @@ namespace dxvk {
     }
 
     void createGlobalBindlessDescPool();
+
+    template<VkDescriptorType Type, typename T, typename U>
+    void createDescriptorSet(const Rc<DxvkContext>& ctx, const std::vector<U>& engineObjects, const T& dummyDescriptor);
   };
 } // namespace dxvk 
