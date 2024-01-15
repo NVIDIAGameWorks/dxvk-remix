@@ -43,7 +43,8 @@ namespace dxvk {
   HRESULT CreateD3D9(
           bool           Extended,
           IDirect3D9Ex** ppDirect3D9Ex,
-          bool           WithExternalSwapchain);
+          bool           WithExternalSwapchain,
+          bool           WithDrawCallConversion);
 
   extern bool g_allowSrgbConversionForOutput;
 }
@@ -944,7 +945,7 @@ namespace {
       return REMIXAPI_ERROR_CODE_ALREADY_EXISTS;
     }
     IDirect3D9Ex* d3d9ex = nullptr;
-    auto hr = dxvk::CreateD3D9(true, &d3d9ex, true);
+    auto hr = dxvk::CreateD3D9(true, &d3d9ex, true, false);
     if (FAILED(hr) || !d3d9ex) {
       return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
     }

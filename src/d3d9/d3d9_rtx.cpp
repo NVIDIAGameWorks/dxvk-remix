@@ -23,10 +23,11 @@ namespace dxvk {
   #define CATEGORIES_REQUIRE_DRAW_CALL     InstanceCategories::Sky, InstanceCategories::Terrain
   #define CATEGORIES_REQUIRE_GEOMETRY_COPY InstanceCategories::Terrain, InstanceCategories::WorldUI
 
-  D3D9Rtx::D3D9Rtx(D3D9DeviceEx* d3d9Device)
+  D3D9Rtx::D3D9Rtx(D3D9DeviceEx* d3d9Device, bool enableDrawCallConversion)
     : m_rtStagingData(d3d9Device->GetDXVKDevice(), (VkMemoryPropertyFlagBits) (VK_MEMORY_PROPERTY_HOST_CACHED_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT))
     , m_parent(d3d9Device)
-    , m_gpeWorkers(popcnt_uint8(D3D9Rtx::kAllThreads), "geometry-processing") {
+    , m_enableDrawCallConversion(enableDrawCallConversion)
+    , m_pGeometryWorkers(enableDrawCallConversion ? std::make_unique<GeometryProcessor>(popcnt_uint8(D3D9Rtx::kAllThreads), "geometry-processing") : nullptr) {
 
     // Add space for 256 objects skinned with 256 bones each.
     m_stagedBones.resize(256 * 256);
@@ -756,7 +757,7 @@ namespace dxvk {
     memcpy(boneMatrices, d3d9State().transforms.data() + startBoneTransform, sizeof(Matrix4)*(maxBone + 1));
     m_stagedBonesCount += maxBone + 1;
 
-    return m_gpeWorkers.Schedule([boneMatrices, blendIndices, numBonesPerVertex, vertexCount]()->SkinningData {
+    return m_pGeometryWorkers->Schedule([boneMatrices, blendIndices, numBonesPerVertex, vertexCount]()->SkinningData {
       ScopedCpuProfileZone();
       uint32_t numBones = numBonesPerVertex;
 
@@ -983,7 +984,7 @@ namespace dxvk {
   }
 
   D3D9Rtx::PrepareDrawType D3D9Rtx::PrepareDrawGeometryForRT(const bool indexed, const DrawContext& context) {
-    if (!RtxOptions::Get()->enableRaytracing())
+    if (!RtxOptions::Get()->enableRaytracing() || !m_enableDrawCallConversion)
       return { true, false };
 
     m_parent->PrepareTextures();
@@ -1030,7 +1031,7 @@ namespace dxvk {
                                                                const uint32_t vertexSize,
                                                                const uint32_t vertexStride,
                                                                const DrawContext& drawContext) {
-    if (!RtxOptions::Get()->enableRaytracing())                
+    if (!RtxOptions::Get()->enableRaytracing() || !m_enableDrawCallConversion)
       return { true, false };
 
     m_parent->PrepareTextures();
