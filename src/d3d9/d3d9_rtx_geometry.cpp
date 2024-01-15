@@ -183,7 +183,7 @@ namespace dxvk {
       vertexLayoutHash = hashVertexLayout(geoData);
     }
 
-    return m_gpeWorkers.Schedule([vertexRegions, indexBufferRef = indexBufferRef.ptr(),
+    return m_pGeometryWorkers->Schedule([vertexRegions, indexBufferRef = indexBufferRef.ptr(),
                                  pIndexData, indexStride, indexDataSize, indexCount,
                                  maxIndexValue, vertexShaderHash, geometryDescriptorHash,
                                  vertexLayoutHash]() -> GeometryHashes {
@@ -235,7 +235,7 @@ namespace dxvk {
     auto vertexBuffer = geoData.positionBuffer.buffer().ptr();
     vertexBuffer->incRef();
 
-    return m_gpeWorkers.Schedule([pVertexData, vertexCount, vertexStride, vertexBuffer]()->AxisAlignedBoundingBox {
+    return m_pGeometryWorkers->Schedule([pVertexData, vertexCount, vertexStride, vertexBuffer]()->AxisAlignedBoundingBox {
       ScopedCpuProfileZone();
 
       __m128 minPos = _mm_set_ps1(FLT_MAX);
