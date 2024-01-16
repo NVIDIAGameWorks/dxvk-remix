@@ -26,6 +26,24 @@
 #include "rtx_terrain_baker.h"
 
 namespace dxvk {
+  uint32_t RasterGeometry::calculatePrimitiveCount() const {
+    const uint32_t elementCount = usesIndices() ? indexCount : vertexCount;
+    switch (topology) {
+    case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST:
+      return elementCount / 3;
+
+    case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP:
+    case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN:
+      return elementCount >= 3
+        ? elementCount - 2
+        : 0;
+
+    default:
+      assert(!"Unsupported primitive topology");
+      return UINT32_MAX;
+    }
+  }
+
   bool DrawCallState::finalizePendingFutures(const RtCamera* pLastCamera) {
     // Geometry hashes are vital, and cannot be disabled, so its important we get valid data (hence the return type)
     const bool valid = finalizeGeometryHashes();

@@ -193,6 +193,8 @@ struct RasterGeometry {
     h = XXH64(&indexType, sizeof(indexType), h);
     return h;
   }
+  
+  uint32_t calculatePrimitiveCount() const;
 
   bool usesIndices() const {
     return indexBuffer.defined();
