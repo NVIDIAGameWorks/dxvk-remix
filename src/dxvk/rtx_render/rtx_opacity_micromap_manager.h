@@ -107,7 +107,9 @@ namespace dxvk {
       // Parameterized to <1% FPS overhead on 4090
       // Baking: 2 mil ~ 0.15 ms
       // Building: 10 mil ~ 0.04 ms
-      RTX_OPTION("rtx.opacityMicromap.building", int, maxMicroTrianglesToBakeMillionPerSecond, 60 * 1, "Max Micro Triangles to bake [Million/Second].");
+      RTX_OPTION("rtx.opacityMicromap.building", int, maxMicroTrianglesToBakeMillionPerSecond, 60 * 1, 
+                 "Max Micro Triangles to bake [Million/Second].\n"
+                 "The actual number of issued micro triangles also depends on \"costPerTexelTapPerMicroTriangleBudget\" option.");
       RTX_OPTION("rtx.opacityMicromap.building", int, maxMicroTrianglesToBuildMillionPerSecond, 60 * 5, "Max Micro Triangles to build [Million/Second].");
 
       // Disabled for now as camera cuts occur even on non-camera movements, i.e. when
@@ -124,12 +126,12 @@ namespace dxvk {
         friend class OpacityMicromapManager;
 
         RTX_OPTION("rtx.opacityMicromap.building.conservativeEstimation", bool, enable, true, "Enables Conservative Estimation of micro triangle opacities.");
-        // Sets a max number of texel taps per microtriangle. Optimally, a mictriangle resolution should be similar to that of the opacity
-        // texture, but, currently, a global subdivision level is used instead for implementation simplicity and, thus, a microtriangle can overlap multiple texels.
-        // To handle this case we allow Opacity Micromap baking shader to do N taps per microtriangle to resolve the opacity state. 
+        // Sets a max number of texel taps per micro triangle. Optimally, a mictriangle resolution should be similar to that of the opacity
+        // texture, but, currently, a global subdivision level is used instead for implementation simplicity and, thus, a micro triangle can overlap multiple texels.
+        // To handle this case we allow Opacity Micromap baking shader to do N taps per micro triangle to resolve the opacity state. 
         // This value must not be too high, however, as it can lead to threads in the baking shader taking too long and causing timeouts. 
-        // 512 taps has been found to cause a timeout. Also if a microtriangle has much smaller resolution that the source texture, there's a higher chance
-        // of the microtriangles covering both fully opaque and fully transparent texels, and being classified in unknown opaque state which eliminates Opacity Micromap
+        // 512 taps has been found to cause a timeout. Also if a micro triangle has much smaller resolution that the source texture, there's a higher chance
+        // of the micro triangles covering both fully opaque and fully transparent texels, and being classified in unknown opaque state which eliminates Opacity Micromap
         // performance benefits. Therefore allowing for high taps baking scenarios has a diminishing return.
         // FutureWork: perform a configuration optimization on host or GPU processing texture coordinates for each triangle to determine an appropriate Opacity Micromap resolution
         // per triangle. 
@@ -318,7 +320,7 @@ namespace dxvk {
     };
 
     explicit OpacityMicromapManager(DxvkDevice* device);
-    ~OpacityMicromapManager() { }
+    ~OpacityMicromapManager();
 
     void onDestroy();
 
@@ -406,6 +408,7 @@ namespace dxvk {
     bool insertToUnprocessedList(const OmmRequest& ommRequest, std::list<XXH64_hash_t>::iterator& cacheStateListIter);
     void destroyOmmData(OpacityMicromapCache::iterator& ommCacheIterator, bool destroyParentInstanceOmmRequestContainer = true);
     void destroyOmmData(XXH64_hash_t ommSrcHash);
+    static OpacityMicromapInstanceData& getOmmInstanceData(const RtInstance& instance);
 
     // Destroys references to an instance, but retains associated cached baked/built OMM data that doesn't depend on lifetime of the instance
     void destroyInstance(const RtInstance& instance, bool forceDestroy = false);
