@@ -136,6 +136,7 @@ namespace dxvk {
     setCategory(InstanceCategories::IgnoreAntiCulling, lookupHash(RtxOptions::antiCullingTextures(), textureHash));
     setCategory(InstanceCategories::IgnoreMotionBlur, lookupHash(RtxOptions::motionBlurMaskOutTextures(), textureHash));
     setCategory(InstanceCategories::IgnoreOpacityMicromap, lookupHash(RtxOptions::opacityMicromapIgnoreTextures(), textureHash));
+    setCategory(InstanceCategories::IgnoreBakedLighting, lookupHash(RtxOptions::ignoreBakedLightingTextures(), textureHash));
 
     setCategory(InstanceCategories::Hidden, lookupHash(RtxOptions::hideInstanceTextures(), textureHash));
 

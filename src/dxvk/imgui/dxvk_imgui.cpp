@@ -160,7 +160,7 @@ namespace dxvk {
     {"playermodeltextures", "Player Model Texture (optional)", &RtxOptions::Get()->playerModelTexturesObject()},
     {"playermodelbodytextures", "Player Model Body Texture (optional)", &RtxOptions::Get()->playerModelBodyTexturesObject()},
     {"opacitymicromapignoretextures", "Opacity Micromap Ignore Texture (optional)", &RtxOptions::Get()->opacityMicromapIgnoreTexturesObject()},
-    {"ignoreTextureFactorBlendingTextures","Ignore Texture Factor Blending Textures (optional)", &RtxOptions::Get()->ignoreTextureFactorBlendingTexturesObject()}
+    {"ignorebakedlightingtextures","Ignore Baked Lighting Textures (optional)", &RtxOptions::Get()->ignoreBakedLightingTexturesObject()}
   };
 
   ImGui::ComboWithKey<RenderPassGBufferRaytraceMode> renderPassGBufferRaytraceModeCombo {
@@ -1992,9 +1992,9 @@ namespace dxvk {
           ImGui::Indent();
         }
 
-        if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Ignore Texture Factor Blending Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->ignoreTextureFactorBlendingTexturesDescription())) {
+        if (IMGUI_ADD_TOOLTIP(ImGui::CollapsingHeader("Ignore Baked Lighting Textures (optional)", collapsingHeaderClosedFlags), RtxOptions::Get()->ignoreBakedLightingTexturesDescription())) {
           ImGui::Unindent();
-          showTextureSelectionGrid(ctx, "ignoreTextureFactorBlendingTextures", numThumbnailsPerRow, thumbnailSize);
+          showTextureSelectionGrid(ctx, "ignorebakedlightingtextures", numThumbnailsPerRow, thumbnailSize);
           ImGui::Indent();
         }
         ImGui::Unindent();
