@@ -410,6 +410,7 @@ enum class InstanceCategories : uint32_t {
   AnimatedWater,
   ThirdPersonPlayerModel,
   ThirdPersonPlayerBody,
+  IgnoreBakedLighting,
 
   Count,
 };

@@ -419,6 +419,19 @@ namespace dxvk {
       }
     }
 
+    // Update color buffer in BVH with DrawCallState
+    // The user can disable/enable color buffer for specific materials, so we manually sync the DrawCallState and BVH here to keep the color buffer in BVH updated.
+    // Note, we don't setup kUpdateBVH because it's too waste to update all buffers if only the color buffer needs to be updated.
+    if (output.color0Buffer.defined() && !drawCallState.geometryData.color0Buffer.defined()) {
+      // Remove the color buffer in BVH if the color buffer from drawcall is removed by ignoreBakedLighting
+      output.color0Buffer = RaytraceBuffer();
+    } else if (!output.color0Buffer.defined() && drawCallState.geometryData.color0Buffer.defined()) {
+      // Write the color buffer back to BVH if the color buffer is enabled again
+      const DxvkBufferSlice slice = DxvkBufferSlice(output.historyBuffer[0]);
+      const auto& colorBuffer = drawCallState.geometryData.color0Buffer;
+      output.color0Buffer = RaytraceBuffer(slice, colorBuffer.offsetFromSlice(), colorBuffer.stride(), colorBuffer.vertexFormat());
+    }
+
     // Update buffers in the cache
     updateBufferCache(output);
 
