@@ -98,39 +98,53 @@ namespace dxvk {
 
   // Makes a copy of an instance
   RtInstance::RtInstance(const RtInstance& src, uint64_t id, uint32_t instanceVectorId)
-    : m_id(id)
+    : surface(src.surface)
+    , m_id(id)
     , m_instanceVectorId(instanceVectorId)
-    , surface(src.surface)
     , m_seenCameraTypes(src.m_seenCameraTypes)
     , m_materialType(src.m_materialType)
     , m_albedoOpacityTextureIndex(src.m_albedoOpacityTextureIndex)
+    , m_samplerIndex(src.m_samplerIndex)
     , m_secondaryOpacityTextureIndex(src.m_secondaryOpacityTextureIndex)
+    , m_secondarySamplerIndex(src.m_secondarySamplerIndex)
     , m_isAnimated(src.m_isAnimated)
     , m_opacityMicromapInstanceData(src.m_opacityMicromapInstanceData)
     , m_surfaceIndex(src.m_surfaceIndex)
     , m_previousSurfaceIndex(src.m_previousSurfaceIndex)
     , m_isHidden(src.m_isHidden)
-    , m_isUnordered(src.m_isUnordered)
     , m_isPlayerModel(src.m_isPlayerModel)
+    , m_isWorldSpaceUI(src.m_isWorldSpaceUI)
+    , m_isUnordered(src.m_isUnordered)
+    , m_isObjectToWorldMirrored(src.m_isObjectToWorldMirrored)
     , m_linkedBlas(src.m_linkedBlas)
     , m_materialHash(src.m_materialHash)
     , m_materialDataHash(src.m_materialDataHash)
     , m_texcoordHash(src.m_texcoordHash)
+    , m_indexHash(src.m_indexHash)
     , m_vkInstance(src.m_vkInstance)
     , m_geometryFlags(src.m_geometryFlags)
-    , m_objectToWorldMirrored(src.m_objectToWorldMirrored)
     , m_firstBillboard(src.m_firstBillboard)
-    , m_billboardCount(src.m_billboardCount) {
+    , m_billboardCount(src.m_billboardCount)
+    , m_categoryFlags(src.m_categoryFlags) {
     // Members for which state carry over is intentionally skipped
     /*
        m_isMarkedForGC
+       m_isUnlinkedForGC
        m_isInsideFrustum
        m_frameLastUpdated
        m_frameCreated
        m_isCreatedByRenderer
-       buildGeometry
-       buildRange
+       buildGeometries
+       buildRanges
+       billboardIndices
+       indexOffsets
      */
+    // Ensure the copy ctor copies all needed members when size changes, and update the object size check.
+    // Note: The object has a different size on Debug builds. 
+    //       Checking the non-Debug flavors is good enough for the sake of convenience of tracking just a single size.
+#if defined(DEBUG_OPTIMIZED) || defined(NDEBUG)
+    static_assert(sizeof(RtInstance) == 696);
+#endif
   }
 
   void RtInstance::setBlas(BlasEntry& blas) {
@@ -1078,7 +1092,7 @@ namespace dxvk {
     //     is inverted. Because the facing is determined in object space, an instance transform does not change the winding,
     //     but a geometry transform does.
     // https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkGeometryInstanceFlagBitsNV.html 
-    currentInstance.m_objectToWorldMirrored = isMirrorTransform(transform);
+    currentInstance.m_isObjectToWorldMirrored = isMirrorTransform(transform);
 
     bool billboardsGotGenerated = false;
     currentInstance.m_billboardCount = 0;
