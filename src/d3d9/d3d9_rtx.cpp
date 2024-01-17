@@ -250,8 +250,10 @@ namespace dxvk {
           targetBuffer = &geoData.texcoordBuffer;
         break;
       case D3DDECLUSAGE_COLOR:
-        if (element.UsageIndex == 0)
+        if (element.UsageIndex == 0 &&
+            !lookupHash(RtxOptions::ignoreBakedLightingTextures(), m_activeDrawCallState.materialData.colorTextures[0].getImageHash())) {
           targetBuffer = &geoData.color0Buffer;
+        }
         break;
       }
 
@@ -905,7 +907,7 @@ namespace dxvk {
 
         // Check if texture factor blending is enabled
         if (isCurrentStageTextureFactorBlendingEnabled &&
-            lookupHash(RtxOptions::ignoreTextureFactorBlendingTextures(), texHash)) {
+            lookupHash(RtxOptions::ignoreBakedLightingTextures(), texHash)) {
           useStageTextureFactorBlending = false;
           useMultipleStageTextureFactorBlending = false;
         }
