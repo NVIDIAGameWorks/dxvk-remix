@@ -545,6 +545,11 @@ namespace dxvk {
           blitImageHelper(this, srcImage, dstImage, VkFilter::VK_FILTER_NEAREST);
         }
 
+        // Log stats when an image is taken
+        if (captureScreenImage) {
+          getSceneManager().logStatistics();
+        }
+
         getSceneManager().onFrameEnd(this);
 
         rtOutput.onFrameEnd();

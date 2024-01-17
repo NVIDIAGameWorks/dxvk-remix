@@ -135,6 +135,7 @@ public:
   ~SceneManager();
 
   void initialize(Rc<DxvkContext> ctx);
+  void logStatistics();
 
   void onDestroy();
 
