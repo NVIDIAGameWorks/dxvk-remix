@@ -54,6 +54,69 @@ namespace dxvk {
     return m_tables[type][currentIdx()]->bindlessDescSet;
   }
 
+  template<VkDescriptorType Type, typename T, typename U>
+  void BindlessResourceManager::createDescriptorSet(const Rc<DxvkContext>& ctx, const std::vector<U>& engineObjects, const T& dummyDescriptor) {
+    const size_t numDescriptors = std::max((size_t) 1, engineObjects.size()); // Must always leave 1 to have a valid binding set
+    assert(numDescriptors <= kMaxBindlessResources);
+
+    std::vector<T> descriptorInfos(numDescriptors);
+    descriptorInfos[0] = dummyDescriptor; // we set the first descriptor to be a dummy (size is always at least 1) and overwrite it if there are valid engine objects
+
+    uint32_t idx = 0;
+    for (auto&& engineObject : engineObjects) {
+      descriptorInfos[idx] = dummyDescriptor;
+
+      if constexpr (Type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE) {
+        DxvkImageView* imageView = engineObject.getImageView();
+        if (imageView != nullptr) {
+          descriptorInfos[idx].sampler = nullptr;
+          descriptorInfos[idx].imageView = imageView->handle();
+          descriptorInfos[idx].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+          ctx->getCommandList()->trackResource<DxvkAccess::Read>(imageView);
+        }
+      } else if constexpr (Type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) {
+        if (engineObject.defined()) {
+          descriptorInfos[idx] = engineObject.getDescriptor().buffer;
+          ctx->getCommandList()->trackResource<DxvkAccess::Read>(engineObject.buffer());
+        }
+      } else if constexpr (Type == VK_DESCRIPTOR_TYPE_SAMPLER) {
+        if (engineObject != nullptr) {
+          descriptorInfos[idx].sampler = engineObject->handle();
+          descriptorInfos[idx].imageView = nullptr;
+        }
+      } else {
+        static_assert(Type != VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE || Type != VK_DESCRIPTOR_TYPE_STORAGE_BUFFER || Type != VK_DESCRIPTOR_TYPE_SAMPLER, "Support for this descriptor type has not been implemented yet.");
+        return;
+      }
+
+      ++idx;
+    }
+
+    VkWriteDescriptorSet descWrites;
+    memset(&descWrites, 0, sizeof(descWrites));
+    descWrites.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descWrites.descriptorCount = numDescriptors;
+    descWrites.descriptorType = Type;
+
+    if constexpr (std::is_same_v<T, VkDescriptorImageInfo>) {
+      descWrites.pImageInfo = &descriptorInfos[0];
+    } else if constexpr (std::is_same_v<T, VkDescriptorBufferInfo>) {
+      descWrites.pBufferInfo = &descriptorInfos[0];
+    }
+
+    switch (Type) {
+    case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
+      m_tables[Table::Textures][currentIdx()]->updateDescriptors(descWrites);
+      break;
+    case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
+      m_tables[Table::Buffers][currentIdx()]->updateDescriptors(descWrites);
+      break;
+    case VK_DESCRIPTOR_TYPE_SAMPLER:
+      m_tables[Table::Samplers][currentIdx()]->updateDescriptors(descWrites);
+      break;
+    }
+  }
+
   void BindlessResourceManager::prepareSceneData(const Rc<DxvkContext> ctx, const std::vector<TextureRef>& rtTextures, const std::vector<RaytraceBuffer>& rtBuffers, const std::vector<Rc<DxvkSampler>>& samplers) {
     ScopedCpuProfileZone();
     if (m_frameLastUpdated == m_device->getCurrentFrameId()) {
@@ -64,111 +127,13 @@ namespace dxvk {
     // Increment
     m_globalBindlessDescSetIdx = nextIdx();
 
-    // Textures
-    {
-      std::vector<VkDescriptorImageInfo> imageInfo(rtTextures.size());
+    const VkDescriptorImageInfo dummyImage = m_device->getCommon()->dummyResources().imageViewDescriptor(VK_IMAGE_VIEW_TYPE_2D, true);
+    const VkDescriptorBufferInfo dummyBuffer = m_device->getCommon()->dummyResources().bufferDescriptor();
+    const VkDescriptorImageInfo dummySampler = m_device->getCommon()->dummyResources().samplerDescriptor();
 
-      uint32_t idx = 0;
-      for (auto&& texRef : rtTextures) {
-        DxvkImageView* imageView = texRef.getImageView();
-
-        if (imageView != nullptr) {
-          imageInfo[idx].sampler = nullptr;
-          imageInfo[idx].imageView = imageView->handle();
-          imageInfo[idx].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-          ctx->getCommandList()->trackResource<DxvkAccess::Read>(imageView);
-        } else {
-          imageInfo[idx] = m_device->getCommon()->dummyResources().imageViewDescriptor(VK_IMAGE_VIEW_TYPE_2D, true);
-        }
-
-        ++idx;
-      }
-
-      assert(idx <= kMaxBindlessResources);
-
-      if (idx > 0) {
-        VkWriteDescriptorSet descWrites;
-        descWrites.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descWrites.pNext = nullptr;
-        descWrites.dstSet = 0;//  This will be filled in by the BindlessTable 
-        descWrites.dstBinding = 0;
-        descWrites.dstArrayElement = 0;
-        descWrites.descriptorCount = idx;
-        descWrites.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-        descWrites.pImageInfo = &imageInfo[0];
-        descWrites.pBufferInfo = nullptr;
-        descWrites.pTexelBufferView = nullptr;
-        m_tables[Table::Textures][currentIdx()]->updateDescriptors(descWrites);
-      }
-    }
-
-    // Buffers
-    {
-      uint32_t idx = 0;
-      std::vector<VkDescriptorBufferInfo> bufferInfo(rtBuffers.size());
-      for (auto&& bufRef : rtBuffers) {
-        if (bufRef.defined()) {
-          bufferInfo[idx] = bufRef.getDescriptor().buffer;
-          ctx->getCommandList()->trackResource<DxvkAccess::Read>(bufRef.buffer());
-        } else {
-          bufferInfo[idx] = m_device->getCommon()->dummyResources().bufferDescriptor();
-        }
-
-        ++idx;
-      }
-
-      assert(idx <= kMaxBindlessResources);
-
-      if (idx > 0) {
-        VkWriteDescriptorSet descWrites;
-        descWrites.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descWrites.pNext = nullptr;
-        descWrites.dstSet = 0;//  This will be filled in by the BindlessTable 
-        descWrites.dstBinding = 0;
-        descWrites.dstArrayElement = 0;
-        descWrites.descriptorCount = idx;
-        descWrites.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        descWrites.pImageInfo = nullptr;
-        descWrites.pBufferInfo = &bufferInfo[0];
-        descWrites.pTexelBufferView = nullptr;
-        m_tables[Table::Buffers][currentIdx()]->updateDescriptors(descWrites);
-      }
-    }
-
-    // Samplers
-    {
-      std::vector<VkDescriptorImageInfo> imageInfo(samplers.size());
-
-      uint32_t idx = 0;
-      for (auto&& sampler : samplers) {
-        if (sampler != nullptr) {
-          imageInfo[idx].sampler = sampler->handle();
-          imageInfo[idx].imageView = nullptr;
-          ctx->getCommandList()->trackResource<DxvkAccess::Read>(sampler);
-        } else {
-          imageInfo[idx] = m_device->getCommon()->dummyResources().samplerDescriptor();
-        }
-
-        ++idx;
-      }
-
-      assert(idx <= kMaxBindlessSamplers);
-
-      if (idx > 0) {
-        VkWriteDescriptorSet descWrites;
-        descWrites.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descWrites.pNext = nullptr;
-        descWrites.dstSet = 0;//  This will be filled in by the BindlessTable 
-        descWrites.dstBinding = 0;
-        descWrites.dstArrayElement = 0;
-        descWrites.descriptorCount = idx;
-        descWrites.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-        descWrites.pImageInfo = &imageInfo[0];
-        descWrites.pBufferInfo = nullptr;
-        descWrites.pTexelBufferView = nullptr;
-        m_tables[Table::Samplers][currentIdx()]->updateDescriptors(descWrites);
-      }
-    }
+    createDescriptorSet<VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE>(ctx, rtTextures, dummyImage);
+    createDescriptorSet<VK_DESCRIPTOR_TYPE_STORAGE_BUFFER>(ctx, rtBuffers, dummyBuffer);
+    createDescriptorSet<VK_DESCRIPTOR_TYPE_SAMPLER>(ctx, samplers, dummySampler);
 
     m_frameLastUpdated = m_device->getCurrentFrameId();
   }
@@ -212,7 +177,7 @@ namespace dxvk {
       throw DxvkError("BindlessTable: Failed to create descriptor set layout");
   }
 
-  void BindlessResourceManager::BindlessTable::updateDescriptors(VkWriteDescriptorSet& set) {
+  void BindlessResourceManager::BindlessTable::updateDescriptors(VkWriteDescriptorSet set) {
     if (bindlessDescSet == nullptr) {
       // Allocate the descriptor set
       bindlessDescSet = m_pManager->m_globalBindlessPool[m_pManager->currentIdx()]->alloc(layout, "bindless descriptor set");

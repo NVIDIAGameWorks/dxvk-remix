@@ -476,8 +476,6 @@ namespace dxvk {
         replacementMaterial.emplace(MaterialData(*pReplacementMaterial));
         // merge in the input material from game
         replacementMaterial->mergeLegacyMaterial(input.getMaterialData());
-        // mark material as replacement so we know how to handle sampler state
-        replacementMaterial->setReplacement();
         // bind as a material override for this draw
         overrideMaterialData = &replacementMaterial.value();
       }
@@ -525,7 +523,7 @@ namespace dxvk {
 
         if (overrideMaterialData == nullptr) {
           // Note: Color texture used as mask texture for the Ray Portal
-          rayPortalMaterialData.emplace(RayPortalMaterialData { input.getMaterialData().getColorTexture(), texture2, static_cast<uint8_t>(rayPortalTextureIndex), 1, 1, 0, 0.f,true, 1.f, 0, 0, 0 });
+          rayPortalMaterialData.emplace(RayPortalMaterialData { input.getMaterialData().getColorTexture(), texture2, static_cast<uint8_t>(rayPortalTextureIndex), 1, 1, 0, 0.f,true, 1.f, lss::Mdl::Filter::Linear, lss::Mdl::WrapMode::Repeat, lss::Mdl::WrapMode::Repeat });
 
           // Note: A bit dirty but since we use a pointer to the material data in processDrawCallState, we need a pointer to this locally created one on the
           // stack in a place that doesn't go out of scope without actually allocating any heap memory.
@@ -847,17 +845,15 @@ namespace dxvk {
     // Legacy and replacement materials should follow same filtering but due to lack of override capability per texture
     // legacy textures use original sampler to stay true to the original intent while replacements use more advanced filtering
     // for better quality by default.
-    Rc<DxvkSampler> originalSampler = drawCallState.getMaterialData().getSampler(); // convenience variable for debug
+    const Rc<DxvkSampler>& originalSampler = drawCallState.getMaterialData().getSampler(); // convenience variable for debug
     Rc<DxvkSampler> sampler = originalSampler;
     const bool isLegacyMaterial = (renderMaterialDataType == MaterialDataType::Legacy);
     // If the original sampler if valid and the new rendering material is not legacy type
     // go ahead with patching and maybe merging the sampler states
     if(originalSampler != nullptr && !isLegacyMaterial) {
       DxvkSamplerCreateInfo samplerInfo = originalSampler->info(); // Use sampler create info struct as convenience
-      // Only merge prior to patching if this is a replacement material
-      if(renderMaterialData.isReplacement()) { 
-        renderMaterialData.populateSamplerInfo(samplerInfo);
-      }
+      renderMaterialData.populateSamplerInfo(samplerInfo);
+
       sampler = patchSampler(samplerInfo.magFilter,
                              samplerInfo.addressModeU, samplerInfo.addressModeV, samplerInfo.addressModeW,
                              samplerInfo.borderColor);
