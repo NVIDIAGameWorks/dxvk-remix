@@ -116,6 +116,12 @@ namespace dxvk {
     textureManager.initialize(ctx);
   }
 
+  void SceneManager::logStatistics() {
+    if (m_opacityMicromapManager.get()) {
+      m_opacityMicromapManager->logStatistics();
+    }
+  }
+
   Vector3 SceneManager::getSceneUp() {
     return RtxOptions::Get()->zUp() ? Vector3(0.f, 0.f, 1.f) : Vector3(0.f, 1.f, 0.f);
   }
