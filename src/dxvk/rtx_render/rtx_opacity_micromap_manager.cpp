@@ -545,6 +545,19 @@ namespace dxvk {
     }
   }
 
+  void OpacityMicromapManager::logStatistics() const {
+    Logger::info(str::format(
+      "[RTX Opacity Micromap] Statistics:\n",
+      "\t# Bound/Requested OMMs: ", m_numBoundOMMs, "/", m_numRequestedOMMBindings, "\n",
+      "\t# Staged Requested Items: ", m_ommBuildRequestStatistics.size(), "\n",
+      "\t# Unprocessed Items: ", m_unprocessedList.size(), "\n",
+      "\t# Baked Items: ", m_bakedList.size(), "\n",
+      "\t# Built Items: ", m_builtList.size(), "\n",
+      "\t# Cache Items: ", m_ommCache.size(), "\n",
+      "\t# Black Listed Items: ", m_blackListedList.size(), "\n",
+      "\tVRAM usage/budget [MB]: ", m_memoryManager.getUsed() / (1024 * 1024), "/", m_memoryManager.getBudget() / (1024 * 1024)));
+  }
+
   bool OpacityMicromapManager::checkIsOpacityMicromapSupported(DxvkDevice& device) {
     bool isOpacityMicromapSupported = device.extensions().khrSynchronization2 &&
                                       device.extensions().extOpacityMicromap;

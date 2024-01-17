@@ -69,7 +69,7 @@ namespace dxvk {
     struct BuildRequests {
       friend class OpacityMicromapManager;
 
-      RTX_OPTION("rtx.opacityMicromap.buildRequests", bool, filtering, true, "Enables filtering of Opacity Micromap requests. Filtering reduces and slows down acceptance of Opacity Micromap requests to maximize resources to requests that are more likely to be reused across instances and frames.");
+      RTX_OPTION_ENV("rtx.opacityMicromap.buildRequests", bool, filtering, true, "RTX_OPACITY_MICROMAP_BUILD_REQUESTS_FILTERING", "Enables filtering of Opacity Micromap requests. Filtering reduces and slows down acceptance of Opacity Micromap requests to maximize resources to requests that are more likely to be reused across instances and frames.");
       RTX_OPTION("rtx.opacityMicromap.buildRequests", int, maxRequests, 5 * 1000,
                  "Max number of staged unique Opacity Micromap build requests.\n"
                  "Any further requests will simply be discarded until the number of staged requests decreases below this threshold.\n"
@@ -355,6 +355,7 @@ namespace dxvk {
     void clear();
 
     void showImguiSettings() const;
+    void logStatistics() const;
 
     static bool checkIsOpacityMicromapSupported(DxvkDevice& device);
 
