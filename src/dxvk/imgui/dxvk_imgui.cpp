@@ -1270,13 +1270,6 @@ namespace dxvk {
     auto common = ctx->getCommonObjects();
     std::vector<std::string> hudMessages;
 
-    if (common->getSceneManager().areReplacementsLoaded()) {
-      const std::string& exportStatus = common->getSceneManager().getReplacementStatus();
-      if (exportStatus != "Release Ready") {
-        hudMessages.emplace_back(str::format("Warning: Replacements are not production ready. Status: ", exportStatus));
-      }
-    }
-
     if(common->getSceneManager().areReplacementsLoading())
       hudMessages.emplace_back("Loading enhancements...");
 
