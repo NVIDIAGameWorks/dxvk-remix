@@ -52,7 +52,7 @@ public:
   uint64_t getId() const { return m_id; }
   const VkAccelerationStructureInstanceKHR& getVkInstance() const { return m_vkInstance; }
   VkAccelerationStructureInstanceKHR& getVkInstance() { return m_vkInstance; }
-  bool isObjectToWorldMirrored() const { return m_objectToWorldMirrored; }
+  bool isObjectToWorldMirrored() const { return m_isObjectToWorldMirrored; }
 
   BlasEntry* getBlas() const { return m_linkedBlas; }
   const XXH64_hash_t& getMaterialHash() const { return m_materialHash; }
@@ -169,7 +169,7 @@ private:
   bool m_isPlayerModel = false;
   bool m_isWorldSpaceUI = false;
   bool m_isUnordered = false;
-  bool m_objectToWorldMirrored = false;
+  bool m_isObjectToWorldMirrored = false;
   bool m_isCreatedByRenderer = false;
   BlasEntry* m_linkedBlas = nullptr;
   XXH64_hash_t m_materialHash = kEmptyHash;

@@ -87,6 +87,9 @@ endif
 if get_option('buildtype') == 'release'
   add_project_arguments('/DNDEBUG', language : 'cpp')
   # note: this define depends on the build type, so it's not included in vs_project_defines
+elif get_option('buildtype') == 'debugoptimized'
+  add_project_arguments('/DDEBUG_OPTIMIZED', language : 'cpp')
+  # note: this define depends on the build type, so it's not included in vs_project_defines
 endif
 
 if dxvk_is_ninja
