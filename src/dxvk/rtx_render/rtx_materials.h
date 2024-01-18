@@ -1690,9 +1690,4 @@ private:
   };
 };
 
-enum class HighlightColor {
-  World,
-  UI,
-};
-
 } // namespace dxvk

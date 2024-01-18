@@ -109,7 +109,6 @@ void geometryResolverOutputMiss(
     PrimarySurfaceFlags[pixelCoordinate] = 0;
     PrimaryDisocclusionThresholdMix[pixelCoordinate] = 0;
     PrimaryDepth[pixelCoordinate] = cb.clearColorDepth;
-    PrimaryObjectPicking[pixelCoordinate] = cb.clearColorPicking;
 
     // Note: Always write to stochastic buffers in the primary surface case.
     writeMissToGBuffer(
@@ -324,12 +323,6 @@ void geometryResolverVertexOutputDebugView(
   bool useAlternateDisocclusionThreshold)
 {
   const uint8_t materialType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
-
-  if (cb.enableTexturePicking != 0)
-  {
-    // Write material index for the texture selection
-    GpuPrint::write(u16vec2(pixelCoordinate), float4(uintBitsToFloat(surface.surfaceMaterialIndex), 0.0, 0.0, 0.0));
-  }
 
   switch(cb.debugView)
   {
@@ -1016,6 +1009,7 @@ void geometryResolverVertex(
     resolveMode, unorderedResolveRay,
     unorderedRayMask, geometryResolverState.portalSpace,
     /* useIntersectionBillboards = */ cb.enableBillboardOrientationCorrection && (geometryResolverState.directionAltered || cb.useIntersectionBillboardsOnPrimaryRays),
+    geometryResolverState.pixelCoordinate,
     geometryResolverState.accumulatedVectorTransform, geometryResolverState.accumulatedHitDistance,
     radianceAttenuation, emissiveRadiance,
     numUnorderedInteractions, 
@@ -1093,6 +1087,20 @@ void geometryResolverVertex(
   if (rayInteractionHasHit(rayInteraction))
   {
     geometryResolverState.accumulatedHitDistance += geometryResolverState.segmentHitDistance;
+
+#ifndef GBUFFER_PSR
+    // Object picking for first resolveVertex hit
+    if (numUnorderedInteractions == 0 && cb.enableObjectPicking != 0)
+    {
+      // Write only if was OBJECT_PICKING_INVALID, i.e. write the very first resolveVertex
+      // Object picking for decals
+      InterlockedCompareStore(
+        PrimaryObjectPicking[geometryResolverState.pixelCoordinate],
+        OBJECT_PICKING_INVALID,    // compare to
+        surface.objectPickingValue // value to write, if equal
+      );
+    }
+#endif
   }
   else
   {
@@ -1108,8 +1116,6 @@ void geometryResolverVertex(
       emissiveRadiance += cb.skyBrightness * SkyMatte.Sample(screenUV);
     }
   }
-
-  imageStore(PrimaryObjectPicking, geometryResolverState.pixelCoordinate, surface.objectPickingValue);
 
   // Handle attenuation and emissive radiance from the Resolve function
 
@@ -1487,6 +1493,7 @@ void geometryPSRResolverVertex(
     resolveMode, unorderedResolveRay,
     unorderedRayMask, geometryPSRResolverState.portalSpace,
     /* useIntersectionBillboards = */ cb.enableBillboardOrientationCorrection,
+    u16vec2(65535, 65535),
     geometryPSRResolverState.accumulatedVectorTransform, geometryPSRResolverState.accumulatedHitDistance,
     radianceAttenuation, emissiveRadiance,
     numUnorderedInteractions, 
@@ -1865,6 +1872,14 @@ void geometryResolver(ivec2 pixelCoordinate) {
     alphaBlendSurface.randomThreshold = getNextSampleBlueNoise(randomState);
     AlphaBlendGBuffer[pixelCoordinate] = alphaBlendSurface.pack();
   }
+
+#ifndef GBUFFER_PSR
+  if (cb.enableObjectPicking != 0)
+  {
+    // In ray generation, clean up object picking buffer before writing
+    PrimaryObjectPicking[pixelCoordinate] = OBJECT_PICKING_INVALID;
+  }
+#endif
 
   // Resolve First Hit Geometry
   {

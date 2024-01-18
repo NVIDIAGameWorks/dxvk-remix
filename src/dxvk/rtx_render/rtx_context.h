@@ -164,7 +164,7 @@ namespace dxvk {
     void dispatchBloom(const Resources::RaytracingOutput& rtOutput);
     void dispatchPostFx(Resources::RaytracingOutput& rtOutput);
     void dispatchDebugView(Rc<DxvkImage>& srcImage, const Resources::RaytracingOutput& rtOutput, bool captureScreenImage);
-    void dispatchHighlighting(Resources::RaytracingOutput& rtOutput);
+    void dispatchObjectPicking(Resources::RaytracingOutput& rtOutput, const VkExtent3D& srcExtent, const VkExtent3D& targetExtent);
     void dispatchDLFG();
     void updateMetrics(const float frameTimeSecs, const float gpuIdleTimeSecs) const;
 
@@ -210,5 +210,11 @@ namespace dxvk {
     bool m_previousInjectRtxHadScene = false;
 
     DxvkRaytracingInstanceState m_rtState;
+
+    struct {
+      std::atomic<uint64_t>           signalValue = 1;
+      Rc<sync::Fence>                 signal = new sync::Fence{};
+      std::vector<std::future<void>>  asyncTasks = {};
+    } m_objectPickingReadback {};
   };
 } // namespace dxvk

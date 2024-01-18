@@ -47,6 +47,7 @@
 #include "rtx_ray_portal_manager.h"
 #include "rtx_bindless_resource_manager.h"
 #include "rtx_volume_manager.h"
+#include "rtx_objectpicking.h"
 #include <d3d9types.h>
 
 namespace dxvk 
@@ -57,23 +58,6 @@ struct AssetReplacement;
 struct AssetReplacer;
 class OpacityMicromapManager;
 class TerrainBaker;
-
-struct Highlighting {
-  dxvk::mutex mutex{};
-  HighlightColor color {};
-
-  std::optional<uint32_t> finalSurfaceMaterialIndex{};
-  uint32_t finalWasUpdatedFrameId { kInvalidFrameIndex };
-
-  // if set, need to traverse draw calls to find a corresponding surfaceMaterialIndex
-  // for the given legacy texture hash, and if found, finalSurfaceMaterialIndex is updated
-  std::optional<XXH64_hash_t> findSurfaceForLegacyTextureHash{};
-
-  static bool keepRequest(uint32_t frameIdOfRequest, uint32_t curFrameId) {
-    constexpr auto numFramesConsiderHighlighting = kMaxFramesInFlight * 2;
-    return std::abs(int64_t { frameIdOfRequest } - int64_t{ curFrameId }) < numFramesConsiderHighlighting;
-  }
-};
 
 // The resource cache can be *searched* by other users
 class ResourceCache {
@@ -224,12 +208,8 @@ public:
   void trackTexture(Rc<DxvkContext> ctx, TextureRef inputTexture, uint32_t& textureIndex, bool hasTexcoords, bool allowAsync = true);
   [[nodiscard]] SamplerIndex trackSampler(Rc<DxvkSampler> sampler);
 
-  std::future<XXH64_hash_t> findLegacyTextureHashBySurfaceMaterialIndex(uint32_t surfaceMaterialIndex);
-
-  void requestHighlighting(std::variant<uint32_t, XXH64_hash_t> surfaceMaterialIndexOrLegacyTextureHash,
-                           HighlightColor color,
-                           uint32_t frameId);
-  std::optional<std::pair<uint32_t, HighlightColor>> accessSurfaceMaterialIndexToHighlight(uint32_t frameId);
+  std::optional<XXH64_hash_t> findLegacyTextureHashByObjectPickingValue(uint32_t objectPickingValue);
+  std::vector<ObjectPickingValue> gatherObjectPickingValuesByTextureHash(XXH64_hash_t texHash);
 
   Rc<DxvkSampler> patchSampler( const VkFilter filterMode,
                                 const VkSamplerAddressMode addressModeU,
@@ -308,15 +288,17 @@ private:
   std::chrono::time_point<std::chrono::steady_clock> m_startTime;
   uint32_t m_activePOMCount = 0;
 
-  Highlighting m_highlighting {};
-
-  struct PromisedSurfMaterialIndex
-  {
-    uint32_t targetSurfMaterialIndex { 0 };
-    std::promise<XXH64_hash_t> promise{};
+  struct DrawCallMetaInfo {
+    XXH64_hash_t legacyTextureHash { kEmptyHash };
+    XXH64_hash_t legacyTextureHash2 { kEmptyHash };
   };
-  std::optional<PromisedSurfMaterialIndex> m_findLegacyTexture {};
-  dxvk::mutex m_findLegacyTextureMutex{};
+  struct DrawCallMeta {
+    constexpr static inline uint8_t MaxTicks = 2;
+    std::unordered_map<ObjectPickingValue, DrawCallMetaInfo> infos[MaxTicks] {};
+    bool ready[MaxTicks] {};
+    uint8_t ticker {};
+    dxvk::mutex mutex {};
+  } m_drawCallMeta {};
 
   // TODO: expand to many different
   Rc<DxvkSampler> m_externalSampler = nullptr;

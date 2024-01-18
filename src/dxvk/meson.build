@@ -263,6 +263,8 @@ dxvk_src = files([
   'rtx_render/rtx_nrd_context.h',
   'rtx_render/rtx_nrd_settings.cpp',
   'rtx_render/rtx_nrd_settings.h',
+  'rtx_render/rtx_objectpicking.h',
+  'rtx_render/rtx_objectpicking.cpp',
   'rtx_render/rtx_opacity_micromap_manager.cpp',
   'rtx_render/rtx_opacity_micromap_manager.h',
   'rtx_render/rtx_option.cpp',

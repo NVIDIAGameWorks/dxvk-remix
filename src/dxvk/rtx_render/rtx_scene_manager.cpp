@@ -46,7 +46,6 @@
 #include "rtx_light_utils.h"
 
 namespace dxvk {
-
   SceneManager::SceneManager(DxvkDevice* device)
     : CommonDeviceObject(device)
     , m_instanceManager(device, this)
@@ -460,6 +459,17 @@ namespace dxvk {
     m_previousFrameSceneAvailable = true;
 
     m_bufferCache.clear();
+    {
+      std::lock_guard lock { m_drawCallMeta.mutex };
+      const uint8_t curTick = m_drawCallMeta.ticker;
+      const uint8_t nextTick = (m_drawCallMeta.ticker + 1) % m_drawCallMeta.MaxTicks;
+
+      m_drawCallMeta.ready[curTick] = true;
+
+      m_drawCallMeta.infos[nextTick].clear();
+      m_drawCallMeta.ready[nextTick] = false;
+      m_drawCallMeta.ticker = nextTick;
+    }
 
     m_terrainBaker->onFrameEnd(ctx);
     
@@ -1091,52 +1101,87 @@ namespace dxvk {
       createEffectLight(ctx, drawCallState, instance);
     }
 
-    // for highlighting: find a surface material index for a given legacy texture hash
-    // the requests are loose, may expand to many frames to suppress flickering
-    // NOTE: (!overrideMaterialData) -- to ignore replacements for now, as
-    // there might be multiple surface material indices for a single legacy texture hash,
-    // so highlighting involves a lot of flickering; need a better solution that
-    // can handle multiple surface material indices
-    if (!overrideMaterialData) {
-      std::lock_guard lock{ m_highlighting.mutex };
-      if (auto h = m_highlighting.findSurfaceForLegacyTextureHash) {
-        if (*h == drawCallState.getMaterialData().getColorTexture().getImageHash() ||
-            *h == drawCallState.getMaterialData().getColorTexture2().getImageHash()) {
-          m_highlighting.finalSurfaceMaterialIndex = surfaceMaterialIndex;
-          m_highlighting.finalWasUpdatedFrameId = m_device->getCurrentFrameId();
-          m_highlighting.findSurfaceForLegacyTextureHash = {};
+    const bool objectPickingActive = m_device->getCommon()->getResources().getRaytracingOutput()
+      .m_primaryObjectPicking.isValid();
+
+    if (objectPickingActive && instance && g_allowMappingLegacyHashToObjectPickingValue) {
+      auto meta = DrawCallMetaInfo {};
+      {
+        XXH64_hash_t h;
+        h = drawCallState.getMaterialData().getColorTexture().getImageHash();
+        if (h != kEmptyHash) {
+          meta.legacyTextureHash = h;
+        }
+        h = drawCallState.getMaterialData().getColorTexture2().getImageHash();
+        if (h != kEmptyHash) {
+          meta.legacyTextureHash2 = h;
         }
       }
-    }
 
-    // if requested, find a legacy texture for a given surface material index
-    {
-      std::lock_guard lock{ m_findLegacyTextureMutex };
-      if (m_findLegacyTexture) {
-        if (m_findLegacyTexture->targetSurfMaterialIndex == surfaceMaterialIndex) {
-          XXH64_hash_t legacyTextureHash = drawCallState.getMaterialData().getColorTexture().getImageHash();
-          m_findLegacyTexture->promise.set_value(legacyTextureHash);
-          // value is set, clean up
-          m_findLegacyTexture = {};
-        }
+      {
+        std::lock_guard lock { m_drawCallMeta.mutex };
+        auto [iter, isNew] = m_drawCallMeta.infos[m_drawCallMeta.ticker].emplace(instance->surface.objectPickingValue, meta);
+        ONCE_IF_FALSE(isNew, Logger::warn(
+          "Found multiple draw calls with the same \'objectPickingValue\'. "
+          "Ignoring further MetaInfo-s, some objects might be not be available through object picking"));
       }
     }
 
     return instance ? instance->getId() : UINT64_MAX;
   }
 
-  std::future<XXH64_hash_t> SceneManager::findLegacyTextureHashBySurfaceMaterialIndex(uint32_t surfaceMaterialIndex) {
-    std::lock_guard lock{ m_findLegacyTextureMutex };
-    if (m_findLegacyTexture) {
-      // if previous promise was not satisfied, force it to end with any value; and clean it up
-      m_findLegacyTexture->promise.set_value(kEmptyHash);
-      m_findLegacyTexture = {};
-    }
-    m_findLegacyTexture = PromisedSurfMaterialIndex {
-      /* .targetSurfMaterialIndex = */ surfaceMaterialIndex,
-      /* .promise = */ {},
+  std::optional<XXH64_hash_t> SceneManager::findLegacyTextureHashByObjectPickingValue(uint32_t objectPickingValue) {
+    std::lock_guard lock { m_drawCallMeta.mutex };
+
+    auto tryFindIn = [](const std::unordered_map<ObjectPickingValue, DrawCallMetaInfo>& table, ObjectPickingValue toFind)
+      -> std::optional<XXH64_hash_t> {
+      auto found = table.find(toFind);
+      if (found != table.end()) {
+        const DrawCallMetaInfo& meta = found->second;
+        if (meta.legacyTextureHash != kEmptyHash) {
+          return meta.legacyTextureHash;
+        }
+      }
+      return std::nullopt;
     };
-    return m_findLegacyTexture->promise.get_future();
+
+    const int ticksToCheck[] = {
+      m_drawCallMeta.ticker, // current tick
+      (m_drawCallMeta.ticker + m_drawCallMeta.MaxTicks - 1) % m_drawCallMeta.MaxTicks, // prev tick
+    };
+    for (int tick : ticksToCheck) {
+      if (m_drawCallMeta.ready[tick]) {
+        if (auto h = tryFindIn(m_drawCallMeta.infos[tick], objectPickingValue)) {
+          return h;
+        }
+      }
+    }
+    return std::nullopt;
+  }
+
+  std::vector<ObjectPickingValue> SceneManager::gatherObjectPickingValuesByTextureHash(XXH64_hash_t texHash) {
+    std::lock_guard lock { m_drawCallMeta.mutex };
+    assert(texHash != kEmptyHash);
+
+    const int ticksToCheck[] = {
+      m_drawCallMeta.ticker, // current tick
+      (m_drawCallMeta.ticker + m_drawCallMeta.MaxTicks - 1) % m_drawCallMeta.MaxTicks, // prev tick
+    };
+
+    auto correspondingValues = std::vector<ObjectPickingValue> {};
+    for (int tick : ticksToCheck) {
+      if (m_drawCallMeta.ready[tick]) {
+        for (const auto& [pickingValue, meta] : m_drawCallMeta.infos[tick]) {
+          if (texHash == meta.legacyTextureHash) {
+            correspondingValues.push_back(pickingValue);
+          } else if (texHash == meta.legacyTextureHash2) {
+            correspondingValues.push_back(pickingValue);
+          }
+        }
+        break;
+      }
+    }
+    return correspondingValues;
   }
 
   SceneManager::SamplerIndex SceneManager::trackSampler(Rc<DxvkSampler> sampler) {
@@ -1404,28 +1449,7 @@ namespace dxvk {
     m_rayPortalManager.clear();
   }
 
-  void SceneManager::requestHighlighting(std::variant<uint32_t, XXH64_hash_t> surfaceMaterialIndexOrLegacyTextureHash,
-                                         HighlightColor color,
-                                         uint32_t frameId) {
-    std::lock_guard lock{ m_highlighting.mutex };
-    if (auto surfaceMaterialIndex = std::get_if<uint32_t>(&surfaceMaterialIndexOrLegacyTextureHash)) {
-      m_highlighting.finalSurfaceMaterialIndex = *surfaceMaterialIndex;
-      m_highlighting.finalWasUpdatedFrameId = frameId;
-    } else if (auto legacyTextureHash = std::get_if<XXH64_hash_t>(&surfaceMaterialIndexOrLegacyTextureHash)) {
-      m_highlighting.findSurfaceForLegacyTextureHash = *legacyTextureHash;
-    }
-    m_highlighting.color = color;
-  }
-
-  std::optional<std::pair<uint32_t, HighlightColor>> SceneManager::accessSurfaceMaterialIndexToHighlight(uint32_t frameId) {
-    std::lock_guard lock{ m_highlighting.mutex };
-    if (m_highlighting.finalSurfaceMaterialIndex) {
-      if (Highlighting::keepRequest(m_highlighting.finalWasUpdatedFrameId, frameId)) {
-        return std::pair{ *m_highlighting.finalSurfaceMaterialIndex, m_highlighting.color };
-      }
-    }
-    return {};
-  }
+  static_assert(std::is_same_v< decltype(RtSurface::objectPickingValue), ObjectPickingValue>);
 
   void SceneManager::submitExternalDraw(Rc<DxvkContext> ctx, ExternalDrawState&& state) {
     if (m_externalSampler == nullptr) {

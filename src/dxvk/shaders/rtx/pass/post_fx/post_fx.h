@@ -37,9 +37,10 @@
 #define POST_FX_OUTPUT 1
 
 #define POST_FX_HIGHLIGHT_INPUT                       0
-#define POST_FX_HIGHLIGHT_SHARED_SURFACE_INDEX_INPUT  1
+#define POST_FX_HIGHLIGHT_OBJECT_PICKING_INPUT        1
 #define POST_FX_HIGHLIGHT_PRIMARY_CONE_RADIUS_INPUT   2
 #define POST_FX_HIGHLIGHT_OUTPUT                      3
+#define POST_FX_HIGHLIGHT_VALUES                      4
 
 #define POST_FX_TILE_SIZE 8
 
@@ -81,16 +82,18 @@ struct PostFxMotionBlurPrefilterArgs {
   int2  pixelStep;
 };
 
+#define POST_FX_HIGHLIGHTING_MAX_VALUES_POW 14
+#define POST_FX_HIGHLIGHTING_MAX_VALUES     (1 << POST_FX_HIGHLIGHTING_MAX_VALUES_POW)
+
 struct PostFxHighlightingArgs
 {
   // Display image information
-  uint2  imageSize;
-  // Camera Resolution
-  float2 inputOverOutputViewSize;
+  uint2 imageSize;
+  // If need to highlight an object under this pixel
+  int2  pixel;
   // Highlighting params
-  bool desaturateNonHighlighted;
+  uint  desaturateNonHighlighted;
   float timeSinceStartMS;
-  // Material info
-  uint surfaceMaterialIndexToHighlight;
-  uint highlightColorId;
+  uint  highlightColorPacked;
+  uint  valuesToHighlightCountPow;
 };

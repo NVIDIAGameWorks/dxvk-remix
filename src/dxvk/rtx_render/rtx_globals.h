@@ -29,7 +29,7 @@ namespace dxvk {
 
     // Configurable clear color for various buffers
     float clearColorDepth = 0.f;
-    uint32_t clearColorPicking = 0;
+    uint32_t clearColorPicking = UINT32_MAX;
     vec3 clearColorNormal = vec3(0.0f, 0.0f, 1.0f);
     vec3 clearColorFinalColor = vec3(0.0f, 0.0f, 0.0f);
   };

@@ -184,6 +184,34 @@ namespace pnext_test_app {
     };
     static_assert(helper::HasSTypePNext< GoodType >);
   }
+
+  remixapi_ErrorCode emulated(const remixapi_Rect2D* pixelRegion,
+                              PFN_remixapi_pick_RequestObjectPickingUserCallback callback,
+                              void* callbackUserData) {
+    callback(nullptr, 0, callbackUserData);
+    return REMIXAPI_ERROR_CODE_SUCCESS;
+  }
+
+  void test_wrapper() {
+    auto d = remix::Interface {};
+    {
+      // define C interface to emulate
+      d.m_CInterface.pick_RequestObjectPicking = emulated;
+    }
+
+    int testvalue = 0;
+
+    // call C++ function
+    d.pick_RequestObjectPicking(
+      remix::Rect2D {},
+      [&testvalue](remix::Span<uint32_t> objectPickingValues) {
+        testvalue = 42;
+      });
+
+    if (testvalue != 42) {
+      throw dxvk::DxvkError { ERROR_INTRO "C++ wrapper test fail: pick_RequestObjectPicking doesn't call lambda callback" };
+    }
+  }
 }
 
 int main() {
@@ -192,6 +220,7 @@ int main() {
     pnext_test_app::test_const();
     pnext_test_app::test_getPNext();
     pnext_test_app::test_memberDetection();
+    pnext_test_app::test_wrapper();
   }
   catch (const dxvk::DxvkError& error) {
     std::cerr << error.message() << std::endl;

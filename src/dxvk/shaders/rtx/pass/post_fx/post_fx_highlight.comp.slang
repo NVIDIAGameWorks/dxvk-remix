@@ -27,8 +27,8 @@
 layout(binding = POST_FX_HIGHLIGHT_INPUT)
 Texture2D<float4> InColorTexture;
 
-layout(r16ui, binding = POST_FX_HIGHLIGHT_SHARED_SURFACE_INDEX_INPUT)
-RWTexture2D<uint> SharedSurfaceIndex;
+layout(r16ui, binding = POST_FX_HIGHLIGHT_OBJECT_PICKING_INPUT)
+RWTexture2D<uint> ObjectPickingTexture;
 
 layout(r16f, binding = POST_FX_HIGHLIGHT_PRIMARY_CONE_RADIUS_INPUT)
 Texture2D<float> PrimaryConeRadius;
@@ -36,12 +36,94 @@ Texture2D<float> PrimaryConeRadius;
 layout(binding = POST_FX_HIGHLIGHT_OUTPUT)
 RWTexture2D<float4> OutColorTexture;
 
+layout(binding = POST_FX_HIGHLIGHT_VALUES)
+StructuredBuffer<uint> InValues;
+
 layout(push_constant)
 ConstantBuffer<PostFxHighlightingArgs> cb;
 
-uint2 toRaytracePixel(const uint2 pixelPos)
+// size is based on makeEncodedForBilinear
+groupshared uint s_objectPickingValue[1 + POST_FX_TILE_SIZE + 2][1 + POST_FX_TILE_SIZE + 2];
+
+uint loadInput(const int2 downscaledPix)
 {
-  return uint2((float2(pixelPos) + 0.5f) * cb.inputOverOutputViewSize);
+  return ObjectPickingTexture[downscaledPix];
+}
+
+void preload(int2 pix)
+{
+  const int2 offsetInShared = pix % int2(POST_FX_TILE_SIZE, POST_FX_TILE_SIZE);
+
+  // center
+  s_objectPickingValue[1 + offsetInShared.x][1 + offsetInShared.y] = loadInput(pix);
+
+  // top 
+  if (offsetInShared.y == 0)
+  {
+    s_objectPickingValue[1 + offsetInShared.x][0] = loadInput(int2(pix.x, pix.y - 1));
+  }
+  // bottom 
+  else if (offsetInShared.y == POST_FX_TILE_SIZE - 1)
+  {
+    s_objectPickingValue[1 + offsetInShared.x][POST_FX_TILE_SIZE + 1] = loadInput(int2(pix.x, pix.y + 1));
+  }
+  // bottom 2 
+  else if (offsetInShared.y == POST_FX_TILE_SIZE - 2)
+  {
+    s_objectPickingValue[1 + offsetInShared.x][POST_FX_TILE_SIZE + 2] = loadInput(int2(pix.x, pix.y + 2));
+  }
+
+  // left
+  if (offsetInShared.x == 0)
+  {
+    s_objectPickingValue[0][1 + offsetInShared.y] = loadInput(int2(pix.x - 1, pix.y));
+  }
+  // right
+  else if (offsetInShared.x == POST_FX_TILE_SIZE - 1)
+  {
+    s_objectPickingValue[POST_FX_TILE_SIZE + 1][1 + offsetInShared.y] = loadInput(int2(pix.x + 1, pix.y));
+  }
+  // right 2
+  else if (offsetInShared.x == POST_FX_TILE_SIZE - 2)
+  {
+    s_objectPickingValue[POST_FX_TILE_SIZE + 2][1 + offsetInShared.y] = loadInput(int2(pix.x + 2, pix.y));
+  }
+
+  // top-left corner
+  if (offsetInShared.x == 0 && offsetInShared.y == 0)
+  {
+    s_objectPickingValue[0][0] = loadInput(int2(pix.x - 1, pix.y - 1));
+  }
+  // top-right corner
+  else if (offsetInShared.x == POST_FX_TILE_SIZE - 1 && offsetInShared.y == 0)
+  {
+    s_objectPickingValue[POST_FX_TILE_SIZE + 1][0] = loadInput(int2(pix.x + 1, pix.y - 1));
+    s_objectPickingValue[POST_FX_TILE_SIZE + 2][0] = loadInput(int2(pix.x + 2, pix.y - 1));
+  }
+  // bottom-left corner
+  else if (offsetInShared.x == 0 && offsetInShared.y == POST_FX_TILE_SIZE - 1)
+  {
+    s_objectPickingValue[0][POST_FX_TILE_SIZE + 1] = loadInput(int2(pix.x - 1, pix.y + 1));
+    s_objectPickingValue[0][POST_FX_TILE_SIZE + 2] = loadInput(int2(pix.x - 1, pix.y + 2));
+  }
+  // bottom-right corner
+  else if (offsetInShared.x == POST_FX_TILE_SIZE - 1 && offsetInShared.y == POST_FX_TILE_SIZE - 1)
+  {
+    s_objectPickingValue[POST_FX_TILE_SIZE + 1][POST_FX_TILE_SIZE + 1] = loadInput(int2(pix.x + 1, pix.y + 1));
+    s_objectPickingValue[POST_FX_TILE_SIZE + 1][POST_FX_TILE_SIZE + 2] = loadInput(int2(pix.x + 1, pix.y + 2));
+    s_objectPickingValue[POST_FX_TILE_SIZE + 2][POST_FX_TILE_SIZE + 1] = loadInput(int2(pix.x + 2, pix.y + 1));
+    s_objectPickingValue[POST_FX_TILE_SIZE + 2][POST_FX_TILE_SIZE + 2] = loadInput(int2(pix.x + 2, pix.y + 2));
+  }
+}
+
+uint accessObjectPickingValue(const int2 base, const int2 offset)
+{
+  int2 offsetInShared = base % int2(POST_FX_TILE_SIZE, POST_FX_TILE_SIZE);
+
+  offsetInShared += offset;
+  offsetInShared = clamp(offsetInShared, int2(-1, -1), int2(POST_FX_TILE_SIZE + 2, POST_FX_TILE_SIZE + 2));
+
+  return s_objectPickingValue[1 + offsetInShared.x][1 + offsetInShared.y];
 }
 
 // from #include "rtx/utility/gbuffer_helpers.slangh"
@@ -50,27 +132,45 @@ bool isGBufferMiss(const uint2 position, Texture2D<float> coneRadiusTexture)
   return coneRadiusTexture[position].x == 0.0f;
 }
 
-bool requiresHighlight(const uint2 pixelPos)
+bool findValueInArray(uint target)
 {
-  const uint2 rtpixel = toRaytracePixel(pixelPos);
+  // binary search with a uniform memory access pattern
+  uint foundIndex = 0;
 
-  if (isGBufferMiss(rtpixel, PrimaryConeRadius))
+  for (int power = int(cb.valuesToHighlightCountPow) - 1; power >= 0; power--)
+  {
+    foundIndex += 
+      (InValues[foundIndex + (1 << power)] <= target) 
+        ? (1 << power)
+        : 0;
+  }
+
+  return InValues[foundIndex] == target;
+}
+
+bool requiresHighlight(const int2 basePixInOutput, const int2 offsetInOutput)
+{
+  const int2 outputPix = basePixInOutput + offsetInOutput;
+  if (isGBufferMiss(basePixInOutput + offsetInOutput, PrimaryConeRadius))
   {
     return false;
   }
 
-  const uint surfaceMaterialIndex = SharedSurfaceIndex[rtpixel];
-  return surfaceMaterialIndex == cb.surfaceMaterialIndexToHighlight;
+  const uint valueAtPixel = accessObjectPickingValue(basePixInOutput, offsetInOutput);
+  if (cb.pixel.x >= 0)
+  {
+    return valueAtPixel == ObjectPickingTexture[cb.pixel];
+  }
+  return findValueInArray(valueAtPixel);
 }
 
-f16vec3 highlightColor(uint highlightColorId)
+f16vec3 highlightColor(uint packed)
 {
-  switch(highlightColorId)
-  {
-    case 1: return f16vec3(118, 185, 0) / float16_t(255.0);
-    case 2: return f16vec3(66, 150, 250) / float16_t(255.0);
-    default: return f16vec3(0.0);
-  }
+  return f16vec3(
+    float16_t((packed >>  0) & 0xFF) / float16_t(255),
+    float16_t((packed >>  8) & 0xFF) / float16_t(255),
+    float16_t((packed >> 16) & 0xFF) / float16_t(255)
+  );
 }
 
 float highlightIntensity()
@@ -80,48 +180,27 @@ float highlightIntensity()
   return clamp(t10 > ymax ? t10 - (1.0 - ymax) : t10, 0.0, 1.0) / ymax;
 }
 
-uint makeEncodedForBilinear(int2 basePix, bool valueAtCenter)
+uint makeEncodedForSobel(int2 basePix, bool valueAtCenter)
 {
-  // 4x4 pixels encoded into one 32-bit value
+  // 3x3 pixels encoded into one 32-bit value
   uint encoded = 0;
-  encoded |= requiresHighlight(basePix + int2(-1, -1)) ? (1 <<  0) : 0;
-  encoded |= requiresHighlight(basePix + int2(-1,  0)) ? (1 <<  1) : 0;
-  encoded |= requiresHighlight(basePix + int2(-1, +1)) ? (1 <<  2) : 0;
-  encoded |= requiresHighlight(basePix + int2(-1, +2)) ? (1 <<  3) : 0;
-  encoded |= requiresHighlight(basePix + int2( 0, -1)) ? (1 <<  4) : 0;
-  encoded |= valueAtCenter                             ? (1 <<  5) : 0;
-  encoded |= requiresHighlight(basePix + int2( 0, +1)) ? (1 <<  6) : 0;
-  encoded |= requiresHighlight(basePix + int2( 0, +2)) ? (1 <<  7) : 0;
-  encoded |= requiresHighlight(basePix + int2(+1, -1)) ? (1 <<  8) : 0;
-  encoded |= requiresHighlight(basePix + int2(+1,  0)) ? (1 <<  9) : 0;
-  encoded |= requiresHighlight(basePix + int2(+1, +1)) ? (1 << 10) : 0;
-  encoded |= requiresHighlight(basePix + int2(+1, +2)) ? (1 << 11) : 0;
-  encoded |= requiresHighlight(basePix + int2(+2, -1)) ? (1 << 12) : 0;
-  encoded |= requiresHighlight(basePix + int2(+2,  0)) ? (1 << 13) : 0;
-  encoded |= requiresHighlight(basePix + int2(+2, +1)) ? (1 << 14) : 0;
-  encoded |= requiresHighlight(basePix + int2(+2, +2)) ? (1 << 15) : 0;
+  encoded |= requiresHighlight(basePix, int2(-1, -1)) ? (1 << 0) : 0;
+  encoded |= requiresHighlight(basePix, int2(-1,  0)) ? (1 << 1) : 0;
+  encoded |= requiresHighlight(basePix, int2(-1, +1)) ? (1 << 2) : 0;
+  encoded |= requiresHighlight(basePix, int2( 0, -1)) ? (1 << 3) : 0;
+  encoded |= valueAtCenter                            ? (1 << 4) : 0;
+  encoded |= requiresHighlight(basePix, int2( 0, +1)) ? (1 << 5) : 0;
+  encoded |= requiresHighlight(basePix, int2(+1, -1)) ? (1 << 6) : 0;
+  encoded |= requiresHighlight(basePix, int2(+1,  0)) ? (1 << 7) : 0;
+  encoded |= requiresHighlight(basePix, int2(+1, +1)) ? (1 << 8) : 0;
   return encoded;
 }
 
-// to access a value in 'encoded', x=[-1..2], y=[-1..2]
+// to access a value in 'encoded', x=[-1..1], y=[-1..1]
 #define ACCESS_PIX( encoded, x, y ) float16_t(                \
-    ((encoded) & ( 1 << ( ((x) + 1) * 4 + ((y) + 1) ) )) != 0 \
+    ((encoded) & ( 1 << ( ((x) + 1) * 3 + ((y) + 1) ) )) != 0 \
       ? 1.0                                                   \
       : 0.0 )
-
-// x=[-1..1], y=[-1..1]
-float16_t accessBilinearly(const uint encoded, int16_t x, int16_t y)
-{
-    float16_t value00 = ACCESS_PIX(encoded, x    , y    );
-    float16_t value10 = ACCESS_PIX(encoded, x + 1, y    );
-    float16_t value01 = ACCESS_PIX(encoded, x    , y + 1);
-    float16_t value11 = ACCESS_PIX(encoded, x + 1, y + 1);
-
-    return mix(
-      mix(value00, value10, float16_t(0.5)), 
-      mix(value01, value11, float16_t(0.5)), 
-      float16_t(0.5));
-}
 
 [shader("compute")]
 [numthreads(POST_FX_TILE_SIZE, POST_FX_TILE_SIZE, 1)]
@@ -132,22 +211,25 @@ void main(uint2 pixelPos : SV_DispatchThreadID)
     return;
   }
 
+  preload(int2(pixelPos));
+  GroupMemoryBarrierWithGroupSync();
+
   float4 result = InColorTexture[pixelPos];
-  const bool toHighlight = requiresHighlight(pixelPos);
+  const bool toHighlight = requiresHighlight(pixelPos, int2(0, 0));
 
   // deaturate if not highlighted
-  if (cb.desaturateNonHighlighted)
+  if (cb.desaturateNonHighlighted != 0)
   {
     if (!toHighlight)
     {
       float lum = calcBt709Luminance(result.rgb);
-      result.rgb = float3(lum + 0.1);
+      result.rgb = float3(max(0.01, lum));
     }
   }
 
   // basic outline
   {
-    uint encoded = makeEncodedForBilinear(pixelPos, toHighlight);
+    uint encoded = makeEncodedForSobel(pixelPos, toHighlight);
 
     f16vec2 gradient = f16vec2(0.0);
     for (int16_t i = -1; i <= 1; i++)
@@ -163,14 +245,14 @@ void main(uint2 pixelPos : SV_DispatchThreadID)
           float16_t(i) * (j == 0 ? float16_t(2.0) : float16_t(1.0))          
         );
 
-        gradient += sobel * accessBilinearly(encoded, i, j);
+        gradient += sobel * ACCESS_PIX(encoded, i, j);
       }
     }
     const float16_t magnitude = saturate(length(gradient));
 
     result.rgb = lerp(
       result.rgb,
-      highlightColor(cb.highlightColorId),
+      highlightColor(cb.highlightColorPacked),
       magnitude * highlightIntensity());
   }
 
