@@ -27,6 +27,7 @@
 #include "rtx_light_manager.h"
 #include "rtx_option.h"
 #include "rtx_globals.h"
+#include "rtx_options.h"
 
 #include <remix/remix_c.h>
 #include "rtx_remix_pnext.h"
@@ -913,6 +914,26 @@ namespace {
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
 
+  // Below are all the graphics quality settings we want to filter out from the SetConfigVariable API. 
+  static const std::string filteredSettings[] = {
+      dxvk::RtxOptions::graphicsPresetObject().getName(),
+      dxvk::RtxOptions::dlssPresetObject().getName(),
+      dxvk::RtxOptions::qualityDLSSObject().getName(),
+      dxvk::RtxOptions::raytraceModePresetObject().getName(),
+      dxvk::RtxOptions::nisPresetObject().getName(),
+      dxvk::RtxOptions::taauPresetObject().getName(),
+      dxvk::RtxOptions::pathMinBouncesObject().getName(),
+      dxvk::RtxOptions::pathMaxBouncesObject().getName(),
+      dxvk::RtxOptions::enableVolumetricLightingObject().getName(),
+      dxvk::RtxOptions::enableUnorderedEmissiveParticlesInIndirectRaysObject().getName(),
+      dxvk::RtxOptions::denoiseDirectAndIndirectLightingSeparatelyObject().getName(),
+      dxvk::RtxOptions::minReplacementTextureMipMapLevelObject().getName(),
+      dxvk::RtxOptions::enableUnorderedResolveInIndirectRaysObject().getName(),
+      dxvk::RtxOptions::russianRoulette1stBounceMinContinueProbabilityObject().getName(),
+      dxvk::RtxOptions::forceHighResolutionReplacementTexturesObject().getName(),
+      dxvk::RtxOptions::resolutionScaleObject().getName(),
+      dxvk::NeeCachePass::enableObject().getName(),
+    };
 
   remixapi_ErrorCode REMIXAPI_CALL remixapi_SetConfigVariable(
     const char* key,
@@ -928,6 +949,14 @@ namespace {
     auto found = globalRtxOptions.find(key);
     if (found == globalRtxOptions.end()) {
       return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
+    }
+
+    // Keep users of the Remix API in automatic quality mode.
+    for (auto& filteredSetting : filteredSettings) {
+      // Skip this if we want to filter this setting
+      if (found->second->getFullName() == filteredSetting) {
+        return REMIXAPI_ERROR_CODE_SUCCESS;
+      }
     }
 
     dxvk::Config newSetting;

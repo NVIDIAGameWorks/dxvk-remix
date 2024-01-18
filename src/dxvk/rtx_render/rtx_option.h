@@ -199,6 +199,9 @@ namespace dxvk {
       *getValuePtr<T>(RtxOptionImpl::ValueType::DefaultValue) = v;
     }
 
+    std::string getName() const {
+      return pImpl->getFullName();
+    }
     const char* getDescription() const {
       return pImpl->description;
     }
@@ -306,7 +309,7 @@ namespace dxvk {
 // The RTX_OPTION* macros provide a convenient way to declare a serializable option
 #define RTX_OPTION_FULL(category, type, name, value, environment, flags, description) \
   private: inline static RtxOption<type> m_##name = RtxOption<type>(category, #name, environment, type(value), static_cast<uint32_t>(flags), description); \
-  private: static RtxOption<type>& name##Object() { return m_##name; } \
+  public: static RtxOption<type>& name##Object() { return m_##name; } \
   public : static const type& name() { return m_##name.getValue(); } \
   private: static type& name##Ref() { return m_##name.getValue(); } \
   public : static const char* name##Description() { return m_##name.getDescription(); }
