@@ -34,6 +34,8 @@
 #include "rtx_imgui.h"
 
 namespace dxvk {
+  std::array<uint8_t, 3> g_customHighlightColor = { 118, 185, 0 };
+
   // Defined within an unnamed namespace to ensure unique definition across binary
   namespace {
     class PostFxShader : public ManagedShader
@@ -91,9 +93,10 @@ namespace dxvk {
 
         BEGIN_PARAMETER()
         TEXTURE2D(POST_FX_HIGHLIGHT_INPUT)
-        RW_TEXTURE2D(POST_FX_HIGHLIGHT_SHARED_SURFACE_INDEX_INPUT)
+        RW_TEXTURE2D(POST_FX_HIGHLIGHT_OBJECT_PICKING_INPUT)
         TEXTURE2D(POST_FX_HIGHLIGHT_PRIMARY_CONE_RADIUS_INPUT)
         RW_TEXTURE2D(POST_FX_HIGHLIGHT_OUTPUT)
+        STRUCTURED_BUFFER(POST_FX_HIGHLIGHT_VALUES)
         END_PARAMETER()
     };
 
@@ -329,33 +332,106 @@ namespace dxvk {
     }
   }
 
+  namespace {
+    uint32_t bitCeilPow2(uint32_t v) {
+      if (v == 0) {
+        return 0;
+      }
+
+      // most significant bit
+      unsigned long msb = 0;
+      static_assert(sizeof(unsigned long) == sizeof(uint32_t));
+      if (_BitScanReverse(&msb, v) == 0) {
+        assert(0);
+        return 0;
+      }
+
+      // if pow of 2, return itself
+      if ((v & (v - 1)) == 0) {
+        return msb;
+      }
+      return msb + 1;
+    }
+
+    uint32_t packColor(uint8_t r, uint8_t g, uint8_t  b) {
+      return (r << 0) | (g << 8) | (b << 16);
+    }
+  }
+
   void DxvkPostFx::dispatchHighlighting(
     Rc<RtxContext> ctx,
-    const uvec2& mainCameraResolution,
     const Resources::RaytracingOutput& rtOutput,
-    uint32_t surfaceMaterialIndexToHighlight,
+    std::vector<uint32_t>&& objectPickingValuesToHighlight,
+    const std::optional<Vector2i>& pixelToHighlight,
     HighlightColor color) {
+    static_assert(sizeof(ObjectPickingValue) == sizeof(objectPickingValuesToHighlight[0]));
+    if (!rtOutput.m_primaryObjectPicking.isValid()) {
+      return;
+    }
+    if (objectPickingValuesToHighlight.empty() && !pixelToHighlight) {
+      return;
+    }
     ScopedGpuProfileZone(ctx, "PostFx Highlight");
 
-    const Resources::Resource& inOutColorTexture = rtOutput.m_finalOutput;
+    const Resources::Resource& inOutColorTexture = rtOutput.m_compositeOutput.resource(Resources::AccessType::ReadWrite);
     const VkExtent3D& inputSize = inOutColorTexture.image->info().extent;
+    const float timeSinceStartMS = static_cast<float>(ctx->getSceneManager().getGameTimeSinceStartMS());
 
     const auto workgroups = util::computeBlockCount(inputSize, VkExtent3D { POST_FX_TILE_SIZE , POST_FX_TILE_SIZE, 1 });
+
+    uint32_t valuesToHighlightCountPow;
+    {
+      // deduplicate and sort to perform binary search in the shader
+      std::vector<uint32_t>& sorted = objectPickingValuesToHighlight;
+      {
+        if (sorted.size() > POST_FX_HIGHLIGHTING_MAX_VALUES) {
+          sorted.resize(POST_FX_HIGHLIGHTING_MAX_VALUES);
+          ONCE(Logger::warn("Too many values to highlight, some objects will be omitted."));
+        }
+        auto newEnd = std::unique(sorted.begin(), sorted.end());
+        sorted.erase(newEnd, sorted.end());
+        std::sort(sorted.begin(), sorted.end());
+      }
+
+      valuesToHighlightCountPow = bitCeilPow2(static_cast<uint32_t>(sorted.size()));
+
+      // fill invalid values as UINT32_MAX
+      {
+        const size_t validCount = sorted.size();
+        sorted.resize(1 << valuesToHighlightCountPow);
+        for (size_t i = validCount; i < sorted.size(); i++) {
+          sorted[i] = UINT32_MAX;
+        }
+      }
+
+      if (m_highlightingValues == nullptr) {
+        auto info = DxvkBufferCreateInfo {};
+        {
+          info.usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+          info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+          info.access = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
+          info.size = align(POST_FX_HIGHLIGHTING_MAX_VALUES * sizeof(ObjectPickingValue), kBufferAlignment);
+        }
+        m_highlightingValues = ctx->getDevice()->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
+      }
+
+      if (!sorted.empty()) {
+        ctx->writeToBuffer(m_highlightingValues, 0, sorted.size() * sizeof(ObjectPickingValue), sorted.data());
+      }
+    }
 
     auto args = PostFxHighlightingArgs {};
     {
       args.imageSize = { inputSize.width, inputSize.height };
-      args.inputOverOutputViewSize = {
-        static_cast<float>(mainCameraResolution.x) / static_cast<float>(inputSize.width),
-        static_cast<float>(mainCameraResolution.y) / static_cast<float>(inputSize.height),
-      };
-      args.desaturateNonHighlighted = true;
-      args.timeSinceStartMS = static_cast<float>(ctx->getSceneManager().getGameTimeSinceStartMS());
-      args.surfaceMaterialIndexToHighlight = surfaceMaterialIndexToHighlight;
-      args.highlightColorId =
-        color == HighlightColor::World ? 1 :
-        color == HighlightColor::UI ? 2 :
-        0;
+      args.desaturateNonHighlighted = desaturateOthersOnHighlight() ? 1 : 0;
+      args.timeSinceStartMS = timeSinceStartMS;
+      args.pixel = pixelToHighlight ? int2 { pixelToHighlight->x, pixelToHighlight->y } : int2 { -1, -1 };
+      args.highlightColorPacked =
+        color == HighlightColor::World ? packColor(118, 185, 0) :
+        color == HighlightColor::UI ? packColor(66, 150, 250) :
+        color == HighlightColor::FromVariable ? packColor(g_customHighlightColor[0], g_customHighlightColor[1], g_customHighlightColor[2]) :
+        packColor(255, 255, 255);
+      args.valuesToHighlightCountPow = valuesToHighlightCountPow;
     }
 
     ctx->pushConstants(0, sizeof(args), &args);
@@ -363,9 +439,10 @@ namespace dxvk {
     const Resources::Resource* lastOutput = &rtOutput.m_postFxIntermediateTexture;
 
     ctx->bindResourceView(POST_FX_HIGHLIGHT_INPUT, inOutColorTexture.view, nullptr);
-    ctx->bindResourceView(POST_FX_HIGHLIGHT_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view, nullptr);
+    ctx->bindResourceView(POST_FX_HIGHLIGHT_OBJECT_PICKING_INPUT, rtOutput.m_primaryObjectPicking.view, nullptr);
     ctx->bindResourceView(POST_FX_HIGHLIGHT_PRIMARY_CONE_RADIUS_INPUT, rtOutput.m_primaryConeRadius.view, nullptr);
     ctx->bindResourceView(POST_FX_HIGHLIGHT_OUTPUT, lastOutput->view, nullptr);
+    ctx->bindResourceBuffer(POST_FX_HIGHLIGHT_VALUES, DxvkBufferSlice(m_highlightingValues, 0, m_highlightingValues->info().size));
 
     ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, PostFxHighlightShader::getShader());
     ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);

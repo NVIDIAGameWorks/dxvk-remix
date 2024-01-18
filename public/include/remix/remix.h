@@ -27,6 +27,7 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <functional>
 #include <optional>
 
 #ifndef REMIXAPI_ASSERT
@@ -112,6 +113,13 @@ namespace remix {
     };
 
     template< typename T >
+    struct Span
+    {
+        const T* values{ nullptr };
+        uint32_t count{ 0 };
+    };
+
+    template< typename T >
     void assign_if(remixapi_Bool& hasvalue, T& value, const std::optional< T >& src) {
       if (src) {
         hasvalue = true;
@@ -125,7 +133,11 @@ namespace remix {
   template< typename T >
   using Result = detail::Result< T >;
 
+  template< typename T >
+  using Span = detail::Span< T >;
+
   using StructType = remixapi_StructType;
+  using Rect2D = remixapi_Rect2D;
   using Float2D = remixapi_Float2D;
   using Float3D = remixapi_Float3D;
   using Float4D = remixapi_Float4D;
@@ -169,6 +181,12 @@ namespace remix {
                                                                       remixapi_dxvk_CopyRenderingOutputType type);
     Result< void >                           dxvk_SetDefaultOutput(remixapi_dxvk_CopyRenderingOutputType type,
                                                                    const remixapi_Float4D& color);
+    // Object picking utils
+    template< typename CallbackLambda > // void( remix::Span<uint32_t> objectPickingValues )
+    Result< void >                           pick_RequestObjectPicking(const Rect2D& region, CallbackLambda &&callback);
+    Result< void >                           pick_HighlightObjects(const uint32_t* objectPickingValues_values,
+                                                                   uint32_t objectPickingValues_count,
+                                                                   uint8_t colorR, uint8_t colorG, uint8_t colorB);
   };
 
   namespace lib {
@@ -198,6 +216,8 @@ namespace remix {
                                                  REMIXAPI_VERSION_PATCH);
           }
 
+          static_assert(sizeof remixapi_Interface == 152, 
+                        "Change version, update C++ wrapper when adding new functions");
           remixapi_Interface interfaceInC = {};
           remixapi_ErrorCode status = pfn_InitializeLibrary(&info, &interfaceInC);
       
@@ -737,5 +757,34 @@ namespace remix {
   inline Result< void > Interface::dxvk_SetDefaultOutput(
       remixapi_dxvk_CopyRenderingOutputType type, const remixapi_Float4D& color) {
     return m_CInterface.dxvk_SetDefaultOutput(type, color);
+  }
+
+  template< typename CallbackLambda >
+  inline Result< void > Interface::pick_RequestObjectPicking(const Rect2D& region, CallbackLambda&& callback) {
+    using Func = std::function< void(Span<uint32_t>) >;
+
+    static auto bootstrapForC = [](const uint32_t* objectPickingValues_values,
+                                   uint32_t objectPickingValues_count,
+                                   void* callbackUserData) {
+      // unwrap 'callbackUserData', it is a user's lambda
+      if (auto* userLambda = static_cast<Func*>(callbackUserData)) {
+        auto arg = Span<uint32_t>{ objectPickingValues_values, objectPickingValues_count };
+        // call user's lambda
+        (*userLambda)(arg);
+        delete userLambda;
+      }
+    };
+
+    // pass user's lambda as as 'callbackUserData'
+    auto* userLambda = new Func { callback };
+    return m_CInterface.pick_RequestObjectPicking(&region, bootstrapForC, userLambda);
+  }
+
+  inline Result< void > Interface::pick_HighlightObjects(const uint32_t* objectPickingValues_values,
+                                                         uint32_t objectPickingValues_count,
+                                                         uint8_t colorR, uint8_t colorG, uint8_t colorB) {
+    return m_CInterface.pick_HighlightObjects(objectPickingValues_values,
+                                              objectPickingValues_count,
+                                              colorR, colorG, colorB);
   }
 }
