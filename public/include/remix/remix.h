@@ -270,9 +270,9 @@ namespace remix {
       roughnessTexture = {};
       metallicTexture = {};
       anisotropy = 0.0f;
-      albedoConstant = { 1.0f, 1.0f, 1.0f };
+      albedoConstant = { 0.2f, 0.2f, 0.2f };
       opacityConstant = 1.0f;
-      roughnessConstant = 1.0f;
+      roughnessConstant = 0.5f;
       metallicConstant = 0.0f;
       thinFilmThickness_hasvalue = false;
       thinFilmThickness_value = 200.f;
@@ -392,14 +392,14 @@ namespace remix {
       normalTexture = {};
       tangentTexture = {};
       emissiveTexture = {};
-      emissiveIntensity = 0.0f;
+      emissiveIntensity = 40.0f;
       emissiveColorConstant = { 0.0f, 0.0f, 0.0f };
       spriteSheetRow = 1;
       spriteSheetCol = 1;
       spriteSheetFps = 0;
       filterMode = 1; // Linear
-      wrapModeU = 0; // Repeat
-      wrapModeV = 0; // Repeat
+      wrapModeU = 1; // Repeat
+      wrapModeV = 1; // Repeat
       static_assert(sizeof remixapi_MaterialInfo == 80);
     }
 
