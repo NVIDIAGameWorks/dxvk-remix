@@ -1454,7 +1454,11 @@ namespace dxvk {
   }
 
   namespace {
-    bool isWorldTextureSelectionEnabled() {
+    Vector2i tovec2i(const ImVec2& v) {
+      return Vector2i { static_cast<int>(v.x), static_cast<int>(v.y) };
+    };
+
+    bool isWorldTextureSelectionAllowed() {
       // mouse cursor is not obstructed by any imgui window
       return !ImGui::GetIO().WantCaptureMouse;
     }
@@ -1499,45 +1503,24 @@ namespace dxvk {
       Logger::info(buffer);
     }
 
-    template<typename T>
-    std::optional<T> nonBlockingGet(std::future<T>& f) {
-      if (f.valid()) {
-        std::future_status s = f.wait_for(std::chrono::milliseconds(0));
-        if (s == std::future_status::ready) {
-          return f.get();
-        }
-      }
-      return std::nullopt;
-    }
-
-    template<typename T>
-    std::optional<T> nonBlockingGet(std::shared_future<T>& f) {
-      if (f.valid()) {
-        std::future_status s = f.wait_for(std::chrono::milliseconds(0));
-        if (s == std::future_status::ready) {
-          return f.get();
-        }
-      }
-      return std::nullopt;
-    }
-
-    template<typename T>
-    std::future<T> makeReadyFuture(const T& value) {
-      auto promise = std::promise<T> {};
-      promise.set_value(value);
-      return promise.get_future();
-    }
-
     namespace texture_popup {
       constexpr char POPUP_NAME[] = "rtx_texture_selection_popup";
 
       // need to keep a reference to a texture that was passed to 'open()',
       // as 'open()' is called only once, but popup needs to reference that texture throughout open-close
-      std::shared_future<XXH64_hash_t> g_holdingTexture = {};
+      std::atomic<XXH64_hash_t> g_holdingTexture {};
+      bool g_openWhenAvailable {};
 
-      void open(std::future<XXH64_hash_t>&& texHash) {
-        g_holdingTexture = texHash.share();
+      void open(std::optional<XXH64_hash_t> texHash) {
+        g_holdingTexture.exchange(texHash.value_or(kEmptyHash));
+        g_openWhenAvailable = false;
+        // no need to wait, open immediately
         ImGui::OpenPopup(POPUP_NAME);
+      }
+
+      void openAsync() {
+        g_holdingTexture.exchange(kEmptyHash);
+        g_openWhenAvailable = true;
       }
 
       bool isOpened() {
@@ -1547,29 +1530,36 @@ namespace dxvk {
       // Returns a texture hash that it holds, if the popup is opened.
       // Must be called every frame.
       std::optional<XXH64_hash_t> produce(SceneManager& sceneMgr) {
+        // delayed open, if waiting async to set g_holdingTexture
+        if (g_openWhenAvailable) {
+          if (g_holdingTexture.load() != kEmptyHash) {
+            ImGui::OpenPopup(POPUP_NAME);
+            g_openWhenAvailable = false;
+          }
+        }
+        
         if (ImGui::BeginPopup(POPUP_NAME)) {
-          if (auto texHash = nonBlockingGet(g_holdingTexture)) {
-            if (texHash != kEmptyHash) {
-              ImGui::Text("Texture Info:\n%s", makeTextureInfo(*texHash, isMaterialReplacement(sceneMgr, *texHash)).c_str());
-              if (ImGui::Button("Copy Texture hash##texture_popup")) {
-                ImGui::SetClipboardText(hashToString(*texHash).c_str());
-              }
-              for (auto& rtxOption : rtxTextureOptions) {
-                rtxOption.bufferToggle = rtxOption.textureSetOption->getValue().count(*texHash) > 0;
-
-                if (IMGUI_ADD_TOOLTIP(ImGui::Checkbox(rtxOption.displayName, &rtxOption.bufferToggle), rtxOption.textureSetOption->getDescription())) {
-                  toggleTextureSelection(*texHash, rtxOption.uniqueId, rtxOption.textureSetOption->getValue());
-                }
-              }
-              ImGui::EndPopup();
-              return *texHash;
+          const XXH64_hash_t texHash = g_holdingTexture.load();
+          if (texHash != kEmptyHash) {
+            ImGui::Text("Texture Info:\n%s", makeTextureInfo(texHash, isMaterialReplacement(sceneMgr, texHash)).c_str());
+            if (ImGui::Button("Copy Texture hash##texture_popup")) {
+              ImGui::SetClipboardText(hashToString(texHash).c_str());
             }
+            for (auto& rtxOption : rtxTextureOptions) {
+              rtxOption.bufferToggle = rtxOption.textureSetOption->getValue().count(texHash) > 0;
+
+              if (IMGUI_ADD_TOOLTIP(ImGui::Checkbox(rtxOption.displayName, &rtxOption.bufferToggle), rtxOption.textureSetOption->getDescription())) {
+                toggleTextureSelection(texHash, rtxOption.uniqueId, rtxOption.textureSetOption->getValue());
+              }
+            }
+            ImGui::EndPopup();
+            return texHash;
           }
           ImGui::EndPopup();
           return {};
         } else {
-          // popup is closed, forget future
-          g_holdingTexture = {};
+          // popup is closed, forget texture
+          g_holdingTexture.exchange(kEmptyHash);
           return {};
         }
       }
@@ -1638,7 +1628,9 @@ namespace dxvk {
     ImGui::BeginChild(str::format("Child", uniqueId).c_str(), ImVec2(availableSize.x, childWindowHeight), false, window_flags);
 
     bool clickedOnTextureButton = false;
-    static auto s_jumpto = std::optional<XXH64_hash_t> {};
+    static std::atomic<XXH64_hash_t> g_jumpto {};
+
+    const XXH64_hash_t textureInPopup = texture_popup::g_holdingTexture.load();
 
     auto foundTextureHash = std::optional<XXH64_hash_t> {};
     auto highlightColor = HighlightColor::World;
@@ -1659,9 +1651,13 @@ namespace dxvk {
         }
       }
       
-      if (texHash == nonBlockingGet(texture_popup::g_holdingTexture) || texHash == s_jumpto) {
-        auto anim = Vector4 { 0.462745f, 0.725490f, 0.f, 1.f } * animatedHighlightIntensity(common->getSceneManager().getGameTimeSinceStartMS());
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(anim.r, anim.g, anim.b, anim.a));
+      if (texHash == textureInPopup || texHash == g_jumpto.load()) {
+        const auto blueColor = ImGui::GetStyleColorVec4(ImGuiCol_Button);
+        const auto nvidiaColor = ImVec4(0.462745f, 0.725490f, 0.f, 1.f);
+
+        const auto color = (texHash == textureInPopup ? blueColor : nvidiaColor);
+        const float anim = animatedHighlightIntensity(common->getSceneManager().getGameTimeSinceStartMS());
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(anim * color.x, anim * color.y, anim * color.z, 1.f));
       } else if (textureHasSelection) {
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.996078f, 0.329412f, 0.f, 1.f));
       } else {
@@ -1700,9 +1696,9 @@ namespace dxvk {
         }
       }
 
-      if (s_jumpto == texHash) {
+      if (g_jumpto.load() == texHash) {
         ImGui::SetScrollHereY(0);
-        s_jumpto = {};
+        g_jumpto.exchange(kEmptyHash);
       }
 
       if (!texture_popup::isOpened()) {
@@ -1743,30 +1739,34 @@ namespace dxvk {
 
     // popup for texture selection from world / ui
     {
-      const bool wasUIClick = clickedOnTextureButton;
-      const bool wasWorldClick = !clickedOnTextureButton && (ImGui::IsMouseClicked(ImGuiMouseButton_Left) || ImGui::IsMouseClicked(ImGuiMouseButton_Right));
+      const bool wasUIClick = 
+        !texture_popup::isOpened() && 
+        clickedOnTextureButton;
 
+      const bool wasWorldClick =
+        isWorldTextureSelectionAllowed() &&
+        !texture_popup::isOpened() &&
+        !clickedOnTextureButton && 
+        (ImGui::IsMouseClicked(ImGuiMouseButton_Left) || ImGui::IsMouseClicked(ImGuiMouseButton_Right));
 
-      auto foundTextureHashInFuture = std::future<XXH64_hash_t> {};
+      if (wasUIClick) {
+        texture_popup::open(foundTextureHash);
+      } else if (wasWorldClick) {
+        // open as empty
+        texture_popup::openAsync();
+        // and make a request on a mouse click
+        common->metaDebugView().ObjectPicking.request(
+          tovec2i(ImGui::GetMousePos()),
+          tovec2i(ImGui::GetMousePos()) + Vector2i { 1, 1 },
 
-      if (!texture_popup::isOpened()) {
-        if (isWorldTextureSelectionEnabled()) {
-          static auto tovec2i = [](const ImVec2& v) { return Vector2i { static_cast<int>(v.x), static_cast<int>(v.y) }; };
-          // mouse cursor is over the texture in the world
-          common->metaDebugView().requestFindSurfaceUnder(tovec2i(ImGui::GetMousePos()), ctx->getDevice()->getCurrentFrameId());
-          // access an available result, it can be from previous frames
-          if (auto surf = common->metaDebugView().consumeLastAvailableFindSurfaceResult()) {
-            foundTextureHashInFuture = std::move(surf->legacyTextureHash);
-          }
-        }
-      }
-
-      if (wasUIClick || wasWorldClick) {
-        if (foundTextureHash) {
-          texture_popup::open(makeReadyFuture(*foundTextureHash));
-        } else if (foundTextureHashInFuture.valid()) {
-          texture_popup::open(std::move(foundTextureHashInFuture));
-        }
+          // and callback on result:
+          [](std::vector<ObjectPickingValue>&& objectPickingValues, std::optional<XXH64_hash_t> legacyTextureHash) {
+            // assert(legacyTextureHash);
+            // found asynchronously the legacy texture hash, place it into texture_popup; so we would highlight it
+            texture_popup::g_holdingTexture.exchange(legacyTextureHash.value_or(kEmptyHash));
+            // move UI menu focus
+            g_jumpto.exchange(legacyTextureHash.value_or(kEmptyHash));
+          });
       }
 
       auto texHashToHighlight = std::optional<XXH64_hash_t>{};
@@ -1774,23 +1774,22 @@ namespace dxvk {
       // top priority for what's inside a currently open texture popup
       if (auto texInPopup = texture_popup::produce(common->getSceneManager())) {
         texHashToHighlight = *texInPopup;
+        highlightColor = HighlightColor::UI;
       } else {
         if (foundTextureHash) {
           texHashToHighlight = *foundTextureHash;
-        } else if (auto ft = nonBlockingGet(foundTextureHashInFuture)) {
-          if (ft != kEmptyHash) {
-            texHashToHighlight = *ft;
-          }
         }
       }
 
       if (texHashToHighlight) {
-        common->getSceneManager().requestHighlighting(*texHashToHighlight, highlightColor, ctx->getDevice()->getCurrentFrameId());
-      }
-
-      // on world texture, move UI menu focus
-      if (isWorldTextureSelectionEnabled() && texHashToHighlight) {
-        s_jumpto = *texHashToHighlight;
+        common->metaDebugView().Highlighting.requestHighlighting(*texHashToHighlight, highlightColor, ctx->getDevice()->getCurrentFrameId());
+      } else {
+        // if no hash to highlight: world -- highlight under a mouse cursor, ui - just desaturate
+        if (isWorldTextureSelectionAllowed()) {
+          common->metaDebugView().Highlighting.requestHighlighting(tovec2i(ImGui::GetMousePos()), highlightColor, ctx->getDevice()->getCurrentFrameId());
+        } else {
+          common->metaDebugView().Highlighting.requestHighlighting(XXH64_hash_t { kEmptyHash }, HighlightColor::UI, ctx->getDevice()->getCurrentFrameId());
+        }
       }
     }
 

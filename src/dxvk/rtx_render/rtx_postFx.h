@@ -24,6 +24,7 @@
 #include "dxvk_format.h"
 #include "dxvk_include.h"
 #include "dxvk_context.h"
+#include "rtx_objectpicking.h"
 #include "rtx_resources.h"
 
 #include "../spirv/spirv_code_buffer.h"
@@ -50,9 +51,9 @@ namespace dxvk {
 
     void dispatchHighlighting(
       Rc<RtxContext> ctx,
-      const uvec2& mainCameraResolution,
       const Resources::RaytracingOutput& rtOutput,
-      uint32_t surfaceMaterialIndexToHighlight,
+      std::vector<uint32_t>&& objectPickingValuesToHighlight,
+      const std::optional<Vector2i>& pixelToHighlight,
       HighlightColor color);
 
     void showImguiSettings();
@@ -66,8 +67,11 @@ namespace dxvk {
     RW_RTX_OPTION_ENV("rtx.postfx", bool, enableMotionBlur, true, "RTX_POST_FX_MOTION_BLUR_ENABLE", "Enables motion blur post-processing effect.");
     RW_RTX_OPTION("rtx.postfx", bool, enableChromaticAberration, true, "Enables chromatic aberration post-processing effect.");
     RW_RTX_OPTION("rtx.postfx", bool, enableVignette, true, "Enables vignette post-processing effect.");
+    RTX_OPTION("rtx.postfx", bool, desaturateOthersOnHighlight, true, "If true, desaturare all objects that are not highlighted.");
+
   private:
     Rc<vk::DeviceFn> m_vkd;
+    Rc<DxvkBuffer> m_highlightingValues;
 
     RTX_OPTION("rtx.postfx", bool,  enableMotionBlurNoiseSample, true, "Enable random distance sampling for every step along the motion vector. The random pattern is generated with interleaved gradient noise.");
     RTX_OPTION("rtx.postfx", bool,  enableMotionBlurEmissive, true, "Enable Motion Blur for Emissive surfaces. Disable this when the motion blur on emissive surfaces cause severe artifacts.");

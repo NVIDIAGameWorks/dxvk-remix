@@ -104,6 +104,13 @@ extern "C" {
 
   typedef uint32_t remixapi_Bool;
 
+  typedef struct remixapi_Rect2D {
+    int32_t left;
+    int32_t top;
+    int32_t right;
+    int32_t bottom;
+  } remixapi_Rect2D;
+
   typedef struct remixapi_Float2D {
     float x;
     float y;
@@ -338,7 +345,7 @@ extern "C" {
   typedef struct remixapi_InstanceInfoObjectPickingEXT {
     remixapi_StructType            sType;
     void*                          pNext;
-    // A value to write into REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_OBJECT_PICKING
+    // A value to write for 'RequestObjectPicking'
     uint32_t                       objectPickingValue;
   } remixapi_InstanceInfoObjectPickingEXT;
 
@@ -440,7 +447,7 @@ extern "C" {
 
   typedef struct remixapi_LightInfoDomeEXT {
     remixapi_StructType             sType;
-    void* pNext;
+    void*                           pNext;
     remixapi_Transform              transform;
     remixapi_Path                   colorTexture;
   } remixapi_LightInfoDomeEXT;
@@ -461,12 +468,32 @@ extern "C" {
 
 
   typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_DrawLightInstance)(
-    remixapi_LightHandle lightHandle);
+    remixapi_LightHandle      lightHandle);
 
 
   typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_SetConfigVariable)(
-    const char*         key,
-    const char*         value);
+    const char*               key,
+    const char*               value);
+
+  typedef void (REMIXAPI_PTR* PFN_remixapi_pick_RequestObjectPickingUserCallback)(
+    const uint32_t*           objectPickingValues_values,
+    uint32_t                  objectPickingValues_count,
+    void*                     callbackUserData);
+
+  // Invokes 'callback' on a successful readback of 'remixapi_InstanceInfoObjectPickingEXT::objectPickingValue'
+  // of objects that are drawn in the 'pixelRegion'. 'pixelRegion' specified relative to the output size,
+  // not render size. 'callback' can be invoked from any thread.
+  typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_pick_RequestObjectPicking)(
+    const remixapi_Rect2D*                              pixelRegion,
+    PFN_remixapi_pick_RequestObjectPickingUserCallback  callback,
+    void*                                               callbackUserData);
+
+  typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_pick_HighlightObjects)(
+    const uint32_t*           objectPickingValues_values,
+    uint32_t                  objectPickingValues_count,
+    uint8_t                   colorR,
+    uint8_t                   colorG,
+    uint8_t                   colorB);
 
 
 
@@ -509,24 +536,27 @@ extern "C" {
   } remixapi_InitializeLibraryInfo;
 
   typedef struct remixapi_Interface {
-    PFN_remixapi_Shutdown                  Shutdown;
-    PFN_remixapi_CreateMaterial            CreateMaterial;
-    PFN_remixapi_DestroyMaterial           DestroyMaterial;
-    PFN_remixapi_CreateMesh                CreateMesh;
-    PFN_remixapi_DestroyMesh               DestroyMesh;
-    PFN_remixapi_SetupCamera               SetupCamera;
-    PFN_remixapi_DrawInstance              DrawInstance;
-    PFN_remixapi_CreateLight               CreateLight;
-    PFN_remixapi_DestroyLight              DestroyLight;
-    PFN_remixapi_DrawLightInstance         DrawLightInstance;
-    PFN_remixapi_SetConfigVariable         SetConfigVariable;
+    PFN_remixapi_Shutdown           Shutdown;
+    PFN_remixapi_CreateMaterial     CreateMaterial;
+    PFN_remixapi_DestroyMaterial    DestroyMaterial;
+    PFN_remixapi_CreateMesh         CreateMesh;
+    PFN_remixapi_DestroyMesh        DestroyMesh;
+    PFN_remixapi_SetupCamera        SetupCamera;
+    PFN_remixapi_DrawInstance       DrawInstance;
+    PFN_remixapi_CreateLight        CreateLight;
+    PFN_remixapi_DestroyLight       DestroyLight;
+    PFN_remixapi_DrawLightInstance  DrawLightInstance;
+    PFN_remixapi_SetConfigVariable  SetConfigVariable;
     // DXVK interoperability
-    PFN_remixapi_dxvk_CreateD3D9           dxvk_CreateD3D9;
-    PFN_remixapi_dxvk_RegisterD3D9Device   dxvk_RegisterD3D9Device;
-    PFN_remixapi_dxvk_GetExternalSwapchain dxvk_GetExternalSwapchain;
-    PFN_remixapi_dxvk_GetVkImage           dxvk_GetVkImage;
-    PFN_remixapi_dxvk_CopyRenderingOutput  dxvk_CopyRenderingOutput;
-    PFN_remixapi_dxvk_SetDefaultOutput     dxvk_SetDefaultOutput;
+    PFN_remixapi_dxvk_CreateD3D9            dxvk_CreateD3D9;
+    PFN_remixapi_dxvk_RegisterD3D9Device    dxvk_RegisterD3D9Device;
+    PFN_remixapi_dxvk_GetExternalSwapchain  dxvk_GetExternalSwapchain;
+    PFN_remixapi_dxvk_GetVkImage            dxvk_GetVkImage;
+    PFN_remixapi_dxvk_CopyRenderingOutput   dxvk_CopyRenderingOutput;
+    PFN_remixapi_dxvk_SetDefaultOutput      dxvk_SetDefaultOutput;
+    // Object picking utils
+    PFN_remixapi_pick_RequestObjectPicking  pick_RequestObjectPicking;
+    PFN_remixapi_pick_HighlightObjects      pick_HighlightObjects;
   } remixapi_Interface;
 
   REMIXAPI remixapi_ErrorCode REMIXAPI_CALL remixapi_InitializeLibrary(
