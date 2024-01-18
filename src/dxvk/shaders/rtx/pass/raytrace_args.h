@@ -88,6 +88,8 @@ struct DomeLightArgs {
   uint textureIndex;
 };
 
+#define OBJECT_PICKING_INVALID (cb.clearColorPicking)
+
 // Constant buffer
 struct RaytraceArgs {
   Camera camera;
@@ -295,7 +297,7 @@ struct RaytraceArgs {
 
   u16vec2 gpuPrintThreadIndex;
   uint gpuPrintElementIndex;
-  uint enableTexturePicking;
+  uint enableObjectPicking;
 
   DisplacementMode pomMode;
   uint pomEnableDirectLighting;

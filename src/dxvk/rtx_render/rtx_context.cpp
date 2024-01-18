@@ -486,6 +486,8 @@ namespace dxvk {
           takeScreenshot("rtxImagePostComposite", rtOutput.m_compositeOutput.resource(Resources::AccessType::Read).image);
         }
 
+        dispatchObjectPicking(rtOutput, downscaledExtent, targetImage->info().extent);
+
         // Upscaling if DLSS/NIS enabled, or the Composition Pass will do upscaling
         if (shouldUseDLSS()) {
           // xxxnsubtil: the DLSS indicator reads our exposure texture even with DLSS autoexposure on
@@ -532,7 +534,6 @@ namespace dxvk {
 
         // Debug view overrides
         dispatchDebugView(srcImage, rtOutput, captureScreenImage);
-        dispatchHighlighting(rtOutput);
 
         dispatchDLFG();
         {
@@ -915,6 +916,10 @@ namespace dxvk {
     // Note: This value is assumed to be positive (specifically not have the sign bit set) as otherwise it will break Ray Interaction encoding.
     assert(std::signbit(constants.screenSpacePixelSpreadHalfAngle) == false);
 
+    // Enable object picking only when resource was created
+    // TODO: should be a spec.const
+    constants.enableObjectPicking = bool { rtOutput.m_primaryObjectPicking.isValid() };
+
     // Debug View
     {
       const DebugView& debugView = m_common->metaDebugView();
@@ -923,19 +928,8 @@ namespace dxvk {
       
       constants.gpuPrintThreadIndex = u16vec2 { kInvalidThreadIndex, kInvalidThreadIndex };
       constants.gpuPrintElementIndex = frameIdx % kMaxFramesInFlight;
-      constants.enableTexturePicking = false;
 
-      if (auto pixToCheck = debugView.isFindSurfaceRequestActive(frameIdx)) {
-        auto toDownscaledExtentScale = Vector2 {
-          downscaledExtent.width / static_cast<float>(targetExtent.width),
-          downscaledExtent.height / static_cast<float>(targetExtent.height)
-        };
-        constants.gpuPrintThreadIndex = u16vec2 {
-          static_cast<uint16_t>(pixToCheck->x * toDownscaledExtentScale.x),
-          static_cast<uint16_t>(pixToCheck->y * toDownscaledExtentScale.y)
-        };
-        constants.enableTexturePicking = true;
-      } else if (debugView.gpuPrint.enable() && ImGui::IsKeyDown(ImGuiKey_ModCtrl)) {
+      if (debugView.gpuPrint.enable() && ImGui::IsKeyDown(ImGuiKey_ModCtrl)) {
         if (debugView.gpuPrint.useMousePosition()) {
           Vector2 toDownscaledExtentScale = {
             downscaledExtent.width / static_cast<float>(targetExtent.width),
@@ -1412,13 +1406,9 @@ namespace dxvk {
     ScopedCpuProfileZone();
 
     DebugView& debugView = m_common->metaDebugView();
-    const RaytraceArgs& constants = rtOutput.m_raytraceArgs;
     const uint32_t frameIdx = m_device->getCurrentFrameId();
 
-    const bool findSurfaceRequestActive = bool { debugView.isFindSurfaceRequestActive(frameIdx) };
-
-    // FindSurfaceRequest uses gpuPrint buffer
-    if (debugView.gpuPrint.enable() && !findSurfaceRequestActive) {
+    if (debugView.gpuPrint.enable()) {
       // Read from the oldest element as it is guaranteed to be written on the GPU by now
       VkDeviceSize offset = ((frameIdx + 1) % kMaxFramesInFlight) * sizeof(GpuPrintBufferElement);
       GpuPrintBufferElement* gpuPrintElement = reinterpret_cast<GpuPrintBufferElement*>(rtOutput.m_gpuPrintBuffer->mapPtr(offset));
@@ -1441,24 +1431,6 @@ namespace dxvk {
       }
     }
 
-    if (findSurfaceRequestActive) {
-      // Read from the oldest element as it is guaranteed to be written on the GPU by now
-      VkDeviceSize offset = ((frameIdx + 1) % kMaxFramesInFlight) * sizeof(GpuPrintBufferElement);
-      auto gpuPrintElement = static_cast<GpuPrintBufferElement*>(rtOutput.m_gpuPrintBuffer->mapPtr(offset));
-
-      if (gpuPrintElement && gpuPrintElement->isValid()) {
-        const auto surfaceMaterialIndex = static_cast<uint32_t>(floatBitsToInt(gpuPrintElement->writtenData.x));
-        debugView.placeFindSurfaceResult(FindSurfaceResult {
-          /* .surfaceMaterialIndex = */ surfaceMaterialIndex,
-          /* .legacyTextureHash = */ getSceneManager().findLegacyTextureHashBySurfaceMaterialIndex(surfaceMaterialIndex),
-        });
-      } else {
-        debugView.placeFindSurfaceResult({});
-      }
-    } else {
-      debugView.placeFindSurfaceResult({});
-    }
-
     if (!debugView.shouldDispatch())
       return;
 
@@ -1471,17 +1443,248 @@ namespace dxvk {
       takeScreenshot("rtxImageDebugView", debugView.getFinalDebugOutput()->image());
   }
 
-  void RtxContext::dispatchHighlighting(Resources::RaytracingOutput& rtOutput) {
-    ScopedCpuProfileZone();
-
-    if (auto surfMaterialIndexAndColor = m_common->getSceneManager().accessSurfaceMaterialIndexToHighlight(m_device->getCurrentFrameId())) {
-      m_common->metaPostFx().dispatchHighlighting(
-        this,
-        getSceneManager().getCamera().getShaderConstants().resolution,
-        rtOutput,
-        surfMaterialIndexAndColor->first,
-        surfMaterialIndexAndColor->second);
+  namespace
+  {
+    template<typename T>
+    T mapAs(const Rc<DxvkBuffer>& buf) {
+      if (buf == nullptr) {
+        return nullptr;
+      }
+      return static_cast<T>(buf->mapPtr(0));
     }
+
+    Vector2i rescale(const float(&scale)[2], const Vector2i& pix) {
+      return {
+      static_cast<int>(static_cast<float>(pix.x) * scale[0]),
+      static_cast<int>(static_cast<float>(pix.y) * scale[1]),
+      };
+    }
+
+    struct PixRegion {
+      Vector2i from {};
+      Vector2i to {};
+    };
+
+    PixRegion rescale(const float(&scale)[2], const PixRegion& original) {
+      Vector2i from = rescale(scale, original.from);
+      Vector2i to = rescale(scale, original.to);
+      // if was at least 1 pixel, then rescaled should also contain at least 1 pixel
+      if (original.to.x - original.from.x > 0) {
+        to.x = std::max(to.x, from.x + 1);
+      }
+      if (original.to.y - original.from.y > 0) {
+        to.y = std::max(to.y, from.y + 1);
+      }
+      return PixRegion { from, to };
+    }
+
+    PixRegion clamp(const VkExtent3D& extent, const PixRegion& original) {
+      return PixRegion {
+        Vector2i{
+          std::clamp<int>(original.from.x, 0, std::min<uint32_t>(INT32_MAX, extent.width)),
+          std::clamp<int>(original.from.y, 0, std::min<uint32_t>(INT32_MAX, extent.height)),
+        },
+        Vector2i{
+          std::clamp<int>(original.to.x, 0, std::min<uint32_t>(INT32_MAX, extent.width)),
+          std::clamp<int>(original.to.y, 0, std::min<uint32_t>(INT32_MAX, extent.height)),
+        },
+      };
+    }
+
+    std::optional<PixRegion> nonzero(const PixRegion& original) {
+      if (original.to.x - original.from.x > 0 &&
+          original.to.y - original.from.y > 0) {
+        return original;
+      }
+      return std::nullopt;
+    }
+
+    VkOffset3D vkoffset(const PixRegion& r) {
+      return VkOffset3D { r.from.x, r.from.y, 0 };
+    }
+
+    VkExtent3D vkextent(const PixRegion& request) {
+      assert(request.to.x - request.from.x > 0 && request.to.y - request.from.y > 0);
+      return VkExtent3D {
+        static_cast<uint32_t>(std::max(0, request.to.x - request.from.x)),
+        static_cast<uint32_t>(std::max(0, request.to.y - request.from.y)),
+        1 };
+    }
+
+    // In C++20
+    template<typename Func >
+    void erase_if(std::vector<std::future<void>>& vec, Func&& predicate) {
+      auto newEnd = std::remove_if(vec.begin(), vec.end(), predicate);
+      vec.erase(newEnd, vec.end());
+    }
+  }
+
+  void RtxContext::dispatchObjectPicking(Resources::RaytracingOutput& rtOutput,
+                                         const VkExtent3D& srcExtent,
+                                         const VkExtent3D& targetExtent) {
+    ScopedCpuProfileZone();
+    DebugView& debugView = m_common->metaDebugView();
+    SceneManager& sceneManager = m_common->getSceneManager();
+    const uint32_t frameIdx = m_device->getCurrentFrameId();
+
+
+    auto enoughTimeHasPassedToDestroy = [&]() {
+      // there are object picking / highlighting requests, so don't destroy
+      if (debugView.ObjectPicking.containsRequests() || 
+          debugView.Highlighting.active(frameIdx) || 
+          !m_objectPickingReadback.asyncTasks.empty()) {
+        return false;
+      }
+      return true;
+    };
+
+    if (rtOutput.m_primaryObjectPicking.isValid()) {
+      if (enoughTimeHasPassedToDestroy()) {
+        rtOutput.m_primaryObjectPicking = {};
+        Logger::debug("Object picking image was destroyed");
+        return;
+      }
+    } else {
+      // if object picking image exist
+      // and it should be alive
+      if (!enoughTimeHasPassedToDestroy()) {
+        // create and schedule picking to the next frame
+        auto thisRef = Rc<DxvkContext> { this };
+        rtOutput.m_primaryObjectPicking =
+          Resources::createImageResource(thisRef, "primary object picking", srcExtent, VK_FORMAT_R32_UINT);
+        Logger::debug("Object picking image was created");
+      }
+      return;
+    }
+
+    erase_if(m_objectPickingReadback.asyncTasks, [](std::future<void>& f) {
+      if (!f.valid()) {
+        return true;
+      }
+      // check status with minimal wait; safe to delete, if it has completed
+      return f.wait_for(std::chrono::duration<int>{0}) == std::future_status::ready;
+    });
+
+
+    const Resources::Resource& objectPickingSrc = rtOutput.m_primaryObjectPicking;
+    assert(srcExtent == objectPickingSrc.image->info().extent);
+    const float downscale[] = {
+      srcExtent.width / static_cast<float>(targetExtent.width),
+      srcExtent.height / static_cast<float>(targetExtent.height)
+    };
+    constexpr static VkDeviceSize onePixelInBytes = sizeof(ObjectPickingValue);
+
+
+    // process one request per frame, to readback in the future
+    if (auto request = debugView.ObjectPicking.popRequest()) {
+      if (auto pixRegion = nonzero(clamp(srcExtent, rescale(downscale,
+                                                            PixRegion { request->pixelFrom, request->pixelTo })))) {
+        assert(objectPickingSrc.isValid());
+        assert(objectPickingSrc.image->formatInfo()->elementSize == onePixelInBytes);
+        assert(getSceneManager().getGlobals().clearColorPicking <= (1ull << (8 * onePixelInBytes)) - 1);
+
+        const VkExtent3D copyExtent = vkextent(*pixRegion);
+
+        auto info = DxvkBufferCreateInfo {};
+        {
+          info.size = onePixelInBytes * copyExtent.width * copyExtent.height;
+          info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+          info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT |
+            VK_PIPELINE_STAGE_HOST_BIT;
+          info.access = VK_ACCESS_TRANSFER_WRITE_BIT |
+            VK_ACCESS_HOST_READ_BIT;
+        }
+
+        const VkMemoryPropertyFlags memType =
+          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+          VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
+
+        Rc<DxvkBuffer> readbackDst = m_device->createBuffer(info, memType, DxvkMemoryStats::Category::RTXBuffer);
+
+        auto subres = VkImageSubresourceLayers {};
+        {
+          subres.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+          subres.mipLevel = 0;
+          subres.baseArrayLayer = 0;
+          subres.layerCount = 1;
+        }
+        copyImageToBuffer(
+          readbackDst, 0, onePixelInBytes, onePixelInBytes,
+          objectPickingSrc.image, subres, vkoffset(*pixRegion), copyExtent);
+
+
+        this->emitMemoryBarrier(0,
+          VK_PIPELINE_STAGE_TRANSFER_BIT,
+          VK_ACCESS_TRANSFER_WRITE_BIT,
+          VK_PIPELINE_STAGE_HOST_BIT,
+          VK_ACCESS_HOST_READ_BIT);
+
+        const uint64_t syncValue = ++m_objectPickingReadback.signalValue;
+        this->signal(m_objectPickingReadback.signal, syncValue);
+
+        m_objectPickingReadback.asyncTasks.push_back(std::async(
+          std::launch::async,
+          [this,
+          cReadbackDst = std::move(readbackDst),
+          cSyncValueToWait = syncValue,
+          cCallback = std::move(request->callback)]() {
+            // async wait
+            this->m_objectPickingReadback.signal->wait(cSyncValueToWait);
+
+            const uint32_t* readback = mapAs<const uint32_t*>(cReadbackDst);
+            if (!readback || cReadbackDst->info().size < onePixelInBytes) {
+              assert(0);
+              cCallback(std::vector<ObjectPickingValue>{}, std::nullopt);
+              return;
+            }
+
+            auto values = std::vector<ObjectPickingValue> {};
+            auto primaryValue = ObjectPickingValue { 0 };
+            {
+              size_t count = cReadbackDst->info().size / onePixelInBytes;
+              values.resize(count);
+
+              memcpy(values.data(), readback, count * onePixelInBytes);
+              primaryValue = values[0];
+
+              // sort
+              std::sort(values.begin(), values.end());
+              // remove consecutive duplicates
+              auto endNew = std::unique(values.begin(), values.end());
+              values.erase(endNew, values.end());
+            }
+
+            auto legacyHashForPrimaryValue = g_allowMappingLegacyHashToObjectPickingValue ?
+              m_common->getSceneManager().findLegacyTextureHashByObjectPickingValue(primaryValue) :
+              std::optional<XXH64_hash_t>{};
+
+            cCallback(std::move(values), legacyHashForPrimaryValue);
+          }
+        ));
+      } else {
+        request->callback(std::vector<ObjectPickingValue>{}, std::nullopt);
+      }
+    }
+
+    if (auto pixelAndColor = debugView.Highlighting.accessPixelToHighlight(frameIdx)) {
+      pixelAndColor->first = rescale(downscale, pixelAndColor->first);
+      m_common->metaPostFx().dispatchHighlighting(this,
+        rtOutput,
+        {},
+        pixelAndColor->first,
+        pixelAndColor->second);
+      return;
+    }
+
+    auto [objectPickingValues, color] = debugView.Highlighting.accessObjectPickingValueToHighlight(sceneManager,frameIdx);
+    m_common->metaPostFx().dispatchHighlighting(
+      this,
+      rtOutput,
+      std::move(objectPickingValues),
+      {},
+      color);
   }
 
   void RtxContext::dispatchDLFG() {

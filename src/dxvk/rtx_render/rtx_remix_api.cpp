@@ -25,6 +25,7 @@
 #include "rtx_asset_data_manager.h"
 #include "rtx_asset_replacer.h"
 #include "rtx_light_manager.h"
+#include "rtx_objectpicking.h"
 #include "rtx_option.h"
 #include "rtx_globals.h"
 
@@ -34,6 +35,7 @@
 #include "../dxvk_image.h"
 
 #include "../../util/util_math.h"
+#include "../../util/util_string.h"
 
 #include "../../d3d9/d3d9_swapchain.h"
 
@@ -47,6 +49,8 @@ namespace dxvk {
           bool           WithDrawCallConversion);
 
   extern bool g_allowSrgbConversionForOutput;
+
+  extern std::array<uint8_t, 3> g_customHighlightColor;
 }
 
 namespace dxvk {
@@ -85,6 +89,7 @@ namespace {
   void sanitizeConfigs() {
     // Disable fallback light
     const_cast<dxvk::LightManager::FallbackLightMode&>(dxvk::LightManager::fallbackLightMode()) = dxvk::LightManager::FallbackLightMode::Never;
+    const_cast<bool&>(dxvk::DxvkPostFx::desaturateOthersOnHighlight()) = false;
   }
 
   namespace convert {
@@ -939,6 +944,67 @@ namespace {
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
 
+  remixapi_ErrorCode REMIXAPI_CALL remixapi_pick_RequestObjectPicking(
+    const remixapi_Rect2D* pixelRegion,
+    PFN_remixapi_pick_RequestObjectPickingUserCallback callback,
+    void* callbackUserData) {
+    if (!pixelRegion || !callback) {
+      return REMIXAPI_ERROR_CODE_WRONG_ARGUMENTS;
+    }
+
+    dxvk::D3D9DeviceEx* remixDevice = tryAsDxvk();
+    if (!remixDevice) {
+      return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
+    }
+    std::lock_guard lock { s_mutex };
+
+    dxvk::ObjectPicking& picking = remixDevice->GetDXVKDevice()->getCommon()
+      ->metaDebugView().ObjectPicking;
+
+    picking.request(
+      { pixelRegion->left, pixelRegion->top },
+      { pixelRegion->right, pixelRegion->bottom },
+      // invoke user's callback on result
+      [callback, callbackUserData](std::vector<dxvk::ObjectPickingValue>&& objectPickingValues, std::optional<XXH64_hash_t>) {
+        callback(objectPickingValues.data(), uint32_t(objectPickingValues.size()), callbackUserData);
+      }
+    );
+    return REMIXAPI_ERROR_CODE_SUCCESS;
+  }
+
+  remixapi_ErrorCode REMIXAPI_CALL remixapi_pick_HighlightObjects(
+    const uint32_t* objectPickingValues_values,
+    uint32_t objectPickingValues_count,
+    uint8_t colorR,
+    uint8_t colorG,
+    uint8_t colorB) {
+    if (!objectPickingValues_values) {
+      return REMIXAPI_ERROR_CODE_WRONG_ARGUMENTS;
+    }
+
+    dxvk::D3D9DeviceEx* remixDevice = tryAsDxvk();
+    if (!remixDevice) {
+      return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
+    }
+    std::lock_guard lock { s_mutex };
+
+    if (objectPickingValues_count > 0) {
+      dxvk::g_customHighlightColor = { colorR, colorG, colorB };
+
+      const auto frameId = remixDevice->GetDXVKDevice()->getCurrentFrameId();
+      const auto values = std::vector< dxvk::ObjectPickingValue > {
+        objectPickingValues_values,
+        objectPickingValues_values + objectPickingValues_count,
+      };
+      remixDevice->GetDXVKDevice()->getCommon()->metaDebugView().Highlighting
+        .requestHighlighting(
+          &values,
+          dxvk::HighlightColor::FromVariable,
+          frameId);   // thread-safe
+    }
+    return REMIXAPI_ERROR_CODE_SUCCESS;
+  }
+
   remixapi_ErrorCode REMIXAPI_CALL remixapi_dxvk_CreateD3D9(
     remixapi_Bool disableSrgbConversionForOutput,
     IDirect3D9Ex** out_pD3D9) {
@@ -955,6 +1021,7 @@ namespace {
     if (disableSrgbConversionForOutput) {
       dxvk::g_allowSrgbConversionForOutput = false;
     }
+    dxvk::g_allowMappingLegacyHashToObjectPickingValue = false;
 
     s_dxvkD3D9 = d3d9ex;
     *out_pD3D9 = d3d9ex;
@@ -971,9 +1038,6 @@ namespace {
     if (!remixDevice) {
       return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
     }
-    dxvk::Resources& resourceManager = remixDevice->GetDXVKDevice()->getCommon()->getResources();
-    // request allocation of the images required for dxvk_CopyRenderingOutput(..)
-    resourceManager.requestObjectPickingImages(true);
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
 
@@ -1036,6 +1100,9 @@ namespace {
     dxvk::Resources& resourceManager = remixDevice->GetDXVKDevice()->getCommon()->getResources();
     const dxvk::Resources::RaytracingOutput& rtOutput = resourceManager.getRaytracingOutput();
 
+#pragma warning(push)
+#pragma warning(error : 4061) // all switch cases must be handled explicitly
+
     dxvk::Rc<dxvk::DxvkImage> srcImage = nullptr;
     switch (type) {
     case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_FINAL_COLOR:
@@ -1053,6 +1120,8 @@ namespace {
     default:
       break;
     }
+
+#pragma warning(pop)
 
     if (srcImage.ptr() == nullptr) {
       return REMIXAPI_ERROR_CODE_WRONG_ARGUMENTS;
@@ -1156,7 +1225,10 @@ extern "C"
       interf.dxvk_GetVkImage = remixapi_dxvk_GetVkImage;
       interf.dxvk_CopyRenderingOutput = remixapi_dxvk_CopyRenderingOutput;
       interf.dxvk_SetDefaultOutput = remixapi_dxvk_SetDefaultOutput;
+      interf.pick_RequestObjectPicking = remixapi_pick_RequestObjectPicking;
+      interf.pick_HighlightObjects = remixapi_pick_HighlightObjects;
     }
+    static_assert(sizeof(interf) == 152, "Add/remove function registration");
 
     *out_result = interf;
     return REMIXAPI_ERROR_CODE_SUCCESS;
