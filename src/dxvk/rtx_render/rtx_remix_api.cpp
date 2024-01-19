@@ -50,6 +50,7 @@ namespace dxvk {
           bool           WithDrawCallConversion);
 
   extern bool g_allowSrgbConversionForOutput;
+  extern bool g_forceKeepObjectPickingImage;
 
   extern std::array<uint8_t, 3> g_customHighlightColor;
 }
@@ -1124,6 +1125,14 @@ namespace {
     dxvk::D3D9CommonTexture* destTexInfo = destSurface ? destSurface->GetCommonTexture() : nullptr;
     if (!destTexInfo) {
       return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
+    }
+
+    if (type == REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_OBJECT_PICKING) {
+      // suppress resource clean up
+      if (!dxvk::g_forceKeepObjectPickingImage) {
+        dxvk::g_forceKeepObjectPickingImage = true;
+        return REMIXAPI_ERROR_CODE_SUCCESS;
+      }
     }
 
     dxvk::Resources& resourceManager = remixDevice->GetDXVKDevice()->getCommon()->getResources();

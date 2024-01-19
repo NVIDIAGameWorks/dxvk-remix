@@ -68,6 +68,7 @@ namespace dxvk {
   Metrics Metrics::s_instance;
 
   bool g_allowSrgbConversionForOutput = true;
+  bool g_forceKeepObjectPickingImage = false;
 
   void RtxContext::takeScreenshot(std::string imageName, Rc<DxvkImage> image) {
     // NOTE: Improve this, I'd like all textures from the same frame to have the same time code...  Currently sampling the time on each "dump op" results in different timecodes.
@@ -1529,6 +1530,9 @@ namespace dxvk {
 
 
     auto enoughTimeHasPassedToDestroy = [&]() {
+      if (g_forceKeepObjectPickingImage) {
+        return false;
+      }
       // there are object picking / highlighting requests, so don't destroy
       if (debugView.ObjectPicking.containsRequests() || 
           debugView.Highlighting.active(frameIdx) || 
