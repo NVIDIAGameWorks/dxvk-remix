@@ -190,7 +190,7 @@ namespace dxvk {
         if (newLight.getBufferIdx() != kNewLightIdx || newLight.isChildOfMesh())
           continue;
 
-        float similarity = isSimilar(light, newLight, RtxOptions::Get()->getUniqueObjectDistance());
+        float similarity = isSimilar(light, newLight, RtxOptions::uniqueObjectDistance());
         // Update the cached light if it's similar.
         if (similarity > currentSimilarity) {
           similarLight = newPair.first;

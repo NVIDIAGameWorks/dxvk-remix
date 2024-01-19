@@ -2002,13 +2002,13 @@ namespace dxvk {
 
     if (ImGui::CollapsingHeader("Step 2: Parameter Tuning", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
-      ImGui::DragFloat("Scene Unit Scale", &RtxOptions::Get()->sceneScaleObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
+      ImGui::DragFloat("Scene Unit Scale", &RtxOptions::Get()->sceneScaleObject(), 0.01f, 0.00001f, FLT_MAX, "%.3f", sliderFlags);
       ImGui::Checkbox("Scene Z-Up", &RtxOptions::Get()->zUpObject());
       ImGui::Checkbox("Scene Left-Handed", &RtxOptions::Get()->isLHSObject());
       fusedWorldViewModeCombo.getKey(&RtxOptions::Get()->fusedWorldViewModeRef());
       ImGui::Separator();
 
-      ImGui::DragFloat("Unique Object Search Distance", &RtxOptions::Get()->uniqueObjectDistanceObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
+      ImGui::DragFloat("Unique Object Search Distance", &RtxOptions::Get()->uniqueObjectDistanceObject(), 0.01f, FLT_MIN, FLT_MAX, "%.3f", sliderFlags);
       ImGui::Separator();
 
       ImGui::DragFloat("Vertex Color Strength", &RtxOptions::Get()->vertexColorStrengthObject(), 0.001f, 0.0f, 1.0f);

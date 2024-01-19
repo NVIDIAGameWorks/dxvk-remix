@@ -61,6 +61,12 @@ public:
   void clear() {
     m_entries.clear();
   }
+  
+  void rebuildSpatialMaps() {
+    for (auto& iter = m_entries.begin(); iter != m_entries.end(); ++iter) {
+      iter->second.rebuildSpatialMap();
+    }
+  }
 
 private:
   MultimapType m_entries;

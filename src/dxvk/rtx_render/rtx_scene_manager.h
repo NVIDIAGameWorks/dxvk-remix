@@ -287,6 +287,8 @@ private:
   bool m_useFixedFrameTime = false;
   std::chrono::time_point<std::chrono::steady_clock> m_startTime;
   uint32_t m_activePOMCount = 0;
+  
+  float m_uniqueObjectSearchDistance = 1.f;
 
   struct DrawCallMetaInfo {
     XXH64_hash_t legacyTextureHash { kEmptyHash };
