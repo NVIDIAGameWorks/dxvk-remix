@@ -254,7 +254,7 @@ namespace dxvk {
         m_pCap->camera.farPlane = kMaxFarPlane;
       }
       // If the app is being rendered upside-down, we need to plan accordingly
-      m_pCap->camera.bFlipVertAperture = (projMat[0][0] * projMat[1][1] < 0.0f);
+      m_pCap->camera.bFlipMeshes = (projMat[0][0] * projMat[1][1] < 0.0f);
       m_pCap->camera.firstTime = m_pCap->currentFrameNum;
     }
     assert(!isnan(m_pCap->camera.fov));
@@ -955,7 +955,7 @@ namespace dxvk {
     exportPrep.meta.bUseLssUsdPlugins = bUseLssUsdPlugins;
     exportPrep.meta.bReduceMeshBuffers = true;
     exportPrep.meta.isZUp = RtxOptions::Get()->isZUp();
-    exportPrep.meta.isLHS = RtxOptions::Get()->isLHS();
+    exportPrep.meta.isLHS = RtxOptions::Get()->isLHS() || cap.camera.isLHS;
     if (s_captureRemixConfigs) {
       for (auto& pair : RtxOptionImpl::getGlobalRtxOptionMap()) {
         exportPrep.meta.renderingSettingsDict[pair.first] = pair.second->genericValueToString(RtxOptionImpl::ValueType::Value);

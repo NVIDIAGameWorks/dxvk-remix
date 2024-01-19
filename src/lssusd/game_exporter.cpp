@@ -262,6 +262,8 @@ pxr::UsdStageRefPtr GameExporter::createInstanceStage(const Export& exportData) 
   assert(rootMaterialsPrim);
   const auto rootInstancesPrim = pxr::UsdGeomXform::Define(instanceStage,gRootInstancesPath);
   assert(rootInstancesPrim);
+  const auto rootCameraPrim = pxr::UsdGeomXform::Define(instanceStage, gRootLightCamera);
+  assert(rootCameraPrim);
   dxvk::Logger::debug("[GameExporter][" + exportData.debugId + "] Creating instance stage");
 
   // capture meta data
@@ -567,27 +569,8 @@ void GameExporter::exportMeshes(const Export& exportData, ExportContext& ctx) {
     }
     meshStage->GetRootLayer()->SetCustomLayerData(customLayerData);
 
-    // Some meshes require visual correction to make DCC tool QoL easier.
-    pxr::SdfPath meshXformSdfPath;
-    if(exportData.meta.bCorrectBakedTransforms) {
-      // First: calculate xform required to correct this mesh
-      pxr::GfMatrix4d correctionXform{1.0};
-      // Visually undo world transform if it's baked into mesh vertices
-      correctionXform.SetTranslateOnly(pxr::GfVec3d(mesh.origin));
-      correctionXform = correctionXform.GetInverse();
-
-      // Second: apply xform 
-      const auto correctionXformSdfPath = gStageRootPath.AppendElementString("visual_correction");
-      auto correctionXformSchema = pxr::UsdGeomXform::Define(meshStage, correctionXformSdfPath);
-      auto meshXformOp = correctionXformSchema.AddTransformOp();
-      assert(meshXformOp);
-      meshXformOp.Set(correctionXform);
-      meshXformSdfPath = correctionXformSdfPath.AppendElementString(meshName);
-    } else {
-      meshXformSdfPath = gStageRootPath.AppendElementString(meshName);
-    }
-    
     // Build mesh xform prim on mesh stage, make it visible
+    const auto meshXformSdfPath = gStageRootPath.AppendElementString(meshName);
     pxr::UsdGeomXformable meshXformSchema;
     if (isSkeleton) {
       meshXformSchema = pxr::UsdSkelRoot::Define(meshStage, meshXformSdfPath);
@@ -599,6 +582,29 @@ void GameExporter::exportMeshes(const Export& exportData, ExportContext& ctx) {
     auto meshXformVisibilityAttr = meshXformSchema.CreateVisibilityAttr();
     assert(meshXformVisibilityAttr);
     meshXformVisibilityAttr.Set(gVisibilityInherited);
+
+    // Visually undo world transform if it's baked into mesh vertices
+    if(exportData.meta.bCorrectBakedTransforms) {
+      auto meshXformOp = meshXformSchema.AddTransformOp();
+      assert(meshXformOp);
+      pxr::GfMatrix4d xform{1.0};
+      // Note: Don't call flipXForm for flipping here, because we need a post-flipping but SetScale function will clean-up the translation
+      if (!exportData.camera.bFlipMeshes) {
+        xform.SetTranslateOnly(pxr::GfVec3d(mesh.origin));
+        xform = xform.GetInverse();
+      } else {
+        if (!exportData.meta.isZUp) {
+          xform.SetTranslateOnly(pxr::GfVec3d(mesh.origin[0], -mesh.origin[1], mesh.origin[2]));
+          xform = xform.GetInverse();
+          xform[1][1] *= -1.0;
+        } else {
+          xform.SetTranslateOnly(pxr::GfVec3d(mesh.origin[0], mesh.origin[1], -mesh.origin[2]));
+          xform = xform.GetInverse();
+          xform[2][2] *= -1.0;
+        }
+      }
+      meshXformOp.Set(xform);
+    }
 
     // Build mesh geometry prim under above xform
     const auto meshSchemaSdfPath = meshXformSdfPath.AppendChild(gTokMesh);
@@ -739,7 +745,7 @@ void GameExporter::exportMeshes(const Export& exportData, ExportContext& ctx) {
 
       const std::string relMeshStagePath = relMeshDirPath + meshName + ctx.extension;
       auto meshInstanceUsdReferences = meshInstanceXformSchema.GetPrim().GetReferences();
-      meshInstanceUsdReferences.AddReference(relMeshStagePath,meshXformSdfPath);
+      meshInstanceUsdReferences.AddReference(relMeshStagePath);
 
       auto meshInstanceXformVisibilityAttr = meshInstanceXformSchema.CreateVisibilityAttr();
       assert(meshInstanceXformVisibilityAttr);
@@ -854,44 +860,34 @@ void GameExporter::exportColorOpacityBufferSet(const BufSet<Color>& bufSet, pxr:
 void GameExporter::exportInstances(const Export& exportData, ExportContext& ctx) {
   assert(exportData.bExportInstanceStage);
   dxvk::Logger::debug("[GameExporter][" + exportData.debugId + "][exportInstances] Begin");
-
-  // First apply any visual corrections globally
   if(exportData.meta.bCorrectBakedTransforms) {
     auto rootInstancesXformSchema = pxr::UsdGeomXform::Get(ctx.instanceStage,gRootInstancesPath);
     assert(rootInstancesXformSchema);
-
-    pxr::GfMatrix4d xform{1.0};
-    if (exportData.meta.bCorrectBakedTransforms) {
-      xform.SetTranslateOnly(-exportData.stageOrigin);
-    }
-    xform = exportData.meta.isLHS ? ToRHS(xform) : xform;
-
-    auto transformOp = rootInstancesXformSchema.AddTransformOp();
-    assert(transformOp);
-    transformOp.Set(xform);
+    setStageOffsetXform(rootInstancesXformSchema, exportData.stageOrigin, exportData.meta.isLHS);
   }
-
-  // Now process each individual instance
   for(const auto& [instId,instanceData] : exportData.instances) {
     // Build base Xform prim for instance to reside in
     auto instanceName = (instanceData.isSky ? "sky_" : "inst_") + std::string(instanceData.instanceName);
     pxr::SdfPath instancePath = gRootInstancesPath.AppendElementString(instanceName);
-    pxr::UsdGeomXformable instanceXformSchema;
+    auto instanceXformSchema = pxr::UsdGeomXform::Define(ctx.instanceStage, instancePath);
+
+    pxr::SdfPath meshRefPath = instancePath.AppendElementString("ref");
+    pxr::UsdGeomXformable meshRefXformSchema;
     const bool isSkeleton = !instanceData.boneXForms.empty();
     if (isSkeleton) {
-      instanceXformSchema = pxr::UsdSkelRoot::Define(ctx.instanceStage, instancePath);
+      meshRefXformSchema = pxr::UsdSkelRoot::Define(ctx.instanceStage, meshRefPath);
     } else {
-      instanceXformSchema = pxr::UsdGeomXform::Define(ctx.instanceStage, instancePath);
+      meshRefXformSchema = pxr::UsdGeomXform::Define(ctx.instanceStage, meshRefPath);
     }
-    assert(instanceXformSchema);
+    assert(meshRefXformSchema);
 
     // Attach reference to mesh in question
     const Reference& meshLssReference = ctx.meshReferences[instanceData.meshId];
-    auto instanceUsdReferences = instanceXformSchema.GetPrim().GetReferences();
+    auto instanceUsdReferences = meshRefXformSchema.GetPrim().GetReferences();
     instanceUsdReferences.AddInternalReference(meshLssReference.instanceSdfPath);
     
     // Set instanced mesh to now be visible
-    auto visibilityAttr = instanceXformSchema.CreateVisibilityAttr();
+    auto visibilityAttr = meshRefXformSchema.CreateVisibilityAttr();
     assert(visibilityAttr);
     visibilityAttr.Set(gVisibilityInherited);
     
@@ -906,13 +902,13 @@ void GameExporter::exportInstances(const Export& exportData, ExportContext& ctx)
       const Reference& matLssReference = ctx.matReferences[instanceData.matId];
       const auto shaderMatSchema = pxr::UsdShadeMaterial::Get(ctx.instanceStage, matLssReference.instanceSdfPath);
       assert(shaderMatSchema);
-      pxr::UsdShadeMaterialBindingAPI(instanceXformSchema.GetPrim()).Bind(shaderMatSchema);
+      pxr::UsdShadeMaterialBindingAPI(meshRefXformSchema.GetPrim()).Bind(shaderMatSchema);
     }
 
     if (isSkeleton) {
       // Set instance skeleton pose / animation
-      const auto skelPoseSdfPath = instancePath.AppendChild(gTokPose);
-      const auto skelSkelSdfPath = instancePath.AppendChild(gTokSkel);
+      const auto skelPoseSdfPath = meshRefPath.AppendChild(gTokPose);
+      const auto skelSkelSdfPath = meshRefPath.AppendChild(gTokSkel);
       auto skelAnimationSchema = pxr::UsdSkelAnimation::Define(ctx.instanceStage, skelPoseSdfPath);
       assert(skelAnimationSchema);
       const lss::Skeleton& skel = ctx.skeletons[instanceData.meshId];
@@ -931,7 +927,7 @@ void GameExporter::exportInstances(const Export& exportData, ExportContext& ctx)
       auto animationSource = skelBindingSchema.CreateAnimationSourceRel();
       animationSource.SetTargets({skelPoseSdfPath});
     } else {
-      const auto meshSchemaSdfPath = instancePath.AppendChild(gTokMesh);
+      const auto meshSchemaSdfPath = meshRefPath.AppendChild(gTokMesh);
       pxr::UsdGeomMesh meshSchema = pxr::UsdGeomMesh::Define(ctx.instanceStage, meshSchemaSdfPath);
       pxr::UsdGeomPrimvarsAPI primvarsAPI(meshSchema.GetPrim());
 
@@ -954,9 +950,33 @@ void GameExporter::exportInstances(const Export& exportData, ExportContext& ctx)
 #undef _SetDrawMetadata
     }
 
+    const auto& mesh = exportData.meshes.at(instanceData.meshId);
+    // Move instance back to its original positions by undoing the visual correction.
+    // a.k.a. Invert the invert done in exportMeshes
+    pxr::GfMatrix4d commonXform{1.0};
+    if (exportData.meta.bCorrectBakedTransforms) {
+      if (!exportData.camera.bFlipMeshes) {
+        commonXform.SetTranslateOnly(pxr::GfVec3d(mesh.origin));
+      } else {
+        // This translation actually combines 2 steps of translation corrections for bake-corrected + flipped meshes:
+        // 1. Move instance back to it's original position inside root by undoing the flipped visual correction (-mesh.origin[1] or -mesh.origin[2])
+        // 2. Cancel out the root translation on the flipped dimension (Y or Z), then move exactly the same distance to the other side of flip axis:
+        //    P         y/z         P'
+        //    |--------->|--------->|
+        //     stageOrigin[1/2] * 2
+        if (!exportData.meta.isZUp) {
+          commonXform.SetTranslateOnly(pxr::GfVec3d(mesh.origin[0], -mesh.origin[1] + exportData.stageOrigin[1] * 2, mesh.origin[2]));
+        } else {
+          commonXform.SetTranslateOnly(pxr::GfVec3d(mesh.origin[0], mesh.origin[1], -mesh.origin[2] + exportData.stageOrigin[2] * 2));
+        }
+      }
+    } else {
+      flipXForm(exportData, commonXform);
+    }
+
     setTimeSampledXforms<true>(ctx.instanceStage, instancePath,
                                instanceData.firstTime, instanceData.finalTime, instanceData.xforms,
-                               exportData.meta);
+                               exportData.meta, commonXform);
     setVisibilityTimeSpan(ctx.instanceStage, instancePath, instanceData.firstTime, instanceData.finalTime, exportData.meta.numFramesCaptured);
   }
   dxvk::Logger::debug("[GameExporter][" + exportData.debugId + "][exportInstances] End");
@@ -964,9 +984,18 @@ void GameExporter::exportInstances(const Export& exportData, ExportContext& ctx)
 
 void GameExporter::exportCamera(const Export& exportData, ExportContext& ctx) {
   dxvk::Logger::debug("[GameExporter][" + exportData.debugId + "][exportCamera] Begin");
+
+  auto gRootCamerasPath = gRootNodePath.AppendChild(kTokCameras);
+
   static const pxr::TfToken kTokCamera("Camera");
-  const pxr::SdfPath cameraSdfPath = gRootNodePath.AppendChild(kTokCamera);
+  const pxr::SdfPath cameraSdfPath = gRootCamerasPath.AppendChild(kTokCamera);
   auto geomCamera = pxr::UsdGeomCamera::Define(ctx.instanceStage, cameraSdfPath);
+
+  if (exportData.camera.bFlipMeshes) {
+    auto rootCamerasXformSchema = pxr::UsdGeomXform::Get(ctx.instanceStage, gRootCamerasPath);
+    assert(rootCamerasXformSchema);
+    setStageOffsetXform(rootCamerasXformSchema, pxr::GfVec3f { 0.f,0.f,0.f }, exportData.meta.isLHS);
+  }
 
   // Create Gf Camera which will convert FOV + Aspect Ratio -> Usd Camera Attributes
   pxr::GfCamera simpleCam;
@@ -981,14 +1010,6 @@ void GameExporter::exportCamera(const Export& exportData, ExportContext& ctx) {
   auto horizontalAperture = geomCamera.CreateHorizontalApertureAttr();
   horizontalAperture.Set(simpleCam.GetHorizontalAperture());
 
-  // Set Vertical aperture
-  auto verticalAperture = geomCamera.CreateVerticalApertureAttr();
-  float verticalApertureVal = simpleCam.GetVerticalAperture();
-  if(exportData.camera.bFlipVertAperture) {
-    verticalApertureVal *= (-1.f);
-  }
-  verticalAperture.Set(verticalApertureVal);
-
   // Set focal length
   auto focalLength = geomCamera.CreateFocalLengthAttr();
   focalLength.Set(simpleCam.GetFocalLength());
@@ -1000,12 +1021,23 @@ void GameExporter::exportCamera(const Export& exportData, ExportContext& ctx) {
   // Camera position needs to be adjusted if we're visually correcting baked transforms
   pxr::GfMatrix4d commonXform{1.0};
   if(exportData.meta.bCorrectBakedTransforms) {
-    commonXform.SetTranslateOnly(pxr::GfVec3d(exportData.stageOrigin));
+    pxr::GfVec3f stageOrigin = exportData.stageOrigin;
+    flipXForm(exportData, commonXform);
+    commonXform.SetTranslateOnly(pxr::GfVec3d(stageOrigin));
     commonXform = commonXform.GetInverse();
+  } else {
+    flipXForm(exportData, commonXform);
   }
-  setTimeSampledXforms<false>(ctx.instanceStage, cameraSdfPath,
-                              exportData.camera.firstTime, exportData.camera.finalTime, exportData.camera.xforms,
-                              exportData.meta, commonXform);
+
+  if (!exportData.camera.bFlipMeshes) {
+    setTimeSampledXforms<false>(ctx.instanceStage, cameraSdfPath,
+                                exportData.camera.firstTime, exportData.camera.finalTime, exportData.camera.xforms,
+                                exportData.meta, commonXform);
+  } else {
+    setCameraTimeSampledXforms(ctx.instanceStage, cameraSdfPath,
+                               exportData.camera.firstTime, exportData.camera.finalTime, exportData.camera.xforms[0],
+                               exportData.meta, commonXform);
+  }
 
   // Must modify here, since there may be existing data set earlier
   pxr::VtDictionary customLayerData = ctx.instanceStage->GetRootLayer()->GetCustomLayerData();
@@ -1069,9 +1101,13 @@ void GameExporter::exportSphereLights(const Export& exportData, ExportContext& c
       shaping.Apply(sphereLight.GetPrim());
     }
 
+    // Sphere light position needs to be adjusted if we're visually flipping back upside down issue
+    pxr::GfMatrix4d commonXform { 1.0 };
+    flipXForm(exportData, commonXform);
+
     setTimeSampledXforms<false>(lightStage, lightAssetSdfPath,
                                 sphereLightData.firstTime, sphereLightData.finalTime, sphereLightData.xforms,
-                                exportData.meta);
+                                exportData.meta, commonXform);
     
     pxr::UsdLuxLightAPI lightAPI(sphereLight.GetPrim());
     setLightIntensityOnTimeSpan(lightAPI, sphereLightData.intensity, sphereLightData.firstTime, sphereLightData.finalTime, exportData.meta.numFramesCaptured);
@@ -1118,7 +1154,15 @@ void GameExporter::exportDistantLights(const Export& exportData, ExportContext& 
     angleAttr.Set(distantLightData.angle);
 
     static const pxr::GfVec3d distantLightDefault(0.0,0.0,-1.0);
-    const auto directionQuatF = pxr::GfQuatf{pxr::GfRotation(distantLightDefault, distantLightData.direction).GetQuat()};
+    pxr::GfVec3f distantLightDirection = distantLightData.direction;
+    if (exportData.camera.bFlipMeshes) {
+      if (!exportData.meta.isZUp) {
+        distantLightDirection[1] *= -1.0f;
+      } else {
+        distantLightDirection[2] *= -1.0f;
+      }
+    }
+    const auto directionQuatF = pxr::GfQuatf{pxr::GfRotation(distantLightDefault, distantLightDirection).GetQuat()};
     auto orientAttr = distantLightSchema.AddOrientOp();
     assert(orientAttr);
     orientAttr.Set(directionQuatF);
@@ -1372,6 +1416,59 @@ void GameExporter::setLightIntensityOnTimeSpan(const pxr::UsdLuxLightAPI& luxLig
   }
 }
 
+void GameExporter::setCameraTimeSampledXforms(const pxr::UsdStageRefPtr stage,
+                                              const pxr::SdfPath sdfPath,
+                                              const float firstTime,
+                                              const float finalTime,
+                                              const SampledXform& cameraXform,
+                                              const Export::Meta& meta,
+                                              const pxr::GfMatrix4d& commonXform) {
+  assert(stage);
+  assert(sdfPath != pxr::SdfPath());
+
+  const bool isSingleFrame = meta.numFramesCaptured == 1;
+  const pxr::UsdTimeCode timeCode = isSingleFrame ? pxr::UsdTimeCode::Default() : pxr::UsdTimeCode(cameraXform.time);
+
+  auto xform = cameraXform.xform * commonXform;
+  xform = meta.isLHS ? ToRHS(xform) : xform;
+  const pxr::GfVec3d translation = xform.ExtractTranslation();
+  pxr::GfVec3f scale(xform.GetRow3(0).GetLength(), xform.GetRow3(1).GetLength(), xform.GetRow3(2).GetLength());
+
+  pxr::GfVec3f rotation;
+  const auto r = xform.GetOrthonormalized().ExtractRotationMatrix();
+
+  if (r.GetHandedness() > 0) {
+    // Proper pure rotation - easy case.
+    rotation = ToEuler<pxr::GfVec3f>(r);
+  } else {
+    // Doing Improper Rotation for flipped matrix
+    ExtractEulerImproper<true>(rotation, r, pxr::GfVec3d(-1.0, -1.0, -1.0));
+    // Rotate camera around camera Up axis with 180 degrees
+    if (!meta.isZUp) {
+      rotation[0] -= 180.0f;
+      rotation[1] = -rotation[1];
+      rotation[2] = 180.0f - rotation[2];
+    } else {
+      rotation[0] -= 180.0f;
+      rotation[1] = -rotation[1];
+      rotation[2] = -rotation[2] - 180.0f;
+    }
+  }
+
+  // Apply transformation OPs
+  auto geomXformable = pxr::UsdGeomXformable::Get(stage, sdfPath);
+  auto translateOp = geomXformable.AddTranslateOp();
+  assert(translateOp);
+  auto rotateOp = geomXformable.AddRotateZYXOp();
+  assert(rotateOp);
+  auto scaleOp = geomXformable.AddScaleOp();
+  assert(scaleOp);
+
+  translateOp.Set(translation, timeCode);
+  rotateOp.Set(rotation, timeCode);
+  scaleOp.Set(scale, timeCode);
+}
+
 pxr::UsdStageRefPtr GameExporter::findOpenOrCreateStage(const std::string path, const bool bClearIfExists) {
     const bool bLayerAlreadyExists = pxr::TfIsFile(path);
     pxr::SdfLayerRefPtr alreadyExistentLayer;
@@ -1385,6 +1482,17 @@ pxr::UsdStageRefPtr GameExporter::findOpenOrCreateStage(const std::string path, 
     auto stage = (bLayerAlreadyExists) ? pxr::UsdStage::Open(alreadyExistentLayer) : pxr::UsdStage::CreateNew(path);
     assert(stage);
     return stage;
+}
+
+void GameExporter::flipXForm(const Export& exportData,
+                             pxr::GfMatrix4d& commonXform) {
+  if (exportData.camera.bFlipMeshes) {
+    if (!exportData.meta.isZUp) {
+      commonXform.SetScale(pxr::GfVec3d(1.0, -1.0, 1.0));
+    } else {
+      commonXform.SetScale(pxr::GfVec3d(1.0, 1.0, -1.0));
+    }
+  }
 }
 
 }
