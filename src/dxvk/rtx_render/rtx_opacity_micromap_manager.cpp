@@ -1346,6 +1346,8 @@ namespace dxvk {
         desc, ommCacheItem.bakingState, ommCacheItem.ommArrayBuffer);
 
       ctx->getCommandList()->trackResource<DxvkAccess::Write>(ommCacheItem.ommArrayBuffer);
+
+      maxMicroTrianglesToBake -= std::min(ommCacheItem.bakingState.numMicroTrianglesBakedInLastBake, maxMicroTrianglesToBake);
     }
 
     m_numMicroTrianglesBaked += ommCacheItem.bakingState.numMicroTrianglesBakedInLastBake;
