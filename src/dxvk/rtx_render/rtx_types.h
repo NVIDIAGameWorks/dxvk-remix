@@ -28,6 +28,7 @@
 #include "rtx_camera.h"
 #include "vulkan/vulkan_core.h"
 #include "../../util/util_threadpool.h"
+#include "../../util/util_spatial_map.h"
 
 #include <inttypes.h>
 #include <vector>
@@ -562,12 +563,13 @@ struct BlasEntry {
   // Frame when the vertex data of this geometry was last updated, used to detect static geometries
   uint32_t frameLastUpdated = kInvalidFrameIndex;
 
+  using InstanceMap = SpatialMap<const RtInstance*>;
+
   Rc<PooledBlas> staticBlas;
 
   BlasEntry() = default;
 
-  BlasEntry(const DrawCallState& input_)
-    : input(input_) { }
+  BlasEntry(const DrawCallState& input_);
 
   void cacheMaterial(const LegacyMaterialData& newMaterial) {
     if (input.getMaterialData().getHash() != newMaterial.getHash()) {
@@ -595,21 +597,17 @@ struct BlasEntry {
     m_linkedInstances.push_back(instance);
   }
 
-  void unlinkInstance(const RtInstance* instance) {
-    auto& it = std::find(m_linkedInstances.begin(), m_linkedInstances.end(), instance);
-    if (it != m_linkedInstances.end()) {
-      // Swap & pop - faster than "erase", but doesn't preserve order, which is fine here.
-      std::swap(*it, m_linkedInstances.back());
-      m_linkedInstances.pop_back();
-    } else {
-      Logger::err("Tried to unlink an instance, which was never linked!");
-    }
-  }
+  void unlinkInstance(const RtInstance* instance);
 
   const std::vector<const RtInstance*>& getLinkedInstances() const { return m_linkedInstances; }
+  InstanceMap& getSpatialMap() { return m_spatialMap; }
+  const InstanceMap& getSpatialMap() const { return m_spatialMap; }
+
+  void rebuildSpatialMap();
 
 private:
   std::vector<const RtInstance*> m_linkedInstances;
+  InstanceMap m_spatialMap;
   std::unordered_map<XXH64_hash_t, LegacyMaterialData> m_materials;
 };
 
