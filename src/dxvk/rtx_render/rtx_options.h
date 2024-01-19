@@ -358,7 +358,9 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, enableSecondaryBounces, true, "Enables indirect lighting (lighting from diffuse/specular bounces to one or more other surfaces) on surfaces when set to true, otherwise disables it.");
     RTX_OPTION("rtx", bool, zUp, false, "Indicates that the Z axis is the \"upward\" axis in the world when true, otherwise the Y axis when false.");
     RTX_OPTION("rtx", bool, isLHS, false, "");
-    RTX_OPTION("rtx", float, uniqueObjectDistance, 300.f, "[cm]");
+    RTX_OPTION("rtx", float, uniqueObjectDistance, 300.f, "The distance (in game units) that an object can move in a single frame before it is no longer considered the same object.\n"
+                    "If this is too low, fast moving objects may flicker and have bad lighting.  If it's too high, repeated objects may flicker.\n"
+                    "This does not account for sceneScale.");
     RTX_OPTION_FLAG_ENV("rtx", UIType, showUI, UIType::None, RtxOptionFlags::NoSave | RtxOptionFlags::NoReset, "RTX_GUI_DISPLAY_UI", "0 = Don't Show, 1 = Show Simple, 2 = Show Advanced.");
     RTX_OPTION_FLAG("rtx", bool, defaultToAdvancedUI, false, RtxOptionFlags::NoReset, "");
     RTX_OPTION("rtx", bool, showUICursor, true, "");
@@ -948,6 +950,9 @@ namespace dxvk {
       if (sourceRootPath() == "./")
         sourceRootPathRef() = getCurrentDirectory() + "/";
 
+      // Needs to be > 0
+      RTX_OPTION_CLAMP_MIN(uniqueObjectDistance, FLT_MIN);
+
       RTX_OPTION_CLAMP_MIN(emissiveIntensity, 0.0f);
       // Note: Clamp to positive values as negative luminance thresholds are not valid.
       RTX_OPTION_CLAMP_MIN(fireflyFilteringLuminanceThreshold, 0.0f);
@@ -1211,7 +1216,6 @@ namespace dxvk {
     bool shouldCaptureDebugImage() const { return captureDebugImage(); }
     bool isLiveShaderEditModeEnabled() const { return useLiveShaderEditMode(); }
     bool isZUp() const { return zUp(); }
-    float getUniqueObjectDistance() const { return uniqueObjectDistance(); }
     float getUniqueObjectDistanceSqr() const { return uniqueObjectDistance() * uniqueObjectDistance(); }
     float getResolutionScale() const { return resolutionScale(); }
     DLSSProfile getDLSSQuality() const { return qualityDLSS(); }
