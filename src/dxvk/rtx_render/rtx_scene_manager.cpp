@@ -58,7 +58,8 @@ namespace dxvk {
     , m_pReplacer(new AssetReplacer())
     , m_terrainBaker(new TerrainBaker())
     , m_cameraManager(device)
-    , m_startTime(std::chrono::steady_clock::now()) {
+    , m_startTime(std::chrono::steady_clock::now())
+    , m_uniqueObjectSearchDistance(RtxOptions::uniqueObjectDistance()) {
     InstanceEventHandler instanceEvents(this);
     instanceEvents.onInstanceAddedCallback = [this](const RtInstance& instance) { onInstanceAdded(instance); };
     instanceEvents.onInstanceUpdatedCallback = [this](RtInstance& instance, const RtSurfaceMaterial& material, bool hasTransformChanged, bool hasVerticesChanged) { onInstanceUpdated(instance, material, hasTransformChanged, hasVerticesChanged); };
@@ -474,6 +475,11 @@ namespace dxvk {
     m_terrainBaker->onFrameEnd(ctx);
     
     m_activePOMCount = 0;
+
+    if (m_uniqueObjectSearchDistance != RtxOptions::uniqueObjectDistance()) {
+      m_uniqueObjectSearchDistance = RtxOptions::uniqueObjectDistance();
+      m_drawCallCache.rebuildSpatialMaps();
+    }
   }
 
   void SceneManager::onFrameEndNoRTX() {

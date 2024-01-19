@@ -24,6 +24,7 @@
 #include "rtx_types.h"
 #include "rtx_options.h"
 #include "rtx_terrain_baker.h"
+#include "rtx_instance_manager.h"
 
 namespace dxvk {
   uint32_t RasterGeometry::calculatePrimitiveCount() const {
@@ -195,4 +196,35 @@ namespace dxvk {
     setCategory(InstanceCategories::Sky, shouldBakeSky(*this));
     setCategory(InstanceCategories::Terrain, shouldBakeTerrain(*this));
   }
+
+  BlasEntry::BlasEntry(const DrawCallState& input_)
+    : input(input_), m_spatialMap(RtxOptions::uniqueObjectDistance() * 2.f) {
+      if (RtxOptions::uniqueObjectDistance() <= 0.f) {
+        ONCE(Logger::err("rtx.uniqueObjectDistance must be greater than 0."));
+      }
+    }
+
+  void BlasEntry::unlinkInstance(const RtInstance* instance) {
+    instance->removeFromSpatialCache();
+    auto& it = std::find(m_linkedInstances.begin(), m_linkedInstances.end(), instance);
+    if (it != m_linkedInstances.end()) {
+      // Swap & pop - faster than "erase", but doesn't preserve order, which is fine here.
+      std::swap(*it, m_linkedInstances.back());
+      m_linkedInstances.pop_back();
+    } else {
+      ONCE(Logger::err("Tried to unlink an instance, which was never linked!"));
+    }
+  }
+
+  void BlasEntry::rebuildSpatialMap() {
+    InstanceMap newMap(RtxOptions::uniqueObjectDistance() * 2.f);
+    
+    for (const auto& iter : m_spatialMap.getAll()){
+      for (const RtInstance* instance : iter.second) {
+        newMap.insert(instance->getSpatialCachePosition(), instance);
+      }
+    }
+    m_spatialMap = std::move(newMap);
+  }
+
 } // namespace dxvk

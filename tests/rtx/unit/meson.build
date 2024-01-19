@@ -49,4 +49,8 @@ exe = executable('test_pnext',  files('test_pnext.cpp'), include_directories : r
 test('test_pnext', exe, env: nomalloc)
 tests += exe
 
+exe = executable('test_spatial_map',  files('test_spatial_map.cpp'), include_directories : remix_api_include_path,  dependencies : test_unit_deps, install : true, win_subsystem : 'console', override_options: ['cpp_std='+dxvk_cpp_std])
+test('test_spatial_map', exe, env: nomalloc)
+tests += exe
+
 alias_target('unit_tests', tests)

@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <type_traits>
 
+#include "xxHash/xxhash.h"
 #include "util_bit.h"
 #include "util_math.h"
 
@@ -664,3 +665,10 @@ namespace dxvk {
   }
 
 }
+
+template <>
+struct std::hash<dxvk::Vector3i> {
+  std::size_t operator()(const dxvk::Vector3i& key) const {
+    return XXH3_64bits(&key, sizeof(dxvk::Vector3i));
+  }
+};

@@ -65,15 +65,30 @@ public:
   Vector3 getWorldPosition() const { return { m_vkInstance.transform.matrix[0][3], m_vkInstance.transform.matrix[1][3], m_vkInstance.transform.matrix[2][3] }; }
   const Vector3& getPrevWorldPosition() const { return surface.prevObjectToWorld.data[3].xyz(); }
 
+  const Vector3& getSpatialCachePosition() const { return m_spatialCachePos; }
+  void removeFromSpatialCache() const {
+    if (m_isCreatedByRenderer) {
+      return;
+    }
+    m_linkedBlas->getSpatialMap().erase(m_spatialCachePos, this);
+  }
+
   bool isCreatedThisFrame(uint32_t frameIndex) const { return frameIndex == m_frameCreated; }
 
   // Bind a BLAS object to this instance
   void setBlas(BlasEntry& blas);
-  // Set the transform for this instance, returns true if object has moved
-  bool setTransform(const Matrix4& objectToWorld);
-  // Set the transform for this instance for current frame only, returns true if object has moved
-  bool setCurrentTransform(const Matrix4& objectToWorld);
-  void setPrevTransform(const Matrix4& objectToWorld);
+
+  // Sets current and previous transforms explicitly
+  bool teleport(const Matrix4& objectToWorld);
+  bool teleport(const Matrix4& objectToWorld, const Matrix4& prevObjectToWorld);
+  // Changes all transform data from an old context to a new context (i.e. when an instance moves through a portal).
+  void teleportWithHistory(const Matrix4& oldToNew);
+  
+  // Move to the new transform and retain previous transforms as history (call the first time a transform changes per frame)
+  bool move(const Matrix4& objectToWorld);
+  // Move to the new transform without changing history (call if the transform is changed multiple times per frame)
+  bool moveAgain(const Matrix4& objectToWorld);
+
   void setFrameCreated(const uint32_t frameIndex);
   // Returns if this is the first occurence in a given frame
   bool setFrameLastUpdated(const uint32_t frameIndex);
@@ -135,6 +150,8 @@ public:
 
   bool isUnlinkedForGC() const { return m_isUnlinkedForGC; }
 private:
+
+  void onTransformChanged();
   friend class InstanceManager;
 
   const uint64_t m_id;
@@ -182,6 +199,8 @@ private:
   uint32_t m_billboardCount = 0;
 
   CategoryFlags m_categoryFlags;
+
+  Vector3 m_spatialCachePos = Vector3(0.f);
 
 public:
 

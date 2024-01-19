@@ -134,34 +134,85 @@ namespace dxvk {
        m_frameLastUpdated
        m_frameCreated
        m_isCreatedByRenderer
+       m_spatialCachePos
        buildGeometries
        buildRanges
        billboardIndices
        indexOffsets
      */
-    // Ensure the copy ctor copies all needed members when size changes, and update the object size check.
-    // Note: The object has a different size on Debug builds. 
-    //       Checking the non-Debug flavors is good enough for the sake of convenience of tracking just a single size.
-#if defined(DEBUG_OPTIMIZED) || defined(NDEBUG)
-    static_assert(sizeof(RtInstance) == 696);
-#endif
   }
+  // Ensure the copy ctor copies all needed members when size changes, and update the object size check.
+  // Note: The object has a different size on Debug builds. 
+  //       Checking the non-Debug flavors is good enough for the sake of convenience of tracking just a single size.
+ #if defined(DEBUG_OPTIMIZED) || defined(NDEBUG)
+  namespace {
+    template<int RtInstanceSize> struct CheckRtInstanceSize {
+      // The second line of the build error should contain the new size of RtInstance in the template argument, i.e. `dxvk::CheckRtInstanceSize<newSize>`
+      static_assert(RtInstanceSize == 712, "RtInstance size has changed.  Fix the copy constructor above this message, then update the expected size.");
+    };
+    CheckRtInstanceSize<sizeof(RtInstance)> _rtInstanceSizeTest;
+  }
+ #endif
 
   void RtInstance::setBlas(BlasEntry& blas) {
     m_linkedBlas = &blas;
   }
 
-  bool RtInstance::setTransform(const Matrix4& objectToWorld) {
-    surface.objectToWorld = objectToWorld;
-    surface.normalObjectToWorld = transpose(inverse(Matrix3(objectToWorld)));
-    surface.prevObjectToWorld = transpose(Matrix4(m_vkInstance.transform)); // Repurpose the old matrix embedded in the VK instance structure
-
+  void RtInstance::onTransformChanged() {
     // The D3D matrix on input, needs to be transposed before feeding to the VK API (left/right handed conversion)
     // NOTE: VkTransformMatrixKHR is 4x3 matrix, and Matrix4 is 4x4
-    {
-      const auto t = transpose(objectToWorld);
-      memcpy(&m_vkInstance.transform, &t, sizeof(VkTransformMatrixKHR));
+    const auto t = transpose(surface.objectToWorld);
+    memcpy(&m_vkInstance.transform, &t, sizeof(VkTransformMatrixKHR));
+
+    if (!m_isCreatedByRenderer) {
+      // NOTE: This code would cache instances based on predicted position instead of current position, but in testing it fails too frequently
+      // const Vector3 newPos = 2.f * surface.objectToWorld[3].xyz() - surface.prevObjectToWorld[3].xyz();
+
+      // Cache based on current position.
+      const Vector3 newPos = surface.objectToWorld[3].xyz();
+      m_linkedBlas->getSpatialMap().move(m_spatialCachePos, newPos, this);
+      m_spatialCachePos = newPos;
     }
+  }
+
+  bool RtInstance::teleport(const Matrix4& objectToWorld) {
+    surface.objectToWorld = objectToWorld;
+    surface.normalObjectToWorld = transpose(inverse(Matrix3(surface.objectToWorld)));
+    surface.prevObjectToWorld = objectToWorld;
+    if (!m_isCreatedByRenderer) {
+      m_spatialCachePos = surface.objectToWorld[3].xyz();
+      m_linkedBlas->getSpatialMap().insert(m_spatialCachePos, this);
+    }
+    
+    // The D3D matrix on input, needs to be transposed before feeding to the VK API (left/right handed conversion)
+    // NOTE: VkTransformMatrixKHR is 4x3 matrix, and Matrix4 is 4x4
+    const auto t = transpose(surface.objectToWorld);
+    memcpy(&m_vkInstance.transform, &t, sizeof(VkTransformMatrixKHR));
+    
+    return false; // freshly teleported instances are always treated as still.
+  }
+
+  bool RtInstance::teleport(const Matrix4& objectToWorld, const Matrix4& prevObjectToWorld) {
+    surface.objectToWorld = objectToWorld;
+    surface.normalObjectToWorld = transpose(inverse(Matrix3(surface.objectToWorld)));
+    surface.prevObjectToWorld = prevObjectToWorld;
+    onTransformChanged();
+
+    return memcmp(surface.prevObjectToWorld.data, surface.objectToWorld.data, sizeof(Matrix4)) != 0;
+  }
+
+  void RtInstance::teleportWithHistory(const Matrix4& oldToNew) {
+    surface.objectToWorld = oldToNew * surface.objectToWorld;
+    surface.normalObjectToWorld = transpose(inverse(Matrix3(surface.objectToWorld)));
+    surface.prevObjectToWorld = oldToNew * surface.prevObjectToWorld;
+    onTransformChanged();
+  }
+  
+  bool RtInstance::move(const Matrix4& objectToWorld) {
+    surface.prevObjectToWorld = surface.objectToWorld;
+    surface.objectToWorld = objectToWorld;
+    surface.normalObjectToWorld = transpose(inverse(Matrix3(objectToWorld)));
+    onTransformChanged();
 
     // See if the transform has changed even a tiny bit.
     // The result is used for the 'isStatic' surface flag, which is in turn used to skip motion vector calculation
@@ -172,23 +223,13 @@ namespace dxvk {
     return memcmp(surface.prevObjectToWorld.data, surface.objectToWorld.data, sizeof(Matrix4)) != 0;
   }
 
-  bool RtInstance::setCurrentTransform(const Matrix4& objectToWorld) {
+  bool RtInstance::moveAgain(const Matrix4& objectToWorld) {
     surface.objectToWorld = objectToWorld;
     surface.normalObjectToWorld = transpose(inverse(Matrix3(objectToWorld)));
+    onTransformChanged();
 
-    // The D3D matrix on input, needs to be transposed before feeding to the VK API (left/right handed conversion)
-    // NOTE: VkTransformMatrixKHR is 4x3 matrix, and Matrix4 is 4x4
-    {
-      const auto t = transpose(objectToWorld);
-      memcpy(&m_vkInstance.transform, &t, sizeof(VkTransformMatrixKHR));
-    }
-
-    // See the comment in setTransform(...)
+    // See comment in move()
     return memcmp(surface.prevObjectToWorld.data, surface.objectToWorld.data, sizeof(Matrix4)) != 0;
-  }
-
-  void RtInstance::setPrevTransform(const Matrix4& objectToWorld) {
-    surface.prevObjectToWorld = objectToWorld;
   }
 
   void RtInstance::setFrameCreated(const uint32_t frameIndex) {
@@ -598,22 +639,11 @@ namespace dxvk {
     if (RtxOptions::Get()->getDeveloperOptionsEnabled())
       return nullptr;
 
-    struct SimilarInstanceResult {
-      // If teleportMatrix is non-nullptr, then it is the teleport matrix via which the virtual version matches the subject transform
-      const Matrix4* teleportMatrix = nullptr;
-      RtInstance* instance = nullptr;
-
-      void setInstance(RtInstance* _instance, const Matrix4* _teleportMatrix = nullptr) {
-        teleportMatrix = _teleportMatrix;
-        instance = _instance;
-      }
-    };
-
-    SimilarInstanceResult foundResult;
+    RtInstance* result = nullptr;
 
     const uint32_t currentFrameIdx = m_device->getCurrentFrameId();
 
-    const Vector3 worldPosition = Vector3(transform[3][0], transform[3][1], transform[3][2]);
+    const Vector3 worldPosition = transform[3].xyz();
 
     const float uniqueObjectDistanceSqr = RtxOptions::Get()->getUniqueObjectDistanceSqr();
 
@@ -621,27 +651,31 @@ namespace dxvk {
     float nearestDistSqr = FLT_MAX;
 
     // Search the BLAS for an instance matching ours
-    for (const RtInstance* instance : blas.getLinkedInstances()) {
-      
-      if ((instance->m_frameLastUpdated == currentFrameIdx)) {
-        // If the transform is an exact match and the instance has already been touched this frame,
-        // then this is a second draw call on a single mesh.
-        if (memcmp(&transform, &instance->getTransform(), sizeof(instance->getTransform())) == 0) {
-          return const_cast<RtInstance*>(instance);
-        }
-      } else if (instance->m_materialHash == material.getHash()) {
-        // Instance hasn't been touched yet this frame.
+    {
+      const auto adjacentCells = blas.getSpatialMap().getDataNearPos(worldPosition);
+      for (const std::vector<const RtInstance*>* cellPtr : adjacentCells){
+        for (const RtInstance* instance : *cellPtr) {
+          if (instance->m_frameLastUpdated == currentFrameIdx) {
+            // If the transform is an exact match and the instance has already been touched this frame,
+            // then this is a second draw call on a single mesh.
+            if (memcmp(&transform, &instance->getTransform(), sizeof(instance->getTransform())) == 0) {
+              return const_cast<RtInstance*>(instance);
+            }
+          } else if (instance->m_materialHash == material.getHash()) {
+            // Instance hasn't been touched yet this frame.
 
-        const Vector3 prevInstanceWorldPosition = instance->getWorldPosition();
+            const Vector3& prevInstanceWorldPosition = instance->getSpatialCachePosition();
 
-        const float distSqr = lengthSqr(prevInstanceWorldPosition - worldPosition);
-        if (distSqr <= uniqueObjectDistanceSqr && distSqr < nearestDistSqr) {
-          if (distSqr == 0.0f) {
-            // Not going to find anything closer.
-            return const_cast<RtInstance*>(instance);
+            const float distSqr = lengthSqr(prevInstanceWorldPosition - worldPosition);
+            if (distSqr <= uniqueObjectDistanceSqr && distSqr < nearestDistSqr) {
+              if (distSqr == 0.0f) {
+                // Not going to find anything closer.
+                return const_cast<RtInstance*>(instance);
+              }
+              nearestDistSqr = distSqr;
+              result = const_cast<RtInstance*>(instance);
+            }
           }
-          nearestDistSqr = distSqr;
-          foundResult.setInstance(const_cast<RtInstance*>(instance));
         }
       }
     }
@@ -651,6 +685,7 @@ namespace dxvk {
     if (nearestDistSqr > 0.0f &&
         cameraType == CameraType::ViewModel && 
         RtxOptions::Get()->isRayPortalVirtualInstanceMatchingEnabled() ) {
+      const Matrix4* teleportMatrix = nullptr;
       for (const RtInstance* instance : blas.getLinkedInstances()) {
         if (instance->m_frameLastUpdated != currentFrameIdx - 1 || 
             instance->m_materialHash != material.getHash()) {
@@ -659,8 +694,8 @@ namespace dxvk {
         
         // Compare against virtual position of a predicted instance's position in the current frame
         const Vector3& prevPrevInstanceWorldPosition = instance->getPrevWorldPosition();
-        const Vector3 prevInstanceWorldPosition = instance->getWorldPosition();
-        Vector3 predictedInstanceWorldPosition = prevInstanceWorldPosition +
+        const Vector3& prevInstanceWorldPosition = instance->getWorldPosition();
+        const Vector3 predictedInstanceWorldPosition = prevInstanceWorldPosition +
           (prevInstanceWorldPosition - prevPrevInstanceWorldPosition);
       
         // Check all portal pairs
@@ -678,7 +713,8 @@ namespace dxvk {
               // Is the instance is similar, and within range?  We already know the BLAS is shared, due to the for loop
               if (virtualDistSqr <= uniqueObjectDistanceSqr && virtualDistSqr < nearestDistSqr) {
                 nearestDistSqr = virtualDistSqr;
-                foundResult.setInstance(const_cast<RtInstance*>(instance), &rayPortal.portalToOpposingPortalDirection);
+                result = const_cast<RtInstance*>(instance);
+                teleportMatrix = &rayPortal.portalToOpposingPortalDirection;
                 if (virtualDistSqr == 0.0f) {
                   // Not going to find anything closer.
                   break;
@@ -688,15 +724,16 @@ namespace dxvk {
           }
         }
       }
+      
+      // If the match was against a virtual equivalent of the instance from previous frame, 
+      // update the instance's transform to that of the virtual one
+      if (teleportMatrix) {
+        result->teleportWithHistory(*teleportMatrix);
+      }
     }
 
-    // If the match was against a virtual equivalent of the instance from previous frame, 
-    // update the instance's transform to that of the virtual one
-    if (foundResult.teleportMatrix) {
-      foundResult.instance->setCurrentTransform(*foundResult.teleportMatrix * foundResult.instance->getTransform());
-    }
 
-    return foundResult.instance; 
+    return result; 
   }
 
   RtInstance* InstanceManager::addInstance(BlasEntry& blas) {
@@ -778,10 +815,7 @@ namespace dxvk {
 
       // Apply world offset
       Vector3& worldOffset = RtxOptions::Get()->getOverrideWorldOffset();
-      Matrix4 objectToWorld = currentInstance.getTransform();
-      objectToWorld[3].xyz() += worldOffset;
-      currentInstance.setCurrentTransform(objectToWorld);
-      currentInstance.setPrevTransform(objectToWorld);
+      currentInstance.teleportWithHistory(translationMatrix(worldOffset));
 
       return true;
     }
@@ -946,13 +980,11 @@ namespace dxvk {
 
         // Update the transform based on what state we're in
         if (isFirstUpdateAfterCreation) {
-          currentInstance.setCurrentTransform(objectToWorld);
-          currentInstance.setPrevTransform(objectToWorld);
-          hasTransformChanged = false;
+          hasTransformChanged = currentInstance.teleport(objectToWorld);
         } else if (isFirstUpdateThisFrame) {
-          hasTransformChanged = currentInstance.setTransform(objectToWorld);
+          hasTransformChanged = currentInstance.move(objectToWorld);
         } else {
-          hasTransformChanged = currentInstance.setCurrentTransform(objectToWorld);
+          hasTransformChanged = currentInstance.moveAgain(objectToWorld);
         }
 
         currentInstance.surface.textureTransform = drawCall.getTransformData().textureTransform;
@@ -1133,6 +1165,7 @@ namespace dxvk {
       return;
     }
 
+    
     for (auto& event : m_eventHandlers) {
       event.onInstanceDestroyedCallback(*instance);
     }
@@ -1176,8 +1209,7 @@ namespace dxvk {
 
       // If matrices are not convoluted, don't modify the vertex data: just set the transforms directly
       if (isOrdinary(corrected) && isOrdinary(prevCorrected)) {
-        viewModelInstance->setCurrentTransform(corrected);
-        viewModelInstance->setPrevTransform(prevCorrected);
+        viewModelInstance->teleport(corrected, prevCorrected);
       } else {
         ONCE(Logger::info("[RTX-Compatibility-Info] Unexpected values in the perspective-corrected transform of a view model. Fallback to geometry modification"));
         // Only need to run this on BVH op (maybe this could be moved to geometry processing?)
@@ -1512,7 +1544,7 @@ namespace dxvk {
 
       if (backwardOffset != 0.f) {
         // Offset the original instance
-        originalInstance->setCurrentTransform(backwardOffsetMatrix* originalInstance->getTransform());
+        originalInstance->teleportWithHistory(backwardOffsetMatrix);
 
         // Offset the original instance particles
         for (uint32_t i = 0; i < originalInstance->m_billboardCount; ++i) {
@@ -1577,14 +1609,7 @@ namespace dxvk {
       
       // Update cloned instance transforms given the reference and the portal transform
       {
-        // Set current frame transform
-        Matrix4 objectToWorld = nearPortalInfo->portalToOpposingPortalDirection * originalInstance->getTransform();
-        clonedInstance->setCurrentTransform(objectToWorld);
-
-        // Note: only static portals are supported, so we reuse current frame portal state 
-        // We don't check for intersections in previous frame since virtual instance needs prevFrame transform set regardless
-        Matrix4 prevObjectToWorld = nearPortalInfo->portalToOpposingPortalDirection * originalInstance->getPrevTransform();
-        clonedInstance->setPrevTransform(prevObjectToWorld);
+        clonedInstance->teleportWithHistory(nearPortalInfo->portalToOpposingPortalDirection);
       }
 
       // Use a clip plane to make sure that the cloned instance doesn't stick through a slab
@@ -1680,14 +1705,7 @@ namespace dxvk {
     
       // Update virtual instance transforms given the reference and the portal transform
       {
-        // Set current frame transform
-        Matrix4 objectToWorld = closestPortalInfo.portalToOpposingPortalDirection * referenceInstance->getTransform();
-        virtualInstance->setCurrentTransform(objectToWorld);
-
-        // Note: only static portals are supported, so we reuse current frame portal state 
-        // We don't check for intersections in previous frame since virtual instance needs prevFrame transform set regardless
-        Matrix4 prevObjectToWorld = closestPortalInfo.portalToOpposingPortalDirection * referenceInstance->getPrevTransform();
-        virtualInstance->setPrevTransform(prevObjectToWorld);
+        virtualInstance->teleportWithHistory(closestPortalInfo.portalToOpposingPortalDirection);
       }
 
       // Note this is an instance copy of an input reference. It is unknown to the source engine, so we don't call onInstanceAdded callbacks for it
