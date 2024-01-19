@@ -92,7 +92,7 @@ private:
                                    const float finalTime,
                                    const SampledXforms& xforms,
                                    const Export::Meta& meta,
-                                   const pxr::GfMatrix4d& commonXform = pxr::GfMatrix4d{1.0});
+                                   const pxr::GfMatrix4d& commonXform = pxr::GfMatrix4d { 1.0 });
   static void setVisibilityTimeSpan(const pxr::UsdStageRefPtr stage,
                                     const pxr::SdfPath sdfPath,
                                     const double firstTime,
@@ -103,8 +103,18 @@ private:
                                           const double firstTime,
                                           const double finalTime,
                                           const size_t numFramesCaptured);
+  static void setCameraTimeSampledXforms(const pxr::UsdStageRefPtr stage,
+                                         const pxr::SdfPath sdfPath,
+                                         const float firstTime,
+                                         const float finalTime,
+                                         const SampledXform& cameraXform,
+                                         const Export::Meta& meta,
+                                         const pxr::GfMatrix4d& commonXform);
   
   static pxr::UsdStageRefPtr findOpenOrCreateStage(const std::string path, const bool bClearIfExists = false);
+
+  static void flipXForm(const Export& exportData,
+                        pxr::GfMatrix4d& commonXform);
 
   static bool s_bMultiThreadSafety;
   static std::mutex s_mutex;
