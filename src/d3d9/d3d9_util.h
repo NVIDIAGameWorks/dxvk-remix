@@ -300,3 +300,12 @@ namespace dxvk {
   }
 
 }
+
+inline bool operator == (const D3DDISPLAYMODEEX& a, const D3DDISPLAYMODEEX& b) {
+  return a.Size             == b.Size             &&
+         a.Width            == b.Width            &&
+         a.Height           == b.Height           &&
+         a.RefreshRate      == b.RefreshRate      &&
+         a.Format           == b.Format           &&
+         a.ScanLineOrdering == b.ScanLineOrdering;
+}
