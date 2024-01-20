@@ -73,7 +73,7 @@ struct Camera {
   float         finalTime = NAN;
   bool          isLHS = false;
   bool          isReverseZ = false;
-  bool          bFlipMeshes = false;
+  bool          bFlipVertAperture = false;
   SampledXforms xforms;
 };
 
