@@ -365,9 +365,7 @@ namespace dxvk {
     RTX_OPTION_FLAG("rtx", bool, defaultToAdvancedUI, false, RtxOptionFlags::NoReset, "");
     RTX_OPTION("rtx", bool, showUICursor, true, "");
     RTX_OPTION_FLAG("rtx", bool, blockInputToGameInUI, true, RtxOptionFlags::NoSave, "");
-    RTX_OPTION_ENV("rtx", bool, hideSplashMessage, false, "RTX_HIDE_SPLASH_MESSAGE",
-               "A flag to disable the splash message indicating how to use Remix from appearing when the application starts.\n"
-               "When set to true this message will be hidden, otherwise it will be displayed on every launch.");
+
   private:
     VirtualKeys m_remixMenuKeyBinds;
   public:

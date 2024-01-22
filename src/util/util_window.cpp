@@ -164,9 +164,11 @@ namespace dxvk::window {
     return 0;
   }
 
-  void saveWindowIconToFile(const std::string& filename) {
-    // Assume the window in focus is the one we care about...
-    const HWND hwnd = GetForegroundWindow();
+  void saveWindowIconToFile(const std::string& filename, HWND hwnd /*= (HWND) 0*/) {
+    if (hwnd == (HWND) 0 || !IsWindow(hwnd)) {
+      // Assume the window in focus is the one we care about...
+      hwnd = GetForegroundWindow();
+    }
 
     const HICON hIcon = getIcon(hwnd);
 
@@ -180,11 +182,21 @@ namespace dxvk::window {
     }
   }
 
-  const std::string getWindowTitle() {
-    char title[256];
-    // Assume the window in focus is the one we care about...
-    HWND hwnd = GetForegroundWindow();
-    GetWindowText(hwnd, title, sizeof(title));
-    return std::string(title);
+  const std::string getWindowTitle(HWND hwnd/* = (HWND)0*/) {
+    if (hwnd == (HWND)0 || !IsWindow(hwnd)) {
+      // Assume the window in focus is the one we care about...
+      hwnd = GetForegroundWindow();
+    }
+
+    const bool isUnicode = IsWindowUnicode(hwnd);
+    if (isUnicode) {
+      wchar_t title[256];
+      GetWindowTextW(hwnd, title, sizeof(title));
+      return str::fromws(title);
+    } else {
+      char title[256];
+      GetWindowTextA(hwnd, title, sizeof(title));
+      return std::string(title);
+    }
   }
 }

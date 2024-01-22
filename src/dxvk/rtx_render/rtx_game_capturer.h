@@ -68,7 +68,7 @@ public:
   GameCapturer(DxvkDevice* const pDevice, SceneManager& sceneManager, AssetExporter& exporter);
   ~GameCapturer();
 
-  void step(const Rc<DxvkContext> ctx, const float dt);
+  void step(const Rc<DxvkContext> ctx, const float dt, const HWND hwnd);
   void triggerNewCapture() {
     m_bTriggerCapture = true;
   }
@@ -148,7 +148,7 @@ private:
   };
 
   void trigger(const Rc<DxvkContext> ctx);
-  void initCapture(const Rc<DxvkContext> ctx);
+  void initCapture(const Rc<DxvkContext> ctx, const HWND hwnd);
   void prepareInstanceStage(const Rc<DxvkContext> ctx);
   void capture(const Rc<DxvkContext> ctx, const float dt);
   void captureFrame(const Rc<DxvkContext> ctx);
@@ -289,6 +289,7 @@ private:
     std::unordered_map<XXH64_hash_t, Material> materials;
     std::unordered_map<XXH64_hash_t, Instance> instances;
     std::unordered_map<XXH64_hash_t, uint8_t> instanceFlags;
+    HWND hwnd;
   };
   std::unique_ptr<Capture> m_pCap;
 };
