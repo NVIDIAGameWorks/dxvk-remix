@@ -1449,7 +1449,7 @@ namespace dxvk {
     if (m_device->getCurrentFrameId() == m_beginUsdExportFrameNum) {
       capturer->triggerNewCapture();
     }
-    capturer->step(ctx, frameTimeSecs);
+    capturer->step(ctx, frameTimeSecs, ctx->getCommonObjects()->getLastKnownWindowHandle());
 
     // Clear the ray portal data before the next frame
     m_rayPortalManager.clear();

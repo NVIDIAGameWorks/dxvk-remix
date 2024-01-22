@@ -62,4 +62,6 @@ namespace dxvk::str {
   }
 
   std::vector<std::string> split(std::string s, const char delimiter = ',');
+
+  std::string stripNonAscii(const std::string& input);
 }

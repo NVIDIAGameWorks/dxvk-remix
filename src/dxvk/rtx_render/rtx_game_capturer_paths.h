@@ -30,7 +30,7 @@ namespace dxvk {
     
 namespace commonFileName {
   static const std::string mod("mod");
-  static const std::string bakedSkyProbe("T_SkyProbe_NonReplaceable" + lss::ext::dds);
+  static const std::string bakedSkyProbeSuffix("_T_SkyProbe" + lss::ext::dds);
 }
     
 namespace relPath {
@@ -39,6 +39,5 @@ namespace relPath {
   static const std::string captureDir("./captures/");
 
   static const std::string remixCaptureDir(rtxRemixDir + captureDir);
-  static const std::string bakedSkyProbe(lss::commonDirName::texDir + commonFileName::bakedSkyProbe);
 }
 }

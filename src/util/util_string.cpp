@@ -70,4 +70,15 @@ namespace dxvk::str {
     }
     return result;
   }
+
+  bool isInvalidAscii(const unsigned char ch) {
+    // Single-byte character (ASCII)
+    return !(ch <= 0x7F);
+  }
+
+  std::string stripNonAscii(const std::string& input) {
+    std::string result = input;
+    result.erase(std::remove_if(result.begin(), result.end(), isInvalidAscii), result.end());
+    return result;
+  }
 }
