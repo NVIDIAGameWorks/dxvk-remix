@@ -267,6 +267,12 @@ namespace dxvk::vk {
      */
     VkResult releaseFullscreenExclusive();
 
+    // NV-DXVK start: Global window handle accessor
+    HWND getWindowHandle() const {
+      return m_window;
+    }
+    // NV-DXVK end
+
   // NV-DXVK start: DLFG integration
     virtual void synchronize() { }
 

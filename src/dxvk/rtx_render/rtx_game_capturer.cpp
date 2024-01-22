@@ -115,6 +115,10 @@ namespace dxvk {
       meta.isTextureFactorBlend = rtInstance.surface.isTextureFactorBlend;
       return meta;
     }
+
+    static std::string getBakedSkyProbeName(const std::string& captureName) {
+      return captureName + commonFileName::bakedSkyProbeSuffix;
+    }
   }
 
   // For capture tests, we cannot include the config data because it may contain paths/settings which are respective to the users PC.
@@ -145,10 +149,10 @@ namespace dxvk {
   GameCapturer::~GameCapturer() {
   }
 
-  void GameCapturer::step(const Rc<DxvkContext> ctx, const float frameTimeSecs) {
+  void GameCapturer::step(const Rc<DxvkContext> ctx, const float frameTimeSecs, const HWND hwnd) {
     trigger(ctx);
     if(m_state.has<State::Initializing>()) {
-      initCapture(ctx);
+      initCapture(ctx, hwnd);
     }
     if (m_state.has<State::Capturing>()) {
       capture(ctx, frameTimeSecs);
@@ -180,7 +184,7 @@ namespace dxvk {
     }
   }
 
-  void GameCapturer::initCapture(const Rc<DxvkContext> ctx) {
+  void GameCapturer::initCapture(const Rc<DxvkContext> ctx, const HWND hwnd) {
     assert(m_state.has<State::Initializing>());
     assert(!m_state.has<State::Capturing>());
     
@@ -195,6 +199,8 @@ namespace dxvk {
     }
     Logger::info("[GameCapturer][" + m_pCap->idStr + "] New capture");
     m_pCap->instanceFlags.clear();
+
+    m_pCap->hwnd = hwnd;
 
     m_state.set<State::Capturing, true>();
     m_state.set<State::Initializing, false>();
@@ -357,10 +363,10 @@ namespace dxvk {
 
       if (pRtInstance->getBlas()->input.cameraType == CameraType::Sky) {
         if (!m_pCap->bSkyProbeBaked) {
-          m_exporter.bakeSkyProbe(ctx, BASE_DIR + lss::commonDirName::texDir, commonFileName::bakedSkyProbe);
+          const std::string skyProbeFilname = getBakedSkyProbeName(m_pCap->instance.stageName);
+          m_exporter.bakeSkyProbe(ctx, BASE_DIR + lss::commonDirName::texDir, skyProbeFilname);
           m_pCap->bSkyProbeBaked = true;
-          Logger::debug("[GameCapturer][" + m_pCap->idStr + "][SkyProbe] Bake scheduled to " +
-                        commonFileName::bakedSkyProbe);
+          Logger::debug("[GameCapturer][" + m_pCap->idStr + "][SkyProbe] Bake scheduled to " + skyProbeFilname);
         }
       }
 
@@ -942,7 +948,7 @@ namespace dxvk {
                                         const bool bUseLssUsdPlugins,
                                         lss::Export& exportPrep) {
     // Prep meta data
-    exportPrep.meta.windowTitle = window::getWindowTitle();
+    exportPrep.meta.windowTitle = window::getWindowTitle(cap.hwnd);
     exportPrep.meta.exeName = env::getExeName();
     exportPrep.meta.iconPath = BASE_DIR + exportPrep.meta.exeName + "_icon.bmp";
     exportPrep.meta.geometryHashRule = RtxOptions::Get()->geometryAssetHashRuleString();
@@ -951,7 +957,7 @@ namespace dxvk {
     exportPrep.meta.startTimeCode = 0.0;
     exportPrep.meta.endTimeCode = floor(static_cast<double>(cap.currentFrameNum));
     exportPrep.meta.numFramesCaptured = cap.numFramesCaptured;
-    window::saveWindowIconToFile(exportPrep.meta.iconPath);
+    window::saveWindowIconToFile(exportPrep.meta.iconPath, cap.hwnd);
     exportPrep.meta.bUseLssUsdPlugins = bUseLssUsdPlugins;
     exportPrep.meta.bReduceMeshBuffers = true;
     exportPrep.meta.isZUp = RtxOptions::Get()->isZUp();
@@ -967,7 +973,7 @@ namespace dxvk {
     exportPrep.baseExportPath = BASE_DIR;
     exportPrep.bExportInstanceStage = cap.bCaptureInstances;
     exportPrep.instanceStagePath = cap.instance.stagePath;
-    exportPrep.bakedSkyProbePath = cap.bSkyProbeBaked ? BASE_DIR + relPath::bakedSkyProbe : "";
+    exportPrep.bakedSkyProbePath = cap.bSkyProbeBaked ? (BASE_DIR + lss::commonDirName::texDir + getBakedSkyProbeName(cap.instance.stageName)) : "";
   }
 
   void GameCapturer::prepExportMaterials(const Capture& cap,

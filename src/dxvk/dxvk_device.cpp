@@ -387,6 +387,10 @@ namespace dxvk {
       m_lastPresenter = presenter;
     }
     // NV-DXVK end
+
+    // NV-DXVK start: Global window handle accessor
+    m_objects.setWindowHandle(presenter->getWindowHandle());
+    // NV-DXVK end
   }
 
   void DxvkDevice::incrementPresentCount() {

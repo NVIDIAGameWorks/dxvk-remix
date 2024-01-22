@@ -111,7 +111,8 @@ namespace dxvk {
       m_geometryUtils(device),
       m_imageUtils(device),
       m_postFx(device),
-      m_capturer(new GameCapturer(device, m_sceneManager, m_exporter.get())) {
+      m_capturer(new GameCapturer(device, m_sceneManager, m_exporter.get())),
+      m_lastKnownWindowHandle((HWND)0) {
     }
 
     DxvkMemoryAllocator& memoryManager() {
@@ -344,6 +345,13 @@ namespace dxvk {
       m_dlfg.get().onDestroy();
     }
 
+    void setWindowHandle(const HWND hwnd) {
+      m_lastKnownWindowHandle.store(hwnd);
+    }
+    HWND getLastKnownWindowHandle() const {
+      return m_lastKnownWindowHandle.load();
+    }
+
   private:
 
     DxvkDevice*                       m_device;
@@ -411,6 +419,8 @@ namespace dxvk {
     Active<RtxImageUtils>                   m_imageUtils;
     Active<DxvkPostFx>                      m_postFx;
     Lazy<RtxReflex>                         m_reflex;
+
+    std::atomic<HWND>                       m_lastKnownWindowHandle;
   };
 
 }
