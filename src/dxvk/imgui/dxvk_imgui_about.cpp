@@ -91,7 +91,8 @@ namespace dxvk {
   ImGuiAbout::Credits::Credits()
     : m_sections({
       { "Github Contributors",
-        { "Leonardo Leotte",
+        { "Alexander 'xoxor4d' Engel",
+          "Leonardo Leotte",
           "Nico Rodrigues-McKenna"}},
       { "Engineering",
         { "Riley Alston",
