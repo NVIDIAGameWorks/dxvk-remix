@@ -111,6 +111,9 @@ namespace dxvk {
                  "Max Micro Triangles to bake [Million/Second].\n"
                  "The actual number of issued micro triangles also depends on \"costPerTexelTapPerMicroTriangleBudget\" option.");
       RTX_OPTION("rtx.opacityMicromap.building", int, maxMicroTrianglesToBuildMillionPerSecond, 60 * 5, "Max Micro Triangles to build [Million/Second].");
+      RTX_OPTION_ENV("rtx.opacityMicromap.building", bool, enableUnlimitedBakingAndBuildingBudgets, false, 
+                     "RTX_OPACITY_MICROMAP_BUILDING_UNLIMITED_BAKING_AND_BUILDING_BUDGETS",
+                     "Enables unlimited baking and building budgets so that all available Opacity Micromaps are generated in a frame.");
 
       // Disabled for now as camera cuts occur even on non-camera movements, i.e. when
       // a plasma ball hits a sink, to avoid increased workload during those moments/gameplay

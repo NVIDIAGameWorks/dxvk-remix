@@ -1340,10 +1340,26 @@ namespace dxvk {
         desc.resolveTransparencyThreshold = std::max(desc.resolveTransparencyThreshold, OpacityMicromapOptions::Building::decalsMinResolveTransparencyThreshold());
 
       const auto& samplers = ctx->getCommonObjects()->getSceneManager().getSamplerTable();
-      ctx->getCommonObjects()->metaGeometryUtils().dispatchBakeOpacityMicromap(
-        ctx, blasEntry.modifiedGeometryData, 
-        textures, samplers, instance.getAlbedoOpacityTextureIndex(), instance.getSamplerIndex(), instance.getSecondaryOpacityTextureIndex(), instance.getSecondarySamplerIndex(),
-        desc, ommCacheItem.bakingState, ommCacheItem.ommArrayBuffer);
+            
+      // Bake micro triangles
+      do {
+        ctx->getCommonObjects()->metaGeometryUtils().dispatchBakeOpacityMicromap(
+          ctx, blasEntry.modifiedGeometryData,
+          textures, samplers, instance.getAlbedoOpacityTextureIndex(), instance.getSamplerIndex(), instance.getSecondaryOpacityTextureIndex(), instance.getSecondarySamplerIndex(),
+          desc, ommCacheItem.bakingState, ommCacheItem.ommArrayBuffer);
+
+        if (OpacityMicromapOptions::Building::enableUnlimitedBakingAndBuildingBudgets()) {
+          desc.maxNumMicroTrianglesToBake = UINT32_MAX;
+
+          // There are more micro triangles to bake
+          if (ommCacheItem.bakingState.numMicroTrianglesBaked < ommCacheItem.bakingState.numMicroTrianglesToBake) {
+            continue;
+          }
+        }
+
+        // Exit the loop
+        break;
+      } while (true);
 
       ctx->getCommandList()->trackResource<DxvkAccess::Write>(ommCacheItem.ommArrayBuffer);
 
@@ -1534,6 +1550,10 @@ namespace dxvk {
 
     ScopedGpuProfileZone(ctx, "Bake Opacity Micromap Arrays");
 
+    if (OpacityMicromapOptions::Building::enableUnlimitedBakingAndBuildingBudgets()) {
+      maxMicroTrianglesToBake = UINT32_MAX;
+    }
+
     for (auto ommSrcHashIter = m_unprocessedList.begin(); ommSrcHashIter != m_unprocessedList.end() && maxMicroTrianglesToBake > 0; ) {
       XXH64_hash_t ommSrcHash = *ommSrcHashIter;
 
@@ -1575,8 +1595,11 @@ namespace dxvk {
           ommCacheItem.isUnprocessedCacheStateListIterValid = false;
         }
         else {
-        // Do nothing, else path means all the budget has been used up and thus the loop will exit due to maxMicroTrianglesToBake == 0
-        //   so don't need to increment the iterator
+          // Do nothing, else path means all the budget has been used up and thus the loop will exit due to maxMicroTrianglesToBake == 0
+          //   so don't need to increment the iterator
+          if (OpacityMicromapOptions::Building::enableUnlimitedBakingAndBuildingBudgets()) {
+            ONCE(Logger::err("[RTX Opacity Micromap] Failed to fully bake an Opacity Micromap due to budget limits even with unlimited budgetting enabled."));
+          }
         }
       } else if (result == OmmResult::OutOfMemory) {
         // Do nothing, try the next one
@@ -1602,6 +1625,10 @@ namespace dxvk {
 #ifdef VALIDATION_MODE
       Logger::warn(str::format("[RTX Opacity Micromap] ~Baking ", ommSrcHash, " on thread_id ", std::this_thread::get_id()));
 #endif
+    }
+
+    if (OpacityMicromapOptions::Building::enableUnlimitedBakingAndBuildingBudgets()) {
+      maxMicroTrianglesToBake = UINT32_MAX;
     }
   }
 
@@ -1636,6 +1663,10 @@ namespace dxvk {
     std::vector<VkMicromapUsageEXT> micromapUsageGroups(maxBuildItems);
     std::vector<VkMicromapBuildInfoEXT> micromapBuildInfos(maxBuildItems);
     uint32_t buildItemCount = 0;
+
+    if (OpacityMicromapOptions::Building::enableUnlimitedBakingAndBuildingBudgets()) {
+      maxMicroTrianglesToBuild = UINT32_MAX;
+    }
 
     // Force at least one build since a build can't be split across frames even if doesn't fit within the budget
     // They're cheap regardless, so it should be fine.
@@ -1673,6 +1704,10 @@ namespace dxvk {
       } else if (result == OmmResult::OutOfBudget) {
         // Do nothing, continue onto the next
         ommSrcHashIter++;
+
+        if (OpacityMicromapOptions::Building::enableUnlimitedBakingAndBuildingBudgets()) {
+          ONCE(Logger::err("[RTX Opacity Micromap] Failed to fully build an Opacity Micromap due to budget limits even with unlimited budgetting enabled."));
+        }
       } else if (result == OmmResult::OutOfMemory) {
         // Do nothing, try the next one
         ommSrcHashIter++;
@@ -1684,6 +1719,10 @@ namespace dxvk {
 #ifdef VALIDATION_MODE
       Logger::warn(str::format("[RTX Opacity Micromap] ~Building ", ommSrcHash, " on thread_id ", std::this_thread::get_id()));
 #endif
+
+      if (OpacityMicromapOptions::Building::enableUnlimitedBakingAndBuildingBudgets()) {
+        maxMicroTrianglesToBuild = UINT32_MAX;
+      }
     }
 
     if (buildItemCount > 0) {
