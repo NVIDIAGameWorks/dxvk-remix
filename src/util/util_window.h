@@ -21,8 +21,8 @@
 */
 namespace dxvk::window {
   // Finds the window titlebar icon (with several fallback mechanisms) and writes to a file, expects .bmp extension
-  void saveWindowIconToFile(const std::string& filename);
+  void saveWindowIconToFile(const std::string& filename, HWND hwnd = (HWND) 0);
 
   // Grabs the window titlebar icon, returns as a string
-  const std::string getWindowTitle();
+  const std::string getWindowTitle(HWND hwnd = (HWND) 0);
 }
