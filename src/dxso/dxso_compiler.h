@@ -721,6 +721,9 @@ namespace dxvk {
 
     // NV-DXVK start: vertex shader data capture implementation
     void emitVertexCaptureOp();
+
+    void emitVertexCaptureWrite(uint32_t writeAddress, const uint32_t worldPosId);
+
     // NV-DXVK end
 
     void emitLinkerOutputSetup();
