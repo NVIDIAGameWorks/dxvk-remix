@@ -25,6 +25,11 @@ namespace dxvk {
 
   D3D9Rtx::D3D9Rtx(D3D9DeviceEx* d3d9Device, bool enableDrawCallConversion)
     : m_rtStagingData(d3d9Device->GetDXVKDevice(), (VkMemoryPropertyFlagBits) (VK_MEMORY_PROPERTY_HOST_CACHED_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT))
+    , m_vertexCaptureData(d3d9Device->GetDXVKDevice(), 
+                          (VkMemoryPropertyFlagBits) (VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT), 
+                          (VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT),
+                          (VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT),
+                          VK_ACCESS_TRANSFER_READ_BIT)
     , m_parent(d3d9Device)
     , m_enableDrawCallConversion(enableDrawCallConversion)
     , m_pGeometryWorkers(enableDrawCallConversion ? std::make_unique<GeometryProcessor>(popcnt_uint8(D3D9Rtx::kAllThreads), "geometry-processing") : nullptr) {
@@ -98,16 +103,6 @@ namespace dxvk {
     return stagingSlice;
   }
 
-  DxvkBufferSlice D3D9Rtx::allocVertexCaptureBuffer(const VkDeviceSize size) {
-    DxvkBufferCreateInfo info;
-    info.usage = VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-    info.access = VK_ACCESS_TRANSFER_READ_BIT;
-    info.stages = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT;
-    info.size = size;
-
-    return DxvkBufferSlice(m_parent->GetDXVKDevice()->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppBuffer));
-  }
-
   void D3D9Rtx::prepareVertexCapture(const int vertexIndexOffset) {
     ScopedCpuProfileZone();
 
@@ -139,16 +134,8 @@ namespace dxvk {
     const uint32_t stride = sizeof(CapturedVertex);
     const size_t vertexCaptureDataSize = align(geoData.vertexCount * stride, CACHE_LINE_SIZE);
 
-    DxvkBufferSlice slice = allocVertexCaptureBuffer(vertexCaptureDataSize);
-
-    // Fill in buffer view info
-    DxvkBufferViewCreateInfo viewInfo;
-    viewInfo.format = VK_FORMAT_R32G32B32A32_SFLOAT;
-    viewInfo.rangeOffset = 0;
-    viewInfo.rangeLength = vertexCaptureDataSize;
-
-    // Create underlying buffer view object
-    Rc<DxvkBufferView> bufferView = m_parent->GetDXVKDevice()->createBufferView(slice.buffer(), viewInfo);
+    DxvkBufferSlice slice = m_vertexCaptureData.alloc(CACHE_LINE_SIZE, vertexCaptureDataSize);
+    slice.buffer()->acquire(DxvkAccess::Write);
 
     geoData.positionBuffer = RasterBuffer(slice, 0, stride, VK_FORMAT_R32G32B32A32_SFLOAT);
     assert(geoData.positionBuffer.offset() % 4 == 0);
@@ -172,34 +159,25 @@ namespace dxvk {
 
     auto constants = m_vsVertexCaptureData->allocSlice();
 
-    m_parent->EmitCs([cProjection = m_activeDrawCallState.transformData.viewToProjection,
-                      cView = m_activeDrawCallState.transformData.worldToView,
-                      cWorld = m_activeDrawCallState.transformData.objectToWorld,
-                      cBuffer = bufferView,
+    // NOTE: May be better to move reverse transformation to end of frame, because this won't work if there hasnt been a FF draw this frame to scrape the matrix from...
+    const Matrix4& ObjectToProjection = m_activeDrawCallState.transformData.viewToProjection * m_activeDrawCallState.transformData.worldToView * m_activeDrawCallState.transformData.objectToWorld;
+
+    // Set constants required for vertex shader injection
+    D3D9RtxVertexCaptureData& data = *(D3D9RtxVertexCaptureData*) constants.mapPtr;
+    // Apply an inverse transform to get positions in object space (what renderer expects)
+    data.projectionToWorld = inverse(ObjectToProjection);
+    data.normalTransform = m_activeDrawCallState.transformData.objectToWorld;
+    data.baseVertex = (uint32_t)std::max(0, vertexIndexOffset);
+
+    m_parent->EmitCs([cVertexDataSlice = slice,
                       cConstantBuffer = m_vsVertexCaptureData,
-                      cConstants = constants,
-                      vertexIndexOffset](DxvkContext* ctx) {
-      RtxContext* rtxCtx = static_cast<RtxContext*>(ctx);
-
-      // Set constants required for vertex shader injection
-
-      // Bind the latest projection to world matrix...
-      // NOTE: May be better to move reverse transformation to end of frame, because this won't work if there hasnt been a FF draw this frame to scrape the matrix from...
-      const Matrix4& ObjectToProjection = cProjection * cView * cWorld;
-
+                      cConstants = constants](DxvkContext* ctx) {
       // Bind the new constants to buffer
       ctx->invalidateBuffer(cConstantBuffer, cConstants);
 
-      D3D9RtxVertexCaptureData& data = *(D3D9RtxVertexCaptureData*) cConstants.mapPtr;
-      // Apply an inverse transform to get positions in object space (what renderer expects)
-      data.projectionToWorld = inverse(ObjectToProjection);
-      data.normalTransform = cWorld;
-      data.baseVertex = vertexIndexOffset;
-
       // Invalidate rest of the members
       // customWorldToProjection is not invalidated as its use is controlled by D3D9SpecConstantId::CustomVertexTransformEnabled being enabled
-
-      rtxCtx->bindResourceView(getVertexCaptureBufferSlot(), nullptr, cBuffer);
+      ctx->bindResourceBuffer(getVertexCaptureBufferSlot(), cVertexDataSlice);
     });
   }
 
