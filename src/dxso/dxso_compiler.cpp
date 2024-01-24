@@ -540,14 +540,17 @@ namespace dxvk {
     }
 
     // Bind vertex out buffer
-    m_module.enableCapability(spv::CapabilityStorageImageWriteWithoutFormat);
-    m_module.enableCapability(spv::CapabilityImageBuffer);
+    
+    uint32_t arrayType = m_module.defRuntimeArrayTypeUnique(vec4Type);
+    uint32_t structType = m_module.defStructTypeUnique(1, &arrayType);
+    uint32_t ptrType = m_module.defPointerType(structType, spv::StorageClassUniform);
 
-    const uint32_t imageTypeId = m_module.defImageType(m_module.defFloatType(32), spv::DimBuffer, 0, 0, 0, 2, spv::ImageFormatRgba32f);
+    const uint32_t resourcePtrType = m_module.defPointerType(vec4Type, spv::StorageClassUniform);
+    const uint32_t varId = m_module.newVar(ptrType, spv::StorageClassUniform);
 
-    const uint32_t resourcePtrType = m_module.defPointerType(imageTypeId, spv::StorageClassUniformConstant);
-
-    const uint32_t varId = m_module.newVar(resourcePtrType, spv::StorageClassUniformConstant);
+    m_module.decorateArrayStride(arrayType, sizeof(float) * 4);
+    m_module.decorate(structType, spv::DecorationBufferBlock);
+    m_module.memberDecorateOffset(structType, 0, 0);
 
     m_module.setDebugName(varId, "vertex_capture_out");
 
@@ -567,7 +570,7 @@ namespace dxvk {
     uav.specId = specConstId;
     uav.sampledType = DxsoScalarType::Float32;
     uav.sampledTypeId = m_module.defFloatType(32);
-    uav.imageTypeId = imageTypeId;
+    uav.imageTypeId = resourcePtrType;
     uav.structStride = 0;
     uav.structAlign = 0;
 
@@ -577,9 +580,8 @@ namespace dxvk {
     DxvkResourceSlot resource;
     resource.slot = bindingId;
     resource.view = VK_IMAGE_VIEW_TYPE_MAX_ENUM;
-    resource.access = VK_ACCESS_SHADER_READ_BIT;
-    resource.type = VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER;
-    resource.access |= VK_ACCESS_SHADER_WRITE_BIT;
+    resource.access = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    resource.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 
     m_resourceSlots.push_back(resource);
   }
@@ -3629,8 +3631,12 @@ void DxsoCompiler::emitControlFlowGenericLoop(
     }
   }
 
-
   // NV-DXVK start: vertex shader data capture implementation
+  void DxsoCompiler::emitVertexCaptureWrite(uint32_t writeAddress, const uint32_t dataId) {
+    uint32_t indices[2] = { m_module.constu32(0), writeAddress };
+    m_module.opStore(m_module.opAccessChain(m_vs.vertexOutBuf.imageTypeId, m_vs.vertexOutBuf.varId, 2, indices), dataId);
+  }
+
   void DxsoCompiler::emitVertexCaptureOp() {
     // Write oPos to a UAV at vertex ID, vertex capture
     DxsoRegisterInfo vertexIdReg;
@@ -3654,8 +3660,6 @@ void DxsoCompiler::emitControlFlowGenericLoop(
 
     uint32_t writeAddress = m_module.opIMul(getScalarTypeId(DxsoScalarType::Uint32), offsetVertexIdVal, m_module.constu32(3));
 
-    const uint32_t vertexOutBufferId = m_module.opLoad(m_vs.vertexOutBuf.imageTypeId, m_vs.vertexOutBuf.varId);
-
     // Get the post transform oPos and reverse to world space
     const uint32_t vec4typeId = getVectorTypeId({ DxsoScalarType::Float32, 4 });
     const uint32_t mat4type = m_module.defMatrixType(vec4typeId, 4);
@@ -3669,7 +3673,8 @@ void DxsoCompiler::emitControlFlowGenericLoop(
 
     // Write the data to buffer
     SpirvImageOperands defaultOperands;
-    m_module.opImageWrite(vertexOutBufferId, writeAddress, worldPosId, defaultOperands);
+
+    emitVertexCaptureWrite(writeAddress, worldPosId);
     
     // Get the next slot
     writeAddress = m_module.opIAdd(getScalarTypeId(DxsoScalarType::Uint32), writeAddress, m_module.constu32(1));
@@ -3679,7 +3684,7 @@ void DxsoCompiler::emitControlFlowGenericLoop(
       const uint32_t texcoord0 = m_module.opLoad(vec4typeId, m_vs.oTex0.id);
 
       // Write texcoord
-      m_module.opImageWrite(vertexOutBufferId, writeAddress, texcoord0, defaultOperands);
+      emitVertexCaptureWrite(writeAddress, texcoord0);
     }
 
     // Get the next slot
@@ -3727,7 +3732,7 @@ void DxsoCompiler::emitControlFlowGenericLoop(
       }
 
       // Write normal
-      m_module.opImageWrite(vertexOutBufferId, writeAddress, normal0, defaultOperands);
+      emitVertexCaptureWrite(writeAddress, normal0);
     }
 
     // Apply custom vertex transform if it's enabled

@@ -35,8 +35,8 @@ namespace dxvk {
     Matrix4 normalTransform;
     Matrix4 projectionToWorld;
     Matrix4 customWorldToProjection;
-    int baseVertex = 0;
-    int padding[3];
+    uint32_t baseVertex = 0;
+    std::array<uint32_t, 3> padding = { };
   };
 
   enum class D3D9RtxVertexCaptureMembers {

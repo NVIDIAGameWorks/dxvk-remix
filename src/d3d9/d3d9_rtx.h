@@ -182,6 +182,7 @@ namespace dxvk {
     DrawCallState m_activeDrawCallState;
 
     DxvkStagingDataAlloc m_rtStagingData;
+    DxvkStagingDataAlloc m_vertexCaptureData;
     D3D9DeviceEx* m_parent;
 
     D3DPRESENT_PARAMETERS m_activePresentParams;
@@ -235,7 +236,6 @@ namespace dxvk {
     template<typename T>
     DxvkBufferSlice processIndexBuffer(const uint32_t indexCount, const uint32_t startIndex, const DxvkBufferSliceHandle& indexSlice, uint32_t& minIndex, uint32_t& maxIndex);
 
-    DxvkBufferSlice allocVertexCaptureBuffer(const VkDeviceSize size);
     void prepareVertexCapture(const int vertexIndexOffset);
 
     void processVertices(const VertexContext vertexContext[caps::MaxStreams], int vertexIndexOffset, RasterGeometry& geoData);
