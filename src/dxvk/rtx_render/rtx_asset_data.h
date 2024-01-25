@@ -53,6 +53,18 @@ namespace dxvk {
     uint32_t numLayers = 0;
 
     const char* filename = nullptr;
+
+    bool matches(const AssetInfo& other) const {
+      return other.type == type &&
+             other.compression == compression &&
+             other.format == format &&
+             other.extent.width == extent.width &&
+             other.extent.height == extent.height &&
+             other.extent.depth == extent.depth &&
+             other.mipLevels == mipLevels &&
+             other.looseLevels == looseLevels &&
+             other.numLayers == numLayers;
+    }
   };
 
   class AssetData : public RcObject {

@@ -365,7 +365,13 @@ namespace dxvk {
 
     auto it = m_assetHashToTextures.find(hash);
     if (it != m_assetHashToTextures.end()) {
-      return it->second;
+      // Is this truly the same asset?
+      if (it->second->assetData->info().matches(assetData->info())) {
+        return it->second;
+      }
+
+      // Else, clear out the old
+      m_assetHashToTextures.erase(it);
     }
 
     {
