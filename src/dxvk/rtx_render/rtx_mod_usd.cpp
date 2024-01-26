@@ -295,6 +295,7 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
 
   static const pxr::TfToken kShaderToken("Shader");
   static const pxr::TfToken kIgnore("inputs:ignore_material");  // Any draw call or replacement using a material with this flag will be skipped by the SceneManager
+  static const pxr::TfToken kPreloadTextures("inputs:preload_textures");  // Force textures to be loaded at highest mip
   static const pxr::TfToken kLegacyRayPortalIndexToken("rayPortalIndex");
 
   pxr::UsdPrim shader = matPrim.GetChild(kShaderToken);
@@ -322,9 +323,15 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
     return materialData;
   }
 
+
+  // Remix Flags:
   bool shouldIgnore = false;
   if (shader.HasAttribute(kIgnore)) {
     shader.GetAttribute(kIgnore).Get(&shouldIgnore);
+  }
+  bool preloadTextures = false;
+  if (shader.HasAttribute(kPreloadTextures)) {
+    shader.GetAttribute(kPreloadTextures).Get(&preloadTextures);
   }
 
   // Todo: Only Opaque materials are currently handled, in the future a Translucent path should also exist
@@ -348,7 +355,7 @@ MaterialData* UsdMod::Impl::processMaterial(Args& args, const pxr::UsdPrim& matP
   }
 
   auto getTextureFunctor = [&](const pxr::UsdPrim& shader, const pxr::TfToken& name) {
-                             return getTexture(args, shader, name);
+                             return getTexture(args, shader, name, preloadTextures);
                            };
 
   switch (materialType) {
