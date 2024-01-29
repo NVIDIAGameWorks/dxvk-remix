@@ -27,5 +27,27 @@ namespace dxvk {
     std::string m_message;
     
   };
+
+  // NV-DXVK start: Provide error code on exception
+  class DxvkErrorWithId : public DxvkError {
+  public:
+    DxvkErrorWithId(int id, std::string&& message)
+      : DxvkError { std::move(message) }
+      , m_id { id } {}
+    ~DxvkErrorWithId() = default;
+
+    DxvkErrorWithId(DxvkErrorWithId&&) = delete;
+    DxvkErrorWithId& operator=(DxvkErrorWithId&&) = delete;
+    DxvkErrorWithId(const DxvkErrorWithId&) = delete;
+    DxvkErrorWithId& operator=(const DxvkErrorWithId&&) = delete;
+
+    int id() const {
+      return m_id;
+    }
+
+  private:
+    int m_id {};
+  };
+  // NV-DXVK end
   
 }

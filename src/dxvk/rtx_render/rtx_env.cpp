@@ -31,7 +31,7 @@ namespace dxvk {
     // Note: Respect the blocking dialog box disable flag when attempting to open this message box to not
     // cause blocking on user input when not desired.
     if (!RtxOptions::Automation::disableBlockingDialogBoxes()) {
-      MessageBox(NULL, text, caption, type);
+      MessageBox(NULL, text, caption, type | MB_ICONSTOP);
     }
   }
 

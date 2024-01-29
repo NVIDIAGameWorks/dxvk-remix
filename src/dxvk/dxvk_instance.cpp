@@ -47,6 +47,10 @@
 #include "rtx_render/rtx_io.h"
 // NV-DXVK end
 
+// NV-DXVK start: Provide error code on exception
+#include <remix/remix_c.h>
+// NV-DXVK end
+
 namespace dxvk {
   bool filterErrorMessages(const char* message) {
     // validation errors that we are currently ignoring --- to fix!
@@ -373,7 +377,9 @@ namespace dxvk {
           insExtensionList.size(),
           insExtensionList.data(),
           extensionsEnabled))
-      throw DxvkError("DxvkInstance: Failed to create instance");
+      // NV-DXVK start: Provide error code on exception
+      throw DxvkErrorWithId(REMIXAPI_ERROR_CODE_HRESULT_DXVK_INSTANCE_EXTENSION_FAIL, "DxvkInstance: Failed to create instance");
+      // NV-DXVK end
 
     m_extensions = insExtensions;
 
@@ -454,7 +460,9 @@ namespace dxvk {
     VkResult status = m_vkl->vkCreateInstance(&info, nullptr, &result);
 
     if (status != VK_SUCCESS)
-      throw DxvkError("DxvkInstance::createInstance: Failed to create Vulkan 1.3 instance");
+      // NV-DXVK start: Provide error code on exception
+      throw DxvkErrorWithId(REMIXAPI_ERROR_CODE_HRESULT_VK_CREATE_INSTANCE_FAIL, "DxvkInstance::createInstance: Failed to create Vulkan 1.3 instance");
+      // NV-DXVK end
 
     return result;
   }
