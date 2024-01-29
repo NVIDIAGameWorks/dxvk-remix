@@ -222,6 +222,7 @@ namespace remix {
           remixapi_ErrorCode status = pfn_InitializeLibrary(&info, &interfaceInC);
       
           if (status != REMIXAPI_ERROR_CODE_SUCCESS) {
+            FreeLibrary(remixDll);
             return status;
           }
       
@@ -233,6 +234,7 @@ namespace remix {
           return interfaceInCpp;
         }
       
+        FreeLibrary(remixDll);
         return REMIXAPI_ERROR_CODE_GET_PROC_ADDRESS_FAILURE;
       }
       
