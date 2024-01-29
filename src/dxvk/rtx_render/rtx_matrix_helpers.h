@@ -41,7 +41,7 @@ static inline void copyDxvkMatrix4ToFloat4x4(const dxvk::Matrix4& src, float des
   memcpy(&dest[0][0], &src, sizeof(float)*16);
 };
 
-static inline void decomposeProjection(const dxvk::Matrix4& matrix, float& aspectRatio, float& fov, float& nearPlane, float& farPlane, float& shearX, float& shearY, bool& isLHS, bool& isReverseZ) {
+static inline void decomposeProjection(const dxvk::Matrix4& matrix, float& aspectRatio, float& fov, float& nearPlane, float& farPlane, float& shearX, float& shearY, bool& isLHS, bool& isReverseZ, bool log = false) {
   float cameraParams[PROJ_NUM];
   float4x4 cameraMatrix;
   // Check size since struct padding can impacy this memcpy
@@ -59,4 +59,25 @@ static inline void decomposeProjection(const dxvk::Matrix4& matrix, float& aspec
   shearY = cameraParams[PROJ_DIRY];
   isLHS = (flags & PROJ_LEFT_HANDED) ? 1 : 0;
   isReverseZ = (flags & PROJ_REVERSED_Z) ? 1 : 0;
+
+#ifdef _DEBUG
+  if (log) {
+    dxvk::Logger::info(dxvk::str::format("Projection Info: \n\tFlags: ", flags,
+                                         "\n\tPROJ_ZNEAR: ", cameraParams[PROJ_ZNEAR],
+                                         "\n\tPROJ_ZFAR: ", cameraParams[PROJ_ZFAR],
+                                         "\n\tPROJ_ASPECT: ", cameraParams[PROJ_ASPECT],
+                                         "\n\tPROJ_FOVX: ", cameraParams[PROJ_FOVX],
+                                         "\n\tPROJ_FOVY: ", cameraParams[PROJ_FOVY],
+                                         "\n\tPROJ_MINX: ", cameraParams[PROJ_MINX],
+                                         "\n\tPROJ_MAXX: ", cameraParams[PROJ_MAXX],
+                                         "\n\tPROJ_MINY: ", cameraParams[PROJ_MINY],
+                                         "\n\tPROJ_MAXY: ", cameraParams[PROJ_MAXY],
+                                         "\n\tPROJ_DIRX: ", cameraParams[PROJ_DIRX],
+                                         "\n\tPROJ_DIRY: ", cameraParams[PROJ_DIRY],
+                                         "\n\tPROJ_ANGLEMINX: ", cameraParams[PROJ_ANGLEMINX],
+                                         "\n\tPROJ_ANGLEMAXX: ", cameraParams[PROJ_ANGLEMAXX],
+                                         "\n\tPROJ_ANGLEMINY: ", cameraParams[PROJ_ANGLEMINY],
+                                         "\n\tPROJ_ANGLEMAXY: ", cameraParams[PROJ_ANGLEMAXY]));
+  }
+#endif
 }
