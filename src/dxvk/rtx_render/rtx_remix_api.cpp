@@ -88,6 +88,18 @@ namespace {
   }
 
 
+  bool isHResultAliasedWithRemixErrorCode(HRESULT hr) {
+    switch (hr) {
+    case REMIXAPI_ERROR_CODE_HRESULT_NO_REQUIRED_GPU_FEATURES:
+    case REMIXAPI_ERROR_CODE_HRESULT_DRIVER_VERSION_BELOW_MINIMUM:
+    case REMIXAPI_ERROR_CODE_HRESULT_DXVK_INSTANCE_EXTENSION_FAIL:
+    case REMIXAPI_ERROR_CODE_HRESULT_VK_CREATE_INSTANCE_FAIL:
+    case REMIXAPI_ERROR_CODE_HRESULT_VK_CREATE_DEVICE_FAIL: return true;
+    default: return false;
+    }
+  }
+
+
   void sanitizeConfigs() {
     // Disable fallback light
     const_cast<dxvk::LightManager::FallbackLightMode&>(dxvk::LightManager::fallbackLightMode()) = dxvk::LightManager::FallbackLightMode::Never;
@@ -1044,6 +1056,9 @@ namespace {
     IDirect3D9Ex* d3d9ex = nullptr;
     auto hr = dxvk::CreateD3D9(true, &d3d9ex, true, false);
     if (FAILED(hr) || !d3d9ex) {
+      if (isHResultAliasedWithRemixErrorCode(hr)) {
+        return static_cast<remixapi_ErrorCode>(hr);
+      }
       return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
     }
 

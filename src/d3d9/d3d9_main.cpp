@@ -22,8 +22,18 @@ namespace dxvk {
     if (!ppDirect3D9Ex)
       return D3DERR_INVALIDCALL;
 
-// NV-DXVK start: external API
-    *ppDirect3D9Ex = ref(new D3D9InterfaceEx(Extended, WithExternalSwapchain, WithDrawCallConversion));
+// NV-DXVK start: external API / provide error code on exception
+    try {
+      *ppDirect3D9Ex = ref(new D3D9InterfaceEx(Extended, WithExternalSwapchain, WithDrawCallConversion));
+    }
+    catch (const dxvk::DxvkErrorWithId& err) {
+      Logger::err(err.message());
+      return err.id();
+    }
+    catch (const dxvk::DxvkError& err) {
+      dxvk::Logger::err(err.message());
+      return D3DERR_NOTAVAILABLE;
+    }
 // NV-DXVK end
     return D3D_OK;
   }
