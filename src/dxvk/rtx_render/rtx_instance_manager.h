@@ -203,6 +203,7 @@ private:
   Vector3 m_spatialCachePos = Vector3(0.f);
 
 public:
+  bool isFrontFaceFlipped = false;
 
   // Not really needed in this struct, just to store it somewhere for a batched build
   std::vector<VkAccelerationStructureGeometryKHR> buildGeometries;
