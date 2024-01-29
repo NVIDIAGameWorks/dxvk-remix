@@ -396,6 +396,12 @@ namespace dxvk {
 
       *ppReturnedDeviceInterface = ref(device);
     }
+// NV-DXVK start: provide error code on exception
+    catch (const DxvkErrorWithId& e) {
+      Logger::err(e.message());
+      return e.id();
+    }
+// NV-DXVK end
     catch (const DxvkError& e) {
       Logger::err(e.message());
       return D3DERR_NOTAVAILABLE;

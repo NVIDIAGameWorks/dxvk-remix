@@ -34,6 +34,9 @@
 // NV-DXVK start: Remix message box utilities
 #include "rtx_render/rtx_env.h"
 // NV-DXVK end:
+// NV-DXVK start: Provide error code on exception
+#include <remix/remix_c.h>
+// NV-DXVK end
 
 namespace dxvk {
 
@@ -415,7 +418,9 @@ namespace dxvk {
       messageBox("Your GPU doesn't support the required features to run RTX Remix.  See the *_d3d9.log for what features your GPU doesn't support.  The game will exit now.", "RTX Remix - GPU Feature Error!", MB_OK);
       // NV-DXVK end
 
-      throw DxvkError("DxvkAdapter: Failed to create device");
+      // NV-DXVK start: Provide error code on exception
+      throw DxvkErrorWithId(REMIXAPI_ERROR_CODE_HRESULT_NO_REQUIRED_GPU_FEATURES, "DxvkAdapter: Failed to create device");
+      // NV-DXVK end
     }
 
     // NV-DXVK start: Integrate Aftermath extensions
@@ -495,7 +500,9 @@ namespace dxvk {
       RtxIoExtensionProvider::s_instance.initDeviceExtensions(instance.ptr());
       if (!RtxIoExtensionProvider::s_instance.getDeviceFeatures(m_handle, enabledFeatures)) {
         Logger::err("Physical device does not support features required to enable RTX IO.");
-        throw DxvkError("DxvkAdapter: Failed to create device");
+        // NV-DXVK start: Provide error code on exception
+        throw DxvkErrorWithId(REMIXAPI_ERROR_CODE_HRESULT_NO_REQUIRED_GPU_FEATURES, "DxvkAdapter: Failed to create device");
+        // NV-DXVK end
       }
     }
 #endif
@@ -657,7 +664,9 @@ namespace dxvk {
 
         messageBox(minDriverCheckDialogMessage.c_str(), "RTX Remix - Driver Compatibility Error!", MB_OK);
 
-        throw DxvkError("DxvkAdapter: Failed to create device");
+        // NV-DXVK start: Provide error code on exception
+        throw DxvkErrorWithId(REMIXAPI_ERROR_CODE_HRESULT_DRIVER_VERSION_BELOW_MINIMUM, "DxvkAdapter: Failed to create device");
+        // NV-DXVK end
       }
     }
     // NV-DXVK end
@@ -767,7 +776,9 @@ namespace dxvk {
     }
 
     if (vr != VK_SUCCESS)
-      throw DxvkError("DxvkAdapter: Failed to create device");
+      // NV-DXVK start: Provide error code on exception
+      throw DxvkErrorWithId(REMIXAPI_ERROR_CODE_HRESULT_VK_CREATE_DEVICE_FAIL, "DxvkAdapter: Failed to create device");
+      // NV-DXVK end
 
     Rc<DxvkDevice> result = new DxvkDevice(instance, this,
       new vk::DeviceFn(true, m_vki->instance(), device),
