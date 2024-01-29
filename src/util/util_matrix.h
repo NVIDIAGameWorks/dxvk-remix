@@ -424,6 +424,14 @@ namespace dxvk {
     return m == Matrix4();
 #endif
   }
+
+  template<typename T>
+  static inline bool isMirrorTransform(const Matrix4Base<T>& m) {
+    // Note: Identify if the winding is inverted by checking if the z axis is ever flipped relative to what it's expected to be for clockwise vertices in a lefthanded space
+    // (x cross y) through the series of transformations
+    Vector3d x(m[0].data), y(m[1].data), z(m[2].data);
+    return dot(cross(x, y), z) < 0.0;
+  }
   // NV-DXVK end
 
   class Matrix3 {
@@ -496,8 +504,6 @@ namespace dxvk {
   Matrix3 transpose(const Matrix3& m);
 
   Matrix3 inverse(const Matrix3& m);
-
-  bool isLeftHanded(const Matrix3& m);
 
   std::ostream& operator<<(std::ostream& os, const Matrix3& m);
 
