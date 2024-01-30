@@ -27,6 +27,7 @@
 #include <future>
 #include <mutex>
 #include "../util/util_env.h"
+#include "rtx_constants.h"
 
 
 namespace dxvk {
@@ -36,6 +37,7 @@ namespace dxvk {
   class DxvkImage;
   class DxvkBuffer;
   class DxvkBufferSlice;
+  template<size_t NumTasksPerThread, bool WorkStealing, bool LowLatency> class WorkerThreadPool;
 
   class AssetExporter {
   public:
@@ -65,9 +67,15 @@ namespace dxvk {
     std::atomic<uint64_t> m_signalValue = 1;
     dxvk::mutex m_readbackSignalMutex;
     std::atomic<uint64_t> m_numExportsInFlight = 0;
+    inline static const size_t kMaxConcurrentExports = 64*1024 - 11; // Sized to match the buffer cache size in scene manager
+    static_assert(kMaxConcurrentExports == kBufferCacheLimit, "When changing the maximum number of unique buffers, we also must consider that this limit may need changing also, since the number of buffers is proportional to the number of concurrent exports.");
+    using ThreadPool = WorkerThreadPool<kMaxConcurrentExports, false, false>;
+    std::unique_ptr<ThreadPool> m_exporterThread;
 
     void exportImage(Rc<DxvkContext> ctx, const std::string& filename, Rc<DxvkImage> image, bool thumbnail = false);
 
     void exportBuffer(Rc<DxvkContext> ctx, const DxvkBufferSlice& buffer, BufferCallback bufferCallback);
+
+    std::unique_ptr<ThreadPool>& getExporterThread();
   };
 } // namespace dxvk
