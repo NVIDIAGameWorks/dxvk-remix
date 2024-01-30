@@ -42,7 +42,6 @@
 #include "../../lssusd/game_exporter_paths.h"
 #include "../../lssusd/usd_common.h"
 #include "../../lssusd/usd_include_begin.h"
-#include <pxr/base/gf/matrix4f.h>
 #include <pxr/base/gf/rotation.h>
 #include "../../lssusd/usd_include_end.h"
 
@@ -244,7 +243,7 @@ namespace dxvk {
        isnan(m_pCap->camera.farPlane)) {
       Logger::debug("[GameCapturer][" + m_pCap->idStr + "][Camera] New");
       float shearX, shearY;
-      const auto projMat = m_sceneManager.getCamera().getViewToProjection();
+      const auto& projMat = m_sceneManager.getCamera().getViewToProjection();
       decomposeProjection(projMat,
                           m_pCap->camera.aspectRatio,
                           m_pCap->camera.fov,
@@ -252,8 +251,8 @@ namespace dxvk {
                           m_pCap->camera.farPlane,
                           shearX,
                           shearY,
-                          m_pCap->camera.isLHS,
-                          m_pCap->camera.isReverseZ);
+                          m_pCap->camera.isProjLhs,
+                          m_pCap->camera.isReverseZ, true);
       // Infinite projection is legit, but USD doesnt take kindly to it
       constexpr float kMaxFarPlane = 100000000;
       if (m_pCap->camera.farPlane > kMaxFarPlane) {
@@ -262,14 +261,56 @@ namespace dxvk {
       // If the app is being rendered upside-down, we need to plan accordingly
       m_pCap->camera.bFlipMeshes = (projMat[0][0] * projMat[1][1] < 0.0f);
       m_pCap->camera.firstTime = m_pCap->currentFrameNum;
+#ifdef _DEBUG
+      Logger::info(str::format("Is Camera Left Handed: ", m_pCap->camera.isProjLhs ^ isMirrorTransform(m_sceneManager.getCamera().getViewToWorld())));
+#endif
     }
     assert(!isnan(m_pCap->camera.fov));
     assert(!isnan(m_pCap->camera.aspectRatio));
     assert(!isnan(m_pCap->camera.nearPlane));
     assert(!isnan(m_pCap->camera.farPlane));
-    const Matrix4 xform = m_sceneManager.getCamera().getViewToWorld();
+
+    // Use viewToWorld here instead of view matrix b/c it's easier to extract the camera vectors and matches isMirrorTransform
+    const auto viewToWorld = m_sceneManager.getCamera().getViewToWorld();
+    m_pCap->camera.isViewLhs = isMirrorTransform(viewToWorld);
+
+    // Construct camera
+    pxr::GfVec3d position = pxr::GfVec3d(m_sceneManager.getCamera().getPosition().x, m_sceneManager.getCamera().getPosition().y, m_sceneManager.getCamera().getPosition().z);
+    pxr::GfVec3d direction = pxr::GfVec3d(m_sceneManager.getCamera().getDirection().x, m_sceneManager.getCamera().getDirection().y, m_sceneManager.getCamera().getDirection().z);
+    pxr::GfVec3d up = pxr::GfVec3d(m_sceneManager.getCamera().getUp().x, m_sceneManager.getCamera().getUp().y, m_sceneManager.getCamera().getUp().z);
+
+    // Check if the up vector in view matrix is upside down
+    if (m_pCap->camera.bFlipMeshes) {
+      const Vector3& up = viewToWorld[1].xyz();
+      if ((!RtxOptions::Get()->isZUp() && dot(up, Vector3(0.0f, 1.0f, 0.0f)) < 0.0f) ||
+          (RtxOptions::Get()->isZUp() && dot(up, Vector3(0.0f, 0.0f, 1.0f)) < 0.0f)) {
+        m_pCap->camera.bFlipView = true;
+      }
+    }
+    // Flip the up vector of camera if the game flips this vector in the view matrix
+    up = m_pCap->camera.bFlipView ? -up : up;
+
+    // Transform camera to match the world space corrections (flipping or mirror) in GameExporter::exportInstances
+    if (m_pCap->camera.bFlipMeshes && !m_pCap->camera.bFlipView) {
+      position[0] *= -1.0;
+      position[1] *= -1.0;
+      direction[0] *= -1.0;
+      direction[1] *= -1.0;
+      up[0] *= -1.0;
+    } else {
+      // Do XOR here to check if we need to manually change basis for Projection * View matrix
+      const bool isChangeBasis = (m_pCap->camera.isViewLhs ^ m_pCap->camera.isProjLhs);
+      if (isChangeBasis && !m_pCap->camera.bFlipView) {
+        position[0] *= -1.0;
+        direction[0] *= -1.0;
+      }
+    }
+
+    pxr::GfMatrix4d worldToView;
+    worldToView.SetLookAt(position, position + direction, up);
+    worldToView.Orthonormalize();
     m_pCap->camera.finalTime = m_pCap->currentFrameNum;
-    m_pCap->camera.xforms.push_back({ m_pCap->currentFrameNum, matrix4ToGfMatrix4d(xform) });
+    m_pCap->camera.xforms.push_back({ m_pCap->currentFrameNum, worldToView.GetInverse() });
   }
 
   void GameCapturer::captureLights() {
@@ -322,7 +363,7 @@ namespace dxvk {
       const dxvk::RtLightShaping& shaping = rtLight.getShaping();
       if (shaping.enabled) {
         sphereLight.shapingEnabled = true;
-        sphereLight.coneAngle = acos(shaping.cosConeAngle) * kRadiansToDegrees;
+        sphereLight.coneAngleDegrees = acos(shaping.cosConeAngle) * kRadiansToDegrees;
         sphereLight.coneSoftness = shaping.coneSoftness;
         sphereLight.focusExponent = shaping.focusExponent;
         rotation = pxr::GfRotation(-pxr::GfVec3d::ZAxis(), pxr::GfVec3f(&shaping.primaryAxis[0]));
@@ -348,8 +389,8 @@ namespace dxvk {
       distantLight.color[1] = colorAndIntensity.g;
       distantLight.color[2] = colorAndIntensity.b;
       distantLight.intensity = colorAndIntensity.w;
-      distantLight.angle = rtLight.getHalfAngle() * 2.0;
-      distantLight.direction = pxr::GfVec3f(rtLight.getDirection().data);
+      distantLight.angleDegrees = rtLight.getHalfAngle() * 2.0 * kRadiansToDegrees;
+      distantLight.direction = -pxr::GfVec3f(rtLight.getDirection().data);
       distantLight.firstTime = m_pCap->currentFrameNum;
       Logger::debug("[GameCapturer][" + m_pCap->idStr + "][DistantLight:" + name + "] New");
     }
@@ -385,10 +426,24 @@ namespace dxvk {
         const BlasEntry* pBlas = pRtInstance->getBlas();
         assert(pBlas != nullptr);
 
-        captureMesh(ctx, instance.meshHash, *pBlas, pRtInstance->getCategoryFlags(), false, bPointsUpdate, bNormalsUpdate, bIndexUpdate);
+        captureMesh(ctx, instance.meshHash, *pBlas, pRtInstance->getCategoryFlags(), false, bPointsUpdate, bNormalsUpdate, bIndexUpdate, pRtInstance->isFrontFaceFlipped);
       }
       if (m_pCap->bCaptureInstances && (bIsNew || bXformUpdate)) {
-        instance.lssData.xforms.push_back({ m_pCap->currentFrameNum, matrix4ToGfMatrix4d(pRtInstance->getTransform()) });
+        const bool changeBasis = (m_pCap->camera.isViewLhs ^ m_pCap->camera.isProjLhs);
+        pxr::GfMatrix4d xform { 1.0 };
+        if (m_pCap->camera.bFlipMeshes && !m_pCap->camera.bFlipView) {
+          // Add flip transformation for games that render world upside down
+          xform[0][0] = xform[1][1] = -1.0;
+        } else {
+          // Add mirror transformation for games that need additional basis changing because view and projection transformation have different handedness.
+          // Note1: Don't do this transformation if the view and projection have same handedness, they will automatically cancel out.
+          // Note2: Don't do this transformation if the game also flip the up vector in view matrix.
+          //        Because it will automatically cancel out the basis changing and we only need to send an identity matrix here.
+          if (changeBasis && !m_pCap->camera.bFlipView) {
+            xform[0][0] = -1.0;
+          }
+        }
+        instance.lssData.xforms.push_back({ m_pCap->currentFrameNum, matrix4ToGfMatrix4d(pRtInstance->getTransform()) * xform });
         const SkinningData& skinData = pRtInstance->getBlas()->input.getSkinningState();
         if (skinData.numBones > 0) {
           instance.lssData.boneXForms.push_back({ m_pCap->currentFrameNum, matrix4VecToGfMatrix4dVec(skinData.pBoneMatrices) });
@@ -427,7 +482,7 @@ namespace dxvk {
       instanceNum = m_pCap->meshes[meshHash]->instanceCount++;
     }
     if (bIsNewMesh) {
-      captureMesh(ctx, meshHash, *pBlas, rtInstance.getCategoryFlags(), true, true, true, true);
+      captureMesh(ctx, meshHash, *pBlas, rtInstance.getCategoryFlags(), true, true, true, true, rtInstance.isFrontFaceFlipped);
     }
 
     const XXH64_hash_t instanceId = rtInstance.getId();
@@ -474,7 +529,8 @@ namespace dxvk {
                                  const bool bIsNewMesh,
                                  const bool bCapturePositions,
                                  const bool bCaptureNormals,
-                                 const bool bCaptureIndices) {
+                                 const bool bCaptureIndices,
+                                 const bool lsLhs) {
     assert((bIsNewMesh && bCapturePositions && bCaptureNormals && bCaptureIndices) || !bIsNewMesh);
     const RaytraceGeometry& geomData = blas.modifiedGeometryData;
     const SkinningData& skinData = blas.input.getSkinningState();
@@ -516,6 +572,7 @@ namespace dxvk {
       pMesh->lssData.isDoubleSided = isDoubleSided;
       pMesh->lssData.numBones = skinData.numBones;
       pMesh->lssData.bonesPerVertex = skinData.numBonesPerVertex;
+      pMesh->lssData.isLhs = lsLhs;
       Logger::debug("[GameCapturer][" + m_pCap->idStr + "][Mesh:" + pMesh->lssData.meshName + "] New");
     }
 
@@ -536,7 +593,7 @@ namespace dxvk {
     }
     
     if (bCaptureIndices && geomData.indexBuffer.defined()) {
-      captureMeshIndices(ctx, geomData, m_pCap->currentFrameNum, pMesh);
+      captureMeshIndices(ctx, geomData, m_pCap->currentFrameNum, m_pCap->camera.isViewLhs, m_pCap->camera.isProjLhs, m_pCap->camera.bFlipMeshes, pMesh);
     }
 
     if (bIsNewMesh && geomData.texcoordBuffer.defined()) {
@@ -576,7 +633,7 @@ namespace dxvk {
       positions.reserve(numVertices);
       OriginCalc originCalc;
       for (size_t idx = 0; idx < numVertices; ++idx) {
-        const pxr::GfVec3f& pos = *reinterpret_cast<const pxr::GfVec3f*>(&pVkPosBuf[idx * positionStride]);
+        pxr::GfVec3f pos = *reinterpret_cast<const pxr::GfVec3f*>(&pVkPosBuf[idx * positionStride]);
         if(m_correctBakedTransforms) {
           originCalc.compareAndSwap(pos);
         }
@@ -654,9 +711,12 @@ namespace dxvk {
   void GameCapturer::captureMeshIndices(const Rc<DxvkContext> ctx,
                                         const RaytraceGeometry& geomData,
                                         const float currentFrameNum,
+                                        const bool isViewLhs,
+                                        const bool isProjLhs,
+                                        const bool bFlipMeshes,
                                         std::shared_ptr<Mesh> pMesh) {
 
-    AssetExporter::BufferCallback captureMeshIndicesAsync = [ctx, geomData, currentFrameNum, pMesh](Rc<DxvkBuffer> idxBuf) {
+    AssetExporter::BufferCallback captureMeshIndicesAsync = [ctx, geomData, currentFrameNum, pMesh, isViewLhs, isProjLhs, bFlipMeshes, this](Rc<DxvkBuffer> idxBuf) {
       const size_t numIndices = geomData.indexCount;
       const DxvkBufferSlice indexBuffer(idxBuf, 0, idxBuf->info().size);
       // Copy GPU buffer to local VtArray
@@ -674,6 +734,19 @@ namespace dxvk {
         assert(0);
       }
       assert(indices.size() > 0);
+
+      // Need to change winding order in 3 situations:
+      // 1. The mesh is LHS
+      // 2. View and Projection transformation have different handedness (because we need to add a mirror transformation in this case)
+      // 3. We need to flip meshes in world space to correct upside down
+      // However, swap twice is the same as original order. So, we do XOR here make sure we only swap the winding order when 1 or 3 (odd number) of these 3 situations happen.
+      const bool isChangingHandedness = (bFlipMeshes ^ (pMesh->lssData.isLhs ^ (isViewLhs ^ isProjLhs)));
+      if (isChangingHandedness){
+        for (uint32_t i = 0; i < numIndices; i+=3) {
+          std::swap(indices[i], indices[i + 2]);
+        }
+      }
+
       // Create comparison function that returns float
       static auto differentIndices = [](const int a, const int b) {
         return a != b;
@@ -897,7 +970,10 @@ namespace dxvk {
       const float texExportTimeout = numTexExportsInProgress * kTimePerTexExport;
       m_exporter.waitForAllExportsToComplete(texExportTimeout);
       assert(pState->has<State::PreppingExport>());
-      const auto exportPrep = prepExport(cap, framesPerSecond, bUseLssUsdPlugins);
+      auto exportPrep = prepExport(cap, framesPerSecond, bUseLssUsdPlugins);
+      exportPrep.meta.isViewLhs = cap.camera.isViewLhs;
+      exportPrep.meta.isProjLhs = cap.camera.isProjLhs;
+
       pState->set<State::PreppingExport, false>();
       pState->set<State::Exporting, true>();
 
@@ -961,13 +1037,12 @@ namespace dxvk {
     exportPrep.meta.bUseLssUsdPlugins = bUseLssUsdPlugins;
     exportPrep.meta.bReduceMeshBuffers = true;
     exportPrep.meta.isZUp = RtxOptions::Get()->isZUp();
-    exportPrep.meta.isLHS = RtxOptions::Get()->isLHS() || cap.camera.isLHS;
     if (s_captureRemixConfigs) {
       for (auto& pair : RtxOptionImpl::getGlobalRtxOptionMap()) {
         exportPrep.meta.renderingSettingsDict[pair.first] = pair.second->genericValueToString(RtxOptionImpl::ValueType::Value);
       }
     }
-    exportPrep.meta.bCorrectBakedTransforms = m_correctBakedTransforms;
+    exportPrep.meta.bCorrectBakedTransforms = false;
 
     exportPrep.debugId = cap.idStr;
     exportPrep.baseExportPath = BASE_DIR;
