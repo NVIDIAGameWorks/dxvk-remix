@@ -27,7 +27,7 @@ jobs:
         script: core.exportVariable('GITHUB_SHA_SHORT', context.sha.substring(0, 7))
 
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
       with:
         submodules: recursive
 
