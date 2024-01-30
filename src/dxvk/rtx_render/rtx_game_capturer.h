@@ -19,6 +19,56 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
+
+/*
+* Game Capture Coordinate System:
+*   When capturing, Remix supports various transformations compared to the simple transformation V' = ProjMat * ViewMat * WorldMat * V.
+*   This is necessary because different games use different coordinate systems during transformations:
+*   - World:
+*      - Handedness (LHS/RHS)
+*      - Rendering the world normally or upside down
+*   - View:
+*      - Handedness (LHS/RHS)
+*      - Up vector pointing up or down
+*   - Projection:
+*      - Handedness (LHS/RHS)
+*      - Inversed aspect ratio
+*   - zUP or yUP
+*
+*   We need a more generic formula for the transformation calculation:
+*   V' = (R * Proj * R^-1) * (R * (INV_View_UP * View) * R^-1) * (INV_World_UP * (R * World * R^-1)) * (R * V)
+*
+*   R * M * R^-1 is a similarity transformation for changing the basis from LHS to RHS. If the transformation needs to change the basis, then R is:
+*   | 1  0  0  0 |
+*   | 0  1  0  0 |
+*   | 0  0 -1  0 |
+*   | 0  0  0  1 |
+*
+*   INV_View_UP handles cases where the up vector of the view matrix in the original game is upside down.
+*   It can be represented as a basis-changing transformation, as shown below. It effectively flips the up vector back:
+*   INV_View_UP * View = | Xx  -Yx   Zx  0 | (yUP) OR | Xx   -Zx   Yx   0 | (zUP)
+*                        | Xy  -Yy   Zy  0 |          | Xy   -Zy   Yy   0 |
+*                        | Xz  -Yz   Zz  0 |          | Xz   -Zz   Yz   0 |
+*                        | -X*P Y*P -Z*P 1 |          | -X*P  Z*P -Y*P  1 |
+*   INV_View_UP can cancel out with the similarity transform, allowing us to omit calculations if the view matrix is both LHS and upside down.
+*
+*   INV_World_UP handles cases where the entire scene is rendered upside down in world space. This can be corrected with a simple flipping transformation:
+*   | -1  0  0  0 |
+*   |  0 -1  0  0 |
+*   |  0  0  1  0 |
+*   |  0  0  0  1 |
+*
+*   If neighbor transformations (e.g., view and projection) are both left-handed, the intermediate similarity transformation matrix will cancel out.
+*   We can avoid redundant calculations by XORing isLHS flags, performing similarity transformations only for an odd number of basis changes.
+*
+*   Changing the basis will mirror the coordinates and alter the triangle winding direction. If the triangle is single-sided, it means the surface's
+*   front and back will be inverted. Therefore, when an odd number of basis changes occur (verified using XOR), we must reverse the order of indices
+*   for each triangle.
+*
+*   Specifically, for triangles with an odd number of basis changes, use XOR to determine whether to reverse the order of vertex indices. This ensures
+*   consistent rendering despite changes in coordinate basis, maintaining proper surface orientation.
+*/
+
 #pragma once
 
 #include "rtx_game_capturer_utils.h"
@@ -166,7 +216,8 @@ private:
                    const bool bIsNewMesh,
                    const bool bCapturePositions,
                    const bool bCaptureNormals,
-                   const bool bCaptureIndices);
+                   const bool bCaptureIndices,
+                   const bool lsLhs);
   template <typename T>
   void captureMeshPositions(const Rc<DxvkContext> ctx,
                             const size_t numVertices,
@@ -182,6 +233,9 @@ private:
   void captureMeshIndices(const Rc<DxvkContext> ctx,
                           const RaytraceGeometry& geomData,
                           const float currentCaptureTime,
+                          const bool isViewLhs,
+                          const bool isProjLhs,
+                          const bool bFlipMeshes,
                           std::shared_ptr<Mesh> pMesh);
   void captureMeshTexCoords(const Rc<DxvkContext> ctx,
                             const RaytraceGeometry& geomData,

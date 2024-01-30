@@ -85,14 +85,14 @@ private:
   static void exportSphereLights(const Export& exportData, ExportContext& ctx);
   static void exportDistantLights(const Export& exportData, ExportContext& ctx);
   static void exportSky(const Export& exportData, ExportContext& ctx);
-  template<bool IsInstance>
   static void setTimeSampledXforms(const pxr::UsdStageRefPtr stage,
                                    const pxr::SdfPath sdfPath,
                                    const float firstTime,
                                    const float finalTime,
                                    const SampledXforms& xforms,
                                    const Export::Meta& meta,
-                                   const pxr::GfMatrix4d& commonXform = pxr::GfMatrix4d{1.0});
+                                   const bool changeBasis,
+                                   const pxr::GfMatrix4d& commonXform = pxr::GfMatrix4d { 1.0 });
   static void setVisibilityTimeSpan(const pxr::UsdStageRefPtr stage,
                                     const pxr::SdfPath sdfPath,
                                     const double firstTime,

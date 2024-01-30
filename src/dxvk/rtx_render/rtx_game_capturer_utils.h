@@ -23,6 +23,8 @@
 
 #include "../../lssusd/usd_include_begin.h"
 #include <pxr/base/gf/vec3f.h>
+#include <pxr/base/gf/matrix4f.h>
+#include <pxr/base/gf/matrix4d.h>
 #include "../../lssusd/usd_include_end.h"
 
 #include <atomic>
@@ -106,5 +108,15 @@ private:
     } while(val < other && !atomic.compare_exchange_weak(val, other));
   }
 };
+
+// Change basis functions RHS->LHS or LHS->RHS
+template<typename T>
+static inline T swapBasis(const T& xform) {
+  static const pxr::GfMatrix4d XYflip({ 1.0, 1.0, -1.0, 1.0 });
+
+  // Change of Basis similarity transform
+  // X' = P * X * P-1
+  return XYflip * xform * XYflip;
+}
 
 }
