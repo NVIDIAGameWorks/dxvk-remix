@@ -27,4 +27,13 @@ namespace dxvk {
 
   // Sentinel value representing a null hash
   static constexpr XXH64_hash_t kEmptyHash = 0;
+
+  // Note: 0xFFFF used for inactive buffer and surface material index to indicate to the GPU that no buffer/material is in use
+  // for a specific variable (as some are optional). Also used for debugging to provide wildly out of range values in case one is not set.
+  constexpr static uint32_t kSurfaceInvalidBufferIndex = 0xFFFFu;
+  constexpr static uint32_t kSurfaceInvalidSurfaceMaterialIndex = 0xFFFFu;
+
+  // Limit for unique buffers minus some padding
+  constexpr static uint32_t kBufferCacheLimit = kSurfaceInvalidBufferIndex - 10; 
+
 } // namespace dxvk
