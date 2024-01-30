@@ -23,6 +23,7 @@
 #include "rtx_types.h"
 #include "rtx_context.h"
 #include "../../util/sync/sync_signal.h"
+#include "../../util/util_threadpool.h"
 #include "../dxvk_device.h"
 #include "../dxvk_context.h"
 #include "../dxvk_buffer.h"
@@ -101,7 +102,15 @@ namespace dxvk {
     }
   }
 
+  std::unique_ptr<AssetExporter::ThreadPool>& AssetExporter::getExporterThread() {
+    if (m_exporterThread == nullptr) {
+      m_exporterThread = std::make_unique<ThreadPool>(1, "rtx-asset-exporter");
+    }
+    return m_exporterThread;
+  }
+
   void AssetExporter::exportImage(Rc<DxvkContext> ctx, const std::string& filename, Rc<DxvkImage> image, bool thumbnail/* = false*/) {
+    ScopedCpuProfileZone();
     // NOTE: Should use a mutex here...
     {
       std::lock_guard lock(m_readbackSignalMutex);
@@ -251,16 +260,15 @@ namespace dxvk {
     const uint64_t syncValue = ++m_signalValue;
     ctx->signal(m_readbackSignal, syncValue);
 
-    const gli::extent3d outExtent = { dstDesc.extent.width, dstDesc.extent.height, 1 };
-
-    // Push texture header to the GLI container
-    gli::texture2d exportTex(outFormat, outExtent, dstDesc.mipLevels, swizzle);
-
     // Spawn a thread so we dont sync with the GPU here...(remember, GPU runs async with CPU!).  
-    // NOTE: A task scheduler will probably be better longterm here
-    dxvk::thread exporterThread([this, device = ctx->getDevice(), pBlitDests, pBlitTemps, syncValue, filename, exportTex = std::move(exportTex)] {
+    Future<void> result = getExporterThread()->Schedule([this, device = ctx->getDevice(), pBlitDests, pBlitTemps, syncValue, filename, outFormat, dstDesc, swizzle] {
+      ScopedCpuProfileZoneN("Export Image Finalize");
       // Stall until the GPU has completed its copy to system memory (GPU->CPU)
       this->m_readbackSignal->wait(syncValue);
+    
+      // Push texture header to the GLI container
+      const gli::extent3d outExtent = { dstDesc.extent.width, dstDesc.extent.height, 1 };
+      gli::texture2d exportTex(outFormat, outExtent, dstDesc.mipLevels, swizzle);
 
       const DxvkFormatInfo* formatInfo = imageFormatInfo(gliFormatToVk(exportTex.format()));
 
@@ -290,7 +298,7 @@ namespace dxvk {
                             subresource.aspectMask);
       }
 
-      // Write our file, converting its format first if nessecary
+      // Write our file, converting its format first if necessary
       bool success = false;
       auto const standardizedFormat = unusualToStandardFormat(exportTex.format());
       if (standardizedFormat != exportTex.format()) {
@@ -307,10 +315,14 @@ namespace dxvk {
       delete[] pBlitDests;
       m_numExportsInFlight--;
     });
-    exporterThread.detach();
+
+    if (!result.valid()) {
+      Logger::err(str::format("RTX: Failed to write texture \"", filename, "\".  Coding error, kMaxConcurrentExports, may be too low (currently: ", kMaxConcurrentExports, ")."));
+    }
   }
 
   void AssetExporter::exportBuffer(Rc<DxvkContext> ctx, const DxvkBufferSlice& buffer, BufferCallback bufferCallback) {
+    ScopedCpuProfileZone();
     // NOTE: Should use a mutex here...
     {
       std::lock_guard lock(m_readbackSignalMutex);
@@ -345,13 +357,18 @@ namespace dxvk {
     // Sync point, before writing to disk, we must wait on GPU
     const uint64_t syncValue = ++m_signalValue;
     ctx->signal(m_readbackSignal, syncValue);
-    auto asyncWaitThenCallback = [this, cDestBuffer = bufferDest, syncValue](BufferCallback bufferCallback) {
+
+    Future<void> result = getExporterThread()->Schedule([this, cDestBuffer = bufferDest, syncValue, bufferCallback] {
+      ScopedCpuProfileZoneN("Export Buffer Finalize");
       // Stall until the GPU has completed its copy to system memory (GPU->CPU)
       this->m_readbackSignal->wait(syncValue);
       bufferCallback(cDestBuffer);
       m_numExportsInFlight--;
-    };
-    std::thread(asyncWaitThenCallback, bufferCallback).detach();
+    });
+    
+    if (!result.valid()) {
+      Logger::err(str::format("RTX: Failed to dump buffer.  Coding error, kMaxConcurrentExports, may be too low (currently: ", kMaxConcurrentExports, ")."));
+    }
   }
 
   void AssetExporter::generateSceneThumbnail(Rc<DxvkContext> ctx, const std::string& dir, const std::string& filename) {

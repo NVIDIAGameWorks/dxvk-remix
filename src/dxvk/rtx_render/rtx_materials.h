@@ -36,10 +36,6 @@ namespace dxvk {
 
 // Todo: Compute size directly from sizeof of GPU structure (by including it), for now computed by sum of members manually
 constexpr std::size_t kSurfaceGPUSize = 16 * 4 * 4;
-// Note: 0xFFFF used for inactive buffer and surface material index to indicate to the GPU that no buffer/material is in use
-// for a specific variable (as some are optional). Also used for debugging to provide wildly out of range values in case one is not set.
-constexpr static uint32_t kSurfaceInvalidBufferIndex = 0xFFFFu;
-constexpr static uint32_t kSurfaceInvalidSurfaceMaterialIndex = 0xFFFFu;
 
 // Note: Use caution when changing this enum, must match the values defined on the MDL side of things.
 
