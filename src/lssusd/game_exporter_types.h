@@ -71,9 +71,11 @@ struct Camera {
   float         farPlane = NAN;
   float         firstTime = NAN;
   float         finalTime = NAN;
-  bool          isLHS = false;
   bool          isReverseZ = false;
-  bool          bFlipVertAperture = false;
+  bool          isViewLhs = false;
+  bool          isProjLhs = false;
+  bool          bFlipMeshes = false;
+  bool          bFlipView = false;
   SampledXforms xforms;
 };
 
@@ -85,7 +87,7 @@ struct SphereLight {
   float         firstTime = NAN;
   float         finalTime = NAN;
   bool          shapingEnabled = false;
-  float         coneAngle = 180.f;
+  float         coneAngleDegrees = 180.f;
   float         coneSoftness = 0.f;
   float         focusExponent = 0.f;
   SampledXforms xforms;
@@ -95,7 +97,7 @@ struct DistantLight {
   std::string  lightName;
   float        color[3];
   float        intensity;
-  float        angle;
+  float        angleDegrees;
   pxr::GfVec3f direction;
   float        firstTime = NAN;
   float        finalTime = NAN;
@@ -167,6 +169,7 @@ struct Mesh {
   uint32_t     numBones = 0;
   uint32_t     bonesPerVertex = 0;
   pxr::VtMatrix4dArray boneXForms;
+  bool         isLhs = false;
 };
 
 struct Instance {
@@ -198,7 +201,8 @@ struct Export {
     bool bUseLssUsdPlugins;
     bool bReduceMeshBuffers;
     bool isZUp;
-    bool isLHS;
+    bool isViewLhs;
+    bool isProjLhs;
     std::unordered_map<std::string, std::string> renderingSettingsDict;
     bool bCorrectBakedTransforms;
   } meta;

@@ -389,14 +389,6 @@ void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
   MaterialData* materialData = processMaterialUser(args, prim);
 
   pxr::GfMatrix4f localToRoot = pxr::GfMatrix4f(args.xformCache.GetLocalToWorldTransform(prim));
-
-  if (RtxOptions::Get()->isLHS()) {
-    static pxr::GfMatrix4f XYflip(pxr::GfVec4f(1.0, 1.0, -1.0, 1.0));
-    // Change of Basis transform
-    // X' = P * X * P-1
-    localToRoot = XYflip * localToRoot * XYflip;
-  }
-
   const auto& replacementToObjectAsArray = reinterpret_cast<const float(&)[4][4]>(localToRoot);
   const Matrix4 replacementToObject(replacementToObjectAsArray);
 

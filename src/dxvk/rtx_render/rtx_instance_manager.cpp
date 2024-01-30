@@ -961,6 +961,7 @@ namespace dxvk {
     // Note: this should happen on instance updates and not creation because the same geometry can be drawn
     // with different flags, and the instance manager can match an old instance of a geometry to a new one with different draw mode.
     currentInstance.m_vkInstance.flags = determineInstanceFlags(drawCall, worldToProjection, currentInstance.surface);
+    currentInstance.isFrontFaceFlipped = (currentInstance.m_vkInstance.flags & VK_GEOMETRY_INSTANCE_TRIANGLE_FLIP_FACING_BIT_KHR) != 0;
 
     // Apply the decal sort index for this instance so we can approximate order correctness on the GPU in AHS
     if (currentInstance.surface.alphaState.isDecal) {
