@@ -54,23 +54,6 @@ namespace {
     }
   }
 
-  // Note: Converts "unusual" DDS formats which are often not well-supported by visualization and editing tools to
-  // more compatible formats.
-  gli::format unusualToStandardFormat(const gli::format f) {
-    switch (f) {
-    case gli::format::FORMAT_RGBA4_UNORM_PACK16:
-    case gli::format::FORMAT_BGRA4_UNORM_PACK16:
-    case gli::format::FORMAT_RGB5A1_UNORM_PACK16:
-    case gli::format::FORMAT_BGR5A1_UNORM_PACK16:
-    case gli::format::FORMAT_A1RGB5_UNORM_PACK16:
-      return gli::format::FORMAT_RGBA8_UNORM_PACK8;
-    case gli::format::FORMAT_R5G6B5_UNORM_PACK16:
-      return gli::format::FORMAT_B5G6R5_UNORM_PACK16;
-    default:
-      return f;
-    }
-  }
-
   VkFormat gliFormatToVk(gli::format format) {
     return static_cast<VkFormat>(format);
   }
@@ -139,16 +122,16 @@ namespace dxvk {
     const bool useBlit = srcDesc.format != dstDesc.format;
 
     // Detect changes in GLI since we're casting the VK format to GLI
-    assert(gli::format::FORMAT_LAST >= (gli::format)dstDesc.format);
-    const gli::format outFormat = (gli::format)dstDesc.format;
+    assert(gli::format::FORMAT_LAST >= (gli::format) dstDesc.format);
+    const gli::format outFormat = (gli::format) dstDesc.format;
 
     if (thumbnail) {
       constexpr uint16_t kDefaultExtentSize = 512;
       uint16_t extentSize = kDefaultExtentSize;
       // For games with a resolution dimension < 512, we need to make
       // the thumbnail smaller
-      while((srcDesc.extent.width  < extentSize) ||
-            (srcDesc.extent.height < extentSize)) {
+      while ((srcDesc.extent.width < extentSize) ||
+             (srcDesc.extent.height < extentSize)) {
         extentSize >>= 1;
       }
       // Some default parameters for thumbnails
@@ -175,8 +158,7 @@ namespace dxvk {
       const VkExtent3D srcExtent = srcDesc.extent;
       const VkExtent3D dstExtent = thumbnail ? dstDesc.extent : image->mipLevelExtent(level);
 
-      if (useBlit)
-      {
+      if (useBlit) {
         DxvkImageCreateInfo desc = dstDesc;
         desc.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
         desc.stages = VK_PIPELINE_STAGE_TRANSFER_BIT;
@@ -223,8 +205,8 @@ namespace dxvk {
         VkImageBlit region = {};
         region.srcSubresource = srcSubresourceLayers;
         region.srcOffsets[0] = srcOffset;
-        region.srcOffsets[1] = { srcOffset.x + int32_t(dstExtent.width), 
-                                 srcOffset.y + int32_t(dstExtent.height), 
+        region.srcOffsets[1] = { srcOffset.x + int32_t(dstExtent.width),
+                                 srcOffset.y + int32_t(dstExtent.height),
                                  srcOffset.z + int32_t(dstExtent.depth) };
         region.dstSubresource = dstSubresourceLayers;
         region.dstOffsets[0] = { 0,0,0 };
@@ -240,9 +222,7 @@ namespace dxvk {
 
         // Copy temp to system memory
         ctx->copyImage(pBlitDests[level], dstSubresourceLayers, VkOffset3D { 0,0,0 }, pBlitTemps[level], dstSubresourceLayers, VkOffset3D { 0,0,0 }, dstExtent);
-      }
-      else
-      {
+      } else {
         ctx->changeImageLayout(pBlitDests[level], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
         // Blit src to system memory
@@ -298,15 +278,8 @@ namespace dxvk {
                             subresource.aspectMask);
       }
 
-      // Write our file, converting its format first if necessary
-      bool success = false;
-      auto const standardizedFormat = unusualToStandardFormat(exportTex.format());
-      if (standardizedFormat != exportTex.format()) {
-        success = gli::save(gli::convert(exportTex, standardizedFormat), filename);
-      } else {
-        success = gli::save(exportTex, filename);
-      }
-
+      // Write our file, converting its format first if nessecary
+      const bool success = gli::save(exportTex, filename);
       if (!success) {
         Logger::err(str::format("RTX: Failed to write texture \"", filename, "\""));
       }
@@ -346,7 +319,7 @@ namespace dxvk {
     // Make the image where we'll copy the GPU resource to CPU accessible mem
     Rc<DxvkBuffer> bufferDest = ctx->getDevice()->createBuffer(desc, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT, DxvkMemoryStats::Category::RTXBuffer);
 
-    ctx->copyBuffer(bufferDest, VkDeviceSize{0}, buffer.buffer(), buffer.offset(), desc.size);
+    ctx->copyBuffer(bufferDest, VkDeviceSize { 0 }, buffer.buffer(), buffer.offset(), desc.size);
 
     ctx->emitMemoryBarrier(0,
       VK_PIPELINE_STAGE_TRANSFER_BIT,
