@@ -1,11 +1,19 @@
 #pragma once
 
+#include <cassert>
+#include <climits>
 #include <type_traits>
 
 #include "util_bit.h"
 
 namespace dxvk {
   
+  // Takes an enum or enum class type to use as a set of bits, the value of each enum member representing
+  // the index of the bit they represent in the flags bitset.
+  // Warning: All values in the enum/enum class which are intended to be used in setting/testing/etc
+  // operations must have a value less than the number of bits in the underlying enum type. This is only
+  // a problem when manually setting enum values, e.g. Foo = 0xFFFFFFFF will certianly cause an issue if
+  // ever used (though an assertion will at least guard against this at runtime).
   template<typename T>
   class Flags {
     
@@ -15,7 +23,7 @@ namespace dxvk {
     
     Flags() { }
     
-    Flags(IntType t)
+    constexpr Flags(IntType t)
     : m_bits(t) { }
     
     template<typename... Tx>
@@ -93,6 +101,16 @@ namespace dxvk {
     IntType m_bits = 0;
     
     static IntType bit(T f) {
+      // NV-DXVK start: Flags safety improvements
+      // Note: This check exists to ensure that undefined behavior is not invoked when attempting to set a bit,
+      // as left shifts greater or equal to the number of bits in the type is undefined behavior in C++ and
+      // numerous bugs in the past due to invalid usage ofthe Flags class.
+      // Do note though that this is a conservative check as C++ does not give an easy way to get the exact
+      // number of bits in a type (numeric_limits<T>::digits has to be adjusted by sign). It will be at
+      // least less than this value though (and in practice cursed 29 bit integers are not a thing anyways).
+      assert(static_cast<IntType>(f) < (sizeof(IntType) * CHAR_BIT));
+      // NV-DXVK end
+
       return IntType(1) << static_cast<IntType>(f);
     }
     

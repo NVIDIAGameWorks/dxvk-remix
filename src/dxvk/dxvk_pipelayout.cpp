@@ -151,7 +151,9 @@ namespace dxvk {
       if (bindingInfos[i].type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
         m_dynamicSlots.push_back(i);
       
-      m_descriptorTypes.set(bindingInfos[i].type);
+      // NV-DXVK start: Replace unsuitable Flags set function with new boolean setting function
+      setDescriptorType(bindingInfos[i].type);
+      // NV-DXVK end
     }
     
     // Create descriptor set layout. We do not need to
