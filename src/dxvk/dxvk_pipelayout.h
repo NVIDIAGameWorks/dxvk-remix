@@ -247,8 +247,9 @@ namespace dxvk {
      * type.
      */
     bool hasStaticBufferBindings() const {
-      return m_descriptorTypes.test(
-        VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+      // NV-DXVK start: Replace unsuitable Flags struct with per-type booleans
+      return m_hasUniformBufferDescriptorType;
+      // NV-DXVK end
     }
     
     /**
@@ -275,6 +276,22 @@ namespace dxvk {
     }
 
   private:
+    // NV-DXVK start
+    // Note: Replacement code for what was previously an incorrectly used Flags bitset.
+    // Using a Flags<VkDescriptorType> was invalid because some descriptor types set in it
+    // are far out of the valid range (e.g. VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR = 1000150000),
+    // which caused undefined behavior.
+    void setDescriptorType(VkDescriptorType descriptorType) {
+      switch (descriptorType) {
+      case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
+        m_hasUniformBufferDescriptorType = true;
+
+        break;
+      default:
+        break;
+      }
+    }
+    // NV-DXVK end
     
     Rc<vk::DeviceFn> m_vkd;
     
@@ -286,7 +303,9 @@ namespace dxvk {
     std::vector<DxvkDescriptorSlot> m_bindingSlots;
     std::vector<uint32_t>           m_dynamicSlots;
 
-    Flags<VkDescriptorType>         m_descriptorTypes;
+    // NV-DXVK start: Replace unsuitable Flags struct with per-type booleans
+    bool                            m_hasUniformBufferDescriptorType = false;
+    // NV-DXVK end
     
     bool m_hasExtraLayouts = false;
   };
