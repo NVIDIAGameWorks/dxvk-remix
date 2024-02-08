@@ -119,7 +119,7 @@ namespace dxvk {
 
   void LightData::merge(const D3DLIGHT9& light) {
     // Special case, dont do any merging if we know we dont need to
-    if (m_dirty != DirtyFlags::AllDirty) {
+    if (m_dirty != m_allDirty) {
       std::optional<LightData> input = tryCreate(light);
       if (input.has_value()) {
         merge(input.value()); // when converting from legacy lights, we always use the games transform
@@ -396,7 +396,7 @@ namespace dxvk {
 
     // If this light is fully defined (i.e. a child light) then we need to use all attributes
     if (prim.GetSpecifier() == pxr::SdfSpecifier::SdfSpecifierDef) {
-      m_dirty = DirtyFlags::AllDirty;
+      m_dirty = m_allDirty;
     }
   }
 

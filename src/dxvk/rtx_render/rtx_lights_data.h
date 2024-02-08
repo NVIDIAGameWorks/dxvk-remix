@@ -21,6 +21,8 @@
 */
 #pragma once
 
+#include <type_traits>
+
 #include "rtx_lights.h"
 
 #define LIST_LIGHT_CONSTANTS(X) \
@@ -103,9 +105,15 @@ namespace dxvk {
     enum class DirtyFlags : uint32_t {
       LIST_LIGHT_CONSTANTS(WRITE_DIRTY_FLAGS)
       k_Transform,
-      AllDirty = 0xFFFFffff
     };
-    
+
+    // Note: Be very careful with what is passed to the Flags class's constructor. A bug previously existed where this all ones bit
+    // pattern was a DirtyFlags enum value itself (e.g. AllDirty = 0xFFFFFFFF), causing it to call the wrong conversion constructor and being
+    // interpreted as a bit index to set instead of a raw integer value to manually set the flags with. This caused great pain as shifting
+    // by such a large number in the internal set function caused undefined behavior (as C++ does not allow shifting greater than the number
+    // of bits in the type being shifted), which in turn caused all the flags to be cleared rather than all to be set.
+    constexpr static Flags<DirtyFlags> m_allDirty{ ~static_cast<std::underlying_type_t<DirtyFlags>>(0) };
+
     LIST_LIGHT_CONSTANTS(WRITE_PARAMETER_MEMBERS)
 
     enum TransformType {
@@ -113,7 +121,7 @@ namespace dxvk {
       Relative
     };
 
-    Flags<DirtyFlags> m_dirty { 0 };
+    Flags<DirtyFlags> m_dirty{};
     LightType m_lightType;
     XXH64_hash_t m_cachedHash = kEmptyHash;
     // NOTE: Just add params for these without USD deserializer
