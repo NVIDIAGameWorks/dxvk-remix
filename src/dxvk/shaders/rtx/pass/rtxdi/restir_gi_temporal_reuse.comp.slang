@@ -257,11 +257,6 @@ void main(int2 thread_id : SV_DispatchThreadID)
 
   bool isGBufferSimilar;
   bool isInitialSample;
-  // TODO: The temporal reuse function considers the average weight as pdf, instead of W.
-  // According to the GRIS paper: Generalized Resampled Importance Sampling: Foundations of ReSTIR, E[W] = 1 / pdf
-  // So a quick fix here is to use the reciprocal of average weight.
-  // Should fix the temporal reuse function in the future
-  inputReservoir.avgWeight = inputReservoir.avgWeight > 0 ? 1.0 / inputReservoir.avgWeight : 0.0;
   ReSTIRGI_Reservoir resultReservoir = ReSTIRGI_TemporalResampling(inputReservoir, thread_id, surface, rng, tparams, isGBufferSimilar, isInitialSample);
 
   // Update last frame's visibility mask when raytraced pairwise MIS is used. 
