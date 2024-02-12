@@ -541,6 +541,9 @@ void GameExporter::exportMeshes(const Export& exportData, ExportContext& ctx) {
   const std::string meshDirPath = exportData.baseExportPath + "/" + relMeshDirPath;
   const std::string fullMeshStagePath = computeLocalPath(meshDirPath);
   dxvk::env::createDirectory(meshDirPath);
+  // Determine whether meshes need to be inverted
+  const bool bInvX = (!exportData.camera.view.bInv) && (exportData.camera.proj.bInv || exportData.camera.isLHS());
+  const bool bInvY = (!exportData.camera.view.bInv) && exportData.camera.proj.bInv;
   for(const auto& [meshId,mesh] : exportData.meshes) {
     assert(mesh.numVertices > 0);
     assert(mesh.numIndices > 0);
@@ -561,9 +564,22 @@ void GameExporter::exportMeshes(const Export& exportData, ExportContext& ctx) {
     meshStage->GetRootLayer()->SetCustomLayerData(customLayerData);
 
     pxr::SdfPath meshXformSdfPath;
-    if (exportData.meta.bCorrectBakedTransforms) {
+    const bool visualCorrectionReqd = exportData.meta.bCorrectBakedTransforms || bInvX || bInvY;
+    if (visualCorrectionReqd) {
       const auto correctionXformSdfPath = gStageRootPath.AppendElementString("visual_correction");
       auto correctionXformSchema = pxr::UsdGeomXform::Define(meshStage, correctionXformSdfPath);
+      auto correctionXformOp = correctionXformSchema.AddTransformOp();
+      assert(correctionXformOp);
+      pxr::GfMatrix4d xform { 1.0 };
+      const pxr::GfVec3d scale{ (bInvX) ? -1.0 : 1.0,
+                                (bInvY) ? -1.0 : 1.0, 1.0};
+      xform.SetScale(scale);
+      const pxr::GfVec3d dOrigin{
+        (bInvX) ? -mesh.origin[0] : mesh.origin[0],
+        (bInvY) ? -mesh.origin[1] : mesh.origin[1],
+        mesh.origin[2]};
+      xform.SetTranslateOnly(-dOrigin);
+      correctionXformOp.Set(xform);
       meshXformSdfPath = correctionXformSdfPath.AppendElementString(meshName);
     } else {
       meshXformSdfPath = gStageRootPath.AppendElementString(meshName);
@@ -591,6 +607,7 @@ void GameExporter::exportMeshes(const Export& exportData, ExportContext& ctx) {
     auto meshVisibilityAttr = meshSchema.CreateVisibilityAttr();
     assert(meshVisibilityAttr);
     meshVisibilityAttr.Set(gVisibilityInherited);
+
     auto meshXformOp = meshSchema.AddTransformOp();
     assert(meshXformOp);
     pxr::GfMatrix4d xform { 1.0 };
@@ -1141,9 +1158,9 @@ void GameExporter::exportSky(const Export& exportData, ExportContext& ctx) {
   assert(skyXformSchema);
   auto transformOp = skyXformSchema.AddTransformOp();
   assert(transformOp);
-  pxr::GfRotation rotation = pxr::GfRotation(pxr::GfVec3d::XAxis(), exportData.camera.bFlipMeshes ? pxr::GfVec3d::ZAxis() : pxr::GfVec3d::YAxis());
+  pxr::GfRotation rotation = pxr::GfRotation(pxr::GfVec3d::XAxis(), exportData.camera.proj.bInv ? pxr::GfVec3d::ZAxis() : pxr::GfVec3d::YAxis());
   pxr::GfMatrix4d xform(rotation, pxr::GfVec3f(0.f, 0.f, 0.f));
-  xform[1][1] *= exportData.camera.bFlipView ? -1.0 : 1.0;
+  xform[1][1] *= exportData.camera.view.bInv ? -1.0 : 1.0;
   transformOp.Set(xform);
 
   dxvk::Logger::debug("[GameExporter][" + exportData.debugId + "][exportSky] End");
