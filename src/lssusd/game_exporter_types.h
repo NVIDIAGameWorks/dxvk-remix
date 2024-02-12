@@ -63,6 +63,11 @@ struct Skeleton {
   pxr::VtMatrix4dArray restPose;
 };
 
+enum CoordSys {
+  RHS,
+  LHS
+};
+
 struct Camera {
   // Note: FoV in radians.
   float         fov = NAN;
@@ -72,11 +77,14 @@ struct Camera {
   float         firstTime = NAN;
   float         finalTime = NAN;
   bool          isReverseZ = false;
-  bool          isViewLhs = false;
-  bool          isProjLhs = false;
-  bool          bFlipMeshes = false;
-  bool          bFlipView = false;
   SampledXforms xforms;
+  struct CamMat {
+    bool     bInv = false;
+    CoordSys coord = RHS;
+    inline bool isLHS() const { return coord == LHS; }
+  } view, proj;
+  // Do XOR here to check if we need to manually change basis for Projection * View matrix
+  inline bool isLHS() const { return view.isLHS() ^ proj.isLHS(); }
 };
 
 struct SphereLight {
@@ -201,8 +209,6 @@ struct Export {
     bool bUseLssUsdPlugins;
     bool bReduceMeshBuffers;
     bool isZUp;
-    bool isViewLhs;
-    bool isProjLhs;
     std::unordered_map<std::string, std::string> renderingSettingsDict;
     bool bCorrectBakedTransforms;
   } meta;

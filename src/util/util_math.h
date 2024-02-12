@@ -67,6 +67,12 @@ namespace dxvk {
     if (n > hi) return hi;
     return n;
   }
+    
+  template<typename T>
+  constexpr T clampHigh(T n, T hi) {
+    if (n > hi) return hi;
+    return n;
+  }
   
   template<typename T, typename U = T>
   constexpr T align(T what, U to) {
