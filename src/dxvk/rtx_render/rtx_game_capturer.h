@@ -217,7 +217,7 @@ private:
                    const bool bCapturePositions,
                    const bool bCaptureNormals,
                    const bool bCaptureIndices,
-                   const bool lsLhs);
+                   const bool isLhs);
   template <typename T>
   void captureMeshPositions(const Rc<DxvkContext> ctx,
                             const size_t numVertices,
@@ -233,9 +233,7 @@ private:
   void captureMeshIndices(const Rc<DxvkContext> ctx,
                           const RaytraceGeometry& geomData,
                           const float currentCaptureTime,
-                          const bool isViewLhs,
-                          const bool isProjLhs,
-                          const bool bFlipMeshes,
+                          const lss::Camera& capCam,
                           std::shared_ptr<Mesh> pMesh);
   void captureMeshTexCoords(const Rc<DxvkContext> ctx,
                             const RaytraceGeometry& geomData,
