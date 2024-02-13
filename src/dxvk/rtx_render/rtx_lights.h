@@ -64,27 +64,46 @@ enum class RtLightAntiCullingType {
 };
 
 struct RtLightShaping {
-  uint32_t enabled = false;   // Note: using uint instead of bool to avoid having unused padded memory, 
-                          // which is an issue when calculating a hash from the struct's object
-  Vector3 primaryAxis;
-  float cosConeAngle = 0.f;
-  float coneSoftness = 0.f;
-  float focusExponent = 0.f;
+public:
+  RtLightShaping(bool enabled = false, Vector3 primaryAxis = Vector3(0.0f, 0.0f, 1.0f),
+                 float cosConeAngle = 0.0f, float coneSoftness = 0.0f, float focusExponent = 0.0f);
 
   XXH64_hash_t getHash() const;
 
   void applyTransform(Matrix3 transform);
 
   void writeGPUData(unsigned char* data, std::size_t& offset) const;
+
+  bool getEnabled() const {
+    return m_enabled != 0;
+  }
+
+  const Vector3& getPrimaryAxis() const {
+    return m_primaryAxis;
+  }
+
+  float getCosConeAngle() const {
+    return m_cosConeAngle;
+  }
+
+  float getConeSoftness() const {
+    return m_coneSoftness;
+  }
+
+  float getFocusExponent() const {
+    return m_focusExponent;
+  }
+
+private:
+  uint32_t m_enabled; // Note: using uint instead of bool to avoid having unused padded memory, 
+                      // which is an issue when calculating a hash from the struct's object
+  Vector3 m_primaryAxis;
+  float m_cosConeAngle;
+  float m_coneSoftness;
+  float m_focusExponent;
 };
 
 struct RtSphereLight {
-  RtSphereLight() {
-    m_position = Vector3();
-    m_radiance = Vector3();
-    m_radius = 0;
-  }
-
   RtSphereLight(const Vector3& position, const Vector3& radiance, float radius,
                 const RtLightShaping& shaping, const XXH64_hash_t forceHash = kEmptyHash);
 
@@ -334,8 +353,6 @@ struct DomeLight {
 };
 
 struct RtLight {
-  RtLight();
-
   RtLight(const RtSphereLight& light);
 
   RtLight(const RtSphereLight& light, const RtSphereLight& originalSphereLight);
@@ -348,7 +365,9 @@ struct RtLight {
 
   RtLight(const RtDistantLight& light);
 
-  RtLight(const RtLight& light);
+  // Note: Default copy satisfactory, do not implement a custom copy constructor without good reason
+  // as sometimes newly added members are forgotten to be added to a custom implementation.
+  RtLight(const RtLight& light) = default;
 
   ~RtLight();
 
@@ -356,7 +375,9 @@ struct RtLight {
 
   void writeGPUData(unsigned char* data, std::size_t& offset) const;
 
-  RtLight& operator=(const RtLight& rtLight);
+  // Note: Default copy satisfactory, do not implement a custom copy assignment without good reason
+  // as sometimes newly added members are forgotten to be added to a custom implementation.
+  RtLight& operator=(const RtLight& rtLight) = default;
 
   bool operator==(const RtLight& rhs) const = delete;
 

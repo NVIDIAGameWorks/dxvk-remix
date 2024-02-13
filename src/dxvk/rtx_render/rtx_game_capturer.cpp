@@ -362,12 +362,12 @@ namespace dxvk {
       sphereLight.xforms.reserve(m_options.numFrames - m_pCap->numFramesCaptured);
       sphereLight.firstTime = m_pCap->currentFrameNum;
       const dxvk::RtLightShaping& shaping = rtLight.getShaping();
-      if (shaping.enabled) {
+      if (shaping.getEnabled()) {
         sphereLight.shapingEnabled = true;
-        sphereLight.coneAngleDegrees = acos(shaping.cosConeAngle) * kRadiansToDegrees;
-        sphereLight.coneSoftness = shaping.coneSoftness;
-        sphereLight.focusExponent = shaping.focusExponent;
-        rotation = pxr::GfRotation(-pxr::GfVec3d::ZAxis(), pxr::GfVec3f(&shaping.primaryAxis[0]));
+        sphereLight.coneAngleDegrees = std::acos(shaping.getCosConeAngle()) * kRadiansToDegrees;
+        sphereLight.coneSoftness = shaping.getConeSoftness();
+        sphereLight.focusExponent = shaping.getFocusExponent();
+        rotation = pxr::GfRotation(-pxr::GfVec3d::ZAxis(), pxr::GfVec3f(&shaping.getPrimaryAxis()[0]));
       }
       Logger::debug("[GameCapturer][" + m_pCap->idStr + "][SphereLight:" + name + "] New");
     }
