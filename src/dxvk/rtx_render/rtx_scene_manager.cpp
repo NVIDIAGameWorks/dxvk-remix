@@ -619,8 +619,7 @@ namespace dxvk {
     // matrix, not our freecam's, and as such we want to convert it back to world space using the matching matrix.
     Vector4 worldPos = getCamera().getViewToWorld(false) * renderingPos;
 
-    RtLightShaping shaping;
-    shaping.enabled = false;
+    RtLightShaping shaping{};
     const float lightRadius = std::max(RtxOptions::Get()->getEffectLightRadius(), 1e-3f);
     const float surfaceArea = 4.f * kPi * lightRadius * lightRadius;
     const float radianceFactor = 1e5f * effectLightIntensity / surfaceArea;

@@ -84,17 +84,17 @@ namespace dxvk {
 
 
   void LightManager::showImguiSettings() {
+    bool lightSettingsDirty = false;
+
+    const auto separator = []() {
+      ImGui::Dummy({ 0,2 });
+      ImGui::Separator();
+      ImGui::Dummy({ 0,2 });
+    };
+
     if (ImGui::CollapsingHeader("Light Translation", ImGuiTreeNodeFlags_CollapsingHeader)) {
       ImGui::Dummy({ 0,2 });
       ImGui::Indent();
-
-      auto separator = []() {
-        ImGui::Dummy({ 0,2 });
-        ImGui::Separator();
-        ImGui::Dummy({ 0,2 });
-      };
-
-      bool lightSettingsDirty = false;
 
       lightSettingsDirty |= ImGui::Checkbox("Suppress Light Keeping", &suppressLightKeepingObject());
 
@@ -110,7 +110,7 @@ namespace dxvk {
 
       ImGui::BeginDisabled(disableDirectional);
       lightSettingsDirty |= ImGui::DragFloat("Distant Light Fixed Intensity", &lightConversionDistantLightFixedIntensityObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-      lightSettingsDirty |= ImGui::DragFloat("Distant Light Fixed Angle", &lightConversionDistantLightFixedAngleObject(), 0.01f, 0.0f, kPi, "%.4f", ImGuiSliderFlags_AlwaysClamp);
+      lightSettingsDirty |= ImGui::DragFloat("Distant Light Fixed Angle", &lightConversionDistantLightFixedAngleObject(), 0.01f, 0.0f, kPi, "%.4f rad", ImGuiSliderFlags_AlwaysClamp);
       ImGui::EndDisabled();
 
       ImGui::Text("Ignore Game Lights:");
@@ -122,7 +122,12 @@ namespace dxvk {
       lightSettingsDirty |= ImGui::Checkbox("Spot", &ignoreGameSpotLightsObject());
       ImGui::Unindent();
 
-      separator();
+      ImGui::Unindent();
+    }
+
+    if (ImGui::CollapsingHeader("Fallback Light", ImGuiTreeNodeFlags_CollapsingHeader)) {
+      ImGui::Dummy({ 0,2 });
+      ImGui::Indent();
 
       lightSettingsDirty |= fallbackLightModeCombo.getKey(&fallbackLightModeObject());
 
@@ -134,7 +139,7 @@ namespace dxvk {
 
         if (fallbackLightType() == FallbackLightType::Distant) {
           lightSettingsDirty |= ImGui::DragFloat3("Fallback Light Direction", &fallbackLightDirectionObject(), 0.1f, 0.0f, 0.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-          lightSettingsDirty |= ImGui::DragFloat("Fallback Light Angle", &fallbackLightAngleObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+          lightSettingsDirty |= ImGui::DragFloat("Fallback Light Angle", &fallbackLightAngleObject(), 0.01f, 0.0f, FLT_MAX, "%.3f deg", ImGuiSliderFlags_AlwaysClamp);
         } else if (fallbackLightType() == FallbackLightType::Sphere) {
           lightSettingsDirty |= ImGui::DragFloat("Fallback Light Radius", &fallbackLightRadiusObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
           lightSettingsDirty |= ImGui::DragFloat3("Fallback Light Position Offset", &fallbackLightPositionOffsetObject(), 0.1f, 0.0f, 0.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
@@ -152,7 +157,7 @@ namespace dxvk {
               lightSettingsDirty |= ImGui::DragFloat3("Fallback Light Primary Axis", &fallbackLightPrimaryAxisObject(), 0.1f, 0.0f, 0.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
             }
 
-            lightSettingsDirty |= ImGui::DragFloat("Fallback Light Cone Angle", &fallbackLightConeAngleObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+            lightSettingsDirty |= ImGui::DragFloat("Fallback Light Cone Angle", &fallbackLightConeAngleObject(), 0.01f, 0.0f, FLT_MAX, "%.3f deg", ImGuiSliderFlags_AlwaysClamp);
             lightSettingsDirty |= ImGui::DragFloat("Fallback Light Cone Softness", &fallbackLightConeSoftnessObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
             lightSettingsDirty |= ImGui::DragFloat("Fallback Light Focus Exponent", &fallbackLightFocusExponentObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
 
@@ -163,15 +168,15 @@ namespace dxvk {
       ImGui::EndDisabled();
 
       ImGui::Unindent();
+    }
 
-      // Clear the lights and fallback light if the settings are dirty to recreate the lights on the next frame.
-      if (lightSettingsDirty) {
-        clear();
+    // Clear the lights and fallback light if the settings are dirty to recreate the lights on the next frame.
+    if (lightSettingsDirty) {
+      clear();
 
-        // Note: Fallback light reset here so that changes to its settings will take effect, does not need to be part
-        // of usual light clearing logic though.
-        m_fallbackLight.reset();
-      }
+      // Note: Fallback light reset here so that changes to its settings will take effect, does not need to be part
+      // of usual light clearing logic though.
+      m_fallbackLight.reset();
     }
   }
 
@@ -272,12 +277,12 @@ namespace dxvk {
       }
 
       if (pShaping) {
-        if (pShaping->enabled) {
+        if (pShaping->getEnabled()) {
           ImGui::Text("Light Shaping: Enabled");
-          ImGui::Text("\tPrimary Axis: %.2f %.2f %.2f", pShaping->primaryAxis.x, pShaping->primaryAxis.y, pShaping->primaryAxis.z);
-          ImGui::Text("\tCosine Cone Angle: %.2f", pShaping->cosConeAngle);
-          ImGui::Text("\tCone Softness: %.2f", pShaping->coneSoftness);
-          ImGui::Text("\tFocus Exponent: %.2f", pShaping->focusExponent);
+          ImGui::Text("\tPrimary Axis: %.2f %.2f %.2f", pShaping->getPrimaryAxis().x, pShaping->getPrimaryAxis().y, pShaping->getPrimaryAxis().z);
+          ImGui::Text("\tCone Angle: %.2f deg", std::acos(pShaping->getCosConeAngle()) * kRadiansToDegrees);
+          ImGui::Text("\tCone Softness: %.2f", pShaping->getConeSoftness());
+          ImGui::Text("\tFocus Exponent: %.2f", pShaping->getFocusExponent());
         } else {
           ImGui::Text("Light Shaping: Disabled");
         }
@@ -294,8 +299,9 @@ namespace dxvk {
         ImGui::SetClipboardText(hashToString(light.getInitialHash()).c_str());
       }
 
-      ImGui::End();
     }
+    // Note: End must always be called even if Begin returns false (unlike other ImGui patterns).
+    ImGui::End();
     ImGui::PopStyleColor();
   }
 
@@ -406,7 +412,7 @@ namespace dxvk {
     ImGui::SetNextWindowPos(viewport->Pos);
     ImGui::SetNextWindowSize(viewport->Size);
     ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.f, 0.f, 0.f, 0.0f));
-    if (ImGui::Begin("Light Debug View", nullptr, ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs)) {
+    if (ImGui::Begin("Light Debug View", nullptr, ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoSavedSettings)) {
       ImDrawList* drawList = ImGui::GetWindowDrawList();
       drawList->PushClipRectFullScreen();
       const RtCamera& camera = device()->getCommon()->getSceneManager().getCamera();
@@ -462,8 +468,8 @@ namespace dxvk {
       }
 
       drawList->PopClipRect();
-      ImGui::End();
     }
+    ImGui::End();
     ImGui::PopStyleColor();
   }
 

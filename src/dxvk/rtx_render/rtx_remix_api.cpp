@@ -42,6 +42,8 @@
 
 #include <windows.h>
 
+#include <optional>
+
 namespace dxvk {
   HRESULT CreateD3D9(
           bool           Extended,
@@ -469,7 +471,7 @@ namespace {
       return RtLightShaping {};
     }
 
-    RtLight toRtLight(const remixapi_LightInfo& info) {
+    std::optional<RtLight> toRtLight(const remixapi_LightInfo& info) {
       if (auto src = pnext::find<remixapi_LightInfoSphereEXT>(&info)) {
         return RtSphereLight {
           tovec3(src->position),
@@ -514,7 +516,10 @@ namespace {
           tovec3(info.radiance),
         };
       }
-      return RtLight {};
+
+      // Note: Return an empty optional if the LightInfo struct does not contain a supported
+      // LightInfo extension struct.
+      return {};
     }
 
     // --
@@ -887,7 +892,15 @@ namespace {
       });
     } else {
       // Regular analytical light handling
-      remixDevice->EmitCs([cHandle = handle, cRtLight = convert::toRtLight(*info)](dxvk::DxvkContext* ctx) {
+      const auto rtLight = convert::toRtLight(*info);
+
+      // Note: If the toRtLight conversion process returns an empty optional, the specified LightInfo did
+      // not contain the proper arguments to create a light with.
+      if (!rtLight.has_value()) {
+        return REMIXAPI_ERROR_CODE_WRONG_ARGUMENTS;
+      }
+
+      remixDevice->EmitCs([cHandle = handle, cRtLight = *rtLight](dxvk::DxvkContext* ctx) {
         auto& lightMgr = ctx->getCommonObjects()->getSceneManager().getLightManager();
         lightMgr.addExternalLight(cHandle, cRtLight);
       });

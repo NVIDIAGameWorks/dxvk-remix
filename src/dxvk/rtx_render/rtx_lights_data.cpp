@@ -28,6 +28,7 @@
 
 #include <d3d9types.h>
 #include <regex>
+#include <cassert>
 
 #include "../../lssusd/game_exporter_common.h"
 #include "../../lssusd/game_exporter_paths.h"
@@ -77,20 +78,34 @@ namespace dxvk {
     m_dirty(0),
     m_isRelativeTransform(!absoluteTransform && !isOverrideLight),
     m_isOverrideLight(isOverrideLight) {
+    // Note: Retrieval of light type and deserialization of constants must happen before other operations to ensure all members
+    // are set from their initial USD values (before say sanitation and other adjustment of said light members).
     getLightType(lightPrim, m_lightType);
-    extractTransform(pLocalToRoot);
     deserialize(lightPrim);
+
+    extractTransform(pLocalToRoot);
     sanitizeData();
   }
 
   RtLight LightData::toRtLight(const RtLight* const originalLight) const {
     switch (m_lightType) {
+    // Note: This default case should never be hit as an Unknown light type must be merged before it should be converted to LightData,
+    // the assert is here just for debugging to assert when an unexpected light type is passed in (so this is an "unreachable"-style assert).
+    default:
+      assert(false);
+
+      [[fallthrough]];
     case LightType::Sphere:
     {
+      // Note: To match Omniverse's Sphere light scaling behavior, chose the largest of the 3 scale axes to scale the radius of the sphere by. Note that
+      // really all the scale factors should be the same for a sphere light, but in case they are not this is how it should be done to match
+      // the existing behavior.
+      const auto radiusScale = std::max(std::max(m_xScale, m_yScale), m_zScale);
+
       if (!originalLight || originalLight->getType() != RtLightType::Sphere) {
-        return RtLight(RtSphereLight(m_position, calculateRadiance(), m_Radius, getLightShaping(m_zAxis), m_cachedHash));
+        return RtLight(RtSphereLight(m_position, calculateRadiance(), m_Radius * radiusScale, getLightShaping(m_zAxis), m_cachedHash));
       } else {
-        return RtLight(RtSphereLight(m_position, calculateRadiance(), m_Radius, getLightShaping(m_zAxis), m_cachedHash), originalLight->getSphereLight());
+        return RtLight(RtSphereLight(m_position, calculateRadiance(), m_Radius * radiusScale, getLightShaping(m_zAxis), m_cachedHash), originalLight->getSphereLight());
       }
     }
     case LightType::Rect:
@@ -105,15 +120,19 @@ namespace dxvk {
     }
     case LightType::Cylinder:
     {
-      return RtLight(RtCylinderLight(m_position, m_Radius, m_xAxis, m_Length * m_xScale, calculateRadiance()));
+      // Note: To match Omniverse's Cylinder light scaling behavior, chose the largest of the 2 scale axes to scale the radius of the circular
+      // profile of the cylinder by (similar to how this is done for the Sphere light). Since the cylinder's length is done with respect to the
+      // X axis (and scaled by the X axis scale), the Y and Z axes are used here for its circular cross section.
+      const auto radiusScale = std::max(m_yScale, m_zScale);
+
+      // Note: Unlike light shaping the Cylinder light is based around the X axis for its directionality aspect, not the Z axis.
+      return RtLight(RtCylinderLight(m_position, m_Radius * radiusScale, m_xAxis, m_Length * m_xScale, calculateRadiance()));
     }
     case LightType::Distant:
     {
       const float halfAngle = m_AngleRadians / 2.0f;
       return RtLight(RtDistantLight(m_zAxis, halfAngle, calculateRadiance(), m_cachedHash));
     }
-    default:
-      throw;
     }
   }
 
@@ -129,6 +148,15 @@ namespace dxvk {
     // Merge in the light type if it's currently unknown
     if (m_lightType == LightType::Unknown) {
       switch (light.Type) {
+      // Note: An invalid light type may be passed in and may not be sanitized properly by DXVK (unsure, it may actually be
+      // handled properly), so this case ensures it can be caught for debugging purposes and that it falls back to some other
+      // light type. Do note since this case is potentially expected at runtime this is no an "unreachable"-style assert, more
+      // of a __debugbreak (C++ does not have "hard" asserts though like other languages that actually assert that he condition
+      // can never happen to the compiler, so using an assert as a standardized debug break is fine).
+      default:
+        assert(false);
+
+        [[fallthrough]];
       case D3DLIGHT_POINT:
       case D3DLIGHT_SPOT:
         m_lightType = LightType::Sphere;
@@ -140,6 +168,7 @@ namespace dxvk {
     }
   }
 
+  // Note: This can only be called after LightData::deserialize has been called due to relying on deserialized values.
   bool LightData::isShapingEnabled() const {
     return m_ConeAngleRadians != (180.f * kDegreesToRadians) || m_ConeSoftness != 0.0f || m_Focus != 0.0f;
   }
@@ -176,6 +205,12 @@ namespace dxvk {
     // Construct and return the light
 
     switch (light.Type) {
+    // Note: This case is checked for before, but just to make sure this default case is asserted against as it is
+    // intended to be unreachable.
+    default:
+      assert(false);
+
+      [[fallthrough]];
     case D3DLIGHT_POINT:
     case D3DLIGHT_SPOT:
       return std::optional<LightData>(std::in_place, createFromPointSpot(light));
@@ -190,6 +225,37 @@ namespace dxvk {
 
     if (!isSupportedUsdLight(lightPrim)) {
       return {};
+    }
+
+    // Handle logic specific to lights with a transform set
+
+    if (pLocalToRoot != nullptr) {
+      auto& localToRoot = *pLocalToRoot;
+
+      // Ignore lights with a 0 scale transform on any axis
+      // Note: Currently in Omniverse lights with a 0 scale on all 3 axes are considered valid and are simply ignored. Since this is "valid" behavior and not a bug (supposedly),
+      // we match that here by ignoring creation of such lights. We however go further by ignoring a light with any of its 3 axes scaled by 0 due to how this can affect derivation
+      // of required direction vectors on some light types as well as scale dimension or radii of lights to 0. Notably shaping when enabled requires the Z axis to be valid, the
+      // rect/disk lights require the Z axis for their direction, and finally the cylinder light requires the X axis for its direction. Rather than checking all these cases
+      // individually it is more simple to ignore lights with a transform like this in general as doing otherwise is likely confusing niche behavior anyways that should not be relied on.
+      // It should also be noted that currently we still allow lights to have a radius or dimensions of 0 (pre-scale), this is not optimal as such lights essentially contribute nothing to the
+      // scene and only increase sampling costs, but at least setting these scalar dimensions to 0 does not break the fundemental aspects of the light like how zero scale transforms do.
+      // In the future though these 0 radius/dimension lights may be fine to also ignore too in this tryCreate function.
+
+      // Note: The last row of the light's transform should always be 0, 0, 0, 1 for a typical affine matrix when column-major, since this matrix
+      // is row major though we get the last column instead.
+      assert(localToRoot.GetColumn(3) == pxr::GfVec4f(0.0f, 0.0f, 0.0f, 1.0f));
+
+      const pxr::GfVec3f zeroVec3(0.0f, 0.0f, 0.0f);
+
+      // Note: USD's matrices are row major so to get the scale vectors we need to get the columns instead of the rows of the matrix.
+      if (
+        pxr::GfVec3f(localToRoot[0][0], localToRoot[1][0], localToRoot[2][0]) == zeroVec3 ||
+        pxr::GfVec3f(localToRoot[0][1], localToRoot[1][1], localToRoot[2][1]) == zeroVec3 ||
+        pxr::GfVec3f(localToRoot[0][2], localToRoot[1][2], localToRoot[2][2]) == zeroVec3
+      ) {
+        return {};
+      }
     }
 
     // Construct and return the light
@@ -245,7 +311,7 @@ namespace dxvk {
     output.m_Intensity = LightUtils::calculateIntensity(light, output.m_Radius);
     output.m_Color = Vector3(light.Diffuse.r, light.Diffuse.g, light.Diffuse.b) / originalBrightness;
 
-    RtLightShaping originalLightShaping {};
+    RtLightShaping originalLightShaping{};
 
     if (light.Type == D3DLIGHT_SPOT) {
       const Vector3 originalDirection { light.Direction.x, light.Direction.y, light.Direction.z };
@@ -257,6 +323,7 @@ namespace dxvk {
       // Additionally, the direction may be the zero vector (even though D3D9 disallows this), so fall back to the
       // Z axis in this case.
       output.m_zAxis = safeNormalize(originalDirection, Vector3(0.0f, 0.0f, 1.0f));
+      assert(isApproxNormalized(output.m_zAxis, 0.01f));
 
       // ConeAngle is the outer angle of the spotlight
       output.m_ConeAngleRadians = light.Phi / 2.0f;
@@ -346,23 +413,30 @@ namespace dxvk {
   }
 
   RtLightShaping LightData::getLightShaping(Vector3 zAxis) const {
-    RtLightShaping shaping;
-    shaping.primaryAxis = zAxis;
-    shaping.cosConeAngle = cos(m_ConeAngleRadians);
-    shaping.coneSoftness = m_ConeSoftness;
-    shaping.focusExponent = m_Focus;
-    shaping.enabled = isShapingEnabled();
-    return shaping;
+    const auto enabled = isShapingEnabled();
+    const auto primaryAxis = zAxis;
+    const auto cosConeAngle = cos(m_ConeAngleRadians);
+    const auto coneSoftness = m_ConeSoftness;
+    const auto focusExponent = m_Focus;
+
+    return RtLightShaping(enabled, primaryAxis, cosConeAngle, coneSoftness, focusExponent);
   }
 
   void LightData::extractTransform(const pxr::GfMatrix4f* pLocalToRoot) {
+    // Ensure a transform exists to extract data from
+
     if (pLocalToRoot == nullptr) {
       return;
     }
 
-    pxr::GfVec3f xVecUsd = pLocalToRoot->TransformDir(pxr::GfVec3f(1.0f, 0.0f, 0.0f));
-    pxr::GfVec3f yVecUsd = pLocalToRoot->TransformDir(pxr::GfVec3f(0.0f, 1.0f, 0.0f));
-    pxr::GfVec3f zVecUsd = pLocalToRoot->TransformDir(pxr::GfVec3f(0.0f, 0.0f, 1.0f));
+    auto& localToRoot = *pLocalToRoot;
+
+    // Load and sanitize transform-related light values
+
+    // Note: Rows of a row-major matrix represent the axis vectors (just like columns of a column-major matrix do).
+    auto xVecUsd = localToRoot.GetRow3(0);
+    auto yVecUsd = localToRoot.GetRow3(1);
+    auto zVecUsd = localToRoot.GetRow3(2);
 
     // Note: These calls both normalize the X/Y/Z vectors and return their previous length. This is mandatory as the axis
     // vectors used to construct lights with must be normalized.
@@ -370,15 +444,62 @@ namespace dxvk {
     m_yScale = yVecUsd.Normalize();
     m_zScale = zVecUsd.Normalize();
 
-    m_position = pLocalToRoot->ExtractTranslation().data();
+    m_position = localToRoot.ExtractTranslation().data();
     m_xAxis = xVecUsd.GetArray();
     m_yAxis = yVecUsd.GetArray();
     m_zAxis = zVecUsd.GetArray();
+
+    // Note: While normalization is done via the USD api a bit earlier it does not properly ensure that the vectors are not the zero vector,
+    // which is not allowed for directions in some cases in Remix (namely the light shaping axis or Rect/Disk light axes), so we handle this
+    // case ourselves. While the main common case of these vectors being zero (a zero scale transform) is already handled before LightData
+    // creation, there are still other cases in the matrix (e.g. zeroed column vectors) which can cause this, so it's still good to guard against it.
+    m_xAxis = sanitizeSingularity(m_xAxis, Vector3(1.0f, 0.0f, 0.0f));
+    m_yAxis = sanitizeSingularity(m_yAxis, Vector3(0.0f, 1.0f, 0.0f));
+    m_zAxis = sanitizeSingularity(m_zAxis, Vector3(0.0f, 0.0f, 1.0f));
 
     // NOTE: this negative on m_zAxis is clearly indicating a problem somewhere, but just preserving the existing behavior for now
     if (m_lightType == LightType::Sphere || m_lightType == LightType::Unknown) {
       m_zAxis = -m_zAxis;
     }
+
+    // Flip required axes on negative scale and sanitize scales
+    // Note: This is once again done to match how Omniverse behaves somewhat, some negative scale transforms will change the direction typically
+    // directional-esque lights (so shaped lights, rect, disk and distant) will point, and this should be reflected here. Note that Omniverse
+    // actually doesn't handle this properly with rect and disk lights, only shaping and distant lights. We generalize this behavior to work properly
+    // on all directional-esque lights by always inverting the axis when an negative scale is sanitized away.
+
+    if (m_xScale < 0.0f) {
+      m_xScale = -m_xScale;
+      m_xAxis = -m_xAxis;
+    }
+
+    if (m_yScale < 0.0f) {
+      m_yScale = -m_yScale;
+      m_yAxis = -m_yAxis;
+    }
+
+    if (m_zScale < 0.0f) {
+      m_zScale = -m_zScale;
+      m_zAxis = -m_zAxis;
+    }
+
+    // Validate derived axes and scales
+
+    // Note: Ensure the axes are normalized in the way we expect after normalization in USD and our own sanitation/adjustments.
+    assert(isApproxNormalized(m_xAxis, 0.01f));
+    assert(isApproxNormalized(m_yAxis, 0.01f));
+    assert(isApproxNormalized(m_zAxis, 0.01f));
+
+    // Note: Since the light transform is guarded against having zero scale transforms on any axis during LightData creation,
+    // the scales here should not be zero in any case. This in addition to ensuring light axes can always be derived prevents
+    // weird behavior with most light types as zero scales can lead to the light collapsing into a punctual light and being poorly
+    // handled by Remix (due to not having special cases for such infinitesimal lights).
+    // In addition, negative scales should not be allowed as actually part of the Light Data, rather if a negative scale exists
+    // it may be converted to a positive scale for symmetric lights (and a directionality flip can be applied to lights using it
+    // to scale an axis instead).
+    assert(m_xScale > 0.0f && m_yScale > 0.0f && m_zScale > 0.0f);
+
+    // Set the dirty bit now that the Light Data's transform has been updated
 
     m_dirty.set(DirtyFlags::k_Transform);
   }

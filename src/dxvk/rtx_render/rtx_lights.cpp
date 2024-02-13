@@ -26,39 +26,59 @@
 #include "rtx_light_utils.h"
 
 namespace dxvk {
+RtLightShaping::RtLightShaping(bool enabled, Vector3 primaryAxis, float cosConeAngle, float coneSoftness, float focusExponent)
+  : m_enabled(enabled ? 1 : 0)
+  , m_primaryAxis(primaryAxis)
+  , m_cosConeAngle(cosConeAngle)
+  , m_coneSoftness(coneSoftness)
+  , m_focusExponent(focusExponent) {
+  if (m_enabled) {
+    // Note: Ensure the primary axis the shaping is constructed with is normalized is shaping is enabled. This check is also done
+    // on GPU encoding, but checking it here as well ensures the shaping is always constructed properly. Do note this assumes that
+    // shaping cannot be enabled/disabled at runtime due to only checking this enabled case.
+    assert(isApproxNormalized(primaryAxis, 0.01f));
+  }
+}
+
 XXH64_hash_t RtLightShaping::getHash() const {
   XXH64_hash_t h = 0;
 
-  if (enabled) {
-    h = XXH64(&primaryAxis[0], sizeof(primaryAxis), h);
-    h = XXH64(&cosConeAngle, sizeof(cosConeAngle), h);
-    h = XXH64(&coneSoftness, sizeof(coneSoftness), h);
-    h = XXH64(&focusExponent, sizeof(focusExponent), h);
+  if (m_enabled) {
+    h = XXH64(&m_primaryAxis[0], sizeof(m_primaryAxis), h);
+    h = XXH64(&m_cosConeAngle, sizeof(m_cosConeAngle), h);
+    h = XXH64(&m_coneSoftness, sizeof(m_coneSoftness), h);
+    h = XXH64(&m_focusExponent, sizeof(m_focusExponent), h);
   }
 
   return h;
 }
 
 void RtLightShaping::applyTransform(Matrix3 transform) {
-  primaryAxis = normalize(transform * primaryAxis);
+  // Note: Safe normalize used in case the transformation collapses the axis down to a zero vector (as the transform
+  // is not validated to be "proper").
+  m_primaryAxis = safeNormalize(transform * m_primaryAxis, Vector3(0.0f, 0.0f, 1.0f));
+
+  // Note: Ensure the transformation resulted in a normalized primary axis as the shaping should not have
+  // this property violated by a transformation.
+  assert(isApproxNormalized(m_primaryAxis, 0.01f));
 }
 
 void RtLightShaping::writeGPUData(unsigned char* data, std::size_t& offset) const {
   // occupies 12 bytes
-  if (enabled) {
+  if (m_enabled) {
     // Note: Ensure the normal vector is normalized as this is a requirement for the GPU encoding.
-    assert(isApproxNormalized(primaryAxis, 0.01f));
-    assert(primaryAxis < Vector3(FLOAT16_MAX));
-    writeGPUHelper(data, offset, glm::packHalf1x16(primaryAxis.x));
-    writeGPUHelper(data, offset, glm::packHalf1x16(primaryAxis.y));
-    writeGPUHelper(data, offset, glm::packHalf1x16(primaryAxis.z));
+    assert(isApproxNormalized(m_primaryAxis, 0.01f));
+    assert(m_primaryAxis < Vector3(FLOAT16_MAX));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_primaryAxis.x));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_primaryAxis.y));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_primaryAxis.z));
 
-    assert(cosConeAngle < FLOAT16_MAX);
-    writeGPUHelper(data, offset, glm::packHalf1x16(1.0f - cosConeAngle));
-    assert(coneSoftness < FLOAT16_MAX);
-    writeGPUHelper(data, offset, glm::packHalf1x16(coneSoftness));
-    assert(focusExponent < FLOAT16_MAX);
-    writeGPUHelper(data, offset, glm::packHalf1x16(focusExponent));
+    assert(m_cosConeAngle < FLOAT16_MAX);
+    writeGPUHelper(data, offset, glm::packHalf1x16(1.0f - m_cosConeAngle));
+    assert(m_coneSoftness < FLOAT16_MAX);
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_coneSoftness));
+    assert(m_focusExponent < FLOAT16_MAX);
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_focusExponent));
   } else {
     writeGPUPadding<12>(data, offset);
   }
@@ -110,7 +130,7 @@ void RtSphereLight::writeGPUData(unsigned char* data, std::size_t& offset) const
 
   // Note: Sphere light type (0) + shaping enabled flag
   uint32_t flags = lightTypeSphere << 29; // Light Type at bits 29,30,31.
-  flags |= m_shaping.enabled ? 1 << 0 : 0 << 0; // Shaping enabled flag at bit 0
+  flags |= m_shaping.getEnabled() ? 1 << 0 : 0 << 0; // Shaping enabled flag at bit 0
   writeGPUHelper(data, offset, flags);
 
   assert(offset - oldOffset == kLightGPUSize);
@@ -210,7 +230,7 @@ void RtRectLight::writeGPUData(unsigned char* data, std::size_t& offset) const {
 
   // Note: Rect light type (1) + shaping enabled flag
   uint32_t flags = lightTypeRect << 29; // Light Type at bits 29,30,31.
-  flags |= m_shaping.enabled ? 1 << 0 : 0 << 0; // Shaping enabled flag at bit 0
+  flags |= m_shaping.getEnabled() ? 1 << 0 : 0 << 0; // Shaping enabled flag at bit 0
   writeGPUHelper(data, offset, flags);
 
   assert(offset - oldOffset == kLightGPUSize);
@@ -316,7 +336,7 @@ void RtDiskLight::writeGPUData(unsigned char* data, std::size_t& offset) const {
 
   // Note: Disk light type (2) + shaping enabled flag
   uint32_t flags = lightTypeDisk << 29; // Light Type at bits 29,30,31.
-  flags |= m_shaping.enabled ? 1 << 0 : 0 << 0; // Shaping enabled flag at bit 0
+  flags |= m_shaping.getEnabled() ? 1 << 0 : 0 << 0; // Shaping enabled flag at bit 0
   writeGPUHelper(data, offset, flags);
 
   assert(offset - oldOffset == kLightGPUSize);
@@ -508,13 +528,6 @@ void RtDistantLight::updateCachedHash() {
   m_cachedHash = h;
 }
 
-RtLight::RtLight() { 
-  // Dummy light - this is used when lights are removed from the list to keep persistent ordering.
-  m_type = RtLightType::Sphere;
-  new (&m_sphereLight) RtSphereLight();
-  m_cachedInitialHash = m_sphereLight.getHash();
-}
-
 RtLight::RtLight(const RtSphereLight& light) {
   m_type = RtLightType::Sphere;
   new (&m_sphereLight) RtSphereLight(light);
@@ -551,36 +564,6 @@ RtLight::RtLight(const RtDistantLight& light) {
   m_type = RtLightType::Distant;
   new (&m_distantLight) RtDistantLight(light);
   m_cachedInitialHash = m_distantLight.getHash();
-}
-
-RtLight::RtLight(const RtLight& light)
-  : m_type(light.m_type)
-  , m_cachedInitialHash(light.m_cachedInitialHash)
-  , m_rootInstanceId(light.m_rootInstanceId)
-  , m_frameLastTouched(light.m_frameLastTouched)
-  , m_bufferIdx(light.m_bufferIdx)
-  , isDynamic(light.isDynamic) {
-  switch (m_type) {
-  default:
-    assert(false);
-
-    [[fallthrough]];
-  case RtLightType::Sphere:
-    new (&m_sphereLight) RtSphereLight{ light.m_sphereLight };
-    break;
-  case RtLightType::Rect:
-    new (&m_rectLight) RtRectLight{ light.m_rectLight };
-    break;
-  case RtLightType::Disk:
-    new (&m_diskLight) RtDiskLight{ light.m_diskLight };
-    break;
-  case RtLightType::Cylinder:
-    new (&m_cylinderLight) RtCylinderLight{ light.m_cylinderLight };
-    break;
-  case RtLightType::Distant:
-    new (&m_distantLight) RtDistantLight{ light.m_distantLight };
-    break;
-  }
 }
 
 RtLight::~RtLight() {
@@ -655,48 +638,6 @@ void RtLight::writeGPUData(unsigned char* data, std::size_t& offset) const {
   }
 }
 
-RtLight& RtLight::operator=(const RtLight& rtLight) {
-  if (this != &rtLight) {
-    m_type = rtLight.m_type;
-
-    switch (rtLight.m_type) {
-    default:
-      assert(false);
-
-      [[fallthrough]];
-    case RtLightType::Sphere:
-      m_sphereLight = rtLight.m_sphereLight;
-      break;
-    case RtLightType::Rect:
-      m_rectLight = rtLight.m_rectLight;
-      break;
-    case RtLightType::Disk:
-      m_diskLight = rtLight.m_diskLight;
-      break;
-    case RtLightType::Cylinder:
-      m_cylinderLight = rtLight.m_cylinderLight;
-      break;
-    case RtLightType::Distant:
-      m_distantLight = rtLight.m_distantLight;
-      break;
-    }
-
-    m_frameLastTouched = rtLight.m_frameLastTouched;
-    m_cachedInitialHash = rtLight.m_cachedInitialHash;
-    m_rootInstanceId = rtLight.m_rootInstanceId;
-    m_bufferIdx = rtLight.m_bufferIdx;
-    isDynamic = rtLight.isDynamic;
-
-    m_isInsideFrustum = rtLight.m_isInsideFrustum;
-    m_anticullingType = rtLight.m_anticullingType;
-    m_originalMeshTransform = rtLight.m_originalMeshTransform;
-    m_originalMeshBoundingBox = rtLight.m_originalMeshBoundingBox;
-  }
-
-  return *this;
-}
-
-
 Vector4 RtLight::getColorAndIntensity() const {
   switch (m_type) {
   default:
@@ -742,11 +683,11 @@ Vector3 RtLight::getDirection() const {
 
     [[fallthrough]];
   case RtLightType::Sphere:
-    return m_sphereLight.getShaping().primaryAxis;
+    return m_sphereLight.getShaping().getPrimaryAxis();
   case RtLightType::Rect:
-    return m_rectLight.getShaping().primaryAxis;
+    return m_rectLight.getShaping().getPrimaryAxis();
   case RtLightType::Disk:
-    return m_diskLight.getShaping().primaryAxis;
+    return m_diskLight.getShaping().getPrimaryAxis();
   case RtLightType::Cylinder:
     return Vector3(0.f, 0.f, 1.f);
   case RtLightType::Distant:
