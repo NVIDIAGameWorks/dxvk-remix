@@ -104,7 +104,7 @@ namespace dxvk {
       // NV-DXVK start: Flags safety improvements
       // Note: This check exists to ensure that undefined behavior is not invoked when attempting to set a bit,
       // as left shifts greater or equal to the number of bits in the type is undefined behavior in C++ and
-      // numerous bugs in the past due to invalid usage ofthe Flags class.
+      // numerous bugs in the past due to invalid usage of the Flags class.
       // Do note though that this is a conservative check as C++ does not give an easy way to get the exact
       // number of bits in a type (numeric_limits<T>::digits has to be adjusted by sign). It will be at
       // least less than this value though (and in practice cursed 29 bit integers are not a thing anyways).

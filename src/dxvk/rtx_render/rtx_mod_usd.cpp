@@ -437,8 +437,10 @@ bool hasExplicitTransform(const pxr::UsdPrim& prim) {
 
 void UsdMod::Impl::processLight(Args& args, const pxr::UsdPrim& lightPrim, const bool isOverride) {
   if (args.rootPrim.IsA<pxr::UsdGeomMesh>() && lightPrim.IsA<pxr::UsdLuxDistantLight>()) {
-    Logger::err(str::format("A DistantLight detect under ", args.rootPrim.GetName(),
-        " will be ignored.  DistantLights are only supported as part of light replacements, not mesh replacements."));
+    Logger::err(str::format(
+      "A Distant Light detected under ", args.rootPrim.GetName(),
+      " will be ignored.  Distant Lights are only supported as part of light replacements, not mesh replacements."
+    ));
   }
 
   // Need to preserve the root's transform if it is a root light (with transform overrides), but ignore it if it's a mesh.
@@ -461,7 +463,7 @@ void UsdMod::Impl::processLight(Args& args, const pxr::UsdPrim& lightPrim, const
   const pxr::GfMatrix4f lightTransform = pxr::GfMatrix4f(localToRoot);
 
   const std::optional<LightData> lightData = LightData::tryCreate(lightPrim, isTransformDefined ? &lightTransform : nullptr, isOverride, isParentTransformDefined);
-  if(lightData.has_value()) {
+  if (lightData.has_value()) {
     args.meshes.emplace_back(lightData.value());
   }
 }

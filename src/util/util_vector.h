@@ -587,6 +587,19 @@ namespace dxvk {
     return a * (static_cast<T>(1.0) / aLength);
   }
 
+  // Sanitizes away the singularity case in some vector calculations when the vector is 0, 0, 0 as this often poses issues for normalization
+  // calculations for instance due to having a length of 0. Do note this behavior is already encapsulated in safeNormalize, this function is
+  // only for use when a vector is already expected to be normalized (e.g. from an external source) but still needs to be sanitized.
+  template <template<typename> typename TVector, typename T>
+  std::enable_if_t<std::is_floating_point_v<T>, TVector<T>> sanitizeSingularity(const TVector<T>& a, const TVector<T>& fallback) {
+    // Note: This splats a new vector of the proper size with all 0s to compare to.
+    if (a == TVector<T>(0.0)) {
+      return fallback;
+    }
+
+    return a;
+  }
+
   template <template<typename> typename TVector, typename T>
   std::enable_if_t<std::is_floating_point_v<T>, TVector<T>> safeNormalize(const TVector<T>& a, const TVector<T>& fallback) {
     const auto aLength = length(a);

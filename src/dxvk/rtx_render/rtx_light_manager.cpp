@@ -164,8 +164,8 @@ namespace dxvk {
   void LightManager::dynamicLightMatching() {
     ScopedCpuProfileZone();
     // Try match up any stragglers now we have the full light list this frame.
-    for (auto it = m_lights.begin(); it != m_lights.end(); ) {
-      RtLight& light = it->second;
+    for (auto it = m_lights.cbegin(); it != m_lights.cend(); ) {
+      const RtLight& light = it->second;
       // Only looking for instances of dynamic lights that have been updated on the previous frame
       if (light.getFrameLastTouched() + 1 != m_device->getCurrentFrameId()) {
         ++it;
@@ -183,24 +183,26 @@ namespace dxvk {
       }
 
       float currentSimilarity = -1.f;
-      std::optional<XXH64_hash_t> similarLight;
-      for (auto&& newPair : m_lights) {
-        RtLight& newLight = newPair.second;
+      // Note: Using an iterator for the found similar light is safe here because the m_lights map will not change between where
+      // it is found and where it is accessed.
+      std::optional<decltype(m_lights)::iterator> similarLight;
+      for (auto similarLightIterator = m_lights.begin(); similarLightIterator != m_lights.end(); ++similarLightIterator) {
+        const RtLight& newLight = similarLightIterator->second;
         // Skip comparing to old lights, this check implicitly avoids comparing the exact same light.
         if (newLight.getBufferIdx() != kNewLightIdx || newLight.isChildOfMesh())
           continue;
 
-        float similarity = isSimilar(light, newLight, RtxOptions::uniqueObjectDistance());
+        const float similarity = isSimilar(light, newLight, RtxOptions::uniqueObjectDistance());
         // Update the cached light if it's similar.
         if (similarity > currentSimilarity) {
-          similarLight = newPair.first;
+          similarLight = similarLightIterator;
           currentSimilarity = similarity;
         }
       }
 
       if (currentSimilarity >= 0 && similarLight.has_value()) {
         // This is a dynamic light!
-        RtLight& dynamicLight = m_lights[similarLight.value()];
+        RtLight& dynamicLight = (*similarLight)->second;
         dynamicLight.isDynamic = true;
 
         // This is the same light, so update our new light
@@ -250,24 +252,26 @@ namespace dxvk {
 
         const auto oldSphereLightBufferIndex = oldFallbackLightPresent ? m_fallbackLight->getBufferIdx() : 0;
 
-        RtLightShaping shaping{};
-
         const auto enableFallback = enableFallbackLightShaping();
 
-        if (enableFallback) {
-          shaping.enabled = true;
+        const bool shapingEnabled = enableFallback;
+        Vector3 primaryAxis = Vector3(0.0f, 0.0f, 1.0f);
+        float cosConeAngle = 0.0f;
+        float coneSoftness = 0.0f;
+        float focusExponent = 0.0f;
 
+        if (enableFallback) {
           if (enableFallbackLightViewPrimaryAxis()) {
-            shaping.primaryAxis = mainCamera.getDirection();
+            primaryAxis = mainCamera.getDirection();
           } else {
-            shaping.primaryAxis = fallbackLightPrimaryAxis();
+            // Note: Must normalize the fallback light's primary axis as it is specified by options or ImGui and has
+            // no hard requirement to be normalized.
+            primaryAxis = safeNormalize(fallbackLightPrimaryAxis(), Vector3(0.0f, 0.0f, 1.0f));
           }
 
-          shaping.cosConeAngle = std::cos(fallbackLightConeAngle() * kDegreesToRadians);
-          shaping.coneSoftness = fallbackLightConeSoftness();
-          shaping.focusExponent = fallbackLightFocusExponent();
-        } else {
-          shaping.enabled = false;
+          cosConeAngle = std::cos(fallbackLightConeAngle() * kDegreesToRadians);
+          coneSoftness = fallbackLightConeSoftness();
+          focusExponent = fallbackLightFocusExponent();
         }
 
         // Note: Will be recreated every frame due to the need to be dynamic. Not super effecient but this is only
@@ -276,7 +280,7 @@ namespace dxvk {
           mainCamera.getPosition() + fallbackLightPositionOffset(),
           fallbackLightRadiance(),
           fallbackLightRadius(),
-          shaping
+          RtLightShaping(shapingEnabled, primaryAxis, cosConeAngle, coneSoftness, focusExponent)
         ));
 
         // Update light dynamic properties
@@ -487,20 +491,20 @@ namespace dxvk {
       if (a.getType() == RtLightType::Sphere) {
         const RtLightShaping& aShaping = a.getSphereLight().getShaping();
         const RtLightShaping& bShaping = b.getSphereLight().getShaping();
-        if (aShaping.enabled != bShaping.enabled) {
+        if (aShaping.getEnabled() != bShaping.getEnabled()) {
           return kNotSimilar;
         }
 
-        if (aShaping.enabled && bShaping.enabled) {
-          float cosAxis = dot(aShaping.primaryAxis, bShaping.primaryAxis);
+        if (aShaping.getEnabled() && bShaping.getEnabled()) {
+          const float cosAxis = dot(aShaping.getPrimaryAxis(), bShaping.getPrimaryAxis());
           if (cosAxis < kCosAngleSimilarityThreshold) {
             return kNotSimilar;
           }
-          float coneAngleDelta = abs(aShaping.cosConeAngle - bShaping.cosConeAngle);
+          const float coneAngleDelta = std::abs(aShaping.getCosConeAngle() - bShaping.getCosConeAngle());
           if (coneAngleDelta > 0.01f) {
             return kNotSimilar;
           }
-          float coneSoftnessDelta = abs(aShaping.coneSoftness - bShaping.coneSoftness);
+          float coneSoftnessDelta = abs(aShaping.getConeSoftness() - bShaping.getConeSoftness());
           if (coneSoftnessDelta > 0.01f) {
             return kNotSimilar;
           }
@@ -635,8 +639,15 @@ namespace dxvk {
       }
 
       // Add as a new light (with/out updated data depending on if a similar light was found)
-      RtLight& localLight = m_lights[rtLight.getInstanceHash()];
-      localLight = rtLight;
+      const auto& [localLightIterator, addedSuccessfully] = m_lights.try_emplace(rtLight.getInstanceHash(), rtLight);
+      RtLight& localLight = localLightIterator->second;
+
+      // Note: Ensure that the new light was added successfully (meaning that no existing light existed in the light map at the
+      // given Light instance hash). This should always be the case as this code is in the "else" branch of a check to see if the
+      // light exists in the map already, meaning a light with this hash should not be present in this case.
+      // If this fact ever changes, use insert_or_assign instead of emplace to insert or overwrite the light in the map if that is
+      // the desired behavior.
+      assert(addedSuccessfully);
 
       // Copy/interpolate any state we like from the similar light.
       if (similarLight.has_value())
