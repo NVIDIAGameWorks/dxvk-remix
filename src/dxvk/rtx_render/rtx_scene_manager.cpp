@@ -585,7 +585,7 @@ namespace dxvk {
     }
   }
 
-  void SceneManager::createEffectLight(Rc<DxvkContext> ctx, const DrawCallState& input, const RtInstance* instance) {
+  void SceneManager::createEffectLight(Rc<DxvkContext> ctx, const DrawCallState& input, const RtInstance* instance, const MaterialData& renderMaterialData) {
     const float effectLightIntensity = RtxOptions::Get()->getEffectLightIntensity();
     if (effectLightIntensity <= 0.f)
       return;
@@ -631,8 +631,8 @@ namespace dxvk {
       const double animationPhase = sin(timeMilliseconds * 0.006) * 0.5 + 0.5;
       lightRadiance = lerp(Vector3(1.f, 0.921f, 0.738f), Vector3(1.f, 0.521f, 0.238f), animationPhase) * radianceFactor;
     } else {
-      const D3DCOLORVALUE originalColor = input.getMaterialData().getLegacyMaterial().Diffuse;
-      lightRadiance = Vector3(originalColor.r, originalColor.g, originalColor.b) * radianceFactor;
+      const Vector3 albedoConstant = renderMaterialData.getOpaqueMaterialData().getAlbedoConstant();
+      lightRadiance = albedoConstant * radianceFactor;
     }
 
     RtLight rtLight(RtSphereLight(lightPosition, lightRadiance, lightRadius, shaping));
@@ -1102,7 +1102,7 @@ namespace dxvk {
 
     // Check if a light should be created for this Material
     if (instance && RtxOptions::Get()->shouldConvertToLight(drawCallState.getMaterialData().getHash())) {
-      createEffectLight(ctx, drawCallState, instance);
+      createEffectLight(ctx, drawCallState, instance, renderMaterialData);
     }
 
     const bool objectPickingActive = m_device->getCommon()->getResources().getRaytracingOutput()
