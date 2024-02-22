@@ -2099,6 +2099,7 @@ namespace dxvk {
       if (ImGui::CollapsingHeader("Heuristics", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
         ImGui::Checkbox("Orthographic Is UI", &D3D9Rtx::orthographicIsUIObject());
+        ImGui::Checkbox("Allow Cubemaps", &D3D9Rtx::allowCubemapsObject());
         ImGui::Unindent();
       }
 
