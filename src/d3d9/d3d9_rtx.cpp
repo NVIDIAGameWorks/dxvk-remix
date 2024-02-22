@@ -858,9 +858,10 @@ namespace dxvk {
 
         D3D9CommonTexture* texture = GetCommonTexture(d3d9State().textures[stage]);
 
-        // Remix can only handle 2D textures - no cubemaps or volumes.
-        if (texture->GetType() != D3DRTYPE_TEXTURE)
+        // Remix can only handle 2D textures - no volumes.
+        if (texture->GetType() != D3DRTYPE_TEXTURE && (!allowCubemaps() || texture->GetType() != D3DRTYPE_CUBETEXTURE)) {
           continue;
+        }
 
         const XXH64_hash_t texHash = texture->GetSampleView(true)->image()->getHash();
 
