@@ -188,7 +188,8 @@ namespace dxvk {
 
   VkResult DxvkDLFGPresenter::presentImage(std::atomic<VkResult>* status,
                                            const DxvkPresentInfo& presentInfo,
-                                           const DxvkFrameInterpolationInfo& frameInterpolationInfo) {
+                                           const DxvkFrameInterpolationInfo& frameInterpolationInfo,
+                                           std::uint32_t acquiredImageIndex) {
     VkResult lastStatus = m_lastPresentStatus;
     if (lastStatus != VK_SUCCESS) {
       *status = lastStatus;
@@ -197,11 +198,16 @@ namespace dxvk {
 
     *status = VK_EVENT_SET;
 
-    std::unique_lock<dxvk::mutex> lock(m_presentThread.mutex);
-    assert(m_backbufferInFlight[m_backbufferIndex] == false);
-    m_backbufferInFlight[m_backbufferIndex] = true;
-    m_presentQueue.push({ status, m_backbufferIndex, presentInfo, frameInterpolationInfo });
-    m_presentThread.condWorkAvailable.notify_all();
+    {
+      std::unique_lock<dxvk::mutex> lock(m_presentThread.mutex);
+
+      assert(m_backbufferInFlight[acquiredImageIndex] == false);
+      m_backbufferInFlight[acquiredImageIndex] = true;
+
+      m_presentQueue.push({ status, acquiredImageIndex, presentInfo, frameInterpolationInfo });
+
+      m_presentThread.condWorkAvailable.notify_all();
+    }
 
     return VK_EVENT_SET;
   }
@@ -349,7 +355,10 @@ namespace dxvk {
       DxvkDLFGScopeGuard signalWorkConsumed([&]() {
         // m_device->vkd()->vkQueueWaitIdle(m_device->queues().__DLFG_QUEUE.queueHandle);
         present.status->store(m_lastPresentStatus);
-        m_backbufferInFlight[present.m_backbufferIndex] = false;
+
+        assert(m_backbufferInFlight[present.acquiredImageIndex] == true);
+        m_backbufferInFlight[present.acquiredImageIndex] = false;
+
         m_presentQueue.pop();
         m_presentThread.condWorkConsumed.notify_all();
       });
@@ -379,7 +388,7 @@ namespace dxvk {
       DxvkDLFGCommandList* m_cmdList = nullptr;
       DxvkDLFGImageBarrierSet<4> barriers;
 
-      VkSemaphore backbufferWaitSemaphore = m_backbufferPresentSemaphores[present.m_backbufferIndex]->handle();
+      VkSemaphore backbufferWaitSemaphore = m_backbufferPresentSemaphores[present.acquiredImageIndex]->handle();
 
       // if true, present only interpolated frames (for debugging)
       constexpr bool kSkipRealFrames = false;
@@ -424,7 +433,7 @@ namespace dxvk {
                               m_swapchainImageLayouts[swapchainIndex],
                               VK_IMAGE_LAYOUT_GENERAL);
 
-          barriers.addBarrier(m_backbufferImages[present.m_backbufferIndex]->handle(),
+          barriers.addBarrier(m_backbufferImages[present.acquiredImageIndex]->handle(),
                               VK_IMAGE_ASPECT_COLOR_BIT,
                               VK_ACCESS_NONE,
                               VK_ACCESS_SHADER_READ_BIT,
@@ -460,7 +469,7 @@ namespace dxvk {
                                                           present.frameInterpolation.camera,
                                                           m_swapchainImageViews[swapchainIndex],
                                                           m_dlfgBeginSemaphore->handle(),
-                                                          m_backbufferViews[present.m_backbufferIndex],
+                                                          m_backbufferViews[present.acquiredImageIndex],
                                                           present.frameInterpolation.motionVectors,
                                                           present.frameInterpolation.depth,
                                                           false);
@@ -478,7 +487,7 @@ namespace dxvk {
                               VK_IMAGE_LAYOUT_GENERAL,
                               VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
-          barriers.addBarrier(m_backbufferImages[present.m_backbufferIndex]->handle(),
+          barriers.addBarrier(m_backbufferImages[present.acquiredImageIndex]->handle(),
                               VK_IMAGE_ASPECT_COLOR_BIT,
                               VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                               VK_ACCESS_SHADER_WRITE_BIT,
@@ -509,7 +518,7 @@ namespace dxvk {
         m_cmdList->addSignalSemaphore(swapchainSync.present);
         if (kSkipRealFrames) {
           // if we're skipping real frames, then signal the acquire and frame ID semaphores here
-          m_cmdList->addSignalSemaphore(m_backbufferAcquireSemaphores[present.m_backbufferIndex]->handle());
+          m_cmdList->addSignalSemaphore(m_backbufferAcquireSemaphores[present.acquiredImageIndex]->handle());
 
           // skip signaling if the semaphore is already at the value we are signaling to, since the VK spec forbids this (yes, really)
           // this happens after init where the value is already 0 on frame 0, and may also happen during wraparound
@@ -532,7 +541,7 @@ namespace dxvk {
         
         // present the interpolated frame
         reflex.beginOutOfBandPresent(present.present.cachedReflexFrameId);
-        m_lastPresentStatus = vk::Presenter::presentImage(present.status, present.present, present.frameInterpolation);
+        m_lastPresentStatus = vk::Presenter::presentImage(present.status, present.present, present.frameInterpolation, present.acquiredImageIndex);
         reflex.endOutOfBandPresent(present.present.cachedReflexFrameId);
 
         if (m_lastPresentStatus != VK_SUCCESS) {
@@ -567,7 +576,7 @@ namespace dxvk {
         {
           ScopedGpuProfileZone_Present(m_device, m_cmdList->getCmdBuffer(), "DLFG real frame blit barriers");
 
-          barriers.addBarrier(m_backbufferImages[present.m_backbufferIndex]->handle(),
+          barriers.addBarrier(m_backbufferImages[present.acquiredImageIndex]->handle(),
                               VK_IMAGE_ASPECT_COLOR_BIT,
                               VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
                               VK_ACCESS_TRANSFER_READ_BIT,
@@ -578,7 +587,7 @@ namespace dxvk {
                               VK_IMAGE_ASPECT_COLOR_BIT,
                               VK_ACCESS_MEMORY_READ_BIT,
                               VK_ACCESS_TRANSFER_WRITE_BIT,
-                              m_swapchainImageLayouts[present.m_backbufferIndex],
+                              m_swapchainImageLayouts[present.acquiredImageIndex],
                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
           barriers.record(m_device, *m_cmdList, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
@@ -592,13 +601,13 @@ namespace dxvk {
           };
           
           m_device->vkd()->vkCmdCopyImage(m_cmdList->getCmdBuffer(),
-                                          m_backbufferImages[present.m_backbufferIndex]->handle(),
+                                          m_backbufferImages[present.acquiredImageIndex]->handle(),
                                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                                           swapchainImage.image,
                                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                                           1, &copy);
 
-          barriers.addBarrier(m_backbufferImages[present.m_backbufferIndex]->handle(),
+          barriers.addBarrier(m_backbufferImages[present.acquiredImageIndex]->handle(),
                               VK_IMAGE_ASPECT_COLOR_BIT,
                               VK_ACCESS_TRANSFER_READ_BIT,
                               VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
@@ -612,7 +621,7 @@ namespace dxvk {
                               VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                               VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
-          m_swapchainImageLayouts[present.m_backbufferIndex] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+          m_swapchainImageLayouts[present.acquiredImageIndex] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
           barriers.record(m_device, *m_cmdList, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
         }
@@ -628,7 +637,7 @@ namespace dxvk {
         //   * the frame end semaphore
         m_cmdList->addWaitSemaphore(backbufferWaitSemaphore); // if we ran interpolation, this will be null (which is a no-op)
         m_cmdList->addWaitSemaphore(swapchainSync.acquire);
-        m_cmdList->addSignalSemaphore(m_backbufferAcquireSemaphores[present.m_backbufferIndex]->handle());
+        m_cmdList->addSignalSemaphore(m_backbufferAcquireSemaphores[present.acquiredImageIndex]->handle());
         if (!present.frameInterpolation.valid() || kSkipPacerSemaphoreWait) {
           m_cmdList->addSignalSemaphore(swapchainSync.present);
         }
@@ -677,7 +686,7 @@ namespace dxvk {
         // see comments around __DLFG_REFLEX_WORKAROUND define in rtx_ngx_wrapper.h for more details
         reflex.beginOutOfBandPresent(present.present.cachedReflexFrameId);
 #endif
-        m_lastPresentStatus = vk::Presenter::presentImage(present.status, present.present, present.frameInterpolation);
+        m_lastPresentStatus = vk::Presenter::presentImage(present.status, present.present, present.frameInterpolation, present.acquiredImageIndex);
 #if !__DLFG_REFLEX_WORKAROUND
         reflex.endPresentation(present.present.cachedReflexFrameId);
 #else
