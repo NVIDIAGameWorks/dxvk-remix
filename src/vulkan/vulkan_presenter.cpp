@@ -95,7 +95,8 @@ namespace dxvk::vk {
     // NV-DXVK start: DLFG integration
     std::atomic<VkResult>*,
     const DxvkPresentInfo&,
-    const DxvkFrameInterpolationInfo&
+    const DxvkFrameInterpolationInfo&,
+    std::uint32_t
     // NV-DXVK end
   ) {
     ScopedCpuProfileZone();

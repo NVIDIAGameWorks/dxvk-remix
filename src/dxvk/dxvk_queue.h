@@ -47,12 +47,15 @@ namespace dxvk {
    */
   struct DxvkPresentInfo {
     Rc<vk::Presenter>   presenter;
+    // Represents the Reflex Frame ID at the time of image presentation for usage in presentation submission.
     uint64_t            cachedReflexFrameId;
     // Note: This flag is specifically used when the DXVK Queue should insert Reflex present
     // markers rather than the presenter currently in use. This is done because some presenters
     // (namely the DLFG Presenter) will insert their own Reflex markers due to having more complex
     // requirements.
     bool                insertReflexPresentMarkers;
+    // Represents the acquired presenter image index at the time of image presentation for usage in presentation submission.
+    uint32_t            cachedAcquiredImageIndex;
   };
 
 

@@ -345,6 +345,7 @@ namespace dxvk {
   void DxvkDevice::presentImage(
     std::uint64_t                   cachedReflexFrameId,
     bool                            insertReflexPresentMarkers,
+    std::uint32_t                   cachedAcquiredImageIndex,
     const Rc<vk::Presenter>&        presenter,
           DxvkSubmitStatus*         status
           ) {
@@ -370,6 +371,8 @@ namespace dxvk {
     presentInfo.presenter = presenter;
     presentInfo.cachedReflexFrameId = cachedReflexFrameId;
     presentInfo.insertReflexPresentMarkers = insertReflexPresentMarkers;
+    presentInfo.cachedAcquiredImageIndex = cachedAcquiredImageIndex;
+
     m_submissionQueue.present(presentInfo, status);
 
     incrementPresentCount();
