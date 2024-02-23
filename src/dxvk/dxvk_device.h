@@ -480,6 +480,9 @@ namespace dxvk {
      * can be retrieved with \ref waitForSubmission.
      * \param [in] cachedReflexFrameId The Reflex frame ID at the time of calling, cached so Reflex can have
      * consistent frame IDs throughout the dispatches of an application frame.
+     * \param [in] insertReflexPresentMarkers A flag to indicate if Reflex present begin/end markers should be placed
+     * around the image presentation.
+     * \param [in] cachedAcquiredImageIndex The acquired image index to use for presentation at the time of calling.
      * \param [in] presenter The presenter
      * \param [out] status Present status
      * \param [in] swapchainImage DxvkImageView for the swapchain image being presented
@@ -487,6 +490,7 @@ namespace dxvk {
     void presentImage(
       std::uint64_t                   cachedReflexFrameId,
       bool                            insertReflexPresentMarkers,
+      std::uint32_t                   cachedAcquiredImageIndex,
       const Rc<vk::Presenter>&        presenter,
             DxvkSubmitStatus*         status
             );

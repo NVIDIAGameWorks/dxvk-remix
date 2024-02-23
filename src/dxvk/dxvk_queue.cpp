@@ -178,8 +178,12 @@ namespace dxvk {
           }
           // NV-DXVK end
 
+          // NV-DXVK start: DLFG acquired image information retrieval
+          const auto cachedAcquiredImageIndex = entry.present.cachedAcquiredImageIndex;
+          // NV-DXVK end
+
           // m_device->vkd()->vkQueueWaitIdle(m_device->queues().graphics.queueHandle);
-          status = entry.present.presenter->presentImage(&entry.status->result, entry.present, m_currentFrameInterpolationData);
+          status = entry.present.presenter->presentImage(&entry.status->result, entry.present, m_currentFrameInterpolationData, cachedAcquiredImageIndex);
           // if both submit and DLFG+present run on the same queue, then we need to wait for present to avoid racing on the queue
 #if __DLFG_USE_GRAPHICS_QUEUE
           entry.present.presenter->synchronize();

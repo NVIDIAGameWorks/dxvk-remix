@@ -121,7 +121,10 @@ namespace dxvk {
     vk::PresenterImage getImage(uint32_t index) const override;
 
     VkResult acquireNextImage(vk::PresenterSync& sync, uint32_t& index) override;
-    VkResult presentImage(std::atomic<VkResult>* status, const DxvkPresentInfo& presentInfo, const DxvkFrameInterpolationInfo& frameInterpolationInfo) override;
+    VkResult presentImage(std::atomic<VkResult>* status,
+                          const DxvkPresentInfo& presentInfo,
+                          const DxvkFrameInterpolationInfo& frameInterpolationInfo,
+                          std::uint32_t acquiredImageIndex) override;
     VkResult recreateSwapChain(const vk::PresenterDesc& desc) override;
 
     // waits for all queued frames to be consumed
@@ -159,7 +162,7 @@ namespace dxvk {
     
     struct PresentJob {
       std::atomic<VkResult>* status;
-      uint32_t m_backbufferIndex;
+      uint32_t acquiredImageIndex;
       DxvkPresentInfo present;
       DxvkFrameInterpolationInfo frameInterpolation;
     };
