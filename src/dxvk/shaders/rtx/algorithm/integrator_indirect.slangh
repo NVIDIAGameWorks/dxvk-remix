@@ -62,6 +62,7 @@ PathState pathStateCreateEmpty(u16vec2 pixelCoordinate, GeometryFlags geometryFl
   pathState.portalSpace = geometryFlags.portalSpace;
   pathState.indirectLightPortalID = RESTIR_GI_INVALID_INDIRECT_LIGHT_PORTAL_ID;
   pathState.restirGiHasFoundRoughSurface = false;
+  pathState.restirGiHasHitGeometry = false;
 
   pathState.rayMask = OBJECT_MASK_ALL | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC);
 
@@ -280,7 +281,7 @@ void integratePathVertex(
 
   // Output ReSTIR GI geometry information
 
-  if (cb.enableReSTIRGI && pathState.bounceIteration == 1)
+  if (cb.enableReSTIRGI && !pathState.restirGiHasHitGeometry)
   {
     if (hackState.continueResolving)
     {
@@ -296,7 +297,13 @@ void integratePathVertex(
       if (rayInteractionHasHit(rayInteraction))
       {
         hitPosition = surfaceInteraction.position;
-        hitNormal = surfaceInteraction.triangleNormal; 
+        hitNormal = surfaceInteraction.triangleNormal;
+
+        // Only consider geometry from opaque surfaces.
+        // Suppose an indirect ray goes through glass and then hits a bright opaque wall, the light is coming from the opaque wall,
+        // not glass. Therefore we should record a sample on the wall instead of glass. 
+        const uint materialType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
+        pathState.restirGiHasHitGeometry = (materialType == surfaceMaterialTypeOpaque);
       }
       else
       {
@@ -305,7 +312,6 @@ void integratePathVertex(
         hitPosition = pathState.origin + pathState.direction * skyDomeDistance;
         hitNormal = -pathState.direction;
       }
-
       ReSTIRGI_StoreHitGeometry(indirectPathTextures.RestirGIHitGeometry, pathState.pixelCoordinate, hitPosition, hitNormal, pathState.indirectLightPortalID);
     }
   }
@@ -458,6 +464,12 @@ void integratePathVertex(
         continuationLobe, sampledLobePdf, solidAnglePdf,
         false);
     
+      // Stop recording hit geometry when translucent material emitting a scattering ray
+      if (materialType == surfaceMaterialTypeTranslucent && dot(sampledRay.direction, pathState.direction) < 0.9)
+      {
+        pathState.restirGiHasHitGeometry = true;
+      }
+
       // Set the ray into the path vertex state
       pathState.origin = sampledRay.origin;
       pathState.coneRadius = sampledRay.coneRadius;
