@@ -45,6 +45,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.adaptiveAccumulation|bool|True||
 |rtx.adaptiveResolutionDenoising|bool|True||
 |rtx.adaptiveResolutionReservedGPUMemoryGiB|int|2|The amount of GPU memory in gibibytes to reserve away from consideration for adaptive resolution replacement textures\.<br>This value should only be changed to reflect the estimated amount of memory Remix itself consumes on the GPU \(aside from texture loading, mostly from rendering\-related buffers\) and should not be changed otherwise\.<br>Only relevant when force high resolution replacement textures is disabled and adaptive resolution replacement textures is enabled\. See asset estimated size parameter for more information\.<br>|
+|rtx.allowCubemaps|bool|False|When enabled, cubemaps from the game are processed through Remix, but they may not render correctly\.|
 |rtx.allowFSE|bool|False|A flag indicating if the application should be able to utilize exclusive full screen mode when set to true, otherwise force it to be disabled when set to false\.<br>Exclusive full screen may see performance benefits over other fullscreen modes at the cost of stability in some cases\.<br>Do note that on modern Windows full screen optimizations will likely be used regardless which in most cases results in performance similar to exclusive full screen even when it is not in use\.|
 |rtx.alwaysCopyDecalGeometries|bool|True|When set to True tells the geometry processor to always copy decals geometry\. This is an optimization flag to experiment with when rtx\.useBuffersDirectly is True\.|
 |rtx.alwaysWaitForAsyncTextures|bool|False||
@@ -233,8 +234,8 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.enableVolumetricLighting|bool|False|Enabling volumetric lighting provides higher quality ray traced physical volumetrics, disabling falls back to cheaper depth based fog\.<br>Note that disabling this option does not disable the froxel radiance cache as a whole as it is still needed for other non\-volumetric lighting approximations\.|
 |rtx.enableVolumetricsInPortals|bool|True|Enables using extra frustum\-aligned volumes for lighting in portals\.<br>Note that enabling this option will require 3x the memory of the typical froxel grid as well as degrade performance in some cases\.<br>This option should be enabled always in games using ray portals for proper looking volumetrics through them, but should be disabled on any game not using ray portals\.<br>Additionally, this setting must be set at startup and changing it will not take effect at runtime\.|
 |rtx.enableVsync|int|2|Controls the game's V\-Sync setting\. Native game's V\-Sync settings are ignored\.|
-|rtx.fallbackLightAngle|float|5|The spread angle to use for the fallback light \(used only for Distant light types\)\.|
-|rtx.fallbackLightConeAngle|float|25|The cone angle to use for the fallback light shaping \(used only for non\-Distant light types with shaping enabled\)\.|
+|rtx.fallbackLightAngle|float|5|The angular size in degrees to use for the fallback light \(used only for Distant light types\)\. Should only be within the range \[0, 180\]\.|
+|rtx.fallbackLightConeAngle|float|25|The cone angle in degrees to use for the fallback light shaping \(used only for non\-Distant light types with shaping enabled\)\. Should only be within the range \[0, 180\]\.|
 |rtx.fallbackLightConeSoftness|float|0.1|The cone softness to use for the fallback light shaping \(used only for non\-Distant light types with shaping enabled\)\.|
 |rtx.fallbackLightDirection|float3|-0.2, -1, 0.4|The direction to use for the fallback light \(used only for Distant light types\)|
 |rtx.fallbackLightFocusExponent|float|2|The focus exponent to use for the fallback light shaping \(used only for non\-Distant light types with shaping enabled\)\.|
@@ -296,7 +297,6 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.io.forceCpuDecoding|bool|False|Force CPU decoding in RTX IO\.|
 |rtx.io.memoryBudgetMB|int|256||
 |rtx.io.useAsyncQueue|bool|True||
-|rtx.isLHS|bool|False||
 |rtx.isReflexEnabled|bool|True|Enables or disables Reflex globally\.<br>Note that this option when set to false will prevent Reflex from even attempting to initialize, unlike setting the Reflex mode to "None" which simply tells an initialized Reflex not to take effect\.<br>Additionally, this setting must be set at startup and changing it will not take effect at runtime\.|
 |rtx.isShaderExecutionReorderingSupported|bool|True|Enables support of Shader Execution Reordering \(SER\) if it is supported by the target HW and SW\.|
 |rtx.keepTexturesForTagging|bool|False|A flag to keep all textures in video memory, which can drastically increase VRAM consumption\. Intended to assist with tagging textures that are only used for a short period of time \(such as loading screens\)\. Use only when necessary\!|
@@ -312,7 +312,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.legacyMaterial.roughnessConstant|float|0.7|The default perceptual roughness constant to use for non\-replaced "legacy" materials\. Should be in the range 0 to 1\.|
 |rtx.legacyMaterial.thinFilmThicknessConstant|float|200|The thickness \(in nanometers\) of the thin\-film layer assuming it is enabled on non\-replaced "legacy" materials\.<br>Should be any value larger than 0, typically within the wavelength of light, but must be less than or equal to OPAQUE\_SURFACE\_MATERIAL\_THIN\_FILM\_MAX\_THICKNESS \(\(1500\.0f\) nm\)\.|
 |rtx.legacyMaterial.useAlbedoTextureIfPresent|bool|True|A flag to determine if an "albedo" texture \(a qualifying color texture\) from the original application should be used if present on non\-replaced "legacy" materials\.|
-|rtx.lightConversionDistantLightFixedAngle|float|0.0349|The angular size in radiance of the distant light source for legacy lights converted to distant lights\. Set to ~2 degrees in radians by default\.|
+|rtx.lightConversionDistantLightFixedAngle|float|0.0349|The angular size in radians of the distant light source for legacy lights converted to distant lights\. Set to ~2 degrees in radians by default\. Should only be within the range \[0, pi\]\.|
 |rtx.lightConversionDistantLightFixedIntensity|float|1|The fixed intensity \(in W/sr\) to use for legacy lights converted to distant lights \(currently directional lights will convert to distant lights\)\.|
 |rtx.lightConversionSphereLightFixedRadius|float|4|The fixed radius in world units to use for legacy lights converted to sphere lights \(currently point and spot lights will convert to sphere lights\)\. Use caution with large light radii as many legacy lights will be placed close to geometry and intersect it, causing suboptimal light sampling performance or other visual artifacts \(lights clipping through walls, etc\)\.|
 |rtx.lights.debugDrawLightHashes|bool|False|Draw light hashes of all visible ob screen lights, when enableDebugMode=true\.|
@@ -664,7 +664,6 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.cameraSequence.filePath|string||File path\.|
 |rtx.captureInstanceStageName|string|capture_{timestamp}.usd|Name of the 'instance' stage \(see: 'rtx\.captureInstances'\)|
 |rtx.captureTimestampReplacement|string|{timestamp}|String that can be used for auto\-replacing current time stamp in instance stage name|
-|rtx.cutoutTextures|hash set|||
 |rtx.decalTextures|hash set||Textures on draw calls used for static geometric decals or decals with complex topology\.<br>These materials will be blended over the materials underneath them when decal material blending is enabled\.<br>A small configurable offset is applied to each flat/co\-planar part of these decals to prevent coplanar geometric cases \(which poses problems for ray tracing\)\.|
 |rtx.dynamicDecalTextures|hash set||Textures on draw calls used for dynamically spawned geometric decals, such as bullet holes\.<br>These materials will be blended over the materials underneath them when decal material blending is enabled\.<br>A small configurable offset is applied to each quad part of these decals to prevent coplanar geometric cases \(which poses problems for ray tracing\)\.|
 |rtx.geometryAssetHashRuleString|string|positions,indices,geometrydescriptor|Defines which hashes we need to include when sampling from replacements and doing USD capture\.|

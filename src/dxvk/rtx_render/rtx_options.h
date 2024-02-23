@@ -212,7 +212,6 @@ namespace dxvk {
                   "Unlike typical decals however these decals have no offset applied to them due assuming the offset is already being done by whatever is passing data to Remix.");
     RW_RTX_OPTION("rtx", fast_unordered_set, terrainTextures, {}, "Albedo textures that are baked blended together to form a unified terrain texture used during ray tracing.\n"
                                                                   "Put albedo textures into this category if the game renders terrain as a blend of multiple textures.");
-    RW_RTX_OPTION("rtx", fast_unordered_set, cutoutTextures, {}, "");
     RW_RTX_OPTION("rtx", fast_unordered_set, opacityMicromapIgnoreTextures, {}, "Textures to ignore when generating Opacity Micromaps. This generally does not have to be set and is only useful for black listing problematic cases for Opacity Micromap usage.");
     RW_RTX_OPTION("rtx", fast_unordered_set, animatedWaterTextures, {},
                   "Textures on draw calls to be treated as \"animated water\".\n"
