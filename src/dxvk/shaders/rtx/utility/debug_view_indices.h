@@ -205,6 +205,7 @@
 
 #define DEBUG_VIEW_POM_ITERATIONS 810
 #define DEBUG_VIEW_POM_DIRECT_HIT_POS 811
+#define DEBUG_VIEW_HEIGHT_MAP 812
 
 
 enum class CompositeDebugView : uint32_t {
