@@ -109,8 +109,16 @@ namespace dxvk {
         {DEBUG_VIEW_THIN_FILM_THICKNESS, "Thin Film Thickness"},
 
         {DEBUG_VIEW_IS_BAKED_TERRAIN, "Terrain: Is Baked Terrain (RGS only)"},
-        {DEBUG_VIEW_TERRAIN_MAP, "Terrain: Cascade Map"},
-        {DEBUG_VIEW_TERRAIN_MAP_OPACITY, "Terrain: Cascade Map Opacity"},
+        {DEBUG_VIEW_TERRAIN_MAP, "Terrain: Cascade Map",
+                                "Parameterize via:\n"
+                                "Debug Knob [0]: (rounded down) which texture type to show: \n"
+                                "0: AlbedoOpacity, 1: Normal, 2: Tangent, 3: Height,\n"
+                                "4: Roughness, 5: Metallic, 6: Emissive"},
+        {DEBUG_VIEW_TERRAIN_MAP_OPACITY, "Terrain: Cascade Map Opacity",
+                                "Parameterize via:\n"
+                                "Debug Knob [0]: (rounded down) which texture type to show: \n"
+                                "0: AlbedoOpacity, 1: Normal, 2: Tangent, 3: Height,\n"
+                                "4: Roughness, 5: Metallic, 6: Emissive"},
         {DEBUG_VIEW_CASCADE_LEVEL, "Terrain: Cascade Level (RGS only)"},
 
         {DEBUG_VIEW_VIRTUAL_HIT_DISTANCE, "Virtual Hit Distance"},
@@ -228,6 +236,7 @@ namespace dxvk {
         {DEBUG_VIEW_SCROLLING_LINE,                                        "Scrolling Line"},
         {DEBUG_VIEW_POM_ITERATIONS,                                        "POM Iterations"},
         {DEBUG_VIEW_POM_DIRECT_HIT_POS,                                    "POM Direct Hit Position (Tangent Space)"},
+        {DEBUG_VIEW_HEIGHT_MAP,                                            "Height Map Value"},
     } };
 
   ImGui::ComboWithKey<CompositeDebugView> compositeDebugViewCombo = ImGui::ComboWithKey<CompositeDebugView>(
@@ -573,7 +582,7 @@ namespace dxvk {
     if (static_cast<CompositeDebugView>(Composite::compositeViewIdx()) != CompositeDebugView::Disabled) {
       switch (Composite::compositeViewIdx()) {
       case CompositeDebugView::FinalRenderWithMaterialProperties:
-        m_composite.debugViewIndices = std::vector<uint32_t> { DEBUG_VIEW_POST_TONEMAP_OUTPUT, DEBUG_VIEW_ALBEDO, DEBUG_VIEW_SHADING_NORMAL, DEBUG_VIEW_PERCEPTUAL_ROUGHNESS, DEBUG_VIEW_EMISSIVE_RADIANCE };
+        m_composite.debugViewIndices = std::vector<uint32_t> { DEBUG_VIEW_POST_TONEMAP_OUTPUT, DEBUG_VIEW_ALBEDO, DEBUG_VIEW_SHADING_NORMAL, DEBUG_VIEW_PERCEPTUAL_ROUGHNESS, DEBUG_VIEW_EMISSIVE_RADIANCE, DEBUG_VIEW_HEIGHT_MAP };
         break;
       default:
         break;
@@ -748,7 +757,7 @@ namespace dxvk {
         ctx->bindResourceView(DEBUG_VIEW_BINDING_INSTRUMENTATION_INPUT, m_instrumentation.view, nullptr);
         
         const ReplacementMaterialTextureType::Enum terrainTextureType = static_cast<ReplacementMaterialTextureType::Enum>(
-          clamp<uint32_t>(static_cast<uint32_t>(minValue()),
+          clamp<uint32_t>(static_cast<uint32_t>(m_debugKnob.x),
                           ReplacementMaterialTextureType::AlbedoOpacity,
                           ReplacementMaterialTextureType::Count - 1));
         Resources::Resource terrain = m_device->getCommon()->getSceneManager().getTerrainBaker().getTerrainTexture(terrainTextureType);
