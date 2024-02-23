@@ -1166,7 +1166,7 @@ namespace dxvk {
       if (i + 1 >= SyncInterval)
         m_context->signal(m_frameLatencySignal, m_frameId);
 
-      SubmitPresent(sync, i);
+      SubmitPresent(sync, i, imageIndex);
     }
 
     // Rotate swap chain buffers so that the back
@@ -1194,7 +1194,7 @@ namespace dxvk {
   }
 
 
-  void D3D9SwapChainEx::SubmitPresent(const vk::PresenterSync& Sync, uint32_t FrameId) {
+  void D3D9SwapChainEx::SubmitPresent(const vk::PresenterSync& Sync, uint32_t FrameId, uint32_t imageIndex) {
     ScopedCpuProfileZone();
 
     // NV-DXVK start: Reflex integration
@@ -1209,6 +1209,7 @@ namespace dxvk {
 
     m_parent->EmitCs([this,
       cReflexFrameId = currentReflexFrameId,
+      cAcquiredImageIndex = imageIndex,
       cFrameId     = FrameId,
       cSync        = Sync,
       cHud         = m_hud,
@@ -1234,7 +1235,7 @@ namespace dxvk {
       // (unless the workaround is enabled as this requires that the Present markers stay where they usually are).
       const bool insertReflexPresentMarkers = !m_context->isDLFGEnabled() || (__DLFG_REFLEX_WORKAROUND != 0);
 
-      m_device->presentImage(cReflexFrameId, insertReflexPresentMarkers, GetPresenter(), &m_presentStatus);
+      m_device->presentImage(cReflexFrameId, insertReflexPresentMarkers, cAcquiredImageIndex, GetPresenter(), &m_presentStatus);
       // NV-DXVK end
     });
 

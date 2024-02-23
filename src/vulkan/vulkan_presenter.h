@@ -21,6 +21,7 @@
 */
 #pragma once
 
+#include <cstdint>
 #include <vector>
 
 #include "../util/log/log.h"
@@ -203,7 +204,8 @@ namespace dxvk::vk {
       // xxxnsubtil: these are never used by vk::Presenter, only the DLFG presenter needs them --- split this method!
       std::atomic<VkResult>* presentStatus,
       const DxvkPresentInfo& presentInfo,
-      const DxvkFrameInterpolationInfo& frameInterpolationInfo
+      const DxvkFrameInterpolationInfo& frameInterpolationInfo,
+      std::uint32_t acquiredImageIndex
       // NV-DXVK end
     );
     
