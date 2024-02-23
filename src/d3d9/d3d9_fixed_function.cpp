@@ -613,6 +613,10 @@ namespace dxvk {
     bool isVS() { return m_programType == DxsoProgramType::VertexShader; }
     bool isPS() { return !isVS(); }
 
+// NV-DXVK start
+    uint32_t postprocessVertexColorForTerrainBaking(uint32_t vertexColor);
+// NV-DXVK end
+
     std::string           m_filename;
 
     SpirvModule           m_module;
@@ -1730,6 +1734,66 @@ namespace dxvk {
     return loadVec4ValueFromRegisterFnc();
   }
 
+  // Ignore vertex color (but keep vertex opacity) for non-color replacement textures.
+  // Vertex opacity is kept because it indicates how strongly the current draw call should effect the end result.
+  uint32_t D3D9FFShaderCompiler::postprocessVertexColorForTerrainBaking(uint32_t vertexColor) {
+
+    // Avoid injecting shader code if the support is disabled at launch
+    if (!TerrainBaker::Material::replacementSupportInPS_fixedFunction()) {
+      return vertexColor;
+    }
+
+    // Initialize spec constant for texture category
+    uint32_t textureCategory = m_module.specConst32(m_uint32Type, 0);
+    m_module.setDebugName(textureCategory, "replacement_texture_category");
+    m_module.decorateSpecId(textureCategory, getSpecId(D3D9SpecConstantId::ReplacementTextureCategory));
+    
+    // Allocate branch labels
+    uint32_t removeVertexColorBeginLabel = m_module.allocateId();
+    uint32_t removeVertexColorEndLabel = m_module.allocateId();
+    
+    // Functions to store/load a color value
+    uint32_t registerStoragePtr = m_module.defPointerType(m_vec4Type, spv::StorageClassPrivate);
+    uint32_t registerStorage = m_module.newVar(registerStoragePtr, spv::StorageClassPrivate);
+
+    auto storeVec4ValueToRegisterFnc = [&](uint32_t vec4value) {
+      m_module.opStore(registerStorage, vec4value);
+    };
+
+    auto loadVec4ValueFromRegisterFnc = [&]() -> uint32_t {
+      return m_module.opLoad(m_vec4Type, registerStorage);
+    };
+
+    storeVec4ValueToRegisterFnc(vertexColor);
+
+    // if (replacement_texture_category != ReplacementMaterialTextureCategory::AlbedoOpacity) { ... }
+    uint32_t isNotAlbedoOpacity = m_module.opINotEqual(m_boolType, textureCategory, m_module.constu32(ReplacementMaterialTextureCategory::AlbedoOpacity));
+    m_module.opSelectionMerge(removeVertexColorEndLabel, spv::SelectionControlMaskNone);
+    m_module.opBranchConditional(isNotAlbedoOpacity, removeVertexColorBeginLabel, removeVertexColorEndLabel);
+    {
+      // Remove the color component of the vertex color
+      m_module.opLabel(removeVertexColorBeginLabel);
+
+      // extract the original alpha
+      uint32_t alphaChannelIndex = 3;
+      uint32_t alphaValue = m_module.opCompositeExtract(m_floatType, vertexColor, 1, &alphaChannelIndex);
+
+      // Start from opaque white
+      vertexColor = m_module.constvec4f32(1.0f, 1.0f, 1.0f, 1.0f);
+
+      // Combine the constant color with the original alpha.
+      vertexColor = m_module.opCompositeInsert(m_vec4Type, alphaValue, vertexColor, 1, &alphaChannelIndex);
+
+      // The new value needs to be stored before branching out, and reloaded after
+      storeVec4ValueToRegisterFnc(vertexColor);
+
+      // ~Remove the color component of the vertex color
+      m_module.opBranch(removeVertexColorEndLabel);
+      m_module.opLabel(removeVertexColorEndLabel);
+    }
+    return loadVec4ValueFromRegisterFnc();
+  }
+  
 // NV-DXVK end
 
   void D3D9FFShaderCompiler::compilePS() {
@@ -1744,6 +1808,10 @@ namespace dxvk {
     uint32_t temp  = m_module.constvec4f32(0.0f, 0.0f, 0.0f, 0.0f);
     
     uint32_t texture = m_module.constvec4f32(0.0f, 0.0f, 0.0f, 1.0f);
+
+// NV-DXVK start: Replacement material texture support
+    current = postprocessVertexColorForTerrainBaking(current);
+// NV-DXVK end
 
     for (uint32_t i = 0; i < caps::TextureStageCount; i++) {
       const auto& stage = m_fsKey.Stages[i].Contents;
