@@ -152,7 +152,6 @@ namespace dxvk {
     {"beamtextures", "Beam Texture (optional)", &RtxOptions::Get()->beamTexturesObject()},
     {"lightconvertertextures", "Add Light to Textures (optional)", &RtxOptions::Get()->lightConverterObject()},
     {"decaltextures", "Decal Texture (optional)", &RtxOptions::Get()->decalTexturesObject()},
-    {"cutouttextures", "Legacy Cutout Texture (optional)", &RtxOptions::Get()->cutoutTexturesObject()},
     {"terraintextures", "Terrain Texture", &RtxOptions::Get()->terrainTexturesObject()},
     {"watertextures", "Water Texture (optional)", &RtxOptions::Get()->animatedWaterTexturesObject()},
     {"antiCullingTextures", "Anti-Culling Texture (optional)", &RtxOptions::Get()->antiCullingTexturesObject()},
