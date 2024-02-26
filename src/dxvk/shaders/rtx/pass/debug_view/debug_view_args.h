@@ -91,4 +91,9 @@ struct DebugViewArgs {
 
   // Gamma flag
   uint enableGammaCorrectionFlag;
+
+  // Quantization Options
+  uint enableInputQuantization;
+  float quantizationStepSize;
+  float quantizationInverseStepSize;
 };

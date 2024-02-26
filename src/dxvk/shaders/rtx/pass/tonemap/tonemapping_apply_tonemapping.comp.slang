@@ -20,8 +20,12 @@
 * DEALINGS IN THE SOFTWARE.
 */
 #include "rtx/pass/tonemap/tonemapping.slangh"
+#include "rtx/pass/tonemap/tonemapping_noise.slangh"
 #include "rtx/utility/math.slangh"
 #include "rtx/utility/color.slangh"
+
+layout(uint, binding = TONEMAPPING_APPLY_BLUE_NOISE_TEXTURE_INPUT)
+Texture2DArray BlueNoise;
 
 layout(rgba32f, binding = TONEMAPPING_APPLY_TONEMAPPING_COLOR_INPUT)
 RWTexture2D<float4> InColorBuffer;
@@ -116,48 +120,23 @@ float3 dynamicToneMapper(float3 inputColor)
   return mappedColor;
 }
 
-// Get the adjustment from the index matrix at a given point.
-// This value should always be in [-0.5/255, 0.5/255].
-float ditherAdjustment(uint2 pixelPosition) 
-{
-  // Use a Wang hash here generating white noise, from
-  // https://burtleburtle.net/bob/hash/integer.html
-  uint seed = (pixelPosition.x << 16) + pixelPosition.y;
-  seed = (seed ^ 61) ^ (seed >> 16);
-  seed += (seed << 3);
-  seed = seed ^ (seed >> 4);
-  seed *= 0x27d4eb2d;
-  seed = seed ^ (seed >> 15);
-  return (0.5f - float(seed) / 2147483647.0f) / 255.0f;
-}
-
-// Applies dithering to an sRGB color.
-// Interestingly, this does monochromatic dithering instead of using a
-// different dithering pattern per channel - this correlates errors, but the
-// monochromatic noise might be preferable from a visual, filmic standpoint.
-// We also don't shift the dithering pattern over time, since it makes the
-// output look more temporally noisy.
-float3 dither(const float3 value, uint2 pixelPosition)
-{
-  float adjustment = ditherAdjustment(pixelPosition);
-  return value + adjustment;
-}
-
 float3 applyToneMapping(float3 color, uint2 pixelPosition)
 {
   color *= getExposure(InExposure, cb.enableAutoExposure, cb.exposureFactor);
-  
+
   if (cb.toneMappingEnabled != 0) 
   {
     if (cb.debugMode == 0) 
     {
-        // Normal tone mapping
-        color = dynamicToneMapper(color);
-        
-        if(cb.finalizeWithACES)
-            color = ACESFilm(color);
+      // Normal tone mapping
+      color = dynamicToneMapper(color);
+      
+      if(cb.finalizeWithACES)
+      {
+        color = ACESFilm(color);
+      }
     } 
-    else 
+    else
     {
       // Debug mode
       float2 texCoord = pixelPosition / float2(imageSize(InColorBuffer));
@@ -165,7 +144,7 @@ float3 applyToneMapping(float3 color, uint2 pixelPosition)
       // Show tonemapped result on one side of screen
       if (texCoord.x > 0.475f) 
       {
-          color = dynamicToneMapper(color);
+        color = dynamicToneMapper(color);
       }
       
       // Plot the tone curve
@@ -180,22 +159,32 @@ float3 applyToneMapping(float3 color, uint2 pixelPosition)
       
       if (texCoord.y >= plotValue - width/2 && texCoord.y <= plotValue + width/2) 
       {
-          color = mix(color, float3(1.0f, 1.0f, 1.0f), 0.5f);
+        color = mix(color, float3(1.0f, 1.0f, 1.0f), 0.5f);
       }
     }
   }
   
   if (cb.colorGradingEnabled > 0)
+  {
     color = colorGrading(color);
-    
+  }
+
   if (cb.performSRGBConversion > 0)
+  {
     color = linearToGamma(color);
-  
+  }
+
   // Finally, apply dithering to the output color to break up banding artifacts.
   // This is only first-order; ideally, we might be performing dithering in
   // linear space while using range information from sRGB space, but the 
   // errors here should be pretty small.
-  return dither(color, pixelPosition);
+  return ditherTo8Bit(
+    color,
+    pixelPosition,
+    cb.frameIndex,
+    cb.ditherMode != ditherModeNone,
+    cb.ditherMode == ditherModeSpatialTemporal
+  );
 }
 
 [shader("compute")]
