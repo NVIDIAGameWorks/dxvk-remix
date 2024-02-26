@@ -24,6 +24,7 @@
 #include "dxvk_scoped_annotation.h"
 #include "rtx_render/rtx_shader_manager.h"
 #include "rtx.h"
+#include "rtx/pass/tonemap/tonemapping.h"
 #include "rtx/pass/local_tonemap/local_tonemapping.h"
 
 #include <rtx_shaders/luminance.h>
@@ -114,6 +115,7 @@ namespace dxvk {
       PUSH_CONSTANTS(FinalCombineArgs)
 
       BEGIN_PARAMETER()
+        TEXTURE2DARRAY(FINAL_COMBINE_BLUE_NOISE_TEXTURE_INPUT)
         SAMPLER2D(FINAL_COMBINE_MIP_ASSEMBLE)
         SAMPLER2D(FINAL_COMBINE_ORIGINAL_MIP)
         TEXTURE2D(FINAL_COMBINE_ORIGINAL_MIP0)
@@ -143,10 +145,11 @@ namespace dxvk {
     ImGui::DragFloat("Highlight Level", &highlightsObject(), 0.01f, -10.f, 10.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::DragFloat("Exposure Preference Sigma", &exposurePreferenceSigmaObject(), 0.01f, 0.f, 100.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::DragFloat("Exposure Preference Offset", &exposurePreferenceOffsetObject(), 0.001f, -1.f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+    ImGui::Combo("Dither Mode", &ditherModeObject(), "Disabled\0Spatial\0Spatial + Temporal\0");
   }
 
    void DxvkLocalToneMapping::dispatch(
-     Rc<DxvkContext> ctx,
+     Rc<RtxContext> ctx,
      Rc<DxvkSampler> linearSampler,
      Rc<DxvkImageView> exposureView,
      const Resources::RaytracingOutput& rtOutput,
@@ -287,6 +290,7 @@ namespace dxvk {
 
     {
       ScopedGpuProfileZone(ctx, "Final Combine");
+
       uvec2 mipResolution = resolutionList[displayMipLevel];
       FinalCombineArgs pushArgs = {};
       pushArgs.mipPixelSize = vec4 {
@@ -301,7 +305,16 @@ namespace dxvk {
       pushArgs.enableAutoExposure = enableAutoExposure;
       pushArgs.performSRGBConversion = performSRGBConversion;
       pushArgs.finalizeWithACES = finalizeWithACES();
+      switch (ditherMode()) {
+      case DitherMode::None: pushArgs.ditherMode = ditherModeNone; break;
+      case DitherMode::Spatial: pushArgs.ditherMode = ditherModeSpatialOnly; break;
+      case DitherMode::SpatialTemporal: pushArgs.ditherMode = ditherModeSpatialTemporal; break;
+      }
+      pushArgs.frameIndex = ctx->getDevice()->getCurrentFrameId();
+
       ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
+
+      ctx->bindResourceView(FINAL_COMBINE_BLUE_NOISE_TEXTURE_INPUT, ctx->getResourceManager().getBlueNoiseTexture(ctx), nullptr);
       ctx->bindResourceView(FINAL_COMBINE_ORIGINAL_MIP0, m_mips.view[0], nullptr);
       ctx->bindResourceView(FINAL_COMBINE_ORIGINAL_MIP, m_mips.view[displayMipLevel], nullptr);
       ctx->bindResourceView(FINAL_COMBINE_WEIGHT_MIP0, m_mipsWeights.view[0], nullptr);

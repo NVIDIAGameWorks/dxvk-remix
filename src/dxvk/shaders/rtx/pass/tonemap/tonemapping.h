@@ -37,14 +37,21 @@
 #define TONEMAPPING_TONE_CURVE_HISTOGRAM_INPUT_OUTPUT     0
 #define TONEMAPPING_TONE_CURVE_TONE_CURVE_INPUT_OUTPUT    1
 
-#define TONEMAPPING_APPLY_TONEMAPPING_COLOR_INPUT          0
-#define TONEMAPPING_APPLY_TONEMAPPING_TONE_CURVE_INPUT     1
-#define TONEMAPPING_APPLY_TONEMAPPING_EXPOSURE_INPUT       2
-#define TONEMAPPING_APPLY_TONEMAPPING_COLOR_OUTPUT         3
+#define TONEMAPPING_APPLY_BLUE_NOISE_TEXTURE_INPUT         0
+#define TONEMAPPING_APPLY_TONEMAPPING_COLOR_INPUT          1
+#define TONEMAPPING_APPLY_TONEMAPPING_TONE_CURVE_INPUT     2
+#define TONEMAPPING_APPLY_TONEMAPPING_EXPOSURE_INPUT       3
+#define TONEMAPPING_APPLY_TONEMAPPING_COLOR_OUTPUT         4
 
 #define TONEMAPPING_TONE_CURVE_SAMPLE_COUNT               256
 
 #define EXPOSURE_HISTOGRAM_SIZE                           256
+
+// Constants
+
+static const uint32_t ditherModeNone = 0;
+static const uint32_t ditherModeSpatialOnly = 1;
+static const uint32_t ditherModeSpatialTemporal = 2;
 
 // Constant buffers
 
@@ -110,6 +117,11 @@ struct ToneMappingApplyToneMappingArgs {
   float toneCurveMinStops;
   float toneCurveMaxStops;
   uint finalizeWithACES;
+
+  uint ditherMode;
+  uint frameIndex;
+  uint pad0;
+  uint pad1;
 };
 
 

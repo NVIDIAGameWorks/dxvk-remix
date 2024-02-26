@@ -1,0 +1,67 @@
+/*
+* Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+#include "rtx/pass/tonemap/tonemapping.h"
+#include "rtx/utility/noise.slangh"
+
+// Applies dithering to a color, ideally one in gamma space (for proper perceptual dithering).
+// This does monochromatic dithering instead of using a different dithering pattern per
+// channel - this correlates errors, but the monochromatic noise might be preferable from
+// a visual, filmic standpoint as chromatic noise is more visually distracting typically and undesirable.
+// The dithering pattern may also be optionally shifted over time, this may make the result
+// visually smoother (due to persistence of vision averaging temporal noise samples together),
+// but also may be more visually distracting in some cases versus a static pattern.
+// Finally, this dithering only should be used on 8 bit unorm output targets (assuming quantization
+// is done on write to a texture).
+float3 ditherTo8Bit(
+  const float3 value,
+  const uint2 pixelPosition,
+  const uint frameIndex,
+  const bool enableDithering,
+  const bool enableTemporalDithering,
+)
+{
+  // Early out if dithering is not enabled
+
+  if (!enableDithering) {
+    return value;
+  }
+
+  // Create a RNG for dithering
+  // Note: RNG object used as it is backed by a blue noise texture which should allow for more
+  // uniform-looking noise for dithering compared to pure random based noise.
+
+  // Note: Use a constant temporal index of 0 if temporal dithering is disabled to have the same
+  // pattern on every frame.
+  const uint temporalIndex = enableTemporalDithering ? frameIndex : 0;
+  RNG rng = createRNG(pixelPosition, temporalIndex);
+
+  // Dither the color value
+
+  // Note: Convert from [0, 1) to [-0.5 / 255, 0.5 / 255)
+  const float adjustment = (getNextSampleBlueNoise(rng) - 0.5f) / 255.0f;
+
+  return value + float3(adjustment);
+}
+
+// Todo: 10 bit dither in the future for HDR output.

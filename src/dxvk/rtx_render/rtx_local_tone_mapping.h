@@ -40,7 +40,7 @@ namespace dxvk {
     ~DxvkLocalToneMapping();
 
     void dispatch(
-      Rc<DxvkContext> ctx,
+      Rc<RtxContext> ctx,
       Rc<DxvkSampler> linearSampler,
       Rc<DxvkImageView> exposureView,
       const Resources::RaytracingOutput& rtOutput,
@@ -53,15 +53,20 @@ namespace dxvk {
 
   private:
 
-    bool isActive() { return RtxOptions::Get()->tonemappingMode() == TonemappingMode::Local; }
+    virtual bool isActive() override { return RtxOptions::Get()->tonemappingMode() == TonemappingMode::Local; }
 
-    void createTargetResource(Rc<DxvkContext>& ctx, const VkExtent3D& targetExtent);
-
-    void releaseTargetResource();
+    virtual void createTargetResource(Rc<DxvkContext>& ctx, const VkExtent3D& targetExtent) override;
+    virtual void releaseTargetResource() override;
 
     Resources::MipMapResource m_mips;
     Resources::MipMapResource m_mipsWeights;
     Resources::MipMapResource m_mipsAssemble;
+
+    enum class DitherMode : uint32_t {
+      None = 0,
+      Spatial,
+      SpatialTemporal,
+    };
 
     // Tone curve settings
     RTX_OPTION("rtx.localtonemap", int, mip, 3, "Top mip level of tone map pyramid.");
@@ -74,6 +79,12 @@ namespace dxvk {
     RTX_OPTION("rtx.localtonemap", float, highlights, 4.0, "Highlight area strength. Higher values cause darker highlight.");
     RTX_OPTION("rtx.localtonemap", float, exposurePreferenceSigma, 4.0, "Transition sharpness between different areas of exposure. Smaller values result in sharper transitions.");
     RTX_OPTION("rtx.localtonemap", float, exposurePreferenceOffset, 0.0, "Offset to reference luminance when calculating the weights a pixel belongs to shadow/normal/highlight areas.");
+
+    // Dithering settings
+    // Todo: In the future it might be good to combine this option and the rtx.tonemap.ditherMode option to reduce code/documentation/UI duplication.
+    RTX_OPTION("rtx.localtonemap", DitherMode, ditherMode, DitherMode::SpatialTemporal,
+               "Local tonemap dither mode selection, local tonemapping dithering has the same functionality and values as the global tonemapping dithering option, see rtx.tonemap.ditherMode for a more in-depth description.\n"
+               "Supported enum values are 0 = None (Disabled), 1 = Spatial (Enabled, Spatial dithering only), 2 = SpatialTemporal (Enabled, Spatial and temporal dithering).\n");
   };
   
 }

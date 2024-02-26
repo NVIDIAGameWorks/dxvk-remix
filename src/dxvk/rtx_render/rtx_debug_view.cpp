@@ -440,8 +440,22 @@ namespace dxvk {
 
       ImGui::Text("Common:");
 
+      // NaN/Inf Colorization
+
       ImGui::Checkbox("Color NaN Red/Inf Blue", &m_enableInfNanView);
-      ImGui::InputInt("Color Code Pixel Radius", &m_colorCodeRadius);
+
+      if (m_enableInfNanView) {
+        ImGui::InputInt("Color Code Pixel Radius", &m_colorCodeRadius);
+      }
+
+      // Input Quantization
+
+      ImGui::Checkbox("Quantize Input", &enableInputQuantizationObject());
+
+      if (enableInputQuantization()) {
+        ImGui::InputFloat("Inverse Quantization Step Size", &inverseQuantizationStepSizeObject(), 0.1f, 1.0f);
+        ImGui::Text("Effective Quantized Step Size: 1.0 / %f", inverseQuantizationStepSizeObject());
+      }
 
       if (displayType() == DebugViewDisplayType::Standard) {
         ImGui::Text("Standard:");
@@ -630,6 +644,10 @@ namespace dxvk {
 
     debugViewArgs.debugViewIdx = debugViewIdx();
     debugViewArgs.colorCodeRadius = std::clamp(m_colorCodeRadius, 0, 8);
+
+    debugViewArgs.enableInputQuantization = enableInputQuantization();
+    debugViewArgs.quantizationStepSize = 1.0f / inverseQuantizationStepSize();
+    debugViewArgs.quantizationInverseStepSize = inverseQuantizationStepSize();
 
     if (s_disableAnimation)
       debugViewArgs.animationTimeSec = 0;
