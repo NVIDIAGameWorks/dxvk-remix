@@ -48,13 +48,14 @@
 #define BLEND_LAPLACIAN_OUTPUT                  4
 #define BLEND_LAPLACIAN_DEBUG_VIEW_OUTPUT       5
 
-#define FINAL_COMBINE_MIP_ASSEMBLE        0
-#define FINAL_COMBINE_ORIGINAL_MIP0       1
-#define FINAL_COMBINE_ORIGINAL_MIP        2
-#define FINAL_COMBINE_WEIGHT_MIP0         3
-#define FINAL_COMBINE_OUTPUT              4
-#define FINAL_COMBINE_DEBUG_VIEW_OUTPUT   5
-#define FINAL_COMBINE_EXPOSURE            6
+#define FINAL_COMBINE_BLUE_NOISE_TEXTURE_INPUT 0
+#define FINAL_COMBINE_MIP_ASSEMBLE             1
+#define FINAL_COMBINE_ORIGINAL_MIP0            2
+#define FINAL_COMBINE_ORIGINAL_MIP             3
+#define FINAL_COMBINE_WEIGHT_MIP0              4
+#define FINAL_COMBINE_OUTPUT                   5
+#define FINAL_COMBINE_DEBUG_VIEW_OUTPUT        6
+#define FINAL_COMBINE_EXPOSURE                 7
 
 // Constant buffers
 
@@ -108,7 +109,12 @@ struct FinalCombineArgs
   uint finalizeWithACES;
   uint performSRGBConversion;
   uint enableAutoExposure;
-  uint padding;
+  uint pad0;
+
+  uint ditherMode;
+  uint frameIndex;
+  uint pad1;
+  uint pad2;
 };
 
 

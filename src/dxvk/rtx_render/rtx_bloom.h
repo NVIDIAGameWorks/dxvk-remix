@@ -68,11 +68,10 @@ namespace dxvk {
       const Resources::Resource& inOutColorBuffer,
       const Resources::Resource& bloomBuffer);
 
-    void createTargetResource(Rc<DxvkContext>& ctx, const VkExtent3D& targetExtent);
+    virtual void createTargetResource(Rc<DxvkContext>& ctx, const VkExtent3D& targetExtent) override;
+    virtual void releaseTargetResource() override;
 
-    void releaseTargetResource();
-
-    bool isActive();
+    virtual bool isActive() override;
 
     Rc<vk::DeviceFn> m_vkd;
 
