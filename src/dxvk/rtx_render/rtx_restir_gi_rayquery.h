@@ -71,7 +71,7 @@ namespace dxvk {
     }
 
   private:
-    bool isActive() { return RtxOptions::Get()->useReSTIRGI(); }
+    virtual bool isActive() override { return RtxOptions::Get()->useReSTIRGI(); }
 
     RTX_OPTION("rtx.restirGI", bool, useTemporalReuse, true, "Enables temporal reuse.");
     RTX_OPTION("rtx.restirGI", bool, useSpatialReuse, true, "Enables spatial reuse.");

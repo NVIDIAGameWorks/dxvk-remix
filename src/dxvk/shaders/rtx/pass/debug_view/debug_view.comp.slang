@@ -339,6 +339,15 @@ vec4 loadInput(ivec2 threadId)
     value = DebugView[threadId];
   };
 
+  // Quantize the input value to the requested step size if enabled
+  // Note: This is done to allow for simulation of what the result roughly would look like if written to a quantized texture (e.g. to simulate 8 bits per channel,
+  // quantize with a step size of 1/255) primarily to visualize banding artifacts better without the often times larger floating point precision of the input
+  // textures hiding them.
+
+  if (cb.enableInputQuantization) {
+    value = round(value * cb.quantizationInverseStepSize) * cb.quantizationStepSize;
+  }
+
   return value;
 }
 
