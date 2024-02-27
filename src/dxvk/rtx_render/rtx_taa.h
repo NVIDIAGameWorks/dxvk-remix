@@ -54,11 +54,10 @@ namespace dxvk {
     void showImguiSettings();
 
   private:
-    bool isActive() { return RtxOptions::Get()->isTAAEnabled(); }
+    virtual bool isActive() override { return RtxOptions::Get()->isTAAEnabled(); }
 
-    void createTargetResource(Rc<DxvkContext>& ctx, const VkExtent3D&);
-
-    void releaseTargetResource();
+    virtual void createTargetResource(Rc<DxvkContext>& ctx, const VkExtent3D&) override;
+    virtual void releaseTargetResource() override;
 
     Rc<vk::DeviceFn> m_vkd;
 

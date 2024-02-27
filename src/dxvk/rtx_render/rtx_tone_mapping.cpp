@@ -34,7 +34,7 @@
 #include "rtx_imgui.h"
 #include "rtx/utility/debug_view_indices.h"
 
-static_assert((TONEMAPPING_TONE_CURVE_SAMPLE_COUNT & 1) == 0, "The shader expects a sample count that is a multiply of 2.");
+static_assert((TONEMAPPING_TONE_CURVE_SAMPLE_COUNT & 1) == 0, "The shader expects a sample count that is a multiple of 2.");
 
 namespace dxvk {
   // Defined within an unnamed namespace to ensure unique definition across binary
@@ -75,6 +75,7 @@ namespace dxvk {
       PUSH_CONSTANTS(ToneMappingApplyToneMappingArgs)
 
       BEGIN_PARAMETER()
+        TEXTURE2DARRAY(TONEMAPPING_APPLY_BLUE_NOISE_TEXTURE_INPUT)
         RW_TEXTURE2D(TONEMAPPING_APPLY_TONEMAPPING_COLOR_INPUT)
         SAMPLER1D(TONEMAPPING_APPLY_TONEMAPPING_TONE_CURVE_INPUT)
         RW_TEXTURE1D_READONLY(TONEMAPPING_APPLY_TONEMAPPING_EXPOSURE_INPUT)
@@ -98,9 +99,9 @@ namespace dxvk {
     ImGui::Checkbox("Color Grading Enabled", &colorGradingEnabledObject());
     if (colorGradingEnabled()) {
       ImGui::Indent();
-      ImGui::DragFloat("Contrast", &contrastObject(), 0.01f, 0.f, 2.f);
-      ImGui::DragFloat("Saturation", &saturationObject(), 0.01f, 0.f, 2.f);
-      ImGui::DragFloat3("Color Balance", &colorBalanceObject(), 0.01f, 0.f, 2.f);
+      ImGui::DragFloat("Contrast", &contrastObject(), 0.01f, 0.f, 1.f);
+      ImGui::DragFloat("Saturation", &saturationObject(), 0.01f, 0.f, 1.f);
+      ImGui::DragFloat3("Color Balance", &colorBalanceObject(), 0.01f, 0.f, 1.f);
       ImGui::Separator();
       ImGui::Unindent();
     }
@@ -109,6 +110,8 @@ namespace dxvk {
     if (tonemappingEnabled()) {
       ImGui::Indent();
       ImGui::Checkbox("Finalize With ACES", &finalizeWithACESObject());
+
+      ImGui::Combo("Dither Mode", &ditherModeObject(), "Disabled\0Spatial\0Spatial + Temporal\0");
 
       ImGui::Checkbox("Tuning Mode", &tuningModeObject());
       if (tuningMode()) {
@@ -131,7 +134,7 @@ namespace dxvk {
     }
   }
 
-  void DxvkToneMapping::createResources(Rc<DxvkContext> ctx) {
+  void DxvkToneMapping::createResources(Rc<RtxContext> ctx) {
     DxvkImageCreateInfo desc;
     desc.type = VK_IMAGE_TYPE_1D;
     desc.flags = 0;
@@ -168,7 +171,7 @@ namespace dxvk {
   }
 
   void DxvkToneMapping::dispatchHistogram(
-    Rc<DxvkContext> ctx,
+    Rc<RtxContext> ctx,
     Rc<DxvkImageView> exposureView,
     const Resources::Resource& colorBuffer,
     bool autoExposureEnabled) {
@@ -207,7 +210,7 @@ namespace dxvk {
   }
 
   void DxvkToneMapping::dispatchToneCurve(
-    Rc<DxvkContext> ctx) {
+    Rc<RtxContext> ctx) {
 
     ScopedGpuProfileZone(ctx, "Tonemap: Calculate Tone Curve");
 
@@ -233,7 +236,7 @@ namespace dxvk {
   }
 
   void DxvkToneMapping::dispatchApplyToneMapping(
-    Rc<DxvkContext> ctx,
+    Rc<RtxContext> ctx,
     Rc<DxvkSampler> linearSampler,
     Rc<DxvkImageView> exposureView,
     const Resources::Resource& inputBuffer,
@@ -266,6 +269,15 @@ namespace dxvk {
     pushArgs.contrast = contrast();
     pushArgs.saturation = saturation();
 
+    // Dither args
+    switch (ditherMode()) {
+    case DitherMode::None: pushArgs.ditherMode = ditherModeNone; break;
+    case DitherMode::Spatial: pushArgs.ditherMode = ditherModeSpatialOnly; break;
+    case DitherMode::SpatialTemporal: pushArgs.ditherMode = ditherModeSpatialTemporal; break;
+    }
+    pushArgs.frameIndex = ctx->getDevice()->getCurrentFrameId();
+
+    ctx->bindResourceView(TONEMAPPING_APPLY_BLUE_NOISE_TEXTURE_INPUT, ctx->getResourceManager().getBlueNoiseTexture(ctx), nullptr);
     ctx->bindResourceView(TONEMAPPING_APPLY_TONEMAPPING_COLOR_INPUT, inputBuffer.view, nullptr);
     ctx->bindResourceView(TONEMAPPING_APPLY_TONEMAPPING_TONE_CURVE_INPUT, m_toneCurve.view, nullptr);
     ctx->bindResourceView(TONEMAPPING_APPLY_TONEMAPPING_EXPOSURE_INPUT, exposureView, nullptr);
@@ -278,7 +290,7 @@ namespace dxvk {
   }
 
   void DxvkToneMapping::dispatch(
-    Rc<DxvkContext> ctx,
+    Rc<RtxContext> ctx,
     Rc<DxvkSampler> linearSampler,
     Rc<DxvkImageView> exposureView,
     const Resources::RaytracingOutput& rtOutput,

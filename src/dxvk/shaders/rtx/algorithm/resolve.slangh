@@ -836,6 +836,11 @@ void resolveVertexUnordered(
       rayInteraction.customIndex = 0;
       rayInteraction.frontHit = NdotD < 0;
 
+      // Calculate texture gradient
+      float16_t coneRadius = ray.coneRadius + float16_t(ray.spreadAngle * t);
+      float16_t textureGradientFactor = 4.0f; // This factor is based on experiment
+      f16vec2 dUVRatio = coneRadius * textureGradientFactor * f16vec2(billboard.inverseHalfWidth, billboard.inverseHalfHeight);
+
       surfaceInteraction.position = p;
       surfaceInteraction.positionError = 0;
       surfaceInteraction.triangleNormal = normal;
@@ -843,8 +848,8 @@ void resolveVertexUnordered(
       surfaceInteraction.triangleBitangent = billboard.yAxis;
       surfaceInteraction.motion = 0;
       surfaceInteraction.textureCoordinates = uv;
-      surfaceInteraction.textureGradientX = 0;
-      surfaceInteraction.textureGradientY = 0;
+      surfaceInteraction.textureGradientX = dUVRatio.x * billboard.xAxisUV;
+      surfaceInteraction.textureGradientY = dUVRatio.y * billboard.yAxisUV;
       surfaceInteraction.interpolatedNormal = normal;
       surfaceInteraction.interpolatedTangent = billboard.xAxis;
       surfaceInteraction.interpolatedBitangent = billboard.yAxis;

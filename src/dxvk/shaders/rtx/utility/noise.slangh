@@ -112,6 +112,7 @@ RNG createRNGPosition(vec3 position, uint temporalIdx) {
 // unorms in the blue noise texture, but generally this does not matter even as low as 8 bits of precision.
 #define WHITE_NOISE_OVERRIDE 0
 
+// Samples a floating point noise value from the RNG. Returned range is [0, 1)
 // Note: This is a scalar (1D) sample value, ideally it should only be used for uncorrelated 1D scalar samples, not samples
 // within 2 or 3 dimensional space (e.g. direction vectors, BSDF sample inputs, etc). Currently we have no way to actually
 // generate proper 2D or 3D blue noise samples however, so subsequent samples of this should at least be reasonable as this

@@ -90,10 +90,10 @@ namespace dxvk {
     DebugViewArgs getCommonDebugViewArgs(DxvkContext* ctx, const Resources::RaytracingOutput& rtOutput, DxvkObjects& common);
 
     void generateCompositeImage(Rc<DxvkContext> ctx, Rc<DxvkImage>& outputImage);
-    void createDownscaledResource(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent);
-    void releaseDownscaledResource();
+    virtual void createDownscaledResource(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent) override;
+    virtual void releaseDownscaledResource() override;
 
-    bool isActive();
+    virtual bool isActive() override;
 
     Rc<DxvkBuffer> m_debugViewConstants;
     Rc<vk::DeviceFn> m_vkd;
@@ -127,18 +127,26 @@ namespace dxvk {
     // Common Display
     bool m_enableInfNanView = true;
     int m_colorCodeRadius = 4;
+    RTX_OPTION("rtx.debugView", bool, enableInputQuantization, false,
+               "Enables uniform-step input quantization on debug view input buffers.\n"
+               "This is mostly useful for when debugging artifacts relating to quantization that may not be visible in a buffer due to higher precision formats in use.\n"
+               "For example, the final output from tonemapping is a floating point texture in the debug view but will be quantized to 8 bit on some monitors. Using this option the quantization which will be applied to the output can be visualized in advance.");
+    // Note: Default to standard 8 bit unorm encoding step size ([0, 1] range normalized on a step size of 1/255).
+    RTX_OPTION("rtx.debugView", float, inverseQuantizationStepSize, 255.0f,
+               "The inverse of the uniform step size to quantize the debug view input to when Input Quantization is enabled.\n"
+               "A value of 255 indicates that the input will be quantized to steps of 1/255, the same as the step size used when quantizing the range 0-1 to an 8 bit representation.");
 
     // Standard Display
     RTX_OPTION_ENV("rtx.debugView", bool, enablePseudoColor, false, "RTX_DEBUG_VIEW_ENABLE_PSEUDO_COLOR", "Enables RGB color coding of a scalar debug view value.");
     RTX_OPTION_ENV("rtx.debugView", bool, enableGammaCorrection, false, "RTX_DEBUG_VIEW_ENABLE_GAMMA_CORRECTION", "Enables gamma correction of a debug view value.");
     bool m_enableAlphaChannel = false;
     float m_scale = 1.f;
-    RTX_OPTION_ENV("rtx.debugView", float, minValue, 0.f, "DXVK_RTX_DEBUG_VIEW_MIN_VALUE", "");
-    RTX_OPTION_ENV("rtx.debugView", float, maxValue, 1.f, "DXVK_RTX_DEBUG_VIEW_MAX_VALUE", "");
+    RTX_OPTION_ENV("rtx.debugView", float, minValue, 0.f, "DXVK_RTX_DEBUG_VIEW_MIN_VALUE", "The minimum debug view input value to map to 0 in the output when the standard debug display is in use. Values below this value in the input will be clamped to 0 in the output.");
+    RTX_OPTION_ENV("rtx.debugView", float, maxValue, 1.f, "DXVK_RTX_DEBUG_VIEW_MAX_VALUE", "The maximum debug view input value to map to 1 in the output when the standard debug display is in use. Values above this value in the input will be clamped to 1 in the output.");
 
     // EV100 Display
-    RTX_OPTION_ENV("rtx.debugView", int32_t, evMinValue, -4, "DXVK_RTX_DEBUG_VIEW_EV_MIN_VALUE", "");
-    RTX_OPTION_ENV("rtx.debugView", int32_t, evMaxValue,  4, "DXVK_RTX_DEBUG_VIEW_EV_MAX_VALUE", "");
+    RTX_OPTION_ENV("rtx.debugView", int32_t, evMinValue, -4, "DXVK_RTX_DEBUG_VIEW_EV_MIN_VALUE", "The minimum EV100 debug view input value to map to the bottom of the visualization range when EV100 debug display is in use. Values below this value in the input will be clamped to the bottom of the range.");
+    RTX_OPTION_ENV("rtx.debugView", int32_t, evMaxValue,  4, "DXVK_RTX_DEBUG_VIEW_EV_MAX_VALUE", "The maximum EV100 debug view input value to map to the top of the visualization range when EV100 debug display is in use. Values above this value in the input will be clamped to the top of the range.")
 
     // HDR Waveform Display
     bool m_enableLuminanceMode = false;
