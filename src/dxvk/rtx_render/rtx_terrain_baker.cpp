@@ -38,6 +38,19 @@
 #include "../../d3d9/d3d9_caps.h"
 
 namespace dxvk {
+  VkClearColorValue getClearColor(ReplacementMaterialTextureType::Enum textureType) {
+    switch (textureType) {
+    case ReplacementMaterialTextureType::Height:
+      // height maps should be cleared to 1, which keeps the displaced surface identical to the original surface.
+      return { 1.f, 1.f, 1.f, 1.f };
+      break;
+
+    default:
+      return { 0.0f, 0.0f, 0.0f, 0.0f };
+      break;
+    }
+  }
+
   VkFormat getTextureFormat(ReplacementMaterialTextureType::Enum textureType) {
     switch (textureType) {
     case ReplacementMaterialTextureType::Normal:
@@ -153,6 +166,12 @@ namespace dxvk {
       RtxGeometryUtils::TextureConversionInfo& conversionInfo = replacementTextures.emplace_back();
       conversionInfo.type = textureType;
       conversionInfo.sourceTexture = &texture;
+      
+      if (textureType == ReplacementMaterialTextureType::Height) {
+        // Normalize the displaceIn to the previous frame's max displaceIn.
+        conversionInfo.scale = m_prevFrameMaxDisplaceIn <= 0.f ? 0.f : replacementMaterial->getDisplaceIn() / m_prevFrameMaxDisplaceIn;
+        m_currFrameMaxDisplaceIn = std::max(m_currFrameMaxDisplaceIn, replacementMaterial->getDisplaceIn());
+      }
 
       if (isPSReplacementSupportEnabled(drawCallState)) {
         conversionInfo.targetTexture = TextureRef(texture.getImageView());
@@ -270,6 +289,21 @@ namespace dxvk {
       return isBaked;
     }
 
+    if (m_calculatingDisplaceInFactor && replacementMaterial->getDisplaceIn() > 0.f) {
+      // This is the deepest any part of this mesh can go.
+      float maxInputDepth = RtxGeometryUtils::computeMaxUVTileSize(drawCallState.getGeometryData(), drawCallState.getTransformData().objectToWorld) * replacementMaterial->getDisplaceIn();
+
+      // The deepest the baked terrain can go.
+      float maxBakedDepth = 2 * RtxOptions::Get()->getMeterToWorldUnitScale() * cascadeMap.levelHalfWidth() * m_prevFrameMaxDisplaceIn;
+
+      // Optimal displaceInFactor for this mesh (multiply the pixel value, divide the baked drawcall's displaceIn)
+      float displaceInFactor = maxBakedDepth / maxInputDepth;
+
+      // Need the largest value from any of the meshes, or else the bottom
+      m_calculatedDisplaceInFactor = std::max(m_calculatedDisplaceInFactor, displaceInFactor);
+    }
+
+    // The constants buffers are fairly large, and their use is mutually exclusive, so use a union to save memory.
     union UnifiedCB {
       D3D9RtxVertexCaptureData programmablePipeline;
       D3D9FixedFunctionVS fixedFunction;
@@ -284,6 +318,7 @@ namespace dxvk {
     } else {
       prevCB.fixedFunction = *static_cast<D3D9FixedFunctionVS*>(rtState.vsFixedFunctionCB->mapPtr(0));
     }
+    D3D9SharedPS prevSharedState = *static_cast<D3D9SharedPS*>(rtState.psSharedStateCB->mapPtr(0));
 
     const float2 float2CascadeLevelResolution = float2 {
       static_cast<float>(m_bakingParams.cascadeLevelResolution.width),
@@ -343,12 +378,14 @@ namespace dxvk {
     for (uint32_t iTexture = 0; iTexture < numTexturesToBake; iTexture++) {
       
       ReplacementMaterialTextureType::Enum textureType = ReplacementMaterialTextureType::AlbedoOpacity;
+      float textureScale = 1.f;
 
       // Bind a source replacement texture to bake, if available.
       // Otherwise the legacy albedoOpacity texture that's already bound will be baked
       if (bakeReplacementTextures) {
         TextureRef& replacementTexture = replacementTextures[iTexture].targetTexture;
         textureType = replacementTextures[iTexture].type;
+        textureScale = replacementTextures[iTexture].scale;
 
         ctx->bindResourceView(colorTextureSlot, replacementTexture.getImageView(), nullptr);
 
@@ -377,11 +414,14 @@ namespace dxvk {
 
           case ReplacementMaterialTextureType::Enum::Roughness:
           case ReplacementMaterialTextureType::Enum::Metallic:
-          case ReplacementMaterialTextureType::Enum::Height:
           case ReplacementMaterialTextureType::Enum::Emissive:
             ctx->setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, D3D9SpecConstantId::ReplacementTextureCategory, static_cast<uint32_t>(ReplacementMaterialTextureCategory::SecondaryRaw));
             break;
+          case ReplacementMaterialTextureType::Enum::Height:
+            ctx->setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, D3D9SpecConstantId::ReplacementTextureCategory, static_cast<uint32_t>(ReplacementMaterialTextureCategory::SecondaryScaled));
+            break;
           }
+
 
           // Finalize bindings when baking a secondary non-albedo opacity texture
           if (textureType != ReplacementMaterialTextureType::AlbedoOpacity) {
@@ -456,8 +496,18 @@ namespace dxvk {
 
         ctx->setViewports(1, &viewport, &scissor);
 
+        // Account for the difference in UV density between the input terrain material and the baked terrain.
+        // This part is just pre-multiplying the "multiply by output uv density".  The input UV density is accounted for in `postprocessTextureReadForTerrainBaking`
+        float cascadeUvDensity = Material::Properties::displaceInFactor() / std::max(m_bakingParams.cascadeMapResolution.width, m_bakingParams.cascadeMapResolution.height);
+
         // Update constant buffers
         // 
+        D3D9SharedPS& sharedState = ctx->allocAndMapPSSharedStateConstantBuffer();
+        for (int i = 0; i < caps::TextureStageCount; ++i) {
+          sharedState.Stages[i] = prevSharedState.Stages[i];
+          sharedState.Stages[i].textureScale = textureScale * cascadeUvDensity;
+        }
+        
         // Programmable VS path
         if (drawCallState.usesVertexShader) {
           D3D9RtxVertexCaptureData& cbData = ctx->allocAndMapVertexCaptureConstantBuffer();
@@ -465,7 +515,7 @@ namespace dxvk {
           cbData.customWorldToProjection = m_bakingParams.bakingCameraOrthoProjection[iCascade] * worldSceneView;
         } 
         else { // Fixed function path
-          D3D9FixedFunctionVS& cbData = ctx->allocAndMapFixedFunctionConstantBuffer();
+          D3D9FixedFunctionVS& cbData = ctx->allocAndMapFixedFunctionVSConstantBuffer();
           cbData = prevCB.fixedFunction;
 
           cbData.InverseView = m_bakingParams.inverseSceneView;
@@ -499,10 +549,11 @@ namespace dxvk {
       ctx->bindRenderTargets(prevRenderTargets);
       ctx->setSpecConstantsInfo(VK_PIPELINE_BIND_POINT_GRAPHICS, prevSpecConstantsInfo);
 
+      ctx->allocAndMapPSSharedStateConstantBuffer() = prevSharedState;
       if (drawCallState.usesVertexShader) {
         ctx->allocAndMapVertexCaptureConstantBuffer() = prevCB.programmablePipeline;
       } else {
-        ctx->allocAndMapFixedFunctionConstantBuffer() = prevCB.fixedFunction;
+        ctx->allocAndMapFixedFunctionVSConstantBuffer() = prevCB.fixedFunction;
       }
 
       if (secondaryTextureSlot != kInvalidResourceSlot) {
@@ -572,7 +623,8 @@ namespace dxvk {
       false, // opaqueMaterialDefaults.InvertedBlend,
       AlphaTestType::kAlways,
       0,//opaqueMaterialDefaults.AlphaReferenceValue;
-      0.0f,  // opaqueMaterialDefaults.DisplaceIn
+      // Using the previous frame's displaceIn because all current frame draw calls are normalized to the previous frame's max.
+      m_prevFrameMaxDisplaceIn / Material::Properties::displaceInFactor(),  // opaqueMaterialDefaults.DisplaceIn
       Vector3(),  // opaqueMaterialDefaults.subsurfaceTransmittanceColor
       0.0f,  // opaqueMaterialDefaults.subsurfaceMeasurementDistance
       Vector3(),  // opaqueMaterialDefaults.subsurfaceSingleScatteringAlbedo
@@ -612,11 +664,7 @@ namespace dxvk {
       }
 
       texture = Resources::createImageResource(
-        ctx, "baked terrain texture", resolution, getTextureFormat(textureType), 1, VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, 0, true);
-
-      if (clearTerrainBeforeBaking()) {
-        clearMaterialTexture(ctx, textureType);
-      }
+        ctx, "baked terrain texture", resolution, getTextureFormat(textureType), 1, VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, 0, true, getClearColor(textureType));
 
       m_needsMaterialDataUpdate = true;
     }
@@ -684,6 +732,16 @@ namespace dxvk {
           ImGui::DragFloat("Roughness", &Material::Properties::roughnessConstantObject(), 0.01f, 0.f, 1.f, "%.3f", sliderFlags);
           ImGui::DragFloat("Metallic", &Material::Properties::metallicConstantObject(), 0.01f, 0.f, 1.f, "%.3f", sliderFlags);
           ImGui::DragFloat("Anisotropy", &Material::Properties::roughnessAnisotropyObject(), 0.01f, -1.0f, 1.f, "%.3f", sliderFlags);
+          
+          ImGui::Text("\nDisplacement Settings");
+          ImGui::DragFloat("Displace In Factor", &Material::Properties::displaceInFactorObject(), 0.01f, 0.01f, 100.f, "%.3f", sliderFlags);
+          ImGui::Text("Calculate the lowest safe Displace In Factor for the current \n"
+                      "scene.  Mod creators should run this in scenes across the \n"
+                      "game, and use the highest returned value.  See Displace In \n"
+                      "Factor's tooltip for more info.");
+          if (ImGui::Button("Calculate Scene's Optimal Displace In Factor")) {
+            m_calculateDisplaceInFactorNextFrame = true;
+          }
 
           ImGui::Unindent();
         }
@@ -751,6 +809,16 @@ namespace dxvk {
       texture.onFrameEnd(ctx);
     }
 
+    if (m_calculatingDisplaceInFactor) {
+      m_calculatingDisplaceInFactor = false;
+      Material::Properties::displaceInFactorRef() = m_calculatedDisplaceInFactor;
+    }
+    m_calculatingDisplaceInFactor = m_calculateDisplaceInFactorNextFrame;
+    m_calculateDisplaceInFactorNextFrame = false;
+
+    m_prevFrameMaxDisplaceIn = m_currFrameMaxDisplaceIn;
+    m_currFrameMaxDisplaceIn = 0.f;
+
     m_stagingTextureCache.clear();
 
     // Destroy material data every frame so as not keep texture references around.
@@ -801,14 +869,12 @@ namespace dxvk {
   void TerrainBaker::clearMaterialTexture(Rc<DxvkContext> ctx, ReplacementMaterialTextureType::Enum textureType) {
     Resources::Resource& texture = m_materialTextures[textureType].texture;
 
-    VkClearColorValue clear = { 0.f, 0.f, 0.f, 0.f };
-
     VkImageSubresourceRange subRange = {};
     subRange.layerCount = 1;
     subRange.levelCount = 1;
     subRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 
-    ctx->clearColorImage(texture.image, clear, subRange);
+    ctx->clearColorImage(texture.image, getClearColor(textureType), subRange);
   }
 
   TerrainBaker::AxisAlignedBoundingBoxLink::AxisAlignedBoundingBoxLink(const DrawCallState& drawCallState)

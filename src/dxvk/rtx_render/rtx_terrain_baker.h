@@ -103,6 +103,11 @@ namespace dxvk {
         RTX_OPTION("rtx.terrainBaker.material.properties", float, metallicConstant, 0.1f, "Metallic constant. Valid range is <0, 1>.");
         RTX_OPTION("rtx.terrainBaker.material.properties", Vector3, emissiveColorConstant, Vector3(0.0f, 0.0f, 0.0f), "Emissive color constant. Should be a color in sRGB colorspace with gamma encoding.");
         RTX_OPTION("rtx.terrainBaker.material.properties", bool, enableEmission, false, "A flag to determine if emission is enabled.");
+        RTX_OPTION("rtx.terrainBaker.material.properties", float, displaceInFactor, 1.f,
+                   "The max depth the baked terrain can support will be larger than the max depth \n"
+                   "of any incoming draw call, which results in a loss of detail. When this is \n"
+                   "too low, the displacement will lack detail. When it is too high, the lowest \n"
+                   "parts of the POM will flatten out.");
       };
     };
 
@@ -198,8 +203,17 @@ namespace dxvk {
     // Made optional since it requires valid explicit parameters specified on construction
     std::optional<MaterialData> m_materialData;
 
+    float m_currFrameMaxDisplaceIn = 0.f;
+    float m_prevFrameMaxDisplaceIn = 0.f;
+
     // Set to true when m_materialData needs to be updated to reflect latest changes.
     bool m_needsMaterialDataUpdate = false;
+    
+    // Set to true when a button is clicked in the GUI, tracks all incoming uv densities for a frame and changes displaceInFactor to the resulting value.
+    bool m_calculatingDisplaceInFactor = false;
+    float m_calculatedDisplaceInFactor = 1.0f;
+    // UI button click may come in mid frame, so set a transient bool, then start actually calculating it next frame.
+    mutable bool m_calculateDisplaceInFactorNextFrame = false;
 
     struct BakedTexture {
       // Baked texture needs to be retained for at least a frame after it was baked so that 

@@ -38,7 +38,8 @@ namespace ReplacementMaterialTextureType {
 namespace ReplacementMaterialTextureCategory {
   enum Enum {
     AlbedoOpacity = 0,
-    SecondaryRaw,                // Height, Roughness, Metallic, Emissive
+    SecondaryRaw,                // Roughness, Metallic, Emissive
+    SecondaryScaled,             // Height
     SecondaryOctahedralEncoded   // Normal, Tangent
   };
 }

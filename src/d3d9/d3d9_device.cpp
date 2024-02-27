@@ -6478,6 +6478,9 @@ namespace dxvk {
 
         data->Stages[i].BumpEnvLScale    = bit::cast<float>(m_state.textureStages[i][DXVK_TSS_BUMPENVLSCALE]);
         data->Stages[i].BumpEnvLOffset   = bit::cast<float>(m_state.textureStages[i][DXVK_TSS_BUMPENVLOFFSET]);
+// NV-DXVK start: support height map scaling in terrain baking
+        data->Stages[i].textureScale     = 1.f;
+// NV-DXVK end
       }
     }
 
@@ -7193,6 +7196,7 @@ namespace dxvk {
 
       auto& rs = m_state.renderStates;
       DecodeD3DCOLOR((D3DCOLOR) rs[D3DRS_TEXTUREFACTOR], data->textureFactor.data);
+      data->textureScale = 1.f;
 
       EmitCs([
         cBuffer = m_psFixedFunction,

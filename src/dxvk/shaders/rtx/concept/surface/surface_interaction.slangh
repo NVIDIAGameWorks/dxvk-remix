@@ -440,6 +440,19 @@ SurfaceInteraction surfaceInteractionCreate(
 
     surfaceInteraction.textureCoordinates = interpolateHitAttribute(texcoords, bary);
 
+    // Note: World positions used here, the original PBRT usage uses model space vertex positions since it calculates the
+    // TBN  in local space, but since we generate the TBN frame in world space this is more applicable. Additionally
+    // it removes the need to keep the object space positions around which should ideally reduce register pressure.
+    genTangSpace(
+      texcoords, worldPositions, surfaceInteraction.interpolatedNormal,
+      surfaceInteraction.interpolatedTangent, surfaceInteraction.interpolatedBitangent);
+    
+    // Derive triangle TBN based on interpolated TBN. This works in all cases tested,
+    // and should be much cheaper than calling genTangSpace again.
+    f16vec4 interpolatedToTriangle = quaternionCreateOrientation(surfaceInteraction.interpolatedNormal, surfaceInteraction.triangleNormal);
+    surfaceInteraction.triangleTangent = quaternionTransformVector(interpolatedToTriangle, surfaceInteraction.interpolatedTangent);
+    surfaceInteraction.triangleBitangent =  quaternionTransformVector(interpolatedToTriangle, surfaceInteraction.interpolatedBitangent);
+    
     // Convert texcoords from the 1st cascade to a corresponding cascade in a combined tiled cascades texture space
     if (surface.texcoordGenerationMode == uint(TexGenMode::CascadedViewPositions))
     {
@@ -449,7 +462,14 @@ SurfaceInteraction surfaceInteractionCreate(
       // Texcoords for the first cascade are already correct if there's only a single cascade in the map
       if (cb.terrainArgs.maxCascadeLevel > 0) 
       {
-        const vec2 textureCenterOffset = texcoordToOffsetFromTextureCenter(surfaceInteraction.textureCoordinates);
+        // For surfaces with displacement, we need to ensure the final hit point is within a cascade level.
+        // To do this, calculate the furthest texcoord that displacement could return, and use a cascade level that includes that point.
+        const f16mat3 worldToTangent = f16mat3(surfaceInteraction.interpolatedTangent, surfaceInteraction.interpolatedBitangent, surfaceInteraction.interpolatedNormal);
+        const f16vec3 viewDirTangentSpace = normalize(mul(worldToTangent, rayInteraction.viewDirection));
+        // viewDirection is hitPos to camera, so invert it before converting to a texcoord offset.
+        const vec2 maxPossiblePomOffset = viewDirTangentSpace.xy * (-1.f * surface.displaceIn / viewDirTangentSpace.z);
+
+        const vec2 textureCenterOffset = texcoordToOffsetFromTextureCenter(surfaceInteraction.textureCoordinates + maxPossiblePomOffset);
         const float maxTextureCenterOffset = length(textureCenterOffset);
 
         // Calculate a cascade level if sampling outside the first cascade
@@ -461,6 +481,7 @@ SurfaceInteraction surfaceInteractionCreate(
           // Calculate the cascade level starting from cascade level 1
           cascadeLevel = min(ceil(log2(normalizedTextureCenterOffset)), cb.terrainArgs.maxCascadeLevel);
         }
+        // Note: This is safe to do after the Tangent space generation because it only translates and scales.  It does not change the normalized derivatives.
         convert1stCascadeTexCoordsToTargetCascadeLevel(cascadeLevel, surfaceInteraction.textureCoordinates, texcoords);
       }
 
@@ -475,19 +496,6 @@ SurfaceInteraction surfaceInteractionCreate(
       }
 #endif
     }
-
-    // Note: World positions used here, the original PBRT usage uses model space vertex positions since it calculates the
-    // TBN  in local space, but since we generate the TBN frame in world space this is more applicable. Additionally
-    // it removes the need to keep the object space positions around which should ideally reduce register pressure.
-    genTangSpace(
-      texcoords, worldPositions, surfaceInteraction.interpolatedNormal,
-      surfaceInteraction.interpolatedTangent, surfaceInteraction.interpolatedBitangent);
-    
-    // Derive triangle TBN based on interpolated TBN. This works in all cases tested,
-    // and should be much cheaper than calling genTangSpace again.
-    f16vec4 interpolatedToTriangle = quaternionCreateOrientation(surfaceInteraction.interpolatedNormal, surfaceInteraction.triangleNormal);
-    surfaceInteraction.triangleTangent = quaternionTransformVector(interpolatedToTriangle, surfaceInteraction.interpolatedTangent);
-    surfaceInteraction.triangleBitangent =  quaternionTransformVector(interpolatedToTriangle, surfaceInteraction.interpolatedBitangent);
     
     // Compute texture gradients
     // Note: This is done here as it depends on the triangle normal and texture coordinates being calculated first
