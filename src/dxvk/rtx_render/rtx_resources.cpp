@@ -71,7 +71,8 @@ namespace dxvk {
                                                      const VkImageType imageType,
                                                      const VkImageViewType imageViewType,
                                                      const VkImageCreateFlags imageCreateFlags,
-                                                     bool isColorAttachment) {
+                                                     bool isColorAttachment,
+                                                     const VkClearColorValue clearValue) {
     DxvkImageCreateInfo desc;
     desc.type = imageType;
     desc.flags = imageCreateFlags;
@@ -106,7 +107,6 @@ namespace dxvk {
     subRange.layerCount = 1;
     subRange.levelCount = 1;
     subRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    VkClearColorValue clearValue = { 0.0f, 0.0f, 0.0f, 0.0f };
 
     // Note: Initialize to zero, or we get corruption on resolution change
     ctx->clearColorImage(resource.image, clearValue, subRange);

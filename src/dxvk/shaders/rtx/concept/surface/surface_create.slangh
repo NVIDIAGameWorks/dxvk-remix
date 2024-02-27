@@ -117,13 +117,19 @@ Surface surfaceCreate(MemorySurface memorySurface)
 
   const vec4 textureTransformData0 = uintBitsToFloat(memorySurface.data11);
   const vec4 textureTransformData1 = uintBitsToFloat(memorySurface.data12);
-  // Note: data15 free still here.
 
   // Note: 4 columns and 2 rows, initialized row by row though because this is really an alias for a Slang
   // row-major matrix...
   surface.textureTransform = mat4x2(
     textureTransformData0,
     textureTransformData1);
+
+  const uint32_t textureSpritesheetData = memorySurface.data13.x;
+
+  surface.spriteSheetRows = uint8_t((textureSpritesheetData >> 0) & 0xFF);
+  surface.spriteSheetCols = uint8_t((textureSpritesheetData >> 8) & 0xFF);
+  surface.spriteSheetFPS = uint8_t((textureSpritesheetData >> 16) & 0xFF);
+  surface.decalSortOrder = uint8_t((textureSpritesheetData >> 24) & 0xFF);
 
   surface.tFactor = memorySurface.data13.y;
 
@@ -140,14 +146,9 @@ Surface surfaceCreate(MemorySurface memorySurface)
 
   surface.clipPlane = uintBitsToFloat(memorySurface.data14);
 
-  const uint32_t textureSpritesheetData = memorySurface.data13.x;
-
-  surface.spriteSheetRows = uint8_t((textureSpritesheetData >> 0) & 0xFF);
-  surface.spriteSheetCols = uint8_t((textureSpritesheetData >> 8) & 0xFF);
-  surface.spriteSheetFPS = uint8_t((textureSpritesheetData >> 16) & 0xFF);
-  // Note: 8 bits free here in the texture spritesheet data.
-
-  surface.decalSortOrder = memorySurface.data15.x & 0xFF;
+  surface.displaceIn = uint16BitsToHalf(memorySurface.data15.x);
+  // Note: second half of data15.x are free here.
+  // Note: data15 y, z, and w are free here.
   
   surface.objectPickingValue = memorySurface.data1.y;
 

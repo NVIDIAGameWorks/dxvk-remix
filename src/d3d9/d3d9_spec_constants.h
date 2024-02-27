@@ -20,8 +20,10 @@ namespace dxvk {
 
     SamplerDepthMode  = 10,
 
+    // NV-DXVK start
     CustomVertexTransformEnabled = 11,
     ReplacementTextureCategory = 12,
+    // NV-DXVK end
 
     Count
   };

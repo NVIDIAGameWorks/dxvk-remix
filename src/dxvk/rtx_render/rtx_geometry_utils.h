@@ -126,6 +126,7 @@ namespace dxvk {
       const TextureRef* sourceTexture = nullptr;
       Rc<DxvkImageView> sourceView = nullptr;
       TextureRef targetTexture;
+      float scale = 1.f;
     };
 
     void decodeAndAddOpacity(
@@ -156,6 +157,9 @@ namespace dxvk {
     static void processGeometryBuffers(const RasterGeometry& input, RaytraceGeometry& output);
     static size_t computeOptimalVertexStride(const RasterGeometry& input);
     static void cacheVertexDataOnGPU(const Rc<DxvkContext>& ctx, const RasterGeometry& input, RaytraceGeometry& output);
+    
+    // Calculate the maximum UV tile size (i.e. minimum UV density) of a draw call.
+    static float computeMaxUVTileSize(const RasterGeometry& input, const Matrix4& objectToWorld);
 
     /**
      * \brief Execute a compute shader to generate a triangle list from arbitrary topologies

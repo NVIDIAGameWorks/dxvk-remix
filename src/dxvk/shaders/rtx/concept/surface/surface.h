@@ -127,6 +127,8 @@ struct Surface
   uint32_t objectPickingValue;
 
   uint8_t decalSortOrder;
+  
+  float displaceIn;
 };
 
 // Note: Minimal version of typical Surface Interaction for transmission across passes.
