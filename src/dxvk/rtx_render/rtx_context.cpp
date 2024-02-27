@@ -633,8 +633,9 @@ namespace dxvk {
     Metrics::log(Metric::sys_memory_usage, static_cast<float>(sysUsageMib)); // In MB
   }
 
-  void RtxContext::setConstantBuffers(const uint32_t vsFixedFunctionConstants, Rc<DxvkBuffer> vertexCaptureCB) {
+  void RtxContext::setConstantBuffers(const uint32_t vsFixedFunctionConstants, const uint32_t psSharedStateConstants, Rc<DxvkBuffer> vertexCaptureCB) {
     m_rtState.vsFixedFunctionCB = m_rc[vsFixedFunctionConstants].bufferSlice.buffer();
+    m_rtState.psSharedStateCB = m_rc[psSharedStateConstants].bufferSlice.buffer();
     m_rtState.vertexCaptureCB = vertexCaptureCB;
   }
 
@@ -1780,11 +1781,17 @@ namespace dxvk {
     return *static_cast<D3D9RtxVertexCaptureData*>(slice.mapPtr);
   }
 
-  D3D9FixedFunctionVS& RtxContext::allocAndMapFixedFunctionConstantBuffer() {
+  D3D9FixedFunctionVS& RtxContext::allocAndMapFixedFunctionVSConstantBuffer() {
     DxvkBufferSliceHandle slice = m_rtState.vsFixedFunctionCB->allocSlice();
     invalidateBuffer(m_rtState.vsFixedFunctionCB, slice);
 
     return *static_cast<D3D9FixedFunctionVS*>(slice.mapPtr);
+  }
+  D3D9SharedPS& RtxContext::allocAndMapPSSharedStateConstantBuffer() {
+    DxvkBufferSliceHandle slice = m_rtState.psSharedStateCB->allocSlice();
+    invalidateBuffer(m_rtState.psSharedStateCB, slice);
+
+    return *static_cast<D3D9SharedPS*>(slice.mapPtr);
   }
 
   void RtxContext::rasterizeToSkyMatte(const DrawParameters& params, float minZ, float maxZ) {
@@ -1959,7 +1966,7 @@ namespace dxvk {
         newState.customWorldToProjection = proj * view;
       } else {
         // Push new state to the fixed function constants
-        D3D9FixedFunctionVS& newState = allocAndMapFixedFunctionConstantBuffer();
+        D3D9FixedFunctionVS& newState = allocAndMapFixedFunctionVSConstantBuffer();
         newState = prevCB.fixedFunction;
 
         // Create cube plane projection
@@ -2001,7 +2008,7 @@ namespace dxvk {
     if (drawCallState.usesVertexShader) {
       allocAndMapVertexCaptureConstantBuffer() = prevCB.programmablePipeline;
     } else {
-      allocAndMapFixedFunctionConstantBuffer() = prevCB.fixedFunction;
+      allocAndMapFixedFunctionVSConstantBuffer() = prevCB.fixedFunction;
     }
   }
 

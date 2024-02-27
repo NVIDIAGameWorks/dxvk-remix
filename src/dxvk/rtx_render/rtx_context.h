@@ -42,6 +42,7 @@ namespace dxvk {
   struct ExternalDrawState;
 
   struct D3D9RtxVertexCaptureData;
+  struct D3D9SharedPS;
   
   struct DrawParameters {
     uint32_t vertexCount = 0;
@@ -94,9 +95,10 @@ namespace dxvk {
       * \brief Set D3D9 specific constant buffers
       *
       * \param [in] vsFixedFunctionConstants: resource idx of the constant buffer for FF vertex shaders
+      * \param [in] psFixedFunctionConstants: resource idx of the constant buffer for FF pixel shaders
       * \param [in] vertexCaptureCB: constant buffer for vertex capture
       */
-    void setConstantBuffers(const uint32_t vsFixedFunctionConstants, Rc<DxvkBuffer> vertexCaptureCB);
+    void setConstantBuffers(const uint32_t vsFixedFunctionConstants, const uint32_t psFixedFunctionConstants, Rc<DxvkBuffer> vertexCaptureCB);
 
     /**
       * \brief Adds a batch of lights to the scene context
@@ -129,7 +131,8 @@ namespace dxvk {
                                           const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent);
 
     D3D9RtxVertexCaptureData& allocAndMapVertexCaptureConstantBuffer();
-    D3D9FixedFunctionVS& allocAndMapFixedFunctionConstantBuffer();
+    D3D9FixedFunctionVS& allocAndMapFixedFunctionVSConstantBuffer();
+    D3D9SharedPS& allocAndMapPSSharedStateConstantBuffer();
 
     static bool checkIsShaderExecutionReorderingSupported(DxvkDevice& device);
 

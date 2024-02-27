@@ -39,5 +39,6 @@ struct DecodeAndAddOpacityArgs {
   float2 rcpResolution;
       
   float normalIntensity;
+  float scale;
   ReplacementMaterialTextureType::Enum textureType;
 };

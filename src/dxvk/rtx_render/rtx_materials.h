@@ -200,6 +200,8 @@ struct RtSurface {
     textureSpritesheetData |= (static_cast<uint32_t>(spriteSheetRows) << 0);
     textureSpritesheetData |= (static_cast<uint32_t>(spriteSheetCols) << 8);
     textureSpritesheetData |= (static_cast<uint32_t>(spriteSheetFPS) << 16);
+    // pack decalSortOrder into data13.x's last 8 bits.
+    textureSpritesheetData |= (static_cast<uint32_t>(decalSortOrder) << 24);
 
     writeGPUHelper(data, offset, textureSpritesheetData);
 
@@ -224,10 +226,12 @@ struct RtSurface {
 
     writeGPUHelper(data, offset, clipPlane);
 
-    writeGPUHelperExplicit<1>(data, offset, decalSortOrder);
+    float displaceInCombined = displaceIn * getDisplacementFactor();
+    assert(displaceInCombined <= FLOAT16_MAX);
+    writeGPUHelper(data, offset, glm::packHalf1x16(displaceInCombined));
 
-    // 15 bytes padding
-    writeGPUPadding<15>(data, offset);
+    // 14 bytes padding
+    writeGPUPadding<14>(data, offset);
 
     assert(offset - oldOffset == kSurfaceGPUSize);
   }
@@ -321,6 +325,8 @@ struct RtSurface {
   XXH64_hash_t associatedGeometryHash; // NOTE: This is used for the debug view
   uint32_t objectPickingValue = 0; // NOTE: a value to fill GBUFFER_BINDING_PRIMARY_OBJECT_PICKING_OUTPUT
   uint32_t decalSortOrder = 0; // see: InstanceManager::m_decalSortOrderCounter
+
+  float displaceIn = 0.f;
 };
 
 // Shared Material Defaults/Limits

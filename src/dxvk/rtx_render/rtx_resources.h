@@ -425,7 +425,8 @@ namespace dxvk
     static Resource createImageResource(Rc<DxvkContext>& ctx, const char *name, const VkExtent3D& extent, const VkFormat format,
                                         const uint32_t numLayers = 1, const VkImageType imageType = VK_IMAGE_TYPE_2D,
                                         const VkImageViewType imageViewType = VK_IMAGE_VIEW_TYPE_2D,
-                                        const VkImageCreateFlags imageCreateFlags = 0, bool isColorAttachment = false);
+                                        const VkImageCreateFlags imageCreateFlags = 0, bool isColorAttachment = false,
+                                        const VkClearColorValue clearValue = { 0.0f, 0.0f, 0.0f, 0.0f });
     
     static MipMapResource createMipmapResource(Rc<DxvkContext> ctx, const VkExtent3D& extend, VkFormat format, int mipLevel, const char* name);
 
