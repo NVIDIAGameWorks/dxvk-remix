@@ -26,12 +26,12 @@
 
 #define ScopedGpuProfileZone(ctx, name) \
         ScopedCpuProfileZoneN(name); \
-        TracyVkZone(ctx->getDevice()->queues().graphics.tracyCtx, ctx->getCmdBuffer(DxvkCmdBuffer::ExecBuffer), name); \
+        TracyVkZone((ctx)->getDevice()->queues().graphics.tracyCtx, (ctx)->getCmdBuffer(DxvkCmdBuffer::ExecBuffer), name); \
         __ScopedAnnotation __scopedAnnotation(ctx, name)
 
 #define ScopedGpuProfileZoneQ(device, cmdbuf, queue, name) \
         ScopedCpuProfileZoneN(name); \
-        TracyVkZone(device->queues().queue.tracyCtx, cmdbuf, name); \
+        TracyVkZone((device)->queues().queue.tracyCtx, cmdbuf, name); \
         __ScopedQueueAnnotation __scopedQueueAnnotation(device, cmdbuf, name)
 
 #define ScopedGpuProfileZone_Present(device, cmdbuf, name) \
@@ -43,11 +43,11 @@
   // Note: *Z variants take a C-style null-terminated string, normal variants take something std::string-esque with a data and length member.
   #define ScopedCpuProfileZoneDynamic(name) \
           ScopedCpuProfileZone(); \
-          ZoneText(name.data(), name.length());
+          ZoneText((name).data(), (name).length());
   #define ScopedGpuProfileZoneDynamicZ(ctx, name) \
           ScopedCpuProfileZone(); \
           ZoneText(name, std::strlen(name)); \
-          TracyVkZoneTransient(ctx->getDevice()->queues().graphics.tracyCtx, TracyConcat(__tracy_gpu_source_location,__LINE__), ctx->getCmdBuffer(DxvkCmdBuffer::ExecBuffer), name, true); \
+          TracyVkZoneTransient((ctx)->getDevice()->queues().graphics.tracyCtx, TracyConcat(__tracy_gpu_source_location,__LINE__), (ctx)->getCmdBuffer(DxvkCmdBuffer::ExecBuffer), name, true); \
           __ScopedAnnotation __scopedAnnotation(ctx, name)
 #else
   #define ScopedCpuProfileZoneDynamic(ctx, name)

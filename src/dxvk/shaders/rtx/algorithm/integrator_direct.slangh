@@ -123,35 +123,42 @@ void calculateRussianRouletteOnFirstBounce(
   inout float16_t firstSampledSolidAnglePdf) 
 {
   if (!(cb.enableRussianRoulette && cb.pathMinBounces == 0))
+  {
     return;
+  }
 
-  float continueProbability = 
+  // Russian Roulette
+  // Note: This logic will conditionally terminate paths based on the effective throughput, allowing for
+  // paths which contribute little to the final image to be shorter while paths which are more important
+  // are allowed to be longer.
+
+  float continueProbability =
     clamp(calcBt709Luminance(throughput), 
           cb.russianRoulette1stBounceMinContinueProbability,
           cb.russianRoulette1stBounceMaxContinueProbability);
 
   const float continueSample = getNextSampleBlueNoise(randomState);
-
-  // Note: < used to ensure path never continues if the probability is 0 (and to avoid NaNs in the
+  
+  // Note: <= used to ensure path never continues if the probability is 0 (and to avoid NaNs in the
   // throughput when the probability is divided into it).
-  const bool continueResult = continueSample < continueProbability;
+  bool terminate = continueProbability <= continueSample;
 
-  // Note: Factor the probability of continuing the path into the throughput. This causes odd brightness
-  // in denoising when the continue probability is very low, but this math has been validated to be
-  // correct as far as I can tell.
-  if (continueResult)
+  if (terminate)
   {
+    // Denote discarded paths with 0 throughput
+    throughput = 0;
+  }
+  else
+  {  
+    // Note: Factor the probability of continuing the path into the throughput. This causes odd brightness
+    // in denoising when the continue probability is very low, but this math has been validated to be
+    // correct as far as I can tell.
     throughput *= 1.0f / continueProbability;
 
     // Multiply RR probability into the first sampled solid angle pdf as well so that RR probability carries
     // over into calculateReSTIRGIRadianceFactor() in indirect pass
     firstSampledSolidAnglePdf *= float16_t(continueProbability);
   }
-  else 
-  {
-    // Denote discarded paths with 0 throughput
-    throughput = 0;
-  } 
 }
 
 // Samples an indirect ray at ray path's first bounce

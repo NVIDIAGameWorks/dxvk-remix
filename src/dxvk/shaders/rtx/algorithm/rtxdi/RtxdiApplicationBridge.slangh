@@ -1,5 +1,5 @@
 /***************************************************************************
- # Copyright (c) 2020-2023, NVIDIA CORPORATION.  All rights reserved.
+ # Copyright (c) 2020-2024, NVIDIA CORPORATION.  All rights reserved.
  #
  # NVIDIA CORPORATION and its licensors retain all intellectual property
  # and proprietary rights in and to this software, related documentation
@@ -355,7 +355,7 @@ float RAB_GetLightSampleTargetPdfForSurface(RAB_LightSample lightSample, RAB_Sur
 
   // Need to compute the transmission pdf if the ray interact with SSS surface
   if (dot(L, surface.minimalSurfaceInteraction.triangleNormal) <= float16_t(0) &&
-      (!cb.thinOpaqueEnable || !isSubsurfaceMaterial(surface.opaqueSurfaceMaterialInteraction)))
+      (!cb.enableThinOpaque || !isSubsurfaceMaterial(surface.opaqueSurfaceMaterialInteraction)))
   {
     return 0;
   }
@@ -385,7 +385,7 @@ SurfaceMaterialInteractionSplitWeight RAB_CalculateBRDF(vec3 L, RAB_Surface surf
   weight.diffuseTransmissionWeight = f16vec3(0);
 
   if (dot(L, surface.minimalSurfaceInteraction.triangleNormal) <= float16_t(0) &&
-      (!cb.thinOpaqueEnable || !isSubsurfaceMaterial(surface.opaqueSurfaceMaterialInteraction)))
+      (!cb.enableThinOpaque || !isSubsurfaceMaterial(surface.opaqueSurfaceMaterialInteraction)))
   {
     return weight;
   }
@@ -401,7 +401,7 @@ float RAB_GetGITargetPdfForSurface(vec3 radiance, vec3 position, RAB_Surface sur
 
   if ((dot(L, surface.minimalSurfaceInteraction.triangleNormal) <= float16_t(0) ||
        dot(L, surface.opaqueSurfaceMaterialInteraction.shadingNormal) <= float16_t(0)) &&
-      (!cb.thinOpaqueEnable || !isSubsurfaceMaterial(surface.opaqueSurfaceMaterialInteraction)))
+      (!cb.enableThinOpaque || !isSubsurfaceMaterial(surface.opaqueSurfaceMaterialInteraction)))
   {
     return 0;
   }
