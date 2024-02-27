@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -439,17 +439,8 @@ namespace dxvk {
         // Volumetric Lighting
         dispatchVolumetrics(rtOutput);
         
-        // Gbuffer Raytracing
-        m_common->metaPathtracerGbuffer().dispatch(this, rtOutput);
-
-        // RTXDI
-        m_common->metaRtxdiRayQuery().dispatch(this, rtOutput);
-
-        // NEE Cache
-        dispatchNeeCache(rtOutput);
-        
-        // Integration Raytracing
-        dispatchIntegrate(rtOutput);
+        // Path Tracing
+        dispatchPathTracing(rtOutput);
 
         m_common->metaRtxdiRayQuery().dispatchConfidence(this, rtOutput);
 
@@ -869,7 +860,7 @@ namespace dxvk {
 
     constants.terrainArgs = getSceneManager().getTerrainBaker().getTerrainArgs();
 
-    constants.thinOpaqueEnable = RtxOptions::SubsurfaceScattering::enableThinOpaque();
+    constants.enableThinOpaque = RtxOptions::SubsurfaceScattering::enableThinOpaque();
 
     auto& restirGI = m_common->metaReSTIRGIRayQuery();
     constants.enableReSTIRGI = restirGI.shouldDispatch();
@@ -1009,7 +1000,7 @@ namespace dxvk {
 
       writeToBuffer(cb, 0, sizeof(constants), &constants);
 
-      m_cmd->trackResource<DxvkAccess::Read>(cb);
+      m_cmd->trackResource<DxvkAccess::Write>(cb);
     }
   }
 
@@ -1119,6 +1110,21 @@ namespace dxvk {
 
     m_common->metaPathtracerIntegrateIndirect().dispatch(this, rtOutput);
     m_common->metaPathtracerIntegrateIndirect().dispatchNEE(this, rtOutput);
+  }
+
+  void RtxContext::dispatchPathTracing(const Resources::RaytracingOutput& rtOutput) {
+
+    // Gbuffer Raytracing
+    m_common->metaPathtracerGbuffer().dispatch(this, rtOutput);
+
+    // RTXDI
+    m_common->metaRtxdiRayQuery().dispatch(this, rtOutput);
+
+    // NEE Cache
+    dispatchNeeCache(rtOutput);
+
+    // Integration Raytracing
+    dispatchIntegrate(rtOutput);
   }
   
   void RtxContext::dispatchDemodulate(const Resources::RaytracingOutput& rtOutput) {

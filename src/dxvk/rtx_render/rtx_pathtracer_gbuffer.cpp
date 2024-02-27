@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -190,6 +190,8 @@ namespace dxvk {
     ctx->bindResourceView(GBUFFER_BINDING_SKYPROBE, ctx->getResourceManager().getSkyProbe(ctx).view, nullptr);
     ctx->bindResourceSampler(GBUFFER_BINDING_SKYPROBE, linearClampSampler);
 
+    // Output resources
+
     ctx->bindResourceView(GBUFFER_BINDING_SHARED_FLAGS_OUTPUT, rtOutput.m_sharedFlags.view, nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_SHARED_RADIANCE_RG_OUTPUT, rtOutput.m_sharedRadianceRG.view, nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_SHARED_RADIANCE_B_OUTPUT, rtOutput.m_sharedRadianceB.view, nullptr);
@@ -250,7 +252,7 @@ namespace dxvk {
     ctx->bindResourceView(GBUFFER_BINDING_TRANSMISSION_PSR_DATA_STORAGE_2, rtOutput.m_gbufferPSRData[5].view(Resources::AccessType::Write), nullptr);
     ctx->bindResourceView(GBUFFER_BINDING_TRANSMISSION_PSR_DATA_STORAGE_3, rtOutput.m_gbufferPSRData[6].view(Resources::AccessType::Write), nullptr);
 
-    auto rayDims = rtOutput.m_compositeOutputExtent;
+    const VkExtent3D& rayDims = rtOutput.m_compositeOutputExtent;
 
     const bool serEnabled = RtxOptions::Get()->isShaderExecutionReorderingInPathtracerGbufferEnabled();
     const bool ommEnabled = RtxOptions::Get()->getEnableOpacityMicromap();
@@ -350,8 +352,9 @@ namespace dxvk {
         shaders.addGeneralShader(GET_SHADER_VARIANT(VK_SHADER_STAGE_RAYGEN_BIT_KHR, GbufferRayGenShader, gbuffer_rayquery_raygen));
         shaders.debugName = "GBuffer RayQuery (RGS)";
       }
-    }
-    else {
+    } else {  // TraceRay
+
+      // PSR RayGen
       if (isPSRPass) {
         if (serEnabled) {
           shaders.addGeneralShader(GET_SHADER_VARIANT(VK_SHADER_STAGE_RAYGEN_BIT_KHR, GbufferRayGenShader, gbuffer_psr_raygen_ser));
@@ -361,6 +364,7 @@ namespace dxvk {
 
         shaders.addGeneralShader(GET_SHADER_VARIANT(VK_SHADER_STAGE_MISS_BIT_KHR, GbufferMissShader, gbuffer_psr_miss));
 
+        // HitGroup
         if (includePortals) {
           shaders.addHitGroup(GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, GbufferClosestHitShader, gbuffer_psr_material_rayportal_closestHit), nullptr, nullptr);
         } else {
@@ -368,8 +372,7 @@ namespace dxvk {
         }
 
         shaders.debugName = "GBuffer PSR TraceRay (RGS)";
-      }
-      else {
+      } else {   // RayGen
         if (serEnabled) {
           shaders.addGeneralShader(GET_SHADER_VARIANT(VK_SHADER_STAGE_RAYGEN_BIT_KHR, GbufferRayGenShader, gbuffer_raygen_ser));
         } else {
@@ -378,6 +381,7 @@ namespace dxvk {
 
         shaders.addGeneralShader(GET_SHADER_VARIANT(VK_SHADER_STAGE_MISS_BIT_KHR, GbufferMissShader, gbuffer_miss));
 
+        // Hit group
         if (includePortals) {
           shaders.addHitGroup(GET_SHADER_VARIANT(VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR, GbufferClosestHitShader, gbuffer_material_rayportal_closestHit), nullptr, nullptr);
         } else {
@@ -388,8 +392,9 @@ namespace dxvk {
       }
     }
 
-    if (ommEnabled)
+    if (ommEnabled) {
       shaders.pipelineFlags |= VK_PIPELINE_CREATE_RAY_TRACING_OPACITY_MICROMAP_BIT_EXT;
+    }
 
     return shaders;
   }

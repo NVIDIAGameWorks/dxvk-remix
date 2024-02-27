@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -63,9 +63,11 @@ uint geometryFlagsEncode(GeometryFlags geometryFlags)
     encodedFlags, geometryFlags.firstSampledLobeIsSpecular ? (1 << 6) : 0);
   // 7 bit unused
   encodedFlags = packedFlagSet(
-    encodedFlags, geometryFlags.performPSTR ? (1 << 8) : 0);
+    encodedFlags, geometryFlags.performPSTR ? (1 << 7) : 0);
   encodedFlags = packedFlagSet(
-    encodedFlags, geometryFlags.performPSRR ? (1 << 9) : 0);
+    encodedFlags, geometryFlags.performPSRR ? (1 << 8) : 0);
+
+  // 2 bits unused
 
 #if OBJECT_MASK_ALL_DYNAMIC_NUMBER_OF_ACTIVE_BITS > (16 - 12)
   "There is not enough bits in the encoded geometry flags for dynamic object mask."
@@ -98,11 +100,10 @@ GeometryFlags geometryFlagsDecode(uint16_t encodedFlags)
 
   geometryFlags.insideMedium = packedFlagGet(encodedFlags, (1 << 5));
   geometryFlags.firstSampledLobeIsSpecular = packedFlagGet(encodedFlags, (1 << 6));
-  geometryFlags.performPSTR = packedFlagGet(encodedFlags, (1 << 8));
-  geometryFlags.performPSRR = packedFlagGet(encodedFlags, (1 << 9));
-
+  geometryFlags.performPSTR = packedFlagGet(encodedFlags, (1 << 7));
+  geometryFlags.performPSRR = packedFlagGet(encodedFlags, (1 << 8));
+  
   geometryFlags.objectMask = ((encodedFlags >> 11) << OBJECT_MASK_ALL_DYNAMIC_FIRST_ACTIVE_BIT_OFFSET) & OBJECT_MASK_ALL_DYNAMIC;
-
 
   return geometryFlags;
 }
