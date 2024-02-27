@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -96,8 +96,7 @@
 
 #define GBUFFER_BINDING_PRIMARY_OBJECT_PICKING_OUTPUT                           96
 
-#define GBUFFER_MIN_BINDING                         GBUFFER_BINDING_SKYMATTE
-#define GBUFFER_MAX_BINDING                         GBUFFER_BINDING_PRIMARY_OBJECT_PICKING_OUTPUT
+#define GBUFFER_MIN_BINDING                             GBUFFER_BINDING_LINEAR_WRAP_SAMPLER
 
 #if GBUFFER_MIN_BINDING <= COMMON_MAX_BINDING
 #error "Increase the base index of G-buffer bindings to avoid overlap with common bindings!"

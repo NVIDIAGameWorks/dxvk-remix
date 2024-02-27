@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -28,7 +28,7 @@
 
 // Shared Inputs
 
-layout(binding = INTEGRATE_BINDING_LINEAR_WRAP_SAMPLER)
+layout(binding = INTEGRATE_INDIRECT_BINDING_LINEAR_WRAP_SAMPLER)
 SamplerState LinearWrapSampler;
 
 layout(binding = INTEGRATE_INDIRECT_BINDING_SKYPROBE)
