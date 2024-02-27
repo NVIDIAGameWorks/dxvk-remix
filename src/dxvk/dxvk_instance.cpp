@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -66,7 +66,7 @@ namespace dxvk {
       ".*? MessageID = 0x534c50ad .*?",
 
       "^.*?Validation Error: .*? You are adding vk.*? to VkCommandBuffer 0x[0-9a-fA-F]+.*? that is invalid because bound Vk[a-zA-Z0-9]+ 0x[0-9a-fA-F]+.*? was destroyed(.*?)?$",
-
+// NV-DXVK start:
       // NV SER Extension is not supported by VL
       ".*?SPIR-V module not valid: Invalid capability operand: 5383$",
       ".*?vkCreateShaderModule..: A SPIR-V Capability .Unhandled OpCapability. was declared that is not supported by Vulkan. The Vulkan spec states: pCode must not declare any capability that is not supported by the API, as described by the Capabilities section of the SPIR-V Environment appendix.*?",
@@ -80,12 +80,25 @@ namespace dxvk {
 
       // cmdResetQuery has reset commented out since it hits an AV on initial reset - need to update dxvk that handles resets differently
       ".*? After query pool creation, each query must be reset before it is used. Queries must also be reset between uses.$",
-      
+
       // VL bug: it thinks we're using VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT when we're not
       ".*? MessageID = 0x769aa5a9 .*?",
 
       // VL does not know about VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_OPTICAL_FLOW_FEATURES_NV
       ".*? MessageID = 0x901f59ec .*?\\(1000464000\\).*?",
+
+      // REMIX-2772
+      ".*? vkCmdTraceRaysKHR\\(\\): .*? doesn't set up VK_DYNAMIC_STATE_VIEWPORT\\|VK_DYNAMIC_STATE_SCISSOR\\|VK_DYNAMIC_STATE_STENCIL_REFERENCE, "
+      "but it calls the related dynamic state setting commands\\. The Vulkan spec states: If a pipeline is bound to the pipeline bind point used by this command, "
+      "there must not have been any calls to dynamic state setting commands for any state not specified as dynamic in the VkPipeline object bound to the pipeline "
+      "bind point used by this command, since that pipeline was bound.*?$",
+
+      // REMIX-2771
+      ".*? vkCmdCopyImage\\(\\): srcImage.*? was created with VK_IMAGE_USAGE_TRANSFER_DST_BIT\\|VK_IMAGE_USAGE_SAMPLED_BIT\\|VK_IMAGE_USAGE_STORAGE_BIT "
+      "but requires VK_IMAGE_USAGE_TRANSFER_SRC_BIT\\. The Vulkan spec states: If the aspect member of any element of pRegions includes any flag other than "
+      "VK_IMAGE_ASPECT_STENCIL_BIT or srcImage was not created with separate stencil usage, VK_IMAGE_USAGE_TRANSFER_SRC_BIT must have been included in the "
+      "VkImageCreateInfo::usage used to create srcImage.*?$",
+// NV-DXVK end
     };
 
     for(auto& exp : ignoredErrors) {
@@ -132,7 +145,8 @@ namespace dxvk {
 
         Logger::err(msgStr);
       } else {
-        Logger::warn(str::format("(waived error) ", msgStr));
+        // Uncomment to see the waived errors
+        // Logger::warn(str::format("(waived error) ", msgStr));
       }
     } else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
       if (messageTypes & VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT) {

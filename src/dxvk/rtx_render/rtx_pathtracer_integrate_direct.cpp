@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -21,7 +21,7 @@
 */
 #include "rtx_pathtracer_integrate_direct.h"
 #include "dxvk_device.h"
-#include "rtx_render/rtx_shader_manager.h"
+#include "rtx_shader_manager.h"
 
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/integrate/integrate_direct_binding_indices.h"
@@ -110,7 +110,9 @@ namespace dxvk {
     pipelineManager.createComputePipeline(shaders);
   }
 
-  void DxvkPathtracerIntegrateDirect::dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
+  void DxvkPathtracerIntegrateDirect::dispatch(
+    RtxContext* ctx, 
+    const Resources::RaytracingOutput& rtOutput) {
     ScopedGpuProfileZone(ctx, "Integrate Direct Raytracing");
 
     // Bind resources
@@ -121,6 +123,8 @@ namespace dxvk {
 
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SKYPROBE, ctx->getResourceManager().getSkyProbe(ctx).view, nullptr);
     ctx->bindResourceSampler(INTEGRATE_DIRECT_BINDING_SKYPROBE, linearSampler);
+
+    // Inputs 
 
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_INTEGRATION_SURFACE_PDF_INPUT, rtOutput.m_sharedIntegrationSurfacePdf.view(Resources::AccessType::Read), nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_MATERIAL_DATA0_INPUT, rtOutput.m_sharedMaterialData0.view, nullptr);
@@ -150,6 +154,8 @@ namespace dxvk {
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_PRIMARY_BASE_REFLECTIVITY_INPUT_OUTPUT, rtOutput.m_primaryBaseReflectivity.view(Resources::AccessType::ReadWrite), nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SECONDARY_BASE_REFLECTIVITY_INPUT_OUTPUT, rtOutput.m_secondaryBaseReflectivity.view(Resources::AccessType::ReadWrite), nullptr);
 
+    // Outputs
+
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_PRIMARY_DIRECT_DIFFUSE_LOBE_RADIANCE_OUTPUT, rtOutput.m_primaryDirectDiffuseRadiance.view(Resources::AccessType::Write), nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_PRIMARY_DIRECT_SPECULAR_LOBE_RADIANCE_OUTPUT, rtOutput.m_primaryDirectSpecularRadiance.view(Resources::AccessType::Write), nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SECONDARY_COMBINED_DIFFUSE_LOBE_RADIANCE_OUTPUT, rtOutput.m_secondaryCombinedDiffuseRadiance.view(Resources::AccessType::Write), nullptr);
@@ -168,7 +174,7 @@ namespace dxvk {
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SECONDARY_POSITION_ERROR_INPUT, rtOutput.m_secondaryPositionError.view(Resources::AccessType::Read), nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_INDIRECT_FIRST_SAMPLED_LOBE_DATA_OUTPUT, rtOutput.m_indirectFirstSampledLobeData.view(Resources::AccessType::Write), nullptr);
 
-    const auto rayDims = rtOutput.m_compositeOutputExtent;
+    const VkExtent3D& rayDims = rtOutput.m_compositeOutputExtent;
 
     const bool ommEnabled = RtxOptions::Get()->getEnableOpacityMicromap();
 
@@ -188,19 +194,21 @@ namespace dxvk {
     }
   }
 
-  DxvkRaytracingPipelineShaders DxvkPathtracerIntegrateDirect::getPipelineShaders(const bool useRayQuery,
-                                                                                  const bool ommEnabled) {
+  DxvkRaytracingPipelineShaders DxvkPathtracerIntegrateDirect::getPipelineShaders(
+    const bool useRayQuery,
+    const bool ommEnabled) {
 
     DxvkRaytracingPipelineShaders shaders;
     if (useRayQuery) {
-      shaders.addGeneralShader(GET_SHADER_VARIANT(VK_SHADER_STAGE_RAYGEN_BIT_KHR, IntegrateDirectRayGenShader, integrate_direct_rayquery_raygen));
       shaders.debugName = "Integrate Direct RayQuery (RGS)";
+      shaders.addGeneralShader(GET_SHADER_VARIANT(VK_SHADER_STAGE_RAYGEN_BIT_KHR, IntegrateDirectRayGenShader, integrate_direct_rayquery_raygen));
     } else {
       assert(!"TraceRay versions of the Integrate Direct pass are not implemented.");
     }
 
-    if (ommEnabled)
+    if (ommEnabled) {
       shaders.pipelineFlags |= VK_PIPELINE_CREATE_RAY_TRACING_OPACITY_MICROMAP_BIT_EXT;
+    }
 
     return shaders;
   }

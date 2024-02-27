@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -656,12 +656,15 @@ void integratePathVertex(
     // will always be extended to a bounce iteration of 1, so this is the minimum bounce
     // number that can be set.
     
+    pathState.continuePath = true;
+
     // Todo: Allow minimum/maximum bounce iterations to be set by ray tracing args.
     if (pathState.bounceIteration >= cb.pathMaxBounces)
     {
       pathState.continuePath = false;
     }
-    else if (pathState.bounceIteration >= cb.pathMinBounces)
+    else if (cb.enableRussianRoulette &&
+             pathState.bounceIteration >= cb.pathMinBounces)
     {
       // Russian Roulette
       // Note: This logic will conditionally terminate paths based on the effective throughput, allowing for
@@ -672,29 +675,21 @@ void integratePathVertex(
         calcBt709Luminance(pathState.throughput),
         cb.russianRouletteMaxContinueProbability);
       const float continueSample = getNextSampleBlueNoise(randomState);
-      // Note: < used to ensure path never continues if the probability is 0 (and to avoid NaNs in the
+      // Note: <= used to ensure path never continues if the probability is 0 (and to avoid NaNs in the
       // throughput when the probability is divided into it).
-      bool continueResult = continueSample < continueProbability;
-    
-      if (!cb.enableRussianRoulette)
-      {
-        continueProbability = 1.f;
-        continueResult = true;
-      }   
+      const bool terminate = continueProbability <= continueSample;
     
       // Note: Factor the probability of continuing the path into the throughput. This causes odd brightness
       // in denoising when the continue probability is very low, but this math has been validated to be
       // correct as far as I can tell.
-      if (continueResult)
+      if (terminate)
+      {
+        pathState.continuePath = false;
+      }
+      else
       {
         continuationThroughput /= continueProbability;
-      }
-    
-      pathState.continuePath = continueResult;
-    }
-    else
-    {
-      pathState.continuePath = true;
+      } 
     }
     
     // Steal samples from restir gi
@@ -944,12 +939,14 @@ void integrateIndirectPath(
   }
 
   if (firstSampledSolidAnglePdf == float16_t(0))
+  {
     pathState.continuePath = false;
+  }
 
   pathState.continuePath &= any(pathState.throughput > 0);
 
 #ifdef OPAQUE_MATERIAL_USE_POM
-  // set initial POM material and texcoords from textures.
+  // Set initial POM material and texcoords from textures.
   if (pathState.continuePath && cb.pomEnableIndirectLighting)
   {
     uint16_t primarySurfaceIndex = uint16_t(SharedSurfaceIndex[pixelCoordinate]);
@@ -969,7 +966,7 @@ void integrateIndirectPath(
             opaqueSurfaceMaterial.samplerIndex, SharedTextureCoord[pixelCoordinate], opaqueSurfaceMaterial.displaceIn
           );
 
-          pathState.throughput = pathState.throughput * pomThroughput;
+          accumulateThroughput(pathState, pomThroughput);
           pathState.continuePath = any(pathState.throughput > 0.001f);
           pathState.continueResolving = pathState.continuePath;
         }
@@ -1003,7 +1000,7 @@ void integrateIndirectPath(
 
     // Trace the secondary ray and integrate the secondary vertex
 
-    // if we're inside a solid translucent object, we can't use backface culling
+    // If we're inside a solid translucent object, we can't use backface culling
     // (otherwise we don't hit the other side of the object)
     uint flags = pathState.insideMedium ? 0 : RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
     flags |= RAY_FLAG_FORCE_OPAQUE;
