@@ -164,6 +164,7 @@ namespace dxvk {
 
   struct D3D9FixedFunctionPS {
     Vector4 textureFactor;
+    float textureScale;
   };
 
   enum D3D9SharedPSStages {
@@ -172,6 +173,9 @@ namespace dxvk {
     D3D9SharedPSStages_BumpEnvMat1,
     D3D9SharedPSStages_BumpEnvLScale,
     D3D9SharedPSStages_BumpEnvLOffset,
+    // NV-DXVK start: support height map scaling in terrain baking
+    D3D9SharedPSStages_TextureScale,
+    // NV-DXVK end
     D3D9SharedPSStages_Count,
   };
 
@@ -181,7 +185,10 @@ namespace dxvk {
       float BumpEnvMat[2][2];
       float BumpEnvLScale;
       float BumpEnvLOffset;
-      float Padding[2];
+    // NV-DXVK start: support height map scaling in terrain baking
+      float textureScale;
+      float Padding;
+    // NV-DXVK end
     } Stages[8];
   };
   

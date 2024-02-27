@@ -42,6 +42,7 @@ namespace dxvk
 class RtCamera;
 class RtInstance;
 struct D3D9FixedFunctionVS;
+struct D3D9FixedFunctionPS;
 
 using RasterBuffer = GeometryBuffer<Raster>;
 using RaytraceBuffer = GeometryBuffer<Raytrace>;
@@ -633,6 +634,7 @@ enum class RtxGeometryStatus {
 
 struct DxvkRaytracingInstanceState {
   Rc<DxvkBuffer> vsFixedFunctionCB;
+  Rc<DxvkBuffer> psSharedStateCB;
   Rc<DxvkBuffer> vertexCaptureCB;
 };
 

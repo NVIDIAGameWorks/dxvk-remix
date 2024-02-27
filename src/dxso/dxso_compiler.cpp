@@ -3184,7 +3184,16 @@ void DxsoCompiler::emitControlFlowGenericLoop(
           return m_module.opLoad(vec4Type, regPtr.id);
         };
 
-        return postprocessTextureReadForTerrainBaking(m_module, textureValue, loadAlbedoOpacityFnc, storeVec4ValueToRegisterFnc, loadVec4ValueFromRegisterFnc);
+        auto loadTextureScaleFnc = [&]() -> uint32_t {
+          // Get the texture scale for heightmaps.
+          uint32_t textureScaleOffset = m_module.constu32(D3D9SharedPSStages_Count * ctx.dst.id.num + D3D9SharedPSStages_TextureScale);
+          uint32_t textureScalePtr = m_module.opAccessChain(m_module.defPointerType(floatType, spv::StorageClassUniform),
+            m_ps.sharedState, 1, &textureScaleOffset);
+
+          return m_module.opLoad(floatType, textureScalePtr);
+        };
+
+        return postprocessTextureReadForTerrainBaking(m_module, textureValue, texcoordVar.id, getVectorTypeId(texcoordVar.type), loadTextureScaleFnc, loadAlbedoOpacityFnc, storeVec4ValueToRegisterFnc, loadVec4ValueFromRegisterFnc);
       };
 
       result.id = postprocessColorOutputTextureRead(result.id);

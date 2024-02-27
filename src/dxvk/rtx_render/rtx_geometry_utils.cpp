@@ -138,6 +138,87 @@ namespace dxvk {
     };
 
     PREWARM_SHADER_PIPELINE(InterleaveGeometryShader);
+
+    float calcUVTileSizeSqr(const Matrix4& objectToWorld, const uint8_t* pVertex, size_t vertexStride, const uint8_t* pTexcoord, size_t texcoordStride, uint32_t vertex1, uint32_t vertex2, uint32_t vertex3) {
+      const Vector4 p1 = objectToWorld * Vector4(*reinterpret_cast<const Vector3* const>(pVertex + vertexStride * vertex1), 1.f);
+      const Vector4 p2 = objectToWorld * Vector4(*reinterpret_cast<const Vector3* const>(pVertex + vertexStride * vertex2), 1.f);
+      const Vector4 p3 = objectToWorld * Vector4(*reinterpret_cast<const Vector3* const>(pVertex + vertexStride * vertex3), 1.f);
+
+      const Vector2& t1 = *reinterpret_cast<const Vector2* const>(pTexcoord + texcoordStride * vertex1);
+      const Vector2& t2 = *reinterpret_cast<const Vector2* const>(pTexcoord + texcoordStride * vertex2);
+      const Vector2& t3 = *reinterpret_cast<const Vector2* const>(pTexcoord + texcoordStride * vertex3);
+      // UV tile size (squared)
+      float len1Sqr = p1 != p2 ? lengthSqr(p1 - p2) / lengthSqr(t1 - t2) : 0.f;
+      float len2Sqr = p1 != p3 ? lengthSqr(p1 - p3) / lengthSqr(t1 - t3) : 0.f;
+      float len3Sqr = p2 != p3 ? lengthSqr(p2 - p3) / lengthSqr(t2 - t3) : 0.f;
+
+      return std::max(len1Sqr, std::max(len2Sqr, len3Sqr));
+    }
+
+
+    float calcMaxUvTileSizeSqrIndexed(uint32_t indexCount, const Matrix4& objectToWorld, const uint8_t* pVertex, size_t vertexStride, const uint8_t* pTexcoord, size_t texcoordStride, const void* pIndexData, size_t indexStride) {
+      float result = 0.f;
+      if (indexStride == 2) {
+        // 16 bit indices
+        const uint16_t* pIndex = static_cast<const uint16_t*>(pIndexData);
+        for (uint32_t i = 0; i < indexCount; i += 3) {
+          uint32_t vertex1 = pIndex[i];
+          uint32_t vertex2 = pIndex[i+1];
+          uint32_t vertex3 = pIndex[i+2];
+
+          result = std::max(result, calcUVTileSizeSqr(objectToWorld, pVertex, vertexStride, pTexcoord, texcoordStride, vertex1, vertex2, vertex3));
+        }
+      } else if (indexStride == 4) {
+        // 32 bit indices
+        const uint32_t* pIndex = static_cast<const uint32_t*>(pIndexData);
+        for (uint32_t i = 0; i + 2 < indexCount; i += 3) {
+          uint32_t vertex1 = pIndex[i];
+          uint32_t vertex2 = pIndex[i+1];
+          uint32_t vertex3 = pIndex[i+2];
+
+          result = std::max(result, calcUVTileSizeSqr(objectToWorld, pVertex, vertexStride, pTexcoord, texcoordStride, vertex1, vertex2, vertex3));
+        }
+      } else {
+        ONCE(Logger::err("calcMaxUvTileSizeSqrIndexed: invalid index stride"));
+      }
+      return result;
+    }
+
+    float calcMaxUvTileSizeSqrTriangles(uint32_t vertexCount, const Matrix4& objectToWorld, const uint8_t* pVertex, size_t vertexStride, const uint8_t* pTexcoord, size_t texcoordStride) {
+      float result = 0.f;
+      for (uint32_t i = 0; i < vertexCount; i += 3) {
+        uint32_t vertex1 = i;
+        uint32_t vertex2 = i+1;
+        uint32_t vertex3 = i+2;
+
+        result = std::max(result, calcUVTileSizeSqr(objectToWorld, pVertex, vertexStride, pTexcoord, texcoordStride, vertex1, vertex2, vertex3));
+      }
+      return result;
+    }
+
+    float calcMaxUvTileSizeSqrTriangleStrip(uint32_t vertexCount, const Matrix4& objectToWorld, const uint8_t* pVertex, size_t vertexStride, const uint8_t* pTexcoord, size_t texcoordStride) {
+      float result = 0.f;
+      for (uint32_t i = 0; i + 2 < vertexCount; ++i) {
+        uint32_t vertex1 = i;
+        uint32_t vertex2 = i+1;
+        uint32_t vertex3 = i+2;
+
+        result = std::max(result, calcUVTileSizeSqr(objectToWorld, pVertex, vertexStride, pTexcoord, texcoordStride, vertex1, vertex2, vertex3));
+      }
+      return result;
+    }
+
+    float calcMaxUvTileSizeSqrTriangleFan(uint32_t vertexCount, const Matrix4& objectToWorld, const uint8_t* pVertex, size_t vertexStride, const uint8_t* pTexcoord, size_t texcoordStride) {
+      float result = 0.f;
+      uint32_t vertex1 = 0;
+      for (uint32_t i = 1; i + 1 < vertexCount; ++i) {
+        uint32_t vertex2 = i+1;
+        uint32_t vertex3 = i+2;
+
+        result = std::max(result, calcUVTileSizeSqr(objectToWorld, pVertex, vertexStride, pTexcoord, texcoordStride, vertex1, vertex2, vertex3));
+      }
+      return result;
+    }
   }
 
   RtxGeometryUtils::RtxGeometryUtils(DxvkDevice* device) : CommonDeviceObject(device) {
@@ -456,6 +537,7 @@ namespace dxvk {
       args.resolution = uint2(extent.width, extent.height);
       args.rcpResolution = float2(1.f / extent.width, 1.f / extent.height);
       args.normalIntensity = OpaqueMaterialOptions::normalIntensity();
+      args.scale = conversionInfo.scale;
 
       ctx->pushConstants(0, sizeof(args), &args);
 
@@ -759,5 +841,48 @@ namespace dxvk {
       output.color0Offset = offset;
       offset += sizeof(uint32_t);
     }
+  }
+
+  float RtxGeometryUtils::computeMaxUVTileSize(const RasterGeometry& input, const Matrix4& objectToWorld) {
+    ScopedCpuProfileZone();
+
+    const void* pVertexData = input.positionBuffer.mapPtr((size_t)input.positionBuffer.offsetFromSlice());
+    const uint32_t vertexCount = input.vertexCount;
+    const size_t vertexStride = input.positionBuffer.stride();
+    
+    const void* pTexcoordData = input.texcoordBuffer.mapPtr((size_t)input.texcoordBuffer.offsetFromSlice());
+    const size_t texcoordStride = input.texcoordBuffer.stride();
+
+    const void* pIndexData = input.indexBuffer.mapPtr((size_t)input.indexBuffer.offsetFromSlice());
+    const uint32_t indexCount = input.indexCount;
+    const size_t indexStride = input.indexBuffer.stride();
+
+    if (pVertexData == nullptr || pTexcoordData == nullptr) {
+      return NAN;
+    }
+
+    float maxUvTileSizeSqr = 0.f;
+    const uint8_t* pVertex = static_cast<const uint8_t*>(pVertexData);
+    const uint8_t* pTexcoord = static_cast<const uint8_t*>(pTexcoordData);
+    switch (input.topology) {
+    case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST:
+      if (input.indexCount > 0 && pIndexData != nullptr) {
+        maxUvTileSizeSqr = calcMaxUvTileSizeSqrIndexed(indexCount, objectToWorld, pVertex, vertexStride, pTexcoord, texcoordStride, pIndexData, indexStride);
+      } else {
+        maxUvTileSizeSqr = calcMaxUvTileSizeSqrTriangles(vertexCount, objectToWorld, pVertex, vertexStride, pTexcoord, texcoordStride);
+      }
+      break;
+    case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP:
+      maxUvTileSizeSqr = calcMaxUvTileSizeSqrTriangleStrip(vertexCount, objectToWorld, pVertex, vertexStride, pTexcoord, texcoordStride);
+      break;
+    case VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN:
+      maxUvTileSizeSqr = calcMaxUvTileSizeSqrTriangleFan(vertexCount, objectToWorld, pVertex, vertexStride, pTexcoord, texcoordStride);
+      break;
+    default:
+      ONCE(Logger::err("computeMaxUVTileSize: unsupported topology"));
+      return 0;
+    }
+
+    return std::sqrtf(maxUvTileSizeSqr);
   }
 }
