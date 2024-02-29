@@ -12,6 +12,8 @@
 #include <sstream>
 #include "../dxvk/imgui/dxvk_imgui.h"
 
+#include <charconv>
+
 namespace dxvk {
   D3D9CommonTexture::D3D9CommonTexture(
           D3D9DeviceEx*             pDevice,
@@ -335,7 +337,19 @@ namespace dxvk {
     }
     
     // NV-DXVK start: add debug names to VkImage objects
-    return m_device->GetDXVKDevice()->createImage(imageInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture, "D3D9 texture primary");
+    auto image = m_device->GetDXVKDevice()->createImage(imageInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppTexture, "D3D9 texture primary");
+    // Calculate hash for the render target textures
+    if (image->getHash() == kEmptyHash && IsRenderTarget()) {
+      static uint32_t renderTargetHashCounter = 0;
+      auto newHash = XXH3_64bits(&image->info().extent, sizeof(image->info().extent));
+      newHash = XXH3_64bits_withSeed(&renderTargetHashCounter, sizeof(uint32_t), newHash);
+      ++renderTargetHashCounter;
+      image->setHash(newHash);
+      char addressStr[20] = { 0 };
+      std::to_chars(std::begin(addressStr), std::end(addressStr), newHash, 16);
+      TRACE("newHash: ", addressStr);
+    }
+    return image;
     // NV-DXVK end
   }
 
