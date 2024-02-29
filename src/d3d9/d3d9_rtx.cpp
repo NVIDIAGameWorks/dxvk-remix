@@ -399,9 +399,10 @@ namespace dxvk {
     // Conditions: non-textured flood-fill draws into a small quad render target
     if (((d3d9State().textureStages[0][D3DTSS_COLOROP] == D3DTOP_SELECTARG1 && d3d9State().textureStages[0][D3DTSS_COLORARG1] != D3DTA_TEXTURE) ||
          (d3d9State().textureStages[0][D3DTSS_COLOROP] == D3DTOP_SELECTARG2 && d3d9State().textureStages[0][D3DTSS_COLORARG2] != D3DTA_TEXTURE))) {
-      auto rtExt = d3d9State().renderTargets[kRenderTargetIndex]->GetSurfaceExtent();
-      // If rt is a quad at least 4 times smaller than backbuffer it is likely a shadow mask
-      if (rtExt.width == rtExt.height && rtExt.width < m_activePresentParams.BackBufferWidth / 4) {
+      const auto& rtExt = d3d9State().renderTargets[kRenderTargetIndex]->GetSurfaceExtent();
+      // If rt is a quad at least 4 times smaller than backbuffer and the format is invalid format, then it is likely a shadow mask
+      if (rtExt.width == rtExt.height && rtExt.width < m_activePresentParams.BackBufferWidth / 4 &&
+          Resources::getFormatCompatibilityCategoryIndex(d3d9State().renderTargets[kRenderTargetIndex]->GetImageView(false)->imageInfo().format) == Resources::kInvalidFormatCompatibilityCategoryIndex) {
         ONCE(Logger::info("[RTX-Compatibility-Info] Skipped shadow mask drawcall."));
         return { RtxGeometryStatus::Ignored, false };
       }
