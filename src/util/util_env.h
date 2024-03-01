@@ -43,27 +43,27 @@ namespace dxvk::env {
    */
   std::string getEnvVar(const char* name);
 
+  // NV-DXVK start: get environment variable with a fallback
   /**
    * \brief Gets environment variable as a specified type
+   *
+   * NOTE: Generalization is deleted, and specific implementations
+   * are moved to .cpp, to prevent include of 'config/config.h',
+   * which in turn uses this header, 'util_env.h'.
    *
    * If parsing the string fails because it is either
      * invalid or if the option is not defined, this
      * method will return a fallback value. 
-   * Currently, this supports the types \c bool,
-   * \c int32_t, \c uint32_t, \c float, and \c std::string.
    * \tparam T Return value type
    * \param [in] name Name of the variable
    * \param [in] fallback Fallback value
    * \returns Parsed environment variable value
    */
   template<typename T>
-  T getEnvVar(const char* name, T fallback = T()) {
-    const std::string& value = getEnvVar(name);
-
-    T result = fallback;
-    Config::parseOptionValue(value, result);
-    return result;
-  }
+  T getEnvVar(const char* name, T fallback) = delete;
+  template<>
+  bool getEnvVar(const char* name, bool fallback);
+  // NV-DXVK end
 
   /**
    * \brief Checks whether a file name has a given extension

@@ -118,7 +118,7 @@ namespace ImGui {
   }
 
   // The value for width is arbitrary. But it looks nice.
-  void TextSeparator(char* text, float pre_width = 10.0f) {
+  void TextSeparator(const char* text, float pre_width = 10.0f) {
     ImGui::PreSeparator(pre_width);
     ImGui::Text(text);
     ImGui::SameLineSeparator();

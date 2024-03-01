@@ -9,7 +9,7 @@
 #include "../vulkan/vulkan_presenter.h"
 
 #include "dxvk_cmdlist.h"
-#include "rtx_camera.h"
+#include "rtx_render/rtx_camera.h"
 
 namespace dxvk {
   

@@ -25,50 +25,45 @@
 #include "rtx_options.h"
 
 namespace dxvk {
-  ImGui::ComboWithKey<nrd::Method> methodCombo = ImGui::ComboWithKey<nrd::Method>(
-    "Denoiser",
-    ImGui::ComboWithKey<nrd::Method>::ComboEntries { {
+  auto methodCombo = ImGui::ComboWithKey<nrd::Method>(
+    "Denoiser", {
         {nrd::Method::REBLUR_DIFFUSE_SPECULAR, "ReBLUR"},
         {nrd::Method::RELAX_DIFFUSE_SPECULAR, "ReLAX"},
         {nrd::Method::REFERENCE, "Reference"},
-    } });
+    });
 
-  ImGui::ComboWithKey<NrdSettings::ReblurSettingsPreset> reblurSettingsPresetCombo = 
+  auto reblurSettingsPresetCombo = 
     ImGui::ComboWithKey<NrdSettings::ReblurSettingsPreset>(
-      "Preset",
-      ImGui::ComboWithKey<NrdSettings::ReblurSettingsPreset>::ComboEntries{ {
+      "Preset", {
           {NrdSettings::ReblurSettingsPreset::Default, "Default"},
           {NrdSettings::ReblurSettingsPreset::Finetuned, "Finetuned"},
           {NrdSettings::ReblurSettingsPreset::RTXDISample, "RTXDI Sample"},
-      } });
+      } );
 
-  ImGui::ComboWithKey<NrdSettings::RelaxSettingsPreset> relaxSettingsPresetCombo =
+  auto relaxSettingsPresetCombo =
     ImGui::ComboWithKey<NrdSettings::RelaxSettingsPreset>(
-      "Preset",
-      ImGui::ComboWithKey<NrdSettings::RelaxSettingsPreset>::ComboEntries { {
+      "Preset", {
           {NrdSettings::RelaxSettingsPreset::Default, "Default"},
           {NrdSettings::RelaxSettingsPreset::Finetuned, "Finetuned"},
           {NrdSettings::RelaxSettingsPreset::FinetunedStable, "Finetuned (More Stable)"},
           {NrdSettings::RelaxSettingsPreset::RTXDISample, "RTXDI Sample"},
-      } });
+      });
 
-  ImGui::ComboWithKey<nrd::HitDistanceReconstructionMode> reblurHitTReconstructionModeCombo =
+  auto reblurHitTReconstructionModeCombo =
     ImGui::ComboWithKey<nrd::HitDistanceReconstructionMode>(
-      "Hit T Reconstruction Mode",
-      ImGui::ComboWithKey<nrd::HitDistanceReconstructionMode>::ComboEntries { {
+      "Hit T Reconstruction Mode", {
           {nrd::HitDistanceReconstructionMode::OFF, "Off"},
           {nrd::HitDistanceReconstructionMode::AREA_3X3, "Area 3x3"},
           {nrd::HitDistanceReconstructionMode::AREA_5X5, "Area 5x5"},
-      } });
+      });
 
-  ImGui::ComboWithKey<nrd::HitDistanceReconstructionMode> relaxHitTReconstructionModeCombo =
+  auto relaxHitTReconstructionModeCombo =
     ImGui::ComboWithKey<nrd::HitDistanceReconstructionMode>(
-      "Hit T Reconstruction Mode",
-      ImGui::ComboWithKey<nrd::HitDistanceReconstructionMode>::ComboEntries { {
+      "Hit T Reconstruction Mode", {
           {nrd::HitDistanceReconstructionMode::OFF, "Off"},
           {nrd::HitDistanceReconstructionMode::AREA_3X3, "Area 3x3"},
           {nrd::HitDistanceReconstructionMode::AREA_5X5, "Area 5x5"},
-      } });
+      });
 
   void setReblurPresetSettings(nrd::ReblurSettings& reblurSettings, NrdSettings::ReblurSettingsPreset preset, dxvk::DenoiserType type) {
     reblurSettings = nrd::ReblurSettings();

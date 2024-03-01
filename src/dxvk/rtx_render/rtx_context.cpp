@@ -35,6 +35,7 @@
 #include "rtx_opacity_micromap_manager.h"
 #include "rtx_asset_replacer.h"
 #include "rtx_terrain_baker.h"
+#include "rtx_texture_manager.h"
 
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/raytrace_args.h"

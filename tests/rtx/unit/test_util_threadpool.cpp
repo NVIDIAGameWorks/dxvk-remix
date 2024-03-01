@@ -29,6 +29,11 @@
 #include "../../../src/util/util_timer.h"
 #include "../../../src/tracy/Tracy.hpp"
 
+namespace dxvk {
+  // Note: Logger needed by some shared code used in this Unit Test.
+  Logger Logger::s_instance("test_util_threadpool.log");
+}
+
 using namespace dxvk;
 using namespace std;
 using namespace chrono;

@@ -19,7 +19,6 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
-#pragma once
 
 #include "rtx_terrain_baker.h"
 
@@ -29,6 +28,7 @@
 #include "rtx_imgui.h"
 #include "rtx_option.h"
 #include "rtx_texture.h"
+#include "rtx_texture_manager.h"
 
 #include "../d3d9/d3d9_state.h"
 #include "../d3d9/d3d9_spec_constants.h"
@@ -121,7 +121,7 @@ namespace dxvk {
     // Ensures a texture stays in VidMem
     auto trackAndFinalizeTexture = [&](TextureRef& texture) {
       uint32_t unusedTextureIndex;
-      sceneManager.trackTexture(ctx, texture, unusedTextureIndex, hasTexcoords, nullptr);
+      sceneManager.trackTexture(ctx, texture, unusedTextureIndex, hasTexcoords);
       // Force the full resolution promotion
       if (texture.isPromotable()) {
         texture.finalizePendingPromotion();

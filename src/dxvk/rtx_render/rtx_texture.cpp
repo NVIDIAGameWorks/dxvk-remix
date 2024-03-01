@@ -27,6 +27,7 @@
 #include "rtx_options.h"
 #include "dxvk_device.h"
 #include "rtx_io.h"
+#include "rtx_texture_manager.h"
 
 namespace dxvk {
 

@@ -327,7 +327,7 @@ namespace dxvk {
         const size_t imageHash = result;
 
         // See if we can find an existing transient from the pool
-        auto& transientResource = sharedPoolCopy.find(imageHash);
+        auto transientResource = sharedPoolCopy.find(imageHash);
 
         if (transientResource != sharedPoolCopy.end() && transientResource->second.lock()) {
           // Cache in this instance
@@ -881,10 +881,12 @@ namespace dxvk {
 
       auto* cameraTeleportDirectionInfo = sceneManager.getRayPortalManager().getCameraTeleportationRayPortalDirectionInfo();
 
-      if (cameraTeleportDirectionInfo && RtxOptions::Get()->isUseVirtualShadingNormalsForDenoisingEnabled())
+      if (cameraTeleportDirectionInfo && RtxOptions::Get()->isUseVirtualShadingNormalsForDenoisingEnabled()) {
         memcpy(commonSettings.worldPrevToWorldMatrix, &cameraTeleportDirectionInfo->portalToOpposingPortalDirection, sizeof(Matrix4));
-      else
-        memcpy(commonSettings.worldPrevToWorldMatrix, &Matrix4(), sizeof(Matrix4));
+      } else {
+        static const auto identity = Matrix4{};
+        memcpy(commonSettings.worldPrevToWorldMatrix, &identity, sizeof(Matrix4));
+      }
     }
   }
 

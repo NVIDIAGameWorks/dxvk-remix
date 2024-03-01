@@ -22,6 +22,9 @@
 #include <numeric>
 
 #include "util_env.h"
+// NV-DXVK start: get environment variable with a fallback
+#include "config/config.h"
+// NV-DXVK end
 
 #include "./com/com_include.h"
 
@@ -44,6 +47,17 @@ namespace dxvk::env {
 
     return str::fromws(result.data());
   }
+
+  // NV-DXVK start: get environment variable with a fallback
+  template<>
+  bool getEnvVar(const char* name, bool fallback) {
+    const std::string& value = getEnvVar(name);
+
+    bool result = fallback;
+    Config::parseOptionValue(value, result);
+    return result;
+  }
+  // NV-DXVK end
   
   DWORD getParentPID() {
     const DWORD pid = GetCurrentProcessId();
