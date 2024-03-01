@@ -330,8 +330,8 @@ SurfaceInteraction surfaceInteractionCreate(
     // Really the only reason to flip this normal is for double-sided geometry.  Do not flip based on view vector!
     const bool interpolatedNormalSameDirection = dot(interpolatedNormal, flippedTriangleNormal) >= float16_t(0.0);
     const f16vec3 flippedInterpolatedNormal = interpolatedNormalSameDirection ? interpolatedNormal : -interpolatedNormal;
-  
-    surfaceInteraction.interpolatedNormal = flippedInterpolatedNormal;
+
+    surfaceInteraction.interpolatedNormal = getBentNormal(surfaceInteraction.triangleNormal, flippedInterpolatedNormal, ray.direction);
   }
 
   // Compute motion
