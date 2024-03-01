@@ -89,8 +89,14 @@ namespace dxvk {
     ImGui::SameLine();
     static float commonButtonWidth = 0.f;
     if(ImGui::Button("Capture Scene", ImVec2(commonButtonWidth,0.f))) {
-      RtxOptions::Get()->m_captureInstances.getValue() = true;
-      ctx->getCommonObjects()->capturer()->triggerNewCapture();
+      if (this->m_stageNameInputBox.isStageNameValid()) {
+        RtxOptions::Get()->m_captureInstances.getValue() = true;
+        ctx->getCommonObjects()->capturer()->triggerNewCapture();
+        this->m_stageNameInputBox.m_isCaptureNameInvalid = false;
+      }
+      else {
+        this->m_stageNameInputBox.m_isCaptureNameInvalid = true;
+      }
     }
     const float firstButtonWidth = ImGui::GetItemRectSize().x;
     ImGui::Dummy(ImVec2());
@@ -102,6 +108,7 @@ namespace dxvk {
       ctx->getCommonObjects()->capturer()->triggerNewCapture();
     }
     commonButtonWidth = std::max(firstButtonWidth, ImGui::GetItemRectSize().x);
+    m_stageNameInputBox.validateStageName();
     m_progress.show(ctx);
   }
 
@@ -136,6 +143,16 @@ namespace dxvk {
     strncpy(&m_buf[0], defaultVal, strlen(defaultVal));
   }
 
+  void ImGuiCapture::StageNameInputBox::validateStageName() {
+    if (m_isCaptureNameInvalid) {
+      auto& instanceStageNameRtxOpt = RtxOptions::Get()->m_captureInstanceStageName;
+      std::string msg = "Invalid capture name detected. Please remove any invalid characters or use of any invalid keywords specified in the description as capture names to take capture.";
+      ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(255, 32, 0, 255));
+      ImGui::TextWrapped(msg.c_str());
+      ImGui::PopStyleColor();
+    }
+  }
+
   void ImGuiCapture::StageNameInputBox::update(const Rc<DxvkContext>& ctx) {
     if(m_focused) {
       setValue();
@@ -145,14 +162,46 @@ namespace dxvk {
     }
   }
   
+  bool ImGuiCapture::StageNameInputBox::isInvalidKeywordUsed(std::string name) { 
+    // To perform a case-insensitive compare
+    std::transform(name.begin(), name.end(), name.begin(), toupper);
+    for (const std::string& keyword : m_invalidKeywords) {
+      if (keyword == name) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  bool ImGuiCapture::StageNameInputBox::isStageNameValid() {
+    std::string name(m_buf);
+    m_previousCaptureName = name;
+    for (const char& curChar : m_invalidChars) {
+      if (name.find(curChar) != std::string::npos) {
+        return false;
+      }
+    }
+    std::size_t fileExtensionPos = name.find(".");
+    if (fileExtensionPos != std::string::npos) {
+      return isInvalidKeywordUsed(name.substr(0, fileExtensionPos));
+    }
+    else {
+      return isInvalidKeywordUsed(name);
+    }
+  }
+
   void ImGuiCapture::StageNameInputBox::setValue() {
     const auto& instanceStageNameRtxOpt = RtxOptions::Get()->m_captureInstanceStageName;
     const auto& timestampReplacementStr =
       RtxOptions::Get()->m_captureTimestampReplacement.getValue();
-    const std::string bufStr(m_buf);
+    std::string bufStr(m_buf);
+    // Avoid displaying error message when capture name is changed from previous capture
+    if (m_isCaptureNameInvalid && m_previousCaptureName != bufStr) {
+      m_isCaptureNameInvalid = false;
+    }
     if (bufStr.empty()) {
       instanceStageNameRtxOpt.getValue() = timestampReplacementStr + lss::ext::usd;
-    } else {
+    } else {    
       const auto usdExtPos =
         bufStr.find(lss::ext::usd, bufStr.length() - lss::ext::usda.length() - 1);
       const std::string ext = (usdExtPos == std::string::npos) ? lss::ext::usd : "";
@@ -187,8 +236,11 @@ namespace dxvk {
   void ImGuiCapture::StageNameInputBox::show(const Rc<DxvkContext>& ctx) {
     auto& instanceStageNameRtxOpt = RtxOptions::Get()->m_captureInstanceStageName;
     const auto toolTip = str::format(
-      instanceStageNameRtxOpt.getDescription(), '\n','\n',
-      instanceStageNameRtxOpt.getValue());
+      instanceStageNameRtxOpt.getDescription(), '\n', '\n',
+      instanceStageNameRtxOpt.getValue(), '\n', '\n', 
+      "Invalid chars: ",  m_invalidChars, '\n', '\n',
+      "Invalid keywords(case-insensitive): ", m_invalidKeywordDescription);
+
     ImGui::PushID(kImguiId);
     IMGUI_ADD_TOOLTIP(
       ImGui::InputText(" ", m_buf, kBufSize, ImGuiInputTextFlags_EnterReturnsTrue), toolTip.c_str());
