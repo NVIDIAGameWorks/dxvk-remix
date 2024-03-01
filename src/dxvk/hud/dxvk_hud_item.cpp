@@ -4,6 +4,7 @@
 #include <version.h>
 
 #include "rtx_render/rtx_options.h"
+#include "rtx_render/rtx_texture_manager.h"
 
 namespace dxvk::hud {
 

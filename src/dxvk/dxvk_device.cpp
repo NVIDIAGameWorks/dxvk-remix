@@ -23,6 +23,7 @@
 #include "dxvk_instance.h"
 #include "rtx_render/rtx_context.h"
 #include "dxvk_scoped_annotation.h"
+#include "rtx_render/rtx_texture_manager.h"
 
 
 namespace dxvk {
@@ -483,5 +484,74 @@ namespace dxvk {
     m_vkd->vkGetDeviceQueue(m_vkd->device(), family, index, &queue);
     return DxvkDeviceQueue { queue, family, index };
   }
-  
+
+  DxvkObjects::DxvkObjects(DxvkDevice* device)
+    : m_device(device),
+    m_memoryManager(device),
+    m_renderPassPool(device),
+    m_pipelineManager(device, &m_renderPassPool),
+    m_eventPool(device),
+    m_queryPool(device),
+    m_sceneManager(device),
+    m_rtResources(device),
+    m_rtInitializer(device),
+    m_textureManager { std::make_unique<RtxTextureManager>(device) },
+    m_imgui(device),
+    m_dummyResources(device),
+    m_volumeIntegrate(device),
+    m_volumeFilter(device),
+    m_volumePreintegrate(device),
+    m_pathtracerGbuffer(device),
+    m_rtxdiRayQuery(device),
+    m_restirgiRayQuery(device),
+    m_pathtracerIntegrateDirect(device),
+    m_pathtracerIntegrateIndirect(device),
+    m_demodulate(device),
+    m_neeCache(device),
+    m_primaryDirectLightDenoiser(device, DenoiserType::DirectLight),
+    m_primaryIndirectLightDenoiser(device, DenoiserType::IndirectLight),
+    m_primaryCombinedLightDenoiser(device, DenoiserType::DirectAndIndirectLight),
+    m_secondaryCombinedLightDenoiser(device, DenoiserType::Secondaries),
+    m_referenceDenoiser(device, DenoiserType::Reference),
+    m_ngxContext(device),
+    m_dlfg(device),
+    m_referenceDenoiserSecondLobe0(device, DenoiserType::Reference),
+    m_referenceDenoiserSecondLobe1(device, DenoiserType::Reference),
+    m_referenceDenoiserSecondLobe2(device, DenoiserType::Reference),
+    m_dlss(device),
+    m_nis(device),
+    m_taa(device),
+    m_composite(device),
+    m_debug_view(device),
+    m_autoExposure(device),
+    m_toneMapping(device),
+    m_localToneMapping(device),
+    m_bloom(device),
+    m_geometryUtils(device),
+    m_imageUtils(device),
+    m_postFx(device),
+    m_capturer(new GameCapturer(device, m_sceneManager, m_exporter.get())),
+    m_lastKnownWindowHandle((HWND) 0) { }
+
+  RtxTextureManager& DxvkObjects::getTextureManager() {
+    return *m_textureManager;
+  }
+
+  void DxvkObjects::onDestroy() {
+    getRtxInitializer().onDestroy();
+
+    metaGeometryUtils().onDestroy();
+    getSceneManager().onDestroy();
+    getTextureManager().onDestroy();
+
+    m_primaryDirectLightDenoiser.get().onDestroy();
+    m_primaryIndirectLightDenoiser.get().onDestroy();
+    m_primaryCombinedLightDenoiser.get().onDestroy();
+    m_secondaryCombinedLightDenoiser.get().onDestroy();
+    m_referenceDenoiser.get().onDestroy();
+    m_referenceDenoiserSecondLobe0.get().onDestroy();
+    m_referenceDenoiserSecondLobe1.get().onDestroy();
+    m_referenceDenoiserSecondLobe2.get().onDestroy();
+    m_dlfg.get().onDestroy();
+  }
 }

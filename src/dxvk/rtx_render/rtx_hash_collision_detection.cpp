@@ -26,9 +26,10 @@
 
 namespace dxvk {
 
-  static constexpr char* HashSourceDataCategoryName[HashSourceDataCategory::Count] = {
+  static constexpr const char* HashSourceDataCategoryName[] = {
     "OpacityMicromap",
   };
+  static_assert(std::size(HashSourceDataCategoryName) == static_cast<size_t>(HashSourceDataCategory::Count));
 
 
   HashSourceDataCache::~HashSourceDataCache() {

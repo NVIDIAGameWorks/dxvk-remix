@@ -594,7 +594,7 @@ namespace dxvk {
 
     // Initialize composite view
     if (static_cast<CompositeDebugView>(Composite::compositeViewIdx()) != CompositeDebugView::Disabled) {
-      switch (Composite::compositeViewIdx()) {
+      switch (static_cast<CompositeDebugView>(Composite::compositeViewIdx())) {
       case CompositeDebugView::FinalRenderWithMaterialProperties:
         m_composite.debugViewIndices = std::vector<uint32_t> { DEBUG_VIEW_POST_TONEMAP_OUTPUT, DEBUG_VIEW_ALBEDO, DEBUG_VIEW_SHADING_NORMAL, DEBUG_VIEW_PERCEPTUAL_ROUGHNESS, DEBUG_VIEW_EMISSIVE_RADIANCE, DEBUG_VIEW_HEIGHT_MAP };
         break;

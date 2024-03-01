@@ -31,6 +31,7 @@
 #include "rtx_context.h"
 #include "rtx_options.h"
 #include "rtx_terrain_baker.h"
+#include "rtx_texture_manager.h"
 
 #include <assert.h>
 
@@ -203,7 +204,7 @@ namespace dxvk {
     if (!RtxOptions::AntiCulling::Object::enable()) {
       auto& entries = m_drawCallCache.getEntries();
       if (m_device->getCurrentFrameId() > RtxOptions::Get()->numFramesToKeepGeometryData()) {
-        for (auto& iter = entries.begin(); iter != entries.end(); ) {
+        for (auto iter = entries.begin(); iter != entries.end(); ) {
           blasEntryGarbageCollection(iter, entries);
         }
       }
@@ -212,7 +213,7 @@ namespace dxvk {
       fast_unordered_cache<const RtInstance*> outsideFrustumInstancesCache;
 
       auto& entries = m_drawCallCache.getEntries();
-      for (auto& iter = entries.begin(); iter != entries.end();) {
+      for (auto iter = entries.begin(); iter != entries.end();) {
         bool isAllInstancesInCurrentBlasInsideFrustum = true;
         for (const RtInstance* instance : iter->second.getLinkedInstances()) {
           const Matrix4 objectToView = getCamera().getWorldToView(false) * instance->getTransform();

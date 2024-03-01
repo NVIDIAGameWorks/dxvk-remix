@@ -31,6 +31,7 @@
 #include "rtx_game_capturer_paths.h"
 #include "rtx_utils.h"
 #include "rtx_asset_data_manager.h"
+#include "rtx_texture_manager.h"
 
 #include "../../lssusd/usd_include_begin.h"
 #include <pxr/base/gf/matrix4f.h>

@@ -30,6 +30,9 @@
 #include "rtx_globals.h"
 #include "rtx_options.h"
 
+#include "../dxvk_device.h"
+#include "rtx_texture_manager.h"
+
 #include <remix/remix_c.h>
 #include "rtx_remix_pnext.h"
 
@@ -636,12 +639,12 @@ namespace {
       return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
     }
     if (!out_handle || !info || info->sType != REMIXAPI_STRUCT_TYPE_MATERIAL_INFO) {
-      return REMIXAPI_ERROR_CODE_WRONG_ARGUMENTS;
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
     static_assert(sizeof(remixapi_MaterialHandle) == sizeof(info->hash));
     auto handle = reinterpret_cast<remixapi_MaterialHandle>(info->hash);
     if (!handle) {
-      return REMIXAPI_ERROR_CODE_WRONG_ARGUMENTS;
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
 
     // async load
@@ -681,12 +684,12 @@ namespace {
       return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
     }
     if (!out_handle || !info || info->sType != REMIXAPI_STRUCT_TYPE_MESH_INFO) {
-      return REMIXAPI_ERROR_CODE_WRONG_ARGUMENTS;
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
     static_assert(sizeof(remixapi_MeshHandle) == sizeof(info->hash));
     auto handle = reinterpret_cast<remixapi_MeshHandle>(info->hash);
     if (!handle) {
-      return REMIXAPI_ERROR_CODE_WRONG_ARGUMENTS;
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
 
     auto allocatedSurfaces = std::vector<dxvk::RasterGeometry> {};
@@ -698,6 +701,9 @@ namespace {
       const size_t indexDataSize = sizeInBytes(src.indices_values, src.indices_count);
 
       auto allocBuffer = [](dxvk::D3D9DeviceEx* device, size_t sizeInBytes) -> dxvk::Rc<dxvk::DxvkBuffer> {
+        if (sizeInBytes == 0) {
+          return {};
+        }
         auto bufferInfo = dxvk::DxvkBufferCreateInfo {};
         {
           bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
@@ -718,8 +724,11 @@ namespace {
       auto vertexSlice = dxvk::DxvkBufferSlice { vertexBuffer };
       memcpy(vertexSlice.mapPtr(0), src.vertices_values, vertexDataSize);
 
-      auto indexSlice = dxvk::DxvkBufferSlice { indexBuffer };
-      memcpy(indexSlice.mapPtr(0), src.indices_values, indexDataSize);
+      auto indexSlice = dxvk::DxvkBufferSlice {};
+      if (indexDataSize > 0) {
+        indexSlice = dxvk::DxvkBufferSlice { indexBuffer };
+        memcpy(indexSlice.mapPtr(0), src.indices_values, indexDataSize);
+      }
 
       auto blendWeightsSlice = dxvk::DxvkBufferSlice {};
       auto blendIndicesSlice = dxvk::DxvkBufferSlice {};
@@ -816,7 +825,7 @@ namespace {
       return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
     }
     if (!info || info->sType != REMIXAPI_STRUCT_TYPE_CAMERA_INFO) {
-      return REMIXAPI_ERROR_CODE_WRONG_ARGUMENTS;
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
     std::lock_guard lock { s_mutex };
     remixDevice->EmitCs([cRtCamera = convert::toRtCamera(*info)](dxvk::DxvkContext* ctx) {
@@ -848,12 +857,12 @@ namespace {
       return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
     }
     if (!out_handle || !info || info->sType != REMIXAPI_STRUCT_TYPE_LIGHT_INFO) {
-      return REMIXAPI_ERROR_CODE_WRONG_ARGUMENTS;
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
     static_assert(sizeof(remixapi_LightHandle) == sizeof(info->hash));
     auto handle = reinterpret_cast<remixapi_LightHandle>(info->hash);
     if (!handle) {
-      return REMIXAPI_ERROR_CODE_WRONG_ARGUMENTS;
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
 
     // async load
@@ -897,7 +906,7 @@ namespace {
       // Note: If the toRtLight conversion process returns an empty optional, the specified LightInfo did
       // not contain the proper arguments to create a light with.
       if (!rtLight.has_value()) {
-        return REMIXAPI_ERROR_CODE_WRONG_ARGUMENTS;
+        return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
       }
 
       remixDevice->EmitCs([cHandle = handle, cRtLight = *rtLight](dxvk::DxvkContext* ctx) {
@@ -932,7 +941,7 @@ namespace {
       return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
     }
     if (!lightHandle) {
-      return REMIXAPI_ERROR_CODE_WRONG_ARGUMENTS;
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
 
     // async load
@@ -964,6 +973,7 @@ namespace {
       dxvk::RtxOptions::forceHighResolutionReplacementTexturesObject().getName(),
       dxvk::RtxOptions::resolutionScaleObject().getName(),
       dxvk::NeeCachePass::enableObject().getName(),
+      dxvk::RtxOptions::enableNearPlaneOverrideObject().getName(),
     };
 
   remixapi_ErrorCode REMIXAPI_CALL remixapi_SetConfigVariable(
@@ -972,7 +982,7 @@ namespace {
     std::lock_guard lock { s_mutex };
 
     if (!key || key[0] == '\0' || !value) {
-      return REMIXAPI_ERROR_CODE_WRONG_ARGUMENTS;
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
 
     auto& globalRtxOptions = dxvk::RtxOptionImpl::getGlobalRtxOptionMap();
@@ -1004,7 +1014,7 @@ namespace {
     PFN_remixapi_pick_RequestObjectPickingUserCallback callback,
     void* callbackUserData) {
     if (!pixelRegion || !callback) {
-      return REMIXAPI_ERROR_CODE_WRONG_ARGUMENTS;
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
 
     dxvk::D3D9DeviceEx* remixDevice = tryAsDxvk();
@@ -1034,7 +1044,7 @@ namespace {
     uint8_t colorG,
     uint8_t colorB) {
     if (!objectPickingValues_values) {
-      return REMIXAPI_ERROR_CODE_WRONG_ARGUMENTS;
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
 
     dxvk::D3D9DeviceEx* remixDevice = tryAsDxvk();
@@ -1108,7 +1118,7 @@ namespace {
       return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
     }
     if (!out_vkImage || !out_vkSemaphoreRenderingDone || !out_vkSemaphoreResumeSemaphore) {
-      return REMIXAPI_ERROR_CODE_WRONG_ARGUMENTS;
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
     if (auto pres = remixDevice->GetExternalPresenter()) {
       *out_vkImage = reinterpret_cast<uint64_t>(pres->GetVkImage(0));
@@ -1127,7 +1137,7 @@ namespace {
       return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
     }
     if (!source || !out_vkImage) {
-      return REMIXAPI_ERROR_CODE_WRONG_ARGUMENTS;
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
 
     dxvk::D3D9Surface* surface = static_cast<dxvk::D3D9Surface*>(source);
@@ -1147,7 +1157,7 @@ namespace {
       return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
     }
     if (!destination) {
-      return REMIXAPI_ERROR_CODE_WRONG_ARGUMENTS;
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
     dxvk::D3D9Surface* destSurface = static_cast<dxvk::D3D9Surface*>(destination);
     dxvk::D3D9CommonTexture* destTexInfo = destSurface ? destSurface->GetCommonTexture() : nullptr;
@@ -1190,7 +1200,7 @@ namespace {
 #pragma warning(pop)
 
     if (srcImage.ptr() == nullptr) {
-      return REMIXAPI_ERROR_CODE_WRONG_ARGUMENTS;
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
 
     std::lock_guard lock { s_mutex };
@@ -1203,7 +1213,11 @@ namespace {
 
 
   remixapi_ErrorCode REMIXAPI_CALL remixapi_dxvk_SetDefaultOutput(
-    remixapi_dxvk_CopyRenderingOutputType type, const remixapi_Float4D& color) {
+    remixapi_dxvk_CopyRenderingOutputType type, const remixapi_Float4D* color) {
+    if (!color) {
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+    }
+
     dxvk::D3D9DeviceEx* remixDevice = tryAsDxvk();
     if (!remixDevice) {
       return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
@@ -1214,17 +1228,17 @@ namespace {
       dxvk::RtxGlobals& globals = ctx->getCommonObjects()->getSceneManager().getGlobals();
       switch (type) {
       case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_FINAL_COLOR:
-        globals.clearColorFinalColor = vec3(color.x, color.y, color.z);
+        globals.clearColorFinalColor = vec3(color->x, color->y, color->z);
         break;
       case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_DEPTH:
-        globals.clearColorDepth = color.x;
+        globals.clearColorDepth = color->x;
         break;
       case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_NORMALS:
-        globals.clearColorNormal = vec3(color.x, color.y, color.z);
+        globals.clearColorNormal = vec3(color->x, color->y, color->z);
         break;
       case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_OBJECT_PICKING:
         // converting binary value of color.x into uint to avoid losing precision.
-        globals.clearColorPicking = reinterpret_cast<const uint&>(color.x);
+        globals.clearColorPicking = reinterpret_cast<const uint&>(color->x);
         break;
       default:
         break;
@@ -1263,10 +1277,10 @@ extern "C"
   REMIXAPI remixapi_ErrorCode REMIXAPI_CALL remixapi_InitializeLibrary(const remixapi_InitializeLibraryInfo* info,
                                                                        remixapi_Interface* out_result) {
     if (!info || info->sType != REMIXAPI_STRUCT_TYPE_INITIALIZE_LIBRARY_INFO) {
-      return REMIXAPI_ERROR_CODE_WRONG_ARGUMENTS;
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
     if (!out_result) {
-      return REMIXAPI_ERROR_CODE_WRONG_ARGUMENTS;
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
     if (!isVersionCompatible(info->version)) {
       return REMIXAPI_ERROR_CODE_INCOMPATIBLE_VERSION;
