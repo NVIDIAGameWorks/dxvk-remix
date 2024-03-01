@@ -1040,7 +1040,7 @@ namespace dxvk {
       usesSplitBillboardOpacityMicromap(instance) ? billboardIndex : OmmRequest::kInvalidIndex;
     const OmmRequest ommRequest(instance, instanceManager, billboardIndex);
 
-    auto& ommCacheItemIter = m_ommCache.find(ommRequest.ommSrcHash);
+    auto ommCacheItemIter = m_ommCache.find(ommRequest.ommSrcHash);
 
     // OMM is not available in the cache
     if (ommCacheItemIter == m_ommCache.end())
@@ -1677,7 +1677,7 @@ namespace dxvk {
 #ifdef VALIDATION_MODE
       Logger::warn(str::format("[RTX Opacity Micromap] Building ", ommSrcHash, " on thread_id ", std::this_thread::get_id()));
 #endif
-      auto& ommCacheItemIter = m_ommCache.find(ommSrcHash);
+      auto ommCacheItemIter = m_ommCache.find(ommSrcHash);
       OpacityMicromapCacheItem& ommCacheItem = ommCacheItemIter->second;
 
       OmmResult result = buildOpacityMicromap(ctx, *ommSrcHashIter, ommCacheItem, micromapUsageGroups[buildItemCount],

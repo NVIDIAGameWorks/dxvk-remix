@@ -156,7 +156,7 @@ namespace dxvk {
     }
 
     // Array of hashes, indexed by HashComponent
-    XXH64_hash_t fields[HashComponents::Count];
+    XXH64_hash_t fields[static_cast<uint32_t>(HashComponents::Count)];
     XXH64_hash_t precombined[rules::Total];
   };
 

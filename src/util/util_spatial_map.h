@@ -113,7 +113,7 @@ namespace dxvk {
       }
 
       std::vector<T>& cell = cellIter->second;
-      auto& iter = std::find(cell.begin(), cell.end(), data);
+      auto iter = std::find(cell.begin(), cell.end(), data);
       if (iter != cell.end()) {
         if (cell.size() > 1) {
           // Swap & pop - faster than "erase", but doesn't preserve order, which is fine here.

@@ -24,7 +24,6 @@
 #include <intrin.h>
 #include "util_math.h"
 #include "util_fastops.h"
-#include "vulkan/vk_platform.h"
 #include <algorithm>
 #include <ppl.h>
 #include "util_fastops.h"

@@ -152,7 +152,7 @@ namespace dxvk {
     bool m_reflexLatencyStatsOpen = false;
     bool m_lastRenderVsyncStatus = false;
 
-    static constexpr char* tabNames[] = { "Rendering", "Game Setup", "Enhancements", "About" , "Dev Settings"};
+    static constexpr const char* tabNames[] = { "Rendering", "Game Setup", "Enhancements", "About" , "Dev Settings"};
     Tabs m_curTab = kTab_Count;
     Tabs m_triggerTab = kTab_Count;
     void triggerTab(const Tabs tab) {

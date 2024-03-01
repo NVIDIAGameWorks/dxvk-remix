@@ -658,7 +658,8 @@ namespace dxvk {
           if (instance->m_frameLastUpdated == currentFrameIdx) {
             // If the transform is an exact match and the instance has already been touched this frame,
             // then this is a second draw call on a single mesh.
-            if (memcmp(&transform, &instance->getTransform(), sizeof(instance->getTransform())) == 0) {
+            const Matrix4 instanceTransform = instance->getTransform();
+            if (memcmp(&transform, &instanceTransform, sizeof(instanceTransform)) == 0) {
               return const_cast<RtInstance*>(instance);
             }
           } else if (instance->m_materialHash == material.getHash()) {
@@ -814,7 +815,7 @@ namespace dxvk {
         Logger::info(str::format("Draw Call Material Hash: ", drawCall.getMaterialData().getHash()));
 
       // Apply world offset
-      Vector3& worldOffset = RtxOptions::Get()->getOverrideWorldOffset();
+      Vector3 worldOffset = RtxOptions::Get()->getOverrideWorldOffset();
       currentInstance.teleportWithHistory(translationMatrix(worldOffset));
 
       return true;

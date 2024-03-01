@@ -63,7 +63,7 @@ public:
   }
   
   void rebuildSpatialMaps() {
-    for (auto& iter = m_entries.begin(); iter != m_entries.end(); ++iter) {
+    for (auto iter = m_entries.begin(); iter != m_entries.end(); ++iter) {
       iter->second.rebuildSpatialMap();
     }
   }
