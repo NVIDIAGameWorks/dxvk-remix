@@ -365,14 +365,14 @@ dxvk_src = files([
 
 thread_dep = dependency('threads')
 
-nrd_include_dir = include_directories('../../external/nrd/Include')
+nrd_include_dir = include_directories(join_paths('../../', 'external/nrd/Include'))
 nrd_dep = declare_dependency(
   include_directories : nrd_include_dir
 )
 
-dlss_include_dir = include_directories('../../' + dlss_root_path + '/Include')
+dlss_include_dir = include_directories(join_paths('../../', dlss_root_path, 'Include'))
 dlss_lib_path = join_paths(meson.global_source_root(), dlss_root_path + '/Lib/Windows_x86_64/x86_64')
-dlfg_include_dir = include_directories('../../' + dlfg_root_path + '/Include')
+dlfg_include_dir = include_directories(join_paths('../../', dlfg_root_path, 'Include'))
 cc = meson.get_compiler('c')
 dlss_lib_name = 'nvsdk_ngx_d'
 if get_option('buildtype') == 'debug'  
