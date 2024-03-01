@@ -58,11 +58,11 @@ namespace dxvk {
   struct fast_unordered_cache : public std::unordered_map<XXH64_hash_t, T, XXH64_hash_passthrough> {
     template<typename P>
     void erase_if(P&& p) {
-      for (auto it = begin(); it != end();) {
+      for (auto it = this->begin(); it != this->end();) {
         if (!p(it)) {
           ++it;
         } else {
-          it = erase(it);
+          it = this->erase(it);
         }
       }
     }

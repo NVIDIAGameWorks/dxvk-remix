@@ -1003,7 +1003,7 @@ namespace dxvk {
 
   template<Tlas::Type type>
   void AccelManager::internalBuildTlas(Rc<DxvkContext> ctx) {
-    static constexpr char* names[] = { "buildTLAS_Opaque", "buildTLAS_NonOpaque" };
+    static constexpr const char* names[] = { "buildTLAS_Opaque", "buildTLAS_NonOpaque" };
     ScopedGpuProfileZone(ctx, names[type]);
     const VkBuildAccelerationStructureFlagsKHR flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR;
 

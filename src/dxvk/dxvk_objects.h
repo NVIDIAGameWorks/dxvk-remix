@@ -38,7 +38,6 @@
 #include "rtx_render/rtx_image_utils.h"
 #include "rtx_render/rtx_postFx.h"
 #include "rtx_render/rtx_initializer.h"
-#include "rtx_render/rtx_texture_manager.h"
 #include "rtx_render/rtx_scene_manager.h"
 #include "rtx_render/rtx_reflex.h"
 #include "rtx_render/rtx_game_Capturer.h"
@@ -59,6 +58,7 @@ namespace dxvk {
   class DxvkPostFx;
   class OpacityMicromapManager;
   class ImGUI;
+  class RtxTextureManager;
 
   class NGXContext;
 
@@ -66,54 +66,7 @@ namespace dxvk {
 
   public:
 
-    DxvkObjects(DxvkDevice* device)
-    : m_device          (device),
-      m_memoryManager   (device),
-      m_renderPassPool  (device),
-      m_pipelineManager (device, &m_renderPassPool),
-      m_eventPool       (device),
-      m_queryPool       (device),
-      m_sceneManager    (device),
-      m_rtResources     (device),
-      m_rtInitializer   (device),
-      m_textureManager  (device),
-      m_imgui           (device),
-      m_dummyResources  (device), 
-      m_volumeIntegrate(device),
-      m_volumeFilter(device),
-      m_volumePreintegrate(device),
-      m_pathtracerGbuffer(device),
-      m_rtxdiRayQuery(device),
-      m_restirgiRayQuery(device),
-      m_pathtracerIntegrateDirect(device),
-      m_pathtracerIntegrateIndirect(device),
-      m_demodulate(device),
-      m_neeCache(device),
-      m_primaryDirectLightDenoiser(device, DenoiserType::DirectLight),
-      m_primaryIndirectLightDenoiser(device, DenoiserType::IndirectLight),
-      m_primaryCombinedLightDenoiser(device, DenoiserType::DirectAndIndirectLight),
-      m_secondaryCombinedLightDenoiser(device, DenoiserType::Secondaries),
-      m_referenceDenoiser(device, DenoiserType::Reference),
-      m_ngxContext(device),
-      m_dlfg(device),
-      m_referenceDenoiserSecondLobe0(device, DenoiserType::Reference),
-      m_referenceDenoiserSecondLobe1(device, DenoiserType::Reference),
-      m_referenceDenoiserSecondLobe2(device, DenoiserType::Reference),
-      m_dlss(device),
-      m_nis(device),
-      m_taa(device),
-      m_composite(device),
-      m_debug_view(device),
-      m_autoExposure(device),
-      m_toneMapping(device),
-      m_localToneMapping(device),
-      m_bloom(device),
-      m_geometryUtils(device),
-      m_imageUtils(device),
-      m_postFx(device),
-      m_capturer(new GameCapturer(device, m_sceneManager, m_exporter.get())),
-      m_lastKnownWindowHandle((HWND)0) {
-    }
+    explicit DxvkObjects(DxvkDevice* device);
 
     DxvkMemoryAllocator& memoryManager() {
       return m_memoryManager;
@@ -303,9 +256,7 @@ namespace dxvk {
       return m_rtInitializer;
     }
 
-    RtxTextureManager& getTextureManager() {
-      return m_textureManager;
-    }
+    RtxTextureManager& getTextureManager();
     
     ImGUI& getImgui() {
       return m_imgui;
@@ -327,23 +278,7 @@ namespace dxvk {
       return m_capturer;
     }
 
-    void onDestroy() {
-      getRtxInitializer().onDestroy();
-
-      metaGeometryUtils().onDestroy();
-      getSceneManager().onDestroy();
-      getTextureManager().onDestroy();
-
-      m_primaryDirectLightDenoiser.get().onDestroy();
-      m_primaryIndirectLightDenoiser.get().onDestroy();
-      m_primaryCombinedLightDenoiser.get().onDestroy();
-      m_secondaryCombinedLightDenoiser.get().onDestroy();
-      m_referenceDenoiser.get().onDestroy();
-      m_referenceDenoiserSecondLobe0.get().onDestroy();
-      m_referenceDenoiserSecondLobe1.get().onDestroy();
-      m_referenceDenoiserSecondLobe2.get().onDestroy();
-      m_dlfg.get().onDestroy();
-    }
+    void onDestroy();
 
     void setWindowHandle(const HWND hwnd) {
       m_lastKnownWindowHandle.store(hwnd);
@@ -379,7 +314,7 @@ namespace dxvk {
     SceneManager       m_sceneManager;
     Resources          m_rtResources;
     RtxInitializer     m_rtInitializer;
-    RtxTextureManager  m_textureManager;
+    std::unique_ptr<RtxTextureManager> m_textureManager;
     ImGUI              m_imgui;
     Rc<GameCapturer>   m_capturer;
 
@@ -422,5 +357,4 @@ namespace dxvk {
 
     std::atomic<HWND>                       m_lastKnownWindowHandle;
   };
-
 }

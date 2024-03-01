@@ -19,11 +19,11 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
+#include "dxvk_device.h"
 #include "rtx_texture_manager.h"
 #include "../../util/thread.h"
 #include "../../util/rc/util_rc_ptr.h"
 #include "dxvk_context.h"
-#include "dxvk_device.h"
 #include "dxvk_scoped_annotation.h"
 #include <chrono>
 

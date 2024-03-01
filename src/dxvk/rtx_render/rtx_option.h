@@ -151,7 +151,7 @@ namespace dxvk {
       }
     }
 
-    RtxOption::~RtxOption() {
+    ~RtxOption() {
       for (int i = 0; i < (int)RtxOptionImpl::ValueType::Count; i++) {
         GenericValue& value = pImpl->valueList[i];
 

@@ -161,13 +161,13 @@ namespace remix {
 
     // Functions
     Result< void >                    Shutdown();
-    Result< remixapi_MaterialHandle > CreateMaterial(const MaterialInfo& info);
+    Result< remixapi_MaterialHandle > CreateMaterial(const remixapi_MaterialInfo& info);
     Result< void >                    DestroyMaterial(remixapi_MaterialHandle handle);
-    Result< remixapi_MeshHandle >     CreateMesh(const MeshInfo& info);
+    Result< remixapi_MeshHandle >     CreateMesh(const remixapi_MeshInfo& info);
     Result< void >                    DestroyMesh(remixapi_MeshHandle handle);
-    Result< void >                    SetupCamera(const CameraInfo& info);
-    Result< void >                    DrawInstance(const InstanceInfo& info);
-    Result< remixapi_LightHandle >    CreateLight(const LightInfo& info);
+    Result< void >                    SetupCamera(const remixapi_CameraInfo& info);
+    Result< void >                    DrawInstance(const remixapi_InstanceInfo& info);
+    Result< remixapi_LightHandle >    CreateLight(const remixapi_LightInfo& info);
     Result< void >                    DestroyLight(remixapi_LightHandle handle);
     Result< void >                    DrawLightInstance(remixapi_LightHandle handle);
     Result< void >                    SetConfigVariable(const char* key, const char* value);
@@ -192,61 +192,37 @@ namespace remix {
   namespace lib {
     // Helper function to load a .dll of Remix, and initialize it.
     // pRemixD3D9DllPath is a path to .dll file, e.g. "C:\dxvk-remix-nv\public\bin\d3d9.dll"
-    // TODO: wchar_t / char
-    [[nodiscard]] inline Result< Interface > loadRemixDllAndInitialize(const char* pRemixD3D9DllPath) {
-      {
-        auto lastSlash = std::string_view { pRemixD3D9DllPath }.find_last_of("/\\");
-        if (lastSlash != std::string::npos) {
-          SetDllDirectoryA(
-              std::string { std::string_view{ pRemixD3D9DllPath }.substr(0, lastSlash) }
-          .c_str());
-        }
-      }
-      
-      if (HMODULE remixDll = LoadLibraryA(pRemixD3D9DllPath)) {
-        auto pfn_InitializeLibrary = reinterpret_cast<decltype(&remixapi_InitializeLibrary)>(
-            GetProcAddress(remixDll, "remixapi_InitializeLibrary"));
-      
-        if (pfn_InitializeLibrary) {
-          remixapi_InitializeLibraryInfo info = {};
-          {
-            info.sType = REMIXAPI_STRUCT_TYPE_INITIALIZE_LIBRARY_INFO;
-            info.version = REMIXAPI_VERSION_MAKE(REMIXAPI_VERSION_MAJOR,
-                                                 REMIXAPI_VERSION_MINOR,
-                                                 REMIXAPI_VERSION_PATCH);
-          }
+    [[nodiscard]] inline Result< Interface > loadRemixDllAndInitialize(const std::filesystem::path& remixD3D9DllPath) {
 
-          static_assert(sizeof remixapi_Interface == 152, 
-                        "Change version, update C++ wrapper when adding new functions");
-          remixapi_Interface interfaceInC = {};
-          remixapi_ErrorCode status = pfn_InitializeLibrary(&info, &interfaceInC);
-      
-          if (status != REMIXAPI_ERROR_CODE_SUCCESS) {
-            FreeLibrary(remixDll);
-            return status;
-          }
-      
-          remix::Interface interfaceInCpp = {};
-          {
-            interfaceInCpp.m_RemixDLL = remixDll;
-            interfaceInCpp.m_CInterface = interfaceInC;
-          }
-          return interfaceInCpp;
-        }
-      
-        FreeLibrary(remixDll);
-        return REMIXAPI_ERROR_CODE_GET_PROC_ADDRESS_FAILURE;
+      remixapi_Interface interfaceInC = {};
+      HMODULE remixDll = nullptr;
+
+      remixapi_ErrorCode status =
+        remixapi_lib_loadRemixDllAndInitialize(remixD3D9DllPath.c_str(),
+                                               &interfaceInC,
+                                               &remixDll);
+      if (status != REMIXAPI_ERROR_CODE_SUCCESS) {
+        REMIXAPI_ASSERT(remixDll == nullptr);
+        return status;
       }
-      
-      return REMIXAPI_ERROR_CODE_LOAD_LIBRARY_FAILURE;
+
+      static_assert(sizeof(remixapi_Interface) == 152,
+                    "Change version, update C++ wrapper when adding new functions");
+
+      remix::Interface interfaceInCpp = {};
+      {
+        interfaceInCpp.m_RemixDLL = remixDll;
+        interfaceInCpp.m_CInterface = interfaceInC;
+      }
+      static_assert(sizeof(remix::Interface) ==
+                    sizeof(interfaceInCpp.m_RemixDLL) + sizeof(interfaceInCpp.m_CInterface),
+                    "Not all members of \'interfaceInCpp\' are set here");
+
+      return interfaceInCpp;
     }
 
-    inline void shutdownAndUnloadRemixDll(Interface& interfaceInCpp) {
-      interfaceInCpp.Shutdown();
-      if (interfaceInCpp.m_RemixDLL) {
-        FreeLibrary(interfaceInCpp.m_RemixDLL);
-      }
-      interfaceInCpp = {};
+    inline Result<void> shutdownAndUnloadRemixDll(Interface& interfaceInCpp) {
+      return remixapi_lib_shutdownAndUnloadRemixDll(&interfaceInCpp.m_CInterface, interfaceInCpp.m_RemixDLL);
     }
   }
 
@@ -429,7 +405,7 @@ namespace remix {
     std::filesystem::path cpp_emissiveTexture {};
   };
 
-  inline Result< remixapi_MaterialHandle > Interface::CreateMaterial(const MaterialInfo& info) {
+  inline Result< remixapi_MaterialHandle > Interface::CreateMaterial(const remixapi_MaterialInfo& info) {
     remixapi_MaterialHandle handle = nullptr;
     remixapi_ErrorCode status = m_CInterface.CreateMaterial(&info, &handle);
     if (status != REMIXAPI_ERROR_CODE_SUCCESS) {
@@ -455,7 +431,7 @@ namespace remix {
     }
   };
 
-  inline Result< remixapi_MeshHandle > Interface::CreateMesh(const MeshInfo& info) {
+  inline Result< remixapi_MeshHandle > Interface::CreateMesh(const remixapi_MeshInfo& info) {
     remixapi_MeshHandle handle = nullptr;
     remixapi_ErrorCode status = m_CInterface.CreateMesh(&info, &handle);
     if (status != REMIXAPI_ERROR_CODE_SUCCESS) {
@@ -501,7 +477,7 @@ namespace remix {
     }
   };
 
-  inline Result< void > Interface::SetupCamera(const CameraInfo& info) {
+  inline Result< void > Interface::SetupCamera(const remixapi_CameraInfo& info) {
     return m_CInterface.SetupCamera(&info);
   }
 
@@ -563,7 +539,7 @@ namespace remix {
     }
   };
 
-  inline Result< void > Interface::DrawInstance(const InstanceInfo& info) {
+  inline Result< void > Interface::DrawInstance(const remixapi_InstanceInfo& info) {
     return m_CInterface.DrawInstance(&info);
   }
 
@@ -688,7 +664,7 @@ namespace remix {
     }
   };
 
-  inline Result< remixapi_LightHandle > Interface::CreateLight(const LightInfo& info) {
+  inline Result< remixapi_LightHandle > Interface::CreateLight(const remixapi_LightInfo& info) {
     remixapi_LightHandle handle = nullptr;
     remixapi_ErrorCode status = m_CInterface.CreateLight(&info, &handle);
     if (status != REMIXAPI_ERROR_CODE_SUCCESS) {
@@ -758,7 +734,7 @@ namespace remix {
 
   inline Result< void > Interface::dxvk_SetDefaultOutput(
       remixapi_dxvk_CopyRenderingOutputType type, const remixapi_Float4D& color) {
-    return m_CInterface.dxvk_SetDefaultOutput(type, color);
+    return m_CInterface.dxvk_SetDefaultOutput(type, &color);
   }
 
   template< typename CallbackLambda >

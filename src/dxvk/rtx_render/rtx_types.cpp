@@ -206,7 +206,7 @@ namespace dxvk {
 
   void BlasEntry::unlinkInstance(const RtInstance* instance) {
     instance->removeFromSpatialCache();
-    auto& it = std::find(m_linkedInstances.begin(), m_linkedInstances.end(), instance);
+    auto it = std::find(m_linkedInstances.begin(), m_linkedInstances.end(), instance);
     if (it != m_linkedInstances.end()) {
       // Swap & pop - faster than "erase", but doesn't preserve order, which is fine here.
       std::swap(*it, m_linkedInstances.back());

@@ -127,7 +127,7 @@ DrawCallCache::CacheState DrawCallCache::get(const DrawCallState& drawCall, Blas
 }
 
 BlasEntry* DrawCallCache::allocateEntry(XXH64_hash_t hash, const DrawCallState& drawCall) {
-  auto& iter = m_entries.emplace(hash, drawCall);
+  auto iter = m_entries.emplace(hash, drawCall);
   BlasEntry* result = &iter->second;
   result->frameCreated = m_device->getCurrentFrameId();
   return result;
