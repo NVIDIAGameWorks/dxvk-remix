@@ -237,7 +237,7 @@ dxvk_extradep += lib_shlwapi
 if enable_rtxio == true
   rtxio_bin_path = global_src_root_norm + '/external/rtxio/bin'
   rtxio_lib = dxvk_compiler.find_library('rtxio', dirs : join_paths(meson.global_source_root(), 'external/rtxio/lib'))
-  rtxio_include_path = include_directories(join_paths(meson.global_source_root(), 'external/rtxio/include'))
+  rtxio_include_path = include_directories('external/rtxio/include')
   dxvk_extradep += rtxio_lib
 endif
 
@@ -392,7 +392,7 @@ embedding_compiler = generator(xxd_exe,
     arguments : [ '@INPUT@', '@OUTPUT@', '@BASENAME@' ]
 )
 
-mdl_include_dir = include_directories(join_paths(meson.global_source_root(), 'external/omni_core_materials'))
+mdl_include_dir = include_directories('external/omni_core_materials')
 
 nv_usd_include_path = include_directories('external/nv_usd/include/')
 boost_include_path = include_directories('external/nv_usd/include/boost-1_78/')
@@ -403,7 +403,7 @@ vk_include_path = include_directories('./include/vulkan/include')
 
 lssusd_include_paths = [nv_usd_include_path, boost_include_path, vk_include_path]
 
-nvapi_include_paths = include_directories(join_paths(meson.global_source_root(), 'external/nvapi'))
+nvapi_include_paths = include_directories('external/nvapi')
 nvapi_lib_path = join_paths(meson.global_source_root(), 'external/nvapi/amd64')
 nvapi_lib = dxvk_compiler.find_library('nvapi64', dirs : nvapi_lib_path)
 
@@ -416,11 +416,11 @@ else
   tbb_lib = dxvk_compiler.find_library('tbb', dirs : usd_lib_path)
 endif
 
-reflex_include_path = include_directories(join_paths(meson.global_source_root(), 'external/reflex/inc'))
+reflex_include_path = include_directories( 'external/reflex/inc')
 reflex_lib_path = join_paths(meson.global_source_root(), 'external/reflex/lib')
 reflex_lib = dxvk_compiler.find_library('NvLowLatencyVk', dirs : reflex_lib_path)
 
-aftermath_include_path = include_directories(join_paths(meson.global_source_root(), 'external/aftermath/include'))
+aftermath_include_path = include_directories( 'external/aftermath/include')
 aftermath_lib_path = join_paths(meson.global_source_root(), 'external/aftermath/lib/x64/')
 aftermath_lib = dxvk_compiler.find_library('GFSDK_Aftermath_Lib.x64', dirs : aftermath_lib_path)
 
@@ -436,7 +436,7 @@ if get_option('buildtype') == 'debug'
 endif
 lss_usd_plugins_path = meson.global_source_root() + '/usd_plugins/'
 
-rtxdi_include_path = include_directories(join_paths(meson.global_source_root(), 'submodules/rtxdi/rtxdi-sdk/include'))
+rtxdi_include_path = include_directories('submodules/rtxdi/rtxdi-sdk/include')
 # Need to use the include path as an argument to the shader build string,
 # and I couldn't find how to convert the IncludeDirs thing to a string... Meson.
 rtxdi_include_path_string = meson.global_source_root() + '/submodules/rtxdi/rtxdi-sdk/include'
