@@ -474,6 +474,10 @@ namespace dxvk {
     }
 
     m_terrainBaker->onFrameEnd(ctx);
+
+    if (m_opacityMicromapManager) {
+      m_opacityMicromapManager->onFrameEnd();
+    }
     
     m_activePOMCount = 0;
 

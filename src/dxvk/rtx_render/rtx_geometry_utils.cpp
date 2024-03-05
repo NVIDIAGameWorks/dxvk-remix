@@ -373,6 +373,73 @@ namespace dxvk {
       ctx->getCommandList()->trackResource<DxvkAccess::Write>(geo.normalBuffer.buffer());
   }
 
+  // Calculates number of uTriangles to bake considering their triangle specific cost and an available budget
+  uint32_t RtxGeometryUtils::calculateNumMicroTrianglesToBake(
+    const BakeOpacityMicromapState& bakeState,
+    const BakeOpacityMicromapDesc& desc,
+    // Alignment to which budget can be extended to if there are any remaining uTriangles to be baked in the last considered triangle
+    const uint32_t allowedNumMicroTriangleAlignment,
+    const float bakingWeightScale,
+    // This budget is decreased by budget used up by the returned number of micro triangles to bake
+    uint32_t& availableBakingBudget) {
+
+    uint32_t numMicroTrianglesToBake = 0;
+    const uint32_t startTriangleIndex = bakeState.numMicroTrianglesBaked / desc.numMicroTrianglesPerTriangle;
+
+    // Add uTriangles to bake from the remaining triangles in the geometry or until the baking budget limit is hit
+    for (uint32_t triangleIndex = startTriangleIndex; triangleIndex < desc.numTriangles; triangleIndex++) {
+
+      // Find number of uTriangles to bake for this triangle
+      uint32_t numActiveMicroTriangles = desc.numMicroTrianglesPerTriangle;
+      if (triangleIndex == startTriangleIndex && bakeState.numMicroTrianglesBaked > 0) {
+        // Subtract previously baked uTriangles for this triangle
+        numActiveMicroTriangles -= bakeState.numMicroTrianglesBaked 
+                                 - startTriangleIndex * desc.numMicroTrianglesPerTriangle;
+      }
+
+      // Note: using floats below will result in some imprecisions, but the error should not 
+      // make noticeable difference in the big picture and the floats are floor/ceil-ed such 
+      // so as to not overshoot the budget
+
+      // Calculate baking cost of a uTriangle for this triangle
+      const float microTriangleCost = bakingWeightScale * 
+        (1 +
+         desc.numTexelsPerMicrotriangle[desc.triangleOffset + triangleIndex] * desc.costPerTexelTapPerMicroTriangleBudget);
+
+      // Calculate baking cost of this triangle (i.e. including all of its remaining uTriangles that still need to be baked).
+      // Note: take a ceil to overestimate rather than underestimate the cost
+      const uint32_t weightedTriangleCost =
+        static_cast<uint32_t>(
+          std::min(
+            ceil(numActiveMicroTriangles * microTriangleCost),
+            static_cast<float>(UINT32_MAX)));
+
+      // We have enough budget to bake uTriangles for (the rest of) the triangle
+      if (weightedTriangleCost <= availableBakingBudget) {
+        availableBakingBudget -= weightedTriangleCost;
+        numMicroTrianglesToBake += numActiveMicroTriangles;
+        continue;
+
+      } else { // Not enough budget to bake all the uTriangles
+        // Calculate how many uTriangles fit into the budget considering the alignment
+        // Note: take a floor to underestimate number of uTriangles that fit
+        const uint32_t maxNumMicroTrianglesWithinBakingBudgetAligned = 
+          align_safe(static_cast<uint32_t>(floor(availableBakingBudget / microTriangleCost)), 
+                     allowedNumMicroTriangleAlignment, 
+                     UINT32_MAX);
+
+        numMicroTrianglesToBake += std::min(numActiveMicroTriangles, maxNumMicroTrianglesWithinBakingBudgetAligned);
+
+        // Simply nullify the budget, since it is too small for any other baking dispatch to be efficient
+        availableBakingBudget = 0;
+
+        break;
+      }
+    }
+
+    return numMicroTrianglesToBake;
+  }
+
   void RtxGeometryUtils::dispatchBakeOpacityMicromap(
     Rc<DxvkContext> ctx,
     const RaytraceGeometry& geo,
@@ -384,6 +451,7 @@ namespace dxvk {
     const uint32_t secondarySamplerIndex,
     const BakeOpacityMicromapDesc& desc,
     BakeOpacityMicromapState& bakeState,
+    uint32_t& availableBakingBudget,
     Rc<DxvkBuffer> opacityMicromapBuffer) const {
 
     // Init textures
@@ -462,35 +530,33 @@ namespace dxvk {
     const uint32_t kNumMicroTrianglesPerComputeBlock = BAKE_OPACITY_MICROMAP_NUM_THREAD_PER_COMPUTE_BLOCK;
     const VkPhysicalDeviceLimits& limits = device()->properties().core.properties.limits;
     // Workgroup count limit can be high (i.e. 2 Billion), so avoid overflowing uint32_t limit 
-    const uint32_t maxThreadsPerDispatch = std::min(limits.maxComputeWorkGroupCount[0], UINT32_MAX / kNumMicroTrianglesPerComputeBlock) * 
+    const uint32_t maxThreadsPerDispatch = std::min(limits.maxComputeWorkGroupCount[0], UINT32_MAX / kNumMicroTrianglesPerComputeBlock) *
                                            kNumMicroTrianglesPerComputeBlock;
     const uint32_t maxThreadsPerDispatchAligned = alignDown(maxThreadsPerDispatch, numMicroTrianglesPerWord); // Align down so as not to overshoot the limits
 
-    // Calculate how many uTriangles to bake in this pass
+    // Baking cost increases with opacity texture resolution, so scale up the baking cost accordingly
+    const float kResolutionWeight = 0.05f;  // Selected empirically
+    const float minResolutionToScale = 128; // Selected empirically
+    const float avgTextureResolution = 0.5f * (args.textureResolution.x + args.textureResolution.y);
+    const float bakingWeightScale = 
+      avgTextureResolution > minResolutionToScale 
+      ? 1 + kResolutionWeight * avgTextureResolution / minResolutionToScale
+      : 1;
 
+    // Align number of microtriangles to bake up to how many are packed into a single word
+    const uint32_t numMicroTrianglesAlignment = numMicroTrianglesPerWord;
     const uint32_t numMicroTrianglesToBake =
-      std::min(bakeState.numMicroTrianglesToBake - bakeState.numMicroTrianglesBaked,
-               desc.maxNumMicroTrianglesToBake);
-
-    // Align up to make sure we use up all the budget. It's better to overshoot it by numMicroTrianglesPerWord, which is very small,
-    // instead of leaving it in the remaining budget and ending up with another CS submitted with a tiny workload after this
-    const uint32_t maxNumMicroTrianglesToBakeAligned = align_safe(desc.maxNumMicroTrianglesToBake, numMicroTrianglesPerWord, UINT32_MAX);
-    const uint32_t numMicroTrianglesToBakeAligned = 
-      std::min(align_safe(numMicroTrianglesToBake, numMicroTrianglesPerWord, UINT32_MAX),
-               maxNumMicroTrianglesToBakeAligned);
+      calculateNumMicroTrianglesToBake(bakeState, desc, numMicroTrianglesAlignment, bakingWeightScale, availableBakingBudget);
 
     // Calculate per dispatch counts
-    const uint32_t numThreads = numMicroTrianglesToBakeAligned;
+    const uint32_t numThreads = numMicroTrianglesToBake;
     const uint32_t numThreadsPerDispatch = std::min(numThreads, maxThreadsPerDispatchAligned);
-    const uint32_t numDispatches = dxvk::util::ceilDivide(numMicroTrianglesToBakeAligned, numThreadsPerDispatch);
+    const uint32_t numDispatches = dxvk::util::ceilDivide(numMicroTrianglesToBake, numThreadsPerDispatch);
     const uint32_t baseThreadIndexOffset = bakeState.numMicroTrianglesBaked;
 
     for (uint32_t i = 0; i < numDispatches; i++) {
       args.threadIndexOffset = i * numThreadsPerDispatch + baseThreadIndexOffset;
-      args.numActiveThreads = std::min(numMicroTrianglesToBakeAligned - i * numThreadsPerDispatch, numThreadsPerDispatch);
-
-      // Prevent baking for uTriangles outside of the valid uTriangle range
-      args.numActiveThreads = std::min(args.threadIndexOffset + args.numActiveThreads, bakeState.numMicroTrianglesToBake) - args.threadIndexOffset;
+      args.numActiveThreads = std::min(numMicroTrianglesToBake - i * numThreadsPerDispatch, numThreadsPerDispatch);
 
       ctx->pushConstants(0, sizeof(args), &args);
 
@@ -499,8 +565,8 @@ namespace dxvk {
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
     }
 
-    bakeState.numMicroTrianglesBaked += numMicroTrianglesToBakeAligned;
-    bakeState.numMicroTrianglesBakedInLastBake = numMicroTrianglesToBakeAligned;
+    bakeState.numMicroTrianglesBaked += numMicroTrianglesToBake;
+    bakeState.numMicroTrianglesBakedInLastBake = numMicroTrianglesToBake;
 
     // Make sure the geom buffers are tracked for liveness
     ctx->getCommandList()->trackResource<DxvkAccess::Write>(opacityMicromapBuffer);

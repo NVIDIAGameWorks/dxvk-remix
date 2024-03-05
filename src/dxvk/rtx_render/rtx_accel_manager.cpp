@@ -156,6 +156,7 @@ namespace dxvk {
     // ToDo: get rid of usesIndices requirement, it's not needed to build OMMs. It's only used below
     if (usesIndices && 
         opacityMicromapManager &&
+        opacityMicromapManager->isActive() &&
         OpacityMicromapManager::usesOpacityMicromap(instance) &&
         OpacityMicromapManager::usesSplitBillboardOpacityMicromap(instance)) {
 
@@ -943,7 +944,7 @@ namespace dxvk {
     uploadSurfaceData(ctx);
 
     // Build and bind opacity micromaps
-    if (opacityMicromapManager) {
+    if (opacityMicromapManager && opacityMicromapManager->isActive()) {
       opacityMicromapManager->buildOpacityMicromaps(ctx, textures, cameraManager.getLastCameraCutFrameId(), frameTimeSecs);
 
       // Bind opacity micromaps
