@@ -88,11 +88,16 @@ namespace dxvk {
       bool applyVertexAndTextureOperations;
       bool useConservativeEstimation;
       uint32_t conservativeEstimationMaxTexelTapsPerMicroTriangle;
-      uint32_t maxNumMicroTrianglesToBake;
       uint32_t numTriangles;
       uint32_t triangleOffset;
       float resolveTransparencyThreshold;  // Anything smaller or equal is transparent
       float resolveOpaquenessThreshold;    // Anything greater or equal is opaque
+      
+      float costPerTexelTapPerMicroTriangleBudget;
+      const std::vector<uint16_t>& numTexelsPerMicrotriangle;
+
+      BakeOpacityMicromapDesc(const std::vector<uint16_t>& _numTexelsPerMicrotriangle)
+        : numTexelsPerMicrotriangle(_numTexelsPerMicrotriangle) { }
     };
 
     struct BakeOpacityMicromapState {
@@ -105,8 +110,6 @@ namespace dxvk {
 
     /**
      * \brief Execute a compute shader to bake opacity micromap for the input geometry
-     *        Note: bakeState.numMicroTrianglesBakedInLastBake can be greater than desc.maxNumMicroTrianglesToBake due 
-     *              internal alignments
      */
     void dispatchBakeOpacityMicromap(
       Rc<DxvkContext> ctx,
@@ -119,6 +122,7 @@ namespace dxvk {
       const uint32_t secondarySamplerIndex,
       const BakeOpacityMicromapDesc& desc,
       BakeOpacityMicromapState& bakeState,
+      uint32_t& availableBakingBudget,
       Rc<DxvkBuffer> opacityMicromapBuffer) const;
 
     struct TextureConversionInfo {
@@ -179,5 +183,8 @@ namespace dxvk {
         m_skinningContext->flushCommandList();
       }
     }
+
+  private:
+    static uint32_t calculateNumMicroTrianglesToBake(const BakeOpacityMicromapState& bakeState, const BakeOpacityMicromapDesc& desc, const uint32_t allowedNumMicroTriangleAlignment, const float bakingWeightScale, uint32_t& availableBakingBudget);
   };
 }

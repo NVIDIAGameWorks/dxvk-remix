@@ -107,13 +107,24 @@ namespace dxvk {
       // Parameterized to <1% FPS overhead on 4090
       // Baking: 2 mil ~ 0.15 ms
       // Building: 10 mil ~ 0.04 ms
-      RTX_OPTION("rtx.opacityMicromap.building", int, maxMicroTrianglesToBakeMillionPerSecond, 60 * 1, 
+      RTX_OPTION("rtx.opacityMicromap.building", int, maxMicroTrianglesToBakeMillionPerSecond, 60 * 5, 
                  "Max Micro Triangles to bake [Million/Second].\n"
                  "The actual number of issued micro triangles also depends on \"costPerTexelTapPerMicroTriangleBudget\" option.");
       RTX_OPTION("rtx.opacityMicromap.building", int, maxMicroTrianglesToBuildMillionPerSecond, 60 * 5, "Max Micro Triangles to build [Million/Second].");
-      RTX_OPTION_ENV("rtx.opacityMicromap.building", bool, enableUnlimitedBakingAndBuildingBudgets, false, 
-                     "RTX_OPACITY_MICROMAP_BUILDING_UNLIMITED_BAKING_AND_BUILDING_BUDGETS",
-                     "Enables unlimited baking and building budgets so that all available Opacity Micromaps are generated in a frame.");
+      RTX_OPTION_ENV("rtx.opacityMicromap.building", bool, enableUnlimitedBakingAndBuildingBudgets, false,
+        "RTX_OPACITY_MICROMAP_BUILDING_UNLIMITED_BAKING_AND_BUILDING_BUDGETS",
+        "Enables unlimited baking and building budgets so that all available Opacity Micromaps are generated in a frame.");
+      // Cost of taking additional texel taps when baking is:
+      //  4090: 9-41%, with an average of 28% per tap
+      //  3070: 16-51%, with an average of 30.5% per tap
+      // The default is set to to a higher conservative average so as to avoid overshooting the target. 
+      // It is preferred to overestimate total cost and bake less per frame
+      // than end up with a larger per frame baking overhead than desired.
+      RTX_OPTION("rtx.opacityMicromap.building", float, costPerTexelTapPerMicroTriangleBudget, 0.45, 
+                 "Approximate relative cost of doing an additional texel tap when baking micro triangles.\n"
+                 "This is used for estimating the overhead of baking micro triangles."
+                 "This cost is a relative cost to doing only a single tap.\n"
+                 "With C being the cost and N number of taps, the total cost is T = 1 + (N - 1) * C.\n");
 
       // Disabled for now as camera cuts occur even on non-camera movements, i.e. when
       // a plasma ball hits a sink, to avoid increased workload during those moments/gameplay
@@ -141,7 +152,20 @@ namespace dxvk {
         RTX_OPTION("rtx.opacityMicromap.building.conservativeEstimation", int, maxTexelTapsPerMicroTriangle, 64,
                    "Max number of texel taps per micro triangle when Conservative Estimation is enabled.\n"
                    "Set to 64 as a safer cap. 512 has been found to cause a timeout.\n"
-                   "Any microtriangles requiring more texel taps will be tagged as Opaque Unknown.");
+                   "Any micro triangles requiring more texel taps will be tagged as Opaque Unknown.");
+        RTX_OPTION_ENV("rtx.opacityMicromap.building.conservativeEstimation", float, minValidOMMTrianglesInMeshPercentage, 0.75,
+                   "RTX_OPACITY_MICROMAP_CONSERVATIVE_ESTIMATION_MIN_VALID_TRIANGLES_IN_MESH_PERCENTAGE",
+                   "Min percentage of triangles in a mesh for which valid OMM triangle arrays can be calculated.\n"
+                   "Valid OMM triangle arrays can be calculated for triangles for which the number of required texture taps is smaller or equal to \"maxTexelTapsPerMicroTriangle\".\n"
+                   "If the criteria is not met for a mesh, the OMMs will not be generated for the mesh.");
+        // 2*1024 translates to ~0.65ms overhead per frame on a i9-12900K.
+        // Setting it to 1K to be at <0.35 ms max/spike overhead per frame.
+        // Most frames will get nowhere close to this overhead because the calculation is limitted to only required cases
+        RTX_OPTION_ENV("rtx.opacityMicromap.building.conservativeEstimation", int, maxTrianglesToCalculateTexelDensityForPerFrame, 1024 + 512,
+                   "RTX_OPACITY_MICROMAP_CONSERVATIVE_ESTIMATION_MAX_TRIANGLES_TO_CALCULATE_TEXEL_DENSITY_FOR_PER_FRAME",
+                   "Max number of triangles for which to calculate texel density in a frame.\n"
+                   "The higher the value, the lower latency in getting OMM data generated,\n"
+                   "but at the cost of increasing CPU load per frame on the draw call submission thread.");
       };
     };
   };
@@ -309,14 +333,16 @@ namespace dxvk {
   private:
     XXH64_hash_t ommSrcHash = kEmptyHash;
     bool usesOMM : 1;
+    bool needsToCalculateNumTexelsPerMicroTriangle : 1;
   };
 
   // OpacityMicromapManager generates and manages Opacity Micromap data
   class OpacityMicromapManager : public CommonDeviceObject {
   public:
-    enum class OmmResult {
+    enum class OmmResult : uint8_t {
       Success,
       Failure,
+      Rejected,   // Similar to failure, with a difference that the action was rejected based on settings - so it's on the level of an expected failure
       OutOfMemory,
       OutOfBudget,
       DependenciesUnavailable
@@ -354,6 +380,14 @@ namespace dxvk {
     // Called once per frame before any calls to Opacity Micromap Manager
     void onFrameStart(Rc<DxvkContext> ctx);
 
+    // Called once per frame after all calls to Opacity Micromap Manager
+    void onFrameEnd();
+
+    // Returns whether the OMM manager has or can generate any new OMMs.
+    // This can be used to skip any large for loops querying OMM manager, 
+    // but it must not be used to skip onFrameStart() call
+    bool isActive() const;
+
     // Clears all built data and tracked instance state
     void clear();
 
@@ -372,8 +406,11 @@ namespace dxvk {
 
     static bool usesOpacityMicromap(const RtInstance& instance);
     static bool usesSplitBillboardOpacityMicromap(const RtInstance& instance);
+    static bool useStagingNumTexelsPerMicroTriangleObject(const RtInstance& instance);
     static XXH64_hash_t getOpacityMicromapHash(const RtInstance& instance);
 
+    // Internal use only
+    void onInstanceUnlinked(const RtInstance& instance);
   private:
     typedef fast_unordered_cache<OpacityMicromapCacheItem> OpacityMicromapCache;
 
@@ -389,8 +426,8 @@ namespace dxvk {
 
       ~CachedSourceData();
 
-      void initialize(const OmmRequest& ommRequest, fast_unordered_cache<InstanceOmmRequests>& instanceOmmRequests);
-      void setInstance(const RtInstance* instance, fast_unordered_cache<InstanceOmmRequests>& instanceOmmRequests, bool deleteParentInstanceIfEmpty = true);
+      void initialize(const OmmRequest& ommRequest, fast_unordered_cache<InstanceOmmRequests>& instanceOmmRequests, OpacityMicromapManager& ommManager);
+      void setInstance(const RtInstance* instance, fast_unordered_cache<InstanceOmmRequests>& instanceOmmRequests, OpacityMicromapManager& ommManager, bool deleteParentInstanceIfEmpty = true);
 
       const RtInstance* getInstance() const {
         return instance; 
@@ -398,6 +435,7 @@ namespace dxvk {
     private:
       const RtInstance* instance = nullptr;
     };
+    friend class CachedSourceData;
 
     XXH64_hash_t bindOpacityMicromap(Rc<DxvkContext> ctx, const RtInstance& instance, uint32_t billboardIndex, VkAccelerationStructureGeometryKHR& targetGeometry, const InstanceManager& instanceManager);
 
@@ -417,6 +455,23 @@ namespace dxvk {
     // Destroys references to an instance, but retains associated cached baked/built OMM data that doesn't depend on lifetime of the instance
     void destroyInstance(const RtInstance& instance, bool forceDestroy = false);
     uint32_t calculateNumMicroTriangles(uint16_t subdivisionLevel);
+
+
+    typedef std::vector<uint16_t> NumTexelsPerMicroTriangle;
+    struct NumTexelsPerMicroTriangleCalculationData {
+      NumTexelsPerMicroTriangle result;
+      OmmResult status = OmmResult::DependenciesUnavailable;
+
+      // Note: these variables are calculated in calculateNumTexelsPerMicroTriangle() and carried over.
+      //       They must not be used outside of the function as they are not kept up-to-date for all outcomes
+      uint32_t numTrianglesCalculated = 0;
+      uint32_t numTrianglesWithinTexelBudget = 0;
+    };
+
+    static uint32_t calculateNumTexelsPerMicroTriangle(Vector2 triangleTexcoords[3], float rcpNumMicroTrianglesAlongEdge, Vector2 textureResolution);
+    void calculateNumTexelsPerMicroTriangle(NumTexelsPerMicroTriangleCalculationData& numTexelsPerMicroTriangle, const RtInstance& instance, const uint32_t numTriangles);
+    void calculateNumTexelsPerMicroTriangle(const RtInstance& instance);
+    OmmResult getNumTexelsPerMicroTriangle(const RtInstance& instance, NumTexelsPerMicroTriangle** numTexelsPerMicroTriangle);
 
     // Called whenever a new instance has been added to the database
     void onInstanceAdded(const RtInstance& instance);
@@ -439,11 +494,10 @@ namespace dxvk {
 
     OmmResult bakeOpacityMicromapArray(Rc<DxvkContext> ctx, XXH64_hash_t ommSrcHash,
                                   OpacityMicromapCacheItem& ommCacheItem, CachedSourceData& sourceData,
-                                  const std::vector<TextureRef>& textures, uint32_t& maxMicroTrianglesToBake);
+                                  const std::vector<TextureRef>& textures, uint32_t& availableBakingBudget);
     OmmResult buildOpacityMicromap(Rc<DxvkContext> ctx, XXH64_hash_t ommSrcHash, OpacityMicromapCacheItem& ommCacheItem, VkMicromapUsageEXT& ommUsageGroup, VkMicromapBuildInfoEXT& ommBuildInfo, uint32_t& maxMicroTrianglesToBuild, bool forceBuild);
-    void bakeOpacityMicromapArrays(Rc<DxvkContext> ctx, const std::vector<TextureRef>& textures, uint32_t& maxMicroTrianglesToBake);
+    void bakeOpacityMicromapArrays(Rc<DxvkContext> ctx, const std::vector<TextureRef>& textures, uint32_t& availableBakingBudget);
     void buildOpacityMicromapsInternal(Rc<DxvkContext> ctx, uint32_t& maxMicroTrianglesToBuild);
-
     // Bound built OMMs need to be synchronized once before being used. 
     // This tracks if any such OMMs have been bound
     bool m_boundOmmsRequireSynchronization = false;
@@ -481,13 +535,28 @@ namespace dxvk {
 
     VkDeviceSize m_amountOfMemoryMissing = 0;    // Records how much memory was missing in a frame
     OpacityMicromapMemoryManager m_memoryManager;
+    bool m_hasEnoughMemoryToPotentiallyGenerateAnOmm = true; // A quick check to avoid unnecessary computations when there's not enough free budget to handle more OMMs
     std::unique_ptr<DxvkStagingDataAlloc> m_scratchAllocator;
 
     // Prev RtxOption states
     bool m_prevConservativeEstimationEnable = OpacityMicromapOptions::Building::ConservativeEstimation::enable();
     int m_prevConservativeEstimationMaxTexelTapsPerMicroTriangle = OpacityMicromapOptions::Building::ConservativeEstimation::maxTexelTapsPerMicroTriangle();
+    float m_prevConservativeEstimationMinValidOMMTrianglesInMeshPercentage = OpacityMicromapOptions::Building::ConservativeEstimation::minValidOMMTrianglesInMeshPercentage();
     int m_prevBuildingSubdivisionLevel = OpacityMicromapOptions::Building::subdivisionLevel();
     bool m_prevBuildingEnableVertexAndTextureOperations = OpacityMicromapOptions::Building::enableVertexAndTextureOperations();
+
+    uint32_t m_numTrianglesToCalculateForNumTexelsPerMicroTriangle = 
+      OpacityMicromapOptions::Building::ConservativeEstimation::maxTrianglesToCalculateTexelDensityForPerFrame();
+
+    // The staging variant stores results for instances that need to have this data calculated prior to knowing the OMM hash.
+    // It only applies to instances that were created in the very same frame, i.e. have a frame age of 0
+    std::unordered_map<const RtInstance*, NumTexelsPerMicroTriangleCalculationData> m_numTexelsPerMicroTriangleStaging;
+    // This could be stored in CachedSourceData to avoid an additional unordered_map lookup
+    fast_unordered_cache<NumTexelsPerMicroTriangleCalculationData> m_numTexelsPerMicroTriangle;
+    std::vector<const RtInstance*> m_instancesToDestroy;
+
+    // Need to give access to CachedSourceData to be able to purge m_numTexelsPerMicroTriangleStaging
+    friend class CachedSourceData;
   };
 }  // namespace dxvk
 
