@@ -45,6 +45,8 @@
 
 enum _NV_GPU_ARCHITECTURE_ID;
 typedef enum _NV_GPU_ARCHITECTURE_ID NV_GPU_ARCHITECTURE_ID;
+enum _NV_GPU_ARCH_IMPLEMENTATION_ID;
+typedef enum _NV_GPU_ARCH_IMPLEMENTATION_ID NV_GPU_ARCH_IMPLEMENTATION_ID;
 
 // RTX specific options
 
@@ -1139,6 +1141,7 @@ namespace dxvk {
     void updateUpscalerFromTaauPreset();
     void updatePresetFromUpscaler();
     NV_GPU_ARCHITECTURE_ID getNvidiaArch();
+    NV_GPU_ARCH_IMPLEMENTATION_ID getNvidiaChipId();
     void updateGraphicsPresets(const uint32_t vendorID = 0);
     void updateRaytraceModePresets(const uint32_t vendorID);
 

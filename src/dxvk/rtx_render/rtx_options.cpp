@@ -126,33 +126,47 @@ namespace dxvk {
     }
   }
 
-  NV_GPU_ARCHITECTURE_ID RtxOptions::getNvidiaArch() {
-    NV_GPU_ARCHITECTURE_ID archId = NV_GPU_ARCHITECTURE_TU100;
-
+  static bool queryNvidiaArchInfo(NV_GPU_ARCH_INFO& archInfo) {
     NvAPI_Status status;
     status = NvAPI_Initialize();
-    if (status != NVAPI_OK)
-      return NV_GPU_ARCHITECTURE_TU100;
-
+    if (status != NVAPI_OK) {
+      return false;
+    }
+    
     NvPhysicalGpuHandle nvGPUHandle[NVAPI_MAX_PHYSICAL_GPUS];
     NvU32 GpuCount;
     status = NvAPI_EnumPhysicalGPUs(nvGPUHandle, &GpuCount);
-    if (status != NVAPI_OK)
-      return NV_GPU_ARCHITECTURE_TU100;
-
+    if (status != NVAPI_OK) {
+      return false;
+    }
+    
     assert(GpuCount > 0);
 
-    NV_GPU_ARCH_INFO archInfo;
     archInfo.version = NV_GPU_ARCH_INFO_VER;
     // Note: Currently only using the first returned GPU Handle. Ideally this should use the GPU Handle Vulkan is using
     // though in the case of a mixed architecture multi-GPU system.
     status = NvAPI_GPU_GetArchInfo(nvGPUHandle[0], &archInfo);
-    if (status != NVAPI_OK)
-      return NV_GPU_ARCHITECTURE_TU100;
+    return status == NVAPI_OK;
+  }
 
+  NV_GPU_ARCHITECTURE_ID RtxOptions::getNvidiaArch() {
+    NV_GPU_ARCH_INFO archInfo;
+    if (queryNvidiaArchInfo(archInfo) == false) {
+      return NV_GPU_ARCHITECTURE_TU100;
+    }
+    
     return archInfo.architecture_id;
   }
 
+  NV_GPU_ARCH_IMPLEMENTATION_ID RtxOptions::getNvidiaChipId() {
+    NV_GPU_ARCH_INFO archInfo;
+    if (queryNvidiaArchInfo(archInfo) == false) {
+      return NV_GPU_ARCH_IMPLEMENTATION_TU100;
+    }
+    
+    return archInfo.implementation_id;
+  }
+    
   void RtxOptions::updateGraphicsPresets(const uint32_t vendorID) {
     // Handle Automatic Graphics Preset (From configuration/default)
 
@@ -181,8 +195,13 @@ namespace dxvk {
           preferredDefault = GraphicsPreset::High;
         } else {
           // Ada and beyond
-          Logger::info("NVIDIA Ada architecture detected, setting default graphics settings to Ultra");
-          preferredDefault = GraphicsPreset::Ultra;
+          if (getNvidiaChipId() == 0x7) { // 0x7 is AD107, but NVAPI has no enum constant for this chip
+            Logger::info("NVIDIA Ada AD107 detected, setting default graphics settings to High");
+            preferredDefault = GraphicsPreset::High;
+          } else {
+            Logger::info("NVIDIA Ada architecture detected, setting default graphics settings to Ultra");
+            preferredDefault = GraphicsPreset::Ultra;
+          }
         }
       } else {
         // Default to low if we don't know the hardware
