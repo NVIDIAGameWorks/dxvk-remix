@@ -27,6 +27,7 @@
 #include "dxvk_scoped_annotation.h"
 #include "rtx_options.h"
 #include "rtx_hash_collision_detection.h"
+#include "rtx_texture_manager.h"
 
 #include "rtx_imgui.h"
 
@@ -205,7 +206,14 @@ namespace dxvk {
       VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR);
   }
 
-  OpacityMicromapManager::~OpacityMicromapManager() { }
+  OpacityMicromapManager::~OpacityMicromapManager() { 
+#ifdef VALIDATION_MODE
+    // Delink instances so that the assert on cache data destruction doesn't trigger
+    for (auto& sourceData : m_cachedSourceData) {
+      sourceData.second.setInstance(nullptr, m_instanceOmmRequests, *this);
+    }
+#endif
+  }
 
   void OpacityMicromapManager::onDestroy() {
     m_scratchAllocator = nullptr;
@@ -280,8 +288,8 @@ namespace dxvk {
     omm_validation_assert(!instance && "Instance has not been unlinked");
   }
 
-  void OpacityMicromapManager::CachedSourceData::initialize(const OmmRequest& ommRequest, fast_unordered_cache<InstanceOmmRequests>& instanceOmmRequests) {
-    setInstance(&ommRequest.instance, instanceOmmRequests);
+  void OpacityMicromapManager::CachedSourceData::initialize(const OmmRequest& ommRequest, fast_unordered_cache<InstanceOmmRequests>& instanceOmmRequests, OpacityMicromapManager& ommManager) {
+    setInstance(&ommRequest.instance, instanceOmmRequests, ommManager);
 
     numTriangles = ommRequest.numTriangles;
 
@@ -293,15 +301,23 @@ namespace dxvk {
     }
   }
 
-  void OpacityMicromapManager::CachedSourceData::setInstance(const RtInstance* newInstance, fast_unordered_cache<InstanceOmmRequests>& instanceOmmRequests, bool deleteParentInstanceIfEmpty) {
+  void OpacityMicromapManager::CachedSourceData::setInstance(const RtInstance* newInstance, fast_unordered_cache<InstanceOmmRequests>& instanceOmmRequests, OpacityMicromapManager& ommManager, bool deleteParentInstanceIfEmpty) {
     omm_validation_assert(instance != newInstance && "Redundant call setting the same instance twice.");
 
     if (instance && newInstance) {
-      setInstance(nullptr, instanceOmmRequests, deleteParentInstanceIfEmpty);
+      setInstance(nullptr, instanceOmmRequests, ommManager, deleteParentInstanceIfEmpty);
     }
 
     if (newInstance) {
-      instanceOmmRequests[getOpacityMicromapHash(*newInstance)].numActiveRequests += 1;
+      OpacityMicromapInstanceData& newOmmInstanceData = getOmmInstanceData(*newInstance);
+
+      instanceOmmRequests[newOmmInstanceData.ommSrcHash].numActiveRequests += 1;
+
+      // Request numTexelsPerMicroTriangle to be calculated.
+      // Note: this may get set to true even after the data was calculated,
+      //   but that is OK as the data will not be calculated twice 
+      //   since it's checked for being available first then
+      newOmmInstanceData.needsToCalculateNumTexelsPerMicroTriangle = true;
     }
     // instance should always be valid at this point, but let's check on previous instance being actually valid before unlinking it
     else if (instance) {
@@ -311,9 +327,27 @@ namespace dxvk {
       if (deleteParentInstanceIfEmpty && instanceOmmRequestsIter->second.numActiveRequests == 0) {
         instanceOmmRequests.erase(instanceOmmRequestsIter);
       }
+
+      ommManager.onInstanceUnlinked(*instance);
     }
 
     instance = newInstance;
+  }
+
+  void OpacityMicromapManager::onInstanceUnlinked(const RtInstance& instance) {
+    OpacityMicromapInstanceData& ommInstanceData = getOmmInstanceData(instance);
+
+    // Make sure to set the request to false, since the calculations are throttled 
+    // and it's possible the calculation doesn't complete prior to instance being unlinked 
+    // (i.e. due to linked OMM cache items getting destroyed)
+    ommInstanceData.needsToCalculateNumTexelsPerMicroTriangle = false;
+
+    // Delete staging numTexelsPerMicroTriangle data associated with the instance
+    if (useStagingNumTexelsPerMicroTriangleObject(instance)) {
+      m_numTexelsPerMicroTriangleStaging.erase(&instance);
+    } else {
+      omm_validation_assert(m_numTexelsPerMicroTriangleStaging.find(&instance) == m_numTexelsPerMicroTriangleStaging.end());
+    }
   }
 
   void OpacityMicromapManager::destroyOmmData(OpacityMicromapCache::iterator& ommCacheItemIter, bool destroyParentInstanceOmmRequestContainer) {
@@ -334,6 +368,7 @@ namespace dxvk {
         m_unprocessedList.erase(ommCacheItem.cacheStateListIter);
         ommCacheItem.isUnprocessedCacheStateListIterValid = false;
       }
+      m_numTexelsPerMicroTriangle.erase(ommSrcHash);
       break;
     case OpacityMicromapCacheState::eStep2_Baked:
       m_bakedList.erase(ommCacheItem.cacheStateListIter);
@@ -405,6 +440,8 @@ namespace dxvk {
       destroyOmmData(ommCacheIterator, destroyParentInstanceOmmRequestContainer);
     };
 
+    m_numTexelsPerMicroTriangleStaging.erase(&instance);
+
     // Destroy all OMM requests associated with the instance
     XXH64_hash_t ommSrcHash = getOpacityMicromapHash(instance);
     if (ommSrcHash != kEmptyHash) {
@@ -433,12 +470,16 @@ namespace dxvk {
     m_ommCache.clear();
 
 #ifdef VALIDATION_MODE
+    // Delink instances so that the assert on cache data destruction doesn't trigger
     for (auto& sourceData : m_cachedSourceData) {
-      sourceData.second.setInstance(nullptr, m_instanceOmmRequests);
+      sourceData.second.setInstance(nullptr, m_instanceOmmRequests, *this);
     }
 #endif
     m_cachedSourceData.clear();
     m_ommBuildRequestStatistics.clear();
+
+    m_numTexelsPerMicroTriangleStaging.clear();
+    m_numTexelsPerMicroTriangle.clear();
 
     m_instanceOmmRequests.clear();
 
@@ -581,8 +622,7 @@ namespace dxvk {
   }
 
   void OpacityMicromapManager::onInstanceAdded(const RtInstance& instance) {
-    // Do nothing, all instances with their finalized material state are processed
-    // after the frame submissions
+    // Do nothing, intra-frame submission OMM work is done on onInstanceUpdated()
   }
 
   // Requires registerOpacityMicromapBuildRequest() to be be called prior to this in a frame
@@ -602,13 +642,18 @@ namespace dxvk {
       instance.getBillboardCount() <= OpacityMicromapOptions::Building::maxAllowedBillboardsPerInstanceToSplit();
   }
 
+  bool OpacityMicromapManager::useStagingNumTexelsPerMicroTriangleObject(const RtInstance& instance) {
+    return instance.getFrameAge() == 0 && OpacityMicromapManager::usesSplitBillboardOpacityMicromap(instance);
+  }
+
   XXH64_hash_t OpacityMicromapManager::getOpacityMicromapHash(const RtInstance& instance) {
     const OpacityMicromapInstanceData& ommInstanceData = instance.getOpacityMicromapInstanceData();
     return ommInstanceData.ommSrcHash;
   }
 
   OpacityMicromapInstanceData::OpacityMicromapInstanceData()
-    : usesOMM(false) { }
+    : usesOMM(false)
+    , needsToCalculateNumTexelsPerMicroTriangle(false) { }
 
   OpacityMicromapInstanceData& OpacityMicromapManager::getOmmInstanceData(const RtInstance& instance) {
     // OMM Instance Data is managed by OMM manager but stored in an instance to avoid indirect lookups. 
@@ -621,8 +666,256 @@ namespace dxvk {
                                                  const RtSurfaceMaterial& material,
                                                  const bool hasTransformChanged,
                                                  const bool hasVerticesChanged) {
-    // Do nothing, all instances with their finalized material state are processed
-    // after the frame submission
+    ScopedCpuProfileZone();
+
+    // Skip calculating data needed for new OMMs if there's not enough memory to build any OMM request
+    if (!m_hasEnoughMemoryToPotentiallyGenerateAnOmm) {
+      return;
+    }
+
+    OpacityMicromapInstanceData& ommInstanceData = getOmmInstanceData(instance);
+
+    // OMMs for billboards are built on a first frame they are seen if OMM budget permits 
+    // and since such instances often have 1 frame lifetime, the buffers need to be available in that first frame
+    if (useStagingNumTexelsPerMicroTriangleObject(instance)) {
+      ommInstanceData.needsToCalculateNumTexelsPerMicroTriangle = true;
+    }
+
+    // Calculate num texels per micro triangle if requested.
+    // This is calculated inline on a draw call submission timeline since
+    // a draw call may try to block on an access to a buffer 
+    // that was also used in an earlier draw call
+    // but if the earlier draw call places a ref on the buffer for OMM to keep it around for latter use, 
+    // it will block the draw call submission thread until that ref is lifted.
+    // Calculating the data inline here avoids that.
+    if (ommInstanceData.needsToCalculateNumTexelsPerMicroTriangle) {
+      calculateNumTexelsPerMicroTriangle(instance);
+    }
+  }
+    
+  // Calculates number of texels that cover a micro triangle in a triangle.
+  // This matches the texcoord span done for conservative opacity estimation during OMM triangle array baking.
+  // Returns UINT32_MAX if number of texels exceeds the maximum allowed value
+  uint32_t OpacityMicromapManager::calculateNumTexelsPerMicroTriangle(
+    Vector2 triangleTexcoords[3],
+    float rcpNumMicroTrianglesAlongEdge,
+    Vector2 textureResolution) {
+
+    // For the sake of simplicity, we only calculate number of texels needed for a first micro triangle in the triangle. 
+    // Even though the micro triangles have the same UV area, the number of texels covering it may be different 
+    // between them depending on how their texcoords fit into texel bounds cutoffs, but the variability should be 
+    // small enough for OMM's purposes of estimating number of texels needed in a micro triangle when calculating baking costs.
+
+    // Calculate micro triangle texcoords
+    Vector2 texcoords[3];
+    texcoords[0] = triangleTexcoords[0];
+    texcoords[1] = triangleTexcoords[0] + rcpNumMicroTrianglesAlongEdge * (triangleTexcoords[1] - triangleTexcoords[0]);
+    texcoords[2] = triangleTexcoords[0] + rcpNumMicroTrianglesAlongEdge * (triangleTexcoords[2] - triangleTexcoords[0]);
+
+    // Find texcoord bbox for the micro triangle
+    Vector2 texcoordsMin(FLT_MAX, FLT_MAX);
+    Vector2 texcoordsMax(-FLT_MAX, -FLT_MAX);
+    for (uint32_t i = 0; i < 3; i++) {
+      texcoordsMin = min(texcoords[i], texcoordsMin);
+      texcoordsMax = max(texcoords[i], texcoordsMax);
+    }
+
+    // Find the sampling index bbox for the micro triangle.
+    // Align the bbox to actual texel centers that fully cover the bbox.
+    // Align with a top left texel relative to the bbox min.
+    // Add epsilon to avoid host underestimating sampling footprint due to float precision errors. 
+    // 0.001 should generally be large enough.
+    // Should the underestimation still occur, the shader will fall back to a conservative value for a micro triangle.
+    const float kEpsilon = 0.001f;
+    const float kHalfTexelOffset = 0.5f + kEpsilon;
+    const Vector2 texcoordsIndexMin = doFloor(texcoordsMin * textureResolution - kHalfTexelOffset);
+    // Align with a bottom right pixel relative to the bbox max
+    const Vector2 texcoordsIndexMax = doFloor(texcoordsMax * textureResolution + kHalfTexelOffset);
+
+    // Calculate number of texels in the given texcoord bbox.
+    // +1: include the end point of the bbox
+    const Vector2 texelSampleDims = texcoordsIndexMax - texcoordsIndexMin + 1;
+    const uint32_t numTexelsPerMicroTriangle =
+      static_cast<uint32_t>(std::min<float>(round(texelSampleDims.x * texelSampleDims.y), static_cast<float>(UINT32_MAX)));
+
+    return numTexelsPerMicroTriangle;
+  }
+
+  void OpacityMicromapManager::calculateNumTexelsPerMicroTriangle(
+    NumTexelsPerMicroTriangleCalculationData& numTexelsPerMicroTriangle,
+    const RtInstance& instance,
+    const uint32_t numTriangles) {
+
+    const RasterGeometry& geometryData = instance.getBlas()->input.getGeometryData();
+
+    if (geometryData.topology != VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST) {
+      ONCE(Logger::info("[RTX Opacity Micromap] Instance has non triangle list topology. This is only partially supported. Falling back to a conservative max value for estimated numTexelsPerMicroTriangle instead."));
+      numTexelsPerMicroTriangle.result.resize(numTriangles, OpacityMicromapOptions::Building::ConservativeEstimation::maxTexelTapsPerMicroTriangle());
+      numTexelsPerMicroTriangle.status = OmmResult::Success;
+      return;
+    }
+
+
+    if (!OpacityMicromapOptions::Building::ConservativeEstimation::enable()) {
+      numTexelsPerMicroTriangle.result.resize(numTriangles, 1);
+      numTexelsPerMicroTriangle.status = OmmResult::Success;
+      return;
+    }
+
+    const GeometryBufferData bufferData(geometryData);
+    const bool hasNonIdentityTextureTransform = instance.surface.textureTransform != Matrix4();
+    const bool usesIndices = geometryData.usesIndices();
+    const bool has16bitIndices = usesIndices ? geometryData.indexBuffer.indexType() == VK_INDEX_TYPE_UINT16 : false;
+    const uint32_t subdivisionLevel = OpacityMicromapOptions::Building::subdivisionLevel();
+
+    // Retrieve opacity texture's resolution
+    const RtxTextureManager& textureManager = m_device->getCommon()->getTextureManager();
+    const TextureRef& opacityTexture = textureManager.getTextureTable()[instance.getAlbedoOpacityTextureIndex()];
+
+    // Opacity texture is not available, this can happen when DLSS is turned off.
+    if (!opacityTexture.getImageView()) {
+      return;
+    }
+
+    const VkExtent3D& opacityTextureExtent = opacityTexture.getImageView()->imageInfo().extent;
+    Vector2 opacityTextureResolution(
+      static_cast<float>(opacityTextureExtent.width),
+      static_cast<float>(opacityTextureExtent.height));
+
+    // Calculate number of texel footprint per micro triangle for all triangles
+    {
+      const uint32_t kNumIndicesPerTriangle = 3;
+      const float rcpNumMicroTrianglesPerEdge = 1.f / (1 << subdivisionLevel);
+      const uint32_t kMaxTexelTapsPerMicroTriangle =
+        static_cast<uint32_t>(
+          std::min<int32_t>(
+            OpacityMicromapOptions::Building::ConservativeEstimation::maxTexelTapsPerMicroTriangle(),
+            static_cast<int32_t>(UINT16_MAX)));
+
+      // Check if the required buffers are available
+      if (!bufferData.texcoordData) {
+        ONCE(Logger::warn(str::format("[RTX Opacity Micromap] Texcoord data is unavailable for calculateNumTexelsPerMicroTriangle(). Falling back to a conservative max value for estimated numTexelsPerMicroTriangle instead.")));
+        numTexelsPerMicroTriangle.result.resize(numTriangles, OpacityMicromapOptions::Building::ConservativeEstimation::maxTexelTapsPerMicroTriangle());
+        numTexelsPerMicroTriangle.status = OmmResult::Success;
+        return;
+      }
+      
+      // Resize the vector to the target size when processing the data for the instance for the first time
+      if (numTexelsPerMicroTriangle.numTrianglesCalculated == 0) {
+        numTexelsPerMicroTriangle.result.resize(numTriangles);
+      }
+
+      // Go over all triangles calculating texel footprint per micro triangle
+      // Note: don't issue "break" from the for loop as the logic depends on the for loop's increment statement executing for every iteration
+      for (uint32_t& iTriangle = numTexelsPerMicroTriangle.numTrianglesCalculated; 
+           iTriangle < numTriangles && m_numTrianglesToCalculateForNumTexelsPerMicroTriangle > 0;
+           iTriangle++, m_numTrianglesToCalculateForNumTexelsPerMicroTriangle--) {
+        Vector2 texcoords[3];
+        uint32_t indexOffset = iTriangle * kNumIndicesPerTriangle;
+
+        // Get triangle's texcoords
+        for (uint32_t i = 0; i < kNumIndicesPerTriangle; i++) {
+          uint32_t index =
+            usesIndices
+            ? has16bitIndices
+              ? bufferData.getIndex(i + indexOffset)
+              : bufferData.getIndex32(i + indexOffset)
+            : i + indexOffset;
+
+          texcoords[i] = bufferData.getTexCoord(index);
+
+          if (hasNonIdentityTextureTransform) {
+            texcoords[i] = (instance.surface.textureTransform * Vector4(texcoords[i].x, texcoords[i].y, 0.f, 1.f)).xy();
+          }
+        }
+
+        uint32_t iNumTexelsPerMicroTriangle = calculateNumTexelsPerMicroTriangle(texcoords, rcpNumMicroTrianglesPerEdge, opacityTextureResolution);
+
+        if (iNumTexelsPerMicroTriangle > kMaxTexelTapsPerMicroTriangle) {
+          iNumTexelsPerMicroTriangle = 0;
+        }
+
+        numTexelsPerMicroTriangle.result[iTriangle] = static_cast<uint16_t>(iNumTexelsPerMicroTriangle);
+
+        numTexelsPerMicroTriangle.numTrianglesWithinTexelBudget += iNumTexelsPerMicroTriangle != 0;
+      }
+    }
+
+    // Not all triangles got calculated yet
+    if (numTexelsPerMicroTriangle.numTrianglesCalculated != numTexelsPerMicroTriangle.result.size()) {
+      return;
+    }
+
+    // Check the ratio of how many triangles benefit from OMM triangle arrays
+    {
+      const float percentageOfTrianglesWithinTexelBudget =
+        numTexelsPerMicroTriangle.numTrianglesWithinTexelBudget / static_cast<float>(numTexelsPerMicroTriangle.numTrianglesCalculated);
+
+      if (percentageOfTrianglesWithinTexelBudget >= OpacityMicromapOptions::Building::ConservativeEstimation::minValidOMMTrianglesInMeshPercentage()) {
+        numTexelsPerMicroTriangle.status = OmmResult::Success;
+      } else {
+        ONCE(Logger::info("[RTX Opacity Micromap] Instance requires more texel taps to resolve opacity than allowed."));
+        numTexelsPerMicroTriangle.status = OmmResult::Rejected;
+      }
+    }
+  }
+
+  void OpacityMicromapManager::calculateNumTexelsPerMicroTriangle(const RtInstance& instance) {
+    ScopedCpuProfileZone();
+
+    if (m_numTrianglesToCalculateForNumTexelsPerMicroTriangle == 0) {
+      return;
+    }
+
+    const RasterGeometry& geometryData = instance.getBlas()->input.getGeometryData();
+    const uint32_t numTriangles = geometryData.calculatePrimitiveCount();
+    const uint32_t numTrianglesModifiedGeometry = instance.getBlas()->modifiedGeometryData.calculatePrimitiveCount();
+
+    if (numTriangles != numTrianglesModifiedGeometry || numTriangles == 0) {
+      ONCE(Logger::info("[RTX Opacity Micromap] Found unsupported instance type. Input and mofified geometry have different or 0 primitive counts."));
+      return;
+    }
+
+    // Technically, we could generate OMMs without opacity texture present, but it's not currently supported
+    if (instance.getAlbedoOpacityTextureIndex() == kSurfaceMaterialInvalidTextureIndex) {
+      return;
+    }
+
+    const XXH64_hash_t ommSrcHash = getOpacityMicromapHash(instance);
+
+    // Create an object to store the result.
+    // Ultimately the result should be stored per Omm hash, but if the hash not been calculated yet
+    // it is stored in the staging unordered map per instance
+    bool hasInsertedNewObject;
+    NumTexelsPerMicroTriangleCalculationData* numTexelsPerMicroTriangle;
+    if (ommSrcHash != kEmptyHash) {
+      // Using piecewise_construct to construct in-place with an empty constructor for the object
+      auto elementIter = m_numTexelsPerMicroTriangle.emplace(
+        std::piecewise_construct, std::make_tuple(ommSrcHash), std::make_tuple());
+      hasInsertedNewObject = elementIter.second;
+      numTexelsPerMicroTriangle = &elementIter.first->second;
+    } else {
+      // Using piecewise_construct to construct in-place with an empty constructor for the object
+      auto elementIter = m_numTexelsPerMicroTriangleStaging.emplace(
+        std::piecewise_construct, std::make_tuple(&instance), std::make_tuple());
+      hasInsertedNewObject = elementIter.second;
+      numTexelsPerMicroTriangle = &elementIter.first->second;
+      omm_validation_assert(hasInsertedNewObject &&
+                            "Invalid state. This should not be scheduled to be calculated for an instance that already has the result.");
+    }
+
+    // The result has been already calculated for this instance
+    if (numTexelsPerMicroTriangle->status != OmmResult::DependenciesUnavailable) {
+      return;
+    }
+
+    calculateNumTexelsPerMicroTriangle(*numTexelsPerMicroTriangle, instance, numTriangles);
+
+    // The calculation is complete
+    if (numTexelsPerMicroTriangle->status != OmmResult::DependenciesUnavailable) {
+      OpacityMicromapInstanceData& ommInstanceData = getOmmInstanceData(instance);
+      ommInstanceData.needsToCalculateNumTexelsPerMicroTriangle = false;
+    }
   }
 
   void OpacityMicromapManager::onInstanceDestroyed(const RtInstance& instance) {
@@ -736,6 +1029,8 @@ namespace dxvk {
 
     if (prevOmmSrcHash != kEmptyHash && ommSrcHash != prevOmmSrcHash) {
       // Valid source hash changed, deassociate instance from the previous hash
+      // Note: this will delete non-hash dependent per instance OMM data as well, 
+      // which may not be necessary, but we cannot determine that right now
       destroyInstance(instance);
     }
 
@@ -748,12 +1043,12 @@ namespace dxvk {
     auto sourceDataIter = m_cachedSourceData.insert({ ommRequest.ommSrcHash, CachedSourceData() }).first;
     CachedSourceData& sourceData = sourceDataIter->second;
 
-    sourceData.initialize(ommRequest, m_instanceOmmRequests);
+    sourceData.initialize(ommRequest, m_instanceOmmRequests, *this);
 
     if (sourceData.numTriangles == 0) {
       ONCE(Logger::warn("[RTX Opacity Micromap] Input geometry has 0 triangles. Ignoring the build request."));
       // Unlink the instance
-      sourceData.setInstance(nullptr, m_instanceOmmRequests);
+      sourceData.setInstance(nullptr, m_instanceOmmRequests, *this);
       m_cachedSourceData.erase(sourceDataIter);
  
       return m_cachedSourceData.end();
@@ -764,7 +1059,7 @@ namespace dxvk {
 
   void OpacityMicromapManager::deleteCachedSourceData(fast_unordered_cache<OpacityMicromapManager::CachedSourceData>::iterator sourceDataIter, OpacityMicromapCacheState ommCacheState, bool destroyParentInstanceOmmRequestContainer) {
     if (ommCacheState <= OpacityMicromapCacheState::eStep1_Baking)
-      sourceDataIter->second.setInstance(nullptr, m_instanceOmmRequests, destroyParentInstanceOmmRequestContainer);
+      sourceDataIter->second.setInstance(nullptr, m_instanceOmmRequests, *this, destroyParentInstanceOmmRequestContainer);
     m_cachedSourceData.erase(sourceDataIter);
   }
 
@@ -777,12 +1072,6 @@ namespace dxvk {
   // Returns true if a new OMM build request was accepted
   bool OpacityMicromapManager::addNewOmmBuildRequest(RtInstance& instance, const OmmRequest& ommRequest) {
     
-    // Skip processing if there's no available memory backing
-    if (m_memoryManager.getBudget() == 0) {
-      ONCE(Logger::warn("[RTX Opacity Micromap] OMM baker ran out of memory, and could not complete request."));
-      return false;
-    }
-
     // Prevent host getting overloaded
     if (m_ommBuildRequestStatistics.size() >= OpacityMicromapOptions::BuildRequests::maxRequests())
       return false;
@@ -929,6 +1218,11 @@ namespace dxvk {
                                                                    const std::vector<TextureRef>& textures) {
     ScopedCpuProfileZone();
 
+    // Skip processing if there's no available memory backing
+    if (m_memoryManager.getBudget() == 0) {
+      return false;
+    }
+
     OpacityMicromapInstanceData& ommInstanceData = getOmmInstanceData(instance);
     ommInstanceData.usesOMM = calculateInstanceUsesOpacityMicromap(instance);
 
@@ -1018,6 +1312,12 @@ namespace dxvk {
                                                               VkAccelerationStructureGeometryKHR& targetGeometry,
                                                               const InstanceManager& instanceManager) {
     ScopedCpuProfileZone();
+    
+    // Skip trying to bind an OMM if the budget is 0 since no OMMs can exist
+    if (m_memoryManager.getBudget() == 0) {
+      return kEmptyHash;
+    }
+
     if (!usesOpacityMicromap(instance)) {
       return kEmptyHash;
     }
@@ -1254,18 +1554,66 @@ namespace dxvk {
       sizeInfo.micromapSize + 2 * kBufferInBlasUsageAlignment;
   }
 
+  OpacityMicromapManager::OmmResult OpacityMicromapManager::getNumTexelsPerMicroTriangle(
+    const RtInstance& instance,
+    NumTexelsPerMicroTriangle** numTexelsPerMicroTriangle) {
+
+    // Note: this is not expected to be called for non-reference instances which
+    // goes along the design choice of non-reference OMM instances not being used for generating OMMs
+    omm_validation_assert(!instance.isViewModelNonReference());
+
+    NumTexelsPerMicroTriangleCalculationData* numTexelsPerMicroTriangleCalculationData;
+
+    // Look up the object holding the data
+    if (useStagingNumTexelsPerMicroTriangleObject(instance)) {
+      auto numTexelsPerMicroTriangleStagingIter = m_numTexelsPerMicroTriangleStaging.find(&instance);
+
+      if (numTexelsPerMicroTriangleStagingIter == m_numTexelsPerMicroTriangleStaging.end()) {
+        return OmmResult::DependenciesUnavailable;
+      }
+
+      numTexelsPerMicroTriangleCalculationData = &numTexelsPerMicroTriangleStagingIter->second;
+    } else {
+      auto numTexelsPerMicroTriangleIter = m_numTexelsPerMicroTriangle.find(getOpacityMicromapHash(instance));
+
+      if (numTexelsPerMicroTriangleIter == m_numTexelsPerMicroTriangle.end()) {
+        return OmmResult::DependenciesUnavailable;
+      }
+
+      numTexelsPerMicroTriangleCalculationData = &numTexelsPerMicroTriangleIter->second;
+    }
+
+    *numTexelsPerMicroTriangle = &numTexelsPerMicroTriangleCalculationData->result;
+    return numTexelsPerMicroTriangleCalculationData->status;
+  }
+
   OpacityMicromapManager::OmmResult OpacityMicromapManager::bakeOpacityMicromapArray(
     Rc<DxvkContext> ctx,
     XXH64_hash_t ommSrcHash,
     OpacityMicromapCacheItem& ommCacheItem,
     CachedSourceData& sourceData,
     const std::vector<TextureRef>& textures,
-    uint32_t& maxMicroTrianglesToBake) {
+    uint32_t& availableBakingBudget) {
     
     const RtInstance& instance = *sourceData.getInstance();
 
     if (!areInstanceTexturesResident(instance, textures)) {
       return OmmResult::DependenciesUnavailable;
+    }
+
+    // Check if the data has already been calculated
+    NumTexelsPerMicroTriangle* numTexelsPerMicroTriangle;
+    const OmmResult texelBudgetCheckResult = getNumTexelsPerMicroTriangle(instance, &numTexelsPerMicroTriangle);
+    if (texelBudgetCheckResult != OmmResult::Success) {
+      // If the instance hasn't been updated this frame, it means it's kept around by other means 
+      // and NumTexelsPerMicroTriangle won't be able to be generated since the draw calls for it are no longer being issued.
+      // Therefore, let's get rid of the instance being linked to OMMs. We can't call destroyInstance() from within baking call stack, 
+      // since multiple OMM items linked to it may get purged because of it and baking iterates through a list of OMMs.
+      // Instead queue up the instance destruction
+      if (instance.getFrameLastUpdated() != m_device->getCurrentFrameId()) {
+        m_instancesToDestroy.push_back(&instance);
+      }
+      return texelBudgetCheckResult;
     }
 
     BlasEntry& blasEntry = *instance.getBlas();
@@ -1320,7 +1668,7 @@ namespace dxvk {
 
     // Generate OMM array
     {
-      RtxGeometryUtils::BakeOpacityMicromapDesc desc = {};
+      RtxGeometryUtils::BakeOpacityMicromapDesc desc(*numTexelsPerMicroTriangle);
       desc.subdivisionLevel = ommCacheItem.subdivisionLevel;
       desc.numMicroTrianglesPerTriangle = calculateNumMicroTriangles(ommCacheItem.subdivisionLevel);
       desc.ommFormat = ommCacheItem.ommFormat;
@@ -1329,11 +1677,11 @@ namespace dxvk {
       desc.applyVertexAndTextureOperations = ommCacheItem.useVertexAndTextureOperations;
       desc.useConservativeEstimation = OpacityMicromapOptions::Building::ConservativeEstimation::enable();
       desc.conservativeEstimationMaxTexelTapsPerMicroTriangle = OpacityMicromapOptions::Building::ConservativeEstimation::maxTexelTapsPerMicroTriangle();
-      desc.maxNumMicroTrianglesToBake = maxMicroTrianglesToBake;
       desc.numTriangles = numTriangles;
       desc.triangleOffset = sourceData.triangleOffset;
       desc.resolveTransparencyThreshold = RtxOptions::Get()->getResolveTransparencyThreshold();
       desc.resolveOpaquenessThreshold = RtxOptions::Get()->getResolveOpaquenessThreshold();
+      desc.costPerTexelTapPerMicroTriangleBudget = OpacityMicromapOptions::Building::costPerTexelTapPerMicroTriangleBudget();
 
       // Overrides
       if (instance.surface.alphaState.isDecal)
@@ -1346,10 +1694,10 @@ namespace dxvk {
         ctx->getCommonObjects()->metaGeometryUtils().dispatchBakeOpacityMicromap(
           ctx, blasEntry.modifiedGeometryData,
           textures, samplers, instance.getAlbedoOpacityTextureIndex(), instance.getSamplerIndex(), instance.getSecondaryOpacityTextureIndex(), instance.getSecondarySamplerIndex(),
-          desc, ommCacheItem.bakingState, ommCacheItem.ommArrayBuffer);
+          desc, ommCacheItem.bakingState, availableBakingBudget, ommCacheItem.ommArrayBuffer);
 
         if (OpacityMicromapOptions::Building::enableUnlimitedBakingAndBuildingBudgets()) {
-          desc.maxNumMicroTrianglesToBake = UINT32_MAX;
+          availableBakingBudget = UINT32_MAX;
 
           // There are more micro triangles to bake
           if (ommCacheItem.bakingState.numMicroTrianglesBaked < ommCacheItem.bakingState.numMicroTrianglesToBake) {
@@ -1362,8 +1710,6 @@ namespace dxvk {
       } while (true);
 
       ctx->getCommandList()->trackResource<DxvkAccess::Write>(ommCacheItem.ommArrayBuffer);
-
-      maxMicroTrianglesToBake -= std::min(ommCacheItem.bakingState.numMicroTrianglesBakedInLastBake, maxMicroTrianglesToBake);
     }
 
     m_numMicroTrianglesBaked += ommCacheItem.bakingState.numMicroTrianglesBakedInLastBake;
@@ -1525,7 +1871,7 @@ namespace dxvk {
 
   void OpacityMicromapManager::bakeOpacityMicromapArrays(Rc<DxvkContext> ctx,
                                                          const std::vector<TextureRef>& textures,
-                                                         uint32_t& maxMicroTrianglesToBake) {
+                                                         uint32_t& availableBakingBudget) {
 
     if (!OpacityMicromapOptions::enableBakingArrays())
       return;
@@ -1551,10 +1897,10 @@ namespace dxvk {
     ScopedGpuProfileZone(ctx, "Bake Opacity Micromap Arrays");
 
     if (OpacityMicromapOptions::Building::enableUnlimitedBakingAndBuildingBudgets()) {
-      maxMicroTrianglesToBake = UINT32_MAX;
+      availableBakingBudget = UINT32_MAX;
     }
 
-    for (auto ommSrcHashIter = m_unprocessedList.begin(); ommSrcHashIter != m_unprocessedList.end() && maxMicroTrianglesToBake > 0; ) {
+    for (auto ommSrcHashIter = m_unprocessedList.begin(); ommSrcHashIter != m_unprocessedList.end() && availableBakingBudget > 0; ) {
       XXH64_hash_t ommSrcHash = *ommSrcHashIter;
 
 #ifdef VALIDATION_MODE
@@ -1580,13 +1926,16 @@ namespace dxvk {
       OpacityMicromapCacheItem& ommCacheItem = cacheItemIter->second;
       ommCacheItem.cacheState = OpacityMicromapCacheState::eStep1_Baking;
 
-      OmmResult result = bakeOpacityMicromapArray(ctx, ommSrcHash, ommCacheItem, sourceData, textures, maxMicroTrianglesToBake);
+      OmmResult result = bakeOpacityMicromapArray(ctx, ommSrcHash, ommCacheItem, sourceData, textures, availableBakingBudget);
 
       if (result == OmmResult::Success) {
         // Use >= as the number of baked micro triangles is aligned up
         if (ommCacheItem.bakingState.numMicroTrianglesBaked >= ommCacheItem.bakingState.numMicroTrianglesToBake) {
+
           // Unlink the referenced RtInstance
-          sourceData.setInstance(nullptr, m_instanceOmmRequests);
+          sourceData.setInstance(nullptr, m_instanceOmmRequests, *this);
+
+          m_numTexelsPerMicroTriangle.erase(ommSrcHash);
 
           // Move the item from the unprocessed list to the end of the baked list
           ommCacheItem.cacheState = OpacityMicromapCacheState::eStep2_Baked;
@@ -1595,7 +1944,7 @@ namespace dxvk {
           ommCacheItem.isUnprocessedCacheStateListIterValid = false;
         }
         else {
-          // Do nothing, else path means all the budget has been used up and thus the loop will exit due to maxMicroTrianglesToBake == 0
+          // Do nothing, else path means all the budget has been used up and thus the loop will exit due to availableBakingBudget == 0
           //   so don't need to increment the iterator
           if (OpacityMicromapOptions::Building::enableUnlimitedBakingAndBuildingBudgets()) {
             ONCE(Logger::err("[RTX Opacity Micromap] Failed to fully bake an Opacity Micromap due to budget limits even with unlimited budgetting enabled."));
@@ -1608,8 +1957,11 @@ namespace dxvk {
       } else if (result == OmmResult::DependenciesUnavailable) {
         // Textures not available - try the next one
         ommSrcHashIter++;
-      } else if (result == OmmResult::Failure) {
-        ONCE(Logger::warn(str::format("[RTX Opacity Micromap] Baking Opacity Micromap Array failed for hash ", ommSrcHash, ". Ignoring and black listing the hash.")));
+      } else if (result == OmmResult::Failure || 
+                 result == OmmResult::Rejected) {
+        if (result == OmmResult::Failure) {
+          ONCE(Logger::warn(str::format("[RTX Opacity Micromap] Baking Opacity Micromap Array failed for hash ", ommSrcHash, ". Ignoring and black listing the hash.")));
+        }
 #ifdef VALIDATION_MODE
         Logger::warn(str::format("[RTX Opacity Micromap] Baking Opacity Micromap Array failed for hash ", ommSrcHash, ". Ignoring and black listing the hash."));
 #endif
@@ -1628,7 +1980,7 @@ namespace dxvk {
     }
 
     if (OpacityMicromapOptions::Building::enableUnlimitedBakingAndBuildingBudgets()) {
-      maxMicroTrianglesToBake = UINT32_MAX;
+      availableBakingBudget = UINT32_MAX;
     }
   }
 
@@ -1758,6 +2110,8 @@ namespace dxvk {
                                           m_prevConservativeEstimationEnable);
       forceRebuildOMMs |= hasValueChanged(OpacityMicromapOptions::Building::ConservativeEstimation::maxTexelTapsPerMicroTriangle(), 
                                           m_prevConservativeEstimationMaxTexelTapsPerMicroTriangle);
+      forceRebuildOMMs |= hasValueChanged(OpacityMicromapOptions::Building::ConservativeEstimation::minValidOMMTrianglesInMeshPercentage(),
+                                          m_prevConservativeEstimationMinValidOMMTrianglesInMeshPercentage);
       forceRebuildOMMs |= hasValueChanged(OpacityMicromapOptions::Building::subdivisionLevel(), 
                                           m_prevBuildingSubdivisionLevel);
       forceRebuildOMMs |= hasValueChanged(OpacityMicromapOptions::Building::enableVertexAndTextureOperations(), 
@@ -1848,9 +2202,25 @@ namespace dxvk {
       // were not used in this frame and thus should go to a pending release queue of the last frame
       m_memoryManager.onFrameStart();
 
+      // Require at least 1MB (selected ad-hoc to cover at least a quad) of free budget to allow processing of new OMM items
+      m_hasEnoughMemoryToPotentiallyGenerateAnOmm =
+        m_memoryManager.getAvailable() >= 1 * 1024 * 1024;
+
       m_numMicroTrianglesBaked = 0;
       m_numMicroTrianglesBuilt = 0;
     }
+  }
+
+  void OpacityMicromapManager::onFrameEnd() {
+    // Staging results are only needed for one frame, so purge them
+    m_numTexelsPerMicroTriangleStaging.clear();
+
+    m_numTrianglesToCalculateForNumTexelsPerMicroTriangle =
+      OpacityMicromapOptions::Building::ConservativeEstimation::maxTrianglesToCalculateTexelDensityForPerFrame();
+  }
+
+  bool OpacityMicromapManager::isActive() const {
+    return m_memoryManager.getBudget() > 0;
   }
 
   void OpacityMicromapManager::buildOpacityMicromaps(Rc<DxvkContext> ctx,
@@ -1858,39 +2228,31 @@ namespace dxvk {
                                                      uint32_t lastCameraCutFrameId,
                                                      float frameTimeSecs) {
 
-    float workloadScalePerSecond = frameTimeSecs / (1 / 60.f);
+    // Get the workload scale in respect to 60 Hz for a given frame time.
+    // 60 Hz is the baseline since that's what the per-second budgets have been parametrized at in RtxOptions
+    const float kFrameTime60Hz = 1 / 60.f;
+    float workloadScalePerSecond = frameTimeSecs / kFrameTime60Hz;
 
     // Modulate the scale for practical FPS range (i.e. <25, 200>) to even out the OMM's per frame percentage performance overhead
     {
       // Scale set to balance evening out performance overhead across FPS as well as not to stray too 
       // far from linear scaling so as not to slow down baking at very high FPS too much
-      // Stats for 4090 
-      //
-      // Scale = x
-      // FPS | GPU Time | Frame Time %
-      // 30  |  0.180   | 0.54
-      // 74  |  0.143   | 1
-      // 120 |  0.130   | 1.56
-      // 200 |  0.110   | 2.2
-      //
-      // Scale = pow(x, 1.5f):
-      // FPS | GPU Time | Frame Time %
-      // 30  |  0.314   | 0.94
-      // 74  |  0.145   | 1.01
-      // 120 |  0.110   | 1.3
-      // 200 |  0.079   | 1.6
-      // 
-      // Apply non-linear scaling only to an FPS range <25, 200> to avoid pow(t, 1.5f) blowing scaling out of proportion
+
+      // Apply non-linear scaling only to an FPS range <25, 200> to avoid pow(t, x) blowing scaling out of proportion
       // Linear scaling will result in less overhead per frame for below 25 FPS, and in more overhead over 200 FPS
-      if (frameTimeSecs >= 1 / 200.f && frameTimeSecs <= 1 / 25.f)
-        workloadScalePerSecond = powf(workloadScalePerSecond, 1.5f);
-      else if (frameTimeSecs > 1 / 25.f)
-        workloadScalePerSecond *= 1.549f; // == non-linear scale multiplier at 25 FPS
-      else
-        workloadScalePerSecond *= 0.547f; // == non-linear scale multiplier at 200 FPS
+      if (frameTimeSecs >= 1 / 200.f && frameTimeSecs <= 1 / 25.f) {
+        workloadScalePerSecond = powf(workloadScalePerSecond, 1.28f);
+      } else if (frameTimeSecs > 1 / 25.f) {
+        workloadScalePerSecond *= 1.278f; // == non-linear scale multiplier at 25 FPS
+      } else {
+        workloadScalePerSecond *= 0.714f; // == non-linear scale multiplier at 200 FPS
+      }
     }
 
-    const float secondToFrameBudgetScale = workloadScalePerSecond * frameTimeSecs;
+    // Convert the modulated workload scale back to frameTimeSecs's/per second base
+    // since that's how the per-second budgets are expressed and can be multiplied with
+    // to get the budget to use in this frame
+    const float secondToFrameBudgetScale = workloadScalePerSecond * kFrameTime60Hz;
 
     // Initialize per frame budgets
     float numMillionMicroTrianglesToBakeAvailable = OpacityMicromapOptions::Building::maxMicroTrianglesToBakeMillionPerSecond() * secondToFrameBudgetScale;
@@ -1912,6 +2274,12 @@ namespace dxvk {
 
       bakeOpacityMicromapArrays(ctx, textures, numMicroTrianglesToBakeAvailable);
       buildOpacityMicromapsInternal(ctx, numMicroTrianglesToBuildAvailable);
+
+      // Purge instances queued for deletion
+      for (const RtInstance* instance : m_instancesToDestroy) {
+        destroyInstance(*instance);
+      }
+      m_instancesToDestroy.clear();
     }
   }
 }  // namespace dxvk

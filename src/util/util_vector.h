@@ -555,6 +555,14 @@ namespace dxvk {
   }
 
   template <typename T>
+  Vector2Base<T> doFloor(const Vector2Base<T>& a) {
+    return Vector2Base<T>(
+      floor(a.x),
+      floor(a.y)
+    );
+  }
+
+  template <typename T>
   std::ostream& operator<<(std::ostream& os, const Vector2Base<T>& v) {
     return os << "Vector2(" << v[0] << ", " << v[1] << ")";
   }
