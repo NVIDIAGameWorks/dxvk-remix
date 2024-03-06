@@ -131,7 +131,9 @@ namespace dxvk {
   }
 
   Vector3 SceneManager::calculateSceneRight() {
-    return cross(getSceneForward(), getSceneUp());
+    const Vector3 up = SceneManager::getSceneUp();
+    const Vector3 forward = SceneManager::getSceneForward();
+    return RtxOptions::Get()->isLeftHandedCoordinateSystem() ? cross(up, forward) : cross(forward, up);
   }
 
   Vector3 SceneManager::worldToSceneOrientedVector(const Vector3& worldVector) {
