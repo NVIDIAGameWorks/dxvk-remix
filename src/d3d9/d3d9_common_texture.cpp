@@ -345,9 +345,6 @@ namespace dxvk {
       newHash = XXH3_64bits_withSeed(&renderTargetHashCounter, sizeof(uint32_t), newHash);
       ++renderTargetHashCounter;
       image->setHash(newHash);
-      char addressStr[20] = { 0 };
-      std::to_chars(std::begin(addressStr), std::end(addressStr), newHash, 16);
-      TRACE("newHash: ", addressStr);
     }
     return image;
     // NV-DXVK end
@@ -630,6 +627,13 @@ namespace dxvk {
 
     if (IsSrgbCompatible())
       m_sampleView.Srgb = CreateView(AllLayers, Lod, VK_IMAGE_USAGE_SAMPLED_BIT, true);
+
+    // Add render target texture to GUI
+    if (IsRenderTarget()) {
+      // Assumption: All image hashes are created before creating sample view. Put assert here to track hash bugs.
+      assert(m_image->getHash() != kEmptyHash);
+      ImGUI::AddTexture(m_image->getHash(), m_sampleView.Color);
+    }
   }
 
   void D3D9CommonTexture::SetupForRtxFrom(const D3D9CommonTexture* source) {
