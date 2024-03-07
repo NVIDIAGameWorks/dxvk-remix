@@ -3185,12 +3185,18 @@ void DxsoCompiler::emitControlFlowGenericLoop(
         };
 
         auto loadTextureScaleFnc = [&]() -> uint32_t {
-          // Get the texture scale for heightmaps.
-          uint32_t textureScaleOffset = m_module.constu32(D3D9SharedPSStages_Count * ctx.dst.id.num + D3D9SharedPSStages_TextureScale);
-          uint32_t textureScalePtr = m_module.opAccessChain(m_module.defPointerType(floatType, spv::StorageClassUniform),
-            m_ps.sharedState, 1, &textureScaleOffset);
+          if (m_programInfo.type() ==  DxsoProgramTypes::PixelShader && m_ps.sharedState != 0) {
+            // Get the texture scale for heightmaps.
+            
+            // The correct index for baking the terrain to a dynamic texture stage is unclear here - 
+            // both `ctx.dst.id.num` and `samplerIdx` can both have values greater than caps::TextureStageCount. 
+            uint32_t textureScaleOffset = m_module.constu32(D3D9SharedPSStages_Count * kTerrainBakerSecondaryTextureStage + D3D9SharedPSStages_TextureScale);
+            uint32_t textureScalePtr = m_module.opAccessChain(m_module.defPointerType(floatType, spv::StorageClassUniform),
+              m_ps.sharedState, 1, &textureScaleOffset);
 
-          return m_module.opLoad(floatType, textureScalePtr);
+            return m_module.opLoad(floatType, textureScalePtr);
+          }
+          return m_module.constf32(1.0);
         };
 
         return postprocessTextureReadForTerrainBaking(m_module, textureValue, texcoordVar.id, getVectorTypeId(texcoordVar.type), loadTextureScaleFnc, loadAlbedoOpacityFnc, storeVec4ValueToRegisterFnc, loadVec4ValueFromRegisterFnc);
