@@ -421,8 +421,10 @@ namespace dxvk {
       spvModule.memberDecorateOffset(structType, stage * D3D9SharedPSStages_Count + D3D9SharedPSStages_BumpEnvLOffset, offset);
       offset += sizeof(float);
 
+// NV-DXVK start: support height map scaling in terrain baking
       spvModule.memberDecorateOffset(structType, stage * D3D9SharedPSStages_Count + D3D9SharedPSStages_TextureScale, offset);
       offset += sizeof(float);
+// NV-DXVK end
 
       // Padding...
       offset += sizeof(float);
@@ -1993,7 +1995,7 @@ namespace dxvk {
               return m_module.opLoad(vec4Type, registerStorage);
             };
             auto loadTextureScaleFnc = [&]() -> uint32_t {
-              uint32_t textureScaleOffset = m_module.constu32(D3D9SharedPSStages_Count * i + D3D9SharedPSStages_TextureScale);
+              uint32_t textureScaleOffset = m_module.constu32(D3D9SharedPSStages_Count * kTerrainBakerSecondaryTextureStage + D3D9SharedPSStages_TextureScale);
               uint32_t textureScalePtr = m_module.opAccessChain(m_module.defPointerType(m_floatType, spv::StorageClassUniform),
                 m_ps.sharedState, 1, &textureScaleOffset);
               return m_module.opLoad(m_floatType, textureScalePtr);
