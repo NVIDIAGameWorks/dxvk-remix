@@ -280,8 +280,13 @@ namespace dxvk {
     output.m_Intensity = LightManager::lightConversionDistantLightFixedIntensity();
 
     // Note: Changing this code will alter "stable" light hashes from D3D9 and potentially break replacement assets.
-      
+
     // Note: Stable version used for D3D9 light conversion path to ensure stable hashing regardless of code changes.
+    // Also note the Rect Light type is intentionally used here instead of the Distant Light type. This is done due to
+    // a mistake originating from a refactoring on 09-26-2023. Little to no previous content was affected by this bug
+    // as directional light replacements are not common and were not used in Portal RTX, plus the lack of public usage
+    // of Remix. As such, it is left this way to not break replacements created by users after the toolkit launch
+    // (since the public launch included this bug and "fixing" it would probably be cause more harm than good).
     output.m_cachedHash = (XXH64_hash_t) RtLightType::Rect;
 
     // Note: A constant half angle is used due to a legacy artifact of accidentally including half angle value in the
