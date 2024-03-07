@@ -505,8 +505,8 @@ namespace dxvk {
         D3D9SharedPS& sharedState = ctx->allocAndMapPSSharedStateConstantBuffer();
         for (int i = 0; i < caps::TextureStageCount; ++i) {
           sharedState.Stages[i] = prevSharedState.Stages[i];
-          sharedState.Stages[i].textureScale = textureScale * cascadeUvDensity;
         }
+        sharedState.Stages[kTerrainBakerSecondaryTextureStage].textureScale = textureScale * cascadeUvDensity;
         
         // Programmable VS path
         if (drawCallState.usesVertexShader) {
