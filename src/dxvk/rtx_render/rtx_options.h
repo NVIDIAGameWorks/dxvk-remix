@@ -51,6 +51,7 @@ typedef enum _NV_GPU_ARCH_IMPLEMENTATION_ID NV_GPU_ARCH_IMPLEMENTATION_ID;
 // RTX specific options
 
 namespace dxvk {
+  class DxvkDevice;
 
   using RenderPassVolumeIntegrateRaytraceMode = DxvkVolumeIntegrate::RaytraceMode;
   using RenderPassGBufferRaytraceMode = DxvkPathtracerGbuffer::RaytraceMode;
@@ -1142,7 +1143,7 @@ namespace dxvk {
     void updatePresetFromUpscaler();
     NV_GPU_ARCHITECTURE_ID getNvidiaArch();
     NV_GPU_ARCH_IMPLEMENTATION_ID getNvidiaChipId();
-    void updateGraphicsPresets(const uint32_t vendorID = 0);
+    void updateGraphicsPresets(const DxvkDevice* device);
     void updateRaytraceModePresets(const uint32_t vendorID);
 
     void resetUpscaler();

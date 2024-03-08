@@ -25,6 +25,8 @@
 #include "rtx_terrain_baker.h"
 #include "rtx_render/rtx_nee_cache.h"
 
+#include "dxvk_device.h"
+
 namespace dxvk {
   std::unique_ptr<RtxOptions> RtxOptions::pInstance = nullptr;
 
@@ -167,10 +169,13 @@ namespace dxvk {
     return archInfo.implementation_id;
   }
     
-  void RtxOptions::updateGraphicsPresets(const uint32_t vendorID) {
+  void RtxOptions::updateGraphicsPresets(const DxvkDevice* device) {
     // Handle Automatic Graphics Preset (From configuration/default)
 
     if (RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Auto) {
+      const DxvkDeviceInfo& deviceInfo = device->adapter()->devicePropertiesExt();
+      const uint32_t vendorID = deviceInfo.core.properties.vendorID;
+      
       // Default updateGraphicsPresets value, don't want to hit this path intentionally or Low settings will be used
       assert(vendorID != 0);
 
@@ -195,12 +200,23 @@ namespace dxvk {
           preferredDefault = GraphicsPreset::High;
         } else {
           // Ada and beyond
-          if (getNvidiaChipId() == 0x7) { // 0x7 is AD107, but NVAPI has no enum constant for this chip
-            Logger::info("NVIDIA Ada AD107 detected, setting default graphics settings to High");
-            preferredDefault = GraphicsPreset::High;
-          } else {
+
+          // figure out how much vidmem we have
+          VkPhysicalDeviceMemoryProperties memProps = device->adapter()->memoryProperties();
+          VkDeviceSize vidMemSize = 0;
+          for (uint32_t i = 0; i < memProps.memoryTypeCount; i++) {
+            if (memProps.memoryTypes[i].propertyFlags == VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
+              vidMemSize = memProps.memoryHeaps[memProps.memoryTypes[i].heapIndex].size;
+              break;
+            }
+          }
+
+          if (vidMemSize > 8ull * 1024 * 1024 * 1024) {
             Logger::info("NVIDIA Ada architecture detected, setting default graphics settings to Ultra");
             preferredDefault = GraphicsPreset::Ultra;
+          } else {
+            Logger::info("NVIDIA Ada architecture detected, setting default graphics settings to High");
+            preferredDefault = GraphicsPreset::High;
           }
         }
       } else {

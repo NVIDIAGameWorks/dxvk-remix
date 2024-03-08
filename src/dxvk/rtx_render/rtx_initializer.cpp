@@ -58,7 +58,7 @@ namespace dxvk {
       const DxvkDeviceInfo& deviceInfo = m_device->adapter()->devicePropertiesExt();
 
       RtxOptions::Get()->updateUpscalerFromDlssPreset();
-      RtxOptions::Get()->updateGraphicsPresets(deviceInfo.core.properties.vendorID);
+      RtxOptions::Get()->updateGraphicsPresets(m_device);
       RtxOptions::Get()->updateRaytraceModePresets(deviceInfo.core.properties.vendorID);
     } else {
       // Default, init to custom unless otherwise specified
