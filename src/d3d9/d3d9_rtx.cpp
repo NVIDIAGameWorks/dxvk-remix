@@ -610,13 +610,11 @@ namespace dxvk {
     // Now that the DrawCallState is complete, we can use heuristics for detection
     m_activeDrawCallState.setupCategoriesForHeuristics();
 
-    // Note: when skybox geometries are defined, we don't know if we will or won't need the draw call ahead of time, so assume we do
-    // Same with automatic sky detection (requires camera data)
+    // Note: when skybox geometries are defined, we don't know if we will or won't need the draw call ahead of time (requires camera data)
     const bool preserveOriginalDraw =
       status == RtxGeometryStatus::Rasterized ||
       needVertexCapture ||
       !RtxOptions::skyBoxGeometries().empty() ||
-      RtxOptions::skyAutoDetect() != SkyAutoDetectMode::None ||
       m_activeDrawCallState.testCategoryFlags(CATEGORIES_REQUIRE_DRAW_CALL);
 
     return { preserveOriginalDraw, true };

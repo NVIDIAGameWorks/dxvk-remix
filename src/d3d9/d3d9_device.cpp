@@ -2549,6 +2549,9 @@ namespace dxvk {
           drawInfo.vertexCount, drawInfo.instanceCount,
           cStartVertex, 0);
       });
+    } else if (RtxOptions::skyAutoDetect() != SkyAutoDetectMode::None) {
+      // Preserve the draw call data, which are needed for skybox pass later. But we don't need to actually dispatch the drawcall here.
+      PrepareDraw(PrimitiveType);
     }
 
     if (pendingCommit) {
@@ -2601,6 +2604,9 @@ namespace dxvk {
           cStartIndex,
           cBaseVertexIndex, 0);
       });
+    } else if (RtxOptions::skyAutoDetect() != SkyAutoDetectMode::None) {
+      // Preserve the draw call data, which are needed for skybox pass later. But we don't need to actually dispatch the drawcall here.
+      PrepareDraw(PrimitiveType);
     }
 
     if (pendingCommit) {
@@ -2662,6 +2668,9 @@ namespace dxvk {
       m_state.vertexBuffers[0].vertexBuffer = nullptr;
       m_state.vertexBuffers[0].offset = 0;
       m_state.vertexBuffers[0].stride = 0;
+    } else if (RtxOptions::skyAutoDetect() != SkyAutoDetectMode::None) {
+      // Preserve the draw call data, which are needed for skybox pass later. But we don't need to actually dispatch the drawcall here.
+      PrepareDraw(PrimitiveType);
     }
 
     if (pendingCommit) {
@@ -2739,6 +2748,9 @@ namespace dxvk {
       m_state.vertexBuffers[0].stride = 0;
 
       m_state.indices = nullptr;
+    } else if (RtxOptions::skyAutoDetect() != SkyAutoDetectMode::None) {
+      // Preserve the draw call data, which are needed for skybox pass later. But we don't need to actually dispatch the drawcall here.
+      PrepareDraw(PrimitiveType);
     }
 
     if (pendingCommit) {
