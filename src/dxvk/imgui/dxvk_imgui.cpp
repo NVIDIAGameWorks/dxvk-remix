@@ -1129,7 +1129,7 @@ namespace dxvk {
 
     // Map presets to options
 
-    RtxOptions::Get()->updateGraphicsPresets();
+    RtxOptions::Get()->updateGraphicsPresets(ctx->getDevice().ptr());
 
     // Note: These settings aren't updated in updateGraphicsPresets since they are not in the RtxOptions class.
     // Todo: Improve this preset override functionality and ideally move it into the updateGraphicsPresets section somehow [REMIX-1482]
