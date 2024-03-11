@@ -38,6 +38,20 @@
 #include "../../d3d9/d3d9_caps.h"
 
 namespace dxvk {
+
+  uint32_t getMipLevels(ReplacementMaterialTextureType::Enum textureType, const VkExtent3D& extent) {
+    switch (textureType) {
+    case ReplacementMaterialTextureType::Height:
+      // height maps need to be created with mip levels for quad tree POM support.
+      return static_cast<uint32_t>(std::floor(std::log2(std::max(extent.width, extent.height))));
+      break;
+
+    default:
+      return 1;
+      break;
+    }
+  }
+
   VkClearColorValue getClearColor(ReplacementMaterialTextureType::Enum textureType) {
     switch (textureType) {
     case ReplacementMaterialTextureType::Height:
@@ -443,9 +457,9 @@ namespace dxvk {
 
       // Bind terrain texture as render target 
       {
-        const Rc<DxvkImageView>& terrainTextureView =
-          getTerrainTexture(ctx, textureManger, textureType, m_bakingParams.cascadeMapResolution.width,
-                            m_bakingParams.cascadeMapResolution.height).view;
+        const RtxMipmap::Resource& terrainResource = getTerrainTexture(ctx, textureManger, textureType, m_bakingParams.cascadeMapResolution.width,
+                            m_bakingParams.cascadeMapResolution.height);
+        const Rc<DxvkImageView>& terrainTextureView = terrainResource.views.empty() ? terrainResource.view : terrainResource.views[0];
 
         if (terrainTextureView == nullptr) {
           if (textureType == ReplacementMaterialTextureType::AlbedoOpacity) {
@@ -639,11 +653,11 @@ namespace dxvk {
     m_needsMaterialDataUpdate = false;
   }
 
-  const Resources::Resource& TerrainBaker::getTerrainTexture(ReplacementMaterialTextureType::Enum textureType) const {
+  const RtxMipmap::Resource& TerrainBaker::getTerrainTexture(ReplacementMaterialTextureType::Enum textureType) const {
     return m_materialTextures[textureType].texture;
   }
 
-  const Resources::Resource& TerrainBaker::getTerrainTexture(
+  const RtxMipmap::Resource& TerrainBaker::getTerrainTexture(
     Rc<DxvkContext> ctx, 
     RtxTextureManager& textureManager, 
     ReplacementMaterialTextureType::Enum textureType, 
@@ -651,7 +665,7 @@ namespace dxvk {
     uint32_t height) {
     VkExtent3D resolution = { width, height, 1 };
 
-    Resources::Resource& texture = m_materialTextures[static_cast<uint32_t>(textureType)].texture;
+    RtxMipmap::Resource& texture = m_materialTextures[static_cast<uint32_t>(textureType)].texture;
 
     // Recreate the texture
     if (!texture.isValid() ||
@@ -661,10 +675,16 @@ namespace dxvk {
       if (texture.isValid()) {
         TextureRef textureRef = TextureRef(texture.view);
         textureManager.releaseTexture(textureRef);
+
+        if (texture.views.size() > 0) {
+          for (Rc<DxvkImageView>& view : texture.views) {
+            textureManager.releaseTexture(TextureRef(view));
+          }
+        }
       }
 
-      texture = Resources::createImageResource(
-        ctx, "baked terrain texture", resolution, getTextureFormat(textureType), 1, VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D, 0, true, getClearColor(textureType));
+      texture = RtxMipmap::createResource(
+        ctx, "baked terrain texture", resolution, getTextureFormat(textureType), VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, getClearColor(textureType), getMipLevels(textureType, resolution));
 
       m_needsMaterialDataUpdate = true;
     }
@@ -826,9 +846,19 @@ namespace dxvk {
     m_materialData.reset();
   }
 
+  void TerrainBaker::prepareSceneData(Rc<RtxContext> ctx) {
+    if (TerrainBaker::needsTerrainBaking()) {
+      // update the height mipmap
+      if (m_materialTextures[ReplacementMaterialTextureType::Height].texture.isValid()) {
+        ScopedGpuProfileZone(ctx, "Terrain Height Mip Map");
+        RtxMipmap::updateMipmap(ctx, m_materialTextures[ReplacementMaterialTextureType::Height].texture, MipmapMethod::Maximum);
+      }
+    }
+  }
+
   void TerrainBaker::BakedTexture::onFrameEnd(Rc<DxvkContext> ctx) {
 
-    auto releaseTexture = [&](Resources::Resource& texture) {
+    auto releaseTexture = [&](RtxMipmap::Resource& texture) {
       if (!texture.isValid()) {
         return;
       }
@@ -837,8 +867,14 @@ namespace dxvk {
 
       // WAR (REMIX-1557) to force release terrain texture reference from texture cache since it doesn't do it automatically resulting in a leak
       TextureRef textureRef = TextureRef(texture.view);
-      texture.reset();
       textureManager.releaseTexture(textureRef);
+      
+      if (texture.views.size() > 0) {
+        for (Rc<DxvkImageView>& view : texture.views) {
+          textureManager.releaseTexture(TextureRef(view));
+        }
+      }
+      texture.reset();
     };
 
     // Retain textures when baking is disabled as they are not being refreshed and can still be used

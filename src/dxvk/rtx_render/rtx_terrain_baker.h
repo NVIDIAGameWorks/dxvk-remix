@@ -24,6 +24,7 @@
 #include "rtx_context.h"
 #include "rtx_geometry_utils.h"
 #include "rtx_resources.h"
+#include "rtx_mipmap.h"
 
 namespace dxvk {
 
@@ -39,8 +40,9 @@ namespace dxvk {
     TerrainArgs getTerrainArgs() const;
 
     void onFrameEnd(Rc<DxvkContext> ctx);
+    void prepareSceneData(Rc<RtxContext> ctx);
 
-    const Resources::Resource& getTerrainTexture(ReplacementMaterialTextureType::Enum textureType) const;
+    const RtxMipmap::Resource& getTerrainTexture(ReplacementMaterialTextureType::Enum textureType) const;
     const MaterialData* getMaterialData() const;
     const Rc<DxvkSampler>& getTerrainSampler() const;
 
@@ -153,7 +155,7 @@ namespace dxvk {
     void calculateBakingParameters(Rc<RtxContext> ctx, const DxvkContextState& dxvkCtxState);
     void updateTextureFormat(const DxvkContextState& dxvkCtxState);
     void calculateCascadeMapResolution(const Rc<DxvkDevice>& device);
-    const Resources::Resource& getTerrainTexture(Rc<DxvkContext> ctx, RtxTextureManager& textureManager, ReplacementMaterialTextureType::Enum textureType, uint32_t width, uint32_t height);
+    const RtxMipmap::Resource& getTerrainTexture(Rc<DxvkContext> ctx, RtxTextureManager& textureManager, ReplacementMaterialTextureType::Enum textureType, uint32_t width, uint32_t height);
     void clearMaterialTexture(Rc<DxvkContext> ctx, ReplacementMaterialTextureType::Enum textureType);
     static bool isPSReplacementSupportEnabled(const DrawCallState& drawCallState);
 
@@ -223,7 +225,7 @@ namespace dxvk {
       // 1: means current frame only
       const uint8_t kNumFramesToRetainBakedTexture = 2;
       
-      Resources::Resource texture;
+      RtxMipmap::Resource texture;
       uint8_t numFramesToRetain = 0;
 
       bool isBaked() {

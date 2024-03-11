@@ -42,23 +42,18 @@ namespace dxvk {
                                                const VkFormat format,
                                                const uint32_t numLayers,
                                                const VkImageViewType imageViewType,
-                                               bool isColorAttachment) {
+                                               const VkImageUsageFlags extraUsageFlags,
+                                               const uint32_t mipLevels) {
     DxvkImageViewCreateInfo viewInfo;
     viewInfo.type = imageViewType;
-    viewInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT;
+    viewInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT | extraUsageFlags;
     viewInfo.aspect = VK_IMAGE_ASPECT_COLOR_BIT;
     viewInfo.minLevel = 0;
-    viewInfo.numLevels = 1;
+    viewInfo.numLevels = mipLevels;
     viewInfo.minLayer = 0;
     viewInfo.numLayers = numLayers;
 
     viewInfo.format = format;
-
-    if (isColorAttachment) {
-      viewInfo.usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    } else {
-      viewInfo.usage |= VK_IMAGE_USAGE_STORAGE_BIT;
-    }
 
     return ctx->getDevice()->createImageView(image, viewInfo);
   }
@@ -71,16 +66,21 @@ namespace dxvk {
                                                      const VkImageType imageType,
                                                      const VkImageViewType imageViewType,
                                                      const VkImageCreateFlags imageCreateFlags,
-                                                     bool isColorAttachment,
-                                                     const VkClearColorValue clearValue) {
+                                                     const VkImageUsageFlags extraUsageFlags,
+                                                     const VkClearColorValue clearValue,
+                                                     const uint32_t mipLevels) {
+    assert (mipLevels > 0);
+    // max mip levels a texture can have based on its size:
+    assert (mipLevels <= static_cast<uint32_t>(std::floor(std::log2(std::max(extent.width, extent.height)))) + 1);
+
     DxvkImageCreateInfo desc;
     desc.type = imageType;
     desc.flags = imageCreateFlags;
     desc.sampleCount = VK_SAMPLE_COUNT_1_BIT;
     desc.extent = extent;
     desc.numLayers = numLayers;
-    desc.mipLevels = 1;
-    desc.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    desc.mipLevels = mipLevels; 
+    desc.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | extraUsageFlags;
     desc.stages = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
     desc.access = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
     desc.tiling = VK_IMAGE_TILING_OPTIMAL;
@@ -88,19 +88,13 @@ namespace dxvk {
 
     desc.format = format;
 
-    if (isColorAttachment) {
-      desc.usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    } else {
-      desc.usage |= VK_IMAGE_USAGE_STORAGE_BIT;
-    }
-
     if (imageViewType == VK_IMAGE_VIEW_TYPE_CUBE) {
       desc.flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
     }
 
     Resource resource;
     resource.image = ctx->getDevice()->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget, name);
-    resource.view = createImageView(ctx, resource.image, format, numLayers, imageViewType, isColorAttachment);
+    resource.view = createImageView(ctx, resource.image, format, numLayers, imageViewType, extraUsageFlags, mipLevels);
     ctx->changeImageLayout(resource.image, VK_IMAGE_LAYOUT_GENERAL);
 
     VkImageSubresourceRange subRange = {};
@@ -545,7 +539,7 @@ namespace dxvk {
         m_skyMatte.image->info().format != format) {
       m_skyMatte = createImageResource(ctx, "sky matte", m_targetExtent, format,
                                        1, VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_2D,
-                                       VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT, true);
+                                       VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
     }
 
     assert(m_skyMatte.isValid());
@@ -566,7 +560,7 @@ namespace dxvk {
 
       m_skyProbe = createImageResource(ctx, "sky probe", skyProbeExt, format,
                                        6, VK_IMAGE_TYPE_2D, VK_IMAGE_VIEW_TYPE_CUBE,
-                                       VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT, true);
+                                       VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
     }
 
     assert(m_skyProbe.isValid());
@@ -943,44 +937,6 @@ namespace dxvk {
     executeResizeEventList(m_onTargetResize, ctx, m_targetExtent);
   }
 
-  Resources::MipMapResource Resources::createMipmapResource(Rc<DxvkContext> ctx, const VkExtent3D& extent, VkFormat format, int mipLevel, const char *name) {
-    Resources::MipMapResource resource;
-    DxvkImageCreateInfo desc;
-    desc.type = VK_IMAGE_TYPE_2D;
-    desc.flags = 0;
-    desc.sampleCount = VK_SAMPLE_COUNT_1_BIT;
-    desc.extent = extent;
-    desc.numLayers = 1;
-    desc.mipLevels = mipLevel;
-    desc.format = format;
-    desc.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    desc.stages = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
-    desc.access = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-    desc.tiling = VK_IMAGE_TILING_OPTIMAL;
-    desc.layout = VK_IMAGE_LAYOUT_UNDEFINED;
-    resource.image = ctx->getDevice()->createImage(desc, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXRenderTarget, name);
-
-    DxvkImageViewCreateInfo viewInfo;
-    viewInfo.type = VK_IMAGE_VIEW_TYPE_2D;
-    viewInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
-    viewInfo.aspect = VK_IMAGE_ASPECT_COLOR_BIT;
-    viewInfo.minLayer = 0;
-    viewInfo.numLayers = 1;
-    viewInfo.format = format;
-    viewInfo.minLevel = 0;
-    viewInfo.numLevels = 1;
-    resource.view.clear();
-    for (int w = extent.width, h = extent.height; w > 1 && h > 1; w /= 2, h /= 2) {
-      resource.view.push_back(ctx->getDevice()->createImageView(resource.image, viewInfo));
-      viewInfo.minLevel++;
-    }
-
-    viewInfo.minLevel = 0;
-    viewInfo.numLevels = mipLevel;
-    resource.mipMapView = ctx->getDevice()->createImageView(resource.image, viewInfo);
-    ctx->changeImageLayout(resource.image, VK_IMAGE_LAYOUT_GENERAL);
-    return resource;
-  }
 
   void Resources::executeResizeEventList(ResizeEventList& eventList, Rc<DxvkContext>& ctx, const VkExtent3D& extent) {
     for (auto iter = eventList.begin(); iter != eventList.end(); ) {
