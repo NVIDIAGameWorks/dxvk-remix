@@ -67,18 +67,6 @@ namespace dxvk {
     };
     PREWARM_SHADER_PIPELINE(ExposureWeightShader);
 
-    class GenerateMipmapShader : public ManagedShader {
-      SHADER_SOURCE(GenerateMipmapShader, VK_SHADER_STAGE_COMPUTE_BIT, generate_mipmap)
-
-      PUSH_CONSTANTS(GenerateMipmapArgs)
-
-      BEGIN_PARAMETER()
-        SAMPLER2D(GENERATE_MIPMAP_INPUT)
-        RW_TEXTURE2D(GENERATE_MIPMAP_OUTPUT)
-      END_PARAMETER()
-    };
-    PREWARM_SHADER_PIPELINE(GenerateMipmapShader);
-
     class BlendShader : public ManagedShader {
       SHADER_SOURCE(BlendShader, VK_SHADER_STAGE_COMPUTE_BIT, blend)
 
@@ -158,7 +146,7 @@ namespace dxvk {
      bool resetHistory,
      bool enableAutoExposure) {
 
-    if (m_mips.view.size() == 0) {
+    if (m_mips.views.size() == 0) {
       return;
     }
 
@@ -167,7 +155,7 @@ namespace dxvk {
 
     ScopedGpuProfileZone(ctx, "Local Tone Mapping");
     const VkExtent3D workgroups = util::computeBlockCount(finalResolution, VkExtent3D { 16, 16, 1 });
-    int totalMipLevels = (int)m_mipsAssemble.view.size();
+    int totalMipLevels = (int)m_mipsAssemble.views.size();
     int mipLevel = std::min(mip(), totalMipLevels - 1);
     int displayMipLevel = std::min(displayMip(), totalMipLevels - 1);
 
@@ -188,7 +176,7 @@ namespace dxvk {
       pushArgs.enableAutoExposure = enableAutoExposure;
       ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
       ctx->bindResourceView(LUMINANCE_ORIGINAL, rtOutput.m_finalOutput.view, nullptr);
-      ctx->bindResourceView(LUMINANCE_OUTPUT, m_mips.view[0], nullptr);
+      ctx->bindResourceView(LUMINANCE_OUTPUT, m_mips.views[0], nullptr);
       ctx->bindResourceView(LUMINANCE_DEBUG_VIEW_OUTPUT, debugView.getDebugOutput(), nullptr);
       ctx->bindResourceView(LUMINANCE_EXPOSURE, exposureView, nullptr);
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, LuminanceShader::getShader());
@@ -202,8 +190,8 @@ namespace dxvk {
       pushArgs.offset = exposurePreferenceOffset();
       pushArgs.debugView = debugView.debugViewIdx();
       ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
-      ctx->bindResourceView(EXPOSURE_WEIGHT_INPUT, m_mips.view[0], nullptr);
-      ctx->bindResourceView(EXPOSURE_WEIGHT_OUTPUT, m_mipsWeights.view[0], nullptr);
+      ctx->bindResourceView(EXPOSURE_WEIGHT_INPUT, m_mips.views[0], nullptr);
+      ctx->bindResourceView(EXPOSURE_WEIGHT_OUTPUT, m_mipsWeights.views[0], nullptr);
       ctx->bindResourceView(EXPOSURE_DEBUG_VIEW_OUTPUT, debugView.getDebugOutput(), nullptr);
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, ExposureWeightShader::getShader());
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
@@ -211,49 +199,22 @@ namespace dxvk {
 
     {
       ScopedGpuProfileZone(ctx, "Luminance Mip Map");
-      
-      for (int i = 1; i <= mipLevel; i++) {
-        uvec2 mipResolution = resolutionList[i];
-        GenerateMipmapArgs pushArgs;
-        pushArgs.resolution = mipResolution;
-        pushArgs.useGaussian = useGaussian();
-        ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
-        ctx->bindResourceView(GENERATE_MIPMAP_INPUT, m_mips.view[i - 1], nullptr);
-        ctx->bindResourceView(GENERATE_MIPMAP_OUTPUT, m_mips.view[i], nullptr);
-        ctx->bindResourceSampler(GENERATE_MIPMAP_INPUT, linearSampler);
-        ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, GenerateMipmapShader::getShader());
-        const VkExtent3D mipWorkgroups = util::computeBlockCount(VkExtent3D { mipResolution.x, mipResolution.y, 1 }, VkExtent3D { 16, 16, 1 });
-        ctx->dispatch(mipWorkgroups.width, mipWorkgroups.height, mipWorkgroups.depth);
-      }
+      RtxMipmap::updateMipmap(ctx, m_mips, useGaussian() ? MipmapMethod::Gaussian : MipmapMethod::Simple);
     }
 
     {
       ScopedGpuProfileZone(ctx, "Weight Mip Map");
-      
-      for (int i = 1; i <= mipLevel; i++) {
-        uvec2 mipResolution = resolutionList[i];
-        GenerateMipmapArgs pushArgs;
-        pushArgs.resolution = mipResolution;
-        pushArgs.useGaussian = useGaussian();
-        ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
-        ctx->bindResourceView(GENERATE_MIPMAP_INPUT, m_mipsWeights.view[i - 1], nullptr);
-        ctx->bindResourceView(GENERATE_MIPMAP_OUTPUT, m_mipsWeights.view[i], nullptr);
-        ctx->bindResourceSampler(GENERATE_MIPMAP_INPUT, linearSampler);
-        ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, GenerateMipmapShader::getShader());
-        const VkExtent3D mipWorkgroups = util::computeBlockCount(VkExtent3D { mipResolution.x, mipResolution.y, 1 }, VkExtent3D { 16, 16, 1 });
-        ctx->dispatch(mipWorkgroups.width, mipWorkgroups.height, mipWorkgroups.depth);
-      }
+      RtxMipmap::updateMipmap(ctx, m_mipsWeights, useGaussian() ? MipmapMethod::Gaussian : MipmapMethod::Simple);
     }
-
 
     {
       ScopedGpuProfileZone(ctx, "Blend");
       BlendArgs pushArgs = {};
       pushArgs.debugView = debugView.debugViewIdx();
       ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
-      ctx->bindResourceView(BLEND_EXPOSURE_INPUT, m_mips.view[mipLevel], nullptr);
-      ctx->bindResourceView(BLEND_WEIGHT_INPUT, m_mipsWeights.view[mipLevel], nullptr);
-      ctx->bindResourceView(BLEND_OUTPUT, m_mipsAssemble.view[mipLevel], nullptr);
+      ctx->bindResourceView(BLEND_EXPOSURE_INPUT, m_mips.views[mipLevel], nullptr);
+      ctx->bindResourceView(BLEND_WEIGHT_INPUT, m_mipsWeights.views[mipLevel], nullptr);
+      ctx->bindResourceView(BLEND_OUTPUT, m_mipsAssemble.views[mipLevel], nullptr);
       ctx->bindResourceView(BLEND_DEBUG_VIEW_OUTPUT, debugView.getDebugOutput(), nullptr);
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, BlendShader::getShader());
       uvec2 mipResolution = resolutionList[mipLevel];
@@ -271,17 +232,17 @@ namespace dxvk {
       pushArgs.boostLocalContrast = boostLocalContrast() ? 1 : 0;
       pushArgs.debugView = debugView.debugViewIdx();
       ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
-      ctx->bindResourceView(BLEND_LAPLACIAN_EXPOSURE_INPUT, m_mips.view[i-1], nullptr);
-      ctx->bindResourceView(BLEND_LAPLACIAN_EXPOSURE_COARSER_INPUT, m_mips.view[i], nullptr);
-      ctx->bindResourceView(BLEND_LAPLACIAN_WEIGHT_INPUT, m_mipsWeights.view[i-1], nullptr);
-      ctx->bindResourceView(BLEND_LAPLACIAN_ACCUMULATE_INPUT, m_mipsAssemble.view[i], nullptr);
+      ctx->bindResourceView(BLEND_LAPLACIAN_EXPOSURE_INPUT, m_mips.views[i-1], nullptr);
+      ctx->bindResourceView(BLEND_LAPLACIAN_EXPOSURE_COARSER_INPUT, m_mips.views[i], nullptr);
+      ctx->bindResourceView(BLEND_LAPLACIAN_WEIGHT_INPUT, m_mipsWeights.views[i-1], nullptr);
+      ctx->bindResourceView(BLEND_LAPLACIAN_ACCUMULATE_INPUT, m_mipsAssemble.views[i], nullptr);
 
       ctx->bindResourceSampler(BLEND_LAPLACIAN_EXPOSURE_INPUT, linearSampler);
       ctx->bindResourceSampler(BLEND_LAPLACIAN_EXPOSURE_COARSER_INPUT, linearSampler);
       ctx->bindResourceSampler(BLEND_LAPLACIAN_WEIGHT_INPUT, linearSampler);
       ctx->bindResourceSampler(BLEND_LAPLACIAN_ACCUMULATE_INPUT, linearSampler);
 
-      ctx->bindResourceView(BLEND_LAPLACIAN_OUTPUT, m_mipsAssemble.view[i-1], nullptr);
+      ctx->bindResourceView(BLEND_LAPLACIAN_OUTPUT, m_mipsAssemble.views[i-1], nullptr);
       ctx->bindResourceView(BLEND_LAPLACIAN_DEBUG_VIEW_OUTPUT, debugView.getDebugOutput(), nullptr);
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, BlendLaplacianShader::getShader());
       const VkExtent3D mipWorkgroups = util::computeBlockCount(VkExtent3D { targetResolution.x, targetResolution.y, 1 }, VkExtent3D { 16, 16, 1 });
@@ -315,10 +276,10 @@ namespace dxvk {
       ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
 
       ctx->bindResourceView(FINAL_COMBINE_BLUE_NOISE_TEXTURE_INPUT, ctx->getResourceManager().getBlueNoiseTexture(ctx), nullptr);
-      ctx->bindResourceView(FINAL_COMBINE_ORIGINAL_MIP0, m_mips.view[0], nullptr);
-      ctx->bindResourceView(FINAL_COMBINE_ORIGINAL_MIP, m_mips.view[displayMipLevel], nullptr);
-      ctx->bindResourceView(FINAL_COMBINE_WEIGHT_MIP0, m_mipsWeights.view[0], nullptr);
-      ctx->bindResourceView(FINAL_COMBINE_MIP_ASSEMBLE, m_mipsAssemble.view[displayMipLevel], nullptr);
+      ctx->bindResourceView(FINAL_COMBINE_ORIGINAL_MIP0, m_mips.views[0], nullptr);
+      ctx->bindResourceView(FINAL_COMBINE_ORIGINAL_MIP, m_mips.views[displayMipLevel], nullptr);
+      ctx->bindResourceView(FINAL_COMBINE_WEIGHT_MIP0, m_mipsWeights.views[0], nullptr);
+      ctx->bindResourceView(FINAL_COMBINE_MIP_ASSEMBLE, m_mipsAssemble.views[displayMipLevel], nullptr);
 
       ctx->bindResourceSampler(FINAL_COMBINE_ORIGINAL_MIP, linearSampler);
       ctx->bindResourceSampler(FINAL_COMBINE_MIP_ASSEMBLE, linearSampler);
@@ -335,9 +296,9 @@ namespace dxvk {
     vec2 extendF = { static_cast<float>(targetExtent.width), static_cast<float>(targetExtent.height) };
     int mipLevel = static_cast<int>(floor(log2f(std::max(extendF.x, extendF.y)))) + 1;
 
-    m_mips = Resources::createMipmapResource(ctx, targetExtent, VK_FORMAT_R16G16B16A16_SFLOAT, mipLevel, "local tone mapper mips");
-    m_mipsWeights = Resources::createMipmapResource(ctx, targetExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32, mipLevel, "local tone mapper mips weights");
-    m_mipsAssemble = Resources::createMipmapResource(ctx, targetExtent, VK_FORMAT_R16_SFLOAT, mipLevel, "local tone mapper mips assemble");
+    m_mips = RtxMipmap::createResource(ctx, "local tone mapper mips", targetExtent, VK_FORMAT_R16G16B16A16_SFLOAT, 0, {0.f, 0.f, 0.f, 0.f}, mipLevel);
+    m_mipsWeights = RtxMipmap::createResource(ctx, "local tone mapper mips weights", targetExtent, VK_FORMAT_A2B10G10R10_UNORM_PACK32, 0, {0.f, 0.f, 0.f, 0.f}, mipLevel);
+    m_mipsAssemble = RtxMipmap::createResource(ctx, "local tone mapper mips assemble", targetExtent, VK_FORMAT_R16_SFLOAT, 0, {0.f, 0.f, 0.f, 0.f}, mipLevel);
   }
 
   void DxvkLocalToneMapping::releaseTargetResource() {

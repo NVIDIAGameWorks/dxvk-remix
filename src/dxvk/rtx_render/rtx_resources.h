@@ -80,18 +80,6 @@ namespace dxvk
       }
     };
 
-    struct MipMapResource {
-      Rc<DxvkImage> image = nullptr;
-      std::vector<Rc<DxvkImageView>> view;
-      Rc<DxvkImageView> mipMapView;
-
-      void reset() {
-        image = nullptr;
-        mipMapView = nullptr;
-        view.clear();
-      }
-    };
-
     class SharedResource : public RcObject {
     public:
       SharedResource(Resource _resource) : resource(_resource) { }
@@ -421,14 +409,13 @@ namespace dxvk
     static bool areFormatsCompatible(const VkFormat format1, const VkFormat format2);
     static Rc<DxvkImageView> createImageView(Rc<DxvkContext>& ctx, const Rc<DxvkImage>& image, const VkFormat format,
                                              const uint32_t numLayers, const VkImageViewType imageViewType, 
-                                             bool isColorAttachment = false);
+                                             const VkImageUsageFlags extraUsageFlags = VK_IMAGE_USAGE_STORAGE_BIT, const uint32_t mipLevels = 1);
     static Resource createImageResource(Rc<DxvkContext>& ctx, const char *name, const VkExtent3D& extent, const VkFormat format,
                                         const uint32_t numLayers = 1, const VkImageType imageType = VK_IMAGE_TYPE_2D,
                                         const VkImageViewType imageViewType = VK_IMAGE_VIEW_TYPE_2D,
-                                        const VkImageCreateFlags imageCreateFlags = 0, bool isColorAttachment = false,
-                                        const VkClearColorValue clearValue = { 0.0f, 0.0f, 0.0f, 0.0f });
-    
-    static MipMapResource createMipmapResource(Rc<DxvkContext> ctx, const VkExtent3D& extend, VkFormat format, int mipLevel, const char* name);
+                                        const VkImageCreateFlags imageCreateFlags = 0, const VkImageUsageFlags extraUsageFlags = VK_IMAGE_USAGE_STORAGE_BIT,
+                                        const VkClearColorValue clearValue = { 0.0f, 0.0f, 0.0f, 0.0f }, const uint32_t mipLevels = 1);
+
 
   private:
     Resources(Resources const&) = delete;
