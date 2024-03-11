@@ -25,6 +25,7 @@
 #include "dxvk_include.h"
 #include "dxvk_context.h"
 #include "rtx_resources.h"
+#include "rtx_render/rtx_mipmap.h"
 
 #include "../spirv/spirv_code_buffer.h"
 #include "../util/util_matrix.h"
@@ -58,9 +59,9 @@ namespace dxvk {
     virtual void createTargetResource(Rc<DxvkContext>& ctx, const VkExtent3D& targetExtent) override;
     virtual void releaseTargetResource() override;
 
-    Resources::MipMapResource m_mips;
-    Resources::MipMapResource m_mipsWeights;
-    Resources::MipMapResource m_mipsAssemble;
+    RtxMipmap::Resource m_mips;
+    RtxMipmap::Resource m_mipsWeights;
+    RtxMipmap::Resource m_mipsAssemble;
 
     enum class DitherMode : uint32_t {
       None = 0,

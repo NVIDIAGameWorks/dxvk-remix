@@ -249,6 +249,8 @@ dxvk_src = files([
   'rtx_render/rtx_materials.h',
   'rtx_render/rtx_material_data.h',
   'rtx_render/rtx_matrix_helpers.h',
+  'rtx_render/rtx_mipmap.cpp',
+  'rtx_render/rtx_mipmap.h',
   'rtx_render/rtx_mod_manager.cpp',
   'rtx_render/rtx_mod_manager.h',
   'rtx_render/rtx_mod_usd.cpp',

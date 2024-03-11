@@ -310,7 +310,7 @@ namespace dxvk {
 
     struct Displacement {
       friend class ImGUI;
-      RTX_OPTION("rtx.displacement", DisplacementMode, mode, DisplacementMode::RaymarchPOM, "What algorithm the displacement uses.\n"
+      RTX_OPTION("rtx.displacement", DisplacementMode, mode, DisplacementMode::QuadtreePOM, "What algorithm the displacement uses.\n"
         "RaymarchPOM: advances the ray in linear steps until the ray is below the heightfield.\n"
         "QuadtreePOM: Relies on special mipmaps with maximum values instead of average values.  Uses the mipmap as a quadtree.");
       RTX_OPTION("rtx.displacement", bool, enableDirectLighting, true, "Whether direct lighting accounts for displacement mapping");
