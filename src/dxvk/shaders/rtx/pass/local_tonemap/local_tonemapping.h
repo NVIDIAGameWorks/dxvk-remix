@@ -33,9 +33,6 @@
 #define EXPOSURE_WEIGHT_OUTPUT       1
 #define EXPOSURE_DEBUG_VIEW_OUTPUT   2
 
-#define GENERATE_MIPMAP_INPUT        0
-#define GENERATE_MIPMAP_OUTPUT       1
-
 #define BLEND_EXPOSURE_INPUT         0
 #define BLEND_WEIGHT_INPUT           1
 #define BLEND_OUTPUT                 2
@@ -75,13 +72,6 @@ struct ExposureWeightArgs
   float sigmaSq;
   float offset;
   uint debugView;
-  uint padding;
-};
-
-struct GenerateMipmapArgs
-{
-  uvec2 resolution;
-  uint useGaussian;
   uint padding;
 };
 

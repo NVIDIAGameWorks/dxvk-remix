@@ -1278,13 +1278,16 @@ namespace dxvk {
     }
   }
 
-  void SceneManager::prepareSceneData(Rc<DxvkContext> ctx, DxvkBarrierSet& execBarriers, const float frameTimeSecs) {
+  void SceneManager::prepareSceneData(Rc<RtxContext> ctx, DxvkBarrierSet& execBarriers, const float frameTimeSecs) {
     ScopedGpuProfileZone(ctx, "Build Scene");
 
     // Needs to happen before garbageCollection to avoid destroying dynamic lights
     m_lightManager.dynamicLightMatching();
 
     garbageCollection();
+
+    m_terrainBaker->prepareSceneData(ctx);
+
     
     auto& textureManager = m_device->getCommon()->getTextureManager();
     m_bindlessResourceManager.prepareSceneData(ctx, textureManager.getTextureTable(), getBufferTable(), getSamplerTable());

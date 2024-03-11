@@ -19,7 +19,7 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
-#include "rtx/pass/local_tonemap/local_tonemapping.slangh"
+#include "rtx/pass/image_utils/generate_mipmap.h"
 
 layout(binding = GENERATE_MIPMAP_INPUT)
 Sampler2D InputTexture;
@@ -41,19 +41,33 @@ void main(uint2 threadId : SV_DispatchThreadID)
 
   vec2 uv = (threadId + 0.5) / cb.resolution;
 
-  if (cb.useGaussian)
-  {
-    // Use 3x3 gaussian kernel, which can be achieved by 4 bilinear interpolations
-    vec2 dUv = 0.5 / cb.resolution;
-    vec4 totalValue = 0;
-    totalValue += InputTexture.SampleLevel(uv + vec2(-dUv.x, -dUv.y), 0);
-    totalValue += InputTexture.SampleLevel(uv + vec2(-dUv.x, dUv.y), 0);
-    totalValue += InputTexture.SampleLevel(uv + vec2(dUv.x, -dUv.y), 0);
-    totalValue += InputTexture.SampleLevel(uv + vec2(dUv.x, dUv.y), 0);
-    OutputTexture[threadId] = totalValue * 0.25;
-  }
-  else
-  {
-    OutputTexture[threadId] = InputTexture.SampleLevel(uv, 0);
+  switch (cb.method) {
+    case MipmapMethod::Simple:
+      OutputTexture[threadId] = InputTexture.SampleLevel(uv, 0);
+      break;
+    case MipmapMethod::Gaussian:
+      {
+        // Use 3x3 gaussian kernel, which can be achieved by 4 bilinear interpolations
+        vec2 dUv = 0.5 / cb.resolution;
+        vec4 totalValue = 0;
+        totalValue += InputTexture.SampleLevel(uv + vec2(-dUv.x, -dUv.y), 0);
+        totalValue += InputTexture.SampleLevel(uv + vec2(-dUv.x, dUv.y), 0);
+        totalValue += InputTexture.SampleLevel(uv + vec2(dUv.x, -dUv.y), 0);
+        totalValue += InputTexture.SampleLevel(uv + vec2(dUv.x, dUv.y), 0);
+        OutputTexture[threadId] = totalValue * 0.25;
+      }
+      break;
+    case MipmapMethod::Maximum:
+      {
+        // Use the maximum of the four underlying pixels.
+        vec2 dUv = 0.25 / cb.resolution;
+        vec4 maxValue = 0;
+        maxValue = max(maxValue, InputTexture.SampleLevel(uv + vec2(-dUv.x, -dUv.y), 0));
+        maxValue = max(maxValue, InputTexture.SampleLevel(uv + vec2(-dUv.x, dUv.y), 0));
+        maxValue = max(maxValue, InputTexture.SampleLevel(uv + vec2(dUv.x, -dUv.y), 0));
+        maxValue = max(maxValue, InputTexture.SampleLevel(uv + vec2(dUv.x, dUv.y), 0));
+        OutputTexture[threadId] = maxValue;
+      }
+      break;
   }
 }
