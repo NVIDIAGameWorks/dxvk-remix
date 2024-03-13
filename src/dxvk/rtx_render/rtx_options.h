@@ -198,11 +198,15 @@ namespace dxvk {
                   "Textures on draw calls used for static geometric decals or decals with complex topology.\n"
                   "These materials will be blended over the materials underneath them when decal material blending is enabled.\n"
                   "A small configurable offset is applied to each flat/co-planar part of these decals to prevent coplanar geometric cases (which poses problems for ray tracing).");
+    // Todo: Deprecation/aliasing macro here for dynamicDecalTextures/singleOffsetDecalTextures/nonOffsetDecalTextures to not have to manually handle their
+    // aliasing to decalTextures, or the inclusion of the deprecation notice in their documentation.
     RW_RTX_OPTION("rtx", fast_unordered_set, dynamicDecalTextures, {},
+                  "Warning: This option is deprecated, please use rtx.decalTextures instead.\n"
                   "Textures on draw calls used for dynamically spawned geometric decals, such as bullet holes.\n"
                   "These materials will be blended over the materials underneath them when decal material blending is enabled.\n"
                   "A small configurable offset is applied to each quad part of these decals to prevent coplanar geometric cases (which poses problems for ray tracing).");
     RW_RTX_OPTION("rtx", fast_unordered_set, singleOffsetDecalTextures, {},
+                  "Warning: This option is deprecated, please use rtx.decalTextures instead.\n"
                   "Textures on draw calls used for geometric decals that don't inter-overlap for a given texture hash. Textures must be tagged as \"Decal Texture\" or \"Dynamic Decal Texture\" to apply.\n"
                   "Applies a single shared offset to all the batched decal geometry rendered in a given draw call, rather than increasing offset per decal within the batch (i.e. a quad in case of \"Dynamic Decal Texture\").\n"
                   "Note, the offset adds to the global offset among all decals drawn with different draw calls.\n"
@@ -210,6 +214,7 @@ namespace dxvk {
                   "Applying a single offset is useful for stabilizing decal offsets when a game dynamically batches decals together.\n"
                   "In addition, it makes the global decal offset index grow slower and thus it minimizes a chance of hitting the \"rtx.decals.maxOffsetIndex limit\".");
     RW_RTX_OPTION("rtx", fast_unordered_set, nonOffsetDecalTextures, {},
+                  "Warning: This option is deprecated, please use rtx.decalTextures instead.\n"
                   "Textures on draw calls used for geometric decals with arbitrary topology that are already offset from the base geometry.\n"
                   "These materials will be blended over the materials underneath them when decal material blending is enabled.\n"
                   "Unlike typical decals however these decals have no offset applied to them due assuming the offset is already being done by whatever is passing data to Remix.");
