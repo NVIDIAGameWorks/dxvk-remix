@@ -752,12 +752,10 @@ namespace dxvk {
         "215BAAFC5A07B208,"
         "739825af5ff7b600," // end game asphalt
         "8f622d6d3b46b751," // end game asphalt
-      },
-      { "rtx.dynamicDecalTextures",
+         // Previously "rtx.dynamicDecalTextures", merged into this list
         "f017847a501d804b," // blood and bullet holes
         "a65293be7ea5f7b7," // plasma ball burn marks etc.
-      },
-      { "rtx.nonOffsetDecalTextures",
+         // Previously "rtx.nonOffsetDecalTextures", merged into this list
         "727B75DD886D94FD," // Alyx eye irises
         "64A2E9E0169AE37F,"
         "C4826ABA6336F7FF," // Citizen NPC eye irises
