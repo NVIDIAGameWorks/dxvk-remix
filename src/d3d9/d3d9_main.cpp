@@ -17,14 +17,15 @@ namespace dxvk {
           IDirect3D9Ex** ppDirect3D9Ex,
 // NV-DXVK start: external API
           bool           WithExternalSwapchain = false,
-          bool           WithDrawCallConversion = true ) {
+          bool           WithDrawCallConversion = true,
+          bool           WithRemixAPI = false) {
 // NV-DXVK end
     if (!ppDirect3D9Ex)
       return D3DERR_INVALIDCALL;
 
 // NV-DXVK start: external API / provide error code on exception
     try {
-      *ppDirect3D9Ex = ref(new D3D9InterfaceEx(Extended, WithExternalSwapchain, WithDrawCallConversion));
+      *ppDirect3D9Ex = ref(new D3D9InterfaceEx(Extended, WithExternalSwapchain, WithDrawCallConversion, WithRemixAPI));
     }
     catch (const dxvk::DxvkErrorWithId& err) {
       Logger::err(err.message());

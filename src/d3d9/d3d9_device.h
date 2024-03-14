@@ -118,7 +118,8 @@ namespace dxvk {
             Rc<DxvkDevice>         dxvkDevice,
 // NV-DXVK start: external API
             bool                   WithExternalSwapchain,
-            bool                   WithDrawCallConversion);
+            bool                   WithDrawCallConversion,
+            bool                   WithRemixAPI);
 // NV-DXVK end
 
     ~D3D9DeviceEx();

@@ -52,7 +52,8 @@ namespace dxvk {
           bool           Extended,
           IDirect3D9Ex** ppDirect3D9Ex,
           bool           WithExternalSwapchain,
-          bool           WithDrawCallConversion);
+          bool           WithDrawCallConversion,
+          bool           WithRemixAPI);
 
   extern bool g_allowSrgbConversionForOutput;
   extern bool g_forceKeepObjectPickingImage;
@@ -1077,7 +1078,7 @@ namespace {
       return REMIXAPI_ERROR_CODE_ALREADY_EXISTS;
     }
     IDirect3D9Ex* d3d9ex = nullptr;
-    auto hr = dxvk::CreateD3D9(true, &d3d9ex, true, false);
+    auto hr = dxvk::CreateD3D9(true, &d3d9ex, true, false, true);
     if (FAILED(hr) || !d3d9ex) {
       if (isHResultAliasedWithRemixErrorCode(hr)) {
         return static_cast<remixapi_ErrorCode>(hr);

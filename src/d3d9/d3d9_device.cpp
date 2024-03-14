@@ -68,9 +68,10 @@ namespace dxvk {
           HWND                   hFocusWindow,
           DWORD                  BehaviorFlags,
           Rc<DxvkDevice>         dxvkDevice,
-// NV-DXVK start: external swapchain
+// NV-DXVK start: external API
           bool                   WithExternalSwapchain,
-          bool                   WithDrawCallConversion)
+          bool                   WithDrawCallConversion,
+          bool                   WithRemixAPI)
 // NV-DXVK end
     : m_parent         ( pParent )
     , m_deviceType     ( DeviceType )
@@ -79,14 +80,16 @@ namespace dxvk {
     , m_adapter        ( pAdapter )
     , m_dxvkDevice     ( dxvkDevice )
     , m_shaderModules  ( new D3D9ShaderModuleSet )
-    , m_d3d9Options    ( dxvkDevice, pParent->GetInstance()->config() )
+// NV-DXVK start: different default values for d3d9 options
+    , m_d3d9Options    ( dxvkDevice, pParent->GetInstance()->config(), WithRemixAPI )
+// NV-DXVK end
     , m_multithread    ( BehaviorFlags & D3DCREATE_MULTITHREADED )
     , m_isSWVP         ( (BehaviorFlags & D3DCREATE_SOFTWARE_VERTEXPROCESSING) ? true : false )
     , m_csThread       ( dxvkDevice, dxvkDevice->createRtxContext() )
     , m_csChunk        ( AllocCsChunk() )
-    // NV-DXVK start: unbound light indices
+// NV-DXVK start: unbound light indices
     , m_state          ( Direct3DState9 { D3D9CapturableState{ static_cast<uint32_t>(std::max(m_d3d9Options.maxEnabledLights, 0)) } } )
-    // NV-DXVK end
+// NV-DXVK end
     , m_rtx            ( this, WithDrawCallConversion)
 // NV-DXVK start: external API
     , m_withExternalSwapchain { WithExternalSwapchain } {
