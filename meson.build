@@ -28,6 +28,7 @@ project(
 )
 
 global_src_root_norm = meson.global_source_root().replace('\\', '/')
+current_build_dir_norm = meson.current_build_dir().replace('\\', '/')
 
 # Fetch dependencies
 #   `get_dependencies` is intentionally called twice. Why?:
@@ -40,9 +41,9 @@ global_src_root_norm = meson.global_source_root().replace('\\', '/')
 #   Implications: in very rare circumstances (clean clone, editing meson), get_dependencies
 #     script will be called twice on the same build. This will not be noticeable as packman
 #     early outs if everything's already fetched, so the waste is negligible + forgiveable.
-get_dependencies_script_path = global_src_root_norm + '/scripts-common/update-deps.cmd'
+get_dependencies_script_path = join_paths(global_src_root_norm, 'scripts-common/update-deps.cmd')
 message('Downloading dependencies...')
-packman_out = run_command(get_dependencies_script_path)
+packman_out = run_command(get_dependencies_script_path, check: true)
 message(packman_out.stdout().strip())
 if packman_out.returncode() != 0
   message(packman_out.stderr().strip())
@@ -181,9 +182,9 @@ test_include_dirs = [
 test_include_path = include_directories(test_include_dirs)
 
 if (cpu_family == 'x86_64')
-  dxvk_library_path = meson.global_source_root() + '/lib'
+  dxvk_library_path = join_paths(global_src_root_norm, 'lib')
 else
-  dxvk_library_path = meson.global_source_root() + '/lib32'
+  dxvk_library_path = join_paths(global_src_root_norm, 'lib32')
 endif
 
 dxvk_extradep = [ ]
@@ -235,8 +236,8 @@ lib_shlwapi  = dxvk_compiler.find_library('shlwapi')
 dxvk_extradep += lib_shlwapi
 
 if enable_rtxio == true
-  rtxio_bin_path = global_src_root_norm + '/external/rtxio/bin'
-  rtxio_lib = dxvk_compiler.find_library('rtxio', dirs : join_paths(meson.global_source_root(), 'external/rtxio/lib'))
+  rtxio_bin_path = join_paths(global_src_root_norm, 'external/rtxio/bin')
+  rtxio_lib = dxvk_compiler.find_library('rtxio', dirs : join_paths(global_src_root_norm, 'external/rtxio/lib'))
   rtxio_include_path = include_directories('external/rtxio/include')
   dxvk_extradep += rtxio_lib
 endif
@@ -256,7 +257,7 @@ def_spec_ext = '.def'
 glsl_compiler = find_program('external/glslangvalidator/glslangValidator')
 slang_compiler = find_program('external/slang/slangc')
 python_interpreter = find_program('python3', 'python')
-shader_compile_script = meson.global_source_root() + '/scripts-common/compile_shaders.py'
+shader_compile_script = join_paths(global_src_root_norm, 'scripts-common/compile_shaders.py')
 
 # GLSL compiler...
 
@@ -264,7 +265,7 @@ shader_compile_script = meson.global_source_root() + '/scripts-common/compile_sh
 # If the command here is changed, the command in that function should also be updated.
 glsl_args = [ '-V', '--vn', '@BASENAME@', '@INPUT@', '-o', '@OUTPUT@', '--target-env', 'vulkan1.2', '@EXTRA_ARGS@' ]
 
-if run_command(glsl_compiler, [ '--quiet', '--version' ]).returncode() == 0
+if run_command(glsl_compiler, [ '--quiet', '--version' ], check: false).returncode() == 0
   glsl_args += [ '--quiet' ]
 endif
 
@@ -294,7 +295,7 @@ message('##############')
 
 full_version = meson.project_version()
 
-git_rev_parse_out = run_command('git',['rev-parse','--verify','--short=8', 'HEAD'])
+git_rev_parse_out = run_command('git', ['rev-parse','--verify','--short=8', 'HEAD'], check: false)
 git_hash = ''
 if git_rev_parse_out.returncode() != 0
   error('Failed to get current git hash')
@@ -305,7 +306,7 @@ endif
 
 found_tag = ''
 ci_commit_tag = ''
-get_env_out = run_command(python_interpreter.full_path(),[global_src_root_norm + './scripts-common/get_env.py', 'CI_COMMIT_TAG'])
+get_env_out = run_command(python_interpreter.full_path(), [join_paths(global_src_root_norm, 'scripts-common/get_env.py'), 'CI_COMMIT_TAG'], check: false)
 if get_env_out.returncode() != 0
   warning('get_env.py failed, ' + get_env_out.stderr().strip())
 else
@@ -318,7 +319,7 @@ if b_found_ci_commit_tag
   found_tag = ci_commit_tag
 else
   git_describe_tag = ''
-  git_describe_out = run_command('git',['describe','--always','--exact-match', git_hash])
+  git_describe_out = run_command('git', ['describe','--always','--exact-match', git_hash], check: false)
   if git_describe_out.returncode() == 0
     git_describe_tag = git_describe_out.stdout().replace('\n','')
     message('Found tag via git describe: ' + git_describe_tag)
@@ -348,7 +349,7 @@ endif
 message('Full version: ' + full_version)
 
 dxvk_version = vcs_tag(
-  command: [python_interpreter.full_path(), global_src_root_norm + './scripts-common/echo.py', full_version],
+  command: [python_interpreter.full_path(), join_paths(global_src_root_norm, 'scripts-common/echo.py'), full_version],
   input:  'version.h.in',
   output: 'version.h')
 
@@ -356,7 +357,7 @@ dxvk_version = vcs_tag(
 # Handle external dependencies ##
 #################################
 
-output_dir = global_src_root_norm + '/_output/'
+output_dir = join_paths(global_src_root_norm, '_output/')
 
 # Get script paths
 if build_os == 'windows'
@@ -368,8 +369,8 @@ elif build_os == 'linux'
 else
   script_extension = ''
 endif
-copy_script_path = global_src_root_norm + '/scripts-common/copy' + script_extension
-recursive_copy_path = global_src_root_norm + '/scripts-common/recursive_copy' + script_extension
+copy_script_path = join_paths(global_src_root_norm, 'scripts-common/copy' + script_extension)
+recursive_copy_path = join_paths(global_src_root_norm, 'scripts-common/recursive_copy' + script_extension)
 
 if get_option('enable_tracy')
   add_project_arguments('-DTRACY_ENABLE', language : 'cpp')
@@ -380,9 +381,9 @@ if get_option('enable_tracy')
 endif
 
 if get_option('buildtype') == 'debug'
-  debug_or_release = 'debug'
+  usd_debug_or_release = 'Debug'
 else
-  debug_or_release = 'release'
+  usd_debug_or_release = 'Release'
 endif
 
 # embedding compiler
@@ -397,18 +398,18 @@ mdl_include_dir = include_directories('external/omni_core_materials')
 nv_usd_include_path = include_directories('external/nv_usd/include/')
 boost_include_path = include_directories('external/nv_usd/include/boost-1_78/')
 
-usd_include_paths = [nv_usd_include_path, boost_include_path] 
+usd_include_paths = [nv_usd_include_path, boost_include_path]
 
 vk_include_path = include_directories('./include/vulkan/include')
 
 lssusd_include_paths = [nv_usd_include_path, boost_include_path, vk_include_path]
 
 nvapi_include_paths = include_directories('external/nvapi')
-nvapi_lib_path = join_paths(meson.global_source_root(), 'external/nvapi/amd64')
+nvapi_lib_path = join_paths(global_src_root_norm, 'external/nvapi/amd64')
 nvapi_lib = dxvk_compiler.find_library('nvapi64', dirs : nvapi_lib_path)
 
 # Cache lib locations
-usd_lib_path = meson.global_source_root() + '/external/nv_usd/'+ debug_or_release + '/'
+usd_lib_path = join_paths(global_src_root_norm, 'external/nv_usd/' + usd_debug_or_release + '/')
 usd_lib = dxvk_compiler.find_library('usd_ms', dirs : usd_lib_path)
 if get_option('buildtype') == 'debug'
   tbb_lib = dxvk_compiler.find_library('tbb_debug', dirs : usd_lib_path)
@@ -417,36 +418,36 @@ else
 endif
 
 reflex_include_path = include_directories( 'external/reflex/inc')
-reflex_lib_path = join_paths(meson.global_source_root(), 'external/reflex/lib')
+reflex_lib_path = join_paths(global_src_root_norm, 'external/reflex/lib')
 reflex_lib = dxvk_compiler.find_library('NvLowLatencyVk', dirs : reflex_lib_path)
 
 aftermath_include_path = include_directories( 'external/aftermath/include')
-aftermath_lib_path = join_paths(meson.global_source_root(), 'external/aftermath/lib/x64/')
+aftermath_lib_path = join_paths(global_src_root_norm, 'external/aftermath/lib/x64/')
 aftermath_lib = dxvk_compiler.find_library('GFSDK_Aftermath_Lib.x64', dirs : aftermath_lib_path)
 
 # this is repeated below, since we overwrite dlss_lib_path in src/dxvk/meson.build for some reason
 dlss_root_path = 'external/ngx_sdk_dlss'
-dlss_lib_path = meson.global_source_root() + '/' + dlss_root_path + '/Lib/Windows_x86_64/rel/'
+dlss_lib_path = join_paths(global_src_root_norm, dlss_root_path, 'lib/Windows_x86_64/rel/')
 dlfg_root_path = 'external/ngx_sdk_dlfg'
-dlfg_lib_path = meson.global_source_root() + '/' + dlfg_root_path + '/Lib/Windows_x86_64/rel/'
+dlfg_lib_path = join_paths(global_src_root_norm, dlfg_root_path, 'lib/Windows_x86_64/rel/')
 
-nrd_lib_path = meson.global_source_root() + '/external/nrd/Lib/Release/'
+nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd/Lib/Release/')
 if get_option('buildtype') == 'debug'  
-  nrd_lib_path = meson.global_source_root() + '/external/nrd/Lib/Debug/'
+  nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd/Lib/Debug/')
 endif
-lss_usd_plugins_path = meson.global_source_root() + '/usd_plugins/'
+lss_usd_plugins_path = join_paths(global_src_root_norm, 'usd_plugins/')
 
 rtxdi_include_path = include_directories('submodules/rtxdi/rtxdi-sdk/include')
 # Need to use the include path as an argument to the shader build string,
 # and I couldn't find how to convert the IncludeDirs thing to a string... Meson.
-rtxdi_include_path_string = meson.global_source_root() + '/submodules/rtxdi/rtxdi-sdk/include'
+rtxdi_include_path_string = join_paths(global_src_root_norm, 'submodules/rtxdi/rtxdi-sdk/include')
 
 if not dxvk_is_ninja
   # Copy dependencies that must be in same dir as executable to _output dir
   recursive_copy_usd_target = custom_target('recursive_copy_usd',
     output           : ['recursive_copy_usd'],
     build_by_default : true,
-    command          : [recursive_copy_path,  usd_lib_path + '/usd/', output_dir + 'usd/'] )
+    command          : [recursive_copy_path, join_paths(usd_lib_path, 'usd/'), join_paths(output_dir, 'usd/')] )
 
   copy_usd_dll_target = custom_target('copy_usd_dll',
     output           : ['copy_usd_dll'],
@@ -501,7 +502,7 @@ if not dxvk_is_ninja
   recursive_copy_lss_usd_plugins_target = custom_target('recursive_copy_lss_usd_plugins',
     output           : ['recursive_copy_lss_usd_plugins'],
     build_by_default : true,
-    command          : [recursive_copy_path, lss_usd_plugins_path, output_dir + 'lss/usd_plugins/'] )
+    command          : [recursive_copy_path, lss_usd_plugins_path, join_paths(output_dir, 'lss/usd_plugins/')] )
 
   if enable_rtxio == true
     copy_rtxio_target = custom_target('copy_rtxio',
@@ -579,16 +580,16 @@ if dxvk_is_ninja
 
   # ... and now we do this again, because src/dxvk/meson.build overwrites this for some reason
   dlss_root_path = 'external/ngx_sdk_dlss'
-  dlss_lib_path = meson.global_source_root().replace('\\', '/') + '/' + dlss_root_path + '/Lib/Windows_x86_64/rel/'
+  dlss_lib_path = join_paths(global_src_root_norm, dlss_root_path, 'Lib/Windows_x86_64/rel/')
   dlfg_root_path = 'external/ngx_sdk_dlfg'
-  dlfg_lib_path = meson.global_source_root().replace('\\', '/') + '/' + dlfg_root_path + '/Lib/Windows_x86_64/rel/'
+  dlfg_lib_path = join_paths(global_src_root_norm, dlfg_root_path, 'Lib/Windows_x86_64/rel/')
 
   # meson seems to force / as the path separator in custom_target
   # ... except in the case where the path separators are inconsistent, in which case it does nothing
   # force / as the path separator here to make sure it stays consistent
-  nrd_lib_path = global_src_root_norm + '/external/nrd/Lib/Release/'
-  if get_option('buildtype') == 'debug'  
-    nrd_lib_path = global_src_root_norm + '/external/nrd/Lib/Debug/'
+  nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd/Lib/Release/')
+  if get_option('buildtype') == 'debug'
+    nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd/Lib/Debug/')
   endif
   
   apic_copy_targets = []
@@ -618,7 +619,8 @@ if dxvk_is_ninja
 
   # add data from gametargets.conf to dxvkrt_copy_targets
   game_targets_run = run_command(python_interpreter,
-                                 meson.global_source_root() + '\\vsgen\\get_game_target_list.py')
+                                 join_paths(global_src_root_norm, 'vsgen/get_game_target_list.py'),
+                                 check: true)
   game_targets = game_targets_run.stdout().strip()
 
   if game_targets != ''
@@ -627,7 +629,7 @@ if dxvk_is_ninja
       key = s[0]
       target_suffix = key.underscorify()
       output_path = s[1]
-      
+
       dxvkrt_copy_targets += { key : { 'output_path': output_path, 'target_suffix': target_suffix } }
       
       # note: this doesn't go into the VS generator command line, gametargets.conf is read from python directly
@@ -646,8 +648,8 @@ if dxvk_is_ninja
     copy_usd = custom_target('recursive_copy_usd_' + target_suffix,
       output           : ['recursive_copy_usd_' + target_suffix],
       command          : [recursive_copy_path,
-                          usd_lib_path + 'usd/',
-                          output_path + '/usd/'] )
+                          join_paths(usd_lib_path, 'usd/'),
+                          join_paths(output_path, 'usd/')] )
 
     copy_usd_dll = custom_target('copy_usd_dll_' + target_suffix,
       output           : ['copy_usd_dll_' + target_suffix],
@@ -716,7 +718,7 @@ if dxvk_is_ninja
       output           : ['recursive_copy_lss_usd_plugins_' + target_suffix],
       command          : [recursive_copy_path,
                           lss_usd_plugins_path,
-                          output_path + 'lss/usd_plugins/'] )
+                          join_paths(output_path, 'lss/usd_plugins/')] )
 
     if enable_rtxio == true
       copy_rtxio = custom_target('copy_rtxio_' + target_suffix,
@@ -747,7 +749,7 @@ if dxvk_is_ninja
     copy_target = run_target('copy_' + target_suffix.replace('apics_', ''),
       depends: copy_target_depends,
       command : [copy_script_path,
-                meson.current_build_dir().replace('\\', '/') + '/src/d3d9',
+                join_paths(current_build_dir_norm, 'src/d3d9'),
                 output_path,
                 'd3d9*'])
 
@@ -763,7 +765,7 @@ if dxvk_is_ninja
   # generate VS project files for ninja
   # note: this writes to <source root>/_vs, which is outside the build directory
   vsproj = run_command(python_interpreter,
-                      meson.global_source_root() + '\\vsgen\\generate_vs_project_files.py',
+                      join_paths(global_src_root_norm, 'vsgen/generate_vs_project_files.py'),
                       vs_gen_cmdline,
                       check: false)
 

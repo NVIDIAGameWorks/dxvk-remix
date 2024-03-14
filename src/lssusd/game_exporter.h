@@ -24,7 +24,7 @@
 #include "usd_include_begin.h"
 #include <pxr/usd/usd/stage.h>
 #include <pxr/usd/usd/attribute.h>
-#include <pxr/usd/usdLux/lightapi.h>
+#include <pxr/usd/usdLux/lightAPI.h>
 #include "usd_include_end.h"
 
 #include "game_exporter_common.h"
