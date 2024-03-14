@@ -42,7 +42,7 @@
 #include <pxr/usd/usdGeom/camera.h>
 #include <pxr/usd/usdGeom/xform.h>
 #include <pxr/usd/usdGeom/xformCommonAPI.h>
-#include <pxr/usd/usdLux/lightapi.h>
+#include <pxr/usd/usdLux/lightAPI.h>
 #include <pxr/usd/usdLux/sphereLight.h> 
 #include <pxr/usd/usdLux/distantLight.h>
 #include <pxr/usd/usdLux/domeLight.h>
