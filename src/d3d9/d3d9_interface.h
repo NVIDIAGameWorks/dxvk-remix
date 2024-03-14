@@ -18,7 +18,7 @@ namespace dxvk {
   public:
 
 // NV-DXVK start: external API
-    D3D9InterfaceEx(bool bExtended, bool WithExternalSwapchain = false, bool WithDrawCallConversion = true);
+    D3D9InterfaceEx(bool bExtended, bool WithExternalSwapchain = false, bool WithDrawCallConversion = true, bool WithRemixAPI = false);
 // NV-DXVK end
 
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject);
@@ -148,6 +148,7 @@ namespace dxvk {
 // NV-DXVK start: external API
     bool                          m_withExternalSwapchain;
     bool                          m_withDrawCallConversion;
+    bool                          m_withRemixAPI;
 // NV-DXVK end
 
   };
