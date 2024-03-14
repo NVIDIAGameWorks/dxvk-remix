@@ -1159,7 +1159,7 @@ namespace dxvk {
     NV_GPU_ARCHITECTURE_ID getNvidiaArch();
     NV_GPU_ARCH_IMPLEMENTATION_ID getNvidiaChipId();
     void updateGraphicsPresets(const DxvkDevice* device);
-    void updateRaytraceModePresets(const uint32_t vendorID);
+    void updateRaytraceModePresets(const uint32_t vendorID, const VkDriverId driverID);
 
     void resetUpscaler();
 
