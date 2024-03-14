@@ -34,7 +34,7 @@
 #include "rtx/utility/geometry_flags.slangh"
 #include "rtx/concept/ray/ray_helper.slangh"
 #include "rtx/algorithm/integrator_helpers.slangh"
-#include "rtx/external/nrd.slangh"
+#include "rtx/external/NRD.slangh"
 
 struct DemodulationData
 {

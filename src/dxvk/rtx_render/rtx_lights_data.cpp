@@ -46,7 +46,7 @@
 #include <pxr/usd/usdLux/cylinderLight.h>
 #include <pxr/usd/usdLux/distantLight.h>
 #include <pxr/usd/usdLux/blackbody.h>
-#include "pxr/usd/usdLux/lightapi.h"
+#include <pxr/usd/usdLux/lightAPI.h>
 #include "../../lssusd/usd_include_end.h"
 
 #define WRITE_CTOR_INIT(name, usd_attr, type, minVal, maxVal, defaultVal) \

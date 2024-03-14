@@ -49,7 +49,7 @@
 #include <pxr/usd/usdLux/diskLight.h>
 #include <pxr/usd/usdLux/cylinderLight.h>
 #include <pxr/usd/usdLux/distantLight.h>
-#include "pxr/usd/usdLux/lightapi.h"
+#include <pxr/usd/usdLux/lightAPI.h>
 #include <pxr/usd/usdLux/blackbody.h>
 #include <pxr/usd/usdSkel/bindingAPI.h>
 #include <pxr/usd/usdShade/materialBindingAPI.h>
