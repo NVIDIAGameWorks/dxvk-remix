@@ -19,7 +19,7 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
-#include "METRICS.h"
+#include "metrics.h"
 
 #include "../util_env.h"
 #include "util_math.h"
