@@ -364,6 +364,7 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, enableDirectLighting, true, "Enables direct lighting (lighting directly from lights on to a surface) on surfaces when set to true, otherwise disables it.");
     RTX_OPTION("rtx", bool, enableSecondaryBounces, true, "Enables indirect lighting (lighting from diffuse/specular bounces to one or more other surfaces) on surfaces when set to true, otherwise disables it.");
     RTX_OPTION("rtx", bool, zUp, false, "Indicates that the Z axis is the \"upward\" axis in the world when true, otherwise the Y axis when false.");
+    RTX_OPTION("rtx", bool, leftHandedCoordinateSystem, false, "Indicates that the world space coordinate system is left-handed when true, otherwise right-handed when false.");
     RTX_OPTION("rtx", float, uniqueObjectDistance, 300.f, "The distance (in game units) that an object can move in a single frame before it is no longer considered the same object.\n"
                     "If this is too low, fast moving objects may flicker and have bad lighting.  If it's too high, repeated objects may flicker.\n"
                     "This does not account for sceneScale.");
@@ -1221,6 +1222,7 @@ namespace dxvk {
     bool shouldCaptureDebugImage() const { return captureDebugImage(); }
     bool isLiveShaderEditModeEnabled() const { return useLiveShaderEditMode(); }
     bool isZUp() const { return zUp(); }
+    bool isLeftHandedCoordinateSystem() const { return leftHandedCoordinateSystem(); }
     float getUniqueObjectDistanceSqr() const { return uniqueObjectDistance() * uniqueObjectDistance(); }
     float getResolutionScale() const { return resolutionScale(); }
     DLSSProfile getDLSSQuality() const { return qualityDLSS(); }
