@@ -12,7 +12,7 @@
 :: See the License for the specific language governing permissions and
 :: limitations under the License.
 
-set PM_PACKMAN_VERSION=7.2.2
+set PM_PACKMAN_VERSION=7.20
 
 :: Specify where packman command is rooted
 set PM_INSTALL_PATH=%~dp0..
@@ -95,11 +95,16 @@ if exist "%PM_PYTHON%" (
     if exist "%PM_PYTHON_DIR%" ( rd /s /q "%PM_PYTHON_DIR%" > nul )
 )
 
-:: Perform atomic rename
-rename "%TEMP_FOLDER_NAME%" "%PM_PYTHON_VERSION%" 1> nul
-:: Failure during move, need to clean up and abort
+:: Perform atomic move (allowing overwrite, /y)
+move /y "%TEMP_FOLDER_NAME%" "%PM_PYTHON_DIR%" 1> nul
+:: Verify that python.exe is now where we expect
+if exist "%PM_PYTHON%" goto PACKMAN
+
+:: Wait a second and try again (can help with access denied weirdness)
+timeout /t 1 /nobreak 1> nul
+move /y "%TEMP_FOLDER_NAME%" "%PM_PYTHON_DIR%" 1> nul
 if %errorlevel% neq 0 (
-    echo !!! Error renaming python !!!
+    echo !!! Error moving python %TEMP_FOLDER_NAME% -> %PM_PYTHON_DIR% !!!
     call :CLEAN_UP_TEMP_FOLDER
     goto ERROR
 )
