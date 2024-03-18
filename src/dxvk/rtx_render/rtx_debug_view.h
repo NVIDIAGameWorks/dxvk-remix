@@ -104,12 +104,14 @@ namespace dxvk {
     // Note: Used for preserving the debug view state only for ImGui purposes. Not to be used for anything else
     // and should not ever be set to the disabled debug view index.
     uint32_t m_lastDebugViewIdx;
-    RTX_OPTION_ENV("rtx.debugView", DebugViewDisplayType, displayType, DebugViewDisplayType::Standard, "DXVK_RTX_DEBUG_VIEW_DISPLAY_TYPE", "");
+    RTX_OPTION_ENV("rtx.debugView", DebugViewDisplayType, displayType, DebugViewDisplayType::Standard, "DXVK_RTX_DEBUG_VIEW_DISPLAY_TYPE",
+                   "The display type to use for visualizing debug view input values.\n"
+                   "Supported display types are: 0 = Standard, 1 = BGR Exclusive Color, 2 = EV100, 3 = HDR Waveform\n"
+                   "Each mode may be useful for a different kind of visualization, though Standard is typically the most common mode to use.\n"
+                   "Standard mode works for a simple direct, scaled or color mapped visualization, BGR exclusive for another type of color mapped visualization, and EV100 or the HDR Waveform for understanding HDR value magnitudes in the input on a log scale.");
 
     RTX_OPTION("rtx.debugView", DebugViewSamplerType, samplerType, DebugViewSamplerType::NormalizedLinear, "Sampler type for debug views that sample from a texture (applies only to a subset of debug views).\n"
-                                                                                                           "0: Nearest.\n"
-                                                                                                           "1: Normalized Nearest.\n"
-                                                                                                           "2: Normalized Linear.");
+                                                                                                           "Supported types are: 0 = Nearest, 1 = Normalized Nearest, 2 = Normalized Linear");
 
     struct Composite {
       friend class ImGUI; // <-- we want to modify these values directly.
@@ -137,7 +139,12 @@ namespace dxvk {
                "A value of 255 indicates that the input will be quantized to steps of 1/255, the same as the step size used when quantizing the range 0-1 to an 8 bit representation.");
 
     // Standard Display
-    RTX_OPTION_ENV("rtx.debugView", bool, enablePseudoColor, false, "RTX_DEBUG_VIEW_ENABLE_PSEUDO_COLOR", "Enables RGB color coding of a scalar debug view value.");
+    // Note: Previously rtx.debugView.enablePseudoColor and RTX_DEBUG_VIEW_ENABLE_PSEUDO_COLOR, alias this in the future if needed,
+    // but likely nothing relied on it due to being a debugging option.
+    RTX_OPTION_ENV("rtx.debugView", PseudoColorMode, pseudoColorMode, PseudoColorMode::Disabled, "RTX_DEBUG_VIEW_PSEUDO_COLOR_MODE",
+                   "Selects a mode for mapping debug value inputs to a scalar to be visualized using a colormap spectrum. Only takes effect when rtx.debugView.displayType is set to \"Standard\".\n"
+                   "Supported modes are: 0 = Disabled, 1 = Luminance, 2 = Red, 3 = Green, 4 = Blue, 5 = Alpha.\n"
+                   "Useful for visualizing a value's range with greater precision than a simple monochromatic color spectrum (due to interpolating across an entire spectrum of color with a roughly uniform progression).");
     RTX_OPTION_ENV("rtx.debugView", bool, enableGammaCorrection, false, "RTX_DEBUG_VIEW_ENABLE_GAMMA_CORRECTION", "Enables gamma correction of a debug view value.");
     bool m_enableAlphaChannel = false;
     float m_scale = 1.f;
