@@ -476,6 +476,12 @@ namespace {
     }
 
     std::optional<RtLight> toRtLight(const remixapi_LightInfo& info) {
+      if (auto src = pnext::find<remixapi_LightInfoUSDEXT>(&info)) {
+        if (auto lightData = LightData::tryCreate(*src)) {
+          return lightData->toRtLight();
+        }
+        return {};
+      }
       if (auto src = pnext::find<remixapi_LightInfoSphereEXT>(&info)) {
         return RtSphereLight {
           tovec3(src->position),
