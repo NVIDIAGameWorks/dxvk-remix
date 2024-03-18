@@ -274,6 +274,10 @@ namespace dxvk {
           windowData.proc, window, message, wParam, lParam);
     }
 
+    // NV-DXVK start:
+    windowData.swapchain->onWindowMessageEvent(message, wParam);
+    // NV-DXVK end
+
     return 0;
   }
 
@@ -1696,6 +1700,28 @@ namespace dxvk {
     return D3D_OK;
   }
   
+  // NV-DXVK start: 
+  void D3D9SwapChainEx::onWindowMessageEvent(UINT message, WPARAM wParam) {
+  
+    // Ensure RTX end of frame events happen when the app window minimizes or loses focus when in fullscreen mode.
+    // RTX logic assumes that present() occurs every frame and calls end of frame events there to ensure valid state for the subsequent frame.
+    // Therefore call the required end of frame events explicitly on such events.
+    const bool triggerRtxEndOfFrameEvents =
+      (message == WM_ACTIVATE && wParam == WA_INACTIVE) ||
+      (message == WM_SIZE && (wParam == SIZE_MINIMIZED || wParam == SIZE_RESTORED));
+  
+    if (triggerRtxEndOfFrameEvents) {
+      // Don't artificially and unnecessarily inject RTX when no present is called
+      const bool callInjectRtx = false;
+      
+      m_parent->m_rtx.EndFrame(m_backBuffers[0]->GetCommonTexture()->GetImage(), callInjectRtx);
+
+      // Need to increment present counter as it's used to reject repeated injectRtx calls.
+      // Failing to do that will make next frame injection get rejected
+      m_device->incrementPresentCount();
+    }
+  }
+    // NV-DXVK end
   
   HRESULT D3D9SwapChainEx::ChangeDisplayMode(
           D3DPRESENT_PARAMETERS* pPresentParams,

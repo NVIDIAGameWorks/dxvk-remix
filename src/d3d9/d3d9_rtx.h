@@ -137,7 +137,7 @@ namespace dxvk {
     /**
       * \brief: Signal that we've reached the end of the frame.
       */
-    void EndFrame(const Rc<DxvkImage>& targetImage);
+    void EndFrame(const Rc<DxvkImage>& targetImage, bool callInjectRtx = true);
 
     /**
       * \brief: Signal that we're about to present the image.

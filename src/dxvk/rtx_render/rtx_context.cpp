@@ -277,8 +277,9 @@ namespace dxvk {
       return;
     }
 
-    if (m_frameLastInjected == m_device->getCurrentFrameId())
+    if (m_frameLastInjected == m_device->getCurrentFrameId()) {
       return;
+    }
 
     const bool isCameraValid = getSceneManager().getCamera().isValid(m_device->getCurrentFrameId());
     if (!isCameraValid) {
@@ -288,8 +289,9 @@ namespace dxvk {
     getCommonObjects()->getTextureManager().kickoff();
 
     // Update frame counter only after actual rendering
-    if (isCameraValid)
+    if (isCameraValid) {
       m_frameLastInjected = m_device->getCurrentFrameId();
+    }
     
     if (RtxOptions::Get()->alwaysWaitForAsyncTextures()) {
       // Wait for the texture manager to finish async uploads
@@ -566,9 +568,12 @@ namespace dxvk {
     m_resetHistory = false;
   }
 
-  void RtxContext::endFrame(std::uint64_t cachedReflexFrameId, Rc<DxvkImage> targetImage) {
-    // Fallback inject (is a no-op if already injected this frame, or no valid RT scene)
-    injectRTX(cachedReflexFrameId, targetImage);
+  void RtxContext::endFrame(std::uint64_t cachedReflexFrameId, Rc<DxvkImage> targetImage, bool callInjectRtx) {
+
+    if (callInjectRtx) {
+      // Fallback inject (is a no-op if already injected this frame, or no valid RT scene)
+      injectRTX(cachedReflexFrameId, targetImage);
+    }
   }
 
   // Called right before D3D9 present

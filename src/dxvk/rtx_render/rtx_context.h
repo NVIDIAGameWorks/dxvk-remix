@@ -87,7 +87,7 @@ namespace dxvk {
       * \param [in] targetImage: Image to store raytraced result in
       */
     void injectRTX(std::uint64_t cachedReflexFrameId, Rc<DxvkImage> targetImage = nullptr);
-    void endFrame(std::uint64_t cachedReflexFrameId, Rc<DxvkImage> targetImage = nullptr);
+    void endFrame(std::uint64_t cachedReflexFrameId, Rc<DxvkImage> targetImage = nullptr, bool callInjectRtx = true);
 
     void onPresent(Rc<DxvkImage> targetImage = nullptr);
 
