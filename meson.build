@@ -435,7 +435,6 @@ nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd/Lib/Release/')
 if get_option('buildtype') == 'debug'  
   nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd/Lib/Debug/')
 endif
-lss_usd_plugins_path = join_paths(global_src_root_norm, 'usd_plugins/')
 
 rtxdi_include_path = include_directories('submodules/rtxdi/rtxdi-sdk/include')
 # Need to use the include path as an argument to the shader build string,
@@ -498,11 +497,6 @@ if not dxvk_is_ninja
    build_by_default : true,
    depends          : [],
    command          : [copy_script_path, aftermath_lib_path, output_dir, 'GFSDK_Aftermath_Lib.x64.dll'] )
-
-  recursive_copy_lss_usd_plugins_target = custom_target('recursive_copy_lss_usd_plugins',
-    output           : ['recursive_copy_lss_usd_plugins'],
-    build_by_default : true,
-    command          : [recursive_copy_path, lss_usd_plugins_path, join_paths(output_dir, 'lss/usd_plugins/')] )
 
   if enable_rtxio == true
     copy_rtxio_target = custom_target('copy_rtxio',
@@ -713,12 +707,6 @@ if dxvk_is_ninja
        output           : ['copy_aftermath_dll_' + target_suffix],
        depends          : [],
        command          : [copy_script_path, aftermath_lib_path, output_path, 'GFSDK_Aftermath_Lib.x64.dll'] )
-
-    recursive_copy_lss_usd_plugins = custom_target('recursive_copy_lss_usd_plugins_' + target_suffix,
-      output           : ['recursive_copy_lss_usd_plugins_' + target_suffix],
-      command          : [recursive_copy_path,
-                          lss_usd_plugins_path,
-                          join_paths(output_path, 'lss/usd_plugins/')] )
 
     if enable_rtxio == true
       copy_rtxio = custom_target('copy_rtxio_' + target_suffix,
