@@ -33,14 +33,27 @@ enum class DebugViewDisplayType : uint32_t {
   Count
 };
 
+// Pseudo Color Mode
+enum class PseudoColorMode : uint32_t {
+  Disabled = 0,
+  Luminance,
+  Red,
+  Green,
+  Blue,
+  Alpha,
+
+  Count
+};
+
 // Sampler Types
-enum class DebugViewSamplerType: uint32_t {
+enum class DebugViewSamplerType : uint32_t {
   Nearest = 0,
   NormalizedNearest,
   NormalizedLinear,
 
   Count
 };
+
 struct DebugViewArgs {
   uint debugViewIdx;
   int colorCodeRadius;
@@ -76,7 +89,7 @@ struct DebugViewArgs {
   uint enableInfNanViewFlag;
 
   // Standard Display enable flags
-  uint enablePseudoColorFlag;
+  PseudoColorMode pseudoColorMode;
   uint enableAlphaChannelFlag;
 
   // HDR Waveform Display enable flags

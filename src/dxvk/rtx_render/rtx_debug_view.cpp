@@ -262,6 +262,17 @@ namespace dxvk {
       {DebugViewSamplerType::NormalizedLinear, "Normalized Linear"},
   } });
 
+  ImGui::ComboWithKey<PseudoColorMode> pseudoColorModeCombo = ImGui::ComboWithKey<PseudoColorMode>(
+  "Pseudo Color Mode",
+  ImGui::ComboWithKey<PseudoColorMode>::ComboEntries{ {
+      {PseudoColorMode::Disabled, "Disabled"},
+      {PseudoColorMode::Luminance, "RGB Luminance"},
+      {PseudoColorMode::Red, "Red"},
+      {PseudoColorMode::Green, "Green"},
+      {PseudoColorMode::Blue, "Blue"},
+      {PseudoColorMode::Alpha, "Alpha"},
+  } });
+
   // Defined within an unnamed namespace to ensure unique definition across binary
   namespace {
     class DebugViewShader : public ManagedShader {
@@ -461,8 +472,8 @@ namespace dxvk {
         ImGui::Text("Standard:");
 
         ImGui::Checkbox("Alpha Channel", &m_enableAlphaChannel);
-        ImGui::Checkbox("Pseudo Color Mode", &enablePseudoColorObject());
         ImGui::Checkbox("Gamma Correction", &enableGammaCorrectionObject());
+        pseudoColorModeCombo.getKey(&pseudoColorModeObject());
 
         ImGui::DragFloat("Scale", &m_scale, 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
         ImGui::InputFloat("Min Value", &minValueObject(), std::max(0.01f, 0.02f * abs(minValue())), std::max(0.1f, 0.1f * abs(minValue())));
@@ -470,9 +481,9 @@ namespace dxvk {
         maxValueRef() = std::max(1.00001f * minValue(), maxValue());
 
         // Color legend
-        if (enablePseudoColor()) {
+        if (pseudoColorModeObject() != PseudoColorMode::Disabled) {
           ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4 { 0.25f, 0.25f, 0.25f, 1.0f });
-          ImGui::BeginChildFrame(ImGui::GetID("Pseudocolor legend"), ImVec2(500, 20), ImGuiWindowFlags_NoScrollbar);
+          ImGui::BeginChildFrame(ImGui::GetID("Pseudo Color Legend"), ImVec2(500, 20), ImGuiWindowFlags_NoScrollbar);
           ImGui::TextColored(ImVec4 { colormap0.x, colormap0.y, colormap0.z, 1.0f }, "%g", minValue());
           ImGui::SameLine();
           ImGui::TextColored(ImVec4 { colormap25.x, colormap25.y, colormap25.z, 1.0f }, "%g", lerp(static_cast<float>(minValue()), static_cast<float>(maxValue()), 0.25));
@@ -664,7 +675,7 @@ namespace dxvk {
     debugViewArgs.debugKnob = m_debugKnob;
 
     if (displayType() == DebugViewDisplayType::Standard) {
-      debugViewArgs.enablePseudoColorFlag = enablePseudoColor();
+      debugViewArgs.pseudoColorMode = pseudoColorModeObject();
       debugViewArgs.enableAlphaChannelFlag = m_enableAlphaChannel;
       debugViewArgs.enableGammaCorrectionFlag = enableGammaCorrection();
 
