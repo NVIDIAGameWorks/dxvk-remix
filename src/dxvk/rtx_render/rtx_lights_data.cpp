@@ -19,12 +19,13 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
-#pragma once
 
 #include "rtx_lights_data.h"
 #include "rtx_light_utils.h"
 #include "rtx_light_manager.h"
 #include "rtx_options.h"
+
+#include <remix/remix_c.h>
 
 #include <d3d9types.h>
 #include <regex>
@@ -72,20 +73,6 @@
       m_##name = clamp(m_##name, minVal, maxVal);
 
 namespace dxvk {
-  LightData::LightData(const pxr::UsdPrim& lightPrim, const pxr::GfMatrix4f* pLocalToRoot, const bool isOverrideLight, const bool absoluteTransform) :
-    LIST_LIGHT_CONSTANTS(WRITE_CTOR_INIT)
-    m_lightType(LightType::Unknown),
-    m_dirty(0),
-    m_isRelativeTransform(!absoluteTransform && !isOverrideLight),
-    m_isOverrideLight(isOverrideLight) {
-    // Note: Retrieval of light type and deserialization of constants must happen before other operations to ensure all members
-    // are set from their initial USD values (before say sanitation and other adjustment of said light members).
-    getLightType(lightPrim, m_lightType);
-    deserialize(lightPrim);
-
-    extractTransform(pLocalToRoot);
-    sanitizeData();
-  }
 
   RtLight LightData::toRtLight(const RtLight* const originalLight) const {
     switch (m_lightType) {
@@ -219,19 +206,27 @@ namespace dxvk {
     }
     return {};
   }
-  
-  std::optional<LightData> LightData::tryCreate(const pxr::UsdPrim& lightPrim, const pxr::GfMatrix4f* pLocalToRoot, const bool isOverrideLight, const bool absoluteTransform) {
-    // Ensure the USD light is a supported type
 
-    if (!isSupportedUsdLight(lightPrim)) {
-      return {};
+  namespace {
+    // Helpers for casting remixapi types to dxvk ones
+    template<typename DxvkType, typename ApiType>
+               DxvkType readMemberAs(const ApiType& v) = delete;
+    template<> float    readMemberAs(const float& v)            { return v; }
+    template<> bool     readMemberAs(const remixapi_Bool& v)    { return v; }
+    template<> Vector3  readMemberAs(const remixapi_Float3D& v) { return { v.x, v.y, v.z }; }
+
+    template<typename T> bool hasNan(const T& v) = delete;
+    template<>           bool hasNan(const float& v)            { return std::isnan(v); }
+    template<>           bool hasNan(const remixapi_Float3D& v) { return hasNan(v.x) || hasNan(v.y) || hasNan(v.z); }
+    template<>           bool hasNan(const remixapi_Bool& v)    { return false; }
+    template<>           bool hasNan(const Vector3& v)          { return hasNan(v.x) || hasNan(v.y) || hasNan(v.z); }
+    template<>           bool hasNan(const bool& v)             { return false; }
+
+    bool infOrNan(const float& v) {
+      return std::isnan(v) || std::isinf(v);
     }
 
-    // Handle logic specific to lights with a transform set
-
-    if (pLocalToRoot != nullptr) {
-      auto& localToRoot = *pLocalToRoot;
-
+    bool isUsdLightTransformValid(const pxr::GfMatrix4f& transform) {
       // Ignore lights with a 0 scale transform on any axis
       // Note: Currently in Omniverse lights with a 0 scale on all 3 axes are considered valid and are simply ignored. Since this is "valid" behavior and not a bug (supposedly),
       // we match that here by ignoring creation of such lights. We however go further by ignoring a light with any of its 3 axes scaled by 0 due to how this can affect derivation
@@ -244,29 +239,121 @@ namespace dxvk {
 
       // Note: The last row of the light's transform should always be 0, 0, 0, 1 for a typical affine matrix when column-major, since this matrix
       // is row major though we get the last column instead.
-      assert(localToRoot.GetColumn(3) == pxr::GfVec4f(0.0f, 0.0f, 0.0f, 1.0f));
+      assert(transform.GetColumn(3) == pxr::GfVec4f(0.0f, 0.0f, 0.0f, 1.0f));
 
-      const pxr::GfVec3f zeroVec3(0.0f, 0.0f, 0.0f);
+      constexpr auto zeroVec3 = pxr::GfVec3f { 0.0f, 0.0f, 0.0f };
 
       // Note: USD's matrices are row major so to get the scale vectors we need to get the columns instead of the rows of the matrix.
       if (
-        pxr::GfVec3f(localToRoot[0][0], localToRoot[1][0], localToRoot[2][0]) == zeroVec3 ||
-        pxr::GfVec3f(localToRoot[0][1], localToRoot[1][1], localToRoot[2][1]) == zeroVec3 ||
-        pxr::GfVec3f(localToRoot[0][2], localToRoot[1][2], localToRoot[2][2]) == zeroVec3
+        pxr::GfVec3f(transform[0][0], transform[1][0], transform[2][0]) == zeroVec3 ||
+        pxr::GfVec3f(transform[0][1], transform[1][1], transform[2][1]) == zeroVec3 ||
+        pxr::GfVec3f(transform[0][2], transform[1][2], transform[2][2]) == zeroVec3
       ) {
-        return {};
+        return false;
       }
+
+      // Transform must have finite floats
+      if (
+        infOrNan(transform[0][0]) || infOrNan(transform[0][1]) || infOrNan(transform[0][2]) ||
+        infOrNan(transform[1][0]) || infOrNan(transform[1][1]) || infOrNan(transform[1][2]) ||
+        infOrNan(transform[2][0]) || infOrNan(transform[2][1]) || infOrNan(transform[2][2]) ||
+        infOrNan(transform[3][0]) || infOrNan(transform[3][1]) || infOrNan(transform[3][2])
+      ) {
+        return false;
+      }
+
+      return true;
+    }
+  } // anonymous namespace
+  
+  std::optional<LightData> LightData::tryCreate(const pxr::UsdPrim& lightPrim, const pxr::GfMatrix4f* pLocalToRoot, const bool isOverrideLight, const bool absoluteTransform) {
+    // Ensure the USD light is a supported type
+    if (!isSupportedUsdLight(lightPrim)) {
+      return {};
     }
 
-    // Construct and return the light
+    // Handle logic specific to lights with a transform set
+    if (pLocalToRoot && !isUsdLightTransformValid(*pLocalToRoot)) {
+      return {};
+    }
 
-    return std::optional<LightData>(std::in_place, LightData(lightPrim, pLocalToRoot, isOverrideLight, absoluteTransform));
+    // Note: Retrieval of light type and deserialization of constants must happen before other operations to ensure all members
+    // are set from their initial USD values (before say sanitation and other adjustment of said light members).
+    LightType lightType = Unknown;
+    if (!getLightType(lightPrim, lightType)) {
+      Logger::warn(str::format("Failed to recognize a light type on \'", lightPrim.GetName().GetString(), "\'"));
+      return {};
+    }
+    // Note: LightType::Unknown is a valid case, as it's meant to be replaced by a corresponding D3DLIGHT9
+
+    auto l = LightData { lightType, isOverrideLight, absoluteTransform };
+    {
+      l.deserialize(lightPrim);
+      l.extractTransform(pLocalToRoot);
+      l.sanitizeData();
+    }
+    return l;
+  }
+
+  std::optional<LightData> LightData::tryCreate(const remixapi_LightInfoUSDEXT& src) {
+    LightType lightType = Unknown;
+    switch (src.lightType) {
+    case REMIXAPI_STRUCT_TYPE_LIGHT_INFO_DISTANT_EXT: lightType = Distant; break;
+    case REMIXAPI_STRUCT_TYPE_LIGHT_INFO_CYLINDER_EXT: lightType = Cylinder; break;
+    case REMIXAPI_STRUCT_TYPE_LIGHT_INFO_DISK_EXT: lightType = Disk; break;
+    case REMIXAPI_STRUCT_TYPE_LIGHT_INFO_RECT_EXT: lightType = Rect; break;
+    case REMIXAPI_STRUCT_TYPE_LIGHT_INFO_SPHERE_EXT: lightType = Sphere; break;
+    default: return {};
+    }
+
+    const auto gfTransform = pxr::GfMatrix4f {
+      src.transform.matrix[0][0], src.transform.matrix[1][0], src.transform.matrix[2][0], 0.f,
+      src.transform.matrix[0][1], src.transform.matrix[1][1], src.transform.matrix[2][1], 0.f,
+      src.transform.matrix[0][2], src.transform.matrix[1][2], src.transform.matrix[2][2], 0.f,
+      src.transform.matrix[0][3], src.transform.matrix[1][3], src.transform.matrix[2][3], 1.f,
+    };
+    if (!isUsdLightTransformValid(gfTransform)) {
+      return {};
+    }
+
+    // If any field contains even one NaN, ignore a light source.
+    // Inf is valid, as it can be std::clamp to a finite number.
+    {
+      #define FAIL_ON_INF_NAN(name, usd_attr, type, minVal, maxVal, defaultVal) \
+        if ( src.p##name != nullptr ) {       \
+          if ( hasNan( *( src.p##name ) ) ) { \
+            return {};                        \
+          }                                   \
+        }
+      LIST_LIGHT_CONSTANTS(FAIL_ON_INF_NAN);
+      #undef FAIL_ON_INF_NAN
+    }
+
+    auto l = LightData { lightType, false, true };
+    {
+      #define READ_FROM_PTR(name, usd_attr, type, minVal, maxVal, defaultVal) \
+      if ( src.p##name != nullptr ) {                           \
+        l.m_##name = readMemberAs< type >( *( src.p##name ) );  \
+        l.m_dirty.set( DirtyFlags::k_##name );                  \
+      }
+      LIST_LIGHT_CONSTANTS(READ_FROM_PTR);
+      #undef READ_FROM_PTR
+
+      l.extractTransform(&gfTransform);
+      l.sanitizeData();
+    }
+    return l;
+  }
+
+  LightData::LightData(LightType lightType, bool isOverrideLight, bool absoluteTransform) :
+    LIST_LIGHT_CONSTANTS(WRITE_CTOR_INIT)
+    m_lightType { lightType },
+    m_isOverrideLight { isOverrideLight },
+    m_isRelativeTransform { !absoluteTransform && !isOverrideLight } {
   }
 
   LightData LightData::createFromDirectional(const D3DLIGHT9& light) {
-    LightData output;
-
-    output.m_lightType = LightType::Distant;
+    auto output = LightData{ Distant };
 
     const Vector3 originalDirection { light.Direction.x, light.Direction.y, light.Direction.z };
 
@@ -305,8 +392,7 @@ namespace dxvk {
   }
 
   LightData LightData::createFromPointSpot(const D3DLIGHT9& light) {
-    LightData output;
-    output.m_lightType = LightType::Sphere;
+    auto output = LightData{ Sphere };
 
     const Vector3 originalPosition { light.Position.x, light.Position.y, light.Position.z };
     const float originalBrightness = std::max(light.Diffuse.r, std::max(light.Diffuse.g, light.Diffuse.b));
@@ -523,6 +609,30 @@ namespace dxvk {
     // If this light is fully defined (i.e. a child light) then we need to use all attributes
     if (prim.GetSpecifier() == pxr::SdfSpecifier::SdfSpecifierDef) {
       m_dirty = m_allDirty;
+    }
+
+    // Warn about all fields that contain NaN.
+    // Inf is valid, as it can be std::clamp to a finite number.
+    {
+      #define WARN_ON_NAN(name, usd_attr, type, minVal, maxVal, defaultVal) \
+        if ( hasNan( m_##name ) ) { \
+          Logger::warn(str::format("Invalid value (NaN) detected on USD attribute \'" #usd_attr "\' on \'", prim.GetName().GetString(), "\'")); \
+        }
+      LIST_LIGHT_CONSTANTS(WARN_ON_NAN);
+      #undef WARN_ON_NAN
+    }
+    // Backward compatibility: the exporter had a division by 0 for color/intensity,
+    // so they might be NaN in USD, so suppress to 0.
+    {
+      if (hasNan(m_Color)) {
+        m_Color = Vector3 { 0,0,0 };
+      }
+      if (hasNan(m_Intensity)) {
+        m_Intensity = 0.0f;
+      }
+      if (hasNan(m_Exposure)) {
+        m_Exposure = 0.0f;
+      }
     }
   }
 

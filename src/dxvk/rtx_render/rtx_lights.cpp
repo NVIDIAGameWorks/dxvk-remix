@@ -26,6 +26,32 @@
 #include "rtx_light_utils.h"
 
 namespace dxvk {
+  namespace {
+    Vector4 safeColorAndIntensity(const Vector3& radiance) {
+      const float intensity = std::max(std::max(radiance[0], radiance[1]), radiance[2]);
+      if (intensity < std::numeric_limits<float>::min()) {
+        return { 0,0,0,0 };
+      }
+
+      // Limit the intensity to prevent precision issues.
+      constexpr float IntensityEpsilon = std::numeric_limits<float>::min();
+      constexpr float IntensityMax = 1e+20f;
+
+      static_assert(std::numeric_limits<float>::min() <= IntensityEpsilon);
+      static_assert((IntensityEpsilon * IntensityMax) / IntensityEpsilon > std::numeric_limits<float>::min());
+      static_assert((IntensityEpsilon * IntensityMax) / IntensityEpsilon < std::numeric_limits<float>::max());
+
+      // Safer dividing for the case when 'intensity' is quite small,
+      // so the result won't be denormalized.
+      return {
+        std::clamp(radiance[0], 0.f, intensity * IntensityMax) / intensity,
+        std::clamp(radiance[1], 0.f, intensity * IntensityMax) / intensity,
+        std::clamp(radiance[2], 0.f, intensity * IntensityMax) / intensity,
+        intensity,
+      };
+    }
+  }
+
 RtLightShaping::RtLightShaping(bool enabled, Vector3 primaryAxis, float cosConeAngle, float coneSoftness, float focusExponent)
   : m_enabled(enabled ? 1 : 0)
   , m_primaryAxis(primaryAxis)
@@ -137,12 +163,7 @@ void RtSphereLight::writeGPUData(unsigned char* data, std::size_t& offset) const
 }
 
 Vector4 RtSphereLight::getColorAndIntensity() const {
-  Vector4 out;
-  out.w = std::max(std::max(m_radiance[0], m_radiance[1]), m_radiance[2]);
-  out.x = m_radiance[0] / out.w;
-  out.y = m_radiance[1] / out.w;
-  out.z = m_radiance[2] / out.w;
-  return out;
+  return safeColorAndIntensity(m_radiance);
 }
 
 void RtSphereLight::updateCachedHash() {
@@ -238,12 +259,7 @@ void RtRectLight::writeGPUData(unsigned char* data, std::size_t& offset) const {
 
 
 Vector4 RtRectLight::getColorAndIntensity() const {
-  Vector4 out;
-  out.w = std::max(std::max(m_radiance[0], m_radiance[1]), m_radiance[2]);
-  out.x = m_radiance[0] / out.w;
-  out.y = m_radiance[1] / out.w;
-  out.z = m_radiance[2] / out.w;
-  return out;
+  return safeColorAndIntensity(m_radiance);
 }
 
 void RtRectLight::updateCachedHash() {
@@ -343,12 +359,7 @@ void RtDiskLight::writeGPUData(unsigned char* data, std::size_t& offset) const {
 }
 
 Vector4 RtDiskLight::getColorAndIntensity() const {
-  Vector4 out;
-  out.w = std::max(std::max(m_radiance[0], m_radiance[1]), m_radiance[2]);
-  out.x = m_radiance[0] / out.w;
-  out.y = m_radiance[1] / out.w;
-  out.z = m_radiance[2] / out.w;
-  return out;
+  return safeColorAndIntensity(m_radiance);
 }
 
 void RtDiskLight::updateCachedHash() {
@@ -423,12 +434,7 @@ void RtCylinderLight::writeGPUData(unsigned char* data, std::size_t& offset) con
 }
 
 Vector4 RtCylinderLight::getColorAndIntensity() const {
-  Vector4 out;
-  out.w = std::max(std::max(m_radiance[0], m_radiance[1]), m_radiance[2]);
-  out.x = m_radiance[0] / out.w;
-  out.y = m_radiance[1] / out.w;
-  out.z = m_radiance[2] / out.w;
-  return out;
+  return safeColorAndIntensity(m_radiance);
 }
 
 void RtCylinderLight::updateCachedHash() {
@@ -509,12 +515,7 @@ void RtDistantLight::writeGPUData(unsigned char* data, std::size_t& offset) cons
 }
 
 Vector4 RtDistantLight::getColorAndIntensity() const {
-  Vector4 out;
-  out.w = std::max(std::max(m_radiance[0], m_radiance[1]), m_radiance[2]);
-  out.x = m_radiance[0] / out.w;
-  out.y = m_radiance[1] / out.w;
-  out.z = m_radiance[2] / out.w;
-  return out;
+  return safeColorAndIntensity(m_radiance);
 }
 
 void RtDistantLight::updateCachedHash() {
