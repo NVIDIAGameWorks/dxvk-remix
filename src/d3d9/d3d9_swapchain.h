@@ -113,6 +113,8 @@ namespace dxvk {
     bool ReleaseFullscreenExclusive() const {
       return GetPresenter()->releaseFullscreenExclusive() == VK_SUCCESS;
     }
+
+    void onWindowMessageEvent(UINT message, WPARAM wParam);
     // NV-DXVK end
 
     void SyncFrameLatency();
