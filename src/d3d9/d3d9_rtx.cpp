@@ -1051,11 +1051,13 @@ namespace dxvk {
     });
   }
 
-  void D3D9Rtx::EndFrame(const Rc<DxvkImage>& targetImage) {
+  void D3D9Rtx::EndFrame(const Rc<DxvkImage>& targetImage, bool callInjectRtx) {
     const auto currentReflexFrameId = GetReflexFrameId();
 
     // Inform backend of end-frame
-    m_parent->EmitCs([currentReflexFrameId, targetImage](DxvkContext* ctx) { static_cast<RtxContext*>(ctx)->endFrame(currentReflexFrameId, targetImage); });
+    m_parent->EmitCs([currentReflexFrameId, targetImage, callInjectRtx](DxvkContext* ctx) { 
+      static_cast<RtxContext*>(ctx)->endFrame(currentReflexFrameId, targetImage, callInjectRtx); 
+    });
 
     // Reset for the next frame
     m_rtxInjectTriggered = false;
