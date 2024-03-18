@@ -83,6 +83,8 @@ extern "C" {
     REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_SUBSURFACE_EXT  = 18,
     REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_OBJECT_PICKING_EXT     = 19,
     REMIXAPI_STRUCT_TYPE_LIGHT_INFO_DOME_EXT                  = 20,
+    REMIXAPI_STRUCT_TYPE_LIGHT_INFO_USD_EXT                   = 21,
+    // NOTE: if adding a new struct, register it in 'rtx_remix_specialization.inl'
   } remixapi_StructType;
 
   typedef enum remixapi_ErrorCode {
@@ -462,6 +464,30 @@ extern "C" {
     remixapi_Transform              transform;
     remixapi_Path                   colorTexture;
   } remixapi_LightInfoDomeEXT;
+
+  // Attachable to remixapi_LightInfo.
+  // If attached, 'remixapi_LightInfo::radiance' is ignored.
+  // Any other attached 'remixapi_LightInfo*EXT' are ignored.
+  // Most fields correspond to a usd token. Set to null, if no value.
+  typedef struct remixapi_LightInfoUSDEXT {
+    remixapi_StructType             sType;
+    void*                           pNext;
+    remixapi_StructType             lightType;
+    remixapi_Transform              transform;
+    const float*                    pRadius;            // "radius"
+    const float*                    pWidth;             // "width"
+    const float*                    pHeight;            // "height"
+    const float*                    pLength;            // "length"
+    const float*                    pAngleRadians;      // "angle"
+    const remixapi_Bool*            pEnableColorTemp;   // "enableColorTemperature"
+    const remixapi_Float3D*         pColor;             // "color"
+    const float*                    pColorTemp;         // "colorTemperature"
+    const float*                    pExposure;          // "exposure"
+    const float*                    pIntensity;         // "intensity"
+    const float*                    pConeAngleRadians;  // "shaping:cone:angle"
+    const float*                    pConeSoftness;      // "shaping:cone:softness"
+    const float*                    pFocus;             // "shaping:focus"
+  } remixapi_LightInfoUSDEXT;
 
   typedef struct remixapi_LightInfo {
     remixapi_StructType             sType;

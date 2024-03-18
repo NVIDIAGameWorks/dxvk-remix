@@ -47,10 +47,13 @@
 #define WRITE_DIRTY_FLAGS(name, usd_attr, type, minVal, maxVal, defaultVal) \
       k_##name,
 
+struct remixapi_LightInfoUSDEXT;
+
 namespace dxvk {
   struct LightData {
     static std::optional<LightData> tryCreate(const D3DLIGHT9& light);
     static std::optional<LightData> tryCreate(const pxr::UsdPrim& lightPrim, const pxr::GfMatrix4f* pLocalToRoot, const bool isOverrideLight, const bool absoluteTransform);
+    static std::optional<LightData> tryCreate(const remixapi_LightInfoUSDEXT& src);
 
     RtLight toRtLight(const RtLight* const originalLight = nullptr) const;
 
@@ -75,8 +78,7 @@ namespace dxvk {
       Unknown
     };
 
-    LightData() = default;
-    LightData(const pxr::UsdPrim& lightPrim, const pxr::GfMatrix4f* pLocalToRoot, const bool isOverrideLight, const bool absoluteTransform);
+    explicit LightData(LightType lightType, bool isOverrideLight = false, bool absoluteTransform = true);
 
     static LightData createFromDirectional(const D3DLIGHT9& light);
 
@@ -122,7 +124,7 @@ namespace dxvk {
     };
 
     Flags<DirtyFlags> m_dirty{};
-    LightType m_lightType;
+    LightType m_lightType = Unknown;
     XXH64_hash_t m_cachedHash = kEmptyHash;
     // NOTE: Just add params for these without USD deserializer
     Vector3 m_position = Vector3(0.f);
