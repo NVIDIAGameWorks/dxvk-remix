@@ -394,7 +394,11 @@ void postprocess(ivec2 threadId, inout vec4 outValue)
 
     if (nanDetected || infDetected)
     {
-      const bool usePseudoColorWarningColors = (cb.displayType == DebugViewDisplayType::Standard) && cb.enablePseudoColorFlag;
+      // Note: Override usual warning colors when pseudo color mode is in use as its visualization will not
+      // display these properly.
+      const bool usePseudoColorWarningColors =
+        (cb.displayType == DebugViewDisplayType::Standard) &&
+        (cb.pseudoColorMode != PseudoColorMode::Disabled);
       const vec3 kNanWarningColor = usePseudoColorWarningColors ? vec3(0, 0, 0) : vec3(1, 0, 0);
       const vec3 kInfWarningColor = usePseudoColorWarningColors ? vec3(0, 0, 0) : vec3(0, 0, 1);
       const vec3 kCombinedWarningColor =
@@ -416,10 +420,37 @@ void postprocess(ivec2 threadId, inout vec4 outValue)
     outValue = (outValue - vec4(cb.minValue)) / (vec4(cb.maxValue - cb.minValue));
 
     if (!cb.enableAlphaChannelFlag)
+    {
       outValue.a = 1;
+    }
 
-    if (cb.enablePseudoColorFlag)
-      outValue.rgb = turboColormap(calcBt709Luminance(outValue.rgb));
+    if (cb.pseudoColorMode != PseudoColorMode::Disabled)
+    {
+      // Determine the input value to colormap based on the specified mode
+
+      float pseudoColorInput;
+
+      switch (cb.pseudoColorMode)
+      {
+      case PseudoColorMode::Luminance:
+        pseudoColorInput = calcBt709Luminance(outValue.rgb);
+        break;
+      case PseudoColorMode::Red:
+        pseudoColorInput = outValue.r;
+        break;
+      case PseudoColorMode::Green:
+        pseudoColorInput = outValue.g;
+        break;
+      case PseudoColorMode::Blue:
+        pseudoColorInput = outValue.b;
+        break;
+      case PseudoColorMode::Alpha:
+        pseudoColorInput = outValue.a;
+        break;
+      }
+
+      outValue.rgb = turboColormap(pseudoColorInput);
+    }
 
     if (cb.enableGammaCorrectionFlag)
     {
