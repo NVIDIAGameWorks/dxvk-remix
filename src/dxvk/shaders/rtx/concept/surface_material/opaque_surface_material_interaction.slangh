@@ -1433,11 +1433,11 @@ SurfaceMaterialInteractionPSRSample opaqueSurfaceMaterialInteractionCalcPSRRefle
   if (
     lobeInformation.diffuseReflectionPresent ||
     !lobeInformation.specularReflectionPresent ||
-    !lobeInformation.specularReflectionDirac
+    !lobeInformation.specularReflectionDirac ||
+    any(opaqueSurfaceMaterialInteraction.emissiveRadiance > 0.0)
   )
   {
     SurfaceMaterialInteractionPSRSample materialPSRSample;
-
     materialPSRSample.performPSR = false;
 
     return materialPSRSample;
