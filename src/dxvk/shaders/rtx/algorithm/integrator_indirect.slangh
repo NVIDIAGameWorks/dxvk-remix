@@ -671,9 +671,13 @@ void integratePathVertex(
       // paths which contribute little to the final image to be shorter while paths which are more important
       // are allowed to be longer.
     
-      float continueProbability = min(
+      float continueProbability = calculateRussianRouletteContinueProbability(
         calcBt709Luminance(pathState.throughput),
-        cb.russianRouletteMaxContinueProbability);
+        isOpaqueMaterial, 
+        continuationLobe != opaqueLobeTypeDiffuseReflection,
+        opaqueSurfaceMaterialInteraction.isotropicRoughness,
+        rayInteraction.hitDistance / pathState.accumulatedHitDistance);
+      
       const float continueSample = getNextSampleBlueNoise(randomState);
       // Note: <= used to ensure path never continues if the probability is 0 (and to avoid NaNs in the
       // throughput when the probability is divided into it).

@@ -275,3 +275,32 @@ void evaluateUnshadowedLight(
   diffuseLight = lightSample.radiance * (splitWeight.diffuseReflectionWeight + splitWeight.diffuseTransmissionWeight);
   specularLight = lightSample.radiance * splitWeight.specularReflectionWeight;
 }
+
+float calculateRussianRouletteContinueProbability(float pathThroughput, bool isOpaqueMaterial, bool isSpecularLobe, float16_t isotropicRoughness, float16_t hitDistance)
+{
+  if (cb.russianRouletteMode == RussianRouletteMode::ThroughputBased)
+  {
+    return min(pathThroughput, cb.russianRouletteMaxContinueProbability);
+  }
+  else
+  {
+    // The new mode emphasis specular details by tracing more rays at low roughness surfaces with short hit distance.
+    // For example, at metal wall corners.
+    float specularWeight = 1.0;
+    if (isOpaqueMaterial)
+    {
+      // Give hit points with lower roughness, or shorter hit distance a higher specular weight
+      if (isSpecularLobe)
+      {
+        specularWeight = (1.0 - roughnessToPerceptualRoughness(isotropicRoughness)) * saturate(cb.russianRouletteDistanceFactor / hitDistance);
+      }
+      else
+      {
+        specularWeight = 0.0;
+      }
+    }
+    // Specular probability is usually higher than diffuse probability, thus a hit point with higher specular weight will be
+    // more likely to continue tracing rays
+    return lerp(cb.russianRouletteDiffuseContinueProbability, cb.russianRouletteSpecularContinueProbability, specularWeight);
+  }
+}
