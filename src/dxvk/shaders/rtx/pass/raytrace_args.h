@@ -102,6 +102,11 @@ struct RaytraceArgs {
   uint16_t rtxdiTotalSampleCount;
 
   // The maximum probability of continuing a path when Russian Roulette is being used.
+  RussianRouletteMode russianRouletteMode;
+  float russianRouletteDistanceFactor;
+  float russianRouletteDiffuseContinueProbability;
+  float russianRouletteSpecularContinueProbability;
+
   float russianRouletteMaxContinueProbability;
   float russianRoulette1stBounceMinContinueProbability;
   float russianRoulette1stBounceMaxContinueProbability;
