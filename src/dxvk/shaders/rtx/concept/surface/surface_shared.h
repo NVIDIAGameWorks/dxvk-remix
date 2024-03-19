@@ -92,3 +92,8 @@ enum class DisplacementMode : uint32_t {
   QuadtreePOM = 2
 };
 
+enum class RussianRouletteMode : uint32_t {
+  ThroughputBased = 0,
+  SpecularBased = 1
+};
+

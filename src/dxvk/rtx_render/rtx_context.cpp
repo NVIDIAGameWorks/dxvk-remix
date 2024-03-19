@@ -759,6 +759,11 @@ namespace dxvk {
     // Todo: Potentially move this to the volume manager in the future to be more organized.
     constants.volumeTemporalReuseMaxSampleCount = RtxOptions::Get()->getVolumetricTemporalReuseMaxSampleCount();
     
+    constants.russianRouletteMode = RtxOptions::Get()->russianRouletteMode();
+    constants.russianRouletteDiffuseContinueProbability = RtxOptions::Get()->russianRouletteDiffuseContinueProbability();
+    constants.russianRouletteSpecularContinueProbability = RtxOptions::Get()->russianRouletteSpecularContinueProbability();
+    constants.russianRouletteDistanceFactor = RtxOptions::Get()->russianRouletteDistanceFactor();
+    constants.russianRouletteMaxContinueProbability = RtxOptions::Get()->russianRouletteMaxContinueProbability();
     constants.russianRouletteMaxContinueProbability = RtxOptions::Get()->getRussianRouletteMaxContinueProbability();
     constants.russianRoulette1stBounceMinContinueProbability = RtxOptions::Get()->getRussianRoulette1stBounceMinContinueProbability();
     constants.russianRoulette1stBounceMaxContinueProbability = RtxOptions::Get()->getRussianRoulette1stBounceMaxContinueProbability();
