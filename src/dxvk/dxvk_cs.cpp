@@ -1,5 +1,10 @@
 #include "dxvk_cs.h"
 #include "dxvk_scoped_annotation.h"
+
+// NV-DXVK start: notify user and kill process on exception in CS thread to avoid silent hangs
+#include "rtx_render/rtx_env.h"
+// NV-DXVK end
+
 #include "../tracy/TracyC.h"
 
 namespace dxvk {
@@ -193,6 +198,13 @@ namespace dxvk {
     } catch (const DxvkError& e) {
       Logger::err("Exception on CS thread!");
       Logger::err(e.message());
+
+      // NV-DXVK start: notify user and kill process on exception in CS thread to avoid silent hangs
+      char buf[2048];
+      snprintf(buf, sizeof(buf), "Exception on CS thread: %s. The game will exit now.", e.message().c_str());
+      messageBox(buf, "RTX Remix", MB_OK);
+      exit(1);
+      // NV-DXVK end
     }
   }
   
