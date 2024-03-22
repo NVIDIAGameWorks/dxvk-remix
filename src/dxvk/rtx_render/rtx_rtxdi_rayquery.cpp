@@ -185,6 +185,7 @@ namespace dxvk {
     ImGui::Checkbox("Indirect Sample Stealing", &enableSampleStealingObject());
     ImGui::Checkbox("Steal Boundary Samples When Outside Of Screen", &stealBoundaryPixelSamplesWhenOutsideOfScreenObject());
     ImGui::Checkbox("Cross Portal Light", &enableCrossPortalLightObject());
+    ImGui::Checkbox("Compute Denoiser Gradient", &enableDenoiserGradientObject());
     ImGui::Checkbox("Compute Denoiser Confidence", &enableDenoiserConfidenceObject());
 
     if (enableDenoiserConfidence() && ImGui::CollapsingHeader("Confidence Settings", 0))
@@ -304,9 +305,9 @@ namespace dxvk {
 
   void DxvkRtxdiRayQuery::dispatchGradient(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
     
-    if (!RtxOptions::Get()->useRTXDI() || 
-        !getEnableDenoiserConfidence())
+    if (!RtxOptions::Get()->useRTXDI() || !enableDenoiserGradient()) {
       return;
+    }
 
     const uint32_t frameIdx = ctx->getDevice()->getCurrentFrameId(); 
     VkExtent3D numThreads = rtOutput.m_compositeOutputExtent;

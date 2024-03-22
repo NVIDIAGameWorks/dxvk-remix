@@ -105,7 +105,10 @@ void main(int2 thread_id : SV_DispatchThreadID)
   if (geometryFlags.primarySelectedIntegrationSurface)
   {
     vec4 radianceAndDistance = RestirGIRadiance[thread_id];
-    initialSample.radiance = sanitize(radianceAndDistance.rgb, vec3(0));
+    // The sign bit is recording if a sample is from an opaque surface, only samples from opaque surfaces will get validated.
+    bool isNonOpaqueHit = radianceAndDistance.x < 0;
+    initialSample.setFlag(isNonOpaqueHit ? RESTIR_GI_FLAG_NON_OPAQUE_HIT : 0);
+    initialSample.radiance = sanitize(abs(radianceAndDistance.rgb), vec3(0));
     indirectPathLength = radianceAndDistance.w; 
   }
 
@@ -270,7 +273,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
 
   // Sample validation use rtxdi gradient to discard stale samples.
   // Although it can only verify samples inside the screen, it still helps in many cases.
-  if(cb.enableReSTIRGISampleValidation > 0 && !isInitialSample)
+  if(cb.enableReSTIRGILightingValidation > 0 && !isInitialSample)
   {
     validateSample(inputReservoir, resultReservoir, isGBufferSimilar);
   }
