@@ -251,7 +251,7 @@ private:
 
   uint64_t drawReplacements(Rc<DxvkContext> ctx, const DrawCallState* input, const std::vector<AssetReplacement>* pReplacements, const MaterialData* overrideMaterialData);
 
-  void createEffectLight(Rc<DxvkContext> ctx, const DrawCallState& input, const RtInstance* instance);
+  void createEffectLight(Rc<DxvkContext> ctx, const DrawCallState& input, const RtInstance* instance, const MaterialData& renderMaterialData);
 
   uint32_t m_beginUsdExportFrameNum = -1;
   bool m_enqueueDelayedClear = false;
