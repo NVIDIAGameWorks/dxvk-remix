@@ -194,8 +194,10 @@ namespace dxvk {
     ImGui::DragFloat("Firefly Threshold", &fireflyThresholdObject(), 0.01f, 1.f, 5000.f, "%.1f");
     ImGui::DragFloat("Roughness Clamp", &roughnessClampObject(), 0.001f, 0.f, 1.f, "%.3f");
 
-    ImGui::Checkbox("Sample Validation", &useSampleValidationObject());
-    ImGui::DragFloat("Sample Validation Threshold", &sampleValidationThresholdObject(), 0.001f, 0.f, 1.f, "%.3f");
+    ImGui::Checkbox("Validate Lighting Change", &validateLightingChangeObject());
+    ImGui::DragFloat("Lighting Change Threshold", &lightingValidationThresholdObject(), 0.001f, 0.f, 1.f, "%.3f");
+    ImGui::Checkbox("Validate Visibility Change", &validateVisibilityChangeObject());
+    ImGui::DragFloat("Visibility Length Threshold", &visibilityValidationRangeObject(), 0.001f, 0.f, 10.f, "%.3f");
   }
 
   void DxvkReSTIRGIRayQuery::dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {

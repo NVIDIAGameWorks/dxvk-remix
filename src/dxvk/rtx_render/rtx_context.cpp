@@ -904,8 +904,10 @@ namespace dxvk {
     constants.reSTIRGIMISRoughness = restirGI.misRoughness();
     constants.reSTIRGIMISParallaxAmount = restirGI.parallaxAmount();
     constants.enableReSTIRGIDemodulatedTargetFunction = restirGI.useDemodulatedTargetFunction();
-    constants.enableReSTIRGISampleValidation = RtxOptions::Get()->useRTXDI() && rtxdi.enableDenoiserConfidence() && restirGI.useSampleValidation();
-    constants.reSTIRGISampleValidationThreshold = restirGI.sampleValidationThreshold();
+    constants.enableReSTIRGILightingValidation = RtxOptions::Get()->useRTXDI() && rtxdi.enableDenoiserGradient() && restirGI.validateLightingChange();
+    constants.reSTIRGISampleValidationThreshold = restirGI.lightingValidationThreshold();
+    constants.enableReSTIRGIVisibilityValidation = restirGI.validateVisibilityChange();
+    constants.reSTIRGIVisibilityValidationRange = 1.0f + restirGI.visibilityValidationRange();
 
 
     m_common->metaNeeCache().setRaytraceArgs(constants, m_resetHistory);
