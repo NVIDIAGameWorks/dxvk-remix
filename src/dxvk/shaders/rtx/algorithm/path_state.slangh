@@ -82,6 +82,7 @@ struct PathState
   uint8_t indirectLightPortalID;
   bool restirGiHasFoundRoughSurface;
   bool restirGiHasHitGeometry;
+  bool restirGiHasHitOpaque;
 
   float accumulatedHitDistance;
   float solidAnglePdf;
@@ -106,7 +107,7 @@ struct PathState
 struct MemoryPathState : IPayload
 {
   vec3 origin;
-  uint data0; // bounceIteration(uint:4b), restirGiHasHitGeometry(bool:1b), unused(3b), coneSpreadAngle(float16), mediumMaterialIndexLow(uint:8b)
+  uint data0; // bounceIteration(uint:4b), restirGiHasHitGeometry(bool:1b), restirGiHasHitOpaque(bool:1b), coneSpreadAngle(float16), mediumMaterialIndexLow(uint:8b)
 
   uvec3 encodedRadiance; // unused (x:1b, z:1b)
   uint encodedDirection;
@@ -131,6 +132,7 @@ struct MemoryPathState : IPayload
     ret.data0 =
       (pathState.bounceIteration & 0xf) |
       (uint32_t(pathState.restirGiHasHitGeometry) << 4) |
+      (uint32_t(pathState.restirGiHasHitOpaque) << 5) |
       (uint32_t(float16BitsToUint16(pathState.coneSpreadAngle)) << 8) |
       (uint32_t(pathState.mediumMaterialIndex & 0xff) << 24);
 
@@ -187,6 +189,7 @@ struct MemoryPathState : IPayload
     pathState.bounceIteration = bounceIteration();
     pathState.coneSpreadAngle = uint16BitsToHalf(data0 >> 8);
     pathState.restirGiHasHitGeometry = (data0 >> 4) & 0b1;
+    pathState.restirGiHasHitOpaque = (data0 >> 5) & 0b1;
     pathState.origin = origin;
     pathState.direction = snorm2x16ToSphereDirection(encodedDirection);
 

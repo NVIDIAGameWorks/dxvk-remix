@@ -228,6 +228,7 @@ struct VisibilityResult {
   f16vec3 rayDirection;
   float hitDistance;
   bool hasOpaqueHit;
+  bool hasPOMHit;
 };
 
 VisibilityResult traceVisibilityRay(
@@ -235,7 +236,8 @@ VisibilityResult traceVisibilityRay(
   uint8_t rayMask, uint8_t visibilityMode, uint8_t expectedRayPortalIndex, PortalSpace2BitsType rayOriginPortalSpace,
   // ViewModel instances are not to occlude anything but rays originating from a ViewModel surface
   bool hasRayOriginatedFromViewModel = false,
-  bool usePreviousTLAS = false)
+  bool usePreviousTLAS = false,
+  bool clearOpaqueHitAttenuation = true)
 {
   // Exclude the portals from the ray mask because we have special handling for them.
   rayMask &= ~OBJECT_MASK_PORTAL;
@@ -271,6 +273,7 @@ VisibilityResult traceVisibilityRay(
   result.attenuation = f16vec3(1.0);
   result.hitDistance = visibilityRay.tMax;
   result.hasOpaqueHit = false;
+  result.hasPOMHit = false;
 
   uint rayFlags = packedFlagGet(visibilityMode, visibilityModeAccurateHitDistance)
     ? RAY_FLAG_NONE
@@ -326,7 +329,10 @@ VisibilityResult traceVisibilityRay(
 
     if (rayQuery.CommittedStatus() == COMMITTED_TRIANGLE_HIT)
     {
-      result.attenuation = f16vec3(0.0);
+      if(clearOpaqueHitAttenuation)
+      {
+        result.attenuation = f16vec3(0.0);
+      }
       result.hitDistance = rayQuery.CommittedRayT();
       result.hasOpaqueHit = true;
 
@@ -376,7 +382,7 @@ VisibilityResult traceVisibilityRay(
   bool hasRayOriginatedFromViewModel = false,
   bool usePreviousTLAS = false,
   uint16_t primarySurfaceIndex = BINDING_INDEX_INVALID, float2 texCoords = f16vec2(0.0h),
-  bool isSubsurface = false, f16vec3 shadingNormal = f16vec3(0.0h))
+  bool isSubsurface = false, f16vec3 shadingNormal = f16vec3(0.0h), bool clearOpaqueHitAttenuation = true)
 {
   MinimalRayInteraction minimalRayInteraction = (MinimalRayInteraction)0;
   minimalRayInteraction.coneRadius = coneRadius;
@@ -422,6 +428,7 @@ VisibilityResult traceVisibilityRay(
           result.hasOpaqueHit = true;
           result.rayDirection = visibilityRay.direction;
           result.hitDistance = visibilityRay.tMax; // TODO should refactor POM code to return?
+          result.hasPOMHit = true;
           return result;
         }
       }
@@ -429,7 +436,7 @@ VisibilityResult traceVisibilityRay(
   }
 #endif
 
-  VisibilityResult result = traceVisibilityRay(visibilityRay, rayMask, visibilityMode, expectedRayPortalIndex, rayOriginPortalSpace, hasRayOriginatedFromViewModel, usePreviousTLAS);
+  VisibilityResult result = traceVisibilityRay(visibilityRay, rayMask, visibilityMode, expectedRayPortalIndex, rayOriginPortalSpace, hasRayOriginatedFromViewModel, usePreviousTLAS, clearOpaqueHitAttenuation);
 
 #ifdef OPAQUE_MATERIAL_USE_POM
   result.attenuation = result.attenuation * pomAttenuation;

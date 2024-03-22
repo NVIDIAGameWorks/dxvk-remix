@@ -112,6 +112,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   ReSTIRGI_Reservoir spatialReservoir = RAB_LoadGIReservoir(threadIndex, ReSTIRGI_GetSpatialOutputPage());
 
   f16vec3 filterColor = f16vec3(1);
+  bool staleSample = false;
   if (all(minimalSurfaceInteraction.position == spatialReservoir.position))
   {
     filterColor = f16vec3(0);
@@ -123,14 +124,55 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
     {
       uint8_t rayMask = OBJECT_MASK_OPAQUE | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC);
 
-      vec3 dstPosition = spatialReservoir.getVisibilityPoint(minimalSurfaceInteraction.position);
+      // Use non-zero cone spread angle to reduce noise if there are alpha tested objects, like the fences in the portal game.
+      // The value is based on experiment. If incorrect shadows are observed, a smaller value should be used.
+      float16_t coneSpreadAngle = 0.025;
+      vec3 samplePosition = spatialReservoir.getVisibilityPoint(minimalSurfaceInteraction.position);
       uint16_t primarySurfaceIndex = cb.pomEnableReSTIRGI && polymorphicSurfaceMaterialInteractionHasHeightTexture(polymorphicSurfaceMaterialInteraction) ?
         uint16_t(SharedSurfaceIndex[threadIndex]) : BINDING_INDEX_INVALID;
+
+      // Enable visibility validation when spatial reservoir is not inside portal, and from an opaque hit point.
+      // If the actual hit distance is beyond sampleDistance * validSampleMaxRange, the sample should be invalidated because the surface is no longer there.
+      // If the actual hit distance is within sampleDistance * [visibleSampleMinRange, validSampleMaxRange], the sample is valid and the surface is visible to that sample.
+      // If the actual hit distance is lower than sampleDistance * visibleSampleMinRange, the samle is valid but the surface is in the shadow area.
+      const float visibleSampleMinRange = RAB_RESTIR_GI_VISIBILITY_SHORTENING;
+      const float validSampleMaxRange = cb.reSTIRGIVisibilityValidationRange;
+      const bool validateSamples = cb.enableReSTIRGIVisibilityValidation && portalID == invalidRayPortalIndex &&
+       !spatialReservoir.getFlag(RESTIR_GI_FLAG_NON_OPAQUE_HIT) &&
+       spatialReservoir.getVirtualFraction() == 0.0;
+      float tMaxFactor = RAB_RESTIR_GI_VISIBILITY_SHORTENING;
+      if (validateSamples)
+      {
+        // Extend rays to search actual surface
+        tMaxFactor = validSampleMaxRange;
+      }
+
       VisibilityResult visibility = traceVisibilityRay(minimalSurfaceInteraction,
-        dstPosition, rayMask, visibilityModeNone, portalID,
-        geometryFlags.portalSpace, 0, 0, RAB_RESTIR_GI_VISIBILITY_SHORTENING, geometryFlags.isViewModel,
-        false, primarySurfaceIndex, SharedTextureCoord[threadIndex]);
-      filterColor = visibility.attenuation;
+        samplePosition, rayMask, visibilityModeAccurateHitDistance, portalID,
+        geometryFlags.portalSpace, 0, coneSpreadAngle, tMaxFactor, geometryFlags.isViewModel,
+        false, primarySurfaceIndex, SharedTextureCoord[threadIndex], /*isSubsurface*/ false, /*shadingNormal*/ f16vec3(0.0h), /*clearOpaqueHitAttenuation*/ !validateSamples);
+
+      filterColor = visibility.attenuation;      
+      if (validateSamples && !visibility.hasPOMHit)
+      {
+        const float3 cameraPosition = cameraGetWorldPosition(camera);
+        float sampleDistance = length(samplePosition - minimalSurfaceInteraction.position);
+        if (!visibility.hasOpaqueHit)
+        {
+          // Hit point is beyond search range, visibility has changed.
+          // Always keep samples whose sampleDistance is too small to improve stability, the threshold is based on experiments.
+          const float minValidDistanceRatio = 0.01;
+          if (sampleDistance > length(cameraPosition - minimalSurfaceInteraction.position) * minValidDistanceRatio)
+          {
+            staleSample = true;
+          }
+        }
+        else if (visibility.hitDistance < sampleDistance * visibleSampleMinRange)
+        {
+          // Hit point is shorter than expected, surface is in shadow
+          filterColor = 0.0;
+        }
+      }
     }
     else
     {
@@ -280,6 +322,8 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
     }
   }
 
+  // Set reservoir flags
+  bool needToStoreReservoir = false;
   if (all(filterColor == f16vec3(0)))
   {
     spatialReservoir.setFlag(RESTIR_GI_FLAG_OCCLUDED_SAMPLE);
@@ -287,6 +331,18 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
     const bool removeOccludedSamples = false;
     if(removeOccludedSamples)
       spatialReservoir.M = 0;
+    needToStoreReservoir = true;
+  }
+
+  // Invalidate stale sample by setting its history length to 0
+  if (staleSample)
+  {
+    spatialReservoir.M = 0;
+    needToStoreReservoir = true;
+  }
+
+  if (needToStoreReservoir)
+  {
     RAB_StoreGIReservoir(spatialReservoir, threadIndex, ReSTIRGI_GetSpatialOutputPage());
   }
   
@@ -379,6 +435,10 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
     float totalLength = length(spatialReservoir.position - minimalSurfaceInteraction.position);
     float virtualFraction = spatialReservoir.getVirtualFraction();
     storeInDebugView(threadIndex, virtualFraction / (totalLength + 0.001));
+  }
+  else if (cb.debugView == DEBUG_VIEW_RESTIR_GI_VISIBILITY_INVALID_SAMPLES)
+  {
+    storeInDebugView(threadIndex, staleSample);
   }
   else if(cb.debugView == DEBUG_VIEW_NAN)
   {

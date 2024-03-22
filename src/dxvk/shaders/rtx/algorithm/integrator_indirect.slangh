@@ -63,6 +63,7 @@ PathState pathStateCreateEmpty(u16vec2 pixelCoordinate, GeometryFlags geometryFl
   pathState.indirectLightPortalID = RESTIR_GI_INVALID_INDIRECT_LIGHT_PORTAL_ID;
   pathState.restirGiHasFoundRoughSurface = false;
   pathState.restirGiHasHitGeometry = false;
+  pathState.restirGiHasHitOpaque = false;
 
   pathState.rayMask = OBJECT_MASK_ALL | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC);
 
@@ -303,7 +304,8 @@ void integratePathVertex(
         // Suppose an indirect ray goes through glass and then hits a bright opaque wall, the light is coming from the opaque wall,
         // not glass. Therefore we should record a sample on the wall instead of glass. 
         const uint materialType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
-        pathState.restirGiHasHitGeometry = (materialType == surfaceMaterialTypeOpaque);
+        pathState.restirGiHasHitOpaque = (materialType == surfaceMaterialTypeOpaque);
+        pathState.restirGiHasHitGeometry = pathState.restirGiHasHitOpaque;
       }
       else
       {
@@ -730,7 +732,7 @@ void integratePathVertex(
             abs(dot(prevSurfaceInteraction.triangleNormal, relativePosition)) < relativeLength * planeTolerance);
       }
 
-      if (cb.enableReSTIRGISampleValidation > 0 && isWithinGbuffer)
+      if (cb.enableReSTIRGILightingValidation > 0 && isWithinGbuffer)
       {
         ivec2 pixelCoordinateCurrentFrame;
         bool isWithinGbufferCurrentFrame = calculateScreenBoundedPixelCoordinate(
@@ -889,6 +891,12 @@ void storeRestirGIRadiance(PathState pathState, GeometryFlags geometryFlags, flo
 
   // Calculate indirect portion of the path length
   float16_t restirGIHitDistance = max(restirGIRadianceFactorHitDistance.a - gbufferSurfaceHitDistance, 0.0);
+
+  // Sign bit for non opaque hit
+  if (!pathState.restirGiHasHitOpaque)
+  {
+    restirGIRadiance.x *= -1;
+  }
 
   RestirGIRadiance[pathState.pixelCoordinate] = f16vec4(restirGIRadiance, restirGIHitDistance);
 }

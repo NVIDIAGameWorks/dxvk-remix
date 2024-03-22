@@ -43,7 +43,7 @@ namespace dxvk {
 
     void showImguiSettings();
     void setRaytraceArgs(Resources::RaytracingOutput& rtOutput) const;
-    bool getEnableDenoiserConfidence() const { return enableTemporalReuse() && enableDenoiserConfidence(); }
+    bool getEnableDenoiserConfidence() const { return enableTemporalReuse() && enableDenoiserGradient() && enableDenoiserConfidence(); }
     
     RTX_OPTION("rtx.di", bool, enableCrossPortalLight, true, "");
     RTX_OPTION("rtx.di", bool, enableInitialVisibility, true, "Whether to trace a visibility ray for the light sample selected in the initial sampling pass.");
@@ -57,6 +57,7 @@ namespace dxvk {
     RTX_OPTION("rtx.di", bool, enableDiscardInvisibleSamples, true, "Whether to discard reservoirs that are determined to be invisible in final shading.");
     RTX_OPTION("rtx.di", bool, enableDiscardEnlargedPixels, true, "");
     RTX_OPTION("rtx.di", bool, enableDenoiserConfidence, true, "");
+    RTX_OPTION("rtx.di", bool, enableDenoiserGradient, true, "Enable gradient calculation, which is used by confidence calculation and GI sample validation.");
     RTX_OPTION("rtx.di", uint32_t, initialSampleCount, 4, "The number of lights randomly selected from the global pool to consider when selecting a light with RTXDI.");
     RTX_OPTION("rtx.di", uint32_t, spatialSamples, 2, "The number of spatial reuse samples in converged areas.");
     RTX_OPTION("rtx.di", uint32_t, disocclusionSamples, 4, "The number of spatial reuse samples in disocclusion areas.");
