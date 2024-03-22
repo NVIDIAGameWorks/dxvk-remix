@@ -150,6 +150,7 @@ namespace dxvk {
         {DEBUG_VIEW_RESTIR_GI_SPATIAL_REUSE, "ReSTIR GI Spatial Reuse"},
         {DEBUG_VIEW_RESTIR_GI_FINAL_SHADING, "ReSTIR GI Final Shading MIS Weight"},
         {DEBUG_VIEW_RESTIR_GI_VIRTUAL_HIT_T, "ReSTIR GI Virtual Hit Distance"},
+        {DEBUG_VIEW_RESTIR_GI_VISIBILITY_INVALID_SAMPLES, "ReSTIR GI Visibility Invalid Samples"},
 
         {DEBUG_VIEW_NEE_CACHE_LIGHT_HISTOGRAM, "NEE Cache Light Histogram"},
         {DEBUG_VIEW_NEE_CACHE_HISTOGRAM, "NEE Cache Triangle Histogram"},

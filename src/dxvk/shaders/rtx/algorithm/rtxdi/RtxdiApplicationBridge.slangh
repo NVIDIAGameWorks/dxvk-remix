@@ -54,6 +54,7 @@ static const uint kReprojectionConfidenceHistoryLength = 16;
 #define RAB_RESTIR_GI_DELTA_ROUGHNESS 0.02
 #define RAB_RESTIR_GI_VISIBILITY_SHORTENING 0.98
 
+#define RESTIR_GI_FLAG_NON_OPAQUE_HIT (0x1 << 28)
 
 struct RAB_RandomSamplerState
 {

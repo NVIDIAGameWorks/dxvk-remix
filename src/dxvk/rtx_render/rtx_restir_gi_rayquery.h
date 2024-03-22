@@ -115,7 +115,9 @@ namespace dxvk {
     RTX_OPTION("rtx.restirGI", int, permutationSamplingSize, 2, "Permutation sampling strength.");
     RTX_OPTION("rtx.restirGI", float, fireflyThreshold, 50.f, "Clamps specular input to suppress boiling.");
     RTX_OPTION("rtx.restirGI", float, roughnessClamp, 0.01f, "Clamps minimum roughness a sample's importance is evaluated.");
-    RTX_OPTION("rtx.restirGI", bool, useSampleValidation, true, "Validate samples when direct light has changed.");
-    RTX_OPTION_ENV("rtx.restirGI", float, sampleValidationThreshold, 0.5, "DXVK_RESTIR_GI_SAMPLE_VALIDATION_THRESHOLD", "Validate samples when normalized pixel change is above this value.");
+    RTX_OPTION("rtx.restirGI", bool, validateLightingChange, true, "Remove samples when direct light has changed.");
+    RTX_OPTION("rtx.restirGI", bool, validateVisibilityChange, false, "Remove samples when visibility has changed. This feature is automatically disabled when virtual sample is enabled.");
+    RTX_OPTION_ENV("rtx.restirGI", float, lightingValidationThreshold, 0.5, "DXVK_RESTIR_GI_SAMPLE_VALIDATION_THRESHOLD", "Invalidate a sample when pixel change ratio is above this value.");
+    RTX_OPTION("rtx.restirGI", float, visibilityValidationRange, 0.05, "Check actual hit distance of a shadow ray, invalidate a sample if hit length is longer than one plus this portion, compared to the distance from the surface to the sample.");
   };
 }
