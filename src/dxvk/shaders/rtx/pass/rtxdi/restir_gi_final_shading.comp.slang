@@ -290,9 +290,8 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
     RAB_StoreGIReservoir(spatialReservoir, threadIndex, ReSTIRGI_GetSpatialOutputPage());
   }
   
-  // Restir GI processes only the primary surface data, the pixels for secondary surfaces are skipped above
+  // Restir GI processes primary surface data, but it can produce dense output, so doesn't need to skip secondary pixels
   // Add ReSTIR GI contribution to indirect light buffers, MIS is needed here.
-  if (geometryFlags.primarySelectedIntegrationSurface)
   {
     float hitDistance = length(spatialReservoir.position - minimalSurfaceInteraction.position);
     vec4 diffuseOutput = sanitizeRadianceHitDistance(diffuseLight, hitDistance);
