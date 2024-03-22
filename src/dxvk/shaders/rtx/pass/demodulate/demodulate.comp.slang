@@ -538,9 +538,9 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID, uint2 localIndex : SV_Gro
   const vec3 primarySpecularAlbedo = evalSpecularAlbedoGGXSchlick(
     primaryBaseReflectivity, calcRoughness(primaryPerceptualRoughness),
     primaryNormalDotViewDirection);
-  const vec3 secondarySpecularAlbedo = evalSpecularAlbedoGGXSchlick(
+  const vec3 secondarySpecularAlbedo = geometryFlags.performPSTR || geometryFlags.performPSRR ? evalSpecularAlbedoGGXSchlick(
     secondaryBaseReflectivity, calcRoughness(secondaryPerceptualRoughness),
-    secondaryNormalDotViewDirection);
+    secondaryNormalDotViewDirection) : vec3(0);
 
   // Write out the Primary and Secondary Specular Albedo
   // Note: This overwrites the base reflectivity used in these buffers up to this point. This is fine though as
@@ -575,7 +575,9 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID, uint2 localIndex : SV_Gro
   vec4 secondaryCombinedSpecularInput = vec4(vec3(0), kEmptyPixelHitDistance);
   
   // Load the primary direct and indirect signals
-  if (geometryFlags.primarySelectedIntegrationSurface)
+  // If rtxdi and restir gi are enabled, the primary surface input is dense and demodulation can always be enabled.
+  bool demodulatePrimaryInput = (cb.enableRtxdi && cb.enableReSTIRGI) || geometryFlags.primarySelectedIntegrationSurface;
+  if (demodulatePrimaryInput)
   {
     primaryDirectDiffuseInput = PrimaryDirectDiffuseRadiance[pixelCoordinate];
     primaryDirectSpecularInput = PrimaryDirectSpecularRadiance[pixelCoordinate];
@@ -584,7 +586,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID, uint2 localIndex : SV_Gro
     primaryIndirectSpecularInput = PrimaryIndirectSpecularRadiance[pixelCoordinate];
   }
   // Load the secondary combined signals
-  else
+  if (geometryFlags.secondarySurfaceMask && !geometryFlags.primarySelectedIntegrationSurface)
   {
     const vec4 indirectRadianceHitDistance = IndirectRadianceHitDistance[pixelCoordinate];
     
@@ -651,9 +653,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID, uint2 localIndex : SV_Gro
   vec4 secondaryCombinedDiffuseOutput = vec4(vec3(0), kEmptyPixelHitDistance);
   vec4 secondaryCombinedSpecularOutput = vec4(vec3(0), kEmptyPixelHitDistance);
 
-  // Note: Switch between demodulating the primary or secondary surface based on what the integrator was selected
-  // to compute lighting on.
-  if (geometryFlags.primarySelectedIntegrationSurface)
+  if (demodulatePrimaryInput)
   {
     // Demodulate primary direct inputs
     demodulate(
@@ -685,7 +685,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID, uint2 localIndex : SV_Gro
   // Note: No need to demodulate any data outside the bounds of the secondary surface mask as they will not be read
   // or remodulated during compositing, so don't bother with it to save a bit of performance/memory bandwidth in the
   // common case (since secondary surfaces aren't super common).
-  else if (geometryFlags.secondarySurfaceMask)
+  if (geometryFlags.secondarySurfaceMask && !geometryFlags.primarySelectedIntegrationSurface)
   {
     // Demodulate secondary combined inputs
     demodulate(
