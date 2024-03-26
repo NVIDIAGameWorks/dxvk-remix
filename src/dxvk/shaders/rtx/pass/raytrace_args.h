@@ -260,10 +260,12 @@ struct RaytraceArgs {
   float reSTIRGIVirtualSampleLuminanceThreshold;
   float reSTIRGIVirtualSampleRoughnessThreshold;
   float reSTIRGIVirtualSampleSpecularThreshold;
+  float reSTIRGIVirtualSampleMaxDistanceRatio;
   uint reSTIRGIMISMode;
   float reSTIRGIMISModePairwiseMISCentralWeight;
   uint enableReSTIRGIPermutationSampling;
   uint enableReSTIRGISampleStealing;
+  float reSTIRGISampleStealingJitter;
   uint enableReSTIRGIStealBoundaryPixelSamplesWhenOutsideOfScreen;
   uint enableReSTIRGISpatialReuse;
   uint enableReSTIRGITemporalReuse;

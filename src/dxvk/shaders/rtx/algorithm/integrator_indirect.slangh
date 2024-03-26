@@ -709,6 +709,12 @@ void integratePathVertex(
       bool isWithinGbuffer = calculateScreenBoundedPixelCoordinate(
         cb.camera.prevWorldToProjectionJittered,
         surfaceInteraction.position, pixelCoordinate);
+
+      if (cb.reSTIRGISampleStealingJitter > 0)
+      {
+        vec2 jitterUV = vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState)) * 2.0 - 1.0;
+        pixelCoordinate += int2(jitterUV * cb.reSTIRGISampleStealingJitter);
+      }
     
       if (cb.enableReSTIRGIStealBoundaryPixelSamplesWhenOutsideOfScreen && !isWithinGbuffer)
       {

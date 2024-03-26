@@ -887,9 +887,11 @@ namespace dxvk {
     constants.reSTIRGIVirtualSampleLuminanceThreshold = restirGI.virtualSampleLuminanceThreshold();
     constants.reSTIRGIVirtualSampleRoughnessThreshold = restirGI.virtualSampleRoughnessThreshold();
     constants.reSTIRGIVirtualSampleSpecularThreshold = restirGI.virtualSampleSpecularThreshold();
+    constants.reSTIRGIVirtualSampleMaxDistanceRatio = restirGI.virtualSampleMaxDistanceRatio();
     constants.reSTIRGIBiasCorrectionMode = (uint32_t) restirGI.biasCorrectionMode();
     constants.enableReSTIRGIPermutationSampling = restirGI.usePermutationSampling();
     constants.enableReSTIRGISampleStealing = (uint32_t)restirGI.useSampleStealing();
+    constants.reSTIRGISampleStealingJitter = restirGI.sampleStealingJitter();
     constants.enableReSTIRGIStealBoundaryPixelSamplesWhenOutsideOfScreen = (uint32_t)restirGI.stealBoundaryPixelSamplesWhenOutsideOfScreen();
     constants.enableReSTIRGIBoilingFilter = restirGI.useBoilingFilter();
     constants.boilingFilterLowerThreshold = restirGI.boilingFilterMinThreshold();
