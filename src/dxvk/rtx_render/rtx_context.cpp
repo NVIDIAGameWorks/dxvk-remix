@@ -835,6 +835,7 @@ namespace dxvk {
     constants.enhanceBSDFIndirectLightMinRoughness = m_common->metaComposite().dlssEnhancementIndirectLightMinRoughness();
     constants.enableFirstBounceLobeProbabilityDithering = RtxOptions::Get()->isFirstBounceLobeProbabilityDitheringEnabled();
     constants.enableUnorderedResolveInIndirectRays = RtxOptions::Get()->isUnorderedResolveInIndirectRaysEnabled();
+    constants.enableTransmissionApproximationInIndirectRays = RtxOptions::Get()->enableTransmissionApproximationInIndirectRays();
     constants.enableUnorderedEmissiveParticlesInIndirectRays = RtxOptions::Get()->enableUnorderedEmissiveParticlesInIndirectRays();
     constants.enableDecalMaterialBlending = RtxOptions::Get()->isDecalMaterialBlendingEnabled();
     constants.enableBillboardOrientationCorrection = RtxOptions::Get()->enableBillboardOrientationCorrection() && RtxOptions::Get()->enableSeparateUnorderedApproximations();

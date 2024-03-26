@@ -205,6 +205,7 @@ struct RaytraceArgs {
   uint enableFirstBounceLobeProbabilityDithering;
   uint enableUnorderedResolveInIndirectRays;
   uint enableUnorderedEmissiveParticlesInIndirectRays;
+  uint enableTransmissionApproximationInIndirectRays;
   uint enableDecalMaterialBlending;
   uint enableBillboardOrientationCorrection;
   uint enablePlayerModelInPrimarySpace;
