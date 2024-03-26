@@ -196,6 +196,7 @@ void integratePathVertex(
   const uint8_t resolveMode =
     resolveModeRayPortalNotify |
     resolveModeEmissiveOpacityTransmissionApprox |
+    (cb.enableTransmissionApproximationInIndirectRays ? resolveModeTranslucencyTransmissionApprox : 0) |
     resolveModeDecalMaterialBlending |
     (separateUnorderedApproximations ? resolveModeSeparateUnorderedApproximations : 0);
   f16vec3 radianceAttenuation = f16vec3(1.0f, 1.0f, 1.0f);

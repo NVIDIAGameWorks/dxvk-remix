@@ -568,6 +568,9 @@ namespace dxvk {
                    "A flag to enable or disable unordered resolve emissive particles specifically in indirect rays.\n"
                    "Should be enabled in higher quality rendering modes as emissive particles are fairly important in reflections, but may be disabled to skip such interactions which can improve performance on lower end hardware.\n"
                    "Note that rtx.enableUnorderedResolveInIndirectRays must first be enabled for this option to take any effect (as it will control if unordered resolve is used to begin with in indirect rays).");
+    RTX_OPTION("rtx", bool, enableTransmissionApproximationInIndirectRays, false,
+               "A flag to enable transmission approximations in indirect rays.\n"
+               "Translucent objects hit by indirect rays will not alter ray direction, just change the ray throughput.");
     RTX_OPTION("rtx", bool, enableDecalMaterialBlending, true,
                "A flag to enable or disable material blending on decals.\n"
                "This should generally always be enabled when decals are in use as this allows decals to be blended down on to the surface they sit slightly above which results in more convincing decals rendering.");
