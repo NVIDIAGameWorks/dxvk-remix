@@ -137,6 +137,10 @@ void main(int2 thread_id : SV_DispatchThreadID)
   if (cb.enableReSTIRGIVirtualSample > 0 && surface.opaqueSurfaceMaterialInteraction.isotropicRoughness > RAB_RESTIR_GI_DELTA_ROUGHNESS)
   {
     vec3 direction = initialSample.position - surface.minimalSurfaceInteraction.position;
+    if (cb.reSTIRGIVirtualSampleMaxDistanceRatio > 0)
+    {
+      indirectPathLength = min(indirectPathLength, surface.hitDistance * cb.reSTIRGIVirtualSampleMaxDistanceRatio);
+    }
     if (any(direction != 0) && indirectPathLength > length(direction) * 1.01)
     {
       // Extend virtual fraction length by 20% to prevent occlusion when the sample is used by neighbor pixels

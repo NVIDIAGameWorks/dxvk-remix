@@ -92,6 +92,7 @@ namespace dxvk {
     RTX_OPTION("rtx.restirGI", float, virtualSampleLuminanceThreshold, 2.0, "The last path vertex with luminance greater than 2 times of the previous accumulated radiance will get virtualized. Higher values tend to keep the first path vertex with non-zero contribution.");
     RTX_OPTION("rtx.restirGI", float, virtualSampleRoughnessThreshold, 0.2, R"(Surface with roughness under this threshold is considered to be highly specular, i.e. a "mirror".)");
     RTX_OPTION("rtx.restirGI", float, virtualSampleSpecularThreshold, 0.5, "If a highly specular path vertex's direct specular light portion is higher than this. Its distance to the light source will get accumulated.");
+    RTX_OPTION("rtx.restirGI", float, virtualSampleMaxDistanceRatio, 0.0, "Clamp max virtual distance, measured by the proportion of distance to camera. 0 disables clamping.");
 
     RTX_OPTION("rtx.restirGI", bool, useTemporalBiasCorrection, true, "Corrects bias caused by temporal reprojection.");
     RW_RTX_OPTION("rtx.restirGI", ReSTIRGIBiasCorrection, biasCorrectionMode, ReSTIRGIBiasCorrection::PairwiseRaytrace, "Bias correction mode to combine central with its neighbors in spatial reuse.");
@@ -100,6 +101,7 @@ namespace dxvk {
     RTX_OPTION("rtx.restirGI", bool, useDemodulatedTargetFunction, false, "Demodulates target function. This will improve the result in non-pairwise modes.");
     RTX_OPTION("rtx.restirGI", bool, usePermutationSampling, true, "Uses permutation sample to perturb samples. This will improve results in DLSS.");
     RTX_OPTION("rtx.restirGI", ReSTIRGISampleStealing,  useSampleStealing, ReSTIRGISampleStealing::StealPixel, "Steals ReSTIR GI samples in path tracer. This will improve highly specular results.");
+    RTX_OPTION("rtx.restirGI", float, sampleStealingJitter, 0.0, "Jitter samples by k pixels to avoid aliasing.");
     RTX_OPTION("rtx.restirGI", bool, stealBoundaryPixelSamplesWhenOutsideOfScreen , true, "Steals ReSTIR GI samples even a hit point is outside the screen. This will further improve highly specular samples at the cost of some bias.");
     RTX_OPTION("rtx.restirGI", bool, useDiscardEnlargedPixels, true, "Discards enlarged samples when the camera is moving towards an object.");
     RTX_OPTION("rtx.restirGI", bool, useTemporalJacobian, true, "Calculates Jacobian determinant in temporal reprojection.");

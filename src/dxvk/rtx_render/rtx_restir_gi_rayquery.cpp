@@ -176,9 +176,11 @@ namespace dxvk {
     ImGui::DragFloat("Virtual Sample Luminance Threshold", &virtualSampleLuminanceThresholdObject(), 0.01f, 0.0f, 1000.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::DragFloat("Virtual Sample Roughness Threshold", &virtualSampleRoughnessThresholdObject(), 0.01f, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::DragFloat("Virtual Sample Specular Threshold", &virtualSampleSpecularThresholdObject(), 0.01f, 0.0f, 1.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+    ImGui::DragFloat("Virtual Sample Max Distance Ratio", &virtualSampleMaxDistanceRatioObject(), 0.01f, 0.0f, 100.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::Checkbox("Demodulate Target Function", &useDemodulatedTargetFunctionObject());
     ImGui::Checkbox("Permutation Sampling", &usePermutationSamplingObject());
     ImGui::Combo("Light Stealing", &useSampleStealingObject(), "None\0Steal Sample\0Steal Pixel");
+    ImGui::DragFloat("Light Stealing Jitter", &sampleStealingJitterObject(), 0.01f, 0.0f, 20.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::Checkbox("Steal Boundary Pixels When Outside Of Screen", &stealBoundaryPixelSamplesWhenOutsideOfScreenObject());
     ImGui::Checkbox("Boiling Filter", &useBoilingFilterObject());
     ImGui::DragFloat("Boiling Filter Min Threshold", &boilingFilterMinThresholdObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
