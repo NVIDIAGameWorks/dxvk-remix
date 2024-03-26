@@ -243,6 +243,7 @@ namespace dxvk {
     auto lowGraphicsPresetCommonSettings = [&]() {
       pathMinBouncesRef() = 0;
       pathMaxBouncesRef() = 2;
+      enableTransmissionApproximationInIndirectRaysRef() = true;
       enableVolumetricLightingRef() = false;
       enableUnorderedEmissiveParticlesInIndirectRaysRef() = false;
       denoiseDirectAndIndirectLightingSeparatelyRef() = false;
@@ -256,6 +257,7 @@ namespace dxvk {
     if (graphicsPreset() == GraphicsPreset::Ultra) {
       pathMinBouncesRef() = 1;
       pathMaxBouncesRef() = 4;
+      enableTransmissionApproximationInIndirectRaysRef() = false;
       enableVolumetricLightingRef() = true;
       enableUnorderedEmissiveParticlesInIndirectRaysRef() = true;
       denoiseDirectAndIndirectLightingSeparatelyRef() = true;
@@ -268,6 +270,7 @@ namespace dxvk {
     } else if (graphicsPreset() == GraphicsPreset::High) {
       pathMinBouncesRef() = 0;
       pathMaxBouncesRef() = 2;
+      enableTransmissionApproximationInIndirectRaysRef() = true;
       enableVolumetricLightingRef() = true;
       enableUnorderedEmissiveParticlesInIndirectRaysRef() = false;
       denoiseDirectAndIndirectLightingSeparatelyRef() = false;

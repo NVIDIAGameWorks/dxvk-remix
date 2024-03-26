@@ -508,7 +508,8 @@ void resolveVertex(
 
     // Note: Disable translucent approximations when the separate unordered approximations flag is enabled as
     // this approximation logic will be done in the unordered resolve step.
-    if (!separateUnorderedApproximations)
+    const bool translucencyTransmissionApprox = packedFlagGet(resolveMode, resolveModeTranslucencyTransmissionApprox);
+    if (!separateUnorderedApproximations || translucencyTransmissionApprox)
     {
       float16_t translucentApproximationOutgoingAttenuation = float16_t(1.0f);
       const bool approximationHandled = evaluateTranslucentApproximations(
@@ -516,7 +517,7 @@ void resolveVertex(
         surface, surfaceInteraction, translucentSurfaceMaterialInteraction,
         radianceAttenuation, translucentApproximationOutgoingAttenuation, emissiveRadiance);
 
-      radianceAttenuation *= translucentApproximationOutgoingAttenuation;
+      radianceAttenuation *= translucentApproximationOutgoingAttenuation * translucentSurfaceMaterialInteraction.transmittanceColor;
 
       if (approximationHandled)
       {
