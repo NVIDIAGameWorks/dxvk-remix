@@ -1173,7 +1173,7 @@ static bool CompareApprox(const M& a, const M& b, double tolerance) {
 
   size_t eq = 0;
   for (size_t n = 0; n < numElements && eq == n; n++) {
-    eq += fabs(a.data()[n] - b.data()[n]) < tolerance ? 1 : 0;
+    eq += std::abs(a.data()[n] - b.data()[n]) < tolerance ? 1 : 0;
   }
 
   return eq == numElements;

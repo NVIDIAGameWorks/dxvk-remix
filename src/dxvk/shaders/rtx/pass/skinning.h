@@ -86,8 +86,8 @@ void skinning(const uint32_t idx,
                          srcNormal[baseSrcNormalOffset + 2], 0.f);
 
   // Do the skinning
-  float4 positionOut = 0.f;
-  float4 normalOut = 0.f;
+  float4 positionOut = float4(0.f);
+  float4 normalOut = float4(0.f);
   if (cb.useIndices) {
     const uint baseIndicesOffset = cb.blendIndicesOffset + idx * cb.blendIndicesStride;
     for (uint j = 0; j < cb.numBones; j+=4) {

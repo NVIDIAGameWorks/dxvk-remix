@@ -29,7 +29,7 @@ namespace dxvk {
     const float kFloatULP = 0.00000011920928955078125f;
     const float kOrigin = 1.0f / 1024.0f;
     const float kOffsetScale = 4.0f;
-    float maxAbsComponent = std::max(std::max(kOrigin, std::abs(p.x)), std::max(abs(p.y), std::abs(p.z)));
+    const float maxAbsComponent = std::max(std::max(kOrigin, std::abs(p.x)), std::max(std::abs(p.y), std::abs(p.z)));
     return p + (maxAbsComponent * kFloatULP * kOffsetScale) * n;
   }
 } // namespace dxvk

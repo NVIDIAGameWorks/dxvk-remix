@@ -30,7 +30,7 @@ namespace dxvk {
     Vector4 safeColorAndIntensity(const Vector3& radiance) {
       const float intensity = std::max(std::max(radiance[0], radiance[1]), radiance[2]);
       if (intensity < std::numeric_limits<float>::min()) {
-        return { 0,0,0,0 };
+        return Vector4{ 0,0,0,0 };
       }
 
       // Limit the intensity to prevent precision issues.
@@ -43,7 +43,7 @@ namespace dxvk {
 
       // Safer dividing for the case when 'intensity' is quite small,
       // so the result won't be denormalized.
-      return {
+      return Vector4{
         std::clamp(radiance[0], 0.f, intensity * IntensityMax) / intensity,
         std::clamp(radiance[1], 0.f, intensity * IntensityMax) / intensity,
         std::clamp(radiance[2], 0.f, intensity * IntensityMax) / intensity,

@@ -115,4 +115,19 @@ namespace dxvk {
     return ((i + (i >> 4)) & 0x0F);
   }
 
+  // Returns true if the value is NaN or Inf, false otherwise.
+  inline bool hasNaNInf(float a) {
+    return std::isnan(a) || std::isinf(a);
+  }
+
+  // Replaces NaNs or Infs in the value with zero.
+  inline float replaceNaNInf(float a) {
+    if (hasNaNInf(a)) {
+      return 0.0f;
+    } else {
+      return a;
+    }
+  }
+
+
 }

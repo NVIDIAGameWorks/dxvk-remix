@@ -1443,8 +1443,8 @@ namespace dxvk {
         const float planeDistanceX = dot(dirToPortalCentroid, rayPortal.entryPortalInfo.planeBasis[0]);
         const float planeDistanceY = dot(dirToPortalCentroid, rayPortal.entryPortalInfo.planeBasis[1]);
         const bool cameraVolumeIntersectsPortal = 0.f < planeDistanceNormal && planeDistanceNormal < maximumNormalDistance
-          && fabs(planeDistanceX) < rayPortal.entryPortalInfo.planeHalfExtents.x
-          && fabs(planeDistanceY) < rayPortal.entryPortalInfo.planeHalfExtents.y;
+          && std::abs(planeDistanceX) < rayPortal.entryPortalInfo.planeHalfExtents.x
+          && std::abs(planeDistanceY) < rayPortal.entryPortalInfo.planeHalfExtents.y;
 
         if (cameraVolumeIntersectsPortal) {
           portalIndexForVirtualInstances = i;
@@ -1537,9 +1537,9 @@ namespace dxvk {
     }
 
     const Matrix4 backwardOffsetMatrix {
-      { 1.f, 0.f, 0.f, 0.f },
-      { 0.f, 1.f, 0.f, 0.f },
-      { 0.f, 0.f, 1.f, 0.f },
+      Vector4{ 1.f, 0.f, 0.f, 0.f },
+      Vector4{ 0.f, 1.f, 0.f, 0.f },
+      Vector4{ 0.f, 0.f, 1.f, 0.f },
       Vector4(backwardOffsetVector, 1.f)
     };
     
@@ -1827,10 +1827,10 @@ namespace dxvk {
       // - Must be roughly square
       const bool isSquare = xLength <= yLength * 1.5f && yLength <= xLength * 1.5f;
       // - The original quad must have perpendicular sides
-      const bool hasPerpendicularSides = fabs(dotAxes) < 0.01f;
+      const bool hasPerpendicularSides = std::abs(dotAxes) < 0.01f;
       // - Must be in the camera view plane, i.e. only auto-oriented particles, not world-space ones
       //   (except player model particles, which are oriented towards the camera and not in the view plane)
-      const bool isInViewPlane = fabs(normalDotCamera) > 0.99f;
+      const bool isInViewPlane = std::abs(normalDotCamera) > 0.99f;
       // Assume that all billboards on the player model are camera facing
       const bool isCameraFacing = instance.m_isPlayerModel;
       if (!isSquare || !hasPerpendicularSides || !isInViewPlane && !isCameraFacing) {

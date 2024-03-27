@@ -46,15 +46,15 @@ namespace dxvk {
 
     // returns the 8 cells closest to `position`
     const std::vector<const std::vector<T>*> getDataNearPos(const Vector3& position) const {
-      static const Vector3i kOffsets[] = {
-        {0, 0, 0},
-        {0, 0, 1},
-        {0, 1, 0},
-        {0, 1, 1},
-        {1, 0, 0},
-        {1, 0, 1},
-        {1, 1, 0},
-        {1, 1, 1}
+      static const std::array kOffsets{
+        Vector3i{0, 0, 0},
+        Vector3i{0, 0, 1},
+        Vector3i{0, 1, 0},
+        Vector3i{0, 1, 1},
+        Vector3i{1, 0, 0},
+        Vector3i{1, 0, 1},
+        Vector3i{1, 1, 0},
+        Vector3i{1, 1, 1}
       };
       std::vector<const std::vector<T>*> result;
       result.reserve(8);
