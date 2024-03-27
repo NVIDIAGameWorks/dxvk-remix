@@ -40,6 +40,30 @@
 #include "rtx/algorithm/resolve.slangh"
 #include "rtx/algorithm/rtxdi/rtxdi.slangh"
 
+float getTemporalSearchRadius(RAB_Surface surface, float3 virtualMotionVector, float reprojectionDistance)
+{
+  if (cb.teleportationPortalIndex != 0 || surface.portalSpace == PORTAL_SPACE_PORTAL_COMBINED)
+    return 0;
+
+  // Increasing search radius can reduce sample coherency and make ReSTIR GI's output more friendly to denoisers.
+  // If the camera is quickly approaching a surface, increase the search radius to avoid artifacts
+  const float maxRadius = 30;
+  const float3 cameraPositon = cameraGetWorldPosition(cb.camera);
+  const float3 prevVirtualWorldPosition = surface.virtualWorldPosition + virtualMotionVector;
+  float prevDistance = length(cameraGetPreviousWorldPosition(cb.camera).xyz - prevVirtualWorldPosition);
+  float currDistance = length(cameraPositon - surface.virtualWorldPosition);
+  float radius = (prevDistance / currDistance - 1) * cb.reSTIRGIHistoryDiscardStrength * maxRadius;
+
+  // If reflection reprojection is applied, also increase the search radius to avoid artifacts
+  if (reprojectionDistance > 2)
+  {
+    radius += 20;
+  }
+
+  // Ignore small search radius to avoid low frequency artifacts
+  return radius < 10 ? 0 : min(radius, maxRadius);
+}
+
 void validateSample(ReSTIRGI_Reservoir inputReservoir, inout ReSTIRGI_Reservoir resultReservoir, inout bool isGBufferSimilar)
 {
   // Calculate screen space position of the sample point
@@ -177,14 +201,14 @@ void main(int2 thread_id : SV_DispatchThreadID)
   vec4 prevNDC = mul(camera.prevWorldToProjection, vec4(prevVirtualWorldPosition, 1.0f));
   prevNDC.xyz /= prevNDC.w;
   float2 prevPixelCenter = cameraNDCToScreenUV(camera, prevNDC.xy) * vec2(camera.resolution);
-  float expectedPrevHitDistance = length(prevVirtualWorldPosition - cameraGetPreviousWorldPosition(camera).xyz);
+  float2 expectedPrevHitDistance = length(prevVirtualWorldPosition - cameraGetPreviousWorldPosition(camera).xyz);
   float viewDirectionDotTriangleNormal = abs(dot(surface.minimalRayInteraction.viewDirection, surface.minimalSurfaceInteraction.triangleNormal));
   float2 depthThreshold = 0.01 / max(viewDirectionDotTriangleNormal, 0.01);
   float normalThreshold = lerp(0.995, 0.5, surface.opaqueSurfaceMaterialInteraction.isotropicRoughness);
 
   // Calculate reflection sample weight
   float reflectionWeight = 0;
-  if (cb.enableReSTIRGIReflectionReprojection > 0)
+  if (cb.enableReSTIRGIReflectionReprojection > 0 && surface.portalSpace == PORTAL_SPACE_NONE)
   {
     float roughWeight = 1.0 - surface.opaqueSurfaceMaterialInteraction.isotropicRoughness;
     const float16_t normalDotOutputDirection = dot(surface.opaqueSurfaceMaterialInteraction.shadingNormal, surface.minimalRayInteraction.viewDirection);
@@ -200,11 +224,13 @@ void main(int2 thread_id : SV_DispatchThreadID)
   float2 currentPixelCenter = thread_id + 0.5;
   bool discardEnlargedPixels = cb.enableReSTIRGIDiscardEnlargedPixels;
   float reflectionReprojectionWeight = 0;
+  float reprojectionDistance = 0;
   if (cb.enableReSTIRGIReflectionReprojection > 0 && reflectionWeight > 0.05 && length(prevPixelCenter - currentPixelCenter) > 1)
   {
     float3 worldPos = surface.minimalSurfaceInteraction.position;
     float3 viewVector = -surface.minimalRayInteraction.viewDirection;
-    float3 reflectionVector = reflect(viewVector, surface.opaqueSurfaceMaterialInteraction.shadingNormal);
+    f16vec3 surfaceNormal = surface.opaqueSurfaceMaterialInteraction.shadingNormal;
+    float3 reflectionVector = reflect(viewVector, surfaceNormal);
 
     // Calculate reflection hit T
     uint8_t backupPortalID = RTXDI_INVALID_PORTAL_INDEX;
@@ -224,7 +250,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
 
     // Intepolate reprojection position, or randomly choose one type of reprojection
     const float interpolateDistance = cb.restirGIReflectionMinParallax;
-    float reprojectionDistance = length(prevReflectionCenter - prevPixelCenter);
+    reprojectionDistance = length(prevReflectionCenter - prevPixelCenter);
     reflectionReprojectionWeight = reflectionWeight;
     prevBackupPixelCenter = prevPixelCenter; // Set original reprojection position as a backup position
     if (reprojectionDistance < interpolateDistance)
@@ -238,13 +264,27 @@ void main(int2 thread_id : SV_DispatchThreadID)
       // To get significant parallax, the camera must be close to reflective surface.
       // Losen depth check and don't discard enlarged pixels to get stable reprojected result.
       prevPixelCenter = prevReflectionCenter;
-      depthThreshold.x = 0.25;
+      float3 prevCameraPosition = cameraGetPreviousWorldPosition(cb.camera);
+      float3 prevCameraVector = normalize(reflectPosition - prevCameraPosition);
+      float prevReflectionHitDistance = dot(worldPos - prevCameraPosition, surfaceNormal) / dot(prevCameraVector, surfaceNormal);
+      if (prevReflectionHitDistance > 0)
+      {
+        expectedPrevHitDistance.x = prevReflectionHitDistance;
+      }
       discardEnlargedPixels = false;
     }
   }
 
+  float initialSearchRadius = getTemporalSearchRadius(surface, virtualMotionVector, reprojectionDistance);
+  int temporalHistoryLength = cb.temporalHistoryLength;
+  if (initialSearchRadius > 0)
+  {
+    depthThreshold.x = 0.28;
+    normalThreshold.x = 0.8;
+  }
+
   ReSTIRGI_TemporalResamplingParameters tparams = {};
-  tparams.temporalHistoryLength = cb.temporalHistoryLength;
+  tparams.temporalHistoryLength = temporalHistoryLength;
   tparams.enableJacobian = cb.enableReSTIRGITemporalJacobian;
   tparams.enableBiasCorrection = cb.enableReSTIRGITemporalBiasCorrection;
   tparams.prevPixelCenter = prevPixelCenter;
@@ -260,7 +300,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
   tparams.teleportationPortalIndex = cb.teleportationPortalIndex;
   tparams.discardEnlargedPixels = discardEnlargedPixels;
   tparams.sourceBufferIndex = ReSTIRGI_GetTemporalInputPage();
-  tparams.initialSearchRadius = 0;
+  tparams.initialSearchRadius = initialSearchRadius;
 
   bool isGBufferSimilar;
   bool isInitialSample;
