@@ -474,6 +474,7 @@ void RtDistantLight::applyTransform(const Matrix4& lightToWorld) {
   const Matrix3 transform(lightToWorld);
 
   m_direction = normalize(transform * m_direction);
+  m_orientation = getOrientation(Vector3(0.0f, 0.0f, 1.0f), m_direction);
 
   updateCachedHash();
 }
