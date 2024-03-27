@@ -104,6 +104,7 @@ namespace dxvk {
     RTX_OPTION("rtx.restirGI", float, sampleStealingJitter, 0.0, "Jitter samples by k pixels to avoid aliasing.");
     RTX_OPTION("rtx.restirGI", bool, stealBoundaryPixelSamplesWhenOutsideOfScreen , true, "Steals ReSTIR GI samples even a hit point is outside the screen. This will further improve highly specular samples at the cost of some bias.");
     RTX_OPTION("rtx.restirGI", bool, useDiscardEnlargedPixels, true, "Discards enlarged samples when the camera is moving towards an object.");
+    RTX_OPTION("rtx.restirGI", float, historyDiscardStrength, 0.0, "The sensitivity of discarding history. Higher values discard more history.");
     RTX_OPTION("rtx.restirGI", bool, useTemporalJacobian, true, "Calculates Jacobian determinant in temporal reprojection.");
     RW_RTX_OPTION("rtx.restirGI", bool, useReflectionReprojection, true, "Uses reflection reprojection for reflective objects to achieve stable result when the camera is moving.");
     RTX_OPTION("rtx.restirGI", float, reflectionMinParallax, 3.0, "When the parallax between normal and reflection reprojection is greater than this threshold, randomly choose one reprojected position and reuse the sample on it. Otherwise, get a sample between the two positions.");
