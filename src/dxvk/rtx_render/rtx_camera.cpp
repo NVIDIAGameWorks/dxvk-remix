@@ -451,7 +451,7 @@ namespace dxvk
       m_context.freeCameraViewRelative = freeCameraViewRelative();
     }
 
-    freeCamViewToWorld[3] = m_matCache[MatrixType::ViewToWorld][3] + Vector4(freeCameraPosition(), 0.f);
+    freeCamViewToWorld[3] = m_matCache[MatrixType::ViewToWorld][3] + Vector4d{ Vector3d{ freeCameraPosition() }, 0.0 };
     return freeCamViewToWorld;
   }
 
@@ -561,7 +561,7 @@ namespace dxvk
     m_matCache[MatrixType::UncorrectedPreviousTranslatedWorldToView] = m_matCache[MatrixType::TranslatedWorldToView];
 
     auto viewToTranslatedWorld = m_matCache[MatrixType::ViewToWorld];
-    viewToTranslatedWorld[3] = Vector4(0.0f, 0.0f, 0.0f, viewToTranslatedWorld[3].w);
+    viewToTranslatedWorld[3] = Vector4d(0.0f, 0.0f, 0.0f, viewToTranslatedWorld[3].w);
 
     m_matCache[MatrixType::ViewToTranslatedWorld] = freeCameraViewRelative() ? viewToTranslatedWorld : Matrix4d();
     // Note: Slightly non-ideal to have to inverse an already inverted matrix when we have the original world to view matrix,
@@ -673,7 +673,7 @@ namespace dxvk
     }
 
     auto freeCamViewToTranslatedWorld = freeCamViewToWorld;
-    freeCamViewToTranslatedWorld[3] = Vector4(0.0f, 0.0f, 0.0f, freeCamViewToTranslatedWorld[3].w);
+    freeCamViewToTranslatedWorld[3] = Vector4d(0.0f, 0.0f, 0.0f, freeCamViewToTranslatedWorld[3].w);
 
     m_matCache[MatrixType::FreeCamPreviousPreviousWorldToView] = m_matCache[MatrixType::FreeCamPreviousWorldToView];
     m_matCache[MatrixType::FreeCamPreviousPreviousViewToWorld] = m_matCache[MatrixType::FreeCamPreviousViewToWorld];
@@ -767,8 +767,8 @@ namespace dxvk
     camera.prevTranslatedWorldToView = prevTranslatedWorldToView;
     camera.prevTranslatedWorldToProjection = prevViewToProjection * prevTranslatedWorldToView;
     
-    camera.translatedWorldOffset = viewToWorld[3].xyz();
-    camera.previousTranslatedWorldOffset = prevViewToWorld[3].xyz();
+    camera.translatedWorldOffset = Vector3{ viewToWorld[3].xyz() };
+    camera.previousTranslatedWorldOffset = Vector3{ prevViewToWorld[3].xyz() };
     camera.nearPlane = m_context.nearPlane;
     camera.flags = ((!m_context.isLHS) ? rightHandedFlag : 0);
 
@@ -832,10 +832,10 @@ namespace dxvk
     }
 
     Matrix4d viewRot = viewToWorld;
-    viewRot[3] = Vector4(0.0);
+    viewRot[3] = Vector4d(0.0);
     viewRot *= getMatrixFromEulerAngles(shakePitch, shakeYaw);
 
-    Vector4 shakeOffset = static_cast<double>(moveLeftRight) * viewRot.data[0];
+    Vector4d shakeOffset = static_cast<double>(moveLeftRight) * viewRot.data[0];
     shakeOffset += static_cast<double>(moveBackForward) * viewRot.data[2];
 
     viewRot[3] = viewToWorld[3] + shakeOffset;

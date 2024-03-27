@@ -97,7 +97,7 @@ namespace dxvk {
       return std::abs(fovA - cameraB.getFov()) < kFovToleranceRadians;
     };
 
-    if (abs(shearX) > 0.01f || !isFovValid(fov)) {
+    if (std::abs(shearX) > 0.01f || !isFovValid(fov)) {
       ONCE(Logger::warn("[RTX] CameraManager: rejected an invalid camera"));
       return input.getCategoryFlags().test(InstanceCategories::Sky) ? CameraType::Sky : CameraType::Unknown;
     }

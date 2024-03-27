@@ -114,8 +114,8 @@ struct RaytraceGeometry {
 };
 
 struct AxisAlignedBoundingBox {
-  Vector3 minPos = { FLT_MAX, FLT_MAX, FLT_MAX };
-  Vector3 maxPos = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
+  Vector3 minPos{ FLT_MAX, FLT_MAX, FLT_MAX };
+  Vector3 maxPos{ -FLT_MAX, -FLT_MAX, -FLT_MAX };
 
   const bool isValid() const {
     return minPos.x <= maxPos.x && minPos.y <= maxPos.y && minPos.z <= maxPos.z;
@@ -373,7 +373,7 @@ struct DrawCallTransforms {
   Matrix4 viewToProjection = Matrix4();
   Matrix4 textureTransform = Matrix4();
   bool enableClipPlane = false;
-  Vector4 clipPlane = { 0.f };
+  Vector4 clipPlane{ 0.f };
   TexGenMode texgenMode = TexGenMode::None;
 
   void sanitize() {

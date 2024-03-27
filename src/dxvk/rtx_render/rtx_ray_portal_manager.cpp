@@ -145,7 +145,7 @@ namespace dxvk {
       worldVertices[uniqueIndices.size()] = currentWorldPosition;
 
       for (uint32_t i = 0; i < 3; i++)
-        maxAbsVertexWorldCoords[i] = std::max(abs(currentWorldPosition[i]), maxAbsVertexWorldCoords[i]);
+        maxAbsVertexWorldCoords[i] = std::max(std::abs(currentWorldPosition[i]), maxAbsVertexWorldCoords[i]);
 
       uniqueIndices.insert(currentIndex);
     }
@@ -591,8 +591,8 @@ namespace dxvk {
       Vector3 camPos = viewToWorld[3].xyz();
 
       const auto& mainCam = cameraManager.getMainCamera();
-      const Vector3& mainCamPos = mainCam.getViewToWorld()[3].xyz();
-      Vector3 mainCamDir = -mainCam.getViewToWorld()[2].xyz();
+      const auto& mainCamPos = Vector3{ mainCam.getViewToWorld()[3].xyz() };
+      auto mainCamDir = Vector3{ -mainCam.getViewToWorld()[2].xyz() };
 
       // Rough tolerance accounting for any floating point error
       const float kCamPosDistanceTolerance = 0.001f * (lengthSqr(camPos) + lengthSqr(mainCamPos));

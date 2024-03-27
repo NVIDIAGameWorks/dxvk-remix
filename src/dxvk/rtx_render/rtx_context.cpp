@@ -23,6 +23,7 @@
 #include <cstring>
 #include <cmath>
 #include <cassert>
+#include <array>
 
 #include "dxvk_device.h"
 #include "dxvk_scoped_annotation.h"
@@ -940,7 +941,7 @@ namespace dxvk {
 
       if (debugView.gpuPrint.enable() && ImGui::IsKeyDown(ImGuiKey_ModCtrl)) {
         if (debugView.gpuPrint.useMousePosition()) {
-          Vector2 toDownscaledExtentScale = {
+          Vector2 toDownscaledExtentScale{
             downscaledExtent.width / static_cast<float>(targetExtent.width),
             downscaledExtent.height / static_cast<float>(targetExtent.height)
           };
@@ -1478,9 +1479,9 @@ namespace dxvk {
     }
 
     Vector2i rescale(const float(&scale)[2], const Vector2i& pix) {
-      return {
-      static_cast<int>(static_cast<float>(pix.x) * scale[0]),
-      static_cast<int>(static_cast<float>(pix.y) * scale[1]),
+      return Vector2i {
+        static_cast<int>(static_cast<float>(pix.x) * scale[0]),
+        static_cast<int>(static_cast<float>(pix.y) * scale[1]),
       };
     }
 
@@ -1877,16 +1878,16 @@ namespace dxvk {
   }
 
   void RtxContext::rasterizeToSkyProbe(const DrawParameters& params, const DrawCallState& drawCallState) {
-    static Vector3 targets[6] = {
-      {+1.0f, 0.0f, 0.0f}, {-1.0f, 0.0f, 0.0f},
-      {0.0f, +1.0f, 0.0f}, {0.0f, -1.0f, 0.0f},
-      {0.0f, 0.0f, +1.0f}, {0.0f, 0.0f, -1.0f},
+    static std::array targets{
+      Vector3{+1.0f, 0.0f, 0.0f}, Vector3{-1.0f, 0.0f, 0.0f},
+      Vector3{0.0f, +1.0f, 0.0f}, Vector3{0.0f, -1.0f, 0.0f},
+      Vector3{0.0f, 0.0f, +1.0f}, Vector3{0.0f, 0.0f, -1.0f},
     };
 
-    static Vector3 ups[6] = {
-      {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f},
-      {0.0f, 0.0f,-1.0f}, {0.0f, 0.0f, 1.0f},
-      {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f},
+    static std::array ups{
+      Vector3{0.0f, 1.0f, 0.0f}, Vector3{0.0f, 1.0f, 0.0f},
+      Vector3{0.0f, 0.0f,-1.0f}, Vector3{0.0f, 0.0f, 1.0f},
+      Vector3{0.0f, 1.0f, 0.0f}, Vector3{0.0f, 1.0f, 0.0f},
     };
 
     ScopedGpuProfileZone(this, "rasterizeToSkyProbe");

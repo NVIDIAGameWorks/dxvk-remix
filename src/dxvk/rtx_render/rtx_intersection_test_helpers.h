@@ -21,6 +21,8 @@
 */
 #pragma once
 
+#include <array>
+
 #include "MathLib/MathLib.h"
 #include "../util/util_matrix.h"
 
@@ -32,7 +34,7 @@ static inline bool rayIntersectsPlane(
   float* t) {
 
   float denom = dot(n, d);
-  if (abs(denom) > 1e-6) {
+  if (std::abs(denom) > 1e-6f) {
     *t = dot(p0 - s0, n) / denom;
     return (*t >= 0);
   }
@@ -150,12 +152,12 @@ static bool boundingBoxIntersectsFrustumSATInternal(
   // Note: When the OBB has same coordinate value on 1 or more dimensions, it will become a plane/line/point.
   //       In such case, we still need to check the axis of the missing dimension(s).
   //       So, we just set the unit length axis to represent axis direction (normalized axis), then revert extent back to 0 after transformation.
-  const dxvk::Vector3 extentScale = {
+  const dxvk::Vector3 extentScale{
     maxPos.x - minPos.x > FLT_EPSILON ? 0.5f : 0.0f,
     maxPos.y - minPos.y > FLT_EPSILON ? 0.5f : 0.0f,
     maxPos.z - minPos.z > FLT_EPSILON ? 0.5f : 0.0f
   };
-  const dxvk::Vector4 obbAxisView[3] = {
+  const std::array obbAxisView{
     objectToView * (extentScale.x != 0.0f ? dxvk::Vector4(maxPos.x - minPos.x, 0.0f, 0.0f, 0.0f) : dxvk::Vector4(1.0f, 0.0f, 0.0f, 0.0f)),
     objectToView * (extentScale.y != 0.0f ? dxvk::Vector4(0.0f, maxPos.y - minPos.y, 0.0f, 0.0f) : dxvk::Vector4(0.0f, 1.0f, 0.0f, 0.0f)),
     objectToView * (extentScale.z != 0.0f ? dxvk::Vector4(0.0f, 0.0f, maxPos.z - minPos.z, 0.0f) : dxvk::Vector4(0.0f, 0.0f, 1.0f, 0.0f))
@@ -164,7 +166,7 @@ static bool boundingBoxIntersectsFrustumSATInternal(
 
   // Calculate the view space OBB extent.
   // Note: We scale the extents here to avoid dividing 0.
-  const dxvk::Vector4 obbAxisNormalized[3] = {
+  const std::array obbAxisNormalized{
     obbAxisView[0] / obbExtents.x * extentScale.x,
     obbAxisView[1] / obbExtents.y * extentScale.y,
     obbAxisView[2] / obbExtents.z * extentScale.z
@@ -172,9 +174,9 @@ static bool boundingBoxIntersectsFrustumSATInternal(
 
   // Project OBB extent to axis
   auto calProjectedObbExtent = [&](const dxvk::Vector4& axis) -> float {
-    const dxvk::Vector4 projObbAxisToAxis(std::fabs(dxvk::dot(obbAxisNormalized[0], axis)),
-                                          std::fabs(dxvk::dot(obbAxisNormalized[1], axis)),
-                                          std::fabs(dxvk::dot(obbAxisNormalized[2], axis)),
+    const dxvk::Vector4 projObbAxisToAxis(std::abs(dxvk::dot(obbAxisNormalized[0], axis)),
+                                          std::abs(dxvk::dot(obbAxisNormalized[1], axis)),
+                                          std::abs(dxvk::dot(obbAxisNormalized[2], axis)),
                                           0.0f);
     return dxvk::dot(projObbAxisToAxis, obbExtents);
   };
@@ -182,8 +184,8 @@ static bool boundingBoxIntersectsFrustumSATInternal(
   // Fast Frustum Projection Algorithm:
   // https://www.geometrictools.com/Documentation/IntersectionBox3Frustum3.pdf
   auto calProjectedFrustumExtent = [&](const dxvk::Vector4& axis, float& p0, float& p1) -> void {
-    const float MoX = std::fabs(axis.x);
-    const float MoY = std::fabs(axis.y);
+    const float MoX = std::abs(axis.x);
+    const float MoY = std::abs(axis.y);
     const float MoZ = isLHS ? axis.z : -axis.z;
 
     const float p = nearPlaneRightExtent * MoX + nearPlaneUpExtent * MoY;

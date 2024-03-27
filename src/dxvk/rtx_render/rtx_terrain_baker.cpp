@@ -1026,8 +1026,8 @@ namespace dxvk {
 
       // Compute bbox relative to the camera
       AxisAlignedBoundingBox cameraRelativeTerrainBBOX = {
-        m_bakedTerrainBBOX.minPos - camera.getPosition() - halfTexelOffset,
-        m_bakedTerrainBBOX.maxPos - camera.getPosition() + halfTexelOffset 
+        m_bakedTerrainBBOX.minPos - camera.getPosition() - Vector3{ halfTexelOffset },
+        m_bakedTerrainBBOX.maxPos - camera.getPosition() + Vector3{ halfTexelOffset }
       };
 
       // Convert the bbox to scene space
@@ -1036,8 +1036,8 @@ namespace dxvk {
 
       // Calculate a half width of a cascade map around camera that covers the terrain's BBOX
       cascadeMapHalfWidth =
-        std::max(std::max(abs(cameraRelativeTerrainBBOX.maxPos.x), abs(cameraRelativeTerrainBBOX.minPos.x)),
-                 std::max(abs(cameraRelativeTerrainBBOX.maxPos.y), abs(cameraRelativeTerrainBBOX.minPos.y)));
+        std::max(std::max(std::abs(cameraRelativeTerrainBBOX.maxPos.x), std::abs(cameraRelativeTerrainBBOX.minPos.x)),
+                 std::max(std::abs(cameraRelativeTerrainBBOX.maxPos.y), std::abs(cameraRelativeTerrainBBOX.minPos.y)));
     }
 
     // Construct a scene oriented view
