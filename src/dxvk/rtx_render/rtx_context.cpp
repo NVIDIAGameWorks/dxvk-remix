@@ -901,6 +901,7 @@ namespace dxvk {
     constants.permutationSamplingSize = restirGI.permutationSamplingSize();
     constants.enableReSTIRGITemporalBiasCorrection = restirGI.useTemporalBiasCorrection();
     constants.enableReSTIRGIDiscardEnlargedPixels = restirGI.useDiscardEnlargedPixels();
+    constants.reSTIRGIHistoryDiscardStrength = restirGI.historyDiscardStrength();
     constants.enableReSTIRGITemporalJacobian = restirGI.useTemporalJacobian();
     constants.reSTIRGIFireflyThreshold = restirGI.fireflyThreshold();
     constants.reSTIRGIRoughnessClamp = restirGI.roughnessClamp();

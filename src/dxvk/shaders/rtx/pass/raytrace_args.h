@@ -278,6 +278,7 @@ struct RaytraceArgs {
   uint32_t permutationSamplingSize;
   uint enableReSTIRGITemporalBiasCorrection;
   uint enableReSTIRGIDiscardEnlargedPixels;
+  float reSTIRGIHistoryDiscardStrength;
   uint enableReSTIRGITemporalJacobian;
   float reSTIRGIFireflyThreshold;
   float reSTIRGIRoughnessClamp;
