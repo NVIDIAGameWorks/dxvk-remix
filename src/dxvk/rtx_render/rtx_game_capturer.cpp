@@ -268,9 +268,9 @@ namespace dxvk {
       const auto viewToWorld = sceneCamera.getViewToWorld();
       if (capCamera.proj.bInv) {
         // Check if the up vector in view matrix is upside down
-        const Vector3& up = viewToWorld[1].xyz();
-        if ((!RtxOptions::Get()->isZUp() && dot(up, Vector3(0.0f, 1.0f, 0.0f)) < 0.0f) ||
-            (RtxOptions::Get()->isZUp() && dot(up, Vector3(0.0f, 0.0f, 1.0f)) < 0.0f)) {
+        const auto& up = viewToWorld[1].xyz();
+        if ((!RtxOptions::Get()->isZUp() && dot(up, Vector3d(0.0, 1.0, 0.0)) < 0.0) ||
+            (RtxOptions::Get()->isZUp() && dot(up, Vector3d(0.0, 0.0, 1.0)) < 0.0)) {
           capCamera.view.bInv = true;
         }
       }
@@ -878,7 +878,7 @@ namespace dxvk {
       // Create comparison function that returns float
       static auto weightsDifferentEnough = [](const float& a, const float& b) {
         const static float delta = RtxOptions::Get()->getCaptureMeshBlendWeightDelta();
-        return abs(a - b) > delta;
+        return std::abs(a - b) > delta;
       };
       // Cache buffer iff new buffer differs from previous buffer
       evalNewBufferAndCache(pMesh, pMesh->lssData.buffers.blendWeightBufs, targetBuffer, currentFrameNum, weightsDifferentEnough);

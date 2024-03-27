@@ -213,7 +213,7 @@ namespace dxvk {
                DxvkType readMemberAs(const ApiType& v) = delete;
     template<> float    readMemberAs(const float& v)            { return v; }
     template<> bool     readMemberAs(const remixapi_Bool& v)    { return v; }
-    template<> Vector3  readMemberAs(const remixapi_Float3D& v) { return { v.x, v.y, v.z }; }
+    template<> Vector3  readMemberAs(const remixapi_Float3D& v) { return Vector3{ v.x, v.y, v.z }; }
 
     template<typename T> bool hasNan(const T& v) = delete;
     template<>           bool hasNan(const float& v)            { return std::isnan(v); }
@@ -221,10 +221,6 @@ namespace dxvk {
     template<>           bool hasNan(const remixapi_Bool& v)    { return false; }
     template<>           bool hasNan(const Vector3& v)          { return hasNan(v.x) || hasNan(v.y) || hasNan(v.z); }
     template<>           bool hasNan(const bool& v)             { return false; }
-
-    bool infOrNan(const float& v) {
-      return std::isnan(v) || std::isinf(v);
-    }
 
     bool isUsdLightTransformValid(const pxr::GfMatrix4f& transform) {
       // Ignore lights with a 0 scale transform on any axis
@@ -254,10 +250,10 @@ namespace dxvk {
 
       // Transform must have finite floats
       if (
-        infOrNan(transform[0][0]) || infOrNan(transform[0][1]) || infOrNan(transform[0][2]) ||
-        infOrNan(transform[1][0]) || infOrNan(transform[1][1]) || infOrNan(transform[1][2]) ||
-        infOrNan(transform[2][0]) || infOrNan(transform[2][1]) || infOrNan(transform[2][2]) ||
-        infOrNan(transform[3][0]) || infOrNan(transform[3][1]) || infOrNan(transform[3][2])
+        hasNaNInf(transform[0][0]) || hasNaNInf(transform[0][1]) || hasNaNInf(transform[0][2]) ||
+        hasNaNInf(transform[1][0]) || hasNaNInf(transform[1][1]) || hasNaNInf(transform[1][2]) ||
+        hasNaNInf(transform[2][0]) || hasNaNInf(transform[2][1]) || hasNaNInf(transform[2][2]) ||
+        hasNaNInf(transform[3][0]) || hasNaNInf(transform[3][1]) || hasNaNInf(transform[3][2])
       ) {
         return false;
       }
@@ -535,10 +531,10 @@ namespace dxvk {
     m_yScale = yVecUsd.Normalize();
     m_zScale = zVecUsd.Normalize();
 
-    m_position = localToRoot.ExtractTranslation().data();
-    m_xAxis = xVecUsd.GetArray();
-    m_yAxis = yVecUsd.GetArray();
-    m_zAxis = zVecUsd.GetArray();
+    m_position = Vector3{ localToRoot.ExtractTranslation().data() };
+    m_xAxis = Vector3{ xVecUsd.GetArray() };
+    m_yAxis = Vector3{ yVecUsd.GetArray() };
+    m_zAxis = Vector3{ zVecUsd.GetArray() };
 
     // Note: While normalization is done via the USD api a bit earlier it does not properly ensure that the vectors are not the zero vector,
     // which is not allowed for directions in some cases in Remix (namely the light shaping axis or Rect/Disk light axes), so we handle this

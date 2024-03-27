@@ -289,7 +289,7 @@ namespace dxvk {
         }
         else {
           for (UINT i = 0; i < Count; i++)
-            set.fConsts[StartRegister + i] = replaceNaN(pConstantData + (i * 4));
+            set.fConsts[StartRegister + i] = replaceNaN(Vector4{ pConstantData + (i * 4) });
         }
       }
       else if constexpr (ConstantType == D3D9ConstantType::Int) {

@@ -728,13 +728,13 @@ namespace dxvk {
     // Should the underestimation still occur, the shader will fall back to a conservative value for a micro triangle.
     const float kEpsilon = 0.001f;
     const float kHalfTexelOffset = 0.5f + kEpsilon;
-    const Vector2 texcoordsIndexMin = doFloor(texcoordsMin * textureResolution - kHalfTexelOffset);
+    const Vector2 texcoordsIndexMin = doFloor(texcoordsMin * textureResolution - Vector2{ kHalfTexelOffset });
     // Align with a bottom right pixel relative to the bbox max
-    const Vector2 texcoordsIndexMax = doFloor(texcoordsMax * textureResolution + kHalfTexelOffset);
+    const Vector2 texcoordsIndexMax = doFloor(texcoordsMax * textureResolution + Vector2{ kHalfTexelOffset });
 
     // Calculate number of texels in the given texcoord bbox.
     // +1: include the end point of the bbox
-    const Vector2 texelSampleDims = texcoordsIndexMax - texcoordsIndexMin + 1;
+    const Vector2 texelSampleDims = texcoordsIndexMax - texcoordsIndexMin + Vector2{ 1.0f };
     const uint32_t numTexelsPerMicroTriangle =
       static_cast<uint32_t>(std::min<float>(round(texelSampleDims.x * texelSampleDims.y), static_cast<float>(UINT32_MAX)));
 

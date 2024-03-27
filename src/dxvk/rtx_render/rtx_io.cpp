@@ -142,7 +142,7 @@ namespace dxvk {
     }
 
     const auto category = DxvkMemoryStats::Category::RTXBuffer;
-    const int64_t size = abs(memAdjustmentMB * 1024 * 1024) / 2;
+    const int64_t size = std::abs(memAdjustmentMB * 1024 * 1024) / 2;
 
     auto& heaps = m_device->getCommon()->memoryManager().getMemoryHeaps();
 

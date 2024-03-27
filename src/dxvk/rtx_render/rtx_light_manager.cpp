@@ -504,7 +504,7 @@ namespace dxvk {
           if (coneAngleDelta > 0.01f) {
             return kNotSimilar;
           }
-          float coneSoftnessDelta = abs(aShaping.getConeSoftness() - bShaping.getConeSoftness());
+          float coneSoftnessDelta = std::abs(aShaping.getConeSoftness() - bShaping.getConeSoftness());
           if (coneSoftnessDelta > 0.01f) {
             return kNotSimilar;
           }

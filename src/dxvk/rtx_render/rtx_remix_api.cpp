@@ -39,6 +39,7 @@
 #include "../dxvk_image.h"
 
 #include "../../util/util_math.h"
+#include "../../util/util_vector.h"
 #include "../../util/util_string.h"
 
 #include "../../d3d9/d3d9_swapchain.h"
@@ -131,11 +132,11 @@ namespace {
     }
 
     Vector3 tovec3(const remixapi_Float3D& v) {
-      return { v.x, v.y, v.z };
+      return Vector3{ v.x, v.y, v.z };
     }
 
     Vector3d tovec3d(const remixapi_Float3D& v) {
-      return { v.x, v.y, v.z };
+      return Vector3d{ v.x, v.y, v.z };
     }
 
     constexpr bool tobool(remixapi_Bool b) {
@@ -432,10 +433,10 @@ namespace {
         };
         {
           const auto newViewToWorld = Matrix4d {
-           { normalize(tovec3d(params->right)), 0.0 },
-           { normalize(tovec3d(params->up)), 0.0 },
-           { normalize(tovec3d(params->forward)), 0.0 },
-           { tovec3d(params->position), 1.0 },
+           Vector4d{ normalize(tovec3d(params->right)), 0.0 },
+           Vector4d{ normalize(tovec3d(params->up)), 0.0 },
+           Vector4d{ normalize(tovec3d(params->forward)), 0.0 },
+           Vector4d{ tovec3d(params->position), 1.0 },
           };
           result.worldToView = inverse(newViewToWorld);
         }
@@ -493,7 +494,7 @@ namespace {
       if (auto src = pnext::find<remixapi_LightInfoRectEXT>(&info)) {
         return RtRectLight {
           tovec3(src->position),
-          {src->xSize, src->ySize},
+          Vector2{src->xSize, src->ySize},
           tovec3(src->xAxis),
           tovec3(src->yAxis),
           tovec3(info.radiance),
@@ -503,7 +504,7 @@ namespace {
       if (auto src = pnext::find<remixapi_LightInfoDiskEXT>(&info)) {
         return RtDiskLight {
           tovec3(src->position),
-          {src->xRadius, src->yRadius},
+          Vector2{src->xRadius, src->yRadius},
           tovec3(src->xAxis),
           tovec3(src->yAxis),
           tovec3(info.radiance),
@@ -1034,8 +1035,8 @@ namespace {
       ->metaDebugView().ObjectPicking;
 
     picking.request(
-      { pixelRegion->left, pixelRegion->top },
-      { pixelRegion->right, pixelRegion->bottom },
+      dxvk::Vector2i{ pixelRegion->left, pixelRegion->top },
+      dxvk::Vector2i{ pixelRegion->right, pixelRegion->bottom },
       // invoke user's callback on result
       [callback, callbackUserData](std::vector<dxvk::ObjectPickingValue>&& objectPickingValues, std::optional<XXH64_hash_t>) {
         callback(objectPickingValues.data(), uint32_t(objectPickingValues.size()), callbackUserData);

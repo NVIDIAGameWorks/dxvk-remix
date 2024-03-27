@@ -62,7 +62,7 @@ public:
   const XXH64_hash_t calculateAntiCullingHash() const;
   Matrix4 getTransform() const { return transpose(dxvk::Matrix4(m_vkInstance.transform)); }
   const Matrix4& getPrevTransform() const { return surface.prevObjectToWorld; }
-  Vector3 getWorldPosition() const { return { m_vkInstance.transform.matrix[0][3], m_vkInstance.transform.matrix[1][3], m_vkInstance.transform.matrix[2][3] }; }
+  Vector3 getWorldPosition() const { return Vector3{ m_vkInstance.transform.matrix[0][3], m_vkInstance.transform.matrix[1][3], m_vkInstance.transform.matrix[2][3] }; }
   const Vector3& getPrevWorldPosition() const { return surface.prevObjectToWorld.data[3].xyz(); }
 
   const Vector3& getSpatialCachePosition() const { return m_spatialCachePos; }

@@ -111,10 +111,10 @@ namespace dxvk {
 
     template<typename TOther>
     Matrix4Base(const Matrix4Base<TOther>& other) {
-      data[0] = other.data[0];
-      data[1] = other.data[1];
-      data[2] = other.data[2];
-      data[3] = other.data[3];
+      data[0] = Vector4Base<T>(other.data[0]);
+      data[1] = Vector4Base<T>(other.data[1]);
+      data[2] = Vector4Base<T>(other.data[2]);
+      data[3] = Vector4Base<T>(other.data[3]);
     }
 
     Vector4Base<T>& operator[](size_t index) {
@@ -259,25 +259,25 @@ namespace dxvk {
     double coef22 = m[1][0] * m[3][1] - m[3][0] * m[1][1];
     double coef23 = m[1][0] * m[2][1] - m[2][0] * m[1][1];
 
-    Vector4d fac0 = { coef00, coef00, coef02, coef03 };
-    Vector4d fac1 = { coef04, coef04, coef06, coef07 };
-    Vector4d fac2 = { coef08, coef08, coef10, coef11 };
-    Vector4d fac3 = { coef12, coef12, coef14, coef15 };
-    Vector4d fac4 = { coef16, coef16, coef18, coef19 };
-    Vector4d fac5 = { coef20, coef20, coef22, coef23 };
+    Vector4d fac0{ coef00, coef00, coef02, coef03 };
+    Vector4d fac1{ coef04, coef04, coef06, coef07 };
+    Vector4d fac2{ coef08, coef08, coef10, coef11 };
+    Vector4d fac3{ coef12, coef12, coef14, coef15 };
+    Vector4d fac4{ coef16, coef16, coef18, coef19 };
+    Vector4d fac5{ coef20, coef20, coef22, coef23 };
 
-    Vector4d vec0 = { m[1][0], m[0][0], m[0][0], m[0][0] };
-    Vector4d vec1 = { m[1][1], m[0][1], m[0][1], m[0][1] };
-    Vector4d vec2 = { m[1][2], m[0][2], m[0][2], m[0][2] };
-    Vector4d vec3 = { m[1][3], m[0][3], m[0][3], m[0][3] };
+    Vector4d vec0{ m[1][0], m[0][0], m[0][0], m[0][0] };
+    Vector4d vec1{ m[1][1], m[0][1], m[0][1], m[0][1] };
+    Vector4d vec2{ m[1][2], m[0][2], m[0][2], m[0][2] };
+    Vector4d vec3{ m[1][3], m[0][3], m[0][3], m[0][3] };
 
-    Vector4d inv0 = { vec1 * fac0 - vec2 * fac1 + vec3 * fac2 };
-    Vector4d inv1 = { vec0 * fac0 - vec2 * fac3 + vec3 * fac4 };
-    Vector4d inv2 = { vec0 * fac1 - vec1 * fac3 + vec3 * fac5 };
-    Vector4d inv3 = { vec0 * fac2 - vec1 * fac4 + vec2 * fac5 };
+    Vector4d inv0{ vec1 * fac0 - vec2 * fac1 + vec3 * fac2 };
+    Vector4d inv1{ vec0 * fac0 - vec2 * fac3 + vec3 * fac4 };
+    Vector4d inv2{ vec0 * fac1 - vec1 * fac3 + vec3 * fac5 };
+    Vector4d inv3{ vec0 * fac2 - vec1 * fac4 + vec2 * fac5 };
 
-    Vector4d signA = { +1, -1, +1, -1 };
-    Vector4d signB = { -1, +1, -1, +1 };
+    Vector4d signA{ +1, -1, +1, -1 };
+    Vector4d signB{ -1, +1, -1, +1 };
 
     Vector4d inverse[4];
     inverse[0] = inv0 * signA;
@@ -285,9 +285,9 @@ namespace dxvk {
     inverse[2] = inv2 * signA;
     inverse[3] = inv3 * signB;
 
-    Vector4d row0 = { inverse[0][0], inverse[1][0], inverse[2][0], inverse[3][0] };
+    Vector4d row0{ inverse[0][0], inverse[1][0], inverse[2][0], inverse[3][0] };
 
-    Vector4d dot0 = { Vector4d(m[0].x,m[0].y,m[0].z,m[0].w) * row0 };
+    Vector4d dot0{ Vector4d(m[0].x,m[0].y,m[0].z,m[0].w) * row0 };
 
     return (dot0.x + dot0.y) + (dot0.z + dot0.w);
   }
@@ -315,25 +315,25 @@ namespace dxvk {
     double coef22 = (double) m[1][0] * m[3][1] - (double) m[3][0] * m[1][1];
     double coef23 = (double) m[1][0] * m[2][1] - (double) m[2][0] * m[1][1];
 
-    Vector4d fac0 = { coef00, coef00, coef02, coef03 };
-    Vector4d fac1 = { coef04, coef04, coef06, coef07 };
-    Vector4d fac2 = { coef08, coef08, coef10, coef11 };
-    Vector4d fac3 = { coef12, coef12, coef14, coef15 };
-    Vector4d fac4 = { coef16, coef16, coef18, coef19 };
-    Vector4d fac5 = { coef20, coef20, coef22, coef23 };
+    Vector4d fac0{ coef00, coef00, coef02, coef03 };
+    Vector4d fac1{ coef04, coef04, coef06, coef07 };
+    Vector4d fac2{ coef08, coef08, coef10, coef11 };
+    Vector4d fac3{ coef12, coef12, coef14, coef15 };
+    Vector4d fac4{ coef16, coef16, coef18, coef19 };
+    Vector4d fac5{ coef20, coef20, coef22, coef23 };
 
-    Vector4d vec0 = { m[1][0], m[0][0], m[0][0], m[0][0] };
-    Vector4d vec1 = { m[1][1], m[0][1], m[0][1], m[0][1] };
-    Vector4d vec2 = { m[1][2], m[0][2], m[0][2], m[0][2] };
-    Vector4d vec3 = { m[1][3], m[0][3], m[0][3], m[0][3] };
+    Vector4d vec0{ m[1][0], m[0][0], m[0][0], m[0][0] };
+    Vector4d vec1{ m[1][1], m[0][1], m[0][1], m[0][1] };
+    Vector4d vec2{ m[1][2], m[0][2], m[0][2], m[0][2] };
+    Vector4d vec3{ m[1][3], m[0][3], m[0][3], m[0][3] };
 
-    Vector4d inv0 = { vec1 * fac0 - vec2 * fac1 + vec3 * fac2 };
-    Vector4d inv1 = { vec0 * fac0 - vec2 * fac3 + vec3 * fac4 };
-    Vector4d inv2 = { vec0 * fac1 - vec1 * fac3 + vec3 * fac5 };
-    Vector4d inv3 = { vec0 * fac2 - vec1 * fac4 + vec2 * fac5 };
+    Vector4d inv0{ vec1 * fac0 - vec2 * fac1 + vec3 * fac2 };
+    Vector4d inv1{ vec0 * fac0 - vec2 * fac3 + vec3 * fac4 };
+    Vector4d inv2{ vec0 * fac1 - vec1 * fac3 + vec3 * fac5 };
+    Vector4d inv3{ vec0 * fac2 - vec1 * fac4 + vec2 * fac5 };
 
-    Vector4d signA = { +1, -1, +1, -1 };
-    Vector4d signB = { -1, +1, -1, +1 };
+    Vector4d signA{ +1, -1, +1, -1 };
+    Vector4d signB{ -1, +1, -1, +1 };
 
     Vector4d inverse[4];
     inverse[0] = inv0 * signA;
@@ -341,9 +341,9 @@ namespace dxvk {
     inverse[2] = inv2 * signA;
     inverse[3] = inv3 * signB;
 
-    Vector4d row0 = { inverse[0][0], inverse[1][0], inverse[2][0], inverse[3][0] };
+    Vector4d row0{ inverse[0][0], inverse[1][0], inverse[2][0], inverse[3][0] };
 
-    Vector4d dot0 = { Vector4d(m[0].x,m[0].y,m[0].z,m[0].w) * row0 };
+    Vector4d dot0{ Vector4d(m[0].x,m[0].y,m[0].z,m[0].w) * row0 };
     double dot1 = (dot0.x + dot0.y) + (dot0.z + dot0.w);
 
     // Note: Ensure the matrix is invertable.
