@@ -477,8 +477,8 @@ namespace dxvk {
         pseudoColorModeCombo.getKey(&pseudoColorModeObject());
 
         ImGui::DragFloat("Scale", &m_scale, 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
-        ImGui::InputFloat("Min Value", &minValueObject(), std::max(0.01f, 0.02f * abs(minValue())), std::max(0.1f, 0.1f * abs(minValue())));
-        ImGui::InputFloat("Max Value", &maxValueObject(), std::max(0.01f, 0.02f * abs(maxValue())), std::max(0.1f, 0.1f * abs(maxValue())));
+        ImGui::InputFloat("Min Value", &minValueObject(), std::max(0.01f, 0.02f * std::abs(minValue())), std::max(0.1f, 0.1f * std::abs(minValue())));
+        ImGui::InputFloat("Max Value", &maxValueObject(), std::max(0.01f, 0.02f * std::abs(maxValue())), std::max(0.1f, 0.1f * std::abs(maxValue())));
         maxValueRef() = std::max(1.00001f * minValue(), maxValue());
 
         // Color legend
@@ -500,7 +500,7 @@ namespace dxvk {
       } else if (displayType() == DebugViewDisplayType::BGRExclusiveColor) {
         ImGui::Text("BGR Exclusive Color:");
 
-        ImGui::InputFloat("Max Value", &maxValueObject(), std::max(0.01f, 0.02f * abs(maxValue())), std::max(0.1f, 0.1f * abs(maxValue())));
+        ImGui::InputFloat("Max Value", &maxValueObject(), std::max(0.01f, 0.02f * std::abs(maxValue())), std::max(0.1f, 0.1f * std::abs(maxValue())));
       } else if (displayType() == DebugViewDisplayType::EV100) {
         ImGui::Text("Exposure Value (EV100):");
 

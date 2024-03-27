@@ -44,25 +44,25 @@ namespace dxvk {
     constexpr Vector4Base()
       : x{ }, y{ }, z{ }, w{ } { }
 
-    constexpr Vector4Base(T splat)
+    constexpr explicit Vector4Base(T splat)
       : x(splat), y(splat), z(splat), w(splat) { }
 
-    constexpr Vector4Base(T x, T y, T z, T w)
+    constexpr explicit Vector4Base(T x, T y, T z, T w)
       : x(x), y(y), z(z), w(w) { }
 
-    constexpr Vector4Base(const T xyzw[4])
+    constexpr explicit Vector4Base(const T xyzw[4])
       : x(xyzw[0]), y(xyzw[1]), z(xyzw[2]), w(xyzw[3]) { }
 
     Vector4Base(const Vector4Base<T>& other) = default;
 
     template<typename TOther>
-    Vector4Base(const Vector4Base<TOther>& other) :
+    explicit Vector4Base(const Vector4Base<TOther>& other) :
       x(static_cast<T>(other.x)),
       y(static_cast<T>(other.y)),
       z(static_cast<T>(other.z)),
       w(static_cast<T>(other.w)) { }
 
-    Vector4Base(const Vector3Base<T>& other, T w);
+    explicit Vector4Base(const Vector3Base<T>& other, T w);
     
     inline       T& operator[](size_t index)       { return data[index]; }
     inline const T& operator[](size_t index) const { return data[index]; }
@@ -98,18 +98,26 @@ namespace dxvk {
       return true;
     }
 
+    bool operator>(const Vector4Base<T>& other) const {
+      return other < *this;
+    }
+
+    bool operator>=(const Vector4Base<T>& other) const {
+      return other <= *this;
+    }
+
     Vector4Base operator-() const { return {-x, -y, -z, -w}; }
 
     Vector4Base operator+(const Vector4Base<T>& other) const {
-      return {x + other.x, y + other.y, z + other.z, w + other.w};
+      return Vector4Base{x + other.x, y + other.y, z + other.z, w + other.w};
     }
 
     Vector4Base operator-(const Vector4Base<T>& other) const {
-      return {x - other.x, y - other.y, z - other.z, w - other.w};
+      return Vector4Base{x - other.x, y - other.y, z - other.z, w - other.w};
     }
 
     Vector4Base operator*(T scalar) const {
-      return {scalar * x, scalar * y, scalar * z, scalar * w};
+      return Vector4Base{scalar * x, scalar * y, scalar * z, scalar * w};
     }
 
     Vector4Base operator*(const Vector4Base<T>& other) const {
@@ -127,7 +135,7 @@ namespace dxvk {
     }
 
     Vector4Base operator/(T scalar) const {
-      return {x / scalar, y / scalar, z / scalar, w / scalar};
+      return Vector4Base{x / scalar, y / scalar, z / scalar, w / scalar};
     }
 
     Vector4Base& operator+=(const Vector4Base<T>& other) {
@@ -194,6 +202,30 @@ namespace dxvk {
   }
 
   template <typename T>
+  Vector4Base<T> clamp(const Vector4Base<T>& a, const Vector4Base<T>& lo, const Vector4Base<T>& hi) {
+    Vector4Base<T> out;
+
+    out.x = std::clamp(a.x, lo.x, hi.x);
+    out.y = std::clamp(a.y, lo.y, hi.y);
+    out.z = std::clamp(a.z, lo.z, hi.z);
+    out.w = std::clamp(a.w, lo.w, hi.w);
+
+    return out;
+  }
+
+  template <typename T>
+  Vector4Base<T> abs(const Vector4Base<T>& a) {
+    Vector4Base<T> out;
+
+    out.x = std::abs(a.x);
+    out.y = std::abs(a.y);
+    out.z = std::abs(a.z);
+    out.w = std::abs(a.w);
+
+    return out;
+  }
+
+  template <typename T>
   std::ostream& operator<<(std::ostream& os, const Vector4Base<T>& v) {
     return os << "Vector4(" << v[0] << ", " << v[1] << ", " << v[2] << ", " << v[3] << ")";
   }
@@ -205,6 +237,7 @@ namespace dxvk {
   static_assert(sizeof(Vector4)  == sizeof(float) * 4);
   static_assert(sizeof(Vector4i) == sizeof(int)   * 4);
 
+  // Replaces NaNs in the vector with zero.
   inline Vector4 replaceNaN(Vector4 a) {
     Vector4 result;
     __m128 value = _mm_load_ps(a.data);
@@ -214,6 +247,42 @@ namespace dxvk {
     return result;
   }
 
+  // Gets a mask where NaN/Inf values are represented with 0 and other values are represented with filled bits.
+  inline __m128 nanInfMask(__m128 value) {
+    __m128 infValue = _mm_set1_ps(std::numeric_limits<float>::infinity());
+    // Note: Generates a mask with filled bits for non-NaN values and 0 for NaN values
+    __m128 nanMask = _mm_cmpeq_ps(value, value);
+    // Note: Generates a mask with filled bits for non-infinity values and 0 for infinity values
+    __m128 infMask = _mm_cmpneq_ps(value, infValue);
+
+    // Note: Combines the two masks to get the desired result (must be NaN-free and Inf-free to be a valid value).
+    return _mm_and_ps(nanMask, infMask);
+  }
+
+  // Replaces NaNs or Infs in the vector with zero.
+  inline Vector4 replaceNaNInf(Vector4 a) {
+    Vector4 result;
+
+    __m128 value = _mm_load_ps(a.data);
+    __m128 combinedMask = nanInfMask(value);
+
+    // Note: Zero out the values corresponding to the zero bits in the NaN/Inf mask.
+     value = _mm_and_ps(value, combinedMask);
+
+    _mm_store_ps(result.data, value);
+
+    return result;
+  }
+
+  // Returns true if the vector has any NaNs/Infs, false otherwise.
+  inline bool hasNaNInf(Vector4 a) {
+    __m128 value = _mm_load_ps(a.data);
+    __m128 combinedMask = nanInfMask(value);
+
+    // Note: Return true if any of the elements in the mask are zero (indicating NaN/Inf).
+    return _mm_movemask_ps(combinedMask) != 0xF;
+  }
+
   // Vector 3
 
   template <typename T>
@@ -221,13 +290,13 @@ namespace dxvk {
     constexpr Vector3Base()
       : x{ }, y{ }, z{ } { }
 
-    constexpr Vector3Base(T splat)
+    constexpr explicit Vector3Base(T splat)
       : x(splat), y(splat), z(splat) { }
 
-    constexpr Vector3Base(T x, T y, T z)
+    constexpr explicit Vector3Base(T x, T y, T z)
       : x(x), y(y), z(z) { }
 
-    constexpr Vector3Base(const T xyz[3])
+    constexpr explicit Vector3Base(const T xyz[3])
       : x(xyz[0]), y(xyz[1]), z(xyz[2]) { }
 
     Vector3Base& operator=(Vector3Base&&) = default;
@@ -236,12 +305,12 @@ namespace dxvk {
     Vector3Base(const Vector3Base<T>& other) = default;
 
     template<typename TOther>
-    Vector3Base(const Vector3Base<TOther>& other) :
+    explicit Vector3Base(const Vector3Base<TOther>& other) :
       x(static_cast<T>(other.x)),
       y(static_cast<T>(other.y)),
       z(static_cast<T>(other.z)) { }
 
-    Vector3Base(const Vector2Base<T>&other, T z);
+    explicit Vector3Base(const Vector2Base<T>&other, T z);
 
     inline       T& operator[](size_t index) { return data[index]; }
     inline const T& operator[](size_t index) const { return data[index]; }
@@ -277,18 +346,18 @@ namespace dxvk {
       return true;
     }
 
-    Vector3Base operator-() const { return { -x, -y, -z }; }
+    Vector3Base operator-() const { return Vector3Base{ -x, -y, -z }; }
 
     Vector3Base operator+(const Vector3Base<T>& other) const {
-      return { x + other.x, y + other.y, z + other.z };
+      return Vector3Base{ x + other.x, y + other.y, z + other.z };
     }
 
     Vector3Base operator-(const Vector3Base<T>& other) const {
-      return { x - other.x, y - other.y, z - other.z };
+      return Vector3Base{ x - other.x, y - other.y, z - other.z };
     }
 
     Vector3Base operator*(T scalar) const {
-      return { scalar * x, scalar * y, scalar * z };
+      return Vector3Base{ scalar * x, scalar * y, scalar * z };
     }
 
     Vector3Base operator*(const Vector3Base<T>& other) const {
@@ -306,7 +375,7 @@ namespace dxvk {
     }
 
     Vector3Base operator/(T scalar) const {
-      return { x / scalar, y / scalar, z / scalar };
+      return Vector3Base{ x / scalar, y / scalar, z / scalar };
     }
 
     Vector3Base& operator+=(const Vector3Base<T>& other) {
@@ -393,6 +462,28 @@ namespace dxvk {
   }
 
   template <typename T>
+  Vector3Base<T> clamp(const Vector3Base<T>& a, const Vector3Base<T>& lo, const Vector3Base<T>& hi) {
+    Vector3Base<T> out;
+
+    out.x = std::clamp(a.x, lo.x, hi.x);
+    out.y = std::clamp(a.y, lo.y, hi.y);
+    out.z = std::clamp(a.z, lo.z, hi.z);
+
+    return out;
+  }
+
+  template <typename T>
+  Vector3Base<T> abs(const Vector3Base<T>& a) {
+    Vector3Base<T> out;
+
+    out.x = std::abs(a.x);
+    out.y = std::abs(a.y);
+    out.z = std::abs(a.z);
+
+    return out;
+  }
+
+  template <typename T>
   std::ostream& operator<<(std::ostream& os, const Vector3Base<T>& v) {
     return os << "Vector3(" << v[0] << ", " << v[1] << ", " << v[2] << ")";
   }
@@ -411,13 +502,13 @@ namespace dxvk {
     constexpr Vector2Base()
       : x{ }, y{ } { }
 
-    constexpr Vector2Base(T splat)
+    constexpr explicit Vector2Base(T splat)
       : x(splat), y(splat) { }
 
-    constexpr Vector2Base(T x, T y)
+    constexpr explicit Vector2Base(T x, T y)
       : x(x), y(y) { }
 
-    constexpr Vector2Base(const T xy[2])
+    constexpr explicit Vector2Base(const T xy[2])
       : x(xy[0]), y(xy[1]) { }
 
     Vector2Base(const Vector2Base<T>& other) = default;
@@ -459,15 +550,15 @@ namespace dxvk {
     Vector2Base operator-() const { return { -x, -y }; }
 
     Vector2Base operator+(const Vector2Base<T>& other) const {
-      return { x + other.x, y + other.y };
+      return Vector2Base{ x + other.x, y + other.y };
     }
 
     Vector2Base operator-(const Vector2Base<T>& other) const {
-      return { x - other.x, y - other.y };
+      return Vector2Base{ x - other.x, y - other.y };
     }
 
     Vector2Base operator*(T scalar) const {
-      return { scalar * x, scalar * y };
+      return Vector2Base{ scalar * x, scalar * y };
     }
 
     Vector2Base operator*(const Vector2Base<T>& other) const {
@@ -626,16 +717,6 @@ namespace dxvk {
     return
       (aLength >= static_cast<T>(1.0) - threshold) &&
       (aLength <= static_cast<T>(1.0) + threshold);
-  }
-
-
-  template <template<typename> typename TVector, typename T>
-  std::enable_if_t<std::is_floating_point_v<T>, TVector<T>> clamp(const TVector<T>& a, const TVector<T>& lo, const TVector<T>& hi) {
-    Vector3 out;
-    out.x = std::clamp(a.x, lo.x, hi.x);
-    out.y = std::clamp(a.y, lo.y, hi.y);
-    out.z = std::clamp(a.z, lo.z, hi.z);
-    return out;
   }
 
   // Class inter-dependent definitions

@@ -182,7 +182,7 @@ namespace dxvk {
 
   bool transformToScreen(const Matrix4& worldToProj, const Vector2 screen, const Vector3 worldPos, ImVec2& outScreenPos) {
     Vector4 positionPS = worldToProj * Vector4(worldPos.x, worldPos.y, worldPos.z, 1.f);
-    positionPS.xyz() /= abs(positionPS.w);
+    positionPS.xyz() /= std::abs(positionPS.w);
 
     // Projection -> screen transform
     outScreenPos = { (positionPS.x * 0.5f + 0.5f) * screen.x, (-positionPS.y * 0.5f + 0.5f) * screen.y };
@@ -204,7 +204,7 @@ namespace dxvk {
     ImVec2 screenPos;
     {
       const ImGuiViewport* viewport = ImGui::GetMainViewport();
-      transformToScreen(worldToProj, { viewport->Size.x, viewport->Size.y }, position, screenPos);
+      transformToScreen(worldToProj, Vector2{ viewport->Size.x, viewport->Size.y }, position, screenPos);
     }
     std::string str = hashToString(h);
     ImU32 backColor = IM_COL32(0, 0, 0, 200);
@@ -322,8 +322,8 @@ namespace dxvk {
     }
     ImVec2 screenPos[2];
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
-    transformToScreen(worldToProj, { viewport->Size.x, viewport->Size.y }, sphereLight.getPosition(), screenPos[0]);
-    transformToScreen(worldToProj, { viewport->Size.x, viewport->Size.y }, sphereLight.getPosition() + cameraRight * sphereLight.getRadius(), screenPos[1]);
+    transformToScreen(worldToProj, Vector2{ viewport->Size.x, viewport->Size.y }, sphereLight.getPosition(), screenPos[0]);
+    transformToScreen(worldToProj, Vector2{ viewport->Size.x, viewport->Size.y }, sphereLight.getPosition() + cameraRight * sphereLight.getRadius(), screenPos[1]);
     const float radius = std::max(1.f, sqrtf(ImLengthSqr(ImVec2(screenPos[0].x - screenPos[1].x, screenPos[0].y - screenPos[1].y))));
     drawList->AddCircleFilled(screenPos[0], radius, colHex);
 
@@ -345,7 +345,7 @@ namespace dxvk {
     rectBounds[3] = position + dimensions.x * 0.5f * xAxis - dimensions.y * yAxis * 0.5f;
     ImVec2 screenPos[4];
     for (uint32_t i = 0; i < 4; i++) {
-      transformToScreen(worldToProj, { viewport->Size.x, viewport->Size.y }, rectBounds[i], screenPos[i]);
+      transformToScreen(worldToProj, Vector2{ viewport->Size.x, viewport->Size.y }, rectBounds[i], screenPos[i]);
     }
     drawList->AddQuadFilled(screenPos[0], screenPos[1], screenPos[2], screenPos[3], colHex);
     return DrawResult {
@@ -364,7 +364,7 @@ namespace dxvk {
     for (uint32_t i = 0; i < numPoints; i++) {
       float theta = (float) i * kPi * 2 / numPoints;
       Vector3 worldPos = position + radius.x * cos(theta) * xAxis + radius.y * yAxis * sin(theta);
-      transformToScreen(worldToProj, { viewport->Size.x, viewport->Size.y }, worldPos, screenPos[i]);
+      transformToScreen(worldToProj, Vector2{ viewport->Size.x, viewport->Size.y }, worldPos, screenPos[i]);
     }
     drawList->AddConvexPolyFilled(&screenPos[0], numPoints, colHex);
 
@@ -434,7 +434,7 @@ namespace dxvk {
         switch (light->getType()) {
         case RtLightType::Sphere:
         {
-          result = drawSphereLightDebug(light->getSphereLight(), worldToProj, camera.getViewToWorld(true)[0].xyz(), colHex, frustum, drawList);
+          result = drawSphereLightDebug(light->getSphereLight(), worldToProj, Vector3{ camera.getViewToWorld(true)[0].xyz() }, colHex, frustum, drawList);
           break;
         }
         case RtLightType::Rect:

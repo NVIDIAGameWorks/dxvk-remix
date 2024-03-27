@@ -251,9 +251,9 @@ namespace dxvk {
         pVertex += vertexStride;
       }
 
-      AxisAlignedBoundingBox boundingBox = {
-        { minPos.m128_f32[0], minPos.m128_f32[1], minPos.m128_f32[2] },
-        { maxPos.m128_f32[0], maxPos.m128_f32[1], maxPos.m128_f32[2] }
+      AxisAlignedBoundingBox boundingBox{
+        Vector3{ minPos.m128_f32[0], minPos.m128_f32[1], minPos.m128_f32[2] },
+        Vector3{ maxPos.m128_f32[0], maxPos.m128_f32[1], maxPos.m128_f32[2] }
       };
 
       vertexBuffer->decRef();

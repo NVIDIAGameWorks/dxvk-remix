@@ -29,7 +29,7 @@ namespace dxvk {
   // Converts a sRGB color encoded in gamma space to linear space.
   inline Vector3 sRGBGammaToLinear(const Vector3& c) {
     // Note: Approximation of actual sRGB OETF.
-    return {
+    return Vector3{
       std::pow(c.x, kSRGBGamma),
       std::pow(c.y, kSRGBGamma),
       std::pow(c.z, kSRGBGamma),
@@ -39,7 +39,7 @@ namespace dxvk {
   // Converts a sRGB color encoded in linear space to gamma space.
   inline Vector3 sRGBLinearToGamma(const Vector3& c) {
     // Note: Approximation of actual sRGB EOTF.
-    return {
+    return Vector3{
       std::pow(c.x, 1.0f / kSRGBGamma),
       std::pow(c.y, 1.0f / kSRGBGamma),
       std::pow(c.z, 1.0f / kSRGBGamma),

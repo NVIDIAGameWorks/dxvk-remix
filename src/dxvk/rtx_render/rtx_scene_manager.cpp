@@ -624,13 +624,13 @@ namespace dxvk {
     const Vector4 renderingPos = input.getTransformData().objectToView * Vector4(centroid.x, centroid.y, centroid.z, 1.0f);
     // Note: False used in getViewToWorld since the renderingPos of the object is defined with respect to the game's object to view
     // matrix, not our freecam's, and as such we want to convert it back to world space using the matching matrix.
-    Vector4 worldPos = getCamera().getViewToWorld(false) * renderingPos;
+    const Vector4 worldPos{ getCamera().getViewToWorld(false) * Vector4d{ renderingPos } };
 
     RtLightShaping shaping{};
     const float lightRadius = std::max(RtxOptions::Get()->getEffectLightRadius(), 1e-3f);
     const float surfaceArea = 4.f * kPi * lightRadius * lightRadius;
     const float radianceFactor = 1e5f * effectLightIntensity / surfaceArea;
-    const Vector3 lightPosition = Vector3(worldPos.x, worldPos.y, worldPos.z);
+    const Vector3 lightPosition{ worldPos.x, worldPos.y, worldPos.z };
     Vector3 lightRadiance;
     if (RtxOptions::Get()->getEffectLightPlasmaBall()) {
       // Todo: Make these options more configurable via config options.
