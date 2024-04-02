@@ -2108,6 +2108,7 @@ namespace dxvk {
         ImGui::Indent();
         ImGui::Checkbox("Orthographic Is UI", &D3D9Rtx::orthographicIsUIObject());
         ImGui::Checkbox("Allow Cubemaps", &D3D9Rtx::allowCubemapsObject());
+        ImGui::Checkbox("AABB's For Instance Differentiation", &RtxOptions::Get()->instanceUseBoundingBoxObject());
         ImGui::Unindent();
       }
 

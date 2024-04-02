@@ -133,6 +133,19 @@ struct AxisAlignedBoundingBox {
     }
   }
 
+  Vector3 getCentroid() const {
+    return (minPos + maxPos) * 0.5f;
+  }
+
+  // returns untransformed position if AABB is invalid
+  Vector3 getTransformedCentroid(const Matrix4& transform) const {
+    if (isValid()) {
+      return (transform * Vector4(getCentroid(), 1.0f)).xyz();
+    } else {
+      return transform[3].xyz();
+    }
+  }
+
   const XXH64_hash_t calculateHash() const {
     return XXH3_64bits(this, sizeof(AxisAlignedBoundingBox));
   }
