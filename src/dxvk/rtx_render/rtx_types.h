@@ -122,8 +122,8 @@ struct AxisAlignedBoundingBox {
   }
 
   void invalidate() {
-    minPos = { FLT_MAX, FLT_MAX, FLT_MAX };
-    maxPos = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
+    minPos = Vector3{ FLT_MAX, FLT_MAX, FLT_MAX };
+    maxPos = Vector3{ -FLT_MAX, -FLT_MAX, -FLT_MAX };
   }
 
   void unionWith(const AxisAlignedBoundingBox& other) {
