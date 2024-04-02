@@ -36,11 +36,6 @@ namespace dxvk {
       , m_id { id } {}
     ~DxvkErrorWithId() = default;
 
-    DxvkErrorWithId(DxvkErrorWithId&&) = delete;
-    DxvkErrorWithId& operator=(DxvkErrorWithId&&) = delete;
-    DxvkErrorWithId(const DxvkErrorWithId&) = delete;
-    DxvkErrorWithId& operator=(const DxvkErrorWithId&&) = delete;
-
     int id() const {
       return m_id;
     }

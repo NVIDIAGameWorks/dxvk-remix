@@ -359,7 +359,7 @@ namespace dxvk {
     // Z axis in this case.
     output.m_zAxis = safeNormalize(originalDirection, Vector3(0.0f, 0.0f, 1.0f));
     output.m_AngleRadians = LightManager::lightConversionDistantLightFixedAngle();
-    output.m_Color = { light.Diffuse.r, light.Diffuse.g, light.Diffuse.b };
+    output.m_Color = Vector3{ light.Diffuse.r, light.Diffuse.g, light.Diffuse.b };
     output.m_Intensity = LightManager::lightConversionDistantLightFixedIntensity();
 
     // Note: Changing this code will alter "stable" light hashes from D3D9 and potentially break replacement assets.

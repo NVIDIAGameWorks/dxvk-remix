@@ -336,9 +336,9 @@ namespace dxvk
     float cosYaw = cos(yaw);
     float sinYaw = sin(yaw);
     Matrix4 customTransform;
-    customTransform[0] = { cosYaw, 0, -sinYaw, 0.0 };
-    customTransform[1] = { sinYaw * sinPitch, cosPitch, cosYaw * sinPitch, 0.0 };
-    customTransform[2] = { sinYaw * cosPitch, -sinPitch, cosPitch * cosYaw, 0.0 };
+    customTransform[0] = Vector4{ cosYaw, 0, -sinYaw, 0.0 };
+    customTransform[1] = Vector4{ sinYaw * sinPitch, cosPitch, cosYaw * sinPitch, 0.0 };
+    customTransform[2] = Vector4{ sinYaw * cosPitch, -sinPitch, cosPitch * cosYaw, 0.0 };
     return customTransform;
   }
 
