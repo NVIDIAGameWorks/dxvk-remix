@@ -445,7 +445,7 @@ SurfaceInteraction surfaceInteractionCreate(
     // it removes the need to keep the object space positions around which should ideally reduce register pressure.
     genTangSpace(
       texcoords, worldPositions, surfaceInteraction.interpolatedNormal,
-      surfaceInteraction.interpolatedTangent, surfaceInteraction.interpolatedBitangent);
+      surfaceInteraction.interpolatedTangent, surfaceInteraction.interpolatedBitangent, surfaceInteraction.rawTangent, surfaceInteraction.rawBitangent);
     
     // Derive triangle TBN based on interpolated TBN. This works in all cases tested,
     // and should be much cheaper than calling genTangSpace again.
