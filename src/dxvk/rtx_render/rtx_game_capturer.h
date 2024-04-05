@@ -256,11 +256,9 @@ private:
   void exportUsd(const Rc<DxvkContext> ctx);
   struct Capture;
   static lss::Export prepExport(const Capture& cap,
-                                const float framesPerSecond,
-                                const bool bUseLssUsdPlugins);
+                                const float framesPerSecond);
   static void prepExportMetaData(const Capture& cap,
                                  const float framesPerSecond,
-                                 const bool bUseLssUsdPlugins,
                                  lss::Export& exportPrep);
   static void prepExportMaterials(const Capture& cap,
                                   lss::Export& exportPrep);
@@ -312,9 +310,6 @@ private:
   // State
   bool m_bTriggerCapture = false;
   State m_state;
-  
-  // Constants
-  const bool m_bUseLssUsdPlugins;
 
   // Handles
   DxvkDevice* const m_pDevice;

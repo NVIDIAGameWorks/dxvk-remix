@@ -133,18 +133,12 @@ namespace dxvk {
     : m_pDevice(pDevice)
     , m_sceneManager(sceneManager)
     , m_exporter(exporter)
-    , m_options{ getOptions() }
-    , m_bUseLssUsdPlugins(lss::GameExporter::loadUsdPlugins("./lss/usd_plugins/")) {
+    , m_options{ getOptions() } {
     Logger::info(str::format("[GameCapturer] DXVK_RTX_CAPTURE_ENABLE_ON_FRAME: ", env::getEnvVar("DXVK_RTX_CAPTURE_ENABLE_ON_FRAME")));
     env::createDirectory(BASE_DIR);
     env::createDirectory(BASE_DIR + lss::commonDirName::texDir);
     env::createDirectory(BASE_DIR + lss::commonDirName::matDir);
     lss::GameExporter::setMultiThreadSafety(true);
-    if (m_bUseLssUsdPlugins) {
-      Logger::debug("[GameCapturer] LSS USD Plugins successfully found and loaded.");
-    } else {
-      Logger::warn("[GameCapturer] LSS USD Plugins failed to load.");
-    }
   }
 
   GameCapturer::~GameCapturer() {
@@ -960,16 +954,14 @@ namespace dxvk {
                                           std::unique_ptr<Capture> pCap,
                                           State* pState,
                                           CompletedCapture* complete,
-                                          const float framesPerSecond,
-                                          const bool bUseLssUsdPlugins) {
+                                          const float framesPerSecond) {
       Capture& cap = *pCap;
       const auto numTexExportsInProgress = m_exporter.getNumExportsInFlights();
       constexpr float kTimePerTexExport = 0.0050f; // Liberally decided by inspection, derived from timed out tests
       const float texExportTimeout = numTexExportsInProgress * kTimePerTexExport;
       m_exporter.waitForAllExportsToComplete(texExportTimeout);
       assert(pState->has<State::PreppingExport>());
-      auto exportPrep = prepExport(cap, framesPerSecond, bUseLssUsdPlugins);
-
+      const auto exportPrep = prepExport(cap, framesPerSecond);
       pState->set<State::PreppingExport, false>();
       pState->set<State::Exporting, true>();
 
@@ -996,15 +988,13 @@ namespace dxvk {
                 std::move(m_pCap),
                 &m_state,
                 &m_completeCapture,
-                static_cast<float>(m_options.fps),
-                m_bUseLssUsdPlugins).detach();
+                static_cast<float>(m_options.fps)).detach();
   }
 
   lss::Export GameCapturer::prepExport(const Capture& cap,
-                                       const float framesPerSecond,
-                                       const bool bUseLssUsdPlugins) {
+                                             const float framesPerSecond) {
     lss::Export exportPrep;
-    prepExportMetaData(cap, framesPerSecond, bUseLssUsdPlugins, exportPrep);
+    prepExportMetaData(cap, framesPerSecond, exportPrep);
     prepExportMaterials(cap, exportPrep);
     prepExportMeshes(cap, exportPrep);
     if (exportPrep.bExportInstanceStage) {
@@ -1017,7 +1007,6 @@ namespace dxvk {
 
   void GameCapturer::prepExportMetaData(const Capture& cap,
                                         const float framesPerSecond,
-                                        const bool bUseLssUsdPlugins,
                                         lss::Export& exportPrep) {
     // Prep meta data
     exportPrep.meta.windowTitle = window::getWindowTitle(cap.hwnd);
@@ -1030,7 +1019,6 @@ namespace dxvk {
     exportPrep.meta.endTimeCode = floor(static_cast<double>(cap.currentFrameNum));
     exportPrep.meta.numFramesCaptured = cap.numFramesCaptured;
     window::saveWindowIconToFile(exportPrep.meta.iconPath, cap.hwnd);
-    exportPrep.meta.bUseLssUsdPlugins = bUseLssUsdPlugins;
     exportPrep.meta.bReduceMeshBuffers = true;
     exportPrep.meta.isZUp = RtxOptions::Get()->isZUp();
     if (s_captureRemixConfigs) {
