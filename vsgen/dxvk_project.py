@@ -75,7 +75,7 @@ def generate_dxvk_project(output_root_path, dxvk_cpp_defines):
         # everything to backslash
         p = [pathsep_to_backslash(x) for x in p]
         # convert to string with ';' as separator
-        return ';'.join(p)
+        return '$(VC_IncludePath);'+ ';'.join(p)
 
     include_search_path_debug = build_search_path("../_Comp64Debug")
     include_search_path_debugoptimized = build_search_path("../_Comp64DebugOptimized")
