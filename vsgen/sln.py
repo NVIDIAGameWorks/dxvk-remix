@@ -79,7 +79,7 @@ def generate_sln(output_root_path, test_cases):
 	folders = {}
 	for test_case in test_cases:
 		folder_name = test_case.removeprefix("apics/").split('/')[0]
-		folder_guid = generate_guid(folder_name)
+		folder_guid = generate_guid(folder_name + '/')
 		folders[folder_name] = folder_guid
 
 		project_name = test_case.removeprefix("apics/").removeprefix("Games/").replace("/", "_")
@@ -103,8 +103,7 @@ def generate_sln(output_root_path, test_cases):
 			project_guid=project_guid,
 			dxvk_remix_project_guid=dxvk_remix_project_guid)
 
-	for folder_name in folders:
-		folder_guid = generate_guid(folder_name)
+	for folder_name, folder_guid in folders.items():
 		output_data += folder_project_template.safe_substitute(
 			folder_project_type_guid=folder_project_type_guid,
 			folder_name=folder_name,
