@@ -235,7 +235,7 @@ float pomGetNumSamples(float3 direction)
   const float maxSamples = cb.pomMaxIterations;
 
   // more samples when viewing from oblique angle
-  return lerp(maxSamples, minSamples, abs(dot(float3(0.0, 0.0, 1.0), direction)));
+  return lerp(maxSamples, minSamples, abs(direction.z));
 }
 
 float3 pomCalculateTexcoord(
@@ -426,12 +426,18 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
 #ifdef OPAQUE_MATERIAL_USE_POM
   if (cb.pomMode != DisplacementMode::Off && opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID && opaqueSurfaceMaterial.displaceIn > 0.0f)
   {
-    const f16vec3 viewDirTangentSpace = normalize(mul(worldToTangent, minimalRayInteraction.viewDirection));
+    const mat3 worldToTexture = inverse(transpose(mat3(surfaceInteraction.rawTangent, surfaceInteraction.rawBitangent, surfaceInteraction.interpolatedNormal)));
+    // TextureGradient x might be along the same direction as the view ray?  make a debug view that shows the dot product between textureGradient.x and viewDirTangentSpace?
+
+    f16vec3 viewDirTextureSpace = normalize(mul(worldToTexture, minimalRayInteraction.viewDirection));
+    // Note: -1.f * TextureGradientX has the same x,y direction as viewDirTextureSpace, but calculating the correct z value is non-obvious.
+    // Could potentially remove the need for the worldToTexture transform if a faster way to calculate that z value is found.
+
     uint iterations = 0; // unused
     surfaceInteraction.textureCoordinates = pomCalculateTexcoord(
         opaqueSurfaceMaterial,
         surfaceInteraction,
-        viewDirTangentSpace,
+        viewDirTextureSpace,
         iterations).xy;
     opaqueSurfaceMaterialInteraction.flags |= opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID ? OPAQUE_SURFACE_MATERIAL_INTERACTION_FLAG_HAS_HEIGHT_TEXTURE : 0;
   }

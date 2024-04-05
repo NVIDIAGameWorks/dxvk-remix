@@ -155,6 +155,8 @@ struct SurfaceInteraction : MinimalSurfaceInteraction
   f16vec3 interpolatedNormal;
   f16vec3 interpolatedTangent;
   f16vec3 interpolatedBitangent;
+  f16vec3 rawTangent;
+  f16vec3 rawBitangent;
   f16vec4 vertexColor;
   float triangleArea;
 };
