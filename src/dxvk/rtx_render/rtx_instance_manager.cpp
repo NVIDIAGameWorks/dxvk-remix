@@ -169,7 +169,7 @@ namespace dxvk {
       // const Vector3 newPos = 2.f * surface.objectToWorld[3].xyz() - surface.prevObjectToWorld[3].xyz();
 
       // Cache based on current position.
-      const Vector3 newPos = surface.objectToWorld[3].xyz();
+      const Vector3 newPos = getBlas()->input.getGeometryData().boundingBox.getTransformedCentroid(surface.objectToWorld);
       m_linkedBlas->getSpatialMap().move(m_spatialCachePos, newPos, this);
       m_spatialCachePos = newPos;
     }
@@ -180,7 +180,7 @@ namespace dxvk {
     surface.normalObjectToWorld = transpose(inverse(Matrix3(surface.objectToWorld)));
     surface.prevObjectToWorld = objectToWorld;
     if (!m_isCreatedByRenderer) {
-      m_spatialCachePos = surface.objectToWorld[3].xyz();
+      m_spatialCachePos = getBlas()->input.getGeometryData().boundingBox.getTransformedCentroid(surface.objectToWorld);
       m_linkedBlas->getSpatialMap().insert(m_spatialCachePos, this);
     }
     
@@ -642,9 +642,8 @@ namespace dxvk {
     RtInstance* result = nullptr;
 
     const uint32_t currentFrameIdx = m_device->getCurrentFrameId();
-
-    const Vector3 worldPosition = transform[3].xyz();
-
+    const Vector3 worldPosition = blas.input.getGeometryData().boundingBox.getTransformedCentroid(transform);
+    
     const float uniqueObjectDistanceSqr = RtxOptions::Get()->getUniqueObjectDistanceSqr();
 
     RtInstance* pSimilar = nullptr;
