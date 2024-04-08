@@ -333,6 +333,8 @@ namespace dxvk {
     RTX_OPTION("rtx", uint32_t, minPrimsInStaticBLAS, 1000, "");
     RTX_OPTION("rtx", uint32_t, maxPrimsInMergedBLAS, 50000, "");
 
+    RTX_OPTION_ENV("rtx", bool, enableAlwaysCalculateAABB, false, "RTX_ALWAYS_CALCULATE_AABB", "Calculate an Axis Aligned Bounding Box for every draw call.\n This may improve instance tracking across frames for skinned and vertex shaded calls.");
+
     // Camera
     RW_RTX_OPTION_ENV("rtx", bool, shakeCamera, false, "RTX_FREE_CAMERA_ENABLE_ANIMATION", "Enables animation of the free camera.");
     RTX_OPTION_ENV("rtx", CameraAnimationMode, cameraAnimationMode, CameraAnimationMode::CameraShake_Pitch, "RTX_FREE_CAMERA_ANIMATION_MODE", "Free camera's animation mode.");
