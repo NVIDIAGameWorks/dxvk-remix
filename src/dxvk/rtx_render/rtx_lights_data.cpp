@@ -398,7 +398,7 @@ namespace dxvk {
     output.m_Intensity = LightUtils::calculateIntensity(light, output.m_Radius);
     output.m_Color = Vector3(light.Diffuse.r, light.Diffuse.g, light.Diffuse.b) / originalBrightness;
 
-    RtLightShaping originalLightShaping{};
+    XXH64_hash_t shapingHash = 0;
 
     if (light.Type == D3DLIGHT_SPOT) {
       const Vector3 originalDirection { light.Direction.x, light.Direction.y, light.Direction.z };
@@ -418,8 +418,14 @@ namespace dxvk {
       output.m_ConeSoftness = std::cos(light.Theta / 2.0f) - std::cos(output.m_ConeAngleRadians);
       output.m_Focus = light.Falloff;
 
-      // Set the Stable Light Shaping
-      originalLightShaping = output.getLightShaping(originalDirection);
+      // Set the Stable Light Shaping Hash
+      // NOTE: This is broken out of the original light shaping hash code to maintain hash stability with
+      // input values that lightShaping now rejects (specifically non-normalized direction vectors).
+      float cosConeAngle = cos(output.m_ConeAngleRadians);
+      shapingHash = XXH64(&originalDirection[0], sizeof(originalDirection), shapingHash);
+      shapingHash = XXH64(&cosConeAngle, sizeof(cosConeAngle), shapingHash);
+      shapingHash = XXH64(&output.m_ConeSoftness, sizeof(output.m_ConeSoftness), shapingHash);
+      shapingHash = XXH64(&output.m_Focus, sizeof(output.m_Focus), shapingHash);
     }
 
     // Note: Stable version used for D3D9 light conversion path to ensure stable hashing regardless of code changes.
@@ -436,7 +442,7 @@ namespace dxvk {
     // Note: Radiance not included to somewhat uniquely identify lights when constructed from D3D9 Lights.
     output.m_cachedHash = XXH64(&originalPosition[0], sizeof(originalPosition), output.m_cachedHash);
     output.m_cachedHash = XXH64(&legacyStableRadius, sizeof(legacyStableRadius), output.m_cachedHash);
-    output.m_cachedHash = XXH64(&output.m_cachedHash, sizeof(output.m_cachedHash), originalLightShaping.getHash());
+    output.m_cachedHash = XXH64(&output.m_cachedHash, sizeof(output.m_cachedHash), shapingHash);
 
     return output;
   }
