@@ -659,10 +659,7 @@ namespace dxvk {
             // then this is a second draw call on a single mesh.
             const Matrix4 instanceTransform = instance->getTransform();
             if (memcmp(&transform, &instanceTransform, sizeof(instanceTransform)) == 0) {
-              const Vector3 otherWorldPos = instance->getBlas()->input.getGeometryData().boundingBox.getTransformedCentroid(instance->getTransform());
-              if (worldPosition == otherWorldPos) {
-                return const_cast<RtInstance*>(instance);
-              }
+              return const_cast<RtInstance*>(instance);
             }
           } else if (instance->m_materialHash == material.getHash()) {
             // Instance hasn't been touched yet this frame.
