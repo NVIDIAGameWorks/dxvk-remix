@@ -342,6 +342,6 @@ namespace dxvk {
     return AntiCulling::Object::enable() ||
            AntiCulling::Light::enable()  ||
            TerrainBaker::needsTerrainBaking() ||
-           instanceUseBoundingBox();
+           enableAlwaysCalculateAABB();
   }
 }
