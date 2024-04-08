@@ -96,6 +96,7 @@ namespace dxvk {
           "Nico Rodrigues-McKenna",
           "James 'jdswebb' Webb",
           "James Horsley 'mmdanggg2'",
+          "Friedrich 'pixelcluster' Vock",
       }},
       { "Engineering",
         { "Riley Alston",
