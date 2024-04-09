@@ -309,10 +309,11 @@ namespace dxvk {
 
       if (vendorID == static_cast<uint32_t>(DxvkGpuVendor::Nvidia) || driverID == VK_DRIVER_ID_MESA_RADV) {
         // Default to a mixture of Trace Ray and Ray Query on NVIDIA and RADV
-	     if (driverID == VK_DRIVER_ID_MESA_RADV)
-          Logger::info("RADV detected, setting default raytrace modes to Trace Ray (GBuffer/Indirect Integrate) and Ray Query (Direct Integrate)");
-	     else
+        if (driverID == VK_DRIVER_ID_MESA_RADV) {
+          Logger::info("RADV driver detected, setting default raytrace modes to Trace Ray (GBuffer/Indirect Integrate) and Ray Query (Direct Integrate)");
+        } else {
           Logger::info("NVIDIA architecture detected, setting default raytrace modes to Trace Ray (GBuffer/Indirect Integrate) and Ray Query (Direct Integrate)");
+        }
 
         preferredGBufferRaytraceMode = DxvkPathtracerGbuffer::RaytraceMode::TraceRay;
         preferredIntegrateDirectRaytraceMode = DxvkPathtracerIntegrateDirect::RaytraceMode::RayQuery;
