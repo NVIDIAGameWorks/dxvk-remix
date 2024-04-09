@@ -41,6 +41,9 @@ public:
   // This number was found empirically.
   static constexpr float MaxTransmittanceValue = 1.f - 1.f / 255.f;
 
+  // Minimum transmittance value to avoid log(0)
+  static constexpr float MinTransmittanceValue = 1.f / 255.f;
+
   VolumeManager(VolumeManager const&) = delete;
   VolumeManager& operator=(VolumeManager const&) = delete;
 
