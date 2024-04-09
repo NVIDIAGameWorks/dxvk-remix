@@ -90,12 +90,14 @@ namespace dxvk {
     ) {
       // Handle Fog Color remapping
       // Note: This must happen first as max distance remapping will depend on the luminance derived from the color determined here.
-
       if (RtxOptions::Get()->enableFogColorRemap()) {
         // Note: Legacy fixed function fog color is in gamma space as all the rendering in old games was typically in gamma space, same assumption we make
         // for textures/lights.
         volumetricTransmittanceColor = sRGBGammaToLinear(fogState.color);
       }
+
+      // Clamp to avoid black color, which may cause NaN issue.
+      volumetricTransmittanceColor = clamp(volumetricTransmittanceColor, Vector3(MinTransmittanceValue), Vector3(MaxTransmittanceValue));
 
       // Handle Fog Max Distance remapping
 
@@ -128,7 +130,7 @@ namespace dxvk {
           if (fogState.density != 0.0f) {
             float const transmittanceColorLuminance{ sRGBLuminance(volumetricTransmittanceColor) };
 
-            volumetricTransmittanceMeasurementDistance = -log(clamp(transmittanceColorLuminance, 0.f, MaxTransmittanceValue)) / fogState.density;
+            volumetricTransmittanceMeasurementDistance = -log(transmittanceColorLuminance) / fogState.density;
             // Todo: Scene scale stuff ignored for now because scene scale stuff is not actually functioning properly. Add back in if it's ever fixed.
             // Note: Convert transmittance measurement distance into our engine's units (from game-specific world units due to being derived
             // from the D3D9 side of things). This in effect is the same as dividing the density by the scene scale.
@@ -142,8 +144,6 @@ namespace dxvk {
     }
 
     // Calculate scattering and attenuation coefficients for the volume
-
-    volumetricTransmittanceColor = clamp(volumetricTransmittanceColor, Vector3(0.0f), Vector3(MaxTransmittanceValue));
 
     Vector3 const volumetricAttenuationCoefficient{
       -log(volumetricTransmittanceColor.x) / volumetricTransmittanceMeasurementDistance,
