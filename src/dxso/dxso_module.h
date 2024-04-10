@@ -55,6 +55,10 @@ namespace dxvk {
     // NV-DXVK start: expose shader outputs for vertex capture
     const DxsoIsgn& osgn() {
       return m_osgn;
+    }    
+    
+    const DxsoCtab& ctab() {
+      return m_ctab;
     }
     // NV-DXVK end
 
@@ -76,7 +80,8 @@ namespace dxvk {
 
     void runAnalyzer(
             DxsoAnalyzer&       analyzer,
-            DxsoCodeIter        iter) const;
+            DxsoCodeIter        iter,
+            DxsoCtab&           ctabInfo) const;
 
     DxsoHeader      m_header;
     DxsoCode        m_code;
@@ -91,7 +96,7 @@ namespace dxvk {
     DxsoShaderMetaInfo   m_meta;
     uint32_t             m_maxDefinedConst;
     DxsoDefinedConstants m_constants;
-
+    DxsoCtab             m_ctab;
   };
 
 }
