@@ -67,6 +67,10 @@ namespace dxvk {
     this->maxFrameRate                  = config.getOption<int32_t>     ("d3d9.maxFrameRate",                  0);
     this->presentInterval               = config.getOption<int32_t>     ("d3d9.presentInterval",               -1);
     this->shaderModel                   = config.getOption<int32_t>     ("d3d9.shaderModel",                   3);
+    // NV-DXVK start: allow customising versions of pixel and vertex shaders individually so people can activate fixed function geometry while maintaining pixel shader support.
+    this->psShaderModel                 = config.getOption<int32_t>     ("d3d9.psShaderModel",                 this->shaderModel);
+    this->vsShaderModel                 = config.getOption<int32_t>     ("d3d9.vsShaderModel",                 this->shaderModel);
+    // NV-DXVK end
     this->evictManagedOnUnlock          = config.getOption<bool>        ("d3d9.evictManagedOnUnlock",          false);
     this->dpiAware                      = config.getOption<bool>        ("d3d9.dpiAware",                      true);
     this->strictConstantCopies          = config.getOption<bool>        ("d3d9.strictConstantCopies",          false);

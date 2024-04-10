@@ -59,6 +59,12 @@ namespace dxvk {
 
     /// Set the max shader model the device can support in the caps.
     int32_t shaderModel;
+
+    // NV-DXVK start: allow customising versions of pixel and vertex shaders individually so people can activate fixed function geometry while maintaining pixel shader support.
+    // These default to d3d9.shaderModel's value if not specifically set  
+    int32_t psShaderModel;
+    int32_t vsShaderModel;
+    // NV-DXVK end 
     
     /// Set the max enabled lights the device can support in the caps.
     int32_t maxEnabledLights;
