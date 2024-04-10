@@ -26,6 +26,9 @@ namespace dxvk {
     }
 
     auto readu32() { return this->readNum<uint32_t> (); }
+    // NV-DXVK start: expose CTAB data
+    auto readu16() { return this->readNum<uint16_t> (); }
+    // NV-DXVK end
     auto readf32() { return this->readNum<float>    (); }
 
     DxbcTag readTag();
@@ -54,7 +57,5 @@ namespace dxvk {
       this->read(&result, sizeof(result));
       return result;
     }
-
   };
-
 }

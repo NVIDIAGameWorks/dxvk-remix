@@ -16,7 +16,9 @@ namespace dxvk {
 
     DxsoAnalyzer analyzer(info);
 
-    this->runAnalyzer(analyzer, m_code.iter());
+    // NV-DXVK start: expose CTAB data
+    this->runAnalyzer(analyzer, m_code.iter(), m_ctab);
+    // NV-DXVK end
 
     return info;
   }
@@ -48,9 +50,12 @@ namespace dxvk {
     return compiler->compile();
   }
 
+  // NV-DXVK start: expose CTAB data
   void DxsoModule::runAnalyzer(
           DxsoAnalyzer&       analyzer,
-          DxsoCodeIter        iter) const {
+          DxsoCodeIter        iter,
+          DxsoCtab&           ctabInfo) const {
+  // NV-DXVK end
     DxsoCodeIter start = iter;
 
     DxsoDecodeContext decoder(m_header.info());
@@ -75,6 +80,10 @@ namespace dxvk {
     tokenCount += 1;
 
     analyzer.finalize(tokenCount);
+
+    // NV-DXVK start: expose CTAB data
+    ctabInfo = decoder.getCtabInfo();
+    // NV-DXVK end
   }
 
   void DxsoModule::runCompiler(
