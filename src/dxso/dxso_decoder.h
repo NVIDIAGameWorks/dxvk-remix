@@ -3,6 +3,7 @@
 #include "dxso_common.h"
 #include "dxso_enums.h"
 #include "dxso_code.h"
+#include "dxso_ctab.h"
 
 namespace dxvk {
 
@@ -232,6 +233,12 @@ namespace dxvk {
       return m_programInfo;
     }
 
+    // NV-DXVK start: expose CTAB data
+    const DxsoCtab& getCtabInfo() const {
+      return m_ctab;
+    }
+    // NV-DXVK end
+
     /**
      * \brief Decodes an instruction
      *
@@ -268,7 +275,9 @@ namespace dxvk {
     const DxsoProgramInfo&      m_programInfo;
 
     DxsoInstructionContext      m_ctx;
-
+    // NV-DXVK start: expose CTAB data
+    DxsoCtab                    m_ctab;
+    // NV-DXVK end
   };
 
   std::ostream& operator << (std::ostream& os, DxsoUsage usage);

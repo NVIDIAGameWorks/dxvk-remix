@@ -1,6 +1,7 @@
 #include "dxso_decoder.h"
 
 #include "dxso_tables.h"
+#include "dxso_ctab.h"
 
 namespace dxvk {
 
@@ -224,9 +225,16 @@ namespace dxvk {
         return true;
 
       case DxsoOpcode::Comment:
+      { 
+        // NV-DXVK start: expose CTAB data
+        DxsoReader reader((char*) iter.ptrAt(0));
+        if (reader.readTag() == DxbcTag("CTAB")) {
+          m_ctab = DxsoCtab(reader, tokenLength);
+        }
+        // NV-DXVK end
         iter = iter.skip(tokenLength);
         return true;
-
+      }
       default: {
         uint32_t sourceIdx = 0;
         for (uint32_t i = 0; i < tokenLength; i++) {
