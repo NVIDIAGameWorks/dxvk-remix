@@ -876,6 +876,13 @@ namespace dxvk {
     constants.enableThinOpaque = RtxOptions::SubsurfaceScattering::enableThinOpaque();
 
     auto& restirGI = m_common->metaReSTIRGIRayQuery();
+    ReSTIRGISampleStealing restirGISampleStealingMode = restirGI.useSampleStealing();
+    // Stealing pixels requires indirect light stored in separated buffers instead of combined with direct light,
+    // steal samples if separated denoiser is disabled.
+    if (restirGISampleStealingMode == ReSTIRGISampleStealing::StealPixel && !RtxOptions::Get()->isSeparatedDenoiserEnabled())
+    {
+      restirGISampleStealingMode = ReSTIRGISampleStealing::StealSample;
+    }
     constants.enableReSTIRGI = restirGI.shouldDispatch();
     constants.enableReSTIRGITemporalReuse = restirGI.useTemporalReuse();
     constants.enableReSTIRGISpatialReuse = restirGI.useSpatialReuse();
@@ -891,7 +898,7 @@ namespace dxvk {
     constants.reSTIRGIVirtualSampleMaxDistanceRatio = restirGI.virtualSampleMaxDistanceRatio();
     constants.reSTIRGIBiasCorrectionMode = (uint32_t) restirGI.biasCorrectionMode();
     constants.enableReSTIRGIPermutationSampling = restirGI.usePermutationSampling();
-    constants.enableReSTIRGISampleStealing = (uint32_t)restirGI.useSampleStealing();
+    constants.enableReSTIRGISampleStealing = (uint32_t)restirGISampleStealingMode;
     constants.reSTIRGISampleStealingJitter = restirGI.sampleStealingJitter();
     constants.enableReSTIRGIStealBoundaryPixelSamplesWhenOutsideOfScreen = (uint32_t)restirGI.stealBoundaryPixelSamplesWhenOutsideOfScreen();
     constants.enableReSTIRGIBoilingFilter = restirGI.useBoilingFilter();
