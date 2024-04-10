@@ -23,11 +23,34 @@
 
 #include "../util_env.h"
 
+
 // NV-DXVK start: Don't double print every line
 namespace{
   bool getDoublePrintToStdErr() {
     const std::string str = dxvk::env::getEnvVar("DXVK_LOG_NO_DOUBLE_PRINT_STDERR");
     return str.empty();
+  }
+
+  template<int N>
+  static inline void getLocalTimeString(char(&timeString)[N]) {
+    // [HH:MM:SS.MS]
+    static const char* format = "[%02d:%02d:%02d.%03d] ";
+
+#ifdef _WIN32
+    SYSTEMTIME lt;
+    GetLocalTime(&lt);
+
+    sprintf_s(timeString, format,
+              lt.wHour, lt.wMinute, lt.wSecond, lt.wMilliseconds);
+#else
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+
+    struct tm* lt = localtime(&tv.tv_sec);
+
+    sprintf_s(timeString, format,
+              lt->tm_hour, lt->tm_min, lt->tm_sec, (tv.tv_usec / 1000) % 1000);
+#endif
   }
 }
 // NV-DXVK end
@@ -96,15 +119,18 @@ namespace dxvk {
       std::stringstream stream(message);
       std::string       line;
 
+      char timeString[64];
+      getLocalTimeString(timeString);
+
       while (std::getline(stream, line, '\n')) {
         // NV-DXVK start: Don't double print every line
         if(m_doublePrintToStdErr) {
-          std::cerr << prefix << line << std::endl;
+          std::cerr << timeString << prefix << line << std::endl;
         }
         // NV-DXVK end
 
         if (m_fileStream)
-          m_fileStream << prefix << line << std::endl;
+          m_fileStream << timeString << prefix << line << std::endl;
       }
     }
   }
