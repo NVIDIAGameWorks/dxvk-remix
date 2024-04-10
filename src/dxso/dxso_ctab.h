@@ -9,17 +9,18 @@ namespace dxvk {
   /**
     * \brief DXSO CTAB
     *
-    * Stores meta information about the shader
+    * Stores meta information about the shader constant table
     */
-  class DxsoCtab : public RcObject {
+  class DxsoCtab {
 
   public:
+    DxsoCtab() = default;
 
     DxsoCtab(DxsoReader& reader, uint32_t commentTokenCount);
 
-  private:
+    inline static const uint32_t ctabHeaderSize = 0x1c;
 
-    uint32_t m_size;
+    uint32_t m_size = 0;
     uint32_t m_creator;
     uint32_t m_version;
     uint32_t m_constants;
@@ -27,6 +28,13 @@ namespace dxvk {
     uint32_t m_flags;
     uint32_t m_target;
 
+    struct Constant {
+      std::string name;
+      uint32_t registerIndex;
+      uint32_t registerCount;
+    };
+
+    std::vector<Constant> m_constantData;
   };
 
 }
