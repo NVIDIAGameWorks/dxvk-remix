@@ -540,10 +540,18 @@ namespace dxvk {
 
     const uint32_t majorVersion = options.shaderModel;
     const uint32_t minorVersion = options.shaderModel != 1 ? 0 : 4;
+    
+    // NV-DXVK start: allow customising versions of pixel and vertex shaders individually so people can activate fixed function geometry while maintaining pixel shader support.
+    const uint32_t psMajorVersion = options.psShaderModel;
+    const uint32_t psMinorVersion = options.psShaderModel != 1 ? 0 : 4;
+    
+    const uint32_t vsMajorVersion = options.vsShaderModel;
+    const uint32_t vsMinorVersion = options.vsShaderModel != 1 ? 0 : 4;
 
     // Shader Versions
-    pCaps->VertexShaderVersion = D3DVS_VERSION(majorVersion, minorVersion);
-    pCaps->PixelShaderVersion  = D3DPS_VERSION(majorVersion, minorVersion);
+    pCaps->VertexShaderVersion = D3DVS_VERSION(vsMajorVersion, vsMinorVersion);
+    pCaps->PixelShaderVersion  = D3DPS_VERSION(psMajorVersion, psMinorVersion);
+    // NV-DXVK end
 
     // Max Vertex Shader Const
     pCaps->MaxVertexShaderConst       = MaxFloatConstantsVS;
