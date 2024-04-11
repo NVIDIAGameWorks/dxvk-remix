@@ -213,7 +213,7 @@ int main() {
   }
   catch (const dxvk::DxvkError& e) {
     std::cerr << e.message() << std::endl;
-    return -1;
+    throw;
   }
 
   return 0;

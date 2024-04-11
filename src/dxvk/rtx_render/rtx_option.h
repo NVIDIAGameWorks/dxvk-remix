@@ -306,6 +306,9 @@ namespace dxvk {
     }
   }
 
+  // So we can access this function from anywhere.
+  extern "C" __declspec(dllexport) bool writeMarkdownDocumentation(const char* outputMarkdownFilePath);
+
 // The RTX_OPTION* macros provide a convenient way to declare a serializable option
 #define RTX_OPTION_FULL(category, type, name, value, environment, flags, description) \
   private: inline static RtxOption<type> m_##name = RtxOption<type>(category, #name, environment, type(value), static_cast<uint32_t>(flags), description); \
