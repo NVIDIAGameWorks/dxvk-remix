@@ -87,7 +87,7 @@ int main() {
   }
   catch (const dxvk::DxvkError& error) {
     std::cerr << error.message() << std::endl;
-    return -1;
+    throw;
   }
 
   return 0;
