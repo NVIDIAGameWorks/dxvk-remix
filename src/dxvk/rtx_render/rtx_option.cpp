@@ -483,4 +483,8 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
     static RtxOptionMap s_rtxOptions = RtxOptionMap();
     return s_rtxOptions;
   }
+
+   bool writeMarkdownDocumentation(const char* outputMarkdownFilePath) {
+    return dxvk::RtxOptionImpl::writeMarkdownDocumentation(outputMarkdownFilePath);
+  }
 }

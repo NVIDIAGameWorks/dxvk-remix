@@ -70,6 +70,8 @@ dxvk_is_msvc = dxvk_compiler.get_id() == 'msvc'
 dxvk_is_ninja = meson.backend() == 'ninja'
 enable_rtxio = get_option('enable_rtxio')
 
+external_dll_paths = []
+
 if dxvk_is_msvc
   if get_option('buildtype') == 'release'
     add_global_arguments('/Zi', language : 'cpp')
@@ -237,6 +239,7 @@ dxvk_extradep += lib_shlwapi
 
 if enable_rtxio == true
   rtxio_bin_path = join_paths(global_src_root_norm, 'external/rtxio/bin')
+  external_dll_paths += rtxio_bin_path
   rtxio_lib = dxvk_compiler.find_library('rtxio', dirs : join_paths(global_src_root_norm, 'external/rtxio/lib'))
   rtxio_include_path = include_directories('external/rtxio/include')
   dxvk_extradep += rtxio_lib
@@ -410,6 +413,7 @@ nvapi_lib = dxvk_compiler.find_library('nvapi64', dirs : nvapi_lib_path)
 
 # Cache lib locations
 usd_lib_path = join_paths(global_src_root_norm, 'external/nv_usd/' + usd_debug_or_release + '/')
+external_dll_paths += usd_lib_path
 usd_lib = dxvk_compiler.find_library('usd_ms', dirs : usd_lib_path)
 if get_option('buildtype') == 'debug'
   tbb_lib = dxvk_compiler.find_library('tbb_debug', dirs : usd_lib_path)
@@ -419,17 +423,21 @@ endif
 
 reflex_include_path = include_directories( 'external/reflex/inc')
 reflex_lib_path = join_paths(global_src_root_norm, 'external/reflex/lib')
+external_dll_paths += reflex_lib_path
 reflex_lib = dxvk_compiler.find_library('NvLowLatencyVk', dirs : reflex_lib_path)
 
 aftermath_include_path = include_directories( 'external/aftermath/include')
 aftermath_lib_path = join_paths(global_src_root_norm, 'external/aftermath/lib/x64/')
+external_dll_paths += aftermath_lib_path
 aftermath_lib = dxvk_compiler.find_library('GFSDK_Aftermath_Lib.x64', dirs : aftermath_lib_path)
 
 # this is repeated below, since we overwrite dlss_lib_path in src/dxvk/meson.build for some reason
 dlss_root_path = 'external/ngx_sdk_dlss'
 dlss_lib_path = join_paths(global_src_root_norm, dlss_root_path, 'lib/Windows_x86_64/rel/')
+external_dll_paths += dlss_lib_path
 dlfg_root_path = 'external/ngx_sdk_dlfg'
 dlfg_lib_path = join_paths(global_src_root_norm, dlfg_root_path, 'lib/Windows_x86_64/rel/')
+external_dll_paths += dlfg_lib_path
 
 nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd/Lib/Release/')
 if get_option('buildtype') == 'debug'  
