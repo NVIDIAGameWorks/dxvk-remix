@@ -1435,7 +1435,7 @@ namespace dxvk {
 
     if (ImGui::CollapsingHeader("Developer Options", collapsingHeaderFlags)) {
       ImGui::Indent();
-      ImGui::Checkbox("Enable", &RtxOptions::Get()->enableDeveloperOptionsObject());
+      ImGui::Checkbox("Enable Instance Debugging", &RtxOptions::enableInstanceDebuggingToolsObject());
       ImGui::Checkbox("Disable Draw Calls Post RTX Injection", &RtxOptions::Get()->skipDrawCallsPostRTXInjectionObject());
       if (ImGui::Checkbox("Block Input to Game in UI", &RtxOptions::Get()->blockInputToGameInUIObject())) {
         sendUIActivationMessage();
