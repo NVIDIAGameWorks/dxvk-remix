@@ -636,8 +636,9 @@ namespace dxvk {
 
     // Disable temporal correlation between instances so that duplicate instances are not created
     // should a developer option change instance enough for it not to match anymore
-    if (RtxOptions::Get()->getDeveloperOptionsEnabled())
+    if (RtxOptions::enableInstanceDebuggingTools()) {
       return nullptr;
+    }
 
     RtInstance* result = nullptr;
 
@@ -803,8 +804,9 @@ namespace dxvk {
 
   // Returns true if the instance was modified
   bool InstanceManager::applyDeveloperOptions(RtInstance& currentInstance, const DrawCallState& drawCall) {
-    if (!RtxOptions::Get()->getDeveloperOptionsEnabled())
+    if (!RtxOptions::enableInstanceDebuggingTools()) {
       return false;
+    }
 
     if ((
       currentInstance.m_instanceVectorId >= RtxOptions::Get()->getInstanceOverrideInstanceIdx() &&
