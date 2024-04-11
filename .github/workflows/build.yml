@@ -41,6 +41,13 @@ jobs:
         . .\build_common.ps1
         PerformBuild -BuildFlavour ${{matrix.build-flavour}} -BuildSubDir ${{matrix.output-subdir}} -Backend ninja -EnableTracy false copy_output
     
+    - name: Unit Test
+      shell: pwsh
+      run: |
+        pushd ${{matrix.output-subdir}}
+          meson test --verbose --print-errorlogs
+        popd
+
     - name: Copy readme
       run: copy artifacts_readme.txt _output
     
