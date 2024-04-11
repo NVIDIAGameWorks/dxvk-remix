@@ -1174,6 +1174,8 @@ namespace dxvk {
     m_currentCommandList = m_dlfgEvalCommandLists.nextCmdList();
 
     if (m_contextDirty) {
+      assert(m_dlfgContext != nullptr);
+
       m_dlfgContext->releaseNGXFeature();
       m_dlfgContext->initialize(ctx,
                                 m_currentCommandList->getCmdBuffer(),
@@ -1201,6 +1203,8 @@ namespace dxvk {
     do {
       // xxxnsubtil: can't do this because DLFG will submit cmdlists behind our back
       //ScopedGpuProfileZone_Present(m_device, *m_currentCommandList, "DLFG evaluate");
+
+      assert(m_dlfgContext != nullptr);
 
       res = m_dlfgContext->evaluate(Rc<DxvkContext>(ctx.ptr()),
                                                     m_currentCommandList->getCmdBuffer(),

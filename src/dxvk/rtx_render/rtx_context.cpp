@@ -1794,7 +1794,10 @@ namespace dxvk {
   }
 
   bool RtxContext::shouldUseDLSS() const {
-    return RtxOptions::Get()->isDLSSEnabled() && m_dlssSupported;
+    // Note: m_dlssSupported only checks for the presence of some basic extensions, the actual DLSS context needs to be queried to see
+    // if a given platform supports DLSS (as this will depend on if it was actually initialized successfully or not). Cases where m_dlssSupported
+    // is true but supportsDLSS() is not are for example when the DLSS DLL is missing.
+    return RtxOptions::Get()->isDLSSEnabled() && m_dlssSupported && m_common->metaDLSS().supportsDLSS();
   }
 
   bool RtxContext::shouldUseNIS() const {

@@ -574,9 +574,9 @@ if dxvk_is_ninja
 
   # ... and now we do this again, because src/dxvk/meson.build overwrites this for some reason
   dlss_root_path = 'external/ngx_sdk_dlss'
-  dlss_lib_path = join_paths(global_src_root_norm, dlss_root_path, 'Lib/Windows_x86_64/rel/')
+  dlss_lib_path = join_paths(global_src_root_norm, dlss_root_path, 'lib/Windows_x86_64/rel/')
   dlfg_root_path = 'external/ngx_sdk_dlfg'
-  dlfg_lib_path = join_paths(global_src_root_norm, dlfg_root_path, 'Lib/Windows_x86_64/rel/')
+  dlfg_lib_path = join_paths(global_src_root_norm, dlfg_root_path, 'lib/Windows_x86_64/rel/')
 
   # meson seems to force / as the path separator in custom_target
   # ... except in the case where the path separators are inconsistent, in which case it does nothing
