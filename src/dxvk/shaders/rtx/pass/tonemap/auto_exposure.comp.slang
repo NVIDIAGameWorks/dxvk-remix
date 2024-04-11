@@ -114,6 +114,8 @@ void main(uint2 threadId : SV_DispatchThreadID, uint linearIndex : SV_GroupIndex
     if(cb.averageMode == 1) 
     {
       float median = (weightedSum - discardSampleCount) / 2.f;
+      weightedAverage = 0.5f; // Start with the first bucket center
+
       for(uint i=1 ; i<EXPOSURE_HISTOGRAM_SIZE ; i++) 
       {
         if(g_localData[i] > median)
