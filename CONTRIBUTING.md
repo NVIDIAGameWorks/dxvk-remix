@@ -3,7 +3,7 @@
 RTX Remix is an open-source project created and maintained by NVIDIA Corporation.  The codebase of DXVK-Remix and Bridge-Remix are provided under the MIT license, and Nvidia's official statement on the use of this repository and its submodules for projects is as follows:
 > NVIDIA permits modders to build and share mods using NVIDIA technologies/binaries from our RTX Remix’s GitHub, the DXVK-Remix GitHub, or the Bridge-Remix GitHub.
 
-If you are looking to contribute to the RTX Remix project, be mindful of a few quirks of the project and its 
+If you are looking to contribute to the RTX Remix project, be mindful of the following:
 
 ### Learning Remix
 
@@ -11,17 +11,17 @@ A number of useful resources are available on the RTX Remix Showcase Discord, in
 
 ### Bug Reports and Issues
 
-All bug reports and requests should be filed on the RTX Remix repository.  Please avoid submitting reports to the dxvk-remix or bridge-remix repositories.
+All bug reports and requests should be filed on the [RTX Remix](https://github.com/NVIDIAGameWorks/rtx-remix/issues) repository regardless of submodule.  Please avoid submitting reports to the dxvk-remix or bridge-remix repositories.
 
-When an Issue is filed on GitHub, it is processed on an internal Jira board and assigned a ticket.  When this happens, an Nvidia engineer will be assigned to investigate and process this ticket in the near future.
+When an Issue is filed on GitHub, it is processed on an internal Jira board on the same day (or the following Monday if on a weekend/holiday) and assigned a ticket.  When this happens, an Nvidia engineer will be assigned to investigate and process this ticket in the near future.
 
-Due to ticket volume and internal project demands, these tickets can take time-- be patient!  If you see the tracking number post, it has been seen and will be processed eventually.
+Due to ticket volume and internal project demands, these tickets can take time-- be patient!  It has been seen and will be processed eventually.
 
 #### Attachments and Essential Information
 
 For all issues, please include:
 - All of the information listed on the Bug Report template
-- Any relevant .dmp files to the issue
+- Any .dmp files relevant to the issue, located in the .trex folder
 - Any .conf files in use
 - If relevant to the issue, run an API trace
 
@@ -33,7 +33,7 @@ Any relevant files should be attached to the issue directly.  If the file is too
 
 Before submitting an Issue, it is recommended to discuss the issue in the [RTX Remix Showcase](https://discord.gg/rtxremix) community Discord where several Nvidia engineers and a community of experienced users will be able to assist in compiling info for a thorough and accurate report.  This can be done in the `runtime-help` forum or a dedicated `remix-projects` thread for the game/application in specific. 
 
-#### Debugging and API Tracing
+### Debugging and API Tracing
 
 #### Reading Crash Info (Visual Studio Community 2019):
 
@@ -50,6 +50,7 @@ Please remember to include relevant dmp files for Issue reports.
 #### Running an application with Visual Studio Community 2019 debugging:
 
 Once Visual Studio Community is installed [preferrably 2019], you will need to install the following plugin:
+- Windows Debugging Tools (WinDBG); available through the [WDK](https://learn.microsoft.com/en-us/windows-hardware/drivers/download-the-wdk#download-icon-for-wdk-step-3-install-wdk)
 - Microsoft Child Process Debugging Power Tool ([For VS2019](https://marketplace.visualstudio.com/items?itemName=vsdbgplat.MicrosoftChildProcessDebuggingPowerTool)) ([For VS2022](https://marketplace.visualstudio.com/items?itemName=vsdbgplat.MicrosoftChildProcessDebuggingPowerTool2022))
 
 To run an application through Visual Studio:
@@ -66,35 +67,38 @@ To run an application through Visual Studio:
 
 Note: If the application provides an unusual error on startup or fails to start, this may be the result of anti-debugging or DRM modules.  Many early Steam games may trigger these issues, as well as other games where the developers have deliberately included such security measures.  The easiest way to resolve such an issue is to purchase the game on a platform such as GOG and test the DRM-free version instead.
 
-##### APITrace:
+#### APITrace:
 
 In some cases, it will be recommended to include an API Trace so that the engineer investigating your ticket can see how the DirectX API is being used in the original title, and how this differs from the current implementation.  An API trace will allow them to see what is being rendered frame by frame and how in order to find the issue.
 
 In order to run an API Trace on a game, follow these steps:
 
-1. Download APITrace.
-    - NOTE: In most cases, you will be using the 32-bit version of the application as the primary use case of Remix is for 32-bit DirectX 9 games.
+1. Download [APITrace](https://apitrace.github.io/#download).
+    - NOTE: In most cases, you will be using the x86 version of the application as the primary use case of Remix is for 32-bit DirectX 9 games.  If you are testing a 64-bit application, use x86_64.
 2. Extract the contents of the download to a place where it is accessible.  Note that API traces can be large in size (more than 15-20 GB in extreme cases) and that additional free space on the drive is highly recommended.  This can be slightly reduced by enabling VSync or adding a framerate limit to the game, so long as this does not impact the issue you are reporting.
-3. In order to launch the game, open QAPITrace.exe and set up the interface to open the EXE of the game as a DirectX 9 app.  The application will be opened and the APITrace will begin, and if it hooks successfully, it will end when the application closes.
-4. Save the API trace and upload with other bug report materials as described above.  Note that this file may be too large to upload to GitHub.
+3. In order to launch the game, open `bin/QAPITrace.exe` and press `File` > `New...` (`Ctrl`-`N`) to start a new trace.  Open the EXE of the game with D3D9 as the API.
+
+![image](./documentation/Contributing_Images/qapitrace_d3d9.jpg)
+
+4.  The application will be opened and the APITrace will begin, and if it hooks successfully, it will end when the application closes. 
+5. Save the API trace and upload with other bug report materials as described above.  Note that this file may be too large to upload to GitHub.
 
 NOTE: Some applications will immediately be lost by the API trace program, leaving only the first frame of the application in the file or closing with an error.  When this happens, it is most likely the result of anti-debugging or DRM modules that are interfering with the program, and it is recommended to find another build of the game that is DRM-free; this can be done by searching for official patches for the game or by purchasing the game on GOG if possible.  Websites such as PCGamingWiki can also be useful in determining which versions of a game contain additional DRM. 
 
-
 ### Pull Requests
 
-Pull Requests should be submitted to the relevant repository.  If the request is for documentation on the core RTX Remix repository, submit there.  If the pull request is for a submodule (DXVK-Remix or Bridge-Remix), send the pull request to those repositories instead.
+Pull Requests should be submitted to the relevant repository.  Pull requests for the main RTX Remix repository are rarely if ever needed.  If the pull request is for a submodule (DXVK-Remix or Bridge-Remix), send the pull request to those repositories instead.
 
 #### Code Quality Standards
 
 Please avoid unnecessary whitespaces and follow the code nesting standards seen elsewhere on the script you are currently working on.  Any unnecessary changes [e.g. unnecessary empty lines] can snowball into source control issues for other commits.  
 
-An official style guide for C/C++ code does not exist for DXVK, and as of writing does not exist for DXVK-Remix either.  However, shader changes should adhere to the styling conventions listed here: [RTX Remix Shader Overview](https://github.com/NVIDIAGameWorks/dxvk-remix/blob/main/src/dxvk/shaders/rtx/README.md)
+An official style guide for C/C++ code does not exist for DXVK, and as of writing does not exist for DXVK-Remix either.  However, shader changes should adhere to the styling conventions listed here: [RTX Remix Shader Overview](./src/dxvk/shaders/rtx/README.md)
 
-Whenever customizing rtx_options.h, ensure that any additional options are given a concise tooltip as seen in other lines.  This way, the autogenerated documentation on RTX Options will include information on how your added option is used.
+Whenever customizing `rtx_options.h`, ensure that any additional options are given a concise tooltip as seen in other lines.  This way, the autogenerated documentation on RTX Options will include information on how your added option is used.
 
 #### Contribution Credits
-When making a pull request, also remember to update [dxvk_imgui_about.cpp](https://github.com/NVIDIAGameWorks/dxvk-remix/blob/main/src/dxvk/imgui/dxvk_imgui_about.cpp) and add your name to the list.  Names are organized from A-Z by last name.
+When making a pull request, also remember to update [dxvk_imgui_about.cpp](./src/dxvk/imgui/dxvk_imgui_about.cpp) and add your name to the list of "GitHub Contributors" on a new line.  Names are organized from A-Z by last name.
 
 #### Cherry-Picking
 
@@ -109,12 +113,13 @@ Squashing is a process in which all of the changes across several commits are tr
 When Squashing, make sure that you replace the automatic squashed commit history with a concise message describing exactly what your change does.
 
 ##### GitHub Desktop
-- Press `Ctrl`-`Shift`-`H` or select `Branch` > `Merge into current branch...`, then select the branch you are squashing.  The branch will merge into itself.
+- Press `Ctrl`-`Shift`-`H` or select `Branch` > `Merge into current branch...`, then select the branch you are squashing.  The branch will merge into itself with a clean history.  If an error occurs, see [Squash Troubleshooting](#squash-troubleshooting).
 
 ##### Git Bash
 
-1. `git checkout yourPRbranch`
-2. `git merge --squash yourPRbranch`
+1. `git fetch`
+2. `git checkout yourPRbranch`
+3. `git merge --squash yourPRbranch`
 
 #### Squash Troubleshooting
 
@@ -130,7 +135,7 @@ If a branch with a new commit has been pulling and merging with the main reposit
 
 1. `Rebase and Merge` your PR branch to `upstream/main` by pressing `Branch` > `Rebase Current Branch`, or `Ctrl`-`Shift`-`E`.
 2. Create a new branch by clicking the `Current branch` tab and selecting `New branch`.  The new branch should be based on `upstream/main` with no changes.
-3. `Squash and Merge` the PR branch by pressing `Ctrl`-`Shift`-`H`, and select the cleaned branch you are currently squashing.
+3. `Squash and Merge` the dirty PR branch by selecting the clean branch, then pressing `Ctrl`-`Shift`-`H`.  Select the dirty branch and all commits will squashed and merged.  The clean branch now has your work as a single commit. 
 4. Press `Ctrl`-`` ` `` to open the Command Prompt.
 5. Input the folllowing command, with `rebased-commit-branch` being your clean branch from step 3 and `original-dirty-pr-branch` being your dirty PR branch from step 1: 
     - `git push origin +rebased-commit-branch:original-dirty-pr-branch`
@@ -147,5 +152,7 @@ If a branch with a new commit has been pulling and merging with the main reposit
 ### Other Info
 
 
-- RTX Remix API: https://docs.omniverse.nvidia.com/kit/docs/rtx_remix/latest/docs/contributing.html
-- Omniverse C/C++ Coding Conventions: https://docs.omniverse.nvidia.com/kit/docs/carbonite/latest/CODING.html#c-c-coding-conventions
+- [RTX Remix API](https://docs.omniverse.nvidia.com/kit/docs/rtx_remix/latest/docs/contributing.html)
+- [Community Discord](https://discord.gg/rtxremix)
+- [RTX Remix Shader Overview](./src/dxvk/shaders/rtx/README.md)
+- [DXVK-Remix Documentation](./documentation/)
