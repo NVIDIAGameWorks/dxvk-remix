@@ -2751,7 +2751,7 @@ namespace dxvk {
         ImGui::DragInt("Min Kernel Radius", &RtxOptions::Get()->froxelMinKernelRadiusObject(), 0.05f, 1, UINT8_MAX);
         ImGui::DragInt("Max Kernel Radius", &RtxOptions::Get()->froxelMaxKernelRadiusObject(), 0.05f, 1, UINT8_MAX);
         ImGui::DragInt("Min Kernel Radius Stability History", &RtxOptions::Get()->froxelMinKernelRadiusStabilityHistoryObject(), 0.1f, 1, UINT8_MAX);
-        ImGui::DragInt("Min Kernel Radius Stability History", &RtxOptions::Get()->froxelMaxKernelRadiusStabilityHistoryObject(), 0.1f, 1, UINT8_MAX);
+        ImGui::DragInt("Max Kernel Radius Stability History", &RtxOptions::Get()->froxelMaxKernelRadiusStabilityHistoryObject(), 0.1f, 1, UINT8_MAX);
         ImGui::DragFloat("Kernel Radius Stability History Power", &RtxOptions::Get()->froxelKernelRadiusStabilityHistoryPowerObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
 
         ImGui::Unindent();
