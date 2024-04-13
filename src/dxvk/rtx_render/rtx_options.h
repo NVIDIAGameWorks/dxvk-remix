@@ -761,7 +761,7 @@ namespace dxvk {
     RTX_OPTION_ENV("rtx", bool, enableMultiStageTextureFactorBlending, true, "RTX_ENABLE_MULTI_STAGE_TEXTURE_FACTOR_BLENDING", "Support texture factor blending in stage 1~7. Currently only support 1 additional blending stage, more than 1 additional blending stages will be ignored.");
 
     // Developer Options
-    RTX_OPTION("rtx", bool, enableDeveloperOptions, false, "");
+    RTX_OPTION_FLAG("rtx", bool, enableInstanceDebuggingTools, false, RtxOptionFlags::NoSave, "NOTE: This will disable temporal correllation for instances, but allow the use of instance developer debug tools");
     RTX_OPTION("rtx", Vector2i, drawCallRange, Vector2i(0, INT32_MAX), "");
     RTX_OPTION("rtx", Vector3, instanceOverrideWorldOffset, Vector3(0.f, 0.f, 0.f), "");
     RTX_OPTION("rtx", uint, instanceOverrideInstanceIdx, UINT32_MAX, "");
@@ -1360,7 +1360,6 @@ namespace dxvk {
     float getMaxAnisotropySamples() const { return maxAnisotropySamples(); }
 
     // Developer Options
-    bool getDeveloperOptionsEnabled() const { return enableDeveloperOptions(); }
     ivec2 getDrawCallRange() { Vector2i v = drawCallRange(); return ivec2{v.x, v.y}; };
     Vector3 getOverrideWorldOffset() { return instanceOverrideWorldOffset(); }
     uint getInstanceOverrideInstanceIdx() { return instanceOverrideInstanceIdx(); }

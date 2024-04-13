@@ -150,6 +150,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.di.enableBestLightSampling|bool|True|Whether to include a single best light from the previous frame's pixel neighborhood into initial sampling\.|
 |rtx.di.enableCrossPortalLight|bool|True||
 |rtx.di.enableDenoiserConfidence|bool|True||
+|rtx.di.enableDenoiserGradient|bool|True|Enable gradient calculation, which is used by confidence calculation and GI sample validation\.|
 |rtx.di.enableDiscardEnlargedPixels|bool|True||
 |rtx.di.enableDiscardInvisibleSamples|bool|True|Whether to discard reservoirs that are determined to be invisible in final shading\.|
 |rtx.di.enableInitialVisibility|bool|True|Whether to trace a visibility ray for the light sample selected in the initial sampling pass\.|
@@ -192,13 +193,13 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.enableAdaptiveResolutionReplacementTextures|bool|True|A flag to enable or disable adaptive resolution replacement textures\.<br>When enabled, this mode allows replacement textures to load in only up to an adaptive minimum mip level to cut down on memory usage, but only when force high resolution replacement textures is disabled\.<br>This should generally always be enabled to ensure Remix does not starve the system of CPU or GPU memory while loading textures\.<br>Additionally, this setting must be set at startup and changing it will not take effect at runtime\.|
 |rtx.enableAlphaBlend|bool|True|Enable rendering alpha blended geometry, used for partial opacity and other blending effects on various surfaces in many games\.|
 |rtx.enableAlphaTest|bool|True|Enable rendering alpha tested geometry, used for cutout style opacity in some games\.|
+|rtx.enableAlwaysCalculateAABB|bool|False|Calculate an Axis Aligned Bounding Box for every draw call\.<br> This may improve instance tracking across frames for skinned and vertex shaded calls\.|
 |rtx.enableAsyncTextureUpload|bool|True||
 |rtx.enableBillboardOrientationCorrection|bool|True||
 |rtx.enableCulling|bool|True|Enable front/backface culling for opaque objects\. Objects with alpha blend or alpha test are not culled\.|
 |rtx.enableCullingInSecondaryRays|bool|False|Enable front/backface culling for opaque objects\. Objects with alpha blend or alpha test are not culled\.  Only applies in secondary rays, defaults to off\.  Generally helps with light bleeding from objects that aren't watertight\.|
 |rtx.enableDLSSEnhancement|bool|True|Enhances lighting details when DLSS is on\.|
 |rtx.enableDecalMaterialBlending|bool|True|A flag to enable or disable material blending on decals\.<br>This should generally always be enabled when decals are in use as this allows decals to be blended down on to the surface they sit slightly above which results in more convincing decals rendering\.|
-|rtx.enableDeveloperOptions|bool|False||
 |rtx.enableDirectLighting|bool|True|Enables direct lighting \(lighting directly from lights on to a surface\) on surfaces when set to true, otherwise disables it\.|
 |rtx.enableDirectTranslucentShadows|bool|False|Include OBJECT\_MASK\_TRANSLUCENT into primary visibility rays\.|
 |rtx.enableEmissiveBlendEmissiveOverride|bool|True|Override typical material emissive information on draw calls with any emissive blending modes to emulate their original look more accurately\.|
@@ -211,6 +212,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.enableFogMaxDistanceRemap|bool|True|A flag to enable or disable remapping fixed function fox's max distance\. Only takes effect when fog remapping in general is enabled\.<br>Enables or disables remapping functionality relating to the max distance parameter of fixed function fog\.<br>This allows dynamic changes to the game's fog max distance to be reflected somewhat in the volumetrics system\. Overrides the specified volumetric transmittance measurement distance\.|
 |rtx.enableFogRemap|bool|False|A flag to enable or disable fixed function fog remapping\. Only takes effect when volumetrics are enabled\.<br>Typically many old games used fixed function fog for various effects and while sometimes this fog can be replaced with proper volumetrics globally, other times require some amount of dynamic behavior controlled by the game\.<br>When enabled this option allows for remapping of fixed function fog parameters from the game to volumetric parameters to accomodate this dynamic need\.|
 |rtx.enableIndirectTranslucentShadows|bool|False|Include OBJECT\_MASK\_TRANSLUCENT into secondary visibility rays\.|
+|rtx.enableInstanceDebuggingTools|bool|False|NOTE: This will disable temporal correllation for instances, but allow the use of instance developer debug tools|
 |rtx.enableMultiStageTextureFactorBlending|bool|True|Support texture factor blending in stage 1~7\. Currently only support 1 additional blending stage, more than 1 additional blending stages will be ignored\.|
 |rtx.enableNearPlaneOverride|bool|False|A flag to enable or disable the Camera's near plane override feature\.<br>Since the camera is not used directly for ray tracing the near plane the application uses typically does not matter, but for certain matrix\-based operations \(such as temporal reprojection or voxel grid projection\) it is still relevant\.<br>The issue arises when geometry is ray traced that is behind where the chosen Camera's near plane is located, typically common on viewmodels especially with how they are ray traced, causing graphical artifacts and other issues\.<br>This option helps correct this issue by overriding the near plane value to else \(usually smaller\) to sit behind the objects in question \(such as the view model\)\. As such this option should usually be enabled on games with viewmodels\.<br>Do note that when adjusting the near plane the larger the relative magnitude gap between the near and far plane the worse the precision of matrix operations will be, so the near plane should be set as high as possible even when overriding\.|
 |rtx.enablePSRR|bool|True|A flag to enable or disable reflection PSR \(Primary Surface Replacement\)\.<br>When enabled this feature allows higher quality mirror\-like reflections in special cases by replacing the G\-Buffer's surface with the reflected surface\.<br>Should usually be enabled for the sake of quality as almost all applications will utilize it in the form of glass or mirrors\.|
@@ -220,7 +222,6 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.enablePortalFadeInEffect|bool|False||
 |rtx.enablePresentThrottle|bool|False|A flag to enable or disable present throttling, when set to true a sleep for a time specified by the throttle delay will be inserted into the DXVK presentation thread\.<br>Useful to manually reduce the framerate if the application is running too fast or to reduce GPU power usage during development to keep temperatures down\.<br>Should not be enabled in anything other than development situations\.|
 |rtx.enablePreviousTLAS|bool|True||
-|rtx.enableRaytracing|bool|True|Globally enables or disables ray tracing\. When set to false the original game should render mostly as it would in DXVK typically\.<br>Some artifacts may still appear however compared to the original game either due to issues with the underlying DXVK translation or issues in Remix itself\.|
 |rtx.enableReplacementAssets|bool|True|Globally enables or disables all enhanced asset replacement \(materials, meshes, lights\) functionality\.|
 |rtx.enableReplacementLights|bool|True|Enables or disables enhanced light replacements\.<br>Requires replacement assets in general to be enabled to have any effect\.|
 |rtx.enableReplacementMaterials|bool|True|Enables or disables enhanced material replacements\.<br>Requires replacement assets in general to be enabled to have any effect\.|
@@ -231,6 +232,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.enableShaderExecutionReorderingInPathtracerGbuffer|bool|False|\(Note: Hard disabled in shader code\) Enables Shader Execution Reordering \(SER\) in GBuffer Raytrace pass if SER is supported\.|
 |rtx.enableShaderExecutionReorderingInPathtracerIntegrateIndirect|bool|True|Enables Shader Execution Reordering \(SER\) in Integrate Indirect pass if SER is supported\.|
 |rtx.enableStochasticAlphaBlend|bool|True|Use stochastic alpha blend\.|
+|rtx.enableTransmissionApproximationInIndirectRays|bool|False|A flag to enable transmission approximations in indirect rays\.<br>Translucent objects hit by indirect rays will not alter ray direction, just change the ray throughput\.|
 |rtx.enableUnorderedEmissiveParticlesInIndirectRays|bool|False|A flag to enable or disable unordered resolve emissive particles specifically in indirect rays\.<br>Should be enabled in higher quality rendering modes as emissive particles are fairly important in reflections, but may be disabled to skip such interactions which can improve performance on lower end hardware\.<br>Note that rtx\.enableUnorderedResolveInIndirectRays must first be enabled for this option to take any effect \(as it will control if unordered resolve is used to begin with in indirect rays\)\.|
 |rtx.enableUnorderedResolveInIndirectRays|bool|True|A flag to enable or disable unordered resolve approximations in indirect rays\.<br>This allows for the presence of unordered approximations in resolving to be overridden in indirect rays and as such requires separate unordered approximations to be enabled to have any effect\.<br>This option should be enabled if objects which can be resolvered in an unordered way in indirect rays are expected for higher quality in reflections, but may come at a performance cost\.<br>Note that even with this option enabled, unordered resolve approximations are only done on the first indirect bounce for the sake of performance overall\.|
 |rtx.enableVolumetricLighting|bool|False|Enabling volumetric lighting provides higher quality ray traced physical volumetrics, disabling falls back to cheaper depth based fog\.<br>Note that disabling this option does not disable the froxel radiance cache as a whole as it is still needed for other non\-volumetric lighting approximations\.|
@@ -490,6 +492,8 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.restirGI.boilingFilterMinThreshold|float|10|Boiling filter threshold when surface normal is perpendicular to view direction\.|
 |rtx.restirGI.boilingFilterRemoveReservoirThreshold|float|62|Removes a sample when a sample's weight exceeds this threshold\.|
 |rtx.restirGI.fireflyThreshold|float|50|Clamps specular input to suppress boiling\.|
+|rtx.restirGI.historyDiscardStrength|float|0|The sensitivity of discarding history\. Higher values discard more history\.|
+|rtx.restirGI.lightingValidationThreshold|float|0.5|Invalidate a sample when pixel change ratio is above this value\.|
 |rtx.restirGI.misMode|int|2|MIS mode to mix specular output with input\.|
 |rtx.restirGI.misRoughness|float|0.3|Reference roughness when roughness MIS is used\. Higher values give ReSTIR inputs higher weight\.|
 |rtx.restirGI.pairwiseMISCentralWeight|float|0.1|The importance of central sample in pairwise bias correction modes\.|
@@ -497,7 +501,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.restirGI.permutationSamplingSize|int|2|Permutation sampling strength\.|
 |rtx.restirGI.reflectionMinParallax|float|3|When the parallax between normal and reflection reprojection is greater than this threshold, randomly choose one reprojected position and reuse the sample on it\. Otherwise, get a sample between the two positions\.|
 |rtx.restirGI.roughnessClamp|float|0.01|Clamps minimum roughness a sample's importance is evaluated\.|
-|rtx.restirGI.sampleValidationThreshold|float|0.5|Validate samples when normalized pixel change is above this value\.|
+|rtx.restirGI.sampleStealingJitter|float|0|Jitter samples by k pixels to avoid aliasing\.|
 |rtx.restirGI.stealBoundaryPixelSamplesWhenOutsideOfScreen|bool|True|Steals ReSTIR GI samples even a hit point is outside the screen\. This will further improve highly specular samples at the cost of some bias\.|
 |rtx.restirGI.temporalAdaptiveHistoryLengthMs|int|500|Temporal history time length, when adaptive temporal history is enabled\.|
 |rtx.restirGI.temporalFixedHistoryLength|int|30|Fixed temporal history length, when adaptive temporal history is disabled\.|
@@ -509,20 +513,27 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.restirGI.usePermutationSampling|bool|True|Uses permutation sample to perturb samples\. This will improve results in DLSS\.|
 |rtx.restirGI.useReflectionReprojection|bool|True|Uses reflection reprojection for reflective objects to achieve stable result when the camera is moving\.|
 |rtx.restirGI.useSampleStealing|int|2|Steals ReSTIR GI samples in path tracer\. This will improve highly specular results\.|
-|rtx.restirGI.useSampleValidation|bool|True|Validate samples when direct light has changed\.|
 |rtx.restirGI.useSpatialReuse|bool|True|Enables spatial reuse\.|
 |rtx.restirGI.useTemporalBiasCorrection|bool|True|Corrects bias caused by temporal reprojection\.|
 |rtx.restirGI.useTemporalJacobian|bool|True|Calculates Jacobian determinant in temporal reprojection\.|
 |rtx.restirGI.useTemporalReuse|bool|True|Enables temporal reuse\.|
 |rtx.restirGI.useVirtualSample|bool|True|Uses virtual position for samples from highly specular surfaces\.|
+|rtx.restirGI.validateLightingChange|bool|True|Remove samples when direct light has changed\.|
+|rtx.restirGI.validateVisibilityChange|bool|False|Remove samples when visibility has changed\. This feature is automatically disabled when virtual sample is enabled\.|
 |rtx.restirGI.virtualSampleLuminanceThreshold|float|2|The last path vertex with luminance greater than 2 times of the previous accumulated radiance will get virtualized\. Higher values tend to keep the first path vertex with non\-zero contribution\.|
+|rtx.restirGI.virtualSampleMaxDistanceRatio|float|0|Clamp max virtual distance, measured by the proportion of distance to camera\. 0 disables clamping\.|
 |rtx.restirGI.virtualSampleRoughnessThreshold|float|0.2|Surface with roughness under this threshold is considered to be highly specular, i\.e\. a "mirror"\.|
 |rtx.restirGI.virtualSampleSpecularThreshold|float|0.5|If a highly specular path vertex's direct specular light portion is higher than this\. Its distance to the light source will get accumulated\.|
+|rtx.restirGI.visibilityValidationRange|float|0.05|Check actual hit distance of a shadow ray, invalidate a sample if hit length is longer than one plus this portion, compared to the distance from the surface to the sample\.|
 |rtx.risLightSampleCount|int|7|The number of lights randomly selected from the global pool to consider when selecting a light with RIS\.<br>Higher values generally increases the quality of RIS light sampling, but also has diminishing returns and higher performance cost past a point\.<br>Note that RIS is only used when RTXDI is disabled for direct lighting, or for light sampling in indirect rays, so the impact of this effect will vary\.|
 |rtx.rngSeedWithFrameIndex|bool|True|Indicates that pseudo\-random number generator should be seeded with the frame number of the application every frame, otherwise seed with 0\.<br>This should generally always be enabled as without the frame index each frame will typically be identical in the random values that are produced which will result in incorrect rendering\. Only meant as a debugging tool\.|
 |rtx.russianRoulette1stBounceMaxContinueProbability|float|1|The maximum probability of continuing a path when Russian Roulette is being used on the first bounce\.<br>This is similar to the usual max continuation probability for Russian Roulette, but specifically only for the first bounce\.|
 |rtx.russianRoulette1stBounceMinContinueProbability|float|0.6|The minimum probability of continuing a path when Russian Roulette is being used on the first bounce\.<br>This ensures that on the first bounce rays are not terminated too aggressively as it may be useful for some denoisers to have a contribution even if it is a relatively unimportant one rather than a missing indirect sample\.|
+|rtx.russianRouletteDiffuseContinueProbability|float|0.1|The probability of continuing a diffuse path when Russian Roulette is being used\. Only apply to specular based mode\.<br>|
+|rtx.russianRouletteDistanceFactor|float|0.1|Path segments whose distance proportion are under this threshold are more likely to continue\. Only apply to specular based mode\.<br>|
 |rtx.russianRouletteMaxContinueProbability|float|0.9|The maximum probability of continuing a path when Russian Roulette is being used\.<br>This ensures all rays have a small probability of terminating each bounce, mostly to prevent infinite paths in perfectly reflective mirror rooms \(though the maximum path bounce count will also ensure this\)\.|
+|rtx.russianRouletteMode|int|0|Russian Roulette Mode\. Throughput Based: paths with higher throughput become longer; Specular Based: specular paths become longer\.<br>|
+|rtx.russianRouletteSpecularContinueProbability|float|0.98|The probability of continuing a specular path when Russian Roulette is being used\. Only apply to specular based mode\.<br>|
 |rtx.sceneScale|float|1|Defines the ratio of rendering unit \(1cm\) to game unit, i\.e\. sceneScale = 1cm / GameUnit\.|
 |rtx.secondaryRayMaxInteractions|int|8|The maximum number of resolver interactions to use for secondary \(indirect\) rays\.<br>This affects how many Decals, Ray Portals and potentially particles \(if unordered approximations are not enabled\) may be interacted with along a ray at the cost of performance for higher amounts of interactions\.<br>This value is recommended to be set lower than the primary/PSR max ray interactions as secondary ray interactions are less visually relevant relative to the performance cost of resolving them\.|
 |rtx.secondarySpecularFireflyFilteringThreshold|float|1000|Firefly luminance clamping threshold for secondary specular signal\.|

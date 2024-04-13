@@ -156,6 +156,8 @@ namespace dxvk {
     } else {
       NVSDK_NGX_PerfQuality_Value perfQuality = profileToQuality(mActualProfile);
 
+      assert(m_dlssContext != nullptr);
+
       auto optimalSettings = m_dlssContext->queryOptimalSettings(displaySize, perfQuality);
       mInputSize[0] = outRenderSize[0] = optimalSettings.optimalRenderSize[0];
       mInputSize[1] = outRenderSize[1] = optimalSettings.optimalRenderSize[1];
@@ -267,6 +269,8 @@ namespace dxvk {
       // Note: Texture contains specular albedo in this case as DLSS happens after demodulation
       auto specularAlbedoInput = &rtOutput.m_primarySpecularAlbedo.resource(Resources::AccessType::Read);
 
+      assert(m_dlssContext != nullptr);
+
       // Note: Add texture inputs added here to the pInputs array above to properly access the images.
       m_dlssContext->evaluate(ctx,
                               &rtOutput.m_compositeOutput.resource(Resources::AccessType::Read),  // pUnresolvedColor
@@ -310,6 +314,8 @@ namespace dxvk {
   }
 
   void DxvkDLSS::initializeDLSS(Rc<DxvkContext> renderContext) {
+    assert(m_dlssContext != nullptr);
+
     m_dlssContext->releaseNGXFeature();
 
     NVSDK_NGX_PerfQuality_Value perfQuality = profileToQuality(mProfile);
