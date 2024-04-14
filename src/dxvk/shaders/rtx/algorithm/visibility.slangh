@@ -317,10 +317,17 @@ VisibilityResult traceVisibilityRay(
 
         f16vec3 surfaceAttenuation = handleVisibilityVertex(visibilityRay, rayHitInfo, visibilityMode, usePreviousTLAS);
 
+        f16vec3 prevAttenuation = result.attenuation;
         result.attenuation *= surfaceAttenuation;
 
+        // Find an opaque hit
         if ((float16_t(1) - calcBt709Luminance(result.attenuation)) >= cb.resolveOpaquenessThreshold)
         {
+          // If opaque hit is not considered in the attenuation term, need to recover previous attenuation.
+          if(!clearOpaqueHitAttenuation)
+          {
+            result.attenuation = prevAttenuation;
+          }
           rayQuery.CommitNonOpaqueTriangleHit();
           break;
         }
