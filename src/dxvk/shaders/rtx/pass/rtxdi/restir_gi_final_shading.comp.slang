@@ -59,6 +59,68 @@ f16vec3 getParallaxDirection(vec3 position, vec3 samplePosition, f16vec3 normal,
   return normalize(testPoint - position);
 }
 
+void applyBoilingFilter(uint2 threadIndex, uint2 LocalIndex, float boilingFilterMultiplier, inout vec3 diffuseLight, inout vec3 specularLight, inout ReSTIRGI_Reservoir spatialReservoir)
+{
+  // The following code is borrowed from RTXDI SDK. Unlike RTXDI, we use boiling filter to
+  // filter fireflies in the ReSTIR output data. Those fireflies may not be filtered by denoisers
+  // due to small normal details. We calculate the output samples' local average and use that
+  // to remove outliers.
+
+  // Start with average nonzero weight within the wavefront
+  vec2 luminance = vec2(calcBt709Luminance(diffuseLight), calcBt709Luminance(specularLight));
+  vec2 waveWeight = WaveActiveSum(luminance);
+  uint waveCount = WaveActiveCountBits(spatialReservoir.avgWeight > 0);
+
+  // Store the results of each wavefront into shared memory
+  uint linearThreadIndex = LocalIndex.x + LocalIndex.y * RESTIR_GI_BOILING_FILTER_GROUP_SIZE;
+  uint waveIndex = linearThreadIndex / WaveGetLaneCount();
+
+  if (WaveIsFirstLane())
+  {
+      s_weights[waveIndex] = waveWeight;
+      s_count[waveIndex] = waveCount;
+  }
+
+  GroupMemoryBarrierWithGroupSync();
+
+  // Reduce the per-wavefront averages into a global average using one wavefront
+  if (linearThreadIndex < (RESTIR_GI_BOILING_FILTER_GROUP_SIZE * RESTIR_GI_BOILING_FILTER_GROUP_SIZE + WaveGetLaneCount() - 1) / WaveGetLaneCount())
+  {
+      waveWeight = s_weights[linearThreadIndex];
+      waveCount = s_count[linearThreadIndex];
+
+      waveWeight = WaveActiveSum(waveWeight);
+      waveCount = WaveActiveSum(waveCount);
+
+      if (linearThreadIndex == 0)
+      {
+          s_weights[0] = (waveCount > 0) ? (waveWeight / float(waveCount)) : 0.0;
+      }
+  }
+
+  GroupMemoryBarrierWithGroupSync();
+
+  // Read the per-group average and apply the threshold
+  vec2 averageNonzeroWeight = s_weights[0];
+  if (spatialReservoir.M >= cb.temporalHistoryLength)
+  {
+    if (calcBt709Luminance(specularLight) > averageNonzeroWeight.y * cb.boilingFilterRemoveReservoirThreshold)
+    {
+      spatialReservoir.M = 0;
+      RAB_StoreGIReservoir(spatialReservoir, threadIndex, ReSTIRGI_GetSpatialOutputPage());
+    }
+
+    if (calcBt709Luminance(diffuseLight) > averageNonzeroWeight.x * boilingFilterMultiplier)
+    {
+      diffuseLight *= averageNonzeroWeight.x / calcBt709Luminance(diffuseLight);
+    }
+    if (calcBt709Luminance(specularLight) > averageNonzeroWeight.y * boilingFilterMultiplier)
+    {
+      specularLight *= averageNonzeroWeight.y / calcBt709Luminance(specularLight);
+    }
+  }
+}
+
 [shader("compute")]
 [numthreads(8, 8, 1)]
 void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupThreadID)
@@ -76,44 +138,32 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(threadIndex, SharedFlags);
   const bool gBufferMiss = isGBufferMiss(threadIndex, PrimaryConeRadius);
 
-  // Early out if the primary surface was a miss or if the indirect integrator was not selected
-  // to output indirect lighting information
-  if (gBufferMiss)
+  MinimalRayInteraction minimalRayInteraction = (MinimalRayInteraction)0;
+  MinimalSurfaceInteraction minimalSurfaceInteraction = (MinimalSurfaceInteraction)0;
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction = (PolymorphicSurfaceMaterialInteraction)0;
+  ReSTIRGI_Reservoir spatialReservoir = ReSTIRGI_Reservoir.createEmpty();
+
+  if (!gBufferMiss)
   {
-    // Note: Ensure zeros and a proper miss value is written to the Primary Indirect Diffuse/Specular texture
-    // on miss to match logic in the typiacl Integration pass (as denoisers or other passes may get confused
-    // with uninitialized data in these textures in miss regions).
-    PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex] = vec4(vec3(0), kEmptyPixelHitDistance);
-    PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex] = vec4(vec3(0), kEmptyPixelHitDistance);
+    // Deserialize the Ray Interaction
+    minimalRayInteraction = minimalRayInteractionReadFromGBuffer(
+      originalPrimaryRay, threadIndex, PrimaryViewDirection, PrimaryConeRadius);
 
-    return;
+    // Deserialize the Surface Interaction
+    minimalSurfaceInteraction = minimalSurfaceInteractionReadFromGBufferWithError(
+      threadIndex, PrimaryWorldPositionWorldTriangleNormal, PrimaryPositionError);
+
+    // Deserialize the Surface Material Interaction
+    polymorphicSurfaceMaterialInteraction = polymorphicSurfaceMaterialInteractionReadFromGBuffer(
+      threadIndex, PrimaryWorldShadingNormal, PrimaryPerceptualRoughness, PrimaryAlbedo, PrimaryBaseReflectivity,
+      SharedMaterialData0, SharedMaterialData1, SharedSurfaceIndex, SharedSubsurfaceData);
+
+    spatialReservoir = RAB_LoadGIReservoir(threadIndex, ReSTIRGI_GetSpatialOutputPage());
   }
-
-  // Deserialize the Ray
-  GBufferMemoryMinimalRay gBufferMemoryMinimalRay;
-  gBufferMemoryMinimalRay.spreadAngle = float16_t(cb.screenSpacePixelSpreadHalfAngle);
-  const MinimalRay minimalRay = minimalRayCreate(gBufferMemoryMinimalRay);
-  Ray currentRay;
-  currentRay.spreadAngle = minimalRay.spreadAngle;
-
-  // Deserialize the Ray Interaction
-  MinimalRayInteraction minimalRayInteraction = minimalRayInteractionReadFromGBuffer(
-    originalPrimaryRay, threadIndex, PrimaryViewDirection, PrimaryConeRadius);
-
-  // Deserialize the Surface Interaction
-  MinimalSurfaceInteraction minimalSurfaceInteraction = minimalSurfaceInteractionReadFromGBufferWithError(
-    threadIndex, PrimaryWorldPositionWorldTriangleNormal, PrimaryPositionError);
-
-  // Deserialize the Surface Material Interaction
-  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction = polymorphicSurfaceMaterialInteractionReadFromGBuffer(
-    threadIndex, PrimaryWorldShadingNormal, PrimaryPerceptualRoughness, PrimaryAlbedo, PrimaryBaseReflectivity,
-    SharedMaterialData0, SharedMaterialData1, SharedSurfaceIndex, SharedSubsurfaceData);
-
-  ReSTIRGI_Reservoir spatialReservoir = RAB_LoadGIReservoir(threadIndex, ReSTIRGI_GetSpatialOutputPage());
 
   f16vec3 filterColor = f16vec3(1);
   bool staleSample = false;
-  if (all(minimalSurfaceInteraction.position == spatialReservoir.position))
+  if (gBufferMiss || all(minimalSurfaceInteraction.position == spatialReservoir.position))
   {
     filterColor = f16vec3(0);
   }
@@ -185,7 +235,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   float initialWeight = 1;
   float restirWeight = 0;
   float VdotN = dot(minimalRayInteraction.viewDirection, minimalSurfaceInteraction.triangleNormal);
-  if (polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque)
+  if (!gBufferMiss && polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque)
   {
     OpaqueSurfaceMaterialInteraction material = opaqueSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
 
@@ -258,68 +308,25 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
 
   // Boiling filter
   // Apply a boiling filter only to thread groups that fully fit within screen bounds
+  // Note that invalid pixel threads with gBufferMiss == true are also active in the boiling filter, because the filter requires them for
+  // some gathering calculation.
   float boilingFilterMultiplier = lerp(cb.boilingFilterLowerThreshold, cb.boilingFilterHigherThreshold, VdotN);
   uint2 groupCornerThreadID = threadIndex & ~(RESTIR_GI_BOILING_FILTER_GROUP_SIZE - 1);
   if(cb.enableReSTIRGIBoilingFilter && all(groupCornerThreadID + RESTIR_GI_BOILING_FILTER_GROUP_SIZE - 1 < cb.camera.resolution))
   {
-    // The following code is borrowed from RTXDI SDK. Unlike RTXDI, we use boiling filter to
-    // filter fireflies in the ReSTIR output data. Those fireflies may not be filtered by denoisers
-    // due to small normal details. We calculate the output samples' local average and use that
-    // to remove outliers.
+    applyBoilingFilter(threadIndex, LocalIndex, boilingFilterMultiplier, diffuseLight, specularLight, spatialReservoir);
+  }
 
-    // Start with average nonzero weight within the wavefront
-    vec2 luminance = vec2(calcBt709Luminance(diffuseLight), calcBt709Luminance(specularLight));
-    vec2 waveWeight = WaveActiveSum(luminance);
-    uint waveCount = WaveActiveCountBits(spatialReservoir.avgWeight > 0);
-
-    // Store the results of each wavefront into shared memory
-    uint linearThreadIndex = LocalIndex.x + LocalIndex.y * RESTIR_GI_BOILING_FILTER_GROUP_SIZE;
-    uint waveIndex = linearThreadIndex / WaveGetLaneCount();
-
-    if (WaveIsFirstLane())
-    {
-        s_weights[waveIndex] = waveWeight;
-        s_count[waveIndex] = waveCount;
-    }
-
-    GroupMemoryBarrierWithGroupSync();
-
-    // Reduce the per-wavefront averages into a global average using one wavefront
-    if (linearThreadIndex < (RESTIR_GI_BOILING_FILTER_GROUP_SIZE * RESTIR_GI_BOILING_FILTER_GROUP_SIZE + WaveGetLaneCount() - 1) / WaveGetLaneCount())
-    {
-        waveWeight = s_weights[linearThreadIndex];
-        waveCount = s_count[linearThreadIndex];
-
-        waveWeight = WaveActiveSum(waveWeight);
-        waveCount = WaveActiveSum(waveCount);
-
-        if (linearThreadIndex == 0)
-        {
-            s_weights[0] = (waveCount > 0) ? (waveWeight / float(waveCount)) : 0.0;
-        }
-    }
-
-    GroupMemoryBarrierWithGroupSync();
-
-    // Read the per-group average and apply the threshold
-    vec2 averageNonzeroWeight = s_weights[0];
-    if (spatialReservoir.M >= cb.temporalHistoryLength)
-    {
-      if (calcBt709Luminance(specularLight) > averageNonzeroWeight.y * cb.boilingFilterRemoveReservoirThreshold)
-      {
-        spatialReservoir.M = 0;
-        RAB_StoreGIReservoir(spatialReservoir, threadIndex, ReSTIRGI_GetSpatialOutputPage());
-      }
-
-      if (calcBt709Luminance(diffuseLight) > averageNonzeroWeight.x * boilingFilterMultiplier)
-      {
-        diffuseLight *= averageNonzeroWeight.x / calcBt709Luminance(diffuseLight);
-      }
-      if (calcBt709Luminance(specularLight) > averageNonzeroWeight.y * boilingFilterMultiplier)
-      {
-        specularLight *= averageNonzeroWeight.y / calcBt709Luminance(specularLight);
-      }
-    }
+  // Early out if the primary surface was a miss or if the indirect integrator was not selected
+  // to output indirect lighting information
+  if (gBufferMiss)
+  {
+    // Note: Ensure zeros and a proper miss value is written to the Primary Indirect Diffuse/Specular texture
+    // on miss to match logic in the typiacl Integration pass (as denoisers or other passes may get confused
+    // with uninitialized data in these textures in miss regions).
+    PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex] = vec4(vec3(0), kEmptyPixelHitDistance);
+    PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex] = vec4(vec3(0), kEmptyPixelHitDistance);
+    return;
   }
 
   // Set reservoir flags
