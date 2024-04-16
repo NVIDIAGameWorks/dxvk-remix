@@ -128,8 +128,8 @@ private:
   void internalBuildTlas(Rc<DxvkContext> ctx);
   std::vector<RtInstance*> m_reorderedSurfaces;
   std::vector<uint32_t> m_reorderedSurfacesFirstIndexOffset;
-  std::vector<uint32_t> m_reorderedSurfacesPrimitiveIDPrefixSum;
-  std::vector<uint32_t> m_reorderedSurfacesPrimitiveIDPrefixSumLastFrame;
+  std::vector<uint32_t> m_reorderedSurfacesPrimitiveIDPrefixSum;              // Exclusive prefix sum for this frame's surface primitive count array
+  std::vector<uint32_t> m_reorderedSurfacesPrimitiveIDPrefixSumLastFrame;     // Exclusive prefix sum for last frame's surface primitive count array
   std::vector<VkAccelerationStructureInstanceKHR> m_mergedInstances[Tlas::Count];
   std::vector<Rc<PooledBlas>> m_blasPool;
 
