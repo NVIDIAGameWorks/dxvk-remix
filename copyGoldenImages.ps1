@@ -1,44 +1,57 @@
 function Usage {
-    write-host "Usage:"
-    write-host "  copyGoldenImages.ps1 <path_to_source_tests_folder>"
-    write-host "  <path_to_source_tests_folder> - path must end with the word 'tests', i.e. e:\data\tests'"
+  Write-Host "Usage:"  -ForegroundColor Green
+  Write-Host "  copyGoldenImages.ps1 <path_to_artifacts_folder>"
+  Write-Host "  All goldens within <path_to_artifacts_folder> subtree"
+  Write-Host "  will be copied over to a relative golden directory specified in golden path logs."
 }
 
-$sourceDir=$args[0]
+if ($args.count -ne 1) {
+  Usage
+  exit
+}
 
-if ($sourceDir.substring($sourceDir.length - 5, 5) -ne "tests")
-{
-    Usage
+$srcDir=$args[0]
+Write-Host "Copying goldens from $srcDir" -ForegroundColor Yellow
+
+# Iterate through all found golden path log files in the source directory
+# - Copy golden from a log file location into a relative path in the working directory from the log
+$goldenPathFiles = Get-ChildItem $srcDir -Recurse -Include "golden_paths.txt"
+ForEach ($goldenLogPath in $goldenPathFiles) {
+
+  # Read the golden description from the first tw lines
+  $goldenDesc = Get-Content $goldenLogPath
+  
+  # Both and only a golden git path and source golden name must be present in the file
+  if ($goldenDesc.length -ne 2) {
+    Write-Host "Found a golden_paths.txt with invalid number of entries." -ForegroundColor Red
+    Write-Host "The file must only contain 2 entries: golden's git path and a source golden file name."  -ForegroundColor Red
+    Write-Host "Terminating." -ForegroundColor Red
+    Write-Host "File: $goldenLogPath" -ForegroundColor Red
     exit
-}
+  }
+  
+  # Set up source and destination path strings
+  $srcGoldenName = $goldenDesc[0]
+  $gitRelativeGoldenPath = $goldenDesc[1]
+  $goldenParentFolder = Split-Path -Parent $goldenLogPath
+  $srcGoldenPath = $goldenParentFolder + "\" + $srcGoldenName
+  $destGoldenPath = ".\" + $gitRelativeGoldenPath | Resolve-Path 
 
-# relative path from this script to the destination
-$destDir = "tests/rtx/dxvk_rt_testing/goldens"
-
-$destImages = Get-ChildItem $destDir -Recurse -Include "*_rtxImagePostTonemapping.png", "*_rtxImageDebugView.png", "*_rtxImageDxvkView.png"
-$srcImages = Get-ChildItem $sourceDir -Recurse -Include "*_rtxImagePostTonemapping.png", "*_rtxImageDebugView.png", "*_rtxImageDxvkView.png"
-
-ForEach ($destImage in $destImages) {
-    $srcImage = $srcImages | where Name -CEQ $destImage.Name
-
-    if ($srcImage) {
-        Write-Host "Copying,"$srcImage.Name"---> $destImage"
-        Copy-Item $srcImage -Destination $destImage
-
-        $srcImages = $srcImages | Where-Object {$_.FullName -ne $srcImage.FullName}
-    } else {
-        Write-Warning ("Image " + $destImage.Name + " is not found in the artifacts!")
+  # Copy the golden
+  Write-Host "$srcGoldenName --> $destGoldenPath"
+  Copy-Item $srcGoldenPath -Destination $destGoldenPath -Force  -errorVariable copyErrors
+  if ($copyErrors.count -ge 1) {    
+    Write-Host "Failed to copy the golden:" -ForegroundColor Red
+    Write-Host "  Source: $srcGoldenPath" -ForegroundColor Red
+    Write-Host "  Destination: $destGoldenPath" -ForegroundColor Red
+    if ($errors.length -ge 1) {
+      Write-Host "  Error(s):" -ForegroundColor Red
+      foreach($error in $errors) {
+        Write-Host "   - $($error.Exception)" -ForegroundColor Red 
+      }
     }
+    exit
+  }
 }
-
-if ($srcImages) {
-    [console]::beep(500, 500)
-
-    Write-Warning "New images discovered in the artifacts:"
-
-    ForEach ($srcImage in $srcImages) {
-        write-host "`t"$srcImage.FullName
-    }
-
-    Write-Warning "You may need to manually initialize these images in the repo."
-}
+    
+Write-Host "Total files copied: $($goldenPathFiles.count)" -ForegroundColor Yellow
