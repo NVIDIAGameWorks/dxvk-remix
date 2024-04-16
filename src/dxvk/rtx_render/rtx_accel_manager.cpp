@@ -602,18 +602,20 @@ namespace dxvk {
 
     // Build prefix sum array
     // Collect primitive count for each surface object
+    // Because we use exclusive prefix sum here, we add one more element to record the scene's total primitive count
     m_reorderedSurfacesPrimitiveIDPrefixSumLastFrame = m_reorderedSurfacesPrimitiveIDPrefixSum;
-    m_reorderedSurfacesPrimitiveIDPrefixSum.resize(m_reorderedSurfaces.size());
+    m_reorderedSurfacesPrimitiveIDPrefixSum.resize(m_reorderedSurfaces.size() + 1);
+    m_reorderedSurfacesPrimitiveIDPrefixSum[0] = 0;
     for (uint32_t i = 0; i < m_reorderedSurfaces.size(); i++) {
       auto surface = m_reorderedSurfaces[i];
       int primitiveCount = 0;
       for (const auto& buildRange: surface->buildRanges) {
         primitiveCount += buildRange.primitiveCount;
       }
-      m_reorderedSurfacesPrimitiveIDPrefixSum[i] = primitiveCount;
+      m_reorderedSurfacesPrimitiveIDPrefixSum[i + 1] = primitiveCount;
     }
 
-    // Calculate prefix sum
+    // Calculate exclusive prefix sum
     uint totalPrimitiveIDOffset = 0;
     for (uint32_t i = 0; i < m_reorderedSurfacesPrimitiveIDPrefixSum.size(); i++) {
       uint primitiveCount = m_reorderedSurfacesPrimitiveIDPrefixSum[i];
