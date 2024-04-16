@@ -53,15 +53,7 @@ struct NEECacheUtils
     {
       return NEE_CACHE_INVALID_ID;
     }
-    int prefixSum;
-    if (surfaceIndex == 0)
-    {
-      prefixSum = 0;
-    }
-    else
-    {
-      prefixSum = PrimitiveIDPrefixSumBuffer[surfaceIndex-1];
-    }
+    int prefixSum = PrimitiveIDPrefixSumBuffer[surfaceIndex];
     return primitiveIndex + prefixSum;
   }
 
@@ -78,19 +70,19 @@ struct NEECacheUtils
     int maxSurfaceID = cb.surfaceCount - 1;
     while (minSurfaceID < maxSurfaceID)
     {
-      int midSurfaceID = (minSurfaceID + maxSurfaceID) / 2;
+      int midSurfaceID = (minSurfaceID + maxSurfaceID) / 2 + 1;
       if (PrimitiveIDPrefixSumBuffer[midSurfaceID] <= prefixSumID)
       {
-        minSurfaceID = midSurfaceID + 1;
+        minSurfaceID = midSurfaceID;
       }
       else
       {
-        maxSurfaceID = midSurfaceID;
+        maxSurfaceID = midSurfaceID - 1;
       }
     }
 
     surfaceID = minSurfaceID;
-    int surfacePrefixSum = surfaceID == 0 ? 0 : PrimitiveIDPrefixSumBuffer[surfaceID-1];
+    int surfacePrefixSum = PrimitiveIDPrefixSumBuffer[surfaceID];
     primitiveID = prefixSumID - surfacePrefixSum;
     return true;
   }
