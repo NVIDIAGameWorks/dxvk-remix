@@ -231,6 +231,18 @@ void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
   }
 }
 
+void polymorphicSurfaceMaterialInteractionWriteToGBufferDLSSRR(
+    PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
+    ivec2 position,
+    Surface surface,
+    RWTexture2D<float4> worldShadingNormalTextureDLSSRR)
+{
+  const GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfaceMaterialInteraction =
+      gBufferMemoryPolymorphicSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+  worldShadingNormalTextureDLSSRR[position] = vec4(gBufferMemoryPolymorphicSurfaceMaterialInteraction.worldShadingNormal, 0.0);
+}
+
 // Note: Slightly redundant, but hopefully optimized to only be one read with the Ray Interaction. If not then rewrite this somehow to merge it with that function.
 bool isGBufferMiss(ivec2 position, Texture2D<float> coneRadiusTexture)
 {

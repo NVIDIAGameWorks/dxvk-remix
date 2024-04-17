@@ -329,11 +329,13 @@ namespace dxvk {
     // Alias resources that alias to different resources frame to frame
     m_raytracingOutput.m_secondaryConeRadius = AliasedResource(m_raytracingOutput.getCurrentRtxdiConfidence(), ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "Secondary Cone Radius");
     m_raytracingOutput.m_sharedIntegrationSurfacePdf = AliasedResource(m_raytracingOutput.getCurrentRtxdiIlluminance(), ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "Shared Integration Surface PDF");
+    m_raytracingOutput.m_rayReconstructionHitDistance = AliasedResource(m_raytracingOutput.getCurrentRtxdiConfidence(), ctx, m_downscaledExtent, VK_FORMAT_R16_SFLOAT, "DLSS-RR Hit Distance");
     m_raytracingOutput.m_gbufferPSRData[0] = AliasedResource(m_raytracingOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal(), ctx, m_downscaledExtent, VK_FORMAT_R32G32B32A32_SFLOAT, "GBuffer PSR Data 0");
 
     assert(
       m_raytracingOutput.m_secondaryConeRadius.sharesTheSameView(m_raytracingOutput.getCurrentRtxdiConfidence()) &&
       m_raytracingOutput.m_sharedIntegrationSurfacePdf.sharesTheSameView(m_raytracingOutput.getCurrentRtxdiIlluminance()) &&
+      m_raytracingOutput.m_rayReconstructionHitDistance.sharesTheSameView(m_raytracingOutput.getCurrentRtxdiConfidence()) &&
       m_raytracingOutput.m_gbufferPSRData[0].sharesTheSameView(m_raytracingOutput.getCurrentPrimaryWorldPositionWorldTriangleNormal()) &&
       "New view for an aliased resource was created on the fly. Avoid doing that or ensure it has no negative side effects.");
   }
@@ -800,6 +802,11 @@ namespace dxvk {
       m_raytracingOutput.m_primaryObjectPicking = createImageResource(ctx, "primary object picking", m_downscaledExtent, VK_FORMAT_R32_UINT);
     }
 
+    // DLSSRR outputs (TODO: allocate only if used)
+    m_raytracingOutput.m_primaryDepthDLSSRR = createImageResource(ctx, "Primary Depth DLSSRR", m_downscaledExtent, VK_FORMAT_R32_SFLOAT);
+    m_raytracingOutput.m_primaryWorldShadingNormalDLSSRR = createImageResource(ctx, "Primary Shading Normal DLSSRR", m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT);
+    m_raytracingOutput.m_primaryScreenSpaceMotionVectorDLSSRR = createImageResource(ctx, "Primary Screen Space Motion Vector DLSSRR", m_downscaledExtent, VK_FORMAT_R16G16_SFLOAT);
+
     m_raytracingOutput.m_secondaryAttenuation = createImageResource(ctx, "secondary attenuation", m_downscaledExtent, VK_FORMAT_R32_UINT);
     m_raytracingOutput.m_secondaryWorldShadingNormal = createImageResource(ctx, "secondary world shading normal", m_downscaledExtent, VK_FORMAT_R32_UINT);
     m_raytracingOutput.m_secondaryPerceptualRoughness = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R8_UNORM, "Secondary Perceptual Roughness", allowCompatibleFormatAliasing);
@@ -817,6 +824,7 @@ namespace dxvk {
     m_raytracingOutput.m_secondaryPositionError = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R32_SFLOAT, "Secondary Position Error", allowCompatibleFormatAliasing);
     m_raytracingOutput.m_alphaBlendGBuffer = createImageResource(ctx, "alpha blend gbuffer", m_downscaledExtent, VK_FORMAT_R32G32B32A32_UINT);
     m_raytracingOutput.m_alphaBlendRadiance = AliasedResource(m_raytracingOutput.m_secondaryVirtualMotionVector, ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Alpha Blend Radiance");
+    m_raytracingOutput.m_rayReconstructionParticleBuffer = createImageResource(ctx, "DLSS-RR particle buffer", m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT);
     m_raytracingOutput.m_indirectRadianceHitDistance = AliasedResource(ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "Indirect Radiance Hit Distance", allowCompatibleFormatAliasing);
 
     // Denoiser input and output (Primary/Secondary Surfaces with Direct/Indirect or Combined Radiance)

@@ -105,7 +105,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
   RAB_StoreReservoir(result, thread_id, RTXDI_GetSpatialOutputPage());
 
   f16vec2 factor = f16vec2(1);
-  if(cb.enableEnhanceBSDFDetail && RTXDI_IsValidReservoir(result))
+  if (cb.enableEnhanceBSDFDetail && RTXDI_IsValidReservoir(result) && cb.enhanceBSDFDirectLightPower > 0)
   {
     const RAB_LightSample finalSample =
       RAB_GetPortalSpaceLightSample(result.lightIdx, f16vec2(result.uv), result.portalIdx, surface);

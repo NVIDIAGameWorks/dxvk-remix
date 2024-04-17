@@ -73,9 +73,14 @@ struct CompositeArgs {
   uint8_t compositePrimaryIndirectSpecular;
   uint8_t compositeSecondaryCombinedDiffuse;
   uint8_t compositeSecondaryCombinedSpecular;
-  uint16_t pad;
+  uint16_t pad0;
   uint enableSeparatedDenoisers;
   uint frameIdx;
+
+  uint outputSecondarySignalToParticleLayer;
+  uint compositeVolumetricLight;
+  uint outputParticleLayer;
+  uint enableDemodulateAttenuation;
 
   uint enableStochasticAlphaBlend;
   uint stochasticAlphaBlendEnableFilter;
@@ -94,9 +99,9 @@ struct CompositeArgs {
 
   float stochasticAlphaBlendRadianceVolumeMultiplier;
   uint stochasticAlphaBlendDiscardBlackPixel;
+  uint enhanceAlbedo;
   uint pad1;
-  uint pad2;
 
   vec3 clearColorFinalColor;
-  uint pad3;
+  uint pad2;
 };

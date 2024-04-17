@@ -39,6 +39,7 @@
 #include "rtx_render/rtx_postFx.h"
 #include "rtx_render/rtx_initializer.h"
 #include "rtx_render/rtx_scene_manager.h"
+#include "rtx_render/rtx_ray_reconstruction.h"
 #include "rtx_render/rtx_reflex.h"
 #include "rtx_render/rtx_game_capturer.h"
 
@@ -192,6 +193,10 @@ namespace dxvk {
       return m_dlss.get();
     }
 
+    DxvkRayReconstruction& metaRayReconstruction() {
+      return m_rayReconstruction.get();
+    }
+
     DxvkDLFG& metaDLFG() {
       return m_dlfg.get();
     }
@@ -342,6 +347,7 @@ namespace dxvk {
     Active<DxvkDenoise>                     m_referenceDenoiserSecondLobe1;
     Active<DxvkDenoise>                     m_referenceDenoiserSecondLobe2;
     Active<DxvkDLSS>                        m_dlss;
+    Active<DxvkRayReconstruction>           m_rayReconstruction;
     Active<DxvkNIS>                         m_nis;
     Active<DxvkTemporalAA>                  m_taa;
     Active<CompositePass>                   m_composite;

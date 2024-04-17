@@ -25,6 +25,9 @@
 #include "rtx_resources.h"
 #include "dxvk_image.h"
 
+// this gets included from other modules, so use full path to external --- ugly!
+#include "../../../external/ngx_sdk_dldn/include/nvsdk_ngx.h"
+
 namespace dxvk {
 
   class NGXDLSSContext;
@@ -42,9 +45,14 @@ namespace dxvk {
     Invalid
   };
 
+  enum class PathTracerPreset : int {
+    Default,
+    ReSTIR,
+  };
+
   const char* dlssProfileToString(DLSSProfile dlssProfile);
 
-  class DxvkDLSS : public CommonDeviceObject {
+  class DxvkDLSS : public CommonDeviceObject, public RtxPass {
   public:
     enum class MotionVectorScale : uint32_t {
       Absolute,   ///< Motion vectors are provided in absolute screen space length (pixels).
@@ -53,6 +61,7 @@ namespace dxvk {
 
     explicit DxvkDLSS(DxvkDevice* device);
     ~DxvkDLSS();
+    static NVSDK_NGX_PerfQuality_Value profileToQuality(DLSSProfile profile);
 
     bool supportsDLSS() const;
 
@@ -73,7 +82,13 @@ namespace dxvk {
 
     void showImguiSettings();
 
-  private:
+    void onDestroy();
+
+    void release();
+
+  protected:
+    bool isActive();
+
     static DLSSProfile getAutoProfile(uint32_t displayWidth, uint32_t displayHeight);
 
     void initializeDLSS(Rc<DxvkContext> pRenderContext);
@@ -93,11 +108,6 @@ namespace dxvk {
     uint32_t                    mInputSize[2] = {};            ///< Input size in pixels.
     uint32_t                    mDLSSOutputSize[2] = {};       ///< DLSS output size in pixels.
 
-    bool                        mBiasCurrentColorEnabled = true;
-
-    Rc<DxvkShader> m_shader;
-    Rc<DxvkBuffer> m_constants;
-
-    std::unique_ptr<NGXDLSSContext> m_dlssContext;
+    bool                        mBiasCurrentColorEnabled = false;
   };
 }  // namespace dxvk

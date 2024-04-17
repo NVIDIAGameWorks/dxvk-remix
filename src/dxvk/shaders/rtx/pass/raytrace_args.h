@@ -127,8 +127,8 @@ struct RaytraceArgs {
   uint8_t secondaryRayMaxInteractions;
   // The number of active Ray Portals (Used for Ray Portal sampling). Always <= RAY_PORTAL_MAX_COUNT
   uint8_t numActiveRayPortals;
-  float pad6;
   float secondarySpecularFireflyFilteringThreshold;
+  uint  outputParticleLayer;
 
   // Note: Packed as float16, uses uint16_t due to being shared on C++ side
   uint16_t emissiveBlendOverrideEmissiveIntensity;
@@ -189,7 +189,7 @@ struct RaytraceArgs {
   uint16_t minTranslucentSpecularLobeSamplingProbability;
   uint16_t translucentTransmissionLobeSamplingProbabilityZeroThreshold;
   uint16_t minTranslucentTransmissionLobeSamplingProbability;
-  float roughnessDemodulationOffset;  
+  float roughnessDemodulationOffset;
   uint timeSinceStartMS;
   
   uint enableCalculateVirtualShadingNormals;
@@ -264,6 +264,8 @@ struct RaytraceArgs {
   uint reSTIRGIMISMode;
   float reSTIRGIMISModePairwiseMISCentralWeight;
   uint enableReSTIRGIPermutationSampling;
+  uint enableReSTIRGIDLSSRRCompatibilityMode;
+  float reSTIRGIDLSSRRTemporalRandomizationRadius;
   uint enableReSTIRGISampleStealing;
   float reSTIRGISampleStealingJitter;
   uint enableReSTIRGIStealBoundaryPixelSamplesWhenOutsideOfScreen;
@@ -328,4 +330,5 @@ struct RaytraceArgs {
   float clearColorDepth;
   uint32_t clearColorPicking;
   vec3 clearColorNormal;
+  uint enableDLSSRR;
 };

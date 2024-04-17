@@ -149,8 +149,8 @@ namespace dxvk {
   float SceneManager::getTotalMipBias() {
     auto& resourceManager = m_device->getCommon()->getResources();
 
-    const bool temporalUpscaling = RtxOptions::Get()->isDLSSEnabled() || RtxOptions::Get()->isTAAEnabled();
-    const float totalUpscaleMipBias = temporalUpscaling ? (log2(resourceManager.getUpscaleRatio()) + RtxOptions::Get()->upscalingMipBias()) : 0.0f;
+    const bool temporalUpscaling = RtxOptions::Get()->isDLSSOrRayReconstructionEnabled() || RtxOptions::Get()->isTAAEnabled();
+    float totalUpscaleMipBias = temporalUpscaling ? (log2(resourceManager.getUpscaleRatio()) + RtxOptions::Get()->upscalingMipBias()) : 0.0f;
     return totalUpscaleMipBias + RtxOptions::Get()->getNativeMipBias();
   }
 

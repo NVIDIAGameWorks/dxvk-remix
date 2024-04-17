@@ -283,6 +283,8 @@ dxvk_src = files([
   'rtx_render/rtx_postFx.h',
   'rtx_render/rtx_ray_portal_manager.cpp',
   'rtx_render/rtx_ray_portal_manager.h',
+  'rtx_render/rtx_ray_reconstruction.cpp',
+  'rtx_render/rtx_ray_reconstruction.h',
   'rtx_render/rtx_reflex.cpp',
   'rtx_render/rtx_reflex.h',
   'rtx_render/rtx_remix_api.cpp',

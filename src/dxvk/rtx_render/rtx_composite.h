@@ -96,8 +96,8 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, stochasticAlphaBlendEnableFilter, true, "Filter samples to suppress noise.");
     RTX_OPTION("rtx", bool, stochasticAlphaBlendDiscardBlackPixel, false, "Discard black pixels.");
 
-    RTX_OPTION("rtx", bool, usePostFilter, true, "Uses post filter to remove fireflies in the denoised result.");
-    RTX_OPTION("rtx", float, postFilterThreshold, 3.0f, "Clamps a pixel when its luminance exceeds x times of the average.");
+    RW_RTX_OPTION("rtx", bool, usePostFilter, true, "Uses post filter to remove fireflies in the denoised result.");
+    RW_RTX_OPTION("rtx", float, postFilterThreshold, 3.0f, "Clamps a pixel when its luminance exceeds x times of the average.");
 
     RTX_OPTION("rtx", bool,  enableDLSSEnhancement, true, "Enhances lighting details when DLSS is on.");
     RTX_OPTION("rtx", float, dlssEnhancementDirectLightPower, 0.7f, "The overall strength of direct lighting enhancement.");

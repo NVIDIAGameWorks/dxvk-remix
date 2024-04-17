@@ -283,6 +283,18 @@ void main(int2 thread_id : SV_DispatchThreadID)
     normalThreshold.x = 0.8;
   }
 
+  // Stochastically pick a diffuse sample when RR compatibility mode is enabled.
+  if (cb.enableReSTIRGIDLSSRRCompatibilityMode)
+  {
+    float diffuseWeight = 1.0 - reflectionWeight;
+    if (RAB_GetNextRandom(rng) < diffuseWeight)
+    {
+      initialSearchRadius = cb.reSTIRGIDLSSRRTemporalRandomizationRadius;
+      // Increase initial reservoir's weight to suppress coherency
+      inputReservoir.M = int(inputReservoir.M / 0.26);
+    }
+  }
+
   ReSTIRGI_TemporalResamplingParameters tparams = {};
   tparams.temporalHistoryLength = temporalHistoryLength;
   tparams.enableJacobian = cb.enableReSTIRGITemporalJacobian;

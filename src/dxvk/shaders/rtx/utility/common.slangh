@@ -80,6 +80,10 @@ vec3 sanitize(vec3 val, vec3 defaultVal) {
   return isValidValue(val) ? val : defaultVal;
 }
 
+vec4 sanitize(vec4 val, vec4 defaultVal) {
+  return isValidValue(val) ? val : defaultVal;
+}
+
 // Selects a component of a vector to avoid array indexing (which may cause spilling to local memory).
 #define GENERIC_SELECT_COMPONENT(componentType, vectorType)           \
 componentType selectComponent(vectorType vector, uint componentIndex) \

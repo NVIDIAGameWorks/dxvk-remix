@@ -22,7 +22,7 @@
 #pragma once
 
 // this gets included from other modules, so use full path to external --- ugly!
-#include "../../../external/ngx_sdk_dlss/include/nvsdk_ngx.h"
+#include "../../../external/ngx_sdk_dldn/include/nvsdk_ngx.h"
 #include <memory>
 #include "../util/rc/util_rc_ptr.h"
 #include "rtx_semaphore.h"
@@ -57,8 +57,8 @@ namespace dxvk {
   class DxvkContext;
 
   class NGXDLSSContext;
+  class NGXRayReconstructionContext;
   class NGXDLFGContext;
-
   class NGXContext {
   public:
     NGXContext(DxvkDevice* device);
@@ -77,13 +77,18 @@ namespace dxvk {
       return m_supportsDLFG;
     }
 
+    bool supportsRayReconstruction() {
+      return m_supportsRayReconstruction;
+    }
+
     const std::string& getDLFGNotSupportedReason() {
       return m_dlfgNotSupportedReason;
     }
     
     std::unique_ptr<NGXDLSSContext> createDLSSContext();
+    std::unique_ptr<NGXRayReconstructionContext> createRayReconstructionContext();
     std::unique_ptr<NGXDLFGContext> createDLFGContext();
-
+    
   private:
     bool initialize();
 
@@ -92,6 +97,7 @@ namespace dxvk {
     bool m_initialized = false;
     bool m_supportsDLSS = false;
     bool m_supportsDLFG = false;
+    bool m_supportsRayReconstruction = false;
 
     bool checkDLSSSupport(NVSDK_NGX_Parameter* params);
     bool checkDLFGSupport(NVSDK_NGX_Parameter* params);
@@ -102,14 +108,13 @@ namespace dxvk {
   class NGXFeatureContext {
   public:
     ~NGXFeatureContext();
-    void releaseNGXFeature();
+    virtual void releaseNGXFeature() = 0;
 
   protected:
     NGXFeatureContext(DxvkDevice* device);
 
     DxvkDevice* m_device = nullptr;
     NVSDK_NGX_Parameter* m_parameters = nullptr;
-    NVSDK_NGX_Handle* m_feature = nullptr;
   };
 
   class NGXDLSSContext : public NGXFeatureContext {
@@ -121,6 +126,28 @@ namespace dxvk {
       uint32_t maxRenderSize[2];
     };
 
+    struct NGXBuffers {
+      const Resources::Resource* pUnresolvedColor;
+      const Resources::Resource* pResolvedColor;
+      const Resources::Resource* pMotionVectors;
+      const Resources::Resource* pDepth;
+      const Resources::Resource* pExposure;
+      const Resources::Resource* pBiasCurrentColorMask;
+    };
+
+    struct NGXSettings
+    {
+      bool resetAccumulation;
+      bool antiGhost;
+      float sharpness;
+      float preExposure;
+      float jitterOffset[2];
+      float motionVectorScale[2];
+    };
+
+    static NGXDLSSContext* getInstance(DxvkDevice* device);
+    static void releaseInstance();
+
     // Query optimal DLSS settings for a given resolution and performance/quality profile.
     OptimalSettings queryOptimalSettings(const uint32_t displaySize[2], NVSDK_NGX_PerfQuality_Value perfQuality) const;
 
@@ -129,36 +156,127 @@ namespace dxvk {
       Rc<DxvkContext> renderContext,
       uint32_t maxRenderSize[2],
       uint32_t displayOutSize[2],
-      //Texture* pTarget,
       bool isContentHDR,
       bool depthInverted,
       bool autoExposure,
       bool sharpening,
       NVSDK_NGX_PerfQuality_Value perfQuality = NVSDK_NGX_PerfQuality_Value_MaxPerf);
 
-    bool evaluate(
-      Rc<DxvkContext> renderContext,
-      const Resources::Resource* pUnresolvedColor,
-      const Resources::Resource* pResolvedColor,
-      const Resources::Resource* pMotionVectors,
-      const Resources::Resource* pDepth,
-      const Resources::Resource* pDiffuseAlbedo,
-      const Resources::Resource* pSpecularAlbedo,
-      const Resources::Resource* pExposure,
-      const Resources::Resource* pNormals,
-      const Resources::Resource* pRoughness,
-      const Resources::Resource* pBiasCurrentColorMask,
-      bool resetAccumulation,
-      bool antiGhost,
-      float sharpness,
-      float preExposure,
-      float jitterOffset[2],
-      float motionVectorScale[2],
-      bool autoExposure) const;
+    /** Release DLSS.
+    */
+    virtual void releaseNGXFeature();
+
+    /** Checks if DLSS is initialized.
+    */
+    bool isDLSSInitialized() const { return m_initialized && m_featureDLSS != nullptr; }
+
+    /** Evaluate DLSS.
+    */
+    bool evaluateDLSS(Rc<DxvkContext> renderContext, const NGXBuffers& buffers, const NGXSettings& settings) const;
 
     // note: ctor is public due to make_unique/unique_ptr, but not intended as public --- use NGXWrapper::createDLSSContext instead
     NGXDLSSContext(DxvkDevice* device);
-    ~NGXDLSSContext() = default;
+    ~NGXDLSSContext();
+
+    void setWorldToViewMatrix(const Matrix4& worldToView) {
+      m_worldToViewMatrix = worldToView;
+    }
+
+    void setViewToProjectionMatrix(const Matrix4& viewToProjection) {
+      m_viewToProjectionMatrix = viewToProjection;
+    }
+
+    bool m_initialized = false;
+    NVSDK_NGX_Handle* m_featureDLSS = nullptr;
+    Matrix4 m_worldToViewMatrix;
+    Matrix4 m_viewToProjectionMatrix;
+    inline static std::unique_ptr<NGXDLSSContext> s_instance;
+  };
+
+  class NGXRayReconstructionContext : public NGXFeatureContext {
+  public:
+    struct QuerySettings {
+      float sharpness;
+      uint32_t optimalRenderSize[2];
+      uint32_t minRenderSize[2];
+      uint32_t maxRenderSize[2];
+    };
+
+    struct NGXBuffers {
+      const Resources::Resource* pUnresolvedColor;
+      const Resources::Resource* pResolvedColor;
+      const Resources::Resource* pMotionVectors;
+      const Resources::Resource* pDepth;
+      const Resources::Resource* pDiffuseAlbedo;
+      const Resources::Resource* pSpecularAlbedo;
+      const Resources::Resource* pExposure;
+      const Resources::Resource* pPosition;
+      const Resources::Resource* pNormals;
+      const Resources::Resource* pRoughness;
+      const Resources::Resource* pBiasCurrentColorMask;
+      const Resources::Resource* pHitDistance;
+      const Resources::Resource* pInTransparencyLayer;
+    };
+
+    struct NGXSettings {
+      bool resetAccumulation;
+      bool antiGhost;
+      float sharpness;
+      float preExposure;
+      float jitterOffset[2];
+      float motionVectorScale[2];
+      bool autoExposure;
+      float frameTimeSecs;
+    };
+
+    static NGXRayReconstructionContext* getInstance(DxvkDevice* device);
+    static void releaseInstance();
+
+    // Query optimal DLSS-RR settings for a given resolution and performance/quality profile.
+    QuerySettings queryOptimalSettings(const uint32_t displaySize[2], NVSDK_NGX_PerfQuality_Value perfQuality) const;
+
+    // initialize DLSS context, throws exception on failure
+    void initialize(
+      Rc<DxvkContext> renderContext,
+      uint32_t maxRenderSize[2],
+      uint32_t displayOutSize[2],
+      bool isContentHDR,
+      bool depthInverted,
+      bool autoExposure,
+      bool sharpening,
+      NVSDK_NGX_PerfQuality_Value perfQuality = NVSDK_NGX_PerfQuality_Value_MaxPerf);
+
+    /** Release DLSS-RR
+    */
+    virtual void releaseNGXFeature();
+
+    /** Checks if DLSS is initialized.
+    */
+    bool isRayReconstructionInitialized() const {
+      return m_initialized && m_featureRayReconstruction != nullptr;
+    }
+
+    /** Evaluate DLSS-RR
+    */
+    bool evaluateRayReconstruction(Rc<DxvkContext> renderContext, const NGXBuffers& buffers, const NGXSettings& settings) const;
+
+    // note: ctor is public due to make_unique/unique_ptr, but not intended as public --- use NGXWrapper::createRayReconstructionContext instead
+    NGXRayReconstructionContext(DxvkDevice* device);
+    ~NGXRayReconstructionContext();;
+
+    void setWorldToViewMatrix(const Matrix4& worldToView) {
+      m_worldToViewMatrix = worldToView;
+    }
+
+    void setViewToProjectionMatrix(const Matrix4& viewToProjection) {
+      m_viewToProjectionMatrix = viewToProjection;
+    }
+
+    bool m_initialized = false;
+    NVSDK_NGX_Handle* m_featureRayReconstruction = nullptr;
+    Matrix4 m_worldToViewMatrix;
+    Matrix4 m_viewToProjectionMatrix;
+    inline static std::unique_ptr<NGXRayReconstructionContext> s_instance;
   };
 
   class NGXDLFGContext : public NGXFeatureContext {
@@ -219,7 +337,9 @@ VkCommandBuffer clientCommandList,
     NGXDLFGContext(DxvkDevice* device);
     ~NGXDLFGContext();
 
+    virtual void releaseNGXFeature();
   private:
     VkCommandPool m_ngxInternalCommandPool = nullptr;
+    NVSDK_NGX_Handle* m_feature = nullptr;
   };
 }

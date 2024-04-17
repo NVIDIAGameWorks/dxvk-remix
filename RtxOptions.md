@@ -222,6 +222,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.enablePortalFadeInEffect|bool|False||
 |rtx.enablePresentThrottle|bool|False|A flag to enable or disable present throttling, when set to true a sleep for a time specified by the throttle delay will be inserted into the DXVK presentation thread\.<br>Useful to manually reduce the framerate if the application is running too fast or to reduce GPU power usage during development to keep temperatures down\.<br>Should not be enabled in anything other than development situations\.|
 |rtx.enablePreviousTLAS|bool|True||
+|rtx.enableRayReconstruction|bool|True|Enable ray reconstruction\.|
 |rtx.enableReplacementAssets|bool|True|Globally enables or disables all enhanced asset replacement \(materials, meshes, lights\) functionality\.|
 |rtx.enableReplacementLights|bool|True|Enables or disables enhanced light replacements\.<br>Requires replacement assets in general to be enabled to have any effect\.|
 |rtx.enableReplacementMaterials|bool|True|Enables or disables enhanced material replacements\.<br>Requires replacement assets in general to be enabled to have any effect\.|
@@ -475,9 +476,25 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.rayPortalModelWidthAxis|float3|1, 0, 0|The axis in object space to map the ray portal geometry's width axis to\. Currently unused \(as PCA is not implemented\)\.|
 |rtx.rayPortalSamplingWeightMaxDistance|float|1000|The maximum distance from a portal which the interpolation of the probability of light sampling through portals will end \(and is at its minimum value such that no portal light sampling will happen beyond this point\)\.<br>Currently unimplemented, kept here for future use\.|
 |rtx.rayPortalSamplingWeightMinDistance|float|10|The minimum distance from a portal which the interpolation of the probability of light sampling through portals will begin \(and is at its maximum value\)\.<br>Currently unimplemented, kept here for future use\.|
+|rtx.rayreconstruction.combineSpecularAlbedo|bool|True|Combine primary and secondary specular albedo to improve DLSS\-RR reflection quality\.<br>|
+|rtx.rayreconstruction.compositeVolumetricLight|bool|True|Composite volumetric light and then input the result to DLSS\-RR, otherwise volumetric light is in a separate layer\. Disabling it may introduce flickering artifacts\.<br>|
+|rtx.rayreconstruction.demodulateAttenuation|bool|True|Demodulate attenuation to reduce ghosting when an object is behind textured translucent objects\.<br>|
+|rtx.rayreconstruction.demodulateRoughness|bool|True|Demodulate roughness to enhance roughness details\.<br>|
+|rtx.rayreconstruction.enableDLSSRRSurfaceReplacement|bool|True|Use DLSS\-RR surface replacement\. Translucent surfaces with significant refraction are excluded from surface replacement and its surface motion vector will be used\.<br>|
+|rtx.rayreconstruction.enableDetailEnhancement|bool|True|Enable detail enhancement filter to enhance normal map details\.<br>|
+|rtx.rayreconstruction.enableNRDForTraining|bool|False|Enable NRD\. This option is only for training or debug purpose\.<br>|
+|rtx.rayreconstruction.filterHitT|bool|True|Filter hit distance to improve specular reflection quality\.<br>|
+|rtx.rayreconstruction.particleBufferMode|int|1|Use a separate particle buffer to handle particles\.<br>|
+|rtx.rayreconstruction.pathTracerPreset|int|1|Path tracer preset\. The "ReSTIR Finetuned" preset is preferred when DLSS\-RR is on\.<br>|
+|rtx.rayreconstruction.preprocessSecondarySignal|bool|True|Denoise secondary signal before passing to DLSS\-RR\. This option improves reflection on translucent objects\.<br>|
+|rtx.rayreconstruction.preserveSettingsInNativeMode|bool|False|Preserve settings when switched to native mode, otherwise the default preset will be applied\.<br>|
+|rtx.rayreconstruction.upscalerRoughnessDemodulationMultiplier|float|0.15|Multiplier of upscaler roughness demodulation to suppress noise\. Only used by DLSS\-RR\.|
+|rtx.rayreconstruction.upscalerRoughnessDemodulationOffset|float|1.5|Strength of upscaler roughness demodulation\. Only used by DLSS\-RR\.|
+|rtx.rayreconstruction.useSpecularHitDistance|bool|True|Use specular hit distance to reduce ghosting\.<br>|
 |rtx.raytraceModePreset|int|1||
 |rtx.recompileShadersOnLaunch|bool|False|When set to true runtime shader recompilation will execute on the first frame after launch\.|
 |rtx.reflexMode|int|1|Reflex mode selection, enabling it helps minimize input latency, boost mode may further reduce latency by boosting GPU clocks in CPU\-bound cases\.<br>Supported enum values are 0 = None \(Disabled\), 1 = LowLatency \(Enabled\), 2 = LowLatencyBoost \(Enabled \+ Boost\)\.<br>Note that even when using the "None" Reflex mode Reflex will attempt to be initialized\. Use rtx\.isReflexEnabled to fully disable to skip this initialization if needed\.|
+|rtx.reloadTextureWhenResolutionChanged|bool|False|Reload texture when resolution changed\.|
 |rtx.renderPassGBufferRaytraceMode|int|2|The ray tracing mode to use for the G\-Buffer pass which resolves the initial primary and secondary surfaces to apply lighting to\.|
 |rtx.renderPassIntegrateDirectRaytraceMode|int|0|The ray tracing mode to use for the Direct Lighting pass which applies lighting to the primary/secondary surfaces\.|
 |rtx.renderPassIntegrateIndirectRaytraceMode|int|2|The ray tracing mode to use for the Indirect Lighting pass which applies lighting to the primary/secondary surfaces\.|
@@ -487,6 +504,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.resolveOpaquenessThreshold|float|0.996078|A threshold for which any opacity value above is considered totally opaque\.|
 |rtx.resolvePreCombinedMatrices|bool|True||
 |rtx.resolveTransparencyThreshold|float|0.00392157|A threshold for which any opacity value below is considered totally transparent and may be safely skipped without as significant of a performance cost\.|
+|rtx.restirGI.DLSSRRTemporalRandomizationRadius|int|80|In DLSS\-RR compatibility mode temporal reprojection is randomized to reduce sample coherency\. This option determines the randomization radius\.|
 |rtx.restirGI.biasCorrectionMode|int|4|Bias correction mode to combine central with its neighbors in spatial reuse\.|
 |rtx.restirGI.boilingFilterMaxThreshold|float|20|Boiling filter threshold when surface normal is parallel to view direction\.|
 |rtx.restirGI.boilingFilterMinThreshold|float|10|Boiling filter threshold when surface normal is perpendicular to view direction\.|
@@ -507,6 +525,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.restirGI.temporalFixedHistoryLength|int|30|Fixed temporal history length, when adaptive temporal history is disabled\.|
 |rtx.restirGI.useAdaptiveTemporalHistory|bool|True|Adjust temporal history length based on frame rate\.|
 |rtx.restirGI.useBoilingFilter|bool|True|Enables boiling filter to suppress boiling artifacts\.|
+|rtx.restirGI.useDLSSRRCompatibilityMode|bool|False|DLSS\-RR compatibility mode\. In this mode temporal reprojection is randomized to reduce sample coherency\.|
 |rtx.restirGI.useDemodulatedTargetFunction|bool|False|Demodulates target function\. This will improve the result in non\-pairwise modes\.|
 |rtx.restirGI.useDiscardEnlargedPixels|bool|True|Discards enlarged samples when the camera is moving towards an object\.|
 |rtx.restirGI.useFinalVisibility|bool|True|Tests visiblity in output\.|
@@ -539,6 +558,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.secondarySpecularFireflyFilteringThreshold|float|1000|Firefly luminance clamping threshold for secondary specular signal\.|
 |rtx.serializeChangedOptionOnly|bool|True||
 |rtx.shakeCamera|bool|False|Enables animation of the free camera\.|
+|rtx.showRayReconstructionUI|bool|True|Show ray reconstruction UI\.|
 |rtx.showUI|int|0|0 = Don't Show, 1 = Show Simple, 2 = Show Advanced\.|
 |rtx.showUICursor|bool|True||
 |rtx.skipDrawCallsPostRTXInjection|bool|False|Ignores all draw calls recorded after RTX Injection, the location of which varies but is currently based on when tagged UI textures begin to draw\.|

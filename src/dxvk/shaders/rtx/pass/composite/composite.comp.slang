@@ -162,13 +162,19 @@ void updateAlphaBlendDebugView(uint2 thread_id, AlphaBlendSurface surface)
   }
 }
 
-void postCompositeDebugView(uint2 thread_id, GeometryFlags geometryFlags)
+void postCompositeDebugView(uint2 thread_id, GeometryFlags geometryFlags, vec4 particleLayer)
 {
   // Output Debug Information
   switch(cb.debugViewIdx)
   {
   case DEBUG_VIEW_GEOMETRY_FLAGS_FIRST_SAMPLED_LOBE_IS_SPECULAR:
     storeInDebugView(ivec2(thread_id), geometryFlags.firstSampledLobeIsSpecular);
+    break;
+  case DEBUG_VIEW_RAY_RECONSTRUCTION_PARTICLE_LAYER:
+    storeInDebugView(ivec2(thread_id), particleLayer);
+    break;
+  case DEBUG_VIEW_RAY_RECONSTRUCTION_PARTICLE_LAYER_ALPHA:
+    storeInDebugView(ivec2(thread_id), 1.0 - particleLayer.w);
     break;
   }
 }
@@ -205,7 +211,7 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
     texelFetch(SharedRadianceB, thread_id.xy, 0).x);
 
   const vec3 primaryAttenuation = r11g11b10ToColor(imageLoad(PrimaryAttenuation, thread_id.xy));
-  const vec3 primaryAlbedo = texelFetch(PrimaryAlbedo, thread_id.xy, 0).xyz;
+  const vec3 primaryAlbedo = PrimaryAlbedo[thread_id.xy].xyz;
   const vec3 primarySpecularAlbedo = texelFetch(PrimarySpecularAlbedo, thread_id.xy, 0).xyz;
   const float primaryLinearViewZ = texelFetch(PrimaryLinearViewZ, thread_id.xy, 0).x;
   const vec4 primaryVirtualWorldNormalPerceptualRoughness = PrimaryVirtualWorldNormalPerceptualRoughness[thread_id.xy];
@@ -287,6 +293,12 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
 
   vec2 bsdfFactor = cb.enableRtxdi ? BSDFFactor[thread_id.xy].xy : vec2(1);
   vec2 bsdfFactor2 = cb.enableReSTIRGI? BSDFFactor2[thread_id.xy].xy : vec2(1);
+
+  if (cb.enhanceAlbedo)
+  {
+    PrimaryAlbedo[thread_id.xy] = vec4(primaryAlbedo * sqrt(bsdfFactor2.x), 1.0);
+  }
+
   if (cb.combineLightingChannels != 0) {
     primaryCombinedDiffuseRadiance = primaryDirectDiffuseRadiance * bsdfFactor.x + primaryIndirectDiffuseRadiance * bsdfFactor2.x;
     primaryCombinedSpecularRadiance = primaryDirectSpecularRadiance * bsdfFactor.y + primaryIndirectSpecularRadiance * bsdfFactor2.y;
@@ -343,10 +355,38 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
   // Note: The primary hit accumulated radiance value is not affected by the throughput (rather takes attenuation into account
   // while accumulating already), so it can be added in here without issue.
 
-  vec3 radianceOutput =
-    (remodulatedTotalPrimaryRadiance + remodulatedTotalSecondaryRadiance) +
-    volumetricPreintegratedRadiance;
+  vec3 radianceOutput = remodulatedTotalPrimaryRadiance;
 
+  // DLSS-RR cannot handle multiple layers of noisy signals, so a separate layer is needed for secondary signals like glass
+  // reflection and particles.
+  vec4 particleLayerOutput = 0.0;
+  if (cb.outputParticleLayer)
+  {
+    particleLayerOutput.xyz = RayReconstructionParticleOutput[thread_id].xyz;
+  
+    if (cb.outputSecondarySignalToParticleLayer)
+    {
+      // Secondary signal and preintegrated signal have no noise
+      if (cb.compositeVolumetricLight)
+      {
+        particleLayerOutput.xyz += remodulatedTotalSecondaryRadiance;
+        radianceOutput += volumetricPreintegratedRadiance;
+      }
+      else
+      {
+        particleLayerOutput.xyz += remodulatedTotalSecondaryRadiance + volumetricPreintegratedRadiance;
+      }
+    }
+    else
+    {
+      radianceOutput += remodulatedTotalSecondaryRadiance + volumetricPreintegratedRadiance;
+    }
+  }
+  else
+  {
+    radianceOutput += remodulatedTotalSecondaryRadiance + volumetricPreintegratedRadiance;
+  }
+  
   // Apply D3D9-style fog when volumetric lighting is disabled
 
   vec4 alphaBlendOutput = 0;
@@ -454,9 +494,50 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
 
     // Blend fog over output
     attenuatedOutput = radianceOutput * (1.0f - fogColor.a) + fogColor.rgb * fogColor.a;
+
+    // TODO: Disable fog for particle layer to avoid flickering, need to find a proper way to apply fog to particles
+    // particleLayerOutput.rgb = lerp(particleLayerOutput.rgb, fogColor.rgb, fogColor.a);
   }
 
-  imageStore(FinalOutput, thread_id.xy, vec4(attenuatedOutput * backgroundAlpha + alphaBlendOutput.rgb, 1.0));
+  vec4 finalOutput = vec4(0,0,0,1);
+  if (cb.outputParticleLayer)
+  {
+    vec4 particleInput = RayReconstructionParticleOutput[thread_id];
+    // DLSS-RR needs to do alpha blending using the backgroundAlpha, so the input is untouched here.
+    finalOutput.xyz = attenuatedOutput * backgroundAlpha + alphaBlendOutput.xyz;
 
-  postCompositeDebugView(thread_id, geometryFlags);
+    // Filter attenuation to avoid abrupt change and improve stability.
+    vec3 neighborAttenuation = 0;
+    neighborAttenuation += r11g11b10ToColor(imageLoad(PrimaryAttenuation, thread_id.xy + int2(1,0)));
+    neighborAttenuation += r11g11b10ToColor(imageLoad(PrimaryAttenuation, thread_id.xy + int2(-1,0)));
+    neighborAttenuation += r11g11b10ToColor(imageLoad(PrimaryAttenuation, thread_id.xy + int2(0,1)));
+    neighborAttenuation += r11g11b10ToColor(imageLoad(PrimaryAttenuation, thread_id.xy + int2(0,-1)));
+
+    const float neighborWeight = 0.5;
+    vec3 blurredAttenuation = (primaryAttenuation + neighborAttenuation * neighborWeight) / (1.0 + neighborWeight * 4.0);
+
+    // Output particles to a separate layer for DLSS-RR.
+    // Demodulate attenuation
+    if (cb.enableDemodulateAttenuation)
+    {
+      float primaryAlpha = max(blurredAttenuation.r, max(blurredAttenuation.g, blurredAttenuation.b));
+      float minAlpha = 0.3;
+      primaryAlpha = max(primaryAlpha, minAlpha);
+      finalOutput.xyz /= primaryAlpha;
+      particleLayerOutput.w = 1 - primaryAlpha;
+    }
+
+    particleLayerOutput = sanitize(particleLayerOutput, 0.0);
+
+    RayReconstructionParticleOutput[thread_id] = particleLayerOutput;
+  }
+  else
+  {
+    // Output final composite result for NRD denoiser.
+    finalOutput.xyz = attenuatedOutput * backgroundAlpha + alphaBlendOutput.xyz;
+  }
+  
+  imageStore(FinalOutput, thread_id.xy, finalOutput);
+
+  postCompositeDebugView(thread_id, geometryFlags, particleLayerOutput);
 }

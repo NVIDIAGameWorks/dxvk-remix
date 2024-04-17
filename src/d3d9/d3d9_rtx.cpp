@@ -1053,6 +1053,9 @@ namespace dxvk {
 
   void D3D9Rtx::EndFrame(const Rc<DxvkImage>& targetImage, bool callInjectRtx) {
     const auto currentReflexFrameId = GetReflexFrameId();
+    
+    // Flush any pending game and RTX work
+    m_parent->Flush();
 
     // Inform backend of end-frame
     m_parent->EmitCs([currentReflexFrameId, targetImage, callInjectRtx](DxvkContext* ctx) { 
