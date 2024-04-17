@@ -231,7 +231,7 @@ namespace dxvk {
   };
 
   ImGui::ComboWithKey<bool> denoiserQualityCombo {
-    "Denoising Quality",
+    "NRD Denoising Quality",
     ImGui::ComboWithKey<bool>::ComboEntries { {
         {true, "High"},
         {false,"Low"},
@@ -243,25 +243,6 @@ namespace dxvk {
     ImGui::ComboWithKey<int>::ComboEntries { {
         {0, "High"},
         {1, "Low"},
-    } }
-  };
-
-  ImGui::ComboWithKey<UpscalerType> upscalerCombo {
-    "Upscaler Type",
-    ImGui::ComboWithKey<UpscalerType>::ComboEntries { {
-        {UpscalerType::None, "None"},
-        {UpscalerType::DLSS, "DLSS"},
-        {UpscalerType::NIS, "NIS"},
-        {UpscalerType::TAAU, "TAA-U"}
-    } }
-  };
-
-  ImGui::ComboWithKey<UpscalerType> upscalerDlssUnsupportCombo {
-    "Upscaler Type",
-    ImGui::ComboWithKey<UpscalerType>::ComboEntries { {
-        {UpscalerType::None, "None"},
-        {UpscalerType::NIS, "NIS"},
-        {UpscalerType::TAAU, "TAA-U"},
     } }
   };
 
@@ -298,6 +279,23 @@ namespace dxvk {
       {SkyAutoDetectMode::CameraPositionAndDepthFlags, "By Camera Position and Depth Flags"}
   } });
 
+  static auto upscalerNoDLSSCombo = ImGui::ComboWithKey<UpscalerType>(
+    "Upscaler Type",
+    { {
+      {UpscalerType::None, "None"},
+      {UpscalerType::NIS, "NIS"},
+      {UpscalerType::TAAU, "TAA-U"},
+  } });
+
+  static auto upscalerDLSSCombo = ImGui::ComboWithKey<UpscalerType>(
+    "Upscaler Type",
+    { {
+      {UpscalerType::None, "None"},
+      {UpscalerType::DLSS, "DLSS"},
+      {UpscalerType::NIS, "NIS"},
+      {UpscalerType::TAAU, "TAA-U"},
+  } });
+
   ImGui::ComboWithKey<RussianRouletteMode> secondPlusRussianRouletteModeCombo {
     "2nd+ Russian Roulette Mode",
     ImGui::ComboWithKey<RussianRouletteMode>::ComboEntries { {
@@ -312,6 +310,33 @@ namespace dxvk {
   constexpr ImGuiTreeNodeFlags collapsingHeaderFlags = collapsingHeaderClosedFlags | ImGuiTreeNodeFlags_DefaultOpen;
   constexpr ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus;
   constexpr ImGuiWindowFlags popupWindowFlags = ImGuiWindowFlags_NoSavedSettings;
+
+  ImGui::ComboWithKey<UpscalerType>& getUpscalerCombo(DxvkDLSS& dlss, DxvkRayReconstruction& rayReconstruction) {
+    if (dlss.supportsDLSS()) {
+      return upscalerDLSSCombo;
+    } else {
+      // Drop DLSS item if unsupported.
+      return upscalerNoDLSSCombo;
+    }
+  }
+
+  bool ImGUI::showRayReconstructionEnable(bool supportsRR) {
+    // Only show DLSS-RR option if "showRayReconstructionOption" is set to true.
+    bool changed = false;
+    bool rayReconstruction = RtxOptions::Get()->enableRayReconstruction();
+    if (RtxOptions::Get()->showRayReconstructionOption()) {
+      ImGui::BeginDisabled(!supportsRR);
+      ImGui::Checkbox("Ray Reconstruction", &RtxOptions::Get()->enableRayReconstructionRef());
+      ImGui::EndDisabled();
+    }
+
+    // Disable DLSS-RR if it's unsupported.
+    if (!supportsRR) {
+      RtxOptions::Get()->enableRayReconstructionRef() = false;
+    }
+    changed = (rayReconstruction != RtxOptions::Get()->enableRayReconstruction());
+    return changed;
+  }
 
   ImGUI::ImGUI(DxvkDevice* device)
   : m_device (device)
@@ -968,11 +993,13 @@ namespace dxvk {
     const int subItemIndent) {
     auto common = ctx->getCommonObjects();
     DxvkDLSS& dlss = common->metaDLSS();
+    DxvkRayReconstruction& rayReconstruction = common->metaRayReconstruction();
     DxvkDLFG& dlfg = common->metaDLFG();
     const RtxReflex& reflex = m_device->getCommon()->metaReflex();
 
     const bool dlssSupported = dlss.supportsDLSS();
     const bool dlfgSupported = dlfg.supportsDLFG();
+    const bool dlssRRSupported = rayReconstruction.supportsRayReconstruction();
     const bool reflexInitialized = reflex.reflexInitialized();
 
     // Describe the tab
@@ -981,7 +1008,7 @@ namespace dxvk {
 
     // Note: Specifically reference the DLSS preset when present.
     if (dlssSupported) {
-      tabDescriptionText = "General performance settings. Enabling the DLSS 2.0 preset is recommended to significantly increase performance.";
+      tabDescriptionText = "General performance settings. Enabling the DLSS preset is recommended to significantly increase performance.";
     }
 
     ImGui::TextWrapped(tabDescriptionText);
@@ -991,7 +1018,7 @@ namespace dxvk {
     // Preset Settings
 
     if (dlssSupported) {
-      const char* dlssPresetText = dlfgSupported ? "DLSS 3.0 Preset" : "DLSS 2.0 Preset";
+      const char* dlssPresetText = "DLSS Preset";
       const DlssPreset prevDlssPreset = RtxOptions::Get()->dlssPreset();
 
       ImGui::TextSeparator("Preset Settings");
@@ -1024,20 +1051,34 @@ namespace dxvk {
       // Upscaler Type
 
       // Note: Use a different combo box without DLSS's upscaler listed if DLSS overall is unsupported.
+      auto oldUpscalerType = RtxOptions::Get()->upscalerType();
+      bool oldDLSSRREnabled = RtxOptions::Get()->enableRayReconstruction();
+
       if (dlss.supportsDLSS()) {
-        m_userGraphicsSettingChanged |= upscalerCombo.getKey(&RtxOptions::Get()->upscalerTypeObject());
+        m_userGraphicsSettingChanged |= getUpscalerCombo(dlss, rayReconstruction).getKey(&RtxOptions::Get()->upscalerTypeObject());
+      }
+      
+      ImGui::PushItemWidth(static_cast<float>(subItemWidth));
+      ImGui::Indent(static_cast<float>(subItemIndent));
+
+      if (dlss.supportsDLSS()) {
+        m_userGraphicsSettingChanged |= showRayReconstructionEnable(dlssRRSupported);
+
+        // If DLSS-RR is toggled, need to update some path tracer options accordingly to improve quality
+        if (oldUpscalerType != RtxOptions::Get()->upscalerType() || oldDLSSRREnabled != RtxOptions::Get()->enableRayReconstruction()) {
+          RtxOptions::Get()->updateLightingSetting();
+        }
       } else {
-        m_userGraphicsSettingChanged |= upscalerDlssUnsupportCombo.getKey(&RtxOptions::Get()->upscalerTypeObject());
+        m_userGraphicsSettingChanged |= getUpscalerCombo(dlss, rayReconstruction).getKey(&RtxOptions::Get()->upscalerTypeObject());
       }
 
       // Upscaler Preset
 
-      ImGui::PushItemWidth(static_cast<float>(subItemWidth));
-      ImGui::Indent(static_cast<float>(subItemIndent));
 
       switch (RtxOptions::Get()->upscalerType()) {
-        case UpscalerType::DLSS: {
-          m_userGraphicsSettingChanged |= ImGui::Combo("DLSS Mode", &RtxOptions::Get()->qualityDLSSObject(), "Ultra Perf\0Performance\0Balanced\0Quality\0Auto\0");
+        case UpscalerType::DLSS: 
+        if (RtxOptions::Get()->enableRayReconstruction() == false) {
+          m_userGraphicsSettingChanged |= ImGui::Combo("DLSS Mode", &RtxOptions::Get()->qualityDLSSObject(), "Ultra Performance\0Performance\0Balanced\0Quality\0Auto\0");
 
           // Display DLSS Upscaling Information
 
@@ -1047,9 +1088,19 @@ namespace dxvk {
           dlss.getInputSize(dlssInputWidth, dlssInputHeight);
 
           ImGui::TextWrapped(str::format("Computed DLSS Mode: ", dlssProfileToString(currentDLSSProfile), ", Render Resolution: ", dlssInputWidth, "x", dlssInputHeight).c_str());
+        } else {
+          m_userGraphicsSettingChanged |= ImGui::Combo("DLSS Mode", &RtxOptions::Get()->qualityDLSSObject(), "Ultra Performance\0Performance\0Balanced\0Quality\0Auto\0");
 
-          break;
+          // Display DLSS Upscaling Information
+
+          const auto currentDLSSProfile = rayReconstruction.getCurrentProfile();
+          uint32_t dlssInputWidth, dlssInputHeight;
+
+          rayReconstruction.getInputSize(dlssInputWidth, dlssInputHeight);
+
+          ImGui::TextWrapped(str::format("Computed DLSS Mode: ", dlssProfileToString(currentDLSSProfile), ", Render Resolution: ", dlssInputWidth, "x", dlssInputHeight).c_str());
         }
+        break;
         case UpscalerType::NIS: {
           m_userGraphicsSettingChanged |= ImGui::Combo("NIS Preset", &RtxOptions::Get()->nisPresetObject(), "Performance\0Balanced\0Quality\0Fullscreen\0");
           RtxOptions::Get()->updateUpscalerFromNisPreset();
@@ -1113,7 +1164,6 @@ namespace dxvk {
     DxvkPostFx& postFx = common->metaPostFx();
     DxvkRtxdiRayQuery& rtxdiRayQuery = common->metaRtxdiRayQuery();
     DxvkReSTIRGIRayQuery& restirGiRayQuery = common->metaReSTIRGIRayQuery();
-    NeeCachePass& neeCache = common->metaNeeCache();
 
     // Describe the tab
 
@@ -1147,7 +1197,6 @@ namespace dxvk {
       restirGiRayQuery.biasCorrectionModeRef() = ReSTIRGIBiasCorrection::PairwiseRaytrace;
       restirGiRayQuery.useReflectionReprojectionRef() = true;
       common->metaComposite().enableStochasticAlphaBlendRef() = true;
-      neeCache.enableRef() = RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Ultra;
       postFx.enableRef() = true;
     } else if (RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Medium ||
                RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Low) {
@@ -1155,7 +1204,6 @@ namespace dxvk {
       restirGiRayQuery.biasCorrectionModeRef() = ReSTIRGIBiasCorrection::BRDF;
       restirGiRayQuery.useReflectionReprojectionRef() = false;
       common->metaComposite().enableStochasticAlphaBlendRef() = false;
-      neeCache.enableRef() = false;
       postFx.enableRef() = false;
     }
 
@@ -1170,7 +1218,15 @@ namespace dxvk {
       m_userGraphicsSettingChanged |= minPathBouncesCombo.getKey(&RtxOptions::Get()->pathMinBouncesObject());
       m_userGraphicsSettingChanged |= maxPathBouncesCombo.getKey(&RtxOptions::Get()->pathMaxBouncesObject());
       m_userGraphicsSettingChanged |= ImGui::Checkbox("Enable Volumetric Lighting", &RtxOptions::Get()->enableVolumetricLightingObject());
-      m_userGraphicsSettingChanged |= denoiserQualityCombo.getKey(&RtxOptions::Get()->denoiseDirectAndIndirectLightingSeparatelyObject());
+
+      {
+        // Disable NRD denoiser quality list when DLSS-RR is enabled.
+        bool useRayReconstruction = RtxOptions::Get()->isRayReconstructionEnabled();
+        ImGui::BeginDisabled(useRayReconstruction);
+        m_userGraphicsSettingChanged |= denoiserQualityCombo.getKey(&RtxOptions::Get()->denoiseDirectAndIndirectLightingSeparatelyObject());
+        ImGui::EndDisabled();
+      }
+      
       m_userGraphicsSettingChanged |= textureQualityCombo.getKey(&RtxOptions::Get()->minReplacementTextureMipMapLevelObject());
       m_userGraphicsSettingChanged |= indirectLightingParticlesCombo.getKey(&indirectLightParticlesLevel);
       ImGui::SetTooltipToLastWidgetOnHover("Controls the quality of particles in indirect (reflection/GI) rays.");
@@ -1426,7 +1482,6 @@ namespace dxvk {
       ImGui::Unindent();
     }
 
-
     if (ImGui::CollapsingHeader("Camera Sequence", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
       RtCameraSequence::getInstance()->showImguiSettings();
@@ -1446,11 +1501,16 @@ namespace dxvk {
       ImGui::InputInt("Instance Index Range", &RtxOptions::Get()->instanceOverrideInstanceIdxRangeObject());
       ImGui::DragFloat3("Instance World Offset", &RtxOptions::Get()->instanceOverrideWorldOffsetObject(), 0.1f, -100.f, 100.f, "%.3f", sliderFlags);
       ImGui::Checkbox("Instance - Print Hash", &RtxOptions::Get()->instanceOverrideSelectedInstancePrintMaterialHashObject());
+
+#ifdef REMIX_DEVELOPMENT
+      ImGui::Checkbox("Show DLSS-RR Options", &RtxOptions::Get()->showRayReconstructionUIObject());
+#endif
+
       ImGui::Unindent();
       ImGui::Checkbox("Throttle presents", &RtxOptions::Get()->enablePresentThrottleObject());
       if (RtxOptions::Get()->enablePresentThrottle()) {
         ImGui::Indent();
-        ImGui::SliderInt("Present delay (ms)", &RtxOptions::Get()->presentThrottleDelayObject(), 1, 100, "%d", sliderFlags);
+        ImGui::SliderInt("Present delay (ms)", &RtxOptions::Get()->presentThrottleDelayObject(), 1, 1000, "%d", sliderFlags);
         ImGui::Unindent();
       }
       ImGui::Checkbox("Hash Collision Detection", &HashCollisionDetectionOptions::enableObject());
@@ -1909,6 +1969,8 @@ namespace dxvk {
       ImGui::Checkbox("Force High Resolution Textures", &RtxOptions::Get()->forceHighResolutionReplacementTexturesObject());
       ImGui::Checkbox("Enable Adaptive Texture Resolution", &RtxOptions::Get()->enableAdaptiveResolutionReplacementTexturesObject());
       ImGui::DragInt("Minimum Mip Map Level", &RtxOptions::Get()->minReplacementTextureMipMapLevelObject(), 0.1f, 0, 16, "%d", sliderFlags);
+
+      ImGui::Checkbox("Reload Texture When Resolution Changed", &RtxOptions::Get()->reloadTextureWhenResolutionChangedObject());
 
       ImGui::EndDisabled();
       ImGui::Unindent();
@@ -2415,6 +2477,7 @@ namespace dxvk {
 
     if (ImGui::CollapsingHeader("General", collapsingHeaderFlags)) {
       auto& dlss = common->metaDLSS();
+      auto& rayReconstruction = common->metaRayReconstruction();
       ImGui::Indent();
 
 #ifdef REMIX_DEVELOPMENT
@@ -2436,9 +2499,18 @@ namespace dxvk {
       ImGui::Separator();
 
       if (ctx->getCommonObjects()->metaDLSS().supportsDLSS()) {
-        upscalerCombo.getKey(&RtxOptions::Get()->upscalerTypeObject());
+        // Show upscaler and DLSS-RR option.
+        auto oldUpscalerType = RtxOptions::Get()->upscalerType();
+        bool oldDLSSRREnabled = RtxOptions::Get()->enableRayReconstruction();
+        getUpscalerCombo(dlss, rayReconstruction).getKey(&RtxOptions::Get()->upscalerTypeObject());
+        showRayReconstructionEnable(rayReconstruction.supportsRayReconstruction());
+
+        // Update path tracer settings when upscaler is changed or DLSS-RR is toggled.
+        if (oldUpscalerType != RtxOptions::Get()->upscalerType() || oldDLSSRREnabled != RtxOptions::Get()->enableRayReconstruction()) {
+          RtxOptions::Get()->updateLightingSetting();
+        }
       } else {
-        upscalerDlssUnsupportCombo.getKey(&RtxOptions::Get()->upscalerTypeObject());
+        getUpscalerCombo(dlss, rayReconstruction).getKey(&RtxOptions::Get()->upscalerTypeObject());
       }
 
       RtxOptions::Get()->updatePresetFromUpscaler();
@@ -2446,9 +2518,12 @@ namespace dxvk {
       if (RtxOptions::Get()->upscalerType() == UpscalerType::DLSS && !ctx->getCommonObjects()->metaDLSS().supportsDLSS())
         RtxOptions::Get()->upscalerTypeRef() = UpscalerType::TAAU;
 
-      if (RtxOptions::Get()->upscalerType() == UpscalerType::DLSS) {
+      if (RtxOptions::Get()->isRayReconstructionEnabled()) {
         ImGui::Combo("DLSS mode", &RtxOptions::Get()->qualityDLSSObject(), "Ultra Performance\0Performance\0Balanced\0Quality\0Auto\0Full Resolution\0");
-        dlss.showImguiSettings();        
+        rayReconstruction.showRayReconstructionImguiSettings(false);
+      } else if (RtxOptions::Get()->upscalerType() == UpscalerType::DLSS) {
+        ImGui::Combo("DLSS mode", &RtxOptions::Get()->qualityDLSSObject(), "Ultra Performance\0Performance\0Balanced\0Quality\0Auto\0Full Resolution\0");
+        dlss.showImguiSettings();
       } else if (RtxOptions::Get()->upscalerType() == UpscalerType::NIS) {
         ImGui::SliderFloat("Resolution scale", &RtxOptions::Get()->resolutionScaleObject(), 0.5f, 1.0f);
         ImGui::SliderFloat("Sharpness", &ctx->getCommonObjects()->metaNIS().m_sharpness, 0.1f, 1.0f);
@@ -2766,9 +2841,14 @@ namespace dxvk {
     }
 
     if (ImGui::CollapsingHeader("Denoising", collapsingHeaderClosedFlags)) {
+      bool isRayReconstructionEnabled = RtxOptions::Get()->isRayReconstructionEnabled();
+      bool useNRD = !isRayReconstructionEnabled || common->metaRayReconstruction().enableNRDForTraining();
       ImGui::Indent();
+      ImGui::BeginDisabled(!useNRD);
       ImGui::Checkbox("Denoising Enabled", &RtxOptions::Get()->useDenoiserObject());
       ImGui::Checkbox("Reference Mode", &RtxOptions::Get()->useDenoiserReferenceModeObject());
+      ImGui::EndDisabled();
+
       if(ImGui::CollapsingHeader("Settings", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
         ImGui::Checkbox("Separate Primary Direct/Indirect Denoiser", &RtxOptions::Get()->denoiseDirectAndIndirectLightingSeparatelyObject());
@@ -2779,8 +2859,22 @@ namespace dxvk {
         ImGui::Checkbox("Adaptive Accumulation", &RtxOptions::Get()->adaptiveAccumulationObject());
         common->metaDemodulate().showImguiSettings();
         common->metaComposite().showDenoiseImguiSettings();
-        bool useDoubleDenoisers = RtxOptions::Get()->isSeparatedDenoiserEnabled();
-        bool isReferenceMode = RtxOptions::Get()->useDenoiserReferenceMode();
+        ImGui::Unindent();
+      }
+      bool useDoubleDenoisers = RtxOptions::Get()->isSeparatedDenoiserEnabled();
+      bool isReferenceMode = RtxOptions::Get()->useDenoiserReferenceMode();
+      if (isRayReconstructionEnabled && RtxOptions::showRayReconstructionUI()) {
+        if (ImGui::CollapsingHeader("DLSS-RR", collapsingHeaderClosedFlags)) {
+          ImGui::Indent();
+          ImGui::PushID("DLSS-RR");
+          common->metaRayReconstruction().showRayReconstructionImguiSettings(true);
+          ImGui::PopID();
+          ImGui::Unindent();
+        }
+      }
+      
+      if (useNRD)
+      {
         if (isReferenceMode) {
           if (ImGui::CollapsingHeader("Reference Denoiser", collapsingHeaderFlags)) {
             ImGui::Indent();
@@ -2789,43 +2883,41 @@ namespace dxvk {
             ImGui::PopID();
             ImGui::Unindent();
           }
-        }
-        else if(useDoubleDenoisers) {
-          if(ImGui::CollapsingHeader("Primary Direct Light Denoiser", collapsingHeaderClosedFlags)) {
+        } else {
+          if (useDoubleDenoisers) {
+            if (ImGui::CollapsingHeader("Primary Direct Light Denoiser", collapsingHeaderClosedFlags)) {
+              ImGui::Indent();
+              ImGui::PushID("Primary Direct Light Denoiser");
+              common->metaPrimaryDirectLightDenoiser().showImguiSettings();
+              ImGui::PopID();
+              ImGui::Unindent();
+            }
+
+            if (!isReferenceMode && ImGui::CollapsingHeader("Primary Indirect Light Denoiser", collapsingHeaderClosedFlags)) {
+              ImGui::Indent();
+              ImGui::PushID("Primary Indirect Light Denoiser");
+              common->metaPrimaryIndirectLightDenoiser().showImguiSettings();
+              ImGui::PopID();
+              ImGui::Unindent();
+            }
+          } else {
+            if (ImGui::CollapsingHeader("Primary Direct/Indirect Light Denoiser", collapsingHeaderClosedFlags)) {
+              ImGui::Indent();
+              ImGui::PushID("Primary Direct/Indirect Light Denoiser");
+              common->metaPrimaryCombinedLightDenoiser().showImguiSettings();
+              ImGui::PopID();
+              ImGui::Unindent();
+            }
+          }
+
+          if (ImGui::CollapsingHeader("Secondary Direct/Indirect Light Denoiser", collapsingHeaderClosedFlags)) {
             ImGui::Indent();
-            ImGui::PushID("Primary Direct Light Denoiser");
-            common->metaPrimaryDirectLightDenoiser().showImguiSettings();
+            ImGui::PushID("Secondary Direct/Indirect Light Denoiser");
+            common->metaSecondaryCombinedLightDenoiser().showImguiSettings();
             ImGui::PopID();
             ImGui::Unindent();
           }
-
-          if(!isReferenceMode && ImGui::CollapsingHeader("Primary Indirect Light Denoiser", collapsingHeaderClosedFlags)) {
-            ImGui::Indent();
-            ImGui::PushID("Primary Indirect Light Denoiser");
-            common->metaPrimaryIndirectLightDenoiser().showImguiSettings();
-            ImGui::PopID();
-            ImGui::Unindent();
-          }
         }
-        else {
-          if(ImGui::CollapsingHeader("Primary Direct/Indirect Light Denoiser", collapsingHeaderClosedFlags)) {
-            ImGui::Indent();
-            ImGui::PushID("Primary Direct/Indirect Light Denoiser");
-            common->metaPrimaryCombinedLightDenoiser().showImguiSettings();
-            ImGui::PopID();
-            ImGui::Unindent();
-          }
-        }
-
-        if(!isReferenceMode && ImGui::CollapsingHeader("Secondary Direct/Indirect Light Denoiser", collapsingHeaderClosedFlags)) {
-          ImGui::Indent();
-          ImGui::PushID("Secondary Direct/Indirect Light Denoiser");
-          common->metaSecondaryCombinedLightDenoiser().showImguiSettings();
-          ImGui::PopID();
-          ImGui::Unindent();
-        }
-
-        ImGui::Unindent();
       }
 
       ImGui::Unindent();
@@ -2864,7 +2956,7 @@ namespace dxvk {
       ImGui::Unindent();
     }
 
-    if (ImGui::CollapsingHeader("Debug", collapsingHeaderFlags)) {
+    if (ImGui::CollapsingHeader("Debug", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
       common->metaDebugView().showImguiSettings();
       ImGui::Unindent();

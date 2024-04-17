@@ -24,6 +24,10 @@
 #include <nvapi.h>
 #include "rtx_terrain_baker.h"
 #include "rtx_render/rtx_nee_cache.h"
+#include "rtx_render/rtx_rtxdi_rayquery.h"
+#include "rtx_render/rtx_restir_gi_rayquery.h"
+#include "rtx_render/rtx_composite.h"
+#include "rtx_render/rtx_demodulate.h"
 
 #include "dxvk_device.h"
 
@@ -168,6 +172,81 @@ namespace dxvk {
     
     return archInfo.implementation_id;
   }
+
+  void RtxOptions::updatePathTracerPreset(PathTracerPreset preset) {
+    if (preset == PathTracerPreset::ReSTIR) {
+      // This preset uses ReSTIR GI to improve signal quality,
+      // Some settings are changed to adapt to DLSS-RR
+      // RTXDI
+      DxvkRtxdiRayQuery::stealBoundaryPixelSamplesWhenOutsideOfScreenRef() = false;
+      DxvkRtxdiRayQuery::permutationSamplingNthFrameRef() = 1;
+      DxvkRtxdiRayQuery::enableDenoiserConfidenceRef() = false;
+
+      // ReSTIR GI
+      useReSTIRGIRef() = true;
+      DxvkReSTIRGIRayQuery::setToRayReconstructionPreset();
+
+      // Integrator
+      minOpaqueDiffuseLobeSamplingProbabilityRef() = 0.05f;
+      minOpaqueSpecularLobeSamplingProbabilityRef() = 0.05f;
+      enableFirstBounceLobeProbabilityDitheringRef() = false;
+      russianRouletteModeRef() = RussianRouletteMode::SpecularBased;
+
+      // NEE Cache
+      NeeCachePass::enableRef() = true;
+      NeeCachePass::enableModeAfterFirstBounceRef() = NeeEnableMode::All;
+
+      // Demodulate
+      DemodulatePass::enableDirectLightBoilingFilterRef() = false;
+
+      // Composite
+      CompositePass::enableStochasticAlphaBlendRef() = false;
+      CompositePass::postFilterThresholdRef() = 10.0f;
+      CompositePass::usePostFilterRef() = false;
+      denoiseDirectAndIndirectLightingSeparatelyRef() = true;
+
+    } else if (preset == PathTracerPreset::Default) {
+      // This is the default setting used by NRD
+      // RTXDI
+      DxvkRtxdiRayQuery::stealBoundaryPixelSamplesWhenOutsideOfScreenRef() = true;
+      DxvkRtxdiRayQuery::permutationSamplingNthFrameRef() = 0;
+      DxvkRtxdiRayQuery::enableDenoiserConfidenceRef() = true;
+
+      // ReSTIR GI
+      DxvkReSTIRGIRayQuery::setToNRDPreset();
+
+      // Integrator
+      minOpaqueDiffuseLobeSamplingProbabilityRef() = 0.25f;
+      minOpaqueSpecularLobeSamplingProbabilityRef() = 0.25f;
+      enableFirstBounceLobeProbabilityDitheringRef() = true;
+      russianRouletteModeRef() = RussianRouletteMode::ThroughputBased;
+
+      // NEE Cache
+      NeeCachePass::enableModeAfterFirstBounceRef() = NeeEnableMode::SpecularOnly;
+
+      // Demodulate
+      DemodulatePass::enableDirectLightBoilingFilterRef() = true;
+
+      // Composite
+      CompositePass::postFilterThresholdRef() = 3.0f;
+      CompositePass::usePostFilterRef() = true;
+    }
+  }
+
+  void RtxOptions::updateLightingSetting() {
+    bool isRayReconstruction = RtxOptions::Get()->isRayReconstructionEnabled();
+    bool isDLSS = RtxOptions::Get()->isDLSSEnabled();
+    bool isNative = RtxOptions::Get()->upscalerType() == UpscalerType::None;
+    if (isRayReconstruction) {
+      updatePathTracerPreset(DxvkRayReconstruction::pathTracerPreset());
+    } else if (isDLSS) {
+      updatePathTracerPreset(PathTracerPreset::Default);
+    } else if (isNative) {
+      if (!DxvkRayReconstruction::preserveSettingsInNativeMode()) {
+        updatePathTracerPreset(PathTracerPreset::Default);
+      }
+    }
+  }
     
   void RtxOptions::updateGraphicsPresets(const DxvkDevice* device) {
     // Handle Automatic Graphics Preset (From configuration/default)
@@ -239,6 +318,7 @@ namespace dxvk {
     }
 
     // Handle Graphics Presets
+    bool isRayReconstruction = RtxOptions::Get()->isRayReconstructionEnabled();
 
     auto lowGraphicsPresetCommonSettings = [&]() {
       pathMinBouncesRef() = 0;
@@ -249,7 +329,7 @@ namespace dxvk {
       denoiseDirectAndIndirectLightingSeparatelyRef() = false;
       minReplacementTextureMipMapLevelRef() = 1;
       enableUnorderedResolveInIndirectRaysRef() = false;
-      NeeCachePass::enableRef() = false;
+      NeeCachePass::enableRef() = isRayReconstruction;
     };
 
     assert(graphicsPreset() != GraphicsPreset::Auto);
@@ -276,7 +356,7 @@ namespace dxvk {
       denoiseDirectAndIndirectLightingSeparatelyRef() = false;
       minReplacementTextureMipMapLevelRef() = 1;
       enableUnorderedResolveInIndirectRaysRef() = true;
-      NeeCachePass::enableRef() = false;
+      NeeCachePass::enableRef() = isRayReconstruction;
 
       russianRouletteMaxContinueProbabilityRef() = 0.9f;
       russianRoulette1stBounceMinContinueProbabilityRef() = 0.6f;
@@ -292,7 +372,7 @@ namespace dxvk {
       russianRoulette1stBounceMinContinueProbabilityRef() = 0.4f;
     }
     // else Graphics Preset == Custom
-
+    updateLightingSetting();
     forceHighResolutionReplacementTexturesRef() = false;
   }
 

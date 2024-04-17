@@ -139,6 +139,7 @@ namespace dxvk {
     const DxvkScInfo& getSpecConstantsInfo(VkPipelineBindPoint pipeline) const;
     void setSpecConstantsInfo(VkPipelineBindPoint pipeline, const DxvkScInfo& newSpecConstantInfo);
 
+    bool useRayReconstruction() const;
   protected:
     virtual void updateComputeShaderResources() override;
     virtual void updateRaytracingShaderResources() override;
@@ -158,7 +159,8 @@ namespace dxvk {
     void dispatchPathTracing(const Resources::RaytracingOutput& rtOutput);
     void dispatchDemodulate(const Resources::RaytracingOutput& rtOutput);
     void dispatchNeeCache(const Resources::RaytracingOutput& rtOutput);
-    void dispatchDLSS(const Resources::RaytracingOutput& rtOutput);
+    void dispatchDLSS(const Resources::RaytracingOutput& rtOutput, float frameTimeSecs);
+    void dispatchRayReconstruction(const Resources::RaytracingOutput& rtOutput, float frameTimeSecs);
     void dispatchDenoise(const Resources::RaytracingOutput& rtOutput, float frameTimeSecs);
     void dispatchReferenceDenoise(const Resources::RaytracingOutput& rtOutput, float frameTimeSecs);
     void dispatchComposite(const Resources::RaytracingOutput& rtOutput);
@@ -191,6 +193,7 @@ namespace dxvk {
     bool requiresDrawCall() const;
 
     bool shouldUseDLSS() const;
+    bool shouldUseRayReconstruction() const;
     bool shouldUseNIS() const;
     bool shouldUseTAA() const;
     bool shouldUseUpscaler() const { return shouldUseDLSS() || shouldUseNIS() || shouldUseTAA(); }

@@ -216,6 +216,7 @@ struct GeometryPSRResolverState {
   bool isTransmissionPSR;
   bool decalEncountered;
   bool useAlternateDisocclusionThreshold;
+  bool isRefractionDistorted;
 }
 
 struct MemoryGeometryPSRResolverState : IPayload
@@ -257,6 +258,8 @@ struct MemoryGeometryPSRResolverState : IPayload
       encodedConeRadius, geometryPSRResolverState.decalEncountered ? (1 << 21) : 0);
     encodedConeRadius = packedFlagSet(
       encodedConeRadius, geometryPSRResolverState.useAlternateDisocclusionThreshold ? (1 << 22) : 0);
+    encodedConeRadius = packedFlagSet(
+      encodedConeRadius, geometryPSRResolverState.isRefractionDistorted ? (1 << 23) : 0);
     encodedConeRadius |= uint32_t(geometryPSRResolverState.portalSpace) << 30;
 
     ret.encodedConeRadius = encodedConeRadius;
@@ -317,6 +320,7 @@ struct MemoryGeometryPSRResolverState : IPayload
     ret.isTransmissionPSR = packedFlagGet(encodedConeRadius, 1 << 20);
     ret.decalEncountered = packedFlagGet(encodedConeRadius, 1 << 21);
     ret.useAlternateDisocclusionThreshold = packedFlagGet(encodedConeRadius, 1 << 22);
+    ret.isRefractionDistorted = packedFlagGet(encodedConeRadius, 1 << 23);
     ret.portalSpace = (encodedConeRadius >> 30) & 0b11;
 
     ret.rayMask = data0;

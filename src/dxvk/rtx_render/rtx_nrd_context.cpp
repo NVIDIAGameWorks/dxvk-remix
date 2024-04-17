@@ -185,7 +185,10 @@ namespace dxvk {
     uint16_t width = (uint16_t)rtOutput.m_compositeOutputExtent.width;
     uint16_t height = (uint16_t)rtOutput.m_compositeOutputExtent.height;
 
-    bool bCreateDenoiser = m_method != m_settings.m_methodDesc.method || m_settings.m_methodDesc.fullResolutionWidth != width || m_settings.m_methodDesc.fullResolutionHeight != height;
+    bool bCreateDenoiser = m_method != m_settings.m_methodDesc.method ||
+      m_settings.m_methodDesc.fullResolutionWidth != width ||
+      m_settings.m_methodDesc.fullResolutionHeight != height ||
+      (m_transientTex.size() == 0 && m_permanentTex.size() == 0);
 
     if (bCreateDenoiser) {
 
@@ -978,5 +981,16 @@ namespace dxvk {
 
   void NRDContext::setNrdSettings(const NrdSettings& refSettings) {
     m_settings = refSettings;
+  }
+
+  void NRDContext::release() {
+    destroyResources();
+    destroyPipelines();
+    m_cbData = nullptr;
+    
+    if (m_denoiser) {
+      nrd::dispatch.DestroyDenoiser(*m_denoiser);
+      m_denoiser = nullptr;
+    }
   }
 } // namespace dxvk

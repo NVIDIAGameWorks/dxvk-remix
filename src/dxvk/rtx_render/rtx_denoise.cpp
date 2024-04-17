@@ -50,6 +50,10 @@ namespace dxvk {
     m_nrdContext->dispatch(ctx, barriers, sceneManager, rtOutput, inputs, outputs);
   }
 
+  void DxvkDenoise::releaseResources() {
+    m_nrdContext->release();
+  }
+
   void DxvkDenoise::copyNrdSettingsFrom(
     const DxvkDenoise& refDenoiser) {
     m_nrdContext->setNrdSettings(refDenoiser.getNrdContext().getNrdSettings());

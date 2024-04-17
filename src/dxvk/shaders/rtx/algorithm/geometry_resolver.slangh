@@ -313,6 +313,61 @@ void geometryResolverOutputSurface(
   }
 }
 
+void geometryResolverDLSSRROutputSurface(
+    uvec2 pixelCoordinate,
+    Ray ray,
+    Surface surface, SurfaceInteraction surfaceInteraction,
+    PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
+    f16vec3 attenuation, f16mat3 accumulatedVectorTransform, float virtualHitDistance)
+{
+  // Recreate the original primary camera ray
+  // Note: This is done to not have to pass extra information into the payload.
+
+  const Ray originalCameraRay = rayCreatePrimaryFromPixel(cb.camera, pixelCoordinate, false);
+
+  // Note: Using virtual hit distance accumulated through PSR and Ray Portals used to calculate a virtual hit position
+  const vec3 virtualHitPosition = rayEvaluate(originalCameraRay, virtualHitDistance);
+  const float linearViewZ = cameraWorldPosToLinearViewZ(cb.camera, virtualHitPosition);
+
+  const float4 projectionSpacePosition = mul(cb.camera.worldToProjectionJittered, float4(virtualHitPosition, 1.f));
+  const float depth = projectionSpacePosition.z / projectionSpacePosition.w;
+  imageStore(PrimaryDepthDLSSRR, pixelCoordinate, depth);
+
+  // Output Motion Vector (Primary/secondary surface coherent)
+  // Note: Technically part of the Surface Interaction, just not something we'd want to deserialize in other passes which would mean we'd need yet
+  // another structure for this. To avoid that, just output it like this for now.
+
+  // Note: Virtual motion used to account for the ray traversing ray portals and through PSR interactions.
+  const vec3 virtualMotion = mul(accumulatedVectorTransform, surfaceInteraction.motion);
+
+  vec4 prevWorldPosition = vec4(virtualHitPosition + virtualMotion, 1);
+  vec4 prevNDC = mul(cb.camera.prevWorldToProjection, prevWorldPosition);
+  prevNDC /= prevNDC.w;
+
+  vec2 ndc = cameraPixelCoordinateToNDC(cb.camera, pixelCoordinate);
+  vec2 motionVectorNDC = prevNDC.xy - ndc.xy;
+  vec2 motionVectorUVOffset = motionVectorNDC * vec2(0.5, -0.5);
+  vec2 motionVectorPixel = motionVectorUVOffset * cb.camera.resolution;
+
+  // Write out screen-space motion.
+  PrimaryScreenSpaceMotionVectorDLSSRR[pixelCoordinate] = motionVectorPixel;
+
+  // Serialize out the Surface Material Interaction
+  // Note: Always write to stochastic buffers in the primary surface case.
+  polymorphicSurfaceMaterialInteractionWriteToGBufferDLSSRR(
+      polymorphicSurfaceMaterialInteraction, ivec2(pixelCoordinate), surface,
+      PrimaryWorldShadingNormalDLSSRR);
+}
+
+void accumulateParticleBuffer(ivec2 pixelCoordinate, vec3 radiance)
+{
+  // Accumulate radiance to particle buffer, when DLSS-RR is on.
+  // Particles, glasses and opaque surfaces' emissive component will be recorded in this buffer.
+  vec4 prevParticleEmissive = ParticleBuffer[pixelCoordinate];
+  prevParticleEmissive.xyz += radiance;
+  ParticleBuffer[pixelCoordinate] = prevParticleEmissive;
+}
+
 void geometryResolverVertexOutputDebugView(
   uvec2 pixelCoordinate,
   Ray ray, RayInteraction rayInteraction,
@@ -582,6 +637,11 @@ void geometryResolverVertexOutputDebugView(
     }
 
     storeInDebugView(pixelCoordinate, lightIntensity);
+    break;
+  }
+  case DEBUG_VIEW_EMISSIVE_PARTICLE:
+  {
+    storeInDebugView(pixelCoordinate, SharedBiasCurrentColorMask[pixelCoordinate]);
     break;
   }
   case DEBUG_VIEW_NEE_CACHE_SAMPLE_RADIANCE:
@@ -1031,6 +1091,8 @@ void geometryResolverVertex(
     numUnorderedInteractions, 
     unorderedDecalEncountered, decalMemory, decalEmissiveRadiance);
 
+  vec3 particleEmissive = emissiveRadiance;
+
   if (cb.debugView == DEBUG_VIEW_PRIMARY_DECAL_ALBEDO)
   {
     MemoryDecalMaterialInteraction memory;
@@ -1092,6 +1154,16 @@ void geometryResolverVertex(
   geometryResolverState.portalSpace = hackState.portalSpace;
   geometryResolverState.accumulatedVectorTransform = hackState.accumulatedVectorTransform;
   geometryResolverState.decalEncountered = hackState.decalEncountered;
+
+  if (cb.outputParticleLayer)
+  {
+    if (polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque && geometryResolverState.continueResolving)
+    {
+      particleEmissive = emissiveRadiance;
+    }
+    accumulateParticleBuffer(geometryResolverState.pixelCoordinate, particleEmissive * geometryResolverState.attenuation);
+    emissiveRadiance -= particleEmissive;
+  }
 
   bool isUnorderedEmissive = any(emissiveRadiance > 0.0f);
 
@@ -1172,6 +1244,7 @@ void geometryResolverVertex(
     
     SharedRadianceRG[geometryResolverState.pixelCoordinate] = geometryResolverState.radiance.rg;
     SharedRadianceB[geometryResolverState.pixelCoordinate] = geometryResolverState.radiance.b;
+    PrimaryScreenSpaceMotionVectorDLSSRR[geometryResolverState.pixelCoordinate] = 0.0;
 
     return;
   }
@@ -1184,7 +1257,16 @@ void geometryResolverVertex(
 
   const vec3 materialEmissiveRadiance = polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(polymorphicSurfaceMaterialInteraction);
 
-  geometryResolverState.radiance += materialEmissiveRadiance * geometryResolverState.attenuation;
+  // For emissive surface that has sprite sheet animation, put emissive component to particle layer to reduce ghosting
+  if (cb.outputParticleLayer && any(materialEmissiveRadiance > 0.0) &&
+      surface.spriteSheetRows * surface.spriteSheetCols > 1)
+  {
+    accumulateParticleBuffer(geometryResolverState.pixelCoordinate, materialEmissiveRadiance * geometryResolverState.attenuation);
+  }
+  else
+  {
+    geometryResolverState.radiance += materialEmissiveRadiance * geometryResolverState.attenuation;
+  }
 
   // Get PSR related flags and early out of PSR sampling
 
@@ -1231,9 +1313,20 @@ void geometryResolverVertex(
   // Note: Using attenuation here to factor in the "standard" attenuation from resolving beforehand. Importantly this
   // code needs to come before the PSRR attenuation is factored in otherwise the reflection attenuation will improperly modulate the
   // incident diffuse layer contribution.
+  vec3 diffuseLayerRadiance = 0.0;
   approximateDiffuseLayerRadiance(
     surfaceInteraction, geometryResolverState.portalSpace, diffuseLayerWeight,
-    geometryResolverState.attenuation, geometryResolverState.radiance);
+    geometryResolverState.attenuation, diffuseLayerRadiance);
+  
+  // Output diffuse component from the glass to a separate particle layer so that it won't get mixed with background noise.
+  if (cb.outputParticleLayer && any(diffuseLayerRadiance > 0.0))
+  {
+    accumulateParticleBuffer(geometryResolverState.pixelCoordinate, diffuseLayerRadiance);
+  }
+  else
+  {
+    geometryResolverState.radiance += diffuseLayerRadiance;
+  }
 
   // Set the PSTR material medium index if a medium was entered
   // Note: This does not work for nested translucency as most recent medium entered is stored, but this is a fine thing to not support as
@@ -1352,7 +1445,7 @@ void geometryResolverVertex(
   SharedRadianceRG[geometryResolverState.pixelCoordinate] = geometryResolverState.radiance.rg;
   SharedRadianceB[geometryResolverState.pixelCoordinate] = geometryResolverState.radiance.b;
 
-  // Output DLSS bias color mask
+  // The particles (shared bias mask) are using opaque approximations, which only result in monochromatic attenuation, so we just need to output single channel here
   SharedBiasCurrentColorMask[geometryResolverState.pixelCoordinate] = isUnorderedEmissive ? 1.0f : 0.0f;
 
   // Output the Integration Surface PDF
@@ -1362,6 +1455,15 @@ void geometryResolverVertex(
   // potential two paths.
 
   SharedIntegrationSurfacePdf[geometryResolverState.pixelCoordinate] = selectedIntegrationSurfacePdf;
+
+  // Store DLSSRR data
+  if (cb.enableDLSSRR)
+  {
+    geometryResolverDLSSRROutputSurface(
+        geometryResolverState.pixelCoordinate, ray, surface, surfaceInteraction, polymorphicSurfaceMaterialInteraction,
+        geometryResolverState.attenuation, geometryResolverState.accumulatedVectorTransform, geometryResolverState.accumulatedHitDistance
+    );
+  }
 
   // Output Debug View
   // Note: This is always done on the first hit rather than the resolved "primary" hits due to the branching potential.
@@ -1374,6 +1476,21 @@ void geometryResolverVertex(
     selectedIntegrationSurfacePdf,
     geometryResolverState.directionAltered, geometryResolverState.portalSpace,
     geometryResolverState.accumulatedHitDistance, geometryResolverState.useAlternateDisocclusionThreshold);
+}
+
+
+bool isRefractionDistorted(GeometryPSRResolverState geometryPSRResolverState, SurfaceInteraction surfaceInteraction)
+{
+  // Check if the current surface point's screen space projection position is significantly different from the pixel position.
+  const uvec2 pixelCoordinate = geometryPSRResolverState.pixelCoordinate;
+  const vec4 virtualPosScreen = mul(cb.camera.worldToProjectionJittered, vec4(surfaceInteraction.position, 1.f));
+  const vec2 screenMul = vec2(cb.camera.resolution.x * 0.5f, cb.camera.resolution.y * -0.5f);
+  const vec2 posScreen = screenMul * (virtualPosScreen.xy / virtualPosScreen.w) + vec2(cb.camera.resolution.xy) * 0.5f;
+  const vec2 posScreenDirect = vec2(geometryPSRResolverState.pixelCoordinate) + 0.5f;
+
+  const vec2 diff = abs(posScreenDirect - posScreen);
+  const float sqRefractionPixelErrorThreshold = 8.f;
+  return dot(diff, diff) >= sqRefractionPixelErrorThreshold;
 }
 
 // Note: Logic grouped into function to make loop count termination more unified with non-PSR continuation cases in calling logic.
@@ -1515,6 +1632,13 @@ void geometryPSRResolverVertex(
     numUnorderedInteractions, 
     unorderedDecalEncountered, decalMemory, decalEmissiveRadiance);
 
+  vec4 particleEmissive = vec4(0,0,0,1);
+  if (cb.outputParticleLayer && any(emissiveRadiance > 0))
+  {
+    particleEmissive.xyz += emissiveRadiance * geometryPSRResolverState.attenuation;
+    emissiveRadiance = 0;
+  }
+
   // Note: Add to the number of unordered interactions in the debug view based on the number of unordered interactions in resolving.
   if (cb.debugView == DEBUG_VIEW_PRIMARY_UNORDERED_INTERACTIONS || cb.debugView == DEBUG_VIEW_PRIMARY_RAY_AND_UNORDERED_INTERACTIONS)
   {
@@ -1565,6 +1689,17 @@ void geometryPSRResolverVertex(
 
   // Handle attenuation and emissive radiance from the Resolve function
 
+  // Note: Emissive radiance handled first so objects with opacity do not attenuate themselves.
+  if (cb.outputParticleLayer && polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction) == surfaceMaterialTypeOpaque && geometryPSRResolverState.continueResolving)
+  {
+    particleEmissive.xyz += emissiveRadiance * geometryPSRResolverState.attenuation;
+    emissiveRadiance = 0;
+  }
+
+  if (any(particleEmissive != vec4(0,0,0,1)))
+  {
+    accumulateParticleBuffer(geometryPSRResolverState.pixelCoordinate, particleEmissive.xyz);
+  }
 
   // Handle medium attenuation if needed
   // Note: This is done here to avoid needing to accumulate the total resolved hit distance. Slightly
@@ -1624,6 +1759,13 @@ void geometryPSRResolverVertex(
 
   if (geometryPSRResolverState.continueResolving)
   {
+    // Compute the pixel error compared to a direct ray from camera    
+    uint8_t materialType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
+    if (materialType == surfaceMaterialTypeRayPortal)
+    {
+      geometryPSRResolverState.isRefractionDistorted = isRefractionDistorted(geometryPSRResolverState, surfaceInteraction);
+    }
+
     return;
   }
 
@@ -1670,10 +1812,19 @@ void geometryPSRResolverVertex(
 
   // Note: This code needs to come before the PSR attenuation is factored in otherwise the reflection or transmission attenuation will improperly
   // modulate the diffuse layer contribution.
+  vec3 diffuseLayerRadiance = 0.0;
   approximateDiffuseLayerRadiance(
     surfaceInteraction, geometryPSRResolverState.portalSpace, diffuseLayerWeight,
-    geometryPSRResolverState.attenuation, geometryPSRResolverState.radiance);
+    geometryPSRResolverState.attenuation, diffuseLayerRadiance);
 
+  if (cb.outputParticleLayer)
+  {
+    accumulateParticleBuffer(geometryPSRResolverState.pixelCoordinate, diffuseLayerRadiance);
+  }
+  else
+  {
+    geometryPSRResolverState.radiance += diffuseLayerRadiance;
+  }
   // Set the material medium index if a medium was entered or exited
   // Note: This does not work for nested translucency as most recent medium entered is stored, but this is a fine thing to not support as
   // it is not super common. Additionally this path should only be invoked if PSTR is desired, and only in the case of actual thick translucency
@@ -1765,6 +1916,60 @@ void geometryPSRResolverVertex(
   if (rayInteraction.customIndex & CUSTOM_INDEX_IS_VIEW_MODEL)
   {
     geometryPSRResolverState.isViewModelSurface = true;
+  }
+
+  // Replace DLSS-RR motion vectors for transparent objects if screen-space refraction error is not too large.
+  // This means that we replace the motion vectors (and depth + normals) until error is too large, giving us the
+  // last interaction that's usable for motion vectors.
+  if (cb.enableDLSSRR && psrType == psrTypeTransmission)
+  {
+    // Compute the pixel error compared to a direct ray from camera
+    const uvec2 pixelCoordinate = geometryPSRResolverState.pixelCoordinate;
+    bool hasRefractionThis = isRefractionDistorted(geometryPSRResolverState, surfaceInteraction);
+    uint8_t materialType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
+    bool hasPortalThis = geometryPSRResolverState.portalSpace != PORTAL_SPACE_NONE;
+    const float16_t minAttenuation = 0.2;
+
+    if (calcBt709Luminance(geometryPSRResolverState.attenuation) > minAttenuation &&
+        (!hasRefractionThis || (materialType != surfaceMaterialTypeRayPortal && hasPortalThis)) &&
+        !geometryPSRResolverState.isRefractionDistorted)
+    {
+      // Recreate the original primary camera ray
+      const Ray originalCameraRay = rayCreatePrimaryFromPixel(cb.camera, pixelCoordinate, false);
+
+      // Note: Using virtual hit distance accumulated through PSR and Ray Portals used to calculate a virtual hit position
+      const vec3 virtualHitPosition = rayEvaluate(originalCameraRay, geometryPSRResolverState.accumulatedHitDistance);
+      const float4 projectionSpacePosition = mul(cb.camera.worldToProjectionJittered, float4(virtualHitPosition, 1.f));
+      const float depth = projectionSpacePosition.z / projectionSpacePosition.w;
+      imageStore(PrimaryDepthDLSSRR, pixelCoordinate, depth);
+
+      // Output Motion Vector (Primary/secondary surface coherent)
+      // Note: Virtual motion used to account for the ray traversing ray portals and through PSR interactions.
+      const vec3 virtualMotion = mul(geometryPSRResolverState.accumulatedVectorTransform, surfaceInteraction.motion);
+
+      vec4 prevWorldPosition = vec4(virtualHitPosition + virtualMotion, 1);
+      vec4 prevNDC = mul(cb.camera.prevWorldToProjection, prevWorldPosition);
+      prevNDC /= prevNDC.w;
+
+      vec2 ndc = cameraPixelCoordinateToNDC(cb.camera, pixelCoordinate);
+      vec2 motionVectorNDC = prevNDC.xy - ndc.xy;
+      vec2 motionVectorUVOffset = motionVectorNDC * vec2(0.5, -0.5);
+      vec2 motionVectorPixel = motionVectorUVOffset * cb.camera.resolution;
+
+      // Write out screen-space motion.
+      PrimaryScreenSpaceMotionVectorDLSSRR[pixelCoordinate] = motionVectorPixel;
+
+      const GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfaceMaterialInteraction =
+          gBufferMemoryPolymorphicSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+
+      // Write out shading normal
+      PrimaryWorldShadingNormalDLSSRR[pixelCoordinate] = vec4(gBufferMemoryPolymorphicSurfaceMaterialInteraction.worldShadingNormal, 0);
+    }
+
+    if (hasRefractionThis && (materialType == surfaceMaterialTypeOpaque || materialType == surfaceMaterialTypeRayPortal))
+    {
+      geometryPSRResolverState.isRefractionDistorted = true;
+    }
   }
 
   // If this is the last bounce, ignore translucent geometry (e.g. glass)
@@ -1888,6 +2093,8 @@ void geometryResolver(ivec2 pixelCoordinate) {
     alphaBlendSurface.randomThreshold = getNextSampleBlueNoise(randomState);
     AlphaBlendGBuffer[pixelCoordinate] = alphaBlendSurface.pack();
   }
+  ParticleBuffer[pixelCoordinate] = vec4(0,0,0,1);
+  PrimaryAttenuation[pixelCoordinate] = colorToR11G11B10(geometryResolverState.attenuation);
 
 #ifndef GBUFFER_PSR
   if (cb.enableObjectPicking != 0)

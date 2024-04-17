@@ -27,11 +27,9 @@
 #include "rtx_context.h"
 #include "rtx_options.h"
 #include "rtx/pass/tonemap/tonemapping.h"
-#include "rtx/pass/dlss/dlss.h"
 #include "dxvk_device.h"
 #include "rtx_dlss.h"
 #include "dxvk_scoped_annotation.h"
-#include "rtx_shaders/prepare_dlss.h"
 #include "rtx_ngx_wrapper.h"
 #include "rtx_render/rtx_shader_manager.h"
 #include "rtx_imgui.h"
@@ -55,36 +53,29 @@ namespace dxvk {
     }
   }
 
-  // Defined within an unnamed namespace to ensure unique definition across binary
-  namespace {
-    class PrepareDLSSShader : public ManagedShader
-    {
-      SHADER_SOURCE(PrepareDLSSShader, VK_SHADER_STAGE_COMPUTE_BIT, prepare_dlss)
-
-      BEGIN_PARAMETER()
-        TEXTURE2D(DLSS_NORMALS_INPUT)
-        TEXTURE2D(DLSS_VIRTUAL_NORMALS_INPUT)
-        RW_TEXTURE2D(DLSS_NORMALS_OUTPUT)
-        CONSTANT_BUFFER(DLSS_CONSTANTS)
-      END_PARAMETER()
-    };
+  DxvkDLSS::DxvkDLSS(DxvkDevice* device) : CommonDeviceObject(device), RtxPass(device) {
+    // Trigger DLSS context creation
+    NGXDLSSContext::getInstance(m_device);
   }
 
-  DxvkDLSS::DxvkDLSS(DxvkDevice* device) : CommonDeviceObject(device) {
-    m_dlssContext = device->getCommon()->metaNGXContext().createDLSSContext();
+  DxvkDLSS::~DxvkDLSS() { }
 
-    DxvkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
-    info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-    info.access = VK_ACCESS_TRANSFER_WRITE_BIT;
-    info.size = sizeof(DLSSArgs);
-    m_constants = device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
+  void DxvkDLSS::onDestroy() {
+    NGXDLSSContext* dlssWrapper = NGXDLSSContext::getInstance(m_device);
+    dlssWrapper->releaseNGXFeature();
+    NGXDLSSContext::releaseInstance();
   }
 
-  DxvkDLSS::~DxvkDLSS() {
+  void DxvkDLSS::release() {
+    mRecreate = true;
+
+    NGXDLSSContext* dlssWrapper = NGXDLSSContext::getInstance(m_device);
+    if (dlssWrapper) {
+      dlssWrapper->releaseNGXFeature();
+    }
   }
 
-  NVSDK_NGX_PerfQuality_Value profileToQuality(DLSSProfile profile) {
+  NVSDK_NGX_PerfQuality_Value DxvkDLSS::profileToQuality(DLSSProfile profile) {
     NVSDK_NGX_PerfQuality_Value perfQuality = NVSDK_NGX_PerfQuality_Value_Balanced;
     switch (profile)
     {
@@ -99,6 +90,10 @@ namespace dxvk {
 
   bool DxvkDLSS::supportsDLSS() const {
     return m_device->getCommon()->metaNGXContext().supportsDLSS();
+  }
+
+  bool DxvkDLSS::isActive() {
+      return RtxOptions::Get()->isDLSSOrRayReconstructionEnabled();
   }
 
   DLSSProfile DxvkDLSS::getAutoProfile(uint32_t displayWidth, uint32_t displayHeight) {
@@ -155,10 +150,13 @@ namespace dxvk {
       mInputSize[1] = outRenderSize[1] = displaySize[1];
     } else {
       NVSDK_NGX_PerfQuality_Value perfQuality = profileToQuality(mActualProfile);
+      auto optimalSettings = NGXDLSSContext::getInstance(m_device)->queryOptimalSettings(displaySize, perfQuality);
 
-      assert(m_dlssContext != nullptr);
-
-      auto optimalSettings = m_dlssContext->queryOptimalSettings(displaySize, perfQuality);
+      // DLSS-RR requires the resolution to be the multiple of 32 to avoid artifacts.
+      // Use the same resolution as DLSS-RR to avoid memory fragmentation.
+      const int step = 32;
+      optimalSettings.optimalRenderSize[0] = (optimalSettings.optimalRenderSize[0] + step - 1) / step * step;
+      optimalSettings.optimalRenderSize[1] = (optimalSettings.optimalRenderSize[1] + step - 1) / step * step;
       mInputSize[0] = outRenderSize[0] = optimalSettings.optimalRenderSize[0];
       mInputSize[1] = outRenderSize[1] = optimalSettings.optimalRenderSize[1];
     }
@@ -195,7 +193,8 @@ namespace dxvk {
     Rc<RtxContext> ctx,
     DxvkBarrierSet& barriers,
     const Resources::RaytracingOutput& rtOutput,
-    bool resetHistory) {
+    bool resetHistory)
+  {
     ScopedGpuProfileZone(ctx, "DLSS");
 
     bool dlssAutoExposure = useDlssAutoExposure();
@@ -210,9 +209,15 @@ namespace dxvk {
     SceneManager& sceneManager = device()->getCommon()->getSceneManager();
 
     {
+      // Hack to bypass ownership check for aliased resources
+      rtOutput.m_rayReconstructionHitDistance.view(Resources::AccessType::Write);
+    }
+
+    {
       // The DLSS y coordinate is pointing down
       float jitterOffset[2];
-      sceneManager.getCamera().getJittering(jitterOffset);
+      RtCamera& camera = sceneManager.getCamera();
+      camera.getJittering(jitterOffset);
       mMotionVectorScale = MotionVectorScale::Absolute;
 
       float motionVectorScale[2] = { 1.f,1.f };
@@ -236,8 +241,10 @@ namespace dxvk {
       };
 
       for (auto input : pInputs) {
-        if (input == nullptr)
+        if (input == nullptr) {
           continue;
+        }
+        
         barriers.accessImage(
           input->image(),
           input->imageSubresources(),
@@ -263,33 +270,35 @@ namespace dxvk {
 
       barriers.recordCommands(ctx->getCommandList());
 
+      NGXDLSSContext* ngxInstance = NGXDLSSContext::getInstance(m_device);
+
       auto motionVectorInput = &rtOutput.m_primaryScreenSpaceMotionVector;
       auto depthInput = &rtOutput.m_primaryDepth;
-      auto normalsInput = nullptr;
       // Note: Texture contains specular albedo in this case as DLSS happens after demodulation
       auto specularAlbedoInput = &rtOutput.m_primarySpecularAlbedo.resource(Resources::AccessType::Read);
-
-      assert(m_dlssContext != nullptr);
+      ngxInstance->setWorldToViewMatrix(camera.getWorldToView());
+      ngxInstance->setViewToProjectionMatrix(camera.getViewToProjection());
 
       // Note: Add texture inputs added here to the pInputs array above to properly access the images.
-      m_dlssContext->evaluate(ctx,
-                              &rtOutput.m_compositeOutput.resource(Resources::AccessType::Read),  // pUnresolvedColor
-                              &rtOutput.m_finalOutput,                                            // pResolvedColor
-                              motionVectorInput,                                                  // pMotionVectors
-                              depthInput,                                                         // pDepth
-                              &rtOutput.m_primaryAlbedo,                                          // pDiffuseAlbedo
-                              specularAlbedoInput,                                                // pSpecularAlbedo
-                              &autoExposure.getExposureTexture(),                                 // pExposure
-                              normalsInput,                                                       // pNormals
-                              &rtOutput.m_primaryPerceptualRoughness,                             // pRoughness
-                              &rtOutput.m_sharedBiasCurrentColorMask.resource(Resources::AccessType::Read),// pBiasCurrentColorMask
-                              resetHistory,
-                              0.f,
-                              mBiasCurrentColorEnabled,
-                              mPreExposure,
-                              jitterOffset,
-                              motionVectorScale,
-                              mAutoExposure);
+      NGXDLSSContext::NGXBuffers buffers;
+      buffers.pUnresolvedColor = &rtOutput.m_compositeOutput.resource(Resources::AccessType::Read);
+      buffers.pResolvedColor = &rtOutput.m_finalOutput;
+      buffers.pMotionVectors = motionVectorInput;
+      buffers.pDepth = depthInput;
+      buffers.pExposure = &autoExposure.getExposureTexture();
+      buffers.pBiasCurrentColorMask = &rtOutput.m_sharedBiasCurrentColorMask.resource(Resources::AccessType::Read);
+
+      NGXDLSSContext::NGXSettings settings;
+      settings.resetAccumulation = resetHistory;
+      settings.antiGhost = mBiasCurrentColorEnabled;
+      settings.sharpness = 0.f;
+      settings.preExposure = mPreExposure;
+      settings.jitterOffset[0] = jitterOffset[0];
+      settings.jitterOffset[1] = jitterOffset[1];
+      settings.motionVectorScale[0] = motionVectorScale[0];
+      settings.motionVectorScale[1] = motionVectorScale[1];
+
+      ngxInstance->evaluateDLSS(ctx, buffers, settings);
 
       for (auto output : pOutputs) {
         barriers.accessImage(
@@ -314,14 +323,13 @@ namespace dxvk {
   }
 
   void DxvkDLSS::initializeDLSS(Rc<DxvkContext> renderContext) {
-    assert(m_dlssContext != nullptr);
-
-    m_dlssContext->releaseNGXFeature();
+    NGXDLSSContext* dlssWrapper = NGXDLSSContext::getInstance(m_device);
+    dlssWrapper->releaseNGXFeature();
 
     NVSDK_NGX_PerfQuality_Value perfQuality = profileToQuality(mProfile);
 
-    auto optimalSettings = m_dlssContext->queryOptimalSettings(mInputSize, perfQuality);
+    auto optimalSettings = dlssWrapper->queryOptimalSettings(mInputSize, perfQuality);
 
-    m_dlssContext->initialize(renderContext, mInputSize, mDLSSOutputSize, mIsHDR, mInverseDepth, mAutoExposure, false, perfQuality);
+    dlssWrapper->initialize(renderContext, mInputSize, mDLSSOutputSize, mIsHDR, mInverseDepth, mAutoExposure, false, perfQuality);
   }
 }
