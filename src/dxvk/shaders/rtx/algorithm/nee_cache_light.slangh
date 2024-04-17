@@ -94,8 +94,10 @@ struct NEECacheUtils
     SURFACE_CREATE_READ(surface0, surfaceIndex, surfaces);
     Surface surface = surface0;
   #if USE_SIMIPLIFIED_MODEL
-    surface.isEmissive = false;
-    surface.isEmissiveBlend = false;
+    // Don't override following settings because they may affect some emissive objects
+    // surface.isEmissive = false;
+    // surface.isEmissiveBlend = false;
+    // surface.tFactor = 0;
     surface.isStatic = true;
     surface.isMatte = true;
     surface.texcoordGenerationMode = uint(TexGenMode::None);
@@ -106,7 +108,6 @@ struct NEECacheUtils
     surface.textureAlphaArg1Source = uint(RtTextureArgSource::None);
     surface.textureAlphaArg2Source = uint(RtTextureArgSource::None);
     surface.textureAlphaOperation = uint(DxvkRtTextureOperation::Disable);
-    surface.tFactor = 0;
     surface.spriteSheetRows = 1;
     surface.spriteSheetCols = 1;
     surface.spriteSheetFPS = 0;
@@ -164,7 +165,8 @@ struct NEECacheUtils
     {
       OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
   #if USE_SIMIPLIFIED_MODEL
-      opaqueSurfaceMaterial.albedoOpacityTextureIndex = BINDING_INDEX_INVALID;
+      // Don't override albedo textures because it may be used by some emissive objects
+      // opaqueSurfaceMaterial.albedoOpacityTextureIndex = BINDING_INDEX_INVALID;
       opaqueSurfaceMaterial.normalTextureIndex = BINDING_INDEX_INVALID;
       opaqueSurfaceMaterial.tangentTextureIndex = BINDING_INDEX_INVALID;
       opaqueSurfaceMaterial.heightTextureIndex = BINDING_INDEX_INVALID;

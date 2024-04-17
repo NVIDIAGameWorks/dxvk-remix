@@ -266,13 +266,7 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
     NEECacheUtils.convertPrefixSumIDToID(task.x & 0xffffff, PrimitiveIDPrefixSum, surfaceID, primitiveID);
     NEECandidate candidate = NEECandidate.create(surfaceID, primitiveID);
 
-    float sampleThreshold = 0;
-    for (int i = 0; i <= candidateID; ++i)
-    {
-      sampleThreshold += s_candidateLight[i][localIndex.y];
-    }
-    candidate.setSampleThreshold(sampleThreshold);
-
+    candidate.setSampleProbability(s_candidateLight[candidateID][localIndex.y]);
     cell.setCandidate(candidateID, candidate);
   }
 }
