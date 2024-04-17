@@ -396,10 +396,9 @@ void integratePathVertex(
 
     bool isNeeEnabledOnBounce = (pathState.bounceIteration == 1 && cb.neeCacheArgs.enableOnFirstBounce) ||
      (pathState.bounceIteration > 1 && cb.neeCacheArgs.enableModeAfterFirstBounce != NeeEnableMode::None && pathState.enableNeeCacheAfterFirstBounce);
-    if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && isNeeEnabledOnBounce && any(emissiveLight > 0) && pathState.neeCacheCellOffset != NEECell.s_invalidOffset)
+    if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && isNeeEnabledOnBounce && any(emissiveLight > 0))
     {
-      uint cellOffset = pathState.neeCacheCellOffset;
-      NEECell cell = NEECache.getCell(cellOffset);
+      NEECell cell = NEECache.getCell(pathState.neeCacheCellOffset);
 
       // Insert new task
       float16_t taskRadiance = calcBt709Luminance(emissiveLight * pathState.throughput);
@@ -408,18 +407,15 @@ void integratePathVertex(
       cell.insertSlotTask(prefixTask, taskRadiance, randomOffset, false);
 
       uint2 task = uint2(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex);
-      float16_t lastSampleThreshold = 0;
       for (int i = 0; i < cell.getCandidateCount(); ++i)
       {
         NEECandidate candidate = cell.getCandidate(i);
         int2 candidateID = candidate.getIDData();
-        float16_t sampleThreshold = candidate.getSampleThreshold();
-        if (all(candidateID == task) && sampleThreshold > lastSampleThreshold)
+        if (all(candidateID == task))
         {
-          lightSelectionPDF = sampleThreshold - lastSampleThreshold;
+          lightSelectionPDF = candidate.getSampleProbability();
           break;
         }
-        lastSampleThreshold = sampleThreshold;
       }
     }
 
