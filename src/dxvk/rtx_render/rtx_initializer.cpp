@@ -64,6 +64,11 @@ namespace dxvk {
       // Default, init to custom unless otherwise specified
       if (RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Auto)
         RtxOptions::Get()->graphicsPresetRef() = GraphicsPreset::Custom;
+
+      // Need to initialize DLSS-RR settings in test cases
+      if (env::getEnvVar("DXVK_RAY_RECONSTRUCTION") != "0") {
+        RtxOptions::Get()->updateLightingSetting();
+      }
     }
 
     // Configure shader manager to understand bindless layouts

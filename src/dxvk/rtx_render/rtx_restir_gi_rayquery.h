@@ -70,6 +70,10 @@ namespace dxvk {
         return temporalFixedHistoryLength();
     }
 
+    static void setToNRDPreset();
+
+    static void setToRayReconstructionPreset();
+
   private:
     virtual bool isActive() override { return RtxOptions::Get()->useReSTIRGI(); }
 
@@ -100,6 +104,8 @@ namespace dxvk {
     
     RTX_OPTION("rtx.restirGI", bool, useDemodulatedTargetFunction, false, "Demodulates target function. This will improve the result in non-pairwise modes.");
     RTX_OPTION("rtx.restirGI", bool, usePermutationSampling, true, "Uses permutation sample to perturb samples. This will improve results in DLSS.");
+    RTX_OPTION("rtx.restirGI", bool, useDLSSRRCompatibilityMode, false, "DLSS-RR compatibility mode. In this mode temporal reprojection is randomized to reduce sample coherency.");
+    RTX_OPTION("rtx.restirGI", int, DLSSRRTemporalRandomizationRadius, 80, "In DLSS-RR compatibility mode temporal reprojection is randomized to reduce sample coherency. This option determines the randomization radius.");
     RTX_OPTION("rtx.restirGI", ReSTIRGISampleStealing,  useSampleStealing, ReSTIRGISampleStealing::StealPixel, "Steals ReSTIR GI samples in path tracer. This will improve highly specular results.");
     RTX_OPTION("rtx.restirGI", float, sampleStealingJitter, 0.0, "Jitter samples by k pixels to avoid aliasing.");
     RTX_OPTION("rtx.restirGI", bool, stealBoundaryPixelSamplesWhenOutsideOfScreen , true, "Steals ReSTIR GI samples even a hit point is outside the screen. This will further improve highly specular samples at the cost of some bias.");

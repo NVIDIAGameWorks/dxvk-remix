@@ -432,7 +432,7 @@ external_dll_paths += aftermath_lib_path
 aftermath_lib = dxvk_compiler.find_library('GFSDK_Aftermath_Lib.x64', dirs : aftermath_lib_path)
 
 # this is repeated below, since we overwrite dlss_lib_path in src/dxvk/meson.build for some reason
-dlss_root_path = 'external/ngx_sdk_dlss'
+dlss_root_path = 'external/ngx_sdk_dldn'
 dlss_lib_path = join_paths(global_src_root_norm, dlss_root_path, 'lib/Windows_x86_64/rel/')
 external_dll_paths += dlss_lib_path
 dlfg_root_path = 'external/ngx_sdk_dlfg'
@@ -487,7 +487,7 @@ if not dxvk_is_ninja
   copy_dlss_dll_target = custom_target('copy_dlss_dll',
     output           : ['copy_dlss_dll'],
     build_by_default : true,
-    command          : [copy_script_path, dlss_lib_path, output_dir, 'nvngx_dlss.dll'] )
+    command          : [copy_script_path, dlss_lib_path, output_dir, 'nvngx_*.*'] )
 
   copy_dlfg_dll_target = custom_target('copy_dlfg_dll',
     output           : ['copy_dlfg_dll'],
@@ -581,7 +581,7 @@ if dxvk_is_ninja
   fs.read('vsgen/vsutil.py')
 
   # ... and now we do this again, because src/dxvk/meson.build overwrites this for some reason
-  dlss_root_path = 'external/ngx_sdk_dlss'
+  dlss_root_path = 'external/ngx_sdk_dldn'
   dlss_lib_path = join_paths(global_src_root_norm, dlss_root_path, 'lib/Windows_x86_64/rel/')
   dlfg_root_path = 'external/ngx_sdk_dlfg'
   dlfg_lib_path = join_paths(global_src_root_norm, dlfg_root_path, 'lib/Windows_x86_64/rel/')
@@ -694,7 +694,7 @@ if dxvk_is_ninja
       command          : [copy_script_path,
                           dlss_lib_path, 
                           output_path,
-                          'nvngx_dlss.dll'] )
+                          'nvngx_*.*'] )
 
     copy_dlfg_dll = custom_target('copy_dlfg_dll_' + target_suffix,
       output           : ['copy_dlfg_dll_' + target_suffix],

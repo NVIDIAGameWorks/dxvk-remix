@@ -219,8 +219,15 @@ namespace dxvk {
       DxvkDLSS& dlss = m_common->metaDLSS();
       uint32_t displaySize[2] = { upscaleExtent.width, upscaleExtent.height };
       uint32_t renderSize[2];
-
       dlss.setSetting(displaySize, RtxOptions::Get()->getDLSSQuality(), renderSize);
+      downscaleExtent.width = renderSize[0];
+      downscaleExtent.height = renderSize[1];
+      downscaleExtent.depth = 1;
+    } else if (shouldUseRayReconstruction()) {
+      DxvkRayReconstruction& rayReconstruction = m_common->metaRayReconstruction();
+      uint32_t displaySize[2] = { upscaleExtent.width, upscaleExtent.height };
+      uint32_t renderSize[2];
+      rayReconstruction.setSettings(displaySize, RtxOptions::Get()->getDLSSQuality(), renderSize);
       downscaleExtent.width = renderSize[0];
       downscaleExtent.height = renderSize[1];
       downscaleExtent.depth = 1;
@@ -258,11 +265,20 @@ namespace dxvk {
     // into the free bits in memory payload structures on the GPU.
     assert((renderSize[0] < (1 << 14)) && (renderSize[1] < (1 << 14)));
 
-    getCommonObjects()->getTextureManager().clear();
+    // With reloadTextureWhenResolutionChanged ON, textures will get reloaded when resolution is changed,
+    // which may cause long wait when changing DLSS-RR or other upscalers' settings.
+    // Therefore reloadTextureWhenResolutionChanged is set to OFF by default to improve performance. 
+    if (RtxOptions::Get()->reloadTextureWhenResolutionChanged()) {
+      getCommonObjects()->getTextureManager().clear();
 
-    // DXVK doesnt free chunks for us by default (its high water mark) so force release some memory back to the system here.
-    DxvkMemoryAllocator& memoryManager = m_device->getCommon()->memoryManager();
-    memoryManager.freeUnusedChunks();
+      // DXVK doesnt free chunks for us by default (its high water mark) so force release some memory back to the system here.
+      DxvkMemoryAllocator& memoryManager = m_device->getCommon()->memoryManager();
+      memoryManager.freeUnusedChunks();
+    }
+  }
+
+  bool RtxContext::useRayReconstruction() const {
+    return m_common->metaRayReconstruction().useRayReconstruction();
   }
 
   // Hooked into D3D9 presentImage (same place HUD rendering is)
@@ -337,7 +353,8 @@ namespace dxvk {
         Logger::info(str::format("RTX: Test screenshot capture triggered"));
         Logger::info(str::format("RTX: Use separate denoiser ", RtxOptions::Get()->isSeparatedDenoiserEnabled()));
         Logger::info(str::format("RTX: Use rtxdi ", RtxOptions::Get()->useRTXDI()));
-        Logger::info(str::format("RTX: Use dlss ", RtxOptions::Get()->isDLSSEnabled()));
+        Logger::info(str::format("RTX: Use dlss ", RtxOptions::Get()->isDLSSOrRayReconstructionEnabled()));
+        Logger::info(str::format("RTX: Use ray reconstruction ", RtxOptions::Get()->isRayReconstructionEnabled()));
         Logger::info(str::format("RTX: Use nis ", RtxOptions::Get()->isNISEnabled()));
         if (!s_capturePrePresentTestScreenshot) {
           m_screenshotFrameEnabled = false;
@@ -400,13 +417,17 @@ namespace dxvk {
         static RenderPassGBufferRaytraceMode sPrevRenderPassGBufferRaytraceMode = RenderPassGBufferRaytraceMode::Count;
         static RenderPassIntegrateDirectRaytraceMode sPrevRenderPassIntegrateDirectRaytraceMode = RenderPassIntegrateDirectRaytraceMode::Count;
         static RenderPassIntegrateIndirectRaytraceMode sPrevRenderPassIntegrateIndirectRaytraceMode = RenderPassIntegrateIndirectRaytraceMode::Count;
+        static UpscalerType sPrevUpscalerType = UpscalerType::None;
+
         if (sPrevRenderPassGBufferRaytraceMode != RtxOptions::Get()->getRenderPassGBufferRaytraceMode() ||
             sPrevRenderPassIntegrateDirectRaytraceMode != RtxOptions::Get()->getRenderPassIntegrateDirectRaytraceMode() ||
-            sPrevRenderPassIntegrateIndirectRaytraceMode != RtxOptions::Get()->getRenderPassIntegrateIndirectRaytraceMode()) {
+            sPrevRenderPassIntegrateIndirectRaytraceMode != RtxOptions::Get()->getRenderPassIntegrateIndirectRaytraceMode() ||
+            sPrevUpscalerType != RtxOptions::Get()->upscalerType()) {
           
           sPrevRenderPassGBufferRaytraceMode = RtxOptions::Get()->getRenderPassGBufferRaytraceMode();
           sPrevRenderPassIntegrateDirectRaytraceMode = RtxOptions::Get()->getRenderPassIntegrateDirectRaytraceMode();
           sPrevRenderPassIntegrateIndirectRaytraceMode = RtxOptions::Get()->getRenderPassIntegrateIndirectRaytraceMode();
+          sPrevUpscalerType = RtxOptions::Get()->upscalerType();
 
           logRenderPassRaytraceMode("GBuffer", RtxOptions::Get()->getRenderPassGBufferRaytraceMode());
           logRenderPassRaytraceModeRayQuery("Integrate Direct", RtxOptions::Get()->getRenderPassIntegrateDirectRaytraceMode());
@@ -485,11 +506,16 @@ namespace dxvk {
         dispatchObjectPicking(rtOutput, downscaledExtent, targetImage->info().extent);
 
         // Upscaling if DLSS/NIS enabled, or the Composition Pass will do upscaling
-        if (shouldUseDLSS()) {
+        bool useRayReconstruction = false;
+        if (shouldUseDLSS() && m_common->metaDLSS().shouldDispatch()) {
           // xxxnsubtil: the DLSS indicator reads our exposure texture even with DLSS autoexposure on
           // make sure it has been created, otherwise we run into trouble on the first frame
           m_common->metaAutoExposure().createResources(this);
-          dispatchDLSS(rtOutput);
+          dispatchDLSS(rtOutput, frameTimeSecs);
+        } else if (shouldUseRayReconstruction() && m_common->metaRayReconstruction().shouldDispatch()) {
+          m_common->metaAutoExposure().createResources(this);
+          dispatchRayReconstruction(rtOutput, frameTimeSecs);
+          useRayReconstruction = true;
         } else if (shouldUseNIS()) {
           dispatchNIS(rtOutput);
         } else if (shouldUseTAA()){
@@ -503,6 +529,15 @@ namespace dxvk {
             { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
             { 0, 0, 0 },
             rtOutput.m_compositeOutputExtent);
+        }
+
+        if (m_common->metaNGXContext().supportsRayReconstruction() && !useRayReconstruction) {
+          DxvkRayReconstruction& rayReconstruction = m_common->metaRayReconstruction();
+          rayReconstruction.release();
+        }
+        if (m_common->metaNGXContext().supportsDLSS() && !shouldUseDLSS()) {
+          DxvkDLSS& dlss = m_common->metaDLSS();
+          dlss.release();
         }
 
         dispatchBloom(rtOutput);
@@ -726,6 +761,14 @@ namespace dxvk {
     outPrimaryDirectNrdArgs = denoiser0.getNrdArgs();
     outPrimaryIndirectNrdArgs = denoiser1.getNrdArgs();
     outSecondaryNrdArgs = denoiser2.getNrdArgs();
+
+    // Disable ReBLUR when RR is on because ReBLUR uses a different buffer encoding
+    bool useRR = useRayReconstruction();
+    if (useRR)
+    {
+      outPrimaryDirectNrdArgs.isReblurEnabled = false;
+      outPrimaryIndirectNrdArgs.isReblurEnabled = false;
+    }
   }
 
   void RtxContext::updateRaytraceArgsConstantBuffer(Resources::RaytracingOutput& rtOutput, float frameTimeSecs,
@@ -747,6 +790,7 @@ namespace dxvk {
     
     // Note: Ensure the number of lights can fit into the ray tracing args.
     assert(getSceneManager().getLightManager().getActiveCount() <= std::numeric_limits<uint16_t>::max());
+    bool useRR = shouldUseRayReconstruction();
 
     constants.frameIdx = RtxOptions::Get()->getRngSeedWithFrameIndex() ? m_device->getCurrentFrameId() : 0;
     constants.lightCount = static_cast<uint16_t>(getSceneManager().getLightManager().getActiveCount());
@@ -765,7 +809,6 @@ namespace dxvk {
     constants.russianRouletteSpecularContinueProbability = RtxOptions::Get()->russianRouletteSpecularContinueProbability();
     constants.russianRouletteDistanceFactor = RtxOptions::Get()->russianRouletteDistanceFactor();
     constants.russianRouletteMaxContinueProbability = RtxOptions::Get()->russianRouletteMaxContinueProbability();
-    constants.russianRouletteMaxContinueProbability = RtxOptions::Get()->getRussianRouletteMaxContinueProbability();
     constants.russianRoulette1stBounceMinContinueProbability = RtxOptions::Get()->getRussianRoulette1stBounceMinContinueProbability();
     constants.russianRoulette1stBounceMaxContinueProbability = RtxOptions::Get()->getRussianRoulette1stBounceMaxContinueProbability();
     constants.pathMinBounces = RtxOptions::Get()->getPathMinBounces();
@@ -805,6 +848,9 @@ namespace dxvk {
     constants.psrrMaxBounces = RtxOptions::Get()->getPSRRMaxBounces();
     constants.pstrMaxBounces = RtxOptions::Get()->getPSTRMaxBounces();
 
+    auto& rayReconstruction = m_common->metaRayReconstruction();
+    constants.outputParticleLayer = useRR && rayReconstruction.useParticleBuffer();
+
     auto& rtxdi = m_common->metaRtxdiRayQuery();
     constants.enableEmissiveBlendEmissiveOverride = RtxOptions::Get()->isEmissiveBlendEmissiveOverrideEnabled();
     constants.enableRtxdi = RtxOptions::Get()->useRTXDI();
@@ -827,9 +873,9 @@ namespace dxvk {
     constants.enableDemodulateRoughness = m_common->metaDemodulate().demodulateRoughness();
     constants.enableReplaceDirectSpecularHitTWithIndirectSpecularHitT = RtxOptions::Get()->isReplaceDirectSpecularHitTWithIndirectSpecularHitTEnabled();
     constants.enablePortalFadeInEffect = RtxOptions::Get()->isPortalFadeInEffectEnabled();
-    constants.enableEnhanceBSDFDetail = (shouldUseDLSS() || shouldUseTAA()) && m_common->metaComposite().enableDLSSEnhancement();
+    constants.enableEnhanceBSDFDetail = (shouldUseDLSS() || useRR || shouldUseTAA()) && m_common->metaComposite().enableDLSSEnhancement();
     constants.enhanceBSDFIndirectMode = (uint32_t)m_common->metaComposite().dlssEnhancementMode();
-    constants.enhanceBSDFDirectLightPower = m_common->metaComposite().dlssEnhancementDirectLightPower();
+    constants.enhanceBSDFDirectLightPower = useRR ? 0.0 : m_common->metaComposite().dlssEnhancementDirectLightPower();
     constants.enhanceBSDFIndirectLightPower = m_common->metaComposite().dlssEnhancementIndirectLightPower();
     constants.enhanceBSDFDirectLightMaxValue = m_common->metaComposite().dlssEnhancementDirectLightMaxValue();
     constants.enhanceBSDFIndirectLightMaxValue = m_common->metaComposite().dlssEnhancementIndirectLightMaxValue();
@@ -907,6 +953,8 @@ namespace dxvk {
     constants.boilingFilterRemoveReservoirThreshold = restirGI.boilingFilterRemoveReservoirThreshold();
     constants.temporalHistoryLength = restirGI.getTemporalHistoryLength(frameTimeSecs * 1000.0);
     constants.permutationSamplingSize = restirGI.permutationSamplingSize();
+    constants.enableReSTIRGIDLSSRRCompatibilityMode = useRR ? restirGI.useDLSSRRCompatibilityMode() : 0;
+    constants.reSTIRGIDLSSRRTemporalRandomizationRadius = constants.camera.resolution.x / 960.0f * restirGI.DLSSRRTemporalRandomizationRadius();
     constants.enableReSTIRGITemporalBiasCorrection = restirGI.useTemporalBiasCorrection();
     constants.enableReSTIRGIDiscardEnlargedPixels = restirGI.useDiscardEnlargedPixels();
     constants.reSTIRGIHistoryDiscardStrength = restirGI.historyDiscardStrength();
@@ -981,7 +1029,7 @@ namespace dxvk {
     constants.vertexColorStrength = RtxOptions::Get()->vertexColorStrength();
     constants.viewModelRayTMax = RtxOptions::ViewModel::rangeMeters() * RtxOptions::Get()->getMeterToWorldUnitScale();
     constants.roughnessDemodulationOffset = m_common->metaDemodulate().demodulateRoughnessOffset();
-
+    
     constants.volumeArgs = getSceneManager().getVolumeManager().getVolumeArgs(cameraManager, 
       rtOutput.m_froxelVolumeExtent, rtOutput.m_numFroxelVolumes, getSceneManager().getFogState(), enablePortalVolumes);
     RtxOptions::Get()->opaqueMaterialOptions.fillShaderParams(constants.opaqueMaterialArgs);
@@ -1018,6 +1066,9 @@ namespace dxvk {
     constants.clearColorDepth = getSceneManager().getGlobals().clearColorDepth;
     constants.clearColorPicking = getSceneManager().getGlobals().clearColorPicking;
     constants.clearColorNormal = getSceneManager().getGlobals().clearColorNormal;
+
+    // DLSS-RR
+    constants.enableDLSSRR = useRR;
 
     // Upload the constants to the GPU
     {
@@ -1164,7 +1215,9 @@ namespace dxvk {
   }
   
   void RtxContext::dispatchReferenceDenoise(const Resources::RaytracingOutput& rtOutput, float frameTimeSecs) {
-    if (!RtxOptions::Get()->isDenoiserEnabled() || !RtxOptions::Get()->useDenoiserReferenceMode())
+    bool useRR = useRayReconstruction();
+    bool useNRDForTraining = getCommonObjects()->metaRayReconstruction().enableNRDForTraining();
+    if (!RtxOptions::Get()->isDenoiserEnabled() || !RtxOptions::Get()->useDenoiserReferenceMode() || (useRR && !useNRDForTraining))
       return;
 
     DxvkDenoise& denoiser = m_common->metaReferenceDenoiser();
@@ -1200,8 +1253,34 @@ namespace dxvk {
   }
 
   void RtxContext::dispatchDenoise(const Resources::RaytracingOutput& rtOutput, float frameTimeSecs) {
-    if (!RtxOptions::Get()->isDenoiserEnabled() || RtxOptions::Get()->useDenoiserReferenceMode())
+    auto& rayReconstruction = getCommonObjects()->metaRayReconstruction();
+
+    // Primary direct denoiser used for primary direct lighting when separated, otherwise a special combined direct+indirect denoiser is used when both direct and indirect signals are combined.
+    DxvkDenoise& denoiser0 = RtxOptions::Get()->isSeparatedDenoiserEnabled() ? m_common->metaPrimaryDirectLightDenoiser() : m_common->metaPrimaryCombinedLightDenoiser();
+    DxvkDenoise& referenceDenoiserSecondLobe0 = m_common->metaReferenceDenoiserSecondLobe0();
+    // Primary Indirect denoiser used for primary indirect lighting when separated.
+    DxvkDenoise& denoiser1 = m_common->metaPrimaryIndirectLightDenoiser();
+    DxvkDenoise& referenceDenoiserSecondLobe1 = m_common->metaReferenceDenoiserSecondLobe1();
+    // Secondary combined denoiser always used for secondary lighting.
+    DxvkDenoise& denoiser2 = m_common->metaSecondaryCombinedLightDenoiser();
+    DxvkDenoise& referenceDenoiserSecondLobe2 = m_common->metaReferenceDenoiserSecondLobe2();
+
+    bool shouldDenoise = false;
+    if (useRayReconstruction()) {
+      shouldDenoise = (rayReconstruction.enableNRDForTraining() && !RtxOptions::Get()->useDenoiserReferenceMode()) || rayReconstruction.preprocessSecondarySignal();
+    } else {
+      shouldDenoise = RtxOptions::useDenoiser() && !RtxOptions::useDenoiserReferenceMode();
+    }
+
+    if (!shouldDenoise) {
+      denoiser0.releaseResources();
+      denoiser1.releaseResources();
+      denoiser2.releaseResources();
+      referenceDenoiserSecondLobe0.releaseResources();
+      referenceDenoiserSecondLobe1.releaseResources();
+      referenceDenoiserSecondLobe2.releaseResources();
       return;
+    }
 
     ScopedGpuProfileZone(this, "Denoising");
 
@@ -1232,17 +1311,10 @@ namespace dxvk {
         denoiser.dispatch(this, m_execBarriers, rtOutput, denoiseInput, denoiseOutput);
     };
 
-    // Primary direct denoiser used for primary direct lighting when separated, otherwise a special combined direct+indirect denoiser is used when both direct and indirect signals are combined.
-    DxvkDenoise& denoiser0 = RtxOptions::Get()->isSeparatedDenoiserEnabled() ? m_common->metaPrimaryDirectLightDenoiser() : m_common->metaPrimaryCombinedLightDenoiser();
-    DxvkDenoise& referenceDenoiserSecondLobe0 = m_common->metaReferenceDenoiserSecondLobe0();
-    // Primary Indirect denoiser used for primary indirect lighting when separated.
-    DxvkDenoise& denoiser1 = m_common->metaPrimaryIndirectLightDenoiser();
-    DxvkDenoise& referenceDenoiserSecondLobe1 = m_common->metaReferenceDenoiserSecondLobe1();
-    // Secondary combined denoiser always used for secondary lighting.
-    DxvkDenoise& denoiser2 = m_common->metaSecondaryCombinedLightDenoiser();
-    DxvkDenoise& referenceDenoiserSecondLobe2 = m_common->metaReferenceDenoiserSecondLobe2();
+    bool isSecondaryOnly = useRayReconstruction() && !rayReconstruction.enableNRDForTraining() && rayReconstruction.preprocessSecondarySignal();
 
     // Primary Direct light denoiser
+    if (!isSecondaryOnly)
     {
       ScopedGpuProfileZone(this, "Primary Direct Denoising");
       
@@ -1264,10 +1336,13 @@ namespace dxvk {
       denoiseOutput.specular_hitT = &rtOutput.m_primaryDirectSpecularRadiance.resource(Resources::AccessType::Write);
 
       runDenoising(denoiser0, referenceDenoiserSecondLobe0, denoiseInput, denoiseOutput);
+    } else {
+      denoiser0.releaseResources();
+      referenceDenoiserSecondLobe0.releaseResources();
     }
 
     // Primary Indirect light denoiser, if separate denoiser is used.
-    if (RtxOptions::Get()->isSeparatedDenoiserEnabled())
+    if (RtxOptions::Get()->isSeparatedDenoiserEnabled() && !isSecondaryOnly)
     {
       ScopedGpuProfileZone(this, "Primary Indirect Denoising");
 
@@ -1286,6 +1361,9 @@ namespace dxvk {
       denoiseOutput.specular_hitT = &rtOutput.m_primaryIndirectSpecularRadiance.resource(Resources::AccessType::Write);
 
       runDenoising(denoiser1, referenceDenoiserSecondLobe1, denoiseInput, denoiseOutput);
+    } else {
+      denoiser1.releaseResources();
+      referenceDenoiserSecondLobe1.releaseResources();
     }
 
     // Secondary Combined light denoiser
@@ -1309,10 +1387,14 @@ namespace dxvk {
     }
   }
 
-  void RtxContext::dispatchDLSS(const Resources::RaytracingOutput& rtOutput) {
+  void RtxContext::dispatchDLSS(const Resources::RaytracingOutput& rtOutput, float frameTimeSecs) {
     DxvkDLSS& dlss = m_common->metaDLSS();
-
     dlss.dispatch(this, m_execBarriers, rtOutput, m_resetHistory);
+  }
+
+  void RtxContext::dispatchRayReconstruction(const Resources::RaytracingOutput& rtOutput, float frameTimeSecs) {
+    DxvkRayReconstruction& rayReconstruction = m_common->metaRayReconstruction();
+    rayReconstruction.dispatch(this, m_execBarriers, rtOutput, m_resetHistory, frameTimeSecs);
   }
 
   void RtxContext::dispatchNIS(const Resources::RaytracingOutput& rtOutput) {
@@ -1798,6 +1880,10 @@ namespace dxvk {
     // if a given platform supports DLSS (as this will depend on if it was actually initialized successfully or not). Cases where m_dlssSupported
     // is true but supportsDLSS() is not are for example when the DLSS DLL is missing.
     return RtxOptions::Get()->isDLSSEnabled() && m_dlssSupported && m_common->metaDLSS().supportsDLSS();
+  }
+
+  bool RtxContext::shouldUseRayReconstruction() const {
+    return useRayReconstruction();
   }
 
   bool RtxContext::shouldUseNIS() const {

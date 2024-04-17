@@ -52,6 +52,8 @@ namespace dxvk {
     const NrdSettings& getNrdSettings() const;
     void setNrdSettings(const NrdSettings& refSettings);
 
+    void release();
+
   private:
     void setSettingsOnInitialization(const DxvkDevice* device);
     void updateRuntimeSettings(const DxvkDenoise::Input& inputs);
