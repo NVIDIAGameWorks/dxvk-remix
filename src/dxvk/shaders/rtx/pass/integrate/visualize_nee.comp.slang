@@ -151,14 +151,7 @@ struct Canvas
 void getTriangleCandidateInfo(NEECell cell, int binIndex, out float probability, out vec3 lightIntensity)
 {
   NEECandidate candidiate = cell.getCandidate(binIndex);
-  float sampleThreshold = candidiate.getSampleThreshold();          
-  float lastSampleThreshold = 0;
-  if (binIndex > 0)
-  {
-    NEECandidate candidiate = cell.getCandidate(binIndex - 1);
-    lastSampleThreshold = candidiate.getSampleThreshold();
-  }
-  probability = sampleThreshold - lastSampleThreshold;
+  probability = candidiate.getSampleProbability();
 
   // Triangle color
   vec3 triangleCenter;

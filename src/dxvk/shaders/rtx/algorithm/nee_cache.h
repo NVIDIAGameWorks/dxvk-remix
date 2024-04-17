@@ -229,27 +229,16 @@ struct NEECandidate
     return uint2(getSurfaceID(), getPrimitiveID());
   }
 
-  float16_t getSampleThreshold()
+  float16_t getSampleProbability()
   {
     uint8_t thresholdI = (m_data.x >> 24) & 0xff;
     return unorm8ToF16(thresholdI);
   }
 
-  [mutating] void setSampleThreshold(float16_t threshold)
+  [mutating] void setSampleProbability(float16_t threshold)
   {
     uint thresholdI = f16ToUnorm8(threshold);
     m_data.x = (m_data.x & 0xffffff) | (thresholdI << 24);
-  }
-
-  uint getAge()
-  {
-    return m_data.y >> 24;
-  }
-
-  [mutating] void setAge(int age)
-  {
-    age = min(age, 255);
-    m_data.y = (m_data.y & 0xffffff) | (age << 24);
   }
 
   static NEECandidate create(uint surfaceID, uint primitiveID)
@@ -258,7 +247,6 @@ struct NEECandidate
     nee.m_data = 0;
     nee.setSurfaceID(surfaceID);
     nee.setPrimitiveID(primitiveID);
-    nee.setAge(0);
     return nee;
   }
 
@@ -569,15 +557,14 @@ struct NEECell
     NEECandidate candidate;
     candidate.setInvalid();
     int i = 0;
-    float lastCdf = 0;
+    float cdf = 0;
     pdf = 1;
     for (; i < count; ++i)
     {
       candidate = getCandidate(i);
-      float cdf = candidate.getSampleThreshold();
-      pdf = cdf - lastCdf;
-      lastCdf = cdf;
-      if (candidate.getSampleThreshold() >= sampleThreshold)
+      pdf = candidate.getSampleProbability();
+      cdf += pdf;
+      if (sampleThreshold <= cdf)
       {
         return candidate;
       }
@@ -587,13 +574,7 @@ struct NEECell
 
   float getCandidatePdf(int idx)
   {
-    float lastCDF = 0;
-    if (idx > 0)
-    {
-      lastCDF = getCandidate(idx-1).getSampleThreshold();
-    }
-    float thisCDF = getCandidate(idx).getSampleThreshold();
-    return thisCDF - lastCDF;
+    return getCandidate(idx).getSampleProbability();
   }
 
   static int getMaxCandidateCount()
