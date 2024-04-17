@@ -82,6 +82,8 @@ namespace dxvk {
       const Resources::RaytracingOutput& rtOutput,
       const Input& inputs,
       Output& outputs);
+
+    void releaseResources();
     
     void showImguiSettings();
     NrdArgs getNrdArgs() const;

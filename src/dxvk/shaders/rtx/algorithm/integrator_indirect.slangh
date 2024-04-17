@@ -466,7 +466,7 @@ void integratePathVertex(
         polymorphicSurfaceMaterialInteraction,
         continuationLobe, sampledLobePdf, solidAnglePdf,
         false);
-    
+
       // Stop recording hit geometry when translucent material emitting a scattering ray
       if (materialType == surfaceMaterialTypeTranslucent && dot(sampledRay.direction, pathState.direction) < 0.9)
       {

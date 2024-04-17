@@ -38,6 +38,7 @@
 #include "rtx_pathtracer_integrate_direct.h"
 #include "rtx_pathtracer_integrate_indirect.h"
 #include "rtx_dlss.h"
+#include "rtx_ray_reconstruction.h"
 #include "rtx_materials.h"
 #include "rtx/pass/material_args.h"
 #include "rtx_option.h"
@@ -361,6 +362,8 @@ namespace dxvk {
                    "A flag indicating if ReSTIR GI should be used, true enables ReSTIR GI, false disables it and relies on typical GI sampling.\n"
                    "ReSTIR GI provides improved indirect path sampling over typical importance sampling and should usually be enabled for better indirect diffuse and specular GI quality at the cost of some performance.");
     RTX_OPTION_ENV("rtx", UpscalerType, upscalerType, UpscalerType::DLSS, "DXVK_UPSCALER_TYPE", "Upscaling boosts performance with varying degrees of image quality tradeoff depending on the type of upscaler and the quality mode/preset.");
+    RTX_OPTION_ENV("rtx", bool, enableRayReconstruction, true, "DXVK_RAY_RECONSTRUCTION", "Enable ray reconstruction.");
+
     RTX_OPTION("rtx", float, resolutionScale, 0.75f, "");
     RTX_OPTION("rtx", bool, forceCameraJitter, false, "");
     RTX_OPTION("rtx", bool, enableDirectLighting, true, "Enables direct lighting (lighting directly from lights on to a surface) on surfaces when set to true, otherwise disables it.");
@@ -372,6 +375,7 @@ namespace dxvk {
                     "This does not account for sceneScale.");
     RTX_OPTION_FLAG_ENV("rtx", UIType, showUI, UIType::None, RtxOptionFlags::NoSave | RtxOptionFlags::NoReset, "RTX_GUI_DISPLAY_UI", "0 = Don't Show, 1 = Show Simple, 2 = Show Advanced.");
     RTX_OPTION_FLAG("rtx", bool, defaultToAdvancedUI, false, RtxOptionFlags::NoReset, "");
+    RTX_OPTION_FLAG("rtx", bool, showRayReconstructionUI, true, RtxOptionFlags::NoReset, "Show ray reconstruction UI.");
     RTX_OPTION("rtx", bool, showUICursor, true, "");
     RTX_OPTION_FLAG("rtx", bool, blockInputToGameInUI, true, RtxOptionFlags::NoSave, "");
 
@@ -547,6 +551,7 @@ namespace dxvk {
     RTX_OPTION("rtx", float, minTranslucentSpecularLobeSamplingProbability, 0.3f, "The minimum allowed non-zero value for translucent specular probability weights.");
     RTX_OPTION("rtx", float, translucentTransmissionLobeSamplingProbabilityZeroThreshold, 0.01f, "The threshold for which to zero translucent transmission probability weight values.");
     RTX_OPTION("rtx", float, minTranslucentTransmissionLobeSamplingProbability, 0.25f, "The minimum allowed non-zero value for translucent transmission probability weights.");
+
     RTX_OPTION("rtx", float, indirectRaySpreadAngleFactor, 0.05f,
                "A tuning factor applied to the spread angle calculated from the sampled lobe solid angle PDF. Should be 0-1.\n"
                "This scaled spread angle is used to widen a ray's cone angle after indirect lighting BRDF samples to essentially prefilter the effects of the BRDF lobe's spread which potentially may reduce noise from indirect rays (e.g. reflections).\n"
@@ -576,6 +581,7 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, enableDecalMaterialBlending, true,
                "A flag to enable or disable material blending on decals.\n"
                "This should generally always be enabled when decals are in use as this allows decals to be blended down on to the surface they sit slightly above which results in more convincing decals rendering.");
+
     RTX_OPTION("rtx", bool, enableBillboardOrientationCorrection, true, "");
     RTX_OPTION("rtx", bool, useIntersectionBillboardsOnPrimaryRays, false, "");
     RTX_OPTION("rtx", float, translucentDecalAlbedoFactor, 10.0f,
@@ -830,6 +836,7 @@ namespace dxvk {
                "The amount of GPU memory in gibibytes to reserve away from consideration for adaptive resolution replacement textures.\n"
                "This value should only be changed to reflect the estimated amount of memory Remix itself consumes on the GPU (aside from texture loading, mostly from rendering-related buffers) and should not be changed otherwise.\n"
                "Only relevant when force high resolution replacement textures is disabled and adaptive resolution replacement textures is enabled. See asset estimated size parameter for more information.\n");
+    RTX_OPTION("rtx", bool, reloadTextureWhenResolutionChanged, false, "Reload texture when resolution changed.");
     RTX_OPTION_ENV("rtx", bool, enableAsyncTextureUpload, true, "DXVK_ASYNC_TEXTURE_UPLOAD", "");
     RTX_OPTION_ENV("rtx", bool, alwaysWaitForAsyncTextures, false, "DXVK_WAIT_ASYNC_TEXTURES", "");
     RTX_OPTION("rtx", int,  asyncTextureUploadPreloadMips, 8, "");
@@ -1159,6 +1166,8 @@ namespace dxvk {
     NV_GPU_ARCHITECTURE_ID getNvidiaArch();
     NV_GPU_ARCH_IMPLEMENTATION_ID getNvidiaChipId();
     void updateGraphicsPresets(const DxvkDevice* device);
+    void updateLightingSetting();
+    void updatePathTracerPreset(PathTracerPreset preset);
     void updateRaytraceModePresets(const uint32_t vendorID, const VkDriverId driverID);
 
     void resetUpscaler();
@@ -1213,7 +1222,19 @@ namespace dxvk {
     bool isPortalFadeInEffectEnabled() const { return enablePortalFadeInEffect(); }
     bool isUpscalerEnabled() const { return upscalerType() != UpscalerType::None; }
 
+    bool isRayReconstructionEnabled() const {
+      return upscalerType() == UpscalerType::DLSS && enableRayReconstruction() && showRayReconstructionUI();
+    }
+
+    bool showRayReconstructionOption() const {
+      return RtxOptions::Get()->upscalerType() == UpscalerType::DLSS && showRayReconstructionUI();
+    }
+
     bool isDLSSEnabled() const {
+      return upscalerType() == UpscalerType::DLSS && !(enableRayReconstruction() && showRayReconstructionUI());
+    }
+
+    bool isDLSSOrRayReconstructionEnabled() const {
       return upscalerType() == UpscalerType::DLSS;
     }
 
@@ -1282,7 +1303,6 @@ namespace dxvk {
     bool isUnorderedResolveInIndirectRaysEnabled() const { return enableUnorderedResolveInIndirectRays(); }
     bool isDecalMaterialBlendingEnabled() const { return enableDecalMaterialBlending(); }
     float getTranslucentDecalAlbedoFactor() const { return translucentDecalAlbedoFactor(); }
-    float getRussianRouletteMaxContinueProbability() const { return russianRouletteMaxContinueProbability(); }
     float getRussianRoulette1stBounceMinContinueProbability() const { return russianRoulette1stBounceMinContinueProbability(); }
     float getRussianRoulette1stBounceMaxContinueProbability() const { return russianRoulette1stBounceMaxContinueProbability(); }
     uint8_t getPathMinBounces() const { return pathMinBounces(); }

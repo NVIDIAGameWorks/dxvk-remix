@@ -44,18 +44,13 @@ namespace dxvk {
       SHADER_SOURCE(CompositeAlphaBlendShader, VK_SHADER_STAGE_COMPUTE_BIT, composite_alpha_blend)
 
       BEGIN_PARAMETER()
-        CONSTANT_BUFFER(COMPOSITE_CONSTANTS_INPUT)
-        RW_TEXTURE2D(COMPOSITE_FINAL_OUTPUT)
-        RW_TEXTURE2D(COMPOSITE_ALPHA_BLEND_RADIANCE_OUTPUT)
-        RW_TEXTURE2D(COMPOSITE_LAST_FINAL_OUTPUT)
         RW_TEXTURE2D_READONLY(COMPOSITE_SHARED_FLAGS_INPUT)
         TEXTURE2D(COMPOSITE_SHARED_RADIANCE_RG_INPUT)
         TEXTURE2D(COMPOSITE_SHARED_RADIANCE_B_INPUT)
         RW_TEXTURE2D_READONLY(COMPOSITE_PRIMARY_ATTENUATION_INPUT)
-        TEXTURE2D(COMPOSITE_PRIMARY_ALBEDO_INPUT)
         TEXTURE2D(COMPOSITE_PRIMARY_SPECULAR_ALBEDO_INPUT)
-        TEXTURE2D(COMPOSITE_PRIMARY_VIRTUAL_WORLD_SHADING_NORMAL_INPUT)
         TEXTURE2D(COMPOSITE_PRIMARY_LINEAR_VIEW_Z_INPUT)
+        TEXTURE2D(COMPOSITE_PRIMARY_VIRTUAL_WORLD_SHADING_NORMAL_INPUT)
         RW_TEXTURE2D_READONLY(COMPOSITE_SECONDARY_ATTENUATION_INPUT)
         TEXTURE2D(COMPOSITE_SECONDARY_ALBEDO_INPUT)
         TEXTURE2D(COMPOSITE_SECONDARY_SPECULAR_ALBEDO_INPUT)
@@ -65,13 +60,20 @@ namespace dxvk {
         TEXTURE2D(COMPOSITE_PRIMARY_INDIRECT_SPECULAR_RADIANCE_HIT_DISTANCE_INPUT)
         TEXTURE2D(COMPOSITE_SECONDARY_COMBINED_DIFFUSE_RADIANCE_HIT_DISTANCE_INPUT)
         TEXTURE2D(COMPOSITE_SECONDARY_COMBINED_SPECULAR_RADIANCE_HIT_DISTANCE_INPUT)
-        SAMPLER3D(COMPOSITE_VOLUME_PREINTEGRATED_RADIANCE_INPUT)
-        SAMPLER3D(COMPOSITE_VOLUME_FILTERED_RADIANCE_INPUT)
+        CONSTANT_BUFFER(COMPOSITE_CONSTANTS_INPUT)
         TEXTURE2D(COMPOSITE_BSDF_FACTOR_INPUT)
         TEXTURE2D(COMPOSITE_BSDF_FACTOR2_INPUT)
+        SAMPLER3D(COMPOSITE_VOLUME_PREINTEGRATED_RADIANCE_INPUT)
+        SAMPLER3D(COMPOSITE_VOLUME_FILTERED_RADIANCE_INPUT)
         TEXTURE2D(COMPOSITE_ALPHA_GBUFFER_INPUT)
         TEXTURE2DARRAY(COMPOSITE_BLUE_NOISE_TEXTURE)
 
+        RW_TEXTURE2D(COMPOSITE_PRIMARY_ALBEDO_INPUT_OUTPUT)
+
+        RW_TEXTURE2D(COMPOSITE_FINAL_OUTPUT)
+        RW_TEXTURE2D(COMPOSITE_LAST_FINAL_OUTPUT)
+        RW_TEXTURE2D(COMPOSITE_ALPHA_BLEND_RADIANCE_OUTPUT)
+        RW_TEXTURE2D(COMPOSITE_RAY_RECONSTRUCTION_PARTICLE_BUFFER_OUTPUT)
         RW_TEXTURE2D(COMPOSITE_DEBUG_VIEW_OUTPUT)
       END_PARAMETER()
     };
@@ -82,18 +84,13 @@ namespace dxvk {
       SHADER_SOURCE(CompositeShader, VK_SHADER_STAGE_COMPUTE_BIT, composite)
 
       BEGIN_PARAMETER()
-        CONSTANT_BUFFER(COMPOSITE_CONSTANTS_INPUT)
-        RW_TEXTURE2D(COMPOSITE_FINAL_OUTPUT)
-        RW_TEXTURE2D(COMPOSITE_ALPHA_BLEND_RADIANCE_OUTPUT)
-        RW_TEXTURE2D(COMPOSITE_LAST_FINAL_OUTPUT)
         RW_TEXTURE2D_READONLY(COMPOSITE_SHARED_FLAGS_INPUT)
         TEXTURE2D(COMPOSITE_SHARED_RADIANCE_RG_INPUT)
         TEXTURE2D(COMPOSITE_SHARED_RADIANCE_B_INPUT)
         RW_TEXTURE2D_READONLY(COMPOSITE_PRIMARY_ATTENUATION_INPUT)
-        TEXTURE2D(COMPOSITE_PRIMARY_ALBEDO_INPUT)
         TEXTURE2D(COMPOSITE_PRIMARY_SPECULAR_ALBEDO_INPUT)
-        TEXTURE2D(COMPOSITE_PRIMARY_VIRTUAL_WORLD_SHADING_NORMAL_INPUT)
         TEXTURE2D(COMPOSITE_PRIMARY_LINEAR_VIEW_Z_INPUT)
+        TEXTURE2D(COMPOSITE_PRIMARY_VIRTUAL_WORLD_SHADING_NORMAL_INPUT)
         RW_TEXTURE2D_READONLY(COMPOSITE_SECONDARY_ATTENUATION_INPUT)
         TEXTURE2D(COMPOSITE_SECONDARY_ALBEDO_INPUT)
         TEXTURE2D(COMPOSITE_SECONDARY_SPECULAR_ALBEDO_INPUT)
@@ -103,13 +100,20 @@ namespace dxvk {
         TEXTURE2D(COMPOSITE_PRIMARY_INDIRECT_SPECULAR_RADIANCE_HIT_DISTANCE_INPUT)
         TEXTURE2D(COMPOSITE_SECONDARY_COMBINED_DIFFUSE_RADIANCE_HIT_DISTANCE_INPUT)
         TEXTURE2D(COMPOSITE_SECONDARY_COMBINED_SPECULAR_RADIANCE_HIT_DISTANCE_INPUT)
-        SAMPLER3D(COMPOSITE_VOLUME_PREINTEGRATED_RADIANCE_INPUT)
-        SAMPLER3D(COMPOSITE_VOLUME_FILTERED_RADIANCE_INPUT)
+        CONSTANT_BUFFER(COMPOSITE_CONSTANTS_INPUT)
         TEXTURE2D(COMPOSITE_BSDF_FACTOR_INPUT)
         TEXTURE2D(COMPOSITE_BSDF_FACTOR2_INPUT)
+        SAMPLER3D(COMPOSITE_VOLUME_PREINTEGRATED_RADIANCE_INPUT)
+        SAMPLER3D(COMPOSITE_VOLUME_FILTERED_RADIANCE_INPUT)
         TEXTURE2D(COMPOSITE_ALPHA_GBUFFER_INPUT)
         TEXTURE2DARRAY(COMPOSITE_BLUE_NOISE_TEXTURE)
 
+        RW_TEXTURE2D(COMPOSITE_PRIMARY_ALBEDO_INPUT_OUTPUT)
+
+        RW_TEXTURE2D(COMPOSITE_FINAL_OUTPUT)
+        RW_TEXTURE2D(COMPOSITE_LAST_FINAL_OUTPUT)
+        RW_TEXTURE2D(COMPOSITE_ALPHA_BLEND_RADIANCE_OUTPUT)
+        RW_TEXTURE2D(COMPOSITE_RAY_RECONSTRUCTION_PARTICLE_BUFFER_OUTPUT)
         RW_TEXTURE2D(COMPOSITE_DEBUG_VIEW_OUTPUT)
       END_PARAMETER()
     };
@@ -220,7 +224,7 @@ namespace dxvk {
     ctx->bindResourceView(COMPOSITE_SHARED_RADIANCE_B_INPUT, rtOutput.m_sharedRadianceB.view, nullptr);
     
     ctx->bindResourceView(COMPOSITE_PRIMARY_ATTENUATION_INPUT, rtOutput.m_primaryAttenuation.view, nullptr);
-    ctx->bindResourceView(COMPOSITE_PRIMARY_ALBEDO_INPUT, rtOutput.m_primaryAlbedo.view, nullptr);
+    ctx->bindResourceView(COMPOSITE_PRIMARY_ALBEDO_INPUT_OUTPUT, rtOutput.m_primaryAlbedo.view, nullptr);
     // Note: Texture contains Base Reflectivity here (due to being before the demodulate pass)
 
     ctx->bindResourceView(COMPOSITE_PRIMARY_SPECULAR_ALBEDO_INPUT, rtOutput.m_primarySpecularAlbedo.view(Resources::AccessType::Read), nullptr);
@@ -231,7 +235,7 @@ namespace dxvk {
     ctx->bindResourceView(COMPOSITE_SECONDARY_ALBEDO_INPUT, rtOutput.m_secondaryAlbedo.view, nullptr);
     ctx->bindResourceView(COMPOSITE_SECONDARY_SPECULAR_ALBEDO_INPUT, rtOutput.m_secondarySpecularAlbedo.view(Resources::AccessType::Read), nullptr);
 
-    // Note: These inputs may either be noisy or denoised depending on if the reference denoiser is enabled.
+    // Note: These inputs may either be noisy or denoised depending on if the reference denoiser if enabled or if RayReconstruction is in use.
     ctx->bindResourceView(COMPOSITE_PRIMARY_DIRECT_DIFFUSE_RADIANCE_HIT_DISTANCE_INPUT, rtOutput.m_primaryDirectDiffuseRadiance.view(Resources::AccessType::Read), nullptr);
     ctx->bindResourceView(COMPOSITE_PRIMARY_DIRECT_SPECULAR_RADIANCE_HIT_DISTANCE_INPUT, rtOutput.m_primaryDirectSpecularRadiance.view(Resources::AccessType::Read), nullptr);
 
@@ -262,6 +266,7 @@ namespace dxvk {
 
     DebugView& debugView = ctx->getDevice()->getCommon()->metaDebugView();
     ctx->bindResourceView(COMPOSITE_DEBUG_VIEW_OUTPUT, debugView.getDebugOutput(), nullptr);
+    ctx->bindResourceView(COMPOSITE_RAY_RECONSTRUCTION_PARTICLE_BUFFER_OUTPUT, rtOutput.m_rayReconstructionParticleBuffer.view, nullptr);
 
 
     // Some camera paramters for primary ray reconstruction
@@ -298,13 +303,21 @@ namespace dxvk {
     compositeArgs.demodulateRoughness = settings.demodulateRoughness;
     compositeArgs.roughnessDemodulationOffset = settings.roughnessDemodulationOffset;
     compositeArgs.usePostFilter = usePostFilter()
-      && RtxOptions::Get()->isDenoiserEnabled()
-      && !RtxOptions::Get()->useDenoiserReferenceMode();
+      && (RtxOptions::Get()->isDenoiserEnabled() || RtxOptions::Get()->isRayReconstructionEnabled())
+      && !RtxOptions::Get()->useDenoiserReferenceMode()
+      && RtxOptions::Get()->useReSTIRGI();
+
+    auto& rayReconstruction = ctx->getCommonObjects()->metaRayReconstruction();
     compositeArgs.postFilterThreshold = postFilterThreshold();
     compositeArgs.pixelHighlightReuseStrength = 1.0 / pixelHighlightReuseStrength();
     compositeArgs.enableRtxdi = RtxOptions::Get()->useRTXDI();
     compositeArgs.enableReSTIRGI = RtxOptions::Get()->useReSTIRGI();
     compositeArgs.volumeArgs = rtOutput.m_raytraceArgs.volumeArgs;
+    compositeArgs.outputParticleLayer = ctx->useRayReconstruction() && rayReconstruction.useParticleBuffer();
+    compositeArgs.outputSecondarySignalToParticleLayer = ctx->useRayReconstruction() && rayReconstruction.preprocessSecondarySignal();
+    compositeArgs.enableDemodulateAttenuation = ctx->useRayReconstruction() && rayReconstruction.demodulateAttenuation();
+    compositeArgs.enhanceAlbedo = ctx->useRayReconstruction() && rayReconstruction.enableDetailEnhancement();
+    compositeArgs.compositeVolumetricLight = ctx->useRayReconstruction() && rayReconstruction.compositeVolumetricLight();
 
     NrdArgs primaryDirectNrdArgs;
     NrdArgs primaryIndirectNrdArgs;
@@ -314,7 +327,7 @@ namespace dxvk {
 
     compositeArgs.primaryDirectMissLinearViewZ = primaryDirectNrdArgs.missLinearViewZ;
 
-    const bool useDenoisedInputs = settings.isNRDPreCompositionDenoiserEnabled;
+    const bool useDenoisedInputs = settings.isNRDPreCompositionDenoiserEnabled && !ctx->useRayReconstruction();
 
     compositeArgs.primaryDirectDenoiser = !useDenoisedInputs ? DENOISER_MODE_OFF :
       rtOutput.m_raytraceArgs.primaryDirectNrd.isReblurEnabled ? DENOISER_MODE_REBLUR : DENOISER_MODE_RELAX;

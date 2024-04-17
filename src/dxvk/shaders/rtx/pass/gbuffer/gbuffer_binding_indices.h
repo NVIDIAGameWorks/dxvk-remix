@@ -94,7 +94,13 @@
 
 #define GBUFFER_BINDING_REFLECTION_PSR_DATA_STORAGE_1                           94
 
-#define GBUFFER_BINDING_PRIMARY_OBJECT_PICKING_OUTPUT                           96
+// DLSSRR outputs
+#define GBUFFER_BINDING_PRIMARY_DEPTH_DLSSRR_OUTPUT                             100
+#define GBUFFER_BINDING_PRIMARY_NORMAL_DLSSRR_OUTPUT                            101
+#define GBUFFER_BINDING_PRIMARY_SCREEN_SPACE_MOTION_DLSSRR_OUTPUT               102
+#define GBUFFER_BINDING_PARTICLE_BUFFER_OUTPUT                                  103
+
+#define GBUFFER_BINDING_PRIMARY_OBJECT_PICKING_OUTPUT                           104
 
 #define GBUFFER_MIN_BINDING                             GBUFFER_BINDING_LINEAR_WRAP_SAMPLER
 

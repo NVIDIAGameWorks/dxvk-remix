@@ -608,7 +608,7 @@ namespace dxvk
     }
 
     // Only apply jittering when DLSS/TAA is enabled, or if forced by settings
-    if (RtxOptions::Get()->isDLSSEnabled() ||
+    if (RtxOptions::Get()->isDLSSOrRayReconstructionEnabled() ||
         RtxOptions::Get()->isTAAEnabled() ||
         RtxOptions::Get()->forceCameraJitter()) {
       float xRatio = Sign(modifiedViewToProj[2][3]);

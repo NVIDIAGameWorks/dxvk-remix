@@ -179,6 +179,8 @@ namespace dxvk {
     ImGui::DragFloat("Virtual Sample Max Distance Ratio", &virtualSampleMaxDistanceRatioObject(), 0.01f, 0.0f, 100.0f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::Checkbox("Demodulate Target Function", &useDemodulatedTargetFunctionObject());
     ImGui::Checkbox("Permutation Sampling", &usePermutationSamplingObject());
+    ImGui::Checkbox("DLSS-RR Compatibility Mode", &useDLSSRRCompatibilityModeObject());
+    ImGui::DragInt("DLSS-RR Compatible Temporal Randomization Radius", &DLSSRRTemporalRandomizationRadiusObject(), 1.f, 1, 160, "%d", ImGuiSliderFlags_AlwaysClamp);
     ImGui::Combo("Light Stealing", &useSampleStealingObject(), "None\0Steal Sample\0Steal Pixel");
     ImGui::DragFloat("Light Stealing Jitter", &sampleStealingJitterObject(), 0.01f, 0.0f, 20.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::Checkbox("Steal Boundary Pixels When Outside Of Screen", &stealBoundaryPixelSamplesWhenOutsideOfScreenObject());
@@ -196,11 +198,63 @@ namespace dxvk {
     ImGui::DragFloat("History Discard Strength", &historyDiscardStrengthObject(), 0.01f, 0.f, 50.f, "%.1f");
     ImGui::DragFloat("Firefly Threshold", &fireflyThresholdObject(), 0.01f, 1.f, 5000.f, "%.1f");
     ImGui::DragFloat("Roughness Clamp", &roughnessClampObject(), 0.001f, 0.f, 1.f, "%.3f");
-
     ImGui::Checkbox("Validate Lighting Change", &validateLightingChangeObject());
     ImGui::DragFloat("Lighting Change Threshold", &lightingValidationThresholdObject(), 0.001f, 0.f, 1.f, "%.3f");
     ImGui::Checkbox("Validate Visibility Change", &validateVisibilityChangeObject());
     ImGui::DragFloat("Visibility Length Threshold", &visibilityValidationRangeObject(), 0.001f, 0.f, 10.f, "%.3f");
+  }
+
+
+  void DxvkReSTIRGIRayQuery::setToNRDPreset() {
+    // Less aggressive boiling filter to keep more samples
+    boilingFilterMinThresholdRef() = 10.0f;
+    boilingFilterMaxThresholdRef() = 20.0f;
+    historyDiscardStrengthRef() = 0.0f;
+    boilingFilterRemoveReservoirThresholdRef() = 62.f;
+
+    // Weaken specular light at corners to reduce noise
+    useVirtualSampleRef() = true;
+    virtualSampleMaxDistanceRatioRef() = 0.0f;
+
+    // Improve performance when stealing samples
+    stealBoundaryPixelSamplesWhenOutsideOfScreenRef() = true;
+    useSampleStealingRef() = ReSTIRGISampleStealing::StealPixel;
+    sampleStealingJitterRef() = 0.0f;
+
+    // No special handling to object movement
+    validateVisibilityChangeRef() = false;
+
+    // Legacy temporal reprojection
+    useDLSSRRCompatibilityModeRef() = false;
+  }
+
+  void DxvkReSTIRGIRayQuery::setToRayReconstructionPreset() {
+    // More aggressive boiling filter to reduce sample coherency
+    boilingFilterMinThresholdRef() = 15.0f;
+    boilingFilterMaxThresholdRef() = 20.0f;
+    historyDiscardStrengthRef() = 10.0f;
+    boilingFilterRemoveReservoirThresholdRef() = 30.f;
+
+    // Preserve more specular light details at corners
+    useVirtualSampleRef() = false;
+    virtualSampleMaxDistanceRatioRef() = 0.5f;
+
+    // Better specular light during camera movement
+    useReflectionReprojectionRef() = true;
+
+    // More stable signal
+    useAdaptiveTemporalHistoryRef() = false;
+
+    // Reduce sample coherency and improve sample quality when stealing samples 
+    stealBoundaryPixelSamplesWhenOutsideOfScreenRef() = true;
+    useSampleStealingRef() = ReSTIRGISampleStealing::StealSample;
+    sampleStealingJitterRef() = 3.0;
+
+    // More responsive to object movement
+    validateVisibilityChangeRef() = true;
+
+    // Randomize temporal reprojection to reduce coherency
+    useDLSSRRCompatibilityModeRef() = true;
   }
 
   void DxvkReSTIRGIRayQuery::dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
