@@ -1686,6 +1686,10 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::SetTransform(D3DTRANSFORMSTATETYPE State, const D3DMATRIX* pMatrix) {
+    bool validState = (State >= D3DTS_VIEW && State <= D3DTS_PROJECTION) || (State >= D3DTS_TEXTURE0 && State <= D3DTS_TEXTURE7) || (State >= D3DTS_WORLDMATRIX(0) && State <= D3DTS_WORLDMATRIX(255));
+    if (!validState)
+      return D3DERR_INVALIDCALL;
+
     return SetStateTransform(GetTransformIndex(State), pMatrix);
   }
 
