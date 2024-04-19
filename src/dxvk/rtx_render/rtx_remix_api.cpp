@@ -1232,21 +1232,21 @@ namespace {
     }
 
     std::lock_guard lock { s_mutex };
-    remixDevice->EmitCs([type, color](dxvk::DxvkContext* ctx) {
+    remixDevice->EmitCs([type, cColor = *color](dxvk::DxvkContext* ctx) {
       dxvk::RtxGlobals& globals = ctx->getCommonObjects()->getSceneManager().getGlobals();
       switch (type) {
       case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_FINAL_COLOR:
-        globals.clearColorFinalColor = vec3(color->x, color->y, color->z);
+        globals.clearColorFinalColor = vec3(cColor.x, cColor.y, cColor.z);
         break;
       case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_DEPTH:
-        globals.clearColorDepth = color->x;
+        globals.clearColorDepth = cColor.x;
         break;
       case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_NORMALS:
-        globals.clearColorNormal = vec3(color->x, color->y, color->z);
+        globals.clearColorNormal = vec3(cColor.x, cColor.y, cColor.z);
         break;
       case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_OBJECT_PICKING:
         // converting binary value of color.x into uint to avoid losing precision.
-        globals.clearColorPicking = reinterpret_cast<const uint&>(color->x);
+        globals.clearColorPicking = reinterpret_cast<const uint&>(cColor.x);
         break;
       default:
         break;
