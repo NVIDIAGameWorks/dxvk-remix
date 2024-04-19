@@ -34,6 +34,9 @@ parser.add_argument('-binary', action='store_true', dest='binary')
 parser.add_argument('-debug', action='store_true', dest='debug')
 args = parser.parse_args()
 
+# Set to True to generate Slang repro file when compiling shaders
+generateSlangRepro = False
+
 includePaths = ' '.join([f'-I{path}' for path in args.includes])
 destExtension = '.spv' if args.binary else '.h'
 slangDll = os.path.join(os.path.dirname(args.slangc), 'slang.dll')
@@ -226,7 +229,12 @@ def createSlangTask(inputFile, variantSpec):
     command1 = f'{args.slangc} -profile glsl_460 -entry main -target glsl -verbose-paths {includePaths} -o {glslFile} ' \
             + f'-depfile {depFile} {inputFile} -D__SLANG__ {variantDefines} ' \
             + f'-matrix-layout-column-major -line-directive-mode none ' \
-            + f'-Wno-30081'
+            + f'-Wno-30081 '
+
+    if generateSlangRepro:
+      reproFile = os.path.join(args.output, variantName + ".slangRepro")
+      command1 += f'-dump-repro {reproFile}'
+
     command2 = f'{args.glslang} {glslangFlags} -I. -V {variableName} -o {destFile} {glslFile}'
     task.commands = [command1, command2]
     return task

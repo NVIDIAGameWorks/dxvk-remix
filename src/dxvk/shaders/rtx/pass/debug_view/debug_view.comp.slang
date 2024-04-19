@@ -402,8 +402,8 @@ void postprocess(ivec2 threadId, inout vec4 outValue)
       const vec3 kNanWarningColor = usePseudoColorWarningColors ? vec3(0, 0, 0) : vec3(1, 0, 0);
       const vec3 kInfWarningColor = usePseudoColorWarningColors ? vec3(0, 0, 0) : vec3(0, 0, 1);
       const vec3 kCombinedWarningColor =
-        nanDetected ? kNanWarningColor : vec3(0, 0, 0) +
-        infDetected ? kInfWarningColor : vec3(0, 0, 0);
+        select(nanDetected, kNanWarningColor, vec3(0, 0, 0)) +
+        select(infDetected, kInfWarningColor, vec3(0, 0, 0));
 
       outValue = cb.animationTimeSec > 0 
                 ? vec4(sin(cb.animationTimeSec * 8) * kCombinedWarningColor, 1) // flash warning color

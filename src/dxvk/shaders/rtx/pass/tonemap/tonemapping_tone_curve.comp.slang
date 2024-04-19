@@ -21,7 +21,7 @@
 */
 #include "rtx/pass/tonemap/tonemapping.slangh"
 
-layout(r32f, binding = TONEMAPPING_TONE_CURVE_HISTOGRAM_INPUT_OUTPUT)
+layout(r32ui, binding = TONEMAPPING_TONE_CURVE_HISTOGRAM_INPUT_OUTPUT)
 RWTexture1D<uint> InOutHistogram;
 
 layout(r32f, binding = TONEMAPPING_TONE_CURVE_TONE_CURVE_INPUT_OUTPUT)
@@ -59,17 +59,22 @@ float computeSharedSum(float val, const uint linearIndex) {
 
 // Computes the inclusive prefix sum of val across the entire group.
 // For instance, [3, 10, 5, 1, ...] maps to [3, 13, 18, 19, ...]
-float computePrefixSum(float val, const uint linearIndex) {
-
+float computePrefixSum(float val, const uint linearIndex)
+{
   GroupMemoryBarrierWithGroupSync();
-  
+
   // NOTE: WavePrefixSum computes an _ex_clusive prefix sum, so add the original 'val'
   val = WavePrefixSum(val) + val;
   g_localData[linearIndex] = val;
   GroupMemoryBarrierWithGroupSync();
 
-  for(uint k = WaveGetLaneCount(); k < kToneCurveSampleCount; k *= 2) {
+  for(uint k = WaveGetLaneCount(); k < EXPOSURE_HISTOGRAM_SIZE; k *= 2)
+  {
     uint blockIndex = linearIndex / k;
+    // Propagate prefixSum to the next block for every other block so as to avoid 
+    // writing into shared memory cells that are being read in this iteration.
+    // This way ith + 1 block will contain prefixSum considering ith block. 
+    // Then the next iteration will double the block size.    
     if ((blockIndex % 2) == 1)
         g_localData[linearIndex] += g_localData[k*blockIndex - 1];
     

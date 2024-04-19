@@ -27,7 +27,7 @@ RWTexture2D<float4> InColorBuffer;
 layout(r32f, binding = TONEMAPPING_HISTOGRAM_EXPOSURE_INPUT)
 RWTexture1D<float> InExposure;
 
-layout(r32f, binding = TONEMAPPING_HISTOGRAM_HISTOGRAM_INPUT_OUTPUT)
+layout(r32ui, binding = TONEMAPPING_HISTOGRAM_HISTOGRAM_INPUT_OUTPUT)
 RWTexture1D<uint> InOutHistogram;
 
 layout(push_constant)

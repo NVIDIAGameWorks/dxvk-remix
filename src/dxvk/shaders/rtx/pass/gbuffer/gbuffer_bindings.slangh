@@ -209,7 +209,7 @@ uniform struct AliasedData0
   RWTexture2D<float4> ReflectionPSRData0;                      // Output/Input
 } aliasedData0;
 
-layout(rgba16f, binding = GBUFFER_BINDING_REFLECTION_PSR_DATA_STORAGE_1)
+layout(rg32ui, binding = GBUFFER_BINDING_REFLECTION_PSR_DATA_STORAGE_1)
 RWTexture2D<uint2> ReflectionPSRData1;     // Output/Input
 
 layout(rg32ui, binding = GBUFFER_BINDING_REFLECTION_PSR_DATA_STORAGE_2)
