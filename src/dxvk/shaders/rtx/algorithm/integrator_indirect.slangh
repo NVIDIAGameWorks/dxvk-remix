@@ -157,6 +157,8 @@ bool sampleLightNeeCache(inout RAB_RandomSamplerState rtxdiRNG, inout RNG random
   out float invSelectionPdf,
   out uint16_t lightIdx)
 {
+  lightSample = {};
+
   NEECell cell = NEECache.getCell(neeCellOffset);
 
   const bool isSubsurface = isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);

@@ -280,6 +280,8 @@ bool sampleLightNaive(
   MinimalSurfaceInteraction surfaceInteraction,
   inout LightSample lightSample, inout float inverseSelectionPdf, out uint16_t lightIndex)
 {
+  lightIndex = {};
+
   if (cb.risTotalSampleCount == 0) {
     return false;
   }
