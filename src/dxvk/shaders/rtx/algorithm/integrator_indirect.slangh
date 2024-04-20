@@ -64,6 +64,7 @@ PathState pathStateCreateEmpty(u16vec2 pixelCoordinate, GeometryFlags geometryFl
   pathState.restirGiHasFoundRoughSurface = false;
   pathState.restirGiHasHitGeometry = false;
   pathState.restirGiHasHitOpaque = false;
+  pathState.segmentHitDistance = 0.0;
 
   pathState.rayMask = OBJECT_MASK_ALL | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC);
 
@@ -273,7 +274,6 @@ void integratePathVertex(
     decalMemory, decalEmissiveRadiance);
 
   // Todo: Remove hack thing
-  vec3 oldOrigin = pathState.origin;
   pathState.origin = hackState.origin;
   pathState.coneRadius = hackState.coneRadius;
   pathState.coneSpreadAngle = hackState.coneSpreadAngle;
@@ -324,6 +324,7 @@ void integratePathVertex(
   if (rayInteractionHasHit(rayInteraction))
   {
     pathState.accumulatedHitDistance += float16_t(hackState.segmentHitDistance);
+    pathState.segmentHitDistance += hackState.segmentHitDistance;
 
     if (pathState.bounceIteration == 1)
       pathState.firstBounceHitDistance = float16_t(min(float16Max, pathState.firstBounceHitDistance + rayInteraction.hitDistance));
@@ -385,9 +386,6 @@ void integratePathVertex(
 
   const uint materialType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
 
-  // Construct RNG
-  RNG randomState = createRNG(pathState.pixelCoordinate, cb.frameIdx, pathState.calculateRNGOffset(kRNGOffsetSampleClosestHitShader));
-
   // Add Emission
   vec3 emissiveLight = polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(polymorphicSurfaceMaterialInteraction);
   float16_t lightSelectionPDF = 0;
@@ -403,10 +401,8 @@ void integratePathVertex(
       NEECell cell = NEECache.getCell(pathState.neeCacheCellOffset);
 
       // Insert new task
-      float16_t taskRadiance = calcBt709Luminance(emissiveLight * pathState.throughput);
       int prefixTask = NEECacheUtils.convertIDToPrefixSumID(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex, PrimitiveIDPrefixSum);
-      float16_t randomOffset = getNextSampleBlueNoise(randomState);
-      cell.insertSlotTask(prefixTask, taskRadiance, randomOffset, false);
+      cell.insertSlotTask(prefixTask, emissiveLight * pathState.throughput, false);
 
       uint2 task = uint2(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex);
       for (int i = 0; i < cell.getCandidateCount(); ++i)
@@ -440,14 +436,20 @@ void integratePathVertex(
   float misWeight = 1.0;
   if (lightSelectionPDF > 0.0)
   {
-    misWeight = NEECacheUtils.calculateBRDFSampleMISWeight(surfaceInteraction, oldOrigin, lightSelectionPDF, pathState.solidAnglePdf);
+    misWeight = NEECacheUtils.calculateBRDFSampleMISWeight(surfaceInteraction, pathState.direction, pathState.segmentHitDistance, lightSelectionPDF, pathState.solidAnglePdf);
   }
   accumulateRadiance(pathState, emissiveLight * misWeight);
 
+  pathState.segmentHitDistance = 0.0;
+  
 // We don't need to sample lights or surface rays in the portal closest hit shader
 #if (SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_RAY_PORTAL) != 0
   if(materialType == surfaceMaterialTypeOpaque || materialType == surfaceMaterialTypeTranslucent) {
 #endif // SURFACE_MATERIAL_RESOLVE_TYPE_RAY_PORTAL
+
+    // Construct RNG
+    RNG randomState = createRNG(pathState.pixelCoordinate, cb.frameIdx, pathState.calculateRNGOffset(kRNGOffsetSampleClosestHitShader));
+    
     float16_t restirHitT = float16_t(kMissHitDistance);
     updateReSTIRGIHitDistance(oldLuminance, calcBt709Luminance(pathState.radiance), restirHitT, pathState.accumulatedHitDistance);
     
@@ -629,9 +631,7 @@ void integratePathVertex(
         if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && any(diffuseLight + specularLight > 0) && all((pathState.pixelCoordinate & 0x3) != 1))
         {
           NEECell cell = NEECache.getCell(pathState.neeCacheCellOffset);
-          float16_t accumulateValue = calcBt709Luminance(diffuseLight + specularLight);
-          float16_t randomOffset = getNextSampleBlueNoise(randomState);
-          cell.insertSlotTask(lightTask, accumulateValue, randomOffset, lightIdx != kInvalidLightIdx);
+          cell.insertSlotTask(lightTask, diffuseLight + specularLight, lightIdx != kInvalidLightIdx);
         }
     
         vec3 neeLight = diffuseLight + specularLight;

@@ -88,6 +88,7 @@ struct PathState
   float solidAnglePdf;
   uint16_t neeCacheCellOffset;
   bool enableNeeCacheAfterFirstBounce;
+  float segmentHitDistance;
 
   // Calculates an RNG offset at a start of a bounce set in the path state
   uint calculateRNGOffset(uint sampleOffset) 
@@ -124,6 +125,7 @@ struct MemoryPathState : IPayload
   uint coneRadiusAndHitDistance; // float16_t, float16_t
   float accumulatedHitDistance;
   uint solidAnglePdfAndNeeCacheCellOffset;
+  float segmentHitDistance;
 
   static MemoryPathState pack(PathState pathState)
   {
@@ -168,6 +170,7 @@ struct MemoryPathState : IPayload
     ret.encodedRadiance = encodedRadiance;
     ret.encodedThroughput = encodedThroughput;
     ret.accumulatedHitDistance = pathState.accumulatedHitDistance;
+    ret.segmentHitDistance = pathState.segmentHitDistance;
     ret.solidAnglePdfAndNeeCacheCellOffset = (float16BitsToUint16(pathState.solidAnglePdf) | (uint32_t(pathState.neeCacheCellOffset) << 16));
 
     
@@ -212,6 +215,7 @@ struct MemoryPathState : IPayload
     pathState.portalSpace = (data1 >> 16) & 0b11;
     pathState.indirectLightPortalID = (data1 >> 18) & 0b11;
     pathState.accumulatedHitDistance = accumulatedHitDistance;
+    pathState.segmentHitDistance = segmentHitDistance;
     pathState.solidAnglePdf = uint16BitsToHalf(solidAnglePdfAndNeeCacheCellOffset & 0xffff);
     pathState.neeCacheCellOffset = (solidAnglePdfAndNeeCacheCellOffset >> 16);
 

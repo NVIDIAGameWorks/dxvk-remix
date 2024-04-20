@@ -362,7 +362,9 @@ struct NEECell
     return (value.x & (1 << 24)) != 0;
   }
 
-  void insertSlotTask(uint task, float16_t accumulateValue, float16_t randomOffset, bool isLightTask) {
+  void insertSlotTask(uint task, vec3 radiance, bool isLightTask) {
+    float accumulateValue = calcBt709Luminance(radiance);
+    float16_t randomOffset = (reversebits(asuint(accumulateValue)) >> 22) / 1024.0;
     uint index = getSlotBinHash(task + cb.frameIdx);
     int taskAddress = getHashTaskAddress(index);
     uint sortValueI = firstbithigh(uint(min(accumulateValue, 50) / 0.001));
@@ -373,8 +375,8 @@ struct NEECell
     // so quantization is necessary to convert floating point values to integers.
     // The max value is required to suppress the impact from fireflies, otherwise a firefly may inject a
     // useless triangle / light to the cache.
-    const float16_t minValue = 0.05;
-    const float16_t maxValue = 5000;
+    const float16_t minValue = 0.01;
+    const float16_t maxValue = 1000;
     int accumulateValueI = clamp(accumulateValue, 0.0, maxValue) / minValue + randomOffset;
 
     if (accumulateValueI == 0)

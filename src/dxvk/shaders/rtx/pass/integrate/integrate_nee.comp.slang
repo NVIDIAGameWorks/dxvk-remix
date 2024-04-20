@@ -161,10 +161,8 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
           // Skip some pixels to reduce memory traffic, especially when large screen area is occupied by a single cell.
           if (any(diffuseLight + specularLight) > 0 && (threadIndex.x + threadIndex.y) % 4 == 0)
           {
-            float16_t accumulateValue = calcBt709Luminance(diffuseLight + specularLight);
             int prefixTask = NEECacheUtils.convertIDToPrefixSumID(candidate.getSurfaceID(), primitiveIndex, PrimitiveIDPrefixSum);
-            float16_t randomOffset = RAB_GetNextRandom(rtxdiRNG);
-            cell.insertSlotTask(prefixTask, accumulateValue, randomOffset, false);
+            cell.insertSlotTask(prefixTask, diffuseLight + specularLight, false);
           }
 
           indirectDiffuseOutput.xyz += diffuseLight;
