@@ -320,14 +320,12 @@ struct NEECacheUtils
     return misWeight;
   }
 
-  static float calculateBRDFSampleMISWeight(SurfaceInteraction surfaceInteraction, vec3 position, float lightSelectionPDF, float brdfSampleSolidAnglePDF)
+  static float calculateBRDFSampleMISWeight(SurfaceInteraction surfaceInteraction, f16vec3 direction, float hitDistance, float lightSelectionPDF, float brdfSampleSolidAnglePDF)
   {
-    if (!cb.neeCacheArgs.enableMIS)
-    {
-      return 0.0;
-    }
-
-    float lightPdf = lightSelectionPDF * calculateLightSamplingSolidAnglePDF(surfaceInteraction.triangleArea, surfaceInteraction.position, surfaceInteraction.triangleNormal, position);
+    float areaPdf = 1.0 / surfaceInteraction.triangleArea;
+    float cosPhi = abs(dot(direction, surfaceInteraction.triangleNormal));
+    float r2 = hitDistance * hitDistance;
+    float lightPdf = lightSelectionPDF * areaPdf * r2 / cosPhi;
     float misWeight = saturate(brdfSampleSolidAnglePDF / (brdfSampleSolidAnglePDF + lightPdf));
     return misWeight;
   }
