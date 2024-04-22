@@ -59,6 +59,7 @@ namespace dxvk {
   using RenderPassIntegrateDirectRaytraceMode = DxvkPathtracerIntegrateDirect::RaytraceMode;
   using RenderPassIntegrateIndirectRaytraceMode = DxvkPathtracerIntegrateIndirect::RaytraceMode;
 
+  // DLSS-RR is not listed here, because it's considered as a special mode of DLSS
   enum class UpscalerType : int {
     None = 0,
     DLSS,

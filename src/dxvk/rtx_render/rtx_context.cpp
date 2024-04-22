@@ -281,6 +281,98 @@ namespace dxvk {
     return m_common->metaRayReconstruction().useRayReconstruction();
   }
 
+  RtxContext::InternalUpscaler RtxContext::getCurrentFrameUpscaler() {
+    if (shouldUseDLSS() && m_common->metaDLSS().shouldDispatch()) {
+      return InternalUpscaler::DLSS;
+    } else if (shouldUseRayReconstruction() && m_common->metaRayReconstruction().shouldDispatch()) {
+      return InternalUpscaler::DLSS_RR;
+    } else if (shouldUseNIS()) {
+      return InternalUpscaler::NIS;
+    } else if (shouldUseTAA()) {
+      return InternalUpscaler::TAAU;
+    } else {
+      return InternalUpscaler::None;
+    }
+  }
+
+  VkExtent3D RtxContext::onFrameBegin(const VkExtent3D& upscaledExtent) {
+    auto logRenderPassRaytraceModeRayQuery = [=](const char* renderPassName, auto mode) {
+      switch (mode) {
+      case decltype(mode)::RayQuery:
+        Logger::info(str::format("RenderPass ", renderPassName, " Raytrace Mode: Ray Query (CS)"));
+        break;
+      case decltype(mode)::RayQueryRayGen:
+        Logger::info(str::format("RenderPass ", renderPassName, " Raytrace Mode: Ray Query (RGS)"));
+        break;
+      }
+    };
+
+    auto logRenderPassRaytraceMode = [=](const char* renderPassName, auto mode) {
+      switch (mode) {
+      case decltype(mode)::RayQuery:
+      case decltype(mode)::RayQueryRayGen:
+        logRenderPassRaytraceModeRayQuery(renderPassName, mode);
+        break;
+      case decltype(mode)::TraceRay:
+        Logger::info(str::format("RenderPass ", renderPassName, " Raytrace Mode: Trace Ray (RGS)"));
+        break;
+      }
+    };
+
+    // Log used raytracing mode
+    static RenderPassGBufferRaytraceMode sPrevRenderPassGBufferRaytraceMode = RenderPassGBufferRaytraceMode::Count;
+    static RenderPassIntegrateDirectRaytraceMode sPrevRenderPassIntegrateDirectRaytraceMode = RenderPassIntegrateDirectRaytraceMode::Count;
+    static RenderPassIntegrateIndirectRaytraceMode sPrevRenderPassIntegrateIndirectRaytraceMode = RenderPassIntegrateIndirectRaytraceMode::Count;
+    static UpscalerType sPrevUpscalerType = UpscalerType::None;
+
+    if (sPrevRenderPassGBufferRaytraceMode != RtxOptions::Get()->getRenderPassGBufferRaytraceMode() ||
+        sPrevRenderPassIntegrateDirectRaytraceMode != RtxOptions::Get()->getRenderPassIntegrateDirectRaytraceMode() ||
+        sPrevRenderPassIntegrateIndirectRaytraceMode != RtxOptions::Get()->getRenderPassIntegrateIndirectRaytraceMode() ||
+        sPrevUpscalerType != RtxOptions::Get()->upscalerType()) {
+
+      sPrevRenderPassGBufferRaytraceMode = RtxOptions::Get()->getRenderPassGBufferRaytraceMode();
+      sPrevRenderPassIntegrateDirectRaytraceMode = RtxOptions::Get()->getRenderPassIntegrateDirectRaytraceMode();
+      sPrevRenderPassIntegrateIndirectRaytraceMode = RtxOptions::Get()->getRenderPassIntegrateIndirectRaytraceMode();
+      sPrevUpscalerType = RtxOptions::Get()->upscalerType();
+
+      logRenderPassRaytraceMode("GBuffer", RtxOptions::Get()->getRenderPassGBufferRaytraceMode());
+      logRenderPassRaytraceModeRayQuery("Integrate Direct", RtxOptions::Get()->getRenderPassIntegrateDirectRaytraceMode());
+      logRenderPassRaytraceMode("Integrate Indirect", RtxOptions::Get()->getRenderPassIntegrateIndirectRaytraceMode());
+
+      m_resetHistory = true;
+    }
+
+    // Calculate extents based on if DLSS is enabled or not
+    VkExtent3D downscaledExtent = setDownscaleExtent(upscaledExtent);
+
+    if (!getResourceManager().validateRaytracingOutput(downscaledExtent, upscaledExtent)) {
+      Logger::debug("Raytracing output resources were not available to use this frame, so we must re-create inline.");
+
+      resetScreenResolution(upscaledExtent);
+    }
+
+    // Allocate/release resources based on each pass's status
+    getResourceManager().onFrameBegin(this, getCommonObjects()->getTextureManager(), downscaledExtent, upscaledExtent);
+
+    // Release resources when switching upscalers
+    m_currentUpscaler = getCurrentFrameUpscaler();
+    if (m_currentUpscaler != m_previousUpscaler) {
+      // Need to wait before the previous frame is executed.
+      getDevice()->waitForIdle();
+
+      // Release resources
+      if (m_previousUpscaler == InternalUpscaler::DLSS_RR) {
+        DxvkRayReconstruction& rayReconstruction = m_common->metaRayReconstruction();
+        rayReconstruction.release();
+      } else if (m_previousUpscaler == InternalUpscaler::DLSS) {
+        DxvkDLSS& dlss = m_common->metaDLSS();
+        dlss.release();
+      }
+    }
+
+    return downscaledExtent;
+  }
+
   // Hooked into D3D9 presentImage (same place HUD rendering is)
   void RtxContext::injectRTX(std::uint64_t cachedReflexFrameId, Rc<DxvkImage> targetImage) {
     ScopedCpuProfileZone();
@@ -390,63 +482,7 @@ namespace dxvk {
       // If we really don't have any RT to do, just bail early (could be UI/menus rendering)
       if (getSceneManager().getSurfaceBuffer() != nullptr) {
 
-        auto logRenderPassRaytraceModeRayQuery = [=](const char* renderPassName, auto mode) {
-          switch (mode) {
-          case decltype(mode)::RayQuery:
-            Logger::info(str::format("RenderPass ", renderPassName, " Raytrace Mode: Ray Query (CS)"));
-            break;
-          case decltype(mode)::RayQueryRayGen:
-            Logger::info(str::format("RenderPass ", renderPassName, " Raytrace Mode: Ray Query (RGS)"));
-            break;
-          }
-        };
-
-        auto logRenderPassRaytraceMode = [=](const char* renderPassName, auto mode) {
-          switch (mode) {
-          case decltype(mode)::RayQuery:
-          case decltype(mode)::RayQueryRayGen:
-            logRenderPassRaytraceModeRayQuery(renderPassName, mode);
-            break;
-          case decltype(mode)::TraceRay:
-            Logger::info(str::format("RenderPass ", renderPassName, " Raytrace Mode: Trace Ray (RGS)"));
-            break;
-          }
-        };
-
-        // Log used raytracing mode
-        static RenderPassGBufferRaytraceMode sPrevRenderPassGBufferRaytraceMode = RenderPassGBufferRaytraceMode::Count;
-        static RenderPassIntegrateDirectRaytraceMode sPrevRenderPassIntegrateDirectRaytraceMode = RenderPassIntegrateDirectRaytraceMode::Count;
-        static RenderPassIntegrateIndirectRaytraceMode sPrevRenderPassIntegrateIndirectRaytraceMode = RenderPassIntegrateIndirectRaytraceMode::Count;
-        static UpscalerType sPrevUpscalerType = UpscalerType::None;
-
-        if (sPrevRenderPassGBufferRaytraceMode != RtxOptions::Get()->getRenderPassGBufferRaytraceMode() ||
-            sPrevRenderPassIntegrateDirectRaytraceMode != RtxOptions::Get()->getRenderPassIntegrateDirectRaytraceMode() ||
-            sPrevRenderPassIntegrateIndirectRaytraceMode != RtxOptions::Get()->getRenderPassIntegrateIndirectRaytraceMode() ||
-            sPrevUpscalerType != RtxOptions::Get()->upscalerType()) {
-          
-          sPrevRenderPassGBufferRaytraceMode = RtxOptions::Get()->getRenderPassGBufferRaytraceMode();
-          sPrevRenderPassIntegrateDirectRaytraceMode = RtxOptions::Get()->getRenderPassIntegrateDirectRaytraceMode();
-          sPrevRenderPassIntegrateIndirectRaytraceMode = RtxOptions::Get()->getRenderPassIntegrateIndirectRaytraceMode();
-          sPrevUpscalerType = RtxOptions::Get()->upscalerType();
-
-          logRenderPassRaytraceMode("GBuffer", RtxOptions::Get()->getRenderPassGBufferRaytraceMode());
-          logRenderPassRaytraceModeRayQuery("Integrate Direct", RtxOptions::Get()->getRenderPassIntegrateDirectRaytraceMode());
-          logRenderPassRaytraceMode("Integrate Indirect", RtxOptions::Get()->getRenderPassIntegrateIndirectRaytraceMode());
-  
-          m_resetHistory = true;
-        }
-
-        // Calculate extents based on if DLSS is enabled or not
-        const VkExtent3D downscaledExtent = setDownscaleExtent(targetImage->info().extent);
-
-        if (!getResourceManager().validateRaytracingOutput(downscaledExtent, targetImage->info().extent)) {
-          Logger::debug("Raytracing output resources were not available to use this frame, so we must re-create inline.");
-
-          resetScreenResolution(targetImage->info().extent);
-        }
-
-        // Allocate/release resources based on each pass's status
-        getResourceManager().onFrameBegin(this, getCommonObjects()->getTextureManager(), downscaledExtent, targetImage->info().extent);
+        VkExtent3D downscaledExtent = onFrameBegin(targetImage->info().extent);
 
         Resources::RaytracingOutput& rtOutput = getResourceManager().getRaytracingOutput();
 
@@ -506,19 +542,17 @@ namespace dxvk {
         dispatchObjectPicking(rtOutput, downscaledExtent, targetImage->info().extent);
 
         // Upscaling if DLSS/NIS enabled, or the Composition Pass will do upscaling
-        bool useRayReconstruction = false;
-        if (shouldUseDLSS() && m_common->metaDLSS().shouldDispatch()) {
+        if (m_currentUpscaler == InternalUpscaler::DLSS) {
           // xxxnsubtil: the DLSS indicator reads our exposure texture even with DLSS autoexposure on
           // make sure it has been created, otherwise we run into trouble on the first frame
           m_common->metaAutoExposure().createResources(this);
           dispatchDLSS(rtOutput, frameTimeSecs);
-        } else if (shouldUseRayReconstruction() && m_common->metaRayReconstruction().shouldDispatch()) {
+        } else if (m_currentUpscaler == InternalUpscaler::DLSS_RR) {
           m_common->metaAutoExposure().createResources(this);
           dispatchRayReconstruction(rtOutput, frameTimeSecs);
-          useRayReconstruction = true;
-        } else if (shouldUseNIS()) {
+        } else if (m_currentUpscaler == InternalUpscaler::NIS) {
           dispatchNIS(rtOutput);
-        } else if (shouldUseTAA()){
+        } else if (m_currentUpscaler == InternalUpscaler::TAAU){
           dispatchTemporalAA(rtOutput);
         } else {
           copyImage(
@@ -530,15 +564,7 @@ namespace dxvk {
             { 0, 0, 0 },
             rtOutput.m_compositeOutputExtent);
         }
-
-        if (m_common->metaNGXContext().supportsRayReconstruction() && !useRayReconstruction) {
-          DxvkRayReconstruction& rayReconstruction = m_common->metaRayReconstruction();
-          rayReconstruction.release();
-        }
-        if (m_common->metaNGXContext().supportsDLSS() && !shouldUseDLSS()) {
-          DxvkDLSS& dlss = m_common->metaDLSS();
-          dlss.release();
-        }
+        m_previousUpscaler = m_currentUpscaler;
 
         dispatchBloom(rtOutput);
         dispatchPostFx(rtOutput);
