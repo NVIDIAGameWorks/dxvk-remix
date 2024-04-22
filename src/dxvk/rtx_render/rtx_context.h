@@ -145,6 +145,16 @@ namespace dxvk {
     virtual void updateRaytracingShaderResources() override;
 
   private:
+    // This enum is for internal use only.
+    // There is a mode called UpscalerType in RtxOptions, but it doesn't contain DLSS-RR because RR is considered as a special mode of DLSS.
+    enum class InternalUpscaler {
+      None = 0,
+      DLSS,
+      NIS,
+      TAAU,
+      DLSS_RR,
+    };
+
     void reportCpuSimdSupport();
 
     void takeScreenshot(std::string imageName, Rc<DxvkImage> image);
@@ -153,6 +163,8 @@ namespace dxvk {
     void checkShaderExecutionReorderingSupport();
 
     VkExtent3D setDownscaleExtent(const VkExtent3D& upscaleExtent);
+
+    VkExtent3D onFrameBegin(const VkExtent3D& upscaleExtent);
 
     void dispatchVolumetrics(const Resources::RaytracingOutput& rtOutput);
     void dispatchIntegrate(const Resources::RaytracingOutput& rtOutput);
@@ -179,6 +191,11 @@ namespace dxvk {
     void rasterizeToSkyProbe(const DrawParameters& params, const DrawCallState& drawCallState);
     void rasterizeSky(const DrawParameters& params, const DrawCallState& drawCallState);
     void bakeTerrain(const DrawParameters& params, DrawCallState& drawCallState, const MaterialData** outOverrideMaterialData);
+
+    InternalUpscaler getCurrentFrameUpscaler();
+
+    InternalUpscaler m_currentUpscaler = InternalUpscaler::None;
+    InternalUpscaler m_previousUpscaler = InternalUpscaler::None;
 
     uint32_t m_frameLastInjected = kInvalidFrameIndex;
     bool m_captureStateForRTX = true;
