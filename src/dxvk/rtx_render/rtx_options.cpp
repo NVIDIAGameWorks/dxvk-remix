@@ -200,7 +200,6 @@ namespace dxvk {
       DemodulatePass::enableDirectLightBoilingFilterRef() = false;
 
       // Composite
-      CompositePass::enableStochasticAlphaBlendRef() = false;
       CompositePass::postFilterThresholdRef() = 10.0f;
       CompositePass::usePostFilterRef() = false;
       denoiseDirectAndIndirectLightingSeparatelyRef() = true;
