@@ -129,6 +129,7 @@ namespace dxvk {
     // Common Display
     bool m_enableInfNanView = true;
     int m_colorCodeRadius = 4;
+    RTX_OPTION("rtx.debugView", bool, showFirstGBufferHit, false, "Show information of the first hit surface.\n");
     RTX_OPTION("rtx.debugView", bool, enableInputQuantization, false,
                "Enables uniform-step input quantization on debug view input buffers.\n"
                "This is mostly useful for when debugging artifacts relating to quantization that may not be visible in a buffer due to higher precision formats in use.\n"

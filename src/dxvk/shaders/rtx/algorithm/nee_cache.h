@@ -609,6 +609,7 @@ struct NEECell
     return NEE_CACHE_ELEMENTS;
   }
 
+  // This is an optimized version of the function "getLightSample()". It uses cached samples instead of generating it on the fly.
   LightSample getCachedLightSample(float randomNumber, vec3 position, float16_t coneRadius, float16_t coneSpreadAngle, out uint triangleID)
   {
     LightSample lightSampleTriangle;
@@ -620,6 +621,8 @@ struct NEECell
     return lightSampleTriangle;
   }
 
+  // This function is mainly for debug purposes. The function "getCachedLightSample()" is an optimized version for this function.
+  // Samples from "getCachedLightSample()" should converge to the same result as this function.
   LightSample getLightSample(StructuredBuffer<uint> PrimitiveIDPrefixSumBuffer, vec3 randomNumber, vec3 position, float16_t coneRadius, float16_t coneSpreadAngle, out uint triangleID)
   {
     LightSample lightSampleTriangle;

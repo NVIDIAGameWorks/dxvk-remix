@@ -60,6 +60,8 @@ namespace dxvk {
         {DEBUG_VIEW_IS_THIN_OPAQUE, "Is Thin Opaque"},
         {DEBUG_VIEW_IS_DIRECTION_ALTERED, "Is Direction Altered"},
         {DEBUG_VIEW_IS_EMISSIVE_BLEND, "Is Emissive Blend"},
+        {DEBUG_VIEW_IS_EMISSIVE, "Is Emissive"},
+        {DEBUG_VIEW_IS_PARTICLE, "Is Particle"},
         {DEBUG_VIEW_VIEW_DIRECTION, "View Direction"},
         {DEBUG_VIEW_CONE_RADIUS, "Cone Radius"},
 
@@ -460,6 +462,8 @@ namespace dxvk {
       ImGui::Indent();
 
       ImGui::Text("Common:");
+
+      ImGui::Checkbox("Show First Hit Surface", &showFirstGBufferHitObject());
 
       // NaN/Inf Colorization
 
