@@ -131,6 +131,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.debugView.minValue|float|0|The minimum debug view input value to map to 0 in the output when the standard debug display is in use\. Values below this value in the input will be clamped to 0 in the output\.|
 |rtx.debugView.pseudoColorMode|int|0|Selects a mode for mapping debug value inputs to a scalar to be visualized using a colormap spectrum\. Only takes effect when rtx\.debugView\.displayType is set to "Standard"\.<br>Supported modes are: 0 = Disabled, 1 = Luminance, 2 = Red, 3 = Green, 4 = Blue, 5 = Alpha\.<br>Useful for visualizing a value's range with greater precision than a simple monochromatic color spectrum \(due to interpolating across an entire spectrum of color with a roughly uniform progression\)\.|
 |rtx.debugView.samplerType|int|2|Sampler type for debug views that sample from a texture \(applies only to a subset of debug views\)\.<br>Supported types are: 0 = Nearest, 1 = Normalized Nearest, 2 = Normalized Linear|
+|rtx.debugView.showFirstGBufferHit|bool|False|Show information of the first hit surface\.<br>|
 |rtx.defaultToAdvancedUI|bool|False||
 |rtx.demodulate.demodulateRoughness|bool|True|Demodulate roughness to improve specular details\.|
 |rtx.demodulate.demodulateRoughnessOffset|float|0.1|Strength of roughness demodulation, lower values are stronger\.|

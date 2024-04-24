@@ -331,4 +331,6 @@ struct RaytraceArgs {
   uint32_t clearColorPicking;
   vec3 clearColorNormal;
   uint enableDLSSRR;
+
+  uint forceFirstHitInGBufferPass;
 };

@@ -1017,6 +1017,7 @@ namespace dxvk {
       const DebugView& debugView = m_common->metaDebugView();
       constants.debugView = debugView.debugViewIdx();
       constants.debugKnob = debugView.debugKnob();
+      constants.forceFirstHitInGBufferPass = debugView.showFirstGBufferHit();
       
       constants.gpuPrintThreadIndex = u16vec2 { kInvalidThreadIndex, kInvalidThreadIndex };
       constants.gpuPrintElementIndex = frameIdx % kMaxFramesInFlight;

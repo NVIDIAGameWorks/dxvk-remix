@@ -434,6 +434,16 @@ void geometryResolverVertexOutputDebugView(
     storeInDebugView(pixelCoordinate, surface.isEmissiveBlend ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0));
 
     break;
+  case DEBUG_VIEW_IS_EMISSIVE:
+    // Green = Emissive mode in use, Red = non emissive mode in use
+    storeInDebugView(pixelCoordinate, surface.isEmissive ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0));
+
+    break;
+  case DEBUG_VIEW_IS_PARTICLE:
+    // Green = Particle mode in use, Red = non particle mode in use
+    storeInDebugView(pixelCoordinate, surface.isParticle ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0));
+
+    break;
   case DEBUG_VIEW_VIEW_DIRECTION:
     storeInDebugView(pixelCoordinate, rayInteraction.viewDirection);
 
@@ -1227,6 +1237,11 @@ void geometryResolverVertex(
     {
       geometryResolverState.continueResolving = false;
     }
+  }
+
+  if (cb.forceFirstHitInGBufferPass)
+  {
+    geometryResolverState.continueResolving = false;
   }
 
   // Check if resolving should continue, and if a surface was hit
