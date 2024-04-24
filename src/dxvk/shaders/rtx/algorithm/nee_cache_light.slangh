@@ -34,17 +34,21 @@ struct NEECacheUtils
 
   static float calculateLightSamplingSolidAnglePDF(float triangleArea, vec3 samplePosition, f16vec3 sampleNormal, vec3 surfacePosition)
   {
-    float areaPdf = 1.0 / triangleArea;
     vec3 offset = samplePosition - surfacePosition;
     float r2 = dot(offset, offset);
-    float cosPhi = abs(dot(normalize(offset), sampleNormal));
-    return cosPhi > 0 ? areaPdf * r2 / cosPhi : 0;
+    float projectedArea = abs(dot(normalize(offset), sampleNormal)) * triangleArea;
+    return projectedArea > 0 ? r2 / projectedArea : 0;
   }
 
   static int convertToCurrentSurfaceID(uint lastFrameSurfaceID)
   {
     uint currentFrameSurfaceID = surfaceMapping[lastFrameSurfaceID];
     return currentFrameSurfaceID;
+  }
+
+  static int getSurfacePrimitiveCount(int surfaceIndex, StructuredBuffer<uint> PrimitiveIDPrefixSumBuffer)
+  {
+    return PrimitiveIDPrefixSumBuffer[surfaceIndex + 1] - PrimitiveIDPrefixSumBuffer[surfaceIndex];
   }
 
   static int convertIDToPrefixSumID(int surfaceIndex, int primitiveIndex, StructuredBuffer<uint> PrimitiveIDPrefixSumBuffer)
@@ -87,10 +91,15 @@ struct NEECacheUtils
     return true;
   }
 
-  static LightSample calculateLightSampleFromTriangle(int surfaceIndex, int primitiveIndex, vec2 uv, float trianglePdf, vec3 shadingPosition, float16_t coneRadius, float16_t spreadAngle, out float triangleArea, bool useSolidAnglePdf = true, int footprintMode = kFootprintFromRayOrigin)
+  static bool shouldSampleObject(Surface surface)
   {
-  #define USE_SIMIPLIFIED_MODEL 1
+    return surface.isEmissiveBlend || surface.isEmissive;
+  }
 
+#define USE_SIMIPLIFIED_MODEL 1
+
+  static Surface getSurface(int surfaceIndex)
+  {    
     SURFACE_CREATE_READ(surface0, surfaceIndex, surfaces);
     Surface surface = surface0;
   #if USE_SIMIPLIFIED_MODEL
@@ -112,15 +121,20 @@ struct NEECacheUtils
     surface.spriteSheetCols = 1;
     surface.spriteSheetFPS = 0;
   #endif
+    return surface;
+  }
 
-    RayInteraction rayInteracton = {};
+  static void getInteractions(
+    Surface surface, int primitiveIndex, vec2 uv, vec3 shadingPosition, float16_t coneRadius, float16_t spreadAngle, int footprintMode,
+    out RayInteraction rayInteracton, out SurfaceInteraction surfaceInteraction)
+  {
     rayInteracton.barycentricCoordinates = barycentricsToUint(NEECacheUtils.uvToBarycentrics(uv));
     rayInteracton.primitiveIndex = primitiveIndex;
     rayInteracton.coneRadius = coneRadius * cb.neeCacheArgs.emissiveTextureSampleFootprintScale;
     Ray ray = {};
     ray.origin = shadingPosition;
     ray.spreadAngle = spreadAngle;
-    SurfaceInteraction surfaceInteraction = surfaceInteractionCreate(surface, rayInteracton, ray, false, footprintMode);
+    surfaceInteraction = surfaceInteractionCreate(surface, rayInteracton, ray, false, footprintMode);
     surfaceInteraction.textureGradientX *= cb.neeCacheArgs.emissiveTextureSampleFootprintScale;
     surfaceInteraction.textureGradientY *= cb.neeCacheArgs.emissiveTextureSampleFootprintScale;
 
@@ -133,7 +147,10 @@ struct NEECacheUtils
   #endif
 
     rayInteracton.viewDirection = normalize(surfaceInteraction.position - shadingPosition);
+  }
 
+  static LightSample calculateLightSample(Surface surface, SurfaceInteraction surfaceInteraction, RayInteraction rayInteracton, vec3 shadingPosition, float trianglePdf, out float triangleArea, bool useSolidAnglePdf, int footprintMode)
+  {
     const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
     const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
 
@@ -145,11 +162,11 @@ struct NEECacheUtils
     if(useSolidAnglePdf)
     {
       lightPdf *= calculateLightSamplingSolidAnglePDF(
-      surfaceInteraction.triangleArea, surfaceInteraction.position, surfaceInteraction.triangleNormal, shadingPosition);
+        surfaceInteraction.triangleArea, surfaceInteraction.position, surfaceInteraction.triangleNormal, shadingPosition);
     }
     else
     {
-      lightPdf /= surfaceInteraction.triangleArea;
+      lightPdf = surfaceInteraction.triangleArea > 0 ? lightPdf / surfaceInteraction.triangleArea : 0;
     }
     lightSample.solidAnglePdf = lightPdf;
     lightSample.radiance = 0;
@@ -184,8 +201,62 @@ struct NEECacheUtils
         opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteracton);
 
       lightSample.radiance = sanitize(opaqueSurfaceMaterialInteraction.emissiveRadiance, 0.0);
+
+      // Special handling for emissive particles with opaque material, see the opaque material branch in resolveVertex()
+      bool separateUnorderedApproximations = cb.enableSeparateUnorderedApproximations && cb.enableUnorderedResolveInIndirectRays;
+      const uint8_t resolveMode =
+        resolveModeEmissiveOpacityTransmissionApprox |
+        (cb.enableTransmissionApproximationInIndirectRays ? resolveModeTranslucencyTransmissionApprox : 0) |
+        resolveModeDecalMaterialBlending |
+        (separateUnorderedApproximations ? resolveModeSeparateUnorderedApproximations : 0);
+
+      if (!separateUnorderedApproximations && !surface.isFullyOpaque)
+      {
+        f16vec3 radianceAttenuation = 1.0;
+        float16_t opaqueApproximationOutgoingAttenuation = 1.0;
+        vec3 emissiveRadiance = 0.0;
+        const bool approximationHandled = evaluateOpaqueApproximations(
+          resolveMode,
+          surface, surfaceInteraction, opaqueSurfaceMaterialInteraction,
+          /*resolveVertexState.portalSpace*/PORTAL_SPACE_NONE,
+          radianceAttenuation, opaqueApproximationOutgoingAttenuation, emissiveRadiance);
+
+        lightSample.radiance += emissiveRadiance;
+      }
     }
     return lightSample;
+  }
+
+  static LightSample calculateLightSampleFromCandidate(
+    int surfaceIndex, int primitiveIndex, StructuredBuffer<uint> PrimitiveIDPrefixSumBuffer, vec2 uv, float trianglePdf, vec3 shadingPosition, float16_t coneRadius, float16_t spreadAngle,
+    out float triangleArea, bool useSolidAnglePdf = true, int footprintMode = kFootprintFromRayOrigin)
+  {
+    Surface surface = getSurface(surfaceIndex);
+
+    if (shouldSampleObject(surface))
+    {
+      int triangleCount = NEECacheUtils.getSurfacePrimitiveCount(surfaceIndex, PrimitiveIDPrefixSumBuffer);
+      primitiveIndex = int(triangleCount * uv.x);
+      trianglePdf /= triangleCount;
+    }
+
+    RayInteraction rayInteracton;
+    SurfaceInteraction surfaceInteraction;
+    getInteractions(surface, primitiveIndex, uv, shadingPosition, coneRadius, spreadAngle, footprintMode, rayInteracton, surfaceInteraction);
+
+    return calculateLightSample(surface, surfaceInteraction, rayInteracton, shadingPosition, trianglePdf, triangleArea, useSolidAnglePdf, footprintMode);
+  }
+
+  static LightSample calculateLightSampleFromTriangle(
+    int surfaceIndex, int primitiveIndex, vec2 uv, float trianglePdf, vec3 shadingPosition, float16_t coneRadius, float16_t spreadAngle,
+    out float triangleArea, bool useSolidAnglePdf = true, int footprintMode = kFootprintFromRayOrigin)
+  {
+    Surface surface = getSurface(surfaceIndex);
+    RayInteraction rayInteracton;
+    SurfaceInteraction surfaceInteraction;
+    getInteractions(surface, primitiveIndex, uv, shadingPosition, coneRadius, spreadAngle, footprintMode, rayInteracton, surfaceInteraction);
+
+    return calculateLightSample(surface, surfaceInteraction, rayInteracton, shadingPosition, trianglePdf, triangleArea, useSolidAnglePdf, footprintMode);
   }
 
   static void calculateTriangleLightIntensity(int surfaceIndex, int primitiveIndex, out vec3 triangleCenter, out f16vec3 triangleNormal, out vec3 lightIntensity)

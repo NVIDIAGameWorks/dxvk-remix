@@ -183,6 +183,12 @@ bool sampleLightNeeCache(inout RAB_RandomSamplerState rtxdiRNG, inout RNG random
   }
   return false;
 }
+
+bool useNeeCacheOnThisBounce(uint bounce, bool enableNeeCacheAfterFirstBounce)
+{
+  return  (bounce == 1 && cb.neeCacheArgs.enableOnFirstBounce) ||
+          (bounce >  1 && cb.neeCacheArgs.enableModeAfterFirstBounce != NeeEnableMode::None && enableNeeCacheAfterFirstBounce);
+}
 // Integrate Path Vertex Functions
 
 void integratePathVertex(
@@ -213,6 +219,8 @@ void integratePathVertex(
   bool unorderedDecalEncountered = false;
   uint4 decalMemory = 0;
   f16vec3 decalEmissiveRadiance = f16vec3(0);
+  int unorderedSurfaceIndex = -1;  
+  bool isNeeEnabledOnBounce = useNeeCacheOnThisBounce(pathState.bounceIteration, pathState.enableNeeCacheAfterFirstBounce);
   if (separateUnorderedApproximations)
   {
     Ray unorderedResolveRay;
@@ -234,11 +242,19 @@ void integratePathVertex(
       pathState.accumulatedHitDistance,
       radianceAttenuation, emissiveRadiance,
       numUnorderedInteractions, 
-      unorderedDecalEncountered, decalMemory, decalEmissiveRadiance);
+      unorderedDecalEncountered, decalMemory, decalEmissiveRadiance, unorderedSurfaceIndex);
 
     if (cb.debugView == DEBUG_VIEW_SECONDARY_UNORDERED_INTERACTIONS || cb.debugView == DEBUG_VIEW_SECONDARY_RAY_AND_UNORDERED_INTERACTIONS)
     {
       accumulateInDebugViewAdd(pathState.pixelCoordinate, numUnorderedInteractions);
+    }
+
+    if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && isNeeEnabledOnBounce && unorderedSurfaceIndex != -1)
+    {
+      // Insert new task
+      NEECell cell = NEECache.getCell(pathState.neeCacheCellOffset);
+      int prefixTask = NEECacheUtils.convertIDToPrefixSumID(unorderedSurfaceIndex, 0, PrimitiveIDPrefixSum);
+      cell.insertSlotTask(prefixTask, emissiveRadiance * pathState.throughput, false);
     }
   }
 
@@ -388,32 +404,27 @@ void integratePathVertex(
 
   // Add Emission
   vec3 emissiveLight = polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(polymorphicSurfaceMaterialInteraction);
-  float16_t lightSelectionPDF = 0;
+  float lightSelectionPDF = 0.0;
 
 #if (SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_RAY_PORTAL) != 0
   if(materialType == surfaceMaterialTypeOpaque || materialType == surfaceMaterialTypeTranslucent) {
 #endif // SURFACE_MATERIAL_RESOLVE_TYPE_RAY_PORTAL
 
-    bool isNeeEnabledOnBounce = (pathState.bounceIteration == 1 && cb.neeCacheArgs.enableOnFirstBounce) ||
-     (pathState.bounceIteration > 1 && cb.neeCacheArgs.enableModeAfterFirstBounce != NeeEnableMode::None && pathState.enableNeeCacheAfterFirstBounce);
     if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && isNeeEnabledOnBounce && any(emissiveLight > 0))
     {
       NEECell cell = NEECache.getCell(pathState.neeCacheCellOffset);
 
       // Insert new task
-      int prefixTask = NEECacheUtils.convertIDToPrefixSumID(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex, PrimitiveIDPrefixSum);
+      bool shouldSampleObject = NEECacheUtils.shouldSampleObject(surface);
+      int primitiveIndex = shouldSampleObject ? 0 : rayInteraction.primitiveIndex;
+      int surfaceIndex = rayInteraction.surfaceIndex;
+      int prefixTask = NEECacheUtils.convertIDToPrefixSumID(surfaceIndex, primitiveIndex, PrimitiveIDPrefixSum);
       cell.insertSlotTask(prefixTask, emissiveLight * pathState.throughput, false);
 
-      uint2 task = uint2(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex);
-      for (int i = 0; i < cell.getCandidateCount(); ++i)
+      lightSelectionPDF = cell.searchCandidate(surfaceIndex, primitiveIndex);
+      if (lightSelectionPDF > 0.0 && shouldSampleObject)
       {
-        NEECandidate candidate = cell.getCandidate(i);
-        int2 candidateID = candidate.getIDData();
-        if (all(candidateID == task))
-        {
-          lightSelectionPDF = candidate.getSampleProbability();
-          break;
-        }
+        lightSelectionPDF /= NEECacheUtils.getSurfacePrimitiveCount(surfaceIndex, PrimitiveIDPrefixSum);
       }
     }
 
@@ -439,7 +450,6 @@ void integratePathVertex(
     misWeight = NEECacheUtils.calculateBRDFSampleMISWeight(surfaceInteraction, pathState.direction, pathState.segmentHitDistance, lightSelectionPDF, pathState.solidAnglePdf);
   }
   accumulateRadiance(pathState, emissiveLight * misWeight);
-
   pathState.segmentHitDistance = 0.0;
   
 // We don't need to sample lights or surface rays in the portal closest hit shader
@@ -582,9 +592,9 @@ void integratePathVertex(
         NEECell cell = NEECache.getCell(pathState.neeCacheCellOffset);
         if (cell.isValid() && cell.getCandidateCount() > 0)
         {
-          vec3 randomNumber = vec3(RAB_GetNextRandom(rtxdiRNG));
+          float randomNumber = RAB_GetNextRandom(rtxdiRNG);
           uint triangleID;
-          LightSample lightSampleTriangle = cell.getLightSample(randomNumber, surfaceInteraction.position, rayInteraction.coneRadius, pathState.coneSpreadAngle, triangleID, true);
+          LightSample lightSampleTriangle = cell.getCachedLightSample(randomNumber, surfaceInteraction.position, rayInteraction.coneRadius, pathState.coneSpreadAngle, triangleID);
           
           // Calculate cached triangle NEE sample's MIS light contribution
           vec3 diffuseLightTriangle, specularLightTriangle;

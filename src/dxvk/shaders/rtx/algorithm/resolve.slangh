@@ -680,7 +680,8 @@ void resolveVertexUnordered(
   out uint numInteractions,
   inout bool decalEncountered,
   inout uint4 decalMemory,
-  inout f16vec3 decalEmissiveRadiance)
+  inout f16vec3 decalEmissiveRadiance,
+  inout int surfaceIndex)
 {
   // Early out if approximations are not desired to be separated out
 
@@ -688,6 +689,7 @@ void resolveVertexUnordered(
 
   if (!separateUnorderedApproximations)
   {
+    surfaceIndex = -1;
     numInteractions = 0;
     return;
   }
@@ -936,6 +938,11 @@ void resolveVertexUnordered(
         // account for these interactions for debug view
         numInteractions += 1;
 
+        if (any(decalEmissiveRadiance))
+        {
+          surfaceIndex = rayInteraction.surfaceIndex;
+        }
+
         // don't include decals in the opaque approximation.
         continue;
       }
@@ -973,6 +980,11 @@ void resolveVertexUnordered(
 
     currentRadianceAttenuation = mix(float16_t(1.0f), currentRadianceAttenuation, blendFactor);
     currentEmissiveRadiance = mix(vec3(0.0f), currentEmissiveRadiance, blendFactor);
+
+    if (any(currentEmissiveRadiance) > 0)
+    {
+      surfaceIndex = rayInteraction.surfaceIndex;
+    }
 
     // Find the lowest item in the bins
 

@@ -134,8 +134,8 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
         vec2 uv = vec2(RAB_GetNextRandom(rtxdiRNG), RAB_GetNextRandom(rtxdiRNG));
         float triangleArea;
         float16_t spreadAngle = getLobeAngleFromMaterial(opaqueSurfaceMaterialInteraction);
-        lightSample = NEECacheUtils.calculateLightSampleFromTriangle(
-          candidate.getSurfaceID(), candidate.getPrimitiveID(), uv, lightObjectPdf, minimalSurfaceInteraction.position,
+        lightSample = NEECacheUtils.calculateLightSampleFromCandidate(
+          candidate.getSurfaceID(), candidate.getPrimitiveID(), PrimitiveIDPrefixSum, uv, lightObjectPdf, minimalSurfaceInteraction.position,
           minimalRayInteraction.coneRadius, spreadAngle, triangleArea, true, kFootprintFromRayOriginClamped);
           
         bool isVisible = false;
