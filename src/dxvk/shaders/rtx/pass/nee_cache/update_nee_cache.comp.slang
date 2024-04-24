@@ -288,8 +288,8 @@ void updateTriangleSample(NEECell cell, uint2 localIndex, uint3 threadIndex)
       float16_t coneRadius = 0.0;
       vec2 uv = vec2(getNextSampleBlueNoise(rng), getNextSampleBlueNoise(rng));
       float area;
-      LightSample lightSample = NEECacheUtils.calculateLightSampleFromTriangle(
-        candidate.getSurfaceID(), candidate.getPrimitiveID(), uv, lightObjectPdf, 
+      LightSample lightSample = NEECacheUtils.calculateLightSampleFromCandidate(
+        candidate.getSurfaceID(), candidate.getPrimitiveID(), PrimitiveIDPrefixSum, uv, lightObjectPdf, 
         /*cellCenter*/ 0, coneRadius, spreadAngle, area, false, kFootprintFromTextureCoordDiff);
 
       sample.position = lightSample.position;

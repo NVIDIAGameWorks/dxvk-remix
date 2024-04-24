@@ -288,6 +288,11 @@ struct NEECell
     return getBaseAddress() + (idx + 1) * NEE_CACHE_ELEMENT_SIZE;
   }
 
+  uint getCandidateSize()
+  {
+    return NEE_CACHE_ELEMENT_SIZE;
+  }
+
   uint getLightCandidateBaseAddress()
   {
     return getBaseAddress() + NEE_CACHE_ELEMENTS * NEE_CACHE_ELEMENT_SIZE;
@@ -552,6 +557,21 @@ struct NEECell
     return NEECandidate.create(NeeCache.Load2(getCandidateAddress(idx)));
   }
 
+  float16_t searchCandidate(int surfaceID, int primitiveID)
+  {
+    uint address = getCandidateAddress(0);
+    uint endAddress = address + getCandidateSize() * getCandidateCount();
+    for (; address < endAddress; address += getCandidateSize())
+    {
+      NEECandidate candidate = NEECandidate.create(NeeCache.Load2(address));
+      if (candidate.getPrimitiveID() == primitiveID && candidate.getSurfaceID() == surfaceID)
+      {
+        return candidate.getSampleProbability();
+      }
+    }
+    return float16_t(0.0);
+  }
+
   NEECandidate sampleCandidate(float sampleThreshold, out float pdf)
   {
     int count = getCandidateCount();
@@ -589,29 +609,29 @@ struct NEECell
     return NEE_CACHE_ELEMENTS;
   }
 
-  LightSample getLightSample(vec3 randomNumber, vec3 position, float16_t coneRadius, float16_t coneSpreadAngle, out uint triangleID, bool useCachedSamples = true)
+  LightSample getCachedLightSample(float randomNumber, vec3 position, float16_t coneRadius, float16_t coneSpreadAngle, out uint triangleID)
   {
     LightSample lightSampleTriangle;
-    if(useCachedSamples)
-    {
-      int sampleIdx = randomNumber.x * NEE_CACHE_SAMPLES;
-      NEESample sample = getSample(sampleIdx);
-      lightSampleTriangle = sample.convertToLightSample();
-      lightSampleTriangle.solidAnglePdf *= NEECacheUtils.calculateLightSamplingSolidAnglePDF(1.0, lightSampleTriangle.position, lightSampleTriangle.normal, position);
-      triangleID = sample.triangleID;
-    }
-    else
-    {
-      // Sample cached triangles
-      float lightObjectPdf = 0;
-      NEECandidate candidate = sampleCandidate(randomNumber.x, lightObjectPdf);
-      // Sample the selected triangle
-      vec2 uv = vec2(randomNumber.y, randomNumber.z);
-      float area;
-      lightSampleTriangle = NEECacheUtils.calculateLightSampleFromTriangle(
-        candidate.getSurfaceID(), candidate.getPrimitiveID(), uv, lightObjectPdf, position, coneRadius, coneSpreadAngle, area);
-      triangleID = -1;
-    }
+    int sampleIdx = randomNumber * NEE_CACHE_SAMPLES;
+    NEESample sample = getSample(sampleIdx);
+    lightSampleTriangle = sample.convertToLightSample();
+    lightSampleTriangle.solidAnglePdf *= NEECacheUtils.calculateLightSamplingSolidAnglePDF(1.0, lightSampleTriangle.position, lightSampleTriangle.normal, position);
+    triangleID = sample.triangleID;
+    return lightSampleTriangle;
+  }
+
+  LightSample getLightSample(StructuredBuffer<uint> PrimitiveIDPrefixSumBuffer, vec3 randomNumber, vec3 position, float16_t coneRadius, float16_t coneSpreadAngle, out uint triangleID)
+  {
+    LightSample lightSampleTriangle;
+    // Sample cached triangles
+    float lightObjectPdf = 0;
+    NEECandidate candidate = sampleCandidate(randomNumber.x, lightObjectPdf);
+    // Sample the selected triangle
+    vec2 uv = vec2(randomNumber.y, randomNumber.z);
+    float area;
+    lightSampleTriangle = NEECacheUtils.calculateLightSampleFromCandidate(
+      candidate.getSurfaceID(), candidate.getPrimitiveID(), PrimitiveIDPrefixSumBuffer, uv, lightObjectPdf, position, coneRadius, coneSpreadAngle, area);
+    triangleID = -1;
     return lightSampleTriangle;
   }
 }

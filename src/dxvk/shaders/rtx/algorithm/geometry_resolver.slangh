@@ -1081,6 +1081,7 @@ void geometryResolverVertex(
   bool unorderedDecalEncountered = false;
   uint4 decalMemory = 0;
   f16vec3 decalEmissiveRadiance = f16vec3(0);
+  int surfaceIndex;
   resolveVertexUnordered(
     resolveMode, unorderedResolveRay,
     unorderedRayMask, geometryResolverState.portalSpace,
@@ -1089,7 +1090,7 @@ void geometryResolverVertex(
     geometryResolverState.accumulatedVectorTransform, geometryResolverState.accumulatedHitDistance,
     radianceAttenuation, emissiveRadiance,
     numUnorderedInteractions, 
-    unorderedDecalEncountered, decalMemory, decalEmissiveRadiance);
+    unorderedDecalEncountered, decalMemory, decalEmissiveRadiance, surfaceIndex);
 
   vec3 particleEmissive = emissiveRadiance;
 
@@ -1622,6 +1623,7 @@ void geometryPSRResolverVertex(
   bool unorderedDecalEncountered = false;
   uint4 decalMemory = 0;
   f16vec3 decalEmissiveRadiance = f16vec3(0);
+  int surfaceIndex;
   resolveVertexUnordered(
     resolveMode, unorderedResolveRay,
     unorderedRayMask, geometryPSRResolverState.portalSpace,
@@ -1630,7 +1632,7 @@ void geometryPSRResolverVertex(
     geometryPSRResolverState.accumulatedVectorTransform, geometryPSRResolverState.accumulatedHitDistance,
     radianceAttenuation, emissiveRadiance,
     numUnorderedInteractions, 
-    unorderedDecalEncountered, decalMemory, decalEmissiveRadiance);
+    unorderedDecalEncountered, decalMemory, decalEmissiveRadiance, surfaceIndex);
 
   vec4 particleEmissive = vec4(0,0,0,1);
   if (cb.outputParticleLayer && any(emissiveRadiance > 0))
