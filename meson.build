@@ -560,7 +560,10 @@ endif
 
 # dict of "output" targets --- key is an output path, value is an optional executable inside that path,
 # which is used to run that "output" from the IDE
-dxvkrt_output_targets = { '_output': '' }
+dxvkrt_output_targets = {
+  '_output': '',
+  '_sdk': '',
+}
 
 subdir('tests/rtx')
 
@@ -595,10 +598,9 @@ if dxvk_is_ninja
   endif
   
   apic_copy_targets = []
-  sln_project_targets = []
 
   vs_gen_cmdline = [ vs_project_defines ]
-  # dict of: { <projectname>: { 'output_path': <copy_output_path>, 'target_suffix': <copy_target_suffix> } }
+  # dict of: { <projectname>: { 'output_path': <copy_output_path>, 'target_suffix': <copy_target_suffix>, 'src_exe': <if non-empty, copy exe from this absolute path> } }
   dxvkrt_copy_targets = {}
 
   # fill in all of the above
@@ -607,16 +609,27 @@ if dxvk_is_ninja
       # _output target is special
       target_suffix = 'output'
       output_path = output_dir
+      src_exe = ''
+    elif t == '_sdk'
+      # _sdk target is special
+      target_suffix = 'sdk'
+      output_path = join_paths(global_src_root_norm, 'public/bin/')
+      src_exe = ''
     else
       target_suffix = t.underscorify()
       output_path = dxvkrt_test_root + t
 
-      # capture data for VS generator
-      sln_project_targets += t
-      vs_gen_cmdline += t + ',' + exe
+      if fs.is_absolute(exe)
+        src_exe = exe
+        vs_gen_cmdline += t + ',' + fs.name(exe)
+      else
+        src_exe = ''
+        # capture data for VS generator
+        vs_gen_cmdline += t + ',' + exe
+      endif
     endif
     
-    dxvkrt_copy_targets += { t : { 'output_path': output_path, 'target_suffix': target_suffix } }
+    dxvkrt_copy_targets += { t : { 'output_path': output_path, 'target_suffix': target_suffix, 'src_exe': src_exe } }
   endforeach
 
   # add data from gametargets.conf to dxvkrt_copy_targets
@@ -632,7 +645,7 @@ if dxvk_is_ninja
       target_suffix = key.underscorify()
       output_path = s[1]
 
-      dxvkrt_copy_targets += { key : { 'output_path': output_path, 'target_suffix': target_suffix } }
+      dxvkrt_copy_targets += { key : { 'output_path': output_path, 'target_suffix': target_suffix, 'src_exe': '' } }
       
       # note: this doesn't go into the VS generator command line, gametargets.conf is read from python directly
     endforeach
@@ -641,6 +654,7 @@ if dxvk_is_ninja
   foreach key : dxvkrt_copy_targets.keys()
     target_suffix = dxvkrt_copy_targets[key]['target_suffix']
     output_path = dxvkrt_copy_targets[key]['output_path']
+    src_exe = dxvkrt_copy_targets[key]['src_exe']
 
     # generate targets to copy DLLs to individual test dirs, with names of the form 'copy_Portal1_SingleFrame_A'
     # these targets are not run by default, since we have a lot of tests: the intent is that we run this as a build task from the IDE before launching the test
@@ -740,6 +754,13 @@ if dxvk_is_ninja
 
     if enable_rtxio == true
       copy_target_depends += copy_rtxio
+    endif
+
+    if src_exe != ''
+      copy_target_depends += custom_target('copy_exe_' + target_suffix,
+        output           : ['copy_exe_' + target_suffix],
+        depends          : [],
+        command          : [copy_script_path, fs.parent(src_exe) + '/', output_path + '/', fs.name(src_exe)] )
     endif
 
     copy_target = run_target('copy_' + target_suffix.replace('apics_', ''),

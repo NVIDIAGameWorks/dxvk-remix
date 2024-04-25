@@ -26,6 +26,10 @@
 #include <stdint.h>
 #include <windows.h>
 
+#if _WIN64 != 1
+  #error Remix API requires 64-bit for the ray tracing features.
+#endif
+
 
 // __stdcall convention
 #define REMIXAPI_CALL __stdcall
@@ -48,7 +52,7 @@
 
 #define REMIXAPI_VERSION_MAJOR 0
 #define REMIXAPI_VERSION_MINOR 4
-#define REMIXAPI_VERSION_PATCH 0
+#define REMIXAPI_VERSION_PATCH 1
 
 
 // External
@@ -84,6 +88,8 @@ extern "C" {
     REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_OBJECT_PICKING_EXT     = 19,
     REMIXAPI_STRUCT_TYPE_LIGHT_INFO_DOME_EXT                  = 20,
     REMIXAPI_STRUCT_TYPE_LIGHT_INFO_USD_EXT                   = 21,
+    REMIXAPI_STRUCT_TYPE_STARTUP_INFO                         = 22,
+    REMIXAPI_STRUCT_TYPE_PRESENT_INFO                         = 23,
     // NOTE: if adding a new struct, register it in 'rtx_remix_specialization.inl'
   } remixapi_StructType;
 
@@ -106,6 +112,7 @@ extern "C" {
     REMIXAPI_ERROR_CODE_SET_DLL_DIRECTORY_FAILURE         = 9,
     // WinAPI's GetFullPathName has failed
     REMIXAPI_ERROR_CODE_GET_FULL_PATH_NAME_FAILURE        = 10,
+    REMIXAPI_ERROR_CODE_NOT_INITIALIZED                   = 11,
     // Error codes that are encoded as HRESULT, i.e. returned from D3D9 functions.
     // Look MAKE_D3DHRESULT, but with _FACD3D=0x896, instead of D3D9's 0x876
     REMIXAPI_ERROR_CODE_HRESULT_NO_REQUIRED_GPU_FEATURES      = 0x88960001,
@@ -127,7 +134,6 @@ extern "C" {
   typedef struct remixapi_Float2D {
     float x;
     float y;
-    float z;
   } remixapi_Float2D;
 
   typedef struct remixapi_Float3D {
@@ -155,7 +161,21 @@ extern "C" {
 
 
 
-  typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_Shutdown)();
+  typedef struct remixapi_StartupInfo {
+    remixapi_StructType sType;
+    void*               pNext;
+    HWND                hwnd;
+    remixapi_Bool       disableSrgbConversionForOutput;
+    // If true, 'dxvk_GetExternalSwapchain' can be used to retrieve a raw VkImage,
+    // so the application can present it, for example by using OpenGL interop:
+    // converting VkImage to OpenGL, and presenting it via OpenGL.
+    // Default: false. Use VkSwapchainKHR to present frame into HWND.
+    remixapi_Bool       forceNoVkSwapchain;
+    remixapi_Bool       editorModeEnabled;
+  } remixapi_StartupInfo;
+
+  typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_Startup)(const remixapi_StartupInfo* info);
+  typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_Shutdown)(void);
 
 
 
@@ -512,6 +532,14 @@ extern "C" {
     const char*               key,
     const char*               value);
 
+  typedef struct remixapi_PresentInfo {
+    remixapi_StructType       sType;
+    void*                     pNext;
+    HWND                      hwndOverride; // Can be NULL
+  } remixapi_PresentInfo;
+
+  typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_Present)(const remixapi_PresentInfo* info);
+
   typedef void (REMIXAPI_PTR* PFN_remixapi_pick_RequestObjectPickingUserCallback)(
     const uint32_t*           objectPickingValues_values,
     uint32_t                  objectPickingValues_count,
@@ -535,7 +563,7 @@ extern "C" {
 
 
   typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_dxvk_CreateD3D9)(
-    remixapi_Bool       disableSrgbConversionForOutput,
+    remixapi_Bool       editorModeEnabled,
     IDirect3D9Ex**      out_pD3D9);
 
   typedef remixapi_ErrorCode(REMIXAPI_PTR* PFN_remixapi_dxvk_RegisterD3D9Device)(
@@ -584,6 +612,7 @@ extern "C" {
     PFN_remixapi_DestroyLight       DestroyLight;
     PFN_remixapi_DrawLightInstance  DrawLightInstance;
     PFN_remixapi_SetConfigVariable  SetConfigVariable;
+
     // DXVK interoperability
     PFN_remixapi_dxvk_CreateD3D9            dxvk_CreateD3D9;
     PFN_remixapi_dxvk_RegisterD3D9Device    dxvk_RegisterD3D9Device;
@@ -594,6 +623,9 @@ extern "C" {
     // Object picking utils
     PFN_remixapi_pick_RequestObjectPicking  pick_RequestObjectPicking;
     PFN_remixapi_pick_HighlightObjects      pick_HighlightObjects;
+
+    PFN_remixapi_Startup            Startup;
+    PFN_remixapi_Present            Present;
   } remixapi_Interface;
 
   REMIXAPI remixapi_ErrorCode REMIXAPI_CALL remixapi_InitializeLibrary(
@@ -606,7 +638,7 @@ extern "C" {
 
 
   inline remixapi_ErrorCode REMIXAPI_CALL remixapi_lib_loadRemixDllAndInitialize(
-    const wchar_t* remixD3D9DllPath,
+    const wchar_t*      remixD3D9DllPath,
     remixapi_Interface* out_remixInterface,
     HMODULE*            out_remixDll
   ) {
@@ -616,60 +648,122 @@ extern "C" {
     if (out_remixInterface == NULL || out_remixDll == NULL) {
       return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
-    wchar_t absoluteD3D9DllPath[MAX_PATH];
+
+    HMODULE remixDll = NULL;
+    PFN_remixapi_InitializeLibrary pfn_InitializeLibrary = NULL;
     {
-      DWORD ret = GetFullPathNameW(remixD3D9DllPath, MAX_PATH, absoluteD3D9DllPath, NULL);
-      if (ret == 0) {
-        return REMIXAPI_ERROR_CODE_GET_FULL_PATH_NAME_FAILURE;
-      }
-    }
-    wchar_t parentDir[MAX_PATH];
-    {
-      int len = 0;
-      for (int i = 0; i < MAX_PATH; i++) {
-        if (absoluteD3D9DllPath[i] == '\0') {
-          break;
-        }
-        parentDir[i] = absoluteD3D9DllPath[i] == '/' ? '\\' : absoluteD3D9DllPath[i];
-        ++len;
-      }
-      if (len <= 0 || len >= MAX_PATH) {
-        return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
-      }
-      parentDir[len] = '\0';
-      for (int i = len - 1; i >= 0; --i) {
-        if (parentDir[i] == '\\') {
-          // remove one or more path separators
-          for (int k = i; k >= 0; --k) {
-            if (parentDir[k] == '\\') {
-              parentDir[k] = '\0';
-              continue;
-            }
-            break;
+      // firstly, try the default method first, e.g. DLL is already loaded, 
+      // DLL-s are around .exe, or an app has called SetDllDirectory
+      {
+        HMODULE dll = LoadLibraryW(remixD3D9DllPath);
+        if (dll) {
+          PROC func = GetProcAddress(dll, "remixapi_InitializeLibrary");
+          if (func) {
+            remixDll = dll;
+            pfn_InitializeLibrary = (PFN_remixapi_InitializeLibrary) func;
+          } else {
+            FreeLibrary(dll);
           }
-          break;
         }
       }
-      if (parentDir[0] == '\0') {
-        return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+
+      // then try raw user-provided 'remixD3D9DllPath' file
+      if (!pfn_InitializeLibrary) {
+        // set LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR to search 
+        // dependency DLL-s in the folder of 'remixD3D9DllPath'
+        HMODULE dll = LoadLibraryExW(remixD3D9DllPath, NULL,
+                                     LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR |
+                                     LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+        if (dll) {
+          PROC func = GetProcAddress(dll, "remixapi_InitializeLibrary");
+          if (func) {
+            remixDll = dll;
+            pfn_InitializeLibrary = (PFN_remixapi_InitializeLibrary) func;
+          } else {
+            FreeLibrary(dll);
+          }
+        }
       }
-    }
-    {
-      BOOL s = SetDllDirectoryW(parentDir);
-      if (!s) {
-        return REMIXAPI_ERROR_CODE_SET_DLL_DIRECTORY_FAILURE;
+
+      // at last, try to SetDllDirectory manually
+      if (!pfn_InitializeLibrary) {
+        wchar_t absoluteD3D9DllPath[MAX_PATH];
+        {
+          DWORD ret = GetFullPathNameW(remixD3D9DllPath, MAX_PATH, absoluteD3D9DllPath, NULL);
+          if (ret == 0) {
+            return REMIXAPI_ERROR_CODE_GET_FULL_PATH_NAME_FAILURE;
+          }
+        }
+        wchar_t parentDir[MAX_PATH];
+        {
+          int len = 0;
+          for (int i = 0; i < MAX_PATH; i++) {
+            if (absoluteD3D9DllPath[i] == '\0') {
+              break;
+            }
+            parentDir[i] = absoluteD3D9DllPath[i] == '/' ? '\\' : absoluteD3D9DllPath[i];
+            ++len;
+          }
+          if (len <= 0 || len >= MAX_PATH) {
+            return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+          }
+          parentDir[len] = '\0';
+          for (int i = len - 1; i >= 0; --i) {
+            if (parentDir[i] == '\\') {
+              // remove one or more path separators
+              for (int k = i; k >= 0; --k) {
+                if (parentDir[k] == '\\') {
+                  parentDir[k] = '\0';
+                  continue;
+                }
+                break;
+              }
+              break;
+            }
+          }
+          if (parentDir[0] == '\0') {
+            return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+          }
+        }
+
+        // save the previous value that is in SetDllDirectory
+        wchar_t dirToRestore[MAX_PATH];
+        {
+          DWORD len = GetDllDirectoryW(MAX_PATH, dirToRestore);
+          if (len > 0 && len < MAX_PATH - 1) {
+            dirToRestore[MAX_PATH - 1] = '\0';
+          }
+        }
+
+        {
+          BOOL s = SetDllDirectoryW(parentDir);
+          if (!s) {
+            return REMIXAPI_ERROR_CODE_SET_DLL_DIRECTORY_FAILURE;
+          }
+        }
+
+        HMODULE dll = LoadLibraryW(absoluteD3D9DllPath);
+        if (dll) {
+          PROC func = GetProcAddress(dll, "remixapi_InitializeLibrary");
+          if (func) {
+            remixDll = dll;
+            pfn_InitializeLibrary = (PFN_remixapi_InitializeLibrary) func;
+          } else {
+            FreeLibrary(dll);
+          }
+        }
+
+        // restore the previous value
+        {
+          BOOL s = SetDllDirectoryW(dirToRestore);
+        }
       }
     }
 
-    HMODULE remixDll = LoadLibraryW(absoluteD3D9DllPath);
-    if (remixDll == NULL) {
+    if (!remixDll) {
       return REMIXAPI_ERROR_CODE_LOAD_LIBRARY_FAILURE;
     }
-
-    PFN_remixapi_InitializeLibrary pfn_InitializeLibrary = (PFN_remixapi_InitializeLibrary)
-      GetProcAddress(remixDll, "remixapi_InitializeLibrary");
-    if (pfn_InitializeLibrary == NULL) {
-      FreeLibrary(remixDll);
+    if (!pfn_InitializeLibrary){
       return REMIXAPI_ERROR_CODE_GET_PROC_ADDRESS_FAILURE;
     }
 
@@ -695,7 +789,7 @@ extern "C" {
 
   inline remixapi_ErrorCode REMIXAPI_CALL remixapi_lib_shutdownAndUnloadRemixDll(
     remixapi_Interface* remixInterface,
-    HMODULE remixDll
+    HMODULE             remixDll
   ) {
     if (remixInterface == NULL || remixInterface->Shutdown == NULL) {
       if (remixDll != NULL) {

@@ -160,7 +160,9 @@ namespace remix {
     remixapi_Interface m_CInterface {};
 
     // Functions
+    Result< void >                    Startup(const remixapi_StartupInfo& info);
     Result< void >                    Shutdown();
+    Result< void >                    Present(const remixapi_PresentInfo* info = nullptr);
     Result< remixapi_MaterialHandle > CreateMaterial(const remixapi_MaterialInfo& info);
     Result< void >                    DestroyMaterial(remixapi_MaterialHandle handle);
     Result< remixapi_MeshHandle >     CreateMesh(const remixapi_MeshInfo& info);
@@ -173,7 +175,7 @@ namespace remix {
     Result< void >                    SetConfigVariable(const char* key, const char* value);
 
     // DXVK interoperability
-    Result< IDirect3D9Ex* >                  dxvk_CreateD3D9(bool disableSrgbConversionForOutput);
+    Result< IDirect3D9Ex* >                  dxvk_CreateD3D9(bool editorModeEnabled = false);
     Result< void >                           dxvk_RegisterD3D9Device(IDirect3DDevice9Ex* d3d9Device);
     Result< detail::dxvk_ExternalSwapchain > dxvk_GetExternalSwapchain();
     Result< detail::dxvk_VkImage >           dxvk_GetVkImage(IDirect3DSurface9* source);
@@ -206,7 +208,7 @@ namespace remix {
         return status;
       }
 
-      static_assert(sizeof(remixapi_Interface) == 152,
+      static_assert(sizeof(remixapi_Interface) == 168,
                     "Change version, update C++ wrapper when adding new functions");
 
       remix::Interface interfaceInCpp = {};
@@ -228,15 +230,32 @@ namespace remix {
 
 
 
-  inline Result< void > Interface::Shutdown() {
-    if (m_CInterface.Shutdown) {
-      return m_CInterface.Shutdown();
+  inline Result< void > Interface::Startup(const remixapi_StartupInfo& info) {
+    if (!m_CInterface.Startup) {
+      return REMIXAPI_ERROR_CODE_NOT_INITIALIZED;
     }
-    return REMIXAPI_ERROR_CODE_SUCCESS;
+    return m_CInterface.Startup(&info);
+  }
+
+  inline Result< void > Interface::Shutdown() {
+    if (!m_CInterface.Shutdown) {
+      return REMIXAPI_ERROR_CODE_NOT_INITIALIZED;
+    }
+    return m_CInterface.Shutdown();
   }
 
   inline Result< void > Interface::SetConfigVariable(const char* key, const char* value) {
+    if (!m_CInterface.SetConfigVariable) {
+      return REMIXAPI_ERROR_CODE_NOT_INITIALIZED;
+    }
     return m_CInterface.SetConfigVariable(key, value);
+  }
+
+  inline Result< void > Interface::Present(const remixapi_PresentInfo* info) {
+    if (!m_CInterface.Present) {
+      return REMIXAPI_ERROR_CODE_NOT_INITIALIZED;
+    }
+    return m_CInterface.Present(info);
   }
 
 
@@ -693,9 +712,9 @@ namespace remix {
     };
   }
 
-  inline Result< IDirect3D9Ex* > Interface::dxvk_CreateD3D9(bool disableSrgbConversionForOutput) {
+  inline Result< IDirect3D9Ex* > Interface::dxvk_CreateD3D9(bool editorModeEnabled) {
     IDirect3D9Ex* d3d9 { nullptr };
-    remixapi_ErrorCode status = m_CInterface.dxvk_CreateD3D9(disableSrgbConversionForOutput, &d3d9);
+    remixapi_ErrorCode status = m_CInterface.dxvk_CreateD3D9(editorModeEnabled, &d3d9);
     if (status != REMIXAPI_ERROR_CODE_SUCCESS) {
       return status;
     }

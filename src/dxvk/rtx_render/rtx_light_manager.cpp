@@ -228,7 +228,7 @@ namespace dxvk {
 
     if (
       mode == FallbackLightMode::Always ||
-      (mode == FallbackLightMode::NoLightsPresent && m_lights.empty())
+      (mode == FallbackLightMode::NoLightsPresent && m_lights.empty() && m_externalActiveLightList.empty())
     ) {
       auto const& mainCamera = cameraManager.getMainCamera();
       const auto oldFallbackLightPresent = m_fallbackLight.has_value();

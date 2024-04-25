@@ -62,7 +62,9 @@ namespace dxvk {
 
   void DxvkDLSS::onDestroy() {
     NGXDLSSContext* dlssWrapper = NGXDLSSContext::getInstance(m_device);
-    dlssWrapper->releaseNGXFeature();
+    if (dlssWrapper) {
+      dlssWrapper->releaseNGXFeature();
+    }
     NGXDLSSContext::releaseInstance();
   }
 
