@@ -73,6 +73,7 @@ namespace {
   IDirect3D9Ex* s_dxvkD3D9 { nullptr };
   dxvk::D3D9DeviceEx* s_dxvkDevice { nullptr };
   dxvk::mutex s_mutex {};
+  bool s_isHdRemix { false };
 
 
   dxvk::D3D9DeviceEx* tryAsDxvk() {
@@ -106,12 +107,6 @@ namespace {
     }
   }
 
-
-  void sanitizeConfigs() {
-    // Disable fallback light
-    const_cast<dxvk::LightManager::FallbackLightMode&>(dxvk::LightManager::fallbackLightMode()) = dxvk::LightManager::FallbackLightMode::Never;
-    const_cast<bool&>(dxvk::DxvkPostFx::desaturateOthersOnHighlight()) = false;
-  }
 
   namespace convert {
     using namespace dxvk;
@@ -632,13 +627,6 @@ dxvk::ExternalDrawState dxvk::RemixAPIPrivateAccessor::toRtDrawState(const remix
 }
 
 namespace {
-  remixapi_ErrorCode REMIXAPI_CALL remixapi_Shutdown() {
-    // TODO: a proper check for shutdown
-    s_dxvkDevice = nullptr;
-    s_dxvkD3D9 = nullptr;
-    return REMIXAPI_ERROR_CODE_SUCCESS;
-  }
-
   remixapi_ErrorCode REMIXAPI_CALL remixapi_CreateMaterial(
     const remixapi_MaterialInfo* info,
     remixapi_MaterialHandle* out_handle) {
@@ -840,6 +828,8 @@ namespace {
       ctx->getCommonObjects()->getSceneManager()
         .processExternalCamera(cRtCamera.type, cRtCamera.worldToView, cRtCamera.viewToProjection);
     });
+    // ensure that near plane is not modified, to keep user's projection matrix as it is
+    assert(!dxvk::RtxOptions::enableNearPlaneOverride());
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
 
@@ -981,7 +971,11 @@ namespace {
       dxvk::RtxOptions::forceHighResolutionReplacementTexturesObject().getName(),
       dxvk::RtxOptions::resolutionScaleObject().getName(),
       dxvk::NeeCachePass::enableObject().getName(),
+      // to not modify the perspective matrices, so depth buffers are similar
       dxvk::RtxOptions::enableNearPlaneOverrideObject().getName(),
+      // for hdremix usability
+      dxvk::LightManager::fallbackLightModeObject().getName(),
+      dxvk::DxvkPostFx::desaturateOthersOnHighlightObject().getName(),
     };
 
   remixapi_ErrorCode REMIXAPI_CALL remixapi_SetConfigVariable(
@@ -1000,11 +994,14 @@ namespace {
       return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
     }
 
-    // Keep users of the Remix API in automatic quality mode.
-    for (auto& filteredSetting : filteredSettings) {
-      // Skip this if we want to filter this setting
-      if (found->second->getFullName() == filteredSetting) {
-        return REMIXAPI_ERROR_CODE_SUCCESS;
+    if (s_isHdRemix) {
+      const auto keyFullName = found->second->getFullName();
+      // Keep users of HdRemix in automatic quality mode.
+      for (const auto& filteredSetting : filteredSettings) {
+        // Skip this if we want to filter this setting
+        if (keyFullName == filteredSetting) {
+          return REMIXAPI_ERROR_CODE_SUCCESS;
+        }
       }
     }
 
@@ -1012,8 +1009,6 @@ namespace {
     newSetting.setOption(key, std::string { value });
     found->second->readOption(newSetting, dxvk::RtxOptionImpl::ValueType::Value);
 
-    // Make sure we dont step on required configs
-    sanitizeConfigs();
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
 
@@ -1079,13 +1074,11 @@ namespace {
   }
 
   remixapi_ErrorCode REMIXAPI_CALL remixapi_dxvk_CreateD3D9(
-    remixapi_Bool disableSrgbConversionForOutput,
+    const remixapi_StartupInfo& info,
     IDirect3D9Ex** out_pD3D9) {
-    if (s_dxvkD3D9) {
-      return REMIXAPI_ERROR_CODE_ALREADY_EXISTS;
-    }
     IDirect3D9Ex* d3d9ex = nullptr;
-    auto hr = dxvk::CreateD3D9(true, &d3d9ex, true, false, true);
+
+    auto hr = dxvk::CreateD3D9(true, &d3d9ex, info.forceNoVkSwapchain, false, true);
     if (FAILED(hr) || !d3d9ex) {
       if (isHResultAliasedWithRemixErrorCode(hr)) {
         return static_cast<remixapi_ErrorCode>(hr);
@@ -1093,27 +1086,65 @@ namespace {
       return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
     }
 
-    sanitizeConfigs();
-    if (disableSrgbConversionForOutput) {
-      dxvk::g_allowSrgbConversionForOutput = false;
-    }
-    dxvk::g_allowMappingLegacyHashToObjectPickingValue = false;
+    dxvk::g_allowSrgbConversionForOutput = !info.disableSrgbConversionForOutput;
+    dxvk::g_allowMappingLegacyHashToObjectPickingValue = !info.editorModeEnabled;
 
-    s_dxvkD3D9 = d3d9ex;
+    s_isHdRemix = info.editorModeEnabled;
+    if (s_isHdRemix) {
+      static auto filteredSettings_contains = [](const std::string& option) {
+        return std::find(std::begin(filteredSettings), std::end(filteredSettings), option) != std::end(filteredSettings);
+      };
+      const_cast<dxvk::LightManager::FallbackLightMode&>(dxvk::LightManager::fallbackLightMode()) = dxvk::LightManager::FallbackLightMode::Never;
+      assert(filteredSettings_contains(dxvk::LightManager::fallbackLightModeObject().getName()));
+      const_cast<bool&>(dxvk::DxvkPostFx::desaturateOthersOnHighlight()) = false;
+      assert(filteredSettings_contains(dxvk::DxvkPostFx::desaturateOthersOnHighlightObject().getName()));
+    }
+
     *out_pD3D9 = d3d9ex;
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
 
+  // HdRemix has editorModeEnabled=true
+  remixapi_ErrorCode REMIXAPI_CALL remixapi_dxvk_CreateD3D9_legacy(
+    remixapi_Bool editorModeEnabled,
+    IDirect3D9Ex** out_pD3D9) {
+    auto i = remixapi_StartupInfo {};
+    {
+      i.sType = REMIXAPI_STRUCT_TYPE_STARTUP_INFO;
+      i.disableSrgbConversionForOutput = editorModeEnabled;
+      i.forceNoVkSwapchain = editorModeEnabled;
+      i.editorModeEnabled = editorModeEnabled;
+      static_assert(sizeof(remixapi_StartupInfo) == 40, "If changing, also set defaults here");
+    }
+    return remixapi_dxvk_CreateD3D9(i, out_pD3D9);
+  }
+
   remixapi_ErrorCode REMIXAPI_CALL remixapi_dxvk_RegisterD3D9Device(
     IDirect3DDevice9Ex* d3d9Device) {
-    s_dxvkDevice = dynamic_cast<dxvk::D3D9DeviceEx*>(d3d9Device);
-    if (d3d9Device && !s_dxvkDevice) {
+    if (!d3d9Device) {
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+    }
+    auto dxvkDevice = dynamic_cast<dxvk::D3D9DeviceEx*>(d3d9Device);
+    if (!dxvkDevice) {
       return REMIXAPI_ERROR_CODE_REGISTERING_NON_REMIX_D3D9_DEVICE;
     }
-    dxvk::D3D9DeviceEx* remixDevice = tryAsDxvk();
-    if (!remixDevice) {
-      return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
+    IDirect3D9* dxvkD3d9 = nullptr;
+    HRESULT hr = dxvkDevice->GetDirect3D(&dxvkD3d9);
+    if (FAILED(hr) || !dxvkD3d9) {
+      assert(0);
+      return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
     }
+    auto dxvkD3d9Ex = dynamic_cast<IDirect3D9Ex*>(dxvkD3d9);
+    if (!dxvkD3d9Ex) {
+      assert(0);
+      return REMIXAPI_ERROR_CODE_NOT_INITIALIZED;
+    }
+    // if D3D9 already exists, check that user-provided D3D9 corresponds to our s_dxvkD3D9
+    if (s_dxvkD3D9) {
+      assert(s_dxvkD3D9 == dxvkD3d9Ex);
+    }
+    s_dxvkD3D9 = dxvkD3d9Ex;
+    s_dxvkDevice = dxvkDevice;
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
 
@@ -1232,27 +1263,170 @@ namespace {
     }
 
     std::lock_guard lock { s_mutex };
-    remixDevice->EmitCs([type, color](dxvk::DxvkContext* ctx) {
+    remixDevice->EmitCs([type, cColor = *color](dxvk::DxvkContext* ctx) {
       dxvk::RtxGlobals& globals = ctx->getCommonObjects()->getSceneManager().getGlobals();
       switch (type) {
       case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_FINAL_COLOR:
-        globals.clearColorFinalColor = vec3(color->x, color->y, color->z);
+        globals.clearColorFinalColor = vec3(cColor.x, cColor.y, cColor.z);
         break;
       case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_DEPTH:
-        globals.clearColorDepth = color->x;
+        globals.clearColorDepth = cColor.x;
         break;
       case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_NORMALS:
-        globals.clearColorNormal = vec3(color->x, color->y, color->z);
+        globals.clearColorNormal = vec3(cColor.x, cColor.y, cColor.z);
         break;
       case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_OBJECT_PICKING:
         // converting binary value of color.x into uint to avoid losing precision.
-        globals.clearColorPicking = reinterpret_cast<const uint&>(color->x);
+        globals.clearColorPicking = reinterpret_cast<const uint&>(cColor.x);
         break;
       default:
         break;
       }
     });
     
+    return REMIXAPI_ERROR_CODE_SUCCESS;
+  }
+
+  remixapi_ErrorCode REMIXAPI_CALL remixapi_Startup(const remixapi_StartupInfo* info) {
+    if (!info || info->sType != REMIXAPI_STRUCT_TYPE_STARTUP_INFO) {
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+    }
+    assert(!!(s_dxvkD3D9) == !!(s_dxvkDevice));
+    if (s_dxvkD3D9 || s_dxvkDevice) {
+      return REMIXAPI_ERROR_CODE_ALREADY_EXISTS;
+    }
+
+    IDirect3D9Ex* d3d9 = nullptr;
+    {
+      remixapi_ErrorCode status = remixapi_dxvk_CreateD3D9(*info, &d3d9);
+      if (status != REMIXAPI_ERROR_CODE_SUCCESS) {
+        return status;
+      }
+    }
+
+    HWND hwnd = nullptr;
+    uint32_t width = 0, height = 0;
+
+    if (info->hwnd) {
+      hwnd = info->hwnd;
+      auto hwndRect = RECT {};
+      GetClientRect(info->hwnd, &hwndRect);
+      width = static_cast<uint32_t>(std::max(0l, hwndRect.right - hwndRect.left));
+      height = static_cast<uint32_t>(std::max(0l, hwndRect.bottom - hwndRect.top));
+    }
+
+    IDirect3DDevice9Ex* d3d9Device = nullptr;
+    {
+      auto presInfo = D3DPRESENT_PARAMETERS {};
+      {
+        presInfo.BackBufferWidth = width;
+        presInfo.BackBufferHeight = height;
+        presInfo.BackBufferFormat = D3DFMT_UNKNOWN;
+        presInfo.BackBufferCount = 0;
+        presInfo.MultiSampleType = D3DMULTISAMPLE_NONE;
+        presInfo.MultiSampleQuality = 0;
+        presInfo.SwapEffect = D3DSWAPEFFECT_DISCARD;
+        presInfo.hDeviceWindow = hwnd;
+        presInfo.Windowed = true;
+        presInfo.EnableAutoDepthStencil = false;
+        presInfo.AutoDepthStencilFormat = D3DFMT_UNKNOWN;
+        presInfo.Flags = 0;
+        presInfo.FullScreen_RefreshRateInHz = 0;
+        presInfo.PresentationInterval = 0;
+      }
+
+      HRESULT hr = d3d9->CreateDeviceEx(
+        D3DADAPTER_DEFAULT,
+        D3DDEVTYPE_HAL,
+        hwnd,
+        D3DCREATE_HARDWARE_VERTEXPROCESSING,
+        &presInfo,
+        nullptr,
+        &d3d9Device);
+      if (FAILED(hr) || !d3d9Device) {
+        d3d9->Release();
+        if (isHResultAliasedWithRemixErrorCode(hr)) {
+          // return special aliased HRESULT
+          return static_cast<remixapi_ErrorCode>(hr);
+        }
+        return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
+      }
+    }
+    {
+      remixapi_ErrorCode status = remixapi_dxvk_RegisterD3D9Device(d3d9Device);
+      if (status != REMIXAPI_ERROR_CODE_SUCCESS) {
+        d3d9->Release();
+        return status;
+      }
+      assert(s_dxvkD3D9 && s_dxvkDevice);
+    }
+    return REMIXAPI_ERROR_CODE_SUCCESS;
+  }
+
+  remixapi_ErrorCode REMIXAPI_CALL remixapi_Shutdown(void) {
+    if (s_dxvkDevice) {
+      while (true) {
+        ULONG left = s_dxvkDevice->Release();
+        if (left == 0) {
+          break;
+        }
+      }
+      s_dxvkDevice = nullptr;
+    }
+    if (s_dxvkD3D9) {
+      while (true) {
+        ULONG left = s_dxvkD3D9->Release();
+        if (left == 0) {
+          break;
+        }
+      }
+      s_dxvkD3D9 = nullptr;
+    }
+    return REMIXAPI_ERROR_CODE_SUCCESS;
+  }
+
+  remixapi_ErrorCode REMIXAPI_CALL remixapi_Present(const remixapi_PresentInfo* info) {
+    dxvk::D3D9DeviceEx* remixDevice = tryAsDxvk();
+    if (!remixDevice) {
+      return REMIXAPI_ERROR_CODE_REMIX_DEVICE_WAS_NOT_REGISTERED;
+    }
+    HRESULT hr = remixDevice->Present(NULL, NULL, info ? info->hwndOverride : NULL, NULL);
+    if (FAILED(hr)) {
+      return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
+    }
+
+    UINT windowWidth = 0, windowHeight = 0;
+    {
+      HWND hwnd = info && info->hwndOverride ? info->hwndOverride : remixDevice->GetWindow();
+      if (hwnd) {
+        RECT hwndRect = {};
+        GetClientRect(hwnd, &hwndRect);
+        windowWidth = static_cast<UINT>(std::max(0l, hwndRect.right - hwndRect.left));
+        windowHeight = static_cast<UINT>(std::max(0l, hwndRect.bottom - hwndRect.top));
+      }
+    }
+
+    if (windowWidth > 0 && windowHeight > 0) {
+      IDirect3DSwapChain9* swapchain = nullptr;
+      hr = remixDevice->GetSwapChain(0, &swapchain);
+      if (FAILED(hr) || !swapchain) {
+        return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
+      }
+      D3DPRESENT_PARAMETERS presentParams{};
+      hr = swapchain->GetPresentParameters(&presentParams);
+      if (FAILED(hr)) {
+        return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
+      }
+
+      // reset swapchain if window has changed
+      if (presentParams.BackBufferWidth != windowWidth && //
+          presentParams.BackBufferHeight != windowHeight) {
+        presentParams.BackBufferWidth = windowWidth;
+        presentParams.BackBufferHeight = windowHeight;
+        remixDevice->ResetEx(&presentParams, nullptr);
+      }
+    }
+
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
 
@@ -1296,7 +1470,9 @@ extern "C"
 
     auto interf = remixapi_Interface {};
     {
+      interf.Startup = remixapi_Startup;
       interf.Shutdown = remixapi_Shutdown;
+      interf.Present = remixapi_Present;
       interf.CreateMaterial = remixapi_CreateMaterial;
       interf.DestroyMaterial = remixapi_DestroyMaterial;
       interf.CreateMesh = remixapi_CreateMesh;
@@ -1307,7 +1483,7 @@ extern "C"
       interf.DestroyLight = remixapi_DestroyLight;
       interf.DrawLightInstance = remixapi_DrawLightInstance;
       interf.SetConfigVariable = remixapi_SetConfigVariable;
-      interf.dxvk_CreateD3D9 = remixapi_dxvk_CreateD3D9;
+      interf.dxvk_CreateD3D9 = remixapi_dxvk_CreateD3D9_legacy;
       interf.dxvk_RegisterD3D9Device = remixapi_dxvk_RegisterD3D9Device;
       interf.dxvk_GetExternalSwapchain = remixapi_dxvk_GetExternalSwapchain;
       interf.dxvk_GetVkImage = remixapi_dxvk_GetVkImage;
@@ -1316,7 +1492,7 @@ extern "C"
       interf.pick_RequestObjectPicking = remixapi_pick_RequestObjectPicking;
       interf.pick_HighlightObjects = remixapi_pick_HighlightObjects;
     }
-    static_assert(sizeof(interf) == 152, "Add/remove function registration");
+    static_assert(sizeof(interf) == 168, "Add/remove function registration");
 
     *out_result = interf;
     return REMIXAPI_ERROR_CODE_SUCCESS;
