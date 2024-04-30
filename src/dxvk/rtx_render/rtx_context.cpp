@@ -892,7 +892,7 @@ namespace dxvk {
     constants.pstrNormalDetailThreshold = RtxOptions::Get()->pstrNormalDetailThreshold();
     constants.enableDirectLighting = RtxOptions::Get()->isDirectLightingEnabled();
     constants.enableStochasticAlphaBlend = m_common->metaComposite().enableStochasticAlphaBlend();
-    constants.enableSeparateUnorderedApproximations = RtxOptions::Get()->isSeparateUnorderedApproximationsEnabled() && getResourceManager().getTLAS(Tlas::Unordered).accelStructure != nullptr;
+    constants.enableSeparateUnorderedApproximations = RtxOptions::Get()->enableSeparateUnorderedApproximations() && getResourceManager().getTLAS(Tlas::Unordered).accelStructure != nullptr;
     constants.enableDirectTranslucentShadows = RtxOptions::Get()->areDirectTranslucentShadowsEnabled();
     constants.enableIndirectTranslucentShadows = RtxOptions::Get()->areIndirectTranslucentShadowsEnabled();
     constants.enableRussianRoulette = RtxOptions::Get()->isRussianRouletteEnabled();

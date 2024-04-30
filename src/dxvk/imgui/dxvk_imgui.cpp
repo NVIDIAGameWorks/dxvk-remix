@@ -2560,6 +2560,7 @@ namespace dxvk {
           ImGui::Checkbox("Dev: Use i-prims on primary rays", &RtxOptions::Get()->useIntersectionBillboardsOnPrimaryRaysObject());
           ImGui::Unindent();
         }
+        ImGui::Checkbox("Track Particle Object", &RtxOptions::Get()->trackParticleObjectsObject());
 
         ImGui::SliderFloat("Resolve Transparency Threshold", &RtxOptions::Get()->resolveTransparencyThresholdObject(), 0.0f, 1.0f);
         RtxOptions::Get()->resolveOpaquenessThresholdRef() = std::max(RtxOptions::Get()->resolveTransparencyThreshold(), RtxOptions::Get()->resolveOpaquenessThreshold());

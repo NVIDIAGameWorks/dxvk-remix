@@ -89,6 +89,7 @@ namespace dxvk {
     ImGui::DragFloat("Age Culling Speed", &ageCullingSpeedObject(), 0.001f, 0.0f, 0.99f, "%.3f");
     ImGui::DragFloat("Cell Resolution", &resolutionObject(), 0.01f, 0.01f, 100.0f, "%.3f");
     ImGui::DragFloat("Min Range", &minRangeObject(), 1.f, 0.1f, 10000.0f, "%.3f");
+    ImGui::Checkbox("Approximate Particle Lighting", &approximateParticleLightingObject());
   }
 
   void NeeCachePass::setRaytraceArgs(RaytraceArgs& constants, bool resetHistory) const {    
@@ -106,6 +107,7 @@ namespace dxvk {
     constants.neeCacheArgs.learningRate = learningRate();
     constants.neeCacheArgs.resolution = resolution();
     constants.neeCacheArgs.minRange = minRange() * RtxOptions::Get()->sceneScale();
+    constants.neeCacheArgs.approximateParticleLighting = approximateParticleLighting();
 
     static uvec2 oldResolution {0, 0};
     constants.neeCacheArgs.clearCache = resetHistory || oldResolution.x != constants.camera.resolution.x || oldResolution.y != constants.camera.resolution.y;

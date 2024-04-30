@@ -107,16 +107,16 @@ struct NEECacheUtils
     // surface.isEmissive = false;
     // surface.isEmissiveBlend = false;
     // surface.tFactor = 0;
+    // surface.color0BufferIndex = BINDING_INDEX_INVALID;
+    // surface.textureAlphaArg1Source = uint(RtTextureArgSource::None);
+    // surface.textureAlphaArg2Source = uint(RtTextureArgSource::None);
+    // surface.textureAlphaOperation = uint(DxvkRtTextureOperation::Disable);
     surface.isStatic = true;
     surface.isMatte = true;
     surface.texcoordGenerationMode = uint(TexGenMode::None);
     surface.previousPositionBufferIndex = BINDING_INDEX_INVALID;
     surface.normalBufferIndex = BINDING_INDEX_INVALID;
-    surface.color0BufferIndex = BINDING_INDEX_INVALID;
     surface.isAnimatedWater = false;
-    surface.textureAlphaArg1Source = uint(RtTextureArgSource::None);
-    surface.textureAlphaArg2Source = uint(RtTextureArgSource::None);
-    surface.textureAlphaOperation = uint(DxvkRtTextureOperation::Disable);
     surface.spriteSheetRows = 1;
     surface.spriteSheetCols = 1;
     surface.spriteSheetFPS = 0;
@@ -139,11 +139,11 @@ struct NEECacheUtils
     surfaceInteraction.textureGradientY *= cb.neeCacheArgs.emissiveTextureSampleFootprintScale;
 
   #if USE_SIMIPLIFIED_MODEL
+    // surfaceInteraction.vertexColor = f16vec4(0);
     surfaceInteraction.positionError = 0;
     surfaceInteraction.motion = 0;
     surfaceInteraction.interpolatedTangent = f16vec3(0);
     surfaceInteraction.interpolatedBitangent = f16vec3(0);
-    surfaceInteraction.vertexColor = f16vec4(0);
   #endif
 
     rayInteracton.viewDirection = normalize(surfaceInteraction.position - shadingPosition);
@@ -210,7 +210,7 @@ struct NEECacheUtils
         resolveModeDecalMaterialBlending |
         (separateUnorderedApproximations ? resolveModeSeparateUnorderedApproximations : 0);
 
-      if (!separateUnorderedApproximations && !surface.isFullyOpaque)
+      if (cb.neeCacheArgs.approximateParticleLighting && !surface.isFullyOpaque)
       {
         f16vec3 radianceAttenuation = 1.0;
         float16_t opaqueApproximationOutgoingAttenuation = 1.0;
@@ -218,7 +218,7 @@ struct NEECacheUtils
         const bool approximationHandled = evaluateOpaqueApproximations(
           resolveMode,
           surface, surfaceInteraction, opaqueSurfaceMaterialInteraction,
-          /*resolveVertexState.portalSpace*/PORTAL_SPACE_NONE,
+          /*portalSpace*/PORTAL_SPACE_NONE,
           radianceAttenuation, opaqueApproximationOutgoingAttenuation, emissiveRadiance);
 
         lightSample.radiance += emissiveRadiance;
