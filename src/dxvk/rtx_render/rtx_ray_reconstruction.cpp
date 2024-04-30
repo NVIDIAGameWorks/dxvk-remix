@@ -342,7 +342,6 @@ namespace dxvk {
       
       ImGui::Checkbox("Use Virtual Normals", &m_useVirtualNormals);
       ImGui::Combo("Particle Mode", &particleBufferModeObject(), "None\0DLSS-RR Upscaling\0");
-      ImGui::Checkbox("Enable NRD For Training", &enableNRDForTrainingObject());
       ImGui::Checkbox("Use Specular Hit Distance", &useSpecularHitDistanceObject());
       ImGui::Checkbox("Preserve Settings in Native Mode", &preserveSettingsInNativeModeObject());
       ImGui::Checkbox("Combine Specular Albedo", &combineSpecularAlbedoObject());
