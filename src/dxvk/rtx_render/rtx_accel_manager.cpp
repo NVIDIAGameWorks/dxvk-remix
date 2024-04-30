@@ -527,7 +527,7 @@ namespace dxvk {
         if (instance->isObjectToWorldMirrored())
           blasInstance.flags ^= VK_GEOMETRY_INSTANCE_TRIANGLE_FLIP_FACING_BIT_KHR;
 
-        if (instance->usesUnorderedApproximations() && RtxOptions::Get()->isSeparateUnorderedApproximationsEnabled())
+        if (instance->usesUnorderedApproximations() && RtxOptions::Get()->enableSeparateUnorderedApproximations())
           m_mergedInstances[Tlas::Unordered].push_back(blasInstance);
         else
           m_mergedInstances[Tlas::Opaque].push_back(blasInstance);
@@ -709,7 +709,7 @@ namespace dxvk {
         (bucket->reorderedSurfacesOffset & uint32_t(CUSTOM_INDEX_SURFACE_MASK));
       memcpy(static_cast<void*>(&instance.transform.matrix[0][0]), &identityTransform[0][0], sizeof(VkTransformMatrixKHR));
 
-      if (bucket->usesUnorderedApproximations && RtxOptions::Get()->isSeparateUnorderedApproximationsEnabled())
+      if (bucket->usesUnorderedApproximations && RtxOptions::Get()->enableSeparateUnorderedApproximations())
         m_mergedInstances[Tlas::Unordered].push_back(instance);
       else
         m_mergedInstances[Tlas::Opaque].push_back(instance);
@@ -837,6 +837,75 @@ namespace dxvk {
     }
   }
 
+  void AccelManager::buildParticleSurfaceMapping(std::vector<uint32_t>& surfaceIndexMapping) {
+    // Build surface index mapping for particle objects.
+    std::vector<SurfaceInfo> curSurfaceInfoList(m_reorderedSurfaces.size());
+    std::unordered_map<XXH64_hash_t, std::vector<int>> curMaterialHashToSurfaceMap;
+    for (uint32_t surfaceIndex = 0; surfaceIndex < m_reorderedSurfaces.size(); surfaceIndex++) {
+      RtInstance& surface = *m_reorderedSurfaces[surfaceIndex];
+
+      // Only record objects that use unordered approximations.
+      // In some cases, objects with unorder resolve flag will generate a set of billboards, each one occupies one "Surface" entry
+      // in the shaders' surface array. These entries has identical information except the "firstIndex" member.
+      // See "fillGeometryInfoFromBlasEntry()" for more details in generating indexOffsets.
+      // See "uploadSurfaceData()" for how the "firstIndex" is fed to the shaders surface array.
+      if (surface.usesUnorderedApproximations() && m_reorderedSurfacesFirstIndexOffset[surfaceIndex] == 0) {
+        // Need to find the closest object with the same material, so use material ID as hash value, and record bounding box's center.
+        XXH64_hash_t hash = surface.surface.surfaceMaterialIndex;
+        const RasterGeometry& geometryData = surface.getBlas()->input.getGeometryData();
+        curSurfaceInfoList[surfaceIndex] = { hash, geometryData.boundingBox.getTransformedCentroid(surface.getTransform()) };
+
+        if (surface.buildRanges.size() > 0 && surface.buildGeometries.size() > 0) {
+          curMaterialHashToSurfaceMap[hash].push_back(surfaceIndex);
+        }
+      }
+    }
+
+    // Fix missed surface mapping by searching among objects with the same hash value, and choose the closest one.
+    m_lastSurfaceInfoList.resize(surfaceIndexMapping.size());
+    for (int i = 0; i < surfaceIndexMapping.size(); i++) {
+      // Skip objects have surface mapping
+      if (surfaceIndexMapping[i] != BINDING_INDEX_INVALID) {
+        continue;
+      }
+
+      // Skip objects with different materials
+      auto lastInfo = m_lastSurfaceInfoList[i];
+      auto pCandidateList = curMaterialHashToSurfaceMap.find(lastInfo.hash);
+      if (pCandidateList == curMaterialHashToSurfaceMap.end()) {
+        continue;
+      }
+
+      auto& candidateList = pCandidateList->second;
+      float minDistanceSq = FLT_MAX;
+      int bestSurfaceID = -1;
+
+      // Iterate through the candidate list and find the closest one
+      for (int ithCandidate = 0; ithCandidate < candidateList.size(); ithCandidate++) {
+        int curSurfaceID = candidateList[ithCandidate];
+        RtInstance& surface = *m_reorderedSurfaces[curSurfaceID];
+        if (surface.buildGeometries.size() == 0) {
+          continue;
+        }
+
+        // Calculate bounding box centers' distance
+        const RasterGeometry& geometryData = surface.getBlas()->input.getGeometryData();
+        Vector3 center = geometryData.boundingBox.getTransformedCentroid(surface.getTransform());
+        float distanceSq = lengthSqr(center - lastInfo.worldPosition);
+        if (distanceSq < minDistanceSq) {
+          minDistanceSq = distanceSq;
+          bestSurfaceID = curSurfaceID;
+        }
+      }
+
+      // Use the closest surface
+      if (bestSurfaceID != -1) {
+        surfaceIndexMapping[i] = bestSurfaceID;
+      }
+    }
+    m_lastSurfaceInfoList = curSurfaceInfoList;
+  }
+
   void AccelManager::uploadSurfaceData(Rc<DxvkContext> ctx) {
     ScopedCpuProfileZone();
     if (m_reorderedSurfaces.empty())
@@ -901,6 +970,10 @@ namespace dxvk {
           surfaceIndexMapping[surface.getPreviousSurfaceIndex()] = surfaceIndex;
         surface.setPreviousSurfaceIndex(surfaceIndex);
       }
+    }
+
+    if (RtxOptions::trackParticleObjects()) {
+      buildParticleSurfaceMapping(surfaceIndexMapping);
     }
 
     // Create and upload the primitive id prefix sum buffer

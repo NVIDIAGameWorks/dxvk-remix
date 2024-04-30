@@ -113,6 +113,11 @@ public:
 
   uint32_t getSurfaceCount() const { return m_reorderedSurfaces.size(); }
 private:
+  struct SurfaceInfo {
+    XXH64_hash_t hash;
+    Vector3 worldPosition;
+  };
+
   void buildBlases(Rc<DxvkContext> ctx, DxvkBarrierSet& execBarriers,
                    const CameraManager& cameraManager, OpacityMicromapManager* opacityMicromapManager, const InstanceManager& instanceManager,
                    const std::vector<TextureRef>& textures, const std::vector<RtInstance*>& instances,
@@ -126,6 +131,9 @@ private:
                                      std::vector<VkAccelerationStructureBuildRangeInfoKHR*>& blasRangesToBuild);
   template<Tlas::Type type>
   void internalBuildTlas(Rc<DxvkContext> ctx);
+
+  void buildParticleSurfaceMapping(std::vector<uint32_t>& surfaceIndexMapping);
+
   std::vector<RtInstance*> m_reorderedSurfaces;
   std::vector<uint32_t> m_reorderedSurfacesFirstIndexOffset;
   std::vector<uint32_t> m_reorderedSurfacesPrimitiveIDPrefixSum;              // Exclusive prefix sum for this frame's surface primitive count array
@@ -139,6 +147,8 @@ private:
   Rc<DxvkBuffer> m_transformBuffer;
   Rc<DxvkBuffer> m_primitiveIDPrefixSumBuffer;
   Rc<DxvkBuffer> m_primitiveIDPrefixSumBufferLastFrame;
+
+  std::vector<SurfaceInfo> m_lastSurfaceInfoList;
 
   int getCurrentFramePrimitiveIDPrefixSumBufferID() const;
 

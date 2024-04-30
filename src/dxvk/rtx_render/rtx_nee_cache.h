@@ -61,6 +61,7 @@ namespace dxvk {
     RTX_OPTION("rtx.neeCache", float, resolution, 8.0, "Cell resolution. Higher values mean smaller cells.");
     RTX_OPTION("rtx.neeCache", float, minRange, 400, "The range for lowest level cells.");
     RTX_OPTION("rtx.neeCache", float, emissiveTextureSampleFootprintScale, 1.0, "Emissive texture sample footprint scale.");
+    RTX_OPTION("rtx.neeCache", bool,  approximateParticleLighting, true, "Use particle albedo as emissive color.");
     RTX_OPTION("rtx.neeCache", float, ageCullingSpeed, 0.02, "This threshold determines culling speed of an old triangle. A triangle that is not detected for several frames will be deemed less important and culled quicker.");
   private:
     Rc<vk::DeviceFn> m_vkd;

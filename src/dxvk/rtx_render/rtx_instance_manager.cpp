@@ -1098,7 +1098,7 @@ namespace dxvk {
         m_playerModelInstances.push_back(&currentInstance);
       } else {
         currentInstance.m_isPlayerModel = false;
-        if (currentInstance.m_isUnordered && RtxOptions::Get()->isSeparateUnorderedApproximationsEnabled()) {
+        if (currentInstance.m_isUnordered && RtxOptions::Get()->enableSeparateUnorderedApproximations()) {
           // Separate set of mask bits for the unordered TLAS
           if (currentInstance.surface.alphaState.emissiveBlend)
             mask |= OBJECT_MASK_UNORDERED_ALL_EMISSIVE;

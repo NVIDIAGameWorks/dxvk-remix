@@ -462,6 +462,7 @@ namespace dxvk {
                "This improves performance typically in how particles or decals are rendered and should usually always be enabled.\n"
                "Do note however the unordered nature of this resolving method may result in visual artifacts with large numbers of stacked particles due to difficulty in determining the intended order.\n"
                "Additionally, unordered approximations will only be done on the first indirect ray bounce (as particles matter less in higher bounces), and only if enabled by its corresponding setting.");
+    RTX_OPTION("rtx", bool, trackParticleObjects, true, "Track last frame's corresponding particle object.");
     RTX_OPTION("rtx", bool, enableDirectTranslucentShadows, false, "Include OBJECT_MASK_TRANSLUCENT into primary visibility rays.");
     RTX_OPTION("rtx", bool, enableIndirectTranslucentShadows, false, "Include OBJECT_MASK_TRANSLUCENT into secondary visibility rays.");
 
@@ -1274,7 +1275,6 @@ namespace dxvk {
     uint8_t getPrimaryRayMaxInteractions() const { return primaryRayMaxInteractions(); }
     uint8_t getPSRRayMaxInteractions() const { return psrRayMaxInteractions(); }
     uint8_t getSecondaryRayMaxInteractions() const { return secondaryRayMaxInteractions(); }
-    bool isSeparateUnorderedApproximationsEnabled() const { return enableSeparateUnorderedApproximations(); }
     bool areDirectTranslucentShadowsEnabled() const { return enableDirectTranslucentShadows(); }
     bool areIndirectTranslucentShadowsEnabled() const { return enableIndirectTranslucentShadows(); }
     float getResolveTransparencyThreshold() const { return resolveTransparencyThreshold(); }
