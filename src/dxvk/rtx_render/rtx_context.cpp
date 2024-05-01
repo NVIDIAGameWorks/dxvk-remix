@@ -254,11 +254,17 @@ namespace dxvk {
     // Resize the RT screen dependant buffers (if needed)
     getResourceManager().onResize(this, downscaleExtent, upscaleExtent);
 
-    // Set up the Camera
-    RtCamera& camera = getSceneManager().getCamera();
     uint32_t renderSize[] = { downscaleExtent.width, downscaleExtent.height };
     uint32_t displaySize[] = { upscaleExtent.width, upscaleExtent.height };
-    camera.setResolution(renderSize, displaySize);
+
+    // Set resolution to cameras for jittering
+    for (int i = 0; i < CameraType::Count; i++) {
+      if (i == CameraType::Unknown) {
+        continue;
+      }
+      RtCamera& camera = getSceneManager().getCameraManager().getCamera(static_cast<CameraType::Enum>(i));
+      camera.setResolution(renderSize, displaySize);
+    }
 
     // Note: Ensure the rendering resolution is not more than 2^14 - 1. This is due to assuming only
     // 14 of the 16 bits of an integer will be used for these pixel coordinates to pack additional data
@@ -1941,29 +1947,90 @@ namespace dxvk {
     return *static_cast<D3D9SharedPS*>(slice.mapPtr);
   }
 
-  void RtxContext::rasterizeToSkyMatte(const DrawParameters& params, float minZ, float maxZ) {
+  void RtxContext::rasterizeToSkyMatte(const DrawParameters& params, const DrawCallState& drawCallState) {
     ScopedGpuProfileZone(this, "rasterizeToSkyMatte");
+
+    const uint32_t* renderResolution = getSceneManager().getCamera().m_renderResolution;
+
+    union UnifiedCB {
+      D3D9RtxVertexCaptureData programmablePipeline;
+      D3D9FixedFunctionVS fixedFunction;
+
+      UnifiedCB() { }
+    };
+
+    UnifiedCB prevCB;
+
+    if (drawCallState.usesVertexShader) {
+      prevCB.programmablePipeline = *static_cast<D3D9RtxVertexCaptureData*>(m_rtState.vertexCaptureCB->mapPtr(0));
+    } else {
+      prevCB.fixedFunction = *static_cast<D3D9FixedFunctionVS*>(m_rtState.vsFixedFunctionCB->mapPtr(0));
+    }
 
     auto skyMatteView = getResourceManager().getSkyMatte(this, m_skyColorFormat).view;
     const auto skyMatteExt = skyMatteView->mipLevelExtent(0);
 
-    VkViewport viewport { 0.5f, static_cast<float>(skyMatteExt.height) + 0.5f,
-      static_cast<float>(skyMatteExt.width),
-      -static_cast<float>(skyMatteExt.height),
-      minZ, maxZ
-    };
+    // Update spec constants
+    int prevClipSpaceJitterEnabled = -1;
+    {
+      if (drawCallState.usesVertexShader) {
+        prevClipSpaceJitterEnabled = getSpecConstantsInfo(VK_PIPELINE_BIND_POINT_GRAPHICS)
+          .specConstants[D3D9SpecConstantId::ClipSpaceJitterEnabled]
+            ? 1
+            : 0;
+        // Enable, to use clipSpaceJitter, see notes below
+        setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, D3D9SpecConstantId::ClipSpaceJitterEnabled, true);
+      }
+    }
 
-    VkRect2D scissor {
-      { 0, 0 },
-      { skyMatteExt.width, skyMatteExt.height }
-    };
+    {
+      VkViewport viewport { 0.5f, static_cast<float>(skyMatteExt.height) + 0.5f,
+       static_cast<float>(skyMatteExt.width),
+       -static_cast<float>(skyMatteExt.height),
+       drawCallState.minZ,
+       drawCallState.maxZ
+      };
+      VkRect2D scissor {
+        { 0, 0 },
+        { skyMatteExt.width, skyMatteExt.height }
+      };
+      setViewports(1, &viewport, &scissor);
+    }
 
-    setViewports(1, &viewport, &scissor);
+    if (drawCallState.usesVertexShader) {
+      D3D9RtxVertexCaptureData modified = prevCB.programmablePipeline;
+      {
+        // Jittered clip space for DLSS
+        // Note: we can't jitter the projection matrix, as a game might calculate
+        // its gl_Position by different methods (e.g. without projection matrix at all);
+        // so apply jitter directly on gl_Position
+        float ratioX = Sign(drawCallState.getTransformData().viewToProjection[2][3]);
+        float ratioY = -Sign(drawCallState.getTransformData().viewToProjection[2][3]);
+        Vector2 clipSpaceJitter = RtCamera::calcClipSpaceJitter(RtCamera::calcPixelJitter(m_device->getCurrentFrameId()),
+                                                                renderResolution[0], renderResolution[1],
+                                                                ratioX, ratioY);
+        modified.jitterX = clipSpaceJitter.x;
+        modified.jitterY = clipSpaceJitter.y;
+      }
+      // Ensure that memcpy can be used for fewer memory interactions
+      static_assert(std::is_trivially_copyable_v<D3D9RtxVertexCaptureData>);
+      allocAndMapVertexCaptureConstantBuffer() = modified;
+    } else {
+      D3D9FixedFunctionVS modified = prevCB.fixedFunction;
+      {
+        // Jittered projection for DLSS
+        RtCamera::applyJitterTo(modified.Projection,
+                                m_device->getCurrentFrameId(), 
+                                renderResolution[0], renderResolution[1]);
+      }
+      // Ensure that memcpy can be used for fewer memory interactions
+      static_assert(std::is_trivially_copyable_v<D3D9FixedFunctionVS>);
+      allocAndMapFixedFunctionVSConstantBuffer() = modified;
+    }
 
     DxvkRenderTargets skyRt;
     skyRt.color[0].view = getResourceManager().getCompatibleViewForView(skyMatteView, m_skyRtColorFormat);
     skyRt.color[0].layout = VK_IMAGE_LAYOUT_GENERAL;
-
     bindRenderTargets(skyRt);
 
     if (m_skyClearDirty) {
@@ -1974,6 +2041,17 @@ namespace dxvk {
       DxvkContext::draw(params.vertexCount, params.instanceCount, params.vertexOffset, 0);
     } else {
       DxvkContext::drawIndexed(params.indexCount, params.instanceCount, params.firstIndex, params.vertexOffset, 0);
+    }
+
+    // Restore state
+    if (prevClipSpaceJitterEnabled >= 0) {
+      assert(prevClipSpaceJitterEnabled == 0 || prevClipSpaceJitterEnabled == 1);
+      setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, D3D9SpecConstantId::ClipSpaceJitterEnabled, prevClipSpaceJitterEnabled);
+    }
+    if (drawCallState.usesVertexShader) {
+      allocAndMapVertexCaptureConstantBuffer() = prevCB.programmablePipeline;
+    } else {
+      allocAndMapFixedFunctionVSConstantBuffer() = prevCB.fixedFunction;
     }
   }
 
@@ -2040,26 +2118,38 @@ namespace dxvk {
     const Matrix4& viewToProj  = drawCallState.usesVertexShader ? drawCallState.getTransformData().viewToProjection : prevCB.fixedFunction.Projection;
 
     // Figure out camera position
-    const auto camPos = inverse(worldToView).data[3].xyz();
+    const Vector3 camPos = inverse(worldToView).data[3].xyz();
 
-    // Save rasterizer state
-    const auto ri = m_state.gp.state.rs;
+    const DxvkRsInfo &ri = m_state.gp.state.rs;
 
-    // Set cull mode to none
-    DxvkRasterizerState newRs;
-    newRs.depthClipEnable = ri.depthClipEnable();
-    newRs.depthBiasEnable = ri.depthBiasEnable();
-    newRs.polygonMode = ri.polygonMode();
-    newRs.cullMode = VK_CULL_MODE_NONE;
-    newRs.frontFace = ri.frontFace();
-    newRs.sampleCount = ri.sampleCount();
-    newRs.conservativeMode = ri.conservativeMode();
-    setRasterizerState(newRs);
+    DxvkRasterizerState prevRasterizerState {};
+    {
+      DxvkRasterizerState newRs;
+      {
+        newRs.depthClipEnable = ri.depthClipEnable();
+        newRs.depthBiasEnable = ri.depthBiasEnable();
+        newRs.polygonMode = ri.polygonMode();
+        newRs.cullMode = ri.cullMode();
+        newRs.frontFace = ri.frontFace();
+        newRs.sampleCount = ri.sampleCount();
+        newRs.conservativeMode = ri.conservativeMode();
+      }
+      prevRasterizerState = newRs;
+
+      // Set cull mode to none
+      newRs.cullMode = VK_CULL_MODE_NONE;
+      setRasterizerState(newRs);
+    }
+
 
     // Update spec constants
-    DxvkScInfo prevSpecConstantsInfo = getSpecConstantsInfo(VK_PIPELINE_BIND_POINT_GRAPHICS);
+    int prevCustomVertexTransformEnabled = -1;
     {
       if (drawCallState.usesVertexShader) {
+        prevCustomVertexTransformEnabled = getSpecConstantsInfo(VK_PIPELINE_BIND_POINT_GRAPHICS)
+          .specConstants[D3D9SpecConstantId::CustomVertexTransformEnabled]
+            ? 1
+            : 0;
         setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, D3D9SpecConstantId::CustomVertexTransformEnabled, true);
       }
     }
@@ -2100,16 +2190,17 @@ namespace dxvk {
         view[3] = Vector4(translation.x, translation.y, translation.z, 1.f);
       }
 
-      // Create cube plane projection
-      Matrix4 proj = viewToProj;
-      proj[0][0] = 1.f;
-      proj[1][1] = 1.f;
-      proj[2][2] = 1.f;
-      proj[2][3] = 1.f;
-
       if (drawCallState.usesVertexShader) {
         D3D9RtxVertexCaptureData& newState = allocAndMapVertexCaptureConstantBuffer();
         newState = prevCB.programmablePipeline;
+
+        // Create cube plane projection
+        Matrix4 proj = viewToProj;
+        proj[0][0] = 1.f;
+        proj[1][1] = 1.f;
+        proj[2][2] = 1.f;
+        proj[2][3] = 1.f;
+
         newState.customWorldToProjection = proj * view;
       } else {
         // Push new state to the fixed function constants
@@ -2147,11 +2238,12 @@ namespace dxvk {
       ++plane;
     }
 
-    // Restore rasterizer state
-    newRs.cullMode = ri.cullMode();
-    setRasterizerState(newRs);
-    setSpecConstantsInfo(VK_PIPELINE_BIND_POINT_GRAPHICS, prevSpecConstantsInfo);
-
+    // Restore state
+    setRasterizerState(prevRasterizerState);
+    if (prevCustomVertexTransformEnabled >= 0) {
+      assert(prevCustomVertexTransformEnabled == 0 || prevCustomVertexTransformEnabled == 1);
+      setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, D3D9SpecConstantId::CustomVertexTransformEnabled, prevCustomVertexTransformEnabled);
+    }
     if (drawCallState.usesVertexShader) {
       allocAndMapVertexCaptureConstantBuffer() = prevCB.programmablePipeline;
     } else {
@@ -2290,7 +2382,7 @@ namespace dxvk {
     const uint32_t curViewportCount = m_state.gp.state.rs.viewportCount();
     const DxvkViewportState curVp = m_state.vp;
 
-    rasterizeToSkyMatte(params, drawCallState.minZ, drawCallState.maxZ);
+    rasterizeToSkyMatte(params, drawCallState);
     // TODO: make probe optional?
     rasterizeToSkyProbe(params, drawCallState);
 

@@ -82,6 +82,21 @@ GeometryResolverState geometryResolverStateCreateEmpty(u16vec2 pixelCoordinate)
   return geometryResolverState;
 }
 
+vec2 calcMotionVectorForRayMiss(const uvec2 pixelCoordinate)
+{
+   const float farPlane = cameraGetFarPlane(cb.camera);
+
+   const Ray originalCameraRay = rayCreatePrimaryFromPixel(cb.camera, pixelCoordinate, false);
+   const vec3 virtualHitPosition = rayEvaluate(originalCameraRay, farPlane);
+   vec4 prevNDC = mul(cb.camera.prevWorldToProjection, vec4(virtualHitPosition, 1.0f));
+   prevNDC /= prevNDC.w;
+
+   vec2 ndc = cameraPixelCoordinateToNDC(cb.camera, pixelCoordinate);
+   vec2 motionVectorNDC = prevNDC.xy - ndc.xy;
+   vec2 motionVectorUVOffset = motionVectorNDC * vec2(0.5, -0.5);
+   return motionVectorUVOffset * cb.camera.resolution;
+}
+
 // Geometry Resolver Vertex Functions
 
 void geometryResolverOutputMiss(
@@ -91,21 +106,8 @@ void geometryResolverOutputMiss(
 
   if (primarySurface)
   {
-    const float farPlane = cameraGetFarPlane(cb.camera);
-
-    const Ray originalCameraRay = rayCreatePrimaryFromPixel(cb.camera, pixelCoordinate, false);
-    const vec3 virtualHitPosition = rayEvaluate(originalCameraRay, farPlane);
-    vec4 prevWorldPosition = vec4(virtualHitPosition, 1.0f);
-    vec4 prevNDC = mul(cb.camera.prevWorldToProjection, prevWorldPosition);
-    prevNDC /= prevNDC.w;
-
-    vec2 ndc = cameraPixelCoordinateToNDC(cb.camera, pixelCoordinate);
-    vec2 motionVectorNDC = prevNDC.xy - ndc.xy;
-    vec2 motionVectorUVOffset = motionVectorNDC * vec2(0.5, -0.5);
-    vec2 motionVectorPixel = motionVectorUVOffset * cb.camera.resolution;
-
     PrimaryHitDistance[pixelCoordinate] = missHitDistance;
-    PrimaryScreenSpaceMotionVector[pixelCoordinate] = motionVectorPixel;
+    PrimaryScreenSpaceMotionVector[pixelCoordinate] = calcMotionVectorForRayMiss(pixelCoordinate);
     PrimarySurfaceFlags[pixelCoordinate] = 0;
     PrimaryDisocclusionThresholdMix[pixelCoordinate] = 0;
     PrimaryDepth[pixelCoordinate] = cb.clearColorDepth;
@@ -1260,7 +1262,8 @@ void geometryResolverVertex(
     
     SharedRadianceRG[geometryResolverState.pixelCoordinate] = geometryResolverState.radiance.rg;
     SharedRadianceB[geometryResolverState.pixelCoordinate] = geometryResolverState.radiance.b;
-    PrimaryScreenSpaceMotionVectorDLSSRR[geometryResolverState.pixelCoordinate] = 0.0;
+    PrimaryScreenSpaceMotionVectorDLSSRR[geometryResolverState.pixelCoordinate] = calcMotionVectorForRayMiss(geometryResolverState.pixelCoordinate);
+    PrimaryDepthDLSSRR[geometryResolverState.pixelCoordinate] = cb.clearColorDepth;
 
     return;
   }

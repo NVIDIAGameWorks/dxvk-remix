@@ -186,7 +186,7 @@ namespace dxvk {
     void dispatchDLFG();
     void updateMetrics(const float frameTimeSecs, const float gpuIdleTimeSecs) const;
 
-    void rasterizeToSkyMatte(const DrawParameters& params, float minZ, float maxZ);
+    void rasterizeToSkyMatte(const DrawParameters& params, const DrawCallState& drawCallState);
     void initSkyProbe();
     void rasterizeToSkyProbe(const DrawParameters& params, const DrawCallState& drawCallState);
     void rasterizeSky(const DrawParameters& params, const DrawCallState& drawCallState);
