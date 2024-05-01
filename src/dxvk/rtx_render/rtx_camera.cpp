@@ -154,9 +154,9 @@ namespace dxvk
     return glm::fract(value + 0.5f) - 0.5f;
   }
 
-  glm::vec2 getCurrentPixelOffset(int currentFrame) {
+  Vector2 getCurrentPixelOffset(int currentFrame) {
     // Halton jitter
-    glm::vec2 result(0.0f, 0.0f);
+    Vector2 result(0.0f, 0.0f);
 
     int frameIndex = (currentFrame) % 64;
 
@@ -601,35 +601,17 @@ namespace dxvk
 
     // Apply jittering
 
-    auto newViewToProjectionJittered = modifiedViewToProj;
-
     if (flags & (uint32_t) UpdateFlag::UpdateJitterFrame) {
       m_context.jitterFrameIdx = frameIdx;
     }
 
-    // Only apply jittering when DLSS/TAA is enabled, or if forced by settings
-    if (RtxOptions::Get()->isDLSSOrRayReconstructionEnabled() ||
-        RtxOptions::Get()->isTAAEnabled() ||
-        RtxOptions::Get()->forceCameraJitter()) {
-      float xRatio = Sign(modifiedViewToProj[2][3]);
-      float yRatio = -Sign(modifiedViewToProj[2][3]);
-
-#define USE_DLSS_DEMO_JITTER_PATTERN 1
-#if USE_DLSS_DEMO_JITTER_PATTERN
-      glm::vec2 newJitter = getCurrentPixelOffset(m_context.jitterFrameIdx);
-#else
-      glm::vec2 newJitter = m_halton.next();
-#endif
-      m_jitter[0] = newJitter.x;
-      m_jitter[1] = newJitter.y;
-
-      if (m_renderResolution[0] != 0 && m_renderResolution[1] != 0) {
-        newViewToProjectionJittered[2][0] += m_jitter[0] / float(m_renderResolution[0]) * xRatio * 2.f;
-        newViewToProjectionJittered[2][1] += m_jitter[1] / float(m_renderResolution[1]) * yRatio * 2.f;
-      }
-    } else {
-      m_jitter[0] = m_jitter[1] = 0.0f;
-    }
+    auto newViewToProjectionJittered = modifiedViewToProj;
+    applyAndGetJitter(
+      newViewToProjectionJittered,
+      m_jitter,
+      m_context.jitterFrameIdx,
+      m_renderResolution[0],
+      m_renderResolution[1]);
 
     m_context.jitter[0] = m_jitter[0];
     m_context.jitter[1] = m_jitter[1];
@@ -693,6 +675,68 @@ namespace dxvk
   void RtCamera::getJittering(float jitter[2]) const {
     jitter[0] = m_jitter[0];
     jitter[1] = m_jitter[1];
+  }
+
+  Vector2 RtCamera::calcPixelJitter(uint32_t jitterFrameIdx) {
+    // Only apply jittering when DLSS/TAA is enabled, or if forced by settings
+    if (!RtxOptions::Get()->isDLSSOrRayReconstructionEnabled() &&
+        !RtxOptions::Get()->isTAAEnabled() &&
+        !RtxOptions::Get()->forceCameraJitter()) {
+      return Vector2{ 0, 0 };
+    }
+
+#define USE_DLSS_DEMO_JITTER_PATTERN 1
+#if USE_DLSS_DEMO_JITTER_PATTERN
+    return getCurrentPixelOffset(jitterFrameIdx);
+#else
+    return m_halton.next();
+#endif
+  }
+
+  Vector2 RtCamera::calcClipSpaceJitter(Vector2 pixelJitter, 
+                                           uint32_t renderResolutionX, uint32_t renderResolutionY,
+                                           float ratioX, float ratioY) {
+    if (renderResolutionX == 0 || renderResolutionY == 0) {
+      return Vector2{ 0, 0 };
+    }
+    return Vector2{
+      pixelJitter[0] / float(renderResolutionX) * ratioX * 2.f,
+      pixelJitter[1] / float(renderResolutionY) * ratioY * 2.f,
+    };
+  }
+
+  void RtCamera::applyJitterTo(Matrix4& inoutProjection, uint32_t jitterFrameIdx, uint32_t renderResolutionX, uint32_t renderResolutionY) {
+    Vector2 pixelJitter = calcPixelJitter(jitterFrameIdx);
+    float ratioX = Sign(inoutProjection[2][3]);
+    float ratioY = -Sign(inoutProjection[2][3]);
+    Vector2 clipSpaceJitter = calcClipSpaceJitter(pixelJitter,
+                                                     renderResolutionX, renderResolutionY,
+                                                     ratioX, ratioY);
+    if (std::abs(clipSpaceJitter[0]) < std::numeric_limits<float>::min() &&
+        std::abs(clipSpaceJitter[1]) < std::numeric_limits<float>::min()) {
+      return;
+    }
+    inoutProjection[2][0] += clipSpaceJitter[0];
+    inoutProjection[2][1] += clipSpaceJitter[1];
+  }
+
+  void RtCamera::applyAndGetJitter(Matrix4d& inoutProjection, float (&outPixelJitter)[2], uint32_t jitterFrameIdx, uint32_t renderResolutionX, uint32_t renderResolutionY) {
+    Vector2 pixelJitter = calcPixelJitter(jitterFrameIdx);
+    float ratioX = Sign(inoutProjection[2][3]);
+    float ratioY = -Sign(inoutProjection[2][3]);
+    Vector2 clipSpaceJitter = calcClipSpaceJitter(pixelJitter,
+                                                  renderResolutionX, renderResolutionY,
+                                                  ratioX, ratioY);
+    {
+      outPixelJitter[0] = pixelJitter[0];
+      outPixelJitter[1] = pixelJitter[1];
+    }
+    if (std::abs(clipSpaceJitter[0]) < std::numeric_limits<float>::min() &&
+        std::abs(clipSpaceJitter[1]) < std::numeric_limits<float>::min()) {
+      return;
+    }
+    inoutProjection[2][0] += clipSpaceJitter[0];
+    inoutProjection[2][1] += clipSpaceJitter[1];
   }
 
   Camera RtCamera::getShaderConstants() const {

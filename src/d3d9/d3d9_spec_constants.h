@@ -23,6 +23,7 @@ namespace dxvk {
     // NV-DXVK start
     CustomVertexTransformEnabled = 11,
     ReplacementTextureCategory = 12,
+    ClipSpaceJitterEnabled = 13,
     // NV-DXVK end
 
     Count

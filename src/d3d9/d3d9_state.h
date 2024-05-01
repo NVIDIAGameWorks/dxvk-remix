@@ -36,7 +36,9 @@ namespace dxvk {
     Matrix4 projectionToWorld;
     Matrix4 customWorldToProjection;
     uint32_t baseVertex = 0;
-    std::array<uint32_t, 3> padding = { };
+    float jitterX;
+    float jitterY;
+    uint32_t padding;
   };
 
   enum class D3D9RtxVertexCaptureMembers {
@@ -44,6 +46,8 @@ namespace dxvk {
     ProjectionToWorld,
     CustomWorldToProjection,
     BaseVertex,
+    JitterX,
+    JitterY,
 
     MemberCount
   };

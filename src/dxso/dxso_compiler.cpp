@@ -489,14 +489,17 @@ namespace dxvk {
 
     // Constant Buffer for vertex capture
     {
-      std::array<uint32_t, uint32_t(D3D9RtxVertexCaptureMembers::MemberCount)> members = {
+      uint32_t members[] = {
         mat4Type,
         mat4Type,
         mat4Type,
-        uintType
+        uintType,
+        floatType,
+        floatType,
       };
+      static_assert(uint32_t(D3D9RtxVertexCaptureMembers::MemberCount) == std::size(members));
 
-      const uint32_t structType = m_module.defStructType(members.size(), members.data());
+      const uint32_t structType = m_module.defStructType(std::size(members), members);
 
       m_module.decorateBlock(structType);
 
@@ -517,6 +520,8 @@ namespace dxvk {
       SetMemberName("proj_to_world", offsetof(D3D9RtxVertexCaptureData, projectionToWorld));
       SetMemberName("custom_world_to_proj", offsetof(D3D9RtxVertexCaptureData, customWorldToProjection));
       SetMemberName("base_vertex", offsetof(D3D9RtxVertexCaptureData, baseVertex));
+      SetMemberName("jitter_x", offsetof(D3D9RtxVertexCaptureData, jitterX));
+      SetMemberName("jitter_y", offsetof(D3D9RtxVertexCaptureData, jitterY));
 
       m_vs.vertexCaptureConstants = m_module.newVar(
         m_module.defPointerType(structType, spv::StorageClassUniform),
@@ -3775,6 +3780,59 @@ void DxsoCompiler::emitControlFlowGenericLoop(
         // Update the projected position (gl_Position) with the new one
         m_module.opStore(m_vs.oPos.id, projPosId);
 
+        m_module.opBranch(labelEnd);
+        m_module.opLabel(labelEnd);
+      }
+    }
+
+    {
+      const uint32_t float_t = getScalarTypeId(DxsoScalarType::Float32);
+
+      const uint32_t labelIf = m_module.allocateId();
+      const uint32_t labelEnd = m_module.allocateId();
+
+      const uint32_t clipSpaceJitterEnabledId = m_module.specConstBool(false);
+      m_module.setDebugName(clipSpaceJitterEnabledId, "clip_space_jitter_enabled");
+      m_module.decorateSpecId(clipSpaceJitterEnabledId, getSpecId(D3D9SpecConstantId::ClipSpaceJitterEnabled));
+
+      // if (clipSpaceJitterEnabled) { ... }
+      m_module.opSelectionMerge(labelEnd, spv::SelectionControlMaskNone);
+      m_module.opBranchConditional(clipSpaceJitterEnabledId, labelIf, labelEnd);
+      {
+        m_module.opLabel(labelIf);
+
+        // Load the final gl_Position
+        const uint32_t projPosFinalId = m_module.opLoad(vec4typeId, m_vs.oPos.id);
+
+        // Load X/Y jitter constants
+        const uint32_t jitterXId = LoadConstant(float_t, (uint32_t)(D3D9RtxVertexCaptureMembers::JitterX));
+        const uint32_t jitterYId = LoadConstant(float_t, (uint32_t)(D3D9RtxVertexCaptureMembers::JitterY));
+
+        // Make jitter vec4
+        const uint32_t jitterIndices[] = {
+          jitterXId,
+          jitterYId,
+          m_module.constf32(0),
+          m_module.constf32(0),
+        };
+        const uint32_t jitterVec4Id = m_module.opCompositeConstruct(vec4typeId, std::size(jitterIndices), jitterIndices);
+
+        // gl_Position.w
+        const uint32_t wIndex = 3;
+        const uint32_t posWId = m_module.opCompositeExtract(float_t, projPosFinalId, 1, &wIndex);
+
+        // jitter * gl_Position.w
+        const uint32_t multipliedJitterVec4Id = m_module.opVectorTimesScalar(vec4typeId, jitterVec4Id, posWId);
+
+        // gl_Position + multjitter
+        const uint32_t jitteredProjPosId = m_module.opFAdd(vec4typeId, projPosFinalId, multipliedJitterVec4Id);
+
+        // Store a jittered position to gl_Position
+        m_module.opStore(m_vs.oPos.id, jitteredProjPosId);
+      }
+      // else
+      {
+        // Pass
         m_module.opBranch(labelEnd);
         m_module.opLabel(labelEnd);
       }

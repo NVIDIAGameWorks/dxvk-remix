@@ -181,6 +181,7 @@ public:
   }
 
   const CameraManager& getCameraManager() const { return m_cameraManager; }
+  CameraManager& getCameraManager() { return m_cameraManager; }
   const RtCamera& getCamera() const { return m_cameraManager.getMainCamera(); }
   RtCamera& getCamera() { return m_cameraManager.getMainCamera(); }
 
