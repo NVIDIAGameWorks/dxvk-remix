@@ -3,7 +3,9 @@
 #include "d3d9_state.h"
 #include "../dxvk/dxvk_buffer.h"
 #include "../util/util_threadpool.h"
+
 #include <vector>
+#include <optional>
 
 namespace dxvk {
   struct D3D9BufferSlice;
@@ -186,7 +188,7 @@ namespace dxvk {
     DxvkStagingDataAlloc m_vertexCaptureData;
     D3D9DeviceEx* m_parent;
 
-    D3DPRESENT_PARAMETERS m_activePresentParams;
+    std::optional<D3DPRESENT_PARAMETERS> m_activePresentParams;
 
     D3D9RtxFlags m_flags = 0xFFFFffff;
 

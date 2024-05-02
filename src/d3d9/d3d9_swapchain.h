@@ -154,8 +154,14 @@ namespace dxvk {
 
     std::vector<Com<D3D9Surface, false>> m_backBuffers;
     
-    RECT                      m_srcRect;
-    RECT                      m_dstRect;
+    // NV-DXVK begin: Uninitialized read fix
+    // Note: Initialized to a size of 0 to prevent uninitialized reads when these are first used.
+    // Not a perfect solution (ideally an optional would be more useful to say they haven't been
+    // set yet), but fine enough for the comparisons and operations involved to determine if the
+    // rect has been modified or not (assuming the new rect is never 0, 0, 0, 0 like this).
+    RECT                      m_srcRect{ 0, 0, 0, 0 };
+    RECT                      m_dstRect{ 0, 0, 0, 0 };
+    // NV-DXVK end
 
     DxvkSubmitStatus          m_presentStatus;
 

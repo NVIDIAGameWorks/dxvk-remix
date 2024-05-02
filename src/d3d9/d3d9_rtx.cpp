@@ -395,13 +395,17 @@ namespace dxvk {
       return { RtxGeometryStatus::Ignored, false };
     }
 
+    // Ensure present parameters for the swapchain have been cached
+    // Note: This assumes that ResetSwapChain has been called at some point before this call, typically done after creating a swapchain.
+    assert(m_activePresentParams.has_value());
+
     // Attempt to detect shadow mask draws and ignore them
     // Conditions: non-textured flood-fill draws into a small quad render target
     if (((d3d9State().textureStages[0][D3DTSS_COLOROP] == D3DTOP_SELECTARG1 && d3d9State().textureStages[0][D3DTSS_COLORARG1] != D3DTA_TEXTURE) ||
          (d3d9State().textureStages[0][D3DTSS_COLOROP] == D3DTOP_SELECTARG2 && d3d9State().textureStages[0][D3DTSS_COLORARG2] != D3DTA_TEXTURE))) {
       const auto& rtExt = d3d9State().renderTargets[kRenderTargetIndex]->GetSurfaceExtent();
       // If rt is a quad at least 4 times smaller than backbuffer and the format is invalid format, then it is likely a shadow mask
-      if (rtExt.width == rtExt.height && rtExt.width < m_activePresentParams.BackBufferWidth / 4 &&
+      if (rtExt.width == rtExt.height && rtExt.width < m_activePresentParams->BackBufferWidth / 4 &&
           Resources::getFormatCompatibilityCategoryIndex(d3d9State().renderTargets[kRenderTargetIndex]->GetImageView(false)->imageInfo().format) == Resources::kInvalidFormatCompatibilityCategoryIndex) {
         ONCE(Logger::info("[RTX-Compatibility-Info] Skipped shadow mask drawcall."));
         return { RtxGeometryStatus::Ignored, false };
@@ -410,7 +414,7 @@ namespace dxvk {
 
     if (!s_isDxvkResolutionEnvVarSet) {
       // NOTE: This can fail when setting DXVK_RESOLUTION_WIDTH or HEIGHT
-      bool isPrimary = isRenderTargetPrimary(m_activePresentParams, d3d9State().renderTargets[kRenderTargetIndex]->GetCommonTexture()->Desc());
+      const bool isPrimary = isRenderTargetPrimary(*m_activePresentParams, d3d9State().renderTargets[kRenderTargetIndex]->GetCommonTexture()->Desc());
 
       if (!isPrimary) {
         ONCE(Logger::info("[RTX-Compatibility-Info] Found a draw call to a non-primary render target. Falling back to rasterization"));
@@ -1036,17 +1040,35 @@ namespace dxvk {
   }
 
   void D3D9Rtx::ResetSwapChain(const D3DPRESENT_PARAMETERS& presentationParameters) {
-    if (0 == memcmp(&m_activePresentParams, &presentationParameters,
-                    sizeof(presentationParameters))) {
-      return;
+    // Early out if the cached present parameters are not out of date
+
+    if (m_activePresentParams.has_value()) {
+      if (
+        m_activePresentParams->BackBufferWidth == presentationParameters.BackBufferWidth &&
+        m_activePresentParams->BackBufferHeight == presentationParameters.BackBufferHeight &&
+        m_activePresentParams->BackBufferFormat == presentationParameters.BackBufferFormat &&
+        m_activePresentParams->BackBufferCount == presentationParameters.BackBufferCount &&
+        m_activePresentParams->MultiSampleType == presentationParameters.MultiSampleType &&
+        m_activePresentParams->MultiSampleQuality == presentationParameters.MultiSampleQuality &&
+        m_activePresentParams->SwapEffect == presentationParameters.SwapEffect &&
+        m_activePresentParams->hDeviceWindow == presentationParameters.hDeviceWindow &&
+        m_activePresentParams->Windowed == presentationParameters.Windowed &&
+        m_activePresentParams->EnableAutoDepthStencil == presentationParameters.EnableAutoDepthStencil &&
+        m_activePresentParams->AutoDepthStencilFormat == presentationParameters.AutoDepthStencilFormat &&
+        m_activePresentParams->Flags == presentationParameters.Flags &&
+        m_activePresentParams->FullScreen_RefreshRateInHz == presentationParameters.FullScreen_RefreshRateInHz &&
+        m_activePresentParams->PresentationInterval == presentationParameters.PresentationInterval
+      ) {
+        return;
+      }
     }
 
-    // Cache these
+    // Cache the present parameters
     m_activePresentParams = presentationParameters;
 
     // Inform the backend about potential presenter update
-    m_parent->EmitCs([cWidth = m_activePresentParams.BackBufferWidth,
-                      cHeight = m_activePresentParams.BackBufferHeight](DxvkContext* ctx) {
+    m_parent->EmitCs([cWidth = m_activePresentParams->BackBufferWidth,
+                      cHeight = m_activePresentParams->BackBufferHeight](DxvkContext* ctx) {
       static_cast<RtxContext*>(ctx)->resetScreenResolution({ cWidth, cHeight , 1 });
     });
   }
