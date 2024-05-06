@@ -397,16 +397,23 @@ namespace dxvk {
     for (const RtInstance* pRtInstance : m_sceneManager.getInstanceTable()) {
       assert(pRtInstance->getBlas() != nullptr);
 
+      const XXH64_hash_t instanceId = pRtInstance->getId();
+      if (instanceId == UINT64_MAX) {
+        // Ignore "virtual" instances, as they are used primarily for special render
+        // passes, rather than representing real entities that we want captured
+        continue;
+      }
+      assert(instanceId != UINT64_MAX);
+
       if (pRtInstance->getBlas()->input.cameraType == CameraType::Sky) {
         if (!m_pCap->bSkyProbeBaked) {
-          const std::string skyProbeFilname = getBakedSkyProbeName(m_pCap->instance.stageName);
-          m_exporter.bakeSkyProbe(ctx, BASE_DIR + lss::commonDirName::texDir, skyProbeFilname);
+          const std::string skyProbeFilename = getBakedSkyProbeName(m_pCap->instance.stageName);
+          m_exporter.bakeSkyProbe(ctx, BASE_DIR + lss::commonDirName::texDir, skyProbeFilename);
           m_pCap->bSkyProbeBaked = true;
-          Logger::debug("[GameCapturer][" + m_pCap->idStr + "][SkyProbe] Bake scheduled to " + skyProbeFilname);
+          Logger::debug("[GameCapturer][" + m_pCap->idStr + "][SkyProbe] Bake scheduled to " + skyProbeFilename);
         }
       }
 
-      const XXH64_hash_t instanceId = pRtInstance->getId();
       const uint8_t instanceFlags = m_pCap->instanceFlags[instanceId];
       const bool bIsNew = m_pCap->instances.count(instanceId) == 0;
       const bool bPointsUpdate = checkInstanceUpdateFlag(instanceFlags, InstFlag::PositionsUpdate);

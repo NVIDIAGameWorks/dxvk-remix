@@ -154,6 +154,9 @@ private:
   void onTransformChanged();
   friend class InstanceManager;
 
+  // Unique ID of the RtInstance.
+  // Sentinel value UINT64_MAX indicates that such RtInstance is a "virtual" instance, and is ignored by some features,
+  // most notably the GameCapturer
   const uint64_t m_id;
   mutable uint32_t m_instanceVectorId; // Index within instance vector in instance manager
 
