@@ -1009,6 +1009,15 @@ namespace dxvk {
       prepExportLights(cap, exportPrep);
       exportPrep.camera = cap.camera;
     }
+    // Prep global transform
+    exportPrep.globalXform = pxr::GfMatrix4d{1.0};
+    const bool bInvX = (!exportPrep.camera.view.bInv) && (exportPrep.camera.proj.bInv || exportPrep.camera.isLHS());
+    const bool bInvY = (!exportPrep.camera.view.bInv) && exportPrep.camera.proj.bInv;
+    const pxr::GfVec3d scale{ bInvX ? -1.0 : 1.0, bInvY ? -1.0 : 1.0, 1.0 };
+    exportPrep.globalXform.SetScale(scale);
+    if(exportPrep.meta.bCorrectBakedTransforms) {
+      exportPrep.globalXform.SetTranslateOnly(-exportPrep.stageOrigin);
+    }
     return exportPrep;
   }
 
