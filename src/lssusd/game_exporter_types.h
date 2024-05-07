@@ -223,6 +223,7 @@ struct Export {
   IdMap<SphereLight> sphereLights;
   IdMap<DistantLight> distantLights;
   pxr::GfVec3f stageOrigin = pxr::GfVec3f{0.f,0.f,0.f};
+  pxr::GfMatrix4d globalXform = pxr::GfMatrix4d{1.0};
 };
 
 }

@@ -164,14 +164,6 @@ lss::Skeleton generateSkeleton(const size_t numBones,
   return output;
 }
 
-void setStageOffsetXform(pxr::UsdGeomXform& parentXformSchema, const pxr::GfVec3d translate) {
-  pxr::GfMatrix4d moveToOrigin{1.0};
-  moveToOrigin.SetTranslateOnly(translate);
-  moveToOrigin = moveToOrigin.GetInverse();
-  auto transformOp = parentXformSchema.AddTransformOp();
-  assert(transformOp);
-  transformOp.Set(moveToOrigin);
-}
 }
 
 namespace lss {
@@ -990,11 +982,11 @@ void GameExporter::exportSphereLights(const Export& exportData, ExportContext& c
   const std::string relLightDirPath = commonDirName::lightDir + "/";
   const std::string lightDirPath = exportData.baseExportPath + "/" + relLightDirPath;
   const std::string fullLightStagePath = computeLocalPath(lightDirPath);
-  if(exportData.meta.bCorrectBakedTransforms) {
-    auto rootLightsXformSchema = pxr::UsdGeomXform::Get(ctx.instanceStage,gRootLightsPath);
-    assert(rootLightsXformSchema);
-    setStageOffsetXform(rootLightsXformSchema, exportData.stageOrigin);
-  }
+  auto rootLightsXformSchema = pxr::UsdGeomXform::Get(ctx.instanceStage,gRootLightsPath);
+  assert(rootLightsXformSchema);
+  auto transformOp = rootLightsXformSchema.AddTransformOp();
+  assert(transformOp);
+  transformOp.Set(exportData.globalXform);
   dxvk::Logger::debug("[GameExporter][" + exportData.debugId + "][exportSphereLights] Begin");
   for(const auto& [id,sphereLightData] : exportData.sphereLights) {
     // Build light stage
@@ -1129,14 +1121,13 @@ void GameExporter::exportSky(const Export& exportData, ExportContext& ctx) {
 
   domeLightSchema.OrientToStageUpAxis();
 
-  auto skyXformSchema = pxr::UsdGeomXform::Get(ctx.instanceStage, gRootLightsPath);
-  assert(skyXformSchema);
-  auto transformOp = skyXformSchema.AddTransformOp();
-  assert(transformOp);
+  auto domeLightXformOp = domeLightSchema.AddTransformOp();
+  assert(domeLightXformOp);
   pxr::GfRotation rotation = pxr::GfRotation(pxr::GfVec3d::XAxis(), exportData.camera.proj.bInv ? pxr::GfVec3d::ZAxis() : pxr::GfVec3d::YAxis());
   pxr::GfMatrix4d xform(rotation, pxr::GfVec3f(0.f, 0.f, 0.f));
   xform[1][1] *= exportData.camera.view.bInv ? -1.0 : 1.0;
-  transformOp.Set(xform);
+  domeLightXformOp.Set(xform);
+  domeLightSchema.SetResetXformStack(true);
 
   dxvk::Logger::debug("[GameExporter][" + exportData.debugId + "][exportSky] End");
 }
