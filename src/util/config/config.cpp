@@ -460,6 +460,7 @@ namespace dxvk {
     { R"(\\hl2\.exe$)", {{
       { "rtx.baseGameModRegex", std::string("sourcemods") },
       { "rtx.baseGameModPathRegex", std::string("-game \"([a-zA-Z]:.*sourcemods.*)\"") },
+      { "rtx.showRaytracingOption", "False" },
       { "rtx.lightConverter",
         "2ef850e6fbfd8c87,"
         "11bdb0aec66e413a,"

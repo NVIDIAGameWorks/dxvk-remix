@@ -229,6 +229,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.enablePresentThrottle|bool|False|A flag to enable or disable present throttling, when set to true a sleep for a time specified by the throttle delay will be inserted into the DXVK presentation thread\.<br>Useful to manually reduce the framerate if the application is running too fast or to reduce GPU power usage during development to keep temperatures down\.<br>Should not be enabled in anything other than development situations\.|
 |rtx.enablePreviousTLAS|bool|True||
 |rtx.enableRayReconstruction|bool|True|Enable ray reconstruction\.|
+|rtx.enableRaytracing|bool|True|Globally enables or disables ray tracing\. When set to false the original game should render mostly as it would in DXVK typically\.<br>Some artifacts may still appear however compared to the original game either due to issues with the underlying DXVK translation or issues in Remix itself\.|
 |rtx.enableReplacementAssets|bool|True|Globally enables or disables all enhanced asset replacement \(materials, meshes, lights\) functionality\.|
 |rtx.enableReplacementLights|bool|True|Enables or disables enhanced light replacements\.<br>Requires replacement assets in general to be enabled to have any effect\.|
 |rtx.enableReplacementMaterials|bool|True|Enables or disables enhanced material replacements\.<br>Requires replacement assets in general to be enabled to have any effect\.|
@@ -566,6 +567,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.serializeChangedOptionOnly|bool|True||
 |rtx.shakeCamera|bool|False|Enables animation of the free camera\.|
 |rtx.showRayReconstructionUI|bool|True|Show ray reconstruction UI\.|
+|rtx.showRaytracingOption|bool|True|Enables or disables the option to toggle ray tracing in the UI\. When set to false the ray tracing checkbox will not appear in the Remix UI\.|
 |rtx.showUI|int|0|0 = Don't Show, 1 = Show Simple, 2 = Show Advanced\.|
 |rtx.showUICursor|bool|True||
 |rtx.skipDrawCallsPostRTXInjection|bool|False|Ignores all draw calls recorded after RTX Injection, the location of which varies but is currently based on when tagged UI textures begin to draw\.|
