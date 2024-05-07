@@ -403,10 +403,13 @@ namespace dxvk {
                    "Denoising is important for filtering the raw noisy ray traced signal into a smoother and more stable result at the cost of some potential spatial/temporal artifacts (ghosting, boiling, blurring, etc).\n"
                    "Generally should remain enabled except when debugging behavior which requires investigating the output directly, or diagnosing denoising-related issues.");
     RTX_OPTION_ENV("rtx", bool, useDenoiserReferenceMode, false, "DXVK_USE_DENOISER_REFERENCE_MODE",
-                   "Enables the reference \"denoiser\" when set to true, otherwise uses the standard denoiser when set to false. Note this requires the denoiser to be enabled to function.\n"
-                   "The reference denoiser allows for a reference multi-sample per pixel contribution to accumulate which should converge slowly to the ideal result the renderer is working towards.\n"
-                   "Useful for analyzing quality differences in various denoising methods, post-processing filters, or for more accurately comparing subtle effects of potentially biased rendering techniques which may be hard to see through usual noise and filtering.\n"
-                   "Also useful for higher quality artistic renders of a scene beyond what is possible in realtime.");
+                   "Enables reference \"denoiser\" (~ accumulation mode) when set to true, otherwise uses a standard denoiser.\n"
+                   "The reference denoiser accumulates frames over time to generate a reference multi-sample per pixel contribution\n"
+                   "which should converge slowly to the ideal result the renderer is working towards.\n"
+                   "It is useful for analyzing quality differences in various denoising methods, post-processing filters,\n"
+                   "or for more accurately comparing subtle effects of potentially biased rendering techniques\n"
+                   "which may be hard to see through noise and filtering.\n"
+                   "It is also useful for higher quality artistic renders of a scene beyond what is possible in real-time.");
     RTX_OPTION_ENV("rtx", bool, denoiseDirectAndIndirectLightingSeparately, true, "DXVK_DENOISE_DIRECT_AND_INDIRECT_LIGHTING_SEPARATELY", "Denoising quality, high uses separate denoising of direct and indirect lighting for higher quality at the cost of performance.");
     RTX_OPTION("rtx", bool, replaceDirectSpecularHitTWithIndirectSpecularHitT, true, "");
     RTX_OPTION("rtx", bool, adaptiveResolutionDenoising, true, "");

@@ -2847,7 +2847,12 @@ namespace dxvk {
       ImGui::Indent();
       ImGui::BeginDisabled(!useNRD);
       ImGui::Checkbox("Denoising Enabled", &RtxOptions::Get()->useDenoiserObject());
-      ImGui::Checkbox("Reference Mode", &RtxOptions::Get()->useDenoiserReferenceModeObject());
+      ImGui::Checkbox("Reference Mode | Accumulation", &RtxOptions::Get()->useDenoiserReferenceModeObject());
+
+      if (RtxOptions::Get()->useDenoiserReferenceMode()) {
+        common->metaDebugView().showAccumulationImguiSettings("Accumulation (Aliased with Debug View's Settings)");
+      }
+
       ImGui::EndDisabled();
 
       if(ImGui::CollapsingHeader("Settings", collapsingHeaderClosedFlags)) {
@@ -2863,7 +2868,6 @@ namespace dxvk {
         ImGui::Unindent();
       }
       bool useDoubleDenoisers = RtxOptions::Get()->isSeparatedDenoiserEnabled();
-      bool isReferenceMode = RtxOptions::Get()->useDenoiserReferenceMode();
       if (isRayReconstructionEnabled && RtxOptions::showRayReconstructionUI()) {
         if (ImGui::CollapsingHeader("DLSS-RR", collapsingHeaderClosedFlags)) {
           ImGui::Indent();
@@ -2876,48 +2880,38 @@ namespace dxvk {
       
       if (useNRD)
       {
-        if (isReferenceMode) {
-          if (ImGui::CollapsingHeader("Reference Denoiser", collapsingHeaderFlags)) {
+        if (useDoubleDenoisers) {
+          if (ImGui::CollapsingHeader("Primary Direct Light Denoiser", collapsingHeaderClosedFlags)) {
             ImGui::Indent();
-            ImGui::PushID("Reference Denoiser");
-            common->metaReferenceDenoiser().showImguiSettings();
+            ImGui::PushID("Primary Direct Light Denoiser");
+            common->metaPrimaryDirectLightDenoiser().showImguiSettings();
+            ImGui::PopID();
+            ImGui::Unindent();
+          }
+
+          if (ImGui::CollapsingHeader("Primary Indirect Light Denoiser", collapsingHeaderClosedFlags)) {
+            ImGui::Indent();
+            ImGui::PushID("Primary Indirect Light Denoiser");
+            common->metaPrimaryIndirectLightDenoiser().showImguiSettings();
             ImGui::PopID();
             ImGui::Unindent();
           }
         } else {
-          if (useDoubleDenoisers) {
-            if (ImGui::CollapsingHeader("Primary Direct Light Denoiser", collapsingHeaderClosedFlags)) {
-              ImGui::Indent();
-              ImGui::PushID("Primary Direct Light Denoiser");
-              common->metaPrimaryDirectLightDenoiser().showImguiSettings();
-              ImGui::PopID();
-              ImGui::Unindent();
-            }
-
-            if (!isReferenceMode && ImGui::CollapsingHeader("Primary Indirect Light Denoiser", collapsingHeaderClosedFlags)) {
-              ImGui::Indent();
-              ImGui::PushID("Primary Indirect Light Denoiser");
-              common->metaPrimaryIndirectLightDenoiser().showImguiSettings();
-              ImGui::PopID();
-              ImGui::Unindent();
-            }
-          } else {
-            if (ImGui::CollapsingHeader("Primary Direct/Indirect Light Denoiser", collapsingHeaderClosedFlags)) {
-              ImGui::Indent();
-              ImGui::PushID("Primary Direct/Indirect Light Denoiser");
-              common->metaPrimaryCombinedLightDenoiser().showImguiSettings();
-              ImGui::PopID();
-              ImGui::Unindent();
-            }
-          }
-
-          if (ImGui::CollapsingHeader("Secondary Direct/Indirect Light Denoiser", collapsingHeaderClosedFlags)) {
+          if (ImGui::CollapsingHeader("Primary Direct/Indirect Light Denoiser", collapsingHeaderClosedFlags)) {
             ImGui::Indent();
-            ImGui::PushID("Secondary Direct/Indirect Light Denoiser");
-            common->metaSecondaryCombinedLightDenoiser().showImguiSettings();
+            ImGui::PushID("Primary Direct/Indirect Light Denoiser");
+            common->metaPrimaryCombinedLightDenoiser().showImguiSettings();
             ImGui::PopID();
             ImGui::Unindent();
           }
+        }
+
+        if (ImGui::CollapsingHeader("Secondary Direct/Indirect Light Denoiser", collapsingHeaderClosedFlags)) {
+          ImGui::Indent();
+          ImGui::PushID("Secondary Direct/Indirect Light Denoiser");
+          common->metaSecondaryCombinedLightDenoiser().showImguiSettings();
+          ImGui::PopID();
+          ImGui::Unindent();
         }
       }
 

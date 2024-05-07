@@ -169,14 +169,10 @@ namespace dxvk {
       return m_secondaryCombinedLightDenoiser.get();
     }
 
-    DxvkDenoise& metaReferenceDenoiser() {
-      return m_referenceDenoiser.get();
-    }
-
     NGXContext& metaNGXContext() {
       return m_ngxContext.get();
     }
-    
+
     DxvkDenoise& metaReferenceDenoiserSecondLobe0() {
       return m_referenceDenoiserSecondLobe0.get();
     }
@@ -339,7 +335,6 @@ namespace dxvk {
     Active<DxvkDenoise>                     m_primaryIndirectLightDenoiser;
     Active<DxvkDenoise>                     m_primaryCombinedLightDenoiser;
     Active<DxvkDenoise>                     m_secondaryCombinedLightDenoiser;
-    Active<DxvkDenoise>                     m_referenceDenoiser;
     Active<NGXContext>                      m_ngxContext;
     Active<DxvkDLFG>                        m_dlfg;
     // Secondary reference denoisers used for a second lobe when non-combined signal reference denoising is enabled

@@ -174,8 +174,8 @@ namespace dxvk {
     void dispatchDLSS(const Resources::RaytracingOutput& rtOutput, float frameTimeSecs);
     void dispatchRayReconstruction(const Resources::RaytracingOutput& rtOutput, float frameTimeSecs);
     void dispatchDenoise(const Resources::RaytracingOutput& rtOutput, float frameTimeSecs);
-    void dispatchReferenceDenoise(const Resources::RaytracingOutput& rtOutput, float frameTimeSecs);
     void dispatchComposite(const Resources::RaytracingOutput& rtOutput);
+    void dispatchReplaceCompositeWithDebugView(const Resources::RaytracingOutput& rtOutput);
     void dispatchNIS(const Resources::RaytracingOutput& rtOutput);
     void dispatchTemporalAA(const Resources::RaytracingOutput& rtOutput);
     void dispatchToneMapping(const Resources::RaytracingOutput& rtOutput, bool performSRGBConversion, const float deltaTime);

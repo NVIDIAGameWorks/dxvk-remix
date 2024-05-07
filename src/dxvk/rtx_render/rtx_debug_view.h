@@ -37,8 +37,8 @@ struct DebugViewArgs;
 namespace dxvk {
   class Config;
   class DxvkDevice;
-  class DxvkContext;
   class DxvkObjects;
+  class RtxContext;
 
   class DebugView : public RtxPass {
 
@@ -47,14 +47,11 @@ namespace dxvk {
     DebugView(dxvk::DxvkDevice* device);
     ~DebugView() = default;
 
-    void dispatch(Rc<DxvkContext> ctx,
-                  Rc<DxvkSampler> nearestSampler,
-                  Rc<DxvkSampler> linearSampler, 
-                  Rc<DxvkImage>& outputImage, 
-                  const Resources::RaytracingOutput& rtOutput, 
-                  DxvkObjects& common);
-
+    void dispatch(Rc<RtxContext> ctx, Rc<DxvkSampler> nearestSampler, Rc<DxvkSampler> linearSampler, Rc<DxvkImage>& outputImage, const Resources::RaytracingOutput& rtOutput, DxvkObjects& common);
+    void dispatchAfterCompositionPass(Rc<RtxContext> ctx, Rc<DxvkSampler> nearestSampler, Rc<DxvkSampler> linearSampler, const Resources::RaytracingOutput& rtOutput, DxvkObjects& common);
     void initSettings(const dxvk::Config& config);
+
+    void showAccumulationImguiSettings(const char* tabName);
     void showImguiSettings();
     const vec4& debugKnob() const { return m_debugKnob; }
 
@@ -72,6 +69,9 @@ namespace dxvk {
       return m_instrumentation.view;
     }
 
+    uint32_t getDebugViewIndex() const;
+    void setDebugViewIndex(uint32_t debugViewIndex);
+
     // GPU Print
     static struct GpuPrint {
       friend class DebugView;
@@ -87,13 +87,20 @@ namespace dxvk {
     void createConstantsBuffer();
     Rc<DxvkBuffer> getDebugViewConstantsBuffer();
 
-    DebugViewArgs getCommonDebugViewArgs(DxvkContext* ctx, const Resources::RaytracingOutput& rtOutput, DxvkObjects& common);
+    DebugViewArgs getCommonDebugViewArgs(RtxContext& ctx, const Resources::RaytracingOutput& rtOutput, DxvkObjects& common);
 
     void generateCompositeImage(Rc<DxvkContext> ctx, Rc<DxvkImage>& outputImage);
     virtual void createDownscaledResource(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent) override;
     virtual void releaseDownscaledResource() override;
 
     virtual bool isActive() override;
+
+    void resetNumAccumulatedFrames();
+    uint32_t getActiveNumFramesToAccumulate() const;
+
+    void dispatchDebugViewInternal(Rc<RtxContext> ctx, Rc<DxvkSampler> nearestSampler, Rc<DxvkSampler> linearSampler, DebugViewArgs& debugViewArgs, Rc<DxvkBuffer>& debugViewConstantBuffer, const Resources::RaytracingOutput& rtOutput);
+    bool shouldRunDispatchPostCompositePass() const;
+    bool shouldEnableAccumulation() const;
 
     Rc<DxvkBuffer> m_debugViewConstants;
     Rc<vk::DeviceFn> m_vkd;
@@ -156,6 +163,29 @@ namespace dxvk {
     RTX_OPTION_ENV("rtx.debugView", int32_t, evMinValue, -4, "DXVK_RTX_DEBUG_VIEW_EV_MIN_VALUE", "The minimum EV100 debug view input value to map to the bottom of the visualization range when EV100 debug display is in use. Values below this value in the input will be clamped to the bottom of the range.");
     RTX_OPTION_ENV("rtx.debugView", int32_t, evMaxValue,  4, "DXVK_RTX_DEBUG_VIEW_EV_MAX_VALUE", "The maximum EV100 debug view input value to map to the top of the visualization range when EV100 debug display is in use. Values above this value in the input will be clamped to the top of the range.")
 
+    RTX_OPTION_ENV("rtx.debugView", bool, enableAccumulation, false, "RTX_DEBUG_VIEW_ENABLE_ACCUMULATION",
+                   "Enables accumulation of debug ouptput's result to emulate multiple samples per pixel or over time.");
+    RTX_OPTION("rtx.debugView", uint32_t, numberOfFramesToAccumulate, 1024,
+               "Number of frames to accumulate debug view's result over.\n"
+               "This can be used for generating reference images smoothed over time.\n"
+               "By default the accumulation stops once the limit is reached.\n"
+               "When desired, continous accumulation can be enabled via enableContinuousAccumulation.");
+    RTX_OPTION("rtx.debugView", bool, enableContinuousAccumulation, true,
+               "Enables continuous accumulation even after numberOfFramesToAccumulate frame count is reached.\n"
+               "Frame to frame accumulation weight remains limitted by numberOfFramesToAccumulate count.\n"
+               "This, however, skews the result as values contribute to the end result longer than numberOfFramesToAccumulate allows.\n");
+    RTX_OPTION("rtx.debugView", bool, enableFp16Accumulation, false,
+               "Accumulate using fp16 precision. Default is fp32.\n"
+               "Much of the renderer is limitted to fp16 formats so on one hand fp16 better emulates renderer's formats.\n"
+               "On the other hand, renderer also clamps and filters the signal in many places and thus is less prone\n"
+               "from very high values causing precision issues preventing very low values have any impact.\n"
+               "Therefore, to minimize precision issues the default accumulation mode is set to fp32.");    
+    RTX_OPTION_ENV("rtx.debugView", bool, replaceCompositeOutput, false, "RTX_DEBUG_VIEW_REPLACE_COMPOSITE_OUTPUT",
+               "Replaces composite output with debug view output that is generated right after composition pass.\n"
+               "Allows for debug view output to get the post composition pipeline applied to it, such as upscaling and postprocessing actions).\n"
+               "Note any Debug Views having data set post Composite pass require this setting to be disabled to work.\n"
+               "When disabled Debug View output is generated close to the end of RTX pipeline (after postprocessing and upscaling).");
+
     // HDR Waveform Display
     bool m_enableLuminanceMode = false;
     int32_t m_log10MinValue = -3;
@@ -172,11 +202,17 @@ namespace dxvk {
 
     Resources::Resource m_cachedImage;
     Resources::Resource m_debugView;
+
+    // Some non-debug view passes directly write to m_debugView, hence we need a separate resource to retain accumulated result
+    Resources::Resource m_previousFrameDebugView;
+
     Resources::Resource m_hdrWaveformRed;
     Resources::Resource m_hdrWaveformGreen;
     Resources::Resource m_hdrWaveformBlue;
     Resources::Resource m_instrumentation;
 
+    uint32_t m_numFramesAccumulated = 0;
+    uint32_t m_prevNumberOfFramesToAccumulate = UINT32_MAX;
   public:
     ObjectPicking ObjectPicking{};
     Highlighting Highlighting{};
