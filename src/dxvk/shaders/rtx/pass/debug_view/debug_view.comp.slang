@@ -23,8 +23,7 @@
 #include "rtx/pass/debug_view/debug_view_binding_indices.h"
 #include "rtx/utility/geometry_flags.slangh"
 
-layout(rgba32f, binding = DEBUG_VIEW_BINDING_INPUT_OUTPUT)
-RWTexture2D<float4> DebugView;
+// Inputs
 
 layout(rgba16f, binding = DEBUG_VIEW_BINDING_DENOISED_PRIMARY_DIRECT_DIFFUSE_RADIANCE_HIT_T_INPUT)
 Texture2D<float4> DenoisedPrimaryDirectDiffuseRadianceHitT;
@@ -50,17 +49,25 @@ layout(rgba16f, binding = DEBUG_VIEW_BINDING_FINAL_SHADING_INPUT)
 Texture2D<float4> FinalShading;
 layout(r32ui, binding = DEBUG_VIEW_BINDING_INSTRUMENTATION_INPUT)
 Texture2D<uint> Instrumentation;
-layout(rgba16f, binding = DEBUG_VIEW_BINDING_COMPOSITE_OUTPUT_INPUT)
-Texture2D<float4> CompositeOutput;
 layout(rgba16f, binding = DEBUG_VIEW_BINDING_TERRAIN_INPUT)
 Texture2D<float4> TerrainTexture;
 
+// Inputs / Output
 layout(r32ui, binding = DEBUG_VIEW_BINDING_HDR_WAVEFORM_RED_INPUT_OUTPUT)
 RWTexture2D<uint> HDRWaveformRedInputOutput;
 layout(r32ui, binding = DEBUG_VIEW_BINDING_HDR_WAVEFORM_GREEN_INPUT_OUTPUT)
 RWTexture2D<uint> HDRWaveformGreenInputOutput;
 layout(r32ui, binding = DEBUG_VIEW_BINDING_HDR_WAVEFORM_BLUE_INPUT_OUTPUT)
 RWTexture2D<uint> HDRWaveformBlueInputOutput;
+
+layout(rgba16f, binding = DEBUG_VIEW_BINDING_COMPOSITE_OUTPUT_INPUT_OUTPUT)
+RWTexture2D<float4> CompositeOutput;
+
+layout(rgba32f, binding = DEBUG_VIEW_BINDING_INPUT_OUTPUT)
+RWTexture2D<float4> DebugView;
+
+layout(rgba32f, binding = DEBUG_VIEW_BINDING_PREVIOUS_FRAME_INPUT_OUTPUT)
+RWTexture2D<float4> PreviousFrameDebugView;
 
 layout(binding = DEBUG_VIEW_BINDING_NEAREST_SAMPLER)
 SamplerState NearestSampler;
@@ -490,6 +497,49 @@ void postprocess(ivec2 threadId, inout vec4 outValue)
   }
 }
 
+f16vec4 lerpFp16(f16vec4 a, f16vec4 b, float16_t lerpFactor)
+{
+  return a * (1.h - lerpFactor) + b * lerpFactor;
+}
+
+void storeToDebugView(uint2 threadId, vec4 value)
+{
+  vec4 output;
+
+  switch (cb.accumulationMode) {
+    case DebugViewAccumulationMode::WriteNewOutput:
+    default:
+      output = value;
+      break;
+    case DebugViewAccumulationMode::CarryOverPreviousOutput:
+      output = PreviousFrameDebugView[threadId];
+      break;
+    case DebugViewAccumulationMode::BlendNewAndPreviousOutputs:
+    {
+      const vec4 previousValue = PreviousFrameDebugView[threadId];
+
+      if (cb.enableFp16Accumulation)
+      {
+        output = lerpFp16(previousValue, value, cb.accumulationWeight);
+      }
+      else
+      {
+        output = lerp(previousValue, value, cb.accumulationWeight);
+      }
+      
+      break;
+    }
+  }
+
+  DebugView[threadId] = output;
+  PreviousFrameDebugView[threadId] = output;
+
+  if (cb.copyOutputToCompositeOutput)
+  {
+    CompositeOutput[threadId] = output;
+  }
+}
+
 [shader("compute")]
 [numthreads(16, 8, 1)]
 void main(uint2 threadId : SV_DispatchThreadID)
@@ -502,5 +552,5 @@ void main(uint2 threadId : SV_DispatchThreadID)
   // Post-processing and overrides if applicable
   postprocess(threadId, outValue);
 
-  imageStore(DebugView, threadId, outValue);
+  storeToDebugView(threadId, outValue);
 }

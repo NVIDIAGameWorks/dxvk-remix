@@ -512,7 +512,6 @@ namespace dxvk {
     m_primaryIndirectLightDenoiser(device, DenoiserType::IndirectLight),
     m_primaryCombinedLightDenoiser(device, DenoiserType::DirectAndIndirectLight),
     m_secondaryCombinedLightDenoiser(device, DenoiserType::Secondaries),
-    m_referenceDenoiser(device, DenoiserType::Reference),
     m_ngxContext(device),
     m_dlfg(device),
     m_referenceDenoiserSecondLobe0(device, DenoiserType::Reference),
@@ -549,7 +548,6 @@ namespace dxvk {
     m_primaryIndirectLightDenoiser.get().onDestroy();
     m_primaryCombinedLightDenoiser.get().onDestroy();
     m_secondaryCombinedLightDenoiser.get().onDestroy();
-    m_referenceDenoiser.get().onDestroy();
     m_referenceDenoiserSecondLobe0.get().onDestroy();
     m_referenceDenoiserSecondLobe1.get().onDestroy();
     m_referenceDenoiserSecondLobe2.get().onDestroy();

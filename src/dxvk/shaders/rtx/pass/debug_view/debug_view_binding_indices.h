@@ -38,7 +38,7 @@
 #define DEBUG_VIEW_BINDING_PRIMARY_SCREEN_SPACE_MOTION_VECTOR_INPUT                        11
 #define DEBUG_VIEW_BINDING_RTXDI_CONFIDENCE_INPUT                                          12
 #define DEBUG_VIEW_BINDING_FINAL_SHADING_INPUT                                             13
-#define DEBUG_VIEW_BINDING_COMPOSITE_OUTPUT_INPUT                                          14
+
 #define DEBUG_VIEW_BINDING_INSTRUMENTATION_INPUT                                           15
 #define DEBUG_VIEW_BINDING_CONSTANTS_INPUT                                                 16
 #define DEBUG_VIEW_BINDING_TERRAIN_INPUT                                                   17
@@ -49,9 +49,13 @@
 #define DEBUG_VIEW_BINDING_HDR_WAVEFORM_GREEN_INPUT_OUTPUT                                 51
 #define DEBUG_VIEW_BINDING_HDR_WAVEFORM_BLUE_INPUT_OUTPUT                                  52
 
+#define DEBUG_VIEW_BINDING_COMPOSITE_OUTPUT_INPUT_OUTPUT                                   60
+
+#define DEBUG_VIEW_BINDING_INPUT_OUTPUT                                                    70
+#define DEBUG_VIEW_BINDING_PREVIOUS_FRAME_INPUT_OUTPUT                                     71
+
 // Samplers
 #define DEBUG_VIEW_BINDING_NEAREST_SAMPLER                                                 80
 #define DEBUG_VIEW_BINDING_LINEAR_SAMPLER                                                  81
 
 // Outputs
-#define DEBUG_VIEW_BINDING_INPUT_OUTPUT                                                    100

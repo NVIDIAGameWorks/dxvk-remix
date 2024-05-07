@@ -291,7 +291,6 @@ namespace dxvk {
       SHADER_SOURCE(DebugViewShader, VK_SHADER_STAGE_COMPUTE_BIT, debug_view)
 
       BEGIN_PARAMETER()
-        RW_TEXTURE2D(DEBUG_VIEW_BINDING_INPUT_OUTPUT)
         TEXTURE2D(DEBUG_VIEW_BINDING_DENOISED_PRIMARY_DIRECT_DIFFUSE_RADIANCE_HIT_T_INPUT)
         TEXTURE2D(DEBUG_VIEW_BINDING_DENOISED_PRIMARY_DIRECT_SPECULAR_RADIANCE_HIT_T_INPUT)
         TEXTURE2D(DEBUG_VIEW_BINDING_DENOISED_SECONDARY_COMBINED_DIFFUSE_RADIANCE_HIT_T_INPUT)
@@ -305,11 +304,14 @@ namespace dxvk {
         TEXTURE2D(DEBUG_VIEW_BINDING_FINAL_SHADING_INPUT)
         TEXTURE2D(DEBUG_VIEW_BINDING_INSTRUMENTATION_INPUT)
         TEXTURE2D(DEBUG_VIEW_BINDING_TERRAIN_INPUT)
-        TEXTURE2D(DEBUG_VIEW_BINDING_COMPOSITE_OUTPUT_INPUT)
         
         RW_TEXTURE2D(DEBUG_VIEW_BINDING_HDR_WAVEFORM_RED_INPUT_OUTPUT)
         RW_TEXTURE2D(DEBUG_VIEW_BINDING_HDR_WAVEFORM_GREEN_INPUT_OUTPUT)
         RW_TEXTURE2D(DEBUG_VIEW_BINDING_HDR_WAVEFORM_BLUE_INPUT_OUTPUT)
+
+        RW_TEXTURE2D(DEBUG_VIEW_BINDING_COMPOSITE_OUTPUT_INPUT_OUTPUT)
+        RW_TEXTURE2D(DEBUG_VIEW_BINDING_INPUT_OUTPUT)
+        RW_TEXTURE2D(DEBUG_VIEW_BINDING_PREVIOUS_FRAME_INPUT_OUTPUT)
 
         SAMPLER(DEBUG_VIEW_BINDING_NEAREST_SAMPLER)
         SAMPLER(DEBUG_VIEW_BINDING_LINEAR_SAMPLER)
@@ -404,10 +406,52 @@ namespace dxvk {
     }
   }
 
+  void DebugView::showAccumulationImguiSettings(const char* tabName) {
+    const ImGuiTreeNodeFlags collapsingHeaderFlags = ImGuiTreeNodeFlags_CollapsingHeader;
+    
+    if (ImGui::CollapsingHeader(tabName, collapsingHeaderFlags)) {
+      ImGui::Indent();
+
+      if (ImGui::Button("Reset History")) {
+        resetNumAccumulatedFrames();
+      }
+
+      ImGui::InputInt("Number of Frames To Accumulate", &numberOfFramesToAccumulateObject());
+
+      uint32_t val = numberOfFramesToAccumulate();
+
+      // Reset accumulation if the cap gets lowered and below the current count
+      if (m_prevNumberOfFramesToAccumulate > numberOfFramesToAccumulate() &&
+          m_numFramesAccumulated >= numberOfFramesToAccumulate()) {
+        resetNumAccumulatedFrames();
+      }
+      m_prevNumberOfFramesToAccumulate = numberOfFramesToAccumulate();
+
+      if (numberOfFramesToAccumulate() > 1) {
+
+        // ImGUI runs async with frame execution, so always report at least 1 frame was generated to avoid showing 0
+        // since renderer will always show a generated image
+        const uint32_t numFramesAccumulated = std::max(1u, m_numFramesAccumulated);
+
+        const uint32_t maxNumFramesToAccumulate = std::max(1u, numberOfFramesToAccumulate());
+        const float accumulatedPercentage = numFramesAccumulated / (0.01f * maxNumFramesToAccumulate);
+        ImGui::Text("   Accumulated: %u (%.2f%%)", numFramesAccumulated, accumulatedPercentage);
+      }
+
+      ImGui::Checkbox("Continuous Accumulation", &enableContinuousAccumulationObject());
+      ImGui::Checkbox("Fp16 Accumulation", &enableFp16AccumulationObject());
+
+      ImGui::Unindent();
+    }
+  }
+
   void DebugView::showImguiSettings()
   {
+    // Dealias same widget names from the rest of RTX
+    ImGui::PushID("Debug View");
+
     const ImGuiSliderFlags sliderFlags = ImGuiSliderFlags_AlwaysClamp;
-    const ImGuiTreeNodeFlags collapsingHeaderFlags = ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_CollapsingHeader;
+    const ImGuiTreeNodeFlags collapsingHeaderFlags = ImGuiTreeNodeFlags_CollapsingHeader;
 
     // Note: Ensure the enable checkbox state matches what the debug index was set to externally (for example when loaded from settings).
     bool enableCompositeDebugView = static_cast<CompositeDebugView>(Composite::compositeViewIdx()) != CompositeDebugView::Disabled;
@@ -453,10 +497,18 @@ namespace dxvk {
       Composite::compositeViewIdxRef() = static_cast<uint32_t>(CompositeDebugView::Disabled);
     }
 
+    ImGui::Checkbox("Accumulation", &enableAccumulationObject());
+
+    if (enableAccumulation()) {
+      showAccumulationImguiSettings("Accumulation (Aliased with Reference Denoiser's Settings)");
+    }
+
     ImGui::DragFloat4("Debug Knob", (float*)&m_debugKnob, 0.1f, -1000.f, 1000.f, "%.3f", sliderFlags);
 
     displayTypeCombo.getKey(&displayTypeObject());
     samplerTypeCombo.getKey(&samplerTypeObject());
+
+    ImGui::Checkbox("Replace Composite Output", &replaceCompositeOutputObject());
 
     if (ImGui::CollapsingHeader("Display Settings", collapsingHeaderFlags)) {
       ImGui::Indent();
@@ -591,17 +643,39 @@ namespace dxvk {
       if (!gpuPrint.useMousePosition()) {
         ImGui::DragInt2("Pixel Position", &gpuPrint.pixelIndexObject(), 0.1f, 0, INT32_MAX, "%d", sliderFlags);
       }
-    }   
+    }
+
+    ImGui::PopID();
   }
 
-  void DebugView::createConstantsBuffer()
-  {
+  void DebugView::createConstantsBuffer() {
     DxvkBufferCreateInfo info = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
     info.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
     info.access = VK_ACCESS_TRANSFER_WRITE_BIT;
     info.size = sizeof(DebugViewArgs);
     m_debugViewConstants = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
+  }
+
+  uint32_t DebugView::getDebugViewIndex() const {
+    return debugViewIdx();
+  }
+
+  void DebugView::setDebugViewIndex(uint32_t debugViewIndex) {
+    debugViewIdxRef() = debugViewIndex;
+    if (debugViewIndex != DEBUG_VIEW_DISABLED) {
+      m_lastDebugViewIdx = debugViewIndex;
+    }
+  }
+
+  void DebugView::resetNumAccumulatedFrames() {
+    m_numFramesAccumulated = 0;
+  }
+
+  uint32_t DebugView::getActiveNumFramesToAccumulate() const {
+    return shouldEnableAccumulation()
+      ? numberOfFramesToAccumulate()
+      : 1;
   }
 
   Rc<DxvkBuffer> DebugView::getDebugViewConstantsBuffer() {
@@ -638,32 +712,69 @@ namespace dxvk {
       }
     }
 
-    if (!isActive())
+    if (!isActive()) {
       return;
+    }
 
-    VkClearColorValue clearColor;
-    
-    if (debugViewIdx() == DEBUG_VIEW_NAN)
-      clearColor = { 1.f, 0.f, 0.f, 0.f };
-    else
-      clearColor = { 0.f, 0.f, 0.f, 0.f };
+    // Handle accumulation settings
+    {
+      // Check if accumulation needs to be reset
+      if (m_numFramesAccumulated > 0) {
+        const RtCamera& camera = dynamic_cast<RtxContext*>(ctx.ptr())->getSceneManager().getCamera();
+        const Matrix4d prevWorldToProjection = camera.getPreviousViewToProjection() * camera.getPreviousWorldToView();
+        const Matrix4d worldToProjection = camera.getViewToProjection() * camera.getWorldToView();
+        const bool hasCameraChanged = memcmp(&prevWorldToProjection, &worldToProjection, sizeof(Matrix4d)) != 0;
 
-    VkImageSubresourceRange subRange = {};
-    subRange.layerCount = 1;
-    subRange.levelCount = 1;
-    subRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        if (hasCameraChanged) {
+          resetNumAccumulatedFrames();
+        }
+      }
 
-    ctx->clearColorImage(m_debugView.image, clearColor, subRange);
+      // Ensure num frames stays within limits. 
+      // This is called here again since the other place is called conditionally
+      m_numFramesAccumulated = std::min(m_numFramesAccumulated, getActiveNumFramesToAccumulate());
+    }
 
-    if (debugViewIdx() == DEBUG_VIEW_INSTRUMENTATION_THREAD_DIVERGENCE)
-      ctx->clearColorImage(m_instrumentation.image, clearColor, subRange);
+    // Clear debug view resources
+    {
+      VkClearColorValue clearColor;
+
+      if (debugViewIdx() == DEBUG_VIEW_NAN) {
+        clearColor = { 1.f, 0.f, 0.f, 0.f };
+      } else {
+        clearColor = { 0.f, 0.f, 0.f, 0.f };
+      }
+
+      VkImageSubresourceRange subRange = {};
+      subRange.layerCount = 1;
+      subRange.levelCount = 1;
+      subRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+
+      ctx->clearColorImage(m_debugView.image, clearColor, subRange);
+
+      const bool clearPreviousFramedDebugView = m_numFramesAccumulated == 0;
+
+      if (clearPreviousFramedDebugView) {
+        ctx->clearColorImage(m_previousFrameDebugView.image, clearColor, subRange);
+      }
+
+      if (debugViewIdx() == DEBUG_VIEW_INSTRUMENTATION_THREAD_DIVERGENCE) {
+        ctx->clearColorImage(m_instrumentation.image, clearColor, subRange);
+      }
+    }
   }
 
-  DebugViewArgs DebugView::getCommonDebugViewArgs(DxvkContext* ctx, const Resources::RaytracingOutput& rtOutput, DxvkObjects& common) {
-    auto debugViewResolution = m_debugView.view->imageInfo().extent;
+  DebugViewArgs DebugView::getCommonDebugViewArgs(
+    RtxContext& ctx,
+    const Resources::RaytracingOutput& rtOutput,
+    DxvkObjects& common) {
+    const VkExtent3D debugViewResolution = shouldRunDispatchPostCompositePass()
+      ? rtOutput.m_compositeOutputExtent
+      : m_debugView.view->imageInfo().extent;    
+
     auto currTime = std::chrono::system_clock::now();
     std::chrono::duration<float> elapsedSec = currTime - m_startTime;
-    const uint32_t frameIdx = ctx->getDevice()->getCurrentFrameId();
+    const uint32_t frameIdx = ctx.getDevice()->getCurrentFrameId();
 
     DebugViewArgs debugViewArgs = {};
 
@@ -673,13 +784,14 @@ namespace dxvk {
     debugViewArgs.enableInputQuantization = enableInputQuantization();
     debugViewArgs.quantizationStepSize = 1.0f / inverseQuantizationStepSize();
     debugViewArgs.quantizationInverseStepSize = inverseQuantizationStepSize();
-
-    if (s_disableAnimation)
+    
+    if (s_disableAnimation) {
       debugViewArgs.animationTimeSec = 0;
-    else
+    } else {
       debugViewArgs.animationTimeSec = elapsedSec.count();
+    }
 
-    debugViewArgs.frameIdx = ctx->getDevice()->getCurrentFrameId();
+    debugViewArgs.frameIdx = ctx.getDevice()->getCurrentFrameId();
 
     debugViewArgs.displayType = displayType();
     debugViewArgs.enableInfNanViewFlag = m_enableInfNanView;
@@ -741,24 +853,112 @@ namespace dxvk {
       debugViewArgs.nrd = common.metaPrimaryCombinedLightDenoiser().getNrdArgs();
     }
 
+    // Determine accumulation mode
+    if (m_numFramesAccumulated == 0 || !shouldEnableAccumulation()) {
+      debugViewArgs.accumulationMode = DebugViewAccumulationMode::WriteNewOutput;
+    } else if (m_numFramesAccumulated < getActiveNumFramesToAccumulate()
+      || enableContinuousAccumulation()) {
+      debugViewArgs.accumulationMode = DebugViewAccumulationMode::BlendNewAndPreviousOutputs;
+    } else { // m_numFramesAccumulated >= getActiveNumFramesToAccumulate()
+      debugViewArgs.accumulationMode = DebugViewAccumulationMode::CarryOverPreviousOutput;
+    }
+
+    debugViewArgs.accumulationWeight = 1.f / (m_numFramesAccumulated + 1);
+    debugViewArgs.enableFp16Accumulation = enableFp16Accumulation();
+    debugViewArgs.copyOutputToCompositeOutput = shouldRunDispatchPostCompositePass() || replaceCompositeOutput();
+
     return debugViewArgs;
   }
 
-  void DebugView::dispatch(Rc<DxvkContext> ctx,
-                           Rc<DxvkSampler> nearestSampler,
-                           Rc<DxvkSampler> linearSampler,
-                           Rc<DxvkImage>& outputImage,
-                           const Resources::RaytracingOutput& rtOutput, 
-                           DxvkObjects& common) {
+  bool DebugView::shouldRunDispatchPostCompositePass() const {
+    return replaceCompositeOutput() || (debugViewIdx() == DEBUG_VIEW_DISABLED && RtxOptions::useDenoiserReferenceMode());
+  }
+
+  bool DebugView::shouldEnableAccumulation() const {
+    return debugViewIdx() != DEBUG_VIEW_DISABLED
+      ? enableAccumulation()
+      : RtxOptions::useDenoiserReferenceMode();
+  }
+
+  void DebugView::dispatchDebugViewInternal(
+    Rc<RtxContext> ctx,
+    Rc<DxvkSampler> nearestSampler,
+    Rc<DxvkSampler> linearSampler,
+    DebugViewArgs& debugViewArgs,
+    Rc<DxvkBuffer>& debugViewConstantBuffer,
+    const Resources::RaytracingOutput& rtOutput) {
+    ScopedGpuProfileZone(ctx, "Debug View");
+
+    // Inputs 
+
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_DENOISED_PRIMARY_DIRECT_DIFFUSE_RADIANCE_HIT_T_INPUT, rtOutput.m_primaryDirectDiffuseRadiance.view(Resources::AccessType::Read), nullptr);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_DENOISED_PRIMARY_DIRECT_SPECULAR_RADIANCE_HIT_T_INPUT, rtOutput.m_primaryDirectSpecularRadiance.view(Resources::AccessType::Read), nullptr);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_DENOISED_SECONDARY_COMBINED_DIFFUSE_RADIANCE_HIT_T_INPUT, rtOutput.m_secondaryCombinedDiffuseRadiance.view(Resources::AccessType::Read), nullptr);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_DENOISED_SECONDARY_COMBINED_SPECULAR_RADIANCE_HIT_T_INPUT, rtOutput.m_secondaryCombinedSpecularRadiance.view(Resources::AccessType::Read), nullptr);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_PRIMARY_LINEAR_VIEW_Z_INPUT, rtOutput.m_primaryLinearViewZ.view, nullptr);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_PRIMARY_VIRTUAL_WORLD_SHADING_NORMAL_PERCEPTUAL_ROUGHNESS_INPUT, rtOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughness.view, nullptr);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_PRIMARY_VIRTUAL_MOTION_VECTOR_INPUT, rtOutput.m_primaryVirtualMotionVector.view, nullptr);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_PRIMARY_SCREEN_SPACE_MOTION_VECTOR_INPUT, rtOutput.m_primaryScreenSpaceMotionVector.view, nullptr);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_RTXDI_CONFIDENCE_INPUT, rtOutput.getCurrentRtxdiConfidence().view(Resources::AccessType::Read, debugViewArgs.isRTXDIConfidenceValid), nullptr);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_FINAL_SHADING_INPUT, rtOutput.m_finalOutput.view, nullptr);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_INSTRUMENTATION_INPUT, m_instrumentation.view, nullptr);
+
+    const ReplacementMaterialTextureType::Enum terrainTextureType = static_cast<ReplacementMaterialTextureType::Enum>(
+      clamp<uint32_t>(static_cast<uint32_t>(m_debugKnob.x),
+                      ReplacementMaterialTextureType::AlbedoOpacity,
+                      ReplacementMaterialTextureType::Count - 1));
+    Resources::Resource terrain = m_device->getCommon()->getSceneManager().getTerrainBaker().getTerrainTexture(terrainTextureType);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_TERRAIN_INPUT, terrain.view, nullptr);
+
+    // Inputs / Outputs
+
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_HDR_WAVEFORM_RED_INPUT_OUTPUT, m_hdrWaveformRed.view, nullptr);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_HDR_WAVEFORM_GREEN_INPUT_OUTPUT, m_hdrWaveformGreen.view, nullptr);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_HDR_WAVEFORM_BLUE_INPUT_OUTPUT, m_hdrWaveformBlue.view, nullptr);
+
+    assert(rtOutput.m_compositeOutput.ownsResource() && "Composite output is expected to be valid at this point by default");
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_COMPOSITE_OUTPUT_INPUT_OUTPUT, rtOutput.m_compositeOutput.view(Resources::AccessType::ReadWrite), nullptr);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_INPUT_OUTPUT, m_debugView.view, nullptr);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_PREVIOUS_FRAME_INPUT_OUTPUT, m_previousFrameDebugView.view, nullptr);
+    
+    ctx->bindResourceBuffer(DEBUG_VIEW_BINDING_CONSTANTS_INPUT, DxvkBufferSlice(debugViewConstantBuffer, 0, debugViewConstantBuffer->info().size));
+    ctx->bindResourceSampler(DEBUG_VIEW_BINDING_NEAREST_SAMPLER, nearestSampler);
+    ctx->bindResourceSampler(DEBUG_VIEW_BINDING_LINEAR_SAMPLER, linearSampler);
+
+    ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, DebugViewShader::getShader());
+
+    const VkExtent3D outputExtent = VkExtent3D { debugViewArgs.debugViewResolution.x, debugViewArgs.debugViewResolution.y, 1 };
+
+    const VkExtent3D workgroups = util::computeBlockCount(outputExtent, VkExtent3D { 16, 8, 1 });
+    ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
+
+    // Reset the count if the cap was lowered below current count in the midst
+    if (getActiveNumFramesToAccumulate() < m_numFramesAccumulated) {
+      resetNumAccumulatedFrames();
+    }
+
+    // Clamp the increase since dispatch is run every frame regardless of the cap being hit
+    m_numFramesAccumulated = std::min(m_numFramesAccumulated + 1, getActiveNumFramesToAccumulate());
+  }
+
+  void DebugView::dispatch(
+    Rc<RtxContext> ctx,
+    Rc<DxvkSampler> nearestSampler,
+    Rc<DxvkSampler> linearSampler,
+    Rc<DxvkImage>& outputImage,
+    const Resources::RaytracingOutput& rtOutput,
+    DxvkObjects& common) {
 
     if (m_showCachedImage) {
       if (m_cachedImage.image.ptr()) {
         outputImage = m_cachedImage.image;
       }
-    } else if (debugViewIdx() != DEBUG_VIEW_DISABLED) {
+    } else if (debugViewIdx() != DEBUG_VIEW_DISABLED &&
+               !shouldRunDispatchPostCompositePass()) {
       // Dispatch a debug view pass
-    
-      auto&& debugViewArgs = getCommonDebugViewArgs(ctx.ptr(), rtOutput, common);
+
+      DebugViewArgs&& debugViewArgs = getCommonDebugViewArgs(*ctx.ptr(), rtOutput, common);
 
       Rc<DxvkBuffer> cb = getDebugViewConstantsBuffer();
       ctx->writeToBuffer(cb, 0, sizeof(DebugViewArgs), &debugViewArgs);
@@ -780,46 +980,9 @@ namespace dxvk {
         ctx->clearColorImage(m_hdrWaveformBlue.image, clearColor, subRange);
       }
 
-      // Process Debug View
-      {
-        ScopedGpuProfileZone(ctx, "Debug View");
-
-        ctx->bindResourceView(DEBUG_VIEW_BINDING_INPUT_OUTPUT, m_debugView.view, nullptr);
-        ctx->bindResourceView(DEBUG_VIEW_BINDING_DENOISED_PRIMARY_DIRECT_DIFFUSE_RADIANCE_HIT_T_INPUT, rtOutput.m_primaryDirectDiffuseRadiance.view(Resources::AccessType::Read), nullptr);
-        ctx->bindResourceView(DEBUG_VIEW_BINDING_DENOISED_PRIMARY_DIRECT_SPECULAR_RADIANCE_HIT_T_INPUT, rtOutput.m_primaryDirectSpecularRadiance.view(Resources::AccessType::Read), nullptr);
-        ctx->bindResourceView(DEBUG_VIEW_BINDING_DENOISED_SECONDARY_COMBINED_DIFFUSE_RADIANCE_HIT_T_INPUT, rtOutput.m_secondaryCombinedDiffuseRadiance.view(Resources::AccessType::Read), nullptr);
-        ctx->bindResourceView(DEBUG_VIEW_BINDING_DENOISED_SECONDARY_COMBINED_SPECULAR_RADIANCE_HIT_T_INPUT, rtOutput.m_secondaryCombinedSpecularRadiance.view(Resources::AccessType::Read), nullptr);
-        ctx->bindResourceView(DEBUG_VIEW_BINDING_SHARED_FLAGS_INPUT, rtOutput.m_sharedFlags.view, nullptr);
-        ctx->bindResourceView(DEBUG_VIEW_BINDING_PRIMARY_LINEAR_VIEW_Z_INPUT, rtOutput.m_primaryLinearViewZ.view, nullptr);
-        ctx->bindResourceView(DEBUG_VIEW_BINDING_PRIMARY_VIRTUAL_WORLD_SHADING_NORMAL_PERCEPTUAL_ROUGHNESS_INPUT, rtOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughness.view, nullptr);
-        ctx->bindResourceView(DEBUG_VIEW_BINDING_PRIMARY_VIRTUAL_MOTION_VECTOR_INPUT, rtOutput.m_primaryVirtualMotionVector.view, nullptr);
-        ctx->bindResourceView(DEBUG_VIEW_BINDING_PRIMARY_SCREEN_SPACE_MOTION_VECTOR_INPUT, rtOutput.m_primaryScreenSpaceMotionVector.view, nullptr);
-        ctx->bindResourceView(DEBUG_VIEW_BINDING_RTXDI_CONFIDENCE_INPUT, rtOutput.getCurrentRtxdiConfidence().view(Resources::AccessType::Read, debugViewArgs.isRTXDIConfidenceValid), nullptr);
-        ctx->bindResourceView(DEBUG_VIEW_BINDING_FINAL_SHADING_INPUT, rtOutput.m_finalOutput.view, nullptr);
-        ctx->bindResourceView(DEBUG_VIEW_BINDING_COMPOSITE_OUTPUT_INPUT, rtOutput.m_compositeOutput.view(Resources::AccessType::Read), nullptr);
-        ctx->bindResourceView(DEBUG_VIEW_BINDING_INSTRUMENTATION_INPUT, m_instrumentation.view, nullptr);
-        
-        const ReplacementMaterialTextureType::Enum terrainTextureType = static_cast<ReplacementMaterialTextureType::Enum>(
-          clamp<uint32_t>(static_cast<uint32_t>(m_debugKnob.x),
-                          ReplacementMaterialTextureType::AlbedoOpacity,
-                          ReplacementMaterialTextureType::Count - 1));
-        Resources::Resource terrain = m_device->getCommon()->getSceneManager().getTerrainBaker().getTerrainTexture(terrainTextureType);
-        ctx->bindResourceView(DEBUG_VIEW_BINDING_TERRAIN_INPUT, terrain.view, nullptr);
-
-        ctx->bindResourceView(DEBUG_VIEW_BINDING_HDR_WAVEFORM_RED_INPUT_OUTPUT, m_hdrWaveformRed.view, nullptr);
-        ctx->bindResourceView(DEBUG_VIEW_BINDING_HDR_WAVEFORM_GREEN_INPUT_OUTPUT, m_hdrWaveformGreen.view, nullptr);
-        ctx->bindResourceView(DEBUG_VIEW_BINDING_HDR_WAVEFORM_BLUE_INPUT_OUTPUT, m_hdrWaveformBlue.view, nullptr);
-        ctx->bindResourceBuffer(DEBUG_VIEW_BINDING_CONSTANTS_INPUT, DxvkBufferSlice(cb, 0, cb->info().size));
-
-        ctx->bindResourceSampler(DEBUG_VIEW_BINDING_NEAREST_SAMPLER, nearestSampler);
-        ctx->bindResourceSampler(DEBUG_VIEW_BINDING_LINEAR_SAMPLER, linearSampler);
-
-        ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, DebugViewShader::getShader());
-
-        VkExtent3D workgroups = util::computeBlockCount(m_debugView.view->imageInfo().extent, VkExtent3D { 16, 8, 1 });
-        ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
-      }
-
+      // Dispatch Debug View 
+      dispatchDebugViewInternal(ctx, nearestSampler, linearSampler, debugViewArgs, cb, rtOutput);
+      
       // Display HDR Waveform
       if (displayType() == DebugViewDisplayType::HDRWaveform) {
         ScopedGpuProfileZone(ctx, "HDR Waveform Render");
@@ -841,6 +1004,7 @@ namespace dxvk {
         ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
       }
 
+      // Replace RT 
       outputImage = m_debugView.image;
 
       // Generate a composite image
@@ -853,7 +1017,8 @@ namespace dxvk {
           m_cachedImage.image->info().extent.width != outputImage->info().extent.width ||
           m_cachedImage.image->info().extent.height != outputImage->info().extent.height ||
           m_cachedImage.image->info().format != outputImage->info().format) {
-        m_cachedImage = Resources::createImageResource(ctx, "debug view cache", outputImage->info().extent, outputImage->info().format);
+        Rc<DxvkContext> dxvkContext = ctx;
+        m_cachedImage = Resources::createImageResource(dxvkContext, "debug view cache", outputImage->info().extent, outputImage->info().format);
       }
 
       const VkImageSubresourceLayers srcSubresourceLayers = { outputImage->formatInfo()->aspectMask, 0, 0, 1 };
@@ -866,7 +1031,31 @@ namespace dxvk {
 
       m_cacheCurrentImage = false;
     }
+  }
 
+  void DebugView::dispatchAfterCompositionPass(
+    Rc<RtxContext> ctx,
+    Rc<DxvkSampler> nearestSampler,
+    Rc<DxvkSampler> linearSampler,
+    const Resources::RaytracingOutput& rtOutput,
+    DxvkObjects& common) {
+
+    if (!shouldRunDispatchPostCompositePass()) {
+      return;
+    }
+
+    DebugViewArgs&& debugViewArgs = getCommonDebugViewArgs(*ctx.ptr(), rtOutput, common);
+
+    if (RtxOptions::useDenoiserReferenceMode() && debugViewArgs.debugViewIdx == DEBUG_VIEW_DISABLED) {
+      debugViewArgs.debugViewIdx = DEBUG_VIEW_COMPOSITE_OUTPUT;
+    }
+
+    Rc<DxvkBuffer> cb = getDebugViewConstantsBuffer();
+    ctx->writeToBuffer(cb, 0, sizeof(DebugViewArgs), &debugViewArgs);
+    ctx->getCommandList()->trackResource<DxvkAccess::Read>(cb);
+
+    // Dispatch Debug View 
+    dispatchDebugViewInternal(ctx, nearestSampler, linearSampler, debugViewArgs, cb, rtOutput);
   }
 
   void DebugView::generateCompositeImage(Rc<DxvkContext> ctx,
@@ -956,7 +1145,8 @@ namespace dxvk {
   void DebugView::createDownscaledResource(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent) {
     // Debug
     m_debugView = Resources::createImageResource(ctx, "debug view", downscaledExtent, VK_FORMAT_R32G32B32A32_SFLOAT);
-
+    m_previousFrameDebugView = Resources::createImageResource(ctx, "previous frame debug view", downscaledExtent, VK_FORMAT_R32G32B32A32_SFLOAT);
+    
     // Note: Only allocate half resolution for HDR waveform buffers, this is the default view size
     // and while it is wasteful if the resolution scale is higher, this is probably fine.
     m_hdrWaveformRed = Resources::createImageResource(ctx, "debug hdr waveform red", { (downscaledExtent.width + 2) / 2, (downscaledExtent.height + 2) / 2, 1 }, VK_FORMAT_R32_UINT);
@@ -965,10 +1155,13 @@ namespace dxvk {
 
     // Instrumentation
     m_instrumentation = Resources::createImageResource(ctx, "debug instrumentation", downscaledExtent, VK_FORMAT_R32_UINT);
+
+    resetNumAccumulatedFrames();
   }
 
   void DebugView::releaseDownscaledResource() {
     m_debugView.reset();
+    m_previousFrameDebugView.reset();
     m_hdrWaveformRed.reset();
     m_hdrWaveformBlue.reset();
     m_hdrWaveformGreen.reset();
@@ -978,6 +1171,7 @@ namespace dxvk {
   bool DebugView::isActive() {
     return debugViewIdx() != DEBUG_VIEW_DISABLED || 
       static_cast<CompositeDebugView>(m_composite.compositeViewIdx()) != CompositeDebugView::Disabled ||
-      m_showCachedImage || m_cacheCurrentImage;
+      m_showCachedImage || m_cacheCurrentImage ||
+      RtxOptions::useDenoiserReferenceMode();
   }
 } // namespace dxvk

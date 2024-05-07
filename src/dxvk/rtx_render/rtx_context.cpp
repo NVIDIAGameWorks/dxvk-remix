@@ -539,7 +539,8 @@ namespace dxvk {
         // Composition
         dispatchComposite(rtOutput);
 
-        dispatchReferenceDenoise(rtOutput, frameTimeSecs);
+        // Post composite Debug View that may overwrite Composite output
+        dispatchReplaceCompositeWithDebugView(rtOutput);
         
         if (captureScreenImage && captureDebugImage) {
           takeScreenshot("rtxImagePostComposite", rtOutput.m_compositeOutput.resource(Resources::AccessType::Read).image);
@@ -786,8 +787,8 @@ namespace dxvk {
     const bool realtimeDenoiserEnabled = RtxOptions::Get()->isDenoiserEnabled() && !RtxOptions::Get()->useDenoiserReferenceMode();
     const bool separateDenoiserEnabled = RtxOptions::Get()->isSeparatedDenoiserEnabled();
 
-    auto& denoiser0 = realtimeDenoiserEnabled ? (separateDenoiserEnabled ? m_common->metaPrimaryDirectLightDenoiser() : m_common->metaPrimaryCombinedLightDenoiser()) : m_common->metaReferenceDenoiser();
-    auto& denoiser1 = realtimeDenoiserEnabled ? (separateDenoiserEnabled ? m_common->metaPrimaryIndirectLightDenoiser() : m_common->metaPrimaryCombinedLightDenoiser()) : m_common->metaReferenceDenoiser();
+    auto& denoiser0 = (separateDenoiserEnabled ? m_common->metaPrimaryDirectLightDenoiser() : m_common->metaPrimaryCombinedLightDenoiser());
+    auto& denoiser1 = (separateDenoiserEnabled ? m_common->metaPrimaryIndirectLightDenoiser() : m_common->metaPrimaryCombinedLightDenoiser());
     auto& denoiser2 = m_common->metaSecondaryCombinedLightDenoiser();
 
     outPrimaryDirectNrdArgs = denoiser0.getNrdArgs();
@@ -796,8 +797,7 @@ namespace dxvk {
 
     // Disable ReBLUR when RR is on because ReBLUR uses a different buffer encoding
     bool useRR = useRayReconstruction();
-    if (useRR)
-    {
+    if (useRR) {
       outPrimaryDirectNrdArgs.isReblurEnabled = false;
       outPrimaryIndirectNrdArgs.isReblurEnabled = false;
     }
@@ -1246,44 +1246,6 @@ namespace dxvk {
     NeeCachePass& neeCache = m_common->metaNeeCache();
     neeCache.dispatch(this, rtOutput);
   }
-  
-  void RtxContext::dispatchReferenceDenoise(const Resources::RaytracingOutput& rtOutput, float frameTimeSecs) {
-    bool useRR = useRayReconstruction();
-    bool useNRDForTraining = getCommonObjects()->metaRayReconstruction().enableNRDForTraining();
-    if (!RtxOptions::Get()->isDenoiserEnabled() || !RtxOptions::Get()->useDenoiserReferenceMode() || (useRR && !useNRDForTraining))
-      return;
-
-    DxvkDenoise& denoiser = m_common->metaReferenceDenoiser();
-    ScopedGpuProfileZone(this, "Reference");
-    const Resources::Resource& compositeInputOutput = rtOutput.m_compositeOutput.resource(Resources::AccessType::ReadWrite);
-
-    DxvkDenoise::Input denoiseInput = {};
-    denoiseInput.reference = &compositeInputOutput;
-    denoiseInput.diffuse_hitT = denoiseInput.specular_hitT = nullptr;
-    // Note: Primary input data used for reference path due to its coherency, not that I think this matters though since it is not doing any denoising.
-    denoiseInput.normal_roughness = &rtOutput.m_primaryVirtualWorldShadingNormalPerceptualRoughnessDenoising;
-    denoiseInput.linearViewZ = &rtOutput.m_primaryLinearViewZ;
-    denoiseInput.motionVector = &rtOutput.m_primaryVirtualMotionVector;
-    denoiseInput.frameTimeMs = frameTimeSecs * 1000.f;
-    denoiseInput.reset = m_resetHistory;
-
-    DxvkDenoise::Output denoiseOutput;
-    denoiseOutput.reference = &compositeInputOutput;
-    denoiseInput.diffuse_hitT = denoiseInput.specular_hitT = nullptr;
-
-    // Since NRDContext doesn't use DxvkContext abstraction
-    // but its using Compute, mark its DxvkContext's Cp pipelines as dirty
-    {
-      this->spillRenderPass(false);
-      m_flags.set(
-        DxvkContextFlag::CpDirtyPipeline,
-        DxvkContextFlag::CpDirtyPipelineState,
-        DxvkContextFlag::CpDirtyResources,
-        DxvkContextFlag::CpDirtyDescriptorBinding);
-    }
-
-    denoiser.dispatch(this, m_execBarriers, rtOutput, denoiseInput, denoiseOutput);
-  }
 
   void RtxContext::dispatchDenoise(const Resources::RaytracingOutput& rtOutput, float frameTimeSecs) {
     auto& rayReconstruction = getCommonObjects()->metaRayReconstruction();
@@ -1589,6 +1551,21 @@ namespace dxvk {
 
     if (captureScreenImage)
       takeScreenshot("rtxImageDebugView", debugView.getFinalDebugOutput()->image());
+  }
+
+  void RtxContext::dispatchReplaceCompositeWithDebugView(const Resources::RaytracingOutput& rtOutput) {
+    ScopedCpuProfileZone();
+
+    DebugView& debugView = m_common->metaDebugView();
+
+    if (!debugView.shouldDispatch()) {
+      return;
+    }
+
+    debugView.dispatchAfterCompositionPass(this,
+      getResourceManager().getSampler(VK_FILTER_NEAREST, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE),
+      getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE),
+      rtOutput, *m_common);
   }
 
   namespace

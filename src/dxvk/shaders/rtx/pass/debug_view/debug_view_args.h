@@ -54,6 +54,12 @@ enum class DebugViewSamplerType : uint32_t {
   Count
 };
 
+enum class DebugViewAccumulationMode : uint32_t {
+  WriteNewOutput,
+  BlendNewAndPreviousOutputs,
+  CarryOverPreviousOutput
+};
+
 struct DebugViewArgs {
   uint debugViewIdx;
   int colorCodeRadius;
@@ -83,6 +89,8 @@ struct DebugViewArgs {
   uint hdrWaveformResolutionScaleFactor;
   float hdrWaveformHistogramNormalizationScale;
 
+  vec4 debugKnob;
+
   NrdArgs nrd;
 
   // Common Display enable flags
@@ -97,8 +105,6 @@ struct DebugViewArgs {
 
   DebugViewSamplerType samplerType;
 
-  vec4 debugKnob;
-
   // Feature enablement
   uint isRTXDIConfidenceValid;
 
@@ -109,4 +115,9 @@ struct DebugViewArgs {
   uint enableInputQuantization;
   float quantizationStepSize;
   float quantizationInverseStepSize;
+
+  float accumulationWeight;
+  uint enableFp16Accumulation;
+  uint copyOutputToCompositeOutput;
+  DebugViewAccumulationMode accumulationMode;
 };
