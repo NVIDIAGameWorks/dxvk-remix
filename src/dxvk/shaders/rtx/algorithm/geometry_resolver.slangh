@@ -673,6 +673,11 @@ void geometryResolverVertexOutputDebugView(
     storeInDebugView(pixelCoordinate, sampleRadiance);
     break;
   }
+  case DEBUG_VIEW_NEE_CACHE_TRIANGLE_CANDIDATE:
+  {
+    storeInDebugView(pixelCoordinate, asfloat(uint4(rayInteraction.surfaceIndex, rayInteraction.primitiveIndex, 0, 0)));
+    break;
+  }
 
   case DEBUG_VIEW_SURFACE_AREA:
     storeInDebugView(pixelCoordinate, surfaceInteraction.triangleArea);

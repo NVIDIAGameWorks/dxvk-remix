@@ -31,6 +31,16 @@
 #include "rtx/algorithm/nee_cache.h"
 #include "rtx/algorithm/integrator.slangh"
 
+layout(push_constant)
+ConstantBuffer<VisualizeNeeArgs> args;
+
+bool isCrossPixel(ivec2 pixel, ivec2 crossCenter)
+{
+  const int crossLength = 5;
+  return (pixel.x == crossCenter.x && pixel.y >= crossCenter.y - crossLength && pixel.y <= crossCenter.y + crossLength) ||
+         (pixel.y == crossCenter.y && pixel.x >= crossCenter.x - crossLength && pixel.x <= crossCenter.x + crossLength);
+}
+
 struct Canvas
 {
   static const int s_padding = 1;
@@ -77,9 +87,7 @@ struct Canvas
 
   bool isCross()
   {
-    const int crossLength = 5;
-    return (m_contentPixel.x == s_samplePosition.x && m_contentPixel.y >= s_samplePosition.y - crossLength && m_contentPixel.y <= s_samplePosition.y + crossLength) ||
-           (m_contentPixel.y == s_samplePosition.y && m_contentPixel.x >= s_samplePosition.x - crossLength && m_contentPixel.x <= s_samplePosition.x + crossLength);
+    return isCrossPixel(m_contentPixel, s_samplePosition);
   }
 
   ivec2 getSamplePixel()
@@ -242,7 +250,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   RAB_Surface surface = RAB_GetGBufferSurface(threadIndex, false);
   vec3 diffuseLight = PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex].xyz;
   vec3 specularLight = PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex].xyz;
-  vec3 indirectLight = linearToGamma(diffuseLight + specularLight);
+  vec3 indirectLight = (diffuseLight + specularLight);
 
   Canvas canvas = Canvas.create(threadIndex, 2);
   ivec2 samplePixel = canvas.getSamplePixel();
@@ -254,6 +262,12 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   MinimalRayInteraction minimalRayInteraction = minimalRayInteractionReadFromGBuffer(
     originalPrimaryRay, samplePixel, PrimaryViewDirection, PrimaryConeRadius);
 
+  // Get visible point's cell color
+  uint jitter = 0;
+  int cellOffset = NEECache.pointToOffset(surface.minimalSurfaceInteraction.position, f16vec3(0), jitter);
+  NEECell cell = NEECache.getCell(cellOffset);
+  vec3 cellColor = vec3(uint3(cellOffset >> 10, cellOffset >> 5, cellOffset) & 31) / 31.0;
+
   // Debug views
   switch(cb.debugView)
   {
@@ -263,13 +277,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   case DEBUG_VIEW_NEE_CACHE_HASH_MAP:
     if (geometryFlags.primarySelectedIntegrationSurface)
     {
-      RAB_RandomSamplerState rtxdiRNG = RAB_InitRandomSampler(threadIndex, cb.frameIdx, 0);
-      uint jitter = 0;
-      int cellOffset = NEECache.pointToOffset(surface.minimalSurfaceInteraction.position, f16vec3(0), jitter);
-      NEECell cell = NEECache.getCell(cellOffset);
       canvas.drawBackground(indirectLight);
-
-      vec3 cellColor = vec3(uint3(cellOffset >> 10, cellOffset >> 5, cellOffset) & 31) / 31.0;
       canvas.m_backgroundColor = lerp(canvas.m_backgroundColor, cellColor, 0.5);
 
       NEECell sampleCell = NEECache.getCell(NEECache.pointToOffset(sampleSurface.minimalSurfaceInteraction.position, f16vec3(0), jitter));
@@ -342,6 +350,40 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
         }
       }
       storeInDebugView(ivec2(threadIndex), canvas.getFinalColor());
+    }
+    break;
+  case DEBUG_VIEW_NEE_CACHE_TRIANGLE_CANDIDATE:
+    if (geometryFlags.primarySelectedIntegrationSurface)
+    {
+      int4 surfacePrimitiveIndex = asint(readInDebugView(ivec2(threadIndex)));
+      uint2 resolution = cb.camera.resolution;
+      uint2 cursorPixel = args.mouseUV * resolution;
+      if (isCrossPixel(threadIndex, cursorPixel))
+      {
+        storeInDebugView(ivec2(threadIndex), vec3(1,1,0));
+      }
+      else
+      {
+        RAB_Surface cursorSurface = RAB_GetGBufferSurface(cursorPixel, false);
+
+        uint jitter = 0;
+        int cursorCellOffset = NEECache.pointToOffset(cursorSurface.minimalSurfaceInteraction.position, f16vec3(0), jitter);
+        NEECell cursorCell = NEECache.getCell(cursorCellOffset);      
+        float lightSelectionPDF = cursorCell.searchCandidate(surfacePrimitiveIndex.x, surfacePrimitiveIndex.y);
+
+        vec3 backgroundColor = indirectLight * linearToGamma(cellColor);
+        vec4 triangleColor = 0.0;
+        if(lightSelectionPDF > 0.5)
+        {
+          triangleColor = lerp(vec4(1,1,0,0.5), vec4(0,1,0,0.5), (lightSelectionPDF - 0.5) * 2.0);
+        }
+        else if (lightSelectionPDF > 0.0)
+        {
+          triangleColor = lerp(vec4(1,0,0,0.5), vec4(1,1,0,0.5), lightSelectionPDF * 2.0);
+        }
+        vec3 resultColor = lerp(backgroundColor, triangleColor.rgb, triangleColor.a);
+        storeInDebugView(ivec2(threadIndex), resultColor);
+      }
     }
     break;
   }

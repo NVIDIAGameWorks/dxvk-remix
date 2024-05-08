@@ -23,6 +23,11 @@
 
 #include "rtx/pass/common_binding_indices.h"
 
+struct VisualizeNeeArgs
+{
+  vec2 mouseUV;
+};
+
 // Inputs
 
 #define INTEGRATE_NEE_BINDING_SHARED_FLAGS_INPUT                   40

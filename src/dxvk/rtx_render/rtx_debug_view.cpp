@@ -160,6 +160,7 @@ namespace dxvk {
         {DEBUG_VIEW_NEE_CACHE_ACCUMULATE_MAP, "NEE Cache Accumulate Map"},
         {DEBUG_VIEW_NEE_CACHE_SAMPLE_RADIANCE, "NEE Cache Sample Radiance"},
         {DEBUG_VIEW_NEE_CACHE_TASK, "NEE Cache Task"},
+        {DEBUG_VIEW_NEE_CACHE_TRIANGLE_CANDIDATE, "NEE Cache Triangle Candidate"},
 
         {DEBUG_VIEW_RTXDI_GRADIENTS, "RTXDI Gradients"},
         {DEBUG_VIEW_RTXDI_CONFIDENCE, "RTXDI Confidence"},
