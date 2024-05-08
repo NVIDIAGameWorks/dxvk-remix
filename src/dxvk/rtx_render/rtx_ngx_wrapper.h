@@ -41,10 +41,16 @@
 // Do not disable this workaround without good reason to do so (e.g. implementing the Vulkan extension and testing to ensure no stutters exist).
 #define __DLFG_REFLEX_WORKAROUND 1
 
+// Note: Use __DLFG_QUEUE_INFO_CHECK to check for members on DxvkAdapterQueueInfos as it has
+// a mix of optional and non-optional types and needs this special logic rather than simply
+// checking if the queue family index is VK_QUEUE_FAMILY_IGNORED like was done originally.
 #if __DLFG_USE_GRAPHICS_QUEUE
 #define __DLFG_QUEUE graphics
+// Note: Graphics queue family does not require a check, should always be present.
+#define __DLFG_QUEUE_INFO_CHECK(x) (true)
 #else
 #define __DLFG_QUEUE present
+#define __DLFG_QUEUE_INFO_CHECK(x) (x.present.has_value())
 #endif
 
 // Forward declarations from NGX library.
