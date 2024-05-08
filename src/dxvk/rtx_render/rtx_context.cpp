@@ -171,7 +171,7 @@ namespace dxvk {
       m_triggerDelayedTerminate = true;
     }
 
-    m_prevRunningTime = std::chrono::system_clock::now();
+    m_prevRunningTime = std::chrono::steady_clock::now();
 
     checkOpacityMicromapSupport();
     checkShaderExecutionReorderingSupport();
@@ -193,23 +193,32 @@ namespace dxvk {
     return getCommonObjects()->getResources();
   }
 
-  // Returns wall time between calls to this in seconds
+  // Returns wall time between calls to this in milliseconds
   float RtxContext::getWallTimeSinceLastCall() {
-    auto currTime = std::chrono::system_clock::now();
+    // Note: steady_clock used to ensure monotonic time intervals, though this may be slightly suboptimal on some
+    // systems if high_resolution_clock is allowed to be something higher resolution. Usually though high_resolution_clock
+    // maps to steady_clock or system_clock, and steady clock usually has plenty of resolution for this sort if timing
+    // (on Windows for instance it uses QPC so it's as accurate as one can expect, whereas system clock wraps
+    // GetSystemTimePreciseAsFileTime due to needing to take into account NTP adjustments).
+    const auto currTime = std::chrono::steady_clock::now();
 
-    std::chrono::duration<float> elapsedSec = currTime - m_prevRunningTime;
+    // Note: Steady clock should be monotonic, so this should always be true.
+    assert(currTime >= m_prevRunningTime);
+
+    const std::chrono::duration<float, std::milli> elapsedMilliseconds = currTime - m_prevRunningTime;
+
     m_prevRunningTime = currTime;
 
-    return elapsedSec.count();
+    return elapsedMilliseconds.count();
   }
 
-  // Returns GPU idle time between calls to this in seconds
+  // Returns GPU idle time between calls to this in milliseconds
   float RtxContext::getGpuIdleTimeSinceLastCall() {
     uint64_t currGpuIdleTicks = m_device->getStatCounters().getCtr(DxvkStatCounter::GpuIdleTicks);
     uint64_t delta = currGpuIdleTicks - m_prevGpuIdleTicks;
     m_prevGpuIdleTicks = currGpuIdleTicks;
 
-    return (float)delta * 0.001f * 0.001f; // to secs
+    return static_cast<float>(delta) * 0.001f; // to milliseconds
   }
 
   VkExtent3D RtxContext::setDownscaleExtent(const VkExtent3D& upscaleExtent) {
@@ -428,8 +437,8 @@ namespace dxvk {
     
     ShaderManager::getInstance()->checkForShaderChanges();
 
-    const float frameTimeSecs = RtxOptions::Get()->timeDeltaBetweenFrames() == 0.f ? getWallTimeSinceLastCall() : RtxOptions::Get()->timeDeltaBetweenFrames();
-    const float gpuIdleTimeSecs = getGpuIdleTimeSinceLastCall();
+    const float frameTimeMilliseconds = RtxOptions::Get()->timeDeltaBetweenFrames() == 0.f ? getWallTimeSinceLastCall() : RtxOptions::Get()->timeDeltaBetweenFrames();
+    const float gpuIdleTimeMilliseconds = getGpuIdleTimeSinceLastCall();
 
     const bool isRaytracingEnabled = RtxOptions::Get()->enableRaytracing();
 
@@ -483,7 +492,7 @@ namespace dxvk {
       reflex.beginRendering(cachedReflexFrameId);
 
       // Update all the GPU buffers needed to describe the scene
-      getSceneManager().prepareSceneData(this, m_execBarriers, frameTimeSecs);
+      getSceneManager().prepareSceneData(this, m_execBarriers, frameTimeMilliseconds);
       
       // If we really don't have any RT to do, just bail early (could be UI/menus rendering)
       if (getSceneManager().getSurfaceBuffer() != nullptr) {
@@ -501,7 +510,7 @@ namespace dxvk {
         rtOutput.m_primaryScreenSpaceMotionVector = rtOutput.m_primaryScreenSpaceMotionVectorQueue.get();
 
         // Generate ray tracing constant buffer
-        updateRaytraceArgsConstantBuffer(rtOutput, frameTimeSecs, downscaledExtent, targetImage->info().extent);
+        updateRaytraceArgsConstantBuffer(rtOutput, frameTimeMilliseconds, downscaledExtent, targetImage->info().extent);
 
         // Volumetric Lighting
         dispatchVolumetrics(rtOutput);
@@ -528,7 +537,7 @@ namespace dxvk {
         }
 
         // Denoising
-        dispatchDenoise(rtOutput, frameTimeSecs);
+        dispatchDenoise(rtOutput, frameTimeMilliseconds);
 
         // Note: Primary direct diffuse/specular radiance textures denoised but in a still demodulated state after denoising step.
         if (captureScreenImage && captureDebugImage) {
@@ -553,10 +562,10 @@ namespace dxvk {
           // xxxnsubtil: the DLSS indicator reads our exposure texture even with DLSS autoexposure on
           // make sure it has been created, otherwise we run into trouble on the first frame
           m_common->metaAutoExposure().createResources(this);
-          dispatchDLSS(rtOutput, frameTimeSecs);
+          dispatchDLSS(rtOutput, frameTimeMilliseconds);
         } else if (m_currentUpscaler == InternalUpscaler::DLSS_RR) {
           m_common->metaAutoExposure().createResources(this);
-          dispatchRayReconstruction(rtOutput, frameTimeSecs);
+          dispatchRayReconstruction(rtOutput, frameTimeMilliseconds);
         } else if (m_currentUpscaler == InternalUpscaler::NIS) {
           dispatchNIS(rtOutput);
         } else if (m_currentUpscaler == InternalUpscaler::TAAU){
@@ -580,7 +589,7 @@ namespace dxvk {
         // WAR for TREX-553 - disable sRGB conversion as NVTT implicitly applies it during dds->png
         // conversion for 16bit float formats
         const bool performSRGBConversion = !captureScreenImage && g_allowSrgbConversionForOutput;
-        dispatchToneMapping(rtOutput, performSRGBConversion, frameTimeSecs);
+        dispatchToneMapping(rtOutput, performSRGBConversion, frameTimeMilliseconds);
 
         if (captureScreenImage) {
           if (m_common->metaDebugView().debugViewIdx() == DEBUG_VIEW_DISABLED)
@@ -632,7 +641,7 @@ namespace dxvk {
     getSceneManager().clearFogState();
 
     // Update stats
-    updateMetrics(frameTimeSecs, gpuIdleTimeSecs);
+    updateMetrics(frameTimeMilliseconds, gpuIdleTimeMilliseconds);
 
     m_resetHistory = false;
   }
@@ -678,10 +687,10 @@ namespace dxvk {
     }
   }
 
-  void RtxContext::updateMetrics(const float frameTimeSecs, const float gpuIdleTimeSecs) const {
+  void RtxContext::updateMetrics(const float frameTimeMilliseconds, const float gpuIdleTimeMilliseconds) const {
     ScopedCpuProfileZone();
-    Metrics::log(Metric::average_frame_time, frameTimeSecs * 1000); // In milliseconds
-    Metrics::log(Metric::gpu_idle_ticks, gpuIdleTimeSecs * 1000); // In milliseconds
+    Metrics::log(Metric::average_frame_time, frameTimeMilliseconds); // In milliseconds
+    Metrics::log(Metric::gpu_idle_ticks, gpuIdleTimeMilliseconds); // In milliseconds
     uint64_t vidUsageMib = 0;
     uint64_t sysUsageMib = 0;
     // Calc memory usage
@@ -803,7 +812,7 @@ namespace dxvk {
     }
   }
 
-  void RtxContext::updateRaytraceArgsConstantBuffer(Resources::RaytracingOutput& rtOutput, float frameTimeSecs,
+  void RtxContext::updateRaytraceArgsConstantBuffer(Resources::RaytracingOutput& rtOutput, float frameTimeMilliseconds,
                                                     const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent) {
     ScopedCpuProfileZone();
     // Prepare shader arguments
@@ -983,7 +992,7 @@ namespace dxvk {
     constants.boilingFilterLowerThreshold = restirGI.boilingFilterMinThreshold();
     constants.boilingFilterHigherThreshold = restirGI.boilingFilterMaxThreshold();
     constants.boilingFilterRemoveReservoirThreshold = restirGI.boilingFilterRemoveReservoirThreshold();
-    constants.temporalHistoryLength = restirGI.getTemporalHistoryLength(frameTimeSecs * 1000.0);
+    constants.temporalHistoryLength = restirGI.getTemporalHistoryLength(frameTimeMilliseconds);
     constants.permutationSamplingSize = restirGI.permutationSamplingSize();
     constants.enableReSTIRGIDLSSRRCompatibilityMode = useRR ? restirGI.useDLSSRRCompatibilityMode() : 0;
     constants.reSTIRGIDLSSRRTemporalRandomizationRadius = constants.camera.resolution.x / 960.0f * restirGI.DLSSRRTemporalRandomizationRadius();
@@ -1247,7 +1256,7 @@ namespace dxvk {
     neeCache.dispatch(this, rtOutput);
   }
 
-  void RtxContext::dispatchDenoise(const Resources::RaytracingOutput& rtOutput, float frameTimeSecs) {
+  void RtxContext::dispatchDenoise(const Resources::RaytracingOutput& rtOutput, float frameTimeMilliseconds) {
     auto& rayReconstruction = getCommonObjects()->metaRayReconstruction();
 
     // Primary direct denoiser used for primary direct lighting when separated, otherwise a special combined direct+indirect denoiser is used when both direct and indirect signals are combined.
@@ -1320,7 +1329,7 @@ namespace dxvk {
       denoiseInput.linearViewZ = &rtOutput.m_primaryLinearViewZ;
       denoiseInput.motionVector = &rtOutput.m_primaryVirtualMotionVector;
       denoiseInput.disocclusionThresholdMix = &rtOutput.m_primaryDisocclusionThresholdMix;
-      denoiseInput.frameTimeMs = frameTimeSecs * 1000.f;
+      denoiseInput.frameTimeMs = frameTimeMilliseconds;
       denoiseInput.reset = m_resetHistory;
 
       if(RtxOptions::Get()->useRTXDI() && m_common->metaRtxdiRayQuery().getEnableDenoiserConfidence())
@@ -1348,7 +1357,7 @@ namespace dxvk {
       denoiseInput.linearViewZ = &rtOutput.m_primaryLinearViewZ;
       denoiseInput.motionVector = &rtOutput.m_primaryVirtualMotionVector;
       denoiseInput.disocclusionThresholdMix = &rtOutput.m_primaryDisocclusionThresholdMix;
-      denoiseInput.frameTimeMs = frameTimeSecs * 1000.f;
+      denoiseInput.frameTimeMs = frameTimeMilliseconds;
       denoiseInput.reset = m_resetHistory;
 
       DxvkDenoise::Output denoiseOutput;
@@ -1371,7 +1380,7 @@ namespace dxvk {
       denoiseInput.normal_roughness = &rtOutput.m_secondaryVirtualWorldShadingNormalPerceptualRoughnessDenoising;
       denoiseInput.linearViewZ = &rtOutput.m_secondaryLinearViewZ;
       denoiseInput.motionVector = &rtOutput.m_secondaryVirtualMotionVector.resource(Resources::AccessType::Read);
-      denoiseInput.frameTimeMs = frameTimeSecs * 1000.f;
+      denoiseInput.frameTimeMs = frameTimeMilliseconds;
       denoiseInput.reset = m_resetHistory;
 
       DxvkDenoise::Output denoiseOutput;
@@ -1382,14 +1391,14 @@ namespace dxvk {
     }
   }
 
-  void RtxContext::dispatchDLSS(const Resources::RaytracingOutput& rtOutput, float frameTimeSecs) {
+  void RtxContext::dispatchDLSS(const Resources::RaytracingOutput& rtOutput, float frameTimeMilliseconds) {
     DxvkDLSS& dlss = m_common->metaDLSS();
     dlss.dispatch(this, m_execBarriers, rtOutput, m_resetHistory);
   }
 
-  void RtxContext::dispatchRayReconstruction(const Resources::RaytracingOutput& rtOutput, float frameTimeSecs) {
+  void RtxContext::dispatchRayReconstruction(const Resources::RaytracingOutput& rtOutput, float frameTimeMilliseconds) {
     DxvkRayReconstruction& rayReconstruction = m_common->metaRayReconstruction();
-    rayReconstruction.dispatch(this, m_execBarriers, rtOutput, m_resetHistory, frameTimeSecs);
+    rayReconstruction.dispatch(this, m_execBarriers, rtOutput, m_resetHistory, frameTimeMilliseconds);
   }
 
   void RtxContext::dispatchNIS(const Resources::RaytracingOutput& rtOutput) {
@@ -1439,7 +1448,7 @@ namespace dxvk {
       rtOutput, settings);
   }
 
-  void RtxContext::dispatchToneMapping(const Resources::RaytracingOutput& rtOutput, bool performSRGBConversion, const float deltaTime) {
+  void RtxContext::dispatchToneMapping(const Resources::RaytracingOutput& rtOutput, bool performSRGBConversion, const float frameTimeMilliseconds) {
     ScopedCpuProfileZone();
 
     if (m_common->metaDebugView().debugViewIdx() == DEBUG_VIEW_PRE_TONEMAP_OUTPUT)
@@ -1449,16 +1458,16 @@ namespace dxvk {
     this->spillRenderPass(false);
     this->unbindComputePipeline();
 
-    float adjustedDeltaTime = deltaTime;
+    float adjustedFrameTimeMilliseconds = frameTimeMilliseconds;
     if (NrdSettings::getTimeDeltaBetweenFrames() > 0) {
-      adjustedDeltaTime = NrdSettings::getTimeDeltaBetweenFrames();
+      adjustedFrameTimeMilliseconds = NrdSettings::getTimeDeltaBetweenFrames();
     }
-    adjustedDeltaTime = std::max(0.f, adjustedDeltaTime);
+    adjustedFrameTimeMilliseconds = std::max(0.f, adjustedFrameTimeMilliseconds);
 
     DxvkAutoExposure& autoExposure = m_common->metaAutoExposure();    
     autoExposure.dispatch(this, 
       getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER),
-      rtOutput, adjustedDeltaTime, performSRGBConversion);
+      rtOutput, adjustedFrameTimeMilliseconds, performSRGBConversion);
 
     // We don't reset history for tonemapper on m_resetHistory for easier comparison when toggling raytracing modes.
     // The tone curve shouldn't be too different between raytracing modes, 
@@ -1469,14 +1478,14 @@ namespace dxvk {
       toneMapper.dispatch(this, 
         getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER),
         autoExposure.getExposureTexture().view,
-        rtOutput, adjustedDeltaTime, performSRGBConversion, autoExposure.enabled());
+        rtOutput, adjustedFrameTimeMilliseconds, performSRGBConversion, autoExposure.enabled());
     }
     DxvkLocalToneMapping& localTonemapper = m_common->metaLocalToneMapping();
     if (localTonemapper.shouldDispatch()){
       localTonemapper.dispatch(this,
         getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE),
         autoExposure.getExposureTexture().view,
-        rtOutput, adjustedDeltaTime, performSRGBConversion, autoExposure.enabled());
+        rtOutput, adjustedFrameTimeMilliseconds, performSRGBConversion, autoExposure.enabled());
     }
   }
 

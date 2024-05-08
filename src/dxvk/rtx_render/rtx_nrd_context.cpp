@@ -877,6 +877,7 @@ namespace dxvk {
       commonSettings.motionVectorScale[2] = commonSettings.motionVectorScale[1]; // Enable 2.5D Motion Vector in NRD, we use the scale that matches previous default NRD scale on Z (mv = mv.xyz * mvScale.xyy)
       commonSettings.cameraJitter[0] = jitterVec[0] / (float)m_settings.m_methodDesc.fullResolutionWidth;
       commonSettings.cameraJitter[1] = jitterVec[1] / (float)m_settings.m_methodDesc.fullResolutionHeight;
+      // Note: timeDeltaBetweenFrames is in milliseconds, as specified by NRD. If set to 0, NRD will track the time itself.
       commonSettings.timeDeltaBetweenFrames = m_settings.m_groupedSettings.timeDeltaBetweenFrames != 0 
         ? m_settings.m_groupedSettings.timeDeltaBetweenFrames : inputs.frameTimeMs;
       commonSettings.frameIndex = device()->getCurrentFrameId();

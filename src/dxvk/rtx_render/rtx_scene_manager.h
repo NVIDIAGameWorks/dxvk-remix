@@ -195,7 +195,7 @@ public:
   // ISceneManager but not really
   void clear(Rc<DxvkContext> ctx, bool needWfi);
   void garbageCollection();
-  void prepareSceneData(Rc<RtxContext> ctx, class DxvkBarrierSet& execBarriers, const float frameTimeSecs);
+  void prepareSceneData(Rc<RtxContext> ctx, class DxvkBarrierSet& execBarriers, const float frameTimeMilliseconds);
 
   void onFrameEnd(Rc<DxvkContext> ctx);
   void onFrameEndNoRTX();

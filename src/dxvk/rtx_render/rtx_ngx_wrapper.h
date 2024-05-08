@@ -226,7 +226,7 @@ namespace dxvk {
       float jitterOffset[2];
       float motionVectorScale[2];
       bool autoExposure;
-      float frameTimeSecs;
+      float frameTimeMilliseconds;
     };
 
     static NGXRayReconstructionContext* getInstance(DxvkDevice* device);

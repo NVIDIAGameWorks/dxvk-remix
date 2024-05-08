@@ -127,7 +127,7 @@ namespace dxvk {
     void bindCommonRayTracingResources(const Resources::RaytracingOutput& rtOutput);
 
     void getDenoiseArgs(NrdArgs& outPrimaryDirectNrdArgs, NrdArgs& outPrimaryIndirectNrdArgs, NrdArgs& outSecondaryNrdArgs);
-    void updateRaytraceArgsConstantBuffer(Resources::RaytracingOutput& rtOutput, float frameTimeSecs,
+    void updateRaytraceArgsConstantBuffer(Resources::RaytracingOutput& rtOutput, float frameTimeMilliseconds,
                                           const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent);
 
     D3D9RtxVertexCaptureData& allocAndMapVertexCaptureConstantBuffer();
@@ -171,9 +171,9 @@ namespace dxvk {
     void dispatchPathTracing(const Resources::RaytracingOutput& rtOutput);
     void dispatchDemodulate(const Resources::RaytracingOutput& rtOutput);
     void dispatchNeeCache(const Resources::RaytracingOutput& rtOutput);
-    void dispatchDLSS(const Resources::RaytracingOutput& rtOutput, float frameTimeSecs);
-    void dispatchRayReconstruction(const Resources::RaytracingOutput& rtOutput, float frameTimeSecs);
-    void dispatchDenoise(const Resources::RaytracingOutput& rtOutput, float frameTimeSecs);
+    void dispatchDLSS(const Resources::RaytracingOutput& rtOutput, float frameTimeMilliseconds);
+    void dispatchRayReconstruction(const Resources::RaytracingOutput& rtOutput, float frameTimeMilliseconds);
+    void dispatchDenoise(const Resources::RaytracingOutput& rtOutput, float frameTimeMilliseconds);
     void dispatchComposite(const Resources::RaytracingOutput& rtOutput);
     void dispatchReplaceCompositeWithDebugView(const Resources::RaytracingOutput& rtOutput);
     void dispatchNIS(const Resources::RaytracingOutput& rtOutput);
@@ -184,7 +184,7 @@ namespace dxvk {
     void dispatchDebugView(Rc<DxvkImage>& srcImage, const Resources::RaytracingOutput& rtOutput, bool captureScreenImage);
     void dispatchObjectPicking(Resources::RaytracingOutput& rtOutput, const VkExtent3D& srcExtent, const VkExtent3D& targetExtent);
     void dispatchDLFG();
-    void updateMetrics(const float frameTimeSecs, const float gpuIdleTimeSecs) const;
+    void updateMetrics(const float frameTimeMilliseconds, const float gpuIdleTimeSecs) const;
 
     void rasterizeToSkyMatte(const DrawParameters& params, const DrawCallState& drawCallState);
     void initSkyProbe();
@@ -224,7 +224,7 @@ namespace dxvk {
 
     bool m_resetHistory = true;    // Discards use of temporal data in passes
 
-    std::chrono::time_point<std::chrono::system_clock> m_prevRunningTime;
+    std::chrono::time_point<std::chrono::steady_clock> m_prevRunningTime;
     uint64_t m_prevGpuIdleTicks;
 
     bool m_screenshotFrameEnabled = false;

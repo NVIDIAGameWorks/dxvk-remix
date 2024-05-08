@@ -62,7 +62,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.antiCulling.object.numObjectsToKeep|int|10000|The maximum number of RayTracing instances to keep when Anti\-Culling is enabled\.|
 |rtx.applicationId|int|102100511|Used to uniquely identify the application to DLSS\. Generally should not be changed without good reason\.|
 |rtx.asyncTextureUploadPreloadMips|int|8||
-|rtx.autoExposure.autoExposureSpeed|float|5|Average exposure changing speed when the image changes\.|
+|rtx.autoExposure.autoExposureSpeed|float|5|Average exposure changing speed \(in units per second\) when the image changes\.|
 |rtx.autoExposure.centerMeteringSize|float|0.5|The importance of pixels around the screen center\.|
 |rtx.autoExposure.enabled|bool|True|Automatically adjusts exposure so that the image won't be too bright or too dark\.|
 |rtx.autoExposure.evMaxValue|float|5|Min/Max values tuned by moving from bright/dark locations in game, and adjusting until they look correct\.|
@@ -144,7 +144,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.demodulate.enableDirectLightBoilingFilter|bool|True|Boiling filter removing direct light sample when its luminance is too high\.|
 |rtx.denoiseDirectAndIndirectLightingSeparately|bool|True|Denoising quality, high uses separate denoising of direct and indirect lighting for higher quality at the cost of performance\.|
 |rtx.denoiser.maxDirectHitTContribution|float|-1||
-|rtx.denoiser.nrd.timeDeltaBetweenFrames|float|0|Frame time to use for denoising\. Setting this to 0 will use actual frame time for a given frame\. Non\-zero value is primarily used for automation to ensure image output determinism\.|
+|rtx.denoiser.nrd.timeDeltaBetweenFrames|float|0|Frame time in milliseconds to use for denoising\. Setting this to 0 will use actual frame time for a given frame\. Non\-zero value is primarily used for automation to ensure image output determinism\.|
 |rtx.denoiserIndirectMode|int|16||
 |rtx.denoiserMode|int|16||
 |rtx.di.confidenceGradientPower|float|8||
@@ -625,7 +625,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.terrainBaker.material.replacementSupportInPS_programmableShaders|bool|True|\[Experimental\] Enables reading of secondary PBR replacement textures in pixel shaders for games with programmable graphics pipelines\."When set to false, an extra compute shader is used to preproces the secondary textures to make them compatible at an expense of performance and quality instead\.<br>This parameter must be set at launch to apply\. The current support for this is limitted to draw calls with programmable shaders with Shader Model 1\.0 only\.<br>Draw calls with Shader Model 2\.0\+ will use the preprocessing compute pass\.|
 |rtx.texturemanager.budgetPercentageOfAvailableVram|int|50|The percentage of available VRAM we should use for material textures\.  If material textures are required beyond this budget, then those textures will be loaded at lower quality\.  Important note, it's impossible to perfectly match the budget while maintaining reasonable quality levels, so use this as more of a guideline\.  If the replacements assets are simply too large for the target GPUs available vid mem, we may end up going overbudget regularly\.  Defaults to 50% of the available VRAM\.|
 |rtx.texturemanager.showProgress|bool|False|Show texture loading progress in the HUD\.|
-|rtx.timeDeltaBetweenFrames|float|0|Frame time delta to use during scene processing\. Setting this to 0 will use actual frame time delta for a given frame\. Non\-zero value is primarily used for automation to ensure determinism run to run\.|
+|rtx.timeDeltaBetweenFrames|float|0|Frame time delta in milliseconds to use for rendering\.<br>Setting this to 0 will use actual frame time delta for a given frame\. Non\-zero value allows the actual time delta to be overridden and is primarily used for automation to ensure determinism run to run without variance due to frame time fluctuations\.|
 |rtx.tonemap.colorBalance|float3|1, 1, 1|The color tint to apply after tonemapping when color grading is enabled for the tonemapper \(rtx\.tonemap\.colorGradingEnabled\)\. Values should be in the range \[0, 1\]\.|
 |rtx.tonemap.colorGradingEnabled|bool|False|A flag to enable or disable color grading after the global tonemapper's tonemapping pass, but before gamma correction and dithering \(if enabled\)\.|
 |rtx.tonemap.contrast|float|1|The contrast adjustment to apply after tonemapping when color grading is enabled for the tonemapper \(rtx\.tonemap\.colorGradingEnabled\)\. Values should be in the range \[0, 1\]\.|

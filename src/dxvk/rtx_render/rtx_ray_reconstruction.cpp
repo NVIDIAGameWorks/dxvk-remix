@@ -125,7 +125,7 @@ namespace dxvk {
       DxvkBarrierSet& barriers,
       const Resources::RaytracingOutput& rtOutput,
       bool resetHistory,
-      float frameTimeSecs) {
+      float frameTimeMilliseconds) {
     ScopedGpuProfileZone(ctx, "Ray Reconstruction");
 
     if (!useRayReconstruction()) {
@@ -309,7 +309,7 @@ namespace dxvk {
       settings.motionVectorScale[0] = motionVectorScale[0];
       settings.motionVectorScale[1] = motionVectorScale[1];
       settings.autoExposure = mAutoExposure;
-      settings.frameTimeSecs = frameTimeSecs;
+      settings.frameTimeMilliseconds = frameTimeMilliseconds;
 
       ngxInstance->evaluateRayReconstruction(ctx, buffers, settings);
 

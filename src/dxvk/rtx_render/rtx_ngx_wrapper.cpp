@@ -758,7 +758,7 @@ namespace dxvk
     evalParams_DLDN.InMVScaleX = settings.motionVectorScale[0];
     evalParams_DLDN.InMVScaleY = settings.motionVectorScale[1];
     evalParams_DLDN.InRenderSubrectDimensions = { inWidth, inHeight };
-    evalParams_DLDN.InFrameTimeDeltaInMsec = settings.frameTimeSecs * 1000.0f;
+    evalParams_DLDN.InFrameTimeDeltaInMsec = settings.frameTimeMilliseconds;
     evalParams_DLDN.pInWorldToViewMatrix = (float*) m_worldToViewMatrix.data;
     evalParams_DLDN.pInViewToClipMatrix = (float*) m_viewToProjectionMatrix.data;
     evalParams_DLDN.pInSpecularHitDistance = buffers.pHitDistance ? &hitDistanceResource : nullptr;

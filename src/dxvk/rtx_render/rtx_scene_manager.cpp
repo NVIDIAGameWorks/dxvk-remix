@@ -1280,7 +1280,7 @@ namespace dxvk {
     }
   }
 
-  void SceneManager::prepareSceneData(Rc<RtxContext> ctx, DxvkBarrierSet& execBarriers, const float frameTimeSecs) {
+  void SceneManager::prepareSceneData(Rc<RtxContext> ctx, DxvkBarrierSet& execBarriers, const float frameTimeMilliseconds) {
     ScopedGpuProfileZone(ctx, "Build Scene");
 
     // Needs to happen before garbageCollection to avoid destroying dynamic lights
@@ -1301,7 +1301,7 @@ namespace dxvk {
       return;
     }
 
-    m_rayPortalManager.prepareSceneData(ctx, frameTimeSecs);
+    m_rayPortalManager.prepareSceneData(ctx, frameTimeMilliseconds);
     // Note: only main camera needs to be teleportation corrected as only that one is used for ray tracing & denoising
     m_rayPortalManager.fixCameraInBetweenPortals(m_cameraManager.getCamera(CameraType::Main));
     m_rayPortalManager.fixCameraInBetweenPortals(m_cameraManager.getCamera(CameraType::ViewModel));
@@ -1345,7 +1345,7 @@ namespace dxvk {
     m_instanceManager.createViewModelInstances(ctx, m_cameraManager, m_rayPortalManager);
     m_instanceManager.createPlayerModelVirtualInstances(ctx, m_cameraManager, m_rayPortalManager);
 
-    m_accelManager.mergeInstancesIntoBlas(ctx, execBarriers, textureManager.getTextureTable(), m_cameraManager, m_instanceManager, m_opacityMicromapManager.get(), frameTimeSecs);
+    m_accelManager.mergeInstancesIntoBlas(ctx, execBarriers, textureManager.getTextureTable(), m_cameraManager, m_instanceManager, m_opacityMicromapManager.get(), frameTimeMilliseconds);
 
     // Call on the other managers to prepare their GPU data for the current scene
     m_accelManager.prepareSceneData(ctx, execBarriers, m_instanceManager);
@@ -1457,7 +1457,7 @@ namespace dxvk {
     if (m_device->getCurrentFrameId() == m_beginUsdExportFrameNum) {
       capturer->triggerNewCapture();
     }
-    capturer->step(ctx, frameTimeSecs, ctx->getCommonObjects()->getLastKnownWindowHandle());
+    capturer->step(ctx, frameTimeMilliseconds, ctx->getCommonObjects()->getLastKnownWindowHandle());
 
     // Clear the ray portal data before the next frame
     m_rayPortalManager.clear();
