@@ -98,6 +98,7 @@ namespace dxvk {
           "James Horsley 'mmdanggg2'",
           "Friedrich 'pixelcluster' Vock",
           "Dayton 'watbulb'",
+          "Ethan 'Xenthio' Cardwell",
       }},
       { "Engineering",
         { "Riley Alston",
