@@ -21,6 +21,8 @@
 */
 #pragma once
 
+#include <optional>
+
 #include "dxvk_device_info.h"
 #include "dxvk_extensions.h"
 #include "dxvk_include.h"
@@ -80,6 +82,28 @@ namespace dxvk {
     uint32_t present = VK_QUEUE_FAMILY_IGNORED;
     // NV-DXVK end
   };
+
+  // NV-DXVK begin: General Queue Allocation Improvements
+  /**
+   * \brief Queue family and (clamped) queue indices within families for a single queue
+   */
+  struct DxvkAdapterQueueInfo {
+    std::uint32_t queueFamilyIndex;
+    std::uint32_t queueIndex;
+  };
+
+  /**
+   * \brief Queue family and (clamped) queue indices within families for all queues
+   */
+  struct DxvkAdapterQueueInfos {
+    // Note: Graphics/transfer queues are required, rest are optional.
+    DxvkAdapterQueueInfo graphics{};
+    DxvkAdapterQueueInfo transfer{};
+    std::optional<DxvkAdapterQueueInfo> asyncCompute{};
+    std::optional<DxvkAdapterQueueInfo> opticalFlow{};
+    std::optional<DxvkAdapterQueueInfo> present{};
+  };
+  // NV-DXVK end
   
   /**
    * \brief DXVK adapter
@@ -199,7 +223,7 @@ namespace dxvk {
      * \returns Indices for all queue families
      */
     DxvkAdapterQueueIndices findQueueFamilies() const;
-    
+
     /**
      * \brief Tests whether all required features are supported
      * 
