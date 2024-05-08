@@ -141,8 +141,12 @@ namespace dxvk {
       VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT,
       VK_QUEUE_TRANSFER_BIT);
 
-    if (transferQueue == VK_QUEUE_FAMILY_IGNORED)
+    if (transferQueue == VK_QUEUE_FAMILY_IGNORED) {
+      // Note: Transfer queue is always supported on a queue reporting graphics or compute
+      // capability, and implementations are not required to explicitly indicate transfer
+      // queue support making this fallback important.
       transferQueue = computeQueue;
+    }
 
     DxvkAdapterQueueIndices queues;
     queues.graphics = graphicsQueue;
@@ -419,7 +423,7 @@ namespace dxvk {
       // NV-DXVK end
 
       // NV-DXVK start: Provide error code on exception
-      throw DxvkErrorWithId(REMIXAPI_ERROR_CODE_HRESULT_NO_REQUIRED_GPU_FEATURES, "DxvkAdapter: Failed to create device");
+      throw DxvkErrorWithId(REMIXAPI_ERROR_CODE_HRESULT_NO_REQUIRED_GPU_FEATURES, "DxvkAdapter: Failed to create device, device does not support all required extensions.");
       // NV-DXVK end
     }
 
@@ -501,7 +505,7 @@ namespace dxvk {
       if (!RtxIoExtensionProvider::s_instance.getDeviceFeatures(m_handle, enabledFeatures)) {
         Logger::err("Physical device does not support features required to enable RTX IO.");
         // NV-DXVK start: Provide error code on exception
-        throw DxvkErrorWithId(REMIXAPI_ERROR_CODE_HRESULT_NO_REQUIRED_GPU_FEATURES, "DxvkAdapter: Failed to create device");
+        throw DxvkErrorWithId(REMIXAPI_ERROR_CODE_HRESULT_NO_REQUIRED_GPU_FEATURES, "DxvkAdapter: Failed to create device, device does not support required RTX IO extensions (and RTX IO is enabled).");
         // NV-DXVK end
       }
     }
@@ -665,7 +669,7 @@ namespace dxvk {
         messageBox(minDriverCheckDialogMessage.c_str(), "RTX Remix - Driver Compatibility Error!", MB_OK);
 
         // NV-DXVK start: Provide error code on exception
-        throw DxvkErrorWithId(REMIXAPI_ERROR_CODE_HRESULT_DRIVER_VERSION_BELOW_MINIMUM, "DxvkAdapter: Failed to create device");
+        throw DxvkErrorWithId(REMIXAPI_ERROR_CODE_HRESULT_DRIVER_VERSION_BELOW_MINIMUM, "DxvkAdapter: Failed to create device, driver version below minimum required.");
         // NV-DXVK end
       }
     }
@@ -687,46 +691,114 @@ namespace dxvk {
     }
     // NV-DXVK end
 
-    // Create the requested queues
-    uint32_t numQueuePriorities = 0;
-    std::vector<VkDeviceQueueCreateInfo> queueInfos;
+    // NV-DXVK begin: DLFG integration + RTXIO + General Queue Searching/Allocation Improvements
+    // Find desired queue families
 
-    // NV-DXVK begin: DLFG integration + RTXIO
-    std::map<uint32_t, uint32_t> queueCounts; // maps queue family indices to a count of queues for that family
-
-    DxvkAdapterQueueIndices queueFamilies = findQueueFamilies();
-    numQueuePriorities = std::max(numQueuePriorities, ++queueCounts[queueFamilies.graphics]);
-    numQueuePriorities = std::max(numQueuePriorities, ++queueCounts[queueFamilies.transfer]);
-
-    if (queueFamilies.asyncCompute != VK_QUEUE_FAMILY_IGNORED) {
-      numQueuePriorities = std::max(numQueuePriorities, ++queueCounts[queueFamilies.asyncCompute]);
-    }
-
-    if (queueFamilies.opticalFlow != VK_QUEUE_FAMILY_IGNORED) {
-      numQueuePriorities = std::max(numQueuePriorities, ++queueCounts[queueFamilies.opticalFlow]);
-    }
-
-    if (queueFamilies.present != VK_QUEUE_FAMILY_IGNORED) {
-      numQueuePriorities = std::max(numQueuePriorities, ++queueCounts[queueFamilies.present]);
-    }
-
-    std::vector<float> queuePriorities(numQueuePriorities);
-    std::fill(queuePriorities.begin(), queuePriorities.end(), 1.0f);
+    const DxvkAdapterQueueIndices queueFamilies = findQueueFamilies();
 
     this->logQueueFamilies(queueFamilies);
 
-    for (auto queueInfo : queueCounts) {
-      uint32_t queueFamily = queueInfo.first;
-      uint32_t queueCount = queueInfo.second;
+    // Ensure the graphics queue family is present
+    // Note: This must be done as while Vulkan does require at least one queue family (as per the documentation of
+    // vkGetPhysicalDeviceQueueFamilyProperties), it says nothing that requires it to be a graphics family.
+    // Remix (and DXVK really) require a graphics family to be present, so lacking this should result in an error.
+
+    if (queueFamilies.graphics == VK_QUEUE_FAMILY_IGNORED) {
+      Logger::err("Unable to find a suitable graphics queue family on the physical device.");
+
+      throw DxvkErrorWithId(REMIXAPI_ERROR_CODE_HRESULT_GRAPHICS_QUEUE_FAMILY_MISSING, "DxvkAdapter: Failed to create device, required graphics queue family is not present on the physical device.");
+    }
+
+    // Calculate desired queue counts and queue indices
+
+    DxvkAdapterQueueInfos queueInfos{};
+    // Note: Maps queue family indices to a count of queues desired for that family. Note that just because a count
+    // is desired does not mean that many will be available, actual queue allocations will be capped by the queue family's
+    // queue count later, and this must be taken into account when getting queues by index from the device later.
+    std::vector<std::uint32_t> desiredQueueCounts(m_queueFamilies.size());
+    std::uint32_t maxDesiredQueueIndex{ 0 };
+
+    const auto handleQueueFamily = [this, &desiredQueueCounts, &maxDesiredQueueIndex](
+      std::uint32_t queueFamily,
+      auto & queueInfo
+    ) {
+      assert(queueFamily != VK_QUEUE_FAMILY_IGNORED);
+
+      const auto& queueFamilyProperties = m_queueFamilies[queueFamily];
+      const auto desiredQueueIndex = desiredQueueCounts[queueFamily]++;
+
+      maxDesiredQueueIndex = std::max(maxDesiredQueueIndex, desiredQueueIndex);
+
+      // Note: Desired queue index modded by the queue count for the given family to spread
+      // queue usage evenly among the available queues (rather than just clamping to the
+      // last index or something).
+      const auto remappedQueueIndex = desiredQueueIndex % queueFamilyProperties.queueCount;
+
+      assert(remappedQueueIndex < queueFamilyProperties.queueCount);
+
+      // Note: queueInfo here may either be the queue info itself or an optional, it is passed
+      // generically into the lambda so that assigning here can work for both cases.
+      queueInfo = DxvkAdapterQueueInfo{ queueFamily, remappedQueueIndex };
+    };
+
+    // Note: Graphics and transfer queues are required for base functionality. If a graphics queue is
+    // present a transfer queue always should be, so this should be covered by the check for a graphics
+    // queue family earlier already.
+    handleQueueFamily(queueFamilies.graphics, queueInfos.graphics);
+    handleQueueFamily(queueFamilies.transfer, queueInfos.transfer);
+
+    if (queueFamilies.asyncCompute != VK_QUEUE_FAMILY_IGNORED) {
+      handleQueueFamily(queueFamilies.asyncCompute, queueInfos.asyncCompute);
+    }
+
+    if (queueFamilies.opticalFlow != VK_QUEUE_FAMILY_IGNORED) {
+      handleQueueFamily(queueFamilies.opticalFlow, queueInfos.opticalFlow);
+    }
+
+    if (queueFamilies.present != VK_QUEUE_FAMILY_IGNORED) {
+      handleQueueFamily(queueFamilies.present, queueInfos.present);
+    }
+
+    // Create the requested queues
+
+    std::vector<VkDeviceQueueCreateInfo> queueCreateInfos{};
+
+    queueCreateInfos.reserve(m_queueFamilies.size());
+
+    // Note: +1 needed as this is a maximum index, not a count.
+    std::vector<float> queuePriorities(maxDesiredQueueIndex + 1);
+    std::fill(queuePriorities.begin(), queuePriorities.end(), 1.0f);
+
+    for (std::uint32_t queueFamily = 0; queueFamily < m_queueFamilies.size(); ++queueFamily) {
+      const auto& queueFamilyProperties = m_queueFamilies[queueFamily];
+      const auto desiredQueueCount = desiredQueueCounts[queueFamily];
+
+      // Note: Skip creating queues for this family if no queues are desired.
+      if (desiredQueueCount == 0) {
+        continue;
+      }
+
+      // Clamp the desired queue count to the maximum number of queues the queue family allows
+
+      // Note: Ensure the queue family actually allows for allocation of any queues as at least one
+      // needs to be allocated. Vulkan requires that the returned properties support at least one queue
+      // as well, so this should always be true.
+      assert(queueFamilyProperties.queueCount > 0);
+
+      const auto clampedQueueCount = std::min(desiredQueueCount, queueFamilyProperties.queueCount);
+
+      // Add the queue creation info to the buffer
+
+      assert(queuePriorities.size() >= clampedQueueCount);
       
-      VkDeviceQueueCreateInfo graphicsQueue;
-      graphicsQueue.sType             = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-      graphicsQueue.pNext             = nullptr;
-      graphicsQueue.flags             = 0;
-      graphicsQueue.queueFamilyIndex  = queueFamily;
-      graphicsQueue.queueCount        = queueCount;
-      graphicsQueue.pQueuePriorities  = queuePriorities.data();
-      queueInfos.push_back(graphicsQueue);
+      VkDeviceQueueCreateInfo queueCreateInfo;
+      queueCreateInfo.sType             = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+      queueCreateInfo.pNext             = nullptr;
+      queueCreateInfo.flags             = 0;
+      queueCreateInfo.queueFamilyIndex  = queueFamily;
+      queueCreateInfo.queueCount        = clampedQueueCount;
+      queueCreateInfo.pQueuePriorities  = queuePriorities.data();
+      queueCreateInfos.push_back(queueCreateInfo);
     }
     // NV-DXVK end
 
@@ -734,8 +806,8 @@ namespace dxvk {
     info.sType                      = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     info.pNext                      = enabledFeatures.core.pNext;
     info.flags                      = 0;
-    info.queueCreateInfoCount       = queueInfos.size();
-    info.pQueueCreateInfos          = queueInfos.data();
+    info.queueCreateInfoCount       = queueCreateInfos.size();
+    info.pQueueCreateInfos          = queueCreateInfos.data();
     info.enabledLayerCount          = 0;
     info.ppEnabledLayerNames        = nullptr;
     info.enabledExtensionCount      = extensionNameList.count();
@@ -782,7 +854,7 @@ namespace dxvk {
 
     Rc<DxvkDevice> result = new DxvkDevice(instance, this,
       new vk::DeviceFn(true, m_vki->instance(), device),
-      devExtensions, enabledFeatures);
+      devExtensions, enabledFeatures, queueInfos);
     result->initResources();
     return result;
   }
