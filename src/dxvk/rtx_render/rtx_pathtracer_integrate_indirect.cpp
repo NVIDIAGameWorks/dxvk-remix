@@ -169,6 +169,8 @@ namespace dxvk {
 
     class VisualizeNEEShader : public ManagedShader {
       SHADER_SOURCE(VisualizeNEEShader, VK_SHADER_STAGE_COMPUTE_BIT, visualize_nee)
+
+      PUSH_CONSTANTS(VisualizeNeeArgs)
       
       BINDLESS_ENABLED()
 
@@ -390,8 +392,15 @@ namespace dxvk {
     // Visualize the nee cache when debug view is chosen.
     uint32_t debugViewIndex = ctx->getCommonObjects()->metaDebugView().debugViewIdx();
     if (debugViewIndex == DEBUG_VIEW_NEE_CACHE_LIGHT_HISTOGRAM || debugViewIndex == DEBUG_VIEW_NEE_CACHE_HISTOGRAM ||
-     debugViewIndex == DEBUG_VIEW_NEE_CACHE_ACCUMULATE_MAP || debugViewIndex == DEBUG_VIEW_NEE_CACHE_HASH_MAP)
+     debugViewIndex == DEBUG_VIEW_NEE_CACHE_ACCUMULATE_MAP || debugViewIndex == DEBUG_VIEW_NEE_CACHE_HASH_MAP || debugViewIndex == DEBUG_VIEW_NEE_CACHE_TRIANGLE_CANDIDATE)
     {
+      VisualizeNeeArgs args;
+      auto mousePos = ImGui::GetMousePos();
+      VkExtent3D finalResolution = rtOutput.m_finalOutput.view->imageInfo().extent;
+      args.mouseUV = vec2(mousePos.x / finalResolution.width, mousePos.y / finalResolution.height);
+      args.mouseUV.x = std::clamp(args.mouseUV.x, 0.0f, 1.0f);
+      args.mouseUV.y = std::clamp(args.mouseUV.y, 0.0f, 1.0f);
+      ctx->pushConstants(0, sizeof(args), &args);
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, VisualizeNEEShader::getShader());
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
     }
