@@ -118,7 +118,7 @@ public:
   GameCapturer(DxvkDevice* const pDevice, SceneManager& sceneManager, AssetExporter& exporter);
   ~GameCapturer();
 
-  void step(const Rc<DxvkContext> ctx, const float dt, const HWND hwnd);
+  void step(const Rc<DxvkContext> ctx, const float frameTimeMilliseconds, const HWND hwnd);
   void triggerNewCapture() {
     m_bTriggerCapture = true;
   }
@@ -200,7 +200,7 @@ private:
   void trigger(const Rc<DxvkContext> ctx);
   void initCapture(const Rc<DxvkContext> ctx, const HWND hwnd);
   void prepareInstanceStage(const Rc<DxvkContext> ctx);
-  void capture(const Rc<DxvkContext> ctx, const float dt);
+  void capture(const Rc<DxvkContext> ctx, const float frameTimeMilliseconds);
   void captureFrame(const Rc<DxvkContext> ctx);
   void captureCamera();
   void captureLights();

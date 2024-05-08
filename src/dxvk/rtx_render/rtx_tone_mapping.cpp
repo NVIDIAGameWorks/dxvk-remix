@@ -294,7 +294,7 @@ namespace dxvk {
     Rc<DxvkSampler> linearSampler,
     Rc<DxvkImageView> exposureView,
     const Resources::RaytracingOutput& rtOutput,
-    const float deltaTime,
+    const float frameTimeMilliseconds,
     bool performSRGBConversion,
     bool resetHistory,
     bool autoExposureEnabled) {

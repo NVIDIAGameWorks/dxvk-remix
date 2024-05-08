@@ -337,7 +337,7 @@ namespace dxvk {
                                             const CameraManager& cameraManager,
                                             InstanceManager& instanceManager,
                                             OpacityMicromapManager* opacityMicromapManager,
-                                            float frameTimeSecs) {
+                                            float frameTimeMilliseconds) {
     ScopedGpuProfileZone(ctx, "buildBLAS");
 
     auto& instances = instanceManager.getInstanceTable();
@@ -624,7 +624,7 @@ namespace dxvk {
     }
 
     buildBlases(ctx, execBarriers, cameraManager, opacityMicromapManager, instanceManager, 
-                textures, instances, blasBuckets, blasToBuild, blasRangesToBuild, frameTimeSecs);
+                textures, instances, blasBuckets, blasToBuild, blasRangesToBuild, frameTimeMilliseconds);
   }
 
   void AccelManager::createBlasBuffersAndInstances(Rc<DxvkContext> ctx, 
@@ -1013,14 +1013,14 @@ namespace dxvk {
                                  const std::vector<std::unique_ptr<BlasBucket>>& blasBuckets,
                                  std::vector<VkAccelerationStructureBuildGeometryInfoKHR>& blasToBuild,
                                  std::vector<VkAccelerationStructureBuildRangeInfoKHR*>& blasRangesToBuild,
-                                 float frameTimeSecs) {
+                                 float frameTimeMilliseconds) {
     ScopedGpuProfileZone(ctx, "buildBLAS");
     // Upload surfaces before opacity micromap generation which reads the surface data on the GPU
     uploadSurfaceData(ctx);
 
     // Build and bind opacity micromaps
     if (opacityMicromapManager && opacityMicromapManager->isActive()) {
-      opacityMicromapManager->buildOpacityMicromaps(ctx, textures, cameraManager.getLastCameraCutFrameId(), frameTimeSecs);
+      opacityMicromapManager->buildOpacityMicromaps(ctx, textures, cameraManager.getLastCameraCutFrameId(), frameTimeMilliseconds);
 
       // Bind opacity micromaps
       for (auto& blasBucket : blasBuckets) {

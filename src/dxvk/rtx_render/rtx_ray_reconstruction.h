@@ -48,7 +48,7 @@ namespace dxvk {
       DxvkBarrierSet& barriers,
       const Resources::RaytracingOutput& rtOutput,
       bool resetHistory = false,
-      float frameTimeSecs = 16.0f);
+      float frameTimeMilliseconds = 16.0f);
 
     void release();
 

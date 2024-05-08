@@ -2226,11 +2226,12 @@ namespace dxvk {
   void OpacityMicromapManager::buildOpacityMicromaps(Rc<DxvkContext> ctx,
                                                      const std::vector<TextureRef>& textures,
                                                      uint32_t lastCameraCutFrameId,
-                                                     float frameTimeSecs) {
+                                                     float frameTimeMilliseconds) {
 
     // Get the workload scale in respect to 60 Hz for a given frame time.
     // 60 Hz is the baseline since that's what the per-second budgets have been parametrized at in RtxOptions
     const float kFrameTime60Hz = 1 / 60.f;
+    const float frameTimeSecs = frameTimeMilliseconds * 1000.0f;
     float workloadScalePerSecond = frameTimeSecs / kFrameTime60Hz;
 
     // Modulate the scale for practical FPS range (i.e. <25, 200>) to even out the OMM's per frame percentage performance overhead

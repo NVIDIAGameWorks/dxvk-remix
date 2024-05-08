@@ -144,13 +144,13 @@ namespace dxvk {
   GameCapturer::~GameCapturer() {
   }
 
-  void GameCapturer::step(const Rc<DxvkContext> ctx, const float frameTimeSecs, const HWND hwnd) {
+  void GameCapturer::step(const Rc<DxvkContext> ctx, const float frameTimeMilliseconds, const HWND hwnd) {
     trigger(ctx);
     if(m_state.has<State::Initializing>()) {
       initCapture(ctx, hwnd);
     }
     if (m_state.has<State::Capturing>()) {
-      capture(ctx, frameTimeSecs);
+      capture(ctx, frameTimeMilliseconds);
     }
     if (m_state.has<State::BeginExport>()) {
       exportUsd(ctx);
@@ -209,10 +209,10 @@ namespace dxvk {
     m_exporter.generateSceneThumbnail(ctx, BASE_DIR + lss::commonDirName::thumbDir, m_options.instanceStageName);
   }
 
-  void GameCapturer::capture(const Rc<DxvkContext> ctx, const float dt) {
+  void GameCapturer::capture(const Rc<DxvkContext> ctx, const float frameTimeMilliseconds) {
     assert(m_state.has<State::Capturing>());
 
-    m_pCap->currentFrameNum += dt * static_cast<float>(m_options.fps);
+    m_pCap->currentFrameNum += (frameTimeMilliseconds * 1000.0f) * static_cast<float>(m_options.fps);
     captureFrame(ctx);
 
     if (m_pCap->numFramesCaptured >= m_options.numFrames) {

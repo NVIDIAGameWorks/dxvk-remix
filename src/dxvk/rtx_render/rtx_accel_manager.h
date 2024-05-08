@@ -104,7 +104,7 @@ public:
   // and some other BLAS will be dedicated to instances with static geometries.
   void mergeInstancesIntoBlas(Rc<DxvkContext> ctx, class DxvkBarrierSet& execBarriers,
                               const std::vector<TextureRef>& textures, const CameraManager& cameraManager, 
-                              InstanceManager& instanceManager, OpacityMicromapManager* opacityMicromapManager, float frameTimeSecs);
+                              InstanceManager& instanceManager, OpacityMicromapManager* opacityMicromapManager, float frameTimeMilliseconds);
 
   void buildTlas(Rc<DxvkContext> ctx);
 

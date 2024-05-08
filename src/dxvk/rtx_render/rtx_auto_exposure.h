@@ -43,7 +43,7 @@ namespace dxvk {
       Rc<DxvkContext> ctx,
       Rc<DxvkSampler> linearSampler,
       const Resources::RaytracingOutput& rtOutput,
-      const float deltaTime,
+      const float frameTimeMilliseconds,
       bool performSRGBConversion = true,
       bool resetHistory = false);
 
@@ -58,7 +58,7 @@ namespace dxvk {
       Rc<DxvkContext> ctx,
       Rc<DxvkSampler> linearSampler,
       const Resources::RaytracingOutput& rtOutput,
-      const float deltaTime);
+      const float frameTimeMilliseconds);
 
     Rc<vk::DeviceFn> m_vkd;
 
@@ -77,7 +77,7 @@ namespace dxvk {
     RTX_OPTION("rtx.autoExposure", bool, enabled, true, "Automatically adjusts exposure so that the image won't be too bright or too dark.");
 
     // Exposure Settings
-    RTX_OPTION("rtx.autoExposure", float, autoExposureSpeed, 5.f, "Average exposure changing speed when the image changes.");
+    RTX_OPTION("rtx.autoExposure", float, autoExposureSpeed, 5.f, "Average exposure changing speed (in units per second) when the image changes.");
     RTX_OPTION("rtx.autoExposure", float, evMinValue, -2.0f, "Min/Max values tuned by moving from bright/dark locations in game, and adjusting until they look correct.");
     RTX_OPTION("rtx.autoExposure", float, evMaxValue, 5.f, "Min/Max values tuned by moving from bright/dark locations in game, and adjusting until they look correct.");
     RTX_OPTION("rtx.autoExposure", bool,  exposureCenterMeteringEnabled, false, "Gives higher weight to pixels around the screen center.");

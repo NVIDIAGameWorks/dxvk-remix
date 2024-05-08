@@ -203,7 +203,7 @@ namespace dxvk {
     Rc<DxvkContext> ctx,
     Rc<DxvkSampler> linearSampler,
     const Resources::RaytracingOutput& rtOutput,
-    const float deltaTime) {
+    const float frameTimeMilliseconds) {
 
     if (m_resetState || !enabled()) {
       VkClearColorValue clearColor; 
@@ -245,7 +245,8 @@ namespace dxvk {
         // Prepare shader arguments
         ToneMappingAutoExposureArgs pushArgs = {};
         pushArgs.numPixels = rtOutput.m_finalOutput.image->mipLevelExtent(0).width * rtOutput.m_finalOutput.image->mipLevelExtent(0).height;
-        pushArgs.autoExposureSpeed = autoExposureSpeed() * deltaTime;
+        // Note: Autoexposure speed is in units per second, so convert from milliseconds to seconds here.
+        pushArgs.autoExposureSpeed = autoExposureSpeed() * (1000.0f * frameTimeMilliseconds);
         pushArgs.evMinValue = evMinValue();
         pushArgs.evRange = evMaxValue() - evMinValue();
         pushArgs.debugMode = (ctx->getCommonObjects()->metaDebugView().debugViewIdx() == DEBUG_VIEW_EXPOSURE_HISTOGRAM);
@@ -284,7 +285,7 @@ namespace dxvk {
     Rc<DxvkContext> ctx,
     Rc<DxvkSampler> linearSampler,
     const Resources::RaytracingOutput& rtOutput,
-    const float deltaTime,
+    const float frameTimeMilliseconds,
     bool performSRGBConversion,
     bool resetHistory) {
 
@@ -300,7 +301,7 @@ namespace dxvk {
       m_resetState = true;
     }
 
-    dispatchAutoExposure(ctx, linearSampler, rtOutput, deltaTime);
+    dispatchAutoExposure(ctx, linearSampler, rtOutput, frameTimeMilliseconds);
 
     m_resetState = false;
   }
