@@ -33,7 +33,8 @@ namespace dxvk {
     const Rc<DxvkAdapter>&          adapter,
     const Rc<vk::DeviceFn>&         vkd,
     const DxvkDeviceExtensions&     extensions,
-    const DxvkDeviceFeatures&       features)
+    const DxvkDeviceFeatures&       features,
+    const DxvkAdapterQueueInfos&    adapterQueueInfos)
   : m_options           (instance->options()),
     m_instance          (instance),
     m_adapter           (adapter),
@@ -44,23 +45,21 @@ namespace dxvk {
     m_perfHints         (getPerfHints()),
     m_objects           (this),
     m_submissionQueue   (this) {
-    auto queueFamilies = m_adapter->findQueueFamilies();
-
     // NV-DXVK start: DLFG + RTXIO
-    std::map<uint32_t /* queue family index */, uint32_t /* queue object count */> queueIndices;
+    // Get desired queues from the device
 
-    m_queues.graphics = getQueue(queueFamilies.graphics, queueIndices[queueFamilies.graphics]++);
-    m_queues.transfer = getQueue(queueFamilies.transfer, queueIndices[queueFamilies.transfer]++);
+    m_queues.graphics = getQueue(adapterQueueInfos.graphics.queueFamilyIndex, adapterQueueInfos.graphics.queueIndex);
+    m_queues.transfer = getQueue(adapterQueueInfos.transfer.queueFamilyIndex, adapterQueueInfos.transfer.queueIndex);
 
-    if (queueFamilies.asyncCompute != VK_QUEUE_FAMILY_IGNORED) {
-      m_queues.asyncCompute = getQueue(queueFamilies.asyncCompute, queueIndices[queueFamilies.asyncCompute]++);
+    if (adapterQueueInfos.asyncCompute.has_value()) {
+      m_queues.asyncCompute = getQueue(adapterQueueInfos.asyncCompute->queueFamilyIndex, adapterQueueInfos.asyncCompute->queueIndex);
     }
 
-    if (queueFamilies.present != VK_QUEUE_FAMILY_IGNORED) {
-      m_queues.present = getQueue(queueFamilies.present, queueIndices[queueFamilies.present]++);
+    if (adapterQueueInfos.present.has_value()) {
+      m_queues.present = getQueue(adapterQueueInfos.present->queueFamilyIndex, adapterQueueInfos.present->queueIndex);
     }
 
-    if (queueFamilies.__DLFG_QUEUE != VK_QUEUE_FAMILY_IGNORED) {
+    if (__DLFG_QUEUE_INFO_CHECK(adapterQueueInfos)) {
       // Note: When DLFG is active a separate queue is used for out of band rendering/presentation, so it should be marked accordingly.
       // Additionally, we do not mark the out of band render queue here as apparently it should only be marked when the out of band rendering
       // is sequential to application work, whereas out DLFG rendering work is overlapped with application rendering work.
