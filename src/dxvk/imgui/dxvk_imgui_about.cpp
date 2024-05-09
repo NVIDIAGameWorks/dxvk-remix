@@ -100,6 +100,7 @@ namespace dxvk {
           "Dayton 'watbulb'",
           "Ethan 'Xenthio' Cardwell",
           "David 'King David' Wiltos",
+          "Alexis 'Sortifal' Bruneteau",
       }},
       { "Engineering",
         { "Riley Alston",
