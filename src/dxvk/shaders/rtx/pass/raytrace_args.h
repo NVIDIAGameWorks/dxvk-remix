@@ -77,6 +77,14 @@ struct NeeCacheArgs {
   float minRange;
   float learningRate;
   uint clearCache;
+
+  float triangleExplorationRangeRatio;
+  uint  triangleExplorationMaxRange;
+  float triangleExplorationProbability;
+  float triangleExplorationAcceptRangeRatio;
+
+  uint3 padding;
+  uint enableSpatialReuse;
 };
 
 struct DomeLightArgs {

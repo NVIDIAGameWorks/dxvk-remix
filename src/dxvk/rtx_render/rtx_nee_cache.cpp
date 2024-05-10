@@ -90,6 +90,12 @@ namespace dxvk {
     ImGui::DragFloat("Cell Resolution", &resolutionObject(), 0.01f, 0.01f, 100.0f, "%.3f");
     ImGui::DragFloat("Min Range", &minRangeObject(), 1.f, 0.1f, 10000.0f, "%.3f");
     ImGui::Checkbox("Approximate Particle Lighting", &approximateParticleLightingObject());
+    ImGui::Checkbox("Enable Triangle Exploration", &enableTriangleExplorationObject());
+    ImGui::DragFloat("Triangle Exploration Probability", &triangleExplorationProbabilityObject(), 1.f, 0.0f, 1.0f, "%.3f");
+    ImGui::DragFloat("Triangle Exploration Range Ratio", &triangleExplorationRangeRatioObject(), 1.f, 0.0f, 1.0f, "%.3f");
+    ImGui::DragFloat("Triangle Exploration Accept Range Ratio", &triangleExplorationAcceptRangeRatioObject(), 1.f, 0.0f, 1.0f, "%.3f");
+    ImGui::DragInt("Triangle Exploration Max Range", &triangleExplorationMaxRangeObject(), 0.1f, 1, 1000, "%d", ImGuiSliderFlags_AlwaysClamp);
+    ImGui::Checkbox("Enable Spatial Reuse", &enableSpatialReuseObject());
   }
 
   void NeeCachePass::setRaytraceArgs(RaytraceArgs& constants, bool resetHistory) const {    
@@ -108,6 +114,11 @@ namespace dxvk {
     constants.neeCacheArgs.resolution = resolution();
     constants.neeCacheArgs.minRange = minRange() * RtxOptions::Get()->sceneScale();
     constants.neeCacheArgs.approximateParticleLighting = approximateParticleLighting();
+    constants.neeCacheArgs.triangleExplorationRangeRatio = triangleExplorationRangeRatio();
+    constants.neeCacheArgs.triangleExplorationAcceptRangeRatio = triangleExplorationAcceptRangeRatio();
+    constants.neeCacheArgs.triangleExplorationMaxRange = triangleExplorationMaxRange();
+    constants.neeCacheArgs.triangleExplorationProbability = enableTriangleExploration() ? triangleExplorationProbability() : 0.0f;
+    constants.neeCacheArgs.enableSpatialReuse = enableSpatialReuse();
 
     static uvec2 oldResolution {0, 0};
     constants.neeCacheArgs.clearCache = resetHistory || oldResolution.x != constants.camera.resolution.x || oldResolution.y != constants.camera.resolution.y;
