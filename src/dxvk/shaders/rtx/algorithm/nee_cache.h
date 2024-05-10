@@ -241,12 +241,23 @@ struct NEECandidate
     m_data.x = (m_data.x & 0xffffff) | (thresholdI << 24);
   }
 
-  static NEECandidate create(uint surfaceID, uint primitiveID)
+  int getRange()
+  {
+    return (m_data.y >> 24) & 0xff;
+  }
+
+  [mutating] void setRange(uint range)
+  {
+    m_data.y = (m_data.y & 0xffffff) | (range << 24);
+  }
+
+  static NEECandidate create(uint surfaceID, uint primitiveID, uint range)
   {
     NEECandidate nee;
     nee.m_data = 0;
     nee.setSurfaceID(surfaceID);
     nee.setPrimitiveID(primitiveID);
+    nee.setRange(range);
     return nee;
   }
 
@@ -564,9 +575,11 @@ struct NEECell
     for (; address < endAddress; address += getCandidateSize())
     {
       NEECandidate candidate = NEECandidate.create(NeeCache.Load2(address));
-      if (candidate.getPrimitiveID() == primitiveID && candidate.getSurfaceID() == surfaceID)
+      int firstPrimitiveID = candidate.getPrimitiveID();
+      int range = candidate.getRange();
+      if (primitiveID >= firstPrimitiveID && primitiveID < firstPrimitiveID + range && candidate.getSurfaceID() == surfaceID)
       {
-        return candidate.getSampleProbability();
+        return candidate.getSampleProbability() / float(range);
       }
     }
     return float16_t(0.0);
@@ -623,17 +636,18 @@ struct NEECell
 
   // This function is mainly for debug purposes. The function "getCachedLightSample()" is an optimized version for this function.
   // Samples from "getCachedLightSample()" should converge to the same result as this function.
-  LightSample getLightSample(StructuredBuffer<uint> PrimitiveIDPrefixSumBuffer, vec3 randomNumber, vec3 position, float16_t coneRadius, float16_t coneSpreadAngle, out uint triangleID)
+  LightSample getLightSample(StructuredBuffer<uint> PrimitiveIDPrefixSumBuffer, vec4 randomNumber, vec3 position, float16_t coneRadius, float16_t coneSpreadAngle, out uint triangleID)
   {
     LightSample lightSampleTriangle;
     // Sample cached triangles
     float lightObjectPdf = 0;
     NEECandidate candidate = sampleCandidate(randomNumber.x, lightObjectPdf);
     // Sample the selected triangle
-    vec2 uv = vec2(randomNumber.y, randomNumber.z);
+    vec3 uvw = vec3(randomNumber.y, randomNumber.z, randomNumber.w);
     float area;
+    int primitiveIndex = candidate.getPrimitiveID();
     lightSampleTriangle = NEECacheUtils.calculateLightSampleFromCandidate(
-      candidate.getSurfaceID(), candidate.getPrimitiveID(), PrimitiveIDPrefixSumBuffer, uv, lightObjectPdf, position, coneRadius, coneSpreadAngle, area);
+      candidate.getSurfaceID(), primitiveIndex, candidate.getRange(), PrimitiveIDPrefixSumBuffer, uvw, lightObjectPdf, position, coneRadius, coneSpreadAngle, area);
     triangleID = -1;
     return lightSampleTriangle;
   }

@@ -63,6 +63,12 @@ namespace dxvk {
     RTX_OPTION("rtx.neeCache", float, emissiveTextureSampleFootprintScale, 1.0, "Emissive texture sample footprint scale.");
     RTX_OPTION("rtx.neeCache", bool,  approximateParticleLighting, true, "Use particle albedo as emissive color.");
     RTX_OPTION("rtx.neeCache", float, ageCullingSpeed, 0.02, "This threshold determines culling speed of an old triangle. A triangle that is not detected for several frames will be deemed less important and culled quicker.");
+    RTX_OPTION("rtx.neeCache", bool,  enableTriangleExploration, true, "Explore emissive triangle candidates in the same object.");
+    RTX_OPTION("rtx.neeCache", float, triangleExplorationProbability, 0.05, "The probability to explore new triangles.");
+    RTX_OPTION("rtx.neeCache", int,   triangleExplorationMaxRange, 20, "Index range to explore, when triangle exploration is enabled.");
+    RTX_OPTION("rtx.neeCache", float, triangleExplorationRangeRatio, 0.1, "Index range to triangle count ratio, when triangle exploration is enabled.");
+    RTX_OPTION("rtx.neeCache", float, triangleExplorationAcceptRangeRatio, 0.33, "Accept index range to search range ratio, when triangle exploration is enabled.");
+    RTX_OPTION("rtx.neeCache", bool,  enableSpatialReuse, true, "Enable NEE cell share statistics information with neighbors.");
   private:
     Rc<vk::DeviceFn> m_vkd;
   };

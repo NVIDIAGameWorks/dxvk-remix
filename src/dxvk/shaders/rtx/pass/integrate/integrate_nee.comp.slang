@@ -131,11 +131,12 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
         float lightObjectPdf = 0;
         NEECandidate candidate = cell.sampleCandidate(RAB_GetNextRandom(rtxdiRNG), lightObjectPdf);
         int primitiveIndex = candidate.getPrimitiveID();
-        vec2 uv = vec2(RAB_GetNextRandom(rtxdiRNG), RAB_GetNextRandom(rtxdiRNG));
+        int range = candidate.getRange();
+        vec3 uvw = vec3(RAB_GetNextRandom(rtxdiRNG), RAB_GetNextRandom(rtxdiRNG), RAB_GetNextRandom(rtxdiRNG));
         float triangleArea;
         float16_t spreadAngle = getLobeAngleFromMaterial(opaqueSurfaceMaterialInteraction);
         lightSample = NEECacheUtils.calculateLightSampleFromCandidate(
-          candidate.getSurfaceID(), candidate.getPrimitiveID(), PrimitiveIDPrefixSum, uv, lightObjectPdf, minimalSurfaceInteraction.position,
+          candidate.getSurfaceID(), primitiveIndex, candidate.getRange(), PrimitiveIDPrefixSum, uvw, lightObjectPdf, minimalSurfaceInteraction.position,
           minimalRayInteraction.coneRadius, spreadAngle, triangleArea, true, kFootprintFromRayOriginClamped);
           
         bool isVisible = false;
@@ -162,6 +163,11 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
           if (any(diffuseLight + specularLight) > 0 && (threadIndex.x + threadIndex.y) % 4 == 0)
           {
             int prefixTask = NEECacheUtils.convertIDToPrefixSumID(candidate.getSurfaceID(), primitiveIndex, PrimitiveIDPrefixSum);
+            if (cb.neeCacheArgs.enableSpatialReuse)
+            {
+              jitter = sampleUniformIntRng(rtxdiRNG);
+              cell = NEECache.getCell(NEECache.pointToOffset(minimalSurfaceInteraction.position, minimalSurfaceInteraction.triangleNormal, jitter));
+            }
             cell.insertSlotTask(prefixTask, diffuseLight + specularLight, false);
           }
 

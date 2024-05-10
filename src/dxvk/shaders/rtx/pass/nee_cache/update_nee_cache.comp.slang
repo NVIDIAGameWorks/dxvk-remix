@@ -80,6 +80,7 @@ int convertLightIndex(int lightIndex)
   return lightMapping[lightIndex + (currentToPrevious ? 0 : cb.lightCount)];
 }
 
+// Sort tasks in descending order based on y component
 void sortTask(uint batchIndex)
 {
   int listCount = min(32, s_candidateCount[batchIndex]);
@@ -196,7 +197,9 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
     int taskID = localIndex.x;
     uint2 value = cell.getSlotTaskValue(taskID);
     int surfaceID, primitiveID;
-    value.x = convertToThisFramePrefixSumID(value.x, surfaceID, primitiveID);
+    uint oldRange = (value.x & 0xff000000);
+    value.x = convertToThisFramePrefixSumID(value.x & 0xffffff, surfaceID, primitiveID);
+    value.x |= oldRange;
     int delta = max(value.y * cb.neeCacheArgs.learningRate, 1);
     value.y = clamp(int(value.y) - delta, 0, 1 << 25);
     if (value.x != NEE_CACHE_INVALID_ID && value.y > 0)
@@ -235,7 +238,108 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
       }
     }
 
-    mergeTask(value, existingCount, localIndex.y);
+    // Search if the given triangle is inside an existing candidate range.
+    // If not, insert it to the candidate list.
+    if (value.x != NEE_CACHE_INVALID_ID && value.y != 0)
+    {
+      bool found = false;
+      for (int j = 0; j < existingCount; ++j)
+      {
+        int firstPrimitiveID = (s_candidateList[j][localIndex.y].x & 0xffffff);
+        int range = (s_candidateList[j][localIndex.y].x >> 24);
+        if (value.x >= firstPrimitiveID && value.x < firstPrimitiveID + range)
+        {
+          s_candidateList[j][localIndex.y].y += value.y;
+          found = true;
+          break;
+        }
+      }
+
+      if(!found)
+      {
+        value.x = ((1 << 24) | value.x);
+        insertTask(value, localIndex.y);
+      }
+    }
+
+  }
+
+
+  GroupMemoryBarrierWithGroupSync();
+
+  // Change format. Put primitive ID to y component for sorting.
+  for (int i = localIndex.x; i < NEE_CACHE_HASH_TASK_COUNT && cb.neeCacheArgs.triangleExplorationProbability > 0; i += CANDIDATE_GROUP_SIZE)
+  {
+    uint2 data = s_candidateList[i][localIndex.y];
+    uint range = (data.x >> 24);
+    uint primitiveID = (data.x & 0xffffff);
+    uint2 newData = uint2(data.y, (primitiveID << 8) | range);
+    s_candidateList[i][localIndex.y] = newData;
+  }
+
+  GroupMemoryBarrierWithGroupSync();
+
+  // sort task based on primitive id
+  if (localIndex.x == 0 && cb.neeCacheArgs.triangleExplorationProbability > 0)
+  {
+    // Sort candidates based on their triangle IDs, which is in the y component.
+    sortTask(localIndex.y);
+
+    int count = s_candidateCount[localIndex.y];
+
+    uint totalValue = 0;
+    for (int i = 0; i < count; i++)
+    {
+      uint2 data = s_candidateList[i][localIndex.y];
+      uint newRange = (data.y & 0xff);
+      uint newPrefixSumID = (data.y >> 8);
+      uint newValue = data.x;
+      totalValue += newValue;
+    }
+    uint maxMergeValue = totalValue * 0.1;
+    int oldSurfaceID = -1;
+    int oldPrimitiveID = -1;
+    int oldPrefixSumID = -1;
+    int oldRange = 0;
+    int oldIndex = -1;
+    int oldValue = 0;
+    for (int i = 0; i < count; i++)
+    {
+      uint2 data = s_candidateList[i][localIndex.y];
+      uint newRange = (data.y & 0xff);
+      uint newPrefixSumID = (data.y >> 8);
+      uint newValue = data.x;
+
+      int newSurfaceID, newPrimitiveID;
+      NEECacheUtils.convertPrefixSumIDToID(newPrefixSumID, PrimitiveIDPrefixSum, newSurfaceID, newPrimitiveID);
+      int primitiveCount = NEECacheUtils.getSurfacePrimitiveCount(newSurfaceID, PrimitiveIDPrefixSum);
+      int gab = min(cb.neeCacheArgs.triangleExplorationMaxRange, cb.neeCacheArgs.triangleExplorationRangeRatio * primitiveCount) * 
+        cb.neeCacheArgs.triangleExplorationAcceptRangeRatio + 1;
+      if (newSurfaceID == oldSurfaceID && oldPrimitiveID < newPrimitiveID + newRange + gab && oldPrimitiveID + oldRange - newPrimitiveID < 255 &&
+        oldValue + newValue < maxMergeValue)
+      {
+        // Merge
+        oldRange = oldPrimitiveID + oldRange - newPrimitiveID;
+        oldPrefixSumID = newPrefixSumID;
+        oldPrimitiveID = newPrimitiveID;
+        oldValue += newValue;
+        s_candidateList[oldIndex][localIndex.y] = uint2((oldRange << 24) | oldPrefixSumID, oldValue);
+        newValue = 0;
+        newRange = 0;
+      }
+      else
+      {
+        // New entry
+        oldSurfaceID = newSurfaceID;
+        oldPrimitiveID = newPrimitiveID;
+        oldPrefixSumID = newPrefixSumID;
+        oldRange = newRange;
+        oldIndex = i;
+        oldValue = newValue;
+      }
+
+      s_candidateList[i][localIndex.y] = uint2((newRange << 24) | newPrefixSumID, newValue);
+    }
   }
 
   GroupMemoryBarrierWithGroupSync();
@@ -247,6 +351,16 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
     s_candidateCount[localIndex.y] = cb.neeCacheArgs.enable != 0 ? min(s_candidateCount[localIndex.y], NEECell.getMaxCandidateCount()) : 0;
   }
   GroupMemoryBarrierWithGroupSync();
+
+  // Force every candidate contain only 1 triangle, if triangle exploration is disabled.
+  if (cb.neeCacheArgs.triangleExplorationProbability == 0.0)
+  {
+    uint2 task = s_candidateList[localIndex.x][localIndex.y];
+    task.x = (task.x & 0xffffff) | (1 << 24);
+
+    s_candidateList[localIndex.x][localIndex.y].x = task.x;
+    GroupMemoryBarrierWithGroupSync();
+  }
 
   cell.setSlotTaskValue(localIndex.x, s_candidateList[localIndex.x][localIndex.y]);
 
@@ -264,7 +378,7 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
     uint2 task = s_candidateList[candidateID][localIndex.y];
     int surfaceID, primitiveID;
     NEECacheUtils.convertPrefixSumIDToID(task.x & 0xffffff, PrimitiveIDPrefixSum, surfaceID, primitiveID);
-    NEECandidate candidate = NEECandidate.create(surfaceID, primitiveID);
+    NEECandidate candidate = NEECandidate.create(surfaceID, primitiveID, max(1, task.x >> 24));
 
     candidate.setSampleProbability(s_candidateLight[candidateID][localIndex.y]);
     cell.setCandidate(candidateID, candidate);
@@ -286,17 +400,18 @@ void updateTriangleSample(NEECell cell, uint2 localIndex, uint3 threadIndex)
     {
       float16_t spreadAngle = float16_t(cb.screenSpacePixelSpreadHalfAngle);
       float16_t coneRadius = 0.0;
-      vec2 uv = vec2(getNextSampleBlueNoise(rng), getNextSampleBlueNoise(rng));
+      vec3 uvw = vec3(getNextSampleBlueNoise(rng), getNextSampleBlueNoise(rng), getNextSampleBlueNoise(rng));
       float area;
+      int primitiveID = candidate.getPrimitiveID();
       LightSample lightSample = NEECacheUtils.calculateLightSampleFromCandidate(
-        candidate.getSurfaceID(), candidate.getPrimitiveID(), PrimitiveIDPrefixSum, uv, lightObjectPdf, 
+        candidate.getSurfaceID(), primitiveID, candidate.getRange(), PrimitiveIDPrefixSum, uvw, lightObjectPdf,
         /*cellCenter*/ 0, coneRadius, spreadAngle, area, false, kFootprintFromTextureCoordDiff);
 
       sample.position = lightSample.position;
       sample.normal = lightSample.normal;
       sample.pdf = lightSample.solidAnglePdf;
       sample.radiance = lightSample.radiance;
-      sample.triangleID = NEECacheUtils.convertIDToPrefixSumID(candidate.getSurfaceID(), candidate.getPrimitiveID(), PrimitiveIDPrefixSum);
+      sample.triangleID = NEECacheUtils.convertIDToPrefixSumID(candidate.getSurfaceID(), primitiveID, PrimitiveIDPrefixSum);
     }
     cell.setSample(i, sample);
   }

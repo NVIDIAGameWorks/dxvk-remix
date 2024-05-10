@@ -366,11 +366,17 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.neeCache.enableMIS|bool|True|Enable MIS\.|
 |rtx.neeCache.enableModeAfterFirstBounce|int|1|NEE Cache enable mode on a second and higher bounces\. 0 means off, 1 means enabled for specular rays only, 2 means always enabled\.|
 |rtx.neeCache.enableOnFirstBounce|bool|True|Enable NEE Cache on a first bounce\.|
+|rtx.neeCache.enableSpatialReuse|bool|True|Enable NEE cell share statistics information with neighbors\.|
+|rtx.neeCache.enableTriangleExploration|bool|True|Explore emissive triangle candidates in the same object\.|
 |rtx.neeCache.enableUpdate|bool|True|Enable Update\.|
 |rtx.neeCache.learningRate|float|0.02|Learning rate\. Higher values makes the cache adapt to lighting changes more quickly\.|
 |rtx.neeCache.minRange|float|400|The range for lowest level cells\.|
 |rtx.neeCache.resolution|float|8|Cell resolution\. Higher values mean smaller cells\.|
 |rtx.neeCache.specularFactor|float|1|Specular component factor\.|
+|rtx.neeCache.triangleExplorationAcceptRangeRatio|float|0.33|Accept index range to search range ratio, when triangle exploration is enabled\.|
+|rtx.neeCache.triangleExplorationMaxRange|int|20|Index range to explore, when triangle exploration is enabled\.|
+|rtx.neeCache.triangleExplorationProbability|float|0.05|The probability to explore new triangles\.|
+|rtx.neeCache.triangleExplorationRangeRatio|float|0.1|Index range to triangle count ratio, when triangle exploration is enabled\.|
 |rtx.neeCache.uniformSamplingProbability|float|0.1|Uniform sampling probability\.|
 |rtx.nisPreset|int|1|Adjusts NIS scaling factor, trades quality for performance\.|
 |rtx.numFramesToKeepBLAS|int|4||

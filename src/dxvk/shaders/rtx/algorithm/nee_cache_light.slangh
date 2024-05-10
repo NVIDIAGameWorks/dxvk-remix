@@ -228,22 +228,57 @@ struct NEECacheUtils
   }
 
   static LightSample calculateLightSampleFromCandidate(
-    int surfaceIndex, int primitiveIndex, StructuredBuffer<uint> PrimitiveIDPrefixSumBuffer, vec2 uv, float trianglePdf, vec3 shadingPosition, float16_t coneRadius, float16_t spreadAngle,
+    int surfaceIndex, inout int primitiveIndex, int range, StructuredBuffer<uint> PrimitiveIDPrefixSumBuffer, vec3 uvw, float trianglePdf, vec3 shadingPosition, float16_t coneRadius, float16_t spreadAngle,
     out float triangleArea, bool useSolidAnglePdf = true, int footprintMode = kFootprintFromRayOrigin)
   {
     Surface surface = getSurface(surfaceIndex);
 
+    int triangleCount = NEECacheUtils.getSurfacePrimitiveCount(surfaceIndex, PrimitiveIDPrefixSumBuffer);
     if (shouldSampleObject(surface))
     {
-      int triangleCount = NEECacheUtils.getSurfacePrimitiveCount(surfaceIndex, PrimitiveIDPrefixSumBuffer);
-      primitiveIndex = int(triangleCount * uv.x);
+      // Sample the whole object for emissive particles.
+      primitiveIndex = int(triangleCount * uvw.z);
       trianglePdf /= triangleCount;
+    }
+    else
+    {
+      trianglePdf /= float(range);
+      float triangleExplorationProbability = cb.neeCacheArgs.triangleExplorationProbability;
+      if (uvw.z < triangleExplorationProbability && range < 255)
+      {
+        // Sample a triangle outside the given range with a low probability to search potential emissive triangles.
+        // The code here is slightly biased because we use the probability for triangles inside the range,
+        // an unbiased way should consider these triangles in NEECell.searchCandidate() and do MIS for them.
+        // But that increases code complexity and lower performance.
+        int gab = cb.neeCacheArgs.triangleExplorationRangeRatio * triangleCount;
+        float rand = uvw.z / triangleExplorationProbability;
+        if (rand < 0.5)
+        {
+          int randOffset = min(cb.neeCacheArgs.triangleExplorationMaxRange, (rand / 0.5) * gab + 1);
+          primitiveIndex = max(primitiveIndex - randOffset, 0);
+        }
+        else
+        {
+          int randOffset = min(cb.neeCacheArgs.triangleExplorationMaxRange, ((rand - 0.5) / 0.5) * gab + 1);
+          primitiveIndex = min(primitiveIndex + randOffset, triangleCount - 1);
+        }
+      }
+      else
+      {
+        // Sample a triangle inside the given range.
+        uvw.z = (uvw.z - triangleExplorationProbability) / (1.0 - triangleExplorationProbability);
+        primitiveIndex += range * uvw.z;
+      }
     }
 
     RayInteraction rayInteracton;
     SurfaceInteraction surfaceInteraction;
-    getInteractions(surface, primitiveIndex, uv, shadingPosition, coneRadius, spreadAngle, footprintMode, rayInteracton, surfaceInteraction);
+    getInteractions(surface, primitiveIndex, uvw.xy, shadingPosition, coneRadius, spreadAngle, footprintMode, rayInteracton, surfaceInteraction);
 
+    if (shouldSampleObject(surface))
+    {
+      primitiveIndex = 0;
+    }
     return calculateLightSample(surface, surfaceInteraction, rayInteracton, shadingPosition, trianglePdf, triangleArea, useSolidAnglePdf, footprintMode);
   }
 
