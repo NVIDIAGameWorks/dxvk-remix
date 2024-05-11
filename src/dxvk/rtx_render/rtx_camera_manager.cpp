@@ -243,6 +243,161 @@ namespace dxvk {
       cameraSequence->addRecord(setting);
     }
 
+    auto& skyCamera = getCamera(CameraType::Sky);
+    auto& mainCamera = getCamera(CameraType::Main);
+
+    // Firstly, don't try skyscale if we're not pathtracing
+    // Additionally, don't try sky scale if we have no sky camera, or the main camera is invalid
+    // Finally, don't do scale calculations if the current camera isn't the main camera
+    auto shouldCalculateSkyScale = RtxOptions::Get()->skyBoxPathTracing()
+      && skyCamera.isValid(frameId)
+      && mainCamera.isValid(frameId)
+      && cameraType == CameraType::Main;
+
+    if (shouldCalculateSkyScale) {
+
+      auto curCamPos = (Vector3) mainCamera.getPosition(false);
+      auto curSkyPos = (Vector3) skyCamera.getPosition(false);
+      auto lastCamPos = (Vector3) inverse(mainCamera.getPreviousWorldToView(false))[3].xyz();;
+      auto lastSkyPos = (Vector3) inverse(skyCamera.getPreviousWorldToView(false))[3].xyz();
+
+      bool uniqueCamerasFound =
+        !areClose(curCamPos, curSkyPos) &&
+        !areClose(curSkyPos, lastCamPos);
+
+      /*
+        Do not do any transitioning if the main and skycams are equal
+        or have been equal last frame! Fixes occasions where first-view
+        gets mistaken as the main view instead of sky view
+      */
+      if (uniqueCamerasFound) {
+
+        switch (RtxOptions::Get()->skyScaleCalibrationMode()) {
+
+        case SkyScaleCalibrationMode::Fixed:
+          skyCamera.setSkyScale(RtxOptions::Get()->skyDefaultScale());
+          break;
+        case SkyScaleCalibrationMode::DeltaAutomatic:
+          if (!areClose(curSkyPos, lastSkyPos)) {
+            float mdiff = lengthSqr(curCamPos - lastCamPos);
+            float sdiff = lengthSqr(curSkyPos - lastSkyPos);
+
+            if (sdiff != 0) {
+              float ratio_scale = mdiff / sdiff;
+              int new_scale = ratio_scale >= 1 ? static_cast<int>(std::sqrt(ratio_scale)) : skyCamera.m_lastSkyScale;
+              skyCamera.setSkyScale(new_scale);
+            }
+          }
+          break;
+        case SkyScaleCalibrationMode::SourceEngineAutomatic:
+          static auto getDecimal = [](double val) {
+            double workable = std::abs(val);
+            return workable - std::floor(workable);
+          };
+
+          static auto huntForScale = [](double skyPos, double mainPos) {
+            double error = 0.0001;
+            double mainDecimal = getDecimal(mainPos);
+            double skyDecimal = getDecimal(skyPos);
+            if (std::abs(mainDecimal - skyDecimal) < error)
+              return -1;
+
+            bool shouldInvert = std::signbit(mainPos) != std::signbit(skyPos);
+
+            float max_scale = 64; // Source typically uses power of 2, and must be an even integer
+            double max_square = std::sqrt(max_scale);
+            for (int i = 0; i < max_square - 1; i++) {
+              int predicted_scale = static_cast<int>(std::pow(2, i));
+              double predicted_skypos = mainPos / predicted_scale;
+              double predicted_skydec = getDecimal(predicted_skypos);
+
+              if (shouldInvert)
+                predicted_skydec = std::abs(-1 * predicted_skydec + 1); //Produces the opposite during offset
+
+              if (std::abs(predicted_skydec - skyDecimal) < error)
+                return predicted_scale;
+
+            };
+
+            return -1;
+          };
+
+          auto corroborateScale = [skyCamera](int scalex, int scaley, int scalez) {
+            if (scalex == scaley && scaley == scalez && scalex > 0)
+              return scalex;
+
+            if (scalex == scalez && scalex > 0) {
+              if (scaley < 0)
+                return scalex;
+            };
+
+            if (scalex == scaley && scaley > 0) {
+              if (scalez < 0)
+                return scalex;
+            };
+
+            if (scaley == scalez && scalez > 0) {
+              if (scalex < 0)
+                return scaley;
+            };
+
+            if (scalex < 0 && scaley < 0 && scalez > 0)
+              return scalez;
+
+            if (scalex < 0 && scalez < 0 && scaley > 0)
+              return scaley;
+
+            if (scaley < 0 && scalez < 0 && scalex > 0)
+              return scalex;
+
+            return -1;
+          };
+
+
+          int scalex = huntForScale(curSkyPos.x, curCamPos.x);
+          int scaley = huntForScale(curSkyPos.y, curCamPos.y);
+          int scalez = huntForScale(curSkyPos.z, curCamPos.z);
+          int scale = corroborateScale(scalex, scaley, scalez);
+          //  float sky_denom = getDenominator(skyref);
+          //  float ply_denom = getDenominator(plyref);
+
+          //float scale = 1;
+          //if (skyref != plyref) {
+          //  float sky_denom = getDenominator(skyref);
+          //  float ply_denom = getDenominator(plyref);
+          //  scale = sky_denom > ply_denom ? sky_denom / ply_denom : ply_denom / sky_denom;
+          //}
+          if (scale < 0)
+            scale = skyCamera.m_lastSkyScale;
+          skyCamera.setSkyScale(scale);
+          break;
+        }
+      }
+
+      float skyScale = static_cast<float>(skyCamera.m_skyScale);
+      switch (RtxOptions::Get()->skyScaleOffsetFormula()) {
+      case SkyScaleOffsetFormula::Origin:
+        skyCamera.setSkyOffset(Vector3(0, 0, 0));
+        break;
+
+      case SkyScaleOffsetFormula::SourceEngine:
+
+        // Shift by sky scale to get the post scaled value
+        curCamPos.x *= 1 / skyScale;
+        curCamPos.y *= 1 / skyScale;
+        curCamPos.z *= 1 / skyScale;
+
+        // Everything after is linear so don't break out of this one
+      case SkyScaleOffsetFormula::Linear:
+        auto offset = curCamPos - curSkyPos;
+        if (!areClose(skyCamera.m_skyOffset, offset))
+          skyCamera.setSkyOffset(offset);
+        break;
+      }
+
+
+    }
+
     // Register camera cut when there are significant interruptions to the view (like changing level, or opening a menu)
     if (isCameraCut && cameraType == CameraType::Main) {
       m_lastCameraCutFrameId = m_device->getCurrentFrameId();

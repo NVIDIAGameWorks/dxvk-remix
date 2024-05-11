@@ -2017,6 +2017,10 @@ namespace dxvk {
     DxvkRenderTargets skyRt;
     skyRt.color[0].view = getResourceManager().getCompatibleViewForView(skyMatteView, m_skyRtColorFormat);
     skyRt.color[0].layout = VK_IMAGE_LAYOUT_GENERAL;
+
+    if (RtxOptions::Get()->skySharedDepth())
+      skyRt.depth = m_state.om.renderTargets.depth;
+
     bindRenderTargets(skyRt);
 
     if (m_skyClearDirty) {
@@ -2367,8 +2371,10 @@ namespace dxvk {
     // Save viewports
     const uint32_t curViewportCount = m_state.gp.state.rs.viewportCount();
     const DxvkViewportState curVp = m_state.vp;
+    
 
-    rasterizeToSkyMatte(params, drawCallState);
+    if (!RtxOptions::Get()->skyBoxPathTracing() || drawCallState.getCategoryFlags() == InstanceCategories::Sky)
+      rasterizeToSkyMatte(params, drawCallState);
     // TODO: make probe optional?
     rasterizeToSkyProbe(params, drawCallState);
 
