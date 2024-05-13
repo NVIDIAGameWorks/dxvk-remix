@@ -1718,7 +1718,9 @@ namespace dxvk {
 
       // Need to increment present counter as it's used to reject repeated injectRtx calls.
       // Failing to do that will make next frame injection get rejected
-      m_device->incrementPresentCount();
+      m_parent->EmitCs([](DxvkContext* ctx) {
+        ctx->getDevice()->incrementPresentCount();
+      });
     }
   }
     // NV-DXVK end
