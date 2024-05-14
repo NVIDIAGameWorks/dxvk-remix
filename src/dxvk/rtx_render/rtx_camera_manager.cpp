@@ -256,6 +256,10 @@ namespace dxvk {
 
     if (shouldCalculateSkyScale) {
 
+      // Fallback to the default scale if the camera is odd, but let the formula work after
+      if (isCameraCut)
+        skyCamera.setSkyScale(RtxOptions::Get()->skyDefaultScale());
+
       auto curCamPos = (Vector3) mainCamera.getPosition(false);
       auto curSkyPos = (Vector3) skyCamera.getPosition(false);
       auto lastCamPos = (Vector3) inverse(mainCamera.getPreviousWorldToView(false))[3].xyz();;
@@ -278,11 +282,12 @@ namespace dxvk {
           skyCamera.setSkyScale(RtxOptions::Get()->skyDefaultScale());
           break;
         case SkyScaleCalibrationMode::DeltaAutomatic:
-          if (!areClose(curSkyPos, lastSkyPos)) {
+          if (!areClose(curSkyPos, lastSkyPos) && !areClose(curCamPos, lastCamPos)) {
+
             float mdiff = lengthSqr(curCamPos - lastCamPos);
             float sdiff = lengthSqr(curSkyPos - lastSkyPos);
 
-            if (sdiff != 0) {
+            if (sdiff != 0 && mdiff != 0) {
               float ratio_scale = mdiff / sdiff;
               int new_scale = ratio_scale >= 1 ? static_cast<int>(std::sqrt(ratio_scale)) : skyCamera.m_lastSkyScale;
               skyCamera.setSkyScale(new_scale);

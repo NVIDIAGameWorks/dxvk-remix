@@ -1445,10 +1445,6 @@ namespace dxvk {
               if (c) {
                 ImGui::Text("Position: %.2f %.2f %.2f", c->getPosition().x, c->getPosition().y, c->getPosition().z);
                 ImGui::Text("Direction: %.2f %.2f %.2f", c->getDirection().x, c->getDirection().y, c->getDirection().z);
-                if (c->m_type == CameraType::Sky) {
-                  ImGui::Text("Sky Offset: %.2f %.2f %.2f", c->m_skyOffset.x, c->m_skyOffset.y, c->m_skyOffset.z);
-                  ImGui::Text("Sky Scale: %i", c->m_skyScale);
-                }
                 ImGui::Text("Vertical FOV: %.1f", c->getFov() * kRadiansToDegrees);
                 ImGui::Text("Near / Far plane: %.1f / %.1f", c->getNearPlane(), c->getFarPlane());
                 ImGui::Text(c->isLHS() ? "Left-handed" : "Right-handed");
@@ -2231,14 +2227,21 @@ namespace dxvk {
 
         if (ImGui::CollapsingHeader("3D Skybox Settings [Experimental]", collapsingHeaderClosedFlags)) {
           ImGui::Checkbox("Enable Shared Depth", &RtxOptions::skySharedDepthObject());
-          ImGui::Separator();
           ImGui::Checkbox("Enable 3D Skybox Pathtracing ", &RtxOptions::skyBoxPathTracingObject());
 
           if (RtxOptions::skyBoxPathTracing()) {
             ImGui::InputInt("Default Scale", &RtxOptions::Get()->skyDefaultScaleObject(), 1, 1, 1);
-
             SkyScaleCalibrationModeCombo.getKey(&RtxOptions::Get()->skyScaleCalibrationModeObject());
             SkyScaleOffsetFormulaCombo.getKey(&RtxOptions::Get()->skyScaleOffsetFormulaObject());
+
+            ImGui::Separator();
+            auto& cameraManager = ctx->getCommonObjects()->getSceneManager().getCameraManager();
+            auto cam = cameraManager.isCameraValid(CameraType::Sky) ? &cameraManager.getCamera(CameraType::Sky) : nullptr;
+            if (cam){
+              ImGui::Text("Sky Offset: %.2f %.2f %.2f", cam->m_skyOffset.x, cam->m_skyOffset.y, cam->m_skyOffset.z);
+              ImGui::Text("Sky Scale: %i", cam->m_skyScale);
+            }
+            ImGui::Separator();
           }
 
         };
