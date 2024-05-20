@@ -212,7 +212,7 @@ namespace dxvk {
   void GameCapturer::capture(const Rc<DxvkContext> ctx, const float frameTimeMilliseconds) {
     assert(m_state.has<State::Capturing>());
 
-    m_pCap->currentFrameNum += (frameTimeMilliseconds * 1000.0f) * static_cast<float>(m_options.fps);
+    m_pCap->currentFrameNum += (frameTimeMilliseconds * 0.001f) * static_cast<float>(m_options.fps);
     captureFrame(ctx);
 
     if (m_pCap->numFramesCaptured >= m_options.numFrames) {
