@@ -756,7 +756,7 @@ extern "C" {
 
         // restore the previous value
         {
-          BOOL s = SetDllDirectoryW(dirToRestore);
+          SetDllDirectoryW(dirToRestore);
         }
       }
     }

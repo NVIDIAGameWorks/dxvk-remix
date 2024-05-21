@@ -73,7 +73,6 @@ namespace {
   IDirect3D9Ex* s_dxvkD3D9 { nullptr };
   dxvk::D3D9DeviceEx* s_dxvkDevice { nullptr };
   dxvk::mutex s_mutex {};
-  bool s_isHdRemix { false };
 
 
   dxvk::D3D9DeviceEx* tryAsDxvk() {
@@ -217,7 +216,7 @@ namespace {
         if (path.empty()) {
           return {};
         }
-        auto assetData = AssetDataManager::get().findAsset(path.string().c_str());
+        auto assetData = AssetDataManager::get().findAsset(path.string());
         if (assetData == nullptr) {
           return {};
         }
@@ -824,12 +823,17 @@ namespace {
       return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
     std::lock_guard lock { s_mutex };
+    // ensure that near plane is not modified, to keep the projection matrix
+    // exactly as the client provided, so depth buffers would have expected results,
+    // for a client to be able to reproject to world space using the projection matrices
+    if (dxvk::RtxOptions::enableNearPlaneOverride()) {
+      assert(0);
+      const_cast<bool&>(dxvk::RtxOptions::enableNearPlaneOverride()) = false;
+    }
     remixDevice->EmitCs([cRtCamera = convert::toRtCamera(*info)](dxvk::DxvkContext* ctx) {
       ctx->getCommonObjects()->getSceneManager()
         .processExternalCamera(cRtCamera.type, cRtCamera.worldToView, cRtCamera.viewToProjection);
     });
-    // ensure that near plane is not modified, to keep user's projection matrix as it is
-    assert(!dxvk::RtxOptions::enableNearPlaneOverride());
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
 
@@ -952,32 +956,6 @@ namespace {
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
 
-  // Below are all the graphics quality settings we want to filter out from the SetConfigVariable API. 
-  static const std::string filteredSettings[] = {
-      dxvk::RtxOptions::graphicsPresetObject().getName(),
-      dxvk::RtxOptions::dlssPresetObject().getName(),
-      dxvk::RtxOptions::qualityDLSSObject().getName(),
-      dxvk::RtxOptions::raytraceModePresetObject().getName(),
-      dxvk::RtxOptions::nisPresetObject().getName(),
-      dxvk::RtxOptions::taauPresetObject().getName(),
-      dxvk::RtxOptions::pathMinBouncesObject().getName(),
-      dxvk::RtxOptions::pathMaxBouncesObject().getName(),
-      dxvk::RtxOptions::enableVolumetricLightingObject().getName(),
-      dxvk::RtxOptions::enableUnorderedEmissiveParticlesInIndirectRaysObject().getName(),
-      dxvk::RtxOptions::denoiseDirectAndIndirectLightingSeparatelyObject().getName(),
-      dxvk::RtxOptions::minReplacementTextureMipMapLevelObject().getName(),
-      dxvk::RtxOptions::enableUnorderedResolveInIndirectRaysObject().getName(),
-      dxvk::RtxOptions::russianRoulette1stBounceMinContinueProbabilityObject().getName(),
-      dxvk::RtxOptions::forceHighResolutionReplacementTexturesObject().getName(),
-      dxvk::RtxOptions::resolutionScaleObject().getName(),
-      dxvk::NeeCachePass::enableObject().getName(),
-      // to not modify the perspective matrices, so depth buffers are similar
-      dxvk::RtxOptions::enableNearPlaneOverrideObject().getName(),
-      // for hdremix usability
-      dxvk::LightManager::fallbackLightModeObject().getName(),
-      dxvk::DxvkPostFx::desaturateOthersOnHighlightObject().getName(),
-    };
-
   remixapi_ErrorCode REMIXAPI_CALL remixapi_SetConfigVariable(
     const char* key,
     const char* value) {
@@ -987,26 +965,16 @@ namespace {
       return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
 
-    auto& globalRtxOptions = dxvk::RtxOptionImpl::getGlobalRtxOptionMap();
+    std::string strKey = std::string{ key };
 
-    auto found = globalRtxOptions.find(key);
+    const auto& globalRtxOptions = dxvk::RtxOptionImpl::getGlobalRtxOptionMap();
+    auto found = globalRtxOptions.find(strKey);
     if (found == globalRtxOptions.end()) {
       return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
     }
 
-    if (s_isHdRemix) {
-      const auto keyFullName = found->second->getFullName();
-      // Keep users of HdRemix in automatic quality mode.
-      for (const auto& filteredSetting : filteredSettings) {
-        // Skip this if we want to filter this setting
-        if (keyFullName == filteredSetting) {
-          return REMIXAPI_ERROR_CODE_SUCCESS;
-        }
-      }
-    }
-
     dxvk::Config newSetting;
-    newSetting.setOption(key, std::string { value });
+    newSetting.setOptionMove(std::move(strKey), std::string{ value });
     found->second->readOption(newSetting, dxvk::RtxOptionImpl::ValueType::Value);
 
     return REMIXAPI_ERROR_CODE_SUCCESS;
@@ -1089,15 +1057,10 @@ namespace {
     dxvk::g_allowSrgbConversionForOutput = !info.disableSrgbConversionForOutput;
     dxvk::g_allowMappingLegacyHashToObjectPickingValue = !info.editorModeEnabled;
 
-    s_isHdRemix = info.editorModeEnabled;
-    if (s_isHdRemix) {
-      static auto filteredSettings_contains = [](const std::string& option) {
-        return std::find(std::begin(filteredSettings), std::end(filteredSettings), option) != std::end(filteredSettings);
-      };
+    // slightly different initial settings for HdRemix
+    if (info.editorModeEnabled) {
       const_cast<dxvk::LightManager::FallbackLightMode&>(dxvk::LightManager::fallbackLightMode()) = dxvk::LightManager::FallbackLightMode::Never;
-      assert(filteredSettings_contains(dxvk::LightManager::fallbackLightModeObject().getName()));
       const_cast<bool&>(dxvk::DxvkPostFx::desaturateOthersOnHighlight()) = false;
-      assert(filteredSettings_contains(dxvk::DxvkPostFx::desaturateOthersOnHighlightObject().getName()));
     }
 
     *out_pD3D9 = d3d9ex;
