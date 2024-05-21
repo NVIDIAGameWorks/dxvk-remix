@@ -170,6 +170,14 @@ namespace dxvk {
       const std::string& key,
       const std::string& value);
 
+
+    // NV-DXVK start: rvalue variant for less allocations
+    void setOptionMove(
+      std::string&& key,
+      std::string&& value);
+    // NV-DXVK end
+
+
     /**
      * \brief Sets an option
      *
