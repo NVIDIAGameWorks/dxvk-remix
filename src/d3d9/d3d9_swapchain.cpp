@@ -319,8 +319,13 @@ namespace dxvk {
     // NV-DXVK end
 
     UpdatePresentRegion(nullptr, nullptr);
-    if (!pDevice->GetOptions()->deferSurfaceCreation && m_window != 0)
+    
+    if (m_window) {
       CreatePresenter();
+
+      if (!pDevice->GetOptions()->deferSurfaceCreation)
+        RecreateSwapChain(m_vsync);
+    }
 
     CreateBackBuffers(m_presentParams.BackBufferCount);
     CreateBlitter();
