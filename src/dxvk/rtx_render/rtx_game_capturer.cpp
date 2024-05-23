@@ -134,7 +134,9 @@ namespace dxvk {
     , m_sceneManager(sceneManager)
     , m_exporter(exporter)
     , m_options{ getOptions() } {
-    Logger::info(str::format("[GameCapturer] DXVK_RTX_CAPTURE_ENABLE_ON_FRAME: ", env::getEnvVar("DXVK_RTX_CAPTURE_ENABLE_ON_FRAME")));
+    if(!env::getEnvVar("DXVK_RTX_CAPTURE_ENABLE_ON_FRAME").empty()) {
+      Logger::info(str::format("[GameCapturer] DXVK_RTX_CAPTURE_ENABLE_ON_FRAME: ", env::getEnvVar("DXVK_RTX_CAPTURE_ENABLE_ON_FRAME")));
+    }
     env::createDirectory(BASE_DIR);
     env::createDirectory(BASE_DIR + lss::commonDirName::texDir);
     env::createDirectory(BASE_DIR + lss::commonDirName::matDir);

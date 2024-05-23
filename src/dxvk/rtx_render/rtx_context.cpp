@@ -166,6 +166,7 @@ namespace dxvk {
       m_screenshotFrameNum = stoul(env::getEnvVar("DXVK_DUMP_SCREENSHOT_FRAME"));
       m_screenshotFrameEnabled = true;
     }
+
     if (env::getEnvVar("DXVK_TERMINATE_APP_FRAME") != "") {
       m_terminateAppFrameNum = stoul(env::getEnvVar("DXVK_TERMINATE_APP_FRAME"));
       m_triggerDelayedTerminate = true;
