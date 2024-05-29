@@ -306,7 +306,7 @@ namespace dxvk {
       RTX_OPTION("rtx.playerModel", bool, enableVirtualInstances, true, "");
       RTX_OPTION("rtx.playerModel", bool, enableInPrimarySpace, false, "");
       RTX_OPTION("rtx.playerModel", bool, enablePrimaryShadows, true, "");
-      RTX_OPTION("rtx.playerModel", float, backwardOffset, 18.f, "");
+      RTX_OPTION("rtx.playerModel", float, backwardOffset, 0.f, "");
       RTX_OPTION("rtx.playerModel", float, horizontalDetectionDistance, 34.f, "");
       RTX_OPTION("rtx.playerModel", float, verticalDetectionDistance, 64.f, "");
       RTX_OPTION("rtx.playerModel", float, eyeHeight, 64.f, "");

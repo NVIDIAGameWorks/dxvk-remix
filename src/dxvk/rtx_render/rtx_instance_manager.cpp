@@ -1519,8 +1519,6 @@ namespace dxvk {
 
     // Set up the math to offset the player model backwards if it's to be shown in primary space
     float backwardOffset = RtxOptions::Get()->playerModel.backwardOffset();
-    if (!RtxOptions::Get()->playerModel.enableInPrimarySpace())
-      backwardOffset = 0.f;
 
     const bool createVirtualInstances = RtxOptions::Get()->playerModel.enableVirtualInstances() && (nearPortalInfo != nullptr);
 
