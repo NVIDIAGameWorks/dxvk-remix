@@ -445,7 +445,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.pathMinBounces|int|1|The minimum number of indirect bounces the path must complete before Russian Roulette can be used\. Must be \< 16\.<br>This value is recommended to stay fairly low \(1 for example\) as forcing longer paths when they carry little contribution quickly becomes detrimental to performance\.|
 |rtx.pipeline.useDeferredOperations|bool|True||
 |rtx.pixelHighlightReuseStrength|float|0.5|The specular portion when we reuse last frame's pixel value\.|
-|rtx.playerModel.backwardOffset|float|18||
+|rtx.playerModel.backwardOffset|float|0||
 |rtx.playerModel.enableInPrimarySpace|bool|False||
 |rtx.playerModel.enablePrimaryShadows|bool|True||
 |rtx.playerModel.enableVirtualInstances|bool|True||
