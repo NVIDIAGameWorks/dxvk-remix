@@ -936,11 +936,15 @@ namespace dxvk {
   }
 
   NrdArgs NRDContext::getNrdArgs() const {
-    const float missLinearViewZ = glm::unpackHalf1x16(0x7bff); // Note: 0x7bff is the max finite float16 value in hex.
+    static_assert(nrd::CommonSettings{}.denoisingRange == 500000.0f, "NRD's default settings has changed, denoisingRange must be re-evaluated");
+    constexpr float denoisingRangeLimit = nrd::CommonSettings{}.denoisingRange;
+
+    const float missLinearViewZ = denoisingRangeLimit + 1.0f;
+    static_assert(missLinearViewZ > denoisingRangeLimit && missLinearViewZ - denoisingRangeLimit > 0.01f);
 
     // Note: Ensure the denoising range is at least 1 ulp less than the miss linear view Z value, otherwise it will not
     // function properly.
-    assert(m_settings.m_commonSettings.denoisingRange <= glm::unpackHalf1x16(0x7bff - 1));
+    assert(m_settings.m_commonSettings.denoisingRange <= denoisingRangeLimit);
 
     NrdArgs args;
 
