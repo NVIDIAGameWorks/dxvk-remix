@@ -20,10 +20,12 @@
 * DEALINGS IN THE SOFTWARE.
 */
 
+#ifndef _WIN32_WINNT
 #define WIN32_NO_STATUS
 #include <windows.h>
 #undef WIN32_NO_STATUS
 #include <ntstatus.h>
+#endif
 #include <Winternl.h>
 #include <d3dkmthk.h>
 #include <d3dkmdt.h>

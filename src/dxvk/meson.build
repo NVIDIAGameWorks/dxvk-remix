@@ -367,6 +367,10 @@ dxvk_src = files([
   'imgui/implot_items.cpp',
 ])
 
+dxvk_pch = [
+  'pch/dxvk_pch.h',
+]
+
 thread_dep = dependency('threads')
 
 nrd_include_dir = include_directories(join_paths('../../', 'external/nrd/Include'))
@@ -434,7 +438,8 @@ dxvk_lib = static_library('dxvk', dxvk_src, dxvk_version, [generated_dxvk_shader
   link_with           : [ util_lib, spirv_lib ], 
   dependencies        : [ dxvk_deps ],
   include_directories : [ dxvk_include_path, dxvk_shader_include_path, rtxdi_include_path, remix_api_include_path ],
-  override_options    : ['cpp_std='+dxvk_cpp_std])
+  override_options    : ['cpp_std='+dxvk_cpp_std],
+  cpp_pch             : dxvk_pch)
 
 dxvk_dep = declare_dependency(
   link_with           : [ dxvk_lib ],
