@@ -496,7 +496,7 @@ namespace dxvk {
         }
 
         if (aShaping.getEnabled() && bShaping.getEnabled()) {
-          const float cosAxis = dot(aShaping.getPrimaryAxis(), bShaping.getPrimaryAxis());
+          const float cosAxis = dot(aShaping.getDirection(), bShaping.getDirection());
           if (cosAxis < kCosAngleSimilarityThreshold) {
             return kNotSimilar;
           }

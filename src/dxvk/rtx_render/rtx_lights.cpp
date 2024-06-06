@@ -26,51 +26,64 @@
 #include "rtx_light_utils.h"
 
 namespace dxvk {
-  namespace {
-    Vector4 safeColorAndIntensity(const Vector3& radiance) {
-      const float intensity = std::max(std::max(radiance[0], radiance[1]), radiance[2]);
-      if (intensity < std::numeric_limits<float>::min()) {
-        return Vector4{ 0,0,0,0 };
-      }
 
-      // Limit the intensity to prevent precision issues.
-      constexpr float IntensityEpsilon = std::numeric_limits<float>::min();
-      constexpr float IntensityMax = 1e+20f;
+namespace {
 
-      static_assert(std::numeric_limits<float>::min() <= IntensityEpsilon);
-      static_assert((IntensityEpsilon * IntensityMax) / IntensityEpsilon > std::numeric_limits<float>::min());
-      static_assert((IntensityEpsilon * IntensityMax) / IntensityEpsilon < std::numeric_limits<float>::max());
+// Validation parameters
+// Note: Changing these may cause new assertions of Remix API failures, be careful when adjusting.
 
-      // Safer dividing for the case when 'intensity' is quite small,
-      // so the result won't be denormalized.
-      return Vector4{
-        std::clamp(radiance[0], 0.f, intensity * IntensityMax) / intensity,
-        std::clamp(radiance[1], 0.f, intensity * IntensityMax) / intensity,
-        std::clamp(radiance[2], 0.f, intensity * IntensityMax) / intensity,
-        intensity,
-      };
+constexpr float kNormalizationThreshold = 0.01f;
+constexpr float kOrthogonalityThreshold = 0.01f;
+
+  Vector4 safeColorAndIntensity(const Vector3& radiance) {
+    const float intensity = std::max(std::max(radiance[0], radiance[1]), radiance[2]);
+    if (intensity < std::numeric_limits<float>::min()) {
+      return Vector4{ 0,0,0,0 };
     }
+
+    // Limit the intensity to prevent precision issues.
+    constexpr float IntensityEpsilon = std::numeric_limits<float>::min();
+    constexpr float IntensityMax = 1e+20f;
+
+    static_assert(std::numeric_limits<float>::min() <= IntensityEpsilon);
+    static_assert((IntensityEpsilon * IntensityMax) / IntensityEpsilon > std::numeric_limits<float>::min());
+    static_assert((IntensityEpsilon * IntensityMax) / IntensityEpsilon < std::numeric_limits<float>::max());
+
+    // Safer dividing for the case when 'intensity' is quite small,
+    // so the result won't be denormalized.
+    return Vector4{
+      std::clamp(radiance[0], 0.f, intensity * IntensityMax) / intensity,
+      std::clamp(radiance[1], 0.f, intensity * IntensityMax) / intensity,
+      std::clamp(radiance[2], 0.f, intensity * IntensityMax) / intensity,
+      intensity,
+    };
   }
 
-RtLightShaping::RtLightShaping(bool enabled, Vector3 primaryAxis, float cosConeAngle, float coneSoftness, float focusExponent)
+}
+
+RtLightShaping::RtLightShaping(bool enabled, Vector3 direction, float cosConeAngle, float coneSoftness, float focusExponent)
   : m_enabled(enabled ? 1 : 0)
-  , m_primaryAxis(primaryAxis)
+  , m_direction(direction)
   , m_cosConeAngle(cosConeAngle)
   , m_coneSoftness(coneSoftness)
   , m_focusExponent(focusExponent) {
-  if (m_enabled) {
-    // Note: Ensure the primary axis the shaping is constructed with is normalized is shaping is enabled. This check is also done
-    // on GPU encoding, but checking it here as well ensures the shaping is always constructed properly. Do note this assumes that
-    // shaping cannot be enabled/disabled at runtime due to only checking this enabled case.
-    assert(isApproxNormalized(primaryAxis, 0.01f));
+  // assert(validateParameters(enabled, direction, cosConeAngle, coneSoftness, focusExponent));
+}
+
+std::optional<RtLightShaping> RtLightShaping::tryCreate(
+  bool enabled, Vector3 direction, float cosConeAngle, float coneSoftness, float focusExponent) {
+  if (!validateParameters(enabled, direction, cosConeAngle, coneSoftness, focusExponent)) {
+    return {};
   }
+
+  return RtLightShaping{ enabled, direction, cosConeAngle, coneSoftness, focusExponent };
 }
 
 XXH64_hash_t RtLightShaping::getHash() const {
   XXH64_hash_t h = 0;
 
   if (m_enabled) {
-    h = XXH64(&m_primaryAxis[0], sizeof(m_primaryAxis), h);
+    h = XXH64(&m_direction[0], sizeof(m_direction), h);
     h = XXH64(&m_cosConeAngle, sizeof(m_cosConeAngle), h);
     h = XXH64(&m_coneSoftness, sizeof(m_coneSoftness), h);
     h = XXH64(&m_focusExponent, sizeof(m_focusExponent), h);
@@ -80,24 +93,24 @@ XXH64_hash_t RtLightShaping::getHash() const {
 }
 
 void RtLightShaping::applyTransform(Matrix3 transform) {
-  // Note: Safe normalize used in case the transformation collapses the axis down to a zero vector (as the transform
+  // Note: Safe normalize used in case the transformation collapses the direction down to a zero vector (as the transform
   // is not validated to be "proper").
-  m_primaryAxis = safeNormalize(transform * m_primaryAxis, Vector3(0.0f, 0.0f, 1.0f));
+  m_direction = safeNormalize(transform * m_direction, Vector3(0.0f, 0.0f, 1.0f));
 
-  // Note: Ensure the transformation resulted in a normalized primary axis as the shaping should not have
+  // Note: Ensure the transformation resulted in a normalized direction as the shaping should not have
   // this property violated by a transformation.
-  assert(isApproxNormalized(m_primaryAxis, 0.01f));
+  assert(isApproxNormalized(m_direction, 0.01f));
 }
 
 void RtLightShaping::writeGPUData(unsigned char* data, std::size_t& offset) const {
   // occupies 12 bytes
   if (m_enabled) {
-    // Note: Ensure the normal vector is normalized as this is a requirement for the GPU encoding.
-    assert(isApproxNormalized(m_primaryAxis, 0.01f));
-    assert(m_primaryAxis < Vector3(FLOAT16_MAX));
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_primaryAxis.x));
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_primaryAxis.y));
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_primaryAxis.z));
+    // Note: Ensure the direction vector is normalized as this is a requirement for the GPU encoding.
+    assert(isApproxNormalized(m_direction, kNormalizationThreshold));
+    assert(m_direction < Vector3(FLOAT16_MAX));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_direction.x));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_direction.y));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_direction.z));
 
     assert(m_cosConeAngle < FLOAT16_MAX);
     writeGPUHelper(data, offset, glm::packHalf1x16(1.0f - m_cosConeAngle));
@@ -110,11 +123,47 @@ void RtLightShaping::writeGPUData(unsigned char* data, std::size_t& offset) cons
   }
 }
 
+bool RtLightShaping::validateParameters(
+  bool enabled, Vector3 direction, float cosConeAngle, float coneSoftness, float focusExponent) {
+  // Early out if shaping is disabled, no need to validate disabled parameters
+  // Note: By checking this here, this assumes that shaping cannot be enabled/disabled at runtime as otherwise parameters will not be validated.
+
+  if (!enabled) {
+    return true;
+  }
+
+  // Ensure the direction is normalized
+
+  if (!isApproxNormalized(direction, kNormalizationThreshold)) {
+    return false;
+  }
+
+  // Ensure shaping parameters are within the valid ranges
+
+  // Note: Cosine angle should be within [-1, 1] always (otherwise it is not a valid cosine value).
+  if (cosConeAngle < -1.0f || cosConeAngle > 1.0f) {
+    return false;
+  }
+
+  // Todo: In the future potentially check that coneSoftness is within [0, pi] as it doesn't need to be outside of this range.
+  if (coneSoftness < 0.0f) {
+    return false;
+  }
+
+  if (focusExponent < 0.0f) {
+    return false;
+  }
+
+  return true;
+}
+
 RtSphereLight::RtSphereLight(const Vector3& position, const Vector3& radiance, float radius, const RtLightShaping& shaping, const XXH64_hash_t forceHash)
   : m_position(position)
   , m_radiance(radiance)
   , m_radius(radius)
   , m_shaping(shaping) {
+  // assert(validateParameters(position, radiance, radius, shaping, forceHash));
+
   if (forceHash == kEmptyHash) {
     updateCachedHash();
   } else {
@@ -122,9 +171,22 @@ RtSphereLight::RtSphereLight(const Vector3& position, const Vector3& radiance, f
   }
 }
 
+std::optional<RtSphereLight> RtSphereLight::tryCreate(
+  const Vector3& position, const Vector3& radiance, float radius, const RtLightShaping& shaping, const XXH64_hash_t forceHash) {
+  if (!validateParameters(position, radiance, radius, shaping, forceHash)) {
+    return {};
+  }
+
+  return RtSphereLight{ position, radiance, radius, shaping, forceHash };
+}
+
 void RtSphereLight::applyTransform(const Matrix4& lightToWorld) {
+  // Transform the light position
+
   const Vector4 fullPos = Vector4(m_position.x, m_position.y, m_position.z, 1.0f);
   m_position = (lightToWorld * fullPos).xyz();
+
+  // Adjust radius based on transformation
 
   const Matrix3 transform(lightToWorld);
 
@@ -166,6 +228,23 @@ Vector4 RtSphereLight::getColorAndIntensity() const {
   return safeColorAndIntensity(m_radiance);
 }
 
+bool RtSphereLight::validateParameters(
+  const Vector3& position, const Vector3& radiance, float radius, const RtLightShaping& shaping, const XXH64_hash_t forceHash) {
+  // Ensure the radius is positive and within the float16 range
+
+  if (radius < 0.0f || radius >= FLOAT16_MAX) {
+    return false;
+  }
+
+  // Ensure the radiance is positive
+
+  if (radiance.x < 0.0f || radiance.y < 0.0f || radiance.z < 0.0f) {
+    return false;
+  }
+
+  return true;
+}
+
 void RtSphereLight::updateCachedHash() {
   XXH64_hash_t h = (XXH64_hash_t)RtLightType::Sphere;
 
@@ -178,38 +257,64 @@ void RtSphereLight::updateCachedHash() {
   m_cachedHash = h;
 }
 
-RtRectLight::RtRectLight(const Vector3& position, const Vector2& dimensions, const Vector3& xAxis, const Vector3& yAxis, const Vector3& radiance, const RtLightShaping& shaping)
+RtRectLight::RtRectLight(
+  const Vector3& position, const Vector2& dimensions,
+  const Vector3& xAxis, const Vector3& yAxis, const Vector3& direction,
+  const Vector3& radiance, const RtLightShaping& shaping)
   : m_position(position)
   , m_dimensions(dimensions)
   , m_xAxis(xAxis)
   , m_yAxis(yAxis)
+  , m_direction(direction)
   , m_radiance(radiance)
   , m_shaping(shaping) {
-  // Note: Normalization required as sometimes a cross product may not result in a normalized vector due to precision issues.
-  m_normal = normalize(cross(m_yAxis, m_xAxis));
+  // assert(validateParameters(position, dimensions, xAxis, yAxis, direction, radiance, shaping));
 
   updateCachedHash();
 }
 
+std::optional<RtRectLight> RtRectLight::tryCreate(
+  const Vector3& position, const Vector2& dimensions,
+  const Vector3& xAxis, const Vector3& yAxis, const Vector3& direction,
+  const Vector3& radiance, const RtLightShaping& shaping) {
+  if (!validateParameters(position, dimensions, xAxis, yAxis, direction, radiance, shaping)) {
+    return {};
+  }
+
+  return RtRectLight{ position, dimensions, xAxis, yAxis, direction, radiance, shaping };
+}
+
 void RtRectLight::applyTransform(const Matrix4& lightToWorld) {
+  // Transform the light position
+
   const Vector4 fullPos = Vector4(m_position.x, m_position.y, m_position.z, 1.0f);
   m_position = (lightToWorld * fullPos).xyz();
+
+  // Transform various light direction axes
 
   const Matrix3 transform(lightToWorld);
 
   m_xAxis = transform * m_xAxis;
-  const float xAxisLen = length(m_xAxis);
-  m_xAxis = m_xAxis / xAxisLen;
-  m_dimensions.x *= xAxisLen;
-  
   m_yAxis = transform * m_yAxis;
-  const float yAxisLen = length(m_yAxis);
-  m_yAxis = m_yAxis / yAxisLen;
-  m_dimensions.y *= yAxisLen;
+  m_direction = transform * m_direction;
+
+  float xAxisScale;
+  float yAxisScale;
+
+  m_xAxis = safeNormalizeGetLength(m_xAxis, Vector3(1.0f, 0.0f, 0.0f), xAxisScale);
+  m_yAxis = safeNormalizeGetLength(m_yAxis, Vector3(0.0f, 1.0f, 0.0f), yAxisScale);
+  m_direction = safeNormalize(m_direction, Vector3(0.0f, 0.0f, 1.0f));
+
+  // Todo: In the future consider re-orthogonalizing these the X/Y/direction vectors as
+  // transformations like this may cause compounding error in the orthogonalization properties.
+
+  // Adjust dimensions based on new axis scales
+
+  m_dimensions.x *= xAxisScale;
+  m_dimensions.y *= yAxisScale;
 
   m_shaping.applyTransform(transform);
   
-  m_normal = normalize(cross(m_yAxis, m_xAxis));
   updateCachedHash();
 }
 
@@ -228,23 +333,23 @@ void RtRectLight::writeGPUData(unsigned char* data, std::size_t& offset) const {
   m_shaping.writeGPUData(data, offset);
 
   // Note: Ensure the X axis vector is normalized as this is a requirement for the GPU encoding.
-  assert(isApproxNormalized(m_xAxis, 0.01f));
+  assert(isApproxNormalized(m_xAxis, kNormalizationThreshold));
   assert(m_xAxis < Vector3(FLOAT16_MAX));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_xAxis.x));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_xAxis.y));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_xAxis.z));
   // Note: Ensure the Y axis vector is normalized as this is a requirement for the GPU encoding.
-  assert(isApproxNormalized(m_yAxis, 0.01f));
+  assert(isApproxNormalized(m_yAxis, kNormalizationThreshold));
   assert(m_yAxis < Vector3(FLOAT16_MAX));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_yAxis.x));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_yAxis.y));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_yAxis.z));
-  // Note: Ensure the normal vector is normalized as this is a requirement for the GPU encoding.
-  assert(isApproxNormalized(m_normal, 0.01f));
-  assert(m_normal < Vector3(FLOAT16_MAX));
-  writeGPUHelper(data, offset, glm::packHalf1x16(m_normal.x));
-  writeGPUHelper(data, offset, glm::packHalf1x16(m_normal.y));
-  writeGPUHelper(data, offset, glm::packHalf1x16(m_normal.z));
+  // Note: Ensure the direction vector is normalized as this is a requirement for the GPU encoding.
+  assert(isApproxNormalized(m_direction, kNormalizationThreshold));
+  assert(m_direction < Vector3(FLOAT16_MAX));
+  writeGPUHelper(data, offset, glm::packHalf1x16(m_direction.x));
+  writeGPUHelper(data, offset, glm::packHalf1x16(m_direction.y));
+  writeGPUHelper(data, offset, glm::packHalf1x16(m_direction.z));
 
   // Note: Unused space for rect lights
   writeGPUPadding<10>(data, offset);
@@ -257,9 +362,50 @@ void RtRectLight::writeGPUData(unsigned char* data, std::size_t& offset) const {
   assert(offset - oldOffset == kLightGPUSize);
 }
 
-
 Vector4 RtRectLight::getColorAndIntensity() const {
   return safeColorAndIntensity(m_radiance);
+}
+
+bool RtRectLight::validateParameters(
+  const Vector3& position, const Vector2& dimensions,
+  const Vector3& xAxis, const Vector3& yAxis, const Vector3& direction,
+  const Vector3& radiance, const RtLightShaping& shaping) {
+  // Ensure dimensions are positive and within the float16 range
+
+  if (
+    dimensions.x < 0.0f || dimensions.x >= FLOAT16_MAX ||
+    dimensions.y < 0.0f || dimensions.y >= FLOAT16_MAX
+  ) {
+    return false;
+  }
+
+  // Ensure axis/direction vectors are normalized
+
+  if (
+    !isApproxNormalized(xAxis, kNormalizationThreshold) ||
+    !isApproxNormalized(yAxis, kNormalizationThreshold) ||
+    !isApproxNormalized(direction, kNormalizationThreshold)
+  ) {
+    return false;
+  }
+
+  // Ensure X/Y/direction axes are approximately orthogonal
+
+  if (
+    (dot(xAxis, yAxis) > kOrthogonalityThreshold) ||
+    (dot(xAxis, direction) > kOrthogonalityThreshold) ||
+    (dot(yAxis, direction) > kOrthogonalityThreshold)
+  ) {
+    return false;
+  }
+
+  // Ensure the radiance is positive
+
+  if (radiance.x < 0.0f || radiance.y < 0.0f || radiance.z < 0.0f) {
+    return false;
+  }
+
+  return true;
 }
 
 void RtRectLight::updateCachedHash() {
@@ -271,46 +417,70 @@ void RtRectLight::updateCachedHash() {
   h = XXH64(&m_dimensions[0], sizeof(m_dimensions), h);
   h = XXH64(&m_xAxis[0], sizeof(m_xAxis), h);
   h = XXH64(&m_yAxis[0], sizeof(m_yAxis), h);
+  h = XXH64(&m_direction[0], sizeof(m_direction), h);
   h = XXH64(&h, sizeof(h), m_shaping.getHash());
 
   m_cachedHash = h;
 }
 
-RtDiskLight::RtDiskLight(const Vector3& position, const Vector2& halfDimensions, const Vector3& xAxis, const Vector3& yAxis, const Vector3& radiance, const RtLightShaping& shaping)
+RtDiskLight::RtDiskLight(
+  const Vector3& position, const Vector2& halfDimensions,
+  const Vector3& xAxis, const Vector3& yAxis, const Vector3& direction,
+  const Vector3& radiance, const RtLightShaping& shaping)
   : m_position(position)
   , m_halfDimensions(halfDimensions)
   , m_xAxis(xAxis)
   , m_yAxis(yAxis)
+  , m_direction(direction)
   , m_radiance(radiance)
   , m_shaping(shaping) {
-  // Note: Cache a pre-computed normal vector to avoid doing it on the GPU since we have space in the Light to spare
-  // Additionally, normalization required as sometimes a cross product may not result in a normalized vector due to precision issues.
-  m_normal = normalize(cross(m_yAxis, m_xAxis));
+  // assert(validateParameters(position, halfDimensions, xAxis, yAxis, direction, radiance, shaping));
 
   updateCachedHash();
 }
 
+std::optional<RtDiskLight> RtDiskLight::tryCreate(
+  const Vector3& position, const Vector2& halfDimensions,
+  const Vector3& xAxis, const Vector3& yAxis, const Vector3& direction,
+  const Vector3& radiance, const RtLightShaping& shaping) {
+  if (!validateParameters(position, halfDimensions, xAxis, yAxis, direction, radiance, shaping)) {
+    return {};
+  }
+
+  return RtDiskLight{ position, halfDimensions, xAxis, yAxis, direction, radiance, shaping };
+}
+
 void RtDiskLight::applyTransform(const Matrix4& lightToWorld) {
+  // Transform the light position
+
   const Vector4 fullPos = Vector4(m_position.x, m_position.y, m_position.z, 1.0f);
   m_position = (lightToWorld * fullPos).xyz();
 
+  // Transform various light direction axes
+
   const Matrix3 transform(lightToWorld);
 
-  const Vector3 fullXAxis = Vector3(m_xAxis.x, m_xAxis.y, m_xAxis.z);
-  m_xAxis = transform * fullXAxis;
-  const float xAxisLen = length(m_xAxis);
-  m_xAxis = m_xAxis / xAxisLen;
-  m_halfDimensions.x *= xAxisLen;
-  
-  const Vector3 fullYAxis = Vector3(m_yAxis.x, m_yAxis.y, m_yAxis.z);
-  m_yAxis = transform * fullYAxis;
-  const float yAxisLen = length(m_yAxis);
-  m_yAxis = m_yAxis / yAxisLen;
-  m_halfDimensions.y *= yAxisLen;
+  m_xAxis = transform * m_xAxis;
+  m_yAxis = transform * m_yAxis;
+  m_direction = transform * m_direction;
+
+  float xAxisScale;
+  float yAxisScale;
+
+  m_xAxis = safeNormalizeGetLength(m_xAxis, Vector3(1.0f, 0.0f, 0.0f), xAxisScale);
+  m_yAxis = safeNormalizeGetLength(m_yAxis, Vector3(0.0f, 1.0f, 0.0f), yAxisScale);
+  m_direction = safeNormalize(m_direction, Vector3(0.0f, 0.0f, 1.0f));
+
+  // Todo: In the future consider re-orthogonalizing these the X/Y/direction vectors as
+  // transformations like this may cause compounding error in the orthogonalization properties.
+
+  // Adjust half dimensions based on new axis scales
+
+  m_halfDimensions.x *= xAxisScale;
+  m_halfDimensions.y *= yAxisScale;
 
   m_shaping.applyTransform(transform);
 
-  m_normal = normalize(cross(m_yAxis, m_xAxis));
   updateCachedHash();
 }
 
@@ -329,23 +499,23 @@ void RtDiskLight::writeGPUData(unsigned char* data, std::size_t& offset) const {
   m_shaping.writeGPUData(data, offset);
 
   // Note: Ensure the X axis vector is normalized as this is a requirement for the GPU encoding.
-  assert(isApproxNormalized(m_xAxis, 0.01f));
+  assert(isApproxNormalized(m_xAxis, kNormalizationThreshold));
   assert(m_xAxis < Vector3(FLOAT16_MAX));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_xAxis.x));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_xAxis.y));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_xAxis.z));
   // Note: Ensure the Y axis vector is normalized as this is a requirement for the GPU encoding.
-  assert(isApproxNormalized(m_yAxis, 0.01f));
+  assert(isApproxNormalized(m_yAxis, kNormalizationThreshold));
   assert(m_yAxis < Vector3(FLOAT16_MAX));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_yAxis.x));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_yAxis.y));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_yAxis.z));
-  assert(m_normal < Vector3(FLOAT16_MAX));
-  // Note: Ensure the normal vector is normalized as this is a requirement for the GPU encoding.
-  assert(isApproxNormalized(m_normal, 0.01f));
-  writeGPUHelper(data, offset, glm::packHalf1x16(m_normal.x));
-  writeGPUHelper(data, offset, glm::packHalf1x16(m_normal.y));
-  writeGPUHelper(data, offset, glm::packHalf1x16(m_normal.z));
+  // Note: Ensure the direction vector is normalized as this is a requirement for the GPU encoding.
+  assert(isApproxNormalized(m_direction, kNormalizationThreshold));
+  assert(m_direction < Vector3(FLOAT16_MAX));
+  writeGPUHelper(data, offset, glm::packHalf1x16(m_direction.x));
+  writeGPUHelper(data, offset, glm::packHalf1x16(m_direction.y));
+  writeGPUHelper(data, offset, glm::packHalf1x16(m_direction.z));
 
   // Note: Unused space for disk lights
   writeGPUPadding<10>(data, offset);
@@ -362,6 +532,48 @@ Vector4 RtDiskLight::getColorAndIntensity() const {
   return safeColorAndIntensity(m_radiance);
 }
 
+bool RtDiskLight::validateParameters(
+  const Vector3& position, const Vector2& halfDimensions,
+  const Vector3& xAxis, const Vector3& yAxis, const Vector3& direction,
+  const Vector3& radiance, const RtLightShaping& shaping) {
+  // Ensure half dimensions are positive and within the float16 range
+
+  if (
+    halfDimensions.x < 0.0f || halfDimensions.x >= FLOAT16_MAX ||
+    halfDimensions.y < 0.0f || halfDimensions.y >= FLOAT16_MAX
+  ) {
+    return false;
+  }
+
+  // Ensure axis/direction vectors are normalized
+
+  if (
+    !isApproxNormalized(xAxis, kNormalizationThreshold) ||
+    !isApproxNormalized(yAxis, kNormalizationThreshold) ||
+    !isApproxNormalized(direction, kNormalizationThreshold)
+  ) {
+    return false;
+  }
+
+  // Ensure X/Y/direction axes are approximately orthogonal
+
+  if (
+    (dot(xAxis, yAxis) > kOrthogonalityThreshold) ||
+    (dot(xAxis, direction) > kOrthogonalityThreshold) ||
+    (dot(yAxis, direction) > kOrthogonalityThreshold)
+  ) {
+    return false;
+  }
+
+  // Ensure the radiance is positive
+
+  if (radiance.x < 0.0f || radiance.y < 0.0f || radiance.z < 0.0f) {
+    return false;
+  }
+
+  return true;
+}
+
 void RtDiskLight::updateCachedHash() {
   XXH64_hash_t h = (XXH64_hash_t)RtLightType::Disk;
 
@@ -371,6 +583,7 @@ void RtDiskLight::updateCachedHash() {
   h = XXH64(&m_halfDimensions[0], sizeof(m_halfDimensions), h);
   h = XXH64(&m_xAxis[0], sizeof(m_xAxis), h);
   h = XXH64(&m_yAxis[0], sizeof(m_yAxis), h);
+  h = XXH64(&m_direction[0], sizeof(m_direction), h);
   h = XXH64(&h, sizeof(h), m_shaping.getHash());
 
   m_cachedHash = h;
@@ -382,21 +595,42 @@ RtCylinderLight::RtCylinderLight(const Vector3& position, float radius, const Ve
   , m_axis(axis)
   , m_axisLength(axisLength)
   , m_radiance(radiance) {
+  // assert(validateParameters(position, radius, axis, axisLength, radiance));
+
   updateCachedHash();
 }
 
+std::optional<RtCylinderLight> RtCylinderLight::tryCreate(
+  const Vector3& position, float radius, const Vector3& axis, float axisLength, const Vector3& radiance) {
+  if (!validateParameters(position, radius, axis, axisLength, radiance)) {
+    return {};
+  }
+
+  return RtCylinderLight{ position, radius, axis, axisLength, radiance };
+}
+
 void RtCylinderLight::applyTransform(const Matrix4& lightToWorld) {
+  // Transform the light position
+
   const Vector4 fullPos = Vector4(m_position.x, m_position.y, m_position.z, 1.0f);
   m_position = (lightToWorld * fullPos).xyz();
+
+  // Transform various light direction axes
 
   const Matrix3 transform(lightToWorld);
 
   m_axis = transform * m_axis;
-  float axisScale = length(m_axis);
-  m_axis = m_axis / axisScale;
+
+  float axisScale;
+
+  m_axis = safeNormalizeGetLength(m_axis, Vector3(1.0f, 0.0f, 0.0f), axisScale);
+
+  // Adjust axis length based on new axis scale
+
   m_axisLength *= axisScale;
   
   // Scale radius by average scale after factoring out axis aligned scale.
+
   const float averageScale = (length(transform[0]) + length(transform[1]) + length(transform[2])) / 3.f;
   m_radius *= ((averageScale * 3.f) - axisScale) / 2.f;
 
@@ -418,7 +652,7 @@ void RtCylinderLight::writeGPUData(unsigned char* data, std::size_t& offset) con
   writeGPUPadding<12>(data, offset); // no shaping
 
   // Note: Ensure the axis vector is normalized as this is a requirement for the GPU encoding.
-  assert(isApproxNormalized(m_axis, 0.01f));
+  assert(isApproxNormalized(m_axis, kNormalizationThreshold));
   assert(m_axis < Vector3(FLOAT16_MAX));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_axis.x));
   writeGPUHelper(data, offset, glm::packHalf1x16(m_axis.y));
@@ -435,6 +669,32 @@ void RtCylinderLight::writeGPUData(unsigned char* data, std::size_t& offset) con
 
 Vector4 RtCylinderLight::getColorAndIntensity() const {
   return safeColorAndIntensity(m_radiance);
+}
+
+bool RtCylinderLight::validateParameters(
+    const Vector3& position, float radius, const Vector3& axis, float axisLength, const Vector3& radiance) {
+  // Ensure the radius and axis length are positive and within the float16 range
+
+  if (
+    radius < 0.0f || radius >= FLOAT16_MAX ||
+    axisLength < 0.0f || axisLength >= FLOAT16_MAX
+  ) {
+    return false;
+  }
+
+  // Ensure the axis vector is normalized
+
+  if (!isApproxNormalized(axis, kNormalizationThreshold)) {
+    return false;
+  }
+
+  // Ensure the radiance is positive
+
+  if (radiance.x < 0.0f || radiance.y < 0.0f || radiance.z < 0.0f) {
+    return false;
+  }
+
+  return true;
 }
 
 void RtCylinderLight::updateCachedHash() {
@@ -455,6 +715,7 @@ RtDistantLight::RtDistantLight(const Vector3& direction, float halfAngle, const 
   : m_direction(direction)
   , m_halfAngle(halfAngle)
   , m_radiance(radiance) {
+  // assert(validateParameters(direction, halfAngle, radiance, forceHash));
 
   // Note: Cache a pre-computed orientation quaternion to avoid doing it on the GPU since we have space in the Light to spare
   m_orientation = getOrientation(Vector3(0.0f, 0.0f, 1.0f), m_direction);
@@ -470,10 +731,21 @@ RtDistantLight::RtDistantLight(const Vector3& direction, float halfAngle, const 
   }
 }
 
+std::optional<RtDistantLight> RtDistantLight::tryCreate(
+  const Vector3& direction, float halfAngle, const Vector3& radiance, const XXH64_hash_t forceHash) {
+  if (!validateParameters(direction, halfAngle, radiance, forceHash)) {
+    return {};
+  }
+
+  return RtDistantLight{ direction, halfAngle, radiance, forceHash };
+}
+
 void RtDistantLight::applyTransform(const Matrix4& lightToWorld) {
+  // Transform the direction
+
   const Matrix3 transform(lightToWorld);
 
-  m_direction = normalize(transform * m_direction);
+  m_direction = safeNormalize(transform * m_direction, Vector3(0.0f, 0.0f, 1.0f));
   m_orientation = getOrientation(Vector3(0.0f, 0.0f, 1.0f), m_direction);
 
   updateCachedHash();
@@ -488,7 +760,7 @@ void RtDistantLight::writeGPUData(unsigned char* data, std::size_t& offset) cons
   writeGPUHelper(data, offset, glm::packHalf1x16(m_direction.z));
 
   // Note: Ensure the orientation quaternion is normalized as this is a requirement for the GPU encoding.
-  assert(isApproxNormalized(m_orientation, 0.01f));
+  assert(isApproxNormalized(m_orientation, kNormalizationThreshold));
   assert(m_orientation < Vector4(FLOAT16_MAX));
   // Note: Orientation could be more heavily packed (down to snorms, or even other quaternion memory encodings), but
   // there is enough space that no fancy encoding which would just waste performance on the GPU side is needed.
@@ -517,6 +789,29 @@ void RtDistantLight::writeGPUData(unsigned char* data, std::size_t& offset) cons
 
 Vector4 RtDistantLight::getColorAndIntensity() const {
   return safeColorAndIntensity(m_radiance);
+}
+
+bool RtDistantLight::validateParameters(
+  const Vector3& direction, float halfAngle, const Vector3& radiance, const XXH64_hash_t forceHash) {
+  // Ensure direction is normalized
+
+  if (!isApproxNormalized(direction, kNormalizationThreshold)) {
+    return false;
+  }
+
+  // Ensure half angle is positive
+
+  if (halfAngle < 0.0f) {
+    return false;
+  }
+
+  // Ensure the radiance is positive
+
+  if (radiance.x < 0.0f || radiance.y < 0.0f || radiance.z < 0.0f) {
+    return false;
+  }
+
+  return true;
 }
 
 void RtDistantLight::updateCachedHash() {
@@ -685,11 +980,11 @@ Vector3 RtLight::getDirection() const {
 
     [[fallthrough]];
   case RtLightType::Sphere:
-    return m_sphereLight.getShaping().getPrimaryAxis();
+    return m_sphereLight.getShaping().getDirection();
   case RtLightType::Rect:
-    return m_rectLight.getShaping().getPrimaryAxis();
+    return m_rectLight.getShaping().getDirection();
   case RtLightType::Disk:
-    return m_diskLight.getShaping().getPrimaryAxis();
+    return m_diskLight.getShaping().getDirection();
   case RtLightType::Cylinder:
     return Vector3(0.f, 0.f, 1.f);
   case RtLightType::Distant:

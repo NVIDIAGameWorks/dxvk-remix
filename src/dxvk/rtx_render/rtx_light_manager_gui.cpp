@@ -279,7 +279,7 @@ namespace dxvk {
       if (pShaping) {
         if (pShaping->getEnabled()) {
           ImGui::Text("Light Shaping: Enabled");
-          ImGui::Text("\tPrimary Axis: %.2f %.2f %.2f", pShaping->getPrimaryAxis().x, pShaping->getPrimaryAxis().y, pShaping->getPrimaryAxis().z);
+          ImGui::Text("\tDirection: %.2f %.2f %.2f", pShaping->getDirection().x, pShaping->getDirection().y, pShaping->getDirection().z);
           ImGui::Text("\tCone Angle: %.2f deg", std::acos(pShaping->getCosConeAngle()) * kRadiansToDegrees);
           ImGui::Text("\tCone Softness: %.2f", pShaping->getConeSoftness());
           ImGui::Text("\tFocus Exponent: %.2f", pShaping->getFocusExponent());

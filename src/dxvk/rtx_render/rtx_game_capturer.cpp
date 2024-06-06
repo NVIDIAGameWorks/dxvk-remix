@@ -363,7 +363,7 @@ namespace dxvk {
         sphereLight.coneAngleDegrees = std::acos(shaping.getCosConeAngle()) * kRadiansToDegrees;
         sphereLight.coneSoftness = shaping.getConeSoftness();
         sphereLight.focusExponent = shaping.getFocusExponent();
-        rotation = pxr::GfRotation(-pxr::GfVec3d::ZAxis(), pxr::GfVec3f(&shaping.getPrimaryAxis()[0]));
+        rotation = pxr::GfRotation(-pxr::GfVec3d::ZAxis(), pxr::GfVec3f(&shaping.getDirection()[0]));
       }
       Logger::debug("[GameCapturer][" + m_pCap->idStr + "][SphereLight:" + name + "] New");
     }
