@@ -568,7 +568,7 @@ namespace remix {
     inline remixapi_LightInfoLightShaping defaultLightShaping() {
       remixapi_LightInfoLightShaping shaping {};
       {
-        shaping.primaryAxis = { 0.0f, 0.0f, 1.0f };
+        shaping.direction = { 0.0f, 0.0f, 1.0f };
         shaping.coneAngleDegrees = 180.0f;
         shaping.coneSoftness = 0.0f;
         shaping.focusExponent = 0.0f;
@@ -604,9 +604,10 @@ namespace remix {
       xSize = 1.0f;
       yAxis = { 0.0f, 1.0f, 0.0f };
       ySize = 1.0f;
+      direction = { 0.0f, 0.0f, 1.0f };
       shaping_hasvalue = false;
       shaping_value = detail::defaultLightShaping();
-      static_assert(sizeof remixapi_LightInfoRectEXT == 88);
+      static_assert(sizeof remixapi_LightInfoRectEXT == 104);
     }
 
     void set_shaping(const std::optional< remixapi_LightInfoLightShaping >& v) {
@@ -623,9 +624,10 @@ namespace remix {
       xRadius = 1.0f;
       yAxis = { 0.0f, 1.0f, 0.0f };
       yRadius = 1.0f;
+      direction = { 0.0f, 0.0f, 1.0f };
       shaping_hasvalue = false;
       shaping_value = detail::defaultLightShaping();
-      static_assert(sizeof remixapi_LightInfoDiskEXT == 88);
+      static_assert(sizeof remixapi_LightInfoDiskEXT == 104);
     }
 
     void set_shaping(const std::optional< remixapi_LightInfoLightShaping >& v) {

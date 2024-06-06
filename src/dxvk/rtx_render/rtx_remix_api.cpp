@@ -457,17 +457,21 @@ namespace {
 
     // --
 
-    RtLightShaping toRtLightShaping(const remixapi_LightInfoLightShaping* info) {
+    std::optional<RtLightShaping> toRtLightShaping(const remixapi_LightInfoLightShaping* info) {
       if (info) {
-        return RtLightShaping {
+        return RtLightShaping::tryCreate(
           true,
-          tovec3(info->primaryAxis),
+          tovec3(info->direction),
           std::cos(DegToRad(info->coneAngleDegrees)),
           info->coneSoftness,
-          info->focusExponent,
-        };
+          info->focusExponent
+        );
       }
-      return RtLightShaping {};
+
+      // Note: Default constructed Light Shaping returned when no info is provided to have a valid but disabled
+      // Light Shaping object (different from returning an empty optional here, which means creation of a Light
+      // Shaping failed).
+      return RtLightShaping{};
     }
 
     std::optional<RtLight> toRtLight(const remixapi_LightInfo& info) {
@@ -478,48 +482,68 @@ namespace {
         return {};
       }
       if (auto src = pnext::find<remixapi_LightInfoSphereEXT>(&info)) {
-        return RtSphereLight {
+        const auto shaping = toRtLightShaping(src->shaping_hasvalue ? &src->shaping_value : nullptr);
+
+        if (!shaping.has_value()) {
+          return {};
+        }
+
+        return RtSphereLight::tryCreate(
           tovec3(src->position),
           tovec3(info.radiance),
           src->radius,
-          toRtLightShaping(src->shaping_hasvalue ? &src->shaping_value : nullptr),
-        };
+          *shaping
+        );
       }
       if (auto src = pnext::find<remixapi_LightInfoRectEXT>(&info)) {
-        return RtRectLight {
+        const auto shaping = toRtLightShaping(src->shaping_hasvalue ? &src->shaping_value : nullptr);
+
+        if (!shaping.has_value()) {
+          return {};
+        }
+
+        return RtRectLight::tryCreate(
           tovec3(src->position),
           Vector2{src->xSize, src->ySize},
           tovec3(src->xAxis),
           tovec3(src->yAxis),
+          tovec3(src->direction),
           tovec3(info.radiance),
-          toRtLightShaping(src->shaping_hasvalue ? &src->shaping_value : nullptr),
-        };
+          *shaping
+        );
       }
       if (auto src = pnext::find<remixapi_LightInfoDiskEXT>(&info)) {
-        return RtDiskLight {
+        const auto shaping = toRtLightShaping(src->shaping_hasvalue ? &src->shaping_value : nullptr);
+
+        if (!shaping.has_value()) {
+          return {};
+        }
+
+        return RtDiskLight::tryCreate(
           tovec3(src->position),
           Vector2{src->xRadius, src->yRadius},
           tovec3(src->xAxis),
           tovec3(src->yAxis),
+          tovec3(src->direction),
           tovec3(info.radiance),
-          toRtLightShaping(src->shaping_hasvalue ? &src->shaping_value : nullptr),
-        };
+          *shaping
+        );
       }
       if (auto src = pnext::find<remixapi_LightInfoCylinderEXT>(&info)) {
-        return RtCylinderLight {
+        return RtCylinderLight::tryCreate(
           tovec3(src->position),
           src->radius,
           tovec3(src->axis),
           src->axisLength,
-          tovec3(info.radiance),
-        };
+          tovec3(info.radiance)
+        );
       }
       if (auto src = pnext::find<remixapi_LightInfoDistantEXT>(&info)) {
-        return RtDistantLight {
+        return RtDistantLight::tryCreate(
           tovec3(src->direction),
           DegToRad(src->angularDiameterDegrees * 0.5f),
-          tovec3(info.radiance),
-        };
+          tovec3(info.radiance)
+        );
       }
 
       // Note: Return an empty optional if the LightInfo struct does not contain a supported

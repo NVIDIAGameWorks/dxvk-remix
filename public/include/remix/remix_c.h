@@ -424,7 +424,8 @@ extern "C" {
 
 
   typedef struct remixapi_LightInfoLightShaping {
-    remixapi_Float3D               primaryAxis;
+    // The direction the Light Shaping is pointing in. Must be normalized.
+    remixapi_Float3D               direction;
     float                          coneAngleDegrees;
     float                          coneSoftness;
     float                          focusExponent;
@@ -443,10 +444,15 @@ extern "C" {
     remixapi_StructType            sType;
     void*                          pNext;
     remixapi_Float3D               position;
+    // The X axis of the Rect Light. Must be normalized and orthogonal to the Y and direction axes.
     remixapi_Float3D               xAxis;
     float                          xSize;
+    // The Y axis of the Rect Light. Must be normalized and orthogonal to the X and direction axes.
     remixapi_Float3D               yAxis;
     float                          ySize;
+    // The direction the Rect Light is pointing in, should match the Shaping direction if present.
+    // Must be normalized and orthogonal to the X and Y axes.
+    remixapi_Float3D               direction;
     remixapi_Bool                  shaping_hasvalue;
     remixapi_LightInfoLightShaping shaping_value;
   } remixapi_LightInfoRectEXT;
@@ -455,10 +461,15 @@ extern "C" {
     remixapi_StructType            sType;
     void*                          pNext;
     remixapi_Float3D               position;
+    // The X axis of the Disk Light. Must be normalized and orthogonal to the Y and direction axes.
     remixapi_Float3D               xAxis;
     float                          xRadius;
+    // The Y axis of the Disk Light. Must be normalized and orthogonal to the X and direction axes.
     remixapi_Float3D               yAxis;
     float                          yRadius;
+    // The direction the Disk Light is pointing in, should match the Shaping direction if present
+    // Must be normalized and orthogonal to the X and Y axes.
+    remixapi_Float3D               direction;
     remixapi_Bool                  shaping_hasvalue;
     remixapi_LightInfoLightShaping shaping_value;
   } remixapi_LightInfoDiskEXT;
@@ -468,6 +479,7 @@ extern "C" {
     void*                          pNext;
     remixapi_Float3D               position;
     float                          radius;
+    // The "center" axis of the Cylinder Light. Must be normalized.
     remixapi_Float3D               axis;
     float                          axisLength;
   } remixapi_LightInfoCylinderEXT;
@@ -475,6 +487,7 @@ extern "C" {
   typedef struct remixapi_LightInfoDistantEXT {
     remixapi_StructType             sType;
     void*                           pNext;
+    // The direction the Distant Light is pointing in. Must be normalized.
     remixapi_Float3D                direction;
     float                           angularDiameterDegrees;
   } remixapi_LightInfoDistantEXT;
