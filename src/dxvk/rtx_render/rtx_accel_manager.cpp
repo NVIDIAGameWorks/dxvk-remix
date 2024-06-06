@@ -48,7 +48,7 @@ namespace dxvk {
   AccelManager::AccelManager(DxvkDevice* device)
     : CommonDeviceObject(device)
     , m_scratchAlignment(device->properties().khrDeviceAccelerationStructureProperties.minAccelerationStructureScratchOffsetAlignment) {
-    m_scratchAllocator = std::make_unique<DxvkStagingDataAlloc>(
+    m_scratchAllocator = std::make_unique<RtxStagingDataAlloc>(
         device,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,

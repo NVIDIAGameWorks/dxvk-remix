@@ -39,8 +39,7 @@ namespace dxvk {
     m_execBarriers(DxvkCmdBuffer::ExecBuffer),
     m_gfxBarriers(DxvkCmdBuffer::ExecBuffer),
     m_queryManager(m_common->queryPool()),
-    m_staging(device)
-  {
+    m_staging     (device, StagingBufferSize) {
     if (m_device->features().extRobustness2.nullDescriptor)
       m_features.set(DxvkContextFeature::NullDescriptors);
     if (m_device->features().extExtendedDynamicState.extendedDynamicState)
@@ -722,38 +721,51 @@ namespace dxvk {
 
 
   void DxvkContext::copyBuffer(
-    const Rc<DxvkBuffer>& dstBuffer,
-    VkDeviceSize          dstOffset,
-    const Rc<DxvkBuffer>& srcBuffer,
-    VkDeviceSize          srcOffset,
-    VkDeviceSize          numBytes) {
-    if (numBytes == 0)
-      return;
-    
-    this->spillRenderPass(true);
-    
-    auto dstSlice = dstBuffer->getSliceHandle(dstOffset, numBytes);
-    auto srcSlice = srcBuffer->getSliceHandle(srcOffset, numBytes);
+    const Rc<DxvkBuffer>&       dstBuffer,
+          VkDeviceSize          dstOffset,
+    const Rc<DxvkBuffer>&       srcBuffer,
+          VkDeviceSize          srcOffset,
+          VkDeviceSize          numBytes) {
+    // When overwriting small buffers, we can allocate a new slice in order to
+    // avoid suspending the current render pass or inserting barriers. The source
+    // buffer must be read-only since otherwise we cannot schedule the copy early.
+    bool srcIsReadOnly = DxvkBarrierSet::getAccessTypes(srcBuffer->info().access) == DxvkAccess::Read;
+    bool replaceBuffer = srcIsReadOnly && this->tryInvalidateDeviceLocalBuffer(dstBuffer, numBytes);
 
-    if (m_execBarriers.isBufferDirty(srcSlice, DxvkAccess::Read)
-      || m_execBarriers.isBufferDirty(dstSlice, DxvkAccess::Write))
-      m_execBarriers.recordCommands(m_cmd);
+    auto srcSlice = srcBuffer->getSliceHandle(srcOffset, numBytes);
+    auto dstSlice = dstBuffer->getSliceHandle(dstOffset, numBytes);
+
+    if (!replaceBuffer) {
+      this->spillRenderPass(true);
+
+      if (m_execBarriers.isBufferDirty(srcSlice, DxvkAccess::Read)
+       || m_execBarriers.isBufferDirty(dstSlice, DxvkAccess::Write))
+        m_execBarriers.recordCommands(m_cmd);
+    }
+
+    DxvkCmdBuffer cmdBuffer = replaceBuffer
+      ? DxvkCmdBuffer::InitBuffer
+      : DxvkCmdBuffer::ExecBuffer;
 
     VkBufferCopy bufferRegion;
     bufferRegion.srcOffset = srcSlice.offset;
     bufferRegion.dstOffset = dstSlice.offset;
     bufferRegion.size = dstSlice.length;
 
-    m_cmd->cmdCopyBuffer(DxvkCmdBuffer::ExecBuffer,
+    m_cmd->cmdCopyBuffer(cmdBuffer,
       srcSlice.handle, dstSlice.handle, 1, &bufferRegion);
 
-    m_execBarriers.accessBuffer(srcSlice,
+    auto& barriers = replaceBuffer
+      ? m_initBarriers
+      : m_execBarriers;
+
+    barriers.accessBuffer(srcSlice,
       VK_PIPELINE_STAGE_TRANSFER_BIT,
       VK_ACCESS_TRANSFER_READ_BIT,
       srcBuffer->info().stages,
       srcBuffer->info().access);
 
-    m_execBarriers.accessBuffer(dstSlice,
+    barriers.accessBuffer(dstSlice,
       VK_PIPELINE_STAGE_TRANSFER_BIT,
       VK_ACCESS_TRANSFER_WRITE_BIT,
       dstBuffer->info().stages,
@@ -2267,36 +2279,20 @@ namespace dxvk {
     const Rc<DxvkBuffer>&           buffer,
           VkDeviceSize              offset,
           VkDeviceSize              size,
-    const void*                     data,
-          bool                      forceNoReplace) {
-    bool isHostVisible = buffer->memFlags() & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-    bool replaceBuffer = !forceNoReplace && size == buffer->info().size && !isHostVisible;
-    
-    DxvkBufferSliceHandle bufferSlice;
-    DxvkCmdBuffer         cmdBuffer;
+    const void*                     data) {
+    bool replaceBuffer = this->tryInvalidateDeviceLocalBuffer(buffer, size);
+    auto bufferSlice = buffer->getSliceHandle(offset, size);
 
-    if (replaceBuffer) {
-      // Suspend render pass so that we don't mess with the
-      // currently bound transform feedback counter buffers
-      if (m_flags.test(DxvkContextFlag::GpXfbActive))
-        this->spillRenderPass(true);
-
-      // As an optimization, allocate a free slice and perform
-      // the copy in the initialization command buffer instead
-      // interrupting the render pass and stalling the pipeline.
-      bufferSlice = buffer->allocSlice();
-      cmdBuffer = DxvkCmdBuffer::InitBuffer;
-
-      this->invalidateBuffer(buffer, bufferSlice);
-    } else {
+    if (!replaceBuffer) {
       this->spillRenderPass(true);
     
-      bufferSlice = buffer->getSliceHandle(offset, size);
-      cmdBuffer = DxvkCmdBuffer::ExecBuffer;
-
       if (m_execBarriers.isBufferDirty(bufferSlice, DxvkAccess::Write))
         m_execBarriers.recordCommands(m_cmd);
     }
+
+    DxvkCmdBuffer cmdBuffer = replaceBuffer
+      ? DxvkCmdBuffer::InitBuffer
+      : DxvkCmdBuffer::ExecBuffer;
 
     m_cmd->cmdUpdateBuffer(cmdBuffer,
       bufferSlice.handle,
@@ -2308,8 +2304,7 @@ namespace dxvk {
       ? m_initBarriers
       : m_execBarriers;
 
-    barriers.accessBuffer(
-      bufferSlice,
+    barriers.accessBuffer(bufferSlice,
       VK_PIPELINE_STAGE_TRANSFER_BIT,
       VK_ACCESS_TRANSFER_WRITE_BIT,
       buffer->info().stages,
@@ -2323,11 +2318,10 @@ namespace dxvk {
     const Rc<DxvkBuffer>& buffer,
           VkDeviceSize    offset,
           VkDeviceSize    size,
-    const void*           data,
-          bool            forceNoReplace) {
+    const void*           data) {
 
     if (size < 65536 && size % 4 == 0) {
-      updateBuffer(buffer, offset, size, data, forceNoReplace);
+      updateBuffer(buffer, offset, size, data);
     } else {
       this->spillRenderPass(true);
       
@@ -2365,6 +2359,7 @@ namespace dxvk {
   }
 // NV-DXVK end
 
+// NV-DXVK start: preserve updateImage function
   void DxvkContext::updateImage(
     const Rc<DxvkImage>& image,
     const VkImageSubresourceLayers& subresources,
@@ -2453,7 +2448,7 @@ namespace dxvk {
     m_cmd->trackResource<DxvkAccess::Write>(image);
     m_cmd->trackResource<DxvkAccess::Read>(stagingSlice.buffer());
   }
-
+// NV-DXVK end
 
   void DxvkContext::updateDepthStencilImage(
     const Rc<DxvkImage>& image,
@@ -2911,10 +2906,6 @@ namespace dxvk {
     m_cmd->queueSignal(signal, value);
   }
 
-
-  void DxvkContext::trimStagingBuffers() {
-    m_staging.trim();
-  }
 
   void DxvkContext::beginDebugLabel(VkDebugUtilsLabelEXT *label) {
     if (!m_device->instance()->extensions().extDebugUtils)
@@ -5719,6 +5710,8 @@ namespace dxvk {
     m_cmd->cmdPipelineBarrier(
       DxvkCmdBuffer::ExecBuffer, srcStages, dstStages,
       flags, 1, &barrier, 0, nullptr, 0, nullptr);
+
+    m_cmd->addStatCtr(DxvkStatCounter::CmdBarrierCount, 1);
   }
 
   void DxvkContext::initializeImage(
@@ -5796,6 +5789,35 @@ namespace dxvk {
     }
   }
 
+
+  bool DxvkContext::tryInvalidateDeviceLocalBuffer(
+      const Rc<DxvkBuffer>&           buffer,
+            VkDeviceSize              copySize) {
+    // We can only discard if the full buffer gets written, and we will only discard
+    // small buffers in order to not waste significant amounts of memory.
+    if (copySize != buffer->info().size || copySize > 0x40000)
+      return false;
+
+    // Don't discard host-visible buffers since that may interfere with the frontend
+    if (buffer->memFlags() & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
+      return false;
+
+    // NV-DXVK start: Don't swap out the backing resource for buffers being used for acceleration
+    // structure builds
+    if (buffer->info().usage & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR)
+      return false;
+    // NV-DXVK end
+
+    // Suspend the current render pass if transform feedback is active prior to
+    // invalidating the buffer, since otherwise we may invalidate a bound buffer.
+    if ((buffer->info().usage & VK_BUFFER_USAGE_TRANSFORM_FEEDBACK_COUNTER_BUFFER_BIT_EXT)
+     && (m_flags.test(DxvkContextFlag::GpXfbActive)))
+      this->spillRenderPass(true);
+
+    this->invalidateBuffer(buffer, buffer->allocSlice());
+    return true;
+  }
+  
 
   DxvkGraphicsPipeline* DxvkContext::lookupGraphicsPipeline(
     const DxvkGraphicsPipelineShaders& shaders) {

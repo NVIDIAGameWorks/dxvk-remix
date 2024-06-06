@@ -426,10 +426,7 @@ namespace dxvk {
     //   - Callable
     //   - Hit (this goes last because there might be many different hit groups)
     {
-      VkBufferDeviceAddressInfo info{ VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, nullptr,
-                                      m_shaderBindingTableBuffer->getBufferRaw() };
-      VkDeviceAddress       sbtAddress = vkGetBufferDeviceAddress(m_vkd->device(), &info);
-      m_raygenShaderBindingTable.deviceAddress = sbtAddress;
+      m_raygenShaderBindingTable.deviceAddress = m_shaderBindingTableBuffer->getDeviceAddress();
       m_missShaderBindingTable.deviceAddress = m_raygenShaderBindingTable.deviceAddress + m_raygenShaderBindingTable.size;
       m_callableShaderBindingTable.deviceAddress = m_missShaderBindingTable.deviceAddress + m_missShaderBindingTable.size;
       m_hitShaderBindingTable.deviceAddress = m_callableShaderBindingTable.deviceAddress + m_callableShaderBindingTable.size;

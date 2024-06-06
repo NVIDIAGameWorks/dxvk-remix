@@ -176,7 +176,7 @@ namespace dxvk {
     const Resources::RaytracingOutput& rtOutput) {
 
     if (!m_cbData) {
-      m_cbData = std::make_unique<DxvkStagingDataAlloc>(
+      m_cbData = std::make_unique<RtxStagingDataAlloc>(
         device(),
         (VkMemoryPropertyFlagBits) (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT),
         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
@@ -697,7 +697,7 @@ namespace dxvk {
         // Update constants
         // The ReLAX A-trous passes use the same shader pipeline with different constant values.
         // In this case, the default constant buffer cannot guarantee values got updated in each pass.
-        // Use DxvkStagingDataAlloc to fix this issue.
+        // Use RtxStagingDataAlloc to fix this issue.
         if (dispatchDesc.constantBufferDataSize > 0) {
           // Setting alignment to device limit minUniformBufferOffsetAlignment because the offset value should be its multiple.
           // See https://vulkan.lunarg.com/doc/view/1.2.189.2/windows/1.2-extensions/vkspec.html#VUID-VkWriteDescriptorSet-descriptorType-00327

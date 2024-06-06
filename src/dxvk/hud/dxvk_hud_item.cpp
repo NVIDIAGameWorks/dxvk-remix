@@ -438,6 +438,7 @@ namespace dxvk::hud {
       m_cpCount = diffCounters.getCtr(DxvkStatCounter::CmdDispatchCalls);
       m_rtpCount = diffCounters.getCtr(DxvkStatCounter::CmdTraceRaysCalls);
       m_rpCount = diffCounters.getCtr(DxvkStatCounter::CmdRenderPassCount);
+      m_pbCount = diffCounters.getCtr(DxvkStatCounter::CmdBarrierCount);
 
       m_lastUpdate = time;
     }
@@ -492,6 +493,17 @@ namespace dxvk::hud {
       { position.x + 192.0f, position.y },
       { 1.0f, 1.0f, 1.0f, 1.0f },
       str::format(m_rpCount));
+    
+    position.y += 20.0f;
+    renderer.drawText(16.0f,
+      { position.x, position.y },
+      { 0.25f, 0.5f, 1.0f, 1.0f },
+      "Barriers:");
+    
+    renderer.drawText(16.0f,
+      { position.x + 192.0f, position.y },
+      { 1.0f, 1.0f, 1.0f, 1.0f },
+      str::format(m_pbCount));
     
     position.y += 8.0f;
     return position;
