@@ -236,9 +236,10 @@ namespace dxvk {
     }
 
     /**
-     * \brief Notifies signals
+     * \brief Notifies resources and signals
      */
-    void notifySignals() {
+    void notifyObjects() {
+      m_resources.notify();
       m_signalTracker.notify();
     }
     

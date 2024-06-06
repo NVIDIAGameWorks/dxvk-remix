@@ -301,6 +301,8 @@ dxvk_src = files([
   'rtx_render/rtx_shader_manager.cpp',
   'rtx_render/rtx_shader_manager.h',
   'rtx_render/rtx_sparse_unique_cache.h',
+  'rtx_render/rtx_staging.h',
+  'rtx_render/rtx_staging.cpp',
   'rtx_render/rtx_taa.cpp',
   'rtx_render/rtx_taa.h',
   'rtx_render/rtx_terrain_baker.cpp',

@@ -19,6 +19,8 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
+
+#include "dxvk_barrier.h"
 #include "dxvk_buffer.h"
 #include "dxvk_device.h"
 
@@ -89,6 +91,7 @@ namespace dxvk {
       VkBufferDeviceAddressInfo bufferInfo { VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO };
       bufferInfo.buffer = m_physSlice.handle;
       m_deviceAddress = vkd->vkGetBufferDeviceAddress(vkd->device(), &bufferInfo);
+      m_deviceAddress += getDynamicOffset(0);
     }
     return m_deviceAddress;
   }
@@ -159,8 +162,8 @@ namespace dxvk {
     memReq.memoryRequirements.alignment = std::lcm(memReq.memoryRequirements.alignment, m_info.requiredAlignmentOverride);
     // NV-DXVK end
 
-    // xxxnsubtil: avoid bad interaction with DxvkStagingDataAlloc
-    // when dedicated allocations are used, the implicit memory recycling in DxvkStagingDataAlloc goes away for larger buffers,
+    // xxxnsubtil: avoid bad interaction with RtxStagingDataAlloc
+    // when dedicated allocations are used, the implicit memory recycling in RtxStagingDataAlloc goes away for larger buffers,
     // which are often used for BVH builds; dedicated is not very meaningful for buffers, so ignore the hint if
     // dedicated memory is not strictly required
     if (!dedicatedRequirements.requiresDedicatedAllocation) {
@@ -176,6 +179,12 @@ namespace dxvk {
 
     if (isGpuWritable)
       hints.set(DxvkMemoryFlag::GpuWritable);
+
+    // Staging buffers that can't even be used as a transfer destinations
+    // are likely short-lived, so we should put them on a separate memory
+    // pool in order to avoid fragmentation
+    if (DxvkBarrierSet::getAccessTypes(m_info.access) == DxvkAccess::Read)
+      hints.set(DxvkMemoryFlag::Transient);
 
     // Ask driver whether we should be using a dedicated allocation
     handle.memory = m_memAlloc->alloc(&memReq.memoryRequirements,
@@ -349,7 +358,9 @@ namespace dxvk {
     VkAccelerationStructureDeviceAddressInfoKHR deviceAddressInfo {};
     deviceAddressInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
     deviceAddressInfo.accelerationStructure = accelStructureRef;
-    return m_device->vkd()->vkGetAccelerationStructureDeviceAddressKHR(m_device->handle(), &deviceAddressInfo);
+    VkDeviceAddress deviceAddress = m_device->vkd()->vkGetAccelerationStructureDeviceAddressKHR(m_device->handle(), &deviceAddressInfo);
+    deviceAddress += getDynamicOffset(0);
+    return deviceAddress;
   }
   // NV-DXVK end
 

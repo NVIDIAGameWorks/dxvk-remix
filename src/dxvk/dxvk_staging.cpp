@@ -3,84 +3,58 @@
 
 namespace dxvk {
   
-  // NV-DXVK start: Add alignment override functionality.
-  DxvkStagingDataAlloc::DxvkStagingDataAlloc(
-    const Rc<DxvkDevice>& device,
-    const VkMemoryPropertyFlagBits memFlags,
-    const VkBufferUsageFlags usageFlags,
-    const VkPipelineStageFlags stages,
-    const VkAccessFlags access,
-    const VkDeviceSize bufferRequiredAlignmentOverride)
-    : m_device(device) 
-	  , m_memoryFlags(memFlags)
-    , m_usage(usageFlags)
-    , m_stages(stages)
-    , m_access(access)
-    , m_bufferRequiredAlignmentOverride(bufferRequiredAlignmentOverride)
-  {
-
-  }
-  // NV-DXVK end
-
-
-  DxvkStagingDataAlloc::~DxvkStagingDataAlloc() {
+  DxvkStagingBuffer::DxvkStagingBuffer(
+    const Rc<DxvkDevice>&     device,
+          VkDeviceSize        size)
+  : m_device(device), m_offset(0), m_size(size) {
 
   }
 
-  DxvkBufferSlice DxvkStagingDataAlloc::alloc(VkDeviceSize align, VkDeviceSize size) {
-    ScopedCpuProfileZone();
 
-    if (size > MaxBufferSize)
-      return DxvkBufferSlice(createBuffer(size));
-    
-    if (m_buffer == nullptr)
-      m_buffer = createBuffer(MaxBufferSize);
-    
-    // Acceleration structure API accepts a VA, which DXVK doesnt recognize as "in use"
-    if (!m_buffer->isInUse() && (m_usage & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR) == 0)
-      m_offset = 0;
-    
-    m_offset = dxvk::align(m_offset, align);
+  DxvkStagingBuffer::~DxvkStagingBuffer() {
 
-    if (m_offset + size > MaxBufferSize) {
-      m_offset = 0;
+  }
 
-      if (m_buffers.size() < MaxBufferCount)
-        m_buffers.push(std::move(m_buffer));
 
-      if (!m_buffers.front()->isInUse() && (m_usage & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR) == 0) {
-        m_buffer = std::move(m_buffers.front());
-        m_buffers.pop();
-      } else {
-        m_buffer = createBuffer(MaxBufferSize);
-      }
+  DxvkBufferSlice DxvkStagingBuffer::alloc(VkDeviceSize align, VkDeviceSize size) {
+    DxvkBufferCreateInfo info;
+    info.size   = size;
+    info.usage  = VK_BUFFER_USAGE_TRANSFER_SRC_BIT
+                | VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT
+                | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT
+                | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT
+                | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    info.access = VK_ACCESS_TRANSFER_READ_BIT
+                | VK_ACCESS_SHADER_READ_BIT;
+
+    VkDeviceSize alignedSize = dxvk::align(size, align);
+    VkDeviceSize alignedOffset = dxvk::align(m_offset, align);
+
+    if (2 * alignedSize > m_size) {
+      return DxvkBufferSlice(m_device->createBuffer(info,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        DxvkMemoryStats::Category::AppBuffer));
     }
 
-    DxvkBufferSlice slice(m_buffer, m_offset, size);
-    m_offset = dxvk::align(m_offset + size, align);
+    if (alignedOffset + alignedSize > m_size || m_buffer == nullptr) {
+      info.size = m_size;
+
+      m_buffer = m_device->createBuffer(info,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        DxvkMemoryStats::Category::AppBuffer);
+      alignedOffset = 0;
+    }
+
+    DxvkBufferSlice slice(m_buffer, alignedOffset, size);
+    m_offset = alignedOffset + alignedSize;
     return slice;
   }
 
 
-  void DxvkStagingDataAlloc::trim() {
+  void DxvkStagingBuffer::reset() {
     m_buffer = nullptr;
     m_offset = 0;
-
-    while (!m_buffers.empty())
-      m_buffers.pop();
   }
-
-  Rc<DxvkBuffer> DxvkStagingDataAlloc::createBuffer(VkDeviceSize size) {
-    DxvkBufferCreateInfo info;
-    info.size = size;
-    info.access = m_access;
-    info.stages = m_stages;
-    info.usage = m_usage;
-    // NV-DXVK start: Add alignment override functionality.
-    info.requiredAlignmentOverride = m_bufferRequiredAlignmentOverride;
-    // NV-DXVK end
-
-    return m_device->createBuffer(info, m_memoryFlags, DxvkMemoryStats::Category::AppBuffer);
-  }
- 
+  
 }

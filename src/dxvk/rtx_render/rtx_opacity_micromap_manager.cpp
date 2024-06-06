@@ -199,7 +199,7 @@ namespace dxvk {
   OpacityMicromapManager::OpacityMicromapManager(DxvkDevice* device)
     : CommonDeviceObject(device)
     , m_memoryManager(device) {
-    m_scratchAllocator = std::make_unique<DxvkStagingDataAlloc>(
+    m_scratchAllocator = std::make_unique<RtxStagingDataAlloc>(
       device,
       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
       VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
@@ -1485,8 +1485,8 @@ namespace dxvk {
       *(ommIndex++) = i;
     }
 
-    ctx->writeToBuffer(triangleArrayBuffer, 0, triangleArrayBufferSize, hostTriangleArrayBuffer.data(), true);
-    ctx->writeToBuffer(triangleIndexBuffer, 0, triangleIndexBufferSize, hostTriangleIndexBuffer.data(), true);
+    ctx->writeToBuffer(triangleArrayBuffer, 0, triangleArrayBufferSize, hostTriangleArrayBuffer.data());
+    ctx->writeToBuffer(triangleIndexBuffer, 0, triangleIndexBufferSize, hostTriangleIndexBuffer.data());
 
     return OpacityMicromapManager::OmmResult::Success;
   }
@@ -1814,16 +1814,10 @@ namespace dxvk {
 
     // Build the array with vkBuildMicromapsEXT
     {
-      VkBufferDeviceAddressInfo ommBufferAddressInfo = { VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, NULL, ommCacheItem.ommArrayBuffer->getBufferRaw() };
-      VkDeviceAddress ommBufferAddress = vkGetBufferDeviceAddress(m_device->vkd()->device(), &ommBufferAddressInfo);
-
-      VkBufferDeviceAddressInfo ommTriangleArrayBufferInfo = { VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, NULL, triangleArrayBuffer->getBufferRaw() };
-      VkDeviceAddress ommTriangleArrayBufferAddress = vkGetBufferDeviceAddress(m_device->vkd()->device(), &ommTriangleArrayBufferInfo);
-      
       // Fill in the pointers we didn't have at size query
       ommBuildInfo.dstMicromap = ommCacheItem.blasOmmBuffers->opacityMicromap;
-      ommBuildInfo.data.deviceAddress = ommBufferAddress;
-      ommBuildInfo.triangleArray.deviceAddress = ommTriangleArrayBufferAddress;
+      ommBuildInfo.data.deviceAddress = ommCacheItem.ommArrayBuffer->getDeviceAddress();
+      ommBuildInfo.triangleArray.deviceAddress = triangleArrayBuffer->getDeviceAddress();
       ommBuildInfo.scratchData.deviceAddress = scratchSlice.getDeviceAddress();
       ommBuildInfo.triangleArrayStride = sizeof(VkMicromapTriangleEXT);
       
@@ -1841,14 +1835,11 @@ namespace dxvk {
 
     // Update the BLAS desc with the built micromap
     {
-      VkBufferDeviceAddressInfo ommTriangleIndexBufferInfo = { VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, NULL, ommCacheItem.blasOmmBuffers->opacityMicromapTriangleIndexBuffer->getBufferRaw() };
-      VkDeviceAddress ommTriangleIndexBufferAddress = vkGetBufferDeviceAddress(m_device->vkd()->device(), &ommTriangleIndexBufferInfo);
-
       VkAccelerationStructureTrianglesOpacityMicromapEXT& ommBlasDesc = ommCacheItem.blasOmmBuffers->blasDesc;
       ommBlasDesc = VkAccelerationStructureTrianglesOpacityMicromapEXT { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_TRIANGLES_OPACITY_MICROMAP_EXT };
       ommBlasDesc.micromap = ommCacheItem.blasOmmBuffers->opacityMicromap;
       ommBlasDesc.indexType = triangleIndexType;
-      ommBlasDesc.indexBuffer.deviceAddress = ommTriangleIndexBufferAddress;
+      ommBlasDesc.indexBuffer.deviceAddress = ommCacheItem.blasOmmBuffers->opacityMicromapTriangleIndexBuffer->getDeviceAddress();
       ommBlasDesc.indexStride = numBytesPerIndexElement;
       ommBlasDesc.baseTriangle = 0;
     }

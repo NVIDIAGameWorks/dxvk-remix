@@ -222,7 +222,7 @@ namespace dxvk {
   }
 
   RtxGeometryUtils::RtxGeometryUtils(DxvkDevice* device) : CommonDeviceObject(device) {
-    m_pCbData = std::make_unique<DxvkStagingDataAlloc>(
+    m_pCbData = std::make_unique<RtxStagingDataAlloc>(
       device,
       (VkMemoryPropertyFlagBits) (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT),
       VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
@@ -326,8 +326,8 @@ namespace dxvk {
       for (uint32_t idx = 0; idx < params.numVertices; idx++) {
         skinning(idx, &dstPosition[0], &dstNormal[0], srcPosition, srcBlendWeight, srcBlendIndices, srcNormal, params);
 
-        ctx->writeToBuffer(geo.positionBuffer.buffer(), geo.positionBuffer.offsetFromSlice() + idx * geo.positionBuffer.stride(), sizeof(dstPosition), &dstPosition[0], true);
-        ctx->writeToBuffer(geo.normalBuffer.buffer(), geo.normalBuffer.offsetFromSlice() + idx * geo.normalBuffer.stride(), sizeof(dstNormal), &dstNormal[0], true);
+        ctx->writeToBuffer(geo.positionBuffer.buffer(), geo.positionBuffer.offsetFromSlice() + idx * geo.positionBuffer.stride(), sizeof(dstPosition), &dstPosition[0]);
+        ctx->writeToBuffer(geo.normalBuffer.buffer(), geo.normalBuffer.offsetFromSlice() + idx * geo.normalBuffer.stride(), sizeof(dstNormal), &dstNormal[0]);
       }
     }
     ++m_skinningCommands;
@@ -709,7 +709,7 @@ namespace dxvk {
         generateIndices(idx, dst, src, cb);
       }
 
-      ctx->writeToBuffer(dstSlice.buffer(), 0, cb.primCount * 3 * sizeof(uint16_t), dst, true);
+      ctx->writeToBuffer(dstSlice.buffer(), 0, cb.primCount * 3 * sizeof(uint16_t), dst);
     }
   }
 
@@ -882,7 +882,7 @@ namespace dxvk {
         interleaver::interleave(i, dst, inputData.positionData, inputData.normalData, inputData.texcoordData, inputData.vertexColorData, args);
       }
 
-      ctx->writeToBuffer(output.buffer, 0, input.vertexCount * output.stride, dst, true);
+      ctx->writeToBuffer(output.buffer, 0, input.vertexCount * output.stride, dst);
     }
 
     uint32_t offset = 0;

@@ -256,9 +256,9 @@ namespace dxvk {
   void DxvkSubmissionQueue::finishCmdLists() {
     env::setThreadName("dxvk-queue");
 
-    std::unique_lock<dxvk::mutex> lock(m_mutex);
-
     while (!m_stopped.load()) {
+      std::unique_lock<dxvk::mutex> lock(m_mutex);
+
       if (m_finishQueue.empty()) {
         auto t0 = dxvk::high_resolution_clock::now();
 
@@ -288,16 +288,22 @@ namespace dxvk {
         m_lastError = status;
         m_device->waitForIdle();
       }
-      entry.submit.cmdList->notifySignals();
-      entry.submit.cmdList->reset();
 
-      m_device->recycleCommandList(entry.submit.cmdList);
+      // Release resources and signal events, then immediately wake
+      // up any thread that's currently waiting on a resource in
+      // order to reduce delays as much as possible.
+      entry.submit.cmdList->notifyObjects();
 
-      lock = std::unique_lock<dxvk::mutex>(m_mutex);
+      lock.lock();
       m_pending -= 1;
 
       m_finishQueue.pop();
       m_finishCond.notify_all();
+      lock.unlock();
+
+      // Free the command list and associated objects now
+      entry.submit.cmdList->reset();
+      m_device->recycleCommandList(entry.submit.cmdList);
     }
   }
 }

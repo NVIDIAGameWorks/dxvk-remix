@@ -41,7 +41,7 @@ namespace dxvk {
    * recorded.
    */
   class DxvkContext : public RcObject {
-    
+    constexpr static VkDeviceSize StagingBufferSize = 4ull << 20;
   public:
     
     DxvkContext(const Rc<DxvkDevice>& device);
@@ -847,14 +847,12 @@ namespace dxvk {
      * \param [in] offset Offset of sub range to update
      * \param [in] size Length of sub range to update
      * \param [in] data Data to upload
-     * \param [in] forceNoReplace Do not replace the buffer
      */
     void updateBuffer(
       const Rc<DxvkBuffer>&           buffer,
             VkDeviceSize              offset,
             VkDeviceSize              size,
-      const void*                     data,
-      bool                            forceNoReplace = false);
+      const void*                     data);
     // NV-DXVK end:
 
     // NV-DXVK begin: utility function for partial buffer uploads
@@ -862,10 +860,10 @@ namespace dxvk {
       const Rc<DxvkBuffer>& buffer,
             VkDeviceSize    offset,
             VkDeviceSize    size,
-      const void*           data,
-            bool            forceNoReplace = false);
+      const void*           data);
     // NV-DXVK end
     
+    // NV-DXVK start: preserve updateImage
     /**
      * \brief Updates an image
      * 
@@ -886,7 +884,8 @@ namespace dxvk {
       const void*                     data,
             VkDeviceSize              pitchPerRow,
             VkDeviceSize              pitchPerLayer);
-    
+    // NV-DXVK end
+
     /**
      * \brief Updates an depth-stencil image
      * 
@@ -1118,15 +1117,6 @@ namespace dxvk {
       const Rc<sync::Signal>&   signal,
             uint64_t            value);
     
-    /**
-     * \brief Trims staging buffers
-     * 
-     * Releases staging buffer resources. Calling
-     * this may be useful if data updates on a
-     * given context are rare.
-     */
-    void trimStagingBuffers();
-
 	void vkCmdBuildAccelerationStructuresKHR(
 		uint32_t                                    infoCount,
 		const VkAccelerationStructureBuildGeometryInfoKHR* pInfos,
@@ -1272,7 +1262,7 @@ namespace dxvk {
     DxvkBarrierControlFlags m_barrierControl;
     
     DxvkGpuQueryManager     m_queryManager;
-    DxvkStagingDataAlloc    m_staging;
+    DxvkStagingBuffer       m_staging;
     
     DxvkRenderTargetLayouts m_rtLayouts = { };
 
@@ -1548,6 +1538,10 @@ namespace dxvk {
             VkAccessFlags             dstAccess);
 
     void trackDrawBuffer();
+
+    bool tryInvalidateDeviceLocalBuffer(
+      const Rc<DxvkBuffer>&           buffer,
+            VkDeviceSize              copySize);
 
     DxvkGraphicsPipeline* lookupGraphicsPipeline(
       const DxvkGraphicsPipelineShaders&  shaders);
