@@ -26,42 +26,41 @@
 #include "rtx_render/rtx_shader_manager.h"
 #include "rtx/pass/bloom/bloom.h"
 
-#include <rtx_shaders/bloom_downscale.h>
-#include <rtx_shaders/bloom_blur.h>
+#include <rtx_shaders/bloom_downsample.h>
+#include <rtx_shaders/bloom_upsample.h>
 #include <rtx_shaders/bloom_composite.h>
-#include <pxr/base/arch/math.h>
 #include "rtx_imgui.h"
 
 namespace dxvk {
   // Defined within an unnamed namespace to ensure unique definition across binary
   namespace {
-    class DownscaleShader : public ManagedShader
+    class BloomDownsampleShader : public ManagedShader
     {
-      SHADER_SOURCE(DownscaleShader, VK_SHADER_STAGE_COMPUTE_BIT, bloom_downscale)
+      SHADER_SOURCE(BloomDownsampleShader, VK_SHADER_STAGE_COMPUTE_BIT, bloom_downsample)
 
-      PUSH_CONSTANTS(BloomDownscaleArgs)
+      PUSH_CONSTANTS(BloomDownsampleArgs)
 
       BEGIN_PARAMETER()
-        TEXTURE2D(BLOOM_DOWNSCALE_INPUT)
-        RW_TEXTURE2D(BLOOM_DOWNSCALE_OUTPUT)
+        SAMPLER2D(BLOOM_DOWNSAMPLE_INPUT)
+      RW_TEXTURE2D(BLOOM_DOWNSAMPLE_OUTPUT)
       END_PARAMETER()
     };
 
-    PREWARM_SHADER_PIPELINE(DownscaleShader);
+    PREWARM_SHADER_PIPELINE(BloomDownsampleShader);
 
-    class BlurShader : public ManagedShader
+    class BloomUpsampleShader : public ManagedShader
     {
-      SHADER_SOURCE(BlurShader, VK_SHADER_STAGE_COMPUTE_BIT, bloom_blur)
+      SHADER_SOURCE(BloomUpsampleShader, VK_SHADER_STAGE_COMPUTE_BIT, bloom_upsample)
 
-      PUSH_CONSTANTS(BloomBlurArgs)
+      PUSH_CONSTANTS(BloomUpsampleArgs)
 
       BEGIN_PARAMETER()
-        SAMPLER2D(BLOOM_BLUR_INPUT)
-        RW_TEXTURE2D(BLOOM_BLUR_OUTPUT)
+        SAMPLER2D(BLOOM_UPSAMPLE_INPUT)
+        RW_TEXTURE2D(BLOOM_UPSAMPLE_OUTPUT)
       END_PARAMETER()
     };
 
-    PREWARM_SHADER_PIPELINE(BlurShader);
+    PREWARM_SHADER_PIPELINE(BloomUpsampleShader);
 
     class CompositeShader : public ManagedShader
     {
@@ -84,94 +83,102 @@ namespace dxvk {
   DxvkBloom::~DxvkBloom()  {
   }
 
-  void DxvkBloom::showImguiSettings()
-  {
+  void DxvkBloom::showImguiSettings() {
+    ImGui::Indent();
     ImGui::Checkbox("Bloom Enabled", &enableObject());
-    ImGui::DragFloat("Bloom Sigma", &sigmaObject(), 0.001f, 0.f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-    ImGui::DragFloat("Bloom Intensity", &intensityObject(), 0.001f, 0.f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+    ImGui::Indent();
+    ImGui::DragFloat("Intensity##bloom", &burnIntensityObject(), 0.05f, 0.f, 5.f, "%.2f");
+    ImGui::DragFloat("Threshold##bloom", &luminanceThresholdObject(), 0.05f, 0.f, 100.f, "%.2f");
+    ImGui::Unindent();
+    ImGui::Unindent();
   }
 
-  void DxvkBloom::dispatch(
-    Rc<RtxContext> ctx,
-    Rc<DxvkSampler> linearSampler,
-    const Resources::Resource& inOutColorBuffer)
-  {
+  void DxvkBloom::dispatch(Rc<RtxContext> ctx, 
+                           Rc<DxvkSampler> linearSampler, 
+                           const Resources::Resource& inOutColorBuffer) {
     ScopedGpuProfileZone(ctx, "Bloom");
 
     ctx->setPushConstantBank(DxvkPushConstantBank::RTX);
 
-    dispatchDownscale(ctx, inOutColorBuffer, m_bloomBuffer0);
-    dispatchBlur<false>(ctx, linearSampler, m_bloomBuffer0, m_bloomBuffer1);
-    dispatchBlur<true>(ctx, linearSampler, m_bloomBuffer1, m_bloomBuffer0);
-    dispatchComposite(ctx, linearSampler, inOutColorBuffer, m_bloomBuffer0);
+    const Resources::Resource* res[] = {
+      &inOutColorBuffer,
+      &m_bloomBuffer[0],
+      &m_bloomBuffer[1],
+      &m_bloomBuffer[2],
+      &m_bloomBuffer[3],
+      &m_bloomBuffer[4],
+    };
+    assert(std::size(m_bloomBuffer) == std::size(res) - 1);
+
+    for (uint32_t i = 0; i < std::size(res) - 1; i++) {
+      dispatchDownsampleStep(ctx, linearSampler, *res[i], *res[i + 1], i == 0);
+    }
+
+    for (uint32_t i = std::size(res) - 1; i > 1; i--) {
+      dispatchUpsampleStep(ctx, linearSampler, *res[i], *res[i - 1]);
+    }
+
+    dispatchComposite(ctx, linearSampler, inOutColorBuffer, m_bloomBuffer[0]);
   }
 
-  void DxvkBloom::dispatchDownscale(
+  void DxvkBloom::dispatchDownsampleStep(
     Rc<DxvkContext> ctx,
+    const Rc<DxvkSampler>& linearSampler,
     const Resources::Resource& inputBuffer,
-    const Resources::Resource& outputBuffer)
-  {
-    ScopedGpuProfileZone(ctx, "Downscale");
+    const Resources::Resource& outputBuffer,
+    bool initial) {
+    ScopedGpuProfileZone(ctx, "Bloom Downsample");
 
-    VkExtent3D inputSize = inputBuffer.image->info().extent;
+    const VkExtent3D inputSize = inputBuffer.image->info().extent;
+    const VkExtent3D outputSize = outputBuffer.image->info().extent;
 
     // Prepare shader arguments
-    BloomDownscaleArgs pushArgs = {};
-    pushArgs.inputSize = { (int)inputSize.width, (int)inputSize.height };
+    BloomDownsampleArgs pushArgs = {};
+    pushArgs.inputSizeInverse = { 1.0f / float(inputSize.width), 1.0f / float(inputSize.height) };
+    pushArgs.downsampledOutputSize = { outputSize.width, outputSize.height };
+    pushArgs.downsampledOutputSizeInverse = { 1.0f / float(outputSize.width), 1.0f / float(outputSize.height) };
+    pushArgs.threshold = initial ? std::max(0.01f, luminanceThreshold()) : -1;
     ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
 
-    VkExtent3D workgroups = util::computeBlockCount(inputSize, VkExtent3D{ 16 , 16, 1 });
+    const VkExtent3D workgroups = util::computeBlockCount(outputSize, VkExtent3D{ 16, 16, 1 });
 
-    ctx->bindResourceView(BLOOM_DOWNSCALE_INPUT, inputBuffer.view, nullptr);
-    ctx->bindResourceView(BLOOM_DOWNSCALE_OUTPUT, outputBuffer.view, nullptr);
-    ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, DownscaleShader::getShader());
+    ctx->bindResourceView(BLOOM_DOWNSAMPLE_INPUT, inputBuffer.view, nullptr);
+    ctx->bindResourceSampler(BLOOM_DOWNSAMPLE_INPUT, linearSampler);
+    ctx->bindResourceView(BLOOM_DOWNSAMPLE_OUTPUT, outputBuffer.view, nullptr);
+    ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, BloomDownsampleShader::getShader());
     ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
   }
 
-  template<bool isVertical>
-  void DxvkBloom::dispatchBlur(
+  void DxvkBloom::dispatchUpsampleStep(
     Rc<DxvkContext> ctx,
-    Rc<DxvkSampler> linearSampler,
+    const Rc<DxvkSampler>& linearSampler,
     const Resources::Resource& inputBuffer,
-    const Resources::Resource& outputBuffer)
-  {
-    ScopedGpuProfileZone(ctx, isVertical ? "Vertical Blur" : "Horizontal Blur");
+    const Resources::Resource& outputBuffer) {
+    ScopedGpuProfileZone(ctx, "Bloom Upsample");
 
     VkExtent3D inputSize = inputBuffer.image->info().extent;
+    VkExtent3D outputSize = outputBuffer.image->info().extent;
 
     // Prepare shader arguments
-    BloomBlurArgs pushArgs = {};
-    pushArgs.imageSize = { (int)inputSize.width, (int)inputSize.height };
-    pushArgs.invImageSize = { 1.f / (float)inputSize.width, 1.f / (float)inputSize.height };
+    BloomUpsampleArgs pushArgs = {};
+    pushArgs.inputSizeInverse = { 1.f / float(inputSize.width), 1.f / float(inputSize.height) };
+    pushArgs.upsampledOutputSize = { outputSize.width, outputSize.height };
+    pushArgs.upsampledOutputSizeInverse = { 1.f / float(outputSize.width), 1.f / float(outputSize.height) };
 
-    float bloomSigmaInPixels = sigma() * (float)inputSize.height;
-
-    float effectiveSigma = bloomSigmaInPixels * 0.25f;
-    effectiveSigma = std::min(effectiveSigma, 100.f);
-    effectiveSigma = std::max(effectiveSigma, 1.f);
-
-    if (isVertical)
-      pushArgs.pixstep = { 0.f, 1.f };
-    else
-      pushArgs.pixstep = { 1.f, 0.f };
-
-    pushArgs.argumentScale = -1.f / (2.0f * effectiveSigma * effectiveSigma);
-    pushArgs.normalizationScale = 1.f / (sqrtf(2.f * (float)M_PI) * effectiveSigma);
-    pushArgs.numSamples = (int)roundf(effectiveSigma * 4.f);
     ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
 
-    VkExtent3D workgroups = util::computeBlockCount(inputSize, VkExtent3D{ 16 , 16, 1 });
+    VkExtent3D workgroups = util::computeBlockCount(outputSize, VkExtent3D{ 16, 16, 1 });
 
-    ctx->bindResourceView(BLOOM_BLUR_INPUT, inputBuffer.view, nullptr);
-    ctx->bindResourceSampler(BLOOM_BLUR_INPUT, linearSampler);
-    ctx->bindResourceView(BLOOM_BLUR_OUTPUT, outputBuffer.view, nullptr);
-    ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, BlurShader::getShader());
+    ctx->bindResourceView(BLOOM_UPSAMPLE_INPUT, inputBuffer.view, nullptr);
+    ctx->bindResourceSampler(BLOOM_UPSAMPLE_INPUT, linearSampler);
+    ctx->bindResourceView(BLOOM_UPSAMPLE_OUTPUT, outputBuffer.view, nullptr);
+    ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, BloomUpsampleShader::getShader());
     ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
   }
 
   void DxvkBloom::dispatchComposite(
     Rc<DxvkContext> ctx,
-    Rc<DxvkSampler> linearSampler,
+    const Rc<DxvkSampler> &linearSampler,
     const Resources::Resource& inOutColorBuffer,
     const Resources::Resource& bloomBuffer)
   {
@@ -181,9 +188,9 @@ namespace dxvk {
 
     // Prepare shader arguments
     BloomCompositeArgs pushArgs = {};
-    pushArgs.imageSize = { (int)outputSize.width, (int)outputSize.height };
-    pushArgs.invImageSize = { 1.f / (float)outputSize.width, 1.f / (float)outputSize.height };
-    pushArgs.blendFactor = std::max(0.f, std::min(1.f, intensity()));
+    pushArgs.imageSize = { outputSize.width, outputSize.height };
+    pushArgs.imageSizeInverse = { 1.f / float(outputSize.width), 1.f / float(outputSize.height) };
+    pushArgs.intensity = 0.01f * std::max(burnIntensity(), 0.0f);
     ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
 
     VkExtent3D workgroups = util::computeBlockCount(outputSize, VkExtent3D{ 16 , 16, 1 });
@@ -196,13 +203,25 @@ namespace dxvk {
   }
 
   void DxvkBloom::createTargetResource(Rc<DxvkContext>& ctx, const VkExtent3D& targetExtent) {
-    m_bloomBuffer0 = Resources::createImageResource(ctx, "bloom buffer 0", { util::ceilDivide(targetExtent.width, 4), util::ceilDivide(targetExtent.height, 4), 1 }, VK_FORMAT_R16G16B16A16_SFLOAT);
-    m_bloomBuffer1 = Resources::createImageResource(ctx, "bloom buffer 1", { util::ceilDivide(targetExtent.width, 4), util::ceilDivide(targetExtent.height, 4), 1 }, VK_FORMAT_R16G16B16A16_SFLOAT);
+    for (uint32_t i = 0; i < std::size(m_bloomBuffer); i++) {
+      const uint32_t divisor = (1U << (i + 1));
+
+      m_bloomBuffer[i] = Resources::createImageResource(
+        ctx,
+        "bloom buffer",
+        {
+          util::ceilDivide(targetExtent.width, divisor),
+          util::ceilDivide(targetExtent.height, divisor),
+          1
+        },
+        VK_FORMAT_R16G16B16A16_SFLOAT);
+    }
   }
 
   void DxvkBloom::releaseTargetResource() {
-    m_bloomBuffer0.reset();
-    m_bloomBuffer1.reset();
+    for (auto& i : m_bloomBuffer) {
+      i.reset();
+    }
   }
 
   bool DxvkBloom::isActive() {

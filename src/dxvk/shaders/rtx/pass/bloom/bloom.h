@@ -19,40 +19,40 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
+
 #ifndef BLOOM_H
 #define BLOOM_H
 
 #include "rtx/utility/shader_types.h"
 
-#define BLOOM_DOWNSCALE_INPUT              0
-#define BLOOM_DOWNSCALE_OUTPUT             1
+#define BLOOM_DOWNSAMPLE_INPUT  0
+#define BLOOM_DOWNSAMPLE_OUTPUT 1
 
-#define BLOOM_BLUR_INPUT                   0
-#define BLOOM_BLUR_OUTPUT                  1
+#define BLOOM_UPSAMPLE_INPUT    0
+#define BLOOM_UPSAMPLE_OUTPUT   1
 
 #define BLOOM_COMPOSITE_COLOR_INPUT_OUTPUT 0
 #define BLOOM_COMPOSITE_BLOOM              1
 
-// Constant buffers
+// Push constants
 
-struct BloomDownscaleArgs {
-  int2 inputSize;
+struct BloomDownsampleArgs {
+  float2 inputSizeInverse;
+  uint2  downsampledOutputSize;
+  float2 downsampledOutputSizeInverse;
+  float  threshold;
 };
 
-struct BloomBlurArgs {
-  int2 imageSize;
-  float2 invImageSize;
-  float2 pixstep;
-  float argumentScale;
-  float normalizationScale;
-  int numSamples;
+struct BloomUpsampleArgs {
+  float2 inputSizeInverse;
+  uint2  upsampledOutputSize;
+  float2 upsampledOutputSizeInverse;
 };
 
 struct BloomCompositeArgs {
-  int2 imageSize;
-  float2 invImageSize;
-  float blendFactor;
+  uint2  imageSize;
+  float2 imageSizeInverse;
+  float  intensity;
 };
-
 
 #endif  // BLOOM_H
