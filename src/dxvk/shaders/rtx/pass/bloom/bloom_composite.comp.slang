@@ -34,18 +34,20 @@ ConstantBuffer<BloomCompositeArgs> cb;
 [numthreads(16, 16, 1)]
 void main(uint2 ipos : SV_DispatchThreadID)
 {
-    if (any(ipos >= cb.imageSize))
-        return;
-    
-    float2 uv = saturate((float2(ipos) + float2(0.5, 0.5)) / float2(cb.imageSize));
+  if (any(ipos >= cb.imageSize))
+  {
+    return;
+  }
 
-    float4 src = InBloomBuffer.SampleLevel(uv, 0);
-    float4 dst = InOutColorBuffer[ipos];
+  float2 uv = saturate((float2(ipos) + float2(0.5, 0.5)) * cb.imageSizeInverse);
 
-    if (any(isnan(dst)) || any(isinf(dst)))
-        return;
+  float4 src = InBloomBuffer.SampleLevel(uv, 0);
+  float4 dst = InOutColorBuffer[ipos];
 
-    float4 result = src * cb.blendFactor + dst * (1.0 - cb.blendFactor);
+  if (any(isnan(dst)) || any(isinf(dst)))
+  {
+    return;
+  }
 
-    InOutColorBuffer[ipos] = result;
+  InOutColorBuffer[ipos] = dst + src * cb.intensity;
 }

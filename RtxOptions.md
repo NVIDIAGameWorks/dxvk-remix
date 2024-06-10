@@ -80,9 +80,9 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.automation.disableUpdateUpscaleFromDlssPreset|bool|False|Disables updating upscaler from DLSS preset\.<br>This option is typically meant for automation of tests for which we don't want upscaler to be updated based on a DLSS preset\.|
 |rtx.automation.suppressAssetLoadingErrors|bool|False|Suppresses asset loading errors by turning them into warnings\.<br>This option is typically meant for automation of tests for which acceptable asset loading issues are known\.|
 |rtx.blockInputToGameInUI|bool|True||
-|rtx.bloom.enable|bool|True||
-|rtx.bloom.intensity|float|0.06||
-|rtx.bloom.sigma|float|0.1||
+|rtx.bloom.burnIntensity|float|1|Amount of bloom to add to the final image\.|
+|rtx.bloom.enable|bool|True|Enable bloom \- glowing halos around intense, bright areas\.|
+|rtx.bloom.luminanceThreshold|float|0.25|Adjust the bloom threshold to suppress blooming of the dim areas\. Pixels with luminance lower than the threshold are multiplied by the weight value that smoothly transitions from 1\.0 \(at luminance=threshold\) to 0\.0 \(at luminance=0\)\.|
 |rtx.calculateLightIntensityUsingLeastSquares|bool|True|Enable usage of least squares for approximating a light's falloff curve rather than a more basic single point approach\. This will generally result in more accurate matching of the original application's custom light attenuation curves, especially with non physically based linear\-style attenuation\.|
 |rtx.camera.enableFreeCamera|bool|False|Enables free camera\.|
 |rtx.camera.freeCameraPitch|float|0|Free camera's pitch\.|
