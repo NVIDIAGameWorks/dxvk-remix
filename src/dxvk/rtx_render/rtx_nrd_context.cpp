@@ -694,6 +694,9 @@ namespace dxvk {
           ctx->getCommandList()->trackResource<DxvkAccess::None>(m_staticSamplers[i]);
         }
 
+        // descriptorWriteSets holds a reference, so keep a referenced variable on stack
+        VkDescriptorBufferInfo cbDesc{};
+
         // Update constants
         // The ReLAX A-trous passes use the same shader pipeline with different constant values.
         // In this case, the default constant buffer cannot guarantee values got updated in each pass.
@@ -710,7 +713,7 @@ namespace dxvk {
           const VkDescriptorSetLayoutBinding& cb = computePipeline.bindings[computePipeline.constantBufferIndex];
           assert(cb.descriptorCount == 1);
 
-          const VkDescriptorBufferInfo& cbDesc = cbSlice.getDescriptor().buffer;
+          cbDesc = cbSlice.getDescriptor().buffer;
           descriptorWriteSets.emplace_back(DxvkDescriptor::buffer(descriptorSet, cbDesc, cb.descriptorType, cb.binding));
 
           barriers.accessBuffer(cbSlice.getSliceHandle(),
