@@ -502,7 +502,8 @@ struct DrawCallState {
 
   void setupCategoriesForTexture();
   void setupCategoriesForGeometry();
-  void setupCategoriesForHeuristics();
+  void setupCategoriesForHeuristics(uint32_t prevFrameSeenCamerasCount,
+                                    std::vector<Vector3>& seenCameraPositions);
 
   template<typename... InstanceCategories>
   bool testCategoryFlags(InstanceCategories... cat) const { return categories.any(cat...); }

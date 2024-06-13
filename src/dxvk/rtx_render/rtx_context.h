@@ -190,6 +190,12 @@ namespace dxvk {
     void initSkyProbe();
     void rasterizeToSkyProbe(const DrawParameters& params, const DrawCallState& drawCallState);
     void rasterizeSky(const DrawParameters& params, const DrawCallState& drawCallState);
+    enum class TryHandleSkyResult {
+      Default,
+      SkipSubmit,
+    };
+    TryHandleSkyResult tryHandleSky(const DrawParameters* originalParams, DrawCallState* originalDrawCallState /* can be std::move-d */);
+
     void bakeTerrain(const DrawParameters& params, DrawCallState& drawCallState, const MaterialData** outOverrideMaterialData);
 
     InternalUpscaler getCurrentFrameUpscaler();
@@ -201,13 +207,11 @@ namespace dxvk {
     bool m_captureStateForRTX = true;
 
     Rc<DxvkImage> m_skyProbeImage;
-    std::array<Rc<DxvkImageView>, 6> m_skyProbeViews;
-    VkFormat m_skyColorFormat;
-    VkFormat m_skyRtColorFormat;
+    Rc<DxvkImageView> m_skyProbeCubePlanes[6];
+    VkFormat m_skyColorFormat = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+    VkFormat m_skyRtColorFormat = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
     VkClearValue m_skyClearValue;
     bool m_skyClearDirty = false;
-
-    bool requiresDrawCall() const;
 
     bool shouldUseDLSS() const;
     bool shouldUseRayReconstruction() const;
@@ -240,5 +244,7 @@ namespace dxvk {
       Rc<sync::Fence>                 signal = new sync::Fence{};
       std::vector<std::future<void>>  asyncTasks = {};
     } m_objectPickingReadback {};
+
+    std::vector<DrawCallState> m_delayedRayTracedSky;
   };
 } // namespace dxvk

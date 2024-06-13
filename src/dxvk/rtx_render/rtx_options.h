@@ -700,6 +700,7 @@ namespace dxvk {
                "A value representing the scale of the fixed function fog's color in the multiscattering approximation.\n"
                "This scaling factor is applied to the fixed function fog's color and becomes a multiscattering approximation in the volumetrics system.\n"
                "Sometimes useful but this multiscattering approximation is very basic (just a simple ambient term for now essentially) and may not look very good depending on various conditions.");
+    RTX_OPTION("rtx", bool, fogIgnoreSky, false, "If true, sky draw calls will be skipped when searching for the D3D9 fog values.")
 
     // Note: Cached values used to precompute quantities for options fetching to not have to needlessly recompute them.
     uint8_t cachedFroxelReservoirSamplesStabilityHistoryRange;
@@ -895,7 +896,7 @@ namespace dxvk {
 
     RTX_OPTION("rtx", float, skyBrightness, 1.f, "");
     RTX_OPTION("rtx", bool, skyForceHDR, false, "By default sky will be rasterized in the color format used by the game. Set the checkbox to force sky to be rasterized in HDR intermediate format. This may be important when sky textures replaced with HDR textures.");
-    RTX_OPTION("rtx", uint32_t, skyProbeSide, 1024, "");
+    RTX_OPTION("rtx", uint32_t, skyProbeSide, 1024, "Resolution of the skybox for indirect illumination (rough reflections, global illumination etc).");
     RTX_OPTION_FLAG("rtx", uint32_t, skyUiDrawcallCount, 0, RtxOptionFlags::NoSave, "");
     RTX_OPTION("rtx", uint32_t, skyDrawcallIdThreshold, 0, "It's common in games to render the skybox first, and so, this value provides a simple mechanism to identify those early draw calls that are untextured (textured draw calls can still use the Sky Textures functionality.");
     RTX_OPTION("rtx", float, skyMinZThreshold, 1.f, "If a draw call's viewport has min depth greater than or equal to this threshold, then assume that it's a sky.");
@@ -905,6 +906,14 @@ namespace dxvk {
                "1 = CameraPosition - assume the first seen camera position is a sky camera.\n"
                "2 = CameraPositionAndDepthFlags - assume the first seen camera position is a sky camera, if its draw call's depth test is disabled. If it's enabled, assume no sky camera.\n"
                "Note: if all draw calls are marked as sky, then assume that there's no sky camera at all.");
+    RTX_OPTION("rtx", float, skyAutoDetectUniqueCameraDistance, 1.0f,
+               "If multiple cameras are found, this threshold distance (in game units) is used to distinguish a sky camera from a main camera. "
+               "Active if sky auto-detect is set to CameraPosition / CameraPositionAndDepthFlags.")
+    RTX_OPTION("rtx", bool, skyReprojectToMainCameraSpace, false,
+               "Move sky geometry to the main camera space.\n"
+               "Useful, if a game has a skybox that contains geometry that can be a part of the main scene (e.g. buildings, mountains). "
+               "So with this option enabled, that geometry would be promoted from sky rasterization to ray tracing.");
+    RTX_OPTION("rtx", float, skyReprojectScale, 16.0f, "Scaling of the sky geometry on reprojection to main camera space.");
 
     // TODO (REMIX-656): Remove this once we can transition content to new hash
     RTX_OPTION("rtx", bool, logLegacyHashReplacementMatches, false, "");

@@ -170,15 +170,6 @@ public:
   static Vector3 sceneToWorldOrientedVector(const Vector3& sceneVector);
 
   void addLight(const D3DLIGHT9& light);
-  
-  CameraType::Enum processCameraData(const DrawCallState& input) {
-    return m_cameraManager.processCameraData(input);
-  }
-  void processExternalCamera(CameraType::Enum type,
-                             const Matrix4& worldToView,
-                             const Matrix4& viewToProjection) {
-    m_cameraManager.processExternalCamera(type, worldToView, viewToProjection);
-  }
 
   const CameraManager& getCameraManager() const { return m_cameraManager; }
   CameraManager& getCameraManager() { return m_cameraManager; }

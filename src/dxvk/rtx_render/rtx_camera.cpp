@@ -73,6 +73,29 @@ namespace dxvk
     return Vector3{ getViewToWorld(freecam)[0].xyz() };
   }
 
+  std::pair<float, float> RtCamera::calculateNearFarPlanes() const {
+    // Note: Converted to floats to interface with MathLib. Ideally this should be a double still.
+    Matrix4 floatViewToProj{ getViewToProjection() };
+
+    // Check size since struct padding can impact this memcpy
+    static_assert(sizeof(float4x4) == sizeof(floatViewToProj));
+
+    uint32_t flags;
+    float    cameraParams[PROJ_NUM];
+    DecomposeProjection(
+      NDC_D3D,
+      NDC_D3D,
+      *reinterpret_cast<float4x4*>(&floatViewToProj),
+      &flags,
+      cameraParams,
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr);
+
+    return { cameraParams[PROJ_ZNEAR], cameraParams[PROJ_ZFAR] };
+  }
+
   bool RtCamera::isCameraCut() const {
     return lengthSqr(getViewToWorld()[3] - getPreviousViewToWorld()[3]) > RtxOptions::Get()->getUniqueObjectDistanceSqr();
   }

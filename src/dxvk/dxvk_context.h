@@ -1266,8 +1266,6 @@ namespace dxvk {
     
     DxvkRenderTargetLayouts m_rtLayouts = { };
 
-    DxvkPushConstantBank    m_pushConstantBank = DxvkPushConstantBank::D3D9;
-
     VkPipeline m_gpActivePipeline = VK_NULL_HANDLE;
     VkPipeline m_cpActivePipeline = VK_NULL_HANDLE;
     VkPipeline m_rpActivePipeline = VK_NULL_HANDLE;

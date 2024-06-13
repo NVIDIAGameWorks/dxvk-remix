@@ -855,7 +855,7 @@ namespace {
       const_cast<bool&>(dxvk::RtxOptions::enableNearPlaneOverride()) = false;
     }
     remixDevice->EmitCs([cRtCamera = convert::toRtCamera(*info)](dxvk::DxvkContext* ctx) {
-      ctx->getCommonObjects()->getSceneManager()
+      ctx->getCommonObjects()->getSceneManager().getCameraManager()
         .processExternalCamera(cRtCamera.type, cRtCamera.worldToView, cRtCamera.viewToProjection);
     });
     return REMIXAPI_ERROR_CODE_SUCCESS;

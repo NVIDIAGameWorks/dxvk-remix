@@ -163,7 +163,129 @@ namespace dxvk {
     setCategory(InstanceCategories::Sky, lookupHash(RtxOptions::skyBoxGeometries(), assetReplacementHash));
   }
 
-  bool shouldBakeSky(const DrawCallState& drawCallState) {
+  static std::optional<Vector3> makeCameraPosition(const Matrix4& worldToView,
+                                                   bool zWrite,
+                                                   bool alphaBlend,
+                                                   bool hasSkinning) {
+    if (hasSkinning) {
+      return std::nullopt;
+    }
+    // particles
+    if (!zWrite && alphaBlend) {
+      return std::nullopt;
+    }
+    // identity matrix
+    if (isIdentityExact(worldToView)) {
+      return std::nullopt;
+    }
+
+#define USE_TRUE_CAMERA_POSITION_FOR_COMPARISON 0
+
+#if USE_TRUE_CAMERA_POSITION_FOR_COMPARISON
+    return (inverse(worldToView))[3].xyz();
+#else
+    // as we compare the cameras relatively and don't need precise camera position:
+    // just return a position-like vector, to avoid calculating heavy matrix inverse operation
+    return worldToView[3].xyz();
+#endif
+  }
+
+  static bool areCamerasClose(const Vector3& a, const Vector3& b) {
+    const float distanceThreshold = RtxOptions::skyAutoDetectUniqueCameraDistance();
+    return lengthSqr(a - b) < distanceThreshold * distanceThreshold;
+  }
+
+  bool checkSkyAutoDetect(bool depthTestEnable,
+                          const std::optional<Vector3>& newCameraPos,
+                          uint32_t prevFrameSeenCamerasCount,
+                          const std::vector<Vector3>& seenCameraPositions) {
+
+    if (RtxOptions::skyAutoDetect() != SkyAutoDetectMode::CameraPositionAndDepthFlags &&
+        RtxOptions::skyAutoDetect() != SkyAutoDetectMode::CameraPosition) {
+      return false;
+    }
+    const bool withDepthFlags = (RtxOptions::skyAutoDetect() == SkyAutoDetectMode::CameraPositionAndDepthFlags);
+
+
+    const bool searchingForSkyCamera             = (seenCameraPositions.size() == 0);
+    const bool skyFoundAndSearchingForMainCamera = (seenCameraPositions.size() == 1);
+    const bool skyAndMainCameraFound             = (seenCameraPositions.size() >= 2);
+
+    if (skyAndMainCameraFound) {
+      // assume that subsequent draw calls can not be sky
+      return false;
+    }
+
+    if (searchingForSkyCamera) {
+      if (withDepthFlags) {
+        // no depth test: frame starts with a sky
+        // depth test: frame starts with a world, not a sky
+        return !depthTestEnable;
+      }
+      // assume the first camera to be sky
+      return true;
+    }
+
+    {
+      // corner case: if there was no sky camera at all, fallback, but this would also
+      // involve a one-frame (preceding to the current one) being rasterized (like a flicker)
+      if (prevFrameSeenCamerasCount < 2) {
+        if (withDepthFlags) {
+          // no depth test: sky
+          // depth test: world
+          return !depthTestEnable;
+        }
+        // assume no sky
+        return false;
+      }
+    }
+
+    if (skyFoundAndSearchingForMainCamera) {
+      // if draw call doesn't have a camera position
+      if (!newCameraPos) {
+        // it can't contain main camera, so assume that it's still a sky
+        return true;
+      }
+
+      // if same as the existing sky camera
+      if (areCamerasClose(seenCameraPositions[0], *newCameraPos)) {
+        // still sky
+        return true;
+      }
+
+      // found a new unique camera, which should be a main camera
+      return false;
+    }
+
+    assert(0);
+    return false;
+  }
+
+  bool shouldBakeSky(const DrawCallState& drawCallState,
+                     bool hasSkinning,
+                     uint32_t prevFrameSeenCamerasCount,
+                     std::vector<Vector3>& seenCameraPositions) {
+
+    const auto drawCallCameraPos = makeCameraPosition(
+      drawCallState.getTransformData().worldToView,
+      drawCallState.zWriteEnable,
+      drawCallState.alphaBlendEnable,
+      hasSkinning);
+
+    auto l_addIfUnique = [&seenCameraPositions](const std::optional<Vector3>& newCameraPos) {
+      if (!newCameraPos) {
+        return;
+      }
+      for (const Vector3& seen : seenCameraPositions) {
+        if (areCamerasClose(seen, *newCameraPos)) {
+          return;
+        }
+      }
+      seenCameraPositions.push_back(*newCameraPos);
+    };
+    l_addIfUnique(drawCallCameraPos);
+
+
     if (drawCallState.minZ >= RtxOptions::skyMinZThreshold()) {
       return true;
     }
@@ -173,16 +295,23 @@ namespace dxvk {
     assert(drawCallState.getMaterialData().getColorTexture().getImageHash() == drawCallState.getMaterialData().getHash() && "Texture or material hash method changed!");
 
     if (drawCallState.getMaterialData().usesTexture()) {
-      if (!lookupHash(RtxOptions::skyBoxTextures(), drawCallState.getMaterialData().getHash())) {
-        return false;
+      if (lookupHash(RtxOptions::skyBoxTextures(), drawCallState.getMaterialData().getHash())) {
+        return true;
       }
     } else {
-      if (drawCallState.drawCallID >= RtxOptions::skyDrawcallIdThreshold()) {
-        return false;
+      if (drawCallState.drawCallID < RtxOptions::skyDrawcallIdThreshold()) {
+        return true;
       }
     }
 
-    return true;
+    if (checkSkyAutoDetect(drawCallState.zEnable,
+                           drawCallCameraPos,
+                           prevFrameSeenCamerasCount,
+                           seenCameraPositions)) {
+      return true;
+    }
+
+    return false;
   }
 
   bool shouldBakeTerrain(const DrawCallState& drawCallState) {
@@ -192,8 +321,12 @@ namespace dxvk {
     return lookupHash(RtxOptions::terrainTextures(), drawCallState.getMaterialData().getHash());
   }
 
-  void DrawCallState::setupCategoriesForHeuristics() {
-    setCategory(InstanceCategories::Sky, shouldBakeSky(*this));
+  void DrawCallState::setupCategoriesForHeuristics(uint32_t prevFrameSeenCamerasCount,
+                                                   std::vector<Vector3>& seenCameraPositions) {
+    setCategory(InstanceCategories::Sky, shouldBakeSky(*this,
+                                                       futureSkinningData.valid(),
+                                                       prevFrameSeenCamerasCount,
+                                                       seenCameraPositions));
     setCategory(InstanceCategories::Terrain, shouldBakeTerrain(*this));
   }
 

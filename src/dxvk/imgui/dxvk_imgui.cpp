@@ -1446,7 +1446,6 @@ namespace dxvk {
           for (const auto& [type, name] : cameras) {
             printCamera(name, cameraManager.isCameraValid(type) ? &cameraManager.getCamera(type) : nullptr);
           }
-          ImGui::Text("3D sky detected: %s", cameraManager.was3DSkyInPrevFrame() ? "Yes" : "No");
           ImGui::Unindent();
         }
         ImGui::PopID();
@@ -2205,11 +2204,21 @@ namespace dxvk {
       if (ImGui::CollapsingHeader("Sky Tuning", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
         ImGui::DragFloat("Sky Brightness", &RtxOptions::Get()->skyBrightnessObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
-        ImGui::InputInt("First N untextured drawcalls", &RtxOptions::Get()->skyDrawcallIdThresholdObject(), 1, 1, 0);
+        ImGui::InputInt("First N Untextured Draw Calls", &RtxOptions::Get()->skyDrawcallIdThresholdObject(), 1, 1, 0);
         ImGui::SliderFloat("Sky Min Z Threshold", &RtxOptions::Get()->skyMinZThresholdObject(), 0.0f, 1.0f);
         skyAutoDetectCombo.getKey(&RtxOptions::Get()->skyAutoDetectObject());
 
         if (ImGui::CollapsingHeader("Advanced", collapsingHeaderClosedFlags)) {
+          ImGui::Indent();
+
+          ImGui::Checkbox("Reproject Sky to Main Camera", &RtxOptions::skyReprojectToMainCameraSpaceObject());
+          {
+            ImGui::BeginDisabled(!RtxOptions::skyReprojectToMainCameraSpace());
+            ImGui::DragFloat("Reprojected Sky Scale", &RtxOptions::skyReprojectScaleObject(), 1.0f, 0.1f, 1000.0f);
+            ImGui::EndDisabled();
+          }
+          ImGui::DragFloat("Sky Auto-Detect Unique Camera Search Distance", &RtxOptions::skyReprojectScaleObject(), 1.0f, 0.1f, 1000.0f);
+
           ImGui::Checkbox("Force HDR sky", &RtxOptions::Get()->skyForceHDRObject());
 
           static const char* exts[] = { "256 (1.5MB vidmem)", "512 (6MB vidmem)", "1024 (24MB vidmem)",
@@ -2220,6 +2229,8 @@ namespace dxvk {
 
           ImGui::Combo("Sky Probe Extent", &extIdx, exts, IM_ARRAYSIZE(exts));
           RtxOptions::Get()->skyProbeSideRef() = 1 << (extIdx + 8);
+
+          ImGui::Unindent();
         }
 
         ImGui::Unindent();
@@ -2762,40 +2773,53 @@ namespace dxvk {
         ImGui::Indent();
 
         ImGui::Checkbox("Enable Volumetric Lighting", &RtxOptions::Get()->enableVolumetricLightingObject());
+        {
+          ImGui::Indent();
+          ImGui::BeginDisabled(!RtxOptions::Get()->enableVolumetricLighting());
 
-        if (RtxOptions::Get()->enableVolumetricLighting()) {
           ImGui::DragFloat3("Transmittance Color", &RtxOptions::Get()->volumetricTransmittanceColorObject(), 0.01f, 0.0f, VolumeManager::MaxTransmittanceValue, "%.3f");
           ImGui::DragFloat("Transmittance Measurement Distance", &RtxOptions::Get()->volumetricTransmittanceMeasurementDistanceObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
           ImGui::DragFloat3("Single Scattering Albedo", &RtxOptions::Get()->volumetricSingleScatteringAlbedoObject(), 0.01f, 0.0f, 1.0f, "%.3f");
           ImGui::DragFloat("Anisotropy", &RtxOptions::Get()->volumetricAnisotropyObject(), 0.01f, -1.0f, 1.0f, "%.3f", sliderFlags);
 
-          ImGui::Separator();
-
           ImGui::Checkbox("Enable Legacy Fog Remapping", &RtxOptions::Get()->enableFogRemapObject());
 
-          if (RtxOptions::Get()->enableFogRemap()) {
+          ImGui::BeginDisabled(!RtxOptions::Get()->enableFogRemap());
+          {
             ImGui::Indent();
 
             ImGui::Checkbox("Enable Fog Color Remapping", &RtxOptions::Get()->enableFogColorRemapObject());
 
-            ImGui::Separator();
-
             ImGui::Checkbox("Enable Fog Max Distance Remapping", &RtxOptions::Get()->enableFogMaxDistanceRemapObject());
 
-            if (RtxOptions::Get()->enableFogMaxDistanceRemap()) {
+            ImGui::BeginDisabled(!RtxOptions::Get()->enableFogMaxDistanceRemap());
+            {
               ImGui::DragFloat("Legacy Max Distance Min", &RtxOptions::Get()->fogRemapMaxDistanceMinObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
               ImGui::DragFloat("Legacy Max Distance Max", &RtxOptions::Get()->fogRemapMaxDistanceMaxObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
               ImGui::DragFloat("Remapped Transmittance Measurement Distance Min", &RtxOptions::Get()->fogRemapTransmittanceMeasurementDistanceMinObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
               ImGui::DragFloat("Remapped Transmittance Measurement Distance Max", &RtxOptions::Get()->fogRemapTransmittanceMeasurementDistanceMaxObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
             }
+            ImGui::EndDisabled();
 
-            ImGui::Separator();
-
-            ImGui::DragFloat("Color Multiscattering Scale", &RtxOptions::Get()->fogRemapColorMultiscatteringScaleObject(), 0.0f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
+            ImGui::DragFloat("Color Multiscattering Scale", &RtxOptions::Get()->fogRemapColorMultiscatteringScaleObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
 
             ImGui::Unindent();
           }
+          ImGui::EndDisabled();
+
+          ImGui::EndDisabled();
+          ImGui::Unindent();
         }
+
+        ImGui::Separator();
+        ImGui::Dummy({ 0, 4 });
+        {
+          common->metaComposite().showDepthBasedFogImguiSettings();
+        }
+
+        ImGui::Separator();
+        ImGui::Dummy({ 0, 4 });
+        ImGui::Checkbox("Skip Sky Fog Values", &RtxOptions::fogIgnoreSkyObject());
 
         ImGui::Unindent();
       }

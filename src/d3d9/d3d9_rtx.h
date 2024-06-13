@@ -18,6 +18,17 @@ namespace dxvk {
 
   using D3D9RtxFlags = Flags<D3D9RtxFlag>;
 
+  namespace PrepareDrawFlag {
+    enum {
+      Ignore                      = 0,
+      CommitToRayTracing          = 1 << 0, // Process the current state as a part of ray tracing
+      ApplyDrawState              = 1 << 1, // Submit draw state to dxvk-cs, so it can be used to issue original or non-original draw calls (e.g. terrain, sky)
+      OriginalDrawCall            = 1 << 2, // Issue the original draw call
+      PreserveDrawCallAndItsState = ApplyDrawState | OriginalDrawCall,
+    };
+  }
+  using PrepareDrawFlags = uint32_t;
+
   //This class handles all of the RTX operations that are required from the D3D9 side.
   struct D3D9Rtx {
     friend class ImGUI; // <-- we want to modify these values directly.
@@ -71,11 +82,6 @@ namespace dxvk {
       m_flags.set(flag);
     }
 
-    struct PrepareDrawType {
-      bool preserveOriginal;
-      bool pendingCommit;
-    };
-    
     /**
       * \brief: Signal that a transform has updated
       *
@@ -96,7 +102,7 @@ namespace dxvk {
       *
       * Returns false if this drawcall should be removed from further processing, returns true otherwise.
       */
-    PrepareDrawType PrepareDrawGeometryForRT(const bool indexed, const DrawContext& context);
+    PrepareDrawFlags PrepareDrawGeometryForRT(const bool indexed, const DrawContext& context);
 
     /**
       * \brief: This function is responsible for preparing the geometry for rendering in Direct3D 9 
@@ -113,14 +119,14 @@ namespace dxvk {
       *
       * Returns false if this drawcall should be removed from further processing, returns true otherwise.
       */
-    PrepareDrawType PrepareDrawUPGeometryForRT(const bool indexed,
-                                               const D3D9BufferSlice& buffer,
-                                               const D3DFORMAT indexFormat,
-                                               const uint32_t indexSize,
-                                               const uint32_t indexOffset,
-                                               const uint32_t vertexSize,
-                                               const uint32_t vertexStride,
-                                               const DrawContext& context);
+    PrepareDrawFlags PrepareDrawUPGeometryForRT(const bool indexed,
+                                                const D3D9BufferSlice& buffer,
+                                                const D3DFORMAT indexFormat,
+                                                const uint32_t indexSize,
+                                                const uint32_t indexOffset,
+                                                const uint32_t vertexSize,
+                                                const uint32_t vertexStride,
+                                                const DrawContext& context);
 
     /**
       * \brief: Sends the pending drawcall geometry/state for raytracing, if nothing pending, does nothing.
@@ -213,6 +219,12 @@ namespace dxvk {
 
     fast_unordered_cache<Rc<DxvkSampler>> m_samplerCache;
 
+    // NOTE: to avoid calculating matrix inverse,
+    //       m_seenCameraPositions doesn't contain the actual positions,
+    //       but only relative values, see USE_TRUE_CAMERA_POSITION_FOR_COMPARISON
+    std::vector<Vector3> m_seenCameraPositions;
+    std::vector<Vector3> m_seenCameraPositionsPrev;
+
     struct IndexContext {
       VkIndexType indexType = VK_INDEX_TYPE_NONE_KHR;
       DxvkBufferSliceHandle indexBuffer;
@@ -248,7 +260,7 @@ namespace dxvk {
     template<bool FixedFunction>
     bool processTextures();
 
-    PrepareDrawType internalPrepareDraw(const IndexContext& indexContext, const VertexContext vertexContext[caps::MaxStreams], const DrawContext& drawContext);
+    PrepareDrawFlags internalPrepareDraw(const IndexContext& indexContext, const VertexContext vertexContext[caps::MaxStreams], const DrawContext& drawContext);
 
     void triggerInjectRTX();
 

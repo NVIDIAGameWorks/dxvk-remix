@@ -259,6 +259,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.fallbackLightType|int|0|The light type to use for the fallback light\. Determines which other fallback light options are used\.|
 |rtx.fireflyFilteringLuminanceThreshold|float|1000|Maximum luminance threshold for the firefly filtering to clamp to\.|
 |rtx.fogColorScale|float|0.25||
+|rtx.fogIgnoreSky|bool|False|If true, sky draw calls will be skipped when searching for the D3D9 fog values\.|
 |rtx.fogRemapColorMultiscatteringScale|float|1|A value representing the scale of the fixed function fog's color in the multiscattering approximation\.<br>This scaling factor is applied to the fixed function fog's color and becomes a multiscattering approximation in the volumetrics system\.<br>Sometimes useful but this multiscattering approximation is very basic \(just a simple ambient term for now essentially\) and may not look very good depending on various conditions\.|
 |rtx.fogRemapMaxDistanceMax|float|4000|A value controlling the "max distance" fixed function fog parameter's maximum remapping bound\.<br>Note that fog remapping and fog max distance remapping must be enabled for this setting to have any effect\.|
 |rtx.fogRemapMaxDistanceMin|float|100|A value controlling the "max distance" fixed function fog parameter's minimum remapping bound\.<br>Note that fog remapping and fog max distance remapping must be enabled for this setting to have any effect\.|
@@ -579,11 +580,14 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.skipDrawCallsPostRTXInjection|bool|False|Ignores all draw calls recorded after RTX Injection, the location of which varies but is currently based on when tagged UI textures begin to draw\.|
 |rtx.skipObjectsWithUnknownCamera|bool|False||
 |rtx.skyAutoDetect|int|0|Automatically tag sky draw calls using various heuristics\.<br>0 = None<br>1 = CameraPosition \- assume the first seen camera position is a sky camera\.<br>2 = CameraPositionAndDepthFlags \- assume the first seen camera position is a sky camera, if its draw call's depth test is disabled\. If it's enabled, assume no sky camera\.<br>Note: if all draw calls are marked as sky, then assume that there's no sky camera at all\.|
+|rtx.skyAutoDetectUniqueCameraDistance|float|1|If multiple cameras are found, this threshold distance \(in game units\) is used to distinguish a sky camera from a main camera\. Active if sky auto\-detect is set to CameraPosition / CameraPositionAndDepthFlags\.|
 |rtx.skyBrightness|float|1||
 |rtx.skyDrawcallIdThreshold|int|0|It's common in games to render the skybox first, and so, this value provides a simple mechanism to identify those early draw calls that are untextured \(textured draw calls can still use the Sky Textures functionality\.|
 |rtx.skyForceHDR|bool|False|By default sky will be rasterized in the color format used by the game\. Set the checkbox to force sky to be rasterized in HDR intermediate format\. This may be important when sky textures replaced with HDR textures\.|
 |rtx.skyMinZThreshold|float|1|If a draw call's viewport has min depth greater than or equal to this threshold, then assume that it's a sky\.|
-|rtx.skyProbeSide|int|1024||
+|rtx.skyProbeSide|int|1024|Resolution of the skybox for indirect illumination \(rough reflections, global illumination etc\)\.|
+|rtx.skyReprojectScale|float|16|Scaling of the sky geometry on reprojection to main camera space\.|
+|rtx.skyReprojectToMainCameraSpace|bool|False|Move sky geometry to the main camera space\.<br>Useful, if a game has a skybox that contains geometry that can be a part of the main scene \(e\.g\. buildings, mountains\)\. So with this option enabled, that geometry would be promoted from sky rasterization to ray tracing\.|
 |rtx.skyUiDrawcallCount|int|0||
 |rtx.stochasticAlphaBlendDepthDifference|float|0.1|Max depth difference for a valid neighbor\.|
 |rtx.stochasticAlphaBlendDiscardBlackPixel|bool|False|Discard black pixels\.|

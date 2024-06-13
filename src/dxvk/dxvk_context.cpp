@@ -1935,11 +1935,14 @@ namespace dxvk {
     uint32_t                  size,
     const void*               data) {
     assert(size + offset <= MaxPushConstantSize);
-    std::memcpy(&m_state.pc.data[(uint32_t)m_pushConstantBank][offset], data, size);
+// NV-DXVK start: multiple push const contexts
+    std::memcpy(&m_state.pc.data[(uint32_t)m_state.pc.constantBank][offset], data, size);
+// NV-DXVK end
 
     m_flags.set(DxvkContextFlag::DirtyPushConstants);
   }
   
+// NV-DXVK start: multiple push const contexts
   void DxvkContext::setPushConstantBank(
     DxvkPushConstantBank constantBank) {
     if (constantBank >= DxvkPushConstantBank::Count) {
@@ -1947,13 +1950,15 @@ namespace dxvk {
       return;
     }
 
-    if (constantBank == m_pushConstantBank)
+    if (constantBank == m_state.pc.constantBank) {
       return;
+    }
 
     m_flags.set(DxvkContextFlag::DirtyPushConstants);
 
-    m_pushConstantBank = constantBank;
+    m_state.pc.constantBank = constantBank;
   }
+// NV-DXVK end
 
   void DxvkContext::resolveImage(
     const Rc<DxvkImage>&            dstImage,
@@ -5233,14 +5238,14 @@ namespace dxvk {
     if (!pushConstRange.size)
       return;
 
-    assert(m_pushConstantBank < DxvkPushConstantBank::Count);
+    assert(m_state.pc.constantBank < DxvkPushConstantBank::Count);
 
     m_cmd->cmdPushConstants(
       layout->pipelineLayout(),
       pushConstRange.stageFlags,
       pushConstRange.offset,
       pushConstRange.size,
-      &m_state.pc.data[(uint32_t)m_pushConstantBank][pushConstRange.offset]);
+      &m_state.pc.data[(uint32_t)m_state.pc.constantBank][pushConstRange.offset]);
   }
 
 

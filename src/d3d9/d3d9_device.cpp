@@ -2536,32 +2536,33 @@ namespace dxvk {
 
     // NV-DXVK start: geometry processing
     const D3D9Rtx::DrawContext drawContext { PrimitiveType, (INT) StartVertex, 0, 0, 0, PrimitiveCount, FALSE };
-    const auto [preserveOriginalDraw, pendingCommit] = m_rtx.PrepareDrawGeometryForRT(false, drawContext);
+    const PrepareDrawFlags drawPrepare = m_rtx.PrepareDrawGeometryForRT(false, drawContext);
 
-    if (preserveOriginalDraw) {
+    if ((drawPrepare & PrepareDrawFlag::ApplyDrawState) ||
+        (drawPrepare & PrepareDrawFlag::OriginalDrawCall)) {
       PrepareDraw(PrimitiveType);
 
       EmitCs([this,
         cPrimType = PrimitiveType,
         cPrimCount = PrimitiveCount,
         cStartVertex = StartVertex,
-        cInstanceCount = GetInstanceCount()
+        cInstanceCount = GetInstanceCount(),
+        cDrawCall = bool( drawPrepare & PrepareDrawFlag::OriginalDrawCall )
       ](DxvkContext* ctx) {
         auto drawInfo = GenerateDrawInfo(cPrimType, cPrimCount, cInstanceCount);
 
         ApplyPrimitiveType(ctx, cPrimType);
 
         ctx->setPushConstantBank(DxvkPushConstantBank::D3D9);
-        ctx->draw(
-          drawInfo.vertexCount, drawInfo.instanceCount,
-          cStartVertex, 0);
+        if (cDrawCall) {
+          ctx->draw(
+            drawInfo.vertexCount, drawInfo.instanceCount,
+            cStartVertex, 0);
+        }
       });
-    } else if (RtxOptions::skyAutoDetect() != SkyAutoDetectMode::None) {
-      // Preserve the draw call data, which are needed for skybox pass later. But we don't need to actually dispatch the drawcall here.
-      PrepareDraw(PrimitiveType);
     }
 
-    if (pendingCommit) {
+    if (drawPrepare & PrepareDrawFlag::CommitToRayTracing) {
       m_rtx.CommitGeometryToRT(drawContext);
     }
     // NV-DXVK end
@@ -2589,9 +2590,10 @@ namespace dxvk {
 
     // NV-DXVK start: geometry processing
     const D3D9Rtx::DrawContext drawContext = { PrimitiveType, BaseVertexIndex, MinVertexIndex, NumVertices, StartIndex, PrimitiveCount, TRUE };
-    const auto [preserveOriginalDraw, pendingCommit] = m_rtx.PrepareDrawGeometryForRT(true, drawContext);
+    const PrepareDrawFlags drawPrepare = m_rtx.PrepareDrawGeometryForRT(true, drawContext);
 
-    if (preserveOriginalDraw) {
+    if ((drawPrepare & PrepareDrawFlag::ApplyDrawState) ||
+        (drawPrepare & PrepareDrawFlag::OriginalDrawCall)) {
       PrepareDraw(PrimitiveType);
 
       EmitCs([this,
@@ -2599,24 +2601,24 @@ namespace dxvk {
         cPrimCount = PrimitiveCount,
         cStartIndex = StartIndex,
         cBaseVertexIndex = BaseVertexIndex,
-        cInstanceCount = GetInstanceCount()
+        cInstanceCount = GetInstanceCount(),
+        cDrawCall = bool( drawPrepare & PrepareDrawFlag::OriginalDrawCall )
       ](DxvkContext* ctx) {
         auto drawInfo = GenerateDrawInfo(cPrimType, cPrimCount, cInstanceCount);
 
         ApplyPrimitiveType(ctx, cPrimType);
 
         ctx->setPushConstantBank(DxvkPushConstantBank::D3D9);
-        ctx->drawIndexed(
-          drawInfo.vertexCount, drawInfo.instanceCount,
-          cStartIndex,
-          cBaseVertexIndex, 0);
+        if (cDrawCall) {
+          ctx->drawIndexed(
+            drawInfo.vertexCount, drawInfo.instanceCount,
+            cStartIndex,
+            cBaseVertexIndex, 0);
+        }
       });
-    } else if (RtxOptions::skyAutoDetect() != SkyAutoDetectMode::None) {
-      // Preserve the draw call data, which are needed for skybox pass later. But we don't need to actually dispatch the drawcall here.
-      PrepareDraw(PrimitiveType);
     }
 
-    if (pendingCommit) {
+    if (drawPrepare & PrepareDrawFlag::CommitToRayTracing) {
       m_rtx.CommitGeometryToRT(drawContext);
     }
     // NV-DXVK end
@@ -2650,9 +2652,10 @@ namespace dxvk {
 
     // NV-DXVK start: geometry processing
     const D3D9Rtx::DrawContext drawContext = { PrimitiveType, 0, 0, 0, 0, PrimitiveCount, FALSE };
-    const auto [preserveOriginalDraw, pendingCommit] = m_rtx.PrepareDrawUPGeometryForRT(false, upSlice, D3DFMT_UNKNOWN, 0, 0, dataSize, VertexStreamZeroStride, drawContext);
+    const PrepareDrawFlags drawPrepare = m_rtx.PrepareDrawUPGeometryForRT(false, upSlice, D3DFMT_UNKNOWN, 0, 0, dataSize, VertexStreamZeroStride, drawContext);
 
-    if (preserveOriginalDraw) {
+    if ((drawPrepare & PrepareDrawFlag::ApplyDrawState) ||
+        (drawPrepare & PrepareDrawFlag::OriginalDrawCall)) {
       PrepareDraw(PrimitiveType);
 
       EmitCs([this,
@@ -2660,7 +2663,8 @@ namespace dxvk {
         cPrimType = PrimitiveType,
         cPrimCount = PrimitiveCount,
         cInstanceCount = GetInstanceCount(),
-        cStride = VertexStreamZeroStride
+        cStride = VertexStreamZeroStride,
+        cDrawCall = bool( drawPrepare & PrepareDrawFlag::OriginalDrawCall )
       ](DxvkContext* ctx) {
         auto drawInfo = GenerateDrawInfo(cPrimType, cPrimCount, cInstanceCount);
 
@@ -2668,19 +2672,18 @@ namespace dxvk {
 
         ctx->setPushConstantBank(DxvkPushConstantBank::D3D9);
         ctx->bindVertexBuffer(0, cBufferSlice, cStride);
-        ctx->draw(drawInfo.vertexCount, drawInfo.instanceCount, 0, 0);
+        if (cDrawCall) {
+          ctx->draw(drawInfo.vertexCount, drawInfo.instanceCount, 0, 0);
+        }
         ctx->bindVertexBuffer(0, DxvkBufferSlice(), 0);
       });
 
       m_state.vertexBuffers[0].vertexBuffer = nullptr;
       m_state.vertexBuffers[0].offset = 0;
       m_state.vertexBuffers[0].stride = 0;
-    } else if (RtxOptions::skyAutoDetect() != SkyAutoDetectMode::None) {
-      // Preserve the draw call data, which are needed for skybox pass later. But we don't need to actually dispatch the drawcall here.
-      PrepareDraw(PrimitiveType);
     }
 
-    if (pendingCommit) {
+    if (drawPrepare & PrepareDrawFlag::CommitToRayTracing) {
       m_rtx.CommitGeometryToRT(drawContext);
     }
     // NV-DXVK end
@@ -2725,9 +2728,10 @@ namespace dxvk {
 
     // NV-DXVK start: geometry processing
     const D3D9Rtx::DrawContext drawContext = { PrimitiveType, 0, MinVertexIndex, NumVertices, 0, PrimitiveCount, TRUE };
-    const auto [preserveOriginalDraw, pendingCommit] = m_rtx.PrepareDrawUPGeometryForRT(true, upSlice, IndexDataFormat, indicesSize, vertexDataSize, vertexDataSize, VertexStreamZeroStride, drawContext);
+    const PrepareDrawFlags drawPrepare = m_rtx.PrepareDrawUPGeometryForRT(true, upSlice, IndexDataFormat, indicesSize, vertexDataSize, vertexDataSize, VertexStreamZeroStride, drawContext);
 
-    if (preserveOriginalDraw) {
+    if ((drawPrepare & PrepareDrawFlag::ApplyDrawState) ||
+        (drawPrepare & PrepareDrawFlag::OriginalDrawCall)) {
       PrepareDraw(PrimitiveType);
 
       EmitCs([this,
@@ -2737,7 +2741,8 @@ namespace dxvk {
         cPrimCount = PrimitiveCount,
         cStride = VertexStreamZeroStride,
         cInstanceCount = GetInstanceCount(),
-        cIndexType = DecodeIndexType(static_cast<D3D9Format>(IndexDataFormat))
+        cIndexType = DecodeIndexType(static_cast<D3D9Format>(IndexDataFormat)),
+        cDrawCall = bool( drawPrepare & PrepareDrawFlag::OriginalDrawCall )
       ](DxvkContext* ctx) {
         auto drawInfo = GenerateDrawInfo(cPrimType, cPrimCount, cInstanceCount);
 
@@ -2745,7 +2750,9 @@ namespace dxvk {
         ctx->setPushConstantBank(DxvkPushConstantBank::D3D9);
         ctx->bindVertexBuffer(0, cBufferSlice.subSlice(0, cVertexSize), cStride);
         ctx->bindIndexBuffer(cBufferSlice.subSlice(cVertexSize, cBufferSlice.length() - cVertexSize), cIndexType);
-        ctx->drawIndexed(drawInfo.vertexCount, drawInfo.instanceCount, 0, 0, 0);
+        if (cDrawCall) {
+          ctx->drawIndexed(drawInfo.vertexCount, drawInfo.instanceCount, 0, 0, 0);
+        }
         ctx->bindVertexBuffer(0, DxvkBufferSlice(), 0);
         ctx->bindIndexBuffer(DxvkBufferSlice(), VK_INDEX_TYPE_UINT32);
       });
@@ -2755,12 +2762,9 @@ namespace dxvk {
       m_state.vertexBuffers[0].stride = 0;
 
       m_state.indices = nullptr;
-    } else if (RtxOptions::skyAutoDetect() != SkyAutoDetectMode::None) {
-      // Preserve the draw call data, which are needed for skybox pass later. But we don't need to actually dispatch the drawcall here.
-      PrepareDraw(PrimitiveType);
     }
 
-    if (pendingCommit) {
+    if (drawPrepare & PrepareDrawFlag::CommitToRayTracing) {
       m_rtx.CommitGeometryToRT(drawContext);
     }
     // NV-DXVK end

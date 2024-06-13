@@ -287,8 +287,14 @@ namespace dxvk
     Vector3 getDirection(bool freecam = true) const;
     Vector3 getUp(bool freecam = true) const;
     Vector3 getRight(bool freecam = true) const;
+
+    // Note: getNearPlane() / getFarPlane() return values
+    // corresponding to the viewToProjection matrix passed into update(..),
+    // and NOT to the viewToProjection in the m_matCache, because of 'enableNearPlaneOverride' option.
+    // If need actual near/far planes corresponding to the current matrix, use calculateNearFarPlanes().
     float getNearPlane() const { return m_context.nearPlane; }
     float getFarPlane() const { return m_context.farPlane; }
+    std::pair<float, float> calculateNearFarPlanes() const;
 
     void setCameraType(CameraType::Enum type) {
       m_type = type;
