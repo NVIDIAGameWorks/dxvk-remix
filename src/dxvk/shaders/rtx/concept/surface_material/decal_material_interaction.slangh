@@ -30,11 +30,15 @@ DecalMaterialInteraction decalMaterialInteractionUnpack(MemoryDecalMaterialInter
   decalMaterialInteraction.roughness = perceptualRoughnessToRoughness(unorm8ToF16(memory.packed.y >> 24));
   decalMaterialInteraction.baseReflectivity = unorm3x8ToFloat3x16(memory.packed.z);
   decalMaterialInteraction.anisotropy = unorm8ToF16(memory.packed.z >> 24);
-  decalMaterialInteraction.opacity = uint16BitsToHalf(memory.packed.w);
+  decalMaterialInteraction.opacity = decalMaterialInteractionExtractOpacity(memory.packed); // uses packed.w
   // packed.w[31:16] unused
   decalMaterialInteraction.emissiveRadiance = memory.emissiveRadiance;
 
   return decalMaterialInteraction;
+}
+
+float16_t decalMaterialInteractionExtractOpacity(uint4 packed) {
+  return uint16BitsToHalf(packed.w);
 }
 
 MemoryDecalMaterialInteraction decalMaterialInteractionPack(DecalMaterialInteraction decalMaterialInteraction)

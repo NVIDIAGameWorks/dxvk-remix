@@ -32,6 +32,7 @@ static const float floatMax = 3.402823466e+38f;
 
 static const int int16Max = 32767;
 static const int intMax = 2147483647;
+static const uint uintMax = 4294967295;
 
 // Clamps a value to the range [0, 1]
 #define GENERIC_SATURATE(type)       \

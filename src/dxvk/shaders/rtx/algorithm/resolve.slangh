@@ -37,6 +37,10 @@
 #include "rtx/algorithm/view_distance.slangh"
 #include "rtx/algorithm/volume_lighting.slangh"
 
+// In testing, going from 3 to 4 bins made a large difference. Going from 4 to 5 or 5 to 6 changed only a few pixels.
+// It was hard to produce visible differences by going above 6.
+static const uint numDecalResolveBins = 4;
+
 // Resolve Helper Functions
 
 bool isRayMaskEmpty(uint8_t rayMask)
@@ -653,6 +657,75 @@ void findLowestBin(
   lowestRadianceAndAttenuation = selectColumn(binnedRadiancesAndAttenuation, lowestIndex);
 }
 
+static RNG resolveVertexUnorderedRng = createRngAnywhere(cb.frameIdx, 555);
+
+void conditionallyStoreDecal(
+  inout MemoryDecalMaterialInteraction bins[numDecalResolveBins],
+  inout uint orders[numDecalResolveBins],
+  const DecalMaterialInteraction decalMaterialInteraction,
+  uint decalSortKey)
+{
+
+  
+  // 1st, return any unused bins
+  uint result = 0;
+  for (uint i = 0; i < numDecalResolveBins; ++i)
+  {
+    if (orders[i] == uintMax)
+    {
+      // found an unused bin, just use it
+      orders[i] = decalSortKey;
+      bins[i] = decalMaterialInteractionPack(decalMaterialInteraction);
+      return;
+    }
+  }
+
+  // 2nd, if the most transparent decal's opacity is below the threshold and below the new decal, overwrite it.
+  float16_t lowestOpacity = float16Max;
+  for (uint i = 0; i < numDecalResolveBins; ++i)
+  {
+    float16_t opacity = decalMaterialInteractionExtractOpacity(bins[i].packed);
+    if (opacity < lowestOpacity)
+    {
+      result = i;
+      lowestOpacity = opacity;
+    }
+  }
+  
+  // Use a randomized value to dither the transition between different decals being chosen.
+  const float decalSortingOpacityThreshold = 0.1f * getNextSampleBlueNoise(resolveVertexUnorderedRng) + 0.025f;
+  if (lowestOpacity < decalSortingOpacityThreshold && lowestOpacity < decalMaterialInteraction.opacity && decalMaterialInteraction.opacity > decalSortingOpacityThreshold)
+  {
+    orders[result] = decalSortKey;
+    bins[result] = decalMaterialInteractionPack(decalMaterialInteraction);
+    return;
+  }
+
+  // New decal is mostly transparent and all binned decals are more opaque, so ignore the new one.
+  if (decalMaterialInteraction.opacity <= decalSortingOpacityThreshold)
+  {
+    return;
+  }
+
+  // 3rd, if all decals are above the opacity threshold, overwrite the lowest one.
+  uint lowestSortOrder = uintMax;
+  for (uint i = 0; i < numDecalResolveBins; ++i)
+  {
+    if (orders[i] < lowestSortOrder)
+    {
+      lowestSortOrder = orders[i];
+      result = i;
+    }
+  }
+  if (lowestSortOrder < decalSortKey)
+  {
+    orders[result] = decalSortKey;
+    bins[result] = decalMaterialInteractionPack(decalMaterialInteraction);
+  }
+
+  // NOTE: it may be possible to get a better result by preferring to discard decals that are behind a mostly opaque decal.
+}
+
 // Unordered resolve rays need to be a little bit longer than the regular resolve ray that generated the hitT.
 // In some cases, there is a blended surface very close to a wall, and using the original hitT results in
 // Z-fighting between the blended surface and the wall.
@@ -726,7 +799,17 @@ void resolveVertexUnordered(
   );
   f16vec4 binDistances = f16vec4(-1.0f, -1.0f, -1.0f, -1.0f);
 
-  uint8_t lastDecalSortKey = 0;
+#ifdef RAY_TRACING_PRIMARY_RAY
+  MemoryDecalMaterialInteraction binnedDecals[numDecalResolveBins];
+  uint binnedDecalSortOrder[numDecalResolveBins] = {uintMax, uintMax, uintMax, uintMax};
+  uint maxSortOrder = 0;
+  // TODO[REMIX-3080] Unusued for now, will be needed for normal blending
+  // f16mat3 worldToDecalTangent = f16mat3(0);
+#else
+  float minDecalSample = -1.f;
+  uint maxOpaqueSortOrder = 0;
+  uint sampledSortOrder = 0;
+#endif
 
   while (rayQuery.Proceed())
   {
@@ -895,53 +978,57 @@ void resolveVertexUnordered(
 
       if (isTriangle && surfaceIsDecal(surface))
       {
-        if (opaqueSurfaceMaterialInteraction.opacity > 0.f && rayInteraction.frontHit)
+        const float opacity = opaqueSurfaceMaterialInteraction.opacity;
+        if (opacity > 0.001f && rayInteraction.frontHit)
         {
+          uint decalSortKey = (uint(surface.decalSortOrder) << 24) + ((rayHitInfo.geometryIndex & 0xff) << 16) + (rayHitInfo.primitiveIndex & 0xffff);
           DecalMaterialInteraction decalMaterialInteraction = decalMaterialInteractionCreate(opaqueSurfaceMaterialInteraction);
 
-          // If we have previously encountered a decal, must blend the new decal into our decal storage memory
-          if (decalEncountered)
+#ifdef RAY_TRACING_PRIMARY_RAY
+          conditionallyStoreDecal(binnedDecals, binnedDecalSortOrder, decalMaterialInteraction, decalSortKey);
+          if (decalSortKey > maxSortOrder)
           {
-            MemoryDecalMaterialInteraction decalCompositedMemory;
-            decalCompositedMemory.packed = decalMemory;
-            decalCompositedMemory.emissiveRadiance = decalEmissiveRadiance;
-
-            DecalMaterialInteraction decalMaterialInteractionComposited = decalMaterialInteractionUnpack(decalCompositedMemory);
-            
-            // Approximate decal sorting, accurate to 2 layers, semi-accurate thereafter.  This works by maintaining a sort order (i.e. draw order) 
-            //   and switching between "over" or "under" blending based on the incoming sort key in relation to the previous.
-            if (lastDecalSortKey >= surface.decalSortOrder)
-            {
-              decalMaterialInteractionBlend(decalMaterialInteractionComposited, decalMaterialInteraction);
-              decalMaterialInteractionComposited = decalMaterialInteraction;
-            }
-            else
-            {
-              decalMaterialInteractionBlend(decalMaterialInteraction, decalMaterialInteractionComposited);
-            }
-            
-            MemoryDecalMaterialInteraction memory = decalMaterialInteractionPack(decalMaterialInteractionComposited);
-            decalMemory = memory.packed;
-            decalEmissiveRadiance = memory.emissiveRadiance;
+            surfaceIndex = rayInteraction.surfaceIndex;
+            maxSortOrder = decalSortKey;
+            // TODO[REMIX-3080] Unusued for now, will be needed for normal blending
+            // Note: Ideally this should be the final surface's tangent space, but in practice any decal's tangent space should work.
+            // worldToDecalTangent = f16mat3(surfaceInteraction.interpolatedTangent, surfaceInteraction.interpolatedBitangent, surfaceInteraction.interpolatedNormal);
           }
-          else
+#else
+          // For indirect rays, use resevoir sampling (adapted to drop decals that are less than the topmost opaque decal we've seen)
+
+          // Use weighted reservoir sampling (A-Res) from here: https://en.wikipedia.org/wiki/Reservoir_sampling
+          float rngValue = pow(getNextSampleBlueNoise(resolveVertexUnorderedRng), 1.f / opacity);
+
+          // We want to apply reservoir sampling to all decals that are not underneath a mostly opaque decal.
+          // There are three cases where we want to sample the current decal:
+          // 1) it's the first decal
+          // 2) it's opaque and above the current sample
+          // 3) it's not opaque, above the highest opaque, and it's reservoir sampling value is < the current sample.
+          if (minDecalSample < 0.f || // case 1)
+              (opacity > 0.95f && decalSortKey > sampledSortOrder) ||  // case 2)
+              (decalSortKey > maxOpaqueSortOrder && rngValue < minDecalSample))  // case 3)
           {
+            // use this decal
             MemoryDecalMaterialInteraction memory = decalMaterialInteractionPack(decalMaterialInteraction);
             decalMemory = memory.packed;
             decalEmissiveRadiance = memory.emissiveRadiance;
+            surfaceIndex = rayInteraction.surfaceIndex;
+            sampledSortOrder = decalSortKey;
+            minDecalSample = rngValue;
           }
 
-          lastDecalSortKey = surface.decalSortOrder;
+          // Track the highest opaque decal we've encountered separately, since we want to update the highest opaque even if we don't sample this decal.
+          if (opacity > 0.95f && decalSortKey > maxOpaqueSortOrder)
+          {
+            maxOpaqueSortOrder = decalSortKey;
+          }
+#endif
           decalEncountered = true;
         }
         
         // account for these interactions for debug view
         numInteractions += 1;
-
-        if (any(decalEmissiveRadiance))
-        {
-          surfaceIndex = rayInteraction.surfaceIndex;
-        }
 
         // don't include decals in the opaque approximation.
         continue;
@@ -1084,6 +1171,47 @@ void resolveVertexUnordered(
     writeColumn(binnedRadiancesAndAttenuation, f16vec4(0.0f, 0.0f, 0.0f, 1.0f), lowestIndex);
     writeComponent(binDistances, float16_t(float16Max), lowestIndex);
   }
+
+#ifdef RAY_TRACING_PRIMARY_RAY
+  if (decalEncountered)
+  {
+    DecalMaterialInteraction decalMaterialInteractionComposited;
+    // draw decals from bottom to top (same order as the drawcalls are sent in)
+    for (uint i = 0; i < numDecalResolveBins; ++i)
+    {
+      // find lowest decalSortOrder in bins to draw first
+      uint sortOrder = uintMax;
+      uint lowBin = 0;
+      for (uint j = 0; j < numDecalResolveBins; ++j)
+      {
+        if (sortOrder > binnedDecalSortOrder[j])
+        {
+          lowBin = j;
+          sortOrder = binnedDecalSortOrder[j];
+        }
+      }
+      if (sortOrder == uintMax)
+      {
+        break;
+      }
+      if (i == 0)
+      {
+        decalMaterialInteractionComposited = decalMaterialInteractionUnpack(binnedDecals[lowBin]);
+      } else {
+        DecalMaterialInteraction decalMaterialInteraction = decalMaterialInteractionUnpack(binnedDecals[lowBin]);
+        // TODO[REMIX-3080] need to adapt the normal blending to not be transforming into and out of the tangent space with every blend.
+        // instead, should get the lowest decal's normal in its tangent space, transform each normal into that tangent space, and only go back to world space at the end.
+        decalMaterialInteractionBlend(decalMaterialInteraction, decalMaterialInteractionComposited);
+        // decalMaterialInteractionComposited = decalMaterialInteraction;
+      }
+      binnedDecalSortOrder[lowBin] = uintMax;
+    }
+    // write it to output values
+    MemoryDecalMaterialInteraction memory = decalMaterialInteractionPack(decalMaterialInteractionComposited);
+    decalMemory = memory.packed;
+    decalEmissiveRadiance = memory.emissiveRadiance;
+  }
+#endif
 }
 
 #if 0
