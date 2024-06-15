@@ -403,6 +403,24 @@ namespace dxvk {
     Matrix4 objectToWorld = drawCall.getTransformData().objectToWorld;
     Matrix4 worldToProjection = drawCall.getTransformData().viewToProjection * drawCall.getTransformData().worldToView;
 
+    if (RtxOptions::Get()->skyBoxPathTracing() && drawCall.cameraType == CameraType::Sky) {
+      const auto* skyCamera = &cameraManager.getCamera(drawCall.cameraType);
+      // Note: we may accept a data even from a prev frame, as we need any information to restore;
+      // but if camera data is stale, it introduces an scene object transform's lag
+      if (!skyCamera->isValid(m_device->getCurrentFrameId()) &&
+        !skyCamera->isValid(m_device->getCurrentFrameId() - 1)) {
+        skyCamera = &cameraManager.getCamera(CameraType::Main);
+      }
+
+      Matrix4 scale(static_cast<float>(skyCamera->m_skyScale));
+      scale[3][3] = 1;
+
+      // Rotating portion is missing. if it is needed in the future, just plug it between the scale/trans
+
+      Matrix4 transformMatrix = scale * translationMatrix(skyCamera->m_skyOffset);
+      objectToWorld = transformMatrix * objectToWorld;
+    }
+
     // An attempt to resolve cases where games pre-combine view and world matrices
     if (RtxOptions::Get()->resolvePreCombinedMatrices() &&
       isIdentityExact(drawCall.getTransformData().worldToView)) {
@@ -848,7 +866,8 @@ namespace dxvk {
 
     // Hide the sky instance since it is not raytraced.
     // Sky mesh and material are only good for capture and replacement purposes.
-    if (drawCall.cameraType == CameraType::Sky) {
+    if ((!RtxOptions::Get()->skyBoxPathTracing() && drawCall.cameraType == CameraType::Sky)
+        || currentInstance.m_categoryFlags == InstanceCategories::Sky) {
       currentInstance.m_isHidden = true;
     }
 

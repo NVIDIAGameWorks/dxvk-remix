@@ -134,12 +134,25 @@ namespace dxvk {
     View,
     World
   };
-  
+
   enum class SkyAutoDetectMode : int {
     None = 0,
     CameraPosition,
     CameraPositionAndDepthFlags
   };
+
+  enum class SkyScaleOffsetFormula : int {
+    Origin = 0,
+    Linear,
+    SourceEngine
+  };
+
+  enum class SkyScaleCalibrationMode : int {
+    Fixed = 0,
+    DeltaAutomatic,
+    SourceEngineAutomatic
+  };
+
 
   enum class EnableVsync : int {
     Off = 0,
@@ -159,7 +172,7 @@ namespace dxvk {
                   "These textures will be ignored when attempting to determine the desired textures from a draw to use for ray tracing.");
     RW_RTX_OPTION("rtx", fast_unordered_set, skyBoxTextures, {},
                   "Textures on draw calls used for the sky or are otherwise intended to be very far away from the camera at all times (no parallax).\n"
-                  "Any draw calls using a texture in this list will be treated as sky and rendered as such in a manner different from typical geometry.");    
+                  "Any draw calls using a texture in this list will be treated as sky and rendered as such in a manner different from typical geometry.");
     RW_RTX_OPTION("rtx", fast_unordered_set, skyBoxGeometries, {},
                   "Geometries from draw calls used for the sky or are otherwise intended to be very far away from the camera at all times (no parallax).\n"
                   "Any draw calls using a geometry hash in this list will be treated as sky and rendered as such in a manner different from typical geometry.\n"
@@ -176,7 +189,7 @@ namespace dxvk {
     RW_RTX_OPTION("rtx", fast_unordered_set, worldSpaceUiTextures, {},
                   "Textures on draw calls that should be treated as worldspace UI elements.\n"
                   "Unlike typical UI textures this option is useful for improved rendering of UI elements which appear as part of the scene (moving around in 3D space rather than as a screenspace element).");
-    RW_RTX_OPTION("rtx", fast_unordered_set, worldSpaceUiBackgroundTextures, {}, 
+    RW_RTX_OPTION("rtx", fast_unordered_set, worldSpaceUiBackgroundTextures, {},
                   "Hack/workaround option for dynamic world space UI textures with a coplanar background.\n"
                   "Apply to backgrounds if the foreground material is a dynamic world texture rendered in UI that is unpredictable and rapidly changing.\n"
                   "This offsets the background texture backwards.");
@@ -249,7 +262,7 @@ namespace dxvk {
                   "Defines which asset hashes we need to generate via the geometry processing engine.");
     RW_RTX_OPTION("rtx", std::string, geometryAssetHashRuleString, "positions,indices,geometrydescriptor",
                   "Defines which hashes we need to include when sampling from replacements and doing USD capture.");
-    
+
   public:
     RTX_OPTION("rtx", bool, showRaytracingOption, true, "Enables or disables the option to toggle ray tracing in the UI. When set to false the ray tracing checkbox will not appear in the Remix UI.");
 
@@ -263,7 +276,7 @@ namespace dxvk {
                    "Setting this to 0 will use actual frame time delta for a given frame. Non-zero value allows the actual time delta to be overridden and is primarily used for automation to ensure determinism run to run without variance due to frame time fluctuations.");
 
     RTX_OPTION_FLAG("rtx", bool, keepTexturesForTagging, false, RtxOptionFlags::NoSave, "A flag to keep all textures in video memory, which can drastically increase VRAM consumption. Intended to assist with tagging textures that are only used for a short period of time (such as loading screens). Use only when necessary!");
-    RTX_OPTION("rtx.gui", float, textureGridThumbnailScale, 1.f, 
+    RTX_OPTION("rtx.gui", float, textureGridThumbnailScale, 1.f,
                "A float to set the scale of thumbnails while selecting textures.\n"
                "This will be scaled by the default value of 120 pixels.\n"
                "This value must always be greater than zero.");
@@ -492,7 +505,7 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, enablePSTRSecondaryIncidentSplitApproximation, true,
                "Enable transmission PSR on secondary incident transmission events such as entering a translucent material on an already-transmitted path (rather than respecting no-split path PSR rule).\n"
                "Typically this results in better looking glass when enabled (at the cost accuracy due to ignoring reflections off of glass seen through glass for example).");
-    
+
     // Note: In a more technical sense, any PSR reflection or transmission from a surface with "normal detail" greater than the specified value will generate a 1.0 in the
     // disocclusionThresholdMix mask, indicating that the alternate disocclusion threshold in the denoiser should be used.
     // A value of 0 is a valid setting as it means that any detail at all, no matter how small, will set that mask bit (e.g. any usage of a normal map deviating from from the
@@ -507,7 +520,7 @@ namespace dxvk {
                "This is typically used to reduce flickering artifacts resulting from refraction on surfaces like glass leveraging normal maps as often the denoiser is too aggressive with disocclusion checks frame to frame when DLSS or other camera jittering is in use.");
 
     // Shader Execution Reordering Options
-    RTX_OPTION_ENV("rtx", bool, isShaderExecutionReorderingSupported, true, "DXVK_IS_SHADER_EXECUTION_REORDERING_SUPPORTED", "Enables support of Shader Execution Reordering (SER) if it is supported by the target HW and SW."); 
+    RTX_OPTION_ENV("rtx", bool, isShaderExecutionReorderingSupported, true, "DXVK_IS_SHADER_EXECUTION_REORDERING_SUPPORTED", "Enables support of Shader Execution Reordering (SER) if it is supported by the target HW and SW.");
     RTX_OPTION("rtx", bool, enableShaderExecutionReorderingInPathtracerGbuffer, false, "(Note: Hard disabled in shader code) Enables Shader Execution Reordering (SER) in GBuffer Raytrace pass if SER is supported.");
     RTX_OPTION("rtx", bool, enableShaderExecutionReorderingInPathtracerIntegrateIndirect, true, "Enables Shader Execution Reordering (SER) in Integrate Indirect pass if SER is supported.");
 
@@ -791,7 +804,7 @@ namespace dxvk {
       friend class RtxOptions;
       friend class ImGUI;
       bool isSupported = false;
-      RTX_OPTION_ENV("rtx.opacityMicromap", bool, enable, true, "DXVK_ENABLE_OPACITY_MICROMAP", 
+      RTX_OPTION_ENV("rtx.opacityMicromap", bool, enable, true, "DXVK_ENABLE_OPACITY_MICROMAP",
                      "Enables Opacity Micromaps for geometries with textures that have alpha cutouts.\n"
                      "This is generally the case for geometries such as fences, foliage, particles, etc. .\n"
                      "Opacity Micromaps greatly speed up raytracing of partially opaque triangles.\n"
@@ -899,12 +912,33 @@ namespace dxvk {
     RTX_OPTION_FLAG("rtx", uint32_t, skyUiDrawcallCount, 0, RtxOptionFlags::NoSave, "");
     RTX_OPTION("rtx", uint32_t, skyDrawcallIdThreshold, 0, "It's common in games to render the skybox first, and so, this value provides a simple mechanism to identify those early draw calls that are untextured (textured draw calls can still use the Sky Textures functionality.");
     RTX_OPTION("rtx", float, skyMinZThreshold, 1.f, "If a draw call's viewport has min depth greater than or equal to this threshold, then assume that it's a sky.");
-    RTX_OPTION("rtx", SkyAutoDetectMode, skyAutoDetect, SkyAutoDetectMode::None, 
+    RTX_OPTION("rtx", SkyAutoDetectMode, skyAutoDetect, SkyAutoDetectMode::None,
                "Automatically tag sky draw calls using various heuristics.\n"
                "0 = None\n"
                "1 = CameraPosition - assume the first seen camera position is a sky camera.\n"
                "2 = CameraPositionAndDepthFlags - assume the first seen camera position is a sky camera, if its draw call's depth test is disabled. If it's enabled, assume no sky camera.\n"
                "Note: if all draw calls are marked as sky, then assume that there's no sky camera at all.");
+
+
+    RTX_OPTION("rtx", bool, skySharedDepth, false, "By default the sky box will write to a seperate depth buffer than the main camera. Set the checkbox to cause the sky to use the same depth buffer as the main camera. Useful for source engine games.");
+    RTX_OPTION("rtx", bool, skyBoxPathTracing, false, "For games with skyboxes, the geometry is usually rasterized immediately into the sky camera buffer, preventing it from being path traced. Enable this setting to translate the skybox instances to the main camera.");
+
+    RTX_OPTION("rtx", SkyScaleOffsetFormula, skyScaleOffsetFormula, SkyScaleOffsetFormula::Origin,
+             "How we should determine the offset to use when translating the skybox to the main view.\n"
+             "0 = Origin - assume the rendered skybox does not move relative to anything, and is fixed in it's coordinate space.\n"
+             "1 = Linear - assume the movement from the main camera effects the position of the rendered skyboxes by some linear offset.\n"
+             "2 = SourceEngine - assume the movement from the main camera effects the skybox instances hyperbolically. This formula is directly tailored to the source engine.\n"
+             "Note: The scale found in the sky calibration may be used to calculate the offset for more dynamic formulas.");
+
+    RTX_OPTION("rtx", uint32_t, skyDefaultScale, 1, "The default / fallback scale to use when scaling the sky instances.");
+
+    RTX_OPTION("rtx", SkyScaleCalibrationMode, skyScaleCalibrationMode, SkyScaleCalibrationMode::Fixed,
+             "How should we determine the scale and offset to use when scaling the skybox instances to the main view.\n"
+             "0 = Fixed - Use the single specified scale no matter what the game is doing.\n"
+             "1 = DeltaAutomatic - Use the change in positions of the main camera and sky camera to determine the skybox scale. Reliable if your skybox is a function of movement.\n"
+             "2 = SourceEngineAutomatic - Uses a reversed algorithm of the hyperbolic source engine formula to approximate the scale. Useful for source games with levels that have dynamic scaling skyboxes.\n"
+             "Note: Source Engine Calibration should only really be used in source games if you have an inconsistent scale, or the player may not move for a few frames. Delta or Fixed is far more reliable.");
+
 
     // TODO (REMIX-656): Remove this once we can transition content to new hash
     RTX_OPTION("rtx", bool, logLegacyHashReplacementMatches, false, "");
@@ -914,7 +948,7 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, useBuffersDirectly, true, "When enabled Remix will use the incoming vertex buffers directly where possible instead of copying data. Note: setting the d3d9.allowDiscard to False will disable this option.");
     RTX_OPTION("rtx", bool, alwaysCopyDecalGeometries, true, "When set to True tells the geometry processor to always copy decals geometry. This is an optimization flag to experiment with when rtx.useBuffersDirectly is True.");
 
-    RTX_OPTION("rtx", bool, ignoreLastTextureStage, false, 
+    RTX_OPTION("rtx", bool, ignoreLastTextureStage, false,
                "Removes the last texture bound to a draw call, when using fixed-function pipeline. Primary textures are untouched.\n"
                "Might be set to true, if a game applies a lightmap as last shading step, to omit the original lightmap data.");
 
@@ -982,7 +1016,7 @@ namespace dxvk {
       // Note: Clamp to positive values as negative luminance thresholds are not valid.
       RTX_OPTION_CLAMP_MIN(fireflyFilteringLuminanceThreshold, 0.0f);
       RTX_OPTION_CLAMP(vertexColorStrength, 0.0f, 1.0f);
-   
+
       // Render pass modes
 
       //renderPassVolumeIntegrateRaytraceMode = (RenderPassVolumeIntegrateRaytraceMode) std::min(
@@ -996,7 +1030,7 @@ namespace dxvk {
       renderPassIntegrateDirectRaytraceModeRef() = (RenderPassIntegrateDirectRaytraceMode) std::min(
         (uint32_t) renderPassIntegrateDirectRaytraceMode(),
         (uint32_t) (RenderPassIntegrateDirectRaytraceMode::Count) - 1);
-      
+
       renderPassIntegrateIndirectRaytraceModeRef() = (RenderPassIntegrateIndirectRaytraceMode) std::min(
         (uint32_t) renderPassIntegrateIndirectRaytraceMode(),
         (uint32_t) (RenderPassIntegrateIndirectRaytraceMode::Count) - 1);
@@ -1017,11 +1051,11 @@ namespace dxvk {
       RTX_OPTION_CLAMP(resolveOpaquenessThreshold, resolveTransparencyThreshold(), 1.f);
 
       // PSR Options
-      
+
       // Note: Clamped due to 8 bit usage on GPU.
       RTX_OPTION_CLAMP(psrrMaxBounces, static_cast<uint8_t>(1), static_cast<uint8_t>(254));
       RTX_OPTION_CLAMP(pstrMaxBounces, static_cast<uint8_t>(1), static_cast<uint8_t>(254));
-      
+
       // Path Options
       RTX_OPTION_CLAMP(russianRouletteMaxContinueProbability, 0.0f, 1.0f);
       // Note: Clamped to 15 due to usage on GPU.
@@ -1096,7 +1130,7 @@ namespace dxvk {
       // Note: Clamped to float16 max due to usage on GPU and positive values as emissive intensity values cannot be negative.
       RTX_OPTION_CLAMP(emissiveBlendOverrideEmissiveIntensity, 0.0f, FLOAT16_MAX);
       RTX_OPTION_CLAMP(particleSoftnessFactor, 0.0f, 1.0f);
-      
+
       // Ray Portal Options
       // Note: Ensure the Ray Portal texture hashes are always in pairs of 2
       auto& rayPortalModelTextureHashes = rayPortalModelTextureHashesRef();
@@ -1119,7 +1153,7 @@ namespace dxvk {
       assert(rayPortalSamplingWeightMinDistance() >= 0.0f);
       assert(rayPortalSamplingWeightMaxDistance() >= 0.0f);
       assert(rayPortalSamplingWeightMinDistance() <= rayPortalSamplingWeightMaxDistance());
-      
+
       // View Distance Options
 
       RTX_OPTION_CLAMP_MIN(viewDistanceOptions.distanceThreshold, 0.0f);
@@ -1281,7 +1315,7 @@ namespace dxvk {
     bool areIndirectTranslucentShadowsEnabled() const { return enableIndirectTranslucentShadows(); }
     float getResolveTransparencyThreshold() const { return resolveTransparencyThreshold(); }
     float getResolveOpaquenessThreshold() const { return resolveOpaquenessThreshold(); }
-    
+
     // Returns shared enablement composed of multiple enablement inputs
     bool needsMeshBoundingBox();
 
@@ -1292,7 +1326,7 @@ namespace dxvk {
     uint8_t getPSTRMaxBounces() const { return pstrMaxBounces(); }
     bool isPSTROutgoingSplitApproximationEnabled() const { return enablePSTROutgoingSplitApproximation(); }
     bool isPSTRSecondaryIncidentSplitApproximationEnabled() const { return enablePSTRSecondaryIncidentSplitApproximation(); }
-    
+
     bool getIsShaderExecutionReorderingSupported() const { return isShaderExecutionReorderingSupported(); }
     void setIsShaderExecutionReorderingSupported(bool enabled) { isShaderExecutionReorderingSupportedRef() = enabled; }
     //bool isShaderExecutionReorderingInVolumeIntegrateEnabled() const { return enableShaderExecutionReorderingInVolumeIntegrate && isShaderExecutionReorderingSupported; }
@@ -1357,7 +1391,7 @@ namespace dxvk {
     float getFogRemapMaxDistanceMax() const { return fogRemapMaxDistanceMax(); }
     float getFogRemapTransmittanceMeasurementDistanceMin() const { return fogRemapTransmittanceMeasurementDistanceMin(); }
     float getFogRemapTransmittanceMeasurementDistanceMax() const { return fogRemapTransmittanceMeasurementDistanceMax(); }
-    
+
     // Alpha Test/Blend Options
     bool isAlphaBlendEnabled() const { return enableAlphaBlend(); }
     bool isAlphaTestEnabled() const { return enableAlphaTest(); }
@@ -1388,7 +1422,7 @@ namespace dxvk {
     uint getInstanceOverrideInstanceIdx() { return instanceOverrideInstanceIdx(); }
     uint getInstanceOverrideInstanceIdxRange() { return instanceOverrideInstanceIdxRange(); }
     bool getInstanceOverrideSelectedPrintMaterialHash() { return instanceOverrideSelectedInstancePrintMaterialHash(); }
-    
+
     bool getIsOpacityMicromapSupported() const { return opacityMicromap.isSupported; }
     void setIsOpacityMicromapSupported(bool enabled) { opacityMicromap.isSupported = enabled; }
     bool getEnableOpacityMicromap() const { return opacityMicromap.enable() && opacityMicromap.isSupported; }
@@ -1424,11 +1458,11 @@ namespace dxvk {
     float getCaptureMeshTexcoordDelta() const { return captureMeshTexcoordDelta(); }
     float getCaptureMeshColorDelta() const { return captureMeshColorDelta(); }
     float getCaptureMeshBlendWeightDelta() const { return captureMeshBlendWeightDelta(); }
-    
-    
+
+
     bool isUseVirtualShadingNormalsForDenoisingEnabled() const { return useVirtualShadingNormalsForDenoising(); }
     bool isResetDenoiserHistoryOnSettingsChangeEnabled() const { return resetDenoiserHistoryOnSettingsChange(); }
-    
+
     int32_t getPresentThrottleDelay() const { return enablePresentThrottle() ? presentThrottleDelay() : 0; }
     bool getValidateCPUIndexData() const { return validateCPUIndexData(); }
 

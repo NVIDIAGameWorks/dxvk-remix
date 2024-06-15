@@ -99,6 +99,7 @@ namespace dxvk {
           "Friedrich 'pixelcluster' Vock",
           "Dayton 'watbulb'",
           "Ethan 'Xenthio' Cardwell",
+          "David 'King David' Wiltos",
       }},
       { "Engineering",
         { "Riley Alston",
