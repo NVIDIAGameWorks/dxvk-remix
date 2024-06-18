@@ -66,7 +66,7 @@
 #include "../util/util_fastops.h"
 
 // Destructor requires the struct definitions
-#include "rtx_sky.inl"
+#include "rtx_sky.h"
 
 namespace dxvk {
 
