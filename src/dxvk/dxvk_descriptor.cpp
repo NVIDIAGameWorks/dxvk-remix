@@ -26,7 +26,8 @@
 
 namespace dxvk {
 
-  VkWriteDescriptorSet DxvkDescriptor::texture(const VkDescriptorSet& set, const VkDescriptorImageInfo& in, const VkDescriptorType t, const uint32_t bindingIdx)
+  // Note: 'imageInfo' must have the same or longer lifetime than returned VkWriteDescriptorSet
+  VkWriteDescriptorSet DxvkDescriptor::texture(const VkDescriptorSet& set, const VkDescriptorImageInfo* imageInfo, const VkDescriptorType t, const uint32_t bindingIdx)
   {
     VkWriteDescriptorSet desc;
     desc.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -36,22 +37,24 @@ namespace dxvk {
     desc.dstArrayElement = 0;
     desc.descriptorCount = 1;
     desc.descriptorType = t;
-    desc.pImageInfo = &in;
+    desc.pImageInfo = imageInfo;
     desc.pBufferInfo = nullptr;
     desc.pTexelBufferView = nullptr;
     return desc;
   }
 
+  // Note: 'stagingInfo' must have the same or longer lifetime than returned VkWriteDescriptorSet
   VkWriteDescriptorSet DxvkDescriptor::texture(const VkDescriptorSet& set, VkDescriptorImageInfo* stagingInfo, const DxvkImageView& imageView, const VkDescriptorType t, const uint32_t bindingIdx, const VkSampler sampler)
   {
     stagingInfo->sampler = sampler;
     stagingInfo->imageView = imageView.handle();
     stagingInfo->imageLayout = imageView.imageInfo().layout;
 
-    return texture(set, *stagingInfo, t, bindingIdx);
+    return texture(set, stagingInfo, t, bindingIdx);
   };
 
-  VkWriteDescriptorSet DxvkDescriptor::buffer(const VkDescriptorSet& set, const VkDescriptorBufferInfo& in, const VkDescriptorType t, const uint32_t bindingIdx)
+  // Note: 'bufferInfo' must have the same or longer lifetime than returned VkWriteDescriptorSet
+  VkWriteDescriptorSet DxvkDescriptor::buffer(const VkDescriptorSet& set, const VkDescriptorBufferInfo* bufferInfo, const VkDescriptorType t, const uint32_t bindingIdx)
   {
       VkWriteDescriptorSet desc;
       desc.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -62,11 +65,12 @@ namespace dxvk {
       desc.descriptorCount = 1;
       desc.descriptorType = t;
       desc.pImageInfo = nullptr;
-      desc.pBufferInfo = &in;
+      desc.pBufferInfo = bufferInfo;
       desc.pTexelBufferView = nullptr;
       return desc;
   }
 
+  // Note: 'stagingInfo' must have the same or longer lifetime than returned VkWriteDescriptorSet
   VkWriteDescriptorSet DxvkDescriptor::buffer(const VkDescriptorSet& set, VkDescriptorBufferInfo* stagingInfo, const DxvkBuffer& bufferView, const VkDescriptorType t, const uint32_t bindingIdx)
   {
     auto surfaceBufferSlice = bufferView.getSliceHandle();
@@ -75,7 +79,7 @@ namespace dxvk {
     stagingInfo->offset = surfaceBufferSlice.offset;
     stagingInfo->range = surfaceBufferSlice.length;
 
-    return buffer(set, *stagingInfo, t, bindingIdx);
+    return buffer(set, stagingInfo, t, bindingIdx);
   };
 
   
