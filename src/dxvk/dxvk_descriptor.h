@@ -138,9 +138,13 @@ namespace dxvk {
 
   struct DxvkDescriptor
   {
-    static VkWriteDescriptorSet buffer(const VkDescriptorSet& set, const VkDescriptorBufferInfo& in, const VkDescriptorType t, const uint32_t bindingIdx);
+    // Note:  'bufferInfo' must have the same or longer lifetime than returned VkWriteDescriptorSet
+    static VkWriteDescriptorSet buffer(const VkDescriptorSet& set, const VkDescriptorBufferInfo* bufferInfo, const VkDescriptorType t, const uint32_t bindingIdx);
+    // Note: 'stagingInfo' must have the same or longer lifetime than returned VkWriteDescriptorSet
     static VkWriteDescriptorSet buffer(const VkDescriptorSet& set, VkDescriptorBufferInfo* stagingInfo, const DxvkBuffer& bufferView, const VkDescriptorType t, const uint32_t bindingIdx);
-    static VkWriteDescriptorSet texture(const VkDescriptorSet& set, const VkDescriptorImageInfo& in, const VkDescriptorType t, const uint32_t bindingIdx);
+    // Note:   'imageInfo' must have the same or longer lifetime than returned VkWriteDescriptorSet
+    static VkWriteDescriptorSet texture(const VkDescriptorSet& set, const VkDescriptorImageInfo* imageInfo, const VkDescriptorType t, const uint32_t bindingIdx);
+    // Note: 'stagingInfo' must have the same or longer lifetime than returned VkWriteDescriptorSet
     static VkWriteDescriptorSet texture(const VkDescriptorSet& set, VkDescriptorImageInfo* stagingInfo, const DxvkImageView& imageView, const VkDescriptorType t, const uint32_t bindingIdx, VkSampler sampler = VK_NULL_HANDLE);
   };
   
