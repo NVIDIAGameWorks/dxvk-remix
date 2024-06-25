@@ -1334,23 +1334,6 @@ SurfaceMaterialInteractionSample thinOpaqueSurfaceMaterialInteractionCalcDiffuse
   return materialSample;
 }
 
-SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcSpecularTransmissionSample(
-  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
-  MinimalRayInteraction minimalRayInteraction,
-  inout bool insideMedium, inout bool penetrateSurface)
-{
-  SurfaceMaterialInteractionSample materialSample;
-
-  materialSample.inputDirection = f16vec3(0.0, 0.0, 0.0);
-  materialSample.throughput = f16vec3(0.0, 0.0, 0.0);
-  materialSample.solidAnglePdf = 0.0f;
-
-  // Note: Transmission rays penetrate the surface like translucent materials.
-  penetrateSurface = true;
-
-  return materialSample;
-}
-
 // Note: Special case lobe for opacity.
 SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcOpacityTransmissionSample(
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
@@ -1646,15 +1629,6 @@ float opaqueSurfaceMaterialInteractionCalcDiffuseTransmissionSolidAnglePdf(
   float solidAnglePdf = getCosineHemisphereSolidAnglePdf(saturate(cosTheta));
 
   return solidAnglePdf;
-}
-
-float opaqueSurfaceMaterialInteractionCalcSpecularTransmissionSolidAnglePdf(
-  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
-  MinimalRayInteraction minimalRayInteraction,
-  f16vec3 inputDirection)
-{
-  // Note: Specular Transmission never possible for Opaque materials
-  return 0.0f;
 }
 
 float opaqueSurfaceMaterialInteractionCalcSolidAnglePdf(

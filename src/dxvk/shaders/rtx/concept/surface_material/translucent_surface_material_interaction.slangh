@@ -380,19 +380,6 @@ void translucentSurfaceMaterialInteractionCalcRelativeRefractiveIndices(
   insideRelativeRefractiveIndex = transmittedRefractiveIndex / incidentRefractiveIndex;
 }
 
-SurfaceMaterialInteractionSample translucentSurfaceMaterialInteractionCalcDiffuseReflectionSample(
-  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction,
-  MinimalRayInteraction minimalRayInteraction)
-{
-  SurfaceMaterialInteractionSample materialSample;
-
-  materialSample.inputDirection = f16vec3(0.0, 0.0, 0.0);
-  materialSample.throughput = f16vec3(0.0, 0.0, 0.0);
-  materialSample.solidAnglePdf = 0.0f;
-
-  return materialSample;
-}
-
 SurfaceMaterialInteractionSample translucentSurfaceMaterialInteractionCalcSpecularReflectionSample(
   TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction,
   f16vec4 tangentToWorldSpaceQuaternion,
@@ -500,20 +487,6 @@ SurfaceMaterialInteractionSample translucentSurfaceMaterialInteractionCalcSpecul
   materialSample.inputDirection = quaternionTransformVector(tangentToWorldSpaceQuaternion, inputDirection);
   materialSample.throughput = throughput;
   materialSample.solidAnglePdf = 1.0f;
-
-  return materialSample;
-}
-
-SurfaceMaterialInteractionSample translucentSurfaceMaterialInteractionCalcDiffuseTransmissionSample(
-  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction,
-  MinimalRayInteraction minimalRayInteraction,
-  inout bool insideMedium, inout bool penetrateSurface)
-{
-  SurfaceMaterialInteractionSample materialSample;
-
-  materialSample.inputDirection = f16vec3(0.0, 0.0, 0.0);
-  materialSample.throughput = f16vec3(0.0, 0.0, 0.0);
-  materialSample.solidAnglePdf = 0.0f;
 
   return materialSample;
 }
@@ -1141,76 +1114,4 @@ void translucentSurfaceMaterialInteractionCalcPSRSample(
     reflectionSelectedIntegrationSurface = false;
     selectedIntegrationSurfacePdf = 1.0f;
   }
-}
-
-float translucentSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(
-  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction,
-  MinimalRayInteraction minimalRayInteraction,
-  f16vec3 inputDirection)
-{
-  // Todo
-
-  return 0.0f;
-}
-
-float translucentSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
-  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction,
-  MinimalRayInteraction minimalRayInteraction,
-  f16vec3 inputDirection)
-{
-  // Todo
-
-  return 0.0f;
-}
-
-float translucentSurfaceMaterialInteractionCalcDiffuseTransmissionSolidAnglePdf(
-  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction,
-  MinimalRayInteraction minimalRayInteraction,
-  f16vec3 inputDirection)
-{
-  // Note: Diffuse Transmission never possible for Translucent materials
-  return 0.0f;
-}
-
-float translucentSurfaceMaterialInteractionCalcSpecularTransmissionSolidAnglePdf(
-  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction,
-  MinimalRayInteraction minimalRayInteraction,
-  f16vec3 inputDirection)
-{
-  // Note: Specular Transmission PDF never needed for Translucent materials (As NEE is only done on the reflecting side)
-  return 0.0f;
-}
-
-float translucentSurfaceMaterialInteractionCalcSolidAnglePdf(
-  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction,
-  MinimalRayInteraction minimalRayInteraction,
-  f16vec3 inputDirection)
-{
-  // Return the average of all the lobe PDFs
-  // Note: Only lobes which are possible and specifically involved in reflections are included
-
-  return (
-    translucentSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
-      translucentSurfaceMaterialInteraction, minimalRayInteraction, inputDirection)
-  ) / 1.0f;
-}
-
-SurfaceMaterialInteractionSplitWeight translucentSurfaceMaterialInteractionCalcProjectedWeight(
-  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction,
-  MinimalRayInteraction minimalRayInteraction,
-  f16vec3 inputDirection)
-{
-  SurfaceMaterialInteractionSplitWeight splitWeight;
-
-  splitWeight.diffuseReflectionWeight = f16vec3(0.0, 0.0, 0.0);
-  splitWeight.specularReflectionWeight = f16vec3(0.0, 0.0, 0.0);
-  splitWeight.diffuseTransmissionWeight = f16vec3(0.0, 0.0, 0.0);
-
-  return splitWeight;
-}
-
-f16vec3 translucentSurfaceMaterialInteractionEvalEmissiveRadiance(
-  TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction)
-{
-  return translucentSurfaceMaterialInteraction.emissiveRadiance;
 }
