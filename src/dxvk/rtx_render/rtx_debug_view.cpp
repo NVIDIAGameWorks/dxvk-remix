@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -36,6 +36,7 @@
 #include "rtx_terrain_baker.h"
 
 #include <rtx_shaders/debug_view.h>
+#include <rtx_shaders/debug_view_using_optional_extensions.h>
 #include <rtx_shaders/debug_view_waveform_render.h>
 
 #include "rtx_options.h"
@@ -243,6 +244,14 @@ namespace dxvk {
         {DEBUG_VIEW_NOISY_DEMODULATED_SECONDARY_COMBINED_SPECULAR_RADIANCE,"Secondary Combined Specular: Demodulated Noisy Color"},
         {DEBUG_VIEW_DENOISED_SECONDARY_COMBINED_SPECULAR_RADIANCE,         "Secondary Combined Specular: Denoised Color"},
 
+        { DEBUG_VIEW_NOISY_PRIMARY_DIRECT_RADIANCE,                        "Primary Direct: Noisy Color" },
+        { DEBUG_VIEW_NOISY_PRIMARY_INDIRECT_RADIANCE,                      "Primary Indirect: Noisy Color" },
+        { DEBUG_VIEW_NOISY_PRIMARY_RADIANCE,                               "Primary: Noisy Color" },
+        { DEBUG_VIEW_NOISY_SECONDARY_DIRECT_RADIANCE,                      "Secondary Direct: Noisy Color" },
+        { DEBUG_VIEW_NOISY_SECONDARY_INDIRECT_RADIANCE,                    "Secondary Indirect: Noisy Color" },
+        { DEBUG_VIEW_NOISY_SECONDARY_RADIANCE,                             "Secondary: Noisy Color" },
+        { DEBUG_VIEW_NOISY_RADIANCE,                                       "Primary + Secondary: Noisy Color" },
+
         {DEBUG_VIEW_INSTRUMENTATION_THREAD_DIVERGENCE,                     "Thread Divergence(Debug Knob.x)"},
         {DEBUG_VIEW_NAN,                                                   "Inf/NaN Check"},
         {DEBUG_SURFACE_LOBE_CONSISTENCY,                                   "Surface/Lobe Consistency Check"},
@@ -286,11 +295,16 @@ namespace dxvk {
       {PseudoColorMode::Alpha, "Alpha"},
   } });
 
+  ImGui::ComboWithKey<DebugViewOutputStatisticsMode> outputStatisticsCombo = ImGui::ComboWithKey<DebugViewOutputStatisticsMode>(
+    "Output Statistics Mode",
+    ImGui::ComboWithKey<DebugViewOutputStatisticsMode>::ComboEntries { {
+        {DebugViewOutputStatisticsMode::Mean, "Mean"},
+        {DebugViewOutputStatisticsMode::Sum, "Sum"},
+    } });
+
   // Defined within an unnamed namespace to ensure unique definition across binary
   namespace {
     class DebugViewShader : public ManagedShader {
-      SHADER_SOURCE(DebugViewShader, VK_SHADER_STAGE_COMPUTE_BIT, debug_view)
-
       BEGIN_PARAMETER()
         TEXTURE2D(DEBUG_VIEW_BINDING_DENOISED_PRIMARY_DIRECT_DIFFUSE_RADIANCE_HIT_T_INPUT)
         TEXTURE2D(DEBUG_VIEW_BINDING_DENOISED_PRIMARY_DIRECT_SPECULAR_RADIANCE_HIT_T_INPUT)
@@ -305,23 +319,24 @@ namespace dxvk {
         TEXTURE2D(DEBUG_VIEW_BINDING_FINAL_SHADING_INPUT)
         TEXTURE2D(DEBUG_VIEW_BINDING_INSTRUMENTATION_INPUT)
         TEXTURE2D(DEBUG_VIEW_BINDING_TERRAIN_INPUT)
+        TEXTURE2D(DEBUG_VIEW_BINDING_INPUT)
         
         RW_TEXTURE2D(DEBUG_VIEW_BINDING_HDR_WAVEFORM_RED_INPUT_OUTPUT)
         RW_TEXTURE2D(DEBUG_VIEW_BINDING_HDR_WAVEFORM_GREEN_INPUT_OUTPUT)
         RW_TEXTURE2D(DEBUG_VIEW_BINDING_HDR_WAVEFORM_BLUE_INPUT_OUTPUT)
 
         RW_TEXTURE2D(DEBUG_VIEW_BINDING_COMPOSITE_OUTPUT_INPUT_OUTPUT)
-        RW_TEXTURE2D(DEBUG_VIEW_BINDING_INPUT_OUTPUT)
         RW_TEXTURE2D(DEBUG_VIEW_BINDING_PREVIOUS_FRAME_INPUT_OUTPUT)
 
         SAMPLER(DEBUG_VIEW_BINDING_NEAREST_SAMPLER)
         SAMPLER(DEBUG_VIEW_BINDING_LINEAR_SAMPLER)
 
         CONSTANT_BUFFER(DEBUG_VIEW_BINDING_CONSTANTS_INPUT)
+
+        RW_STRUCTURED_BUFFER(DEBUG_VIEW_BINDING_STATISTICS_BUFFER_OUTPUT)
+        RW_TEXTURE2D(DEBUG_VIEW_BINDING_OUTPUT)
       END_PARAMETER()
     };
-
-    PREWARM_SHADER_PIPELINE(DebugViewShader);
 
     class DebugViewWaveformRenderShader : public ManagedShader {
       SHADER_SOURCE(DebugViewWaveformRenderShader, VK_SHADER_STAGE_COMPUTE_BIT, debug_view_waveform_render)
@@ -347,6 +362,16 @@ namespace dxvk {
     initSettings(device->instance()->config());
   }
 
+  void DebugView::prewarmShaders(DxvkPipelineManager& pipelineManager) const {
+    DxvkComputePipelineShaders shaders;
+    shaders.cs = getDebugViewShader();
+    pipelineManager.createComputePipeline(shaders);
+  }
+
+  bool DebugView::areDebugViewStatisticsSupported() const {
+    return m_device->extensions().extShaderAtomicFloat;
+  }
+
   void DebugView::initSettings(const dxvk::Config& config) {
     // Note: Set the last debug view index only if the debug view index was specified to be enabled to something (not disabled).
     if (debugViewIdx() != DEBUG_VIEW_DISABLED) {
@@ -359,6 +384,23 @@ namespace dxvk {
     }
 
     displayTypeRef() = static_cast<DebugViewDisplayType>(std::min(static_cast<uint32_t>(displayType()), static_cast<uint32_t>(DebugViewDisplayType::Count) - 1));
+  
+    const uint32_t bufferLength = kMaxFramesInFlight;
+
+    DxvkBufferCreateInfo statisticsBufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+    statisticsBufferInfo.usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+    statisticsBufferInfo.stages = VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
+    statisticsBufferInfo.access = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_HOST_READ_BIT | VK_ACCESS_HOST_WRITE_BIT;
+    statisticsBufferInfo.size = bufferLength * sizeof(m_outputStatistics);
+    m_statisticsBuffer = m_device->createBuffer(statisticsBufferInfo, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, DxvkMemoryStats::Category::RTXBuffer);
+
+    if (areDebugViewStatisticsSupported()) {
+      // Zero init the whole buffer
+      vec4* gpuMappedVec4 = reinterpret_cast<vec4*>(m_statisticsBuffer->mapPtr(0));
+      for (uint32_t i = 0; i < kMaxFramesInFlight; i++) {
+        gpuMappedVec4[i] = vec4(0.f, 0.f, 0.f, 0.f);
+      }
+    }
   }
 
   void getDebugViewCombo(std::string searchWord, uint32_t& lastView) {
@@ -446,6 +488,52 @@ namespace dxvk {
     }
   }
 
+  void DebugView::processOutputStatistics(Rc<DxvkContext>& ctx) {
+    
+    if (m_showOutputStatistics) {
+      const uint32_t frameIdx = ctx->getDevice()->getCurrentFrameId();
+
+      // Read from the oldest element as it is guaranteed to be written out to by the GPU by now
+      VkDeviceSize offset = ((frameIdx + 1) % kMaxFramesInFlight) * sizeof(m_outputStatistics);
+      vec4* gpuMappedVec4 = reinterpret_cast<vec4*>(m_statisticsBuffer->mapPtr(offset));
+
+      m_outputStatistics = *gpuMappedVec4;
+
+      // Zero out the backing memory
+      *gpuMappedVec4 = vec4(0.f, 0.f, 0.f, 0.f);
+    }
+  }
+
+  void DebugView::showOutputStatistics() {
+
+    if (areDebugViewStatisticsSupported()) {
+      ImGui::Checkbox("Show Output Statistics", &m_showOutputStatistics);
+    }
+
+    if (m_showOutputStatistics) {
+      ImGui::Indent();
+
+      ImGui::Checkbox("Print Output Statistics", &m_printOutputStatistics);
+      
+      outputStatisticsCombo.getKey(&m_outputStatisticsMode);
+      
+      const std::string statisticsString = str::format(
+        "RGBA ",
+        m_outputStatistics.x, ", ",
+        m_outputStatistics.y, ", ",
+        m_outputStatistics.z, ", ",
+        m_outputStatistics.w);
+      
+      ImGui::Text(statisticsString.c_str());
+
+      if (m_printOutputStatistics) {
+        Logger::info("Debug View Statistics: " + statisticsString);
+      }
+
+      ImGui::Unindent();
+    }
+  }
+
   void DebugView::showImguiSettings()
   {
     // Dealias same widget names from the rest of RTX
@@ -499,6 +587,8 @@ namespace dxvk {
     }
 
     ImGui::Checkbox("Accumulation", &enableAccumulationObject());
+
+    showOutputStatistics();
 
     if (enableAccumulation()) {
       showAccumulationImguiSettings("Accumulation (Aliased with Reference Denoiser's Settings)");
@@ -763,6 +853,8 @@ namespace dxvk {
         ctx->clearColorImage(m_instrumentation.image, clearColor, subRange);
       }
     }
+
+    processOutputStatistics(ctx);
   }
 
   DebugViewArgs DebugView::getCommonDebugViewArgs(
@@ -868,6 +960,11 @@ namespace dxvk {
     debugViewArgs.enableFp16Accumulation = enableFp16Accumulation();
     debugViewArgs.copyOutputToCompositeOutput = shouldRunDispatchPostCompositePass() || replaceCompositeOutput();
 
+    // Statistics params
+    debugViewArgs.statisticsMode = m_outputStatisticsMode;
+    debugViewArgs.rcpNumOutputPixels = 1.f /
+      (debugViewArgs.debugViewResolution.x * debugViewArgs.debugViewResolution.y);
+
     return debugViewArgs;
   }
 
@@ -879,6 +976,16 @@ namespace dxvk {
     return debugViewIdx() != DEBUG_VIEW_DISABLED
       ? enableAccumulation()
       : RtxOptions::useDenoiserReferenceMode();
+  }
+
+  Rc<DxvkShader> DebugView::getDebugViewShader() const {
+    const bool areOptionalExtensionsSupported = m_device->extensions().extShaderAtomicFloat;
+
+    if (areOptionalExtensionsSupported) {
+      return GET_SHADER_VARIANT(VK_SHADER_STAGE_COMPUTE_BIT, DebugViewShader, debug_view_using_optional_extensions);
+    } else {
+      return GET_SHADER_VARIANT(VK_SHADER_STAGE_COMPUTE_BIT, DebugViewShader, debug_view);
+    }
   }
 
   void DebugView::dispatchDebugViewInternal(
@@ -911,6 +1018,7 @@ namespace dxvk {
                       ReplacementMaterialTextureType::Count - 1));
     Resources::Resource terrain = m_device->getCommon()->getSceneManager().getTerrainBaker().getTerrainTexture(terrainTextureType);
     ctx->bindResourceView(DEBUG_VIEW_BINDING_TERRAIN_INPUT, terrain.view, nullptr);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_INPUT, m_debugView.view, nullptr);
 
     // Inputs / Outputs
 
@@ -920,14 +1028,21 @@ namespace dxvk {
 
     assert(rtOutput.m_compositeOutput.ownsResource() && "Composite output is expected to be valid at this point by default");
     ctx->bindResourceView(DEBUG_VIEW_BINDING_COMPOSITE_OUTPUT_INPUT_OUTPUT, rtOutput.m_compositeOutput.view(Resources::AccessType::ReadWrite), nullptr);
-    ctx->bindResourceView(DEBUG_VIEW_BINDING_INPUT_OUTPUT, m_debugView.view, nullptr);
+
     ctx->bindResourceView(DEBUG_VIEW_BINDING_PREVIOUS_FRAME_INPUT_OUTPUT, m_previousFrameDebugView.view, nullptr);
     
     ctx->bindResourceBuffer(DEBUG_VIEW_BINDING_CONSTANTS_INPUT, DxvkBufferSlice(debugViewConstantBuffer, 0, debugViewConstantBuffer->info().size));
     ctx->bindResourceSampler(DEBUG_VIEW_BINDING_NEAREST_SAMPLER, nearestSampler);
     ctx->bindResourceSampler(DEBUG_VIEW_BINDING_LINEAR_SAMPLER, linearSampler);
 
-    ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, DebugViewShader::getShader());
+    // Outputs
+
+    const uint32_t frameIdx = ctx->getDevice()->getCurrentFrameId();
+    VkDeviceSize statisticsBufferOffset = (frameIdx % kMaxFramesInFlight) * sizeof(m_outputStatistics);
+    ctx->bindResourceBuffer(DEBUG_VIEW_BINDING_STATISTICS_BUFFER_OUTPUT, DxvkBufferSlice(m_statisticsBuffer, statisticsBufferOffset, m_statisticsBuffer->info().size));
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_OUTPUT, m_postprocessedDebugView.view, nullptr);
+
+    ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, getDebugViewShader());
 
     const VkExtent3D outputExtent = VkExtent3D { debugViewArgs.debugViewResolution.x, debugViewArgs.debugViewResolution.y, 1 };
 
@@ -991,12 +1106,12 @@ namespace dxvk {
         ctx->bindResourceView(DEBUG_VIEW_WAVEFORM_RENDER_BINDING_HDR_WAVEFORM_RED_INPUT, m_hdrWaveformRed.view, nullptr);
         ctx->bindResourceView(DEBUG_VIEW_WAVEFORM_RENDER_BINDING_HDR_WAVEFORM_GREEN_INPUT, m_hdrWaveformGreen.view, nullptr);
         ctx->bindResourceView(DEBUG_VIEW_WAVEFORM_RENDER_BINDING_HDR_WAVEFORM_BLUE_INPUT, m_hdrWaveformBlue.view, nullptr);
-        ctx->bindResourceView(DEBUG_VIEW_WAVEFORM_RENDER_BINDING_INPUT_OUTPUT, m_debugView.view, nullptr);
+        ctx->bindResourceView(DEBUG_VIEW_WAVEFORM_RENDER_BINDING_INPUT_OUTPUT, m_postprocessedDebugView.view, nullptr);
         ctx->bindResourceBuffer(DEBUG_VIEW_WAVEFORM_RENDER_BINDING_CONSTANTS_INPUT, DxvkBufferSlice(cb, 0, cb->info().size));
 
         ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, DebugViewWaveformRenderShader::getShader());
 
-        VkExtent3D waveformResolution = m_debugView.view->imageInfo().extent;
+        VkExtent3D waveformResolution = m_postprocessedDebugView.view->imageInfo().extent;
 
         waveformResolution.width /= m_hdrWaveformResolutionScaleFactor;
         waveformResolution.height /= m_hdrWaveformResolutionScaleFactor;
@@ -1006,7 +1121,7 @@ namespace dxvk {
       }
 
       // Replace RT 
-      outputImage = m_debugView.image;
+      outputImage = m_postprocessedDebugView.image;
 
       // Generate a composite image
       generateCompositeImage(ctx, outputImage);
@@ -1076,7 +1191,7 @@ namespace dxvk {
       }
 
       // Lookup src & dest image properties
-      DxvkImageCreateInfo srcDesc = m_debugView.image->info();
+      DxvkImageCreateInfo srcDesc = m_postprocessedDebugView.image->info();
       DxvkImageCreateInfo dstDesc = m_composite.compositeView.image->info();
       const VkExtent3D srcExtent = srcDesc.extent;
       const VkExtent3D dstExtent = srcDesc.extent;
@@ -1131,7 +1246,7 @@ namespace dxvk {
 
       // Blit debug view image to the composite image
       // Using nearest filter as linear interpolation may produce invalid values for some debug view data (i.e. geometry hash)
-      ctx->blitImage(m_composite.compositeView.image, identityMap, m_debugView.image, identityMap, region, VK_FILTER_NEAREST);
+      ctx->blitImage(m_composite.compositeView.image, identityMap, m_postprocessedDebugView.image, identityMap, region, VK_FILTER_NEAREST);
 
       outputImage = m_composite.compositeView.image;
 
@@ -1146,6 +1261,7 @@ namespace dxvk {
   void DebugView::createDownscaledResource(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent) {
     // Debug
     m_debugView = Resources::createImageResource(ctx, "debug view", downscaledExtent, VK_FORMAT_R32G32B32A32_SFLOAT);
+    m_postprocessedDebugView = Resources::createImageResource(ctx, "postprocessed debug view", downscaledExtent, VK_FORMAT_R32G32B32A32_SFLOAT);
     m_previousFrameDebugView = Resources::createImageResource(ctx, "previous frame debug view", downscaledExtent, VK_FORMAT_R32G32B32A32_SFLOAT);
     
     // Note: Only allocate half resolution for HDR waveform buffers, this is the default view size
@@ -1162,6 +1278,7 @@ namespace dxvk {
 
   void DebugView::releaseDownscaledResource() {
     m_debugView.reset();
+    m_postprocessedDebugView.reset();
     m_previousFrameDebugView.reset();
     m_hdrWaveformRed.reset();
     m_hdrWaveformBlue.reset();

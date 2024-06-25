@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -92,7 +92,6 @@ void main(inout MemoryPathState rayPayload : SV_RayPayload, in float2 barycentri
   indirectPathTextures.IndirectRadianceHitDistance = aliasedData0.IndirectRadianceHitDistance;
   indirectPathTextures.RestirGIRadiance = RestirGIRadiance;
   indirectPathTextures.RestirGIHitGeometry = RestirGIHitGeometry;
-  indirectPathTextures.GBufferLast = GBufferLast;
 
   PathState pathState = rayPayload.unpack();
 

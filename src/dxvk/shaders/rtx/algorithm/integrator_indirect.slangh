@@ -392,7 +392,7 @@ void integratePathVertex(
     else
     {
       // Note: Assume infinite hit distance on miss. This wouldn't be true with things that have a practical tMax
-      // value (such as NEE rays), but for the geometey resolver this is a fine assumption.
+      // value (such as NEE rays), but for the geometry resolver this is a fine assumption.
       volumeTransmittance = translucentSurfaceMaterialEvalInfiniteVolumeTransmittance(
         translucentSurfaceMaterial);
     }
@@ -407,7 +407,8 @@ void integratePathVertex(
   float lightSelectionPDF = 0.0;
 
 #if (SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_RAY_PORTAL) != 0
-  if(materialType == surfaceMaterialTypeOpaque || materialType == surfaceMaterialTypeTranslucent) {
+  if (materialType == surfaceMaterialTypeOpaque || materialType == surfaceMaterialTypeTranslucent)
+  {
 #endif // SURFACE_MATERIAL_RESOLVE_TYPE_RAY_PORTAL
 
     if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && isNeeEnabledOnBounce && any(emissiveLight > 0))
@@ -454,7 +455,8 @@ void integratePathVertex(
   
 // We don't need to sample lights or surface rays in the portal closest hit shader
 #if (SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_RAY_PORTAL) != 0
-  if(materialType == surfaceMaterialTypeOpaque || materialType == surfaceMaterialTypeTranslucent) {
+  if (materialType == surfaceMaterialTypeOpaque || materialType == surfaceMaterialTypeTranslucent)
+  {
 #endif // SURFACE_MATERIAL_RESOLVE_TYPE_RAY_PORTAL
 
     // Construct RNG
@@ -587,7 +589,9 @@ void integratePathVertex(
     
     
       uint lightTask = lightIdx;
-      if(NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && cb.neeCacheArgs.enableModeAfterFirstBounce != NeeEnableMode::None && pathState.enableNeeCacheAfterFirstBounce)
+      if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && 
+          cb.neeCacheArgs.enableModeAfterFirstBounce != NeeEnableMode::None && 
+          pathState.enableNeeCacheAfterFirstBounce)
       {
         NEECell cell = NEECache.getCell(pathState.neeCacheCellOffset);
         if (cell.isValid() && cell.getCandidateCount() > 0)
@@ -638,15 +642,18 @@ void integratePathVertex(
 
         // Create a NEE Cache task for lights with non-zero contributions.
         // Both light task and emissive triangle task are using the same buffer, skip some pixels so that triangle tasks on them won't be overwritten by light tasks.
-        if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && any(diffuseLight + specularLight > 0) && all((pathState.pixelCoordinate & 0x3) != 1))
+        const vec3 neeLight = diffuseLight + specularLight;
+        if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && 
+            any(neeLight > 0) && 
+            all((pathState.pixelCoordinate & 0x3) != 1))
         {
           NEECell cell = NEECache.getCell(pathState.neeCacheCellOffset);
-          cell.insertSlotTask(lightTask, diffuseLight + specularLight, lightIdx != kInvalidLightIdx);
+          cell.insertSlotTask(lightTask, neeLight, lightIdx != kInvalidLightIdx);
         }
     
-        vec3 neeLight = diffuseLight + specularLight;
         float16_t specularPortion = calcBt709Luminance(specularLight) / calcBt709Luminance(neeLight);
-        pathState.radiance += pathState.throughput * neeLight;
+    
+        accumulateRadiance(pathState, neeLight);
     
         float hitT = pathState.accumulatedHitDistance;
         if (opaqueSurfaceMaterialInteraction.isotropicRoughness <= cb.reSTIRGIVirtualSampleRoughnessThreshold
@@ -834,6 +841,7 @@ void integratePathVertex(
     }
     
     accumulateThroughput(pathState, continuationThroughput);
+
 #if (SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_RAY_PORTAL) != 0
   }
 #endif // SURFACE_MATERIAL_RESOLVE_TYPE_RAY_PORTAL
@@ -1097,6 +1105,13 @@ void integratorIndirectPathOutputDebugView(
         storeInDebugView(ivec2(pixelCoordinate), 0);
     }
     break;
+  case DEBUG_VIEW_NOISY_SECONDARY_INDIRECT_RADIANCE:
+    if (!geometryFlags.primarySelectedIntegrationSurface)
+    {
+      storeInDebugView(ivec2(pixelCoordinate), pathState.radiance);
+    }
+    break;
+
   case DEBUG_VIEW_NAN:
     {
       bool isValid = true;

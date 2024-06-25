@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -36,7 +36,7 @@
 #define RTXDI_REUSE_BINDING_PREV_WORLD_POSITION_INPUT       27
 #define RTXDI_REUSE_BINDING_VIEW_DIRECTION_INPUT            28
 #define RTXDI_REUSE_BINDING_CONE_RADIUS_INPUT               29
-#define RTXDI_REUSE_BINDING_WS_MVEC_INPUT_OUTPUT            30
+#define RTXDI_REUSE_BINDING_WS_MVEC_INPUT                   30
 #define RTXDI_REUSE_BINDING_SS_MVEC_INPUT                   31
 #define RTXDI_REUSE_BINDING_POSITION_ERROR_INPUT            32
 #define RTXDI_REUSE_BINDING_SHARED_FLAGS_INPUT              33

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -19,8 +19,7 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
-#ifndef NRD_ARGS_H
-#define NRD_ARGS_H
+#pragma once
 
 #include "rtx/utility/shader_types.h"
 
@@ -36,6 +35,3 @@ struct NrdArgs {
   vec3 specularLobeTrimmingParams;
   float pad3;
 };
-
-
-#endif

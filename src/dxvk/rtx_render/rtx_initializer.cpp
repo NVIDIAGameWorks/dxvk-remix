@@ -139,6 +139,9 @@ namespace dxvk {
     pCommon->metaPathtracerIntegrateDirect().prewarmShaders(pCommon->pipelineManager());
     pCommon->metaPathtracerIntegrateIndirect().prewarmShaders(pCommon->pipelineManager());
 
+
+    pCommon->metaDebugView().prewarmShaders(pCommon->pipelineManager());
+
     // Prewarm the rest of the pipelines that can be done automatically
     AutoShaderPipelinePrewarmer::prewarmComputePipelines(pCommon->pipelineManager());
   }

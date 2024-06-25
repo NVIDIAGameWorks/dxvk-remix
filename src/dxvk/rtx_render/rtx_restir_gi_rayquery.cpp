@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -259,8 +259,9 @@ namespace dxvk {
 
   void DxvkReSTIRGIRayQuery::dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
 
-    if (!shouldDispatch())
+    if (!shouldDispatch()) {
       return;
+    }
 
     ScopedGpuProfileZone(ctx, "ReSTIR GI");
 

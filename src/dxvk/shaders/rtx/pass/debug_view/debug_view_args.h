@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -58,6 +58,13 @@ enum class DebugViewAccumulationMode : uint32_t {
   WriteNewOutput,
   BlendNewAndPreviousOutputs,
   CarryOverPreviousOutput
+};
+
+enum class DebugViewOutputStatisticsMode : uint32_t {
+  Mean = 0,
+  Sum,
+
+  Count
 };
 
 struct DebugViewArgs {
@@ -120,4 +127,7 @@ struct DebugViewArgs {
   uint enableFp16Accumulation;
   uint copyOutputToCompositeOutput;
   DebugViewAccumulationMode accumulationMode;
+
+  DebugViewOutputStatisticsMode statisticsMode;
+  float rcpNumOutputPixels;
 };

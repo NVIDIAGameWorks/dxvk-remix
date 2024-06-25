@@ -40,8 +40,10 @@ ConstantBuffer<DebugViewArgs> cb;
 void main(uint2 threadId : SV_DispatchThreadID)
 {
   if (any(threadId >= cb.hdrWaveformResolution))
+  {
     return;
-
+  }
+  
   // Normalize the accumulated HDR Waveform values for display
 
   const uvec2 flippedCoordinate = uvec2(threadId.x, cb.hdrWaveformResolution.y - threadId.y - 1);

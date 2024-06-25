@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -1261,8 +1261,8 @@ void geometryResolverVertex(
   // Output a miss
   if (!rayInteractionHasHit(rayInteraction))
   {
-    // Note: Alwrays write to primary surface for initial misses, always will be the selected surface
-    // in this case as well.
+    // Note: Always write to primary surface for initial misses, 
+    // it always will be the selected integrated surface in this case as well.
     geometryResolverOutputMiss(true, true, geometryResolverState.pixelCoordinate);
     
     SharedRadianceRG[geometryResolverState.pixelCoordinate] = geometryResolverState.radiance.rg;
@@ -1749,7 +1749,7 @@ void geometryPSRResolverVertex(
     else
     {
       // Note: Assume infinite hit distance on miss. This wouldn't be true with things that have a practical tMax
-      // value (such as NEE rays), but for the geometey resolver this is a fine assumption.
+      // value (such as NEE rays), but for the geometry resolver this is a fine assumption.
       volumeTransmittance = translucentSurfaceMaterialEvalInfiniteVolumeTransmittance(
         translucentSurfaceMaterial);
     }
