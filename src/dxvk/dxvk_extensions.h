@@ -361,6 +361,10 @@ namespace dxvk {
 
     DxvkExt extBufferDeviceAddress            = { VK_EXT_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,              DxvkExtMode::Optional };
     // NV-DXVK end
+
+    // NV-DXVK start:
+    DxvkExt extShaderAtomicFloat              = { VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME,                DxvkExtMode::Optional };
+    // NV-DXVK end
   };
   
   /**

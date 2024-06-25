@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -108,23 +108,30 @@ struct PathState
 struct MemoryPathState : IPayload
 {
   vec3 origin;
-  uint data0; // bounceIteration(uint:4b), restirGiHasHitGeometry(bool:1b), restirGiHasHitOpaque(bool:1b), coneSpreadAngle(float16), mediumMaterialIndexLow(uint:8b)
+  uint data0; // bounceIteration(uint:4b)
+              // restirGiHasHitGeometry(bool:1b)
+              // restirGiHasHitOpaque(bool:1b)
+              // unused(2b)
+              // coneSpreadAngle(float16)
+              // unused (1b - coneSpreadAngle sign bit)
+              // mediumMaterialIndexLow(uint:8b)
 
   uvec3 encodedRadiance; // unused (x:1b, z:1b)
   uint encodedDirection;
 
   uvec3 encodedThroughput;
-  uint data1; // unused(7b),
+  uint data1; // unused (7b),
               // restirGiHasFoundRoughSurface(bool:1b) 
               // RayMask(uint8_t:8b), 
               // PortalSpace(uint:2b), 
               // indirectLightPortalID(uint:2b), 
               // mediumMaterialIndexHigh(uint:8b),
-              // Unused (4b)
+              // unused (4b)
 
   uint coneRadiusAndHitDistance; // float16_t, float16_t
-  float accumulatedHitDistance;
-  uint solidAnglePdfAndNeeCacheCellOffset;
+                                 // unused (2b - sign bits)
+  float accumulatedHitDistance;  // unused (1b - sign bit)
+  uint solidAnglePdfAndNeeCacheCellOffset; // unused (1b - solidAnglePdf sign bit)
   float segmentHitDistance;
 
   static MemoryPathState pack(PathState pathState)
@@ -269,5 +276,4 @@ struct IndirectPathTextures
   RWTexture2D<float4> IndirectRadianceHitDistance;
   REORDER_COHERENT RWTexture2D<float4> RestirGIRadiance;
   RWTexture2D<float4> RestirGIHitGeometry; 
-  Texture2D<float2> GBufferLast;
 };

@@ -61,12 +61,10 @@ uint geometryFlagsEncode(GeometryFlags geometryFlags)
     encodedFlags, geometryFlags.insideMedium ? (1 << 5) : 0);
   encodedFlags = packedFlagSet(
     encodedFlags, geometryFlags.firstSampledLobeIsSpecular ? (1 << 6) : 0);
-  // 7 bit unused
   encodedFlags = packedFlagSet(
     encodedFlags, geometryFlags.performPSTR ? (1 << 7) : 0);
   encodedFlags = packedFlagSet(
     encodedFlags, geometryFlags.performPSRR ? (1 << 8) : 0);
-
   // 2 bits unused
 
 #if OBJECT_MASK_ALL_DYNAMIC_NUMBER_OF_ACTIVE_BITS > (16 - 12)

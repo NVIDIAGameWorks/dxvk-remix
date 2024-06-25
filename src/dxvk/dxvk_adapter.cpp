@@ -347,7 +347,7 @@ namespace dxvk {
           DxvkDeviceFeatures  enabledFeatures) {
     DxvkDeviceExtensions devExtensions;
 
-    std::array<DxvkExt*, 42> devExtensionList = {{
+    std::array<DxvkExt*, 43> devExtensionList = {{
       &devExtensions.amdMemoryOverallocationBehaviour,
       &devExtensions.amdShaderFragmentMask,
       &devExtensions.ext4444Formats,
@@ -392,6 +392,7 @@ namespace dxvk {
       &devExtensions.khrExternalMemory,
       &devExtensions.khrExternalSemaphore,
       &devExtensions.khrExternalSemaphoreWin32,
+      &devExtensions.extShaderAtomicFloat,
     }};
 
     // Only enable Cuda interop extensions in 64-bit builds in
@@ -587,6 +588,13 @@ namespace dxvk {
       enabledFeatures.extVertexAttributeDivisor.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_ATTRIBUTE_DIVISOR_FEATURES_EXT;
       enabledFeatures.extVertexAttributeDivisor.pNext = std::exchange(enabledFeatures.core.pNext, &enabledFeatures.extVertexAttributeDivisor);
     }
+
+    // NV-DXVK start:
+    if (devExtensions.extShaderAtomicFloat) {
+      enabledFeatures.extShaderAtomicFloat.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT;
+      enabledFeatures.extShaderAtomicFloat.pNext = std::exchange(enabledFeatures.core.pNext, &enabledFeatures.extShaderAtomicFloat);
+    }
+    // NV-DXVK end
 
     // NV-DXVK start: Integrate Aftermath
     if (devExtensions.nvDeviceDiagnostics && instance->options().enableAftermath) {

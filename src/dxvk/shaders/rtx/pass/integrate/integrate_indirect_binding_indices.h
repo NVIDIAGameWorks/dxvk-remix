@@ -64,7 +64,6 @@
 #define INTEGRATE_INDIRECT_BINDING_RESTIR_GI_RADIANCE_OUTPUT                71
 #define INTEGRATE_INDIRECT_BINDING_RESTIR_GI_HIT_GEOMETRY_OUTPUT            72
 
-
 // Aliased Inputs/Outputs 
 
 #define INTEGRATE_INDIRECT_BINDING_ALIASED_DATA_0                           90

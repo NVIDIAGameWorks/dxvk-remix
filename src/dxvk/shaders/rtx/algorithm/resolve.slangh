@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -739,7 +739,7 @@ uint8_t convertPrimaryRayMaskToUnordered(uint8_t primaryRayMask, uint8_t unorder
 }
 
 // Handles unordered Resolve operations within the resolve loop which do not depend on the typical ordered execution
-// fo the resolve logic.
+// for the resolve logic.
 void resolveVertexUnordered(
   uint8_t resolveMode, Ray ray, uint rayMask,
   PortalSpace2BitsType portalSpace,

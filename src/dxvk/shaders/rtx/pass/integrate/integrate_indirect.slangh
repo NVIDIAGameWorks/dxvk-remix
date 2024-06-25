@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -34,7 +34,9 @@
 void integrate_indirect_pass(ivec2 threadIndex)
 { 
   if (any(threadIndex >= cb.camera.resolution))
+  {
     return;
+  }
 
   // Deserialize flags
 
@@ -49,24 +51,17 @@ void integrate_indirect_pass(ivec2 threadIndex)
   // Note: This should hopefully prevent any weird undefined data from bleeding into pixels actually being denoised, but
   // may not be needed depending on how the denoiser works.
 
-  if (primaryGBufferMiss)
-  {
-    // Note: Early out if no more work on the primary surface is needed.
-    if (geometryFlags.primarySelectedIntegrationSurface)
-    {
-      aliasedData0.IndirectRadianceHitDistance[threadIndex] = vec4(vec3(0), kEmptyPixelHitDistance);
-      return;
-    }
-  }
+  bool gbufferMissOfASelectedIntegrationSurface = 
+    geometryFlags.primarySelectedIntegrationSurface
+    ? primaryGBufferMiss 
+    : secondaryGBufferMiss;
 
-  if (secondaryGBufferMiss)
+  // Note: Early out if no more work on the active surface is needed.
+  if (gbufferMissOfASelectedIntegrationSurface)
   {
-    // Note: Early out if no more work on the secondary surface is needed.
-    if (!geometryFlags.primarySelectedIntegrationSurface) 
-    {
-      aliasedData0.IndirectRadianceHitDistance[threadIndex] = vec4(vec3(0), kEmptyPixelHitDistance);
-      return;
-    }
+    aliasedData0.IndirectRadianceHitDistance[threadIndex] = vec4(vec3(0), kEmptyPixelHitDistance);
+
+    return;
   }
 
   // Read the medium material index
@@ -102,7 +97,6 @@ void integrate_indirect_pass(ivec2 threadIndex)
   indirectPathTextures.IndirectRadianceHitDistance = aliasedData0.IndirectRadianceHitDistance;
   indirectPathTextures.RestirGIRadiance = RestirGIRadiance;
   indirectPathTextures.RestirGIHitGeometry = RestirGIHitGeometry;
-  indirectPathTextures.GBufferLast = GBufferLast;
 
   integrateIndirectPath(
     threadIndex, INTEGRATE_INDIRECT_SBT_OFFSET_STANDARD, indirectPathTextures,

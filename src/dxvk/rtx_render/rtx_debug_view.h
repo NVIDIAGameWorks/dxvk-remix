@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -50,6 +50,7 @@ namespace dxvk {
     void dispatch(Rc<RtxContext> ctx, Rc<DxvkSampler> nearestSampler, Rc<DxvkSampler> linearSampler, Rc<DxvkImage>& outputImage, const Resources::RaytracingOutput& rtOutput, DxvkObjects& common);
     void dispatchAfterCompositionPass(Rc<RtxContext> ctx, Rc<DxvkSampler> nearestSampler, Rc<DxvkSampler> linearSampler, const Resources::RaytracingOutput& rtOutput, DxvkObjects& common);
     void initSettings(const dxvk::Config& config);
+    void prewarmShaders(DxvkPipelineManager& pipelineManager) const;
 
     void showAccumulationImguiSettings(const char* tabName);
     void showImguiSettings();
@@ -62,7 +63,7 @@ namespace dxvk {
     const Rc<DxvkImageView>& getFinalDebugOutput() {
       return static_cast<CompositeDebugView>(m_composite.compositeViewIdx()) != CompositeDebugView::Disabled
         ? m_composite.compositeView.view
-        : m_debugView.view;
+        : m_postprocessedDebugView.view;
     }
 
     const Rc<DxvkImageView>& getInstrumentation() {
@@ -84,8 +85,12 @@ namespace dxvk {
     virtual void onFrameBegin(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent) override;
 
   private:
+    void processOutputStatistics(Rc<DxvkContext>& ctx);
+    void showOutputStatistics();
+    bool shouldDebugViewDispatch() const;
     void createConstantsBuffer();
     Rc<DxvkBuffer> getDebugViewConstantsBuffer();
+    bool areDebugViewStatisticsSupported() const;
 
     DebugViewArgs getCommonDebugViewArgs(RtxContext& ctx, const Resources::RaytracingOutput& rtOutput, DxvkObjects& common);
 
@@ -101,6 +106,7 @@ namespace dxvk {
     void dispatchDebugViewInternal(Rc<RtxContext> ctx, Rc<DxvkSampler> nearestSampler, Rc<DxvkSampler> linearSampler, DebugViewArgs& debugViewArgs, Rc<DxvkBuffer>& debugViewConstantBuffer, const Resources::RaytracingOutput& rtOutput);
     bool shouldRunDispatchPostCompositePass() const;
     bool shouldEnableAccumulation() const;
+    Rc<DxvkShader> getDebugViewShader() const;
 
     Rc<DxvkBuffer> m_debugViewConstants;
     Rc<vk::DeviceFn> m_vkd;
@@ -199,12 +205,24 @@ namespace dxvk {
 
     bool m_cacheCurrentImage = false;
     bool m_showCachedImage = false;
+    bool m_showOutputStatistics = false;
+    bool m_printOutputStatistics = false;
 
     Resources::Resource m_cachedImage;
     Resources::Resource m_debugView;
 
+    // Postprocess debug view is transformed input debug view from prior passes.
+    // It is a separate resource to support gather memory operations on the input buffer,
+    // while transforming it at per-pixel level
+    Resources::Resource m_postprocessedDebugView;    
+
     // Some non-debug view passes directly write to m_debugView, hence we need a separate resource to retain accumulated result
     Resources::Resource m_previousFrameDebugView;
+
+    // Statistics
+    DebugViewOutputStatisticsMode m_outputStatisticsMode = DebugViewOutputStatisticsMode::Mean;
+    Rc<DxvkBuffer> m_statisticsBuffer;
+    vec4 m_outputStatistics;
 
     Resources::Resource m_hdrWaveformRed;
     Resources::Resource m_hdrWaveformGreen;

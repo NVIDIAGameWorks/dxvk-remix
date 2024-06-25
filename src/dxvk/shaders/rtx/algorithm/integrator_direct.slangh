@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -256,7 +256,9 @@ void sampleAndStoreIndirectRayPathSample(
 
   // Serialize out the Medium Material Index if it changed
   if (mediumChanged)
+  {
     imageStore(SharedMediumMaterialIndex, pixelCoordinate, mediumMaterialIndex);
+  }
 
   // Output the sampled lobe information for the Indirect integration pass
   aliasedData0.IndirectRayOriginDirection[pixelCoordinate] = vec4(
@@ -439,6 +441,16 @@ void integratorDirectPathOutputDebugView(
       storeInDebugView(pixelCoordinate, directPathTextures.SecondaryCombinedSpecularLobeRadianceHitDistance[pixelCoordinate].xyz);
     else
       storeInDebugView(pixelCoordinate, 0);
+    break;
+  }
+  case DEBUG_VIEW_NOISY_SECONDARY_DIRECT_RADIANCE:
+  {
+    if (!geometryFlags.primarySelectedIntegrationSurface)  
+    {
+      storeInDebugView(pixelCoordinate, 
+        directPathTextures.SecondaryCombinedDiffuseLobeRadianceHitDistance[pixelCoordinate].xyz +
+        directPathTextures.SecondaryCombinedSpecularLobeRadianceHitDistance[pixelCoordinate].xyz);
+    }
     break;
   }
   case DEBUG_VIEW_PERCEPTUAL_ROUGHNESS:
