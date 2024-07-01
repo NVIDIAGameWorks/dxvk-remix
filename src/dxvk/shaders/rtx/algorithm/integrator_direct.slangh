@@ -149,7 +149,7 @@ void calculateRussianRouletteOnFirstBounce(
     throughput = 0;
   }
   else
-  {  
+  {
     // Note: Factor the probability of continuing the path into the throughput. This causes odd brightness
     // in denoising when the continue probability is very low, but this math has been validated to be
     // correct as far as I can tell.
@@ -219,7 +219,7 @@ void sampleIndirectRayForFirstBounce(
     // Note: Opacity on opaque objects treated as a specular lobe as it should be filtered like a reflection (not blurred).
     firstSampledLobeIsSpecular = firstRayPathSampledLobe != opaqueLobeTypeDiffuseReflection;
   }
-    
+
   // Apply Russian Roulette prior to checking this ray path being valid to integrate
   calculateRussianRouletteOnFirstBounce(randomState, throughput, firstSampledSolidAnglePdf);
 }

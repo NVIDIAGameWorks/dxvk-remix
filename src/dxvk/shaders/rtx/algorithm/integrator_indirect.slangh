@@ -452,7 +452,7 @@ void integratePathVertex(
   }
   accumulateRadiance(pathState, emissiveLight * misWeight);
   pathState.segmentHitDistance = 0.0;
-  
+
 // We don't need to sample lights or surface rays in the portal closest hit shader
 #if (SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_RAY_PORTAL) != 0
   if (materialType == surfaceMaterialTypeOpaque || materialType == surfaceMaterialTypeTranslucent)

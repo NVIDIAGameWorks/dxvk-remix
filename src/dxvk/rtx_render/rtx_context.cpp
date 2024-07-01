@@ -1223,11 +1223,14 @@ namespace dxvk {
 
   void RtxContext::dispatchIntegrate(const Resources::RaytracingOutput& rtOutput) {
     ScopedGpuProfileZone(this, "Integrate Raytracing");
-    
+
+    // Integrate direct
     m_common->metaPathtracerIntegrateDirect().dispatch(this, rtOutput);
 
+    // RTXDI Gradient pass
     m_common->metaRtxdiRayQuery().dispatchGradient(this, rtOutput);
 
+    // Integrate indirect
     m_common->metaPathtracerIntegrateIndirect().dispatch(this, rtOutput);
     m_common->metaPathtracerIntegrateIndirect().dispatchNEE(this, rtOutput);
   }
