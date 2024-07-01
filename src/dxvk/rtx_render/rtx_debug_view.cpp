@@ -86,7 +86,7 @@ namespace dxvk {
 
         {DEBUG_VIEW_MATERIAL_TYPE, "Material Type"},
         {DEBUG_VIEW_ALBEDO, "Diffuse Albedo"},
-        {DEBUG_VIEW_RAW_ALBEDO, "Diffuse Raw Albedo (RGS only)"},     
+        {DEBUG_VIEW_RAW_ALBEDO, "Diffuse Raw Albedo (RGS only)"},
         {DEBUG_VIEW_OPAQUE_RAW_ALBEDO_RESOLUTION_CHECKERS, "Opaque Material Raw Albedo + Texture Resolution Checkers (RGS only)",
                                                     "Parameterize via:\n"
                                                     "Debug Knob [0]: num texels per checker box [Default: 64]\n"

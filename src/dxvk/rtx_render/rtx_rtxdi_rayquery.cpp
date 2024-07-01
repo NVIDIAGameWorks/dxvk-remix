@@ -366,7 +366,7 @@ namespace dxvk {
 
   void DxvkRtxdiRayQuery::dispatchConfidence(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
     
-    if (!RtxOptions::Get()->useRTXDI() || 
+    if (!RtxOptions::Get()->useRTXDI() ||
         !getEnableDenoiserConfidence()) {
       return;
     }

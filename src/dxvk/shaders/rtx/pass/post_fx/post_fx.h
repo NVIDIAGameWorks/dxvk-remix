@@ -56,15 +56,15 @@ struct PostFxArgs {
   // Post Fx Attributes
   // Motion Blur
   uint   motionBlurSampleCount;
-  float  exposureFraction;
   float  blurDiameterFraction;
   bool   enableMotionBlurNoiseSample;
-
   float  motionBlurMinimumVelocityThresholdInPixel;
+
   // Chromatic Aberration
   float2 chromaticAberrationScale;
   float  chromaticCenterAttenuationAmount;
-
+  float  exposureFraction;
+  
   // Vignette
   float  vignetteIntensity;
   float  vignetteRadius;

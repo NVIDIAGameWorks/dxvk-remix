@@ -2712,8 +2712,14 @@ namespace dxvk {
         ImGui::Checkbox("Enable ReSTIR GI", &RtxOptions::Get()->useReSTIRGIObject());
 
         ImGui::PushID("ReSTIR GI");
-        auto& restirGI = common->metaReSTIRGIRayQuery();
-        restirGI.showImguiSettings();
+        if (ImGui::CollapsingHeader("Settings", collapsingHeaderClosedFlags)) {
+          ImGui::Indent();
+
+          auto& restirGI = common->metaReSTIRGIRayQuery();
+          restirGI.showImguiSettings();
+
+          ImGui::Unindent();
+        }
         ImGui::PopID();
         ImGui::Unindent();
       }
