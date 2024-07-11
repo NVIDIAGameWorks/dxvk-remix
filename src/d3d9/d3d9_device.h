@@ -956,6 +956,7 @@ namespace dxvk {
   public:
 // NV-DXVK end
     template<bool AllowFlush = true, typename Cmd>
+    void EmitCs(Cmd&& command) {
       if (unlikely(!m_csChunk->push(command))) {
         EmitCsChunk(std::move(m_csChunk));
         m_csChunk = AllocCsChunk();

@@ -95,26 +95,6 @@ namespace dxvk {
 // NV-DXVK start: external API
     , m_withExternalSwapchain { WithExternalSwapchain } {
 // NV-DXVK end
-          Rc<DxvkDevice>         dxvkDevice)
-    : m_parent          ( pParent )
-    , m_deviceType      ( DeviceType )
-    , m_window          ( hFocusWindow )
-    , m_behaviorFlags   ( BehaviorFlags )
-    , m_adapter         ( pAdapter )
-    , m_dxvkDevice      ( dxvkDevice )
-    , m_memoryAllocator ( )
-    , m_shaderAllocator ( )
-    , m_shaderModules   ( new D3D9ShaderModuleSet )
-    , m_stagingBuffer   ( dxvkDevice, StagingBufferSize )
-    , m_d3d9Options     ( dxvkDevice, pParent->GetInstance()->config() )
-    , m_multithread     ( BehaviorFlags & D3DCREATE_MULTITHREADED )
-    , m_isSWVP          ( (BehaviorFlags & D3DCREATE_SOFTWARE_VERTEXPROCESSING) ? true : false )
-    , m_csThread        ( dxvkDevice, dxvkDevice->createContext(DxvkContextType::Primary) )
-    , m_csChunk         ( AllocCsChunk() )
-    , m_submissionFence (new sync::Fence())
-    , m_d3d9Interop     ( this )
-    , m_d3d9On12        ( this )
-    , m_d3d8Bridge      ( this ) {
     // If we can SWVP, then we use an extended constant set
     // as SWVP has many more slots available than HWVP.
     bool canSWVP = CanSWVP();
@@ -4855,7 +4835,7 @@ namespace dxvk {
       });
 
       // NV-DXVK start: This is needed to avoid race condition with texture uploads (similar to FlushBuffer)
-      FlushImplicit(FALSE);
+      ConsiderFlush(GpuFlushType::ImplicitWeakHint);
       // NV-DXVK end
     }
     else {
@@ -5100,6 +5080,7 @@ namespace dxvk {
     if (s_explicitFlush) {
       Flush();
       return;
+    }
     // NV-DXVK end
     
     uint64_t chunkId = GetCurrentSequenceNumber();
@@ -5545,7 +5526,7 @@ namespace dxvk {
     m_initializer->Flush();
     m_converter->Flush();
 
-    EmitStagingBufferMarker();
+    // EmitStagingBufferMarker();
 
     // Add commands to flush the threaded
     // context, then flush the command list
@@ -5556,7 +5537,7 @@ namespace dxvk {
       cSubmissionId     = submissionId
     ] (DxvkContext* ctx) {
       ctx->signal(cSubmissionFence, cSubmissionId);
-      ctx->flushCommandList(nullptr);
+      ctx->flushCommandList();
     });
 
     FlushCsChunk();
