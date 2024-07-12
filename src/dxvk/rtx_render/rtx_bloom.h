@@ -82,7 +82,7 @@ namespace dxvk {
     // we would like to keep the amount of steps as few as possible.
     Resources::Resource m_bloomBuffer[5] = {};
 
-    RTX_OPTION("rtx.bloom", bool, enable, true, "Enable bloom - glowing halos around intense, bright areas.");
+    RTX_OPTION_ENV("rtx.bloom", bool, enable, true, "RTX_BLOOM_ENABLE", "Enable bloom - glowing halos around intense, bright areas.");
     RTX_OPTION("rtx.bloom", float, burnIntensity, 1.0f, "Amount of bloom to add to the final image.");
     RTX_OPTION("rtx.bloom", float, luminanceThreshold, 0.25f,
                "Adjust the bloom threshold to suppress blooming of the dim areas. "
