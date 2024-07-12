@@ -244,6 +244,10 @@ namespace dxvk {
     const Resources::RaytracingOutput& rtOutput,
     const bool cameraCutDetected)
   {
+    if (!enable()) {
+      return;
+    }
+
     ScopedGpuProfileZone(ctx, "PostFx");
 
     // Simulate chromatic aberration offset scale by calculating the focal length differences of 3 Fraunhofer lines,
