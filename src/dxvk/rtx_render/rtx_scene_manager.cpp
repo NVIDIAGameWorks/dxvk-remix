@@ -925,6 +925,9 @@ namespace dxvk {
       float thinFilmThicknessConstant = 0.0f;
       float displaceIn = 1.0f;
 
+      // Ignore colormap alpha of legacy texture if tagged as 'ignoreAlphaOnTextures' 
+      bool ignoreAlphaChannel = lookupHash(RtxOptions::ignoreAlphaOnTextures(), drawCallState.getMaterialData().getHash());
+
       Vector3 subsurfaceTransmittanceColor(0.0f, 0.0f, 0.0f);
       float subsurfaceMeasurementDistance = 0.0f;
       Vector3 subsurfaceSingleScatteringAlbedo(0.0f, 0.0f, 0.0f);
@@ -968,6 +971,10 @@ namespace dxvk {
         }
         // Todo: Incorporate this and the color texture into emissive conditionally
         // emissiveColorTextureIndex != kSurfaceMaterialInvalidTextureIndex ? 100.0f
+
+        if (!ignoreAlphaChannel) {
+          ignoreAlphaChannel = defaults.ignoreAlphaChannel();
+        }
 
         thinFilmEnable = defaults.enableThinFilm();
         alphaIsThinFilmThickness = defaults.alphaIsThinFilmThickness();
@@ -1041,7 +1048,7 @@ namespace dxvk {
         albedoOpacityConstant,
         roughnessConstant, metallicConstant,
         emissiveColorConstant, enableEmissive,
-        thinFilmEnable, alphaIsThinFilmThickness,
+        ignoreAlphaChannel, thinFilmEnable, alphaIsThinFilmThickness,
         thinFilmThicknessConstant, samplerIndex, displaceIn,
         subsurfaceMaterialIndex
       };
