@@ -134,6 +134,11 @@ bool isGBufferMiss(const uint2 position, Texture2D<float> coneRadiusTexture)
 
 bool findValueInArray(uint target)
 {
+  if (target == POST_FX_HIGHLIGHTING_INVALID_VALUE)
+  {
+    return false;
+  }
+
   // binary search with a uniform memory access pattern
   uint foundIndex = 0;
 
