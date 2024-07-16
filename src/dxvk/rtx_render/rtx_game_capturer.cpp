@@ -361,7 +361,7 @@ namespace dxvk {
         sphereLight.coneAngleDegrees = std::acos(shaping.getCosConeAngle()) * kRadiansToDegrees;
         sphereLight.coneSoftness = shaping.getConeSoftness();
         sphereLight.focusExponent = shaping.getFocusExponent();
-        rotation = pxr::GfRotation(-pxr::GfVec3d::ZAxis(), pxr::GfVec3f(&shaping.getPrimaryAxis()[0]));
+        rotation = pxr::GfRotation(-pxr::GfVec3d::ZAxis(), pxr::GfVec3f(&shaping.getDirection()[0]));
       }
       Logger::debug("[GameCapturer][" + m_pCap->idStr + "][SphereLight:" + name + "] New");
     }
@@ -385,7 +385,7 @@ namespace dxvk {
       distantLight.color[2] = colorAndIntensity.b;
       distantLight.intensity = colorAndIntensity.w;
       distantLight.angleDegrees = rtLight.getHalfAngle() * 2.0 * kRadiansToDegrees;
-      distantLight.direction = -pxr::GfVec3f(rtLight.getDirection().data);
+      distantLight.direction = pxr::GfVec3f(rtLight.getDirection().data);
       distantLight.firstTime = m_pCap->currentFrameNum;
       Logger::debug("[GameCapturer][" + m_pCap->idStr + "][DistantLight:" + name + "] New");
     }

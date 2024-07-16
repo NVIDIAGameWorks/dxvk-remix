@@ -677,13 +677,20 @@ namespace dxvk {
   }
 
   template <template<typename> typename TVector, typename T>
-  std::enable_if_t<std::is_floating_point_v<T>, TVector<T>> normalize(const TVector<T>& a) {
-    const auto aLength = length(a);
+  std::enable_if_t<std::is_floating_point_v<T>, TVector<T>> normalizeGetLength(const TVector<T>& a, T& aLength) {
+    aLength = length(a);
 
     // Note: Ensure the vector can be normalized (non-zero length).
     mathValidationAssert(aLength != static_cast<T>(0.0), "Attempted to normalize a zero-length vector.");
 
     return a * (static_cast<T>(1.0) / aLength);
+  }
+
+  template <template<typename> typename TVector, typename T>
+  std::enable_if_t<std::is_floating_point_v<T>, TVector<T>> normalize(const TVector<T>& a) {
+    T dummyLength;
+
+    return normalizeGetLength(a, dummyLength);
   }
 
   // Sanitizes away the singularity case in some vector calculations when the vector is 0, 0, 0 as this often poses issues for normalization
@@ -700,14 +707,27 @@ namespace dxvk {
   }
 
   template <template<typename> typename TVector, typename T>
-  std::enable_if_t<std::is_floating_point_v<T>, TVector<T>> safeNormalize(const TVector<T>& a, const TVector<T>& fallback) {
-    const auto aLength = length(a);
+  std::enable_if_t<std::is_floating_point_v<T>, TVector<T>> safeNormalizeGetLength(const TVector<T>& a, const TVector<T>& fallback, T& aLength) {
+    // Note: The fallback vector is expected to be pretty much exactly normalized by the intent of this function.
+    assert(isApproxNormalized(fallback, static_cast<T>(0.0001)));
+
+    aLength = length(a);
 
     if (aLength == static_cast<T>(0.0)) {
+      // Note: Length should be 1 for a normalized fallback vector.
+      aLength = static_cast<T>(1.0);
+
       return fallback;
     }
 
     return a * (static_cast<T>(1.0) / aLength);
+  }
+
+  template <template<typename> typename TVector, typename T>
+  std::enable_if_t<std::is_floating_point_v<T>, TVector<T>> safeNormalize(const TVector<T>& a, const TVector<T>& fallback) {
+    T dummyLength;
+
+    return safeNormalizeGetLength(a, fallback, dummyLength);
   }
 
   template <template<typename> typename TVector, typename T>
