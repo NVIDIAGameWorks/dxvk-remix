@@ -384,7 +384,7 @@ namespace dxvk {
   public:
     const VirtualKeys& remixMenuKeyBinds() const { return m_remixMenuKeyBinds; }
 
-    RTX_OPTION_ENV("rtx", DLSSProfile, qualityDLSS, DLSSProfile::Auto, "RTX_DLSS_PROFILE", "Adjusts internal DLSS scaling factor, trades quality for performance.");
+    RTX_OPTION_ENV("rtx", DLSSProfile, qualityDLSS, DLSSProfile::Auto, "RTX_QUALITY_DLSS", "Adjusts internal DLSS scaling factor, trades quality for performance.");
     // Note: All ray tracing modes depend on the rtx.raytraceModePreset option as they may be overridden by automatic defaults for a specific vendor if the preset is set to Auto. Set
     // to Custom to ensure these settings are not overridden.
     //RenderPassVolumeIntegrateRaytraceMode renderPassVolumeIntegrateRaytraceMode = RenderPassVolumeIntegrateRaytraceMode::RayQuery;
