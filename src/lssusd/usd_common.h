@@ -3,7 +3,7 @@
 namespace dxvk {
   // Used when readin/writing with Remix USD mods.
   static const char* getInstanceCategorySubKey(InstanceCategories cat) {
-    static_assert((uint32_t) InstanceCategories::Count == 21, "Please add/remove the category to the below table.");
+    static_assert((uint32_t) InstanceCategories::Count == 22, "Please add/remove the category to the below table.");
     switch (cat) {
     case InstanceCategories::WorldUI:
       return "remix_category:world_ui";
@@ -21,6 +21,8 @@ namespace dxvk {
       return "remix_category:ignore_motion_blur";
     case InstanceCategories::IgnoreOpacityMicromap:
       return "remix_category:ignore_opacity_micromap";
+    case InstanceCategories::IgnoreAlphaChannel:
+      return "remix_category:ignore_alpha_channel";
     case InstanceCategories::Hidden:
       return "remix_category:hidden";
     case InstanceCategories::Particle:

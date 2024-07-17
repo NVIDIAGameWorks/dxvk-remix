@@ -931,7 +931,8 @@ namespace dxvk {
       return false;
     }
 
-    if (instance.testCategoryFlags(InstanceCategories::IgnoreOpacityMicromap)) {
+    if (instance.testCategoryFlags(InstanceCategories::IgnoreOpacityMicromap) ||
+        instance.testCategoryFlags(InstanceCategories::IgnoreAlphaChannel)) {
       return false;
     }
 

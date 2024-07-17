@@ -413,6 +413,7 @@ enum class InstanceCategories : uint32_t {
   IgnoreAntiCulling,
   IgnoreMotionBlur,
   IgnoreOpacityMicromap,
+  IgnoreAlphaChannel,
   Hidden,
   Particle,
   Beam,
