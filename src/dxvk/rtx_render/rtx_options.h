@@ -240,6 +240,8 @@ namespace dxvk {
                   "Using this feature on selected textures will eliminate the vertex colors.\n\n"
                   "Note, enabling this setting will automatically disable multiple-stage texture factor blendings for the selected textures.\n"
                   "Only use this option when necessary, as the Texture Factor and Vertex Color can be used for simulating various texture effects, tagging a texture with this option will unexpectedly eliminate these effects.");
+    RW_RTX_OPTION("rtx", fast_unordered_set, ignoreAlphaOnTextures, {}, 
+                  "Textures for which to ignore the alpha channel of the legacy colormap. Textures will be rendered fully opaque as a result.");
     RW_RTX_OPTION("rtx.antiCulling", fast_unordered_set, antiCullingTextures, {},
                   "Textures that are forced to extend life length when anti-culling is enabled.\n"
                   "Some games use different culling methods we can't fully match, use this option to manually add textures to force extend their life when anti-culling fails.");

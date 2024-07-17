@@ -520,7 +520,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
       thinFilmThickness = float16_t(0.0f);
     }
   }
-         
+
 #if defined(RAY_TRACING_PRIMARY_RAY) && defined(RAY_PIPELINE)
   if (cb.debugView == DEBUG_VIEW_RAW_ALBEDO) 
   {
@@ -560,6 +560,11 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   
     calcOpaqueSurfaceMaterialOpacity(
       albedo, opacity, surface, opacity, emissiveBlendOverrideInfluence);
+  }
+
+  if (opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_IGNORE_ALPHA_CHANNEL)
+  {
+      opacity = 1.h;
   }
 
   // Note: Gamma correct albedo input (be it from a constant or a texture). Currently assuming all textures are not using sRGB formats which

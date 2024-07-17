@@ -92,6 +92,7 @@ struct OpaqueMaterialOptions {
 
   // Overrides
 
+  RTX_OPTION("rtx.opaqueMaterial", bool, ignoreAlphaChannelOverride, false, "A flag to ignore the alpha channel of the colormap on the opaque material. Should only be used for debugging or development.");
   RTX_OPTION("rtx.opaqueMaterial", bool, enableThinFilmOverride, false, "A flag to force the thin-film layer on the opaque material to be enabled. Should only be used for debugging or development.");
   RTX_OPTION("rtx.opaqueMaterial", float, thinFilmThicknessOverride, 0.0f,
              "The thin-film layer's thickness in nanometers for the opaque material when the thin-film override is enabled.\n"

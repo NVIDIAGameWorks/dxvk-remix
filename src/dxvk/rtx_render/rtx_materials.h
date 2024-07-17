@@ -342,6 +342,7 @@ struct LegacyMaterialDefaults {
   RTX_OPTION("rtx.legacyMaterial", float, metallicConstant, 0.1f, "The default metallic constant to use for non-replaced \"legacy\" materials. Should be in the range 0 to 1.");
   RTX_OPTION("rtx.legacyMaterial", Vector3, emissiveColorConstant, Vector3(0.0f, 0.0f, 0.0f), "The default emissive color constant to use for non-replaced \"legacy\" materials. Should be a color in sRGB colorspace with gamma encoding.");
   RTX_OPTION("rtx.legacyMaterial", bool, enableEmissive, false, "A flag to determine if emission should be used on non-replaced \"legacy\" materials.");
+  RTX_OPTION("rtx.legacyMaterial", bool, ignoreAlphaChannel, false, "A flag to determine if the albedo alpha channel should be ignored on non-replaced \"legacy\" materials.");
   RTX_OPTION("rtx.legacyMaterial", bool, enableThinFilm, false, "A flag to determine if a thin-film layer should be used on non-replaced \"legacy\" materials.");
   RTX_OPTION("rtx.legacyMaterial", bool, alphaIsThinFilmThickness, false, "A flag to determine if the alpha channel from the albedo source should be treated as thin film thickness on non-replaced \"legacy\" materials.");
   // Note: Should be something non-zero as 0 is an invalid thickness to have (even if this is just unused).
@@ -383,7 +384,7 @@ struct RtOpaqueSurfaceMaterial {
     const Vector4& albedoOpacityConstant,
     float roughnessConstant, float metallicConstant,
     const Vector3& emissiveColorConstant, bool enableEmission,
-    bool enableThinFilm, bool alphaIsThinFilmThickness, float thinFilmThicknessConstant,
+    bool ignoreAlphaChannel, bool enableThinFilm, bool alphaIsThinFilmThickness, float thinFilmThicknessConstant,
     uint32_t samplerIndex, float displaceIn,
     uint32_t subsurfaceMaterialIndex) :
     m_albedoOpacityTextureIndex{ albedoOpacityTextureIndex }, m_normalTextureIndex{ normalTextureIndex },
@@ -393,7 +394,7 @@ struct RtOpaqueSurfaceMaterial {
     m_albedoOpacityConstant{ albedoOpacityConstant },
     m_roughnessConstant{ roughnessConstant }, m_metallicConstant{ metallicConstant },
     m_emissiveColorConstant{ emissiveColorConstant }, m_enableEmission{ enableEmission },
-    m_enableThinFilm { enableThinFilm }, m_alphaIsThinFilmThickness { alphaIsThinFilmThickness },
+    m_ignoreAlphaChannel { ignoreAlphaChannel }, m_enableThinFilm { enableThinFilm }, m_alphaIsThinFilmThickness { alphaIsThinFilmThickness },
     m_thinFilmThicknessConstant { thinFilmThicknessConstant }, m_samplerIndex{ samplerIndex }, m_displaceIn{ displaceIn },
     m_subsurfaceMaterialIndex(subsurfaceMaterialIndex) {
     updateCachedData();
@@ -489,6 +490,11 @@ struct RtOpaqueSurfaceMaterial {
         flags |= OPAQUE_SURFACE_MATERIAL_FLAG_ALPHA_IS_THIN_FILM_THICKNESS;
       }
     }
+
+    if (m_ignoreAlphaChannel) {
+      flags |= OPAQUE_SURFACE_MATERIAL_FLAG_IGNORE_ALPHA_CHANNEL;
+    }
+
     writeGPUHelper(data, offset, flags);
 
     assert(offset - oldOffset == kSurfaceMaterialGPUSize);
@@ -596,6 +602,7 @@ private:
     h = XXH64(&m_metallicConstant, sizeof(m_metallicConstant), h);
     h = XXH64(&m_emissiveColorConstant, sizeof(m_emissiveColorConstant), h);
     h = XXH64(&m_enableEmission, sizeof(m_enableEmission), h);
+    h = XXH64(&m_ignoreAlphaChannel, sizeof(m_ignoreAlphaChannel), h);
     h = XXH64(&m_enableThinFilm, sizeof(m_enableThinFilm), h);
     h = XXH64(&m_alphaIsThinFilmThickness, sizeof(m_alphaIsThinFilmThickness), h);
     h = XXH64(&m_thinFilmThicknessConstant, sizeof(m_thinFilmThicknessConstant), h);
@@ -636,6 +643,7 @@ private:
 
   bool m_enableEmission;
 
+  bool m_ignoreAlphaChannel;
   bool m_enableThinFilm;
   bool m_alphaIsThinFilmThickness;
   float m_thinFilmThicknessConstant;
