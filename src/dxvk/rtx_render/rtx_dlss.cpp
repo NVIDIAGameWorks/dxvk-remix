@@ -323,6 +323,10 @@ namespace dxvk {
   }
 
   void DxvkDLSS::initializeDLSS(Rc<DxvkContext> renderContext) {
+    // Toggling eye adaptation may cause DLSS get reinitialized while last frame is still executing.
+    // Use waitForIdle() to prevent racing conditions.
+    m_device->waitForIdle();
+
     NGXDLSSContext* dlssWrapper = NGXDLSSContext::getInstance(m_device);
     dlssWrapper->releaseNGXFeature();
 

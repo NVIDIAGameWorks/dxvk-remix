@@ -680,16 +680,19 @@ namespace dxvk {
 
         std::vector<VkWriteDescriptorSet> descriptorWriteSets;
 
+        // Variables referenced inside descriptorWriteSets must have the same lifetime, so preallocate
+        std::vector<VkDescriptorImageInfo> samplerDescs{ denoiserDesc.samplersNum };
+        VkDescriptorBufferInfo             cbDesc{};
+        std::vector<VkDescriptorImageInfo> imageDesc{ dispatchDesc.resourcesNum };
+
         // Static sampler descriptors
-        std::vector<VkDescriptorImageInfo> samplerDescs;
-        samplerDescs.resize(denoiserDesc.samplersNum);
         for (size_t i = 0; i < denoiserDesc.samplersNum; i++) {
 
           const VkDescriptorSetLayoutBinding& binding = computePipeline.bindings[i];
           samplerDescs[i].sampler = m_staticSamplers[i]->handle();
           samplerDescs[i].imageView = VK_NULL_HANDLE;
           samplerDescs[i].imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-          descriptorWriteSets.emplace_back(DxvkDescriptor::texture(descriptorSet, samplerDescs[i], binding.descriptorType, binding.binding));
+          descriptorWriteSets.emplace_back(DxvkDescriptor::texture(descriptorSet, &samplerDescs[i], binding.descriptorType, binding.binding));
           
           ctx->getCommandList()->trackResource<DxvkAccess::None>(m_staticSamplers[i]);
         }
@@ -710,8 +713,8 @@ namespace dxvk {
           const VkDescriptorSetLayoutBinding& cb = computePipeline.bindings[computePipeline.constantBufferIndex];
           assert(cb.descriptorCount == 1);
 
-          const VkDescriptorBufferInfo& cbDesc = cbSlice.getDescriptor().buffer;
-          descriptorWriteSets.emplace_back(DxvkDescriptor::buffer(descriptorSet, cbDesc, cb.descriptorType, cb.binding));
+          cbDesc = cbSlice.getDescriptor().buffer;
+          descriptorWriteSets.emplace_back(DxvkDescriptor::buffer(descriptorSet, &cbDesc, cb.descriptorType, cb.binding));
 
           barriers.accessBuffer(cbSlice.getSliceHandle(),
             VK_PIPELINE_STAGE_TRANSFER_BIT,
@@ -721,8 +724,6 @@ namespace dxvk {
         }
 
         // Gather needed resource infos for the pipeline
-        std::vector<VkDescriptorImageInfo> imageDesc;
-        imageDesc.resize(dispatchDesc.resourcesNum);
         for (size_t i = 0; i < dispatchDesc.resourcesNum; i++) {
 
           const nrd::ResourceRangeDesc& descRange = pipelineDesc.resourceRanges[i];
