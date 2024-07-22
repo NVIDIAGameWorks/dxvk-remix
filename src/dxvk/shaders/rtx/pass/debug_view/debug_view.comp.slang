@@ -560,6 +560,11 @@ f16vec4 lerpFp16(f16vec4 a, f16vec4 b, float16_t lerpFactor)
 
 void storeDebugViewOutputStatistics(vec4 value)
 {
+  if (!cb.calculateStatistics)
+  {
+    return;
+  }
+
 #if ENABLE_DEBUG_VIEW_OPTIONAL_FEATURES
   // Optional features guarantees float atomics support
 
