@@ -961,6 +961,7 @@ namespace dxvk {
     debugViewArgs.copyOutputToCompositeOutput = shouldRunDispatchPostCompositePass() || replaceCompositeOutput();
 
     // Statistics params
+    debugViewArgs.calculateStatistics = m_showOutputStatistics;
     debugViewArgs.statisticsMode = m_outputStatisticsMode;
     debugViewArgs.rcpNumOutputPixels = 1.f /
       (debugViewArgs.debugViewResolution.x * debugViewArgs.debugViewResolution.y);

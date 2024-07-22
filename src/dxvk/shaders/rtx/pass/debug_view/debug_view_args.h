@@ -128,6 +128,7 @@ struct DebugViewArgs {
   uint copyOutputToCompositeOutput;
   DebugViewAccumulationMode accumulationMode;
 
+  uint calculateStatistics;
   DebugViewOutputStatisticsMode statisticsMode;
   float rcpNumOutputPixels;
 };
