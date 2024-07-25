@@ -43,6 +43,8 @@ util_src = files([
 
   'util_renderprocessor.h',
   
+  'util_version.h',
+
   'util_watchdog.h',
 ])
 
