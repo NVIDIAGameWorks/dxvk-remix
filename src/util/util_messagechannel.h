@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -20,6 +20,9 @@
 * DEALINGS IN THE SOFTWARE.
 */
 #pragma once
+
+#include "util_version.h"
+
 #include <stdint.h>
 #include <string>
 #include <unordered_map>
@@ -27,7 +30,7 @@
 #include <mutex>
 
 // The code is shared between Remix Bridge and Remix Renderer
-#if defined(TREX_BRIDGE_CLIENT) || defined(TREX_BRIDGE_SERVER)
+#if defined(REMIX_BRIDGE_CLIENT) || defined(REMIX_BRIDGE_SERVER)
 #include <windows.h>
 #include <thread>
 typedef std::thread ThreadType;
@@ -37,6 +40,10 @@ typedef std::thread ThreadType;
 typedef dxvk::thread ThreadType;
 #define UTIL_NS dxvk
 #endif
+
+namespace version {
+  static constexpr uint64_t messageChannelV = 1;
+}
 
 namespace UTIL_NS {
   // Bidirectional communication channel based on Windows GetMessage/PostThreadMessage.
