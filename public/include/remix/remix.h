@@ -40,13 +40,13 @@ namespace remix {
     template< typename T >
     struct Result {
       Result(T&& value)
-        : m_value { std::forward< T >(value) }
-        , m_status { REMIXAPI_ERROR_CODE_SUCCESS } {
+        : m_status { REMIXAPI_ERROR_CODE_SUCCESS }
+        , m_value { std::forward< T >(value) } {
       }
 
       Result(remixapi_ErrorCode error)
-        : m_value {}
-        , m_status { error } {
+        : m_status { error }
+        , m_value {} {
         REMIXAPI_ASSERT(error != REMIXAPI_ERROR_CODE_SUCCESS);
       }
 
@@ -285,6 +285,43 @@ namespace remix {
       static_assert(sizeof remixapi_MaterialInfoOpaqueEXT == 112);
     }
 
+    MaterialInfoOpaqueEXT(const MaterialInfoOpaqueEXT& other)
+      : remixapi_MaterialInfoOpaqueEXT(other)
+      , cpp_roughnessTexture(other.cpp_roughnessTexture)
+      , cpp_metallicTexture(other.cpp_metallicTexture)
+      , cpp_heightTexture(other.cpp_heightTexture) {
+      cpp_fixPointers();
+    }
+    MaterialInfoOpaqueEXT(MaterialInfoOpaqueEXT&& other) noexcept
+      : remixapi_MaterialInfoOpaqueEXT(other)
+      , cpp_roughnessTexture(std::move(other.cpp_roughnessTexture))
+      , cpp_metallicTexture(std::move(other.cpp_metallicTexture))
+      , cpp_heightTexture(std::move(other.cpp_heightTexture)) {
+      cpp_fixPointers();
+    }
+    MaterialInfoOpaqueEXT& operator=(const MaterialInfoOpaqueEXT& other) {
+      if (this == &other) {
+        return *this;
+      }
+      remixapi_MaterialInfoOpaqueEXT::operator=(other);
+      cpp_roughnessTexture = other.cpp_roughnessTexture;
+      cpp_metallicTexture  = other.cpp_metallicTexture;
+      cpp_heightTexture    = other.cpp_heightTexture;
+      cpp_fixPointers();
+      return *this;
+    }
+    MaterialInfoOpaqueEXT& operator=(MaterialInfoOpaqueEXT&& other) noexcept {
+      if (this == &other) {
+        return *this;
+      }
+      remixapi_MaterialInfoOpaqueEXT::operator=(other);
+      cpp_roughnessTexture = std::move(other.cpp_roughnessTexture);
+      cpp_metallicTexture  = std::move(other.cpp_metallicTexture);
+      cpp_heightTexture    = std::move(other.cpp_heightTexture);
+      cpp_fixPointers();
+      return *this;
+    }
+
     void set_roughnessTexture(std::filesystem::path v) {
       cpp_roughnessTexture = std::move(v);
       roughnessTexture = cpp_roughnessTexture.c_str();
@@ -305,6 +342,13 @@ namespace remix {
     }
 
   private:
+    void cpp_fixPointers() {
+      roughnessTexture = cpp_roughnessTexture.c_str();
+      metallicTexture = cpp_metallicTexture.c_str();
+      heightTexture = cpp_heightTexture.c_str();
+      static_assert(sizeof remixapi_MaterialInfoOpaqueEXT == 112, "Recheck pointers");
+    }
+
     std::filesystem::path cpp_roughnessTexture {};
     std::filesystem::path cpp_metallicTexture {};
     std::filesystem::path cpp_heightTexture {};
@@ -325,6 +369,43 @@ namespace remix {
       static_assert(sizeof remixapi_MaterialInfoOpaqueSubsurfaceEXT == 72);
     }
 
+    MaterialInfoOpaqueSubsurfaceEXT(const MaterialInfoOpaqueSubsurfaceEXT& other)
+      : remixapi_MaterialInfoOpaqueSubsurfaceEXT(other)
+      , cpp_subsurfaceTransmittanceTexture(other.cpp_subsurfaceTransmittanceTexture)
+      , cpp_subsurfaceThicknessTexture(other.cpp_subsurfaceThicknessTexture)
+      , cpp_subsurfaceSingleScatteringAlbedoTexture(other.cpp_subsurfaceSingleScatteringAlbedoTexture) {
+      cpp_fixPointers();
+    }
+    MaterialInfoOpaqueSubsurfaceEXT(MaterialInfoOpaqueSubsurfaceEXT&& other) noexcept
+      : remixapi_MaterialInfoOpaqueSubsurfaceEXT(other)
+      , cpp_subsurfaceTransmittanceTexture(std::move(other.cpp_subsurfaceTransmittanceTexture))
+      , cpp_subsurfaceThicknessTexture(std::move(other.cpp_subsurfaceThicknessTexture))
+      , cpp_subsurfaceSingleScatteringAlbedoTexture(std::move(other.cpp_subsurfaceSingleScatteringAlbedoTexture)) {
+      cpp_fixPointers();
+    }
+    MaterialInfoOpaqueSubsurfaceEXT& operator=(const MaterialInfoOpaqueSubsurfaceEXT& other) {
+      if (this == &other) {
+        return *this;
+      }
+      remixapi_MaterialInfoOpaqueSubsurfaceEXT::operator=(other);
+      cpp_subsurfaceTransmittanceTexture          = other.cpp_subsurfaceTransmittanceTexture;
+      cpp_subsurfaceThicknessTexture              = other.cpp_subsurfaceThicknessTexture;
+      cpp_subsurfaceSingleScatteringAlbedoTexture = other.cpp_subsurfaceSingleScatteringAlbedoTexture;
+      cpp_fixPointers();
+      return *this;
+    }
+    MaterialInfoOpaqueSubsurfaceEXT& operator=(MaterialInfoOpaqueSubsurfaceEXT&& other) noexcept {
+      if (this == &other) {
+        return *this;
+      }
+      remixapi_MaterialInfoOpaqueSubsurfaceEXT::operator=(other);
+      cpp_subsurfaceTransmittanceTexture          = std::move(other.cpp_subsurfaceTransmittanceTexture);
+      cpp_subsurfaceThicknessTexture              = std::move(other.cpp_subsurfaceThicknessTexture);
+      cpp_subsurfaceSingleScatteringAlbedoTexture = std::move(other.cpp_subsurfaceSingleScatteringAlbedoTexture);
+      cpp_fixPointers();
+      return *this;
+    }
+
     void set_subsurfaceTransmittanceTexture(std::filesystem::path v) {
       cpp_subsurfaceTransmittanceTexture = std::move(v);
       subsurfaceTransmittanceTexture = cpp_subsurfaceTransmittanceTexture.c_str();
@@ -339,6 +420,13 @@ namespace remix {
     }
 
   private:
+    void cpp_fixPointers() {
+      subsurfaceTransmittanceTexture = cpp_subsurfaceTransmittanceTexture.c_str();
+      subsurfaceThicknessTexture = cpp_subsurfaceThicknessTexture.c_str();
+      subsurfaceSingleScatteringAlbedoTexture = cpp_subsurfaceSingleScatteringAlbedoTexture.c_str();
+      static_assert(sizeof remixapi_MaterialInfoOpaqueSubsurfaceEXT == 72, "Recheck pointers");
+    }
+
     std::filesystem::path cpp_subsurfaceTransmittanceTexture {};
     std::filesystem::path cpp_subsurfaceThicknessTexture {};
     std::filesystem::path cpp_subsurfaceSingleScatteringAlbedoTexture {};
@@ -358,6 +446,35 @@ namespace remix {
       static_assert(sizeof remixapi_MaterialInfoTranslucentEXT == 56);
     }
 
+    MaterialInfoTranslucentEXT(const MaterialInfoTranslucentEXT& other)
+      : remixapi_MaterialInfoTranslucentEXT(other)
+      , cpp_transmittanceTexture(other.cpp_transmittanceTexture) {
+      cpp_fixPointers();
+    }
+    MaterialInfoTranslucentEXT(MaterialInfoTranslucentEXT&& other) noexcept
+      : remixapi_MaterialInfoTranslucentEXT(other)
+      , cpp_transmittanceTexture(std::move(other.cpp_transmittanceTexture)) {
+      cpp_fixPointers();
+    }
+    MaterialInfoTranslucentEXT& operator=(const MaterialInfoTranslucentEXT& other) {
+      if (this == &other) {
+        return *this;
+      }
+      remixapi_MaterialInfoTranslucentEXT::operator=(other);
+      cpp_transmittanceTexture = other.cpp_transmittanceTexture;
+      cpp_fixPointers();
+      return *this;
+    }
+    MaterialInfoTranslucentEXT& operator=(MaterialInfoTranslucentEXT&& other) noexcept {
+      if (this == &other) {
+        return *this;
+      }
+      remixapi_MaterialInfoTranslucentEXT::operator=(other);
+      cpp_transmittanceTexture = std::move(other.cpp_transmittanceTexture);
+      cpp_fixPointers();
+      return *this;
+    }
+
     void set_transmittanceTexture(std::filesystem::path v) {
       cpp_transmittanceTexture = std::move(v);
       transmittanceTexture = cpp_transmittanceTexture.c_str();
@@ -367,6 +484,11 @@ namespace remix {
     }
 
   private:
+    void cpp_fixPointers() {
+      transmittanceTexture = cpp_transmittanceTexture.c_str();
+      static_assert(sizeof remixapi_MaterialInfoTranslucentEXT == 56, "Recheck pointers");
+    }
+
     std::filesystem::path cpp_transmittanceTexture {};
   };
 
@@ -400,6 +522,47 @@ namespace remix {
       static_assert(sizeof remixapi_MaterialInfo == 80);
     }
 
+    MaterialInfo(const MaterialInfo& other)
+      : remixapi_MaterialInfo(other)
+      , cpp_albedoTexture(other.cpp_albedoTexture)
+      , cpp_normalTexture(other.cpp_normalTexture)
+      , cpp_tangentTexture(other.cpp_tangentTexture)
+      , cpp_emissiveTexture(other.cpp_emissiveTexture) {
+      cpp_fixPointers();
+    }
+    MaterialInfo(MaterialInfo&& other) noexcept
+      : remixapi_MaterialInfo(other)
+      , cpp_albedoTexture(std::move(other.cpp_albedoTexture))
+      , cpp_normalTexture(std::move(other.cpp_normalTexture))
+      , cpp_tangentTexture(std::move(other.cpp_tangentTexture))
+      , cpp_emissiveTexture(std::move(other.cpp_emissiveTexture)) {
+      cpp_fixPointers();
+    }
+    MaterialInfo& operator=(const MaterialInfo& other) {
+      if (this == &other) {
+        return *this;
+      }
+      remixapi_MaterialInfo::operator=(other);
+      cpp_albedoTexture   = other.cpp_albedoTexture;
+      cpp_normalTexture   = other.cpp_normalTexture;
+      cpp_tangentTexture  = other.cpp_tangentTexture;
+      cpp_emissiveTexture = other.cpp_emissiveTexture;
+      cpp_fixPointers();
+      return *this;
+    }
+    MaterialInfo& operator=(MaterialInfo&& other) noexcept {
+      if (this == &other) {
+        return *this;
+      }
+      remixapi_MaterialInfo::operator=(other);
+      cpp_albedoTexture   = std::move(other.cpp_albedoTexture);
+      cpp_normalTexture   = std::move(other.cpp_normalTexture);
+      cpp_tangentTexture  = std::move(other.cpp_tangentTexture);
+      cpp_emissiveTexture = std::move(other.cpp_emissiveTexture);
+      cpp_fixPointers();
+      return *this;
+    }
+
     void set_albedoTexture(std::filesystem::path v) {
       cpp_albedoTexture = std::move(v);
       albedoTexture = cpp_albedoTexture.c_str();
@@ -418,6 +581,14 @@ namespace remix {
     }
 
   private:
+    void cpp_fixPointers() {
+      albedoTexture = cpp_albedoTexture.c_str();
+      normalTexture = cpp_normalTexture.c_str();
+      tangentTexture = cpp_tangentTexture.c_str();
+      emissiveTexture = cpp_emissiveTexture.c_str();
+      static_assert(sizeof remixapi_MaterialInfo == 80, "Recheck pointers");
+    }
+
     std::filesystem::path cpp_albedoTexture {};
     std::filesystem::path cpp_normalTexture {};
     std::filesystem::path cpp_tangentTexture {};
@@ -666,12 +837,46 @@ namespace remix {
       static_assert(sizeof remixapi_LightInfoDomeEXT == 72);
     }
 
+    LightInfoDomeEXT(const LightInfoDomeEXT& other)
+      : remixapi_LightInfoDomeEXT(other)
+      , cpp_colorTexture(other.cpp_colorTexture) {
+      cpp_fixPointers();
+    }
+    LightInfoDomeEXT(LightInfoDomeEXT&& other) noexcept
+      : remixapi_LightInfoDomeEXT(other)
+      , cpp_colorTexture(std::move(other.cpp_colorTexture)) {
+      cpp_fixPointers();
+    }
+    LightInfoDomeEXT& operator=(const LightInfoDomeEXT& other) {
+      if (this == &other) {
+        return *this;
+      }
+      remixapi_LightInfoDomeEXT::operator=(other);
+      cpp_colorTexture = other.cpp_colorTexture;
+      cpp_fixPointers();
+      return *this;
+    }
+    LightInfoDomeEXT& operator=(LightInfoDomeEXT&& other) noexcept {
+      if (this == &other) {
+        return *this;
+      }
+      remixapi_LightInfoDomeEXT::operator=(other);
+      cpp_colorTexture = std::move(other.cpp_colorTexture);
+      cpp_fixPointers();
+      return *this;
+    }
+
     void set_colorTexture(std::filesystem::path v) {
       cpp_colorTexture = std::move(v);
       colorTexture = cpp_colorTexture.c_str();
     }
 
   private:
+    void cpp_fixPointers() {
+      colorTexture = cpp_colorTexture.c_str();
+      static_assert(sizeof remixapi_LightInfoDomeEXT == 72, "Recheck pointers");
+    }
+
     std::filesystem::path cpp_colorTexture {};
   };
 
