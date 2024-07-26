@@ -36,7 +36,6 @@
 
 #include "rtx_matrix_helpers.h"
 
-#include "rtx_ngx_wrapper.h"
 
 namespace dxvk {
   const char* dlssProfileToString(DLSSProfile dlssProfile) {
@@ -55,25 +54,25 @@ namespace dxvk {
 
   DxvkDLSS::DxvkDLSS(DxvkDevice* device) : CommonDeviceObject(device), RtxPass(device) {
     // Trigger DLSS context creation
-    NGXDLSSContext::getInstance(m_device);
+    if (!m_dlssContext) {
+      m_dlssContext = device->getCommon()->metaNGXContext().createDLSSContext();
+    };
   }
 
   DxvkDLSS::~DxvkDLSS() { }
 
   void DxvkDLSS::onDestroy() {
-    NGXDLSSContext* dlssWrapper = NGXDLSSContext::getInstance(m_device);
-    if (dlssWrapper) {
-      dlssWrapper->releaseNGXFeature();
+    if (m_dlssContext) {
+      m_dlssContext->releaseNGXFeature();
     }
-    NGXDLSSContext::releaseInstance();
+    m_dlssContext = nullptr;
   }
 
   void DxvkDLSS::release() {
     mRecreate = true;
 
-    NGXDLSSContext* dlssWrapper = NGXDLSSContext::getInstance(m_device);
-    if (dlssWrapper) {
-      dlssWrapper->releaseNGXFeature();
+    if (m_dlssContext) {
+      m_dlssContext->releaseNGXFeature();
     }
   }
 
@@ -152,7 +151,10 @@ namespace dxvk {
       mInputSize[1] = outRenderSize[1] = displaySize[1];
     } else {
       NVSDK_NGX_PerfQuality_Value perfQuality = profileToQuality(mActualProfile);
-      auto optimalSettings = NGXDLSSContext::getInstance(m_device)->queryOptimalSettings(displaySize, perfQuality);
+      if (!m_dlssContext) {
+        m_dlssContext = m_device->getCommon()->metaNGXContext().createDLSSContext();
+      }
+      auto optimalSettings = m_dlssContext->queryOptimalSettings(displaySize, perfQuality);
 
       // DLSS-RR requires the resolution to be the multiple of 32 to avoid artifacts.
       // Use the same resolution as DLSS-RR to avoid memory fragmentation.
@@ -272,14 +274,12 @@ namespace dxvk {
 
       barriers.recordCommands(ctx->getCommandList());
 
-      NGXDLSSContext* ngxInstance = NGXDLSSContext::getInstance(m_device);
-
       auto motionVectorInput = &rtOutput.m_primaryScreenSpaceMotionVector;
       auto depthInput = &rtOutput.m_primaryDepth;
       // Note: Texture contains specular albedo in this case as DLSS happens after demodulation
       auto specularAlbedoInput = &rtOutput.m_primarySpecularAlbedo.resource(Resources::AccessType::Read);
-      ngxInstance->setWorldToViewMatrix(camera.getWorldToView());
-      ngxInstance->setViewToProjectionMatrix(camera.getViewToProjection());
+      m_dlssContext->setWorldToViewMatrix(camera.getWorldToView());
+      m_dlssContext->setViewToProjectionMatrix(camera.getViewToProjection());
 
       // Note: Add texture inputs added here to the pInputs array above to properly access the images.
       NGXDLSSContext::NGXBuffers buffers;
@@ -300,7 +300,7 @@ namespace dxvk {
       settings.motionVectorScale[0] = motionVectorScale[0];
       settings.motionVectorScale[1] = motionVectorScale[1];
 
-      ngxInstance->evaluateDLSS(ctx, buffers, settings);
+      m_dlssContext->evaluateDLSS(ctx, buffers, settings);
 
       for (auto output : pOutputs) {
         barriers.accessImage(
@@ -329,13 +329,15 @@ namespace dxvk {
     // Use waitForIdle() to prevent racing conditions.
     m_device->waitForIdle();
 
-    NGXDLSSContext* dlssWrapper = NGXDLSSContext::getInstance(m_device);
-    dlssWrapper->releaseNGXFeature();
+    if (!m_dlssContext) {
+      m_dlssContext = m_device->getCommon()->metaNGXContext().createDLSSContext();
+    }
+    m_dlssContext->releaseNGXFeature();
 
     NVSDK_NGX_PerfQuality_Value perfQuality = profileToQuality(mProfile);
 
-    auto optimalSettings = dlssWrapper->queryOptimalSettings(mInputSize, perfQuality);
+    auto optimalSettings = m_dlssContext->queryOptimalSettings(mInputSize, perfQuality);
 
-    dlssWrapper->initialize(renderContext, mInputSize, mDLSSOutputSize, mIsHDR, mInverseDepth, mAutoExposure, false, perfQuality);
+    m_dlssContext->initialize(renderContext, mInputSize, mDLSSOutputSize, mIsHDR, mInverseDepth, mAutoExposure, false, perfQuality);
   }
 }
