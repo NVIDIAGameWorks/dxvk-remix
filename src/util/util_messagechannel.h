@@ -42,7 +42,7 @@ typedef dxvk::thread ThreadType;
 #endif
 
 namespace version {
-  static constexpr uint64_t messageChannelV = 1;
+  static constexpr uint64_t messageChannelV = 2;
 }
 
 namespace UTIL_NS {
