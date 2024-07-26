@@ -105,15 +105,10 @@ namespace dxvk {
     m_normals.image = nullptr;
     m_normals.view = nullptr;
 
-    NGXRayReconstructionContext* dlssRRWrapper = NGXRayReconstructionContext::getInstance(m_device);
-    if (dlssRRWrapper) {
-      dlssRRWrapper->releaseNGXFeature();
-    }
   }
   
   void DxvkRayReconstruction::onDestroy() {
     release();
-    NGXRayReconstructionContext::releaseInstance();
   }
 
   bool DxvkRayReconstruction::useRayReconstruction() {
@@ -273,15 +268,14 @@ namespace dxvk {
 
       barriers.recordCommands(ctx->getCommandList());
 
-      NGXRayReconstructionContext* ngxInstance = NGXRayReconstructionContext::getInstance(m_device);
 
       // Note: DLSS-RR currently uses DLSS's depth input for "linear view depth", which is what our virtual linear view Z represents (not quite depth in the
       // technical sense but this is likely what they mean).
       auto normalsInput = &m_normals;
       // Note: Texture contains specular albedo in this case as DLSS happens after demodulation
       auto specularAlbedoInput = &rtOutput.m_primarySpecularAlbedo.resource(Resources::AccessType::Read);
-      ngxInstance->setWorldToViewMatrix(camera.getWorldToView());
-      ngxInstance->setViewToProjectionMatrix(camera.getViewToProjection());
+      m_rayReconstructionContext->setWorldToViewMatrix(camera.getWorldToView());
+      m_rayReconstructionContext->setViewToProjectionMatrix(camera.getViewToProjection());
 
       // Note: Add texture inputs added here to the pInputs array above to properly access the images.
       NGXRayReconstructionContext::NGXBuffers buffers;
@@ -311,7 +305,7 @@ namespace dxvk {
       settings.autoExposure = mAutoExposure;
       settings.frameTimeMilliseconds = frameTimeMilliseconds;
 
-      ngxInstance->evaluateRayReconstruction(ctx, buffers, settings);
+      m_rayReconstructionContext->evaluateRayReconstruction(ctx, buffers, settings);
 
       for (auto output : pOutputs) {
         barriers.accessImage(
@@ -386,13 +380,18 @@ namespace dxvk {
     } else {
       NVSDK_NGX_PerfQuality_Value perfQuality = profileToQuality(mActualProfile);
 
-      auto optimalSettings = NGXRayReconstructionContext::getInstance(m_device)->queryOptimalSettings(displaySize, perfQuality);
+      if (!m_rayReconstructionContext) {
+        m_rayReconstructionContext = m_device->getCommon()->metaNGXContext().createRayReconstructionContext();
+      }
+      if (m_rayReconstructionContext) {
+        auto optimalSettings = m_rayReconstructionContext->queryOptimalSettings(displaySize, perfQuality);
 
-      const int step = 32;
-      optimalSettings.optimalRenderSize[0] = (optimalSettings.optimalRenderSize[0] + step - 1) / step * step;
-      optimalSettings.optimalRenderSize[1] = (optimalSettings.optimalRenderSize[1] + step - 1) / step * step;
-      mInputSize[0] = outRenderSize[0] = optimalSettings.optimalRenderSize[0];
-      mInputSize[1] = outRenderSize[1] = optimalSettings.optimalRenderSize[1];
+        const int step = 32;
+        optimalSettings.optimalRenderSize[0] = (optimalSettings.optimalRenderSize[0] + step - 1) / step * step;
+        optimalSettings.optimalRenderSize[1] = (optimalSettings.optimalRenderSize[1] + step - 1) / step * step;
+        mInputSize[0] = outRenderSize[0] = optimalSettings.optimalRenderSize[0];
+        mInputSize[1] = outRenderSize[1] = optimalSettings.optimalRenderSize[1];
+      }
     }
 
     mDLSSOutputSize[0] = displaySize[0];
@@ -427,13 +426,18 @@ namespace dxvk {
     m_normals.view = m_device->createImageView(m_normals.image, viewInfo);
     renderContext->changeImageLayout(m_normals.image, VK_IMAGE_LAYOUT_GENERAL);
 
-    NGXRayReconstructionContext* dlssWrapper = NGXRayReconstructionContext::getInstance(m_device);
-    dlssWrapper->releaseNGXFeature();
+    
+    if (!m_rayReconstructionContext) {
+      m_rayReconstructionContext = m_device->getCommon()->metaNGXContext().createRayReconstructionContext();
+    }
 
     NVSDK_NGX_PerfQuality_Value perfQuality = profileToQuality(mProfile);
 
-    auto optimalSettings = dlssWrapper->queryOptimalSettings(mInputSize, perfQuality);
+    if (m_rayReconstructionContext) {
 
-    dlssWrapper->initialize(renderContext, mInputSize, mDLSSOutputSize, mIsHDR, mInverseDepth, mAutoExposure, false, perfQuality);
+      auto optimalSettings = m_rayReconstructionContext->queryOptimalSettings(mInputSize, perfQuality);
+
+      m_rayReconstructionContext->initialize(renderContext, mInputSize, mDLSSOutputSize, mIsHDR, mInverseDepth, mAutoExposure, false, perfQuality);
+    }
   }
 } // namespace dxvk

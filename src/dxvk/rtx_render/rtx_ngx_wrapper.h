@@ -151,9 +151,6 @@ namespace dxvk {
       float motionVectorScale[2];
     };
 
-    static NGXDLSSContext* getInstance(DxvkDevice* device);
-    static void releaseInstance();
-
     // Query optimal DLSS settings for a given resolution and performance/quality profile.
     OptimalSettings queryOptimalSettings(const uint32_t displaySize[2], NVSDK_NGX_PerfQuality_Value perfQuality) const;
 
@@ -196,7 +193,6 @@ namespace dxvk {
     NVSDK_NGX_Handle* m_featureDLSS = nullptr;
     Matrix4 m_worldToViewMatrix;
     Matrix4 m_viewToProjectionMatrix;
-    inline static std::unique_ptr<NGXDLSSContext> s_instance;
   };
 
   class NGXRayReconstructionContext : public NGXFeatureContext {
@@ -234,9 +230,6 @@ namespace dxvk {
       bool autoExposure;
       float frameTimeMilliseconds;
     };
-
-    static NGXRayReconstructionContext* getInstance(DxvkDevice* device);
-    static void releaseInstance();
 
     // Query optimal DLSS-RR settings for a given resolution and performance/quality profile.
     QuerySettings queryOptimalSettings(const uint32_t displaySize[2], NVSDK_NGX_PerfQuality_Value perfQuality) const;
@@ -282,7 +275,6 @@ namespace dxvk {
     NVSDK_NGX_Handle* m_featureRayReconstruction = nullptr;
     Matrix4 m_worldToViewMatrix;
     Matrix4 m_viewToProjectionMatrix;
-    inline static std::unique_ptr<NGXRayReconstructionContext> s_instance;
   };
 
   class NGXDLFGContext : public NGXFeatureContext {
