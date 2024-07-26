@@ -223,6 +223,7 @@ bool MessageChannelServer::handshake() {
     // Run the handshake loop until success, error or destruction
     while (!m_isDestroying) {
       // do handshake with a timeout
+      Logger::debug(format_string("Client message window: %x", m_clientWindow));
       LRESULT result = ::SendMessageTimeout(m_clientWindow, m_handshakeMsgId,
         m_workerThreadId, 0, SMTO_BLOCK, kHandshakeTimeoutMs, nullptr);
 
