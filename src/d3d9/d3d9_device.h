@@ -31,6 +31,9 @@
 #include <unordered_map>
 #include "d3d9_rtx.h"
 
+#include "../util/util_flush.h"
+#include "../util/util_lru.h"
+
 namespace dxvk {
 
   class D3D9InterfaceEx;
@@ -903,7 +906,7 @@ namespace dxvk {
     void SetVertexBoolBitfield(uint32_t idx, uint32_t mask, uint32_t bits);
     void SetPixelBoolBitfield (uint32_t idx, uint32_t mask, uint32_t bits);
 
-    void FlushImplicit(BOOL StrongHint);
+    void ConsiderFlush(GpuFlushType FlushType);
 
     bool ChangeReportedMemory(int64_t delta) {
       if (IsExtended())
@@ -952,12 +955,15 @@ namespace dxvk {
 // NV-DXVK start: external API
   public:
 // NV-DXVK end
-    template<typename Cmd>
+    template<bool AllowFlush = true, typename Cmd>
     void EmitCs(Cmd&& command) {
       if (unlikely(!m_csChunk->push(command))) {
         EmitCsChunk(std::move(m_csChunk));
-
         m_csChunk = AllocCsChunk();
+
+        if constexpr (AllowFlush)
+          ConsiderFlush(GpuFlushType::ImplicitWeakHint);
+
         m_csChunk->push(command);
       }
     }
@@ -1155,6 +1161,15 @@ namespace dxvk {
     // NV-DXVK start: Extract texture preparation for re-use
     DxvkSamplerCreateInfo DecodeSamplerKey(const D3D9SamplerKey& key);
     // NV-DXVK end
+    
+    void TrackBufferMappingBufferSequenceNumber(
+      D3D9CommonBuffer* pResource);
+
+    void TrackTextureMappingBufferSequenceNumber(
+      D3D9CommonTexture* pResource,
+      UINT Subresource);
+
+    uint64_t GetCurrentSequenceNumber();
 
     Com<D3D9InterfaceEx>            m_parent;
     D3DDEVTYPE                      m_deviceType;
@@ -1274,11 +1289,14 @@ namespace dxvk {
     D3D9ViewportInfo                m_viewportInfo;
 
     DxvkCsChunkPool                 m_csChunkPool;
-    dxvk::high_resolution_clock::time_point m_lastFlush
-      = dxvk::high_resolution_clock::now();
     DxvkCsThread                    m_csThread;
     DxvkCsChunkRef                  m_csChunk;
-    bool                            m_csIsBusy = false;
+    uint64_t                        m_csSeqNum = 0ull;
+    
+    Rc<sync::Fence>                 m_submissionFence;
+    uint64_t                        m_submissionId = 0ull;
+    uint64_t                        m_flushSeqNum = 0ull;
+    GpuFlushTracker                 m_flushTracker;
 
     std::atomic<int64_t>            m_availableMemory = { 0 };
     std::atomic<int32_t>            m_samplerCount    = { 0 };
