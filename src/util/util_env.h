@@ -110,13 +110,20 @@ namespace dxvk::env {
    */
   std::string getExePath();
 
+  // NV-DXVK start
+
+  /**
+   * \brief Appends "__X" numbered suffix to filename in path if file already exists
+   * \returns De-duped filename IF path already exists, else return original
+   */
+  std::string dedupeFilename(const std::string& originalFilePath);
+
   /**
    * \brief Query whether we're running under the remix bridge IPC mechanism
    * \returns True if running under Remix bridge
    */
   bool isRemixBridgeActive();
   
-  // NV-DXVK start
   /**
    * \brief Gets full path to a given module
    * \param module The name of the module to search for

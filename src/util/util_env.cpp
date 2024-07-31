@@ -33,6 +33,10 @@
 #include <tlhelp32.h>
 #include <Psapi.h>
 #include <Shlwapi.h>
+// NV-DXVK start
+#include <set>
+#include <filesystem>
+// NV-DXVK end
 #include "../tracy/TracyC.h"
 
 namespace dxvk::env {
@@ -132,6 +136,7 @@ namespace dxvk::env {
     return exeName;
   }
 
+  // NV-DXVK start
   bool isRemixBridgeActive() {
     enum IsRemixBridgeActiveStatus {
       Unchecked = 0,
@@ -160,6 +165,7 @@ namespace dxvk::env {
 
     return (bridgeStatus == IsRemixBridgeActiveStatus::Active);
   }
+  // NV-DXVK end
 
   std::string getExeBaseName() {
     auto exeName = getExeName();
@@ -190,6 +196,53 @@ namespace dxvk::env {
   }
   
   // NV-DXVK start
+  std::string dedupeFilename(const std::string& originalFilePath) {
+    const auto ogPath = std::filesystem::path(originalFilePath);
+    const auto parentDirPath = ogPath.parent_path();
+    auto filePathMinusExtension = parentDirPath;
+    filePathMinusExtension /= ogPath.stem();
+    
+    // Enumerate all files that match the input file, even those with "__#" suffix
+    std::set<std::filesystem::path> matchingFilePaths;
+    for (const auto& dir_entry : std::filesystem::directory_iterator{parentDirPath}) {
+      if (dir_entry.path().string().find(filePathMinusExtension.string()) != std::string::npos) {
+        matchingFilePaths.insert(dir_entry.path());
+      }
+    }
+
+    // Process matching file names
+    const std::string suffixPrefix("__");
+    if (matchingFilePaths.empty()) {
+      // Quick path out
+      return originalFilePath;
+    } else {
+      // Figure out what the highest dupe name created is, so we can +1 it
+      long highestDupeNum = 0;
+      const auto commonDeduped = filePathMinusExtension.string() + suffixPrefix;
+      for (const auto& matchingFilePath : matchingFilePaths) {
+        const auto dupeNumPos = matchingFilePath.string().find(commonDeduped);
+        if (dupeNumPos == 0) {
+          const auto potentialSuffix = matchingFilePath.string().substr(commonDeduped.length());
+          // stol is convenient and throws if the string is not numerical
+          try {
+            const auto dupeNumFromName = std::stol(potentialSuffix);
+            highestDupeNum = std::max(dupeNumFromName, highestDupeNum);
+          } catch (...) {}
+        }
+      }
+
+      // Form new file name
+      const auto dupeNum = highestDupeNum + 1;
+      const auto suffixStr = suffixPrefix + std::to_string(dupeNum);
+      auto newFileNameStr = filePathMinusExtension.string();
+      newFileNameStr.replace(newFileNameStr.length(), suffixStr.length(), suffixStr);
+      newFileNameStr += ogPath.extension().string();
+      auto newPath = ogPath;
+      newPath.replace_filename(newFileNameStr);
+      return newPath.string();
+    }
+  }
+  
   std::string getModulePath(const char* module) {
     std::vector<WCHAR> modulePath;
     modulePath.resize(MAX_PATH + 1);
