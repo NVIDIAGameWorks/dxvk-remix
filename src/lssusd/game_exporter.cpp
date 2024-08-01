@@ -23,6 +23,8 @@
 #include "game_exporter_common.h"
 #include "mdl_helpers.h"
 #include "../util/log/log.h"
+#include "../util/util_env.h"
+#include "../util/util_string.h"
 #include "../dxvk/rtx_render/rtx_game_capturer_utils.h"
 
 #include "usd_include_begin.h"
@@ -79,7 +81,6 @@
 #include <AperturePBR_Model.mdl.h>
 #include <AperturePBR_Normal.mdl.h>
 #include <AperturePBR_SpriteSheet.mdl.h>
-#include "../util/util_env.h"
 
 #ifndef NDEBUG
 #define ASSERT_OR_EXECUTE(BODY) assert((BODY))
@@ -236,11 +237,11 @@ pxr::UsdStageRefPtr GameExporter::createInstanceStage(const Export& exportData) 
   // capture meta data
   pxr::VtDictionary customLayerData;
   customLayerData.SetValueAtPath("lightspeed_layer_type", pxr::VtValue("capture"));
-  customLayerData.SetValueAtPath("lightspeed_game_name", pxr::VtValue(exportData.meta.windowTitle));
-  customLayerData.SetValueAtPath("lightspeed_exe_name", pxr::VtValue(exportData.meta.exeName));
+  customLayerData.SetValueAtPath("lightspeed_game_name", pxr::VtValue(dxvk::str::stripNonAscii(exportData.meta.windowTitle)));
+  customLayerData.SetValueAtPath("lightspeed_exe_name", pxr::VtValue(dxvk::str::stripNonAscii(exportData.meta.exeName)));
   const auto relToCaptureIconPath = std::filesystem::relative(exportData.meta.iconPath, exportData.baseExportPath).string();
-  customLayerData.SetValueAtPath("lightspeed_game_icon", pxr::VtValue(relToCaptureIconPath));
-  customLayerData.SetValueAtPath("lightspeed_geometry_hash_rules", pxr::VtValue(exportData.meta.geometryHashRule));
+  customLayerData.SetValueAtPath("lightspeed_game_icon", pxr::VtValue(dxvk::str::stripNonAscii(relToCaptureIconPath)));
+  customLayerData.SetValueAtPath("lightspeed_geometry_hash_rules", pxr::VtValue(dxvk::str::stripNonAscii(exportData.meta.geometryHashRule)));
   instanceStage->GetRootLayer()->SetCustomLayerData(customLayerData);
 
   return instanceStage;
