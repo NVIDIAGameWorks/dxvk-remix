@@ -263,8 +263,9 @@ void integratePathVertex(
   RayInteraction rayInteraction;
   Surface surface;
   SurfaceInteraction surfaceInteraction;
-  surfaceInteraction.position = pathState.origin;
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction;
+  
+  surfaceInteraction.position = pathState.origin;
 
   // Todo: Remove hack thing
   HackGenericState hackState;

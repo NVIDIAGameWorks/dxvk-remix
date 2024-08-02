@@ -30,5 +30,4 @@
 #include "rtx\concept\surface\surface.h"
 #include "rtx\utility\packing.slangh"
 #include "rtx\concept\surface_material\opaque_surface_material_blending.slangh"
-#include "rtx\utility\buffer_helpers.slangh"
 #include "rtx\concept\surface_material\surface_material.h"
