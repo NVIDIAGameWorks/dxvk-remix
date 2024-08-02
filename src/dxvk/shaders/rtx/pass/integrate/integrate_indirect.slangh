@@ -24,7 +24,6 @@
 #include "rtx/utility/common.slangh"
 #include "rtx/utility/noise.slangh"
 #include "rtx/utility/math.slangh"
-#include "rtx/utility/buffer_helpers.slangh"
 #include "rtx/utility/gbuffer_helpers.slangh"
 #include "rtx/concept/ray/ray.slangh"
 #include "rtx/concept/surface/surface.slangh"

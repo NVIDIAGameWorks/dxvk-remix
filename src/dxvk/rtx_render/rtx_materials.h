@@ -107,10 +107,10 @@ struct RtSurface {
     writeGPUHelper(data, offset, packedHash);
 
     writeGPUHelper(data, offset, positionOffset);
-    writeGPUHelper(data, offset, objectPickingValue);
     writeGPUHelper(data, offset, normalOffset);
     writeGPUHelper(data, offset, texcoordOffset);
     writeGPUHelper(data, offset, color0Offset);
+    writeGPUHelper(data, offset, objectPickingValue);
 
     writeGPUHelperExplicit<1>(data, offset, positionStride);
     writeGPUHelperExplicit<1>(data, offset, normalStride);

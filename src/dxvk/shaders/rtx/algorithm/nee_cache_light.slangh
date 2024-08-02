@@ -100,8 +100,7 @@ struct NEECacheUtils
 
   static Surface getSurface(int surfaceIndex)
   {    
-    SURFACE_CREATE_READ(surface0, surfaceIndex, surfaces);
-    Surface surface = surface0;
+    Surface surface = surfaces[uint(surfaceIndex)]; 
   #if USE_SIMIPLIFIED_MODEL
     // Don't override following settings because they may affect some emissive objects
     // surface.isEmissive = false;
@@ -296,8 +295,7 @@ struct NEECacheUtils
 
   static void calculateTriangleLightIntensity(int surfaceIndex, int primitiveIndex, out vec3 triangleCenter, out f16vec3 triangleNormal, out vec3 lightIntensity)
   {
-    SURFACE_CREATE_READ(surface0, surfaceIndex, surfaces);    
-    Surface surface = surface0;
+    const Surface surface = surfaces[uint(surfaceIndex)]; 
     RayInteraction rayInteracton = {};
     rayInteracton.frontHit = true;
     rayInteracton.barycentricCoordinates = barycentricsToUint(uvToBarycentrics(vec2(1.0 / 3.0)));

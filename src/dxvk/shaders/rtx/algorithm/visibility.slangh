@@ -55,7 +55,7 @@ f16vec3 handleVisibilityVertex(Ray ray, RayHitInfo rayHitInfo, uint8_t visibilit
       return 1.0;
   }
 
-  SURFACE_CREATE_READ(surface, surfaceIndex, surfaces);
+  const Surface surface = surfaces[uint(surfaceIndex)]; 
 
   if (surfaceIsDecal(surface))
     // Decals do not cast shadows
@@ -189,12 +189,12 @@ float16_t getRayPortalTransparency(
       // Also note that this does not set up texture gradients properly so this will always likely sample from the lowest mip level
       // which is also probably not great for performance.
 
-      Surface surface;
+      Surface surface = (Surface)0;
       surface.spriteSheetRows = portal.spriteSheetRows;
       surface.spriteSheetCols = portal.spriteSheetCols;
       surface.spriteSheetFPS = portal.spriteSheetFPS;
 
-      SurfaceInteraction surfaceInteraction;
+      SurfaceInteraction surfaceInteraction = (SurfaceInteraction)0;
       surfaceInteraction.textureCoordinates = uv * 0.5f + 0.5f;
       surfaceInteraction.textureGradientX = vec2(0.0f);
       surfaceInteraction.textureGradientY = vec2(0.0f);

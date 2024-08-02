@@ -50,7 +50,7 @@ layout(binding = BINDING_BAKE_OPACITY_MICROMAP_SECONDARY_OPACITY_INPUT)
 Sampler2D SecondaryOpacity;
 
 layout(binding = BINDING_BAKE_OPACITY_MICROMAP_BINDING_SURFACE_DATA_INPUT) 
-StructuredBuffer<MemorySurface> Surfaces;
+StructuredBuffer<Surface> Surfaces;
 
 layout(binding = BINDING_BAKE_OPACITY_MICROMAP_ARRAY_OUTPUT)
 RWStructuredBuffer<uint> OpacityMicromapArray;
@@ -327,7 +327,7 @@ void main(uint globalId: SV_DispatchThreadID, uint groupId : SV_GroupID, uint th
 
   if (globalId < cb.numActiveThreads)
   {
-    SURFACE_CREATE_READ(surface, cb.surfaceIndex, Surfaces);
+    const Surface surface = Surfaces[uint(cb.surfaceIndex)]; 
 
     float2 vertexTexcoords[3];
     float16_t vertexOpacities[3];

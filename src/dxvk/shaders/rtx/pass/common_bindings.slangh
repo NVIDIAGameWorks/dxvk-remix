@@ -65,7 +65,7 @@ layout(binding = BINDING_ACCELERATION_STRUCTURE_UNORDERED)
 RaytracingAccelerationStructure unorderedTLAS;
 
 layout(binding = BINDING_SURFACE_DATA_BUFFER) 
-StructuredBuffer<MemorySurface> surfaces;
+StructuredBuffer<Surface> surfaces;
 
 layout(binding = BINDING_SURFACE_MAPPING_BUFFER) 
 StructuredBuffer<int32_t> surfaceMapping;

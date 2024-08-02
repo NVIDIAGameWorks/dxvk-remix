@@ -25,7 +25,6 @@
 #include "rtx/algorithm/resolve.h"
 #include "rtx/utility/common.slangh"
 #include "rtx/utility/math.slangh"
-#include "rtx/utility/buffer_helpers.slangh"
 #include "rtx/utility/packing.slangh"
 #include "rtx/utility/froxel.slangh"
 #include "rtx/concept/ray/ray.slangh"
@@ -354,9 +353,8 @@ void resolveVertex(
 
   // Create a Surface and Surface Interaction from the hit
 
-  SURFACE_CREATE_READ(tempSurface, rayInteraction.surfaceIndex, surfaces);
+  surface = surfaces[uint(rayInteraction.surfaceIndex)]; 
 
-  surface = tempSurface;
   surfaceInteraction = surfaceInteractionCreate(surface, rayInteraction, ray);
 
   // Process user clip planes and view distance
@@ -942,7 +940,7 @@ void resolveVertexUnordered(
       surfaceInteraction.vertexColor = vertexColor;
     }
 
-    SURFACE_CREATE_READ(surface, rayInteraction.surfaceIndex, surfaces);
+    const Surface surface = surfaces[uint(rayInteraction.surfaceIndex)]; 
 
     if (isTriangle)
       surfaceInteraction = surfaceInteractionCreate(surface, rayInteraction, ray);
