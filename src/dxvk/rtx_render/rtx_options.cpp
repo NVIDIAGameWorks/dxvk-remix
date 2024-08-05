@@ -386,23 +386,22 @@ namespace dxvk {
       DxvkPathtracerIntegrateDirect::RaytraceMode preferredIntegrateDirectRaytraceMode;
       DxvkPathtracerIntegrateIndirect::RaytraceMode preferredIntegrateIndirectRaytraceMode;
 
+      preferredGBufferRaytraceMode = DxvkPathtracerGbuffer::RaytraceMode::RayQuery;
+      preferredIntegrateDirectRaytraceMode = DxvkPathtracerIntegrateDirect::RaytraceMode::RayQuery;
+
       if (vendorID == static_cast<uint32_t>(DxvkGpuVendor::Nvidia) || driverID == VK_DRIVER_ID_MESA_RADV) {
         // Default to a mixture of Trace Ray and Ray Query on NVIDIA and RADV
         if (driverID == VK_DRIVER_ID_MESA_RADV) {
-          Logger::info("RADV driver detected, setting default raytrace modes to Trace Ray (GBuffer/Indirect Integrate) and Ray Query (Direct Integrate)");
+          Logger::info("RADV driver detected, setting default raytrace modes to Trace Ray (Indirect Integrate) and Ray Query (GBuffer, Direct Integrate)");
         } else {
-          Logger::info("NVIDIA architecture detected, setting default raytrace modes to Trace Ray (GBuffer/Indirect Integrate) and Ray Query (Direct Integrate)");
+          Logger::info("NVIDIA architecture detected, setting default raytrace modes to Trace Ray (Indirect Integrate) and Ray Query (GBuffer, Direct Integrate)");
         }
 
-        preferredGBufferRaytraceMode = DxvkPathtracerGbuffer::RaytraceMode::TraceRay;
-        preferredIntegrateDirectRaytraceMode = DxvkPathtracerIntegrateDirect::RaytraceMode::RayQuery;
         preferredIntegrateIndirectRaytraceMode = DxvkPathtracerIntegrateIndirect::RaytraceMode::TraceRay;
       } else {
         // Default to Ray Query on AMD/Intel
         Logger::info("Non-NVIDIA architecture detected, setting default raytrace modes to Ray Query");
 
-        preferredGBufferRaytraceMode = DxvkPathtracerGbuffer::RaytraceMode::RayQuery;
-        preferredIntegrateDirectRaytraceMode = DxvkPathtracerIntegrateDirect::RaytraceMode::RayQuery;
         preferredIntegrateIndirectRaytraceMode = DxvkPathtracerIntegrateIndirect::RaytraceMode::RayQuery;
       }
 
