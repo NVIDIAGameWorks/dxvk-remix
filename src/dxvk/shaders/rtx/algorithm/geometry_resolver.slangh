@@ -67,7 +67,7 @@ GeometryResolverState geometryResolverStateCreateEmpty(u16vec2 pixelCoordinate)
   geometryResolverState.rayMask = uint8_t(0x0);
   geometryResolverState.portalSpace = PORTAL_SPACE_NONE;
   geometryResolverState.isViewModelSurface = false;
-  geometryResolverState.accumulatedVectorTransform = getIdentityMatrix();
+  geometryResolverState.accumulatedRotation = getIdentityQuaternion();
 
   geometryResolverState.continueResolving = true;
   // Note: Inside medium assumed to start as false for the camera ray, this assumption will break down if the camera is ever intended
@@ -148,7 +148,7 @@ void geometryResolverOutputSurface(
   Ray ray, RayInteraction rayInteraction,
   Surface surface, SurfaceInteraction surfaceInteraction,
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
-  vec3 radiance, f16vec3 attenuation, f16mat3 accumulatedVectorTransform,
+  vec3 radiance, f16vec3 attenuation, f16vec4 accumulatedRotation,
   uint16_t mediumMaterialIndex, float virtualHitDistance, bool directionAltered,
   bool useAlternateDisocclusionThreshold, bool isViewModel)
 {
@@ -204,8 +204,8 @@ void geometryResolverOutputSurface(
   // another structure for this. To avoid that, just output it like this for now.
 
   // Note: Virtual motion used to account for the ray traversing ray portals and through PSR interactions.
-  const vec3 virtualMotion = mul(accumulatedVectorTransform, surfaceInteraction.motion);
-
+  vec3 virtualMotion = quaternionTransformVector(accumulatedRotation, surfaceInteraction.motion, true);
+  
   if (primarySurface)
   {
     imageStore(PrimaryVirtualMotionVector, ivec2(pixelCoordinate), vec4(virtualMotion, 0));
@@ -287,7 +287,7 @@ void geometryResolverOutputSurface(
     polymorphicSurfaceMaterialInteractionWriteToGBuffer(
       polymorphicSurfaceMaterialInteraction, ivec2(pixelCoordinate), true,
       surface, surfaceInteraction, rayInteraction.surfaceIndex,
-      directionAltered, accumulatedVectorTransform,
+      directionAltered, accumulatedRotation,
       PrimaryWorldShadingNormal, PrimaryPerceptualRoughness,
       PrimaryVirtualWorldShadingNormalPerceptualRoughness, PrimaryVirtualWorldShadingNormalPerceptualRoughnessDenoising,
       PrimaryAlbedo, PrimaryBaseReflectivity,
@@ -298,8 +298,8 @@ void geometryResolverOutputSurface(
     // Note: Only write to stochastic buffers if this is the selected surface in the secondary surface case.
     polymorphicSurfaceMaterialInteractionWriteToGBuffer(
       polymorphicSurfaceMaterialInteraction, ivec2(pixelCoordinate), selectedIntegrationSurface,
-      surface, surfaceInteraction,rayInteraction.surfaceIndex,
-      directionAltered, accumulatedVectorTransform,
+      surface, surfaceInteraction, rayInteraction.surfaceIndex,
+      directionAltered, accumulatedRotation,
       SecondaryWorldShadingNormal, SecondaryPerceptualRoughness,
       SecondaryVirtualWorldShadingNormalPerceptualRoughness, SecondaryVirtualWorldShadingNormalPerceptualRoughnessDenoising,
       SecondaryAlbedo, SecondaryBaseReflectivity,
@@ -320,7 +320,7 @@ void geometryResolverDLSSRROutputSurface(
     Ray ray,
     Surface surface, SurfaceInteraction surfaceInteraction,
     PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
-    f16vec3 attenuation, f16mat3 accumulatedVectorTransform, float virtualHitDistance)
+    f16vec3 attenuation, f16vec4 accumulatedRotation, float virtualHitDistance)
 {
   // Recreate the original primary camera ray
   // Note: This is done to not have to pass extra information into the payload.
@@ -340,8 +340,8 @@ void geometryResolverDLSSRROutputSurface(
   // another structure for this. To avoid that, just output it like this for now.
 
   // Note: Virtual motion used to account for the ray traversing ray portals and through PSR interactions.
-  const vec3 virtualMotion = mul(accumulatedVectorTransform, surfaceInteraction.motion);
-
+  vec3 virtualMotion = quaternionTransformVector(accumulatedRotation, surfaceInteraction.motion, true);
+  
   vec4 prevWorldPosition = vec4(virtualHitPosition + virtualMotion, 1);
   vec4 prevNDC = mul(cb.camera.prevWorldToProjection, prevWorldPosition);
   prevNDC /= prevNDC.w;
@@ -1104,7 +1104,7 @@ void geometryResolverVertex(
     unorderedRayMask, geometryResolverState.portalSpace,
     /* useIntersectionBillboards = */ cb.enableBillboardOrientationCorrection && (geometryResolverState.directionAltered || cb.useIntersectionBillboardsOnPrimaryRays),
     geometryResolverState.pixelCoordinate,
-    geometryResolverState.accumulatedVectorTransform, geometryResolverState.accumulatedHitDistance,
+    geometryResolverState.accumulatedRotation, geometryResolverState.accumulatedHitDistance,
     radianceAttenuation, emissiveRadiance,
     numUnorderedInteractions, 
     unorderedDecalEncountered, decalMemory, decalEmissiveRadiance, surfaceIndex);
@@ -1147,7 +1147,7 @@ void geometryResolverVertex(
   hackState.continueResolving = geometryResolverState.continueResolving;
   hackState.rayMask = geometryResolverState.rayMask;
   hackState.portalSpace = geometryResolverState.portalSpace;
-  hackState.accumulatedVectorTransform = geometryResolverState.accumulatedVectorTransform;
+  hackState.accumulatedRotation = geometryResolverState.accumulatedRotation;
   hackState.decalEncountered = geometryResolverState.decalEncountered || unorderedDecalEncountered;
   hackState.pixelCoordinate = geometryResolverState.pixelCoordinate;
   hackState.isStochasticAlphaBlend = false;
@@ -1170,7 +1170,7 @@ void geometryResolverVertex(
   geometryResolverState.continueResolving = hackState.continueResolving;
   geometryResolverState.rayMask = hackState.rayMask;
   geometryResolverState.portalSpace = hackState.portalSpace;
-  geometryResolverState.accumulatedVectorTransform = hackState.accumulatedVectorTransform;
+  geometryResolverState.accumulatedRotation = hackState.accumulatedRotation;
   geometryResolverState.decalEncountered = hackState.decalEncountered;
 
   if (cb.outputParticleLayer)
@@ -1399,9 +1399,11 @@ void geometryResolverVertex(
       const Ray sampledRay = rayCreateDirection(
         rayInteraction, surfaceInteraction, ray, surfaceMaterialInteractionReflectionPSRSample.inputDirection, false);
 
+      f16vec4 vectorTransform = quaternionMultiply(geometryResolverState.accumulatedRotation, surfaceMaterialInteractionReflectionPSRSample.vectorTransform, true);
+      
       const GbufferPSRData psrData = packPSRData(sampledRay, BINDING_INDEX_INVALID,
         geometryResolverState.attenuation * surfaceMaterialInteractionReflectionPSRSample.attenuation,
-        mul(geometryResolverState.accumulatedVectorTransform, surfaceMaterialInteractionReflectionPSRSample.vectorTransform),
+        vectorTransform,
         packedGeometryFlags);
 
       storeReflectionPSRData(psrData, geometryResolverState.pixelCoordinate);
@@ -1424,9 +1426,11 @@ void geometryResolverVertex(
       const Ray sampledRay = rayCreateDirection(
         rayInteraction, surfaceInteraction, ray, surfaceMaterialInteractionTransmissionPSRSample.inputDirection, pstrPenetrateSurface);
 
+      f16vec4 vectorTransform = quaternionMultiply(geometryResolverState.accumulatedRotation, surfaceMaterialInteractionTransmissionPSRSample.vectorTransform, true);
+      
       const GbufferPSRData psrData = packPSRData(sampledRay, transmissionMediumMaterialIndex,
         geometryResolverState.attenuation * surfaceMaterialInteractionTransmissionPSRSample.attenuation,
-        mul(geometryResolverState.accumulatedVectorTransform, surfaceMaterialInteractionTransmissionPSRSample.vectorTransform),
+        vectorTransform,
         packedGeometryFlags);
 
       storeTransmissionPSRData(psrData, geometryResolverState.pixelCoordinate);
@@ -1459,7 +1463,7 @@ void geometryResolverVertex(
       surface, surfaceInteraction,
       polymorphicSurfaceMaterialInteraction,
       geometryResolverState.radiance, geometryResolverState.attenuation,
-      geometryResolverState.accumulatedVectorTransform, BINDING_INDEX_INVALID,
+      geometryResolverState.accumulatedRotation, BINDING_INDEX_INVALID,
       geometryResolverState.accumulatedHitDistance, geometryResolverState.directionAltered,
       geometryResolverState.useAlternateDisocclusionThreshold,
       geometryResolverState.isViewModelSurface);
@@ -1485,7 +1489,7 @@ void geometryResolverVertex(
   {
     geometryResolverDLSSRROutputSurface(
         geometryResolverState.pixelCoordinate, ray, surface, surfaceInteraction, polymorphicSurfaceMaterialInteraction,
-        geometryResolverState.attenuation, geometryResolverState.accumulatedVectorTransform, geometryResolverState.accumulatedHitDistance
+        geometryResolverState.attenuation, geometryResolverState.accumulatedRotation, geometryResolverState.accumulatedHitDistance
     );
   }
 
@@ -1652,7 +1656,7 @@ void geometryPSRResolverVertex(
     unorderedRayMask, geometryPSRResolverState.portalSpace,
     /* useIntersectionBillboards = */ cb.enableBillboardOrientationCorrection,
     u16vec2(65535, 65535),
-    geometryPSRResolverState.accumulatedVectorTransform, geometryPSRResolverState.accumulatedHitDistance,
+    geometryPSRResolverState.accumulatedRotation, geometryPSRResolverState.accumulatedHitDistance,
     radianceAttenuation, emissiveRadiance,
     numUnorderedInteractions, 
     unorderedDecalEncountered, decalMemory, decalEmissiveRadiance, surfaceIndex);
@@ -1688,7 +1692,7 @@ void geometryPSRResolverVertex(
   hackState.continueResolving = geometryPSRResolverState.continueResolving;
   hackState.rayMask = geometryPSRResolverState.rayMask;
   hackState.portalSpace = geometryPSRResolverState.portalSpace;
-  hackState.accumulatedVectorTransform = geometryPSRResolverState.accumulatedVectorTransform;
+  hackState.accumulatedRotation = geometryPSRResolverState.accumulatedRotation;
   hackState.decalEncountered = geometryPSRResolverState.decalEncountered || unorderedDecalEncountered;
   hackState.pixelCoordinate = geometryPSRResolverState.pixelCoordinate;
 
@@ -1709,7 +1713,7 @@ void geometryPSRResolverVertex(
   geometryPSRResolverState.continueResolving = hackState.continueResolving;
   geometryPSRResolverState.rayMask = hackState.rayMask;
   geometryPSRResolverState.portalSpace = hackState.portalSpace;
-  geometryPSRResolverState.accumulatedVectorTransform = hackState.accumulatedVectorTransform;
+  geometryPSRResolverState.accumulatedRotation = hackState.accumulatedRotation;
   geometryPSRResolverState.decalEncountered = hackState.decalEncountered;
 
   // Handle attenuation and emissive radiance from the Resolve function
@@ -1885,9 +1889,9 @@ void geometryPSRResolverVertex(
     geometryPSRResolverState.direction = sampledRay.direction;
     geometryPSRResolverState.attenuation *= surfaceMaterialInteractionReflectionPSRSample.attenuation;
     geometryPSRResolverState.continuePSRResolving = true;
-    geometryPSRResolverState.accumulatedVectorTransform =
-      mul(geometryPSRResolverState.accumulatedVectorTransform, surfaceMaterialInteractionReflectionPSRSample.vectorTransform);
-
+    geometryPSRResolverState.accumulatedRotation =
+      quaternionMultiply(geometryPSRResolverState.accumulatedRotation, surfaceMaterialInteractionReflectionPSRSample.vectorTransform, true);
+      
     // Note: Set the common alternate disocclusion threshold flag if reflection PSR requests it.
     if (surfaceMaterialInteractionReflectionPSRSample.useAlternateDisocclusionThreshold)
     {
@@ -1906,8 +1910,8 @@ void geometryPSRResolverVertex(
     geometryPSRResolverState.direction = sampledRay.direction;
     geometryPSRResolverState.attenuation *= surfaceMaterialInteractionTransmissionPSRSample.attenuation;
     geometryPSRResolverState.continuePSRResolving = true;
-    geometryPSRResolverState.accumulatedVectorTransform =
-      mul(geometryPSRResolverState.accumulatedVectorTransform, surfaceMaterialInteractionTransmissionPSRSample.vectorTransform);
+    geometryPSRResolverState.accumulatedRotation =
+      quaternionMultiply(geometryPSRResolverState.accumulatedRotation, surfaceMaterialInteractionTransmissionPSRSample.vectorTransform, true);
 
     // Note: Set the common alternate disocclusion threshold flag if transmission PSR requests it.
     if (surfaceMaterialInteractionTransmissionPSRSample.useAlternateDisocclusionThreshold)
@@ -1927,7 +1931,7 @@ void geometryPSRResolverVertex(
       surface, surfaceInteraction,
       polymorphicSurfaceMaterialInteraction,
       geometryPSRResolverState.radiance, geometryPSRResolverState.attenuation,
-      geometryPSRResolverState.accumulatedVectorTransform, geometryPSRResolverState.mediumMaterialIndex,
+      geometryPSRResolverState.accumulatedRotation, geometryPSRResolverState.mediumMaterialIndex,
       geometryPSRResolverState.accumulatedHitDistance, true,
       geometryPSRResolverState.useAlternateDisocclusionThreshold,
       geometryPSRResolverState.isViewModelSurface);
@@ -1970,8 +1974,8 @@ void geometryPSRResolverVertex(
 
       // Output Motion Vector (Primary/secondary surface coherent)
       // Note: Virtual motion used to account for the ray traversing ray portals and through PSR interactions.
-      const vec3 virtualMotion = mul(geometryPSRResolverState.accumulatedVectorTransform, surfaceInteraction.motion);
-
+      vec3 virtualMotion = quaternionTransformVector(geometryPSRResolverState.accumulatedRotation, surfaceInteraction.motion, true);
+      
       vec4 prevWorldPosition = vec4(virtualHitPosition + virtualMotion, 1);
       vec4 prevNDC = mul(cb.camera.prevWorldToProjection, prevWorldPosition);
       prevNDC /= prevNDC.w;

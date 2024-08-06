@@ -272,13 +272,22 @@ f16vec4 quaternionCreateOrientation(f16vec3 src, f16vec3 dst)
   float16_t len = length(q);
   q = (len > float16_t(0.0)) ? q / len : f16vec4(1.0, 0.0, 0.0, 0.0);
 
-  return q;
+  // Quaternions returned here are always positive
+  return (q.w < 0.h) ? -q : q;
 }
 
 // Transform a vector v with a quaternion q, v doesn't need to be normalized
-f16vec3 quaternionTransformVector(f16vec4 q, f16vec3 v)
+f16vec3 quaternionTransformVector(f16vec4 q, f16vec3 v, bool signBitIsParity = false)
 {
-  return v + float16_t(2.0) * cross(q.xyz, cross(q.xyz, v) + q.w * v);
+  f16vec3 newVector = v + float16_t(2.0) * cross(q.xyz, cross(q.xyz, v) + q.w * v);
+
+  // In cases where we encode the sign bit of the quaternion representing an improper rotation...
+  if(signBitIsParity)
+  {
+    newVector = (isQuatRightHanded(q.w) ? -1.h : 1.h) * newVector;
+  }
+
+  return newVector;
 }
 
 f16vec4 quaternionInverse(f16vec4 q)
@@ -286,7 +295,7 @@ f16vec4 quaternionInverse(f16vec4 q)
   return f16vec4(-q.xyz, q.w);
 }
 
-f16vec4 quaternionMultiply(f16vec4 q1, f16vec4 q2)
+f16vec4 quaternionMultiply(f16vec4 q1, f16vec4 q2, bool signBitIsParity = false)
 {
   f16vec4 q;
 
@@ -294,7 +303,18 @@ f16vec4 quaternionMultiply(f16vec4 q1, f16vec4 q2)
   q.w = q1.w * q2.w - dot(q1.xyz, q2.xyz);
   q.xyz = q1.w * q2.xyz + q2.w * q1.xyz + cross(q1.xyz, q2.xyz);
 
-  return q;
+  // Quaternions returned here are always positive
+  q = isQuatRightHanded(q.w) ? -q : q;
+
+  // In cases where we encode the sign bit of the quaternion representing an improper rotation...
+  if(signBitIsParity)
+  {
+    return (isQuatRightHanded(q1) ? -1.h : 1.h) * (isQuatRightHanded(q2.w) ? -1.h : 1.h) * q;
+  }
+  else
+  {
+    return q;
+  }
 }
 
 // Tangent Space calculation from PBRT
@@ -432,10 +452,30 @@ f16mat3 getReflectionMatrix(f16vec3 normal)
   );
 }
 
-f16mat3 getRefractionMatrix(f16vec3 normal)
+f16vec4 getReflectionQuaternion(f16vec3 normal)
+{
+  // Half-angle for quaternion calculation
+  float16_t halfAngle = pi * 0.5f;
+
+  // Calculate the quaternion components
+  float16_t sinHalfAngle = sin(halfAngle);
+    
+  f16vec4 q;
+  q.x = normal.x * sinHalfAngle;
+  q.y = normal.y * sinHalfAngle;
+  q.z = normal.z * sinHalfAngle;
+  q.w = cos(halfAngle);
+
+  // Normalize the quaternion to ensure it's a unit quaternion, also negate the result
+  // Reflection quaternions have a determinant = -1, we'll utilize the q = -q property 
+  // of quaternions to encode the accumulated parity of reflections.
+  return -normalize(q);
+}
+
+f16vec4 getRefractionQuaternion(f16vec3 normal)
 {
   // Todo
-  return f16mat3(1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f);
+  return f16vec4(0.h, 0.h, 0.h, 1.h);
 }
 
 f16mat3 getIdentityMatrix()
@@ -523,7 +563,8 @@ f16vec3 quaternionToNormal(f16vec4 q)
 
 // Because quaternion == -quaternion, we can use the sign bit of the w
 // component of the quaternion to encode the handedness of the original TBN matrix.
-bool isQuatRightHanded(f16vec4 q) {
+bool isQuatRightHanded(f16vec4 q) 
+{
   return float16BitsToUint16(q.w) & 0x8000;
 }
 
@@ -583,4 +624,9 @@ f16vec4 tbnFrameToQuaternion(f16vec3 tangent, f16vec3 biTangent, f16vec3 normal)
     }
 
     return quaternion;
+}
+
+f16vec4 getIdentityQuaternion()
+{
+  return f16vec4(0.h, 0.h, 0.h, 1.h);
 }

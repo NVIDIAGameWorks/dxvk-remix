@@ -612,8 +612,8 @@ void resolveVertex(
       // Update the virtual matrix. We load the inverse teleport matrix here instead 
       // to avoid doing the inverse on the final virtualMatrix later
       const uint8_t opposingRayPortalIndex = getOpposingRayPortalIndex(rayPortalIndex);
-      const f16mat3 inverseTeleportMatrix = cb.rayPortalHitInfos[uint(opposingRayPortalIndex)].encodedPortalToOpposingPortalDirection.unpackAsf16mat3();
-      resolveVertexState.accumulatedVectorTransform = mul(resolveVertexState.accumulatedVectorTransform, inverseTeleportMatrix);
+      const f16vec4 inverseTeleportQuaternion = cb.rayPortalHitInfos[uint(opposingRayPortalIndex)].encodedPortalToOpposingPortalDirection.unpackRotation();
+      resolveVertexState.accumulatedRotation = quaternionMultiply(resolveVertexState.accumulatedRotation, inverseTeleportQuaternion);
     #endif
     }
 
@@ -744,7 +744,7 @@ void resolveVertexUnordered(
   bool useIntersectionBillboards,
 #ifdef RAY_TRACING_PRIMARY_RAY
   u16vec2 pixelCoordinate,
-  f16mat3 accumulatedVectorTransform,
+  f16vec4 accumulatedRotation,
 #endif
   float accumulatedHitDistance,
   inout f16vec3 radianceAttenuation, inout vec3 emissiveRadiance,
@@ -848,17 +848,17 @@ void resolveVertexUnordered(
 #ifdef RAY_TRACING_PRIMARY_RAY
       else if (!packedFlagGet(billboard.flags, billboardFlagIsCameraFacing))
       {
-        // For primary rays, just rotate the billboard using the accumulatedVectorTransform.
+        // For primary rays, just rotate the billboard using the accumulatedRotation.
         // Note: multiplying on the left because we need the inverse transform
-        billboard.xAxis = mul(billboard.xAxis, accumulatedVectorTransform);
-        billboard.yAxis = mul(billboard.yAxis, accumulatedVectorTransform);
-
+        billboard.xAxis = quaternionTransformVector(quaternionInverse(accumulatedRotation), billboard.xAxis);
+        billboard.yAxis = quaternionTransformVector(quaternionInverse(accumulatedRotation), billboard.yAxis);
+      
         normal = normalize(cross(billboard.xAxis, billboard.yAxis));
       }
 #endif
       else
       {
-        // For secondary rays, we don't have the accumulatedVectorTransform, so get creative:
+        // For secondary rays, we don't have the accumulatedRotation, so get creative:
         // reorient the billboard so that it faces the virtual camera, i.e. the image of the camera
         // below the surface where the ray originated from. Do not use the ray origin for the 
         // virtual camera position because that results in heavy distortions of particle shapes

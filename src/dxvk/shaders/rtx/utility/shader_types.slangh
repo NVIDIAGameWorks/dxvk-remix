@@ -156,6 +156,16 @@ float16_t2 unpackFloat2x16(uint32_t u);
 __target_intrinsic(glsl, "packFloat2x16($0)")
 uint32_t packFloat2x16(float16_t2 f);
 
+float16_t4 unpackFloat4x16(uint2 u)
+{
+  return float16_t4(unpackFloat2x16(u.x), unpackFloat2x16(u.y));
+}
+
+uint2 packFloat4x16(float16_t4 u)
+{
+  return uint2(packFloat2x16(u.xy), packFloat2x16(u.zw));
+}
+
 // Declare the float-typed InterlockedAdd intrinsic because Slang doesn't have it
 __glsl_extension(GL_EXT_shader_atomic_float)
 __target_intrinsic(glsl, "$atomicAdd($A, $1)")

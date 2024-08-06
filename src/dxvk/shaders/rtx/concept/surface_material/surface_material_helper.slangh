@@ -74,7 +74,7 @@ struct SurfaceMaterialInteractionPSRSample
   bool useAlternateDisocclusionThreshold;
   f16vec3 inputDirection;
   f16vec3 attenuation;
-  f16mat3 vectorTransform;
+  f16vec4 vectorTransform;
 };
 
 // Surface Material Interaction Helper Functions

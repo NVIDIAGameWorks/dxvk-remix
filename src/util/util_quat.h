@@ -23,6 +23,7 @@
 
 #include <cmath>
 #include "util_vector.h"
+#include "util_matrix.h"
 
 namespace dxvk {
   
@@ -53,5 +54,57 @@ namespace dxvk {
 
     return q;
   }
-  
+
+  // This produces a quaternion with a positive w, then inverts the quaternion if the input
+  // TBN was right handed.  As q == -q for rotation purposes, this is a safe way to store
+  // an extra flag along with the quaternion.
+  // `isQuatRightHanded` can be used to easily check if the input TBN was right handed.
+  inline Vector4 matrixToQuaternion(Matrix4 mat) {
+    Vector3 tangent = mat[0].xyz();
+    Vector3 bitangent = mat[1].xyz();
+    Vector3 normal = mat[2].xyz();
+    const bool rightHanded = (dot(cross(tangent, bitangent), normal) >= 0.0);
+    if (!rightHanded) {
+      tangent = -tangent;
+    }
+
+    Matrix3 rotationMatrix = { tangent, bitangent, normal };
+    rotationMatrix = transpose(rotationMatrix);
+
+    const float tr = rotationMatrix[0][0] + rotationMatrix[1][1] + rotationMatrix[2][2];
+    Vector4 quaternion;
+    if (tr > 0) {
+      float s = sqrt(tr + 1.0) * 2; // s=4*qw
+      quaternion.w = 0.25 * s;
+      quaternion.x = (rotationMatrix[2][1] - rotationMatrix[1][2]) / s;
+      quaternion.y = (rotationMatrix[0][2] - rotationMatrix[2][0]) / s;
+      quaternion.z = (rotationMatrix[1][0] - rotationMatrix[0][1]) / s;
+    } else if ((rotationMatrix[0][0] > rotationMatrix[1][1]) && (rotationMatrix[0][0] > rotationMatrix[2][2])) {
+      float s = sqrt(1.0 + rotationMatrix[0][0] - rotationMatrix[1][1] - rotationMatrix[2][2]) * 2; // s=4*qx
+      quaternion.w = (rotationMatrix[2][1] - rotationMatrix[1][2]) / s;
+      quaternion.x = 0.25 * s;
+      quaternion.y = (rotationMatrix[0][1] + rotationMatrix[1][0]) / s;
+      quaternion.z = (rotationMatrix[0][2] + rotationMatrix[2][0]) / s;
+    } else if (rotationMatrix[1][1] > rotationMatrix[2][2]) {
+      float s = sqrt(1.0 + rotationMatrix[1][1] - rotationMatrix[0][0] - rotationMatrix[2][2]) * 2; // s=4*qy
+      quaternion.w = (rotationMatrix[0][2] - rotationMatrix[2][0]) / s;
+      quaternion.x = (rotationMatrix[0][1] + rotationMatrix[1][0]) / s;
+      quaternion.y = 0.25 * s;
+      quaternion.z = (rotationMatrix[1][2] + rotationMatrix[2][1]) / s;
+    } else {
+      float s = sqrt(1.0 + rotationMatrix[2][2] - rotationMatrix[0][0] - rotationMatrix[1][1]) * 2; // s=4*qz
+      quaternion.w = (rotationMatrix[1][0] - rotationMatrix[0][1]) / s;
+      quaternion.x = (rotationMatrix[0][2] + rotationMatrix[2][0]) / s;
+      quaternion.y = (rotationMatrix[1][2] + rotationMatrix[2][1]) / s;
+      quaternion.z = 0.25 * s;
+    }
+
+    // If sign bit of w is negative but the original TBN was right handed 
+    // (or vice versa) flip the quaternion.
+    if ((quaternion.w < 0) != rightHanded) {
+      quaternion *= -1.f;
+    }
+
+    return quaternion;
+  }
 }

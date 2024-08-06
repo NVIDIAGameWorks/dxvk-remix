@@ -85,7 +85,7 @@ struct HackGenericState
 
 #ifdef RAY_TRACING_PRIMARY_RAY
   bool isStochasticAlphaBlend;
-  f16mat3 accumulatedVectorTransform;
+  f16vec4 accumulatedRotation;
 #endif
 };
 
