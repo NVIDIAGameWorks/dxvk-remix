@@ -149,7 +149,7 @@ void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
   SurfaceInteraction surfaceInteraction,
   uint surfaceIndex,
   bool directionAltered,
-  f16mat3 virtualVectorTransform,
+  f16vec4 accumulatedRotation,
   RWTexture2D<uint> worldShadingNormalTexture,
   RWTexture2D<float> perceptualRoughnessTexture,
   RWTexture2D<float4> virtualWorldShadingNormalPerceptualRoughnessTexture,
@@ -174,7 +174,7 @@ void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
   if (directionAltered && cb.enableCalculateVirtualShadingNormals)
   {
     // Note: This transformation should always be valid for vector transformations, but normalization does still need to happen afterwards.
-    virtualShadingNormal = normalize(mul(virtualVectorTransform, virtualShadingNormal));
+    virtualShadingNormal = normalize(quaternionTransformVector(accumulatedRotation, virtualShadingNormal, true));
   }
 
   // Hack to work around TREX-759 while TREX-771 addresses the root cause

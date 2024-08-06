@@ -1500,7 +1500,7 @@ SurfaceMaterialInteractionPSRSample opaqueSurfaceMaterialInteractionCalcPSRRefle
   materialPSRSample.useAlternateDisocclusionThreshold = opaqueSurfaceMaterialInteraction.normalDetail > float16_t(cb.psrrNormalDetailThreshold);
   materialPSRSample.inputDirection = inputDirection;
   materialPSRSample.attenuation = attenuation;
-  materialPSRSample.vectorTransform = getReflectionMatrix(microfacetNormal);
+  materialPSRSample.vectorTransform = getReflectionQuaternion(microfacetNormal);
 
   return materialPSRSample;
 }

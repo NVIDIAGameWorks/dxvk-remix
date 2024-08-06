@@ -44,7 +44,7 @@ struct GeometryResolverState
   float accumulatedHitDistance;
   // Note: This represents the matrix to transform a normal or vector from world space into the virtual space seen
   // through PSR and ray portals.
-  f16mat3 accumulatedVectorTransform;
+  f16vec4 accumulatedRotation;
 
   // Note: Needed output for Resolve function. Indicates that more resolve work needs to happen
   // and hits should not be counted until finished. Could be omitted from input memory payload
@@ -82,7 +82,7 @@ struct MemoryGeometryResolverState : IPayload
   float3 radiance;
   float accumulatedHitDistance;
 
-  uint2 encodedAccumulatedVectorTransform;
+  uint2 encodedAccumulatedRotation;
   uint encodedAttenuation;
   
   uint2 encodedDirection;
@@ -103,7 +103,7 @@ struct MemoryGeometryResolverState : IPayload
     ret.encodedAttenuation = colorToR11G11B10(geometryResolverState.attenuation);
     ret.segmentHitDistance = geometryResolverState.segmentHitDistance;
     ret.accumulatedHitDistance = geometryResolverState.accumulatedHitDistance;
-    ret.encodedAccumulatedVectorTransform = snormMat3ToUint2(geometryResolverState.accumulatedVectorTransform);
+    ret.encodedAccumulatedRotation = packFloat4x16(geometryResolverState.accumulatedRotation);
     
     ret.data0 =
       uint32_t(geometryResolverState.rayMask) | 
@@ -138,7 +138,7 @@ struct MemoryGeometryResolverState : IPayload
     ret.attenuation = r11g11b10ToColor(encodedAttenuation);
     ret.segmentHitDistance = segmentHitDistance;
     ret.accumulatedHitDistance = accumulatedHitDistance;
-    ret.accumulatedVectorTransform = uint2ToSnormMat3(encodedAccumulatedVectorTransform);
+    ret.accumulatedRotation = unpackFloat4x16(encodedAccumulatedRotation);
       
     ret.rayMask = data0 & 0xff;
     ret.portalSpace = (data0 >> 8) & 0b11;
@@ -188,7 +188,7 @@ struct GeometryPSRResolverState {
   // through PSR and ray portals.
   // Todo: This will likely need to be 4x3 in the future for refractions to be accumulated in. Ideally we'd have the
   // PSRR pass use a 3x3 one and the PSTR one use 4x3, but that'd add even more duplicated code...
-  f16mat3 accumulatedVectorTransform;
+  f16vec4 accumulatedRotation;
   uint16_t mediumMaterialIndex;
 
   // Note: Needed output for Resolve function. Indicates that more resolve work needs to happen
@@ -231,7 +231,7 @@ struct MemoryGeometryPSRResolverState : IPayload
 
   float segmentHitDistance;
   float accumulatedHitDistance;
-  uint2 encodedAccumulatedVectorTransform;
+  uint2 encodedAccumulatedRotation;
 
   uint encodedDirection;
   uint data0;       // 0: rayMask (8b)
@@ -283,8 +283,7 @@ struct MemoryGeometryPSRResolverState : IPayload
     ret.encodedAttenuation = colorToR11G11B10(geometryPSRResolverState.attenuation);
     ret.segmentHitDistance = geometryPSRResolverState.segmentHitDistance;
     ret.accumulatedHitDistance = geometryPSRResolverState.accumulatedHitDistance;
-    ret.encodedAccumulatedVectorTransform =
-      snormMat3ToUint2(geometryPSRResolverState.accumulatedVectorTransform);
+    ret.encodedAccumulatedRotation = packFloat4x16(geometryPSRResolverState.accumulatedRotation);
 
     ret.data0 =
       uint32_t(geometryPSRResolverState.rayMask) |
@@ -309,7 +308,7 @@ struct MemoryGeometryPSRResolverState : IPayload
     ret.attenuation = r11g11b10ToColor(encodedAttenuation);
     ret.segmentHitDistance = segmentHitDistance;
     ret.accumulatedHitDistance = accumulatedHitDistance;
-    ret.accumulatedVectorTransform = uint2ToSnormMat3(encodedAccumulatedVectorTransform);
+    ret.accumulatedRotation = unpackFloat4x16(encodedAccumulatedRotation);
 
     ret.continueResolving = packedFlagGet(encodedRadiance.x, 1 << 31);
     ret.continuePSRResolving = packedFlagGet(encodedRadiance.y, 1 << 31);
@@ -350,21 +349,21 @@ struct GbufferPSRData
   uint3 origin;
   uint encodedDirection;
 
-  uint2 encodedAccumulatedVectorTransform;
+  uint2 encodedAccumulatedRotation;
   uint attenuation;
   uint mediumMaterialIndexAndGeometryFlags;
 };
 
 // Encodes various PSR data into storage formats
 GbufferPSRData packPSRData(Ray sampledRay, uint16_t mediumMaterialIndex, f16vec3 attenuation,
-  f16mat3 accumulatedVectorTransform, uint packedGeometryFlags)
+  f16vec4 accumulatedRotation, uint packedGeometryFlags)
 {
   GbufferPSRData psrData = (GbufferPSRData)0;
   psrData.origin = floatBitsToUint(sampledRay.origin);
   psrData.encodedDirection = sphereDirectionToSnorm2x16(sampledRay.direction);
   psrData.mediumMaterialIndexAndGeometryFlags = mediumMaterialIndex | (packedGeometryFlags << 16);
   psrData.attenuation = colorToR11G11B10(attenuation);
-  psrData.encodedAccumulatedVectorTransform = snormMat3ToUint2(accumulatedVectorTransform);
+  psrData.encodedAccumulatedRotation = packFloat4x16(accumulatedRotation);
   return psrData;
 }
 
@@ -374,7 +373,7 @@ void unpackPSRData(GbufferPSRData psrData, inout GeometryPSRResolverState geomet
   geometryPSRResolverState.origin = uintBitsToFloat(psrData.origin);
   geometryPSRResolverState.direction = snorm2x16ToSphereDirection(psrData.encodedDirection);
   geometryPSRResolverState.attenuation = r11g11b10ToColor(psrData.attenuation);
-  geometryPSRResolverState.accumulatedVectorTransform = uint2ToSnormMat3(psrData.encodedAccumulatedVectorTransform);
+  geometryPSRResolverState.accumulatedRotation = unpackFloat4x16(psrData.encodedAccumulatedRotation);
   geometryPSRResolverState.mediumMaterialIndex = psrData.mediumMaterialIndexAndGeometryFlags & 0xffff;
   geometryPSRResolverState.insideMedium = geometryPSRResolverState.mediumMaterialIndex != BINDING_INDEX_INVALID;
 
@@ -386,7 +385,7 @@ void unpackPSRData(GbufferPSRData psrData, inout GeometryPSRResolverState geomet
 void storeReflectionPSRData(GbufferPSRData psrData, uint2 pixelCoordinate)
 {
   aliasedData0.ReflectionPSRData0[pixelCoordinate] = asfloat(uint4(psrData.origin.xyz, psrData.encodedDirection));
-  ReflectionPSRData1[pixelCoordinate] = uint2(psrData.encodedAccumulatedVectorTransform.xy);
+  ReflectionPSRData1[pixelCoordinate] = psrData.encodedAccumulatedRotation;
   ReflectionPSRData2[pixelCoordinate] = uint2(psrData.attenuation, psrData.mediumMaterialIndexAndGeometryFlags);
 }
 
@@ -404,7 +403,7 @@ GbufferPSRData loadReflectionPSRData(uint2 pixelCoordinate)
   GbufferPSRData psrData;
   psrData.origin.xyz = data0.xyz;
   psrData.encodedDirection = data0.w;
-  psrData.encodedAccumulatedVectorTransform = data1;
+  psrData.encodedAccumulatedRotation = data1;
   psrData.attenuation = data2.x;
   psrData.mediumMaterialIndexAndGeometryFlags = data2.y;
   return psrData;
@@ -417,7 +416,7 @@ void storeTransmissionPSRData(GbufferPSRData psrData, uint2 pixelCoordinate)
   // into the transmission PSR pass, which comes second.
   TransmissionPSRData0[pixelCoordinate] = uint2(psrData.origin.xy);
   TransmissionPSRData1[pixelCoordinate] = uint2(psrData.origin.z, psrData.encodedDirection);
-  TransmissionPSRData2[pixelCoordinate] = uint2(psrData.encodedAccumulatedVectorTransform.xy);
+  TransmissionPSRData2[pixelCoordinate] = psrData.encodedAccumulatedRotation;
   TransmissionPSRData3[pixelCoordinate] = uint2(psrData.attenuation, psrData.mediumMaterialIndexAndGeometryFlags);
 }
 
@@ -438,7 +437,7 @@ GbufferPSRData loadTransmissionPSRData(uint2 pixelCoordinate)
   psrData.origin.xy = data0.xy;
   psrData.origin.z = data1.x;
   psrData.encodedDirection = data1.y;
-  psrData.encodedAccumulatedVectorTransform = data2.xy;
+  psrData.encodedAccumulatedRotation = data2;
   psrData.attenuation = data3.x;
   psrData.mediumMaterialIndexAndGeometryFlags = data3.y;
   return psrData;
