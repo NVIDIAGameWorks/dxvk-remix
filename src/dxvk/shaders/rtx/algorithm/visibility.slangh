@@ -38,8 +38,7 @@ static const uint8_t visibilityModeDisableCulling = uint8_t(1 << 2);            
 f16vec3 handleVisibilityVertex(Ray ray, RayHitInfo rayHitInfo, uint8_t visibilityMode, bool usePreviousTLAS)
 {
   RayInteraction rayInteraction = rayInteractionCreate(ray, rayHitInfo);
-
-  int surfaceIndex = rayInteraction.surfaceIndex;
+  
   if (usePreviousTLAS)
   {
     // View model instances don't have an inter-frame mapping, assume they're transparent
@@ -47,15 +46,15 @@ f16vec3 handleVisibilityVertex(Ray ray, RayHitInfo rayHitInfo, uint8_t visibilit
       return 1.0;
 
     // Map the surface index from the previous frame to the current frame
-    surfaceIndex = surfaceMapping[surfaceIndex];
+    rayInteraction.surfaceIndex = surfaceMapping[rayInteraction.surfaceIndex];
 
-    if (surfaceIndex == BINDING_INDEX_INVALID)
+    if (rayInteraction.surfaceIndex == BINDING_INDEX_INVALID)
       // Surface no longer exists - assume it was transparent, which is safer than
       // assuming an opaque surface, because that would introduce more bias in ReSTIR
       return 1.0;
   }
 
-  const Surface surface = surfaces[uint(surfaceIndex)]; 
+  const Surface surface = surfaces[uint(rayInteraction.surfaceIndex)]; 
 
   if (surfaceIsDecal(surface))
     // Decals do not cast shadows
@@ -67,13 +66,13 @@ f16vec3 handleVisibilityVertex(Ray ray, RayHitInfo rayHitInfo, uint8_t visibilit
     // Ignore parts of surfaces that are under clip planes
     return 1.0;
 
-  const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
+  const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[rayInteraction.surfaceIndex];
   
   const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
 
   if (polymorphicType == surfaceMaterialTypeOpaque)
   {
-    const OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
+    const OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(rayInteraction.surfaceIndex, memoryPolymorphicSurfaceMaterial);
 
     const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
       opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteraction);
@@ -125,7 +124,7 @@ f16vec3 handleVisibilityVertex(Ray ray, RayHitInfo rayHitInfo, uint8_t visibilit
   }
   else if (polymorphicType == surfaceMaterialTypeTranslucent && packedFlagGet(visibilityMode, visibilityModeEnableTranslucentMaterials))
   {
-    const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(surface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
+    const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(rayInteraction.surfaceIndex, memoryPolymorphicSurfaceMaterial);
 
     // Extract the thin walled flag before evaluating the material interaction
     const bool isThinWalled = translucentSurfaceMaterial.thicknessOrMeasurementDistance < float16_t(0);
@@ -205,11 +204,16 @@ float16_t getRayPortalTransparency(
 
       // Calculate the transparency from the Portal's material
 
-      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[portal.materialIndex];
-      const RayPortalSurfaceMaterial rayPortalSurfaceMaterial =
-        rayPortalSurfaceMaterialCreate(portal.materialIndex, memoryPolymorphicSurfaceMaterial);
-      const RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction =
-        rayPortalSurfaceMaterialInteractionCreate(rayPortalSurfaceMaterial, surface, surfaceInteraction);
+      RayPortalSurfaceMaterial rayPortalSurfaceMaterial;
+      rayPortalSurfaceMaterial.samplerIndex = portal.samplerIndex;
+      rayPortalSurfaceMaterial.samplerIndex2 = portal.samplerIndex2;
+      rayPortalSurfaceMaterial.maskTextureIndex = portal.maskTextureIndex;
+      rayPortalSurfaceMaterial.maskTextureIndex2 = portal.maskTextureIndex2;
+      rayPortalSurfaceMaterial.rotationSpeed = uint16BitsToHalf(portal.rotationSpeed);
+      rayPortalSurfaceMaterial.emissiveIntensity = uint16BitsToHalf(portal.emissiveIntensity);
+      rayPortalSurfaceMaterial.rayPortalIndex = portal.rayPortalIndex;
+      
+      const RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction = rayPortalSurfaceMaterialInteractionCreate(rayPortalSurfaceMaterial, surface, surfaceInteraction);
 
       if (!rayPortalSurfaceMaterialInteraction.isInsidePortal)
       {

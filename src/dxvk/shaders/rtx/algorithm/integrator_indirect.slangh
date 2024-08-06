@@ -633,7 +633,7 @@ void integratePathVertex(
       {
         const bool isViewModel = pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
         
-        uint16_t surfaceIndex = cb.pomEnableIndirectLighting ? surface.surfaceMaterialIndex : BINDING_INDEX_INVALID;
+        uint16_t surfaceIndex = cb.pomEnableIndirectLighting ? uint(rayInteraction.surfaceIndex) : BINDING_INDEX_INVALID;
     
         // Todo: Ray Portal transport sampling in the future.
         evalNEESecondary(

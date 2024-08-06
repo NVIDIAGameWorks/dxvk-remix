@@ -113,6 +113,8 @@ public:
   static uint32_t getBlasCount();
 
   uint32_t getSurfaceCount() const { return m_reorderedSurfaces.size(); }
+  const std::vector<RtInstance*>& getOrderedInstances() const { return m_reorderedSurfaces; }
+
 private:
   struct SurfaceInfo {
     XXH64_hash_t hash;

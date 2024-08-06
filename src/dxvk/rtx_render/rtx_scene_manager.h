@@ -63,6 +63,7 @@ class TerrainBaker;
 class ResourceCache {
 public:
   bool find(const RtSurfaceMaterial& surf, uint32_t& outIdx) const { return m_surfaceMaterialCache.find(surf, outIdx); }
+  const RtSurfaceMaterial& get(const uint32_t index) const { return m_surfaceMaterialCache.getObjectTable()[index]; }
 
 protected:
   BufferRefTable<RaytraceBuffer> m_bufferCache;

@@ -26,7 +26,7 @@
 
 struct Surface
 {
-  // Note: Currently aligned nicely to 256 bytes, avoid changing the size of this structure (as it will require
+  // Note: Currently aligned nicely to 240 bytes, avoid changing the size of this structure (as it will require
   // more 128 byte cachelines to be brought in for a single Surface read).
   u16vec4 data0a;
   u16vec4 data0b;
@@ -44,7 +44,6 @@ struct Surface
   uint4 data12;
   uint4 data13;
   uint4 data14;
-  uint4 data15;
 
   // flags and properties
 
@@ -271,12 +270,6 @@ struct Surface
     set { data0b.y = newValue; }
   }
 
-  property uint16_t surfaceMaterialIndex
-  {
-    get { return data0b.z; }
-    set { data0b.z = newValue; }
-  }
-
   property uint16_t hashPacked
   {
     get { return data0b.w; }
@@ -456,10 +449,10 @@ struct Surface
     set { data2.x = newValue; }
   }
 
-  property float displaceIn
+  property float16_t displaceIn
   {
-    get { return uint16BitsToHalf(data15.x & 0xFFFF); }
-    set { data15.x = (data15.x & 0xFFFF0000) | (float16BitsToUint16(newValue) & 0xFFFF); }
+    get { return uint16BitsToHalf(data0b.z); }
+    set { data0b.z = float16BitsToUint16(newValue); }
   }
 };
 
