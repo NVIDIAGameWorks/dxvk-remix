@@ -145,7 +145,7 @@ void geometryResolverOutputMiss(
 
 void geometryResolverOutputSurface(
   bool primarySurface, bool selectedIntegrationSurface, uvec2 pixelCoordinate,
-  Ray ray, MinimalRayInteraction minimalRayInteraction,
+  Ray ray, RayInteraction rayInteraction,
   Surface surface, SurfaceInteraction surfaceInteraction,
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
   vec3 radiance, f16vec3 attenuation, f16mat3 accumulatedVectorTransform,
@@ -242,13 +242,13 @@ void geometryResolverOutputSurface(
   if (primarySurface)
   {
     minimalRayInteractionWriteToGBuffer(
-      minimalRayInteraction, directionAltered, ivec2(pixelCoordinate),
+      rayInteraction, directionAltered, ivec2(pixelCoordinate),
       PrimaryViewDirection, PrimaryConeRadius);
   }
   else if (selectedIntegrationSurface)
   {
     minimalRayInteractionWriteToGBuffer(
-      minimalRayInteraction, directionAltered, ivec2(pixelCoordinate),
+      rayInteraction, directionAltered, ivec2(pixelCoordinate),
       SecondaryViewDirection, SecondaryConeRadius);
   }
 
@@ -286,7 +286,7 @@ void geometryResolverOutputSurface(
     // Note: Always write to stochastic buffers in the primary surface case.
     polymorphicSurfaceMaterialInteractionWriteToGBuffer(
       polymorphicSurfaceMaterialInteraction, ivec2(pixelCoordinate), true,
-      surface, surfaceInteraction,
+      surface, surfaceInteraction, rayInteraction.surfaceIndex,
       directionAltered, accumulatedVectorTransform,
       PrimaryWorldShadingNormal, PrimaryPerceptualRoughness,
       PrimaryVirtualWorldShadingNormalPerceptualRoughness, PrimaryVirtualWorldShadingNormalPerceptualRoughnessDenoising,
@@ -298,7 +298,7 @@ void geometryResolverOutputSurface(
     // Note: Only write to stochastic buffers if this is the selected surface in the secondary surface case.
     polymorphicSurfaceMaterialInteractionWriteToGBuffer(
       polymorphicSurfaceMaterialInteraction, ivec2(pixelCoordinate), selectedIntegrationSurface,
-      surface, surfaceInteraction,
+      surface, surfaceInteraction,rayInteraction.surfaceIndex,
       directionAltered, accumulatedVectorTransform,
       SecondaryWorldShadingNormal, SecondaryPerceptualRoughness,
       SecondaryVirtualWorldShadingNormalPerceptualRoughness, SecondaryVirtualWorldShadingNormalPerceptualRoughnessDenoising,
@@ -953,9 +953,9 @@ void geometryResolverVertexOutputDebugView(
 #ifdef OPAQUE_MATERIAL_USE_POM
     if (materialType == surfaceMaterialTypeOpaque && cb.pomMode != DisplacementMode::Off)
     {
-      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
+      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[uint(rayInteraction.surfaceIndex)];
       const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
-      OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
+      OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(uint(rayInteraction.surfaceIndex), memoryPolymorphicSurfaceMaterial);
       float3 hitPos = float3(0.f);
       uint iterations = 0;
       if (opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID && opaqueSurfaceMaterial.displaceIn > 0.0f)
@@ -974,9 +974,9 @@ void geometryResolverVertexOutputDebugView(
 #ifdef OPAQUE_MATERIAL_USE_POM
     if (materialType == surfaceMaterialTypeOpaque && cb.pomMode != DisplacementMode::Off)
     {
-      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
+      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[uint(rayInteraction.surfaceIndex)];
       const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
-      OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
+      OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(uint(rayInteraction.surfaceIndex), memoryPolymorphicSurfaceMaterial);
       float3 hitPos = float3(0.f);
       if (opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID && opaqueSurfaceMaterial.displaceIn > 0.0f)
       {
@@ -995,9 +995,9 @@ void geometryResolverVertexOutputDebugView(
     float heightMapValue = -1.f;
     if (materialType == surfaceMaterialTypeOpaque && cb.pomMode != DisplacementMode::Off)
     {
-      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
+      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[uint(rayInteraction.surfaceIndex)];
       const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
-      OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
+      OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(uint(rayInteraction.surfaceIndex), memoryPolymorphicSurfaceMaterial);
       if (opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID) {
         heightMapValue = 1.f - pomSampleHeight(opaqueSurfaceMaterial.heightTextureIndex, opaqueSurfaceMaterial.samplerIndex, surfaceInteraction.textureCoordinates);
       }

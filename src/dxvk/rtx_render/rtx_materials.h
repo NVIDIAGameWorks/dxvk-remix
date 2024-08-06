@@ -35,7 +35,7 @@ namespace dxvk {
 // Surfaces
 
 // Todo: Compute size directly from sizeof of GPU structure (by including it), for now computed by sum of members manually
-constexpr std::size_t kSurfaceGPUSize = 16 * 4 * 4;
+constexpr std::size_t kSurfaceGPUSize = 15 * 4 * 4;
 
 // Note: Use caution when changing this enum, must match the values defined on the MDL side of things.
 
@@ -88,7 +88,6 @@ struct RtSurface {
     // Note: Position buffer and surface material index are required for proper
     // behavior of the Surface on the GPU.
     assert(positionBufferIndex != kSurfaceInvalidBufferIndex);
-    assert(surfaceMaterialIndex != kSurfaceInvalidSurfaceMaterialIndex);
 
     writeGPUHelperExplicit<2>(data, offset, positionBufferIndex);
     writeGPUHelperExplicit<2>(data, offset, previousPositionBufferIndex);
@@ -96,7 +95,10 @@ struct RtSurface {
     writeGPUHelperExplicit<2>(data, offset, texcoordBufferIndex);
     writeGPUHelperExplicit<2>(data, offset, indexBufferIndex);
     writeGPUHelperExplicit<2>(data, offset, color0BufferIndex);
-    writeGPUHelperExplicit<2>(data, offset, surfaceMaterialIndex);
+
+    float displaceInCombined = displaceIn * getDisplacementFactor();
+    assert(displaceInCombined <= FLOAT16_MAX);
+    writeGPUHelper(data, offset, glm::packHalf1x16(displaceInCombined));
 
     const uint16_t packedHash =
       (uint16_t) (associatedGeometryHash >> 48) ^
@@ -225,13 +227,6 @@ struct RtSurface {
     writeGPUHelper(data, offset, normalObjectToWorld.data[2].z);
 
     writeGPUHelper(data, offset, clipPlane);
-
-    float displaceInCombined = displaceIn * getDisplacementFactor();
-    assert(displaceInCombined <= FLOAT16_MAX);
-    writeGPUHelper(data, offset, glm::packHalf1x16(displaceInCombined));
-
-    // 14 bytes padding
-    writeGPUPadding<14>(data, offset);
 
     assert(offset - oldOffset == kSurfaceGPUSize);
   }

@@ -21,6 +21,7 @@
 */
 #ifndef SURFACE_MATERIAL_H
 #define SURFACE_MATERIAL_H
+#include "rtx/utility/shader_types.h"
 
 #include "../../utility/shared_constants.h"
 

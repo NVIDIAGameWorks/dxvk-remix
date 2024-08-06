@@ -147,6 +147,7 @@ void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
   bool writeStochastic,
   Surface surface,
   SurfaceInteraction surfaceInteraction,
+  uint surfaceIndex,
   bool directionAltered,
   f16mat3 virtualVectorTransform,
   RWTexture2D<uint> worldShadingNormalTexture,
@@ -208,7 +209,7 @@ void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
     data0Texture[position] = gBufferMemoryPolymorphicSurfaceMaterialInteraction.data0;
     data1Texture[position] = gBufferMemoryPolymorphicSurfaceMaterialInteraction.data1;
 
-    surfaceIndexTexture[position] = uint32_t(surface.surfaceMaterialIndex);
+    surfaceIndexTexture[position] = uint32_t(surfaceIndex);
 
     // Only write sharedTextureCoords if the material has a height texture, or the material has subsurface texture(s)
     if (polymorphicSurfaceMaterialInteractionHasHeightTexture(polymorphicSurfaceMaterialInteraction)) {

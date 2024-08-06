@@ -91,7 +91,10 @@ struct RayPortalHitInfo
   PortalTransform encodedPortalToOpposingPortalDirection;
 
   vec3 centroid;
-  uint materialIndex;
+  uint8_t spriteSheetRows;
+  uint8_t spriteSheetCols;
+  uint8_t spriteSheetFPS;
+  uint8_t rayPortalIndex;
 
   vec3 normal;
   float sampleThreshold;
@@ -103,10 +106,14 @@ struct RayPortalHitInfo
   float inverseHalfHeight;
 
   uvec3 textureTransform; // packed f16mat3x2
-  uint8_t spriteSheetRows;
-  uint8_t spriteSheetCols;
-  uint8_t spriteSheetFPS;
-  uint8_t pad;
+  uint16_t samplerIndex;
+  uint16_t samplerIndex2;
+
+  uint16_t maskTextureIndex;
+  uint16_t maskTextureIndex2;
+  uint16_t rotationSpeed;
+  uint16_t emissiveIntensity;
+  uint2 pad;
 };
 
 #ifdef __cplusplus

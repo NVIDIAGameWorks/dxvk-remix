@@ -124,12 +124,13 @@ struct NEECacheUtils
   }
 
   static void getInteractions(
-    Surface surface, int primitiveIndex, vec2 uv, vec3 shadingPosition, float16_t coneRadius, float16_t spreadAngle, int footprintMode,
+    Surface surface, int surfaceIndex, int primitiveIndex, vec2 uv, vec3 shadingPosition, float16_t coneRadius, float16_t spreadAngle, int footprintMode,
     out RayInteraction rayInteracton, out SurfaceInteraction surfaceInteraction)
   {
     rayInteracton.barycentricCoordinates = barycentricsToUint(NEECacheUtils.uvToBarycentrics(uv));
     rayInteracton.primitiveIndex = primitiveIndex;
     rayInteracton.coneRadius = coneRadius * cb.neeCacheArgs.emissiveTextureSampleFootprintScale;
+    rayInteracton.surfaceIndex = surfaceIndex;
     Ray ray = {};
     ray.origin = shadingPosition;
     ray.spreadAngle = spreadAngle;
@@ -150,7 +151,7 @@ struct NEECacheUtils
 
   static LightSample calculateLightSample(Surface surface, SurfaceInteraction surfaceInteraction, RayInteraction rayInteracton, vec3 shadingPosition, float trianglePdf, out float triangleArea, bool useSolidAnglePdf, int footprintMode)
   {
-    const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
+    const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[uint(rayInteracton.surfaceIndex)];
     const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
 
     LightSample lightSample = {};
@@ -179,7 +180,7 @@ struct NEECacheUtils
     // The light sample and the shading point may be one the same triangle. In this case, solid angle PDF is 0.
     if (lightSample.solidAnglePdf > 0 && polymorphicType == surfaceMaterialTypeOpaque)
     {
-      OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
+      OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(uint(rayInteracton.surfaceIndex), memoryPolymorphicSurfaceMaterial);
   #if USE_SIMIPLIFIED_MODEL
       // Don't override albedo textures because it may be used by some emissive objects
       // opaqueSurfaceMaterial.albedoOpacityTextureIndex = BINDING_INDEX_INVALID;
@@ -272,7 +273,7 @@ struct NEECacheUtils
 
     RayInteraction rayInteracton;
     SurfaceInteraction surfaceInteraction;
-    getInteractions(surface, primitiveIndex, uvw.xy, shadingPosition, coneRadius, spreadAngle, footprintMode, rayInteracton, surfaceInteraction);
+    getInteractions(surface, surfaceIndex, primitiveIndex, uvw.xy, shadingPosition, coneRadius, spreadAngle, footprintMode, rayInteracton, surfaceInteraction);
 
     if (shouldSampleObject(surface))
     {
@@ -288,7 +289,7 @@ struct NEECacheUtils
     Surface surface = getSurface(surfaceIndex);
     RayInteraction rayInteracton;
     SurfaceInteraction surfaceInteraction;
-    getInteractions(surface, primitiveIndex, uv, shadingPosition, coneRadius, spreadAngle, footprintMode, rayInteracton, surfaceInteraction);
+    getInteractions(surface, surfaceIndex, primitiveIndex, uv, shadingPosition, coneRadius, spreadAngle, footprintMode, rayInteracton, surfaceInteraction);
 
     return calculateLightSample(surface, surfaceInteraction, rayInteracton, shadingPosition, trianglePdf, triangleArea, useSolidAnglePdf, footprintMode);
   }
@@ -300,6 +301,7 @@ struct NEECacheUtils
     rayInteracton.frontHit = true;
     rayInteracton.barycentricCoordinates = barycentricsToUint(uvToBarycentrics(vec2(1.0 / 3.0)));
     rayInteracton.primitiveIndex = primitiveIndex;
+    rayInteracton.surfaceIndex = surfaceIndex;
 
     Ray dummyRay;
     dummyRay.direction = f16vec3(1.0);
@@ -308,12 +310,12 @@ struct NEECacheUtils
     triangleNormal = surfaceInteraction.triangleNormal;
     lightIntensity = vec3(0);
 
-    const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surface.surfaceMaterialIndex];
+    const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surfaceIndex];
     const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
 
     if (polymorphicType == surfaceMaterialTypeOpaque)
     {
-      OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surface.surfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
+      OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surfaceIndex, memoryPolymorphicSurfaceMaterial);
       const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
         opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteracton);
 
