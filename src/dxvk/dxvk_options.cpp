@@ -41,7 +41,7 @@ namespace dxvk {
     // NV-DXVK end
 
     // NV-DXVK start: tell the user they cant run Remix
-    float nvidiaMinDriverFloat = config.getOption<float>("dxvk.nvidiaMinDriver", 555.99f);
+    float nvidiaMinDriverFloat = config.getOption<float>("dxvk.nvidiaMinDriver", 560.81f);
     float nvidiaGfnMinDriverFloat = config.getOption<float>("dxvk.nvidiaGfnMinDriver", 527.01f);
     float nvidiaLinuxMinDriverFloat = config.getOption<float>("dxvk.nvidiaLinuxMinDriver", 525.60f);
 
