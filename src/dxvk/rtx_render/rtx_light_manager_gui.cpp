@@ -421,8 +421,8 @@ namespace dxvk {
       cFrustum frustum;
       frustum.Setup(NDC_D3D, *reinterpret_cast<const float4x4*>(&worldToProj));
 
-      for (const std::pair<XXH64_hash_t, RtLight>& pair : m_lights) {
-        const RtLight* light = &pair.second;
+      for (auto&& linearizedLight : m_linearizedLights) {
+        const RtLight* light = linearizedLight;
         if (light->getType() == RtLightType::Distant) {
           continue;
         }
