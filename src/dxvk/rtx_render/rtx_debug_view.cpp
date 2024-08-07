@@ -369,7 +369,7 @@ namespace dxvk {
   }
 
   bool DebugView::areDebugViewStatisticsSupported() const {
-    return m_device->extensions().extShaderAtomicFloat;
+    return m_device->features().extShaderAtomicFloat.shaderBufferFloat32AtomicAdd;
   }
 
   void DebugView::initSettings(const dxvk::Config& config) {
