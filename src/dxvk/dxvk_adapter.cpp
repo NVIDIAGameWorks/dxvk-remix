@@ -593,6 +593,9 @@ namespace dxvk {
     if (devExtensions.extShaderAtomicFloat) {
       enabledFeatures.extShaderAtomicFloat.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT;
       enabledFeatures.extShaderAtomicFloat.pNext = std::exchange(enabledFeatures.core.pNext, &enabledFeatures.extShaderAtomicFloat);
+      // Note: extShaderAtomicFloat offers more options. Enabling only the required ones
+      enabledFeatures.extShaderAtomicFloat.shaderBufferFloat32AtomicAdd = 
+        m_deviceFeatures.extShaderAtomicFloat.shaderBufferFloat32AtomicAdd;
     }
     // NV-DXVK end
 
@@ -1123,6 +1126,11 @@ namespace dxvk {
     if (m_deviceExtensions.supports(VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME)) {
       m_deviceFeatures.khrBufferDeviceAddress.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES_KHR;
       m_deviceFeatures.khrBufferDeviceAddress.pNext = std::exchange(m_deviceFeatures.core.pNext, &m_deviceFeatures.khrBufferDeviceAddress);
+    }
+
+    if (m_deviceExtensions.supports(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME)) {
+      m_deviceFeatures.extShaderAtomicFloat.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT;
+      m_deviceFeatures.extShaderAtomicFloat.pNext = std::exchange(m_deviceFeatures.core.pNext, &m_deviceFeatures.extShaderAtomicFloat);
     }
 
     m_vki->vkGetPhysicalDeviceFeatures2(m_handle, &m_deviceFeatures.core);
