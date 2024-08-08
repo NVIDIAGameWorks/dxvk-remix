@@ -873,7 +873,7 @@ namespace dxvk
     auto ngxColorBuffer = ViewToResourceVK(compositedColorBuffer, true);
     auto ngxMVec = ViewToResourceVK(motionVectors, false);
     auto ngxDepth = ViewToResourceVK(depth, false);
-    auto ngxOutput = ViewToResourceVK(interpolatedOutput, false);
+    auto ngxOutput = ViewToResourceVK(interpolatedOutput, true);
 
     NVSDK_NGX_VK_DLSSG_Eval_Params evalParams = {};
     evalParams.pBackbuffer = &ngxColorBuffer;
