@@ -1,90 +1,39 @@
-# Remix Renderer
-
-Remix Renderer is a real-time renderer with a target of a fully path traced illumination.
-
-Contrary to a classic rasterization, with ray tracing there's a possibility of simulating the light interactions in a more straigtforward, realistically-grounded way. 
-
-<details>
-
-<summary>Rasterization vs Ray Tracing [click to open]</summary>
-
-* For example, to draw shadows with rasterization, a renderer would need to keep shadowmaps that have limitations on resolution, requires filtering (as shadows might be sharp at one point in space, but soft a meter away), they're not quite scalable to many light sources (as each would need a separate shadow map), requires object culling etc, but of course, rasterization is classic way, so it's fast -- however, with ray tracing, a shadow is simple in its core: need just to cast a ray from a surface to determine if it's in shadow, or not. The same can be said about refractions and reflections. Still, there are challenges to the path tracing, but of different kind, e.g. denoising, sampling and other.
-
-<br>
-</details>
-
-<details>
-
-<summary>Ray tracing vs Path tracing [click to open]</summary>
-
-* Technically, 'ray tracing' is a term to describe a calculation of a hit point for a given ray in a scene.
-But in reality, ray tracing can refer to a majority of techniques that use such ray intersection tests (mostly hardware accelerated) in some way: for example, a rasterized game renderer might have only 'ray traced reflections'.
-'Path tracing' is a technique to simulate the realistic light propagation, that utilizes ray tracing only as a tool to find ray intersections within a scene.
-Hence, ray tracing is a more general term, that can also loosely refer to a path tracing.
-
-</details>
-
-<br>
-
-But the main advantage of using path tracing is the considerable reduction of a development time and increased scene interactivity.
-Rasterized games usually bake the illumination into the surfaces and it might take a time to see the results in-game.
-But with path tracing, illumination is done completely in real-time, so no time spent waiting for the preparation.
-And as a consequence, scenes can be more dynamic (e.g. more objects with simulated physics) as baking usually forces objects to be immovable in rasterization.
-
-
-
-<br>
-
-# Remix Runtime
-
-Remix Runtime is a bundle of:
-* Direct3D 9 translation layer, to convert original D3D9 draw calls and other resources to be compatible with ray tracing
-* Remix Renderer
-
-Remix Runtime is represented as the set of files:
-* `d3d9.dll` to hook to D3D9 functions, and also embeds the Remix Renderer
-* DLL files of the libraries on which Remix Renderer relies
-    * e.g. DLSS Super Resolution (`nvngx_dlss.dll`), Frame Generation (`nvngx_dlssg.dll`), Reflex (`NvLowLatencyVk.dll`) and others
-
-But note that Remix Runtime might also include [Remix Bridge](https://github.com/NVIDIAGameWorks/bridge-remix) to convert Direct3D calls from 32-bit to 64-bit, as the Remix Renderer is 64-bit only.
-
-
-
-<br>
-
-# Remix API 
-
-The primary purpose of the Remix API is to access the pure functionality of the Remix Renderer, i.e. without the limitations of the original Direct3D 9 interface. (For example, extended material, light parameters which can't be expressed via D3D9 primitives).
-
-Remix API is provided as a [single self-contained plain-C header](../../../public/include/remix/remix_c.h), that is implemented by Remix Runtime's `d3d9.dll` library.
-
-Optional [C++ header](../../../public/include/remix/remix.h) is also included, but only as a wrapper over the C API, to prevent possibility of ABI incompatibility between different С++ compilers. And for the same reason, C++ header needs to be compiled as a part of the application side sources (i.e. inlined into app's `.cpp`).
-
-
-
-<br>
-
 # Remix SDK
 
-The term 'Remix SDK' simply refers to a bundle of the headers (`.h`) and Remix Renderer binaries (`.dll`).
+The Remix SDK exposes an API that gives applications access to the renderer inside the Remix Runtime.
 
-To compile the binaries locally, ensure that [Requirements from the Build instructions](../../../README.md) are met, open a terminal in the repository's root folder, and call:
+## Remix Runtime components:
 
-1. `meson setup --buildtype release _Comp64ReleaseSDK`
-1. `cd _Comp64ReleaseSDK`
-1. `meson compile copy_sdk`
+* **Direct3D 9 Translation Layer:**  This component intercepts the D3D9 API and uses information in the API calls to reconstruct the scene hierarchy, then passes that to Remix's path traced renderer to generate the final image. This means that even if an application was built using older graphics technology, it can still benefit from the advanced lighting and rendering features of the Remix renderer. The source code for this component is available at: https://github.com/nvidiagameworks/dxvk-remix
 
-Upon the successful build, the `public/` folder contains the Remix SDK:
-* `public/bin/` -- all needed `.dll` files (Remix Renderer), and `usd/` folder
-* `public/include` -- all needed `.h` headers (Remix API)
+* **Remix Bridge:** This optional component converts D3D9 calls from 32-bit to 64-bit, which is necessary for running 32-bit applications since the Remix renderer operates exclusively in a 64-bit environment. Native 64-bit applications do not require the Remix Bridge. Source code for this component is hosted at https://github.com/nvidiagameworks/bridge-remix
 
+# Remix SDK Design
 
+The Remix SDK is designed to give developers direct access to the advanced features of the Remix Renderer, bypassing the limitations of the older Direct3D 9 API. This SDK allows for more flexible control over materials, lighting, and other graphical elements that D3D9 cannot handle.
+
+It consists of a [plain C header](https://github.com/NVIDIAGameWorks/dxvk-remix/blob/main/public/include/remix/remix_c.h) file with a straightforward API, and an [optional C++ wrapper](https://github.com/NVIDIAGameWorks/dxvk-remix/blob/main/public/include/remix/remix.h) that can help reduce boilerplate code for projects written in C++. The API implementation itself is part of d3d9.dll in dxvk-remix.
+
+## Setting up the Remix SDK for development
+
+To compile and set up the Remix SDK locally, first ensure that Requirements from the main [Build instructions](https://github.com/NVIDIAGameWorks/dxvk-remix/blob/main/README.md) for dxvk-remix are met. Building the Remix SDK is similar to building the dxvk-remix project:
+
+1. <code>meson setup --buildtype release _Comp64ReleaseSDK</code>
+2. <code>cd _Comp64ReleaseSDK</code>
+3. <code>meson compile copy_sdk</code>
+
+After a successful build, the necessary SDK files will be located in the public/ folder:
+
+* **public/bin/:** This directory contains all the needed .dll files for the Remix Renderer and the usd/ folder.
+* **public/include/:** This directory contains all the needed .h header files for the Remix SDK.
+
+**Note** that the d3d9.dll binary built this way is identical to the regular builds of dxvk-remix, but the file layout generated by the copy_sdk step is not. However, downloading a pre-built d3d9.dll and headers from our Github repository can be an alternative starting point if you don’t want to build dxvk-remix locally.
 
 <br>
 
-# Using the Remix API
+# Using the Remix SDK in your application
 
-> *Note: Remix API is under development, and any feature may be a subject to change.*
+> *Note: the API described below is under development and may be subject to changes.*
 
 As with other rendering engines, there are common steps of
 initialiazation, resource registration (meshes, materials, lights), and submitting the said resources to each frame to be rendered.
@@ -96,11 +45,11 @@ initialiazation, resource registration (meshes, materials, lights), and submitti
 
 <summary>How to compile remixapi_example_c? [click to open]</summary>
 
-1. Copy RemixSDK contents to the `RemixAPI_C/` folder
+1. Copy Remix SDK contents to the `dxvk-remix/tests/rtx/apps/RemixAPI_C/` folder
     * So there would be `RemixAPI_C/bin/` and `RemixAPI_C/include/` folders
 1. From the Windows Start menu, search for `x64 Native Tools Command Prompt for VS 2019` or other version, but must be `x64`, launch it
     * This step is needed to be able to use `cl.exe` (Microsoft C/C++ compiler)
-1. `cd <your dxvk-remix-nv folder>\tests\rtx\apps\RemixAPI_C`
+1. `cd <your dxvk-remix folder>\tests\rtx\apps\RemixAPI_C`
 1. `cl -Iinclude remixapi_example_c.c user32.lib`
     * This will compile `.exe`
 1. Launch the `remixapi_example_c.exe`. A triangle should be rendered:
