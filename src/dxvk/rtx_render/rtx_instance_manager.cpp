@@ -1027,7 +1027,7 @@ namespace dxvk {
     // Update the geometry and instance flags
     if (
       (!currentInstance.surface.alphaState.isFullyOpaque && currentInstance.surface.alphaState.isParticle) ||
-      (!currentInstance.surface.alphaState.isFullyOpaque && currentInstance.surface.alphaState.isDecal) ||
+      (currentInstance.surface.alphaState.isDecal) ||
       // Note: include alpha blended geometry on the player model into the unordered TLAS. This is hacky as there might be
       // suitable geometry outside of the player model, but we don't have a way to distinguish it from alpha blended geometry
       // that should be alpha tested instead, like some metallic stairs in Portal -- those should be resolved normally.
@@ -1099,11 +1099,15 @@ namespace dxvk {
       } else {
         currentInstance.m_isPlayerModel = false;
         if (currentInstance.m_isUnordered && RtxOptions::Get()->enableSeparateUnorderedApproximations()) {
-          // Separate set of mask bits for the unordered TLAS
-          if (currentInstance.surface.alphaState.emissiveBlend)
-            mask |= OBJECT_MASK_UNORDERED_ALL_EMISSIVE;
-          else
-            mask |= OBJECT_MASK_UNORDERED_ALL_BLENDED;
+          if (currentInstance.surface.alphaState.isDecal) {
+            mask = OBJECT_MASK_UNORDERED_ALL_BLENDED;
+          } else {
+            // Separate set of mask bits for the unordered TLAS
+            if (currentInstance.surface.alphaState.emissiveBlend)
+              mask |= OBJECT_MASK_UNORDERED_ALL_EMISSIVE;
+            else
+              mask |= OBJECT_MASK_UNORDERED_ALL_BLENDED;
+          }
         }
         else {
           if (material.getType() == RtSurfaceMaterialType::Translucent) {
@@ -1146,7 +1150,7 @@ namespace dxvk {
 
       if (currentInstance.testCategoryFlags(InstanceCategories::Beam)) {
         createBeams(currentInstance);
-      } else {
+      } else if(!currentInstance.surface.alphaState.isDecal) {
         createBillboards(currentInstance, cameraManager.getMainCamera().getDirection(false));
       }
 
