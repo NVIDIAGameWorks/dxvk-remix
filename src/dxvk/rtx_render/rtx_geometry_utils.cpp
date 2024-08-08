@@ -373,14 +373,17 @@ namespace dxvk {
       ctx->getCommandList()->trackResource<DxvkAccess::Write>(geo.normalBuffer.buffer());
   }
 
-  // Calculates number of uTriangles to bake considering their triangle specific cost and an available budget
+  // Calculates number of uTriangles to bake considering their triangle specific cost and an available budget.
+  // Expects a bakeState with non-zero remaining micro triangles to be baked.
+  // Returns values 1 or greater
   uint32_t RtxGeometryUtils::calculateNumMicroTrianglesToBake(
     const BakeOpacityMicromapState& bakeState,
     const BakeOpacityMicromapDesc& desc,
     // Alignment to which budget can be extended to if there are any remaining uTriangles to be baked in the last considered triangle
     const uint32_t allowedNumMicroTriangleAlignment,
     const float bakingWeightScale,
-    // This budget is decreased by budget used up by the returned number of micro triangles to bake
+    // This budget is decreased by budget used up by the returned number of micro triangles to bake.
+    // Expects a value 1 or greater
     uint32_t& availableBakingBudget) {
 
     uint32_t numMicroTrianglesToBake = 0;
@@ -424,7 +427,9 @@ namespace dxvk {
         // Calculate how many uTriangles fit into the budget considering the alignment
         // Note: take a floor to underestimate number of uTriangles that fit
         const uint32_t maxNumMicroTrianglesWithinBakingBudgetAligned = 
-          align_safe(static_cast<uint32_t>(floor(availableBakingBudget / microTriangleCost)), 
+          // Ensure aligning of values 1 or higher since 0 aligns with all values and thus would align to 0 which is undesired
+          // as the current function's returned value is expected to be non 0
+          align_safe(std::max(1u, static_cast<uint32_t>(floor(availableBakingBudget / microTriangleCost))), 
                      allowedNumMicroTriangleAlignment, 
                      UINT32_MAX);
 
