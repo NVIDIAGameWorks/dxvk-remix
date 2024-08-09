@@ -38,14 +38,13 @@ static const uint kRestirGIAcceptLowRoughnessInput = false;
 
 // Integrate Helper Functions
 
-PathState pathStateCreateEmpty(u16vec2 pixelCoordinate, GeometryFlags geometryFlags)
+PathState pathStateCreateEmpty(GeometryFlags geometryFlags)
 {
   PathState pathState;
 
   // Note: Primary linear roughness, origin, cone radius, medium material index, inside medium flag and
   // direction assumed to be set by primary vertex intergation.
 
-  pathState.pixelCoordinate = pixelCoordinate;
   pathState.bounceIteration = uint8_t(1);
   pathState.coneSpreadAngle = cb.screenSpacePixelSpreadHalfAngle;
 
@@ -191,7 +190,7 @@ bool useNeeCacheOnThisBounce(uint bounce, bool enableNeeCacheAfterFirstBounce)
 }
 // Integrate Path Vertex Functions
 
-void integratePathVertex(
+void integratePathVertex( 
   IndirectPathTextures indirectPathTextures, RayHitInfo rayHitInfo,
   inout PathState pathState)
 {
@@ -216,7 +215,8 @@ void integratePathVertex(
   // between the origin and the hit point can be accumulated in advance.
 
   // Note: Only do unordered resolving when separate unordered approximations are desired for this bounce of the path.
-  bool unorderedDecalEncountered = false;
+  pathState.decalEncountered = false;
+  
   uint4 decalMemory = 0;
   f16vec3 decalEmissiveRadiance = f16vec3(0);
   int unorderedSurfaceIndex = -1;  
@@ -242,7 +242,7 @@ void integratePathVertex(
       pathState.accumulatedHitDistance,
       radianceAttenuation, emissiveRadiance,
       numUnorderedInteractions, 
-      unorderedDecalEncountered, decalMemory, decalEmissiveRadiance, unorderedSurfaceIndex);
+      pathState.decalEncountered, decalMemory, decalEmissiveRadiance, unorderedSurfaceIndex);
 
     if (cb.debugView == DEBUG_VIEW_SECONDARY_UNORDERED_INTERACTIONS || cb.debugView == DEBUG_VIEW_SECONDARY_RAY_AND_UNORDERED_INTERACTIONS)
     {
@@ -266,49 +266,31 @@ void integratePathVertex(
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction;
   
   surfaceInteraction.position = pathState.origin;
+  
+  pathState.segmentHitDistance = 0;
 
-  // Todo: Remove hack thing
-  HackGenericState hackState;
-  hackState.origin = pathState.origin;
-  hackState.coneRadius = pathState.coneRadius;
-  hackState.coneSpreadAngle = pathState.coneSpreadAngle;
-  hackState.direction = pathState.direction;
-  hackState.segmentHitDistance = 0; // don't care
-  hackState.continueResolving = pathState.continueResolving;
-  hackState.portalSpace = pathState.portalSpace;
-  hackState.rayMask = pathState.rayMask;
-  hackState.firstRayPortal = invalidRayPortalIndex;
-  hackState.decalEncountered = pathState.decalEncountered || unorderedDecalEncountered;
-  hackState.pixelCoordinate = pathState.pixelCoordinate;
-
-  resolveVertex(
+  bool isStochasticAlphaBlend = false; // note: not used here
+  uint8_t firstRayPortal = invalidRayPortalIndex;
+  
+  resolveVertex<PathState>(
     resolveMode,
-    rayHitInfo, hackState,
+    rayHitInfo, pathState,
     ray, rayInteraction,
     surface, surfaceInteraction,
     polymorphicSurfaceMaterialInteraction,
     radianceAttenuation, emissiveRadiance,
-    decalMemory, decalEmissiveRadiance);
-
-  // Todo: Remove hack thing
-  pathState.origin = hackState.origin;
-  pathState.coneRadius = hackState.coneRadius;
-  pathState.coneSpreadAngle = hackState.coneSpreadAngle;
-  pathState.direction = hackState.direction;
-  pathState.continueResolving = hackState.continueResolving;
-  pathState.portalSpace = hackState.portalSpace;
-  pathState.rayMask = hackState.rayMask;
-  pathState.decalEncountered = hackState.decalEncountered;
+    decalMemory, decalEmissiveRadiance, 
+    pathState.coneSpreadAngle, isStochasticAlphaBlend, firstRayPortal);
 
   // Output ReSTIR GI geometry information
 
   if (cb.enableReSTIRGI && !pathState.restirGiHasHitGeometry)
   {
-    if (hackState.continueResolving)
+    if (pathState.continueResolving)
     {
-      if (hackState.firstRayPortal != invalidRayPortalIndex)
+      if (firstRayPortal != invalidRayPortalIndex)
       {
-        pathState.indirectLightPortalID = hackState.firstRayPortal;
+        pathState.indirectLightPortalID = firstRayPortal;
       }
     }
     else
@@ -325,13 +307,13 @@ void integratePathVertex(
         // not glass. Therefore we should record a sample on the wall instead of glass. 
         const uint materialType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
         pathState.restirGiHasHitOpaque = (materialType == surfaceMaterialTypeOpaque);
-        pathState.restirGiHasHitGeometry = pathState.restirGiHasHitOpaque;
+        pathState.restirGiHasHitGeometry = (materialType == surfaceMaterialTypeOpaque);
       }
       else
       {
         // When ray miss occurs, we assume the sample is on the sky dome with a large distance to the scene.
         const float skyDomeDistance = 1e5;
-        hitPosition = pathState.origin + pathState.direction * skyDomeDistance;
+        hitPosition = pathState.origin + float3(pathState.direction) * skyDomeDistance;
         hitNormal = -pathState.direction;
       }
       ReSTIRGI_StoreHitGeometry(indirectPathTextures.RestirGIHitGeometry, pathState.pixelCoordinate, hitPosition, hitNormal, pathState.indirectLightPortalID);
@@ -340,11 +322,10 @@ void integratePathVertex(
 
   if (rayInteractionHasHit(rayInteraction))
   {
-    pathState.accumulatedHitDistance += float16_t(hackState.segmentHitDistance);
-    pathState.segmentHitDistance += hackState.segmentHitDistance;
+    pathState.accumulatedHitDistance += pathState.segmentHitDistance;
 
     if (pathState.bounceIteration == 1)
-      pathState.firstBounceHitDistance = float16_t(min(float16Max, pathState.firstBounceHitDistance + rayInteraction.hitDistance));
+      pathState.firstBounceHitDistance = float16_t(min(float16Max, pathState.segmentHitDistance));
   }
   else if (!pathState.continueResolving)
   {
@@ -421,7 +402,7 @@ void integratePathVertex(
       int primitiveIndex = shouldSampleObject ? 0 : rayInteraction.primitiveIndex;
       int surfaceIndex = rayInteraction.surfaceIndex;
       int prefixTask = NEECacheUtils.convertIDToPrefixSumID(surfaceIndex, primitiveIndex, PrimitiveIDPrefixSum);
-      cell.insertSlotTask(prefixTask, emissiveLight * pathState.throughput, false);
+      cell.insertSlotTask(prefixTask, emissiveLight * float3(pathState.throughput), false);
 
       lightSelectionPDF = cell.searchCandidate(surfaceIndex, primitiveIndex);
       if (lightSelectionPDF > 0.0 && shouldSampleObject)
@@ -452,7 +433,6 @@ void integratePathVertex(
     misWeight = NEECacheUtils.calculateBRDFSampleMISWeight(surfaceInteraction, pathState.direction, pathState.segmentHitDistance, lightSelectionPDF, pathState.solidAnglePdf);
   }
   accumulateRadiance(pathState, emissiveLight * misWeight);
-  pathState.segmentHitDistance = 0.0;
 
 // We don't need to sample lights or surface rays in the portal closest hit shader
 #if (SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_RAY_PORTAL) != 0
@@ -811,7 +791,7 @@ void integratePathVertex(
         else
         {
           // For low roughness surface, restir gi cannot sample specular light effectively, so we need to trace specular ray.
-          pathState.continuePath &= (continuationLobe != opaqueLobeTypeDiffuseReflection);
+          pathState.continuePath = pathState.continuePath && (continuationLobe != opaqueLobeTypeDiffuseReflection);
         }
     
         updateReSTIRGIHitDistance(oldLuminance, calcBt709Luminance(pathState.radiance), restirHitT, pathState.accumulatedHitDistance);
@@ -936,7 +916,7 @@ void integrateIndirectPath(
 {
   // Initialize Path State
   // Note: Not technically live state as this is only passed into the resolve call and reconstructed from its output.
-  PathState pathState = pathStateCreateEmpty(u16vec2(pixelCoordinate), geometryFlags);
+  PathState pathState = pathStateCreateEmpty(geometryFlags);
 
   // Note: Carry over relevant state from the direct lighting integration. These are currently the only values which
   // need to be set, the rest can remain as default.
@@ -979,7 +959,7 @@ void integrateIndirectPath(
     pathState.continuePath = false;
   }
 
-  pathState.continuePath &= any(pathState.throughput > 0);
+  pathState.continuePath &= any(pathState.throughput > 0.h);
 
 #ifdef OPAQUE_MATERIAL_USE_POM
   // Set initial POM material and texcoords from textures.
@@ -1003,7 +983,7 @@ void integrateIndirectPath(
           );
 
           accumulateThroughput(pathState, pomThroughput);
-          pathState.continuePath = any(pathState.throughput > 0.001f);
+          pathState.continuePath = any(pathState.throughput > 0.001h);
           pathState.continueResolving = pathState.continuePath;
         }
       }
@@ -1044,7 +1024,7 @@ void integrateIndirectPath(
     RESOLVE_RAY_TRACE(
       indirectPathTextures, secondaryRay, flags, indirectSbtOffset,
       integratePathVertex,
-      cb.secondaryRayMaxInteractions, pathState, MemoryPathState,
+      cb.secondaryRayMaxInteractions, pathState,
       SEGMENT_HIT_DISTANCE_UNUSED,
       DEBUG_VIEW_SECONDARY_RAY_INTERACTIONS, DEBUG_VIEW_SECONDARY_RAY_AND_UNORDERED_INTERACTIONS);
   }

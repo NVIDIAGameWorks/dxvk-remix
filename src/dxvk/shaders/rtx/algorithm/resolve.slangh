@@ -118,7 +118,7 @@ void updateStateOnPortalCrossing(inout PortalSpace2BitsType portalSpace,
   portalSpace = newPortalSpace;
 }
 
-void updateStateOnPortalCrossing(inout HackGenericState resolveVertexState, uint8_t rayPortalIndex)
+void updateStateOnPortalCrossing<T:IBasePayloadState>(inout T resolveVertexState, uint8_t rayPortalIndex)
 {
 #ifdef RAY_TRACING_PRIMARY_RAY
   const bool hasRayOriginatedFromViewModel = false;
@@ -234,10 +234,10 @@ bool evaluateTranslucentApproximations(
 
 // Handles updating of the resolve state after each iteration when resolving is intended to continue.
 // Mainly used to update ray origin and teleport through Ray Portals.
-void resolveVertexFinalContinue(
+void resolveVertexFinalContinue<T : IBasePayloadState>(
   Ray ray, SurfaceInteraction surfaceInteraction,
   bool teleport, mat4 teleportMatrix,
-  inout HackGenericState resolveVertexState)
+  inout T resolveVertexState)
 {
   // Update ray origin to move past the current interaction
 
@@ -258,7 +258,7 @@ void resolveVertexFinalContinue(
 }
 
 // Handles updating of the resolve state after an iteration when resolving is intended to stop on a hit.
-void resolveVertexFinalHit(inout HackGenericState resolveVertexState)
+void resolveVertexFinalHit<T : IBasePayloadState>(inout T resolveVertexState)
 {
   // Indicate that resolving should be stopped now that a hit is found
 
@@ -267,8 +267,8 @@ void resolveVertexFinalHit(inout HackGenericState resolveVertexState)
 
 // Handles updating of the resolve state after an iteration when resolving is intended to stop on a miss specifically
 // (not to be confused with stopping on a hit which simply requires setting the continue resolving flag to false).
-void resolveVertexFinalMiss<let overrideRayInteraction : bool>(
-  inout HackGenericState resolveVertexState,
+void resolveVertexFinalMiss<let overrideRayInteraction : bool, T : IBasePayloadState>(
+  inout T resolveVertexState,
   inout RayInteraction rayInteraction,
   inout f16vec3 radianceAttenuation)
 {
@@ -299,15 +299,18 @@ void resolveVertexFinalMiss<let overrideRayInteraction : bool>(
 // Emissive radiance and attenuation may be accumulated immediately but the continueResolving flag must be checked to see if the
 // function should return and continue attempting to resolve an interaction. If false, the Ray Interaction can then be checked
 // for a hit and hit logic can be performed.
-void resolveVertex(
+void resolveVertex<T: IBasePayloadState>(
   uint8_t resolveMode,
-  RayHitInfo rayHitInfo, inout HackGenericState resolveVertexState,
+  RayHitInfo rayHitInfo, inout T resolveVertexState,
   inout Ray ray, inout RayInteraction rayInteraction,
   inout Surface surface, inout SurfaceInteraction surfaceInteraction,
   inout PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
   inout f16vec3 radianceAttenuation, inout vec3 emissiveRadiance,
   uint4 decalMemory,
   f16vec3 decalEmissiveRadiance,
+  float16_t coneSpreadAngle,
+  inout bool isStochasticAlphaBlend,
+  inout uint8_t firstRayPortal,
   // Forces enablement of ray portal resolve path regardless of global resolve mask 
   // Needed for RayQuery paths for visibility rays from CHS as they don't run material specific hit groups
   // Visibility rays are expected not to start from RayPortal surfaces, and thus only RayPortal path is force enabled
@@ -325,7 +328,7 @@ void resolveVertex(
 
   ray.origin = resolveVertexState.origin;
   ray.coneRadius = resolveVertexState.coneRadius;
-  ray.spreadAngle = resolveVertexState.coneSpreadAngle;
+  ray.spreadAngle = coneSpreadAngle;
   ray.direction = resolveVertexState.direction;
 
   rayInteraction = rayInteractionCreate(ray, rayHitInfo);
@@ -463,13 +466,15 @@ void resolveVertex(
       }
     }
 
+#ifdef RAY_TRACING_PRIMARY_RAY
     // Handle nearly-transparent early out logic and stochastic alpha blend
     bool handleStochasticAlphaBlend = 
       useStochasticAlphaBlend && cb.enableStochasticAlphaBlend &&
       opacity > cb.resolveTransparencyThreshold && opacity <= cb.resolveStochasticAlphaBlendThreshold;
 
-#ifdef RAY_TRACING_PRIMARY_RAY
-    resolveVertexState.isStochasticAlphaBlend = handleStochasticAlphaBlend;
+    isStochasticAlphaBlend = handleStochasticAlphaBlend;
+#else
+    bool handleStochasticAlphaBlend = false;
 #endif
 
     // Note: Early out if opacity is less than the threshold to avoid doing any material evaluation on nearly transparent surfaces.
@@ -603,9 +608,9 @@ void resolveVertex(
       }
 
       // Note: Report the Ray Portal index if requested and if this is the first Ray Portal hit.
-      if (packedFlagGet(resolveMode, resolveModeRayPortalNotify) && resolveVertexState.firstRayPortal == invalidRayPortalIndex)
+      if (packedFlagGet(resolveMode, resolveModeRayPortalNotify) && firstRayPortal == invalidRayPortalIndex)
       {
-        resolveVertexState.firstRayPortal = rayPortalIndex;
+        firstRayPortal = rayPortalIndex;
       }
 
     #ifdef RAY_TRACING_PRIMARY_RAY

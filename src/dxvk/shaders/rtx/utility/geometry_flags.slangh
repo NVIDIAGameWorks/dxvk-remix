@@ -26,84 +26,98 @@
 
 struct GeometryFlags
 {
-  // GBuffer Flags
+  uint16_t _encodedFlags;
 
-  bool primarySelectedIntegrationSurface;
-  bool secondarySurfaceMask;
-  bool isViewModel;                 // Primary hit is a view model surface
-  PortalSpace2BitsType portalSpace; // Portal space the primary hit is in
+  // GBuffer Flags
+  property bool primarySelectedIntegrationSurface
+  {
+    get { return (_encodedFlags & (1 << 0)) != 0; }
+    set { _encodedFlags = (_encodedFlags & ~(1 << 0)) | (newValue ? (1 << 0) : 0); }
+  }
+
+  property bool secondarySurfaceMask
+  {
+    get { return (_encodedFlags & (1 << 1)) != 0; }
+    set { _encodedFlags = (_encodedFlags & ~(1 << 1)) | (newValue ? (1 << 1) : 0); }
+  }
+
+  // Primary hit is a view model surface
+  property bool isViewModel
+  {
+    get { return (_encodedFlags & (1 << 2)) != 0; }
+    set { _encodedFlags = (_encodedFlags & ~(1 << 2)) | (newValue ? (1 << 2) : 0); }
+  }
+
+  // Portal space the primary hit is in
+  property PortalSpace2BitsType portalSpace
+  {
+    get { return PortalSpace2BitsType((_encodedFlags >> 3) & 0b11); }
+    set { _encodedFlags = (_encodedFlags & ~(0b11 << 3)) | ((newValue & 0b11) << 3); }
+  }
 
   // Integrator Flags
   // Note: These are included here as the flags are read regardless by both integrator passes,
   // making it a useful way to transfer over some flag data without adding additional complexity.
-  bool insideMedium;
-  bool firstSampledLobeIsSpecular;
-  bool performPSTR;
-  bool performPSRR;
+  property bool insideMedium
+  {
+    get { return (_encodedFlags & (1 << 5)) != 0; }
+    set { _encodedFlags = (_encodedFlags & ~(1 << 5)) | (newValue ? (1 << 5) : 0); }
+  }
 
-  uint8_t objectMask;
-};
+  property bool firstSampledLobeIsSpecular
+  {
+    get { return (_encodedFlags & (1 << 6)) != 0; }
+    set { _encodedFlags = (_encodedFlags & ~(1 << 6)) | (newValue ? (1 << 6) : 0); }
+  }
 
-uint geometryFlagsEncode(GeometryFlags geometryFlags)
-{
-  uint encodedFlags = 0;
+  property bool performPSTR
+  {
+    get { return (_encodedFlags & (1 << 7)) != 0; }
+    set { _encodedFlags = (_encodedFlags & ~(1 << 7)) | (newValue ? (1 << 7) : 0); }
+  }
 
-  encodedFlags = packedFlagSet(
-    encodedFlags, geometryFlags.primarySelectedIntegrationSurface ? (1 << 0) : 0);
-  encodedFlags = packedFlagSet(
-    encodedFlags, geometryFlags.secondarySurfaceMask ? (1 << 1) : 0);
-  encodedFlags = packedFlagSet(
-    encodedFlags, geometryFlags.isViewModel ? (1 << 2) : 0);
-
-  encodedFlags |= (geometryFlags.portalSpace & 0b11) << 3;
-
-  encodedFlags = packedFlagSet(
-    encodedFlags, geometryFlags.insideMedium ? (1 << 5) : 0);
-  encodedFlags = packedFlagSet(
-    encodedFlags, geometryFlags.firstSampledLobeIsSpecular ? (1 << 6) : 0);
-  encodedFlags = packedFlagSet(
-    encodedFlags, geometryFlags.performPSTR ? (1 << 7) : 0);
-  encodedFlags = packedFlagSet(
-    encodedFlags, geometryFlags.performPSRR ? (1 << 8) : 0);
-  // 2 bits unused
+  property bool performPSRR
+  {
+    get { return (_encodedFlags & (1 << 8)) != 0; }
+    set { _encodedFlags = (_encodedFlags & ~(1 << 8)) | (newValue ? (1 << 8) : 0); }
+  }
 
 #if OBJECT_MASK_ALL_DYNAMIC_NUMBER_OF_ACTIVE_BITS > (16 - 12)
   "There is not enough bits in the encoded geometry flags for dynamic object mask."
 #endif   
-
-  uint dynamicObjectMaskBits = (uint(geometryFlags.objectMask) & OBJECT_MASK_ALL_DYNAMIC) 
-                         >> OBJECT_MASK_ALL_DYNAMIC_FIRST_ACTIVE_BIT_OFFSET;
-  encodedFlags |= dynamicObjectMaskBits << 11; 
-
-  return encodedFlags;
-}
+  property uint8_t objectMask
+  {
+    get 
+    { 
+      uint dynamicObjectMaskBits = (_encodedFlags >> 11) & ((1 << OBJECT_MASK_ALL_DYNAMIC_NUMBER_OF_ACTIVE_BITS) - 1);
+      return uint8_t(dynamicObjectMaskBits << OBJECT_MASK_ALL_DYNAMIC_FIRST_ACTIVE_BIT_OFFSET);
+    }
+    set 
+    { 
+      uint dynamicObjectMaskBits = (newValue & OBJECT_MASK_ALL_DYNAMIC) >> OBJECT_MASK_ALL_DYNAMIC_FIRST_ACTIVE_BIT_OFFSET;
+      _encodedFlags = (_encodedFlags & ~(((1 << OBJECT_MASK_ALL_DYNAMIC_NUMBER_OF_ACTIVE_BITS) - 1) << 11)) | (dynamicObjectMaskBits << 11);
+    }
+  }
+};
 
 void geometryFlagsWriteToGBuffer(
   GeometryFlags geometryFlags,
   ivec2 position,
   RWTexture2D<uint> sharedFlagsTexture)
 {
-  sharedFlagsTexture[position] = geometryFlagsEncode(geometryFlags);
+  sharedFlagsTexture[position] = geometryFlags._encodedFlags;
 }
 
 GeometryFlags geometryFlagsDecode(uint16_t encodedFlags)
 {
   GeometryFlags geometryFlags;
-
-  geometryFlags.primarySelectedIntegrationSurface = packedFlagGet(encodedFlags, (1 << 0));
-  geometryFlags.secondarySurfaceMask = packedFlagGet(encodedFlags, (1 << 1));
-  geometryFlags.isViewModel = packedFlagGet(encodedFlags, (1 << 2));
-
-  geometryFlags.portalSpace = (encodedFlags >> 3) & 0b11;
-
-  geometryFlags.insideMedium = packedFlagGet(encodedFlags, (1 << 5));
-  geometryFlags.firstSampledLobeIsSpecular = packedFlagGet(encodedFlags, (1 << 6));
-  geometryFlags.performPSTR = packedFlagGet(encodedFlags, (1 << 7));
-  geometryFlags.performPSRR = packedFlagGet(encodedFlags, (1 << 8));
-  
-  geometryFlags.objectMask = ((encodedFlags >> 11) << OBJECT_MASK_ALL_DYNAMIC_FIRST_ACTIVE_BIT_OFFSET) & OBJECT_MASK_ALL_DYNAMIC;
-
+  geometryFlags._encodedFlags = encodedFlags;
   return geometryFlags;
+}
+
+uint16_t geometryFlagsEncode(GeometryFlags flags)
+{
+  return flags._encodedFlags;
 }
 
 GeometryFlags geometryFlagsReadFromGBuffer(
