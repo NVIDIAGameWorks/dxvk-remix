@@ -54,7 +54,6 @@ GeometryResolverState geometryResolverStateCreateEmpty(u16vec2 pixelCoordinate)
 {
   GeometryResolverState geometryResolverState;
 
-  geometryResolverState.pixelCoordinate = pixelCoordinate;
   geometryResolverState.origin = vec3(0.0f, 0.0f, 0.0f);
   geometryResolverState.coneRadius = float16_t(0.0f);
   geometryResolverState.direction = f16vec3(0.0f, 0.0f, 0.0f);
@@ -204,7 +203,7 @@ void geometryResolverOutputSurface(
   // another structure for this. To avoid that, just output it like this for now.
 
   // Note: Virtual motion used to account for the ray traversing ray portals and through PSR interactions.
-  vec3 virtualMotion = quaternionTransformVector(accumulatedRotation, surfaceInteraction.motion, true);
+  const vec3 virtualMotion = quaternionTransformVector(accumulatedRotation, surfaceInteraction.motion, true);
   
   if (primarySurface)
   {
@@ -340,7 +339,7 @@ void geometryResolverDLSSRROutputSurface(
   // another structure for this. To avoid that, just output it like this for now.
 
   // Note: Virtual motion used to account for the ray traversing ray portals and through PSR interactions.
-  vec3 virtualMotion = quaternionTransformVector(accumulatedRotation, surfaceInteraction.motion, true);
+  const vec3 virtualMotion = quaternionTransformVector(accumulatedRotation, surfaceInteraction.motion, true);
   
   vec4 prevWorldPosition = vec4(virtualHitPosition + virtualMotion, 1);
   vec4 prevNDC = mul(cb.camera.prevWorldToProjection, prevWorldPosition);
@@ -1095,7 +1094,8 @@ void geometryResolverVertex(
   uint numUnorderedInteractions = 0;
   uint8_t unorderedRayMask = convertPrimaryRayMaskToUnordered(geometryResolverState.rayMask, OBJECT_MASK_ALL_UNORDERED);
 
-  bool unorderedDecalEncountered = false;
+  geometryResolverState.decalEncountered = false;
+  
   uint4 decalMemory = 0;
   f16vec3 decalEmissiveRadiance = f16vec3(0);
   int surfaceIndex;
@@ -1107,7 +1107,7 @@ void geometryResolverVertex(
     geometryResolverState.accumulatedRotation, geometryResolverState.accumulatedHitDistance,
     radianceAttenuation, emissiveRadiance,
     numUnorderedInteractions, 
-    unorderedDecalEncountered, decalMemory, decalEmissiveRadiance, surfaceIndex);
+    geometryResolverState.decalEncountered, decalMemory, decalEmissiveRadiance, surfaceIndex);
 
   vec3 particleEmissive = emissiveRadiance;
 
@@ -1135,43 +1135,19 @@ void geometryResolverVertex(
   Surface surface;
   SurfaceInteraction surfaceInteraction;
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction;
-
-  // Todo: Remove hack thing
-  HackGenericState hackState;
-  hackState.origin = geometryResolverState.origin;
-  hackState.coneRadius = geometryResolverState.coneRadius;
-  hackState.coneSpreadAngle = float16_t(cb.screenSpacePixelSpreadHalfAngle);
-  hackState.direction = geometryResolverState.direction;
-  hackState.directionAltered = geometryResolverState.directionAltered;
-  hackState.segmentHitDistance = geometryResolverState.segmentHitDistance;
-  hackState.continueResolving = geometryResolverState.continueResolving;
-  hackState.rayMask = geometryResolverState.rayMask;
-  hackState.portalSpace = geometryResolverState.portalSpace;
-  hackState.accumulatedRotation = geometryResolverState.accumulatedRotation;
-  hackState.decalEncountered = geometryResolverState.decalEncountered || unorderedDecalEncountered;
-  hackState.pixelCoordinate = geometryResolverState.pixelCoordinate;
-  hackState.isStochasticAlphaBlend = false;
-
-  resolveVertex(
+  
+  bool isStochasticAlphaBlend = false;
+  uint8_t firstRayPortal = invalidRayPortalIndex;
+  
+  resolveVertex<GeometryResolverState>(
     resolveMode,
-    rayHitInfo, hackState,
+    rayHitInfo, geometryResolverState,
     ray, rayInteraction,
     surface, surfaceInteraction,
     polymorphicSurfaceMaterialInteraction,
     radianceAttenuation, emissiveRadiance,
-    decalMemory, decalEmissiveRadiance, false, true);
-
-  // Todo: Remove hack thing
-  geometryResolverState.origin = hackState.origin;
-  geometryResolverState.coneRadius = hackState.coneRadius;
-  geometryResolverState.direction = hackState.direction;
-  geometryResolverState.directionAltered = hackState.directionAltered;
-  geometryResolverState.segmentHitDistance = hackState.segmentHitDistance;
-  geometryResolverState.continueResolving = hackState.continueResolving;
-  geometryResolverState.rayMask = hackState.rayMask;
-  geometryResolverState.portalSpace = hackState.portalSpace;
-  geometryResolverState.accumulatedRotation = hackState.accumulatedRotation;
-  geometryResolverState.decalEncountered = hackState.decalEncountered;
+    decalMemory, decalEmissiveRadiance, 
+    float16_t(cb.screenSpacePixelSpreadHalfAngle), isStochasticAlphaBlend, firstRayPortal, false, true);
 
   if (cb.outputParticleLayer)
   {
@@ -1184,8 +1160,6 @@ void geometryResolverVertex(
   }
 
   bool isUnorderedEmissive = any(emissiveRadiance > 0.0f);
-
-  bool isStochasticAlphaBlend = hackState.isStochasticAlphaBlend;
 
   // Accumulate Segment Hit Distance
   // Note: Only accumulate hit distance if the current ray interaction was not a miss.
@@ -1647,7 +1621,8 @@ void geometryPSRResolverVertex(
   uint numUnorderedInteractions = 0;
   uint8_t unorderedRayMask = convertPrimaryRayMaskToUnordered(geometryPSRResolverState.rayMask, OBJECT_MASK_ALL_UNORDERED);
 
-  bool unorderedDecalEncountered = false;
+  geometryPSRResolverState.decalEncountered = false;
+  
   uint4 decalMemory = 0;
   f16vec3 decalEmissiveRadiance = f16vec3(0);
   int surfaceIndex;
@@ -1659,7 +1634,7 @@ void geometryPSRResolverVertex(
     geometryPSRResolverState.accumulatedRotation, geometryPSRResolverState.accumulatedHitDistance,
     radianceAttenuation, emissiveRadiance,
     numUnorderedInteractions, 
-    unorderedDecalEncountered, decalMemory, decalEmissiveRadiance, surfaceIndex);
+    geometryPSRResolverState.decalEncountered, decalMemory, decalEmissiveRadiance, surfaceIndex);
 
   vec4 particleEmissive = vec4(0,0,0,1);
   if (cb.outputParticleLayer && any(emissiveRadiance > 0))
@@ -1682,39 +1657,18 @@ void geometryPSRResolverVertex(
   SurfaceInteraction surfaceInteraction;
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction;
 
-  // Todo: Remove hack thing
-  HackGenericState hackState;
-  hackState.origin = geometryPSRResolverState.origin;
-  hackState.coneRadius = geometryPSRResolverState.coneRadius;
-  hackState.coneSpreadAngle = float16_t(cb.screenSpacePixelSpreadHalfAngle);
-  hackState.direction = geometryPSRResolverState.direction;
-  hackState.segmentHitDistance = geometryPSRResolverState.segmentHitDistance;
-  hackState.continueResolving = geometryPSRResolverState.continueResolving;
-  hackState.rayMask = geometryPSRResolverState.rayMask;
-  hackState.portalSpace = geometryPSRResolverState.portalSpace;
-  hackState.accumulatedRotation = geometryPSRResolverState.accumulatedRotation;
-  hackState.decalEncountered = geometryPSRResolverState.decalEncountered || unorderedDecalEncountered;
-  hackState.pixelCoordinate = geometryPSRResolverState.pixelCoordinate;
-
-  resolveVertex(
+  bool isStochasticAlphaBlend = false; // note, not actually used here
+  uint8_t firstRayPortal = invalidRayPortalIndex;
+  
+  resolveVertex<GeometryPSRResolverState>(
     resolveMode,
-    rayHitInfo, hackState,
+    rayHitInfo, geometryPSRResolverState,
     ray, rayInteraction,
     surface, surfaceInteraction,
     polymorphicSurfaceMaterialInteraction,
     radianceAttenuation, emissiveRadiance,
-    decalMemory, decalEmissiveRadiance);
-
-  // Todo: Remove hack thing
-  geometryPSRResolverState.origin = hackState.origin;
-  geometryPSRResolverState.coneRadius = hackState.coneRadius;
-  geometryPSRResolverState.direction = hackState.direction;
-  geometryPSRResolverState.segmentHitDistance = hackState.segmentHitDistance;
-  geometryPSRResolverState.continueResolving = hackState.continueResolving;
-  geometryPSRResolverState.rayMask = hackState.rayMask;
-  geometryPSRResolverState.portalSpace = hackState.portalSpace;
-  geometryPSRResolverState.accumulatedRotation = hackState.accumulatedRotation;
-  geometryPSRResolverState.decalEncountered = hackState.decalEncountered;
+    decalMemory, decalEmissiveRadiance, 
+    float16_t(cb.screenSpacePixelSpreadHalfAngle), isStochasticAlphaBlend, firstRayPortal);
 
   // Handle attenuation and emissive radiance from the Resolve function
 
@@ -2087,7 +2041,7 @@ void geometryPSRResolver(inout GeometryPSRResolverState psrResolverState) {
     RESOLVE_RAY_TRACE(
       extraArgs, secondaryRay, flags, GBUFFER_SBT_OFFSET_STANDARD,
       geometryPSRResolverVertex,
-      cb.psrRayMaxInteractions, psrResolverState, MemoryGeometryPSRResolverState,
+      cb.psrRayMaxInteractions, psrResolverState,
       psrResolverState.segmentHitDistance,
       DEBUG_VIEW_PRIMARY_RAY_INTERACTIONS, DEBUG_VIEW_PRIMARY_RAY_AND_UNORDERED_INTERACTIONS);
     
@@ -2149,7 +2103,7 @@ void geometryResolver(ivec2 pixelCoordinate) {
     RESOLVE_RAY_TRACE(
       extraArgs, primaryRay, flags, GBUFFER_SBT_OFFSET_STANDARD,
       geometryResolverVertex,
-      cb.primaryRayMaxInteractions, geometryResolverState, MemoryGeometryResolverState,
+      cb.primaryRayMaxInteractions, geometryResolverState,
       geometryResolverState.segmentHitDistance,
       DEBUG_VIEW_PRIMARY_RAY_INTERACTIONS, DEBUG_VIEW_PRIMARY_RAY_AND_UNORDERED_INTERACTIONS);
 
@@ -2240,7 +2194,6 @@ void geometryPSRResolverPass(ivec2 pixelCoordinate) {
 
   GeometryPSRResolverState geometryPSRResolverState;
 
-  geometryPSRResolverState.pixelCoordinate = pixelCoordinate;
   geometryPSRResolverState.bounceIteration = 0;
   geometryPSRResolverState.coneRadius = PrimaryConeRadius[pixelCoordinate];
   geometryPSRResolverState.segmentHitDistance = 0;

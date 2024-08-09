@@ -47,7 +47,7 @@
 #include "rtx/algorithm/integrator_indirect.slangh"
 
 [shader("miss")]
-void main(inout MemoryPathState rayPayload : SV_RayPayload)
+void main(inout PathState rayPayload : SV_RayPayload)
 {
   // Construct a Ray Hit Info for the miss
 
@@ -62,9 +62,5 @@ void main(inout MemoryPathState rayPayload : SV_RayPayload)
   indirectPathTextures.RestirGIRadiance = RestirGIRadiance;
   indirectPathTextures.RestirGIHitGeometry = RestirGIHitGeometry;
 
-  PathState pathState = rayPayload.unpack();
-
-  integratePathVertex(indirectPathTextures, rayHitInfo, pathState);
-
-  rayPayload = MemoryPathState::pack(pathState);
+  integratePathVertex(indirectPathTextures, rayHitInfo, rayPayload);
 }

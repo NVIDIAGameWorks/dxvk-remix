@@ -395,6 +395,10 @@ bool packedFlagGet(uint ## size ## _t packedFlags, uint ## size ## _t flag) {   
   return (packedFlags & flag) != 0u;                                                          \
 }                                                                                             \
                                                                                               \
+uint ## size ## _t packedFlagAssign(uint ## size ## _t packedFlags, uint ## size ## _t flag, bool value) {\
+  return (packedFlags & ~flag) | (value ? flag : 0);                                          \
+}                                                                                             \
+                                                                                              \
 uint ## size ## _t packedFlagSet(uint ## size ## _t packedFlags, uint ## size ## _t flag) {   \
   return packedFlags | flag;                                                                  \
 }                                                                                             \

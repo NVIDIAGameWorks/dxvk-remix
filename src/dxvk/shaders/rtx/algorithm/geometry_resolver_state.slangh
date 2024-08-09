@@ -23,324 +23,345 @@
 
 #include "rtx/concept/ray_portal/ray_portal.slangh"
 #include "rtx/utility/packing.slangh"
-#include "rtx/concept/payload/payload.slangh"
 
-struct GeometryResolverState
+struct GeometryResolverState : IBasePayloadState
 {
-  u16vec2 pixelCoordinate;
   // Note: These ray properties are passed into the function with the state of the
   // ray being cast as an input, and then set to the new state of the sampled ray
   // (if applicable) as an output.
-  vec3 origin;
-  float16_t coneRadius;
-  f16vec3 direction;
-  bool directionAltered;
+  vec3 _origin;
+  float16_t _coneRadius;
+  uint16_t _encodedFlags;
 
   // Note: Radiance, throughput and hit distances are passed in and then written back out
   // so they can be accumulated into in the geometry resolving loop.
   vec3 radiance;
-  f16vec3 attenuation;
-  float segmentHitDistance;
-  float accumulatedHitDistance;
-  // Note: This represents the matrix to transform a normal or vector from world space into the virtual space seen
+  float _segmentHitDistance;
+
+  // Note: This represents the quaternion to transform a normal or vector from world space into the virtual space seen
   // through PSR and ray portals.
-  f16vec4 accumulatedRotation;
+  f16vec4 _accumulatedRotation;
+  float accumulatedHitDistance;
+  
+  f16vec3 _direction;
+  f16vec3 attenuation;
+  uint8_t _rayMask;
+
+  // Property to get and set pixel coordinate
+  property u16vec2 pixelCoordinate 
+  {
+    get 
+    {
+    #ifdef RAY_PIPELINE
+      return DispatchRaysIndex().xy;
+    #else
+      return gl_GlobalInvocationID.xy;
+    #endif
+    }
+    set { /* Not applicable in this context */ }
+  }
+
+  // Passthrough accessors
+
+  property vec3 origin 
+  {
+    get { return _origin; }
+    set { _origin = newValue; }
+  }
+
+  property float16_t coneRadius 
+  {
+    get { return _coneRadius; }
+    set { _coneRadius = newValue; }
+  }
+
+  property float segmentHitDistance 
+  {
+    get { return _segmentHitDistance; }
+    set { _segmentHitDistance = newValue; }
+  }
+
+  property f16vec3 direction 
+  {
+    get { return _direction; }
+    set { _direction = newValue; }
+  }
+
+  property uint8_t rayMask 
+  {
+    get { return _rayMask; }
+    set { _rayMask = newValue; }
+  }
+
+  // Flags
 
   // Note: Needed output for Resolve function. Indicates that more resolve work needs to happen
   // and hits should not be counted until finished. Could be omitted from input memory payload
   // if extra flag space is needed, but kept there for now for simplicity.
-  bool continueResolving;
+  property bool continueResolving
+  {
+      get { return packedFlagGet(_encodedFlags, 1 << 0); }
+      set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 0, newValue); }
+  }
+
   // Note: Used to indicate the state of the inside medium flag for the PSTR event (if any). This is needed because
   // PSTR can still trigger on thin translucent surfaces which will not put the ray into a medium, whereas for
   // standard translucent surfaces it will.
-  bool insideMedium;
+  property bool insideMedium
+  {
+      get { return packedFlagGet(_encodedFlags, 1 << 1); }
+      set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 1, newValue); }
+  }
+
   // Note: Flags to indicate if Primary Surface Reflection/Transmission Replacement should be done
   // afterwards. These flags imply that the direction member (and secondary direction member when
   // both types are desired at once) will be populated with the sampled reflected/transmission direction,
   // as well as a secondary throughput in addition to the usual throughput, and finally information to derive
   // vector transformations later on.
-  bool performPSRR;
-  bool performPSTR;
-  // Note: Indicates if the reflection (true) or transmission (false) PSR surface should be the surface used for integration.
-  bool reflectionSelectedIntegrationSurface;
-
-  // Note: Indicates a portal space in which the surface was hit
-  PortalSpace2BitsType portalSpace;
-
-  uint8_t rayMask;
-  // Note: Indicates that the final resolved surface belongs to a view model
-  bool isViewModelSurface;
-  bool decalEncountered;
-  bool useAlternateDisocclusionThreshold;
-}
-
-struct MemoryGeometryResolverState : IPayload
-{
-  vec3 origin;
-  uint encodedConeRadius; // float16_t, unused
-
-  float3 radiance;
-  float accumulatedHitDistance;
-
-  uint2 encodedAccumulatedRotation;
-  uint encodedAttenuation;
-  
-  uint2 encodedDirection;
-  float segmentHitDistance;
-  uint data0; // 13 bits unused
-
-  static MemoryGeometryResolverState pack(GeometryResolverState geometryResolverState)
+  property bool performPSRR
   {
-    MemoryGeometryResolverState ret;
+      get { return packedFlagGet(_encodedFlags, 1 << 2); }
+      set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 2, newValue); }
+  }
 
-    ret.origin = geometryResolverState.origin;
-    
-    ret.encodedConeRadius = packFloat2x16(f16vec2(geometryResolverState.coneRadius, 0));
-    ret.encodedDirection.x = packFloat2x16(geometryResolverState.direction.xy);
-    ret.encodedDirection.y = packFloat2x16(f16vec2(geometryResolverState.direction.z, 0));
-    
-    ret.radiance = geometryResolverState.radiance;
-    ret.encodedAttenuation = colorToR11G11B10(geometryResolverState.attenuation);
-    ret.segmentHitDistance = geometryResolverState.segmentHitDistance;
-    ret.accumulatedHitDistance = geometryResolverState.accumulatedHitDistance;
-    ret.encodedAccumulatedRotation = packFloat4x16(geometryResolverState.accumulatedRotation);
-    
-    ret.data0 =
-      uint32_t(geometryResolverState.rayMask) | 
-      (uint32_t(geometryResolverState.portalSpace) << 8) | 
-      // 10 bit unused
-      (uint32_t(geometryResolverState.isViewModelSurface) << 11) |
-      (uint32_t(geometryResolverState.decalEncountered) << 12) |
-      (uint32_t(geometryResolverState.useAlternateDisocclusionThreshold) << 13) |
-      (uint32_t(geometryResolverState.directionAltered) << 14) |
-      (uint32_t(geometryResolverState.continueResolving) << 15) |
-      (uint32_t(geometryResolverState.performPSRR) << 16) |
-      (uint32_t(geometryResolverState.performPSTR) << 17) | 
-      (uint32_t(geometryResolverState.insideMedium) << 18) | 
-      (uint32_t(geometryResolverState.reflectionSelectedIntegrationSurface) << 19);
+  property bool performPSTR
+  {
+      get { return packedFlagGet(_encodedFlags, 1 << 3); }
+      set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 3, newValue); }
+  }
 
-    return ret;
+  // Note: Indicates if the reflection (true) or transmission (false) PSR surface should be the surface used for integration.
+  property bool reflectionSelectedIntegrationSurface
+  {
+      get { return packedFlagGet(_encodedFlags, 1 << 4); }
+      set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 4, newValue); }
+  }
+
+  // Note: Indicates that the final resolved surface belongs to a view model
+  property bool isViewModelSurface
+  {
+      get { return packedFlagGet(_encodedFlags, 1 << 5); }
+      set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 5, newValue); }
+  }
+
+  property bool decalEncountered
+  {
+      get { return packedFlagGet(_encodedFlags, 1 << 6); }
+      set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 6, newValue); }
+  }
+
+  property bool useAlternateDisocclusionThreshold
+  {
+      get { return packedFlagGet(_encodedFlags, 1 << 7); }
+      set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 7, newValue); }
+  }
+
+  property bool directionAltered
+  {
+      get { return packedFlagGet(_encodedFlags, 1 << 8); }
+      set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 8, newValue); }
+  }
+
+  // Misc packed properties
+
+  // Note: Indicates portal space in which the surface was hit
+  property PortalSpace2BitsType portalSpace
+  {
+      get { return (PortalSpace2BitsType)((_encodedFlags >> 14) & 0b11); }
+      set { _encodedFlags = (_encodedFlags & ~(0b11 << 14)) | ((uint)newValue << 14); }
+  }
+
+  property f16vec4 accumulatedRotation
+  {
+      get { return _accumulatedRotation; }
+      set { _accumulatedRotation = newValue; }
   }
 
 #ifdef RAY_PIPELINE
-  GeometryResolverState unpack()
-  {
-    GeometryResolverState ret;
-
-    ret.pixelCoordinate = DispatchRaysIndex().xy;
-    
-    ret.origin = origin;
-    ret.coneRadius = unpackFloat2x16(encodedConeRadius).x;
-    ret.direction.xy = unpackFloat2x16(encodedDirection.x);
-    ret.direction.z = unpackFloat2x16(encodedDirection.y).x;
-
-    ret.radiance = radiance;
-    ret.attenuation = r11g11b10ToColor(encodedAttenuation);
-    ret.segmentHitDistance = segmentHitDistance;
-    ret.accumulatedHitDistance = accumulatedHitDistance;
-    ret.accumulatedRotation = unpackFloat4x16(encodedAccumulatedRotation);
-      
-    ret.rayMask = data0 & 0xff;
-    ret.portalSpace = (data0 >> 8) & 0b11;
-    ret.isViewModelSurface = packedFlagGet(data0, 1 << 11);
-    ret.decalEncountered = packedFlagGet(data0, 1 << 12);
-    ret.useAlternateDisocclusionThreshold = packedFlagGet(data0, 1 << 13);
-    ret.directionAltered = packedFlagGet(data0, 1 << 14);
-    ret.continueResolving = packedFlagGet(data0, 1 << 15);
-    ret.performPSRR = packedFlagGet(data0, 1 << 16);
-    ret.performPSTR = packedFlagGet(data0, 1 << 17);
-    ret.insideMedium = packedFlagGet(data0, 1 << 18);
-    ret.reflectionSelectedIntegrationSurface = packedFlagGet(data0, 1 << 19);
-
-    return ret;
-  }
-
   bool shouldReorder(out uint coherenceHints, out uint numCoherenceHints)
   {
-    // GeometryResolverState geometryResolverState = unpack();
-
     coherenceHints = 0;
     numCoherenceHints = 0;
 
     return false;
   }
-
 #endif // defined(RAY_PIPELINE)
 }
 
-struct GeometryPSRResolverState {
-  u16vec2 pixelCoordinate;
-  uint8_t bounceIteration;
+struct GeometryPSRResolverState : IBasePayloadState
+{
   // Note: These ray properties are passed into the function with the state of the
   // ray being cast as an input, and then set to the new state of the sampled ray
   // (if applicable) as an output.
-  vec3 origin;
-  float16_t coneRadius;
-  f16vec3 direction;
+  vec3 _origin;
+  float16_t _coneRadius;
+  uint16_t _encodedFlags;
 
   // Note: Radiance, throughput and hit distances are passed in and then written back out
   // so they can be accumulated into in the geometry PSR resolving loop.
   vec3 radiance;
-  f16vec3 attenuation;
-  float segmentHitDistance;
+  float _segmentHitDistance;
+  
+  f16vec4 _accumulatedRotation;
   float accumulatedHitDistance;
-  // Note: This represents the matrix to transform a normal or vector from world space into the virtual space seen
-  // through PSR and ray portals.
-  // Todo: This will likely need to be 4x3 in the future for refractions to be accumulated in. Ideally we'd have the
-  // PSRR pass use a 3x3 one and the PSTR one use 4x3, but that'd add even more duplicated code...
-  f16vec4 accumulatedRotation;
   uint16_t mediumMaterialIndex;
+  uint8_t _rayMask;
+  uint8_t bounceIteration;
+  
+  f16vec3 _direction;
+  f16vec3 attenuation;
+
+  // Property to get and set pixel coordinate
+  property u16vec2 pixelCoordinate 
+  {
+    get 
+    {
+    #ifdef RAY_PIPELINE
+      return DispatchRaysIndex().xy;
+    #else
+      return gl_GlobalInvocationID.xy;
+    #endif
+  }
+    set { /* Not applicable in this context */ }
+  }
+
+  // Passthrough accessors
+
+  property vec3 origin 
+  {
+    get { return _origin; }
+    set { _origin = newValue; }
+  }
+
+  property float16_t coneRadius 
+  {
+    get { return _coneRadius; }
+    set { _coneRadius = newValue; }
+  }
+
+  property float segmentHitDistance 
+  {
+    get { return _segmentHitDistance; }
+    set { _segmentHitDistance = newValue; }
+  }
+
+  property f16vec3 direction 
+  {
+    get { return _direction; }
+    set { _direction = newValue; }
+  }
+
+  property uint8_t rayMask 
+  {
+    get { return _rayMask; }
+    set { _rayMask = newValue; }
+  }
+
+  // Flags
 
   // Note: Needed output for Resolve function. Indicates that more resolve work needs to happen
   // and hits should not be counted until finished. Could be omitted from input memory payload
   // if extra flag space is needed, but kept there for now for simplicity.
-  bool continueResolving;
-  // Note: Used as an input and output to indicate when the PSR resolving should finish. Set to true either
-  // when the max bounce count is hit or when a final hit is found.
-  bool continuePSRResolving;
+  property bool continueResolving 
+  {
+    get { return packedFlagGet(_encodedFlags, 1 << 0); }
+    set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 0, newValue); }
+  }
+
   // Note: Used to keep track of if a ray is inside a translucent medium or not, used as both an
   // input and an output to keep a persistent state across calls.
-  bool insideMedium;
+  property bool insideMedium 
+  {
+    get { return packedFlagGet(_encodedFlags, 1 << 1); }
+    set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 1, newValue); }
+  }
+
   // Note: Indicates if this invocation is dealing with what is to be considered a "primary" surface, versus a secondary
   // one, and thus should output to the primary set of buffers.
-  bool primarySurface;
+  property bool primarySurface 
+  {
+    get { return packedFlagGet(_encodedFlags, 1 << 2); }
+    set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 2, newValue); }
+  }
+
   // Note: A flag which indicates if this invocation of the PSR resolver was chosen to be the surface integration
   // is done on. This means this invocation should write its data out to the stochastic buffers when applicable.
-  bool selectedIntegrationSurface;
+  property bool selectedIntegrationSurface 
+  {
+    get { return packedFlagGet(_encodedFlags, 1 << 3); }
+    set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 3, newValue); }
+  }
+
+  property bool isViewModelSurface 
+  {
+    get { return packedFlagGet(_encodedFlags, 1 << 4); }
+    set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 4, newValue); }
+  }
+
+  property bool isTransmissionPSR 
+  {
+    get { return packedFlagGet(_encodedFlags, 1 << 5); }
+    set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 5, newValue); }
+  }
+
+  property bool decalEncountered 
+  {
+    get { return packedFlagGet(_encodedFlags, 1 << 6); }
+    set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 6, newValue); }
+  }
+
+  property bool useAlternateDisocclusionThreshold 
+  {
+    get { return packedFlagGet(_encodedFlags, 1 << 7); }
+    set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 7, newValue); }
+  }
+
+  property bool isRefractionDistorted 
+  {
+    get { return packedFlagGet(_encodedFlags, 1 << 8); }
+    set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 8, newValue); }
+  }
+
+  // Note: Used as an input and output to indicate when the PSR resolving should finish. Set to true either
+  // when the max bounce count is hit or when a final hit is found.
+  property bool continuePSRResolving 
+  {
+    get { return packedFlagGet(_encodedFlags, 1 << 9); }
+    set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 9, newValue); }
+  }
+
+  property bool directionAltered
+  {
+      get { return false; }
+      set { }
+  }
+
+  // Misc packed properties
 
   // Note: Indicates portal space in which the surface was hit
-  PortalSpace2BitsType portalSpace;
-
-  uint8_t rayMask;
-  bool isViewModelSurface;
-  bool isTransmissionPSR;
-  bool decalEncountered;
-  bool useAlternateDisocclusionThreshold;
-  bool isRefractionDistorted;
-}
-
-struct MemoryGeometryPSRResolverState : IPayload
-{
-  vec3 origin;
-  uint encodedConeRadius; // 0: encodedConeRadius (float16_t)
-                          // 16: some flags (7b), 18 bit unused
-                          // 30: portalSpace (2b)
-
-  uvec3 encodedRadiance;
-  uint encodedAttenuation;
-
-  float segmentHitDistance;
-  float accumulatedHitDistance;
-  uint2 encodedAccumulatedRotation;
-
-  uint encodedDirection;
-  uint data0;       // 0: rayMask (8b)
-                    // 8: bounceIteration (8b)
-                    // 16: mediumMaterialIndex (16b)
-
-  static MemoryGeometryPSRResolverState pack(GeometryPSRResolverState geometryPSRResolverState)
+  property PortalSpace2BitsType portalSpace 
   {
-    MemoryGeometryPSRResolverState ret;
+    get { return (PortalSpace2BitsType)((_encodedFlags >> 14) & 0b11); }
+    set { _encodedFlags = (_encodedFlags & ~(0b11 << 14)) | ((uint)newValue << 14); }
+  }
 
-    ret.origin = geometryPSRResolverState.origin;
-
-    uint encodedConeRadius = float16BitsToUint16(geometryPSRResolverState.coneRadius);
-
-    encodedConeRadius = packedFlagSet(
-      encodedConeRadius, geometryPSRResolverState.primarySurface ? (1 << 16) : 0);
-    encodedConeRadius = packedFlagSet(
-      encodedConeRadius, geometryPSRResolverState.selectedIntegrationSurface ? (1 << 17) : 0);
-    encodedConeRadius = packedFlagSet(
-      encodedConeRadius, geometryPSRResolverState.isViewModelSurface ? (1 << 19) : 0);
-    encodedConeRadius = packedFlagSet(
-      encodedConeRadius, geometryPSRResolverState.isTransmissionPSR ? (1 << 20) : 0);
-    encodedConeRadius = packedFlagSet(
-      encodedConeRadius, geometryPSRResolverState.decalEncountered ? (1 << 21) : 0);
-    encodedConeRadius = packedFlagSet(
-      encodedConeRadius, geometryPSRResolverState.useAlternateDisocclusionThreshold ? (1 << 22) : 0);
-    encodedConeRadius = packedFlagSet(
-      encodedConeRadius, geometryPSRResolverState.isRefractionDistorted ? (1 << 23) : 0);
-    encodedConeRadius |= uint32_t(geometryPSRResolverState.portalSpace) << 30;
-
-    ret.encodedConeRadius = encodedConeRadius;
-    ret.encodedDirection = sphereDirectionToSnorm2x16(geometryPSRResolverState.direction);
-
-    // Note: Encode flags into the sign bits of each coordinate. This must be done manually because -0 may not be properly
-    // stored if the radiance is 0 as -0 and +0 tend to be treated the same. Note this assumes the radiance is always
-    // positive to function properly.
-    uvec3 encodedRadiance = floatBitsToUint(geometryPSRResolverState.radiance);
-
-    encodedRadiance.x = packedFlagSet(
-      encodedRadiance.x, geometryPSRResolverState.continueResolving ? (1 << 31) : 0);
-    encodedRadiance.y = packedFlagSet(
-      encodedRadiance.y, geometryPSRResolverState.continuePSRResolving ? (1 << 31) : 0);
-    encodedRadiance.z = packedFlagSet(
-      encodedRadiance.z, geometryPSRResolverState.insideMedium ? (1 << 31) : 0);
-
-    ret.encodedRadiance = encodedRadiance;
-    // Note: Could likely be reduced to 24 bit to free up 8 bits if needed for something else, attenuation precision
-    // likely doesn't need to be 10/11 bit unorms.
-    ret.encodedAttenuation = colorToR11G11B10(geometryPSRResolverState.attenuation);
-    ret.segmentHitDistance = geometryPSRResolverState.segmentHitDistance;
-    ret.accumulatedHitDistance = geometryPSRResolverState.accumulatedHitDistance;
-    ret.encodedAccumulatedRotation = packFloat4x16(geometryPSRResolverState.accumulatedRotation);
-
-    ret.data0 =
-      uint32_t(geometryPSRResolverState.rayMask) |
-      (uint32_t(geometryPSRResolverState.bounceIteration) << 8) |
-      (uint32_t(geometryPSRResolverState.mediumMaterialIndex) << 16);
-
-    return ret;
-  } 
+  // Note: This represents the quaternion to transform a normal or vector from world space into the virtual space seen
+  // through PSR and ray portals.
+  property f16vec4 accumulatedRotation
+  {
+      get { return _accumulatedRotation; }
+      set { _accumulatedRotation = newValue; }
+  }
 
 #ifdef RAY_PIPELINE
-  GeometryPSRResolverState unpack()
+  bool shouldReorder(out uint coherenceHints, out uint numCoherenceHints) 
   {
-    GeometryPSRResolverState ret;
-
-    ret.pixelCoordinate = DispatchRaysIndex().xy;
-
-    ret.origin = origin;
-    ret.coneRadius = uint16BitsToHalf(uint16_t(encodedConeRadius));
-    ret.direction = snorm2x16ToSphereDirection(encodedDirection);
-
-    ret.radiance = abs(uintBitsToFloat(encodedRadiance));
-    ret.attenuation = r11g11b10ToColor(encodedAttenuation);
-    ret.segmentHitDistance = segmentHitDistance;
-    ret.accumulatedHitDistance = accumulatedHitDistance;
-    ret.accumulatedRotation = unpackFloat4x16(encodedAccumulatedRotation);
-
-    ret.continueResolving = packedFlagGet(encodedRadiance.x, 1 << 31);
-    ret.continuePSRResolving = packedFlagGet(encodedRadiance.y, 1 << 31);
-    ret.insideMedium = packedFlagGet(encodedRadiance.z, 1 << 31);
-    ret.primarySurface = packedFlagGet(encodedConeRadius, 1 << 16);
-    ret.selectedIntegrationSurface = packedFlagGet(encodedConeRadius, 1 << 17);
-    ret.isViewModelSurface = packedFlagGet(encodedConeRadius, 1 << 19);
-    ret.isTransmissionPSR = packedFlagGet(encodedConeRadius, 1 << 20);
-    ret.decalEncountered = packedFlagGet(encodedConeRadius, 1 << 21);
-    ret.useAlternateDisocclusionThreshold = packedFlagGet(encodedConeRadius, 1 << 22);
-    ret.isRefractionDistorted = packedFlagGet(encodedConeRadius, 1 << 23);
-    ret.portalSpace = (encodedConeRadius >> 30) & 0b11;
-
-    ret.rayMask = data0;
-    ret.bounceIteration = (data0 >> 8) & 0xff;
-    ret.mediumMaterialIndex = (data0 >> 16) & 0xffff;
-
-    return ret;
-  }
-  
-  bool shouldReorder(out uint coherenceHints, out uint numCoherenceHints)
-  {
-    // GeometryPSRResolverState geometryResolverState = unpack();
-
     coherenceHints = 0;
     numCoherenceHints = 0;
-
     return false;
   }
-
 #endif // defined(RAY_PIPELINE)
-}
+};
 
 // Data that is passed from the primary rays pass into the Reflection and Transmission PSR passes
 // Note: this doesn't include the coneRadius and accumulatedHitDistance fields that are passed separately, see geometryResolverVertex(...)

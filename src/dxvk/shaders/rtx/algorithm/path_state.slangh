@@ -23,7 +23,6 @@
 
 #include "rtx/concept/ray_portal/ray_portal.slangh"
 #include "rtx/utility/packing.slangh"
-#include "rtx/concept/payload/payload.slangh"
 #include "rtx/algorithm/resolve_expanded.slangh"
 
 // RNG state is not carried via PathState from RayGen to Hit shader, 
@@ -44,51 +43,175 @@ static const uint kApproxRNGSamplesPerBounce = 16;
 #define NEE_CACHE_STATE_ENABLED 2
 
 // Path state to be passed to functions (or the CHS) handling a path vertex.
-struct PathState
+struct PathState : IBasePayloadState
 {
-  u16vec2 pixelCoordinate;
-  uint8_t bounceIteration;
   // Note: These ray properties are passed into the function with the state of the
   // ray being cast as an input, and then set to the new state of the sampled ray
   // (if applicable) as an output.
-  vec3 origin;
-  float16_t coneRadius;
-  f16vec3 direction;
-  float16_t coneSpreadAngle;
+  vec3 _origin;
+  float accumulatedHitDistance; // unused (1b - sign bit)
 
   // Note: Radiance, throughput and hit distances are passed in and then written back out
   // so they can be accumulated into in the path tracing loop.
   vec3 radiance;
-  vec3 throughput;
-  float16_t firstBounceHitDistance; // Note: The total hit distance of the resolve for the first bounce.
-  uint16_t mediumMaterialIndex;
+  float _segmentHitDistance;
 
+  f16vec3 throughput;
+  float16_t firstBounceHitDistance;  // Note: The total hit distance of the resolve for the first bounce.
+  uint16_t neeCacheCellOffset;
+  uint16_t mediumMaterialIndex;
+  float16_t coneSpreadAngle; // unused (1b - sign bit)
+  float16_t _coneRadius; // unused (1b - sign bit)
+  
+  f16vec3 _direction;
+  float16_t solidAnglePdf; // unused (1b - sign bit)
+  uint8_t _flags; // continueResolving(bool:1b) 
+                  // continuePath(bool:1b) 
+                  // insideMedium(bool:1b) 
+                  // decalEncountered(bool:1b) 
+                  // restirGiHasHitGeometry(bool:1b)
+                  // restirGiHasHitOpaque(bool:1b)
+                  // enableNeeCacheAfterFirstBounce(bool:1b) 
+                  // restirGiHasFoundRoughSurface(bool:1b) 
+  uint8_t _rayMask;
+  uint8_t _data; // PortalSpace(uint:2b), 
+                 // indirectLightPortalID(uint:2b), 
+                 // bounceIteration(uint:4b)
+
+  
+  // Property to get and set pixel coordinate
+  property u16vec2 pixelCoordinate 
+  {
+    get 
+    {
+    #ifdef RAY_PIPELINE
+      return DispatchRaysIndex().xy;
+    #else
+      return gl_GlobalInvocationID.xy;
+    #endif
+  }
+    set { /* Not applicable in this context */ }
+  }
+
+  // Passthrough accessors
+  property float3 origin 
+  {
+    get { return _origin; }
+    set { _origin = newValue; }
+  }
+
+  property float16_t coneRadius 
+  {
+    get { return _coneRadius; }
+    set { _coneRadius = newValue; }
+  }
+
+  property float segmentHitDistance 
+  {
+    get { return _segmentHitDistance; }
+    set { _segmentHitDistance = newValue; }
+  }
+
+  property uint8_t rayMask 
+  {
+    get { return _rayMask; }
+    set { _rayMask = newValue; }
+  }
+
+  // Flags
   // Note: Needed output for Resolve function. Indicates that more resolve work needs to happen
   // and hits should not be counted until finished. Could be omitted from input memory payload
   // if extra flag space is needed, but kept there for now for simplicity.
-  bool continueResolving;
+  property bool continueResolving
+  {
+      get { return packedFlagGet(_flags, 1 << 0); }
+      set { _flags = packedFlagAssign(_flags, 1 << 0, newValue); }
+  }
+
   // Note: Used as an input and output to indicate when the path should finish. Set to true either
   // when the max bounce count is hit or when terminated due to a russian roulette style heuristic.
-  bool continuePath;
+  property bool continuePath
+  {
+      get { return packedFlagGet(_flags, 1 << 1); }
+      set { _flags = packedFlagAssign(_flags, 1 << 1, newValue); }
+  }
+
   // Note: Used to keep track of if a ray is inside a translucent medium or not, used as both an
   // input and an output to keep a persistent state across calls.
-  bool insideMedium;
-  bool decalEncountered;
+  property bool insideMedium
+  {
+      get { return packedFlagGet(_flags, 1 << 2); }
+      set { _flags = packedFlagAssign(_flags, 1 << 2, newValue); }
+  }
 
-  uint8_t rayMask;
+  property bool decalEncountered
+  {
+      get { return packedFlagGet(_flags, 1 << 3); }
+      set { _flags = packedFlagAssign(_flags, 1 << 3, newValue); }
+  }
 
-  PortalSpace2BitsType portalSpace;
-  // Track the portal ID that an indirect ray crosses, only lowest 2 bits are used
-  uint8_t indirectLightPortalID;
-  bool restirGiHasFoundRoughSurface;
-  bool restirGiHasHitGeometry;
-  bool restirGiHasHitOpaque;
+  property bool restirGiHasHitGeometry
+  {
+      get { return packedFlagGet(_flags, 1 << 4); }
+      set { _flags = packedFlagAssign(_flags, 1 << 4, newValue); }
+  }
 
-  float accumulatedHitDistance;
-  float solidAnglePdf;
-  uint16_t neeCacheCellOffset;
-  bool enableNeeCacheAfterFirstBounce;
-  float segmentHitDistance;
+  property bool restirGiHasHitOpaque
+  {
+      get { return packedFlagGet(_flags, 1 << 5); }
+      set { _flags = packedFlagAssign(_flags, 1 << 5, newValue); }
+  }
+
+  property bool enableNeeCacheAfterFirstBounce
+  {
+      get { return packedFlagGet(_flags, 1 << 6); }
+      set { _flags = packedFlagAssign(_flags, 1 << 6, newValue); }
+  }
+
+  property bool restirGiHasFoundRoughSurface
+  {
+      get { return packedFlagGet(_flags, 1 << 7); }
+      set { _flags = packedFlagAssign(_flags, 1 << 7, newValue); }
+  }
+
+  property bool directionAltered
+  {
+      get { return false; }
+      set { }
+  }
+
+  // Packed members
+
+  property f16vec3 direction
+  {
+      get { return _direction; }
+      set { _direction = newValue; }
+  }
+
+  // Track the portal ID that an indirect ray crosses
+  property PortalSpace2BitsType portalSpace
+  {
+      get { return (PortalSpace2BitsType)(_data & 0b11); }
+      set { _data = (_data & (~0b11)) | ((uint)newValue); }
+  }
+
+  property uint8_t indirectLightPortalID
+  {
+      get { return (uint8_t)((_data >> 2) & 0b11); }
+      set { _data = (_data & (~(0b11 << 2))) | ((newValue & 0b11) << 2); }
+  }
+
+  property uint8_t bounceIteration
+  {
+      get { return (_data >> 4) & 0xf; }
+      set { _data = (_data & (~(0xf << 4))) | ((newValue & 0xf) << 4); }
+  }
+
+  property f16vec4 accumulatedRotation
+  {
+      get { return getIdentityQuaternion(); }
+      set { }
+  }
 
   // Calculates an RNG offset at a start of a bounce set in the path state
   uint calculateRNGOffset(uint sampleOffset) 
@@ -100,135 +223,8 @@ struct PathState
   {
     return sampleOffset;
   } 
-}
 
-// Packed memory structure to send to the CHS in the TraceRay path.
-// Todo: Test the effects of packing this more (for example, 16 bit floats for throughput as ideally it should)
-// be either fairly close to 1 or less when attenuated, perhaps even scaled a bit depending on its range of values.
-struct MemoryPathState : IPayload
-{
-  vec3 origin;
-  uint data0; // bounceIteration(uint:4b)
-              // restirGiHasHitGeometry(bool:1b)
-              // restirGiHasHitOpaque(bool:1b)
-              // unused(2b)
-              // coneSpreadAngle(float16)
-              // unused (1b - coneSpreadAngle sign bit)
-              // mediumMaterialIndexLow(uint:8b)
-
-  uvec3 encodedRadiance; // unused (x:1b, z:1b)
-  uint encodedDirection;
-
-  uvec3 encodedThroughput;
-  uint data1; // unused (7b),
-              // restirGiHasFoundRoughSurface(bool:1b) 
-              // RayMask(uint8_t:8b), 
-              // PortalSpace(uint:2b), 
-              // indirectLightPortalID(uint:2b), 
-              // mediumMaterialIndexHigh(uint:8b),
-              // unused (4b)
-
-  uint coneRadiusAndHitDistance; // float16_t, float16_t
-                                 // unused (2b - sign bits)
-  float accumulatedHitDistance;  // unused (1b - sign bit)
-  uint solidAnglePdfAndNeeCacheCellOffset; // unused (1b - solidAnglePdf sign bit)
-  float segmentHitDistance;
-
-  static MemoryPathState pack(PathState pathState)
-  {
-    MemoryPathState ret;
-
-    ret.data0 =
-      (pathState.bounceIteration & 0xf) |
-      (uint32_t(pathState.restirGiHasHitGeometry) << 4) |
-      (uint32_t(pathState.restirGiHasHitOpaque) << 5) |
-      (uint32_t(float16BitsToUint16(pathState.coneSpreadAngle)) << 8) |
-      (uint32_t(pathState.mediumMaterialIndex & 0xff) << 24);
-
-    ret.data1 =
-      (uint32_t(pathState.enableNeeCacheAfterFirstBounce) << 6) | 
-      (uint32_t(pathState.restirGiHasFoundRoughSurface) << 7) | 
-      (uint32_t(pathState.rayMask) << 8) | 
-      (uint32_t(pathState.portalSpace) << 16) |
-      (uint32_t(pathState.indirectLightPortalID) << 18) |
-      (uint32_t(pathState.mediumMaterialIndex >> 8) << 20);
-
-    ret.origin = pathState.origin;
-    ret.encodedDirection = sphereDirectionToSnorm2x16(pathState.direction);
-    ret.coneRadiusAndHitDistance = packFloat2x16(f16vec2(pathState.coneRadius, pathState.firstBounceHitDistance));
-
-    // Note: Encode flags into the sign bits of each coordinate. This must be done manually because -0 may not be properly
-    // stored if the throughput/radiance is 0 as -0 and +0 tend to be treated the same. Note this assumes the
-    // throughput/radiance is always positive to function properly.
-    uvec3 encodedRadiance = floatBitsToUint(pathState.radiance);
-    uvec3 encodedThroughput = floatBitsToUint(pathState.throughput);
-
-
-    encodedRadiance.y = packedFlagSet(
-      encodedRadiance.y, pathState.decalEncountered ? (1 << 31) : 0);
-
-    encodedThroughput.x = packedFlagSet(
-      encodedThroughput.x, pathState.continueResolving ? (1 << 31) : 0);
-    encodedThroughput.y = packedFlagSet(
-      encodedThroughput.y, pathState.continuePath ? (1 << 31) : 0);
-    encodedThroughput.z = packedFlagSet(
-      encodedThroughput.z, pathState.insideMedium ? (1 << 31) : 0);
-
-    ret.encodedRadiance = encodedRadiance;
-    ret.encodedThroughput = encodedThroughput;
-    ret.accumulatedHitDistance = pathState.accumulatedHitDistance;
-    ret.segmentHitDistance = pathState.segmentHitDistance;
-    ret.solidAnglePdfAndNeeCacheCellOffset = (float16BitsToUint16(pathState.solidAnglePdf) | (uint32_t(pathState.neeCacheCellOffset) << 16));
-
-    
-    return ret;
-  }
-
-  uint bounceIteration() 
-  {
-    return data0 & 0xf;
-  }
-
-#ifdef RAY_PIPELINE
-  PathState unpack()
-  {
-    PathState pathState;
-
-    pathState.pixelCoordinate = DispatchRaysIndex().xy;
-
-    pathState.bounceIteration = bounceIteration();
-    pathState.coneSpreadAngle = uint16BitsToHalf(data0 >> 8);
-    pathState.restirGiHasHitGeometry = (data0 >> 4) & 0b1;
-    pathState.restirGiHasHitOpaque = (data0 >> 5) & 0b1;
-    pathState.origin = origin;
-    pathState.direction = snorm2x16ToSphereDirection(encodedDirection);
-
-    pathState.radiance = abs(uintBitsToFloat(encodedRadiance));
-    pathState.throughput = abs(uintBitsToFloat(encodedThroughput));
-    pathState.coneRadius = unpackFloat2x16(coneRadiusAndHitDistance).x;
-    pathState.firstBounceHitDistance = unpackFloat2x16(coneRadiusAndHitDistance).y;
-    pathState.mediumMaterialIndex =
-      ((data0 >> 24) & 0xff) |
-      (((data1 >> 20) & 0xff) << 8);
-
-    pathState.continueResolving = packedFlagGet(encodedThroughput.x, 1 << 31);
-    pathState.continuePath = packedFlagGet(encodedThroughput.y, 1 << 31);
-    pathState.insideMedium = packedFlagGet(encodedThroughput.z, 1 << 31);
-    pathState.decalEncountered = packedFlagGet(encodedRadiance.y, 1 << 31);
-
-    pathState.enableNeeCacheAfterFirstBounce = (data1 >> 6) & 0b1;
-    pathState.restirGiHasFoundRoughSurface = (data1 >> 7) & 0b1;
-    pathState.rayMask = (data1 >> 8) & 0xff;
-    pathState.portalSpace = (data1 >> 16) & 0b11;
-    pathState.indirectLightPortalID = (data1 >> 18) & 0b11;
-    pathState.accumulatedHitDistance = accumulatedHitDistance;
-    pathState.segmentHitDistance = segmentHitDistance;
-    pathState.solidAnglePdf = uint16BitsToHalf(solidAnglePdfAndNeeCacheCellOffset & 0xffff);
-    pathState.neeCacheCellOffset = (solidAnglePdfAndNeeCacheCellOffset >> 16);
-
-    return pathState;
-  }
-#ifdef RT_SHADER_EXECUTION_REORDERING
+#if defined(RAY_PIPELINE) && defined(RT_SHADER_EXECUTION_REORDERING)
   bool shouldReorder(out uint coherenceHints, out uint numCoherenceHints)
   {
     coherenceHints = 0;
@@ -238,7 +234,7 @@ struct MemoryPathState : IPayload
     if (cb.enableSeparateUnorderedApproximations &&
         cb.enableUnorderedResolveInIndirectRays) 
     {
-      addCoherenceHintAsLeastImportant1Bit(bounceIteration() <= 1, coherenceHints, numCoherenceHints);
+      addCoherenceHintAsLeastImportant1Bit(bounceIteration <= 1, coherenceHints, numCoherenceHints);
     }
 
     return true;
@@ -252,8 +248,6 @@ struct MemoryPathState : IPayload
     return false;
   }
 #endif
-
-#endif // defined(RAY_PIPELINE)
 }
 
 struct DirectPathTextures

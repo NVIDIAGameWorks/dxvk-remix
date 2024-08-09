@@ -44,7 +44,7 @@
 #include "rtx/algorithm/geometry_resolver.slangh"
 
 [shader("miss")]
-void main(inout MemoryGeometryPSRResolverState rayPayload : SV_RayPayload)
+void main(inout GeometryPSRResolverState rayPayload : SV_RayPayload)
 {
   // Construct a Ray Hit Info for the miss
 
@@ -53,9 +53,6 @@ void main(inout MemoryGeometryPSRResolverState rayPayload : SV_RayPayload)
   // Invoke the Geometry PSR Resolver Vertex function and handle the payload
 
   EmptyExtraArgs extraArgs;
-  GeometryPSRResolverState geometryPSRResolverState = rayPayload.unpack();
 
-  geometryPSRResolverVertex(extraArgs, rayHitInfo, geometryPSRResolverState);
-
-  rayPayload = MemoryGeometryPSRResolverState::pack(geometryPSRResolverState);
+  geometryPSRResolverVertex(extraArgs, rayHitInfo, rayPayload);
 }

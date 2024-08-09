@@ -78,7 +78,7 @@
 #include "rtx/algorithm/integrator_indirect.slangh"
 
 [shader("closesthit")]
-void main(inout MemoryPathState rayPayload : SV_RayPayload, in float2 barycentricCoordinates : SV_IntersectionAttributes)
+void main(inout PathState rayPayload : SV_RayPayload, in float2 barycentricCoordinates : SV_IntersectionAttributes)
 {
   // Construct a Ray Hit Info from the hit
 
@@ -93,9 +93,5 @@ void main(inout MemoryPathState rayPayload : SV_RayPayload, in float2 barycentri
   indirectPathTextures.RestirGIRadiance = RestirGIRadiance;
   indirectPathTextures.RestirGIHitGeometry = RestirGIHitGeometry;
 
-  PathState pathState = rayPayload.unpack();
-
-  integratePathVertex(indirectPathTextures, rayHitInfo, pathState);
-
-  rayPayload = MemoryPathState::pack(pathState);
+  integratePathVertex(indirectPathTextures, rayHitInfo, rayPayload);
 }

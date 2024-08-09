@@ -26,7 +26,6 @@
 #pragma once
 
 #include "rtx/utility/debug_view_helpers.slangh"
-#include "rtx/concept/payload/payload.slangh"
 
 // Use this macro as the 'segmentHitDistance' parameter to the RESOLVE_XX macros when shortening the ray is unnecessary
 #define SEGMENT_HIT_DISTANCE_UNUSED 0
@@ -54,7 +53,7 @@ void addGlobalReorderIDCoherenceHint(inout uint coherenceHint, inout uint numCoh
 }
 #endif
 
-void TraceRayCustom<payload_t : IPayload>(
+void TraceRayCustom<payload_t : IBasePayloadState>(
     RaytracingAccelerationStructure accelerationStructure,
     uint                            rayFlags,
     uint                            rayMask,
@@ -86,7 +85,7 @@ void TraceRayCustom<payload_t : IPayload>(
 
 #else  // !defined(RT_SHADER_EXECUTION_REORDERING)
 
-void TraceRayCustom<payload_t : IPayload>(
+void TraceRayCustom<payload_t : IBasePayloadState>(
     RaytracingAccelerationStructure accelerationStructure,
     uint                            rayFlags,
     uint                            rayMask,
@@ -185,9 +184,9 @@ void ReorderThread(uint CoherenceHint, uint NumCoherenceHintBits) {}
 #ifdef RT_TRACE_RAY
 
 #define RESOLVE_RAY_TRACE(                                                                \
-  extraArgs, ray, flags, sbtRecordOffset,                                   \
+  extraArgs, ray, flags, sbtRecordOffset,                                                 \
   hitFunction,                                                                            \
-  maxInteractions, payload, encodedPayloadType, segmentHitDistance,                       \
+  maxInteractions, payload, segmentHitDistance,                                           \
   interactionsDebugView1, interactionsDebugView2)                                         \
 {                                                                                         \
   /* Initialize the payload with the current ray's state */                               \
@@ -217,30 +216,22 @@ void ReorderThread(uint CoherenceHint, uint NumCoherenceHintBits) {}
     /* - interactionIteration                                               */            \
     /* - currentRay.tMax                                                    */            \
                                                                                           \
-{                                                                                        \
-  /* Encode the Payload and set to the Ray Payload binding */                            \
-                                                                                         \
-  encodedPayloadType encodedPayload = encodedPayloadType::pack(payload);                 \
-                                                                                         \
-  /* Invoke Trace Ray */                                                                 \
-                                                                                         \
-  /* Note: CHS responsible for decoding the payload, calling the proper hit function, */ \
-  /* and then encoding the payload once again. This behavior must be done to match */    \
-  /* the RayQuery path. */                                                               \
-  TraceRayCustom(                                                                        \
-    topLevelAS,                                                                          \
-    flags, uint(payload.rayMask),                                                        \
-    sbtRecordOffset, /* sbtRecordOffset */                                               \
-    0, /* sbtRecordStride */                                                             \
-    0, /* missIndex */                                                                   \
-    currentRay,                                                                          \
-    encodedPayload                                                                       \
-  );                                                                                     \
-                                                                                         \
-  /* Decode the Payload from the Ray Payload binding */                                  \
-                                                                                         \
-  payload = encodedPayload.unpack();                                                     \
-}                                                                                        \
+{                                                                                         \
+  /* Invoke Trace Ray */                                                                  \
+                                                                                          \
+  /* Note: CHS responsible for decoding the payload, calling the proper hit function, */  \
+  /* and then encoding the payload once again. This behavior must be done to match */     \
+  /* the RayQuery path. */                                                                \
+  TraceRayCustom(                                                                         \
+    topLevelAS,                                                                           \
+    flags, uint(payload.rayMask),                                                         \
+    sbtRecordOffset, /* sbtRecordOffset */                                                \
+    0, /* sbtRecordStride */                                                              \
+    0, /* missIndex */                                                                    \
+    currentRay,                                                                           \
+    payload                                                                               \
+  );                                                                                      \
+}                                                                                         \
                                                                                           \
     /* Check if the resolve loop should continue */                                       \
                                                                                           \
@@ -264,7 +255,7 @@ void ReorderThread(uint CoherenceHint, uint NumCoherenceHintBits) {}
 #define RESOLVE_RAY_TRACE(                                                                \
   extraArgs, ray, flags, sbtRecordOffset,                                                 \
   hitFunction,                                                                            \
-  maxInteractions, payload, encodedPayloadType, segmentHitDistance,                       \
+  maxInteractions, payload, segmentHitDistance,                                           \
   interactionsDebugView1, interactionsDebugView2)                                         \
   RESOLVE_RAY_QUERY(extraArgs, ray, flags, hitFunction, maxInteractions, payload, segmentHitDistance)
 
