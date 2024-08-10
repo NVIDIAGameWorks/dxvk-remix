@@ -1096,13 +1096,22 @@ void geometryResolverVertex(
 
   geometryResolverState.decalEncountered = false;
   
+  // We only need to use billboards here when Portals are in play
+#if SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK == SURFACE_MATERIAL_RESOLVE_TYPE_ALL
+  #define GBUFFER_RAY_FLAGS (RAY_FLAG_CULL_OPAQUE)
+  const bool useIntersectionBillboards = cb.enableBillboardOrientationCorrection && (geometryResolverState.directionAltered || cb.useIntersectionBillboardsOnPrimaryRays);
+#else
+  #define GBUFFER_RAY_FLAGS (RAY_FLAG_CULL_OPAQUE | RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES)
+  const bool useIntersectionBillboards = false;
+#endif
+  
   uint4 decalMemory = 0;
   f16vec3 decalEmissiveRadiance = f16vec3(0);
   int surfaceIndex;
-  resolveVertexUnordered(
+  resolveVertexUnordered<GBUFFER_RAY_FLAGS>(
     resolveMode, unorderedResolveRay,
     unorderedRayMask, geometryResolverState.portalSpace,
-    /* useIntersectionBillboards = */ cb.enableBillboardOrientationCorrection && (geometryResolverState.directionAltered || cb.useIntersectionBillboardsOnPrimaryRays),
+    useIntersectionBillboards,
     geometryResolverState.pixelCoordinate,
     geometryResolverState.accumulatedRotation, geometryResolverState.accumulatedHitDistance,
     radianceAttenuation, emissiveRadiance,
@@ -1626,7 +1635,7 @@ void geometryPSRResolverVertex(
   uint4 decalMemory = 0;
   f16vec3 decalEmissiveRadiance = f16vec3(0);
   int surfaceIndex;
-  resolveVertexUnordered(
+  resolveVertexUnordered<RAY_FLAG_CULL_OPAQUE>(
     resolveMode, unorderedResolveRay,
     unorderedRayMask, geometryPSRResolverState.portalSpace,
     /* useIntersectionBillboards = */ cb.enableBillboardOrientationCorrection,

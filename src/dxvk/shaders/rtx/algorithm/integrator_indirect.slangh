@@ -235,7 +235,7 @@ void integratePathVertex(
       | (cb.enableUnorderedEmissiveParticlesInIndirectRays ? OBJECT_MASK_UNORDERED_ALL_EMISSIVE : 0);
     unorderedRayMask = convertPrimaryRayMaskToUnordered(pathState.rayMask, unorderedRayMask);
     
-    resolveVertexUnordered(
+    resolveVertexUnordered<RAY_FLAG_CULL_OPAQUE>(
       resolveMode, unorderedResolveRay,
       unorderedRayMask, pathState.portalSpace,
       /* useIntersectionBillboards = */ cb.enableBillboardOrientationCorrection,
