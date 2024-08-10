@@ -1071,17 +1071,22 @@ namespace dxvk {
       currentInstance.m_vkInstance.flags &= ~VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
     }
 
+    currentInstance.m_vkInstance.instanceCustomIndex = (currentInstance.m_vkInstance.instanceCustomIndex & ~(surfaceMaterialTypeMask << CUSTOM_INDEX_MATERIAL_TYPE_BIT));
+
     // Extra instance meta data needed for Opacity Micromap Manager 
     {
       switch (materialData.getType()) {
       case MaterialDataType::Opaque:
         currentInstance.m_isAnimated = materialData.getOpaqueMaterialData().getSpriteSheetFPS() != 0;
+        currentInstance.m_vkInstance.instanceCustomIndex |= (surfaceMaterialTypeOpaque << CUSTOM_INDEX_MATERIAL_TYPE_BIT);
         break;
       case MaterialDataType::Translucent:
         currentInstance.m_isAnimated = materialData.getTranslucentMaterialData().getSpriteSheetFPS() != 0;
+        currentInstance.m_vkInstance.instanceCustomIndex |= (surfaceMaterialTypeTranslucent << CUSTOM_INDEX_MATERIAL_TYPE_BIT);
         break;
       case MaterialDataType::RayPortal:
         currentInstance.m_isAnimated = materialData.getRayPortalMaterialData().getSpriteSheetFPS() != 0;
+        currentInstance.m_vkInstance.instanceCustomIndex |= (surfaceMaterialTypeRayPortal << CUSTOM_INDEX_MATERIAL_TYPE_BIT);
         break;
       default:
         currentInstance.m_isAnimated = false;

@@ -398,84 +398,41 @@ struct RtOpaqueSurfaceMaterial {
 
   void writeGPUData(unsigned char* data, std::size_t& offset) const {
     [[maybe_unused]] const std::size_t oldOffset = offset;
-    uint32_t flags = (0 << 30); // Note: Bit 30 and 31 of last word set to 0 for opaque material type
+    uint8_t flags = 0;
 
-    // Bytes 0-3
-    if (m_albedoOpacityTextureIndex != kSurfaceMaterialInvalidTextureIndex) {
-      writeGPUHelperExplicit<2>(data, offset, m_albedoOpacityTextureIndex);
-      writeGPUPadding<2>(data, offset); // Note: Padding for unused space
-      flags |= OPAQUE_SURFACE_MATERIAL_FLAG_HAS_ALBEDO_TEXTURE;
-    } else {
-      writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_albedoOpacityConstant.x));
-      writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_albedoOpacityConstant.y));
-      writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_albedoOpacityConstant.z));
-      writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_albedoOpacityConstant.w));
-    }
-
-    // Bytes 4-5
-    writeGPUHelperExplicit<2>(data, offset, m_tangentTextureIndex);
-
-    // Bytes 6-7
-    if (m_roughnessTextureIndex != kSurfaceMaterialInvalidTextureIndex) {
-      writeGPUHelperExplicit<2>(data, offset, m_roughnessTextureIndex);
-      flags |= OPAQUE_SURFACE_MATERIAL_FLAG_HAS_ROUGHNESS_TEXTURE;
-    } else {
-      writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_roughnessConstant));
-      writeGPUPadding<1>(data, offset); // Note: Padding for unused space
-    }
-
-    // Bytes 8-9
-    if (m_metallicTextureIndex != kSurfaceMaterialInvalidTextureIndex) {
-      writeGPUHelperExplicit<2>(data, offset, m_metallicTextureIndex);
-      flags |= OPAQUE_SURFACE_MATERIAL_FLAG_HAS_METALLIC_TEXTURE;
-    } else {
-      writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_metallicConstant));
-      writeGPUPadding<1>(data, offset); // Note: Padding for unused space
-    }
-
-    // Bytes 10-12
-    if (m_emissiveColorTextureIndex != kSurfaceMaterialInvalidTextureIndex) {
-      writeGPUHelperExplicit<2>(data, offset, m_emissiveColorTextureIndex);
-      writeGPUPadding<1>(data, offset); // Note: Padding for unused space
-      flags |= OPAQUE_SURFACE_MATERIAL_FLAG_HAS_EMISSIVE_TEXTURE;
-    } else {
-      writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.x));
-      writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.y));
-      writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.z));
-    }
-
-    // Byte 13
-    writeGPUHelper(data, offset, packSnorm<8, uint8_t>(m_anisotropy));
-
-    // Bytes 14-15
+    // Bytes 0-15
+    writeGPUHelperExplicit<2>(data, offset, m_samplerIndex);
+    writeGPUHelperExplicit<2>(data, offset, m_albedoOpacityTextureIndex);
     writeGPUHelperExplicit<2>(data, offset, m_normalTextureIndex);
+    writeGPUHelperExplicit<2>(data, offset, m_roughnessTextureIndex);
+    writeGPUHelperExplicit<2>(data, offset, m_metallicTextureIndex);
+    writeGPUHelperExplicit<2>(data, offset, m_emissiveColorTextureIndex);
+    writeGPUHelperExplicit<2>(data, offset, m_heightTextureIndex);
+    writeGPUHelperExplicit<2>(data, offset, m_subsurfaceMaterialIndex);
 
-    // Bytes 16-17
+    // Bytes 15-19
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_albedoOpacityConstant.x));
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_albedoOpacityConstant.y));
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_albedoOpacityConstant.z));
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_albedoOpacityConstant.w));
+
+    // Bytes 19-23
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_roughnessConstant));
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_metallicConstant));
     assert(m_cachedEmissiveIntensity <= FLOAT16_MAX);
     writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedEmissiveIntensity));
 
-    // Bytes 18-19
-    writeGPUHelperExplicit<2>(data, offset, m_samplerIndex);
+    // Bytes 23-27
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.x));
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.y));
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.z));
+    writeGPUHelper(data, offset, packSnorm<8, uint8_t>(m_anisotropy));
 
-    // Bytes 20-23
+    // Bytes 27-31
     float displaceIn = m_displaceIn * getDisplacementFactor();
     assert(displaceIn <= FLOAT16_MAX);
     writeGPUHelper(data, offset, glm::packHalf1x16(displaceIn));
-    writeGPUHelperExplicit<2>(data, offset, m_heightTextureIndex);
-
-    // Bytes 24-26
-    if (m_subsurfaceMaterialIndex != kSurfaceMaterialInvalidTextureIndex) {
-      writeGPUHelperExplicit<2>(data, offset, m_subsurfaceMaterialIndex);
-      writeGPUPadding<1>(data, offset); // Note: Padding for unused space
-      flags |= OPAQUE_SURFACE_MATERIAL_FLAG_HAS_SUBSURFACE_MATERIAL;
-    } else {
-      writeGPUPadding<3>(data, offset); // Note: Padding for unused space
-    }
-
-    // Byte 27
     writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_cachedThinFilmNormalizedThicknessConstant));
-
-    // Bytes 28-31
     if (m_enableThinFilm) {
       flags |= OPAQUE_SURFACE_MATERIAL_FLAG_USE_THIN_FILM_LAYER;
 
@@ -489,7 +446,6 @@ struct RtOpaqueSurfaceMaterial {
     if (m_ignoreAlphaChannel) {
       flags |= OPAQUE_SURFACE_MATERIAL_FLAG_IGNORE_ALPHA_CHANNEL;
     }
-
     writeGPUHelper(data, offset, flags);
 
     assert(offset - oldOffset == kSurfaceMaterialGPUSize);

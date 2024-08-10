@@ -51,4 +51,10 @@
 #define SUBSURFACE_MATERIAL_FLAG_HAS_THICKNESS_TEXTURE                (1 << 1)
 #define SUBSURFACE_MATERIAL_FLAG_HAS_SINGLE_SCATTERING_ALBEDO_TEXTURE (1 << 2)
 
+
+static const uint8_t surfaceMaterialTypeOpaque = uint8_t(0u);
+static const uint8_t surfaceMaterialTypeTranslucent = uint8_t(1u);
+static const uint8_t surfaceMaterialTypeRayPortal = uint8_t(2u);
+static const uint8_t surfaceMaterialTypeMask = uint8_t(0x3u);
+
 #endif // ifndef SHARED_CONSTANTS_H

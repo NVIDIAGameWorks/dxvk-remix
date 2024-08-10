@@ -748,6 +748,7 @@ namespace dxvk {
         MemoryBillboard& memory = memoryBillboards[index];
         memory.center = billboard.center;
         memory.surfaceIndex = billboard.instance->getSurfaceIndex();
+        memory.materialType = (billboard.instance->getVkInstance().instanceCustomIndex >> CUSTOM_INDEX_MATERIAL_TYPE_BIT) & surfaceMaterialTypeMask;
         memory.inverseHalfWidth = 2.f / billboard.width;
         memory.inverseHalfHeight = 2.f / billboard.height;
         memory.xAxis = billboard.xAxis;

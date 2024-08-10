@@ -71,7 +71,7 @@ f16vec3 handleVisibilityVertex(Ray ray, RayHitInfo rayHitInfo, uint8_t visibilit
 
   const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[rayInteraction.surfaceIndex];
   
-  const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
+  const uint8_t polymorphicType = rayInteraction.materialType;
 
   if (polymorphicType == surfaceMaterialTypeOpaque)
   {
