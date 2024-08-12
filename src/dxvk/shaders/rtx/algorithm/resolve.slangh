@@ -743,7 +743,7 @@ uint8_t convertPrimaryRayMaskToUnordered(uint8_t primaryRayMask, uint8_t unorder
 
 // Handles unordered Resolve operations within the resolve loop which do not depend on the typical ordered execution
 // for the resolve logic.
-void resolveVertexUnordered(
+void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
   uint8_t resolveMode, Ray ray, uint rayMask,
   PortalSpace2BitsType portalSpace,
   bool useIntersectionBillboards,
@@ -779,14 +779,15 @@ void resolveVertexUnordered(
 
   // Loop over each non-opaque object in the ray's path
 
-  RayQuery<0> rayQuery;
-
-  RayDesc rayDesc;
-  rayDesc.Origin = ray.origin;
-  rayDesc.Direction = ray.direction;
-  rayDesc.TMin = 0;
-  rayDesc.TMax = ray.tMax;
-  rayQuery.TraceRayInline(unorderedTLAS, rayFlags, rayMask, rayDesc);
+  RayQuery<RAY_FLAGS> rayQuery;
+  {
+    RayDesc rayDesc;
+    rayDesc.Origin = ray.origin;
+    rayDesc.Direction = ray.direction;
+    rayDesc.TMin = 0;
+    rayDesc.TMax = ray.tMax;
+    rayQuery.TraceRayInline(unorderedTLAS, RAY_FLAGS, rayMask, rayDesc);
+  }
 
   // Note: The number of actual relevant hits along the unordered traversal.
   numInteractions = 0;
@@ -808,19 +809,22 @@ void resolveVertexUnordered(
   uint maxSortOrder = 0;
   // TODO[REMIX-3080] Unusued for now, will be needed for normal blending
   // f16mat3 worldToDecalTangent = f16mat3(0);
+  const uint kMaxUnorderedResolveSteps = 64;
 #else
   float minDecalSample = -1.f;
   uint maxOpaqueSortOrder = 0;
   uint sampledSortOrder = 0;
+  const uint kMaxUnorderedResolveSteps = 32;
 #endif
 
-  while (rayQuery.Proceed())
+  for(uint step=0 ; step<kMaxUnorderedResolveSteps && rayQuery.Proceed() ; step++)
   {
     RayHitInfo rayHitInfo;
     RayInteraction rayInteraction;
     SurfaceInteraction surfaceInteraction;
 
-    const bool isTriangle = rayQuery.CandidateType() == CANDIDATE_NON_OPAQUE_TRIANGLE;
+    // Note: Using template parameter here, which should eliminate this branch for gbuffer (since we dont use intersection AABBs there in most cases).
+    const bool isTriangle = (RAY_FLAGS & RAY_FLAG_SKIP_PROCEDURAL_PRIMITIVES) || rayQuery.CandidateType() == CANDIDATE_NON_OPAQUE_TRIANGLE;
 
     if (isTriangle)
     {
@@ -1029,12 +1033,6 @@ void resolveVertexUnordered(
 #endif
           decalEncountered = true;
         }
-        
-        // account for these interactions for debug view
-        numInteractions += 1;
-
-        // don't include decals in the opaque approximation.
-        continue;
       }
       else 
       {
@@ -1061,53 +1059,58 @@ void resolveVertexUnordered(
         f16vec3(1.0f), currentRadianceAttenuation, currentEmissiveRadiance);
     }
 
-    // Calculate a blend softening factor
-    // Note: This is done to avoid raster particles handled by this seprated logic from clipping in ugly ways against geometry by
-    // fading out portions of particles closer to walls. Only done for Surfaces labeled as particles.
-
-    const float16_t softBlendFactor = saturate((ray.tMax - rayHitInfo.hitDistance) / (ray.tMax * uint16BitsToHalf(cb.particleSoftnessFactor)));
-    const float16_t blendFactor = surface.isParticle ? softBlendFactor : float16_t(1.0);
-
-    currentRadianceAttenuation = mix(float16_t(1.0f), currentRadianceAttenuation, blendFactor);
-    currentEmissiveRadiance = mix(vec3(0.0f), currentEmissiveRadiance, blendFactor);
-
-    if (any(currentEmissiveRadiance) > 0)
+    if (!isTriangle || !surfaceIsDecal(surface))
     {
-      surfaceIndex = rayInteraction.surfaceIndex;
-    }
+      // Calculate a blend softening factor
+      // Note: This is done to avoid raster particles handled by this seprated logic from clipping in ugly ways against geometry by
+      // fading out portions of particles closer to walls. Only done for Surfaces labeled as particles.
 
-    // Find the lowest item in the bins
+      const float16_t softBlendFactor = saturate((ray.tMax - rayHitInfo.hitDistance) / (ray.tMax * uint16BitsToHalf(cb.particleSoftnessFactor)));
+      const float16_t blendFactor = surface.isParticle ? softBlendFactor : float16_t(1.0);
 
-    uint lowestIndex;
-    float16_t lowestDistance;
-    f16vec4 lowestRadianceAndAttenuation;
+      currentRadianceAttenuation = mix(float16_t(1.0f), currentRadianceAttenuation, blendFactor);
+      currentEmissiveRadiance = mix(vec3(0.0f), currentEmissiveRadiance, blendFactor);
 
-    findLowestBin(
-      binnedRadiancesAndAttenuation, binDistances,
-      lowestIndex, lowestDistance, lowestRadianceAndAttenuation);
+      if (any(currentEmissiveRadiance) > 0)
+      {
+        surfaceIndex = rayInteraction.surfaceIndex;
+      }
 
-    // Accumulate the lowest bin into the radiance and attenuation
+      // Find the lowest item in the bins
 
-#ifdef RESOLVER_USE_VOLUMETRIC_ATTENUATION
-    // Note: Volume attenuation calculated only for the current ray start to the current hit surface, not accumulated
-    // into the attenuation as this will be handled later by the ordered resolve logic (and we do not want to incorrectly
-    // accumulate volume radiance multiple times for overlapping unordered segments).
-    const f16vec3 volumeAttenuation = evalVolumetricAttenuation(cb.volumeArgs, true, lowestDistance);
+      uint lowestIndex;
+      float16_t lowestDistance;
+      f16vec4 lowestRadianceAndAttenuation;
+
+      findLowestBin(
+        binnedRadiancesAndAttenuation, binDistances,
+        lowestIndex, lowestDistance, lowestRadianceAndAttenuation);
+
+      // Accumulate the lowest bin into the radiance and attenuation
+
+ #ifdef RESOLVER_USE_VOLUMETRIC_ATTENUATION
+      // Note: Volume attenuation calculated only for the current ray start to the current hit surface, not accumulated
+      // into the attenuation as this will be handled later by the ordered resolve logic (and we do not want to incorrectly
+      // accumulate volume radiance multiple times for overlapping unordered segments).
+      const f16vec3 volumeAttenuation = evalVolumetricAttenuation(cb.volumeArgs, true, lowestDistance);
 #else
-    // Note: Set to 1 here rather than removing it from the emissive radiance statement to not have to duplicate that code.
-    const f16vec3 volumeAttenuation = f16vec3(1.0f, 1.0f, 1.0f);
+      // Note: Set to 1 here rather than removing it from the emissive radiance statement to not have to duplicate that code.
+      const f16vec3 volumeAttenuation = f16vec3(1.0f, 1.0f, 1.0f);
 #endif
 
-    emissiveRadiance += lowestRadianceAndAttenuation.rgb * radianceAttenuation * volumeAttenuation;
-    // Hack: This is done as a workaround for a compiler bug (REMIX-1551), should be revertex back to what it was originally to avoid
-    // increased register pressure in resolving.
-    radianceAttenuation = f16vec3(vec3(radianceAttenuation) * float(lowestRadianceAndAttenuation.a));
-    // radianceAttenuation *= lowestRadianceAndAttenuation.a;
+      emissiveRadiance += lowestRadianceAndAttenuation.rgb * radianceAttenuation * volumeAttenuation;
+      // Hack: This is done as a workaround for a compiler bug (REMIX-1551), should be revertex back to what it was originally to avoid
+      // increased register pressure in resolving.
+      radianceAttenuation = f16vec3(vec3(radianceAttenuation) * float(lowestRadianceAndAttenuation.a));
+      // radianceAttenuation *= lowestRadianceAndAttenuation.a;
 
-    // Replace the lowest bin with the current iteration's information
+      // Replace the lowest bin with the current iteration's information
 
-    writeColumn(binnedRadiancesAndAttenuation, f16vec4(currentEmissiveRadiance, currentRadianceAttenuation), lowestIndex);
-    writeComponent(binDistances, float16_t(rayHitInfo.hitDistance), lowestIndex);
+      writeColumn(binnedRadiancesAndAttenuation, f16vec4(currentEmissiveRadiance, currentRadianceAttenuation), lowestIndex);
+      writeComponent(binDistances, float16_t(rayHitInfo.hitDistance), lowestIndex);
+    }
+    
+    // Do picking (in non PSR primary rays) only, and also make sure to do it here to include decals
 
 #ifdef RAY_TRACING_PRIMARY_RAY
 #ifndef GBUFFER_PSR
@@ -1142,7 +1145,7 @@ void resolveVertexUnordered(
   // Note: This has to be done as there will be remaining items in the bins (up to 4) which need to be accumulated in most cases after
   // the main loop finishes.
 
-  for (uint i = 0; i < 4; ++i)
+  for (uint i = 0; i < 4 ; ++i)
   {
     // Find the lowest item in the bins
 
