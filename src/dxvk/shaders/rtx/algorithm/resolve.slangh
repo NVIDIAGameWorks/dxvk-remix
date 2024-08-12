@@ -1145,8 +1145,7 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
   // Note: This has to be done as there will be remaining items in the bins (up to 4) which need to be accumulated in most cases after
   // the main loop finishes.
 
-  for (
-uint i = 0;i < 4; ++i)
+  for (uint i = 0; i < 4 ; ++i)
   {
     // Find the lowest item in the bins
 
