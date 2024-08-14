@@ -33,16 +33,12 @@ RayPortalSurfaceMaterial rayPortalSurfaceMaterialCreate(uint16_t surfaceMaterial
   const u16vec2 data01 = unpack16(memoryPolymorphicSurfaceMaterial.data0.y);
   const u16vec2 data02 = unpack16(memoryPolymorphicSurfaceMaterial.data0.z);
   const u16vec2 data03 = unpack16(memoryPolymorphicSurfaceMaterial.data0.w);
-  const u16vec2 data10 = unpack16(memoryPolymorphicSurfaceMaterial.data1.x);
-  const u16vec2 data11 = unpack16(memoryPolymorphicSurfaceMaterial.data1.y);
-  const u16vec2 data12 = unpack16(memoryPolymorphicSurfaceMaterial.data1.z);
-  // Note: Last two bits of data1.w (or data13 in this case) are reserved for common polymorphic type
-  const u16vec2 data13 = unpack16(memoryPolymorphicSurfaceMaterial.data1.w);
 
-  rayPortalSurfaceMaterial.maskTextureIndex = data00.x;
-  rayPortalSurfaceMaterial.maskTextureIndex2 = data00.y;
-  rayPortalSurfaceMaterial.rayPortalIndex = uint8_t(data01.x);
-  // Note: 8 bit unused here in data01.x.
+  rayPortalSurfaceMaterial.rayPortalIndex = uint8_t(data00.x >> 8);
+
+  rayPortalSurfaceMaterial.maskTextureIndex = data00.y;
+  rayPortalSurfaceMaterial.maskTextureIndex2 = data01.x;
+
   rayPortalSurfaceMaterial.rotationSpeed = uint16BitsToHalf(data01.y);
   rayPortalSurfaceMaterial.emissiveIntensity = uint16BitsToHalf(data02.x);
   rayPortalSurfaceMaterial.samplerIndex = data02.y;
