@@ -48,8 +48,7 @@ OpaqueSurfaceMaterial opaqueSurfaceMaterialCreate(uint16_t surfaceMaterialIndex,
   opaqueSurfaceMaterial.heightTextureIndex = data02.x;
   opaqueSurfaceMaterial.subsurfaceMaterialIndex = data02.y;
   
-  // TODO: Can use SIMD here
-  opaqueSurfaceMaterial.albedoOpacityConstant = f16vec4(unorm8ToF16(uint8_t(data03.x)), unorm8ToF16(uint8_t(data03.x >> 8u)), unorm8ToF16(uint8_t(data03.y)), unorm8ToF16(uint8_t(data03.y >> 8u)));
+  opaqueSurfaceMaterial.albedoOpacityConstant = unpackUnorm4x8(memoryPolymorphicSurfaceMaterial.data0.w);
   
   opaqueSurfaceMaterial.tangentTextureIndex = BINDING_INDEX_INVALID;
 
