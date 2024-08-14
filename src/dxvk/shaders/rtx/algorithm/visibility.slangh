@@ -126,7 +126,7 @@ f16vec3 handleVisibilityVertex(Ray ray, RayHitInfo rayHitInfo, uint8_t visibilit
   }
   else if (polymorphicType == surfaceMaterialTypeTranslucent && packedFlagGet(visibilityMode, visibilityModeEnableTranslucentMaterials))
   {
-    const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(rayInteraction.surfaceIndex, memoryPolymorphicSurfaceMaterial);
+    const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(rayInteraction.surfaceIndex, memoryPolymorphicSurfaceMaterial, true);
 
     // Extract the thin walled flag before evaluating the material interaction
     const bool isThinWalled = translucentSurfaceMaterial.thicknessOrMeasurementDistance < float16_t(0);

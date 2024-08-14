@@ -642,6 +642,8 @@ struct RtTranslucentSurfaceMaterial {
   void writeGPUData(unsigned char* data, std::size_t& offset) const {
     [[maybe_unused]] const std::size_t oldOffset = offset;
 
+    // For decode process, see translucent_surface_material.slangh
+
     uint8_t flags = surfaceMaterialTypeTranslucent;
 
     // Note: Respect override flag here to let the GPU do less work in determining if the diffuse layer should be used or not.
@@ -649,37 +651,39 @@ struct RtTranslucentSurfaceMaterial {
       flags |= TRANSLUCENT_SURFACE_MATERIAL_FLAG_USE_DIFFUSE_LAYER;
     }
 
-    // 4 Bytes
+    // 2 Bytes
     writeGPUHelper(data, offset, flags);
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.x));
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.y));
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.z));
-
-    // For decode process, see translucent_surface_material.slangh
-    // 8 Bytes
-    writeGPUHelperExplicit<2>(data, offset, m_normalTextureIndex);
-    writeGPUHelperExplicit<2>(data, offset, m_transmittanceTextureIndex);
-    writeGPUHelperExplicit<2>(data, offset, m_emissiveColorTextureIndex);
     writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_cachedBaseReflectivity));
-    // Note: Ensure IoR falls in the range expected by the encoding/decoding logic for the GPU (this should also be
-    // enforced in the MDL and relevant content pipeline to prevent this assert from being triggered).
-    assert(m_refractiveIndex >= 1.0f && m_refractiveIndex <= 3.0f);
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>((m_refractiveIndex - 1.0f) / 2.0f)); // data01.y & 0xff00
 
     // 6 Bytes
     writeGPUHelper(data, offset, glm::packHalf1x16(m_transmittanceColor.x));
     writeGPUHelper(data, offset, glm::packHalf1x16(m_transmittanceColor.y));
     writeGPUHelper(data, offset, glm::packHalf1x16(m_transmittanceColor.z));
 
-    // 2 Bytes
-    assert(m_cachedEmissiveIntensity <= FLOAT16_MAX);
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedEmissiveIntensity));
+    // 4 bytes
+    writeGPUHelperExplicit<2>(data, offset, m_samplerIndex);
+    writeGPUHelperExplicit<2>(data, offset, m_transmittanceTextureIndex);
 
     // 2 Bytes
     writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedTransmittanceMeasurementDistanceOrThickness));
 
-    // 2 bytes
-    writeGPUHelperExplicit<2>(data, offset, m_samplerIndex);
+
+    // 4 Bytes
+    writeGPUHelperExplicit<2>(data, offset, m_normalTextureIndex);
+    writeGPUHelperExplicit<2>(data, offset, m_emissiveColorTextureIndex);
+
+    // 2 Bytes
+    assert(m_cachedEmissiveIntensity <= FLOAT16_MAX);
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedEmissiveIntensity));
+
+    // 4 Bytes
+    // Note: Ensure IoR falls in the range expected by the encoding/decoding logic for the GPU (this should also be
+    // enforced in the MDL and relevant content pipeline to prevent this assert from being triggered).
+    assert(m_refractiveIndex >= 1.0f && m_refractiveIndex <= 3.0f);
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>((m_refractiveIndex - 1.0f) / 2.0f)); // data01.y & 0xff00
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.x));
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.y));
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.z));
 
     writeGPUPadding<8>(data, offset);
 
