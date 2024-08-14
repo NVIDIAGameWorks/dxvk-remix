@@ -418,15 +418,16 @@ struct RtOpaqueSurfaceMaterial {
     
     // Bytes 0-3
     writeGPUHelper(data, offset, flags);
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.x));
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.y));
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.z));
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_cachedThinFilmNormalizedThicknessConstant));
+    float displaceIn = m_displaceIn * getDisplacementFactor();
+    assert(displaceIn <= FLOAT16_MAX);
+    writeGPUHelper(data, offset, glm::packHalf1x16(displaceIn));
 
     // Bytes 4-11
     writeGPUHelperExplicit<2>(data, offset, m_samplerIndex);
     writeGPUHelperExplicit<2>(data, offset, m_albedoOpacityTextureIndex);
     writeGPUHelperExplicit<2>(data, offset, m_heightTextureIndex);
-    writeGPUHelperExplicit<2>(data, offset, m_emissiveColorTextureIndex);
+    writeGPUHelperExplicit<2>(data, offset, m_subsurfaceMaterialIndex);
 
     // Bytes 12-15
     writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_albedoOpacityConstant.x));
@@ -435,23 +436,22 @@ struct RtOpaqueSurfaceMaterial {
     writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_albedoOpacityConstant.w));
 
     // Bytes 16-19
-    assert(m_cachedEmissiveIntensity <= FLOAT16_MAX);
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedEmissiveIntensity));
-    float displaceIn = m_displaceIn * getDisplacementFactor();
-    assert(displaceIn <= FLOAT16_MAX);
-    writeGPUHelper(data, offset, glm::packHalf1x16(displaceIn));
-
-    // Bytes 20-27
-    writeGPUHelperExplicit<2>(data, offset, m_subsurfaceMaterialIndex);
+    writeGPUHelperExplicit<2>(data, offset, m_emissiveColorTextureIndex);
     writeGPUHelperExplicit<2>(data, offset, m_roughnessTextureIndex);
     writeGPUHelperExplicit<2>(data, offset, m_metallicTextureIndex);
     writeGPUHelperExplicit<2>(data, offset, m_normalTextureIndex);
 
+    // Bytes 20-27
+    assert(m_cachedEmissiveIntensity <= FLOAT16_MAX);
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedEmissiveIntensity));
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.x));
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.y));
+
     // Bytes 28-31
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.z));
     writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_roughnessConstant));
     writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_metallicConstant));
     writeGPUHelper(data, offset, packSnorm<8, uint8_t>(m_anisotropy));
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_cachedThinFilmNormalizedThicknessConstant));
 
     assert(offset - oldOffset == kSurfaceMaterialGPUSize);
   }
