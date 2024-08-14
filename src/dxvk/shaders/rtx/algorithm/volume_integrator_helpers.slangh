@@ -34,9 +34,8 @@ VisibilityResult evalVolumeNEEVisibility(
   // Note: Culling disabled via visibilityModeDisableCulling to avoid light leaking through geometry as this is especially
   // bad in volumetrics due to how the voxels leak through walls to begin with. Other NEE does not disable culling like this
   // due to this due single sided decal-like objects causing issues in some cases.
-  const VisibilityResult visibility = traceVisibilityRay(
-    visibilityRay, rayMask,
-    visibilityModeDisableCulling, sampledTransportPortalIndex, portalSpace);
+  const VisibilityResult visibility = traceVisibilityRay<visibilityModeDisableCulling>(
+    visibilityRay, rayMask, sampledTransportPortalIndex, portalSpace);
 
   return visibility;
 }

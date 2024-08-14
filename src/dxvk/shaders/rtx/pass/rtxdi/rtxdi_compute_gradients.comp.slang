@@ -38,9 +38,8 @@ float getSurfaceIlluminance(
   uint8_t rayMask = OBJECT_MASK_OPAQUE | (objectMask & OBJECT_MASK_ALL_DYNAMIC);
   if (cb.enableDirectTranslucentShadows) rayMask |= OBJECT_MASK_TRANSLUCENT;
 
-  VisibilityResult visibility = traceVisibilityRay<PomVisibilityDisabled>(minimalSurfaceInteraction,
+  VisibilityResult visibility = traceVisibilityRay<visibilityModeEnableTranslucentMaterials | visibilityModeEnableSubsurfaceMaterials>(minimalSurfaceInteraction,
     lightSample.position, rayMask,
-    visibilityModeEnableTranslucentMaterials,
     sampledTransportPortalIndex, portalSpace, false,
     coneRadiusAtSurface, cb.screenSpacePixelSpreadHalfAngle, 
     1.0, isViewModel, usePreviousTLAS);

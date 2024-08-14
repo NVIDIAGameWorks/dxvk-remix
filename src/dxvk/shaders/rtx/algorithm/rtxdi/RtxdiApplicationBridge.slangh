@@ -714,10 +714,9 @@ bool RAB_TraceLightSampleVisibility(RAB_Surface surface, RAB_LightSample lightSa
 
   const bool isSubsurface = isSubsurfaceMaterial(surface.opaqueSurfaceMaterialInteraction);
 
-  const VisibilityResult visibility = traceVisibilityRay<PomVisibilityDisabled>(
+  const VisibilityResult visibility = traceVisibilityRay<visibilityModeEnableSubsurfaceMaterials>(
     surface.minimalSurfaceInteraction, samplePos,
-    rayMask, visibilityModeNone,
-    expectedRayPortalIndex, surface.portalSpace, false,
+    rayMask, expectedRayPortalIndex, surface.portalSpace, false,
     0, 0, 1.0,
     surface.isViewModel,
     cb.enablePreviousTLAS && usePreviousTLAS,
@@ -738,10 +737,9 @@ bool RAB_TraceGISampleVisibility(RAB_Surface surface, RAB_Surface neighborSurfac
 
     const float3 dstPosition = reservoir.getVisibilityPoint(neighborSurface.minimalSurfaceInteraction.position);
 
-    const VisibilityResult visibility = traceVisibilityRay<PomVisibilityDisabled>(
+    const VisibilityResult visibility = traceVisibilityRay<visibilityModeNone>(
       neighborSurface.minimalSurfaceInteraction, dstPosition,
-      rayMask, visibilityModeNone,
-      portalID, surface.portalSpace, false,
+      rayMask, portalID, surface.portalSpace, false,
       0, 0, RAB_RESTIR_GI_VISIBILITY_SHORTENING,
       surface.isViewModel);
 
