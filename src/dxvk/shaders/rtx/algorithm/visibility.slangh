@@ -32,6 +32,9 @@ static const uint8_t visibilityModeAccurateHitDistance = uint8_t(1 << 0);       
 static const uint8_t visibilityModeEnableTranslucentMaterials = uint8_t(1 << 1); // Evaluate translucent materials or skip them
 static const uint8_t visibilityModeDisableCulling = uint8_t(1 << 2);             // Disable backface culling on triangles (ignoring the game's original winding and culling mode specifications).
 
+static const bool PomVisibilityEnabled = true;
+static const bool PomVisibilityDisabled = false;
+
 // Visibility Helper Functions
 
 // Returns the attenuation factor for the surface, i.e. (1.0 - opacity)
@@ -384,10 +387,10 @@ VisibilityResult traceVisibilityRay(
   return result;
 }
 
-VisibilityResult traceVisibilityRay(
+VisibilityResult traceVisibilityRay<let PomVisibilityEnabled : bool>(
   MinimalSurfaceInteraction minimalSurfaceInteraction, float3 targetPosition,
   uint8_t rayMask, uint8_t visibilityMode,
-  uint8_t expectedRayPortalIndex, PortalSpace2BitsType rayOriginPortalSpace,
+  uint8_t expectedRayPortalIndex, PortalSpace2BitsType rayOriginPortalSpace, bool pomOpaqueSurfaceEncountered,
   float16_t coneRadius = 0, float16_t spreadAngle = 0, float16_t tMaxFactor = 1.0h,
   // ViewModel instances shouldn't occlude anything but ViewModel surfaces and primary rays
   bool hasRayOriginatedFromViewModel = false,
@@ -419,30 +422,25 @@ VisibilityResult traceVisibilityRay(
 
   // Evaluate POM visibility
   float pomAttenuation = 1.0f;
-  if (cb.pomMode != DisplacementMode::Off && primarySurfaceIndex != BINDING_INDEX_INVALID)
+  if (PomVisibilityEnabled && cb.pomMode != DisplacementMode::Off && pomOpaqueSurfaceEncountered)
   {
     const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
-    const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
-    if (polymorphicType == surfaceMaterialTypeOpaque) {
-      OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(primarySurfaceIndex, memoryPolymorphicSurfaceMaterial);
+    OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(primarySurfaceIndex, memoryPolymorphicSurfaceMaterial);
 
-      if (opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID)
-      {
-        pomAttenuation = opaqueSurfaceMaterialInteractionCalcHeightThroughput(
-          minimalSurfaceInteraction, visibilityRay.direction, opaqueSurfaceMaterial.heightTextureIndex,
-          opaqueSurfaceMaterial.samplerIndex, texCoords, opaqueSurfaceMaterial.displaceIn
-        );
-        if (pomAttenuation <= 0.001f)
-        {
-          VisibilityResult result;
-          result.attenuation = pomAttenuation;
-          result.hasOpaqueHit = true;
-          result.rayDirection = visibilityRay.direction;
-          result.hitDistance = visibilityRay.tMax; // TODO should refactor POM code to return?
-          result.hasPOMHit = true;
-          return result;
-        }
-      }
+    pomAttenuation = opaqueSurfaceMaterialInteractionCalcHeightThroughput(
+      minimalSurfaceInteraction, visibilityRay.direction, opaqueSurfaceMaterial.heightTextureIndex,
+      opaqueSurfaceMaterial.samplerIndex, texCoords, opaqueSurfaceMaterial.displaceIn
+    );
+
+    if (pomAttenuation <= 0.001f)
+    {
+      VisibilityResult result;
+      result.attenuation = pomAttenuation;
+      result.hasOpaqueHit = true;
+      result.rayDirection = visibilityRay.direction;
+      result.hitDistance = visibilityRay.tMax; // TODO should refactor POM code to return?
+      result.hasPOMHit = true;
+      return result;
     }
   }
 #endif

@@ -82,6 +82,12 @@ struct GeometryFlags
     set { _encodedFlags = (_encodedFlags & ~(1 << 8)) | (newValue ? (1 << 8) : 0); }
   }
 
+  property bool pomOpaqueSurfaceEncountered
+  {
+    get { return (_encodedFlags & (1 << 9)) != 0; }
+    set { _encodedFlags = (_encodedFlags & ~(1 << 9)) | (newValue ? (1 << 9) : 0); }
+  }
+
 #if OBJECT_MASK_ALL_DYNAMIC_NUMBER_OF_ACTIVE_BITS > (16 - 12)
   "There is not enough bits in the encoded geometry flags for dynamic object mask."
 #endif   
