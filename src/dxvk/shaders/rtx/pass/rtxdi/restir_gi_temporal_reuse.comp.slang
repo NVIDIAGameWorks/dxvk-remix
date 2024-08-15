@@ -236,8 +236,8 @@ void main(int2 thread_id : SV_DispatchThreadID)
     uint8_t rayMask = OBJECT_MASK_OPAQUE | (surface.objectMask & OBJECT_MASK_ALL_DYNAMIC);
     const float infiniteHitT = 1e5;
     float3 dstPosition = worldPos + reflectionVector * infiniteHitT;
-    VisibilityResult visibility = traceVisibilityRay(surface.minimalSurfaceInteraction,
-      dstPosition, rayMask, visibilityModeAccurateHitDistance, backupPortalID, surface.portalSpace,
+    VisibilityResult visibility = traceVisibilityRay<PomVisibilityDisabled>(surface.minimalSurfaceInteraction,
+      dstPosition, rayMask, visibilityModeAccurateHitDistance, backupPortalID, surface.portalSpace, false,
       0, 0, RAB_RESTIR_GI_VISIBILITY_SHORTENING, surface.isViewModel);
     float reflectionHitT = visibility.hasOpaqueHit ? visibility.hitDistance : infiniteHitT;
 

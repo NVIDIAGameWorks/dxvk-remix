@@ -311,6 +311,7 @@ void resolveVertex<T: IBasePayloadState>(
   float16_t coneSpreadAngle,
   inout bool isStochasticAlphaBlend,
   inout uint8_t firstRayPortal,
+  inout bool pomOpaqueSurfaceEncountered,
   // Forces enablement of ray portal resolve path regardless of global resolve mask 
   // Needed for RayQuery paths for visibility rays from CHS as they don't run material specific hit groups
   // Visibility rays are expected not to start from RayPortal surfaces, and thus only RayPortal path is force enabled
@@ -417,6 +418,9 @@ void resolveVertex<T: IBasePayloadState>(
     // Todo: Incorporate decals into this check so this can be moved above the decal logic for early outing sooner on most hits?
     if (surface.isFullyOpaque)
     {
+      // Cache if this surface is a POM material for later use
+      pomOpaqueSurfaceEncountered = opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID && opaqueSurfaceMaterial.displaceIn > 0.h;
+
       resolveVertexFinalHit(resolveVertexState);
 
       return;
@@ -438,6 +442,9 @@ void resolveVertex<T: IBasePayloadState>(
     // Note: Early out if opacity is set to completely opaque to stop the resolving early.
     if (opacity >= cb.resolveOpaquenessThreshold)
     {
+      // Cache if this surface is a POM material for later use
+      pomOpaqueSurfaceEncountered = opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID && opaqueSurfaceMaterial.displaceIn > 0.h;
+
       resolveVertexFinalHit(resolveVertexState);
       return;
     }

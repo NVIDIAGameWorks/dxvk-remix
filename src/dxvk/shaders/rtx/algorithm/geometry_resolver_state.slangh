@@ -162,6 +162,12 @@ struct GeometryResolverState : IBasePayloadState
       set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 8, newValue); }
   }
 
+  property bool pomOpaqueSurfaceEncountered
+  {
+      get { return packedFlagGet(_encodedFlags, 1 << 9); }
+      set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 9, newValue); }
+  }
+
   // Misc packed properties
 
   // Note: Indicates portal space in which the surface was hit
@@ -328,6 +334,12 @@ struct GeometryPSRResolverState : IBasePayloadState
   {
     get { return packedFlagGet(_encodedFlags, 1 << 9); }
     set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 9, newValue); }
+  }
+
+  property bool pomOpaqueSurfaceEncountered 
+  {
+    get { return packedFlagGet(_encodedFlags, 1 << 10); }
+    set { _encodedFlags = packedFlagAssign(_encodedFlags, 1 << 10, newValue); }
   }
 
   property bool directionAltered

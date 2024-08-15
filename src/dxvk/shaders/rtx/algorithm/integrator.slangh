@@ -209,6 +209,7 @@ bool evalNEESecondary(
   uint8_t sampledTransportPortalIndex, 
   PortalSpace2BitsType portalSpace,
   uint8_t objectMask,
+  bool pomOpaqueSurfaceEncountered,
   bool isViewModelSurface,
   Ray viewRay,
   MinimalRayInteraction minimalRayInteraction, 
@@ -237,10 +238,10 @@ bool evalNEESecondary(
   const uint floatOffset = 4096;
   float ratio = max(0.98, asfloat(asuint(estimatedLength) - floatOffset) / estimatedLength);
 
-  VisibilityResult visibility = traceVisibilityRay(minimalSurfaceInteraction,
+  VisibilityResult visibility = traceVisibilityRay<PomVisibilityEnabled>(minimalSurfaceInteraction,
     lightSample.position, rayMask,
     visibilityModeEnableTranslucentMaterials,
-    sampledTransportPortalIndex, portalSpace,
+    sampledTransportPortalIndex, portalSpace, pomOpaqueSurfaceEncountered,
     minimalRayInteraction.coneRadius, viewRay.spreadAngle, ratio, isViewModelSurface, false,
     surfaceIndex, texcoords,
     isSubsurface, opaqueSurfaceMaterialInteraction.shadingNormal);

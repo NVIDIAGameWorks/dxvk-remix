@@ -77,6 +77,7 @@ GeometryResolverState geometryResolverStateCreateEmpty(u16vec2 pixelCoordinate)
   geometryResolverState.reflectionSelectedIntegrationSurface = false;
   geometryResolverState.decalEncountered = false;
   geometryResolverState.useAlternateDisocclusionThreshold = false;
+  geometryResolverState.pomOpaqueSurfaceEncountered = false;
 
   return geometryResolverState;
 }
@@ -1156,7 +1157,7 @@ void geometryResolverVertex(
     polymorphicSurfaceMaterialInteraction,
     radianceAttenuation, emissiveRadiance,
     decalMemory, decalEmissiveRadiance, 
-    float16_t(cb.screenSpacePixelSpreadHalfAngle), isStochasticAlphaBlend, firstRayPortal, false, true);
+    float16_t(cb.screenSpacePixelSpreadHalfAngle), isStochasticAlphaBlend, firstRayPortal, geometryResolverState.pomOpaqueSurfaceEncountered, false, true);
 
   if (cb.outputParticleLayer)
   {
@@ -1285,7 +1286,8 @@ void geometryResolverVertex(
   const bool samplePSR =
     (enablePSRR || enablePSTR) &&
     !geometryResolverState.decalEncountered &&
-    (pomEnablePSR || !polymorphicSurfaceMaterialInteractionHasHeightTexture(polymorphicSurfaceMaterialInteraction));
+    (pomEnablePSR || !geometryResolverState.pomOpaqueSurfaceEncountered);
+  
   // Check if the first hit surface is eligible for PSRR or PSTR by sampling it
 
   SurfaceMaterialInteractionPSRSample surfaceMaterialInteractionReflectionPSRSample;
@@ -1367,6 +1369,7 @@ void geometryResolverVertex(
     GeometryFlags geometryFlags = (GeometryFlags)0;
     geometryFlags.isViewModel = geometryResolverState.isViewModelSurface;
     geometryFlags.portalSpace = geometryResolverState.portalSpace;
+    geometryFlags.pomOpaqueSurfaceEncountered = geometryResolverState.pomOpaqueSurfaceEncountered;
     geometryFlags.objectMask = primaryRayMaskToObjectMask(geometryResolverState.rayMask, geometryResolverState.isViewModelSurface);
     const uint packedGeometryFlags = geometryFlagsEncode(geometryFlags);
 
@@ -1677,7 +1680,7 @@ void geometryPSRResolverVertex(
     polymorphicSurfaceMaterialInteraction,
     radianceAttenuation, emissiveRadiance,
     decalMemory, decalEmissiveRadiance, 
-    float16_t(cb.screenSpacePixelSpreadHalfAngle), isStochasticAlphaBlend, firstRayPortal);
+    float16_t(cb.screenSpacePixelSpreadHalfAngle), isStochasticAlphaBlend, firstRayPortal, geometryPSRResolverState.pomOpaqueSurfaceEncountered);
 
   // Handle attenuation and emissive radiance from the Resolve function
 
@@ -2155,6 +2158,7 @@ void geometryResolver(ivec2 pixelCoordinate) {
   geometryFlags.firstSampledLobeIsSpecular = false;
   geometryFlags.performPSTR = geometryResolverState.performPSTR;
   geometryFlags.performPSRR = geometryResolverState.performPSRR;
+  geometryFlags.pomOpaqueSurfaceEncountered = geometryResolverState.pomOpaqueSurfaceEncountered;
 
   // Output miss data for the secondary surface if it is not present
   // Note: Known to not be the selected surface in this case, hence why false is passed for this.
@@ -2212,6 +2216,7 @@ void geometryPSRResolverPass(ivec2 pixelCoordinate) {
   geometryPSRResolverState.isViewModelSurface = false;
   geometryPSRResolverState.decalEncountered = false;
   geometryPSRResolverState.isTransmissionPSR = push.isTransmissionPSR;
+  geometryPSRResolverState.pomOpaqueSurfaceEncountered = false;
 
   GbufferPSRData psrData;
   if (push.isTransmissionPSR)
@@ -2277,6 +2282,7 @@ void geometryPSRResolverPass(ivec2 pixelCoordinate) {
     // Update the flags and store
     geometryFlags.isViewModel = geometryPSRResolverState.isViewModelSurface;
     geometryFlags.portalSpace = geometryPSRResolverState.portalSpace;
+    geometryFlags.pomOpaqueSurfaceEncountered = geometryPSRResolverState.pomOpaqueSurfaceEncountered;
     geometryFlags.objectMask = primaryRayMaskToObjectMask(geometryPSRResolverState.rayMask, geometryPSRResolverState.isViewModelSurface);
 
     geometryFlagsWriteToGBuffer(geometryFlags, pixelCoordinate, SharedFlags);

@@ -48,9 +48,7 @@ void evalNEEPrimary(
   LightSample lightSample, 
   float invSelectionPdf, 
   uint8_t sampledTransportPortalIndex, 
-  PortalSpace2BitsType portalSpace,
-  uint8_t objectMask,
-  bool isViewModelSurface,
+  GeometryFlags geometryFlags, 
   Ray viewRay,
   MinimalRayInteraction minimalRayInteraction,
   MinimalSurfaceInteraction minimalSurfaceInteraction,
@@ -59,7 +57,7 @@ void evalNEEPrimary(
 {
   // Setup and trace the visibility ray
 
-  uint8_t rayMask = OBJECT_MASK_OPAQUE | (objectMask & OBJECT_MASK_ALL_DYNAMIC);
+  uint8_t rayMask = OBJECT_MASK_OPAQUE | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC);
   if (cb.enableDirectTranslucentShadows) rayMask |= OBJECT_MASK_TRANSLUCENT;
 
   const bool enablePOM = cb.pomEnableDirectLighting && opaqueSurfaceMaterialInteractionHasHeightTexture(opaqueSurfaceMaterialInteraction);
@@ -67,12 +65,12 @@ void evalNEEPrimary(
 
   const bool isSubsurface = isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
 
-  const VisibilityResult visibility = traceVisibilityRay(
+  const VisibilityResult visibility = traceVisibilityRay<PomVisibilityEnabled>(
     minimalSurfaceInteraction,
     lightSample.position, rayMask,
     visibilityModeAccurateHitDistance | visibilityModeEnableTranslucentMaterials,
-    sampledTransportPortalIndex, portalSpace,
-    minimalRayInteraction.coneRadius, viewRay.spreadAngle, 1.0, isViewModelSurface, false,
+    sampledTransportPortalIndex, geometryFlags.portalSpace, geometryFlags.pomOpaqueSurfaceEncountered,
+    minimalRayInteraction.coneRadius, viewRay.spreadAngle, 1.0, geometryFlags.isViewModel, false,
     primarySurfaceIndex, SharedTextureCoord[pixelCoordinate],
     isSubsurface, opaqueSurfaceMaterialInteraction.shadingNormal);
 
@@ -358,8 +356,8 @@ void integrateDirectPath(
       evalNEEPrimary(
         throughput, pixelCoordinate,
         diffuseLobeRadiance, specularLobeRadiance, lightHitDistance, hasOpaqueHit, illuminance,
-        lightSample, inverseSelectionPdf, sampledTransportPortalIndex, geometryFlags.portalSpace, geometryFlags.objectMask,
-        geometryFlags.isViewModel, primaryRay, primaryMinimalRayInteraction, primarySurfaceInteraction,
+        lightSample, inverseSelectionPdf, sampledTransportPortalIndex, geometryFlags,
+        primaryRay, primaryMinimalRayInteraction, primarySurfaceInteraction,
         opaqueSurfaceMaterialInteraction);
 
       if (rtxdiLightSampleValid && hasOpaqueHit && cb.enableRtxdiDiscardInvisibleSamples)

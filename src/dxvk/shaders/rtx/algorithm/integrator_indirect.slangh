@@ -269,6 +269,7 @@ void integratePathVertex(
   
   pathState.segmentHitDistance = 0;
 
+  bool pomOpaqueSurfaceEncountered = false;
   bool isStochasticAlphaBlend = false; // note: not used here
   uint8_t firstRayPortal = invalidRayPortalIndex;
   
@@ -280,7 +281,7 @@ void integratePathVertex(
     polymorphicSurfaceMaterialInteraction,
     radianceAttenuation, emissiveRadiance,
     decalMemory, decalEmissiveRadiance, 
-    pathState.coneSpreadAngle, isStochasticAlphaBlend, firstRayPortal);
+    pathState.coneSpreadAngle, isStochasticAlphaBlend, firstRayPortal, pomOpaqueSurfaceEncountered);
 
   // Output ReSTIR GI geometry information
 
@@ -613,11 +614,11 @@ void integratePathVertex(
       {
         const bool isViewModel = pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
         
-        uint16_t surfaceIndex = cb.pomEnableIndirectLighting ? uint(rayInteraction.surfaceIndex) : BINDING_INDEX_INVALID;
+        uint16_t surfaceIndex = (cb.pomEnableIndirectLighting && pomOpaqueSurfaceEncountered) ? uint(rayInteraction.surfaceIndex) : BINDING_INDEX_INVALID;
     
         // Todo: Ray Portal transport sampling in the future.
         evalNEESecondary(
-          lightSample, invalidRayPortalIndex, pathState.portalSpace, pathState.rayMask,
+          lightSample, invalidRayPortalIndex, pathState.portalSpace, pathState.rayMask, pomOpaqueSurfaceEncountered,
           isViewModel, ray, rayInteraction, surfaceInteraction, opaqueSurfaceMaterialInteraction,
           diffuseLight, specularLight, surfaceIndex, surfaceInteraction.textureCoordinates);
 
@@ -963,31 +964,23 @@ void integrateIndirectPath(
 
 #ifdef OPAQUE_MATERIAL_USE_POM
   // Set initial POM material and texcoords from textures.
-  if (pathState.continuePath && cb.pomEnableIndirectLighting)
+  if (pathState.continuePath && cb.pomEnableIndirectLighting && geometryFlags.pomOpaqueSurfaceEncountered)
   {
     uint16_t primarySurfaceIndex = uint16_t(SharedSurfaceIndex[pixelCoordinate]);
-    if (primarySurfaceIndex != BINDING_INDEX_INVALID) {
-      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
-      const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
-      if (polymorphicType == surfaceMaterialTypeOpaque)
-      {
-        OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(primarySurfaceIndex, memoryPolymorphicSurfaceMaterial);
-        if (opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID)
-        {
-          MinimalSurfaceInteraction minimalSurfaceInteraction = minimalSurfaceInteractionReadFromGBuffer(
-            pixelCoordinate, indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal);
+    const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
+    OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(primarySurfaceIndex, memoryPolymorphicSurfaceMaterial);
+  
+    MinimalSurfaceInteraction minimalSurfaceInteraction = minimalSurfaceInteractionReadFromGBuffer(
+      pixelCoordinate, indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal);
 
-          const float pomThroughput = opaqueSurfaceMaterialInteractionCalcHeightThroughput(
-            minimalSurfaceInteraction, pathState.direction, opaqueSurfaceMaterial.heightTextureIndex,
-            opaqueSurfaceMaterial.samplerIndex, SharedTextureCoord[pixelCoordinate], opaqueSurfaceMaterial.displaceIn
-          );
+    const float pomThroughput = opaqueSurfaceMaterialInteractionCalcHeightThroughput(
+      minimalSurfaceInteraction, pathState.direction, opaqueSurfaceMaterial.heightTextureIndex,
+      opaqueSurfaceMaterial.samplerIndex, SharedTextureCoord[pixelCoordinate], opaqueSurfaceMaterial.displaceIn
+    );
 
-          accumulateThroughput(pathState, pomThroughput);
-          pathState.continuePath = any(pathState.throughput > 0.001h);
-          pathState.continueResolving = pathState.continuePath;
-        }
-      }
-    }
+    accumulateThroughput(pathState, pomThroughput);
+    pathState.continuePath = any(pathState.throughput > 0.001h);
+    pathState.continueResolving = pathState.continuePath;
   }
 #endif
 
