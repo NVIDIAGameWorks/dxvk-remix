@@ -759,6 +759,7 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
   f16vec4 accumulatedRotation,
 #endif
   float accumulatedHitDistance,
+  float16_t pathSelectionProbability,
   inout f16vec3 radianceAttenuation, inout vec3 emissiveRadiance,
   out uint numInteractions,
   inout bool decalEncountered,
@@ -1226,6 +1227,9 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
     decalEmissiveRadiance = memory.emissiveRadiance;
   }
 #endif
+
+  emissiveRadiance *= 1.h/pathSelectionProbability;
+  decalEmissiveRadiance *= 1.h/pathSelectionProbability;
 }
 
 #if 0

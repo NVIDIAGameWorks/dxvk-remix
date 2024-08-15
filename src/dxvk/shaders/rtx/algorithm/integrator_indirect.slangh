@@ -109,17 +109,6 @@ void evalEmission(
 }
 
 
-// Note: Using separate accumulation for particles and whatever else as while they should be visible in reflections
-// through indirect paths, they do not need to be evaluated with particularly high quality. This is only done for the
-// first bounce as past that all particles and similar things will be skipped anyways.
-bool getSeparateUnorderedApproximationsActive(PathState pathState)
-{
-  return
-    cb.enableSeparateUnorderedApproximations &&
-    cb.enableUnorderedResolveInIndirectRays &&
-    pathState.bounceIteration <= 1;
-}
-
 // Calculate a point's screen space position, if it's outside the screen, move it to screen boundary.
 // Return if the point is inside the screen.
 bool calculateScreenBoundedPixelCoordinate(mat4 transformMatrix, vec3 position, inout ivec2 pixelCoordinate)
@@ -194,7 +183,7 @@ void integratePathVertex(
   IndirectPathTextures indirectPathTextures, RayHitInfo rayHitInfo,
   inout PathState pathState)
 {
-  const bool separateUnorderedApproximations = getSeparateUnorderedApproximationsActive(pathState);
+  const bool separateUnorderedApproximations = pathState.getSeparateUnorderedApproximationsActive();
 
   // Setup resolve state
 
@@ -239,7 +228,7 @@ void integratePathVertex(
       resolveMode, unorderedResolveRay,
       unorderedRayMask, pathState.portalSpace,
       /* useIntersectionBillboards = */ cb.enableBillboardOrientationCorrection,
-      pathState.accumulatedHitDistance,
+      pathState.accumulatedHitDistance, pathState.getUnorderedApproximationSelectionProbability(),
       radianceAttenuation, emissiveRadiance,
       numUnorderedInteractions, 
       pathState.decalEncountered, decalMemory, decalEmissiveRadiance, unorderedSurfaceIndex);
@@ -933,7 +922,8 @@ void integrateIndirectPath(
   // Enable nee cache for PSR reflection, which cannot be handled by ReSTIR GI.
   pathState.enableNeeCacheAfterFirstBounce =
     (geometryFlags.performPSRR || NEECache.shouldUseHigherBounceNeeCache(geometryFlags.firstSampledLobeIsSpecular, calcRoughness(firstHitPerceptualRoughness)));
-
+  pathState.gbufferPerceptualRoughness = firstHitPerceptualRoughness;
+  
   if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable) 
   {
     RAB_RandomSamplerState rtxdiRNG = RAB_InitRandomSampler(pathState.pixelCoordinate, cb.frameIdx, pathState.bounceIteration);

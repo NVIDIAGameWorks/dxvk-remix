@@ -590,6 +590,11 @@ namespace dxvk {
                "This allows for the presence of unordered approximations in resolving to be overridden in indirect rays and as such requires separate unordered approximations to be enabled to have any effect.\n"
                "This option should be enabled if objects which can be resolvered in an unordered way in indirect rays are expected for higher quality in reflections, but may come at a performance cost.\n"
                "Note that even with this option enabled, unordered resolve approximations are only done on the first indirect bounce for the sake of performance overall.");
+    RTX_OPTION("rtx", bool, enableProbabilisticUnorderedResolveInIndirectRays, true,
+               "A flag to enable or disable probabilistic unordered resolve approximations in indirect rays.\n"
+               "This flag speeds up the unordered resolve for indirect rays by probabilistically deciding when to perform unordered resolve or not.  Must have both unordered resolve and unordered resolve in indirect rays enabled for this to take effect.\n"
+               "This option should be enabled by default as it can significantly improve performance on some hardware.  In rare cases it may come at the cost of some quality for particles and decals in reflections.\n"
+               "Note that even with this option enabled, unordered resolve approximations are only done on the first indirect bounce for the sake of performance overall.");
     RTX_OPTION_ENV("rtx", bool, enableUnorderedEmissiveParticlesInIndirectRays, false, "DXVK_EMISSIVE_INDIRECT_PARTICLES",
                    "A flag to enable or disable unordered resolve emissive particles specifically in indirect rays.\n"
                    "Should be enabled in higher quality rendering modes as emissive particles are fairly important in reflections, but may be disabled to skip such interactions which can improve performance on lower end hardware.\n"
