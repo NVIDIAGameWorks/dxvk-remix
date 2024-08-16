@@ -25,11 +25,6 @@
 
 #include "../../utility/shared_constants.h"
 
-static const uint8_t surfaceMaterialTypeOpaque = uint8_t(0u);
-static const uint8_t surfaceMaterialTypeTranslucent = uint8_t(1u);
-static const uint8_t surfaceMaterialTypeRayPortal = uint8_t(2u);
-static const uint8_t surfaceMaterialTypeMask = uint8_t(0x3u);
-
 static const uint8_t opaqueLobeTypeDiffuseReflection = uint8_t(0u);
 static const uint8_t opaqueLobeTypeSpecularReflection = uint8_t(1u);
 static const uint8_t opaqueLobeTypeOpacityTransmission = uint8_t(2u);
@@ -52,7 +47,6 @@ struct MemoryPolymorphicSurfaceMaterial
 struct OpaqueSurfaceMaterial
 {
   uint16_t samplerIndex;
-
   uint16_t albedoOpacityTextureIndex;
   uint16_t normalTextureIndex;
   uint16_t tangentTextureIndex;

@@ -65,10 +65,9 @@ void evalNEEPrimary(
 
   const bool isSubsurface = isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
 
-  const VisibilityResult visibility = traceVisibilityRay<PomVisibilityEnabled>(
+  const VisibilityResult visibility = traceVisibilityRay<visibilityModeEnablePom | visibilityModeAccurateHitDistance | visibilityModeEnableTranslucentMaterials | visibilityModeEnableSubsurfaceMaterials>(
     minimalSurfaceInteraction,
     lightSample.position, rayMask,
-    visibilityModeAccurateHitDistance | visibilityModeEnableTranslucentMaterials,
     sampledTransportPortalIndex, geometryFlags.portalSpace, geometryFlags.pomOpaqueSurfaceEncountered,
     minimalRayInteraction.coneRadius, viewRay.spreadAngle, 1.0, geometryFlags.isViewModel, false,
     primarySurfaceIndex, SharedTextureCoord[pixelCoordinate],

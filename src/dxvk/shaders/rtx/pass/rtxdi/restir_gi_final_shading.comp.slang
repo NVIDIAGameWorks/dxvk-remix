@@ -197,8 +197,8 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
         tMaxFactor = validSampleMaxRange;
       }
 
-      VisibilityResult visibility = traceVisibilityRay<PomVisibilityEnabled>(minimalSurfaceInteraction,
-        samplePosition, rayMask, visibilityModeAccurateHitDistance, portalID,
+      VisibilityResult visibility = traceVisibilityRay<visibilityModeEnablePom | visibilityModeAccurateHitDistance>(minimalSurfaceInteraction,
+        samplePosition, rayMask, portalID,
         geometryFlags.portalSpace, geometryFlags.pomOpaqueSurfaceEncountered, 0, coneSpreadAngle, tMaxFactor, geometryFlags.isViewModel, 
         false, primarySurfaceIndex, SharedTextureCoord[threadIndex], /*isSubsurface*/ false, /*shadingNormal*/ f16vec3(0.0h), /*clearOpaqueHitAttenuation*/ !validateSamples);
 

@@ -382,7 +382,7 @@ void resolveVertex<T: IBasePayloadState>(
 
   const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[uint(rayInteraction.surfaceIndex)];
   
-  const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
+  const uint8_t polymorphicType = rayInteraction.materialType;
 
   // Handle special logic for specific material types
 
@@ -935,6 +935,7 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
       rayInteraction.primitiveIndex = 0;
       rayInteraction.customIndex = 0;
       rayInteraction.frontHit = NdotD < 0;
+      rayInteraction.materialType = billboard.materialType;
 
       // Calculate texture gradient
       float16_t coneRadius = ray.coneRadius + float16_t(ray.spreadAngle * t);
@@ -975,7 +976,7 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
 
     const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[uint(rayInteraction.surfaceIndex)];
     
-    const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
+    const uint8_t polymorphicType = rayInteraction.materialType;
 
     // Handle special approximation logic for specific material types
 

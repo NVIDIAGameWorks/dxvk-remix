@@ -49,6 +49,11 @@ uint calculateSurfaceIndex(RayHitInfo rayHitInfo)
   return (rayHitInfo.customIndex & CUSTOM_INDEX_SURFACE_MASK) + rayHitInfo.geometryIndex;    
 }
 
+uint calculateMaterialType(RayHitInfo rayHitInfo) 
+{
+  return (rayHitInfo.customIndex >> CUSTOM_INDEX_MATERIAL_TYPE_BIT) & surfaceMaterialTypeMask;    
+}
+
 #define RAY_HIT_INFO_CREATE_TRACE_RAY_HIT(variableName)                           \
 RayHitInfo variableName;                                                          \
 variableName.hitDistance = RayTCurrent();                                         \

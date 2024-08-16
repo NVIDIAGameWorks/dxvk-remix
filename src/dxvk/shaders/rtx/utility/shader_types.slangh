@@ -156,6 +156,12 @@ float16_t2 unpackFloat2x16(uint32_t u);
 __target_intrinsic(glsl, "packFloat2x16($0)")
 uint32_t packFloat2x16(float16_t2 f);
 
+__target_intrinsic(glsl, "unpackUnorm4x8($0)")
+float4 unpackUnorm4x8(uint32_t f);
+
+__target_intrinsic(glsl, "unpackSnorm4x8($0)")
+float4 unpackSnorm4x8(uint32_t f);
+
 float16_t4 unpackFloat4x16(uint2 u)
 {
   return float16_t4(unpackFloat2x16(u.x), unpackFloat2x16(u.y));

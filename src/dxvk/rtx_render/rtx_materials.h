@@ -398,84 +398,7 @@ struct RtOpaqueSurfaceMaterial {
 
   void writeGPUData(unsigned char* data, std::size_t& offset) const {
     [[maybe_unused]] const std::size_t oldOffset = offset;
-    uint32_t flags = (0 << 30); // Note: Bit 30 and 31 of last word set to 0 for opaque material type
-
-    // Bytes 0-3
-    if (m_albedoOpacityTextureIndex != kSurfaceMaterialInvalidTextureIndex) {
-      writeGPUHelperExplicit<2>(data, offset, m_albedoOpacityTextureIndex);
-      writeGPUPadding<2>(data, offset); // Note: Padding for unused space
-      flags |= OPAQUE_SURFACE_MATERIAL_FLAG_HAS_ALBEDO_TEXTURE;
-    } else {
-      writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_albedoOpacityConstant.x));
-      writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_albedoOpacityConstant.y));
-      writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_albedoOpacityConstant.z));
-      writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_albedoOpacityConstant.w));
-    }
-
-    // Bytes 4-5
-    writeGPUHelperExplicit<2>(data, offset, m_tangentTextureIndex);
-
-    // Bytes 6-7
-    if (m_roughnessTextureIndex != kSurfaceMaterialInvalidTextureIndex) {
-      writeGPUHelperExplicit<2>(data, offset, m_roughnessTextureIndex);
-      flags |= OPAQUE_SURFACE_MATERIAL_FLAG_HAS_ROUGHNESS_TEXTURE;
-    } else {
-      writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_roughnessConstant));
-      writeGPUPadding<1>(data, offset); // Note: Padding for unused space
-    }
-
-    // Bytes 8-9
-    if (m_metallicTextureIndex != kSurfaceMaterialInvalidTextureIndex) {
-      writeGPUHelperExplicit<2>(data, offset, m_metallicTextureIndex);
-      flags |= OPAQUE_SURFACE_MATERIAL_FLAG_HAS_METALLIC_TEXTURE;
-    } else {
-      writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_metallicConstant));
-      writeGPUPadding<1>(data, offset); // Note: Padding for unused space
-    }
-
-    // Bytes 10-12
-    if (m_emissiveColorTextureIndex != kSurfaceMaterialInvalidTextureIndex) {
-      writeGPUHelperExplicit<2>(data, offset, m_emissiveColorTextureIndex);
-      writeGPUPadding<1>(data, offset); // Note: Padding for unused space
-      flags |= OPAQUE_SURFACE_MATERIAL_FLAG_HAS_EMISSIVE_TEXTURE;
-    } else {
-      writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.x));
-      writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.y));
-      writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.z));
-    }
-
-    // Byte 13
-    writeGPUHelper(data, offset, packSnorm<8, uint8_t>(m_anisotropy));
-
-    // Bytes 14-15
-    writeGPUHelperExplicit<2>(data, offset, m_normalTextureIndex);
-
-    // Bytes 16-17
-    assert(m_cachedEmissiveIntensity <= FLOAT16_MAX);
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedEmissiveIntensity));
-
-    // Bytes 18-19
-    writeGPUHelperExplicit<2>(data, offset, m_samplerIndex);
-
-    // Bytes 20-23
-    float displaceIn = m_displaceIn * getDisplacementFactor();
-    assert(displaceIn <= FLOAT16_MAX);
-    writeGPUHelper(data, offset, glm::packHalf1x16(displaceIn));
-    writeGPUHelperExplicit<2>(data, offset, m_heightTextureIndex);
-
-    // Bytes 24-26
-    if (m_subsurfaceMaterialIndex != kSurfaceMaterialInvalidTextureIndex) {
-      writeGPUHelperExplicit<2>(data, offset, m_subsurfaceMaterialIndex);
-      writeGPUPadding<1>(data, offset); // Note: Padding for unused space
-      flags |= OPAQUE_SURFACE_MATERIAL_FLAG_HAS_SUBSURFACE_MATERIAL;
-    } else {
-      writeGPUPadding<3>(data, offset); // Note: Padding for unused space
-    }
-
-    // Byte 27
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_cachedThinFilmNormalizedThicknessConstant));
-
-    // Bytes 28-31
+    uint8_t flags = surfaceMaterialTypeOpaque;
     if (m_enableThinFilm) {
       flags |= OPAQUE_SURFACE_MATERIAL_FLAG_USE_THIN_FILM_LAYER;
 
@@ -490,7 +413,45 @@ struct RtOpaqueSurfaceMaterial {
       flags |= OPAQUE_SURFACE_MATERIAL_FLAG_IGNORE_ALPHA_CHANNEL;
     }
 
+    // NOTE: We keep the most commonly used elements in the material close together near the beginning
+    //       This hopefully reduces loads for cases like opacity detection.
+    
+    // Bytes 0-3
     writeGPUHelper(data, offset, flags);
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_cachedThinFilmNormalizedThicknessConstant));
+    float displaceIn = m_displaceIn * getDisplacementFactor();
+    assert(displaceIn <= FLOAT16_MAX);
+    writeGPUHelper(data, offset, glm::packHalf1x16(displaceIn));
+
+    // Bytes 4-11
+    writeGPUHelperExplicit<2>(data, offset, m_samplerIndex);
+    writeGPUHelperExplicit<2>(data, offset, m_albedoOpacityTextureIndex);
+    writeGPUHelperExplicit<2>(data, offset, m_heightTextureIndex);
+    writeGPUHelperExplicit<2>(data, offset, m_subsurfaceMaterialIndex);
+
+    // Bytes 12-15
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_albedoOpacityConstant.x));
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_albedoOpacityConstant.y));
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_albedoOpacityConstant.z));
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_albedoOpacityConstant.w));
+
+    // Bytes 16-19
+    writeGPUHelperExplicit<2>(data, offset, m_emissiveColorTextureIndex);
+    writeGPUHelperExplicit<2>(data, offset, m_roughnessTextureIndex);
+    writeGPUHelperExplicit<2>(data, offset, m_metallicTextureIndex);
+    writeGPUHelperExplicit<2>(data, offset, m_normalTextureIndex);
+
+    // Bytes 20-27
+    assert(m_cachedEmissiveIntensity <= FLOAT16_MAX);
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedEmissiveIntensity));
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.x));
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.y));
+
+    // Bytes 28-31
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.z));
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_roughnessConstant));
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_metallicConstant));
+    writeGPUHelper(data, offset, packSnorm<8, uint8_t>(m_anisotropy));
 
     assert(offset - oldOffset == kSurfaceMaterialGPUSize);
   }
@@ -682,53 +643,49 @@ struct RtTranslucentSurfaceMaterial {
     [[maybe_unused]] const std::size_t oldOffset = offset;
 
     // For decode process, see translucent_surface_material.slangh
-    // 8 Bytes
-    writeGPUHelperExplicit<2>(data, offset, m_normalTextureIndex);                          // data00.x
-    writeGPUHelperExplicit<2>(data, offset, m_transmittanceTextureIndex);                   // data00.y
-    writeGPUHelperExplicit<2>(data, offset, m_emissiveColorTextureIndex);                   // data01.x
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_cachedBaseReflectivity));          // data01.y & 0xff
-    // Note: Ensure IoR falls in the range expected by the encoding/decoding logic for the GPU (this should also be
-    // enforced in the MDL and relevant content pipeline to prevent this assert from being triggered).
-    assert(m_refractiveIndex >= 1.0f && m_refractiveIndex <= 3.0f);
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>((m_refractiveIndex - 1.0f) / 2.0f)); // data01.y & 0xff00
 
-    // 6 Bytes
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_transmittanceColor.x)); // data02.x
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_transmittanceColor.y)); // data02.y
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_transmittanceColor.z)); // data03.x
-
-    // 1 Byte Padding
-    // Note: This padding is here just to align the m_emissiveColorConstant information better so that
-    // reads beyond it do not need a bunch of bit shifting. Can be removed safely if more space is needed.
-    writeGPUPadding<1>(data, offset);
-
-    // 3 Bytes
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.x)); // data03.y & 0x00ff
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.y)); // data10.x & 0xff
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.z)); // data10.x & 0x00ff
-
-    // 2 Bytes
-    assert(m_cachedEmissiveIntensity <= FLOAT16_MAX);
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedEmissiveIntensity)); // data10.y
-
-    // 2 Bytes
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedTransmittanceMeasurementDistanceOrThickness)); // data11.x
-
-    // 2 bytes
-    writeGPUHelperExplicit<2>(data, offset, m_samplerIndex); // data11.y
-
-    // 4 Bytes padding
-    writeGPUPadding<4>(data, offset);
-
-    uint32_t flags = (1 << 30); // bit 30 set to 1 for translucent material type
+    uint8_t flags = surfaceMaterialTypeTranslucent;
 
     // Note: Respect override flag here to let the GPU do less work in determining if the diffuse layer should be used or not.
     if (m_useDiffuseLayer || getEnableDiffuseLayerOverrideHack()) {
       flags |= TRANSLUCENT_SURFACE_MATERIAL_FLAG_USE_DIFFUSE_LAYER;
     }
 
-    // 4 Bytes
+    // 2 Bytes
     writeGPUHelper(data, offset, flags);
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_cachedBaseReflectivity));
+
+    // 6 Bytes
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_transmittanceColor.x));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_transmittanceColor.y));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_transmittanceColor.z));
+
+    // 4 bytes
+    writeGPUHelperExplicit<2>(data, offset, m_samplerIndex);
+    writeGPUHelperExplicit<2>(data, offset, m_transmittanceTextureIndex);
+
+    // 2 Bytes
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedTransmittanceMeasurementDistanceOrThickness));
+
+
+    // 4 Bytes
+    writeGPUHelperExplicit<2>(data, offset, m_normalTextureIndex);
+    writeGPUHelperExplicit<2>(data, offset, m_emissiveColorTextureIndex);
+
+    // 2 Bytes
+    assert(m_cachedEmissiveIntensity <= FLOAT16_MAX);
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedEmissiveIntensity));
+
+    // 4 Bytes
+    // Note: Ensure IoR falls in the range expected by the encoding/decoding logic for the GPU (this should also be
+    // enforced in the MDL and relevant content pipeline to prevent this assert from being triggered).
+    assert(m_refractiveIndex >= 1.0f && m_refractiveIndex <= 3.0f);
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>((m_refractiveIndex - 1.0f) / 2.0f)); // data01.y & 0xff00
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.x));
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.y));
+    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.z));
+
+    writeGPUPadding<8>(data, offset);
 
     assert(offset - oldOffset == kSurfaceMaterialGPUSize);
   }
@@ -825,11 +782,13 @@ struct RtRayPortalSurfaceMaterial {
   void writeGPUData(unsigned char* data, std::size_t& offset) const {
     [[maybe_unused]] const std::size_t oldOffset = offset;
 
+    uint8_t flags = surfaceMaterialTypeRayPortal;
+    writeGPUHelper(data, offset, flags);
+    writeGPUHelper(data, offset, m_rayPortalIndex);
+
     writeGPUHelperExplicit<2>(data, offset, m_maskTextureIndex);
     writeGPUHelperExplicit<2>(data, offset, m_maskTextureIndex2);
 
-    writeGPUHelper(data, offset, m_rayPortalIndex);
-    writeGPUPadding<1>(data, offset); // Note: Padding for unused space, here for now just to align other members better.
     assert(m_rotationSpeed < FLOAT16_MAX);
     writeGPUHelper(data, offset, glm::packHalf1x16(m_rotationSpeed));
     float emissiveIntensity = m_enableEmission ? m_emissiveIntensity : 1.0f;
@@ -837,9 +796,7 @@ struct RtRayPortalSurfaceMaterial {
     writeGPUHelperExplicit<2>(data, offset, m_samplerIndex);
     writeGPUHelperExplicit<2>(data, offset, m_samplerIndex2);
 
-    writeGPUPadding<14>(data, offset); // Note: Padding for unused space
-
-    writeGPUHelper(data, offset, static_cast<uint32_t>(2 << 30)); // Note: Bit 30 and 31 of last word set to 2 for ray portal material type
+    writeGPUPadding<18>(data, offset); // Note: Padding for unused space
 
     assert(offset - oldOffset == kSurfaceMaterialGPUSize);
   }

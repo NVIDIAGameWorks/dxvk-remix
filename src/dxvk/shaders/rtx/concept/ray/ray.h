@@ -80,8 +80,9 @@ struct RayInteraction : MinimalRayInteraction
   uint barycentricCoordinates;
   uint primitiveIndex;
   uint customIndex;
-  uint surfaceIndex;
-  bool frontHit; // Todo: Pack this into some other value to not take up extra space
+  uint16_t surfaceIndex;
+  uint8_t materialType;
+  uint8_t frontHit; // Todo: Pack this into some other value to not take up extra space
 };
 
 struct GBufferMemoryMinimalRayInteraction
