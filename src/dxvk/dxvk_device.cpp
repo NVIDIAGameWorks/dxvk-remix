@@ -380,14 +380,13 @@ namespace dxvk {
     // NV-DXVK end
 
     // NV-DXVK start: DLFG integration
-    if (m_lastPresenter.ptr() != presenter.ptr()) {
+    if (m_presenterInFlight.ptr() != presenter.ptr()) {
       // if we're switching presenters, synchronize the old one to make sure nothing stays in flight
-      if (m_lastPresenter != nullptr) {
-        m_lastPresenter->synchronize();
-      }
+      // to ensure the correctness of reference count for presenter object
+      synchronizePresenter();
 
       // stash the presenter object so we can synchronize with it if needed
-      m_lastPresenter = presenter;
+      m_presenterInFlight = presenter;
     }
     // NV-DXVK end
 
@@ -460,9 +459,7 @@ namespace dxvk {
     
     // NV-DXVK start: DLFG integration
     // idle DLFG so we can call vkDeviceWaitIdle safely
-    if (m_lastPresenter != nullptr) {
-      m_lastPresenter->synchronize();
-    }
+    synchronizePresenter();
     // NV-DXVK end
 
     if (m_vkd->vkDeviceWaitIdle(m_vkd->device()) != VK_SUCCESS)
