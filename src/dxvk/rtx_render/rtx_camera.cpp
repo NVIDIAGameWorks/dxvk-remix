@@ -23,6 +23,7 @@
 #include "../../util/util_math.h"
 #include "../../util/util_vector.h"
 #include "../../util/util_matrix.h"
+#include "../imgui/dxvk_imgui.h"
 #include "rtx_camera.h"
 #include <windows.h>
 #include "rtx_options.h"
@@ -376,7 +377,6 @@ namespace dxvk
     m_prevRunningTime = currTime;
 
     // Perform custom camera controls logic
-    float speed = elapsedSec.count() * RtxOptions::Get()->getSceneScale() * freeCameraSpeed();
 
     float moveLeftRight = 0;
     float moveBackForward = 0;
@@ -388,10 +388,6 @@ namespace dxvk
     }
 
     if (!ImGui::GetIO().WantCaptureMouse && (flags & (int)RtCamera::UpdateFlag::UpdateFreeCamera) != 0) {
-      // Speed booster
-      if (ImGui::IsKeyDown(ImGuiKey_LeftShift)) {
-        speed *= 4;
-      }
 
       // Typical WASD controls with EQ up-down
       bool isKeyAvailable =
@@ -400,30 +396,48 @@ namespace dxvk
         !ImGui::IsKeyDown(ImGuiKey_LeftAlt) &&
         !ImGui::IsKeyDown(ImGuiKey_RightAlt) && !lockFreeCamera();
 
-      if (!isKeyAvailable) {
-        speed = 0;
-      }
-
       float coordSystemScale = m_context.isLHS ? -1.f : 1.f;
 
-      if (ImGui::IsKeyDown(ImGuiKey_A)) {
-        moveLeftRight -= speed;
+      if (isKeyAvailable) {
+        float speed = elapsedSec.count() * RtxOptions::Get()->getSceneScale() * freeCameraSpeed();
+        float angularSpeed = elapsedSec.count() * M_PI;
+        // Speed booster
+        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveFaster(), true)) {
+          speed *= 4;
+        }
+        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveForward(), true)) {
+          moveBackForward += coordSystemScale * speed;
+        }
+        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveLeft(), true)) {
+          moveLeftRight -= speed;
+        }
+        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveBack(), true)) {
+          moveBackForward -= coordSystemScale * speed;
+        }
+        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveRight(), true)) {
+          moveLeftRight += speed;
+        }
+        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveUp(), true)) {
+          moveDownUp += speed;
+        }
+        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveDown(), true)) {
+          moveDownUp -= speed;
+        }
+        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyPitchDown(), true)) {
+          freeCameraPitchRef() -= angularSpeed;
+        }
+        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyPitchUp(), true)) {
+          freeCameraPitchRef() += angularSpeed;
+        }
+        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyYawLeft(), true)) {
+          freeCameraYawRef() += angularSpeed;
+        }
+        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyYawRight(), true)) {
+          freeCameraYawRef() -= angularSpeed;
+        }
       }
-      if (ImGui::IsKeyDown(ImGuiKey_D)) {
-        moveLeftRight += speed;
-      }
-      if (ImGui::IsKeyDown(ImGuiKey_W)) {
-        moveBackForward += coordSystemScale * speed;
-      }
-      if (ImGui::IsKeyDown(ImGuiKey_S)) {
-        moveBackForward -= coordSystemScale * speed;
-      }
-      if (ImGui::IsKeyDown(ImGuiKey_E)) {
-        moveDownUp += speed;
-      }
-      if (ImGui::IsKeyDown(ImGuiKey_Q)) {
-        moveDownUp -= speed;
-      }
+
+
 
       POINT p;
       if (GetCursorPos(&p)) {

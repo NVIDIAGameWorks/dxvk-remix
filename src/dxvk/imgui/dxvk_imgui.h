@@ -89,7 +89,7 @@ namespace dxvk {
     
     static void AddTexture(const XXH64_hash_t hash, const Rc<DxvkImageView>& imageView);
     static void ReleaseTexture(const XXH64_hash_t hash);
-    static bool checkHotkeyState(const VirtualKeys& virtKeys);
+    static bool checkHotkeyState(const VirtualKeys& virtKeys, const bool allowContinuousPress = false);
 
     void switchMenu(UIType type, bool force = false);
     
