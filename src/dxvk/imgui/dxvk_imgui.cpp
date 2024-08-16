@@ -3305,7 +3305,7 @@ namespace dxvk {
     io.Fonts->SetTexID((ImTextureID)bd->FontDescriptorSet);
   }
 
-  bool ImGUI::checkHotkeyState(const VirtualKeys& virtKeys) {
+  bool ImGUI::checkHotkeyState(const VirtualKeys& virtKeys, const bool allowContinuousPress) {
     bool result = false;
     if(virtKeys.size() > 0) {
       auto& io = ImGui::GetIO();
@@ -3318,8 +3318,12 @@ namespace dxvk {
         } else if(vk.val == VK_MENU) {
           result = result && io.KeyAlt;
         } else {
-          result =
-            result && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGui_ImplWin32_VirtualKeyToImGuiKey(vk.val)), false);
+          ImGuiKey key = ImGui::GetKeyIndex(ImGui_ImplWin32_VirtualKeyToImGuiKey(vk.val));
+          if (allowContinuousPress) {
+            result = result && ImGui::IsKeyDown(key);
+          } else {
+            result = result && ImGui::IsKeyPressed(key, false);
+          }
         }
       }
     }

@@ -100,7 +100,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.captureDebugImage|bool|False||
 |rtx.captureEnableMultiframe|bool|False|Enables multi\-frame capturing\. THIS HAS NOT BEEN MAINTAINED AND SHOULD BE USED WITH EXTREME CAUTION\.|
 |rtx.captureFramesPerSecond|int|24|Playback rate marked in the USD stage\.<br>Will eventually determine frequency with which game state is captured and written\. Currently every frame \-\- even those at higher frame rates \-\- are recorded\.|
-|rtx.captureHotKey|unknown type|unknown type|Hotkey to trigger a capture without bringing up the menu\.|
+|rtx.captureHotKey|unknown type|unknown type|Hotkey to trigger a capture without bringing up the menu\.<br>example override: 'rtx\.captureHotKey = CTRL, SHIFT, P'<br>Full list of key names available in src/util/util\_keybind\.h|
 |rtx.captureInstances|bool|True|If true, an instanced snapshot of the game scene will be captured and exported to a USD stage, in addition to all meshes, textures, materials, etc\.<br>If false, only meshes, etc will be captured\.|
 |rtx.captureMaxFrames|int|1|Max frames capturable when running a multi\-frame capture\. The capture can be toggled to completion manually\.|
 |rtx.captureMeshBlendWeightDelta|float|0.01|Inter\-frame blend weight min delta warrants new time sample\.|
@@ -268,6 +268,17 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.forceCameraJitter|bool|False||
 |rtx.forceCutoutAlpha|float|0.5|When an object is added to the cutout textures list it will have a cutout alpha mode forced on it, using this value for the alpha test\.<br>This is meant to improve the look of some legacy mode materials using low\-resolution textures and alpha blending instead of alpha cutout as this can cause blurry halos around edges due to the difficulty of handling this sort of blending in Remix\.<br>Such objects are generally better handled with actual replacement assets using fully opaque geometry replacements or alpha cutout with higher resolution textures, so this should only be relied on until proper replacements can be authored\.|
 |rtx.forceHighResolutionReplacementTextures|bool|False|A flag to enable or disable forcing high resolution replacement textures\.<br>When enabled this mode overrides all other methods of mip calculation \(adaptive resolution and the minimum mipmap level\) and forces it to be 0 to always load in the highest quality of textures\.<br>This generally should not be used other than for various forms of debugging or visual comparisons as this mode will ignore any constraints on CPU or GPU memory which may starve the system or Remix of memory\.<br>Additionally, this setting must be set at startup and changing it will not take effect at runtime\.|
+|rtx.freeCam.keyMoveBack|unknown type|unknown type|Move back in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveBack = P'|
+|rtx.freeCam.keyMoveDown|unknown type|unknown type|Move down in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveDown = P'|
+|rtx.freeCam.keyMoveFaster|unknown type|unknown type|Move faster in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveForward = RSHIFT'|
+|rtx.freeCam.keyMoveForward|unknown type|unknown type|Move forward in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveForward = P'|
+|rtx.freeCam.keyMoveLeft|unknown type|unknown type|Move left in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveLeft = P'|
+|rtx.freeCam.keyMoveRight|unknown type|unknown type|Move right in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveRight = P'|
+|rtx.freeCam.keyMoveUp|unknown type|unknown type|Move up in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveUp = P'|
+|rtx.freeCam.keyPitchDown|unknown type|unknown type|Pitch down in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyPitchDown = P'|
+|rtx.freeCam.keyPitchUp|unknown type|unknown type|Pitch up in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyPitchUp = P'|
+|rtx.freeCam.keyYawLeft|unknown type|unknown type|Yaw left in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyYawLeft = P'|
+|rtx.freeCam.keyYawRight|unknown type|unknown type|Yaw right in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyYawRight = P'|
 |rtx.freeCameraSpeed|float|200|Free camera speed \[GameUnits/s\]\.|
 |rtx.froxelDepthSliceDistributionExponent|float|2|The exponent to use on depth values to nonlinearly distribute froxels away from the camera\. Higher values bias more froxels closer to the camera with 1 being linear\.|
 |rtx.froxelDepthSlices|int|48|The z dimension of the froxel grid\. Must be constant after initialization\.|
