@@ -1008,7 +1008,7 @@ namespace dxvk {
 
     if (m_presentParams.hDeviceWindow == hWindow) {
       // NV-DXVK start: DLFG integration
-      m_device->releasePresenter();
+      m_device->synchronizePresenter();
 
       if (m_presenter != nullptr) {
         assert(m_dlfgPresenter == nullptr);
@@ -1324,7 +1324,7 @@ namespace dxvk {
     m_device->waitForIdle();
 
     // NV-DXVK start: DLFG integration
-    m_device->releasePresenter();
+    m_device->synchronizePresenter();
     // NV-DXVK end
 
     m_presenter = nullptr;
