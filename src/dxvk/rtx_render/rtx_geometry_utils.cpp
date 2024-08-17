@@ -485,6 +485,7 @@ namespace dxvk {
     args.rcpTextureResolution = vec2 { 1.f / opacityTextureResolution.width, 1.f / opacityTextureResolution.height };
     args.conservativeEstimationMaxTexelTapsPerMicroTriangle = desc.conservativeEstimationMaxTexelTapsPerMicroTriangle;
     args.triangleOffset = desc.triangleOffset;
+    args.numMicroTrianglesPerThread = args.is2StateOMMFormat ? 8 : 4;
 
     // Init samplers
     Rc<DxvkSampler> opacitySampler;
@@ -532,7 +533,7 @@ namespace dxvk {
     }
 
     const uint32_t numMicroTrianglesPerWord = args.is2StateOMMFormat ? 32 : 16;
-    const uint32_t kNumMicroTrianglesPerComputeBlock = BAKE_OPACITY_MICROMAP_NUM_THREAD_PER_COMPUTE_BLOCK;
+    const uint32_t kNumMicroTrianglesPerComputeBlock = BAKE_OPACITY_MICROMAP_NUM_THREAD_PER_COMPUTE_BLOCK * args.numMicroTrianglesPerThread;
     const VkPhysicalDeviceLimits& limits = device()->properties().core.properties.limits;
     // Workgroup count limit can be high (i.e. 2 Billion), so avoid overflowing uint32_t limit 
     const uint32_t maxThreadsPerDispatch = std::min(limits.maxComputeWorkGroupCount[0], UINT32_MAX / kNumMicroTrianglesPerComputeBlock) *
@@ -554,19 +555,20 @@ namespace dxvk {
       calculateNumMicroTrianglesToBake(bakeState, desc, numMicroTrianglesAlignment, bakingWeightScale, availableBakingBudget);
 
     // Calculate per dispatch counts
-    const uint32_t numThreads = numMicroTrianglesToBake;
+    const uint32_t numThreads = numMicroTrianglesToBake / args.numMicroTrianglesPerThread;
     const uint32_t numThreadsPerDispatch = std::min(numThreads, maxThreadsPerDispatchAligned);
-    const uint32_t numDispatches = dxvk::util::ceilDivide(numMicroTrianglesToBake, numThreadsPerDispatch);
-    const uint32_t baseThreadIndexOffset = bakeState.numMicroTrianglesBaked;
+    const uint32_t numDispatches = dxvk::util::ceilDivide(numThreads, numThreadsPerDispatch);
+    const uint32_t baseThreadIndexOffset = bakeState.numMicroTrianglesBaked / args.numMicroTrianglesPerThread;
+
+    args.numActiveThreads = numThreadsPerDispatch;
 
     for (uint32_t i = 0; i < numDispatches; i++) {
       args.threadIndexOffset = i * numThreadsPerDispatch + baseThreadIndexOffset;
-      args.numActiveThreads = std::min(numMicroTrianglesToBake - i * numThreadsPerDispatch, numThreadsPerDispatch);
 
       ctx->pushConstants(0, sizeof(args), &args);
 
       // Run the shader
-      const VkExtent3D workgroups = util::computeBlockCount(VkExtent3D { numThreadsPerDispatch, 1, 1 }, VkExtent3D { kNumMicroTrianglesPerComputeBlock, 1, 1 });
+      const VkExtent3D workgroups = util::computeBlockCount(VkExtent3D { numThreadsPerDispatch, 1, 1 }, VkExtent3D { BAKE_OPACITY_MICROMAP_NUM_THREAD_PER_COMPUTE_BLOCK, 1, 1 });
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
     }
 

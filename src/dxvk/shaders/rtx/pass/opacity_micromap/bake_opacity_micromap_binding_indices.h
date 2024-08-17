@@ -30,7 +30,7 @@
 
 #define BINDING_BAKE_OPACITY_MICROMAP_ARRAY_OUTPUT                4
 
-#define BAKE_OPACITY_MICROMAP_NUM_THREAD_PER_COMPUTE_BLOCK        128
+#define BAKE_OPACITY_MICROMAP_NUM_THREAD_PER_COMPUTE_BLOCK        256
 
 struct BakeOpacityMicromapArgs {
   uint numTriangles;
@@ -55,4 +55,6 @@ struct BakeOpacityMicromapArgs {
   uint threadIndexOffset;
   uint conservativeEstimationMaxTexelTapsPerMicroTriangle;
   uint numActiveThreads;
+
+  uint numMicroTrianglesPerThread;
 };
