@@ -24,7 +24,7 @@
 #include "bake_opacity_micromap_rtx_dependencies.slangh"
 #include "bake_opacity_micromap_utils.slangh"
 
-layout(push_constant)
+layout(binding = BINDING_BAKE_OPACITY_MICROMAP_CONSTANTS)
 ConstantBuffer<BakeOpacityMicromapArgs> cb;
 
 [allow("parameterBindingsOverlap")]
@@ -314,21 +314,19 @@ void main(uint globalId: SV_DispatchThreadID, uint groupId : SV_GroupID, uint th
   const uint globalThreadlIdx = cb.threadIndexOffset + globalId;
   const uint triIdx = globalThreadlIdx * numTrisPerThread / cb.numMicroTrianglesPerTriangle;
   
-  Surface surface = Surfaces[uint(cb.surfaceIndex)];
-  
   float2 vertexTexcoords[3];
   float16_t vertexOpacities[3];
-  loadVertexData(triIdx, surface, vertexTexcoords, vertexOpacities);
+  loadVertexData(triIdx, cb.surface, vertexTexcoords, vertexOpacities);
   
   uint8_t compactResult = 0;
-  for(uint i=0 ; i<numTrisPerThread ; i++)
+  for (uint i=0 ; i<numTrisPerThread ; i++)
   {
     const uint sharedResultOffset = (i << (numBitsPerMicroTriangle - 1));
   
     const uint uIdx = (globalThreadlIdx * numTrisPerThread + i) - triIdx * cb.numMicroTrianglesPerTriangle;
 
     // Calculate opacity micromap value for the u-triangle processed by this thread
-    const uint8_t ommValue = (uint8_t)calculateOpacityMicromapValue(uIdx, rcpNumSubdivisions, surface, vertexTexcoords, vertexOpacities);
+    const uint8_t ommValue = (uint8_t)calculateOpacityMicromapValue(uIdx, rcpNumSubdivisions, cb.surface, vertexTexcoords, vertexOpacities);
 
     compactResult |= ommValue << sharedResultOffset;
   }

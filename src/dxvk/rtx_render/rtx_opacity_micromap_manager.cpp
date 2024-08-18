@@ -1693,7 +1693,7 @@ namespace dxvk {
       // Bake micro triangles
       do {
         ctx->getCommonObjects()->metaGeometryUtils().dispatchBakeOpacityMicromap(
-          ctx, blasEntry.modifiedGeometryData,
+          ctx, instance, blasEntry.modifiedGeometryData,
           textures, samplers, instance.getAlbedoOpacityTextureIndex(), instance.getSamplerIndex(), instance.getSecondaryOpacityTextureIndex(), instance.getSecondarySamplerIndex(),
           desc, ommCacheItem.bakingState, availableBakingBudget, ommCacheItem.ommArrayBuffer);
 
