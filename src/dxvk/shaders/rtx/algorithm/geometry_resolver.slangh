@@ -1362,8 +1362,6 @@ void geometryResolverVertex(
 
   if (geometryResolverState.performPSRR || geometryResolverState.performPSTR)
   {
-    bool useAlternateDisocclusionThreshold = false;
-
     // Set the geometry flag bits that must be the same for both PSR passes, see unpackPSRData(...)
 
     GeometryFlags geometryFlags = (GeometryFlags)0;
@@ -1399,7 +1397,7 @@ void geometryResolverVertex(
       // Note: Set the common alternate disocclusion threshold flag if reflection PSR requests it.
       if (surfaceMaterialInteractionReflectionPSRSample.useAlternateDisocclusionThreshold)
       {
-        useAlternateDisocclusionThreshold = true;
+        geometryResolverState.useAlternateDisocclusionThreshold = true;
       }
     }
 
@@ -1428,7 +1426,7 @@ void geometryResolverVertex(
       // Note: Set the common alternate disocclusion threshold flag if transmission PSR requests it.
       if (surfaceMaterialInteractionTransmissionPSRSample.useAlternateDisocclusionThreshold)
       {
-        useAlternateDisocclusionThreshold = true;
+        geometryResolverState.useAlternateDisocclusionThreshold = true;
       }
     }
 
