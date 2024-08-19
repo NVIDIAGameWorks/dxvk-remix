@@ -1114,7 +1114,7 @@ void geometryResolverVertex(
     unorderedRayMask, geometryResolverState.portalSpace,
     useIntersectionBillboards,
     geometryResolverState.pixelCoordinate,
-    geometryResolverState.accumulatedRotation, geometryResolverState.accumulatedHitDistance,
+    geometryResolverState.accumulatedRotation, geometryResolverState.accumulatedHitDistance, 1.h,
     radianceAttenuation, emissiveRadiance,
     numUnorderedInteractions, 
     geometryResolverState.decalEncountered, decalMemory, decalEmissiveRadiance, surfaceIndex);
@@ -1641,7 +1641,7 @@ void geometryPSRResolverVertex(
     unorderedRayMask, geometryPSRResolverState.portalSpace,
     /* useIntersectionBillboards = */ cb.enableBillboardOrientationCorrection,
     u16vec2(65535, 65535),
-    geometryPSRResolverState.accumulatedRotation, geometryPSRResolverState.accumulatedHitDistance,
+    geometryPSRResolverState.accumulatedRotation, geometryPSRResolverState.accumulatedHitDistance, 1.h,
     radianceAttenuation, emissiveRadiance,
     numUnorderedInteractions, 
     geometryPSRResolverState.decalEncountered, decalMemory, decalEmissiveRadiance, surfaceIndex);

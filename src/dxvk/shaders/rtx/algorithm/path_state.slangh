@@ -77,7 +77,7 @@ struct PathState : IBasePayloadState
   uint8_t _data; // PortalSpace(uint:2b), 
                  // indirectLightPortalID(uint:2b), 
                  // bounceIteration(uint:4b)
-
+  uint8_t _roughness;
   
   // Property to get and set pixel coordinate
   property u16vec2 pixelCoordinate 
@@ -213,6 +213,12 @@ struct PathState : IBasePayloadState
       set { }
   }
 
+  property float16_t gbufferPerceptualRoughness
+  {
+      get { return unorm8ToF16(_roughness); }
+      set { _roughness = f16ToUnorm8(newValue); }
+  }
+
   // Calculates an RNG offset at a start of a bounce set in the path state
   uint calculateRNGOffset(uint sampleOffset) 
   {
@@ -224,19 +230,43 @@ struct PathState : IBasePayloadState
     return sampleOffset;
   } 
 
+  // Note: Using separate accumulation for particles and whatever else as while they should be visible in reflections
+  // through indirect paths, they do not need to be evaluated with particularly high quality. This is only done for the
+  // first bounce as past that all particles and similar things will be skipped anyways.
+  bool getSeparateUnorderedApproximationsActive()
+  {
+    RNG rng = createRNG(pixelCoordinate, cb.frameIdx, 101);
+    return cb.enableSeparateUnorderedApproximations &&
+           cb.enableUnorderedResolveInIndirectRays &&
+           bounceIteration <= 1 && 
+           (!cb.enableProbabilisticUnorderedResolveInIndirectRays || getNextSampleBlueNoise(rng) <= getUnorderedApproximationSelectionProbability());
+  }
+
+  // Describe the rate at which we should perform unordered resolve for indirect rays.
+  static const float16_t kUnorderedResolveSelectionProbabilityMin = 1.h/16.h;
+  static const float16_t kUnorderedResolveSelectionProbabilityMax = 1.h/2.h;
+
+  float16_t getUnorderedApproximationSelectionProbability()
+  {
+    return cb.enableProbabilisticUnorderedResolveInIndirectRays
+             // Note: The use of gbuffer roughness here is just a rough estimator for how important a ray is to the overall path contribution. 
+             //       There are better estimators, however this one is basically free, and provides good quality.  Ideally we want high probability
+             //       when the ray is from a smooth material, and low probability when it is very rough.
+             ? lerp(kUnorderedResolveSelectionProbabilityMax, kUnorderedResolveSelectionProbabilityMin, gbufferPerceptualRoughness)
+             : 1.h;
+  }
+
 #if defined(RAY_PIPELINE) && defined(RT_SHADER_EXECUTION_REORDERING)
   bool shouldReorder(out uint coherenceHints, out uint numCoherenceHints)
   {
     coherenceHints = 0;
     numCoherenceHints = 0;
 
-    // getSeparateUnorderedApproximationsActive(...)
     if (cb.enableSeparateUnorderedApproximations &&
         cb.enableUnorderedResolveInIndirectRays) 
     {
-      addCoherenceHintAsLeastImportant1Bit(bounceIteration <= 1, coherenceHints, numCoherenceHints);
+      addCoherenceHintAsLeastImportant1Bit(getSeparateUnorderedApproximationsActive(), coherenceHints, numCoherenceHints);
     }
-
     return true;
   }
 
