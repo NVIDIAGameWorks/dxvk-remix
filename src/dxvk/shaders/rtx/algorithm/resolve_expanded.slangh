@@ -142,7 +142,7 @@ void ReorderThread(uint CoherenceHint, uint NumCoherenceHintBits) {}
     {                                                                                                   \
       /* Invoke a Ray Query */                                                                          \
                                                                                                         \
-      RayQuery<0> rayQuery;                                                                             \
+      RayQuery<0> rayQuery = RayQuery<0>();;                                                            \
                                                                                                         \
       /* Note: For now gl_RayFlagsOpaqueEXT is always used as this function will always return the */   \
       /* closest geometry hit, translucent or not (as we handle things like translucency and opacity */ \

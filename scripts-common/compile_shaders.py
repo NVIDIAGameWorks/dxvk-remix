@@ -226,10 +226,10 @@ def createSlangTask(inputFile, variantSpec):
 
     variableName = '' if args.binary else f'--vn {variantName}'
 
-    command1 = f'{args.slangc} -profile glsl_460 -entry main -target glsl -verbose-paths {includePaths} -o {glslFile} ' \
+    command1 = f'{args.slangc} -entry main -target glsl -verbose-paths {includePaths} -o {glslFile} ' \
             + f'-depfile {depFile} {inputFile} -D__SLANG__ {variantDefines} ' \
             + f'-matrix-layout-column-major -line-directive-mode none ' \
-            + f'-Wno-30081 '
+            + f'-Wno-30081 -zero-initialize'
 
     if generateSlangRepro:
       reproFile = os.path.join(args.output, variantName + ".slangRepro")

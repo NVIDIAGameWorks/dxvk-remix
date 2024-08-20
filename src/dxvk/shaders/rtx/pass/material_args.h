@@ -27,30 +27,30 @@
 // These would be split into their own structs, but to minimize how much padding is needed they are combined for the time being.
 
 struct OpaqueMaterialArgs {
-  float albedoScale;
-  float albedoBias;
-  float roughnessScale;
-  float roughnessBias;
-  float metallicScale;
-  float metallicBias;
-  float normalIntensity;
-  float layeredWaterNormalMotionX;
-  float layeredWaterNormalMotionY;
-  float layeredWaterNormalMotionScale;
-  float layeredWaterNormalLodBias;
-  uint layeredWaterNormalEnable;
-  uint enableThinFilmOverride;
+  float albedoScale = 1.f;
+  float albedoBias = 0.f;
+  float roughnessScale = 1.f;
+  float roughnessBias = 0.f;
+  float metallicScale = 1.f;
+  float metallicBias = 0.f;
+  float normalIntensity = 1.f;
+  float layeredWaterNormalMotionX = 0.f;
+  float layeredWaterNormalMotionY = 0.f;
+  float layeredWaterNormalMotionScale = 1.f;
+  float layeredWaterNormalLodBias = 0.f;
+  uint layeredWaterNormalEnable = 0;
+  uint enableThinFilmOverride = 0;
   // Note: This thickness value is normalized on 0-1, predivided by the thinFilmMaxThickness on the CPU.
   float thinFilmNormalizedThicknessOverride = 0.0;
-  uint pad0;
-  uint pad1;
+  uint pad0 = 0;
+  uint pad1 = 0;
 };
 
 struct TranslucentMaterialArgs {
-  float transmittanceColorScale;
-  float transmittanceColorBias;
-  float normalIntensity;
-  uint enableDiffuseLayerOverride;
+  float transmittanceColorScale = 1.f;
+  float transmittanceColorBias = 0.f;
+  float normalIntensity = 1.f;
+  uint enableDiffuseLayerOverride = 0;
 };
 
 #ifdef __cplusplus
