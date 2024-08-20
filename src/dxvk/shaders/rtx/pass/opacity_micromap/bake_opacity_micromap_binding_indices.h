@@ -22,17 +22,27 @@
 #pragma once
 
 #include "rtx/utility/shader_types.h"
+#ifdef __cplusplus
+#include "rtx_materials.h"
+#endif
 
 #define BINDING_BAKE_OPACITY_MICROMAP_TEXCOORD_INPUT              0
 #define BINDING_BAKE_OPACITY_MICROMAP_OPACITY_INPUT               1
 #define BINDING_BAKE_OPACITY_MICROMAP_SECONDARY_OPACITY_INPUT     2
 #define BINDING_BAKE_OPACITY_MICROMAP_BINDING_SURFACE_DATA_INPUT  3
+#define BINDING_BAKE_OPACITY_MICROMAP_CONSTANTS                   4
 
-#define BINDING_BAKE_OPACITY_MICROMAP_ARRAY_OUTPUT                4
+#define BINDING_BAKE_OPACITY_MICROMAP_ARRAY_OUTPUT                5
 
-#define BAKE_OPACITY_MICROMAP_NUM_THREAD_PER_COMPUTE_BLOCK        128
+#define BAKE_OPACITY_MICROMAP_NUM_THREAD_PER_COMPUTE_BLOCK        256
 
 struct BakeOpacityMicromapArgs {
+#ifdef __cplusplus
+  uint8_t surface[dxvk::kSurfaceGPUSize];
+#else
+  Surface surface;
+#endif
+
   uint numTriangles;
   uint numMicroTrianglesPerTriangle;
   uint is2StateOMMFormat;
@@ -46,7 +56,7 @@ struct BakeOpacityMicromapArgs {
   uint useConservativeEstimation;
   uint materialType;
   uint applyVertexAndTextureOperations;
-  uint surfaceIndex;
+  uint numMicroTrianglesPerThread;
 
   vec2 textureResolution;
   vec2 rcpTextureResolution;

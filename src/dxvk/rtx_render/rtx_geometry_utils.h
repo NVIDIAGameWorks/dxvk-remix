@@ -114,6 +114,7 @@ namespace dxvk {
      */
     void dispatchBakeOpacityMicromap(
       Rc<DxvkContext> ctx,
+      const RtInstance& instance,
       const RaytraceGeometry& geo,
       const std::vector<TextureRef>& textures,
       const std::vector<Rc<DxvkSampler>>& samplers,

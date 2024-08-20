@@ -24,7 +24,7 @@
 #include "bake_opacity_micromap_rtx_dependencies.slangh"
 #include "bake_opacity_micromap_utils.slangh"
 
-layout(push_constant)
+layout(binding = BINDING_BAKE_OPACITY_MICROMAP_CONSTANTS)
 ConstantBuffer<BakeOpacityMicromapArgs> cb;
 
 [allow("parameterBindingsOverlap")]
@@ -53,7 +53,7 @@ layout(binding = BINDING_BAKE_OPACITY_MICROMAP_BINDING_SURFACE_DATA_INPUT)
 StructuredBuffer<Surface> Surfaces;
 
 layout(binding = BINDING_BAKE_OPACITY_MICROMAP_ARRAY_OUTPUT)
-RWStructuredBuffer<uint> OpacityMicromapArray;
+RWStructuredBuffer<uint8_t> OpacityMicromapArray;
 
 void loadVertexData(uint triIdx, Surface surface, out float2 vertexTexcoords[3], out float16_t vertexOpacities[3]) 
 {
@@ -297,54 +297,38 @@ OpacityState calculateOpacityMicromapValue(uint uIdx, float rcpNumSubdivisions, 
   return calculateOpacityMicromapValue(minOpacity, maxOpacity);
 }
 
-static const uint maxOutputMaskWords = BAKE_OPACITY_MICROMAP_NUM_THREAD_PER_COMPUTE_BLOCK / 16;
-
-groupshared uint s_results[maxOutputMaskWords];
-
 [shader("compute")]
 [numthreads(BAKE_OPACITY_MICROMAP_NUM_THREAD_PER_COMPUTE_BLOCK, 1, 1)]
 void main(uint globalId: SV_DispatchThreadID, uint groupId : SV_GroupID, uint threadId : SV_GroupThreadID)
 {
-  const uint numOutputMaskWords = cb.is2StateOMMFormat ? (maxOutputMaskWords >> 1) : maxOutputMaskWords;
-
-  if (threadId < numOutputMaskWords)
-    s_results[threadId] = 0;
-
-  GroupMemoryBarrierWithGroupSync();
-
+  if (globalId >= cb.numActiveThreads)
+    return;
+  
   const uint numBitsPerMicroTriangle = cb.is2StateOMMFormat ? 1 : 2;
   const uint numSubdivisionsPerEdge = 1 << cb.subdivisionLevel;
   const float rcpNumSubdivisions = 1.f / numSubdivisionsPerEdge;
-  const uint globalThreadlIdx = cb.threadIndexOffset + globalId;
-
-  // log2(number of uTri per 32-bit output word), so 5 (32 tris) when each uTri output 1 bit, or 4 (16 tris) when each uTri outputs 2 bits
-  const uint threadToWordShift = 6 - numBitsPerMicroTriangle;
-  const uint sharedResultIdx = threadId >> threadToWordShift;                         // 1 bpt: threadId / 32,   2 bpt: threadId / 16
-  const uint sharedResultOffset = (threadId << (numBitsPerMicroTriangle - 1)) & 0x1f; // 1 bpt: threadId & 0x1f, 2 bpt: (threadId << 1) & 0x1f
   
-  const uint triIdx = globalThreadlIdx / cb.numMicroTrianglesPerTriangle;
-  const uint uIdx = globalThreadlIdx - triIdx * cb.numMicroTrianglesPerTriangle;
-
-  if (globalId < cb.numActiveThreads)
+  // log2(number of uTri per 32-bit output word), so 5 (32 tris) when each uTri output 1 bit, or 4 (16 tris) when each uTri outputs 2 bits
+  const uint numTrisPerThread = cb.numMicroTrianglesPerThread;
+  
+  const uint globalThreadlIdx = cb.threadIndexOffset + globalId;
+  const uint triIdx = globalThreadlIdx * numTrisPerThread / cb.numMicroTrianglesPerTriangle;
+  
+  float2 vertexTexcoords[3];
+  float16_t vertexOpacities[3];
+  loadVertexData(triIdx, cb.surface, vertexTexcoords, vertexOpacities);
+  
+  uint8_t compactResult = 0;
+  for (uint i=0 ; i<numTrisPerThread ; i++)
   {
-    const Surface surface = Surfaces[uint(cb.surfaceIndex)]; 
-
-    float2 vertexTexcoords[3];
-    float16_t vertexOpacities[3];
-    loadVertexData(triIdx, surface, vertexTexcoords, vertexOpacities);
+    const uint sharedResultOffset = (i << (numBitsPerMicroTriangle - 1));
+  
+    const uint uIdx = (globalThreadlIdx * numTrisPerThread + i) - triIdx * cb.numMicroTrianglesPerTriangle;
 
     // Calculate opacity micromap value for the u-triangle processed by this thread
-    const uint ommValue = (uint)
-      calculateOpacityMicromapValue(uIdx, rcpNumSubdivisions, surface, vertexTexcoords, vertexOpacities);
+    const uint8_t ommValue = (uint8_t)calculateOpacityMicromapValue(uIdx, rcpNumSubdivisions, cb.surface, vertexTexcoords, vertexOpacities);
 
-    InterlockedOr(s_results[sharedResultIdx], ommValue << sharedResultOffset);
+    compactResult |= ommValue << sharedResultOffset;
   }
-
-  GroupMemoryBarrierWithGroupSync();
-  
-  if (threadId < numOutputMaskWords)
-  {
-    const uint groupBaseWord = (cb.threadIndexOffset + groupId * BAKE_OPACITY_MICROMAP_NUM_THREAD_PER_COMPUTE_BLOCK) >> threadToWordShift;
-    OpacityMicromapArray[groupBaseWord + threadId] = s_results[threadId];
-  }
+  OpacityMicromapArray[cb.threadIndexOffset + globalId] = compactResult;
 }

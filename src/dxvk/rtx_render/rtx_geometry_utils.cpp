@@ -95,13 +95,12 @@ namespace dxvk {
       
       BINDLESS_ENABLED()
 
-      PUSH_CONSTANTS(BakeOpacityMicromapArgs)
-
       BEGIN_PARAMETER()
         STRUCTURED_BUFFER(BINDING_BAKE_OPACITY_MICROMAP_TEXCOORD_INPUT) 
         SAMPLER2D(BINDING_BAKE_OPACITY_MICROMAP_OPACITY_INPUT)
         SAMPLER2D(BINDING_BAKE_OPACITY_MICROMAP_SECONDARY_OPACITY_INPUT)
         STRUCTURED_BUFFER(BINDING_BAKE_OPACITY_MICROMAP_BINDING_SURFACE_DATA_INPUT)
+        CONSTANT_BUFFER(BINDING_BAKE_OPACITY_MICROMAP_CONSTANTS)
         RW_STRUCTURED_BUFFER(BINDING_BAKE_OPACITY_MICROMAP_ARRAY_OUTPUT)
       END_PARAMETER()
     };
@@ -447,6 +446,7 @@ namespace dxvk {
 
   void RtxGeometryUtils::dispatchBakeOpacityMicromap(
     Rc<DxvkContext> ctx,
+    const RtInstance& instance,
     const RaytraceGeometry& geo,
     const std::vector<TextureRef>& textures,
     const std::vector<Rc<DxvkSampler>>& samplers,
@@ -469,6 +469,8 @@ namespace dxvk {
 
     // Fill out the arguments
     BakeOpacityMicromapArgs args {};
+    size_t surfaceWriteOffset = 0;
+    instance.surface.writeGPUData(&args.surface[0], surfaceWriteOffset);
     args.numTriangles = desc.numTriangles;
     args.numMicroTrianglesPerTriangle = desc.numMicroTrianglesPerTriangle;
     args.is2StateOMMFormat = desc.ommFormat == VK_OPACITY_MICROMAP_FORMAT_2_STATE_EXT;
@@ -480,7 +482,7 @@ namespace dxvk {
     args.useConservativeEstimation = desc.useConservativeEstimation;
     args.materialType = static_cast<uint32_t>(desc.materialType);
     args.applyVertexAndTextureOperations = desc.applyVertexAndTextureOperations;
-    args.surfaceIndex = desc.surfaceIndex;
+    args.numMicroTrianglesPerThread = args.is2StateOMMFormat ? 8 : 4;
     args.textureResolution = vec2 { static_cast<float>(opacityTextureResolution.width), static_cast<float>(opacityTextureResolution.height) };
     args.rcpTextureResolution = vec2 { 1.f / opacityTextureResolution.width, 1.f / opacityTextureResolution.height };
     args.conservativeEstimationMaxTexelTapsPerMicroTriangle = desc.conservativeEstimationMaxTexelTapsPerMicroTriangle;
@@ -523,8 +525,6 @@ namespace dxvk {
 
     ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, BakeOpacityMicromapShader::getShader());
 
-    ctx->setPushConstantBank(DxvkPushConstantBank::RTX);
-
     if (!bakeState.initialized) {
       bakeState.numMicroTrianglesToBake = args.numTriangles * args.numMicroTrianglesPerTriangle;
       bakeState.numMicroTrianglesBaked = 0;
@@ -532,7 +532,7 @@ namespace dxvk {
     }
 
     const uint32_t numMicroTrianglesPerWord = args.is2StateOMMFormat ? 32 : 16;
-    const uint32_t kNumMicroTrianglesPerComputeBlock = BAKE_OPACITY_MICROMAP_NUM_THREAD_PER_COMPUTE_BLOCK;
+    const uint32_t kNumMicroTrianglesPerComputeBlock = BAKE_OPACITY_MICROMAP_NUM_THREAD_PER_COMPUTE_BLOCK * args.numMicroTrianglesPerThread;
     const VkPhysicalDeviceLimits& limits = device()->properties().core.properties.limits;
     // Workgroup count limit can be high (i.e. 2 Billion), so avoid overflowing uint32_t limit 
     const uint32_t maxThreadsPerDispatch = std::min(limits.maxComputeWorkGroupCount[0], UINT32_MAX / kNumMicroTrianglesPerComputeBlock) *
@@ -554,19 +554,27 @@ namespace dxvk {
       calculateNumMicroTrianglesToBake(bakeState, desc, numMicroTrianglesAlignment, bakingWeightScale, availableBakingBudget);
 
     // Calculate per dispatch counts
-    const uint32_t numThreads = numMicroTrianglesToBake;
+    const uint32_t numThreads = numMicroTrianglesToBake / args.numMicroTrianglesPerThread;
     const uint32_t numThreadsPerDispatch = std::min(numThreads, maxThreadsPerDispatchAligned);
-    const uint32_t numDispatches = dxvk::util::ceilDivide(numMicroTrianglesToBake, numThreadsPerDispatch);
-    const uint32_t baseThreadIndexOffset = bakeState.numMicroTrianglesBaked;
+    const uint32_t numDispatches = dxvk::util::ceilDivide(numThreads, numThreadsPerDispatch);
+    const uint32_t baseThreadIndexOffset = bakeState.numMicroTrianglesBaked / args.numMicroTrianglesPerThread;
+
+    args.numActiveThreads = numThreadsPerDispatch;
 
     for (uint32_t i = 0; i < numDispatches; i++) {
       args.threadIndexOffset = i * numThreadsPerDispatch + baseThreadIndexOffset;
-      args.numActiveThreads = std::min(numMicroTrianglesToBake - i * numThreadsPerDispatch, numThreadsPerDispatch);
 
-      ctx->pushConstants(0, sizeof(args), &args);
+      // Upload the arguments into a buffer slice
+      const auto& devInfo = ctx->getDevice()->properties().core.properties;
+      DxvkBufferSlice cb = m_pCbData->alloc(devInfo.limits.minUniformBufferOffsetAlignment, sizeof(BakeOpacityMicromapArgs));
+      memcpy(cb.mapPtr(0), &args, sizeof(BakeOpacityMicromapArgs));
+      ctx->getCommandList()->trackResource<DxvkAccess::Write>(cb.buffer());
+
+      // Bind other resources
+      ctx->bindResourceBuffer(BINDING_BAKE_OPACITY_MICROMAP_CONSTANTS, cb);
 
       // Run the shader
-      const VkExtent3D workgroups = util::computeBlockCount(VkExtent3D { numThreadsPerDispatch, 1, 1 }, VkExtent3D { kNumMicroTrianglesPerComputeBlock, 1, 1 });
+      const VkExtent3D workgroups = util::computeBlockCount(VkExtent3D { numThreadsPerDispatch, 1, 1 }, VkExtent3D { BAKE_OPACITY_MICROMAP_NUM_THREAD_PER_COMPUTE_BLOCK, 1, 1 });
       ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
     }
 
