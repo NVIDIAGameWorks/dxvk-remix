@@ -212,6 +212,9 @@ void rayPortalSurfaceMaterialInteractionCalcSample(
   inout SurfaceMaterialInteractionLobeSample surfaceMaterialInteractionLobeSample,
   inout bool insideMedium, inout bool penetrateSurface)
 {
+  unused(insideMedium);
+  unused(penetrateSurface);
+  
   surfaceMaterialInteractionLobeSample.lobe = uint8_t(0u);
   surfaceMaterialInteractionLobeSample.pdf = float16_t(1.0f);
 
@@ -235,7 +238,10 @@ SurfaceMaterialInteractionPSRSample rayPortalSurfaceMaterialInteractionCalcPSRTr
   RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction,
   MinimalRayInteraction minimalRayInteraction,
   inout bool insideMedium, inout bool penetrateSurface)
-{
+{  
+  unused(insideMedium);
+  unused(penetrateSurface);
+  
   SurfaceMaterialInteractionPSRSample materialPSRSample;
 
   materialPSRSample.performPSR = false;
@@ -253,6 +259,8 @@ void rayPortalSurfaceMaterialInteractionCalcPSRSample(
   inout float16_t selectedIntegrationSurfacePdf,
   inout bool insideMedium, inout bool penetrateSurface)
 {
+  unused(diffuseLayerWeight);
+  
   // Sample Reflection PSR
 
   surfaceMaterialInteractionReflectionPSRSample = rayPortalSurfaceMaterialInteractionCalcPSRReflectionSample(

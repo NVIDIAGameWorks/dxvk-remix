@@ -27,7 +27,7 @@
 
 VolumeMaterialInteraction volumeMaterialInteractionCreate(VolumeMaterial volumeMaterial, SurfaceInteraction surfaceInteraction)
 {
-  VolumeMaterialInteraction volumeMaterialInteraction;
+  VolumeMaterialInteraction volumeMaterialInteraction = (VolumeMaterialInteraction)0;
 
   // Todo: Volume material decoding
 

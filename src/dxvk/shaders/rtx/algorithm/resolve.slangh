@@ -207,6 +207,9 @@ bool evaluateTranslucentApproximations(
   TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction,
   f16vec3 incomingRadianceAttenuation, inout float16_t outgoingRadianceAttenuation, inout vec3 emissiveRadiance)
 {
+  unused(outgoingRadianceAttenuation);
+  unused(emissiveRadiance);
+  
   // Handle typical attenuation approximations
 
   const bool translucencyTransmissionApprox = packedFlagGet(resolveMode, resolveModeTranslucencyTransmissionApprox);
@@ -272,6 +275,8 @@ void resolveVertexFinalMiss<let overrideRayInteraction : bool, T : IBasePayloadS
   inout RayInteraction rayInteraction,
   inout f16vec3 radianceAttenuation)
 {
+  unused(radianceAttenuation);
+
   // Set the hit distance for this segment of the ray to a miss and indicate that resolving should be stopped
 
   resolveVertexState.segmentHitDistance = kMissHitDistance;
@@ -320,7 +325,7 @@ void resolveVertex<T: IBasePayloadState>(
 {
   const Camera camera = cb.camera;
   bool teleport = false;
-  mat4 teleportMatrix;
+  mat4 teleportMatrix = mat4(1, 0, 0, 0,  0, 1, 0, 0,  0, 0, 1, 0,  0, 0, 0, 1);
 
   // Create a Ray and Ray Interaction from the hit
 
@@ -481,6 +486,7 @@ void resolveVertex<T: IBasePayloadState>(
 
     isStochasticAlphaBlend = handleStochasticAlphaBlend;
 #else
+    unused(isStochasticAlphaBlend);
     bool handleStochasticAlphaBlend = false;
 #endif
 
@@ -787,7 +793,7 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
 
   // Loop over each non-opaque object in the ray's path
 
-  RayQuery<RAY_FLAGS> rayQuery;
+  RayQuery<RAY_FLAGS> rayQuery = RayQuery<RAY_FLAGS>();
   {
     RayDesc rayDesc;
     rayDesc.Origin = ray.origin;

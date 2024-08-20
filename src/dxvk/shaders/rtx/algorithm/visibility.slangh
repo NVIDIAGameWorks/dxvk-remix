@@ -297,7 +297,7 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
 
   while(true)
   {
-    RayQuery<0> rayQuery;
+    RayQuery<0> rayQuery = RayQuery<0>();
 
     if (usePreviousTLAS)
     {

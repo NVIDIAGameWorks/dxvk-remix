@@ -944,6 +944,8 @@ SurfaceMaterialInteractionLobeSample opaqueSurfaceMaterialInteractionCalcLobeSam
   MinimalRayInteraction minimalRayInteraction,
   inout bool insideMedium)
 {
+  unused(insideMedium);
+  
   float16_t diffuseReflectionProbability = 0.0f;
   float16_t specularReflectionProbability = 0.0f;
   float16_t opacityTransmissionProbability = 0.0f;
@@ -1257,6 +1259,8 @@ SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcDiffuseTran
   MinimalRayInteraction minimalRayInteraction,
   inout bool insideMedium, inout bool penetrateSurface)
 {
+  unused(insideMedium);
+  
   const f16vec4 worldToTangentSpaceQuaternion = quaternionInverse(tangentToWorldSpaceQuaternion);
 
   // Set up relevant input vectors in tangent space
@@ -1293,6 +1297,8 @@ SurfaceMaterialInteractionSample thinOpaqueSurfaceMaterialInteractionCalcDiffuse
   SubsurfaceMaterial subsurfaceMaterial,
   inout bool insideMedium, inout bool penetrateSurface)
 {
+  unused(insideMedium);
+  
   const f16vec4 worldToTangentSpaceQuaternion = quaternionInverse(tangentToWorldSpaceQuaternion);
 
   // Set up relevant input vectors in tangent space
@@ -1345,6 +1351,8 @@ SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcOpacityTran
   MinimalRayInteraction minimalRayInteraction,
   inout bool insideMedium, inout bool penetrateSurface)
 {
+  unused(insideMedium);
+  
   SurfaceMaterialInteractionSample materialSample;
 
   materialSample.inputDirection = -minimalRayInteraction.viewDirection;
@@ -1510,6 +1518,9 @@ SurfaceMaterialInteractionPSRSample opaqueSurfaceMaterialInteractionCalcPSRTrans
   MinimalRayInteraction minimalRayInteraction,
   inout bool insideMedium, inout bool penetrateSurface)
 {
+  unused(insideMedium);
+  unused(penetrateSurface);
+  
   SurfaceMaterialInteractionPSRSample materialPSRSample;
 
   // Todo: Experimentally test transmission PSR for opacity in the future, for now not needed though.
@@ -1528,6 +1539,8 @@ void opaqueSurfaceMaterialInteractionCalcPSRSample(
   inout float16_t selectedIntegrationSurfacePdf,
   inout bool insideMedium, inout bool penetrateSurface)
 {
+  unused(diffuseLayerWeight);
+  
   // Sample Reflection PSR
 
   surfaceMaterialInteractionReflectionPSRSample = opaqueSurfaceMaterialInteractionCalcPSRReflectionSample(

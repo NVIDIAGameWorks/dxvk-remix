@@ -89,8 +89,7 @@ struct PathState : IBasePayloadState
     #else
       return gl_GlobalInvocationID.xy;
     #endif
-  }
-    set { /* Not applicable in this context */ }
+    }
   }
 
   // Passthrough accessors
