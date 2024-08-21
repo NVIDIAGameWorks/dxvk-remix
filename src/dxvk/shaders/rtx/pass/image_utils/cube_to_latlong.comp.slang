@@ -48,5 +48,5 @@ void main(uint2 idx : SV_DispatchThreadID) {
                       cos(latlong.y) * sin(latlong.x),
                       sin(latlong.y));
 
-  LatLong[idx] = Cube.Sample(dir);
+  LatLong[idx] = Cube.SampleLevel(dir, 0);
 }

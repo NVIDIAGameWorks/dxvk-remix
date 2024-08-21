@@ -1203,7 +1203,7 @@ void geometryResolverVertex(
       // Apply sky radiance on miss
       // TODO: add jitter?
       vec2 screenUV = cameraPixelCoordinateToScreenUV(cb.camera, geometryResolverState.pixelCoordinate);
-      emissiveRadiance += cb.skyBrightness * SkyMatte.Sample(screenUV);
+      emissiveRadiance += cb.skyBrightness * SkyMatte.SampleLevel(screenUV, 0);
     }
   }
 
@@ -1741,7 +1741,7 @@ void geometryPSRResolverVertex(
     else
     {
       // Output radiance from sky probe
-      emissiveRadiance += cb.skyBrightness * SkyProbe.Sample(ray.direction);
+      emissiveRadiance += cb.skyBrightness * SkyProbe.SampleLevel(ray.direction, 0);
     }
   }
 
