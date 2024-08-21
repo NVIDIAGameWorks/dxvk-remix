@@ -329,7 +329,7 @@ void integratePathVertex(
     }
     else
     {
-      emissiveRadiance += cb.skyBrightness * SkyProbe.Sample(pathState.direction);
+      emissiveRadiance += cb.skyBrightness * SkyProbe.SampleLevel(pathState.direction, 0);
     }
   }
 
