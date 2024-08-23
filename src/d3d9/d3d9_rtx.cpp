@@ -929,7 +929,7 @@ namespace dxvk {
       }
 
       D3D9SamplerKey key = m_parent->CreateSamplerKey(stage);
-      XXH64_hash_t samplerHash = XXH3_64bits(&key, sizeof(key));
+      XXH64_hash_t samplerHash = D3D9SamplerKeyHash{}(key);
 
       Rc<DxvkSampler> sampler;
       auto samplerIt = m_samplerCache.find(samplerHash);
