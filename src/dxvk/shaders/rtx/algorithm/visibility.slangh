@@ -38,7 +38,7 @@ static const uint visibilityModeOpaqueOnly = (1 << 5);                 // Only q
 // Visibility Helper Functions
 
 // Returns the attenuation factor for the surface, i.e. (1.0 - opacity)
-f16vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo rayHitInfo, bool usePreviousTLAS)
+f16vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo rayHitInfo, const bool usePreviousTLAS)
 {
   RayInteraction rayInteraction = rayInteractionCreate(ray, rayHitInfo);
   
@@ -57,13 +57,32 @@ f16vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo ra
       return 1.0;
   }
 
-  const Surface surface = surfaces[uint(rayInteraction.surfaceIndex)]; 
+  Surface surface = surfaces[uint(rayInteraction.surfaceIndex)]; 
 
-  if (surfaceIsDecal(surface))
-    // Decals do not cast shadows
-    return 1.0;
+  // Since during visibility testing, we dont need all the data, we can just explicitly
+  //   initialize these values and  help the compiler generate more optimal code paths.
+  const bool requiresNormalsAndTangents = VisibilityMode & (visibilityModeEnableSubsurfaceMaterials|visibilityModeEnableTranslucentMaterials);
+  {
+    surface.displaceIn = 0.f;
+    surface.decalSortOrder = 0;
+    surface.objectPickingValue = 0;
+    surface.hashPacked = 0;
+    surface.texcoordGenerationMode = TexGenMode::None;
 
-  SurfaceInteraction surfaceInteraction = surfaceInteractionCreate(surface, rayInteraction, ray, usePreviousTLAS);
+    if (!usePreviousTLAS)
+    {
+      surface.previousPositionBufferIndex = BINDING_INDEX_INVALID;
+      surface.prevObjectToWorld = mat4x3(1.f, 0.f, 0.f, 0.f,  0.f, 1.f, 0.f, 0.f,  0.f, 0.f, 1.f, 0.f);
+    }
+
+    if (!requiresNormalsAndTangents)
+    {
+      surface.normalBufferIndex = BINDING_INDEX_INVALID;
+      surface.normalObjectToWorld = getIdentityMatrix();
+    }
+  }
+
+  SurfaceInteraction surfaceInteraction = surfaceInteractionCreate<requiresNormalsAndTangents ? SurfaceGenerateTangents : SurfaceIgnoreTangents>(surface, rayInteraction, ray, usePreviousTLAS);
 
   if (isSurfaceClipped(surface, surfaceInteraction))
     // Ignore parts of surfaces that are under clip planes

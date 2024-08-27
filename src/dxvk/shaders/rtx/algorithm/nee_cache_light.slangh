@@ -134,7 +134,7 @@ struct NEECacheUtils
     Ray ray = {};
     ray.origin = shadingPosition;
     ray.spreadAngle = spreadAngle;
-    surfaceInteraction = surfaceInteractionCreate(surface, rayInteracton, ray, false, footprintMode);
+    surfaceInteraction = surfaceInteractionCreate<SurfaceIgnoreTangents>(surface, rayInteracton, ray, false, footprintMode);
     surfaceInteraction.textureGradientX *= cb.neeCacheArgs.emissiveTextureSampleFootprintScale;
     surfaceInteraction.textureGradientY *= cb.neeCacheArgs.emissiveTextureSampleFootprintScale;
 
@@ -305,7 +305,7 @@ struct NEECacheUtils
 
     Ray dummyRay;
     dummyRay.direction = f16vec3(1.0);
-    SurfaceInteraction surfaceInteraction = surfaceInteractionCreate(surface, rayInteracton, dummyRay, false, kFootprintFromTextureCoordDiff);
+    SurfaceInteraction surfaceInteraction = surfaceInteractionCreate<SurfaceIgnoreTangents>(surface, rayInteracton, dummyRay, false, kFootprintFromTextureCoordDiff);
     triangleCenter = surfaceInteraction.position;
     triangleNormal = surfaceInteraction.triangleNormal;
     lightIntensity = vec3(0);

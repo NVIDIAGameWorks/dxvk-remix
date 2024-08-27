@@ -364,7 +364,7 @@ void resolveVertex<T: IBasePayloadState>(
 
   surface = surfaces[uint(rayInteraction.surfaceIndex)]; 
 
-  surfaceInteraction = surfaceInteractionCreate(surface, rayInteraction, ray);
+  surfaceInteraction = surfaceInteractionCreate<SurfaceGenerateTangents>(surface, rayInteraction, ray);
 
   // Process user clip planes and view distance
 
@@ -967,7 +967,7 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
     const Surface surface = surfaces[uint(rayInteraction.surfaceIndex)]; 
 
     if (isTriangle)
-      surfaceInteraction = surfaceInteractionCreate(surface, rayInteraction, ray);
+      surfaceInteraction = surfaceInteractionCreate<SurfaceGenerateTangents>(surface, rayInteraction, ray);
 
     // Test the hit surface against view distance and ignored surface clipping
 
