@@ -80,9 +80,9 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.automation.disableUpdateUpscaleFromDlssPreset|bool|False|Disables updating upscaler from DLSS preset\.<br>This option is typically meant for automation of tests for which we don't want upscaler to be updated based on a DLSS preset\.|
 |rtx.automation.suppressAssetLoadingErrors|bool|False|Suppresses asset loading errors by turning them into warnings\.<br>This option is typically meant for automation of tests for which acceptable asset loading issues are known\.|
 |rtx.blockInputToGameInUI|bool|True||
-|rtx.bloom.enable|bool|True||
-|rtx.bloom.intensity|float|0.06||
-|rtx.bloom.sigma|float|0.1||
+|rtx.bloom.burnIntensity|float|1|Amount of bloom to add to the final image\.|
+|rtx.bloom.enable|bool|True|Enable bloom \- glowing halos around intense, bright areas\.|
+|rtx.bloom.luminanceThreshold|float|0.25|Adjust the bloom threshold to suppress blooming of the dim areas\. Pixels with luminance lower than the threshold are multiplied by the weight value that smoothly transitions from 1\.0 \(at luminance=threshold\) to 0\.0 \(at luminance=0\)\.|
 |rtx.calculateLightIntensityUsingLeastSquares|bool|True|Enable usage of least squares for approximating a light's falloff curve rather than a more basic single point approach\. This will generally result in more accurate matching of the original application's custom light attenuation curves, especially with non physically based linear\-style attenuation\.|
 |rtx.camera.enableFreeCamera|bool|False|Enables free camera\.|
 |rtx.camera.freeCameraPitch|float|0|Free camera's pitch\.|
@@ -100,7 +100,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.captureDebugImage|bool|False||
 |rtx.captureEnableMultiframe|bool|False|Enables multi\-frame capturing\. THIS HAS NOT BEEN MAINTAINED AND SHOULD BE USED WITH EXTREME CAUTION\.|
 |rtx.captureFramesPerSecond|int|24|Playback rate marked in the USD stage\.<br>Will eventually determine frequency with which game state is captured and written\. Currently every frame \-\- even those at higher frame rates \-\- are recorded\.|
-|rtx.captureHotKey|unknown type|unknown type|Hotkey to trigger a capture without bringing up the menu\.|
+|rtx.captureHotKey|unknown type|unknown type|Hotkey to trigger a capture without bringing up the menu\.<br>example override: 'rtx\.captureHotKey = CTRL, SHIFT, P'<br>Full list of key names available in src/util/util\_keybind\.h|
 |rtx.captureInstances|bool|True|If true, an instanced snapshot of the game scene will be captured and exported to a USD stage, in addition to all meshes, textures, materials, etc\.<br>If false, only meshes, etc will be captured\.|
 |rtx.captureMaxFrames|int|1|Max frames capturable when running a multi\-frame capture\. The capture can be toggled to completion manually\.|
 |rtx.captureMeshBlendWeightDelta|float|0.01|Inter\-frame blend weight min delta warrants new time sample\.|
@@ -228,6 +228,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.enablePortalFadeInEffect|bool|False||
 |rtx.enablePresentThrottle|bool|False|A flag to enable or disable present throttling, when set to true a sleep for a time specified by the throttle delay will be inserted into the DXVK presentation thread\.<br>Useful to manually reduce the framerate if the application is running too fast or to reduce GPU power usage during development to keep temperatures down\.<br>Should not be enabled in anything other than development situations\.|
 |rtx.enablePreviousTLAS|bool|True||
+|rtx.enableProbabilisticUnorderedResolveInIndirectRays|bool|True|A flag to enable or disable probabilistic unordered resolve approximations in indirect rays\.<br>This flag speeds up the unordered resolve for indirect rays by probabilistically deciding when to perform unordered resolve or not\.  Must have both unordered resolve and unordered resolve in indirect rays enabled for this to take effect\.<br>This option should be enabled by default as it can significantly improve performance on some hardware\.  In rare cases it may come at the cost of some quality for particles and decals in reflections\.<br>Note that even with this option enabled, unordered resolve approximations are only done on the first indirect bounce for the sake of performance overall\.|
 |rtx.enableRayReconstruction|bool|True|Enable ray reconstruction\.|
 |rtx.enableRaytracing|bool|True|Globally enables or disables ray tracing\. When set to false the original game should render mostly as it would in DXVK typically\.<br>Some artifacts may still appear however compared to the original game either due to issues with the underlying DXVK translation or issues in Remix itself\.|
 |rtx.enableReplacementAssets|bool|True|Globally enables or disables all enhanced asset replacement \(materials, meshes, lights\) functionality\.|
@@ -259,6 +260,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.fallbackLightType|int|0|The light type to use for the fallback light\. Determines which other fallback light options are used\.|
 |rtx.fireflyFilteringLuminanceThreshold|float|1000|Maximum luminance threshold for the firefly filtering to clamp to\.|
 |rtx.fogColorScale|float|0.25||
+|rtx.fogIgnoreSky|bool|False|If true, sky draw calls will be skipped when searching for the D3D9 fog values\.|
 |rtx.fogRemapColorMultiscatteringScale|float|1|A value representing the scale of the fixed function fog's color in the multiscattering approximation\.<br>This scaling factor is applied to the fixed function fog's color and becomes a multiscattering approximation in the volumetrics system\.<br>Sometimes useful but this multiscattering approximation is very basic \(just a simple ambient term for now essentially\) and may not look very good depending on various conditions\.|
 |rtx.fogRemapMaxDistanceMax|float|4000|A value controlling the "max distance" fixed function fog parameter's maximum remapping bound\.<br>Note that fog remapping and fog max distance remapping must be enabled for this setting to have any effect\.|
 |rtx.fogRemapMaxDistanceMin|float|100|A value controlling the "max distance" fixed function fog parameter's minimum remapping bound\.<br>Note that fog remapping and fog max distance remapping must be enabled for this setting to have any effect\.|
@@ -267,6 +269,17 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.forceCameraJitter|bool|False||
 |rtx.forceCutoutAlpha|float|0.5|When an object is added to the cutout textures list it will have a cutout alpha mode forced on it, using this value for the alpha test\.<br>This is meant to improve the look of some legacy mode materials using low\-resolution textures and alpha blending instead of alpha cutout as this can cause blurry halos around edges due to the difficulty of handling this sort of blending in Remix\.<br>Such objects are generally better handled with actual replacement assets using fully opaque geometry replacements or alpha cutout with higher resolution textures, so this should only be relied on until proper replacements can be authored\.|
 |rtx.forceHighResolutionReplacementTextures|bool|False|A flag to enable or disable forcing high resolution replacement textures\.<br>When enabled this mode overrides all other methods of mip calculation \(adaptive resolution and the minimum mipmap level\) and forces it to be 0 to always load in the highest quality of textures\.<br>This generally should not be used other than for various forms of debugging or visual comparisons as this mode will ignore any constraints on CPU or GPU memory which may starve the system or Remix of memory\.<br>Additionally, this setting must be set at startup and changing it will not take effect at runtime\.|
+|rtx.freeCam.keyMoveBack|unknown type|unknown type|Move back in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveBack = P'|
+|rtx.freeCam.keyMoveDown|unknown type|unknown type|Move down in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveDown = P'|
+|rtx.freeCam.keyMoveFaster|unknown type|unknown type|Move faster in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveForward = RSHIFT'|
+|rtx.freeCam.keyMoveForward|unknown type|unknown type|Move forward in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveForward = P'|
+|rtx.freeCam.keyMoveLeft|unknown type|unknown type|Move left in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveLeft = P'|
+|rtx.freeCam.keyMoveRight|unknown type|unknown type|Move right in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveRight = P'|
+|rtx.freeCam.keyMoveUp|unknown type|unknown type|Move up in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveUp = P'|
+|rtx.freeCam.keyPitchDown|unknown type|unknown type|Pitch down in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyPitchDown = P'|
+|rtx.freeCam.keyPitchUp|unknown type|unknown type|Pitch up in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyPitchUp = P'|
+|rtx.freeCam.keyYawLeft|unknown type|unknown type|Yaw left in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyYawLeft = P'|
+|rtx.freeCam.keyYawRight|unknown type|unknown type|Yaw right in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyYawRight = P'|
 |rtx.freeCameraSpeed|float|200|Free camera speed \[GameUnits/s\]\.|
 |rtx.froxelDepthSliceDistributionExponent|float|2|The exponent to use on depth values to nonlinearly distribute froxels away from the camera\. Higher values bias more froxels closer to the camera with 1 being linear\.|
 |rtx.froxelDepthSlices|int|48|The z dimension of the froxel grid\. Must be constant after initialization\.|
@@ -320,6 +333,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.legacyMaterial.emissiveIntensity|float|0|The default emissive intensity to use for non\-replaced "legacy" materials\.|
 |rtx.legacyMaterial.enableEmissive|bool|False|A flag to determine if emission should be used on non\-replaced "legacy" materials\.|
 |rtx.legacyMaterial.enableThinFilm|bool|False|A flag to determine if a thin\-film layer should be used on non\-replaced "legacy" materials\.|
+|rtx.legacyMaterial.ignoreAlphaChannel|bool|False|A flag to determine if the albedo alpha channel should be ignored on non\-replaced "legacy" materials\.|
 |rtx.legacyMaterial.metallicConstant|float|0.1|The default metallic constant to use for non\-replaced "legacy" materials\. Should be in the range 0 to 1\.|
 |rtx.legacyMaterial.opacityConstant|float|1|The default opacity constant to use for non\-replaced "legacy" materials\. Should be in the range 0 to 1\.|
 |rtx.legacyMaterial.roughnessConstant|float|0.7|The default perceptual roughness constant to use for non\-replaced "legacy" materials\. Should be in the range 0 to 1\.|
@@ -427,6 +441,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.opaqueMaterial.albedoBias|float|0|A bias factor to add to all albedo values in the opaque material\. Should only be used for debugging or development\.|
 |rtx.opaqueMaterial.albedoScale|float|1|A scale factor to apply to all albedo values in the opaque material\. Should only be used for debugging or development\.|
 |rtx.opaqueMaterial.enableThinFilmOverride|bool|False|A flag to force the thin\-film layer on the opaque material to be enabled\. Should only be used for debugging or development\.|
+|rtx.opaqueMaterial.ignoreAlphaChannelOverride|bool|False|A flag to ignore the alpha channel of the colormap on the opaque material\. Should only be used for debugging or development\.|
 |rtx.opaqueMaterial.layeredWaterNormalEnable|bool|True|A flag indicating if layered water normal should be enabled or disabled\.<br>Note that objects must be properly classified as animated water to be rendered with this mode\.|
 |rtx.opaqueMaterial.layeredWaterNormalLodBias|float|5|The LoD bias to use when sampling from the normal map on layered water for the second layer of detail\.<br>This value typically should be greater than 0 to allow for a more blurry mip to be selected as this allows for a low frequency variation of normals to be applied to the higher frequency variation from the typical normal map\.<br>Only takes effect when layered water normals are enabled \(and an object is properly classified as animated water\)\.|
 |rtx.opaqueMaterial.layeredWaterNormalMotion|float2|-0.25, -0.3|A vector describing the motion in the U and V axes across a texture to apply for layered water\.<br>Only takes effect when layered water normals are enabled \(and an object is properly classified as animated water\)\.|
@@ -445,7 +460,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.pathMinBounces|int|1|The minimum number of indirect bounces the path must complete before Russian Roulette can be used\. Must be \< 16\.<br>This value is recommended to stay fairly low \(1 for example\) as forcing longer paths when they carry little contribution quickly becomes detrimental to performance\.|
 |rtx.pipeline.useDeferredOperations|bool|True||
 |rtx.pixelHighlightReuseStrength|float|0.5|The specular portion when we reuse last frame's pixel value\.|
-|rtx.playerModel.backwardOffset|float|18||
+|rtx.playerModel.backwardOffset|float|0||
 |rtx.playerModel.enableInPrimarySpace|bool|False||
 |rtx.playerModel.enablePrimaryShadows|bool|True||
 |rtx.playerModel.enableVirtualInstances|bool|True||
@@ -579,11 +594,14 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.skipDrawCallsPostRTXInjection|bool|False|Ignores all draw calls recorded after RTX Injection, the location of which varies but is currently based on when tagged UI textures begin to draw\.|
 |rtx.skipObjectsWithUnknownCamera|bool|False||
 |rtx.skyAutoDetect|int|0|Automatically tag sky draw calls using various heuristics\.<br>0 = None<br>1 = CameraPosition \- assume the first seen camera position is a sky camera\.<br>2 = CameraPositionAndDepthFlags \- assume the first seen camera position is a sky camera, if its draw call's depth test is disabled\. If it's enabled, assume no sky camera\.<br>Note: if all draw calls are marked as sky, then assume that there's no sky camera at all\.|
+|rtx.skyAutoDetectUniqueCameraDistance|float|1|If multiple cameras are found, this threshold distance \(in game units\) is used to distinguish a sky camera from a main camera\. Active if sky auto\-detect is set to CameraPosition / CameraPositionAndDepthFlags\.|
 |rtx.skyBrightness|float|1||
 |rtx.skyDrawcallIdThreshold|int|0|It's common in games to render the skybox first, and so, this value provides a simple mechanism to identify those early draw calls that are untextured \(textured draw calls can still use the Sky Textures functionality\.|
 |rtx.skyForceHDR|bool|False|By default sky will be rasterized in the color format used by the game\. Set the checkbox to force sky to be rasterized in HDR intermediate format\. This may be important when sky textures replaced with HDR textures\.|
 |rtx.skyMinZThreshold|float|1|If a draw call's viewport has min depth greater than or equal to this threshold, then assume that it's a sky\.|
-|rtx.skyProbeSide|int|1024||
+|rtx.skyProbeSide|int|1024|Resolution of the skybox for indirect illumination \(rough reflections, global illumination etc\)\.|
+|rtx.skyReprojectScale|float|16|Scaling of the sky geometry on reprojection to main camera space\.|
+|rtx.skyReprojectToMainCameraSpace|bool|False|Move sky geometry to the main camera space\.<br>Useful, if a game has a skybox that contains geometry that can be a part of the main scene \(e\.g\. buildings, mountains\)\. So with this option enabled, that geometry would be promoted from sky rasterization to ray tracing\.|
 |rtx.skyUiDrawcallCount|int|0||
 |rtx.stochasticAlphaBlendDepthDifference|float|0.1|Max depth difference for a valid neighbor\.|
 |rtx.stochasticAlphaBlendDiscardBlackPixel|bool|False|Discard black pixels\.|
@@ -725,6 +743,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.geometryAssetHashRuleString|string|positions,indices,geometrydescriptor|Defines which hashes we need to include when sampling from replacements and doing USD capture\.|
 |rtx.geometryGenerationHashRuleString|string|positions,indices,texcoords,geometrydescriptor,vertexlayout,vertexshader|Defines which asset hashes we need to generate via the geometry processing engine\.|
 |rtx.hideInstanceTextures|hash set||Textures on draw calls that should be hidden from rendering, but not totally ignored\.<br>This is similar to rtx\.ignoreTextures but instead of completely ignoring such draw calls they are only hidden from rendering, allowing for the hidden objects to still appear in captures\.<br>As such, this is mostly only a development tool to hide objects during development until they are properly replaced, otherwise the objects should be ignored with rtx\.ignoreTextures instead for better performance\.|
+|rtx.ignoreAlphaOnTextures|hash set||Textures for which to ignore the alpha channel of the legacy colormap\. Textures will be rendered fully opaque as a result\.|
 |rtx.ignoreBakedLightingTextures|hash set||Textures for which to ignore two types of baked lighting, Texture Factors and Vertex Color\.<br><br>Texture Factor disablement:<br>Using this feature on selected textures will eliminate the texture factors\.<br>For instance, if a game bakes lighting information into the Texture Factor for particular textures, applying this option will remove them\.<br>This becomes useful when unexpected results occur due to the Texture Factor\.<br>Consider an example where the original texture contains red tints baked into the Texture Factor\. If a user replaces the texture, it will blend with the red tints, resulting in an undesirable reddish outcome\.<br>In such cases, users can employ this option to eliminate the unwanted tints from their replacement textures\.<br>Similarly, users can tag textures if shadows are baked into the Texture Factor, causing the replacing texture to appear darker than anticipated\.<br><br>Vertex Color disablement:<br>Using this feature on selected textures will eliminate the vertex colors\.<br><br>Note, enabling this setting will automatically disable multiple\-stage texture factor blendings for the selected textures\.<br>Only use this option when necessary, as the Texture Factor and Vertex Color can be used for simulating various texture effects, tagging a texture with this option will unexpectedly eliminate these effects\.|
 |rtx.ignoreLights|hash set||Lights that should be ignored\.<br>Any matching light will be skipped and not added to be ray traced\.|
 |rtx.ignoreTextures|hash set||Textures on draw calls that should be ignored\.<br>Any draw call using an ignore texture will be skipped and not ray traced, useful for removing undesirable rasterized effects or geometry not suitable for ray tracing\.|

@@ -28,7 +28,8 @@ static const uint billboardFlagIsCameraFacing = 0x02;
 struct MemoryBillboard
 {
   vec3 center;
-  uint surfaceIndex;
+  uint16_t surfaceIndex;
+  uint16_t materialType;
 
   vec3 xAxis;
   float inverseHalfWidth;

@@ -53,6 +53,7 @@ RayInteraction rayInteractionCreate(Ray ray, RayHitInfo rayHitInfo)
   rayInteraction.primitiveIndex = rayHitInfo.primitiveIndex;
   rayInteraction.customIndex = rayHitInfo.customIndex;
   rayInteraction.surfaceIndex = calculateSurfaceIndex(rayHitInfo);
+  rayInteraction.materialType = calculateMaterialType(rayHitInfo);
   rayInteraction.frontHit = rayHitInfo.frontHit;
 
   return rayInteraction;

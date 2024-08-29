@@ -134,7 +134,9 @@ namespace dxvk {
     , m_sceneManager(sceneManager)
     , m_exporter(exporter)
     , m_options{ getOptions() } {
-    Logger::info(str::format("[GameCapturer] DXVK_RTX_CAPTURE_ENABLE_ON_FRAME: ", env::getEnvVar("DXVK_RTX_CAPTURE_ENABLE_ON_FRAME")));
+    if(!env::getEnvVar("DXVK_RTX_CAPTURE_ENABLE_ON_FRAME").empty()) {
+      Logger::info(str::format("[GameCapturer] DXVK_RTX_CAPTURE_ENABLE_ON_FRAME: ", env::getEnvVar("DXVK_RTX_CAPTURE_ENABLE_ON_FRAME")));
+    }
     env::createDirectory(BASE_DIR);
     env::createDirectory(BASE_DIR + lss::commonDirName::texDir);
     env::createDirectory(BASE_DIR + lss::commonDirName::matDir);
@@ -203,16 +205,18 @@ namespace dxvk {
   }
   
   void GameCapturer::prepareInstanceStage(const Rc<DxvkContext> ctx) {
-    const auto stagePathStr = buildStagePath(m_options.instanceStageName);
-    m_pCap->instance.stageName = m_options.instanceStageName;
+    const auto ogStagePathStr = buildStagePath(m_options.instanceStageName);
+    const auto stagePathStr = env::dedupeFilename(ogStagePathStr);
+    const auto dedupedFileName =  std::filesystem::path(stagePathStr).stem().string();
+    m_pCap->instance.stageName = dedupedFileName;
     m_pCap->instance.stagePath = stagePathStr;
-    m_exporter.generateSceneThumbnail(ctx, BASE_DIR + lss::commonDirName::thumbDir, m_options.instanceStageName);
+    m_exporter.generateSceneThumbnail(ctx, BASE_DIR + lss::commonDirName::thumbDir, dedupedFileName);
   }
 
   void GameCapturer::capture(const Rc<DxvkContext> ctx, const float frameTimeMilliseconds) {
     assert(m_state.has<State::Capturing>());
 
-    m_pCap->currentFrameNum += (frameTimeMilliseconds * 1000.0f) * static_cast<float>(m_options.fps);
+    m_pCap->currentFrameNum += (frameTimeMilliseconds * 0.001f) * static_cast<float>(m_options.fps);
     captureFrame(ctx);
 
     if (m_pCap->numFramesCaptured >= m_options.numFrames) {
@@ -361,7 +365,7 @@ namespace dxvk {
         sphereLight.coneAngleDegrees = std::acos(shaping.getCosConeAngle()) * kRadiansToDegrees;
         sphereLight.coneSoftness = shaping.getConeSoftness();
         sphereLight.focusExponent = shaping.getFocusExponent();
-        rotation = pxr::GfRotation(-pxr::GfVec3d::ZAxis(), pxr::GfVec3f(&shaping.getPrimaryAxis()[0]));
+        rotation = pxr::GfRotation(-pxr::GfVec3d::ZAxis(), pxr::GfVec3f(&shaping.getDirection()[0]));
       }
       Logger::debug("[GameCapturer][" + m_pCap->idStr + "][SphereLight:" + name + "] New");
     }
@@ -385,7 +389,7 @@ namespace dxvk {
       distantLight.color[2] = colorAndIntensity.b;
       distantLight.intensity = colorAndIntensity.w;
       distantLight.angleDegrees = rtLight.getHalfAngle() * 2.0 * kRadiansToDegrees;
-      distantLight.direction = -pxr::GfVec3f(rtLight.getDirection().data);
+      distantLight.direction = pxr::GfVec3f(rtLight.getDirection().data);
       distantLight.firstTime = m_pCap->currentFrameNum;
       Logger::debug("[GameCapturer][" + m_pCap->idStr + "][DistantLight:" + name + "] New");
     }

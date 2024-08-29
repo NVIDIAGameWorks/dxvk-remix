@@ -176,7 +176,7 @@ namespace dxvk {
     const Resources::RaytracingOutput& rtOutput) {
 
     if (!m_cbData) {
-      m_cbData = std::make_unique<DxvkStagingDataAlloc>(
+      m_cbData = std::make_unique<RtxStagingDataAlloc>(
         device(),
         (VkMemoryPropertyFlagBits) (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT),
         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
@@ -680,16 +680,19 @@ namespace dxvk {
 
         std::vector<VkWriteDescriptorSet> descriptorWriteSets;
 
+        // Variables referenced inside descriptorWriteSets must have the same lifetime, so preallocate
+        std::vector<VkDescriptorImageInfo> samplerDescs{ denoiserDesc.samplersNum };
+        VkDescriptorBufferInfo             cbDesc{};
+        std::vector<VkDescriptorImageInfo> imageDesc{ dispatchDesc.resourcesNum };
+
         // Static sampler descriptors
-        std::vector<VkDescriptorImageInfo> samplerDescs;
-        samplerDescs.resize(denoiserDesc.samplersNum);
         for (size_t i = 0; i < denoiserDesc.samplersNum; i++) {
 
           const VkDescriptorSetLayoutBinding& binding = computePipeline.bindings[i];
           samplerDescs[i].sampler = m_staticSamplers[i]->handle();
           samplerDescs[i].imageView = VK_NULL_HANDLE;
           samplerDescs[i].imageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-          descriptorWriteSets.emplace_back(DxvkDescriptor::texture(descriptorSet, samplerDescs[i], binding.descriptorType, binding.binding));
+          descriptorWriteSets.emplace_back(DxvkDescriptor::texture(descriptorSet, &samplerDescs[i], binding.descriptorType, binding.binding));
           
           ctx->getCommandList()->trackResource<DxvkAccess::None>(m_staticSamplers[i]);
         }
@@ -697,7 +700,7 @@ namespace dxvk {
         // Update constants
         // The ReLAX A-trous passes use the same shader pipeline with different constant values.
         // In this case, the default constant buffer cannot guarantee values got updated in each pass.
-        // Use DxvkStagingDataAlloc to fix this issue.
+        // Use RtxStagingDataAlloc to fix this issue.
         if (dispatchDesc.constantBufferDataSize > 0) {
           // Setting alignment to device limit minUniformBufferOffsetAlignment because the offset value should be its multiple.
           // See https://vulkan.lunarg.com/doc/view/1.2.189.2/windows/1.2-extensions/vkspec.html#VUID-VkWriteDescriptorSet-descriptorType-00327
@@ -710,8 +713,8 @@ namespace dxvk {
           const VkDescriptorSetLayoutBinding& cb = computePipeline.bindings[computePipeline.constantBufferIndex];
           assert(cb.descriptorCount == 1);
 
-          const VkDescriptorBufferInfo& cbDesc = cbSlice.getDescriptor().buffer;
-          descriptorWriteSets.emplace_back(DxvkDescriptor::buffer(descriptorSet, cbDesc, cb.descriptorType, cb.binding));
+          cbDesc = cbSlice.getDescriptor().buffer;
+          descriptorWriteSets.emplace_back(DxvkDescriptor::buffer(descriptorSet, &cbDesc, cb.descriptorType, cb.binding));
 
           barriers.accessBuffer(cbSlice.getSliceHandle(),
             VK_PIPELINE_STAGE_TRANSFER_BIT,
@@ -721,8 +724,6 @@ namespace dxvk {
         }
 
         // Gather needed resource infos for the pipeline
-        std::vector<VkDescriptorImageInfo> imageDesc;
-        imageDesc.resize(dispatchDesc.resourcesNum);
         for (size_t i = 0; i < dispatchDesc.resourcesNum; i++) {
 
           const nrd::ResourceRangeDesc& descRange = pipelineDesc.resourceRanges[i];
@@ -936,11 +937,15 @@ namespace dxvk {
   }
 
   NrdArgs NRDContext::getNrdArgs() const {
-    const float missLinearViewZ = glm::unpackHalf1x16(0x7bff); // Note: 0x7bff is the max finite float16 value in hex.
+    static_assert(nrd::CommonSettings{}.denoisingRange == 500000.0f, "NRD's default settings has changed, denoisingRange must be re-evaluated");
+    constexpr float denoisingRangeLimit = nrd::CommonSettings{}.denoisingRange;
+
+    const float missLinearViewZ = denoisingRangeLimit + 1.0f;
+    static_assert(missLinearViewZ > denoisingRangeLimit && missLinearViewZ - denoisingRangeLimit > 0.01f);
 
     // Note: Ensure the denoising range is at least 1 ulp less than the miss linear view Z value, otherwise it will not
     // function properly.
-    assert(m_settings.m_commonSettings.denoisingRange <= glm::unpackHalf1x16(0x7bff - 1));
+    assert(m_settings.m_commonSettings.denoisingRange <= denoisingRangeLimit);
 
     NrdArgs args;
 

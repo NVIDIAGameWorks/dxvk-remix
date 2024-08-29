@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -21,10 +21,17 @@
 */
 #pragma once
 
-interface IPayload
-{
-#ifdef RAY_PIPELINE
-  // Returns if the caller should reorder before invokeHitObject, along with coherence hints to use
-  bool shouldReorder(out uint coherenceHints, out uint numCoherenceHints);
-#endif
+#include <stdint.h>
+
+namespace version {
+
+enum Feature : uint64_t {
+  MessageChannel,
+  RemixApi,
+  nFeatures
+};
+
+static constexpr char QueryFuncName[] = "QueryFeatureVersion";
+using QueryFunc = size_t(__stdcall*)(version::Feature);
+
 }

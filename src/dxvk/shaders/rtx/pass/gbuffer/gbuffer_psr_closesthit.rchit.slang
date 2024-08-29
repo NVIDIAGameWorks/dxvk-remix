@@ -56,7 +56,7 @@
 #include "rtx/algorithm/geometry_resolver.slangh"
 
 [shader("closesthit")]
-void main(inout MemoryGeometryPSRResolverState rayPayload : SV_RayPayload, in float2 barycentricCoordinates : SV_IntersectionAttributes)
+void main(inout GeometryPSRResolverState rayPayload : SV_RayPayload, in float2 barycentricCoordinates : SV_IntersectionAttributes)
 {
   // Construct a Ray Hit Info from the hit
 
@@ -65,9 +65,6 @@ void main(inout MemoryGeometryPSRResolverState rayPayload : SV_RayPayload, in fl
   // Invoke the Geometry PSR Resolver Vertex function and handle the payload
 
   EmptyExtraArgs extraArgs;
-  GeometryPSRResolverState geometryPSRResolverState = rayPayload.unpack();
   
-  geometryPSRResolverVertex(extraArgs, rayHitInfo, geometryPSRResolverState);
-
-  rayPayload = MemoryGeometryPSRResolverState::pack(geometryPSRResolverState);
+  geometryPSRResolverVertex(extraArgs, rayHitInfo, rayPayload);
 }

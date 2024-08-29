@@ -48,7 +48,7 @@ namespace dxvk {
   AccelManager::AccelManager(DxvkDevice* device)
     : CommonDeviceObject(device)
     , m_scratchAlignment(device->properties().khrDeviceAccelerationStructureProperties.minAccelerationStructureScratchOffsetAlignment) {
-    m_scratchAllocator = std::make_unique<DxvkStagingDataAlloc>(
+    m_scratchAllocator = std::make_unique<RtxStagingDataAlloc>(
         device,
         VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
         VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
@@ -748,6 +748,7 @@ namespace dxvk {
         MemoryBillboard& memory = memoryBillboards[index];
         memory.center = billboard.center;
         memory.surfaceIndex = billboard.instance->getSurfaceIndex();
+        memory.materialType = (billboard.instance->getVkInstance().instanceCustomIndex >> CUSTOM_INDEX_MATERIAL_TYPE_BIT) & surfaceMaterialTypeMask;
         memory.inverseHalfWidth = 2.f / billboard.width;
         memory.inverseHalfHeight = 2.f / billboard.height;
         memory.xAxis = billboard.xAxis;

@@ -1046,7 +1046,7 @@ namespace dxvk {
     // Update the geometry and instance flags
     if (
       (!currentInstance.surface.alphaState.isFullyOpaque && currentInstance.surface.alphaState.isParticle) ||
-      (!currentInstance.surface.alphaState.isFullyOpaque && currentInstance.surface.alphaState.isDecal) ||
+      (currentInstance.surface.alphaState.isDecal) ||
       // Note: include alpha blended geometry on the player model into the unordered TLAS. This is hacky as there might be
       // suitable geometry outside of the player model, but we don't have a way to distinguish it from alpha blended geometry
       // that should be alpha tested instead, like some metallic stairs in Portal -- those should be resolved normally.
@@ -1090,17 +1090,22 @@ namespace dxvk {
       currentInstance.m_vkInstance.flags &= ~VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
     }
 
+    currentInstance.m_vkInstance.instanceCustomIndex = (currentInstance.m_vkInstance.instanceCustomIndex & ~(surfaceMaterialTypeMask << CUSTOM_INDEX_MATERIAL_TYPE_BIT));
+
     // Extra instance meta data needed for Opacity Micromap Manager 
     {
       switch (materialData.getType()) {
       case MaterialDataType::Opaque:
         currentInstance.m_isAnimated = materialData.getOpaqueMaterialData().getSpriteSheetFPS() != 0;
+        currentInstance.m_vkInstance.instanceCustomIndex |= (surfaceMaterialTypeOpaque << CUSTOM_INDEX_MATERIAL_TYPE_BIT);
         break;
       case MaterialDataType::Translucent:
         currentInstance.m_isAnimated = materialData.getTranslucentMaterialData().getSpriteSheetFPS() != 0;
+        currentInstance.m_vkInstance.instanceCustomIndex |= (surfaceMaterialTypeTranslucent << CUSTOM_INDEX_MATERIAL_TYPE_BIT);
         break;
       case MaterialDataType::RayPortal:
         currentInstance.m_isAnimated = materialData.getRayPortalMaterialData().getSpriteSheetFPS() != 0;
+        currentInstance.m_vkInstance.instanceCustomIndex |= (surfaceMaterialTypeRayPortal << CUSTOM_INDEX_MATERIAL_TYPE_BIT);
         break;
       default:
         currentInstance.m_isAnimated = false;
@@ -1118,11 +1123,15 @@ namespace dxvk {
       } else {
         currentInstance.m_isPlayerModel = false;
         if (currentInstance.m_isUnordered && RtxOptions::Get()->enableSeparateUnorderedApproximations()) {
-          // Separate set of mask bits for the unordered TLAS
-          if (currentInstance.surface.alphaState.emissiveBlend)
-            mask |= OBJECT_MASK_UNORDERED_ALL_EMISSIVE;
-          else
-            mask |= OBJECT_MASK_UNORDERED_ALL_BLENDED;
+          if (currentInstance.surface.alphaState.isDecal) {
+            mask = OBJECT_MASK_UNORDERED_ALL_BLENDED;
+          } else {
+            // Separate set of mask bits for the unordered TLAS
+            if (currentInstance.surface.alphaState.emissiveBlend)
+              mask |= OBJECT_MASK_UNORDERED_ALL_EMISSIVE;
+            else
+              mask |= OBJECT_MASK_UNORDERED_ALL_BLENDED;
+          }
         }
         else {
           if (material.getType() == RtSurfaceMaterialType::Translucent) {
@@ -1165,7 +1174,7 @@ namespace dxvk {
 
       if (currentInstance.testCategoryFlags(InstanceCategories::Beam)) {
         createBeams(currentInstance);
-      } else {
+      } else if(!currentInstance.surface.alphaState.isDecal) {
         createBillboards(currentInstance, cameraManager.getMainCamera().getDirection(false));
       }
 
@@ -1538,8 +1547,6 @@ namespace dxvk {
 
     // Set up the math to offset the player model backwards if it's to be shown in primary space
     float backwardOffset = RtxOptions::Get()->playerModel.backwardOffset();
-    if (!RtxOptions::Get()->playerModel.enableInPrimarySpace())
-      backwardOffset = 0.f;
 
     const bool createVirtualInstances = RtxOptions::Get()->playerModel.enableVirtualInstances() && (nearPortalInfo != nullptr);
 

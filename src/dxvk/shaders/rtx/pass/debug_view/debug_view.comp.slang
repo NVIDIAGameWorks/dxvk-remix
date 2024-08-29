@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -19,8 +19,18 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
+
+//!variant debug_view.comp
+//!>       ENABLE_DEBUG_VIEW_OPTIONAL_FEATURES=0
+
+//!variant debug_view_using_optional_extensions.comp
+//!>       ENABLE_DEBUG_VIEW_OPTIONAL_FEATURES=1
+
+//!end-variants
+
 #include "rtx/pass/debug_view/debug_view_args.h"
 #include "rtx/pass/debug_view/debug_view_binding_indices.h"
+#include "rtx/utility/debug_view_indices.h"
 #include "rtx/utility/geometry_flags.slangh"
 
 // Inputs
@@ -51,8 +61,11 @@ layout(r32ui, binding = DEBUG_VIEW_BINDING_INSTRUMENTATION_INPUT)
 Texture2D<uint> Instrumentation;
 layout(rgba16f, binding = DEBUG_VIEW_BINDING_TERRAIN_INPUT)
 Texture2D<float4> TerrainTexture;
+layout(rgba32f, binding = DEBUG_VIEW_BINDING_INPUT)
+Texture2D<float4> DebugView;
 
-// Inputs / Output
+// Inputs / Outputs
+
 layout(r32ui, binding = DEBUG_VIEW_BINDING_HDR_WAVEFORM_RED_INPUT_OUTPUT)
 RWTexture2D<uint> HDRWaveformRedInputOutput;
 layout(r32ui, binding = DEBUG_VIEW_BINDING_HDR_WAVEFORM_GREEN_INPUT_OUTPUT)
@@ -63,8 +76,8 @@ RWTexture2D<uint> HDRWaveformBlueInputOutput;
 layout(rgba16f, binding = DEBUG_VIEW_BINDING_COMPOSITE_OUTPUT_INPUT_OUTPUT)
 RWTexture2D<float4> CompositeOutput;
 
-layout(rgba32f, binding = DEBUG_VIEW_BINDING_INPUT_OUTPUT)
-RWTexture2D<float4> DebugView;
+layout(rgba32f, binding = DEBUG_VIEW_BINDING_OUTPUT)
+RWTexture2D<float4> DebugViewOutput;
 
 layout(rgba32f, binding = DEBUG_VIEW_BINDING_PREVIOUS_FRAME_INPUT_OUTPUT)
 RWTexture2D<float4> PreviousFrameDebugView;
@@ -78,11 +91,14 @@ SamplerState LinearSampler;
 layout(binding = DEBUG_VIEW_BINDING_CONSTANTS_INPUT)
 ConstantBuffer<DebugViewArgs> cb;
 
+// Outputs
+
+layout(binding = DEBUG_VIEW_BINDING_STATISTICS_BUFFER_OUTPUT)
+RWStructuredBuffer<float> DebugViewStatistics;
+
 #include "rtx/utility/common.slangh"
 #include "rtx/utility/color.slangh"
 #include "rtx/utility/packing.slangh"
-#include "rtx/utility/debug_view_helpers.slangh"
-//#include "rtx/utility/gbuffer_helpers.slangh"
 #include "rtx/external/NRD.slangh"
 
 float4 sampleTexture(Texture2D<float4> texture, ivec2 threadId)
@@ -123,8 +139,8 @@ vec4 nrdDenoisedHitTtoColor(ivec2 threadId)
   float normalizedHitT;
   float primaryHitPerceptualRoughness;
 
-  switch (cb.debugViewIdx) {
-  
+  switch (cb.debugViewIdx)
+  {
   case DEBUG_VIEW_DENOISED_PRIMARY_DIRECT_DIFFUSE_HIT_T:
     normalizedHitT = DenoisedPrimaryDirectDiffuseRadianceHitT[threadId].w;
     primaryHitPerceptualRoughness = 1.0;
@@ -162,6 +178,40 @@ vec4 unormVectorToColor(vec3 unormVector)
   return vec4(unormVector * 2.0 - 1.0, 1.0); 
 }
 
+// Color codes a value into BGR, with only one channel being used to color code at a time
+// Black: 0 value
+// Red: values >= than max value
+// Blue/Green (0,1]: the remaining values, with blue representing the lower half of valid range and green the rest
+vec3 colorCodeIntoBGRexclusive(uint value, uint maxValue)
+{
+  if (value == 0)
+  {
+    return vec3(0);
+  }
+  else if (value >= maxValue)
+  {
+    return vec3(1, 0, 0);   
+  }
+
+  // Color code the rest, [1, maxValue-1], to a non-black BG color, one channel at a time
+
+  value -= 1;
+  const uint numValues = maxValue - 1;
+
+  const float numChannels = 2;
+  const uint ceilValuesPerChannel = ceil(numValues / numChannels);
+
+  vec3 color = 0;
+  const uint channel = value / ceilValuesPerChannel;
+  const uint numValuesInCurrentChannel = min(numValues - channel * ceilValuesPerChannel, ceilValuesPerChannel);
+
+  // Color code as (0,1]
+  color[channel] = (float(value % numValuesInCurrentChannel) + 1) / numValuesInCurrentChannel;
+
+  // Reswizzle to show lowest values in Blue and highest in Red
+  return color.bgr;
+}
+
 vec4 loadInput(ivec2 threadId)
 {
   vec4 value;
@@ -182,7 +232,8 @@ vec4 loadInput(ivec2 threadId)
 
   // Get the respective input based on the debug index
 
-  switch (cb.debugViewIdx) {
+  switch (cb.debugViewIdx)
+  {
   case DEBUG_VIEW_VIRTUAL_SHADING_NORMAL:
     value = unormVectorToColor(PrimaryVirtualWorldNormalPerceptualRoughness[threadId].xyz);
     break;
@@ -271,7 +322,9 @@ vec4 loadInput(ivec2 threadId)
       }
     }
     else
-        value = FinalShading[upscaledPixelCoordinate];
+    {
+      value = FinalShading[upscaledPixelCoordinate];
+    }
     break;
   case DEBUG_VIEW_INSTRUMENTATION_THREAD_DIVERGENCE:
     value = float4(Instrumentation[threadId], 0, 0, 0);
@@ -290,10 +343,12 @@ vec4 loadInput(ivec2 threadId)
   case DEBUG_VIEW_SCROLLING_LINE:
     value = FinalShading[upscaledPixelCoordinate];
     if (threadId.x == (cb.frameIdx + 10) % cb.debugViewResolution.x)
+    {
       value = float4(0, 1, 1, 1);
+    }
     break;
   case DEBUG_VIEW_NAN:
-    bool isValid = readInDebugView(threadId).x != 0.0;
+    bool isValid = DebugView[threadId].x != 0.0;
     // DEBUG_VIEW_VIRTUAL_SHADING_NORMAL
     isValid &= isValidValue(unormVectorToColor(PrimaryVirtualWorldNormalPerceptualRoughness[threadId].xyz));
     // DEBUG_VIEW_VIRTUAL_MOTION_VECTOR
@@ -351,7 +406,8 @@ vec4 loadInput(ivec2 threadId)
   // quantize with a step size of 1/255) primarily to visualize banding artifacts better without the often times larger floating point precision of the input
   // textures hiding them.
 
-  if (cb.enableInputQuantization) {
+  if (cb.enableInputQuantization)
+  {
     value = round(value * cb.quantizationInverseStepSize) * cb.quantizationStepSize;
   }
 
@@ -502,11 +558,42 @@ f16vec4 lerpFp16(f16vec4 a, f16vec4 b, float16_t lerpFactor)
   return a * (1.h - lerpFactor) + b * lerpFactor;
 }
 
+void storeDebugViewOutputStatistics(vec4 value)
+{
+  if (!cb.calculateStatistics)
+  {
+    return;
+  }
+
+#if ENABLE_DEBUG_VIEW_OPTIONAL_FEATURES
+  // Optional features guarantees float atomics support
+
+#define INTERLOCKED_OP_VEC4(INTERLOCKED_OP, STRUCTURED_BUFFER_FLOAT, vec4Value) \
+  INTERLOCKED_OP(STRUCTURED_BUFFER_FLOAT[0], vec4Value.x);  \
+  INTERLOCKED_OP(STRUCTURED_BUFFER_FLOAT[1], vec4Value.y);  \
+  INTERLOCKED_OP(STRUCTURED_BUFFER_FLOAT[2], vec4Value.z);  \
+  INTERLOCKED_OP(STRUCTURED_BUFFER_FLOAT[3], vec4Value.w)
+
+  switch (cb.statisticsMode)
+  {
+    case DebugViewOutputStatisticsMode::Sum:
+    default:
+      INTERLOCKED_OP_VEC4(InterlockedAddFloat, DebugViewStatistics, value);
+      break;
+    case DebugViewOutputStatisticsMode::Mean:
+      value *= cb.rcpNumOutputPixels;
+      INTERLOCKED_OP_VEC4(InterlockedAddFloat, DebugViewStatistics, value);
+      break;
+ };
+#endif 
+}
+
 void storeToDebugView(uint2 threadId, vec4 value)
 {
   vec4 output;
 
-  switch (cb.accumulationMode) {
+  switch (cb.accumulationMode)
+  {
     case DebugViewAccumulationMode::WriteNewOutput:
     default:
       output = value;
@@ -531,13 +618,15 @@ void storeToDebugView(uint2 threadId, vec4 value)
     }
   }
 
-  DebugView[threadId] = output;
+  DebugViewOutput[threadId] = output;
   PreviousFrameDebugView[threadId] = output;
 
   if (cb.copyOutputToCompositeOutput)
   {
     CompositeOutput[threadId] = output;
   }
+
+  storeDebugViewOutputStatistics(output);
 }
 
 [shader("compute")]
@@ -545,7 +634,9 @@ void storeToDebugView(uint2 threadId, vec4 value)
 void main(uint2 threadId : SV_DispatchThreadID)
 {
   if (any(threadId >= cb.debugViewResolution))
+  {
     return;
+  }
 
   vec4 outValue = loadInput(threadId);
 

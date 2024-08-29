@@ -63,10 +63,6 @@
 struct RayReconstructionArgs {
   Camera camera;
 
-  uint combineSpecularAlbedo;
-  uint useExternalExposure;
-  uint rayReconstructionUseVirtualNormals;
-
   vec4 debugKnob;
 
   uint enableDemodulateRoughness;
@@ -78,4 +74,9 @@ struct RayReconstructionArgs {
   uint particleBufferMode;
   uint enableDemodulateAttenuation;
   uint filterHitT;
+
+  uint combineSpecularAlbedo;
+  uint useExternalExposure;
+  uint rayReconstructionUseVirtualNormals;
+  uint pad;
 };

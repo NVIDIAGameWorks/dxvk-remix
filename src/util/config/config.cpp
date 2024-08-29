@@ -1116,6 +1116,12 @@ namespace dxvk {
     m_options.insert_or_assign(key, value);
   }
 
+  // NV-DXVK start: rvalue variant for less allocations
+  void Config::setOptionMove(std::string&& key, std::string&& value) {
+    m_options.insert_or_assign(std::move(key), std::move(value));
+  }
+  // NV-DXVK end
+
   void Config::setOption(const std::string& key, const bool& value) {
     setOption(key, generateOptionString(value));
   }

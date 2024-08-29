@@ -56,15 +56,15 @@ struct PostFxArgs {
   // Post Fx Attributes
   // Motion Blur
   uint   motionBlurSampleCount;
-  float  exposureFraction;
   float  blurDiameterFraction;
   bool   enableMotionBlurNoiseSample;
-
   float  motionBlurMinimumVelocityThresholdInPixel;
+
   // Chromatic Aberration
   float2 chromaticAberrationScale;
   float  chromaticCenterAttenuationAmount;
-
+  float  exposureFraction;
+  
   // Vignette
   float  vignetteIntensity;
   float  vignetteRadius;
@@ -84,6 +84,7 @@ struct PostFxMotionBlurPrefilterArgs {
 
 #define POST_FX_HIGHLIGHTING_MAX_VALUES_POW 14
 #define POST_FX_HIGHLIGHTING_MAX_VALUES     (1 << POST_FX_HIGHLIGHTING_MAX_VALUES_POW)
+#define POST_FX_HIGHLIGHTING_INVALID_VALUE  0xFFFFFFFF
 
 struct PostFxHighlightingArgs
 {

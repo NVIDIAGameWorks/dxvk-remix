@@ -29,7 +29,6 @@
 #include "rtx/concept/surface/surface_interaction.slangh"
 #include "rtx/concept/surface/gbuffer_memory_minimal_surface_interaction.slangh"
 #include "rtx/concept/surface/minimal_surface_interaction.slangh"
-#include "rtx/concept/surface/surface_create.slangh"
 
 bool surfaceIsDecal(Surface surface)
 {

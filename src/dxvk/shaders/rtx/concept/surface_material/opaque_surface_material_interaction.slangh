@@ -520,7 +520,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
       thinFilmThickness = float16_t(0.0f);
     }
   }
-         
+
 #if defined(RAY_TRACING_PRIMARY_RAY) && defined(RAY_PIPELINE)
   if (cb.debugView == DEBUG_VIEW_RAW_ALBEDO) 
   {
@@ -560,6 +560,11 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   
     calcOpaqueSurfaceMaterialOpacity(
       albedo, opacity, surface, opacity, emissiveBlendOverrideInfluence);
+  }
+
+  if (opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_IGNORE_ALPHA_CHANNEL)
+  {
+      opacity = 1.h;
   }
 
   // Note: Gamma correct albedo input (be it from a constant or a texture). Currently assuming all textures are not using sRGB formats which
@@ -939,6 +944,8 @@ SurfaceMaterialInteractionLobeSample opaqueSurfaceMaterialInteractionCalcLobeSam
   MinimalRayInteraction minimalRayInteraction,
   inout bool insideMedium)
 {
+  unused(insideMedium);
+  
   float16_t diffuseReflectionProbability = 0.0f;
   float16_t specularReflectionProbability = 0.0f;
   float16_t opacityTransmissionProbability = 0.0f;
@@ -1252,6 +1259,8 @@ SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcDiffuseTran
   MinimalRayInteraction minimalRayInteraction,
   inout bool insideMedium, inout bool penetrateSurface)
 {
+  unused(insideMedium);
+  
   const f16vec4 worldToTangentSpaceQuaternion = quaternionInverse(tangentToWorldSpaceQuaternion);
 
   // Set up relevant input vectors in tangent space
@@ -1288,6 +1297,8 @@ SurfaceMaterialInteractionSample thinOpaqueSurfaceMaterialInteractionCalcDiffuse
   SubsurfaceMaterial subsurfaceMaterial,
   inout bool insideMedium, inout bool penetrateSurface)
 {
+  unused(insideMedium);
+  
   const f16vec4 worldToTangentSpaceQuaternion = quaternionInverse(tangentToWorldSpaceQuaternion);
 
   // Set up relevant input vectors in tangent space
@@ -1334,29 +1345,14 @@ SurfaceMaterialInteractionSample thinOpaqueSurfaceMaterialInteractionCalcDiffuse
   return materialSample;
 }
 
-SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcSpecularTransmissionSample(
-  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
-  MinimalRayInteraction minimalRayInteraction,
-  inout bool insideMedium, inout bool penetrateSurface)
-{
-  SurfaceMaterialInteractionSample materialSample;
-
-  materialSample.inputDirection = f16vec3(0.0, 0.0, 0.0);
-  materialSample.throughput = f16vec3(0.0, 0.0, 0.0);
-  materialSample.solidAnglePdf = 0.0f;
-
-  // Note: Transmission rays penetrate the surface like translucent materials.
-  penetrateSurface = true;
-
-  return materialSample;
-}
-
 // Note: Special case lobe for opacity.
 SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcOpacityTransmissionSample(
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
   MinimalRayInteraction minimalRayInteraction,
   inout bool insideMedium, inout bool penetrateSurface)
 {
+  unused(insideMedium);
+  
   SurfaceMaterialInteractionSample materialSample;
 
   materialSample.inputDirection = -minimalRayInteraction.viewDirection;
@@ -1512,7 +1508,7 @@ SurfaceMaterialInteractionPSRSample opaqueSurfaceMaterialInteractionCalcPSRRefle
   materialPSRSample.useAlternateDisocclusionThreshold = opaqueSurfaceMaterialInteraction.normalDetail > float16_t(cb.psrrNormalDetailThreshold);
   materialPSRSample.inputDirection = inputDirection;
   materialPSRSample.attenuation = attenuation;
-  materialPSRSample.vectorTransform = getReflectionMatrix(microfacetNormal);
+  materialPSRSample.vectorTransform = getReflectionQuaternion(microfacetNormal);
 
   return materialPSRSample;
 }
@@ -1522,6 +1518,9 @@ SurfaceMaterialInteractionPSRSample opaqueSurfaceMaterialInteractionCalcPSRTrans
   MinimalRayInteraction minimalRayInteraction,
   inout bool insideMedium, inout bool penetrateSurface)
 {
+  unused(insideMedium);
+  unused(penetrateSurface);
+  
   SurfaceMaterialInteractionPSRSample materialPSRSample;
 
   // Todo: Experimentally test transmission PSR for opacity in the future, for now not needed though.
@@ -1540,6 +1539,8 @@ void opaqueSurfaceMaterialInteractionCalcPSRSample(
   inout float16_t selectedIntegrationSurfacePdf,
   inout bool insideMedium, inout bool penetrateSurface)
 {
+  unused(diffuseLayerWeight);
+  
   // Sample Reflection PSR
 
   surfaceMaterialInteractionReflectionPSRSample = opaqueSurfaceMaterialInteractionCalcPSRReflectionSample(
@@ -1646,15 +1647,6 @@ float opaqueSurfaceMaterialInteractionCalcDiffuseTransmissionSolidAnglePdf(
   float solidAnglePdf = getCosineHemisphereSolidAnglePdf(saturate(cosTheta));
 
   return solidAnglePdf;
-}
-
-float opaqueSurfaceMaterialInteractionCalcSpecularTransmissionSolidAnglePdf(
-  OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
-  MinimalRayInteraction minimalRayInteraction,
-  f16vec3 inputDirection)
-{
-  // Note: Specular Transmission never possible for Opaque materials
-  return 0.0f;
 }
 
 float opaqueSurfaceMaterialInteractionCalcSolidAnglePdf(

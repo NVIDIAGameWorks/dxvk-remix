@@ -574,6 +574,14 @@ namespace dxvk {
      * \returns Result of the submission
      */
     VkResult waitForSubmission(DxvkSubmitStatus* status);
+
+    /**
+     * \brief Waits for resource to become idle
+     *
+     * \param [in] resource Resource to wait for
+     * \param [in] access Access mode to check
+     */
+    void waitForResource(const Rc<DxvkResource>& resource, DxvkAccess access);
     
     /**
      * \brief Waits until the device becomes idle
@@ -604,10 +612,10 @@ namespace dxvk {
 
     // NV-DXVK start: DLFG integration
     // release the current presenter stashed in the device
-    void releasePresenter() {
-      if (m_lastPresenter != nullptr) {
-        m_lastPresenter->synchronize();
-        m_lastPresenter = nullptr;
+    void synchronizePresenter() {
+      if (m_presenterInFlight != nullptr) {
+        m_presenterInFlight->synchronize();
+        m_presenterInFlight = nullptr;
       }
     }
     // NV-DXVK end
@@ -620,7 +628,7 @@ namespace dxvk {
     Rc<DxvkAdapter>             m_adapter;
     Rc<vk::DeviceFn>            m_vkd;
     DxvkDeviceExtensions        m_extensions;
-    Rc<vk::Presenter>           m_lastPresenter;
+    Rc<vk::Presenter>           m_presenterInFlight;
 
     DxvkDeviceFeatures          m_features;
     DxvkDeviceInfo              m_properties;

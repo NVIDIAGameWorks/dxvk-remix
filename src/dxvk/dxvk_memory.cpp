@@ -339,7 +339,8 @@ DxvkMemory::DxvkMemory() { }
     DxvkMemoryFlags mask(
       DxvkMemoryFlag::Small,
       DxvkMemoryFlag::GpuReadable,
-      DxvkMemoryFlag::GpuWritable);
+      DxvkMemoryFlag::GpuWritable,
+      DxvkMemoryFlag::Transient);
 
     if (hints.test(DxvkMemoryFlag::IgnoreConstraints))
       mask = DxvkMemoryFlags();
@@ -429,10 +430,10 @@ DxvkMemory::DxvkMemory() { }
       hints.clr(DxvkMemoryFlag::GpuWritable, DxvkMemoryFlag::GpuReadable);
     }
 
-    // Ignore all hints for host-visible allocations since they
+    // Ignore most hints for host-visible allocations since they
     // usually don't make much sense for those resources
     if (flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
-      hints = DxvkMemoryFlags();
+      hints = hints & DxvkMemoryFlag::Transient;
 
     // Try to allocate from a memory type which supports the given flags exactly
     auto dedAllocPtr = dedAllocReq.prefersDedicatedAllocation ? &dedAllocInfo : nullptr;

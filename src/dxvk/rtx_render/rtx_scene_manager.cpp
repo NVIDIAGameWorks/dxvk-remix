@@ -925,6 +925,9 @@ namespace dxvk {
       float thinFilmThicknessConstant = 0.0f;
       float displaceIn = 1.0f;
 
+      // Ignore colormap alpha of legacy texture if tagged as 'ignoreAlphaOnTextures' 
+      bool ignoreAlphaChannel = lookupHash(RtxOptions::ignoreAlphaOnTextures(), drawCallState.getMaterialData().getHash());
+
       Vector3 subsurfaceTransmittanceColor(0.0f, 0.0f, 0.0f);
       float subsurfaceMeasurementDistance = 0.0f;
       Vector3 subsurfaceSingleScatteringAlbedo(0.0f, 0.0f, 0.0f);
@@ -968,6 +971,10 @@ namespace dxvk {
         }
         // Todo: Incorporate this and the color texture into emissive conditionally
         // emissiveColorTextureIndex != kSurfaceMaterialInvalidTextureIndex ? 100.0f
+
+        if (!ignoreAlphaChannel) {
+          ignoreAlphaChannel = defaults.ignoreAlphaChannel();
+        }
 
         thinFilmEnable = defaults.enableThinFilm();
         alphaIsThinFilmThickness = defaults.alphaIsThinFilmThickness();
@@ -1041,7 +1048,7 @@ namespace dxvk {
         albedoOpacityConstant,
         roughnessConstant, metallicConstant,
         emissiveColorConstant, enableEmissive,
-        thinFilmEnable, alphaIsThinFilmThickness,
+        ignoreAlphaChannel, thinFilmEnable, alphaIsThinFilmThickness,
         thinFilmThicknessConstant, samplerIndex, displaceIn,
         subsurfaceMaterialIndex
       };
@@ -1103,7 +1110,7 @@ namespace dxvk {
     assert(surfaceMaterial->validate());
 
     // Cache this
-    uint32_t surfaceMaterialIndex = m_surfaceMaterialCache.track(*surfaceMaterial);
+    m_surfaceMaterialCache.track(*surfaceMaterial);
 
     RtInstance* instance = m_instanceManager.processSceneObject(m_cameraManager, m_rayPortalManager, *pBlas, drawCallState, renderMaterialData, *surfaceMaterial);
 
@@ -1366,7 +1373,8 @@ namespace dxvk {
       // Surface Material buffer
       if (m_surfaceMaterialCache.getTotalCount() > 0) {
         ScopedGpuProfileZone(ctx, "updateSurfaceMaterials");
-        const auto surfaceMaterialsGPUSize = m_surfaceMaterialCache.getTotalCount() * kSurfaceMaterialGPUSize;
+        // Note: We duplicate the materials in the buffer so we don't have to do pointer chasing on the GPU (i.e. rather than BLAS->Surface->Material, do, BLAS->Surface, BLAS->Material)
+        const auto surfaceMaterialsGPUSize = m_accelManager.getSurfaceCount() * kSurfaceMaterialGPUSize;
 
         info.size = align(surfaceMaterialsGPUSize, kBufferAlignment);
         info.usage |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
@@ -1376,8 +1384,8 @@ namespace dxvk {
 
         std::size_t dataOffset = 0;
         std::vector<unsigned char> surfaceMaterialsGPUData(surfaceMaterialsGPUSize);
-
-        for (auto&& surfaceMaterial : m_surfaceMaterialCache.getObjectTable()) {
+        for (auto&& pInstance : m_accelManager.getOrderedInstances()) {
+          auto&& surfaceMaterial = m_surfaceMaterialCache.getObjectTable()[pInstance->surface.surfaceMaterialIndex];
           surfaceMaterial.writeGPUData(surfaceMaterialsGPUData.data(), dataOffset);
         }
 

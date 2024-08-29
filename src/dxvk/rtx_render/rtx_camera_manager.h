@@ -60,8 +60,6 @@ namespace dxvk {
     uint32_t getLastCameraCutFrameId() const { return m_lastCameraCutFrameId; }
     bool isCameraCutThisFrame() const;
 
-    bool was3DSkyInPrevFrame() const { return m_was3DSkyInPrevFrame; }
-
   private:
     template<
       typename T,
@@ -83,13 +81,6 @@ namespace dxvk {
     std::array<RtCamera, CameraType::Count> m_cameras;
     CameraType::Enum m_lastSetCameraType = CameraType::Unknown;
     uint32_t m_lastCameraCutFrameId = -1;
-
-    bool m_was3DSkyInPrevFrame = false;
-
-    struct CameraInfoAccum {
-      Vector3 lastPosition;
-      uint32_t uniquePositions;
-    } m_camerasInfoAccum = {};
 
     RTX_OPTION("rtx", bool, rayPortalEnabled, false, "Enables ray portal support. Note this requires portal texture hashes to be set for the ray portal geometries in rtx.rayPortalModelTextureHashes.");
   };

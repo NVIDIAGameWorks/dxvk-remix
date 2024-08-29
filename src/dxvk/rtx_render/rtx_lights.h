@@ -36,7 +36,7 @@ namespace {
 // Todo: Compute size directly from sizeof of GPU structure (by including it), for now computed by sum of members manually
 constexpr std::size_t kLightGPUSize = 4 * 4 * 4;
 // The brightness the original light has to fall to in perceptual space in order to 'end'.
- // Note: 1/255 stays in sRGB here to run distance/attenuation fitting against the "incorrect" gamma space lighting of legacy games.
+// Note: 1/255 stays in sRGB here to run distance/attenuation fitting against the "incorrect" gamma space lighting of legacy games.
 constexpr float kLegacyLightEndValue = 1.0f / 255.0f;
 // The brightness the new light will have in at the same distance the original light ended.
 // Note: Linear space lighting value to represent a "dark" physically based value. This is completely arbitrary as the exposure and
@@ -65,8 +65,13 @@ enum class RtLightAntiCullingType {
 
 struct RtLightShaping {
 public:
-  RtLightShaping(bool enabled = false, Vector3 primaryAxis = Vector3(0.0f, 0.0f, 1.0f),
-                 float cosConeAngle = 0.0f, float coneSoftness = 0.0f, float focusExponent = 0.0f);
+  RtLightShaping(
+    bool enabled = kEnabledDefaultValue, Vector3 direction = kDirectionDefaultValue,
+    float cosConeAngle = kCosConeAngleDefaultValue, float coneSoftness = kConeSoftnessDefaultValue, float focusExponent = kFocusExponentDefaultValue);
+  // A function to try to create the Light Shaping. If creation fails, an empty optional is returned.
+  static std::optional<RtLightShaping> tryCreate(
+    bool enabled = kEnabledDefaultValue, Vector3 direction = kDirectionDefaultValue,
+    float cosConeAngle = kCosConeAngleDefaultValue, float coneSoftness = kConeSoftnessDefaultValue, float focusExponent = kFocusExponentDefaultValue);
 
   XXH64_hash_t getHash() const;
 
@@ -78,8 +83,8 @@ public:
     return m_enabled != 0;
   }
 
-  const Vector3& getPrimaryAxis() const {
-    return m_primaryAxis;
+  const Vector3& getDirection() const {
+    return m_direction;
   }
 
   float getCosConeAngle() const {
@@ -95,9 +100,19 @@ public:
   }
 
 private:
+  static constexpr bool kEnabledDefaultValue{ false };
+  static constexpr Vector3 kDirectionDefaultValue{ 0.0f, 0.0f, 1.0f };
+  static constexpr float kCosConeAngleDefaultValue{ 0.0f };
+  static constexpr float kConeSoftnessDefaultValue{ 0.0f };
+  static constexpr float kFocusExponentDefaultValue{ 0.0f };
+
+  static bool validateParameters(
+    bool enabled, Vector3 direction,
+    float cosConeAngle, float coneSoftness, float focusExponent);
+
   uint32_t m_enabled; // Note: using uint instead of bool to avoid having unused padded memory, 
                       // which is an issue when calculating a hash from the struct's object
-  Vector3 m_primaryAxis;
+  Vector3 m_direction;
   float m_cosConeAngle;
   float m_coneSoftness;
   float m_focusExponent;
@@ -105,7 +120,11 @@ private:
 
 struct RtSphereLight {
   RtSphereLight(const Vector3& position, const Vector3& radiance, float radius,
-                const RtLightShaping& shaping, const XXH64_hash_t forceHash = kEmptyHash);
+                const RtLightShaping& shaping, const XXH64_hash_t forceHash = kForceHashDefaultValue);
+  // A function to try to create the Sphere Light. If creation fails, an empty optional is returned.
+  static std::optional<RtSphereLight> tryCreate(
+    const Vector3& position, const Vector3& radiance, float radius,
+    const RtLightShaping& shaping, const XXH64_hash_t forceHash = kForceHashDefaultValue);
 
   void applyTransform(const Matrix4& lightToWorld);
 
@@ -136,6 +155,11 @@ struct RtSphereLight {
   }
 
 private:
+  static constexpr XXH64_hash_t kForceHashDefaultValue{ kEmptyHash };
+
+  static bool validateParameters(
+    const Vector3& position, const Vector3& radiance, float radius,
+    const RtLightShaping& shaping, const XXH64_hash_t forceHash);
   void updateCachedHash();
 
   Vector3 m_position;
@@ -147,8 +171,14 @@ private:
 };
 
 struct RtRectLight {
-  RtRectLight(const Vector3& position, const Vector2& dimensions, const Vector3& xAxis,
-              const Vector3& yAxis, const Vector3& radiance, const RtLightShaping& shaping);
+  RtRectLight(const Vector3& position, const Vector2& dimensions,
+              const Vector3& xAxis, const Vector3& yAxis, const Vector3& direction,
+              const Vector3& radiance, const RtLightShaping& shaping);
+  // A function to try to create the Rect Light. If creation fails, an empty optional is returned.
+  static std::optional<RtRectLight> tryCreate(
+    const Vector3& position, const Vector2& dimensions,
+    const Vector3& xAxis, const Vector3& yAxis, const Vector3& direction,
+    const Vector3& radiance, const RtLightShaping& shaping);
 
   void applyTransform(const Matrix4& lightToWorld);
 
@@ -187,24 +217,36 @@ struct RtRectLight {
   }
 
 private:
+  static bool validateParameters(
+    const Vector3& position, const Vector2& dimensions,
+    const Vector3& xAxis, const Vector3& yAxis, const Vector3& direction,
+    const Vector3& radiance, const RtLightShaping& shaping);
   void updateCachedHash();
 
   Vector3 m_position;
   Vector2 m_dimensions;
   Vector3 m_xAxis;
   Vector3 m_yAxis;
+  // Note: Previously derived from X/Y axes via a cross product, now specified directly to be more consistent with
+  // how the light shaping direction axis is specified, and USD replacement logic in general (handling inverse scale for instance).
+  // Do note this allows for the X/Y/direction vectors to represent coordinate systems with both handednesses,
+  // so do not rely on cross products with the X/Y axes anymore.
+  Vector3 m_direction;
   Vector3 m_radiance;
   RtLightShaping m_shaping;
-
-  // Note: Computed from x/y axis, not meant to be modified directly
-  Vector3 m_normal;
 
   XXH64_hash_t m_cachedHash;
 };
 
 struct RtDiskLight {
-  RtDiskLight(const Vector3& position, const Vector2& halfDimensions, const Vector3& xAxis,
-              const Vector3& yAxis, const Vector3& radiance, const RtLightShaping& shaping);
+  RtDiskLight(const Vector3& position, const Vector2& halfDimensions,
+              const Vector3& xAxis, const Vector3& yAxis, const Vector3& direction,
+              const Vector3& radiance, const RtLightShaping& shaping);
+  // A function to try to create the Disk Light. If creation fails, an empty optional is returned.
+  static std::optional<RtDiskLight> tryCreate(
+    const Vector3& position, const Vector2& halfDimensions,
+    const Vector3& xAxis, const Vector3& yAxis, const Vector3& direction,
+    const Vector3& radiance, const RtLightShaping& shaping);
 
   void applyTransform(const Matrix4& lightToWorld);
 
@@ -243,23 +285,32 @@ struct RtDiskLight {
   }
 
 private:
+  static bool validateParameters(
+    const Vector3& position, const Vector2& halfDimensions,
+    const Vector3& xAxis, const Vector3& yAxis, const Vector3& direction,
+    const Vector3& radiance, const RtLightShaping& shaping);
   void updateCachedHash();
 
   Vector3 m_position;
   Vector2 m_halfDimensions;
   Vector3 m_xAxis;
   Vector3 m_yAxis;
+  // Note: Previously derived from X/Y axes via a cross product, now specified directly to be more consistent with
+  // how the light shaping direction axis is specified, and USD replacement logic in general (handling inverse scale for instance).
+  // Do note this allows for the X/Y/direction vectors to represent coordinate systems with both handednesses,
+  // so do not rely on cross products with the X/Y axes anymore.
+  Vector3 m_direction;
   Vector3 m_radiance;
   RtLightShaping m_shaping;
-
-  // Note: Computed from x/y axis, not meant to be modified directly
-  Vector3 m_normal;
 
   XXH64_hash_t m_cachedHash;
 };
 
 struct RtCylinderLight {
   RtCylinderLight(const Vector3& position, float radius, const Vector3& axis, float axisLength, const Vector3& radiance);
+  // A function to try to create the Cylinder Light. If creation fails, an empty optional is returned.
+  static std::optional<RtCylinderLight> tryCreate(
+    const Vector3& position, float radius, const Vector3& axis, float axisLength, const Vector3& radiance);
 
   void applyTransform(const Matrix4& lightToWorld);
 
@@ -293,6 +344,8 @@ struct RtCylinderLight {
     return m_radiance;
   }
 private:
+  static bool validateParameters(
+    const Vector3& position, float radius, const Vector3& axis, float axisLength, const Vector3& radiance);
   void updateCachedHash();
 
   Vector3 m_position;
@@ -305,7 +358,10 @@ private:
 };
 
 struct RtDistantLight {
-  RtDistantLight(const Vector3& direction, float halfAngle, const Vector3& radiance, const XXH64_hash_t forceHash = kEmptyHash);
+  RtDistantLight(const Vector3& direction, float halfAngle, const Vector3& radiance, const XXH64_hash_t forceHash = kForceHashDefaultValue);
+  // A function to try to create the Cylinder Light. If creation fails, an empty optional is returned.
+  static std::optional<RtDistantLight> tryCreate(
+    const Vector3& direction, float halfAngle, const Vector3& radiance, const XXH64_hash_t forceHash = kForceHashDefaultValue);
 
   void applyTransform(const Matrix4& lightToWorld);
 
@@ -331,6 +387,10 @@ struct RtDistantLight {
     return m_radiance;
   }
 private:
+  static constexpr XXH64_hash_t kForceHashDefaultValue{ kEmptyHash };
+
+  static bool validateParameters(
+    const Vector3& direction, float halfAngle, const Vector3& radiance, const XXH64_hash_t forceHash);
   void updateCachedHash();
 
   Vector3 m_direction;

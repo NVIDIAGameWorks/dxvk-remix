@@ -15,7 +15,7 @@
         <package name="rtx-remix-nv_usd" version="5" />
     </dependency>
     <dependency name="omni_core_materials" linkPath="external/omni_core_materials">
-        <package name="rtx-remix-omni_core_materials" version="12" />
+        <package name="rtx-remix-omni_core_materials" version="13" />
     </dependency>
     <dependency name="reflex" linkPath="external/reflex">
         <package name="rtx-remix-reflex" version="1" />
@@ -27,7 +27,7 @@
         <package name="glslangvalidator" version="12.0.0" />
     </dependency>
     <dependency name="slang" linkPath="external/slang">
-        <package name="rtx-remix-slang" version="slang-2024.1.6-win64-remix" />
+        <package name="rtx-remix-slang" version="slang-9542fd72-win64-remix" />
     </dependency>
     <dependency name="nv_xxd" linkPath="external/nv_xxd">
         <package name="rtx-remix-nv_xxd" version="1" />

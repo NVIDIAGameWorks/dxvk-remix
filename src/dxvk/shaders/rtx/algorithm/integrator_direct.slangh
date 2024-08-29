@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -48,9 +48,7 @@ void evalNEEPrimary(
   LightSample lightSample, 
   float invSelectionPdf, 
   uint8_t sampledTransportPortalIndex, 
-  PortalSpace2BitsType portalSpace,
-  uint8_t objectMask,
-  bool isViewModelSurface,
+  GeometryFlags geometryFlags, 
   Ray viewRay,
   MinimalRayInteraction minimalRayInteraction,
   MinimalSurfaceInteraction minimalSurfaceInteraction,
@@ -59,7 +57,7 @@ void evalNEEPrimary(
 {
   // Setup and trace the visibility ray
 
-  uint8_t rayMask = OBJECT_MASK_OPAQUE | (objectMask & OBJECT_MASK_ALL_DYNAMIC);
+  uint8_t rayMask = OBJECT_MASK_OPAQUE | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC);
   if (cb.enableDirectTranslucentShadows) rayMask |= OBJECT_MASK_TRANSLUCENT;
 
   const bool enablePOM = cb.pomEnableDirectLighting && opaqueSurfaceMaterialInteractionHasHeightTexture(opaqueSurfaceMaterialInteraction);
@@ -67,12 +65,11 @@ void evalNEEPrimary(
 
   const bool isSubsurface = isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
 
-  const VisibilityResult visibility = traceVisibilityRay(
+  const VisibilityResult visibility = traceVisibilityRay<visibilityModeEnablePom | visibilityModeAccurateHitDistance | visibilityModeEnableTranslucentMaterials | visibilityModeEnableSubsurfaceMaterials>(
     minimalSurfaceInteraction,
     lightSample.position, rayMask,
-    visibilityModeAccurateHitDistance | visibilityModeEnableTranslucentMaterials,
-    sampledTransportPortalIndex, portalSpace,
-    minimalRayInteraction.coneRadius, viewRay.spreadAngle, 1.0, isViewModelSurface, false,
+    sampledTransportPortalIndex, geometryFlags.portalSpace, geometryFlags.pomOpaqueSurfaceEncountered,
+    minimalRayInteraction.coneRadius, viewRay.spreadAngle, 1.0, geometryFlags.isViewModel, false,
     primarySurfaceIndex, SharedTextureCoord[pixelCoordinate],
     isSubsurface, opaqueSurfaceMaterialInteraction.shadingNormal);
 
@@ -149,7 +146,7 @@ void calculateRussianRouletteOnFirstBounce(
     throughput = 0;
   }
   else
-  {  
+  {
     // Note: Factor the probability of continuing the path into the throughput. This causes odd brightness
     // in denoising when the continue probability is very low, but this math has been validated to be
     // correct as far as I can tell.
@@ -219,7 +216,7 @@ void sampleIndirectRayForFirstBounce(
     // Note: Opacity on opaque objects treated as a specular lobe as it should be filtered like a reflection (not blurred).
     firstSampledLobeIsSpecular = firstRayPathSampledLobe != opaqueLobeTypeDiffuseReflection;
   }
-    
+
   // Apply Russian Roulette prior to checking this ray path being valid to integrate
   calculateRussianRouletteOnFirstBounce(randomState, throughput, firstSampledSolidAnglePdf);
 }
@@ -256,7 +253,9 @@ void sampleAndStoreIndirectRayPathSample(
 
   // Serialize out the Medium Material Index if it changed
   if (mediumChanged)
+  {
     imageStore(SharedMediumMaterialIndex, pixelCoordinate, mediumMaterialIndex);
+  }
 
   // Output the sampled lobe information for the Indirect integration pass
   aliasedData0.IndirectRayOriginDirection[pixelCoordinate] = vec4(
@@ -356,8 +355,8 @@ void integrateDirectPath(
       evalNEEPrimary(
         throughput, pixelCoordinate,
         diffuseLobeRadiance, specularLobeRadiance, lightHitDistance, hasOpaqueHit, illuminance,
-        lightSample, inverseSelectionPdf, sampledTransportPortalIndex, geometryFlags.portalSpace, geometryFlags.objectMask,
-        geometryFlags.isViewModel, primaryRay, primaryMinimalRayInteraction, primarySurfaceInteraction,
+        lightSample, inverseSelectionPdf, sampledTransportPortalIndex, geometryFlags,
+        primaryRay, primaryMinimalRayInteraction, primarySurfaceInteraction,
         opaqueSurfaceMaterialInteraction);
 
       if (rtxdiLightSampleValid && hasOpaqueHit && cb.enableRtxdiDiscardInvisibleSamples)
@@ -439,6 +438,16 @@ void integratorDirectPathOutputDebugView(
       storeInDebugView(pixelCoordinate, directPathTextures.SecondaryCombinedSpecularLobeRadianceHitDistance[pixelCoordinate].xyz);
     else
       storeInDebugView(pixelCoordinate, 0);
+    break;
+  }
+  case DEBUG_VIEW_NOISY_SECONDARY_DIRECT_RADIANCE:
+  {
+    if (!geometryFlags.primarySelectedIntegrationSurface)  
+    {
+      storeInDebugView(pixelCoordinate, 
+        directPathTextures.SecondaryCombinedDiffuseLobeRadianceHitDistance[pixelCoordinate].xyz +
+        directPathTextures.SecondaryCombinedSpecularLobeRadianceHitDistance[pixelCoordinate].xyz);
+    }
     break;
   }
   case DEBUG_VIEW_PERCEPTUAL_ROUGHNESS:

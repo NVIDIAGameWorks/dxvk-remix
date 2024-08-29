@@ -21,14 +21,9 @@
 */
 #pragma once
 
-#include "dxvk_format.h"
 #include "dxvk_include.h"
 #include "dxvk_context.h"
 #include "rtx_resources.h"
-
-#include "../spirv/spirv_code_buffer.h"
-#include "../util/util_matrix.h"
-#include "rtx_options.h"
 
 namespace dxvk {
 
@@ -40,31 +35,37 @@ namespace dxvk {
     explicit DxvkBloom(DxvkDevice* device);
     ~DxvkBloom();
 
+    DxvkBloom(const DxvkBloom&) = delete;
+    DxvkBloom(DxvkBloom&&) noexcept = delete;
+    DxvkBloom& operator=(const DxvkBloom&) = delete;
+    DxvkBloom& operator=(DxvkBloom&&) noexcept = delete;
+
     void dispatch(
       Rc<RtxContext> ctx,
       Rc<DxvkSampler> linearSampler,
       const Resources::Resource& inOutColorBuffer);
 
-    inline bool isEnabled() const { return enable() && intensity() > 0.f; }
+    bool isEnabled() const { return enable() && burnIntensity() > 0.f; }
 
     void showImguiSettings();
-    
-  private:
-    void dispatchDownscale(
-      Rc<DxvkContext> ctx,
-      const Resources::Resource& inputBuffer,
-      const Resources::Resource& outputBuffer);
 
-    template<bool isVertical>
-    void dispatchBlur(
+  private:
+    void dispatchDownsampleStep(
       Rc<DxvkContext> ctx,
-      Rc<DxvkSampler> linearSampler,
+      const Rc<DxvkSampler>& linearSampler,
+      const Resources::Resource& inputBuffer,
+      const Resources::Resource& outputBuffer,
+      bool initial);
+
+    void dispatchUpsampleStep(
+      Rc<DxvkContext> ctx,
+      const Rc<DxvkSampler>& linearSampler,
       const Resources::Resource& inputBuffer,
       const Resources::Resource& outputBuffer);
 
     void dispatchComposite(
       Rc<DxvkContext> ctx,
-      Rc<DxvkSampler> linearSampler,
+      const Rc<DxvkSampler> &linearSampler,
       const Resources::Resource& inOutColorBuffer,
       const Resources::Resource& bloomBuffer);
 
@@ -75,14 +76,18 @@ namespace dxvk {
 
     Rc<vk::DeviceFn> m_vkd;
 
-    Resources::Resource m_bloomBuffer0;
-    Resources::Resource m_bloomBuffer1;
+    // Each image is 1/2 resolution of the previous.
+    // Here, 5 steps are chosen: so the last image would be 1/(2^5) = 1/32 of the target resolution,
+    // and at 4K resolution, it's ~67 pixels height, which is fine enough -- as on other hand,
+    // we would like to keep the amount of steps as few as possible.
+    Resources::Resource m_bloomBuffer[5] = {};
 
-    RTX_OPTION("rtx.bloom", bool, enable, true, "");
-    RTX_OPTION("rtx.bloom", float, sigma, 0.1f, "");
-    RTX_OPTION("rtx.bloom", float, intensity, 0.06f, "");
-
-    void initSettings(const dxvk::Config& config);
+    RTX_OPTION_ENV("rtx.bloom", bool, enable, true, "RTX_BLOOM_ENABLE", "Enable bloom - glowing halos around intense, bright areas.");
+    RTX_OPTION("rtx.bloom", float, burnIntensity, 1.0f, "Amount of bloom to add to the final image.");
+    RTX_OPTION("rtx.bloom", float, luminanceThreshold, 0.25f,
+               "Adjust the bloom threshold to suppress blooming of the dim areas. "
+               "Pixels with luminance lower than the threshold are multiplied by "
+               "the weight value that smoothly transitions from 1.0 (at luminance=threshold) to 0.0 (at luminance=0).");
   };
   
 }

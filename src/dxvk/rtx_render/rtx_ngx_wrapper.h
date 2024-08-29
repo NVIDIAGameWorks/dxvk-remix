@@ -65,13 +65,18 @@ namespace dxvk {
   class NGXDLSSContext;
   class NGXRayReconstructionContext;
   class NGXDLFGContext;
-  class NGXContext {
+  class NGXContext final {
   public:
-    NGXContext(DxvkDevice* device);
+    explicit NGXContext(DxvkDevice* device);
 
     ~NGXContext() {
       shutdown();
     }
+
+    NGXContext(const NGXContext&)                = delete;
+    NGXContext(NGXContext&&) noexcept            = delete;
+    NGXContext& operator=(const NGXContext&)     = delete;
+    NGXContext& operator=(NGXContext&&) noexcept = delete;
 
     void shutdown();
 
@@ -113,17 +118,22 @@ namespace dxvk {
 
   class NGXFeatureContext {
   public:
-    ~NGXFeatureContext();
+    NGXFeatureContext(const NGXFeatureContext&)                = delete;
+    NGXFeatureContext(NGXFeatureContext&&) noexcept            = delete;
+    NGXFeatureContext& operator=(const NGXFeatureContext&)     = delete;
+    NGXFeatureContext& operator=(NGXFeatureContext&&) noexcept = delete;
+
+    virtual ~NGXFeatureContext();
     virtual void releaseNGXFeature() = 0;
 
   protected:
-    NGXFeatureContext(DxvkDevice* device);
+    explicit NGXFeatureContext(DxvkDevice* device);
 
     DxvkDevice* m_device = nullptr;
     NVSDK_NGX_Parameter* m_parameters = nullptr;
   };
 
-  class NGXDLSSContext : public NGXFeatureContext {
+  class NGXDLSSContext final : public NGXFeatureContext {
   public:
     struct OptimalSettings {
       float sharpness;
@@ -151,9 +161,6 @@ namespace dxvk {
       float motionVectorScale[2];
     };
 
-    static NGXDLSSContext* getInstance(DxvkDevice* device);
-    static void releaseInstance();
-
     // Query optimal DLSS settings for a given resolution and performance/quality profile.
     OptimalSettings queryOptimalSettings(const uint32_t displaySize[2], NVSDK_NGX_PerfQuality_Value perfQuality) const;
 
@@ -170,7 +177,7 @@ namespace dxvk {
 
     /** Release DLSS.
     */
-    virtual void releaseNGXFeature();
+    void releaseNGXFeature() override;
 
     /** Checks if DLSS is initialized.
     */
@@ -180,10 +187,6 @@ namespace dxvk {
     */
     bool evaluateDLSS(Rc<DxvkContext> renderContext, const NGXBuffers& buffers, const NGXSettings& settings) const;
 
-    // note: ctor is public due to make_unique/unique_ptr, but not intended as public --- use NGXWrapper::createDLSSContext instead
-    NGXDLSSContext(DxvkDevice* device);
-    ~NGXDLSSContext();
-
     void setWorldToViewMatrix(const Matrix4& worldToView) {
       m_worldToViewMatrix = worldToView;
     }
@@ -192,14 +195,24 @@ namespace dxvk {
       m_viewToProjectionMatrix = viewToProjection;
     }
 
+  public:
+    // note: ctor is public due to make_unique/unique_ptr, but not intended as public --- use NGXWrapper::createDLSSContext instead
+    explicit NGXDLSSContext(DxvkDevice* device);
+    ~NGXDLSSContext() override;
+
+    NGXDLSSContext(const NGXDLSSContext&)                = delete;
+    NGXDLSSContext(NGXDLSSContext&&) noexcept            = delete;
+    NGXDLSSContext& operator=(const NGXDLSSContext&)     = delete;
+    NGXDLSSContext& operator=(NGXDLSSContext&&) noexcept = delete;
+
+  private:
     bool m_initialized = false;
     NVSDK_NGX_Handle* m_featureDLSS = nullptr;
     Matrix4 m_worldToViewMatrix;
     Matrix4 m_viewToProjectionMatrix;
-    inline static std::unique_ptr<NGXDLSSContext> s_instance;
   };
 
-  class NGXRayReconstructionContext : public NGXFeatureContext {
+  class NGXRayReconstructionContext final : public NGXFeatureContext {
   public:
     struct QuerySettings {
       float sharpness;
@@ -235,9 +248,6 @@ namespace dxvk {
       float frameTimeMilliseconds;
     };
 
-    static NGXRayReconstructionContext* getInstance(DxvkDevice* device);
-    static void releaseInstance();
-
     // Query optimal DLSS-RR settings for a given resolution and performance/quality profile.
     QuerySettings queryOptimalSettings(const uint32_t displaySize[2], NVSDK_NGX_PerfQuality_Value perfQuality) const;
 
@@ -254,7 +264,7 @@ namespace dxvk {
 
     /** Release DLSS-RR
     */
-    virtual void releaseNGXFeature();
+    void releaseNGXFeature() override;
 
     /** Checks if DLSS is initialized.
     */
@@ -266,10 +276,6 @@ namespace dxvk {
     */
     bool evaluateRayReconstruction(Rc<DxvkContext> renderContext, const NGXBuffers& buffers, const NGXSettings& settings) const;
 
-    // note: ctor is public due to make_unique/unique_ptr, but not intended as public --- use NGXWrapper::createRayReconstructionContext instead
-    NGXRayReconstructionContext(DxvkDevice* device);
-    ~NGXRayReconstructionContext();;
-
     void setWorldToViewMatrix(const Matrix4& worldToView) {
       m_worldToViewMatrix = worldToView;
     }
@@ -278,14 +284,24 @@ namespace dxvk {
       m_viewToProjectionMatrix = viewToProjection;
     }
 
+  public:
+    // note: ctor is public due to make_unique/unique_ptr, but not intended as public --- use NGXWrapper::createRayReconstructionContext instead
+    explicit NGXRayReconstructionContext(DxvkDevice* device);
+    ~NGXRayReconstructionContext() override;
+
+    NGXRayReconstructionContext(const NGXRayReconstructionContext&)                = delete;
+    NGXRayReconstructionContext(NGXRayReconstructionContext&&) noexcept            = delete;
+    NGXRayReconstructionContext& operator=(const NGXRayReconstructionContext&)     = delete;
+    NGXRayReconstructionContext& operator=(NGXRayReconstructionContext&&) noexcept = delete;
+
+  private:
     bool m_initialized = false;
     NVSDK_NGX_Handle* m_featureRayReconstruction = nullptr;
     Matrix4 m_worldToViewMatrix;
     Matrix4 m_viewToProjectionMatrix;
-    inline static std::unique_ptr<NGXRayReconstructionContext> s_instance;
   };
 
-  class NGXDLFGContext : public NGXFeatureContext {
+  class NGXDLFGContext final : public NGXFeatureContext {
   public:
     typedef void (__cdecl* AppCreateTimelineSyncObjectsCallback_t)(void* app_context,
                                                                    void** pp_sync_obj_signal,
@@ -317,7 +333,7 @@ namespace dxvk {
 
     void initialize(
       Rc<DxvkContext> renderContext,
-VkCommandBuffer commandList,
+      VkCommandBuffer commandList,
       uint32_t displayOutSize[2],
       VkFormat outputFormat,
       AppCreateTimelineSyncObjectsCallback_t createTimelineSyncObjectsCallback,
@@ -332,18 +348,25 @@ VkCommandBuffer commandList,
     // the first kNumWarmUpFrames won't be interpolated so interpolatedOutput may not be valid, this function returns true if interpolation happened
     EvaluateResult evaluate(
       Rc<DxvkContext> renderContext,
-VkCommandBuffer clientCommandList,
+      VkCommandBuffer clientCommandList,
       Rc<DxvkImageView> interpolatedOutput,
       Rc<DxvkImageView> compositedColorBuffer,
       Rc<DxvkImageView> motionVectors,
       Rc<DxvkImageView> depth,
       const RtCamera& camera, Vector2 motionVectorScale, bool resetHistory);
 
-    // note: ctor is public due to make_unique/unique_ptr, but not intended as public --- use NGXWrapper::createDLFGContext instead
-    NGXDLFGContext(DxvkDevice* device);
-    ~NGXDLFGContext();
+    void releaseNGXFeature() override;
 
-    virtual void releaseNGXFeature();
+  public:
+    // note: ctor is public due to make_unique/unique_ptr, but not intended as public --- use NGXWrapper::createDLFGContext instead
+    explicit NGXDLFGContext(DxvkDevice* device);
+    ~NGXDLFGContext() override;
+
+    NGXDLFGContext(const NGXDLFGContext&)                = delete;
+    NGXDLFGContext(NGXDLFGContext&&) noexcept            = delete;
+    NGXDLFGContext& operator=(const NGXDLFGContext&)     = delete;
+    NGXDLFGContext& operator=(NGXDLFGContext&&) noexcept = delete;
+
   private:
     VkCommandPool m_ngxInternalCommandPool = nullptr;
     NVSDK_NGX_Handle* m_feature = nullptr;

@@ -159,7 +159,8 @@ namespace dxvk {
     {"playermodeltextures", "Player Model Texture (optional)", &RtxOptions::Get()->playerModelTexturesObject()},
     {"playermodelbodytextures", "Player Model Body Texture (optional)", &RtxOptions::Get()->playerModelBodyTexturesObject()},
     {"opacitymicromapignoretextures", "Opacity Micromap Ignore Texture (optional)", &RtxOptions::Get()->opacityMicromapIgnoreTexturesObject()},
-    {"ignorebakedlightingtextures","Ignore Baked Lighting Textures (optional)", &RtxOptions::Get()->ignoreBakedLightingTexturesObject()}
+    {"ignorebakedlightingtextures","Ignore Baked Lighting Textures (optional)", &RtxOptions::Get()->ignoreBakedLightingTexturesObject()},
+    {"ignorealphaontextures","Ignore Alpha Channel of Textures (optional)", &RtxOptions::Get()->ignoreAlphaOnTexturesObject()}
   };
 
   ImGui::ComboWithKey<RenderPassGBufferRaytraceMode> renderPassGBufferRaytraceModeCombo {
@@ -581,6 +582,7 @@ namespace dxvk {
 
         LegacyMaterialDefaults& legacyMaterial = RtxOptions::Get()->legacyMaterial;
         ImGui::Checkbox("Use Albedo/Opacity Texture (if present)", &legacyMaterial.useAlbedoTextureIfPresentObject());
+        ImGui::Checkbox("Ignore Texture Alpha Channel", &legacyMaterial.ignoreAlphaChannelObject());
         ImGui::ColorEdit3("Albedo", &legacyMaterial.albedoConstantObject());
         ImGui::DragFloat("Opacity", &legacyMaterial.opacityConstantObject(), 0.01f, 0.f, 1.f);
         ImGui::ColorEdit3("Emissive Color", &legacyMaterial.emissiveColorConstantObject());
@@ -1462,7 +1464,6 @@ namespace dxvk {
           for (const auto& [type, name] : cameras) {
             printCamera(name, cameraManager.isCameraValid(type) ? &cameraManager.getCamera(type) : nullptr);
           }
-          ImGui::Text("3D sky detected: %s", cameraManager.was3DSkyInPrevFrame() ? "Yes" : "No");
           ImGui::Unindent();
         }
         ImGui::PopID();
@@ -2170,7 +2171,7 @@ namespace dxvk {
 
     if (ImGui::BeginTabItem("Step 2: Parameter Tuning", nullptr, tab_item_flags)) {
       spacing();
-      ImGui::DragFloat("Scene Unit Scale", &RtxOptions::Get()->sceneScaleObject(), 0.00001f, 0.00001f, FLT_MAX, "%.3f", sliderFlags);
+      ImGui::DragFloat("Scene Unit Scale", &RtxOptions::Get()->sceneScaleObject(), 0.00001f, 0.00001f, FLT_MAX, "%.5f", sliderFlags);
       ImGui::Checkbox("Scene Z-Up", &RtxOptions::Get()->zUpObject());
       ImGui::Checkbox("Scene Left-Handed Coordinate System", &RtxOptions::Get()->leftHandedCoordinateSystemObject());
       fusedWorldViewModeCombo.getKey(&RtxOptions::Get()->fusedWorldViewModeRef());
@@ -2221,7 +2222,7 @@ namespace dxvk {
       if (ImGui::CollapsingHeader("Sky Tuning", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
         ImGui::DragFloat("Sky Brightness", &RtxOptions::Get()->skyBrightnessObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
-        ImGui::InputInt("First N untextured drawcalls", &RtxOptions::Get()->skyDrawcallIdThresholdObject(), 1, 1, 0);
+        ImGui::InputInt("First N Untextured Draw Calls", &RtxOptions::Get()->skyDrawcallIdThresholdObject(), 1, 1, 0);
         ImGui::SliderFloat("Sky Min Z Threshold", &RtxOptions::Get()->skyMinZThresholdObject(), 0.0f, 1.0f);
         skyAutoDetectCombo.getKey(&RtxOptions::Get()->skyAutoDetectObject());
 
@@ -2247,6 +2248,16 @@ namespace dxvk {
         };
 
         if (ImGui::CollapsingHeader("Advanced", collapsingHeaderClosedFlags)) {
+          ImGui::Indent();
+
+          ImGui::Checkbox("Reproject Sky to Main Camera", &RtxOptions::skyReprojectToMainCameraSpaceObject());
+          {
+            ImGui::BeginDisabled(!RtxOptions::skyReprojectToMainCameraSpace());
+            ImGui::DragFloat("Reprojected Sky Scale", &RtxOptions::skyReprojectScaleObject(), 1.0f, 0.1f, 1000.0f);
+            ImGui::EndDisabled();
+          }
+          ImGui::DragFloat("Sky Auto-Detect Unique Camera Search Distance", &RtxOptions::skyReprojectScaleObject(), 1.0f, 0.1f, 1000.0f);
+
           ImGui::Checkbox("Force HDR sky", &RtxOptions::Get()->skyForceHDRObject());
 
           static const char* exts[] = { "256 (1.5MB vidmem)", "512 (6MB vidmem)", "1024 (24MB vidmem)",
@@ -2257,6 +2268,8 @@ namespace dxvk {
 
           ImGui::Combo("Sky Probe Extent", &extIdx, exts, IM_ARRAYSIZE(exts));
           RtxOptions::Get()->skyProbeSideRef() = 1 << (extIdx + 8);
+
+          ImGui::Unindent();
         }
 
         ImGui::Unindent();
@@ -2629,7 +2642,10 @@ namespace dxvk {
         ImGui::Checkbox("Enable Secondary Bounces", &RtxOptions::Get()->enableSecondaryBouncesObject());
         ImGui::Checkbox("Enable Russian Roulette", &RtxOptions::Get()->enableRussianRouletteObject());
         ImGui::Checkbox("Enable Probability Dithering Filtering for Primary Bounce", &RtxOptions::Get()->enableFirstBounceLobeProbabilityDitheringObject());
-        ImGui::Checkbox("Unordered Resolve in Indirect Rays", &RtxOptions::Get()->enableUnorderedResolveInIndirectRaysObject());
+        ImGui::Checkbox("Unordered Resolve in Indirect Rays", &RtxOptions::enableUnorderedResolveInIndirectRaysObject());
+        ImGui::BeginDisabled(!RtxOptions::enableUnorderedResolveInIndirectRays());
+        ImGui::Checkbox("Probabilistic Unordered Resolve in Indirect Rays", &RtxOptions::enableProbabilisticUnorderedResolveInIndirectRaysObject());
+        ImGui::EndDisabled();
         ImGui::Checkbox("Unordered Emissive Particles in Indirect Rays", &RtxOptions::Get()->enableUnorderedEmissiveParticlesInIndirectRaysObject());
         ImGui::Checkbox("Transmission Approximation in Indirect Rays", &RtxOptions::Get()->enableTransmissionApproximationInIndirectRaysObject());
         // # bounces limitted by 4b allocation in payload
@@ -2738,8 +2754,14 @@ namespace dxvk {
         ImGui::Checkbox("Enable ReSTIR GI", &RtxOptions::Get()->useReSTIRGIObject());
 
         ImGui::PushID("ReSTIR GI");
-        auto& restirGI = common->metaReSTIRGIRayQuery();
-        restirGI.showImguiSettings();
+        if (ImGui::CollapsingHeader("Settings", collapsingHeaderClosedFlags)) {
+          ImGui::Indent();
+
+          auto& restirGI = common->metaReSTIRGIRayQuery();
+          restirGI.showImguiSettings();
+
+          ImGui::Unindent();
+        }
         ImGui::PopID();
         ImGui::Unindent();
       }
@@ -2799,40 +2821,53 @@ namespace dxvk {
         ImGui::Indent();
 
         ImGui::Checkbox("Enable Volumetric Lighting", &RtxOptions::Get()->enableVolumetricLightingObject());
+        {
+          ImGui::Indent();
+          ImGui::BeginDisabled(!RtxOptions::Get()->enableVolumetricLighting());
 
-        if (RtxOptions::Get()->enableVolumetricLighting()) {
           ImGui::DragFloat3("Transmittance Color", &RtxOptions::Get()->volumetricTransmittanceColorObject(), 0.01f, 0.0f, VolumeManager::MaxTransmittanceValue, "%.3f");
           ImGui::DragFloat("Transmittance Measurement Distance", &RtxOptions::Get()->volumetricTransmittanceMeasurementDistanceObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
           ImGui::DragFloat3("Single Scattering Albedo", &RtxOptions::Get()->volumetricSingleScatteringAlbedoObject(), 0.01f, 0.0f, 1.0f, "%.3f");
           ImGui::DragFloat("Anisotropy", &RtxOptions::Get()->volumetricAnisotropyObject(), 0.01f, -1.0f, 1.0f, "%.3f", sliderFlags);
 
-          ImGui::Separator();
-
           ImGui::Checkbox("Enable Legacy Fog Remapping", &RtxOptions::Get()->enableFogRemapObject());
 
-          if (RtxOptions::Get()->enableFogRemap()) {
+          ImGui::BeginDisabled(!RtxOptions::Get()->enableFogRemap());
+          {
             ImGui::Indent();
 
             ImGui::Checkbox("Enable Fog Color Remapping", &RtxOptions::Get()->enableFogColorRemapObject());
 
-            ImGui::Separator();
-
             ImGui::Checkbox("Enable Fog Max Distance Remapping", &RtxOptions::Get()->enableFogMaxDistanceRemapObject());
 
-            if (RtxOptions::Get()->enableFogMaxDistanceRemap()) {
+            ImGui::BeginDisabled(!RtxOptions::Get()->enableFogMaxDistanceRemap());
+            {
               ImGui::DragFloat("Legacy Max Distance Min", &RtxOptions::Get()->fogRemapMaxDistanceMinObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
               ImGui::DragFloat("Legacy Max Distance Max", &RtxOptions::Get()->fogRemapMaxDistanceMaxObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
               ImGui::DragFloat("Remapped Transmittance Measurement Distance Min", &RtxOptions::Get()->fogRemapTransmittanceMeasurementDistanceMinObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
               ImGui::DragFloat("Remapped Transmittance Measurement Distance Max", &RtxOptions::Get()->fogRemapTransmittanceMeasurementDistanceMaxObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
             }
+            ImGui::EndDisabled();
 
-            ImGui::Separator();
-
-            ImGui::DragFloat("Color Multiscattering Scale", &RtxOptions::Get()->fogRemapColorMultiscatteringScaleObject(), 0.0f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
+            ImGui::DragFloat("Color Multiscattering Scale", &RtxOptions::Get()->fogRemapColorMultiscatteringScaleObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
 
             ImGui::Unindent();
           }
+          ImGui::EndDisabled();
+
+          ImGui::EndDisabled();
+          ImGui::Unindent();
         }
+
+        ImGui::Separator();
+        ImGui::Dummy({ 0, 4 });
+        {
+          common->metaComposite().showDepthBasedFogImguiSettings();
+        }
+
+        ImGui::Separator();
+        ImGui::Dummy({ 0, 4 });
+        ImGui::Checkbox("Skip Sky Fog Values", &RtxOptions::fogIgnoreSkyObject());
 
         ImGui::Unindent();
       }
@@ -3310,7 +3345,7 @@ namespace dxvk {
     io.Fonts->SetTexID((ImTextureID)bd->FontDescriptorSet);
   }
 
-  bool ImGUI::checkHotkeyState(const VirtualKeys& virtKeys) {
+  bool ImGUI::checkHotkeyState(const VirtualKeys& virtKeys, const bool allowContinuousPress) {
     bool result = false;
     if(virtKeys.size() > 0) {
       auto& io = ImGui::GetIO();
@@ -3323,8 +3358,12 @@ namespace dxvk {
         } else if(vk.val == VK_MENU) {
           result = result && io.KeyAlt;
         } else {
-          result =
-            result && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGui_ImplWin32_VirtualKeyToImGuiKey(vk.val)), false);
+          ImGuiKey key = ImGui::GetKeyIndex(ImGui_ImplWin32_VirtualKeyToImGuiKey(vk.val));
+          if (allowContinuousPress) {
+            result = result && ImGui::IsKeyDown(key);
+          } else {
+            result = result && ImGui::IsKeyPressed(key, false);
+          }
         }
       }
     }

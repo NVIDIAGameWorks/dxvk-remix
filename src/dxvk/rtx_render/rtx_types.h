@@ -413,6 +413,7 @@ enum class InstanceCategories : uint32_t {
   IgnoreAntiCulling,
   IgnoreMotionBlur,
   IgnoreOpacityMicromap,
+  IgnoreAlphaChannel,
   Hidden,
   Particle,
   Beam,
@@ -502,7 +503,8 @@ struct DrawCallState {
 
   void setupCategoriesForTexture();
   void setupCategoriesForGeometry();
-  void setupCategoriesForHeuristics();
+  void setupCategoriesForHeuristics(uint32_t prevFrameSeenCamerasCount,
+                                    std::vector<Vector3>& seenCameraPositions);
 
   template<typename... InstanceCategories>
   bool testCategoryFlags(InstanceCategories... cat) const { return categories.any(cat...); }

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -24,7 +24,6 @@
 #include "rtx/utility/common.slangh"
 #include "rtx/utility/noise.slangh"
 #include "rtx/utility/math.slangh"
-#include "rtx/utility/buffer_helpers.slangh"
 #include "rtx/utility/gbuffer_helpers.slangh"
 #include "rtx/concept/ray/ray.slangh"
 #include "rtx/concept/surface/surface.slangh"
@@ -71,7 +70,9 @@ void deserializeInteractions(
 void integrate_direct_pass(ivec2 threadIndex)
 {
   if (any(threadIndex >= cb.camera.resolution))
+  {
     return;
+  }
 
   RNG rng = createRNG(uvec2(threadIndex), cb.frameIdx);
 
@@ -94,7 +95,8 @@ void integrate_direct_pass(ivec2 threadIndex)
     imageStore(PrimaryDirectSpecularLobeRadianceHitDistance, threadIndex, vec4(0.0f, 0.0f, 0.0f, 0.0f));
 
     // Note: Early out if no more work on the primary surface is needed.
-    if (geometryFlags.primarySelectedIntegrationSurface) {
+    if (geometryFlags.primarySelectedIntegrationSurface)
+    {
       return;
     }
   }
@@ -105,10 +107,11 @@ void integrate_direct_pass(ivec2 threadIndex)
     imageStore(SecondaryCombinedSpecularLobeRadianceHitDistance, threadIndex, vec4(0.0f, 0.0f, 0.0f, 0.0f));
 
     // Note: Early out if no more work on the secondary surface is needed.
-    if (!geometryFlags.primarySelectedIntegrationSurface) {
+    if (!geometryFlags.primarySelectedIntegrationSurface)
+    {
       return;
     }
-  }
+  }  
 
   // Read the integration surface PDF
 

@@ -205,77 +205,6 @@ RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteractionCreate(
 
   return rayPortalSurfaceMaterialInteraction;
 }
-
-SurfaceMaterialInteractionLobeInformation rayPortalSurfaceMaterialInteractionGetLobeInformation(
-  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction)
-{
-  SurfaceMaterialInteractionLobeInformation surfaceMaterialInteractionLobeInformation;
-
-  surfaceMaterialInteractionLobeInformation.diffuseReflectionPresent = false;
-  surfaceMaterialInteractionLobeInformation.specularReflectionPresent = false;
-  surfaceMaterialInteractionLobeInformation.diffuseTransmissionPresent = false;
-  surfaceMaterialInteractionLobeInformation.specularTransmissionPresent = false;
-
-  surfaceMaterialInteractionLobeInformation.specularReflectionDirac = false;
-  surfaceMaterialInteractionLobeInformation.specularTransmissionDirac = false;
-
-  return surfaceMaterialInteractionLobeInformation;
-}
-
-SurfaceMaterialInteractionSample rayPortalSurfaceMaterialInteractionCalcDiffuseReflectionSample(
-  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction,
-  MinimalRayInteraction minimalRayInteraction)
-{
-  SurfaceMaterialInteractionSample materialSample;
-
-  materialSample.inputDirection = f16vec3(0.0, 0.0, 0.0);
-  materialSample.throughput = f16vec3(0.0, 0.0, 0.0);
-  materialSample.solidAnglePdf = 0.0f;
-
-  return materialSample;
-}
-
-SurfaceMaterialInteractionSample rayPortalSurfaceMaterialInteractionCalcSpecularReflectionSample(
-  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction,
-  MinimalRayInteraction minimalRayInteraction)
-{
-  SurfaceMaterialInteractionSample materialSample;
-
-  materialSample.inputDirection = f16vec3(0.0, 0.0, 0.0);
-  materialSample.throughput = f16vec3(0.0, 0.0, 0.0);
-  materialSample.solidAnglePdf = 0.0f;
-
-  return materialSample;
-}
-
-SurfaceMaterialInteractionSample rayPortalSurfaceMaterialInteractionCalcDiffuseTransmissionSample(
-  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction,
-  MinimalRayInteraction minimalRayInteraction,
-  inout bool insideMedium, inout bool penetrateSurface)
-{
-  SurfaceMaterialInteractionSample materialSample;
-
-  materialSample.inputDirection = f16vec3(0.0, 0.0, 0.0);
-  materialSample.throughput = f16vec3(0.0, 0.0, 0.0);
-  materialSample.solidAnglePdf = 0.0f;
-
-  return materialSample;
-}
-
-SurfaceMaterialInteractionSample rayPortalSurfaceMaterialInteractionCalcSpecularTransmissionSample(
-  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction,
-  MinimalRayInteraction minimalRayInteraction,
-  inout bool insideMedium, inout bool penetrateSurface)
-{
-  SurfaceMaterialInteractionSample materialSample;
-
-  materialSample.inputDirection = f16vec3(0.0, 0.0, 0.0);
-  materialSample.throughput = f16vec3(0.0, 0.0, 0.0);
-  materialSample.solidAnglePdf = 0.0f;
-
-  return materialSample;
-}
-
 void rayPortalSurfaceMaterialInteractionCalcSample(
   RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction,
   MinimalRayInteraction minimalRayInteraction,
@@ -283,6 +212,9 @@ void rayPortalSurfaceMaterialInteractionCalcSample(
   inout SurfaceMaterialInteractionLobeSample surfaceMaterialInteractionLobeSample,
   inout bool insideMedium, inout bool penetrateSurface)
 {
+  unused(insideMedium);
+  unused(penetrateSurface);
+  
   surfaceMaterialInteractionLobeSample.lobe = uint8_t(0u);
   surfaceMaterialInteractionLobeSample.pdf = float16_t(1.0f);
 
@@ -306,7 +238,10 @@ SurfaceMaterialInteractionPSRSample rayPortalSurfaceMaterialInteractionCalcPSRTr
   RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction,
   MinimalRayInteraction minimalRayInteraction,
   inout bool insideMedium, inout bool penetrateSurface)
-{
+{  
+  unused(insideMedium);
+  unused(penetrateSurface);
+  
   SurfaceMaterialInteractionPSRSample materialPSRSample;
 
   materialPSRSample.performPSR = false;
@@ -324,6 +259,8 @@ void rayPortalSurfaceMaterialInteractionCalcPSRSample(
   inout float16_t selectedIntegrationSurfacePdf,
   inout bool insideMedium, inout bool penetrateSurface)
 {
+  unused(diffuseLayerWeight);
+  
   // Sample Reflection PSR
 
   surfaceMaterialInteractionReflectionPSRSample = rayPortalSurfaceMaterialInteractionCalcPSRReflectionSample(
@@ -339,64 +276,4 @@ void rayPortalSurfaceMaterialInteractionCalcPSRSample(
   // Note: No PSR is used by the ray portal material.
   reflectionSelectedIntegrationSurface = false;
   selectedIntegrationSurfacePdf = 1.0f;
-}
-
-float rayPortalSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(
-  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction,
-  MinimalRayInteraction minimalRayInteraction,
-  f16vec3 inputDirection)
-{
-  return 0.0f;
-}
-
-float rayPortalSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
-  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction,
-  MinimalRayInteraction minimalRayInteraction,
-  f16vec3 inputDirection)
-{
-  return 0.0f;
-}
-
-float rayPortalSurfaceMaterialInteractionCalcDiffuseTransmissionSolidAnglePdf(
-  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction,
-  MinimalRayInteraction minimalRayInteraction,
-  f16vec3 inputDirection)
-{
-  return 0.0f;
-}
-
-float rayPortalSurfaceMaterialInteractionCalcSpecularTransmissionSolidAnglePdf(
-  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction,
-  MinimalRayInteraction minimalRayInteraction,
-  f16vec3 inputDirection)
-{
-  return 0.0f;
-}
-
-float rayPortalSurfaceMaterialInteractionCalcSolidAnglePdf(
-  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction,
-  MinimalRayInteraction minimalRayInteraction,
-  f16vec3 inputDirection)
-{
-  return 0.0f;
-}
-
-SurfaceMaterialInteractionSplitWeight rayPortalSurfaceMaterialInteractionCalcProjectedWeight(
-  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction,
-  MinimalRayInteraction minimalRayInteraction,
-  f16vec3 inputDirection)
-{
-  SurfaceMaterialInteractionSplitWeight splitWeight;
-
-  splitWeight.diffuseReflectionWeight = f16vec3(0.0, 0.0, 0.0);
-  splitWeight.specularReflectionWeight = f16vec3(0.0, 0.0, 0.0);
-  splitWeight.diffuseTransmissionWeight = f16vec3(0.0, 0.0, 0.0);
-
-  return splitWeight;
-}
-
-f16vec3 rayPortalSurfaceMaterialInteractionEvalEmissiveRadiance(
-  RayPortalSurfaceMaterialInteraction rayPortalSurfaceMaterialInteraction)
-{
-  return f16vec3(0.0f, 0.0f, 0.0f);
 }

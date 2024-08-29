@@ -30,6 +30,7 @@
 #include "rtx/pass/terrain_baking/decode_and_add_opacity_binding_indices.h"
 #include "rtx_types.h"
 #include "rtx_common_object.h"
+#include "rtx_staging.h"
 
 struct SkinningArgs;
 
@@ -46,7 +47,7 @@ namespace dxvk {
   * for geometry operations.
   */
   class RtxGeometryUtils : public CommonDeviceObject {
-    std::unique_ptr<DxvkStagingDataAlloc> m_pCbData;
+    std::unique_ptr<RtxStagingDataAlloc> m_pCbData;
     Rc<DxvkContext> m_skinningContext;
     uint32_t m_skinningCommands = 0;
 
@@ -113,6 +114,7 @@ namespace dxvk {
      */
     void dispatchBakeOpacityMicromap(
       Rc<DxvkContext> ctx,
+      const RtInstance& instance,
       const RaytraceGeometry& geo,
       const std::vector<TextureRef>& textures,
       const std::vector<Rc<DxvkSampler>>& samplers,

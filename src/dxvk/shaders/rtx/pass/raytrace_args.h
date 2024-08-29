@@ -93,6 +93,7 @@ struct DomeLightArgs {
   vec3 radiance;
   uint active;
 
+  uint3 pad0;
   uint textureIndex;
 };
 
@@ -182,6 +183,15 @@ struct RaytraceArgs {
 
   TerrainArgs terrainArgs;
   NeeCacheArgs neeCacheArgs;
+  DomeLightArgs domeLightArgs;
+
+  // Values to use on a ray miss
+  vec3 clearColorNormal;
+  float clearColorDepth;
+  uint32_t clearColorPicking;
+  uint enableDLSSRR;
+
+  float2 upscaleFactor;   // Displayed(upscaled) / RT resolution
 
   uint uniformRandomNumber;
   uint16_t opaqueDiffuseLobeSamplingProbabilityZeroThreshold;
@@ -212,6 +222,7 @@ struct RaytraceArgs {
   uint enableIndirectTranslucentShadows;
   uint enableFirstBounceLobeProbabilityDithering;
   uint enableUnorderedResolveInIndirectRays;
+  uint enableProbabilisticUnorderedResolveInIndirectRays;
   uint enableUnorderedEmissiveParticlesInIndirectRays;
   uint enableTransmissionApproximationInIndirectRays;
   uint enableDecalMaterialBlending;
@@ -285,7 +296,7 @@ struct RaytraceArgs {
   float boilingFilterHigherThreshold;
   float boilingFilterRemoveReservoirThreshold;
   uint temporalHistoryLength;
-  uint32_t permutationSamplingSize;
+  uint permutationSamplingSize;
   uint enableReSTIRGITemporalBiasCorrection;
   uint enableReSTIRGIDiscardEnlargedPixels;
   float reSTIRGIHistoryDiscardStrength;
@@ -329,16 +340,6 @@ struct RaytraceArgs {
   uint pomMaxIterations;
   uint enableThinOpaque;
   float totalMipBias;
-
-  DomeLightArgs domeLightArgs;
-
-  float2 upscaleFactor;   // Displayed(upscaled) / RT resolution
-
-  // Values to use on a ray miss
-  float clearColorDepth;
-  uint32_t clearColorPicking;
-  vec3 clearColorNormal;
-  uint enableDLSSRR;
 
   uint forceFirstHitInGBufferPass;
 };

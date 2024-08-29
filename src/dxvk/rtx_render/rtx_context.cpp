@@ -65,6 +65,9 @@
 #include "rtx_matrix_helpers.h"
 #include "../util/util_fastops.h"
 
+// Destructor requires the struct definitions
+#include "rtx_sky.h"
+
 namespace dxvk {
 
   Metrics Metrics::s_instance;
@@ -166,6 +169,7 @@ namespace dxvk {
       m_screenshotFrameNum = stoul(env::getEnvVar("DXVK_DUMP_SCREENSHOT_FRAME"));
       m_screenshotFrameEnabled = true;
     }
+
     if (env::getEnvVar("DXVK_TERMINATE_APP_FRAME") != "") {
       m_terminateAppFrameNum = stoul(env::getEnvVar("DXVK_TERMINATE_APP_FRAME"));
       m_triggerDelayedTerminate = true;
@@ -741,7 +745,7 @@ namespace dxvk {
       }
     }
 
-    const auto& cameraManager = getSceneManager().getCameraManager();
+    auto& cameraManager = getSceneManager().getCameraManager();
 
     // TODO: a last camera is used to finalize skinning...
     // processCameraData can be called only after finalizePendingFutures,
@@ -753,7 +757,7 @@ namespace dxvk {
 
     // Sync any pending work with geometry processing threads
     if (drawCallState.finalizePendingFutures(lastCamera)) {
-      drawCallState.cameraType = getSceneManager().processCameraData(drawCallState);
+      drawCallState.cameraType = cameraManager.processCameraData(drawCallState);
 
       if (drawCallState.cameraType == CameraType::Unknown) {
         if (RtxOptions::skipObjectsWithUnknownCamera()) {
@@ -763,14 +767,12 @@ namespace dxvk {
         drawCallState.cameraType = CameraType::Enum::Main;
       }
 
-      // Handle the sky
-      if (drawCallState.cameraType == CameraType::Sky) {
-        rasterizeSky(params, drawCallState);
+      if (tryHandleSky(&params, &drawCallState) == TryHandleSkyResult::SkipSubmit) {
+        return;
       }
 
-      const MaterialData* overrideMaterialData = nullptr;
-
       // Bake the terrain
+      const MaterialData* overrideMaterialData = nullptr;
       bakeTerrain(params, drawCallState, &overrideMaterialData);
 
       getSceneManager().submitDrawState(this, drawCallState, overrideMaterialData);
@@ -923,6 +925,7 @@ namespace dxvk {
     constants.enhanceBSDFIndirectLightMinRoughness = m_common->metaComposite().dlssEnhancementIndirectLightMinRoughness();
     constants.enableFirstBounceLobeProbabilityDithering = RtxOptions::Get()->isFirstBounceLobeProbabilityDitheringEnabled();
     constants.enableUnorderedResolveInIndirectRays = RtxOptions::Get()->isUnorderedResolveInIndirectRaysEnabled();
+    constants.enableProbabilisticUnorderedResolveInIndirectRays = RtxOptions::enableProbabilisticUnorderedResolveInIndirectRays();
     constants.enableTransmissionApproximationInIndirectRays = RtxOptions::Get()->enableTransmissionApproximationInIndirectRays();
     constants.enableUnorderedEmissiveParticlesInIndirectRays = RtxOptions::Get()->enableUnorderedEmissiveParticlesInIndirectRays();
     constants.enableDecalMaterialBlending = RtxOptions::Get()->isDecalMaterialBlendingEnabled();
@@ -1221,11 +1224,14 @@ namespace dxvk {
 
   void RtxContext::dispatchIntegrate(const Resources::RaytracingOutput& rtOutput) {
     ScopedGpuProfileZone(this, "Integrate Raytracing");
-    
+
+    // Integrate direct
     m_common->metaPathtracerIntegrateDirect().dispatch(this, rtOutput);
 
+    // RTXDI Gradient pass
     m_common->metaRtxdiRayQuery().dispatchGradient(this, rtOutput);
 
+    // Integrate indirect
     m_common->metaPathtracerIntegrateIndirect().dispatch(this, rtOutput);
     m_common->metaPathtracerIntegrateIndirect().dispatchNEE(this, rtOutput);
   }
@@ -1849,6 +1855,9 @@ namespace dxvk {
   void RtxContext::flushCommandList() {
     ScopedCpuProfileZone();
 
+    // flush the residue
+    tryHandleSky(nullptr, nullptr);
+
     DxvkContext::flushCommandList();
 
     getCommonObjects()->metaGeometryUtils().flushCommandList();
@@ -2065,23 +2074,11 @@ namespace dxvk {
 
     for (uint32_t n = 0; n < 6; n++) {
       viewInfo.minLayer = n;
-      m_skyProbeViews[n] = m_device->createImageView(m_skyProbeImage, viewInfo);
+      m_skyProbeCubePlanes[n] = m_device->createImageView(m_skyProbeImage, viewInfo);
     }
   }
 
   void RtxContext::rasterizeToSkyProbe(const DrawParameters& params, const DrawCallState& drawCallState) {
-    static std::array targets{
-      Vector3{+1.0f, 0.0f, 0.0f}, Vector3{-1.0f, 0.0f, 0.0f},
-      Vector3{0.0f, +1.0f, 0.0f}, Vector3{0.0f, -1.0f, 0.0f},
-      Vector3{0.0f, 0.0f, +1.0f}, Vector3{0.0f, 0.0f, -1.0f},
-    };
-
-    static std::array ups{
-      Vector3{0.0f, 1.0f, 0.0f}, Vector3{0.0f, 1.0f, 0.0f},
-      Vector3{0.0f, 0.0f,-1.0f}, Vector3{0.0f, 0.0f, 1.0f},
-      Vector3{0.0f, 1.0f, 0.0f}, Vector3{0.0f, 1.0f, 0.0f},
-    };
-
     ScopedGpuProfileZone(this, "rasterizeToSkyProbe");
 
     // Lazy init
@@ -2164,21 +2161,8 @@ namespace dxvk {
     // multiple views, however this would require multiview support
     // plumbing to dxvk side.
     // TODO: add multiview rendering in future.
-    uint32_t plane = 0;
-    for (auto& skyView : m_skyProbeViews) {
-      Matrix4 view;
-      {
-        const Vector3 z = normalize(targets[plane]);
-        const Vector3 x = normalize(cross(ups[plane], z));
-        const Vector3 y = cross(z, x);
-
-        const Vector3 translation(dot(x, -camPos), dot(y, -camPos), dot(z, -camPos));
-
-        view[0] = Vector4(x.x, y.x, z.x, 0.f);
-        view[1] = Vector4(x.y, y.y, z.y, 0.f);
-        view[2] = Vector4(x.z, y.z, z.z, 0.f);
-        view[3] = Vector4(translation.x, translation.y, translation.z, 1.f);
-      }
+    for (uint32_t plane = 0; plane < 6; plane++) {
+      Rc<DxvkImageView>* skyRenderTarget = &m_skyProbeCubePlanes[plane];
 
       if (drawCallState.usesVertexShader) {
         D3D9RtxVertexCaptureData& newState = allocAndMapVertexCaptureConstantBuffer();
@@ -2191,32 +2175,31 @@ namespace dxvk {
         proj[2][2] = 1.f;
         proj[2][3] = 1.f;
 
-        newState.customWorldToProjection = proj * view;
+        newState.customWorldToProjection = proj * makeViewMatrixForCubePlane(plane, camPos);
       } else {
         // Push new state to the fixed function constants
         D3D9FixedFunctionVS& newState = allocAndMapFixedFunctionVSConstantBuffer();
         newState = prevCB.fixedFunction;
+        const Matrix4 view = makeViewMatrixForCubePlane(plane, camPos);
 
-        // Create cube plane projection
-        Matrix4 proj = prevCB.fixedFunction.Projection;
-        proj[0][0] = 1.f;
-        proj[1][1] = 1.f;
-        proj[2][2] = 1.f;
-        proj[2][3] = 1.f;
-
-        newState.View = view;
+        // Set to identity, as we use custom matrices that transform from world to cube side projection
+        newState.View      = view;
         newState.WorldView = view * prevCB.fixedFunction.World;
-        newState.Projection = proj;
+        // And cube plane projection
+        newState.Projection[0][0] = 1.f;
+        newState.Projection[1][1] = 1.f;
+        newState.Projection[2][2] = 1.f;
+        newState.Projection[2][3] = 1.f;
       }
 
       DxvkRenderTargets skyRt;
-      skyRt.color[0].view = skyView;
+      skyRt.color[0].view   = *skyRenderTarget;
       skyRt.color[0].layout = VK_IMAGE_LAYOUT_GENERAL;
 
       bindRenderTargets(skyRt);
 
       if (m_skyClearDirty) {
-        DxvkContext::clearRenderTarget(skyView, VK_IMAGE_ASPECT_COLOR_BIT, m_skyClearValue);
+        DxvkContext::clearRenderTarget(*skyRenderTarget, VK_IMAGE_ASPECT_COLOR_BIT, m_skyClearValue);
       }
 
       if (params.indexCount > 0) {
@@ -2224,8 +2207,6 @@ namespace dxvk {
       } else {
         DxvkContext::draw(params.vertexCount, params.instanceCount, params.vertexOffset, 0);
       }
-
-      ++plane;
     }
 
     // Restore state
@@ -2316,13 +2297,12 @@ namespace dxvk {
   }
 
   void RtxContext::rasterizeSky(const DrawParameters& params, const DrawCallState& drawCallState) {
-    ScopedGpuProfileZone(this, "rasterizeSky");
-
     // Grab and apply replacement texture if any
     // NOTE: only the original color texture will be replaced with albedo-opacity texture
     MaterialData* replacementMaterial = getSceneManager().getAssetReplacer()->getReplacementMaterial(drawCallState.getMaterialData().getHash());
     bool replacemenIsLDR = false;
-    Rc<DxvkImageView> curColorView;
+    Rc<DxvkImageView> replacementTexture = {};
+    uint32_t replacementTextureSlot = UINT32_MAX;
 
     if (replacementMaterial && replacementMaterial->getType() == MaterialDataType::Opaque) {
       // Must pull a ref because we will modify it for loading purposes below.
@@ -2334,38 +2314,32 @@ namespace dxvk {
         albedoOpacity.finalizePendingPromotion();
 
         if (!albedoOpacity.isImageEmpty()) {
-          // Original 0th colour texture slot
-          const uint32_t colorTextureSlot = drawCallState.materialData.colorTextureSlot[0];
-
-          // Save current color texture first
-          if (colorTextureSlot < m_rc.size() &&
-              m_rc[colorTextureSlot].imageView != nullptr) {
-            curColorView = m_rc[colorTextureSlot].imageView;
-          }
-
-          bindResourceView(colorTextureSlot, albedoOpacity.getImageView(), nullptr);
+          replacementTextureSlot = drawCallState.materialData.colorTextureSlot[0];
+          replacementTexture = albedoOpacity.getImageView();
           replacemenIsLDR = TextureUtils::isLDR(albedoOpacity.getImageView()->info().format);
         } else {
           ONCE(Logger::warn("A replacement texture for sky was specified, but it could not be loaded."));
         }
       }
     }
+    
+    Rc<DxvkImageView> curColorView = {};
+    if (replacementTextureSlot < m_rc.size())
+    {
+      if (m_rc[replacementTextureSlot].imageView != nullptr && replacementTexture != nullptr) {
+        // Save currently bound texture to restore later
+        curColorView = m_rc[replacementTextureSlot].imageView;
+        // Bind a replacement texture
+        bindResourceView(replacementTextureSlot, replacementTexture, nullptr);
+      }
+    }
 
     // Save current RTs
     DxvkRenderTargets curRts = m_state.om.renderTargets;
 
-    // Use game render target format for sky render target views whether it is linear, HDR or sRGB
-    m_skyRtColorFormat = curRts.color[0].view->image()->info().format;
-    // Use sRGB (or linear for HDR formats) for image and sampling views
-    m_skyColorFormat = TextureUtils::toSRGB(m_skyRtColorFormat);
-
-    if (RtxOptions::Get()->skyForceHDR()) {
-      if (TextureUtils::isLDR(m_skyRtColorFormat) && (!replacementMaterial || replacemenIsLDR)) {
-        ONCE(Logger::warn("Sky may not appear correct: sky intermediate format has been forced to HDR "
-                          "while the original sky is LDR and no HDR sky replacement has been found!"));
-      }
-
-      m_skyRtColorFormat = m_skyColorFormat = VK_FORMAT_B10G11R11_UFLOAT_PACK32;
+    if (!TextureUtils::isLDR(m_skyRtColorFormat) && (!replacementMaterial || replacemenIsLDR)) {
+      ONCE(Logger::warn("Sky may not appear correct: sky intermediate format has been forced to HDR "
+                        "while the original sky is LDR and no HDR sky replacement has been found!"));
     }
 
     // Save viewports
@@ -2373,9 +2347,7 @@ namespace dxvk {
     const DxvkViewportState curVp = m_state.vp;
     
 
-    if (!RtxOptions::Get()->skyBoxPathTracing() || drawCallState.getCategoryFlags() == InstanceCategories::Sky)
-      rasterizeToSkyMatte(params, drawCallState);
-    // TODO: make probe optional?
+    rasterizeToSkyMatte(params, drawCallState);
     rasterizeToSkyProbe(params, drawCallState);
 
     m_skyClearDirty = false;

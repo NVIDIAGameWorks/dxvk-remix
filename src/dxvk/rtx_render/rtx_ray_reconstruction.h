@@ -24,6 +24,7 @@
 #include "rtx_dlss.h"
 
 namespace dxvk {
+  class NGXRayReconstructionContext;
   class DxvkRayReconstruction : public DxvkDLSS {
   public:
     enum class RayReconstructionParticleBufferMode : uint32_t {
@@ -84,5 +85,6 @@ namespace dxvk {
     bool                        m_biasCurrentColorEnabled = true;
 
     Rc<DxvkBuffer> m_constants;
+    std::unique_ptr<NGXRayReconstructionContext> m_rayReconstructionContext;
   };
 } // namespace dxvk

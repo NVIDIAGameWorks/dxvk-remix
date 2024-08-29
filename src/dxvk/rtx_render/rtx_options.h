@@ -253,6 +253,8 @@ namespace dxvk {
                   "Using this feature on selected textures will eliminate the vertex colors.\n\n"
                   "Note, enabling this setting will automatically disable multiple-stage texture factor blendings for the selected textures.\n"
                   "Only use this option when necessary, as the Texture Factor and Vertex Color can be used for simulating various texture effects, tagging a texture with this option will unexpectedly eliminate these effects.");
+    RW_RTX_OPTION("rtx", fast_unordered_set, ignoreAlphaOnTextures, {}, 
+                  "Textures for which to ignore the alpha channel of the legacy colormap. Textures will be rendered fully opaque as a result.");
     RW_RTX_OPTION("rtx.antiCulling", fast_unordered_set, antiCullingTextures, {},
                   "Textures that are forced to extend life length when anti-culling is enabled.\n"
                   "Some games use different culling methods we can't fully match, use this option to manually add textures to force extend their life when anti-culling fails.");
@@ -319,7 +321,7 @@ namespace dxvk {
       RTX_OPTION("rtx.playerModel", bool, enableVirtualInstances, true, "");
       RTX_OPTION("rtx.playerModel", bool, enableInPrimarySpace, false, "");
       RTX_OPTION("rtx.playerModel", bool, enablePrimaryShadows, true, "");
-      RTX_OPTION("rtx.playerModel", float, backwardOffset, 18.f, "");
+      RTX_OPTION("rtx.playerModel", float, backwardOffset, 0.f, "");
       RTX_OPTION("rtx.playerModel", float, horizontalDetectionDistance, 34.f, "");
       RTX_OPTION("rtx.playerModel", float, verticalDetectionDistance, 64.f, "");
       RTX_OPTION("rtx.playerModel", float, eyeHeight, 64.f, "");
@@ -350,6 +352,19 @@ namespace dxvk {
     RTX_OPTION_ENV("rtx", bool, enableAlwaysCalculateAABB, false, "RTX_ALWAYS_CALCULATE_AABB", "Calculate an Axis Aligned Bounding Box for every draw call.\n This may improve instance tracking across frames for skinned and vertex shaded calls.");
 
     // Camera
+    struct FreeCam{
+      RTX_OPTION("rtx.freeCam", VirtualKeys, keyMoveFaster,  {VirtualKey{VK_LSHIFT}}, "Move faster in free camera mode.\nExample override: 'rtx.rtx.freeCam.keyMoveForward = RSHIFT'");
+      RTX_OPTION("rtx.freeCam", VirtualKeys, keyMoveForward, {VirtualKey{'W'}}, "Move forward in free camera mode.\nExample override: 'rtx.rtx.freeCam.keyMoveForward = P'");
+      RTX_OPTION("rtx.freeCam", VirtualKeys, keyMoveLeft,    {VirtualKey{'A'}}, "Move left in free camera mode.\nExample override: 'rtx.rtx.freeCam.keyMoveLeft = P'");
+      RTX_OPTION("rtx.freeCam", VirtualKeys, keyMoveBack,    {VirtualKey{'S'}}, "Move back in free camera mode.\nExample override: 'rtx.rtx.freeCam.keyMoveBack = P'");
+      RTX_OPTION("rtx.freeCam", VirtualKeys, keyMoveRight,   {VirtualKey{'D'}}, "Move right in free camera mode.\nExample override: 'rtx.rtx.freeCam.keyMoveRight = P'");
+      RTX_OPTION("rtx.freeCam", VirtualKeys, keyMoveUp,      {VirtualKey{'E'}}, "Move up in free camera mode.\nExample override: 'rtx.rtx.freeCam.keyMoveUp = P'");
+      RTX_OPTION("rtx.freeCam", VirtualKeys, keyMoveDown,    {VirtualKey{'Q'}}, "Move down in free camera mode.\nExample override: 'rtx.rtx.freeCam.keyMoveDown = P'");
+      RTX_OPTION("rtx.freeCam", VirtualKeys, keyPitchDown,   {VirtualKey{'I'}}, "Pitch down in free camera mode.\nExample override: 'rtx.rtx.freeCam.keyPitchDown = P'");
+      RTX_OPTION("rtx.freeCam", VirtualKeys, keyPitchUp,     {VirtualKey{'K'}}, "Pitch up in free camera mode.\nExample override: 'rtx.rtx.freeCam.keyPitchUp = P'");
+      RTX_OPTION("rtx.freeCam", VirtualKeys, keyYawLeft,     {VirtualKey{'J'}}, "Yaw left in free camera mode.\nExample override: 'rtx.rtx.freeCam.keyYawLeft = P'");
+      RTX_OPTION("rtx.freeCam", VirtualKeys, keyYawRight,    {VirtualKey{'L'}}, "Yaw right in free camera mode.\nExample override: 'rtx.rtx.freeCam.keyYawRight = P'");
+    } freeCam;
     RW_RTX_OPTION_ENV("rtx", bool, shakeCamera, false, "RTX_FREE_CAMERA_ENABLE_ANIMATION", "Enables animation of the free camera.");
     RTX_OPTION_ENV("rtx", CameraAnimationMode, cameraAnimationMode, CameraAnimationMode::CameraShake_Pitch, "RTX_FREE_CAMERA_ANIMATION_MODE", "Free camera's animation mode.");
     RTX_OPTION_ENV("rtx", int, cameraShakePeriod, 20, "RTX_FREE_CAMERA_ANIMATION_PERIOD", "Period of the free camera's animation.");
@@ -397,7 +412,7 @@ namespace dxvk {
   public:
     const VirtualKeys& remixMenuKeyBinds() const { return m_remixMenuKeyBinds; }
 
-    RTX_OPTION("rtx", DLSSProfile, qualityDLSS, DLSSProfile::Auto, "Adjusts internal DLSS scaling factor, trades quality for performance.");
+    RTX_OPTION_ENV("rtx", DLSSProfile, qualityDLSS, DLSSProfile::Auto, "RTX_QUALITY_DLSS", "Adjusts internal DLSS scaling factor, trades quality for performance.");
     // Note: All ray tracing modes depend on the rtx.raytraceModePreset option as they may be overridden by automatic defaults for a specific vendor if the preset is set to Auto. Set
     // to Custom to ensure these settings are not overridden.
     //RenderPassVolumeIntegrateRaytraceMode renderPassVolumeIntegrateRaytraceMode = RenderPassVolumeIntegrateRaytraceMode::RayQuery;
@@ -588,6 +603,11 @@ namespace dxvk {
                "This allows for the presence of unordered approximations in resolving to be overridden in indirect rays and as such requires separate unordered approximations to be enabled to have any effect.\n"
                "This option should be enabled if objects which can be resolvered in an unordered way in indirect rays are expected for higher quality in reflections, but may come at a performance cost.\n"
                "Note that even with this option enabled, unordered resolve approximations are only done on the first indirect bounce for the sake of performance overall.");
+    RTX_OPTION("rtx", bool, enableProbabilisticUnorderedResolveInIndirectRays, true,
+               "A flag to enable or disable probabilistic unordered resolve approximations in indirect rays.\n"
+               "This flag speeds up the unordered resolve for indirect rays by probabilistically deciding when to perform unordered resolve or not.  Must have both unordered resolve and unordered resolve in indirect rays enabled for this to take effect.\n"
+               "This option should be enabled by default as it can significantly improve performance on some hardware.  In rare cases it may come at the cost of some quality for particles and decals in reflections.\n"
+               "Note that even with this option enabled, unordered resolve approximations are only done on the first indirect bounce for the sake of performance overall.");
     RTX_OPTION_ENV("rtx", bool, enableUnorderedEmissiveParticlesInIndirectRays, false, "DXVK_EMISSIVE_INDIRECT_PARTICLES",
                    "A flag to enable or disable unordered resolve emissive particles specifically in indirect rays.\n"
                    "Should be enabled in higher quality rendering modes as emissive particles are fairly important in reflections, but may be disabled to skip such interactions which can improve performance on lower end hardware.\n"
@@ -713,6 +733,7 @@ namespace dxvk {
                "A value representing the scale of the fixed function fog's color in the multiscattering approximation.\n"
                "This scaling factor is applied to the fixed function fog's color and becomes a multiscattering approximation in the volumetrics system.\n"
                "Sometimes useful but this multiscattering approximation is very basic (just a simple ambient term for now essentially) and may not look very good depending on various conditions.");
+    RTX_OPTION("rtx", bool, fogIgnoreSky, false, "If true, sky draw calls will be skipped when searching for the D3D9 fog values.")
 
     // Note: Cached values used to precompute quantities for options fetching to not have to needlessly recompute them.
     uint8_t cachedFroxelReservoirSamplesStabilityHistoryRange;
@@ -875,7 +896,9 @@ namespace dxvk {
                "If false, the hotkeys behave as expected. The user must manually open the menu in order to change any values.");
     inline static const VirtualKeys kDefaultCaptureMenuKeyBinds{VirtualKey{VK_CONTROL},VirtualKey{VK_SHIFT},VirtualKey{'Q'}};
     RTX_OPTION("rtx", VirtualKeys, captureHotKey, kDefaultCaptureMenuKeyBinds,
-               "Hotkey to trigger a capture without bringing up the menu.");
+               "Hotkey to trigger a capture without bringing up the menu.\n"
+               "example override: 'rtx.captureHotKey = CTRL, SHIFT, P'\n"
+               "Full list of key names available in src/util/util_keybind.h");
     RTX_OPTION("rtx", bool, captureInstances, true,
                "If true, an instanced snapshot of the game scene will be captured and exported to a USD stage, in addition to all meshes, textures, materials, etc.\n"
                "If false, only meshes, etc will be captured.");
@@ -908,7 +931,7 @@ namespace dxvk {
 
     RTX_OPTION("rtx", float, skyBrightness, 1.f, "");
     RTX_OPTION("rtx", bool, skyForceHDR, false, "By default sky will be rasterized in the color format used by the game. Set the checkbox to force sky to be rasterized in HDR intermediate format. This may be important when sky textures replaced with HDR textures.");
-    RTX_OPTION("rtx", uint32_t, skyProbeSide, 1024, "");
+    RTX_OPTION("rtx", uint32_t, skyProbeSide, 1024, "Resolution of the skybox for indirect illumination (rough reflections, global illumination etc).");
     RTX_OPTION_FLAG("rtx", uint32_t, skyUiDrawcallCount, 0, RtxOptionFlags::NoSave, "");
     RTX_OPTION("rtx", uint32_t, skyDrawcallIdThreshold, 0, "It's common in games to render the skybox first, and so, this value provides a simple mechanism to identify those early draw calls that are untextured (textured draw calls can still use the Sky Textures functionality.");
     RTX_OPTION("rtx", float, skyMinZThreshold, 1.f, "If a draw call's viewport has min depth greater than or equal to this threshold, then assume that it's a sky.");
@@ -918,6 +941,14 @@ namespace dxvk {
                "1 = CameraPosition - assume the first seen camera position is a sky camera.\n"
                "2 = CameraPositionAndDepthFlags - assume the first seen camera position is a sky camera, if its draw call's depth test is disabled. If it's enabled, assume no sky camera.\n"
                "Note: if all draw calls are marked as sky, then assume that there's no sky camera at all.");
+    RTX_OPTION("rtx", float, skyAutoDetectUniqueCameraDistance, 1.0f,
+               "If multiple cameras are found, this threshold distance (in game units) is used to distinguish a sky camera from a main camera. "
+               "Active if sky auto-detect is set to CameraPosition / CameraPositionAndDepthFlags.")
+    RTX_OPTION("rtx", bool, skyReprojectToMainCameraSpace, false,
+               "Move sky geometry to the main camera space.\n"
+               "Useful, if a game has a skybox that contains geometry that can be a part of the main scene (e.g. buildings, mountains). "
+               "So with this option enabled, that geometry would be promoted from sky rasterization to ray tracing.");
+    RTX_OPTION("rtx", float, skyReprojectScale, 16.0f, "Scaling of the sky geometry on reprojection to main camera space.");
 
 
     RTX_OPTION("rtx", bool, skySharedDepth, false, "By default the sky box will write to a seperate depth buffer than the main camera. Set the checkbox to cause the sky to use the same depth buffer as the main camera. Useful for source engine games.");

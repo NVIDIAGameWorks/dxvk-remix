@@ -63,6 +63,7 @@ namespace dxvk {
     void showImguiSettings();
     void showDenoiseImguiSettings();
     void showStochasticAlphaBlendImguiSettings();
+    void showDepthBasedFogImguiSettings();
 
   private:
     dxvk::DxvkDevice* m_device;

@@ -246,7 +246,7 @@ namespace dxvk {
         ToneMappingAutoExposureArgs pushArgs = {};
         pushArgs.numPixels = rtOutput.m_finalOutput.image->mipLevelExtent(0).width * rtOutput.m_finalOutput.image->mipLevelExtent(0).height;
         // Note: Autoexposure speed is in units per second, so convert from milliseconds to seconds here.
-        pushArgs.autoExposureSpeed = autoExposureSpeed() * (1000.0f * frameTimeMilliseconds);
+        pushArgs.autoExposureSpeed = autoExposureSpeed() * (0.001f * frameTimeMilliseconds);
         pushArgs.evMinValue = evMinValue();
         pushArgs.evRange = evMaxValue() - evMinValue();
         pushArgs.debugMode = (ctx->getCommonObjects()->metaDebugView().debugViewIdx() == DEBUG_VIEW_EXPOSURE_HISTOGRAM);

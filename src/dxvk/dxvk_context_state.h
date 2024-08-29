@@ -125,7 +125,10 @@ namespace dxvk {
   };
   
   struct DxvkPushConstantState {
+// NV-DXVK start: multiple push const contexts
     char data[static_cast<uint32_t>(DxvkPushConstantBank::Count)][MaxPushConstantSize];
+    DxvkPushConstantBank constantBank = DxvkPushConstantBank::D3D9;
+// NV-DXVK
   };
   
   struct DxvkXfbState {

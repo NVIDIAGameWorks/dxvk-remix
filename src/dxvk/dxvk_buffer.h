@@ -241,6 +241,9 @@ namespace dxvk {
      * \returns Previous buffer slice
      */
     DxvkBufferSliceHandle rename(const DxvkBufferSliceHandle& slice) {
+      // Our cached device address may no longer be valid
+      m_deviceAddress = 0;
+
       return std::exchange(m_physSlice, slice);
     }
     
@@ -366,7 +369,7 @@ namespace dxvk {
     std::vector<DxvkBufferSliceHandle>  m_nextSlices;
 
     DxvkMemoryStats::Category m_category;
-    
+
     void pushSlice(const DxvkBufferHandle& handle, uint32_t index) {
       DxvkBufferSliceHandle slice;
       slice.handle = handle.buffer;

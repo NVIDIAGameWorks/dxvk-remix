@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -44,6 +44,8 @@
 #define DEBUG_VIEW_BINDING_TERRAIN_INPUT                                                   17
 #define DEBUG_VIEW_BINDING_UPSCALED_RESOLVED_COLOR                                         18
 
+#define DEBUG_VIEW_BINDING_INPUT                                                           20
+
 // Inputs / Outputs
 #define DEBUG_VIEW_BINDING_HDR_WAVEFORM_RED_INPUT_OUTPUT                                   50
 #define DEBUG_VIEW_BINDING_HDR_WAVEFORM_GREEN_INPUT_OUTPUT                                 51
@@ -51,7 +53,6 @@
 
 #define DEBUG_VIEW_BINDING_COMPOSITE_OUTPUT_INPUT_OUTPUT                                   60
 
-#define DEBUG_VIEW_BINDING_INPUT_OUTPUT                                                    70
 #define DEBUG_VIEW_BINDING_PREVIOUS_FRAME_INPUT_OUTPUT                                     71
 
 // Samplers
@@ -59,3 +60,5 @@
 #define DEBUG_VIEW_BINDING_LINEAR_SAMPLER                                                  81
 
 // Outputs
+#define DEBUG_VIEW_BINDING_STATISTICS_BUFFER_OUTPUT                                        90
+#define DEBUG_VIEW_BINDING_OUTPUT                                                          95

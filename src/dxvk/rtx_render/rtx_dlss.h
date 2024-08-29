@@ -109,5 +109,6 @@ namespace dxvk {
     uint32_t                    mDLSSOutputSize[2] = {};       ///< DLSS output size in pixels.
 
     bool                        mBiasCurrentColorEnabled = false;
+    std::unique_ptr < NGXDLSSContext > m_dlssContext;
   };
 }  // namespace dxvk

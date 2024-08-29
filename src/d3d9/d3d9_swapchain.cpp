@@ -27,6 +27,7 @@
 #include "../dxvk/dxvk_device.h"
 #include "../dxvk/dxvk_objects.h"
 #include "../util/util_env.h"
+#include "../util/util_string.h"
 #include "../dxvk/rtx_render/rtx_bridge_message_channel.h"
 #include "../dxvk/dxvk_scoped_annotation.h"
 
@@ -168,7 +169,7 @@ namespace dxvk {
   }
 
 
-  void HookWindowProc(HWND window, D3D9SwapChainEx* swapchain) {
+  void D3D9SwapChainEx::HookWindowProc(HWND window) {
     std::lock_guard lock(g_windowProcMapMutex);
 
     ResetWindowProc(window);
@@ -180,16 +181,16 @@ namespace dxvk {
       CallCharsetFunction(
       SetWindowLongPtrW, SetWindowLongPtrA, windowData.unicode,
         window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(D3D9WindowProc)));
-    windowData.swapchain = swapchain;
+    windowData.swapchain = this;
     g_windowProcMap[window] = std::move(windowData);
 
     // NV-DXVK start: App Controlled FSE
     if (windowData.proc == nullptr) {
-      Logger::info(str::format("No winproc detected, initiating bridge message channel for: ", window));
+      Logger::info(str::format("No winproc detected, initiating bridge message channel for: ", getWinProcHwnd()));
 
-      if (BridgeMessageChannel::get().init(window, D3D9WindowProc)) {
+      if (BridgeMessageChannel::get().init(getWinProcHwnd(), D3D9WindowProc)) {
         // Send the initial state messages
-        auto& gui = swapchain->getDxvkDevice()->getCommon()->getImgui();
+        auto& gui = getDxvkDevice()->getCommon()->getImgui();
         gui.switchMenu(RtxOptions::Get()->showUI(), true);
       } else {
         Logger::err("Unable to init bridge message channel. FSE and input capture may not work!");
@@ -319,8 +320,13 @@ namespace dxvk {
     // NV-DXVK end
 
     UpdatePresentRegion(nullptr, nullptr);
-    if (!pDevice->GetOptions()->deferSurfaceCreation && m_window != 0)
+    
+    if (m_window) {
       CreatePresenter();
+
+      if (!pDevice->GetOptions()->deferSurfaceCreation)
+        RecreateSwapChain(m_vsync);
+    }
 
     CreateBackBuffers(m_presentParams.BackBufferCount);
     CreateBlitter();
@@ -333,7 +339,7 @@ namespace dxvk {
     if (!m_presentParams.Windowed && (modifyWindow && FAILED(EnterFullscreenMode(pPresentParams, pFullscreenDisplayMode)))) {
       throw DxvkError("D3D9: Failed to set initial fullscreen state");
     } else {
-      HookWindowProc(m_window, this);
+      HookWindowProc(m_window);
     }
   }
 
@@ -460,7 +466,7 @@ namespace dxvk {
     // NV-DXVK start: Support games changing the HWND at runtime.
     if (window != m_window) {
       // Reinstall window hook that was removed in LeaveFullscreenMode() above
-      HookWindowProc(window, this);
+      HookWindowProc(window);
     }
     // NV-DXVK end
 
@@ -817,7 +823,7 @@ namespace dxvk {
     if (pPresentParams->hDeviceWindow != nullptr && m_window != pPresentParams->hDeviceWindow) {
       ResetWindowProc(m_window);
       m_window = m_parent->m_window = pPresentParams->hDeviceWindow;
-      HookWindowProc(m_window, this);
+      HookWindowProc(m_window);
     }
 
     m_presentParams = *pPresentParams;
@@ -904,7 +910,7 @@ namespace dxvk {
 
       if (changeFullscreen) {
         // Reinstall window hook that was removed in LeaveFullscreenMode() above
-        HookWindowProc(m_window, this);
+        HookWindowProc(m_window);
       }
     }
 
@@ -1002,7 +1008,7 @@ namespace dxvk {
 
     if (m_presentParams.hDeviceWindow == hWindow) {
       // NV-DXVK start: DLFG integration
-      m_device->releasePresenter();
+      m_device->synchronizePresenter();
 
       if (m_presenter != nullptr) {
         assert(m_dlfgPresenter == nullptr);
@@ -1318,7 +1324,7 @@ namespace dxvk {
     m_device->waitForIdle();
 
     // NV-DXVK start: DLFG integration
-    m_device->releasePresenter();
+    m_device->synchronizePresenter();
     // NV-DXVK end
 
     m_presenter = nullptr;
@@ -1629,7 +1635,7 @@ namespace dxvk {
     // Some games restore window styles after we have changed it, so hooking is
     // also required. Doing it will allow us to create fullscreen windows
     // regardless of their style and it also appears to work on Windows.
-    HookWindowProc(m_window, this);
+    HookWindowProc(m_window);
 
    if(!env::isRemixBridgeActive()) {
       D3D9WindowMessageFilter filter(m_window);

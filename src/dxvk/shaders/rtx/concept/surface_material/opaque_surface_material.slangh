@@ -24,7 +24,7 @@
 // Opaque Surface Material Functions
 
 // TODO: Remove useless parameter surfaceMaterialIndex
-OpaqueSurfaceMaterial opaqueSurfaceMaterialCreate(uint16_t surfaceMaterialIndex, MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial)
+OpaqueSurfaceMaterial opaqueSurfaceMaterialCreate(uint16_t surfaceMaterialIndex, MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial, const bool visibilityCheckOnly = false)
 {
   // Decode the Opaque Surface Material from the packed memory representation
   // Note: Opaque type is known in advance
@@ -35,59 +35,54 @@ OpaqueSurfaceMaterial opaqueSurfaceMaterialCreate(uint16_t surfaceMaterialIndex,
   const u16vec2 data01 = unpack16(memoryPolymorphicSurfaceMaterial.data0.y);
   const u16vec2 data02 = unpack16(memoryPolymorphicSurfaceMaterial.data0.z);
   const u16vec2 data03 = unpack16(memoryPolymorphicSurfaceMaterial.data0.w);
+  
+  // NOTE: We keep the most commonly used elements in the material close together near the beginning
+  //       This hopefully reduces loads for cases like opacity detection.
+  
+  opaqueSurfaceMaterial.flags = uint8_t(data00.x);
+  opaqueSurfaceMaterial.thinFilmThicknessConstant = unorm8ToF16(uint8_t(data00.x >> 8u));
+  opaqueSurfaceMaterial.displaceIn = uint16BitsToHalf(data00.y);
+  
+  opaqueSurfaceMaterial.samplerIndex = data01.x;
+  opaqueSurfaceMaterial.albedoOpacityTextureIndex = data01.y;
+  opaqueSurfaceMaterial.heightTextureIndex = data02.x;
+  opaqueSurfaceMaterial.subsurfaceMaterialIndex = data02.y;
+  
+  opaqueSurfaceMaterial.albedoOpacityConstant = unpackUnorm4x8(memoryPolymorphicSurfaceMaterial.data0.w);
+  
+  opaqueSurfaceMaterial.tangentTextureIndex = BINDING_INDEX_INVALID;
+
+  // If we're just doing a visibility check, we dont need these parameters.
+  if(visibilityCheckOnly)
+  {
+    opaqueSurfaceMaterial.emissiveColorTextureIndex = BINDING_INDEX_INVALID;
+    opaqueSurfaceMaterial.roughnessTextureIndex = BINDING_INDEX_INVALID;
+    opaqueSurfaceMaterial.metallicTextureIndex = BINDING_INDEX_INVALID;
+    opaqueSurfaceMaterial.normalTextureIndex = BINDING_INDEX_INVALID;
+    opaqueSurfaceMaterial.roughnessConstant = 1.h;
+    opaqueSurfaceMaterial.metallicConstant = 0.h;
+    opaqueSurfaceMaterial.anisotropy = 0.h;
+    opaqueSurfaceMaterial.emissiveColorConstant = 0.h;
+    opaqueSurfaceMaterial.emissiveIntensity = 0.h;
+    return opaqueSurfaceMaterial;
+  }
+
   const u16vec2 data10 = unpack16(memoryPolymorphicSurfaceMaterial.data1.x);
   const u16vec2 data11 = unpack16(memoryPolymorphicSurfaceMaterial.data1.y);
   const u16vec2 data12 = unpack16(memoryPolymorphicSurfaceMaterial.data1.z);
-  // Note: Last two bits of data1.w (or data13 in this case) are reserved for common polymorphic type
   const u16vec2 data13 = unpack16(memoryPolymorphicSurfaceMaterial.data1.w);
-  opaqueSurfaceMaterial.flags = (data13.x & 0xFF);
-  if (opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_HAS_ALBEDO_TEXTURE) {
-    opaqueSurfaceMaterial.albedoOpacityTextureIndex = data00.x;
-    opaqueSurfaceMaterial.albedoOpacityConstant = f16vec4(0.0);
-  } else {
-    opaqueSurfaceMaterial.albedoOpacityTextureIndex = BINDING_INDEX_INVALID;
-    opaqueSurfaceMaterial.albedoOpacityConstant = f16vec4(unorm8ToF16(uint8_t(data00.x)), unorm8ToF16(uint8_t(data00.x >> 8u)), unorm8ToF16(uint8_t(data00.y)), unorm8ToF16(uint8_t(data00.y >> 8u)));
-  }
-  opaqueSurfaceMaterial.tangentTextureIndex = data01.x;
 
-  if (opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_HAS_ROUGHNESS_TEXTURE) {
-    opaqueSurfaceMaterial.roughnessTextureIndex = data01.y;
-    opaqueSurfaceMaterial.roughnessConstant = 0.0;
-  } else {
-    opaqueSurfaceMaterial.roughnessTextureIndex = BINDING_INDEX_INVALID;
-    opaqueSurfaceMaterial.roughnessConstant = unorm8ToF16(uint8_t(data01.y));
-  }
-
-  if (opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_HAS_METALLIC_TEXTURE) {
-    opaqueSurfaceMaterial.metallicTextureIndex = data02.x;
-    opaqueSurfaceMaterial.metallicConstant = 0.0;
-  } else {
-    opaqueSurfaceMaterial.metallicTextureIndex = BINDING_INDEX_INVALID;
-    opaqueSurfaceMaterial.metallicConstant = unorm8ToF16(uint8_t(data02.x));
-  }
-
-  if (opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_HAS_EMISSIVE_TEXTURE) {
-    opaqueSurfaceMaterial.emissiveColorTextureIndex = data02.y;
-    opaqueSurfaceMaterial.emissiveColorConstant = f16vec3(0.0);
-  } else {
-    opaqueSurfaceMaterial.emissiveColorTextureIndex = BINDING_INDEX_INVALID;
-    opaqueSurfaceMaterial.emissiveColorConstant = f16vec3(unorm8ToF16(uint8_t(data02.y)), unorm8ToF16(uint8_t(data02.y >> 8u)), unorm8ToF16(uint8_t(data03.x)));
-  }
-
-  opaqueSurfaceMaterial.anisotropy = snorm8ToF16(uint8_t(data03.x >> 8u));
-  opaqueSurfaceMaterial.normalTextureIndex = data03.y;
-  opaqueSurfaceMaterial.emissiveIntensity = uint16BitsToHalf(data10.x);
-  opaqueSurfaceMaterial.samplerIndex = data10.y;
-  opaqueSurfaceMaterial.displaceIn = uint16BitsToHalf(data11.x);
-  opaqueSurfaceMaterial.heightTextureIndex = data11.y;
-
-  if (opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_HAS_SUBSURFACE_MATERIAL) {
-    opaqueSurfaceMaterial.subsurfaceMaterialIndex = data12.x;
-  } else {
-    opaqueSurfaceMaterial.subsurfaceMaterialIndex = BINDING_INDEX_INVALID;
-  }
-
-  opaqueSurfaceMaterial.thinFilmThicknessConstant = unorm8ToF16(uint8_t(data12.y >> 8u));
+  opaqueSurfaceMaterial.emissiveColorTextureIndex = data10.x;
+  opaqueSurfaceMaterial.roughnessTextureIndex = data10.y;
+  opaqueSurfaceMaterial.metallicTextureIndex = data11.x;
+  opaqueSurfaceMaterial.normalTextureIndex = data11.y;
+  
+  opaqueSurfaceMaterial.emissiveIntensity = uint16BitsToHalf(data12.x);
+  opaqueSurfaceMaterial.emissiveColorConstant = f16vec3(unorm8ToF16(uint8_t(data12.y)), unorm8ToF16(uint8_t(data12.y >> 8)), unorm8ToF16(uint8_t(data13.x)));
+  
+  opaqueSurfaceMaterial.roughnessConstant = unorm8ToF16(uint8_t(data13.x >> 8));
+  opaqueSurfaceMaterial.metallicConstant = unorm8ToF16(uint8_t(data13.y));
+  opaqueSurfaceMaterial.anisotropy = snorm8ToF16(uint8_t(data13.y >> 8));
 
   return opaqueSurfaceMaterial;
 }
@@ -157,18 +152,7 @@ SubsurfaceMaterial subsurfaceMaterialCreate(const SubsurfaceMaterialInteraction 
 
 uint16_t getSubsurfaceMaterialIndex(const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial, inout uint16_t samplerIndex)
 {
-  const u16vec2 data10 = unpack16(memoryPolymorphicSurfaceMaterial.data1.x);
-  const u16vec2 data12 = unpack16(memoryPolymorphicSurfaceMaterial.data1.z);
-  const u16vec2 data13 = unpack16(memoryPolymorphicSurfaceMaterial.data1.w);
-  samplerIndex = data10.y;
-
-  const uint8_t flags = (data13.x & 0xFF);
-  if (flags & OPAQUE_SURFACE_MATERIAL_FLAG_HAS_SUBSURFACE_MATERIAL)
-  {
-    return data12.x;
-  }
-  else
-  {
-    return BINDING_INDEX_INVALID;
-  }
+  OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(0, memoryPolymorphicSurfaceMaterial);
+  samplerIndex = opaqueSurfaceMaterial.samplerIndex;
+  return opaqueSurfaceMaterial.subsurfaceMaterialIndex;
 }

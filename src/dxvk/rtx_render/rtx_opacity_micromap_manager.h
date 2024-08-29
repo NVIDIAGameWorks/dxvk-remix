@@ -26,6 +26,7 @@
 #include "rtx_geometry_utils.h"
 #include "rtx_option.h"
 #include "rtx_common_object.h"
+#include "rtx_staging.h"
 #include <vector>
 #include <list>
 #include <unordered_map>
@@ -536,7 +537,7 @@ namespace dxvk {
     VkDeviceSize m_amountOfMemoryMissing = 0;    // Records how much memory was missing in a frame
     OpacityMicromapMemoryManager m_memoryManager;
     bool m_hasEnoughMemoryToPotentiallyGenerateAnOmm = true; // A quick check to avoid unnecessary computations when there's not enough free budget to handle more OMMs
-    std::unique_ptr<DxvkStagingDataAlloc> m_scratchAllocator;
+    std::unique_ptr<RtxStagingDataAlloc> m_scratchAllocator;
 
     // Prev RtxOption states
     bool m_prevConservativeEstimationEnable = OpacityMicromapOptions::Building::ConservativeEstimation::enable();

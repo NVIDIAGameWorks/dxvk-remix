@@ -20,8 +20,8 @@ namespace dxvk {
   // We only look at RT 0 currently.
   const uint32_t kRenderTargetIndex = 0;
 
-  #define CATEGORIES_REQUIRE_DRAW_CALL     InstanceCategories::Sky, InstanceCategories::Terrain
-  #define CATEGORIES_REQUIRE_GEOMETRY_COPY InstanceCategories::Terrain, InstanceCategories::WorldUI
+  #define CATEGORIES_REQUIRE_DRAW_CALL_STATE  InstanceCategories::Sky, InstanceCategories::Terrain
+  #define CATEGORIES_REQUIRE_GEOMETRY_COPY    InstanceCategories::Terrain, InstanceCategories::WorldUI
 
   D3D9Rtx::D3D9Rtx(D3D9DeviceEx* d3d9Device, bool enableDrawCallConversion)
     : m_rtStagingData(d3d9Device->GetDXVKDevice(), (VkMemoryPropertyFlagBits) (VK_MEMORY_PROPERTY_HOST_CACHED_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT))
@@ -484,21 +484,25 @@ namespace dxvk {
     return checkBoundTextureCategory(RtxOptions::uiTextures());
   }
 
-  D3D9Rtx::PrepareDrawType D3D9Rtx::internalPrepareDraw(const IndexContext& indexContext, const VertexContext vertexContext[caps::MaxStreams], const DrawContext& drawContext) {
+  PrepareDrawFlags D3D9Rtx::internalPrepareDraw(const IndexContext& indexContext, const VertexContext vertexContext[caps::MaxStreams], const DrawContext& drawContext) {
     ScopedCpuProfileZone();
 
     // RTX was injected => treat everything else as rasterized 
     if (m_rtxInjectTriggered) {
-      return { !RtxOptions::Get()->skipDrawCallsPostRTXInjection(), false };
+      return RtxOptions::Get()->skipDrawCallsPostRTXInjection()
+             ? PrepareDrawFlag::Ignore
+             : PrepareDrawFlag::PreserveDrawCallAndItsState;
     }
 
-    auto [status, triggerRtxInjection] = makeDrawCallType(drawContext);
+    const auto [status, triggerRtxInjection] = makeDrawCallType(drawContext);
 
     // When raytracing is enabled we want to completely remove the ignored drawcalls from further processing as early as possible
-    const bool processIgnoredDraws = !RtxOptions::Get()->enableRaytracing();
+    const PrepareDrawFlags prepareFlagsForIgnoredDraws = RtxOptions::Get()->enableRaytracing()
+                                                         ? PrepareDrawFlag::Ignore
+                                                         : PrepareDrawFlag::PreserveDrawCallAndItsState;
 
     if (status == RtxGeometryStatus::Ignored) {
-      return { processIgnoredDraws, false };
+      return prepareFlagsForIgnoredDraws;
     }
 
     if (triggerRtxInjection) {
@@ -508,14 +512,12 @@ namespace dxvk {
       triggerInjectRTX();
 
       m_rtxInjectTriggered = true;
-      return { true, false };
+      return PrepareDrawFlag::PreserveDrawCallAndItsState;
     }
 
     if (status == RtxGeometryStatus::Rasterized) {
-      return { true, false };
+      return PrepareDrawFlag::PreserveDrawCallAndItsState;
     }
-
-    assert(status == RtxGeometryStatus::RayTraced);
 
     m_forceGeometryCopy = RtxOptions::Get()->useBuffersDirectly() == false;
     m_forceGeometryCopy |= m_parent->GetOptions()->allowDiscard == false;
@@ -543,7 +545,7 @@ namespace dxvk {
       // Unlikely, but invalid
       if (maxIndex == minIndex) {
         ONCE(Logger::info("[RTX-Compatibility-Info] Skipped invalid drawcall, no triangles detected in index buffer."));
-        return { processIgnoredDraws, false };
+        return prepareFlagsForIgnoredDraws;
       }
 
       geoData.vertexCount = maxIndex - minIndex + 1;
@@ -554,7 +556,7 @@ namespace dxvk {
 
     if (geoData.vertexCount == 0) {
       ONCE(Logger::info("[RTX-Compatibility-Info] Skipped invalid drawcall, no vertices detected."));
-      return { processIgnoredDraws, false };
+      return prepareFlagsForIgnoredDraws;
     }
 
     m_activeDrawCallState.categories = 0;
@@ -568,7 +570,7 @@ namespace dxvk {
 
     // Fetch all the render state and send it to rtx context (textures, transforms, etc.)
     if (!processRenderState()) {
-      return { processIgnoredDraws, false };
+      return prepareFlagsForIgnoredDraws;
     }
 
     // Max offseted index value within a buffer slice that geoData contains
@@ -612,16 +614,21 @@ namespace dxvk {
     m_activeDrawCallState.zEnable = d3d9State().renderStates[D3DRS_ZENABLE] == D3DZB_TRUE;
     
     // Now that the DrawCallState is complete, we can use heuristics for detection
-    m_activeDrawCallState.setupCategoriesForHeuristics();
+    m_activeDrawCallState.setupCategoriesForHeuristics(m_seenCameraPositionsPrev.size(),
+                                                       m_seenCameraPositions);
 
-    // Note: when skybox geometries are defined, we don't know if we will or won't need the draw call ahead of time (requires camera data)
-    const bool preserveOriginalDraw =
-      status == RtxGeometryStatus::Rasterized ||
-      needVertexCapture ||
-      !RtxOptions::skyBoxGeometries().empty() ||
-      m_activeDrawCallState.testCategoryFlags(CATEGORIES_REQUIRE_DRAW_CALL);
+    if (RtxOptions::fogIgnoreSky() && m_activeDrawCallState.categories.test(InstanceCategories::Sky)) {
+      m_activeDrawCallState.fogState.mode = D3DFOG_NONE;
+    }
 
-    return { preserveOriginalDraw, true };
+    assert(status == RtxGeometryStatus::RayTraced);
+
+    const bool preserveOriginalDraw = needVertexCapture;
+
+    return
+      PrepareDrawFlag::CommitToRayTracing |
+      (m_activeDrawCallState.testCategoryFlags(CATEGORIES_REQUIRE_DRAW_CALL_STATE) ? PrepareDrawFlag::ApplyDrawState : 0) |
+      (preserveOriginalDraw ? PrepareDrawFlag::PreserveDrawCallAndItsState : 0);
   }
 
   void D3D9Rtx::triggerInjectRTX() {
@@ -922,7 +929,7 @@ namespace dxvk {
       }
 
       D3D9SamplerKey key = m_parent->CreateSamplerKey(stage);
-      XXH64_hash_t samplerHash = XXH3_64bits(&key, sizeof(key));
+      XXH64_hash_t samplerHash = D3D9SamplerKeyHash{}(key);
 
       Rc<DxvkSampler> sampler;
       auto samplerIt = m_samplerCache.find(samplerHash);
@@ -968,9 +975,10 @@ namespace dxvk {
     return true;
   }
 
-  D3D9Rtx::PrepareDrawType D3D9Rtx::PrepareDrawGeometryForRT(const bool indexed, const DrawContext& context) {
-    if (!RtxOptions::Get()->enableRaytracing() || !m_enableDrawCallConversion)
-      return { true, false };
+  PrepareDrawFlags D3D9Rtx::PrepareDrawGeometryForRT(const bool indexed, const DrawContext& context) {
+    if (!RtxOptions::Get()->enableRaytracing() || !m_enableDrawCallConversion) {
+      return PrepareDrawFlag::PreserveDrawCallAndItsState;
+    }
 
     m_parent->PrepareTextures();
 
@@ -1008,16 +1016,17 @@ namespace dxvk {
     return internalPrepareDraw(indices, vertices, context);
   }
 
-  D3D9Rtx::PrepareDrawType D3D9Rtx::PrepareDrawUPGeometryForRT(const bool indexed,
-                                                               const D3D9BufferSlice& buffer,
-                                                               const D3DFORMAT indexFormat,
-                                                               const uint32_t indexSize,
-                                                               const uint32_t indexOffset,
-                                                               const uint32_t vertexSize,
-                                                               const uint32_t vertexStride,
-                                                               const DrawContext& drawContext) {
-    if (!RtxOptions::Get()->enableRaytracing() || !m_enableDrawCallConversion)
-      return { true, false };
+  PrepareDrawFlags D3D9Rtx::PrepareDrawUPGeometryForRT(const bool indexed,
+                                                       const D3D9BufferSlice& buffer,
+                                                       const D3DFORMAT indexFormat,
+                                                       const uint32_t indexSize,
+                                                       const uint32_t indexOffset,
+                                                       const uint32_t vertexSize,
+                                                       const uint32_t vertexStride,
+                                                       const DrawContext& drawContext) {
+    if (!RtxOptions::Get()->enableRaytracing() || !m_enableDrawCallConversion) {
+      return PrepareDrawFlag::PreserveDrawCallAndItsState;
+    }
 
     m_parent->PrepareTextures();
 
@@ -1087,6 +1096,7 @@ namespace dxvk {
     // Reset for the next frame
     m_rtxInjectTriggered = false;
     m_drawCallID = 0;
+    m_seenCameraPositionsPrev = std::move(m_seenCameraPositions);
 
     m_stagedBonesCount = 0;
   }

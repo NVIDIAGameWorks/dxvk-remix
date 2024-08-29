@@ -464,22 +464,6 @@ namespace dxvk
     }
   }
 
-  void NGXDLSSContext::releaseInstance() {
-    s_instance = nullptr;
-  }
-
-  NGXDLSSContext* NGXDLSSContext::getInstance(DxvkDevice* device) {
-    // Only one NGX instance is allowed, release resource if a different device appears
-    if (s_instance && s_instance->m_device != device) {
-      releaseInstance();
-    }
-
-    if (!s_instance) {
-      s_instance = device->getCommon()->metaNGXContext().createDLSSContext();
-    }
-    return s_instance.get();
-  }
-
   NGXDLSSContext::OptimalSettings NGXDLSSContext::queryOptimalSettings(const uint32_t displaySize[2], NVSDK_NGX_PerfQuality_Value perfQuality) const
   {
     ScopedCpuProfileZone();
@@ -645,21 +629,6 @@ namespace dxvk
     }
   }
 
-  void NGXRayReconstructionContext::releaseInstance() {
-    s_instance = nullptr;
-  }
-
-  NGXRayReconstructionContext* NGXRayReconstructionContext::getInstance(DxvkDevice* device) {
-    // Only one NGX instance is allowed, release resource if a different device appears
-    if (s_instance && s_instance->m_device != device) {
-      releaseInstance();
-    }
-
-    if (!s_instance) {
-      s_instance = device->getCommon()->metaNGXContext().createRayReconstructionContext();
-    }
-    return s_instance.get();
-  }
 
   NGXRayReconstructionContext::QuerySettings NGXRayReconstructionContext::queryOptimalSettings(const uint32_t displaySize[2], NVSDK_NGX_PerfQuality_Value perfQuality) const {
     ScopedCpuProfileZone();
@@ -904,7 +873,7 @@ namespace dxvk
     auto ngxColorBuffer = ViewToResourceVK(compositedColorBuffer, true);
     auto ngxMVec = ViewToResourceVK(motionVectors, false);
     auto ngxDepth = ViewToResourceVK(depth, false);
-    auto ngxOutput = ViewToResourceVK(interpolatedOutput, false);
+    auto ngxOutput = ViewToResourceVK(interpolatedOutput, true);
 
     NVSDK_NGX_VK_DLSSG_Eval_Params evalParams = {};
     evalParams.pBackbuffer = &ngxColorBuffer;

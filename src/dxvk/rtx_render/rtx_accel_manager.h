@@ -28,6 +28,7 @@
 #include "../util/rc/util_rc_ptr.h"
 #include "rtx_types.h"
 #include "rtx_common_object.h"
+#include "rtx_staging.h"
 #include "../util/util_vector.h"
 #include "../util/util_matrix.h"
 
@@ -112,6 +113,8 @@ public:
   static uint32_t getBlasCount();
 
   uint32_t getSurfaceCount() const { return m_reorderedSurfaces.size(); }
+  const std::vector<RtInstance*>& getOrderedInstances() const { return m_reorderedSurfaces; }
+
 private:
   struct SurfaceInfo {
     XXH64_hash_t hash;
@@ -160,7 +163,7 @@ private:
   Rc<PooledBlas> createPooledBlas(size_t bufferSize) const;
 
   VkDeviceSize m_scratchAlignment;
-  std::unique_ptr<DxvkStagingDataAlloc> m_scratchAllocator;
+  std::unique_ptr<RtxStagingDataAlloc> m_scratchAllocator;
 };
 
 }  // namespace dxvk

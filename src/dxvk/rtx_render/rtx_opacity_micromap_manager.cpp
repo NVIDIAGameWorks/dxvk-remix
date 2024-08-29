@@ -199,7 +199,7 @@ namespace dxvk {
   OpacityMicromapManager::OpacityMicromapManager(DxvkDevice* device)
     : CommonDeviceObject(device)
     , m_memoryManager(device) {
-    m_scratchAllocator = std::make_unique<DxvkStagingDataAlloc>(
+    m_scratchAllocator = std::make_unique<RtxStagingDataAlloc>(
       device,
       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
       VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
@@ -931,7 +931,8 @@ namespace dxvk {
       return false;
     }
 
-    if (instance.testCategoryFlags(InstanceCategories::IgnoreOpacityMicromap)) {
+    if (instance.testCategoryFlags(InstanceCategories::IgnoreOpacityMicromap) ||
+        instance.testCategoryFlags(InstanceCategories::IgnoreAlphaChannel)) {
       return false;
     }
 
@@ -1485,8 +1486,8 @@ namespace dxvk {
       *(ommIndex++) = i;
     }
 
-    ctx->writeToBuffer(triangleArrayBuffer, 0, triangleArrayBufferSize, hostTriangleArrayBuffer.data(), true);
-    ctx->writeToBuffer(triangleIndexBuffer, 0, triangleIndexBufferSize, hostTriangleIndexBuffer.data(), true);
+    ctx->writeToBuffer(triangleArrayBuffer, 0, triangleArrayBufferSize, hostTriangleArrayBuffer.data());
+    ctx->writeToBuffer(triangleIndexBuffer, 0, triangleIndexBufferSize, hostTriangleIndexBuffer.data());
 
     return OpacityMicromapManager::OmmResult::Success;
   }
@@ -1692,7 +1693,7 @@ namespace dxvk {
       // Bake micro triangles
       do {
         ctx->getCommonObjects()->metaGeometryUtils().dispatchBakeOpacityMicromap(
-          ctx, blasEntry.modifiedGeometryData,
+          ctx, instance, blasEntry.modifiedGeometryData,
           textures, samplers, instance.getAlbedoOpacityTextureIndex(), instance.getSamplerIndex(), instance.getSecondaryOpacityTextureIndex(), instance.getSecondarySamplerIndex(),
           desc, ommCacheItem.bakingState, availableBakingBudget, ommCacheItem.ommArrayBuffer);
 
@@ -1814,16 +1815,10 @@ namespace dxvk {
 
     // Build the array with vkBuildMicromapsEXT
     {
-      VkBufferDeviceAddressInfo ommBufferAddressInfo = { VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, NULL, ommCacheItem.ommArrayBuffer->getBufferRaw() };
-      VkDeviceAddress ommBufferAddress = vkGetBufferDeviceAddress(m_device->vkd()->device(), &ommBufferAddressInfo);
-
-      VkBufferDeviceAddressInfo ommTriangleArrayBufferInfo = { VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, NULL, triangleArrayBuffer->getBufferRaw() };
-      VkDeviceAddress ommTriangleArrayBufferAddress = vkGetBufferDeviceAddress(m_device->vkd()->device(), &ommTriangleArrayBufferInfo);
-      
       // Fill in the pointers we didn't have at size query
       ommBuildInfo.dstMicromap = ommCacheItem.blasOmmBuffers->opacityMicromap;
-      ommBuildInfo.data.deviceAddress = ommBufferAddress;
-      ommBuildInfo.triangleArray.deviceAddress = ommTriangleArrayBufferAddress;
+      ommBuildInfo.data.deviceAddress = ommCacheItem.ommArrayBuffer->getDeviceAddress();
+      ommBuildInfo.triangleArray.deviceAddress = triangleArrayBuffer->getDeviceAddress();
       ommBuildInfo.scratchData.deviceAddress = scratchSlice.getDeviceAddress();
       ommBuildInfo.triangleArrayStride = sizeof(VkMicromapTriangleEXT);
       
@@ -1841,14 +1836,11 @@ namespace dxvk {
 
     // Update the BLAS desc with the built micromap
     {
-      VkBufferDeviceAddressInfo ommTriangleIndexBufferInfo = { VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, NULL, ommCacheItem.blasOmmBuffers->opacityMicromapTriangleIndexBuffer->getBufferRaw() };
-      VkDeviceAddress ommTriangleIndexBufferAddress = vkGetBufferDeviceAddress(m_device->vkd()->device(), &ommTriangleIndexBufferInfo);
-
       VkAccelerationStructureTrianglesOpacityMicromapEXT& ommBlasDesc = ommCacheItem.blasOmmBuffers->blasDesc;
       ommBlasDesc = VkAccelerationStructureTrianglesOpacityMicromapEXT { VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_TRIANGLES_OPACITY_MICROMAP_EXT };
       ommBlasDesc.micromap = ommCacheItem.blasOmmBuffers->opacityMicromap;
       ommBlasDesc.indexType = triangleIndexType;
-      ommBlasDesc.indexBuffer.deviceAddress = ommTriangleIndexBufferAddress;
+      ommBlasDesc.indexBuffer.deviceAddress = ommCacheItem.blasOmmBuffers->opacityMicromapTriangleIndexBuffer->getDeviceAddress();
       ommBlasDesc.indexStride = numBytesPerIndexElement;
       ommBlasDesc.baseTriangle = 0;
     }
@@ -2231,7 +2223,7 @@ namespace dxvk {
     // Get the workload scale in respect to 60 Hz for a given frame time.
     // 60 Hz is the baseline since that's what the per-second budgets have been parametrized at in RtxOptions
     const float kFrameTime60Hz = 1 / 60.f;
-    const float frameTimeSecs = frameTimeMilliseconds * 1000.0f;
+    const float frameTimeSecs = frameTimeMilliseconds * 0.001f;
     float workloadScalePerSecond = frameTimeSecs / kFrameTime60Hz;
 
     // Modulate the scale for practical FPS range (i.e. <25, 200>) to even out the OMM's per frame percentage performance overhead

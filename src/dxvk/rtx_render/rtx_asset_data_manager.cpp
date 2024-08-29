@@ -73,6 +73,7 @@ namespace dxvk {
         m_info.mipLevels = m_texture.levels();
         m_info.looseLevels = m_texture.levels();
         m_info.numLayers = m_texture.layers();
+        m_info.lastWriteTime = std::filesystem::last_write_time(m_filename);
         m_info.filename = m_filename.c_str();
 
         m_hash = XXH64_std_hash<std::string> {}(m_filename);
@@ -319,6 +320,7 @@ namespace dxvk {
         m_info.mipLevels = m_levels;
         m_info.looseLevels = m_levels;
         m_info.numLayers = m_layers;
+        m_info.lastWriteTime = std::filesystem::last_write_time(m_filename);
         m_info.filename = m_filename.c_str();
 
         m_hash = XXH64_std_hash<std::string> {}(m_filename);
@@ -348,6 +350,7 @@ namespace dxvk {
       m_info.mipLevels = m_assetDesc->numMips;
       m_info.looseLevels = m_assetDesc->numMips - m_assetDesc->numTailMips;
       m_info.numLayers = m_assetDesc->arraySize;
+      m_info.lastWriteTime = std::filesystem::last_write_time(m_package->getFilename());
       m_info.filename = m_package->getFilename().c_str();
 
       m_hash = XXH64_std_hash<std::string> {}(m_package->getFilename());

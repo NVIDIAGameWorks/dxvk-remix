@@ -23,6 +23,8 @@
 #include "game_exporter_common.h"
 #include "mdl_helpers.h"
 #include "../util/log/log.h"
+#include "../util/util_env.h"
+#include "../util/util_string.h"
 #include "../dxvk/rtx_render/rtx_game_capturer_utils.h"
 
 #include "usd_include_begin.h"
@@ -79,7 +81,6 @@
 #include <AperturePBR_Model.mdl.h>
 #include <AperturePBR_Normal.mdl.h>
 #include <AperturePBR_SpriteSheet.mdl.h>
-#include "../util/util_env.h"
 
 #ifndef NDEBUG
 #define ASSERT_OR_EXECUTE(BODY) assert((BODY))
@@ -236,11 +237,11 @@ pxr::UsdStageRefPtr GameExporter::createInstanceStage(const Export& exportData) 
   // capture meta data
   pxr::VtDictionary customLayerData;
   customLayerData.SetValueAtPath("lightspeed_layer_type", pxr::VtValue("capture"));
-  customLayerData.SetValueAtPath("lightspeed_game_name", pxr::VtValue(exportData.meta.windowTitle));
-  customLayerData.SetValueAtPath("lightspeed_exe_name", pxr::VtValue(exportData.meta.exeName));
+  customLayerData.SetValueAtPath("lightspeed_game_name", pxr::VtValue(dxvk::str::stripNonAscii(exportData.meta.windowTitle)));
+  customLayerData.SetValueAtPath("lightspeed_exe_name", pxr::VtValue(dxvk::str::stripNonAscii(exportData.meta.exeName)));
   const auto relToCaptureIconPath = std::filesystem::relative(exportData.meta.iconPath, exportData.baseExportPath).string();
-  customLayerData.SetValueAtPath("lightspeed_game_icon", pxr::VtValue(relToCaptureIconPath));
-  customLayerData.SetValueAtPath("lightspeed_geometry_hash_rules", pxr::VtValue(exportData.meta.geometryHashRule));
+  customLayerData.SetValueAtPath("lightspeed_game_icon", pxr::VtValue(dxvk::str::stripNonAscii(relToCaptureIconPath)));
+  customLayerData.SetValueAtPath("lightspeed_geometry_hash_rules", pxr::VtValue(dxvk::str::stripNonAscii(exportData.meta.geometryHashRule)));
   instanceStage->GetRootLayer()->SetCustomLayerData(customLayerData);
 
   return instanceStage;
@@ -1001,6 +1002,7 @@ void GameExporter::exportSphereLights(const Export& exportData, ExportContext& c
     auto sphereLight = pxr::UsdLuxSphereLight::Define(lightStage, lightAssetSdfPath);
     assert(sphereLight);
     lightStage->SetDefaultPrim(sphereLight.GetPrim());
+
     auto colorAttr = sphereLight.CreateColorAttr();
     assert(colorAttr);
     colorAttr.Set(pxr::GfVec3f(sphereLightData.color[0], sphereLightData.color[1], sphereLightData.color[2]));
@@ -1013,23 +1015,28 @@ void GameExporter::exportSphereLights(const Export& exportData, ExportContext& c
     assert(radiusAttr);
     radiusAttr.Set(sphereLightData.radius);
 
+    auto shaping = pxr::UsdLuxShapingAPI(sphereLight.GetPrim());
+
+    // Note: Remix uses a different default from USD, so 180 must be specified here.
+    auto coneAngleAttr = shaping.CreateShapingConeAngleAttr(pxr::VtValue(180.0f));
+    assert(coneAngleAttr);
+
+    auto coneSoftnessAttr = shaping.CreateShapingConeSoftnessAttr();
+    assert(coneSoftnessAttr);
+    
+    auto FocusExponentAttr = shaping.CreateShapingFocusAttr();
+    assert(FocusExponentAttr);
+
+    // Note: Set the shaping attribute values only if shaping is enabled. Shaping attributes must still
+    // be created though even if shaping is disabled to ensure proper exporting of all the required
+    // attributes on a captured light (as external programs expect this to be the case).
     if (sphereLightData.shapingEnabled) {
-      auto shaping = pxr::UsdLuxShapingAPI(sphereLight.GetPrim());
-
-      auto coneAngleAttr = shaping.CreateShapingConeAngleAttr();
-      assert(coneAngleAttr);
       coneAngleAttr.Set(sphereLightData.coneAngleDegrees);
-      
-      auto coneSoftnessAttr = shaping.CreateShapingConeSoftnessAttr();
-      assert(coneSoftnessAttr);
       coneSoftnessAttr.Set(sphereLightData.coneSoftness);
-      
-      auto FocusExponentAttr = shaping.CreateShapingFocusAttr();
-      assert(FocusExponentAttr);
       FocusExponentAttr.Set(sphereLightData.focusExponent);
-
-      shaping.Apply(sphereLight.GetPrim());
     }
+
+    shaping.Apply(sphereLight.GetPrim());
 
     setTimeSampledXforms(lightStage, lightAssetSdfPath,
                          sphereLightData.firstTime, sphereLightData.finalTime, sphereLightData.xforms,

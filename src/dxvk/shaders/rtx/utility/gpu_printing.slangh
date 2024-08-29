@@ -27,7 +27,8 @@ namespace GpuPrint
 {
   void write(u16vec2 threadIndex, float4 data) 
   {
-    if (any(threadIndex != cb.gpuPrintThreadIndex)) {
+    if (any(threadIndex != cb.gpuPrintThreadIndex))
+    {
       return;
     }
 

@@ -150,14 +150,20 @@ namespace dxvk {
     }
   }
 
-  void CompositePass::showImguiSettings() {
-    ImGui::Indent();
+  void CompositePass::showDepthBasedFogImguiSettings() {
+    ImGui::Checkbox("Enable Depth-Based Fog", &enableFogObject());
 
-    ImGui::Checkbox("Enable Fog", &enableFogObject());
+    ImGui::BeginDisabled(!enableFog());
+    ImGui::Indent();
     ImGui::DragFloat("Fog Color Scale", &fogColorScaleObject(), 0.01f, 0.0f, 10.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::DragFloat("Max Fog Distance", &maxFogDistanceObject(), 1.f, 0.0f, 0.f, "%.0f", ImGuiSliderFlags_AlwaysClamp);
+    ImGui::Unindent();
+    ImGui::EndDisabled();
+  }
 
-    if (ImGui::CollapsingHeader("Signal Enablement", collapsingHeaderClosedFlags)) {
+  void CompositePass::showImguiSettings() {
+    ImGui::TextUnformatted("Signal Enablement");
+    {
       ImGui::Indent();
       ImGui::Checkbox("Primary Direct Diffuse", &compositePrimaryDirectDiffuseObject());
       ImGui::Checkbox("Primary Direct Specular", &compositePrimaryDirectSpecularObject());
@@ -167,8 +173,6 @@ namespace dxvk {
       ImGui::Checkbox("Secondary Combined Specular", &compositeSecondaryCombinedSpecularObject());
       ImGui::Unindent();
     }
-
-    ImGui::Unindent();
   }
 
   void CompositePass::showDenoiseImguiSettings() {

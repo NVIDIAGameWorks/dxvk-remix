@@ -152,9 +152,10 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
           evaluateUnshadowedLight(lightSample, opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection, diffuseLight, specularLight);
 
           uint8_t rayMask = OBJECT_MASK_OPAQUE | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC);
-          uint16_t surfaceIndex = cb.pomEnableNEECache && opaqueSurfaceMaterialInteractionHasHeightTexture(opaqueSurfaceMaterialInteraction) ? uint16_t(SharedSurfaceIndex[threadIndex]) : BINDING_INDEX_INVALID;
+          bool pomOpaqueSurfaceEncountered = cb.pomEnableNEECache && opaqueSurfaceMaterialInteractionHasHeightTexture(opaqueSurfaceMaterialInteraction);
+          uint16_t surfaceIndex = pomOpaqueSurfaceEncountered ? uint16_t(SharedSurfaceIndex[threadIndex]) : BINDING_INDEX_INVALID;
           isVisible = evalNEESecondary(
-            lightSample, invalidRayPortalIndex, surface.portalSpace, rayMask,
+            lightSample, invalidRayPortalIndex, surface.portalSpace, rayMask, pomOpaqueSurfaceEncountered,
             surface.isViewModel, primaryRay,
             minimalRayInteraction, minimalSurfaceInteraction, opaqueSurfaceMaterialInteraction,
             diffuseLight, specularLight, surfaceIndex, SharedTextureCoord[threadIndex]);
@@ -185,7 +186,9 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
           neeSample.setPortalID(RESTIR_GI_INVALID_INDIRECT_LIGHT_PORTAL_ID);
           neeSample.position = lightSample.position;
           neeSample.normal = lightSample.normal;
-          neeSample.radiance = lightSample.radiance / lightSample.solidAnglePdf;
+          // TODO: The radiance value is stored in 16bit floats and clamping is needed to avoid NaN issue.
+          // Need to move clamping to the ReSTIRGI_Reservoir::pack() function.
+          neeSample.radiance = min(lightSample.radiance / lightSample.solidAnglePdf, float16Max);
           neeSample.setVirtualFraction(0.0);
 
           float wi = RAB_GetGITargetPdfForSurface(neeSample.radiance, neeSample.position, surface);

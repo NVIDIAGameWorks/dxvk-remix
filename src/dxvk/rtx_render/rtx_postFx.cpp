@@ -244,6 +244,10 @@ namespace dxvk {
     const Resources::RaytracingOutput& rtOutput,
     const bool cameraCutDetected)
   {
+    if (!enable()) {
+      return;
+    }
+
     ScopedGpuProfileZone(ctx, "PostFx");
 
     // Simulate chromatic aberration offset scale by calculating the focal length differences of 3 Fraunhofer lines,
@@ -395,12 +399,12 @@ namespace dxvk {
 
       valuesToHighlightCountPow = bitCeilPow2(static_cast<uint32_t>(sorted.size()));
 
-      // fill invalid values as UINT32_MAX
+      // fill invalid values as POST_FX_HIGHLIGHTING_INVALID_VALUE
       {
         const size_t validCount = sorted.size();
         sorted.resize(1 << valuesToHighlightCountPow);
         for (size_t i = validCount; i < sorted.size(); i++) {
-          sorted[i] = UINT32_MAX;
+          sorted[i] = POST_FX_HIGHLIGHTING_INVALID_VALUE;
         }
       }
 

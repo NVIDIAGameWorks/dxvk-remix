@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -434,6 +434,30 @@ void outputToDebugViewAtTheEnd(
   case DEBUG_VIEW_NOISY_DEMODULATED_SECONDARY_COMBINED_SPECULAR_RADIANCE:
     storeInDebugView(ivec2(pixelCoordinate), secondaryCombinedSpecularOutput.xyz);
     break;
+  case DEBUG_VIEW_NOISY_PRIMARY_DIRECT_RADIANCE:
+    storeInDebugView(ivec2(pixelCoordinate), 
+      primaryDirectDiffuseInput.xyz + primaryDirectSpecularInput.xyz);
+    break;
+  case DEBUG_VIEW_NOISY_PRIMARY_INDIRECT_RADIANCE:
+    storeInDebugView(ivec2(pixelCoordinate), 
+      primaryIndirectDiffuseInput.xyz + primaryIndirectSpecularInput.xyz);
+    break;
+  case DEBUG_VIEW_NOISY_PRIMARY_RADIANCE:
+    storeInDebugView(ivec2(pixelCoordinate), 
+      primaryDirectDiffuseInput.xyz + primaryDirectSpecularInput.xyz +
+      primaryIndirectDiffuseInput.xyz + primaryIndirectSpecularInput.xyz);
+    break;
+  case DEBUG_VIEW_NOISY_SECONDARY_RADIANCE:
+    storeInDebugView(ivec2(pixelCoordinate), 
+      secondaryCombinedDiffuseInput.xyz + secondaryCombinedSpecularInput.xyz);
+    break;
+  case DEBUG_VIEW_NOISY_RADIANCE:
+    storeInDebugView(ivec2(pixelCoordinate), 
+      primaryDirectDiffuseInput.xyz + primaryDirectSpecularInput.xyz +
+      primaryIndirectDiffuseInput.xyz + primaryIndirectSpecularInput.xyz +
+      secondaryCombinedDiffuseInput.xyz + secondaryCombinedSpecularInput.xyz);
+    break;
+
   case DEBUG_VIEW_NAN:
   {
     bool isValid = true;
@@ -585,6 +609,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID, uint2 localIndex : SV_Gro
     primaryIndirectDiffuseInput = PrimaryIndirectDiffuseRadiance[pixelCoordinate];
     primaryIndirectSpecularInput = PrimaryIndirectSpecularRadiance[pixelCoordinate];
   }
+  
   // Load the secondary combined signals
   if (geometryFlags.secondarySurfaceMask && !geometryFlags.primarySelectedIntegrationSurface)
   {

@@ -197,9 +197,9 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
         tMaxFactor = validSampleMaxRange;
       }
 
-      VisibilityResult visibility = traceVisibilityRay(minimalSurfaceInteraction,
-        samplePosition, rayMask, visibilityModeAccurateHitDistance, portalID,
-        geometryFlags.portalSpace, 0, coneSpreadAngle, tMaxFactor, geometryFlags.isViewModel,
+      VisibilityResult visibility = traceVisibilityRay<visibilityModeEnablePom | visibilityModeAccurateHitDistance>(minimalSurfaceInteraction,
+        samplePosition, rayMask, portalID,
+        geometryFlags.portalSpace, geometryFlags.pomOpaqueSurfaceEncountered, 0, coneSpreadAngle, tMaxFactor, geometryFlags.isViewModel, 
         false, primarySurfaceIndex, SharedTextureCoord[threadIndex], /*isSubsurface*/ false, /*shadingNormal*/ f16vec3(0.0h), /*clearOpaqueHitAttenuation*/ !validateSamples);
 
       filterColor = visibility.attenuation;      

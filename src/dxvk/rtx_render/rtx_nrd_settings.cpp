@@ -279,9 +279,17 @@ namespace dxvk {
   }
 
   void setCommonPresetSettings(nrd::CommonSettings& common, dxvk::DenoiserType type) {
-    // Note: Chosen as values outside the denoising range are used to indicate misses to the denoiser to save on performance when the denoiser is not needed,
-    // so the values outside this range must be valid 16 bit floating point values (maximum float16 value is 65504, subtracted around 100 to have a safe margin).
-    common.denoisingRange = 65400.0f;
+    static_assert(nrd::CommonSettings{}.denoisingRange == 500000.0f, "NRD's default settings has changed, denoisingRange must be re-evaluated");
+    constexpr float denoisingRangeLimit = nrd::CommonSettings{}.denoisingRange;
+
+    // Note: Chosen as values outside the denoising range are used to indicate misses to the denoiser to save on performance when the denoiser is not needed.
+    // Note: NRDSettings.h states that the max value of 'denoisingRange' is 524031,
+    // which is calculated as (NRD_FP16_MAX / NRD_FP16_VIEWZ_SCALE - 1) = (65504.0 / 0.125 - 1)
+    // to fit into float16 value range. And because of NRD_FP16_VIEWZ_SCALE=0.125, NRD allows to have values >65504.0,
+    // which is needed in games that have far geometry and have 1 unit as a small quantity (e.g. 1 cm).
+    // In such games, having it less than 65504.0 may involve visual artifacts (like a complete lack of lighting in the distance).
+    // So because of that (and since it's a default value of 'CommonSettings::denoisingRange'), value of 500000 was chosen.
+    common.denoisingRange = denoisingRangeLimit;
 
     if (type == dxvk::DenoiserType::Secondaries) {
       // Relax this substantially for secondaries, to improve quality of curved glass
@@ -416,7 +424,8 @@ namespace dxvk {
       ImGui::Indent();
 
       // Note: Set to match the range limit checked in rtx_nrd_context.cpp
-      const float denoisingRangeLimit = glm::unpackHalf1x16(0x7bff - 1);
+      static_assert(nrd::CommonSettings{}.denoisingRange == 500000.0f, "NRD's default settings has changed, denoisingRange must be re-evaluated");
+      constexpr float denoisingRangeLimit = nrd::CommonSettings{}.denoisingRange;
 
       bool settingsChanged = false;
 

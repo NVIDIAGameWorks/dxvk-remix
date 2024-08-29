@@ -104,8 +104,38 @@ extern "C" {
   }
 }
 
-// NV-DXVK start: external API
+// NV-DXVK start: functional versioning export + external API
 #include <remix/remix_c.h>
+#include "../util/util_messagechannel.h"
+#include "../util/util_version.h"
+
+// https://stackoverflow.com/a/27490954
+constexpr bool strings_equal(char const * a, char const * b) {
+  return *a == *b && (*a == '\0' || strings_equal(a + 1, b + 1));
+}
+
+extern "C" {
+  DLLEXPORT uint64_t __stdcall QueryFeatureVersion(version::Feature feat) {
+    static_assert(strings_equal(__func__, version::QueryFuncName));
+    static_assert(std::is_same_v< decltype(&QueryFeatureVersion), version::QueryFunc >);
+    switch(feat){
+      case version::MessageChannel:
+      {
+        return version::messageChannelV;
+      }
+      case version::RemixApi:
+      {
+        static constexpr uint64_t remixApiV = REMIXAPI_VERSION_MAKE(REMIXAPI_VERSION_MAJOR, REMIXAPI_VERSION_MINOR, REMIXAPI_VERSION_PATCH);
+        return remixApiV;
+      }
+      default:
+      {
+        dxvk::Logger::err(dxvk::str::format("Could not find feature version for: ", feat));
+        return 0ull;
+      }
+    }
+  }
+}
 
 void dummy() {
   // need to reference a function so it's exported from d3d9.dll

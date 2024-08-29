@@ -38,7 +38,7 @@ enum class BlendType : uint8_t {
   kMaxValue = 10, // kReverseColor
 };
 
-static const uint8_t surfaceBlendTypeMask = uint8_t(0xfu);
+static const uint32_t surfaceBlendTypeMask = 0xfu;
 
 // Note: Use caution when changing this enum, must match the values defined on the MDL side of things
 // as well as matching Vulkan's alpha compare operations due to conversions from these values at some points
@@ -57,7 +57,7 @@ enum class AlphaTestType : uint8_t {
   kMaxValue = 7, // kAlways
 };
 
-static const uint8_t alphaTestTypeMask = uint8_t(0x7u);
+static const uint32_t alphaTestTypeMask = 0x7u;
 
 enum class RtTextureArgSource : uint8_t {
   None = 0,

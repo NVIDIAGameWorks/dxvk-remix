@@ -22,6 +22,9 @@
 #pragma once
 
 #include "rtx/utility/shader_types.h"
+#ifdef __cplusplus
+#include "../util/util_quat.h"
+#endif
 
 // Todo: Potentially make these configurable by an option in the future or auto-detected. This will require the ray portal
 // info to be in its own buffer though likely to not make the RaytraceArgs bigger than it needs to be.
@@ -39,16 +42,18 @@ struct PortalTransform
 #define PORTAL_TRANSFORM_INACTIVE_VALUE 3.402823466e+38f
 
   vec4 rows[3]; // stored in transposed form with translation in .w channels
+  vec4 quat; // stores the rotation only in a GPU convenient quaternion
 
 #ifdef __cplusplus
 
   void set(const dxvk::Matrix4& m)
   {
-    mat4 transposedMat = dxvk::transpose(m);
+    const dxvk::Matrix4 mT = dxvk::transpose(m);
 
-    rows[0] = transposedMat[0];
-    rows[1] = transposedMat[1];
-    rows[2] = transposedMat[2];
+    rows[0] = mT[0];
+    rows[1] = mT[1];
+    rows[2] = mT[2];
+    quat = dxvk::matrixToQuaternion(m);
   }
 
   void setInactive()
@@ -80,6 +85,12 @@ struct PortalTransform
 
     return ret;
   }
+
+  f16vec4 unpackRotation()
+  {
+    return quat;
+  }
+
 #endif
   bool isActive() {
     return rows[0].x != PORTAL_TRANSFORM_INACTIVE_VALUE;
@@ -91,7 +102,10 @@ struct RayPortalHitInfo
   PortalTransform encodedPortalToOpposingPortalDirection;
 
   vec3 centroid;
-  uint materialIndex;
+  uint8_t spriteSheetRows;
+  uint8_t spriteSheetCols;
+  uint8_t spriteSheetFPS;
+  uint8_t rayPortalIndex;
 
   vec3 normal;
   float sampleThreshold;
@@ -103,10 +117,14 @@ struct RayPortalHitInfo
   float inverseHalfHeight;
 
   uvec3 textureTransform; // packed f16mat3x2
-  uint8_t spriteSheetRows;
-  uint8_t spriteSheetCols;
-  uint8_t spriteSheetFPS;
-  uint8_t pad;
+  uint16_t samplerIndex;
+  uint16_t samplerIndex2;
+
+  uint16_t maskTextureIndex;
+  uint16_t maskTextureIndex2;
+  uint16_t rotationSpeed;
+  uint16_t emissiveIntensity;
+  uint2 pad;
 };
 
 #ifdef __cplusplus

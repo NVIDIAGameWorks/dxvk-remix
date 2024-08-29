@@ -33,7 +33,6 @@
 #include "rtx/utility/texture.slangh"
 #include "rtx/utility/sampling.slangh"
 #include "rtx/utility/packing.slangh"
-#include "rtx/utility/buffer_helpers.slangh"
 #include "rtx/concept/ray/ray.slangh"
 #include "rtx/concept/surface/surface.slangh"
 #include "rtx/concept/surface_material/surface_material.slangh"

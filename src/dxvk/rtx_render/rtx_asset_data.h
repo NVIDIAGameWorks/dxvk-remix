@@ -21,6 +21,7 @@
 */
 #pragma once
 
+#include <filesystem>
 #include <vulkan/vulkan.h>
 #include "../../util/util_error.h"
 #include "../../util/rc/util_rc.h"
@@ -52,6 +53,8 @@ namespace dxvk {
     uint32_t looseLevels = 0;
     uint32_t numLayers = 0;
 
+    std::filesystem::file_time_type lastWriteTime = {};
+
     const char* filename = nullptr;
 
     bool matches(const AssetInfo& other) const {
@@ -63,7 +66,8 @@ namespace dxvk {
              other.extent.depth == extent.depth &&
              other.mipLevels == mipLevels &&
              other.looseLevels == looseLevels &&
-             other.numLayers == numLayers;
+             other.numLayers == numLayers &&
+             other.lastWriteTime == lastWriteTime;
     }
   };
 

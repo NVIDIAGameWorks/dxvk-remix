@@ -35,6 +35,9 @@ static const uint kFootprintFromRayDirection = 1u;
 static const uint kFootprintFromTextureCoordDiff = 2u;
 static const uint kFootprintFromRayOriginClamped = 3u;
 
+static const bool SurfaceGenerateTangents = true;
+static const bool SurfaceIgnoreTangents = false;
+
 // Surface Interaction Helper Functions
 
 // Texture Gradient from Ray Cone Helper
@@ -170,7 +173,7 @@ void calcSpriteSheetAdjustment(
   textureGradientY *= uvSize;
 }
 
-SurfaceInteraction surfaceInteractionCreate(
+SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
   Surface surface, RayInteraction rayInteraction, Ray ray,
   bool usePreviousPositions = false, uint footprintMode = kFootprintFromRayDirection)
 {
@@ -440,18 +443,21 @@ SurfaceInteraction surfaceInteractionCreate(
 
     surfaceInteraction.textureCoordinates = interpolateHitAttribute(texcoords, bary);
 
-    // Note: World positions used here, the original PBRT usage uses model space vertex positions since it calculates the
-    // TBN  in local space, but since we generate the TBN frame in world space this is more applicable. Additionally
-    // it removes the need to keep the object space positions around which should ideally reduce register pressure.
-    genTangSpace(
+    if (GenerateTangents)
+    {
+      // Note: World positions used here, the original PBRT usage uses model space vertex positions since it calculates the
+      // TBN  in local space, but since we generate the TBN frame in world space this is more applicable. Additionally
+      // it removes the need to keep the object space positions around which should ideally reduce register pressure.
+      genTangSpace(
       texcoords, worldPositions, surfaceInteraction.interpolatedNormal,
       surfaceInteraction.interpolatedTangent, surfaceInteraction.interpolatedBitangent, surfaceInteraction.rawTangent, surfaceInteraction.rawBitangent);
     
-    // Derive triangle TBN based on interpolated TBN. This works in all cases tested,
-    // and should be much cheaper than calling genTangSpace again.
-    f16vec4 interpolatedToTriangle = quaternionCreateOrientation(surfaceInteraction.interpolatedNormal, surfaceInteraction.triangleNormal);
-    surfaceInteraction.triangleTangent = quaternionTransformVector(interpolatedToTriangle, surfaceInteraction.interpolatedTangent);
-    surfaceInteraction.triangleBitangent =  quaternionTransformVector(interpolatedToTriangle, surfaceInteraction.interpolatedBitangent);
+      // Derive triangle TBN based on interpolated TBN. This works in all cases tested,
+      // and should be much cheaper than calling genTangSpace again.
+      f16vec4 interpolatedToTriangle = quaternionCreateOrientation(surfaceInteraction.interpolatedNormal, surfaceInteraction.triangleNormal);
+      surfaceInteraction.triangleTangent = quaternionTransformVector(interpolatedToTriangle, surfaceInteraction.interpolatedTangent);
+      surfaceInteraction.triangleBitangent = quaternionTransformVector(interpolatedToTriangle, surfaceInteraction.interpolatedBitangent);
+    }
     
     // Convert texcoords from the 1st cascade to a corresponding cascade in a combined tiled cascades texture space
     if (surface.texcoordGenerationMode == uint(TexGenMode::CascadedViewPositions))

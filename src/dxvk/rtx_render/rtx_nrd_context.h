@@ -124,7 +124,7 @@ namespace dxvk {
 
     // Pipelines
     std::vector<ComputePipeline> m_computePipelines;
-    std::unique_ptr<DxvkStagingDataAlloc> m_cbData;
+    std::unique_ptr<RtxStagingDataAlloc> m_cbData;
 
     HMODULE m_hNRD;
   };

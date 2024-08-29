@@ -32,7 +32,6 @@
 #include "rtx/utility/texture.slangh"
 #include "rtx/utility/sampling.slangh"
 #include "rtx/utility/packing.slangh"
-#include "rtx/utility/buffer_helpers.slangh"
 #include "rtx/concept/ray/ray.slangh"
 #include "rtx/concept/surface/surface.slangh"
 #include "rtx/concept/surface_material/surface_material.slangh"
@@ -237,8 +236,8 @@ void main(int2 thread_id : SV_DispatchThreadID)
     uint8_t rayMask = OBJECT_MASK_OPAQUE | (surface.objectMask & OBJECT_MASK_ALL_DYNAMIC);
     const float infiniteHitT = 1e5;
     float3 dstPosition = worldPos + reflectionVector * infiniteHitT;
-    VisibilityResult visibility = traceVisibilityRay(surface.minimalSurfaceInteraction,
-      dstPosition, rayMask, visibilityModeAccurateHitDistance, backupPortalID, surface.portalSpace,
+    VisibilityResult visibility = traceVisibilityRay<visibilityModeAccurateHitDistance>(surface.minimalSurfaceInteraction,
+      dstPosition, rayMask, backupPortalID, surface.portalSpace, false,
       0, 0, RAB_RESTIR_GI_VISIBILITY_SHORTENING, surface.isViewModel);
     float reflectionHitT = visibility.hasOpaqueHit ? visibility.hitDistance : infiniteHitT;
 

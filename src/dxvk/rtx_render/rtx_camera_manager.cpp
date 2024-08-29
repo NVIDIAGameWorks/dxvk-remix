@@ -27,12 +27,6 @@
 
 namespace {
   constexpr float kFovToleranceRadians = 0.001f;
-
-  constexpr float kCameraSimilarityDistanceThreshold = 1.0f;
-
-  auto areClose(const dxvk::Vector3& a, const dxvk::Vector3& b) {
-    return lengthSqr(a - b) < kCameraSimilarityDistanceThreshold;
-  }
 }
 
 namespace dxvk {
@@ -49,9 +43,6 @@ namespace dxvk {
   }
 
   void CameraManager::onFrameEnd() {
-    m_was3DSkyInPrevFrame = (m_camerasInfoAccum.uniquePositions >= 2);
-    m_camerasInfoAccum.uniquePositions = 0;
-
     m_lastSetCameraType = CameraType::Unknown;
   }
 
@@ -102,8 +93,7 @@ namespace dxvk {
       return input.getCategoryFlags().test(InstanceCategories::Sky) ? CameraType::Sky : CameraType::Unknown;
     }
 
-    const uint32_t frameId = m_device->getCurrentFrameId();
-    
+
     auto isViewModel = [this](float fov, float maxZ, uint32_t frameId) {
       if (RtxOptions::ViewModel::enable()) {
         // Note: max Z check is the top-priority
@@ -120,83 +110,13 @@ namespace dxvk {
       return false;
     };
 
-    auto isSky = [this](const DrawCallState& state, uint32_t frameId, bool zEnable, const auto& drawCallCameraPos) {
-      if (state.testCategoryFlags(InstanceCategories::Sky)) {
-        return true;
-      }
+    const bool isSky = input.testCategoryFlags(InstanceCategories::Sky);
 
-      if (RtxOptions::skyAutoDetect() == SkyAutoDetectMode::None) {
-        return false;
-      }
 
-      // if already done with sky, assume all consequent draw calls as non-sky
-      if (getCamera(CameraType::Main).isValid(frameId) || getCamera(CameraType::ViewModel).isValid(frameId)) {
-        return false;
-      }
-
-      const auto isFirstDrawCall = !getCamera(CameraType::Sky).isValid(frameId);
-
-      if (RtxOptions::skyAutoDetect() == SkyAutoDetectMode::CameraPositionAndDepthFlags) {
-        // if first processable draw call, or if there was no sky at all
-        if (isFirstDrawCall || !m_was3DSkyInPrevFrame) {
-          // z disabled: frame starts with a sky
-          // z enabled: frame starts with a world, no sky
-          return !zEnable;
-        }
-      } else if (RtxOptions::skyAutoDetect() == SkyAutoDetectMode::CameraPosition) {
-        if (isFirstDrawCall) {
-          // assume first camera to be sky
-          return true;
-        }
-        if (!m_was3DSkyInPrevFrame) {
-          // if there was no sky camera at all => assume no sky
-          return false;
-        }
-      } else {
-        ONCE(Logger::warn("[RTX] Found incorrect skyAutoDetect value"));
-        return false;
-      }
-
-      assert(m_was3DSkyInPrevFrame);
-      if (drawCallCameraPos) {
-        // if new camera is far from existing sky camera => found a new camera that should not be sky
-        if (!areClose(getCamera(CameraType::Sky).getPosition(false), *drawCallCameraPos)) {
-          return false;
-        }
-      }
-
-      return true;
-    };
-
-    static auto makeCameraPosition = [](const Matrix4& worldToView, bool zWrite, bool alphaBlend) -> std::optional<Vector3> {
-      // particles
-      if (!zWrite && alphaBlend) {
-        return {};
-      }
-      // identity matrix
-      if (isIdentityExact(worldToView)) {
-        return {};
-      }
-      return (inverse(worldToView))[3].xyz();
-    };
-
-    // Note: don't calculate position, if sky detect is not automatic
-    const auto drawCallCameraPos =
-      RtxOptions::skyAutoDetect() != SkyAutoDetectMode::None
-        ? makeCameraPosition(input.getTransformData().worldToView, input.zWriteEnable, input.alphaBlendEnable)
-        : std::nullopt;
-    
-    if (drawCallCameraPos) {
-      if (m_camerasInfoAccum.uniquePositions == 0 || !areClose(m_camerasInfoAccum.lastPosition, *drawCallCameraPos)) {
-        m_camerasInfoAccum.uniquePositions++;
-        m_camerasInfoAccum.lastPosition = *drawCallCameraPos;
-      }
-    }
-    
-    assert(isFovValid(fov));
+    const uint32_t frameId = m_device->getCurrentFrameId();
 
     const auto cameraType =
-      isSky(input, frameId, input.zEnable, drawCallCameraPos) ? CameraType::Sky
+      isSky ? CameraType::Sky
       : isViewModel(fov, input.maxZ, frameId)
         ? CameraType::ViewModel
         : CameraType::Main;

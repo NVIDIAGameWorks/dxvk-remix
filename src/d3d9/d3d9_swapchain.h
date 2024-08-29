@@ -254,9 +254,18 @@ namespace dxvk {
 
     std::string GetApiName();
 
-    // NV-DXVK start: DLFG integration
+    // NV-DXVK start: DLFG integration, window handle helpers
     bool NeedRecreatePresenter();
     vk::Presenter* GetPresenter() const;
+
+    HWND getFocusHwnd() const {
+      D3DDEVICE_CREATION_PARAMETERS createParams;
+      m_parent->GetCreationParameters(&createParams);
+      return createParams.hFocusWindow;
+    }
+    HWND getPresentationHwnd() const { return m_presentParams.hDeviceWindow; }
+    HWND getWinProcHwnd() const { return getPresentationHwnd() ? getPresentationHwnd() : getFocusHwnd(); }
+    void HookWindowProc(HWND window);
     // NV-DXVK end
   };
 

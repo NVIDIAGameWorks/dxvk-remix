@@ -73,7 +73,6 @@ namespace {
   IDirect3D9Ex* s_dxvkD3D9 { nullptr };
   dxvk::D3D9DeviceEx* s_dxvkDevice { nullptr };
   dxvk::mutex s_mutex {};
-  bool s_isHdRemix { false };
 
 
   dxvk::D3D9DeviceEx* tryAsDxvk() {
@@ -217,7 +216,7 @@ namespace {
         if (path.empty()) {
           return {};
         }
-        auto assetData = AssetDataManager::get().findAsset(path.string().c_str());
+        auto assetData = AssetDataManager::get().findAsset(path.string());
         if (assetData == nullptr) {
           return {};
         }
@@ -458,17 +457,21 @@ namespace {
 
     // --
 
-    RtLightShaping toRtLightShaping(const remixapi_LightInfoLightShaping* info) {
+    std::optional<RtLightShaping> toRtLightShaping(const remixapi_LightInfoLightShaping* info) {
       if (info) {
-        return RtLightShaping {
+        return RtLightShaping::tryCreate(
           true,
-          tovec3(info->primaryAxis),
+          tovec3(info->direction),
           std::cos(DegToRad(info->coneAngleDegrees)),
           info->coneSoftness,
-          info->focusExponent,
-        };
+          info->focusExponent
+        );
       }
-      return RtLightShaping {};
+
+      // Note: Default constructed Light Shaping returned when no info is provided to have a valid but disabled
+      // Light Shaping object (different from returning an empty optional here, which means creation of a Light
+      // Shaping failed).
+      return RtLightShaping{};
     }
 
     std::optional<RtLight> toRtLight(const remixapi_LightInfo& info) {
@@ -479,48 +482,68 @@ namespace {
         return {};
       }
       if (auto src = pnext::find<remixapi_LightInfoSphereEXT>(&info)) {
-        return RtSphereLight {
+        const auto shaping = toRtLightShaping(src->shaping_hasvalue ? &src->shaping_value : nullptr);
+
+        if (!shaping.has_value()) {
+          return {};
+        }
+
+        return RtSphereLight::tryCreate(
           tovec3(src->position),
           tovec3(info.radiance),
           src->radius,
-          toRtLightShaping(src->shaping_hasvalue ? &src->shaping_value : nullptr),
-        };
+          *shaping
+        );
       }
       if (auto src = pnext::find<remixapi_LightInfoRectEXT>(&info)) {
-        return RtRectLight {
+        const auto shaping = toRtLightShaping(src->shaping_hasvalue ? &src->shaping_value : nullptr);
+
+        if (!shaping.has_value()) {
+          return {};
+        }
+
+        return RtRectLight::tryCreate(
           tovec3(src->position),
           Vector2{src->xSize, src->ySize},
           tovec3(src->xAxis),
           tovec3(src->yAxis),
+          tovec3(src->direction),
           tovec3(info.radiance),
-          toRtLightShaping(src->shaping_hasvalue ? &src->shaping_value : nullptr),
-        };
+          *shaping
+        );
       }
       if (auto src = pnext::find<remixapi_LightInfoDiskEXT>(&info)) {
-        return RtDiskLight {
+        const auto shaping = toRtLightShaping(src->shaping_hasvalue ? &src->shaping_value : nullptr);
+
+        if (!shaping.has_value()) {
+          return {};
+        }
+
+        return RtDiskLight::tryCreate(
           tovec3(src->position),
           Vector2{src->xRadius, src->yRadius},
           tovec3(src->xAxis),
           tovec3(src->yAxis),
+          tovec3(src->direction),
           tovec3(info.radiance),
-          toRtLightShaping(src->shaping_hasvalue ? &src->shaping_value : nullptr),
-        };
+          *shaping
+        );
       }
       if (auto src = pnext::find<remixapi_LightInfoCylinderEXT>(&info)) {
-        return RtCylinderLight {
+        return RtCylinderLight::tryCreate(
           tovec3(src->position),
           src->radius,
           tovec3(src->axis),
           src->axisLength,
-          tovec3(info.radiance),
-        };
+          tovec3(info.radiance)
+        );
       }
       if (auto src = pnext::find<remixapi_LightInfoDistantEXT>(&info)) {
-        return RtDistantLight {
+        return RtDistantLight::tryCreate(
           tovec3(src->direction),
           DegToRad(src->angularDiameterDegrees * 0.5f),
-          tovec3(info.radiance),
-        };
+          tovec3(info.radiance)
+        );
       }
 
       // Note: Return an empty optional if the LightInfo struct does not contain a supported
@@ -547,6 +570,7 @@ namespace {
       if (flags & REMIXAPI_INSTANCE_CATEGORY_BIT_IGNORE_ANTI_CULLING      ){ result.set(InstanceCategories::IgnoreAntiCulling     ); }
       if (flags & REMIXAPI_INSTANCE_CATEGORY_BIT_IGNORE_MOTION_BLUR       ){ result.set(InstanceCategories::IgnoreMotionBlur      ); }
       if (flags & REMIXAPI_INSTANCE_CATEGORY_BIT_IGNORE_OPACITY_MICROMAP  ){ result.set(InstanceCategories::IgnoreOpacityMicromap ); }
+      if (flags & REMIXAPI_INSTANCE_CATEGORY_BIT_IGNORE_ALPHA_CHANNEL     ){ result.set(InstanceCategories::IgnoreAlphaChannel    ); }
       if (flags & REMIXAPI_INSTANCE_CATEGORY_BIT_HIDDEN                   ){ result.set(InstanceCategories::Hidden                ); }
       if (flags & REMIXAPI_INSTANCE_CATEGORY_BIT_PARTICLE                 ){ result.set(InstanceCategories::Particle              ); }
       if (flags & REMIXAPI_INSTANCE_CATEGORY_BIT_BEAM                     ){ result.set(InstanceCategories::Beam                  ); }
@@ -824,12 +848,17 @@ namespace {
       return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
     std::lock_guard lock { s_mutex };
+    // ensure that near plane is not modified, to keep the projection matrix
+    // exactly as the client provided, so depth buffers would have expected results,
+    // for a client to be able to reproject to world space using the projection matrices
+    if (dxvk::RtxOptions::enableNearPlaneOverride()) {
+      assert(0);
+      const_cast<bool&>(dxvk::RtxOptions::enableNearPlaneOverride()) = false;
+    }
     remixDevice->EmitCs([cRtCamera = convert::toRtCamera(*info)](dxvk::DxvkContext* ctx) {
-      ctx->getCommonObjects()->getSceneManager()
+      ctx->getCommonObjects()->getSceneManager().getCameraManager()
         .processExternalCamera(cRtCamera.type, cRtCamera.worldToView, cRtCamera.viewToProjection);
     });
-    // ensure that near plane is not modified, to keep user's projection matrix as it is
-    assert(!dxvk::RtxOptions::enableNearPlaneOverride());
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
 
@@ -952,32 +981,6 @@ namespace {
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
 
-  // Below are all the graphics quality settings we want to filter out from the SetConfigVariable API. 
-  static const std::string filteredSettings[] = {
-      dxvk::RtxOptions::graphicsPresetObject().getName(),
-      dxvk::RtxOptions::dlssPresetObject().getName(),
-      dxvk::RtxOptions::qualityDLSSObject().getName(),
-      dxvk::RtxOptions::raytraceModePresetObject().getName(),
-      dxvk::RtxOptions::nisPresetObject().getName(),
-      dxvk::RtxOptions::taauPresetObject().getName(),
-      dxvk::RtxOptions::pathMinBouncesObject().getName(),
-      dxvk::RtxOptions::pathMaxBouncesObject().getName(),
-      dxvk::RtxOptions::enableVolumetricLightingObject().getName(),
-      dxvk::RtxOptions::enableUnorderedEmissiveParticlesInIndirectRaysObject().getName(),
-      dxvk::RtxOptions::denoiseDirectAndIndirectLightingSeparatelyObject().getName(),
-      dxvk::RtxOptions::minReplacementTextureMipMapLevelObject().getName(),
-      dxvk::RtxOptions::enableUnorderedResolveInIndirectRaysObject().getName(),
-      dxvk::RtxOptions::russianRoulette1stBounceMinContinueProbabilityObject().getName(),
-      dxvk::RtxOptions::forceHighResolutionReplacementTexturesObject().getName(),
-      dxvk::RtxOptions::resolutionScaleObject().getName(),
-      dxvk::NeeCachePass::enableObject().getName(),
-      // to not modify the perspective matrices, so depth buffers are similar
-      dxvk::RtxOptions::enableNearPlaneOverrideObject().getName(),
-      // for hdremix usability
-      dxvk::LightManager::fallbackLightModeObject().getName(),
-      dxvk::DxvkPostFx::desaturateOthersOnHighlightObject().getName(),
-    };
-
   remixapi_ErrorCode REMIXAPI_CALL remixapi_SetConfigVariable(
     const char* key,
     const char* value) {
@@ -987,26 +990,16 @@ namespace {
       return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
     }
 
-    auto& globalRtxOptions = dxvk::RtxOptionImpl::getGlobalRtxOptionMap();
+    std::string strKey = std::string{ key };
 
-    auto found = globalRtxOptions.find(key);
+    const auto& globalRtxOptions = dxvk::RtxOptionImpl::getGlobalRtxOptionMap();
+    auto found = globalRtxOptions.find(strKey);
     if (found == globalRtxOptions.end()) {
       return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
     }
 
-    if (s_isHdRemix) {
-      const auto keyFullName = found->second->getFullName();
-      // Keep users of HdRemix in automatic quality mode.
-      for (const auto& filteredSetting : filteredSettings) {
-        // Skip this if we want to filter this setting
-        if (keyFullName == filteredSetting) {
-          return REMIXAPI_ERROR_CODE_SUCCESS;
-        }
-      }
-    }
-
     dxvk::Config newSetting;
-    newSetting.setOption(key, std::string { value });
+    newSetting.setOptionMove(std::move(strKey), std::string{ value });
     found->second->readOption(newSetting, dxvk::RtxOptionImpl::ValueType::Value);
 
     return REMIXAPI_ERROR_CODE_SUCCESS;
@@ -1089,15 +1082,10 @@ namespace {
     dxvk::g_allowSrgbConversionForOutput = !info.disableSrgbConversionForOutput;
     dxvk::g_allowMappingLegacyHashToObjectPickingValue = !info.editorModeEnabled;
 
-    s_isHdRemix = info.editorModeEnabled;
-    if (s_isHdRemix) {
-      static auto filteredSettings_contains = [](const std::string& option) {
-        return std::find(std::begin(filteredSettings), std::end(filteredSettings), option) != std::end(filteredSettings);
-      };
+    // slightly different initial settings for HdRemix
+    if (info.editorModeEnabled) {
       const_cast<dxvk::LightManager::FallbackLightMode&>(dxvk::LightManager::fallbackLightMode()) = dxvk::LightManager::FallbackLightMode::Never;
-      assert(filteredSettings_contains(dxvk::LightManager::fallbackLightModeObject().getName()));
       const_cast<bool&>(dxvk::DxvkPostFx::desaturateOthersOnHighlight()) = false;
-      assert(filteredSettings_contains(dxvk::DxvkPostFx::desaturateOthersOnHighlightObject().getName()));
     }
 
     *out_pD3D9 = d3d9ex;

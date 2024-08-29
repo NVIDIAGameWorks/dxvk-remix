@@ -98,12 +98,12 @@ namespace dxvk {
     case LightType::Rect:
     {
       const Vector2 dimensions(m_Width * m_xScale, m_Height * m_yScale);
-      return RtLight(RtRectLight(m_position, dimensions, m_xAxis, m_yAxis, calculateRadiance(), getLightShaping(m_zAxis)));
+      return RtLight(RtRectLight(m_position, dimensions, m_xAxis, m_yAxis, m_zAxis, calculateRadiance(), getLightShaping(m_zAxis)));
     }
     case LightType::Disk:
     {
       const Vector2 halfDimensions(m_Radius * m_xScale, m_Radius * m_yScale);
-      return RtLight(RtDiskLight(m_position, halfDimensions, m_xAxis, m_yAxis, calculateRadiance(), getLightShaping(m_zAxis)));
+      return RtLight(RtDiskLight(m_position, halfDimensions, m_xAxis, m_yAxis, m_zAxis, calculateRadiance(), getLightShaping(m_zAxis)));
     }
     case LightType::Cylinder:
     {
@@ -412,6 +412,11 @@ namespace dxvk {
       output.m_zAxis = safeNormalize(originalDirection, Vector3(0.0f, 0.0f, 1.0f));
       assert(isApproxNormalized(output.m_zAxis, 0.01f));
 
+      // Todo: The Phi and Theta values from the D3D9 Light may need to be clamped to reasonable ranges here or sanitized in the
+      // future if issues emerge from bad values being passed from games. For now though we do not as hashing relies on the shaping
+      // being constructed with the current unsanitized values (and clamping may cause slight deviations in hashing which would require
+      // duplicating the light shaping to get a variant with the "original" stable hash).
+
       // ConeAngle is the outer angle of the spotlight
       output.m_ConeAngleRadians = light.Phi / 2.0f;
       // ConeSoftness is how far in the transition region reaches
@@ -527,33 +532,36 @@ namespace dxvk {
     // Load and sanitize transform-related light values
 
     // Note: Rows of a row-major matrix represent the axis vectors (just like columns of a column-major matrix do).
-    auto xVecUsd = localToRoot.GetRow3(0);
-    auto yVecUsd = localToRoot.GetRow3(1);
-    auto zVecUsd = localToRoot.GetRow3(2);
-
-    // Note: These calls both normalize the X/Y/Z vectors and return their previous length. This is mandatory as the axis
-    // vectors used to construct lights with must be normalized.
-    m_xScale = xVecUsd.Normalize();
-    m_yScale = yVecUsd.Normalize();
-    m_zScale = zVecUsd.Normalize();
+    const auto xVecUsd = localToRoot.GetRow3(0);
+    const auto yVecUsd = localToRoot.GetRow3(1);
+    const auto zVecUsd = localToRoot.GetRow3(2);
 
     m_position = Vector3{ localToRoot.ExtractTranslation().data() };
     m_xAxis = Vector3{ xVecUsd.GetArray() };
     m_yAxis = Vector3{ yVecUsd.GetArray() };
     m_zAxis = Vector3{ zVecUsd.GetArray() };
 
-    // Note: While normalization is done via the USD api a bit earlier it does not properly ensure that the vectors are not the zero vector,
-    // which is not allowed for directions in some cases in Remix (namely the light shaping axis or Rect/Disk light axes), so we handle this
-    // case ourselves. While the main common case of these vectors being zero (a zero scale transform) is already handled before LightData
-    // creation, there are still other cases in the matrix (e.g. zeroed column vectors) which can cause this, so it's still good to guard against it.
-    m_xAxis = sanitizeSingularity(m_xAxis, Vector3(1.0f, 0.0f, 0.0f));
-    m_yAxis = sanitizeSingularity(m_yAxis, Vector3(0.0f, 1.0f, 0.0f));
-    m_zAxis = sanitizeSingularity(m_zAxis, Vector3(0.0f, 0.0f, 1.0f));
+    // Note: Remix Lights expect normalized direction vectors (for the light shaping direction and directions related to Cylinder/Rect/Disk and Directional lights),
+    // so these vectors must be normalized here. Additionally, these vectors must not be the zero vector so a fallback vector is provided. While zero scale transforms
+    // are guarded against, there are still other transformations which may result in zero vectors, so this sanitization must be done regardless.
+    m_xAxis = safeNormalizeGetLength(m_xAxis, Vector3(1.0f, 0.0f, 0.0f), m_xScale);
+    m_yAxis = safeNormalizeGetLength(m_yAxis, Vector3(0.0f, 1.0f, 0.0f), m_yScale);
+    m_zAxis = safeNormalizeGetLength(m_zAxis, Vector3(0.0f, 0.0f, 1.0f), m_zScale);
 
-    // NOTE: this negative on m_zAxis is clearly indicating a problem somewhere, but just preserving the existing behavior for now
-    if (m_lightType == LightType::Sphere || m_lightType == LightType::Unknown) {
-      m_zAxis = -m_zAxis;
-    }
+    // Todo: Possibly re-orthogonalize the axis vectors here if one has to be sanitized to a fallback vector as the X/Y/Z axes are required to be orthogonal in some cases.
+    // Unsure if this is needed though as a transform that collapses one axis to the zero vector may do the same for all 3.
+
+    // Convert directionality from USD to Remix conventions
+    // Note: USD lights with directionality (Sphere lights with shaping, Disk/Rect/Distant lights in all cases) emit light in the direction of the -Z axis by default,
+    // whereas Remix lights emit light in the +Z axis. As such to convert a USD light to a Remix light, the Z axis must be flipped. Cylinder lights and sphere lights with
+    // shaping disabled are symmetric in their light emission (and cylinder lights use the X axis anyways rather than the Z axis for directionality), so this flip can be
+    // done blindly without checking the light type for now as it will not affect these distributions.
+    // See this for more info: https://openusd.org/release/user_guides/render_user_guide.html
+    // "By convention, most lights with a primary axis (except CylinderLight) emit along the -Z axis. Area lights are centered in the XY plane and are 1 unit in diameter."
+
+    // Note: This causes a handedness swap due to being an improper rotation. Do not rely on cross products between the X/Y/Z axes past this point without taking this fact
+    // into account.
+    m_zAxis = -m_zAxis;
 
     // Flip required axes on negative scale and sanitize scales
     // Note: This is once again done to match how Omniverse behaves somewhat, some negative scale transforms will change the direction typically

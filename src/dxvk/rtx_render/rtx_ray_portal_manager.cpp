@@ -35,12 +35,11 @@
 
 namespace dxvk {
 
-  static void prepareRayPortalHitInfo(RayPortalHitInfo& result, const RayPortalInfo& info, const Matrix4& transform)
+  static void prepareRayPortalHitInfo(RayPortalHitInfo& result, const RtRayPortalSurfaceMaterial& material, const RayPortalInfo& info, const Matrix4& transform)
   {
     result.encodedPortalToOpposingPortalDirection.set(transform);
 
     result.centroid = info.centroid;
-    result.materialIndex = info.materialIndex;
 
     result.normal = info.planeNormal;
     result.sampleThreshold = 1.0f;
@@ -62,6 +61,14 @@ namespace dxvk {
     result.spriteSheetRows = info.spriteSheetRows;
     result.spriteSheetCols = info.spriteSheetCols;
     result.spriteSheetFPS = info.spriteSheetFPS;
+
+    result.samplerIndex = material.getSamplerIndex();
+    result.samplerIndex2 = material.getSamplerIndex2();
+    result.maskTextureIndex = material.getMaskTextureIndex();
+    result.maskTextureIndex2 = material.getMaskTextureIndex2();
+    result.rotationSpeed = glm::packHalf1x16(material.getRotationSpeed());
+    result.emissiveIntensity = glm::packHalf1x16(material.getEnableEmission() ? material.getEmissiveIntensity() : 0);
+    result.rayPortalIndex = material.getRayPortalIndex();
   }
 
   RayPortalManager::RayPortalManager(DxvkDevice* device, ResourceCache* pResourceCache)
@@ -261,7 +268,7 @@ namespace dxvk {
       // Set Ray Portal Hit Information for the pair
 
       // Note: Flip directions across the width and depth axes (height should not be flipped for mirroring).
-      const Matrix4 directionFlipMatrix{
+      const Matrix4 directionFlipMatrix {
         -1.0f, 0.0f, 0.0f, 0.0f,
         0.0f, 1.0f, 0.0f, 0.0f,
         0.0f, 0.0f, -1.0f, 0.0f,
@@ -307,14 +314,16 @@ namespace dxvk {
                               *rayPortalInfo);
 
       m_rayPortalPairInfos[currentRayPortalIndex].emplace(newRayPortalPairInfo);
-
-      // Set Ray Portal Light Information for the pair
       
-       prepareRayPortalHitInfo(m_sceneData.rayPortalHitInfos[currentRayPortalIndex],
+      // Set Ray Portal Light Information for the pair
+
+      prepareRayPortalHitInfo(m_sceneData.rayPortalHitInfos[currentRayPortalIndex],
+        m_pResourceCache->get(rayPortalInfo->materialIndex).getRayPortalSurfaceMaterial(),
         rayPortalInfo.value(),
         m_rayPortalPairInfos[currentRayPortalIndex]->pairInfos[0].portalToOpposingPortalDirection);
 
-       prepareRayPortalHitInfo(m_sceneData.rayPortalHitInfos[opposingRayPortalIndex], 
+      prepareRayPortalHitInfo(m_sceneData.rayPortalHitInfos[opposingRayPortalIndex], 
+        m_pResourceCache->get(opposingRayPortalInfo->materialIndex).getRayPortalSurfaceMaterial(),
         opposingRayPortalInfo.value(),
         m_rayPortalPairInfos[currentRayPortalIndex]->pairInfos[1].portalToOpposingPortalDirection);
 

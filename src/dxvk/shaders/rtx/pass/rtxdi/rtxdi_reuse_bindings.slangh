@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -60,7 +60,7 @@ RWTexture2D<float2> GBufferLast;
 layout(r32f, binding = RTXDI_REUSE_BINDING_REPROJECTION_CONFIDENCE_OUTPUT)
 RWTexture2D<float> ReprojectionConfidence;
 
-layout(rgba16f, binding = RTXDI_REUSE_BINDING_WS_MVEC_INPUT_OUTPUT)
+layout(rgba16f, binding = RTXDI_REUSE_BINDING_WS_MVEC_INPUT)
 Texture2D<float4> PrimaryVirtualMotionVector;
 
 layout(rg16f, binding = RTXDI_REUSE_BINDING_SS_MVEC_INPUT)

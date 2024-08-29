@@ -179,7 +179,7 @@ bool sampleLightBasicRIS(
 }
 
 bool sampleLightAdvancedRIS(
-  inout RNG randomState,
+  const RNG randomState,
   MinimalSurfaceInteraction surfaceInteraction,
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
   f16vec3 viewDirection,
