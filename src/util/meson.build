@@ -29,6 +29,8 @@ util_src = files([
   'xxHash/xxhash.c',
   'xxHash/xxhash.h',
 
+  'util_memoization.h',
+
   'util_messagechannel.cpp',
   'util_messagechannel.h',
 
