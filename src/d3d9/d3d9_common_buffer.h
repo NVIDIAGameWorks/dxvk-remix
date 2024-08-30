@@ -3,6 +3,7 @@
 #include "d3d9_device_child.h"
 #include "d3d9_format.h"
 #include "../dxvk/dxvk_buffer.h"
+#include "../util/util_memoization.h"
 
 namespace dxvk {
 
@@ -207,6 +208,15 @@ namespace dxvk {
     uint64_t GetMappingBufferSequenceNumber() const {
       return m_seq;
     }
+
+    // NV-DXVK start: Implement memoization for some expensive CPU operations
+    struct RemixIndexBufferMemoizationData {
+      DxvkBufferSlice slice;
+      uint32_t min, max;
+    };
+    using RemixIboMemoizer = MemoryRegionMemoizer<RemixIndexBufferMemoizationData>;
+    RemixIboMemoizer remixMemoization;
+    // NV-DXVK end
 
   private:
 
