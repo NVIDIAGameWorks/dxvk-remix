@@ -57,7 +57,7 @@ namespace dxvk {
   }
 
   template<typename T>
-  void D3D9Rtx::copyIndices(const uint32_t indexCount, T* pIndicesDst, const T* pIndices, uint32_t& minIndex, uint32_t& maxIndex) {
+  void D3D9Rtx::copyIndices(const uint32_t indexCount, T*& pIndicesDst, T* pIndices, uint32_t& minIndex, uint32_t& maxIndex) {
     ScopedCpuProfileZone();
 
     assert(indexCount >= 3);
@@ -82,26 +82,45 @@ namespace dxvk {
   }
 
   template<typename T>
-  DxvkBufferSlice D3D9Rtx::processIndexBuffer(const uint32_t indexCount, const uint32_t startIndex, const DxvkBufferSliceHandle& indexSlice, uint32_t& minIndex, uint32_t& maxIndex) {
+  DxvkBufferSlice D3D9Rtx::processIndexBuffer(const uint32_t indexCount, const uint32_t startIndex, const IndexContext& indexCtx, uint32_t& minIndex, uint32_t& maxIndex) {
     ScopedCpuProfileZone();
 
     const uint32_t indexStride = sizeof(T);
     const size_t numIndexBytes = indexCount * indexStride;
     const size_t indexOffset = indexStride * startIndex;
 
-    // Get our slice of the staging ring buffer
-    const DxvkBufferSlice& stagingSlice = m_rtStagingData.alloc(CACHE_LINE_SIZE, numIndexBytes);
+    auto processing = [this, &indexCtx, indexCount](const size_t offset, const size_t size) -> D3D9CommonBuffer::RemixIndexBufferMemoizationData {
+      D3D9CommonBuffer::RemixIndexBufferMemoizationData result;
 
-    // Acquire prevents the staging allocator from re-using this memory
-    stagingSlice.buffer()->acquire(DxvkAccess::Read);
+      // Get our slice of the staging ring buffer
+      result.slice = m_rtStagingData.alloc(CACHE_LINE_SIZE, size);
 
-    const uint8_t* pBaseIndex = (uint8_t*) indexSlice.mapPtr + indexOffset;
+      // Acquire prevents the staging allocator from re-using this memory
+      result.slice.buffer()->acquire(DxvkAccess::Read);
 
-    T* pIndices = (T*) pBaseIndex;
-    T* pIndicesDst = (T*) stagingSlice.mapPtr(0);
-    copyIndices<T>(indexCount, pIndicesDst, pIndices, minIndex, maxIndex);
+      const uint8_t* pBaseIndex = (uint8_t*) indexCtx.indexBuffer.mapPtr + offset;
 
-    return stagingSlice;
+      T* pIndices = (T*) pBaseIndex;
+      T* pIndicesDst = (T*) result.slice.mapPtr(0);
+      copyIndices<T>(indexCount, pIndicesDst, pIndices, result.min, result.max);
+
+      return result;
+    };
+
+    if (enableIndexBufferMemoization() && indexCtx.ibo != nullptr) {
+      // If we have an index buffer, we can utilize memoization
+      D3D9CommonBuffer::RemixIboMemoizer& memoization = indexCtx.ibo->remixMemoization;
+      const auto result = memoization.memoize(indexOffset, numIndexBytes, processing);
+      minIndex = result.min;
+      maxIndex = result.max;
+      return result.slice;
+    }
+
+    // No index buffer (so no memoization) - this could be a DrawPrimitiveUP call (where IB data is passed inline)
+    const auto result = processing(indexOffset, numIndexBytes);
+    minIndex = result.min;
+    maxIndex = result.max;
+    return result.slice;
   }
 
   void D3D9Rtx::prepareVertexCapture(const int vertexIndexOffset) {
@@ -538,9 +557,9 @@ namespace dxvk {
       geoData.indexCount = GetVertexCount(drawContext.PrimitiveType, drawContext.PrimitiveCount);
 
       if (indexContext.indexType == VK_INDEX_TYPE_UINT16)
-        geoData.indexBuffer = RasterBuffer(processIndexBuffer<uint16_t>(geoData.indexCount, drawContext.StartIndex, indexContext.indexBuffer, minIndex, maxIndex), 0, 2, indexContext.indexType);
+        geoData.indexBuffer = RasterBuffer(processIndexBuffer<uint16_t>(geoData.indexCount, drawContext.StartIndex, indexContext, minIndex, maxIndex), 0, 2, indexContext.indexType);
       else
-        geoData.indexBuffer = RasterBuffer(processIndexBuffer<uint32_t>(geoData.indexCount, drawContext.StartIndex, indexContext.indexBuffer, minIndex, maxIndex), 0, 4, indexContext.indexType);
+        geoData.indexBuffer = RasterBuffer(processIndexBuffer<uint32_t>(geoData.indexCount, drawContext.StartIndex, indexContext, minIndex, maxIndex), 0, 4, indexContext.indexType);
 
       // Unlikely, but invalid
       if (maxIndex == minIndex) {
@@ -987,6 +1006,7 @@ namespace dxvk {
       D3D9CommonBuffer* ibo = GetCommonBuffer(d3d9State().indices);
       assert(ibo != nullptr);
 
+      indices.ibo = ibo;
       indices.indexBuffer = ibo->GetMappedSlice();
       indices.indexType = DecodeIndexType(ibo->Desc()->Format);
     }

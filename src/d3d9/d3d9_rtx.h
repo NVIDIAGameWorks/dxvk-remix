@@ -40,6 +40,7 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, useVertexCapture, true, "When enabled, injects code into the original vertex shader to capture final shaded vertex positions.  Is useful for games using simple vertex shaders, that still also set the fixed function transform matrices.");
     RTX_OPTION("rtx", bool, useVertexCapturedNormals, true, "When enabled, vertex normals are read from the input assembler and used in raytracing.  This doesn't always work as normals can be in any coordinate space, but can help sometimes.");
     RTX_OPTION("rtx", bool, useWorldMatricesForShaders, true, "When enabled, Remix will utilize the world matrices being passed from the game via D3D9 fixed function API, even when running with shaders.  Sometimes games pass these matrices and they are useful, however for some games they are very unreliable, and should be filtered out.  If you're seeing precision related issues with shader vertex capture, try disabling this setting.");
+    RTX_OPTION("rtx", bool, enableIndexBufferMemoization, true, "CPU performance optimization, should generally be enabled.  Will reduce main thread time by caching processIndexBuffer operations and reusing when possible, this will come at the expense of some CPU RAM.");
 
     // Copy of the parameters issued to D3D9 on DrawXXX
     struct DrawContext {
@@ -227,6 +228,7 @@ namespace dxvk {
 
     struct IndexContext {
       VkIndexType indexType = VK_INDEX_TYPE_NONE_KHR;
+      D3D9CommonBuffer* ibo = nullptr;
       DxvkBufferSliceHandle indexBuffer;
     };
 
@@ -246,10 +248,10 @@ namespace dxvk {
     const Direct3DState9& d3d9State() const;
 
     template<typename T>
-    static void copyIndices(const uint32_t indexCount, T* pIndicesDst, const T* pIndices, uint32_t& minIndex, uint32_t& maxIndex);
+    static void copyIndices(const uint32_t indexCount, T*& pIndicesDst, T* pIndices, uint32_t& minIndex, uint32_t& maxIndex);
 
     template<typename T>
-    DxvkBufferSlice processIndexBuffer(const uint32_t indexCount, const uint32_t startIndex, const DxvkBufferSliceHandle& indexSlice, uint32_t& minIndex, uint32_t& maxIndex);
+    DxvkBufferSlice processIndexBuffer(const uint32_t indexCount, const uint32_t startIndex, const IndexContext& indexCtx, uint32_t& minIndex, uint32_t& maxIndex);
 
     void prepareVertexCapture(const int vertexIndexOffset);
 

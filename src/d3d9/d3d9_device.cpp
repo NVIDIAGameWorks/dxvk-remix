@@ -4952,6 +4952,10 @@ namespace dxvk {
 
       pResource->SetWrittenByGPU(false);
       pResource->GPUReadingRange().Clear();
+
+      // NV-DXVK start: Implement memoization for some expensive CPU operations
+      pResource->remixMemoization.invalidateAll();
+      // NV-DXVK end
     }
     else {
       // Use map pointer from previous map operation. This
@@ -4982,6 +4986,12 @@ namespace dxvk {
         pResource->SetWrittenByGPU(false);
         pResource->GPUReadingRange().Clear();
       }
+
+      // NV-DXVK start: Implement memoization for some expensive CPU operations
+      if (!readOnly) {
+        pResource->remixMemoization.invalidate(offset, size);
+      }
+      // NV-DXVK end
     }
 
     uint8_t* data = reinterpret_cast<uint8_t*>(physSlice.mapPtr);
