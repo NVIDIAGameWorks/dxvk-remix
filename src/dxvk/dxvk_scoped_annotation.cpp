@@ -26,6 +26,9 @@
 #include "dxvk_device.h"
 #include "client/TracyProfiler.hpp"
 
+// Global overload
+TRACY_OBJECT_MEMORY_PROFILING
+
 namespace dxvk {
 
   __ScopedAnnotation::__ScopedAnnotation(Rc<DxvkContext> ctx, const char* name) : m_ctx(ctx) {

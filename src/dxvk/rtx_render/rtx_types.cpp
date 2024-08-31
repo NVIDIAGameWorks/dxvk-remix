@@ -25,6 +25,7 @@
 #include "rtx_options.h"
 #include "rtx_terrain_baker.h"
 #include "rtx_instance_manager.h"
+#include "dxvk_scoped_annotation.h"
 
 namespace dxvk {
   uint32_t RasterGeometry::calculatePrimitiveCount() const {
@@ -46,6 +47,7 @@ namespace dxvk {
   }
 
   bool DrawCallState::finalizePendingFutures(const RtCamera* pLastCamera) {
+    ScopedCpuProfileZone();
     // Geometry hashes are vital, and cannot be disabled, so its important we get valid data (hence the return type)
     const bool valid = finalizeGeometryHashes();
     if (valid) {

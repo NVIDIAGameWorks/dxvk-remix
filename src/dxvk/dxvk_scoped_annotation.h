@@ -49,9 +49,22 @@
           ZoneText(name, std::strlen(name)); \
           TracyVkZoneTransient((ctx)->getDevice()->queues().graphics.tracyCtx, TracyConcat(__tracy_gpu_source_location,__LINE__), (ctx)->getCmdBuffer(DxvkCmdBuffer::ExecBuffer), name, true); \
           __ScopedAnnotation __scopedAnnotation(ctx, name)
+
+  #define TRACY_OBJECT_MEMORY_PROFILING \
+          void * operator new ( std :: size_t count ) { \
+            auto ptr = malloc(count); \
+            TracyAlloc(ptr, count); \
+            return ptr; \
+          } \
+          void operator delete (void* ptr) noexcept { \
+            TracyFree(ptr); \
+            free(ptr); \
+          }
+
 #else
   #define ScopedCpuProfileZoneDynamic(ctx, name)
   #define ScopedGpuProfileZoneDynamicZ(ctx, name)
+  #define TRACY_OBJECT_MEMORY_PROFILING
 #endif
 
 namespace dxvk {

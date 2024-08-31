@@ -57,11 +57,13 @@ namespace dxvk {
 
   // NV-DXVK start: DLFG integration
   bool DxvkContext::isDLFGEnabled() const {
+    ScopedCpuProfileZone();
     return m_common->metaNGXContext().supportsDLFG() && DxvkDLFG::enable() && !m_common->metaDLFG().hasDLFGFailed();
   }
   // NV-DXVK end
 
   void DxvkContext::beginRecording(const Rc<DxvkCommandList>& cmdList) {
+    ScopedCpuProfileZone();
     m_cmd = cmdList;
     m_cmd->beginRecording();
 
@@ -101,6 +103,7 @@ namespace dxvk {
 
 
   Rc<DxvkCommandList> DxvkContext::endRecording() {
+    ScopedCpuProfileZone();
     this->spillRenderPass(true);
     this->flushSharedImages();
 
@@ -114,6 +117,7 @@ namespace dxvk {
 
 
   void DxvkContext::flushCommandList() {
+    ScopedCpuProfileZone();
     m_device->submitCommandList(
       this->endRecording(),
       VK_NULL_HANDLE,
@@ -129,17 +133,20 @@ namespace dxvk {
 
 
   void DxvkContext::beginQuery(const Rc<DxvkGpuQuery>& query) {
+    ScopedCpuProfileZone();
     m_queryManager.enableQuery(m_cmd, query);
   }
 
 
   void DxvkContext::endQuery(const Rc<DxvkGpuQuery>& query) {
+    ScopedCpuProfileZone();
     m_queryManager.disableQuery(m_cmd, query);
   }
 
 
   void DxvkContext::bindRenderTargets(
     const DxvkRenderTargets& targets) {
+    ScopedCpuProfileZone();
     // Set up default render pass ops
     m_state.om.renderTargets = targets;
 
@@ -163,6 +170,7 @@ namespace dxvk {
   void DxvkContext::bindDrawBuffers(
     const DxvkBufferSlice& argBuffer,
     const DxvkBufferSlice& cntBuffer) {
+    ScopedCpuProfileZone();
     m_state.id.argBuffer = argBuffer;
     m_state.id.cntBuffer = cntBuffer;
 
@@ -173,6 +181,7 @@ namespace dxvk {
   void DxvkContext::bindIndexBuffer(
     const DxvkBufferSlice& buffer,
     VkIndexType           indexType) {
+    ScopedCpuProfileZone();
     if (!m_state.vi.indexBuffer.matchesBuffer(buffer))
       m_vbTracked.clr(MaxNumVertexBindings);
 
@@ -186,6 +195,7 @@ namespace dxvk {
   void DxvkContext::bindResourceBuffer(
     uint32_t              slot,
     const DxvkBufferSlice& buffer) {
+    ScopedCpuProfileZone();
     bool needsUpdate = !m_rc[slot].bufferSlice.matchesBuffer(buffer);
 
     if (likely(needsUpdate))
@@ -214,6 +224,7 @@ namespace dxvk {
     uint32_t              slot,
     const Rc<DxvkImageView>& imageView,
     const Rc<DxvkBufferView>& bufferView) {
+    ScopedCpuProfileZone();
     m_rc[slot].imageView = imageView;
     m_rc[slot].bufferView = bufferView;
     m_rc[slot].bufferSlice = bufferView != nullptr
@@ -231,6 +242,7 @@ namespace dxvk {
   void DxvkContext::bindResourceSampler(
     uint32_t              slot,
     const Rc<DxvkSampler>& sampler) {
+    ScopedCpuProfileZone();
     m_rc[slot].sampler = sampler;
     m_rcTracked.clr(slot);
 
@@ -245,6 +257,7 @@ namespace dxvk {
   void DxvkContext::bindAccelerationStructure(
     uint32_t              slot,
     const Rc<DxvkAccelStructure> accelStructure) {
+    ScopedCpuProfileZone();
     m_rc[slot].tlas = accelStructure->getAccelStructure();
     m_rcTracked.clr(slot);
 
@@ -259,6 +272,7 @@ namespace dxvk {
 
   void DxvkContext::bindRaytracingPipelineShaders(
     const DxvkRaytracingPipelineShaders& shaders) {
+    ScopedCpuProfileZone();
 
     m_state.rp.shaders = shaders;
 
@@ -273,6 +287,7 @@ namespace dxvk {
   void DxvkContext::bindShader(
     VkShaderStageFlagBits stage,
     const Rc<DxvkShader>& shader) {
+    ScopedCpuProfileZone();
     Rc<DxvkShader>* shaderStage;
 
     switch (stage) {
@@ -306,6 +321,7 @@ namespace dxvk {
     uint32_t              binding,
     const DxvkBufferSlice& buffer,
     uint32_t              stride) {
+    ScopedCpuProfileZone();
     if (!m_state.vi.vertexBuffers[binding].matchesBuffer(buffer))
       m_vbTracked.clr(binding);
 
@@ -327,6 +343,7 @@ namespace dxvk {
     uint32_t              binding,
     const DxvkBufferSlice& buffer,
     const DxvkBufferSlice& counter) {
+    ScopedCpuProfileZone();
     if (!m_state.xfb.buffers[binding].matches(buffer)
       || !m_state.xfb.counters[binding].matches(counter)) {
       m_state.xfb.buffers[binding] = buffer;
@@ -344,6 +361,7 @@ namespace dxvk {
     const VkComponentMapping&   srcMapping,
     const VkImageBlit&          region,
           VkFilter              filter) {
+    ScopedCpuProfileZone();
     this->spillRenderPass(true);
     this->prepareImage(m_execBarriers, dstImage, vk::makeSubresourceRange(region.dstSubresource));
     this->prepareImage(m_execBarriers, srcImage, vk::makeSubresourceRange(region.srcSubresource));
@@ -377,6 +395,7 @@ namespace dxvk {
   void DxvkContext::changeImageLayout(
     const Rc<DxvkImage>& image,
     VkImageLayout         layout) {
+    ScopedCpuProfileZone();
     if (image->info().layout != layout) {
       this->spillRenderPass(true);
 
@@ -406,6 +425,7 @@ namespace dxvk {
           VkDeviceSize          offset,
           VkDeviceSize          length,
           uint32_t              value) {
+    ScopedCpuProfileZone();
     this->spillRenderPass(true);
     
     length = align(length, sizeof(uint32_t));
@@ -435,6 +455,7 @@ namespace dxvk {
           VkDeviceSize          offset,
           VkDeviceSize          length,
           VkClearColorValue     value) {
+    ScopedCpuProfileZone();
     this->spillRenderPass(true);
     this->unbindComputePipeline();
 
@@ -511,6 +532,7 @@ namespace dxvk {
     const Rc<DxvkImage>&            image,
     const VkClearColorValue&        value,
     const VkImageSubresourceRange&  subresources) {
+    ScopedCpuProfileZone();
     this->spillRenderPass(false);
 
     VkImageLayout imageLayoutClear = image->pickLayout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
@@ -541,6 +563,7 @@ namespace dxvk {
     const Rc<DxvkImage>& image,
     const VkClearDepthStencilValue& value,
     const VkImageSubresourceRange&  subresources) {
+    ScopedCpuProfileZone();
     this->spillRenderPass(false);
     
     m_execBarriers.recordCommands(m_cmd);
@@ -573,6 +596,7 @@ namespace dxvk {
   void DxvkContext::clearCompressedColorImage(
     const Rc<DxvkImage>&            image,
     const VkImageSubresourceRange&  subresources) {
+    ScopedCpuProfileZone();
     this->spillRenderPass(false);
 
     VkImageLayout layout = image->pickLayout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
@@ -650,6 +674,7 @@ namespace dxvk {
     const Rc<DxvkImageView>& imageView,
     VkImageAspectFlags    clearAspects,
     VkClearValue          clearValue) {
+    ScopedCpuProfileZone();
     // Make sure the color components are ordered correctly
     if (clearAspects & VK_IMAGE_ASPECT_COLOR_BIT) {
       clearValue.color = util::swizzleClearColor(clearValue.color,
@@ -706,6 +731,7 @@ namespace dxvk {
     VkExtent3D            extent,
     VkImageAspectFlags    aspect,
     VkClearValue          value) {
+    ScopedCpuProfileZone();
     const VkImageUsageFlags viewUsage = imageView->info().usage;
 
     if (aspect & VK_IMAGE_ASPECT_COLOR_BIT) {
@@ -785,6 +811,7 @@ namespace dxvk {
     VkDeviceSize          dstOffset,
     VkDeviceSize          srcOffset,
     VkDeviceSize          numBytes) {
+    ScopedCpuProfileZone();
     VkDeviceSize loOvl = std::max(dstOffset, srcOffset);
     VkDeviceSize hiOvl = std::min(dstOffset, srcOffset) + numBytes;
 
@@ -824,6 +851,7 @@ namespace dxvk {
           VkDeviceSize          srcOffset,
           VkDeviceSize          rowAlignment,
           VkDeviceSize          sliceAlignment) {
+    ScopedCpuProfileZone();
     this->spillRenderPass(true);
     this->prepareImage(m_execBarriers, dstImage, vk::makeSubresourceRange(dstSubresource));
 
@@ -894,6 +922,7 @@ namespace dxvk {
           VkImageSubresourceLayers srcSubresource,
           VkOffset3D            srcOffset,
           VkExtent3D            extent) {
+    ScopedCpuProfileZone();
     this->spillRenderPass(true);
 
     if (this->copyImageClear(dstImage, dstSubresource, dstOffset, extent, srcImage, srcSubresource))
@@ -935,6 +964,7 @@ namespace dxvk {
     VkOffset3D            dstOffset,
     VkOffset3D            srcOffset,
     VkExtent3D            extent) {
+    ScopedCpuProfileZone();
     VkOffset3D loOvl = {
       std::max(dstOffset.x, srcOffset.x),
       std::max(dstOffset.y, srcOffset.y),
@@ -1011,6 +1041,7 @@ namespace dxvk {
           VkImageSubresourceLayers srcSubresource,
           VkOffset3D            srcOffset,
           VkExtent3D            srcExtent) {
+    ScopedCpuProfileZone();
     this->spillRenderPass(true);
     this->prepareImage(m_execBarriers, srcImage, vk::makeSubresourceRange(srcSubresource));
 
@@ -1077,6 +1108,7 @@ namespace dxvk {
           VkOffset2D            srcOffset,
           VkExtent2D            srcExtent,
           VkFormat              format) {
+    ScopedCpuProfileZone();
     this->spillRenderPass(true);
     this->prepareImage(m_execBarriers, srcImage, vk::makeSubresourceRange(srcSubresource));
 
@@ -1197,6 +1229,7 @@ namespace dxvk {
           VkExtent3D            srcSize,
           VkExtent3D            extent,
           VkDeviceSize          elementSize) {
+    ScopedCpuProfileZone();
     this->spillRenderPass(true);
     this->unbindComputePipeline();
 
@@ -1362,6 +1395,7 @@ namespace dxvk {
           VkOffset2D            srcOffset,
           VkExtent2D            srcExtent,
           VkFormat              format) {
+    ScopedCpuProfileZone();
     this->spillRenderPass(true);
     this->prepareImage(m_execBarriers, dstImage, vk::makeSubresourceRange(dstSubresource));
 
@@ -1538,6 +1572,7 @@ namespace dxvk {
 
   void DxvkContext::discardBuffer(
     const Rc<DxvkBuffer>&       buffer) {
+    ScopedCpuProfileZone();
     if (buffer->memFlags() & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
       return;
 
@@ -1549,6 +1584,7 @@ namespace dxvk {
   void DxvkContext::discardImageView(
     const Rc<DxvkImageView>&      imageView,
           VkImageAspectFlags      discardAspects) {
+    ScopedCpuProfileZone();
     VkImageUsageFlags viewUsage = imageView->info().usage;
 
     // Ignore non-render target views since there's likely no good use case for
@@ -1565,6 +1601,7 @@ namespace dxvk {
     uint32_t x,
     uint32_t y,
     uint32_t z) {
+    ScopedCpuProfileZone();
     if (this->commitComputeState()) {
       this->commitComputeInitBarriers();
 
@@ -1585,6 +1622,7 @@ namespace dxvk {
 
   void DxvkContext::dispatchIndirect(
     VkDeviceSize      offset) {
+    ScopedCpuProfileZone();
     auto bufferSlice = m_state.id.argBuffer.getSliceHandle(
       offset, sizeof(VkDispatchIndirectCommand));
 
@@ -1623,6 +1661,7 @@ namespace dxvk {
     uint32_t instanceCount,
     uint32_t firstVertex,
     uint32_t firstInstance) {
+    ScopedCpuProfileZone();
     if (this->commitGraphicsState<false, false>()) {
 
         m_cmd->cmdDraw(
@@ -1638,6 +1677,7 @@ namespace dxvk {
     VkDeviceSize      offset,
     uint32_t          count,
     uint32_t          stride) {
+    ScopedCpuProfileZone();
 
     if (this->commitGraphicsState<false, true>()) {
       auto descriptor = m_state.id.argBuffer.getDescriptor();
@@ -1657,6 +1697,7 @@ namespace dxvk {
     VkDeviceSize      countOffset,
     uint32_t          maxCount,
     uint32_t          stride) {
+    ScopedCpuProfileZone();
     if (this->commitGraphicsState<false, true>()) {
       auto argDescriptor = m_state.id.argBuffer.getDescriptor();
       auto cntDescriptor = m_state.id.cntBuffer.getDescriptor();
@@ -1679,6 +1720,7 @@ namespace dxvk {
     uint32_t firstIndex,
     uint32_t vertexOffset,
     uint32_t firstInstance) {
+    ScopedCpuProfileZone();
     if (this->commitGraphicsState<true, false>()) {
         m_cmd->cmdDrawIndexed(
           indexCount, instanceCount,
@@ -1694,6 +1736,7 @@ namespace dxvk {
     VkDeviceSize      offset,
     uint32_t          count,
     uint32_t          stride) {
+    ScopedCpuProfileZone();
     if (this->commitGraphicsState<true, true>()) {
       auto descriptor = m_state.id.argBuffer.getDescriptor();
 
@@ -1712,6 +1755,7 @@ namespace dxvk {
     VkDeviceSize      countOffset,
     uint32_t          maxCount,
     uint32_t          stride) {
+    ScopedCpuProfileZone();
     if (this->commitGraphicsState<true, true>()) {
       auto argDescriptor = m_state.id.argBuffer.getDescriptor();
       auto cntDescriptor = m_state.id.cntBuffer.getDescriptor();
@@ -1732,6 +1776,7 @@ namespace dxvk {
     const DxvkBufferSlice& counterBuffer,
     uint32_t          counterDivisor,
     uint32_t          counterBias) {
+    ScopedCpuProfileZone();
     if (this->commitGraphicsState<false, false>()) {
       auto physSlice = counterBuffer.getSliceHandle();
 
@@ -1747,6 +1792,7 @@ namespace dxvk {
 
 
   void DxvkContext::emitRenderTargetReadbackBarrier() {
+    ScopedCpuProfileZone();
     if (m_flags.test(DxvkContextFlag::GpRenderPassBound)) {
       emitMemoryBarrier(VK_DEPENDENCY_BY_REGION_BIT,
         VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
@@ -1761,6 +1807,7 @@ namespace dxvk {
     const Rc<DxvkImage>& image,
     const VkImageSubresourceRange& subresources,
     VkImageLayout            initialLayout) {
+    ScopedCpuProfileZone();
     m_execBarriers.accessImage(image, subresources,
       initialLayout, 0, 0,
       image->info().layout,
@@ -1776,6 +1823,7 @@ namespace dxvk {
   void DxvkContext::generateMipmaps(
     const Rc<DxvkImageView>& imageView,
     VkFilter                  filter) {
+    ScopedCpuProfileZone();
     if (imageView->info().numLevels <= 1)
       return;
     
@@ -1882,6 +1930,7 @@ namespace dxvk {
   void DxvkContext::invalidateBuffer(
     const Rc<DxvkBuffer>& buffer,
     const DxvkBufferSliceHandle& slice) {
+    ScopedCpuProfileZone();
     // Allocate new backing resource
     DxvkBufferSliceHandle prevSlice = buffer->rename(slice);
     m_cmd->freeBufferSlice(buffer, prevSlice);
@@ -1934,6 +1983,7 @@ namespace dxvk {
     uint32_t                  offset,
     uint32_t                  size,
     const void*               data) {
+    ScopedCpuProfileZone();
     assert(size + offset <= MaxPushConstantSize);
 // NV-DXVK start: multiple push const contexts
     std::memcpy(&m_state.pc.data[(uint32_t)m_state.pc.constantBank][offset], data, size);
@@ -1945,6 +1995,7 @@ namespace dxvk {
 // NV-DXVK start: multiple push const contexts
   void DxvkContext::setPushConstantBank(
     DxvkPushConstantBank constantBank) {
+    ScopedCpuProfileZone();
     if (constantBank >= DxvkPushConstantBank::Count) {
       Logger::err("DxvkContext: setPushConstantBank: invalid bank index");
       return;
@@ -1965,6 +2016,7 @@ namespace dxvk {
     const Rc<DxvkImage>&            srcImage,
     const VkImageResolve&           region,
           VkFormat                  format) {
+    ScopedCpuProfileZone();
     this->spillRenderPass(true);
     this->prepareImage(m_execBarriers, dstImage, vk::makeSubresourceRange(region.dstSubresource));
     this->prepareImage(m_execBarriers, srcImage, vk::makeSubresourceRange(region.srcSubresource));
@@ -1999,6 +2051,7 @@ namespace dxvk {
     const VkImageResolve&           region,
           VkResolveModeFlagBitsKHR  depthMode,
           VkResolveModeFlagBitsKHR  stencilMode) {
+    ScopedCpuProfileZone();
     this->spillRenderPass(true);
     this->prepareImage(m_execBarriers, dstImage, vk::makeSubresourceRange(region.dstSubresource));
     this->prepareImage(m_execBarriers, srcImage, vk::makeSubresourceRange(region.srcSubresource));
@@ -2053,6 +2106,7 @@ namespace dxvk {
     const VkImageSubresourceRange&  dstSubresources,
           VkImageLayout             srcLayout,
           VkImageLayout             dstLayout) {
+    ScopedCpuProfileZone();
     this->spillRenderPass(false);
     
     if (srcLayout != dstLayout) {
@@ -2078,6 +2132,7 @@ namespace dxvk {
           VkImageAspectFlags        discardAspects,
           VkImageAspectFlags        clearAspects,
           VkClearValue              clearValue) {
+    ScopedCpuProfileZone();
     DxvkColorAttachmentOps colorOp;
     colorOp.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
     colorOp.loadLayout = imageView->imageInfo().layout;
@@ -2207,6 +2262,7 @@ namespace dxvk {
     const Rc<DxvkImageView>& imageView,
     VkImageAspectFlags        clearAspects,
     VkClearValue              clearValue) {
+    ScopedCpuProfileZone();
     for (auto& entry : m_deferredClears) {
       if (entry.imageView->matchesView(imageView)) {
         entry.imageView = imageView;
@@ -2233,6 +2289,7 @@ namespace dxvk {
   void DxvkContext::deferDiscard(
     const Rc<DxvkImageView>&        imageView,
           VkImageAspectFlags        discardAspects) {
+    ScopedCpuProfileZone();
     for (auto& entry : m_deferredClears) {
       if (entry.imageView->matchesView(imageView)) {
         entry.imageView = imageView;
@@ -2251,6 +2308,7 @@ namespace dxvk {
 
   void DxvkContext::flushClears(
     bool                      useRenderPass) {
+    ScopedCpuProfileZone();
     for (const auto& clear : m_deferredClears) {
       int32_t attachmentIndex = -1;
 
@@ -2266,6 +2324,7 @@ namespace dxvk {
 
 
   void DxvkContext::flushSharedImages() {
+    ScopedCpuProfileZone();
     for (auto i = m_deferredClears.begin(); i != m_deferredClears.end(); ) {
       if (i->imageView->imageInfo().shared) {
         this->performClear(i->imageView, -1, i->discardAspects, i->clearAspects, i->clearValue);
@@ -2285,6 +2344,7 @@ namespace dxvk {
           VkDeviceSize              offset,
           VkDeviceSize              size,
     const void*                     data) {
+    ScopedCpuProfileZone();
     bool replaceBuffer = this->tryInvalidateDeviceLocalBuffer(buffer, size);
     auto bufferSlice = buffer->getSliceHandle(offset, size);
 
@@ -2324,6 +2384,7 @@ namespace dxvk {
           VkDeviceSize    offset,
           VkDeviceSize    size,
     const void*           data) {
+    ScopedCpuProfileZone();
 
     if (size < 65536 && size % 4 == 0) {
       updateBuffer(buffer, offset, size, data);
@@ -2373,6 +2434,7 @@ namespace dxvk {
     const void*                     data,
           VkDeviceSize              pitchPerRow,
           VkDeviceSize              pitchPerLayer) {
+    ScopedCpuProfileZone();
     this->spillRenderPass(true);
 
     // Upload data through a staging buffer. Special care needs to
@@ -2464,6 +2526,7 @@ namespace dxvk {
     VkDeviceSize              pitchPerRow,
     VkDeviceSize              pitchPerLayer,
     VkFormat                  format) {
+    ScopedCpuProfileZone();
     auto formatInfo = imageFormatInfo(format);
 
     VkExtent3D extent3D;
@@ -2498,6 +2561,7 @@ namespace dxvk {
     const Rc<DxvkBuffer>& buffer,
     const void* data,
     uint32_t length) {
+    ScopedCpuProfileZone();
     auto bufferSlice = buffer->getSliceHandle();
 
     if (length == 0)
@@ -2538,6 +2602,7 @@ namespace dxvk {
     const void*               data,
     VkDeviceSize              pitchPerRow,
     VkDeviceSize              pitchPerLayer) {
+    ScopedCpuProfileZone();
     const DxvkFormatInfo* formatInfo = image->formatInfo();
 
     VkOffset3D imageOffset = { 0, 0, 0 };
@@ -2617,6 +2682,7 @@ namespace dxvk {
     uint32_t            viewportCount,
     const VkViewport* viewports,
     const VkRect2D* scissorRects) {
+    ScopedCpuProfileZone();
     if (m_state.gp.state.rs.viewportCount() != viewportCount) {
       m_state.gp.state.rs.setViewportCount(viewportCount);
       m_flags.set(DxvkContextFlag::GpDirtyPipelineState);
@@ -2644,6 +2710,7 @@ namespace dxvk {
 
   void DxvkContext::setBlendConstants(
     DxvkBlendConstants  blendConstants) {
+    ScopedCpuProfileZone();
     if (m_state.dyn.blendConstants != blendConstants) {
       m_state.dyn.blendConstants = blendConstants;
       m_flags.set(DxvkContextFlag::GpDirtyBlendConstants);
@@ -2653,6 +2720,7 @@ namespace dxvk {
 
   void DxvkContext::setDepthBias(
     DxvkDepthBias       depthBias) {
+    ScopedCpuProfileZone();
     if (m_state.dyn.depthBias != depthBias) {
       m_state.dyn.depthBias = depthBias;
       m_flags.set(DxvkContextFlag::GpDirtyDepthBias);
@@ -2662,6 +2730,7 @@ namespace dxvk {
 
   void DxvkContext::setDepthBounds(
     DxvkDepthBounds     depthBounds) {
+    ScopedCpuProfileZone();
     if (m_state.dyn.depthBounds != depthBounds) {
       m_state.dyn.depthBounds = depthBounds;
       m_flags.set(DxvkContextFlag::GpDirtyDepthBounds);
@@ -2676,6 +2745,7 @@ namespace dxvk {
 
   void DxvkContext::setStencilReference(
     uint32_t            reference) {
+    ScopedCpuProfileZone();
     if (m_state.dyn.stencilReference != reference) {
       m_state.dyn.stencilReference = reference;
       m_flags.set(DxvkContextFlag::GpDirtyStencilRef);
@@ -2684,6 +2754,7 @@ namespace dxvk {
 
 
   void DxvkContext::setInputAssemblyState(const DxvkInputAssemblyState& ia) {
+    ScopedCpuProfileZone();
     m_state.gp.state.ia = DxvkIaInfo(
       ia.primitiveTopology,
       ia.primitiveRestart,
@@ -2698,6 +2769,7 @@ namespace dxvk {
     const DxvkVertexAttribute* attributes,
     uint32_t             bindingCount,
     const DxvkVertexBinding* bindings) {
+    ScopedCpuProfileZone();
     m_flags.set(
       DxvkContextFlag::GpDirtyPipelineState,
       DxvkContextFlag::GpDirtyVertexBuffers);
@@ -2725,6 +2797,7 @@ namespace dxvk {
 
 
   void DxvkContext::setRasterizerState(const DxvkRasterizerState& rs) {
+    ScopedCpuProfileZone();
     m_state.gp.state.rs = DxvkRsInfo(
       rs.depthClipEnable,
       rs.depthBiasEnable,
@@ -2740,6 +2813,7 @@ namespace dxvk {
 
 
   void DxvkContext::setMultisampleState(const DxvkMultisampleState& ms) {
+    ScopedCpuProfileZone();
     m_state.gp.state.ms = DxvkMsInfo(
       m_state.gp.state.ms.sampleCount(),
       ms.sampleMask,
@@ -2750,6 +2824,7 @@ namespace dxvk {
 
 
   void DxvkContext::setDepthStencilState(const DxvkDepthStencilState& ds) {
+    ScopedCpuProfileZone();
     m_state.gp.state.ds = DxvkDsInfo(
       ds.enableDepthTest,
       ds.enableDepthWrite,
@@ -2765,6 +2840,7 @@ namespace dxvk {
 
 
   void DxvkContext::setLogicOpState(const DxvkLogicOpState& lo) {
+    ScopedCpuProfileZone();
     m_state.gp.state.om = DxvkOmInfo(
       lo.enableLogicOp,
       lo.logicOp);
@@ -2776,6 +2852,7 @@ namespace dxvk {
   void DxvkContext::setBlendMode(
     uint32_t            attachment,
     const DxvkBlendMode& blendMode) {
+    ScopedCpuProfileZone();
     m_state.gp.state.omBlend[attachment] = DxvkOmAttachmentBlend(
       blendMode.enableBlending,
       blendMode.colorSrcFactor,
@@ -2794,6 +2871,7 @@ namespace dxvk {
     VkPipelineBindPoint pipeline,
     uint32_t            index,
     uint32_t            value) {
+    ScopedCpuProfileZone();
     // NV-DXVK start: terrain baking
     static_assert(D3D9SpecConstantId::Count <= DxvkLimits::MaxNumSpecConstants);
     // NV-DXVK end
@@ -2823,6 +2901,7 @@ namespace dxvk {
 
 
   void DxvkContext::signalGpuEvent(const Rc<DxvkGpuEvent>& event) {
+    ScopedCpuProfileZone();
     this->spillRenderPass(true);
     
     DxvkGpuEventHandle handle = m_common->eventPool().allocEvent();
@@ -2839,6 +2918,7 @@ namespace dxvk {
     const VkCuLaunchInfoNVX& nvxLaunchInfo,
     const std::vector<std::pair<Rc<DxvkBuffer>, DxvkAccessFlags>>& buffers,
     const std::vector<std::pair<Rc<DxvkImage>,  DxvkAccessFlags>>& images) {
+    ScopedCpuProfileZone();
     // The resources in the std::vectors above are called-out
     // explicitly in the API for barrier and tracking purposes
     // since they're being used bindlessly.
@@ -2903,16 +2983,19 @@ namespace dxvk {
 
 
   void DxvkContext::writeTimestamp(const Rc<DxvkGpuQuery>& query) {
+    ScopedCpuProfileZone();
     m_queryManager.writeTimestamp(m_cmd, query);
   }
 
 
   void DxvkContext::signal(const Rc<sync::Signal>& signal, uint64_t value) {
+    ScopedCpuProfileZone();
     m_cmd->queueSignal(signal, value);
   }
 
 
   void DxvkContext::beginDebugLabel(VkDebugUtilsLabelEXT *label) {
+    ScopedCpuProfileZone();
     if (!m_device->instance()->extensions().extDebugUtils)
       return;
 
@@ -2921,12 +3004,14 @@ namespace dxvk {
 
   // NV-DXVK start: Integrate Aftermath
   void DxvkContext::deviceDiagnosticCheckpoint(const void* data) {
+    ScopedCpuProfileZone();
     if (m_device->extensions().nvDeviceDiagnosticCheckpoints)
       m_cmd->vkCmdSetCheckpointNV(data);
   }
   // NV-DXVK end
 
   void DxvkContext::endDebugLabel() {
+    ScopedCpuProfileZone();
     if (!m_device->instance()->extensions().extDebugUtils)
       return;
 
@@ -2934,6 +3019,7 @@ namespace dxvk {
   }
 
   void DxvkContext::insertDebugLabel(VkDebugUtilsLabelEXT *label) {
+    ScopedCpuProfileZone();
     if (!m_device->instance()->extensions().extDebugUtils)
       return;
 
@@ -2962,6 +3048,7 @@ namespace dxvk {
     const VkImageBlit& region,
     const VkComponentMapping& mapping,
     VkFilter              filter) {
+    ScopedCpuProfileZone();
     auto dstSubresourceRange = vk::makeSubresourceRange(region.dstSubresource);
     auto srcSubresourceRange = vk::makeSubresourceRange(region.srcSubresource);
 
@@ -3133,6 +3220,7 @@ namespace dxvk {
     const Rc<DxvkImage>& srcImage,
     const VkImageBlit& region,
     VkFilter              filter) {
+    ScopedCpuProfileZone();
     auto dstSubresourceRange = vk::makeSubresourceRange(region.dstSubresource);
     auto srcSubresourceRange = vk::makeSubresourceRange(region.srcSubresource);
 
@@ -3204,6 +3292,7 @@ namespace dxvk {
     const DxvkBufferSliceHandle& bufferSlice,
           VkDeviceSize          bufferRowAlignment,
           VkDeviceSize          bufferSliceAlignment) {
+    ScopedCpuProfileZone();
     auto formatInfo = image->formatInfo();
     auto layers = imageSubresource.layerCount;
 
@@ -3287,6 +3376,7 @@ namespace dxvk {
     const void*                 hostData,
           VkDeviceSize          rowPitch,
           VkDeviceSize          slicePitch) {
+    ScopedCpuProfileZone();
     auto formatInfo = image->formatInfo();
     auto srcData = reinterpret_cast<const char*>(hostData);
 
@@ -3335,6 +3425,7 @@ namespace dxvk {
     VkExtent3D            extent,
     VkImageAspectFlags    aspect,
     VkClearValue          value) {
+    ScopedCpuProfileZone();
     this->updateFramebuffer();
 
     // Find out if the render target view is currently bound,
@@ -3430,6 +3521,7 @@ namespace dxvk {
 
   void DxvkContext::clearAttachments(VkClearAttachment clearInfo, VkClearRect clearRect)
   {
+    ScopedCpuProfileZone();
     m_cmd->cmdClearAttachments(1, &clearInfo, 1, &clearRect);
   }
 
@@ -3438,6 +3530,7 @@ namespace dxvk {
           VkOffset3D            offset,
           VkExtent3D            extent,
           VkClearValue          value) {
+    ScopedCpuProfileZone();
     this->spillRenderPass(false);
     this->unbindComputePipeline();
 
@@ -3527,6 +3620,7 @@ namespace dxvk {
           VkImageSubresourceLayers srcSubresource,
           VkOffset3D            srcOffset,
           VkExtent3D            extent) {
+    ScopedCpuProfileZone();
     auto dstSubresourceRange = vk::makeSubresourceRange(dstSubresource);
     auto srcSubresourceRange = vk::makeSubresourceRange(srcSubresource);
 
@@ -3625,6 +3719,7 @@ namespace dxvk {
     VkImageSubresourceLayers srcSubresource,
     VkOffset3D            srcOffset,
     VkExtent3D            extent) {
+    ScopedCpuProfileZone();
     auto dstSubresourceRange = vk::makeSubresourceRange(dstSubresource);
     auto srcSubresourceRange = vk::makeSubresourceRange(srcSubresource);
 
@@ -3852,6 +3947,7 @@ namespace dxvk {
           VkExtent3D            dstExtent,
     const Rc<DxvkImage>&        srcImage,
           VkImageSubresourceLayers srcSubresource) {
+    ScopedCpuProfileZone();
     // If the source image has a pending deferred clear, we can
     // implement the copy by clearing the destination image to
     // the same clear value.
@@ -3985,6 +4081,7 @@ namespace dxvk {
     const VkImageResolve& region,
     VkResolveModeFlagBitsKHR  depthMode,
     VkResolveModeFlagBitsKHR  stencilMode) {
+    ScopedCpuProfileZone();
     auto dstSubresourceRange = vk::makeSubresourceRange(region.dstSubresource);
     auto srcSubresourceRange = vk::makeSubresourceRange(region.srcSubresource);
 
@@ -4048,6 +4145,7 @@ namespace dxvk {
     VkFormat                  format,
     VkResolveModeFlagBitsKHR  depthMode,
     VkResolveModeFlagBitsKHR  stencilMode) {
+    ScopedCpuProfileZone();
     auto dstSubresourceRange = vk::makeSubresourceRange(region.dstSubresource);
     auto srcSubresourceRange = vk::makeSubresourceRange(region.srcSubresource);
 
@@ -4195,6 +4293,7 @@ namespace dxvk {
 
 
   void DxvkContext::startRenderPass() {
+    ScopedCpuProfileZone();
     if (!m_flags.test(DxvkContextFlag::GpRenderPassBound)) {
       this->applyRenderTargetLoadLayouts();
       this->flushClears(true);
@@ -4227,6 +4326,7 @@ namespace dxvk {
   
   
   void DxvkContext::spillRenderPass(bool suspend) {
+    ScopedCpuProfileZone();
     if (m_flags.test(DxvkContextFlag::GpRenderPassBound)) {
       m_flags.clr(DxvkContextFlag::GpRenderPassBound);
 
@@ -4265,6 +4365,7 @@ namespace dxvk {
     const DxvkRenderPassOps&    ops,
           uint32_t              clearValueCount,
     const VkClearValue*         clearValues) {
+    ScopedCpuProfileZone();
     const DxvkFramebufferSize fbSize = framebufferInfo.size();
 
     Rc<DxvkFramebuffer> framebuffer = this->lookupFramebuffer(framebufferInfo);
@@ -4297,6 +4398,7 @@ namespace dxvk {
 
 
   void DxvkContext::renderPassUnbindFramebuffer() {
+    ScopedCpuProfileZone();
     m_cmd->cmdEndRenderPass();
   }
 
@@ -4304,6 +4406,7 @@ namespace dxvk {
   void DxvkContext::resetRenderPassOps(
     const DxvkRenderTargets&    renderTargets,
           DxvkRenderPassOps&    renderPassOps) {
+    ScopedCpuProfileZone();
     VkAccessFlags access = 0;
 
     if (renderTargets.depth.view != nullptr) {
@@ -4341,6 +4444,7 @@ namespace dxvk {
 
 
   void DxvkContext::startTransformFeedback() {
+    ScopedCpuProfileZone();
     if (!m_flags.test(DxvkContextFlag::GpXfbActive)) {
       m_flags.set(DxvkContextFlag::GpXfbActive);
 
@@ -4368,6 +4472,7 @@ namespace dxvk {
 
   void DxvkContext::pauseTransformFeedback() {
     if (m_flags.test(DxvkContextFlag::GpXfbActive)) {
+      ScopedCpuProfileZone();
       m_flags.clr(DxvkContextFlag::GpXfbActive);
 
       VkBuffer     ctrBuffers[MaxNumXfbBuffers];
@@ -4393,6 +4498,7 @@ namespace dxvk {
 
 
   void DxvkContext::unbindComputePipeline() {
+    ScopedCpuProfileZone();
     m_flags.set(
       DxvkContextFlag::CpDirtyPipeline,
       DxvkContextFlag::CpDirtyPipelineState,
@@ -4403,6 +4509,7 @@ namespace dxvk {
 
 
   bool DxvkContext::updateComputePipeline() {
+    ScopedCpuProfileZone();
     m_state.cp.pipeline = lookupComputePipeline(m_state.cp.shaders);
 
     if (unlikely(m_state.cp.pipeline == nullptr))
@@ -4417,7 +4524,8 @@ namespace dxvk {
 
 
   bool DxvkContext::updateComputePipelineState() {
-      m_cpActivePipeline = m_state.cp.pipeline->getPipelineHandle(m_state.cp.state);
+    ScopedCpuProfileZone();
+    m_cpActivePipeline = m_state.cp.pipeline->getPipelineHandle(m_state.cp.state);
 
       if (unlikely(!m_cpActivePipeline))
           return false;
@@ -4442,6 +4550,7 @@ namespace dxvk {
 
 
   bool DxvkContext::updateRaytracingPipeline() {
+    ScopedCpuProfileZone();
     m_state.rp.pipeline = lookupRaytracingPipeline(m_state.rp.shaders);
 
     if (unlikely(m_state.rp.pipeline == nullptr))
@@ -4456,6 +4565,7 @@ namespace dxvk {
 
 
   bool DxvkContext::updateRaytracingPipelineState() {
+    ScopedCpuProfileZone();
 
     m_rpActivePipeline = m_state.rp.pipeline->getPipelineHandle();
 
@@ -4473,6 +4583,7 @@ namespace dxvk {
 
 
   void DxvkContext::unbindGraphicsPipeline() {
+    ScopedCpuProfileZone();
     m_flags.set(
       DxvkContextFlag::GpDirtyPipeline,
       DxvkContextFlag::GpDirtyPipelineState,
@@ -4491,6 +4602,7 @@ namespace dxvk {
 
 
   bool DxvkContext::updateGraphicsPipeline() {
+    ScopedCpuProfileZone();
     m_state.gp.pipeline = lookupGraphicsPipeline(m_state.gp.shaders);
 
     if (unlikely(m_state.gp.pipeline == nullptr)) {
@@ -4522,6 +4634,7 @@ namespace dxvk {
 
 
   bool DxvkContext::updateGraphicsPipelineState() {
+    ScopedCpuProfileZone();
     // Set up vertex buffer strides for active bindings
     for (uint32_t i = 0; i < m_state.gp.state.il.bindingCount(); i++) {
       const uint32_t binding = m_state.gp.state.ilBindings[i].binding();
@@ -4568,6 +4681,7 @@ namespace dxvk {
 
 
   void DxvkContext::updateComputeShaderResources() {
+    ScopedCpuProfileZone();
     if ((m_flags.test(DxvkContextFlag::CpDirtyResources))
       || (m_state.cp.pipeline->layout()->hasStaticBufferBindings()))
       this->updateShaderResources<VK_PIPELINE_BIND_POINT_COMPUTE>(m_state.cp.pipeline->layout());
@@ -4581,6 +4695,7 @@ namespace dxvk {
 
 
   void DxvkContext::updateRaytracingShaderResources() {
+    ScopedCpuProfileZone();
     if ((m_flags.test(DxvkContextFlag::RpDirtyResources))
       || (m_state.rp.pipeline->layout()->hasStaticBufferBindings()))
       this->updateShaderResources<VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR>(m_state.rp.pipeline->layout());
@@ -4594,6 +4709,7 @@ namespace dxvk {
 
 
   void DxvkContext::updateGraphicsShaderResources() {
+    ScopedCpuProfileZone();
     if ((m_flags.test(DxvkContextFlag::GpDirtyResources))
       || (m_state.gp.pipeline->layout()->hasStaticBufferBindings()))
       this->updateShaderResources<VK_PIPELINE_BIND_POINT_GRAPHICS>(m_state.gp.pipeline->layout());
@@ -4608,6 +4724,7 @@ namespace dxvk {
 
   template<VkPipelineBindPoint BindPoint>
   void DxvkContext::updateShaderResources(const DxvkPipelineLayout* layout) {
+    ScopedCpuProfileZone();
     std::array<DxvkDescriptorInfo, MaxNumActiveBindings> descriptors;
 
     // Assume that all bindings are active as a fast path
@@ -4827,6 +4944,7 @@ namespace dxvk {
   void DxvkContext::updateShaderDescriptorSetBinding(
     VkDescriptorSet         set,
     const DxvkPipelineLayout* layout) {
+    ScopedCpuProfileZone();
     if (set) {
       std::array<uint32_t, MaxNumActiveBindings> offsets;
 
@@ -4849,6 +4967,7 @@ namespace dxvk {
 
   DxvkFramebufferInfo DxvkContext::makeFramebufferInfo(
     const DxvkRenderTargets&      renderTargets) {
+    ScopedCpuProfileZone();
     auto renderPassFormat = DxvkFramebufferInfo::getRenderPassFormat(renderTargets);
     auto renderPassObject = m_common->renderPassPool().getRenderPass(renderPassFormat);
 
@@ -4857,6 +4976,7 @@ namespace dxvk {
 
 
   void DxvkContext::updateFramebuffer() {
+    ScopedCpuProfileZone();
     if (m_flags.test(DxvkContextFlag::GpDirtyFramebuffer)) {
       m_flags.clr(DxvkContextFlag::GpDirtyFramebuffer);
 
@@ -4884,6 +5004,7 @@ namespace dxvk {
 
 
   void DxvkContext::applyRenderTargetLoadLayouts() {
+    ScopedCpuProfileZone();
     for (uint32_t i = 0; i < MaxNumRenderTargets; i++)
       m_state.om.renderPassOps.colorOps[i].loadLayout = m_rtLayouts.color[i];
 
@@ -4892,6 +5013,7 @@ namespace dxvk {
 
 
   void DxvkContext::applyRenderTargetStoreLayouts() {
+    ScopedCpuProfileZone();
     for (uint32_t i = 0; i < MaxNumRenderTargets; i++)
       m_rtLayouts.color[i] = m_state.om.renderPassOps.colorOps[i].storeLayout;
 
@@ -4902,6 +5024,7 @@ namespace dxvk {
   void DxvkContext::transitionRenderTargetLayouts(
           DxvkBarrierSet&         barriers,
           bool                    sharedOnly) {
+    ScopedCpuProfileZone();
     for (uint32_t i = 0; i < MaxNumRenderTargets; i++) {
       const DxvkAttachment& color = m_state.om.framebufferInfo.getColorTarget(i);
 
@@ -4924,6 +5047,7 @@ namespace dxvk {
           DxvkBarrierSet&         barriers,
     const DxvkAttachment&         attachment,
           VkImageLayout           oldLayout) {
+    ScopedCpuProfileZone();
     if (oldLayout != attachment.view->imageInfo().layout) {
       barriers.accessImage(
         attachment.view->image(),
@@ -4943,6 +5067,7 @@ namespace dxvk {
           DxvkBarrierSet&         barriers,
     const DxvkAttachment&         attachment,
           VkImageLayout           oldLayout) {
+    ScopedCpuProfileZone();
     if (oldLayout != attachment.view->imageInfo().layout) {
       barriers.accessImage(
         attachment.view->image(),
@@ -4963,6 +5088,7 @@ namespace dxvk {
   void DxvkContext::updateRenderTargetLayouts(
     const DxvkFramebufferInfo&    newFb,
     const DxvkFramebufferInfo&    oldFb) {
+    ScopedCpuProfileZone();
     DxvkRenderTargetLayouts layouts = { };
 
     for (uint32_t i = 0; i < MaxNumRenderTargets; i++) {
@@ -5022,6 +5148,7 @@ namespace dxvk {
     const Rc<DxvkImage>&          image,
     const VkImageSubresourceRange& subresources,
           bool                    flushClears) {
+    ScopedCpuProfileZone();
     // Images that can't be used as attachments are always in their
     // default layout, so we don't have to do anything in this case
     if (!(image->info().usage & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)))
@@ -5062,6 +5189,7 @@ namespace dxvk {
   }
 
   bool DxvkContext::updateIndexBufferBinding() {
+    ScopedCpuProfileZone();
     if (unlikely(!m_state.vi.indexBuffer.defined()))
       return false;
 
@@ -5081,6 +5209,7 @@ namespace dxvk {
 
 
   void DxvkContext::updateVertexBufferBindings() {
+    ScopedCpuProfileZone();
     m_flags.clr(DxvkContextFlag::GpDirtyVertexBuffers);
 
     if (unlikely(!m_state.gp.state.il.bindingCount()))
@@ -5130,6 +5259,7 @@ namespace dxvk {
 
 
   void DxvkContext::updateTransformFeedbackBuffers() {
+    ScopedCpuProfileZone();
     auto gsOptions = m_state.gp.shaders.gs->shaderOptions();
 
     VkBuffer     xfbBuffers[MaxNumXfbBuffers];
@@ -5161,6 +5291,7 @@ namespace dxvk {
 
 
   void DxvkContext::updateTransformFeedbackState() {
+    ScopedCpuProfileZone();
     if (m_flags.test(DxvkContextFlag::GpDirtyXfbBuffers)) {
       m_flags.clr(DxvkContextFlag::GpDirtyXfbBuffers);
 
@@ -5173,6 +5304,7 @@ namespace dxvk {
 
 
   void DxvkContext::updateDynamicState() {
+    ScopedCpuProfileZone();
     if (!m_gpActivePipeline)
       return;
 
@@ -5222,6 +5354,7 @@ namespace dxvk {
 
   template<VkPipelineBindPoint BindPoint>
   void DxvkContext::updatePushConstants() {
+    ScopedCpuProfileZone();
     m_flags.clr(DxvkContextFlag::DirtyPushConstants);
 
     auto layout = 
@@ -5250,6 +5383,7 @@ namespace dxvk {
 
 
   bool DxvkContext::commitComputeState() {
+    ScopedCpuProfileZone();
     this->spillRenderPass(false);
 
     if (m_flags.test(DxvkContextFlag::CpDirtyPipeline)) {
@@ -5275,6 +5409,7 @@ namespace dxvk {
 
 
   bool DxvkContext::commitRaytracingState() {
+    ScopedCpuProfileZone();
     this->spillRenderPass(false);
 
     if (m_flags.test(DxvkContextFlag::RpDirtyPipeline)) {
@@ -5301,6 +5436,7 @@ namespace dxvk {
 
   template<bool Indexed, bool Indirect>
   bool DxvkContext::commitGraphicsState() {
+    ScopedCpuProfileZone();
     if (m_flags.test(DxvkContextFlag::GpDirtyPipeline)) {
       if (unlikely(!this->updateGraphicsPipeline()))
         return false;
@@ -5358,6 +5494,7 @@ namespace dxvk {
 
   // NV-DXVK start: Split out common post barriers logic
   void DxvkContext::commitPostBarriers(const DxvkDescriptorSlot binding, VkPipelineStageFlags stages) {
+    ScopedCpuProfileZone();
     const DxvkShaderResourceSlot& slot = m_rc[binding.slot];
 
     VkAccessFlags        access = binding.access;
@@ -5404,6 +5541,7 @@ namespace dxvk {
 
   // NV-DXVK start: Split out common init barriers logic
   bool DxvkContext::commitInitBarriers(const DxvkDescriptorSlot binding, VkPipelineStageFlags stages) {
+    ScopedCpuProfileZone();
     const DxvkShaderResourceSlot& slot = m_rc[binding.slot];
 
     DxvkAccessFlags dstAccess = DxvkBarrierSet::getAccessTypes(binding.access);
@@ -5450,6 +5588,7 @@ namespace dxvk {
 
 
   void DxvkContext::commitComputeInitBarriers() {
+    ScopedCpuProfileZone();
     auto layout = m_state.cp.pipeline->layout();
 
     bool requiresBarrier = false;
@@ -5469,6 +5608,7 @@ namespace dxvk {
 
 
   void DxvkContext::commitComputePostBarriers() {
+    ScopedCpuProfileZone();
     auto layout = m_state.cp.pipeline->layout();
 
     for (uint32_t i = 0; i < layout->bindingCount(); i++) {
@@ -5484,6 +5624,7 @@ namespace dxvk {
 
   // NV-DXVK start: Ray tracing init/post barriers
   void DxvkContext::commitRaytracingInitBarriers() {
+    ScopedCpuProfileZone();
     auto layout = m_state.rp.pipeline->layout();
 
     bool requiresBarrier = false;
@@ -5501,6 +5642,7 @@ namespace dxvk {
 
 
   void DxvkContext::commitRaytracingPostBarriers() {
+    ScopedCpuProfileZone();
     auto layout = m_state.rp.pipeline->layout();
 
     for (uint32_t i = 0; i < layout->bindingCount(); i++) {
@@ -5515,6 +5657,7 @@ namespace dxvk {
 
   template<bool Indexed, bool Indirect, bool DoEmit>
   void DxvkContext::commitGraphicsBarriers() {
+    ScopedCpuProfileZone();
     if (m_barrierControl.test(DxvkBarrierControl::IgnoreGraphicsBarriers))
       return;
 
@@ -5725,6 +5868,7 @@ namespace dxvk {
     VkImageLayout             dstLayout,
     VkPipelineStageFlags      dstStages,
     VkAccessFlags             dstAccess) {
+    ScopedCpuProfileZone();
     if (m_execBarriers.isImageDirty(image, subresources, DxvkAccess::Write))
       m_execBarriers.recordCommands(m_cmd);
 
@@ -5742,6 +5886,7 @@ namespace dxvk {
   VkDescriptorSet DxvkContext::allocateDescriptorSet(
           VkDescriptorSetLayout     layout,
           const char                *name) {
+    ScopedCpuProfileZone();
     if (m_descPool == nullptr)
       m_descPool = m_device->createDescriptorPool();
 
@@ -5759,6 +5904,7 @@ namespace dxvk {
   // NV-DXVK end
 
   void DxvkContext::traceRays(uint32_t width, uint32_t height, uint32_t depth) {
+    ScopedCpuProfileZone();
     if (this->commitRaytracingState()) {
       this->commitRaytracingInitBarriers();
 
@@ -5783,6 +5929,7 @@ namespace dxvk {
 
 
   void DxvkContext::trackDrawBuffer() {
+    ScopedCpuProfileZone();
     if (m_flags.test(DxvkContextFlag::DirtyDrawBuffer)) {
       m_flags.clr(DxvkContextFlag::DirtyDrawBuffer);
 
@@ -5798,6 +5945,7 @@ namespace dxvk {
   bool DxvkContext::tryInvalidateDeviceLocalBuffer(
       const Rc<DxvkBuffer>&           buffer,
             VkDeviceSize              copySize) {
+    ScopedCpuProfileZone();
     // We can only discard if the full buffer gets written, and we will only discard
     // small buffers in order to not waste significant amounts of memory.
     if (copySize != buffer->info().size || copySize > 0x40000)
@@ -5826,6 +5974,7 @@ namespace dxvk {
 
   DxvkGraphicsPipeline* DxvkContext::lookupGraphicsPipeline(
     const DxvkGraphicsPipelineShaders& shaders) {
+    ScopedCpuProfileZone();
     auto idx = shaders.hash() % m_gpLookupCache.size();
 
     if (unlikely(!m_gpLookupCache[idx] || !shaders.eq(m_gpLookupCache[idx]->shaders())))
@@ -5837,6 +5986,7 @@ namespace dxvk {
 
   DxvkComputePipeline* DxvkContext::lookupComputePipeline(
     const DxvkComputePipelineShaders& shaders) {
+    ScopedCpuProfileZone();
     auto idx = shaders.hash() % m_cpLookupCache.size();
 
     if (unlikely(!m_cpLookupCache[idx] || !shaders.eq(m_cpLookupCache[idx]->shaders())))
@@ -5848,6 +5998,7 @@ namespace dxvk {
 
   DxvkRaytracingPipeline* DxvkContext::lookupRaytracingPipeline(
     const DxvkRaytracingPipelineShaders& shaders) {
+    ScopedCpuProfileZone();
 
     auto foundPipeline = m_rpLookupCache.find(shaders.hash());
     if (unlikely(foundPipeline == m_rpLookupCache.end() || !shaders.eq(foundPipeline->second->shaders()))) {
@@ -5862,6 +6013,7 @@ namespace dxvk {
 
   Rc<DxvkFramebuffer> DxvkContext::lookupFramebuffer(
     const DxvkFramebufferInfo&      framebufferInfo) {
+    ScopedCpuProfileZone();
     DxvkFramebufferKey key = framebufferInfo.key();
     size_t idx = key.hash() % m_framebufferCache.size();
 
@@ -5874,6 +6026,7 @@ namespace dxvk {
 
   Rc<DxvkBuffer> DxvkContext::createZeroBuffer(
     VkDeviceSize              size) {
+    ScopedCpuProfileZone();
     if (m_zeroBuffer != nullptr && m_zeroBuffer->info().size >= size)
       return m_zeroBuffer;
 

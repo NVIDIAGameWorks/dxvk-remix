@@ -174,6 +174,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::QueryInterface(REFIID riid, void** ppvObject) {
+    ScopedCpuProfileZone();
     if (ppvObject == nullptr)
       return E_POINTER;
 
@@ -212,6 +213,7 @@ namespace dxvk {
 
 
   UINT    STDMETHODCALLTYPE D3D9DeviceEx::GetAvailableTextureMem() {
+    ScopedCpuProfileZone();
     // This is not meant to be accurate.
     // The values are also wildly incorrect in d3d9... But some games rely
     // on this inaccurate value...
@@ -232,6 +234,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::GetDirect3D(IDirect3D9** ppD3D9) {
+    ScopedCpuProfileZone();
     if (ppD3D9 == nullptr)
       return D3DERR_INVALIDCALL;
 
@@ -241,11 +244,13 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::GetDeviceCaps(D3DCAPS9* pCaps) {
+    ScopedCpuProfileZone();
     return m_adapter->GetDeviceCaps(m_deviceType, pCaps);
   }
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::GetDisplayMode(UINT iSwapChain, D3DDISPLAYMODE* pMode) {
+    ScopedCpuProfileZone();
     if (unlikely(iSwapChain != 0))
       return D3DERR_INVALIDCALL;
 
@@ -254,6 +259,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::GetCreationParameters(D3DDEVICE_CREATION_PARAMETERS *pParameters) {
+    ScopedCpuProfileZone();
     if (pParameters == nullptr)
       return D3DERR_INVALIDCALL;
 
@@ -270,6 +276,7 @@ namespace dxvk {
           UINT               XHotSpot,
           UINT               YHotSpot,
           IDirect3DSurface9* pCursorBitmap) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (unlikely(pCursorBitmap == nullptr))
@@ -320,6 +327,7 @@ namespace dxvk {
 
 
   void    STDMETHODCALLTYPE D3D9DeviceEx::SetCursorPosition(int X, int Y, DWORD Flags) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     // I was not able to find an instance
@@ -335,6 +343,7 @@ namespace dxvk {
 
 
   BOOL    STDMETHODCALLTYPE D3D9DeviceEx::ShowCursor(BOOL bShow) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     return m_cursor.ShowCursor(bShow);
@@ -344,11 +353,13 @@ namespace dxvk {
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::CreateAdditionalSwapChain(
           D3DPRESENT_PARAMETERS* pPresentationParameters,
           IDirect3DSwapChain9**  ppSwapChain) {
+    ScopedCpuProfileZone();
     return CreateAdditionalSwapChainEx(pPresentationParameters, nullptr, ppSwapChain);
   }
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::GetSwapChain(UINT iSwapChain, IDirect3DSwapChain9** pSwapChain) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     InitReturnPtr(pSwapChain);
@@ -375,6 +386,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::Reset(D3DPRESENT_PARAMETERS* pPresentationParameters) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     HRESULT hr = ResetSwapChain(pPresentationParameters, nullptr);
@@ -397,6 +409,7 @@ namespace dxvk {
     const RECT*    pDestRect,
           HWND     hDestWindowOverride,
     const RGNDATA* pDirtyRegion) {
+    ScopedCpuProfileZone();
     return PresentEx(
       pSourceRect,
       pDestRect,
@@ -411,6 +424,7 @@ namespace dxvk {
           UINT                iBackBuffer,
           D3DBACKBUFFER_TYPE  Type,
           IDirect3DSurface9** ppBackBuffer) {
+    ScopedCpuProfileZone();
     InitReturnPtr(ppBackBuffer);
 
     if (unlikely(iSwapChain != 0))
@@ -421,6 +435,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::GetRasterStatus(UINT iSwapChain, D3DRASTER_STATUS* pRasterStatus) {
+    ScopedCpuProfileZone();
     if (unlikely(iSwapChain != 0))
       return D3DERR_INVALIDCALL;
 
@@ -429,6 +444,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::SetDialogBoxMode(BOOL bEnableDialogs) {
+    ScopedCpuProfileZone();
     return m_implicitSwapchain->SetDialogBoxMode(bEnableDialogs);
   }
 
@@ -437,6 +453,7 @@ namespace dxvk {
           UINT          iSwapChain,
           DWORD         Flags,
     const D3DGAMMARAMP* pRamp) {
+    ScopedCpuProfileZone();
     if (unlikely(iSwapChain != 0))
       return;
 
@@ -445,6 +462,7 @@ namespace dxvk {
 
 
   void    STDMETHODCALLTYPE D3D9DeviceEx::GetGammaRamp(UINT iSwapChain, D3DGAMMARAMP* pRamp) {
+    ScopedCpuProfileZone();
     if (unlikely(iSwapChain != 0))
       return;
 
@@ -461,6 +479,7 @@ namespace dxvk {
           D3DPOOL             Pool,
           IDirect3DTexture9** ppTexture,
           HANDLE*             pSharedHandle) {
+    ScopedCpuProfileZone();
     InitReturnPtr(ppTexture);
 
     if (unlikely(ppTexture == nullptr))
@@ -519,6 +538,7 @@ namespace dxvk {
           D3DPOOL                   Pool,
           IDirect3DVolumeTexture9** ppVolumeTexture,
           HANDLE*                   pSharedHandle) {
+    ScopedCpuProfileZone();
     InitReturnPtr(ppVolumeTexture);
 
     if (unlikely(ppVolumeTexture == nullptr))
@@ -567,6 +587,7 @@ namespace dxvk {
           D3DPOOL                 Pool,
           IDirect3DCubeTexture9** ppCubeTexture,
           HANDLE*                 pSharedHandle) {
+    ScopedCpuProfileZone();
     InitReturnPtr(ppCubeTexture);
 
     if (unlikely(ppCubeTexture == nullptr))
@@ -614,6 +635,7 @@ namespace dxvk {
           D3DPOOL                  Pool,
           IDirect3DVertexBuffer9** ppVertexBuffer,
           HANDLE*                  pSharedHandle) {
+    ScopedCpuProfileZone();
     InitReturnPtr(ppVertexBuffer);
 
     if (unlikely(ppVertexBuffer == nullptr))
@@ -653,6 +675,7 @@ namespace dxvk {
           D3DPOOL                 Pool,
           IDirect3DIndexBuffer9** ppIndexBuffer,
           HANDLE*                 pSharedHandle) {
+    ScopedCpuProfileZone();
     InitReturnPtr(ppIndexBuffer);
 
     if (unlikely(ppIndexBuffer == nullptr))
@@ -693,6 +716,7 @@ namespace dxvk {
           BOOL                Lockable,
           IDirect3DSurface9** ppSurface,
           HANDLE*             pSharedHandle) {
+    ScopedCpuProfileZone();
     return CreateRenderTargetEx(
       Width,
       Height,
@@ -715,6 +739,7 @@ namespace dxvk {
           BOOL                Discard,
           IDirect3DSurface9** ppSurface,
           HANDLE*             pSharedHandle) {
+    ScopedCpuProfileZone();
     return CreateDepthStencilSurfaceEx(
       Width,
       Height,
@@ -733,6 +758,7 @@ namespace dxvk {
     const RECT*              pSourceRect,
           IDirect3DSurface9* pDestinationSurface,
     const POINT*             pDestPoint) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     D3D9Surface* src = static_cast<D3D9Surface*>(pSourceSurface);
@@ -845,6 +871,7 @@ namespace dxvk {
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::UpdateTexture(
           IDirect3DBaseTexture9* pSourceTexture,
           IDirect3DBaseTexture9* pDestinationTexture) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (!pDestinationTexture || !pSourceTexture)
@@ -945,6 +972,7 @@ namespace dxvk {
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::GetRenderTargetData(
           IDirect3DSurface9* pRenderTarget,
           IDirect3DSurface9* pDestSurface) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     D3D9Surface* src = static_cast<D3D9Surface*>(pRenderTarget);
@@ -1004,6 +1032,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::GetFrontBufferData(UINT iSwapChain, IDirect3DSurface9* pDestSurface) {
+    ScopedCpuProfileZone();
     if (unlikely(iSwapChain != 0))
       return D3DERR_INVALIDCALL;
 
@@ -1017,6 +1046,7 @@ namespace dxvk {
           IDirect3DSurface9*   pDestSurface,
     const RECT*                pDestRect,
           D3DTEXTUREFILTERTYPE Filter) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     D3D9Surface* dst = static_cast<D3D9Surface*>(pDestSurface);
@@ -1223,6 +1253,7 @@ namespace dxvk {
           IDirect3DSurface9* pSurface,
     const RECT*              pRect,
           D3DCOLOR           Color) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     D3D9Surface* dst = static_cast<D3D9Surface*>(pSurface);
@@ -1304,6 +1335,7 @@ namespace dxvk {
     D3DPOOL Pool,
     IDirect3DSurface9** ppSurface,
     HANDLE* pSharedHandle) {
+    ScopedCpuProfileZone();
     return CreateOffscreenPlainSurfaceEx(
       Width,     Height,
       Format,    Pool,
@@ -1315,6 +1347,7 @@ namespace dxvk {
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::SetRenderTarget(
           DWORD              RenderTargetIndex,
           IDirect3DSurface9* pRenderTarget) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (unlikely(RenderTargetIndex >= caps::MaxSimultaneousRenderTargets
@@ -1433,6 +1466,7 @@ namespace dxvk {
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::GetRenderTarget(
           DWORD               RenderTargetIndex,
           IDirect3DSurface9** ppRenderTarget) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     InitReturnPtr(ppRenderTarget);
@@ -1450,6 +1484,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::SetDepthStencilSurface(IDirect3DSurface9* pNewZStencil) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     D3D9Surface* ds = static_cast<D3D9Surface*>(pNewZStencil);
@@ -1480,6 +1515,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::GetDepthStencilSurface(IDirect3DSurface9** ppZStencilSurface) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     InitReturnPtr(ppZStencilSurface);
@@ -1499,6 +1535,7 @@ namespace dxvk {
   // Some games don't even call them.
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::BeginScene() {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (unlikely(m_flags.test(D3D9DeviceFlag::InScene)))
@@ -1511,6 +1548,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::EndScene() {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (unlikely(!m_flags.test(D3D9DeviceFlag::InScene)))
@@ -1531,6 +1569,7 @@ namespace dxvk {
           D3DCOLOR Color,
           float    Z,
           DWORD    Stencil) {
+    ScopedCpuProfileZone();
     if (unlikely(!Count && pRects))
       return D3D_OK;
 
@@ -1690,6 +1729,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::SetTransform(D3DTRANSFORMSTATETYPE State, const D3DMATRIX* pMatrix) {
+    ScopedCpuProfileZone();
     bool validState = (State >= D3DTS_VIEW && State <= D3DTS_PROJECTION) || (State >= D3DTS_TEXTURE0 && State <= D3DTS_TEXTURE7) || (State >= D3DTS_WORLDMATRIX(0) && State <= D3DTS_WORLDMATRIX(255));
     if (!validState)
       return D3DERR_INVALIDCALL;
@@ -1699,6 +1739,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::GetTransform(D3DTRANSFORMSTATETYPE State, D3DMATRIX* pMatrix) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (unlikely(pMatrix == nullptr))
@@ -1711,6 +1752,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::MultiplyTransform(D3DTRANSFORMSTATETYPE TransformState, const D3DMATRIX* pMatrix) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (unlikely(ShouldRecord()))
@@ -1730,6 +1772,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::SetViewport(const D3DVIEWPORT9* pViewport) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (unlikely(ShouldRecord()))
@@ -1754,6 +1797,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::GetViewport(D3DVIEWPORT9* pViewport) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (pViewport == nullptr)
@@ -1766,6 +1810,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::SetMaterial(const D3DMATERIAL9* pMaterial) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (unlikely(pMaterial == nullptr))
@@ -1782,6 +1827,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::GetMaterial(D3DMATERIAL9* pMaterial) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (unlikely(pMaterial == nullptr))
@@ -1794,6 +1840,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::SetLight(DWORD Index, const D3DLIGHT9* pLight) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (unlikely(pLight == nullptr))
@@ -1822,6 +1869,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::GetLight(DWORD Index, D3DLIGHT9* pLight) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (unlikely(pLight == nullptr))
@@ -1837,6 +1885,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::LightEnable(DWORD Index, BOOL Enable) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (unlikely(Index >= m_state.lights.size()))
@@ -1872,6 +1921,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::GetLightEnable(DWORD Index, BOOL* pEnable) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (unlikely(pEnable == nullptr))
@@ -1887,6 +1937,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::SetClipPlane(DWORD Index, const float* pPlane) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (unlikely(Index >= caps::MaxClipPlanes || !pPlane))
@@ -1930,6 +1981,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::SetRenderState(D3DRENDERSTATETYPE State, DWORD Value) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     // D3D9 only allows reading for values 0 and 7-255 so we don't need to do anything but return OK
@@ -2258,6 +2310,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::GetRenderState(D3DRENDERSTATETYPE State, DWORD* pValue) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (unlikely(pValue == nullptr))
@@ -2279,6 +2332,7 @@ namespace dxvk {
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::CreateStateBlock(
           D3DSTATEBLOCKTYPE      Type,
           IDirect3DStateBlock9** ppSB) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     InitReturnPtr(ppSB);
@@ -2299,6 +2353,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::BeginStateBlock() {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (unlikely(m_recorder != nullptr))
@@ -2311,6 +2366,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::EndStateBlock(IDirect3DStateBlock9** ppSB) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     InitReturnPtr(ppSB);
@@ -2338,6 +2394,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::GetTexture(DWORD Stage, IDirect3DBaseTexture9** ppTexture) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (ppTexture == nullptr)
@@ -2357,6 +2414,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::SetTexture(DWORD Stage, IDirect3DBaseTexture9* pTexture) {
+    ScopedCpuProfileZone();
     if (unlikely(InvalidSampler(Stage)))
       return D3D_OK;
 
@@ -2370,6 +2428,7 @@ namespace dxvk {
           DWORD                    Stage,
           D3DTEXTURESTAGESTATETYPE Type,
           DWORD*                   pValue) {
+    ScopedCpuProfileZone();
     auto dxvkType = RemapTextureStageStateType(Type);
 
     if (unlikely(pValue == nullptr))
@@ -2392,6 +2451,7 @@ namespace dxvk {
           DWORD                    Stage,
           D3DTEXTURESTAGESTATETYPE Type,
           DWORD                    Value) {
+    ScopedCpuProfileZone();
     return SetStateTextureStageState(Stage, RemapTextureStageStateType(Type), Value);
   }
 
@@ -2400,6 +2460,7 @@ namespace dxvk {
           DWORD               Sampler,
           D3DSAMPLERSTATETYPE Type,
           DWORD*              pValue) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (unlikely(pValue == nullptr))
@@ -2422,6 +2483,7 @@ namespace dxvk {
           DWORD               Sampler,
           D3DSAMPLERSTATETYPE Type,
           DWORD               Value) {
+    ScopedCpuProfileZone();
     if (unlikely(InvalidSampler(Sampler)))
       return D3D_OK;
 
@@ -2464,6 +2526,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::SetScissorRect(const RECT* pRect) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (unlikely(pRect == nullptr))
@@ -2484,6 +2547,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::GetScissorRect(RECT* pRect) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (unlikely(pRect == nullptr))
@@ -2784,6 +2848,7 @@ namespace dxvk {
           IDirect3DVertexBuffer9*      pDestBuffer,
           IDirect3DVertexDeclaration9* pVertexDecl,
           DWORD                        Flags) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (unlikely(pDestBuffer == nullptr || pVertexDecl == nullptr))
@@ -2891,6 +2956,7 @@ namespace dxvk {
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::CreateVertexDeclaration(
     const D3DVERTEXELEMENT9*            pVertexElements,
           IDirect3DVertexDeclaration9** ppDecl) {
+    ScopedCpuProfileZone();
     InitReturnPtr(ppDecl);
 
     if (unlikely(ppDecl == nullptr || pVertexElements == nullptr))
@@ -2915,6 +2981,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::SetVertexDeclaration(IDirect3DVertexDeclaration9* pDecl) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     D3D9VertexDecl* decl = static_cast<D3D9VertexDecl*>(pDecl);
@@ -2942,6 +3009,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::GetVertexDeclaration(IDirect3DVertexDeclaration9** ppDecl) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     InitReturnPtr(ppDecl);
@@ -2959,6 +3027,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::SetFVF(DWORD FVF) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (FVF == 0)
@@ -2980,6 +3049,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::GetFVF(DWORD* pFVF) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (pFVF == nullptr)
@@ -2996,6 +3066,7 @@ namespace dxvk {
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::CreateVertexShader(
     const DWORD*                   pFunction,
           IDirect3DVertexShader9** ppShader) {
+    ScopedCpuProfileZone();
     // CreateVertexShader does not init the
     // return ptr unlike CreatePixelShader
 
@@ -3020,6 +3091,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::SetVertexShader(IDirect3DVertexShader9* pShader) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     D3D9VertexShader* shader = static_cast<D3D9VertexShader*>(pShader);
@@ -3065,6 +3137,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::GetVertexShader(IDirect3DVertexShader9** ppShader) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     InitReturnPtr(ppShader);
@@ -3082,6 +3155,7 @@ namespace dxvk {
           UINT   StartRegister,
     const float* pConstantData,
           UINT   Vector4fCount) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     return SetShaderConstants<
@@ -3097,6 +3171,7 @@ namespace dxvk {
           UINT   StartRegister,
           float* pConstantData,
           UINT   Vector4fCount) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     return GetShaderConstants<
@@ -3112,6 +3187,7 @@ namespace dxvk {
           UINT StartRegister,
     const int* pConstantData,
           UINT Vector4iCount) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     return SetShaderConstants<
@@ -3127,6 +3203,7 @@ namespace dxvk {
           UINT StartRegister,
           int* pConstantData,
           UINT Vector4iCount) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     return GetShaderConstants<
@@ -3142,6 +3219,7 @@ namespace dxvk {
           UINT  StartRegister,
     const BOOL* pConstantData,
           UINT  BoolCount) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     return SetShaderConstants<
@@ -3157,6 +3235,7 @@ namespace dxvk {
           UINT  StartRegister,
           BOOL* pConstantData,
           UINT  BoolCount) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     return GetShaderConstants<
@@ -3173,6 +3252,7 @@ namespace dxvk {
           IDirect3DVertexBuffer9* pStreamData,
           UINT                    OffsetInBytes,
           UINT                    Stride) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (unlikely(StreamNumber >= caps::MaxStreams))
@@ -3213,6 +3293,7 @@ namespace dxvk {
           IDirect3DVertexBuffer9** ppStreamData,
           UINT*                    pOffsetInBytes,
           UINT*                    pStride) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     InitReturnPtr(ppStreamData);
@@ -3240,6 +3321,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::SetStreamSourceFreq(UINT StreamNumber, UINT Setting) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (unlikely(StreamNumber >= caps::MaxStreams))
@@ -3277,6 +3359,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::GetStreamSourceFreq(UINT StreamNumber, UINT* pSetting) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (unlikely(StreamNumber >= caps::MaxStreams))
@@ -3292,6 +3375,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::SetIndices(IDirect3DIndexBuffer9* pIndexData) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     D3D9IndexBuffer* buffer = static_cast<D3D9IndexBuffer*>(pIndexData);
@@ -3311,6 +3395,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::GetIndices(IDirect3DIndexBuffer9** ppIndexData) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
     InitReturnPtr(ppIndexData);
 
@@ -3326,6 +3411,7 @@ namespace dxvk {
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::CreatePixelShader(
     const DWORD*                  pFunction,
           IDirect3DPixelShader9** ppShader) {
+    ScopedCpuProfileZone();
     InitReturnPtr(ppShader);
 
     if (unlikely(ppShader == nullptr))
@@ -3349,6 +3435,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::SetPixelShader(IDirect3DPixelShader9* pShader) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     D3D9PixelShader* shader = static_cast<D3D9PixelShader*>(pShader);
@@ -3401,6 +3488,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::GetPixelShader(IDirect3DPixelShader9** ppShader) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     InitReturnPtr(ppShader);
@@ -3418,6 +3506,7 @@ namespace dxvk {
     UINT   StartRegister,
     const float* pConstantData,
     UINT   Vector4fCount) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     return SetShaderConstants <
@@ -3433,6 +3522,7 @@ namespace dxvk {
     UINT   StartRegister,
     float* pConstantData,
     UINT   Vector4fCount) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     return GetShaderConstants<
@@ -3448,6 +3538,7 @@ namespace dxvk {
     UINT StartRegister,
     const int* pConstantData,
     UINT Vector4iCount) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     return SetShaderConstants<
@@ -3463,6 +3554,7 @@ namespace dxvk {
     UINT StartRegister,
     int* pConstantData,
     UINT Vector4iCount) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     return GetShaderConstants<
@@ -3478,6 +3570,7 @@ namespace dxvk {
     UINT  StartRegister,
     const BOOL* pConstantData,
     UINT  BoolCount) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     return SetShaderConstants<
@@ -3493,6 +3586,7 @@ namespace dxvk {
     UINT  StartRegister,
     BOOL* pConstantData,
     UINT  BoolCount) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     return GetShaderConstants<
@@ -3508,6 +3602,7 @@ namespace dxvk {
           UINT               Handle,
     const float*             pNumSegs,
     const D3DRECTPATCH_INFO* pRectPatchInfo) {
+    ScopedCpuProfileZone();
     static bool s_errorShown = false;
 
     if (!std::exchange(s_errorShown, true))
@@ -3520,6 +3615,7 @@ namespace dxvk {
           UINT              Handle,
     const float*            pNumSegs,
     const D3DTRIPATCH_INFO* pTriPatchInfo) {
+    ScopedCpuProfileZone();
     static bool s_errorShown = false;
 
     if (!std::exchange(s_errorShown, true))
@@ -3529,6 +3625,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::DeletePatch(UINT Handle) {
+    ScopedCpuProfileZone();
     static bool s_errorShown = false;
 
     if (!std::exchange(s_errorShown, true))
@@ -3538,6 +3635,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::CreateQuery(D3DQUERYTYPE Type, IDirect3DQuery9** ppQuery) {
+    ScopedCpuProfileZone();
     HRESULT hr = D3D9Query::QuerySupported(this, Type);
 
     if (ppQuery == nullptr || hr != D3D_OK)
@@ -3594,6 +3692,7 @@ namespace dxvk {
 
 
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::WaitForVBlank(UINT iSwapChain) {
+    ScopedCpuProfileZone();
     if (unlikely(iSwapChain != 0))
       return D3DERR_INVALIDCALL;
 
@@ -3648,7 +3747,8 @@ namespace dxvk {
     const RGNDATA* pDirtyRegion,
           DWORD dwFlags) {
     FrameMark;
-    
+    ScopedCpuProfileZone();
+
     HRESULT result = m_implicitSwapchain->Present(
       pSourceRect,
       pDestRect,
@@ -3670,6 +3770,7 @@ namespace dxvk {
           IDirect3DSurface9** ppSurface,
           HANDLE*             pSharedHandle,
           DWORD               Usage) {
+    ScopedCpuProfileZone();
     InitReturnPtr(ppSurface);
 
     if (unlikely(ppSurface == nullptr))
@@ -3714,6 +3815,7 @@ namespace dxvk {
           IDirect3DSurface9** ppSurface,
           HANDLE*             pSharedHandle,
           DWORD               Usage) {
+    ScopedCpuProfileZone();
     InitReturnPtr(ppSurface);
 
     if (unlikely(ppSurface == nullptr))
@@ -3763,6 +3865,7 @@ namespace dxvk {
           IDirect3DSurface9** ppSurface,
           HANDLE*             pSharedHandle,
           DWORD               Usage) {
+    ScopedCpuProfileZone();
     InitReturnPtr(ppSurface);
 
     if (unlikely(ppSurface == nullptr))
@@ -3802,6 +3905,7 @@ namespace dxvk {
   HRESULT STDMETHODCALLTYPE D3D9DeviceEx::ResetEx(
           D3DPRESENT_PARAMETERS* pPresentationParameters,
           D3DDISPLAYMODEEX*      pFullscreenDisplayMode) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     HRESULT hr = ResetSwapChain(pPresentationParameters, pFullscreenDisplayMode);
@@ -3816,6 +3920,7 @@ namespace dxvk {
           UINT                iSwapChain,
           D3DDISPLAYMODEEX*   pMode,
           D3DDISPLAYROTATION* pRotation) {
+    ScopedCpuProfileZone();
     if (unlikely(iSwapChain != 0))
       return D3DERR_INVALIDCALL;
 
@@ -3827,6 +3932,7 @@ namespace dxvk {
           D3DPRESENT_PARAMETERS* pPresentationParameters,
     const D3DDISPLAYMODEEX*      pFullscreenDisplayMode,
           IDirect3DSwapChain9**  ppSwapChain) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     InitReturnPtr(ppSwapChain);
@@ -3861,6 +3967,7 @@ namespace dxvk {
     DWORD               StateSampler,
     D3DSAMPLERSTATETYPE Type,
     DWORD               Value) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (unlikely(ShouldRecord()))
@@ -3921,6 +4028,7 @@ namespace dxvk {
 
 
   HRESULT D3D9DeviceEx::SetStateTexture(DWORD StateSampler, IDirect3DBaseTexture9* pTexture) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (unlikely(ShouldRecord()))
@@ -3992,6 +4100,7 @@ namespace dxvk {
 
 
   HRESULT D3D9DeviceEx::SetStateTransform(uint32_t idx, const D3DMATRIX* pMatrix) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (unlikely(ShouldRecord()))
@@ -4016,6 +4125,7 @@ namespace dxvk {
           DWORD                      Stage,
           D3D9TextureStageStateTypes Type,
           DWORD                      Value) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (unlikely(Stage >= caps::TextureStageCount))
@@ -4174,6 +4284,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::PrepareTextures() {
+    ScopedCpuProfileZone();
     const uint32_t usedSamplerMask = m_psShaderMasks.samplerMask | m_vsShaderMasks.samplerMask;
     const uint32_t usedTextureMask = m_activeTextures & usedSamplerMask;
 
@@ -4280,6 +4391,7 @@ namespace dxvk {
 
   template<bool UpBuffer, bool ShaderBuffer>
   D3D9BufferSlice D3D9DeviceEx::AllocTempBuffer(VkDeviceSize size) {
+    ScopedCpuProfileZone();
     constexpr VkDeviceSize DefaultSize = 1 << 20;
 
     VkMemoryPropertyFlags memoryFlags
@@ -4376,6 +4488,7 @@ namespace dxvk {
   bool D3D9DeviceEx::WaitForResource(
   const Rc<DxvkResource>&                 Resource,
         DWORD                             MapFlags) {
+    ScopedCpuProfileZone();
     // Wait for the any pending D3D9 command to be executed
     // on the CS thread so that we can determine whether the
     // resource is currently in use or not.
@@ -4443,6 +4556,7 @@ namespace dxvk {
             D3DLOCKED_BOX*          pLockedBox,
       const D3DBOX*                 pBox,
             DWORD                   Flags) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     UINT Subresource = pResource->CalcSubresource(Face, MipLevel);
@@ -4712,6 +4826,7 @@ namespace dxvk {
         D3D9CommonTexture*      pResource,
         UINT                    Face,
         UINT                    MipLevel) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     UINT Subresource = pResource->CalcSubresource(Face, MipLevel);
@@ -4753,6 +4868,7 @@ namespace dxvk {
   HRESULT D3D9DeviceEx::FlushImage(
         D3D9CommonTexture*      pResource,
         UINT                    Subresource) {
+    ScopedCpuProfileZone();
     const Rc<DxvkImage> image = pResource->GetImage();
 
     // Now that data has been written into the buffer,
@@ -4874,6 +4990,7 @@ namespace dxvk {
 
   void D3D9DeviceEx::EmitGenerateMips(
     D3D9CommonTexture* pResource) {
+    ScopedCpuProfileZone();
     if (pResource->IsManaged())
       UploadManagedTexture(pResource);
 
@@ -5057,6 +5174,7 @@ namespace dxvk {
 
   HRESULT D3D9DeviceEx::UnlockBuffer(
         D3D9CommonBuffer*       pResource) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     if (pResource->DecrementLockCount() != 0)
@@ -5080,11 +5198,13 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::EmitCsChunk(DxvkCsChunkRef&& chunk) {
+    ScopedCpuProfileZone();
     m_csSeqNum = m_csThread.dispatchChunk(std::move(chunk));
   }
 
 
   void D3D9DeviceEx::ConsiderFlush(GpuFlushType FlushType) {
+    ScopedCpuProfileZone();
     // NV-DXVK start: deterministic CI runs
     // While testing in CI, it's important to achieve timing determinism.
     if (s_explicitFlush) {
@@ -5102,6 +5222,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::SynchronizeCsThread() {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     // Dispatch current chunk so that all commands
@@ -5113,6 +5234,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::SetupFPU() {
+    ScopedCpuProfileZone();
     // Should match d3d9 float behaviour.
 
 #if defined(_MSC_VER)
@@ -5158,6 +5280,7 @@ namespace dxvk {
 
 
   int64_t D3D9DeviceEx::DetermineInitialTextureMemory() {
+    ScopedCpuProfileZone();
     auto memoryProp = m_adapter->GetDXVKAdapter()->memoryProperties();
 
     VkDeviceSize availableTextureMemory = 0;
@@ -5180,6 +5303,7 @@ namespace dxvk {
           VkDeviceSize        Size,
           DxsoProgramType     ShaderStage,
           DxsoConstantBuffers BufferType) {
+    ScopedCpuProfileZone();
     DxvkBufferCreateInfo info = { };
     info.usage  = SSBO ? VK_BUFFER_USAGE_STORAGE_BUFFER_BIT : VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     info.access = SSBO ? VK_ACCESS_SHADER_READ_BIT          : VK_ACCESS_UNIFORM_READ_BIT;
@@ -5218,6 +5342,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::CreateConstantBuffers() {
+    ScopedCpuProfileZone();
     if (!m_isSWVP) {
       m_consts[DxsoProgramTypes::VertexShader].buffer =
         CreateConstantBuffer(false,
@@ -5267,6 +5392,7 @@ namespace dxvk {
 
 
   inline void D3D9DeviceEx::UploadSoftwareConstantSet(const D3D9ShaderConstantsVSSoftware& Src, const D3D9ConstantLayout& Layout) {
+    ScopedCpuProfileZone();
     /*
      * SWVP raises the amount of constants by a lot.
      * To avoid copying huge amounts of data for every draw call,
@@ -5325,6 +5451,7 @@ namespace dxvk {
 
 
   inline DxvkBufferSliceHandle D3D9DeviceEx::CopySoftwareConstants(DxsoConstantBuffers cBufferTarget, Rc<DxvkBuffer>& dstBuffer, const void* src, uint32_t size, bool useSSBO) {
+    ScopedCpuProfileZone();
     uint32_t alignment = useSSBO ? m_robustSSBOAlignment : m_robustUBOAlignment;
     alignment = std::max(alignment, 64u);
     size = std::max(size, alignment);
@@ -5351,6 +5478,7 @@ namespace dxvk {
 
   template <DxsoProgramType ShaderStage, typename HardwareLayoutType, typename SoftwareLayoutType, typename ShaderType>
   inline void D3D9DeviceEx::UploadConstantSet(const SoftwareLayoutType& Src, const D3D9ConstantLayout& Layout, const ShaderType& Shader) {
+    ScopedCpuProfileZone();
     /*
      * We just copy the float constants that have been set by the application and rely on robustness
      * to return 0 on OOB reads.
@@ -5421,6 +5549,7 @@ namespace dxvk {
 
   template <DxsoProgramType ShaderStage>
   void D3D9DeviceEx::UploadConstants() {
+    ScopedCpuProfileZone();
     if constexpr (ShaderStage == DxsoProgramTypes::VertexShader) {
       if (CanSWVP())
         return UploadSoftwareConstantSet(m_state.vsConsts, m_vsLayout);
@@ -5456,7 +5585,10 @@ namespace dxvk {
 
   template <uint32_t Offset, uint32_t Length>
   void D3D9DeviceEx::UpdatePushConstant(const void* pData) {
-    struct ConstantData { uint8_t Data[Length]; };
+    ScopedCpuProfileZone();
+    struct ConstantData {
+      uint8_t Data[Length];
+    };
 
     auto* constData = reinterpret_cast<const ConstantData*>(pData);
 
@@ -5471,6 +5603,7 @@ namespace dxvk {
 
   template <D3D9RenderStateItem Item>
   void D3D9DeviceEx::UpdatePushConstant() {
+    ScopedCpuProfileZone();
     auto& rs = m_state.renderStates;
 
     if constexpr (Item == D3D9RenderStateItem::AlphaRef) {
@@ -5531,6 +5664,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::Flush() {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     m_initializer->Flush();
@@ -5558,6 +5692,7 @@ namespace dxvk {
 
 
   inline void D3D9DeviceEx::UpdateBoundRTs(uint32_t index) {
+    ScopedCpuProfileZone();
     const uint32_t bit = 1 << index;
     
     m_boundRTs &= ~bit;
@@ -5569,6 +5704,7 @@ namespace dxvk {
 
 
   inline void D3D9DeviceEx::UpdateActiveRTs(uint32_t index) {
+    ScopedCpuProfileZone();
     const uint32_t bit = 1 << index;
 
     m_activeRTs &= ~bit;
@@ -5583,6 +5719,7 @@ namespace dxvk {
 
 
   inline void D3D9DeviceEx::UpdateActiveTextures(uint32_t index, DWORD combinedUsage) {
+    ScopedCpuProfileZone();
     const uint32_t bit = 1 << index;
 
     m_activeRTTextures       &= ~bit;
@@ -5617,6 +5754,7 @@ namespace dxvk {
 
 
   inline void D3D9DeviceEx::UpdateActiveHazardsRT(uint32_t rtMask) {
+    ScopedCpuProfileZone();
     auto masks = m_psShaderMasks;
     masks.rtMask      &= m_activeRTs & rtMask;
     masks.samplerMask &= m_activeRTTextures;
@@ -5644,6 +5782,7 @@ namespace dxvk {
 
 
   inline void D3D9DeviceEx::UpdateActiveHazardsDS(uint32_t texMask) {
+    ScopedCpuProfileZone();
     m_activeHazardsDS = m_activeHazardsDS & (~texMask);
     if (m_state.depthStencil != nullptr &&
         m_state.depthStencil->GetBaseTexture() != nullptr) {
@@ -5662,6 +5801,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::MarkRenderHazards() {
+    ScopedCpuProfileZone();
     for (uint32_t rtIdx : bit::BitMask(m_activeHazardsRT)) {
       // Guaranteed to not be nullptr...
       auto tex = m_state.renderTargets[rtIdx]->GetCommonTexture();
@@ -5674,6 +5814,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::UploadManagedTexture(D3D9CommonTexture* pResource) {
+    ScopedCpuProfileZone();
     for (uint32_t subresource = 0; subresource < pResource->CountSubresources(); subresource++) {
       if (!pResource->NeedsUpload(subresource) || pResource->GetBuffer(subresource) == nullptr)
         continue;
@@ -5714,6 +5855,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::MarkTextureMipsDirty(D3D9CommonTexture* pResource) {
+    ScopedCpuProfileZone();
     pResource->SetNeedsMipGen(true);
     pResource->MarkAllWrittenByGPU();
 
@@ -5731,6 +5873,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::MarkTextureMipsUnDirty(D3D9CommonTexture* pResource) {
+    ScopedCpuProfileZone();
     pResource->SetNeedsMipGen(false);
 
     for (uint32_t i : bit::BitMask(m_activeTextures)) {
@@ -5744,6 +5887,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::MarkTextureUploaded(D3D9CommonTexture* pResource) {
+    ScopedCpuProfileZone();
     for (uint32_t i : bit::BitMask(m_activeTextures)) {
       // Guaranteed to not be nullptr...
       auto texInfo = GetCommonTexture(m_state.textures[i]);
@@ -5756,6 +5900,7 @@ namespace dxvk {
 
   template <bool Points>
   void D3D9DeviceEx::UpdatePointMode() {
+    ScopedCpuProfileZone();
     if constexpr (!Points) {
       m_lastPointMode = 0;
 
@@ -6206,6 +6351,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::BindDepthStencilRefrence() {
+    ScopedCpuProfileZone();
     auto& rs = m_state.renderStates;
 
     uint32_t ref = uint32_t(rs[D3DRS_STENCILREF]) & 0xff;
@@ -6217,6 +6363,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::BindSampler(DWORD Sampler) {
+    ScopedCpuProfileZone();
     auto& state = m_state.samplerStates[Sampler];
 
     const D3D9SamplerKey key = CreateSamplerKey(Sampler);
@@ -6276,6 +6423,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::UnbindTextures(uint32_t mask) {
+    ScopedCpuProfileZone();
     EmitCs([
       cMask = mask
     ](DxvkContext* ctx) {
@@ -6302,7 +6450,8 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::UndirtyTextures(uint32_t usedMask) {
-    const uint32_t activeMask   = usedMask &  m_activeTextures;
+    ScopedCpuProfileZone();
+    const uint32_t activeMask = usedMask & m_activeTextures;
     const uint32_t inactiveMask = usedMask & ~m_activeTextures;
 
     for (uint32_t i : bit::BitMask(activeMask))
@@ -6328,6 +6477,7 @@ namespace dxvk {
           D3DPRIMITIVETYPE PrimitiveType,
           UINT             PrimitiveCount,
           UINT             InstanceCount) {
+    ScopedCpuProfileZone();
     D3D9DrawInfo drawInfo;
     drawInfo.vertexCount = GetVertexCount(PrimitiveType, PrimitiveCount);
     drawInfo.instanceCount = m_iaState.streamsInstanced & m_iaState.streamsUsed
@@ -6338,6 +6488,7 @@ namespace dxvk {
 
 
   uint32_t D3D9DeviceEx::GetInstanceCount() const {
+    ScopedCpuProfileZone();
     return std::max(m_state.streamFreq[0] & 0x7FFFFFu, 1u);
   }
 
@@ -6540,6 +6691,7 @@ namespace dxvk {
   void D3D9DeviceEx::BindShader(
   const D3D9CommonShader*                 pShaderModule,
         D3D9ShaderPermutation             Permutation) {
+    ScopedCpuProfileZone();
     EmitCs([
       cShader = pShaderModule->GetShader(Permutation)
     ] (DxvkContext* ctx) {
@@ -6549,6 +6701,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::BindInputLayout() {
+    ScopedCpuProfileZone();
     m_flags.clr(D3D9DeviceFlag::DirtyInputLayout);
 
     if (m_state.vertexDecl == nullptr) {
@@ -6665,6 +6818,7 @@ namespace dxvk {
         D3D9VertexBuffer*                 pBuffer,
         UINT                              Offset,
         UINT                              Stride) {
+    ScopedCpuProfileZone();
     EmitCs([
       cSlotId       = Slot,
       cBufferSlice  = pBuffer != nullptr ?
@@ -6677,6 +6831,7 @@ namespace dxvk {
   }
 
   void D3D9DeviceEx::BindIndices() {
+    ScopedCpuProfileZone();
     D3D9CommonBuffer* buffer = GetCommonBuffer(m_state.indices);
 
     D3D9Format format = buffer != nullptr
@@ -6695,6 +6850,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::Begin(D3D9Query* pQuery) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     // NV-DXVK start: Don't raytrace occlusion queries
@@ -6710,6 +6866,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::End(D3D9Query* pQuery) {
+    ScopedCpuProfileZone();
     D3D9DeviceLock lock = LockDevice();
 
     // NV-DXVK start: Don't raytrace occlusion queries
@@ -6734,6 +6891,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::SetVertexBoolBitfield(uint32_t idx, uint32_t mask, uint32_t bits) {
+    ScopedCpuProfileZone();
     m_state.vsConsts.bConsts[idx] &= ~mask;
     m_state.vsConsts.bConsts[idx] |= bits & mask;
 
@@ -6742,6 +6900,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::SetPixelBoolBitfield(uint32_t idx, uint32_t mask, uint32_t bits) {
+    ScopedCpuProfileZone();
     m_state.psConsts.bConsts[idx] &= ~mask;
     m_state.psConsts.bConsts[idx] |= bits & mask;
 
@@ -6754,6 +6913,7 @@ namespace dxvk {
         VkShaderStageFlagBits ShaderStage,
   const DWORD*                pShaderBytecode,
   const DxsoModuleInfo*       pModuleInfo) {
+    ScopedCpuProfileZone();
     try {
       m_shaderModules->GetShaderModule(this, pShaderModule,
         ShaderStage, pModuleInfo, pShaderBytecode);
@@ -6775,6 +6935,7 @@ namespace dxvk {
             UINT  StartRegister,
       const T*    pConstantData,
             UINT  Count) {
+    ScopedCpuProfileZone();
     const     uint32_t regCountHardware = DetermineHardwareRegCount<ProgramType, ConstantType>();
     constexpr uint32_t regCountSoftware = DetermineSoftwareRegCount<ProgramType, ConstantType>();
 
@@ -7245,6 +7406,7 @@ namespace dxvk {
 
 
   bool D3D9DeviceEx::UseProgrammableVS() {
+    ScopedCpuProfileZone();
     return m_state.vertexShader != nullptr
       && m_state.vertexDecl != nullptr
       && !m_state.vertexDecl->TestFlag(D3D9VertexDeclFlag::HasPositionT);
@@ -7252,10 +7414,12 @@ namespace dxvk {
 
 
   bool D3D9DeviceEx::UseProgrammablePS() {
+    ScopedCpuProfileZone();
     return m_state.pixelShader != nullptr;
   }
 
   void D3D9DeviceEx::UpdateBoolSpecConstantVertex(uint32_t value) {
+    ScopedCpuProfileZone();
     if (value == m_lastBoolSpecConstantVertex)
       return;
 
@@ -7268,6 +7432,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::UpdateBoolSpecConstantPixel(uint32_t value) {
+    ScopedCpuProfileZone();
     if (value == m_lastBoolSpecConstantPixel)
       return;
 
@@ -7280,6 +7445,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::UpdateSamplerSpecConsant(uint32_t value) {
+    ScopedCpuProfileZone();
     EmitCs([cBitfield = value](DxvkContext* ctx) {
       ctx->setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, D3D9SpecConstantId::SamplerType, cBitfield);
     });
@@ -7289,6 +7455,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::UpdateProjectionSpecConstant(uint32_t value) {
+    ScopedCpuProfileZone();
     EmitCs([cBitfield = value](DxvkContext* ctx) {
       ctx->setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, D3D9SpecConstantId::ProjectionType, cBitfield);
     });
@@ -7307,6 +7474,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::UpdateSamplerDepthModeSpecConstant(uint32_t value) {
+    ScopedCpuProfileZone();
     EmitCs([cBitfield = value](DxvkContext* ctx) {
       ctx->setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, D3D9SpecConstantId::SamplerDepthMode, cBitfield);
     });
@@ -7318,6 +7486,7 @@ namespace dxvk {
   void D3D9DeviceEx::ApplyPrimitiveType(
     DxvkContext*      pContext,
     D3DPRIMITIVETYPE  PrimType) {
+    ScopedCpuProfileZone();
     if (m_iaState.primitiveType != PrimType) {
       m_iaState.primitiveType = PrimType;
 
@@ -7328,7 +7497,8 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::ResolveZ() {
-    D3D9Surface*           src = m_state.depthStencil.ptr();
+    ScopedCpuProfileZone();
+    D3D9Surface* src = m_state.depthStencil.ptr();
     IDirect3DBaseTexture9* dst = m_state.textures[0];
 
     if (unlikely(!src || !dst))
@@ -7415,6 +7585,7 @@ namespace dxvk {
 
 
   void D3D9DeviceEx::TransitionImage(D3D9CommonTexture* pResource, VkImageLayout NewLayout) {
+    ScopedCpuProfileZone();
     EmitCs([
       cImage        = pResource->GetImage(),
       cNewLayout    = NewLayout
@@ -7430,6 +7601,7 @@ namespace dxvk {
     const VkImageSubresourceRange* pSubresources,
           VkImageLayout            OldLayout,
           VkImageLayout            NewLayout) {
+    ScopedCpuProfileZone();
     EmitCs([
       cImage        = pResource->GetImage(),
       cSubresources = *pSubresources,
@@ -7444,6 +7616,7 @@ namespace dxvk {
 
 
   HRESULT D3D9DeviceEx::ResetState(D3DPRESENT_PARAMETERS* pPresentationParameters) {
+    ScopedCpuProfileZone();
     if (!pPresentationParameters->EnableAutoDepthStencil)
       SetDepthStencilSurface(nullptr);
 
@@ -7692,6 +7865,7 @@ namespace dxvk {
 
 
   HRESULT D3D9DeviceEx::ResetSwapChain(D3DPRESENT_PARAMETERS* pPresentationParameters, D3DDISPLAYMODEEX* pFullscreenDisplayMode) {
+    ScopedCpuProfileZone();
     D3D9Format backBufferFmt = EnumerateFormat(pPresentationParameters->BackBufferFormat);
     Logger::info(str::format(
       "D3D9DeviceEx::ResetSwapChain:\n",
@@ -7762,6 +7936,7 @@ namespace dxvk {
 
 
   HRESULT D3D9DeviceEx::InitialReset(D3DPRESENT_PARAMETERS* pPresentationParameters, D3DDISPLAYMODEEX* pFullscreenDisplayMode) {
+    ScopedCpuProfileZone();
     HRESULT hr = ResetSwapChain(pPresentationParameters, pFullscreenDisplayMode);
     if (FAILED(hr))
       return hr;
@@ -7777,8 +7952,8 @@ namespace dxvk {
   }
 
 // NV-DXVK start: external API
-  D3D9SwapchainExternal* D3D9DeviceEx::GetExternalPresenter()
-  {
+  D3D9SwapchainExternal* D3D9DeviceEx::GetExternalPresenter() {
+    ScopedCpuProfileZone();
     if (m_withExternalSwapchain) {
       return static_cast<D3D9SwapchainExternal*>(m_implicitSwapchain.ptr());
     }
@@ -7788,6 +7963,7 @@ namespace dxvk {
 
   void D3D9DeviceEx::TrackBufferMappingBufferSequenceNumber(
         D3D9CommonBuffer* pResource) {
+    ScopedCpuProfileZone();
     uint64_t sequenceNumber = GetCurrentSequenceNumber();
     pResource->TrackMappingBufferSequenceNumber(sequenceNumber);
   }
@@ -7795,11 +7971,13 @@ namespace dxvk {
   void D3D9DeviceEx::TrackTextureMappingBufferSequenceNumber(
       D3D9CommonTexture* pResource,
       UINT Subresource) {
+    ScopedCpuProfileZone();
     uint64_t sequenceNumber = GetCurrentSequenceNumber();
     pResource->TrackMappingBufferSequenceNumber(Subresource, sequenceNumber);
   }
 
   uint64_t D3D9DeviceEx::GetCurrentSequenceNumber() {
+    ScopedCpuProfileZone();
     // We do not flush empty chunks, so if we are tracking a resource
     // immediately after a flush, we need to use the sequence number
     // of the previously submitted chunk to prevent deadlocks.
