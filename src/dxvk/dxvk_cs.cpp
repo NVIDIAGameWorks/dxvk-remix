@@ -25,6 +25,7 @@ namespace dxvk {
 
 
   void DxvkCsChunk::executeAll(DxvkContext* ctx) {
+    ScopedCpuProfileZone();
     auto cmd = m_head;
     
     if (m_flags.test(DxvkCsChunkFlag::SingleUse)) {
@@ -76,6 +77,7 @@ namespace dxvk {
   
   
   DxvkCsChunk* DxvkCsChunkPool::allocChunk(DxvkCsChunkFlags flags) {
+    ScopedCpuProfileZone();
     DxvkCsChunk* chunk = nullptr;
 
     { std::lock_guard<sync::Spinlock> lock(m_mutex);
@@ -95,6 +97,7 @@ namespace dxvk {
   
   
   void DxvkCsChunkPool::freeChunk(DxvkCsChunk* chunk) {
+    ScopedCpuProfileZone();
     chunk->reset();
     
     std::lock_guard<sync::Spinlock> lock(m_mutex);
@@ -169,7 +172,9 @@ namespace dxvk {
 
     try {
       while (!m_stopped.load()) {
-        { std::unique_lock<dxvk::mutex> lock(m_mutex);
+        { 
+          ScopedCpuProfileZoneN("waiting for work");
+          std::unique_lock<dxvk::mutex> lock(m_mutex);
           if (chunk) {
             m_chunksExecuted++;
             m_condOnSync.notify_one();

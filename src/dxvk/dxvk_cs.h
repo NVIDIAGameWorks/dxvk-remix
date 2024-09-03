@@ -138,7 +138,9 @@ namespace dxvk {
    * Stores a list of commands.
    */
   class DxvkCsChunk : public RcObject {
-    constexpr static size_t MaxBlockSize = 16384;
+    // NV-DXVK start: we tend to send a lot less data through CS than vanilla DXVK bigger numbers increase CS latency
+    constexpr static size_t MaxBlockSize = 4096;
+    // NV-DXVK end
   public:
     
     DxvkCsChunk();
