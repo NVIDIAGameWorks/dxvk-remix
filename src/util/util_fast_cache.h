@@ -24,6 +24,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include "xxHash/xxhash.h"
+#include "util_vector.h"
 
 
 namespace dxvk {
@@ -32,6 +33,29 @@ namespace dxvk {
     [[nodiscard]] size_t operator()(const XXH64_hash_t keyval) const noexcept {
       static_assert(sizeof(size_t) == sizeof(XXH64_hash_t), "Hash value size != size_t size.");
       return keyval;
+    }
+  };
+  
+  // A passthrough hash class compatible with std c++ containers.
+  struct Vector3i_hash_passthrough {
+    [[nodiscard]] size_t operator()(const Vector3i& keyval) const noexcept {
+      // Convert the 32-bit integers to 64-bit to prevent overflow in operations
+      size_t x = static_cast<size_t>(keyval.x);
+      size_t y = static_cast<size_t>(keyval.y);
+      size_t z = static_cast<size_t>(keyval.z);
+
+      // Constants for mixing
+      size_t prime1 = 0xE01658C4CA6FC337; // Large prime number
+      size_t prime2 = 0xF8236D0F7F1F7BF1; // Another large prime
+
+      // Perform the hashing
+      size_t hash = x;
+      hash ^= y + prime1 + (hash << 6) + (hash >> 2);
+      hash *= prime2;
+      hash ^= z + prime1 + (hash << 6) + (hash >> 2);
+      hash *= prime2;
+
+      return hash;
     }
   };
 
@@ -70,6 +94,21 @@ namespace dxvk {
 
   // A fast set for use ONLY with already hashed keys.
   struct fast_unordered_set : public std::unordered_set<XXH64_hash_t, XXH64_hash_passthrough> { };
+
+  // A fast caching structure for use ONLY with spatial data.
+  template<class T>
+  struct fast_spatial_cache : public std::unordered_map<Vector3i, T, Vector3i_hash_passthrough> {
+    template<typename P>
+    void erase_if(P&& p) {
+      for (auto it = this->begin(); it != this->end();) {
+        if (!p(it)) {
+          ++it;
+        } else {
+          it = this->erase(it);
+        }
+      }
+    }
+  };
 
   static bool lookupHash(const fast_unordered_set& hashList, const XXH64_hash_t& h) {
     return hashList.find(h) != hashList.end();

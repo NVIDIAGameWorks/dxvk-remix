@@ -24,6 +24,7 @@
 #include <unordered_map>
 
 #include "util_vector.h"
+#include "util_fast_cache.h"
 #include "./log/log.h"
 
 namespace dxvk {
@@ -90,7 +91,7 @@ namespace dxvk {
       }
     }
 
-    const std::unordered_map<Vector3i, std::vector<T>>& getAll() {
+    const fast_spatial_cache<std::vector<T>>& getAll() {
       return m_cache;
     }
 
@@ -128,6 +129,6 @@ namespace dxvk {
     }
 
     float m_cellSize;
-    std::unordered_map<Vector3i, std::vector<T>> m_cache;
+    fast_spatial_cache<std::vector<T>> m_cache;
   };
 }
