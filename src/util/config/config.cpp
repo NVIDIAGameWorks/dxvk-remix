@@ -849,13 +849,9 @@ namespace dxvk {
       { "rtx.legacyMaterial.roughnessConstant",                 "0.1"   },
       { "rtx.opacityMicromap.enable",                           "True"  },
       { "rtx.decals.maxOffsetIndex",                            "64" },
-      // TODO (REMIX-656): Remove this once we can transition content to new hash
       { "rtx.geometryGenerationHashRuleString", "positions,"
                                                 "indices,"
                                                 "texcoords,"
-                                                "legacypositions0,"
-                                                "legacypositions1,"
-                                                "legacyindices,"
                                                 "geometrydescriptor,"
                                                 "vertexlayout" },
         { "rtx.allowCubemaps",                  "True" },
