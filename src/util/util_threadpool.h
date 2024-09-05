@@ -289,9 +289,9 @@ namespace dxvk {
 
   public:
     WorkerThreadPool(uint8_t numThreads, const char* workerName = "Nameless Worker Thread") 
-    : m_numThread(numThreads) {
+    : m_numThread(std::clamp(numThreads, (uint8_t)1u, (uint8_t)dxvk::thread::hardware_concurrency())) {
       // Note: round up to a closest power-of-two so we can use mask as modulo
-      m_taskCount = 1 << (32 - bit::lzcnt(static_cast<uint32_t>(NumTasksPerThread*numThreads) - 1));
+      m_taskCount = 1 << (32 - bit::lzcnt(static_cast<uint32_t>(NumTasksPerThread * m_numThread) - 1));
       m_tasks.resize(m_taskCount);
       m_workerTasks.resize(m_numThread);
       m_workerThreads.resize(m_numThread);
@@ -343,15 +343,11 @@ namespace dxvk {
     // Schedule a task to be executed by the thread pool
     template <uint8_t Affinity = 0xFF, typename F, typename R = std::invoke_result_t<std::decay_t<F>>>
     Future<R> Schedule(F&& f) {
-      // Add the task to the queue and notify a worker thread
-      //  just distribute evenly to all threads for some mask denoted by Affinity.
-      static size_t s_idx = 0;
-
       // Is the affinity mask valid?
       const uint8_t affinityMask = std::min(popcnt_uint8(Affinity), m_numThread);
 
       // Schedule work on the appropriate thread
-      const uint32_t thread = fast::findNthBit(Affinity, (uint8_t) (s_idx++ % affinityMask));
+      const uint32_t thread = fast::findNthBit(Affinity, (uint8_t) (m_schedulerIndex++ % affinityMask));
       assert(thread < m_numThread);
 
       // Atomic queue is SPSC, so we don't need to take a lock here
@@ -450,6 +446,10 @@ namespace dxvk {
     std::vector<Task> m_tasks;
     std::atomic<TaskId> m_taskId = 0;
     uint32_t m_taskCount;
+
+    // Add the task to the queue and notify a worker thread
+    //  just distribute evenly to all threads for some mask denoted by Affinity.
+    size_t m_schedulerIndex = 0;
 
     uint8_t m_numThread;
 

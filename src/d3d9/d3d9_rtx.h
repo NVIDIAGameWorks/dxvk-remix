@@ -41,6 +41,7 @@ namespace dxvk {
     RTX_OPTION("rtx", bool, useVertexCapturedNormals, true, "When enabled, vertex normals are read from the input assembler and used in raytracing.  This doesn't always work as normals can be in any coordinate space, but can help sometimes.");
     RTX_OPTION("rtx", bool, useWorldMatricesForShaders, true, "When enabled, Remix will utilize the world matrices being passed from the game via D3D9 fixed function API, even when running with shaders.  Sometimes games pass these matrices and they are useful, however for some games they are very unreliable, and should be filtered out.  If you're seeing precision related issues with shader vertex capture, try disabling this setting.");
     RTX_OPTION("rtx", bool, enableIndexBufferMemoization, true, "CPU performance optimization, should generally be enabled.  Will reduce main thread time by caching processIndexBuffer operations and reusing when possible, this will come at the expense of some CPU RAM.");
+    RTX_OPTION("rtx", uint32_t, numGeometryProcessingThreads, 2, "The desired number of CPU threads to dedicate to geometry processing  Will be limited by the number of CPU cores.  There may be some advantage to lowering this number in games which are fairly simple and use a low number of draw calls per frame.  The default was determined by looking at a game with around 2000 draw calls per frame, and with a reasonably high average triangle count per draw.");
 
     // Copy of the parameters issued to D3D9 on DrawXXX
     struct DrawContext {
@@ -171,19 +172,6 @@ namespace dxvk {
     }
 
   private: 
-    // Give threads specific tasks, to reduce the chance of 
-    //  critical work being pre-empted.
-    enum WorkerTasks : uint8_t {
-      kSkinningThread = 1 << 0,
-
-      kHashingThread0 = 1 << 1,
-      kHashingThread1 = 1 << 2,
-      kHashingThread2 = 1 << 3,
-
-      kHashingThreads = (kHashingThread0 | kHashingThread1 | kHashingThread2),
-      kAllThreads = (kHashingThreads | kSkinningThread)
-    };
-
     inline static const uint32_t kMaxConcurrentDraws = 6 * 1024; // some games issuing >3000 draw calls per frame...  account for some consumer thread lag with x2
     using GeometryProcessor = WorkerThreadPool<kMaxConcurrentDraws>;
     const std::unique_ptr<GeometryProcessor> m_pGeometryWorkers;
