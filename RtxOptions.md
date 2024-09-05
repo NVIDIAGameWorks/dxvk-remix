@@ -399,6 +399,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.numFramesToKeepInstances|int|1||
 |rtx.numFramesToKeepLights|int|100||
 |rtx.numFramesToKeepMaterialTextures|int|5||
+|rtx.numGeometryProcessingThreads|int|2|The desired number of CPU threads to dedicate to geometry processing  Will be limited by the number of CPU cores\.  There may be some advantage to lowering this number in games which are fairly simple and use a low number of draw calls per frame\.  The default was determined by looking at a game with around 2000 draw calls per frame, and with a reasonably high average triangle count per draw\.|
 |rtx.opacityMicromap.buildRequests.customFiltersForBillboards|bool|True|Applies custom filters for staged Billboard requests\.|
 |rtx.opacityMicromap.buildRequests.enableAnimatedInstances|bool|False|Enables Opacity Micromaps for animated instances\.|
 |rtx.opacityMicromap.buildRequests.enableParticles|bool|True|Enables Opacity Micromaps for particles\.|

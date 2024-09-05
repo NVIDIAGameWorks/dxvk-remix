@@ -32,7 +32,7 @@ namespace dxvk {
                           VK_ACCESS_TRANSFER_READ_BIT)
     , m_parent(d3d9Device)
     , m_enableDrawCallConversion(enableDrawCallConversion)
-    , m_pGeometryWorkers(enableDrawCallConversion ? std::make_unique<GeometryProcessor>(popcnt_uint8(D3D9Rtx::kAllThreads), "geometry-processing") : nullptr) {
+    , m_pGeometryWorkers(enableDrawCallConversion ? std::make_unique<GeometryProcessor>(numGeometryProcessingThreads(), "geometry-processing") : nullptr) {
 
     // Add space for 256 objects skinned with 256 bones each.
     m_stagedBones.resize(256 * 256);
