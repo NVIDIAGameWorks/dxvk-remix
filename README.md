@@ -94,10 +94,11 @@ Alternatively, Remix API can be used to programmatically pass the game data to t
 
 ## Project Documentation
 
-- [Rtx Options](/RtxOptions.md)
 - [Anti-Culling System](/documentation/AntiCullingSystem.md)
 - [Foliage System](/documentation/FoliageSystem.md)
+- [GPU Print](/documentation/GpuPrint.md)
 - [Opacity Micromap](/documentation/OpacityMicromap.md)
 - [Remix API](/tests/rtx/apps/README.md)
+- [Rtx Options](/RtxOptions.md)
 - [Terrain System](/documentation/TerrainSystem.md)
 - [Unit Test](/documentation/UnitTest.md)
