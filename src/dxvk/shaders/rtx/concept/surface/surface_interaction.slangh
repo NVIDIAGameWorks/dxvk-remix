@@ -168,7 +168,7 @@ void calcSpriteSheetAdjustment(
   const vec2 uvSize = vec2(1.0f / spriteSheetCols, 1.0f / spriteSheetRows);
   const vec2 uvBias = vec2(frame % spriteSheetCols, frame / spriteSheetCols) * uvSize;
 
-  textureCoordinates = uvBias + textureCoordinates * uvSize;
+  textureCoordinates = uvBias + frac(textureCoordinates) * uvSize;
   textureGradientX *= uvSize;
   textureGradientY *= uvSize;
 }
