@@ -131,7 +131,7 @@ float3 applyToneMapping(float3 color, uint2 pixelPosition)
       // Normal tone mapping
       color = dynamicToneMapper(color);
       
-      if(cb.finalizeWithACES)
+      if (cb.finalizeWithACES)
       {
         color = ACESFilm(color);
       }

@@ -159,7 +159,7 @@ struct NEECacheUtils
     lightSample.normal = surfaceInteraction.interpolatedNormal;
     float lightPdf = trianglePdf;
     triangleArea = surfaceInteraction.triangleArea;
-    if(useSolidAnglePdf)
+    if (useSolidAnglePdf)
     {
       lightPdf *= calculateLightSamplingSolidAnglePDF(
         surfaceInteraction.triangleArea, surfaceInteraction.position, surfaceInteraction.triangleNormal, shadingPosition);

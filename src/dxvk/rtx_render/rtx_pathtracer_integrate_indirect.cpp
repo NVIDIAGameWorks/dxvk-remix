@@ -411,12 +411,13 @@ namespace dxvk {
     }
   }
 
-  DxvkRaytracingPipelineShaders DxvkPathtracerIntegrateIndirect::getPipelineShaders(const bool useRayQuery,
-                                                                                    const bool serEnabled,
-                                                                                    const bool ommEnabled,
-                                                                                    const bool useNeeCache,
-                                                                                    const bool includePortals,
-                                                                                    const bool pomEnabled) {
+  DxvkRaytracingPipelineShaders DxvkPathtracerIntegrateIndirect::getPipelineShaders(
+    const bool useRayQuery,
+    const bool serEnabled,
+    const bool ommEnabled,
+    const bool useNeeCache,
+    const bool includePortals,
+    const bool pomEnabled) {
 
     DxvkRaytracingPipelineShaders shaders;
     if (useRayQuery) {

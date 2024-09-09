@@ -79,7 +79,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
   {
     storeInDebugView(thread_id, resultReservoir.radiance * resultReservoir.avgWeight);
   }
-  else if(cb.debugView == DEBUG_VIEW_NAN)
+  else if (cb.debugView == DEBUG_VIEW_NAN)
   {
     bool isValid = true;
     isValid &= isValidValue(resultReservoir.radiance * resultReservoir.avgWeight);

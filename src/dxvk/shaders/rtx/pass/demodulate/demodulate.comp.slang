@@ -686,7 +686,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID, uint2 localIndex : SV_Gro
       primaryDirectDiffuseInput, primaryDirectSpecularInput,
       primaryDirectDiffuseOutput, primaryDirectSpecularOutput, cb.enableDemodulateRoughness);
 
-    if(cb.enableDirectLightBoilingFilter)
+    if (cb.enableDirectLightBoilingFilter)
     {
       applyDirectLightBoilingFilter(localIndex, primaryLinearViewZ, primaryVirtualWorldNormal, 
         primaryDirectDiffuseOutput.xyz, primaryDirectSpecularOutput.xyz);

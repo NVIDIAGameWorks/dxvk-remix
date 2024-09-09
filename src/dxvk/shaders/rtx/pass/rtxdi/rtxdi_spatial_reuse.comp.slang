@@ -52,7 +52,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
   }
 
   RAB_Surface surface = RAB_GetGBufferSurface(thread_id, false);
-  if(!cb.enableReSTIRGI)
+  if (!cb.enableReSTIRGI)
   {
     imageStore(GBufferLast, thread_id, RAB_PackLastFrameGBuffer(surface));
   }

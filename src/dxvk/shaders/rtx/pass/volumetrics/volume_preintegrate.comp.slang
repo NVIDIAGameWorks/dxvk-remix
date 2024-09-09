@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -44,8 +44,10 @@ float getRayPortalIntersection(float3 origin, float3 direction, RayPortalHitInfo
   const float NdotD = dot(direction, portal.normal);
   float t = dot(portal.centroid - origin, portal.normal) / NdotD;
   if (isinf(t) || isnan(t))
+  {
     return -1.0;
-  
+  }
+
   if (t > 0 && NdotD < 0)
   {
     // Compute the UV coordinates of the ray-portal intersection
@@ -59,7 +61,9 @@ float getRayPortalIntersection(float3 origin, float3 direction, RayPortalHitInfo
     // This minimizes interpolation artifacts when the preintegrated volumetric texture is sampled
     // near the edge of the portal, or rather, hides them under the burning portal edge mask.
     if (length(uv) < 0.95)
+    {
       return t;
+    }
   }
 
   return -1.0;
@@ -72,10 +76,12 @@ void main(uint3 ipos : SV_DispatchThreadID)
   ivec2 threadIndex = ipos.xy;
   const VolumeArgs volumeArgs = cb.volumeArgs;
   const uvec3 froxelDimensions = uvec3(volumeArgs.froxelGridDimensions, volumeArgs.froxelDepthSlices);
-  
-  if (any(threadIndex.xy >= froxelDimensions.xy))
-    return;
 
+  if (any(threadIndex.xy >= froxelDimensions.xy))
+  {
+    return;
+  }
+  
   const VolumeDefinitionCamera camera = volumeArgs.cameras[froxelVolumeMain];
 
   // Set up for a portal transition

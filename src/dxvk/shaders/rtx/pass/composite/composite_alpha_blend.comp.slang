@@ -153,7 +153,7 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
       }
       centerPixel = neighborPixel;
 
-      if(found)
+      if (found)
       {
         int2 neighborPixel = centerPixel;
         vec3 diffuseLight = 0;
@@ -183,7 +183,7 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
       }
     }
 
-    if(cb.stochasticAlphaBlendUseRadianceVolume && !found)
+    if (cb.stochasticAlphaBlendUseRadianceVolume && !found)
     {
       uint froxelVolumeHint = froxelVolumeMain;
 
@@ -224,7 +224,7 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
         found= true;
       }
     }
-    if(!found)
+    if (!found)
     {
        surfaceLight = 0;
     }

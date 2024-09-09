@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -94,7 +94,9 @@ void computeAnisotropicEllipseAxes(
 bool isSurfaceClipped(Surface surface, MinimalSurfaceInteraction surfaceInteraction)
 {
   if (!surface.isClipPlaneEnabled)
+  {
     return false;
+  }
 
   const float clipDistance = dot(surface.clipPlane.xyz, surfaceInteraction.position) + surface.clipPlane.w;
 
@@ -189,10 +191,14 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
     {
       const uint indexBufferIndex = surface.indexBufferIndex;
 
-      if(surface.indexStride == 4)
+      if (surface.indexStride == 4)
+      {
         idx[i] = BUFFER_ARRAY(indices32, indexBufferIndex, indexIndex);
+      }
       else
+      {
         idx[i] = BUFFER_ARRAY(indices, indexBufferIndex, indexIndex);
+      }
     }
     else
     {

@@ -409,7 +409,7 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
 
       vec4 totalLight = vec4(centerLight.xyz, 1);
 
-      if(cb.stochasticAlphaBlendEnableFilter)
+      if (cb.stochasticAlphaBlendEnableFilter)
       {
         float minHitT = surface.hitT;
         float maxHitT = surface.hitT;

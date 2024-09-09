@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -35,8 +35,10 @@ void main(uint3 ipos : SV_DispatchThreadID)
   const uint froxelVolume = threadIndex.x / froxelDimensions.x;
 
   if (any(threadIndex.yz >= froxelDimensions.yz) || froxelVolume > volumeArgs.numActiveFroxelVolumes)
+  {
     return;
-
+  }
+  
   const uint froxelVolumeLeft = froxelVolume * volumeArgs.froxelGridDimensions.x;
   const uint froxelVolumeRight = froxelVolumeLeft + volumeArgs.froxelGridDimensions.x;
 

@@ -214,7 +214,7 @@ vec3 colorCodeIntoBGRexclusive(uint value, uint maxValue)
 
 vec4 loadInput(ivec2 threadId)
 {
-  vec4 value;
+  vec4 value = vec4(0);
   const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(threadId, SharedFlags);
 
   // Compute the coordinate with respect to the upscaled output

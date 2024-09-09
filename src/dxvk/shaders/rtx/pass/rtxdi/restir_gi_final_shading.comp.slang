@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -167,10 +167,10 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   {
     filterColor = f16vec3(0);
   }
-  else if(cb.enableReSTIRGIFinalVisibility || cb.reSTIRGIBiasCorrectionMode == RTXDI_BIAS_CORRECTION_PAIRWISE_RAY_TRACED)
+  else if (cb.enableReSTIRGIFinalVisibility || cb.reSTIRGIBiasCorrectionMode == RTXDI_BIAS_CORRECTION_PAIRWISE_RAY_TRACED)
   {
     uint8_t portalID = ReSTIRGI_PortalID2BitTo8Bit(spatialReservoir.getPortalID());
-    if(portalID == invalidRayPortalIndex || portalID < cb.numActiveRayPortals)
+    if (portalID == invalidRayPortalIndex || portalID < cb.numActiveRayPortals)
     {
       uint8_t rayMask = OBJECT_MASK_OPAQUE | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC);
 
@@ -312,7 +312,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   // some gathering calculation.
   float boilingFilterMultiplier = lerp(cb.boilingFilterLowerThreshold, cb.boilingFilterHigherThreshold, VdotN);
   uint2 groupCornerThreadID = threadIndex & ~(RESTIR_GI_BOILING_FILTER_GROUP_SIZE - 1);
-  if(cb.enableReSTIRGIBoilingFilter && all(groupCornerThreadID + RESTIR_GI_BOILING_FILTER_GROUP_SIZE - 1 < cb.camera.resolution))
+  if (cb.enableReSTIRGIBoilingFilter && all(groupCornerThreadID + RESTIR_GI_BOILING_FILTER_GROUP_SIZE - 1 < cb.camera.resolution))
   {
     applyBoilingFilter(threadIndex, LocalIndex, boilingFilterMultiplier, diffuseLight, specularLight, spatialReservoir);
   }
@@ -336,8 +336,12 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
     spatialReservoir.setFlag(RESTIR_GI_FLAG_OCCLUDED_SAMPLE);
 
     const bool removeOccludedSamples = false;
-    if(removeOccludedSamples)
+
+    if (removeOccludedSamples)
+    {
       spatialReservoir.M = 0;
+    }
+
     needToStoreReservoir = true;
   }
 
@@ -361,7 +365,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
     vec4 specularOutput = sanitizeRadianceHitDistance(specularLight, hitDistance);
 
     const bool useDiffuseMIS = false;
-    if(cb.reSTIRGIMISMode != misDisabledMode)
+    if (cb.reSTIRGIMISMode != misDisabledMode)
     {
       vec4 initialDiffuseOutput = PrimaryIndirectDiffuseLobeRadianceHitDistance[threadIndex];
       vec4 initialSpecularOutput = PrimaryIndirectSpecularLobeRadianceHitDistance[threadIndex];
@@ -385,7 +389,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
 
   // DLSS enhancement
   vec2 factor = vec2(1);
-  if(cb.enableEnhanceBSDFDetail && all(minimalSurfaceInteraction.position != spatialReservoir.position))
+  if (cb.enableEnhanceBSDFDetail && all(minimalSurfaceInteraction.position != spatialReservoir.position))
   {
     if (cb.enhanceBSDFIndirectMode == 0)
     {
@@ -419,7 +423,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
       factor = pow(factor, f16vec2(cb.enhanceBSDFIndirectLightPower));
       factor = clamp(factor, f16vec2(0.0), f16vec2(cb.enhanceBSDFIndirectLightMaxValue));
     }
-    else if(cb.enhanceBSDFIndirectMode == 1)
+    else if (cb.enhanceBSDFIndirectMode == 1)
     {
       const float3 interpolatedNormal = signedOctahedralToSphereDirection(snorm2x16ToFloat2x32(PrimaryWorldInterpolatedNormal[threadIndex]));
       factor = ReSTIRGI_GetDlssEnhancementIndirectFactorNormalDifference(
@@ -447,7 +451,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
   {
     storeInDebugView(threadIndex, staleSample);
   }
-  else if(cb.debugView == DEBUG_VIEW_NAN)
+  else if (cb.debugView == DEBUG_VIEW_NAN)
   {
     bool isValid = true;
     isValid &= isValidValue(vec3(initialWeight, restirWeight, 0));

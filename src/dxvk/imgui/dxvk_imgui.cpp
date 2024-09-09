@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -297,8 +297,8 @@ namespace dxvk {
       {UpscalerType::TAAU, "TAA-U"},
   } });
 
-  ImGui::ComboWithKey<RussianRouletteMode> secondPlusRussianRouletteModeCombo {
-    "2nd+ Russian Roulette Mode",
+  ImGui::ComboWithKey<RussianRouletteMode> secondPlusBounceRussianRouletteModeCombo {
+    "2nd+ Bounce Russian Roulette Mode",
     ImGui::ComboWithKey<RussianRouletteMode>::ComboEntries { {
         {RussianRouletteMode::ThroughputBased, "Throughput Based"},
         {RussianRouletteMode::SpecularBased, "Specular Based"}
@@ -2637,7 +2637,7 @@ namespace dxvk {
           ImGui::DragFloat("1st bounce: Min Continue Probability", &RtxOptions::Get()->russianRoulette1stBounceMinContinueProbabilityObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
           ImGui::DragFloat("1st bounce: Max Continue Probability", &RtxOptions::Get()->russianRoulette1stBounceMaxContinueProbabilityObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
           
-          secondPlusRussianRouletteModeCombo.getKey(&RtxOptions::Get()->russianRouletteModeObject());
+          secondPlusBounceRussianRouletteModeCombo.getKey(&RtxOptions::Get()->russianRouletteModeObject());
           if (RtxOptions::Get()->russianRouletteMode() == RussianRouletteMode::ThroughputBased)
           {
             ImGui::DragFloat("2nd+ bounce: Max Continue Probability", &RtxOptions::Get()->russianRouletteMaxContinueProbabilityObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);

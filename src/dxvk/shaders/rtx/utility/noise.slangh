@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -23,7 +23,8 @@
 
 // 32 bit Jenkin's hash
 // http://burtleburtle.net/bob/hash/integer.html
-uint hashJenkins(uint a) {
+uint hashJenkins(uint a)
+{
   a = (a + 0x7ed55d16) + (a << 12);
   a = (a ^ 0xc761c23c) ^ (a >> 19);
   a = (a + 0x165667b1) + (a << 5);
@@ -35,7 +36,8 @@ uint hashJenkins(uint a) {
 
 // Single iteration of Jenkin's One-At-A-Time hash
 // https://en.wikipedia.org/wiki/Jenkins_hash_function#one_at_a_time
-uint hashJenkinsOneAtATime(uint x) {
+uint hashJenkinsOneAtATime(uint x)
+{
   x += (x << 10u);
   x ^= (x >>  6u);
   x += (x <<  3u);
@@ -45,7 +47,8 @@ uint hashJenkinsOneAtATime(uint x) {
 }
 
 // Alternative from https://nullprogram.com/blog/2018/07/31/
-uint prospectorHash(uint x) {
+uint prospectorHash(uint x)
+{
   x ^= x >> 17;
   x *= 0xed5ad4bbU;
   x ^= x >> 11;
@@ -56,7 +59,8 @@ uint prospectorHash(uint x) {
   return x;
 }
 
-vec2 R2(uint index) {
+vec2 R2(uint index)
+{
   // Generalized golden ratio to 2d.
   // Solution to x^3 = x + 1
   // AKA plastic constant.
@@ -67,7 +71,8 @@ vec2 R2(uint index) {
 
 #define RNG_SEED_FRAME_RANGE 64
 
-struct RNG {
+struct RNG
+{
   uvec2 pixelIdx;
   uint seed;
   uint temporalIdx;
@@ -76,7 +81,8 @@ struct RNG {
 // Creates a RNG from a pixel index (which should be spatially consistent), a temporal index (which should
 // only be provided from the current frame index for temporal consistency), and an optional sample offset to
 // advance the seed as if a number of samples happened already (this is useful for reconstructing a RNG in some cases).
-RNG createRNG(uvec2 pixelIdx, uint temporalIdx, uint sampleOffset) {
+RNG createRNG(uvec2 pixelIdx, uint temporalIdx, uint sampleOffset)
+{
   RNG rng;
   rng.pixelIdx = pixelIdx;
   rng.seed = temporalIdx / RNG_SEED_FRAME_RANGE + sampleOffset;
@@ -85,13 +91,15 @@ RNG createRNG(uvec2 pixelIdx, uint temporalIdx, uint sampleOffset) {
 }
 
 // Overload for typical RNG construction when no sample offset is needed.
-RNG createRNG(uvec2 pixelIdx, uint temporalIdx) {
+RNG createRNG(uvec2 pixelIdx, uint temporalIdx)
+{
   return createRNG(pixelIdx, temporalIdx, 0);
 }
 
 // RNG construction variant used when no pixel index data is available. Likely not as optimal
 // for proper blue noise usage, but saves from needing to pass data through payloads for example.
-RNG createRNGPosition(vec3 position, uint temporalIdx, uint sampleOffset) {
+RNG createRNGPosition(vec3 position, uint temporalIdx, uint sampleOffset)
+{
   RNG rng;
   // Note: Use x/y position values mixed with z position value as the "pixel index".
   rng.pixelIdx = uvec2(
@@ -103,7 +111,8 @@ RNG createRNGPosition(vec3 position, uint temporalIdx, uint sampleOffset) {
 }
 
 // Overload for position-based RNG construction when no sample offset is needed.
-RNG createRNGPosition(vec3 position, uint temporalIdx) {
+RNG createRNGPosition(vec3 position, uint temporalIdx)
+{
   return createRNGPosition(position, temporalIdx, 0);
 }
 
@@ -118,7 +127,8 @@ RNG createRNGPosition(vec3 position, uint temporalIdx) {
 // generate proper 2D or 3D blue noise samples however, so subsequent samples of this should at least be reasonable as this
 // roughly follows the spatio-temporal blue noise algorithm for scalar generation. This could be improved some day however.
 // See: "Scalar Spatiotemporal Blue Noise Masks": https://arxiv.org/pdf/2112.09629.pdf
-float getNextSampleBlueNoise(inout RNG rng) {
+float getNextSampleBlueNoise(inout RNG rng)
+{
 #if WHITE_NOISE_OVERRIDE
   // Note: Jenkins hash-based white noise implementation from https://stackoverflow.com/a/17479300
 
@@ -154,7 +164,8 @@ float getNextSampleBlueNoise(inout RNG rng) {
 #endif
 }
 
-uint reverseBits4(uint x) {
+uint reverseBits4(uint x)
+{
   x = ((x & 0x5) << 1) | ((x & 0xA) >> 1);
   x = ((x & 0x3) << 2) | ((x & 0xC) >> 2);
   return x;
@@ -162,7 +173,8 @@ uint reverseBits4(uint x) {
 
 // https://en.wikipedia.org/wiki/Ordered_dithering
 // RESULT: [0; 1)
-float bayer4x4(uvec2 samplePos, uint frameIndex) {
+float bayer4x4(uvec2 samplePos, uint frameIndex)
+{
   uvec2 samplePosWrap = samplePos & 3;
   uint a = 2068378560 * (1 - (samplePosWrap.y >> 1)) + 1500172770 * (samplePosWrap.y >> 1);
   uint b = (samplePosWrap.x + ((samplePosWrap.y & 1) << 2)) << 2;
@@ -191,20 +203,21 @@ float temporalInterleavedGradientNoise(float2 uvPosition, uint frameIdx)
 // This is used to get the thread ID anywhere in a compute shader.
 property uint3 gl_GlobalInvocationID
 {
-    get
+  get
+  {
+    __target_switch
     {
-        __target_switch
-        {
-        case glsl: __intrinsic_asm "(gl_GlobalInvocationID)";
-        case spirv: return spirv_asm { result:$$uint3 = OpLoad builtin(GlobalInvocationId:uint3); };
-        }
+    case glsl: __intrinsic_asm "(gl_GlobalInvocationID)";
+    case spirv: return spirv_asm { result:$$uint3 = OpLoad builtin(GlobalInvocationId:uint3); };
     }
+}
 }
 #endif
 
 // NOTE: This will allow anyone to create a RNG sampler anywhere without needing to pass it around to every function.
 //       By default, this uses the invocation thread ID (works for Compute and Ray pipelines).
-RNG	createRngAnywhere(uint temporalIdx, uint offset) {
+RNG	createRngAnywhere(uint temporalIdx, uint offset)
+{
   uint2 pixelIdx = 0;
 #ifdef RAY_PIPELINE
   pixelIdx = DispatchRaysIndex().xy;

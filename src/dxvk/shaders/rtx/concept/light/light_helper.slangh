@@ -39,7 +39,7 @@ struct LightSample
 
 float3 sampleDomeLightTexture(SamplerState sampler, float3 worldDirection, uint32_t domeLightTextureIndex, float4x4 worldToDomeLightTransform)
 {
-  if(domeLightTextureIndex == BINDING_INDEX_INVALID)
+  if (domeLightTextureIndex == BINDING_INDEX_INVALID)
   {
     return 1..xxx;
   }

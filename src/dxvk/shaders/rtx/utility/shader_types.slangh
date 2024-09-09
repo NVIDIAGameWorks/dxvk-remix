@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -127,9 +127,9 @@ __generic<T : __BuiltinFloatingPointType>
 __target_intrinsic(hlsl)
 T saturate(T x)
 {
-    return clamp(x,
-        (T(0)),
-        (T(1)));
+  return clamp(x,
+      (T(0)),
+      (T(1)));
 }
 
 __target_intrinsic(glsl, "unpack16($0)")

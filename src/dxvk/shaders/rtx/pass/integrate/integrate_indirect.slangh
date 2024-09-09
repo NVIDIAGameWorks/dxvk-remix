@@ -84,9 +84,13 @@ void integrate_indirect_pass(ivec2 threadIndex)
 
   float gbufferSurfaceHitDistance = 0;
   if (geometryFlags.primarySelectedIntegrationSurface)
+  {
     gbufferSurfaceHitDistance = PrimaryHitDistance[threadIndex];
+  }
   else
+  {
     gbufferSurfaceHitDistance = SecondaryHitDistance[threadIndex];
+  }
 
   // Integrate the Indirect portion of the Path
 

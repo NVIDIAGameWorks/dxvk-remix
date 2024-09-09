@@ -328,7 +328,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
 
   // Sample validation use rtxdi gradient to discard stale samples.
   // Although it can only verify samples inside the screen, it still helps in many cases.
-  if(cb.enableReSTIRGILightingValidation > 0 && !isInitialSample)
+  if (cb.enableReSTIRGILightingValidation > 0 && !isInitialSample)
   {
     validateSample(inputReservoir, resultReservoir, isGBufferSimilar);
   }
@@ -347,7 +347,7 @@ void main(int2 thread_id : SV_DispatchThreadID)
   {
     storeInDebugView(thread_id, isGBufferSimilar ? lerp(vec3(1, 0, 0), vec3(0, 1, 0), reflectionReprojectionWeight) : vec3(0));
   }
-  else if(cb.debugView == DEBUG_VIEW_NAN)
+  else if (cb.debugView == DEBUG_VIEW_NAN)
   {
     bool isValid = true;
     // DEBUG_VIEW_RESTIR_GI_INITIAL_SAMPLE

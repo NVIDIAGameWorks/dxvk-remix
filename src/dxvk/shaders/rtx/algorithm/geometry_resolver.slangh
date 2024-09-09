@@ -1030,22 +1030,20 @@ void geometryResolverOutputDebugView(uvec2 pixelCoordinate)
   }
 }
 
-// Note: This function adds in a diffuse layer contribution for the surface from a combined diffuse layer weight. Do note this weight is typically
+// This function calculates a diffuse layer contribution for the surface from a combined diffuse layer weight. Do note this weight is typically
 // made up of a shared component and a component from the reflection and/or translucent side of things. This should be added in regardless of if reflection
 // or transmission PSR is actually done, just since there's no need to make this contribution noisy for no reason. This contribution does not work quite
 // properly however when reflection or transmission PSR are individually disabled right now, we'd need to conditionally have the diffuse layer weight
 // only include the relevant lobe contributions rather than both always.
-void approximateDiffuseLayerRadiance(SurfaceInteraction surfaceInteraction,
+vec3 approximateDiffuseLayerRadiance(SurfaceInteraction surfaceInteraction,
                                      PortalSpace2BitsType portalSpace,
-                                     const f16vec3 diffuseLayerWeight,
-                                     const f16vec3 attenuation,
-                                     inout vec3 radiance)
+                                     const f16vec3 diffuseLayerWeight)
 {
   // Note: Important early out check to avoid expensive radiance cache lookups when they are not needed (as the diffuse layer
   // weight will be set to 0 in these cases).
   if (all(diffuseLayerWeight <= 0.0))
   {
-    return;
+    return vec3(0);
   }
 
   // Fetch data from the radiance cache for the current surface interaction
@@ -1062,7 +1060,7 @@ void approximateDiffuseLayerRadiance(SurfaceInteraction surfaceInteraction,
   // Todo: We should really be using spherical harmonics in the future for this to actually evaluate a directional contribution of the diffuse
   // layer as right now isotropic scattering looks a bit darker than it should (most the light should be backscattered for such a surface realistically
   // rather than equally scattered around).
-  radiance += diffuseLayerWeight * accumulatedOutgoingRadiance * attenuation;
+  return diffuseLayerWeight * accumulatedOutgoingRadiance;
 }
 
 void geometryResolverVertex(
@@ -1194,7 +1192,7 @@ void geometryResolverVertex(
   }
   else
   {
-    if(cb.domeLightArgs.active)
+    if (cb.domeLightArgs.active)
     {
       emissiveRadiance += cb.domeLightArgs.radiance * sampleDomeLightTexture(LinearWrapSampler, geometryResolverState.direction, cb.domeLightArgs.textureIndex, cb.domeLightArgs.worldToLightTransform);
     }
@@ -1322,11 +1320,11 @@ void geometryResolverVertex(
   // Note: Using attenuation here to factor in the "standard" attenuation from resolving beforehand. Importantly this
   // code needs to come before the PSRR attenuation is factored in otherwise the reflection attenuation will improperly modulate the
   // incident diffuse layer contribution.
-  vec3 diffuseLayerRadiance = 0.0;
-  approximateDiffuseLayerRadiance(
-    surfaceInteraction, geometryResolverState.portalSpace, diffuseLayerWeight,
-    geometryResolverState.attenuation, diffuseLayerRadiance);
-  
+  vec3 diffuseLayerRadiance = approximateDiffuseLayerRadiance(
+    surfaceInteraction, geometryResolverState.portalSpace, diffuseLayerWeight);
+
+  diffuseLayerRadiance *= geometryResolverState.attenuation;
+
   // Output diffuse component from the glass to a separate particle layer so that it won't get mixed with background noise.
   if (cb.outputParticleLayer && any(diffuseLayerRadiance > 0.0))
   {
@@ -1734,7 +1732,7 @@ void geometryPSRResolverVertex(
   }
   else
   {
-    if(cb.domeLightArgs.active)
+    if (cb.domeLightArgs.active)
     {
       emissiveRadiance += cb.domeLightArgs.radiance * sampleDomeLightTexture(LinearWrapSampler, ray.direction, cb.domeLightArgs.textureIndex, cb.domeLightArgs.worldToLightTransform);
     }
@@ -1805,10 +1803,10 @@ void geometryPSRResolverVertex(
 
   // Note: This code needs to come before the PSR attenuation is factored in otherwise the reflection or transmission attenuation will improperly
   // modulate the diffuse layer contribution.
-  vec3 diffuseLayerRadiance = 0.0;
-  approximateDiffuseLayerRadiance(
-    surfaceInteraction, geometryPSRResolverState.portalSpace, diffuseLayerWeight,
-    geometryPSRResolverState.attenuation, diffuseLayerRadiance);
+  vec3 diffuseLayerRadiance = approximateDiffuseLayerRadiance(
+    surfaceInteraction, geometryPSRResolverState.portalSpace, diffuseLayerWeight);
+
+  diffuseLayerRadiance *= geometryPSRResolverState.attenuation;
 
   if (cb.outputParticleLayer)
   {

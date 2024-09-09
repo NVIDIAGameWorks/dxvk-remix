@@ -56,7 +56,7 @@ TranslucentSurfaceMaterial translucentSurfaceMaterialCreate(uint16_t surfaceMate
   translucentSurfaceMaterial.sourceSurfaceMaterialIndex = surfaceMaterialIndex;
     
   // If we're just doing a visibility check, we dont need these parameters, only those for attenuation.
-  if(visibilityCheckOnly)
+  if (visibilityCheckOnly)
   {
     translucentSurfaceMaterial.normalTextureIndex = BINDING_INDEX_INVALID;
     translucentSurfaceMaterial.emissiveColorTextureIndex = BINDING_INDEX_INVALID;

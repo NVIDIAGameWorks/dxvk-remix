@@ -49,7 +49,7 @@ PathState pathStateCreateEmpty(GeometryFlags geometryFlags)
   pathState.coneSpreadAngle = cb.screenSpacePixelSpreadHalfAngle;
 
   pathState.radiance = vec3(0.0f, 0.0f, 0.0f);
-  pathState.throughput = vec3(1.0f);
+  pathState.throughput = f16vec3(1.h);
   pathState.firstBounceHitDistance = kEmptyPixelHitDistance;
   pathState.mediumMaterialIndex = BINDING_INDEX_INVALID;
   
@@ -68,7 +68,9 @@ PathState pathStateCreateEmpty(GeometryFlags geometryFlags)
   pathState.rayMask = OBJECT_MASK_ALL | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC);
 
   if (geometryFlags.isViewModel) 
+  {
     updateRayMaskForRayOriginFromViewModelSurface(pathState.rayMask, pathState.portalSpace);
+  }
 
   return pathState;
 }
@@ -152,8 +154,8 @@ bool sampleLightNeeCache(inout RAB_RandomSamplerState rtxdiRNG, inout RNG random
 
   const bool isSubsurface = isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
 
-  // Note: We are NOT taking transmission into consideration, because calculating probability of transmission have some costs.
-  //       Also, it's approximate importance and no need to be exact, we just skip the calculation here for better performance.
+  // Note: We are NOT taking transmission into consideration, because calculating probability of transmission has some costs.
+  //       Also, it's an approximate importance sample and does not need to be exact, so we just skip the calculation here for better performance.
   float16_t specularRatio = calcBt709Luminance(opaqueSurfaceMaterialInteraction.baseReflectivity)
     / calcBt709Luminance(opaqueSurfaceMaterialInteraction.albedo + opaqueSurfaceMaterialInteraction.baseReflectivity);
   vec2 uniformRandomNumber = vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState));
@@ -169,6 +171,7 @@ bool sampleLightNeeCache(inout RAB_RandomSamplerState rtxdiRNG, inout RNG random
     lightSample = memoryPolymorphicLightSampleArea(memoryPolymorphicLight, sampleCoordinates0, surfaceInteraction);
     return true;
   }
+  
   return false;
 }
 
@@ -323,7 +326,7 @@ void integratePathVertex(
     // Note: True misses going out into infinity will have no hit in the ray interaction and the continue resolving flag set to false. This is in contrast to misses
     // which may require further resolving which may be needed in cases of skipping specific pieces of geometry while still wishing to continue traversal.
 
-    if(cb.domeLightArgs.active)
+    if (cb.domeLightArgs.active)
     {
       emissiveRadiance += cb.domeLightArgs.radiance * sampleDomeLightTexture(LinearWrapSampler, pathState.direction, cb.domeLightArgs.textureIndex, cb.domeLightArgs.worldToLightTransform);
     }
@@ -538,7 +541,6 @@ void integratePathVertex(
 
       if (!isWithinGbuffer)
       {
-        // Select and sample a light for NEE via RIS
         if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable && cb.neeCacheArgs.enableAnalyticalLight)
         {
           lightSampleValid = sampleLightNeeCache(rtxdiRNG, randomState, pathState.neeCacheCellOffset,
@@ -547,6 +549,7 @@ void integratePathVertex(
         }
         else
         {
+          // Select and sample a light for NEE via RIS
           lightSampleValid = sampleLightRIS(
             randomState,
             surfaceInteraction, opaqueSurfaceMaterialInteraction, rayInteraction.viewDirection,

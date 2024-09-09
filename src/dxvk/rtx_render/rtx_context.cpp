@@ -446,7 +446,7 @@ namespace dxvk {
 
     const bool isRaytracingEnabled = RtxOptions::Get()->enableRaytracing();
 
-    if(isRaytracingEnabled && isCameraValid) {
+    if (isRaytracingEnabled && isCameraValid) {
       if (targetImage == nullptr) {
         targetImage = m_state.om.renderTargets.color[0].view->image();  
       }
@@ -455,7 +455,7 @@ namespace dxvk {
       const bool captureScreenImage = s_triggerScreenshot || (captureTestScreenshot && !s_capturePrePresentTestScreenshot);
       const bool captureDebugImage = RtxOptions::Get()->shouldCaptureDebugImage();
       
-      if(s_triggerUsdCapture) {
+      if (s_triggerUsdCapture) {
         s_triggerUsdCapture = false;
         m_common->capturer()->triggerNewCapture();
       }
@@ -522,6 +522,7 @@ namespace dxvk {
         // Path Tracing
         dispatchPathTracing(rtOutput);
 
+        // RTXDI confidence
         m_common->metaRtxdiRayQuery().dispatchConfidence(this, rtOutput);
 
         // ReSTIR GI
@@ -1338,8 +1339,9 @@ namespace dxvk {
       denoiseInput.frameTimeMs = frameTimeMilliseconds;
       denoiseInput.reset = m_resetHistory;
 
-      if(RtxOptions::Get()->useRTXDI() && m_common->metaRtxdiRayQuery().getEnableDenoiserConfidence())
+      if (RtxOptions::Get()->useRTXDI() && m_common->metaRtxdiRayQuery().getEnableDenoiserConfidence()) {
         denoiseInput.confidence = &rtOutput.getCurrentRtxdiConfidence().resource(Resources::AccessType::Read);
+      }
 
       DxvkDenoise::Output denoiseOutput;
       denoiseOutput.diffuse_hitT = &rtOutput.m_primaryDirectDiffuseRadiance.resource(Resources::AccessType::Write);
@@ -1479,7 +1481,7 @@ namespace dxvk {
     // The tone curve shouldn't be too different between raytracing modes, 
     // but the reset of denoised buffers causes wide tone curve differences
     // until it converges and thus making comparison of raytracing mode outputs more difficult    
-    if(RtxOptions::Get()->tonemappingMode() == TonemappingMode::Global) {
+    if (RtxOptions::Get()->tonemappingMode() == TonemappingMode::Global) {
       DxvkToneMapping& toneMapper = m_common->metaToneMapping();
       toneMapper.dispatch(this, 
         getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER),
