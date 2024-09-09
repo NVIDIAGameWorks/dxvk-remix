@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -67,10 +67,14 @@ void loadVertexData(uint triIdx, Surface surface, out float2 vertexTexcoords[3],
     {
       const uint indexBufferIndex = surface.indexBufferIndex;
 
-      if(surface.indexStride == 4)
+      if (surface.indexStride == 4)
+      {
         index = BUFFER_ARRAY(Indices32, indexBufferIndex, indexIndex);
+      }
       else
+      {
         index = BUFFER_ARRAY(Indices, indexBufferIndex, indexIndex);
+      }
     }
     else
     {
@@ -102,11 +106,12 @@ void loadVertexData(uint triIdx, Surface surface, out float2 vertexTexcoords[3],
 
 void applyVertexAndTextureOperationsToOpacity(inout float16_t opacity, f16vec3 albedo, float3 bary, Surface surface, float16_t vertexOpacities[3])
 {
-  if (cb.materialType == surfaceMaterialTypeOpaque) {
-
+  if (cb.materialType == surfaceMaterialTypeOpaque)
+  {
     float16_t vertexInterpolatedOpacity = 1.h;
 
-    if (surface.color0BufferIndex != BINDING_INDEX_INVALID) {
+    if (surface.color0BufferIndex != BINDING_INDEX_INVALID)
+    {
       vertexInterpolatedOpacity = interpolateHitAttribute(vertexOpacities, bary); 
     }
 
@@ -137,7 +142,8 @@ f16vec4 sampleColorOpacityRaw(float2 texcoords)
 {
   f16vec4 colorOpacity = sampleColorOpacityTexture(Opacity, texcoords);
 
-  if (cb.materialType == surfaceMaterialTypeRayPortal) {
+  if (cb.materialType == surfaceMaterialTypeRayPortal)
+  {
     // TODO: match RT resolve transparency calculation for portals, handle animation
     // For now take the max opacity from both textures
     colorOpacity.a = max(colorOpacity.a, sampleColorOpacityTexture(SecondaryOpacity, texcoords).a);
@@ -151,7 +157,9 @@ float16_t sampleOpacity(float2 texcoords, Surface surface, float3 bary, float16_
   f16vec4 colorOpacity = sampleColorOpacityRaw(texcoords);
   
   if (cb.applyVertexAndTextureOperations)
+  {
     applyVertexAndTextureOperationsToOpacity(colorOpacity.a, colorOpacity.rgb, bary, surface, vertexOpacities);
+  }
 
   return colorOpacity.a;
 }
@@ -171,7 +179,8 @@ void sampleOpacityConservative(Surface surface,
   float2 texcoordsMax = calculateTriangleTexcoordBBoxMax(microTriangleVertexTexcoords);
   
   // Check for invalid values should garbage texcoord data be fed in
-  if (!isValidValue(texcoordsMin) || !isValidValue(texcoordsMax)) {
+  if (!isValidValue(texcoordsMin) || !isValidValue(texcoordsMax))
+  {
     minOpacity = 0;
     maxOpacity = 1;
     return;
@@ -205,6 +214,7 @@ void sampleOpacityConservative(Surface surface,
   minOpacity = 1;
   maxOpacity = 0;
   for (uint v = 0; v < texelSampleDims.y; v++)
+  {
     for (uint u = 0; u < texelSampleDims.x; u++)
     {
       const float2 texcoords = texcoordsMin + uint2(u, v) * cb.rcpTextureResolution;
@@ -219,6 +229,7 @@ void sampleOpacityConservative(Surface surface,
       minOpacity = min(opacity, minOpacity);
       maxOpacity = max(opacity, maxOpacity);
     }
+  }
 }
 
 enum OpacityState 
@@ -236,13 +247,21 @@ enum OpacityState
 OpacityState getOpacityState(float opacity)
 {
   if (opacity <= cb.resolveTransparencyThreshold)
+  {
     return OpacityState::Transparent;
+  }
   else if (opacity >= cb.resolveOpaquenessThreshold)
+  {
     return OpacityState::Opaque;
+  }
   else if (cb.is2StateOMMFormat)
+  {
     return OMM_2_STATE_UNKNOWN_STATE;
+  }
   else
+  {
     return OMM_4_STATE_UNKNOWN_STATE;
+  }
 }
 
 OpacityState calculateOpacityMicromapValue(float16_t minOpacity, float16_t maxOpacity)
@@ -285,7 +304,7 @@ OpacityState calculateOpacityMicromapValue(uint uIdx, float rcpNumSubdivisions, 
     minOpacity = opacity;
   
     // Taps at corners of the microtriangle at lod 0
-    for (int i = 0; i < 3; i++) 
+    for (uint i = 0; i < 3; i++) 
     { 
       opacity = sampleOpacity(microTriangleVertexTexcoords[i], surface, microTriangleVertexBarys[i], vertexOpacities);
 
@@ -302,8 +321,10 @@ OpacityState calculateOpacityMicromapValue(uint uIdx, float rcpNumSubdivisions, 
 void main(uint globalId: SV_DispatchThreadID, uint groupId : SV_GroupID, uint threadId : SV_GroupThreadID)
 {
   if (globalId >= cb.numActiveThreads)
+  {
     return;
-  
+  }
+
   const uint numBitsPerMicroTriangle = cb.is2StateOMMFormat ? 1 : 2;
   const uint numSubdivisionsPerEdge = 1 << cb.subdivisionLevel;
   const float rcpNumSubdivisions = 1.f / numSubdivisionsPerEdge;
@@ -319,7 +340,7 @@ void main(uint globalId: SV_DispatchThreadID, uint groupId : SV_GroupID, uint th
   loadVertexData(triIdx, cb.surface, vertexTexcoords, vertexOpacities);
   
   uint8_t compactResult = 0;
-  for (uint i=0 ; i<numTrisPerThread ; i++)
+  for (uint i=0; i<numTrisPerThread; i++)
   {
     const uint sharedResultOffset = (i << (numBitsPerMicroTriangle - 1));
   

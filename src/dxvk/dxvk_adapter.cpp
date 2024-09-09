@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -302,6 +302,10 @@ namespace dxvk {
                 || !required.vulkan11Features.shaderDrawParameters)
         && (m_deviceFeatures.vulkan12Features.hostQueryReset
                 || !required.vulkan12Features.hostQueryReset)
+        && (m_deviceFeatures.vulkan12Features.scalarBlockLayout
+                || !required.vulkan12Features.scalarBlockLayout)
+        && (m_deviceFeatures.vulkan12Features.uniformBufferStandardLayout
+                || !required.vulkan12Features.uniformBufferStandardLayout)
         && (m_deviceFeatures.ext4444Formats.formatA4R4G4B4
                 || !required.ext4444Formats.formatA4R4G4B4)
         && (m_deviceFeatures.ext4444Formats.formatA4B4G4R4
@@ -490,7 +494,9 @@ namespace dxvk {
     enabledFeatures.khrAccelerationStructureFeatures.accelerationStructure = m_deviceFeatures.khrAccelerationStructureFeatures.accelerationStructure;
     enabledFeatures.khrRayQueryFeatures.rayQuery = m_deviceFeatures.khrRayQueryFeatures.rayQuery;
     enabledFeatures.khrDeviceRayTracingPipelineFeatures.rayTracingPipeline = m_deviceFeatures.khrDeviceRayTracingPipelineFeatures.rayTracingPipeline;
-
+    enabledFeatures.vulkan12Features.scalarBlockLayout = m_deviceFeatures.vulkan12Features.scalarBlockLayout;
+    enabledFeatures.vulkan12Features.uniformBufferStandardLayout = m_deviceFeatures.vulkan12Features.uniformBufferStandardLayout;
+    
     enabledFeatures.vulkan12Features.shaderInt8 = VK_TRUE;
     enabledFeatures.vulkan12Features.storageBuffer8BitAccess = VK_TRUE;
     enabledFeatures.vulkan12Features.uniformAndStorageBuffer8BitAccess = VK_TRUE;
@@ -1200,6 +1206,10 @@ namespace dxvk {
       "\n  shaderInt64                            : ", features.core.features.shaderInt64 ? "1" : "0",
       "\n  variableMultisampleRate                : ", features.core.features.variableMultisampleRate ? "1" : "0",
       "\n  hostQueryReset                         : ", features.vulkan12Features.hostQueryReset ? "1" : "0",
+      // NV-DXVK
+      "\n  scalarBlockLayout                      : ", features.vulkan12Features.scalarBlockLayout ? "1" : "0",
+      "\n  uniformBufferStandardLayout            : ", features.vulkan12Features.uniformBufferStandardLayout ? "1" : "0",
+      // NV-DXVK end
       "\n", VK_EXT_4444_FORMATS_EXTENSION_NAME,
       "\n  formatA4R4G4B4                         : ", features.ext4444Formats.formatA4R4G4B4 ? "1" : "0",
       "\n  formatA4B4G4R4                         : ", features.ext4444Formats.formatA4B4G4R4 ? "1" : "0",

@@ -85,7 +85,7 @@ namespace dxvk {
     virtual void onFrameBegin(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent) override;
 
   private:
-    void processOutputStatistics(Rc<DxvkContext>& ctx);
+    void processOutputStatistics(Rc<RtxContext>& ctx);
     void showOutputStatistics();
     bool shouldDebugViewDispatch() const;
     void createConstantsBuffer();

@@ -52,7 +52,8 @@ void minimalRayInteractionWriteToGBuffer(
   const GBufferMemoryMinimalRayInteraction gBufferMemoryMinimalRayInteraction =
     gBufferMemoryMinimalRayInteractionCreate(minimalRayInteraction, directionAltered);
 
-  if (directionAltered) {
+  if (directionAltered)
+  {
     viewDirectionTexture[position] = gBufferMemoryMinimalRayInteraction.encodedViewDirection;
   }
 
@@ -212,7 +213,8 @@ void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
     surfaceIndexTexture[position] = uint32_t(surfaceIndex);
 
     // Only write sharedTextureCoords if the material has a height texture, or the material has subsurface texture(s)
-    if (polymorphicSurfaceMaterialInteractionHasHeightTexture(polymorphicSurfaceMaterialInteraction)) {
+    if (polymorphicSurfaceMaterialInteractionHasHeightTexture(polymorphicSurfaceMaterialInteraction))
+    {
       sharedTextureCoords[position] = surfaceInteraction.textureCoordinates;
     }
 

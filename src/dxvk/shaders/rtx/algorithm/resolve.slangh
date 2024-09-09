@@ -831,7 +831,7 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
   const uint kMaxUnorderedResolveSteps = 32;
 #endif
 
-  for(uint step=0 ; step<kMaxUnorderedResolveSteps && rayQuery.Proceed() ; step++)
+  for (uint step=0 ; step<kMaxUnorderedResolveSteps && rayQuery.Proceed() ; step++)
   {
     RayHitInfo rayHitInfo;
     RayInteraction rayInteraction;

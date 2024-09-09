@@ -102,8 +102,9 @@ namespace dxvk {
 
     const bool isOpacityMicromapSupported = OpacityMicromapManager::checkIsOpacityMicromapSupported(*m_device);
 
-    for (int32_t ommEnabled = isOpacityMicromapSupported; ommEnabled > 0; ommEnabled--)
+    for (int32_t ommEnabled = isOpacityMicromapSupported; ommEnabled > 0; ommEnabled--) {
       pipelineManager.registerRaytracingShaders(getPipelineShaders(true, ommEnabled));
+    }
 
     DxvkComputePipelineShaders shaders;
     shaders.cs = getComputeShader();

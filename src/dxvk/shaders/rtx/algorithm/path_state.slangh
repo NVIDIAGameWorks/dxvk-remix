@@ -218,6 +218,8 @@ struct PathState : IBasePayloadState
       set { _roughness = f16ToUnorm8(newValue); }
   }
 
+  // Methods
+
   // Calculates an RNG offset at a start of a bounce set in the path state
   uint calculateRNGOffset(uint sampleOffset) 
   {

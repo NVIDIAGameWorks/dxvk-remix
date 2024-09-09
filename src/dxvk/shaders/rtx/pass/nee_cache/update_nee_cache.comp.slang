@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -61,8 +61,10 @@ int convertToThisFramePrefixSumID(int lastID, out int surfaceID, out int primiti
     return NEE_CACHE_INVALID_ID;
   }
   int surfaceIDLast, primitiveIDLast;
-  if(!NEECacheUtils.convertPrefixSumIDToID(lastID, LastPrimitiveIDPrefixSum, surfaceIDLast, primitiveIDLast))
+  if (!NEECacheUtils.convertPrefixSumIDToID(lastID, LastPrimitiveIDPrefixSum, surfaceIDLast, primitiveIDLast))
+  {
     return NEE_CACHE_INVALID_ID;
+  }
 
   int surfaceIDThis = NEECacheUtils.convertToCurrentSurfaceID(surfaceIDLast);
   surfaceID = surfaceIDThis;
@@ -73,7 +75,9 @@ int convertToThisFramePrefixSumID(int lastID, out int surfaceID, out int primiti
 int convertLightIndex(int lightIndex)
 {
   if (lightIndex == NEE_CACHE_INVALID_ID)
+  {
     return NEE_CACHE_INVALID_ID;
+  }
 
   bool currentToPrevious = false;
   return lightMapping[lightIndex + (currentToPrevious ? 0 : cb.lightCount)];
@@ -254,7 +258,7 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
         }
       }
 
-      if(!found)
+      if (!found)
       {
         value.x = ((1 << 24) | value.x);
         insertTask(value, localIndex.y);
@@ -424,7 +428,7 @@ void updateLightTask(NEECell cell, uint2 localIndex)
 
   GroupMemoryBarrierWithGroupSync();
 
-  if(cb.neeCacheArgs.clearCache == 0)
+  if (cb.neeCacheArgs.clearCache == 0)
   {
     uint2 value = cell.getLightSlotTaskValue(localIndex.x);
     value.x = convertLightIndex(value.x);

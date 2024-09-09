@@ -341,7 +341,6 @@ void integrateDirectPath(
     else
     {
       // Select and sample a light for NEE via RIS
-
       risLightSampleValid = sampleLightRIS(
         randomState,
         primarySurfaceInteraction, opaqueSurfaceMaterialInteraction, primaryMinimalRayInteraction.viewDirection,

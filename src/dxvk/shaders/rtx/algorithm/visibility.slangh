@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -46,15 +46,19 @@ f16vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo ra
   {
     // View model instances don't have an inter-frame mapping, assume they're transparent
     if (rayHitInfo.customIndex & CUSTOM_INDEX_IS_VIEW_MODEL)
+    {
       return 1.0;
+    }
 
     // Map the surface index from the previous frame to the current frame
     rayInteraction.surfaceIndex = surfaceMapping[rayInteraction.surfaceIndex];
 
     if (rayInteraction.surfaceIndex == BINDING_INDEX_INVALID)
+    {
       // Surface no longer exists - assume it was transparent, which is safer than
       // assuming an opaque surface, because that would introduce more bias in ReSTIR
       return 1.0;
+    }
   }
 
   Surface surface = surfaces[uint(rayInteraction.surfaceIndex)]; 
@@ -85,8 +89,10 @@ f16vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo ra
   SurfaceInteraction surfaceInteraction = surfaceInteractionCreate<requiresNormalsAndTangents ? SurfaceGenerateTangents : SurfaceIgnoreTangents>(surface, rayInteraction, ray, usePreviousTLAS);
 
   if (isSurfaceClipped(surface, surfaceInteraction))
+  {
     // Ignore parts of surfaces that are under clip planes
     return 1.0;
+  }
 
   const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[rayInteraction.surfaceIndex];
   
@@ -115,7 +121,7 @@ f16vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo ra
       return 1.0h - opaqueSurfaceMaterialInteraction.opacity;
     }
     
-    if(VisibilityMode & visibilityModeEnableSubsurfaceMaterials)
+    if (VisibilityMode & visibilityModeEnableSubsurfaceMaterials)
     {
       const float16_t normalDotOutputDirection = dot(-ray.direction, opaqueSurfaceMaterialInteraction.shadingNormal);
       if (normalDotOutputDirection < materialEpsilon)
@@ -191,8 +197,11 @@ float16_t getRayPortalTransparency(
   // Treat rays coming from behind the portal as not intersecting with it.
   const float NdotD = dot(ray.direction, portal.normal);
   t = dot(portal.centroid - ray.origin, portal.normal) / NdotD;
-  if (isinf(t) || isnan(t)) t = -1.0;
-
+  if (isinf(t) || isnan(t))
+  {
+    t = -1.0;
+  }
+  
   if (0 <= t && t <= ray.tMax && NdotD < 0)
   {
     const vec3 p = ray.origin + ray.direction * t;
@@ -308,13 +317,14 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
     : RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH;
 
   // Note: Enable culling of backfacing triangles only if culling is actually desired on this visibility ray.
-  if(cb.enableCullingSecondaryRays) {
+  if (cb.enableCullingSecondaryRays)
+  {
     rayFlags |= (VisibilityMode & visibilityModeDisableCulling)
       ? 0
       : RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
   }
 
-  while(true)
+  while (true)
   {
     RayQuery<0> rayQuery = RayQuery<0>();
 
@@ -352,7 +362,7 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
         if ((float16_t(1) - calcBt709Luminance(result.attenuation)) >= cb.resolveOpaquenessThreshold)
         {
           // If opaque hit is not considered in the attenuation term, need to recover previous attenuation.
-          if(!clearOpaqueHitAttenuation)
+          if (!clearOpaqueHitAttenuation)
           {
             result.attenuation = prevAttenuation;
           }
@@ -364,7 +374,7 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
 
     if (rayQuery.CommittedStatus() == COMMITTED_TRIANGLE_HIT)
     {
-      if(clearOpaqueHitAttenuation)
+      if (clearOpaqueHitAttenuation)
       {
         result.attenuation = f16vec3(0.0);
       }

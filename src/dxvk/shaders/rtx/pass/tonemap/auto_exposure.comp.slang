@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -49,7 +49,7 @@ float computePrefixSum(float val, const uint linearIndex)
   g_localData[linearIndex] = val;
   GroupMemoryBarrierWithGroupSync();
 
-  for(uint k = WaveGetLaneCount(); k < EXPOSURE_HISTOGRAM_SIZE; k *= 2)
+  for (uint k = WaveGetLaneCount(); k < EXPOSURE_HISTOGRAM_SIZE; k *= 2)
   {
     uint blockIndex = linearIndex / k;
     // Propagate prefixSum to the next block for every other block so as to avoid 
@@ -80,7 +80,7 @@ void main(uint2 threadId : SV_DispatchThreadID, uint linearIndex : SV_GroupIndex
   float totalWeight = computePrefixSum(countThisBucket, linearIndex);
 
   float adaptedCountThisBucket = countThisBucket;
-  if(cb.averageMode == 0) // mean
+  if (cb.averageMode == 0) // mean
   {
     adaptedCountThisBucket *= linearIndex; // factor in the index so we can compute the mean bucket quickly
   }
@@ -89,23 +89,25 @@ void main(uint2 threadId : SV_DispatchThreadID, uint linearIndex : SV_GroupIndex
   const float weightedSum = computePrefixSum(adaptedCountThisBucket, linearIndex);
 
   float normalizedEV = 0;
-  if(linearIndex == 0) 
+  if (linearIndex == 0) 
   {
 
     uint discardSampleCount = countThisBucket; // discarded (e.g. black) pixel count, since this is the 0th bucket
 
     float weightedAverage;
 
-    if(cb.averageMode == 1) 
+    if (cb.averageMode == 1) 
     {
       float median = (weightedSum - discardSampleCount) / 2.f;
       weightedAverage = 0.5f; // Start with the first bucket center
 
-      for(uint i=1 ; i<EXPOSURE_HISTOGRAM_SIZE ; i++) 
+      for (uint i=1 ; i<EXPOSURE_HISTOGRAM_SIZE ; i++) 
       {
-        if(g_localData[i] > median)
+        if (g_localData[i] > median)
+        {
           break;
-
+        }
+        
         weightedAverage = i + 0.5f; // +0.5 as we want the center of the bucket
       }
     }
@@ -134,10 +136,10 @@ void main(uint2 threadId : SV_DispatchThreadID, uint linearIndex : SV_GroupIndex
     OutExposure[0] = adaptedExposure;
   }
   
-  if(cb.debugMode)
+  if (cb.debugMode)
   {
     DebugView[uint2(linearIndex, 0)] = vec4(float(countThisBucket) / 10000, 0, weight, 1.0);
-    if(linearIndex == 0) 
+    if (linearIndex == 0) 
     {
       // Remap exposure to bucket (1, size-1)
       int avgIdx = uint(normalizedEVToHistogramOffset(normalizedEV));

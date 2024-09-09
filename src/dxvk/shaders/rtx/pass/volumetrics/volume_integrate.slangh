@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -35,8 +35,10 @@ void volume_integrate_pass(ivec3 threadIndex)
   const uint froxelVolume = threadIndex.x / froxelDimensions.x;
 
   if (any(threadIndex.yz >= froxelDimensions.yz) || froxelVolume > volumeArgs.numActiveFroxelVolumes)
+  {
     return;
-
+  }
+  
   // Figure out which volume we'll be pulling the previous data from.
   // Usually it's the same volume, but in case of portal teleportation, that doesn't work.
   uint previousFroxelVolume = froxelVolume;

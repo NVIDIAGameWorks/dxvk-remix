@@ -175,23 +175,23 @@ vec3 logarithmicColor(float value)
   {
     return vec3(1,0,0);
   }
-  else if(value < 100.0)
+  else if (value < 100.0)
   {
     return vec3(1,0.5,0);
   }
-  else if(value < 1000.0)
+  else if (value < 1000.0)
   {
     return vec3(1,1,0);
   }
-  else if(value < 10000.0)
+  else if (value < 10000.0)
   {
     return vec3(0,1,0);
   }
-  else if(value < 100000.0)
+  else if (value < 100000.0)
   {
     return vec3(0,1,1);
   }
-  else if(value < 1000000.0)
+  else if (value < 1000000.0)
   {
     return vec3(0,0,1);
   }
@@ -283,7 +283,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
       NEECell sampleCell = NEECache.getCell(NEECache.pointToOffset(sampleSurface.minimalSurfaceInteraction.position, f16vec3(0), jitter));
       if (sampleCell.isValid())
       {
-        if(!canvas.isPadding())
+        if (!canvas.isPadding())
         {
           // Get bin index
           int binIndex = canvas.getBin(NEECell.getMaxCandidateCount());
@@ -321,11 +321,11 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
           }
 
           // Calculate histogram
-          if(canvas.isCross())
+          if (canvas.isCross())
           {
             canvas.drawForeground(vec3(1,0,0));
           }
-          if(canvas.isLegend(1))
+          if (canvas.isLegend(1))
           {
             // Show samples
             int binIndex = canvas.getBin(NEE_CACHE_SAMPLES);
@@ -334,11 +334,11 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
             float alpha = isLightHistogram ? (isBinValid ? 1.0 : 0.0) : 1.0;
             canvas.drawForeground(color, alpha);
           }
-          else if(canvas.isLegend(0))
+          else if (canvas.isLegend(0))
           {
             canvas.drawForeground(lightIntensity, isBinValid ? 1.0 : 0.0);
           }
-          else if(canvas.isHistogram() && canvas.isHistogramBar(probability))
+          else if (canvas.isHistogram() && canvas.isHistogramBar(probability))
           {
             // Histogram
             canvas.drawForeground(histogramColor, isBinValid ? 1.0 : 0.0);
@@ -373,7 +373,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
 
         vec3 backgroundColor = indirectLight * linearToGamma(cellColor);
         vec4 triangleColor = 0.0;
-        if(lightSelectionPDF > 0.5)
+        if (lightSelectionPDF > 0.5)
         {
           triangleColor = lerp(vec4(1,1,0,0.5), vec4(0,1,0,0.5), (lightSelectionPDF - 0.5) * 2.0);
         }

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -19,8 +19,7 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
-#ifndef SHADER_TYPES_H
-#define SHADER_TYPES_H
+#pragma once
 
 #ifdef __cplusplus
 
@@ -213,5 +212,3 @@ inline int32_t floatBitsToInt(float x) {
 #include "rtx/utility/shader_types.slangh"
 
 #endif // __cplusplus
-
-#endif // SHADER_TYPES_H

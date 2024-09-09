@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -19,8 +19,7 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
-#ifndef SURFACE_MATERIAL_H
-#define SURFACE_MATERIAL_H
+#pragma once
 #include "rtx/utility/shader_types.h"
 
 #include "../../utility/shared_constants.h"
@@ -246,5 +245,3 @@ struct PolymorphicSurfaceMaterialInteraction
 
   uint8_t type;
 };
-
-#endif

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -212,7 +212,8 @@ float sphericalTriangleCosineAngle(vec3 A, vec3 B, vec3 C)
   // Note: Handle cases when normalization may be NaN (in these cases two of the points
   // are colinear which can be interpreted as having an angle of 0 in the spherical triangle,
   // or in the case of the cosine of the angle, 1).
-  if (lengthCA == 0.0f || lengthBA == 0.0f) {
+  if (lengthCA == 0.0f || lengthBA == 0.0f)
+  {
     return 1.0f;
   }
 

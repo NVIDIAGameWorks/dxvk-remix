@@ -409,7 +409,7 @@ float RAB_GetGITargetPdfForSurface(vec3 radiance, vec3 position, RAB_Surface sur
 
   surface.opaqueSurfaceMaterialInteraction.isotropicRoughness = max(surface.opaqueSurfaceMaterialInteraction.isotropicRoughness, cb.reSTIRGIRoughnessClamp);
   surface.opaqueSurfaceMaterialInteraction.anisotropicRoughness = max(surface.opaqueSurfaceMaterialInteraction.anisotropicRoughness, cb.reSTIRGIRoughnessClamp);
-  if(cb.enableReSTIRGIDemodulatedTargetFunction)
+  if (cb.enableReSTIRGIDemodulatedTargetFunction)
   {
     float16_t originalBrightness = max(0.001,
       calcBt709Luminance(surface.opaqueSurfaceMaterialInteraction.albedo + surface.opaqueSurfaceMaterialInteraction.baseReflectivity));
@@ -486,7 +486,7 @@ bool RAB_ShouldDiscardEnlargedPixel(inout RAB_RandomSamplerState rng, RAB_Surfac
     return false;
   
   f16vec3 triangleNormal = surface.minimalSurfaceInteraction.triangleNormal;
-  if(surface.portalSpace == PORTAL_SPACE_PORTAL_0 || surface.portalSpace == PORTAL_SPACE_PORTAL_1)
+  if (surface.portalSpace == PORTAL_SPACE_PORTAL_0 || surface.portalSpace == PORTAL_SPACE_PORTAL_1)
   {
     RayPortalHitInfo rayPortalHitInfo = cb.rayPortalHitInfos[(uint)getOpposingRayPortalIndex(surface.portalSpace)];
     if (rayPortalHitInfoIsActive(rayPortalHitInfo))
@@ -731,7 +731,7 @@ bool RAB_TraceLightSampleVisibility(RAB_Surface surface, RAB_LightSample lightSa
 bool RAB_TraceGISampleVisibility(RAB_Surface surface, RAB_Surface neighborSurface, ReSTIRGI_Reservoir reservoir, int numPortals)
 {
   uint8_t portalID = ReSTIRGI_PortalID2BitTo8Bit(reservoir.getPortalID());
-  if(portalID == RTXDI_INVALID_PORTAL_INDEX || portalID < numPortals)
+  if (portalID == RTXDI_INVALID_PORTAL_INDEX || portalID < numPortals)
   {
     const uint8_t rayMask = OBJECT_MASK_OPAQUE | (surface.objectMask & OBJECT_MASK_ALL_DYNAMIC);
 

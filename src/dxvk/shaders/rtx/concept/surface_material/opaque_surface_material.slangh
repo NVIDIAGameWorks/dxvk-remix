@@ -53,7 +53,7 @@ OpaqueSurfaceMaterial opaqueSurfaceMaterialCreate(uint16_t surfaceMaterialIndex,
   opaqueSurfaceMaterial.tangentTextureIndex = BINDING_INDEX_INVALID;
 
   // If we're just doing a visibility check, we dont need these parameters.
-  if(visibilityCheckOnly)
+  if (visibilityCheckOnly)
   {
     opaqueSurfaceMaterial.emissiveColorTextureIndex = BINDING_INDEX_INVALID;
     opaqueSurfaceMaterial.roughnessTextureIndex = BINDING_INDEX_INVALID;

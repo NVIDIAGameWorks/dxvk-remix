@@ -255,7 +255,7 @@ float3 pomCalculateTexcoord(
     // raymarch to find intersection
     float currDepth = 0.0f, prevHeight = 0.0f;
     iterations = 0;
-    while(currDepth < currHeight)
+    while (currDepth < currHeight)
     {
       iterations++;
       currTexcoord -= step;
@@ -306,7 +306,7 @@ float pomSampleVisibility(
     currHeight = pomSampleHeight(heightTextureIdx, samplerIndex, currTexcoord);
     currDepth -= layerSize;
 
-    if(currHeight < currDepth)
+    if (currHeight < currDepth)
     {
       visibility -= (currDepth - currHeight) / layerSize;
     }
@@ -955,7 +955,7 @@ SurfaceMaterialInteractionLobeSample opaqueSurfaceMaterialInteractionCalcLobeSam
     diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability, diffuseTransmissionProbability);
 
   SurfaceMaterialInteractionLobeSample surfaceMaterialInteractionLobeSample;
-  if(!isValid)
+  if (!isValid)
   {
     // Note: Default to sampling specular lobe when no lobe desires to be sampled from. Ideally this could just be skipped entirely as
     // a sample though, but we currently do not support that logic, so for now we pick specular since it will generate more coherent

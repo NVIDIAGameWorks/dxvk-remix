@@ -244,13 +244,13 @@ namespace dxvk {
         {DEBUG_VIEW_NOISY_DEMODULATED_SECONDARY_COMBINED_SPECULAR_RADIANCE,"Secondary Combined Specular: Demodulated Noisy Color"},
         {DEBUG_VIEW_DENOISED_SECONDARY_COMBINED_SPECULAR_RADIANCE,         "Secondary Combined Specular: Denoised Color"},
 
-        { DEBUG_VIEW_NOISY_PRIMARY_DIRECT_RADIANCE,                        "Primary Direct: Noisy Color" },
-        { DEBUG_VIEW_NOISY_PRIMARY_INDIRECT_RADIANCE,                      "Primary Indirect: Noisy Color" },
-        { DEBUG_VIEW_NOISY_PRIMARY_RADIANCE,                               "Primary: Noisy Color" },
-        { DEBUG_VIEW_NOISY_SECONDARY_DIRECT_RADIANCE,                      "Secondary Direct: Noisy Color" },
-        { DEBUG_VIEW_NOISY_SECONDARY_INDIRECT_RADIANCE,                    "Secondary Indirect: Noisy Color" },
-        { DEBUG_VIEW_NOISY_SECONDARY_RADIANCE,                             "Secondary: Noisy Color" },
-        { DEBUG_VIEW_NOISY_RADIANCE,                                       "Primary + Secondary: Noisy Color" },
+        {DEBUG_VIEW_NOISY_PRIMARY_DIRECT_RADIANCE,                         "Primary Direct: Noisy Color" },
+        {DEBUG_VIEW_NOISY_PRIMARY_INDIRECT_RADIANCE,                       "Primary Indirect: Noisy Color" },
+        {DEBUG_VIEW_NOISY_PRIMARY_RADIANCE,                                "Primary: Noisy Color" },
+        {DEBUG_VIEW_NOISY_SECONDARY_DIRECT_RADIANCE,                       "Secondary Direct: Noisy Color" },
+        {DEBUG_VIEW_NOISY_SECONDARY_INDIRECT_RADIANCE,                     "Secondary Indirect: Noisy Color" },
+        {DEBUG_VIEW_NOISY_SECONDARY_RADIANCE,                              "Secondary: Noisy Color" },
+        {DEBUG_VIEW_NOISY_RADIANCE,                                        "Primary + Secondary: Noisy Color" },
 
         {DEBUG_VIEW_INSTRUMENTATION_THREAD_DIVERGENCE,                     "Thread Divergence(Debug Knob.x)"},
         {DEBUG_VIEW_NAN,                                                   "Inf/NaN Check"},
@@ -488,7 +488,7 @@ namespace dxvk {
     }
   }
 
-  void DebugView::processOutputStatistics(Rc<DxvkContext>& ctx) {
+  void DebugView::processOutputStatistics(Rc<RtxContext>& ctx) {
     
     if (m_showOutputStatistics) {
       const uint32_t frameIdx = ctx->getDevice()->getCurrentFrameId();
@@ -853,8 +853,6 @@ namespace dxvk {
         ctx->clearColorImage(m_instrumentation.image, clearColor, subRange);
       }
     }
-
-    processOutputStatistics(ctx);
   }
 
   DebugViewArgs DebugView::getCommonDebugViewArgs(
@@ -997,6 +995,9 @@ namespace dxvk {
     Rc<DxvkBuffer>& debugViewConstantBuffer,
     const Resources::RaytracingOutput& rtOutput) {
     ScopedGpuProfileZone(ctx, "Debug View");
+
+    // Process output statistics now before we schedule a debug view dispatch that updates them
+    processOutputStatistics(ctx);
 
     // Inputs 
 

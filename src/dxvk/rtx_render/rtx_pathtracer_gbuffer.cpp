@@ -173,7 +173,9 @@ namespace dxvk {
     }
   }
 
-  void DxvkPathtracerGbuffer::dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
+  void DxvkPathtracerGbuffer::dispatch(
+    RtxContext* ctx, 
+    const Resources::RaytracingOutput& rtOutput) {
     ScopedGpuProfileZone(ctx, "Gbuffer Raytracing");
 
     // Bind resources
@@ -348,11 +350,12 @@ namespace dxvk {
     }
   }
 
-  DxvkRaytracingPipelineShaders DxvkPathtracerGbuffer::getPipelineShaders(const bool isPSRPass,
-                                                                          const bool useRayQuery,
-                                                                          const bool serEnabled, 
-                                                                          const bool ommEnabled, 
-                                                                          const bool includePortals) {
+  DxvkRaytracingPipelineShaders DxvkPathtracerGbuffer::getPipelineShaders(
+    const bool isPSRPass,
+    const bool useRayQuery,
+    const bool serEnabled, 
+    const bool ommEnabled, 
+    const bool includePortals) {
     ScopedCpuProfileZone();
     DxvkRaytracingPipelineShaders shaders;
     if (useRayQuery) {

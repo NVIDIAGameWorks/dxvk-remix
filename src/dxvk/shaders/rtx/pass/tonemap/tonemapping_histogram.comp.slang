@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -47,15 +47,16 @@ void main(uint2 threadId : SV_DispatchThreadID, uint linearIndex : SV_GroupIndex
   uvec2 screenSize;
   InColorBuffer.GetDimensions(screenSize.x, screenSize.y);
 
-  if (linearIndex < kToneCurveSampleCount) {
+  if (linearIndex < kToneCurveSampleCount)
+  {
     g_localHistogram[linearIndex] = 0;
   }
 
   GroupMemoryBarrierWithGroupSync();
 
   // Ignore pixels that are outside of the image:
-  if (all(lessThan(threadId, screenSize))) {
-
+  if (all(lessThan(threadId, screenSize)))
+  {
     vec3 inputColor = InColorBuffer[threadId].rgb;
     
     // Exposure correction
@@ -65,8 +66,8 @@ void main(uint2 threadId : SV_DispatchThreadID, uint linearIndex : SV_GroupIndex
     const float pixelLuminance = calcBt709Luminance(inputColor);
     
     // Ignore completely black pixels, as well as pixels that are too bright:
-    if ((pixelLuminance > 0.0) && (pixelLuminance < exp2(cb.toneCurveMaxStops))) {
-
+    if ((pixelLuminance > 0.0) && (pixelLuminance < exp2(cb.toneCurveMaxStops)))
+    {
       // Compute histogram bin (based on photographic stops)
       // The bins are numbered 0...kToneCurveSampleCount-1. When i > 0, we think of bin i
       // as sampling the histogram at the point
@@ -107,10 +108,12 @@ void main(uint2 threadId : SV_DispatchThreadID, uint linearIndex : SV_GroupIndex
 
   // Finally, add the group's histogram to the global histogram.
   // This code requires at least kToneCurveSampleCount threads in each group.
-  if (linearIndex < kToneCurveSampleCount) {
+  if (linearIndex < kToneCurveSampleCount)
+  {
     uint localBinValue = g_localHistogram[linearIndex];
     // Avoid performing atomic no-ops
-    if (localBinValue != 0) {
+    if (localBinValue != 0)
+    {
       InterlockedAdd(InOutHistogram[int(linearIndex)], localBinValue);
     }
   }
