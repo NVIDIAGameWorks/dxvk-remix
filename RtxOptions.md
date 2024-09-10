@@ -526,7 +526,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.recompileShadersOnLaunch|bool|False|When set to true runtime shader recompilation will execute on the first frame after launch\.|
 |rtx.reflexMode|int|1|Reflex mode selection, enabling it helps minimize input latency, boost mode may further reduce latency by boosting GPU clocks in CPU\-bound cases\.<br>Supported enum values are 0 = None \(Disabled\), 1 = LowLatency \(Enabled\), 2 = LowLatencyBoost \(Enabled \+ Boost\)\.<br>Note that even when using the "None" Reflex mode Reflex will attempt to be initialized\. Use rtx\.isReflexEnabled to fully disable to skip this initialization if needed\.|
 |rtx.reloadTextureWhenResolutionChanged|bool|False|Reload texture when resolution changed\.|
-|rtx.renderPassGBufferRaytraceMode|int|2|The ray tracing mode to use for the G\-Buffer pass which resolves the initial primary and secondary surfaces to apply lighting to\.|
+|rtx.renderPassGBufferRaytraceMode|int|0|The ray tracing mode to use for the G\-Buffer pass which resolves the initial primary and secondary surfaces to apply lighting to\.|
 |rtx.renderPassIntegrateDirectRaytraceMode|int|0|The ray tracing mode to use for the Direct Lighting pass which applies lighting to the primary/secondary surfaces\.|
 |rtx.renderPassIntegrateIndirectRaytraceMode|int|2|The ray tracing mode to use for the Indirect Lighting pass which applies lighting to the primary/secondary surfaces\.|
 |rtx.replaceDirectSpecularHitTWithIndirectSpecularHitT|bool|True||
