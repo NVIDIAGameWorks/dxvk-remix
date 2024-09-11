@@ -1155,14 +1155,17 @@ namespace dxvk {
       // NV-DXVK start: DLFG integration
       VkResult status = presenter->acquireNextImage(sync, imageIndex);
       // NV-DXVK end
-      
-      while (status != VK_SUCCESS && status != VK_SUBOPTIMAL_KHR) {
+
+      while (status != VK_SUCCESS) {
         RecreateSwapChain(m_vsync);
 
         // NV-DXVK start: DLFG integration
         info = presenter->info();
         status = presenter->acquireNextImage(sync, imageIndex);
         // NV-DXVK end
+        
+        if (status == VK_SUBOPTIMAL_KHR)
+          break;
       }
 
       m_context->beginRecording(

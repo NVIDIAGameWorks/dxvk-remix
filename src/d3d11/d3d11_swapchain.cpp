@@ -281,7 +281,7 @@ namespace dxvk {
 
       VkResult status = m_presenter->acquireNextImage(sync, imageIndex);
 
-      while (status != VK_SUCCESS && status != VK_SUBOPTIMAL_KHR) {
+      while (status != VK_SUCCESS) {
         RecreateSwapChain(m_vsync);
 
         if (!m_presenter->hasSwapChain())
@@ -289,6 +289,9 @@ namespace dxvk {
         
         info = m_presenter->info();
         status = m_presenter->acquireNextImage(sync, imageIndex);
+
+        if (status == VK_SUBOPTIMAL_KHR)
+          break;
       }
 
       // Resolve back buffer if it is multisampled. We
