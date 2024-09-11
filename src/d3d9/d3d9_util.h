@@ -209,37 +209,36 @@ namespace dxvk {
   bool IsDepthFormat(D3D9Format Format);
 
   inline bool operator == (const D3DVIEWPORT9& a, const D3DVIEWPORT9& b) {
-  return a.X      == b.X      &&
-         a.Y      == b.Y      &&
-         a.Width  == b.Width  &&
-         a.Height == b.Height &&
-         a.MinZ   == b.MinZ   &&
-         a.MaxZ   == b.MaxZ;
-}
+    return a.X      == b.X      &&
+           a.Y      == b.Y      &&
+           a.Width  == b.Width  &&
+           a.Height == b.Height &&
+           a.MinZ   == b.MinZ   &&
+           a.MaxZ   == b.MaxZ;
+  }
 
-inline bool operator != (const D3DVIEWPORT9& a, const D3DVIEWPORT9& b) {
-  return !(a == b);
-}
+  inline bool operator != (const D3DVIEWPORT9& a, const D3DVIEWPORT9& b) {
+    return !(a == b);
+  }
 
-inline bool operator == (const RECT& a, const RECT& b) {
-  return a.left   == b.left  &&
-         a.right  == b.right &&
-         a.top    == b.top   &&
-         a.bottom == b.bottom;
-}
+  inline bool operator == (const RECT& a, const RECT& b) {
+    return a.left   == b.left  &&
+           a.right  == b.right &&
+           a.top    == b.top   &&
+           a.bottom == b.bottom;
+  }
 
-inline bool operator != (const RECT& a, const RECT& b) {
-  return !(a == b);
-}
+  inline bool operator != (const RECT& a, const RECT& b) {
+    return !(a == b);
+  }
 
-inline bool operator == (const POINT& a, const POINT& b) {
-  return a.x == b.x && a.y == b.y;
-}
+  inline bool operator == (const POINT& a, const POINT& b) {
+    return a.x == b.x && a.y == b.y;
+  }
 
-inline bool operator != (const POINT& a, const POINT& b) {
-  return !(a == b);
-}
-
+  inline bool operator != (const POINT& a, const POINT& b) {
+    return !(a == b);
+  }
 
   inline bool IsPoolManaged(D3DPOOL Pool) {
     return Pool == D3DPOOL_MANAGED || Pool == D3DPOOL_MANAGED_EX;
@@ -301,6 +300,10 @@ inline bool operator != (const POINT& a, const POINT& b) {
   }
 
 }
+
+// NV-DXVK start: Adding a function from dxvk main without including its dependency (the dependency currently causes build failures)
+// function comes from: https://github.com/doitsujin/dxvk/commit/0cd4165658537405d84a43f3ab6180b770f30fe1
+// not included dependency: https://github.com/doitsujin/dxvk/commit/4b8e8bed6e7007144f803ec64485168c82273c6f
 inline bool operator == (const D3DDISPLAYMODEEX& a, const D3DDISPLAYMODEEX& b) {
   return a.Size             == b.Size             &&
          a.Width            == b.Width            &&
@@ -309,3 +312,4 @@ inline bool operator == (const D3DDISPLAYMODEEX& a, const D3DDISPLAYMODEEX& b) {
          a.Format           == b.Format           &&
          a.ScanLineOrdering == b.ScanLineOrdering;
 }
+// NV-DXVK end
