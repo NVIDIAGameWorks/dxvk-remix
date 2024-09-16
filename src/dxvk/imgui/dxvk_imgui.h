@@ -56,6 +56,12 @@ namespace dxvk {
   class ImGUI {
     
   public:
+    // if set for a texture category, only textures with that flag can be set to that category.
+    static const uint32_t kTextureFlagsNone = 0; 
+    // Use this for regular textures
+    static const uint32_t kTextureFlagsDefault = 1 << 0; 
+    // Use this for render target textures
+    static const uint32_t kTextureFlagsRenderTarget = 1 << 1; 
     
     ImGUI(DxvkDevice* device);
     ~ImGUI();
@@ -87,7 +93,7 @@ namespace dxvk {
             VkExtent2D         surfaceSize,
             bool               vsync);
     
-    static void AddTexture(const XXH64_hash_t hash, const Rc<DxvkImageView>& imageView);
+    static void AddTexture(const XXH64_hash_t hash, const Rc<DxvkImageView>& imageView, uint32_t textureFeatureFlags);
     static void ReleaseTexture(const XXH64_hash_t hash);
     static bool checkHotkeyState(const VirtualKeys& virtKeys, const bool allowContinuousPress = false);
 

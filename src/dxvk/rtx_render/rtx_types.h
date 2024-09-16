@@ -501,6 +501,9 @@ struct DrawCallState {
 
   uint32_t drawCallID = 0;
 
+  bool isDrawingToRaytracedRenderTarget = false;
+  bool isUsingRaytracedRenderTarget = false;
+
   void setupCategoriesForTexture();
   void setupCategoriesForGeometry();
   void setupCategoriesForHeuristics(uint32_t prevFrameSeenCamerasCount,

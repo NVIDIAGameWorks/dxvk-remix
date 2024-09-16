@@ -35,13 +35,14 @@ namespace dxvk
 {
   namespace CameraType {
     enum Enum : uint32_t {
-      Main = 0,     // Main camera
-      ViewModel,    // Camera for view model rendering
-      Portal0,      // Camera associated with rendering portal 0
-      Portal1,      // Camera associated with rendering portal 1
-      Sky,          // Some renderers have separate world / sky cameras
-      Unknown,      // Unset camera state, used mainly for state tracking. Its camera object is aliased 
-                    // with the Main camera object, so on access it retrieves the Main camera
+      Main = 0,        // Main camera
+      ViewModel,       // Camera for view model rendering
+      Portal0,         // Camera associated with rendering portal 0
+      Portal1,         // Camera associated with rendering portal 1
+      Sky,             // Some renderers have separate world / sky cameras
+      RenderToTexture, // Camera used to replace a render target texture that is being raytraced.
+      Unknown,         // Unset camera state, used mainly for state tracking. Its camera object is aliased 
+                       // with the Main camera object, so on access it retrieves the Main camera
 
       Count
     };
@@ -323,7 +324,7 @@ namespace dxvk
     static void applyJitterTo(Matrix4& inoutProjection, uint32_t jitterFrameIdx, uint32_t renderResolutionX, uint32_t renderResolutionY);
     static void applyAndGetJitter(Matrix4d& inoutProjection, float (&outPixelJitter)[2], uint32_t jitterFrameIdx, uint32_t renderResolutionX, uint32_t renderResolutionY);
 
-    Camera getShaderConstants() const;
+    Camera getShaderConstants(bool freecam = true) const;
     VolumeDefinitionCamera getVolumeShaderConstants() const;
 
     static void showImguiSettings();

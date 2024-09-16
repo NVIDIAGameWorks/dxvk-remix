@@ -776,16 +776,16 @@ namespace dxvk
     inoutProjection[2][1] += clipSpaceJitter[1];
   }
 
-  Camera RtCamera::getShaderConstants() const {
-    auto& worldToView = getWorldToView();
-    auto& translatedWorldToView = getTranslatedWorldToView();
-    auto& viewToWorld = getViewToWorld();
-    auto& viewToTranslatedWorld = getViewToTranslatedWorld();
+  Camera RtCamera::getShaderConstants(bool freecam) const {
+    auto& worldToView = getWorldToView(freecam);
+    auto& translatedWorldToView = getTranslatedWorldToView(freecam);
+    auto& viewToWorld = getViewToWorld(freecam);
+    auto& viewToTranslatedWorld = getViewToTranslatedWorld(freecam);
     auto& viewToProjection = getViewToProjection();
     auto& projectionToView = getProjectionToView();
-    auto& prevWorldToView = getPreviousWorldToView();
-    auto& prevTranslatedWorldToView = getPreviousTranslatedWorldToView();
-    auto& prevViewToWorld = getPreviousViewToWorld();
+    auto& prevWorldToView = getPreviousWorldToView(freecam);
+    auto& prevTranslatedWorldToView = getPreviousTranslatedWorldToView(freecam);
+    auto& prevViewToWorld = getPreviousViewToWorld(freecam);
     auto& viewToProjectionJittered = getViewToProjectionJittered();
     auto& projectionToViewJittered = getProjectionToViewJittered();
     auto& prevViewToProjection = getPreviousViewToProjection();

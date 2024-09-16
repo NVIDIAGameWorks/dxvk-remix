@@ -900,7 +900,7 @@ namespace dxvk {
     }
     uint32_t samplerIndex = trackSampler(sampler);
 
-    if (isLegacyMaterial || renderMaterialDataType == MaterialDataType::Opaque) {
+    if (isLegacyMaterial || renderMaterialDataType == MaterialDataType::Opaque || drawCallState.isUsingRaytracedRenderTarget) {
       uint32_t albedoOpacityTextureIndex = kSurfaceMaterialInvalidTextureIndex;
       uint32_t normalTextureIndex = kSurfaceMaterialInvalidTextureIndex;
       uint32_t tangentTextureIndex = kSurfaceMaterialInvalidTextureIndex;
@@ -924,6 +924,7 @@ namespace dxvk {
       bool alphaIsThinFilmThickness = false;
       float thinFilmThicknessConstant = 0.0f;
       float displaceIn = 1.0f;
+      bool isUsingRaytracedRenderTarget = drawCallState.isUsingRaytracedRenderTarget;
 
       // Ignore colormap alpha of legacy texture if tagged as 'ignoreAlphaOnTextures' 
       bool ignoreAlphaChannel = lookupHash(RtxOptions::ignoreAlphaOnTextures(), drawCallState.getMaterialData().getHash());
@@ -1050,7 +1051,7 @@ namespace dxvk {
         emissiveColorConstant, enableEmissive,
         ignoreAlphaChannel, thinFilmEnable, alphaIsThinFilmThickness,
         thinFilmThicknessConstant, samplerIndex, displaceIn,
-        subsurfaceMaterialIndex
+        subsurfaceMaterialIndex, isUsingRaytracedRenderTarget
       };
 
       surfaceMaterial.emplace(opaqueSurfaceMaterial);

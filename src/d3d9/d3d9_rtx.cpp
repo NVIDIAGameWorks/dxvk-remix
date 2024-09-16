@@ -366,10 +366,23 @@ namespace dxvk {
   D3D9Rtx::DrawCallType D3D9Rtx::makeDrawCallType(const DrawContext& drawContext) {
     // Track the drawcall index so we can use it in rtx_context
     m_activeDrawCallState.drawCallID = m_drawCallID++;
+    m_activeDrawCallState.isDrawingToRaytracedRenderTarget = false;
+    m_activeDrawCallState.isUsingRaytracedRenderTarget = false;
 
     if (m_drawCallID < (uint32_t)RtxOptions::Get()->getDrawCallRange().x ||
         m_drawCallID > (uint32_t)RtxOptions::Get()->getDrawCallRange().y) {
       return { RtxGeometryStatus::Ignored, false };
+    }
+
+    // Raytraced Render Target Support
+    // If the bound texture for this draw call is one that has been used as a render target then store its id
+    if (RtxOptions::Get()->raytracedRenderTarget.enable()) {
+      for (uint32_t i : bit::BitMask(m_parent->GetActiveRTTextures())) {
+        D3D9CommonTexture* texture = GetCommonTexture(d3d9State().textures[i]);
+        if (lookupHash(RtxOptions::raytracedRenderTargetTextures(), texture->GetImage()->getDescriptorHash())) {
+          m_activeDrawCallState.isUsingRaytracedRenderTarget = true;
+        }
+      }
     }
 
     if (m_parent->UseProgrammableVS() && !useVertexCapture()) {
@@ -431,12 +444,24 @@ namespace dxvk {
       }
     }
 
+    // Raytraced Render Target
+    // If this isn't the primary render target but we have used this render target before then 
+    // store the current camera matrices in case this render target is intended to be used as 
+    // a texture for some geometry later
+    if (RtxOptions::Get()->raytracedRenderTarget.enable()) {
+      D3D9CommonTexture* texture = GetCommonTexture(d3d9State().renderTargets[kRenderTargetIndex]->GetBaseTexture());
+      if (texture && lookupHash(RtxOptions::raytracedRenderTargetTextures(), texture->GetImage()->getDescriptorHash())) {
+        m_activeDrawCallState.isDrawingToRaytracedRenderTarget = true;
+        return { RtxGeometryStatus::RayTraced, false };
+      }
+    }
+
     if (!s_isDxvkResolutionEnvVarSet) {
       // NOTE: This can fail when setting DXVK_RESOLUTION_WIDTH or HEIGHT
       const bool isPrimary = isRenderTargetPrimary(*m_activePresentParams, d3d9State().renderTargets[kRenderTargetIndex]->GetCommonTexture()->Desc());
 
       if (!isPrimary) {
-        ONCE(Logger::info("[RTX-Compatibility-Info] Found a draw call to a non-primary render target. Falling back to rasterization"));
+        ONCE(Logger::info("[RTX-Compatibility-Info] Found a draw call to a non-primary, non-raytraced render target. Falling back to rasterization"));
         return { RtxGeometryStatus::Rasterized, false };
       }
     }
@@ -578,6 +603,23 @@ namespace dxvk {
       return prepareFlagsForIgnoredDraws;
     }
 
+    if (RtxOptions::Get()->raytracedRenderTarget.enable()) {
+      // If this draw call has an RT texture bound
+      if (m_activeDrawCallState.isUsingRaytracedRenderTarget) {
+        // We validate this state below
+        m_activeDrawCallState.isUsingRaytracedRenderTarget = false;
+        // Try and find the has of the positions
+        for (uint32_t i : bit::BitMask(m_parent->GetActiveRTTextures())) {
+          D3D9CommonTexture* texture = GetCommonTexture(d3d9State().textures[i]);
+          auto hash = texture->GetImage()->getDescriptorHash();
+          if (lookupHash(RtxOptions::raytracedRenderTargetTextures(), hash)) {
+            // Mark this as a valid Raytraced Render Target draw call
+            m_activeDrawCallState.isUsingRaytracedRenderTarget = true;
+          }
+        }
+      }
+    }
+
     m_activeDrawCallState.categories = 0;
     m_activeDrawCallState.materialData = {};
 
@@ -638,6 +680,12 @@ namespace dxvk {
 
     if (RtxOptions::fogIgnoreSky() && m_activeDrawCallState.categories.test(InstanceCategories::Sky)) {
       m_activeDrawCallState.fogState.mode = D3DFOG_NONE;
+    }
+
+    // Ignore sky draw calls that are being drawn to a Raytraced Render Target
+    // Raytraced Render Target scenes just use the same sky as the main scene, no need to duplicate them
+    if (m_activeDrawCallState.isDrawingToRaytracedRenderTarget && m_activeDrawCallState.categories.test(InstanceCategories::Sky)) {
+      return prepareFlagsForIgnoredDraws;
     }
 
     assert(status == RtxGeometryStatus::RayTraced);

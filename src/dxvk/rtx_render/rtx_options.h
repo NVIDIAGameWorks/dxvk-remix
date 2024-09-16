@@ -251,6 +251,7 @@ namespace dxvk {
                   "Defines which asset hashes we need to generate via the geometry processing engine.");
     RW_RTX_OPTION("rtx", std::string, geometryAssetHashRuleString, "positions,indices,geometrydescriptor",
                   "Defines which hashes we need to include when sampling from replacements and doing USD capture.");
+    RW_RTX_OPTION("rtx", fast_unordered_set, raytracedRenderTargetTextures, {}, "DescriptorHashes for Render Targets. (Screens that should display the output of another camera).");
     
   public:
     RTX_OPTION("rtx", bool, showRaytracingOption, true, "Enables or disables the option to toggle ray tracing in the UI. When set to false the ray tracing checkbox will not appear in the Remix UI.");
@@ -291,7 +292,10 @@ namespace dxvk {
     RTX_OPTION("rtx", std::string, baseGameModRegex, "", "Regex used to determine if the base game is running a mod, like a sourcemod.");
     RTX_OPTION("rtx", std::string, baseGameModPathRegex, "", "Regex used to redirect RTX Remix Runtime to another path for replacements and rtx.conf.");
 
-  public:
+    struct RaytracedRenderTarget {
+      RTX_OPTION("rtx.raytracedRenderTarget", bool, enable, true, "Enables or disables raytracing for render-to-texture effects.  The render target to be raytraced must be specified in the texture selection menu.");
+    } raytracedRenderTarget;
+
     struct ViewModel {
       friend class ImGUI;
       RTX_OPTION("rtx.viewModel", bool, enable, false, "If true, try to resolve view models (e.g. first-person weapons). World geometry doesn't have shadows / reflections / etc from the view models.");
@@ -302,7 +306,6 @@ namespace dxvk {
       RTX_OPTION("rtx.viewModel", float, maxZThreshold, 0.0f, "If a draw call's viewport has max depth less than or equal to this threshold, then assume that it's a view model.");
     } viewModel;
 
-  public:
     struct PlayerModel {
       friend class ImGUI;
       RTX_OPTION("rtx.playerModel", bool, enableVirtualInstances, true, "");

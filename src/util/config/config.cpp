@@ -584,7 +584,6 @@ namespace dxvk {
         "EDDA43A7194B6597,"
         "11BDB0AEC66E413A,"
         "260EAE29EC4727F3,"
-        "A0EF42611EFCDBA5,"
         "6010A18E22F8CE34,"
         "A08B874535052615,"
         "8AA105C2149F4119,"
@@ -800,7 +799,10 @@ namespace dxvk {
       },
       { "rtx.animatedWaterTextures",
         "522E5513DB9638B6,"
-      },        
+      },
+      { "rtx.raytracedRenderTargetTextures",
+        "0x3FB65838F2469C64,"
+      },
       { "rtx.zUp",                   "True" },
       { "rtx.uniqueObjectDistance",  "300.0" }, // Game is 1unit=1cm - picking up objects can move them very quickly, 3m should be sufficient.
       { "rtx.rayPortalModelTextureHashes",        "5EC61BC800744B26, DFDACB6DE1C7741E" }, // Orange and Blue Portal textures
