@@ -154,7 +154,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.di.disocclusionFrames|int|8||
 |rtx.di.disocclusionSamples|int|4|The number of spatial reuse samples in disocclusion areas\.|
 |rtx.di.enableBestLightSampling|bool|True|Whether to include a single best light from the previous frame's pixel neighborhood into initial sampling\.|
-|rtx.di.enableCrossPortalLight|bool|True||
+|rtx.di.enableCrossPortalLight|bool|False||
 |rtx.di.enableDenoiserConfidence|bool|True||
 |rtx.di.enableDenoiserGradient|bool|True|Enable gradient calculation, which is used by confidence calculation and GI sample validation\.|
 |rtx.di.enableDiscardEnlargedPixels|bool|True||
@@ -246,7 +246,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.enableUnorderedEmissiveParticlesInIndirectRays|bool|False|A flag to enable or disable unordered resolve emissive particles specifically in indirect rays\.<br>Should be enabled in higher quality rendering modes as emissive particles are fairly important in reflections, but may be disabled to skip such interactions which can improve performance on lower end hardware\.<br>Note that rtx\.enableUnorderedResolveInIndirectRays must first be enabled for this option to take any effect \(as it will control if unordered resolve is used to begin with in indirect rays\)\.|
 |rtx.enableUnorderedResolveInIndirectRays|bool|True|A flag to enable or disable unordered resolve approximations in indirect rays\.<br>This allows for the presence of unordered approximations in resolving to be overridden in indirect rays and as such requires separate unordered approximations to be enabled to have any effect\.<br>This option should be enabled if objects which can be resolvered in an unordered way in indirect rays are expected for higher quality in reflections, but may come at a performance cost\.<br>Note that even with this option enabled, unordered resolve approximations are only done on the first indirect bounce for the sake of performance overall\.|
 |rtx.enableVolumetricLighting|bool|False|Enabling volumetric lighting provides higher quality ray traced physical volumetrics, disabling falls back to cheaper depth based fog\.<br>Note that disabling this option does not disable the froxel radiance cache as a whole as it is still needed for other non\-volumetric lighting approximations\.|
-|rtx.enableVolumetricsInPortals|bool|True|Enables using extra frustum\-aligned volumes for lighting in portals\.<br>Note that enabling this option will require 3x the memory of the typical froxel grid as well as degrade performance in some cases\.<br>This option should be enabled always in games using ray portals for proper looking volumetrics through them, but should be disabled on any game not using ray portals\.<br>Additionally, this setting must be set at startup and changing it will not take effect at runtime\.|
+|rtx.enableVolumetricsInPortals|bool|False|Enables using extra frustum\-aligned volumes for lighting in portals\.<br>Note that enabling this option will require 3x the memory of the typical froxel grid as well as degrade performance in some cases\.<br>This option should be enabled always in games using ray portals for proper looking volumetrics through them, but should be disabled on any game not using ray portals\.<br>Additionally, this setting must be set at startup and changing it will not take effect at runtime\.|
 |rtx.enableVsync|int|2|Controls the game's V\-Sync setting\. Native game's V\-Sync settings are ignored\.|
 |rtx.fallbackLightAngle|float|5|The angular size in degrees to use for the fallback light \(used only for Distant light types\)\. Should only be within the range \[0, 180\]\.|
 |rtx.fallbackLightConeAngle|float|25|The cone angle in degrees to use for the fallback light shaping \(used only for non\-Distant light types with shaping enabled\)\. Should only be within the range \[0, 180\]\.|
@@ -465,7 +465,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.playerModel.backwardOffset|float|0||
 |rtx.playerModel.enableInPrimarySpace|bool|False||
 |rtx.playerModel.enablePrimaryShadows|bool|True||
-|rtx.playerModel.enableVirtualInstances|bool|True||
+|rtx.playerModel.enableVirtualInstances|bool|False||
 |rtx.playerModel.eyeHeight|float|64||
 |rtx.playerModel.horizontalDetectionDistance|float|34||
 |rtx.playerModel.intersectionCapsuleHeight|float|68||
@@ -696,7 +696,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.usePartialDdsLoader|bool|True|A flag controlling if the partial DDS loader should be used, true to enable, false to disable and use GLI instead\.<br>Generally this should be always enabled as it allows for simple parsing of DDS header information without loading the entire texture into memory like GLI does to retrieve similar information\.<br>Should only be set to false for debugging purposes if the partial DDS loader's logic is suspected to be incorrect to compare against GLI's implementation\.|
 |rtx.usePostFilter|bool|True|Uses post filter to remove fireflies in the denoised result\.|
 |rtx.useRTXDI|bool|True|A flag indicating if RTXDI should be used, true enables RTXDI, false disables it and falls back on simpler light sampling methods\.<br>RTXDI provides improved direct light sampling quality over traditional methods and should generally be enabled for improved direct lighting quality at the cost of some performance\.|
-|rtx.useRayPortalVirtualInstanceMatching|bool|True||
+|rtx.useRayPortalVirtualInstanceMatching|bool|False||
 |rtx.useReSTIRGI|bool|True|A flag indicating if ReSTIR GI should be used, true enables ReSTIR GI, false disables it and relies on typical GI sampling\.<br>ReSTIR GI provides improved indirect path sampling over typical importance sampling and should usually be enabled for better indirect diffuse and specular GI quality at the cost of some performance\.|
 |rtx.useVertexCapture|bool|True|When enabled, injects code into the original vertex shader to capture final shaded vertex positions\.  Is useful for games using simple vertex shaders, that still also set the fixed function transform matrices\.|
 |rtx.useVertexCapturedNormals|bool|True|When enabled, vertex normals are read from the input assembler and used in raytracing\.  This doesn't always work as normals can be in any coordinate space, but can help sometimes\.|
