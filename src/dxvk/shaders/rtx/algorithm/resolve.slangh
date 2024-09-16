@@ -317,11 +317,12 @@ void resolveVertex<T: IBasePayloadState>(
   inout bool isStochasticAlphaBlend,
   inout uint8_t firstRayPortal,
   inout bool pomOpaqueSurfaceEncountered,
+  inout bool isRaytracedRenderTarget,
   // Forces enablement of ray portal resolve path regardless of global resolve mask 
   // Needed for RayQuery paths for visibility rays from CHS as they don't run material specific hit groups
   // Visibility rays are expected not to start from RayPortal surfaces, and thus only RayPortal path is force enabled
   const bool forceEnableResolveRayPortal = false,
-  const bool useStochasticAlphaBlend = false) 
+  const bool useStochasticAlphaBlend = false)
 {
   const Camera camera = cb.camera;
   bool teleport = false;
@@ -418,6 +419,22 @@ void resolveVertex<T: IBasePayloadState>(
     // must create this after decal has been composited to opaque surface material interaction
     polymorphicSurfaceMaterialInteraction =
       polymorphicSurfaceMaterialInteractionCreateInternal(opaqueSurfaceMaterialInteraction);
+
+    // Raytraced Render Target
+    // If we hit a surface that has a render target texture bound then get the associated camera index and
+    // the texture coordinates of the surface we hit
+    if (cb.enableRaytracedRenderTarget && opaqueSurfaceMaterial.flags & OPAQUE_SURFACE_MATERIAL_FLAG_IS_RAYTRACED_RENDER_TARGET)
+    {
+      isRaytracedRenderTarget = true;
+
+      resolveVertexFinalHit(resolveVertexState);
+
+      return;
+    }
+    else
+    {
+      isRaytracedRenderTarget = false;
+    }
 
     // Note: Fully opaque surfaces have no chance at needing further resolving (since they are gauranteed to have no opacity-related blending or translucency), so stopping here is fine.
     // Todo: Incorporate decals into this check so this can be moved above the decal logic for early outing sooner on most hits?
@@ -1218,7 +1235,9 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
       if (i == 0)
       {
         decalMaterialInteractionComposited = decalMaterialInteractionUnpack(binnedDecals[lowBin]);
-      } else {
+      }
+      else
+      {
         DecalMaterialInteraction decalMaterialInteraction = decalMaterialInteractionUnpack(binnedDecals[lowBin]);
         // TODO[REMIX-3080] need to adapt the normal blending to not be transforming into and out of the tangent space with every blend.
         // instead, should get the lowest decal's normal in its tangent space, transform each normal into that tangent space, and only go back to world space at the end.

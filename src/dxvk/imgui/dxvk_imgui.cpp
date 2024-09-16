@@ -129,6 +129,7 @@ namespace dxvk {
   struct ImGuiTexture {
     Rc<DxvkImageView> imageView = VK_NULL_HANDLE;
     VkDescriptorSet texID = VK_NULL_HANDLE;
+    uint32_t textureFeatureFlags = 0;
   };
   std::unordered_map<XXH64_hash_t, ImGuiTexture> g_imguiTextureMap;
 
@@ -136,6 +137,7 @@ namespace dxvk {
     const char* uniqueId;
     const char* displayName;
     RtxOption<fast_unordered_set>* textureSetOption;
+    uint32_t featureFlagMask = ImGUI::kTextureFlagsDefault;
     bool bufferToggle;
   };
 
@@ -160,7 +162,8 @@ namespace dxvk {
     {"playermodelbodytextures", "Player Model Body Texture (optional)", &RtxOptions::Get()->playerModelBodyTexturesObject()},
     {"opacitymicromapignoretextures", "Opacity Micromap Ignore Texture (optional)", &RtxOptions::Get()->opacityMicromapIgnoreTexturesObject()},
     {"ignorebakedlightingtextures","Ignore Baked Lighting Textures (optional)", &RtxOptions::Get()->ignoreBakedLightingTexturesObject()},
-    {"ignorealphaontextures","Ignore Alpha Channel of Textures (optional)", &RtxOptions::Get()->ignoreAlphaOnTexturesObject()}
+    {"ignorealphaontextures","Ignore Alpha Channel of Textures (optional)", &RtxOptions::Get()->ignoreAlphaOnTexturesObject()},
+    {"raytracedRenderTargetTextures","Raytraced Render Target Textures (optional)", &RtxOptions::Get()->raytracedRenderTargetTexturesObject(), ImGUI::kTextureFlagsRenderTarget}
   };
 
   ImGui::ComboWithKey<RenderPassGBufferRaytraceMode> renderPassGBufferRaytraceModeCombo {
@@ -445,11 +448,12 @@ namespace dxvk {
     ImGui::DestroyContext(m_context);
   }
   
-  void ImGUI::AddTexture(const XXH64_hash_t hash, const Rc<DxvkImageView>& imageView) {
+  void ImGUI::AddTexture(const XXH64_hash_t hash, const Rc<DxvkImageView>& imageView, uint32_t textureFeatureFlags) {
     if (g_imguiTextureMap.find(hash) == g_imguiTextureMap.end()) {
       ImGuiTexture texture;
       texture.imageView = imageView; // Hold a refcount
       texture.texID = VK_NULL_HANDLE;
+      texture.textureFeatureFlags = textureFeatureFlags;
       g_imguiTextureMap[hash] = texture;
     }
   }
@@ -1410,11 +1414,12 @@ namespace dxvk {
         if (ImGui::CollapsingHeader("Types", collapsingHeaderClosedFlags)) {
           ImGui::Indent();
           constexpr static std::pair<CameraType::Enum, const char*> cameras[] = {
-            { CameraType::Main,      "Main" },
-            { CameraType::ViewModel, "ViewModel" },
-            { CameraType::Portal0,   "Portal0" },
-            { CameraType::Portal1,   "Portal1" },
-            { CameraType::Sky,       "Sky" },
+            { CameraType::Main,             "Main" },
+            { CameraType::ViewModel,        "ViewModel" },
+            { CameraType::Portal0,          "Portal0" },
+            { CameraType::Portal1,          "Portal1" },
+            { CameraType::Sky,              "Sky" },
+            { CameraType::RenderToTexture,  "RenderToTexture" },
           };
           // C++20: should be static_assert with std::ranges::find_if
           assert(
@@ -1652,9 +1657,17 @@ namespace dxvk {
             if (ImGui::Button("Copy Texture hash##texture_popup")) {
               ImGui::SetClipboardText(hashToString(texHash).c_str());
             }
+            uint32_t textureFeatureFlags = 0;
+            auto& pair = g_imguiTextureMap.find(texHash);
+            if (pair != g_imguiTextureMap.end()) {
+              textureFeatureFlags = pair->second.textureFeatureFlags;
+            }
             for (auto& rtxOption : rtxTextureOptions) {
               rtxOption.bufferToggle = rtxOption.textureSetOption->getValue().count(texHash) > 0;
-
+              if ((rtxOption.featureFlagMask & textureFeatureFlags) != rtxOption.featureFlagMask) {
+                // option requires a feature, but the texture doesn't have that feature.
+                continue;
+              }
               if (IMGUI_ADD_TOOLTIP(ImGui::Checkbox(rtxOption.displayName, &rtxOption.bufferToggle), rtxOption.textureSetOption->getDescription())) {
                 toggleTextureSelection(texHash, rtxOption.uniqueId, rtxOption.textureSetOption->getValue());
               }
@@ -1751,6 +1764,11 @@ namespace dxvk {
       if (isListFiltered) {
         auto& textureSet = listRtxOption.textureSetOption->getValue();
         textureHasSelection = textureSet.find(texHash) != textureSet.end();
+
+        if ((listRtxOption.featureFlagMask & texImgui.textureFeatureFlags) != listRtxOption.featureFlagMask) {
+          // If the list needs to be filtered by texture feature, skip it for this category.
+          continue;
+        }
       } else {
         for (const auto rtxOption : rtxTextureOptions) {
           auto& textureSet = rtxOption.textureSetOption->getValue();
@@ -2548,7 +2566,7 @@ namespace dxvk {
       ImGui::Separator();
 
       ImGui::Checkbox("Allow Full Screen Exclusive?", &RtxOptions::Get()->allowFSEObject());
-      
+
       ImGui::Unindent();
     }
 
@@ -3033,6 +3051,14 @@ namespace dxvk {
       ImGui::Checkbox("Enable PSR", &RtxOptions::Displacement::enablePSRObject());
       ImGui::DragFloat("Global Displacement Factor", &RtxOptions::Displacement::displacementFactorObject(), 0.01f, 0.0f, 20.0f);
       ImGui::DragInt("Max Iterations", &RtxOptions::Displacement::maxIterationsObject(), 1.f, 1, 256, "%d", sliderFlags);
+      ImGui::Unindent();
+    }
+
+    if (ImGui::CollapsingHeader("Raytraced Render Target [Experimental]", collapsingHeaderClosedFlags)) {
+      ImGui::Indent();
+      ImGui::TextWrapped("When a screen in-game is displaying the rasterized results of another camera, this can be used to raytrace that scene.\nNote that the render target texture containing the rasterized results needs to be set to `raytracedRenderTargetTextures` in the texture selection menu.");
+
+      ImGui::Checkbox("Enable Raytraced Render Targets", &RtxOptions::Get()->raytracedRenderTarget.enableObject());
       ImGui::Unindent();
     }
 

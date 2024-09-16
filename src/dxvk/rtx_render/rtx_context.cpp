@@ -827,6 +827,10 @@ namespace dxvk {
 
     constants.camera = camera.getShaderConstants();
 
+    // Set the Raytraced Render Target camera matrices
+    auto const& renderTargetCamera { getSceneManager().getCameraManager().getCamera(CameraType::RenderToTexture) };
+    constants.renderTargetCamera = renderTargetCamera.getShaderConstants(/*freecam =*/ false);
+    constants.enableRaytracedRenderTarget = renderTargetCamera.isValid(m_device->getCurrentFrameId()) && RtxOptions::Get()->raytracedRenderTarget.enable();
     const CameraManager& cameraManager = getSceneManager().getCameraManager();
     const bool enablePortalVolumes = RtxOptions::Get()->enableVolumetricsInPortals() &&
       cameraManager.isCameraValid(CameraType::Portal0) &&

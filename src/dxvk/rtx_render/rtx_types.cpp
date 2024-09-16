@@ -138,7 +138,7 @@ namespace dxvk {
     setCategory(InstanceCategories::IgnoreLights, lookupHash(RtxOptions::ignoreLights(), textureHash));
     setCategory(InstanceCategories::IgnoreAntiCulling, lookupHash(RtxOptions::antiCullingTextures(), textureHash));
     setCategory(InstanceCategories::IgnoreMotionBlur, lookupHash(RtxOptions::motionBlurMaskOutTextures(), textureHash));
-    setCategory(InstanceCategories::IgnoreOpacityMicromap, lookupHash(RtxOptions::opacityMicromapIgnoreTextures(), textureHash));
+    setCategory(InstanceCategories::IgnoreOpacityMicromap, lookupHash(RtxOptions::opacityMicromapIgnoreTextures(), textureHash) || isUsingRaytracedRenderTarget);
     setCategory(InstanceCategories::IgnoreAlphaChannel, lookupHash(RtxOptions::ignoreAlphaOnTextures(), textureHash));
     setCategory(InstanceCategories::IgnoreBakedLighting, lookupHash(RtxOptions::ignoreBakedLightingTextures(), textureHash));
 
@@ -267,13 +267,15 @@ namespace dxvk {
   bool shouldBakeSky(const DrawCallState& drawCallState,
                      bool hasSkinning,
                      uint32_t prevFrameSeenCamerasCount,
-                     std::vector<Vector3>& seenCameraPositions) {
-
-    const auto drawCallCameraPos = makeCameraPosition(
-      drawCallState.getTransformData().worldToView,
-      drawCallState.zWriteEnable,
-      drawCallState.alphaBlendEnable,
-      hasSkinning);
+                     std::vector<Vector3>& seenCameraPositions) {           
+    const auto drawCallCameraPos =
+      drawCallState.isDrawingToRaytracedRenderTarget
+        ? std::optional<Vector3>{}
+        : makeCameraPosition(
+            drawCallState.getTransformData().worldToView,
+            drawCallState.zWriteEnable,
+            drawCallState.alphaBlendEnable,
+            hasSkinning);
 
     auto l_addIfUnique = [&seenCameraPositions](const std::optional<Vector3>& newCameraPos) {
       if (!newCameraPos) {
@@ -307,10 +309,13 @@ namespace dxvk {
       }
     }
 
+    // don't track camera positions for Raytraced Render Targets, as they are a different camera position from main view
+    const static auto renderTargetCameraPositions = std::vector<Vector3>{};
+
     if (checkSkyAutoDetect(drawCallState.zEnable,
                            drawCallCameraPos,
                            prevFrameSeenCamerasCount,
-                           seenCameraPositions)) {
+                           drawCallState.isDrawingToRaytracedRenderTarget ? renderTargetCameraPositions : seenCameraPositions)) {
       return true;
     }
 

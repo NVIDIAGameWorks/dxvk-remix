@@ -342,4 +342,7 @@ struct RaytraceArgs {
   float totalMipBias;
 
   uint forceFirstHitInGBufferPass;
+
+  uint enableRaytracedRenderTarget;
+  Camera renderTargetCamera;
 };

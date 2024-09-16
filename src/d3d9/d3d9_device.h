@@ -945,6 +945,12 @@ namespace dxvk {
       return m_rtx;
     }
 // NV-DXVK end
+    
+// NV-DXVK start: render target support
+    uint32_t GetActiveRTTextures() const {
+      return m_activeRTTextures;
+    }
+// NV-DXVK end
   private:
 
     DxvkCsChunkRef AllocCsChunk() {

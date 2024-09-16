@@ -256,6 +256,7 @@ void integratePathVertex(
   Surface surface;
   SurfaceInteraction surfaceInteraction;
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction;
+  bool isRaytracedRenderTarget = false;
   
   surfaceInteraction.position = pathState.origin;
   
@@ -273,7 +274,10 @@ void integratePathVertex(
     polymorphicSurfaceMaterialInteraction,
     radianceAttenuation, emissiveRadiance,
     decalMemory, decalEmissiveRadiance, 
-    pathState.coneSpreadAngle, isStochasticAlphaBlend, firstRayPortal, pomOpaqueSurfaceEncountered);
+    pathState.coneSpreadAngle,
+    isStochasticAlphaBlend, firstRayPortal,
+    pomOpaqueSurfaceEncountered,
+    isRaytracedRenderTarget);
 
   // Output ReSTIR GI geometry information
 
@@ -373,6 +377,23 @@ void integratePathVertex(
     }
 
     accumulateThroughput(pathState, volumeTransmittance);
+  }
+
+  // If the camera index changed then this ray passed through a render target. Cast a ray from the new camera.
+  if (cb.enableRaytracedRenderTarget && isRaytracedRenderTarget && pathState.bounceIteration == 1)
+  {
+    Ray newRay = rayCreateRenderTarget(cb.renderTargetCamera, surfaceInteraction.textureCoordinates, ray);
+    pathState.origin = newRay.origin;
+    pathState.direction = newRay.direction;
+    pathState.insideMedium = false;
+    pathState.mediumMaterialIndex = BINDING_INDEX_INVALID;
+    pathState.continuePath = true;
+    
+    if (cb.debugView == DEBUG_VIEW_RAYTRACED_RENDER_TARGET_INDIRECT)
+    {
+      storeInDebugView(pathState.pixelCoordinate, vec4(1.f));
+    }
+    return;
   }
 
   const uint materialType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);

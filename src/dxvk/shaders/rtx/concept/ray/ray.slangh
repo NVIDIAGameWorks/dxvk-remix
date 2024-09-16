@@ -123,6 +123,20 @@ Ray rayCreatePrimaryFromPixel(Camera camera, ivec2 pixelCoordinate)
   return rayCreatePrimaryFromPixel(camera, pixelCoordinate, true);
 }
 
+// Create a ray that passes through a render target
+Ray rayCreateRenderTarget(Camera camera, vec2 screenUV, Ray viewRay)
+{
+  Ray ray;
+
+  ray.origin = cameraGetWorldPosition(camera);
+  ray.coneRadius = viewRay.coneRadius; // Note: Cone radius always 0 to start at the camera
+  ray.spreadAngle = viewRay.spreadAngle;
+  ray.direction = cameraScreenUVToDirection(camera, frac(screenUV), false).worldDirection;
+  ray.tMax = viewRay.tMax;
+
+  return ray;
+}
+
 // Todo: Ray create function for spatial/volume positions without being fired from the camera?
 // Think irradiance cache, what would the spread angle on this be based on for reasonable texture
 // sampling quality, probably the effective resolution of the spherical harmonic or whatever is

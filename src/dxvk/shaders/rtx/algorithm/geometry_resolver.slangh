@@ -377,7 +377,8 @@ void geometryResolverVertexOutputDebugView(
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
   float16_t selectedIntegrationSurfacePdf,
   bool directionAltered, PortalSpace2BitsType portalSpace, float virtualHitDistance,
-  bool useAlternateDisocclusionThreshold)
+  bool useAlternateDisocclusionThreshold,
+  const bool isRaytracedRenderTarget)
 {
   const uint8_t materialType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
 
@@ -1006,6 +1007,17 @@ void geometryResolverVertexOutputDebugView(
     storeInDebugView(pixelCoordinate, heightMapValue);
 #endif
     break;
+    
+  case DEBUG_VIEW_RAYTRACED_RENDER_TARGET_GEOMETRY:
+    if (cb.enableRaytracedRenderTarget && isRaytracedRenderTarget){
+      storeInDebugView(pixelCoordinate, vec4(surfaceInteraction.textureCoordinates, 0.0, 1.0));
+    }
+    break;
+  case DEBUG_VIEW_RAYTRACED_RENDER_TARGET_DIRECT:
+    if (cb.enableRaytracedRenderTarget && isRaytracedRenderTarget){
+      storeInDebugView(pixelCoordinate, vec4(1.f));
+    }
+    break;
   }
 }
 
@@ -1144,6 +1156,7 @@ void geometryResolverVertex(
   SurfaceInteraction surfaceInteraction;
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction;
   
+  bool isRaytracedRenderTarget = false;
   bool isStochasticAlphaBlend = false;
   uint8_t firstRayPortal = invalidRayPortalIndex;
   
@@ -1155,7 +1168,11 @@ void geometryResolverVertex(
     polymorphicSurfaceMaterialInteraction,
     radianceAttenuation, emissiveRadiance,
     decalMemory, decalEmissiveRadiance, 
-    float16_t(cb.screenSpacePixelSpreadHalfAngle), isStochasticAlphaBlend, firstRayPortal, geometryResolverState.pomOpaqueSurfaceEncountered, false, true);
+    float16_t(cb.screenSpacePixelSpreadHalfAngle),
+    isStochasticAlphaBlend, firstRayPortal,
+    geometryResolverState.pomOpaqueSurfaceEncountered,
+    isRaytracedRenderTarget,
+    false, true);
 
   if (cb.outputParticleLayer)
   {
@@ -1291,11 +1308,11 @@ void geometryResolverVertex(
   SurfaceMaterialInteractionPSRSample surfaceMaterialInteractionReflectionPSRSample;
   SurfaceMaterialInteractionPSRSample surfaceMaterialInteractionTransmissionPSRSample;
   // Note: Set to 0 in case the weight is not set so will be no diffuse layer contribution.
-  f16vec3 diffuseLayerWeight = f16vec3(0.0f);
+  f16vec3 diffuseLayerWeight = f16vec3(0.h);
   // Note: Set to 1.0 so if PSR is not sampled 1 will be written out for the integrator to read. We could probably avoid
   // writing this value out in cases we know the PDF will be 1 (any case where only PSRR or PSTR happen but not both) to
   // save some writes/reads, but this should be fine for now.
-  float16_t selectedIntegrationSurfacePdf = float16_t(1.0f);
+  float16_t selectedIntegrationSurfacePdf = 1.h;
   const bool oldInsideMedium = geometryResolverState.insideMedium;
   bool pstrPenetrateSurface = false;
   
@@ -1358,7 +1375,57 @@ void geometryResolverVertex(
     geometryResolverState.isViewModelSurface = true;
   }
 
-  if (geometryResolverState.performPSRR || geometryResolverState.performPSTR)
+  if (cb.enableRaytracedRenderTarget && isRaytracedRenderTarget)
+  {
+    GeometryFlags geometryFlags = (GeometryFlags)0;
+    geometryFlags.isViewModel = geometryResolverState.isViewModelSurface;
+    geometryFlags.portalSpace = geometryResolverState.portalSpace;
+    geometryFlags.secondarySurfaceMask = true;
+    geometryFlags.objectMask = primaryRayMaskToObjectMask(geometryResolverState.rayMask, geometryResolverState.isViewModelSurface);
+    const uint packedGeometryFlags = geometryFlagsEncode(geometryFlags);
+    
+    const float stochasticTheshold = 0.66f;
+    if (getNextSampleBlueNoise(randomState) < stochasticTheshold)
+    {
+      selectedIntegrationSurfacePdf = stochasticTheshold;
+      geometryResolverState.reflectionSelectedIntegrationSurface = false;
+    }
+    else
+    {
+      selectedIntegrationSurfacePdf = (1.f - stochasticTheshold);
+      geometryResolverState.reflectionSelectedIntegrationSurface = true;
+    }
+
+    // render target ray (replacing reflection)
+    {
+      geometryResolverState.performPSTR = true;
+      Ray newRay = rayCreateRenderTarget(cb.renderTargetCamera, surfaceInteraction.textureCoordinates, ray);
+
+      const GbufferPSRData psrData = packPSRData(newRay, BINDING_INDEX_INVALID,
+        geometryResolverState.attenuation,
+        getIdentityQuaternion(), // TODO[REMIX-3500] this will lead to incorrect motion vectors. It needs to be a full perspective matrix, which won't fit into PSR
+        packedGeometryFlags);
+        
+      storeTransmissionPSRData(psrData, geometryResolverState.pixelCoordinate);
+      PrimaryConeRadius[geometryResolverState.pixelCoordinate] = newRay.coneRadius;
+      PrimaryHitDistance[geometryResolverState.pixelCoordinate] = geometryResolverState.accumulatedHitDistance;
+    }
+
+    // ray that passes through the screen (replacing transmission)
+    {
+      geometryResolverState.performPSRR = true;
+      Ray newRay = rayCreateDirection(
+        rayInteraction, surfaceInteraction, ray, ray.direction, true);
+      const GbufferPSRData psrData = packPSRData(newRay, BINDING_INDEX_INVALID,
+        geometryResolverState.attenuation,
+        geometryResolverState.accumulatedRotation,
+        packedGeometryFlags);
+        
+      storeReflectionPSRData(psrData, geometryResolverState.pixelCoordinate);
+      SecondaryHitDistance[geometryResolverState.pixelCoordinate] = geometryResolverState.accumulatedHitDistance;
+    }
+  }
+  else if (geometryResolverState.performPSRR || geometryResolverState.performPSTR)
   {
     // Set the geometry flag bits that must be the same for both PSR passes, see unpackPSRData(...)
 
@@ -1485,7 +1552,8 @@ void geometryResolverVertex(
     polymorphicSurfaceMaterialInteraction,
     selectedIntegrationSurfacePdf,
     geometryResolverState.directionAltered, geometryResolverState.portalSpace,
-    geometryResolverState.accumulatedHitDistance, geometryResolverState.useAlternateDisocclusionThreshold);
+    geometryResolverState.accumulatedHitDistance, geometryResolverState.useAlternateDisocclusionThreshold,
+    isRaytracedRenderTarget);
 }
 
 
@@ -1664,6 +1732,7 @@ void geometryPSRResolverVertex(
   Surface surface;
   SurfaceInteraction surfaceInteraction;
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction;
+  bool isRaytracedRenderTarget = false;
 
   bool isStochasticAlphaBlend = false; // note, not actually used here
   uint8_t firstRayPortal = invalidRayPortalIndex;
@@ -1676,7 +1745,10 @@ void geometryPSRResolverVertex(
     polymorphicSurfaceMaterialInteraction,
     radianceAttenuation, emissiveRadiance,
     decalMemory, decalEmissiveRadiance, 
-    float16_t(cb.screenSpacePixelSpreadHalfAngle), isStochasticAlphaBlend, firstRayPortal, geometryPSRResolverState.pomOpaqueSurfaceEncountered);
+    float16_t(cb.screenSpacePixelSpreadHalfAngle),
+    isStochasticAlphaBlend, firstRayPortal,
+    geometryPSRResolverState.pomOpaqueSurfaceEncountered,
+    isRaytracedRenderTarget);
 
   // Handle attenuation and emissive radiance from the Resolve function
 
@@ -1816,6 +1888,7 @@ void geometryPSRResolverVertex(
   {
     geometryPSRResolverState.radiance += diffuseLayerRadiance;
   }
+
   // Set the material medium index if a medium was entered or exited
   // Note: This does not work for nested translucency as most recent medium entered is stored, but this is a fine thing to not support as
   // it is not super common. Additionally this path should only be invoked if PSTR is desired, and only in the case of actual thick translucency
@@ -1838,7 +1911,20 @@ void geometryPSRResolverVertex(
 
   // Handle PSR continuation or output a surface otherwise
 
-  if (useReflectionPSRSample)
+  // If the camera index changed then create a new ray and return
+  if (cb.enableRaytracedRenderTarget && isRaytracedRenderTarget && geometryPSRResolverState.bounceIteration < cb.psrrMaxBounces)
+  {
+    Ray newRay = rayCreateRenderTarget(cb.renderTargetCamera, surfaceInteraction.textureCoordinates, ray);
+    geometryPSRResolverState.origin = newRay.origin;
+    geometryPSRResolverState.direction = newRay.direction;
+    geometryPSRResolverState.coneRadius = newRay.coneRadius;
+    geometryPSRResolverState.continuePSRResolving = true;
+    geometryPSRResolverState.insideMedium = false;
+    geometryPSRResolverState.mediumMaterialIndex = BINDING_INDEX_INVALID;
+    geometryPSRResolverState.accumulatedRotation = getIdentityQuaternion();
+    
+  }
+  else if (useReflectionPSRSample)
   {
     // Set PSR resolver state information from the reflection sample for the next iteration
 

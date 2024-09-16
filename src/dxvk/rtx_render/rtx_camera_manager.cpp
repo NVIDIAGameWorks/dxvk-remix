@@ -110,16 +110,16 @@ namespace dxvk {
       return false;
     };
 
-    const bool isSky = input.testCategoryFlags(InstanceCategories::Sky);
-
-
     const uint32_t frameId = m_device->getCurrentFrameId();
 
-    const auto cameraType =
-      isSky ? CameraType::Sky
-      : isViewModel(fov, input.maxZ, frameId)
-        ? CameraType::ViewModel
-        : CameraType::Main;
+    auto cameraType = CameraType::Main;
+    if (input.isDrawingToRaytracedRenderTarget) {
+      cameraType = CameraType::RenderToTexture;
+    } else if (input.testCategoryFlags(InstanceCategories::Sky)) {
+      cameraType = CameraType::Sky;
+    } else if (isViewModel(fov, input.maxZ, frameId)) {
+      cameraType = CameraType::ViewModel;
+    }
     
     // Check fov consistency across frames
     if (frameId > 0) {

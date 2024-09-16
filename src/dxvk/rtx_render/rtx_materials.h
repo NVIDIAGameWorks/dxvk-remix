@@ -381,7 +381,7 @@ struct RtOpaqueSurfaceMaterial {
     const Vector3& emissiveColorConstant, bool enableEmission,
     bool ignoreAlphaChannel, bool enableThinFilm, bool alphaIsThinFilmThickness, float thinFilmThicknessConstant,
     uint32_t samplerIndex, float displaceIn,
-    uint32_t subsurfaceMaterialIndex) :
+    uint32_t subsurfaceMaterialIndex, bool isRaytracedRenderTarget) :
     m_albedoOpacityTextureIndex{ albedoOpacityTextureIndex }, m_normalTextureIndex{ normalTextureIndex },
     m_tangentTextureIndex { tangentTextureIndex }, m_heightTextureIndex { heightTextureIndex }, m_roughnessTextureIndex{ roughnessTextureIndex },
     m_metallicTextureIndex{ metallicTextureIndex }, m_emissiveColorTextureIndex{ emissiveColorTextureIndex },
@@ -391,7 +391,7 @@ struct RtOpaqueSurfaceMaterial {
     m_emissiveColorConstant{ emissiveColorConstant }, m_enableEmission{ enableEmission },
     m_ignoreAlphaChannel { ignoreAlphaChannel }, m_enableThinFilm { enableThinFilm }, m_alphaIsThinFilmThickness { alphaIsThinFilmThickness },
     m_thinFilmThicknessConstant { thinFilmThicknessConstant }, m_samplerIndex{ samplerIndex }, m_displaceIn{ displaceIn },
-    m_subsurfaceMaterialIndex(subsurfaceMaterialIndex) {
+    m_subsurfaceMaterialIndex(subsurfaceMaterialIndex), m_isRaytracedRenderTarget(isRaytracedRenderTarget) {
     updateCachedData();
     updateCachedHash();
   }
@@ -399,6 +399,7 @@ struct RtOpaqueSurfaceMaterial {
   void writeGPUData(unsigned char* data, std::size_t& offset) const {
     [[maybe_unused]] const std::size_t oldOffset = offset;
     uint8_t flags = surfaceMaterialTypeOpaque;
+
     if (m_enableThinFilm) {
       flags |= OPAQUE_SURFACE_MATERIAL_FLAG_USE_THIN_FILM_LAYER;
 
@@ -412,10 +413,13 @@ struct RtOpaqueSurfaceMaterial {
     if (m_ignoreAlphaChannel) {
       flags |= OPAQUE_SURFACE_MATERIAL_FLAG_IGNORE_ALPHA_CHANNEL;
     }
-
     // NOTE: We keep the most commonly used elements in the material close together near the beginning
     //       This hopefully reduces loads for cases like opacity detection.
-    
+
+    if (m_isRaytracedRenderTarget) {
+      flags |= OPAQUE_SURFACE_MATERIAL_FLAG_IS_RAYTRACED_RENDER_TARGET;
+    }
+
     // Bytes 0-3
     writeGPUHelper(data, offset, flags);
     writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_cachedThinFilmNormalizedThicknessConstant));
@@ -540,6 +544,10 @@ struct RtOpaqueSurfaceMaterial {
     return m_subsurfaceMaterialIndex;
   }
 
+  uint32_t getIsRaytracedRenderTarget() const {
+    return m_isRaytracedRenderTarget;
+  }
+
 private:
   void updateCachedHash() {
     XXH64_hash_t h = 0;
@@ -565,6 +573,7 @@ private:
     h = XXH64(&m_samplerIndex, sizeof(m_samplerIndex), h);
     h = XXH64(&m_displaceIn, sizeof(m_displaceIn), h);
     h = XXH64(&m_subsurfaceMaterialIndex, sizeof(m_subsurfaceMaterialIndex), h);
+    h = XXH64(&m_isRaytracedRenderTarget, sizeof(m_isRaytracedRenderTarget), h);
 
     m_cachedHash = h;
   }
@@ -610,6 +619,8 @@ private:
   float m_displaceIn;
 
   uint32_t m_subsurfaceMaterialIndex;
+
+  bool m_isRaytracedRenderTarget;
 
   XXH64_hash_t m_cachedHash;
 

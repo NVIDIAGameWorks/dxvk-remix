@@ -1025,7 +1025,10 @@ namespace dxvk {
     }
 
     // Update the geometry and instance flags
-    if (
+    if (material.getType() == RtSurfaceMaterialType::Opaque && material.getOpaqueSurfaceMaterial().getIsRaytracedRenderTarget()) {
+      // render target texture - need this to be in the opaque pass, even if alphaState.isFullyOpaque is false.
+      currentInstance.m_geometryFlags = VK_GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR;
+    } else if (
       (!currentInstance.surface.alphaState.isFullyOpaque && currentInstance.surface.alphaState.isParticle) ||
       (currentInstance.surface.alphaState.isDecal) ||
       // Note: include alpha blended geometry on the player model into the unordered TLAS. This is hacky as there might be
