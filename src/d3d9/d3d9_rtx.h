@@ -180,7 +180,6 @@ namespace dxvk {
     DrawCallState m_activeDrawCallState;
 
     RtxStagingDataAlloc m_rtStagingData;
-    RtxStagingDataAlloc m_vertexCaptureData;
     D3D9DeviceEx* m_parent;
 
     std::optional<D3DPRESENT_PARAMETERS> m_activePresentParams;
