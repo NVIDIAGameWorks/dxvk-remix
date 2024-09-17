@@ -25,11 +25,6 @@ namespace dxvk {
 
   D3D9Rtx::D3D9Rtx(D3D9DeviceEx* d3d9Device, bool enableDrawCallConversion)
     : m_rtStagingData(d3d9Device->GetDXVKDevice(), (VkMemoryPropertyFlagBits) (VK_MEMORY_PROPERTY_HOST_CACHED_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT))
-    , m_vertexCaptureData(d3d9Device->GetDXVKDevice(), 
-                          (VkMemoryPropertyFlagBits) (VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT), 
-                          (VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT),
-                          (VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT),
-                          VK_ACCESS_TRANSFER_READ_BIT)
     , m_parent(d3d9Device)
     , m_enableDrawCallConversion(enableDrawCallConversion)
     , m_pGeometryWorkers(enableDrawCallConversion ? std::make_unique<GeometryProcessor>(numGeometryProcessingThreads(), "geometry-processing") : nullptr) {
@@ -123,6 +118,15 @@ namespace dxvk {
     return result.slice;
   }
 
+  DxvkBufferSlice allocVertexCaptureBuffer(DxvkDevice* pDevice, const VkDeviceSize size) {
+    DxvkBufferCreateInfo info;
+    info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+    info.access = VK_ACCESS_TRANSFER_READ_BIT;
+    info.stages = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT;
+    info.size = size;
+    return DxvkBufferSlice(pDevice->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppBuffer));
+  }
+
   void D3D9Rtx::prepareVertexCapture(const int vertexIndexOffset) {
     ScopedCpuProfileZone();
 
@@ -154,8 +158,7 @@ namespace dxvk {
     const uint32_t stride = sizeof(CapturedVertex);
     const size_t vertexCaptureDataSize = align(geoData.vertexCount * stride, CACHE_LINE_SIZE);
 
-    DxvkBufferSlice slice = m_vertexCaptureData.alloc(CACHE_LINE_SIZE, vertexCaptureDataSize);
-    slice.buffer()->acquire(DxvkAccess::Write);
+    DxvkBufferSlice slice = allocVertexCaptureBuffer(m_parent->GetDXVKDevice().ptr(), vertexCaptureDataSize);
 
     geoData.positionBuffer = RasterBuffer(slice, 0, stride, VK_FORMAT_R32G32B32A32_SFLOAT);
     assert(geoData.positionBuffer.offset() % 4 == 0);

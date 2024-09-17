@@ -807,7 +807,7 @@ namespace dxvk {
     
     assert(output.buffer->info().size == align(output.stride * input.vertexCount, CACHE_LINE_SIZE));
 
-    bool pendingGpuWrites = input.positionBuffer.isPendingGpuWrite();
+    bool mustUseGPU = input.positionBuffer.isPendingGpuWrite() || input.positionBuffer.mapPtr() == nullptr;
 
     // Interleave vertex data
     InterleaveGeometryArgs args;
@@ -821,7 +821,7 @@ namespace dxvk {
     }
     args.hasNormals = input.normalBuffer.defined();
     if (args.hasNormals) {
-      pendingGpuWrites |= input.normalBuffer.isPendingGpuWrite();
+      mustUseGPU |= input.normalBuffer.isPendingGpuWrite() || input.normalBuffer.mapPtr() == nullptr;
       assert(input.normalBuffer.offsetFromSlice() % 4 == 0);
       args.normalOffset = input.normalBuffer.offsetFromSlice() / 4;
       args.normalStride = input.normalBuffer.stride() / 4;
@@ -832,7 +832,7 @@ namespace dxvk {
     }
     args.hasTexcoord = input.texcoordBuffer.defined();
     if (args.hasTexcoord) {
-      pendingGpuWrites |= input.texcoordBuffer.isPendingGpuWrite();
+      mustUseGPU |= input.texcoordBuffer.isPendingGpuWrite() || input.texcoordBuffer.mapPtr() == nullptr;
       assert(input.texcoordBuffer.offsetFromSlice() % 4 == 0);
       args.texcoordOffset = input.texcoordBuffer.offsetFromSlice() / 4;
       args.texcoordStride = input.texcoordBuffer.stride() / 4;
@@ -843,7 +843,7 @@ namespace dxvk {
     }
     args.hasColor0 = input.color0Buffer.defined();
     if (args.hasColor0) {
-      pendingGpuWrites |= input.color0Buffer.isPendingGpuWrite();
+      mustUseGPU |= input.color0Buffer.isPendingGpuWrite() || input.color0Buffer.mapPtr() == nullptr;
       assert(input.color0Buffer.offsetFromSlice() % 4 == 0);
       args.color0Offset = input.color0Buffer.offsetFromSlice() / 4;
       args.color0Stride = input.color0Buffer.stride() / 4;
@@ -859,7 +859,7 @@ namespace dxvk {
     args.vertexCount = input.vertexCount;
 
     const uint32_t kNumVerticesToProcessOnCPU = 1024;
-    const bool useGPU = input.vertexCount > kNumVerticesToProcessOnCPU || pendingGpuWrites;
+    const bool useGPU = input.vertexCount > kNumVerticesToProcessOnCPU || mustUseGPU;
 
     if (useGPU) {
       ctx->bindResourceBuffer(INTERLEAVE_GEOMETRY_BINDING_OUTPUT, DxvkBufferSlice(output.buffer));
