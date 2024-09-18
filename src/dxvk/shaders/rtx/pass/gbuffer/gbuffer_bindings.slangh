@@ -209,6 +209,8 @@ uniform struct AliasedData0
   RWTexture2D<float4> ReflectionPSRData0;                      // Output/Input
 } aliasedData0;
 
+// NOTE: these are split into 2x32 textures because they are all re-used for other data after the PSR pass is complete.
+// See rtx_resources.cpp's use of `m_gbufferPSRData` for details.
 layout(rg32ui, binding = GBUFFER_BINDING_REFLECTION_PSR_DATA_STORAGE_1)
 RWTexture2D<uint2> ReflectionPSRData1;     // Output/Input
 
