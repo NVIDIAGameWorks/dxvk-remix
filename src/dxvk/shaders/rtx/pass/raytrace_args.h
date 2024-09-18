@@ -101,7 +101,36 @@ struct DomeLightArgs {
 
 // Constant buffer
 struct RaytraceArgs {
+  // NOTE: this class should be kept as all structs, then all non-structs.  This is because the padding rules are different between C++ and shaders.
   Camera camera;
+
+  // Note: Primary combined variant used in place of the primary direct denoiser when seperated direct/indirect
+  // lighting is not used.
+  NrdArgs primaryDirectNrd;
+  NrdArgs primaryIndirectNrd;
+  NrdArgs secondaryCombinedNrd;
+
+  // Note: Not tightly packed, meaning these indices will align with the Ray Portal Index in the
+  // Surface Material. Do note however due to elements being potentially "empty" each Ray Portal Hit Info
+  // must be checked to be empty or not before usage. Additionally both Ray Portals in a pair will match
+  // in state, either being present or not.
+  // The first `maxRayPortalCount` portals are for this frame, the second `maxRayPortalCount` are for the previous frame.
+  RayPortalHitInfo rayPortalHitInfos[maxRayPortalCount * 2];
+
+  VolumeArgs volumeArgs;
+  OpaqueMaterialArgs opaqueMaterialArgs;
+  TranslucentMaterialArgs translucentMaterialArgs;
+  ViewDistanceArgs viewDistanceArgs;
+
+  LightRangeInfo lightRanges[lightTypeCount];
+
+  TerrainArgs terrainArgs;
+  NeeCacheArgs neeCacheArgs;
+  DomeLightArgs domeLightArgs;
+
+  Camera renderTargetCamera;
+
+  // ------------------------- Structs above this line, non structs below this line -----------------------------------
 
   uint frameIdx;
   float ambientIntensity;
@@ -159,31 +188,8 @@ struct RaytraceArgs {
   uint debugView;
   float vertexColorStrength;
 
-  // Note: Primary combined variant used in place of the primary direct denoiser when seperated direct/indirect
-  // lighting is not used.
-  NrdArgs primaryDirectNrd;
-  NrdArgs primaryIndirectNrd;
-  NrdArgs secondaryCombinedNrd;
 
   vec4 debugKnob;     // For temporary tuning in shaders, has a dedicated UI widget.
-
-  // Note: Not tightly packed, meaning these indices will align with the Ray Portal Index in the
-  // Surface Material. Do note however due to elements being potentially "empty" each Ray Portal Hit Info
-  // must be checked to be empty or not before usage. Additionally both Ray Portals in a pair will match
-  // in state, either being present or not.
-  // The first `maxRayPortalCount` portals are for this frame, the second `maxRayPortalCount` are for the previous frame.
-  RayPortalHitInfo rayPortalHitInfos[maxRayPortalCount * 2];
-
-  VolumeArgs volumeArgs;
-  OpaqueMaterialArgs opaqueMaterialArgs;
-  TranslucentMaterialArgs translucentMaterialArgs;
-  ViewDistanceArgs viewDistanceArgs;
-
-  LightRangeInfo lightRanges[lightTypeCount];
-
-  TerrainArgs terrainArgs;
-  NeeCacheArgs neeCacheArgs;
-  DomeLightArgs domeLightArgs;
 
   // Values to use on a ray miss
   vec3 clearColorNormal;
@@ -344,5 +350,5 @@ struct RaytraceArgs {
   uint forceFirstHitInGBufferPass;
 
   uint enableRaytracedRenderTarget;
-  Camera renderTargetCamera;
+  // NOTE: Add structs to the top section of RaytraceArgs, not the bottom.
 };
