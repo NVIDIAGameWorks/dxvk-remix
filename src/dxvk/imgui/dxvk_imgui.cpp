@@ -308,6 +308,14 @@ namespace dxvk {
     } }
   };
 
+  ImGui::ComboWithKey<IntegrateIndirectMode> integrateIndirectModeCombo {
+    "Integrate Indirect Illumination Mode",
+    ImGui::ComboWithKey<IntegrateIndirectMode>::ComboEntries { {
+        {IntegrateIndirectMode::ImportanceSampled, "Importance Sampled"},
+        {IntegrateIndirectMode::ReSTIRGI, "ReSTIR GI"}
+    } }
+  };
+
   // Styles 
   constexpr ImGuiSliderFlags sliderFlags = ImGuiSliderFlags_AlwaysClamp;
   constexpr ImGuiTreeNodeFlags collapsingHeaderClosedFlags = ImGuiTreeNodeFlags_CollapsingHeader;
@@ -2729,21 +2737,22 @@ namespace dxvk {
         ImGui::Unindent();
       }
 
-      if (ImGui::CollapsingHeader("ReSTIR GI", collapsingHeaderClosedFlags)) {
+      // Indirect Illumination Integration Mode
+      if (ImGui::CollapsingHeader("Indirect Illumination", collapsingHeaderClosedFlags)) {
         ImGui::Indent();
+        integrateIndirectModeCombo.getKey(&RtxOptions::integrateIndirectModeObject());
 
-        ImGui::Checkbox("Enable ReSTIR GI", &RtxOptions::Get()->useReSTIRGIObject());
-
-        ImGui::PushID("ReSTIR GI");
-        if (ImGui::CollapsingHeader("Settings", collapsingHeaderClosedFlags)) {
-          ImGui::Indent();
-
-          auto& restirGI = common->metaReSTIRGIRayQuery();
-          restirGI.showImguiSettings();
-
-          ImGui::Unindent();
+        if (RtxOptions::Get()->integrateIndirectMode() == IntegrateIndirectMode::ReSTIRGI) {
+          if (ImGui::CollapsingHeader("ReSTIR GI", collapsingHeaderClosedFlags)) {
+            ImGui::Indent();
+            ImGui::PushID("ReSTIR GI");
+            auto& restirGI = common->metaReSTIRGIRayQuery();
+            restirGI.showImguiSettings();
+            ImGui::PopID();
+            ImGui::Unindent();
+          }
         }
-        ImGui::PopID();
+
         ImGui::Unindent();
       }
 
@@ -2755,6 +2764,7 @@ namespace dxvk {
         ImGui::PopID();
         ImGui::Unindent();
       }
+
       ImGui::Unindent();
     }
 

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -134,6 +134,10 @@ namespace dxvk {
     ImGui::DragFloat("Exposure Preference Sigma", &exposurePreferenceSigmaObject(), 0.01f, 0.f, 100.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::DragFloat("Exposure Preference Offset", &exposurePreferenceOffsetObject(), 0.001f, -1.f, 1.f, "%.3f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::Combo("Dither Mode", &ditherModeObject(), "Disabled\0Spatial\0Spatial + Temporal\0");
+  }
+
+  bool DxvkLocalToneMapping::isEnabled() const {
+    return RtxOptions::Get()->tonemappingMode() == TonemappingMode::Local;
   }
 
    void DxvkLocalToneMapping::dispatch(

@@ -301,9 +301,9 @@ namespace dxvk {
   }
 
   RtxContext::InternalUpscaler RtxContext::getCurrentFrameUpscaler() {
-    if (shouldUseDLSS() && m_common->metaDLSS().shouldDispatch()) {
+    if (shouldUseDLSS() && m_common->metaDLSS().isActive()) {
       return InternalUpscaler::DLSS;
-    } else if (shouldUseRayReconstruction() && m_common->metaRayReconstruction().shouldDispatch()) {
+    } else if (shouldUseRayReconstruction() && m_common->metaRayReconstruction().isActive()) {
       return InternalUpscaler::DLSS_RR;
     } else if (shouldUseNIS()) {
       return InternalUpscaler::NIS;
@@ -314,7 +314,9 @@ namespace dxvk {
     }
   }
 
-  VkExtent3D RtxContext::onFrameBegin(const VkExtent3D& upscaledExtent) {
+  VkExtent3D RtxContext::onFrameBegin(
+    const VkExtent3D& upscaledExtent,
+    float frameTimeMilliseconds) {
     auto logRenderPassRaytraceModeRayQuery = [=](const char* renderPassName, auto mode) {
       switch (mode) {
       case decltype(mode)::RayQuery:
@@ -370,8 +372,11 @@ namespace dxvk {
       resetScreenResolution(upscaledExtent);
     }
 
-    // Allocate/release resources based on each pass's status
-    getResourceManager().onFrameBegin(this, getCommonObjects()->getTextureManager(), downscaledExtent, upscaledExtent);
+    // Call onFrameBegin callbacks for RtxPases
+    // Note: this needs to be called after resetScreenResolution() call in a frame
+    // since an RtxPass may alias some of its resources with the ones created in createRaytracingOutput()
+    getResourceManager().onFrameBegin(this, getCommonObjects()->getTextureManager(), downscaledExtent,
+                                      upscaledExtent, frameTimeMilliseconds, m_resetHistory);
 
     // Release resources when switching upscalers
     m_currentUpscaler = getCurrentFrameUpscaler();
@@ -501,7 +506,7 @@ namespace dxvk {
       // If we really don't have any RT to do, just bail early (could be UI/menus rendering)
       if (getSceneManager().getSurfaceBuffer() != nullptr) {
 
-        VkExtent3D downscaledExtent = onFrameBegin(targetImage->info().extent);
+        VkExtent3D downscaledExtent = onFrameBegin(targetImage->info().extent, frameTimeMilliseconds);
 
         Resources::RaytracingOutput& rtOutput = getResourceManager().getRaytracingOutput();
 
@@ -978,7 +983,7 @@ namespace dxvk {
     {
       restirGISampleStealingMode = ReSTIRGISampleStealing::StealSample;
     }
-    constants.enableReSTIRGI = restirGI.shouldDispatch();
+    constants.enableReSTIRGI = restirGI.isActive();
     constants.enableReSTIRGITemporalReuse = restirGI.useTemporalReuse();
     constants.enableReSTIRGISpatialReuse = restirGI.useSpatialReuse();
     constants.reSTIRGIMISMode = (uint32_t)restirGI.misMode();
@@ -1424,7 +1429,7 @@ namespace dxvk {
     DxvkTemporalAA& taa = m_common->metaTAA();
     RtCamera& mainCamera = getSceneManager().getCamera();
 
-    if (shouldUseTAA() && !mainCamera.isCameraCut() && taa.shouldDispatch()) {
+    if (taa.isActive() && !mainCamera.isCameraCut()) {
       float jitterOffset[2];
       mainCamera.getJittering(jitterOffset);
 
@@ -1493,7 +1498,7 @@ namespace dxvk {
         rtOutput, adjustedFrameTimeMilliseconds, performSRGBConversion, autoExposure.enabled());
     }
     DxvkLocalToneMapping& localTonemapper = m_common->metaLocalToneMapping();
-    if (localTonemapper.shouldDispatch()){
+    if (localTonemapper.isActive()) {
       localTonemapper.dispatch(this,
         getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE),
         autoExposure.getExposureTexture().view,
@@ -1504,8 +1509,9 @@ namespace dxvk {
   void RtxContext::dispatchBloom(const Resources::RaytracingOutput& rtOutput) {
     ScopedCpuProfileZone();
     DxvkBloom& bloom = m_common->metaBloom();
-    if (!bloom.shouldDispatch())
+    if (!bloom.isActive()) {
       return;
+    }
 
     // TODO: just in case, because tonemapping does the same
     this->spillRenderPass(false);
@@ -1562,16 +1568,18 @@ namespace dxvk {
       }
     }
 
-    if (!debugView.shouldDispatch())
+    if (!debugView.isActive()) {
       return;
+    }
 
     debugView.dispatch(this,
       getResourceManager().getSampler(VK_FILTER_NEAREST, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE),
       getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE),
       srcImage, rtOutput, *m_common);
 
-    if (captureScreenImage)
+    if (captureScreenImage) {
       takeScreenshot("rtxImageDebugView", debugView.getFinalDebugOutput()->image());
+  }
   }
 
   void RtxContext::dispatchReplaceCompositeWithDebugView(const Resources::RaytracingOutput& rtOutput) {
@@ -1579,7 +1587,7 @@ namespace dxvk {
 
     DebugView& debugView = m_common->metaDebugView();
 
-    if (!debugView.shouldDispatch()) {
+    if (!debugView.isActive()) {
       return;
     }
 

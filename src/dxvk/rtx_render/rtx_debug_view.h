@@ -82,7 +82,7 @@ namespace dxvk {
     } gpuPrint;
 
   protected:
-    virtual void onFrameBegin(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent) override;
+    virtual void onFrameBegin(Rc<DxvkContext>& ctx, const FrameBeginContext& frameBeginCtx) override;
 
   private:
     void processOutputStatistics(Rc<RtxContext>& ctx);
@@ -98,7 +98,7 @@ namespace dxvk {
     virtual void createDownscaledResource(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent) override;
     virtual void releaseDownscaledResource() override;
 
-    virtual bool isActive() override;
+    virtual bool isEnabled() const override;
 
     void resetNumAccumulatedFrames();
     uint32_t getActiveNumFramesToAccumulate() const;

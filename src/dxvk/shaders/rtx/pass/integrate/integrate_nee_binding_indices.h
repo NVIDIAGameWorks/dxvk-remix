@@ -53,10 +53,7 @@ struct VisualizeNeeArgs
 #define INTEGRATE_NEE_BINDING_NEE_CACHE_TASK                                            57
 #define INTEGRATE_NEE_BINDING_NEE_CACHE_SAMPLE                                          58
 #define INTEGRATE_NEE_BINDING_NEE_CACHE_THREAD_TASK                                     59
-#define INTEGRATE_NEE_BINDING_PRIMITIVE_ID_PREFIX_SUM                                   60
-
-#define INTEGRATE_NEE_BINDING_RADIANCE_INPUT                                            61
-#define INTEGRATE_NEE_BINDING_HIT_GEOMETRY_INPUT                                        62
+#define INTEGRATE_NEE_BINDING_PRIMITIVE_ID_PREFIX_SUM_INPUT                             60
 
 // Inputs/Outputs
 

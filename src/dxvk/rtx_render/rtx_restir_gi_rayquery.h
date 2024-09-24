@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -64,18 +64,23 @@ namespace dxvk {
     void showImguiSettings();
 
     int getTemporalHistoryLength(float frameTimeMs) {
-      if(useAdaptiveTemporalHistory())
+      if (useAdaptiveTemporalHistory())
         return static_cast<int>(std::max(temporalAdaptiveHistoryLengthMs() / frameTimeMs, 20.0f));
       else
         return temporalFixedHistoryLength();
     }
+
+    void bindIntegrateIndirectPathTracingResources(RtxContext& ctx);
+    void bindIntegrateIndirectNeeResources(RtxContext& ctx);
 
     static void setToNRDPreset();
 
     static void setToRayReconstructionPreset();
 
   private:
-    virtual bool isActive() override { return RtxOptions::Get()->useReSTIRGI(); }
+    virtual bool isEnabled() const override;
+    virtual void releaseDownscaledResource() override;
+    virtual void createDownscaledResource(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent) override;
 
     RTX_OPTION("rtx.restirGI", bool, useTemporalReuse, true, "Enables temporal reuse.");
     RTX_OPTION("rtx.restirGI", bool, useSpatialReuse, true, "Enables spatial reuse.");
@@ -128,5 +133,9 @@ namespace dxvk {
     RTX_OPTION_ENV("rtx.restirGI", bool, validateVisibilityChange, false, "DXVK_RESTIR_GI_VISIBILITY_VALIDATION", "Remove samples when visibility has changed. This feature is automatically disabled when virtual sample is enabled.");
     RTX_OPTION_ENV("rtx.restirGI", float, lightingValidationThreshold, 0.5, "DXVK_RESTIR_GI_SAMPLE_VALIDATION_THRESHOLD", "Invalidate a sample when pixel change ratio is above this value.");
     RTX_OPTION("rtx.restirGI", float, visibilityValidationRange, 0.05, "Check actual hit distance of a shadow ray, invalidate a sample if hit length is longer than one plus this portion, compared to the distance from the surface to the sample.");
+
+    Resources::AliasedResource m_restirGIRadiance;
+    Resources::Resource m_restirGIHitGeometry;
+    Rc<DxvkBuffer> m_restirGIReservoirBuffer;  
   };
 }

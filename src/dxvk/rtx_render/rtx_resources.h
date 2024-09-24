@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -37,6 +37,7 @@ namespace dxvk
   class DxvkDevice;
   class SceneManager;
   class RtxTextureManager;
+  struct FrameBeginContext;
 
   struct EventHandler {
     friend struct Resources;
@@ -44,7 +45,7 @@ namespace dxvk
     // Event get called when target or downscaled resolution is changed
     using ResizeEvent = std::function<void(Rc<DxvkContext>& ctx, const VkExtent3D&)>;
     // Event get called at the beginning of a frame, used for allocate or release resources
-    using FrameBeginEvent = std::function<void(Rc<DxvkContext>& ctx, const VkExtent3D&, const VkExtent3D&)>;
+    using FrameBeginEvent = std::function<void(Rc<DxvkContext>& ctx, const FrameBeginContext&)>;
 
     EventHandler(ResizeEvent&& onTargetResize, ResizeEvent&& onDownscaleResize, FrameBeginEvent&& onFrameBeginEvent) {
       if(onTargetResize)
@@ -82,7 +83,7 @@ namespace dxvk
 
     class SharedResource : public RcObject {
     public:
-      SharedResource(Resource _resource) : resource(_resource) { }
+      SharedResource(Resource& _resource);
 #ifdef REMIX_DEVELOPMENT  
       std::weak_ptr<const AliasedResource*> owner;
 #endif
@@ -146,6 +147,8 @@ namespace dxvk
       //  This is useful for cases when the resource gets bound but has a conditional access within a shader
       //  and the conditional access governs mutually exclusivity among AliasedResources
       const Resource& resource(AccessType accessType, bool isAccessedByGPU = true) const;
+
+      void reset();
 
       const char* name() const;
 
@@ -323,9 +326,6 @@ namespace dxvk
 
       Rc<DxvkBuffer> m_rtxdiReservoirBuffer;
 
-      AliasedResource m_restirGIRadiance;
-      Resource m_restirGIHitGeometry;
-      Rc<DxvkBuffer> m_restirGIReservoirBuffer;
       Rc<DxvkBuffer> m_neeCache;
       Rc<DxvkBuffer> m_neeCacheTask;
       Rc<DxvkBuffer> m_neeCacheSample;
@@ -364,7 +364,7 @@ namespace dxvk
       // NOTE: Implicit conversion to weak ptr
       if(events.onTargetResolutionResize)
         m_onTargetResize.push_back(events.onTargetResolutionResize);
-      
+
       if(events.onDownscaledResolutionResize)
         m_onDownscaleResize.push_back(events.onDownscaledResolutionResize);
 
@@ -373,7 +373,7 @@ namespace dxvk
     }
 
     // Message function called at the beginning of the frame, usually allocate or release resources based on each pass's status
-    void onFrameBegin(Rc<DxvkContext> ctx, RtxTextureManager& textureManager, const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent);
+    void onFrameBegin(Rc<DxvkContext> ctx, RtxTextureManager& textureManager, const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent, float frameTimeMilliseconds, bool resetHistory);
 
     // Message function called when target or downscaled resolution is changed
     void onResize(Rc<DxvkContext> ctx, const VkExtent3D& downscaledExtents, const VkExtent3D& upscaledExtents);
@@ -423,7 +423,6 @@ namespace dxvk
                                         const VkImageCreateFlags imageCreateFlags = 0, const VkImageUsageFlags extraUsageFlags = VK_IMAGE_USAGE_STORAGE_BIT,
                                         const VkClearColorValue clearValue = { 0.0f, 0.0f, 0.0f, 0.0f }, const uint32_t mipLevels = 1);
 
-
   private:
     Resources(Resources const&) = delete;
     Resources& operator=(Resources const&) = delete;
@@ -454,7 +453,7 @@ namespace dxvk
     FrameBeginEventList m_onFrameBegin;
 
     static void executeResizeEventList(ResizeEventList& eventList, Rc<DxvkContext>& ctx, const VkExtent3D& extent);
-    static void executeFrameBeginEventList(FrameBeginEventList& eventList, Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent);
+    static void executeFrameBeginEventList(FrameBeginEventList& eventList, Rc<DxvkContext>& ctx, const FrameBeginContext& frameBeginCtx);
 
     void createRaytracingOutput(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent);
 
@@ -463,29 +462,56 @@ namespace dxvk
     void createDownscaledResources(Rc<DxvkContext>& ctx);
   };
 
+  // State passed to RtxPass::onFrameBegin() callbacks
+  struct FrameBeginContext {
+    VkExtent3D downscaledExtent;
+    VkExtent3D targetExtent;
+    float frameTimeMilliseconds;
+    bool resetHistory;
+  };
+
   class RtxPass {
   public:
     // The constructor will register callback functions to Resources class
     RtxPass(DxvkDevice* device);
 
-    // In order to avoid potential race condition between imgui and injectRTX(), update m_shouldDispatch from rtx option at the beginning of injectRTX(),
-    // then use the result to determine whether the pass should be dispatched.
-    bool shouldDispatch() { return m_shouldDispatch; }
+    virtual ~RtxPass() = default;
+
+    // In order to avoid potential race condition between imgui and injectRTX() running asynchronously, 
+    // m_isActive is updated using derived class's isEnabled(), which generally keys off of an rtx option, in onFrameBegin() at start of the frame.
+    // This way isActive() can be used to consistently check the pass being active or not during the rest of the frame 
+    // Note: a protected isEnabled() method is used to check ImGUI or other enablement state that converts its result to m_isActive in onFrameBegin()
+    // Note2: externall callers and internal checks for pass being active or not should strictly use isActive() to check pass being active or not
+    //        in order to preserve consistent state during frame on render timeline
+    bool isActive() const { return m_isActive; }
 
   protected:
-    // Event callback functions
-    virtual void onFrameBegin(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent);
+    // Event callback functions.
+    // Derived class must call this base class implementation first from its override. 
+    // The function adjusts active state of the pass and thus the override must check isActive()
+    // after calling the base class implementation
+    virtual void onFrameBegin(Rc<DxvkContext>& ctx, const FrameBeginContext& frameBeginCtx);
 
   private:
     // Event callback functions
     void onTargetResize(Rc<DxvkContext>& ctx, const VkExtent3D& targetExtent);
     void onDownscaledResize(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent);
 
-    bool m_shouldDispatch = false;
+    bool m_isActive = false;
     EventHandler m_events;
   protected:
-    // Interface to determine whether a pass is enabled.
-    virtual bool isActive() = 0;
+    // Interface to determine whether a pass is enabled
+    // Note: this state updates m_isActive state at onFrameBegin() time
+    virtual bool isEnabled() const = 0;
+
+    // Called from RtxPass::onFrameBegin() on RtxPass (de)activation events.
+    // onActivation returns whether it succeeded.
+    // When this function should fail, the derived class implementation needs to make any 
+    // runtime adjustments to ensure valid runtime state from this point onwards. 
+    // Note: it should not enable any other RtxPasses since it is not guaranteed their onFrameBegin() callback 
+    // would be called within the same frame
+    virtual bool onActivation(Rc<DxvkContext>& /* unused */) { return true; }
+    virtual void onDeactivation() { }
 
     // Resource management functions, should provide implementation if a pass has custom resources
     virtual void createTargetResource(Rc<DxvkContext>& ctx, const VkExtent3D& targetExtent) { }

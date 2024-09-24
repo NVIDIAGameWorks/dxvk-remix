@@ -164,7 +164,7 @@ namespace dxvk {
 
     VkExtent3D setDownscaleExtent(const VkExtent3D& upscaleExtent);
 
-    VkExtent3D onFrameBegin(const VkExtent3D& upscaleExtent);
+    VkExtent3D onFrameBegin(const VkExtent3D& upscaleExtent, float frameTimeMilliseconds);
 
     void dispatchVolumetrics(const Resources::RaytracingOutput& rtOutput);
     void dispatchIntegrate(const Resources::RaytracingOutput& rtOutput);

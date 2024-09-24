@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -108,7 +108,9 @@ namespace dxvk {
     return resource;
   }
 
-
+  Resources::SharedResource::SharedResource(Resources::Resource& _resource)
+    : resource(_resource) {
+  }
 
   Resources::AliasedResource::AliasedResource(Rc<DxvkContext>& ctx,
                                               const VkExtent3D& extent,
@@ -216,6 +218,14 @@ namespace dxvk {
 #endif
   }
 
+  void Resources::AliasedResource::reset() {
+    m_sharedResource = nullptr;
+    m_view = nullptr;
+#ifdef REMIX_DEVELOPMENT
+    m_thisObjectAddress = nullptr;
+#endif
+  }
+
   const char* Resources::AliasedResource::name() const {
 #ifdef REMIX_DEVELOPMENT     
     return m_name;
@@ -305,8 +315,21 @@ namespace dxvk {
     return m_raytracingOutput.isReady() && m_targetExtent == targetExtent && m_downscaledExtent == downscaledExtent;
   }
 
-  void Resources::onFrameBegin(Rc<DxvkContext> ctx, RtxTextureManager& textureManager, const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent) {
-    executeFrameBeginEventList(m_onFrameBegin, ctx, downscaledExtent, targetExtent);
+  void Resources::onFrameBegin(
+    Rc<DxvkContext> ctx,
+    RtxTextureManager& textureManager,
+    const VkExtent3D& downscaledExtent,
+    const VkExtent3D& targetExtent,
+    float frameTimeMilliseconds,
+    bool resetHistory) {
+
+    FrameBeginContext frameBeginCtx;
+    frameBeginCtx.downscaledExtent = downscaledExtent;
+    frameBeginCtx.targetExtent = targetExtent;
+    frameBeginCtx.frameTimeMilliseconds = frameTimeMilliseconds;
+    frameBeginCtx.resetHistory = resetHistory;
+
+    executeFrameBeginEventList(m_onFrameBegin, ctx, frameBeginCtx);
 
     if (ctx->isDLFGEnabled()) {
       const uint32_t currentFrameId = ctx->getDevice()->getCurrentFrameId();
@@ -884,14 +907,6 @@ namespace dxvk {
     rtxdiBufferInfo.size = reservoirBufferPixels * numReservoirBuffer * reservoirSize;
     m_raytracingOutput.m_rtxdiReservoirBuffer = m_device->createBuffer(rtxdiBufferInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
     
-    // ReSTIR GI
-    numReservoirBuffer = 3;
-    reservoirSize = sizeof(ReSTIRGI_PackedReservoir);
-    rtxdiBufferInfo.size = reservoirBufferPixels * numReservoirBuffer * reservoirSize;
-    m_raytracingOutput.m_restirGIReservoirBuffer = m_device->createBuffer(rtxdiBufferInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
-    m_raytracingOutput.m_restirGIRadiance = AliasedResource(m_raytracingOutput.m_compositeOutput, ctx, m_downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "ReSTIR GI Radiance");
-    m_raytracingOutput.m_restirGIHitGeometry = createImageResource(ctx, "restir gi hit geometry", m_downscaledExtent, VK_FORMAT_R32G32B32A32_SFLOAT);
-
     DxvkBufferCreateInfo neeCacheInfo = rtxdiBufferInfo;
     int cellCount = NEE_CACHE_PROBE_RESOLUTION * NEE_CACHE_PROBE_RESOLUTION * NEE_CACHE_PROBE_RESOLUTION;
     neeCacheInfo.size = cellCount * NEE_CACHE_CELL_CANDIDATE_TOTAL_SIZE;
@@ -945,8 +960,10 @@ namespace dxvk {
     executeResizeEventList(m_onTargetResize, ctx, m_targetExtent);
   }
 
-
-  void Resources::executeResizeEventList(ResizeEventList& eventList, Rc<DxvkContext>& ctx, const VkExtent3D& extent) {
+  void Resources::executeResizeEventList(
+    ResizeEventList& eventList,
+    Rc<DxvkContext>& ctx,
+    const VkExtent3D& extent) {
     for (auto iter = eventList.begin(); iter != eventList.end(); ) {
       auto callback = iter->lock();
       if (callback && (*callback)) {
@@ -960,12 +977,15 @@ namespace dxvk {
     }
   }
 
-  void Resources::executeFrameBeginEventList(FrameBeginEventList& eventList, Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent) {
+  void Resources::executeFrameBeginEventList(
+    FrameBeginEventList& eventList,
+    Rc<DxvkContext>& ctx,
+    const FrameBeginContext& frameBeginCtx) {
     for (auto iter = eventList.begin(); iter != eventList.end(); ) {
       auto callback = iter->lock();
       if (callback && (*callback)) {
         // Dispatch living events
-        (*callback)(ctx, downscaledExtent, targetExtent); // assumes these callbacks don't add more events...
+        (*callback)(ctx, frameBeginCtx); // assumes these callbacks don't add more events...
         ++iter;
       } else {
         // Remove old events that are no longer in scope
@@ -977,34 +997,42 @@ namespace dxvk {
   RtxPass::RtxPass(DxvkDevice* device) : m_events(
     [this](Rc<DxvkContext>& ctx, const VkExtent3D& extent) { onTargetResize(ctx, extent); },
     [this](Rc<DxvkContext>& ctx, const VkExtent3D& extent) { onDownscaledResize(ctx, extent); },
-    [this](Rc<DxvkContext>& ctx, const VkExtent3D& targetExtent, const VkExtent3D& downscaledExtent) { onFrameBegin(ctx, targetExtent, downscaledExtent); }) {
+    [this](Rc<DxvkContext>& ctx, const FrameBeginContext& frameBeginCtx) { onFrameBegin(ctx, frameBeginCtx); }) {
 
     device->getCommon()->getResources().addEventHandler(m_events);
   }
 
-  void RtxPass::onFrameBegin(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent) {
-    bool lastStatus = m_shouldDispatch;
-    m_shouldDispatch = isActive();
-    if (m_shouldDispatch != lastStatus) {
-      if (m_shouldDispatch) {
-        createTargetResource(ctx, targetExtent);
-        createDownscaledResource(ctx, downscaledExtent);
+  void RtxPass::onFrameBegin(
+    Rc<DxvkContext>& ctx,
+    const FrameBeginContext& frameBeginCtx) {
+    const bool prevFrameIsActive = m_isActive;
+    m_isActive = isEnabled();
+    if (m_isActive != prevFrameIsActive) {
+      if (m_isActive) {
+        if (onActivation(ctx)) {
+          createTargetResource(ctx, frameBeginCtx.targetExtent);
+          createDownscaledResource(ctx, frameBeginCtx.downscaledExtent);
+        } else { // !onActivation()
+          onDeactivation();
+          m_isActive = false;
+        }
       } else {
         releaseTargetResource();
         releaseDownscaledResource();
+        onDeactivation();
       }
     }
   }
 
   void RtxPass::onTargetResize(Rc<DxvkContext>& ctx, const VkExtent3D& targetExtent) {
-    if (m_shouldDispatch) {
+    if (m_isActive) {
       releaseTargetResource();
       createTargetResource(ctx, targetExtent);
     }
   }
 
   void RtxPass::onDownscaledResize(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent) {
-    if (m_shouldDispatch) {
+    if (m_isActive) {
       releaseDownscaledResource();
       createDownscaledResource(ctx, downscaledExtent);
     }
