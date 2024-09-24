@@ -147,6 +147,11 @@ namespace dxvk {
     WaitingForImplicitSwapchain = 2   // waiting for the app to create the device + implicit swapchain, we latch the vsync setting from there
   };
 
+  enum class IntegrateIndirectMode : int {
+    ImportanceSampled = 0,   // Importance sampled integration - provides the noisiest output and used primarily for reference comparisons
+    ReSTIRGI = 1             // Importance Sampled + ReSTIR GI integrations
+  };
+
   class RtxOptions {
     friend class ImGUI; // <-- we want to modify these values directly.
     friend class ImGuiSplash; // <-- we want to modify these values directly.
@@ -376,9 +381,10 @@ namespace dxvk {
     RTX_OPTION_ENV("rtx", bool, useRTXDI, true, "DXVK_USE_RTXDI",
                    "A flag indicating if RTXDI should be used, true enables RTXDI, false disables it and falls back on simpler light sampling methods.\n"
                    "RTXDI provides improved direct light sampling quality over traditional methods and should generally be enabled for improved direct lighting quality at the cost of some performance.");
-    RTX_OPTION_ENV("rtx", bool, useReSTIRGI, true, "DXVK_USE_RESTIR_GI",
-                   "A flag indicating if ReSTIR GI should be used, true enables ReSTIR GI, false disables it and relies on typical GI sampling.\n"
-                   "ReSTIR GI provides improved indirect path sampling over typical importance sampling and should usually be enabled for better indirect diffuse and specular GI quality at the cost of some performance.");
+    RTX_OPTION_ENV("rtx", IntegrateIndirectMode, integrateIndirectMode, IntegrateIndirectMode::ReSTIRGI, "RTX_INTEGRATE_INDIRECT_MODE",
+                   "Indirect integration mode:\n"
+                   "0: Importance Sampled. Uses typical GI sampling and is not recommended for general use as it provides the noisiest output. It serves as a reference integration mode for validation of the other indirect integration modes.\n"
+                   "1: ReSTIR GI. ReSTIR GI provides improved indirect path sampling over Basic mode with better indirect diffuse and specular GI quality at increased performance cost.\n");
     RTX_OPTION_ENV("rtx", UpscalerType, upscalerType, UpscalerType::DLSS, "DXVK_UPSCALER_TYPE", "Upscaling boosts performance with varying degrees of image quality tradeoff depending on the type of upscaler and the quality mode/preset.");
     RTX_OPTION_ENV("rtx", bool, enableRayReconstruction, true, "DXVK_RAY_RECONSTRUCTION", "Enable ray reconstruction.");
 
@@ -1242,6 +1248,10 @@ namespace dxvk {
       return true;
     }
 
+    bool useReSTIRGI() const {
+      return integrateIndirectMode() == IntegrateIndirectMode::ReSTIRGI;
+    }
+
     bool shouldConvertToLight(const XXH64_hash_t& h) const {
       return lightConverter().find(h) != lightConverter().end();
     }
@@ -1458,7 +1468,6 @@ namespace dxvk {
     float getCaptureMeshTexcoordDelta() const { return captureMeshTexcoordDelta(); }
     float getCaptureMeshColorDelta() const { return captureMeshColorDelta(); }
     float getCaptureMeshBlendWeightDelta() const { return captureMeshBlendWeightDelta(); }
-    
     
     bool isUseVirtualShadingNormalsForDenoisingEnabled() const { return useVirtualShadingNormalsForDenoising(); }
     bool isResetDenoiserHistoryOnSettingsChangeEnabled() const { return resetDenoiserHistoryOnSettingsChange(); }

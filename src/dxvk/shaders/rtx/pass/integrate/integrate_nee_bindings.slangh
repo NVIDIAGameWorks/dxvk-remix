@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -77,11 +77,8 @@ Texture2D<float> PrimaryPositionError;
 layout(rgba16f, binding = INTEGRATE_NEE_BINDING_INDIRECT_RADIANCE_HIT_DISTANCE_INPUT)
 Texture2D<float4> IndirectRadianceHitDistance;
 
-layout(rgba16f, binding = INTEGRATE_NEE_BINDING_RADIANCE_INPUT)
-Texture2D<float4> RestirGIRadiance;
-
-layout(rgba32f, binding = INTEGRATE_NEE_BINDING_HIT_GEOMETRY_INPUT)
-Texture2D<float4> RestirGIHitGeometry;
+layout(binding = INTEGRATE_NEE_BINDING_PRIMITIVE_ID_PREFIX_SUM_INPUT) 
+StructuredBuffer<uint> PrimitiveIDPrefixSum;
 
 // Primary Inputs/Outputs
 
@@ -113,7 +110,4 @@ RWStructuredBuffer<NeeCache_PackedSample> NeeCacheSample;
 
 layout(rg32ui, binding = INTEGRATE_NEE_BINDING_NEE_CACHE_THREAD_TASK)
 RWTexture2D<uint2> NeeCacheThreadTask;
-
-layout(binding = INTEGRATE_NEE_BINDING_PRIMITIVE_ID_PREFIX_SUM) 
-StructuredBuffer<uint> PrimitiveIDPrefixSum;
 

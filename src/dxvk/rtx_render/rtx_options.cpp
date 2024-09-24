@@ -183,7 +183,7 @@ namespace dxvk {
       DxvkRtxdiRayQuery::enableDenoiserConfidenceRef() = false;
 
       // ReSTIR GI
-      useReSTIRGIRef() = true;
+      integrateIndirectModeRef() = IntegrateIndirectMode::ReSTIRGI;
       DxvkReSTIRGIRayQuery::setToRayReconstructionPreset();
 
       // Integrator

@@ -780,10 +780,12 @@ namespace dxvk {
     return m_debugViewConstants;
   }
 
-  void DebugView::onFrameBegin(Rc<DxvkContext>& ctx, const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent) {
+  void DebugView::onFrameBegin(
+    Rc<DxvkContext>& ctx,
+    const FrameBeginContext& frameBeginCtx) {
     ScopedCpuProfileZone();
 
-    RtxPass::onFrameBegin(ctx, downscaledExtent, targetExtent);
+    RtxPass::onFrameBegin(ctx, frameBeginCtx);
 
     // Initialize composite view
     if (static_cast<CompositeDebugView>(Composite::compositeViewIdx()) != CompositeDebugView::Disabled) {
@@ -1291,7 +1293,7 @@ namespace dxvk {
     m_instrumentation.reset();
   }
 
-  bool DebugView::isActive() {
+  bool DebugView::isEnabled() const {
     return debugViewIdx() != DEBUG_VIEW_DISABLED || 
       static_cast<CompositeDebugView>(m_composite.compositeViewIdx()) != CompositeDebugView::Disabled ||
       m_showCachedImage || m_cacheCurrentImage ||

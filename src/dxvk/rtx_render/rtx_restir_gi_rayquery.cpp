@@ -26,6 +26,9 @@
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/rtxdi/restir_gi_reuse_binding_indices.h"
 #include "rtx/pass/rtxdi/restir_gi_final_shading_binding_indices.h"
+#include <rtxdi/RtxdiParameters.h>
+#include "rtx/pass/integrate/integrate_indirect_binding_indices.h"
+#include "rtx/pass/integrate/integrate_nee_binding_indices.h"
 #include "dxvk_scoped_annotation.h"
 #include "dxvk_context.h"
 #include "rtx_context.h"
@@ -189,7 +192,7 @@ namespace dxvk {
     ImGui::DragFloat("Boiling Filter Max Threshold", &boilingFilterMaxThresholdObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::DragFloat("Boiling Filter Remove Reservoir Threshold", &boilingFilterRemoveReservoirThresholdObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::Checkbox("Use Adaptive Temporal History", &useAdaptiveTemporalHistoryObject());
-    if(useAdaptiveTemporalHistory())
+    if (useAdaptiveTemporalHistory())
       ImGui::DragInt("Temporal History Length (ms)", &temporalAdaptiveHistoryLengthMsObject(), 1.f, 1, 3000, "%d", ImGuiSliderFlags_AlwaysClamp);
     else
       ImGui::DragInt("Temporal History Length (frame)", &temporalFixedHistoryLengthObject(), 1.f, 1, 500, "%d", ImGuiSliderFlags_AlwaysClamp);
@@ -257,9 +260,62 @@ namespace dxvk {
     useDLSSRRCompatibilityModeRef() = true;
   }
 
+  void DxvkReSTIRGIRayQuery::bindIntegrateIndirectPathTracingResources(RtxContext& ctx) {
+    if (isActive()) {
+      ctx.bindResourceBuffer(INTEGRATE_INDIRECT_BINDING_RESTIR_GI_RESERVOIR_OUTPUT, DxvkBufferSlice(m_restirGIReservoirBuffer, 0, m_restirGIReservoirBuffer->info().size));
+      ctx.bindResourceView(INTEGRATE_INDIRECT_BINDING_RESTIR_GI_RADIANCE_OUTPUT, m_restirGIRadiance.view(Resources::AccessType::Write), nullptr);
+      ctx.bindResourceView(INTEGRATE_INDIRECT_BINDING_RESTIR_GI_HIT_GEOMETRY_OUTPUT, m_restirGIHitGeometry.view, nullptr);
+    } else {
+      ctx.bindResourceBuffer(INTEGRATE_INDIRECT_BINDING_RESTIR_GI_RESERVOIR_OUTPUT, DxvkBufferSlice(nullptr, 0, 0));
+      ctx.bindResourceView(INTEGRATE_INDIRECT_BINDING_RESTIR_GI_RADIANCE_OUTPUT, nullptr, nullptr);
+      ctx.bindResourceView(INTEGRATE_INDIRECT_BINDING_RESTIR_GI_HIT_GEOMETRY_OUTPUT, nullptr, nullptr);
+    }
+  }
+
+  void DxvkReSTIRGIRayQuery::bindIntegrateIndirectNeeResources(RtxContext& ctx) {
+    if (isActive()) {
+      ctx.bindResourceBuffer(INTEGRATE_NEE_BINDING_RESTIR_GI_RESERVOIR_OUTPUT, DxvkBufferSlice(m_restirGIReservoirBuffer, 0, m_restirGIReservoirBuffer->info().size));
+    } else {
+      ctx.bindResourceBuffer(INTEGRATE_NEE_BINDING_RESTIR_GI_RESERVOIR_OUTPUT, DxvkBufferSlice(nullptr, 0, 0));
+    }
+  }
+
+  bool DxvkReSTIRGIRayQuery::isEnabled() const {
+    return RtxOptions::Get()->useReSTIRGI();
+  }
+
+  void DxvkReSTIRGIRayQuery::createDownscaledResource(
+    Rc<DxvkContext>& ctx,
+    const VkExtent3D& downscaledExtent) {
+
+    const Resources::RaytracingOutput& rtOutput = ctx->getCommonObjects()->getResources().getRaytracingOutput();
+
+    int numReservoirBuffer = 3;
+    int reservoirSize = sizeof(ReSTIRGI_PackedReservoir);
+    int renderWidthBlocks = (downscaledExtent.width + RTXDI_RESERVOIR_BLOCK_SIZE - 1) / RTXDI_RESERVOIR_BLOCK_SIZE;
+    int renderHeightBlocks = (downscaledExtent.height + RTXDI_RESERVOIR_BLOCK_SIZE - 1) / RTXDI_RESERVOIR_BLOCK_SIZE;
+    int reservoirBufferPixels = renderWidthBlocks * renderHeightBlocks * RTXDI_RESERVOIR_BLOCK_SIZE * RTXDI_RESERVOIR_BLOCK_SIZE;
+
+    DxvkBufferCreateInfo bufferInfo = { VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO };
+    bufferInfo.usage = VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+    bufferInfo.stages = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+    bufferInfo.access = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    bufferInfo.size = reservoirBufferPixels * numReservoirBuffer * reservoirSize;
+    m_restirGIReservoirBuffer = ctx->getDevice()->createBuffer(bufferInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
+
+    m_restirGIRadiance = Resources::AliasedResource(rtOutput.m_compositeOutput, ctx, downscaledExtent, VK_FORMAT_R16G16B16A16_SFLOAT, "ReSTIR GI Radiance");
+    m_restirGIHitGeometry = Resources::createImageResource(ctx, "ReSTIR GI Hit Geometry", downscaledExtent, VK_FORMAT_R32G32B32A32_SFLOAT);
+  }
+
+  void DxvkReSTIRGIRayQuery::releaseDownscaledResource() {
+    m_restirGIReservoirBuffer = nullptr;
+    m_restirGIRadiance.reset();
+    m_restirGIHitGeometry.reset();
+  }
+
   void DxvkReSTIRGIRayQuery::dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput) {
 
-    if (!shouldDispatch()) {
+    if (!isActive()) {
       return;
     }
 
@@ -274,7 +330,7 @@ namespace dxvk {
     {
       ScopedGpuProfileZone(ctx, "ReSTIR GI Temporal Reuse");
 
-      ctx->bindResourceBuffer(RESTIR_GI_REUSE_BINDING_RESERVOIR_INPUT_OUTPUT, DxvkBufferSlice(rtOutput.m_restirGIReservoirBuffer, 0, rtOutput.m_restirGIReservoirBuffer->info().size));
+      ctx->bindResourceBuffer(RESTIR_GI_REUSE_BINDING_RESERVOIR_INPUT_OUTPUT, DxvkBufferSlice(m_restirGIReservoirBuffer, 0, m_restirGIReservoirBuffer->info().size));
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_WORLD_SHADING_NORMAL_INPUT, rtOutput.m_primaryWorldShadingNormal.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_PERCEPTUAL_ROUGHNESS_INPUT, rtOutput.m_primaryPerceptualRoughness.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_HIT_DISTANCE_INPUT, rtOutput.m_primaryHitDistance.view, nullptr);
@@ -286,8 +342,8 @@ namespace dxvk {
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_CONE_RADIUS_INPUT, rtOutput.m_primaryConeRadius.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_LAST_GBUFFER, rtOutput.m_gbufferLast.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_MVEC_INPUT, rtOutput.m_primaryVirtualMotionVector.view, nullptr);
-      ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_RADIANCE_INPUT, rtOutput.m_restirGIRadiance.view(Resources::AccessType::Read), nullptr);
-      ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_HIT_GEOMETRY_INPUT, rtOutput.m_restirGIHitGeometry.view, nullptr);
+      ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_RADIANCE_INPUT, m_restirGIRadiance.view(Resources::AccessType::Read), nullptr);
+      ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_HIT_GEOMETRY_INPUT, m_restirGIHitGeometry.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_POSITION_ERROR_INPUT, rtOutput.m_primaryPositionError.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_SUBSURFACE_DATA_INPUT, rtOutput.m_sharedSubsurfaceData.view, nullptr);
@@ -301,7 +357,7 @@ namespace dxvk {
     {
       ScopedGpuProfileZone(ctx, "ReSTIR GI Spatial Reuse");
 
-      ctx->bindResourceBuffer(RESTIR_GI_REUSE_BINDING_RESERVOIR_INPUT_OUTPUT, DxvkBufferSlice(rtOutput.m_restirGIReservoirBuffer, 0, rtOutput.m_restirGIReservoirBuffer->info().size));
+      ctx->bindResourceBuffer(RESTIR_GI_REUSE_BINDING_RESERVOIR_INPUT_OUTPUT, DxvkBufferSlice(m_restirGIReservoirBuffer, 0, m_restirGIReservoirBuffer->info().size));
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_WORLD_SHADING_NORMAL_INPUT, rtOutput.m_primaryWorldShadingNormal.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_PERCEPTUAL_ROUGHNESS_INPUT, rtOutput.m_primaryPerceptualRoughness.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_HIT_DISTANCE_INPUT, rtOutput.m_primaryHitDistance.view, nullptr);
@@ -313,8 +369,8 @@ namespace dxvk {
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_CONE_RADIUS_INPUT, rtOutput.m_primaryConeRadius.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_LAST_GBUFFER, rtOutput.m_gbufferLast.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_MVEC_INPUT, rtOutput.m_primaryVirtualMotionVector.view, nullptr);
-      ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_RADIANCE_INPUT, rtOutput.m_restirGIRadiance.view(Resources::AccessType::Read), nullptr);
-      ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_HIT_GEOMETRY_INPUT, rtOutput.m_restirGIHitGeometry.view, nullptr);
+      ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_RADIANCE_INPUT, m_restirGIRadiance.view(Resources::AccessType::Read), nullptr);
+      ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_HIT_GEOMETRY_INPUT, m_restirGIHitGeometry.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_POSITION_ERROR_INPUT, rtOutput.m_primaryPositionError.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view, nullptr);
       ctx->bindResourceView(RESTIR_GI_REUSE_BINDING_SUBSURFACE_DATA_INPUT, rtOutput.m_sharedSubsurfaceData.view, nullptr);
@@ -351,7 +407,7 @@ namespace dxvk {
       ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_INDIRECT_DIFFUSE_RADIANCE_HIT_DISTANCE_INPUT_OUTPUT, rtOutput.m_primaryIndirectDiffuseRadiance.view(Resources::AccessType::ReadWrite), nullptr);
       ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_PRIMARY_INDIRECT_SPECULAR_RADIANCE_HIT_DISTANCE_INPUT_OUTPUT, rtOutput.m_primaryIndirectSpecularRadiance.view(Resources::AccessType::ReadWrite), nullptr);
 
-      ctx->bindResourceBuffer(RESTIR_GI_FINAL_SHADING_BINDING_RESTIR_GI_RESERVOIR_OUTPUT, DxvkBufferSlice(rtOutput.m_restirGIReservoirBuffer, 0, rtOutput.m_restirGIReservoirBuffer->info().size));
+      ctx->bindResourceBuffer(RESTIR_GI_FINAL_SHADING_BINDING_RESTIR_GI_RESERVOIR_OUTPUT, DxvkBufferSlice(m_restirGIReservoirBuffer, 0, m_restirGIReservoirBuffer->info().size));
       ctx->bindResourceView(RESTIR_GI_FINAL_SHADING_BINDING_BSDF_FACTOR2_OUTPUT, rtOutput.m_bsdfFactor2.view, nullptr);
 
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, ReSTIRGIFinalShadingShader::getShader());
