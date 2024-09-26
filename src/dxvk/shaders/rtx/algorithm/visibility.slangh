@@ -456,7 +456,7 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
   {
     const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
     OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(primarySurfaceIndex, memoryPolymorphicSurfaceMaterial);
-
+    
     pomAttenuation = opaqueSurfaceMaterialInteractionCalcHeightThroughput(
       minimalSurfaceInteraction, visibilityRay.direction, opaqueSurfaceMaterial.heightTextureIndex,
       opaqueSurfaceMaterial.samplerIndex, texCoords, opaqueSurfaceMaterial.displaceIn
