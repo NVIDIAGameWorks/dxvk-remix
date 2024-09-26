@@ -60,15 +60,18 @@ void evalNEEPrimary(
   uint8_t rayMask = OBJECT_MASK_OPAQUE | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC);
   if (cb.enableDirectTranslucentShadows) rayMask |= OBJECT_MASK_TRANSLUCENT;
 
-  const bool enablePOM = cb.pomEnableDirectLighting && opaqueSurfaceMaterialInteractionHasHeightTexture(opaqueSurfaceMaterialInteraction);
-  const uint16_t primarySurfaceIndex = enablePOM ? uint16_t(SharedSurfaceIndex[pixelCoordinate]) : BINDING_INDEX_INVALID;
+  // We can encounter a POM surface during resolving (as it's a shared function) but if direct lighting for POM
+  //  is disabled, we must also handle that user choice gracefully.
+  const bool pomOpaqueSurfaceEncountered = geometryFlags.pomOpaqueSurfaceEncountered && cb.pomEnableDirectLighting;
+  
+  const uint16_t primarySurfaceIndex = pomOpaqueSurfaceEncountered ? uint16_t(SharedSurfaceIndex[pixelCoordinate]) : BINDING_INDEX_INVALID;
 
   const bool isSubsurface = isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
 
   const VisibilityResult visibility = traceVisibilityRay<visibilityModeEnablePom | visibilityModeAccurateHitDistance | visibilityModeEnableTranslucentMaterials | visibilityModeEnableSubsurfaceMaterials>(
     minimalSurfaceInteraction,
     lightSample.position, rayMask,
-    sampledTransportPortalIndex, geometryFlags.portalSpace, geometryFlags.pomOpaqueSurfaceEncountered,
+    sampledTransportPortalIndex, geometryFlags.portalSpace, pomOpaqueSurfaceEncountered,
     minimalRayInteraction.coneRadius, viewRay.spreadAngle, 1.0, geometryFlags.isViewModel, false,
     primarySurfaceIndex, SharedTextureCoord[pixelCoordinate],
     isSubsurface, opaqueSurfaceMaterialInteraction.shadingNormal);

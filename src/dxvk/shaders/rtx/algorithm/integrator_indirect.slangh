@@ -279,6 +279,10 @@ void integratePathVertex(
     pomOpaqueSurfaceEncountered,
     isRaytracedRenderTarget);
 
+  // We can encounter a POM surface during resolving (as it's a shared function).  But if POM is disabled in indirect cases
+  //  we must also handle that case and ensure nothing tries to use POM elsewhere.
+  pomOpaqueSurfaceEncountered = pomOpaqueSurfaceEncountered && cb.pomEnableIndirectLighting;
+  
   // Output ReSTIR GI geometry information
 
   if (cb.enableReSTIRGI && !pathState.restirGiHasHitGeometry)
@@ -627,7 +631,7 @@ void integratePathVertex(
       {
         const bool isViewModel = pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
         
-        uint16_t surfaceIndex = (cb.pomEnableIndirectLighting && pomOpaqueSurfaceEncountered) ? uint(rayInteraction.surfaceIndex) : BINDING_INDEX_INVALID;
+        uint16_t surfaceIndex = pomOpaqueSurfaceEncountered ? uint(rayInteraction.surfaceIndex) : BINDING_INDEX_INVALID;
     
         // Todo: Ray Portal transport sampling in the future.
         evalNEESecondary(
