@@ -383,8 +383,9 @@ namespace dxvk {
                    "RTXDI provides improved direct light sampling quality over traditional methods and should generally be enabled for improved direct lighting quality at the cost of some performance.");
     RTX_OPTION_ENV("rtx", IntegrateIndirectMode, integrateIndirectMode, IntegrateIndirectMode::ReSTIRGI, "RTX_INTEGRATE_INDIRECT_MODE",
                    "Indirect integration mode:\n"
-                   "0: Importance Sampled. Uses typical GI sampling and is not recommended for general use as it provides the noisiest output. It serves as a reference integration mode for validation of the other indirect integration modes.\n"
-                   "1: ReSTIR GI. ReSTIR GI provides improved indirect path sampling over Basic mode with better indirect diffuse and specular GI quality at increased performance cost.\n");
+                   "0: Importance Sampled. Importance sampled mode uses typical GI sampling and it is not recommended for general use as it provides the noisiest output.\n"
+                   "   It serves as a reference integration mode for validation of other indirect integration modes.\n"
+                   "1: ReSTIR GI. ReSTIR GI provides improved indirect path sampling over \"Importance Sampled\" mode with better indirect diffuse and specular GI quality at increased performance cost.\n");
     RTX_OPTION_ENV("rtx", UpscalerType, upscalerType, UpscalerType::DLSS, "DXVK_UPSCALER_TYPE", "Upscaling boosts performance with varying degrees of image quality tradeoff depending on the type of upscaler and the quality mode/preset.");
     RTX_OPTION_ENV("rtx", bool, enableRayReconstruction, true, "DXVK_RAY_RECONSTRUCTION", "Enable ray reconstruction.");
 

@@ -48,14 +48,17 @@ namespace dxvk
     using FrameBeginEvent = std::function<void(Rc<DxvkContext>& ctx, const FrameBeginContext&)>;
 
     EventHandler(ResizeEvent&& onTargetResize, ResizeEvent&& onDownscaleResize, FrameBeginEvent&& onFrameBeginEvent) {
-      if(onTargetResize)
+      if (onTargetResize) {
         onTargetResolutionResize = std::make_shared<ResizeEvent>(onTargetResize);
+      }
 
-      if (onDownscaleResize)
+      if (onDownscaleResize) {
         onDownscaledResolutionResize = std::make_shared<ResizeEvent>(onDownscaleResize);
+      }
 
-      if (onFrameBeginEvent)
+      if (onFrameBeginEvent) {
         onFrameBegin = std::make_shared<FrameBeginEvent>(onFrameBeginEvent);
+      }
     }
 
   private:
@@ -362,14 +365,17 @@ namespace dxvk
 
     void addEventHandler(const EventHandler& events) {
       // NOTE: Implicit conversion to weak ptr
-      if(events.onTargetResolutionResize)
+      if (events.onTargetResolutionResize) {
         m_onTargetResize.push_back(events.onTargetResolutionResize);
+      }
 
-      if(events.onDownscaledResolutionResize)
+      if (events.onDownscaledResolutionResize) {
         m_onDownscaleResize.push_back(events.onDownscaledResolutionResize);
+      }
 
-      if(events.onFrameBegin)
+      if (events.onFrameBegin) {
         m_onFrameBegin.push_back(events.onFrameBegin);
+      }
     }
 
     // Message function called at the beginning of the frame, usually allocate or release resources based on each pass's status

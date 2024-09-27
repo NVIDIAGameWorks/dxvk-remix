@@ -317,7 +317,7 @@ void integratePathVertex(
         hitPosition = pathState.origin + float3(pathState.direction) * skyDomeDistance;
         hitNormal = -pathState.direction;
       }
-      ReSTIRGI_StoreHitGeometry(indirectPathTextures.RestirGIHitGeometry, pathState.pixelCoordinate, hitPosition, hitNormal, pathState.indirectLightPortalID);
+      ReSTIRGI_StoreHitGeometry(RestirGIHitGeometry, pathState.pixelCoordinate, hitPosition, hitNormal, pathState.indirectLightPortalID);
     }
   }
 
@@ -326,7 +326,9 @@ void integratePathVertex(
     pathState.accumulatedHitDistance += pathState.segmentHitDistance;
 
     if (pathState.bounceIteration == 1)
+    {
       pathState.firstBounceHitDistance = float16_t(min(float16Max, pathState.segmentHitDistance));
+    }
   }
   else if (!pathState.continueResolving)
   {
@@ -445,12 +447,17 @@ void integratePathVertex(
     return;
   }
 
-  float misWeight = 1.0;
-  if (lightSelectionPDF > 0.0)
+  // Add emissive light radiance
   {
-    misWeight = NEECacheUtils.calculateBRDFSampleMISWeight(surfaceInteraction, pathState.direction, pathState.segmentHitDistance, lightSelectionPDF, pathState.solidAnglePdf);
+    float misWeight = 1.0;
+    if (lightSelectionPDF > 0.0)
+    {
+      misWeight = NEECacheUtils.calculateBRDFSampleMISWeight(surfaceInteraction, pathState.direction, pathState.segmentHitDistance, lightSelectionPDF, pathState.solidAnglePdf);
+    }
+
+    const vec3 emissiveLightRadiance = emissiveLight * misWeight;
+    accumulateRadiance(pathState, emissiveLightRadiance);
   }
-  accumulateRadiance(pathState, emissiveLight * misWeight);
 
 // We don't need to sample lights or surface rays in the portal closest hit shader
 #if (SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_RAY_PORTAL) != 0
@@ -700,15 +707,15 @@ void integratePathVertex(
       // throughput when the probability is divided into it).
       const bool terminate = continueProbability <= continueSample;
     
-      // Note: Factor the probability of continuing the path into the throughput. This causes odd brightness
-      // in denoising when the continue probability is very low, but this math has been validated to be
-      // correct as far as I can tell.
       if (terminate)
       {
         pathState.continuePath = false;
       }
       else
       {
+        // Note: Factor the probability of continuing the path into the throughput. This causes odd brightness
+        // in denoising when the continue probability is very low, but this math has been validated to be
+        // correct as far as I can tell.
         continuationThroughput /= continueProbability;
       } 
     }
@@ -903,7 +910,9 @@ vec3 calculateReSTIRGIRadianceFactor(
 void storeRestirGIRadiance(PathState pathState, GeometryFlags geometryFlags, float16_t gbufferSurfaceHitDistance)
 {
   if (!(cb.enableReSTIRGI && geometryFlags.primarySelectedIntegrationSurface))
+  {
     return;
+  }
 
   f16vec4 restirGIRadianceFactorHitDistance = RestirGIRadiance[pathState.pixelCoordinate];
   vec3 restirGIRadiance = restirGIRadianceFactorHitDistance.rgb * pathState.radiance;
@@ -952,14 +961,6 @@ void integrateIndirectPath(
     (geometryFlags.performPSRR || NEECache.shouldUseHigherBounceNeeCache(geometryFlags.firstSampledLobeIsSpecular, calcRoughness(firstHitPerceptualRoughness)));
   pathState.gbufferPerceptualRoughness = firstHitPerceptualRoughness;
   
-  if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable) 
-  {
-    RAB_RandomSamplerState rtxdiRNG = RAB_InitRandomSampler(pathState.pixelCoordinate, cb.frameIdx, pathState.bounceIteration);
-    uint jitter = sampleUniformIntRng(rtxdiRNG);
-    MinimalSurfaceInteraction gbuffer = minimalSurfaceInteractionReadFromGBuffer(pixelCoordinate, indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal);
-    pathState.neeCacheCellOffset = NEECache.pointToOffset(rayOrigin, gbuffer.triangleNormal, jitter);
-  }
-
   if (cb.enableReSTIRGI && geometryFlags.primarySelectedIntegrationSurface)
   {
     // Pre-calculate the radiance factor to reduce live state dragged over the integrator
@@ -970,7 +971,7 @@ void integrateIndirectPath(
 
     // Output the radiance factor for ReSTIR GI and other information into the reservoir.
     // The actual radiance is reconstructed in the temporal reuse pass from the indirect textures that are written out later in the integrator.
-    indirectPathTextures.RestirGIRadiance[pathState.pixelCoordinate] = f16vec4(min(restirGIRadianceFactor, float16Max), 0);
+    RestirGIRadiance[pathState.pixelCoordinate] = f16vec4(min(restirGIRadianceFactor, float16Max), 0);
   }
 
   if (firstSampledSolidAnglePdf == float16_t(0))
@@ -980,27 +981,38 @@ void integrateIndirectPath(
 
   pathState.continuePath &= any(pathState.throughput > 0.h);
 
-#ifdef OPAQUE_MATERIAL_USE_POM
-  // Set initial POM material and texcoords from textures.
-  if (pathState.continuePath && cb.pomEnableIndirectLighting && geometryFlags.pomOpaqueSurfaceEncountered)
+  if (pathState.continuePath)
   {
-    uint16_t primarySurfaceIndex = uint16_t(SharedSurfaceIndex[pixelCoordinate]);
-    const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
-    OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(primarySurfaceIndex, memoryPolymorphicSurfaceMaterial);
+    if (NEE_CACHE_ENABLE && cb.neeCacheArgs.enable) 
+    {
+      RAB_RandomSamplerState rtxdiRNG = RAB_InitRandomSampler(pathState.pixelCoordinate, cb.frameIdx, pathState.bounceIteration);
+      uint jitter = sampleUniformIntRng(rtxdiRNG);
+      MinimalSurfaceInteraction gbuffer = minimalSurfaceInteractionReadFromGBuffer(pixelCoordinate, indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal);
+      pathState.neeCacheCellOffset = NEECache.pointToOffset(rayOrigin, gbuffer.triangleNormal, jitter);
+    }
+
+#ifdef OPAQUE_MATERIAL_USE_POM
+    // Set initial POM material and texcoords from textures.
+    if (pathState.continuePath && cb.pomEnableIndirectLighting && geometryFlags.pomOpaqueSurfaceEncountered)
+    {
+      uint16_t primarySurfaceIndex = uint16_t(SharedSurfaceIndex[pixelCoordinate]);
+      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
+      OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(primarySurfaceIndex, memoryPolymorphicSurfaceMaterial);
   
-    MinimalSurfaceInteraction minimalSurfaceInteraction = minimalSurfaceInteractionReadFromGBuffer(
-      pixelCoordinate, indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal);
+      MinimalSurfaceInteraction minimalSurfaceInteraction = minimalSurfaceInteractionReadFromGBuffer(
+        pixelCoordinate, indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal);
 
-    const float pomThroughput = opaqueSurfaceMaterialInteractionCalcHeightThroughput(
-      minimalSurfaceInteraction, pathState.direction, opaqueSurfaceMaterial.heightTextureIndex,
-      opaqueSurfaceMaterial.samplerIndex, SharedTextureCoord[pixelCoordinate], opaqueSurfaceMaterial.displaceIn
-    );
+      const float pomThroughput = opaqueSurfaceMaterialInteractionCalcHeightThroughput(
+        minimalSurfaceInteraction, pathState.direction, opaqueSurfaceMaterial.heightTextureIndex,
+        opaqueSurfaceMaterial.samplerIndex, SharedTextureCoord[pixelCoordinate], opaqueSurfaceMaterial.displaceIn
+      );
 
-    accumulateThroughput(pathState, pomThroughput);
-    pathState.continuePath = any(pathState.throughput > 0.001h);
-    pathState.continueResolving = pathState.continuePath;
-  }
+      accumulateThroughput(pathState, pomThroughput);
+      pathState.continuePath = any(pathState.throughput > 0.001h);
+      pathState.continueResolving = pathState.continuePath;
+    }
 #endif
+  }
 
   // Integrate Secondary Vertices
 

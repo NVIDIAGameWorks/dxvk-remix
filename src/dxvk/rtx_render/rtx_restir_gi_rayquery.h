@@ -64,10 +64,11 @@ namespace dxvk {
     void showImguiSettings();
 
     int getTemporalHistoryLength(float frameTimeMs) {
-      if (useAdaptiveTemporalHistory())
+      if (useAdaptiveTemporalHistory()) {
         return static_cast<int>(std::max(temporalAdaptiveHistoryLengthMs() / frameTimeMs, 20.0f));
-      else
+      } else {
         return temporalFixedHistoryLength();
+      }
     }
 
     void bindIntegrateIndirectPathTracingResources(RtxContext& ctx);

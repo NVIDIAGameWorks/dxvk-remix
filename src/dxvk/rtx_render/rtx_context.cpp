@@ -979,8 +979,8 @@ namespace dxvk {
     ReSTIRGISampleStealing restirGISampleStealingMode = restirGI.useSampleStealing();
     // Stealing pixels requires indirect light stored in separated buffers instead of combined with direct light,
     // steal samples if separated denoiser is disabled.
-    if (restirGISampleStealingMode == ReSTIRGISampleStealing::StealPixel && !RtxOptions::Get()->isSeparatedDenoiserEnabled())
-    {
+    if (restirGISampleStealingMode == ReSTIRGISampleStealing::StealPixel 
+        && !RtxOptions::Get()->isSeparatedDenoiserEnabled()) {
       restirGISampleStealingMode = ReSTIRGISampleStealing::StealSample;
     }
     constants.enableReSTIRGI = restirGI.isActive();
@@ -1243,6 +1243,8 @@ namespace dxvk {
 
     // Integrate indirect
     m_common->metaPathtracerIntegrateIndirect().dispatch(this, rtOutput);
+
+    // Integrate indirect - NEE Cache pass
     m_common->metaPathtracerIntegrateIndirect().dispatchNEE(this, rtOutput);
   }
 
@@ -1468,8 +1470,9 @@ namespace dxvk {
   void RtxContext::dispatchToneMapping(const Resources::RaytracingOutput& rtOutput, bool performSRGBConversion, const float frameTimeMilliseconds) {
     ScopedCpuProfileZone();
 
-    if (m_common->metaDebugView().debugViewIdx() == DEBUG_VIEW_PRE_TONEMAP_OUTPUT)
+    if (m_common->metaDebugView().debugViewIdx() == DEBUG_VIEW_PRE_TONEMAP_OUTPUT) {
       return;
+    }
 
     // TODO: I think these are unnecessary, and/or should be automatically done within DXVK 
     this->spillRenderPass(false);
@@ -1579,7 +1582,7 @@ namespace dxvk {
 
     if (captureScreenImage) {
       takeScreenshot("rtxImageDebugView", debugView.getFinalDebugOutput()->image());
-  }
+    }
   }
 
   void RtxContext::dispatchReplaceCompositeWithDebugView(const Resources::RaytracingOutput& rtOutput) {

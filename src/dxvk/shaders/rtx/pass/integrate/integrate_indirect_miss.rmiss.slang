@@ -59,8 +59,6 @@ void main(inout PathState rayPayload : SV_RayPayload)
 
   indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal = PrimaryWorldPositionWorldTriangleNormal;
   indirectPathTextures.IndirectRadianceHitDistance = aliasedData0.IndirectRadianceHitDistance;
-  indirectPathTextures.RestirGIRadiance = RestirGIRadiance;
-  indirectPathTextures.RestirGIHitGeometry = RestirGIHitGeometry;
 
   integratePathVertex(indirectPathTextures, rayHitInfo, rayPayload);
 }
