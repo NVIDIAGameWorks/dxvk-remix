@@ -311,8 +311,11 @@ namespace dxvk {
   ImGui::ComboWithKey<IntegrateIndirectMode> integrateIndirectModeCombo {
     "Integrate Indirect Illumination Mode",
     ImGui::ComboWithKey<IntegrateIndirectMode>::ComboEntries { {
-        {IntegrateIndirectMode::ImportanceSampled, "Importance Sampled"},
-        {IntegrateIndirectMode::ReSTIRGI, "ReSTIR GI"}
+        {IntegrateIndirectMode::ImportanceSampled, "Importance Sampled",  
+          "Importance Sampled. Importance sampled mode uses typical GI sampling and it is not recommended for general use as it provides the noisiest output.\n"
+          "It serves as a reference integration mode for validation of other indirect integration modes." },
+        {IntegrateIndirectMode::ReSTIRGI, "ReSTIR GI", 
+          "ReSTIR GI provides improved indirect path sampling over \"Importance Sampled\" mode with better indirect diffuse and specular GI quality at increased performance cost."}
     } }
   };
 

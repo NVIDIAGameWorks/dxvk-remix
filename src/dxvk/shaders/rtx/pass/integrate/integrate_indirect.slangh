@@ -98,8 +98,6 @@ void integrate_indirect_pass(ivec2 threadIndex)
 
   indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal = PrimaryWorldPositionWorldTriangleNormal;
   indirectPathTextures.IndirectRadianceHitDistance = aliasedData0.IndirectRadianceHitDistance;
-  indirectPathTextures.RestirGIRadiance = RestirGIRadiance;
-  indirectPathTextures.RestirGIHitGeometry = RestirGIHitGeometry;
 
   integrateIndirectPath(
     threadIndex, INTEGRATE_INDIRECT_SBT_OFFSET_STANDARD, indirectPathTextures,

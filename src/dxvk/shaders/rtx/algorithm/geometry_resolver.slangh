@@ -1271,25 +1271,10 @@ void geometryResolverVertex(
 
     return;
   }
-
+  
   // Construct RNG
 
   RNG randomState = createRNG(geometryResolverState.pixelCoordinate, cb.frameIdx);
-
-  // Add in Emissive contribution
-
-  const vec3 materialEmissiveRadiance = polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(polymorphicSurfaceMaterialInteraction);
-
-  // For emissive surface that has sprite sheet animation, put emissive component to particle layer to reduce ghosting
-  if (cb.outputParticleLayer && any(materialEmissiveRadiance > 0.0) &&
-      surface.spriteSheetRows * surface.spriteSheetCols > 1)
-  {
-    accumulateParticleBuffer(geometryResolverState.pixelCoordinate, materialEmissiveRadiance * geometryResolverState.attenuation);
-  }
-  else
-  {
-    geometryResolverState.radiance += materialEmissiveRadiance * geometryResolverState.attenuation;
-  }
 
   // Get PSR related flags and early out of PSR sampling
 
@@ -1332,24 +1317,42 @@ void geometryResolverVertex(
       surfaceMaterialInteractionTransmissionPSRSample.performPSR;
   }
 
-  // Approximate the diffuse layer contribution
-
-  // Note: Using attenuation here to factor in the "standard" attenuation from resolving beforehand. Importantly this
-  // code needs to come before the PSRR attenuation is factored in otherwise the reflection attenuation will improperly modulate the
-  // incident diffuse layer contribution.
-  vec3 diffuseLayerRadiance = approximateDiffuseLayerRadiance(
-    surfaceInteraction, geometryResolverState.portalSpace, diffuseLayerWeight);
-
-  diffuseLayerRadiance *= geometryResolverState.attenuation;
-
-  // Output diffuse component from the glass to a separate particle layer so that it won't get mixed with background noise.
-  if (cb.outputParticleLayer && any(diffuseLayerRadiance > 0.0))
+  // Add non-direct lighting radiance contributions at the GBuffer hit
   {
-    accumulateParticleBuffer(geometryResolverState.pixelCoordinate, diffuseLayerRadiance);
-  }
-  else
-  {
-    geometryResolverState.radiance += diffuseLayerRadiance;
+    // Add in Emissive contribution
+
+    const vec3 materialEmissiveRadiance = polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance( polymorphicSurfaceMaterialInteraction);
+
+    // For emissive surface that has sprite sheet animation, put emissive component to particle layer to reduce ghosting
+    if (cb.outputParticleLayer && any(materialEmissiveRadiance > 0.0) &&
+        surface.spriteSheetRows * surface.spriteSheetCols > 1)
+    {
+      accumulateParticleBuffer(geometryResolverState.pixelCoordinate, materialEmissiveRadiance * geometryResolverState.attenuation);
+    }
+    else
+    {
+      geometryResolverState.radiance += materialEmissiveRadiance * geometryResolverState.attenuation;
+    }
+
+    // Approximate the diffuse layer contribution
+
+    // Note: Using attenuation here to factor in the "standard" attenuation from resolving beforehand. Importantly this
+    // code needs to come before the PSRR attenuation is factored in otherwise the reflection attenuation will improperly modulate the
+    // incident diffuse layer contribution.
+    vec3 diffuseLayerRadiance = approximateDiffuseLayerRadiance(
+      surfaceInteraction, geometryResolverState.portalSpace, diffuseLayerWeight);
+
+    diffuseLayerRadiance *= geometryResolverState.attenuation;
+
+    // Output diffuse component from the glass to a separate particle layer so that it won't get mixed with background noise.
+    if (cb.outputParticleLayer && any(diffuseLayerRadiance > 0.0))
+    {
+      accumulateParticleBuffer(geometryResolverState.pixelCoordinate, diffuseLayerRadiance);
+    }
+    else
+    {
+      geometryResolverState.radiance += diffuseLayerRadiance;
+    }
   }
 
   // Set the PSTR material medium index if a medium was entered
@@ -1848,12 +1851,6 @@ void geometryPSRResolverVertex(
   // Now apply attenuation after dealing with the miss case (where attenuation is 0)
   geometryPSRResolverState.attenuation *= radianceAttenuation;
 
-  // Add in Emissive contribution
-
-  const vec3 materialEmissiveRadiance = polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(polymorphicSurfaceMaterialInteraction);
-
-  geometryPSRResolverState.radiance += materialEmissiveRadiance * geometryPSRResolverState.attenuation;
-
   // Evaluate PSR continuation logic
 
   SurfaceMaterialInteractionPSRSample surfaceMaterialInteractionReflectionPSRSample;
@@ -1871,22 +1868,31 @@ void geometryPSRResolverVertex(
     surfaceMaterialInteractionReflectionPSRSample, surfaceMaterialInteractionTransmissionPSRSample,
     diffuseLayerWeight, penetrateSurface, useReflectionPSRSample, useTransmissionPSRSample, isLastBounce);
 
-  // Approximate the diffuse layer contribution
-
-  // Note: This code needs to come before the PSR attenuation is factored in otherwise the reflection or transmission attenuation will improperly
-  // modulate the diffuse layer contribution.
-  vec3 diffuseLayerRadiance = approximateDiffuseLayerRadiance(
-    surfaceInteraction, geometryPSRResolverState.portalSpace, diffuseLayerWeight);
-
-  diffuseLayerRadiance *= geometryPSRResolverState.attenuation;
-
-  if (cb.outputParticleLayer)
+  // Add non-direct lighting radiance contributions at the GBuffer hit
   {
-    accumulateParticleBuffer(geometryPSRResolverState.pixelCoordinate, diffuseLayerRadiance);
-  }
-  else
-  {
-    geometryPSRResolverState.radiance += diffuseLayerRadiance;
+    // Add in Emissive contribution
+
+    const vec3 materialEmissiveRadiance = polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(polymorphicSurfaceMaterialInteraction);
+
+    geometryPSRResolverState.radiance += materialEmissiveRadiance * geometryPSRResolverState.attenuation;
+
+    // Approximate the diffuse layer contribution
+
+    // Note: This code needs to come before the PSR attenuation is factored in otherwise the reflection or transmission attenuation will improperly
+    // modulate the diffuse layer contribution.
+    vec3 diffuseLayerRadiance = approximateDiffuseLayerRadiance(
+      surfaceInteraction, geometryPSRResolverState.portalSpace, diffuseLayerWeight);
+
+    diffuseLayerRadiance *= geometryPSRResolverState.attenuation;
+
+    if (cb.outputParticleLayer)
+    {
+      accumulateParticleBuffer(geometryPSRResolverState.pixelCoordinate, diffuseLayerRadiance);
+    }
+    else
+    {
+      geometryPSRResolverState.radiance += diffuseLayerRadiance;
+    }
   }
 
   // Set the material medium index if a medium was entered or exited

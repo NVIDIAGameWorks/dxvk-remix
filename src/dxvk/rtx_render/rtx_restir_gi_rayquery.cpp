@@ -192,10 +192,11 @@ namespace dxvk {
     ImGui::DragFloat("Boiling Filter Max Threshold", &boilingFilterMaxThresholdObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::DragFloat("Boiling Filter Remove Reservoir Threshold", &boilingFilterRemoveReservoirThresholdObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
     ImGui::Checkbox("Use Adaptive Temporal History", &useAdaptiveTemporalHistoryObject());
-    if (useAdaptiveTemporalHistory())
+    if (useAdaptiveTemporalHistory()) {
       ImGui::DragInt("Temporal History Length (ms)", &temporalAdaptiveHistoryLengthMsObject(), 1.f, 1, 3000, "%d", ImGuiSliderFlags_AlwaysClamp);
-    else
+    } else {
       ImGui::DragInt("Temporal History Length (frame)", &temporalFixedHistoryLengthObject(), 1.f, 1, 500, "%d", ImGuiSliderFlags_AlwaysClamp);
+    }
     ImGui::DragInt("Permutation Sampling Size", &permutationSamplingSizeObject(), 0.1f, 1, 8, "%d", ImGuiSliderFlags_AlwaysClamp);
     ImGui::Checkbox("Discard Enlarged Pixels", &useDiscardEnlargedPixelsObject());
     ImGui::DragFloat("History Discard Strength", &historyDiscardStrengthObject(), 0.01f, 0.f, 50.f, "%.1f");

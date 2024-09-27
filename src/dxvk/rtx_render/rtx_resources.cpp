@@ -169,10 +169,11 @@ namespace dxvk {
       "Input aliased resource was created with incompatible create resource parameters");
 #endif
 
-    if (format == otherImageInfo.format)
+    if (format == otherImageInfo.format) {
       m_view = other.m_view;
-    else
+    } else {
       m_view = createImageView(ctx, m_sharedResource->resource.image, format, numLayers, imageViewType);
+    }
   }
 
   Resources::AliasedResource& Resources::AliasedResource::operator=(Resources::AliasedResource&& other) {

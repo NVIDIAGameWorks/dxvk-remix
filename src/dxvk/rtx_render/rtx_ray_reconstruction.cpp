@@ -27,7 +27,7 @@
 #include "rtx_context.h"
 #include "rtx_options.h"
 #include "rtx/pass/tonemap/tonemapping.h"
-#include "rtx/pass/rayreconstruction/ray_reconstruction.h"
+#include "rtx/pass/ray_reconstruction/ray_reconstruction.h"
 #include "dxvk_device.h"
 #include "rtx_dlss.h"
 #include "dxvk_scoped_annotation.h"

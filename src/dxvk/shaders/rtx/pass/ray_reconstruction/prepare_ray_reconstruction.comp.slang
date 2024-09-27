@@ -19,7 +19,7 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
-#include "rtx/pass/rayreconstruction/ray_reconstruction.h"
+#include "rtx/pass/ray_reconstruction/ray_reconstruction.h"
 #include "rtx/utility/packing.slangh"
 #include "rtx/utility/brdf.slangh"
 #include "rtx/concept/camera/camera.slangh"

@@ -279,6 +279,20 @@ namespace ImGui {
       return IMGUI_ADD_TOOLTIP(getKey(&rtxOption->getValue()), rtxOption->getDescription());
     }
 
+    void removeComboEntry(const T& key) {
+      auto it = m_keyToComboIdx.find(key);
+
+      if (it == m_keyToComboIdx.end()) {
+        return;
+      }
+
+      const int comboIdx = it->second;
+
+      // Remove the corresponding elements in containers
+      m_comboEntries.erase(m_comboEntries.begin() + comboIdx);
+      m_keyToComboIdx.erase(it);
+    }
+
   private:
     static bool getString(void* data, int entryIdx, const char** out_text, const char** out_tooltip) {
       const ComboEntries& v = *reinterpret_cast<const ComboEntries*>(data);

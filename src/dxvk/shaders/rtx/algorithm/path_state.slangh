@@ -299,6 +299,4 @@ struct IndirectPathTextures
 {
   Texture2D<float4> PrimaryWorldPositionWorldTriangleNormal;
   RWTexture2D<float4> IndirectRadianceHitDistance;
-  REORDER_COHERENT RWTexture2D<float4> RestirGIRadiance;
-  RWTexture2D<float4> RestirGIHitGeometry; 
 };

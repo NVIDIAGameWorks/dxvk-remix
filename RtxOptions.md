@@ -319,7 +319,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.instanceOverrideInstanceIdxRange|int|15||
 |rtx.instanceOverrideSelectedInstancePrintMaterialHash|bool|False||
 |rtx.instanceOverrideWorldOffset|float3|0, 0, 0||
-|rtx.integrateIndirectMode|int|1|Indirect integration mode:<br>0: Importance Sampled\. Uses typical GI sampling and is not recommended for general use as it provides the noisiest output\. It serves as a reference integration mode for validation of the other indirect integration modes\.<br>1: ReSTIR GI\. ReSTIR GI provides improved indirect path sampling over Basic mode with better indirect diffuse and specular GI quality at increased performance cost\.<br>|
+|rtx.integrateIndirectMode|int|1|Indirect integration mode:<br>0: Importance Sampled\. Importance sampled mode uses typical GI sampling and it is not recommended for general use as it provides the noisiest output\.<br>   It serves as a reference integration mode for validation of other indirect integration modes\.<br>1: ReSTIR GI\. ReSTIR GI provides improved indirect path sampling over "Importance Sampled" mode with better indirect diffuse and specular GI quality at increased performance cost\.<br>|
 |rtx.io.enabled|bool|False|When this option is enabled the assets will be loaded \(and optionally decompressed on GPU\) using high performance RTX IO runtime\. RTX IO must be enabled for loading compressed assets, but is not necessary for working with loose uncompressed assets\.|
 |rtx.io.forceCpuDecoding|bool|False|Force CPU decoding in RTX IO\.|
 |rtx.io.memoryBudgetMB|int|256||
