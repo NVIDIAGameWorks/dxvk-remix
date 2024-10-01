@@ -142,11 +142,13 @@ def generate_sha256_for_file(file_path: Union[str, os.PathLike]) -> str:
 
 
 def install_common_module(package_path, install_path):
-    COMMON_SHA256 = "0023d893d3fa3600496cdf7fad9c8e6e0d5d7ab80a35741b4e8520736cc0c375"
+    COMMON_SHA256 = "7397be5807841f6d6084e1fa77a4f7c8a9a29b4285b4440cf8c2865d1d9fd152"
     package_sha256 = generate_sha256_for_file(package_path)
     if package_sha256 != COMMON_SHA256:
-        raise RuntimeError(f"Package at '{package_path}' must have a sha256 of '{COMMON_SHA256}' "
-                           f"but was found to have '{package_sha256}'")
+        raise RuntimeError(
+            f"Package at '{package_path}' must have a sha256 of '{COMMON_SHA256}' "
+            f"but was found to have '{package_sha256}'"
+        )
     staging_path, version = os.path.split(install_path)
     with StagingDirectory(staging_path) as staging_dir:
         output_folder = staging_dir.get_temp_folder_path()
