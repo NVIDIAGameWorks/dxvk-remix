@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -470,14 +470,22 @@ namespace dxvk
 
     // Calculate Free Camera matrix information
 
-    auto freeCamViewToWorld(m_matCache[MatrixType::ViewToWorld]);
+    dxvk::Matrix4d freeCamViewToWorld(m_matCache[MatrixType::ViewToWorld]);
+
+    // Check if the up vector in view matrix is upside down
+    const dxvk::Vector3d& up = m_matCache[MatrixType::ViewToWorld][1].xyz();
+    bool isViewUpsideDown =
+      (!RtxOptions::Get()->isZUp() && up.y < 0.f) ||
+      (RtxOptions::Get()->isZUp() && up.z < 0.f);
+    const float upSign = isViewUpsideDown ? -1.f : 1.f;
 
     freeCamViewToWorld[3] = Vector4d(0.0);
-    freeCamViewToWorld *= getMatrixFromEulerAngles(freeCameraPitch(), freeCameraYaw());
+    freeCamViewToWorld *= getMatrixFromEulerAngles(upSign * freeCameraPitch(), freeCameraYaw());
 
     if (m_type == CameraType::Main && (flags & (uint32_t)UpdateFlag::UpdateFreeCamera)) {
+
       freeCameraPositionRef() += moveLeftRight * Vector3(freeCamViewToWorld.data[0].xyz());
-      freeCameraPositionRef() += moveDownUp * Vector3(freeCamViewToWorld.data[1].xyz());
+      freeCameraPositionRef() += upSign * moveDownUp * Vector3(freeCamViewToWorld.data[1].xyz());
       freeCameraPositionRef() -= moveBackForward * Vector3(freeCamViewToWorld.data[2].xyz());
 
       // save free camera context
@@ -559,10 +567,10 @@ namespace dxvk
 
   bool RtCamera::update(
     uint32_t frameIdx, const Matrix4& newWorldToView, const Matrix4& newViewToProjection,
-    float fov, float aspectRatio, float nearPlane, float farPlane, bool isLHS, uint32_t flags
-  ) {
-    if (m_frameLastTouched == frameIdx)
+    float fov, float aspectRatio, float nearPlane, float farPlane, bool isLHS, uint32_t flags) {
+    if (m_frameLastTouched == frameIdx) {
       return false;
+    }
 
     m_context.worldToView = newWorldToView;
     m_context.viewToProjection = newViewToProjection;

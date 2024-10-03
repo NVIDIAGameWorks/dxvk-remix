@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -1001,7 +1001,7 @@ namespace dxvk {
 
     m_bakingParams.frameIndex = currentFrameIndex;
 
-    const bool terrainBBOXIsValid = m_terrainBBOXFrameIndex == currentFrameIndex - 1;
+    const bool terrainBBOXIsValid = m_bakedTerrainBBOX.isValid();
     const float epsilon = 0.01f;      // Epsilon to ensure distances are greater or equal
 
     const float terrainHeight =
@@ -1015,8 +1015,10 @@ namespace dxvk {
       : metersToWorldUnitScale * cascadeMap.defaultHeight() / 2; // Assume camera is in the middle of terrain's height span
 
     // Constants set to what makes generally should make sense
+    // Offset zFar by zNear to match the baking camera position being offset by it.
+    // Offset by 1.f in case terrainHeight is zero (i.e. it's planar)
     const float zNear = 0.01f;
-    const float zFar = terrainHeight * (1 + epsilon) + zNear; // Offset by zNear to match the baking camera position being offset by it 
+    const float zFar = (terrainHeight + 1.f) * (1 + epsilon) + zNear;
 
     // Compute the relative half width of the cascade map around the camera
     float cascadeMapHalfWidth = metersToWorldUnitScale * cascadeMap.defaultHalfWidth();
