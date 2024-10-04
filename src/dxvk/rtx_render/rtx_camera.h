@@ -112,6 +112,8 @@ namespace dxvk
     RW_RTX_OPTION("rtx.camera", bool, lockFreeCamera, false, "Locks free camera.");
     RW_RTX_OPTION("rtx.camera", bool, freeCameraViewRelative, true, "Free camera transform is relative to the view.");
     RW_RTX_OPTION("rtx", float, freeCameraSpeed, 200, "Free camera speed [GameUnits/s].");
+    RW_RTX_OPTION("rtx", float, freeCameraTurningSpeed, 1, "Free camera turning speed (applies to keyboard, not mouse) [radians/s].");
+    RW_RTX_OPTION("rtx", bool, freeCameraInvertY, false, "Invert free camera pitch direction.");
 
     long m_mouseX = 0, m_mouseY = 0;
     uint32_t m_renderResolution[2] = { 0, 0 };

@@ -281,7 +281,9 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.freeCam.keyPitchUp|unknown type|unknown type|Pitch up in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyPitchUp = P'|
 |rtx.freeCam.keyYawLeft|unknown type|unknown type|Yaw left in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyYawLeft = P'|
 |rtx.freeCam.keyYawRight|unknown type|unknown type|Yaw right in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyYawRight = P'|
+|rtx.freeCameraInvertY|bool|False|Invert free camera pitch direction\.|
 |rtx.freeCameraSpeed|float|200|Free camera speed \[GameUnits/s\]\.|
+|rtx.freeCameraTurningSpeed|float|1|Free camera turning speed \(applies to keyboard, not mouse\) \[radians/s\]\.|
 |rtx.froxelDepthSliceDistributionExponent|float|2|The exponent to use on depth values to nonlinearly distribute froxels away from the camera\. Higher values bias more froxels closer to the camera with 1 being linear\.|
 |rtx.froxelDepthSlices|int|48|The z dimension of the froxel grid\. Must be constant after initialization\.|
 |rtx.froxelFilterGaussianSigma|float|1.2|The sigma value of the gaussian function used to filter volumetric radiance values\. Larger values cause a smoother filter to be used\.|
