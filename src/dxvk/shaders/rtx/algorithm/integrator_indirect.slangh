@@ -694,19 +694,19 @@ void integratePathVertex(
       // Note: This logic will conditionally terminate paths based on the effective throughput, allowing for
       // paths which contribute little to the final image to be shorter while paths which are more important
       // are allowed to be longer.
-    
-      float continueProbability = calculateRussianRouletteContinueProbability(
+
+      const float continueProbability = calculateRussianRouletteContinueProbability(
         calcBt709Luminance(pathState.throughput),
-        isOpaqueMaterial, 
+        isOpaqueMaterial,
         continuationLobe != opaqueLobeTypeDiffuseReflection,
         opaqueSurfaceMaterialInteraction.isotropicRoughness,
         rayInteraction.hitDistance / pathState.accumulatedHitDistance);
-      
+
       const float continueSample = getNextSampleBlueNoise(randomState);
       // Note: <= used to ensure path never continues if the probability is 0 (and to avoid NaNs in the
       // throughput when the probability is divided into it).
       const bool terminate = continueProbability <= continueSample;
-    
+
       if (terminate)
       {
         pathState.continuePath = false;
@@ -717,7 +717,7 @@ void integratePathVertex(
         // in denoising when the continue probability is very low, but this math has been validated to be
         // correct as far as I can tell.
         continuationThroughput /= continueProbability;
-      } 
+      }
     }
     
     // Steal samples from restir gi

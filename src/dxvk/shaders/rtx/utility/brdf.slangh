@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -23,6 +23,7 @@
 
 #include "rtx/utility/math.slangh"
 #include "rtx/utility/color.slangh"
+#include "rtx/utility/sampling.slangh"
 #include "rtx/concept/surface_material/surface_material.h"
 
 // Surface/Volume Material Constants
@@ -311,10 +312,13 @@ float evalGGXNormalDistributionIsotropic(float16_t isotropicRoughness,
 
 // Shadowing (G1): Smith Anisotropic GGX
 // [Heitz 2014, "Understanding the Masking-Shadowing Function in Microfacet Based BRDFs"]
+// Note: Augmented with k parameter for lower bound scaling for usage with bounded VNDF sampling
+// PDF calculations and is unused in more typical cases.
 float16_t evalGGXShadowing(f16vec2 anisotropicRoughness,
                            float16_t /* t.d */ tangentDotDirection,
                            float16_t /* b.d */ bitangentDotDirection,
-                           float16_t /* n.d */ normalDotDirection)
+                           float16_t /* n.d */ normalDotDirection,
+                           float16_t k = 1.0h)
 {
   const f16vec3 directionDenominatorVector =
     f16vec3(normalDotDirection,
@@ -322,8 +326,16 @@ float16_t evalGGXShadowing(f16vec2 anisotropicRoughness,
             anisotropicRoughness.y * bitangentDotDirection);
   const float16_t sqrtDirectionDenominator = length(directionDenominatorVector);
 
+  // Note: This is part of the conditional logic for Listing 2 in "Bounded VNDF Sampling for Smith-GGX Reflections"
+  // for use with bounded VNDF sampling, but integrated into the G1 function (as this is where it seems to fit given the
+  // paper, but it is not 100% clear as the paper does not explicitly have the G function written out in the PDF).
+  // When k = 1 (default) this line is equal to normalDotDirection.
+  // Note also that > is used here instead of >= like in the paper as Listing 2 is inconsistent with
+  // Listing 1 and how a backfacing shading normal is defined (defined as z <= 0 in the paper, not z < 0).
+  const float16_t b = normalDotDirection > 0.0h ? k * normalDotDirection : normalDotDirection;
+
   return safePositiveDivide(
-    float16_t(2.0) * normalDotDirection, normalDotDirection + sqrtDirectionDenominator, materialEpsilon);
+    float16_t(2.0) * normalDotDirection, b + sqrtDirectionDenominator, materialEpsilon);
 }
 
 // Shadowing/Masking (G2): Anisotropic Height-correlated GGX
@@ -393,16 +405,19 @@ float16_t evalGGXVisibleNormalDistribution(f16vec2 anisotropicRoughness,
                                            float16_t /* t.h */ tangentDotMicrofacetNormal,
                                            float16_t /* b.h */ bitangentDotMicrofacetNormal,
                                            float16_t /* n.h */ normalDotMicrofacetNormal,
-                                           float16_t /* v.h */ outputDirectionDotMicrofacetNormal)
+                                           float16_t /* v.h */ outputDirectionDotMicrofacetNormal,
+                                           float16_t k = 1.0h)
 {
   // Note: Multiply all components of the numerator together in advance to ideally result in as small a value as is possible before it
   // may need to be clamped by saferPositiveDivide to avoid overflows (this assumes the terms other than the normal distribution function
   // will be <1, which I think is true for the GGX shadowing function and of course the dot product).
   const float16_t numerator =
-    evalGGXShadowing(anisotropicRoughness, tangentDotOutputDirection, bitangentDotOutputDirection, normalDotOutputDirection) *
+    evalGGXShadowing(anisotropicRoughness, tangentDotOutputDirection, bitangentDotOutputDirection, normalDotOutputDirection, k) *
     max(float16_t(0.0), outputDirectionDotMicrofacetNormal) *
     evalGGXNormalDistribution(anisotropicRoughness, tangentDotMicrofacetNormal, bitangentDotMicrofacetNormal, normalDotMicrofacetNormal);
 
+  // Note: There is some optimization potential here, normalDotOutputDirection cancels out with a term in the G1 function used in the numerator
+  // so if this was written differently it may save a few operations. Done like this though for now just for less redundant implementations.
   return saferPositiveDivide(numerator, normalDotOutputDirection, materialEpsilon, materialMaximum);
 }
 
@@ -418,25 +433,59 @@ float evalGGXVisibleNormalDistributionSamplePdf(f16vec2 anisotropicRoughness,
                                                 float16_t /* t.h */ tangentDotMicrofacetNormal,
                                                 float16_t /* b.h */ bitangentDotMicrofacetNormal,
                                                 float16_t /* n.h */ normalDotMicrofacetNormal,
-                                                float16_t /* v.h */ outputDirectionDotMicrofacetNormal)
+                                                float16_t /* v.h */ outputDirectionDotMicrofacetNormal,
+                                                float16_t k = 1.0h)
 {
   const float16_t ggxVisibleNormalDistribution = evalGGXVisibleNormalDistribution(
     anisotropicRoughness,
     tangentDotOutputDirection, bitangentDotOutputDirection, normalDotOutputDirection,
     tangentDotMicrofacetNormal, bitangentDotMicrofacetNormal, normalDotMicrofacetNormal,
-    outputDirectionDotMicrofacetNormal);
+    outputDirectionDotMicrofacetNormal, k);
 
   return safePositiveDivide(
     float(ggxVisibleNormalDistribution), 4.0f * float(outputDirectionDotMicrofacetNormal), float(materialEpsilon));
 }
 
-/// Calculates Beer-Lambert attenuation at a specified distance through a medium with a specified attenuation coefficient.
+// [Eto 2023, "Bounded VNDF Sampling for Smith-GGX Reflections"]
+// Note: Similar to evalGGXVisibleNormalDistributionSamplePdf but to be used with bounded VNDF sampling only.
+float evalGGXBoundedVisibleNormalDistributionSamplePdf(f16vec2 anisotropicRoughness,
+                                                       float16_t /* t.v */ tangentDotOutputDirection,
+                                                       float16_t /* b.v */ bitangentDotOutputDirection,
+                                                       float16_t /* n.v */ normalDotOutputDirection,
+                                                       float16_t /* t.h */ tangentDotMicrofacetNormal,
+                                                       float16_t /* b.h */ bitangentDotMicrofacetNormal,
+                                                       float16_t /* n.h */ normalDotMicrofacetNormal,
+                                                       float16_t /* v.h */ outputDirectionDotMicrofacetNormal)
+{
+  // Calculate the lower bound scaling constant
+  // Note: Output direction dotted with tangent frame is the output direction in tangent space, which is what
+  // this function accepts.
+
+  const float16_t k = calcBoundedVNDFLowerBoundScalar(anisotropicRoughness, f16vec3(
+    tangentDotOutputDirection,
+    bitangentDotOutputDirection,
+    normalDotOutputDirection
+  ));
+
+  return evalGGXVisibleNormalDistributionSamplePdf(
+    anisotropicRoughness,
+    tangentDotOutputDirection,
+    bitangentDotOutputDirection,
+    normalDotOutputDirection,
+    tangentDotMicrofacetNormal,
+    bitangentDotMicrofacetNormal,
+    normalDotMicrofacetNormal,
+    outputDirectionDotMicrofacetNormal,
+    k);
+}
+
+// Calculates Beer-Lambert attenuation at a specified distance through a medium with a specified attenuation coefficient.
 f16vec3 evalBeerLambertAttenuation(in const vec3 attenuationCoefficient, in const float16_t distance)
 {
   return exp(-attenuationCoefficient * distance);
 }
 
-/// Calculates Beer-Lambert attenuation at an infinite distance through a medium with a specified attenuation coefficient.
+// Calculates Beer-Lambert attenuation at an infinite distance through a medium with a specified attenuation coefficient.
 f16vec3 evalBeerLambertInfiniteAttenuation(in const vec3 attenuationCoefficient)
 {
   // Note: Return a per-channel attenuation of 0 if any attenuation is desired due to infinite attenuation
