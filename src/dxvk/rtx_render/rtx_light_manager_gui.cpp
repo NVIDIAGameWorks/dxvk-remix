@@ -103,15 +103,25 @@ namespace dxvk {
       const bool disableDirectional = ignoreGameDirectionalLights();
       const bool disablePointSpot = ignoreGamePointLights() && ignoreGameSpotLights();
 
+      // TODO(REMIX-3124) remove this warning
+      ImGui::TextColored(ImVec4{ 0.87f, 0.75f, 0.20f, 1.0f }, "Warning: changing Light Conversion values can cause crashes.\nManually entering values is safer than dragging.");
       ImGui::BeginDisabled(disablePointSpot);
-      lightSettingsDirty |= ImGui::Checkbox("Use Least Squares Intensity for Sphere/Spot", &calculateLightIntensityUsingLeastSquaresObject());
-      lightSettingsDirty |= ImGui::DragFloat("Sphere/Spot Light Radius", &lightConversionSphereLightFixedRadiusObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+      ImGui::Text("Sphere / Spot Light settings");
+      lightSettingsDirty |= ImGui::Checkbox("Use Least Squares Intensity", &calculateLightIntensityUsingLeastSquaresObject());
+      lightSettingsDirty |= ImGui::DragFloat("Light Radius", &lightConversionSphereLightFixedRadiusObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+      lightSettingsDirty |= ImGui::DragFloat("Intensity Factor", &lightConversionIntensityFactorObject(), 0.01f, 0.0f, 2.f, "%.3f");
+      lightSettingsDirty |= ImGui::OptionalDragFloat("Max Intensity", &lightConversionMaxIntensityObject(), 1000000.f, 1.f, 0.0f, FLT_MAX, "%.1f", ImGuiSliderFlags_AlwaysClamp);
       ImGui::EndDisabled();
 
+      separator();
+
       ImGui::BeginDisabled(disableDirectional);
-      lightSettingsDirty |= ImGui::DragFloat("Distant Light Fixed Intensity", &lightConversionDistantLightFixedIntensityObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
-      lightSettingsDirty |= ImGui::DragFloat("Distant Light Fixed Angle", &lightConversionDistantLightFixedAngleObject(), 0.01f, 0.0f, kPi, "%.4f rad", ImGuiSliderFlags_AlwaysClamp);
+      ImGui::Text("Distant Light settings");
+      lightSettingsDirty |= ImGui::DragFloat("Fixed Intensity", &lightConversionDistantLightFixedIntensityObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", ImGuiSliderFlags_AlwaysClamp);
+      lightSettingsDirty |= ImGui::DragFloat("Fixed Angle", &lightConversionDistantLightFixedAngleObject(), 0.01f, 0.0f, kPi, "%.4f rad", ImGuiSliderFlags_AlwaysClamp);
       ImGui::EndDisabled();
+
+      separator();
 
       ImGui::Text("Ignore Game Lights:");
       ImGui::Indent();

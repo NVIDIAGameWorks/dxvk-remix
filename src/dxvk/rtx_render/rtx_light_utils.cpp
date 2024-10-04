@@ -178,7 +178,7 @@ float LightUtils::calculateIntensity(const D3DLIGHT9& light, const float radius)
   // r = (d^2 * t) / (pi * r^2) (Solve and Substitute)
   const float kDistanceSqToRadiance = kNewLightEndValue / (kPi * radius * radius);
 
-  return kDistanceSqToRadiance * endDistanceSq;
+  return std::min(kDistanceSqToRadiance * endDistanceSq * LightManager::lightConversionIntensityFactor(), LightManager::lightConversionMaxIntensity());
 }
 
 

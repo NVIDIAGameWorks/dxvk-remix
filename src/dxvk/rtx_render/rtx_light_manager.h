@@ -170,6 +170,8 @@ private:
   RTX_OPTION("rtx", float, lightConversionSphereLightFixedRadius, 4.f, "The fixed radius in world units to use for legacy lights converted to sphere lights (currently point and spot lights will convert to sphere lights). Use caution with large light radii as many legacy lights will be placed close to geometry and intersect it, causing suboptimal light sampling performance or other visual artifacts (lights clipping through walls, etc).");
   RTX_OPTION("rtx", float, lightConversionDistantLightFixedIntensity, 1.0f, "The fixed intensity (in W/sr) to use for legacy lights converted to distant lights (currently directional lights will convert to distant lights).");
   RTX_OPTION("rtx", float, lightConversionDistantLightFixedAngle, 0.0349f, "The angular size in radians of the distant light source for legacy lights converted to distant lights. Set to ~2 degrees in radians by default. Should only be within the range [0, pi].");
+  RTX_OPTION("rtx", float, lightConversionMaxIntensity, FLT_MAX, "The highest intensity value a converted light can have.");
+  RTX_OPTION("rtx", float, lightConversionIntensityFactor, 1.f, "Scales the converted light intensities.");
 };
 
 }  // namespace dxvk

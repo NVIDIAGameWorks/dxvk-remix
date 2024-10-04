@@ -343,6 +343,8 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.legacyMaterial.useAlbedoTextureIfPresent|bool|True|A flag to determine if an "albedo" texture \(a qualifying color texture\) from the original application should be used if present on non\-replaced "legacy" materials\.|
 |rtx.lightConversionDistantLightFixedAngle|float|0.0349|The angular size in radians of the distant light source for legacy lights converted to distant lights\. Set to ~2 degrees in radians by default\. Should only be within the range \[0, pi\]\.|
 |rtx.lightConversionDistantLightFixedIntensity|float|1|The fixed intensity \(in W/sr\) to use for legacy lights converted to distant lights \(currently directional lights will convert to distant lights\)\.|
+|rtx.lightConversionIntensityFactor|float|1|Scales the converted light intensities\.|
+|rtx.lightConversionMaxIntensity|float|3.40282e+38|The highest intensity value a converted light can have\.|
 |rtx.lightConversionSphereLightFixedRadius|float|4|The fixed radius in world units to use for legacy lights converted to sphere lights \(currently point and spot lights will convert to sphere lights\)\. Use caution with large light radii as many legacy lights will be placed close to geometry and intersect it, causing suboptimal light sampling performance or other visual artifacts \(lights clipping through walls, etc\)\.|
 |rtx.lights.debugDrawLightHashes|bool|False|Draw light hashes of all visible ob screen lights, when enableDebugMode=true\.|
 |rtx.lights.enableDebugMode|bool|False|Enables light debug visualization\.|
