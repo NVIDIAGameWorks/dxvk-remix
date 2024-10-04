@@ -177,6 +177,32 @@ namespace ImGui {
     return IMGUI_ADD_TOOLTIP(DragFloat(label, &rtxOption->getValue(), std::forward<Args>(args)...), rtxOption->getDescription());
   }
 
+  // DragFloat wrapped by a checkbox.
+  // Disabling the checkbox resets the value to the default value.
+  // Enabling the checkbox sets the value to `enabledValue`.
+  template <typename ... Args>
+  IMGUI_API bool OptionalDragFloat(const char* label, dxvk::RtxOption<float>* rtxOption, float enabledValue, Args&& ... args) {
+    // enabledValue and the default value can't match, otherwise the checkbox won't stay checked.
+    assert(enabledValue != rtxOption->getDefaultValue());
+    bool enabled = rtxOption->getValue() != rtxOption->getDefaultValue();
+    std::string hiddenLabel = dxvk::str::format("##", label);
+    bool changed = IMGUI_ADD_TOOLTIP(Checkbox(hiddenLabel.c_str(), &enabled), "Check to enable the option.\nUncheck to disable it and reset to default value.");
+     ImGui::SameLine();
+    if (changed) {
+      rtxOption->setValue(enabled ? enabledValue : rtxOption->getDefaultValue());
+    }
+    if (enabled) {
+      changed |= IMGUI_ADD_TOOLTIP(DragFloat(label, &rtxOption->getValue(), std::forward<Args>(args)...), rtxOption->getDescription());
+    } else {
+      ImGui::TextDisabled("%s (Disabled)", label);
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltipUnformatted(rtxOption->getDescription());
+      }
+    }
+
+    return changed;
+  }
+
   // Variant handling RtxOption as input
   template <typename ... Args>
   IMGUI_API bool DragFloat2(const char* label, dxvk::RtxOption<dxvk::Vector2>* rtxOption, Args&& ... args) {
