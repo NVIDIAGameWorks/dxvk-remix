@@ -33,6 +33,11 @@ static const f16vec3 baseReflectivityThreshold = f16vec3(1.0h / 256.0h);
 // Must be greater than materialMinimumRoughness in the BRDF helpers as all roughnesses will be clamped to at minimum this value.
 static const float16_t roughnessThreshold = float16_t(0.001h);
 
+// Note: When set to 1 this enables bounded VNDF sampling, when set to 0 this uses original unbounded VNDF sampling.
+// Generally bounded should be preferred as it has better performance (due to using spherical cap sampling) as well
+// as generating fewer invalid samples.
+#define OPAQUE_MATERIAL_USE_BOUNDED_VNDF_SAMPLING 1
+
 // Opaque Surface Material Interaction Helper Functions
 
 #ifdef OPAQUE_MATERIAL_USE_POM
@@ -950,11 +955,12 @@ SurfaceMaterialInteractionLobeSample opaqueSurfaceMaterialInteractionCalcLobeSam
   float16_t specularReflectionProbability = 0.0f;
   float16_t opacityTransmissionProbability = 0.0f;
   float16_t diffuseTransmissionProbability = 0.0f;
-  bool isValid = opaqueSurfaceMaterialInteractionCalcLobeProbability(
+  const bool isValid = opaqueSurfaceMaterialInteractionCalcLobeProbability(
     opaqueSurfaceMaterialInteraction, minimalRayInteraction.viewDirection,
     diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability, diffuseTransmissionProbability);
 
   SurfaceMaterialInteractionLobeSample surfaceMaterialInteractionLobeSample;
+
   if (!isValid)
   {
     // Note: Default to sampling specular lobe when no lobe desires to be sampled from. Ideally this could just be skipped entirely as
@@ -962,6 +968,7 @@ SurfaceMaterialInteractionLobeSample opaqueSurfaceMaterialInteractionCalcLobeSam
     // rays ideally to minimize the performance impact.
     surfaceMaterialInteractionLobeSample.lobe = opaqueLobeTypeSpecularReflection;
     surfaceMaterialInteractionLobeSample.pdf = float16_t(1.0f);
+
     return surfaceMaterialInteractionLobeSample;
   }
 
@@ -994,10 +1001,6 @@ SurfaceMaterialInteractionLobeSample opaqueSurfaceMaterialInteractionCalcLobeSam
   return surfaceMaterialInteractionLobeSample;
 }
 
-
-// Note: Rejection sampling introduces bias which needs to be corrected before reenabling it
-#define USE_REJECTION_SAMPLING 0
-
 SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSample(
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
   inout RNG randomState,
@@ -1010,54 +1013,37 @@ SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcDiffuseRefl
 
   const f16vec3 outputDirection = quaternionTransformVector(worldToTangentSpaceQuaternion, minimalRayInteraction.viewDirection);
 
-  f16vec3 inputDirection;
+  // Sample a new input direction based on a cosine weighted hemisphere
+
+  const f16vec2 u = f16vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState));
   float cosineHemisphereSolidAnglePdf;
-  float16_t /* l.v */ inputDirectionDotOutputDirection;
-  float16_t /* n.l */ normalDotInputDirection;
-  float16_t /* n.v */ normalDotOutputDirection;
-  float16_t /* n.h */ normalDotMicrofacetNormal;
+  const f16vec3 inputDirection = calcCosineHemisphereDirectionSample(u, cosineHemisphereSolidAnglePdf);
 
-  // Random sampling may end up with an invalid sample, which will contribute 0 radiance to the output and bias the result to be darker
-  // Apply rejection sampling on top by taking a few random sample attempts to find a valid sample instead
-  // Max attempts set empirically, 2 attempts cleaned up 99%+ invalid samples, setting this to 5 was a safe upper bound to handle most dead samples
-  int32_t sampleAttemptsRemaining = 5; 
+  // Todo: Sanity check if inputDirection is facing the wrong direction (Into the surface), currently this does not have much
+  // effect and getting the triangle normal here requires a fairly high memory bandwidth cost, so for now it is not done
 
-#if USE_REJECTION_SAMPLING 
-  while (sampleAttemptsRemaining-- > 0)
-#else
-  sampleAttemptsRemaining = -1;   // Mark sample as invalid - it's updated below
-#endif
-  {
-    // Sample a new input direction based on a cosine weighted hemisphere
+  // Calculate the microfacet normal from the input and output directions
 
-    const f16vec2 u = f16vec2(getNextSampleBlueNoise(randomState), getNextSampleBlueNoise(randomState));
-    inputDirection = calcCosineHemisphereDirectionSample(u, cosineHemisphereSolidAnglePdf);
+  const f16vec3 microfacetNormal = normalize(outputDirection + inputDirection);
 
-    // Todo: Sanity check if inputDirection is facing the wrong direction (Into the surface), currently this does not have much
-    // effect and getting the triangle normal here requires a fairly high memory bandwidth cost, so for now it is not done
+  // Calculate dot products used for evaluation
+  // Note: Dot products against tangent space basis vectors are single components of the other vector
 
-    // Calculate the microfacet normal from the input and output directions
+  const float16_t /* l.v */ inputDirectionDotOutputDirection = dot(inputDirection, outputDirection);
+  const float16_t /* n.l */ normalDotInputDirection = inputDirection.z;
+  const float16_t /* n.v */ normalDotOutputDirection = outputDirection.z;
+  const float16_t /* n.h */ normalDotMicrofacetNormal = microfacetNormal.z;
 
-    const f16vec3 microfacetNormal = normalize(outputDirection + inputDirection);
+  // Check if the sampled direction is valid
+  // Note: Also checking the output direction here, in theory this should be valid with pure triangle normals, but normal maps
+  // allow for surfaces to be viewed from outside the actual normal's hemisphere, resulting in an invalid sample.
+  // Note: Input direction check here is currently not needed, diffuse sampling should always produce sampled directions valid within
+  // the normal's hemisphere, but just kept here in case the sampling changes some day.
 
-    // Calculate dot products used for evaluation
-    // Note: Dot products against tangent space basis vectors are single components of the other vector
-
-    /* l.v */ inputDirectionDotOutputDirection = dot(inputDirection, outputDirection);
-    /* n.l */ normalDotInputDirection = inputDirection.z;
-    /* n.v */ normalDotOutputDirection = outputDirection.z;
-    /* n.h */ normalDotMicrofacetNormal = microfacetNormal.z;
-
-    if (normalDotOutputDirection > 0.h && normalDotInputDirection > 0.h)
-#if USE_REJECTION_SAMPLING 
-      break;
-#else
-      sampleAttemptsRemaining = 1;
-#endif      
-  }
-  
-  // Failed to find a valid sample
-  if (sampleAttemptsRemaining == -1)
+  // Note: < used rather than <= as parallel vectors to the triangle normal can be considered in the hemisphere without colliding
+  // with the triangle. Convention can vary but in this case cosine sampling can produce parallel directions like this at times
+  // so it's better to not reject those samples.
+  if (normalDotOutputDirection < 0.0h || normalDotInputDirection < 0.0h)
   {
     SurfaceMaterialInteractionSample materialSample;
 
@@ -1081,8 +1067,7 @@ SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcDiffuseRefl
     evalHammonDiffuse(opaqueSurfaceMaterialInteraction.albedo, opaqueSurfaceMaterialInteraction.isotropicRoughness,
       inputDirectionDotOutputDirection, normalDotInputDirection,
       normalDotOutputDirection, normalDotMicrofacetNormal) * lambertTransmissionWeight;
-  f16vec3 throughput = safePositiveDivide(weight, f16vec3(cosineHemisphereSolidAnglePdf), materialEpsilon) *
-    normalDotInputDirection;
+  const f16vec3 throughput = safePositiveDivide(weight, f16vec3(cosineHemisphereSolidAnglePdf), materialEpsilon) * normalDotInputDirection;
 
   // Return the material sample
 
@@ -1120,69 +1105,61 @@ SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcSpecularRef
   const float lobeTrimming = calculateLobeTrimmingFactor(
     opaqueSurfaceMaterialInteraction.isotropicRoughness, cb.primaryIndirectNrd.specularLobeTrimmingParams);
 
-  f16vec3 inputDirection;
+  // Sample a new microfacet normal based on the distribution of visible normals
 
-  float16_t /* v.h */ outputDirectionDotMicrofacetNormal;
-  float16_t /* t.v */ tangentDotOutputDirection;
-  float16_t /* b.v */ bitangentDotOutputDirection;
-  float16_t /* n.v */ normalDotOutputDirection;
-  float16_t /* t.l */ tangentDotInputDirection;
-  float16_t /* b.l */ bitangentDotInputDirection;
-  float16_t /* n.l */ normalDotInputDirection;
-  float16_t /* t.h */ tangentDotMicrofacetNormal;
-  float16_t /* b.h */ bitangentDotMicrofacetNormal;
-  float16_t /* n.h */ normalDotMicrofacetNormal;
-  
-  // Random sampling may end up with an invalid sample, which will contribute 0 radiance to the output and bias the result to be darker
-  // Apply rejection sampling on top by taking a few random sample attempts to find a valid sample instead
-  // Max attempts set empirically, 3-4 attempts cleaned up 95%+ invalid samples
-  // After 10 attempts there were only a handful pixels left with invalid samples, setting this to 15 was a safe upper bound to handle most pixels
-  int32_t sampleAttemptsRemaining = 15; 
+  const f16vec2 u = f16vec2(
+    lobeTrimming * getNextSampleBlueNoise(randomState),
+    getNextSampleBlueNoise(randomState));
 
-#if USE_REJECTION_SAMPLING
-  while (sampleAttemptsRemaining-- > 0)
+#if OPAQUE_MATERIAL_USE_BOUNDED_VNDF_SAMPLING
+  // Note: Manually calculate the lower bound scaling constant rather than using the usual calcGGXBoundedVisibleNormalDistributionSample
+  // helper function. This is done so that this k value only needs to be computed once, as it is also needed for how the PDF is calculated
+  // later (which is worked into the throughput math here).
+  const float16_t k = calcBoundedVNDFLowerBoundScalar(opaqueSurfaceMaterialInteraction.anisotropicRoughness, outputDirection);
+
+  const f16vec3 microfacetNormal = calcGGXVisibleNormalDistributionSphericalCapSample(
+    opaqueSurfaceMaterialInteraction.anisotropicRoughness,
+    outputDirection,
+    u,
+    k);
 #else
-  sampleAttemptsRemaining = -1;   // Mark sample as invalid - it's updated below
+  const f16vec3 microfacetNormal = calcGGXVisibleNormalDistributionSample(
+    opaqueSurfaceMaterialInteraction.anisotropicRoughness,
+    outputDirection,
+    u);
 #endif
-  {
-    // Sample a new microfacet normal based on the distribution of visible normals
 
-    const f16vec2 u = f16vec2(
-      lobeTrimming * getNextSampleBlueNoise(randomState), 
-      getNextSampleBlueNoise(randomState));
-    const f16vec3 microfacetNormal = calcGGXVisibleNormalDistributionSample(opaqueSurfaceMaterialInteraction.anisotropicRoughness, outputDirection, u);
+  // Reflect the output direction across the microfacet normal to get the input direction
 
-    // Reflect the output direction across the microfacet normal to get the input direction
+  const f16vec3 inputDirection = reflect(-outputDirection, microfacetNormal);
 
-    inputDirection = reflect(-outputDirection, microfacetNormal);
+  // Todo: Sanity check if inputDirection is facing the wrong direction (Into the surface), currently this does not have much
+  // effect and getting the triangle normal here requires a fairly high memory bandwidth cost, so for now it is not done
 
-    // Todo: Sanity check if inputDirection is facing the wrong direction (Into the surface), currently this does not have much
-    // effect and getting the triangle normal here requires a fairly high memory bandwidth cost, so for now it is not done
+  // Calculate dot products used for evaluation
+  // Note: Dot products against tangent space basis vectors are single components of the other vector
 
-    // Calculate dot products used for evaluation
-    // Note: Dot products against tangent space basis vectors are single components of the other vector
+  const float16_t /* v.h */ outputDirectionDotMicrofacetNormal = dot(outputDirection, microfacetNormal);
+  const float16_t /* t.v */ tangentDotOutputDirection = outputDirection.x;
+  const float16_t /* b.v */ bitangentDotOutputDirection = outputDirection.y;
+  const float16_t /* n.v */ normalDotOutputDirection = outputDirection.z;
+  const float16_t /* t.l */ tangentDotInputDirection = inputDirection.x;
+  const float16_t /* b.l */ bitangentDotInputDirection = inputDirection.y;
+  const float16_t /* n.l */ normalDotInputDirection = inputDirection.z;
+  const float16_t /* t.h */ tangentDotMicrofacetNormal = microfacetNormal.x;
+  const float16_t /* b.h */ bitangentDotMicrofacetNormal = microfacetNormal.y;
+  const float16_t /* n.h */ normalDotMicrofacetNormal = microfacetNormal.z;
 
-    /* v.h */ outputDirectionDotMicrofacetNormal = dot(outputDirection, microfacetNormal);
-    /* t.v */ tangentDotOutputDirection = outputDirection.x;
-    /* b.v */ bitangentDotOutputDirection = outputDirection.y;
-    /* n.v */ normalDotOutputDirection = outputDirection.z;
-    /* t.l */ tangentDotInputDirection = inputDirection.x;
-    /* b.l */ bitangentDotInputDirection = inputDirection.y;
-    /* n.l */ normalDotInputDirection = inputDirection.z;
-    /* t.h */ tangentDotMicrofacetNormal = microfacetNormal.x;
-    /* b.h */ bitangentDotMicrofacetNormal = microfacetNormal.y;
-    /* n.h */ normalDotMicrofacetNormal = microfacetNormal.z;
+  // Check if the sampled direction is valid
+  // Note: Also checking the output direction here, in theory this should be valid with pure triangle normals, but normal maps
+  // allow for surfaces to be viewed from outside the actual normal's hemisphere, resulting in an invalid sample. Additionally,
+  // while bounded VNDF sampling does not produce any invalid directions outside the normal's hemisphere in normal cases, it
+  // is not tightly bounded in cases with anisotropy, so this check is still needed. If a tighter bound is found in the future
+  // which handles anisotropy as well though, the sampled reflected direction check may be able to be removed.
 
-    if (normalDotOutputDirection > 0.h && normalDotInputDirection > 0.h)
-#if USE_REJECTION_SAMPLING 
-      break;
-#else
-      sampleAttemptsRemaining = 1;
-#endif      
-  }
-   
-  // Failed to find a valid sample
-  if (sampleAttemptsRemaining == -1)
+  // Note: < used rather than <= as parallel vectors to the triangle normal can be considered in the hemisphere without colliding
+  // with the triangle. Convention can vary but using this here to be consistent with diffuse sampling.
+  if (normalDotOutputDirection < 0.0h || normalDotInputDirection < 0.0h)
   {
     SurfaceMaterialInteractionSample materialSample;
 
@@ -1216,30 +1193,66 @@ SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcSpecularRef
   const f16vec3 finalFresnel = fresnel;
 #endif
 
+#if OPAQUE_MATERIAL_USE_BOUNDED_VNDF_SAMPLING
+  // Note: More typical G2/G1 calculation with special bounded G1 using the bounded scalar k calculated earlier for sampling
+  // the bounded VNDF lobe. This must be done instead of the usual G2/G1 optimization as the bounding of G1 does not allow for
+  // the same mathematical optimization to be performed.
+  const float16_t G2 = evalHeightCorrelatedGGXShadowingMasking(
+    opaqueSurfaceMaterialInteraction.anisotropicRoughness,
+    tangentDotInputDirection, tangentDotOutputDirection,
+    bitangentDotInputDirection, bitangentDotOutputDirection,
+    normalDotInputDirection, normalDotOutputDirection);
+  const float16_t G1 = evalGGXShadowing(
+    opaqueSurfaceMaterialInteraction.anisotropicRoughness,
+    tangentDotOutputDirection, bitangentDotOutputDirection, normalDotOutputDirection,
+    k);
+  const float16_t G2OverG1 = safePositiveDivide(G2, G1, materialEpsilon);
+#else
+  // Note: Algebraic simplification of height correlated G2/G1 to reduce evaluation cost. Could be simplified a bit further
+  // I think however by calculating lambda for the input/output directions and evaluating (1 + L(O)) / (1 + L(O) + L(I)) as
+  // this would avoid a multiplication, but may not benefit from the somewhat simplified G1 form itself. Also note that the paper
+  // this is from uses w_i for the view direction (output direction in our case) and w_o for the light direction which can be a bit
+  // confusing since it is backwards from our notation.
+  // [Heitz 2015, "Implementing a Simple Anisotropic Rough Diffuse Material with Stochastic Evaluation"]
   const float16_t outputGGXShadowing = evalGGXShadowing(
     opaqueSurfaceMaterialInteraction.anisotropicRoughness,
     tangentDotOutputDirection, bitangentDotOutputDirection, normalDotOutputDirection);
   const float16_t inputGGXShadowing = evalGGXShadowing(
     opaqueSurfaceMaterialInteraction.anisotropicRoughness,
     tangentDotInputDirection, bitangentDotInputDirection, normalDotInputDirection);
-  // Note: Algebraic simplification of height correlated G2/G1 to reduce evaluation cost.
-  // [Heitz 2015, "Implementing a Simple Anisotropic Rough Diffuse Material with Stochastic Evaluation"]
   const float16_t G2OverG1 = safePositiveDivide(
     inputGGXShadowing,
     inputGGXShadowing + outputGGXShadowing - (inputGGXShadowing * outputGGXShadowing),
     materialEpsilon);
+#endif
   // Note: Simplified version of (weight / solidAnglePdf) * (n.l) when sampling from the distribution of
   // visible normals.
   // [Heitz 2014, "Importance sampling microfacet-based BSDFs using the distribution of visible normals"]
-  const f16vec3 throughput = finalFresnel * G2OverG1; 
+  const f16vec3 throughput = finalFresnel * G2OverG1;
 
   // Calculate the solid angle PDF of the sample
+  // Note: Ideally the PDF wouldn't be needed here as it's already been baked into the throughput for a simpler calculation
+  // but some logic needs the PDF so it is included here for those cases (whereas others can optimize this part out).
+  // Todo: Reuse the G1 calculation from earlier in this PDF rather than redundantly recalculating it (as G1
+  // is part of the VNDF PDF).
 
+#if OPAQUE_MATERIAL_USE_BOUNDED_VNDF_SAMPLING
+  // Note: Normal version instead of evalGGXBoundedVisibleNormalDistributionSamplePdf used here so that the shared k
+  // value computed from earlier can be used here to save some computation. Note that really the entire G1 function
+  // evaluation can be shared between the throughput calculation and the PDF here.
+  const float solidAnglePdf = evalGGXVisibleNormalDistributionSamplePdf(
+    opaqueSurfaceMaterialInteraction.anisotropicRoughness,
+    tangentDotOutputDirection, bitangentDotOutputDirection, normalDotOutputDirection,
+    tangentDotMicrofacetNormal, bitangentDotMicrofacetNormal, normalDotMicrofacetNormal,
+    outputDirectionDotMicrofacetNormal,
+    k);
+#else
   const float solidAnglePdf = evalGGXVisibleNormalDistributionSamplePdf(
     opaqueSurfaceMaterialInteraction.anisotropicRoughness,
     tangentDotOutputDirection, bitangentDotOutputDirection, normalDotOutputDirection,
     tangentDotMicrofacetNormal, bitangentDotMicrofacetNormal, normalDotMicrofacetNormal,
     outputDirectionDotMicrofacetNormal);
+#endif
 
   // Return the material sample
 
@@ -1466,7 +1479,7 @@ SurfaceMaterialInteractionPSRSample opaqueSurfaceMaterialInteractionCalcPSRRefle
   const float16_t /* n.v */ normalDotOutputDirection = outputDirectionDotMicrofacetNormal;
   const float16_t /* n.l */ normalDotInputDirection = dot(inputDirection, normal);
 
-  if (normalDotOutputDirection <= float16_t(0.0) || normalDotInputDirection <= float16_t(0.0))
+  if (normalDotOutputDirection < 0.0h || normalDotInputDirection < 0.0h)
   {
     SurfaceMaterialInteractionPSRSample materialPSRSample;
 
@@ -1571,8 +1584,8 @@ float opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(
   MinimalRayInteraction minimalRayInteraction,
   f16vec3 inputDirection)
 {
-  float cosTheta = dot(inputDirection, opaqueSurfaceMaterialInteraction.shadingNormal);
-  float solidAnglePdf = getCosineHemisphereSolidAnglePdf(saturate(cosTheta));
+  const float cosTheta = dot(inputDirection, opaqueSurfaceMaterialInteraction.shadingNormal);
+  const float solidAnglePdf = getCosineHemisphereSolidAnglePdf(saturate(cosTheta));
 
   return solidAnglePdf;
 }
@@ -1582,58 +1595,56 @@ float opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(
   MinimalRayInteraction minimalRayInteraction,
   f16vec3 worldInputDirection)
 {
-
   const f16vec4 tangentToWorldSpaceQuaternion =
     quaternionCreateOrientation(materialTangentSpaceNormal, opaqueSurfaceMaterialInteraction.shadingNormal);
   const f16vec4 worldToTangentSpaceQuaternion = quaternionInverse(tangentToWorldSpaceQuaternion);
 
   // Set up relevant input vectors in tangent space
+
   const f16vec3 outputDirection = quaternionTransformVector(worldToTangentSpaceQuaternion, minimalRayInteraction.viewDirection);
   const f16vec3 inputDirection = quaternionTransformVector(worldToTangentSpaceQuaternion, worldInputDirection);
 
-  // Calculate the specular lobe trimming factor based on roughness and NRD parameters.
-  // Note: use the 'primaryIndirectNrd' parameter set because it is always controlled by the active indirect denoiser.
-  // TODO: ideally this lobe trimming should only happen at the primary vertex, but there's likely no big difference.
+  // Calculate the microfacet normal
 
-  float16_t /* v.h */ outputDirectionDotMicrofacetNormal;
-  float16_t /* t.v */ tangentDotOutputDirection;
-  float16_t /* b.v */ bitangentDotOutputDirection;
-  float16_t /* n.v */ normalDotOutputDirection;
-  float16_t /* t.l */ tangentDotInputDirection;
-  float16_t /* b.l */ bitangentDotInputDirection;
-  float16_t /* n.l */ normalDotInputDirection;
-  float16_t /* t.h */ tangentDotMicrofacetNormal;
-  float16_t /* b.h */ bitangentDotMicrofacetNormal;
-  float16_t /* n.h */ normalDotMicrofacetNormal;
-  
   const f16vec3 microfacetNormal = normalize(inputDirection + outputDirection);
-
-  // Todo: Sanity check if inputDirection is facing the wrong direction (Into the surface), currently this does not have much
-  // effect and getting the triangle normal here requires a fairly high memory bandwidth cost, so for now it is not done
 
   // Calculate dot products used for evaluation
   // Note: Dot products against tangent space basis vectors are single components of the other vector
 
-  /* v.h */ outputDirectionDotMicrofacetNormal = dot(outputDirection, microfacetNormal);
-  /* t.v */ tangentDotOutputDirection = outputDirection.x;
-  /* b.v */ bitangentDotOutputDirection = outputDirection.y;
-  /* n.v */ normalDotOutputDirection = outputDirection.z;
-  /* t.l */ tangentDotInputDirection = inputDirection.x;
-  /* b.l */ bitangentDotInputDirection = inputDirection.y;
-  /* n.l */ normalDotInputDirection = inputDirection.z;
-  /* t.h */ tangentDotMicrofacetNormal = microfacetNormal.x;
-  /* b.h */ bitangentDotMicrofacetNormal = microfacetNormal.y;
-  /* n.h */ normalDotMicrofacetNormal = microfacetNormal.z;
+  const float16_t /* v.h */ outputDirectionDotMicrofacetNormal = dot(outputDirection, microfacetNormal);
+  const float16_t /* t.v */ tangentDotOutputDirection = outputDirection.x;
+  const float16_t /* b.v */ bitangentDotOutputDirection = outputDirection.y;
+  const float16_t /* n.v */ normalDotOutputDirection = outputDirection.z;
+  const float16_t /* t.l */ tangentDotInputDirection = inputDirection.x;
+  const float16_t /* b.l */ bitangentDotInputDirection = inputDirection.y;
+  const float16_t /* n.l */ normalDotInputDirection = inputDirection.z;
+  const float16_t /* t.h */ tangentDotMicrofacetNormal = microfacetNormal.x;
+  const float16_t /* b.h */ bitangentDotMicrofacetNormal = microfacetNormal.y;
+  const float16_t /* n.h */ normalDotMicrofacetNormal = microfacetNormal.z;
 
-  if (normalDotOutputDirection <= 0.h || normalDotInputDirection <= 0.h)
-    return 0;
+  // Todo: Sanity check if inputDirection is facing the wrong direction (Into the surface), currently this does not have much
+  // effect and getting the triangle normal here requires a fairly high memory bandwidth cost, so for now it is not done
+
+  if (normalDotOutputDirection < 0.0h || normalDotInputDirection < 0.0h)
+  {
+    return 0.0f;
+  }
 
   // Calculate the solid angle PDF of the sample
+
+#if OPAQUE_MATERIAL_USE_BOUNDED_VNDF_SAMPLING
+  const float solidAnglePdf = evalGGXBoundedVisibleNormalDistributionSamplePdf(
+    opaqueSurfaceMaterialInteraction.anisotropicRoughness,
+    tangentDotOutputDirection, bitangentDotOutputDirection, normalDotOutputDirection,
+    tangentDotMicrofacetNormal, bitangentDotMicrofacetNormal, normalDotMicrofacetNormal,
+    outputDirectionDotMicrofacetNormal);
+#else
   const float solidAnglePdf = evalGGXVisibleNormalDistributionSamplePdf(
     opaqueSurfaceMaterialInteraction.anisotropicRoughness,
     tangentDotOutputDirection, bitangentDotOutputDirection, normalDotOutputDirection,
     tangentDotMicrofacetNormal, bitangentDotMicrofacetNormal, normalDotMicrofacetNormal,
     outputDirectionDotMicrofacetNormal);
+#endif
 
   return solidAnglePdf;
 }
@@ -1643,8 +1654,8 @@ float opaqueSurfaceMaterialInteractionCalcDiffuseTransmissionSolidAnglePdf(
   MinimalRayInteraction minimalRayInteraction,
   f16vec3 inputDirection)
 {
-  float cosTheta = dot(-inputDirection, opaqueSurfaceMaterialInteraction.shadingNormal);
-  float solidAnglePdf = getCosineHemisphereSolidAnglePdf(saturate(cosTheta));
+  const float cosTheta = dot(-inputDirection, opaqueSurfaceMaterialInteraction.shadingNormal);
+  const float solidAnglePdf = getCosineHemisphereSolidAnglePdf(saturate(cosTheta));
 
   return solidAnglePdf;
 }
@@ -1661,13 +1672,13 @@ float opaqueSurfaceMaterialInteractionCalcSolidAnglePdf(
   float16_t specularReflectionProbability = 0.0f;
   float16_t opacityTransmissionProbability = 0.0f;
   float16_t diffuseTransmissionProbability = 0.0f;
-  bool isValid = opaqueSurfaceMaterialInteractionCalcLobeProbability(
+  const bool isValid = opaqueSurfaceMaterialInteractionCalcLobeProbability(
     opaqueSurfaceMaterialInteraction, minimalRayInteraction.viewDirection,
     diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability, diffuseTransmissionProbability);
 
-  float diffuseSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
-  float specularSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
-  float diffuseTransmissionSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcDiffuseTransmissionSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
+  const float diffuseSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcDiffuseReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
+  const float specularSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcSpecularReflectionSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
+  const float diffuseTransmissionSolidAnglePdf = opaqueSurfaceMaterialInteractionCalcDiffuseTransmissionSolidAnglePdf(opaqueSurfaceMaterialInteraction, minimalRayInteraction, inputDirection);
 
   return diffuseSolidAnglePdf * diffuseReflectionProbability +
          specularSolidAnglePdf * specularReflectionProbability +
@@ -1696,14 +1707,14 @@ SurfaceMaterialInteractionSplitWeight opaqueSurfaceMaterialInteractionCalcApprox
     diffuseTransmissionWeight = subsurfaceMaterial.singleScatteringAlbedo;
   }
 
-  if (normalDotOutputDirection <= float16_t(0.0) || normalDotInputDirection <= float16_t(0.0))
+  if (normalDotOutputDirection < 0.0h || normalDotInputDirection < 0.0h)
   {
     SurfaceMaterialInteractionSplitWeight splitWeight;
 
     splitWeight.diffuseReflectionWeight = f16vec3(0.0, 0.0, 0.0);
     splitWeight.specularReflectionWeight = f16vec3(0.0, 0.0, 0.0);
 
-    if (normalDotOutputDirection <= float16_t(0.0))
+    if (normalDotOutputDirection < 0.0h)
     {
       splitWeight.diffuseTransmissionWeight = f16vec3(0.0, 0.0, 0.0);
     }
@@ -1780,9 +1791,10 @@ SurfaceMaterialInteractionSplitWeight opaqueSurfaceMaterialInteractionCalcProjec
       inputDirectionDotOutputDirection);
   }
 
-  if (normalDotOutputDirection <= 0.0h || normalDotInputDirection <= 0.0h)
+  if (normalDotOutputDirection < 0.0h || normalDotInputDirection < 0.0h)
   {
     SurfaceMaterialInteractionSplitWeight splitWeight;
+
     splitWeight.diffuseReflectionWeight = f16vec3(0.0, 0.0, 0.0);
     splitWeight.specularReflectionWeight = f16vec3(0.0, 0.0, 0.0);
     splitWeight.diffuseTransmissionWeight = diffuseTransmissionWeight * transmissionNormalDotInputDirection;

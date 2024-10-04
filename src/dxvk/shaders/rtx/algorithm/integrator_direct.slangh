@@ -206,7 +206,7 @@ void sampleIndirectRayForFirstBounce(
                                primaryPolymorphicSurfaceMaterialInteraction,
                                firstRayPathSampledLobe, firstSampledLobePdf, firstSampledSolidAnglePdf,
                                true);
-  
+
   // Set the material medium index if a medium was entered or exited
   mediumChanged = evalMediumChange(oldInsideMedium, insideMedium, primaryPolymorphicSurfaceMaterialInteraction, mediumMaterialIndex);
   
