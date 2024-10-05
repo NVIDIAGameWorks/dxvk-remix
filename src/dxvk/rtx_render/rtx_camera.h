@@ -160,6 +160,8 @@ namespace dxvk
       FreeCamTranslatedWorldToView,
       FreeCamPreviousTranslatedWorldToView,
 
+      ViewToWorldToFreeCamViewToWorld,
+
       Count
     };
 
@@ -266,6 +268,8 @@ namespace dxvk
     const Matrix4d& getPreviousViewToProjection() const { return m_matCache[MatrixType::PreviousViewToProjection]; }
     const Matrix4d& getProjectionToView() const { return m_matCache[MatrixType::ProjectionToView]; }
     const Matrix4d& getPreviousProjectionToView() const { return m_matCache[MatrixType::PreviousProjectionToView]; }
+
+    const Matrix4d& getViewToWorldToFreeCamViewToWorld() const;
 
     const RtFrustum& getFrustum() const { return m_frustum; }
     RtFrustum& getFrustum() { return m_frustum; }

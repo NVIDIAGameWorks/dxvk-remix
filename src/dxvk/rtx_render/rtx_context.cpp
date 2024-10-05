@@ -781,6 +781,21 @@ namespace dxvk {
       const MaterialData* overrideMaterialData = nullptr;
       bakeTerrain(params, drawCallState, &overrideMaterialData);
 
+      // Apply free camera transform when view space texGenMode is used.
+      // Note: TerrainBaking already applies this transform for TexGenMode::CascadedViewPositions 
+      if ((transformData.texgenMode == TexGenMode::ViewPositions
+           || transformData.texgenMode == TexGenMode::ViewNormals)
+          && RtCamera::enableFreeCamera()) {
+        if (cameraManager.isCameraValid(CameraType::Main)) {
+          const RtCamera& camera = cameraManager.getMainCamera();
+          // Revert the main camera's viewToWorld transform and then apply the free camera's one
+          transformData.textureTransform *= camera.getViewToWorldToFreeCamViewToWorld();
+        } else {
+          ONCE(Logger::warn(str::format("[RTX] Tried to update surface transform with Free Camera's transform "
+                                        "but main camera has not been processed this frame yet. Skipping the transform update")));
+        }
+      }
+
       getSceneManager().submitDrawState(this, drawCallState, overrideMaterialData);
     }
   }

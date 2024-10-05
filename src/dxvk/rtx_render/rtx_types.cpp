@@ -67,13 +67,15 @@ namespace dxvk {
   }
 
   bool DrawCallState::finalizeGeometryHashes() {
-    if (!geometryData.futureGeometryHashes.valid())
+    if (!geometryData.futureGeometryHashes.valid()) {
       return false;
+    }
 
     geometryData.hashes = geometryData.futureGeometryHashes.get();
 
-    if (geometryData.hashes[HashComponents::VertexPosition] == kEmptyHash)
+    if (geometryData.hashes[HashComponents::VertexPosition] == kEmptyHash) {
       throw DxvkError("Position hash should never be empty");
+    }
 
     return true;
   }
