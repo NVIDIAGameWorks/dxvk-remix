@@ -209,8 +209,12 @@ namespace dxvk
     return result;
   }
 
-  void RtCamera::setResolution(const uint32_t renderResolution[2], const uint32_t finalResolution[2])
-  {
+  const Matrix4d& RtCamera::getViewToWorldToFreeCamViewToWorld() const {
+    assert(m_type == CameraType::Main && enableFreeCamera() && "Transform is only calculated for Main Camera when Free Camera is enabled");
+    return m_matCache[MatrixType::ViewToWorldToFreeCamViewToWorld];
+  }
+
+  void RtCamera::setResolution(const uint32_t renderResolution[2], const uint32_t finalResolution[2]) {
     if (finalResolution[0] != m_finalResolution[0] ||
         finalResolution[1] != m_finalResolution[1] ||
         renderResolution[0] != m_renderResolution[0] ||
@@ -288,12 +292,12 @@ namespace dxvk
   }
 
   void RtCamera::setPreviousWorldToView(const Matrix4d& worldToView, bool freecam) {
-    dxvk::Matrix4d viewToWorld = inverse(worldToView);
+    Matrix4d viewToWorld = inverse(worldToView);
 
     Matrix4d viewToTranslatedWorld = viewToWorld;
     viewToTranslatedWorld[3] = Vector4d(0.0, 0.0, 0.0, viewToTranslatedWorld[3].w);
 
-    dxvk::Matrix4d translatedWorldToView = inverse(viewToTranslatedWorld);
+    Matrix4d translatedWorldToView = inverse(viewToTranslatedWorld);
 
     if (freecam && isFreeCameraEnabled()) {
       m_matCache[MatrixType::FreeCamPreviousViewToWorld] = viewToWorld;
@@ -320,8 +324,8 @@ namespace dxvk
     Matrix4d viewToTranslatedWorld = viewToWorld;
     viewToTranslatedWorld[3] = Vector4d(0.0, 0.0, 0.0, viewToTranslatedWorld[3].w);
 
-    dxvk::Matrix4d worldToView = inverse(viewToWorld);
-    dxvk::Matrix4d translatedWorldToView = inverse(viewToTranslatedWorld);
+    Matrix4d worldToView = inverse(viewToWorld);
+    Matrix4d translatedWorldToView = inverse(viewToTranslatedWorld);
 
     if (freecam && isFreeCameraEnabled()) {
       m_matCache[MatrixType::FreeCamPreviousViewToWorld] = viewToWorld;
@@ -404,37 +408,37 @@ namespace dxvk
         float speed = elapsedSec.count() * RtxOptions::Get()->getSceneScale() * freeCameraSpeed();
         float angularSpeed = elapsedSec.count() * M_PI * freeCameraTurningSpeed();
         // Speed booster
-        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveFaster(), true)) {
+        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveFaster(), true)) {
           speed *= 4;
         }
-        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveForward(), true)) {
+        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveForward(), true)) {
           moveBackForward += coordSystemScale * speed;
         }
-        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveLeft(), true)) {
+        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveLeft(), true)) {
           moveLeftRight -= speed;
         }
-        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveBack(), true)) {
+        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveBack(), true)) {
           moveBackForward -= coordSystemScale * speed;
         }
-        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveRight(), true)) {
+        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveRight(), true)) {
           moveLeftRight += speed;
         }
-        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveUp(), true)) {
+        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveUp(), true)) {
           moveDownUp += speed;
         }
-        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveDown(), true)) {
+        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyMoveDown(), true)) {
           moveDownUp -= speed;
         }
-        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyPitchDown(), true)) {
+        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyPitchDown(), true)) {
           freeCameraPitchRef() += coordSystemScale * pitchDirection * angularSpeed;
         }
-        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyPitchUp(), true)) {
+        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyPitchUp(), true)) {
           freeCameraPitchRef() -= coordSystemScale * pitchDirection * angularSpeed;
         }
-        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyYawLeft(), true)) {
+        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyYawLeft(), true)) {
           freeCameraYawRef() +=coordSystemScale *  angularSpeed;
         }
-        if (dxvk::ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyYawRight(), true)) {
+        if (ImGUI::checkHotkeyState(RtxOptions::FreeCam::keyYawRight(), true)) {
           freeCameraYawRef() -= coordSystemScale * angularSpeed;
         }
       }
@@ -692,8 +696,9 @@ namespace dxvk
     }
 
     // Only calculate free camera matrices for main camera
-    if (!enableFreeCamera() || m_type != CameraType::Main)
+    if (!enableFreeCamera() || m_type != CameraType::Main) {
       return isCameraCut();
+    }
 
     auto freeCamViewToWorld = updateFreeCamera(flags);
 
@@ -715,6 +720,8 @@ namespace dxvk
     m_matCache[MatrixType::FreeCamPreviousViewToTranslatedWorld] = m_matCache[MatrixType::FreeCamViewToTranslatedWorld];
     m_matCache[MatrixType::FreeCamTranslatedWorldToView] = inverse(freeCamViewToTranslatedWorld);
     m_matCache[MatrixType::FreeCamViewToTranslatedWorld] = freeCamViewToTranslatedWorld;
+
+    m_matCache[MatrixType::ViewToWorldToFreeCamViewToWorld] = m_matCache[MatrixType::WorldToView] * m_matCache[MatrixType::FreeCamViewToWorld];
 
     return false; // If we are using the debug/free camera, never do camera cuts
   }
