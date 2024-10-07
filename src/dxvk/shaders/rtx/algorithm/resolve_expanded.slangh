@@ -110,8 +110,8 @@ void ReorderThread(uint CoherenceHint, uint NumCoherenceHintBits) {}
 #endif
 
 #define RESOLVE_RAY_QUERY(                                                                \
-  extraArgs, ray, flags, hitFunction, maxInteractions, payload,             \
-  segmentHitDistance)                                                                     \
+  extraArgs, ray, flags, hitFunction, maxInteractions, payload,                           \
+  segmentHitDistance, interactionsDebugView1, interactionsDebugView2)                     \
 {                                                                                         \
   /* Initialize the payload with the current ray's state */                               \
                                                                                           \
@@ -126,7 +126,8 @@ void ReorderThread(uint CoherenceHint, uint NumCoherenceHintBits) {}
   payload.direction = ray.direction;                                                      \
                                                                                           \
   /* Loop until a surface is resolved, or the maximum interaction count is hit */         \
-  for (uint8_t interactionIteration = uint8_t(1);; ++interactionIteration)                \
+  uint8_t interactionIteration;                                                           \
+  for (interactionIteration = uint8_t(1);; ++interactionIteration)                        \
   {                                                                                       \
     /* Reset the hit distance used for Resolve logic for this next iteration */           \
                                                                                           \
@@ -178,6 +179,11 @@ void ReorderThread(uint CoherenceHint, uint NumCoherenceHintBits) {}
     currentRay.Origin = payload.origin;                                                   \
     currentRay.Direction = payload.direction;                                             \
     currentRay.TMax = max(currentRay.TMax - segmentHitDistance, 0.0f);                    \
+  }                                                                                       \
+                                                                                          \
+  if (cb.debugView == interactionsDebugView1 || cb.debugView == interactionsDebugView2)   \
+  {                                                                                       \
+    accumulateInDebugViewAdd(getDispatchRaysIndex().xy, interactionIteration);            \
   }                                                                                       \
 }
 
@@ -248,7 +254,9 @@ void ReorderThread(uint CoherenceHint, uint NumCoherenceHintBits) {}
   }                                                                                       \
                                                                                           \
   if (cb.debugView == interactionsDebugView1 || cb.debugView == interactionsDebugView2)   \
-    accumulateInDebugViewAdd(payload.pixelCoordinate, interactionIteration);              \
+  {                                                                                       \
+    accumulateInDebugViewAdd(getDispatchRaysIndex().xy, interactionIteration);            \
+  }                                                                                       \
 }
 #else // !defined(RT_MIXED_TRACE_RAY), !defined(RT_TRACE_RAY)
 
@@ -257,6 +265,7 @@ void ReorderThread(uint CoherenceHint, uint NumCoherenceHintBits) {}
   hitFunction,                                                                            \
   maxInteractions, payload, segmentHitDistance,                                           \
   interactionsDebugView1, interactionsDebugView2)                                         \
-  RESOLVE_RAY_QUERY(extraArgs, ray, flags, hitFunction, maxInteractions, payload, segmentHitDistance)
+  RESOLVE_RAY_QUERY(extraArgs, ray, flags, hitFunction, maxInteractions, payload, segmentHitDistance, interactionsDebugView1, interactionsDebugView2)
 
 #endif
+   

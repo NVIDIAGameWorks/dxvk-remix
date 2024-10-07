@@ -176,3 +176,18 @@ uint2 packFloat4x16(float16_t4 u)
 __glsl_extension(GL_EXT_shader_atomic_float)
 __target_intrinsic(glsl, "$atomicAdd($A, $1)")
 void InterlockedAddFloat(__ref float dest, float value);
+
+#ifndef RAY_PIPELINE
+// This is used to get the thread ID anywhere in a compute shader.
+property uint3 gl_GlobalInvocationID
+{
+  get
+  {
+    __target_switch
+    {
+    case glsl: __intrinsic_asm "(gl_GlobalInvocationID)";
+    case spirv: return spirv_asm { result:$$uint3 = OpLoad builtin(GlobalInvocationId:uint3); };
+    }
+  }
+}
+#endif

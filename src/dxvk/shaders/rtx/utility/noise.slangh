@@ -21,6 +21,8 @@
 */
 #pragma once
 
+#include "rtx/utility/common.slangh"
+
 // 32 bit Jenkin's hash
 // http://burtleburtle.net/bob/hash/integer.html
 uint hashJenkins(uint a)
@@ -199,30 +201,11 @@ float temporalInterleavedGradientNoise(float2 uvPosition, uint frameIdx)
   return frac(magic.z * frac(dot(uvPosition, magic.xy)));
 }
 
-#ifndef RAY_PIPELINE
-// This is used to get the thread ID anywhere in a compute shader.
-property uint3 gl_GlobalInvocationID
-{
-  get
-  {
-    __target_switch
-    {
-    case glsl: __intrinsic_asm "(gl_GlobalInvocationID)";
-    case spirv: return spirv_asm { result:$$uint3 = OpLoad builtin(GlobalInvocationId:uint3); };
-    }
-}
-}
-#endif
-
 // NOTE: This will allow anyone to create a RNG sampler anywhere without needing to pass it around to every function.
 //       By default, this uses the invocation thread ID (works for Compute and Ray pipelines).
-RNG	createRngAnywhere(uint temporalIdx, uint offset)
+RNG createRngAnywhere(uint temporalIdx, uint offset)
 {
-  uint2 pixelIdx = 0;
-#ifdef RAY_PIPELINE
-  pixelIdx = DispatchRaysIndex().xy;
-#else
-  pixelIdx = gl_GlobalInvocationID.xy;
-#endif
+  uint2 pixelIdx = getDispatchRaysIndex().xy;
+
   return createRNG(pixelIdx, temporalIdx, offset);
 }

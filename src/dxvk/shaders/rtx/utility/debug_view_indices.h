@@ -237,5 +237,8 @@
 
 enum class CompositeDebugView : uint32_t {
   Disabled = 0,
-  FinalRenderWithMaterialProperties
+  FinalRenderWithMaterialProperties = 1,
+  OpaqueMaterialTextureResolutionCheckers = 2,
+
+  Count
 };
