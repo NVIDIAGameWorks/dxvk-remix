@@ -497,14 +497,14 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
         convert1stCascadeTexCoordsToTargetCascadeLevel(cascadeLevel, surfaceInteraction.textureCoordinates, texcoords);
       }
 
-#if defined(RAY_TRACING_PRIMARY_RAY) && defined(RAY_PIPELINE)
+#if defined(RAY_TRACING_PRIMARY_RAY)
       if (cb.debugView == DEBUG_VIEW_CASCADE_LEVEL)
       {
-        storeInDebugView(DispatchRaysIndex().xy, cascadeLevel);
+        storeInDebugView(getDispatchRaysIndex().xy, cascadeLevel);
       }
       else if (cb.debugView == DEBUG_VIEW_IS_BAKED_TERRAIN)
       {
-        storeInDebugView(DispatchRaysIndex().xy, 1);
+        storeInDebugView(getDispatchRaysIndex().xy, 1);
       }
 #endif
     }

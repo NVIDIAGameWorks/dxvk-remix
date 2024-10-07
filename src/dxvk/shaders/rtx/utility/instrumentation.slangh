@@ -26,7 +26,7 @@
 
 #if defined(ENABLE_INSTRUMENTATION) && 
     // Currently supported paths
-    defined(RAY_PIPELINE) && defined(INTEGRATE_INDIRECT)
+    defined(INTEGRATE_INDIRECT)
 
 // Tracks if all lanes called this function if the input id matches that of cb.DebugKnob.x
 // and sets UAV to 1 if not. If all lanes are seen, it stores nothing.
@@ -42,7 +42,7 @@ void instrumentThreadDivergence(uint uniqueShaderLocationID, uint maxActiveLanes
 
   if (isDivergent)
   {
-    Instrumentation[DispatchRaysIndex().xy] = 1;
+    Instrumentation[getDispatchRaysIndex().xy] = 1;
   }
 }
  

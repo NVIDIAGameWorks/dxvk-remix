@@ -52,11 +52,7 @@ struct GeometryResolverState : IBasePayloadState
   {
     get 
     {
-    #ifdef RAY_PIPELINE
-      return DispatchRaysIndex().xy;
-    #else
-      return gl_GlobalInvocationID.xy;
-    #endif
+      return getDispatchRaysIndex().xy;
     }
   }
 
@@ -221,11 +217,7 @@ struct GeometryPSRResolverState : IBasePayloadState
   {
     get 
     {
-    #ifdef RAY_PIPELINE
-      return DispatchRaysIndex().xy;
-    #else
-      return gl_GlobalInvocationID.xy;
-    #endif
+      return getDispatchRaysIndex().xy;
     }
   }
 

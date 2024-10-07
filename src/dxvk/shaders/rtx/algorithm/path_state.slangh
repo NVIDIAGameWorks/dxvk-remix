@@ -84,11 +84,7 @@ struct PathState : IBasePayloadState
   {
     get 
     {
-    #ifdef RAY_PIPELINE
-      return DispatchRaysIndex().xy;
-    #else
-      return gl_GlobalInvocationID.xy;
-    #endif
+      return getDispatchRaysIndex().xy;
     }
   }
 

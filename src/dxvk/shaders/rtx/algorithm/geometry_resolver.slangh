@@ -2208,7 +2208,9 @@ void geometryResolver(ivec2 pixelCoordinate) {
       DEBUG_VIEW_PRIMARY_RAY_INTERACTIONS, DEBUG_VIEW_PRIMARY_RAY_AND_UNORDERED_INTERACTIONS);
 
     if (cb.debugView == DEBUG_VIEW_PRIMARY_RAY_BOUNCES)
+    {
       accumulateInDebugViewAdd(geometryResolverState.pixelCoordinate, 1);
+    }
   }
 
   // Translate PSR flags and the selected integration surface flag from reflection/transmission to a primary/secondary context

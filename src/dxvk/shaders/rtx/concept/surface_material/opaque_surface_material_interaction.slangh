@@ -396,13 +396,13 @@ void storeColorOverlayedWithTextureResolutionCheckersInDebugView(vec3 colorValue
     colorValue = 
       tintColorValueWithTextureResolutionCheckers(
         colorValue,
-        surfaceInteraction.textureCoordinates, 
+        surfaceInteraction.textureCoordinates,
         surfaceInteraction.textureGradientX * cb.upscaleFactor,
         surfaceInteraction.textureGradientY * cb.upscaleFactor,
         texDims,
         cb.debugKnob.x,
         cb.debugKnob.y);
-    storeInDebugView(DispatchRaysIndex().xy, colorValue);
+    storeInDebugView(getDispatchRaysIndex().xy, colorValue);
   }
 }
 
@@ -526,10 +526,10 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
     }
   }
 
-#if defined(RAY_TRACING_PRIMARY_RAY) && defined(RAY_PIPELINE)
+#if defined(RAY_TRACING_PRIMARY_RAY)
   if (cb.debugView == DEBUG_VIEW_RAW_ALBEDO) 
   {
-    storeInDebugView(DispatchRaysIndex().xy, albedo.xyz);
+    storeInDebugView(getDispatchRaysIndex().xy, albedo.xyz);
   }
 
   if (cb.debugView == DEBUG_VIEW_OPAQUE_RAW_ALBEDO_RESOLUTION_CHECKERS) 
@@ -660,7 +660,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
     }
   }
   
-#if defined(RAY_TRACING_PRIMARY_RAY) && defined(RAY_PIPELINE)
+#if defined(RAY_TRACING_PRIMARY_RAY)
   if (cb.debugView == DEBUG_VIEW_OPAQUE_NORMAL_RESOLUTION_CHECKERS) 
   {
     storeColorOverlayedWithTextureResolutionCheckersInDebugView(normal, opaqueSurfaceMaterial.normalTextureIndex, surfaceInteraction);
@@ -679,7 +679,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
     roughness = roughnessSample.x;
   }
 
-#if defined(RAY_TRACING_PRIMARY_RAY) && defined(RAY_PIPELINE)
+#if defined(RAY_TRACING_PRIMARY_RAY)
   if (cb.debugView == DEBUG_VIEW_OPAQUE_ROUGHNESS_RESOLUTION_CHECKERS) 
   {
     storeColorOverlayedWithTextureResolutionCheckersInDebugView(roughness.xxx, opaqueSurfaceMaterial.roughnessTextureIndex, surfaceInteraction);

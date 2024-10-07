@@ -22,6 +22,16 @@
 #pragma once
 
 #include "rtx/utility/color.slangh"
+#include "rtx/utility/shader_types.slangh"
+
+uvec3 getDispatchRaysIndex()
+{
+#ifdef RAY_PIPELINE
+  return DispatchRaysIndex();
+#else
+  return gl_GlobalInvocationID;
+#endif
+}
 
 // Clamps the contribution of ray in order to preven fireflies
 vec3 fireflyFiltering(vec3 contribution, float fireflyFilterMaxIntensity)

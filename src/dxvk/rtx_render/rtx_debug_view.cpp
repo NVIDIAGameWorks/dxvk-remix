@@ -86,16 +86,16 @@ namespace dxvk {
 
         {DEBUG_VIEW_MATERIAL_TYPE, "Material Type"},
         {DEBUG_VIEW_ALBEDO, "Diffuse Albedo"},
-        {DEBUG_VIEW_RAW_ALBEDO, "Diffuse Raw Albedo (RGS only)"},
-        {DEBUG_VIEW_OPAQUE_RAW_ALBEDO_RESOLUTION_CHECKERS, "Opaque Material Raw Albedo + Texture Resolution Checkers (RGS only)",
+        {DEBUG_VIEW_RAW_ALBEDO, "Diffuse Raw Albedo"},
+        {DEBUG_VIEW_OPAQUE_RAW_ALBEDO_RESOLUTION_CHECKERS, "Opaque Material Raw Albedo + Texture Resolution Checkers",
                                                     "Parameterize via:\n"
                                                     "Debug Knob [0]: num texels per checker box [Default: 64]\n"
                                                     "Debug Knob [1]: checkers overlay strength [Default: 0.5]"},
-        {DEBUG_VIEW_OPAQUE_NORMAL_RESOLUTION_CHECKERS, "Opaque Material Normal + Texture Resolution Checkers (RGS only)",
+        {DEBUG_VIEW_OPAQUE_NORMAL_RESOLUTION_CHECKERS, "Opaque Material Normal + Texture Resolution Checkers",
                                                     "Parameterize via:\n"
                                                     "Debug Knob [0]: num texels per checker box [Default: 64]\n"
                                                     "Debug Knob [1]: checkers overlay strength [Default: 0.5]"},
-        {DEBUG_VIEW_OPAQUE_ROUGHNESS_RESOLUTION_CHECKERS, "Opaque Material Roughness + Texture Resolution Checkers (RGS only)",
+        {DEBUG_VIEW_OPAQUE_ROUGHNESS_RESOLUTION_CHECKERS, "Opaque Material Roughness + Texture Resolution Checkers",
                                                     "Parameterize via:\n"
                                                     "Debug Knob [0]: num texels per checker box [Default: 64]\n"
                                                     "Debug Knob [1]: checkers overlay strength [Default: 0.5]"},
@@ -111,7 +111,7 @@ namespace dxvk {
         {DEBUG_VIEW_THIN_FILM_THICKNESS, "Thin Film Thickness"},
         {DEBUG_VIEW_EMISSIVE_PARTICLE, "Emissive Particle"},
 
-        {DEBUG_VIEW_IS_BAKED_TERRAIN, "Terrain: Is Baked Terrain (RGS only)"},
+        {DEBUG_VIEW_IS_BAKED_TERRAIN, "Terrain: Is Baked Terrain"},
         {DEBUG_VIEW_TERRAIN_MAP, "Terrain: Cascade Map",
                                 "Parameterize via:\n"
                                 "Debug Knob [0]: (rounded down) which texture type to show: \n"
@@ -122,7 +122,7 @@ namespace dxvk {
                                 "Debug Knob [0]: (rounded down) which texture type to show: \n"
                                 "0: AlbedoOpacity, 1: Normal, 2: Tangent, 3: Height,\n"
                                 "4: Roughness, 5: Metallic, 6: Emissive"},
-        {DEBUG_VIEW_CASCADE_LEVEL, "Terrain: Cascade Level (RGS only)"},
+        {DEBUG_VIEW_CASCADE_LEVEL, "Terrain: Cascade Level"},
 
         {DEBUG_VIEW_VIRTUAL_HIT_DISTANCE, "Virtual Hit Distance"},
         {DEBUG_VIEW_PRIMARY_DEPTH, "Primary Depth"},
@@ -185,15 +185,15 @@ namespace dxvk {
         {DEBUG_VIEW_INTEGRATE_INDIRECT_FIRST_SAMPLED_LOBE_PDF, "Indirect First Sampled Lobe Pdf"},
         {DEBUG_VIEW_INTEGRATE_INDIRECT_FIRST_SAMPLED_SOLID_ANGLE_PDF, "Indirect First Sampled Solid Angle Pdf"},
 
-        {DEBUG_VIEW_PRIMARY_RAY_INTERACTIONS, "Primary Ray Interactions (RGS TR only)"},
-        {DEBUG_VIEW_SECONDARY_RAY_INTERACTIONS, "Secondary Ray Interactions (RGS TR only)"},
+        {DEBUG_VIEW_PRIMARY_RAY_INTERACTIONS, "Primary Ray Interactions"},
+        {DEBUG_VIEW_SECONDARY_RAY_INTERACTIONS, "Secondary Ray Interactions"},
         {DEBUG_VIEW_PRIMARY_RAY_BOUNCES, "Primary Ray Bounces"},
         {DEBUG_VIEW_SECONDARY_RAY_BOUNCES, "Secondary Ray Bounces"},
         {DEBUG_VIEW_PRIMARY_UNORDERED_INTERACTIONS, "Primary Unordered Ray Interactions"},
         {DEBUG_VIEW_SECONDARY_UNORDERED_INTERACTIONS, "Secondary Unordered Ray Interactions"},
 
-        {DEBUG_VIEW_PRIMARY_RAY_AND_UNORDERED_INTERACTIONS, "Primary Ray Interactions (+Unordered) (RGS TR only)"},
-        {DEBUG_VIEW_SECONDARY_RAY_AND_UNORDERED_INTERACTIONS, "Secondary Ray Interactions (+Unordered) (RGS TR only)"},
+        {DEBUG_VIEW_PRIMARY_RAY_AND_UNORDERED_INTERACTIONS, "Primary Ray Interactions (+Unordered)"},
+        {DEBUG_VIEW_SECONDARY_RAY_AND_UNORDERED_INTERACTIONS, "Secondary Ray Interactions (+Unordered)"},
 
         {DEBUG_VIEW_PSR_PRIMARY_SECONDARY_SURFACE_MASK, "PSR Primary Secondary Surface Mask"},
         {DEBUG_VIEW_PSR_SELECTED_INTEGRATION_SURFACE_PDF, "PSR Selected Integration Surface PDF"},
@@ -268,6 +268,7 @@ namespace dxvk {
     "Composite Debug View",
     ImGui::ComboWithKey<CompositeDebugView>::ComboEntries { {
         {CompositeDebugView::FinalRenderWithMaterialProperties, "Final Render + Material Properties"},
+        {CompositeDebugView::OpaqueMaterialTextureResolutionCheckers, "Opaque Material Texture Resolution Checkers", "Textures: Raw Albedo, Normal, Roughness" },
     } });
 
   ImGui::ComboWithKey<DebugViewDisplayType> displayTypeCombo = ImGui::ComboWithKey<DebugViewDisplayType>(
@@ -793,6 +794,9 @@ namespace dxvk {
       case CompositeDebugView::FinalRenderWithMaterialProperties:
         m_composite.debugViewIndices = std::vector<uint32_t> { DEBUG_VIEW_POST_TONEMAP_OUTPUT, DEBUG_VIEW_ALBEDO, DEBUG_VIEW_SHADING_NORMAL, DEBUG_VIEW_PERCEPTUAL_ROUGHNESS, DEBUG_VIEW_EMISSIVE_RADIANCE, DEBUG_VIEW_HEIGHT_MAP };
         break;
+      case CompositeDebugView::OpaqueMaterialTextureResolutionCheckers:
+        m_composite.debugViewIndices = std::vector<uint32_t> { DEBUG_VIEW_OPAQUE_RAW_ALBEDO_RESOLUTION_CHECKERS, DEBUG_VIEW_OPAQUE_NORMAL_RESOLUTION_CHECKERS, DEBUG_VIEW_OPAQUE_ROUGHNESS_RESOLUTION_CHECKERS };
+
       default:
         break;
       }
