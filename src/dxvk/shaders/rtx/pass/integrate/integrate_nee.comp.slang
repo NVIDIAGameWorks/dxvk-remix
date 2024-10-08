@@ -153,12 +153,11 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
 
           uint8_t rayMask = OBJECT_MASK_OPAQUE | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC);
           bool pomOpaqueSurfaceEncountered = cb.pomEnableNEECache && opaqueSurfaceMaterialInteractionHasHeightTexture(opaqueSurfaceMaterialInteraction);
-          uint16_t surfaceIndex = pomOpaqueSurfaceEncountered ? uint16_t(SharedSurfaceIndex[threadIndex]) : BINDING_INDEX_INVALID;
           isVisible = evalNEESecondary(
             lightSample, invalidRayPortalIndex, surface.portalSpace, rayMask, pomOpaqueSurfaceEncountered,
             surface.isViewModel, primaryRay,
             minimalRayInteraction, minimalSurfaceInteraction, opaqueSurfaceMaterialInteraction,
-            diffuseLight, specularLight, surfaceIndex, SharedTextureCoord[threadIndex]);
+            diffuseLight, specularLight, SharedSurfaceIndex[threadIndex], SharedTextureCoord[threadIndex]);
 
           // Skip some pixels to reduce memory traffic, especially when large screen area is occupied by a single cell.
           if (any(diffuseLight + specularLight) > 0 && (threadIndex.x + threadIndex.y) % 4 == 0)
