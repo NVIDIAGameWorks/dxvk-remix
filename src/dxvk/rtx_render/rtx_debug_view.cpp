@@ -258,7 +258,10 @@ namespace dxvk {
         {DEBUG_VIEW_SCROLLING_LINE,                                        "Scrolling Line"},
         {DEBUG_VIEW_POM_ITERATIONS,                                        "POM Iterations"},
         {DEBUG_VIEW_POM_DIRECT_HIT_POS,                                    "POM Direct Hit Position (Tangent Space)"},
-        {DEBUG_VIEW_HEIGHT_MAP,                                            "Height Map Value"},
+        {DEBUG_VIEW_HEIGHT_MAP,                                            "Height Map Value",
+                                                                            "Valid values will be greyscale."
+                                                                            "\nBlue, Green, or Red pixels indicate errors happened"
+                                                                            "\nwhen passing POM state between passes."},
         {DEBUG_VIEW_RAYTRACED_RENDER_TARGET_GEOMETRY,                      "Raytraced Render Target Geometry" },
         {DEBUG_VIEW_RAYTRACED_RENDER_TARGET_DIRECT,                        "Hit Raytraced Render Target in Direct"},
         {DEBUG_VIEW_RAYTRACED_RENDER_TARGET_INDIRECT,                      "Hit Raytraced Render Target in Indirect"},
