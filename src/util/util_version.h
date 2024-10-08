@@ -28,6 +28,7 @@ namespace version {
 enum Feature : uint64_t {
   MessageChannel,
   RemixApi,
+  FileSys,
   nFeatures
 };
 

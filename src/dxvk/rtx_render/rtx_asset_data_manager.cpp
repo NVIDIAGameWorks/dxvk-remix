@@ -23,7 +23,6 @@
 #include "rtx_utils.h"
 #include "rtx_options.h"
 #include "rtx_asset_package.h"
-#include "rtx_game_capturer_paths.h"
 #include "rtx_io.h"
 #include "dxvk_scoped_annotation.h"
 #include <gli/gli.hpp>

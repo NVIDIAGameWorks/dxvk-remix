@@ -28,7 +28,6 @@
 #include "dxvk_context.h"
 #include "rtx_context.h"
 #include "rtx_options.h"
-#include "rtx_game_capturer_paths.h"
 #include "rtx_utils.h"
 #include "rtx_asset_data_manager.h"
 #include "rtx_texture_manager.h"

@@ -424,7 +424,7 @@ namespace dxvk {
       // NV-DXVK start: Check against extension requirements for DXVK and Remix to run
       Logger::err("Unable to find all required Vulkan GPU extensions for device creation.");
 
-      messageBox("Your GPU doesn't support the required features to run RTX Remix.  See the *_d3d9.log for what features your GPU doesn't support.  The game will exit now.", "RTX Remix - GPU Feature Error!", MB_OK);
+      messageBox("Your GPU doesn't support the required features to run RTX Remix.  See the 'rtx-remix/logs/remix-dxvk.log' for what features your GPU doesn't support.  The game will exit now.", "RTX Remix - GPU Feature Error!", MB_OK);
       // NV-DXVK end
 
       // NV-DXVK start: Provide error code on exception

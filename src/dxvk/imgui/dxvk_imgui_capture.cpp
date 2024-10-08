@@ -29,6 +29,7 @@
 #include "../rtx_render/rtx_imgui.h"
 #include "../../lssusd/game_exporter_paths.h"
 
+#include "../../util/util_filesys.h"
 #include "../../util/util_string.h"
 
 #include <filesystem>
@@ -261,8 +262,8 @@ namespace dxvk {
         m_percent = 1.f;
         const bool captureInstances = (RtxOptions::Get()->m_captureInstances.getValue());
         m_output.push_back((captureInstances) ? "Scene captured to:" : "Assets captured to:");
-        const std::string destination = (captureInstances) ? m_captureStageName :
-          std::filesystem::absolute(std::filesystem::path(GameCapturer::s_baseDir)).string();
+        const std::string destination =
+          (captureInstances) ? m_captureStageName : util::RtxFileSys::path(util::RtxFileSys::Captures).string();
         m_output.push_back(destination);
         return;
       }
@@ -307,8 +308,8 @@ namespace dxvk {
     if (m_prevState.has<GameCapturer::State::Complete>() &&
         ImGui::SmallButton("Copy Full Path")) {
       const bool captureInstances = (RtxOptions::Get()->m_captureInstances.getValue());
-      const std::string toCopy = (captureInstances) ? m_capturePath :
-        std::filesystem::absolute(std::filesystem::path(GameCapturer::s_baseDir)).string();
+      const std::string toCopy =
+        (captureInstances) ? m_capturePath : util::RtxFileSys::path(util::RtxFileSys::Captures).string();
       ImGui::SetClipboardText(toCopy.c_str());
     }
     ImGui::PopTextWrapPos();
