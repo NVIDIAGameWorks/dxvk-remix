@@ -21,13 +21,13 @@
 */
 #include "rtx_mod_manager.h"
 
-#include "rtx_game_capturer_paths.h"
 #include "rtx_asset_replacer.h"
 #include "rtx_mod_usd.h"
 
 #include "rtx_options.h"
 
 #include "../../util/log/log.h"
+#include "../../util/util_filesys.h"
 #include "../../util/util_string.h"
 
 #include <unordered_set>
@@ -38,7 +38,6 @@ namespace fs = std::filesystem;
 
 namespace dxvk {
 
-static const std::string kDefaultModsDir = relPath::rtxRemixDir + relPath::modsDir;
 static const std::string kDefaultModFileName = "mod";
 
 static const ModTypeInfo* kModTypeInfos[] = {
@@ -84,8 +83,10 @@ ModManager::Mods ModManager::enumerateAllMods() {
   Mods mods;
   
   std::string modsPath = env::getEnvVar("DEFAULT_MODS_DIR");
-  if (modsPath == "")
-    modsPath = kDefaultModsDir;
+  if (modsPath == "") {
+    modsPath = util::RtxFileSys::path(util::RtxFileSys::Mods).string();
+  }
+
   
   const Path defaultModsDir = Path(modsPath).lexically_normal();
 
@@ -93,7 +94,7 @@ ModManager::Mods ModManager::enumerateAllMods() {
 
   std::vector<Path> vecModsDirs; // [TODO] = GetAddtlModsSearchDirs();
   if (baseGameModPath != "") {
-    vecModsDirs.push_back(baseGameModPath + "/" + relPath::rtxRemixDir + relPath::modsDir);
+    vecModsDirs.push_back(baseGameModPath + "/rtx-remix/mods/");
   }
   vecModsDirs.push_back(defaultModsDir);
   for (const auto& modsDirPath : vecModsDirs) {

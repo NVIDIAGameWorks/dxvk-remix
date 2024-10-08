@@ -156,8 +156,6 @@ public:
     return m_completeCapture;
   }
 
-  static const std::string s_baseDir;
-
 private:
   GameCapturer() = delete;
   GameCapturer(const GameCapturer& other) = delete;

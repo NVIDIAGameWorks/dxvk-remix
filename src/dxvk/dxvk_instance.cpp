@@ -50,7 +50,6 @@
 // NV-DXVK start: Provide error code on exception
 #include <remix/remix_c.h>
 // NV-DXVK end
-
 namespace dxvk {
   bool filterErrorMessages(const char* message) {
     // validation errors that we are currently ignoring --- to fix!

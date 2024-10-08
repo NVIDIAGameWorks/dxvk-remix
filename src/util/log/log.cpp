@@ -22,6 +22,7 @@
 #include "log.h"
 
 #include "../util_env.h"
+#include "../util_filesys.h"
 
 
 // NV-DXVK start: Don't double print every line
@@ -57,8 +58,8 @@ namespace{
 
 namespace dxvk {
 
-  Logger::Logger(const std::string& file_name)
-  : m_minLevel(getMinLogLevel())
+  Logger::Logger(const std::string& file_name, const LogLevel logLevel)
+  : m_minLevel(logLevel)
   // NV-DXVK start: Don't double print every line
   , m_doublePrintToStdErr(getDoublePrintToStdErr())
   // NV-DXVK end
@@ -66,11 +67,16 @@ namespace dxvk {
     if (m_minLevel != LogLevel::None) {
       auto path = getFileName(file_name);
 
-      if (!path.empty())
+      if (!path.empty()) {
         m_fileStream = std::ofstream(str::tows(path.c_str()).c_str());
+        assert(m_fileStream.is_open());
+      }
     }
   }
   
+  void Logger::initRtxLog() {
+    s_instance = std::move(Logger("remix-dxvk.log"));
+  }
   
   Logger::~Logger() { }
   
@@ -156,19 +162,24 @@ namespace dxvk {
     return LogLevel::Info;
   }
   
-  
   std::string Logger::getFileName(const std::string& base) {
-    std::string path = env::getEnvVar("DXVK_LOG_PATH");
-    
-    if (path == "none")
+    // NV-DXVK start: Use std::filesystem::path helpers + RtxFileSys
+    using fspath = std::filesystem::path;
+    fspath path = util::RtxFileSys::path(util::RtxFileSys::Logs);
+    if(path.empty()) {
       return "";
-
-    if (!path.empty() && *path.rbegin() != '/')
-      path += '/';
-
-    std::string exeName = env::getExeBaseName();
-    path += exeName + "_" + base;
-    return path;
+    }
+    path /= "remix-dxvk.log";
+    std::cout << path << std::endl;
+    return path.string();
+    // NV-DXVK end
+  }
+  
+  Logger& Logger::operator=(Logger&& other) {
+    m_minLevel = other.m_minLevel;
+    m_doublePrintToStdErr = other.m_doublePrintToStdErr;
+    std::swap(m_fileStream, other.m_fileStream);
+    return *this;
   }
   
 }

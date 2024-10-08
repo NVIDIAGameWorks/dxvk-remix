@@ -21,7 +21,6 @@
 */
 
 #include "rtx_game_capturer.h"
-#include "rtx_game_capturer_paths.h"
 
 #include "rtx_context.h"
 #include "rtx_types.h"
@@ -36,6 +35,7 @@
 
 #include "../../util/log/log.h"
 #include "../../util/config/config.h"
+#include "../../util/util_filesys.h"
 #include "../../util/util_vector.h"
 #include "../../util/util_window.h"
 
@@ -52,31 +52,9 @@
 
 #include <filesystem>
 
-#define BASE_DIR (std::string(GameCapturer::s_baseDir))
+#define BASE_DIR (util::RtxFileSys::path(util::RtxFileSys::Captures).string())
 
 namespace dxvk {
-  const std::string GameCapturer::s_baseDir = []() {
-    std::string pathStr = env::getEnvVar("DXVK_CAPTURE_PATH");
-    if (!pathStr.empty()) {
-      if(*pathStr.rbegin() != '/') {
-        pathStr += '/';
-      }
-    } else {
-      pathStr = relPath::remixCaptureDir;
-    }
-    {
-      using namespace std::filesystem;
-      const path wholePath = path(pathStr);
-      path ctorPath(".");
-      for (const auto& part : wholePath) {
-        ctorPath /= part;
-        ctorPath = absolute(ctorPath);
-        env::createDirectory(ctorPath.string());
-      }
-    }
-    return pathStr;
-  }();
-
   namespace {
     static inline pxr::GfMatrix4d matrix4ToGfMatrix4d(const Matrix4& mat4) {
       const auto& float4x4 = reinterpret_cast<const float(&)[4][4]>(mat4);
@@ -118,7 +96,8 @@ namespace dxvk {
     }
 
     static std::string getBakedSkyProbeName(const std::string& captureName) {
-      return captureName + commonFileName::bakedSkyProbeSuffix;
+      const std::string bakedSkyProbeSuffix("_T_SkyProbe" + lss::ext::dds);
+      return captureName + bakedSkyProbeSuffix;
     }
   }
 
@@ -134,6 +113,7 @@ namespace dxvk {
     , m_sceneManager(sceneManager)
     , m_exporter(exporter)
     , m_options{ getOptions() } {
+
     if(!env::getEnvVar("DXVK_RTX_CAPTURE_ENABLE_ON_FRAME").empty()) {
       Logger::info(str::format("[GameCapturer] DXVK_RTX_CAPTURE_ENABLE_ON_FRAME: ", env::getEnvVar("DXVK_RTX_CAPTURE_ENABLE_ON_FRAME")));
     }

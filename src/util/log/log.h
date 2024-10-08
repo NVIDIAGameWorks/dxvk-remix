@@ -50,8 +50,14 @@ namespace dxvk {
     
   public:
 
-    Logger(const std::string& file_name);
+    // NV-DXVK start: pass log level as param
+    Logger(const std::string& file_name, const LogLevel logLevel = getMinLogLevel());
+    // NV-DXVK end
     ~Logger();
+    
+    // NV-DXVK start: special init pathway for remix logs
+    static void initRtxLog();
+    // NV-DXVK end
     
     static void trace(const std::string& message);
     static void debug(const std::string& message);
@@ -68,9 +74,9 @@ namespace dxvk {
     
     static Logger s_instance;
     
-    const LogLevel m_minLevel;
+    LogLevel m_minLevel;
     // NV-DXVK start: Don't double print every line
-    const bool m_doublePrintToStdErr;
+    bool m_doublePrintToStdErr;
     // NV-DXVK end
     
     dxvk::mutex   m_mutex;
@@ -82,6 +88,8 @@ namespace dxvk {
     
     static std::string getFileName(
       const std::string& base);
+
+    Logger& operator=(Logger&& other);
 
   };
   
