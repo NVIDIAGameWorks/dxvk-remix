@@ -985,20 +985,30 @@ void integrateIndirectPath(
   if (pathState.continuePath && cb.pomEnableIndirectLighting && geometryFlags.pomOpaqueSurfaceEncountered)
   {
     uint16_t primarySurfaceIndex = uint16_t(SharedSurfaceIndex[pixelCoordinate]);
-    const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
-    OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(primarySurfaceIndex, memoryPolymorphicSurfaceMaterial);
+    if (primarySurfaceIndex != BINDING_INDEX_INVALID)
+    {
+      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
+      const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
+      if (polymorphicType == surfaceMaterialTypeOpaque)
+      {
+        OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(primarySurfaceIndex, memoryPolymorphicSurfaceMaterial);
   
-    MinimalSurfaceInteraction minimalSurfaceInteraction = minimalSurfaceInteractionReadFromGBuffer(
-      pixelCoordinate, indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal);
-
-    const float pomThroughput = opaqueSurfaceMaterialInteractionCalcHeightThroughput(
-      minimalSurfaceInteraction, pathState.direction, opaqueSurfaceMaterial.heightTextureIndex,
-      opaqueSurfaceMaterial.samplerIndex, SharedTextureCoord[pixelCoordinate], opaqueSurfaceMaterial.displaceIn
-    );
-
-    accumulateThroughput(pathState, pomThroughput);
-    pathState.continuePath = any(pathState.throughput > 0.001h);
-    pathState.continueResolving = pathState.continuePath;
+        if (opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID)
+        {
+          MinimalSurfaceInteraction minimalSurfaceInteraction = minimalSurfaceInteractionReadFromGBuffer(
+            pixelCoordinate, indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal);
+    
+          const float pomThroughput = opaqueSurfaceMaterialInteractionCalcHeightThroughput(
+            minimalSurfaceInteraction, pathState.direction, opaqueSurfaceMaterial.heightTextureIndex,
+            opaqueSurfaceMaterial.samplerIndex, SharedTextureCoord[pixelCoordinate], opaqueSurfaceMaterial.displaceIn
+          );
+  
+          accumulateThroughput(pathState, pomThroughput);
+          pathState.continuePath = any(pathState.throughput > 0.001h);
+          pathState.continueResolving = pathState.continuePath;
+        }
+      }
+    }
   }
 #endif
 

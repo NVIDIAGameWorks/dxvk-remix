@@ -454,23 +454,33 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
   float pomAttenuation = 1.0f;
   if ((VisibilityMode & visibilityModeEnablePom) && cb.pomMode != DisplacementMode::Off && pomOpaqueSurfaceEncountered)
   {
-    const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
-    OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(primarySurfaceIndex, memoryPolymorphicSurfaceMaterial);
-    
-    pomAttenuation = opaqueSurfaceMaterialInteractionCalcHeightThroughput(
-      minimalSurfaceInteraction, visibilityRay.direction, opaqueSurfaceMaterial.heightTextureIndex,
-      opaqueSurfaceMaterial.samplerIndex, texCoords, opaqueSurfaceMaterial.displaceIn
-    );
-
-    if (pomAttenuation <= 0.001f)
+    if (primarySurfaceIndex != BINDING_INDEX_INVALID)
     {
-      VisibilityResult result;
-      result.attenuation = pomAttenuation;
-      result.hasOpaqueHit = true;
-      result.rayDirection = visibilityRay.direction;
-      result.hitDistance = visibilityRay.tMax; // TODO should refactor POM code to return?
-      result.hasPOMHit = true;
-      return result;
+      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
+      const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
+      if (polymorphicType == surfaceMaterialTypeOpaque)
+      {
+        OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(primarySurfaceIndex, memoryPolymorphicSurfaceMaterial);
+        
+        if (opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID)
+        {
+          pomAttenuation = opaqueSurfaceMaterialInteractionCalcHeightThroughput(
+            minimalSurfaceInteraction, visibilityRay.direction, opaqueSurfaceMaterial.heightTextureIndex,
+            opaqueSurfaceMaterial.samplerIndex, texCoords, opaqueSurfaceMaterial.displaceIn
+          );
+      
+          if (pomAttenuation <= 0.001f)
+          {
+            VisibilityResult result;
+            result.attenuation = pomAttenuation;
+            result.hasOpaqueHit = true;
+            result.rayDirection = visibilityRay.direction;
+            result.hitDistance = visibilityRay.tMax; // TODO should refactor POM code to return?
+            result.hasPOMHit = true;
+            return result;
+          }
+        }
+      }
     }
   }
 #endif
