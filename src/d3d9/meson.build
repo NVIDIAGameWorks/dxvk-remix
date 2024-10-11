@@ -91,6 +91,10 @@ d3d9_src = [
   'd3d9_swapchain_external.cpp',
 ]
 
+d3d9_pch = [
+  'pch/d3d9_pch.h',
+]
+
 d3d9_dll = shared_library('d3d9', d3d9_src, dxvk_version, glsl_generator.process(d3d9_shaders), d3d9_res,
   name_prefix         : '',
   link_with           : [ util_lib ],
@@ -99,7 +103,8 @@ d3d9_dll = shared_library('d3d9', d3d9_src, dxvk_version, glsl_generator.process
   install             : true,
   objects             : not dxvk_is_msvc ? 'd3d9' + def_spec_ext : [],
   vs_module_defs      : 'd3d9'+def_spec_ext,
-  override_options    : ['cpp_std='+dxvk_cpp_std])
+  override_options    : ['cpp_std='+dxvk_cpp_std],
+  cpp_pch             : d3d9_pch)
 
 d3d9_dep = declare_dependency(
   link_with           : [ d3d9_dll ],
