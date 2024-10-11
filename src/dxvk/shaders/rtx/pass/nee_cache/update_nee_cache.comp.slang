@@ -86,7 +86,7 @@ int convertLightIndex(int lightIndex)
 // Sort tasks in descending order based on y component
 void sortTask(uint batchIndex)
 {
-  int listCount = min(32, s_candidateCount[batchIndex]);
+  int listCount = min(CANDIDATE_LENGTH, s_candidateCount[batchIndex]);
   int totalCount = 0;
   for (int i = 0; i < listCount; ++i)
   {
@@ -215,6 +215,7 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
 
   int maxDeltaValue = max(100, s_candidateList[0][localIndex.y].y);
   int existingCount = s_candidateCount[localIndex.y];
+  existingCount = min(existingCount, CANDIDATE_LENGTH);
 
   // insert new task
   for (int i = localIndex.x; i < NEE_CACHE_HASH_TASK_COUNT; i += CANDIDATE_GROUP_SIZE)
@@ -289,6 +290,7 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
     sortTask(localIndex.y);
 
     int count = s_candidateCount[localIndex.y];
+    count = min(count, CANDIDATE_LENGTH);
 
     uint totalValue = 0;
     for (int i = 0; i < count; i++)
@@ -375,7 +377,7 @@ void updateTriangleTask(NEECell cell, uint2 localIndex)
   GroupMemoryBarrierWithGroupSync();
 
   // Update candidate
-  if (localIndex.x < s_candidateCount[localIndex.y])
+  if (localIndex.x < min(s_candidateCount[localIndex.y], CANDIDATE_LENGTH))
   {
     int candidateID = localIndex.x;
     uint2 task = s_candidateList[candidateID][localIndex.y];
@@ -444,6 +446,7 @@ void updateLightTask(NEECell cell, uint2 localIndex)
   GroupMemoryBarrierWithGroupSync();
   int maxDeltaValue = max(100, s_candidateList[0][localIndex.y].y);
   int existingCount = s_candidateCount[localIndex.y];
+  existingCount = min(existingCount, CANDIDATE_LENGTH);
 
   // insert new light task
   for (int i = localIndex.x; i < NEE_CACHE_HASH_TASK_COUNT; i += CANDIDATE_GROUP_SIZE)
@@ -484,7 +487,7 @@ void updateLightTask(NEECell cell, uint2 localIndex)
   GroupMemoryBarrierWithGroupSync();
 
   // update light candidate
-  if (localIndex.x < s_candidateCount[localIndex.y])
+  if (localIndex.x < min(s_candidateCount[localIndex.y], CANDIDATE_LENGTH))
   {
     int candidateID = localIndex.x;
     uint2 task = s_candidateList[candidateID][localIndex.y];
