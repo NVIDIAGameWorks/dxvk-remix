@@ -985,33 +985,6 @@ void integrateIndirectPath(
   if (pathState.continuePath && cb.pomEnableIndirectLighting && geometryFlags.pomOpaqueSurfaceEncountered)
   {
     uint16_t primarySurfaceIndex = uint16_t(SharedSurfaceIndex[pixelCoordinate]);
-    
-    if (cb.debugView == DEBUG_VIEW_HEIGHT_MAP)
-    {
-      if (primarySurfaceIndex != BINDING_INDEX_INVALID)
-      {
-        const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
-        const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
-        if (polymorphicType == surfaceMaterialTypeOpaque)
-        {
-          OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(primarySurfaceIndex, memoryPolymorphicSurfaceMaterial);
-          
-          if (opaqueSurfaceMaterial.heightTextureIndex == BINDING_INDEX_INVALID)
-          {
-            storeInDebugView(getDispatchRaysIndex().xy, float3(0.5f, 0.f, 0.f));
-          }
-        }
-        else
-        {
-          storeInDebugView(getDispatchRaysIndex().xy, float3(0.f, 0.5f, 0.f));
-        }
-      }
-      else
-      {
-        storeInDebugView(getDispatchRaysIndex().xy, float3(0.f, 0.f, 0.5f));
-      }
-    }
-
     if (primarySurfaceIndex != BINDING_INDEX_INVALID)
     {
       const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
