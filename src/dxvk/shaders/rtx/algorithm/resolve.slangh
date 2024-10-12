@@ -328,6 +328,9 @@ void resolveVertex<T: IBasePayloadState>(
   bool teleport = false;
   mat4 teleportMatrix = mat4(1, 0, 0, 0,  0, 1, 0, 0,  0, 0, 1, 0,  0, 0, 0, 1);
 
+  // Set the default value we want to use when nothing opaque is hit
+  pomOpaqueSurfaceEncountered = false;
+
   // Create a Ray and Ray Interaction from the hit
 
   // Todo: Use minimal ray or something else when we have generic functions as this has

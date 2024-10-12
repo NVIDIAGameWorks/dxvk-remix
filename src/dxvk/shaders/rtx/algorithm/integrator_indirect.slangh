@@ -631,13 +631,11 @@ void integratePathVertex(
       {
         const bool isViewModel = pathState.rayMask & OBJECT_MASK_ALL_VIEWMODEL;
         
-        uint16_t surfaceIndex = pomOpaqueSurfaceEncountered ? uint(rayInteraction.surfaceIndex) : BINDING_INDEX_INVALID;
-    
         // Todo: Ray Portal transport sampling in the future.
         evalNEESecondary(
           lightSample, invalidRayPortalIndex, pathState.portalSpace, pathState.rayMask, pomOpaqueSurfaceEncountered,
           isViewModel, ray, rayInteraction, surfaceInteraction, opaqueSurfaceMaterialInteraction,
-          diffuseLight, specularLight, surfaceIndex, surfaceInteraction.textureCoordinates);
+          diffuseLight, specularLight, rayInteraction.surfaceIndex, surfaceInteraction.textureCoordinates);
 
         // Create a NEE Cache task for lights with non-zero contributions.
         // Both light task and emissive triangle task are using the same buffer, skip some pixels so that triangle tasks on them won't be overwritten by light tasks.
