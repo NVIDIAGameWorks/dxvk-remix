@@ -146,6 +146,10 @@ extern "C" {
         static constexpr uint64_t remixApiV = REMIXAPI_VERSION_MAKE(REMIXAPI_VERSION_MAJOR, REMIXAPI_VERSION_MINOR, REMIXAPI_VERSION_PATCH);
         return remixApiV;
       }
+      case version::FileSys:
+      {
+        return version::fileSysV;
+      }
       default:
       {
         dxvk::Logger::err(dxvk::str::format("Could not find feature version for: ", feat));
