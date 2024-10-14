@@ -884,9 +884,9 @@ bool opaqueSurfaceMaterialInteractionCalcLobeProbability(
   out float16_t opacityTransmissionProbability,
   out float16_t diffuseTransmissionProbability)
 {
-  // Calculate dot products used for evaluation
-
   const bool isSubsurface = isSubsurfaceMaterial(opaqueSurfaceMaterialInteraction);
+
+  // Calculate dot products used for evaluation
 
   // Note: Normal dot output direction used as a "best" approximation in this case, usually aligned with the actual sampled
   // microfacet normal on surfaces with low roughness (identical at 0), but will become more and more potentially inaccurate
@@ -896,20 +896,30 @@ bool opaqueSurfaceMaterialInteractionCalcLobeProbability(
 
   // Compute material-related quantities
 
-  // Note: Albedo and Base Reflectivity already have opacity baked into them, though the fresnel contribution may still reach
-  // 1 at grazing angles despite the low base reflectivity at normal incidence. Perceptual luminance also used for albedo and
-  // base reflectivity to hopefully look better to the human eye than a simple average.
-  const float16_t albedoLuminance = calcBt709Luminance(opaqueSurfaceMaterialInteraction.albedo);
+  // Note: Albedo and Base Reflectivity already have opacity baked into them which is why opacity does not need to be specified
+  // in the albedo approximations below.
+  const f16vec3 albedo = opaqueSurfaceMaterialInteraction.albedo;
   const f16vec3 fresnel =
     evalOpaqueSchlickFresnel(opaqueSurfaceMaterialInteraction.baseReflectivity, normalDotOutputDirection);
-  const float16_t fresnelLuminance = calcBt709Luminance(fresnel);
+
+  // Note: I think these should be using a preintegrated albedo calculation (e.g. the EnvBRDF approximation for specular
+  // albedo), but I am not 100% sure if that is the intended "ideal" quantity to be using for a lobe's weight (when only the outgoing
+  // view direction is known, not the yet to be sampled input direction). For now, just using simplified albedo approximations as these
+  // at least directly cancel with terms in the BRDF which should help reduce variance a little.
+  // Note: Perceptual luminance also used to reduce tristimulus color to a single probability value to hopefully look better to
+  // the human eye than a simple average. This is done at the very end of calculations so that interactions between colors take
+  // effect rather than being reduced to a single value too soon.
+  const float16_t diffuseReflectionAlbedoApprox = calcBt709Luminance((f16vec3(1.0h) - fresnel) * albedo);
+  const float16_t specularReflectionAlbedoApprox = calcBt709Luminance(fresnel);
+  const float16_t opacityTransmissionAlbedoApprox = 1.0h - opaqueSurfaceMaterialInteraction.opacity;
+  const float16_t diffuseTransmissionAlbedoApprox = calcBt709Luminance(f16vec3(1.0h) - fresnel);
 
   // Calculate lobe probabilities
 
-  diffuseReflectionProbability = albedoLuminance;
-  specularReflectionProbability = fresnelLuminance;
-  opacityTransmissionProbability = 1.0h - opaqueSurfaceMaterialInteraction.opacity;
-  diffuseTransmissionProbability = isSubsurface ? 1.0h - fresnelLuminance : 0.0h;
+  diffuseReflectionProbability = diffuseReflectionAlbedoApprox;
+  specularReflectionProbability = specularReflectionAlbedoApprox;
+  opacityTransmissionProbability = opacityTransmissionAlbedoApprox;
+  diffuseTransmissionProbability = isSubsurface ? diffuseTransmissionAlbedoApprox : 0.0h;
 
   // Todo: Pass raytraceArgs in in the future if accessing these constants poses a problem later.
   adjustProbabilityValue(
@@ -921,25 +931,32 @@ bool opaqueSurfaceMaterialInteractionCalcLobeProbability(
     uint16BitsToHalf(cb.opaqueSpecularLobeSamplingProbabilityZeroThreshold),
     uint16BitsToHalf(cb.minOpaqueSpecularLobeSamplingProbability));
   adjustProbabilityValue(
-      opacityTransmissionProbability,
-      uint16BitsToHalf(cb.opaqueOpacityTransmissionLobeSamplingProbabilityZeroThreshold),
-      uint16BitsToHalf(cb.minOpaqueOpacityTransmissionLobeSamplingProbability));
+    opacityTransmissionProbability,
+    uint16BitsToHalf(cb.opaqueOpacityTransmissionLobeSamplingProbabilityZeroThreshold),
+    uint16BitsToHalf(cb.minOpaqueOpacityTransmissionLobeSamplingProbability));
   adjustProbabilityValue(
-      diffuseTransmissionProbability,
-      uint16BitsToHalf(cb.opaqueDiffuseTransmissionLobeSamplingProbabilityZeroThreshold),
-      uint16BitsToHalf(cb.minOpaqueDiffuseTransmissionLobeSamplingProbability));
+    diffuseTransmissionProbability,
+    uint16BitsToHalf(cb.opaqueDiffuseTransmissionLobeSamplingProbabilityZeroThreshold),
+    uint16BitsToHalf(cb.minOpaqueDiffuseTransmissionLobeSamplingProbability));
 
   const float16_t lobeProbabilitySum =
-    opacityTransmissionProbability + diffuseTransmissionProbability + specularReflectionProbability + diffuseReflectionProbability;
+    opacityTransmissionProbability +
+    diffuseTransmissionProbability +
+    specularReflectionProbability +
+    diffuseReflectionProbability;
 
-  if (lobeProbabilitySum == float16_t(0.0f))
+  if (lobeProbabilitySum == 0.0h)
+  {
     return false;
+  }
 
-  float16_t lobeProbabilityNormalizationFactor = 1.h / lobeProbabilitySum;
+  const float16_t lobeProbabilityNormalizationFactor = 1.0h / lobeProbabilitySum;
+
   diffuseReflectionProbability *= lobeProbabilityNormalizationFactor;
   specularReflectionProbability *= lobeProbabilityNormalizationFactor;
   opacityTransmissionProbability *= lobeProbabilityNormalizationFactor;
   diffuseTransmissionProbability *= lobeProbabilityNormalizationFactor;
+
   return true;
 }
 
@@ -950,11 +967,12 @@ SurfaceMaterialInteractionLobeSample opaqueSurfaceMaterialInteractionCalcLobeSam
   inout bool insideMedium)
 {
   unused(insideMedium);
-  
-  float16_t diffuseReflectionProbability = 0.0f;
-  float16_t specularReflectionProbability = 0.0f;
-  float16_t opacityTransmissionProbability = 0.0f;
-  float16_t diffuseTransmissionProbability = 0.0f;
+
+  float16_t diffuseReflectionProbability = 0.0h;
+  float16_t specularReflectionProbability = 0.0h;
+  float16_t opacityTransmissionProbability = 0.0h;
+  float16_t diffuseTransmissionProbability = 0.0h;
+
   const bool isValid = opaqueSurfaceMaterialInteractionCalcLobeProbability(
     opaqueSurfaceMaterialInteraction, minimalRayInteraction.viewDirection,
     diffuseReflectionProbability, specularReflectionProbability, opacityTransmissionProbability, diffuseTransmissionProbability);
@@ -967,7 +985,7 @@ SurfaceMaterialInteractionLobeSample opaqueSurfaceMaterialInteractionCalcLobeSam
     // a sample though, but we currently do not support that logic, so for now we pick specular since it will generate more coherent
     // rays ideally to minimize the performance impact.
     surfaceMaterialInteractionLobeSample.lobe = opaqueLobeTypeSpecularReflection;
-    surfaceMaterialInteractionLobeSample.pdf = float16_t(1.0f);
+    surfaceMaterialInteractionLobeSample.pdf = 0.0h;
 
     return surfaceMaterialInteractionLobeSample;
   }
