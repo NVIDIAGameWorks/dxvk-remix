@@ -196,6 +196,11 @@ dxvk::RtxContext::TryHandleSkyResult dxvk::RtxContext::tryHandleSky(const DrawPa
   // 2. Submit ray traced sky geometry as a part of the main scene by reprojecting its transform
   const RtCamera& mainCam = getSceneManager().getCameraManager().getCamera(CameraType::Main);
 
+  if (mainCam.getLastUpdateFrame() != m_device->getCurrentFrameId()) {
+    // Skip, if the main camera hasn't been updated yet
+    return TryHandleSkyResult::Default;
+  }
+
   // Note: getNearPlane() / getFarPlane() do not return actual values in case if overrideNearPlane is enabled
   const auto [mainCamNearPlane, mainCamFarPlane] = mainCam.calculateNearFarPlanes();
 
