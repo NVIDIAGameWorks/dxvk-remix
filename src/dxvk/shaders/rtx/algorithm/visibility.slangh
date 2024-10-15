@@ -100,7 +100,7 @@ f16vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo ra
 
   if (polymorphicType == surfaceMaterialTypeOpaque)
   {
-    const OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(rayInteraction.surfaceIndex, memoryPolymorphicSurfaceMaterial, true);
+    const OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial, true);
 
     const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
       opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteraction);
@@ -154,7 +154,7 @@ f16vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo ra
   }
   else if ((VisibilityMode & visibilityModeEnableTranslucentMaterials) && polymorphicType == surfaceMaterialTypeTranslucent)
   {
-    const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(rayInteraction.surfaceIndex, memoryPolymorphicSurfaceMaterial, true);
+    const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial, true);
 
     // Extract the thin walled flag before evaluating the material interaction
     const bool isThinWalled = translucentSurfaceMaterial.thicknessOrMeasurementDistance < float16_t(0);
@@ -459,10 +459,9 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
       if (primarySurfaceIndex != BINDING_INDEX_INVALID)
       {
       const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
-      const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
-      if (polymorphicType == surfaceMaterialTypeOpaque)
+      if (memoryPolymorphicSurfaceMaterial.isOpaque())
       {
-        OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(primarySurfaceIndex, memoryPolymorphicSurfaceMaterial);
+        OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial, true);
         
         if (opaqueSurfaceMaterial.heightTextureIndex == BINDING_INDEX_INVALID)
           {
@@ -483,10 +482,9 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
     if (primarySurfaceIndex != BINDING_INDEX_INVALID)
     {
       const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
-      const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
-      if (polymorphicType == surfaceMaterialTypeOpaque)
+      if (memoryPolymorphicSurfaceMaterial.isOpaque())
       {
-        OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(primarySurfaceIndex, memoryPolymorphicSurfaceMaterial);
+        OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial, true);
         
         if (opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID)
         {

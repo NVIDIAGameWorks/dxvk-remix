@@ -401,7 +401,7 @@ void resolveVertex<T: IBasePayloadState>(
   if (SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE &&
       polymorphicType == surfaceMaterialTypeOpaque)
   {
-    const OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(uint(rayInteraction.surfaceIndex), memoryPolymorphicSurfaceMaterial);
+    const OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
 
     OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
       opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteraction);
@@ -523,7 +523,7 @@ void resolveVertex<T: IBasePayloadState>(
   else if (SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK & SURFACE_MATERIAL_RESOLVE_TYPE_TRANSLUCENT &&
            polymorphicType == surfaceMaterialTypeTranslucent)
   {
-    const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(uint(rayInteraction.surfaceIndex), memoryPolymorphicSurfaceMaterial);
+    const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
 
     TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction =
       translucentSurfaceMaterialInteractionCreate(translucentSurfaceMaterial, surface, surfaceInteraction, rayInteraction);
@@ -1013,7 +1013,7 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
 
     if (polymorphicType == surfaceMaterialTypeOpaque)
     {
-      const OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(uint(rayInteraction.surfaceIndex), memoryPolymorphicSurfaceMaterial);
+      const OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
 
       const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
         opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteraction);
@@ -1081,7 +1081,7 @@ void resolveVertexUnordered<let RAY_FLAGS : uint8_t>(
     }
     else if (polymorphicType == surfaceMaterialTypeTranslucent)
     {
-      const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(uint(rayInteraction.surfaceIndex), memoryPolymorphicSurfaceMaterial);
+      const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
 
       const TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction =
         translucentSurfaceMaterialInteractionCreate(translucentSurfaceMaterial, surface, surfaceInteraction, rayInteraction);

@@ -362,8 +362,7 @@ void integratePathVertex(
   if (pathState.mediumMaterialIndex != BINDING_INDEX_INVALID)
   {
     const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[pathState.mediumMaterialIndex];
-    const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(
-      pathState.mediumMaterialIndex, memoryPolymorphicSurfaceMaterial);
+    const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
 
     // Calculate the volume transmittance
 
@@ -1000,10 +999,9 @@ void integrateIndirectPath(
         if (primarySurfaceIndex != BINDING_INDEX_INVALID)
         {
           const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
-          const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
-          if (polymorphicType == surfaceMaterialTypeOpaque)
+          if (memoryPolymorphicSurfaceMaterial.isOpaque())
           {
-            OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(primarySurfaceIndex, memoryPolymorphicSurfaceMaterial);
+            OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
             
             if (opaqueSurfaceMaterial.heightTextureIndex == BINDING_INDEX_INVALID)
             {
@@ -1024,10 +1022,9 @@ void integrateIndirectPath(
       if (primarySurfaceIndex != BINDING_INDEX_INVALID)
       {
         const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
-        const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
-        if (polymorphicType == surfaceMaterialTypeOpaque)
+        if (memoryPolymorphicSurfaceMaterial.isOpaque())
         {
-          OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(primarySurfaceIndex, memoryPolymorphicSurfaceMaterial);
+          OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
     
           if (opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID)
           {

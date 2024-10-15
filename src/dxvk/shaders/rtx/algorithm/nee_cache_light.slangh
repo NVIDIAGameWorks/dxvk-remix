@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -152,7 +152,6 @@ struct NEECacheUtils
   static LightSample calculateLightSample(Surface surface, SurfaceInteraction surfaceInteraction, RayInteraction rayInteracton, vec3 shadingPosition, float trianglePdf, out float triangleArea, bool useSolidAnglePdf, int footprintMode)
   {
     const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[uint(rayInteracton.surfaceIndex)];
-    const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
 
     LightSample lightSample = {};
     lightSample.position = surfaceInteraction.position;
@@ -178,9 +177,9 @@ struct NEECacheUtils
     }
 
     // The light sample and the shading point may be one the same triangle. In this case, solid angle PDF is 0.
-    if (lightSample.solidAnglePdf > 0 && polymorphicType == surfaceMaterialTypeOpaque)
+    if (lightSample.solidAnglePdf > 0 && memoryPolymorphicSurfaceMaterial.isOpaque())
     {
-      OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(uint(rayInteracton.surfaceIndex), memoryPolymorphicSurfaceMaterial);
+      OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
   #if USE_SIMIPLIFIED_MODEL
       // Don't override albedo textures because it may be used by some emissive objects
       // opaqueSurfaceMaterial.albedoOpacityTextureIndex = BINDING_INDEX_INVALID;
@@ -311,11 +310,10 @@ struct NEECacheUtils
     lightIntensity = vec3(0);
 
     const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[surfaceIndex];
-    const uint8_t polymorphicType = memoryPolymorphicSurfaceMaterialGetTypeHelper(memoryPolymorphicSurfaceMaterial);
 
-    if (polymorphicType == surfaceMaterialTypeOpaque)
+    if (memoryPolymorphicSurfaceMaterial.isOpaque())
     {
-      OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surfaceIndex, memoryPolymorphicSurfaceMaterial);
+      OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
       const OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction =
         opaqueSurfaceMaterialInteractionCreate(opaqueSurfaceMaterial, surface, surfaceInteraction, rayInteracton);
 
