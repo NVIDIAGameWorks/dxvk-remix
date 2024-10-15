@@ -200,7 +200,7 @@ TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreat
   // and pass through the G-Buffer like we do for Opaque materials.
   const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[uint(sourceSurfaceMaterialIndex)];
   const TranslucentSurfaceMaterial translucentSurfaceMaterial =
-    translucentSurfaceMaterialCreate(sourceSurfaceMaterialIndex, memoryPolymorphicSurfaceMaterial);
+    translucentSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
 
   translucentSurfaceMaterialInteraction.shadingNormal = gBufferMemoryPolymorphicSurfaceMaterialInteraction.worldShadingNormal;
   // Note: We don't store this in the G-buffer, so set it to 0.

@@ -26,11 +26,3 @@
 #ifndef SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK 
   #define SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK SURFACE_MATERIAL_RESOLVE_TYPE_ALL
 #endif
-
-// Memory Polymorphic Surface Material Functions
-
-uint8_t memoryPolymorphicSurfaceMaterialGetTypeHelper(MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial)
-{
-  // Note: First two bits of data0.x are reserved for common polymorphic type
-  return uint8_t(memoryPolymorphicSurfaceMaterial.data0.x & surfaceMaterialTypeMask);
-}

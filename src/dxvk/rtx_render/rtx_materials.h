@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -348,8 +348,9 @@ struct LegacyMaterialDefaults {
 
 // Surface Materials
 
-// Todo: Compute size directly from sizeof of GPU structure (by including it), for now computed by sum of members manually
-constexpr std::size_t kSurfaceMaterialGPUSize = 2 * 4 * 4;
+// Todo: Compute size directly from sizeof of GPU structure (by including it), for now computed by sum of members manually.
+// Blocked on float16 support on the c++ side.
+constexpr std::size_t kSurfaceMaterialGPUSize = 4 * 4 * 4;
 // Note: 0xFFFF used for inactive texture index to indicate to the GPU that no texture is in use for a specific variable
 // (as some are optional). Also used for debugging to provide wildly out of range values in case one is not set.
 constexpr uint32_t kSurfaceMaterialInvalidTextureIndex = 0xFFFFu;
@@ -398,7 +399,10 @@ struct RtOpaqueSurfaceMaterial {
 
   void writeGPUData(unsigned char* data, std::size_t& offset) const {
     [[maybe_unused]] const std::size_t oldOffset = offset;
-    uint8_t flags = surfaceMaterialTypeOpaque;
+    uint16_t flags = surfaceMaterialTypeOpaque;
+
+    // For decode process, see surface_material.h
+    // this data is accessed from uint16_t data[32], so data[n] refers to a pair of bytes.
 
     if (m_enableThinFilm) {
       flags |= OPAQUE_SURFACE_MATERIAL_FLAG_USE_THIN_FILM_LAYER;
@@ -420,43 +424,46 @@ struct RtOpaqueSurfaceMaterial {
       flags |= OPAQUE_SURFACE_MATERIAL_FLAG_IS_RAYTRACED_RENDER_TARGET;
     }
 
-    // Bytes 0-3
+    // data[0 - 3]
     writeGPUHelper(data, offset, flags);
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_cachedThinFilmNormalizedThicknessConstant));
     float displaceIn = m_displaceIn * getDisplacementFactor();
     assert(displaceIn <= FLOAT16_MAX);
     writeGPUHelper(data, offset, glm::packHalf1x16(displaceIn));
-
-    // Bytes 4-11
     writeGPUHelperExplicit<2>(data, offset, m_samplerIndex);
     writeGPUHelperExplicit<2>(data, offset, m_albedoOpacityTextureIndex);
+
+    // data[4 - 7]
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_albedoOpacityConstant.x));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_albedoOpacityConstant.y));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_albedoOpacityConstant.z));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_albedoOpacityConstant.w));
+
+    // data[8 - 11]
     writeGPUHelperExplicit<2>(data, offset, m_heightTextureIndex);
     writeGPUHelperExplicit<2>(data, offset, m_subsurfaceMaterialIndex);
-
-    // Bytes 12-15
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_albedoOpacityConstant.x));
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_albedoOpacityConstant.y));
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_albedoOpacityConstant.z));
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_albedoOpacityConstant.w));
-
-    // Bytes 16-19
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedThinFilmNormalizedThicknessConstant));
     writeGPUHelperExplicit<2>(data, offset, m_emissiveColorTextureIndex);
+
+    // data[12 - 15]
     writeGPUHelperExplicit<2>(data, offset, m_roughnessTextureIndex);
     writeGPUHelperExplicit<2>(data, offset, m_metallicTextureIndex);
     writeGPUHelperExplicit<2>(data, offset, m_normalTextureIndex);
-
-    // Bytes 20-27
     assert(m_cachedEmissiveIntensity <= FLOAT16_MAX);
     writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedEmissiveIntensity));
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.x));
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.y));
 
-    // Bytes 28-31
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.z));
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_roughnessConstant));
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_metallicConstant));
-    writeGPUHelper(data, offset, packSnorm<8, uint8_t>(m_anisotropy));
+    // data[16 - 19]
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_emissiveColorConstant.x));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_emissiveColorConstant.y));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_emissiveColorConstant.z));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_roughnessConstant));
 
+    // data[20 - 22]
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_metallicConstant));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_anisotropy));
+    writeGPUHelperExplicit<2>(data, offset, m_tangentTextureIndex);
+
+    // data[23 - 31]
+    writeGPUPadding<18>(data, offset);
     assert(offset - oldOffset == kSurfaceMaterialGPUSize);
   }
 
@@ -650,53 +657,53 @@ struct RtTranslucentSurfaceMaterial {
     updateCachedHash();
   }
 
-  void writeGPUData(unsigned char* data, std::size_t& offset) const {
+  void writeGPUData(unsigned char* data, std::size_t& offset, uint16_t surfaceIndex) const {
     [[maybe_unused]] const std::size_t oldOffset = offset;
 
-    // For decode process, see translucent_surface_material.slangh
+    // For decode process, see surface_material.h
+    // this data is accessed from uint16_t data[32], so data[n] refers to a pair of bytes.
 
-    uint8_t flags = surfaceMaterialTypeTranslucent;
+    uint16_t flags = surfaceMaterialTypeTranslucent;
 
     // Note: Respect override flag here to let the GPU do less work in determining if the diffuse layer should be used or not.
     if (m_useDiffuseLayer || getEnableDiffuseLayerOverrideHack()) {
       flags |= TRANSLUCENT_SURFACE_MATERIAL_FLAG_USE_DIFFUSE_LAYER;
     }
 
-    // 2 Bytes
+    // data[0- 1]
     writeGPUHelper(data, offset, flags);
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_cachedBaseReflectivity));
-
-    // 6 Bytes
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedBaseReflectivity));
+    // data[2 - 4]
     writeGPUHelper(data, offset, glm::packHalf1x16(m_transmittanceColor.x));
     writeGPUHelper(data, offset, glm::packHalf1x16(m_transmittanceColor.y));
     writeGPUHelper(data, offset, glm::packHalf1x16(m_transmittanceColor.z));
-
-    // 4 bytes
+    // data[5 - 9]
     writeGPUHelperExplicit<2>(data, offset, m_samplerIndex);
     writeGPUHelperExplicit<2>(data, offset, m_transmittanceTextureIndex);
-
-    // 2 Bytes
     writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedTransmittanceMeasurementDistanceOrThickness));
-
-
-    // 4 Bytes
     writeGPUHelperExplicit<2>(data, offset, m_normalTextureIndex);
     writeGPUHelperExplicit<2>(data, offset, m_emissiveColorTextureIndex);
 
-    // 2 Bytes
+    // data[10]
     assert(m_cachedEmissiveIntensity <= FLOAT16_MAX);
     writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedEmissiveIntensity));
 
-    // 4 Bytes
+    // data[11]
     // Note: Ensure IoR falls in the range expected by the encoding/decoding logic for the GPU (this should also be
     // enforced in the MDL and relevant content pipeline to prevent this assert from being triggered).
     assert(m_refractiveIndex >= 1.0f && m_refractiveIndex <= 3.0f);
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>((m_refractiveIndex - 1.0f) / 2.0f)); // data01.y & 0xff00
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.x));
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.y));
-    writeGPUHelper(data, offset, packUnorm<8, uint8_t>(m_emissiveColorConstant.z));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_refractiveIndex));
 
-    writeGPUPadding<8>(data, offset);
+    // data[12-14]
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_emissiveColorConstant.x));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_emissiveColorConstant.y));
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_emissiveColorConstant.z));
+
+    // data[15]
+    writeGPUHelperExplicit<2>(data, offset, surfaceIndex);
+    
+    // data[16 - 31]
+    writeGPUPadding<32>(data, offset);
 
     assert(offset - oldOffset == kSurfaceMaterialGPUSize);
   }
@@ -793,22 +800,32 @@ struct RtRayPortalSurfaceMaterial {
   void writeGPUData(unsigned char* data, std::size_t& offset) const {
     [[maybe_unused]] const std::size_t oldOffset = offset;
 
-    uint8_t flags = surfaceMaterialTypeRayPortal;
-    writeGPUHelper(data, offset, flags);
-    writeGPUHelper(data, offset, m_rayPortalIndex);
+    // For decode process, see surface_material.h
+    // this data is accessed from uint16_t data[32], so data[n] refers to a pair of bytes.
 
+    uint16_t flags = surfaceMaterialTypeRayPortal;
+    // data[0]
+    writeGPUHelper(data, offset, flags);
+
+    // data[1]
+    writeGPUHelper(data, offset, uint16_t(m_rayPortalIndex));
+
+    // data[2 - 3]
     writeGPUHelperExplicit<2>(data, offset, m_maskTextureIndex);
     writeGPUHelperExplicit<2>(data, offset, m_maskTextureIndex2);
 
+    // data[4 - 5]
     assert(m_rotationSpeed < FLOAT16_MAX);
     writeGPUHelper(data, offset, glm::packHalf1x16(m_rotationSpeed));
     float emissiveIntensity = m_enableEmission ? m_emissiveIntensity : 1.0f;
     writeGPUHelper(data, offset, glm::packHalf1x16(emissiveIntensity));
+
+    // data[6 - 7]
     writeGPUHelperExplicit<2>(data, offset, m_samplerIndex);
     writeGPUHelperExplicit<2>(data, offset, m_samplerIndex2);
 
-    writeGPUPadding<18>(data, offset); // Note: Padding for unused space
-
+    // data[8 - 31]
+    writeGPUPadding<48>(data, offset); // Note: Padding for unused space
     assert(offset - oldOffset == kSurfaceMaterialGPUSize);
   }
 
@@ -921,57 +938,43 @@ struct RtSubsurfaceMaterial {
   void writeGPUData(unsigned char* data, std::size_t& offset) const {
     [[maybe_unused]] const std::size_t oldOffset = offset;
 
-    uint32_t flags = (1 << 31); // Set bit 31 to 1 for subsurface scattering type
+    // For decode process, see surface_material.h
+    // this data is accessed from uint16_t data[32], so data[n] refers to a pair of bytes.
 
-    // Bytes 0-1
-    if (m_subsurfaceTransmittanceTextureIndex != kSurfaceMaterialInvalidTextureIndex) {
-      writeGPUHelperExplicit<2>(data, offset, m_subsurfaceTransmittanceTextureIndex);
-      flags |= SUBSURFACE_MATERIAL_FLAG_HAS_TRANSMITTANCE_TEXTURE;
-    } else {
-      // Note: We currently have enough space in SSS material, so no need to compress transmittance from f16v3 to f8v3.
-      //       But it's an option if we run out of space in the future.
+    // Write an empty flags to stay consistent with the other materials.
+    uint16_t flags = 0;
 
-      writeGPUPadding<2>(data, offset); // Note: Padding for unused space
-    }
+    // data[0]
+    writeGPUHelperExplicit<2>(data, offset, flags);
 
-    // Bytes 2-3
-    if (m_subsurfaceThicknessTextureIndex != kSurfaceMaterialInvalidTextureIndex) {
-      writeGPUHelperExplicit<2>(data, offset, m_subsurfaceThicknessTextureIndex);
-      flags |= SUBSURFACE_MATERIAL_FLAG_HAS_THICKNESS_TEXTURE;
-    } else {
-      assert(m_subsurfaceMeasurementDistance <= FLOAT16_MAX);
-      writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceMeasurementDistance));
-    }
+    // data[1]
+    writeGPUHelperExplicit<2>(data, offset, m_subsurfaceTransmittanceTextureIndex);
 
-    // Bytes 4-5
-    if (m_subsurfaceSingleScatteringAlbedoTextureIndex != kSurfaceMaterialInvalidTextureIndex) {
-      writeGPUHelperExplicit<2>(data, offset, m_subsurfaceSingleScatteringAlbedoTextureIndex);
-      flags |= SUBSURFACE_MATERIAL_FLAG_HAS_SINGLE_SCATTERING_ALBEDO_TEXTURE;
-    } else {
-      // Note: We currently have enough space in SSS material, so no need to compress scattering-albedo from f16v3 to f8v3.
-      //       But it's an option if we run out of space in the future.
+    // data[2]
+    writeGPUHelperExplicit<2>(data, offset, m_subsurfaceThicknessTextureIndex);
 
-      writeGPUPadding<2>(data, offset); // Note: Padding for unused space
-    }
+    // data[3]
+    writeGPUHelperExplicit<2>(data, offset, m_subsurfaceSingleScatteringAlbedoTextureIndex);
 
-    // Bytes 6-11
+    // data[4]
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAnisotropy));
+
+    // data[5-7]
     writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAttenuationCoefficient.x));
     writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAttenuationCoefficient.y));
     writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAttenuationCoefficient.z));
 
-    // Bytes 12-17
+    // data[8]
+    assert(m_subsurfaceMeasurementDistance <= FLOAT16_MAX);
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceMeasurementDistance));
+
+    // data[9-11]
     writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceSingleScatteringAlbedo.x));
     writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceSingleScatteringAlbedo.y));
     writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceSingleScatteringAlbedo.z));
 
-    // Bytes 18-19
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAnisotropy));
-
-    // 8 Bytes padding (20-27)
-    writeGPUPadding<8>(data, offset);
-
-    // Bytes 28-31
-    writeGPUHelper(data, offset, flags);
+    // data[12-31]
+    writeGPUPadding<40>(data, offset);
   }
 
   bool operator==(const RtSubsurfaceMaterial& r) const {
@@ -1124,7 +1127,7 @@ struct RtSurfaceMaterial {
     }
   }
 
-  void writeGPUData(unsigned char* data, std::size_t& offset) const {
+  void writeGPUData(unsigned char* data, std::size_t& offset, uint16_t surfaceIndex) const {
     switch (m_type) {
     default:
       assert(false);
@@ -1134,7 +1137,7 @@ struct RtSurfaceMaterial {
       m_opaqueSurfaceMaterial.writeGPUData(data, offset);
       break;
     case RtSurfaceMaterialType::Translucent:
-      m_translucentSurfaceMaterial.writeGPUData(data, offset);
+      m_translucentSurfaceMaterial.writeGPUData(data, offset, surfaceIndex);
       break;
     case RtSurfaceMaterialType::RayPortal:
       m_rayPortalSurfaceMaterial.writeGPUData(data, offset);

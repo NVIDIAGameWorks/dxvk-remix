@@ -25,24 +25,5 @@
 
 RayPortalSurfaceMaterial rayPortalSurfaceMaterialCreate(uint16_t surfaceMaterialIndex, MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial)
 {
-  // Decode the Ray Portal Surface Material from the packed memory representation
-  // Note: Ray Portal type is known in advance
-  RayPortalSurfaceMaterial rayPortalSurfaceMaterial;
-
-  const u16vec2 data00 = unpack16(memoryPolymorphicSurfaceMaterial.data0.x);
-  const u16vec2 data01 = unpack16(memoryPolymorphicSurfaceMaterial.data0.y);
-  const u16vec2 data02 = unpack16(memoryPolymorphicSurfaceMaterial.data0.z);
-  const u16vec2 data03 = unpack16(memoryPolymorphicSurfaceMaterial.data0.w);
-
-  rayPortalSurfaceMaterial.rayPortalIndex = uint8_t(data00.x >> 8);
-
-  rayPortalSurfaceMaterial.maskTextureIndex = data00.y;
-  rayPortalSurfaceMaterial.maskTextureIndex2 = data01.x;
-
-  rayPortalSurfaceMaterial.rotationSpeed = uint16BitsToHalf(data01.y);
-  rayPortalSurfaceMaterial.emissiveIntensity = uint16BitsToHalf(data02.x);
-  rayPortalSurfaceMaterial.samplerIndex = data02.y;
-  rayPortalSurfaceMaterial.samplerIndex2 = data03.x;
-
-  return rayPortalSurfaceMaterial;
+  return reinterpret<RayPortalSurfaceMaterial>(memoryPolymorphicSurfaceMaterial);
 }

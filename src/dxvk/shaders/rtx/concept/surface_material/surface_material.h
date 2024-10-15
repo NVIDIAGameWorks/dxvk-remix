@@ -34,95 +34,126 @@ static const uint8_t translucentLobeTypeSpecularTransmission = uint8_t(1u);
 
 struct MemoryPolymorphicSurfaceMaterial
 {
-  // Note: Currently aligned nicely to 32 bytes, avoid changing the size of this structure. Note however since this is smaller
+  // Note: Currently aligned nicely to 64 bytes, avoid changing the size of this structure. Note however since this is smaller
   // than a L1 cacheline the actual size doesn't matter as much, so it is not heavily packed as the cache hitrate will be low
-  // and the random access nature does not facilitate much memory coalescing. Since this structure can fit in 32 bytes however
+  // and the random access nature does not facilitate much memory coalescing. Since this structure can fit in 64 bytes however
   // it is best not to be too wasteful as this will align to L2's 32 byte cachelines better.
 
-  uvec4 data0;
-  uvec4 data1;
+  // Note: Keeping these as uint4 ensures 16 byte memory alignment, which is important for aligned vector loading.
+  uvec4 data[4];
+
+  bool isOpaque()
+  {
+    // Note: First two bits of data are reserved for common polymorphic type
+    return (data[0].x & surfaceMaterialTypeMask) == surfaceMaterialTypeOpaque;
+  }
 };
 
 struct OpaqueSurfaceMaterial
 {
+  // 0 - 3
+  // bitmask of OPAQUE_SURFACE_MATERIAL_FLAG_* bits
+  uint16_t flags;
+  float16_t displaceIn;
   uint16_t samplerIndex;
   uint16_t albedoOpacityTextureIndex;
-  uint16_t normalTextureIndex;
-  uint16_t tangentTextureIndex;
+
+  // 4-7
+  f16vec4 albedoOpacityConstant;
+
+  // 8-10
   uint16_t heightTextureIndex;
-  uint16_t roughnessTextureIndex;
-  uint16_t metallicTextureIndex;
+  uint16_t subsurfaceMaterialIndex;
+  // note: thinFilmThicknessConstant should be between 0 and 1 
+  float16_t thinFilmThicknessConstant;
+
+  // For performance, we want to keep fields used in the visibility check in the first 32 bytes.
+  // The fields below here are overridden to constant values in that code, so should be left at the end
+  // If we add a new field that is used for visibility, it should go above this.
+  // If it isn't used for visibility, it should go below and be overridden in opaqueSurfaceMaterialCreate().
+
+  // 11
   uint16_t emissiveColorTextureIndex;
 
-  float16_t anisotropy;
+  // 12-15
+  uint16_t roughnessTextureIndex;
+  uint16_t metallicTextureIndex;
+  uint16_t normalTextureIndex;
   float16_t emissiveIntensity;
 
-  f16vec4 albedoOpacityConstant;
-  float16_t roughnessConstant;
-  float16_t metallicConstant;
+  // 16-19
   f16vec3 emissiveColorConstant;
+  float16_t roughnessConstant;
 
-  float16_t displaceIn;
-
-  uint16_t subsurfaceMaterialIndex;
-
-  float16_t thinFilmThicknessConstant; // note: [0-1] range
-
-  // bitmask of OPAQUE_SURFACE_MATERIAL_FLAG_* bits
-  uint8_t flags;
+  // 20-22
+  float16_t metallicConstant;
+  float16_t anisotropy;
+  uint16_t tangentTextureIndex;
 
   // Todo: Fixed function blend state info here in the future (Actually this should go on a Legacy Material, or some sort of non-PBR Legacy Surface)
+
+  // padding (to keep size matching with MemoryPolymorphicSurfaceMaterial)
+  uint16_t data[9];
 };
 
 struct TranslucentSurfaceMaterial
 {
-  uint16_t samplerIndex;
-
-  uint16_t normalTextureIndex;
-  uint16_t transmittanceOrDiffuseTextureIndex;
-  uint16_t emissiveColorTextureIndex;
-
+  // bitmask of TRANSLUCENT_SURFACE_MATERIAL_FLAG_* bits
+  uint16_t flags;
   float16_t baseReflectivity;
-  float16_t refractiveIndex;
   f16vec3 transmittanceColor;
+  uint16_t samplerIndex;
+  uint16_t transmittanceOrDiffuseTextureIndex;
+  // encodes either the thin-walled thickness or the transmittance measurement distance
+  // thin-walled thickness is represented as a negative number
+  float16_t thicknessOrMeasurementDistance;
+  uint16_t normalTextureIndex;
+  uint16_t emissiveColorTextureIndex;
   float16_t emissiveIntensity;
+  float16_t refractiveIndex;
   f16vec3 emissiveColorConstant;
 
   // Note: Source values only used for serialization purposes.
   uint16_t sourceSurfaceMaterialIndex;
 
-  // encodes either the thin-walled thickness or the transmittance measurement distance
-  // thin-walled thickness is represented as a negative number
-  float16_t thicknessOrMeasurementDistance;
-
-  // bitmask of TRANSLUCENT_SURFACE_MATERIAL_FLAG_* bits
-  uint8_t flags;
+  // padding (to keep size matching with MemoryPolymorphicSurfaceMaterial)
+  uint16_t data[16];
 };
 
 struct RayPortalSurfaceMaterial
 {
-  uint16_t samplerIndex;
-  uint16_t samplerIndex2;
+  uint16_t flags;
+  uint16_t rayPortalIndex;
 
   uint16_t maskTextureIndex;
   uint16_t maskTextureIndex2;
 
-  uint8_t rayPortalIndex;
-
   float16_t rotationSpeed;
   float16_t emissiveIntensity;
+
+  uint16_t samplerIndex;
+  uint16_t samplerIndex2;
+
+  // padding (to keep size matching with MemoryPolymorphicSurfaceMaterial)
+  uint16_t data[24];
+
 };
 
 struct SubsurfaceMaterial
 {
+  uint16_t flags;
+
   uint16_t subsurfaceTransmittanceTextureIndex;
   uint16_t subsurfaceThicknessTextureIndex;
   uint16_t subsurfaceSingleScatteringAlbedoTextureIndex;
 
+  float16_t volumetricAnisotropy;
   f16vec3 volumetricAttenuationCoefficient;
   float16_t measurementDistance;
   f16vec3 singleScatteringAlbedo;
-  float16_t volumetricAnisotropy;
+  
+  // padding (to keep size matching with MemoryPolymorphicSurfaceMaterial)
+  uint16_t data[20];
 };
 
 struct SubsurfaceMaterialInteraction
