@@ -2248,7 +2248,7 @@ namespace dxvk {
             ImGui::DragFloat("Reprojected Sky Scale", &RtxOptions::skyReprojectScaleObject(), 1.0f, 0.1f, 1000.0f);
             ImGui::EndDisabled();
           }
-          ImGui::DragFloat("Sky Auto-Detect Unique Camera Search Distance", &RtxOptions::skyReprojectScaleObject(), 1.0f, 0.1f, 1000.0f);
+          ImGui::DragFloat("Sky Auto-Detect Unique Camera Search Distance", &RtxOptions::skyAutoDetectUniqueCameraDistanceObject(), 1.0f, 0.1f, 1000.0f);
 
           ImGui::Checkbox("Force HDR sky", &RtxOptions::Get()->skyForceHDRObject());
 
