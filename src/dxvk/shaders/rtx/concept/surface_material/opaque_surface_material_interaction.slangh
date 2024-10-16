@@ -1098,12 +1098,6 @@ SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcDiffuseRefl
   return materialSample;
 }
 
-// A copy of NRD_GetTrimmingFactor - avoids having a dependency on NRD.hlsli in the material system.
-float calculateLobeTrimmingFactor(float roughness, float3 trimmingParams)
-{
-  return trimmingParams.x * smoothstep( trimmingParams.y, trimmingParams.z, roughness );
-}
-
 SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcSpecularReflectionSample(
   OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteraction,
   inout RNG randomState,
@@ -1116,17 +1110,10 @@ SurfaceMaterialInteractionSample opaqueSurfaceMaterialInteractionCalcSpecularRef
 
   const f16vec3 outputDirection = quaternionTransformVector(worldToTangentSpaceQuaternion, minimalRayInteraction.viewDirection);
 
-  // Calculate the specular lobe trimming factor based on roughness and NRD parameters.
-  // Note: use the 'primaryIndirectNrd' parameter set because it is always controlled by the active indirect denoiser.
-  // TODO: ideally this lobe trimming should only happen at the primary vertex, but there's likely no big difference.
-
-  const float lobeTrimming = calculateLobeTrimmingFactor(
-    opaqueSurfaceMaterialInteraction.isotropicRoughness, cb.primaryIndirectNrd.specularLobeTrimmingParams);
-
   // Sample a new microfacet normal based on the distribution of visible normals
 
   const f16vec2 u = f16vec2(
-    lobeTrimming * getNextSampleBlueNoise(randomState),
+    getNextSampleBlueNoise(randomState),
     getNextSampleBlueNoise(randomState));
 
 #if OPAQUE_MATERIAL_USE_BOUNDED_VNDF_SAMPLING

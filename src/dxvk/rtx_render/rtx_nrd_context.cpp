@@ -959,21 +959,6 @@ namespace dxvk {
 
     args.hitDistanceParams = getHitDistanceParameters(m_settings.m_reblurSettings.hitDistanceParameters);
 
-    if (m_type == DenoiserType::Reference)
-    {
-      NrdSettings::InternalSpecularLobeTrimmingParameters defaultLobeTrimming;
-      args.specularLobeTrimmingParams.x = defaultLobeTrimming.A;
-      args.specularLobeTrimmingParams.y = defaultLobeTrimming.B;
-      args.specularLobeTrimmingParams.z = defaultLobeTrimming.C;
-    }
-    else
-    {
-      args.specularLobeTrimmingParams.x = m_settings.m_specularLobeTrimmingParameters.A;
-      args.specularLobeTrimmingParams.y = m_settings.m_specularLobeTrimmingParameters.B;
-      args.specularLobeTrimmingParams.z = m_settings.m_specularLobeTrimmingParameters.C;
-    }
-
-
     return args;
   }
 
