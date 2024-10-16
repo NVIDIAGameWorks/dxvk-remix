@@ -405,15 +405,8 @@ namespace dxvk {
         ImGui::Unindent();
       }
 
-      if (ImGui::CollapsingHeader("Specular", collapsingHeaderFlagsClosed)) {
-        ImGui::Indent();
-        ImGui::PushID("Specular");
-        ImGui::SliderFloat("Lobe Trimming: Main Level", &m_specularLobeTrimmingParameters.A, 0.0f, 1.0f);
-        ImGui::SliderFloat("Lobe Trimming: Low Roughness", &m_specularLobeTrimmingParameters.B, 0.0f, 1.0f);
-        ImGui::SliderFloat("Lobe Trimming: High Roughness", &m_specularLobeTrimmingParameters.C, 0.0f, 1.0f);
-        ImGui::PopID();
-        ImGui::Unindent();
-      }
+      // Note: Add Specular NRD settings here if any are to be modified via the GUI.
+
       ImGui::Unindent();
 
       if (resetHistoryOnSettingsChange && memcmp(&m_groupedSettings, &prevGroupedSettings, sizeof(m_groupedSettings)) != 0)

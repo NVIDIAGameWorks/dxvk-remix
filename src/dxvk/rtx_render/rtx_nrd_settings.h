@@ -74,20 +74,6 @@ namespace dxvk {
       float specularPrepassBlurRadius = 0.0f;
     };
 
-    // Copy from lagecy Reblur settings (which is removed in 5e283dba)
-    // Optional specular lobe trimming = A * smoothstep( B, C, roughness )
-    // Recommended settings if lobe trimming is needed = { 0.85f, 0.04f, 0.11f }
-    struct InternalSpecularLobeTrimmingParameters {
-      // [0; 1] - main level  (0 - GGX dominant direction, 1 - full lobe)
-      float A = 1.0f;
-
-      // [0; 1] - max trimming if roughness is less than this threshold
-      float B = 0.0f;
-
-      // [0; 1] - main level if roughness is greater than this threshold
-      float C = 0.0001f;
-    } m_specularLobeTrimmingParameters;
-
     InternalBlurRadius m_reblurInternalBlurRadius;
     InternalBlurRadius m_relaxInternalBlurRadius;
 
