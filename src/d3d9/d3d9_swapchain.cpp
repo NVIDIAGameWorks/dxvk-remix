@@ -27,6 +27,7 @@
 #include "../dxvk/dxvk_device.h"
 #include "../dxvk/dxvk_objects.h"
 #include "../util/util_env.h"
+#include "../util/util_once.h"
 #include "../util/util_string.h"
 #include "../dxvk/rtx_render/rtx_bridge_message_channel.h"
 #include "../dxvk/dxvk_scoped_annotation.h"
@@ -226,7 +227,7 @@ namespace dxvk {
     const auto swapchainRefCnt = windowData.swapchain->Release();
     const bool bSkipSwapchainActions = (swapchainRefCnt == 0);
     if(bSkipSwapchainActions) {
-      Logger::warn("[D3D9WindowProc] Swapchain handle is invalid, some of its values may not be correct.");
+      ONCE(Logger::warn("[D3D9WindowProc] Swapchain handle is invalid, some of its values may not be correct."));
     }
 
     // It is potentially unsafe to access the swapchain in this function and may result in
@@ -264,12 +265,14 @@ namespace dxvk {
         PostMessageW(window, WM_ACTIVATEAPP, 1, GetCurrentThreadId());
     }
 
-    if(!bSkipSwapchainActions) {
-      auto& gui = windowData.swapchain->getDxvkDevice()->getCommon()->getImgui();
-      if(gui.isInit()) {
-        gui.wndProcHandler(window, message, wParam, lParam);
-      }
+    // Safe from bSkipSwapchainActions as we're just getting a handle that shouldn't
+    // be invalidated
+    auto& gui = windowData.swapchain->getDxvkDevice()->getCommon()->getImgui();
+    if(gui.isInit()) {
+      gui.wndProcHandler(window, message, wParam, lParam);
+    }
 
+    if(!bSkipSwapchainActions) {
       if (!present_parms.Windowed && env::isRemixBridgeActive()) {
         FSEState state = ProcessFullscreenExclusiveMessages(window, message, wParam, lParam);
 
