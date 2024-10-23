@@ -106,10 +106,11 @@ namespace dxvk {
         RTX_OPTION("rtx.terrainBaker.material.properties", Vector3, emissiveColorConstant, Vector3(0.0f, 0.0f, 0.0f), "Emissive color constant. Should be a color in sRGB colorspace with gamma encoding.");
         RTX_OPTION("rtx.terrainBaker.material.properties", bool, enableEmission, false, "A flag to determine if emission is enabled.");
         RTX_OPTION("rtx.terrainBaker.material.properties", float, displaceInFactor, 1.f,
-                   "The max depth the baked terrain can support will be larger than the max depth \n"
+                   "The max depth and height the baked terrain can support will be larger than the max \n"
                    "of any incoming draw call, which results in a loss of detail. When this is \n"
                    "too low, the displacement will lack detail. When it is too high, the lowest \n"
-                   "parts of the POM will flatten out.");
+                   "and highest parts of the POM will flatten out.  This affects both displaceIn \n"
+                   "and displaceOut, despite the name.");
       };
     };
 
@@ -158,6 +159,7 @@ namespace dxvk {
     const RtxMipmap::Resource& getTerrainTexture(Rc<DxvkContext> ctx, RtxTextureManager& textureManager, ReplacementMaterialTextureType::Enum textureType, uint32_t width, uint32_t height);
     void clearMaterialTexture(Rc<DxvkContext> ctx, ReplacementMaterialTextureType::Enum textureType);
     static bool isPSReplacementSupportEnabled(const DrawCallState& drawCallState);
+    VkClearColorValue getClearColor(ReplacementMaterialTextureType::Enum textureType);
 
     BakingParameters m_bakingParams;
 
@@ -207,6 +209,9 @@ namespace dxvk {
 
     float m_currFrameMaxDisplaceIn = 0.f;
     float m_prevFrameMaxDisplaceIn = 0.f;
+
+    float m_currFrameMaxDisplaceOut = 0.f;
+    float m_prevFrameMaxDisplaceOut = 0.f;
 
     // Set to true when m_materialData needs to be updated to reflect latest changes.
     bool m_needsMaterialDataUpdate = false;

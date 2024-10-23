@@ -1005,41 +1005,37 @@ void integrateIndirectPath(
             
             if (opaqueSurfaceMaterial.heightTextureIndex == BINDING_INDEX_INVALID)
             {
-              storeInDebugView(getDispatchRaysIndex().xy, float3(0.5f, 0.f, 0.f));
+              storeInDebugView(getDispatchRaysIndex().xy, float3(1.f, 1.f, 0.f));
             }
           }
           else
           {
-            storeInDebugView(getDispatchRaysIndex().xy, float3(0.f, 0.5f, 0.f));
+            storeInDebugView(getDispatchRaysIndex().xy, float3(1.f, 0.5f, 0.f));
           }
         }
         else
         {
-          storeInDebugView(getDispatchRaysIndex().xy, float3(0.f, 0.f, 0.5f));
+          storeInDebugView(getDispatchRaysIndex().xy, float3(1.f, 0.f, 0.f));
         }
       }
 
       if (primarySurfaceIndex != BINDING_INDEX_INVALID)
       {
         const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
-        if (memoryPolymorphicSurfaceMaterial.isOpaque())
+        if (memoryPolymorphicSurfaceMaterial.hasValidDisplacement())
         {
           OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
     
-          if (opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID)
-          {
-            MinimalSurfaceInteraction minimalSurfaceInteraction = minimalSurfaceInteractionReadFromGBuffer(
-              pixelCoordinate, indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal);
-      
-            const float pomThroughput = opaqueSurfaceMaterialInteractionCalcHeightThroughput(
-              minimalSurfaceInteraction, pathState.direction, opaqueSurfaceMaterial.heightTextureIndex,
-              opaqueSurfaceMaterial.samplerIndex, SharedTextureCoord[pixelCoordinate], opaqueSurfaceMaterial.displaceIn
-            );
+          MinimalSurfaceInteraction minimalSurfaceInteraction = minimalSurfaceInteractionReadFromGBuffer(
+            pixelCoordinate, indirectPathTextures.PrimaryWorldPositionWorldTriangleNormal);
     
-            accumulateThroughput(pathState, pomThroughput);
-            pathState.continuePath = any(pathState.throughput > 0.001h);
-            pathState.continueResolving = pathState.continuePath;
-          }
+          const float pomThroughput = opaqueSurfaceMaterialInteractionCalcHeightThroughput(
+            minimalSurfaceInteraction, pathState.direction, opaqueSurfaceMaterial, SharedTextureCoord[pixelCoordinate]
+          );
+  
+          accumulateThroughput(pathState, pomThroughput);
+          pathState.continuePath = any(pathState.throughput > 0.001h);
+          pathState.continueResolving = pathState.continuePath;
         }
       }
     }

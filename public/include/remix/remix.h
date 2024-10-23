@@ -275,13 +275,14 @@ namespace remix {
       thinFilmThickness_value = 200.f;
       alphaIsThinFilmThickness = false;
       heightTexture = {};
-      heightTextureStrength = 0.0f;
+      displaceIn = 0.0f;
       useDrawCallAlphaState = true;
       blendType_hasvalue = false;
       blendType_value = 0;
       invertedBlend = false;
       alphaTestType = 7;
       alphaReferenceValue = 0;
+      displaceOut = 0.0f;
       static_assert(sizeof remixapi_MaterialInfoOpaqueEXT == 112);
     }
 

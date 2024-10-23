@@ -70,6 +70,7 @@ namespace dxvk {
 }
 
 namespace {
+  uint64_t s_apiVersion{ 0 };
   IDirect3D9Ex* s_dxvkD3D9 { nullptr };
   dxvk::D3D9DeviceEx* s_dxvkDevice { nullptr };
   dxvk::mutex s_mutex {};
@@ -261,6 +262,7 @@ namespace {
           src.getAlphaTestType(),
           src.getAlphaTestReferenceValue(),
           src.getDisplaceIn(),
+          src.getDisplaceOut(),
           src.getSubsurfaceTransmittanceColor(),
           src.getSubsurfaceMeasurementDistance(),
           src.getSubsurfaceSingleScatteringAlbedo(),
@@ -351,7 +353,8 @@ namespace {
           tobool(extOpaque->invertedBlend),
           static_cast<AlphaTestType>(extOpaque->alphaTestType),
           extOpaque->alphaReferenceValue,
-          extOpaque->heightTextureStrength, // displaceIn
+          extOpaque->displaceIn,
+          (s_apiVersion >= REMIXAPI_VERSION_MAKE(0, 4, 2)) ? extOpaque->displaceOut : 0.f,
           extSubsurface ? tovec3(extSubsurface->subsurfaceTransmittanceColor) : Vector3{ 0.5f, 0.5f, 0.5f },
           extSubsurface ? extSubsurface->subsurfaceMeasurementDistance : 0.f,
           extSubsurface ? tovec3(extSubsurface->subsurfaceSingleScatteringAlbedo) : Vector3{ 0.5f, 0.5f, 0.5f },
@@ -1455,6 +1458,7 @@ extern "C"
     if (!isVersionCompatible(info->version)) {
       return REMIXAPI_ERROR_CODE_INCOMPATIBLE_VERSION;
     }
+    s_apiVersion = info->version;
 
     auto interf = remixapi_Interface {};
     {

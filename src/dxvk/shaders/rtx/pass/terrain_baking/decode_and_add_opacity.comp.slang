@@ -75,7 +75,7 @@ void main(uint2 thread_id : SV_DispatchThreadID)
     outSample.r = InputTexture.SampleLevel(LinearSampler, uv, 0.f).r;
     break;
   case ReplacementMaterialTextureType::Enum::Height:
-    outSample.r = InputTexture.SampleLevel(LinearSampler, uv, 0.f).r * cb.scale;
+    outSample.r = InputTexture.SampleLevel(LinearSampler, uv, 0.f).r * cb.scale + cb.offset;
     break;
 
   // RGB16

@@ -54,7 +54,8 @@ struct TerrainArgs {
 
   uint maxCascadeLevel;
   float lastCascadeScale;
-  uint2 pad0;
+  float displaceIn;
+  uint pad0;
 };
 
 struct NeeCacheArgs {

@@ -25,8 +25,9 @@
 #include "rtx_option.h"
 #include "../../util/util_color.h"
 #include "../../util/util_macro.h"
-#include "../shaders/rtx/utility/shared_constants.h"
-#include "../shaders/rtx/concept/surface/surface_shared.h"
+#include "rtx/utility/shared_constants.h"
+#include "rtx/concept/surface/surface_shared.h"
+#include "rtx/pass/common_binding_indices.h"
 #include "../../dxso/dxso_util.h"
 #include "rtx_material_data.h"
 #include "../../lssusd/mdl_helpers.h"
@@ -96,9 +97,8 @@ struct RtSurface {
     writeGPUHelperExplicit<2>(data, offset, indexBufferIndex);
     writeGPUHelperExplicit<2>(data, offset, color0BufferIndex);
 
-    float displaceInCombined = displaceIn * getDisplacementFactor();
-    assert(displaceInCombined <= FLOAT16_MAX);
-    writeGPUHelper(data, offset, glm::packHalf1x16(displaceInCombined));
+    // 2 unused bytes here.
+    writeGPUPadding<2>(data, offset);
 
     const uint16_t packedHash =
       (uint16_t) (associatedGeometryHash >> 48) ^
@@ -320,8 +320,6 @@ struct RtSurface {
   XXH64_hash_t associatedGeometryHash; // NOTE: This is used for the debug view
   uint32_t objectPickingValue = 0; // NOTE: a value to fill GBUFFER_BINDING_PRIMARY_OBJECT_PICKING_OUTPUT
   uint32_t decalSortOrder = 0; // see: InstanceManager::m_decalSortOrderCounter
-
-  float displaceIn = 0.f;
 };
 
 // Shared Material Defaults/Limits
@@ -381,7 +379,7 @@ struct RtOpaqueSurfaceMaterial {
     float roughnessConstant, float metallicConstant,
     const Vector3& emissiveColorConstant, bool enableEmission,
     bool ignoreAlphaChannel, bool enableThinFilm, bool alphaIsThinFilmThickness, float thinFilmThicknessConstant,
-    uint32_t samplerIndex, float displaceIn,
+    uint32_t samplerIndex, float displaceIn, float displaceOut,
     uint32_t subsurfaceMaterialIndex, bool isRaytracedRenderTarget) :
     m_albedoOpacityTextureIndex{ albedoOpacityTextureIndex }, m_normalTextureIndex{ normalTextureIndex },
     m_tangentTextureIndex { tangentTextureIndex }, m_heightTextureIndex { heightTextureIndex }, m_roughnessTextureIndex{ roughnessTextureIndex },
@@ -392,7 +390,7 @@ struct RtOpaqueSurfaceMaterial {
     m_emissiveColorConstant{ emissiveColorConstant }, m_enableEmission{ enableEmission },
     m_ignoreAlphaChannel { ignoreAlphaChannel }, m_enableThinFilm { enableThinFilm }, m_alphaIsThinFilmThickness { alphaIsThinFilmThickness },
     m_thinFilmThicknessConstant { thinFilmThicknessConstant }, m_samplerIndex{ samplerIndex }, m_displaceIn{ displaceIn },
-    m_subsurfaceMaterialIndex(subsurfaceMaterialIndex), m_isRaytracedRenderTarget(isRaytracedRenderTarget) {
+    m_displaceOut{ displaceOut }, m_subsurfaceMaterialIndex(subsurfaceMaterialIndex), m_isRaytracedRenderTarget(isRaytracedRenderTarget) {
     updateCachedData();
     updateCachedHash();
   }
@@ -424,13 +422,25 @@ struct RtOpaqueSurfaceMaterial {
       flags |= OPAQUE_SURFACE_MATERIAL_FLAG_IS_RAYTRACED_RENDER_TARGET;
     }
 
+    float displaceIn = m_displaceIn * getDisplacementFactor();
+    float displaceOut = m_displaceOut * getDisplacementFactor();
+    uint32_t heightTextureIndex = m_heightTextureIndex;
+    if (hasValidDisplacement()) {
+      flags |= OPAQUE_SURFACE_MATERIAL_FLAG_HAS_DISPLACEMENT;
+    } else {
+      // If any POM attribute would disable POM, just disable all POM attributes.
+      displaceIn = 0.f;
+      displaceOut = 0.f;
+      heightTextureIndex = BINDING_INDEX_INVALID;
+    }
+    assert(displaceIn <= FLOAT16_MAX);
+    assert(displaceOut <= FLOAT16_MAX);
+
     // data[0 - 3]
     writeGPUHelper(data, offset, flags);
-    float displaceIn = m_displaceIn * getDisplacementFactor();
-    assert(displaceIn <= FLOAT16_MAX);
-    writeGPUHelper(data, offset, glm::packHalf1x16(displaceIn));
     writeGPUHelperExplicit<2>(data, offset, m_samplerIndex);
     writeGPUHelperExplicit<2>(data, offset, m_albedoOpacityTextureIndex);
+    writeGPUHelperExplicit<2>(data, offset, m_subsurfaceMaterialIndex);
 
     // data[4 - 7]
     writeGPUHelper(data, offset, glm::packHalf1x16(m_albedoOpacityConstant.x));
@@ -439,31 +449,32 @@ struct RtOpaqueSurfaceMaterial {
     writeGPUHelper(data, offset, glm::packHalf1x16(m_albedoOpacityConstant.w));
 
     // data[8 - 11]
+    writeGPUHelper(data, offset, glm::packHalf1x16(displaceIn));
+    writeGPUHelper(data, offset, glm::packHalf1x16(displaceOut));
     writeGPUHelperExplicit<2>(data, offset, m_heightTextureIndex);
-    writeGPUHelperExplicit<2>(data, offset, m_subsurfaceMaterialIndex);
     writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedThinFilmNormalizedThicknessConstant));
-    writeGPUHelperExplicit<2>(data, offset, m_emissiveColorTextureIndex);
 
     // data[12 - 15]
+    writeGPUHelperExplicit<2>(data, offset, m_emissiveColorTextureIndex);
     writeGPUHelperExplicit<2>(data, offset, m_roughnessTextureIndex);
     writeGPUHelperExplicit<2>(data, offset, m_metallicTextureIndex);
     writeGPUHelperExplicit<2>(data, offset, m_normalTextureIndex);
-    assert(m_cachedEmissiveIntensity <= FLOAT16_MAX);
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedEmissiveIntensity));
 
     // data[16 - 19]
     writeGPUHelper(data, offset, glm::packHalf1x16(m_emissiveColorConstant.x));
     writeGPUHelper(data, offset, glm::packHalf1x16(m_emissiveColorConstant.y));
     writeGPUHelper(data, offset, glm::packHalf1x16(m_emissiveColorConstant.z));
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_roughnessConstant));
+    assert(m_cachedEmissiveIntensity <= FLOAT16_MAX);
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_cachedEmissiveIntensity));
 
-    // data[20 - 22]
+    // data[20 - 23]
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_roughnessConstant));
     writeGPUHelper(data, offset, glm::packHalf1x16(m_metallicConstant));
     writeGPUHelper(data, offset, glm::packHalf1x16(m_anisotropy));
     writeGPUHelperExplicit<2>(data, offset, m_tangentTextureIndex);
 
-    // data[23 - 31]
-    writeGPUPadding<18>(data, offset);
+    // data[24 - 31]
+    writeGPUPadding<16>(data, offset);
     assert(offset - oldOffset == kSurfaceMaterialGPUSize);
   }
 
@@ -477,6 +488,10 @@ struct RtOpaqueSurfaceMaterial {
                             m_emissiveColorTextureIndex != kSurfaceMaterialInvalidTextureIndex;
 
     return !hasTexture || m_samplerIndex != kSurfaceMaterialInvalidTextureIndex;
+  }
+
+  bool hasValidDisplacement() const {
+    return (m_displaceIn > 0.f || m_displaceOut > 0.f) && m_heightTextureIndex != BINDING_INDEX_INVALID;
   }
 
   bool operator==(const RtOpaqueSurfaceMaterial& r) const {
@@ -579,6 +594,7 @@ private:
     h = XXH64(&m_thinFilmThicknessConstant, sizeof(m_thinFilmThicknessConstant), h);
     h = XXH64(&m_samplerIndex, sizeof(m_samplerIndex), h);
     h = XXH64(&m_displaceIn, sizeof(m_displaceIn), h);
+    h = XXH64(&m_displaceOut, sizeof(m_displaceOut), h);
     h = XXH64(&m_subsurfaceMaterialIndex, sizeof(m_subsurfaceMaterialIndex), h);
     h = XXH64(&m_isRaytracedRenderTarget, sizeof(m_isRaytracedRenderTarget), h);
 
@@ -621,9 +637,9 @@ private:
   float m_thinFilmThicknessConstant;
 
   // How far inwards a height_texture value of 0 maps to.
-  // TODO: if we ever support a displacement algorithm that supports outwards displacements, we'll need
-  // to add a displaceOut parameter.  With POM, displaceOut is locked to 0.
   float m_displaceIn;
+  // How far outwards a height_texture value of 1 maps to.
+  float m_displaceOut;
 
   uint32_t m_subsurfaceMaterialIndex;
 

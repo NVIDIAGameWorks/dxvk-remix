@@ -617,6 +617,7 @@ namespace dxvk {
       args.rcpResolution = float2(1.f / extent.width, 1.f / extent.height);
       args.normalIntensity = OpaqueMaterialOptions::normalIntensity();
       args.scale = conversionInfo.scale;
+      args.offset = conversionInfo.offset;
 
       ctx->pushConstants(0, sizeof(args), &args);
 
