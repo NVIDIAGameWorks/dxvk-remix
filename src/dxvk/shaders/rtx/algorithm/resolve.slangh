@@ -444,7 +444,7 @@ void resolveVertex<T: IBasePayloadState>(
     if (surface.isFullyOpaque)
     {
       // Cache if this surface is a POM material for later use
-      pomOpaqueSurfaceEncountered = opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID && opaqueSurfaceMaterial.displaceIn > 0.h;
+      pomOpaqueSurfaceEncountered = opaqueSurfaceMaterial.hasValidDisplacement();
 
       resolveVertexFinalHit(resolveVertexState);
 
@@ -468,7 +468,7 @@ void resolveVertex<T: IBasePayloadState>(
     if (opacity >= cb.resolveOpaquenessThreshold)
     {
       // Cache if this surface is a POM material for later use
-      pomOpaqueSurfaceEncountered = opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID && opaqueSurfaceMaterial.displaceIn > 0.h;
+      pomOpaqueSurfaceEncountered = opaqueSurfaceMaterial.hasValidDisplacement();
 
       resolveVertexFinalHit(resolveVertexState);
       return;

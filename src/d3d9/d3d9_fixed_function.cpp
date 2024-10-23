@@ -391,6 +391,8 @@ namespace dxvk {
 
 // NV-DXVK start: support height map scaling in terrain baking
       float_t,
+      float_t,
+      float_t,
 // NV-DXVK end
     };
 
@@ -422,12 +424,18 @@ namespace dxvk {
       offset += sizeof(float);
 
 // NV-DXVK start: support height map scaling in terrain baking
+      spvModule.memberDecorateOffset(structType, stage * D3D9SharedPSStages_Count + D3D9SharedPSStages_TexturePreOffset, offset);
+      offset += sizeof(float);
+
       spvModule.memberDecorateOffset(structType, stage * D3D9SharedPSStages_Count + D3D9SharedPSStages_TextureScale, offset);
       offset += sizeof(float);
-// NV-DXVK end
 
-      // Padding...
+      spvModule.memberDecorateOffset(structType, stage * D3D9SharedPSStages_Count + D3D9SharedPSStages_TexturePostOffset, offset);
       offset += sizeof(float);
+
+      // Padding
+      offset += 3 * sizeof(float);
+// NV-DXVK end
     }
 
     uint32_t sharedState = spvModule.newVar(
@@ -540,7 +548,9 @@ namespace dxvk {
 
   enum D3D9FFPSMembers {
     TextureFactor = 0,
-    TextureScale = 1,
+    TexturePreOffset = 1,
+    TextureScale = 2,
+    TexturePostOffset = 3,
 
     MemberCount
   };
@@ -551,7 +561,9 @@ namespace dxvk {
 
     struct {
       uint32_t textureFactor;
+      uint32_t texturePreOffset;
       uint32_t textureScale;
+      uint32_t texturePostOffset;
     } constants;
 
     struct {
@@ -1693,7 +1705,9 @@ namespace dxvk {
     uint32_t textureValue, 
     uint32_t texcoord,
     uint32_t texcoordType,
+    std::function<uint32_t()> loadTexturePreOffsetFnc,
     std::function<uint32_t()> loadTextureScaleFnc,
+    std::function<uint32_t()> loadTexturePostOffsetFnc,
     std::function<uint32_t()> loadAlbedoOpacityFnc,
     std::function<void(uint32_t vec4value)> storeVec4ValueToRegisterFnc,
     std::function<uint32_t()> loadVec4ValueFromRegisterFnc) {
@@ -1759,11 +1773,17 @@ namespace dxvk {
           // Divide textureScale by the max input uv delta.
           uint32_t textureScale = spvModule.opFDiv(floatType, loadTextureScaleFnc(), maxDelta);
           
-          // Scale the texture components towards 1 instead of towards 0 by doing:
-          // new value = 1 - (textureScale * (1 - value))
-          textureValue = spvModule.opFSub(vec4Type, spvModule.constvec4f32(1.0f, 1.0f, 1.0f, 1.0f), textureValue);
+          // The height values need to scale relative to a neutral value (which is different in the input image and the output map).
+          // First, subtract the neutral value from the pixel color:
+          uint32_t texturePreOffset4 = spvModule.opVectorTimesScalar(vec4Type, spvModule.constvec4f32(1.0f, 1.0f, 1.0f, 1.0f), loadTexturePreOffsetFnc());
+          textureValue = spvModule.opFAdd(vec4Type, texturePreOffset4, textureValue);
+
+          // Second, apply all of the scale operations:
           textureValue = spvModule.opVectorTimesScalar(vec4Type, textureValue, textureScale);
-          textureValue = spvModule.opFSub(vec4Type, spvModule.constvec4f32(1.0f, 1.0f, 1.0f, 1.0f), textureValue);
+
+          // Third, add the output neutral value:
+          uint32_t texturePostOffset4 = spvModule.opVectorTimesScalar(vec4Type, spvModule.constvec4f32(1.0f, 1.0f, 1.0f, 1.0f), loadTexturePostOffsetFnc());
+          textureValue = spvModule.opFAdd(vec4Type, texturePostOffset4, textureValue);
 
           // The new texture value needs to be stored before branching out, and reloaded after
           storeVec4ValueToRegisterFnc(textureValue);
@@ -1994,15 +2014,27 @@ namespace dxvk {
             auto loadVec4ValueFromRegisterFnc = [&]() -> uint32_t {
               return m_module.opLoad(vec4Type, registerStorage);
             };
+            auto loadTexturePreOffsetFnc = [&]() -> uint32_t {
+              uint32_t texturePreOffsetOffset = m_module.constu32(D3D9SharedPSStages_Count * kTerrainBakerSecondaryTextureStage + D3D9SharedPSStages_TexturePreOffset);
+              uint32_t texturePreOffsetPtr = m_module.opAccessChain(m_module.defPointerType(m_floatType, spv::StorageClassUniform),
+                m_ps.sharedState, 1, &texturePreOffsetOffset);
+              return m_module.opLoad(m_floatType, texturePreOffsetPtr);
+            };
             auto loadTextureScaleFnc = [&]() -> uint32_t {
               uint32_t textureScaleOffset = m_module.constu32(D3D9SharedPSStages_Count * kTerrainBakerSecondaryTextureStage + D3D9SharedPSStages_TextureScale);
               uint32_t textureScalePtr = m_module.opAccessChain(m_module.defPointerType(m_floatType, spv::StorageClassUniform),
                 m_ps.sharedState, 1, &textureScaleOffset);
               return m_module.opLoad(m_floatType, textureScalePtr);
             };
+            auto loadTexturePostOffsetFnc = [&]() -> uint32_t {
+              uint32_t texturePostOffsetOffset = m_module.constu32(D3D9SharedPSStages_Count * kTerrainBakerSecondaryTextureStage + D3D9SharedPSStages_TexturePostOffset);
+              uint32_t texturePostOffsetPtr = m_module.opAccessChain(m_module.defPointerType(m_floatType, spv::StorageClassUniform),
+                m_ps.sharedState, 1, &texturePostOffsetOffset);
+              return m_module.opLoad(m_floatType, texturePostOffsetPtr);
+            };
             
 
-            return postprocessTextureReadForTerrainBaking(m_module, textureValue, texcoord, texcoord_t, loadTextureScaleFnc, loadAlbedoOpacityFnc, storeVec4ValueToRegisterFnc, loadVec4ValueFromRegisterFnc);
+            return postprocessTextureReadForTerrainBaking(m_module, textureValue, texcoord, texcoord_t, loadTexturePreOffsetFnc, loadTextureScaleFnc, loadTexturePostOffsetFnc, loadAlbedoOpacityFnc, storeVec4ValueToRegisterFnc, loadVec4ValueFromRegisterFnc);
           };
 
           texture = postprocessColorOutputTextureRead(texture);
@@ -2376,8 +2408,10 @@ namespace dxvk {
 
     // Constant Buffer for PS.
     std::array<uint32_t, uint32_t(D3D9FFPSMembers::MemberCount)> members = {
-      m_vec4Type, // Texture Factor
-      m_floatType // Texture Scale
+      m_vec4Type, // TextureFactor
+      m_floatType, // TexturePreOffset
+      m_floatType, // TextureScale
+      m_floatType // TexturePostOffset
     };
 
     const uint32_t structType =
@@ -2389,12 +2423,20 @@ namespace dxvk {
     m_module.memberDecorateOffset(structType, D3D9FFPSMembers::TextureFactor, offset);
     offset += sizeof(Vector4);
     
+    m_module.memberDecorateOffset(structType, D3D9FFPSMembers::TexturePreOffset, offset);
+    offset += sizeof(float);
+    
     m_module.memberDecorateOffset(structType, D3D9FFPSMembers::TextureScale, offset);
+    offset += sizeof(float);
+    
+    m_module.memberDecorateOffset(structType, D3D9FFPSMembers::TexturePostOffset, offset);
     offset += sizeof(float);
 
     m_module.setDebugName(structType, "D3D9FixedFunctionPS");
     m_module.setDebugMemberName  (structType, D3D9FFPSMembers::TextureFactor, "TextureFactor");
+    m_module.setDebugMemberName  (structType, D3D9FFPSMembers::TexturePreOffset, "TexturePreOffset");
     m_module.setDebugMemberName  (structType, D3D9FFPSMembers::TextureScale, "TextureScale");
+    m_module.setDebugMemberName  (structType, D3D9FFPSMembers::TexturePostOffset, "TexturePostOffset");
 
     m_ps.constantBuffer = m_module.newVar(
       m_module.defPointerType(structType, spv::StorageClassUniform),
@@ -2426,7 +2468,9 @@ namespace dxvk {
     };
 
     m_ps.constants.textureFactor = LoadConstant(m_vec4Type, uint32_t(D3D9FFPSMembers::TextureFactor));
+    m_ps.constants.texturePreOffset = LoadConstant(m_floatType, uint32_t(D3D9FFPSMembers::TexturePreOffset));
     m_ps.constants.textureScale = LoadConstant(m_floatType, uint32_t(D3D9FFPSMembers::TextureScale));
+    m_ps.constants.texturePostOffset = LoadConstant(m_floatType, uint32_t(D3D9FFPSMembers::TexturePostOffset));
 
     // Samplers
     for (uint32_t i = 0; i < caps::TextureStageCount; i++) {

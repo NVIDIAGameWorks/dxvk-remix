@@ -52,19 +52,6 @@ namespace dxvk {
     }
   }
 
-  VkClearColorValue getClearColor(ReplacementMaterialTextureType::Enum textureType) {
-    switch (textureType) {
-    case ReplacementMaterialTextureType::Height:
-      // height maps should be cleared to 1, which keeps the displaced surface identical to the original surface.
-      return { 1.f, 1.f, 1.f, 1.f };
-      break;
-
-    default:
-      return { 0.0f, 0.0f, 0.0f, 0.0f };
-      break;
-    }
-  }
-
   VkFormat getTextureFormat(ReplacementMaterialTextureType::Enum textureType) {
     switch (textureType) {
     case ReplacementMaterialTextureType::Normal:
@@ -87,6 +74,20 @@ namespace dxvk {
     default:
       assert(0);
       return VK_FORMAT_UNDEFINED;
+      break;
+    }
+  }
+
+  VkClearColorValue TerrainBaker::getClearColor(ReplacementMaterialTextureType::Enum textureType) {
+    float neutral_height = m_prevFrameMaxDisplaceIn / (m_prevFrameMaxDisplaceIn + m_prevFrameMaxDisplaceOut);
+    switch (textureType) {
+    case ReplacementMaterialTextureType::Height:
+      // height maps should be cleared to neutral_height, which keeps the displaced surface identical to the original surface.
+      return { neutral_height, neutral_height, neutral_height, neutral_height };
+      break;
+
+    default:
+      return { 0.0f, 0.0f, 0.0f, 0.0f };
       break;
     }
   }
@@ -182,9 +183,14 @@ namespace dxvk {
       conversionInfo.sourceTexture = &texture;
       
       if (textureType == ReplacementMaterialTextureType::Height) {
-        // Normalize the displaceIn to the previous frame's max displaceIn.
-        conversionInfo.scale = m_prevFrameMaxDisplaceIn <= 0.f ? 0.f : replacementMaterial->getDisplaceIn() / m_prevFrameMaxDisplaceIn;
+        // Normalize the displaceIn and displaceOut to the previous frame's displacement range.
+        const float prevFrameTotalHeight = m_prevFrameMaxDisplaceIn + m_prevFrameMaxDisplaceOut;
+        const float materialTotalHeight = replacementMaterial->getDisplaceIn() + replacementMaterial->getDisplaceOut();
+
+        conversionInfo.scale = prevFrameTotalHeight <= 0.f ? 0.f : materialTotalHeight / prevFrameTotalHeight;
+        conversionInfo.offset = prevFrameTotalHeight <= 0.f ? 0.f : -1.f * replacementMaterial->getDisplaceIn() / materialTotalHeight;
         m_currFrameMaxDisplaceIn = std::max(m_currFrameMaxDisplaceIn, replacementMaterial->getDisplaceIn());
+        m_currFrameMaxDisplaceOut = std::max(m_currFrameMaxDisplaceOut, replacementMaterial->getDisplaceOut());
       }
 
       if (isPSReplacementSupportEnabled(drawCallState)) {
@@ -303,15 +309,24 @@ namespace dxvk {
       return isBaked;
     }
 
-    if (m_calculatingDisplaceInFactor && replacementMaterial->getDisplaceIn() > 0.f) {
+    if (m_calculatingDisplaceInFactor && replacementMaterial != nullptr && (replacementMaterial->getDisplaceIn() > 0.f || replacementMaterial->getDisplaceOut() > 0.f)) {
+      const float maxUvTileSize = RtxGeometryUtils::computeMaxUVTileSize(drawCallState.getGeometryData(), drawCallState.getTransformData().objectToWorld);
       // This is the deepest any part of this mesh can go.
-      float maxInputDepth = RtxGeometryUtils::computeMaxUVTileSize(drawCallState.getGeometryData(), drawCallState.getTransformData().objectToWorld) * replacementMaterial->getDisplaceIn();
+      const float maxInputDepth = maxUvTileSize * replacementMaterial->getDisplaceIn();
+      // Ths is the highest any part of the mesh can go
+      const float maxInputHeight = maxUvTileSize * replacementMaterial->getDisplaceOut();
+
+      const float maxInputDisplacement = maxInputDepth + maxInputHeight;
 
       // The deepest the baked terrain can go.
-      float maxBakedDepth = 2 * RtxOptions::Get()->getMeterToWorldUnitScale() * cascadeMap.levelHalfWidth() * m_prevFrameMaxDisplaceIn;
+      const float maxBakedDepth = 2 * RtxOptions::Get()->getMeterToWorldUnitScale() * cascadeMap.levelHalfWidth() * m_prevFrameMaxDisplaceIn;
+      // The highest the baked terrain can go.
+      const float maxBakedHeight = 2 * RtxOptions::Get()->getMeterToWorldUnitScale() * cascadeMap.levelHalfWidth() * m_prevFrameMaxDisplaceOut;
+
+      const float maxBakedDisplacement = maxBakedDepth + maxBakedHeight;
 
       // Optimal displaceInFactor for this mesh (multiply the pixel value, divide the baked drawcall's displaceIn)
-      float displaceInFactor = maxBakedDepth / maxInputDepth;
+      const float displaceInFactor = maxBakedDisplacement / maxInputDisplacement;
 
       // Need the largest value from any of the meshes, or else the bottom
       m_calculatedDisplaceInFactor = std::max(m_calculatedDisplaceInFactor, displaceInFactor);
@@ -387,11 +402,15 @@ namespace dxvk {
     bool bakingResult = false;
 
     ctx->setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, D3D9SpecConstantId::ReplacementTextureCategory, static_cast<uint32_t>(ReplacementMaterialTextureCategory::AlbedoOpacity));
+    
+    // The height value that corresponds to the original surface height.
+    const float neutralDisplacement = m_prevFrameMaxDisplaceIn / ( m_prevFrameMaxDisplaceIn + m_prevFrameMaxDisplaceOut);
 
     // Bake all material textures
     for (uint32_t iTexture = 0; iTexture < numTexturesToBake; iTexture++) {
       
       ReplacementMaterialTextureType::Enum textureType = ReplacementMaterialTextureType::AlbedoOpacity;
+      float texturePreOffset = 0.f;
       float textureScale = 1.f;
 
       // Bind a source replacement texture to bake, if available.
@@ -400,6 +419,7 @@ namespace dxvk {
         TextureRef& replacementTexture = replacementTextures[iTexture].targetTexture;
         textureType = replacementTextures[iTexture].type;
         textureScale = replacementTextures[iTexture].scale;
+        texturePreOffset = replacementTextures[iTexture].offset;
 
         ctx->bindResourceView(colorTextureSlot, replacementTexture.getImageView(), nullptr);
 
@@ -520,7 +540,12 @@ namespace dxvk {
         for (int i = 0; i < caps::TextureStageCount; ++i) {
           sharedState.Stages[i] = prevSharedState.Stages[i];
         }
+        // The neutral height value of the input image and the output map don't match.
+        // To account, first subtract the input's neutral value from the pixel,
+        // then apply all scale operations, then add the output neutral value.
+        sharedState.Stages[kTerrainBakerSecondaryTextureStage].texturePreOffset = texturePreOffset;
         sharedState.Stages[kTerrainBakerSecondaryTextureStage].textureScale = textureScale * cascadeUvDensity;
+        sharedState.Stages[kTerrainBakerSecondaryTextureStage].texturePostOffset = neutralDisplacement;
         
         // Programmable VS path
         if (drawCallState.usesVertexShader) {
@@ -637,8 +662,9 @@ namespace dxvk {
       false, // opaqueMaterialDefaults.InvertedBlend,
       AlphaTestType::kAlways,
       0,//opaqueMaterialDefaults.AlphaReferenceValue;
-      // Using the previous frame's displaceIn because all current frame draw calls are normalized to the previous frame's max.
+      // Using the previous frame's displaceIn/Out because all current frame draw calls are normalized to the previous frame's max.
       m_prevFrameMaxDisplaceIn / Material::Properties::displaceInFactor(),  // opaqueMaterialDefaults.DisplaceIn
+      m_prevFrameMaxDisplaceOut / Material::Properties::displaceInFactor(),  // opaqueMaterialDefaults.DisplaceOut
       Vector3(),  // opaqueMaterialDefaults.subsurfaceTransmittanceColor
       0.0f,  // opaqueMaterialDefaults.subsurfaceMeasurementDistance
       Vector3(),  // opaqueMaterialDefaults.subsurfaceSingleScatteringAlbedo
@@ -713,6 +739,11 @@ namespace dxvk {
     args.rcpCascadeMapSize.y = 1.f / args.cascadeMapSize.y;
 
     args.maxCascadeLevel = m_bakingParams.numCascades - 1;
+    if (m_materialData.has_value()) {
+      args.displaceIn = m_materialData->getOpaqueMaterialData().getDisplaceIn();
+    } else {
+      args.displaceIn = 0.0f;
+    }
     args.lastCascadeScale = m_bakingParams.lastCascadeScale;
 
     return args;
@@ -754,12 +785,12 @@ namespace dxvk {
           ImGui::DragFloat("Anisotropy", &Material::Properties::roughnessAnisotropyObject(), 0.01f, -1.0f, 1.f, "%.3f", sliderFlags);
           
           ImGui::Text("\nDisplacement Settings");
-          ImGui::DragFloat("Displace In Factor", &Material::Properties::displaceInFactorObject(), 0.01f, 0.01f, 100.f, "%.3f", sliderFlags);
-          ImGui::Text("Calculate the lowest safe Displace In Factor for the current \n"
+          ImGui::DragFloat("Displacement Factor", &Material::Properties::displaceInFactorObject(), 0.01f, 0.01f, 100.f, "%.3f", sliderFlags);
+          ImGui::Text("Calculate the lowest safe Displacement Factor for the current \n"
                       "scene.  Mod creators should run this in scenes across the \n"
-                      "game, and use the highest returned value.  See Displace In \n"
+                      "game, and use the highest returned value.  See Displacement \n"
                       "Factor's tooltip for more info.");
-          if (ImGui::Button("Calculate Scene's Optimal Displace In Factor")) {
+          if (ImGui::Button("Calculate Scene's Optimal Displacement Factor")) {
             m_calculateDisplaceInFactorNextFrame = true;
           }
 
@@ -838,6 +869,9 @@ namespace dxvk {
 
     m_prevFrameMaxDisplaceIn = m_currFrameMaxDisplaceIn;
     m_currFrameMaxDisplaceIn = 0.f;
+
+    m_prevFrameMaxDisplaceOut = m_currFrameMaxDisplaceOut;
+    m_currFrameMaxDisplaceOut = 0.f;
 
     m_stagingTextureCache.clear();
 

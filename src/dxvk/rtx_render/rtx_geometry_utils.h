@@ -133,6 +133,7 @@ namespace dxvk {
       Rc<DxvkImageView> sourceView = nullptr;
       TextureRef targetTexture;
       float scale = 1.f;
+      float offset = 0.f;
     };
 
     void decodeAndAddOpacity(

@@ -74,6 +74,7 @@
   X(AlphaTestReferenceValue,          alpha_test_reference_value,             uint8_t,        0,                          255,                       0) \
   /* Note: Maximum clamped to float 16 max due to GPU encoding requirements. */ \
   X(DisplaceIn,                       displace_in,                            float,          0.f,                        65504.0f,                  0.05f) \
+  X(DisplaceOut,                      displace_out,                           float,          0.f,                        65504.0f,                  0.0f) \
   X(SubsurfaceTransmittanceColor,     subsurface_transmittance_color,         Vector3,        Vector3(0.f),               Vector3(1.f),              Vector3(0.5f, 0.5f, 0.5f)) \
   X(SubsurfaceMeasurementDistance,    subsurface_measurement_distance,        float,          0.f,                        65504.0f,                  0.f) \
   X(SubsurfaceSingleScatteringAlbedo, subsurface_single_scattering_albedo,    Vector3,        Vector3(0.f),               Vector3(1.f),              Vector3(0.5f, 0.5f, 0.5f)) \

@@ -148,7 +148,7 @@ namespace dxvk {
   namespace {
     template<int RtInstanceSize> struct CheckRtInstanceSize {
       // The second line of the build error should contain the new size of RtInstance in the template argument, i.e. `dxvk::CheckRtInstanceSize<newSize>`
-      static_assert(RtInstanceSize == 720, "RtInstance size has changed.  Fix the copy constructor above this message, then update the expected size.");
+      static_assert(RtInstanceSize == 712, "RtInstance size has changed.  Fix the copy constructor above this message, then update the expected size.");
     };
     CheckRtInstanceSize<sizeof(RtInstance)> _rtInstanceSizeTest;
   }
@@ -920,7 +920,6 @@ namespace dxvk {
         currentInstance.surface.colorBlendOp = drawCall.getMaterialData().colorBlendOp;
 
         uint8_t spriteSheetRows = 0, spriteSheetCols = 0, spriteSheetFPS = 0;
-        float displaceIn = 0.f;
 
         // Note: Extract spritesheet information from the associated material data as it ends up stored in the Surface
         // not in the Surface Material like most material information.
@@ -930,7 +929,6 @@ namespace dxvk {
           spriteSheetCols = materialData.getOpaqueMaterialData().getSpriteSheetCols();
           spriteSheetFPS = materialData.getOpaqueMaterialData().getSpriteSheetFPS();
 
-          displaceIn = materialData.getOpaqueMaterialData().getDisplaceIn();
           break;
         case MaterialDataType::Translucent:
           spriteSheetRows = materialData.getTranslucentMaterialData().getSpriteSheetRows();
@@ -949,7 +947,6 @@ namespace dxvk {
         currentInstance.surface.spriteSheetRows = spriteSheetRows;
         currentInstance.surface.spriteSheetCols = spriteSheetCols;
         currentInstance.surface.spriteSheetFPS = spriteSheetFPS;
-        currentInstance.surface.displaceIn = displaceIn;
         currentInstance.surface.objectPickingValue = drawCall.drawCallID;
 
         // For worldspace UI, we want to show the UI (unlit) in the world.  So configure the blend mode if blending is used accordingly.

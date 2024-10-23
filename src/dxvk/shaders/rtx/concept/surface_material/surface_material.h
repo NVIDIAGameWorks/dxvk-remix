@@ -47,6 +47,10 @@ struct MemoryPolymorphicSurfaceMaterial
     // Note: First two bits of data are reserved for common polymorphic type
     return (data[0].x & surfaceMaterialTypeMask) == surfaceMaterialTypeOpaque;
   }
+
+  bool hasValidDisplacement() {
+    return isOpaque() && (data[0].x & OPAQUE_SURFACE_MATERIAL_FLAG_HAS_DISPLACEMENT);
+  }
 };
 
 struct OpaqueSurfaceMaterial
@@ -54,16 +58,17 @@ struct OpaqueSurfaceMaterial
   // 0 - 3
   // bitmask of OPAQUE_SURFACE_MATERIAL_FLAG_* bits
   uint16_t flags;
-  float16_t displaceIn;
   uint16_t samplerIndex;
   uint16_t albedoOpacityTextureIndex;
+  uint16_t subsurfaceMaterialIndex;
 
   // 4-7
   f16vec4 albedoOpacityConstant;
 
-  // 8-10
+  // 8-11
+  float16_t displaceIn;
+  float16_t displaceOut;
   uint16_t heightTextureIndex;
-  uint16_t subsurfaceMaterialIndex;
   // note: thinFilmThicknessConstant should be between 0 and 1 
   float16_t thinFilmThicknessConstant;
 
@@ -72,20 +77,19 @@ struct OpaqueSurfaceMaterial
   // If we add a new field that is used for visibility, it should go above this.
   // If it isn't used for visibility, it should go below and be overridden in opaqueSurfaceMaterialCreate().
 
-  // 11
-  uint16_t emissiveColorTextureIndex;
 
   // 12-15
+  uint16_t emissiveColorTextureIndex;
   uint16_t roughnessTextureIndex;
   uint16_t metallicTextureIndex;
   uint16_t normalTextureIndex;
-  float16_t emissiveIntensity;
 
   // 16-19
   f16vec3 emissiveColorConstant;
-  float16_t roughnessConstant;
+  float16_t emissiveIntensity;
 
-  // 20-22
+  // 20-23
+  float16_t roughnessConstant;
   float16_t metallicConstant;
   float16_t anisotropy;
   uint16_t tangentTextureIndex;
@@ -93,7 +97,11 @@ struct OpaqueSurfaceMaterial
   // Todo: Fixed function blend state info here in the future (Actually this should go on a Legacy Material, or some sort of non-PBR Legacy Surface)
 
   // padding (to keep size matching with MemoryPolymorphicSurfaceMaterial)
-  uint16_t data[9];
+  uint16_t data[8];
+
+  bool hasValidDisplacement() {
+    return flags & OPAQUE_SURFACE_MATERIAL_FLAG_HAS_DISPLACEMENT;
+  }
 };
 
 struct TranslucentSurfaceMaterial

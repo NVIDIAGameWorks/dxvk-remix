@@ -87,7 +87,7 @@ float4 pomGetPatchCorners(Texture2D texture, SamplerState sampler, float2 boxCen
 }
 
 // cast a ray in tangent space.  return an intersection point in tangent point (or an exit point if z > 1.0f)
-float3 pomTraceRay(Texture2D texture, SamplerState sampler, float3 origin, float3 direction, float2 textureGradientX, float2 textureGradientY, inout uint iterations)
+float3 pomTraceRay(Texture2D texture, SamplerState sampler, float3 origin, float3 direction, float2 textureGradientX, float2 textureGradientY, inout uint iterations, float neutralHeight)
 {
   // Potential future improvements for outwards rays:
   // 1) calculate starting height the same way the box intersection code does instead of just sampling at a pixel.
@@ -100,6 +100,8 @@ float3 pomTraceRay(Texture2D texture, SamplerState sampler, float3 origin, float
   const float2 ddy_tex = textureGradientY * fullBoxSize;
   const float dd_max_sq = max(dot(ddx_tex, ddx_tex), dot(ddy_tex, ddy_tex));
   uint minMipLevel = max(0, min(numMipLevels, log2(sqrt(dd_max_sq)) + cb.totalMipBias));
+
+  origin.xy = origin.xy + (direction.xy * (1.f - neutralHeight)) / direction.z;
 
   // Starting halfway down the quadtree seems to generally lead to fewer iterations to resolve, especially for heights close to 1.
   // Outwards rays start at 0, since they will just descend to 0 if they start anywhere else.
@@ -228,10 +230,10 @@ float pomSampleHeight(uint16_t idx, uint16_t samplerIndex, float2 texcoord)
   return 1.0f - textures[nonuniformEXT(uint(idx))].SampleLevel(samplers[nonuniformEXT(uint(samplerIndex))], texcoord, 0).r;
 }
 
-float2 pomGetStep(float3 direction, float layerSize, float displaceIn)
+float2 pomGetStep(float3 direction, float layerSize, float totalHeight)
 {
   // convert tangent space direction to texcoord
-  return direction.xy / direction.z * displaceIn * layerSize;
+  return direction.xy / direction.z * totalHeight * layerSize;
 }
 
 float pomGetNumSamples(float3 direction)
@@ -249,12 +251,19 @@ float3 pomCalculateTexcoord(
   float3 viewDir,
   inout uint iterations)
 {
+  float totalHeight = opaqueSurfaceMaterial.displaceIn + opaqueSurfaceMaterial.displaceOut;
+  float neutralHeight = opaqueSurfaceMaterial.displaceIn / totalHeight;
+  // TODO if the ray origin is below the displaceOut height, bad results happen.
+  // need to account for that case.
+  float3 direction = -float3(viewDir.xy, viewDir.z / totalHeight);
   if (cb.pomMode == DisplacementMode::RaymarchPOM) {
     float numLayers = pomGetNumSamples(viewDir);
     float layerSize = rcp(numLayers);
-    float2 step = pomGetStep(viewDir, layerSize, opaqueSurfaceMaterial.displaceIn);
+    float2 step = pomGetStep(viewDir, layerSize, totalHeight);
 
     float2 currTexcoord = surfaceInteraction.textureCoordinates;
+
+    currTexcoord = currTexcoord + (step * numLayers * (1.f - neutralHeight));
     float currHeight = pomSampleHeight(opaqueSurfaceMaterial.heightTextureIndex, opaqueSurfaceMaterial.samplerIndex, currTexcoord);
 
     // raymarch to find intersection
@@ -275,40 +284,41 @@ float3 pomCalculateTexcoord(
     float weight = saturate(depthN / (depthN - depthNminus1));
     return float3(currTexcoord + lerp(0..xx, step, weight), currHeight);
   } else if (cb.pomMode == DisplacementMode::QuadtreePOM) {
+
     return pomTraceRay(
         textures[nonuniformEXT(uint(opaqueSurfaceMaterial.heightTextureIndex))],
         samplers[nonuniformEXT(uint(opaqueSurfaceMaterial.samplerIndex))],
         float3(surfaceInteraction.textureCoordinates, 1.0f),
-        -float3(viewDir.xy, viewDir.z / opaqueSurfaceMaterial.displaceIn),
+        direction,
         surfaceInteraction.textureGradientX,
         surfaceInteraction.textureGradientY,
-        iterations);
+        iterations, neutralHeight);
   }
   return float3(surfaceInteraction.textureCoordinates, 1.f);
 }
 
 float pomSampleVisibility(
-    uint16_t heightTextureIdx,
-    uint16_t samplerIndex,
-    float2 texcoord,
-    float3 rayDirection,
-    float displaceIn)
+  OpaqueSurfaceMaterial opaqueSurfaceMaterial,
+  float2 texcoord,
+  float3 rayDirection)
 {
+  // Don't actually care about neutral height here - this function just checks if a ray from a texcoord successfully exits
+  // the geometry described by the heightmap.  Doesn't (currently) matter how high that geometry is relative to the original surface.
+  float totalHeight = opaqueSurfaceMaterial.displaceIn + opaqueSurfaceMaterial.displaceOut;
   // NOTE: pomTraceRay could be used here, but testing found it was more expensive and had worse artifacts when
   // doing visibility testing.
   float2 currTexcoord = texcoord;
-  float currHeight = pomSampleHeight(heightTextureIdx, samplerIndex, currTexcoord);
+  float currHeight = pomSampleHeight(opaqueSurfaceMaterial.heightTextureIndex, opaqueSurfaceMaterial.samplerIndex, currTexcoord);
   float currDepth = currHeight;
   float numLayers = pomGetNumSamples(rayDirection);
   float layerSize = rcp(numLayers);
-  float2 step = pomGetStep(rayDirection, layerSize, displaceIn);
-
+  float2 step = pomGetStep(rayDirection, layerSize, totalHeight);
 
   float visibility = 1.0f;
   while (currDepth > 0.0f)
   {
     currTexcoord += step;
-    currHeight = pomSampleHeight(heightTextureIdx, samplerIndex, currTexcoord);
+    currHeight = pomSampleHeight(opaqueSurfaceMaterial.heightTextureIndex, opaqueSurfaceMaterial.samplerIndex, currTexcoord);
     currDepth -= layerSize;
 
     if (currHeight < currDepth)
@@ -323,10 +333,8 @@ float pomSampleVisibility(
 float opaqueSurfaceMaterialInteractionCalcHeightThroughput(
   MinimalSurfaceInteraction minimalSurfaceInteraction,
   f16vec3 rayDirection,
-  uint16_t heightTextureIdx,
-  uint16_t samplerIndex,
-  float2 texcoord,
-  float displaceIn)
+  OpaqueSurfaceMaterial opaqueSurfaceMaterial,
+  float2 texcoord)
 {
   // rebuild tangent space
   const f16mat3 worldToTangent = f16mat3(
@@ -334,7 +342,7 @@ float opaqueSurfaceMaterialInteractionCalcHeightThroughput(
     minimalSurfaceInteraction.triangleBitangent,
     minimalSurfaceInteraction.triangleNormal);
   const f16vec3 lightDirTangentSpace = normalize(mul(worldToTangent, rayDirection));
-  return pomSampleVisibility(heightTextureIdx, samplerIndex, texcoord, lightDirTangentSpace, displaceIn);
+  return pomSampleVisibility(opaqueSurfaceMaterial, texcoord, lightDirTangentSpace);
 }
 #endif
 
@@ -429,7 +437,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
   opaqueSurfaceMaterialInteraction.flags |= thinFilmEnabled ? OPAQUE_SURFACE_MATERIAL_INTERACTION_FLAG_USE_THIN_FILM_LAYER : 0;
 
 #ifdef OPAQUE_MATERIAL_USE_POM
-  if (cb.pomMode != DisplacementMode::Off && opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID && opaqueSurfaceMaterial.displaceIn > 0.0f)
+  if (cb.pomMode != DisplacementMode::Off && opaqueSurfaceMaterial.hasValidDisplacement())
   {
     const mat3 worldToTexture = inverse(transpose(mat3(surfaceInteraction.rawTangent, surfaceInteraction.rawBitangent, surfaceInteraction.interpolatedNormal)));
     // TextureGradient x might be along the same direction as the view ray?  make a debug view that shows the dot product between textureGradient.x and viewDirTangentSpace?
@@ -444,7 +452,7 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
         surfaceInteraction,
         viewDirTextureSpace,
         iterations).xy;
-    opaqueSurfaceMaterialInteraction.flags |= opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID ? OPAQUE_SURFACE_MATERIAL_INTERACTION_FLAG_HAS_HEIGHT_TEXTURE : 0;
+    opaqueSurfaceMaterialInteraction.flags |= OPAQUE_SURFACE_MATERIAL_INTERACTION_FLAG_HAS_HEIGHT_TEXTURE;
   }
 #endif
 

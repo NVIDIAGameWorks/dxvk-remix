@@ -67,7 +67,6 @@ f16vec3 handleVisibilityVertex<let VisibilityMode : uint>(Ray ray, RayHitInfo ra
   //   initialize these values and  help the compiler generate more optimal code paths.
   const bool requiresNormalsAndTangents = VisibilityMode & (visibilityModeEnableSubsurfaceMaterials|visibilityModeEnableTranslucentMaterials);
   {
-    surface.displaceIn = 0.f;
     surface.decalSortOrder = 0;
     surface.objectPickingValue = 0;
     surface.hashPacked = 0;
@@ -458,51 +457,51 @@ VisibilityResult traceVisibilityRay<let VisibilityMode : uint>(
     {
       if (primarySurfaceIndex != BINDING_INDEX_INVALID)
       {
-      const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
-      if (memoryPolymorphicSurfaceMaterial.isOpaque())
-      {
-        OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial, true);
-        
-        if (opaqueSurfaceMaterial.heightTextureIndex == BINDING_INDEX_INVALID)
+        const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
+        if (memoryPolymorphicSurfaceMaterial.isOpaque())
+        {
+          OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial, true);
+          
+          if (!opaqueSurfaceMaterial.hasValidDisplacement())
           {
-            storeInDebugView(getDispatchRaysIndex().xy, float3(0.5f, 0.f, 0.f));
+            storeInDebugView(getDispatchRaysIndex().xy, float3(0.0f, 1.f, 1.f));
+          }
+          else if (opaqueSurfaceMaterial.heightTextureIndex == BINDING_INDEX_INVALID)
+          {
+            storeInDebugView(getDispatchRaysIndex().xy, float3(0.0f, 1.f, 0.66f));
           }
         }
         else
         {
-          storeInDebugView(getDispatchRaysIndex().xy, float3(0.f, 0.5f, 0.f));
+          storeInDebugView(getDispatchRaysIndex().xy, float3(0.f, 1.f, 0.33f));
         }
       }
       else
       {
-        storeInDebugView(getDispatchRaysIndex().xy, float3(0.f, 0.f, 0.5f));
+        storeInDebugView(getDispatchRaysIndex().xy, float3(0.f, 1.f, 0.f));
       }
     }
 
     if (primarySurfaceIndex != BINDING_INDEX_INVALID)
     {
       const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[primarySurfaceIndex];
-      if (memoryPolymorphicSurfaceMaterial.isOpaque())
+      if (memoryPolymorphicSurfaceMaterial.hasValidDisplacement())
       {
         OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial, true);
         
-        if (opaqueSurfaceMaterial.heightTextureIndex != BINDING_INDEX_INVALID)
+        pomAttenuation = opaqueSurfaceMaterialInteractionCalcHeightThroughput(
+          minimalSurfaceInteraction, visibilityRay.direction, opaqueSurfaceMaterial, texCoords
+        );
+    
+        if (pomAttenuation <= 0.001f)
         {
-          pomAttenuation = opaqueSurfaceMaterialInteractionCalcHeightThroughput(
-            minimalSurfaceInteraction, visibilityRay.direction, opaqueSurfaceMaterial.heightTextureIndex,
-            opaqueSurfaceMaterial.samplerIndex, texCoords, opaqueSurfaceMaterial.displaceIn
-          );
-      
-          if (pomAttenuation <= 0.001f)
-          {
-            VisibilityResult result;
-            result.attenuation = pomAttenuation;
-            result.hasOpaqueHit = true;
-            result.rayDirection = visibilityRay.direction;
-            result.hitDistance = visibilityRay.tMax; // TODO should refactor POM code to return?
-            result.hasPOMHit = true;
-            return result;
-          }
+          VisibilityResult result;
+          result.attenuation = pomAttenuation;
+          result.hasOpaqueHit = true;
+          result.rayDirection = visibilityRay.direction;
+          result.hitDistance = visibilityRay.tMax; // TODO should refactor POM code to return?
+          result.hasPOMHit = true;
+          return result;
         }
       }
     }

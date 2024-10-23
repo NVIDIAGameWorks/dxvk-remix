@@ -479,7 +479,7 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
         const f16mat3 worldToTangent = f16mat3(surfaceInteraction.interpolatedTangent, surfaceInteraction.interpolatedBitangent, surfaceInteraction.interpolatedNormal);
         const f16vec3 viewDirTangentSpace = normalize(mul(worldToTangent, rayInteraction.viewDirection));
         // viewDirection is hitPos to camera, so invert it before converting to a texcoord offset.
-        const vec2 maxPossiblePomOffset = viewDirTangentSpace.xy * (-1.f * surface.displaceIn / viewDirTangentSpace.z);
+        const vec2 maxPossiblePomOffset = viewDirTangentSpace.xy * (-1.f * cb.terrainArgs.displaceIn / viewDirTangentSpace.z);
 
         const vec2 textureCenterOffset = texcoordToOffsetFromTextureCenter(surfaceInteraction.textureCoordinates + maxPossiblePomOffset);
         const float maxTextureCenterOffset = length(textureCenterOffset);

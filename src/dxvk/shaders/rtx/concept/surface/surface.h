@@ -448,12 +448,6 @@ struct Surface
     get { return data2.x; }
     set { data2.x = newValue; }
   }
-
-  property float16_t displaceIn
-  {
-    get { return uint16BitsToHalf(data0b.z); }
-    set { data0b.z = float16BitsToUint16(newValue); }
-  }
 };
 
 // Note: Minimal version of typical Surface Interaction for transmission across passes.
