@@ -651,6 +651,11 @@ namespace dxvk {
     // Hash material data
     m_activeDrawCallState.materialData.updateCachedHash();
 
+    // Custom hash set via unused D3D RenderState
+    if (m_activeDrawCallState.materialData.remixHashFromD3D) {
+      m_activeDrawCallState.materialData.setHashOverride(m_activeDrawCallState.materialData.remixHashFromD3D);
+    }
+
     // For shader based drawcalls we also want to capture the vertex shader output
     const bool needVertexCapture = m_parent->UseProgrammableVS() && useVertexCapture();
     if (needVertexCapture) {

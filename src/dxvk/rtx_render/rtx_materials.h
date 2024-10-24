@@ -1451,6 +1451,8 @@ struct LegacyMaterialData {
   uint32_t tFactor = 0xffffffff;  // Value for D3DRS_TEXTUREFACTOR, default value of is opaque white
   D3DMATERIAL9 d3dMaterial = {};
   bool isTextureFactorBlend = false;
+  uint32_t remixTextureCategoryFlagsFromD3D = 0;
+  uint32_t remixHashFromD3D = 0;
 
   void setHashOverride(XXH64_hash_t hash) {
     m_cachedHash = hash;

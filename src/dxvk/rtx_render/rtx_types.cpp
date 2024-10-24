@@ -128,39 +128,46 @@ namespace dxvk {
     }
   }
 
+  static bool wasCategorySetViaD3D(InstanceCategories category, uint32_t categoryFlags) {
+    return categoryFlags & (1 << static_cast<uint32_t>(category));
+  }
+
   void DrawCallState::setupCategoriesForTexture() {
     // TODO (REMIX-231): It would probably be much more efficient to use a map of texture hash to category flags, rather
     //                   than doing N lookups per texture hash for each category.
     const XXH64_hash_t& textureHash = materialData.getColorTexture().getImageHash();
 
-    setCategory(InstanceCategories::WorldUI, lookupHash(RtxOptions::worldSpaceUiTextures(), textureHash));
-    setCategory(InstanceCategories::WorldMatte, lookupHash(RtxOptions::worldSpaceUiBackgroundTextures(), textureHash));
+    const auto& d3dCategoryEnabled = RtxOptions::Get()->useUnusedRenderstates();
+    const auto& d3dCategoryFlag = materialData.remixTextureCategoryFlagsFromD3D;
 
-    setCategory(InstanceCategories::Ignore, lookupHash(RtxOptions::ignoreTextures(), textureHash));
-    setCategory(InstanceCategories::IgnoreLights, lookupHash(RtxOptions::ignoreLights(), textureHash));
-    setCategory(InstanceCategories::IgnoreAntiCulling, lookupHash(RtxOptions::antiCullingTextures(), textureHash));
-    setCategory(InstanceCategories::IgnoreMotionBlur, lookupHash(RtxOptions::motionBlurMaskOutTextures(), textureHash));
-    setCategory(InstanceCategories::IgnoreOpacityMicromap, lookupHash(RtxOptions::opacityMicromapIgnoreTextures(), textureHash) || isUsingRaytracedRenderTarget);
-    setCategory(InstanceCategories::IgnoreAlphaChannel, lookupHash(RtxOptions::ignoreAlphaOnTextures(), textureHash));
-    setCategory(InstanceCategories::IgnoreBakedLighting, lookupHash(RtxOptions::ignoreBakedLightingTextures(), textureHash));
+    setCategory(InstanceCategories::WorldUI, lookupHash(RtxOptions::worldSpaceUiTextures(), textureHash) || (d3dCategoryEnabled & wasCategorySetViaD3D(InstanceCategories::WorldUI, d3dCategoryFlag)));
+    setCategory(InstanceCategories::WorldMatte, lookupHash(RtxOptions::worldSpaceUiBackgroundTextures(), textureHash) || (d3dCategoryEnabled & wasCategorySetViaD3D(InstanceCategories::WorldMatte, d3dCategoryFlag)));
 
-    setCategory(InstanceCategories::Hidden, lookupHash(RtxOptions::hideInstanceTextures(), textureHash));
+    setCategory(InstanceCategories::Ignore, lookupHash(RtxOptions::ignoreTextures(), textureHash) || (d3dCategoryEnabled & wasCategorySetViaD3D(InstanceCategories::Ignore, d3dCategoryFlag)));
+    setCategory(InstanceCategories::IgnoreLights, lookupHash(RtxOptions::ignoreLights(), textureHash) || (d3dCategoryEnabled & wasCategorySetViaD3D(InstanceCategories::IgnoreLights, d3dCategoryFlag)));
+    setCategory(InstanceCategories::IgnoreAntiCulling, lookupHash(RtxOptions::antiCullingTextures(), textureHash) || (d3dCategoryEnabled & wasCategorySetViaD3D(InstanceCategories::IgnoreAntiCulling, d3dCategoryFlag)));
+    setCategory(InstanceCategories::IgnoreMotionBlur, lookupHash(RtxOptions::motionBlurMaskOutTextures(), textureHash) || (d3dCategoryEnabled & wasCategorySetViaD3D(InstanceCategories::IgnoreMotionBlur, d3dCategoryFlag)));
+    setCategory(InstanceCategories::IgnoreOpacityMicromap, lookupHash(RtxOptions::opacityMicromapIgnoreTextures(), textureHash) || isUsingRaytracedRenderTarget || (d3dCategoryEnabled & wasCategorySetViaD3D(InstanceCategories::IgnoreOpacityMicromap, d3dCategoryFlag)));
+    setCategory(InstanceCategories::IgnoreAlphaChannel, lookupHash(RtxOptions::ignoreAlphaOnTextures(), textureHash) || (d3dCategoryEnabled & wasCategorySetViaD3D(InstanceCategories::IgnoreAlphaChannel, d3dCategoryFlag)));
+    setCategory(InstanceCategories::IgnoreBakedLighting, lookupHash(RtxOptions::ignoreBakedLightingTextures(), textureHash) || (d3dCategoryEnabled & wasCategorySetViaD3D(InstanceCategories::IgnoreBakedLighting, d3dCategoryFlag)));
 
-    setCategory(InstanceCategories::Particle, lookupHash(RtxOptions::particleTextures(), textureHash));
-    setCategory(InstanceCategories::Beam, lookupHash(RtxOptions::beamTextures(), textureHash));
+    setCategory(InstanceCategories::Hidden, lookupHash(RtxOptions::hideInstanceTextures(), textureHash) || (d3dCategoryEnabled & wasCategorySetViaD3D(InstanceCategories::Hidden, d3dCategoryFlag)));
 
-    setCategory(InstanceCategories::DecalStatic, lookupHash(RtxOptions::decalTextures(), textureHash));
-    setCategory(InstanceCategories::DecalDynamic, lookupHash(RtxOptions::dynamicDecalTextures(), textureHash));
-    setCategory(InstanceCategories::DecalSingleOffset, lookupHash(RtxOptions::singleOffsetDecalTextures(), textureHash));
-    setCategory(InstanceCategories::DecalNoOffset, lookupHash(RtxOptions::nonOffsetDecalTextures(), textureHash));
+    setCategory(InstanceCategories::Particle, lookupHash(RtxOptions::particleTextures(), textureHash) || (d3dCategoryEnabled & wasCategorySetViaD3D(InstanceCategories::Particle, d3dCategoryFlag)));
+    setCategory(InstanceCategories::Beam, lookupHash(RtxOptions::beamTextures(), textureHash) || (d3dCategoryEnabled & wasCategorySetViaD3D(InstanceCategories::Beam, d3dCategoryFlag)));
 
-    setCategory(InstanceCategories::AnimatedWater, lookupHash(RtxOptions::animatedWaterTextures(), textureHash));
+    setCategory(InstanceCategories::DecalStatic, lookupHash(RtxOptions::decalTextures(), textureHash) || (d3dCategoryEnabled & wasCategorySetViaD3D(InstanceCategories::DecalStatic, d3dCategoryFlag)));
+    setCategory(InstanceCategories::DecalDynamic, lookupHash(RtxOptions::dynamicDecalTextures(), textureHash) || (d3dCategoryEnabled & wasCategorySetViaD3D(InstanceCategories::DecalDynamic, d3dCategoryFlag)));
+    setCategory(InstanceCategories::DecalSingleOffset, lookupHash(RtxOptions::singleOffsetDecalTextures(), textureHash) || (d3dCategoryEnabled & wasCategorySetViaD3D(InstanceCategories::DecalSingleOffset, d3dCategoryFlag)));
+    setCategory(InstanceCategories::DecalNoOffset, lookupHash(RtxOptions::nonOffsetDecalTextures(), textureHash) || (d3dCategoryEnabled & wasCategorySetViaD3D(InstanceCategories::DecalNoOffset, d3dCategoryFlag)));
 
-    setCategory(InstanceCategories::ThirdPersonPlayerModel, lookupHash(RtxOptions::playerModelTextures(), textureHash));
-    setCategory(InstanceCategories::ThirdPersonPlayerBody, lookupHash(RtxOptions::playerModelBodyTextures(), textureHash));
+    setCategory(InstanceCategories::AnimatedWater, lookupHash(RtxOptions::animatedWaterTextures(), textureHash) || (d3dCategoryEnabled & wasCategorySetViaD3D(InstanceCategories::AnimatedWater, d3dCategoryFlag)));
 
-    setCategory(InstanceCategories::Terrain, lookupHash(RtxOptions::terrainTextures(), textureHash));
-    setCategory(InstanceCategories::Sky, lookupHash(RtxOptions::skyBoxTextures(), textureHash));
+    setCategory(InstanceCategories::ThirdPersonPlayerModel, lookupHash(RtxOptions::playerModelTextures(), textureHash) || (d3dCategoryEnabled & wasCategorySetViaD3D(InstanceCategories::ThirdPersonPlayerModel, d3dCategoryFlag)));
+    setCategory(InstanceCategories::ThirdPersonPlayerBody, lookupHash(RtxOptions::playerModelBodyTextures(), textureHash) || (d3dCategoryEnabled & wasCategorySetViaD3D(InstanceCategories::ThirdPersonPlayerBody, d3dCategoryFlag)));
+
+    setCategory(InstanceCategories::Terrain, lookupHash(RtxOptions::terrainTextures(), textureHash) || (d3dCategoryEnabled & wasCategorySetViaD3D(InstanceCategories::Terrain, d3dCategoryFlag)));
+    setCategory(InstanceCategories::Sky, lookupHash(RtxOptions::skyBoxTextures(), textureHash) || (d3dCategoryEnabled & wasCategorySetViaD3D(InstanceCategories::Sky, d3dCategoryFlag)));
   }
 
   void DrawCallState::setupCategoriesForGeometry() {
@@ -297,9 +304,12 @@ namespace dxvk {
       return true;
     }
 
-    // NOTE: we use color texture hash for sky detection, however the replacement is hashed with
-    // the whole legacy material hash (which, as of 12/9/2022, equals to color texture hash). Adding a check just in case.
-    assert(drawCallState.getMaterialData().getColorTexture().getImageHash() == drawCallState.getMaterialData().getHash() && "Texture or material hash method changed!");
+    // NOTE: disable assert if material is using a custom hash that was set via an unused D3D RenderState
+    if (!drawCallState.getMaterialData().remixHashFromD3D) {
+      // NOTE: we use color texture hash for sky detection, however the replacement is hashed with
+      // the whole legacy material hash (which, as of 12/9/2022, equals to color texture hash). Adding a check just in case.
+      assert(drawCallState.getMaterialData().getColorTexture().getImageHash() == drawCallState.getMaterialData().getHash() && "Texture or material hash method changed!");
+    }
 
     if (drawCallState.getMaterialData().usesTexture()) {
       if (lookupHash(RtxOptions::skyBoxTextures(), drawCallState.getMaterialData().getHash())) {
