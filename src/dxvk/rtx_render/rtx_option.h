@@ -72,7 +72,7 @@ namespace dxvk {
   };
 
   struct RtxOptionImpl {
-    using RtxOptionMap = std::map<std::string, std::shared_ptr<RtxOptionImpl>>;
+    using RtxOptionMap = std::map<XXH64_hash_t, std::shared_ptr<RtxOptionImpl>>;
     enum class ValueType {
       Value = 0,
       DefaultValue = 1,
@@ -260,12 +260,13 @@ namespace dxvk {
   private:
     bool allocateMemory(const char* category, const char* name, const char* environment, uint32_t flags, const char* description) {
       const std::string fullName = RtxOptionImpl::getFullName(category, name);
+      const XXH64_hash_t optionHash = StringToXXH64(fullName, 0);
       auto& globalRtxOptions = RtxOptionImpl::getGlobalRtxOptionMap();
-      auto pOption = globalRtxOptions.find(fullName);
+      auto pOption = globalRtxOptions.find(optionHash);
       if (pOption == globalRtxOptions.end()) {
         // Cannot find existing object, make a new one
         pImpl = std::make_shared<RtxOptionImpl>(name, category, environment, getOptionType(), flags, description);
-        globalRtxOptions[fullName] = pImpl;
+        globalRtxOptions[optionHash] = pImpl;
         return true;
       } else {
         // If the variable already exists, use the existing object

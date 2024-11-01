@@ -379,8 +379,19 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 
       // Write out all RTX Options
       auto& globalRtxOptions = getGlobalRtxOptionMap();
+
+      // Need to sort the options alphabetically by full name.
+      std::vector<RtxOptionImpl*> sortedOptions;
+      sortedOptions.reserve(globalRtxOptions.size());
       for (const auto& rtxOptionMapEntry : globalRtxOptions) {
-        const RtxOptionImpl& rtxOption = *rtxOptionMapEntry.second.get();
+        sortedOptions.push_back(rtxOptionMapEntry.second.get());
+      }  
+      std::sort(sortedOptions.begin(), sortedOptions.end(), [](RtxOptionImpl* a, RtxOptionImpl* b) {
+        return a->getFullName() < b->getFullName();
+      });
+
+      for (const RtxOptionImpl* rtxOptionsPtr : sortedOptions) {
+        const RtxOptionImpl& rtxOption = *rtxOptionsPtr;
 
         // Allow processing of short or long value entry categories separately
         {

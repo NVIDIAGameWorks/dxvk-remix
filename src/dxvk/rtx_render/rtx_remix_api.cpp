@@ -996,7 +996,8 @@ namespace {
     std::string strKey = std::string{ key };
 
     const auto& globalRtxOptions = dxvk::RtxOptionImpl::getGlobalRtxOptionMap();
-    auto found = globalRtxOptions.find(strKey);
+    const XXH64_hash_t optionHash = dxvk::StringToXXH64(strKey, 0);
+    auto found = globalRtxOptions.find(optionHash);
     if (found == globalRtxOptions.end()) {
       return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
     }

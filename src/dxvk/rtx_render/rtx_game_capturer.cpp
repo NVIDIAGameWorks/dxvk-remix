@@ -1023,7 +1023,7 @@ namespace dxvk {
     exportPrep.meta.isZUp = RtxOptions::Get()->isZUp();
     if (s_captureRemixConfigs) {
       for (auto& pair : RtxOptionImpl::getGlobalRtxOptionMap()) {
-        exportPrep.meta.renderingSettingsDict[pair.first] = pair.second->genericValueToString(RtxOptionImpl::ValueType::Value);
+        exportPrep.meta.renderingSettingsDict[pair.second->getFullName()] = pair.second->genericValueToString(RtxOptionImpl::ValueType::Value);
       }
     }
     exportPrep.meta.bCorrectBakedTransforms = false;
