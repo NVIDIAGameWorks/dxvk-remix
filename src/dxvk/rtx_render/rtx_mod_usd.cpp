@@ -146,8 +146,8 @@ XXH64_hash_t getStrongestOpinionatedPathHash(const pxr::UsdPrim& prim) {
       std::string originPath = spec->GetPath().GetString();
 
       XXH64_hash_t usdOriginHash = 0;
-      usdOriginHash = XXH64(originOfMeshFile.c_str(), originOfMeshFile.size(), usdOriginHash);
-      usdOriginHash = XXH64(originPath.c_str(), originPath.size(), usdOriginHash);
+      usdOriginHash = StringToXXH64(originOfMeshFile, usdOriginHash);
+      usdOriginHash = StringToXXH64(originPath, usdOriginHash);
 
       return usdOriginHash;
     }
