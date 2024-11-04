@@ -57,7 +57,7 @@ namespace dxvk {
     dxvk::thread m_asyncAssetLoadThread;
 
     RTX_OPTION("rtx.initializer", bool, asyncAssetLoading, true, "");
-    RTX_OPTION("rtx.initializer", bool, asyncShaderPrewarming, true, "");
+    RTX_OPTION_ENV("rtx.initializer", bool, asyncShaderPrewarming, true, "RTX_ASYNC_SHADER_PREWARMING", "");
     RTX_OPTION("rtx.initializer", bool, asyncShaderFinalizing, true, "");
   };
 
