@@ -176,6 +176,14 @@ namespace dxvk {
 
     materialData.alphaBlendEnabled = d3d9State.renderStates[D3DRS_ALPHABLENDENABLE] != FALSE;
 
+    if (RtxOptions::Get()->useUnusedRenderstates()) {
+      materialData.remixTextureCategoryFlagsFromD3D = d3d9State.renderStates[42] != 0xfefefefe ? d3d9State.renderStates[42] : 0u; // D3DRENDERSTATETYPE index 42 is not in use - unused values are set to 0xfefefefe
+
+      if (d3d9State.renderStates[150] != 0 && d3d9State.renderStates[150] != 0xfefefefe) { // D3DRENDERSTATETYPE index 150 is not in use - unused values are set to 0xfefefefe
+        materialData.setHashOverride(d3d9State.renderStates[150]);
+      }
+    }
+
     if (materialData.alphaBlendEnabled) {
       D3D9BlendState color;
       color.Src = D3DBLEND(d3d9State.renderStates[D3DRS_SRCBLEND]);
