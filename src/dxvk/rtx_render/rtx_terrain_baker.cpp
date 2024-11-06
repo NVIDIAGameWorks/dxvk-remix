@@ -37,6 +37,11 @@
 #include "../../dxso/dxso_util.h"
 #include "../../d3d9/d3d9_caps.h"
 
+namespace {
+  // By default, a value of 1.f will have 0 displacement.
+  const float kDefaultNeutralHeight = 1.f;
+}
+
 namespace dxvk {
 
   uint32_t getMipLevels(ReplacementMaterialTextureType::Enum textureType, const VkExtent3D& extent) {
@@ -79,10 +84,12 @@ namespace dxvk {
   }
 
   VkClearColorValue TerrainBaker::getClearColor(ReplacementMaterialTextureType::Enum textureType) {
-    float neutral_height = m_prevFrameMaxDisplaceIn / (m_prevFrameMaxDisplaceIn + m_prevFrameMaxDisplaceOut);
+    const float prevFrameTotalHeight = m_prevFrameMaxDisplaceIn + m_prevFrameMaxDisplaceOut;
+    float neutral_height = prevFrameTotalHeight != 0.f ? m_prevFrameMaxDisplaceIn / prevFrameTotalHeight : kDefaultNeutralHeight;
     switch (textureType) {
     case ReplacementMaterialTextureType::Height:
       // height maps should be cleared to neutral_height, which keeps the displaced surface identical to the original surface.
+      // The height texture should be single channel, so only the first value actually matters.
       return { neutral_height, neutral_height, neutral_height, neutral_height };
       break;
 
@@ -188,7 +195,8 @@ namespace dxvk {
         const float materialTotalHeight = replacementMaterial->getDisplaceIn() + replacementMaterial->getDisplaceOut();
 
         conversionInfo.scale = prevFrameTotalHeight <= 0.f ? 0.f : materialTotalHeight / prevFrameTotalHeight;
-        conversionInfo.offset = prevFrameTotalHeight <= 0.f ? 0.f : -1.f * replacementMaterial->getDisplaceIn() / materialTotalHeight;
+        // We want to subtract the original neutral displacement, then scale the values, then add the new neutral displacement.
+        conversionInfo.offset = -1.f * (materialTotalHeight == 0.f ? kDefaultNeutralHeight : (replacementMaterial->getDisplaceIn() / materialTotalHeight));
         m_currFrameMaxDisplaceIn = std::max(m_currFrameMaxDisplaceIn, replacementMaterial->getDisplaceIn());
         m_currFrameMaxDisplaceOut = std::max(m_currFrameMaxDisplaceOut, replacementMaterial->getDisplaceOut());
       }
@@ -404,7 +412,9 @@ namespace dxvk {
     ctx->setSpecConstant(VK_PIPELINE_BIND_POINT_GRAPHICS, D3D9SpecConstantId::ReplacementTextureCategory, static_cast<uint32_t>(ReplacementMaterialTextureCategory::AlbedoOpacity));
     
     // The height value that corresponds to the original surface height.
-    const float neutralDisplacement = m_prevFrameMaxDisplaceIn / ( m_prevFrameMaxDisplaceIn + m_prevFrameMaxDisplaceOut);
+    const float prevFrameTotalHeight = m_prevFrameMaxDisplaceIn + m_prevFrameMaxDisplaceOut;
+    const float neutralDisplacement = prevFrameTotalHeight != 0.f ? m_prevFrameMaxDisplaceIn / prevFrameTotalHeight : kDefaultNeutralHeight;
+
 
     // Bake all material textures
     for (uint32_t iTexture = 0; iTexture < numTexturesToBake; iTexture++) {
