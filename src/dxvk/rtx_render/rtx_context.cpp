@@ -942,8 +942,10 @@ namespace dxvk {
     constants.enableDirectLighting = RtxOptions::Get()->isDirectLightingEnabled();
     constants.enableStochasticAlphaBlend = m_common->metaComposite().enableStochasticAlphaBlend();
     constants.enableSeparateUnorderedApproximations = RtxOptions::Get()->enableSeparateUnorderedApproximations() && getResourceManager().getTLAS(Tlas::Unordered).accelStructure != nullptr;
-    constants.enableDirectTranslucentShadows = RtxOptions::Get()->areDirectTranslucentShadowsEnabled();
-    constants.enableIndirectTranslucentShadows = RtxOptions::Get()->areIndirectTranslucentShadowsEnabled();
+    constants.enableDirectTranslucentShadows = RtxOptions::enableDirectTranslucentShadows();
+    constants.enableDirectAlphaBlendShadows = RtxOptions::enableDirectAlphaBlendShadows();
+    constants.enableIndirectTranslucentShadows = RtxOptions::enableIndirectTranslucentShadows();
+    constants.enableIndirectAlphaBlendShadows = RtxOptions::enableIndirectAlphaBlendShadows();
     constants.enableRussianRoulette = RtxOptions::Get()->isRussianRouletteEnabled();
     constants.enableDemodulateRoughness = m_common->metaDemodulate().demodulateRoughness();
     constants.enableReplaceDirectSpecularHitTWithIndirectSpecularHitT = RtxOptions::Get()->isReplaceDirectSpecularHitTWithIndirectSpecularHitTEnabled();

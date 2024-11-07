@@ -173,6 +173,7 @@ void main(uint2 threadIndex : SV_DispatchThreadID, uint2 LocalIndex : SV_GroupTh
     if (portalID == invalidRayPortalIndex || portalID < cb.numActiveRayPortals)
     {
       uint8_t rayMask = OBJECT_MASK_OPAQUE | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC);
+      rayMask |= (cb.enableIndirectAlphaBlendShadows) ? OBJECT_MASK_ALPHA_BLEND : 0;
 
       // Use non-zero cone spread angle to reduce noise if there are alpha tested objects, like the fences in the portal game.
       // The value is based on experiment. If incorrect shadows are observed, a smaller value should be used.

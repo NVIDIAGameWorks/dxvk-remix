@@ -234,6 +234,8 @@ void main(int2 thread_id : SV_DispatchThreadID)
     // Calculate reflection hit T
     uint8_t backupPortalID = RTXDI_INVALID_PORTAL_INDEX;
     uint8_t rayMask = OBJECT_MASK_OPAQUE | (surface.objectMask & OBJECT_MASK_ALL_DYNAMIC);
+    rayMask |= (cb.enableIndirectAlphaBlendShadows) ? OBJECT_MASK_ALPHA_BLEND : 0;
+    
     const float infiniteHitT = 1e5;
     float3 dstPosition = worldPos + reflectionVector * infiniteHitT;
     VisibilityResult visibility = traceVisibilityRay<visibilityModeAccurateHitDistance>(surface.minimalSurfaceInteraction,

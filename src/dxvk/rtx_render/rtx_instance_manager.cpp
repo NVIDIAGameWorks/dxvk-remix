@@ -1122,7 +1122,7 @@ namespace dxvk {
             // Portal
             mask |= OBJECT_MASK_PORTAL;
           } else {
-            mask |= OBJECT_MASK_OPAQUE;
+            mask |= currentInstance.surface.alphaState.isBlendingDisabled ? OBJECT_MASK_OPAQUE : OBJECT_MASK_ALPHA_BLEND;
           }
         }
       }

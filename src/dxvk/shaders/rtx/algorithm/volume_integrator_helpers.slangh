@@ -29,7 +29,7 @@ VisibilityResult evalVolumeNEEVisibility(
   // to cast rays through them (as this would be expensive). We may want to add a bit more nuance here in the future to allow
   // approximations of glass as large glass objects should ideally cast tinted shadows into particles, but we currently do not
   // have a way to discriminate between translucency and opacity (and have no more bits available at least for now for this).
-  uint8_t rayMask = OBJECT_MASK_OPAQUE;
+  uint8_t rayMask = OBJECT_MASK_OPAQUE | OBJECT_MASK_ALPHA_BLEND;
 
   // Note: Culling disabled via visibilityModeDisableCulling to avoid light leaking through geometry as this is especially
   // bad in volumetrics due to how the voxels leak through walls to begin with. Other NEE does not disable culling like this

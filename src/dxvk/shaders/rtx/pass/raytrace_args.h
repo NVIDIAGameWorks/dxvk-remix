@@ -225,8 +225,10 @@ struct RaytraceArgs {
   uint enableSecondaryBounces;
   uint enableSeparateUnorderedApproximations;
   uint enableStochasticAlphaBlend;
-  uint enableDirectTranslucentShadows;
-  uint enableIndirectTranslucentShadows;
+  uint16_t enableDirectTranslucentShadows;
+  uint16_t enableDirectAlphaBlendShadows;
+  uint16_t enableIndirectTranslucentShadows;
+  uint16_t enableIndirectAlphaBlendShadows;
   uint enableFirstBounceLobeProbabilityDithering;
   uint enableUnorderedResolveInIndirectRays;
   uint enableProbabilisticUnorderedResolveInIndirectRays;
