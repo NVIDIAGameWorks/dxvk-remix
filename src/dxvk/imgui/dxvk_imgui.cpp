@@ -1509,6 +1509,7 @@ namespace dxvk {
       ImGui::Indent();
       ImGui::Checkbox("Enable Instance Debugging", &RtxOptions::enableInstanceDebuggingToolsObject());
       ImGui::Checkbox("Disable Draw Calls Post RTX Injection", &RtxOptions::Get()->skipDrawCallsPostRTXInjectionObject());
+      ImGui::Checkbox("Break into Debugger On Press of Key 'B'", &RtxOptions::enableBreakIntoDebuggerOnPressingBObject());
       if (ImGui::Checkbox("Block Input to Game in UI", &RtxOptions::Get()->blockInputToGameInUIObject())) {
         sendUIActivationMessage();
       }

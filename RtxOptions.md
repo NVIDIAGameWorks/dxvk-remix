@@ -202,6 +202,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.enableAlwaysCalculateAABB|bool|False|Calculate an Axis Aligned Bounding Box for every draw call\.<br> This may improve instance tracking across frames for skinned and vertex shaded calls\.|
 |rtx.enableAsyncTextureUpload|bool|True||
 |rtx.enableBillboardOrientationCorrection|bool|True||
+|rtx.enableBreakIntoDebuggerOnPressingB|bool|False|Enables a break into a debugger at the start of InjectRTX\(\) on a press of key 'B'\.<br>If debugger is not attached at the time, it will wait until a debugger is attached and break into it then\.|
 |rtx.enableCulling|bool|True|Enable front/backface culling for opaque objects\. Objects with alpha blend or alpha test are not culled\.|
 |rtx.enableCullingInSecondaryRays|bool|False|Enable front/backface culling for opaque objects\. Objects with alpha blend or alpha test are not culled\.  Only applies in secondary rays, defaults to off\.  Generally helps with light bleeding from objects that aren't watertight\.|
 |rtx.enableDLSSEnhancement|bool|True|Enhances lighting details when DLSS is on\.|

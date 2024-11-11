@@ -401,6 +401,13 @@ namespace dxvk {
   void RtxContext::injectRTX(std::uint64_t cachedReflexFrameId, Rc<DxvkImage> targetImage) {
     ScopedCpuProfileZone();
 
+    if (RtxOptions::enableBreakIntoDebuggerOnPressingB() && ImGUI::checkHotkeyState({VirtualKey{ 'B' }}, true)) {
+      while (!::IsDebuggerPresent()) {
+        ::Sleep(100);
+      }
+      __debugbreak();
+    }
+
     commitGraphicsState<true, false>();
 
     m_device->setPresentThrottleDelay(RtxOptions::Get()->getPresentThrottleDelay());

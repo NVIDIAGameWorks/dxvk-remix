@@ -99,18 +99,6 @@ void accumulateRadiance(inout PathState pathState, vec3 radiance)
   accumulateRadiance(pathState.radiance, pathState, radiance);
 }
 
-void evalEmission(
-  inout PathState pathState,
-  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction)
-{
-  // Add in Emissive contribution
-
-  const vec3 emissiveRadiance = polymorphicSurfaceMaterialInteractionEvalEmissiveRadiance(polymorphicSurfaceMaterialInteraction);
-
-  accumulateRadiance(pathState, emissiveRadiance);
-}
-
-
 // Calculate a point's screen space position, if it's outside the screen, move it to screen boundary.
 // Return if the point is inside the screen.
 bool calculateScreenBoundedPixelCoordinate(mat4 transformMatrix, vec3 position, inout ivec2 pixelCoordinate)
@@ -1136,6 +1124,9 @@ void integratorIndirectPathOutputDebugView(
       else
         storeInDebugView(ivec2(pixelCoordinate), 0);
     }
+    break;
+  case DEBUG_VIEW_NOISY_PATHRACED_RAW_INDIRECT_RADIANCE:
+    storeInDebugView(ivec2(pathState.pixelCoordinate), pathState.radiance);
     break;
   case DEBUG_VIEW_NOISY_SECONDARY_INDIRECT_RADIANCE:
     if (!geometryFlags.primarySelectedIntegrationSurface)

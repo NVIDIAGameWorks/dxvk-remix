@@ -244,6 +244,7 @@ namespace dxvk {
         {DEBUG_VIEW_NOISY_DEMODULATED_SECONDARY_COMBINED_SPECULAR_RADIANCE,"Secondary Combined Specular: Demodulated Noisy Color"},
         {DEBUG_VIEW_DENOISED_SECONDARY_COMBINED_SPECULAR_RADIANCE,         "Secondary Combined Specular: Denoised Color"},
 
+        {DEBUG_VIEW_NOISY_PATHRACED_RAW_INDIRECT_RADIANCE,                 "Pathtraced Indirect (raw): Noisy Color" },
         {DEBUG_VIEW_NOISY_PRIMARY_DIRECT_RADIANCE,                         "Primary Direct: Noisy Color" },
         {DEBUG_VIEW_NOISY_PRIMARY_INDIRECT_RADIANCE,                       "Primary Indirect: Noisy Color" },
         {DEBUG_VIEW_NOISY_PRIMARY_RADIANCE,                                "Primary: Noisy Color" },
