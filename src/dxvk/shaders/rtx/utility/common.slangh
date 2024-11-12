@@ -82,15 +82,23 @@ bool isValidValue(vec4 value)
   return !(any(isnan(value)) || any(isinf(value)));
 }
 
-float sanitize(float val, float defaultVal) {
+float sanitize(float val, float defaultVal)
+{
   return isValidValue(val) ? val : defaultVal;
 }
 
-vec3 sanitize(vec3 val, vec3 defaultVal) {
+vec2 sanitize(vec2 val, vec2 defaultVal)
+{
   return isValidValue(val) ? val : defaultVal;
 }
 
-vec4 sanitize(vec4 val, vec4 defaultVal) {
+vec3 sanitize(vec3 val, vec3 defaultVal)
+{
+  return isValidValue(val) ? val : defaultVal;
+}
+
+vec4 sanitize(vec4 val, vec4 defaultVal)
+{
   return isValidValue(val) ? val : defaultVal;
 }
 

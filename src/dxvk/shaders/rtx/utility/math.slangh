@@ -322,7 +322,7 @@ f16vec4 quaternionMultiply(f16vec4 q1, f16vec4 q2, bool signBitIsParity = false)
 // Calculates a tangent and bitangent vector in the direction of the U and V coordinates of a triangle orthonormal to a
 // specified normal (this may be a triangle normal or an interpolated normal depending on the use case).
 // Note that the vectors this function returns may form an improper rotation when converted to a transformation due to a swap of
-// handedness. No gaurantees for left or right handedness are made as it depends on the triangle's UV layout.
+// handedness. No guarantees for left or right handedness are made as it depends on the triangle's UV layout.
 void genTangSpace(vec2 uvs[3],
                   vec3 pos[3],
                   f16vec3 normal,
@@ -358,7 +358,7 @@ void genTangSpace(vec2 uvs[3],
     rawTangent = (duv12[1] * dp02 - duv02[1] * dp12) * invdet;
     rawBitangent = (-duv12[0] * dp02 + duv02[0] * dp12) * invdet;
   }
-  // rawTangent and rawBitangent are too large for fp16, but We need the non-uniform component of the scale for POM.
+  // rawTangent and rawBitangent are too large for fp16, but we need the non-uniform component of the scale for POM.
   // Here, we scale both down by the length of the larger vector.
   float largerRawLength = sqrt(max(squareLength(rawTangent), squareLength(rawBitangent)));
   

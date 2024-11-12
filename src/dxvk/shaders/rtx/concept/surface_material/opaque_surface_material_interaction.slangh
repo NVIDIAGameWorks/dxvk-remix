@@ -87,7 +87,15 @@ float4 pomGetPatchCorners(Texture2D texture, SamplerState sampler, float2 boxCen
 }
 
 // cast a ray in tangent space.  return an intersection point in tangent point (or an exit point if z > 1.0f)
-float3 pomTraceRay(Texture2D texture, SamplerState sampler, float3 origin, float3 direction, float2 textureGradientX, float2 textureGradientY, inout uint iterations, float neutralHeight)
+float3 pomTraceRay(
+  Texture2D texture,
+  SamplerState sampler,
+  float3 origin,
+  float3 direction,
+  float2 textureGradientX,
+  float2 textureGradientY,
+  inout uint iterations,
+  float neutralHeight)
 {
   // Potential future improvements for outwards rays:
   // 1) calculate starting height the same way the box intersection code does instead of just sampling at a pixel.
@@ -155,7 +163,7 @@ float3 pomTraceRay(Texture2D texture, SamplerState sampler, float3 origin, float
         // causes smooth slops to turn jagged. It may be an improvement to use that approach only when the current
         // pixel is the largest or smallest of all the neighbors, but that seemed too complex to be worth pursuing.
         
-        // Calculate the point where  the ray entered this box:
+        // Calculate the point where the ray entered this box:
         const float2 boxNearCorner = boxCenter - forwardHalfStep * boxSize;
         const float2 boxEntranceDist = (boxNearCorner - origin.xy) / direction.xy;
         const float3 boxEntrance = origin + max(0.0f, max(boxEntranceDist.x, boxEntranceDist.y)) * direction;
@@ -217,10 +225,12 @@ float3 pomTraceRay(Texture2D texture, SamplerState sampler, float3 origin, float
   }
 
   // Outwards rays can go past the top of the POM surface, so limit it to there.
-  if (curPos.z > 1) {
+  if (curPos.z > 1)
+  {
     float distToOne = (1.0f - origin.z) / direction.z;
     return origin + distToOne * direction;
   }
+
   return curPos;
 }
 
@@ -445,13 +455,17 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
     f16vec3 viewDirTextureSpace = normalize(mul(worldToTexture, minimalRayInteraction.viewDirection));
     // Note: -1.f * TextureGradientX has the same x,y direction as viewDirTextureSpace, but calculating the correct z value is non-obvious.
     // Could potentially remove the need for the worldToTexture transform if a faster way to calculate that z value is found.
-
+    
     uint iterations = 0; // unused
-    surfaceInteraction.textureCoordinates = pomCalculateTexcoord(
+    const vec2 pomTextureCoordinates = pomCalculateTexcoord(
         opaqueSurfaceMaterial,
         surfaceInteraction,
         viewDirTextureSpace,
         iterations).xy;
+
+    // WAR for REMIX-3709 - POM sometimes produces NaNs.
+    surfaceInteraction.textureCoordinates = sanitize(pomTextureCoordinates, surfaceInteraction.textureCoordinates);
+
     opaqueSurfaceMaterialInteraction.flags |= OPAQUE_SURFACE_MATERIAL_INTERACTION_FLAG_HAS_HEIGHT_TEXTURE;
   }
 #endif
