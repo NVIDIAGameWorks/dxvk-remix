@@ -31,9 +31,9 @@ namespace dxvk {
   class RtxContext;
 
   class DxvkRtxdiRayQuery {
-    
+
   public:
-    
+
     DxvkRtxdiRayQuery(DxvkDevice* device);
     ~DxvkRtxdiRayQuery() = default;
 
