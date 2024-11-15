@@ -152,7 +152,15 @@ Ray sampleDirection(
 
   const vec3 directionSampleThroughput = surfaceMaterialInteractionSample.throughput / surfaceMaterialInteractionLobeSample.pdf;
 
-  throughput *= directionSampleThroughput;
+  if (isValidValue(directionSampleThroughput))
+  {
+    throughput *= directionSampleThroughput;
+  }
+  else
+  {
+    // REMIX-3706 - WAR for the math not being fully robust - invalidate the sample
+    throughput = 0;
+  }
 
   return sampledRay;
 }
