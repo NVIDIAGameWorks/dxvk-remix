@@ -278,6 +278,7 @@ struct RaytraceArgs {
   float enhanceBSDFIndirectLightMaxValue;
   float enhanceBSDFIndirectLightMinRoughness;
 
+  uint startInMediumMaterialIndex;
   uint enableReSTIRGI;
   uint enableReSTIRGIFinalVisibility;
   uint enableReSTIRGIReflectionReprojection;

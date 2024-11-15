@@ -402,6 +402,10 @@ struct FogState {
   float scale = 0.f;
   float end = 0.f;
   float density = 0.f;
+
+  XXH64_hash_t getHash() const {
+    return XXH3_64bits(this, sizeof(FogState));
+  }
 };
 
 enum class InstanceCategories : uint32_t {

@@ -96,6 +96,7 @@ namespace dxvk {
     static void AddTexture(const XXH64_hash_t hash, const Rc<DxvkImageView>& imageView, uint32_t textureFeatureFlags);
     static void ReleaseTexture(const XXH64_hash_t hash);
     static bool checkHotkeyState(const VirtualKeys& virtKeys, const bool allowContinuousPress = false);
+    static void SetFogStates(const fast_unordered_cache<FogState>& fogStates, XXH64_hash_t usedFogHash);
 
     void switchMenu(UIType type, bool force = false);
     

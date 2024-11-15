@@ -178,7 +178,10 @@ public:
   RtCamera& getCamera() { return m_cameraManager.getMainCamera(); }
 
   FogState& getFogState() { return m_fog; }
+  const fast_unordered_cache<FogState>& getFogStates() const { return m_fogStates; }
   void clearFogState();
+
+  uint32_t getStartInMediumMaterialIndex() { return m_startInMediumMaterialIndex; }
   
   uint32_t getActivePOMCount() {return m_activePOMCount;}
 
@@ -225,6 +228,11 @@ private:
   // Consumes a draw call state and updates the scene state accordingly
   uint64_t processDrawCallState(Rc<DxvkContext> ctx, const DrawCallState& blasInput, const MaterialData* replacementMaterialData);
 
+  void createSurfaceMaterial( Rc<DxvkContext> ctx, 
+                              std::optional<RtSurfaceMaterial>& surfaceMaterial, 
+                              const MaterialData& renderMaterialData,
+                              const DrawCallState& drawCallState);
+
   // Updates ref counts for new buffers
   void updateBufferCache(RaytraceGeometry& newGeoData);
 
@@ -270,6 +278,8 @@ private:
   std::unique_ptr<TerrainBaker> m_terrainBaker;
 
   FogState m_fog;
+  fast_unordered_cache<FogState> m_fogStates;
+  uint32_t m_startInMediumMaterialIndex = BINDING_INDEX_INVALID;
 
   // TODO: Move the following resources and getters to RtResources class
   Rc<DxvkBuffer> m_surfaceMaterialBuffer;

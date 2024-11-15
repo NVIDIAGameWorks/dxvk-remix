@@ -1109,6 +1109,7 @@ namespace dxvk {
     
     constants.volumeArgs = getSceneManager().getVolumeManager().getVolumeArgs(cameraManager, 
       rtOutput.m_froxelVolumeExtent, rtOutput.m_numFroxelVolumes, getSceneManager().getFogState(), enablePortalVolumes);
+    constants.startInMediumMaterialIndex = getSceneManager().getStartInMediumMaterialIndex();
     RtxOptions::Get()->opaqueMaterialOptions.fillShaderParams(constants.opaqueMaterialArgs);
     RtxOptions::Get()->translucentMaterialOptions.fillShaderParams(constants.translucentMaterialArgs);
     RtxOptions::Get()->viewDistanceOptions.fillShaderParams(constants.viewDistanceArgs, RtxOptions::Get()->getMeterToWorldUnitScale());
