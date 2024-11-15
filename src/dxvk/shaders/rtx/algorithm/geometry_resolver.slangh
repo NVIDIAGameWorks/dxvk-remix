@@ -1170,6 +1170,32 @@ void geometryResolverVertex(
     geometryResolverState.pomOpaqueSurfaceEncountered,
     isRaytracedRenderTarget,
     false, true);
+  
+  if (cb.startInMediumMaterialIndex != BINDING_INDEX_INVALID)
+  {
+    const MemoryPolymorphicSurfaceMaterial memoryPolymorphicSurfaceMaterial = surfaceMaterials[cb.startInMediumMaterialIndex];
+    const TranslucentSurfaceMaterial translucentSurfaceMaterial = translucentSurfaceMaterialCreate(memoryPolymorphicSurfaceMaterial);
+
+    // Calculate the volume transmittance
+
+    f16vec3 volumeTransmittance;
+
+    if (rayInteractionHasHit(rayInteraction))
+    {
+      volumeTransmittance = translucentSurfaceMaterialEvalVolumeTransmittance(
+        translucentSurfaceMaterial, rayInteraction.hitDistance);
+    }
+    else
+    {
+      // Note: Assume infinite hit distance on miss. This wouldn't be true with things that have a practical tMax
+      // value (such as NEE rays), but for the geometry resolver this is a fine assumption.
+      volumeTransmittance = translucentSurfaceMaterialEvalInfiniteVolumeTransmittance(
+        translucentSurfaceMaterial);
+    }
+
+    geometryResolverState.attenuation *= volumeTransmittance;
+
+  }
 
   if (cb.outputParticleLayer)
   {
@@ -1358,7 +1384,8 @@ void geometryResolverVertex(
   // which changes the medium flag.
 
   const bool enteredMedium = !oldInsideMedium && geometryResolverState.insideMedium;
-  uint16_t transmissionMediumMaterialIndex = BINDING_INDEX_INVALID;
+  const bool exitedMedium = oldInsideMedium && !geometryResolverState.insideMedium;
+  uint16_t transmissionMediumMaterialIndex = cb.startInMediumMaterialIndex;
 
   if (enteredMedium)
   {
@@ -1368,6 +1395,10 @@ void geometryResolverVertex(
     // Note: Only setting this for PSTR as it's the only path currently which would need this information (PSRR doesn't off the first interaction at least, but does later
     // during PSR resolving due to things like TIR).
     transmissionMediumMaterialIndex = translucentSurfaceMaterialInteraction.sourceSurfaceMaterialIndex;
+  }
+  else if (exitedMedium)
+  {
+    transmissionMediumMaterialIndex = BINDING_INDEX_INVALID;
   }
 
   if (rayInteraction.customIndex & CUSTOM_INDEX_IS_VIEW_MODEL)
@@ -1503,16 +1534,14 @@ void geometryResolverVertex(
   {
     // Output the Surface if no form of PSR should happen (Standard surface case)
 
-    // Note: Consider this surface the primary surface and the surface to invoke the integrator on when no PSR is done. Note that
-    // the medium material index is set to the invalid index here as if PSRR/PSTR were not done then there's no way the ray is currently
-    // inside a medium (unless the camera started in one, but this is not handled currently).
+    // Note: Consider this surface the primary surface and the surface to invoke the integrator on when no PSR is done.
     geometryResolverOutputSurface(
       true, true, geometryResolverState.pixelCoordinate,
       ray, rayInteraction,
       surface, surfaceInteraction,
       polymorphicSurfaceMaterialInteraction,
       geometryResolverState.radiance, geometryResolverState.attenuation,
-      geometryResolverState.accumulatedRotation, BINDING_INDEX_INVALID,
+      geometryResolverState.accumulatedRotation, cb.startInMediumMaterialIndex,
       geometryResolverState.accumulatedHitDistance, geometryResolverState.directionAltered,
       geometryResolverState.useAlternateDisocclusionThreshold,
       geometryResolverState.isViewModelSurface);
@@ -1922,7 +1951,7 @@ void geometryPSRResolverVertex(
     geometryPSRResolverState.coneRadius = newRay.coneRadius;
     geometryPSRResolverState.continuePSRResolving = true;
     geometryPSRResolverState.insideMedium = false;
-    geometryPSRResolverState.mediumMaterialIndex = BINDING_INDEX_INVALID;
+    geometryPSRResolverState.mediumMaterialIndex = cb.startInMediumMaterialIndex;
     geometryPSRResolverState.accumulatedRotation = getIdentityQuaternion();
     
   }
@@ -2079,6 +2108,10 @@ void preprocessPrimaryRayState(inout Ray originalCameraRay, inout GeometryResolv
     rayMask |= OBJECT_MASK_PLAYER_MODEL;
   }
 
+  if (cb.startInMediumMaterialIndex != BINDING_INDEX_INVALID) {
+    geometryResolverState.insideMedium = true;
+  }
+
   geometryResolverState.rayMask = rayMask;
 }
 
@@ -2189,7 +2222,8 @@ void geometryResolver(ivec2 pixelCoordinate) {
     Ray primaryRay;
     preprocessPrimaryRayState(primaryRay, geometryResolverState);
 
-    uint flags = RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
+    // If starting inside a medium, need to include back faces to detect an exit.
+    uint flags = geometryResolverState.insideMedium ? 0 : RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
     flags |= RAY_FLAG_FORCE_OPAQUE;
 
     // Raytrace

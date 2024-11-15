@@ -132,6 +132,9 @@ namespace dxvk {
     uint32_t textureFeatureFlags = 0;
   };
   std::unordered_map<XXH64_hash_t, ImGuiTexture> g_imguiTextureMap;
+  fast_unordered_cache<FogState> g_imguiFogMap;
+  XXH64_hash_t g_usedFogStateHash;
+  std::mutex g_imguiFogMapMutex; // protects g_imguiFogMap
 
   struct RtxTextureOption {
     const char* uniqueId;
@@ -476,6 +479,12 @@ namespace dxvk {
     
     if (g_imguiTextureMap.find(hash) != g_imguiTextureMap.end())
       g_imguiTextureMap.erase(hash);
+  }
+
+  void ImGUI::SetFogStates(const fast_unordered_cache<FogState>& fogStates, XXH64_hash_t usedFogHash) {
+    const std::lock_guard<std::mutex> lock(g_imguiFogMapMutex);
+    g_imguiFogMap = fogStates;
+    g_usedFogStateHash = usedFogHash;
   }
 
   void ImGUI::wndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -2264,7 +2273,6 @@ namespace dxvk {
 
           ImGui::Unindent();
         }
-
         ImGui::Unindent();
       }
 
@@ -2272,6 +2280,68 @@ namespace dxvk {
       common->getSceneManager().getLightManager().showImguiSettings();
 
       showMaterialOptions();
+
+      if (ImGui::CollapsingHeader("Fog Tuning", collapsingHeaderClosedFlags)) {
+        ImGui::Indent();
+        ImGui::PushID("FogInfos");
+        if (ImGui::CollapsingHeader("Explanation", collapsingHeaderClosedFlags)) {
+          ImGui::Indent();
+          ImGui::TextWrapped("In D3D9, every draw call comes with its own fog settings."
+            " In Remix pathtracing, all rays need to use the same fog setting."
+            " So Remix will choose the earliest valid non-sky fog to use."
+
+            "\n\nIn some games, fog can be used to indicate the player is inside some "
+            "translucent medium, like being underwater.  In path tracing this is "
+            "better represented as starting inside a translucent material.  To "
+            "support this, you can copy one or more of the fog hashes listed below, "
+            "and specify a translucent replacement material in your mod.usda."
+
+            "\n\nThis replacement material should share transmittance and ior properties"
+            " with your water material, but does not need any textures set."
+
+            "\n\nReplacing a given fog state with a translucent material will disable that "
+            "fog."
+          );
+          ImGui::Unindent();
+        }
+
+        constexpr static const char* fogModes[] = {
+          "D3DFOG_NONE",
+          "D3DFOG_EXP",
+          "D3DFOG_EXP2",
+          "D3DFOG_LINEAR",
+        };
+
+        {
+          const std::lock_guard<std::mutex> lock(g_imguiFogMapMutex);
+          for (const auto& pair : g_imguiFogMap) {
+            const std::string hashString = hashToString(pair.first);
+            const char* replaced = ctx->getCommonObjects()->getSceneManager().getAssetReplacer()->getReplacementMaterial(pair.first) ? 
+              " (Replaced)" : "";
+            const char* usedAsMain = (g_usedFogStateHash == pair.first) ? " (Used for Rendering)" : "";
+            ImGui::Text("Hash: %s%s%s", hashString.c_str(), replaced, usedAsMain);
+            const FogState& fog = pair.second;
+            ImGui::Indent();
+
+            if (ImGui::Button(str::format("Copy hash to clipboard##fog_list", hashString).c_str())) {
+              ImGui::SetClipboardText(hashString.c_str());
+            }
+            if (uint32_t(fog.mode) < 4) {
+              ImGui::Text("Mode: %s", fogModes[uint32_t(fog.mode)]);
+            } else {
+              ImGui::Text("Mode: unknown enum value: %u", uint32_t(fog.mode));
+            }
+            ImGui::Text("Color: %.2f %.2f %.2f", fog.color.r, fog.color.g, fog.color.b);
+            ImGui::Text("Scale: %.2f", fog.scale);
+            ImGui::Text("End: %.2f", fog.end);
+            ImGui::Text("Density: %.2f", fog.density);
+            
+            ImGui::Unindent();
+          }
+        }
+        ImGui::PopID();
+        ImGui::Unindent();
+      }
 
       separator();
       ImGui::EndTabItem();
