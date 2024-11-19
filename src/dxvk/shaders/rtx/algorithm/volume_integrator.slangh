@@ -238,12 +238,39 @@ void integrateVolume(
   {
     // Construct a new Reservoir via RIS
 
-    // Note: Cached light sample currently used externally, could be used to avoid needing to rederive the light sample in some
-    // cases, but this may just add divergance and not be worth it.
-    RAB_LightSample cachedSelectedLightSample;
-    const VolumeReSTIR_Reservoir newVolumeReservoir = VolumeReSTIR_SampleLightRIS(
-      rabRandomState, rabVolumeVisibilityContext, rabVolumeInteraction,
-      cachedSelectedLightSample, volumeParameters);
+    VolumeReSTIR_Reservoir newVolumeReservoir = VolumeReSTIR_SampleLightRIS(
+      rabRandomState, rabVolumeVisibilityContext, rabVolumeInteraction, volumeParameters);
+
+    // Perform an initial visiblity check
+
+    if (volumeParameters.enableVolumeRISInitialVisibility && newVolumeReservoir.isValid())
+    {
+      // Get the light sample from the reservoir
+
+      RAB_LightSample rabLightSample;
+      float inverseSelectionPdf;
+
+      // Note: Assuming the light sample is always valid here if it was selected to begin with via RIS.
+      VolumeReSTIR_GetLightSample(
+        newVolumeReservoir, rabVolumeInteraction,
+        rabLightSample, inverseSelectionPdf);
+
+      // Test visibility to the light sample for the reservoir
+
+      // Note: Currently set to the invalid Ray Portal index until we support cross-portal lighting here.
+      uint8_t sampledTransportPortalIndex = RTXDI_INVALID_PORTAL_INDEX;
+      float16_t3 attenuation = float16_t3(0.0f);
+      const bool visible = RAB_VolumeReSTIR_TraceNEEVisibility(
+        rabLightSample, sampledTransportPortalIndex,
+        rabVolumeVisibilityContext, rabVolumeInteraction, attenuation);
+
+      // Invalidate the reservoir if the visibility test fails
+
+      if (!visible || all(attenuation == float16_t3(0.0f)))
+      {
+        newVolumeReservoir.invalidate();
+      }
+    }
 
     // Merge the new Reservoir into the current Reservoir
 
