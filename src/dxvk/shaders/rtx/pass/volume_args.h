@@ -36,6 +36,11 @@ struct VolumeArgs {
   uint2 froxelGridDimensions;
   vec2 inverseFroxelGridDimensions;
 
+  // Note: These parameters are currently currently unused but present due to being referenced in the also currently unused VolumeReSTIR_SpatialResampling and VolumeReSTIR_TemporalResampling functions.
+  // This comment should be removed once these parameters become properly set and the volume ReSTIR code is put into use. Do not use these parameters until then as they will not be set.
+  uint2 restirFroxelGridDimensions;
+  vec2 restirInverseFroxelGridDimensions;
+
   uint numFroxelVolumes;       // 1 if there is just the main camera volume in the texture, 3 if there are also per-portal volumes
   uint numActiveFroxelVolumes; // Same logic as numFroxelVolumes but only counting active volumes
   uint froxelDepthSlices;
