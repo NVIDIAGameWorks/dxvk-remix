@@ -220,6 +220,10 @@ namespace dxvk {
     if (res != VK_SUCCESS) {
       return res;
     }
+    
+    // Reset present status since we recreated the swapchain. This ensures we try to acquire
+    // during the next present instead of returning a stale error value.
+    m_lastPresentStatus = VK_SUCCESS;
 
     createBackbuffers();
     return res;
