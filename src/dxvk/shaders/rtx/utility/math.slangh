@@ -127,19 +127,33 @@ GENERIC_SAFER_POSITIVE_DIVIDE(float, float)
 GENERIC_SAFER_POSITIVE_DIVIDE(f16vec3, float16_t)
 GENERIC_SAFER_POSITIVE_DIVIDE(vec3, float)
 
-// Normalizes a vector "safely" by falling back to another vector in the case of
-// an inability to normalize (to avoid NaNs from normalization).
-#define GENERIC_SAFE_NORMALIZE(type, lengthType)     \
-type safeNormalize(type vector, type fallbackVector) \
-{                                                    \
-  const lengthType vectorLength = length(vector);    \
-                                                     \
-  if (vectorLength == lengthType(0.0f))              \
-  {                                                  \
-    return fallbackVector;                           \
-  }                                                  \
-                                                     \
-  return vector / vectorLength;                      \
+// Normalizes a vector "safely" by falling back to another (ideally normalized) vector in the case of
+// an inability to normalize (to avoid NaNs from normalization). Also calculates
+// and outputs the length of the input vector. If the vector is invalid (the zero vector)
+// then the length will be 0.
+#define GENERIC_SAFE_NORMALIZE_GET_LENGTH(type, lengthType)                                  \
+type safeNormalizeGetLength(type vector, type fallbackVector, inout lengthType vectorLength) \
+{                                                                                            \
+  vectorLength = length(vector);                                                             \
+                                                                                             \
+  if (vectorLength == lengthType(0.0f))                                                      \
+  {                                                                                          \
+    return fallbackVector;                                                                   \
+  }                                                                                          \
+                                                                                             \
+  return vector / vectorLength;                                                              \
+}
+
+GENERIC_SAFE_NORMALIZE_GET_LENGTH(f16vec3, float16_t)
+GENERIC_SAFE_NORMALIZE_GET_LENGTH(vec3, float)
+
+// Same as the get length variant of the safe normalize function, just without a length output.
+#define GENERIC_SAFE_NORMALIZE(type, lengthType)                      \
+type safeNormalize(type vector, type fallbackVector)                  \
+{                                                                     \
+  lengthType dummyLength;                                             \
+                                                                      \
+  return safeNormalizeGetLength(vector, fallbackVector, dummyLength); \
 }
 
 GENERIC_SAFE_NORMALIZE(f16vec3, float16_t)
