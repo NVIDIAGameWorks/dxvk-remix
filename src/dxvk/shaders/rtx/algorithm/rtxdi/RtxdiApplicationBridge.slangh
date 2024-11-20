@@ -582,6 +582,7 @@ DecodedPolymorphicLight RAB_GetDecodedPolymorphicLightWithTypeHint(uint lightID,
   return decodedPolymorphicLight;
 }
 
+// Note: Assumes lightID is valid (e.g. not the invalid light ID reservoirs use to indicate they are invalid).
 RAB_LightSample RAB_GetLightSample(uint lightID, float2 lightUV, MinimalSurfaceInteraction minimalSurfaceInteraction, bool usePreviousLights = false)
 {
   const MemoryPolymorphicLight memoryPolymorphicLight = RAB_GetMemoryPolymorphicLight(lightID, usePreviousLights);

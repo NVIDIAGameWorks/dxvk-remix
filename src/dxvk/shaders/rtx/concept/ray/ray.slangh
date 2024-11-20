@@ -159,7 +159,11 @@ Ray rayCreatePosition(
   vec3 targetPosition, bool penetrateSurface)
 {
   const vec3 rayVector = targetPosition - minimalSurfaceInteraction.position;
-  const f16vec3 direction = f16vec3(normalize(rayVector));
+  // Note: safeNormalizeGetLength not used here as while it could be used to calculate tMax, the length that should be returned
+  // is a bit ambigious. If it's supposed to be the length of the input vector then this would fork fine as the length would be
+  // 0 for zero vectors, but if it's set to 1 to match the fallback vector then the ray will have an incorrect tMax. As such we
+  // just calculate the tMax manually for clarity and hope the compiler optimizes the redundant length calculations together.
+  const f16vec3 direction = f16vec3(safeNormalize(rayVector, vec3(0.0f, 0.0f, 1.0f)));
   const float tMax = length(rayVector);
 
   return rayCreateInternal(minimalRayInteraction, minimalSurfaceInteraction, viewRay, direction, tMax, penetrateSurface);
@@ -170,7 +174,7 @@ Ray rayCreatePosition(
   vec3 targetPosition)
 {
   const vec3 rayVector = targetPosition - volumeInteraction.position;
-  const f16vec3 direction = f16vec3(normalize(rayVector));
+  const f16vec3 direction = f16vec3(safeNormalize(rayVector, vec3(0.0f, 0.0f, 1.0f)));
   const float tMax = length(rayVector);
 
   return rayCreateInternal(minimalRayInteraction, volumeInteraction, viewRay, direction, tMax);
@@ -181,7 +185,7 @@ Ray rayCreatePositionSubsurface(
   vec3 targetPosition, vec3 shadingNormal)
 {
   const vec3 rayVector = targetPosition - minimalSurfaceInteraction.position;
-  const f16vec3 direction = f16vec3(normalize(rayVector));
+  const f16vec3 direction = f16vec3(safeNormalize(rayVector, vec3(0.0f, 0.0f, 1.0f)));
   const float tMax = length(rayVector);
 
   // If the new tracing ray is on the other side of SSS surface, treat the surface as penetrateSurface 
