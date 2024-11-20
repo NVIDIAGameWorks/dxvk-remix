@@ -58,7 +58,8 @@ void evalNEEPrimary(
   // Setup and trace the visibility ray
 
   uint8_t rayMask = OBJECT_MASK_OPAQUE | (geometryFlags.objectMask & OBJECT_MASK_ALL_DYNAMIC);
-  if (cb.enableDirectTranslucentShadows) rayMask |= OBJECT_MASK_TRANSLUCENT;
+  rayMask |= (cb.enableDirectTranslucentShadows) ? OBJECT_MASK_TRANSLUCENT : 0;
+  rayMask |= (cb.enableDirectAlphaBlendShadows) ? OBJECT_MASK_ALPHA_BLEND : 0;
 
   // We can encounter a POM surface during resolving (as it's a shared function) but if direct lighting for POM
   //  is disabled, we must also handle that user choice gracefully.

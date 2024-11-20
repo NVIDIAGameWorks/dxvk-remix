@@ -2665,7 +2665,9 @@ namespace dxvk {
         ImGui::DragInt("Max Secondary Interactions", &RtxOptions::Get()->secondaryRayMaxInteractionsObject(), 1.0f, 1, 255, "%d", sliderFlags);
         ImGui::Checkbox("Separate Unordered Approximations", &RtxOptions::Get()->enableSeparateUnorderedApproximationsObject());
         ImGui::Checkbox("Direct Translucent Shadows", &RtxOptions::Get()->enableDirectTranslucentShadowsObject());
+        ImGui::Checkbox("Direct Alpha Blended Shadows", &RtxOptions::Get()->enableDirectAlphaBlendShadowsObject());
         ImGui::Checkbox("Indirect Translucent Shadows", &RtxOptions::Get()->enableIndirectTranslucentShadowsObject());
+        ImGui::Checkbox("Indirect Alpha Blended Shadows", &RtxOptions::Get()->enableIndirectAlphaBlendShadowsObject());
         ImGui::Checkbox("Decal Material Blending", &RtxOptions::Get()->enableDecalMaterialBlendingObject());
         ImGui::Checkbox("Billboard Orientation Correction", &RtxOptions::Get()->enableBillboardOrientationCorrectionObject());
         if (RtxOptions::Get()->enableBillboardOrientationCorrection()) {

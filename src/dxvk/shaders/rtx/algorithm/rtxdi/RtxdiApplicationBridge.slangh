@@ -711,7 +711,8 @@ bool RAB_TraceLightSampleVisibility(RAB_Surface surface, RAB_LightSample lightSa
   }
 
   uint8_t rayMask = OBJECT_MASK_OPAQUE | (surface.objectMask & OBJECT_MASK_ALL_DYNAMIC);
-  if (cb.enableDirectTranslucentShadows) rayMask |= OBJECT_MASK_TRANSLUCENT;
+  rayMask |= (cb.enableDirectTranslucentShadows) ? OBJECT_MASK_TRANSLUCENT : 0;
+  rayMask |= (cb.enableDirectAlphaBlendShadows) ? OBJECT_MASK_ALPHA_BLEND : 0;
 
   const bool isSubsurface = isSubsurfaceMaterial(surface.opaqueSurfaceMaterialInteraction);
 
@@ -734,7 +735,8 @@ bool RAB_TraceGISampleVisibility(RAB_Surface surface, RAB_Surface neighborSurfac
   uint8_t portalID = ReSTIRGI_PortalID2BitTo8Bit(reservoir.getPortalID());
   if (portalID == RTXDI_INVALID_PORTAL_INDEX || portalID < numPortals)
   {
-    const uint8_t rayMask = OBJECT_MASK_OPAQUE | (surface.objectMask & OBJECT_MASK_ALL_DYNAMIC);
+    uint8_t rayMask = OBJECT_MASK_OPAQUE | (surface.objectMask & OBJECT_MASK_ALL_DYNAMIC);
+    rayMask |= (cb.enableIndirectAlphaBlendShadows) ? OBJECT_MASK_ALPHA_BLEND : 0;
 
     const float3 dstPosition = reservoir.getVisibilityPoint(neighborSurface.minimalSurfaceInteraction.position);
 

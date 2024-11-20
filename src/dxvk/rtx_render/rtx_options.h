@@ -490,8 +490,10 @@ namespace dxvk {
                "Do note however the unordered nature of this resolving method may result in visual artifacts with large numbers of stacked particles due to difficulty in determining the intended order.\n"
                "Additionally, unordered approximations will only be done on the first indirect ray bounce (as particles matter less in higher bounces), and only if enabled by its corresponding setting.");
     RTX_OPTION("rtx", bool, trackParticleObjects, true, "Track last frame's corresponding particle object.");
-    RTX_OPTION("rtx", bool, enableDirectTranslucentShadows, false, "Include OBJECT_MASK_TRANSLUCENT into primary visibility rays.");
-    RTX_OPTION("rtx", bool, enableIndirectTranslucentShadows, false, "Include OBJECT_MASK_TRANSLUCENT into secondary visibility rays.");
+    RTX_OPTION_ENV("rtx", bool, enableDirectTranslucentShadows, false, "RTX_ENABLE_DIRECT_TRANSLUCENT_SHADOWS", "Calculate coloured shadows for translucent materials (i.e. glass, water) in direct lighting. In engineering terms: include OBJECT_MASK_TRANSLUCENT into primary visibility rays.");
+    RTX_OPTION_ENV("rtx", bool, enableDirectAlphaBlendShadows, true, "RTX_ENABLE_DIRECT_ALPHABLEND_SHADOWS", "Calculate shadows for semi-transparent materials (alpha blended) in direct lighting. In engineering terms: include OBJECT_MASK_ALPHA_BLEND into primary visibility rays.");
+    RTX_OPTION_ENV("rtx", bool, enableIndirectTranslucentShadows, false, "RTX_ENABLE_INDIRECT_TRANSLUCENT_SHADOWS", "Calculate coloured shadows for translucent materials (i.e. glass, water) in indirect lighting (i.e. reflections and GI). In engineering terms: include OBJECT_MASK_TRANSLUCENT into secondary visibility rays.");
+    RTX_OPTION_ENV("rtx", bool, enableIndirectAlphaBlendShadows, true, "RTX_ENABLE_INDIRECT_ALPHABLEND_SHADOWS", "Calculate shadows for semi-transparent (alpha blended) objects in indirect lighting (i.e. reflections and GI). In engineering terms: include OBJECT_MASK_ALPHA_BLEND into secondary visibility rays.");
 
     RTX_OPTION("rtx", float, resolveTransparencyThreshold, 1.0f / 255.0f, "A threshold for which any opacity value below is considered totally transparent and may be safely skipped without as significant of a performance cost.");
     RTX_OPTION("rtx", float, resolveOpaquenessThreshold, 254.0f / 255.0f, "A threshold for which any opacity value above is considered totally opaque.");
@@ -1325,8 +1327,6 @@ namespace dxvk {
     uint8_t getPrimaryRayMaxInteractions() const { return primaryRayMaxInteractions(); }
     uint8_t getPSRRayMaxInteractions() const { return psrRayMaxInteractions(); }
     uint8_t getSecondaryRayMaxInteractions() const { return secondaryRayMaxInteractions(); }
-    bool areDirectTranslucentShadowsEnabled() const { return enableDirectTranslucentShadows(); }
-    bool areIndirectTranslucentShadowsEnabled() const { return enableIndirectTranslucentShadows(); }
     float getResolveTransparencyThreshold() const { return resolveTransparencyThreshold(); }
     float getResolveOpaquenessThreshold() const { return resolveOpaquenessThreshold(); }
     

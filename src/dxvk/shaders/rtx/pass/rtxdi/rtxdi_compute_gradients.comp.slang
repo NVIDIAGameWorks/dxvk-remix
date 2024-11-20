@@ -36,7 +36,8 @@ float getSurfaceIlluminance(
   // Setup and trace the visibility ray
 
   uint8_t rayMask = OBJECT_MASK_OPAQUE | (objectMask & OBJECT_MASK_ALL_DYNAMIC);
-  if (cb.enableDirectTranslucentShadows) rayMask |= OBJECT_MASK_TRANSLUCENT;
+  rayMask |= (cb.enableDirectTranslucentShadows) ? OBJECT_MASK_TRANSLUCENT : 0;
+  rayMask |= (cb.enableDirectAlphaBlendShadows) ? OBJECT_MASK_ALPHA_BLEND : 0;
 
   VisibilityResult visibility = traceVisibilityRay<visibilityModeEnableTranslucentMaterials | visibilityModeEnableSubsurfaceMaterials>(minimalSurfaceInteraction,
     lightSample.position, rayMask,
