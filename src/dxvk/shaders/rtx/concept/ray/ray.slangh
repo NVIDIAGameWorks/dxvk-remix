@@ -109,18 +109,11 @@ Ray rayCreatePrimary(Camera camera, vec2 screenUV, float16_t screenSpacePixelSpr
 }
 
 // Convenience function that creates a primary ray based on pixel index instead of UVs.
-Ray rayCreatePrimaryFromPixel(Camera camera, ivec2 pixelCoordinate, bool jitter)
+Ray rayCreatePrimaryFromPixel(Camera camera, ivec2 pixelCoordinate, bool jitter = true)
 {
   const vec2 inUV = cameraPixelCoordinateToScreenUV(camera, pixelCoordinate);
 
   return rayCreatePrimary(camera, inUV, float16_t(cb.screenSpacePixelSpreadHalfAngle), jitter);
-}
-
-// Overload for creating a primary ray from a pixel index, but with the assumption of using jittering (as this is
-// the most common use case).
-Ray rayCreatePrimaryFromPixel(Camera camera, ivec2 pixelCoordinate)
-{
-  return rayCreatePrimaryFromPixel(camera, pixelCoordinate, true);
 }
 
 // Create a ray that passes through a render target
