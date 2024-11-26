@@ -652,17 +652,24 @@ namespace dxvk {
 
     // Search the BLAS for an instance matching ours
     {
-      const auto adjacentCells = blas.getSpatialMap().getDataNearPos(worldPosition);
-      for (const std::vector<const RtInstance*>* cellPtr : adjacentCells){
-        for (const RtInstance* instance : *cellPtr) {
-          if (instance->m_frameLastUpdated == currentFrameIdx) {
-            // If the transform is an exact match and the instance has already been touched this frame,
-            // then this is a second draw call on a single mesh.
+      // Search for an exact match
+      const std::vector<const RtInstance*>* matchingCell = blas.getSpatialMap().getDataAtPos(worldPosition);
+      if (matchingCell != nullptr) {
+        for (const RtInstance* instance : *matchingCell) {
             const Matrix4 instanceTransform = instance->getTransform();
+            // Note: this may be the second call this frame targetting the same instance.
             if (memcmp(&transform, &instanceTransform, sizeof(instanceTransform)) == 0) {
               return const_cast<RtInstance*>(instance);
             }
-          } else if (instance->m_materialHash == material.getHash()) {
+        }
+      }
+      
+      // No exact match, so find the closest match in the region
+      // (need to check a 2x2x2 patch of cells to account for positions close to a border)
+      const auto adjacentCells = blas.getSpatialMap().getDataNearPos(worldPosition);
+      for (const std::vector<const RtInstance*>* cellPtr : adjacentCells){
+        for (const RtInstance* instance : *cellPtr) {
+          if (instance->m_frameLastUpdated != currentFrameIdx && instance->m_materialHash == material.getHash()) {
             // Instance hasn't been touched yet this frame.
 
             const Vector3& prevInstanceWorldPosition = instance->getSpatialCachePosition();
