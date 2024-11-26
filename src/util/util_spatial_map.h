@@ -45,6 +45,15 @@ namespace dxvk {
       return *this;
     }
 
+    // returns the cell closest to `position`
+    const std::vector<T>* getDataAtPos(const Vector3& position) const {
+      auto pair = m_cache.find(getCellPos(position));
+      if ( pair != m_cache.end()) {
+        return &pair->second;
+      }
+      return nullptr;
+    }
+
     // returns the 8 cells closest to `position`
     const std::vector<const std::vector<T>*> getDataNearPos(const Vector3& position) const {
       static const std::array kOffsets{
