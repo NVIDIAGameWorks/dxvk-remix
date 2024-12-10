@@ -105,7 +105,7 @@ private:
   void processPrim(Args& args, pxr::UsdPrim& prim);
 
   void processLight(Args& args, const pxr::UsdPrim& lightPrim, const bool isOverride);
-  void processReplacement(Args& args);
+  bool processReplacement(Args& args);
 
   Categorizer processCategoryFlags(const pxr::UsdPrim& prim);
 
@@ -527,7 +527,7 @@ bool explicitlyNoReferences(const pxr::UsdPrim& prim) {
   return false;
 }
 
-void UsdMod::Impl::processReplacement(Args& args) {
+bool UsdMod::Impl::processReplacement(Args& args) {
   ScopedCpuProfileZone();
 
   if (args.rootPrim.IsA<pxr::UsdGeomMesh>()) {
@@ -551,6 +551,14 @@ void UsdMod::Impl::processReplacement(Args& args) {
     if (args.meshes[0].includeOriginal) {
       args.meshes[0].categories = processCategoryFlags(args.rootPrim);
     }
+    return true;
+  } else {
+    bool result = preserveGameObject(args.rootPrim);
+    if (result) {
+      Logger::warn(str::format("Empty override prim found. ", args.rootPrim.GetPrimPath().GetString(), " has no children, but the original mesh reference is not explicitely deleted."));
+    }
+    return !result;
+
   }
 }
 
@@ -663,11 +671,11 @@ void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
         
         Args args = {context, xformCache, child, replacementVec};
 
-        processReplacement(args);
+        if (processReplacement(args)) {
+          variantCounts[hash]++;
 
-        variantCounts[hash]++;
-
-        m_owner.m_replacements->set<AssetReplacement::eMesh>(hash, std::move(replacementVec));
+          m_owner.m_replacements->set<AssetReplacement::eMesh>(hash, std::move(replacementVec));
+        }
       }
     }
   }
@@ -695,9 +703,9 @@ void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
 
       Args args = {context, xformCache, rootPrim, replacementVec};
 
-      processReplacement(args);
-
-      m_owner.m_replacements->set<AssetReplacement::eMesh>(variantHash, std::move(replacementVec));
+      if (processReplacement(args)) {
+        m_owner.m_replacements->set<AssetReplacement::eMesh>(variantHash, std::move(replacementVec));
+      }
     }
   }
 
@@ -710,9 +718,9 @@ void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
         std::vector<AssetReplacement> replacementVec;
         Args args = {context, xformCache, child, replacementVec};
 
-        processReplacement(args);
-
-        m_owner.m_replacements->set<AssetReplacement::eLight>(hash, std::move(replacementVec));
+        if (processReplacement(args)) {
+          m_owner.m_replacements->set<AssetReplacement::eLight>(hash, std::move(replacementVec));
+        }
       }
     }
   }
