@@ -133,6 +133,10 @@ namespace dxvk {
     //                   than doing N lookups per texture hash for each category.
     const XXH64_hash_t& textureHash = materialData.getColorTexture().getImageHash();
 
+    if (RtxOptions::Get()->useUnusedRenderstates()) {
+      categories = CategoryFlags(materialData.remixTextureCategoryFlagsFromD3D);
+    }
+
     setCategory(InstanceCategories::WorldUI, lookupHash(RtxOptions::worldSpaceUiTextures(), textureHash));
     setCategory(InstanceCategories::WorldMatte, lookupHash(RtxOptions::worldSpaceUiBackgroundTextures(), textureHash));
 
@@ -297,9 +301,12 @@ namespace dxvk {
       return true;
     }
 
-    // NOTE: we use color texture hash for sky detection, however the replacement is hashed with
-    // the whole legacy material hash (which, as of 12/9/2022, equals to color texture hash). Adding a check just in case.
-    assert(drawCallState.getMaterialData().getColorTexture().getImageHash() == drawCallState.getMaterialData().getHash() && "Texture or material hash method changed!");
+    // NOTE: disable assert if material is using a custom hash that was set via an unused D3D RenderState
+    if (!drawCallState.getMaterialData().isHashOverridden()) {
+      // NOTE: we use color texture hash for sky detection, however the replacement is hashed with
+      // the whole legacy material hash (which, as of 12/9/2022, equals to color texture hash). Adding a check just in case.
+      assert(drawCallState.getMaterialData().getColorTexture().getImageHash() == drawCallState.getMaterialData().getHash() && "Texture or material hash method changed!");
+    }
 
     if (drawCallState.getMaterialData().usesTexture()) {
       if (lookupHash(RtxOptions::skyBoxTextures(), drawCallState.getMaterialData().getHash())) {
