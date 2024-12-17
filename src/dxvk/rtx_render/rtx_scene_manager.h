@@ -76,6 +76,7 @@ protected:
   };
   SparseUniqueCache<RtSurfaceMaterial, SurfaceMaterialHashFn> m_surfaceMaterialCache;
   SparseUniqueCache<RtSurfaceMaterial, SurfaceMaterialHashFn> m_surfaceMaterialExtensionCache;
+  fast_unordered_cache<uint32_t> m_preCreationSurfaceMaterialMap;
 
   struct VolumeMaterialHashFn {
     size_t operator() (const RtVolumeMaterial& mat) const {
@@ -228,10 +229,9 @@ private:
   // Consumes a draw call state and updates the scene state accordingly
   uint64_t processDrawCallState(Rc<DxvkContext> ctx, const DrawCallState& blasInput, const MaterialData* replacementMaterialData);
 
-  void createSurfaceMaterial( Rc<DxvkContext> ctx, 
-                              std::optional<RtSurfaceMaterial>& surfaceMaterial, 
-                              const MaterialData& renderMaterialData,
-                              const DrawCallState& drawCallState);
+  const RtSurfaceMaterial& createSurfaceMaterial( Rc<DxvkContext> ctx, 
+                                                  const MaterialData& renderMaterialData,
+                                                  const DrawCallState& drawCallState);
 
   // Updates ref counts for new buffers
   void updateBufferCache(RaytraceGeometry& newGeoData);
