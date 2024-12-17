@@ -360,14 +360,7 @@ namespace dxvk {
   }
 
   void BlasEntry::rebuildSpatialMap() {
-    InstanceMap newMap(RtxOptions::uniqueObjectDistance() * 2.f);
-    
-    for (const auto& iter : m_spatialMap.getAll()){
-      for (const RtInstance* instance : iter.second) {
-        newMap.insert(instance->getSpatialCachePosition(), instance);
-      }
-    }
-    m_spatialMap = std::move(newMap);
+    m_spatialMap.rebuild(RtxOptions::uniqueObjectDistance() * 2.f);
   }
 
 } // namespace dxvk

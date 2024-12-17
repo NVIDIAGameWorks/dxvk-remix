@@ -143,9 +143,8 @@ namespace dxvk {
     }
 
     XXH64_hash_t getImageHash() const {
-      const DxvkImageView* resolvedImageView = getImageView();
       XXH64_hash_t result = 0;
-      if (resolvedImageView) {
+      if (const DxvkImageView* resolvedImageView = getImageView()) {
         result = resolvedImageView->image()->getHash();
       }
 

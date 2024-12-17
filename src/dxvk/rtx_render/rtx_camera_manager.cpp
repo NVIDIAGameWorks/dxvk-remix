@@ -21,8 +21,6 @@
 */
 #include "rtx_camera_manager.h"
 
-#include "rtx_matrix_helpers.h"
-
 #include "dxvk_device.h"
 
 namespace {
@@ -44,6 +42,7 @@ namespace dxvk {
 
   void CameraManager::onFrameEnd() {
     m_lastSetCameraType = CameraType::Unknown;
+    m_decompositionCache.clear();
   }
 
   CameraType::Enum CameraManager::processCameraData(const DrawCallState& input) {
@@ -75,10 +74,7 @@ namespace dxvk {
     }
 
     // Get camera params
-    float fov, aspectRatio, nearPlane, farPlane, shearX, shearY;
-    bool isLHS;
-    bool isReverseZ;
-    decomposeProjection(input.getTransformData().viewToProjection, aspectRatio, fov, nearPlane, farPlane, shearX, shearY, isLHS, isReverseZ);
+    DecomposeProjectionParams decomposeProjectionParams = getOrDecomposeProjection(input.getTransformData().viewToProjection);
 
     // Filter invalid cameras, extreme shearing
     static auto isFovValid = [](float fovA) {
@@ -88,7 +84,7 @@ namespace dxvk {
       return std::abs(fovA - cameraB.getFov()) < kFovToleranceRadians;
     };
 
-    if (std::abs(shearX) > 0.01f || !isFovValid(fov)) {
+    if (std::abs(decomposeProjectionParams.shearX) > 0.01f || !isFovValid(decomposeProjectionParams.fov)) {
       ONCE(Logger::warn("[RTX] CameraManager: rejected an invalid camera"));
       return input.getCategoryFlags().test(InstanceCategories::Sky) ? CameraType::Sky : CameraType::Unknown;
     }
@@ -117,13 +113,13 @@ namespace dxvk {
       cameraType = CameraType::RenderToTexture;
     } else if (input.testCategoryFlags(InstanceCategories::Sky)) {
       cameraType = CameraType::Sky;
-    } else if (isViewModel(fov, input.maxZ, frameId)) {
+    } else if (isViewModel(decomposeProjectionParams.fov, input.maxZ, frameId)) {
       cameraType = CameraType::ViewModel;
     }
     
     // Check fov consistency across frames
     if (frameId > 0) {
-      if (getCamera(cameraType).isValid(frameId - 1) && !areFovsClose(fov, getCamera(cameraType))) {
+      if (getCamera(cameraType).isValid(frameId - 1) && !areFovsClose(decomposeProjectionParams.fov, getCamera(cameraType))) {
         ONCE(Logger::warn("[RTX] CameraManager: FOV of a camera changed between frames"));
       }
     }
@@ -148,7 +144,15 @@ namespace dxvk {
       }
     } else {
       isCameraCut = camera.update(
-        frameId, worldToView, viewToProjection, fov, aspectRatio, nearPlane,farPlane, isLHS);
+        frameId,
+        worldToView,
+        viewToProjection,
+        decomposeProjectionParams.fov,
+        decomposeProjectionParams.aspectRatio,
+        decomposeProjectionParams.nearPlane,
+        decomposeProjectionParams.farPlane,
+        decomposeProjectionParams.isLHS
+      );
     }
 
 
@@ -173,13 +177,29 @@ namespace dxvk {
   void CameraManager::processExternalCamera(CameraType::Enum type,
                                             const Matrix4& worldToView,
                                             const Matrix4& viewToProjection) {
-    float fov, aspectRatio, nearPlane, farPlane, shearX, shearY;
-    bool isLHS;
-    bool isReverseZ;
-    decomposeProjection(viewToProjection, aspectRatio, fov, nearPlane, farPlane, shearX, shearY, isLHS, isReverseZ);
+    DecomposeProjectionParams decomposeProjectionParams = getOrDecomposeProjection(viewToProjection);
 
     getCamera(type).update(
       m_device->getCurrentFrameId(),
-      worldToView, viewToProjection, fov, aspectRatio, nearPlane, farPlane, isLHS);
+      worldToView,
+      viewToProjection,
+      decomposeProjectionParams.fov,
+      decomposeProjectionParams.aspectRatio,
+      decomposeProjectionParams.nearPlane,
+      decomposeProjectionParams.farPlane,
+      decomposeProjectionParams.isLHS);
   }
+
+    DecomposeProjectionParams CameraManager::getOrDecomposeProjection(const Matrix4& viewToProjection) {
+      XXH64_hash_t projectionHash = XXH64(&viewToProjection, sizeof(viewToProjection), 0);
+      auto iter = m_decompositionCache.find(projectionHash);
+      if (iter != m_decompositionCache.end()) {
+        return iter->second;
+      }
+
+      DecomposeProjectionParams decomposeProjectionParams;
+      decomposeProjection(viewToProjection, decomposeProjectionParams);
+      m_decompositionCache.emplace(projectionHash, decomposeProjectionParams);
+      return decomposeProjectionParams;
+    }
 }  // namespace dxvk
