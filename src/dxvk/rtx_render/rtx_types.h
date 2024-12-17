@@ -586,7 +586,7 @@ struct BlasEntry {
   // Frame when the vertex data of this geometry was last updated, used to detect static geometries
   uint32_t frameLastUpdated = kInvalidFrameIndex;
 
-  using InstanceMap = SpatialMap<const RtInstance*>;
+  using InstanceMap = SpatialMap<RtInstance>;
 
   Rc<PooledBlas> staticBlas;
 
