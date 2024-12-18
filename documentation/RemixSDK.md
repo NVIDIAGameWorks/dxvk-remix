@@ -38,7 +38,7 @@ After a successful build, the necessary SDK files will be located in the public/
 As with other rendering engines, there are common steps of
 initialiazation, resource registration (meshes, materials, lights), and submitting the said resources to each frame to be rendered.
 
-[remixapi_example_c.c](RemixAPI_C/remixapi_example_c.c) contains a minimal example in C to render a path traced triangle using the Remix API.
+[remixapi_example_c.c](/tests/rtx/apps/RemixAPI_C/remixapi_example_c.c) contains a minimal example in C to render a path traced triangle using the Remix API.
 
 
 <details>
@@ -112,7 +112,7 @@ Material:
 * To register, call `remixapi_Interface::CreateMaterial` specifying `remixapi_MaterialInfo`, but `.pNext` must be a pointer to one of:
     * `remixapi_MaterialInfoOpaqueEXT` -- for a generic material
     * `remixapi_MaterialInfoTranslucentEXT` -- for a glass material
-* For the default values, corresponding default constructors can be examined in the C++ wrapper [remix.h](../../../public/include/remix/remix.h)
+* For the default values, corresponding default constructors can be examined in the C++ wrapper [remix.h](/public/include/remix/remix.h)
 * *Note: at the time of writing, the material API is still not refined to work with non-file image data, and overall structure just reflects the internal representation of materials, which might be not as simple to use. The primary subject to change.*
 
 Light:
@@ -144,7 +144,7 @@ Push a camera, mesh instances and lights to define a scene for the *current* fra
 
 *Note: to set `rtx.conf` options at runtime, use `remixapi_Interface::SetConfigVariable`*
 
-*Note: [remixapi_example_c.c](RemixAPI_C/remixapi_example_c.c) contains all the steps listed above, and should draw a triangle.*
+*Note: [remixapi_example_c.c](/tests/rtx/apps/RemixAPI_C/remixapi_example_c.c) contains all the steps listed above, and should draw a triangle.*
 
 
 
