@@ -134,7 +134,7 @@ namespace dxvk {
        m_frameLastUpdated
        m_frameCreated
        m_isCreatedByRenderer
-       m_spatialCachePos
+       m_spatialCacheHash
        buildGeometries
        buildRanges
        billboardIndices
@@ -170,8 +170,7 @@ namespace dxvk {
 
       // Cache based on current position.
       const Vector3 newPos = getBlas()->input.getGeometryData().boundingBox.getTransformedCentroid(surface.objectToWorld);
-      m_linkedBlas->getSpatialMap().move(m_spatialCachePos, newPos, this);
-      m_spatialCachePos = newPos;
+      m_spatialCacheHash = m_linkedBlas->getSpatialMap().move(m_spatialCacheHash, newPos, surface.objectToWorld, this);
     }
   }
 
@@ -180,8 +179,8 @@ namespace dxvk {
     surface.normalObjectToWorld = transpose(inverse(Matrix3(surface.objectToWorld)));
     surface.prevObjectToWorld = objectToWorld;
     if (!m_isCreatedByRenderer) {
-      m_spatialCachePos = getBlas()->input.getGeometryData().boundingBox.getTransformedCentroid(surface.objectToWorld);
-      m_linkedBlas->getSpatialMap().insert(m_spatialCachePos, this);
+      const Vector3 centroid = getBlas()->input.getGeometryData().boundingBox.getTransformedCentroid(surface.objectToWorld);
+      m_spatialCacheHash = m_linkedBlas->getSpatialMap().insert(centroid, surface.objectToWorld, this);
     }
     
     // The D3D matrix on input, needs to be transposed before feeding to the VK API (left/right handed conversion)
@@ -653,38 +652,21 @@ namespace dxvk {
     // Search the BLAS for an instance matching ours
     {
       // Search for an exact match
-      const std::vector<const RtInstance*>* matchingCell = blas.getSpatialMap().getDataAtPos(worldPosition);
-      if (matchingCell != nullptr) {
-        for (const RtInstance* instance : *matchingCell) {
-            const Matrix4 instanceTransform = instance->getTransform();
-            // Note: this may be the second call this frame targetting the same instance.
-            if (memcmp(&transform, &instanceTransform, sizeof(instanceTransform)) == 0) {
-              return const_cast<RtInstance*>(instance);
-            }
-        }
+      result = const_cast<RtInstance*>(blas.getSpatialMap().getDataAtTransform(transform));
+      if (result != nullptr) {
+        return result;
       }
       
       // No exact match, so find the closest match in the region
       // (need to check a 2x2x2 patch of cells to account for positions close to a border)
-      const auto adjacentCells = blas.getSpatialMap().getDataNearPos(worldPosition);
-      for (const std::vector<const RtInstance*>* cellPtr : adjacentCells){
-        for (const RtInstance* instance : *cellPtr) {
-          if (instance->m_frameLastUpdated != currentFrameIdx && instance->m_materialHash == material.getHash()) {
-            // Instance hasn't been touched yet this frame.
-
-            const Vector3& prevInstanceWorldPosition = instance->getSpatialCachePosition();
-
-            const float distSqr = lengthSqr(prevInstanceWorldPosition - worldPosition);
-            if (distSqr <= uniqueObjectDistanceSqr && distSqr < nearestDistSqr) {
-              if (distSqr == 0.0f) {
-                // Not going to find anything closer.
-                return const_cast<RtInstance*>(instance);
-              }
-              nearestDistSqr = distSqr;
-              result = const_cast<RtInstance*>(instance);
-            }
-          }
+      result = const_cast<RtInstance*>(blas.getSpatialMap().getNearestData(worldPosition, uniqueObjectDistanceSqr, nearestDistSqr,
+        [&] (const RtInstance* instance) {
+          return instance->m_frameLastUpdated != currentFrameIdx && instance->m_materialHash == material.getHash();
         }
+      ));
+      if (nearestDistSqr == 0.0f && result != nullptr) {
+        // Not going to find anything closer
+        return result;
       }
     }
 

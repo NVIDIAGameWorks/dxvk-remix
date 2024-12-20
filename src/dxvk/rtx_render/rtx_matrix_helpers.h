@@ -81,3 +81,18 @@ static inline void decomposeProjection(const dxvk::Matrix4& matrix, float& aspec
   }
 #endif
 }
+
+struct DecomposeProjectionParams {
+  float fov;
+  float aspectRatio;
+  float nearPlane;
+  float farPlane;
+  float shearX;
+  float shearY;
+  bool isLHS;
+  bool isReverseZ;
+};
+
+static inline void decomposeProjection(const dxvk::Matrix4& matrix, DecomposeProjectionParams& result, bool log = false) {
+  decomposeProjection(matrix, result.aspectRatio, result.fov, result.nearPlane, result.farPlane, result.shearX, result.shearY, result.isLHS, result.isReverseZ, log);
+}

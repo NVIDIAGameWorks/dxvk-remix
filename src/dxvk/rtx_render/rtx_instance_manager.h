@@ -65,12 +65,11 @@ public:
   Vector3 getWorldPosition() const { return Vector3{ m_vkInstance.transform.matrix[0][3], m_vkInstance.transform.matrix[1][3], m_vkInstance.transform.matrix[2][3] }; }
   const Vector3& getPrevWorldPosition() const { return surface.prevObjectToWorld.data[3].xyz(); }
 
-  const Vector3& getSpatialCachePosition() const { return m_spatialCachePos; }
   void removeFromSpatialCache() const {
     if (m_isCreatedByRenderer) {
       return;
     }
-    m_linkedBlas->getSpatialMap().erase(m_spatialCachePos, this);
+    m_linkedBlas->getSpatialMap().erase(m_spatialCacheHash);
   }
 
   bool isCreatedThisFrame(uint32_t frameIndex) const { return frameIndex == m_frameCreated; }
@@ -203,7 +202,7 @@ private:
 
   CategoryFlags m_categoryFlags;
 
-  Vector3 m_spatialCachePos = Vector3(0.f);
+  XXH64_hash_t m_spatialCacheHash = 0;
 
 public:
   bool isFrontFaceFlipped = false;
