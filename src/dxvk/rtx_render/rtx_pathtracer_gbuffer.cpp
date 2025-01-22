@@ -151,25 +151,52 @@ namespace dxvk {
   }
 
   void DxvkPathtracerGbuffer::prewarmShaders(DxvkPipelineManager& pipelineManager) const {
-    const bool isOpacityMicromapSupported = OpacityMicromapManager::checkIsOpacityMicromapSupported(*m_device);
-    const bool isShaderExecutionReorderingSupported = 
-      RtxContext::checkIsShaderExecutionReorderingSupported(*m_device) && 
-      RtxOptions::Get()->isShaderExecutionReorderingInPathtracerGbufferEnabled();
+    if (RtxOptions::prewarmAllShaderVariants()) {
+      const bool isOpacityMicromapSupported = OpacityMicromapManager::checkIsOpacityMicromapSupported(*m_device);
+      const bool isShaderExecutionReorderingSupported = 
+        RtxContext::checkIsShaderExecutionReorderingSupported(*m_device) && 
+        RtxOptions::Get()->isShaderExecutionReorderingInPathtracerGbufferEnabled();
 
-    for (int32_t isPSRPass = 1; isPSRPass >= 0; isPSRPass--) {
-      for (int32_t includePortals = 1; includePortals >= 0; includePortals--) {
-        for (int32_t useRayQuery = 1; useRayQuery >= 0; useRayQuery--) {
-          for (int32_t serEnabled = isShaderExecutionReorderingSupported; serEnabled >= 0; serEnabled--) {
-            for (int32_t ommEnabled = isOpacityMicromapSupported; ommEnabled >= 0; ommEnabled--) {
-              pipelineManager.registerRaytracingShaders(getPipelineShaders(isPSRPass, useRayQuery, serEnabled, ommEnabled, includePortals));
+      for (int32_t isPSRPass = 1; isPSRPass >= 0; isPSRPass--) {
+        for (int32_t includePortals = 1; includePortals >= 0; includePortals--) {
+          for (int32_t useRayQuery = 1; useRayQuery >= 0; useRayQuery--) {
+            for (int32_t serEnabled = isShaderExecutionReorderingSupported; serEnabled >= 0; serEnabled--) {
+              for (int32_t ommEnabled = isOpacityMicromapSupported; ommEnabled >= 0; ommEnabled--) {
+                pipelineManager.registerRaytracingShaders(getPipelineShaders(isPSRPass, useRayQuery, serEnabled, ommEnabled, includePortals));
+              }
             }
           }
         }
-      }
 
-      DxvkComputePipelineShaders shaders;
-      shaders.cs = getComputeShader(isPSRPass);
-      pipelineManager.createComputePipeline(shaders);
+        DxvkComputePipelineShaders shaders;
+        shaders.cs = getComputeShader(isPSRPass);
+        pipelineManager.createComputePipeline(shaders);
+      }
+    } else {
+      const bool serEnabled = RtxOptions::Get()->isShaderExecutionReorderingInPathtracerGbufferEnabled();
+      const bool ommEnabled = RtxOptions::Get()->getEnableOpacityMicromap();
+      const bool useNeeCache = NeeCachePass::enable();
+      const bool includePortals = RtxOptions::Get()->rayPortalModelTextureHashes().size() > 0;
+      
+      // Need both PSR and non-PSR passes.
+      for (int32_t isPSRPass = 1; isPSRPass >= 0; isPSRPass--) {
+        // Prewarm POM on and off, as that can change based on game content (if nothing in the frame has a height texture, then POM turns off)
+        for (int32_t pomEnabled = 1; pomEnabled >= 0; pomEnabled--) {
+          DxvkComputePipelineShaders shaders;
+          switch (RtxOptions::Get()->getRenderPassGBufferRaytraceMode()) {
+          case RaytraceMode::RayQuery:
+            shaders.cs = getComputeShader(isPSRPass);
+            pipelineManager.createComputePipeline(shaders);
+            break;
+          case RaytraceMode::RayQueryRayGen:
+            pipelineManager.registerRaytracingShaders(getPipelineShaders(isPSRPass, true, serEnabled, ommEnabled, includePortals));
+            break;
+          case RaytraceMode::TraceRay:
+            pipelineManager.registerRaytracingShaders(getPipelineShaders(isPSRPass, false, serEnabled, ommEnabled, includePortals));
+            break;
+          }
+        }
+      }
     }
   }
 
