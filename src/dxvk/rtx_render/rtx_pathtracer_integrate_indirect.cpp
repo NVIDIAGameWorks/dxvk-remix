@@ -215,28 +215,53 @@ namespace dxvk {
   }
 
   void DxvkPathtracerIntegrateIndirect::prewarmShaders(DxvkPipelineManager& pipelineManager) const {
+    if (RtxOptions::prewarmAllShaderVariants()) {
+      const bool isOpacityMicromapSupported = OpacityMicromapManager::checkIsOpacityMicromapSupported(*m_device);
+      const bool isShaderExecutionReorderingSupported = 
+        RtxContext::checkIsShaderExecutionReorderingSupported(*m_device) &&
+        RtxOptions::Get()->isShaderExecutionReorderingInPathtracerIntegrateIndirectEnabled();
 
-    const bool isOpacityMicromapSupported = OpacityMicromapManager::checkIsOpacityMicromapSupported(*m_device);
-    const bool isShaderExecutionReorderingSupported = 
-      RtxContext::checkIsShaderExecutionReorderingSupported(*m_device) &&
-      RtxOptions::Get()->isShaderExecutionReorderingInPathtracerIntegrateIndirectEnabled();
+      for (int32_t useNeeCache = 1; useNeeCache >= 0; useNeeCache--) {
+        for (int32_t includesPortals = 1; includesPortals >= 0; includesPortals--) {
+          for (int32_t useRayQuery = 1; useRayQuery >= 0; useRayQuery--) {
+            for (int32_t serEnabled = isShaderExecutionReorderingSupported; serEnabled >= 0; serEnabled--) {
+              for (int32_t ommEnabled = isOpacityMicromapSupported; ommEnabled >= 0; ommEnabled--) {
+                for (int32_t pomEnabled = 1; pomEnabled >= 0; pomEnabled--) {
 
-    for (int32_t useNeeCache = 1; useNeeCache >= 0; useNeeCache--) {
-      for (int32_t includesPortals = 1; includesPortals >= 0; includesPortals--) {
-        for (int32_t useRayQuery = 1; useRayQuery >= 0; useRayQuery--) {
-          for (int32_t serEnabled = isShaderExecutionReorderingSupported; serEnabled >= 0; serEnabled--) {
-            for (int32_t ommEnabled = isOpacityMicromapSupported; ommEnabled >= 0; ommEnabled--) {
-              for (int32_t pomEnable = 1; pomEnable >= 0; pomEnable--) {
-                pipelineManager.registerRaytracingShaders(getPipelineShaders(useRayQuery, serEnabled, ommEnabled, useNeeCache, includesPortals, pomEnable));
+
+                  pipelineManager.registerRaytracingShaders(getPipelineShaders(useRayQuery, serEnabled, ommEnabled, useNeeCache, includesPortals, pomEnabled));
+                }
               }
             }
           }
         }
-      }
 
-      DxvkComputePipelineShaders shaders;
-      shaders.cs = getComputeShader(useNeeCache);
-      pipelineManager.createComputePipeline(shaders);
+        DxvkComputePipelineShaders shaders;
+        shaders.cs = getComputeShader(useNeeCache);
+        pipelineManager.createComputePipeline(shaders);
+      }
+    } else {
+      const bool serEnabled = RtxOptions::Get()->isShaderExecutionReorderingInPathtracerIntegrateIndirectEnabled();
+      const bool ommEnabled = OpacityMicromapManager::checkIsOpacityMicromapSupported(*m_device) && RtxOptions::Get()->opacityMicromap.enable();
+      const bool useNeeCache = NeeCachePass::enable();
+      const bool includesPortals = RtxOptions::Get()->rayPortalModelTextureHashes().size() > 0;
+      
+      // Prewarm POM on and off, as that can change based on game content (if nothing in the frame has a height texture, then POM turns off)
+      for (int32_t pomEnabled = 1; pomEnabled >= 0; pomEnabled--) {
+        DxvkComputePipelineShaders shaders;
+        switch (RtxOptions::Get()->getRenderPassIntegrateIndirectRaytraceMode()) {
+        case RaytraceMode::RayQuery:
+          shaders.cs = getComputeShader(useNeeCache);
+          pipelineManager.createComputePipeline(shaders);
+          break;
+        case RaytraceMode::RayQueryRayGen:
+          pipelineManager.registerRaytracingShaders(getPipelineShaders(true, serEnabled, ommEnabled, useNeeCache, includesPortals, pomEnabled));
+          break;
+        case RaytraceMode::TraceRay:
+          pipelineManager.registerRaytracingShaders(getPipelineShaders(false, serEnabled, ommEnabled, useNeeCache, includesPortals, pomEnabled));
+          break;
+        }
+      }
     }
   }
 
