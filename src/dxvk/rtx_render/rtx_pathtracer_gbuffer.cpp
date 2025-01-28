@@ -151,14 +151,17 @@ namespace dxvk {
   }
 
   void DxvkPathtracerGbuffer::prewarmShaders(DxvkPipelineManager& pipelineManager) const {
-    if (RtxOptions::prewarmAllShaderVariants()) {
-      const bool isOpacityMicromapSupported = OpacityMicromapManager::checkIsOpacityMicromapSupported(*m_device);
-      const bool isShaderExecutionReorderingSupported = 
-        RtxContext::checkIsShaderExecutionReorderingSupported(*m_device) && 
-        RtxOptions::Get()->isShaderExecutionReorderingInPathtracerGbufferEnabled();
+    ScopedCpuProfileZoneN("Gbuffer Shader Prewarming");
 
+    const bool isOpacityMicromapSupported = OpacityMicromapManager::checkIsOpacityMicromapSupported(*m_device);
+    const bool isShaderExecutionReorderingSupported = 
+      RtxContext::checkIsShaderExecutionReorderingSupported(*m_device) && 
+      RtxOptions::Get()->isShaderExecutionReorderingInPathtracerGbufferEnabled();
+    const bool portalsEnabled = RtxOptions::Get()->rayPortalModelTextureHashes().size() > 0;
+
+    if (RtxOptions::prewarmAllShaderVariants()) {
       for (int32_t isPSRPass = 1; isPSRPass >= 0; isPSRPass--) {
-        for (int32_t includePortals = 1; includePortals >= 0; includePortals--) {
+        for (int32_t includePortals = portalsEnabled; includePortals >= 0; includePortals--) {
           for (int32_t useRayQuery = 1; useRayQuery >= 0; useRayQuery--) {
             for (int32_t serEnabled = isShaderExecutionReorderingSupported; serEnabled >= 0; serEnabled--) {
               for (int32_t ommEnabled = isOpacityMicromapSupported; ommEnabled >= 0; ommEnabled--) {
@@ -173,15 +176,13 @@ namespace dxvk {
         pipelineManager.createComputePipeline(shaders);
       }
     } else {
+      // Note: The getters for these SER/OMM enabled flags also check if SER/OMMs are supported, so we do not need to check for that manually.
       const bool serEnabled = RtxOptions::Get()->isShaderExecutionReorderingInPathtracerGbufferEnabled();
       const bool ommEnabled = RtxOptions::Get()->getEnableOpacityMicromap();
-      const bool useNeeCache = NeeCachePass::enable();
-      const bool includePortals = RtxOptions::Get()->rayPortalModelTextureHashes().size() > 0;
       
       // Need both PSR and non-PSR passes.
       for (int32_t isPSRPass = 1; isPSRPass >= 0; isPSRPass--) {
-        // Prewarm POM on and off, as that can change based on game content (if nothing in the frame has a height texture, then POM turns off)
-        for (int32_t pomEnabled = 1; pomEnabled >= 0; pomEnabled--) {
+        for (int32_t includePortals = portalsEnabled; includePortals >= 0; includePortals--) {
           DxvkComputePipelineShaders shaders;
           switch (RtxOptions::Get()->getRenderPassGBufferRaytraceMode()) {
           case RaytraceMode::RayQuery:
