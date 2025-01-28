@@ -56,8 +56,13 @@ If (Test-Path env:LIBPATH) {
   Push-Location "${vsPath}\VC\Auxiliary\Build"
   cmd /c "vcvarsall.bat x64&set" |
     ForEach-Object {
+      # Due to some odd behavior with how powershell core (pwsh) (powershell 5.X not tested) interprets a specific
+      # predefined gitlab CI variable (in this case CI_MERGE_REQUEST_DESCRIPTION) with a value that includes ===  
+      # The `Contains` method is used to ignore the string === to prevent pwsh from erroneously encountering an error.
       If ($_ -match "=") {
-        $v = $_.split("="); Set-Item -Force -Path "ENV:\$($v[0])" -Value "$($v[1])"
+          If (-not ($_.Contains('==='))) {
+              $v = $_.split("="); Set-Item -Force -Path "ENV:\$($v[0])" -Value "$($v[1])"
+          }
       }
     }
   Pop-Location
