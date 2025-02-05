@@ -77,9 +77,9 @@ float3 randomWorldPointInFrustum()
 }
 
 // Generate a new particle in-place with random properties
-GpuParticle respawn()
+GpuDustParticle respawn()
 {
-  GpuParticle newParticle;
+  GpuDustParticle newParticle;
   float3 random01 = float3(getNextSampleBlueNoise(rng), getNextSampleBlueNoise(rng), getNextSampleBlueNoise(rng)) * float3(2..xx, 1.f) - float3(1..xx, 0.f);
   newParticle.position = randomWorldPointInFrustum() + random01 * 100;
   newParticle.initialTimeToLive = newParticle.timeToLive = lerp(particleCb.minTtl, particleCb.maxTtl, getNextSampleBlueNoise(rng));
@@ -88,13 +88,13 @@ GpuParticle respawn()
   return newParticle;
 }
 
-bool shouldRespawn(GpuParticle particle)
+bool shouldRespawn(GpuDustParticle particle)
 {
   float3 relativePos = cameraGetWorldPosition(cb.camera) - particle.position;
   return particle.timeToLive <= float16_t(0.f) || dot(relativePos, relativePos) >= (particleCb.cullDistanceFromCamera * particleCb.cullDistanceFromCamera);
 }
 
-float3 evalLighting(GpuParticle particle)
+float3 evalLighting(GpuDustParticle particle)
 {
   MinimalSurfaceInteraction surfaceInteraction;
   surfaceInteraction.position = particle.position;
@@ -103,7 +103,7 @@ float3 evalLighting(GpuParticle particle)
   return evalVolumetricNEE(FilteredAccumulatedRadianceY, FilteredAccumulatedRadianceCoCg, cb.volumeArgs, surfaceInteraction, normalize(viewDir), froxelVolumeMain, true, particleCb.anisotropy);
 }
 
-float calculateOpacity(GpuParticle particle)
+float calculateOpacity(GpuDustParticle particle)
 {
   // Give the appearance of rotating dust particles
   float intensity = max(cos(particleCb.rotationSpeed * particle.timeToLive / particle.size) + 0.5f, 0);
@@ -112,7 +112,7 @@ float calculateOpacity(GpuParticle particle)
   return smoothstep(0.f, 1.f, 1.f-abs(x)) * particleCb.opacity * intensity / particle.size;
 }
 
-float3 calculateRadiance(GpuParticle particle)
+float3 calculateRadiance(GpuDustParticle particle)
 {
   return max(0..xxx, evalLighting(particle));
 }
@@ -122,7 +122,7 @@ VsOut main(uint vertexIdx : SV_VertexID)
 {
   rng = createRNG(float2(vertexIdx / 256, vertexIdx % 256), cb.frameIdx + vertexIdx/(256 * 256));
   
-  GpuParticle particle = Particles[vertexIdx];
+  GpuDustParticle particle = Particles[vertexIdx];
   
   if(shouldRespawn(particle))
   {

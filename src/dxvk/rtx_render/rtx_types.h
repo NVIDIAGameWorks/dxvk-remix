@@ -149,6 +149,15 @@ struct AxisAlignedBoundingBox {
   const XXH64_hash_t calculateHash() const {
     return XXH3_64bits(this, sizeof(AxisAlignedBoundingBox));
   }
+
+  float getVolume(const Matrix4& transform) const {
+    const Vector3 minPosWorld = (transform * dxvk::Vector4(minPos, 1.0f)).xyz();
+    const Vector3 maxPosWorld = (transform * dxvk::Vector4(maxPos, 1.0f)).xyz();
+
+    const Vector3 size = abs(maxPosWorld - minPosWorld);
+
+    return dot(size, Vector3(1.f));
+  }
 };
 
 // Stores a snapshot of the geometry state for a draw call.
@@ -437,6 +446,7 @@ enum class InstanceCategories : uint32_t {
   ThirdPersonPlayerBody,
   IgnoreBakedLighting,
   IgnoreTransparencyLayer,
+  ParticleEmitter,
 
   Count,
 };
@@ -528,6 +538,7 @@ private:
   friend struct D3D9Rtx;
   friend class TerrainBaker;
   friend struct RemixAPIPrivateAccessor;
+  friend class RtxParticleSystemManager;
 
   bool finalizeGeometryHashes();
   void finalizeGeometryBoundingBox();

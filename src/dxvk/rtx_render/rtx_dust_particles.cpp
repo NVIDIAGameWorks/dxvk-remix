@@ -42,7 +42,7 @@ namespace dxvk {
     class DustParticleVertexShader : public ManagedShader {
       SHADER_SOURCE(DustParticleVertexShader, VK_SHADER_STAGE_VERTEX_BIT, dust_particles_vertex)
 
-      PUSH_CONSTANTS(ParticleSystemConstants)
+      PUSH_CONSTANTS(DustParticleSystemConstants)
 
       BEGIN_PARAMETER()
         COMMON_RAYTRACING_BINDINGS
@@ -60,7 +60,7 @@ namespace dxvk {
     class DustParticlePixelShader: public ManagedShader {
       SHADER_SOURCE(DustParticlePixelShader, VK_SHADER_STAGE_FRAGMENT_BIT, dust_particles_fragment)
 
-      PUSH_CONSTANTS(ParticleSystemConstants)
+      PUSH_CONSTANTS(DustParticleSystemConstants)
 
       BEGIN_PARAMETER()
         COMMON_RAYTRACING_BINDINGS
@@ -207,7 +207,7 @@ namespace dxvk {
   }
 
 
-  void RtxDustParticles::setupConstants(RtxContext* ctx, const float frameTimeSecs, Resources& resourceManager, ParticleSystemConstants& pushArgs) {
+  void RtxDustParticles::setupConstants(RtxContext* ctx, const float frameTimeSecs, Resources& resourceManager, DustParticleSystemConstants& pushArgs) {
     pushArgs.minTtl = minParticleLife();
     pushArgs.maxTtl = maxParticleLife();
     pushArgs.minParticleSize = minParticleSize();
@@ -252,7 +252,7 @@ namespace dxvk {
     pushArgs.isCameraLhs = camera.isLHS();
   }
 
-  static_assert(sizeof(GpuParticle) == 8 * 4, "Unexpected, please check perf");// be careful with performance when increasing this!
+  static_assert(sizeof(GpuDustParticle) == 8 * 4, "Unexpected, please check perf");// be careful with performance when increasing this!
 
   void RtxDustParticles::simulateAndDraw(RtxContext* ctx, DxvkContextState& dxvkCtxState, const Resources::RaytracingOutput& rtOutput) {
     if (!enable()) { 
@@ -262,11 +262,11 @@ namespace dxvk {
     ScopedGpuProfileZone(ctx, "Dust Particles");
     ctx->setFramePassStage(RtxFramePassStage::DustParticles);
 
-    if(m_particles == nullptr || m_particles->info().size != sizeof(GpuParticle) * numberOfParticles()) {
+    if(m_particles == nullptr || m_particles->info().size != sizeof(GpuDustParticle) * numberOfParticles()) {
       const Rc<DxvkDevice>& device = ctx->getDevice();
 
       DxvkBufferCreateInfo info;
-      info.size = sizeof(GpuParticle) * numberOfParticles();
+      info.size = sizeof(GpuDustParticle) * numberOfParticles();
       info.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
         | VK_BUFFER_USAGE_TRANSFER_DST_BIT
         | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
@@ -303,7 +303,7 @@ namespace dxvk {
 
     ctx->setPushConstantBank(DxvkPushConstantBank::RTX);
 
-    ParticleSystemConstants pushArgs;
+    DustParticleSystemConstants pushArgs;
     setupConstants(ctx, GlobalTime::get().deltaTime(), resourceManager, pushArgs);
     ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
 

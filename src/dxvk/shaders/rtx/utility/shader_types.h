@@ -179,6 +179,29 @@ struct alignas(16) mat4 {
   }
 };
 
+struct alignas(16) mat4x3 {
+  vec3 m[4];
+
+  mat4x3() = default;
+
+  mat4x3(const dxvk::Matrix4& v) {
+    for (uint32_t i = 0; i < 4; i++) {
+      std::memcpy(&m[i], &v[i], sizeof(float) * 3);
+    }
+  }
+
+  mat4x3& operator=(dxvk::Matrix4& v) {
+    for (uint32_t i = 0; i < 4; i++) {
+      std::memcpy(&m[i], &v[i], sizeof(float) * 3);
+    }
+    return *this;
+  }
+
+  vec3& operator[](size_t index) {
+    return m[index];
+  }
+};
+
 // Functions
 
 inline float dot(vec2 a, vec2 b) {

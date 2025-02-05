@@ -328,8 +328,12 @@ dxvk_src = files([
   'rtx_render/rtx_global_volumetrics.h',
   'rtx_render/rtx_dust_particles.cpp',
   'rtx_render/rtx_dust_particles.h',
+
   'rtx_render/rtx_system_info.cpp',
   'rtx_render/rtx_system_info.h',
+  
+  'rtx_render/rtx_particle_system.cpp',
+  'rtx_render/rtx_particle_system.h',
 
   'rtx_render/rtx_constants.h',
 

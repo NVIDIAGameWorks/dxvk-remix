@@ -45,6 +45,7 @@
 #include "dxvk_scoped_annotation.h"
 #include "rtx_lights_data.h"
 #include "rtx_light_utils.h"
+#include "rtx_particle_system.h"
 
 #include "../util/util_globaltime.h"
 
@@ -938,7 +939,12 @@ namespace dxvk {
       }
     }
 
-    return instance ? instance->getId() : UINT64_MAX;
+    if (instance && drawCallState.getCategoryFlags().test(InstanceCategories::ParticleEmitter)) {
+      RtxParticleSystemManager& particleSystem = device()->getCommon()->metaParticleSystem();
+      particleSystem.spawnParticlesForMaterial(ctx.ptr(), RtxParticleSystemManager::createGlobalParticleSystemDesc(), instance->getVectorIdx(), drawCallState);
+    }
+
+    return instance ? instance->getId() : UINT64_MAX; 
   }
 
   const RtSurfaceMaterial& SceneManager::createSurfaceMaterial( Rc<DxvkContext> ctx, 
@@ -1401,7 +1407,6 @@ namespace dxvk {
 
     m_terrainBaker->prepareSceneData(ctx);
 
-    
     auto& textureManager = m_device->getCommon()->getTextureManager();
     m_bindlessResourceManager.prepareSceneData(ctx, textureManager.getTextureTable(), getBufferTable(), getSamplerTable());
 
@@ -1446,6 +1451,9 @@ namespace dxvk {
       m_opacityMicromapManager = nullptr;
       Logger::info("[RTX] Opacity Micromap: disabled");
     }
+
+    RtxParticleSystemManager& particles = m_device->getCommon()->metaParticleSystem();
+    particles.simulate(ctx.ptr());
 
     m_instanceManager.findPortalForVirtualInstances(m_cameraManager, m_rayPortalManager);
     m_instanceManager.createViewModelInstances(ctx, m_cameraManager, m_rayPortalManager);

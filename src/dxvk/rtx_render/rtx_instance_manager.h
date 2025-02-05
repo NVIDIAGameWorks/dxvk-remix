@@ -50,6 +50,7 @@ public:
   RtInstance(const RtInstance& src, uint64_t id, uint32_t instanceVectorId);
 
   uint64_t getId() const { return m_id; }
+  uint32_t getVectorIdx() const { return m_instanceVectorId; }
   const VkAccelerationStructureInstanceKHR& getVkInstance() const { return m_vkInstance; }
   VkAccelerationStructureInstanceKHR& getVkInstance() { return m_vkInstance; }
   bool isObjectToWorldMirrored() const { return m_isObjectToWorldMirrored; }

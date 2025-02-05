@@ -21,24 +21,40 @@
 */
 #pragma once
 
-#include "rtx/pass/particles/dust_particles_binding_indices.h"
-#include "rtx/pass/common_bindings.slangh"
+#include "rtx/pass/common_binding_indices.h"
+#include "rtx/utility/shader_types.h"
+#include "particle_system_common.h"
 
-// Inputs
+struct GpuParticle {
+  vec3 position;
+  uint color;
 
-layout(push_constant)
-ConstantBuffer<DustParticleSystemConstants> particleCb;
+  vec3 velocity;
+  half timeToLive;
+  half initialTimeToLive;
 
-layout(binding = DUST_PARTICLES_BINDING_FILTERED_RADIANCE_Y_INPUT)
-Sampler3D<float4> FilteredAccumulatedRadianceY;
+  f16vec4 uvMinMax;
+  half size;
+  half rotation;
+  half rotationSpeed;
+  half pad0;
+};
 
-layout(binding = DUST_PARTICLES_BINDING_FILTERED_RADIANCE_CO_CG_INPUT)
-Sampler3D<float2> FilteredAccumulatedRadianceCoCg;
+struct ParticleVertex {
+  vec3 position;
+  uint color;
+  vec2 texcoord;
+};
 
-layout(binding = DUST_PARTICLES_BINDING_DEPTH_INPUT)
-Sampler2D<float> PrimaryDepth;
+#define PARTICLE_SYSTEM_BINDING_CONSTANTS                           50
+#define PARTICLE_SYSTEM_BINDING_SPAWN_CONTEXT_PARTICLE_MAPPING_INPUT   51
+#define PARTICLE_SYSTEM_BINDING_SPAWN_CONTEXTS_INPUT                   52
 
-// Outputs
+#define PARTICLE_SYSTEM_BINDING_PARTICLES_BUFFER_INPUT_OUTPUT  60
+#define PARTICLE_SYSTEM_BINDING_VERTEX_BUFFER_OUTPUT       61
 
-layout(binding = DUST_PARTICLES_BINDING_PARTICLES_BUFFER_INOUT)
-RWStructuredBuffer<GpuDustParticle> Particles;
+#define PARTICLE_SYSTEM_MIN_BINDING                           PARTICLE_SYSTEM_BINDING_CONSTANTS
+
+#if PARTICLE_SYSTEM_MIN_BINDING <= COMMON_MAX_BINDING
+#error "Increase the base index of dust particles bindings to avoid overlap with common bindings!"
+#endif
