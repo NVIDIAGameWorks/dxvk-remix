@@ -97,7 +97,7 @@ namespace dxvk {
   };
 
   enum class TaauPreset : int {
-    Ultra Performance = 0,
+    UltraPerformance = 0,
     Performance,
     Balanced,
     Quality,
