@@ -99,16 +99,33 @@ namespace dxvk {
   }
 
   void DxvkPathtracerIntegrateDirect::prewarmShaders(DxvkPipelineManager& pipelineManager) const {
+    ScopedCpuProfileZoneN("Direct Integrate Shader Prewarming");
 
     const bool isOpacityMicromapSupported = OpacityMicromapManager::checkIsOpacityMicromapSupported(*m_device);
 
-    for (int32_t ommEnabled = isOpacityMicromapSupported; ommEnabled > 0; ommEnabled--) {
-      pipelineManager.registerRaytracingShaders(getPipelineShaders(true, ommEnabled));
-    }
+    if (RtxOptions::prewarmAllShaderVariants()) {
+      for (int32_t ommEnabled = isOpacityMicromapSupported; ommEnabled > 0; ommEnabled--) {
+        pipelineManager.registerRaytracingShaders(getPipelineShaders(true, ommEnabled));
+      }
 
-    DxvkComputePipelineShaders shaders;
-    shaders.cs = getComputeShader();
-    pipelineManager.createComputePipeline(shaders);
+      DxvkComputePipelineShaders shaders;
+      shaders.cs = getComputeShader();
+      pipelineManager.createComputePipeline(shaders);
+    } else {
+      // Note: The getter for OMM enabled also checks if OMMs are supported, so we do not need to check for that manually.
+      const bool ommEnabled = RtxOptions::Get()->getEnableOpacityMicromap();
+
+      DxvkComputePipelineShaders shaders;
+      switch (RtxOptions::Get()->getRenderPassIntegrateDirectRaytraceMode()) {
+      case RaytraceMode::RayQuery:
+        shaders.cs = getComputeShader();
+        pipelineManager.createComputePipeline(shaders);
+        break;
+      case RaytraceMode::RayQueryRayGen:
+        pipelineManager.registerRaytracingShaders(getPipelineShaders(true, ommEnabled));
+        break;
+      }
+    }
   }
 
   void DxvkPathtracerIntegrateDirect::dispatch(

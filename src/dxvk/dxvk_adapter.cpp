@@ -27,6 +27,7 @@
 
 #include "dxvk_device.h"
 #include "dxvk_instance.h"
+#include "../util/util_once.h"
 
 // NV-DXVK start: RTXIO
 #include "rtx_render/rtx_io.h"
@@ -424,7 +425,8 @@ namespace dxvk {
       // NV-DXVK start: Check against extension requirements for DXVK and Remix to run
       Logger::err("Unable to find all required Vulkan GPU extensions for device creation.");
 
-      messageBox("Your GPU doesn't support the required features to run RTX Remix.  See the 'rtx-remix/logs/remix-dxvk.log' for what features your GPU doesn't support.  The game will exit now.", "RTX Remix - GPU Feature Error!", MB_OK);
+      // Note: Once macro used to ensure this message is only displayed to the user once when applications attempt to create multiple devices.
+      ONCE(messageBox("Your GPU doesn't support the required features to run RTX Remix.  See the 'rtx-remix/logs/remix-dxvk.log' for what features your GPU doesn't support.  The game will exit now.", "RTX Remix - GPU Feature Error!", MB_OK));
       // NV-DXVK end
 
       // NV-DXVK start: Provide error code on exception
@@ -683,7 +685,8 @@ namespace dxvk {
           "\tCurrently installed: ", currentDriverVersionString, "\n",
           "\tRequired minimum: ", minimumDriverVersionString);
 
-        messageBox(minDriverCheckDialogMessage.c_str(), "RTX Remix - Driver Compatibility Error!", MB_OK);
+        // Note: Once macro used to ensure this message is only displayed to the user once when applications attempt to create multiple devices.
+        ONCE(messageBox(minDriverCheckDialogMessage.c_str(), "RTX Remix - Driver Compatibility Error!", MB_OK));
 
         // NV-DXVK start: Provide error code on exception
         throw DxvkErrorWithId(REMIXAPI_ERROR_CODE_HRESULT_DRIVER_VERSION_BELOW_MINIMUM, "DxvkAdapter: Failed to create device, driver version below minimum required.");
