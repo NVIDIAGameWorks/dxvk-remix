@@ -153,6 +153,7 @@ namespace dxvk {
       NIS,
       TAAU,
       DLSS_RR,
+      FSR,
     };
 
     void reportCpuSimdSupport();
@@ -217,6 +218,7 @@ namespace dxvk {
     bool shouldUseRayReconstruction() const;
     bool shouldUseNIS() const;
     bool shouldUseTAA() const;
+    bool shouldUseFSR() const;
     bool shouldUseUpscaler() const { return shouldUseDLSS() || shouldUseNIS() || shouldUseTAA(); }
 
     inline static bool s_triggerScreenshot = false;

@@ -64,7 +64,8 @@ namespace dxvk {
     None = 0,
     DLSS,
     NIS,
-    TAAU
+    TAAU,
+    FSR,  // Add FSR as an upscaler option
   };
 
   enum class GraphicsPreset : int {
@@ -97,7 +98,8 @@ namespace dxvk {
   };
 
   enum class TaauPreset : int {
-    Performance = 0,
+    UltraPerformance = 0,
+    Performance,
     Balanced,
     Quality,
     Fullscreen
@@ -1486,5 +1488,15 @@ namespace dxvk {
     std::string getCurrentDirectory() const;
 
     bool shouldUseObsoleteHashOnTextureUpload() const { return useObsoleteHashOnTextureUpload(); }
+
+    // FSR Settings
+    SETTING_BOOL(enableFrameGeneration, false, "Enable FSR Frame Generation",
+                 "Enables FSR Frame Generation for smoother motion between frames.")
+    SETTING_FLOAT(fsrSharpness, 0.5f, "FSR Sharpness",
+                  "Controls the sharpness of the FSR upscaling (0.0 to 1.0).")
+    SETTING_ENUM(fsrQuality, FSRProfile::Auto, "FSR Quality Mode",
+                 "Controls the quality preset for FSR upscaling.")
+
+    bool isFSREnabled() const { return upscalerType() == UpscalerType::FSR; }
   };
 }

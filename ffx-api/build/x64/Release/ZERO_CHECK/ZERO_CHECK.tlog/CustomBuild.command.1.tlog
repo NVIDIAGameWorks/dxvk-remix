@@ -1,0 +1,10 @@
+^C:\USERS\LJ--\ONEDRIVE\DESKTOP\DEV\FIDELITYFX-SDK-V1.1.3\FFX-API\BUILD\CMAKEFILES\9DCAC349D2547327EA2CA93FE546D86D\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/lj--/OneDrive/Desktop/Dev/FidelityFX-SDK-v1.1.3/ffx-api -BC:/Users/lj--/OneDrive/Desktop/Dev/FidelityFX-SDK-v1.1.3/ffx-api/build --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/Users/lj--/OneDrive/Desktop/Dev/FidelityFX-SDK-v1.1.3/ffx-api/build/FFX_API_.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

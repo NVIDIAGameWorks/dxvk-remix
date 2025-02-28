@@ -1,0 +1,10 @@
+^C:\USERS\LJ--\ONEDRIVE\DESKTOP\DEV\FIDELITYFX-SDK-V1.1.3\SDK\SRC\COMPONENTS\OPTICALFLOW\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/lj--/OneDrive/Desktop/Dev/FidelityFX-SDK-v1.1.3/ffx-api -BC:/Users/lj--/OneDrive/Desktop/Dev/FidelityFX-SDK-v1.1.3/ffx-api/build --check-stamp-file C:/Users/lj--/OneDrive/Desktop/Dev/FidelityFX-SDK-v1.1.3/ffx-api/build/sdk/src/components/opticalflow/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

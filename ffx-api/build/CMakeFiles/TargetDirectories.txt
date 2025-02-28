@@ -1,0 +1,9 @@
+C:/Users/lj--/OneDrive/Desktop/Dev/FidelityFX-SDK-v1.1.3/ffx-api/build/CMakeFiles/amd_fidelityfx_.dir
+C:/Users/lj--/OneDrive/Desktop/Dev/FidelityFX-SDK-v1.1.3/ffx-api/build/CMakeFiles/ALL_BUILD.dir
+C:/Users/lj--/OneDrive/Desktop/Dev/FidelityFX-SDK-v1.1.3/ffx-api/build/CMakeFiles/ZERO_CHECK.dir
+C:/Users/lj--/OneDrive/Desktop/Dev/FidelityFX-SDK-v1.1.3/ffx-api/build/sdk/CMakeFiles/ALL_BUILD.dir
+C:/Users/lj--/OneDrive/Desktop/Dev/FidelityFX-SDK-v1.1.3/ffx-api/build/sdk/src/components/opticalflow/CMakeFiles/ffx_opticalflow_x64.dir
+C:/Users/lj--/OneDrive/Desktop/Dev/FidelityFX-SDK-v1.1.3/ffx-api/build/sdk/src/components/frameinterpolation/CMakeFiles/ffx_frameinterpolation_x64.dir
+C:/Users/lj--/OneDrive/Desktop/Dev/FidelityFX-SDK-v1.1.3/ffx-api/build/sdk/src/components/fsr3/CMakeFiles/ffx_fsr3_x64.dir
+C:/Users/lj--/OneDrive/Desktop/Dev/FidelityFX-SDK-v1.1.3/ffx-api/build/sdk/src/components/fsr3upscaler/CMakeFiles/ffx_fsr3upscaler_x64.dir
+C:/Users/lj--/OneDrive/Desktop/Dev/FidelityFX-SDK-v1.1.3/ffx-api/build/sdk/src/components/fsr2/CMakeFiles/ffx_fsr2_x64.dir
