@@ -43,6 +43,18 @@ namespace dxvk {
       const Resources::RaytracingOutput& rtOutput,
       bool resetHistory = false);
 
+    void dispatchFrameGeneration(
+      Rc<RtxContext> ctx,
+      DxvkBarrierSet& barriers,
+      const Resources::RaytracingOutput& rtOutput,
+      bool resetHistory = false);
+
+    void configureFrameGeneration(
+      bool enableFrameGeneration,
+      bool allowAsyncWorkloads,
+      uint32_t frameID,
+      const Resources::Resource* hudLessColor = nullptr);
+
     void showImguiSettings();
     void onDestroy();
     void release();
@@ -51,11 +63,14 @@ namespace dxvk {
     virtual bool isEnabled() const override;
     static FSRProfile getAutoProfile(uint32_t displayWidth, uint32_t displayHeight);
     void initializeFSR(Rc<DxvkContext> pRenderContext);
+    void initializeFrameGeneration(Rc<DxvkContext> pRenderContext);
 
   private:
     // FSR Context and State
     FfxFsr3Context m_fsrContext = {};
+    FfxFsr3Context m_frameGenContext = {};
     bool m_contextInitialized = false;
+    bool m_frameGenInitialized = false;
     
     // Options
     FSRProfile m_profile = FSRProfile::Invalid;
@@ -63,6 +78,8 @@ namespace dxvk {
     bool m_isHDR = true;
     float m_sharpness = 0.5f;
     bool m_enableFrameGeneration = false;
+    bool m_allowAsyncWorkloads = false;
+    uint32_t m_frameID = 0;
 
     bool m_recreate = true;
     uint32_t m_inputSize[2] = {};
@@ -74,5 +91,9 @@ namespace dxvk {
     Rc<DxvkImage> m_exposure;
     Rc<DxvkImage> m_reactiveMap;
     Rc<DxvkImage> m_transparencyAndComposition;
+    Rc<DxvkImage> m_hudLessColor;
+
+    // Frame Generation Config
+    FfxFrameGenerationConfig m_frameGenConfig = {};
   };
 } 
