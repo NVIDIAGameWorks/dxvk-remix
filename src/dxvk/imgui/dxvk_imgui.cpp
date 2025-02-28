@@ -330,12 +330,22 @@ namespace dxvk {
   constexpr ImGuiWindowFlags popupWindowFlags = ImGuiWindowFlags_NoSavedSettings;
 
   ImGui::ComboWithKey<UpscalerType>& getUpscalerCombo(DxvkDLSS& dlss, DxvkRayReconstruction& rayReconstruction) {
-    if (dlss.supportsDLSS()) {
-      return upscalerDLSSCombo;
-    } else {
-      // Drop DLSS item if unsupported.
-      return upscalerNoDLSSCombo;
-    }
+    static ImGui::ComboWithKey<UpscalerType> withDLSS("Upscaler", {
+      { "None", UpscalerType::None },
+      { "DLSS", UpscalerType::DLSS },
+      { "FSR", UpscalerType::FSR },
+      { "NIS", UpscalerType::NIS },
+      { "TAAU", UpscalerType::TAAU }
+    });
+
+    static ImGui::ComboWithKey<UpscalerType> withoutDLSS("Upscaler", {
+      { "None", UpscalerType::None },
+      { "FSR", UpscalerType::FSR },
+      { "NIS", UpscalerType::NIS },
+      { "TAAU", UpscalerType::TAAU }
+    });
+
+    return dlss.supportsDLSS() ? withDLSS : withoutDLSS;
   }
 
   bool ImGUI::showRayReconstructionEnable(bool supportsRR) {
@@ -1127,6 +1137,29 @@ namespace dxvk {
           ImGui::TextWrapped(str::format("Computed DLSS Mode: ", dlssProfileToString(currentDLSSProfile), ", Render Resolution: ", dlssInputWidth, "x", dlssInputHeight).c_str());
         }
         break;
+        case UpscalerType::FSR: {
+          m_userGraphicsSettingChanged |= ImGui::Combo("FSR Mode", &RtxOptions::Get()->fsrQualityObject(), "Ultra Performance\0Performance\0Balanced\0Quality\0Auto\0");
+
+          // Display FSR Upscaling Information
+          const auto currentFSRProfile = ctx->getCommonObjects()->metaFSR().getCurrentProfile();
+          uint32_t fsrInputWidth, fsrInputHeight;
+          ctx->getCommonObjects()->metaFSR().getInputSize(fsrInputWidth, fsrInputHeight);
+          ImGui::TextWrapped(str::format("Computed FSR Mode: ", fsrProfileToString(currentFSRProfile), ", Render Resolution: ", fsrInputWidth, "x", fsrInputHeight).c_str());
+
+          // FSR-specific settings
+          bool frameGen = RtxOptions::Get()->enableFrameGeneration();
+          if (ImGui::Checkbox("Enable Frame Generation", &frameGen)) {
+            RtxOptions::Get()->enableFrameGenerationRef() = frameGen;
+            m_userGraphicsSettingChanged = true;
+          }
+
+          float sharpness = RtxOptions::Get()->fsrSharpness();
+          if (ImGui::SliderFloat("Sharpness", &sharpness, 0.0f, 1.0f)) {
+            RtxOptions::Get()->fsrSharpnessRef() = sharpness;
+            m_userGraphicsSettingChanged = true;
+          }
+          break;
+        }
         case UpscalerType::NIS: {
           m_userGraphicsSettingChanged |= ImGui::Combo("NIS Preset", &RtxOptions::Get()->nisPresetObject(), "Performance\0Balanced\0Quality\0Fullscreen\0");
           RtxOptions::Get()->updateUpscalerFromNisPreset();
@@ -1140,14 +1173,14 @@ namespace dxvk {
           break;
         }
         case UpscalerType::TAAU: {
-          m_userGraphicsSettingChanged |= ImGui::Combo("TAA-U Preset", &RtxOptions::Get()->taauPresetObject(), "Ultra Performance\0Performance\0Balanced\0Quality\0Fullscreen\0");
+          m_userGraphicsSettingChanged |= ImGui::Combo("TAAU Preset", &RtxOptions::Get()->taauPresetObject(), "Ultra Performance\0Performance\0Balanced\0Quality\0Fullscreen\0");
           RtxOptions::Get()->updateUpscalerFromTaauPreset();
 
-          // Display TAA-U Upscaling Information
+          // Display TAAU Upscaling Information
 
           auto resolutionScale = RtxOptions::Get()->getResolutionScale();
 
-          ImGui::TextWrapped(str::format("TAA-U Resolution Scale: ", resolutionScale).c_str());
+          ImGui::TextWrapped(str::format("TAAU Resolution Scale: ", resolutionScale).c_str());
 
           break;
         }
@@ -2637,6 +2670,9 @@ namespace dxvk {
       } else if (RtxOptions::Get()->upscalerType() == UpscalerType::DLSS) {
         ImGui::Combo("DLSS mode", &RtxOptions::Get()->qualityDLSSObject(), "Ultra Performance\0Performance\0Balanced\0Quality\0Auto\0Full Resolution\0");
         dlss.showImguiSettings();
+      } else if (RtxOptions::Get()->upscalerType() == UpscalerType::FSR) {
+        ImGui::Combo("FSR mode", &RtxOptions::Get()->fsrQualityObject(), "Ultra Performance\0Performance\0Balanced\0Quality\0Auto\0Full Resolution\0");
+        ctx->getCommonObjects()->metaFSR().showImguiSettings();
       } else if (RtxOptions::Get()->upscalerType() == UpscalerType::NIS) {
         ImGui::SliderFloat("Resolution scale", &RtxOptions::Get()->resolutionScaleObject(), 0.5f, 1.0f);
         ImGui::SliderFloat("Sharpness", &ctx->getCommonObjects()->metaNIS().m_sharpness, 0.1f, 1.0f);
