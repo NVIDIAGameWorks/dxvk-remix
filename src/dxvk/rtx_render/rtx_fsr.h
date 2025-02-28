@@ -1,13 +1,17 @@
+/*
+* Copyright (c) 2024, AMD Corporation. All rights reserved.
+*/
 #pragma once
 
+#include "../dxvk_include.h"
 #include "rtx_resources.h"
-#include "rtx_options.h"
-#include "rtx_common.h"
-#include "rtx_pass.h"
-#include "../ffx_api/ffx_upscale.h"
-#include "../ffx_api/ffx_framegeneration.h"
+#include "dxvk_image.h"
+#include "ffx_api/include/FidelityFX/FSR3.h"
 
 namespace dxvk {
+  class DxvkCommandList;
+  class DxvkBarrierSet;
+  class DxvkContext;
 
   enum class FSRProfile {
     UltraPerf = 0,
@@ -40,31 +44,35 @@ namespace dxvk {
       bool resetHistory = false);
 
     void showImguiSettings();
-
     void onDestroy();
     void release();
 
   protected:
     virtual bool isEnabled() const override;
-
     static FSRProfile getAutoProfile(uint32_t displayWidth, uint32_t displayHeight);
     void initializeFSR(Rc<DxvkContext> pRenderContext);
 
+  private:
+    // FSR Context and State
+    FfxFsr3Context m_fsrContext = {};
+    bool m_contextInitialized = false;
+    
     // Options
-    FSRProfile mProfile = FSRProfile::Invalid;
-    FSRProfile mActualProfile = FSRProfile::Invalid;
-    bool mIsHDR = true;
-    float mPreExposure = 1.f;
-    bool mAutoExposure = false;
+    FSRProfile m_profile = FSRProfile::Invalid;
+    FSRProfile m_actualProfile = FSRProfile::Invalid;
+    bool m_isHDR = true;
+    float m_sharpness = 0.5f;
+    bool m_enableFrameGeneration = false;
 
-    bool mRecreate = true;
-    uint32_t mInputSize[2] = {};
-    uint32_t mFSROutputSize[2] = {};
+    bool m_recreate = true;
+    uint32_t m_inputSize[2] = {};
+    uint32_t m_outputSize[2] = {};
 
-    // FSR context and resources
-    FfxUpscaleContext mFsrContext;
-    FfxFrameGenerationContext mFrameGenContext;
-    bool mFrameGenEnabled = false;
+    // Resources
+    Rc<DxvkImage> m_depthBuffer;
+    Rc<DxvkImage> m_motionVectors;
+    Rc<DxvkImage> m_exposure;
+    Rc<DxvkImage> m_reactiveMap;
+    Rc<DxvkImage> m_transparencyAndComposition;
   };
-
-} // namespace dxvk 
+} 

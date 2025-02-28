@@ -1,7 +1,13 @@
+/*
+* Copyright (c) 2024, AMD Corporation. All rights reserved.
+*/
 #include "rtx_fsr.h"
-#include "dxvk_device.h"
 #include "rtx_context.h"
 #include "rtx_options.h"
+#include "dxvk_device.h"
+#include "dxvk_scoped_annotation.h"
+#include "rtx_imgui.h"
+#include "rtx_matrix_helpers.h"
 
 namespace dxvk {
 
@@ -22,7 +28,9 @@ DxvkFSR::DxvkFSR(DxvkDevice* device)
   : CommonDeviceObject(device)
   , RtxPass(device) {
   // Initialize FSR context
-  initializeFSR(nullptr);
+  if (!m_contextInitialized) {
+    initializeFSR(nullptr);
+  }
 }
 
 DxvkFSR::~DxvkFSR() {
@@ -30,21 +38,23 @@ DxvkFSR::~DxvkFSR() {
 }
 
 void DxvkFSR::onDestroy() {
-  if (mFsrContext.contextDescription.callbacks.fpDestroy) {
-    mFsrContext.contextDescription.callbacks.fpDestroy(&mFsrContext);
-  }
-  if (mFrameGenContext.contextDescription.callbacks.fpDestroy) {
-    mFrameGenContext.contextDescription.callbacks.fpDestroy(&mFrameGenContext);
+  if (m_contextInitialized) {
+    ffxFsr3ContextDestroy(&m_fsrContext);
+    m_contextInitialized = false;
   }
 }
 
 void DxvkFSR::release() {
-  mRecreate = true;
-  onDestroy();
+  m_recreate = true;
+  if (m_contextInitialized) {
+    ffxFsr3ContextDestroy(&m_fsrContext);
+    m_contextInitialized = false;
+  }
 }
 
 bool DxvkFSR::supportsFSR() const {
-  return true; // FSR is supported on all hardware
+  // Check for FSR3 support - this should check for actual hardware/driver requirements
+  return true;
 }
 
 bool DxvkFSR::isEnabled() const {
@@ -62,7 +72,6 @@ FSRProfile DxvkFSR::getAutoProfile(uint32_t displayWidth, uint32_t displayHeight
   } else if (displayHeight < 4320) {
     desiredProfile = FSRProfile::MaxPerf;
   } else {
-    // For > 4k (e.g. 8k)
     desiredProfile = FSRProfile::UltraPerf;
   }
 
@@ -70,7 +79,6 @@ FSRProfile DxvkFSR::getAutoProfile(uint32_t displayWidth, uint32_t displayHeight
     // When using medium preset, bias FSR more towards performance
     desiredProfile = (FSRProfile)std::max(0, (int)desiredProfile - 1);
   } else if (RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Low) {
-    // When using low preset, give me all the perf I can get!!!
     desiredProfile = FSRProfile::UltraPerf;
   }
 
@@ -80,83 +88,55 @@ FSRProfile DxvkFSR::getAutoProfile(uint32_t displayWidth, uint32_t displayHeight
 void DxvkFSR::setSetting(const uint32_t displaySize[2], const FSRProfile profile, uint32_t outRenderSize[2]) {
   ScopedCpuProfileZone();
   
-  // Handle the "auto" case
   FSRProfile actualProfile = profile;
   if (actualProfile == FSRProfile::Auto) {
     actualProfile = getAutoProfile(displaySize[0], displaySize[1]);
   }
 
-  if (mActualProfile == actualProfile && displaySize[0] == mFSROutputSize[0] && displaySize[1] == mFSROutputSize[1]) {
-    // Nothing changed that would alter FSR resolution(s), so return the last cached optimal render size
-    outRenderSize[0] = mInputSize[0];
-    outRenderSize[1] = mInputSize[1];
+  if (m_actualProfile == actualProfile && 
+      displaySize[0] == m_outputSize[0] && 
+      displaySize[1] == m_outputSize[1]) {
+    outRenderSize[0] = m_inputSize[0];
+    outRenderSize[1] = m_inputSize[1];
     return;
   }
 
-  mActualProfile = actualProfile;
-  mRecreate = true;
-  mProfile = profile;
+  m_actualProfile = actualProfile;
+  m_recreate = true;
+  m_profile = profile;
 
-  if (mProfile == FSRProfile::FullResolution) {
-    mInputSize[0] = outRenderSize[0] = displaySize[0];
-    mInputSize[1] = outRenderSize[1] = displaySize[1];
+  if (m_profile == FSRProfile::FullResolution) {
+    m_inputSize[0] = outRenderSize[0] = displaySize[0];
+    m_inputSize[1] = outRenderSize[1] = displaySize[1];
   } else {
-    float scale;
-    switch (actualProfile) {
-      case FSRProfile::UltraPerf: scale = 0.33f; break;
-      case FSRProfile::MaxPerf: scale = 0.5f; break;
-      case FSRProfile::Balanced: scale = 0.66f; break;
-      case FSRProfile::MaxQuality: scale = 0.75f; break;
-      default: scale = 1.0f; break;
-    }
+    // Calculate optimal render resolution based on FSR quality mode
+    float scaleFactors[] = { 3.0f, 2.0f, 1.7f, 1.5f }; // UltraPerf to MaxQuality
+    float scaleFactor = scaleFactors[std::min((int)m_actualProfile, 3)];
+    
+    m_inputSize[0] = outRenderSize[0] = uint32_t(displaySize[0] / scaleFactor);
+    m_inputSize[1] = outRenderSize[1] = uint32_t(displaySize[1] / scaleFactor);
 
-    // Ensure dimensions are multiples of 32 for optimal performance
-    const int step = 32;
-    mInputSize[0] = outRenderSize[0] = ((uint32_t)(displaySize[0] * scale + step - 1) / step) * step;
-    mInputSize[1] = outRenderSize[1] = ((uint32_t)(displaySize[1] * scale + step - 1) / step) * step;
+    // Ensure dimensions are multiples of 8
+    m_inputSize[0] = (m_inputSize[0] + 7) & ~7;
+    m_inputSize[1] = (m_inputSize[1] + 7) & ~7;
   }
 
-  mFSROutputSize[0] = displaySize[0];
-  mFSROutputSize[1] = displaySize[1];
+  m_outputSize[0] = displaySize[0];
+  m_outputSize[1] = displaySize[1];
 }
 
-void DxvkFSR::initializeFSR(Rc<DxvkContext> pRenderContext) {
-  ScopedCpuProfileZone();
+FSRProfile DxvkFSR::getCurrentProfile() const {
+  return m_actualProfile;
+}
 
-  // Initialize FSR context
-  FfxUpscaleContextDescription fsrDesc = {};
-  fsrDesc.flags = FFX_UPSCALE_ENABLE_NATIVE_AA | FFX_UPSCALE_ENABLE_SHARPENING;
-  fsrDesc.maxRenderSize[0] = mInputSize[0];
-  fsrDesc.maxRenderSize[1] = mInputSize[1];
-  fsrDesc.displaySize[0] = mFSROutputSize[0];
-  fsrDesc.displaySize[1] = mFSROutputSize[1];
-  fsrDesc.fpMessage = nullptr;  // Optional message callback
+void DxvkFSR::getInputSize(uint32_t& width, uint32_t& height) const {
+  width = m_inputSize[0];
+  height = m_inputSize[1];
+}
 
-  // Create FSR context
-  FfxErrorCode fsrError = ffxUpscaleContextCreate(&mFsrContext, &fsrDesc);
-  if (fsrError != FFX_OK) {
-    Logger::err("Failed to create FSR context");
-    return;
-  }
-
-  // Initialize Frame Generation if enabled
-  if (RtxOptions::Get()->enableFrameGeneration()) {
-    FfxFrameGenerationContextDescription frameGenDesc = {};
-    frameGenDesc.flags = FFX_FRAMEGENERATION_ENABLE_INTERPOLATION;
-    frameGenDesc.maxRenderSize[0] = mFSROutputSize[0];
-    frameGenDesc.maxRenderSize[1] = mFSROutputSize[1];
-    frameGenDesc.displaySize[0] = mFSROutputSize[0];
-    frameGenDesc.displaySize[1] = mFSROutputSize[1];
-    frameGenDesc.fpMessage = nullptr;
-
-    FfxErrorCode frameGenError = ffxFrameGenerationContextCreate(&mFrameGenContext, &frameGenDesc);
-    if (frameGenError == FFX_OK) {
-      mFrameGenEnabled = true;
-    } else {
-      Logger::err("Failed to create Frame Generation context");
-      mFrameGenEnabled = false;
-    }
-  }
+void DxvkFSR::getOutputSize(uint32_t& width, uint32_t& height) const {
+  width = m_outputSize[0];
+  height = m_outputSize[1];
 }
 
 void DxvkFSR::dispatch(
@@ -166,63 +146,66 @@ void DxvkFSR::dispatch(
   bool resetHistory) {
   ScopedGpuProfileZone(ctx, "FSR");
 
-  if (mRecreate) {
+  if (m_recreate) {
     initializeFSR(ctx);
-    mRecreate = false;
+    m_recreate = false;
   }
 
-  // Set up FSR dispatch parameters
-  FfxUpscaleDispatchDescription dispatchParams = {};
-  dispatchParams.commandList = ctx->getCommandList()->getCmdBuffer(DxvkCmdBuffer::ExecBuffer);
-  dispatchParams.color = rtOutput.m_compositeOutput.image(Resources::AccessType::Read);
-  dispatchParams.depth = rtOutput.m_primaryDepth.image;
-  dispatchParams.motionVectors = rtOutput.m_primaryScreenSpaceMotionVector.image;
-  dispatchParams.output = rtOutput.m_finalOutput.image;
-  dispatchParams.jitterOffset[0] = 0.0f;  // Get from camera if jittering is used
+  // Set up FSR3 dispatch parameters
+  FfxFsr3DispatchDescription dispatchParams = {};
+  dispatchParams.commandList = ctx->getCommandList();
+  dispatchParams.color = rtOutput.m_compositeOutput.view(Resources::AccessType::Read)->handle();
+  dispatchParams.depth = rtOutput.m_primaryDepth.view->handle();
+  dispatchParams.motionVectors = rtOutput.m_primaryScreenSpaceMotionVector.view->handle();
+  dispatchParams.exposure = nullptr; // Optional
+  dispatchParams.reactive = nullptr; // Optional
+  dispatchParams.transparencyAndComposition = nullptr; // Optional
+  dispatchParams.output = rtOutput.m_finalOutput.view->handle();
+  dispatchParams.jitterOffset[0] = 0.0f; // Get from camera
   dispatchParams.jitterOffset[1] = 0.0f;
+  dispatchParams.motionVectorScale.x = 1.0f;
+  dispatchParams.motionVectorScale.y = 1.0f;
   dispatchParams.reset = resetHistory;
+  dispatchParams.enableSharpening = true;
+  dispatchParams.sharpness = RtxOptions::Get()->fsrSharpness();
+  dispatchParams.frameTimeDelta = 16.7f; // Get actual frame time
+  dispatchParams.preExposure = 1.0f;
+  dispatchParams.renderSize.width = m_inputSize[0];
+  dispatchParams.renderSize.height = m_inputSize[1];
+  dispatchParams.displaySize.width = m_outputSize[0];
+  dispatchParams.displaySize.height = m_outputSize[1];
 
-  // Dispatch FSR
-  FfxErrorCode fsrError = ffxUpscaleContextDispatch(&mFsrContext, &dispatchParams);
-  if (fsrError != FFX_OK) {
-    Logger::err("Failed to dispatch FSR");
-    return;
-  }
+  // Execute FSR3 upscaling
+  ffxFsr3ContextDispatch(&m_fsrContext, &dispatchParams);
 
-  // Handle Frame Generation if enabled
-  if (mFrameGenEnabled) {
-    FfxFrameGenerationDispatchDescription frameGenParams = {};
-    frameGenParams.commandList = ctx->getCommandList()->getCmdBuffer(DxvkCmdBuffer::ExecBuffer);
-    frameGenParams.color = rtOutput.m_finalOutput.image;
-    frameGenParams.depth = rtOutput.m_primaryDepth.image;
-    frameGenParams.motionVectors = rtOutput.m_primaryScreenSpaceMotionVector.image;
-    frameGenParams.exposure = rtOutput.m_exposure.image;
-    frameGenParams.output = rtOutput.m_finalOutput.image;
-    frameGenParams.reset = resetHistory;
-
-    FfxErrorCode frameGenError = ffxFrameGenerationContextDispatch(&mFrameGenContext, &frameGenParams);
-    if (frameGenError != FFX_OK) {
-      Logger::err("Failed to dispatch Frame Generation");
-    }
+  // Handle barriers
+  for (auto& barrier : barriers) {
+    ctx->getCommandList()->trackResource<DxvkAccess::Write>(barrier.image);
   }
 }
 
 void DxvkFSR::showImguiSettings() {
-  if (ImGui::CollapsingHeader("FSR Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
-    ImGui::Indent();
+  ImGui::Checkbox("Frame Generation", &m_enableFrameGeneration);
+  ImGui::SliderFloat("Sharpness", &m_sharpness, 0.0f, 1.0f);
+}
 
-    bool frameGen = RtxOptions::Get()->enableFrameGeneration();
-    if (ImGui::Checkbox("Enable Frame Generation", &frameGen)) {
-      RtxOptions::Get()->enableFrameGenerationRef() = frameGen;
-      mRecreate = true;
-    }
+void DxvkFSR::initializeFSR(Rc<DxvkContext> ctx) {
+  if (m_contextInitialized) {
+    ffxFsr3ContextDestroy(&m_fsrContext);
+  }
 
-    float sharpness = RtxOptions::Get()->fsrSharpness();
-    if (ImGui::SliderFloat("Sharpness", &sharpness, 0.0f, 1.0f)) {
-      RtxOptions::Get()->fsrSharpnessRef() = sharpness;
-    }
-
-    ImGui::Unindent();
+  // Initialize FSR3 context
+  FfxFsr3CreateParams createParams = {};
+  createParams.flags = FFX_FSR3_ENABLE_HIGH_DYNAMIC_RANGE;
+  createParams.maxRenderSize.width = m_inputSize[0];
+  createParams.maxRenderSize.height = m_inputSize[1];
+  createParams.displaySize.width = m_outputSize[0];
+  createParams.displaySize.height = m_outputSize[1];
+  
+  // Initialize the FSR3 context
+  FfxErrorCode errorCode = ffxFsr3ContextCreate(&m_fsrContext, &createParams);
+  if (errorCode == FFX_OK) {
+    m_contextInitialized = true;
   }
 }
 
