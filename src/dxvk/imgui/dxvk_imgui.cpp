@@ -1173,7 +1173,9 @@ namespace dxvk {
           break;
         }
         case UpscalerType::TAAU: {
+
           m_userGraphicsSettingChanged |= ImGui::Combo("TAAU Preset", &RtxOptions::Get()->taauPresetObject(), "Ultra Performance\0Performance\0Balanced\0Quality\0Fullscreen\0");
+
           RtxOptions::Get()->updateUpscalerFromTaauPreset();
 
           // Display TAAU Upscaling Information
