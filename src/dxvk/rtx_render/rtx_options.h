@@ -1500,12 +1500,15 @@ namespace dxvk {
     bool shouldUseObsoleteHashOnTextureUpload() const { return useObsoleteHashOnTextureUpload(); }
 
     // FSR Settings
-    SETTING_BOOL(enableFrameGeneration, false, "Enable FSR Frame Generation",
-                 "Enables FSR Frame Generation for smoother motion between frames");
-    SETTING_FLOAT(fsrSharpness, 0.5f, "FSR Sharpness",
-                  "Controls the sharpness of the FSR upscaling (0.0 to 1.0)");
-    SETTING_ENUM(fsrQuality, FSRProfile::Auto, "FSR Quality Mode",
-                 "Controls the quality preset for FSR upscaling");
+    RTX_OPTION_ENV("rtx", enableFrameGeneration, bool, false, 
+                   "Enable FSR Frame Generation",
+                   "Enables FSR Frame Generation for smoother motion between frames") {}
+    RTX_OPTION_ENV("rtx", fsrSharpness, float, 0.5f,
+                   "FSR Sharpness",
+                   "Controls the sharpness of the FSR upscaling (0.0 to 1.0)") {}
+    RTX_OPTION_ENV("rtx", fsrQuality, FSRProfile, FSRProfile::Auto,
+                   "FSR Quality Mode",
+                   "Controls the quality preset for FSR upscaling") {}
 
     bool isFSREnabled() const { return upscalerType() == UpscalerType::FSR; }
   };
