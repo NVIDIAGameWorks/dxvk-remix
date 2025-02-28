@@ -244,6 +244,14 @@ namespace dxvk {
       downscaleExtent.width = renderSize[0];
       downscaleExtent.height = renderSize[1];
       downscaleExtent.depth = 1;
+    } else if (shouldUseFSR()) {
+      DxvkFSR& fsr = m_common->metaFSR();
+      uint32_t displaySize[2] = { upscaleExtent.width, upscaleExtent.height };
+      uint32_t renderSize[2];
+      fsr.setSetting(displaySize, RtxOptions::Get()->fsrQuality(), renderSize);
+      downscaleExtent.width = renderSize[0];
+      downscaleExtent.height = renderSize[1];
+      downscaleExtent.depth = 1;
     } else if (shouldUseNIS() || shouldUseTAA()) {
       auto resolutionScale = RtxOptions::Get()->getResolutionScale();
       downscaleExtent.width = uint32_t(std::roundf(upscaleExtent.width * resolutionScale));
@@ -305,6 +313,8 @@ namespace dxvk {
       return InternalUpscaler::DLSS;
     } else if (shouldUseRayReconstruction() && m_common->metaRayReconstruction().isActive()) {
       return InternalUpscaler::DLSS_RR;
+    } else if (shouldUseFSR()) {
+      return InternalUpscaler::FSR;
     } else if (shouldUseNIS()) {
       return InternalUpscaler::NIS;
     } else if (shouldUseTAA()) {
@@ -583,6 +593,8 @@ namespace dxvk {
         } else if (m_currentUpscaler == InternalUpscaler::DLSS_RR) {
           m_common->metaAutoExposure().createResources(this);
           dispatchRayReconstruction(rtOutput, frameTimeMilliseconds);
+        } else if (m_currentUpscaler == InternalUpscaler::FSR) {
+          dispatchFSR(rtOutput, frameTimeMilliseconds);
         } else if (m_currentUpscaler == InternalUpscaler::NIS) {
           dispatchNIS(rtOutput);
         } else if (m_currentUpscaler == InternalUpscaler::TAAU){
@@ -1964,6 +1976,10 @@ namespace dxvk {
     return RtxOptions::Get()->isTAAEnabled();
   }
 
+  bool RtxContext::shouldUseFSR() const {
+    return RtxOptions::Get()->isFSREnabled();
+  }
+
   D3D9RtxVertexCaptureData& RtxContext::allocAndMapVertexCaptureConstantBuffer() {
     DxvkBufferSliceHandle slice = m_rtState.vertexCaptureCB->allocSlice();
     invalidateBuffer(m_rtState.vertexCaptureCB, slice);
@@ -2486,6 +2502,13 @@ namespace dxvk {
           ? DxvkContextFlag::CpDirtyPipelineState
           : DxvkContextFlag::RpDirtyPipelineState);
     }
+  }
+
+  void RtxContext::dispatchFSR(const Resources::RaytracingOutput& rtOutput, float frameTimeMilliseconds) {
+    ScopedGpuProfileZone(this, "FSR");
+    
+    DxvkFSR& fsr = m_common->metaFSR();
+    fsr.dispatch(this, m_barriers, rtOutput, false);
   }
 
 } // namespace dxvk

@@ -1,0 +1,63 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="C:\Users\lj--\OneDrive\Desktop\Dev\FidelityFX-SDK-v1.1.3\sdk\src\shared\ffx_assert.cpp">
+      <Filter>shared_source</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\lj--\OneDrive\Desktop\Dev\FidelityFX-SDK-v1.1.3\sdk\src\shared\ffx_breadcrumbs_list.cpp">
+      <Filter>shared_source</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\lj--\OneDrive\Desktop\Dev\FidelityFX-SDK-v1.1.3\sdk\src\shared\ffx_object_management.cpp">
+      <Filter>shared_source</Filter>
+    </ClCompile>
+    <ClCompile Include="C:\Users\lj--\OneDrive\Desktop\Dev\FidelityFX-SDK-v1.1.3\sdk\src\components\fsr3upscaler\ffx_fsr3upscaler.cpp">
+      <Filter>private_source</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="C:\Users\lj--\OneDrive\Desktop\Dev\FidelityFX-SDK-v1.1.3\sdk\src\shared\ffx_breadcrumbs_list.h">
+      <Filter>shared_source</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\lj--\OneDrive\Desktop\Dev\FidelityFX-SDK-v1.1.3\sdk\src\shared\ffx_object_management.h">
+      <Filter>shared_source</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\lj--\OneDrive\Desktop\Dev\FidelityFX-SDK-v1.1.3\sdk\src\components\fsr3upscaler\ffx_fsr3upscaler_private.h">
+      <Filter>private_source</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\lj--\OneDrive\Desktop\Dev\FidelityFX-SDK-v1.1.3\sdk\include\FidelityFX\host\ffx_fsr3upscaler.h">
+      <Filter>public_source</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\lj--\OneDrive\Desktop\Dev\FidelityFX-SDK-v1.1.3\sdk\include\FidelityFX\host\ffx_assert.h">
+      <Filter>public_source</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\lj--\OneDrive\Desktop\Dev\FidelityFX-SDK-v1.1.3\sdk\include\FidelityFX\host\ffx_error.h">
+      <Filter>public_source</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\lj--\OneDrive\Desktop\Dev\FidelityFX-SDK-v1.1.3\sdk\include\FidelityFX\host\ffx_fx.h">
+      <Filter>public_source</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\lj--\OneDrive\Desktop\Dev\FidelityFX-SDK-v1.1.3\sdk\include\FidelityFX\host\ffx_interface.h">
+      <Filter>public_source</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\lj--\OneDrive\Desktop\Dev\FidelityFX-SDK-v1.1.3\sdk\include\FidelityFX\host\ffx_types.h">
+      <Filter>public_source</Filter>
+    </ClInclude>
+    <ClInclude Include="C:\Users\lj--\OneDrive\Desktop\Dev\FidelityFX-SDK-v1.1.3\sdk\include\FidelityFX\host\ffx_util.h">
+      <Filter>public_source</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\lj--\OneDrive\Desktop\Dev\FidelityFX-SDK-v1.1.3\sdk\src\components\fsr3upscaler\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="private_source">
+      <UniqueIdentifier>{A44096BA-07F4-3A31-9C98-D969760533A2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="public_source">
+      <UniqueIdentifier>{EE6C209D-F0DB-3C65-8D22-AE78FA97443A}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="shared_source">
+      <UniqueIdentifier>{5B58F2B3-BA8F-3CBA-8131-97DF2B48AFA0}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>
