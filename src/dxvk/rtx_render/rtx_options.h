@@ -68,6 +68,16 @@ namespace dxvk {
     FSR,  // Add FSR as an upscaler option
   };
 
+  enum class FSRProfile : int {
+    UltraPerf = 0,
+    MaxPerf,
+    Balanced,
+    MaxQuality,
+    Auto,
+    FullResolution,
+    Invalid
+  };
+
   enum class GraphicsPreset : int {
     Ultra = 0,
     High,
@@ -1491,11 +1501,11 @@ namespace dxvk {
 
     // FSR Settings
     SETTING_BOOL(enableFrameGeneration, false, "Enable FSR Frame Generation",
-                 "Enables FSR Frame Generation for smoother motion between frames.")
+                 "Enables FSR Frame Generation for smoother motion between frames");
     SETTING_FLOAT(fsrSharpness, 0.5f, "FSR Sharpness",
-                  "Controls the sharpness of the FSR upscaling (0.0 to 1.0).")
+                  "Controls the sharpness of the FSR upscaling (0.0 to 1.0)");
     SETTING_ENUM(fsrQuality, FSRProfile::Auto, "FSR Quality Mode",
-                 "Controls the quality preset for FSR upscaling.")
+                 "Controls the quality preset for FSR upscaling");
 
     bool isFSREnabled() const { return upscalerType() == UpscalerType::FSR; }
   };
