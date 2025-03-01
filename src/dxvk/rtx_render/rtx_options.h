@@ -1501,13 +1501,10 @@ namespace dxvk {
 
     // FSR Settings
     RTX_OPTION("rtx.fsr", bool, enableFrameGeneration, false,
-               "Enable FSR Frame Generation",
                "Enables FSR Frame Generation for smoother motion between frames");
     RTX_OPTION("rtx.fsr", float, fsrSharpness, 0.5f,
-               "FSR Sharpness",
                "Controls the sharpness of the FSR upscaling (0.0 to 1.0)");
     RTX_OPTION("rtx.fsr", FSRProfile, fsrQuality, FSRProfile::Auto,
-               "FSR Quality Mode",
                "Controls the quality preset for FSR upscaling");
 
     bool isFSREnabled() const { return upscalerType() == UpscalerType::FSR; }
