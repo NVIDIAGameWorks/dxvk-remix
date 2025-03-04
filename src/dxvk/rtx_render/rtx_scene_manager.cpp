@@ -1659,7 +1659,7 @@ namespace dxvk {
     m_forceFreeTextureMemory.store(true);
   }
 
-  void SceneManager::requestTextureVramCompaction() {
+  void SceneManager::requestVramCompaction() {
     m_forceFreeUnusedDxvkAllocatorChunks.store(true);
   }
 
