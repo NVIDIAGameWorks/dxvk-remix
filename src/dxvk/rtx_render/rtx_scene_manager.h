@@ -47,6 +47,7 @@
 #include "rtx_ray_portal_manager.h"
 #include "rtx_bindless_resource_manager.h"
 #include "rtx_objectpicking.h"
+#include "rtx_mod_manager.h"
 #include <d3d9types.h>
 
 namespace dxvk 
@@ -127,9 +128,8 @@ public:
   void submitDrawState(Rc<DxvkContext> ctx, const DrawCallState& input, const MaterialData* overrideMaterialData);
   void submitExternalDraw(Rc<DxvkContext> ctx, ExternalDrawState&& state);
   
-  bool areReplacementsLoaded() const;
-  bool areReplacementsLoading() const;
-  const std::string getReplacementStatus() const;
+  bool areAllReplacementsLoaded() const;
+  std::vector<Mod::State> getReplacementStates() const;
 
   uint64_t getGameTimeSinceStartMS();
 

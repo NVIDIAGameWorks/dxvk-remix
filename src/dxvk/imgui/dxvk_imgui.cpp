@@ -814,13 +814,13 @@ namespace dxvk {
     };
 
     auto common = ctx->getCommonObjects();
-    static RtxQuickAction sQuickAction = common->getSceneManager().areReplacementsLoaded() ? RtxQuickAction::kRtxOnEnhanced : RtxQuickAction::kRtxOn;
+    static RtxQuickAction sQuickAction = common->getSceneManager().areAllReplacementsLoaded() ? RtxQuickAction::kRtxOnEnhanced : RtxQuickAction::kRtxOn;
 
     if (ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_KeypadAdd))) {
       sQuickAction = (RtxQuickAction) ((sQuickAction + 1) % RtxQuickAction::kCount);
 
       // Skip over the enhancements quick option if no replacements are loaded
-      if(!common->getSceneManager().areReplacementsLoaded() && sQuickAction == RtxQuickAction::kRtxOnEnhanced)
+      if(!common->getSceneManager().areAllReplacementsLoaded() && sQuickAction == RtxQuickAction::kRtxOnEnhanced)
         sQuickAction = (RtxQuickAction) ((sQuickAction + 1) % RtxQuickAction::kCount);
 
       switch (sQuickAction) {
@@ -1364,7 +1364,7 @@ namespace dxvk {
 
     ImGui::Dummy(ImVec2(0.0f, 5.0f));
 
-    ImGui::BeginDisabled(!common->getSceneManager().areReplacementsLoaded());
+    ImGui::BeginDisabled(!common->getSceneManager().areAllReplacementsLoaded());
 
     m_userGraphicsSettingChanged |= ImGui::Checkbox("Enable All Enhanced Assets", &RtxOptions::Get()->enableReplacementAssetsObject());
 
@@ -1401,9 +1401,9 @@ namespace dxvk {
     auto common = ctx->getCommonObjects();
     const auto& pipelineManager = common->pipelineManager();
 
-    // Add needed Hud Messages
-
     std::vector<HudMessage> hudMessages;
+
+    // Add Shader Compilation HUD messages
 
     uint32_t asyncShaderCompilationCount = 0;
     if (RtxOptions::Shader::enableAsyncCompilation()) {
@@ -1416,8 +1416,55 @@ namespace dxvk {
       hudMessages.emplace_back(std::move(compilationText), "This may take some time if shaders are not cached yet.\nRemix will not render properly until compilation is finished.");
     }
 
-    if (common->getSceneManager().areReplacementsLoading()) {
-      hudMessages.emplace_back("Loading enhancements", std::nullopt);
+    // Add Enhancement Loading HUD messages
+
+    const auto replacementStates = common->getSceneManager().getReplacementStates();
+    std::string replacementLoadingSubtext;
+    std::uint32_t loadingReplacementStateCount{ 0U };
+
+    for (std::size_t i{ 0U }; i < replacementStates.size(); ++i) {
+      auto&& replacementState = replacementStates[i];
+
+      // Add a newline when reporting on more than one mod in a loading state
+
+      if (loadingReplacementStateCount != 0) {
+        replacementLoadingSubtext += '\n';
+      }
+
+      // Hide individual mod progress messages beyond a requested amount
+      // Note: This ensures if for some reason there are a significant amount of mods in place that the screen will not be filled with progress hud messages.
+
+      constexpr std::size_t maxModProgressCount{ 4 };
+
+      if (loadingReplacementStateCount >= maxModProgressCount) {
+        replacementLoadingSubtext += str::format(replacementStates.size() - maxModProgressCount, " more hidden...");
+
+        break;
+      }
+
+      // Set the progress message if the mod is in a loading state and increment the number of currently loading mods
+
+      switch (replacementState.progressState) {
+      case Mod::ProgressState::OpeningUSD: replacementLoadingSubtext += str::format("Opening USD"); break;
+      case Mod::ProgressState::ProcessingMaterials: replacementLoadingSubtext += str::format("Processing Materials (", replacementState.progressCount, " processed)"); break;
+      case Mod::ProgressState::ProcessingMeshes: replacementLoadingSubtext += str::format("Processing Meshes (", replacementState.progressCount, " processed)"); break;
+      case Mod::ProgressState::ProcessingLights: replacementLoadingSubtext += str::format("Processing Lights (", replacementState.progressCount, " processed)"); break;
+      }
+
+      if (
+        replacementState.progressState == Mod::ProgressState::OpeningUSD ||
+        replacementState.progressState == Mod::ProgressState::ProcessingMaterials ||
+        replacementState.progressState == Mod::ProgressState::ProcessingMeshes ||
+        replacementState.progressState == Mod::ProgressState::ProcessingLights
+      ) {
+        ++loadingReplacementStateCount;
+      }
+    }
+
+    assert((loadingReplacementStateCount == 0U) == replacementLoadingSubtext.empty());
+
+    if (loadingReplacementStateCount != 0U) {
+      hudMessages.emplace_back("Loading enhancements", replacementLoadingSubtext);
     }
 
     // Draw Hud Messages
@@ -2113,11 +2160,11 @@ namespace dxvk {
   }
   
   void ImGUI::showEnhancementsTab(const Rc<DxvkContext>& ctx) {
-    if (!ctx->getCommonObjects()->getSceneManager().areReplacementsLoaded()) {
+    if (!ctx->getCommonObjects()->getSceneManager().areAllReplacementsLoaded()) {
       ImGui::Text("No USD enhancements detected, the following options have been disabled.  See documentation for how to use enhancements with Remix.");
     }
 
-    ImGui::BeginDisabled(!ctx->getCommonObjects()->getSceneManager().areReplacementsLoaded());
+    ImGui::BeginDisabled(!ctx->getCommonObjects()->getSceneManager().areAllReplacementsLoaded());
     ImGui::Checkbox("Enable Enhanced Assets", &RtxOptions::Get()->enableReplacementAssetsObject());
     {
       ImGui::Indent();

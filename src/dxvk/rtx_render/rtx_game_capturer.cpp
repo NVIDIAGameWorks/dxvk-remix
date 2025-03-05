@@ -150,7 +150,7 @@ namespace dxvk {
     if (m_bTriggerCapture) {
       m_bTriggerCapture = false;
       if(isIdle()) {
-        if (RtxOptions::Get()->getEnableAnyReplacements() && m_sceneManager.areReplacementsLoaded()) {
+        if (RtxOptions::Get()->getEnableAnyReplacements() && m_sceneManager.areAllReplacementsLoaded()) {
           Logger::warn("[GameCapturer] Cannot begin capture when replacement assets are enabled/loaded.");
         } else if (m_state.has<State::Capturing>()) {
           Logger::warn("[GameCapturer] Cannot begin new capture, one currently in progress.");

@@ -718,7 +718,7 @@ void UsdMod::Impl::processReplacementRecursive(Args& args, const pxr::UsdPrim& p
 
 void UsdMod::Impl::load(const Rc<DxvkContext>& context) {
   ScopedCpuProfileZone();
-  if (m_owner.state() == State::Unloaded) {
+  if (m_owner.state().progressState == ProgressState::Unloaded) {
     processUSD(context);
 
     m_usdChangeWatchdog.start();
@@ -726,13 +726,13 @@ void UsdMod::Impl::load(const Rc<DxvkContext>& context) {
 }
 
 void UsdMod::Impl::unload() {
-  if (m_owner.state() == State::Loaded) {
+  if (m_owner.state().progressState == ProgressState::Loaded) {
     m_usdChangeWatchdog.stop();
 
     m_owner.m_replacements->clear();
     AssetDataManager::get().clearSearchPaths();
 
-    m_owner.setState(State::Unloaded);
+    m_owner.setState(ProgressState::Unloaded);
   }
 }
 
@@ -741,7 +741,7 @@ bool UsdMod::Impl::haveFilesChanged() {
     return false;
 
   fs::file_time_type newModTime;
-  if (m_owner.state() == State::Loaded) {
+  if (m_owner.state().progressState == ProgressState::Loaded) {
     newModTime = fs::last_write_time(fs::path(m_openedFilePath));
   } else {
     bool fileFound = false;
@@ -750,7 +750,7 @@ bool UsdMod::Impl::haveFilesChanged() {
     if (fs::exists(replacementsUsdPath)) {
       newModTime = fs::last_write_time(replacementsUsdPath);
     } else {
-      m_owner.setState(State::Unloaded);
+      m_owner.setState(ProgressState::Unloaded);
       return false;
     }
   }
@@ -771,7 +771,9 @@ void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
   ScopedCpuProfileZone();
   std::string replacementsUsdPath(m_owner.m_filePath.string());
 
-  m_owner.setState(State::Loading);
+  // Open the USD
+
+  m_owner.setState(ProgressState::OpeningUSD);
 
   pxr::UsdStageRefPtr stage = pxr::UsdStage::Open(replacementsUsdPath, pxr::UsdStage::LoadAll);
 
@@ -779,7 +781,7 @@ void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
     Logger::err(str::format("USD mod file failed parsing: ", std::filesystem::weakly_canonical(replacementsUsdPath).string()));
     m_openedFilePath.clear();
     m_fileModificationTime = fs::file_time_type();
-    m_owner.setState(State::Unloaded);
+    m_owner.setState(ProgressState::Unloaded);
     return;
   }
 
@@ -814,27 +816,43 @@ void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
     }
   }
 
+  // Process Materials
+
+  m_owner.setStateWithCount(ProgressState::ProcessingMaterials, 0);
+
   pxr::UsdPrim materialRoot = stage->GetPrimAtPath(pxr::SdfPath("/RootNode/Looks"));
   if (materialRoot.IsValid()) {
-    auto children = materialRoot.GetFilteredChildren(pxr::UsdPrimIsActive);
+    const auto children = materialRoot.GetFilteredChildren(pxr::UsdPrimIsActive);
+    std::uint32_t currentMaterialCount{ 0U };
     std::vector<AssetReplacement> placeholder;
 
     Args args = {context, xformCache, materialRoot, placeholder};
 
     for (pxr::UsdPrim materialPrim : children) {
       processMaterial(args, materialPrim);
+
+      // Note: Update the state progress only every 16 materials to reduce the number of atomic writes.
+      if ((++currentMaterialCount & 0b1111u) == 0u) {
+        m_owner.setStateWithCount(ProgressState::ProcessingMaterials, currentMaterialCount);
+      }
     }
   }
+
+  // Process Meshes
+
+  m_owner.setStateWithCount(ProgressState::ProcessingMeshes, 0);
 
   fast_unordered_cache<uint32_t> variantCounts;
   pxr::UsdPrim meshes = stage->GetPrimAtPath(pxr::SdfPath("/RootNode/meshes"));
   if (meshes.IsValid()) {
-    auto children = meshes.GetFilteredChildren(pxr::UsdPrimIsActive);
+    const auto children = meshes.GetFilteredChildren(pxr::UsdPrimIsActive);
+    std::uint32_t currentMeshCount{ 0U };
+
     for (pxr::UsdPrim child : children) {
-      XXH64_hash_t hash = getModelHash(child);
+      const auto hash = getModelHash(child);
+
       if (hash != 0) {
         std::vector<AssetReplacement> replacementVec;
-
         Args args = {context, xformCache, child, replacementVec};
 
         if (processReplacement(args)) {
@@ -843,8 +861,15 @@ void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
           addReplacementsSync(args.context->getCommandList(), hash, replacementVec);
         }
       }
+
+      // Note: Update the state progress only every 16 meshes to reduce the number of atomic writes.
+      if ((++currentMeshCount & 0b1111u) == 0u) {
+        m_owner.setStateWithCount(ProgressState::ProcessingMeshes, currentMeshCount);
+      }
     }
   }
+
+  // Process Secret Meshes
 
   // TODO: enter "secrets" section of USD as exported by Kit app
   TEMP_parseSecretReplacementVariants(variantCounts);
@@ -875,11 +900,18 @@ void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
     }
   }
 
+  // Process Lights
+
+  m_owner.setStateWithCount(ProgressState::ProcessingLights, 0);
+
   pxr::UsdPrim lights = stage->GetPrimAtPath(pxr::SdfPath("/RootNode/lights"));
   if (lights.IsValid()) {
-    auto children = lights.GetFilteredChildren(pxr::UsdPrimIsActive);
+    const auto children = lights.GetFilteredChildren(pxr::UsdPrimIsActive);
+    std::uint32_t currentLightCount{ 0U };
+
     for (pxr::UsdPrim child : children) {
-      XXH64_hash_t hash = getLightHash(child);
+      const auto hash = getLightHash(child);
+
       if (hash != 0) {
         std::vector<AssetReplacement> replacementVec;
         Args args = {context, xformCache, child, replacementVec};
@@ -887,6 +919,11 @@ void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
         if (processReplacement(args)) {
           m_owner.m_replacements->set<AssetReplacement::eLight>(hash, std::move(replacementVec));
         }
+      }
+
+      // Note: Update the state progress only every 16 lights to reduce the number of atomic writes.
+      if ((++currentLightCount & 0b1111u) == 0u) {
+        m_owner.setStateWithCount(ProgressState::ProcessingLights, currentLightCount);
       }
     }
   }
@@ -898,7 +935,7 @@ void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
     VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
     VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR);
 
-  m_owner.setState(State::Loaded);
+  m_owner.setState(ProgressState::Loaded);
 }
 
 void UsdMod::Impl::TEMP_parseSecretReplacementVariants(const fast_unordered_cache<uint32_t>& variantCounts) {

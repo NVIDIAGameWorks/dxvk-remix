@@ -27,6 +27,7 @@
 #include <string>
 #include <filesystem>
 #include <set>
+#include <cassert>
 
 namespace dxvk {
 
@@ -43,11 +44,27 @@ class Mod {
 public:
   typedef std::filesystem::path Path;
 
-  enum State : uint32_t {
+  enum ProgressState : std::uint8_t {
+    // Set when the stage has yet to be loaded.
     Unloaded = 0,
-    Loading,
+
+    // Set during the first phase of stage loading when opening the USD file.
+    OpeningUSD,
+    // Set during the next phases of stage loading when material, mesh or light processing is currently underway.
+    // When these are set the progress count may be read from for progress information.
+    ProcessingMaterials,
+    ProcessingMeshes,
+    ProcessingLights,
+
+    // Set when the stage is completely loaded without errors.
     Loaded,
-    Error,
+  };
+
+  struct State {
+    ProgressState progressState;
+    // Note: This progress value should only be read when the stage state is LoadingMaterials, LoadingMeshes or LoadingLights, as it will
+    // be uninitialized otherwise.
+    std::uint32_t progressCount;
   };
 
   virtual ~Mod();
@@ -60,7 +77,13 @@ public:
   virtual bool checkForChanges(const Rc<DxvkContext>& context) = 0;
 
   State state() const {
-    return m_state.load();
+    const auto encodedState{ m_state.load() };
+    State decodedState;
+
+    decodedState.progressState = static_cast<ProgressState>((encodedState >> 29ull) & progressStateMask);
+    decodedState.progressCount = static_cast<std::uint32_t>((encodedState >> 0ull) & progressCountMask);
+
+    return decodedState;
   }
 
   const std::string& status() const {
@@ -90,16 +113,55 @@ public:
 protected:
   explicit Mod(const Path& filePath);
 
-  void setState(State state) {
-    m_state = state;
+  constexpr static std::uint32_t progressStateMask{ (1ull << 3ull) - 1ull };
+  constexpr static std::uint32_t progressCountMask{ (1ull << 29ull) - 1ull };
+
+  constexpr static std::uint32_t encodeProgressState(ProgressState progressState) {
+    return static_cast<std::uint32_t>(progressState) << 29ull;
+  }
+
+  // Sets the Mod progress state, only to be used when setting to Unloaded, OpeningUSD or Loaded. Use setStateWithProgress for other states.
+  void setState(ProgressState progressState) {
+    // Note: This set state function is only intended to be used with states that do not have progress associated with them.
+    assert(
+      progressState == ProgressState::Unloaded ||
+      progressState == ProgressState::OpeningUSD ||
+      progressState == ProgressState::Loaded
+    );
+
+    m_state = encodeProgressState(progressState);
+  }
+
+  // Sets the Mod progress state with a progress count value, only to be used when setting to ProcessingMaterials/Meshes/Lights. Use setState for other states.
+  void setStateWithCount(ProgressState progressState, std::uint32_t progressCount) {
+    // Note: This set state function is only intended to be used with states that do not have progress associated with them.
+    assert(
+      progressState == ProgressState::ProcessingMaterials ||
+      progressState == ProgressState::ProcessingMeshes ||
+      progressState == ProgressState::ProcessingLights
+    );
+    // Note: Ensure the progress count falls within the expected range. The progress count isare masked during encoding for
+    // safety as it is in theory possible for values this large to be passed in at runtime, but it likely indicates a bug as there
+    // probably should not be 500 million of any sort of asset loading.
+    assert(progressCount < (1u << 29u));
+
+    m_state =
+      encodeProgressState(progressState) |
+      (static_cast<std::uint64_t>(progressCount) & progressCountMask);
   }
 
   const Path m_filePath;
   std::string m_name;
   size_t m_priority;
 
-  std::atomic<State> m_state;
+  // Note: This uses a 32 bit atomic so that the state as well as the progress count can all be encoded into it together. This ensures all the data
+  // can be read at the same time atomically to ensure all the values are in sync without the use of mutexes. This is somewhat important as the progress
+  // count will be updated fairly rapidly depending on how fast assets load and avoiding any sort of overhead is ideal.
+  // Current encoding: [3 bit progress state] [29 bit progress count]
+  std::atomic<std::uint32_t> m_state{ encodeProgressState(ProgressState::Unloaded) };
   std::string m_status = "Unloaded";
+
+  static_assert(decltype(m_state)::is_always_lock_free, "Mod state atomic should be lock-free for performance.");
 
   std::unique_ptr<AssetReplacements> m_replacements;
 };
