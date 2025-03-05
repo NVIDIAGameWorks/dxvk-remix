@@ -242,6 +242,9 @@ namespace dxvk {
     RTX_OPTION("rtx.gui", float, reflexStatRangeInterpolationRate, 0.05f, "A value controlling the interpolation rate applied to the Reflex stat graph ranges for smoother visualization.");
     RTX_OPTION("rtx.gui", float, reflexStatRangePaddingRatio, 0.05f, "A value specifying the amount of padding applied to the Reflex stat graph ranges as a ratio to the calculated range.");
   
+    void onCloseMenus();
+    void onOpenMenus();
+    void freeUnusedMemory();
   };
   
 }

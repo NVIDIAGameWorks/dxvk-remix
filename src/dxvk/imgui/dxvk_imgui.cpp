@@ -621,9 +621,17 @@ namespace dxvk {
     if (oldType == UIType::Basic) {
       ImGui::CloseCurrentPopup();
     }
+    
     if (type == UIType::Basic) {
       ImGui::OpenPopup(m_userGraphicsWindowTitle);
     }
+    
+    if (type == UIType::None) {
+      onCloseMenus();
+    } else {
+      onOpenMenus();
+    }
+
     RtxOptions::Get()->showUIRef() = type;
 
     if (RtxOptions::Get()->showUICursor()) {
@@ -3253,7 +3261,7 @@ namespace dxvk {
                                  1.f,
                                  32.f,
                                  RtxOptions::TextureManager::fixedBudgetMiBObject().getDescription())) {
-            ctx->getCommonObjects()->getSceneManager().requestTextureVramCompaction();
+            ctx->getCommonObjects()->getSceneManager().requestVramCompaction();
           }
         } else {
           // always disabled drag float just to show the available texture cache budget
@@ -3277,13 +3285,13 @@ namespace dxvk {
                             10,
                             100,
                             "%d%%")) {
-          ctx->getCommonObjects()->getSceneManager().requestTextureVramCompaction();
+          ctx->getCommonObjects()->getSceneManager().requestVramCompaction();
         }
         ImGui::EndDisabled();
       }
       if (ImGui::Checkbox("Force Fixed Texture Budget", &RtxOptions::TextureManager::fixedBudgetEnableObject())) {
         // budgeting technique changed => ask DXVK to return unused VRAM chunks to OS to better represent consumption
-        ctx->getCommonObjects()->getSceneManager().requestTextureVramCompaction();
+        ctx->getCommonObjects()->getSceneManager().requestVramCompaction();
       }
       ImGui::EndDisabled();
 
@@ -3694,6 +3702,28 @@ namespace dxvk {
       }
     }
     return result;
+  }
+
+  void ImGUI::onCloseMenus() {
+    // When closing the menus, try and free up some extra memory, just in case
+    //  the user has toggled a bunch of systems while in menus causing an artificial
+    //  inflation.
+    freeUnusedMemory();
+  }
+
+  void ImGUI::onOpenMenus() {
+    // Before opening the menus, try free some memory, the idea being the 
+    //  user may want to make some changes to various settings and so they
+    //  should have all available memory to do so.
+    freeUnusedMemory();
+  }
+
+  void ImGUI::freeUnusedMemory() {
+    if (!m_device) {
+      return;
+    }
+
+    m_device->getCommon()->getSceneManager().requestVramCompaction();
   }
 
 }

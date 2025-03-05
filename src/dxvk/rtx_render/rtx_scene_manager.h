@@ -217,7 +217,7 @@ public:
                                 const VkClearColorValue borderColor);
 
   void requestTextureVramFree();
-  void requestTextureVramCompaction();
+  void requestVramCompaction();
   void manageTextureVram();
 
 private:
