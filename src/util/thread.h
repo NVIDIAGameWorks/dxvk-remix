@@ -94,10 +94,12 @@ namespace dxvk {
 
     ~thread();
 
+    thread(const thread&) = delete;
     thread(thread&& other)
     : m_data(std::exchange(other.m_data, nullptr)) { }
 
-    thread& operator = (thread&& other) {
+    thread& operator =(const thread&) = delete;
+    thread& operator =(thread&& other) {
       if (m_data)
         m_data->decRef();
 

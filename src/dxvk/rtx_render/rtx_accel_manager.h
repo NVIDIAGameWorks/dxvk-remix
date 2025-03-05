@@ -69,11 +69,6 @@ public:
 
   explicit AccelManager(DxvkDevice* device);
 
-  // Release internal objects
-  void onDestroy() {
-    m_scratchAllocator = nullptr;
-  }
-
   // Returns a GPU buffer containing the surface data for active instances
   const Rc<DxvkBuffer> getSurfaceBuffer() const { return m_surfaceBuffer; }
 
@@ -117,9 +112,22 @@ public:
 
 private:
   struct SurfaceInfo {
-    XXH64_hash_t hash;
+    uint32_t surfaceMaterialIndex;
     Vector3 worldPosition;
   };
+
+  // Persistent containers to reduce frame to frame reallocations in ::buildParticleSurfaceMapping()
+  struct {
+    std::vector<AccelManager::SurfaceInfo> surfaceInfoLists[2];   // Two containers for subsequent frames, ping-pong framed to frame
+    uint32_t currIndex = 0;
+    uint32_t prevIndex = 1;
+  } buildParticleSurfaceMappingFuncState;
+
+  // Persistent containers to reduce frame to frame reallocations in ::uploadSurfaceData()
+  struct {
+    std::vector<unsigned char> surfacesGPUData;
+    std::vector<uint32_t> surfaceIndexMapping;
+  } uploadSurfaceDataFuncState;
 
   void buildBlases(Rc<DxvkContext> ctx, DxvkBarrierSet& execBarriers,
                    const CameraManager& cameraManager, OpacityMicromapManager* opacityMicromapManager, const InstanceManager& instanceManager,
@@ -127,13 +135,16 @@ private:
                    const std::vector<std::unique_ptr<BlasBucket>>& blasBuckets, 
                    std::vector<VkAccelerationStructureBuildGeometryInfoKHR>& blasToBuild,
                    std::vector<VkAccelerationStructureBuildRangeInfoKHR*>& blasRangesToBuild,
-                   float elapsedTime);
+                   float elapsedTime,
+                   size_t& currentScratchOffset);
+  void addStaticBlas(RtInstance* instance, BlasEntry* blasEntry, const Matrix4* instanceToObject);
   void createBlasBuffersAndInstances(Rc<DxvkContext> ctx, 
                                      const std::vector<std::unique_ptr<BlasBucket>>& blasBuckets,
                                      std::vector<VkAccelerationStructureBuildGeometryInfoKHR>& blasToBuild,
-                                     std::vector<VkAccelerationStructureBuildRangeInfoKHR*>& blasRangesToBuild);
+                                     std::vector<VkAccelerationStructureBuildRangeInfoKHR*>& blasRangesToBuild,
+                                     size_t& currentScratchOffset);
   template<Tlas::Type type>
-  void internalBuildTlas(Rc<DxvkContext> ctx);
+  void internalBuildTlas(Rc<DxvkContext> ctx, size_t& totalScratchSize);
 
   void buildParticleSurfaceMapping(std::vector<uint32_t>& surfaceIndexMapping);
 
@@ -151,19 +162,18 @@ private:
   Rc<DxvkBuffer> m_primitiveIDPrefixSumBuffer;
   Rc<DxvkBuffer> m_primitiveIDPrefixSumBufferLastFrame;
 
-  std::vector<SurfaceInfo> m_lastSurfaceInfoList;
-
   int getCurrentFramePrimitiveIDPrefixSumBufferID() const;
 
   Rc<PooledBlas> m_intersectionBlas;
   Rc<DxvkBuffer> m_aabbBuffer;
   Rc<DxvkBuffer> m_billboardsBuffer;
   void createAndBuildIntersectionBlas(Rc<DxvkContext> ctx, class DxvkBarrierSet& execBarriers);
-
-  Rc<PooledBlas> createPooledBlas(size_t bufferSize) const;
+  
+  Rc<DxvkBuffer> getScratchMemory(const size_t requiredScratchAllocSize);
+  Rc<PooledBlas> createPooledBlas(size_t bufferSize, const char* name) const;
 
   VkDeviceSize m_scratchAlignment;
-  std::unique_ptr<RtxStagingDataAlloc> m_scratchAllocator;
+  Rc<DxvkBuffer> m_scratchBuffer;
 };
 
 }  // namespace dxvk

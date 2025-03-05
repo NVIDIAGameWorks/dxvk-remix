@@ -367,7 +367,7 @@ namespace lss {
           case Attributes::Colors: {
             GfVec3f color(1.0f); // default to white
             ppMeshSamplers[Attributes::Colors]->SampleBuffer(idx, &color);
-            const uint32_t enColor = D3DCOLOR_COLORVALUE(color[0], color[1], color[2], 1.f);
+            const uint32_t enColor = D3DCOLOR_ARGB((DWORD)((color[0]) * 255.f), (DWORD)((color[1]) * 255.f), (DWORD)((color[2]) * 255.f), 0xFF);
             uint32_t& vertexColor = *(uint32_t*) &m_vertexData[vertexOffset];
             vertexColor = (vertexColor & 0xFF000000) | (enColor & 0x00FFFFFF);
             break;

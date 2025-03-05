@@ -223,6 +223,7 @@ namespace dxvk {
   RtxGeometryUtils::RtxGeometryUtils(DxvkDevice* device) : CommonDeviceObject(device) {
     m_pCbData = std::make_unique<RtxStagingDataAlloc>(
       device,
+      "RtxStagingDataAlloc: Geometry Utils CB",
       (VkMemoryPropertyFlagBits) (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT),
       VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
@@ -271,6 +272,9 @@ namespace dxvk {
     params.useIndices = drawCallState.getGeometryData().blendIndicesBuffer.defined() ? 1 : 0;
     params.numBones = drawCallState.getGeometryData().numBonesPerVertex;
 
+    // If we don't have a mappable vertex buffer then we need to do this on the GPU
+    bool mustUseGPU = drawCallState.getGeometryData().positionBuffer.mapPtr() == nullptr;
+
     // At some point, its more efficient to do these calculations on the GPU, this limit is somewhat arbitrary however, and might require better tuning...
     const uint32_t kNumVerticesToProcessOnCPU = 256;
 
@@ -280,7 +284,7 @@ namespace dxvk {
                                  drawCallState.getGeometryData().blendWeightBuffer.isPendingGpuWrite() ||
                                  (drawCallState.getGeometryData().blendIndicesBuffer.defined() && drawCallState.getGeometryData().blendIndicesBuffer.isPendingGpuWrite());
 
-    const bool useCPU = params.numVertices <= kNumVerticesToProcessOnCPU && !pendingGpuWrite;
+    const bool useCPU = params.numVertices <= kNumVerticesToProcessOnCPU && !pendingGpuWrite && !mustUseGPU;
 
     if (!useCPU) {
       // Setting alignment to device limit minUniformBufferOffsetAlignment because the offset value should be its multiple.

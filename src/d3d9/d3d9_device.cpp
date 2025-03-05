@@ -3746,7 +3746,6 @@ namespace dxvk {
           HWND hDestWindowOverride,
     const RGNDATA* pDirtyRegion,
           DWORD dwFlags) {
-    FrameMark;
     ScopedCpuProfileZone();
 
     HRESULT result = m_implicitSwapchain->Present(
@@ -4420,7 +4419,7 @@ namespace dxvk {
           info.access = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_SHADER_READ_BIT;
         }
 
-        currentSlice.slice  = DxvkBufferSlice(m_dxvkDevice->createBuffer(info, memoryFlags, DxvkMemoryStats::Category::AppBuffer));
+        currentSlice.slice  = DxvkBufferSlice(m_dxvkDevice->createBuffer(info, memoryFlags, DxvkMemoryStats::Category::AppBuffer, "D3D9 Temp Buffer"));
         currentSlice.mapPtr = currentSlice.slice.mapPtr(0);
       } else if (unlikely(currentSlice.slice.length() < size)) {
         auto physSlice = currentSlice.slice.buffer()->allocSlice();
@@ -4464,7 +4463,7 @@ namespace dxvk {
       }
 
       D3D9BufferSlice result;
-      result.slice  = DxvkBufferSlice(m_dxvkDevice->createBuffer(info, memoryFlags, DxvkMemoryStats::Category::AppBuffer));
+      result.slice  = DxvkBufferSlice(m_dxvkDevice->createBuffer(info, memoryFlags, DxvkMemoryStats::Category::AppBuffer, "D3D9 Temp Buffer"));
       result.mapPtr = result.slice.mapPtr(0);
       return result;
     }
@@ -5318,7 +5317,7 @@ namespace dxvk {
     if (m_d3d9Options.deviceLocalConstantBuffers)
       memoryFlags |= VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
-    Rc<DxvkBuffer> buffer = m_dxvkDevice->createBuffer(info, memoryFlags, DxvkMemoryStats::Category::AppBuffer);
+    Rc<DxvkBuffer> buffer = m_dxvkDevice->createBuffer(info, memoryFlags, DxvkMemoryStats::Category::AppBuffer, "D3D9 Constant Buffer");
 
     const uint32_t slotId = computeResourceSlotId(
       ShaderStage, DxsoBindingType::ConstantBuffer,

@@ -43,7 +43,8 @@
   X(EmissiveColorTexture,                    emissive_mask_texture,                TextureRef, void, void, {}) \
   X(SubsurfaceTransmittanceTexture,          subsurface_transmittance_texture,     TextureRef, void, void, {}) \
   X(SubsurfaceThicknessTexture,              subsurface_thickness_texture,         TextureRef, void, void, {}) \
-  X(SubsurfaceSingleScatteringAlbedoTexture, subsurface_single_scattering_texture, TextureRef, void, void, {})
+  X(SubsurfaceSingleScatteringAlbedoTexture, subsurface_single_scattering_texture, TextureRef, void, void, {}) \
+  X(SubsurfaceRadiusTexture,                 subsurface_radius_texture,            TextureRef, void, void, {})
 
 
 #define LIST_OPAQUE_MATERIAL_CONSTANTS(X) \
@@ -79,6 +80,10 @@
   X(SubsurfaceMeasurementDistance,    subsurface_measurement_distance,        float,          0.f,                        65504.0f,                  0.f) \
   X(SubsurfaceSingleScatteringAlbedo, subsurface_single_scattering_albedo,    Vector3,        Vector3(0.f),               Vector3(1.f),              Vector3(0.5f, 0.5f, 0.5f)) \
   X(SubsurfaceVolumetricAnisotropy,   subsurface_volumetric_anisotropy,       float,          -1.f,                       1.f,                       0.f) \
+  X(SubsurfaceDiffusionProfile,       subsurface_diffusion_profile,           bool,           false,                      true,                      false) \
+  X(SubsurfaceRadius,                 subsurface_radius,                      Vector3,        Vector3(0.f),               Vector3(65504.f),          Vector3(0.5f, 0.5f, 0.5f)) \
+  X(SubsurfaceRadiusScale,            subsurface_radius_scale,                float,          0.f,                        65504.0f,                  1.f) \
+  X(SubsurfaceMaxSampleRadius,        subsurface_max_sample_radius,           float,          0.f,                        65504.0f,                  16.f) \
   /* Sampler State */ \
   X(FilterMode,                       filter_mode,                            uint8_t,        lss::Mdl::Filter::Nearest,  lss::Mdl::Filter::Linear,  lss::Mdl::Filter::Linear)  \
   X(WrapModeU,                        wrap_mode_u,                            uint8_t,        lss::Mdl::WrapMode::Clamp,  lss::Mdl::WrapMode::Clip,  lss::Mdl::WrapMode::Repeat) \
@@ -197,10 +202,7 @@
       m_##name = clamp(m_##name, ranges.Min##name, ranges.Max##name);
 
 #define WRITE_TEXTURE_HASH(name, usd_attr, type, minVal, maxVal, defaultVal) \
-      {                                                                      \
-        XXH64_hash_t imageHash = m_##name.getImageHash();                    \
-        h = XXH64(&imageHash, sizeof(imageHash), h);                         \
-      }
+      h += m_##name.getImageHash();
 
 #define WRITE_CONSTANT_HASH(name, usd_attr, type, minVal, maxVal, defaultVal) \
       h = XXH64(&m_##name, sizeof(m_##name), h);

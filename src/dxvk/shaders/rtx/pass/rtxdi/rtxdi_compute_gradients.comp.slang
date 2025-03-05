@@ -84,6 +84,10 @@ void main(uint2 GlobalIndex : SV_DispatchThreadID)
   }
   RtxdiBestLights[GlobalIndex] = uint2(bestLightIndex, bestLightPortalIdx);
 
+  if (!push.computeGradients)
+  {
+    return;
+  }
 
   float2 gradient = 0;
 

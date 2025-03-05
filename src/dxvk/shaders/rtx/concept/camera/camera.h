@@ -72,4 +72,6 @@ struct VolumeDefinitionCamera
 
   vec3 previousTranslatedWorldOffset;
   uint flags;
+
+  float4 worldPlanes[6]; // [left, right, bottom, top, near, far]
 };

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -117,7 +117,7 @@ namespace dxvk {
       desiredProfile = (DLSSProfile)std::max(0, (int) desiredProfile - 1);
     } else if (RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Low) {
       // When using low preset, give me all the perf I can get!!!
-      desiredProfile = DLSSProfile::UltraPerf;
+      desiredProfile = (DLSSProfile) std::max(0, (int) desiredProfile - 2);
     }
 
     return desiredProfile;
@@ -236,12 +236,13 @@ namespace dxvk {
       };
 
       const DxvkAutoExposure& autoExposure = device()->getCommon()->metaAutoExposure();
-      if (!mAutoExposure)
+      if (!mAutoExposure) {
         pInputs.push_back(autoExposure.getExposureTexture().view);
+      }
 
       std::vector<Rc<DxvkImageView>> pOutputs = {
-        rtOutput.m_sharedBiasCurrentColorMask.view(Resources::AccessType::Read),
-        rtOutput.m_finalOutput.view
+        rtOutput.m_sharedBiasCurrentColorMask.view(Resources::AccessType::Write),
+        rtOutput.m_finalOutput.view(Resources::AccessType::Write)
       };
 
       for (auto input : pInputs) {
@@ -284,7 +285,7 @@ namespace dxvk {
       // Note: Add texture inputs added here to the pInputs array above to properly access the images.
       NGXDLSSContext::NGXBuffers buffers;
       buffers.pUnresolvedColor = &rtOutput.m_compositeOutput.resource(Resources::AccessType::Read);
-      buffers.pResolvedColor = &rtOutput.m_finalOutput;
+      buffers.pResolvedColor = &rtOutput.m_finalOutput.resource(Resources::AccessType::Read);
       buffers.pMotionVectors = motionVectorInput;
       buffers.pDepth = depthInput;
       buffers.pExposure = &autoExposure.getExposureTexture();

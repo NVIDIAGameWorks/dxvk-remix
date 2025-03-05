@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -30,24 +30,26 @@
 #include <filesystem>
 
 namespace nrd {
-  using pfnGetLibraryDesc        = const LibraryDesc& (*)();
-  using pfnCreateDenoiser        = Result (*)(const DenoiserCreationDesc& denoiserCreationDesc, Denoiser*& denoiser);
-  using pfnGetDenoiserDesc       = const DenoiserDesc& (*)(const Denoiser& denoiser);
-  using pfnSetMethodSettings     = Result (*)(Denoiser& denoiser, Method method, const void* methodSettings);
-  using pfnGetComputeDispatches  = void (*)(Denoiser& denoiser, const CommonSettings& commonSettings, const DispatchDesc*& dispatchDescs, uint32_t& dispatchDescNum);
-  using pfnDestroyDenoiser       = void (*)(Denoiser& denoiser);
+  using pfnCreateInstance = Result(*)(const InstanceCreationDesc& instanceCreationDesc, Instance*& instance);
+  using pfnDestroyInstance = void (*)(Instance& instance);
+  using pfnGetLibraryDesc = const LibraryDesc& (*)();
+  using pfnGetInstanceDesc = const InstanceDesc& (*)(const Instance& instance);
+  using pfnSetCommonSettings = Result (*)(Instance& instance, const CommonSettings& commonSettings);
+  using pfnSetDenoiserSettings = Result (*)(Instance& instance, Identifier identifier, const void* denoiserSettings);
+  using pfnGetComputeDispatches = Result (*)(Instance& instance, const Identifier* identifiers, uint32_t identifiersNum, const DispatchDesc*& dispatchDescs, uint32_t& dispatchDescsNum);
   using pfnGetResourceTypeString = const char* (*)(ResourceType resourceType);
-  using pfnGetMethodString       = const char* (*)(Method method);
+  using pfnGetDenoiserString = const char* (*)(Denoiser denoiser);
 
   struct DispatchNRD {
+    pfnCreateInstance CreateInstance;
+    pfnDestroyInstance DestroyInstance;
     pfnGetLibraryDesc GetLibraryDesc;
-    pfnCreateDenoiser CreateDenoiser;
-    pfnGetDenoiserDesc GetDenoiserDesc;
-    pfnSetMethodSettings SetMethodSettings;
+    pfnGetInstanceDesc GetInstanceDesc;
+    pfnSetCommonSettings SetCommonSettings;
+    pfnSetDenoiserSettings SetDenoiserSettings;
     pfnGetComputeDispatches GetComputeDispatches;
-    pfnDestroyDenoiser DestroyDenoiser;
     pfnGetResourceTypeString GetResourceTypeString;
-    pfnGetMethodString GetMethodString;
+    pfnGetDenoiserString GetDenoiserString;
   } dispatch;
 
   HMODULE initialize() {
@@ -67,14 +69,15 @@ namespace nrd {
     }
 
 #define GET_PROC_MACRO(proc)  dispatch.##proc = (pfn##proc)GetProcAddress(hNRD, #proc)
+    GET_PROC_MACRO(CreateInstance);
+    GET_PROC_MACRO(DestroyInstance);
     GET_PROC_MACRO(GetLibraryDesc);
-    GET_PROC_MACRO(CreateDenoiser);
-    GET_PROC_MACRO(GetDenoiserDesc);
-    GET_PROC_MACRO(SetMethodSettings);
+    GET_PROC_MACRO(GetInstanceDesc);
+    GET_PROC_MACRO(SetCommonSettings);
+    GET_PROC_MACRO(SetDenoiserSettings);
     GET_PROC_MACRO(GetComputeDispatches);
-    GET_PROC_MACRO(DestroyDenoiser);
     GET_PROC_MACRO(GetResourceTypeString);
-    GET_PROC_MACRO(GetMethodString);
+    GET_PROC_MACRO(GetDenoiserString);
 #undef GET_PROC_MACRO
 
     const LibraryDesc& desc = dispatch.GetLibraryDesc();
@@ -147,8 +150,9 @@ namespace dxvk {
     : CommonDeviceObject(device), m_vkd(device->vkd()), m_type(type) {
     m_hNRD = nrd::initialize();
 
-    if (m_hNRD == NULL)
+    if (m_hNRD == NULL) {
       return;
+    }
 
     m_settings.initialize(nrd::dispatch.GetLibraryDesc(), device->instance()->config(), type);
     
@@ -171,6 +175,17 @@ namespace dxvk {
     m_cbData = nullptr;
   }
 
+  const char* NRDContext::getDenoiserName() const {
+    switch (m_type) {
+    case DenoiserType::DirectAndIndirectLight: return "Direct And Indirect Light";
+    case DenoiserType::DirectLight: return "Direct Light";
+    case DenoiserType::IndirectLight: return "Indirect Light";
+    case DenoiserType::Secondaries: return "Secondaries";
+    case DenoiserType::Reference: return "Reference";
+    default: assert(0); return "<invalid argument>";  break;
+    }
+  }
+
   void NRDContext::prepareResources(
     Rc<DxvkContext> ctx,
     const Resources::RaytracingOutput& rtOutput) {
@@ -178,21 +193,28 @@ namespace dxvk {
     if (!m_cbData) {
       m_cbData = std::make_unique<RtxStagingDataAlloc>(
         device(),
+        "RtxStagingDataAlloc: NRD CB",
         (VkMemoryPropertyFlagBits) (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT),
         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
     }
 
-    uint16_t width = (uint16_t)rtOutput.m_compositeOutputExtent.width;
-    uint16_t height = (uint16_t)rtOutput.m_compositeOutputExtent.height;
+    const uint16_t width = static_cast<uint16_t>(rtOutput.m_compositeOutputExtent.width);
+    const uint16_t height = static_cast<uint16_t>(rtOutput.m_compositeOutputExtent.height);
 
-    bool bCreateDenoiser = m_method != m_settings.m_methodDesc.method ||
-      m_settings.m_methodDesc.fullResolutionWidth != width ||
-      m_settings.m_methodDesc.fullResolutionHeight != height ||
+    bool bCreateDenoiser = m_denoiser != m_settings.m_denoiserDesc.denoiser ||
+      m_settings.m_commonSettings.resourceSize[0] != width ||
+      m_settings.m_commonSettings.resourceSize[1] != height ||
       (m_transientTex.size() == 0 && m_permanentTex.size() == 0);
 
     if (bCreateDenoiser) {
+      Logger::debug(str::format("[RTX] NRD: initializing denoiser ", getDenoiserName()));
 
-      m_method = m_settings.m_methodDesc.method;
+      m_denoiser = m_settings.m_denoiserDesc.denoiser;
+
+      if (m_settings.m_denoiserDesc.identifier == UINT32_MAX) {
+        static uint32_t uniqueId = 0;
+        m_settings.m_denoiserDesc.identifier = uniqueId++;
+      }
 
       // Destroy previous graphics state
       {
@@ -203,22 +225,26 @@ namespace dxvk {
 
       // Initialize new graphics state
       {
-        m_settings.m_methodDesc.fullResolutionWidth = width;
-        m_settings.m_methodDesc.fullResolutionHeight = height;
+        m_settings.m_commonSettings.resourceSizePrev[0] = width;
+        m_settings.m_commonSettings.resourceSizePrev[1] = height;
+        m_settings.m_commonSettings.resourceSize[0] = width;
+        m_settings.m_commonSettings.resourceSize[1] = height;
+        m_settings.m_commonSettings.rectSizePrev[0] = width;
+        m_settings.m_commonSettings.rectSizePrev[1] = height;
+        m_settings.m_commonSettings.rectSize[0] = width;
+        m_settings.m_commonSettings.rectSize[1] = height;
 
-        if (m_denoiser) {
-          nrd::dispatch.DestroyDenoiser(*m_denoiser);
-          m_denoiser = nullptr;
+        if (!m_denoiserInstance) {
+          nrd::InstanceCreationDesc instanceCreationDesc;
+          instanceCreationDesc.allocationCallbacks.Allocate = NrdAllocate;
+          instanceCreationDesc.allocationCallbacks.Reallocate = NrdReallocate;
+          instanceCreationDesc.allocationCallbacks.Free = NrdFree;
+          instanceCreationDesc.allocationCallbacks.userArg = nullptr; // ? ToDo
+          instanceCreationDesc.denoisersNum = 1;
+          instanceCreationDesc.denoisers = &m_settings.m_denoiserDesc;
+
+          THROW_IF_FALSE(nrd::dispatch.CreateInstance(instanceCreationDesc, m_denoiserInstance) == nrd::Result::SUCCESS);
         }
-
-        nrd::DenoiserCreationDesc denoiserCreationDesc;
-        denoiserCreationDesc.memoryAllocatorInterface.Allocate = NrdAllocate;
-        denoiserCreationDesc.memoryAllocatorInterface.Reallocate = NrdReallocate;
-        denoiserCreationDesc.memoryAllocatorInterface.Free = NrdFree;
-        denoiserCreationDesc.requestedMethodsNum = 1;
-        denoiserCreationDesc.requestedMethods = &m_settings.m_methodDesc;
-
-        THROW_IF_FALSE(nrd::dispatch.CreateDenoiser(denoiserCreationDesc, m_denoiser) == nrd::Result::SUCCESS);
 
         createPipelines();
 
@@ -227,18 +253,21 @@ namespace dxvk {
         m_settings.m_resetHistory = true;
       }
     }
+
+    if (m_settings.m_commonSettings.enableValidation && !m_validationTex.isValid()) {
+      m_validationTex = Resources::createImageResource(ctx, "nrd validation texture", rtOutput.m_compositeOutputExtent, VK_FORMAT_R32G32B32A32_SFLOAT);
+    }
   }
 
   DxvkSamplerCreateInfo getSamplerInfo(const nrd::Sampler& nrdSampler) {
 
     DxvkSamplerCreateInfo samplerInfo;
 
-    if (nrdSampler == nrd::Sampler::NEAREST_CLAMP || nrdSampler == nrd::Sampler::NEAREST_MIRRORED_REPEAT) {
+    if (nrdSampler == nrd::Sampler::NEAREST_CLAMP) {
       samplerInfo.magFilter = VK_FILTER_NEAREST;
       samplerInfo.minFilter = VK_FILTER_NEAREST;
       samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
-    }
-    else {
+    } else {
       samplerInfo.magFilter = VK_FILTER_LINEAR;
       samplerInfo.minFilter = VK_FILTER_LINEAR;
       samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
@@ -257,8 +286,7 @@ namespace dxvk {
       samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
       samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
       samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-    }
-    else {
+    } else {
       samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
       samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
       samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
@@ -275,14 +303,14 @@ namespace dxvk {
   void NRDContext::createResources(
     Rc<DxvkContext> ctx,
     const Resources::RaytracingOutput& rtOutput) {
-    const nrd::DenoiserDesc& denoiserDesc = nrd::dispatch.GetDenoiserDesc(*m_denoiser);
+    const nrd::InstanceDesc& instanceDesc = nrd::dispatch.GetInstanceDesc(*m_denoiserInstance);
 
     DxvkImageCreateInfo desc;
     desc.type = VK_IMAGE_TYPE_2D;
     desc.flags = 0;
     desc.sampleCount = VK_SAMPLE_COUNT_1_BIT;
-    desc.extent = { m_settings.m_methodDesc.fullResolutionWidth, m_settings.m_methodDesc.fullResolutionHeight, 1 };
     desc.numLayers = 1;
+    desc.mipLevels = 1;
     // VK_IMAGE_USAGE_TRANSFER_DST_BIT needed for clears in NRD
     desc.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     desc.stages = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
@@ -297,23 +325,28 @@ namespace dxvk {
     viewInfo.minLevel = 0;
     viewInfo.minLayer = 0;
     viewInfo.numLayers = 1;
+    viewInfo.numLevels = 1;
 
-    const uint32_t textureCount = denoiserDesc.permanentPoolSize + denoiserDesc.transientPoolSize;
+    const uint32_t textureCount = instanceDesc.permanentPoolSize + instanceDesc.transientPoolSize;
 
     // Take a copy so we can pull from the bag without aliasing.
     SharedTransientPool sharedPoolCopy = m_sharedTransientTex;
 
     for (uint32_t i = 0; i < textureCount; i++) {
 
-      const bool isPermanent = (i < denoiserDesc.permanentPoolSize);
+      const bool isPermanent = (i < instanceDesc.permanentPoolSize);
 
       const nrd::TextureDesc& nrdTextureDesc = isPermanent
-        ? denoiserDesc.permanentPool[i]
-        : denoiserDesc.transientPool[i - denoiserDesc.permanentPoolSize];
+        ? instanceDesc.permanentPool[i]
+        : instanceDesc.transientPool[i - instanceDesc.permanentPoolSize];
 
       viewInfo.format = desc.format = TranslateFormat(nrdTextureDesc.format);
-      viewInfo.numLevels = desc.mipLevels = nrdTextureDesc.mipNum;
       
+      desc.extent = { 
+        util::ceilDivide(m_settings.m_commonSettings.resourceSize[0], nrdTextureDesc.downsampleFactor),
+        util::ceilDivide(m_settings.m_commonSettings.resourceSize[1], nrdTextureDesc.downsampleFactor),
+        1 };
+
       if (isPermanent) {
         // Always allocate these
         Resources::Resource resource;
@@ -339,7 +372,7 @@ namespace dxvk {
           // Take one for this pass and remove it so it cannot be shared
           sharedPoolCopy.erase(imageHash);
         } else {
-          // If the weak_ptr is now dead, then remove it.
+          // If the weak_ptr is now dead, then remove it
           if (transientResource != sharedPoolCopy.end() && !transientResource->second.lock()) {
             m_sharedTransientTex.erase(imageHash);
           }
@@ -357,17 +390,17 @@ namespace dxvk {
         }
       }
     }
+  }
 
-    if (m_settings.m_commonSettings.enableValidation) {
-      m_validationTex = Resources::createImageResource(ctx, "nrd validation texture", rtOutput.m_compositeOutputExtent, VK_FORMAT_R32G32B32A32_SFLOAT);
-    }
+  Resources::Resource NRDContext::getValidationTexture() const {
+    return m_validationTex;
   }
 
   void NRDContext::createPipelines() {
 
-    const nrd::DenoiserDesc& denoiserDesc = nrd::dispatch.GetDenoiserDesc(*m_denoiser);
+    const nrd::InstanceDesc& instanceDesc = nrd::dispatch.GetInstanceDesc(*m_denoiserInstance);
 
-    const nrd::DescriptorPoolDesc& descriptorDesc = denoiserDesc.descriptorPoolDesc;
+    const nrd::DescriptorPoolDesc& descriptorDesc = instanceDesc.descriptorPoolDesc;
     const nrd::SPIRVBindingOffsets spirvOffsets = nrd::dispatch.GetLibraryDesc().spirvBindingOffsets;
 
     // Create constant buffer
@@ -379,25 +412,25 @@ namespace dxvk {
     cbufferInfo.usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     cbufferInfo.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
     cbufferInfo.access = VK_ACCESS_TRANSFER_WRITE_BIT;
-    cbufferInfo.size = denoiserDesc.constantBufferMaxDataSize;
+    cbufferInfo.size = instanceDesc.constantBufferMaxDataSize;
 
 
     // Create static sampler binding infos
     std::vector<VkDescriptorSetLayoutBinding> samplersBindInfo;
     {
-      samplersBindInfo.resize(denoiserDesc.samplersNum);
-      m_staticSamplers.resize(denoiserDesc.samplersNum);
+      samplersBindInfo.resize(instanceDesc.samplersNum);
+      m_staticSamplers.resize(instanceDesc.samplersNum);
 
-      for (uint32_t i = 0; i < denoiserDesc.samplersNum; i++) {
+      for (uint32_t i = 0; i < instanceDesc.samplersNum; i++) {
 
         DxvkSamplerCreateInfo samplerInfo;
-        samplerInfo = getSamplerInfo(denoiserDesc.samplers[i]);
+        samplerInfo = getSamplerInfo(instanceDesc.samplers[i]);
 
         // Create sampler 
         m_staticSamplers[i] = device()->createSampler(samplerInfo);
 
         // Bind info
-        const uint32_t reg = (uint32_t)(denoiserDesc.samplers[i]);
+        const uint32_t reg = static_cast<uint32_t>(instanceDesc.samplers[i]);
         samplersBindInfo[i].binding = spirvOffsets.samplerOffset + reg;
         samplersBindInfo[i].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
         samplersBindInfo[i].descriptorCount = 1;
@@ -407,9 +440,9 @@ namespace dxvk {
     }
 
     // Create binding infos for all the pipelines
-    for (uint32_t i = 0; i < denoiserDesc.pipelinesNum; i++) {
+    for (uint32_t i = 0; i < instanceDesc.pipelinesNum; i++) {
 
-      const nrd::PipelineDesc& nrdPipelineDesc = denoiserDesc.pipelines[i];
+      const nrd::PipelineDesc& nrdPipelineDesc = instanceDesc.pipelines[i];
       const nrd::ComputeShaderDesc& nrdComputeShader = nrdPipelineDesc.computeShaderSPIRV;
 
       // Start with static samplers bind infos
@@ -421,7 +454,7 @@ namespace dxvk {
         if (nrdPipelineDesc.hasConstantData)
         {
           VkDescriptorSetLayoutBinding binding{};
-          binding.binding = spirvOffsets.constantBufferOffset + denoiserDesc.constantBufferRegisterIndex;
+          binding.binding = spirvOffsets.constantBufferOffset + instanceDesc.constantBufferRegisterIndex;
           binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
           binding.descriptorCount = 1;
           binding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
@@ -538,8 +571,9 @@ namespace dxvk {
 
     m_vkd->vkDestroyShaderModule(m_vkd->device(), shaderModule, nullptr);
 
-    if (status != VK_SUCCESS)
+    if (status != VK_SUCCESS) {
       throw DxvkError("Dxvk: Failed to create meta clear compute pipeline");
+    }
 
     return result;
   }
@@ -554,34 +588,32 @@ namespace dxvk {
       return inputs.normal_roughness;
     case nrd::ResourceType::IN_VIEWZ:
       return inputs.linearViewZ;
-    case nrd::ResourceType::IN_RADIANCE:
-      return inputs.reference;
-    case nrd::ResourceType::IN_DIFF_RADIANCE_HITDIST:
-      return inputs.diffuse_hitT;
-    case nrd::ResourceType::IN_SPEC_RADIANCE_HITDIST:
-      return inputs.specular_hitT;
     case nrd::ResourceType::IN_DIFF_CONFIDENCE:
       return inputs.confidence;
     case nrd::ResourceType::IN_SPEC_CONFIDENCE:
       return inputs.confidence;
     case nrd::ResourceType::IN_DISOCCLUSION_THRESHOLD_MIX:
       return inputs.disocclusionThresholdMix;
-    case nrd::ResourceType::OUT_RADIANCE:
-      return outputs.reference;
+    case nrd::ResourceType::IN_DIFF_RADIANCE_HITDIST:
+      return inputs.diffuse_hitT;
+    case nrd::ResourceType::IN_SPEC_RADIANCE_HITDIST:
+      return inputs.specular_hitT;
+    case nrd::ResourceType::IN_SIGNAL:
+      return inputs.reference;
     case nrd::ResourceType::OUT_DIFF_RADIANCE_HITDIST:
       return outputs.diffuse_hitT;
     case nrd::ResourceType::OUT_SPEC_RADIANCE_HITDIST:
       return outputs.specular_hitT;
+    case nrd::ResourceType::OUT_SIGNAL:
+      return outputs.reference;
     case nrd::ResourceType::TRANSIENT_POOL:
       assert(resource.indexInPool < m_transientTex.size());
       return m_transientTex[resource.indexInPool].get();
     case nrd::ResourceType::PERMANENT_POOL:
       assert(resource.indexInPool < m_permanentTex.size());
       return &m_permanentTex[resource.indexInPool];
-#if _DEBUG
     case nrd::ResourceType::OUT_VALIDATION:
       return &m_validationTex;
-#endif
     default:
       throw DxvkError("Unavailable resource type");
     }
@@ -608,7 +640,7 @@ namespace dxvk {
     updateNRDSettings(sceneManager, inputs, rtOutput);
 
     std::vector<Rc<DxvkImageView>> pInputs, pOutputs;
-    if (m_settings.m_methodDesc.method == nrd::Method::REFERENCE) {
+    if (m_settings.m_denoiserDesc.denoiser == nrd::Denoiser::REFERENCE) {
       pInputs = { inputs.reference->view, inputs.normal_roughness->view, inputs.linearViewZ->view, inputs.motionVector->view };
       pOutputs = { outputs.reference->view };
     } else {
@@ -631,25 +663,25 @@ namespace dxvk {
     }
     barriers.recordCommands(ctx->getCommandList());
 
-    auto needsCustomView = [&](const Rc<DxvkImageView>& view, uint32_t mipOffset, uint16_t mipCount, bool bStorage) {
+    auto needsCustomView = [&](const Rc<DxvkImageView>& view, bool bStorage) {
 
       VkImageUsageFlags usage = view->info().usage;
       bool usageMatches = 
         bStorage 
         ? (usage & VK_IMAGE_USAGE_STORAGE_BIT && usage & VK_IMAGE_USAGE_SAMPLED_BIT)
         : (usage & VK_IMAGE_USAGE_SAMPLED_BIT);
-      return mipOffset != 0 || view->info().numLevels != mipCount || !usageMatches;
+      return !usageMatches;
     };
 
-    auto createImageViewCreateInfo = [&](DxvkImage& image, uint16_t mipOffset, uint16_t mipCount, bool bStorage) {
+    auto createImageViewCreateInfo = [&](DxvkImage& image, bool bStorage) {
 
       DxvkImageViewCreateInfo viewInfo = {};
       viewInfo.type = VK_IMAGE_VIEW_TYPE_2D;
       viewInfo.format = image.info().format;
       viewInfo.usage = bStorage ? VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT : VK_IMAGE_USAGE_SAMPLED_BIT;
       viewInfo.aspect = VK_IMAGE_ASPECT_COLOR_BIT;
-      viewInfo.minLevel = mipOffset;
-      viewInfo.numLevels = mipCount;
+      viewInfo.minLevel = 0;
+      viewInfo.numLevels = 1;
       viewInfo.minLayer = 0;
       viewInfo.numLayers = 1;
 
@@ -657,21 +689,17 @@ namespace dxvk {
     };
 
     // Prepare and run dispatches
-    const nrd::DenoiserDesc& denoiserDesc = nrd::dispatch.GetDenoiserDesc(*m_denoiser);
+    const nrd::InstanceDesc& instanceDesc = nrd::dispatch.GetInstanceDesc(*m_denoiserInstance);
     {
       uint32_t dispatchDescNum = 0;
       const nrd::DispatchDesc* dispatchDescs = nullptr;
 
-      nrd::CommonSettings commonSettings = m_settings.m_commonSettings;
-      commonSettings.isHistoryConfidenceAvailable = inputs.confidence != nullptr;
-      commonSettings.isDisocclusionThresholdMixAvailable = inputs.disocclusionThresholdMix != nullptr;
-
-      nrd::dispatch.GetComputeDispatches(*m_denoiser, commonSettings, dispatchDescs, dispatchDescNum);
+      nrd::dispatch.GetComputeDispatches(*m_denoiserInstance, &m_settings.m_denoiserDesc.identifier, 1, dispatchDescs, dispatchDescNum);
 
       for (uint32_t i = 0; i < dispatchDescNum; i++) {
 
         const nrd::DispatchDesc& dispatchDesc = dispatchDescs[i];
-        const nrd::PipelineDesc& pipelineDesc = denoiserDesc.pipelines[dispatchDesc.pipelineIndex];
+        const nrd::PipelineDesc& pipelineDesc = instanceDesc.pipelines[dispatchDesc.pipelineIndex];
         const ComputePipeline& computePipeline = m_computePipelines[dispatchDesc.pipelineIndex];
 
         ScopedGpuProfileZoneDynamicZ(ctx, dispatchDesc.name);
@@ -681,12 +709,12 @@ namespace dxvk {
         std::vector<VkWriteDescriptorSet> descriptorWriteSets;
 
         // Variables referenced inside descriptorWriteSets must have the same lifetime, so preallocate
-        std::vector<VkDescriptorImageInfo> samplerDescs{ denoiserDesc.samplersNum };
+        std::vector<VkDescriptorImageInfo> samplerDescs{ instanceDesc.samplersNum };
         VkDescriptorBufferInfo             cbDesc{};
         std::vector<VkDescriptorImageInfo> imageDesc{ dispatchDesc.resourcesNum };
 
         // Static sampler descriptors
-        for (size_t i = 0; i < denoiserDesc.samplersNum; i++) {
+        for (size_t i = 0; i < instanceDesc.samplersNum; i++) {
 
           const VkDescriptorSetLayoutBinding& binding = computePipeline.bindings[i];
           samplerDescs[i].sampler = m_staticSamplers[i]->handle();
@@ -734,34 +762,30 @@ namespace dxvk {
 
           const Resources::Resource* texture = getTexture(resource, inputs, outputs);
 
-          const bool bStorage = resource.stateNeeded == nrd::DescriptorType::STORAGE_TEXTURE;
+          const bool bStorage = resource.descriptorType == nrd::DescriptorType::STORAGE_TEXTURE;
 
           Rc<DxvkImageView> imageView;
 
-          if (needsCustomView(texture->view, resource.mipOffset, resource.mipNum, bStorage)) {
-            DxvkImageViewCreateInfo viewCreateInfo = createImageViewCreateInfo(*texture->image.ptr(), resource.mipOffset, resource.mipNum, bStorage);
+          if (needsCustomView(texture->view, bStorage)) {
+            DxvkImageViewCreateInfo viewCreateInfo = createImageViewCreateInfo(*texture->image.ptr(), bStorage);
             imageView = device()->createImageView(texture->image, viewCreateInfo);
-          }
-          else {
+          } else {
             imageView = texture->view;
           }
 
           // Ensure resources are kept alive
           ctx->getCommandList()->trackResource<DxvkAccess::None>(imageView);
-          if (bStorage)
+          if (bStorage) {
             ctx->getCommandList()->trackResource<DxvkAccess::Write>(texture->image);
-          else
+          } else {
             ctx->getCommandList()->trackResource<DxvkAccess::Read>(texture->image);
+          }
 
           descriptorWriteSets.emplace_back(DxvkDescriptor::texture(descriptorSet, &imageDesc[i], *imageView, binding.descriptorType, binding.binding));
 
           // Create a barrier
-          VkImageSubresourceRange subRange = imageView->imageSubresources();
-          subRange.baseMipLevel = resource.mipOffset;
-          subRange.levelCount = resource.mipNum;
-
           barriers.accessImage(
-            texture->image, subRange,
+            texture->image, imageView->imageSubresources(),
             imageView->imageInfo().layout, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, imageView->imageInfo().access,
             imageView->imageInfo().layout, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
             bStorage ? VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT : VK_ACCESS_SHADER_READ_BIT);
@@ -808,9 +832,9 @@ namespace dxvk {
     const DxvkDenoise::Input& inputs,
     const Resources::RaytracingOutput& rtOutput) {
 
-    if (m_settings.m_methodDesc.method != nrd::Method::REFERENCE) {
+    if (m_settings.m_denoiserDesc.denoiser != nrd::Denoiser::REFERENCE) {
       // Don't allow adaptive scaling for direct light in ReBlur
-      if (m_settings.m_methodDesc.method != nrd::Method::REBLUR_DIFFUSE_SPECULAR || m_settings.m_type != dxvk::DenoiserType::DirectLight) {
+      if (m_settings.m_denoiserDesc.denoiser != nrd::Denoiser::REBLUR_DIFFUSE_SPECULAR || m_settings.m_type != dxvk::DenoiserType::DirectLight) {
         updateAdaptiveScaling(inputs.diffuse_hitT->image->info().extent);
       }
 
@@ -819,30 +843,22 @@ namespace dxvk {
       }
     }
 
-    // nrd::SetMethodSettings
-    {
-      const void* methodSettings = nullptr;
-
-      switch (m_settings.m_methodDesc.method) {
-      case nrd::Method::REBLUR_DIFFUSE_SPECULAR:
-        methodSettings = (void*)&m_settings.m_reblurSettings;
-        break;
-      case nrd::Method::RELAX_DIFFUSE_SPECULAR:
-        methodSettings = (void*)&m_settings.m_relaxSettings;
-        break;
-      case nrd::Method::REFERENCE:
-        methodSettings = (void*)&m_settings.m_referenceSettings;
-        break;
-      default:
-        assert("Invalid option");
-      };
-
-      THROW_IF_FALSE(nrd::dispatch.SetMethodSettings(*m_denoiser, m_settings.m_methodDesc.method, methodSettings) == nrd::Result::SUCCESS);
-    }
-
+    // nrd::SetCommonSettings
     nrd::CommonSettings& commonSettings = m_settings.m_commonSettings;
     {
       const auto& camera = sceneManager.getCamera();
+
+      const uint16_t width = static_cast<uint16_t>(rtOutput.m_compositeOutputExtent.width);
+      const uint16_t height = static_cast<uint16_t>(rtOutput.m_compositeOutputExtent.height);
+
+      m_settings.m_commonSettings.resourceSizePrev[0] = width;
+      m_settings.m_commonSettings.resourceSizePrev[1] = height;
+      m_settings.m_commonSettings.resourceSize[0] = width;
+      m_settings.m_commonSettings.resourceSize[1] = height;
+      m_settings.m_commonSettings.rectSizePrev[0] = width;
+      m_settings.m_commonSettings.rectSizePrev[1] = height;
+      m_settings.m_commonSettings.rectSize[0] = width;
+      m_settings.m_commonSettings.rectSize[1] = height;
 
       // Note: Convert camera matrices to Matrix4 for the sake of NRD (only accepts float matrices).
       const Matrix4 viewMatrix = camera.getWorldToView();
@@ -850,8 +866,8 @@ namespace dxvk {
       const Matrix4 viewToProjectionMatrix = camera.getViewToProjection();
       const Matrix4 prevViewToProjectionMatrix = camera.getPreviousViewToProjection();
 
-      // Check whether camera is changed
-      if (m_settings.m_methodDesc.method == nrd::Method::REFERENCE &&
+      // Check whether camera has changed
+      if (m_settings.m_denoiserDesc.denoiser == nrd::Denoiser::REFERENCE &&
           (memcmp(commonSettings.worldToViewMatrix, viewMatrix.data, sizeof(Matrix4)) != 0 ||
            memcmp(commonSettings.viewToClipMatrix, viewToProjectionMatrix.data, sizeof(Matrix4)) != 0)) {
         m_settings.m_resetHistory = true;
@@ -873,16 +889,18 @@ namespace dxvk {
       float jitterVec[2];
       camera.getJittering(jitterVec);
       commonSettings.isMotionVectorInWorldSpace = true;
-      commonSettings.motionVectorScale[0] = commonSettings.isMotionVectorInWorldSpace ? 1.0f : 1.0f / m_settings.m_methodDesc.fullResolutionWidth;
-      commonSettings.motionVectorScale[1] = commonSettings.isMotionVectorInWorldSpace ? 1.0f : 1.0f / m_settings.m_methodDesc.fullResolutionHeight;
+      commonSettings.motionVectorScale[0] = commonSettings.isMotionVectorInWorldSpace ? 1.0f : 1.0f / width;
+      commonSettings.motionVectorScale[1] = commonSettings.isMotionVectorInWorldSpace ? 1.0f : 1.0f / height;
       commonSettings.motionVectorScale[2] = commonSettings.motionVectorScale[1]; // Enable 2.5D Motion Vector in NRD, we use the scale that matches previous default NRD scale on Z (mv = mv.xyz * mvScale.xyy)
-      commonSettings.cameraJitter[0] = jitterVec[0] / (float)m_settings.m_methodDesc.fullResolutionWidth;
-      commonSettings.cameraJitter[1] = jitterVec[1] / (float)m_settings.m_methodDesc.fullResolutionHeight;
+      commonSettings.cameraJitterPrev[0] = commonSettings.cameraJitter[0];
+      commonSettings.cameraJitterPrev[1] = commonSettings.cameraJitter[1];
+      commonSettings.cameraJitter[0] = jitterVec[0] / static_cast<float>(width);
+      commonSettings.cameraJitter[1] = jitterVec[1] / static_cast<float>(height);
       // Note: timeDeltaBetweenFrames is in milliseconds, as specified by NRD. If set to 0, NRD will track the time itself.
       commonSettings.timeDeltaBetweenFrames = m_settings.m_groupedSettings.timeDeltaBetweenFrames != 0 
         ? m_settings.m_groupedSettings.timeDeltaBetweenFrames : inputs.frameTimeMs;
       commonSettings.frameIndex = device()->getCurrentFrameId();
-      commonSettings.accumulationMode = m_settings.m_resetHistory ? nrd::AccumulationMode::RESTART : nrd::AccumulationMode::CONTINUE;
+      commonSettings.accumulationMode = m_settings.m_resetHistory ? nrd::AccumulationMode::CLEAR_AND_RESTART : nrd::AccumulationMode::CONTINUE;
 
       auto* cameraTeleportDirectionInfo = sceneManager.getRayPortalManager().getCameraTeleportationRayPortalDirectionInfo();
 
@@ -892,6 +910,32 @@ namespace dxvk {
         static const auto identity = Matrix4{};
         memcpy(commonSettings.worldPrevToWorldMatrix, &identity, sizeof(Matrix4));
       }
+
+      commonSettings.isHistoryConfidenceAvailable = inputs.confidence != nullptr;
+      commonSettings.isDisocclusionThresholdMixAvailable = inputs.disocclusionThresholdMix != nullptr;
+
+      THROW_IF_FALSE(nrd::dispatch.SetCommonSettings(*m_denoiserInstance, commonSettings) == nrd::Result::SUCCESS);
+    }
+
+    // nrd::SetDenoiserSettings
+    {
+      const void* denoiserSettings = nullptr;
+
+      switch (m_settings.m_denoiserDesc.denoiser) {
+      case nrd::Denoiser::REBLUR_DIFFUSE_SPECULAR:
+        denoiserSettings = static_cast<void*>(&m_settings.m_reblurSettings);
+        break;
+      case nrd::Denoiser::RELAX_DIFFUSE_SPECULAR:
+        denoiserSettings = static_cast<void*>(&m_settings.m_relaxSettings);
+        break;
+      case nrd::Denoiser::REFERENCE:
+        denoiserSettings = static_cast<void*>(&m_settings.m_referenceSettings);
+        break;
+      default:
+        assert("Invalid option");
+      };
+
+      THROW_IF_FALSE(nrd::dispatch.SetDenoiserSettings(*m_denoiserInstance, m_settings.m_denoiserDesc.identifier, denoiserSettings) == nrd::Result::SUCCESS);
     }
   }
 
@@ -900,15 +944,15 @@ namespace dxvk {
     // we probably need to move this to settings later
     constexpr float defaultScreenHeight = 1440.0f;
     float radiusResolutionScale = RtxOptions::Get()->isAdaptiveResolutionDenoisingEnabled() ? static_cast<float>(std::min(renderSize.width, renderSize.height)) / defaultScreenHeight : 1.0f;
-    if (m_settings.m_methodDesc.method == nrd::Method::REBLUR_DIFFUSE_SPECULAR) {
-      m_settings.m_reblurSettings.blurRadius = m_settings.m_reblurInternalBlurRadius.blurRadius > 0.0f ?
-        std::max(1.0f, round(m_settings.m_reblurInternalBlurRadius.blurRadius * radiusResolutionScale)) : 0.0f;
+    if (m_settings.m_denoiserDesc.denoiser == nrd::Denoiser::REBLUR_DIFFUSE_SPECULAR) {
+      m_settings.m_reblurSettings.maxBlurRadius = m_settings.m_reblurInternalBlurRadius.maxBlurRadius > 0.0f ?
+        std::max(1.0f, round(m_settings.m_reblurInternalBlurRadius.maxBlurRadius * radiusResolutionScale)) : 0.0f;
       m_settings.m_reblurSettings.diffusePrepassBlurRadius = m_settings.m_reblurInternalBlurRadius.diffusePrepassBlurRadius > 0.0f ?
         std::max(1.0f, round(m_settings.m_reblurInternalBlurRadius.diffusePrepassBlurRadius * radiusResolutionScale)) : 0.0f;
       m_settings.m_reblurSettings.specularPrepassBlurRadius = m_settings.m_reblurInternalBlurRadius.specularPrepassBlurRadius > 0.0f ?
         std::max(1.0f, round(m_settings.m_reblurInternalBlurRadius.specularPrepassBlurRadius * radiusResolutionScale)) : 0.0f;
     }
-    else if (m_settings.m_methodDesc.method == nrd::Method::RELAX_DIFFUSE_SPECULAR) {
+    else if (m_settings.m_denoiserDesc.denoiser == nrd::Denoiser::RELAX_DIFFUSE_SPECULAR) {
       m_settings.m_relaxSettings.diffusePrepassBlurRadius = m_settings.m_relaxInternalBlurRadius.diffusePrepassBlurRadius > 0.0f ?
         std::max(1.0f, round(m_settings.m_relaxInternalBlurRadius.diffusePrepassBlurRadius * radiusResolutionScale)) : 0.0f;
       m_settings.m_relaxSettings.specularPrepassBlurRadius = m_settings.m_relaxInternalBlurRadius.specularPrepassBlurRadius > 0.0f ?
@@ -919,6 +963,8 @@ namespace dxvk {
   void NRDContext::destroyResources() {
     m_transientTex.clear();
     m_permanentTex.clear();
+    m_sharedTransientTex.clear();
+    m_validationTex.reset();
   }
 
   void NRDContext::destroyPipelines() {
@@ -949,7 +995,7 @@ namespace dxvk {
 
     NrdArgs args;
 
-    args.isReblurEnabled = m_settings.m_methodDesc.method == nrd::Method::REBLUR_DIFFUSE_SPECULAR;
+    args.isReblurEnabled = m_settings.m_denoiserDesc.denoiser == nrd::Denoiser::REBLUR_DIFFUSE_SPECULAR;
     args.missLinearViewZ = missLinearViewZ;
     args.maxDirectHitTContribution = m_settings.m_groupedSettings.maxDirectHitTContribution;
 
@@ -963,7 +1009,7 @@ namespace dxvk {
   }
 
   bool NRDContext::isReferenceDenoiserEnabled() const {
-    return m_settings.m_methodDesc.method == nrd::Method::REFERENCE;
+    return m_settings.m_denoiserDesc.denoiser == nrd::Denoiser::REFERENCE;
   }
 
   const NrdSettings& NRDContext::getNrdSettings() const {
@@ -979,9 +1025,9 @@ namespace dxvk {
     destroyPipelines();
     m_cbData = nullptr;
     
-    if (m_denoiser) {
-      nrd::dispatch.DestroyDenoiser(*m_denoiser);
-      m_denoiser = nullptr;
+    if (m_denoiserInstance) {
+      nrd::dispatch.DestroyInstance(*m_denoiserInstance);
+      m_denoiserInstance = nullptr;
     }
   }
 } // namespace dxvk

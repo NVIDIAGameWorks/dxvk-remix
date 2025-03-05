@@ -59,11 +59,11 @@ float rectLightCalcPositionalWeight(RectLight rectLight, vec3 position, inout ve
   );
 }
 
-bool rectLightCalcVisibilityWeight(RectLight rectLight, f16vec3 triangleNormal, vec3 lightVector, float16_t maxRectRadius, const bool isSubsurface)
+bool rectLightCalcVisibilityWeight(RectLight rectLight, f16vec3 triangleNormal, vec3 lightVector, float16_t maxRectRadius, const bool isThinOpaqueSubsurface)
 {
   // Cull the rects that are completely hidden below the surface or the surface has subsurface material,
   // and the rects that are oriented away from the surface.
-  const bool frontSideRect = (isSubsurface || dot(lightVector, vec3(triangleNormal)) > float(-maxRectRadius)) &&
+  const bool frontSideRect = (isThinOpaqueSubsurface || dot(lightVector, vec3(triangleNormal)) > float(-maxRectRadius)) &&
                              (dot(lightVector, vec3(rectLight.normal)) < 0.0f);
 
   return frontSideRect;
@@ -112,12 +112,12 @@ vec3 rectLightCalcPower(RectLight rectLight)
   return rectLightCalcSurfaceArea(rectLight) * pi * rectLight.radiance;
 }
 
-float rectLightCalcWeight(RectLight rectLight, MinimalSurfaceInteraction viewSurfaceInteraction, const bool isSubSurface)
+float rectLightCalcWeight(RectLight rectLight, MinimalSurfaceInteraction viewSurfaceInteraction, const bool isThinOpaqueSubsurface)
 {
   vec3 lightVector;
   float16_t maxRectRadius;
   const float positionalWeight = rectLightCalcPositionalWeight(rectLight, viewSurfaceInteraction.position, lightVector, maxRectRadius);
-  const bool visibilityWeight = rectLightCalcVisibilityWeight(rectLight, viewSurfaceInteraction.triangleNormal, lightVector, maxRectRadius, isSubSurface);
+  const bool visibilityWeight = rectLightCalcVisibilityWeight(rectLight, viewSurfaceInteraction.triangleNormal, lightVector, maxRectRadius, isThinOpaqueSubsurface);
 
   // Note: Ideally this if statement is re-ordered to avoid the calculation of the positional weight when the visibility test fails now that the logic has been abstracted
   // into functions.

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -30,6 +30,8 @@
 #include "rtx_context.h"
 #include "rtx_imgui.h"
 #include "rtx/pass/raytrace_args.h"
+#include "rtx_neural_radiance_cache.h"
+#include "rtx_render/rtx_restir_gi_rayquery.h"
 
 #include <rtx_shaders/demodulate.h>
 

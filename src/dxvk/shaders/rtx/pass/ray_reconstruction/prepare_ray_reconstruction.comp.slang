@@ -45,6 +45,9 @@ Texture2D<uint> PrimaryAttenuation;
 layout(rgba16, binding = RAY_RECONSTRUCTION_PRIMARY_VIRTUAL_WORLD_SHADING_NORMAL_INPUT)
 Texture2D<float4> PrimaryVirtualWorldNormalPerceptualRoughness;
 
+layout(r16f, binding = RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_THRESHOLD_MIX_INPUT_OUTPUT)
+RWTexture2D<float> PrimaryDisocclusionThresholdMix;
+
 layout(binding = RAY_RECONSTRUCTION_SECONDARY_ALBEDO_INPUT)
 Texture2D<float4> SecondaryAlbedo;
 
@@ -72,6 +75,9 @@ Texture2D<float4> InDepth;
 layout(rgba16, binding = RAY_RECONSTRUCTION_MOTION_VECTOR_INPUT)
 Texture2D<float4> InMotionVector;
 
+layout(r16f, binding = RAY_RECONSTRUCTION_PRIMARY_CONE_RADIUS_INPUT)
+Texture2D<float> PrimaryConeRadius;
+
 // Outputs
 layout(rgba16f, binding = RAY_RECONSTRUCTION_NORMALS_OUTPUT)
 RWTexture2D<float4> OutNormals;
@@ -97,7 +103,6 @@ float getRoughnessFactor(float roughness)
   return factor;
 }
 
-// Computes the histogram of the current image and stores the result.
 [shader("compute")]
 [numthreads(16, 16, 1)]
 void main(uint2 threadId : SV_DispatchThreadID)
@@ -111,19 +116,31 @@ void main(uint2 threadId : SV_DispatchThreadID)
     return;
   }
 
-  float3 normal;
+  const bool isPrimaryGBufferMiss = PrimaryConeRadius[threadId].x == 0.0f;
 
   // Choose normal inputs for DLSS-RR
-  if (cb.enableDLSSRRInputs) {
-    normal = InNormalsDLSSRR[threadId].xyz;
+  {
+    // RR expects 0 normal on misses
+    float3 normal = float3(0);
+
+    if (!isPrimaryGBufferMiss)
+    {
+      if (cb.enableDLSSRRInputs)
+      {
+        normal = InNormalsDLSSRR[threadId].xyz;
+      }
+      else if (cb.rayReconstructionUseVirtualNormals)
+      {
+        normal = texelFetch(InVirtualNormals, threadId, 0).xyz * 2.0 - 1.0;
+      }
+      else
+      {
+        vec2 octNormal = snorm2x16ToFloat2x32(texelFetch(InNormals, threadId, 0));
+        normal = signedOctahedralToSphereDirection(octNormal);
+      }
+    }
+
     imageStore(OutNormals, threadId, float4(normal, 0.0));
-  } else if (cb.rayReconstructionUseVirtualNormals) {
-    normal = texelFetch(InVirtualNormals, threadId, 0).xyz * 2.0 - 1.0;
-    imageStore(OutNormals, threadId, float4(normal, 0.0));
-  } else {
-    vec2 octNormal = snorm2x16ToFloat2x32(texelFetch(InNormals, threadId, 0));
-    normal = signedOctahedralToSphereDirection(octNormal);
-    imageStore(OutNormals, threadId, vec4(normal, 0.0));
   }
 
   const float primaryPerceptualRoughness = PrimaryVirtualWorldNormalPerceptualRoughness[threadId].w;
@@ -152,72 +169,86 @@ void main(uint2 threadId : SV_DispatchThreadID)
       primarySpecularAlbedo += secondarySpecularAlbedo * getRoughnessFactor(secondaryPerceptualRoughness);
     }
 
-    // Clamp minimum albedo to improve stability
-    PrimaryAlbedo[threadId] = lerp(primaryAlbedo, 1, 0.03);
+    PrimaryAlbedo[threadId] = primaryAlbedo;
     PrimarySpecularAlbedo[threadId] = primarySpecularAlbedo;
+  }
+
+  const float disocclusion = PrimaryDisocclusionThresholdMix[threadId];
+  if (disocclusion > 0.f && disocclusion <= 1.01f) {
+    PrimaryDisocclusionThresholdMix[threadId] = 0.0f;
   }
 
   // DLSS-RR doesn't expect hitT with holes, here a simple box filter is used to provide a dense hitT input.
   // The filter calculates average hitT in 3x3 area, excluding the minimum and the maximum ones.
-  float hitDistance = InPrimaryIndirectSpecular[threadId].a;
-  if (cb.filterHitT)
-  {
-    const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(threadId, SharedFlags);
-    // Calculate average specular hitT
-    float totalHitT = 0;
-    float totalWeight = 0;
-    float minHitT = 1e10;
-    float maxHitT = 0;
-    for (int i = 0; i < 9; ++i)
-    {
-      int2 offset = int2(i % 3, i / 3) - 1;
-      const GeometryFlags neighborFlags = geometryFlagsReadFromGBuffer(threadId + offset, SharedFlags);
-      if (neighborFlags.firstSampledLobeIsSpecular)
-      {
-        float hitT = InPrimaryIndirectSpecular[threadId + offset].a;
-        totalHitT += hitT;
-        totalWeight += 1;
-        minHitT = min(minHitT, hitT);
-        maxHitT = max(maxHitT, hitT);
-      }
-    }
+  float hitDistance = 0;
 
-    float hitT = hitDistance;
-    if (!geometryFlags.firstSampledLobeIsSpecular && totalWeight > 0)
+  if (!isPrimaryGBufferMiss)
+  {
+    hitDistance = InPrimaryIndirectSpecular[threadId].a;
+    
+    if (cb.filterHitT)
     {
-      // If this pixel doesn't have specular hitT, use average specular hitT from neighbors
-      hitT = totalHitT / totalWeight;
+      const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(threadId, SharedFlags);
+      // Calculate average specular hitT
+      float totalHitT = 0;
+      float totalWeight = 0;
+      float minHitT = 1e10;
+      float maxHitT = 0;
+      for (int i = 0; i < 9; ++i)
+      {
+        int2 offset = int2(i % 3, i / 3) - 1;
+        const GeometryFlags neighborFlags = geometryFlagsReadFromGBuffer(threadId + offset, SharedFlags);
+        if (neighborFlags.firstSampledLobeIsSpecular)
+        {
+          float hitT = InPrimaryIndirectSpecular[threadId + offset].a;
+          totalHitT += hitT;
+          totalWeight += 1;
+          minHitT = min(minHitT, hitT);
+          maxHitT = max(maxHitT, hitT);
+        }
+      }
+
+      float hitT = hitDistance;
+      if (!geometryFlags.firstSampledLobeIsSpecular && totalWeight > 0)
+      {
+        // If this pixel doesn't have specular hitT, use average specular hitT from neighbors
+        hitT = totalHitT / totalWeight;
+      }
+      else if ((hitDistance == minHitT || hitDistance == maxHitT) && totalWeight > 2)
+      {
+        // Remove minimum or maximum hitT and calculate average hitT
+        totalHitT -= minHitT + maxHitT;
+        totalWeight -= 2;
+        hitT = totalHitT / totalWeight;
+      }
+      hitDistance = hitT;
     }
-    else if ((hitDistance == minHitT || hitDistance == maxHitT) && totalWeight > 2)
-    {
-      // Remove minimum or maximum hitT and calculate average hitT
-      totalHitT -= minHitT + maxHitT;
-      totalWeight -= 2;
-      hitT = totalHitT / totalWeight;
-    }
-    hitDistance = hitT;
   }
+
   OutHitDistance[threadId] = hitDistance;
 
-  switch(cb.debugViewIdx)
+  switch (cb.debugViewIdx)
   {
+  case DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_THRESHOLD_MIX:
+    storeInDebugView(threadId, PrimaryDisocclusionThresholdMix[threadId]);
+    break;
   case DEBUG_VIEW_RAY_RECONSTRUCTION_DIFFUSE_ALBEDO:
-    storeInDebugView(ivec2(threadId), PrimaryAlbedo[threadId]);
+    storeInDebugView(threadId, PrimaryAlbedo[threadId]);
     break;
   case DEBUG_VIEW_RAY_RECONSTRUCTION_SPECULAR_ALBEDO:
-    storeInDebugView(ivec2(threadId), PrimarySpecularAlbedo[threadId]);
+    storeInDebugView(threadId, PrimarySpecularAlbedo[threadId]);
     break;
   case DEBUG_VIEW_RAY_RECONSTRUCTION_HIT_DISTANCE:
-    storeInDebugView(ivec2(threadId), hitDistance / 1000.0);
+    storeInDebugView(threadId, hitDistance / 1000.0);
     break;
   case DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_WORLD_SHADING_NORMAL:
-    storeInDebugView(ivec2(threadId), OutNormals[threadId]);
+    storeInDebugView(threadId, OutNormals[threadId]);
     break;
   case DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_DEPTH:
-    storeInDebugView(ivec2(threadId), InDepth[threadId].x);
+    storeInDebugView(threadId, InDepth[threadId].x);
     break;
   case DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_SCREEN_SPACE_MOTION_VECTOR:
-    storeInDebugView(ivec2(threadId), InMotionVector[threadId].xyz);
+    storeInDebugView(threadId, InMotionVector[threadId].xyz);
     break;
   }
 }

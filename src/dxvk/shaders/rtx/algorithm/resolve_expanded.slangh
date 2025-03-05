@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -32,7 +32,7 @@
 
 #ifdef RT_SHADER_EXECUTION_REORDERING
 
-// Adds a coherence hint to the lowest/least impront bit
+// Adds a coherence hint to the lowest/least important bit
 void addCoherenceHintAsLeastImportant1Bit(uint coherenceHintToAdd, inout uint coherenceHints, inout uint numCoherenceHints)
 {
   coherenceHints = coherenceHintToAdd | (coherenceHints << 1);
@@ -105,13 +105,11 @@ void TraceRayCustom<payload_t : IBasePayloadState>(
     payload); 
 }
 
-void ReorderThread(uint CoherenceHint, uint NumCoherenceHintBits) {}
-
 #endif
 
 #define RESOLVE_RAY_QUERY(                                                                \
-  extraArgs, ray, flags, hitFunction, maxInteractions, payload,                           \
-  segmentHitDistance, interactionsDebugView1, interactionsDebugView2)                     \
+  extraArgs, ray, flags, hitFunction, maxInteractions, payload, segmentHitDistance,       \
+  interactionsDebugView1, interactionsDebugView2, allowWriteToInteractionsDebugViews)     \
 {                                                                                         \
   /* Initialize the payload with the current ray's state */                               \
                                                                                           \
@@ -143,18 +141,18 @@ void ReorderThread(uint CoherenceHint, uint NumCoherenceHintBits) {}
     {                                                                                                   \
       /* Invoke a Ray Query */                                                                          \
                                                                                                         \
-      RayQuery<0> rayQuery = RayQuery<0>();;                                                            \
+      RayQuery<0> rayQuery = RayQuery<0>();                                                             \
                                                                                                         \
       /* Note: For now gl_RayFlagsOpaqueEXT is always used as this function will always return the */   \
       /* closest geometry hit, translucent or not (as we handle things like translucency and opacity */ \
       /* manually and re-cast the ray afterwards). */                                                   \
       /* Note: Ray direction casted to vec3 to be consistent with how ray evaluation is done */         \
       /* (to minimize any discrepancy). */                                                              \
-      rayQuery.TraceRayInline(        \
-        topLevelAS,                   \
-        flags, uint(payload.rayMask), \
-        currentRay                    \
-      );                              \
+      rayQuery.TraceRayInline(                                                            \
+        topLevelAS,                                                                       \
+        flags, uint(payload.rayMask),                                                     \
+        currentRay                                                                        \
+      );                                                                                  \
                                                                                           \
       while (rayQuery.Proceed())                                                          \
       {                                                                                   \
@@ -164,7 +162,7 @@ void ReorderThread(uint CoherenceHint, uint NumCoherenceHintBits) {}
       RAY_HIT_INFO_CREATE_RAY_QUERY_COMMITTED(rayHitInfo, rayQuery)                       \
                                                                                           \
       /* Call the hit function */                                                         \
-      hitFunction(extraArgs, rayHitInfo, payload);                          \
+      hitFunction(extraArgs, rayHitInfo, payload);                                        \
     }                                                                                     \
                                                                                           \
     /* Check if the resolve loop should continue */                                       \
@@ -181,7 +179,8 @@ void ReorderThread(uint CoherenceHint, uint NumCoherenceHintBits) {}
     currentRay.TMax = max(currentRay.TMax - segmentHitDistance, 0.0f);                    \
   }                                                                                       \
                                                                                           \
-  if (cb.debugView == interactionsDebugView1 || cb.debugView == interactionsDebugView2)   \
+  if ((cb.debugView == interactionsDebugView1 || cb.debugView == interactionsDebugView2)  \
+    && allowWriteToInteractionsDebugViews)                                                \
   {                                                                                       \
     accumulateInDebugViewAdd(getDispatchRaysIndex().xy, interactionIteration);            \
   }                                                                                       \
@@ -193,15 +192,15 @@ void ReorderThread(uint CoherenceHint, uint NumCoherenceHintBits) {}
   extraArgs, ray, flags, sbtRecordOffset,                                                 \
   hitFunction,                                                                            \
   maxInteractions, payload, segmentHitDistance,                                           \
-  interactionsDebugView1, interactionsDebugView2)                                         \
+  interactionsDebugView1, interactionsDebugView2, allowWriteToInteractionsDebugViews)     \
 {                                                                                         \
   /* Initialize the payload with the current ray's state */                               \
                                                                                           \
-  RayDesc currentRay;                    \
-  currentRay.Origin = ray.origin;        \
-  currentRay.TMin = 0.f;                 \
-  currentRay.TMax = ray.tMax;            \
-  currentRay.Direction = ray.direction;  \
+  RayDesc currentRay;                                                                     \
+  currentRay.Origin = ray.origin;                                                         \
+  currentRay.TMin = 0.f;                                                                  \
+  currentRay.TMax = ray.tMax;                                                             \
+  currentRay.Direction = ray.direction;                                                   \
                                                                                           \
   payload.origin = ray.origin;                                                            \
   payload.coneRadius = ray.coneRadius;                                                    \
@@ -253,7 +252,8 @@ void ReorderThread(uint CoherenceHint, uint NumCoherenceHintBits) {}
     currentRay.TMax = max(currentRay.TMax - segmentHitDistance, 0.0f);                    \
   }                                                                                       \
                                                                                           \
-  if (cb.debugView == interactionsDebugView1 || cb.debugView == interactionsDebugView2)   \
+  if ((cb.debugView == interactionsDebugView1 || cb.debugView == interactionsDebugView2)  \
+    && allowWriteToInteractionsDebugViews)                                                \
   {                                                                                       \
     accumulateInDebugViewAdd(getDispatchRaysIndex().xy, interactionIteration);            \
   }                                                                                       \
@@ -264,8 +264,8 @@ void ReorderThread(uint CoherenceHint, uint NumCoherenceHintBits) {}
   extraArgs, ray, flags, sbtRecordOffset,                                                 \
   hitFunction,                                                                            \
   maxInteractions, payload, segmentHitDistance,                                           \
-  interactionsDebugView1, interactionsDebugView2)                                         \
-  RESOLVE_RAY_QUERY(extraArgs, ray, flags, hitFunction, maxInteractions, payload, segmentHitDistance, interactionsDebugView1, interactionsDebugView2)
+  interactionsDebugView1, interactionsDebugView2, allowWriteToInteractionsDebugViews)     \
+  RESOLVE_RAY_QUERY(extraArgs, ray, flags, hitFunction, maxInteractions, payload, segmentHitDistance, interactionsDebugView1, interactionsDebugView2, allowWriteToInteractionsDebugViews)
 
 #endif
    

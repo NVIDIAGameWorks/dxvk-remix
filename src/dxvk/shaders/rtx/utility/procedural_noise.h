@@ -21,23 +21,11 @@
 */
 #pragma once
 
-#include "../dxvk_format.h"
-#include "../dxvk_include.h"
+// This is the resolution in both X and Y dimensions of the noise LUT
+#define VALUE_NOISE_RESOLUTION 512
 
-#include "../spirv/spirv_code_buffer.h"
-#include "rtx_resources.h"
-
-namespace dxvk {
-
-  class RtxContext;
-
-  class DxvkVolumePreintegrate {
-
-  public:
-
-    DxvkVolumePreintegrate(DxvkDevice* device);
-    ~DxvkVolumePreintegrate() = default;
-
-    void dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput, uint32_t numActiveFroxelVolumes);
-  };
-}
+// Offsets are prime numbers to try minimize repeating patterns
+#define VALUE_NOISE_Z_OFFSET_X 223
+#define VALUE_NOISE_Z_OFFSET_Y 131
+#define VALUE_NOISE_W_OFFSET_X 181
+#define VALUE_NOISE_W_OFFSET_Y 307

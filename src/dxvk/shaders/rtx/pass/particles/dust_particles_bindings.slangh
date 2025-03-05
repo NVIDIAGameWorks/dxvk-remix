@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -21,19 +21,24 @@
 */
 #pragma once
 
-#include "rtx_resources.h"
+#include "rtx/pass/particles/dust_particles_binding_indices.h"
+#include "rtx/pass/common_bindings.slangh"
 
-namespace dxvk {
+// Inputs
 
-  class RtxContext;
+layout(push_constant)
+ConstantBuffer<ParticleSystemConstants> particleCb;
 
-  class DxvkVolumeFilter {
+layout(binding = DUST_PARTICLES_BINDING_FILTERED_RADIANCE_Y_INPUT)
+Sampler3D<float4> FilteredAccumulatedRadianceY;
 
-  public:
+layout(binding = DUST_PARTICLES_BINDING_FILTERED_RADIANCE_CO_CG_INPUT)
+Sampler3D<float2> FilteredAccumulatedRadianceCoCg;
 
-    DxvkVolumeFilter(DxvkDevice* device);
-    ~DxvkVolumeFilter() = default;
+layout(binding = DUST_PARTICLES_BINDING_DEPTH_INPUT)
+Sampler2D<float> PrimaryDepth;
 
-    void dispatch(RtxContext* ctx, const Resources::RaytracingOutput& rtOutput, uint32_t numActiveFroxelVolumes);
-  };
-}
+// Outputs
+
+layout(binding = DUST_PARTICLES_BINDING_PARTICLES_BUFFER_INOUT)
+RWStructuredBuffer<GpuParticle> Particles;

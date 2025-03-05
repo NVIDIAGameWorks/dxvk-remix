@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -56,6 +56,52 @@
 //!>       RT_SHADER_EXECUTION_REORDERING
 //!>       NEE_CACHE_ENABLE=0
 
+/* NRC */
+
+//!variant integrate_indirect_raygen_nrc_neeCache.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=1
+ 
+//!variant integrate_indirect_raygen_ser_nrc_neeCache.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       RT_SHADER_EXECUTION_REORDERING
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=1
+
+//!variant integrate_indirect_rayquery_nrc_neeCache.comp
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=1
+
+//!variant integrate_indirect_rayquery_raygen_nrc_neeCache.rgen
+//!>       RAY_PIPELINE
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=1
+
+//!variant integrate_indirect_rayquery_nrc.comp
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=0
+
+//!variant integrate_indirect_rayquery_raygen_nrc.rgen
+//!>       RAY_PIPELINE
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=0
+
+//!variant integrate_indirect_raygen_nrc.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=0
+
+//!variant integrate_indirect_raygen_ser_nrc.rgen
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       RT_SHADER_EXECUTION_REORDERING
+//!>       ENABLE_NRC=1
+//!>       NEE_CACHE_ENABLE=0
+
 //!end-variants
 
 #define INTEGRATE_INDIRECT
@@ -64,6 +110,7 @@
 // Note: Opacity lighting approximation used in the indirect integration pass due to particle lighting being somewhat
 // important in reflections off shiny surfaces (as without this it can make areas with many particles look weird in reflections).
 #define RESOLVE_OPACITY_LIGHTING_APPROXIMATION 1
+#define RESOLVER_USE_VOLUMETRIC_ATTENUATION 1
 
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/common_bindings.slangh"

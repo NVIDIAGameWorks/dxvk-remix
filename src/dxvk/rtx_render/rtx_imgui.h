@@ -257,6 +257,30 @@ namespace ImGui {
     return IMGUI_ADD_TOOLTIP(SliderFloat4(label, rtxOption->getValue().data, std::forward<Args>(args)...), rtxOption->getDescription());
   }
 
+  // Variant handling RtxOption as input
+  template <typename ... Args>
+  IMGUI_API bool InputText(const char* label, dxvk::RtxOption<std::string>* rtxOption, Args&& ... args) {
+    // Note: Includes the null terminator, so the maximum length of text is only 1023 bytes.
+    constexpr std::uint32_t maxTextBytes = 1024;
+    std::array<char, maxTextBytes> textBuffer{};
+    const auto& value = rtxOption->getValue();
+    // Note: textBuffer.size()-1 used as the null terminator is not copied and rather added in manually to handle
+    // the case of the string being larger than the size of the buffer.
+    const auto clampedTextSize = std::min(value.size(), textBuffer.size() - 1);
+
+    std::memcpy(textBuffer.data(), value.data(), clampedTextSize);
+    // Note: Add the null terminator to the end of however much was copied.
+    textBuffer[clampedTextSize] = '\0';
+
+    const auto changed = IMGUI_ADD_TOOLTIP(InputText(label, textBuffer.data(), textBuffer.size(), std::forward<Args>(args)...), rtxOption->getDescription());
+
+    if (changed) {
+      rtxOption->setValue(std::string(textBuffer.data()));
+    }
+
+    return changed;
+  }
+
   // Combo Box with unique key per combo entry
   // The combo entries are displayed in the order they appear in ComboEntries
   template<typename T>

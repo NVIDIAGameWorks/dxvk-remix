@@ -137,7 +137,7 @@ void main(uvec2 threadID : SV_DispatchThreadID)
 - lowerCamelCase for constant, function, parameter and variable names.
 - UpperCamelCase for structure names and buffers.
 - UPPER\_SNAKE\_CASE for macro names.
-- Next-line braces for functions, conditionals, loops, etc.
+- Next-line braces for functions, conditionals (including single line then/else statements), loops, etc.
 - Additionally, braces should always be added, even when optional (no one-line conditionals/loops).
 - New lines should be used to separate code for better readability, for example after a block or after a comment or other significant logical code section.
 - Spaces should surround binary operators on both sides, but should not be added around parentheses (be it in an expression, function call or otherwise).

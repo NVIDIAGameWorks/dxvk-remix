@@ -388,11 +388,20 @@ struct DrawCallTransforms {
   bool enableClipPlane = false;
   Vector4 clipPlane{ 0.f };
   TexGenMode texgenMode = TexGenMode::None;
+  const std::vector<Matrix4>* instancesToObject = nullptr;
 
   void sanitize() {
     if (objectToWorld[3][3] == 0.f) objectToWorld[3][3] = 1.f;
     if (objectToView[3][3] == 0.f) objectToView[3][3] = 1.f;
     if (worldToView[3][3] == 0.f) worldToView[3][3] = 1.f;
+  }
+
+  Matrix4 calcFirstInstanceObjectToWorld() const {
+    if (instancesToObject && !instancesToObject->empty()) {
+      return objectToWorld * (*instancesToObject)[0];
+    } else {
+      return objectToWorld;
+    }
   }
 };
 
@@ -431,6 +440,7 @@ enum class InstanceCategories : uint32_t {
   ThirdPersonPlayerModel,
   ThirdPersonPlayerBody,
   IgnoreBakedLighting,
+  IgnoreTransparencyLayer,
 
   Count,
 };
@@ -527,7 +537,9 @@ private:
   void finalizeGeometryBoundingBox();
   void finalizeSkinningData(const RtCamera* pLastCamera);
 
+  // NOTE: 'setCategory' can only add a category, it will not unset a bit
   void setCategory(InstanceCategories category, bool set);
+  void removeCategory(InstanceCategories category);
 
   RasterGeometry geometryData;
 

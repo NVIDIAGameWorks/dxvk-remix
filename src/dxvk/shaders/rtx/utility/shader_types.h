@@ -95,6 +95,8 @@ struct alignas(16) vec4 {
   }
 };
 
+typedef uint16_t half;
+
 struct f16vec2 {
   uint16_t x;
   uint16_t y;

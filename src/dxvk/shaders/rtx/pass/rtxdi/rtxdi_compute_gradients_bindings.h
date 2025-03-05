@@ -41,6 +41,7 @@ struct ComputeGradientsArgs
 {
   float darknessBias;
   uint usePreviousIlluminance;
+  uint computeGradients;
 };
 
 #ifdef __cplusplus

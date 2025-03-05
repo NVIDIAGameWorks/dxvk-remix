@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -66,6 +66,10 @@ namespace dxvk
     uint32_t mCurSample = 0;
     uint32_t mSampleCount = 0;
   };
+
+
+  // Returns a 2D <-0.5, 0.5> Halton jitter sample 
+  Vector2 calculateHaltonJitter(uint32_t currentFrame, uint32_t jitterSequenceLength);
 
   class RtFrustum final : public cFrustum
   {
@@ -225,28 +229,11 @@ namespace dxvk
   public:
     RtCamera() = default;
     ~RtCamera() = default;
-
-    RtCamera(const RtCamera& other) {
-      *this = other;
-    }
-
-    // Overload operator = to avoid copying RcObject's ref counter in RtCamera's copy constructor
-    RtCamera& operator=(const RtCamera& other) {
-      m_mouseX = other.m_mouseX;
-      m_mouseY = other.m_mouseY;
-      m_renderResolution[0] = other.m_renderResolution[0];
-      m_renderResolution[1] = other.m_renderResolution[1];
-      m_finalResolution[0] = other.m_finalResolution[0];
-      m_finalResolution[1] = other.m_finalResolution[1];
-      m_jitter[0] = other.m_jitter[0];
-      m_jitter[1] = other.m_jitter[1];
-      m_halton = other.m_halton;
-      m_firstUpdate = other.m_firstUpdate;
-
-      m_context = other.m_context;
-
-      return *this;
-    }
+    // Note: Copying functionality required for DLFG implementation (to store a copy of a camera used to render a frame for DLFG evaluation later).
+    // Avoid copies otherwise as this is a fairly large structure. If needed only the data required by DLFG could be copied and this copy functionality
+    // could be removed for slightly better performance.
+    RtCamera(const RtCamera& other) = default;
+    RtCamera& operator=(const RtCamera& other) = default;
 
     // Gets the Y axis (vertical) FoV of the camera's projection matrix in radians. Note this value will be positive always (even with strange camera types).
     float getFov() const { return m_context.fov; }
@@ -331,7 +318,7 @@ namespace dxvk
     static void applyAndGetJitter(Matrix4d& inoutProjection, float (&outPixelJitter)[2], uint32_t jitterFrameIdx, uint32_t renderResolutionX, uint32_t renderResolutionY);
 
     Camera getShaderConstants(bool freecam = true) const;
-    VolumeDefinitionCamera getVolumeShaderConstants() const;
+    VolumeDefinitionCamera getVolumeShaderConstants(const float maxDistance, const float guardBand = 1.f) const;
 
     static void showImguiSettings();
 

@@ -21,14 +21,15 @@
 */
 #pragma once
 
-#include "rtx/pass/volumetrics/volume_preintegrate_binding_indices.h"
+#include "rtx/pass/volumetrics/volume_integrate_binding_indices.h"
 
 // Inputs
 
-layout(r11f_g11f_b10f, binding = VOLUME_PREINTEGRATE_BINDING_FILTERED_RADIANCE_INPUT)
-Texture3D<float3> FilteredAccumulatedRadiance;
+layout(rgba32ui, binding = VOLUME_INTEGRATE_BINDING_PREV_VOLUME_RESERVOIRS_INPUT)
+Texture3D<uint4> PrevVolumeReservoirs;
+
 
 // Outputs
 
-layout(r11f_g11f_b10f, binding = VOLUME_PREINTEGRATE_BINDING_PREINTEGRATED_RADIANCE_OUTPUT)
-RWTexture3D<float3> RWPreintegratedRadiance;
+layout(rgba32ui, binding = VOLUME_INTEGRATE_BINDING_VOLUME_RESERVOIRS_OUTPUT)
+RWTexture3D<uint4> VolumeReservoirs;

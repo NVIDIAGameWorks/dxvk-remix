@@ -285,8 +285,9 @@ namespace dxvk {
     m_writerCond.notify_one();
   }
 
-
-  void DxvkStateCache::registerShader(const Rc<DxvkShader>& shader) {
+// NV-DXVK start
+  void DxvkStateCache::registerShader(const Rc<DxvkShader>& shader, bool isRemixShader) {
+// NV-DXVK end 
     DxvkShaderKey key = shader->getShaderKey();
 
     if (key.eq(g_nullShaderKey))
@@ -317,12 +318,20 @@ namespace dxvk {
        || !getShaderByKey(p->second.fs,  item.gp.fs)
        || !getShaderByKey(p->second.cs,  item.cp.cs))
         continue;
+
+// NV-DXVK start
+      item.isRemixShader = isRemixShader;
+// NV-DXVK end
       
       if (!workerLock)
         workerLock = std::unique_lock<dxvk::mutex>(m_workerLock);
       
       // NV-DXVK start: do not compile same shader multiple times
       if (m_workerItemsInFlight.count(item.hash()) == 0) {
+        if (item.isRemixShader) {
+          ++m_workerCompilingRemixShaders;
+        }
+
         m_workerQueue.push(item);
         m_workerItemsInFlight.insert(item.hash());
       }
@@ -341,11 +350,15 @@ namespace dxvk {
 
     WorkerItem item;
     item.rt = shaders;
+    item.isRemixShader = true;
 
     std::unique_lock<dxvk::mutex> workerLock(m_workerLock);
 
     // Do not compile same shader multiple times
     if (m_workerItemsInFlight.count(item.hash()) == 0) {
+      assert(item.isRemixShader);
+      ++m_workerCompilingRemixShaders;
+
       m_workerQueue.push(item);
       m_workerItemsInFlight.insert(item.hash());
 
@@ -1006,6 +1019,12 @@ namespace dxvk {
       }
 
       compilePipelines(item);
+
+// NV-DXVK start
+      if (item.isRemixShader) {
+        --m_workerCompilingRemixShaders;
+      }
+// NV-DXVK end
 
       // NV-DXVK start: do not compile same shader multiple times
       { std::unique_lock<dxvk::mutex> lock(m_workerLock);

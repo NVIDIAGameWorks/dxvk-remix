@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -119,7 +119,11 @@ namespace dxvk
                       const bool allowCompatibleFormatAliasing = false,
                       const uint32_t numLayers = 1,
                       const VkImageType imageType = VK_IMAGE_TYPE_2D,
-                      const VkImageViewType imageViewType = VK_IMAGE_VIEW_TYPE_2D);
+                      const VkImageViewType imageViewType = VK_IMAGE_VIEW_TYPE_2D,
+                      VkImageCreateFlags imageCreateFlags = 0,
+                      const VkImageUsageFlags extraUsageFlags = VK_IMAGE_USAGE_STORAGE_BIT,
+                      const VkClearColorValue clearValue = { 0.0f, 0.0f, 0.0f, 0.0f },
+                      const uint32_t mipLevels = 1);
       AliasedResource(const AliasedResource& otherAliasedResource,
                       Rc<DxvkContext>& ctx,
                       const VkExtent3D& extent,
@@ -222,12 +226,6 @@ namespace dxvk
     };
 
     struct RaytracingOutput {
-
-      Resource m_volumeReservoirs[2];
-      Resource m_volumeAccumulatedRadiance[2];
-      Resource m_volumeFilteredRadiance;
-      Resource m_volumePreintegratedRadiance;
-
       Resource m_sharedFlags;
       Resource m_sharedRadianceRG;
       Resource m_sharedRadianceB;
@@ -238,6 +236,7 @@ namespace dxvk
       AliasedResource m_sharedBiasCurrentColorMask;
       Resource m_sharedSurfaceIndex;
       Resource m_sharedSubsurfaceData;
+      Resource m_sharedSubsurfaceDiffusionProfileData;
 
       Resource m_primaryAttenuation;
       Resource m_primaryWorldShadingNormal;
@@ -308,13 +307,12 @@ namespace dxvk
       Resource m_primaryScreenSpaceMotionVectorDLSSRR;
 
       Resource m_bsdfFactor;
-      Resource m_bsdfFactor2;
 
       VkExtent3D m_compositeOutputExtent;
       AliasedResource m_compositeOutput;
-      AliasedResource m_lastCompositeOutput;
 
-      Resource m_finalOutput;
+      VkExtent3D m_finalOutputExtent;
+      AliasedResource m_finalOutput;
 
       Resource m_postFxIntermediateTexture;
 
@@ -335,11 +333,11 @@ namespace dxvk
       Resource m_neeCacheThreadTask;
 
       Resource m_sharedTextureCoord;
-
-      VkExtent3D m_froxelVolumeExtent;
-      uint32_t m_numFroxelVolumes;
-      
+    
       Rc<DxvkBuffer> m_gpuPrintBuffer;
+
+      Rc<DxvkBuffer> m_samplerFeedbackDevice;
+      Rc<DxvkBuffer> m_samplerFeedbackReadback[kMaxFramesInFlight];
 
       RaytraceArgs m_raytraceArgs;
 
@@ -352,10 +350,6 @@ namespace dxvk
       const AliasedResource& getPreviousRtxdiConfidence() const { return m_rtxdiConfidence[!m_swapTextures]; }
       const AliasedResource& getCurrentPrimaryWorldPositionWorldTriangleNormal() const { return m_primaryWorldPositionWorldTriangleNormal[m_swapTextures]; }
       const AliasedResource& getPreviousPrimaryWorldPositionWorldTriangleNormal() const { return m_primaryWorldPositionWorldTriangleNormal[!m_swapTextures]; }
-      const Resource& getCurrentVolumeReservoirs() const { return m_volumeReservoirs[m_swapTextures]; }
-      const Resource& getPreviousVolumeReservoirs() const { return m_volumeReservoirs[!m_swapTextures]; }
-      const Resource& getCurrentVolumeAccumulatedRadiance() const { return m_volumeAccumulatedRadiance[m_swapTextures]; }
-      const Resource& getPreviousVolumeAccumulatedRadiance() const { return m_volumeAccumulatedRadiance[!m_swapTextures]; }
 
     private:
       bool m_swapTextures = false;
@@ -379,7 +373,7 @@ namespace dxvk
     }
 
     // Message function called at the beginning of the frame, usually allocate or release resources based on each pass's status
-    void onFrameBegin(Rc<DxvkContext> ctx, RtxTextureManager& textureManager, const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent, float frameTimeMilliseconds, bool resetHistory);
+    void onFrameBegin(Rc<DxvkContext> ctx, RtxTextureManager& textureManager, const VkExtent3D& downscaledExtent, const VkExtent3D& targetExtent, float frameTimeMilliseconds, bool resetHistory, bool isCameraCut);
 
     // Message function called when target or downscaled resolution is changed
     void onResize(Rc<DxvkContext> ctx, const VkExtent3D& downscaledExtents, const VkExtent3D& upscaledExtents);
@@ -390,6 +384,7 @@ namespace dxvk
 
     Rc<DxvkBuffer> getConstantsBuffer();
     Rc<DxvkImageView> getBlueNoiseTexture(Rc<DxvkContext> ctx);
+    Rc<DxvkImageView> getValueNoiseLut(Rc<DxvkContext> ctx);
     Rc<DxvkImageView> getWhiteTexture(Rc<DxvkContext> ctx);
     Resources::Resource getSkyProbe(Rc<DxvkContext> ctx, VkFormat format = VK_FORMAT_UNDEFINED);
     Resources::Resource getSkyMatte(Rc<DxvkContext> ctx, VkFormat format = VK_FORMAT_UNDEFINED);
@@ -409,6 +404,7 @@ namespace dxvk
 
     void createConstantsBuffer();
     void createBlueNoiseTexture(Rc<DxvkContext> ctx);
+    void createValueNoiseLut(Rc<DxvkContext> ctx);
 
     float getUpscaleRatio() const { return m_raytracingOutput.isReady() ? ((float)m_downscaledExtent.width / m_targetExtent.width) : 1.0f; }
 
@@ -438,6 +434,8 @@ namespace dxvk
     Rc<DxvkBuffer> m_constants;
     Rc<DxvkImage> m_blueNoiseTex;
     Rc<DxvkImageView> m_blueNoiseTexView;
+    Rc<DxvkImage> m_valueNoiseLut;
+    Rc<DxvkImageView> m_valueNoiseLutView;
     Rc<DxvkImage> m_whiteTex;
     Rc<DxvkImageView> m_whiteTexView;
 
@@ -474,6 +472,7 @@ namespace dxvk
     VkExtent3D targetExtent;
     float frameTimeMilliseconds;
     bool resetHistory;
+    bool isCameraCut;
   };
 
   class RtxPass {

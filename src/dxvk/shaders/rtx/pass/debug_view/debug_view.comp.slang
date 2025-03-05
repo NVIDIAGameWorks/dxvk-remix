@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -32,6 +32,20 @@
 #include "rtx/pass/debug_view/debug_view_binding_indices.h"
 #include "rtx/utility/debug_view_indices.h"
 #include "rtx/utility/geometry_flags.slangh"
+#include "rtx/algorithm/volume_composite_helpers.slangh"
+
+#include "rtxdi/Reservoir.slangh"
+#include "rtx/pass/nrc/nrc_utilities.slangh"
+
+uint32_t RAB_EncodeNormal(float3 normal)
+{
+  return float2x32ToSnorm2x16(sphereDirectionToSignedOctahedral(normal));
+}
+
+float3 RAB_DecodeNormal(uint encodedNormal)
+{
+  return signedOctahedralToSphereDirection(snorm2x16ToFloat2x32(encodedNormal));
+}
 
 // Inputs
 
@@ -61,10 +75,27 @@ layout(r32ui, binding = DEBUG_VIEW_BINDING_INSTRUMENTATION_INPUT)
 Texture2D<uint> Instrumentation;
 layout(rgba16f, binding = DEBUG_VIEW_BINDING_TERRAIN_INPUT)
 Texture2D<float4> TerrainTexture;
+layout(rgba32ui, binding = DEBUG_VIEW_BINDING_VOLUME_RESERVOIRS)
+Texture3D<uint4> VolumeReservoirs;
+
+layout(binding = DEBUG_VIEW_BINDING_VOLUME_AGE)
+Sampler3D<float> VolumeFilteredRadianceAge;
+layout(binding = DEBUG_VIEW_BINDING_VOLUME_RADIANCE_Y)
+Sampler3D<float4> VolumeFilteredRadianceY;
+layout(binding = DEBUG_VIEW_BINDING_VOLUME_RADIANCE_COCG)
+Sampler3D<float2> VolumeFilteredRadianceCoCg;
+
+layout(binding = DEBUG_VIEW_BINDING_VALUE_NOISE_SAMPLER)
+Sampler2D<float4> ValueNoiseSampler;
+
+layout(binding = DEBUG_VIEW_BINDING_BLUE_NOISE_TEXTURE)
+Texture2DArray BlueNoise;
+
 layout(rgba32f, binding = DEBUG_VIEW_BINDING_INPUT)
 Texture2D<float4> DebugView;
 
-// Inputs / Outputs
+layout(rgba8f, binding = DEBUG_VIEW_NRD_VALIDATION_LAYER_INPUT)
+Texture2D<float4> NrdValidatioNLayer;
 
 layout(r32ui, binding = DEBUG_VIEW_BINDING_HDR_WAVEFORM_RED_INPUT_OUTPUT)
 RWTexture2D<uint> HDRWaveformRedInputOutput;
@@ -99,6 +130,7 @@ RWStructuredBuffer<float> DebugViewStatistics;
 #include "rtx/utility/common.slangh"
 #include "rtx/utility/color.slangh"
 #include "rtx/utility/packing.slangh"
+#include "rtx/utility/noise.slangh"
 #include "rtx/external/NRD.slangh"
 
 float4 sampleTexture(Texture2D<float4> texture, ivec2 threadId)
@@ -212,7 +244,7 @@ vec3 colorCodeIntoBGRexclusive(uint value, uint maxValue)
   return color.bgr;
 }
 
-vec4 loadInput(ivec2 threadId)
+vec4 loadInput(inout RNG randomState, ivec2 threadId)
 {
   vec4 value = vec4(0);
   const GeometryFlags geometryFlags = geometryFlagsReadFromGBuffer(threadId, SharedFlags);
@@ -299,6 +331,16 @@ vec4 loadInput(ivec2 threadId)
   case DEBUG_VIEW_TERRAIN_MAP_OPACITY:
     value = vec4(sampleTexture(TerrainTexture, threadId).aaa, 1);
     break;
+  case DEBUG_VIEW_NRC_UPDATE_RADIANCE:
+  case DEBUG_VIEW_NRC_UPDATE_THROUGHPUT:
+  case DEBUG_VIEW_NRC_UPDATE_RADIANCE_MULTIPLIED_BY_THROUGHPUT:
+  case DEBUG_VIEW_NRC_UPDATE_IS_UNBIASED:
+  case DEBUG_VIEW_NRC_UPDATE_NUMBER_OF_BOUNCES:
+  case DEBUG_VIEW_NRC_UPDATE_NUMBER_OF_PATH_SEGMENTS:
+  case DEBUG_VIEW_NRC_UPDATE_NUMBER_OF_INDIRECT_PATH_SEGMENTS:
+    value = DebugView[Nrc::calculateTrainingPixelCoordinate(threadId, cb.nrcArgs)];
+    break;
+
   case DEBUG_VIEW_EXPOSURE_HISTOGRAM:
     // Show histogram or weight as a bar across the top on the screen, technically not safe, but the first handful of threads should be fine.
     if (threadId.y < 32 && threadId.x < cb.debugViewResolution.x * 0.5)
@@ -340,6 +382,78 @@ vec4 loadInput(ivec2 threadId)
       value.a = 1.0;
     }
     break;
+  case DEBUG_VIEW_VOLUME_RESERVOIR_DEPTH_LAYERS: {
+    const Camera camera = cb.camera;
+    VolumeArgs volumeArgs = cb.volumeArgs;
+    const uvec3 froxelDimensions = uvec3(volumeArgs.restirFroxelGridDimensions, volumeArgs.restirFroxelDepthSlices);
+      
+    vec2 screenUV = cameraPixelCoordinateToScreenUV(camera, threadId.xy);
+    screenUV.x *= cb.volumeArgs.numFroxelVolumes;
+    const float froxelVolume = floor(screenUV.x);
+    screenUV.x = frac(screenUV.x);
+    const uint widthTiles = ceil(sqrt(float(volumeArgs.restirFroxelDepthSlices)));
+    const uint heightTiles = ceil(float(volumeArgs.restirFroxelDepthSlices) / widthTiles);
+    const uint previewLevel = uint(screenUV.x * widthTiles) + uint(screenUV.y * heightTiles) * widthTiles;
+
+    VolumeReSTIR_Reservoir reservoir = VolumeReSTIR_Reservoir::createEmpty();
+
+    if (previewLevel < volumeArgs.restirFroxelDepthSlices)
+    {
+      vec2 previewUV = mod(screenUV, vec2(1.0f / widthTiles, 1.0f / heightTiles)) * vec2(widthTiles, heightTiles);
+      previewUV.x = clamp(previewUV.x, volumeArgs.minFilteredRadianceU, volumeArgs.maxFilteredRadianceU);
+      previewUV.x = (previewUV.x + froxelVolume) * volumeArgs.inverseNumFroxelVolumes;
+      const float previewW = float(previewLevel) / float(volumeArgs.restirFroxelDepthSlices);
+
+      VolumeReSTIR_PackedReservoir packedReservoir;
+      packedReservoir.data0 = VolumeReservoirs[uint3(vec3(previewUV, previewW) * froxelDimensions)];
+      reservoir = VolumeReSTIR_Reservoir::createFromPacked(packedReservoir);
+      if(cb.debugKnob.x <= 1.f)
+      {
+        value = reservoir.sampleCount;
+      }
+      else if(cb.debugKnob.x <= 2.f)
+      {
+        value = reservoir.lightSample.lightIndex;
+      }
+      else if(cb.debugKnob.x <= 3.f)
+      {
+        value = reservoir.weightSum;
+      }
+      else if(cb.debugKnob.x <= 4.f)
+      {
+        value = reservoir.lightSample.targetPdf;
+      }
+      else if(cb.debugKnob.x <= 5.f)
+      {
+        value = reservoir.knownVisible ? float4(0, 1, 0, 1) : float4(1, 0, 0, 1);
+      }
+      else 
+      {
+        value.xy = float2(reservoir.lightSample.lightSampleCoordinates);
+      }
+    }
+
+    break;
+  }
+  case DEBUG_VIEW_VOLUME_PREINTEGRATION: {
+    const Camera camera = cb.camera;
+    const VolumeArgs volumeArgs = cb.volumeArgs;
+      
+    const vec2 screenUV = cameraPixelCoordinateToScreenUV(camera, threadId.xy);
+    const CameraDirections primaryRayDirections = cameraPixelCoordinateToDirection(camera, threadId.xy);
+    
+    // Calculate volumetric radiance and attenuation if volumetric lighting is enabled
+
+    vec3 volumetricPreintegratedRadiance = vec3(0.0f, 0.0f, 0.0f);
+    vec3 volumeAttenuation = vec3(1.0f, 1.0f, 1.0f);
+    float volumetricIntegrationOffset = 0.f;
+    integrateVolumetricNEE(
+      randomState, VolumeFilteredRadianceAge, VolumeFilteredRadianceY, VolumeFilteredRadianceCoCg,
+      volumeArgs, cb.animationTimeSec * 1000, threadId.xy, screenUV, false, cameraGetWorldPosition(camera), volumeArgs.froxelMaxDistance, primaryRayDirections.worldDirection,
+      volumetricPreintegratedRadiance, volumeAttenuation);
+    value.xyz = volumetricPreintegratedRadiance;
+    break;
+  }
   case DEBUG_VIEW_SCROLLING_LINE:
     value = FinalShading[upscaledPixelCoordinate];
     if (threadId.x == (cb.frameIdx + 10) % cb.debugViewResolution.x)
@@ -397,6 +511,20 @@ vec4 loadInput(ivec2 threadId)
     // If there is invalid number, output NaN to trigger NaN highlight effect 
     value = isValid ? 1.0 : 0.0 / 0.0;
     break;
+  case DEBUG_VIEW_SSS_DIFFUSION_PROFILE_SAMPLING:
+  {
+    value = DebugView[threadId] + FinalShading[upscaledPixelCoordinate];
+    break;
+  }
+  case DEBUG_VIEW_NRD_INSTANCE_0_VALIDATION_LAYER:
+  case DEBUG_VIEW_NRD_INSTANCE_1_VALIDATION_LAYER:
+  case DEBUG_VIEW_NRD_INSTANCE_2_VALIDATION_LAYER:
+  {
+    float4 validation = NrdValidatioNLayer[threadId];
+    value.xyz = lerp( FinalShading[upscaledPixelCoordinate].xyz, validation.xyz, validation.w );
+
+    break;
+  }
   default:
     value = DebugView[threadId];
   };
@@ -432,7 +560,7 @@ void hdrWaveformOutput(ivec2 threadId, RWTexture2D<uint> HDRWaveformInputOutput,
   InterlockedAdd(HDRWaveformInputOutput[outCoordinate], 1, dummyOldValue);
 }
 
-void postprocess(ivec2 threadId, inout vec4 outValue)
+void postprocess(inout RNG randomState, ivec2 threadId, inout vec4 outValue)
 {
   // Color code inf, nan values
   if (cb.enableInfNanViewFlag)
@@ -447,7 +575,7 @@ void postprocess(ivec2 threadId, inout vec4 outValue)
       for (int y = threadId.y - iRadius; y <= threadId.y + iRadius; y++ ) {
         for (int x = threadId.x - iRadius; x <= threadId.x + iRadius; x++ ) {
           if (any(ivec2(x, y) >= cb.debugViewResolution) || any(ivec2(x, y) < 0)) continue;
-          const vec4 temp = loadInput(ivec2(x, y));
+          const vec4 temp = loadInput(randomState, ivec2(x, y));
 
           nanDetected |= any(isnan(temp));
           infDetected |= any(isinf(temp));
@@ -638,10 +766,11 @@ void main(uint2 threadId : SV_DispatchThreadID)
     return;
   }
 
-  vec4 outValue = loadInput(threadId);
+  RNG randomState = createRNG(threadId, cb.frameIdx, 0);
+  vec4 outValue = loadInput(randomState, threadId);
 
   // Post-processing and overrides if applicable
-  postprocess(threadId, outValue);
+  postprocess(randomState, threadId, outValue);
 
   storeToDebugView(threadId, outValue);
 }

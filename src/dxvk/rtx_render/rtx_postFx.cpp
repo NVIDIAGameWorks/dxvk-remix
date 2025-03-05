@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -270,7 +270,7 @@ namespace dxvk {
       return float2(scale.x * chromaticAberrationIntensity, scale.y * chromaticAberrationIntensity);
     };
 
-    const Resources::Resource& inOutColorTexture = rtOutput.m_finalOutput;
+    const Resources::Resource& inOutColorTexture = rtOutput.m_finalOutput.resource(Resources::AccessType::ReadWrite);
     const VkExtent3D& inputSize = inOutColorTexture.image->info().extent;
     const VkExtent3D workgroups = util::computeBlockCount(inputSize, VkExtent3D { POST_FX_TILE_SIZE , POST_FX_TILE_SIZE, 1 } );
 
@@ -288,9 +288,8 @@ namespace dxvk {
     postFxArgs.motionBlurMinimumVelocityThresholdInPixel = motionBlurMinimumVelocityThresholdInPixel();
     postFxArgs.motionBlurDynamicDeduction = motionBlurDynamicDeduction();
     postFxArgs.jitterStrength = motionBlurJitterStrength();
-    postFxArgs.motionBlurDlfgDeduction =
-      ctx->getCommonObjects()->metaNGXContext().supportsDLFG() && DxvkDLFG::enable() ?
-      1.0f / static_cast<float>(DxvkDLFGPresenter::getPresentFrameCount()) : 1.0f;
+    postFxArgs.motionBlurDlfgDeduction = ctx->isDLFGEnabled() ?
+      1.0f / static_cast<float>(ctx->dlfgInterpolatedFrameCount() + 1) : 1.0f;
     postFxArgs.chromaticCenterAttenuationAmount = chromaticCenterAttenuationAmount();
     postFxArgs.chromaticAberrationScale = calculateChromaticAberrationScale(isChromaticAberrationEnabled() ? chromaticAberrationAmount() : 0.0f);
     postFxArgs.vignetteIntensity = isVignetteEnabled() ? vignetteIntensity() : 0.0f;
@@ -416,7 +415,7 @@ namespace dxvk {
           info.access = VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT;
           info.size = align(POST_FX_HIGHLIGHTING_MAX_VALUES * sizeof(ObjectPickingValue), kBufferAlignment);
         }
-        m_highlightingValues = ctx->getDevice()->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
+        m_highlightingValues = ctx->getDevice()->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "Highlight Buffer");
       }
 
       if (!sorted.empty()) {

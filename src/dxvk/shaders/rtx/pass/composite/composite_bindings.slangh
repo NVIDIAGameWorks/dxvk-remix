@@ -73,15 +73,24 @@ Texture2D<float2> BSDFFactor;
 layout(binding = COMPOSITE_BSDF_FACTOR2_INPUT)
 Texture2D<float2> BSDFFactor2;
 
-layout(r11f_g11f_b10f, binding = COMPOSITE_VOLUME_PREINTEGRATED_RADIANCE_INPUT)
-Sampler3D<float3> VolumePreintegratedRadiance;
-layout(binding = COMPOSITE_VOLUME_FILTERED_RADIANCE_INPUT)
-Sampler3D<float3> VolumeFilteredRadiance;
+layout(binding = COMPOSITE_VOLUME_FILTERED_RADIANCE_AGE_INPUT)
+Sampler3D<float> VolumeFilteredRadianceAge;
+layout(binding = COMPOSITE_VOLUME_FILTERED_RADIANCE_Y_INPUT)
+Sampler3D<float4> VolumeFilteredRadianceY;
+layout(binding = COMPOSITE_VOLUME_FILTERED_RADIANCE_CO_CG_INPUT)
+Sampler3D<float2> VolumeFilteredRadianceCoCg;
+
 layout(rgba32ui, binding = COMPOSITE_ALPHA_GBUFFER_INPUT)
 Texture2D<uint4> AlphaBlendGBuffer;
 
 layout(binding = COMPOSITE_BLUE_NOISE_TEXTURE)
 Texture2DArray BlueNoise;
+
+layout(binding = COMPOSITE_VALUE_NOISE_SAMPLER)
+Sampler2D<float4> ValueNoiseSampler;
+
+layout(binding = COMPOSITE_SKY_LIGHT_TEXTURE)
+Sampler2D<float3> SkyLight;
 
 // Inputs/Outputs
 layout(binding = COMPOSITE_PRIMARY_ALBEDO_INPUT_OUTPUT)

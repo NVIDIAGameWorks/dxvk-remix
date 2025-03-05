@@ -13,6 +13,7 @@
 #include "../util/util_math.h"
 #include "d3d9_rtx_utils.h"
 #include "d3d9_texture.h"
+#include "../dxvk/rtx_render/rtx_terrain_baker.h"
 
 namespace dxvk {
   static const bool s_isDxvkResolutionEnvVarSet = (env::getEnvVar("DXVK_RESOLUTION_WIDTH") != "") || (env::getEnvVar("DXVK_RESOLUTION_HEIGHT") != "");
@@ -24,7 +25,7 @@ namespace dxvk {
   #define CATEGORIES_REQUIRE_GEOMETRY_COPY    InstanceCategories::Terrain, InstanceCategories::WorldUI
 
   D3D9Rtx::D3D9Rtx(D3D9DeviceEx* d3d9Device, bool enableDrawCallConversion)
-    : m_rtStagingData(d3d9Device->GetDXVKDevice(), (VkMemoryPropertyFlagBits) (VK_MEMORY_PROPERTY_HOST_CACHED_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT))
+    : m_rtStagingData(d3d9Device->GetDXVKDevice(), "RtxStagingDataAlloc: D3D9", (VkMemoryPropertyFlagBits) (VK_MEMORY_PROPERTY_HOST_CACHED_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT))
     , m_parent(d3d9Device)
     , m_enableDrawCallConversion(enableDrawCallConversion)
     , m_pGeometryWorkers(enableDrawCallConversion ? std::make_unique<GeometryProcessor>(numGeometryProcessingThreads(), "geometry-processing") : nullptr) {
@@ -124,7 +125,7 @@ namespace dxvk {
     info.access = VK_ACCESS_TRANSFER_READ_BIT;
     info.stages = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT;
     info.size = size;
-    return DxvkBufferSlice(pDevice->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppBuffer));
+    return DxvkBufferSlice(pDevice->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppBuffer, "Vertex Capture Buffer"));
   }
 
   void D3D9Rtx::prepareVertexCapture(const int vertexIndexOffset) {
@@ -928,10 +929,14 @@ namespace dxvk {
         if (data[DXVK_TSS_COLOROP] == D3DTOP_DISABLE)
           break;
 
-        const uint32_t argsMask = ArgsMask(data[DXVK_TSS_COLOROP]) | ArgsMask(data[DXVK_TSS_ALPHAOP]);
-        const uint32_t texMask = ((data[DXVK_TSS_COLORARG0] & D3DTA_SELECTMASK) == D3DTA_TEXTURE) || ((data[DXVK_TSS_ALPHAARG0] & D3DTA_SELECTMASK) == D3DTA_TEXTURE) ? 0b001 : 0
-          | ((data[DXVK_TSS_COLORARG1] & D3DTA_SELECTMASK) == D3DTA_TEXTURE) || ((data[DXVK_TSS_ALPHAARG1] & D3DTA_SELECTMASK) == D3DTA_TEXTURE) ? 0b010 : 0
-          | ((data[DXVK_TSS_COLORARG2] & D3DTA_SELECTMASK) == D3DTA_TEXTURE) || ((data[DXVK_TSS_ALPHAARG2] & D3DTA_SELECTMASK) == D3DTA_TEXTURE) ? 0b100 : 0;
+        const std::uint32_t argsMask = ArgsMask(data[DXVK_TSS_COLOROP]) | ArgsMask(data[DXVK_TSS_ALPHAOP]);
+        const auto firstTexMask  = ((data[DXVK_TSS_COLORARG0] & D3DTA_SELECTMASK) == D3DTA_TEXTURE) || ((data[DXVK_TSS_ALPHAARG0] & D3DTA_SELECTMASK) == D3DTA_TEXTURE);
+        const auto secondTexMask = ((data[DXVK_TSS_COLORARG1] & D3DTA_SELECTMASK) == D3DTA_TEXTURE) || ((data[DXVK_TSS_ALPHAARG1] & D3DTA_SELECTMASK) == D3DTA_TEXTURE);
+        const auto thirdTexMask  = ((data[DXVK_TSS_COLORARG2] & D3DTA_SELECTMASK) == D3DTA_TEXTURE) || ((data[DXVK_TSS_ALPHAARG2] & D3DTA_SELECTMASK) == D3DTA_TEXTURE);
+        const std::uint32_t texMask =
+          (firstTexMask  ? 0b001 : 0) |
+          (secondTexMask ? 0b010 : 0) |
+          (thirdTexMask  ? 0b100 : 0);
 
         // Is texture used?
         if ((argsMask & texMask) == 0)
@@ -1032,6 +1037,22 @@ namespace dxvk {
       // Check if an ignore texture is bound
       if (m_activeDrawCallState.getCategoryFlags().test(InstanceCategories::Ignore)) {
         return false;
+      }
+
+      if (m_activeDrawCallState.testCategoryFlags(InstanceCategories::Terrain)) {
+        if (RtxOptions::terrainAsDecalsEnabledIfNoBaker() && !TerrainBaker::enableBaking()) {
+
+          m_activeDrawCallState.removeCategory(InstanceCategories::Terrain);
+          m_activeDrawCallState.setCategory(InstanceCategories::DecalStatic, true);
+
+          // modulate to compensate the multilayer blending
+          DxvkRtTextureOperation& texop = m_activeDrawCallState.materialData.textureColorOperation;
+          if (RtxOptions::terrainAsDecalsAllowOverModulate()) {
+            if (texop == DxvkRtTextureOperation::Modulate2x || texop == DxvkRtTextureOperation::Modulate4x) {
+              texop = DxvkRtTextureOperation::Force_Modulate4x;
+            }
+          }
+        }
       }
 
       if (!m_forceGeometryCopy && RtxOptions::alwaysCopyDecalGeometries()) {

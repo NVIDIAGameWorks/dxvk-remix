@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -21,14 +21,28 @@
 */
 #pragma once
 
-#include "rtx/pass/volumetrics/volume_filter_binding_indices.h"
+#include "rtx/utility/shader_types.h"
+#include "rtx/external/NRC.h"
+#include "../../../../../submodules/nrc/include/NRCStructures.h"
+#include "../shaders/rtx/concept/surface/surface_shared.h"
 
-// Inputs
+// Note: Ensure 16B alignment
+struct NrcArgs {
+  NrcConstants nrcConstants;
 
-layout(rgba16f, binding = VOLUME_FILTER_BINDING_ACCUMULATED_RADIANCE_INPUT)
-Texture3D<float4> AccumulatedRadiance;
+  vec2 updatePixelJitter;
+  uint updatePathMaxBounces;
+  uint updateAllowRussianRoulette;
 
-// Outputs
+  vec2 activeTrainingDimensions;
+  vec2 rcpActiveTrainingDimensions;
 
-layout(r11f_g11f_b10f, binding = VOLUME_FILTER_BINDING_FILTERED_RADIANCE_OUTPUT)
-RWTexture3D<float3> RWFilteredAccumulatedRadiance;
+  vec2 queryToTrainingCoordinateSpace;
+  vec2 trainingToQueryCoordinateSpace;
+
+  vec3 sceneBoundsMin;
+  uint numRowsForUpdate;
+
+  vec3 sceneBoundsMax;
+  float trainingLuminanceClamp;
+};

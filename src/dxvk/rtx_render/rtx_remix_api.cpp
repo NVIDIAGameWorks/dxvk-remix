@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -159,6 +159,7 @@ namespace {
       std::filesystem::path subsurfaceTransmittanceTexture;
       std::filesystem::path subsurfaceThicknessTexture;
       std::filesystem::path subsurfaceSingleScatteringAlbedoTexture;
+      std::filesystem::path subsurfaceRadiusTexture;
     };
 
     PreloadSource makePreloadSource(const remixapi_MaterialInfo& info) {
@@ -174,9 +175,10 @@ namespace {
           topath(extOpaque->roughnessTexture),  // roughnessTexture;
           topath(extOpaque->metallicTexture),   // metallicTexture;
           topath(extOpaque->heightTexture),     // heightTexture;
-          topath(extSubsurface ? extSubsurface->subsurfaceTransmittanceTexture : nullptr),          // subsurfaceTransmittanceTexture;
-          topath(extSubsurface ? extSubsurface->subsurfaceThicknessTexture : nullptr),              // subsurfaceTransmittanceTexture;
-          topath(extSubsurface ? extSubsurface->subsurfaceSingleScatteringAlbedoTexture : nullptr), // subsurfaceTransmittanceTexture;
+          topath(extSubsurface ? extSubsurface->subsurfaceTransmittanceTexture          : nullptr), // subsurfaceTransmittanceTexture;
+          topath(extSubsurface ? extSubsurface->subsurfaceThicknessTexture              : nullptr), // subsurfaceThicknessTexture;
+          topath(extSubsurface ? extSubsurface->subsurfaceSingleScatteringAlbedoTexture : nullptr), // subsurfaceSingleScatteringAlbedoTexture;
+          topath(s_apiVersion >= REMIXAPI_VERSION_MAKE(0, 5, 1) && extSubsurface ? extSubsurface->subsurfaceRadiusTexture : nullptr), // subsurfaceRadiusTexture;
         };
       }
       if (auto extTranslucent = pnext::find<remixapi_MaterialInfoTranslucentEXT>(&info)) {
@@ -192,6 +194,7 @@ namespace {
           {}, // subsurfaceTransmittanceTexture;
           {}, // subsurfaceThicknessTexture;
           {}, // subsurfaceSingleScatteringAlbedoTexture;
+          {}, // subsurfaceRadiusTexture;
         };
       }
       if (auto extPortal = pnext::find<remixapi_MaterialInfoPortalEXT>(&info)) {
@@ -207,6 +210,7 @@ namespace {
           {}, // subsurfaceTransmittanceTexture;
           {}, // subsurfaceThicknessTexture;
           {}, // subsurfaceSingleScatteringAlbedoTexture;
+          {}, // subsurfaceRadiusTexture;
         };
       }
       return {};
@@ -222,7 +226,7 @@ namespace {
           return {};
         }
         auto uploadedTexture = ctx.getCommonObjects()->getTextureManager()
-          .preloadTextureAsset(assetData, dxvk::ColorSpace::AUTO, &ctx, false);
+          .preloadTextureAsset(assetData, dxvk::ColorSpace::AUTO, false);
         return TextureRef { uploadedTexture };
       };
 
@@ -241,6 +245,7 @@ namespace {
           preloadTexture(preload.subsurfaceTransmittanceTexture),
           preloadTexture(preload.subsurfaceThicknessTexture),
           preloadTexture(preload.subsurfaceSingleScatteringAlbedoTexture),
+          preloadTexture(preload.subsurfaceRadiusTexture),
           src.getAnisotropyConstant(),
           src.getEmissiveIntensity(),
           src.getAlbedoConstant(),
@@ -267,6 +272,10 @@ namespace {
           src.getSubsurfaceMeasurementDistance(),
           src.getSubsurfaceSingleScatteringAlbedo(),
           src.getSubsurfaceVolumetricAnisotropy(),
+          src.getSubsurfaceDiffusionProfile(),
+          src.getSubsurfaceRadius(),
+          src.getSubsurfaceRadiusScale(),
+          src.getSubsurfaceMaxSampleRadius(),
           src.getFilterMode(),
           src.getWrapModeU(),
           src.getWrapModeV()
@@ -333,6 +342,7 @@ namespace {
           {},
           {},
           {},
+          {},
           extOpaque->anisotropy,
           info.emissiveIntensity,
           tovec3(extOpaque->albedoConstant),
@@ -359,6 +369,10 @@ namespace {
           extSubsurface ? extSubsurface->subsurfaceMeasurementDistance : 0.f,
           extSubsurface ? tovec3(extSubsurface->subsurfaceSingleScatteringAlbedo) : Vector3{ 0.5f, 0.5f, 0.5f },
           extSubsurface ? extSubsurface->subsurfaceVolumetricAnisotropy : 0.f,
+          extSubsurface ? static_cast<bool>(extSubsurface->subsurfaceDiffusionProfile) : false,
+          extSubsurface ? tovec3(extSubsurface->subsurfaceRadius) : Vector3{ 0.5f, 0.5f, 0.5f },
+          extSubsurface ? extSubsurface->subsurfaceRadiusScale : 0.f,
+          extSubsurface ? extSubsurface->subsurfaceMaxSampleRadius : 0.f,
           info.filterMode,
           info.wrapModeU,
           info.wrapModeV,
@@ -495,7 +509,8 @@ namespace {
           tovec3(src->position),
           tovec3(info.radiance),
           src->radius,
-          *shaping
+          *shaping,
+          src->volumetricRadianceScale
         );
       }
       if (auto src = pnext::find<remixapi_LightInfoRectEXT>(&info)) {
@@ -512,7 +527,8 @@ namespace {
           tovec3(src->yAxis),
           tovec3(src->direction),
           tovec3(info.radiance),
-          *shaping
+          *shaping,
+          src->volumetricRadianceScale
         );
       }
       if (auto src = pnext::find<remixapi_LightInfoDiskEXT>(&info)) {
@@ -529,7 +545,8 @@ namespace {
           tovec3(src->yAxis),
           tovec3(src->direction),
           tovec3(info.radiance),
-          *shaping
+          *shaping,
+          src->volumetricRadianceScale
         );
       }
       if (auto src = pnext::find<remixapi_LightInfoCylinderEXT>(&info)) {
@@ -538,14 +555,16 @@ namespace {
           src->radius,
           tovec3(src->axis),
           src->axisLength,
-          tovec3(info.radiance)
+          tovec3(info.radiance),
+          src->volumetricRadianceScale
         );
       }
       if (auto src = pnext::find<remixapi_LightInfoDistantEXT>(&info)) {
         return RtDistantLight::tryCreate(
           tovec3(src->direction),
           DegToRad(src->angularDiameterDegrees * 0.5f),
-          tovec3(info.radiance)
+          tovec3(info.radiance),
+          src->volumetricRadianceScale
         );
       }
 
@@ -587,6 +606,7 @@ namespace {
       if (flags & REMIXAPI_INSTANCE_CATEGORY_BIT_THIRD_PERSON_PLAYER_MODEL){ result.set(InstanceCategories::ThirdPersonPlayerModel); }
       if (flags & REMIXAPI_INSTANCE_CATEGORY_BIT_THIRD_PERSON_PLAYER_BODY ){ result.set(InstanceCategories::ThirdPersonPlayerBody ); }
       if (flags & REMIXAPI_INSTANCE_CATEGORY_BIT_IGNORE_BAKED_LIGHTING    ){ result.set(InstanceCategories::IgnoreBakedLighting   ); }
+      if (flags & REMIXAPI_INSTANCE_CATEGORY_BIT_IGNORE_TRANSPARENCY_LAYER){ result.set(InstanceCategories::IgnoreTransparencyLayer); }
       return result;
     }
 
@@ -737,7 +757,8 @@ namespace {
         return device->GetDXVKDevice()->createBuffer(
             bufferInfo,
             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT,
-            dxvk::DxvkMemoryStats::Category::RTXBuffer);
+            dxvk::DxvkMemoryStats::Category::RTXBuffer,
+           "Remix API mesh buffer");
       };
 
       dxvk::Rc<dxvk::DxvkBuffer> vertexBuffer = allocBuffer(remixDevice, vertexDataSize);
@@ -913,7 +934,7 @@ namespace {
             return {};
           }
           auto uploadedTexture = ctx->getCommonObjects()->getTextureManager()
-            .preloadTextureAsset(assetData, dxvk::ColorSpace::AUTO, ctx, true);
+            .preloadTextureAsset(assetData, dxvk::ColorSpace::AUTO, true);
           return dxvk::TextureRef { uploadedTexture };
         };
 
@@ -924,7 +945,7 @@ namespace {
 
         // Ensures a texture stays in VidMem
         uint32_t unused;
-        ctx->getCommonObjects()->getSceneManager().trackTexture(ctx, domeLight.texture, unused, true, true);
+        ctx->getCommonObjects()->getSceneManager().trackTexture(domeLight.texture, unused, true, true);
 
         auto& lightMgr = ctx->getCommonObjects()->getSceneManager().getLightManager();
         lightMgr.addExternalDomeLight(cHandle, domeLight);
@@ -1213,7 +1234,7 @@ namespace {
     dxvk::Rc<dxvk::DxvkImage> srcImage = nullptr;
     switch (type) {
     case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_FINAL_COLOR:
-      srcImage = rtOutput.m_finalOutput.image;
+      srcImage = rtOutput.m_finalOutput.resource(dxvk::Resources::AccessType::Read).image;
       break;
     case REMIXAPI_DXVK_COPY_RENDERING_OUTPUT_TYPE_DEPTH:
       srcImage = rtOutput.m_primaryDepth.image;

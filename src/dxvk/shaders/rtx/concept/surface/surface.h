@@ -101,6 +101,12 @@ struct Surface
     set { data2.w = newValue ? packedFlagSet(data2.w, 1 << 22) : packedFlagUnset(data2.w, 1 << 22); }
   }
 
+  property bool hasMaterialChanged
+  {
+    get { return packedFlagGet(data2.w, 1 << 23); }
+    set { data2.w = newValue ? packedFlagSet(data2.w,1 << 23) : packedFlagUnset(data2.w, 1 << 23); }
+  }
+
   property bool isAnimatedWater
   {
     get { return packedFlagGet(data2.w, 1 << 24); }
@@ -140,10 +146,16 @@ struct Surface
     set { data2.w = newValue ? packedFlagSet(data2.w, 1 << 29) : packedFlagUnset(data2.w, 1 << 29); }
   }
 
-  property bool isInsideFrustum
+  property bool ignoreTransparencyLayer
   {
     get { return packedFlagGet(data2.w, 1 << 30); }
     set { data2.w = newValue ? packedFlagSet(data2.w, 1 << 30) : packedFlagUnset(data2.w, 1 << 30); }
+  }
+
+  property bool isInsideFrustum
+  {
+    get { return packedFlagGet(data2.w, 1 << 31); }
+    set { data2.w = newValue ? packedFlagSet(data2.w, 1 << 31) : packedFlagUnset(data2.w, 1 << 31); }
   }
 
   // Matrices

@@ -168,7 +168,8 @@ add_global_arguments('/DREMIX_LIBRARY_EXPORTS=1', language : 'cpp')
 
 dxvk_include_dirs = [
   './include',
-  './include/vulkan/include'
+  './include/vulkan/include',
+  'submodules/nrc/include',
 ]
 
 dxvk_include_path = include_directories(dxvk_include_dirs)
@@ -263,9 +264,9 @@ python_interpreter = find_program('python3', 'python')
 shader_compile_script = join_paths(global_src_root_norm, 'scripts-common/compile_shaders.py')
 
 # GLSL compiler...
+# Note: The GLSL compiler in Meson is only used for DXVK shaders currently. RTX shaders use the shader compile script and have
+# their options/arguments within that script.
 
-# The ShaderManager::compileShaders() function also uses glslangValidator to compile shader source for debug purpose.
-# If the command here is changed, the command in that function should also be updated.
 glsl_args = [ '-V', '--vn', '@BASENAME@', '@INPUT@', '-o', '@OUTPUT@', '--target-env', 'vulkan1.2', '@EXTRA_ARGS@' ]
 
 if run_command(glsl_compiler, [ '--quiet', '--version' ], check: false).returncode() == 0
@@ -404,11 +405,13 @@ boost_include_path = include_directories('external/nv_usd/include/boost-1_78/')
 usd_include_paths = [nv_usd_include_path, boost_include_path]
 
 vk_include_path = include_directories('./include/vulkan/include')
+# required for NV_present_metering
+add_project_arguments('-DVK_ENABLE_BETA_EXTENSIONS', language : 'cpp')
 
 lssusd_include_paths = [nv_usd_include_path, boost_include_path, vk_include_path]
 
-nvapi_include_paths = include_directories('external/nvapi')
-nvapi_lib_path = join_paths(global_src_root_norm, 'external/nvapi/amd64')
+nvapi_include_paths = include_directories('submodules/nvapi')
+nvapi_lib_path = join_paths(global_src_root_norm, 'submodules/nvapi/amd64')
 nvapi_lib = dxvk_compiler.find_library('nvapi64', dirs : nvapi_lib_path)
 
 # Cache lib locations
@@ -439,6 +442,9 @@ dlfg_root_path = 'external/ngx_sdk_dlfg'
 dlfg_lib_path = join_paths(global_src_root_norm, dlfg_root_path, 'lib/Windows_x86_64/rel/')
 external_dll_paths += dlfg_lib_path
 
+nrc_dll_name = 'NRC_Vulkan.dll'
+nrc_dll_path = join_paths(global_src_root_norm, 'submodules/nrc/bin/')
+
 nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd/Lib/Release/')
 if get_option('buildtype') == 'debug'  
   nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd/Lib/Debug/')
@@ -448,6 +454,10 @@ rtxdi_include_path = include_directories('submodules/rtxdi/rtxdi-sdk/include')
 # Need to use the include path as an argument to the shader build string,
 # and I couldn't find how to convert the IncludeDirs thing to a string... Meson.
 rtxdi_include_path_string = join_paths(global_src_root_norm, 'submodules/rtxdi/rtxdi-sdk/include')
+volumetrics_include_path_string = join_paths(global_src_root_norm, 'submodules/rtxdi/rtxdi-sdk/include/volumetrics')
+
+rtxcr_include_path = include_directories('submodules/rtxcr/shaders/include')
+rtxcr_include_path_string = join_paths(global_src_root_norm, 'submodules/rtxcr/shaders/include')
 
 if not dxvk_is_ninja
   # Copy dependencies that must be in same dir as executable to _output dir
@@ -478,6 +488,21 @@ if not dxvk_is_ninja
     output           : ['copy_tbbmalloc_dll'],
     build_by_default : true,
     command          : [copy_script_path, usd_lib_path, output_dir, tbbmalloc_dll_name] )
+
+  copy_nrc_dll_target = custom_target('copy_nrc_dll',
+    output           : ['copy_nrc_dll'],
+    build_by_default : true,
+    command          : [copy_script_path, nrc_dll_path, output_dir, nrc_dll_name] )
+
+  copy_nrc_cuda_deps_dll_target = custom_target('copy_nrc_cuda_deps_dll',
+    output           : ['copy_nrc_cuda_deps_dll'],
+    build_by_default : true,
+    command          : [copy_script_path, nrc_dll_path, output_dir, 'cudart64_12.dll'] )
+
+  copy_nrc_cuda_nv_deps_dll_target = custom_target('copy_nrc_cuda_nv_deps_dll',
+    output           : ['copy_nrc_cuda_nv_deps_dll'],
+    build_by_default : true,
+    command          : [copy_script_path, nrc_dll_path, output_dir, 'nvrtc*.dll'] )
 
   copy_nrd_dll_target = custom_target('copy_nrd_dll',
     output           : ['copy_nrd_dll'],
@@ -592,6 +617,8 @@ if dxvk_is_ninja
   # meson seems to force / as the path separator in custom_target
   # ... except in the case where the path separators are inconsistent, in which case it does nothing
   # force / as the path separator here to make sure it stays consistent
+  nrc_lib_path = join_paths(global_src_root_norm, 'submodules/nrc/Lib/')
+ 
   nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd/Lib/Release/')
   if get_option('buildtype') == 'debug'
     nrd_lib_path = join_paths(global_src_root_norm, 'external/nrd/Lib/Debug/')
@@ -696,6 +723,27 @@ if dxvk_is_ninja
                           output_path,
                           tbbmalloc_dll_name] )
 
+    copy_nrc_dll = custom_target('copy_nrc_dll_' + target_suffix,
+      output           : ['copy_nrc_dll_' + target_suffix],
+      command          : [copy_script_path,
+                          nrc_dll_path,
+                          output_path,
+                          nrc_dll_name] )
+
+    copy_nrc_cuda_deps_dll = custom_target('copy_nrc_cuda_deps_dll_' + target_suffix,
+      output           : ['copy_nrc_cuda_deps_dll_' + target_suffix],
+      command          : [copy_script_path,
+                          nrc_dll_path,
+                          output_path,
+                          'cudart64_12.dll'] )
+
+    copy_nrc_cuda_nv_deps_dll = custom_target('copy_nrc_cuda_nv_deps_dll_' + target_suffix,
+      output           : ['copy_nrc_cuda_nv_deps_dll_' + target_suffix],
+      command          : [copy_script_path,
+                          nrc_dll_path,
+                          output_path,
+                          'nvrtc*.dll'] )
+
     copy_nrd_dll = custom_target('copy_nrd_dll_' + target_suffix,
       output           : ['copy_nrd_dll_' + target_suffix],
       command          : [copy_script_path,
@@ -744,12 +792,15 @@ if dxvk_is_ninja
                             copy_usd_dll,
                             copy_tbb_dll,
                             copy_tbbmalloc_dll,
+                            copy_nrc_dll,
+                            copy_nrc_cuda_deps_dll,
+                            copy_nrc_cuda_nv_deps_dll,
                             copy_nrd_dll,
                             copy_dlss_dll,
                             copy_dlfg_dll,
                             copy_aftermath_dll,
                             d3d9_dll ]
-                            
+
     copy_target_depends += copy_reflex_dll
 
     if enable_rtxio == true

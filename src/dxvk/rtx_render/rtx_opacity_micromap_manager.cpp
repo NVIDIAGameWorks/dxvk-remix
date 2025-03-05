@@ -100,7 +100,7 @@ namespace dxvk {
     : CommonDeviceObject(device)
     , m_memoryProperties(device->adapter()->memoryProperties()) {
     // +1 to account for OMMs used in a previous TLAS
-    const uint32_t kMaxFramesOMMResourcesAreUsed = kMaxFramesInFlight + 1;
+    const uint32_t kMaxFramesOMMResourcesAreUsed = kMaxFramesInFlight + (RtxOptions::enablePreviousTLAS() ? 1u : 0u);
 
     for (uint32_t i = 0; i < kMaxFramesOMMResourcesAreUsed; i++)
       m_pendingReleaseSize.push_front(0);
@@ -133,9 +133,16 @@ namespace dxvk {
 
     const VkDeviceSize vidmemFreeSize = vidmemSize - std::min(vidmemUsedSize, vidmemSize);
 
+    double maxVidmemSizePercentage = static_cast<double>(OpacityMicromapOptions::Cache::maxVidmemSizePercentage());
+
+    // Halve the budget when using a low mem GPU
+    if (RtxOptions::lowMemoryGpu()) {
+      maxVidmemSizePercentage /= 2;
+    }
+
     // Calculate a new budget given the runtime vidmem stats
     VkDeviceSize maxAllowedBudget = std::min(
-      static_cast<VkDeviceSize>(static_cast<double>(OpacityMicromapOptions::Cache::maxVidmemSizePercentage()) * vidmemSize),
+      static_cast<VkDeviceSize>(maxVidmemSizePercentage * vidmemSize),
       static_cast<VkDeviceSize>(OpacityMicromapOptions::Cache::maxBudgetSizeMB()) * 1024 * 1024);
     VkDeviceSize newBudget = std::min(vidmemFreeSize, maxAllowedBudget);
 
@@ -201,6 +208,7 @@ namespace dxvk {
     , m_memoryManager(device) {
     m_scratchAllocator = std::make_unique<RtxStagingDataAlloc>(
       device,
+      "RtxStagingDataAlloc: OMM Scratch",
       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
       VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
       VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR);
@@ -1009,7 +1017,19 @@ namespace dxvk {
   }
 
   static bool isIndexOfFullyResidentTexture(uint32_t index, const std::vector<TextureRef>& textures) {
-    return index != BINDING_INDEX_INVALID && textures[index].isFullyResident();
+    if (index == BINDING_INDEX_INVALID) {
+      return false;
+    }
+    const TextureRef& tex = textures[index];
+
+    const ManagedTexture* managed = tex.getManagedTexture().ptr();
+    if (!managed) {
+      return tex.getImageView() != nullptr;
+    }
+
+    // TODO: determine many mips are needed for OMM
+    constexpr auto REQUIRED_MIP_COUNT_FOR_OMM = 4;
+    return managed->hasUploadedMips(REQUIRED_MIP_COUNT_FOR_OMM, false);
   }
 
   bool OpacityMicromapManager::areInstanceTexturesResident(const RtInstance& instance, const std::vector<TextureRef>& textures) const {
@@ -1451,7 +1471,7 @@ namespace dxvk {
       ommBufferInfo.access = VK_ACCESS_TRANSFER_WRITE_BIT;
 
       ommBufferInfo.size = triangleArrayBufferSize;
-      triangleArrayBuffer = device->createBuffer(ommBufferInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXOpacityMicromap);
+      triangleArrayBuffer = device->createBuffer(ommBufferInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXOpacityMicromap, "OMM triangle array buffer");
       
       if (triangleArrayBuffer == nullptr) {
         ONCE(Logger::warn(str::format("[RTX - Opacity Micromap] Failed to allocate triangle buffers due to m_device->createBuffer() failing to allocate a buffer for size: ", ommBufferInfo.size)));
@@ -1461,7 +1481,7 @@ namespace dxvk {
       ommBufferInfo.usage |= VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
       
       ommBufferInfo.size = triangleIndexBufferSize;
-      triangleIndexBuffer = device->createBuffer(ommBufferInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXOpacityMicromap);
+      triangleIndexBuffer = device->createBuffer(ommBufferInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXOpacityMicromap, "OMM triangle index buffer");
 
       if (triangleIndexBuffer == nullptr) {
         ONCE(Logger::warn(str::format("[RTX - Opacity Micromap] Failed to allocate triangle buffers due to m_device->createBuffer() failing to allocate a buffer for size: ", ommBufferInfo.size)));
@@ -1659,7 +1679,7 @@ namespace dxvk {
       ommBufferInfo.usage = VK_BUFFER_USAGE_MICROMAP_BUILD_INPUT_READ_ONLY_BIT_EXT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
       ommBufferInfo.access = VK_ACCESS_SHADER_WRITE_BIT;
       ommBufferInfo.size = opacityMicromapBufferSize;
-      ommCacheItem.ommArrayBuffer = m_device->createBuffer(ommBufferInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXOpacityMicromap);
+      ommCacheItem.ommArrayBuffer = m_device->createBuffer(ommBufferInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXOpacityMicromap, "OMM micromap buffer");
 
       if (ommCacheItem.ommArrayBuffer == nullptr) {
         ONCE(Logger::warn(str::format("[RTX - Opacity Micromap] Failed to allocate OMM array buffer due to m_device->createBuffer() failing to allocate a buffer for size: ", ommBufferInfo.size)));
@@ -1787,7 +1807,7 @@ namespace dxvk {
       // The access is covered by a proper VkMemoryBarrier2 later
       ommBufferInfo.access = VK_ACCESS_MEMORY_WRITE_BIT;
       ommBufferInfo.size = sizeInfo.micromapSize;
-      ommCacheItem.blasOmmBuffers->opacityMicromapBuffer = m_device->createBuffer(ommBufferInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXOpacityMicromap);
+      ommCacheItem.blasOmmBuffers->opacityMicromapBuffer = m_device->createBuffer(ommBufferInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXOpacityMicromap, "OMM micromap");
 
       if (ommCacheItem.blasOmmBuffers->opacityMicromapBuffer == nullptr) {
         ONCE(Logger::warn(str::format("[RTX - Opacity Micromap] Failed to build a micromap due to m_device->createBuffer() failing to allocate a buffer for size: ", ommBufferInfo.size)));
@@ -2129,8 +2149,10 @@ namespace dxvk {
     
     // Account for OMM usage in BLASes in a previous TLAS
     // Tag the previously bound OMMs as used in this frame as well
-    for (auto& previousFrameBoundOMM : m_boundOMMs)
-      ctx->getCommandList()->trackResource<DxvkAccess::Read>(previousFrameBoundOMM);
+    if (RtxOptions::enablePreviousTLAS()) {
+      for (auto& previousFrameBoundOMM : m_boundOMMs)
+        ctx->getCommandList()->trackResource<DxvkAccess::Read>(previousFrameBoundOMM);
+    }
     m_boundOMMs.clear();
 
     // Update memory management

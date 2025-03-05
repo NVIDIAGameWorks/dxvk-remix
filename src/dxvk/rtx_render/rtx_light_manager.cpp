@@ -426,12 +426,12 @@ namespace dxvk {
     // after the light buffer and previous light buffer are swapped, this code will allocate another buffer and the process will continue
     // fine swapping back and forth from that point onwards.
     if (info.size > 0 && (m_lightBuffer == nullptr || info.size > m_lightBuffer->info().size)) {
-      m_lightBuffer = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
+      m_lightBuffer = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "Light Buffer");
     }
 
     info.size = align(lightMappingBufferEntries * sizeof(uint16_t), kBufferAlignment);
     if (info.size > 0 && (m_lightMappingBuffer == nullptr || info.size > m_lightMappingBuffer->info().size)) {
-      m_lightMappingBuffer = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
+      m_lightMappingBuffer = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "Light Mapping Buffer");
     }
     
     if (!m_lightsGPUData.empty()) {
@@ -451,7 +451,7 @@ namespace dxvk {
     if (getActiveDomeLight(activeDomeLight)) {
       // Ensures a texture stays in VidMem
       SceneManager& sceneManager = device()->getCommon()->getSceneManager();
-      sceneManager.trackTexture(ctx, activeDomeLight.texture, m_gpuDomeLightArgs.textureIndex, true, false);
+      sceneManager.trackTexture(activeDomeLight.texture, m_gpuDomeLightArgs.textureIndex, true, false);
 
       m_gpuDomeLightArgs.active = true;
       m_gpuDomeLightArgs.radiance = activeDomeLight.radiance;

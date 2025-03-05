@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -29,9 +29,11 @@
 #include "rtx_imgui.h"
 #include "rtx_context.h"
 #include "rtx_options.h"
+#include "rtx_restir_gi_rayquery.h"
 
 #include <rtx_shaders/composite.h>
 #include <rtx_shaders/composite_alpha_blend.h>
+#include "rtx_texture_manager.h"
 
 constexpr ImGuiTreeNodeFlags collapsingHeaderClosedFlags = ImGuiTreeNodeFlags_CollapsingHeader;
 
@@ -63,10 +65,12 @@ namespace dxvk {
         CONSTANT_BUFFER(COMPOSITE_CONSTANTS_INPUT)
         TEXTURE2D(COMPOSITE_BSDF_FACTOR_INPUT)
         TEXTURE2D(COMPOSITE_BSDF_FACTOR2_INPUT)
-        SAMPLER3D(COMPOSITE_VOLUME_PREINTEGRATED_RADIANCE_INPUT)
-        SAMPLER3D(COMPOSITE_VOLUME_FILTERED_RADIANCE_INPUT)
+        SAMPLER3D(COMPOSITE_VOLUME_FILTERED_RADIANCE_AGE_INPUT)
+        SAMPLER3D(COMPOSITE_VOLUME_FILTERED_RADIANCE_Y_INPUT)
+        SAMPLER3D(COMPOSITE_VOLUME_FILTERED_RADIANCE_CO_CG_INPUT)
         TEXTURE2D(COMPOSITE_ALPHA_GBUFFER_INPUT)
         TEXTURE2DARRAY(COMPOSITE_BLUE_NOISE_TEXTURE)
+        SAMPLER2D(COMPOSITE_VALUE_NOISE_SAMPLER)
 
         RW_TEXTURE2D(COMPOSITE_PRIMARY_ALBEDO_INPUT_OUTPUT)
 
@@ -103,10 +107,13 @@ namespace dxvk {
         CONSTANT_BUFFER(COMPOSITE_CONSTANTS_INPUT)
         TEXTURE2D(COMPOSITE_BSDF_FACTOR_INPUT)
         TEXTURE2D(COMPOSITE_BSDF_FACTOR2_INPUT)
-        SAMPLER3D(COMPOSITE_VOLUME_PREINTEGRATED_RADIANCE_INPUT)
-        SAMPLER3D(COMPOSITE_VOLUME_FILTERED_RADIANCE_INPUT)
+        SAMPLER3D(COMPOSITE_VOLUME_FILTERED_RADIANCE_AGE_INPUT)
+        SAMPLER3D(COMPOSITE_VOLUME_FILTERED_RADIANCE_Y_INPUT)
+        SAMPLER3D(COMPOSITE_VOLUME_FILTERED_RADIANCE_CO_CG_INPUT)
         TEXTURE2D(COMPOSITE_ALPHA_GBUFFER_INPUT)
         TEXTURE2DARRAY(COMPOSITE_BLUE_NOISE_TEXTURE)
+        SAMPLER2D(COMPOSITE_VALUE_NOISE_SAMPLER)
+        SAMPLER2D(COMPOSITE_SKY_LIGHT_TEXTURE)
 
         RW_TEXTURE2D(COMPOSITE_PRIMARY_ALBEDO_INPUT_OUTPUT)
 
@@ -201,7 +208,7 @@ namespace dxvk {
     info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
     info.access = VK_ACCESS_TRANSFER_WRITE_BIT;
     info.size = sizeof(CompositeArgs);
-    m_compositeConstants = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
+    m_compositeConstants = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "Composite Args Constant Buffer");
   }
 
   Rc<DxvkBuffer> CompositePass::getCompositeConstantsBuffer() {
@@ -250,28 +257,46 @@ namespace dxvk {
     ctx->bindResourceView(COMPOSITE_SECONDARY_COMBINED_DIFFUSE_RADIANCE_HIT_DISTANCE_INPUT, rtOutput.m_secondaryCombinedDiffuseRadiance.view(Resources::AccessType::Read), nullptr);
     ctx->bindResourceView(COMPOSITE_SECONDARY_COMBINED_SPECULAR_RADIANCE_HIT_DISTANCE_INPUT, rtOutput.m_secondaryCombinedSpecularRadiance.view(Resources::AccessType::Read), nullptr);
 
+    const DxvkReSTIRGIRayQuery& restirGI = ctx->getCommonObjects()->metaReSTIRGIRayQuery();
     ctx->bindResourceView(COMPOSITE_BSDF_FACTOR_INPUT, rtOutput.m_bsdfFactor.view, nullptr);
-    ctx->bindResourceView(COMPOSITE_BSDF_FACTOR2_INPUT, rtOutput.m_bsdfFactor2.view, nullptr);
+    ctx->bindResourceView(COMPOSITE_BSDF_FACTOR2_INPUT, restirGI.getBsdfFactor2().view, nullptr);
     ctx->bindResourceView(COMPOSITE_ALPHA_GBUFFER_INPUT, rtOutput.m_alphaBlendGBuffer.view, nullptr);
 
     // Note: Clamp to edge used to avoid interpolation to black on the edges of the view.
     Rc<DxvkSampler> linearSampler = ctx->getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
 
-    ctx->bindResourceView(COMPOSITE_VOLUME_PREINTEGRATED_RADIANCE_INPUT, rtOutput.m_volumePreintegratedRadiance.view, nullptr);
-    ctx->bindResourceSampler(COMPOSITE_VOLUME_PREINTEGRATED_RADIANCE_INPUT, linearSampler);
-
-    ctx->bindResourceView(COMPOSITE_VOLUME_FILTERED_RADIANCE_INPUT, rtOutput.m_volumeFilteredRadiance.view, nullptr);
-    ctx->bindResourceSampler(COMPOSITE_VOLUME_FILTERED_RADIANCE_INPUT, linearSampler);
+    const RtxGlobalVolumetrics& globalVolumetrics = ctx->getCommonObjects()->metaGlobalVolumetrics();
+    ctx->bindResourceView(COMPOSITE_VOLUME_FILTERED_RADIANCE_AGE_INPUT, globalVolumetrics.getCurrentVolumeAccumulatedRadianceAge().view, nullptr);
+    ctx->bindResourceSampler(COMPOSITE_VOLUME_FILTERED_RADIANCE_AGE_INPUT, linearSampler);
+    ctx->bindResourceView(COMPOSITE_VOLUME_FILTERED_RADIANCE_Y_INPUT, globalVolumetrics.getCurrentVolumeAccumulatedRadianceY().view, nullptr);
+    ctx->bindResourceSampler(COMPOSITE_VOLUME_FILTERED_RADIANCE_Y_INPUT, linearSampler);
+    ctx->bindResourceView(COMPOSITE_VOLUME_FILTERED_RADIANCE_CO_CG_INPUT, globalVolumetrics.getCurrentVolumeAccumulatedRadianceCoCg().view, nullptr);
+    ctx->bindResourceSampler(COMPOSITE_VOLUME_FILTERED_RADIANCE_CO_CG_INPUT, linearSampler);
 
     ctx->bindResourceView(COMPOSITE_FINAL_OUTPUT, rtOutput.m_compositeOutput.view(Resources::AccessType::Write), nullptr);
     ctx->bindResourceView(COMPOSITE_ALPHA_BLEND_RADIANCE_OUTPUT, rtOutput.m_alphaBlendRadiance.view(Resources::AccessType::Write), nullptr);
-    ctx->bindResourceView(COMPOSITE_LAST_FINAL_OUTPUT, rtOutput.m_lastCompositeOutput.view(Resources::AccessType::Write), nullptr);
+    ctx->bindResourceView(COMPOSITE_LAST_FINAL_OUTPUT, restirGI.isActive() ? restirGI.getLastCompositeOutput().view(Resources::AccessType::Write) : nullptr, nullptr);
     ctx->bindResourceView(COMPOSITE_BLUE_NOISE_TEXTURE, ctx->getResourceManager().getBlueNoiseTexture(ctx), nullptr);
+    ctx->bindResourceView(COMPOSITE_VALUE_NOISE_SAMPLER, ctx->getResourceManager().getValueNoiseLut(ctx), nullptr);
+    Rc<DxvkSampler> valueNoiseSampler = ctx->getResourceManager().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_REPEAT);
+    ctx->bindResourceSampler(COMPOSITE_VALUE_NOISE_SAMPLER, valueNoiseSampler);
 
     DebugView& debugView = ctx->getDevice()->getCommon()->metaDebugView();
     ctx->bindResourceView(COMPOSITE_DEBUG_VIEW_OUTPUT, debugView.getDebugOutput(), nullptr);
     ctx->bindResourceView(COMPOSITE_RAY_RECONSTRUCTION_PARTICLE_BUFFER_OUTPUT, rtOutput.m_rayReconstructionParticleBuffer.view, nullptr);
 
+    ctx->bindResourceView(COMPOSITE_RAY_RECONSTRUCTION_PARTICLE_BUFFER_OUTPUT, rtOutput.m_rayReconstructionParticleBuffer.view, nullptr);
+
+    const DomeLightArgs& domeLightArgs = sceneManager.getLightManager().getDomeLightArgs();
+    ctx->bindResourceSampler(COMPOSITE_SKY_LIGHT_TEXTURE, linearSampler);
+    if (domeLightArgs.active) {
+      RtxTextureManager& texManager = ctx->getCommonObjects()->getTextureManager();
+      const TextureRef& domeLightTex = texManager.getTextureTable()[domeLightArgs.textureIndex];
+      
+      ctx->bindResourceView(COMPOSITE_SKY_LIGHT_TEXTURE, domeLightTex.getImageView(), nullptr);
+    } else {
+      ctx->bindResourceView(COMPOSITE_SKY_LIGHT_TEXTURE, ctx->getResourceManager().getSkyMatte(ctx).view, nullptr);
+    }
 
     // Some camera paramters for primary ray reconstruction
     Camera cameraConstants = sceneManager.getCamera().getShaderConstants();
@@ -364,8 +389,24 @@ namespace dxvk {
     compositeArgs.stochasticAlphaBlendDiscardBlackPixel = stochasticAlphaBlendDiscardBlackPixel();
     compositeArgs.stochasticAlphaBlendRadianceVolumeMultiplier = stochasticAlphaBlendRadianceVolumeMultiplier();
     
-    compositeArgs.clearColorFinalColor = ctx->getCommonObjects()->getSceneManager().getGlobals().clearColorFinalColor;
+    compositeArgs.clearColorFinalColor = sceneManager.getGlobals().clearColorFinalColor;
+
+    // TODO: These are copied from raytrace_args.  Perhaps we should unify this...
     
+    // We are going to use this value to perform some animations on GPU, to mitigate precision related issues loop time
+    // at the 24 bit boundary (as we use a 8 bit scalar on top of this time which we want to fit into 32 bits without issues,
+    // plus we also convert this value to a floating point value at some point as well which has 23 bits of precision).
+    // Bitwise and used rather than modulus as well for slightly better performance.
+    compositeArgs.timeSinceStartMS = static_cast<uint32_t>(sceneManager.getGameTimeSinceStartMS()) & ((1U << 24U) - 1U);
+    
+    RayPortalManager::SceneData portalData = sceneManager.getRayPortalManager().getRayPortalInfoSceneData();
+    compositeArgs.numActiveRayPortals = portalData.numActiveRayPortals;
+    memcpy(&compositeArgs.rayPortalHitInfos[0], &portalData.rayPortalHitInfos, sizeof(portalData.rayPortalHitInfos));
+    memcpy(&compositeArgs.rayPortalHitInfos[maxRayPortalCount], &portalData.previousRayPortalHitInfos, sizeof(portalData.previousRayPortalHitInfos));
+
+    compositeArgs.domeLightArgs = domeLightArgs;
+    compositeArgs.skyBrightness = RtxOptions::Get()->skyBrightness();
+
     Rc<DxvkBuffer> cb = getCompositeConstantsBuffer();
     ctx->writeToBuffer(cb, 0, sizeof(CompositeArgs), &compositeArgs);
     ctx->getCommandList()->trackResource<DxvkAccess::Read>(cb);

@@ -150,6 +150,12 @@ public:
   bool isUnlinkedForGC() const { return m_isUnlinkedForGC; }
 private:
 
+  Matrix4 calcFirstInstanceObjectToWorld() {
+    if (surface.instancesToObject) {
+      return surface.objectToWorld * (*surface.instancesToObject)[0]; 
+    }
+    return surface.objectToWorld;
+  }
   void onTransformChanged();
   friend class InstanceManager;
 
@@ -333,15 +339,14 @@ private:
   void mergeInstanceHeuristics(RtInstance& instanceToModify, const DrawCallState& drawCall, const RtSurfaceMaterial& material, const RtSurface::AlphaState& alphaState) const;
 
   // Finds the "closest" matching instance to a set of inputs, returns a pointer (can be null if not found) to closest instance
-  RtInstance* findSimilarInstance(const BlasEntry& blas, const RtSurfaceMaterial& material, const Matrix4& transform, CameraType::Enum cameraType, const RayPortalManager& rayPortalManager);
+  RtInstance* findSimilarInstance(const BlasEntry& blas, const RtSurfaceMaterial& material, const Matrix4& firstInstanceObjectToWorld, CameraType::Enum cameraType, const RayPortalManager& rayPortalManager);
 
   RtInstance* addInstance(BlasEntry& blas);
   void processInstanceBuffers(const BlasEntry& blas, RtInstance& currentInstance) const;
 
   void updateInstance(
     RtInstance& currentInstance, const CameraManager& cameraManager,
-    const BlasEntry& blas, const DrawCallState& drawCall, const MaterialData& materialData, const RtSurfaceMaterial& material,
-    const Matrix4& transform, const Matrix4& worldToProjection);
+    const BlasEntry& blas, const DrawCallState& drawCall, const MaterialData& materialData, const RtSurfaceMaterial& material);
 
   void removeInstance(RtInstance* instance);
 

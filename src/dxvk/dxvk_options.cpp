@@ -1,4 +1,5 @@
 /*
+/*
 * Copyright (c) 2021-2023, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
@@ -41,7 +42,7 @@ namespace dxvk {
     // NV-DXVK end
 
     // NV-DXVK start: tell the user they cant run Remix
-    float nvidiaMinDriverFloat = config.getOption<float>("dxvk.nvidiaMinDriver", 560.81f, "DXVK_REMIX_NVIDIA_MIN_DRIVER");
+    float nvidiaMinDriverFloat = config.getOption<float>("dxvk.nvidiaMinDriver", 572.18f, "DXVK_REMIX_NVIDIA_MIN_DRIVER");
     float nvidiaGfnMinDriverFloat = config.getOption<float>("dxvk.nvidiaGfnMinDriver", 527.01f);
     float nvidiaLinuxMinDriverFloat = config.getOption<float>("dxvk.nvidiaLinuxMinDriver", 525.60f);
 

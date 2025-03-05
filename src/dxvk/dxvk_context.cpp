@@ -60,6 +60,14 @@ namespace dxvk {
     ScopedCpuProfileZone();
     return m_common->metaNGXContext().supportsDLFG() && DxvkDLFG::enable() && !m_common->metaDLFG().hasDLFGFailed();
   }
+
+  uint32_t DxvkContext::dlfgInterpolatedFrameCount() const {
+    return isDLFGEnabled() ? m_common->metaDLFG().getInterpolatedFrameCount() : 0;
+  }
+
+  uint32_t DxvkContext::dlfgMaxSupportedInterpolatedFrameCount() const {
+    return m_common->metaNGXContext().supportsDLFG() ? m_common->metaNGXContext().dlfgMaxInterpolatedFrames() : 0;
+  }
   // NV-DXVK end
 
   void DxvkContext::beginRecording(const Rc<DxvkCommandList>& cmdList) {
@@ -429,6 +437,14 @@ namespace dxvk {
     this->spillRenderPass(true);
     
     length = align(length, sizeof(uint32_t));
+
+    // NV-DXVK start: Extra safety against common clearBuffer misuse (Caught by validation layers too)
+    // Note: Offset/length must be divisible by 4, and length must be non-zero when not VK_WHOLE_SIZE
+    assert((offset % 4ULL) == 0ULL);
+    assert((length % 4ULL) == 0ULL);
+    assert(length == VK_WHOLE_SIZE || length != 0ULL);
+    // NV-DXVK end
+
     auto slice = buffer->getSliceHandle(offset, length);
 
     if (m_execBarriers.isBufferDirty(slice, DxvkAccess::Write))
@@ -769,6 +785,11 @@ namespace dxvk {
         m_execBarriers.recordCommands(m_cmd);
     }
 
+    // NV-DXVK start: Extra safety against common copyBuffer misuse (Caught by validation layers too)
+    // Note: Copy buffer region size must not be zero
+    assert(dstSlice.length != 0ULL);
+    // NV-DXVK end
+
     DxvkCmdBuffer cmdBuffer = replaceBuffer
       ? DxvkCmdBuffer::InitBuffer
       : DxvkCmdBuffer::ExecBuffer;
@@ -825,7 +846,7 @@ namespace dxvk {
         | VK_ACCESS_TRANSFER_READ_BIT;
 
       auto tmpBuffer = m_device->createBuffer(
-        bufInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppBuffer);
+        bufInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppBuffer, "copyBufferRegion");
 
       VkDeviceSize tmpOffset = 0;
 
@@ -1281,7 +1302,7 @@ namespace dxvk {
       bufferInfo.access = VK_ACCESS_TRANSFER_WRITE_BIT
                         | VK_ACCESS_SHADER_READ_BIT;
       Rc<DxvkBuffer> tmpBuffer = m_device->createBuffer(
-        bufferInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppBuffer);
+        bufferInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppBuffer, "copyPackedBufferImage");
 
       auto tmpBufferSlice = tmpBuffer->getSliceHandle();
 
@@ -1446,7 +1467,7 @@ namespace dxvk {
     tmpBufferInfo.access = VK_ACCESS_SHADER_WRITE_BIT
       | VK_ACCESS_TRANSFER_READ_BIT;
 
-    auto tmpBuffer = m_device->createBuffer(tmpBufferInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppBuffer);
+    auto tmpBuffer = m_device->createBuffer(tmpBufferInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppBuffer, "copyPackedBufferToDepthStencilImage");
 
     // Create formatted buffer views
     DxvkBufferViewCreateInfo tmpViewInfoD;
@@ -2544,7 +2565,7 @@ namespace dxvk {
 
     auto tmpBuffer = m_device->createBuffer(tmpBufferInfo,
       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-      VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, DxvkMemoryStats::Category::AppTexture);
+      VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, DxvkMemoryStats::Category::AppTexture, "updateDepthStencilImage");
 
     util::packImageData(tmpBuffer->mapPtr(0), data,
       extent3D, formatInfo->elementSize,
@@ -6039,7 +6060,7 @@ namespace dxvk {
       | VK_ACCESS_TRANSFER_READ_BIT;
 
     m_zeroBuffer = m_device->createBuffer(bufInfo,
-      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppBuffer);
+      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppBuffer, "zeroBuffer");
 
     clearBuffer(m_zeroBuffer, 0, bufInfo.size, 0);
     m_execBarriers.recordCommands(m_cmd);

@@ -24,6 +24,12 @@
 
 //!end-variants
 
+// Note: Required to enable volumetric radiance scale functionality on this pass to affect
+// the integration of lighting in volumetrics. Should be enabled on any pass evaluating lights
+// with respect to volumetrics solely (if mixing of volumetric and non-volumetric lighting is
+// done, a new approach will be needed).
+#define ENABLE_VOLUMETRIC_RADIANCE_SCALE 1
+
 #include "rtx/pass/common_bindings.slangh"
 #include "rtx/pass/volumetrics/volume_integrate_bindings.slangh"
 

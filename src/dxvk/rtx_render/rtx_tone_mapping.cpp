@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -311,13 +311,13 @@ namespace dxvk {
       m_resetState = true;
     }
 
-    const Resources::Resource& inputColorBuffer = rtOutput.m_finalOutput;
+    const Resources::Resource& inputColorBuffer = rtOutput.m_finalOutput.resource(Resources::AccessType::Read);
     if (tonemappingEnabled()) {
       dispatchHistogram(ctx, exposureView, inputColorBuffer, autoExposureEnabled);
       dispatchToneCurve(ctx);
     }
 
-    dispatchApplyToneMapping(ctx, linearSampler, exposureView, inputColorBuffer, rtOutput.m_finalOutput, performSRGBConversion, autoExposureEnabled);
+    dispatchApplyToneMapping(ctx, linearSampler, exposureView, inputColorBuffer, rtOutput.m_finalOutput.resource(Resources::AccessType::Write), performSRGBConversion, autoExposureEnabled);
 
     m_resetState = false;
   }

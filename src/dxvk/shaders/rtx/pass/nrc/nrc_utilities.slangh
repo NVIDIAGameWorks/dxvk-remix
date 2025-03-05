@@ -1,0 +1,123 @@
+/*
+* Copyright (c) 2024, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Includes NRC utilities that don't depend on NRC bindings
+
+#include "rtx/external/NRC.slangh"
+#include "rtx/concept/surface_material/surface_material.h"
+#include "rtx/pass/raytrace_args.h"
+#include "rtx/pass/nrc_args.h"
+#include "rtx/utility/common.slangh"
+
+namespace Nrc
+{
+static const uint kInvalidQueryBufferIndex = 0xFFFFFFFF;
+
+bool isDeltaLobe(float16_t perceptualRoughness, const uint8_t materialType)
+{
+  // Set to true for perfectly smooth opaque surfaces
+  return (materialType == surfaceMaterialTypeOpaque && perceptualRoughness <= 0.h) || 
+    // Remix treats translucents as perfectly smooth for the most part so treat them as a delta lobe
+    materialType == surfaceMaterialTypeTranslucent;
+    // Note: RayPortal material continues resolving when a ray hits inside and portal's outline should not be treated as a delta lobe (I think)
+}
+
+// Expects trainingPixelCoordinate to be within training dimensions
+uvec2 calculateTrainingPixelCoordinateInQuerySpace(uvec2 trainingPixelCoordinate, NrcArgs nrcArgs)
+{
+  // Note: updatePixelJitter contains half query pixel width offset to suppress conversion aliasing.
+  // The aliasing that needs to be handled is due to training and query dimensions being different
+  // and resulting in a different training pixel coordinate for a jittered source query pixel.
+  return (trainingPixelCoordinate + nrcArgs.updatePixelJitter) * nrcArgs.trainingToQueryCoordinateSpace;
+}
+
+// Calculates a pixel coordinate in training space for an input query pixel coordinate
+uvec2 calculateTrainingPixelCoordinate(
+  uvec2 queryPixelCoordinateInQuerySpace,
+  NrcArgs nrcArgs)
+{
+  // Add a half texel offset to minimize straddling errors considering query dimensions are same or larger than the update dimensions
+  return (queryPixelCoordinateInQuerySpace + 0.5) * nrcArgs.queryToTrainingCoordinateSpace;
+}
+
+bool isUpdatePixel(u16vec2 combinedNrcCoordinate, RaytraceArgs args)
+{
+  return combinedNrcCoordinate.y < args.nrcArgs.numRowsForUpdate;
+}
+
+// Calculates a training pixel coordinate from combined update and query pixel coordinate grid
+// Compined pixel layout:
+//   ****************************************************************************************************************
+//   *** Update Pixels: linearly layed out in resolution.x * numUpdateRows                                        ***
+//   ****************************************************************************************************************
+//   *** Query Pixels: 2D layout of resolution.x * resolution.y (after NrcArgs::numUpdateRows)                    ***
+//   ****************************************************************************************************************
+// Note: this is only valid to call for when isUpdatePixel() == true
+u16vec2 calculateUpdatePixelCoordinateFromCombinedCoordinate(
+  u16vec2 combinedPixelCoordinate,
+  RaytraceArgs args)
+{
+  // Calculate a 1D coordinate
+  const u16vec2 deltaCoordinate = u16vec2(combinedPixelCoordinate.x, combinedPixelCoordinate.y);
+  const uint updatePixelCoordinate1D = deltaCoordinate.y * args.camera.resolution.x + deltaCoordinate.x;
+
+  // Calculate training pixelCoordinate
+  u16vec2 updatePixelCoordinate;
+  updatePixelCoordinate.y = updatePixelCoordinate1D * args.nrcArgs.rcpActiveTrainingDimensions.x;
+  updatePixelCoordinate.x = updatePixelCoordinate1D - updatePixelCoordinate.y * args.nrcArgs.activeTrainingDimensions.x;
+
+  return updatePixelCoordinate;
+}
+
+// Calculates if an input pixel coordinate in Query coordinate space has an activate training path associated with it.
+bool calculateIfPixelHasActiveNrcTrainingPath(
+  uvec2 queryPixelCoordinateInQuerySpace,
+  NrcArgs nrcArgs,
+  // Coordinate of a training path in training pixel coordinate space
+  out uvec2 trainingPixelCoordinate)
+{
+  // Calculate a training pixel coordinate in training space pixel coordinate system
+  trainingPixelCoordinate = calculateTrainingPixelCoordinate(queryPixelCoordinateInQuerySpace, nrcArgs);
+
+  // Calculate a training pixel coordinate in query space pixel coordinate system
+  const uvec2 trainingPixelCoordinateInQuerySpace = 
+    calculateTrainingPixelCoordinateInQuerySpace(trainingPixelCoordinate, nrcArgs);
+
+  return all(trainingPixelCoordinateInQuerySpace == queryPixelCoordinateInQuerySpace);
+}
+
+void sanitizeNrcInputs(
+  bool isNrcUpdate,
+  NrcArgs nrcArgs,
+  inout f16vec3 throughput,
+  inout vec3 radiance)
+{
+  if (!isNrcUpdate) 
+  {
+    return;
+  }
+
+  throughput = NrcSanitizeNansInfs(throughput);
+  radiance = fireflyFiltering(NrcSanitizeNansInfs(radiance), nrcArgs.trainingLuminanceClamp);
+}
+}

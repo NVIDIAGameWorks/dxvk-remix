@@ -140,6 +140,9 @@ namespace dxvk::vk {
      * \brief Actual presenter info
      * \returns Swap chain properties
      */
+    // NV-DXVK start: DLFG integration
+    virtual
+    // NV-DXVK end
     PresenterInfo info() const;
 
     /**
@@ -181,7 +184,11 @@ namespace dxvk::vk {
     // NV-DXVK end
     VkResult acquireNextImage(
             PresenterSync&  sync,
-            uint32_t&       index);
+            uint32_t&       index,
+            // NV-DXVK start: DLFG integration
+            bool isDlfgPresenting = false
+            // NV-DXVK end
+      );
     
     /**
      * \brief Presents current image
@@ -205,7 +212,10 @@ namespace dxvk::vk {
       std::atomic<VkResult>* presentStatus,
       const DxvkPresentInfo& presentInfo,
       const DxvkFrameInterpolationInfo& frameInterpolationInfo,
-      std::uint32_t acquiredImageIndex
+      // used by vk::Presenter if not -1
+      std::uint32_t acquiredImageIndex = std::uint32_t(-1),
+      bool isDlfgPresenting = false,
+      VkSetPresentConfigNV* presentMetering = nullptr
       // NV-DXVK end
     );
     

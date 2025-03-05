@@ -594,6 +594,11 @@ namespace dxvk {
         "92e275beee2d2c12,"  // tanker detail texture
         "ace20008ae3a0a5b,"  // barrel detail texture
       },
+      { "rtx.ignoreTransparencyLayerTextures",
+        // Light beams
+        "0x67801EDD7AA4E77A,"
+        "0xF116B8E9DA308EE8,"
+      },
       { "rtx.ignoreLights",
         // Chell atlases - associated with a light (player light?)
         "460306E97FB2D4B5,"  // 5044883607524660405ULL
@@ -614,7 +619,6 @@ namespace dxvk {
         "E53AE01AC1FF9E03,"  // Head
         "9FC25F8E3D685EA5,"  // Held portal gun
         "9DED9E2A03234E95,"  // Gun particles
-        "EEEF6F901EEE1164,"  // Gun particles
         "4DEEF5C779DDC88A,"  // Gun particles
         "3CD4F0E2A8AAD575,"  // Gun particles
         "F2A8C629EF1809C3,"  // Gun particles
@@ -818,17 +822,26 @@ namespace dxvk {
       { "rtx.viewModel.viewRelativeOffsetMeters", "0.005, -0.002, -0.055" },
       { "rtx.viewModel.scale",                    "0.4" },
       { "rtx.effectLightPlasmaBall",              "True" },
-      { "rtx.enableVolumetricLighting",           "True" },
       { "rtx.secondarySpecularFireflyFilteringThreshold",  "120.0" },
-      { "rtx.volumetricTransmittanceColor",       "0.953238, 0.948409, 0.943550" }, // Slight blue tint to act more like water vapor for now
-      { "rtx.volumetricTransmittanceMeasurementDistance", "20000.0" },
-      { "rtx.froxelGridResolutionScale",          "16" },
-      { "rtx.froxelDepthSlices",                  "48" },
-      { "rtx.enableFogRemap",                     "True" },
-      { "rtx.fogRemapMaxDistanceMin",             "100.0" },
-      { "rtx.fogRemapMaxDistanceMax",             "4000.0" },
-      { "rtx.fogRemapTransmittanceMeasurementDistanceMin", "2000.0" },
-      { "rtx.fogRemapTransmittanceMeasurementDistanceMax", "12000.0" },
+      { "rtx.volumetrics.enable",                 "True" },
+      { "rtx.volumetrics.transmittanceColor",     "0.953238, 0.948409, 0.943550" }, // Slight blue tint to act more like water vapor for now
+      { "rtx.volumetrics.transmittanceMeasurementDistance", "20000.0" },
+      { "rtx.volumetrics.froxelMaxDistanceMeters",              "35.0" }, // Raised to 35 over default to better accomodate long hallways and tall rooms in Portal RTX (testchmb_a_09, escape_02).
+      // Todo: Currently these non-ReSTIR froxel grid options are overridden by volumetric presets pending some sort of refactor of how volumetric presets should
+      // be data-driven by config files. These values are still used when using a custom graphics preset however, so they are kept as reasonable defaults.
+      { "rtx.volumetrics.froxelGridResolutionScale",            "16" },
+      { "rtx.volumetrics.froxelDepthSlices",                    "48" },
+      { "rtx.volumetrics.restirGridScale",                      "4" },
+      { "rtx.volumetrics.restirFroxelDepthSlices",              "96" },
+      // 16 chosen as Portal RTX does not have a huge number of lights in most scenes thus diminishing the benefit further of high initial RIS sample counts (still
+      // helps for lights in motion though). This may need to be overridden for other Source engine-based titles for higher quality volumetrics if many lights are
+      // in use.
+      { "rtx.volumetrics.initialRISSampleCount",                "16" },
+      { "rtx.volumetrics.enableFogRemap",                       "True" },
+      { "rtx.volumetrics.fogRemapMaxDistanceMin",               "100.0" },
+      { "rtx.volumetrics.fogRemapMaxDistanceMax",               "4000.0" },
+      { "rtx.volumetrics.fogRemapTransmittanceMeasurementDistanceMin", "2000.0" },
+      { "rtx.volumetrics.fogRemapTransmittanceMeasurementDistanceMax", "12000.0" },
       { "rtx.useObsoleteHashOnTextureUpload",                   "True" },
       { "rtx.temporalAA.maximumRadiance",                       "10000.0" },
       { "rtx.temporalAA.colorClampingFactor",                   "1.0"  },
@@ -850,6 +863,7 @@ namespace dxvk {
       { "rtx.upscalingMipBias",                                 "-0.4"  },
       { "rtx.legacyMaterial.roughnessConstant",                 "0.1"   },
       { "rtx.opacityMicromap.enable",                           "True"  },
+      { "rtx.terrain.terrainAsDecalsEnabledIfNoBaker",          "True"  },
       { "rtx.decals.maxOffsetIndex",                            "64" },
       { "rtx.geometryGenerationHashRuleString", "positions,"
                                                 "indices,"

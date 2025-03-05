@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -154,7 +154,7 @@ namespace dxvk {
       return;
     }
 
-    VkExtent3D finalResolution = rtOutput.m_finalOutput.view->imageInfo().extent;
+    VkExtent3D finalResolution = rtOutput.m_finalOutputExtent;
     VkExtent3D downscaledResolution = rtOutput.m_compositeOutputExtent;
 
     ScopedGpuProfileZone(ctx, "Local Tone Mapping");
@@ -179,7 +179,7 @@ namespace dxvk {
       pushArgs.debugView = debugView.debugViewIdx();
       pushArgs.enableAutoExposure = enableAutoExposure;
       ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
-      ctx->bindResourceView(LUMINANCE_ORIGINAL, rtOutput.m_finalOutput.view, nullptr);
+      ctx->bindResourceView(LUMINANCE_ORIGINAL, rtOutput.m_finalOutput.view(Resources::AccessType::Read), nullptr);
       ctx->bindResourceView(LUMINANCE_OUTPUT, m_mips.views[0], nullptr);
       ctx->bindResourceView(LUMINANCE_DEBUG_VIEW_OUTPUT, debugView.getDebugOutput(), nullptr);
       ctx->bindResourceView(LUMINANCE_EXPOSURE, exposureView, nullptr);
@@ -288,7 +288,7 @@ namespace dxvk {
       ctx->bindResourceSampler(FINAL_COMBINE_ORIGINAL_MIP, linearSampler);
       ctx->bindResourceSampler(FINAL_COMBINE_MIP_ASSEMBLE, linearSampler);
 
-      ctx->bindResourceView(FINAL_COMBINE_OUTPUT, rtOutput.m_finalOutput.view, nullptr);
+      ctx->bindResourceView(FINAL_COMBINE_OUTPUT, rtOutput.m_finalOutput.view(Resources::AccessType::Write), nullptr);
       ctx->bindResourceView(FINAL_COMBINE_DEBUG_VIEW_OUTPUT, debugView.getDebugOutput(), nullptr);
       ctx->bindResourceView(FINAL_COMBINE_EXPOSURE, exposureView, nullptr);
       ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, FinalCombineShader::getShader());

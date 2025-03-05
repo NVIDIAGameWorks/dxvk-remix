@@ -436,6 +436,11 @@ namespace dxvk {
   }
 
   template <typename T>
+  Vector3Base<T> project(const Vector3Base<T>& p, const Vector3Base<T>& o, const Vector3Base<T>& n) {
+    return p - dot(p - o, n) * n;
+  }
+
+  template <typename T>
   Vector3Base<T> min(const Vector3Base<T>& a, const Vector3Base<T>& b) {
     return Vector3Base<T>(
       std::min(a.x, b.x),

@@ -107,7 +107,8 @@ PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionReadF
   Texture2D<uint> data0Texture,
   Texture2D<uint> data1Texture,
   Texture2D<uint> surfaceIndexTexture,
-  Texture2D<uint4> subsurfaceData)
+  Texture2D<uint4> subsurfaceData,
+  Texture2D<float3> subsurfaceDiffusionProfileData)
 {
   GBufferMemoryPolymorphicSurfaceMaterialInteraction memory;
 
@@ -119,15 +120,16 @@ PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteractionReadF
   memory.data1 = data1Texture[position].x;
 
   PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction = polymorphicSurfaceMaterialInteractionCreate(memory);
-  if (cb.enableThinOpaque)
+  if (cb.sssArgs.enableThinOpaque || cb.sssArgs.enableDiffusionProfile)
   {
     const uint16_t primarySurfaceIndex = uint16_t(surfaceIndexTexture[position]);
     const OpaqueSurfaceMaterial opaqueSurfaceMaterial = opaqueSurfaceMaterialCreate(surfaceMaterials[primarySurfaceIndex]);
-    const SubsurfaceMaterialInteraction subsurfaceMaterialInteraction = subSurfaceMaterialReadHelper(subsurfaceData[position]);
+    const SubsurfaceMaterialInteraction subsurfaceMaterialInteraction = subSurfaceMaterialReadHelper(subsurfaceData[position], subsurfaceDiffusionProfileData[position]);
 
     polymorphicSurfaceMaterialInteraction.fdata5 = subsurfaceMaterialInteraction.measurementDistance;
     polymorphicSurfaceMaterialInteraction.idata0 = subsurfaceMaterialInteraction.packedTransmittanceColor;
-    polymorphicSurfaceMaterialInteraction.idata1 = subsurfaceMaterialInteraction.packedSingleScatteringAlbedo;
+    polymorphicSurfaceMaterialInteraction.idata1 = subsurfaceMaterialInteraction.maxSampleRadius;
+    polymorphicSurfaceMaterialInteraction.vdata2 = subsurfaceMaterialInteraction.singleScatteringAlbedo;
     polymorphicSurfaceMaterialInteraction.bdata1 = subsurfaceMaterialInteraction.volumetricAnisotropy;
   }
   else
@@ -160,7 +162,8 @@ void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
   RWTexture2D<uint> data1Texture,
   RWTexture2D<float2> sharedTextureCoords,
   RWTexture2D<uint> surfaceIndexTexture,
-  RWTexture2D<uint4> subsurfaceDataTexture)
+  RWTexture2D<uint4> subsurfaceDataTexture,
+  RWTexture2D<float3> subsurfaceDiffusionProfileDataTexture)
 {
   const GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfaceMaterialInteraction =
     gBufferMemoryPolymorphicSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
@@ -197,7 +200,7 @@ void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
     gBufferMemoryPolymorphicSurfaceMaterialInteraction.perceptualRoughness);
 
   const float4 packedNormalRoughness = NRD_FrontEnd_PackNormalAndRoughness(
-    virtualShadingNormal, gBufferMemoryPolymorphicSurfaceMaterialInteraction.perceptualRoughness);
+    virtualShadingNormal, gBufferMemoryPolymorphicSurfaceMaterialInteraction.perceptualRoughness, MATERIAL_ID_DEFAULT);
   virtualWorldShadingNormalPerceptualRoughnessDenoisingTexture[position] = packedNormalRoughness;
 
   // Note: Write stochastic textures only when desired. Bit hacky to have this logic here rather than in the geometery resolver but
@@ -222,13 +225,15 @@ void polymorphicSurfaceMaterialInteractionWriteToGBuffer(
       subsurfaceDataTexture[position] = uint4(
         polymorphicSurfaceMaterialInteraction.idata0,                      // transmittanceColor
         float16BitsToUint16(polymorphicSurfaceMaterialInteraction.fdata5), // measurementDistance
-        polymorphicSurfaceMaterialInteraction.idata1,                      // singleScatteringAlbedo
-        uint16_t(polymorphicSurfaceMaterialInteraction.bdata1)             // volumetricAnisotropy
+        polymorphicSurfaceMaterialInteraction.idata1,                      // Max Radius
+        (uint16_t(polymorphicSurfaceMaterialInteraction.bdata1))           // volumetricAnisotropy
       );
+      subsurfaceDiffusionProfileDataTexture[position] = polymorphicSurfaceMaterialInteraction.vdata2;
     }
     else
     {
       subsurfaceDataTexture[position] = uint4(0, 0, 0, 0);
+      subsurfaceDiffusionProfileDataTexture[position] = float3(0, 0, 0);
     }
   }
 }
@@ -275,7 +280,7 @@ void writeMissToGBuffer(
   linearViewZTexture[position] = missLinearViewZ;
   worldMotionTexture[position] = vec4(missMotionVector, 0);
   worldShadingNormalPerceptualRoughnessTexture[position] = vec4(missNormal * 0.5 + 0.5, missPerceptualRoughness);
-  WorldShadingNormalPerceptualRoughnessDenoisingTexture[position] = NRD_FrontEnd_PackNormalAndRoughness(missNormal, missPerceptualRoughness);
+  WorldShadingNormalPerceptualRoughnessDenoisingTexture[position] = NRD_FrontEnd_PackNormalAndRoughness(missNormal, missPerceptualRoughness, MATERIAL_ID_DEFAULT);
 
   if (writeStochastic)
   {

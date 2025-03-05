@@ -108,3 +108,9 @@ RWTexture2D DebugView;
 
 layout(binding = BINDING_GPU_PRINT_BUFFER) 
 RWStructuredBuffer<GpuPrintBufferElement> GpuPrintBuffer;
+
+layout(binding = BINDING_VALUE_NOISE_SAMPLER)
+Sampler2D<float4> ValueNoiseSampler;
+
+layout(binding = BINDING_SAMPLER_READBACK_BUFFER) 
+RWStructuredBuffer<uint32_t> SamplerFeedbackBuffer;

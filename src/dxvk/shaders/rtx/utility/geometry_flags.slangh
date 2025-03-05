@@ -21,6 +21,7 @@
 */
 #pragma once
 
+#include "rtx/external/NRC.slangh"
 #include "rtx/concept/ray_portal/ray_portal.slangh"
 #include "rtx/utility/packing.slangh"
 

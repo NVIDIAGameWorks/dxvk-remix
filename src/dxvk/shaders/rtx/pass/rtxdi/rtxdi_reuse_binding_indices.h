@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -19,14 +19,12 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 * DEALINGS IN THE SOFTWARE.
 */
-#ifndef RTXDI_REUSE_BINDING_INDICES_H
-#define RTXDI_REUSE_BINDING_INDICES_H
+#pragma once
 
 #include "rtx/pass/common_binding_indices.h"
 
-// Outputs
+// Inputs
 
-#define RTXDI_REUSE_BINDING_RTXDI_RESERVOIR                 20
 #define RTXDI_REUSE_BINDING_WORLD_SHADING_NORMAL_INPUT      21
 #define RTXDI_REUSE_BINDING_PERCEPTUAL_ROUGHNESS_INPUT      22
 #define RTXDI_REUSE_BINDING_HIT_DISTANCE_INPUT              23
@@ -40,18 +38,24 @@
 #define RTXDI_REUSE_BINDING_SS_MVEC_INPUT                   31
 #define RTXDI_REUSE_BINDING_POSITION_ERROR_INPUT            32
 #define RTXDI_REUSE_BINDING_SHARED_FLAGS_INPUT              33
-#define RTXDI_REUSE_BINDING_LAST_GBUFFER                    34
-#define RTXDI_REUSE_BINDING_REPROJECTION_CONFIDENCE_OUTPUT  35
-#define RTXDI_REUSE_BINDING_BSDF_FACTOR_OUTPUT              36
-#define RTXDI_REUSE_BINDING_TEMPORAL_POSITION_OUTPUT        37
 #define RTXDI_REUSE_BINDING_BEST_LIGHTS_INPUT               38
 #define RTXDI_REUSE_BINDING_SHARED_SURFACE_INDEX_INPUT      39
 #define RTXDI_REUSE_BINDING_SUBSURFACE_DATA_INPUT           40
+#define RTXDI_REUSE_BINDING_SUBSURFACE_DIFFUSION_PROFILE_DATA_INPUT 41
 
-#define RTXDI_REUSE_MIN_BINDING                           RTXDI_REUSE_BINDING_RTXDI_RESERVOIR
+// Inputs / Outputs
+
+#define RTXDI_REUSE_BINDING_RTXDI_RESERVOIR_INPUT_OUTPUT    60
+#define RTXDI_REUSE_BINDING_LAST_GBUFFER_INPUT_OUTPUT       61
+
+// Outputs
+
+#define RTXDI_REUSE_BINDING_REPROJECTION_CONFIDENCE_OUTPUT  85
+#define RTXDI_REUSE_BINDING_BSDF_FACTOR_OUTPUT              86
+#define RTXDI_REUSE_BINDING_TEMPORAL_POSITION_OUTPUT        87
+
+#define RTXDI_REUSE_MIN_BINDING                           RTXDI_REUSE_BINDING_RTXDI_RESERVOIR_INPUT_OUTPUT
 
 #if RTXDI_REUSE_MIN_BINDING <= COMMON_MAX_BINDING
 #error "Increase the base index of RTXDI bindings to avoid overlap with common bindings!"
-#endif
-
 #endif

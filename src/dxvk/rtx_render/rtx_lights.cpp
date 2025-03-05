@@ -21,9 +21,9 @@
 */
 
 #include "rtx_lights.h"
-#include "rtx_options.h"
 #include "rtx_light_manager.h"
 #include "rtx_light_utils.h"
+#include "rtx_global_volumetrics.h"
 
 namespace dxvk {
 
@@ -57,6 +57,36 @@ constexpr float kOrthogonalityThreshold = 0.01f;
       std::clamp(radiance[2], 0.f, intensity * IntensityMax) / intensity,
       intensity,
     };
+  }
+
+  // Note: This function is intended to be called whenever a light is constructed to allow for the volumetric radiance scale to be "disabled"
+  // easily. Might be a bit costly to keep checking the option like this versus having some sort of static boolean holding the state, but
+  // in theory option value lookup is not terribly expensive and it is put behind a short circut to avoid needing to disable the scale when it is
+  // already effectively disabled (set to 1.0, which is the most common case usually).
+  // Another approach to this would be to send the flag to disable the volumetric radiance scale to the GPU instead as that may allow for constant
+  // folding to optimize out the decoding path when the feature is not in use, but generally the potential overhead of doing that check on the
+  // GPU when constant folding is not in place (which is always a possibility) would be much more than just doing it here on the CPU.
+  float adjustVolumetricRadianceScale(float volumetricRadianceScale) {
+    // Note: Short circut on a check for if the volume radiance scale needs to be adjusted to avoid needing to check the option redundantly when
+    // it is already effectively disabled.
+    if (volumetricRadianceScale != 1.0 && RtxGlobalVolumetrics::debugDisableRadianceScaling()) {
+      return 1.0f;
+    }
+
+    return volumetricRadianceScale;
+  }
+
+  // Note: This helper is used for writing the volumetric radiance scale to ensure it is in the proper location and within the proper
+  // range without needing to duplicate this code between all lights (since it is common to them all).
+  void writeGPUDataVolumetricRadianceScale(unsigned char* data, std::size_t oldOffset, std::size_t& offset, float volumetricRadianceScale) {
+    assert((offset - oldOffset) == 3 * sizeof(Vector4i) + 2 * sizeof(uint32_t)); // data3.z
+    // Note: Volumetric radiance scale effectively in the range [0, inf), but must fit within a 16 bit float in practice.
+    assert(volumetricRadianceScale >= 0.0f && volumetricRadianceScale < FLOAT16_MAX);
+    assert(!std::isnan(volumetricRadianceScale) && !std::isinf(volumetricRadianceScale));
+
+    // Note: Using full 32 bit float here. Limits conservatively set to float 16 maximums however in case this ever needs to be packed down by
+    // 2 bytes in the future.
+    writeGPUHelper(data, offset, volumetricRadianceScale);
   }
 
 }
@@ -157,12 +187,18 @@ bool RtLightShaping::validateParameters(
   return true;
 }
 
-RtSphereLight::RtSphereLight(const Vector3& position, const Vector3& radiance, float radius, const RtLightShaping& shaping, const XXH64_hash_t forceHash)
+RtSphereLight::RtSphereLight(
+  const Vector3& position, const Vector3& radiance, float radius,
+  const RtLightShaping& shaping, float volumetricRadianceScale,
+  const XXH64_hash_t forceHash)
   : m_position(position)
   , m_radiance(radiance)
   , m_radius(radius)
-  , m_shaping(shaping) {
-  // assert(validateParameters(position, radiance, radius, shaping, forceHash));
+  , m_shaping(shaping)
+  , m_volumetricRadianceScale(volumetricRadianceScale) {
+  // assert(validateParameters(position, radiance, radius, shaping, volumetricRadianceScale, forceHash));
+
+  m_volumetricRadianceScale = adjustVolumetricRadianceScale(m_volumetricRadianceScale);
 
   if (forceHash == kEmptyHash) {
     updateCachedHash();
@@ -172,12 +208,14 @@ RtSphereLight::RtSphereLight(const Vector3& position, const Vector3& radiance, f
 }
 
 std::optional<RtSphereLight> RtSphereLight::tryCreate(
-  const Vector3& position, const Vector3& radiance, float radius, const RtLightShaping& shaping, const XXH64_hash_t forceHash) {
-  if (!validateParameters(position, radiance, radius, shaping, forceHash)) {
+  const Vector3& position, const Vector3& radiance, float radius,
+  const RtLightShaping& shaping, float volumetricRadianceScale,
+  const XXH64_hash_t forceHash) {
+  if (!validateParameters(position, radiance, radius, shaping, volumetricRadianceScale, forceHash)) {
     return {};
   }
 
-  return RtSphereLight{ position, radiance, radius, shaping, forceHash };
+  return RtSphereLight{ position, radiance, radius, shaping, volumetricRadianceScale, forceHash };
 }
 
 void RtSphereLight::applyTransform(const Matrix4& lightToWorld) {
@@ -214,7 +252,9 @@ void RtSphereLight::writeGPUData(unsigned char* data, std::size_t& offset) const
 
   m_shaping.writeGPUData(data, offset);
 
-  writeGPUPadding<28>(data, offset);
+  writeGPUPadding<24>(data, offset);
+
+  writeGPUDataVolumetricRadianceScale(data, oldOffset, offset, m_volumetricRadianceScale);
 
   // Note: Sphere light type (0) + shaping enabled flag
   uint32_t flags = lightTypeSphere << 29; // Light Type at bits 29,30,31.
@@ -229,7 +269,9 @@ Vector4 RtSphereLight::getColorAndIntensity() const {
 }
 
 bool RtSphereLight::validateParameters(
-  const Vector3& position, const Vector3& radiance, float radius, const RtLightShaping& shaping, const XXH64_hash_t forceHash) {
+  const Vector3& position, const Vector3& radiance, float radius,
+  const RtLightShaping& shaping, float volumetricRadianceScale,
+  const XXH64_hash_t forceHash) {
   // Ensure the radius is positive and within the float16 range
 
   if (radius < 0.0f || radius >= FLOAT16_MAX) {
@@ -239,6 +281,12 @@ bool RtSphereLight::validateParameters(
   // Ensure the radiance is positive
 
   if (radiance.x < 0.0f || radiance.y < 0.0f || radiance.z < 0.0f) {
+    return false;
+  }
+
+  // Ensure the volumetric radiance scale is positive and within the float16 range
+
+  if (volumetricRadianceScale < 0.0f || volumetricRadianceScale >= FLOAT16_MAX) {
     return false;
   }
 
@@ -253,6 +301,8 @@ void RtSphereLight::updateCachedHash() {
   h = XXH64(&m_position[0], sizeof(m_position), h);
   h = XXH64(&m_radius, sizeof(m_radius), h);
   h = XXH64(&h, sizeof(h), m_shaping.getHash());
+  // Note: Volumetric radiance scale not included either for performance as it's likely not
+  // much more identifying than position and generally is not used.
 
   m_cachedHash = h;
 }
@@ -260,15 +310,18 @@ void RtSphereLight::updateCachedHash() {
 RtRectLight::RtRectLight(
   const Vector3& position, const Vector2& dimensions,
   const Vector3& xAxis, const Vector3& yAxis, const Vector3& direction,
-  const Vector3& radiance, const RtLightShaping& shaping)
+  const Vector3& radiance, const RtLightShaping& shaping, float volumetricRadianceScale)
   : m_position(position)
   , m_dimensions(dimensions)
   , m_xAxis(xAxis)
   , m_yAxis(yAxis)
   , m_direction(direction)
   , m_radiance(radiance)
+  , m_volumetricRadianceScale(volumetricRadianceScale)
   , m_shaping(shaping) {
-  // assert(validateParameters(position, dimensions, xAxis, yAxis, direction, radiance, shaping));
+  // assert(validateParameters(position, dimensions, xAxis, yAxis, direction, radiance, shaping, volumetricRadianceScale));
+
+  m_volumetricRadianceScale = adjustVolumetricRadianceScale(m_volumetricRadianceScale);
 
   updateCachedHash();
 }
@@ -276,12 +329,12 @@ RtRectLight::RtRectLight(
 std::optional<RtRectLight> RtRectLight::tryCreate(
   const Vector3& position, const Vector2& dimensions,
   const Vector3& xAxis, const Vector3& yAxis, const Vector3& direction,
-  const Vector3& radiance, const RtLightShaping& shaping) {
-  if (!validateParameters(position, dimensions, xAxis, yAxis, direction, radiance, shaping)) {
+  const Vector3& radiance, const RtLightShaping& shaping, float volumetricRadianceScale) {
+  if (!validateParameters(position, dimensions, xAxis, yAxis, direction, radiance, shaping, volumetricRadianceScale)) {
     return {};
   }
 
-  return RtRectLight{ position, dimensions, xAxis, yAxis, direction, radiance, shaping };
+  return RtRectLight{ position, dimensions, xAxis, yAxis, direction, radiance, shaping, volumetricRadianceScale };
 }
 
 void RtRectLight::applyTransform(const Matrix4& lightToWorld) {
@@ -352,7 +405,9 @@ void RtRectLight::writeGPUData(unsigned char* data, std::size_t& offset) const {
   writeGPUHelper(data, offset, glm::packHalf1x16(m_direction.z));
 
   // Note: Unused space for rect lights
-  writeGPUPadding<10>(data, offset);
+  writeGPUPadding<6>(data, offset);
+
+  writeGPUDataVolumetricRadianceScale(data, oldOffset, offset, m_volumetricRadianceScale);
 
   // Note: Rect light type (1) + shaping enabled flag
   uint32_t flags = lightTypeRect << 29; // Light Type at bits 29,30,31.
@@ -369,7 +424,8 @@ Vector4 RtRectLight::getColorAndIntensity() const {
 bool RtRectLight::validateParameters(
   const Vector3& position, const Vector2& dimensions,
   const Vector3& xAxis, const Vector3& yAxis, const Vector3& direction,
-  const Vector3& radiance, const RtLightShaping& shaping) {
+  const Vector3& radiance, const RtLightShaping& shaping,
+  float volumetricRadianceScale) {
   // Ensure dimensions are positive and within the float16 range
 
   if (
@@ -405,6 +461,12 @@ bool RtRectLight::validateParameters(
     return false;
   }
 
+  // Ensure the volumetric radiance scale is positive and within the float16 range
+
+  if (volumetricRadianceScale < 0.0f || volumetricRadianceScale >= FLOAT16_MAX) {
+    return false;
+  }
+
   return true;
 }
 
@@ -419,6 +481,8 @@ void RtRectLight::updateCachedHash() {
   h = XXH64(&m_yAxis[0], sizeof(m_yAxis), h);
   h = XXH64(&m_direction[0], sizeof(m_direction), h);
   h = XXH64(&h, sizeof(h), m_shaping.getHash());
+  // Note: Volumetric radiance scale not included either for performance as it's likely not
+  // much more identifying than position and generally is not used.
 
   m_cachedHash = h;
 }
@@ -426,15 +490,19 @@ void RtRectLight::updateCachedHash() {
 RtDiskLight::RtDiskLight(
   const Vector3& position, const Vector2& halfDimensions,
   const Vector3& xAxis, const Vector3& yAxis, const Vector3& direction,
-  const Vector3& radiance, const RtLightShaping& shaping)
+  const Vector3& radiance, const RtLightShaping& shaping,
+  float volumetricRadianceScale)
   : m_position(position)
   , m_halfDimensions(halfDimensions)
   , m_xAxis(xAxis)
   , m_yAxis(yAxis)
   , m_direction(direction)
   , m_radiance(radiance)
-  , m_shaping(shaping) {
-  // assert(validateParameters(position, halfDimensions, xAxis, yAxis, direction, radiance, shaping));
+  , m_shaping(shaping)
+  , m_volumetricRadianceScale(volumetricRadianceScale) {
+  // assert(validateParameters(position, halfDimensions, xAxis, yAxis, direction, radiance, shaping, volumetricRadianceScale));
+
+  m_volumetricRadianceScale = adjustVolumetricRadianceScale(m_volumetricRadianceScale);
 
   updateCachedHash();
 }
@@ -442,12 +510,13 @@ RtDiskLight::RtDiskLight(
 std::optional<RtDiskLight> RtDiskLight::tryCreate(
   const Vector3& position, const Vector2& halfDimensions,
   const Vector3& xAxis, const Vector3& yAxis, const Vector3& direction,
-  const Vector3& radiance, const RtLightShaping& shaping) {
-  if (!validateParameters(position, halfDimensions, xAxis, yAxis, direction, radiance, shaping)) {
+  const Vector3& radiance, const RtLightShaping& shaping,
+  float volumetricRadianceScale) {
+  if (!validateParameters(position, halfDimensions, xAxis, yAxis, direction, radiance, shaping, volumetricRadianceScale)) {
     return {};
   }
 
-  return RtDiskLight{ position, halfDimensions, xAxis, yAxis, direction, radiance, shaping };
+  return RtDiskLight{ position, halfDimensions, xAxis, yAxis, direction, radiance, shaping, volumetricRadianceScale };
 }
 
 void RtDiskLight::applyTransform(const Matrix4& lightToWorld) {
@@ -518,7 +587,9 @@ void RtDiskLight::writeGPUData(unsigned char* data, std::size_t& offset) const {
   writeGPUHelper(data, offset, glm::packHalf1x16(m_direction.z));
 
   // Note: Unused space for disk lights
-  writeGPUPadding<10>(data, offset);
+  writeGPUPadding<6>(data, offset);
+
+  writeGPUDataVolumetricRadianceScale(data, oldOffset, offset, m_volumetricRadianceScale);
 
   // Note: Disk light type (2) + shaping enabled flag
   uint32_t flags = lightTypeDisk << 29; // Light Type at bits 29,30,31.
@@ -535,7 +606,7 @@ Vector4 RtDiskLight::getColorAndIntensity() const {
 bool RtDiskLight::validateParameters(
   const Vector3& position, const Vector2& halfDimensions,
   const Vector3& xAxis, const Vector3& yAxis, const Vector3& direction,
-  const Vector3& radiance, const RtLightShaping& shaping) {
+  const Vector3& radiance, const RtLightShaping& shaping, float volumetricRadianceScale) {
   // Ensure half dimensions are positive and within the float16 range
 
   if (
@@ -585,28 +656,36 @@ void RtDiskLight::updateCachedHash() {
   h = XXH64(&m_yAxis[0], sizeof(m_yAxis), h);
   h = XXH64(&m_direction[0], sizeof(m_direction), h);
   h = XXH64(&h, sizeof(h), m_shaping.getHash());
+  // Note: Volumetric radiance scale not included either for performance as it's likely not
+  // much more identifying than position and generally is not used.
 
   m_cachedHash = h;
 }
 
-RtCylinderLight::RtCylinderLight(const Vector3& position, float radius, const Vector3& axis, float axisLength, const Vector3& radiance)
+RtCylinderLight::RtCylinderLight(
+  const Vector3& position, float radius, const Vector3& axis, float axisLength,
+  const Vector3& radiance, float volumetricRadianceScale)
   : m_position(position)
   , m_radius(radius)
   , m_axis(axis)
   , m_axisLength(axisLength)
-  , m_radiance(radiance) {
-  // assert(validateParameters(position, radius, axis, axisLength, radiance));
+  , m_radiance(radiance)
+  , m_volumetricRadianceScale(volumetricRadianceScale) {
+  // assert(validateParameters(position, radius, axis, axisLength, radiance, volumetricRadianceScale));
+
+  m_volumetricRadianceScale = adjustVolumetricRadianceScale(m_volumetricRadianceScale);
 
   updateCachedHash();
 }
 
 std::optional<RtCylinderLight> RtCylinderLight::tryCreate(
-  const Vector3& position, float radius, const Vector3& axis, float axisLength, const Vector3& radiance) {
-  if (!validateParameters(position, radius, axis, axisLength, radiance)) {
+  const Vector3& position, float radius, const Vector3& axis, float axisLength,
+  const Vector3& radiance, float volumetricRadianceScale) {
+  if (!validateParameters(position, radius, axis, axisLength, radiance, volumetricRadianceScale)) {
     return {};
   }
 
-  return RtCylinderLight{ position, radius, axis, axisLength, radiance };
+  return RtCylinderLight{ position, radius, axis, axisLength, radiance, volumetricRadianceScale };
 }
 
 void RtCylinderLight::applyTransform(const Matrix4& lightToWorld) {
@@ -659,7 +738,9 @@ void RtCylinderLight::writeGPUData(unsigned char* data, std::size_t& offset) con
   writeGPUHelper(data, offset, glm::packHalf1x16(m_axis.z));
 
   // Note: Unused space for cylinder lights
-  writeGPUPadding<22>(data, offset);
+  writeGPUPadding<18>(data, offset);
+
+  writeGPUDataVolumetricRadianceScale(data, oldOffset, offset, m_volumetricRadianceScale);
 
   // Note: Cylinder light type (3)
   writeGPUHelper(data, offset, static_cast<uint32_t>(lightTypeCylinder << 29));
@@ -672,7 +753,8 @@ Vector4 RtCylinderLight::getColorAndIntensity() const {
 }
 
 bool RtCylinderLight::validateParameters(
-    const Vector3& position, float radius, const Vector3& axis, float axisLength, const Vector3& radiance) {
+  const Vector3& position, float radius, const Vector3& axis, float axisLength,
+  const Vector3& radiance, float volumetricRadianceScale) {
   // Ensure the radius and axis length are positive and within the float16 range
 
   if (
@@ -694,6 +776,12 @@ bool RtCylinderLight::validateParameters(
     return false;
   }
 
+  // Ensure the volumetric radiance scale is positive and within the float16 range
+
+  if (volumetricRadianceScale < 0.0f || volumetricRadianceScale >= FLOAT16_MAX) {
+    return false;
+  }
+
   return true;
 }
 
@@ -706,16 +794,23 @@ void RtCylinderLight::updateCachedHash() {
   h = XXH64(&m_radius, sizeof(m_radius), h);
   h = XXH64(&m_axis[0], sizeof(m_axis), h);
   h = XXH64(&m_axisLength, sizeof(m_axisLength), h);
+  // Note: Volumetric radiance scale not included either for performance as it's likely not
+  // much more identifying than position and generally is not used.
 
   m_cachedHash = h;
 }
 
-RtDistantLight::RtDistantLight(const Vector3& direction, float halfAngle, const Vector3& radiance, const XXH64_hash_t forceHash)
+RtDistantLight::RtDistantLight(
+  const Vector3& direction, float halfAngle, const Vector3& radiance, float volumetricRadianceScale,
+  const XXH64_hash_t forceHash)
   // Note: Direction assumed to be normalized.
   : m_direction(direction)
   , m_halfAngle(halfAngle)
-  , m_radiance(radiance) {
-  // assert(validateParameters(direction, halfAngle, radiance, forceHash));
+  , m_radiance(radiance)
+  , m_volumetricRadianceScale(volumetricRadianceScale) {
+  // assert(validateParameters(direction, halfAngle, radiance, volumetricRadianceScale, forceHash));
+
+  m_volumetricRadianceScale = adjustVolumetricRadianceScale(m_volumetricRadianceScale);
 
   // Note: Cache a pre-computed orientation quaternion to avoid doing it on the GPU since we have space in the Light to spare
   m_orientation = getOrientation(Vector3(0.0f, 0.0f, 1.0f), m_direction);
@@ -732,12 +827,13 @@ RtDistantLight::RtDistantLight(const Vector3& direction, float halfAngle, const 
 }
 
 std::optional<RtDistantLight> RtDistantLight::tryCreate(
-  const Vector3& direction, float halfAngle, const Vector3& radiance, const XXH64_hash_t forceHash) {
-  if (!validateParameters(direction, halfAngle, radiance, forceHash)) {
+  const Vector3& direction, float halfAngle, const Vector3& radiance, float volumetricRadianceScale,
+  const XXH64_hash_t forceHash) {
+  if (!validateParameters(direction, halfAngle, radiance, volumetricRadianceScale, forceHash)) {
     return {};
   }
 
-  return RtDistantLight{ direction, halfAngle, radiance, forceHash };
+  return RtDistantLight{ direction, halfAngle, radiance, volumetricRadianceScale, forceHash };
 }
 
 void RtDistantLight::applyTransform(const Matrix4& lightToWorld) {
@@ -778,7 +874,9 @@ void RtDistantLight::writeGPUData(unsigned char* data, std::size_t& offset) cons
   writeGPUHelper(data, offset, m_sinHalfAngle);
 
   // Note: Unused space for distant lights
-  writeGPUPadding<20>(data, offset);
+  writeGPUPadding<16>(data, offset);
+
+  writeGPUDataVolumetricRadianceScale(data, oldOffset, offset, m_volumetricRadianceScale);
 
   // Note: Distant light type (4)
   // Todo: Ideally match this with GPU light type constants
@@ -792,7 +890,8 @@ Vector4 RtDistantLight::getColorAndIntensity() const {
 }
 
 bool RtDistantLight::validateParameters(
-  const Vector3& direction, float halfAngle, const Vector3& radiance, const XXH64_hash_t forceHash) {
+  const Vector3& direction, float halfAngle, const Vector3& radiance, float volumetricRadianceScale,
+  const XXH64_hash_t forceHash) {
   // Ensure direction is normalized
 
   if (!isApproxNormalized(direction, kNormalizationThreshold)) {
@@ -811,6 +910,12 @@ bool RtDistantLight::validateParameters(
     return false;
   }
 
+  // Ensure the volumetric radiance scale is positive and within the float16 range
+
+  if (volumetricRadianceScale < 0.0f || volumetricRadianceScale >= FLOAT16_MAX) {
+    return false;
+  }
+
   return true;
 }
 
@@ -821,6 +926,8 @@ void RtDistantLight::updateCachedHash() {
   // from D3D9 Lights.
   h = XXH64(&m_direction[0], sizeof(m_direction), h);
   h = XXH64(&m_halfAngle, sizeof(m_halfAngle), h);
+  // Note: Volumetric radiance scale not included either for performance as it's likely not
+  // much more identifying than position and generally is not used.
 
   m_cachedHash = h;
 }

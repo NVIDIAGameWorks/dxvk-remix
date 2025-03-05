@@ -47,8 +47,9 @@ namespace dxvk {
     return dot(cross(x, y), z) < 0;
   }
 
-  static uint32_t determineInstanceFlags(const DrawCallState& drawCall, const Matrix4& worldToProjection, const RtSurface& surface) {
+  static uint32_t determineInstanceFlags(const DrawCallState& drawCall, const RtSurface& surface) {
     // Determine if the view inverts face winding globally
+    const Matrix4 worldToProjection = drawCall.getTransformData().viewToProjection * drawCall.getTransformData().worldToView;
     const bool worldToProjectionMirrored = isMirrorTransform(worldToProjection);
     
     // Note: Vulkan ray tracing defaults to defining the front face based on clockwise vertex order when viewed from a left-handed coordinate system. The front face
@@ -148,7 +149,7 @@ namespace dxvk {
   namespace {
     template<int RtInstanceSize> struct CheckRtInstanceSize {
       // The second line of the build error should contain the new size of RtInstance in the template argument, i.e. `dxvk::CheckRtInstanceSize<newSize>`
-      static_assert(RtInstanceSize == 712, "RtInstance size has changed.  Fix the copy constructor above this message, then update the expected size.");
+      static_assert(RtInstanceSize == 736, "RtInstance size has changed.  Fix the copy constructor above this message, then update the expected size.");
     };
     CheckRtInstanceSize<sizeof(RtInstance)> _rtInstanceSizeTest;
   }
@@ -169,8 +170,9 @@ namespace dxvk {
       // const Vector3 newPos = 2.f * surface.objectToWorld[3].xyz() - surface.prevObjectToWorld[3].xyz();
 
       // Cache based on current position.
-      const Vector3 newPos = getBlas()->input.getGeometryData().boundingBox.getTransformedCentroid(surface.objectToWorld);
-      m_spatialCacheHash = m_linkedBlas->getSpatialMap().move(m_spatialCacheHash, newPos, surface.objectToWorld, this);
+      const Matrix4 firstInstanceObjectToWorld = calcFirstInstanceObjectToWorld();
+      const Vector3 newPos = getBlas()->input.getGeometryData().boundingBox.getTransformedCentroid(firstInstanceObjectToWorld);
+      m_spatialCacheHash = m_linkedBlas->getSpatialMap().move(m_spatialCacheHash, newPos, firstInstanceObjectToWorld, this);
     }
   }
 
@@ -179,8 +181,9 @@ namespace dxvk {
     surface.normalObjectToWorld = transpose(inverse(Matrix3(surface.objectToWorld)));
     surface.prevObjectToWorld = objectToWorld;
     if (!m_isCreatedByRenderer) {
-      const Vector3 centroid = getBlas()->input.getGeometryData().boundingBox.getTransformedCentroid(surface.objectToWorld);
-      m_spatialCacheHash = m_linkedBlas->getSpatialMap().insert(centroid, surface.objectToWorld, this);
+      const Matrix4 firstInstanceObjectToWorld = calcFirstInstanceObjectToWorld();
+      const Vector3 centroid = getBlas()->input.getGeometryData().boundingBox.getTransformedCentroid(firstInstanceObjectToWorld);
+      m_spatialCacheHash = m_linkedBlas->getSpatialMap().insert(centroid, firstInstanceObjectToWorld, this);
     }
     
     // The D3D matrix on input, needs to be transposed before feeding to the VK API (left/right handed conversion)
@@ -399,32 +402,20 @@ namespace dxvk {
   RtInstance* InstanceManager::processSceneObject(
     const CameraManager& cameraManager, const RayPortalManager& rayPortalManager,
     BlasEntry& blas, const DrawCallState& drawCall, const MaterialData& materialData, const RtSurfaceMaterial& material) {
-    Matrix4 objectToWorld = drawCall.getTransformData().objectToWorld;
-    Matrix4 worldToProjection = drawCall.getTransformData().viewToProjection * drawCall.getTransformData().worldToView;
 
-    // An attempt to resolve cases where games pre-combine view and world matrices
-    if (RtxOptions::Get()->resolvePreCombinedMatrices() &&
-      isIdentityExact(drawCall.getTransformData().worldToView)) {
-      const auto* referenceCamera = &cameraManager.getCamera(drawCall.cameraType);
-      // Note: we may accept a data even from a prev frame, as we need any information to restore;
-      // but if camera data is stale, it introduces an scene object transform's lag
-      if (!referenceCamera->isValid(m_device->getCurrentFrameId()) &&
-        !referenceCamera->isValid(m_device->getCurrentFrameId() - 1)) {
-        referenceCamera = &cameraManager.getCamera(CameraType::Main);
-      }
-      objectToWorld = referenceCamera->getViewToWorld(false) * drawCall.getTransformData().objectToView;
-      worldToProjection = drawCall.getTransformData().viewToProjection * referenceCamera->getWorldToView(false);
-    }
+    // If the RtInstance represents multiple instances, use the full transform of the first copy for the spatial map.
+    // this prevents a bad de-duplication when the same replacement asset is used in multiple GeomPointInstancer prims.
+    Matrix4 firstInstanceObjectToWorld = drawCall.getTransformData().calcFirstInstanceObjectToWorld();
 
     // Search for an existing instance matching our input
-    RtInstance* currentInstance = findSimilarInstance(blas, material, objectToWorld, drawCall.cameraType, rayPortalManager);
+    RtInstance* currentInstance = findSimilarInstance(blas, material, firstInstanceObjectToWorld, drawCall.cameraType, rayPortalManager);
 
     if (currentInstance == nullptr) {
       // No existing match - so need to create one
       currentInstance = addInstance(blas);
     }
 
-    updateInstance(*currentInstance, cameraManager, blas, drawCall, materialData, material, objectToWorld, worldToProjection);
+    updateInstance(*currentInstance, cameraManager, blas, drawCall, materialData, material);
    
     return currentInstance;
   }
@@ -631,7 +622,7 @@ namespace dxvk {
     // NOTE: In the future we could extend this with heuristics as needed...
   }
 
-  RtInstance* InstanceManager::findSimilarInstance(const BlasEntry& blas, const RtSurfaceMaterial& material, const Matrix4& transform, CameraType::Enum cameraType, const RayPortalManager& rayPortalManager) {
+  RtInstance* InstanceManager::findSimilarInstance(const BlasEntry& blas, const RtSurfaceMaterial& material, const Matrix4& firstInstanceObjectToWorld, CameraType::Enum cameraType, const RayPortalManager& rayPortalManager) {
 
     // Disable temporal correlation between instances so that duplicate instances are not created
     // should a developer option change instance enough for it not to match anymore
@@ -642,7 +633,7 @@ namespace dxvk {
     RtInstance* result = nullptr;
 
     const uint32_t currentFrameIdx = m_device->getCurrentFrameId();
-    const Vector3 worldPosition = blas.input.getGeometryData().boundingBox.getTransformedCentroid(transform);
+    const Vector3 worldPosition = blas.input.getGeometryData().boundingBox.getTransformedCentroid(firstInstanceObjectToWorld);
     
     const float uniqueObjectDistanceSqr = RtxOptions::Get()->getUniqueObjectDistanceSqr();
 
@@ -652,7 +643,7 @@ namespace dxvk {
     // Search the BLAS for an instance matching ours
     {
       // Search for an exact match
-      result = const_cast<RtInstance*>(blas.getSpatialMap().getDataAtTransform(transform));
+      result = const_cast<RtInstance*>(blas.getSpatialMap().getDataAtTransform(firstInstanceObjectToWorld));
       if (result != nullptr) {
         return result;
       }
@@ -822,10 +813,9 @@ namespace dxvk {
                                        const BlasEntry& blas,
                                        const DrawCallState& drawCall,
                                        const MaterialData& materialData,
-                                       const RtSurfaceMaterial& material,
-                                       const Matrix4& transform,
-                                       const Matrix4& worldToProjection) {
+                                       const RtSurfaceMaterial& material) {
     currentInstance.m_categoryFlags = drawCall.getCategoryFlags();
+    currentInstance.surface.instancesToObject = drawCall.getTransformData().instancesToObject;
 
     // setFrameLastUpdated() must be called first as it resets instance's state on a first call in a frame
     const bool isFirstUpdateThisFrame = currentInstance.setFrameLastUpdated(m_device->getCurrentFrameId());
@@ -879,6 +869,7 @@ namespace dxvk {
         m_pResourceCache->find(material, currentInstance.surface.surfaceMaterialIndex);
 
         currentInstance.m_materialDataHash = drawCall.getMaterialData().getHash();
+        currentInstance.surface.hasMaterialChanged = currentInstance.m_materialHash != kEmptyHash && currentInstance.m_materialHash != material.getHash();
         currentInstance.m_materialHash = material.getHash();
         currentInstance.m_texcoordHash = drawCall.getGeometryData().hashes[HashComponents::VertexTexcoord];
         currentInstance.m_indexHash = drawCall.getGeometryData().hashes[HashComponents::Indices];
@@ -899,6 +890,8 @@ namespace dxvk {
         currentInstance.surface.associatedGeometryHash = drawCall.getHash(RtxOptions::Get()->GeometryAssetHashRule);
         currentInstance.surface.isTextureFactorBlend = drawCall.getMaterialData().isTextureFactorBlend;
         currentInstance.surface.isMotionBlurMaskOut = currentInstance.testCategoryFlags(InstanceCategories::IgnoreMotionBlur);
+        currentInstance.surface.ignoreTransparencyLayer = currentInstance.testCategoryFlags(InstanceCategories::IgnoreTransparencyLayer);
+
         // Note: Skip the spritesheet adjustment logic in the surface interaction when using Ray Portal materials as this logic
         // is done later in the Surface Material Interaction (and doing it in both places will just double up the animation).
         currentInstance.surface.skipSurfaceInteractionSpritesheetAdjustment = (materialData.getType() == MaterialDataType::RayPortal);
@@ -959,7 +952,7 @@ namespace dxvk {
         const bool isFirstUpdateAfterCreation = currentInstance.isCreatedThisFrame(m_device->getCurrentFrameId()) && isFirstUpdateThisFrame;
 
         // Note: objectToView is aliased on updates, since findSimilarInstance() doesn't discern it
-        Matrix4 objectToWorld = transform;
+        Matrix4 objectToWorld = drawCall.getTransformData().objectToWorld;
 
         // Hack for TREX-2272. In Portal, in the GLaDOS chamber, the monitors show a countdown timer with background, and the digits and background are coplanar.
         // We cannot reliably determine the digits material because it's a dynamic texture rendered by vgui that contains all kinds of UI things.
@@ -997,7 +990,7 @@ namespace dxvk {
     // Update instance flags.
     // Note: this should happen on instance updates and not creation because the same geometry can be drawn
     // with different flags, and the instance manager can match an old instance of a geometry to a new one with different draw mode.
-    currentInstance.m_vkInstance.flags = determineInstanceFlags(drawCall, worldToProjection, currentInstance.surface);
+    currentInstance.m_vkInstance.flags = determineInstanceFlags(drawCall, currentInstance.surface);
     currentInstance.isFrontFaceFlipped = (currentInstance.m_vkInstance.flags & VK_GEOMETRY_INSTANCE_TRIANGLE_FLIP_FACING_BIT_KHR) != 0;
 
     // Apply the decal sort index for this instance so we can approximate order correctness on the GPU in AHS
@@ -1128,7 +1121,7 @@ namespace dxvk {
     //     is inverted. Because the facing is determined in object space, an instance transform does not change the winding,
     //     but a geometry transform does.
     // https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkGeometryInstanceFlagBitsNV.html 
-    currentInstance.m_isObjectToWorldMirrored = isMirrorTransform(transform);
+    currentInstance.m_isObjectToWorldMirrored = isMirrorTransform(drawCall.getTransformData().objectToWorld);
 
     bool billboardsGotGenerated = false;
     currentInstance.m_billboardCount = 0;
@@ -1964,6 +1957,7 @@ namespace dxvk {
       billboard.vertexOpacityHash = 0;
       billboard.allowAsIntersectionPrimitive = true;
       billboard.isBeam = true;
+      billboard.isCameraFacing = false;
       m_billboards.push_back(billboard);
 
       // If there are enough vertices left in the strip to fit one more beam, after the separator pair,

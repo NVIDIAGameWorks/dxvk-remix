@@ -23,7 +23,6 @@
 
 #include <vector>
 #include <filesystem>
-#include <unordered_set>
 
 #include "dxvk_include.h"
 #include "dxvk_shader.h"
@@ -147,6 +146,9 @@ public: \
 // GLSL: uniform texture2D
 #define TEXTURE2D(binding)                  { binding, VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, VK_IMAGE_VIEW_TYPE_2D },
 
+#define INTERFACE_INPUT_SLOTS(n)            static const uint32_t getInterfaceInputSlots() { return n; }
+#define INTERFACE_OUTPUT_SLOTS(n)           static const uint32_t getInterfaceOutputSlots() { return n; }
+
 #define PUSH_CONSTANTS(data) \
 static const uint32_t getPushBufferSize() { return sizeof(data); }
 
@@ -159,6 +161,8 @@ namespace dxvk {
   public:
     static const bool requiresGlobalExtraLayout() { return false; }
     static const uint32_t getPushBufferSize() { return 0; }
+    static const uint32_t getInterfaceInputSlots() { return 0; }
+    static const uint32_t getInterfaceOutputSlots() { return 0; }
   };
 
   // This is a helper for pre-warming pipelines with the driver.
@@ -224,8 +228,10 @@ namespace dxvk {
       m_extraLayouts.push_back(extraLayout);
     }
 
+#ifdef REMIX_DEVELOPMENT
     void checkForShaderChanges();
     bool reloadShaders();
+#endif
 
     template<typename T>
     Rc<DxvkShader> getShader() {
@@ -250,7 +256,9 @@ namespace dxvk {
         info.m_requiresExtraLayout = T::requiresGlobalExtraLayout();
         info.m_slots = T::getResourceSlots();
         info.m_staticCode = SpirvCodeBuffer(uint32_t(codeSize / sizeof(uint32_t)), staticCode);
-        
+        info.m_interfaceInputs = T::getInterfaceInputSlots();
+        info.m_interfaceOutputs = T::getInterfaceOutputSlots();
+
         Rc<DxvkShader> shader = createShader(info);
         info.m_shader.push_back(shader);
 
@@ -278,12 +286,12 @@ namespace dxvk {
       uint32_t m_pushBufferSize;
       bool m_requiresExtraLayout;
       VkShaderStageFlagBits m_shaderType;
+      uint32_t m_interfaceInputs;
+      uint32_t m_interfaceOutputs;
     };
 
     ShaderManager();
     ~ShaderManager() = default;
-
-    bool compileShaders();
 
     Rc<DxvkShader> createShader(const ShaderInfo& info) {
       DxvkShaderOptions options;
@@ -293,31 +301,21 @@ namespace dxvk {
       }
 
       Rc<DxvkShader> shader = new DxvkShader(info.m_shaderType,
-        info.m_slots.size(), info.m_slots.data(), { 0u, 0u, 0u, info.m_pushBufferSize }, info.m_staticCode,
+        info.m_slots.size(), info.m_slots.data(), { info.m_interfaceInputs, info.m_interfaceOutputs, 0u, info.m_pushBufferSize }, info.m_staticCode,
         options, DxvkShaderConstData());
 
       shader->setDebugName(info.m_name);
       shader->generateShaderKey();
-      m_device->registerShader(shader);
+      m_device->registerShader(shader, true);
 
       return shader;
     }
 
     static ShaderManager* s_instance;
 
-    std::filesystem::path m_sourceRootPath;
-    const std::filesystem::path m_tempFolderPath;
-
-    // Note: Paths reduced to string in advance to avoid constant conversions to UTF-8 strings from path objects (paths should still be used
-    // whenever a path needs to be manipulated).
-    const std::string m_tempFolder;
-    std::string m_shaderFolder;
-    std::string m_rtxShaderFolder;
-    std::string m_rtxdiIncludeFolder;
-    std::string m_compileScript;
-    std::string m_glslang;
-    std::string m_slangc;
+    const std::filesystem::path m_shaderBinaryPath;
     bool m_recompileShadersOnLaunch;
+    // HANDLE m_shaderChangeNotificationObject;
 
     DxvkDevice* m_device;
 
@@ -325,7 +323,5 @@ namespace dxvk {
 
     std::unordered_map<std::string, ShaderInfo> m_shaderMap;
     dxvk::mutex m_shaderMapLock;
-
-    HANDLE m_shaderChangeNotificationObject;
   };
 }

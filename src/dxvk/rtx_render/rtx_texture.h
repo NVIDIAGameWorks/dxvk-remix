@@ -22,7 +22,6 @@
 #pragma once
 
 #include "rtx_utils.h"
-#include "dxvk_context_state.h"
 #include "rtx_asset_data.h"
 #include "rtx_constants.h"
 
@@ -43,90 +42,75 @@ namespace dxvk {
     AUTO
   };
 
-  // The ManagedTexture holds streaming state for a given texture.
-  //  A texture can be loaded in many states, if it's initial 
-  //  memory location is host (system) memory, then there are 
-  //  various stages of promotion. Handled by this object.
-  //  
-  //  Host (System Memory) -> StrippedMips (Video Memory) -> Full (Video Memory)
-  //
-  // Once the texture is in it's final state, the owning TextureRef can choose to
-  //  promote the 'allMipsImageView' to its 'm_imageView', and release the managed texture.
-  //  When a managed texture is fully promoted, the members of TextureRef are modified in 
-  //  TextureRef::finalizePendingPromotion.
-  // 
-  // Members of TextureRef created from a ManagedTexture depend on the residency of the managed texture.
-  //  - HostMem and QueuedForUpload: TextureRef has an empty imageView and holds a reference to managedTexture
-  //  - VidMem : imageView contains the allMipsImageView from ManagedTexture, and the managedTexture reference is empty.
-  //
-  // For textures in system memory, we split the mips into two sets:
-  //  - Bigger mips: data is stored in linearImageDataLargeMips; this is loaded only as needed for an upload and
-  //    discarded immediately after, to conserve CPU memory
-  //  - Smaller mips: data is stored in linearImageDataSmallMips and kept as long as the texture object is alive,
-  //    to reduce latency when textures are first used
-  struct ManagedTexture : public RcObject {
-    friend struct TextureUtils;
 
+  constexpr uint8_t MAX_MIPS = 32;
+
+  // The ManagedTexture holds streaming state for a given texture.
+  struct ManagedTexture : public RcObject {
     enum struct State {
-      kUnknown,                                         // Texture was not initialized, its state is unknown.
-      kInitialized,                                     // Texture was initialized and image asset data discovered.
-      kQueuedForUpload,                                 // Texture image upload or RTX IO request is in-flight.
-      kVidMem,                                          // Texture image is in VID memory (either partial, or full mip-chain).
-      kFailed                                           // Texture image to upload or read, or was dropped.
+      kUnknown,         // Texture was not initialized, its state is unknown.
+      kInitialized,     // Texture was initialized and image asset data discovered.
+      kQueuedForUpload, // Texture image upload or RTX IO request is in-flight.
+      kVidMem,          // Texture image is in VID memory (either partial, or full mip-chain).
+      kFailed           // Texture image to upload or read, or was dropped.
     };
 
     // Stage 1 - Texture initialized, image asset data discovered.
-    Rc<ImageAssetDataView> assetData;
-    int mipCount = 0;                                   // how many mips in the original asset
-    int minPreloadedMip = -1;                           // highest resolution mip pre-loaded
-    uint64_t completionSyncpt = 0;                      // completion syncpoint value
+    Rc<AssetData>       assetData       = {};
+    DxvkImageCreateInfo futureImageDesc = {};
+    size_t              uniqueKey       = kInvalidTextureKey;
+    bool                canDemote       = true;
 
-    // Stage 2 - Video memory (stripped top mips) cache.
-    Rc<DxvkImageView> smallMipsImageView = nullptr;
+    // Stage 2 - Video memory
+    // The range [m_currentMip_begin, m_currentMip_end) defines the mip-levels that were used to create m_currentMipView.
+    // Maintains: 'm_currentMip_begin < m_currentMip_end'
+    // 'm_currentMip_end-1' is usually the smallest-resolution mip-level (1x1). m_currentMip_end is not included into the range.
+    // Example: asset is 1024x1024 (11 mips total), m_currentMip_begin=4, m_currentMip_end=11,
+    //          then m_currentMipView contains an image with mipcount=7: 64x64, 32x32, 16x16, 8x8, 4x4, 2x2, 1x1
+    Rc<DxvkImageView>   m_currentMipView     = {};
+    uint32_t            m_currentMip_begin   = 0;
+    uint32_t            m_currentMip_end     = 0;
 
-    // Stage 3 - Video memory (full mip chain loaded).
-    Rc<DxvkImageView> allMipsImageView = nullptr;
+    std::atomic_uint8_t m_requestedMips      = 0;
+    std::atomic<State>  state                = State::kUnknown;
+    uint32_t            frameQueuedForUpload = 0;
+    uint64_t            completionSyncpt     = 0; // completion syncpoint value
 
-    std::atomic<State> state = State::kUnknown;
-    size_t uniqueKey = kInvalidTextureKey;
-    bool canDemote = true;
-    uint32_t frameQueuedForUpload = 0;
+    // Texture streaming
+    uint16_t            samplerFeedbackStamp            = 0;          // unique linear index of this asset; required to keep 
+                                                                      // the data structure access simple (i.e. with a linear index, it's just an offset in array)
+    mutable uint32_t    frameLastUsed                   = UINT32_MAX;
+    mutable uint32_t    frameLastUsedForSamplerFeedback = UINT32_MAX;
 
-    bool good() const {
-      return state != State::kUnknown && state != State::kFailed;
-    }
-
-    void demote();
-
-  private:
-    DxvkImageCreateInfo futureImageDesc;
+  public:
+    bool hasUploadedMips(uint32_t requiredMips, bool exact) const;
+    void requestMips(uint32_t requiredMips);
+    std::pair<uint16_t, uint16_t> calcRequiredMips_BeginEnd() const;
   };
+
+
+  inline size_t handleOrUniqueKey(size_t uniqueKey, VkImageView v) {
+    return uniqueKey == kInvalidTextureKey ? XXH3_64bits(&v, sizeof(v)) : uniqueKey;
+  }
+
 
   struct TextureRef {
     friend struct TextureUtils;
 
-    TextureRef()
-    { }
-        
+    TextureRef() = default;
+
     // True vidmem texture-ref
     //  uniqueKey can be used to link this TextureRef to another TextureRef (e.g. HOST promoted TextureRef's)
-    TextureRef(Rc<DxvkImageView> image, size_t uniqueKey = kInvalidTextureKey)
-      : m_imageView(std::move(image)) {
-      // If a key has been provided, use it (i.e. has this RtTexture been created from a promotion).
-      if (uniqueKey == kInvalidTextureKey) {
-        // A unique key based on the VkImageView handle
-        VkImageView view = m_imageView->handle();
-        this->m_uniqueKey = XXH3_64bits(&view, sizeof(view));
-      } else
-        this->m_uniqueKey = uniqueKey;
-    }
+    explicit TextureRef(Rc<DxvkImageView> image, size_t uniqueKey = kInvalidTextureKey)
+      : m_imageView{ std::move(image) }
+      , m_managedTexture{ nullptr }
+      , m_uniqueKey{ handleOrUniqueKey(uniqueKey, m_imageView->handle()) } { }
 
     // Promised reference to a future texture
     explicit TextureRef(const Rc<ManagedTexture>& managedTexture)
-      : m_uniqueKey(managedTexture.ptr() ? managedTexture->uniqueKey : kInvalidTextureKey)
-      , m_imageView(managedTexture.ptr() ? managedTexture->allMipsImageView : nullptr) // Load the full quality image view directly into texture ref (if it exists)
-      , m_managedTexture(managedTexture) 
-    { }
+      : m_imageView{ nullptr }
+      , m_managedTexture{ managedTexture }
+      , m_uniqueKey{ managedTexture.ptr() ? managedTexture->uniqueKey : kInvalidTextureKey } { }
       
     bool isImageEmpty() const {
       return getImageView() == nullptr;
@@ -137,7 +121,7 @@ namespace dxvk {
         return m_imageView.ptr();
 
       if (m_managedTexture.ptr())
-        return m_managedTexture->smallMipsImageView.ptr();
+        return m_managedTexture->m_currentMipView.ptr();
 
       return nullptr;
     }
@@ -174,37 +158,22 @@ namespace dxvk {
       return (m_uniqueKey != kInvalidTextureKey);
     }
 
-    // Are the full resource and mips are ready
-    bool isFullyResident() const {
-      return m_imageView.ptr();
-    }
-
-    // Theres still pending promotion work in the managed texture
-    bool isPromotable() const {
-      return !isFullyResident() && m_managedTexture.ptr();
+    void tryRequestMips(uint32_t requiredMips) {
+      if (m_managedTexture.ptr()) {
+        assert(!m_imageView.ptr());
+        m_managedTexture->requestMips(requiredMips);
+      }
     }
 
     void demote() {
-      if (m_managedTexture != nullptr) {
-        // This texture should never be demoted
-        if (!m_managedTexture->canDemote)
-          return;
+      assert((m_imageView.ptr() && !m_managedTexture.ptr()) || (!m_imageView.ptr() && m_managedTexture.ptr()));
 
-        m_managedTexture->demote();
+      if (m_imageView.ptr()) {
+        m_imageView = nullptr;
+      } else if (m_managedTexture.ptr()) {
+        m_managedTexture->requestMips(0);
       }
-      m_imageView = nullptr;
     }
-
-    // If we have a valid full resource here, the managed texture has served it's purpose.
-    bool finalizePendingPromotion() {
-      if (!isFullyResident() && (m_managedTexture->state == ManagedTexture::State::kVidMem)) {
-        // Promote the managed texture full mip chain view to our TextureRef
-        m_imageView = m_managedTexture->allMipsImageView;
-      }
-      return isFullyResident();
-    }
-
-    mutable uint32_t frameLastUsed = 0xFFFFFFFF;
 
   private:
     Rc<DxvkImageView> m_imageView;
@@ -269,8 +238,11 @@ namespace dxvk {
     };
 
     static Rc<ManagedTexture> createTexture(const Rc<AssetData>& assetData, ColorSpace colorSpace);
-
-    static void loadTexture(Rc<ManagedTexture> texture, const Rc<DxvkContext>& ctx, const bool isPreloading, int minimumMipLevel);
   };
+
+  void loadTextureRtxIo(const Rc<ManagedTexture>& texture,
+                        const Rc<DxvkImageView>& dstImage,
+                        const uint32_t mipLevels_begin,
+                        const uint32_t mipLevels_end /* non-inclusive */ );
 
 } // namespace dxvk
