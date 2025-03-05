@@ -77,16 +77,12 @@ namespace dxvk {
   SceneManager::~SceneManager() {
   }
 
-  bool SceneManager::areReplacementsLoaded() const {
-    return m_pReplacer->areReplacementsLoaded();
+  bool SceneManager::areAllReplacementsLoaded() const {
+    return m_pReplacer->areAllReplacementsLoaded();
   }
 
-  bool SceneManager::areReplacementsLoading() const {
-    return m_pReplacer->areReplacementsLoading();
-  }
-
-  const std::string SceneManager::getReplacementStatus() const {
-    return m_pReplacer->getReplacementStatus();
+  std::vector<Mod::State> SceneManager::getReplacementStates() const {
+    return m_pReplacer->getReplacementStates();
   }
 
   // Returns wall time between start of app and current time.

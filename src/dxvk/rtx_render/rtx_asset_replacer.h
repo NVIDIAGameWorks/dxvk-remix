@@ -200,9 +200,11 @@ namespace dxvk {
     // returns true if the state of replacements has changed.
     bool checkForChanges(const Rc<DxvkContext>& context);
 
-    bool areReplacementsLoaded() const;
-    bool areReplacementsLoading() const;
-    const std::string& getReplacementStatus() const;
+
+    // Returns true if all replacement mods are in the loaded state, false otherwise.
+    bool areAllReplacementsLoaded() const;
+    // Gets the states of all the current replacement mods.
+    std::vector<Mod::State> getReplacementStates() const;
 
     const bool hasNewSecretReplacementInfo() const {
       return m_bSecretReplacementsUpdated;

@@ -57,7 +57,7 @@ namespace dxvk {
   void ImGuiCapture::show(const Rc<DxvkContext>& ctx) {
     auto capturer = ctx->getCommonObjects()->capturer();
     const bool disableCapture =
-      ctx->getCommonObjects()->getSceneManager().areReplacementsLoaded() &&
+      ctx->getCommonObjects()->getSceneManager().areAllReplacementsLoaded() &&
       RtxOptions::Get()->getEnableAnyReplacements();
     constexpr auto headerFlagsDefaultOpen = kCollapsingHeaderFlags | ImGuiTreeNodeFlags_DefaultOpen;
     if(ImGui::CollapsingHeader("USD Scene Capture", headerFlagsDefaultOpen)) {
