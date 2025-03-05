@@ -1,0 +1,177 @@
+#pragma once
+#include "rtx/utility/color.slangh"
+
+// https://en.wikipedia.org/wiki/Table_of_spherical_harmonics#Real_spherical_harmonics
+#define SH_C0 (0.5f * sqrt(1.0f / pi)) // ~0.282095
+#define SH_C1 (0.5f * sqrt(3.0f / pi)) // ~0.488603
+
+// Used for zonal coefficients only (M=0)
+#define SH_C2 (0.25f * sqrt(5.f / pi)) // ~0.315392
+#define SH_C3 (0.25f * sqrt(7.f / pi)) // ~0.373176
+
+interface IHarmonic
+{
+  float4 getY();
+  float2 getCoCg();
+
+  [mutating] void setY(float4 y);
+  [mutating] void setCoCg(float2 cocg);
+};
+
+
+// stores luminance as 2nd order SH, with average chrominance as scalar
+struct SphericalHarmonic : IHarmonic
+{
+  float4 shY; // luminance encoded as SH (L[1,1], L[1,-1], L[1,0], L[0,0])
+  float2 CoCg; // non-directional chrominance value
+
+  float4 getY() { return shY; }
+  float2 getCoCg() { return CoCg; }
+
+  [mutating] void setY(float4 y) { shY = y; }
+  [mutating] void setCoCg(float2 cocg) { CoCg = cocg; }
+
+  static SphericalHarmonic create()
+  {
+    SphericalHarmonic sh;
+    sh.shY = 0..xxxx;
+    sh.CoCg = 0..xx;
+    return sh;
+  }
+
+  // evaluates the SH basis function for a given (cartesian, normalized) direction vector
+  float4 evalShBasis(float3 D)
+  {
+    const float L00 = SH_C0;
+    const float L1_1 = SH_C1 * D.y;
+    const float L10 = SH_C1 * D.z;
+    const float L11 = SH_C1 * D.x;
+    return float4(L11, L1_1, L10, L00);
+  }
+  
+  float3 evaluateHenyeyGreenstein(float3 D, float g)
+  {
+    float4 shBasis = evalShBasis(D);
+    float4 hgBasis = float4(g.xxx, 1.f);
+    float4 hgProjectedZH = hgBasis * shBasis;
+    float resultY = dot(shY, hgProjectedZH);
+
+    // we modified luminance, so adjust chrominance to match
+    float modifier = (shY.w == 0.f || resultY == 0.f) ? 0.f : (SH_C0 * resultY / shY.w);
+    float2 adjCoCg = CoCg * modifier;
+
+    return max(0, yCoCgToRGB(float3(resultY, adjCoCg)));
+  }
+
+  [mutating] void addRadiance(float3 color, float3 dir)
+  {
+    const float3 YCoCg = rgbToYCoCg(color);
+    const float Y = YCoCg.x;
+    if(any(isnan(dir)))
+      dir = 0..xxx;
+    CoCg += YCoCg.yz;
+    shY += evalShBasis(dir) * Y;
+  }
+
+  // returns the average irradiance over the sphere
+  float3 getIrradiance()
+  {
+    const float Y = max(0, shY.w);
+    return yCoCgToRGB(float3(Y, CoCg * SH_C0));
+  }
+
+  // projects irradiance on a surface along the normal N
+  float3 resolveColorToDiffuse(float3 N, float cosHalfAngle = 0.0f)
+  {
+    // https://media.contentapi.ea.com/content/dam/eacom/frostbite/files/gdc2018-precomputedgiobalilluminationinfrostbite.pdf
+    // page 49
+    const float d = dot(shY.xyz, N);
+    float Y = 0.25 * sqrt(4.0 * pi) * shY.w + 0.5 * sqrt(4.0 * pi / 3.0) * d;
+
+    // adjust for bent normal
+    Y *= (2.0f * pi * (1.0f - cosHalfAngle)) / pi;
+
+    // we modified luminance, so adjust chrominance to match
+    float modifier = (shY.w == 0.f || Y == 0.f) ? 0.f : (SH_C0 * Y / shY.w);
+    float2 adjCoCg = CoCg * modifier;
+    
+    return yCoCgToRGB(float3(Y, adjCoCg));
+  }
+
+  [mutating] void scale(const float scalar)
+  {
+    shY *= scalar;
+    CoCg *= scalar;
+  }
+
+  // Reduces "ringing" problem common with SH (lower k for more aggressive filter) 
+  // ref: https://www.ppsloan.org/publications/StupidSH36.pdf
+  [mutating] void hanningFilter(const float k) 
+  {
+    shY.xyz *= (1.0f + cos(pi / k)) * 0.5f;
+  }
+}
+
+namespace HarmonicsHelpers
+{
+  // interpolate between two SH samples
+  H lerp<H : IHarmonic>(H x, H y, float s)
+  {
+    H harmonic;
+    harmonic.setY(lerp(x.getY(), y.getY(), s));
+    harmonic.setCoCg(lerp(x.getCoCg(), y.getCoCg(), s));
+    return harmonic;
+  }
+
+  H load<H : IHarmonic>(Texture2D<float4> texY, Texture2D<float2> texCoCg, uint2 p)
+  {
+    H harmonic;
+    harmonic.setY(texY[p]);
+    harmonic.setCoCg(texCoCg[p]);
+    return harmonic;
+  }
+
+  H load<H : IHarmonic>(RWTexture2D<float4> texY, RWTexture2D<float2> texCoCg, uint2 p)
+  {
+    H harmonic;
+    harmonic.setY(texY[p]);
+    harmonic.setCoCg(texCoCg[p]);
+    return harmonic;
+  }
+
+  H load3D<H : IHarmonic>(Texture3D<float4> texY, Texture3D<float2> texCoCg, uint3 p)
+  {
+    H harmonic;
+    harmonic.setY(texY[p]);
+    harmonic.setCoCg(texCoCg[p]);
+    return harmonic;
+  }
+
+  H loadFiltered<H : IHarmonic>(Sampler2D<float4> texY, Sampler2D<float2> texCoCg, float2 uv)
+  {
+    H harmonic;
+    harmonic.setY(texY.SampleLevel(uv, 0));
+    harmonic.setCoCg(texCoCg.SampleLevel(uv, 0));
+    return harmonic;
+  }
+
+  H loadFiltered3D<H : IHarmonic>(Sampler3D<float4> texY, Sampler3D<float2> texCoCg, float3 uvw)
+  {
+    H harmonic;
+    harmonic.setY(texY.SampleLevel(uvw, 0));
+    harmonic.setCoCg(texCoCg.SampleLevel(uvw, 0));
+    return harmonic;
+  }
+
+  void store<H : IHarmonic>(const in H harmonic, RWTexture2D<float4> texY, RWTexture2D<float2> texCoCg, uint2 p)
+  {
+    texY[p] = harmonic.getY();
+    texCoCg[p] = harmonic.getCoCg();
+  }
+
+  void store3D<H : IHarmonic>(const in H harmonic, RWTexture3D<float4> texY, RWTexture3D<float2> texCoCg, uint3 p)
+  {
+    texY[p] = harmonic.getY();
+    texCoCg[p] = harmonic.getCoCg();
+  }
+}

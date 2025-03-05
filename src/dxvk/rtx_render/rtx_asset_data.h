@@ -49,8 +49,13 @@ namespace dxvk {
     VkFormat format = VK_FORMAT_UNDEFINED;
     VkExtent3D extent;
 
-    uint32_t mipLevels = 0;
-    uint32_t looseLevels = 0;
+    uint32_t mipLevels             = 0; // Amount of mip levels that is available on disk
+    uint32_t mininumLevelsToUpload = 0; // Minimum amount of tail mips that can be uploaded,
+                                        // e.g. if asset has 10 mips total, and MIN=6, then the asset
+                                        // cannot upload mips 8-9, 7-9, etc separately, it can only do mips 4-9 ('tail mips').
+                                        // Keeping this value large can be beneficial:
+                                        // e.g. if MIN=5, then mips 32x32, 16x16, 8x8, 4x4, 2x2, 1x1
+                                        // will be requested to be uploaded as one transaction, reducing the reads from disk.
     uint32_t numLayers = 0;
 
     std::filesystem::file_time_type lastWriteTime = {};
@@ -65,7 +70,7 @@ namespace dxvk {
              other.extent.height == extent.height &&
              other.extent.depth == extent.depth &&
              other.mipLevels == mipLevels &&
-             other.looseLevels == looseLevels &&
+             other.mininumLevelsToUpload == mininumLevelsToUpload &&
              other.numLayers == numLayers &&
              other.lastWriteTime == lastWriteTime;
     }
@@ -143,70 +148,6 @@ namespace dxvk {
 
     AssetInfo m_info;
     XXH64_hash_t m_hash;
-  };
-
-  class ImageAssetDataView : public AssetData {
-  public:
-    ImageAssetDataView(const Rc<AssetData>& sourceAsset, int minLevel)
-      : m_sourceAsset(sourceAsset)
-      , m_minLevel(minLevel) {
-      if (sourceAsset->info().type != AssetType::Image1D &&
-          sourceAsset->info().type != AssetType::Image2D &&
-          sourceAsset->info().type != AssetType::Image3D) {
-        throw DxvkError("Only image assets supported by image asset data view class!");
-      }
-      m_info = sourceAsset->info();
-      m_hash = sourceAsset->hash();
-
-      setMinLevel(minLevel);
-    }
-
-    const void* data(int layer, int level) override {
-      return m_sourceAsset->data(layer, level + m_minLevel);
-    }
-
-    void releaseSource() {
-      m_sourceAsset->releaseSource();
-    }
-
-    void evictCache(int layer, int level) override {
-      return m_sourceAsset->evictCache(layer, level + m_minLevel);
-    }
-
-    void placement(
-      int       layer,
-      int       face,
-      int       level,
-      uint64_t& offset,
-      size_t&   size) const override {
-      return m_sourceAsset->placement(layer, face, level + m_minLevel,
-        offset, size);
-    }
-
-    void setMinLevel(int minLevel) {
-      const auto& srcInfo = m_sourceAsset->info();
-
-      // minLevel must not be >= m_info.mipLevels
-      if (minLevel >= srcInfo.mipLevels) {
-        throw DxvkError("Minimum mip level is larger than the "
-                        "number of source asset mip levels!");
-      }
-
-      // Patch asset view info
-      m_info.mipLevels = srcInfo.mipLevels - minLevel;
-      m_info.looseLevels = srcInfo.looseLevels > minLevel ?
-        srcInfo.looseLevels - minLevel : 0;
-
-      m_info.extent.width = std::max(1u, srcInfo.extent.width >> minLevel);
-      m_info.extent.height = std::max(1u, srcInfo.extent.height >> minLevel);
-      m_info.extent.depth = std::max(1u, srcInfo.extent.depth >> minLevel);
-
-      m_minLevel = minLevel;
-    }
-
-  private:
-    const Rc<AssetData> m_sourceAsset;
-    int m_minLevel;
   };
 
 } // namespace dxvk

@@ -60,6 +60,56 @@
 //!>       RAY_PIPELINE
 //!>       GBUFFER_PSR
 
+/* NRC */
+
+//!variant gbuffer_raygen_nrc.rgen
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       ENABLE_NRC=1
+
+//!variant gbuffer_raygen_ser_nrc.rgen
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       RT_SHADER_EXECUTION_REORDERING
+//!>       ENABLE_NRC=1
+
+//!variant gbuffer_rayquery_nrc.comp
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       ENABLE_NRC=1
+
+//!variant gbuffer_rayquery_raygen_nrc.rgen
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       RAY_PIPELINE
+//!>       ENABLE_NRC=1
+
+//!variant gbuffer_psr_raygen_nrc.rgen
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       GBUFFER_PSR
+//!>       ENABLE_NRC=1
+
+//!variant gbuffer_psr_raygen_ser_nrc.rgen
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       RT_TRACE_RAY
+//!>       RAY_PIPELINE
+//!>       RT_SHADER_EXECUTION_REORDERING
+//!>       GBUFFER_PSR
+//!>       ENABLE_NRC=1
+
+//!variant gbuffer_psr_rayquery_nrc.comp
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       GBUFFER_PSR
+//!>       ENABLE_NRC=1
+
+//!variant gbuffer_psr_rayquery_raygen_nrc.rgen
+//!>       RAY_TRACING_PRIMARY_RAY
+//!>       RAY_PIPELINE
+//!>       GBUFFER_PSR
+//!>       ENABLE_NRC=1
+
 //!end-variants
 
 // Note: Opacity lighting approximation used in the GBuffer pass due to it being most visually
@@ -68,11 +118,14 @@
 // Note: Use thin film in the GBuffer pass for its usage in PSR on mirrorlike surfaces.
 #define OPAQUE_MATERIAL_USE_THIN_FILM 1
 #define OPAQUE_MATERIAL_USE_POM 1
+
+#ifdef GBUFFER_PSR
 // Note: This is done in primary rays only currently so that attenuation from volumetrics can be factored in
 // similar to how it was done previously when it was simply applied in compositing via the total virtual hit
 // distance, and ensuring that it does not attenuate secondary rays (since they do not receive inscattering and
 // attenuating them would cause large amounts of energy loss as a result).
 #define RESOLVER_USE_VOLUMETRIC_ATTENUATION 1
+#endif
 
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/common_bindings.slangh"

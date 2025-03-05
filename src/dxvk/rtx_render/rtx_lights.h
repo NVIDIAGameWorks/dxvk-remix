@@ -120,11 +120,13 @@ private:
 
 struct RtSphereLight {
   RtSphereLight(const Vector3& position, const Vector3& radiance, float radius,
-                const RtLightShaping& shaping, const XXH64_hash_t forceHash = kForceHashDefaultValue);
+                const RtLightShaping& shaping, float volumetricRadianceScale = kVolumetricRadianceScaleDefaultValue,
+                const XXH64_hash_t forceHash = kForceHashDefaultValue);
   // A function to try to create the Sphere Light. If creation fails, an empty optional is returned.
   static std::optional<RtSphereLight> tryCreate(
     const Vector3& position, const Vector3& radiance, float radius,
-    const RtLightShaping& shaping, const XXH64_hash_t forceHash = kForceHashDefaultValue);
+    const RtLightShaping& shaping, float volumetricRadianceScale = kVolumetricRadianceScaleDefaultValue,
+    const XXH64_hash_t forceHash = kForceHashDefaultValue);
 
   void applyTransform(const Matrix4& lightToWorld);
 
@@ -154,18 +156,25 @@ struct RtSphereLight {
     return m_shaping;
   }
 
+  float getVolumetricRadianceScale() const {
+    return m_volumetricRadianceScale;
+  }
+
 private:
+  static constexpr float kVolumetricRadianceScaleDefaultValue{ 1.0f };
   static constexpr XXH64_hash_t kForceHashDefaultValue{ kEmptyHash };
 
   static bool validateParameters(
     const Vector3& position, const Vector3& radiance, float radius,
-    const RtLightShaping& shaping, const XXH64_hash_t forceHash);
+    const RtLightShaping& shaping, float volumetricRadianceScale,
+    const XXH64_hash_t forceHash);
   void updateCachedHash();
 
   Vector3 m_position;
   Vector3 m_radiance;
   float m_radius;
   RtLightShaping m_shaping;
+  float m_volumetricRadianceScale;
 
   XXH64_hash_t m_cachedHash;
 };
@@ -173,12 +182,15 @@ private:
 struct RtRectLight {
   RtRectLight(const Vector3& position, const Vector2& dimensions,
               const Vector3& xAxis, const Vector3& yAxis, const Vector3& direction,
-              const Vector3& radiance, const RtLightShaping& shaping);
+              const Vector3& radiance, const RtLightShaping& shaping,
+              float volumetricRadianceScale = kVolumetricRadianceScaleDefaultValue);
+
   // A function to try to create the Rect Light. If creation fails, an empty optional is returned.
   static std::optional<RtRectLight> tryCreate(
     const Vector3& position, const Vector2& dimensions,
     const Vector3& xAxis, const Vector3& yAxis, const Vector3& direction,
-    const Vector3& radiance, const RtLightShaping& shaping);
+    const Vector3& radiance, const RtLightShaping& shaping,
+    float volumetricRadianceScale = kVolumetricRadianceScaleDefaultValue);
 
   void applyTransform(const Matrix4& lightToWorld);
 
@@ -216,11 +228,18 @@ struct RtRectLight {
     return m_shaping;
   }
 
+  float getVolumetricRadianceScale() const {
+    return m_volumetricRadianceScale;
+  }
+
 private:
+  static constexpr float kVolumetricRadianceScaleDefaultValue{ 1.0f };
+
   static bool validateParameters(
     const Vector3& position, const Vector2& dimensions,
     const Vector3& xAxis, const Vector3& yAxis, const Vector3& direction,
-    const Vector3& radiance, const RtLightShaping& shaping);
+    const Vector3& radiance, const RtLightShaping& shaping,
+    float volumetricRadianceScale);
   void updateCachedHash();
 
   Vector3 m_position;
@@ -234,6 +253,7 @@ private:
   Vector3 m_direction;
   Vector3 m_radiance;
   RtLightShaping m_shaping;
+  float m_volumetricRadianceScale;
 
   XXH64_hash_t m_cachedHash;
 };
@@ -241,12 +261,14 @@ private:
 struct RtDiskLight {
   RtDiskLight(const Vector3& position, const Vector2& halfDimensions,
               const Vector3& xAxis, const Vector3& yAxis, const Vector3& direction,
-              const Vector3& radiance, const RtLightShaping& shaping);
+              const Vector3& radiance, const RtLightShaping& shaping,
+              float volumetricRadianceScale = kVolumetricRadianceScaleDefaultValue);
   // A function to try to create the Disk Light. If creation fails, an empty optional is returned.
   static std::optional<RtDiskLight> tryCreate(
     const Vector3& position, const Vector2& halfDimensions,
     const Vector3& xAxis, const Vector3& yAxis, const Vector3& direction,
-    const Vector3& radiance, const RtLightShaping& shaping);
+    const Vector3& radiance, const RtLightShaping& shaping,
+    float volumetricRadianceScale = kVolumetricRadianceScaleDefaultValue);
 
   void applyTransform(const Matrix4& lightToWorld);
 
@@ -284,11 +306,18 @@ struct RtDiskLight {
     return m_shaping;
   }
 
+  float getVolumetricRadianceScale() const {
+    return m_volumetricRadianceScale;
+  }
+
 private:
+  static constexpr float kVolumetricRadianceScaleDefaultValue{ 1.0f };
+
   static bool validateParameters(
     const Vector3& position, const Vector2& halfDimensions,
     const Vector3& xAxis, const Vector3& yAxis, const Vector3& direction,
-    const Vector3& radiance, const RtLightShaping& shaping);
+    const Vector3& radiance, const RtLightShaping& shaping,
+    float volumetricRadianceScale);
   void updateCachedHash();
 
   Vector3 m_position;
@@ -302,15 +331,19 @@ private:
   Vector3 m_direction;
   Vector3 m_radiance;
   RtLightShaping m_shaping;
+  float m_volumetricRadianceScale;
 
   XXH64_hash_t m_cachedHash;
 };
 
 struct RtCylinderLight {
-  RtCylinderLight(const Vector3& position, float radius, const Vector3& axis, float axisLength, const Vector3& radiance);
+  RtCylinderLight(
+    const Vector3& position, float radius, const Vector3& axis, float axisLength,
+    const Vector3& radiance, float volumetricRadianceScale = kVolumetricRadianceScaleDefaultValue);
   // A function to try to create the Cylinder Light. If creation fails, an empty optional is returned.
   static std::optional<RtCylinderLight> tryCreate(
-    const Vector3& position, float radius, const Vector3& axis, float axisLength, const Vector3& radiance);
+    const Vector3& position, float radius, const Vector3& axis, float axisLength,
+    const Vector3& radiance, float volumetricRadianceScale = kVolumetricRadianceScaleDefaultValue);
 
   void applyTransform(const Matrix4& lightToWorld);
 
@@ -343,9 +376,16 @@ struct RtCylinderLight {
   Vector3 getRadiance() const {
     return m_radiance;
   }
+
+  float getVolumetricRadianceScale() const {
+    return m_volumetricRadianceScale;
+  }
 private:
+  static constexpr float kVolumetricRadianceScaleDefaultValue{ 1.0f };
+
   static bool validateParameters(
-    const Vector3& position, float radius, const Vector3& axis, float axisLength, const Vector3& radiance);
+    const Vector3& position, float radius, const Vector3& axis, float axisLength,
+    const Vector3& radiance, float volumetricRadianceScale);
   void updateCachedHash();
 
   Vector3 m_position;
@@ -353,15 +393,19 @@ private:
   Vector3 m_axis;
   float m_axisLength;
   Vector3 m_radiance;
+  float m_volumetricRadianceScale;
 
   XXH64_hash_t m_cachedHash;
 };
 
 struct RtDistantLight {
-  RtDistantLight(const Vector3& direction, float halfAngle, const Vector3& radiance, const XXH64_hash_t forceHash = kForceHashDefaultValue);
+  RtDistantLight(
+    const Vector3& direction, float halfAngle, const Vector3& radiance, float volumetricRadianceScale = kVolumetricRadianceScaleDefaultValue,
+    const XXH64_hash_t forceHash = kForceHashDefaultValue);
   // A function to try to create the Cylinder Light. If creation fails, an empty optional is returned.
   static std::optional<RtDistantLight> tryCreate(
-    const Vector3& direction, float halfAngle, const Vector3& radiance, const XXH64_hash_t forceHash = kForceHashDefaultValue);
+    const Vector3& direction, float halfAngle, const Vector3& radiance, float volumetricRadianceScale = kVolumetricRadianceScaleDefaultValue,
+    const XXH64_hash_t forceHash = kForceHashDefaultValue);
 
   void applyTransform(const Matrix4& lightToWorld);
 
@@ -386,16 +430,23 @@ struct RtDistantLight {
   Vector3 getRadiance() const {
     return m_radiance;
   }
+
+  float getVolumetricRadianceScale() const {
+    return m_volumetricRadianceScale;
+  }
 private:
+  static constexpr float kVolumetricRadianceScaleDefaultValue{ 1.0f };
   static constexpr XXH64_hash_t kForceHashDefaultValue{ kEmptyHash };
 
   static bool validateParameters(
-    const Vector3& direction, float halfAngle, const Vector3& radiance, const XXH64_hash_t forceHash);
+    const Vector3& direction, float halfAngle, const Vector3& radiance, float volumetricRadianceScale,
+    const XXH64_hash_t forceHash);
   void updateCachedHash();
 
   Vector3 m_direction;
   float m_halfAngle;
   Vector3 m_radiance;
+  float m_volumetricRadianceScale;
 
   // Note: Computed from direction, not meant to be modified directly
   Vector4 m_orientation;
@@ -563,6 +614,22 @@ struct RtLight {
   void cacheLightReplacementAntiCullingProperties(const RtSphereLight& sphereLight) const {
     m_originalPosition = sphereLight.getPosition();
     m_originalLightRadius = sphereLight.getRadius();
+  }
+
+  float getVolumetricRadianceScale() const {
+    switch (m_type) {
+      case RtLightType::Sphere:
+        return m_sphereLight.getVolumetricRadianceScale();
+      case RtLightType::Rect:
+        return m_rectLight.getVolumetricRadianceScale();
+      case RtLightType::Disk:
+        return m_diskLight.getVolumetricRadianceScale();
+      case RtLightType::Cylinder:
+        return m_cylinderLight.getVolumetricRadianceScale();
+      case RtLightType::Distant:
+        return m_distantLight.getVolumetricRadianceScale();
+    }
+    return 0.f;
   }
 
   uint32_t isStaticCount = 0;

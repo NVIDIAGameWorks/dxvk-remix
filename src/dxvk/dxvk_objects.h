@@ -1,3 +1,24 @@
+/*
+* Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
 #pragma once
 
 #include "dxvk_gpu_event.h"
@@ -12,12 +33,8 @@
 #include "dxvk_pipemanager.h"
 #include "dxvk_renderpass.h"
 #include "dxvk_unbound.h"
-#include "rtx_render/rtx_volume_integrate.h"
-#include "rtx_render/rtx_volume_filter.h"
-#include "rtx_render/rtx_volume_preintegrate.h"
+#include "rtx_render/rtx_global_volumetrics.h"
 #include "rtx_render/rtx_pathtracer_gbuffer.h"
-#include "rtx_render/rtx_rtxdi_rayquery.h"
-#include "rtx_render/rtx_restir_gi_rayquery.h"
 #include "rtx_render/rtx_pathtracer_integrate_direct.h"
 #include "rtx_render/rtx_pathtracer_integrate_indirect.h"
 #include "rtx_render/rtx_demodulate.h"
@@ -42,6 +59,7 @@
 #include "rtx_render/rtx_ray_reconstruction.h"
 #include "rtx_render/rtx_reflex.h"
 #include "rtx_render/rtx_game_capturer.h"
+#include "rtx_render/rtx_dust_particles.h"
 
 #include "rtx_render/rtx_denoise_type.h"
 #include "../util/util_lazy.h"
@@ -51,6 +69,8 @@ namespace dxvk {
 
   class DxvkDevice;
   class DxvkDenoise;
+  class DxvkRtxdiRayQuery;
+  class DxvkReSTIRGIRayQuery;
   class DxvkToneMapping;
   class DxvkBloom;
   class RtxGeometryUtils;
@@ -60,6 +80,7 @@ namespace dxvk {
   class OpacityMicromapManager;
   class ImGUI;
   class RtxTextureManager;
+  class NeuralRadianceCache;
 
   class NGXContext;
 
@@ -113,16 +134,8 @@ namespace dxvk {
       return m_metaPack.get(m_device);
     }
 
-    DxvkVolumeIntegrate& metaVolumeIntegrate() {
-      return m_volumeIntegrate.get();
-    }
-
-    DxvkVolumeFilter& metaVolumeFilter() {
-      return m_volumeFilter.get();
-    }
-
-    DxvkVolumePreintegrate& metaVolumePreintegrate() {
-      return m_volumePreintegrate.get();
+    RtxGlobalVolumetrics& metaGlobalVolumetrics() {
+      return m_globalVolumetrics.get();
     }
 
     DxvkPathtracerGbuffer& metaPathtracerGbuffer() {
@@ -151,6 +164,10 @@ namespace dxvk {
 
     NeeCachePass& metaNeeCache() {
       return m_neeCache.get();
+    }
+
+    NeuralRadianceCache& metaNeuralRadianceCache() {
+      return m_neuralRadianceCache.get();
     }
 
     DxvkDenoise& metaPrimaryDirectLightDenoiser() {
@@ -279,6 +296,10 @@ namespace dxvk {
       return m_capturer;
     }
 
+    RtxDustParticles& metaDustParticles() {
+      return m_dustParticles.get(m_device);
+    }
+
     void onDestroy();
 
     void setWindowHandle(const HWND hwnd) {
@@ -321,9 +342,7 @@ namespace dxvk {
 
 
     // RTX Shaders
-    Active<DxvkVolumeIntegrate>             m_volumeIntegrate;
-    Active<DxvkVolumeFilter>                m_volumeFilter;
-    Active<DxvkVolumePreintegrate>          m_volumePreintegrate;
+    Active<RtxGlobalVolumetrics>            m_globalVolumetrics;
     Active<DxvkPathtracerGbuffer>           m_pathtracerGbuffer;
     Active<DxvkRtxdiRayQuery>               m_rtxdiRayQuery;
     Active<DxvkReSTIRGIRayQuery>            m_restirgiRayQuery;
@@ -331,6 +350,7 @@ namespace dxvk {
     Active<DxvkPathtracerIntegrateIndirect> m_pathtracerIntegrateIndirect;
     Active<DemodulatePass>                  m_demodulate;
     Active<NeeCachePass>                    m_neeCache;
+    Active<NeuralRadianceCache>             m_neuralRadianceCache;
     Active<DxvkDenoise>                     m_primaryDirectLightDenoiser;
     Active<DxvkDenoise>                     m_primaryIndirectLightDenoiser;
     Active<DxvkDenoise>                     m_primaryCombinedLightDenoiser;
@@ -355,6 +375,7 @@ namespace dxvk {
     Active<RtxImageUtils>                   m_imageUtils;
     Active<DxvkPostFx>                      m_postFx;
     Lazy<RtxReflex>                         m_reflex;
+    Lazy<RtxDustParticles>                  m_dustParticles;
 
     std::atomic<HWND>                       m_lastKnownWindowHandle;
   };

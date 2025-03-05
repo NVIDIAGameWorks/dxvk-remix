@@ -55,6 +55,20 @@ namespace dxvk {
      * This is a combination of the setting being enabled and the device supporting it.
      */
     bool isDLFGEnabled() const;
+
+    /**
+     * \brief Returns the number of interpolated frames
+     * 
+     * Returns 0 if DLFG is not enabled
+     */
+    uint32_t dlfgInterpolatedFrameCount() const;
+
+    /**
+     * \brief Returns the maximum number of interpolated frames supported by DLFG
+     * 
+     * Return 0 if DLFG is not supported
+     */
+    uint32_t dlfgMaxSupportedInterpolatedFrameCount() const;
     // NV-DXVK end
     
     /**
@@ -263,7 +277,10 @@ namespace dxvk {
      * 
      * Note that both \c offset and \c length must
      * be multiples of four, and that \c value is
-     * consumed as a four-byte word.
+     * consumed as a four-byte word. Additionally,
+     * \c length may be VK_WHOLE_SIZE to clear the
+     * whole buffer past the specified offset, and
+     * is also required to not be 0 otherwise.
      * \param [in] buffer The buffer to clear
      * \param [in] offset Offset of the range to clear
      * \param [in] length Bumber of bytes to clear
@@ -359,6 +376,7 @@ namespace dxvk {
     /**
      * \brief Copies data from one buffer to another
      * 
+     * Note that \c numBytes must be non-zero.
      * \param [in] dstBuffer Destination buffer
      * \param [in] dstOffset Destination data offset
      * \param [in] srcBuffer Source buffer
@@ -1488,11 +1506,17 @@ namespace dxvk {
       const DxvkFramebufferInfo&    newFb,
       const DxvkFramebufferInfo&    oldFb);
 
+// NV-DXVK start: mip-specific texture uploading
+  public:
+// NV-DXVK end
     void prepareImage(
             DxvkBarrierSet&         barriers,
       const Rc<DxvkImage>&          image,
       const VkImageSubresourceRange& subresources,
             bool                    flushClears = true);
+// NV-DXVK start: mip-specific texture uploading
+  protected:
+// NV-DXVK end
 
     bool updateIndexBufferBinding();
     void updateVertexBufferBindings();

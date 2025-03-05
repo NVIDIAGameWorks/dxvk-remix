@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -26,6 +26,17 @@
 
 //!variant gbuffer_psr_material_rayportal_closestHit.rchit
 //!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
+
+// NRC
+
+//!variant gbuffer_psr_nrc_material_opaque_translucent_closestHit.rchit
+//!>       ENABLE_NRC=1
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT
+
+//!variant gbuffer_psr_nrc_material_rayportal_closestHit.rchit
+//!>       ENABLE_NRC=1
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
+
 
 //!end-variants
 

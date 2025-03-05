@@ -94,10 +94,13 @@ struct OpaqueSurfaceMaterial
   float16_t anisotropy;
   uint16_t tangentTextureIndex;
 
+  // 24
+  uint16_t samplerFeedbackStamp;
+
   // Todo: Fixed function blend state info here in the future (Actually this should go on a Legacy Material, or some sort of non-PBR Legacy Surface)
 
   // padding (to keep size matching with MemoryPolymorphicSurfaceMaterial)
-  uint16_t data[8];
+  uint16_t data[7];
 
   bool hasValidDisplacement() {
     return flags & OPAQUE_SURFACE_MATERIAL_FLAG_HAS_DISPLACEMENT;
@@ -159,17 +162,20 @@ struct SubsurfaceMaterial
   f16vec3 volumetricAttenuationCoefficient;
   float16_t measurementDistance;
   f16vec3 singleScatteringAlbedo;
+
+  float16_t maxSampleRadius;
   
   // padding (to keep size matching with MemoryPolymorphicSurfaceMaterial)
-  uint16_t data[20];
+  uint16_t data[19];
 };
 
 struct SubsurfaceMaterialInteraction
 {
   uint16_t packedTransmittanceColor; // Pack with R5G6B5
   float16_t measurementDistance;
-  uint16_t packedSingleScatteringAlbedo; // Pack with R5G6B5
+  f16vec3 singleScatteringAlbedo;
   uint8_t volumetricAnisotropy;
+  uint16_t maxSampleRadius;
 };
 
 struct OpaqueSurfaceMaterialInteraction
@@ -268,6 +274,7 @@ struct PolymorphicSurfaceMaterialInteraction
   f16vec3 emissiveRadiance;
   f16vec3 vdata0;
   f16vec3 vdata1;
+  f16vec3 vdata2;
 
   float16_t fdata0;
   float16_t fdata1;

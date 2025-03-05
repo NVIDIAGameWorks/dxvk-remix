@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -23,6 +23,7 @@
 
 // this gets included from other modules, so use full path to external --- ugly!
 #include "../../../external/ngx_sdk_dldn/include/nvsdk_ngx.h"
+#include "../../../external/ngx_sdk_dldn/include/nvsdk_ngx_defs_dlssd.h"
 #include <memory>
 #include "../util/rc/util_rc_ptr.h"
 #include "rtx_semaphore.h"
@@ -88,6 +89,10 @@ namespace dxvk {
       return m_supportsDLFG;
     }
 
+    uint32_t dlfgMaxInterpolatedFrames() {
+      return m_dlfgMaxInterpolatedFrames;
+    }
+
     bool supportsRayReconstruction() {
       return m_supportsRayReconstruction;
     }
@@ -108,10 +113,11 @@ namespace dxvk {
     bool m_initialized = false;
     bool m_supportsDLSS = false;
     bool m_supportsDLFG = false;
+    uint32_t m_dlfgMaxInterpolatedFrames = 0;
     bool m_supportsRayReconstruction = false;
 
     bool checkDLSSSupport(NVSDK_NGX_Parameter* params);
-    bool checkDLFGSupport(NVSDK_NGX_Parameter* params);
+    void checkDLFGSupport(NVSDK_NGX_Parameter* params);
 
     std::string m_dlfgNotSupportedReason;
   };
@@ -235,6 +241,7 @@ namespace dxvk {
       const Resources::Resource* pBiasCurrentColorMask;
       const Resources::Resource* pHitDistance;
       const Resources::Resource* pInTransparencyLayer;
+      const Resources::Resource* pDisocclusionMask;
     };
 
     struct NGXSettings {
@@ -260,6 +267,7 @@ namespace dxvk {
       bool depthInverted,
       bool autoExposure,
       bool sharpening,
+      NVSDK_NGX_RayReconstruction_Hint_Render_Preset dlssdModel,
       NVSDK_NGX_PerfQuality_Value perfQuality = NVSDK_NGX_PerfQuality_Value_MaxPerf);
 
     /** Release DLSS-RR
@@ -303,31 +311,8 @@ namespace dxvk {
 
   class NGXDLFGContext final : public NGXFeatureContext {
   public:
-    typedef void (__cdecl* AppCreateTimelineSyncObjectsCallback_t)(void* app_context,
-                                                                   void** pp_sync_obj_signal,
-                                                                   uint64_t sync_obj_signal_value,
-                                                                   void** pp_sync_obj_wait,
-                                                                   uint64_t sync_obj_wait_value);
-    typedef void (__cdecl* AppSyncSignalCallback_t)(void* app_context,
-                                                    void** pp_cmd_list,
-                                                    void* sync_obj_signal,
-                                                    uint64_t sync_obj_signal_value);
-    typedef void (__cdecl* AppSyncWaitCallback_t)(void* app_context,
-                                                  void** pp_cmd_list,
-                                                  void* sync_obj_wait,
-                                                  uint64_t sync_obj_wait_value,
-                                                  int wait_cpu,
-                                                  void* sync_obj_signal,
-                                                  uint64_t sync_obj_signal_value);
-    typedef void (__cdecl* AppSyncFlushCallback_t)(void* app_context,
-                                                   void** pp_cmd_list,
-                                                   void* sync_obj_signal,
-                                                   uint64_t sync_obj_signal_value,
-                                                   int wait_cpu);
-
     typedef enum {
       Failure,
-      NeedWaitIdle,
       Success,
     } EvaluateResult;
 
@@ -335,12 +320,7 @@ namespace dxvk {
       Rc<DxvkContext> renderContext,
       VkCommandBuffer commandList,
       uint32_t displayOutSize[2],
-      VkFormat outputFormat,
-      AppCreateTimelineSyncObjectsCallback_t createTimelineSyncObjectsCallback,
-      AppSyncSignalCallback_t syncSignalCallback,
-      AppSyncWaitCallback_t syncWaitCallback,
-      AppSyncFlushCallback_t syncFlushCallback,
-      void* callbackData
+      VkFormat outputFormat
       );
 
     // interpolates one frame
@@ -353,7 +333,11 @@ namespace dxvk {
       Rc<DxvkImageView> compositedColorBuffer,
       Rc<DxvkImageView> motionVectors,
       Rc<DxvkImageView> depth,
-      const RtCamera& camera, Vector2 motionVectorScale, bool resetHistory);
+      const RtCamera& camera,
+      Vector2 motionVectorScale,
+      uint32_t interpolatedFrameIndex,
+      uint32_t interpolatedFrameCount,
+      bool resetHistory);
 
     void releaseNGXFeature() override;
 
@@ -368,7 +352,6 @@ namespace dxvk {
     NGXDLFGContext& operator=(NGXDLFGContext&&) noexcept = delete;
 
   private:
-    VkCommandPool m_ngxInternalCommandPool = nullptr;
     NVSDK_NGX_Handle* m_feature = nullptr;
   };
 }

@@ -53,6 +53,7 @@ namespace dxvk {
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_SHARED_TEXTURE_COORD_INPUT)
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_SHARED_SURFACE_INDEX_INPUT)
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_SHARED_SUBSURFACE_DATA_INPUT)
+        TEXTURE2D(INTEGRATE_DIRECT_BINDING_SHARED_SUBSURFACE_DIFFUSION_PROFILE_DATA_INPUT)
 
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT)
         TEXTURE2D(INTEGRATE_DIRECT_BINDING_PRIMARY_PERCEPTUAL_ROUGHNESS_INPUT)
@@ -103,7 +104,7 @@ namespace dxvk {
 
     const bool isOpacityMicromapSupported = OpacityMicromapManager::checkIsOpacityMicromapSupported(*m_device);
 
-    if (RtxOptions::prewarmAllShaderVariants()) {
+    if (RtxOptions::Shader::prewarmAllVariants()) {
       for (int32_t ommEnabled = isOpacityMicromapSupported; ommEnabled > 0; ommEnabled--) {
         pipelineManager.registerRaytracingShaders(getPipelineShaders(true, ommEnabled));
       }
@@ -150,6 +151,7 @@ namespace dxvk {
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_TEXTURE_COORD_INPUT, rtOutput.m_sharedTextureCoord.view, nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_SURFACE_INDEX_INPUT, rtOutput.m_sharedSurfaceIndex.view, nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_SUBSURFACE_DATA_INPUT, rtOutput.m_sharedSubsurfaceData.view, nullptr);
+    ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_SHARED_SUBSURFACE_DIFFUSION_PROFILE_DATA_INPUT, rtOutput.m_sharedSubsurfaceDiffusionProfileData.view, nullptr);
 
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT, rtOutput.m_primaryWorldShadingNormal.view, nullptr);
     ctx->bindResourceView(INTEGRATE_DIRECT_BINDING_PRIMARY_PERCEPTUAL_ROUGHNESS_INPUT, rtOutput.m_primaryPerceptualRoughness.view, nullptr);

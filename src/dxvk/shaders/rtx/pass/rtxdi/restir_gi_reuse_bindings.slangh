@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -24,8 +24,8 @@
 #include "rtx/pass/rtxdi/restir_gi_reuse_binding_indices.h"
 #include "rtxdi/RtxdiParameters.h"
 
-layout(binding = RESTIR_GI_REUSE_BINDING_RESERVOIR_INPUT_OUTPUT)
-RWStructuredBuffer<ReSTIRGI_PackedReservoir> RestirGIReservoirBuffer;
+// Inputs
+
 
 layout(r32ui, binding = RESTIR_GI_REUSE_BINDING_WORLD_SHADING_NORMAL_INPUT)
 Texture2D<uint> PrimaryWorldShadingNormal;
@@ -51,9 +51,6 @@ Texture2D<float2> PrimaryViewDirection;
 layout(r16f, binding = RESTIR_GI_REUSE_BINDING_CONE_RADIUS_INPUT)
 Texture2D<float> PrimaryConeRadius;
 
-layout(rg32f, binding = RESTIR_GI_REUSE_BINDING_LAST_GBUFFER)
-RWTexture2D<float2> GBufferLast;
-
 layout(rgba16f, binding = RESTIR_GI_REUSE_BINDING_MVEC_INPUT)
 Texture2D<float4> PrimaryVirtualMotionVector;
 
@@ -78,5 +75,16 @@ Texture2D<uint> SharedSurfaceIndex;
 layout(rgba16ui, binding = RESTIR_GI_REUSE_BINDING_SUBSURFACE_DATA_INPUT)
 Texture2D<uint4> SharedSubsurfaceData;
 
+layout(r11f_g11f_b10f, binding = RESTIR_GI_REUSE_BINDING_SUBSURFACE_DIFFUSION_PROFILE_DATA_INPUT)
+Texture2D<float3> SharedSubsurfaceDiffusionProfileData;
+
 layout(rg16f, binding = RESTIR_GI_REUSE_BINDING_GRADIENTS_INPUT)
 Texture2DArray<float2> RtxdiGradients;
+
+// Inputs / Outputs
+
+layout(rg32f, binding = RESTIR_GI_REUSE_BINDING_LAST_GBUFFER_INPUT_OUTPUT)
+RWTexture2D<float2> GBufferLast;
+
+layout(binding = RESTIR_GI_REUSE_BINDING_RESERVOIR_INPUT_OUTPUT)
+RWStructuredBuffer<ReSTIRGI_PackedReservoir> RestirGIReservoirBuffer;

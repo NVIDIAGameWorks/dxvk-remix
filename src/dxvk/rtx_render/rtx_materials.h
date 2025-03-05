@@ -83,7 +83,7 @@ struct RtSurface {
   RtSurface() {
   }
 
-  void writeGPUData(unsigned char* data, std::size_t& offset) const {
+  void writeGPUData(unsigned char* data, std::size_t& offset, size_t surfaceIndex = SIZE_MAX) const {
     [[maybe_unused]] const std::size_t oldOffset = offset;
 
     // Note: Position buffer and surface material index are required for proper
@@ -141,51 +141,69 @@ struct RtSurface {
     flags |= alphaState.emissiveBlend ?      (1 << 20) : 0;
     flags |= alphaState.isParticle ?         (1 << 21) : 0;
     flags |= alphaState.isDecal ?            (1 << 22) : 0;
-    // 23rd bit is available
+    flags |= hasMaterialChanged ?            (1 << 23) : 0;
     flags |= isAnimatedWater ?               (1 << 24) : 0;
     flags |= isClipPlaneEnabled ?            (1 << 25) : 0;
     flags |= isMatte ?                       (1 << 26) : 0;
     flags |= isTextureFactorBlend ?          (1 << 27) : 0;
     flags |= isMotionBlurMaskOut ?           (1 << 28) : 0;
     flags |= skipSurfaceInteractionSpritesheetAdjustment ? (1 << 29) : 0;
+    flags |= ignoreTransparencyLayer ?       (1 << 30) : 0;
     // Note: This flag is purely for debug view purpose. If we need to add more functional flags and running out of bits, we should move this flag to other place.
-    flags |= isInsideFrustum ?               (1 << 30) : 0;
+    flags |= isInsideFrustum ?               (1 << 31) : 0;
 
     writeGPUHelper(data, offset, flags);
 
     // Note: Matricies are stored on the cpu side in column-major order, the same as the GPU.
 
+    Matrix4 instanceToWorld = objectToWorld;
+    Matrix4 prevInstanceToWorld = prevObjectToWorld;
+    Matrix3 normalInstanceToWorld = normalObjectToWorld;
+
+    if (instancesToObject && surfaceIndexOfFirstInstance != SIZE_MAX && surfaceIndex != SIZE_MAX) {
+      const size_t instanceIndex = surfaceIndex - surfaceIndexOfFirstInstance;
+      if (instanceIndex >= instancesToObject->size()) {
+        // Note: This should never happen.
+        assert(false);
+        Logger::err("Error: invalid instance index in RtSurface::WriteGPUData.");
+      } else {
+        instanceToWorld = objectToWorld * (*instancesToObject)[instanceIndex];
+        prevInstanceToWorld = prevObjectToWorld * (*instancesToObject)[instanceIndex];
+        normalInstanceToWorld = transpose(inverse(Matrix3(instanceToWorld)));
+      }
+    }
+
     // Note: Last row of object to world matrix not needed as it does not encode any useful information
-    writeGPUHelper(data, offset, prevObjectToWorld.data[0].x);
-    writeGPUHelper(data, offset, prevObjectToWorld.data[0].y);
-    writeGPUHelper(data, offset, prevObjectToWorld.data[0].z);
-    writeGPUHelper(data, offset, prevObjectToWorld.data[1].x);
-    writeGPUHelper(data, offset, prevObjectToWorld.data[1].y);
-    writeGPUHelper(data, offset, prevObjectToWorld.data[1].z);
-    writeGPUHelper(data, offset, prevObjectToWorld.data[2].x);
-    writeGPUHelper(data, offset, prevObjectToWorld.data[2].y);
-    writeGPUHelper(data, offset, prevObjectToWorld.data[2].z);
-    writeGPUHelper(data, offset, prevObjectToWorld.data[3].x);
-    writeGPUHelper(data, offset, prevObjectToWorld.data[3].y);
-    writeGPUHelper(data, offset, prevObjectToWorld.data[3].z);
+    writeGPUHelper(data, offset, prevInstanceToWorld.data[0].x);
+    writeGPUHelper(data, offset, prevInstanceToWorld.data[0].y);
+    writeGPUHelper(data, offset, prevInstanceToWorld.data[0].z);
+    writeGPUHelper(data, offset, prevInstanceToWorld.data[1].x);
+    writeGPUHelper(data, offset, prevInstanceToWorld.data[1].y);
+    writeGPUHelper(data, offset, prevInstanceToWorld.data[1].z);
+    writeGPUHelper(data, offset, prevInstanceToWorld.data[2].x);
+    writeGPUHelper(data, offset, prevInstanceToWorld.data[2].y);
+    writeGPUHelper(data, offset, prevInstanceToWorld.data[2].z);
+    writeGPUHelper(data, offset, prevInstanceToWorld.data[3].x);
+    writeGPUHelper(data, offset, prevInstanceToWorld.data[3].y);
+    writeGPUHelper(data, offset, prevInstanceToWorld.data[3].z);
 
-    writeGPUHelper(data, offset, normalObjectToWorld.data[0]);
-    writeGPUHelper(data, offset, normalObjectToWorld.data[1]);
-    writeGPUHelper(data, offset, normalObjectToWorld.data[2].x);
-    writeGPUHelper(data, offset, normalObjectToWorld.data[2].y);
+    writeGPUHelper(data, offset, normalInstanceToWorld.data[0]);
+    writeGPUHelper(data, offset, normalInstanceToWorld.data[1]);
+    writeGPUHelper(data, offset, normalInstanceToWorld.data[2].x);
+    writeGPUHelper(data, offset, normalInstanceToWorld.data[2].y);
 
-    writeGPUHelper(data, offset, objectToWorld.data[0].x);
-    writeGPUHelper(data, offset, objectToWorld.data[0].y);
-    writeGPUHelper(data, offset, objectToWorld.data[0].z);
-    writeGPUHelper(data, offset, objectToWorld.data[1].x);
-    writeGPUHelper(data, offset, objectToWorld.data[1].y);
-    writeGPUHelper(data, offset, objectToWorld.data[1].z);
-    writeGPUHelper(data, offset, objectToWorld.data[2].x);
-    writeGPUHelper(data, offset, objectToWorld.data[2].y);
-    writeGPUHelper(data, offset, objectToWorld.data[2].z);
-    writeGPUHelper(data, offset, objectToWorld.data[3].x);
-    writeGPUHelper(data, offset, objectToWorld.data[3].y);
-    writeGPUHelper(data, offset, objectToWorld.data[3].z);
+    writeGPUHelper(data, offset, instanceToWorld.data[0].x);
+    writeGPUHelper(data, offset, instanceToWorld.data[0].y);
+    writeGPUHelper(data, offset, instanceToWorld.data[0].z);
+    writeGPUHelper(data, offset, instanceToWorld.data[1].x);
+    writeGPUHelper(data, offset, instanceToWorld.data[1].y);
+    writeGPUHelper(data, offset, instanceToWorld.data[1].z);
+    writeGPUHelper(data, offset, instanceToWorld.data[2].x);
+    writeGPUHelper(data, offset, instanceToWorld.data[2].y);
+    writeGPUHelper(data, offset, instanceToWorld.data[2].z);
+    writeGPUHelper(data, offset, instanceToWorld.data[3].x);
+    writeGPUHelper(data, offset, instanceToWorld.data[3].y);
+    writeGPUHelper(data, offset, instanceToWorld.data[3].z);
 
     // Note: Only 2 rows of texture transform written for now due to limit of 2 element restriction.
     writeGPUHelper(data, offset, textureTransform.data[0].x);
@@ -211,6 +229,10 @@ struct RtSurface {
 
     std::uint32_t textureFlags = 0;
 
+    assert((static_cast<uint32_t>(textureColorOperation) & 0x7) == static_cast<uint32_t>(textureColorOperation));
+    assert((static_cast<uint32_t>(textureAlphaOperation) & 0x7) == static_cast<uint32_t>(textureAlphaOperation));
+    assert(textureAlphaOperation != DxvkRtTextureOperation::Force_Modulate4x);
+
     textureFlags |= ((static_cast<uint32_t>(textureColorArg1Source) & 0x3));
     textureFlags |= ((static_cast<uint32_t>(textureColorArg2Source) & 0x3) << 2);
     textureFlags |= ((static_cast<uint32_t>(textureColorOperation)  & 0x7) << 4);
@@ -224,7 +246,7 @@ struct RtSurface {
     writeGPUHelper(data, offset, textureFlags);
 
     // Note: This element of the normal object to world matrix is encoded to minimize padding
-    writeGPUHelper(data, offset, normalObjectToWorld.data[2].z);
+    writeGPUHelper(data, offset, normalInstanceToWorld.data[2].z);
 
     writeGPUHelper(data, offset, clipPlane);
 
@@ -257,12 +279,14 @@ struct RtSurface {
   bool isEmissive = false;
   bool isMatte = false;
   bool isStatic = false;
+  bool hasMaterialChanged = false;
   bool isAnimatedWater = false;
   bool isClipPlaneEnabled = false;
   bool isTextureFactorBlend = false;
   bool isMotionBlurMaskOut = false;
   bool skipSurfaceInteractionSpritesheetAdjustment = false;
   bool isInsideFrustum = false;
+  bool ignoreTransparencyLayer = false;
 
   RtTextureArgSource textureColorArg1Source = RtTextureArgSource::Texture;
   RtTextureArgSource textureColorArg2Source = RtTextureArgSource::None;
@@ -320,6 +344,11 @@ struct RtSurface {
   XXH64_hash_t associatedGeometryHash; // NOTE: This is used for the debug view
   uint32_t objectPickingValue = 0; // NOTE: a value to fill GBUFFER_BINDING_PRIMARY_OBJECT_PICKING_OUTPUT
   uint32_t decalSortOrder = 0; // see: InstanceManager::m_decalSortOrderCounter
+
+  // PointInstancer support - this surface may represent multiple instances, one for each transform in instancesToObject
+  const std::vector<Matrix4>* instancesToObject = nullptr;
+  // on the GPU, multiple copies of this surface with different transforms will exist.  They will be in a continuous block, starting at surfaceIndexOfFirstInstance.
+  size_t surfaceIndexOfFirstInstance = SIZE_MAX;
 };
 
 // Shared Material Defaults/Limits
@@ -380,7 +409,9 @@ struct RtOpaqueSurfaceMaterial {
     const Vector3& emissiveColorConstant, bool enableEmission,
     bool ignoreAlphaChannel, bool enableThinFilm, bool alphaIsThinFilmThickness, float thinFilmThicknessConstant,
     uint32_t samplerIndex, float displaceIn, float displaceOut,
-    uint32_t subsurfaceMaterialIndex, bool isRaytracedRenderTarget) :
+    uint32_t subsurfaceMaterialIndex, bool isRaytracedRenderTarget,
+    uint16_t samplerFeedbackStamp
+  ) :
     m_albedoOpacityTextureIndex{ albedoOpacityTextureIndex }, m_normalTextureIndex{ normalTextureIndex },
     m_tangentTextureIndex { tangentTextureIndex }, m_heightTextureIndex { heightTextureIndex }, m_roughnessTextureIndex{ roughnessTextureIndex },
     m_metallicTextureIndex{ metallicTextureIndex }, m_emissiveColorTextureIndex{ emissiveColorTextureIndex },
@@ -390,7 +421,9 @@ struct RtOpaqueSurfaceMaterial {
     m_emissiveColorConstant{ emissiveColorConstant }, m_enableEmission{ enableEmission },
     m_ignoreAlphaChannel { ignoreAlphaChannel }, m_enableThinFilm { enableThinFilm }, m_alphaIsThinFilmThickness { alphaIsThinFilmThickness },
     m_thinFilmThicknessConstant { thinFilmThicknessConstant }, m_samplerIndex{ samplerIndex }, m_displaceIn{ displaceIn },
-    m_displaceOut{ displaceOut }, m_subsurfaceMaterialIndex(subsurfaceMaterialIndex), m_isRaytracedRenderTarget(isRaytracedRenderTarget) {
+    m_displaceOut{ displaceOut }, m_subsurfaceMaterialIndex(subsurfaceMaterialIndex), m_isRaytracedRenderTarget(isRaytracedRenderTarget),
+    m_samplerFeedbackStamp{ samplerFeedbackStamp }
+  {
     updateCachedData();
     updateCachedHash();
   }
@@ -473,8 +506,11 @@ struct RtOpaqueSurfaceMaterial {
     writeGPUHelper(data, offset, glm::packHalf1x16(m_anisotropy));
     writeGPUHelperExplicit<2>(data, offset, m_tangentTextureIndex);
 
-    // data[24 - 31]
-    writeGPUPadding<16>(data, offset);
+    // data[24]
+    writeGPUHelperExplicit<2>(data, offset, m_samplerFeedbackStamp);
+
+    // data[25 - 31]
+    writeGPUPadding<14>(data, offset);
     assert(offset - oldOffset == kSurfaceMaterialGPUSize);
   }
 
@@ -597,6 +633,7 @@ private:
     h = XXH64(&m_displaceOut, sizeof(m_displaceOut), h);
     h = XXH64(&m_subsurfaceMaterialIndex, sizeof(m_subsurfaceMaterialIndex), h);
     h = XXH64(&m_isRaytracedRenderTarget, sizeof(m_isRaytracedRenderTarget), h);
+    h = XXH64(&m_samplerFeedbackStamp, sizeof(m_samplerFeedbackStamp), h);
 
     m_cachedHash = h;
   }
@@ -644,6 +681,8 @@ private:
   uint32_t m_subsurfaceMaterialIndex;
 
   bool m_isRaytracedRenderTarget;
+
+  uint16_t m_samplerFeedbackStamp;
 
   XXH64_hash_t m_cachedHash;
 
@@ -935,8 +974,13 @@ struct RtSubsurfaceMaterial {
     const uint32_t subsurfaceTransmittanceTextureIndex,
     const uint32_t subsurfaceThicknessTextureIndex,
     const uint32_t subsurfaceSingleScatteringAlbedoTextureIndex,
-    const Vector3& subsurfaceTransmittanceColor, const float subsurfaceMeasurementDistance,
-    const Vector3& subsurfaceSingleScatteringAlbedo, const float subsurfaceVolumetricAnisotropy) :
+    const Vector3& subsurfaceTransmittanceColor,
+    const float subsurfaceMeasurementDistance,
+    const Vector3& subsurfaceSingleScatteringAlbedo,
+    const float subsurfaceVolumetricAnisotropy,
+    const float subsurfaceRadiusScale,
+    const float subsurfaceMaxSampleRadius)
+    :
     m_subsurfaceTransmittanceTextureIndex(subsurfaceTransmittanceTextureIndex),
     m_subsurfaceThicknessTextureIndex(subsurfaceThicknessTextureIndex),
     m_subsurfaceSingleScatteringAlbedoTextureIndex(subsurfaceSingleScatteringAlbedoTextureIndex),
@@ -944,9 +988,13 @@ struct RtSubsurfaceMaterial {
     m_subsurfaceMeasurementDistance { subsurfaceMeasurementDistance },
     m_subsurfaceSingleScatteringAlbedo { subsurfaceSingleScatteringAlbedo },
     m_subsurfaceVolumetricAnisotropy { subsurfaceVolumetricAnisotropy },
-    m_subsurfaceVolumetricAttenuationCoefficient { Vector3(-std::log(subsurfaceTransmittanceColor.x),
-                                                           -std::log(subsurfaceTransmittanceColor.y),
-                                                           -std::log(subsurfaceTransmittanceColor.z)) / subsurfaceMeasurementDistance }
+    // Because we do log on the transmittance color when mapping to attenuation coefficient, we need to clamp to a small epsilon value to avoid NaN issue.
+    m_subsurfaceVolumetricAttenuationCoefficient {
+      Vector3(-log(std::max(subsurfaceTransmittanceColor.x, FLT_EPSILON)),
+              -log(std::max(subsurfaceTransmittanceColor.y, FLT_EPSILON)),
+              -log(std::max(subsurfaceTransmittanceColor.z, FLT_EPSILON))) / std::max(subsurfaceMeasurementDistance, FLT_EPSILON) },
+    m_subsurfaceRadiusScale { subsurfaceRadiusScale },
+    m_subsurfaceMaxSampleRadius { subsurfaceMaxSampleRadius }
   {
     updateCachedHash();
   }
@@ -975,22 +1023,33 @@ struct RtSubsurfaceMaterial {
     // data[4]
     writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAnisotropy));
 
-    // data[5-7]
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAttenuationCoefficient.x));
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAttenuationCoefficient.y));
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAttenuationCoefficient.z));
+    // data[5-8]
+    if (m_subsurfaceRadiusScale < 0.0f) { // Thin Opaque
+      writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAttenuationCoefficient.x));
+      writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAttenuationCoefficient.y));
+      writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceVolumetricAttenuationCoefficient.z));
 
-    // data[8]
-    assert(m_subsurfaceMeasurementDistance <= FLOAT16_MAX);
-    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceMeasurementDistance));
+      assert(m_subsurfaceMeasurementDistance <= FLOAT16_MAX);
+      writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceMeasurementDistance));
+    } else { // SSS
+      writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceTransmittanceColor.x));
+      writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceTransmittanceColor.y));
+      writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceTransmittanceColor.z));
+
+      assert(m_subsurfaceRadiusScale <= FLOAT16_MAX);
+      writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceRadiusScale));
+    }
 
     // data[9-11]
     writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceSingleScatteringAlbedo.x));
     writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceSingleScatteringAlbedo.y));
     writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceSingleScatteringAlbedo.z));
 
-    // data[12-31]
-    writeGPUPadding<40>(data, offset);
+    // data[12]
+    writeGPUHelper(data, offset, glm::packHalf1x16(m_subsurfaceMaxSampleRadius));
+
+    // data[13-31]
+    writeGPUPadding<38>(data, offset);
   }
 
   bool operator==(const RtSubsurfaceMaterial& r) const {
@@ -1033,6 +1092,14 @@ struct RtSubsurfaceMaterial {
     return m_subsurfaceVolumetricAttenuationCoefficient;
   }
 
+  float getSubsurfaceRadiusScale() const {
+    return m_subsurfaceRadiusScale;
+  }
+
+  float getSubsurfaceMaxRadius() const {
+    return m_subsurfaceMaxSampleRadius;
+  }
+
 private:
   struct HashStruct {
     uint32_t m_subsurfaceTransmittanceTextureIndex;
@@ -1043,9 +1110,11 @@ private:
     Vector3 m_subsurfaceSingleScatteringAlbedo;
     float m_subsurfaceVolumetricAnisotropy;
     Vector3 m_subsurfaceVolumetricAttenuationCoefficient;
+    float m_subsurfaceRadiusScale;
+    float m_subsurfaceMaxSampleRadius;
 
     XXH64_hash_t calculateHash() {
-      static_assert(sizeof(HashStruct) == sizeof(uint32_t) * 14);
+      static_assert(sizeof(HashStruct) == sizeof(uint32_t) * 16);
       return XXH3_64bits(this, sizeof(HashStruct));
     }
   };
@@ -1059,16 +1128,18 @@ private:
       m_subsurfaceMeasurementDistance,
       m_subsurfaceSingleScatteringAlbedo,
       m_subsurfaceVolumetricAnisotropy,
-      m_subsurfaceVolumetricAttenuationCoefficient };
+      m_subsurfaceVolumetricAttenuationCoefficient,
+      m_subsurfaceRadiusScale,
+      m_subsurfaceMaxSampleRadius };
     m_cachedHash = hashData.calculateHash();
   }
 
-  // Thin Opaque Textures Index
+  // Thin Opaque Textures Index (Shared with SSS)
   uint32_t m_subsurfaceTransmittanceTextureIndex;
   uint32_t m_subsurfaceThicknessTextureIndex;
   uint32_t m_subsurfaceSingleScatteringAlbedoTextureIndex;
 
-  // Thin Opaque Properties
+  // Thin Opaque Properties (Shared with SSS)
   Vector3 m_subsurfaceTransmittanceColor;
   float m_subsurfaceMeasurementDistance;
   Vector3 m_subsurfaceSingleScatteringAlbedo; // scatteringCoefficient / attenuationCoefficient
@@ -1078,7 +1149,9 @@ private:
   Vector3 m_subsurfaceVolumetricAttenuationCoefficient; // scatteringCoefficient + absorptionCoefficient
   // Currently no need to cache scattering and absorption coefficient for single scattering simulation
 
-  // Todo: SSS properties using Diffusion Profile
+  // SSS properties using Diffusion Profile
+  float m_subsurfaceRadiusScale;
+  float m_subsurfaceMaxSampleRadius;
 
   XXH64_hash_t m_cachedHash;
 };

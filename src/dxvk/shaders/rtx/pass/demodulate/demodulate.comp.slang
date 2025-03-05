@@ -232,6 +232,7 @@ void applyDirectLightBoilingFilter(
 
 void outputToDebugViewAtTheEnd(
   uint2 pixelCoordinate,
+  vec4 indirectRadianceHitDistanceInput,
   vec3 primarySpecularAlbedo,
   vec3 secondarySpecularAlbedo,
   vec4 primaryDirectDiffuseInput,
@@ -357,7 +358,7 @@ void outputToDebugViewAtTheEnd(
     // Red - Invalid Primary Indirect Diffuse Signal
     // Green - Invalid Primary Indirect Specular Signal
     // Blue - Invalid Secondary Combined Diffuse/Specular Signal
-    storeInDebugView(ivec2(pixelCoordinate), vec4(
+    storeInDebugView(pixelCoordinate, vec4(
       primaryIndirectDiffuseConsistencyCheckFailure ? 1.0f : 0.0f,
       primaryIndirectSpecularConsistencyCheckFailure ? 1.0f : 0.0f,
       (secondaryCombinedDiffuseConsistencyCheckFailure || secondaryCombinedSpecularConsistencyCheckFailure) ? 1.0f : 0.0f,
@@ -367,92 +368,115 @@ void outputToDebugViewAtTheEnd(
     break;
   // Specular Albedos
   case DEBUG_VIEW_PRIMARY_SPECULAR_ALBEDO:
-    storeInDebugView(ivec2(pixelCoordinate), primarySpecularAlbedo);
+    storeInDebugView(pixelCoordinate, primarySpecularAlbedo);
     break;
   case DEBUG_VIEW_SECONDARY_SPECULAR_ALBEDO:
-    storeInDebugView(ivec2(pixelCoordinate), secondarySpecularAlbedo);
+    storeInDebugView(pixelCoordinate, secondarySpecularAlbedo);
     break;
   // Primary Direct Data
   case DEBUG_VIEW_NOISY_PRIMARY_DIRECT_DIFFUSE_RADIANCE:
-    storeInDebugView(ivec2(pixelCoordinate), primaryDirectDiffuseInput.xyz);
+    storeInDebugView(pixelCoordinate, primaryDirectDiffuseInput.xyz);
     break;
   case DEBUG_VIEW_NOISY_PRIMARY_DIRECT_SPECULAR_RADIANCE:
-    storeInDebugView(ivec2(pixelCoordinate), primaryDirectSpecularInput.xyz);
+    storeInDebugView(pixelCoordinate, primaryDirectSpecularInput.xyz);
     break;
   case DEBUG_VIEW_NOISY_PRIMARY_DIRECT_DIFFUSE_HIT_T:
-    storeInDebugView(ivec2(pixelCoordinate), primaryDirectDiffuseInput.w);
+    storeInDebugView(pixelCoordinate, primaryDirectDiffuseInput.w);
     break;
   case DEBUG_VIEW_NOISY_PRIMARY_DIRECT_SPECULAR_HIT_T:
-    storeInDebugView(ivec2(pixelCoordinate), primaryDirectSpecularInput.w);
+    storeInDebugView(pixelCoordinate, primaryDirectSpecularInput.w);
     break;
   case DEBUG_VIEW_DEMODULATED_NOISY_PRIMARY_DIRECT_DIFFUSE_RADIANCE:
-    storeInDebugView(ivec2(pixelCoordinate), primaryDirectDiffuseOutput.xyz);
+    storeInDebugView(pixelCoordinate, primaryDirectDiffuseOutput.xyz);
     break;
   case DEBUG_VIEW_DEMODULATED_NOISY_PRIMARY_DIRECT_SPECULAR_RADIANCE:
-    storeInDebugView(ivec2(pixelCoordinate), primaryDirectSpecularOutput.xyz);
+    storeInDebugView(pixelCoordinate, primaryDirectSpecularOutput.xyz);
     break;
   case DEBUG_VIEW_NRD_NORMALIZED_PRIMARY_DIRECT_DIFFUSE_HIT_T:
-    storeInDebugView(ivec2(pixelCoordinate), primaryDirectDiffuseOutput.w);
+    storeInDebugView(pixelCoordinate, primaryDirectDiffuseOutput.w);
     break;
   case DEBUG_VIEW_NRD_NORMALIZED_PRIMARY_DIRECT_SPECULAR_HIT_T:
-    storeInDebugView(ivec2(pixelCoordinate), primaryDirectSpecularOutput.w);
+    storeInDebugView(pixelCoordinate, primaryDirectSpecularOutput.w);
     break;
   // Primary Indirect Data
   case DEBUG_VIEW_NOISY_PRIMARY_INDIRECT_DIFFUSE_RADIANCE:
-    storeInDebugView(ivec2(pixelCoordinate), primaryIndirectDiffuseInput.xyz);
+    storeInDebugView(pixelCoordinate, primaryIndirectDiffuseInput.xyz);
     break;
   case DEBUG_VIEW_NOISY_PRIMARY_INDIRECT_SPECULAR_RADIANCE:
-    storeInDebugView(ivec2(pixelCoordinate), primaryIndirectSpecularInput.xyz);
+    storeInDebugView(pixelCoordinate, primaryIndirectSpecularInput.xyz);
     break;
   case DEBUG_VIEW_NOISY_PRIMARY_INDIRECT_DIFFUSE_HIT_T:
-    storeInDebugView(ivec2(pixelCoordinate), primaryIndirectDiffuseInput.w);
+    storeInDebugView(pixelCoordinate, primaryIndirectDiffuseInput.w);
     break;
   case DEBUG_VIEW_NOISY_PRIMARY_INDIRECT_SPECULAR_HIT_T:
-    storeInDebugView(ivec2(pixelCoordinate), primaryIndirectSpecularInput.w);
+    storeInDebugView(pixelCoordinate, primaryIndirectSpecularInput.w);
     break;
   case DEBUG_VIEW_DEMODULATED_NOISY_PRIMARY_INDIRECT_DIFFUSE_RADIANCE:
-    storeInDebugView(ivec2(pixelCoordinate), primaryIndirectDiffuseOutput.xyz);
+    storeInDebugView(pixelCoordinate, primaryIndirectDiffuseOutput.xyz);
     break;
   case DEBUG_VIEW_DEMODULATED_NOISY_PRIMARY_INDIRECT_SPECULAR_RADIANCE:
-    storeInDebugView(ivec2(pixelCoordinate), primaryIndirectSpecularOutput.xyz);
+    storeInDebugView(pixelCoordinate, primaryIndirectSpecularOutput.xyz);
     break;
   case DEBUG_VIEW_NRD_NORMALIZED_PRIMARY_INDIRECT_DIFFUSE_HIT_T:
-    storeInDebugView(ivec2(pixelCoordinate), primaryIndirectDiffuseOutput.w);
+    storeInDebugView(pixelCoordinate, primaryIndirectDiffuseOutput.w);
     break;
   case DEBUG_VIEW_NRD_NORMALIZED_PRIMARY_INDIRECT_SPECULAR_HIT_T:
-    storeInDebugView(ivec2(pixelCoordinate), primaryIndirectSpecularOutput.w);
+    storeInDebugView(pixelCoordinate, primaryIndirectSpecularOutput.w);
     break;
+  case DEBUG_VIEW_NOISY_PATHRACED_RAW_INDIRECT_RADIANCE:
+    storeInDebugView(pixelCoordinate, indirectRadianceHitDistanceInput.xyz);
+    break;
+  case DEBUG_VIEW_NOISY_SECONDARY_INDIRECT_RADIANCE:
+    if (!geometryFlags.primarySelectedIntegrationSurface)
+    {
+      storeInDebugView(pixelCoordinate, indirectRadianceHitDistanceInput.xyz);
+    }
+    break;
+  case DEBUG_VIEW_NOISY_SECONDARY_INDIRECT_DIFFUSE_RADIANCE:
+    if (!geometryFlags.primarySelectedIntegrationSurface
+      && !geometryFlags.firstSampledLobeIsSpecular)
+    {
+      storeInDebugView(pixelCoordinate, indirectRadianceHitDistanceInput.xyz);
+    }
+    break;
+  case DEBUG_VIEW_NOISY_SECONDARY_INDIRECT_SPECULAR_RADIANCE:
+    if (!geometryFlags.primarySelectedIntegrationSurface
+      && geometryFlags.firstSampledLobeIsSpecular)
+    {
+      storeInDebugView(pixelCoordinate, indirectRadianceHitDistanceInput.xyz);
+    }
+    break;    
   case DEBUG_VIEW_NOISY_SECONDARY_COMBINED_DIFFUSE_RADIANCE:
-    storeInDebugView(ivec2(pixelCoordinate), secondaryCombinedDiffuseInput.xyz);
+    storeInDebugView(pixelCoordinate, secondaryCombinedDiffuseInput.xyz);
     break;
   case DEBUG_VIEW_NOISY_SECONDARY_COMBINED_SPECULAR_RADIANCE:
-    storeInDebugView(ivec2(pixelCoordinate), secondaryCombinedSpecularInput.xyz);
+    storeInDebugView(pixelCoordinate, secondaryCombinedSpecularInput.xyz);
     break;
   case DEBUG_VIEW_NOISY_DEMODULATED_SECONDARY_COMBINED_DIFFUSE_RADIANCE:
-    storeInDebugView(ivec2(pixelCoordinate), secondaryCombinedDiffuseOutput.xyz);
+    storeInDebugView(pixelCoordinate, secondaryCombinedDiffuseOutput.xyz);
     break;
   case DEBUG_VIEW_NOISY_DEMODULATED_SECONDARY_COMBINED_SPECULAR_RADIANCE:
-    storeInDebugView(ivec2(pixelCoordinate), secondaryCombinedSpecularOutput.xyz);
+    storeInDebugView(pixelCoordinate, secondaryCombinedSpecularOutput.xyz);
     break;
   case DEBUG_VIEW_NOISY_PRIMARY_DIRECT_RADIANCE:
-    storeInDebugView(ivec2(pixelCoordinate), 
+    storeInDebugView(pixelCoordinate, 
       primaryDirectDiffuseInput.xyz + primaryDirectSpecularInput.xyz);
     break;
   case DEBUG_VIEW_NOISY_PRIMARY_INDIRECT_RADIANCE:
-    storeInDebugView(ivec2(pixelCoordinate), 
+    storeInDebugView(pixelCoordinate, 
       primaryIndirectDiffuseInput.xyz + primaryIndirectSpecularInput.xyz);
     break;
   case DEBUG_VIEW_NOISY_PRIMARY_RADIANCE:
-    storeInDebugView(ivec2(pixelCoordinate), 
+    storeInDebugView(pixelCoordinate, 
       primaryDirectDiffuseInput.xyz + primaryDirectSpecularInput.xyz +
       primaryIndirectDiffuseInput.xyz + primaryIndirectSpecularInput.xyz);
     break;
   case DEBUG_VIEW_NOISY_SECONDARY_RADIANCE:
-    storeInDebugView(ivec2(pixelCoordinate), 
+    storeInDebugView(pixelCoordinate, 
       secondaryCombinedDiffuseInput.xyz + secondaryCombinedSpecularInput.xyz);
     break;
   case DEBUG_VIEW_NOISY_RADIANCE:
-    storeInDebugView(ivec2(pixelCoordinate), 
+    storeInDebugView(pixelCoordinate, 
       primaryDirectDiffuseInput.xyz + primaryDirectSpecularInput.xyz +
       primaryIndirectDiffuseInput.xyz + primaryIndirectSpecularInput.xyz +
       secondaryCombinedDiffuseInput.xyz + secondaryCombinedSpecularInput.xyz);
@@ -498,6 +522,11 @@ void outputToDebugViewAtTheEnd(
     isValid &= isValidValue(primaryIndirectDiffuseOutput.w);
     // DEBUG_VIEW_NRD_NORMALIZED_PRIMARY_INDIRECT_SPECULAR_HIT_T
     isValid &= isValidValue(primaryIndirectSpecularOutput.w);
+    // DEBUG_VIEW_NOISY_PATHRACED_RAW_INDIRECT_RADIANCE
+    // DEBUG_VIEW_NOISY_SECONDARY_INDIRECT_RADIANCE
+    // DEBUG_VIEW_NOISY_SECONDARY_INDIRECT_DIFFUSE_RADIANCE
+    // DEBUG_VIEW_NOISY_SECONDARY_INDIRECT_SPECULAR_RADIANCE
+    isValid &= isValidValue(indirectRadianceHitDistanceInput);
     // DEBUG_VIEW_NOISY_SECONDARY_COMBINED_DIFFUSE_RADIANCE
     isValid &= isValidValue(secondaryCombinedDiffuseInput.xyz);
     // DEBUG_VIEW_NOISY_SECONDARY_COMBINED_SPECULAR_RADIANCE
@@ -507,7 +536,7 @@ void outputToDebugViewAtTheEnd(
     // DEBUG_VIEW_NOISY_DEMODULATED_SECONDARY_COMBINED_SPECULAR_RADIANCE
     isValid &= isValidValue(secondaryCombinedSpecularOutput.xyz);
     
-    accumulateInDebugViewAnd(ivec2(pixelCoordinate), isValid);
+    accumulateInDebugViewAnd(pixelCoordinate, isValid);
   }
   }
 }
@@ -539,6 +568,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID, uint2 localIndex : SV_Gro
   const vec3 primaryVirtualWorldNormal = PrimaryVirtualWorldNormalPerceptualRoughness[pixelCoordinate].xyz * 2.0f - 1.0f;
   const float primaryPerceptualRoughness = PrimaryVirtualWorldNormalPerceptualRoughness[pixelCoordinate].w;
   const float primaryLinearViewZ = PrimaryLinearViewZ[pixelCoordinate].x;
+  const bool isPrimaryMiss = primaryLinearViewZ == cb.primaryDirectMissLinearViewZ;
 
   // Load Secondary G-Buffer data
   const vec3 secondaryDiffuseAlbedo = SecondaryAlbedo[pixelCoordinate].xyz;
@@ -559,9 +589,9 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID, uint2 localIndex : SV_Gro
   // Note: Somewhat costly math operations, but the secondary specular albedo will (hopefully) be skipped out in most cases
   // due to its sole usage in secondary surface demodulation which is only enabled if the secondary surface mask is set (though
   // the debug view may drag this contribution in anyways potentially, so remove debug view code ideally).
-  const vec3 primarySpecularAlbedo = evalSpecularAlbedoGGXSchlick(
-    primaryBaseReflectivity, calcRoughness(primaryPerceptualRoughness),
-    primaryNormalDotViewDirection);
+  const vec3 primarySpecularAlbedo = !isPrimaryMiss
+    ? evalSpecularAlbedoGGXSchlick(primaryBaseReflectivity, calcRoughness(primaryPerceptualRoughness), primaryNormalDotViewDirection)
+    : vec3(0);
   const vec3 secondarySpecularAlbedo = geometryFlags.performPSTR || geometryFlags.performPSRR ? evalSpecularAlbedoGGXSchlick(
     secondaryBaseReflectivity, calcRoughness(secondaryPerceptualRoughness),
     secondaryNormalDotViewDirection) : vec3(0);
@@ -591,6 +621,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID, uint2 localIndex : SV_Gro
   // Pixels with zero Hit T will have denoiser try to fill in missing hit T data, 0 radiance will be used in filtering as-is
   // Note: inactive pixel inputs are not initialized to valid PT outputs as they are not used to generate outputs for the denoiser,
   //  but we set them to 0 here for DebugView usage purposes 
+  vec4 indirectRadianceHitDistanceInput = vec4(vec3(0), kEmptyPixelHitDistance);
   vec4 primaryDirectDiffuseInput = vec4(vec3(0), kEmptyPixelHitDistance);
   vec4 primaryDirectSpecularInput = vec4(vec3(0), kEmptyPixelHitDistance);
   vec4 primaryIndirectDiffuseInput = vec4(vec3(0), kEmptyPixelHitDistance);
@@ -613,7 +644,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID, uint2 localIndex : SV_Gro
   // Load the secondary combined signals
   if (geometryFlags.secondarySurfaceMask && !geometryFlags.primarySelectedIntegrationSurface)
   {
-    const vec4 indirectRadianceHitDistance = IndirectRadianceHitDistance[pixelCoordinate];
+    indirectRadianceHitDistanceInput = IndirectRadianceHitDistance[pixelCoordinate];
     
     secondaryCombinedDiffuseInput = SecondaryCombinedDiffuseRadiance[pixelCoordinate];
     secondaryCombinedSpecularInput = SecondaryCombinedSpecularRadiance[pixelCoordinate];
@@ -622,11 +653,15 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID, uint2 localIndex : SV_Gro
     // Note: Radiance only carried over on secondary surfaces, always through the sampled lobe (as this is the lobe indirect integration
     // is done on, the opposing lobe is only given direct lighting).
     if (geometryFlags.firstSampledLobeIsSpecular)
+    {
       secondaryCombinedSpecularInput = sanitizeRadianceHitDistance(
-        secondaryCombinedSpecularInput.xyz + indirectRadianceHitDistance.xyz, indirectRadianceHitDistance.w);
+        secondaryCombinedSpecularInput.xyz + indirectRadianceHitDistanceInput.xyz, indirectRadianceHitDistanceInput.w);
+    }
     else
+    {
       secondaryCombinedDiffuseInput = sanitizeRadianceHitDistance(
-        secondaryCombinedDiffuseInput.xyz + indirectRadianceHitDistance.xyz, indirectRadianceHitDistance.w);
+        secondaryCombinedDiffuseInput.xyz + indirectRadianceHitDistanceInput.xyz, indirectRadianceHitDistanceInput.w);
+    }
 
     // The secondary signal doesn't have advanced techniques like ReSTIR and has more noise and fireflies, especially for specular signal.
     // A more restrictive clamping threshold is needed to remove fireflies.
@@ -735,6 +770,7 @@ void main(uint2 pixelCoordinate : SV_DispatchThreadID, uint2 localIndex : SV_Gro
 
   outputToDebugViewAtTheEnd(
     pixelCoordinate,
+    indirectRadianceHitDistanceInput,
     primarySpecularAlbedo, secondarySpecularAlbedo,
     primaryDirectDiffuseInput, primaryDirectSpecularInput,
     primaryIndirectDiffuseInput, primaryIndirectSpecularInput,

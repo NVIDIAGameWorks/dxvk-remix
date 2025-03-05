@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -22,6 +22,8 @@
 
 #include <cassert>
 #include <tuple>
+#include <string>
+#include <optional>
 #include <nvapi.h>
 #include <NVIDIASansMd.ttf.h>
 #include <RobotoMonoRg.ttf.h>
@@ -41,6 +43,9 @@
 #include "rtx_render/rtx_hash_collision_detection.h"
 #include "rtx_render/rtx_options.h"
 #include "rtx_render/rtx_terrain_baker.h"
+#include "rtx_render/rtx_neural_radiance_cache.h"
+#include "rtx_render/rtx_rtxdi_rayquery.h"
+#include "rtx_render/rtx_restir_gi_rayquery.h"
 #include "dxvk_image.h"
 #include "../util/rc/util_rc_ptr.h"
 #include "../util/util_math.h"
@@ -51,6 +56,14 @@
 #include "dxvk_imgui_capture.h"
 #include "dxvk_scoped_annotation.h"
 #include "../../d3d9/d3d9_rtx.h"
+#include "dxvk_memory_tracker.h"
+
+
+namespace dxvk {
+  extern size_t g_streamedTextures_budgetBytes;
+  extern size_t g_streamedTextures_usedBytes;
+}
+
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 extern ImGuiKey ImGui_ImplWin32_VirtualKeyToImGuiKey(WPARAM wParam);
@@ -155,6 +168,7 @@ namespace dxvk {
     {"ignorelights", "Ignore Lights (optional)", &RtxOptions::Get()->ignoreLightsObject()},
     {"particletextures", "Particle Texture (optional)", &RtxOptions::Get()->particleTexturesObject()},
     {"beamtextures", "Beam Texture (optional)", &RtxOptions::Get()->beamTexturesObject()},
+    {"ignoretransparencytextures", "Ignore Transparency Layer Texture (optional)", &RtxOptions::Get()->ignoreTransparencyLayerTexturesObject()},
     {"lightconvertertextures", "Add Light to Textures (optional)", &RtxOptions::Get()->lightConverterObject()},
     {"decaltextures", "Decal Texture (optional)", &RtxOptions::Get()->decalTexturesObject()},
     {"terraintextures", "Terrain Texture", &RtxOptions::Get()->terrainTexturesObject()},
@@ -234,6 +248,15 @@ namespace dxvk {
         {0, "None"},
         {1, "Low"},
         {2, "High"},
+    } }
+  };
+
+  ImGui::ComboWithKey<NeuralRadianceCache::QualityPreset> neuralRadianceCacheQualityPresetCombo {
+    "Neural Radiance Cache Quality",
+    ImGui::ComboWithKey<NeuralRadianceCache::QualityPreset>::ComboEntries { {
+        {NeuralRadianceCache::QualityPreset::Ultra, "Ultra"},
+        {NeuralRadianceCache::QualityPreset::High, "High"},
+        {NeuralRadianceCache::QualityPreset::Medium, "Medium"}
     } }
   };
 
@@ -318,9 +341,43 @@ namespace dxvk {
           "Importance Sampled. Importance sampled mode uses typical GI sampling and it is not recommended for general use as it provides the noisiest output.\n"
           "It serves as a reference integration mode for validation of other indirect integration modes." },
         {IntegrateIndirectMode::ReSTIRGI, "ReSTIR GI", 
-          "ReSTIR GI provides improved indirect path sampling over \"Importance Sampled\" mode with better indirect diffuse and specular GI quality at increased performance cost."}
+          "ReSTIR GI provides improved indirect path sampling over \"Importance Sampled\" mode with better indirect diffuse and specular GI quality at increased performance cost."},
+        {IntegrateIndirectMode::NeuralRadianceCache, "Neural Radiance Cache", 
+          "Neural Radiance Cache (NRC). NRC is an AI based world space radiance cache. It is live trained by the path tracer\n"
+          "and allows paths to terminate early by looking up the cached value and saving performance.\n"
+          "NRC supports infinite bounces and often provides results closer to that of reference than ReSTIR GI\n"
+          "while increasing performance in scenarios where ray paths have 2 or more bounces on average."}
     } }
   };
+
+  static auto rayReconstructionModelCombo = ImGui::ComboWithKey<DxvkRayReconstruction::RayReconstructionModel>(
+    "Ray Reconstruction Model",
+    { {
+      {DxvkRayReconstruction::RayReconstructionModel::CNN, "CNN"},
+      {DxvkRayReconstruction::RayReconstructionModel::Transformer, "Transformer"},
+  } });
+
+  ImGui::ComboWithKey<int> dlfgMfgModeCombo {
+  "DLSS Frame Generation Mode",
+  ImGui::ComboWithKey<int>::ComboEntries { {
+      {1, "2x"},
+      {2, "3x"},
+      {3, "4x"},
+  } }
+  };
+
+  enum class TerrainMode {
+    None,
+    TerrainBaker,
+    AsDecals,
+  };
+  static auto terrainModeCombo = ImGui::ComboWithKey<TerrainMode>(
+    "Mode##terrain",
+    {
+      {        TerrainMode::None,              "None"},
+      {TerrainMode::TerrainBaker,     "Terrain Baker"},
+      {    TerrainMode::AsDecals, "Terrain-as-Decals"},
+  });
 
   // Styles 
   constexpr ImGuiSliderFlags sliderFlags = ImGuiSliderFlags_AlwaysClamp;
@@ -338,13 +395,17 @@ namespace dxvk {
     }
   }
 
-  bool ImGUI::showRayReconstructionEnable(bool supportsRR) {
+  bool ImGUI::showRayReconstructionEnable(bool supportsRR, bool showModelCombo) {
     // Only show DLSS-RR option if "showRayReconstructionOption" is set to true.
     bool changed = false;
     bool rayReconstruction = RtxOptions::Get()->enableRayReconstruction();
     if (RtxOptions::Get()->showRayReconstructionOption()) {
       ImGui::BeginDisabled(!supportsRR);
       ImGui::Checkbox("Ray Reconstruction", &RtxOptions::Get()->enableRayReconstructionRef());
+
+      if (showModelCombo && RtxOptions::Get()->enableRayReconstruction()) {
+        rayReconstructionModelCombo.getKey(&DxvkRayReconstruction::modelObject());
+      }
       ImGui::EndDisabled();
     }
 
@@ -413,6 +474,11 @@ namespace dxvk {
     pool_info.poolSizeCount = std::size(pool_sizes);
     pool_info.pPoolSizes = pool_sizes;
 
+    if (!NeuralRadianceCache::checkIsSupported(device)) {
+      // Remove unsupported option
+      integrateIndirectModeCombo.removeComboEntry(IntegrateIndirectMode::NeuralRadianceCache);
+    }
+
     m_device->vkd()->vkCreateDescriptorPool(m_device->handle(), &pool_info, nullptr, &m_imguiPool);
 
     // Initialize the core structures of ImGui and ImPlot
@@ -477,8 +543,8 @@ namespace dxvk {
       return;
     }
     
-    if (g_imguiTextureMap.find(hash) != g_imguiTextureMap.end())
-      g_imguiTextureMap.erase(hash);
+    // Note: Erase will do nothing if the hash does not exist in the map, and erase it if it is.
+    g_imguiTextureMap.erase(hash);
   }
 
   void ImGUI::SetFogStates(const fast_unordered_cache<FogState>& fogStates, XXH64_hash_t usedFogHash) {
@@ -542,19 +608,8 @@ namespace dxvk {
     ImGui::ProgressBar(vidmemUsedSizeMB / vidmemTotalSizeMB);
     ImGui::PopStyleColor();
 
-    // Display a warning if free video memory is below a threshold
-
-    const bool lowVideoMemory = freeVidMemRatio < 0.125f;
-
-    if (lowVideoMemory) {
-      // Note: Use caution when editing this text, it must fit on one line to avoid flickering (due to reserving 1 line of space for it).
-      ImGui::TextColored(ImVec4{ 0.87f, 0.75f, 0.20f, 1.0f }, "Free video memory low! Consider lowering resolution/quality settings.");
-    } else {
-      // Note: Pad with a blank line when no warning is present to avoid menu flicking (since memory can bounce up and down on the threshold
-      // in a distracting manner).
-      ImGui::Text("");
-    }
-
+    ImGui::TextWrapped("RTX Remix dynamically uses available VRAM to maximize texture quality.");
+    
     ImGui::Dummy(ImVec2 { 4, 0 });
   }
 
@@ -731,7 +786,7 @@ namespace dxvk {
       showMainMenu(ctx);
 
       // Uncomment to see the ImGUI demo, good reference!  Also, need to undefine IMGUI_DISABLE_DEMO_WINDOWS (in "imgui_demo.cpp")
-      // ImGui::ShowDemoWindow();
+      //ImGui::ShowDemoWindow();
     }
 
     if (showUI == UIType::Basic) {
@@ -744,7 +799,7 @@ namespace dxvk {
       showReflexLatencyStats();
     }
 
-    showErrorStatus(ctx);
+    showHudMessages(ctx);
 
     ImGui::Render();
   }
@@ -905,11 +960,7 @@ namespace dxvk {
 
     // Record the texture setting at the first frame it shows up
     static int lastFrameID = -1;
-    static unsigned int textureMipMapSetting = RtxOptions::Get()->minReplacementTextureMipMapLevel();
     int currentFrameID = ctx->getDevice()->getCurrentFrameId();
-    if (currentFrameID != lastFrameID + 1) {
-      textureMipMapSetting = RtxOptions::Get()->minReplacementTextureMipMapLevel();
-    }
 
     // Open popup if it's specified by user settings
     if (lastFrameID == -1) {
@@ -976,10 +1027,6 @@ namespace dxvk {
 
       if (ImGui::Button("Save Settings", ImVec2(buttonWidth, 0))) {
         RtxOptions::Get()->serialize();
-        if (textureMipMapSetting != RtxOptions::Get()->minReplacementTextureMipMapLevel()) {
-          ImGui::OpenPopup("Message");
-          textureMipMapSetting = RtxOptions::Get()->minReplacementTextureMipMapLevel();
-        }
         m_userGraphicsSettingChanged = false;
       }
 
@@ -993,15 +1040,6 @@ namespace dxvk {
 
       if (m_userGraphicsSettingChanged) {
         ImGui::TextWrapped("Settings have been changed, click 'Save Settings' to save them and persist on next launch");
-      }
-
-      if (ImGui::BeginPopupModal("Message", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::Text("The texture quality setting will take effect next time you start the app.");
-        ImGui::Indent(150);
-        if (ImGui::Button("OK", ImVec2(120, 0))) {
-          ImGui::CloseCurrentPopup();
-        }
-        ImGui::EndPopup();
       }
 
       ImGui::PopItemWidth();
@@ -1088,7 +1126,7 @@ namespace dxvk {
       ImGui::Indent(static_cast<float>(subItemIndent));
 
       if (dlss.supportsDLSS()) {
-        m_userGraphicsSettingChanged |= showRayReconstructionEnable(dlssRRSupported);
+        m_userGraphicsSettingChanged |= showRayReconstructionEnable(dlssRRSupported, false);
 
         // If DLSS-RR is toggled, need to update some path tracer options accordingly to improve quality
         if (oldUpscalerType != RtxOptions::Get()->upscalerType() || oldDLSSRREnabled != RtxOptions::Get()->enableRayReconstruction()) {
@@ -1213,24 +1251,8 @@ namespace dxvk {
 
     // Map presets to options
 
-    RtxOptions::Get()->updateGraphicsPresets(ctx->getDevice().ptr());
-
-    // Note: These settings aren't updated in updateGraphicsPresets since they are not in the RtxOptions class.
-    // Todo: Improve this preset override functionality and ideally move it into the updateGraphicsPresets section somehow [REMIX-1482]
-    if (RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Ultra ||
-        RtxOptions::Get()->graphicsPreset() == GraphicsPreset::High) {
-      rtxdiRayQuery.enableRayTracedBiasCorrectionRef() = true;
-      restirGiRayQuery.biasCorrectionModeRef() = ReSTIRGIBiasCorrection::PairwiseRaytrace;
-      restirGiRayQuery.useReflectionReprojectionRef() = true;
-      common->metaComposite().enableStochasticAlphaBlendRef() = true;
-      postFx.enableRef() = true;
-    } else if (RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Medium ||
-               RtxOptions::Get()->graphicsPreset() == GraphicsPreset::Low) {
-      rtxdiRayQuery.enableRayTracedBiasCorrectionRef() = false;
-      restirGiRayQuery.biasCorrectionModeRef() = ReSTIRGIBiasCorrection::BRDF;
-      restirGiRayQuery.useReflectionReprojectionRef() = false;
-      common->metaComposite().enableStochasticAlphaBlendRef() = false;
-      postFx.enableRef() = false;
+    if (m_userGraphicsSettingChanged) {
+      RtxOptions::Get()->updateGraphicsPresets(ctx->getDevice().ptr());
     }
 
     // Path Tracing Settings
@@ -1243,19 +1265,31 @@ namespace dxvk {
 
       m_userGraphicsSettingChanged |= minPathBouncesCombo.getKey(&RtxOptions::Get()->pathMinBouncesObject());
       m_userGraphicsSettingChanged |= maxPathBouncesCombo.getKey(&RtxOptions::Get()->pathMaxBouncesObject());
-      m_userGraphicsSettingChanged |= ImGui::Checkbox("Enable Volumetric Lighting", &RtxOptions::Get()->enableVolumetricLightingObject());
-
-      {
-        // Disable NRD denoiser quality list when DLSS-RR is enabled.
-        bool useRayReconstruction = RtxOptions::Get()->isRayReconstructionEnabled();
-        ImGui::BeginDisabled(useRayReconstruction);
-        m_userGraphicsSettingChanged |= denoiserQualityCombo.getKey(&RtxOptions::Get()->denoiseDirectAndIndirectLightingSeparatelyObject());
-        ImGui::EndDisabled();
-      }
-      
-      m_userGraphicsSettingChanged |= textureQualityCombo.getKey(&RtxOptions::Get()->minReplacementTextureMipMapLevelObject());
+      m_userGraphicsSettingChanged |= ImGui::Checkbox("Enable Volumetric Lighting", &RtxGlobalVolumetrics::enableObject());
       m_userGraphicsSettingChanged |= indirectLightingParticlesCombo.getKey(&indirectLightParticlesLevel);
       ImGui::SetTooltipToLastWidgetOnHover("Controls the quality of particles in indirect (reflection/GI) rays.");
+
+      // NRC Quality Preset dropdown
+      NeuralRadianceCache& nrc = common->metaNeuralRadianceCache();
+      if (nrc.checkIsSupported(m_device)) {
+        bool enableNeuralRadianceCache = RtxOptions::integrateIndirectMode() == IntegrateIndirectMode::NeuralRadianceCache;
+
+        // Disable NRC quality preset combo when NRC is not enabled.
+        ImGui::BeginDisabled(!enableNeuralRadianceCache);
+        
+        if (neuralRadianceCacheQualityPresetCombo.getKey(&NeuralRadianceCache::NrcOptions::qualityPresetObject())) {
+          nrc.applyQualityPreset();
+          m_userGraphicsSettingChanged = true;
+        }
+
+        ImGui::EndDisabled();
+      }
+
+      // Hide NRD denoiser quality list when DLSS-RR is enabled.
+      bool useRayReconstruction = RtxOptions::Get()->isRayReconstructionEnabled();
+      if (!useRayReconstruction) {
+        m_userGraphicsSettingChanged |= denoiserQualityCombo.getKey(&RtxOptions::Get()->denoiseDirectAndIndirectLightingSeparatelyObject());
+      }
 
       ImGui::EndDisabled();
     }
@@ -1355,27 +1389,107 @@ namespace dxvk {
     ImGui::Dummy(ImVec2(0.0f, 5.0f));
   }
 
-  void ImGUI::showErrorStatus(const Rc<DxvkContext>& ctx) {
+  struct HudMessage {
+    HudMessage(const std::string& text, const std::optional<std::string>& subText) : text{ text }, subText{ subText } {}
+
+    std::string text;
+    std::optional<std::string> subText;
+  };
+
+  void ImGUI::showHudMessages(const Rc<DxvkContext>& ctx) {
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     auto common = ctx->getCommonObjects();
-    std::vector<std::string> hudMessages;
+    const auto& pipelineManager = common->pipelineManager();
 
-    if(common->getSceneManager().areReplacementsLoading())
-      hudMessages.emplace_back("Loading enhancements...");
+    // Add needed Hud Messages
+
+    std::vector<HudMessage> hudMessages;
+
+    uint32_t asyncShaderCompilationCount = 0;
+    if (RtxOptions::Shader::enableAsyncCompilation()) {
+      asyncShaderCompilationCount = pipelineManager.remixShaderCompilationCount();
+    }
+
+    if (RtxOptions::Shader::enableAsyncCompilationUI() && asyncShaderCompilationCount > 0) {
+      const auto compilationText = str::format("Compiling shaders (", asyncShaderCompilationCount, " remaining)");
+
+      hudMessages.emplace_back(std::move(compilationText), "This may take some time if shaders are not cached yet.\nRemix will not render properly until compilation is finished.");
+    }
+
+    if (common->getSceneManager().areReplacementsLoading()) {
+      hudMessages.emplace_back("Loading enhancements", std::nullopt);
+    }
+
+    // Draw Hud Messages
 
     if (!hudMessages.empty()) {
+      // Reset Hud Message time if needed
+      // Note: This is done to minimize any potential precision issues if the game is left running for a long time.
+      // Not the best solution ever, ideally just accumulating time with delta time passed in would probably be better
+      // rather than querying the OS for timestamps, but getting delta time in the ImGui system is rather annoying, so
+      // this is fine for now as this code isn't performance-critical anyways.
+
+      const auto currentTime = std::chrono::steady_clock::now();
+
+      if (!m_hudMessageTimeReset) {
+        m_hudMessageStartTime = currentTime;
+        m_hudMessageTimeReset = true;
+      }
+
+      // Calculate the length of the animated dot sequence based on the current time
+
+      const auto hudMessageDisplayDuration{ currentTime - m_hudMessageStartTime };
+      const auto hudMessageDisplayMilliseconds{
+        std::chrono::duration_cast<std::chrono::milliseconds>(hudMessageDisplayDuration).count()
+      };
+      // Note: Generates a looping set of values in the range [1, 3] based on the time and the duration of each dot.
+      const auto dotSequenceLength{ (hudMessageDisplayMilliseconds / hudMessageAnimatedDotDurationMilliseconds()) % 3 + 1 };
+
       ImGui::SetNextWindowPos(ImVec2(0, viewport->Size.y), ImGuiCond_Always, ImVec2(0.0f, 1.0f));
+      // Note: 368 pixels chosen as a minimum width for the message box width to ensure the current length of text has enough space
+      // to render an animated dot sequence without causing the width of the window to change, as this is visually distracting.
+      // If longer message box text fields are ever desired than the current ones, this number will have to be updated.
+      // Hack: Currently ImGui does not properly respect the window size constraints when ImGuiWindowFlags_AlwaysAutoResize is set.
+      // This call should be using the size constraints (368, -1), (-1, -1) as -1 indicates "don't care" (and we only care about setting
+      // a minimum width), but for some reason that does not work as reported by this bug: https://github.com/ocornut/imgui/issues/2629
+      ImGui::SetNextWindowSizeConstraints(ImVec2(368.0f, 0.0f), ImVec2(1000.0f, 1000.0f));
       ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.5f, 0.2f, 0.2f, 0.35f));
 
-      ImGuiWindowFlags hud_flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove;
+      const ImGuiWindowFlags hud_flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoMove;
       if (ImGui::Begin("HUD", nullptr, hud_flags)) {
- 
-        for (auto&& message : hudMessages) {
-          ImGui::Text(message.c_str());
+        for (std::size_t i{ 0U }; i < hudMessages.size(); ++i) {
+          auto&& message{ hudMessages[i] };
+
+          // Append the animated dot sequence to the message main text
+
+          constexpr auto dotSequence{ "..." };
+          std::string animatedMessageText{ message.text };
+
+          animatedMessageText.append(dotSequence, dotSequenceLength);
+
+          // Add a large main text and smaller sub text for each message
+
+          ImGui::PushFont(m_largeFont);
+          ImGui::Text(animatedMessageText.c_str());
+          ImGui::PopFont();
+
+          if (message.subText) {
+            ImGui::Text(message.subText->c_str());
+          }
+
+          // Add a seperator between messages
+
+          if (i != hudMessages.size() - 1) {
+            ImGui::Separator();
+          }
         }
       }
+
       ImGui::PopStyleColor();
       ImGui::End();
+    } else {
+      // Note: Indicate that the Hud Message time will need to be reset the next time it is used.
+      m_hudMessageTimeReset = false;
     }
   }
 
@@ -1390,38 +1504,42 @@ namespace dxvk {
     ImGui::SameLine(200.f);
     ImGui::Checkbox("Include G-Buffer", &RtxOptions::Get()->captureDebugImageObject());
         
+#ifdef REMIX_DEVELOPMENT
     { // Recompile Shaders button and its status message
-      using namespace std::chrono;
-      static enum { None, OK, Error } shaderMessage = None;
-      static time_point<steady_clock> shaderMessageTimeout;
-
       if (ImGui::Button("Recompile Shaders")) {
         if (ShaderManager::getInstance()->reloadShaders())
-          shaderMessage = OK;
+          m_shaderMessage = ShaderMessageType::Ok;
         else
-          shaderMessage = Error;
+          m_shaderMessage = ShaderMessageType::Error;
 
         // Set a 5 seconds timeout to hide the message later
-        shaderMessageTimeout = steady_clock::now() + seconds(5);
+        m_shaderMessageTimeout = std::chrono::steady_clock::now() + std::chrono::seconds(5);
       }
 
-      if (shaderMessage != None) {
+      if (m_shaderMessage != ShaderMessageType::None) {
         // Display the message: green OK if successful, red ERROR if not
         ImGui::SameLine();
-        ImGui::PushStyleColor(ImGuiCol_Text, shaderMessage == OK ? 0xff40ff40 : 0xff4040ff);
-        ImGui::TextUnformatted(shaderMessage == OK ? "OK" : "ERROR");
+        ImGui::PushStyleColor(ImGuiCol_Text, m_shaderMessage == ShaderMessageType::Ok ? 0xff40ff40 : 0xff4040ff);
+        ImGui::TextUnformatted(m_shaderMessage == ShaderMessageType::Ok ? "OK" : "ERROR");
         ImGui::PopStyleColor();
 
         // Hide the message after a timeout
-        if (steady_clock::now() > shaderMessageTimeout) {
-          shaderMessage = None;
+        if (std::chrono::steady_clock::now() > m_shaderMessageTimeout) {
+          m_shaderMessage = ShaderMessageType::None;
         }
       }
+
+      ImGui::SameLine(200.f);
+      ImGui::Checkbox("Live shader edit mode", &RtxOptions::Shader::useLiveEditModeObject());
+
+      ImGui::InputText("Shader Binary File Path", &RtxOptions::Shader::shaderBinaryPathObject(), ImGuiInputTextFlags_EnterReturnsTrue);
     }
-    ImGui::SameLine(200.f);
-    ImGui::Checkbox("Live shader edit mode", &RtxOptions::Get()->useLiveShaderEditModeObject());
+#endif
 
     showVsyncOptions(false);
+
+    // Render GUI for memory profiler here
+    GpuMemoryTracker::renderGui();
 
     if (ImGui::CollapsingHeader("Camera", collapsingHeaderFlags)) {
       ImGui::Indent();
@@ -1458,12 +1576,14 @@ namespace dxvk {
                 ImGui::Text("Direction: %.2f %.2f %.2f", c->getDirection().x, c->getDirection().y, c->getDirection().z);
                 ImGui::Text("Vertical FOV: %.1f", c->getFov() * kRadiansToDegrees);
                 ImGui::Text("Near / Far plane: %.1f / %.1f", c->getNearPlane(), c->getFarPlane());
-                ImGui::Text(c->isLHS() ? "Left-handed" : "Right-handed");
+                ImGui::Text("Projection Handedness: %s", c->isLHS() ? "Left-handed" : "Right-handed");
+                ImGui::Text("Overall Handedness: %s", c->isLHS() ^ isMirrorTransform(c->getViewToWorld(false))   ? "Left-handed" : "Right-handed");
               } else {
                 ImGui::Text("Position: -");
                 ImGui::Text("Direction: -");
                 ImGui::Text("Vertical FOV: -");
                 ImGui::Text("Near / Far plane: -");
+                ImGui::Text("-");
                 ImGui::Text("-");
               }
               ImGui::Unindent();
@@ -1523,6 +1643,8 @@ namespace dxvk {
         sendUIActivationMessage();
       }
       ImGui::Checkbox("Force Camera Jitter", &RtxOptions::Get()->forceCameraJitterObject());
+      ImGui::DragInt("Camera Jitter Sequence Length", &RtxOptions::Get()->cameraJitterSequenceLengthObject());
+      
       ImGui::DragIntRange2("Draw Call Range Filter", &RtxOptions::Get()->drawCallRangeObject(), 1.f, 0, INT32_MAX, nullptr, nullptr, ImGuiSliderFlags_AlwaysClamp);
       ImGui::InputInt("Instance Index Start", &RtxOptions::Get()->instanceOverrideInstanceIdxObject());
       ImGui::InputInt("Instance Index Range", &RtxOptions::Get()->instanceOverrideInstanceIdxRangeObject());
@@ -1537,7 +1659,7 @@ namespace dxvk {
       ImGui::Checkbox("Throttle presents", &RtxOptions::Get()->enablePresentThrottleObject());
       if (RtxOptions::Get()->enablePresentThrottle()) {
         ImGui::Indent();
-        ImGui::SliderInt("Present delay (ms)", &RtxOptions::Get()->presentThrottleDelayObject(), 1, 1000, "%d", sliderFlags);
+        ImGui::SliderInt("Present delay", &RtxOptions::Get()->presentThrottleDelayObject(), 1, 1000, "%d ms", sliderFlags);
         ImGui::Unindent();
       }
       ImGui::Checkbox("Hash Collision Detection", &HashCollisionDetectionOptions::enableObject());
@@ -1587,9 +1709,10 @@ namespace dxvk {
         return;
       }
 
+      const auto textureIterator = textureSet.find(textureHash);
       const char* action;
-      if (textureSet.find(textureHash) != textureSet.end()) {
-        textureSet.erase(textureHash);
+      if (textureIterator != textureSet.end()) {
+        textureSet.erase(textureIterator);
         action = "removed";
       } else {
         textureSet.insert(textureHash);
@@ -1679,7 +1802,7 @@ namespace dxvk {
               ImGui::SetClipboardText(hashToString(texHash).c_str());
             }
             uint32_t textureFeatureFlags = 0;
-            auto& pair = g_imguiTextureMap.find(texHash);
+            const auto& pair = g_imguiTextureMap.find(texHash);
             if (pair != g_imguiTextureMap.end()) {
               textureFeatureFlags = pair->second.textureFeatureFlags;
             }
@@ -2004,14 +2127,6 @@ namespace dxvk {
       ImGui::Checkbox("Enable Enhanced Meshes", &RtxOptions::Get()->enableReplacementMeshesObject());
       ImGui::Checkbox("Enable Enhanced Lights", &RtxOptions::Get()->enableReplacementLightsObject());
 
-      ImGui::Separator();
-
-      ImGui::Checkbox("Force High Resolution Textures", &RtxOptions::Get()->forceHighResolutionReplacementTexturesObject());
-      ImGui::Checkbox("Enable Adaptive Texture Resolution", &RtxOptions::Get()->enableAdaptiveResolutionReplacementTexturesObject());
-      ImGui::DragInt("Minimum Mip Map Level", &RtxOptions::Get()->minReplacementTextureMipMapLevelObject(), 0.1f, 0, 16, "%d", sliderFlags);
-
-      ImGui::Checkbox("Reload Texture When Resolution Changed", &RtxOptions::Get()->reloadTextureWhenResolutionChangedObject());
-
       ImGui::EndDisabled();
       ImGui::Unindent();
     }
@@ -2211,6 +2326,7 @@ namespace dxvk {
         ImGui::Checkbox("Orthographic Is UI", &D3D9Rtx::orthographicIsUIObject());
         ImGui::Checkbox("Allow Cubemaps", &D3D9Rtx::allowCubemapsObject());
         ImGui::Checkbox("Always Calculate AABB (For Instance Matching)", &RtxOptions::Get()->enableAlwaysCalculateAABBObject());
+        ImGui::Checkbox("Skip Sky Fog Values", &RtxOptions::fogIgnoreSkyObject());
         ImGui::Unindent();
       }
 
@@ -2387,11 +2503,18 @@ namespace dxvk {
 
   void ImGUI::showDLFGOptions(const Rc<DxvkContext>& ctx) {
     const bool supportsDLFG = ctx->getCommonObjects()->metaNGXContext().supportsDLFG() && !ctx->getCommonObjects()->metaDLFG().hasDLFGFailed();
+    const uint32_t maxInterpolatedFrames = ctx->getCommonObjects()->metaNGXContext().dlfgMaxInterpolatedFrames();
+    const bool supportsMultiFrame = maxInterpolatedFrames > 1;
+
     if (!supportsDLFG) {
       ImGui::BeginDisabled();
     }
 
     m_userGraphicsSettingChanged |= ImGui::Checkbox("Enable DLSS Frame Generation", &DxvkDLFG::enableObject());
+    if (supportsMultiFrame) {
+      dlfgMfgModeCombo.getKey(&DxvkDLFG::maxInterpolatedFramesObject());
+    }
+
     const auto& reason = ctx->getCommonObjects()->metaNGXContext().getDLFGNotSupportedReason();
     if (reason.size()) {
       ImGui::SetTooltipToLastWidgetOnHover(reason.c_str());
@@ -2576,6 +2699,32 @@ namespace dxvk {
     ImGui::End();
   }
 
+  namespace {
+    // Function is needed just to print megabytes as gigabytes,
+    // as ImGui doesn't have a custom formatting to convert e.g. '1234' to '1.234'
+    // Returns true if user modified the value. Overwrites value_megabytes.
+    bool dragFloatMB_showGB(const char* label,
+                            int* value_megabytes,
+                            float* storage_gigabytes,
+                            float vmin_gigabytes,
+                            float vmax_gigabytes,
+                            const char* description) {
+      *storage_gigabytes = std::clamp(float(*value_megabytes) / 1024.f, 0.1F, vmax_gigabytes);
+      // imgui for that float
+      bool hasChanged = IMGUI_ADD_TOOLTIP(
+        ImGui::DragFloat(label, storage_gigabytes, 0.5f, vmin_gigabytes, vmax_gigabytes, "%.1f GB", ImGuiSliderFlags_NoRoundToFormat),
+        description);
+      int megabytes = int(*storage_gigabytes * 1024);
+
+      // convert back to int megabytes, quantizing by 256mb
+      constexpr int Quantize = 256;
+      int quantizedMegabytes = (std::clamp(megabytes, Quantize, int(vmax_gigabytes * 1024)) / Quantize) * Quantize;
+
+      *value_megabytes = quantizedMegabytes;
+      return hasChanged;
+    }
+  } // namespace
+
   void ImGUI::showRenderingSettings(const Rc<DxvkContext>& ctx) {
     ImGui::PushItemWidth(200);
     auto common = ctx->getCommonObjects();
@@ -2616,7 +2765,7 @@ namespace dxvk {
         auto oldUpscalerType = RtxOptions::Get()->upscalerType();
         bool oldDLSSRREnabled = RtxOptions::Get()->enableRayReconstruction();
         getUpscalerCombo(dlss, rayReconstruction).getKey(&RtxOptions::Get()->upscalerTypeObject());
-        showRayReconstructionEnable(rayReconstruction.supportsRayReconstruction());
+        showRayReconstructionEnable(rayReconstruction.supportsRayReconstruction(), true);
 
         // Update path tracer settings when upscaler is changed or DLSS-RR is toggled.
         if (oldUpscalerType != RtxOptions::Get()->upscalerType() || oldDLSSRREnabled != RtxOptions::Get()->enableRayReconstruction()) {
@@ -2790,10 +2939,20 @@ namespace dxvk {
 
       common->getSceneManager().getLightManager().showImguiLightOverview();
 
-      ImGui::Separator();
+      if (ImGui::CollapsingHeader("Effect Light", collapsingHeaderClosedFlags)) {
+        ImGui::Indent();
 
-      ImGui::DragFloat("Effect Light Intensity", &RtxOptions::Get()->effectLightIntensityObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
-      ImGui::DragFloat("Effect Light Radius", &RtxOptions::Get()->effectLightRadiusObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
+        ImGui::TextWrapped("These settings control the effect lights, which are created by Remix, and attached to objects tagged using the rtx.lightConverter option (found in the texture tagging menu as 'Add Light to Texture').");
+
+        ImGui::DragFloat("Light Intensity", &RtxOptions::effectLightIntensityObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
+        ImGui::DragFloat("Light Radius", &RtxOptions::effectLightRadiusObject(), 0.01f, 0.01f, FLT_MAX, "%.3f", sliderFlags);
+        // Plasma ball has first priority
+        ImGui::Checkbox("Plasma Ball Effect", &RtxOptions::effectLightPlasmaBallObject());
+        ImGui::BeginDisabled(RtxOptions::effectLightPlasmaBall());
+        ImGui::ColorPicker3("Light Color", &(RtxOptions::effectLightColorRef().x));
+        ImGui::EndDisabled();
+        ImGui::Unindent();
+      }
 
       ImGui::DragFloat("Emissive Intensity", &RtxOptions::Get()->emissiveIntensityObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
       ImGui::Separator();
@@ -2806,7 +2965,6 @@ namespace dxvk {
         ImGui::Indent();
 
         ImGui::Checkbox("Enable RTXDI", &RtxOptions::Get()->useRTXDIObject());
-        ImGui::Checkbox("Use Previous TLAS", &RtxOptions::Get()->enablePreviousTLASObject());
 
         auto& rtxdi = common->metaRtxdiRayQuery();
         rtxdi.showImguiSettings();
@@ -2827,6 +2985,16 @@ namespace dxvk {
             ImGui::PopID();
             ImGui::Unindent();
           }
+        } else if (RtxOptions::Get()->integrateIndirectMode() == IntegrateIndirectMode::NeuralRadianceCache) {
+          if (ImGui::CollapsingHeader("Neural Radiance Cache", collapsingHeaderClosedFlags)) {
+
+            ImGui::Indent();
+            ImGui::PushID("Neural Radiance Cache");
+            NeuralRadianceCache& nrc = common->metaNeuralRadianceCache();
+            nrc.showImguiSettings(*ctx);
+            ImGui::PopID();
+            ImGui::Unindent();
+          }
         }
 
         ImGui::Unindent();
@@ -2844,103 +3012,12 @@ namespace dxvk {
       ImGui::Unindent();
     }
 
-    if (ImGui::CollapsingHeader("Froxel Radiance Cache/Volumetrics", collapsingHeaderClosedFlags)) {
+    if (ImGui::CollapsingHeader("Global Volumetrics", collapsingHeaderClosedFlags)) {
       ImGui::Indent();
 
-      if (ImGui::CollapsingHeader("Froxel Radiance Cache", collapsingHeaderFlags)) {
-        ImGui::Indent();
+      common->metaGlobalVolumetrics().showImguiSettings();
 
-        ImGui::DragInt("Froxel Grid Resolution Scale", &RtxOptions::Get()->froxelGridResolutionScaleObject(), 0.1f, 1);
-        ImGui::DragInt("Froxel Depth Slices", &RtxOptions::Get()->froxelDepthSlicesObject(), 0.1f, 1, UINT16_MAX);
-        ImGui::DragInt("Max Accumulation Frames", &RtxOptions::Get()->maxAccumulationFramesObject(), 0.1f, 1, UINT8_MAX);
-        ImGui::DragFloat("Froxel Depth Slice Distribution Exponent", &RtxOptions::Get()->froxelDepthSliceDistributionExponentObject(), 0.01f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
-        ImGui::DragFloat("Froxel Max Distance", &RtxOptions::Get()->froxelMaxDistanceObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
-        ImGui::DragFloat("Froxel Firefly Filtering Luminance Threshold", &RtxOptions::Get()->froxelFireflyFilteringLuminanceThresholdObject(), 0.1f, 0.0f, FLT_MAX, "%.3f", sliderFlags);
-        ImGui::DragFloat("Froxel Filter Gaussian Sigma", &RtxOptions::Get()->froxelFilterGaussianSigmaObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
-        ImGui::Checkbox("Per-Portal Volumes", &RtxOptions::Get()->enableVolumetricsInPortalsObject());
-
-        ImGui::Separator();
-
-        ImGui::DragInt("Initial RIS Sample Count", &RtxOptions::Get()->volumetricInitialRISSampleCountObject(), 0.05f, 1, UINT8_MAX);
-        ImGui::Checkbox("Enable Initial Visibility", &RtxOptions::Get()->volumetricEnableInitialVisibilityObject());
-        ImGui::Checkbox("Enable Temporal Resampling", &RtxOptions::Get()->volumetricEnableTemporalResamplingObject());
-        ImGui::DragInt("Temporal Reuse Max Sample Count", &RtxOptions::Get()->volumetricTemporalReuseMaxSampleCountObject(), 1.0f, 1, UINT16_MAX);
-        ImGui::DragFloat("Clamped Reprojection Confidence Pentalty", &RtxOptions::Get()->volumetricClampedReprojectionConfidencePenaltyObject(), 0.01f, 0.0f, 1.0f, "%.3f", sliderFlags);
-
-        ImGui::Separator();
-
-        ImGui::DragInt("Min Reservoir Samples", &RtxOptions::Get()->froxelMinReservoirSamplesObject(), 0.05f, 1, UINT8_MAX);
-        ImGui::DragInt("Max Reservoir Samples", &RtxOptions::Get()->froxelMaxReservoirSamplesObject(), 0.05f, 1, UINT8_MAX);
-        ImGui::DragInt("Min Reservoir Samples Stability History", &RtxOptions::Get()->froxelMinReservoirSamplesStabilityHistoryObject(), 0.1f, 1, UINT8_MAX);
-        ImGui::DragInt("Max Reservoir Samples Stability History", &RtxOptions::Get()->froxelMaxReservoirSamplesStabilityHistoryObject(), 0.1f, 1, UINT8_MAX);
-        ImGui::DragFloat("Reservoir Samples Stability History Power", &RtxOptions::Get()->froxelReservoirSamplesStabilityHistoryPowerObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
-
-        ImGui::DragInt("Min Kernel Radius", &RtxOptions::Get()->froxelMinKernelRadiusObject(), 0.05f, 1, UINT8_MAX);
-        ImGui::DragInt("Max Kernel Radius", &RtxOptions::Get()->froxelMaxKernelRadiusObject(), 0.05f, 1, UINT8_MAX);
-        ImGui::DragInt("Min Kernel Radius Stability History", &RtxOptions::Get()->froxelMinKernelRadiusStabilityHistoryObject(), 0.1f, 1, UINT8_MAX);
-        ImGui::DragInt("Max Kernel Radius Stability History", &RtxOptions::Get()->froxelMaxKernelRadiusStabilityHistoryObject(), 0.1f, 1, UINT8_MAX);
-        ImGui::DragFloat("Kernel Radius Stability History Power", &RtxOptions::Get()->froxelKernelRadiusStabilityHistoryPowerObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
-
-        ImGui::Unindent();
-      }
-
-      if (ImGui::CollapsingHeader("Volumetric Lighting", collapsingHeaderFlags)) {
-        ImGui::Indent();
-
-        ImGui::Checkbox("Enable Volumetric Lighting", &RtxOptions::Get()->enableVolumetricLightingObject());
-        {
-          ImGui::Indent();
-          ImGui::BeginDisabled(!RtxOptions::Get()->enableVolumetricLighting());
-
-          ImGui::DragFloat3("Transmittance Color", &RtxOptions::Get()->volumetricTransmittanceColorObject(), 0.01f, 0.0f, VolumeManager::MaxTransmittanceValue, "%.3f");
-          ImGui::DragFloat("Transmittance Measurement Distance", &RtxOptions::Get()->volumetricTransmittanceMeasurementDistanceObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
-          ImGui::DragFloat3("Single Scattering Albedo", &RtxOptions::Get()->volumetricSingleScatteringAlbedoObject(), 0.01f, 0.0f, 1.0f, "%.3f");
-          ImGui::DragFloat("Anisotropy", &RtxOptions::Get()->volumetricAnisotropyObject(), 0.01f, -1.0f, 1.0f, "%.3f", sliderFlags);
-
-          ImGui::Checkbox("Enable Legacy Fog Remapping", &RtxOptions::Get()->enableFogRemapObject());
-
-          ImGui::BeginDisabled(!RtxOptions::Get()->enableFogRemap());
-          {
-            ImGui::Indent();
-
-            ImGui::Checkbox("Enable Fog Color Remapping", &RtxOptions::Get()->enableFogColorRemapObject());
-
-            ImGui::Checkbox("Enable Fog Max Distance Remapping", &RtxOptions::Get()->enableFogMaxDistanceRemapObject());
-
-            ImGui::BeginDisabled(!RtxOptions::Get()->enableFogMaxDistanceRemap());
-            {
-              ImGui::DragFloat("Legacy Max Distance Min", &RtxOptions::Get()->fogRemapMaxDistanceMinObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
-              ImGui::DragFloat("Legacy Max Distance Max", &RtxOptions::Get()->fogRemapMaxDistanceMaxObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
-              ImGui::DragFloat("Remapped Transmittance Measurement Distance Min", &RtxOptions::Get()->fogRemapTransmittanceMeasurementDistanceMinObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
-              ImGui::DragFloat("Remapped Transmittance Measurement Distance Max", &RtxOptions::Get()->fogRemapTransmittanceMeasurementDistanceMaxObject(), 0.25f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
-            }
-            ImGui::EndDisabled();
-
-            ImGui::DragFloat("Color Multiscattering Scale", &RtxOptions::Get()->fogRemapColorMultiscatteringScaleObject(), 0.01f, 0.0f, FLT_MAX, "%.2f", sliderFlags);
-
-            ImGui::Unindent();
-          }
-          ImGui::EndDisabled();
-
-          ImGui::EndDisabled();
-          ImGui::Unindent();
-        }
-
-        ImGui::Separator();
-        ImGui::Dummy({ 0, 4 });
-        {
-          common->metaComposite().showDepthBasedFogImguiSettings();
-        }
-
-        ImGui::Separator();
-        ImGui::Dummy({ 0, 4 });
-        ImGui::Checkbox("Skip Sky Fog Values", &RtxOptions::fogIgnoreSkyObject());
-
-        ImGui::Unindent();
-      }
-
-      // Note: Must be called if the volumetrics options changed.
-      RtxOptions::Get()->updateCachedVolumetricOptions();
+      common->metaDustParticles().showImguiSettings();
 
       ImGui::Unindent();
     }
@@ -2949,14 +3026,23 @@ namespace dxvk {
       ImGui::Indent();
 
       ImGui::Checkbox("Enable Thin Opaque", &RtxOptions::SubsurfaceScattering::enableThinOpaqueObject());
+      ImGui::Checkbox("Enable Texture Maps", &RtxOptions::SubsurfaceScattering::enableTextureMapsObject());
 
-      if (RtxOptions::SubsurfaceScattering::enableThinOpaque()) {
-        ImGui::Indent();
+      ImGui::Checkbox("Enable Diffusion Profile SSS", &RtxOptions::SubsurfaceScattering::enableDiffusionProfileObject());
 
-        ImGui::Checkbox("Enable Texture Maps", &RtxOptions::SubsurfaceScattering::enableTextureMapsObject());
+      if (RtxOptions::SubsurfaceScattering::enableDiffusionProfile()) {
+        ImGui::SliderFloat("SSS Scale", &RtxOptions::SubsurfaceScattering::diffusionProfileScaleObject(), 0.0f, 100.0f);
 
-        ImGui::Unindent();
+        ImGui::Checkbox("Enable SSS Transmission", &RtxOptions::SubsurfaceScattering::enableTransmissionObject());
+        if (RtxOptions::SubsurfaceScattering::enableTransmission()) {
+          ImGui::Checkbox("Enable SSS Transmission Single Scattering", &RtxOptions::SubsurfaceScattering::enableTransmissionSingleScatteringObject());
+          ImGui::Checkbox("Enable Transmission Diffusion Profile Correction [Experimental]", &RtxOptions::SubsurfaceScattering::enableTransmissionDiffusionProfileCorrectionObject());
+          ImGui::DragInt("SSS Transmission BSDF Sample Count", &RtxOptions::SubsurfaceScattering::transmissionBsdfSampleCountObject(), 0.1f, 1, 64, "%d", ImGuiSliderFlags_AlwaysClamp);
+          ImGui::DragInt("SSS Transmission Single Scattering Sample Count", &RtxOptions::SubsurfaceScattering::transmissionSingleScatteringSampleCountObject(), 0.1f, 1, 64, "%d", ImGuiSliderFlags_AlwaysClamp);
+        }
       }
+
+      ImGui::DragInt2("Diffusion Profile Sampling Debugging Pixel Position", &RtxOptions::SubsurfaceScattering::diffusionProfileDebugPixelPositionObject(), 0.1f, 0, INT32_MAX, "%d", ImGuiSliderFlags_AlwaysClamp);
 
       ImGui::Unindent();
     }
@@ -3108,7 +3194,125 @@ namespace dxvk {
       ImGui::Unindent();
     }
 
-    common->getTerrainBaker().showImguiSettings();
+    if (ImGui::CollapsingHeader("Texture Streaming [Experimental]", collapsingHeaderClosedFlags)) {
+      ImGui::Indent();
+      ImGui::BeginDisabled(!RtxOptions::TextureManager::samplerFeedbackEnable());
+      {
+        if (RtxOptions::TextureManager::fixedBudgetEnable() && RtxOptions::TextureManager::samplerFeedbackEnable()) {
+          static float s_gigbytes_helper = 0;
+          if (dragFloatMB_showGB("Texture Budget##1",
+                                 &RtxOptions::TextureManager::fixedBudgetMiBObject().getValue(),
+                                 &s_gigbytes_helper,
+                                 1.f,
+                                 32.f,
+                                 RtxOptions::TextureManager::fixedBudgetMiBObject().getDescription())) {
+            ctx->getCommonObjects()->getSceneManager().requestTextureVramCompaction();
+          }
+        } else {
+          // always disabled drag float just to show the available texture cache budget
+          ImGui::BeginDisabled(true);
+          const char* formatstr = RtxOptions::TextureManager::samplerFeedbackEnable()
+            ? "%.1f GB"
+            : "UNB%0.0fUND";
+          static float s_dummy{};
+          s_dummy = RtxOptions::TextureManager::samplerFeedbackEnable()
+            ? float(g_streamedTextures_budgetBytes) / 1024.F / 1024.F / 1024.F
+            : 0.F;
+          ImGui::DragFloat("Texture Cache##2", &s_dummy, 0.5f, 1.f, 32.f, formatstr, ImGuiSliderFlags_NoRoundToFormat);
+          ImGui::EndDisabled();
+        }
+      }
+      {
+        ImGui::BeginDisabled(RtxOptions::TextureManager::fixedBudgetEnable());
+        if (ImGui::DragInt("of VRAM is dedicated to Textures",
+                            &RtxOptions::TextureManager::budgetPercentageOfAvailableVramObject(),
+                            10.F,
+                            10,
+                            100,
+                            "%d%%")) {
+          ctx->getCommonObjects()->getSceneManager().requestTextureVramCompaction();
+        }
+        ImGui::EndDisabled();
+      }
+      if (ImGui::Checkbox("Force Fixed Texture Budget", &RtxOptions::TextureManager::fixedBudgetEnableObject())) {
+        // budgeting technique changed => ask DXVK to return unused VRAM chunks to OS to better represent consumption
+        ctx->getCommonObjects()->getSceneManager().requestTextureVramCompaction();
+      }
+      ImGui::EndDisabled();
+
+      ImGui::Dummy({ 0, 2 });
+      if (ImGui::CollapsingHeader("Advanced##texstream", collapsingHeaderClosedFlags)) {
+        ImGui::Indent();
+        ImGui::Text("Streamed Texture VRAM usage: %.1f GB", float(g_streamedTextures_usedBytes) / 1024.F / 1024.F / 1024.F);
+        ImGui::Dummy({ 0, 2 });
+        ImGui::Separator();
+        ImGui::Dummy({ 0, 2 });
+        ImGui::TextUnformatted("Warning: toggling this option will enforce a full texture reload.");
+        if (ImGui::Checkbox("Sampler Feedback", &RtxOptions::TextureManager::samplerFeedbackEnableObject())) {
+          // sampler feedback ON/OFF changed => free all to refit textures in VRAM
+          ctx->getCommonObjects()->getSceneManager().requestTextureVramFree();
+        }
+        ImGui::Dummy({ 0, 2 });
+        ImGui::Separator();
+        ImGui::Dummy({ 0, 2 });
+        if (ImGui::Button("Demote All Textures")) {
+          ctx->getCommonObjects()->getSceneManager().requestTextureVramFree();
+        }
+        ImGui::Checkbox("Reload Textures on Window Resize", &RtxOptions::Get()->reloadTextureWhenResolutionChangedObject());
+        ImGui::Unindent();
+      }
+      ImGui::Unindent();
+    }
+
+    if (ImGui::CollapsingHeader("Terrain [Experimental]")) {
+      ImGui::Indent();
+
+      {
+        TerrainMode mode = TerrainMode::None;
+        if (TerrainBaker::enableBaking()) {
+          mode = TerrainMode::TerrainBaker;
+        } else {
+          if (RtxOptions::terrainAsDecalsEnabledIfNoBaker()) {
+            mode = TerrainMode::AsDecals;
+          }
+        }
+
+        IMGUI_ADD_TOOLTIP(
+          terrainModeCombo.getKey(&mode),
+          "\'Terrain Baker\': rasterize the draw calls marked as \'Terrain\' into a single mesh that would be used for ray tracing.\n"
+          "\n"
+          "\'Terrain-as-Decals\': draw calls marked as 'Terrain' are ray traced as decals.");
+
+        switch (mode) {
+        case TerrainMode::None: {
+          TerrainBaker::enableBakingRef() = false;
+          RtxOptions::terrainAsDecalsEnabledIfNoBakerRef() = false;
+          break;
+        }
+        case TerrainMode::TerrainBaker: {
+          TerrainBaker::enableBakingRef() = true;
+          RtxOptions::terrainAsDecalsEnabledIfNoBakerRef() = false;
+          break;
+        }
+        case TerrainMode::AsDecals: {
+          TerrainBaker::enableBakingRef() = false;
+          RtxOptions::terrainAsDecalsEnabledIfNoBakerRef() = true;
+          break;
+        }
+        default: break;
+        }
+      }
+
+      ImGui::Separator();
+
+      if (TerrainBaker::enableBaking()) {
+        common->getTerrainBaker().showImguiSettings();
+      } else if (RtxOptions::terrainAsDecalsEnabledIfNoBaker()) {
+        ImGui::Checkbox("Over-modulate Blending", &RtxOptions::terrainAsDecalsAllowOverModulateObject());
+      }
+
+      ImGui::Unindent();
+    }
 
     if (ImGui::CollapsingHeader("Player Model", collapsingHeaderClosedFlags)) {
       ImGui::Indent();

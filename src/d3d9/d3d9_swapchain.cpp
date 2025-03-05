@@ -1158,12 +1158,12 @@ namespace dxvk {
 
       while (status != VK_SUCCESS) {
         RecreateSwapChain(m_vsync);
-
+        
         // NV-DXVK start: DLFG integration
         info = presenter->info();
         status = presenter->acquireNextImage(sync, imageIndex);
         // NV-DXVK end
-        
+
         if (status == VK_SUBOPTIMAL_KHR)
           break;
       }
@@ -1221,6 +1221,9 @@ namespace dxvk {
     // on the main thread after the Reflex sleep has completed to encompass this region.
     reflex.beginSimulation(d3d9Rtx.GetReflexFrameId());
     reflex.latencyPing(d3d9Rtx.GetReflexFrameId());
+
+    // Tell tracy its the end of the frame
+    FrameMark;
     // NV-DXVK end
   }
 
@@ -1312,14 +1315,6 @@ namespace dxvk {
     presenterDesc.numFormats      = PickFormats(EnumerateFormat(m_presentParams.BackBufferFormat), presenterDesc.formats);
     presenterDesc.numPresentModes = PickPresentModes(Vsync, presenterDesc.presentModes);
     presenterDesc.fullScreenExclusive = PickFullscreenMode();
-
-    // NV-DXVK start: DLFG integration
-    const bool dlfgEnabled = m_context->isDLFGEnabled();
-    if (dlfgEnabled && m_dlfgPresenter != nullptr) {
-      // DLFG presents 2 times (1 more frame) in each real frame,
-      // increase image count by 1 to avoid resource waiting.
-      presenterDesc.imageCount++;
-    }
 
     if (GetPresenter()->recreateSwapChain(presenterDesc) != VK_SUCCESS)
       throw DxvkError("D3D9SwapChainEx: Failed to recreate swap chain");

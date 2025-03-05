@@ -79,7 +79,7 @@ namespace dxvk {
     uint32_t  queueFamily = 0;
     uint32_t  queueIndex  = 0;
 #ifdef TRACY_ENABLE
-    TracyVkCtx tracyCtx;
+    TracyVkCtx tracyCtx = nullptr;
     VkCommandPool tracyPool = VK_NULL_HANDLE;
     VkCommandBuffer tracyCmdList = VK_NULL_HANDLE;
 #endif
@@ -115,6 +115,7 @@ namespace dxvk {
   public:
     
     DxvkDevice(
+      const Rc<vk::InstanceFn>&       vki,
       const Rc<DxvkInstance>&         instance,
       const Rc<DxvkAdapter>&          adapter,
       const Rc<vk::DeviceFn>&         vkd,
@@ -331,8 +332,11 @@ namespace dxvk {
     Rc<DxvkBuffer> createBuffer(
       const DxvkBufferCreateInfo& createInfo,
             VkMemoryPropertyFlags memoryType,
-            DxvkMemoryStats::Category category);
-    
+            DxvkMemoryStats::Category category,
+            // NV-DXVK start: add debug names to VkBuffer objects
+            const char* name);
+            // NV-DXVK end
+
      // NV-DXVK start: implement acceleration structures
     /**
      * \brief Creates a accel structure object
@@ -345,7 +349,8 @@ namespace dxvk {
     Rc<DxvkAccelStructure> createAccelStructure(
       const DxvkBufferCreateInfo& createInfo,
             VkMemoryPropertyFlags memoryType,
-            VkAccelerationStructureTypeKHR accelType);
+            VkAccelerationStructureTypeKHR accelType,
+      const char* name);
     // NV-DXVK end
 
     /**
@@ -471,7 +476,10 @@ namespace dxvk {
      * \param [in] shader Newly compiled shader
      */
     void registerShader(
-      const Rc<DxvkShader>&         shader);
+      const Rc<DxvkShader>&         shader,
+// NV-DXVK start
+      bool                          isRemixShader = false);
+// NV-DXVK end
     
     /**
      * \brief Presents a swap chain image
@@ -517,11 +525,17 @@ namespace dxvk {
      * \param [in] commandList The command list to submit
      * \param [in] waitSync (Optional) Semaphore to wait on
      * \param [in] wakeSync (Optional) Semaphore to notify
+     * \param [in] insertReflexRenderMarkers (Optional) Tag submit as rendering for reflex
+     * \param [in] cachedReflexFrameId (Optional) Frame ID to associate with submit for reflex
      */
+    // NV-DXVK start: Reflex rendering tag support
     void submitCommandList(
       const Rc<DxvkCommandList>&      commandList,
             VkSemaphore               waitSync,
-            VkSemaphore               wakeSync);
+            VkSemaphore               wakeSync,
+            bool                      insertReflexRenderMarkers = false,
+            uint64_t                  cachedReflexFrameId = 0);
+    // NV-DXVK end
 
     /**
      * \brief Locks submission queue

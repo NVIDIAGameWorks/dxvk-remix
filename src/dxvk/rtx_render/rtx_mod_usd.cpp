@@ -34,6 +34,7 @@
 
 #include "../../lssusd/usd_include_begin.h"
 #include <pxr/base/gf/matrix4f.h>
+#include <pxr/base/gf/rotation.h>
 #include <pxr/usd/sdf/types.h>
 #include <pxr/usd/usd/tokens.h>
 #include <pxr/usd/usd/stage.h>
@@ -41,6 +42,7 @@
 #include <pxr/usd/usd/primCompositionQuery.h>
 #include <pxr/usd/usd/attribute.h>
 #include <pxr/usd/usdGeom/mesh.h>
+#include <pxr/usd/usdGeom/pointInstancer.h>
 #include <pxr/usd/usdGeom/subset.h>
 #include <pxr/usd/usdGeom/xformCache.h>
 #include <pxr/usd/usdLux/sphereLight.h>
@@ -102,10 +104,12 @@ private:
   MaterialData* processMaterial(Args& args, const pxr::UsdPrim& matPrim);
   MaterialData* processMaterialUser(Args& args, const pxr::UsdPrim& prim);
   bool processMesh(const pxr::UsdPrim& prim, Args& args);
-  void processPrim(Args& args, pxr::UsdPrim& prim);
+  void processPrim(Args& args, const pxr::UsdPrim& prim);
+  void processPointInstancer(Args& args, const pxr::UsdPrim& prim);
 
   void processLight(Args& args, const pxr::UsdPrim& lightPrim, const bool isOverride);
   bool processReplacement(Args& args);
+  void processReplacementRecursive(Args& args, const pxr::UsdPrim& prim, bool isRoot = false);
 
   Categorizer processCategoryFlags(const pxr::UsdPrim& prim);
 
@@ -120,6 +124,11 @@ private:
   std::string m_openedFilePath;
 
   Watchdog<1000> m_usdChangeWatchdog;
+
+  void addReplacementsSync(dxvk::Rc<dxvk::DxvkCommandList> cmdList, XXH64_hash_t hash, std::vector<AssetReplacement>& replacementVec);
+  std::unordered_map<dxvk::DxvkCommandList*, std::thread> m_cmdListSyncThreads;
+  // Asset replacement vector and hash to add when command list execution is complete
+  std::unordered_map<dxvk::DxvkCommandList*, std::unordered_map<XXH64_hash_t, std::vector<AssetReplacement>>> m_meshReplacementsToAdd;
 };
 
 // context and member variable arguments to pass down to anonymous functions (to avoid having USD in the header)
@@ -278,7 +287,7 @@ Rc<ManagedTexture> UsdMod::Impl::getTexture(const Args& args, const pxr::UsdPrim
     if (assetData != nullptr) {
       auto device = args.context->getDevice();
       auto& textureManager = device->getCommon()->getTextureManager();
-      return textureManager.preloadTextureAsset(assetData, colorSpace, args.context, forcePreload);
+      return textureManager.preloadTextureAsset(assetData, colorSpace, forcePreload);
     } else if (RtxOptions::Automation::suppressAssetLoadingErrors()) {
       Logger::warn(str::format("Texture ", resolvedTexturePath, " asset data cannot be found or corrupted."));
     } else {
@@ -379,7 +388,7 @@ MaterialData* UsdMod::Impl::processMaterialUser(Args& args, const pxr::UsdPrim& 
   return nullptr;
 }
 
-void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
+void UsdMod::Impl::processPrim(Args& args, const pxr::UsdPrim& prim) {
   ScopedCpuProfileZone();
 
   const XXH64_hash_t usdOriginHash = getStrongestOpinionatedPathHash(prim);
@@ -395,7 +404,8 @@ void UsdMod::Impl::processPrim(Args& args, pxr::UsdPrim& prim) {
 
   MaterialData* materialData = processMaterialUser(args, prim);
 
-  pxr::GfMatrix4f localToRoot = pxr::GfMatrix4f(args.xformCache.GetLocalToWorldTransform(prim));
+  bool unused = false;
+  pxr::GfMatrix4f localToRoot = pxr::GfMatrix4f(args.xformCache.ComputeRelativeTransform(prim, args.rootPrim.GetParent(), &unused));
   const auto& replacementToObjectAsArray = reinterpret_cast<const float(&)[4][4]>(localToRoot);
   const Matrix4 replacementToObject(replacementToObjectAsArray);
 
@@ -461,10 +471,156 @@ void UsdMod::Impl::processLight(Args& args, const pxr::UsdPrim& lightPrim, const
   }
 
   const pxr::GfMatrix4f lightTransform = pxr::GfMatrix4f(localToRoot);
+  const auto& replacementToObjectAsArray = reinterpret_cast<const float(&)[4][4]>(lightTransform);
+  const Matrix4 replacementToObject(replacementToObjectAsArray);
 
   const std::optional<LightData> lightData = LightData::tryCreate(lightPrim, isTransformDefined ? &lightTransform : nullptr, isOverride, isParentTransformDefined);
   if (lightData.has_value()) {
-    args.meshes.emplace_back(lightData.value());
+    args.meshes.emplace_back(lightData.value(), replacementToObject);
+  }
+}
+
+void UsdMod::Impl::processPointInstancer(Args& args, const pxr::UsdPrim& prim) {
+  const pxr::UsdGeomPointInstancer instancer(prim);
+  // caching rootPrim, since we need to treat each prototype as having a different rootprim.
+  const pxr::UsdPrim& rootPrim = args.rootPrim;
+  const bool useFastPathForPointInstancerMeshes = RtxOptions::enableReplacementInstancerMeshRendering();
+  // TODO: Implement support for `instancesToObject` when rendering lights.  For now, just make multiple copies of the lights in the AssetReplacement array.
+  const bool useFastPathForPointInstancerLights = false;
+  
+  bool unused = false;
+  const pxr::GfMatrix4f instancerToObject = pxr::GfMatrix4f(args.xformCache.ComputeRelativeTransform(prim, args.rootPrim, &unused));
+
+  pxr::VtVec3fArray positions, scales;
+  pxr::VtQuathArray orientations;
+  pxr::VtIntArray protoIndices;
+  instancer.GetPositionsAttr().Get(&positions);
+  instancer.GetScalesAttr().Get(&scales);
+  instancer.GetOrientationsAttr().Get(&orientations);
+  instancer.GetProtoIndicesAttr().Get(&protoIndices);
+  pxr::SdfPathVector protoTargets;
+  if (!instancer.GetPrototypesRel().GetForwardedTargets(&protoTargets)) {
+    Logger::err(str::format("Prototypes Rel on prim: ", prim.GetPath().GetString(), " failed to resolve."));
+    return;
+  }
+
+  size_t numPrototypes = protoTargets.size();
+  std::vector<Matrix4> instanceToObjectTransforms;
+  instanceToObjectTransforms.reserve(positions.size());
+
+  // For each prototype
+  //   get the prototype
+  //   make a list of transforms based on the protoIds
+  //   record the starting meshes index
+  //   invoke processReplacementRecursive on the prototype
+  //   for each mesh from starting index to current
+  //     combine the instanceToObject with the replacementToObject (which is really the replacementToPrototypeRoot)
+  
+  for (size_t protoIndex = 0; protoIndex < protoTargets.size(); ++protoIndex) {
+    pxr::SdfPath protoPath = protoTargets[protoIndex];
+    pxr::UsdPrim protoPrim = prim.GetStage()->GetPrimAtPath(protoPath);
+
+    if (!protoPrim.IsValid()) {
+      Logger::err(str::format("Prototype prim at : ", protoPath.GetString(), " was invalid."));
+      continue;
+    }
+    
+    for (size_t i = 0; i < positions.size(); ++i) {
+      if (!protoIndices.empty() && protoIndices[i] != protoIndex) {
+        // Transform is for a different prototype
+        continue;
+      }
+
+      // Transform each instance according to the docs here: 
+      // https://openusd.org/dev/api/class_usd_geom_point_instancer.html#UsdGeomPointInstancer_transform
+      pxr::GfMatrix4f translate(1.f), rotate(1.f), scale(1.f);
+      translate.SetTranslate(positions[i]);
+      if (orientations.size() > 0) {
+        rotate.SetRotate(orientations[i]);
+      }
+      if (scales.size() > 0) {
+        scale.SetScale(scales[i]);
+      }
+      const pxr::GfMatrix4f instanceToObject = scale * rotate * translate * instancerToObject;
+
+      const auto& instanceToObjectAsArray = reinterpret_cast<const float(&)[4][4]>(instanceToObject);
+      instanceToObjectTransforms.emplace_back(instanceToObjectAsArray);
+    }
+
+    if (!instanceToObjectTransforms.empty()) {
+      // A single prototype may contain multiple meshes and lights.  The transform list should apply
+      // to all of them.
+      
+      // Before processing prim we have `start` meshes
+      const size_t originalStart = args.meshes.size();
+      args.rootPrim = protoPrim;
+      processReplacementRecursive(args, protoPrim);
+      args.rootPrim = rootPrim;
+
+      const size_t originalEnd = args.meshes.size();
+      size_t numNewMeshes = 0;
+      for (size_t meshInd = originalStart; meshInd < originalEnd; ++meshInd) {
+        // Note: -1 because `processReplacementRecursive` creates 1, which we re-use for the first instance
+        if (!useFastPathForPointInstancerMeshes && args.meshes[meshInd].type == AssetReplacement::eMesh) {
+          numNewMeshes += instanceToObjectTransforms.size() - 1;
+        }
+        if (!useFastPathForPointInstancerLights && args.meshes[meshInd].type == AssetReplacement::eLight) {
+          numNewMeshes += instanceToObjectTransforms.size() - 1;
+        }
+      }
+
+      // After processing prim we more meshes - create copies and apply the instance transforms to the copies
+      args.meshes.reserve(args.meshes.size() + ( numNewMeshes));
+      for (size_t meshInd = originalStart; meshInd < originalEnd; ++meshInd) {
+        if (
+          (args.meshes[meshInd].type == AssetReplacement::eMesh && useFastPathForPointInstancerMeshes)
+          || (args.meshes[meshInd].type == AssetReplacement::eLight && useFastPathForPointInstancerLights)
+        ) {
+          // Fast Path - this will attach a list of transforms to the replacement, which can be used later to render multiple copies of it.
+          
+          // Copy the transform vector to this mesh
+          args.meshes[meshInd].instancesToObject = instanceToObjectTransforms;
+          auto& instancesToObject = args.meshes[meshInd].instancesToObject;
+          // Append the meshToProtoRoot transform
+          for (size_t instanceInd = 0; instanceInd < instancesToObject.size(); ++instanceInd) {
+            instancesToObject[instanceInd] = instancesToObject[instanceInd] * args.meshes[meshInd].replacementToObject;
+          }
+          // Reset replacementToObject to be identity.
+          args.meshes[meshInd].replacementToObject = Matrix4();
+        } else {
+          // Slow path - this will just create a copy of the replacement asset for each instance.
+
+          Matrix4 replacementToInstance = args.meshes[meshInd].replacementToObject;
+
+          // Update the transforms for the first instance separately, since it already exists in the meshes vector.
+          {
+            const Matrix4 composedReplacementToObject = instanceToObjectTransforms[0] * replacementToInstance;
+            if (args.meshes[meshInd].type == AssetReplacement::eMesh) {
+              args.meshes[meshInd].replacementToObject = composedReplacementToObject;
+            } else if (args.meshes[meshInd].lightData.has_value()){
+              const pxr::GfMatrix4f pxrReplacementToObject = pxr::GfMatrix4f(reinterpret_cast<const float(&)[4][4]>(composedReplacementToObject));
+              args.meshes[meshInd].lightData.value().setTransform(pxrReplacementToObject);
+            }
+          }
+
+          // Create and transform the rest of the instances.
+          for (size_t instanceInd = 1; instanceInd < instanceToObjectTransforms.size(); ++instanceInd) {
+            size_t index = args.meshes.size();
+            // Create a new copy of the mesh for this instance.
+            args.meshes.push_back(args.meshes[meshInd]);
+            // Append the meshToProtoRoot transform
+            const Matrix4 composedReplacementToObject = instanceToObjectTransforms[instanceInd] * replacementToInstance;
+            if (args.meshes[index].type == AssetReplacement::eMesh) {
+              args.meshes[index].replacementToObject = composedReplacementToObject;
+            } else if (args.meshes[index].lightData.has_value()){
+              const pxr::GfMatrix4f pxrReplacementToObject = pxr::GfMatrix4f(reinterpret_cast<const float(&)[4][4]>(composedReplacementToObject));
+              args.meshes[index].lightData.value().setTransform(pxrReplacementToObject);
+            }
+          }
+        }
+      }
+      instanceToObjectTransforms.clear();
+    }
   }
 }
 
@@ -477,11 +633,11 @@ bool preserveGameObject(const pxr::UsdPrim& prim) {
     return preserve;
   }
 
-  auto strFindNoCase = [](const std::string s1, const std::string s2) {
+  auto strFindNoCase = [](const std::string& s1, const std::string& s2) {
     return std::search(s1.begin(), s1.end(), s2.begin(), s2.end(), [](const char a, const char b) { return (toupper(a) == toupper(b)); }) != s1.end();
   };
 
-  auto legacyCaptureReferenceExists = [&](const std::string referencePath) {
+  auto legacyCaptureReferenceExists = [&](const std::string& referencePath) {
     std::filesystem::path asset(referencePath);
     return strFindNoCase(asset.replace_extension(std::filesystem::path()).string(), "/captures" + lss::commonDirName::meshDir + prim.GetName().GetString());
   };
@@ -529,20 +685,7 @@ bool explicitlyNoReferences(const pxr::UsdPrim& prim) {
 
 bool UsdMod::Impl::processReplacement(Args& args) {
   ScopedCpuProfileZone();
-
-  if (args.rootPrim.IsA<pxr::UsdGeomMesh>()) {
-    processPrim(args, args.rootPrim);
-  } else if (LightData::isSupportedUsdLight(args.rootPrim) && !explicitlyNoReferences(args.rootPrim)) {
-    processLight(args, args.rootPrim, true);
-  }
-  auto descendents = args.rootPrim.GetFilteredDescendants(pxr::UsdPrimIsActive);
-  for (auto desc : descendents) {
-    if (desc.IsA<pxr::UsdGeomMesh>()) {
-      processPrim(args, desc);
-    } else if (LightData::isSupportedUsdLight(desc)) {
-      processLight(args, desc, false);
-    }
-  }
+  processReplacementRecursive(args, args.rootPrim, true);
 
   if (!args.meshes.empty()) {
     args.meshes[0].includeOriginal = preserveGameObject(args.rootPrim);
@@ -553,14 +696,25 @@ bool UsdMod::Impl::processReplacement(Args& args) {
     }
     return true;
   } else {
-    bool result = preserveGameObject(args.rootPrim);
-    if (result) {
-      Logger::warn(str::format("Empty override prim found. ", args.rootPrim.GetPrimPath().GetString(), " has no children, but the original mesh reference is not explicitely deleted."));
-    }
-    return !result;
-
+    return !preserveGameObject(args.rootPrim);
   }
 }
+
+void UsdMod::Impl::processReplacementRecursive(Args& args, const pxr::UsdPrim& prim, bool isRoot) {
+  if (prim.IsA<pxr::UsdGeomMesh>()) {
+    processPrim(args, prim);
+  } else if (prim.IsA<pxr::UsdGeomPointInstancer>()) {
+    processPointInstancer(args, prim);
+    return;  // meshes with pointInstancer parents don't render in USD Composer, so mimicing that behavior here.
+  } else if (LightData::isSupportedUsdLight(prim) && (!isRoot || !explicitlyNoReferences(prim))) {
+    processLight(args, prim, isRoot);
+  }
+  auto children = prim.GetFilteredChildren(pxr::UsdPrimIsActive);
+  for (auto& child : children) {
+    processReplacementRecursive(args, child);
+  }
+}
+
 
 void UsdMod::Impl::load(const Rc<DxvkContext>& context) {
   ScopedCpuProfileZone();
@@ -660,6 +814,18 @@ void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
     }
   }
 
+  pxr::UsdPrim materialRoot = stage->GetPrimAtPath(pxr::SdfPath("/RootNode/Looks"));
+  if (materialRoot.IsValid()) {
+    auto children = materialRoot.GetFilteredChildren(pxr::UsdPrimIsActive);
+    std::vector<AssetReplacement> placeholder;
+
+    Args args = {context, xformCache, materialRoot, placeholder};
+
+    for (pxr::UsdPrim materialPrim : children) {
+      processMaterial(args, materialPrim);
+    }
+  }
+
   fast_unordered_cache<uint32_t> variantCounts;
   pxr::UsdPrim meshes = stage->GetPrimAtPath(pxr::SdfPath("/RootNode/meshes"));
   if (meshes.IsValid()) {
@@ -668,13 +834,13 @@ void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
       XXH64_hash_t hash = getModelHash(child);
       if (hash != 0) {
         std::vector<AssetReplacement> replacementVec;
-        
+
         Args args = {context, xformCache, child, replacementVec};
 
         if (processReplacement(args)) {
           variantCounts[hash]++;
 
-          m_owner.m_replacements->set<AssetReplacement::eMesh>(hash, std::move(replacementVec));
+          addReplacementsSync(args.context->getCommandList(), hash, replacementVec);
         }
       }
     }
@@ -704,7 +870,7 @@ void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
       Args args = {context, xformCache, rootPrim, replacementVec};
 
       if (processReplacement(args)) {
-        m_owner.m_replacements->set<AssetReplacement::eMesh>(variantHash, std::move(replacementVec));
+        addReplacementsSync(args.context->getCommandList(), variantHash, replacementVec);
       }
     }
   }
@@ -722,18 +888,6 @@ void UsdMod::Impl::processUSD(const Rc<DxvkContext>& context) {
           m_owner.m_replacements->set<AssetReplacement::eLight>(hash, std::move(replacementVec));
         }
       }
-    }
-  }
-
-  pxr::UsdPrim materialRoot = stage->GetPrimAtPath(pxr::SdfPath("/RootNode/Looks"));
-  if (materialRoot.IsValid()) {
-    auto children = materialRoot.GetFilteredChildren(pxr::UsdPrimIsActive);
-    std::vector<AssetReplacement> placeholder;
-
-    Args args = {context, xformCache, materialRoot, placeholder};
-
-    for (pxr::UsdPrim materialPrim : children) {
-      processMaterial(args, materialPrim);
     }
   }
 
@@ -928,6 +1082,23 @@ Categorizer UsdMod::Impl::processCategoryFlags(const pxr::UsdPrim& prim) {
   return categoryFlags;
 }
 
+void UsdMod::Impl::addReplacementsSync(dxvk::Rc<dxvk::DxvkCommandList> cmdList, XXH64_hash_t hash, std::vector<AssetReplacement>& replacementVec) {
+  m_meshReplacementsToAdd[cmdList.ptr()][hash] = std::move(replacementVec);
+
+  // If the sync thread for this command list hasn't been created then create it now
+  if (!m_cmdListSyncThreads[cmdList.ptr()].joinable()) {
+    m_cmdListSyncThreads[cmdList.ptr()] = std::thread([this, cmdList]() {
+      // Wait for command list completion to ensure all host->device copies from staging buffers are done
+      cmdList->synchronize();
+      // Add the replacements vector to the collection of replacements for this hash
+      for (auto it : m_meshReplacementsToAdd[cmdList.ptr()]) {
+        m_owner.m_replacements->set<AssetReplacement::eMesh>(it.first, std::move(it.second));
+      }
+      m_meshReplacementsToAdd[cmdList.ptr()].clear();
+    });
+  }
+}
+
 bool UsdMod::Impl::processMesh(const pxr::UsdPrim& prim, Args& args) {
   MeshReplacement replacement;
   RasterGeometry& geometryData = replacement.data;
@@ -957,11 +1128,32 @@ bool UsdMod::Impl::processMesh(const pxr::UsdPrim& prim, Args& args) {
   info.access = VK_ACCESS_TRANSFER_WRITE_BIT;
   info.size = dxvk::align(vertexDataSize, CACHE_LINE_SIZE);
 
+  // Check if the mesh has weights
+  bool isDynamicMesh = false;
+  for (const auto& element : processedMesh->GetVertexDecl()) {
+    isDynamicMesh |= element.attribute == lss::UsdMeshImporter::BlendWeights;
+    if (isDynamicMesh)
+      break;
+  }
+
   // Buffer contains:
   // |---POSITIONS---|---NORMALS---|---UVS---| ... (VERTEX DATA INTERLEAVED)
-  Rc<DxvkBuffer> vertexBuffer = args.context->getDevice()->createBuffer(info, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT, DxvkMemoryStats::Category::RTXBuffer);
+  Rc<DxvkBuffer> vertexBuffer_staging = args.context->getDevice()->createBuffer(info, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT, DxvkMemoryStats::Category::RTXReplacementGeometry, "Mesh Staging Buffer");
+  memcpy(vertexBuffer_staging->mapPtr(0), processedMesh->GetVertexData().data(), vertexDataSize);
+
+  // Dynamic meshes should have their vertex data in device memory, static meshes should reside in host memory and allow geometry streaming to handle host/device memory management
+  Rc<DxvkBuffer> vertexBuffer;
+  if (isDynamicMesh) {
+    vertexBuffer = args.context->getDevice()->createBuffer(
+        info,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        DxvkMemoryStats::Category::RTXReplacementGeometry, prim.GetName().GetString().c_str());
+    args.context->copyBuffer(vertexBuffer, 0, vertexBuffer_staging, 0, vertexDataSize);
+  } else {
+    vertexBuffer = vertexBuffer_staging;
+  }
+
   const DxvkBufferSlice& vertexSlice = DxvkBufferSlice(vertexBuffer);
-  memcpy(vertexSlice.mapPtr(0), processedMesh->GetVertexData().data(), vertexDataSize);
 
   for (const auto& element : processedMesh->GetVertexDecl()) {
     switch (element.attribute) {
@@ -976,7 +1168,7 @@ bool UsdMod::Impl::processMesh(const pxr::UsdPrim& prim, Args& args) {
       geometryData.hashes[HashComponents::VertexTexcoord] = getNextGeomHash();
       break;
     case lss::UsdMeshImporter::Colors:
-      geometryData.color0Buffer = RasterBuffer(vertexSlice, element.offset, processedMesh->GetVertexStride(), VK_FORMAT_R8G8B8A8_UNORM);
+      geometryData.color0Buffer = RasterBuffer(vertexSlice, element.offset, processedMesh->GetVertexStride(), VK_FORMAT_B8G8R8A8_UNORM);
       break;
     case lss::UsdMeshImporter::BlendWeights:
       geometryData.blendWeightBuffer = RasterBuffer(vertexSlice, element.offset, processedMesh->GetVertexStride(), VK_FORMAT_R32_SFLOAT);
@@ -1017,9 +1209,20 @@ bool UsdMod::Impl::processMesh(const pxr::UsdPrim& prim, Args& args) {
       info.size = dxvk::align(indexDataSize, CACHE_LINE_SIZE);
 
       // Buffer contains: indices
-      Rc<DxvkBuffer> indexBuffer = args.context->getDevice()->createBuffer(info, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT, DxvkMemoryStats::Category::RTXBuffer);
+      Rc<DxvkBuffer> indexBuffer_staging = args.context->getDevice()->createBuffer(info, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT, DxvkMemoryStats::Category::RTXReplacementGeometry, "Mesh index buffer staging");
+      memcpy(indexBuffer_staging->mapPtr(0), submesh.indexBuffer.data(), indexDataSize);
+      Rc<DxvkBuffer> indexBuffer;
+      if (isDynamicMesh) {
+        indexBuffer = args.context->getDevice()->createBuffer(
+          info,
+          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+          DxvkMemoryStats::Category::RTXReplacementGeometry, submesh.prim.GetName().GetString().c_str());
+        args.context->copyBuffer(indexBuffer, 0, indexBuffer_staging, 0, indexDataSize);
+      } else {
+        indexBuffer = indexBuffer_staging;
+      }
+
       const DxvkBufferSlice& indexSlice = DxvkBufferSlice(indexBuffer);
-      memcpy(indexSlice.mapPtr(0), submesh.indexBuffer.data(), indexDataSize);
       newGeomData.indexBuffer = RasterBuffer(indexSlice, 0, sizeof(uint32_t), VK_INDEX_TYPE_UINT32);
       newGeomData.indexCount = submesh.GetNumIndices();
       // Set these as hashed so that the geometryData acts like it's static.

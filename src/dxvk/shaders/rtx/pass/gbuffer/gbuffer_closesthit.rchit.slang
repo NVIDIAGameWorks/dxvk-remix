@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -27,6 +27,16 @@
 //!variant gbuffer_material_rayportal_closestHit.rchit
 //!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
 
+// NRC
+
+//!variant gbuffer_nrc_material_opaque_translucent_closestHit.rchit
+//!>       ENABLE_NRC=1
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_OPAQUE_TRANSLUCENT
+
+//!variant gbuffer_nrc_material_rayportal_closestHit.rchit
+//!>       ENABLE_NRC=1
+//!>       SURFACE_MATERIAL_RESOLVE_TYPE_ACTIVE_MASK=SURFACE_MATERIAL_RESOLVE_TYPE_ALL
+
 //!end-variants
 
 #define RAY_TRACING_PRIMARY_RAY
@@ -37,11 +47,9 @@
 // Note: Use thin film in the GBuffer pass for its usage in PSR on mirrorlike surfaces.
 #define OPAQUE_MATERIAL_USE_THIN_FILM 1
 #define OPAQUE_MATERIAL_USE_POM 1
-// Note: This is done in primary rays only currently so that attenuation from volumetrics can be factored in
-// similar to how it was done previously when it was simply applied in compositing via the total virtual hit
-// distance, and ensuring that it does not attenuate secondary rays (since they do not receive inscattering and
-// attenuating them would cause large amounts of energy loss as a result).
-#define RESOLVER_USE_VOLUMETRIC_ATTENUATION 1
+
+// Note: No RESOLVER_USE_VOLUMETRIC_ATTENUATION here - we will calculate attenuation for the primary vertex
+//       during composition.  This is so we can factor in heterogenous attenuation via the global volumetrics system.
 
 #include "rtx/pass/common_binding_indices.h"
 #include "rtx/pass/common_bindings.slangh"

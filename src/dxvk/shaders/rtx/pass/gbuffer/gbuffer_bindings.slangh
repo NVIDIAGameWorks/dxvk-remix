@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -30,8 +30,11 @@
 layout(binding = GBUFFER_BINDING_LINEAR_WRAP_SAMPLER)
 SamplerState LinearWrapSampler;
 
-layout(binding = GBUFFER_BINDING_VOLUME_FILTERED_RADIANCE_INPUT)
-Sampler3D<float3> VolumeFilteredRadiance;
+layout(binding = GBUFFER_BINDING_VOLUME_FILTERED_RADIANCE_Y_INPUT)
+Sampler3D<float4> VolumeFilteredRadianceY;
+
+layout(binding = GBUFFER_BINDING_VOLUME_FILTERED_RADIANCE_CO_CG_INPUT)
+Sampler3D<float2> VolumeFilteredRadianceCoCg;
 
 layout(binding = GBUFFER_BINDING_SKYMATTE)
 Sampler2D<float3> SkyMatte;
@@ -166,7 +169,7 @@ RWTexture2D<float2> PrimaryScreenSpaceMotionVector;
 layout(r8ui, binding = GBUFFER_BINDING_PRIMARY_SURFACE_FLAGS_OUTPUT)
 RWTexture2D<uint> PrimarySurfaceFlags;
 
-layout(r8, binding = GBUFFER_BINDING_PRIMARY_DISOCCLUSION_THRESHOLD_MIX_OUTPUT)
+layout(r16f, binding = GBUFFER_BINDING_PRIMARY_DISOCCLUSION_THRESHOLD_MIX_OUTPUT)
 RWTexture2D<float> PrimaryDisocclusionThresholdMix;
 
 layout(r32f, binding = GBUFFER_BINDING_PRIMARY_DEPTH_OUTPUT)
@@ -198,6 +201,9 @@ RWTexture2D<float2> PrimaryScreenSpaceMotionVectorDLSSRR;
 
 layout(rgba16ui, binding = GBUFFER_BINDING_SHARED_SUBSURFACE_DATA_OUTPUT)
 RWTexture2D<uint4> SharedSubsurfaceData;
+
+layout(r11f_g11f_b10f, binding = GBUFFER_BINDING_SHARED_SUBSURFACE_DIFFUSION_PROFILE_DATA_OUTPUT)
+RWTexture2D<float3> SharedSubsurfaceDiffusionProfileData;
 
 layout(push_constant)
 ConstantBuffer<GbufferPushConstants> push;
@@ -231,3 +237,34 @@ RWTexture2D<uint2> TransmissionPSRData3;
 
 layout(r32ui, binding = GBUFFER_BINDING_PRIMARY_OBJECT_PICKING_OUTPUT)
 RWTexture2D<uint> PrimaryObjectPicking;
+
+layout(binding = GBUFFER_BINDING_NRC_QUERY_PATH_INFO_OUTPUT)
+RWStructuredBuffer<NrcPackedQueryPathInfo> QueryPathInfo;
+
+layout(binding = GBUFFER_BINDING_NRC_TRAINING_PATH_INFO_OUTPUT)
+RWStructuredBuffer<NrcPackedTrainingPathInfo> TrainingPathInfo;
+
+layout(binding = GBUFFER_BINDING_NRC_TRAINING_PATH_VERTICES_OUTPUT)
+RWStructuredBuffer<NrcPackedPathVertex> TrainingPathVertices;
+
+layout(binding = GBUFFER_BINDING_NRC_QUERY_RADIANCE_PARAMS_OUTPUT)
+RWStructuredBuffer<NrcRadianceParams> QueryRadianceParams;
+
+layout(binding = GBUFFER_BINDING_NRC_COUNTERS_OUTPUT)
+RWStructuredBuffer<uint> CountersData;
+
+layout(rg32ui, binding = GBUFFER_BINDING_NRC_QUERY_PATH_DATA0_OUTPUT)
+RWTexture2D<uvec2> NrcQueryPathData0;
+
+layout(rgba16ui, binding = GBUFFER_BINDING_NRC_QUERY_PATH_DATA1_OUTPUT)
+RWTexture2D<uint4> NrcQueryPathData1;
+
+layout(rgba16ui, binding = GBUFFER_BINDING_NRC_TRAINING_PATH_DATA1_OUTPUT)
+RWTexture2D<uint4> NrcTrainingPathData1;
+
+layout(rg16f, binding = GBUFFER_BINDING_NRC_TRAINING_GBUFFER_SURFACE_RADIANCE_RG_OUTPUT)
+RWTexture2D<float2> NrcTrainingGBufferSurfaceRadianceRG;
+
+layout(r16f, binding = GBUFFER_BINDING_NRC_TRAINING_GBUFFER_SURFACE_RADIANCE_B_OUTPUT)
+RWTexture2D<float> NrcTrainingGBufferSurfaceRadianceB;
+

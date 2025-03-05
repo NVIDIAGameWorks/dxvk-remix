@@ -21,7 +21,19 @@
 */
 #pragma once
 
+#include "rtx/utility/shader_types.h"
+#ifdef __cplusplus
+#include "rtx/concept/camera/camera.h"
+#include "rtx/concept/ray_portal/ray_portal.h"
+#else
+#include "rtx/concept/camera/camera.slangh"
+#include "rtx/concept/ray_portal/ray_portal.slangh"
+#endif
+
+#include "rtx/pass/volume_args.h"
 #include "rtx/pass/nrd_args.h"
+#include "rtx/pass/raytrace_args.h"
+#include "rtx/pass/nrc_args.h"
 
 // Display Types
 enum class DebugViewDisplayType : uint32_t {
@@ -68,6 +80,9 @@ enum class DebugViewOutputStatisticsMode : uint32_t {
 };
 
 struct DebugViewArgs {
+  Camera camera;
+  RayPortalHitInfo rayPortalHitInfos[maxRayPortalCount * 2];
+  VolumeArgs volumeArgs;
   uint debugViewIdx;
   int colorCodeRadius;
   float animationTimeSec;
@@ -99,6 +114,7 @@ struct DebugViewArgs {
   vec4 debugKnob;
 
   NrdArgs nrd;
+  NrcArgs nrcArgs;
 
   // Common Display enable flags
   uint enableInfNanViewFlag;
@@ -131,4 +147,5 @@ struct DebugViewArgs {
   uint calculateStatistics;
   DebugViewOutputStatisticsMode statisticsMode;
   float rcpNumOutputPixels;
+  uint numActiveRayPortals;
 };

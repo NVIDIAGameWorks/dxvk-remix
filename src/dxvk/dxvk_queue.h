@@ -36,6 +36,10 @@ namespace dxvk {
     Rc<DxvkCommandList> cmdList;
     VkSemaphore         waitSync;
     VkSemaphore         wakeSync;
+    // NV-DXVK start: Reflex rendering work support
+    bool                insertReflexRenderMarkers;
+    uint64_t            cachedReflexFrameId;
+    //NV-DXVK end
   };
   
   
@@ -74,16 +78,20 @@ namespace dxvk {
     Rc<DxvkImageView> depth;
     VkImageLayout     depthLayout;
     bool              resetHistory;
+    // number of requested interpolated frames; must be at least 1, actual count may be lower depending on hardware support for MFG
+    uint32_t          interpolatedFrameCount = 0;
     
     bool valid() const {
       return motionVectors.ptr() &&
-        depth.ptr();
+        depth.ptr() &&
+        interpolatedFrameCount > 0;
     }
 
     void reset() {
       motionVectors = nullptr;
       depth = nullptr;
       resetHistory = false;
+      interpolatedFrameCount = 0;
     }
   };
   // NV-DXVK end

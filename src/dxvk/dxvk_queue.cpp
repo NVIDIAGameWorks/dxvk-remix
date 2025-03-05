@@ -154,10 +154,29 @@ namespace dxvk {
         std::lock_guard<dxvk::mutex> lockQueue(m_mutexQueue);
         // NV-DXVK end
 
+          // NV-DXVK start: Reflex render submit
+        const auto& reflex = m_device->getCommon()->metaReflex();
+        // NV-DXVK end
+
         if (entry.submit.cmdList != nullptr) {
+          // When using Reflex with Remix, we need to wrap the queue submit for the injectRTX rendering
+          // work with the reflex render_submit markers.  This is because in Remix we essentially
+          // have one large cmd list of work (inject rtx) and we want the Reflex timing to prioritize
+          // this work for best latency reduction while minimizing performance impact.  So we tag the submit
+          // upstream (RtxContext) which contains the injectRTX call as the one we want to wrap with Reflex markers.
+          // NV-DXVK start: Reflex render submit
+          if (entry.submit.insertReflexRenderMarkers) {
+            reflex.beginRendering(entry.submit.cachedReflexFrameId);
+          }
+
           status = entry.submit.cmdList->submit(
             entry.submit.waitSync,
             entry.submit.wakeSync);
+
+          if (entry.submit.insertReflexRenderMarkers) {
+            reflex.endRendering(entry.submit.cachedReflexFrameId);
+          }
+          // NV-DXVK end
         }
         // NV-DXVK start: DLFG integration
         else if (entry.frameInterpolation.valid()) {
@@ -170,7 +189,6 @@ namespace dxvk {
           // NV-DXVK start: Reflex present start
           const auto insertReflexPresentMarkers = entry.present.insertReflexPresentMarkers;
           const auto cachedReflexFrameId = entry.present.cachedReflexFrameId;
-          const auto& reflex = m_device->getCommon()->metaReflex();
 
           // Note: Only insert Reflex Present markers around the Presenter's present call if requested.
           if (insertReflexPresentMarkers) {
@@ -198,8 +216,12 @@ namespace dxvk {
 
           m_currentFrameInterpolationData.reset();
 
-          if (m_device->config().presentThrottleDelay > 0) {
-            Sleep(m_device->config().presentThrottleDelay);
+          const auto presentThrottleDelay = m_device->config().presentThrottleDelay;
+
+          if (presentThrottleDelay > 0) {
+            ScopedCpuProfileZoneN("Present Throttle Delay Sleep");
+
+            Sleep(presentThrottleDelay);
           }
         }
       } else {

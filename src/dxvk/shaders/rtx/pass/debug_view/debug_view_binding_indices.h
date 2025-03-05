@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -43,8 +43,16 @@
 #define DEBUG_VIEW_BINDING_CONSTANTS_INPUT                                                 16
 #define DEBUG_VIEW_BINDING_TERRAIN_INPUT                                                   17
 #define DEBUG_VIEW_BINDING_UPSCALED_RESOLVED_COLOR                                         18
+#define DEBUG_VIEW_BINDING_VOLUME_RESERVOIRS                                               19
+#define DEBUG_VIEW_BINDING_VOLUME_AGE                                                      20
+#define DEBUG_VIEW_BINDING_VOLUME_RADIANCE_Y                                               21
+#define DEBUG_VIEW_BINDING_VOLUME_RADIANCE_COCG                                            22
+#define DEBUG_VIEW_BINDING_VALUE_NOISE_SAMPLER                                             23
+#define DEBUG_VIEW_BINDING_BLUE_NOISE_TEXTURE                                              24
 
-#define DEBUG_VIEW_BINDING_INPUT                                                           20
+#define DEBUG_VIEW_BINDING_INPUT                                                           25
+
+#define DEBUG_VIEW_NRD_VALIDATION_LAYER_INPUT                                              30
 
 // Inputs / Outputs
 #define DEBUG_VIEW_BINDING_HDR_WAVEFORM_RED_INPUT_OUTPUT                                   50

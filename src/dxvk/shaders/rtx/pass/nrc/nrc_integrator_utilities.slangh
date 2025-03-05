@@ -1,0 +1,275 @@
+/*
+* Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Defines NRC related utitilities for integrator's usage
+
+#include "rtx/external/NRC.slangh"
+#include "rtx/pass/nrc/nrc_utilities.slangh"
+#include "rtx/pass/nrc/nrc_debug_view_utilities.slangh"
+
+#if ENABLE_NRC
+
+#include "rtx/utility/packing.slangh"
+
+#endif
+
+namespace Nrc
+{
+#if ENABLE_NRC
+// Note: NrcPathData0 is only written to when isNrcQuery is true
+void storeNrcPathState(
+  u16vec2 pixelIndex,
+  bool isNrcQuery,
+  NrcPathState nrcPathState,
+  NrcProgressState nrcProgressState,
+  RWTexture2D<uvec2> NrcPathData0,
+  RWTexture2D<uvec4> NrcPathData1)
+{
+#if NRC_MAX_REQUIRED_BITS_IN_PATH_STATE_QUERY_BUFFER_INDEX > 30
+  Error. Not enough unused bits left to pack extra state into encoded NrcPathState::queryBufferIndex.
+#endif
+
+  // Only store needed data if the termination has been delayed till after direct lighting, which
+  // can only happen in non default case when cb.nrcArgs.nrcConstants.radianceCacheDirect is false 
+  if (isNrcQuery && nrcProgressState == NrcProgressState::TerminateAfterDirectLighting)
+  {
+    NrcPathData0[pixelIndex] = uvec2(nrcPathState.packedPrefixThroughput, nrcPathState.queryBufferIndex);
+  }
+
+  uint16_t encodedPrimarySpreadyRadius = float16BitsToUint16(nrcPathState.primarySpreadRadius);
+  uint16_t encodedCumulSpreadRadius = float16BitsToUint16(nrcPathState.cumulSpreadRadius);
+
+  // Encode the nrc progress state into the sign bits
+  uint encodedProgressState = uint(nrcProgressState) & 0b11;
+  encodedPrimarySpreadyRadius = packedFlagAssign(encodedPrimarySpreadyRadius, 1 << 15, encodedProgressState & 0b1);
+  encodedCumulSpreadRadius = packedFlagAssign(encodedCumulSpreadRadius, 1 << 15, encodedProgressState & 0b10);
+      
+  NrcPathData1[pixelIndex] = u16vec4(
+    encodedPrimarySpreadyRadius,
+    encodedCumulSpreadRadius,
+    nrcPathState.packedData,
+    float16BitsToUint16(nrcPathState.brdfPdf));
+  }
+
+NrcPathState initializeNrcPathState(
+  const uvec2 nrcPathData0,
+  const u16vec4 nrcPathData1)
+{
+  NrcPathState nrcPathState;
+
+  nrcPathState.packedPrefixThroughput = nrcPathData0.x;
+  nrcPathState.queryBufferIndex = nrcPathData0.y;
+
+  nrcPathState.primarySpreadRadius = abs(uint16BitsToHalf(nrcPathData1.x));
+  nrcPathState.cumulSpreadRadius = abs(uint16BitsToHalf(nrcPathData1.y));
+  nrcPathState.packedData = nrcPathData1.z;
+  nrcPathState.brdfPdf = uint16BitsToHalf(nrcPathData1.w);
+
+  return nrcPathState;
+}
+
+NrcPathState loadNrcPathState(
+  ivec2 pixelIndex,
+  bool isNrcQuery,
+  out NrcProgressState nrcProgressState,
+  Texture2D<uvec2> NrcPathData0,
+  Texture2D<uvec4> NrcPathData1)
+{
+  const u16vec4 nrcPathData1 = NrcPathData1[pixelIndex];
+
+  const uint encodedProgressState = 
+    (uint(packedFlagGet(nrcPathData1.x, 1 << 15))) | 
+    (uint(packedFlagGet(nrcPathData1.y, 1 << 15)) << 1);
+  nrcProgressState = NrcProgressState(encodedProgressState);
+  
+  uvec2 nrcPathData0 = {};
+
+  if (isNrcQuery && nrcProgressState == NrcProgressState::TerminateAfterDirectLighting)
+  {
+    nrcPathData0 = NrcPathData0[pixelIndex];
+  }
+
+  return initializeNrcPathState(nrcPathData0, nrcPathData1);
+}
+
+NrcBuffers initializeNrcBuffers()
+{
+  // Initialize common resources used by NRC functions
+  NrcBuffers buffers;
+  buffers.queryPathInfo = QueryPathInfo;
+  buffers.trainingPathInfo = TrainingPathInfo;
+  buffers.trainingPathVertices = TrainingPathVertices;
+  buffers.queryRadianceParams = QueryRadianceParams;
+  buffers.countersData = CountersData;
+
+  return buffers;
+}
+
+NrcContext createNrcContext(uvec2 pixelCoordinate)
+{
+  return NrcCreateContext(cb.nrcArgs.nrcConstants, initializeNrcBuffers(), pixelCoordinate);
+}
+
+NrcSurfaceAttributes createNrcSurfaceAttributes(
+  SurfaceInteraction surfaceInteraction,
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
+  // ToDo explain what viewVector is
+  vec3 viewVector)
+{
+  NrcSurfaceAttributes surfaceAttributes = (NrcSurfaceAttributes) 0;
+  const GBufferMemoryPolymorphicSurfaceMaterialInteraction gBufferMemoryPolymorphicSurfaceMaterialInteraction =
+          gBufferMemoryPolymorphicSurfaceMaterialInteractionCreate(polymorphicSurfaceMaterialInteraction);
+  const uint8_t materialType = polymorphicSurfaceMaterialInteractionGetTypeHelper(polymorphicSurfaceMaterialInteraction);
+
+  surfaceAttributes.encodedPosition = NrcEncodePosition(surfaceInteraction.position, cb.nrcArgs.nrcConstants);
+  surfaceAttributes.roughness = gBufferMemoryPolymorphicSurfaceMaterialInteraction.perceptualRoughness;
+  surfaceAttributes.specularF0 = gBufferMemoryPolymorphicSurfaceMaterialInteraction.baseReflectivity;
+  surfaceAttributes.diffuseReflectance = gBufferMemoryPolymorphicSurfaceMaterialInteraction.albedo;
+  surfaceAttributes.shadingNormal = gBufferMemoryPolymorphicSurfaceMaterialInteraction.worldShadingNormal;
+  surfaceAttributes.viewVector = viewVector;
+  surfaceAttributes.isDeltaLobe = isDeltaLobe(gBufferMemoryPolymorphicSurfaceMaterialInteraction.perceptualRoughness, materialType);
+
+  return surfaceAttributes;
+}
+
+void updateNrcOnMiss(
+  uvec2 pixelCoordinate,
+  bool isNrcUpdate,
+  inout NrcPathState nrcPathState,
+  bool isPrimaryMiss)
+{
+  setNrcMode(isNrcUpdate);
+  
+  NrcUpdateOnMiss(nrcPathState);
+  
+  debugRegisterNrcPathSegment(pixelCoordinate, vec3(floatMax, floatMax, floatMax), isNrcUpdate, isPrimaryMiss, false, cb.debugView);
+}
+
+void setNrcMode(bool isNrcUpdate)
+{
+  g_nrcMode = isNrcUpdate ? NrcMode::Update : NrcMode::Query;
+}
+
+NrcProgressState updateNrcOnHit(
+  uvec2 pixelCoordinate,
+  bool isNrcUpdate,
+  SurfaceInteraction surfaceInteraction,
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
+  vec3 viewVector,
+  uint bounce,
+  float pathSegmentHitDistance,
+  bool isPrimaryHit,
+  NrcArgs nrcArgs,
+  inout f16vec3 throughput,
+  inout vec3 radiance,
+  inout NrcPathState nrcPathState)
+{
+  setNrcMode(isNrcUpdate);
+
+  NrcSurfaceAttributes surfaceAttributes = createNrcSurfaceAttributes(
+    surfaceInteraction, polymorphicSurfaceMaterialInteraction, viewVector);
+
+  const NrcContext nrcContext = createNrcContext(pixelCoordinate);
+
+  // Sanitize the inputs since they occasionally have NaNs
+  sanitizeNrcInputs(isNrcUpdate, nrcArgs, throughput, radiance);
+
+  // Register the radiance prior to NRC resetting it
+  debugRegisterNrcRadiance(pixelCoordinate, isNrcUpdate, bounce, radiance, throughput, isPrimaryHit, cb.debugView);
+
+  debugRegisterNrcPathSegment(pixelCoordinate, surfaceInteraction.position, isNrcUpdate, isPrimaryHit, true, cb.debugView);
+
+  NrcProgressState progressStateResult;
+  vec3 vec3Throughput = vec3(throughput);
+
+  progressStateResult = NrcUpdateOnHit(nrcContext, nrcPathState, surfaceAttributes,
+    pathSegmentHitDistance, bounce, vec3Throughput, radiance);
+
+  throughput = f16vec3(vec3Throughput);
+
+  return progressStateResult;
+}
+
+// Performs NRC related updates on a primary surface hit
+void updateNrcOnPrimaryHit(
+  uvec2 nrcPathPixelCoordinate,
+  SurfaceInteraction surfaceInteraction,
+  PolymorphicSurfaceMaterialInteraction polymorphicSurfaceMaterialInteraction,
+  vec3 viewVector,
+  float pathSegmentHitDistance,
+  float rand01,
+  RWTexture2D<uvec2> NrcPathData0,
+  RWTexture2D<uvec4> NrcPathData1)
+{
+  // Construct NrcPathState since this is the first time it being initialized for this path
+  NrcPathState nrcPathState = NrcCreatePathState(cb.nrcArgs.nrcConstants, rand01);
+
+  const uint bounce = 0; // ~ GBuffer hit bounce
+
+  // NRC disregards radiance for query paths and expects a path tracer to accumulate it.
+  // NRC backpropagates radiance for training paths so any radiance accumulated up to the GBuffer hit
+  // does not need to be registered with NRC since it can't backpropagate it to the eye.
+  // Therefore, we can simply pass empty values to NRC on a GBuffer hit
+  f16vec3 dummyThroughtput = f16vec3(1);
+  vec3 dummyRadiance = vec3(0);
+
+  // Register a gbuffer surface hit
+  // Note: NRC zeroes out radiance and throughput on updates for training paths
+  NrcProgressState nrcProgressState = updateNrcOnHit(nrcPathPixelCoordinate, NrcIsUpdateMode(),
+    surfaceInteraction, polymorphicSurfaceMaterialInteraction, viewVector, bounce,
+    pathSegmentHitDistance, true, cb.nrcArgs, dummyThroughtput, dummyRadiance, nrcPathState);
+
+  if (NrcIsQueryMode() && nrcProgressState == NrcProgressState::TerminateImmediately)
+  {
+    const NrcContext nrcContext = createNrcContext(nrcPathPixelCoordinate);
+    NrcWriteFinalPathInfo(nrcContext, nrcPathState, dummyThroughtput, dummyRadiance);
+  }
+
+  // Store NRC path state for subsequent path tracer passes to continue with
+  storeNrcPathState(
+    nrcPathPixelCoordinate, NrcIsQueryMode(), nrcPathState, nrcProgressState, NrcPathData0, NrcPathData1);
+}
+
+// Performs NRC related updates on a primary ray miss
+void updateNrcOnPrimaryMiss(
+  uvec2 nrcPathPixelCoordinate)
+{
+  // NRC needs rng to determine unbiased paths but that selection doesn't apply when a GBuffer miss occurs
+  const float dummyRand01 = 0.f;
+
+  // Initialize NRC state for path traced in this thread
+  NrcPathState nrcPathState = NrcCreatePathState(cb.nrcArgs.nrcConstants, dummyRand01);
+  const NrcContext nrcContext = createNrcContext(nrcPathPixelCoordinate);
+
+  updateNrcOnMiss(nrcPathPixelCoordinate, NrcIsUpdateMode(), nrcPathState, true);
+
+  // NRC ignores radiance passed in when a GBuffer miss occurs / no vertices have been recorded along a path
+  vec3 dummyThroughtput = vec3(1);
+  vec3 dummyRadiance = vec3(0);
+
+  NrcWriteFinalPathInfo(nrcContext, nrcPathState, dummyThroughtput, dummyRadiance);
+}
+
+#endif
+
+} // namespace Nrc

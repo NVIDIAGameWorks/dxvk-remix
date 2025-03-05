@@ -154,9 +154,6 @@ namespace dxvk::vk {
     VULKAN_FN(vkGetPhysicalDeviceSurfaceFormatsKHR);
     VULKAN_FN(vkGetPhysicalDeviceSurfacePresentModesKHR);
     #endif
-
-
-
     
     #ifdef VK_EXT_debug_report
     VULKAN_FN(vkCreateDebugReportCallbackEXT);
@@ -173,6 +170,12 @@ namespace dxvk::vk {
     #ifdef VK_EXT_full_screen_exclusive
     VULKAN_FN(vkGetPhysicalDeviceSurfacePresentModes2EXT);
     #endif
+
+    // NV-DXVK start: Tracy Integration
+    #ifdef VK_EXT_calibrated_timestamps
+    VULKAN_FN(vkGetPhysicalDeviceCalibrateableTimeDomainsEXT);
+    #endif
+    // NV-DXVK end
   };
   
   
@@ -429,10 +432,11 @@ namespace dxvk::vk {
     VULKAN_FN(vkGetDeferredOperationResultKHR);
     #endif
 
+    // NV-DXVK start: Tracy/DLSS-FG Integration
     #ifdef VK_EXT_calibrated_timestamps
-    VULKAN_FN(vkGetPhysicalDeviceCalibrateableTimeDomainsEXT);
     VULKAN_FN(vkGetCalibratedTimestampsEXT);
     #endif
+    // NV-DXVK end
 
     // NV-DXVK start: Integrate Aftermath
     #ifdef VK_NV_device_diagnostic_checkpoints

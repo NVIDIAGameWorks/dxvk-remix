@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -54,6 +54,9 @@ namespace dxvk {
 
     void release();
 
+    Resources::Resource getValidationTexture() const;
+    const char* getDenoiserName() const;
+
   private:
     void setSettingsOnInitialization(const DxvkDevice* device);
     void updateRuntimeSettings(const DxvkDenoise::Input& inputs);
@@ -107,9 +110,9 @@ namespace dxvk {
 
     // Settings
     NrdSettings m_settings;
-    nrd::Method m_method = nrd::Method::MAX_NUM;
+    nrd::Denoiser m_denoiser = nrd::Denoiser::MAX_NUM;
     bool m_resetResources = true;
-    nrd::Denoiser* m_denoiser = nullptr;
+    nrd::Instance* m_denoiserInstance = nullptr;
 
     // Resources
     using Resource = Resources::Resource;

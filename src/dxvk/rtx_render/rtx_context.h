@@ -161,6 +161,7 @@ namespace dxvk {
 
     void checkOpacityMicromapSupport();
     void checkShaderExecutionReorderingSupport();
+    void checkNeuralRadianceCacheSupport();
 
     VkExtent3D setDownscaleExtent(const VkExtent3D& upscaleExtent);
 
@@ -225,6 +226,8 @@ namespace dxvk {
 
     bool m_rayTracingSupported;
     bool m_dlssSupported;
+    bool m_submitContainsInjectRtx = false;
+    uint64_t m_cachedReflexFrameId = 0;
 
     bool m_resetHistory = true;    // Discards use of temporal data in passes
 
@@ -236,6 +239,7 @@ namespace dxvk {
     uint32_t m_screenshotFrameNum = -1;
     uint32_t m_terminateAppFrameNum = -1;
     bool m_previousInjectRtxHadScene = false;
+    IntegrateIndirectMode m_prevIntegrateIndirectMode = IntegrateIndirectMode::Count;
 
     DxvkRaytracingInstanceState m_rtState;
 

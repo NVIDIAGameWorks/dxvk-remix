@@ -28,7 +28,10 @@
 #include <gli/gli.hpp>
 
 namespace dxvk {
-  
+
+  // TODO: cache texture mips in CPU-RAM that are less than 32x32 (2^5) to reduce disk-access
+  static constexpr uint8_t kMipLevelsToCache = 5;
+
   class GliTextureData : public AssetData {
     AssetType type() const {
       switch (m_texture.target()) {
@@ -70,7 +73,7 @@ namespace dxvk {
         m_info.format = static_cast<VkFormat>(m_texture.format());
         m_info.extent = extent(0);
         m_info.mipLevels = m_texture.levels();
-        m_info.looseLevels = m_texture.levels();
+        m_info.mininumLevelsToUpload = std::min(uint32_t(kMipLevelsToCache), m_info.mipLevels);
         m_info.numLayers = m_texture.layers();
         m_info.lastWriteTime = std::filesystem::last_write_time(m_filename);
         m_info.filename = m_filename.c_str();
@@ -224,7 +227,7 @@ namespace dxvk {
     int m_levels = 0;
     int m_layers = 0;
     int m_faces = 0;
-    std::array<size_t, 16> m_levelSizes;
+    std::array<size_t, 16> m_levelSizes = {};
     size_t m_sizeOfAllLevels = 0;
 
     void getDataPlacement(int layer, int face, int level, long& offset, size_t& size) const {
@@ -242,8 +245,11 @@ namespace dxvk {
   };
 
   class DdsTextureData : public DdsFileParser, public AssetData {
-    std::unordered_map<int, std::vector<uint8_t>> m_data;
+    HANDLE m_hFile{};
+    HANDLE m_hMapping{};
+    const uint8_t* m_lpBaseAddress{};
 
+  private:
     AssetType type() const {
       if (m_width > 1 && m_height == 1 && m_depth == 1) {
         return AssetType::Image1D;
@@ -254,20 +260,13 @@ namespace dxvk {
       return AssetType::Image2D;
     }
 
-    int getKey(int layer, int level) const {
-      return (layer * m_faces + 0) * m_levels + level;
-    }
-
   public:
 
-    ~DdsTextureData() override { }
+    ~DdsTextureData() override {
+      DdsTextureData::releaseSource();
+    }
 
     const void* data(int layer, int level) override {
-      int key = getKey(layer, level);
-      const auto& it = m_data.find(key);
-      if (it != m_data.end() && !it->second.empty())
-        return it->second.data();
-
       long dataOffset;
       size_t dataSize;
       getDataPlacement(layer, 0, level, dataOffset, dataSize);
@@ -276,26 +275,54 @@ namespace dxvk {
         Logger::warn(str::format("Corrupted DDS file discovered: ", m_filename));
         return nullptr;
       }
+      if (!m_hFile) {
+        HANDLE hFile = CreateFile(m_filename.c_str(),
+                                  GENERIC_READ, 0, NULL,
+                                  OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (hFile == INVALID_HANDLE_VALUE) {
+          ONCE(Logger::warn(str::format("CreateFile fail (error=", GetLastError(), "): ", m_filename)));
+          return nullptr;
+        }
+        assert(GetFileSize(hFile, NULL) == m_fileSize);
 
-      auto file = openHandle();
-      assert(file);
-      
-      std::vector<uint8_t> data;
-      std::fseek(file, dataOffset, SEEK_SET);
-      data.resize(dataSize);
-      std::fread(data.data(), dataSize, 1, file);
+        HANDLE hMapping = CreateFileMapping(hFile, NULL,
+                                            PAGE_READONLY, 0, 0, NULL);
+        if (hMapping == NULL) {
+          ONCE(Logger::warn(str::format("CreateFileMapping fail (error=", GetLastError(), "): ", m_filename)));
+          CloseHandle(hFile);
+          return nullptr;
+        }
 
-      const void* rawData = data.data();
-      m_data[key] = std::move(data);
-      return rawData;
+        LPVOID lpBaseAddress = MapViewOfFile(hMapping, 
+                                             FILE_MAP_READ, 0, 0, 0);
+        if (lpBaseAddress == NULL) {
+          ONCE(Logger::warn(str::format("MapViewOfFile fail (error=", GetLastError(), "): ", m_filename)));
+          CloseHandle(hMapping);
+          CloseHandle(hFile);
+          return nullptr;
+        }
+
+        m_hFile = hFile;
+        m_hMapping = hMapping;
+        m_lpBaseAddress = (const uint8_t*)lpBaseAddress;
+      }
+
+      return m_lpBaseAddress + dataOffset;
     }
 
     void evictCache(int layer, int level) override {
-      int key = getKey(layer, level);
-      releaseVectorMemory(m_data[key]);
     }
 
     void releaseSource() override {
+      if (m_hFile) {
+        UnmapViewOfFile(m_lpBaseAddress);
+        CloseHandle(m_hMapping);
+        CloseHandle(m_hFile);
+        m_hFile = nullptr;
+        m_hMapping = nullptr;
+        m_lpBaseAddress = nullptr;
+      }
+
       closeHandle();
     }
 
@@ -317,7 +344,7 @@ namespace dxvk {
         m_info.format = m_format;
         m_info.extent = { m_width, m_height, m_depth };
         m_info.mipLevels = m_levels;
-        m_info.looseLevels = m_levels;
+        m_info.mininumLevelsToUpload = std::min(int(kMipLevelsToCache), m_levels);
         m_info.numLayers = m_layers;
         m_info.lastWriteTime = std::filesystem::last_write_time(m_filename);
         m_info.filename = m_filename.c_str();
@@ -347,7 +374,9 @@ namespace dxvk {
       m_info.format = static_cast<VkFormat>(m_assetDesc->format);
       m_info.extent = extent(0);
       m_info.mipLevels = m_assetDesc->numMips;
-      m_info.looseLevels = m_assetDesc->numMips - m_assetDesc->numTailMips;
+      // At the moment RTX IO can only load mip tail all at once,
+      // i.e. we need to upload a mip amount of max(N, numTailMips).
+      m_info.mininumLevelsToUpload = std::clamp<uint16_t>(m_assetDesc->numTailMips, 1, m_assetDesc->numMips);
       m_info.numLayers = m_assetDesc->arraySize;
       m_info.lastWriteTime = std::filesystem::last_write_time(m_package->getFilename());
       m_info.filename = m_package->getFilename().c_str();
@@ -396,11 +425,12 @@ namespace dxvk {
     }
 
     const void* data(int layer, int level) override {
-      uint32_t blobIdx = getBlobIndex(layer, 0, level);
+      const uint32_t blobIdx = getBlobIndex(layer, 0, level);
 
       const auto& it = m_data.find(blobIdx);
-      if (it != m_data.end() && !it->second.empty())
+      if (it != m_data.end()) {
         return it->second.data();
+      }
 
       if (auto blobDesc = m_package->getDataBlobDesc(blobIdx)) {
         if (blobDesc->compression != 0) {
@@ -410,17 +440,24 @@ namespace dxvk {
         std::vector<uint8_t> data(blobDesc->size);
         m_package->readDataBlob(blobIdx, data.data(), data.size());
 
-        const void* rawData = data.data();
-        m_data[blobIdx] = std::move(data);
-        return rawData;
+        const auto [insertedIterator, insertionSuccessful] = m_data.try_emplace(blobIdx, std::move(data));
+
+        // Note: Element with this blobIdx shouldn't exist due to being checked earlier, and because evicting the
+        // cache erases the element fully. If in the future the vector is kept around in the map to reuse its memory
+        // (due to using clear rather than freeing the memory fully) then this logic will have to change.
+        assert(insertionSuccessful);
+
+        return insertedIterator->second.data();
       }
 
       return nullptr;
     }
 
     void evictCache(int layer, int level) override {
-      uint32_t blobIdx = getBlobIndex(layer, 0, level);
-      releaseVectorMemory(m_data[blobIdx]);
+      const uint32_t blobIdx = getBlobIndex(layer, 0, level);
+
+      // Note: Release the vector stored at the given blob index to free up its memory fully.
+      m_data.erase(blobIdx);
     }
 
     void releaseSource() override {

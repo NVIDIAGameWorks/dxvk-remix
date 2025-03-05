@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -34,6 +34,8 @@
 #include "dxvk_scoped_annotation.h"
 #include "rtx_context.h"
 #include "rtx_terrain_baker.h"
+#include "rtx_neural_radiance_cache.h"
+#include "rtx_nrd_context.h"
 
 #include <rtx_shaders/debug_view.h>
 #include <rtx_shaders/debug_view_using_optional_extensions.h>
@@ -59,6 +61,7 @@ namespace dxvk {
         {DEBUG_VIEW_IS_STATIC, "Is Static"},
         {DEBUG_VIEW_IS_OPAQUE, "Is Opaque"},
         {DEBUG_VIEW_IS_THIN_OPAQUE, "Is Thin Opaque"},
+        {DEBUG_VIEW_IS_SUBSURFACE_SCATTERING, "Is Subsurface Scattering (SSS)"},
         {DEBUG_VIEW_IS_DIRECTION_ALTERED, "Is Direction Altered"},
         {DEBUG_VIEW_IS_EMISSIVE_BLEND, "Is Emissive Blend"},
         {DEBUG_VIEW_IS_EMISSIVE, "Is Emissive"},
@@ -130,11 +133,20 @@ namespace dxvk {
         {DEBUG_VIEW_SHARED_BIAS_CURRENT_COLOR_MASK, "DLSS Bias Color Mask"},
 
         {DEBUG_VIEW_IS_INSIDE_FRUSTUM, "Is Inside Frustum"},
-
+        {DEBUG_VIEW_IS_OUTSIDE_AABB, "Is Outside Axis Aligned Bounding Box",
+                                    "Legend: Black - inside, Combination of Red|Green|Blue - outside x|y|z axis\n"
+                                    "The Bounding Box is centered around the camera.\n"
+                                    "Parameterize via:\n"
+                                    "\tDebug Knob [0].xyz: {width, depth, height} of the Bounding Box"},
+    
         {DEBUG_VIEW_BLUE_NOISE, "Blue Noise"},
         {DEBUG_VIEW_PIXEL_CHECKERBOARD, "Pixel Checkerboard"},
-        {DEBUG_VIEW_VOLUME_RADIANCE_DEPTH_LAYERS, "Volume Radiance Depth Layers"},
+        {DEBUG_VIEW_VOLUME_RADIANCE_DEPTH_LAYERS, "Volume Radiance Depth Layers",
+                                                    "Parameterize via:\n"
+                                                    "Debug Knob [0]: Value selects mode: 1) average irradiance, 2) luminance DC component, 3) luminance linear coefficients, 4) chrominance values"},
         {DEBUG_VIEW_SURFACE_VOLUME_RADIANCE, "Surface Volume Radiance"},
+        {DEBUG_VIEW_VOLUME_RESERVOIR_DEPTH_LAYERS, "Volume Reservoir Depth Layers"},
+        {DEBUG_VIEW_VOLUME_PREINTEGRATION, "Volume Preintegration Result"},
 
         {DEBUG_VIEW_COMPOSITE_OUTPUT, "Composite Output"},
 
@@ -179,6 +191,7 @@ namespace dxvk {
         {DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_DEPTH, "DLSS-RR Depth"},
         {DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_WORLD_SHADING_NORMAL, "DLSS-RR Normal"},
         {DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_SCREEN_SPACE_MOTION_VECTOR, "DLSS-RR Motion Vector"},
+        {DEBUG_VIEW_RAY_RECONSTRUCTION_PRIMARY_DISOCCLUSION_THRESHOLD_MIX, "DLSS-RR Disocclusion Mask"},
 
         {DEBUG_VIEW_GEOMETRY_FLAGS_FIRST_SAMPLED_LOBE_IS_SPECULAR, "Geometry Flags: First Sampled Lobe Is Specular"},
         {DEBUG_VIEW_INTEGRATE_INDIRECT_FIRST_RAY_THROUGHPUT, "Indirect First Ray Throughput"},
@@ -197,7 +210,7 @@ namespace dxvk {
 
         {DEBUG_VIEW_PSR_PRIMARY_SECONDARY_SURFACE_MASK, "PSR Primary Secondary Surface Mask"},
         {DEBUG_VIEW_PSR_SELECTED_INTEGRATION_SURFACE_PDF, "PSR Selected Integration Surface PDF"},
-        
+
         {DEBUG_VIEW_PRIMARY_USE_ALTERNATE_DISOCCLUSION_THRESHOLD, "Primary Use Alternate Disocclusion Threshold"},
 
         {DEBUG_VIEW_PRIMARY_DECAL_ALBEDO,                  "Primary Decal Albedo" },
@@ -259,6 +272,7 @@ namespace dxvk {
         {DEBUG_VIEW_SCROLLING_LINE,                                        "Scrolling Line"},
         {DEBUG_VIEW_POM_ITERATIONS,                                        "POM Iterations"},
         {DEBUG_VIEW_POM_DIRECT_HIT_POS,                                    "POM Direct Hit Position (Tangent Space)"},
+        {DEBUG_VIEW_VALUE_NOISE,                                           "4D Value Noise"},
         {DEBUG_VIEW_HEIGHT_MAP,                                            "Height Map Value",
                                                                             "Valid values will be greyscale."
                                                                             "\nColored pixels indicate errors happened"
@@ -266,6 +280,37 @@ namespace dxvk {
         {DEBUG_VIEW_RAYTRACED_RENDER_TARGET_GEOMETRY,                      "Raytraced Render Target Geometry" },
         {DEBUG_VIEW_RAYTRACED_RENDER_TARGET_DIRECT,                        "Hit Raytraced Render Target in Direct"},
         {DEBUG_VIEW_RAYTRACED_RENDER_TARGET_INDIRECT,                      "Hit Raytraced Render Target in Indirect"},
+        {DEBUG_VIEW_NRC_UPDATE_PIXEL,                               "NRC Update Pixel"},
+        {DEBUG_VIEW_NRC_RESOLVED_RADIANCE,                          "NRC Resolved Radiance"},
+        {DEBUG_VIEW_NRC_UPDATE_IS_UNBIASED,                         "NRC Update: Is Unbiased" },
+        {DEBUG_VIEW_NRC_UPDATE_NUMBER_OF_BOUNCES,                   "NRC Update: Number of Bounces"},
+        {DEBUG_VIEW_NRC_UPDATE_NUMBER_OF_PATH_SEGMENTS,             "NRC Update: Number of Path Segments (i.e. Primary + Indirect, Bounces + Misses)"},
+        {DEBUG_VIEW_NRC_UPDATE_NUMBER_OF_INDIRECT_PATH_SEGMENTS,    "NRC Update: Number of Indirect Path Segments (i.e. Bounces + Misses)" },
+        {DEBUG_VIEW_NRC_QUERY_NUMBER_OF_BOUNCES,                    "NRC Query: Number of Bounces"},
+        {DEBUG_VIEW_NRC_QUERY_NUMBER_OF_PATH_SEGMENTS,              "NRC Query: Number of Path Segments (i.e. Primary + Indirect, Bounces + Misses)" },
+        {DEBUG_VIEW_NRC_QUERY_NUMBER_OF_INDIRECT_PATH_SEGMENTS,     "NRC Query: Number of Indirect Path Segments (i.e. Bounces + Misses)"},
+        {DEBUG_VIEW_NRC_UPDATE_RADIANCE,        "NRC Training Radiance along a Path",
+                                                "Parameterize via ROUND(Debug Knob [0]):\n"
+                                                "  -2: Max: Take max incomming radiance seen at a bounce\n"
+                                                "  -1: Sum: Sum all incomming radiance seen across all bounces\n"
+                                                "  [0, N): Bounce: Show incomming radiance seen at a given bounce" },
+        {DEBUG_VIEW_NRC_UPDATE_THROUGHPUT,      "NRC Training Throughput along a Path",
+                                                "Parameterize via ROUND(Debug Knob [0]):\n"
+                                                "  -2: Max: Take max incomming throughput seen at a bounce\n"
+                                                "  -1: Sum: Sum all incomming throughput seen across all bounces\n"
+                                                "  [0, N): Bounce: Show incomming throughput seen at a given bounce" },
+        {DEBUG_VIEW_NRC_UPDATE_RADIANCE_MULTIPLIED_BY_THROUGHPUT, "NRC Training Radiance multiplied by Throughput along a Path",
+                                                "Parameterize via ROUND(Debug Knob [0]):\n"
+                                                "  -2: Max: Take max incomming radiance * throughput seen at a bounce\n"
+                                                "  -1: Sum: Sum all incomming radiance * throughput seen across all bounces\n"
+                                                "  [0, N): Bounce: Show incomming radiance * throughput seen at a given bounce" },
+        {DEBUG_VIEW_NRC_IS_OUTSIDE_SCENE_AABB, "Is Primary or Secondary Hit Outside NRC's Axis Aligned Bounding Box",
+                                               "Legend: Black - inside, Red - outside"},
+
+        {DEBUG_VIEW_SSS_DIFFUSION_PROFILE_SAMPLING,       "SSS Diffusion Profile Sampling" },
+        {DEBUG_VIEW_NRD_INSTANCE_0_VALIDATION_LAYER,      "NRD Instance 0 Validation Layer", "Requires NRD and \"NRD/Common Settings/Validation Layer\" enabled" },
+        {DEBUG_VIEW_NRD_INSTANCE_1_VALIDATION_LAYER,      "NRD Instance 1 Validation Layer", "Requires NRD and \"NRD/Common Settings/Validation Layer\" enabled" },
+        {DEBUG_VIEW_NRD_INSTANCE_2_VALIDATION_LAYER,      "NRD Instance 2 Validation Layer", "Requires NRD and \"NRD/Common Settings/Validation Layer\" enabled" },
     } };
 
   ImGui::ComboWithKey<CompositeDebugView> compositeDebugViewCombo = ImGui::ComboWithKey<CompositeDebugView>(
@@ -327,8 +372,14 @@ namespace dxvk {
         TEXTURE2D(DEBUG_VIEW_BINDING_FINAL_SHADING_INPUT)
         TEXTURE2D(DEBUG_VIEW_BINDING_INSTRUMENTATION_INPUT)
         TEXTURE2D(DEBUG_VIEW_BINDING_TERRAIN_INPUT)
+        TEXTURE3D(DEBUG_VIEW_BINDING_VOLUME_RESERVOIRS)
+        SAMPLER3D(DEBUG_VIEW_BINDING_VOLUME_AGE)
+        SAMPLER3D(DEBUG_VIEW_BINDING_VOLUME_RADIANCE_Y)
+        SAMPLER3D(DEBUG_VIEW_BINDING_VOLUME_RADIANCE_COCG)
+        SAMPLER2D(DEBUG_VIEW_BINDING_VALUE_NOISE_SAMPLER)
+        TEXTURE2DARRAY(DEBUG_VIEW_BINDING_BLUE_NOISE_TEXTURE)
         TEXTURE2D(DEBUG_VIEW_BINDING_INPUT)
-        
+        TEXTURE2D(DEBUG_VIEW_NRD_VALIDATION_LAYER_INPUT)
         RW_TEXTURE2D(DEBUG_VIEW_BINDING_HDR_WAVEFORM_RED_INPUT_OUTPUT)
         RW_TEXTURE2D(DEBUG_VIEW_BINDING_HDR_WAVEFORM_GREEN_INPUT_OUTPUT)
         RW_TEXTURE2D(DEBUG_VIEW_BINDING_HDR_WAVEFORM_BLUE_INPUT_OUTPUT)
@@ -400,7 +451,7 @@ namespace dxvk {
     statisticsBufferInfo.stages = VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
     statisticsBufferInfo.access = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_HOST_READ_BIT | VK_ACCESS_HOST_WRITE_BIT;
     statisticsBufferInfo.size = bufferLength * sizeof(m_outputStatistics);
-    m_statisticsBuffer = m_device->createBuffer(statisticsBufferInfo, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, DxvkMemoryStats::Category::RTXBuffer);
+    m_statisticsBuffer = m_device->createBuffer(statisticsBufferInfo, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, DxvkMemoryStats::Category::RTXBuffer, "Debug View Statistics");
 
     if (areDebugViewStatisticsSupported()) {
       // Zero init the whole buffer
@@ -496,7 +547,9 @@ namespace dxvk {
     }
   }
 
-  void DebugView::processOutputStatistics(Rc<RtxContext>& ctx) {
+  void DebugView::processOutputStatistics(
+    Rc<RtxContext>& ctx,
+    const Resources::RaytracingOutput& rtOutput) {
     
     if (m_showOutputStatistics) {
       const uint32_t frameIdx = ctx->getDevice()->getCurrentFrameId();
@@ -509,6 +562,36 @@ namespace dxvk {
 
       // Zero out the backing memory
       *gpuMappedVec4 = vec4(0.f, 0.f, 0.f, 0.f);
+    }
+
+    // Normalize the retrieved values in case the input was supersampled due to resolution mismatch
+    // between debug and the resolution of underlying data embedded in it
+
+    Vector4& outputStatistics = reinterpret_cast<Vector4&>(m_outputStatistics);
+    NeuralRadianceCache& nrc = ctx->getCommonObjects()->metaNeuralRadianceCache();
+
+    switch (debugViewIdx()) {
+      default:
+        break;
+      case DEBUG_VIEW_NRC_RESOLVE:
+        if (m_outputStatisticsMode == DebugViewOutputStatisticsMode::Sum
+            && nrc.isUpdateResolveModeActive()) {
+          // NRC resolve loads training pixels numerous times for all query pixels,
+          // so we need to divide by number of query pixels per training pixel to get the sum
+          outputStatistics /=
+            static_cast<float>(nrc.getNumQueryPixelsPerTrainingPixel().x * nrc.getNumQueryPixelsPerTrainingPixel().y);
+        }
+        break;
+      case DEBUG_VIEW_NRC_UPDATE_RADIANCE:
+      case DEBUG_VIEW_NRC_UPDATE_THROUGHPUT:
+      case DEBUG_VIEW_NRC_UPDATE_RADIANCE_MULTIPLIED_BY_THROUGHPUT:
+      case DEBUG_VIEW_NRC_UPDATE_NUMBER_OF_BOUNCES:
+      case DEBUG_VIEW_NRC_UPDATE_NUMBER_OF_PATH_SEGMENTS:
+        [[fallthrough]];
+      case DEBUG_VIEW_NRC_UPDATE_NUMBER_OF_INDIRECT_PATH_SEGMENTS:
+        outputStatistics *=
+          static_cast<float>(nrc.getNumQueryPixelsPerTrainingPixel().x * nrc.getNumQueryPixelsPerTrainingPixel().y);
+        break;
     }
   }
 
@@ -524,7 +607,7 @@ namespace dxvk {
       ImGui::Checkbox("Print Output Statistics", &m_printOutputStatistics);
       
       outputStatisticsCombo.getKey(&m_outputStatisticsMode);
-      
+
       const std::string statisticsString = str::format(
         "RGBA ",
         m_outputStatistics.x, ", ",
@@ -753,7 +836,7 @@ namespace dxvk {
     info.stages = VK_PIPELINE_STAGE_TRANSFER_BIT | VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
     info.access = VK_ACCESS_TRANSFER_WRITE_BIT;
     info.size = sizeof(DebugViewArgs);
-    m_debugViewConstants = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer);
+    m_debugViewConstants = m_device->createBuffer(info, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXBuffer, "Debug View Constants Buffer");
   }
 
   uint32_t DebugView::getDebugViewIndex() const {
@@ -903,6 +986,8 @@ namespace dxvk {
     debugViewArgs.debugViewResolution.y = debugViewResolution.height;
 
     debugViewArgs.debugKnob = m_debugKnob;
+    debugViewArgs.camera = rtOutput.m_raytraceArgs.camera;
+    debugViewArgs.volumeArgs = rtOutput.m_raytraceArgs.volumeArgs;
 
     if (displayType() == DebugViewDisplayType::Standard) {
       debugViewArgs.pseudoColorMode = pseudoColorModeObject();
@@ -935,6 +1020,12 @@ namespace dxvk {
     debugViewArgs.samplerType = samplerType();
 
     debugViewArgs.isRTXDIConfidenceValid = rtOutput.getCurrentRtxdiConfidence().matchesWriteFrameIdx(frameIdx);
+
+    RayPortalManager::SceneData portalData = common.getSceneManager().getRayPortalManager().getRayPortalInfoSceneData();
+    debugViewArgs.numActiveRayPortals = portalData.numActiveRayPortals;
+    memcpy(&debugViewArgs.rayPortalHitInfos[0], &portalData.rayPortalHitInfos, sizeof(portalData.rayPortalHitInfos));
+    memcpy(&debugViewArgs .rayPortalHitInfos[maxRayPortalCount], &portalData.previousRayPortalHitInfos, sizeof(portalData.previousRayPortalHitInfos));
+
 
     // Todo: Add cases for secondary denoiser.
     if (RtxOptions::Get()->isSeparatedDenoiserEnabled()) {
@@ -977,6 +1068,8 @@ namespace dxvk {
     debugViewArgs.rcpNumOutputPixels = 1.f /
       (debugViewArgs.debugViewResolution.x * debugViewArgs.debugViewResolution.y);
 
+    debugViewArgs.nrcArgs = rtOutput.m_raytraceArgs.nrcArgs;
+
     return debugViewArgs;
   }
 
@@ -1006,14 +1099,17 @@ namespace dxvk {
     Rc<DxvkSampler> linearSampler,
     DebugViewArgs& debugViewArgs,
     Rc<DxvkBuffer>& debugViewConstantBuffer,
-    const Resources::RaytracingOutput& rtOutput) {
+    const Resources::RaytracingOutput& rtOutput,
+    DxvkObjects& common) {
     ScopedGpuProfileZone(ctx, "Debug View");
 
-    // Process output statistics now before we schedule a debug view dispatch that updates them
-    processOutputStatistics(ctx);
+    // Process output statistics now before we schedule a debug view dispatch that updates them.
+    // We also do it here since it needs access to the rtOutput
+    processOutputStatistics(ctx, rtOutput);
 
     // Inputs 
 
+    const RtxGlobalVolumetrics& globalVolumetrics = ctx->getCommonObjects()->metaGlobalVolumetrics();
     ctx->bindResourceView(DEBUG_VIEW_BINDING_DENOISED_PRIMARY_DIRECT_DIFFUSE_RADIANCE_HIT_T_INPUT, rtOutput.m_primaryDirectDiffuseRadiance.view(Resources::AccessType::Read), nullptr);
     ctx->bindResourceView(DEBUG_VIEW_BINDING_DENOISED_PRIMARY_DIRECT_SPECULAR_RADIANCE_HIT_T_INPUT, rtOutput.m_primaryDirectSpecularRadiance.view(Resources::AccessType::Read), nullptr);
     ctx->bindResourceView(DEBUG_VIEW_BINDING_DENOISED_SECONDARY_COMBINED_DIFFUSE_RADIANCE_HIT_T_INPUT, rtOutput.m_secondaryCombinedDiffuseRadiance.view(Resources::AccessType::Read), nullptr);
@@ -1024,16 +1120,52 @@ namespace dxvk {
     ctx->bindResourceView(DEBUG_VIEW_BINDING_PRIMARY_VIRTUAL_MOTION_VECTOR_INPUT, rtOutput.m_primaryVirtualMotionVector.view, nullptr);
     ctx->bindResourceView(DEBUG_VIEW_BINDING_PRIMARY_SCREEN_SPACE_MOTION_VECTOR_INPUT, rtOutput.m_primaryScreenSpaceMotionVector.view, nullptr);
     ctx->bindResourceView(DEBUG_VIEW_BINDING_RTXDI_CONFIDENCE_INPUT, rtOutput.getCurrentRtxdiConfidence().view(Resources::AccessType::Read, debugViewArgs.isRTXDIConfidenceValid), nullptr);
-    ctx->bindResourceView(DEBUG_VIEW_BINDING_FINAL_SHADING_INPUT, rtOutput.m_finalOutput.view, nullptr);
+    const bool isFinalOutputReadInShader = !shouldRunDispatchPostCompositePass();
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_FINAL_SHADING_INPUT, rtOutput.m_finalOutput.view(Resources::AccessType::Read, isFinalOutputReadInShader), nullptr);
     ctx->bindResourceView(DEBUG_VIEW_BINDING_INSTRUMENTATION_INPUT, m_instrumentation.view, nullptr);
-
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_VOLUME_RESERVOIRS, globalVolumetrics.getPreviousVolumeReservoirs().view, nullptr);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_VOLUME_AGE, globalVolumetrics.getCurrentVolumeAccumulatedRadianceAge().view, nullptr);
+    ctx->bindResourceSampler(DEBUG_VIEW_BINDING_VOLUME_AGE, linearSampler);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_VOLUME_RADIANCE_Y, globalVolumetrics.getCurrentVolumeAccumulatedRadianceY().view, nullptr);
+    ctx->bindResourceSampler(DEBUG_VIEW_BINDING_VOLUME_RADIANCE_Y, linearSampler);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_VOLUME_RADIANCE_COCG, globalVolumetrics.getCurrentVolumeAccumulatedRadianceCoCg().view, nullptr);
+    ctx->bindResourceSampler(DEBUG_VIEW_BINDING_VOLUME_RADIANCE_COCG, linearSampler);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_VALUE_NOISE_SAMPLER, common.getResources().getValueNoiseLut(ctx), nullptr);
+    Rc<DxvkSampler> valueNoiseSampler = common.getResources().getSampler(VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_NEAREST, VK_SAMPLER_ADDRESS_MODE_REPEAT);
+    ctx->bindResourceSampler(DEBUG_VIEW_BINDING_VALUE_NOISE_SAMPLER, valueNoiseSampler);
+    ctx->bindResourceView(DEBUG_VIEW_BINDING_BLUE_NOISE_TEXTURE, common.getResources().getBlueNoiseTexture(ctx), nullptr);
+    
     const ReplacementMaterialTextureType::Enum terrainTextureType = static_cast<ReplacementMaterialTextureType::Enum>(
       clamp<uint32_t>(static_cast<uint32_t>(m_debugKnob.x),
                       ReplacementMaterialTextureType::AlbedoOpacity,
                       ReplacementMaterialTextureType::Count - 1));
-    Resources::Resource terrain = m_device->getCommon()->getSceneManager().getTerrainBaker().getTerrainTexture(terrainTextureType);
+    Resources::Resource terrain = common.getSceneManager().getTerrainBaker().getTerrainTexture(terrainTextureType);
     ctx->bindResourceView(DEBUG_VIEW_BINDING_TERRAIN_INPUT, terrain.view, nullptr);
     ctx->bindResourceView(DEBUG_VIEW_BINDING_INPUT, m_debugView.view, nullptr);
+
+    // NRD Validation Layer bindings
+    {
+      DxvkDenoise& denoiser0 = RtxOptions::Get()->isSeparatedDenoiserEnabled() 
+        ? ctx->getCommonObjects()->metaPrimaryDirectLightDenoiser() 
+        : ctx->getCommonObjects()->metaPrimaryCombinedLightDenoiser();
+      DxvkDenoise& denoiser1 = ctx->getCommonObjects()->metaPrimaryIndirectLightDenoiser();
+      DxvkDenoise& denoiser2 = ctx->getCommonObjects()->metaSecondaryCombinedLightDenoiser();
+
+      switch (debugViewIdx()) {
+      case DEBUG_VIEW_NRD_INSTANCE_0_VALIDATION_LAYER:
+        ctx->bindResourceView(DEBUG_VIEW_NRD_VALIDATION_LAYER_INPUT, denoiser0.getNrdContext().getValidationTexture().view, nullptr);
+        break;
+      case DEBUG_VIEW_NRD_INSTANCE_1_VALIDATION_LAYER:
+        ctx->bindResourceView(DEBUG_VIEW_NRD_VALIDATION_LAYER_INPUT, denoiser1.getNrdContext().getValidationTexture().view, nullptr);
+        break;
+      case DEBUG_VIEW_NRD_INSTANCE_2_VALIDATION_LAYER:
+        ctx->bindResourceView(DEBUG_VIEW_NRD_VALIDATION_LAYER_INPUT, denoiser2.getNrdContext().getValidationTexture().view, nullptr);
+        break;
+      default:
+        ctx->bindResourceView(DEBUG_VIEW_NRD_VALIDATION_LAYER_INPUT, m_debugView.view, nullptr);
+        break;
+      }
+    }
 
     // Inputs / Outputs
 
@@ -1112,7 +1244,7 @@ namespace dxvk {
       }
 
       // Dispatch Debug View 
-      dispatchDebugViewInternal(ctx, nearestSampler, linearSampler, debugViewArgs, cb, rtOutput);
+      dispatchDebugViewInternal(ctx, nearestSampler, linearSampler, debugViewArgs, cb, rtOutput, common);
       
       // Display HDR Waveform
       if (displayType() == DebugViewDisplayType::HDRWaveform) {
@@ -1186,7 +1318,7 @@ namespace dxvk {
     ctx->getCommandList()->trackResource<DxvkAccess::Read>(cb);
 
     // Dispatch Debug View 
-    dispatchDebugViewInternal(ctx, nearestSampler, linearSampler, debugViewArgs, cb, rtOutput);
+    dispatchDebugViewInternal(ctx, nearestSampler, linearSampler, debugViewArgs, cb, rtOutput, common);
   }
 
   void DebugView::generateCompositeImage(Rc<DxvkContext> ctx,

@@ -1,0 +1,177 @@
+/*
+* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a
+* copy of this software and associated documentation files (the "Software"),
+* to deal in the Software without restriction, including without limitation
+* the rights to use, copy, modify, merge, publish, distribute, sublicense,
+* and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in
+* all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+* IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+* THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+* LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+* FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+* DEALINGS IN THE SOFTWARE.
+*/
+#pragma once
+
+// Includes NRC utilities for writing out debug output to debug view 
+
+#include "rtx/utility/debug_view_indices.h"
+#include "rtx/utility/debug_view_helpers.slangh"
+
+namespace Nrc
+{
+void debugRegisterNrcRadiance(
+  uvec2 pixelCoordinate,
+  bool isNrcUpdate,
+  uint bounce,
+  vec3 radiance,
+  f16vec3 throughput,
+  uint debugViewIndex)
+{
+  if (debugViewIndex == DEBUG_VIEW_DISABLED)
+  {
+    return;
+  }
+
+  if ((debugViewIndex != DEBUG_VIEW_NRC_UPDATE_RADIANCE 
+       && debugViewIndex != DEBUG_VIEW_NRC_UPDATE_THROUGHPUT
+       && debugViewIndex != DEBUG_VIEW_NRC_UPDATE_RADIANCE_MULTIPLIED_BY_THROUGHPUT)
+      || !isNrcUpdate)
+  {
+    return;
+  }
+
+  vec3 output;
+
+  if (debugViewIndex == DEBUG_VIEW_NRC_UPDATE_RADIANCE)
+  {
+     output = radiance;
+  }
+  else if (debugViewIndex == DEBUG_VIEW_NRC_UPDATE_THROUGHPUT)
+  {
+     output = throughput;
+  }
+  else if (debugViewIndex == DEBUG_VIEW_NRC_UPDATE_RADIANCE_MULTIPLIED_BY_THROUGHPUT)
+  {
+    output = radiance * throughput;
+  }
+
+  // Max: Take max incomming radiance at a bounce along a path
+  if (round(cb.debugKnob.x) == -2)
+  {
+    accumulateInDebugViewMaxUsingLuminance(pixelCoordinate, vec4(output, 0.f));
+  }
+  // Sum: Sum all incomming radiance along a path
+  else if (round(cb.debugKnob.x) == -1)
+  {
+    accumulateInDebugViewAdd(pixelCoordinate, vec4(output, 0.f));
+  }
+  // Bounce: Show incomming radiance at a particular bounce
+  else if (round(cb.debugKnob.x) == bounce) 
+  {
+    storeInDebugView(pixelCoordinate, vec4(output, 0.f));    
+  }
+}
+
+// To be called when a fully resolved ray path segment is registered on a hit/bounce or a miss
+void debugRegisterNrcPathSegment(
+  uvec2 pixelCoordinate,
+  vec3 position,
+  bool isNrcUpdate,
+  bool isPrimaryRay,
+  bool isHit, // False - is a miss
+  uint debugViewIndex)
+{
+  if (debugViewIndex == DEBUG_VIEW_DISABLED)
+  {
+    return;
+  }
+
+  if (isHit) 
+  {
+    if (debugViewIndex == DEBUG_VIEW_NRC_IS_OUTSIDE_SCENE_AABB)
+    {
+      bool isOutsideAabb = any(position < cb.nrcArgs.sceneBoundsMin)
+                        || any(position > cb.nrcArgs.sceneBoundsMax); 
+      accumulateInDebugViewMax(pixelCoordinate, vec4(isOutsideAabb, 0, 0, 0));
+    }
+
+    if ((isNrcUpdate
+        && (isPrimaryRay 
+              ? (debugViewIndex == DEBUG_VIEW_NRC_UPDATE_NUMBER_OF_BOUNCES
+                || debugViewIndex == DEBUG_VIEW_NRC_UPDATE_NUMBER_OF_PATH_SEGMENTS)
+              : (debugViewIndex == DEBUG_VIEW_NRC_UPDATE_NUMBER_OF_BOUNCES
+                || debugViewIndex == DEBUG_VIEW_NRC_UPDATE_NUMBER_OF_INDIRECT_PATH_SEGMENTS
+                || debugViewIndex == DEBUG_VIEW_NRC_UPDATE_NUMBER_OF_PATH_SEGMENTS)
+            )
+        )
+
+        || 
+        (!isNrcUpdate
+        && (isPrimaryRay 
+              ? (debugViewIndex == DEBUG_VIEW_NRC_QUERY_NUMBER_OF_BOUNCES
+                || debugViewIndex == DEBUG_VIEW_NRC_QUERY_NUMBER_OF_PATH_SEGMENTS)
+              : (debugViewIndex == DEBUG_VIEW_NRC_QUERY_NUMBER_OF_BOUNCES
+                || debugViewIndex == DEBUG_VIEW_NRC_QUERY_NUMBER_OF_INDIRECT_PATH_SEGMENTS
+                || debugViewIndex == DEBUG_VIEW_NRC_QUERY_NUMBER_OF_PATH_SEGMENTS)
+            )
+        ))
+    {
+      accumulateInDebugViewAdd(pixelCoordinate, vec4(1, 0, 0, 0));
+      return;
+    }
+  }
+  else // !isHit
+  {
+    if ((isNrcUpdate
+        && (isPrimaryRay 
+              ? (debugViewIndex == DEBUG_VIEW_NRC_UPDATE_NUMBER_OF_PATH_SEGMENTS)
+              : (debugViewIndex == DEBUG_VIEW_NRC_UPDATE_NUMBER_OF_PATH_SEGMENTS
+                || debugViewIndex == DEBUG_VIEW_NRC_UPDATE_NUMBER_OF_INDIRECT_PATH_SEGMENTS)
+            )
+        ) 
+        || 
+        (!isNrcUpdate
+        && (isPrimaryRay 
+              ? (debugViewIndex == DEBUG_VIEW_NRC_QUERY_NUMBER_OF_PATH_SEGMENTS)
+              : (debugViewIndex == DEBUG_VIEW_NRC_QUERY_NUMBER_OF_PATH_SEGMENTS
+                || debugViewIndex == DEBUG_VIEW_NRC_QUERY_NUMBER_OF_INDIRECT_PATH_SEGMENTS)
+            )
+        ))
+    {
+      accumulateInDebugViewAdd(pixelCoordinate, vec4(1, 0, 0, 0));
+      return;
+    }    
+  }
+}
+
+void debugRegisterNrcRadiance(
+  uvec2 pixelCoordinate,
+  bool isNrcUpdate,
+  uint bounce,
+  vec3 radiance,
+  f16vec3 throughput,
+  bool isPrimaryHit,
+  uint debugViewIndex)
+{
+  if (debugViewIndex == DEBUG_VIEW_DISABLED)
+  {
+    return;
+  }
+
+  // Radiance at a given hit is considered incomming radiance for a previous bounce, 
+  // hence we take - 1 when recording it on a hit
+  if (bounce > 0)
+  {
+    debugRegisterNrcRadiance(pixelCoordinate, isNrcUpdate, bounce - 1, radiance, throughput, debugViewIndex);
+  }
+}
+}

@@ -85,7 +85,7 @@ namespace dxvk {
     virtual void onFrameBegin(Rc<DxvkContext>& ctx, const FrameBeginContext& frameBeginCtx) override;
 
   private:
-    void processOutputStatistics(Rc<RtxContext>& ctx);
+    void processOutputStatistics(Rc<RtxContext>& ctx, const Resources::RaytracingOutput& rtOutput);
     void showOutputStatistics();
     bool shouldDebugViewDispatch() const;
     void createConstantsBuffer();
@@ -103,7 +103,7 @@ namespace dxvk {
     void resetNumAccumulatedFrames();
     uint32_t getActiveNumFramesToAccumulate() const;
 
-    void dispatchDebugViewInternal(Rc<RtxContext> ctx, Rc<DxvkSampler> nearestSampler, Rc<DxvkSampler> linearSampler, DebugViewArgs& debugViewArgs, Rc<DxvkBuffer>& debugViewConstantBuffer, const Resources::RaytracingOutput& rtOutput);
+    void dispatchDebugViewInternal(Rc<RtxContext> ctx, Rc<DxvkSampler> nearestSampler, Rc<DxvkSampler> linearSampler, DebugViewArgs& debugViewArgs, Rc<DxvkBuffer>& debugViewConstantBuffer, const Resources::RaytracingOutput& rtOutput, DxvkObjects& common);
     bool shouldRunDispatchPostCompositePass() const;
     bool shouldEnableAccumulation() const;
     Rc<DxvkShader> getDebugViewShader() const;

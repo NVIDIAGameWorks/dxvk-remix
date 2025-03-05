@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -221,7 +221,7 @@ TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreat
   // Note: Re-derive emissive radiance in the same way translucent surface material interaction creation is done (should match
   // the implementation in the creation function).
   const f16vec3 emissiveRadiance =
-    emissiveColor * translucentSurfaceMaterial.emissiveIntensity * uint16BitsToHalf(cb.emissiveIntensity);;
+    emissiveColor * translucentSurfaceMaterial.emissiveIntensity * uint16BitsToHalf(cb.emissiveIntensity);
 
   translucentSurfaceMaterialInteraction.emissiveRadiance = emissiveRadiance;
 

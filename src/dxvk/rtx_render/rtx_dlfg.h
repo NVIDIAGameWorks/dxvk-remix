@@ -68,13 +68,17 @@ namespace dxvk {
       m_resources.trackResource<Access>(std::move(rc));
     }
 
-    void reset() { m_resources.reset(); }
+    void reset();
   private:
     DxvkDevice* m_device = nullptr;
     VkCommandPool m_cmdPool = nullptr;
     VkCommandBuffer m_cmdBuf = nullptr;
 
-    static constexpr uint32_t kMaxSemaphores = 4;
+    // kMaxSemaphores ultimately depends on how many submits we do in the DLFG thread each frame
+    // having too many semaphores isn't really much of a hit, but not having enough causes undefined behavior/crashes
+    // addSignalSemaphore/addWaitSemaphore will assert if this value is too small
+    static constexpr uint32_t kMaxSemaphores = 7;
+
     uint32_t m_numWaitSemaphores = 0;
     std::array<VkSemaphore, kMaxSemaphores> m_waitSemaphores;
     std::array<uint64_t, kMaxSemaphores> m_waitSemaphoreValues;
@@ -84,6 +88,8 @@ namespace dxvk {
     VkFence m_signalFence = nullptr;
     DxvkLifetimeTracker m_resources;
   };
+
+  class DxvkDLFG;
 
   class DxvkDLFGCommandListArray {
   public:
@@ -120,24 +126,34 @@ namespace dxvk {
 
     vk::PresenterImage getImage(uint32_t index) const override;
 
-    VkResult acquireNextImage(vk::PresenterSync& sync, uint32_t& index) override;
+    VkResult acquireNextImage(vk::PresenterSync& sync, uint32_t& index, bool) override;
     VkResult presentImage(std::atomic<VkResult>* status,
                           const DxvkPresentInfo& presentInfo,
                           const DxvkFrameInterpolationInfo& frameInterpolationInfo,
-                          std::uint32_t acquiredImageIndex) override;
+                          std::uint32_t acquiredImageIndex,
+                          bool isDlfgPresenting,
+                          VkSetPresentConfigNV* presentMetering) override;
     VkResult recreateSwapChain(const vk::PresenterDesc& desc) override;
+    vk::PresenterInfo info() const override;
 
     // waits for all queued frames to be consumed
     void synchronize() override;
 
-    static int getPresentFrameCount() {
-      return 2;
+    int getPresentFrameCount() {
+      return m_lastPresentFrameCount;
     }
   private:
     DxvkDevice* m_device;
     Rc<DxvkContext> m_ctx;
 
-    // xxxnsubtil: try multiple swapchain acquires (2x acquire, 2x present) instead of using extra memory + blits
+    // used by HUD to determine FPS, holds the total number of frames queued in the latest present call
+    // initialized to 1 since during the first frame this will be queried before DLFG runs, so assume worst-case and let it update later
+    int m_lastPresentFrameCount = 1;
+    
+    // the number of images requested by the app
+    // the actual swapchain is sized to hold N interpolated frames + 1 rendered frame
+    uint32_t m_appRequestedImageCount = 0;
+
     std::vector<Rc<DxvkImage>> m_backbufferImages;
     std::vector<Rc<DxvkImageView>> m_backbufferViews;
     std::vector<Rc<RtxSemaphore>> m_backbufferAcquireSemaphores;
@@ -173,21 +189,31 @@ namespace dxvk {
     struct PacerJob {
       uint32_t dlfgQueryIndex;
       VkFence lastCmdListFence;
-      uint64_t semaphoreSignalValue;
+      uint64_t semaphoreSignalValue;    // signal value for the first interpolated frame
+      uint32_t interpolatedFrameCount;  // number of consecutive signals to emit, each one increments the signal value by 1
     };
     
+    struct SwapchainImage {
+      vk::PresenterImage image;
+      vk::PresenterSync sync;
+      uint32_t index;
+    };
+
     WorkerThread m_pacerThread;
     std::queue<PacerJob> m_pacerQueue;
 
     std::atomic<VkResult> m_lastPresentStatus = VK_SUCCESS;
 
-    DxvkDLFGCommandListArray m_dlfgBarrierCommandLists;
+    DxvkDLFGCommandListArray m_dlfgCommandLists;
     DxvkDLFGCommandListArray m_blitCommandLists;
     DxvkDLFGCommandListArray m_presentPacingCommandLists;
-    Rc<RtxSemaphore> m_syncSemaphore;
-    Rc<RtxSemaphore> m_dlfgBeginSemaphore;
 
     void synchronize(std::unique_lock<dxvk::mutex>& lock);
+    bool swapchainAcquire(SwapchainImage& swapchainImage);
+    bool interpolateFrame(DxvkDLFGCommandList* commandList, SwapchainImage& swapchainImage, const PresentJob& present, uint32_t interpolatedFrameIndex);
+    void blitRenderedFrame(DxvkDLFGCommandList* commandList, SwapchainImage& renderedSwapchainImage, const PresentJob& present, bool frameInterpolated);
+    bool submitPresent(SwapchainImage& image, const PresentJob& present, uint64_t pacerSemaphoreWaitValue, VkSetPresentConfigNV*
+                       presentMetering);
     void runPresentThread();
     void runPacerThread();
     void createBackbuffers();
@@ -227,14 +253,16 @@ namespace dxvk {
     
     void setDisplaySize(uint2 displaySize);
 
-    VkSemaphore dispatch(Rc<DxvkContext> ctx,
-                         const RtCamera& camera,
-                         Rc<DxvkImageView> outputImage,                       // VK_IMAGE_LAYOUT_GENERAL
-                         VkSemaphore outputImageSemaphore,                    // VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-                         Rc<DxvkImageView> colorBuffer,
-                         Rc<DxvkImageView> primaryScreenSpaceMotionVector,    // VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-                         Rc<DxvkImageView> primaryDepth,                      // VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-                         bool resetHistory = false);
+    void dispatch(Rc<DxvkContext> ctx,
+                  DxvkDLFGCommandList* commandList,
+                  const RtCamera& camera,
+                  Rc<DxvkImageView> outputImage,                       // VK_IMAGE_LAYOUT_GENERAL
+                  Rc<DxvkImageView> colorBuffer,
+                  Rc<DxvkImageView> primaryScreenSpaceMotionVector,    // VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                  Rc<DxvkImageView> primaryDepth,                      // VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+                  uint32_t interpolatedFrameIndex,                     // starts at 0
+                  uint32_t interpolatedFrameCount,                     // total number of frames we will interpolate before the next rendered frame
+                  bool resetHistory = false);
 
     Rc<RtxSemaphore>& getFrameEndSemaphore() {
       return m_dlfgFrameEndSemaphore;
@@ -244,28 +272,6 @@ namespace dxvk {
       return m_dlfgFrameEndSemaphoreValue;
     }
 
-    // DLFG callbacks
-    void createTimelineSyncObjects(VkSemaphore& syncObjSignal,
-                                   uint64_t syncObjSignalValue,
-                                   VkSemaphore& syncObjWait,
-                                   uint64_t syncObjWaitValue);
-
-    void syncSignal(VkCommandBuffer& cmdList,
-                    VkSemaphore syncObjSignal,
-                    uint64_t syncObjSignalValue);
-
-    void syncWait(VkCommandBuffer& cmdList,
-                  VkSemaphore syncObjWait,
-                  uint64_t syncObjWaitValue,
-                  int waitCpu,
-                  void* syncObjSignal,
-                  uint64_t syncObjSignalValue);
-
-    void syncFlush(VkCommandBuffer& cmdList,
-                   VkSemaphore syncObjSignal,
-                   uint64_t syncObjSignalValue,
-                   int waitCpu);
-
     Rc<DxvkDLFGTimestampQueryPool>& getDLFGQueryPool() {
       return m_queryPoolDLFG;
     }
@@ -274,36 +280,24 @@ namespace dxvk {
       return m_hasDLFGFailed;
     }
 
+    bool supportsPresentMetering() const;
+
+    // returns the maximum number of interpolated frames we can generate on the current system
+    uint32_t getMaxSupportedInterpolatedFrameCount();
+    // returns the currently configured number of interpolated frames
+    uint32_t getInterpolatedFrameCount();
+
     RW_RTX_OPTION_ENV("rtx.dlfg", bool, enable, true, "RTX_DLFG_ENABLE", "Enables DLSS 3.0 frame generation which generates interpolated frames to increase framerate at the cost of slightly more latency."); // note: always use DxvkDevice::isDLFGEnabled() to check if DLFG is enabled, not this option directly
-  
+    RW_RTX_OPTION("rtx.dlfg", uint32_t, maxInterpolatedFrames, 2, "For DLSS 4.0 frame generation, controls the number of interpolated frames for each rendered frame. Ignored for DLSS 3.0.");
+    RW_RTX_OPTION("rtx.dlfg", bool, enablePresentMetering, true, "Use hardware present metering for DLSS 4.0 frame generation instead of CPU pacing.");
+
   private:
     std::unique_ptr<NGXDLFGContext> m_dlfgContext = nullptr;
     std::atomic<bool> m_hasDLFGFailed = { false };
     uint32_t m_currentDisplaySize[2] = { 0,0 };
     bool m_contextDirty = true;
-
-    // binary semaphore, signaled after all DLFG and related synchronization work is done
-    Rc<RtxSemaphore> m_dlfgFinishedSemaphore;
     
-    DxvkDLFGCommandListArray m_dlfgEvalCommandLists;              // CL1
-    DxvkDLFGCommandListArray m_dlfgInternalAsyncOFACommandLists;  // CL2
-    DxvkDLFGCommandListArray m_dlfgInternalPostOFACommandLists;   // CL3
-    DxvkDLFGCommandListArray m_dlfgDummyWaitOnSem2CommandLists;
-    DxvkDLFGCommandListArray m_dlfgDummyWaitOnSem4CommandLists;
-    
-    struct DLFGInternalSemaphores {
-      Rc<RtxSemaphore> s1 = nullptr;    // timeline
-      uint64_t s1Value = uint64_t(-1);  // last signaled value
-      Rc<RtxSemaphore> s2 = nullptr;    // binary
-      bool s2SignaledThisFrame = false; // this may or may not happen, so we may or may not need to wait on this...
-      Rc<RtxSemaphore> s3 = nullptr;    // binary
-      Rc<RtxSemaphore> s4 = nullptr;    // timeline
-      uint64_t s4Value = uint64_t(-1);  // last signaled value
-    } m_dlfgSemaphores;
-    
-    DxvkDLFGCommandList* m_currentCommandList = nullptr;
-
-    VkSemaphore m_outputImageSemaphore = nullptr;
+    DxvkDLFGCommandListArray m_dlfgEvalCommandLists;
 
     Rc<RtxSemaphore> m_dlfgFrameEndSemaphore = nullptr;
     uint64_t m_dlfgFrameEndSemaphoreValue = 0;

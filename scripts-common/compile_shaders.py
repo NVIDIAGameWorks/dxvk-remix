@@ -229,7 +229,10 @@ def createSlangTask(inputFile, variantSpec):
     command1 = f'{args.slangc} -entry main -target glsl -verbose-paths {includePaths} -o {glslFile} ' \
             + f'-depfile {depFile} {inputFile} -D__SLANG__ {variantDefines} ' \
             + f'-matrix-layout-column-major -line-directive-mode none ' \
-            + f'-Wno-30081 -zero-initialize'
+            + f'-Wno-30081 -zero-initialize '
+            
+    # Force scalar block layout in shaders - buffers are required to be aligned as such by Neural Radiance Cache
+    command1 += f'-force-glsl-scalar-layout '
 
     if generateSlangRepro:
       reproFile = os.path.join(args.output, variantName + ".slangRepro")

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2023-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -244,7 +244,7 @@ namespace dxvk {
         ScopedGpuProfileZone(ctx, "Histogram");
         // Prepare shader arguments
         ToneMappingAutoExposureArgs pushArgs = {};
-        pushArgs.numPixels = rtOutput.m_finalOutput.image->mipLevelExtent(0).width * rtOutput.m_finalOutput.image->mipLevelExtent(0).height;
+        pushArgs.numPixels = rtOutput.m_finalOutputExtent.width * rtOutput.m_finalOutputExtent.height;
         // Note: Autoexposure speed is in units per second, so convert from milliseconds to seconds here.
         pushArgs.autoExposureSpeed = autoExposureSpeed() * (0.001f * frameTimeMilliseconds);
         pushArgs.evMinValue = evMinValue();
@@ -258,10 +258,10 @@ namespace dxvk {
 
         // Calculate histogram
         ctx->bindResourceView(AUTO_EXPOSURE_HISTOGRAM_INPUT_OUTPUT, m_exposureHistogram.view, nullptr);
-        ctx->bindResourceView(AUTO_EXPOSURE_COLOR_INPUT, rtOutput.m_finalOutput.view, nullptr);
+        ctx->bindResourceView(AUTO_EXPOSURE_COLOR_INPUT, rtOutput.m_finalOutput.view(Resources::AccessType::Read), nullptr);
 
         ctx->bindShader(VK_SHADER_STAGE_COMPUTE_BIT, AutoExposureHistogramShader::getShader());
-        const VkExtent3D workgroups = util::computeBlockCount(rtOutput.m_finalOutput.view->imageInfo().extent, VkExtent3D { 16, 16, 1 });
+        const VkExtent3D workgroups = util::computeBlockCount(rtOutput.m_finalOutputExtent, VkExtent3D { 16, 16, 1 });
         ctx->dispatch(workgroups.width, workgroups.height, workgroups.depth);
       }
 

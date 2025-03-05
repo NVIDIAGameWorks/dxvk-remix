@@ -45,6 +45,9 @@ Texture2D<uint> SharedSurfaceIndex;
 layout(rgba16ui, binding = INTEGRATE_NEE_BINDING_SHARED_SUBSURFACE_DATA_INPUT)
 Texture2D<uint4> SharedSubsurfaceData;
 
+layout(r11f_g11f_b10f, binding = INTEGRATE_NEE_BINDING_SHARED_SUBSURFACE_DIFFUSION_PROFILE_DATA_INPUT)
+Texture2D<float3> SharedSubsurfaceDiffusionProfileData;
+
 // Primary Inputs
 
 layout(r32ui, binding = INTEGRATE_NEE_BINDING_PRIMARY_WORLD_SHADING_NORMAL_INPUT)
@@ -84,6 +87,12 @@ StructuredBuffer<uint> PrimitiveIDPrefixSum;
 
 layout(rgb10_a2, binding = INTEGRATE_NEE_BINDING_PRIMARY_BASE_REFLECTIVITY_INPUT_OUTPUT)
 RWTexture2D<float4> PrimaryBaseReflectivity;
+
+// Inputs / Outputs
+
+layout(binding = INTEGRATE_NEE_BINDING_NRC_TRAINING_PATH_VERTICES_INPUT_OUTPUT)
+RWStructuredBuffer<NrcPackedPathVertex> TrainingPathVertices;
+
 
 // Outputs
 

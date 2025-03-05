@@ -88,7 +88,7 @@ namespace dxvk {
         m_gammaBuffer = m_device->createBuffer(bufInfo,
           VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
           VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-          DxvkMemoryStats::Category::AppBuffer);
+          DxvkMemoryStats::Category::AppBuffer, "DxvkSwapchainBlitter gamma texture");
       }
 
       if (!m_gammaSlice.handle)

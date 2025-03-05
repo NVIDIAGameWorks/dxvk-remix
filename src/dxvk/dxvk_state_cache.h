@@ -93,7 +93,10 @@ namespace dxvk {
      * \param [in] shader The shader to add
      */
     void registerShader(
-      const Rc<DxvkShader>&                 shader);
+      const Rc<DxvkShader>&                 shader,
+// NV-DXVK start
+      bool                                  isRemixShader = false);
+// NV-DXVK end
 
     // NV-DXVK start: compile raytracing shaders on shader compilation threads
     /**
@@ -121,6 +124,12 @@ namespace dxvk {
       return m_workerBusy.load() > 0;
     }
 
+// NV-DXVK start
+    uint32_t remixShaderCompilationCount() const {
+      return m_workerCompilingRemixShaders.load();
+    }
+// NV-DXVK end
+
   private:
 
     using WriterItem = DxvkStateCacheEntry;
@@ -131,6 +140,9 @@ namespace dxvk {
 
       // NV-DXVK start: compile rt shaders on shader compilation threads
       DxvkRaytracingPipelineShaders rt;
+      // NV-DXVK end
+      // NV-DXVK start
+      bool isRemixShader = false;
       // NV-DXVK end
 
       // NV-DXVK start: do not compile same shader multiple times
@@ -172,6 +184,9 @@ namespace dxvk {
     std::unordered_set<size_t>        m_workerItemsInFlight;  // stores hashes for work items in the queue
     // NV-DXVK end
     std::atomic<uint32_t>             m_workerBusy;
+    // NV-DXVK start
+    std::atomic<uint32_t>             m_workerCompilingRemixShaders;
+    // NV-DXVK end
     std::vector<dxvk::thread>         m_workerThreads;
 
     dxvk::mutex                       m_writerLock;

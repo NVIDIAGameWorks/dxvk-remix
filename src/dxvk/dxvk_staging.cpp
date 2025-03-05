@@ -34,7 +34,7 @@ namespace dxvk {
     if (2 * alignedSize > m_size) {
       return DxvkBufferSlice(m_device->createBuffer(info,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        DxvkMemoryStats::Category::AppBuffer));
+        DxvkMemoryStats::Category::AppBuffer, "DxvkStagingBuffer"));
     }
 
     if (alignedOffset + alignedSize > m_size || m_buffer == nullptr) {
@@ -42,7 +42,7 @@ namespace dxvk {
 
       m_buffer = m_device->createBuffer(info,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        DxvkMemoryStats::Category::AppBuffer);
+        DxvkMemoryStats::Category::AppBuffer, "DxvkStagingBuffer");
       alignedOffset = 0;
     }
 

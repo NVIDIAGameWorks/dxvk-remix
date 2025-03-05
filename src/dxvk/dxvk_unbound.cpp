@@ -76,7 +76,7 @@ namespace dxvk {
                     | VK_ACCESS_SHADER_WRITE_BIT;
     
     return dev->createBuffer(info,
-      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppBuffer);
+      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::AppBuffer, "Unbound Buffer");
   }
   
   

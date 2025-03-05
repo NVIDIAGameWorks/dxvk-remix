@@ -24,9 +24,9 @@
 
 #include "imgui.h"
 
+#include <chrono>
 #define WIN32_LEAN_AND_MEAN 
 #include <windows.h>
-#include <unordered_set>
 
 #include "../util/rc/util_rc.h"
 #include "../util/rc/util_rc_ptr.h"
@@ -123,6 +123,11 @@ namespace dxvk {
     }
 
   private:
+    enum class ShaderMessageType {
+      None,
+      Ok,
+      Error
+    };
     
     DxvkDevice*           m_device;
     
@@ -149,6 +154,10 @@ namespace dxvk {
     float                 m_userWindowHeight = 550.f;
     const char*           m_userGraphicsWindowTitle = "User Graphics Settings";
     bool                  m_userGraphicsSettingChanged = false;
+    bool m_hudMessageTimeReset = false;
+    std::chrono::time_point<std::chrono::steady_clock> m_hudMessageStartTime;
+    ShaderMessageType m_shaderMessage = ShaderMessageType::None;
+    std::chrono::time_point<std::chrono::steady_clock> m_shaderMessageTimeout;
     bool m_reflexRangesInitialized = false;
     float m_currentGameToRenderDurationMin;
     float m_currentGameToRenderDurationMax;
@@ -188,8 +197,7 @@ namespace dxvk {
       const int subItemWidth,
       const int subItemIndent);
 
-
-    void showErrorStatus(const Rc<DxvkContext>& ctx);
+    void showHudMessages(const Rc<DxvkContext>& ctx);
 
     void setupRendererState(
       const Rc<DxvkContext>&  ctx,
@@ -226,10 +234,11 @@ namespace dxvk {
     void sendUIActivationMessage();
 
     void showMemoryStats() const;
-    bool showRayReconstructionEnable(bool supportsRR);
+    bool showRayReconstructionEnable(bool supportsRR, bool showModelCombo);
 
     RTX_OPTION("rtx.gui", bool, showLegacyTextureGui, false, "A setting to toggle the old texture selection GUI, where each texture category is represented as its own list.");
     RTX_OPTION("rtx.gui", bool, legacyTextureGuiShowAssignedOnly, false, "A setting to show only the textures in a category that are assigned to it (Unassigned textures are found in the new \"Uncategorized\" list at the top).\nRequires: \'Split Texture Category List\' option to be enabled.");
+    RTX_OPTION("rtx.gui", std::uint32_t, hudMessageAnimatedDotDurationMilliseconds, 1000, "A duration in milliseconds between each dot in the animated dot sequence for HUD messages. Must be greater than 0.\nThese dots help indicate progress is happening to the user with a bit of animation which can be configured to animate at whatever speed is desired.");
     RTX_OPTION("rtx.gui", float, reflexStatRangeInterpolationRate, 0.05f, "A value controlling the interpolation rate applied to the Reflex stat graph ranges for smoother visualization.");
     RTX_OPTION("rtx.gui", float, reflexStatRangePaddingRatio, 0.05f, "A value specifying the amount of padding applied to the Reflex stat graph ranges as a ratio to the calculated range.");
   
