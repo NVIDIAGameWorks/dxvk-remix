@@ -384,6 +384,9 @@ namespace dxvk {
     // Called once per frame after all calls to Opacity Micromap Manager
     void onFrameEnd();
 
+    // Called once per frame after acceleration structure calls have been submitted to command list
+    void onFinishedBuilding();
+
     // Returns whether the OMM manager has or can generate any new OMMs.
     // This can be used to skip any large for loops querying OMM manager, 
     // but it must not be used to skip onFrameStart() call
@@ -457,6 +460,7 @@ namespace dxvk {
     void destroyInstance(const RtInstance& instance, bool forceDestroy = false);
     uint32_t calculateNumMicroTriangles(uint16_t subdivisionLevel);
 
+    Rc<DxvkBuffer> getScratchMemory(const size_t requiredScratchAllocSize);
 
     typedef std::vector<uint16_t> NumTexelsPerMicroTriangle;
     struct NumTexelsPerMicroTriangleCalculationData {
@@ -537,7 +541,8 @@ namespace dxvk {
     VkDeviceSize m_amountOfMemoryMissing = 0;    // Records how much memory was missing in a frame
     OpacityMicromapMemoryManager m_memoryManager;
     bool m_hasEnoughMemoryToPotentiallyGenerateAnOmm = true; // A quick check to avoid unnecessary computations when there's not enough free budget to handle more OMMs
-    std::unique_ptr<RtxStagingDataAlloc> m_scratchAllocator;
+    Rc<DxvkBuffer> m_scratchBuffer;
+    size_t m_scratchMemoryUsedThisFrame = 0;
 
     // Prev RtxOption states
     bool m_prevConservativeEstimationEnable = OpacityMicromapOptions::Building::ConservativeEstimation::enable();
