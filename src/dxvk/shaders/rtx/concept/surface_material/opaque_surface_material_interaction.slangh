@@ -720,10 +720,11 @@ OpaqueSurfaceMaterialInteraction opaqueSurfaceMaterialInteractionCreate(
 
     if (secondNormalLoaded)
     {
-      const f16vec3 tangentNormal2 = unsignedOctahedralToHemisphereDirection(vec2(secondNormalSample.xy), cb.opaqueMaterialArgs.normalIntensity);
-      const f16vec3 normal2 = normalize(mul(tangentToWorld, tangentNormal2));
+      f16vec3 tangentNormal2 = unsignedOctahedralToHemisphereDirection(vec2(secondNormalSample.xy), cb.opaqueMaterialArgs.normalIntensity);
+      
+      tangentNormal2 = normalBlendRNM(tangentNormal2, tangentNormal);
+      normal = normalize(mul(tangentToWorld, tangentNormal2));
 
-      normal = normalBlendRNM(normal2, normal);
     }
   }
   

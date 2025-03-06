@@ -704,6 +704,7 @@ float3 evalSpecularAlbedoGGXSchlick(in float3 baseReflectivity, in float isotrop
 }
 
 // Blends two normal vectors (which need not be normalized) together
+// Normals should be in tangent space - world space normals should just be averaged and normalized.
 // Reoriented Normal Mapping from: https://blog.selfshadow.com/publications/blending-in-detail/
 f16vec3 normalBlendRNM(in f16vec3 baseNormal, in f16vec3 detailNormal)
 {
