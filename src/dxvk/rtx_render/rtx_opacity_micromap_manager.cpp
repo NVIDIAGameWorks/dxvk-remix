@@ -203,15 +203,22 @@ namespace dxvk {
     return m_pendingReleaseSize.back();
   }
 
+  Rc<DxvkBuffer> OpacityMicromapManager::getScratchMemory(const size_t requiredScratchAllocSize) {
+    if (m_scratchBuffer == nullptr || m_scratchBuffer->info().size < requiredScratchAllocSize) {
+      DxvkBufferCreateInfo bufferCreateInfo {};
+      bufferCreateInfo.size = requiredScratchAllocSize;
+      bufferCreateInfo.access = VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR | VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
+      bufferCreateInfo.stages = VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
+      bufferCreateInfo.usage = VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
+      m_scratchBuffer = device()->createBuffer(bufferCreateInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXAccelerationStructure, "OMM Scratch");
+    }
+
+    return m_scratchBuffer;
+  }
+
   OpacityMicromapManager::OpacityMicromapManager(DxvkDevice* device)
     : CommonDeviceObject(device)
     , m_memoryManager(device) {
-    m_scratchAllocator = std::make_unique<RtxStagingDataAlloc>(
-      device,
-      "RtxStagingDataAlloc: OMM Scratch",
-      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-      VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR,
-      VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR);
   }
 
   OpacityMicromapManager::~OpacityMicromapManager() { 
@@ -224,7 +231,6 @@ namespace dxvk {
   }
 
   void OpacityMicromapManager::onDestroy() {
-    m_scratchAllocator = nullptr;
   }
 
   OmmRequest::OmmRequest(const RtInstance& _instance, const InstanceManager& instanceManager, uint32_t _quadSliceIndex)
@@ -1829,9 +1835,9 @@ namespace dxvk {
       }
     }
     
-    // Allocate the scratch memory
-    uint32_t scratchAlignment = m_device->properties().khrDeviceAccelerationStructureProperties.minAccelerationStructureScratchOffsetAlignment;
-    DxvkBufferSlice scratchSlice = m_scratchAllocator->alloc(scratchAlignment, sizeInfo.buildScratchSize);
+    // Calculate the required the scratch memory
+    const size_t scratchAlignment = m_device->properties().khrDeviceAccelerationStructureProperties.minAccelerationStructureScratchOffsetAlignment;
+    const size_t requiredScratchAllocSize = align(sizeInfo.buildScratchSize, scratchAlignment);
 
     // Build the array with vkBuildMicromapsEXT
     {
@@ -1839,12 +1845,13 @@ namespace dxvk {
       ommBuildInfo.dstMicromap = ommCacheItem.blasOmmBuffers->opacityMicromap;
       ommBuildInfo.data.deviceAddress = ommCacheItem.ommArrayBuffer->getDeviceAddress();
       ommBuildInfo.triangleArray.deviceAddress = triangleArrayBuffer->getDeviceAddress();
-      ommBuildInfo.scratchData.deviceAddress = scratchSlice.getDeviceAddress();
+      ommBuildInfo.scratchData.deviceAddress = getScratchMemory(align(m_scratchMemoryUsedThisFrame + requiredScratchAllocSize, scratchAlignment))->getDeviceAddress() + m_scratchMemoryUsedThisFrame;
+      m_scratchMemoryUsedThisFrame += requiredScratchAllocSize;
       ommBuildInfo.triangleArrayStride = sizeof(VkMicromapTriangleEXT);
       
       ctx->getCommandList()->trackResource<DxvkAccess::Read>(ommCacheItem.ommArrayBuffer);
       ctx->getCommandList()->trackResource<DxvkAccess::Read>(triangleArrayBuffer);
-      ctx->getCommandList()->trackResource<DxvkAccess::Write>(scratchSlice.buffer());
+      ctx->getCommandList()->trackResource<DxvkAccess::Write>(m_scratchBuffer);
 
       // Release OMM array memory as it's no longer needed after the build
       {
@@ -2114,6 +2121,7 @@ namespace dxvk {
 
     m_numBoundOMMs = 0;
     m_numRequestedOMMBindings = 0;
+    m_scratchMemoryUsedThisFrame = 0;
 
     // Clear caches if we need to rebuild OMMs
     {
@@ -2231,6 +2239,11 @@ namespace dxvk {
 
     m_numTrianglesToCalculateForNumTexelsPerMicroTriangle =
       OpacityMicromapOptions::Building::ConservativeEstimation::maxTrianglesToCalculateTexelDensityForPerFrame();
+  }
+  
+  void OpacityMicromapManager::onFinishedBuilding() {
+    // Release the scratch memory so it can be reused by rest of the frame.
+    m_scratchBuffer = nullptr;
   }
 
   bool OpacityMicromapManager::isActive() const {

@@ -1197,6 +1197,11 @@ namespace dxvk {
 
     // Release the scratch memory so it can be reused by rest of the frame.
     m_scratchBuffer = nullptr;
+
+    OpacityMicromapManager* opacityMicromapManager = ctx->getCommonObjects()->getSceneManager().getOpacityMicromapManager();
+    if (opacityMicromapManager) {
+      opacityMicromapManager->onFinishedBuilding();
+    }
   }
 
   template<Tlas::Type type>
