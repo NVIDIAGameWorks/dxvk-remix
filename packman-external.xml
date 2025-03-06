@@ -15,7 +15,7 @@
         <package name="rtx-remix-reflex" version="1" />
     </dependency>
     <dependency name="rtxio" linkPath="external/rtxio">
-        <package name="rtx-remix-rtxio" version="4" />
+        <package name="rtx-remix-rtxio" version="6" />
     </dependency>
     <dependency name="glslangvalidator" linkPath="external/glslangvalidator">
         <package name="rtx-remix-glslangvalidator" version="main-tot-2bfc7ca" />
