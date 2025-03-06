@@ -483,7 +483,7 @@ void UsdMod::Impl::processLight(Args& args, const pxr::UsdPrim& lightPrim, const
 void UsdMod::Impl::processPointInstancer(Args& args, const pxr::UsdPrim& prim) {
   const pxr::UsdGeomPointInstancer instancer(prim);
   // caching rootPrim, since we need to treat each prototype as having a different rootprim.
-  const pxr::UsdPrim& rootPrim = args.rootPrim;
+  const pxr::UsdPrim rootPrim = args.rootPrim;
   const bool useFastPathForPointInstancerMeshes = RtxOptions::enableReplacementInstancerMeshRendering();
   // TODO: Implement support for `instancesToObject` when rendering lights.  For now, just make multiple copies of the lights in the AssetReplacement array.
   const bool useFastPathForPointInstancerLights = false;
