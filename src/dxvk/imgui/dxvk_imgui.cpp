@@ -353,8 +353,8 @@ namespace dxvk {
   static auto rayReconstructionModelCombo = ImGui::ComboWithKey<DxvkRayReconstruction::RayReconstructionModel>(
     "Ray Reconstruction Model",
     { {
-      {DxvkRayReconstruction::RayReconstructionModel::CNN, "CNN"},
-      {DxvkRayReconstruction::RayReconstructionModel::Transformer, "Transformer"},
+      {DxvkRayReconstruction::RayReconstructionModel::Transformer, "Transformer", "Ensures highest image quality. Can be more expensive than CNN in terms of memory and performance."},
+      {DxvkRayReconstruction::RayReconstructionModel::CNN, "CNN", "Ensures great image quality"},
   } });
 
   ImGui::ComboWithKey<int> dlfgMfgModeCombo {
@@ -395,7 +395,7 @@ namespace dxvk {
     }
   }
 
-  bool ImGUI::showRayReconstructionEnable(bool supportsRR, bool showModelCombo) {
+  bool ImGUI::showRayReconstructionEnable(bool supportsRR) {
     // Only show DLSS-RR option if "showRayReconstructionOption" is set to true.
     bool changed = false;
     bool rayReconstruction = RtxOptions::Get()->enableRayReconstruction();
@@ -403,7 +403,7 @@ namespace dxvk {
       ImGui::BeginDisabled(!supportsRR);
       ImGui::Checkbox("Ray Reconstruction", &RtxOptions::Get()->enableRayReconstructionRef());
 
-      if (showModelCombo && RtxOptions::Get()->enableRayReconstruction()) {
+      if (RtxOptions::Get()->enableRayReconstruction()) {
         rayReconstructionModelCombo.getKey(&DxvkRayReconstruction::modelObject());
       }
       ImGui::EndDisabled();
@@ -1134,7 +1134,7 @@ namespace dxvk {
       ImGui::Indent(static_cast<float>(subItemIndent));
 
       if (dlss.supportsDLSS()) {
-        m_userGraphicsSettingChanged |= showRayReconstructionEnable(dlssRRSupported, false);
+        m_userGraphicsSettingChanged |= showRayReconstructionEnable(dlssRRSupported);
 
         // If DLSS-RR is toggled, need to update some path tracer options accordingly to improve quality
         if (oldUpscalerType != RtxOptions::Get()->upscalerType() || oldDLSSRREnabled != RtxOptions::Get()->enableRayReconstruction()) {
@@ -2820,7 +2820,7 @@ namespace dxvk {
         auto oldUpscalerType = RtxOptions::Get()->upscalerType();
         bool oldDLSSRREnabled = RtxOptions::Get()->enableRayReconstruction();
         getUpscalerCombo(dlss, rayReconstruction).getKey(&RtxOptions::Get()->upscalerTypeObject());
-        showRayReconstructionEnable(rayReconstruction.supportsRayReconstruction(), true);
+        showRayReconstructionEnable(rayReconstruction.supportsRayReconstruction());
 
         // Update path tracer settings when upscaler is changed or DLSS-RR is toggled.
         if (oldUpscalerType != RtxOptions::Get()->upscalerType() || oldDLSSRREnabled != RtxOptions::Get()->enableRayReconstruction()) {
