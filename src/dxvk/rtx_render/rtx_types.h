@@ -234,7 +234,7 @@ struct RasterGeometry {
     if (positionBuffer.vertexFormat() != VK_FORMAT_R32G32B32_SFLOAT && positionBuffer.vertexFormat() != VK_FORMAT_R32G32B32A32_SFLOAT)
       return false;
 
-    if (normalBuffer.defined() && (normalBuffer.vertexFormat() != VK_FORMAT_R32G32B32_SFLOAT && normalBuffer.vertexFormat() != VK_FORMAT_R32G32B32A32_SFLOAT))
+    if (normalBuffer.defined() && (normalBuffer.vertexFormat() != VK_FORMAT_R32G32B32_SFLOAT && normalBuffer.vertexFormat() != VK_FORMAT_R32G32B32A32_SFLOAT && normalBuffer.vertexFormat() != VK_FORMAT_R32_UINT))
       return false;
 
     if (texcoordBuffer.defined() && (texcoordBuffer.vertexFormat() != VK_FORMAT_R32G32_SFLOAT && texcoordBuffer.vertexFormat() != VK_FORMAT_R32G32B32_SFLOAT && texcoordBuffer.vertexFormat() != VK_FORMAT_R32G32B32A32_SFLOAT))
@@ -335,7 +335,7 @@ struct GeometryBufferData {
     }
 
     if (geometryData.normalBuffer.defined()) {
-      constexpr size_t normalSubElementSize = sizeof(float);
+      constexpr size_t normalSubElementSize = sizeof(std::uint32_t);
       normalStride = geometryData.normalBuffer.stride() / normalSubElementSize;
       normalData = (float*) geometryData.normalBuffer.mapPtr((size_t) geometryData.normalBuffer.offsetFromSlice());
     } else {
@@ -344,7 +344,7 @@ struct GeometryBufferData {
     }
 
     if (geometryData.color0Buffer.defined()) {
-      constexpr size_t colorSubElementSize = sizeof(uint32_t);
+      constexpr size_t colorSubElementSize = sizeof(std::uint32_t);
       vertexColorStride = geometryData.color0Buffer.stride() / colorSubElementSize;
       vertexColorData = (uint32_t*) geometryData.color0Buffer.mapPtr((size_t) geometryData.color0Buffer.offsetFromSlice());
     } else {
@@ -367,10 +367,6 @@ struct GeometryBufferData {
 
   Vector2& getTexCoord(uint32_t index) const {
     return *(Vector2*) (texcoordData + index * texcoordStride);
-  }
-
-  Vector3& getNormal(uint32_t index) const {
-    return *(Vector3*) (normalData + index * normalStride);
   }
 
   uint32_t& getVertexColor(uint32_t index) const {

@@ -247,8 +247,12 @@ namespace dxvk {
 
     ScopedGpuProfileZone(ctx, "performSkinning");
 
+    const auto normalVertexFormat = drawCallState.getGeometryData().normalBuffer.vertexFormat();
+
     SkinningArgs params {};
 
+    // Note: VK_FORMAT_R32_UINT assumed to be 32 bit spherical octahedral normals.
+    assert(normalVertexFormat == VK_FORMAT_R32G32B32_SFLOAT || normalVertexFormat == VK_FORMAT_R32G32B32A32_SFLOAT || normalVertexFormat == VK_FORMAT_R32_UINT);
     assert(drawCallState.getGeometryData().blendWeightBuffer.defined());
 
     memcpy(&params.bones[0], &drawCallState.getSkinningState().pBoneMatrices[0], sizeof(Matrix4) * drawCallState.getSkinningState().numBones);
@@ -265,12 +269,13 @@ namespace dxvk {
 
     params.blendWeightStride = drawCallState.getGeometryData().blendWeightBuffer.stride();
     params.blendWeightOffset = drawCallState.getGeometryData().blendWeightBuffer.offsetFromSlice();
-
     params.blendIndicesStride = drawCallState.getGeometryData().blendIndicesBuffer.stride();
     params.blendIndicesOffset = drawCallState.getGeometryData().blendIndicesBuffer.offsetFromSlice();
+
     params.numVertices = geo.vertexCount;
     params.useIndices = drawCallState.getGeometryData().blendIndicesBuffer.defined() ? 1 : 0;
     params.numBones = drawCallState.getGeometryData().numBonesPerVertex;
+    params.useOctahedralNormals = normalVertexFormat == VK_FORMAT_R32_UINT ? 1 : 0;
 
     // If we don't have a mappable vertex buffer then we need to do this on the GPU
     bool mustUseGPU = drawCallState.getGeometryData().positionBuffer.mapPtr() == nullptr;

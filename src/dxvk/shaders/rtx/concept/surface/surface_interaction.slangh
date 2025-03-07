@@ -324,9 +324,22 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
       const uint normalBufferIndex = surface.normalBufferIndex;
       const uint normalElementIndex = (currentIndex * uint(surface.normalStride) + surface.normalOffset) / 4;
   
-      normals[i].x = BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex + 0);
-      normals[i].y = BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex + 1);
-      normals[i].z = BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex + 2);
+      if (surface.normalsEncoded)
+      {
+        const uint encodedNormal = floatBitsToUint(BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex));
+        const vec3 decodedNormal = unsignedOctahedralToSphereDirection(vec2(
+          unorm16ToF32(uint16_t(encodedNormal >> 0)),
+          unorm16ToF32(uint16_t(encodedNormal >> 16))
+        ));
+
+        normals[i] = decodedNormal;
+      }
+      else
+      {
+        normals[i].x = BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex + 0);
+        normals[i].y = BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex + 1);
+        normals[i].z = BUFFER_ARRAY(geometries, normalBufferIndex, normalElementIndex + 2);
+      }
     }
   
     // Note: Fall back to the triangle normal when an interpolated normal cannot be derived. Note this will not produce a

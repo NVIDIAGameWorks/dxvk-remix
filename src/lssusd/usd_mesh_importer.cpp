@@ -182,7 +182,7 @@ namespace lss {
     m_vertexDecl.emplace_back(VertexDeclaration { Attributes::VertexPositions, offset, size });
     offset += size;
     if (ppMeshSamplers[Attributes::Normals]) {
-      const size_t size = sizeof(float) * 3;
+      const size_t size = sizeof(std::uint32_t);
       m_vertexDecl.emplace_back(VertexDeclaration { Attributes::Normals, offset, size });
       offset += size;
     }
@@ -239,6 +239,7 @@ namespace lss {
       if (!addPrimvarFromAttributeName(kPoints, Attributes::VertexPositions, sizeof(float) * 3))
         throw DxvkError(str::format("Prim: ", m_meshPrim.GetPath().GetString(), ", has no points attribute."));
 
+    // Note: Currently normals are still encoded in the USD as 3xfloat32, unlike the 32 bit octahedral encoding used after processing.
     if (!addPrimvarFromAttribute(m_meshPrim.GetNormalsAttr(), Attributes::Normals, sizeof(float) * 3))
       addPrimvarFromAttributeName(kNormalsAttribute, Attributes::Normals, sizeof(float) * 3);
 
@@ -322,6 +323,18 @@ namespace lss {
     }
   }
 
+  float signNotZero(float x) {
+    return x < 0.0f ? -1.0f : 1.0f;
+  }
+
+  std::uint32_t f32ToUnorm16(float x) {
+    assert(x >= 0.0f && x <= 1.0);
+    const float scalar = (1 << 16) - 1;
+    const float conv = x * scalar + 0.5f;
+
+    return static_cast<std::uint32_t>(conv);
+  }
+
   void UsdMeshImporter::triangulate(const uint32_t numTriangles, 
                                     const uint32_t elementStride,
                                     const std::unique_ptr<GeomPrimvarSampler>* ppMeshSamplers,
@@ -367,6 +380,7 @@ namespace lss {
           case Attributes::Colors: {
             GfVec3f color(1.0f); // default to white
             ppMeshSamplers[Attributes::Colors]->SampleBuffer(idx, &color);
+            // Todo: Proper unorm encoding later, add proper octahedral encoding on the CPU too.
             const uint32_t enColor = D3DCOLOR_ARGB((DWORD)((color[0]) * 255.f), (DWORD)((color[1]) * 255.f), (DWORD)((color[2]) * 255.f), 0xFF);
             uint32_t& vertexColor = *(uint32_t*) &m_vertexData[vertexOffset];
             vertexColor = (vertexColor & 0xFF000000) | (enColor & 0x00FFFFFF);
@@ -383,6 +397,34 @@ namespace lss {
             ppMeshSamplers[decl.attribute]->SampleBuffer(idx, &m_vertexData[vertexOffset]);
             // Invert texcoord.y for Remix
             m_vertexData[vertexOffset + 1] = 1.f - m_vertexData[vertexOffset + 1];
+            break;
+          }
+          case Attributes::Normals: {
+            GfVec3f normal(0.0f);
+            ppMeshSamplers[decl.attribute]->SampleBuffer(idx, &normal);
+            uint32_t& normalStorage = *reinterpret_cast<uint32_t*>(&m_vertexData[vertexOffset]);
+
+            const float maxMag = std::abs(normal[0]) + std::abs(normal[1]) + std::abs(normal[2]);
+            const float inverseMag = maxMag == 0.0f ? 0.0f : (1.0f / maxMag);
+            float x = normal[0] * inverseMag;
+            float y = normal[1] * inverseMag;
+
+            if (normal[2] < 0.0f) {
+              const auto originalXSign = signNotZero(x);
+              const auto originalYSign = signNotZero(y);
+              const auto inverseAbsX = 1.0f - std::abs(x);
+              const auto inverseAbsY = 1.0f - std::abs(y);
+
+              x = inverseAbsY * originalXSign;
+              y = inverseAbsX * originalYSign;
+            }
+
+            // Signed->Unsigned octahedral
+            x = x * 0.5f + 0.5f;
+            y = y * 0.5f + 0.5f;
+
+            normalStorage = f32ToUnorm16(x) | (f32ToUnorm16(y) << 16);
+
             break;
           }
           default: {
