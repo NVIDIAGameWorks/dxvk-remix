@@ -97,8 +97,10 @@ struct RtSurface {
     writeGPUHelperExplicit<2>(data, offset, indexBufferIndex);
     writeGPUHelperExplicit<2>(data, offset, color0BufferIndex);
 
-    // 2 unused bytes here.
-    writeGPUPadding<2>(data, offset);
+    writeGPUHelperExplicit<1>(data, offset, normalFormat == VK_FORMAT_R32_UINT ? 1 : 0);
+
+    // 1 unused bytes here.
+    writeGPUPadding<1>(data, offset);
 
     const uint16_t packedHash =
       (uint16_t) (associatedGeometryHash >> 48) ^
@@ -261,6 +263,7 @@ struct RtSurface {
   uint32_t normalBufferIndex = kSurfaceInvalidBufferIndex;
   uint32_t normalOffset = 0;
   uint32_t normalStride = 0;
+  VkFormat normalFormat = VK_FORMAT_UNDEFINED;
 
   uint32_t texcoordBufferIndex = kSurfaceInvalidBufferIndex;
   uint32_t texcoordOffset = 0;

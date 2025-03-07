@@ -771,6 +771,7 @@ namespace dxvk {
     currentInstance.surface.normalBufferIndex = blas.modifiedGeometryData.normalBufferIndex;
     currentInstance.surface.normalOffset = blas.modifiedGeometryData.normalBuffer.offsetFromSlice();
     currentInstance.surface.normalStride = blas.modifiedGeometryData.normalBuffer.stride();
+    currentInstance.surface.normalFormat = blas.modifiedGeometryData.normalBuffer.vertexFormat();
     currentInstance.surface.color0BufferIndex = blas.modifiedGeometryData.color0BufferIndex;
     currentInstance.surface.color0Offset = blas.modifiedGeometryData.color0Buffer.offsetFromSlice();
     currentInstance.surface.color0Stride = blas.modifiedGeometryData.color0Buffer.stride();

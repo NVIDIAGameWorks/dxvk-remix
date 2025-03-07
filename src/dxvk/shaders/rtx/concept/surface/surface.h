@@ -282,6 +282,13 @@ struct Surface
     set { data0b.y = newValue; }
   }
 
+  property bool normalsEncoded
+  {
+    get { return (data0b.z & 1) != 0; }
+    // Todo
+    set { data0b.z = 0; }
+  }
+
   property uint16_t hashPacked
   {
     get { return data0b.w; }

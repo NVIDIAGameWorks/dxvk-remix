@@ -55,5 +55,5 @@ struct SkinningArgs {
   uint numVertices;
   uint useIndices;
   uint numBones;
-  uint pad0;
+  uint useOctahedralNormals;
 };
