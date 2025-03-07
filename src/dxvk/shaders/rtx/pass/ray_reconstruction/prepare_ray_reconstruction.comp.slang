@@ -154,6 +154,12 @@ void main(uint2 threadId : SV_DispatchThreadID)
     vec4 primaryAttenuation = vec4(r11g11b10ToColor(PrimaryAttenuation[threadId]), 1.0);
     vec4 secondaryAttenuation = hasPSR ? vec4(r11g11b10ToColor(SecondaryAttenuation[threadId]), 1.0) : vec4(0,0,0,1);
 
+    // Normalize attenuation to get the color tinting without any dimmming
+    const float maxPrimaryAttenuation = max3(primaryAttenuation.r, primaryAttenuation.g, primaryAttenuation.b);
+    primaryAttenuation = maxPrimaryAttenuation <= 0.f ? vec4(0.f) : primaryAttenuation / maxPrimaryAttenuation;
+    const float maxSecondaryAttenuation = max3(secondaryAttenuation.r, secondaryAttenuation.g, secondaryAttenuation.b);
+    secondaryAttenuation = maxSecondaryAttenuation <= 0.f ? vec4(0.f) : secondaryAttenuation / maxSecondaryAttenuation;
+
     vec4 primaryAlbedo          = PrimaryAlbedo[threadId] * primaryAttenuation;
     vec4 primarySpecularAlbedo  = PrimarySpecularAlbedo[threadId] * primaryAttenuation;
 
@@ -167,6 +173,12 @@ void main(uint2 threadId : SV_DispatchThreadID)
     {
       primaryAlbedo += secondaryAlbedo;
       primarySpecularAlbedo += secondarySpecularAlbedo * getRoughnessFactor(secondaryPerceptualRoughness);
+    }
+
+    // If the primary albedo is very close to 0, clamp it to 0.  This avoids a bug where
+    // near 0 albedos cause RR to think the pixel is supposed to be very brightly lit.
+    if (all(primaryAlbedo.rgb < (0.5f / 255.0f))) {
+      primaryAlbedo = vec4(0.f, 0.f, 0.f, 1.f);
     }
 
     PrimaryAlbedo[threadId] = primaryAlbedo;
