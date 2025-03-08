@@ -65,6 +65,10 @@ assert(cpu_family != 'x86', 'dxvk-remix-nv can\'t be built in x86. Make sure you
 add_project_arguments('-DNOMINMAX', language : 'cpp')
 vs_project_defines = 'NOMINMAX;'
 
+add_project_arguments('-D_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR', language : 'cpp')
+vs_project_defines += '_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR;'
+
+
 dxvk_compiler = meson.get_compiler('cpp')
 dxvk_is_msvc = dxvk_compiler.get_id() == 'msvc'
 dxvk_is_ninja = meson.backend() == 'ninja'
