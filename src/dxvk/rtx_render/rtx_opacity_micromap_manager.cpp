@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -102,8 +102,9 @@ namespace dxvk {
     // +1 to account for OMMs used in a previous TLAS
     const uint32_t kMaxFramesOMMResourcesAreUsed = kMaxFramesInFlight + (RtxOptions::enablePreviousTLAS() ? 1u : 0u);
 
-    for (uint32_t i = 0; i < kMaxFramesOMMResourcesAreUsed; i++)
+    for (uint32_t i = 0; i < kMaxFramesOMMResourcesAreUsed; i++) {
       m_pendingReleaseSize.push_front(0);
+    }
   }
 
   void OpacityMicromapMemoryManager::onFrameStart() {
@@ -114,50 +115,81 @@ namespace dxvk {
     m_used -= sizeToRelease;
   }
 
+  void OpacityMicromapMemoryManager::registerVidmemFreeSize() {
+    // Gather runtime vidmem stats
+    VkDeviceSize vidmemSize = 0;
+    VkDeviceSize vidmemUsedSize = 0;
+
+    DxvkAdapterMemoryInfo memHeapInfo = m_device->adapter()->getMemoryHeapInfo();
+    DxvkMemoryAllocator& memoryManager = m_device->getCommon()->memoryManager();
+    const VkPhysicalDeviceMemoryProperties& memoryProperties = memoryManager.getMemoryProperties();
+
+    for (uint32_t i = 0; i < memoryProperties.memoryHeapCount; i++) {
+      if (memoryProperties.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
+        vidmemSize += memHeapInfo.heaps[i].memoryBudget;
+        vidmemUsedSize += memHeapInfo.heaps[i].memoryAllocated;
+      }
+    }
+
+    m_vidmemFreeSize = vidmemSize - std::min(vidmemUsedSize, vidmemSize);
+  }
+
   void OpacityMicromapMemoryManager::updateMemoryBudget(Rc<DxvkContext> ctx) {
 
     // Gather runtime vidmem stats
     VkDeviceSize vidmemSize = 0;
-    VkDeviceSize vidmemUsedSize = static_cast<VkDeviceSize>(OpacityMicromapOptions::Cache::minFreeVidmemMBToNotAllocate()) * 1024 * 1024;
-
-    DxvkMemoryAllocator& memoryManager = ctx->getCommonObjects()->memoryManager();
+    DxvkAdapterMemoryInfo memHeapInfo = m_device->adapter()->getMemoryHeapInfo();
+    DxvkMemoryAllocator& memoryManager = m_device->getCommon()->memoryManager();
     const VkPhysicalDeviceMemoryProperties& memoryProperties = memoryManager.getMemoryProperties();
-    const std::array<DxvkMemoryHeap, VK_MAX_MEMORY_HEAPS>& memoryHeaps = memoryManager.getMemoryHeaps();
 
     for (uint32_t i = 0; i < memoryProperties.memoryHeapCount; i++) {
       if (memoryProperties.memoryHeaps[i].flags & VK_MEMORY_HEAP_DEVICE_LOCAL_BIT) {
-        vidmemSize += memoryHeaps[i].budget > 0 ? memoryHeaps[i].budget : memoryHeaps[i].properties.size;
-        vidmemUsedSize += memoryHeaps[i].stats.totalUsed();
+        vidmemSize += memHeapInfo.heaps[i].memoryBudget;
       }
     }
 
-    const VkDeviceSize vidmemFreeSize = vidmemSize - std::min(vidmemUsedSize, vidmemSize);
+    // Consider the smalleer free VidMem size reported now and at the end of last frame.
+    // End of last mem stats often account for more intra frame allocations, but updateMemoryBudget()
+    // is called at the start of the frame to adjust OMM budget before any OMM allocs happen in the frame
+    const VkDeviceSize prevEndOfFrameVidmemFreeSize = m_vidmemFreeSize;
+    registerVidmemFreeSize();
+    if (prevEndOfFrameVidmemFreeSize != kInvalidDeviceSize) {
+      m_vidmemFreeSize = std::min(m_vidmemFreeSize, prevEndOfFrameVidmemFreeSize);
+    }
 
     double maxVidmemSizePercentage = static_cast<double>(OpacityMicromapOptions::Cache::maxVidmemSizePercentage());
 
-    // Halve the budget when using a low mem GPU
+    // Halve the max budget when using a low mem GPU
     if (RtxOptions::lowMemoryGpu()) {
       maxVidmemSizePercentage /= 2;
     }
 
     // Calculate a new budget given the runtime vidmem stats
-    VkDeviceSize maxAllowedBudget = std::min(
-      static_cast<VkDeviceSize>(maxVidmemSizePercentage * vidmemSize),
-      static_cast<VkDeviceSize>(OpacityMicromapOptions::Cache::maxBudgetSizeMB()) * 1024 * 1024);
-    VkDeviceSize newBudget = std::min(vidmemFreeSize, maxAllowedBudget);
 
-    if (newBudget < static_cast<VkDeviceSize>(OpacityMicromapOptions::Cache::minBudgetSizeMB()) * 1024 * 1024)
-      newBudget = 0;
+    VkDeviceSize maxBudget =
+      std::min(static_cast<VkDeviceSize>(maxVidmemSizePercentage * vidmemSize),
+              static_cast<VkDeviceSize>(OpacityMicromapOptions::Cache::maxBudgetSizeMB()) * 1024 * 1024);
 
-    // Update the budget
-    if (newBudget != m_budget) {
-      if (m_budget == 0)
-        ONCE(Logger::info("[RTX Opacity Micromap] Setting budget from 0 to greater than 0."));
-      if (newBudget == 0)
-        ONCE(Logger::info("[RTX Opacity Micromap] Free Vidmem dropped below a cutoff. Setting budget to 0."));
+    const VkDeviceSize hardMinFreeVidmemToNotAllocate = static_cast<VkDeviceSize>(OpacityMicromapOptions::Cache::minFreeVidmemMBToNotAllocate()) * 1024 * 1024;
+    const VkDeviceSize softMinFreeVidmemToNotAllocate = hardMinFreeVidmemToNotAllocate + static_cast<VkDeviceSize>(OpacityMicromapOptions::Cache::freeVidmemMBBudgetBuffer()) * 1024 * 1024;
+    
+    m_prevBudget = m_budget;
 
-      m_budget = newBudget;
+    // Recalculate budget if free memory dropped below the hard limit or is over the soft limit
+    if (m_vidmemFreeSize < hardMinFreeVidmemToNotAllocate || m_vidmemFreeSize > softMinFreeVidmemToNotAllocate) {
+      m_budget = std::min(m_vidmemFreeSize - std::min(softMinFreeVidmemToNotAllocate, m_vidmemFreeSize) + static_cast<VkDeviceSize>(m_used), maxBudget);
     }
+
+    if (m_budget < static_cast<VkDeviceSize>(OpacityMicromapOptions::Cache::minBudgetSizeMB()) * 1024 * 1024) {
+      m_budget = 0;
+    }
+  
+    if (m_budget != m_prevBudget && m_budget == 0) {
+      ONCE(Logger::info("[RTX Opacity Micromap] Free Vidmem dropped below a limit. Setting budget to 0."));
+    }
+
+    // Invalidate m_vidmemFreeSize to make sure we use it only when it was set at the end of the frame again
+    m_vidmemFreeSize = kInvalidDeviceSize;
   }
 
   bool OpacityMicromapMemoryManager::allocate(VkDeviceSize size) {
@@ -181,6 +213,10 @@ namespace dxvk {
 
   void OpacityMicromapMemoryManager::releaseAll() {
     release(m_used);
+  }
+
+  VkDeviceSize OpacityMicromapMemoryManager::getPrevBudget() const {
+    return m_prevBudget;
   }
 
   float OpacityMicromapMemoryManager::calculateUsageRatio() const {
@@ -2165,11 +2201,10 @@ namespace dxvk {
 
     // Update memory management
     {
-      const VkDeviceSize prevBudget = m_memoryManager.getBudget();
       m_memoryManager.updateMemoryBudget(ctx);
 
       if (m_memoryManager.getBudget() != 0) {
-        const bool hasVRamBudgetDecreased = m_memoryManager.getBudget() < prevBudget;
+        const bool hasVRamBudgetDecreased = m_memoryManager.getBudget() < m_memoryManager.getPrevBudget();
 
         // Adjust missing memory if the budget is oversubscribed
         if (hasVRamBudgetDecreased) {
@@ -2214,8 +2249,9 @@ namespace dxvk {
           }
         }
       } else { // budget == 0
-        if (prevBudget > 0)
+        if (m_memoryManager.getPrevBudget() > 0) {
           clear();
+        }
       }
 
       m_amountOfMemoryMissing = 0;
@@ -2239,6 +2275,10 @@ namespace dxvk {
 
     m_numTrianglesToCalculateForNumTexelsPerMicroTriangle =
       OpacityMicromapOptions::Building::ConservativeEstimation::maxTrianglesToCalculateTexelDensityForPerFrame();
+
+    // Register amount of free vidmem at the end of the frame to account for any intra-frame allocations.
+    // This will be then used next frame to adjust budgeting
+    m_memoryManager.registerVidmemFreeSize();
   }
   
   void OpacityMicromapManager::onFinishedBuilding() {

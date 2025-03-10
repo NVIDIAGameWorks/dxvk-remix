@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2022-2023, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2022-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -53,8 +53,16 @@ namespace dxvk {
     struct Cache {
       friend class OpacityMicromapManager;
 
-      RTX_OPTION("rtx.opacityMicromap.cache", int, minFreeVidmemMBToNotAllocate, 2560, "Min Video Memory [MB] to keep free before allocating any for Opacity Micromaps.");
-      RTX_OPTION("rtx.opacityMicromap.cache", int, minBudgetSizeMB, 512, "Budget: Min Video Memory [MB] required.\n"
+      RTX_OPTION("rtx.opacityMicromap.cache", int, minFreeVidmemMBToNotAllocate, 512,
+                 "Min Video Memory [MB] to keep free before allocating any for Opacity Micromaps.");
+      RTX_OPTION("rtx.opacityMicromap.cache", int, freeVidmemMBBudgetBuffer, 384,
+                 "A buffer of free memory on top of \"minFreeVidmemMBToNotAllocate\" to not budget OMMs for when calculating a new memory budget for OMMs.\n"
+                 "Note, \"minFreeVidmemMBToNotAllocate\" + \"freeVidmemMBBudgetBuffer\" is left untouched when calculating a new memory budget.\n"
+                 "However, once budget has been assigned to OMMs, the budget will not decrease until the free VidMem drops below \"minFreeVidmemMBToNotAllocate\".\n"
+                 "Having this soft budget buffer protects OMM budget against runtime memory usage swings at high memory pressure\n"
+                 "and keep it stable rather than the budget being continously bumped and decreased in oscilating manner,\n"
+                 "which is detrimental since OMM build workloads are spread across multiple frames.");
+      RTX_OPTION("rtx.opacityMicromap.cache", int, minBudgetSizeMB, 128, "Budget: Min Video Memory [MB] required.\n"
                                                                          "If the min amount is not available, then the budget will be set to 0.");
       RTX_OPTION("rtx.opacityMicromap.cache", int, maxBudgetSizeMB, 1536, "Budget: Max Allowed Size [MB].");
       RTX_OPTION("rtx.opacityMicromap.cache", float, maxVidmemSizePercentage, 0.15, "Budget: Max Video Memory Size %.");
@@ -301,6 +309,7 @@ namespace dxvk {
     explicit OpacityMicromapMemoryManager(DxvkDevice* device);
 
     void onFrameStart();
+    void registerVidmemFreeSize();
     void updateMemoryBudget(Rc<DxvkContext> ctx);
 
     bool allocate(VkDeviceSize size);
@@ -309,6 +318,7 @@ namespace dxvk {
     void releaseAll();
 
     VkDeviceSize getBudget() const { return m_budget; }
+    VkDeviceSize getPrevBudget() const;
     VkDeviceSize getUsed() const { return m_used; }
     float calculateUsageRatio() const;
     VkDeviceSize calculatePendingAvailableSize() const;
@@ -316,8 +326,11 @@ namespace dxvk {
     VkDeviceSize getNextPendingReleasedSize() const;
 
   private:
+    static const VkDeviceSize kInvalidDeviceSize = -1;
     VkDeviceSize m_used = 0;
-    VkDeviceSize m_budget;
+    VkDeviceSize m_budget = 0;
+    VkDeviceSize m_prevBudget = 0;
+    VkDeviceSize m_vidmemFreeSize = kInvalidDeviceSize;
 
     VkPhysicalDeviceMemoryProperties  m_memoryProperties;
 
@@ -443,7 +456,6 @@ namespace dxvk {
 
     XXH64_hash_t bindOpacityMicromap(Rc<DxvkContext> ctx, const RtInstance& instance, uint32_t billboardIndex, VkAccelerationStructureGeometryKHR& targetGeometry, const InstanceManager& instanceManager);
 
-    void updateMemoryBudget();
     void generateInstanceOmmRequests(RtInstance& instance, const InstanceManager& instanceManager, std::vector<OmmRequest>& ommRequests);
 
     bool registerOmmRequestInternal(RtInstance& instance, const OmmRequest& ommRequest);
