@@ -593,6 +593,7 @@ namespace dxvk {
         "068E64C3DB849782,"  // ugly textures used for plasma catchers for fake bloom
         "92e275beee2d2c12,"  // tanker detail texture
         "ace20008ae3a0a5b,"  // barrel detail texture
+        "504697625CCD3B45,"  // building detail texture
       },
       { "rtx.ignoreTransparencyLayerTextures",
         // Light beams
