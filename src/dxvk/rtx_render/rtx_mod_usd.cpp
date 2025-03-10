@@ -1143,7 +1143,7 @@ bool UsdMod::Impl::processMesh(const pxr::UsdPrim& prim, Args& args) {
   std::unique_ptr<lss::UsdMeshImporter> processedMesh;
 
   try {
-    processedMesh = std::make_unique<lss::UsdMeshImporter>(prim);
+    processedMesh = std::make_unique<lss::UsdMeshImporter>(prim, RtxOptions::limitedBonesPerVertex());
   }
   catch (DxvkError e) {
     Logger::err(e.message());
