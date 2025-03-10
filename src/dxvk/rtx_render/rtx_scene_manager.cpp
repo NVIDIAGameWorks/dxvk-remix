@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2021-2024, NVIDIA CORPORATION. All rights reserved.
+* Copyright (c) 2021-2025, NVIDIA CORPORATION. All rights reserved.
 *
 * Permission is hereby granted, free of charge, to any person obtaining a
 * copy of this software and associated documentation files (the "Software"),
@@ -1640,7 +1640,6 @@ namespace dxvk {
     }
   }
 
-
   namespace {
     bool ifTrue_andThenSetFalse(std::atomic_bool& atomicBool) {
       bool expected = true;
@@ -1672,15 +1671,14 @@ namespace dxvk {
       }
     }
 
-    if (freeTextures || freeUnused) {
-      // also free OMM-s that were created for the respective textures
+    if (freeTextures) {
+      m_device->getCommon()->getTextureManager().clear();
+
       if (m_opacityMicromapManager) {
         m_opacityMicromapManager->clear();
       }
     }
-    if (freeTextures) {
-      m_device->getCommon()->getTextureManager().clear();
-    }
+
     if (freeUnused) {
       // DXVK doesnt free chunks for us by default (its high water mark) so force release some memory back to the system here.
       m_device->getCommon()->memoryManager().freeUnusedChunks();
