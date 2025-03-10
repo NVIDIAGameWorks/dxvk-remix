@@ -844,6 +844,8 @@ namespace dxvk {
                "The amount of GPU memory in gibibytes to reserve away from consideration for adaptive resolution replacement textures.\n"
                "This value should only be changed to reflect the estimated amount of memory Remix itself consumes on the GPU (aside from texture loading, mostly from rendering-related buffers) and should not be changed otherwise.\n"
                "Only relevant when force high resolution replacement textures is disabled and adaptive resolution replacement textures is enabled. See asset estimated size parameter for more information.\n");
+    RTX_OPTION("rtx", uint, limitedBonesPerVertex, 4,
+               "Limit the number of bone influences per vertex for replacement geometry.  D3D9 games were limited to 4, which is the default.  In rare instances you may want to increase this based on your preference for replaced assets.  This config only takes affect when set on startup via the rtx.conf.");
 
     struct TextureManager {
       RTX_OPTION("rtx.texturemanager", int, budgetPercentageOfAvailableVram, 50,

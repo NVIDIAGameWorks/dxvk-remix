@@ -34,7 +34,7 @@ namespace lss {
 
   class UsdMeshImporter {
   public:
-    UsdMeshImporter(const pxr::UsdPrim& meshPrim);
+    UsdMeshImporter(const pxr::UsdPrim& meshPrim, const uint32_t limitedNumBonesPerVertex);
 
     enum Attributes : uint32_t {
       VertexPositions = 0,
@@ -88,7 +88,7 @@ namespace lss {
     }
 
     size_t GetNumBonesPerVertex() const {
-      return m_numBonesPerVertex;
+      return m_limitedNumBonesPerVertex;
     }
 
     bool IsRightHanded() const {
@@ -135,7 +135,8 @@ namespace lss {
 
     uint32_t m_vertexStride = 0;
     uint32_t m_numVertices = 0;
-    uint32_t m_numBonesPerVertex = 0;
+    uint32_t m_actualNumBonesPerVertex = 0;
+    uint32_t m_limitedNumBonesPerVertex = 0;
 
     DoubleSidedState m_doubleSided = Inherit;
     bool m_isRightHanded = true; // By default USD is right handed
