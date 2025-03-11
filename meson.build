@@ -22,7 +22,7 @@
 
 project(
   'dxvk', ['c', 'cpp'],
-  version : 'remix-1.0.0-rc1',
+  version : 'remix-1.0.0',
   meson_version : '>= 0.58',
   default_options : ['werror=true', 'b_vscrt=from_buildtype']
 )
