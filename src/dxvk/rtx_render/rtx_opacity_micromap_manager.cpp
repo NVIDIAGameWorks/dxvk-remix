@@ -1511,7 +1511,7 @@ namespace dxvk {
       ommBufferInfo.usage = VK_BUFFER_USAGE_MICROMAP_BUILD_INPUT_READ_ONLY_BIT_EXT | 
         VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
       ommBufferInfo.access = VK_ACCESS_TRANSFER_WRITE_BIT;
-
+      ommBufferInfo.requiredAlignmentOverride = 256;
       ommBufferInfo.size = triangleArrayBufferSize;
       triangleArrayBuffer = device->createBuffer(ommBufferInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXOpacityMicromap, "OMM triangle array buffer");
       
@@ -1721,6 +1721,7 @@ namespace dxvk {
       ommBufferInfo.usage = VK_BUFFER_USAGE_MICROMAP_BUILD_INPUT_READ_ONLY_BIT_EXT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
       ommBufferInfo.access = VK_ACCESS_SHADER_WRITE_BIT;
       ommBufferInfo.size = opacityMicromapBufferSize;
+      ommBufferInfo.requiredAlignmentOverride = 256;
       ommCacheItem.ommArrayBuffer = m_device->createBuffer(ommBufferInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXOpacityMicromap, "OMM micromap buffer");
 
       if (ommCacheItem.ommArrayBuffer == nullptr) {
@@ -1849,6 +1850,7 @@ namespace dxvk {
       // The access is covered by a proper VkMemoryBarrier2 later
       ommBufferInfo.access = VK_ACCESS_MEMORY_WRITE_BIT;
       ommBufferInfo.size = sizeInfo.micromapSize;
+      ommBufferInfo.requiredAlignmentOverride = 256;
       ommCacheItem.blasOmmBuffers->opacityMicromapBuffer = m_device->createBuffer(ommBufferInfo, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, DxvkMemoryStats::Category::RTXOpacityMicromap, "OMM micromap");
 
       if (ommCacheItem.blasOmmBuffers->opacityMicromapBuffer == nullptr) {
@@ -1880,8 +1882,11 @@ namespace dxvk {
       // Fill in the pointers we didn't have at size query
       ommBuildInfo.dstMicromap = ommCacheItem.blasOmmBuffers->opacityMicromap;
       ommBuildInfo.data.deviceAddress = ommCacheItem.ommArrayBuffer->getDeviceAddress();
+      assert(ommBuildInfo.data.deviceAddress % 256 == 0);
       ommBuildInfo.triangleArray.deviceAddress = triangleArrayBuffer->getDeviceAddress();
+      assert(ommBuildInfo.triangleArray.deviceAddress % 256 == 0);
       ommBuildInfo.scratchData.deviceAddress = getScratchMemory(align(m_scratchMemoryUsedThisFrame + requiredScratchAllocSize, scratchAlignment))->getDeviceAddress() + m_scratchMemoryUsedThisFrame;
+      assert(ommBuildInfo.scratchData.deviceAddress % scratchAlignment == 0);
       m_scratchMemoryUsedThisFrame += requiredScratchAllocSize;
       ommBuildInfo.triangleArrayStride = sizeof(VkMicromapTriangleEXT);
       

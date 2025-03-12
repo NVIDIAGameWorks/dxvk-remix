@@ -596,7 +596,10 @@ struct BlasEntry {
 
   using InstanceMap = SpatialMap<RtInstance>;
 
-  Rc<PooledBlas> staticBlas;
+  Rc<PooledBlas> dynamicBlas = nullptr;
+
+  std::vector<VkAccelerationStructureGeometryKHR> buildGeometries;
+  std::vector<VkAccelerationStructureBuildRangeInfoKHR> buildRanges;
 
   BlasEntry() = default;
 
@@ -624,20 +627,20 @@ struct BlasEntry {
     m_materials.clear();
   }
 
-  void linkInstance(const RtInstance* instance) {
+  void linkInstance(RtInstance* instance) {
     m_linkedInstances.push_back(instance);
   }
 
-  void unlinkInstance(const RtInstance* instance);
+  void unlinkInstance(RtInstance* instance);
 
-  const std::vector<const RtInstance*>& getLinkedInstances() const { return m_linkedInstances; }
+  const std::vector<RtInstance*>& getLinkedInstances() const { return m_linkedInstances; }
   InstanceMap& getSpatialMap() { return m_spatialMap; }
   const InstanceMap& getSpatialMap() const { return m_spatialMap; }
 
   void rebuildSpatialMap();
 
 private:
-  std::vector<const RtInstance*> m_linkedInstances;
+  std::vector<RtInstance*> m_linkedInstances;
   InstanceMap m_spatialMap;
   std::unordered_map<XXH64_hash_t, LegacyMaterialData> m_materials;
 };

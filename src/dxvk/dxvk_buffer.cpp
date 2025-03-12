@@ -230,6 +230,9 @@ namespace dxvk {
 
     if (m_info.usage & VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR)
       result = std::max(result, (VkDeviceSize)m_device->properties().khrDeviceAccelerationStructureProperties.minAccelerationStructureScratchOffsetAlignment);
+
+    if (m_info.usage & VK_BUFFER_USAGE_MICROMAP_BUILD_INPUT_READ_ONLY_BIT_EXT)
+      result = std::max(result, VkDeviceSize(256u)); // https://vulkan.lunarg.com/doc/view/1.4.304.1/windows/antora/spec/latest/chapters/VK_EXT_opacity_micromap/micromaps.html#VUID-vkCmdBuildMicromapsEXT-pInfos-07515
     
     if (m_info.usage & (VK_BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT | VK_BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT)) {
       result = std::max(result, devInfo.limits.minTexelBufferOffsetAlignment);

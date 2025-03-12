@@ -137,7 +137,7 @@ private:
                    std::vector<VkAccelerationStructureBuildRangeInfoKHR*>& blasRangesToBuild,
                    float elapsedTime,
                    size_t& currentScratchOffset);
-  void addStaticBlas(RtInstance* instance, BlasEntry* blasEntry, const Matrix4* instanceToObject);
+  void addBlas(RtInstance* instance, BlasEntry* blasEntry, const Matrix4* instanceToObject);
   void createBlasBuffersAndInstances(Rc<DxvkContext> ctx, 
                                      const std::vector<std::unique_ptr<BlasBucket>>& blasBuckets,
                                      std::vector<VkAccelerationStructureBuildGeometryInfoKHR>& blasToBuild,
