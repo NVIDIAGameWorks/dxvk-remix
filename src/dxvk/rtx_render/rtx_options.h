@@ -384,8 +384,10 @@ namespace dxvk {
 
     RTX_OPTION("rtx", bool, resolvePreCombinedMatrices, true, "");
 
-    RTX_OPTION("rtx", uint32_t, minPrimsInStaticBLAS, 1000, "");
-    RTX_OPTION("rtx", uint32_t, maxPrimsInMergedBLAS, 50000, "");
+    RTX_OPTION("rtx", uint32_t, minPrimsInDynamicBLAS, 1000, "The minimum number of triangles required to promote a mesh to it's own BLAS, otherwise it lands in the merged BLAS with multiple other meshes.");
+    RTX_OPTION("rtx", uint32_t, maxPrimsInMergedBLAS, 50000, "The maximum number of triangles for a mesh that can be in the merged BLAS.  ");
+    RTX_OPTION_FLAG("rtx", bool, forceMergeAllMeshes, false, RtxOptionFlags::NoSave, "Force merges all meshes into as few BLAS as possible.  This is generally not desirable for performance, but can be a useful debugging tool.");
+    RTX_OPTION_FLAG("rtx", bool, minimizeBlasMerging, false, RtxOptionFlags::NoSave, "Minimize BLAS merging to the minimum possible, this option tries to give all meshes their own BLAS.  This is generally not desirable forperformance, but can be a useful debugging tool.");
 
     RTX_OPTION_ENV("rtx", bool, enableAlwaysCalculateAABB, false, "RTX_ALWAYS_CALCULATE_AABB", "Calculate an Axis Aligned Bounding Box for every draw call.\n This may improve instance tracking across frames for skinned and vertex shaded calls.");
 
@@ -1184,7 +1186,6 @@ namespace dxvk {
     }
 
     const ivec2 getDrawCallRange() const { Vector2i v = drawCallRange(); return ivec2{v.x, v.y}; }
-    uint32_t getMinPrimsInStaticBLAS() const { return minPrimsInStaticBLAS(); }
 
     // Camera
     CameraAnimationMode getCameraAnimationMode() { return cameraAnimationMode(); }

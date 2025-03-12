@@ -118,10 +118,12 @@ namespace dxvk {
         return false;
     }
 
-    geometries.insert(geometries.end(), instance->buildGeometries.begin(), instance->buildGeometries.end());
-    ranges.insert(ranges.end(), instance->buildRanges.begin(), instance->buildRanges.end());
+    BlasEntry* blasEntry = instance->getBlas();
 
-    for (auto& range : instance->buildRanges) {
+    geometries.insert(geometries.end(), blasEntry->buildGeometries.begin(), blasEntry->buildGeometries.end());
+    ranges.insert(ranges.end(), blasEntry->buildRanges.begin(), blasEntry->buildRanges.end());
+
+    for (auto& range : blasEntry->buildRanges) {
       originalInstances.push_back(instance);
       primitiveCounts.push_back(range.primitiveCount);
     }
@@ -136,10 +138,10 @@ namespace dxvk {
     return true;
   }
 
-  static void fillGeometryInfoFromBlasEntry(const BlasEntry& blasEntry, RtInstance& instance, const OpacityMicromapManager* opacityMicromapManager) {
+  static void fillGeometryInfoFromBlasEntry(BlasEntry& blasEntry, RtInstance& instance, const OpacityMicromapManager* opacityMicromapManager) {
     ScopedCpuProfileZone();
-    instance.buildGeometries.clear();
-    instance.buildRanges.clear();
+    blasEntry.buildGeometries.clear();
+    blasEntry.buildRanges.clear();
     instance.billboardIndices.clear();
     instance.indexOffsets.clear();
 
@@ -174,8 +176,8 @@ namespace dxvk {
       for (uint32_t billboardIndex = 0; billboardIndex < instance.getBillboardCount(); billboardIndex++) {
         const uint32_t kNumIndicesPerBillboardQuad = buildRange.primitiveCount * 3;
         buildRange.primitiveOffset = (billboardIndex * kNumIndicesPerBillboardQuad * blasEntry.modifiedGeometryData.indexBuffer.stride());
-        instance.buildGeometries.push_back(geometry);
-        instance.buildRanges.push_back(buildRange);
+        blasEntry.buildGeometries.push_back(geometry);
+        blasEntry.buildRanges.push_back(buildRange);
         instance.billboardIndices.push_back(billboardIndex);
         instance.indexOffsets.push_back(billboardIndex * kNumIndicesPerBillboardQuad);
       }
@@ -210,8 +212,8 @@ namespace dxvk {
       buildRange.primitiveCount = blasEntry.modifiedGeometryData.calculatePrimitiveCount();
       buildRange.primitiveOffset = 0;
 
-      instance.buildGeometries.push_back(geometry);
-      instance.buildRanges.push_back(buildRange);
+      blasEntry.buildGeometries.push_back(geometry);
+      blasEntry.buildRanges.push_back(buildRange);
       instance.billboardIndices.push_back(0);
       instance.indexOffsets.push_back(0);
     }
@@ -411,6 +413,9 @@ namespace dxvk {
 
     size_t totalScratchMemory = 0;
 
+    // NOTE: Would like to use the BLAS Linked instances here, but that misses viewmodel and virtual instances
+    std::unordered_map<BlasEntry*, std::vector<RtInstance*>> uniqueBlas;
+
     for (RtInstance* instance : instances) {
       // If the instance has zero mask, do not build BLAS for it: no ray can intersect this instance.
       if (instance->getVkInstance().mask == 0) {
@@ -435,9 +440,6 @@ namespace dxvk {
         continue;
       }
 
-      XXH64_hash_t boundOpacityMicromapHash = kEmptyHash;
-      bool hasTriedToBindOpacityMicromap = false;
-
       if (opacityMicromapManager) {
         opacityMicromapManager->registerOpacityMicromapBuildRequest(*instance, instanceManager, textures);
       }
@@ -449,129 +451,46 @@ namespace dxvk {
 
       fillGeometryInfoFromBlasEntry(*blasEntry, *instance, opacityMicromapManager);
 
-      // Check validity of a built BLAS
-      if (blasEntry->staticBlas.ptr()) {
-        // Bind opacity micromap
-        // Opacity micromaps must be bound before acceleration sizes are calculated
-        // Note: since opacity micromaps for this frame are scheduled later 
-        //       this will only pickup Opacity Micromaps built in previous frames
-        if (opacityMicromapManager) {
-          boundOpacityMicromapHash = opacityMicromapManager->tryBindOpacityMicromap(ctx, *instance, 0, instance->buildGeometries[0], instanceManager);
-          hasTriedToBindOpacityMicromap = true;
-        }
+      const uint32_t minPrimsInDynamicBLAS = std::max(RtxOptions::minPrimsInDynamicBLAS(), 100u);
+      const uint32_t maxPrimsForMergedBLAS = RtxOptions::Get()->maxPrimsInMergedBLAS();
+      const uint32_t blasPrims = blasEntry->modifiedGeometryData.calculatePrimitiveCount();
 
-        // A previously built BLAS needs to be rebuild if a corresponding Opacity Micromap availability has changed
-        const bool forceRebuildStaticBlas = boundOpacityMicromapHash != blasEntry->staticBlas->opacityMicromapSourceHash;
+      // Figure out if this blas should be a dynamic one
+      const bool requestDynamicBlas = instance->surface.instancesToObject != nullptr ||    // Point instancer geometry is replicated many times in a scene, we want to reuse the BLAS memory for these objects
+                                      blasEntry->input.getSkinningState().numBones != 0 || // Skinned meshes are always desirable to give a dynamic BLAS, since we'll want to make use of BVH update for performance reasons
+                                      blasEntry->getLinkedInstances().size() > 1  ||       // Meshes that are used in instances multiple times should benefit from BLAS reuse
+                                      blasEntry->dynamicBlas != nullptr ||                 // If we already have a dynamic BLAS, keep using it.
+                                      blasPrims > maxPrimsForMergedBLAS ||                 // Avoid large meshes ending up in the merged BLAS which is built every frame.  # prims is proportional to build cost.
+                                      RtxOptions::minimizeBlasMerging();                   // Option to attempt putting as many objects into dynamic BLAS as possible.
 
-        if (forceRebuildStaticBlas) {
+      const bool forceMergedBlas = (blasEntry->buildGeometries.size() > 1 ||                                       // Currently we use multiple build geometries for particle billboards, which we prefer to merge into large BLAS
+                                    (!RtxOptions::minimizeBlasMerging() && blasPrims < minPrimsInDynamicBLAS) ||   // Avoid creating lots of small dynamic BLAS
+                                    RtxOptions::forceMergeAllMeshes()) &&                                          // Setting to force all meshes into the merged BLAS
+                                      instance->surface.instancesToObject == nullptr;                              // Never merge point instancer geometry
+
+      if (requestDynamicBlas && !forceMergedBlas) {
+        // Since this loop is iterating over instances, and instances can share BLAS, we will build these later after identifying unique ones.
+        uniqueBlas[blasEntry].push_back(instance);
+      } else {
+        // Make sure we don't double up on blas entries, this should only happen if theres a bug
+        // TODO (REMIX-3996) will break the assumptions we make here about all instances in a BlasEntry having the same instancesToObject array
+        assert(uniqueBlas.find(blasEntry) == uniqueBlas.end());
+
+        if (blasEntry->dynamicBlas != nullptr) {
           // Move the BLAS used by this geometry to the common pool.
-          // This also ensures the static blas resource that's still being used by previous TLAS is properly tracked for the next frame
-          m_blasPool.push_back(blasEntry->staticBlas);
-          blasEntry->staticBlas = nullptr;
-        }
-      }
-
-      // Figure out if this blas should be a static one
-      const uint32_t minPrimsForStaticBlas = std::max(RtxOptions::Get()->getMinPrimsInStaticBLAS(), 100u);
-      const uint32_t maxPrimsForMergedBlas = RtxOptions::Get()->maxPrimsInMergedBLAS();
-      constexpr uint32_t minFramesWithNoUpdates = 1;
-      uint32_t blasPrims = blasEntry->modifiedGeometryData.calculatePrimitiveCount();
-
-      const bool promoteToStaticBlas = blasPrims > minPrimsForStaticBlas &&
-        blasEntry->frameLastUpdated + minFramesWithNoUpdates < currentFrame;
-      const bool forceStaticBlas = instance->surface.instancesToObject != nullptr ||
-        blasPrims >= maxPrimsForMergedBlas &&
-        blasEntry->input.getSkinningState().numBones == 0 &&
-        blasEntry->frameCreated == blasEntry->frameLastUpdated;
-
-      if ((promoteToStaticBlas || forceStaticBlas) &&
-           instance->buildGeometries.size() == 1) {
-        if (!blasEntry->staticBlas.ptr()) {
-          // Bind opacity micromap
-          // Opacity micromaps must be bound before acceleration sizes are calculated
-          // Note: since opacity micromaps for this frame are scheduled later 
-          //       this will only pickup Opacity Micromaps built in previous frames
-          if (!hasTriedToBindOpacityMicromap && opacityMicromapManager) {
-            boundOpacityMicromapHash = opacityMicromapManager->tryBindOpacityMicromap(ctx, *instance, 0, instance->buildGeometries[0], instanceManager);
-            hasTriedToBindOpacityMicromap = true;
-          }
-
-          VkAccelerationStructureBuildGeometryInfoKHR buildInfo {};
-          buildInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
-          buildInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
-          buildInfo.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR | additionalAccelerationStructureFlags();
-          buildInfo.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
-          buildInfo.geometryCount = 1;
-          buildInfo.pGeometries = instance->buildGeometries.data();
-
-          // Calculate the build sizes for this static BLAS
-          VkAccelerationStructureBuildSizesInfoKHR sizeInfo {};
-          sizeInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
-          m_device->vkd()->vkGetAccelerationStructureBuildSizesKHR(m_device->handle(), VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
-                                                                   &buildInfo, &instance->buildRanges[0].primitiveCount, &sizeInfo);
-
-          blasEntry->staticBlas = createPooledBlas(sizeInfo.accelerationStructureSize, "BLAS Static Merged");
-          blasEntry->staticBlas->opacityMicromapSourceHash = boundOpacityMicromapHash;
-
-          buildInfo.dstAccelerationStructure = blasEntry->staticBlas->accelStructure->getAccelStructure();
-
-          // Allocate a scratch buffer slice
-          const size_t requiredScratchAllocSize = align(sizeInfo.buildScratchSize + m_scratchAlignment, m_scratchAlignment);
-          buildInfo.scratchData.deviceAddress = totalScratchMemory;// temp stuff the scratch offset in here, will fill it in properly later
-          totalScratchMemory += requiredScratchAllocSize;
-
-          assert(buildInfo.scratchData.deviceAddress % m_scratchAlignment == 0); // Note: Required by the Vulkan specification.
-
-          // Put the new BLAS into the build queue
-          blasToBuild.push_back(buildInfo);
-          blasRangesToBuild.push_back(&instance->buildRanges[0]);
-
-          // Track the lifetime of the BLAS buffers
-
-          ctx->getCommandList()->trackResource<DxvkAccess::Write>(blasEntry->staticBlas->accelStructure);
-
-          // Track the lifetime and states of the source geometry buffers
-          trackBlasBuildResources(ctx, execBarriers, blasEntry);
-        }
-      } else { // Non-static blas instance
-        // Previously static BLAS is no longer considered static (i.e. because it started getting animated)
-        if (blasEntry->staticBlas.ptr()) {
-          // Move the BLAS used by this geometry to the common pool.
-          // This also ensures the static blas resource that's still being used by previous TLAS is properly tracked for the next frame
-          m_blasPool.push_back(blasEntry->staticBlas);
-          blasEntry->staticBlas = nullptr;
-        }
-      }
-
-      if (blasEntry->staticBlas.ptr()) {
-        if (instance->surface.instancesToObject == nullptr) {
-          addStaticBlas(instance, blasEntry, nullptr);
-        } else {
-          // This RtInstance is a PointInstancer - it represents multiple instances on the GPU.
-          // Track the starting index for this block of instances in m_reorderedSurfaces.
-          instance->surface.surfaceIndexOfFirstInstance = m_reorderedSurfaces.size();
-
-          // Add the same RtInstance pointer to m_reorderedSurfaces multiple times
-          // Add a separate VkAccelerationStructureInstanceKHR to m_mergedInstances each time.
-          for (auto& instanceToObject : *instance->surface.instancesToObject) {
-            addStaticBlas(instance, blasEntry, &instanceToObject);
-          }
+          // This also ensures the dynamic blas resource that's still being used by previous TLAS is properly tracked for the next frame
+          m_blasPool.push_back(std::move(blasEntry->dynamicBlas));
+          blasEntry->dynamicBlas = nullptr;
         }
 
-
-        blasEntry->staticBlas->frameLastTouched = currentFrame;
-
-        ctx->getCommandList()->trackResource<DxvkAccess::Read>(blasEntry->staticBlas->accelStructure);
-      }
-      else {
         // Calculate the device address for the current instance's transform and write the transform data
         // TODO: only do this for non-identity transforms
-        VkDeviceAddress transformDeviceAddress = m_transformBuffer->getDeviceAddress()
-          + instanceTransforms.size() * sizeof(VkTransformMatrixKHR);
+        VkDeviceAddress transformDeviceAddress = m_transformBuffer->getDeviceAddress() + instanceTransforms.size() * sizeof(VkTransformMatrixKHR);
         instanceTransforms.push_back(instance->getVkInstance().transform);
 
-        for (auto& geometry : instance->buildGeometries)  
+        for (auto& geometry : blasEntry->buildGeometries) {
           geometry.geometry.triangles.transformData.deviceAddress = transformDeviceAddress;
+        }
 
         // Try to merge the instance into one of the blasBuckets
         bool merged = false;
@@ -581,6 +500,7 @@ namespace dxvk {
             break;
           }
         }
+
         // The instance couldn't be merged into any bucket - make a new one
         if (!merged) {
           auto newBucket = std::make_unique<BlasBucket>();
@@ -593,6 +513,130 @@ namespace dxvk {
         // Track the lifetime and states of the source geometry buffers
         trackBlasBuildResources(ctx, execBarriers, blasEntry);
       }
+    }
+
+    // Build/Update the dynamic BLAS
+    for (const std::pair<BlasEntry*, std::vector<RtInstance*>> pair : uniqueBlas) {
+      BlasEntry* blasEntry = pair.first;
+      if (pair.second.size() == 0) {
+        continue;
+      }
+      assert(blasEntry->buildGeometries.size() == 1); // dynamic BLAS should always have this
+      assert(blasEntry->buildRanges.size() == 1); // dynamic BLAS should always have this
+
+      bool forceRebuild = false;
+      XXH64_hash_t boundOpacityMicromapHash = kEmptyHash;
+      if (opacityMicromapManager) {
+        // Check validity of a built BLAS, only if:
+        // We can only support OMM on dynamic BLAS whos surface is unique to that BLAS.  This is so we can benefit from instancing BLAS memory.  
+        // In cases where there are multiple linked instances each with different surfaces OMM would break.
+        bool ommsCompatible = pair.second.size() == 1;
+        const XXH64_hash_t firstOmmHash = OpacityMicromapManager::getOpacityMicromapHash(*pair.second[0]);
+        for (uint32_t i = 1; i < pair.second.size(); i++) {
+          const XXH64_hash_t thisOmmHash = OpacityMicromapManager::getOpacityMicromapHash(*pair.second[i]);
+          if (thisOmmHash != firstOmmHash) {
+            ommsCompatible = false;
+            break;
+          }
+        }
+
+        if (ommsCompatible) {
+          RtInstance* exemplarInstance = pair.second[0];
+
+          // Bind opacity micromap
+          // Opacity micromaps must be bound before acceleration sizes are calculated
+          // Note: since opacity micromaps for this frame are scheduled later 
+          //       this will only pickup Opacity Micromaps built in previous frames
+          boundOpacityMicromapHash = opacityMicromapManager->tryBindOpacityMicromap(ctx, *exemplarInstance, 0, blasEntry->buildGeometries[0], instanceManager);
+
+          if (blasEntry->dynamicBlas.ptr()) {
+            // A previously built BLAS needs to be rebuild if a corresponding Opacity Micromap availability has changed
+            forceRebuild = boundOpacityMicromapHash != blasEntry->dynamicBlas->opacityMicromapSourceHash;
+          }
+        } else if (blasEntry->dynamicBlas.ptr() && blasEntry->dynamicBlas->opacityMicromapSourceHash != kEmptyHash) {
+          // If we had a OMM bound at some point, but now that OMM is invalid, force a rebuild
+          forceRebuild = true;
+        }
+      }
+
+      VkAccelerationStructureBuildGeometryInfoKHR buildInfo {};
+      buildInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
+      buildInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+      buildInfo.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR | additionalAccelerationStructureFlags();
+      buildInfo.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+      buildInfo.geometryCount = 1;
+      buildInfo.pGeometries = blasEntry->buildGeometries.data();
+
+      // Calculate the build sizes for this bucket
+      VkAccelerationStructureBuildSizesInfoKHR sizeInfo {};
+      sizeInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
+      m_device->vkd()->vkGetAccelerationStructureBuildSizesKHR(m_device->handle(), VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
+                                                               &buildInfo, &blasEntry->buildRanges[0].primitiveCount, &sizeInfo);
+
+      // Try to reuse our dynamic BLAS if it exists
+      Rc<PooledBlas>& selectedBlas = blasEntry->dynamicBlas;
+
+      const bool build = forceRebuild || !selectedBlas.ptr() || selectedBlas->accelStructure->info().size != sizeInfo.accelerationStructureSize;
+      const bool update = blasEntry->frameLastUpdated == currentFrame;
+
+      // There is no such BLAS - create one
+      if (build) {
+        if (selectedBlas.ptr()) {
+          // Move the BLAS used by this geometry to the common pool.
+          // This also ensures the dynamic blas resource that's still being used by previous TLAS is properly tracked for the next frame
+          m_blasPool.push_back(std::move(selectedBlas));
+        }
+        selectedBlas = createPooledBlas(sizeInfo.accelerationStructureSize, "BLAS Dynamic");
+      }
+
+      assert(selectedBlas.ptr());
+      selectedBlas->frameLastTouched = currentFrame;
+      blasEntry->dynamicBlas->opacityMicromapSourceHash = boundOpacityMicromapHash;
+
+      if (update || build) {
+        if (update && !build) {
+          buildInfo.srcAccelerationStructure = selectedBlas->accelStructure->getAccelStructure();
+          buildInfo.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR;
+        }
+        // Use the selected BLAS for the build
+        buildInfo.dstAccelerationStructure = selectedBlas->accelStructure->getAccelStructure();
+
+        // Allocate a scratch buffer slice
+        const size_t requiredScratchAllocSize = align(sizeInfo.buildScratchSize + m_scratchAlignment, m_scratchAlignment);
+        buildInfo.scratchData.deviceAddress = totalScratchMemory;
+        totalScratchMemory += requiredScratchAllocSize;
+
+        assert(buildInfo.scratchData.deviceAddress % m_scratchAlignment == 0); // Note: Required by the Vulkan specification.
+
+        // Track the lifetime of the BLAS buffers
+        ctx->getCommandList()->trackResource<DxvkAccess::Write>(selectedBlas->accelStructure);
+
+        // Put the merged BLAS into the build queue
+        blasToBuild.push_back(buildInfo);
+        blasRangesToBuild.push_back(&blasEntry->buildRanges[0]);
+      }
+
+      for (RtInstance* rtInstance : pair.second) {
+        // Append an instance of this merged BLAS to the merged instance list
+        if (rtInstance->surface.instancesToObject == nullptr) {
+          addBlas(rtInstance, blasEntry, nullptr);
+        } else {
+          // This RtInstance is a PointInstancer - it represents multiple instances on the GPU.
+          // Track the starting index for this block of instances in m_reorderedSurfaces.
+          rtInstance->surface.surfaceIndexOfFirstInstance = m_reorderedSurfaces.size();
+
+          // Add the same RtInstance pointer to m_reorderedSurfaces multiple times
+          // Add a separate VkAccelerationStructureInstanceKHR to m_mergedInstances each time.
+          for (auto& instanceToObject : *rtInstance->surface.instancesToObject) {
+            addBlas(rtInstance, blasEntry, &instanceToObject);
+          }
+        }
+      }
+
+      ctx->getCommandList()->trackResource<DxvkAccess::Read>(blasEntry->dynamicBlas->accelStructure);
+
+      // Track the lifetime and states of the source geometry buffers
+      trackBlasBuildResources(ctx, execBarriers, blasEntry);
     }
 
     // Copy the instance transform data to the device
@@ -631,7 +675,7 @@ namespace dxvk {
     for (uint32_t i = 0; i < m_reorderedSurfaces.size(); i++) {
       auto surface = m_reorderedSurfaces[i];
       int primitiveCount = 0;
-      for (const auto& buildRange: surface->buildRanges) {
+      for (const auto& buildRange: surface->getBlas()->buildRanges) {
         primitiveCount += buildRange.primitiveCount;
       }
       m_reorderedSurfacesPrimitiveIDPrefixSum[i + 1] = primitiveCount;
@@ -649,10 +693,10 @@ namespace dxvk {
                 textures, instances, blasBuckets, blasToBuild, blasRangesToBuild, frameTimeMilliseconds, totalScratchMemory);
   }
 
-  void AccelManager::addStaticBlas(RtInstance* instance, BlasEntry* blasEntry, const Matrix4* instanceToObject) {
-    // Create an instance for this static BLAS
+  void AccelManager::addBlas(RtInstance* instance, BlasEntry* blasEntry, const Matrix4* instanceToObject) {
+    // Create an instance for this BLAS
     VkAccelerationStructureInstanceKHR blasInstance = instance->getVkInstance();
-    blasInstance.accelerationStructureReference = blasEntry->staticBlas->accelerationStructureReference;
+    blasInstance.accelerationStructureReference = blasEntry->dynamicBlas->accelerationStructureReference;
     blasInstance.instanceCustomIndex =
       (blasInstance.instanceCustomIndex & ~uint32_t(CUSTOM_INDEX_SURFACE_MASK)) |
       uint32_t(m_reorderedSurfaces.size()) & uint32_t(CUSTOM_INDEX_SURFACE_MASK);
@@ -665,8 +709,7 @@ namespace dxvk {
     }
 
     // Get the instance's flags and apply the objectToWorldMirrored flag.
-    // This flag should only be applied to static BLAS.
-    if (instance->isObjectToWorldMirrored()){
+    if (instance->isObjectToWorldMirrored()) {
       blasInstance.flags ^= VK_GEOMETRY_INSTANCE_TRIANGLE_FLIP_FACING_BIT_KHR;
     }
 
@@ -722,7 +765,7 @@ namespace dxvk {
 
       // There is no such BLAS - create one and put it into the pool
       if (!selectedBlas) {
-        auto newBlas = createPooledBlas(sizeInfo.accelerationStructureSize, "BLAS Pooled");
+        auto newBlas = createPooledBlas(sizeInfo.accelerationStructureSize, "BLAS Merged");
 
         selectedBlas = newBlas.ptr();
 
@@ -919,7 +962,7 @@ namespace dxvk {
           surface.surface.surfaceMaterialIndex,
           geometryData.boundingBox.getTransformedCentroid(surface.getTransform()) };
 
-        if (surface.buildRanges.size() > 0 && surface.buildGeometries.size() > 0) {
+        if (surface.getBlas()->buildRanges.size() > 0 && surface.getBlas()->buildGeometries.size() > 0) {
           curMaterialHashToSurfaceMap[surface.surface.surfaceMaterialIndex].push_back(surfaceIndex);
         }
       } else {
@@ -953,7 +996,7 @@ namespace dxvk {
       for (int ithCandidate = 0; ithCandidate < candidateList.size(); ithCandidate++) {
         int curSurfaceID = candidateList[ithCandidate];
         RtInstance& surface = *m_reorderedSurfaces[curSurfaceID];
-        if (surface.buildGeometries.size() == 0) {
+        if (surface.getBlas()->buildGeometries.size() == 0) {
           continue;
         }
 
@@ -1130,16 +1173,16 @@ namespace dxvk {
     // Make sure we have enough scratch memory for this build job
     if (totalScratchMemory > 0) {
       m_scratchBuffer = getScratchMemory(align(totalScratchMemory, m_scratchAlignment));
+
+      execBarriers.accessBuffer(
+       m_scratchBuffer->getSliceHandle(),
+       VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+       VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_NV,
+       VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+       VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_NV);
+
+      ctx->getCommandList()->trackResource<DxvkAccess::Write>(m_scratchBuffer);
     }
-
-    execBarriers.accessBuffer(
-     m_scratchBuffer->getSliceHandle(),
-     VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
-     VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_NV,
-     VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
-     VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_NV);
-
-    ctx->getCommandList()->trackResource<DxvkAccess::Write>(m_scratchBuffer);
 
     // Execute all barriers generated to this point as part of:
     //  o mergeInstancesIntoBlas()
@@ -1154,16 +1197,16 @@ namespace dxvk {
       }
       assert(blasToBuild.size() == blasRangesToBuild.size());
       ctx->vkCmdBuildAccelerationStructuresKHR(blasToBuild.size(), blasToBuild.data(), blasRangesToBuild.data());
+
+      execBarriers.accessBuffer(
+       m_scratchBuffer->getSliceHandle(),
+       VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+       VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_NV,
+       VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+       VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_NV);
+
+      ctx->getCommandList()->trackResource<DxvkAccess::Read>(m_scratchBuffer);
     }
-
-    execBarriers.accessBuffer(
-     m_scratchBuffer->getSliceHandle(),
-     VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
-     VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_NV,
-     VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
-     VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_NV);
-
-    ctx->getCommandList()->trackResource<DxvkAccess::Read>(m_scratchBuffer);
   }
 
   void AccelManager::buildTlas(Rc<DxvkContext> ctx) {

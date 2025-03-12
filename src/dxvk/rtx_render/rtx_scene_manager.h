@@ -251,11 +251,11 @@ private:
   void onSceneObjectDestroyed(const BlasEntry& pBlas);
 
   // Called whenever a new instance has been added to the database
-  void onInstanceAdded(const RtInstance& instance);
+  void onInstanceAdded(RtInstance& instance);
   // Called whenever instance metadata is updated
   void onInstanceUpdated(RtInstance& instance, const RtSurfaceMaterial& material, const bool hasTransformChanged, const bool hasVerticesdChanged);
   // Called whenever an instance has been removed from the database
-  void onInstanceDestroyed(const RtInstance& instance);
+  void onInstanceDestroyed(RtInstance& instance);
 
   uint64_t drawReplacements(Rc<DxvkContext> ctx, const DrawCallState* input, const std::vector<AssetReplacement>* pReplacements, const MaterialData* overrideMaterialData);
 

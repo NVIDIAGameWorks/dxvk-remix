@@ -352,7 +352,7 @@ namespace dxvk {
       }
     }
 
-  void BlasEntry::unlinkInstance(const RtInstance* instance) {
+  void BlasEntry::unlinkInstance(RtInstance* instance) {
     instance->removeFromSpatialCache();
     auto it = std::find(m_linkedInstances.begin(), m_linkedInstances.end(), instance);
     if (it != m_linkedInstances.end()) {

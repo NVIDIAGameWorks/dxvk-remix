@@ -61,9 +61,9 @@ namespace dxvk {
     , m_startTime(std::chrono::steady_clock::now())
     , m_uniqueObjectSearchDistance(RtxOptions::uniqueObjectDistance()) {
     InstanceEventHandler instanceEvents(this);
-    instanceEvents.onInstanceAddedCallback = [this](const RtInstance& instance) { onInstanceAdded(instance); };
+    instanceEvents.onInstanceAddedCallback = [this](RtInstance& instance) { onInstanceAdded(instance); };
     instanceEvents.onInstanceUpdatedCallback = [this](RtInstance& instance, const RtSurfaceMaterial& material, bool hasTransformChanged, bool hasVerticesChanged) { onInstanceUpdated(instance, material, hasTransformChanged, hasVerticesChanged); };
-    instanceEvents.onInstanceDestroyedCallback = [this](const RtInstance& instance) { onInstanceDestroyed(instance); };
+    instanceEvents.onInstanceDestroyedCallback = [this](RtInstance& instance) { onInstanceDestroyed(instance); };
     m_instanceManager.addEventHandler(instanceEvents);
     
     if (env::getEnvVar("DXVK_RTX_CAPTURE_ENABLE_ON_FRAME") != "") {
@@ -823,13 +823,13 @@ namespace dxvk {
   }
   
   void SceneManager::onSceneObjectDestroyed(const BlasEntry& blas) {
-    for (const RtInstance* instance : blas.getLinkedInstances()) {
+    for (RtInstance* instance : blas.getLinkedInstances()) {
       instance->markForGarbageCollection();
       instance->markAsUnlinkedFromBlasEntryForGarbageCollection();
     }
   }
 
-  void SceneManager::onInstanceAdded(const RtInstance& instance) {
+  void SceneManager::onInstanceAdded(RtInstance& instance) {
     BlasEntry* pBlas = instance.getBlas();
     if (pBlas != nullptr) {
       pBlas->linkInstance(&instance);
@@ -854,7 +854,7 @@ namespace dxvk {
     }
   }
 
-  void SceneManager::onInstanceDestroyed(const RtInstance& instance) {
+  void SceneManager::onInstanceDestroyed(RtInstance& instance) {
     BlasEntry* pBlas = instance.getBlas();
     // Some BLAS were cleared in the SceneManager::garbageCollection().
     // When a BLAS is destroyed, all instances that linked to it will be automatically unlinked. In such case we don't need to

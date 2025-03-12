@@ -3243,7 +3243,11 @@ namespace dxvk {
       ImGui::Checkbox("Enable Triangle Culling (Globally)", &RtxOptions::Get()->enableCullingObject());
       ImGui::Checkbox("Enable Triangle Culling (Override Secondary Rays)", &RtxOptions::Get()->enableCullingInSecondaryRaysObject());
       ImGui::Separator();
-      ImGui::DragInt("Min Prims in Static BLAS", &RtxOptions::Get()->minPrimsInStaticBLASObject(), 1.f, 100, 0);
+      ImGui::DragInt("Min Prims in Dynamic BLAS", &RtxOptions::minPrimsInDynamicBLASObject(), 1.f, 100, 0);
+      ImGui::DragInt("Max Prims in Merged BLAS", &RtxOptions::maxPrimsInMergedBLASObject(), 1.f, 100, 0);
+      ImGui::Checkbox("Force Merge All Meshes", &RtxOptions::forceMergeAllMeshesObject());
+      ImGui::Checkbox("Minimize BLAS Merging", &RtxOptions::minimizeBlasMergingObject());
+      ImGui::Separator();
       ImGui::Checkbox("Portals: Virtual Instance Matching", &RtxOptions::Get()->useRayPortalVirtualInstanceMatchingObject());
       ImGui::Checkbox("Portals: Fade In Effect", &RtxOptions::Get()->enablePortalFadeInEffectObject());
       ImGui::Unindent();

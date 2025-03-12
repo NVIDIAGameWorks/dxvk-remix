@@ -280,6 +280,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.fogIgnoreSky|bool|False|If true, sky draw calls will be skipped when searching for the D3D9 fog values\.|
 |rtx.forceCameraJitter|bool|False|Force enables camera jitter frame to frame\.|
 |rtx.forceCutoutAlpha|float|0.5|When an object is added to the cutout textures list it will have a cutout alpha mode forced on it, using this value for the alpha test\.<br>This is meant to improve the look of some legacy mode materials using low\-resolution textures and alpha blending instead of alpha cutout as this can cause blurry halos around edges due to the difficulty of handling this sort of blending in Remix\.<br>Such objects are generally better handled with actual replacement assets using fully opaque geometry replacements or alpha cutout with higher resolution textures, so this should only be relied on until proper replacements can be authored\.|
+|rtx.forceMergeAllMeshes|bool|False|Force merges all meshes into as few BLAS as possible\.  This is generally not desirable for performance, but can be a useful debugging tool\.|
 |rtx.freeCam.keyMoveBack|unknown type|unknown type|Move back in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveBack = P'|
 |rtx.freeCam.keyMoveDown|unknown type|unknown type|Move down in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveDown = P'|
 |rtx.freeCam.keyMoveFaster|unknown type|unknown type|Move faster in free camera mode\.<br>Example override: 'rtx\.rtx\.freeCam\.keyMoveForward = RSHIFT'|
@@ -361,14 +362,15 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.lowMemoryGpu|bool|False|Enables low memory mode, where we aggressively detune caches and streaming systems to accomodate the lower memory available\.|
 |rtx.maxAnisotropySamples|float|8|The maximum number of samples to use when anisotropic filtering is enabled\.<br>The actual max anisotropy used will be the minimum between this value and the hardware's maximum\. Higher values increase quality but will likely reduce performance\.|
 |rtx.maxFogDistance|float|65504||
-|rtx.maxPrimsInMergedBLAS|int|50000||
+|rtx.maxPrimsInMergedBLAS|int|50000|The maximum number of triangles for a mesh that can be in the merged BLAS\.  |
 |rtx.minOpaqueDiffuseLobeSamplingProbability|float|0.25|The minimum allowed non\-zero value for opaque diffuse probability weights\.|
 |rtx.minOpaqueDiffuseTransmissionLobeSamplingProbability|float|0.25|The minimum allowed non\-zero value for thin opaque diffuse transmission probability weights\.|
 |rtx.minOpaqueOpacityTransmissionLobeSamplingProbability|float|0.25|The minimum allowed non\-zero value for opaque opacity probability weights\.|
 |rtx.minOpaqueSpecularLobeSamplingProbability|float|0.25|The minimum allowed non\-zero value for opaque specular probability weights\.|
-|rtx.minPrimsInStaticBLAS|int|1000||
+|rtx.minPrimsInDynamicBLAS|int|1000|The minimum number of triangles required to promote a mesh to it's own BLAS, otherwise it lands in the merged BLAS with multiple other meshes\.|
 |rtx.minTranslucentSpecularLobeSamplingProbability|float|0.3|The minimum allowed non\-zero value for translucent specular probability weights\.|
 |rtx.minTranslucentTransmissionLobeSamplingProbability|float|0.25|The minimum allowed non\-zero value for translucent transmission probability weights\.|
+|rtx.minimizeBlasMerging|bool|False|Minimize BLAS merging to the minimum possible, this option tries to give all meshes their own BLAS\.  This is generally not desirable forperformance, but can be a useful debugging tool\.|
 |rtx.nativeMipBias|float|0|Specifies a mipmapping level bias to add to all material texture filtering\. Stacks with the upscaling mip bias\.<br>Mipmaps are determined based on how far away a texture is, using this can bias the desired level in a lower quality direction \(positive bias\), or a higher quality direction with potentially more aliasing \(negative bias\)\.<br>Note that mipmaps are also important for good spatial caching of textures, so too far negative of a mip bias may start to significantly affect performance, therefore changing this value is not recommended|
 |rtx.nearPlaneOverride|float|0.1|The near plane value to use for the Camera when the near plane override is enabled\.<br>Only takes effect when rtx\.enableNearPlaneOverride is enabled, see that option for more information about why this is useful\.|
 |rtx.neeCache.ageCullingSpeed|float|0.02|This threshold determines culling speed of an old triangle\. A triangle that is not detected for several frames will be deemed less important and culled quicker\.|
