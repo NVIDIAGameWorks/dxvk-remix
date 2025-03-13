@@ -101,7 +101,7 @@ namespace dxvk {
           "James 'jdswebb' Webb",
           "David 'King David' Wiltos",
           "Dayton 'watbulb'",
-		  "Basil 'EliteCombineSoldier'",
+          "Basil 'EliteCombineSoldier'",
       }},
       { "Engineering",
         { "Riley Alston",
