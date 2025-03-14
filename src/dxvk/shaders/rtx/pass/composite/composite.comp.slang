@@ -230,7 +230,9 @@ void main(uint2 thread_id : SV_DispatchThreadID, uint2 localIndex : SV_GroupThre
   const float perceptualRoughness = primaryVirtualWorldNormalPerceptualRoughness.w;
   // Note: Relying on the same sentinel value outputted to the linear view Z which NRD relies on, so this is safe (and lets us not have to read
   // in the cone radius texture which typically contains the flag we use to determine this).
-  const bool primaryMiss = primaryLinearViewZ == cb.primaryDirectMissLinearViewZ;
+  const bool primaryMiss = primaryLinearViewZ == cb.primaryDirectMissLinearViewZ
+                           && !geometryFlags.performPSTR
+                           && !geometryFlags.performPSRR;  // must not be PSR
 
   const vec3 secondaryAttenuation = r11g11b10ToColor(imageLoad(SecondaryAttenuation, thread_id.xy));
   const vec3 secondaryAlbedo = texelFetch(SecondaryAlbedo, thread_id.xy, 0).xyz;
