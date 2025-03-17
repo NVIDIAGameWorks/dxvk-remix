@@ -102,7 +102,6 @@ namespace dxvk {
           "David 'King David' Wiltos",
           "Dayton 'watbulb'",
           "Basil 'EliteCombineSoldier'",
-          "Lorenzo 'King Vulpes' Acevedo IV",
       }},
       { "Engineering",
         { "Riley Alston",
