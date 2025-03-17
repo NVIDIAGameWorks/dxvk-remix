@@ -254,6 +254,7 @@ namespace dxvk {
     pushArgs.colorGradingEnabled = colorGradingEnabled();
     pushArgs.enableAutoExposure = autoExposureEnabled;
     pushArgs.finalizeWithACES = finalizeWithACES();
+    pushArgs.useLegacyACES = RtxOptions::useLegacyACES();
 
     // Tonemap args
     pushArgs.performSRGBConversion = performSRGBConversion;

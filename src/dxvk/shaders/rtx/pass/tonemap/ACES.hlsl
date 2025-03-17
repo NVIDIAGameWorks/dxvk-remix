@@ -1,3 +1,7 @@
+// ACES operator by Stephen Hill, MJP, David Neubelt
+// The file is received from: https://github.com/TheRealMJP/BakingLab/blob/master/BakingLab/ACES.hlsl
+// SWIPAT filed under: https://nvbugspro.nvidia.com/bug/5182738
+
 //=================================================================================================
 //
 //  Baking Lab
@@ -27,19 +31,27 @@ static const float3x3 ACESOutputMat =
     {-0.00327, -0.07276,  1.07602}
 };
 
-float3 RRTAndODTFit(float3 v)
+float3 RRTAndODTFit(float3 v, bool suppressBlackLevelClamp)
 {
-    float3 a = v * (v + 0.0245786f) - 0.000090537f;
+    // NOTE: ACES with 'suppressBlackLevelClamp=true' is only used in the local tonemapper
+    //       to calculate a multiplier for a given pixel to evaluate its local intensity
+    //       to apply per-pixel exposure normalization to preserve more details, and
+    //       only after that, the actual ACES is applied over that normalized color.
+    //       Without 'suppressBlackLevelClamp=true', the local tonemapper will
+    //       incorrectly crash the almost-black colors because of the local intensity evaluation.
+    //       Look the comments in 'final_combine.comp.slang'
+
+    float3 a = v * (v + 0.0245786f) - (suppressBlackLevelClamp ? 0.f : 0.000090537f);
     float3 b = v * (0.983729f * v + 0.4329510f) + 0.238081f;
     return a / b;
 }
 
-float3 ACESFitted(float3 color)
+float3 ACESFitted(float3 color, bool suppressBlackLevelClamp)
 {
     color = mul(ACESInputMat, color);
 
     // Apply RRT and ODT
-    color = RRTAndODTFit(color);
+    color = RRTAndODTFit(color, suppressBlackLevelClamp);
 
     color = mul(ACESOutputMat, color);
 
