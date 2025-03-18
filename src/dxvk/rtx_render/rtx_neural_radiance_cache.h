@@ -68,13 +68,14 @@ namespace dxvk {
                  "but in cases when its calibrating the workload during \"numFramesToSmoothOutTrainingDimensions\" frames it can overshoot it.\n"
                  "This can happen when the cache resets on a level load or camera cut. In such cases it is preferrable to speed the training up\n"
                  "to make the indirect lighting inference more accurate faster.");
-      RTX_OPTION("rtx.neuralRadianceCache", float, initialTrainingDimensionsMaxPercentage, 0.8, 
-                 "Percentage of max training dimensions to use as initial active training dimensions.\n"
-                 "Higher values ensure enough training records are generated for scenarios with less bounces on average (i.e. <=1) in the very first few frames,\n"
-                 "but can be redundantly more expensive if the pathtracer starts off with 2+ bounces on average.\n"
-                 "Can be set to a higher percentage (i.e. 1) for open-world games with a lot of primary ray misses and shorter paths.\n"
-                 "Can be set to a lower percentage (i.e. 0.8) for indoor games to save some performance.\n"
-                 "Ultimately, this value is not important to tune perfectly as the pathtracer will quickly self-balance according \"targetNumTrainingIterations\".");
+      RTX_OPTION("rtx.neuralRadianceCache", float, averageTrainingBouncesPerPath, 2.15,
+                 "Average number of bounces per path used to calculate max training dimensions.\n"
+                 "Lower values result in higher max training dimensions and higher memory requirements by NRC.\n"
+                 "Lower values boost training dimensions to allows for more training records to get generated in scenes with very few / 1-2 bounces\n"
+                 "(i.e. most of the view being into the sky with small geometric footprint on-screen).\n");
+      RTX_OPTION("rtx.neuralRadianceCache", int, trainingMaxPathBouncesBiasInQualityPresets, 0,
+                 "This is a value added to the default \"trainingMaxPathBounces\" set by NRC quality presets.\n"
+                 "Set to negative value to lower the max number of training bounces and to a higher value to increase it in each quality preset.");
       RTX_OPTION("rtx.neuralRadianceCache", uint32_t, numFramesToSmoothOutTrainingDimensions, 16, "");
       RTX_OPTION("rtx.neuralRadianceCache", bool, trainCache, true, "");
       RTX_OPTION("rtx.neuralRadianceCache", bool, enableDebugResolveMode, false, "");
@@ -85,9 +86,10 @@ namespace dxvk {
                  "The value to use should be same or slightly higher than the number of pixels per training path so that all pixels get cycled through over a smaller time window.");
       RTX_OPTION("rtx.neuralRadianceCache", uint8_t, trainingMaxPathBounces, 15,
                 "The maximum number of indirect bounces the path will be allowed to complete during NRC Update path tracing pass. Must be < 16.\n"
-                "NRC requires this value to be fairly high (10+) for best lighting signal reconstruction."
-                "NRC update pass traces only a very small subset of rays in comparison to NRC query pass,"
-                "and, thus, setting this parameter to a high value has only a minor performance impact.");
+                "NRC requires this value to be fairly high (8+) for best lighting signal reconstruction.\n"
+                "This value can be lower in games with darker surfaces and higher in games with albedos close to 1\n"
+                "and/or to reconstruct lighting phenomena requiring many bounces.\n"
+                "Setting this parameter to a higher has no to minor performance and moderate memory requirements (~10MiB per bounce) impact.");
       RTX_OPTION("rtx.neuralRadianceCache", bool, clearBuffersOnFrameStart, false, "Clears buffers for NRC before they are written to by the the Pathtracer.");
       RTX_OPTION("rtx.neuralRadianceCache", bool, resolveAddPathTracedRadiance, true, "");
       RTX_OPTION("rtx.neuralRadianceCache", bool, resolveAddNrcQueriedRadiance, true, "");
