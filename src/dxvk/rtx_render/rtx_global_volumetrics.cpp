@@ -54,6 +54,8 @@ namespace dxvk {
       END_PARAMETER()
     };
 
+    PREWARM_SHADER_PIPELINE(VolumeRestirShaderInitial);
+
     class VolumeRestirShaderVisibility : public ManagedShader {
       SHADER_SOURCE(VolumeRestirShaderVisibility, VK_SHADER_STAGE_COMPUTE_BIT, volume_restir_visibility)
 
