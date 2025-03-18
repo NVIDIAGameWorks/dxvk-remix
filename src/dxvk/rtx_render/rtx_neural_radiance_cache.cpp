@@ -205,29 +205,36 @@ namespace dxvk {
       }
     }
 
-    constexpr VkDeviceSize mib = 1024 * 1024;
-    const float nrcVideoMemoryUsageMib = static_cast<float>(static_cast<double>(m_nrcVideoMemoryUsage) / mib);
-    ImGui::Text("Video Memory Usage: %.f MiB", nrcVideoMemoryUsageMib);
+    ImGui::Text("Video Memory Usage: %u MiB", m_nrcCtx->getCurrentMemoryConsumption() >> 20);
 
     if (nrcQualityPresetCombo.getKey(&NrcOptions::qualityPresetObject())) {
       applyQualityPreset();
     }
 
-    ImGui::Checkbox("Adaptive Training Dimensions", &NrcOptions::enableAdaptiveTrainingDimensionsObject());
-    ImGui::DragInt("Max Number of Training Iterations", &NrcOptions::maxNumTrainingIterationsObject(), 1.f, 1, 16, "%d", ImGuiSliderFlags_AlwaysClamp);
-    ImGui::DragInt("Target Number of Training Iterations", &NrcOptions::targetNumTrainingIterationsObject(), 1.f, 1, 16, "%d", ImGuiSliderFlags_AlwaysClamp);
-    RTX_OPTION_CLAMP_MAX(NrcOptions::targetNumTrainingIterations, NrcOptions::maxNumTrainingIterations());
-    ImGui::DragFloat("Initial Training Dimensions Percentage", &NrcOptions::initialTrainingDimensionsMaxPercentageObject(), 0.01f, 0.f, 1.f, "%.2f");
-
-    ImGui::Checkbox("Learn Irradiance", &NrcOptions::learnIrradianceObject());
-    ImGui::Checkbox("Include Direct Lighting", &NrcOptions::includeDirectLightingObject());
     ImGui::Checkbox("Reset History", &NrcOptions::resetHistoryObject());
     ImGui::Checkbox("Train Cache", &NrcOptions::trainCacheObject());
-    ImGui::DragInt("Jitter Sequence Length", &NrcOptions::jitterSequenceLengthObject());
-    ImGui::Checkbox("Allow Russian Roulette Usage on Training", &NrcOptions::allowRussianRouletteOnUpdateObject());
     ImGui::Checkbox("Use Custom Network Config \"CustomNetworkConfig.json\"", &m_delayedEnableCustomNetworkConfig);
 
-    ImGui::DragInt("Nrc Update: Max Path Bounces", &NrcOptions::trainingMaxPathBouncesObject(), 0.1f, 0, 15, "%d", ImGuiSliderFlags_AlwaysClamp);
+    if (ImGui::CollapsingHeader("Training", collapsingHeaderFlags)) {
+      ImGui::Indent();
+
+      ImGui::Checkbox("Learn Irradiance", &NrcOptions::learnIrradianceObject());
+      ImGui::Checkbox("Include Direct Lighting", &NrcOptions::includeDirectLightingObject());
+      
+      ImGui::DragInt("Max Number of Training Iterations", &NrcOptions::maxNumTrainingIterationsObject(), 1.f, 1, 16, "%d", ImGuiSliderFlags_AlwaysClamp);
+      ImGui::DragInt("Target Number of Training Iterations", &NrcOptions::targetNumTrainingIterationsObject(), 1.f, 1, 16, "%d", ImGuiSliderFlags_AlwaysClamp);
+      RTX_OPTION_CLAMP_MAX(NrcOptions::targetNumTrainingIterations, NrcOptions::maxNumTrainingIterations());
+
+      ImGui::Checkbox("Adaptive Training Dimensions", &NrcOptions::enableAdaptiveTrainingDimensionsObject());
+      ImGui::DragFloat("Average Number of Vertices Per Path", &NrcOptions::averageTrainingBouncesPerPathObject(), 0.01f, 0.5f, 8.f, "%.1f");
+      ImGui::DragInt("Max Path Bounces", &NrcOptions::trainingMaxPathBouncesObject(), 0.1f, 0, 15, "%d", ImGuiSliderFlags_AlwaysClamp);
+      ImGui::DragInt("Max Path Bounces Bias for Quality Presets", &NrcOptions::trainingMaxPathBouncesBiasInQualityPresetsObject(), 0.1f, -15, 15, "%d", ImGuiSliderFlags_AlwaysClamp);
+
+      ImGui::DragInt("Jitter Sequence Length", &NrcOptions::jitterSequenceLengthObject());
+      ImGui::Checkbox("Allow Russian Roulette Usage", &NrcOptions::allowRussianRouletteOnUpdateObject());
+
+      ImGui::Unindent();
+    }
 
     ImGui::Checkbox("Clear Nrc Buffers On Frame Start", &NrcOptions::clearBuffersOnFrameStartObject());
 
@@ -309,12 +316,17 @@ namespace dxvk {
       NrcOptions::terminationHeuristicThresholdRef() = 0.1f;
       NrcOptions::smallestResolvableFeatureSizeMetersRef() = 0.01f;
       NrcOptions::targetNumTrainingIterationsRef() = 4;
+      // 9 and higher resulted in no scene illumination loss in Portal RTX
+      NrcOptions::trainingMaxPathBouncesRef() = 9;
 
     } else if (NrcOptions::qualityPreset() == QualityPreset::High) {
       Logger::info("[RTX Neural Radiance Cache] Selected High preset mode.");
       NrcOptions::terminationHeuristicThresholdRef() = 0.03f;
       NrcOptions::smallestResolvableFeatureSizeMetersRef() = 0.04f;
       NrcOptions::targetNumTrainingIterationsRef() = 3;
+      // 7 results in tiny scene illumination decrease in comparison to 9
+      NrcOptions::trainingMaxPathBouncesRef() = 7;
+
     } else if (NrcOptions::qualityPreset() == QualityPreset::Medium) {
       Logger::info("[RTX Neural Radiance Cache] Selected Medium preset mode.");
       NrcOptions::terminationHeuristicThresholdRef() = 0.001f;
@@ -326,7 +338,14 @@ namespace dxvk {
 
       // Using only 2 iterations vs default 4 can result in reduced responsiveness, but it saves 0.4ms from NRC and PT passes
       NrcOptions::targetNumTrainingIterationsRef() = 2;
+
+      // Longer training paths require more memory (~5-8+ MB per bounce) and have a slight performance impact (particularly when SER is disabled).
+      NrcOptions::trainingMaxPathBouncesRef() = 6;
     }
+
+    NrcOptions::trainingMaxPathBouncesRef() = std::max<uint8_t>(
+      NrcOptions::trainingMaxPathBounces() + NrcOptions::trainingMaxPathBouncesBiasInQualityPresets(),
+      0);
   }
 
   uint32_t NeuralRadianceCache::calculateTargetNumTrainingRecords() const {
@@ -559,13 +578,9 @@ namespace dxvk {
           frameBeginCtx.downscaledExtent.height
         };
 
-        // Calculate an upper bound for training dimensions where we have X path vertices per pixel on average.
-        // The value was selected to:
-        //  - use a small lower bound to handle scenes where many paths have only 1-2 bounces (i.e. open world)
-        //  - not use too small value resulting in very high upper bound for training dimensions and thus in higher memory overhead by NRC 
-        const float minAverageVerticesPerPixel = 1.5f;
+        // Calculate an upper bound for training dimensions where we have N path vertices per pixel on average
         const nrc_uint2 prevTrainingDimensions = m_nrcCtxSettings->trainingDimensions;
-        m_nrcCtxSettings->trainingDimensions = nrc::computeIdealTrainingDimensions(m_nrcCtxSettings->frameDimensions, minAverageVerticesPerPixel);
+        m_nrcCtxSettings->trainingDimensions = nrc::ComputeIdealTrainingDimensions(m_nrcCtxSettings->frameDimensions, NrcOptions::targetNumTrainingIterations(), NrcOptions::averageTrainingBouncesPerPath());
 
         // Constrain the dimensions to the RT output resolution because training resolution cannot be larger 
         // due to primary rays being aliased for both query and training
@@ -817,14 +832,13 @@ namespace dxvk {
     forceReset |= (frameIdx - m_smoothingResetFrameIdx + 1) > (NrcOptions::numFramesToSmoothOutTrainingDimensions() + kMaxFramesInFlight);
 
     if (!NrcOptions::enableAdaptiveTrainingDimensions() || forceReset) {
-      // Max training dimensions will generally produce many more training records than needed,
+      // Max training dimensions will generally produce more training records than needed,
       // but it will cover scenarios with less bounces on average as well as having higher number records than what's needed for targetNumTrainingIterations.
-      // will boost NRC convergence. Starting off with percentage of max training dimensions allows to balance the cost/benefit. 
+      // will boost NRC convergence.
       // The active training dimensions will converge on a target targetNumTrainingIterations in NrcOptions::numFramesToSmoothOutTrainingDimensions() + kMaxFramesInFlight frames.
-      const float sqrtfInitialPercentage = sqrtf(NrcOptions::initialTrainingDimensionsMaxPercentage());
       m_activeTrainingDimensions = nrc_uint2 {
-        static_cast<uint32_t>(m_nrcCtxSettings->trainingDimensions.x * sqrtfInitialPercentage),
-        static_cast<uint32_t>(m_nrcCtxSettings->trainingDimensions.y * sqrtfInitialPercentage) };
+        static_cast<uint32_t>(m_nrcCtxSettings->trainingDimensions.x),
+        static_cast<uint32_t>(m_nrcCtxSettings->trainingDimensions.y) };
 
       m_smoothingResetFrameIdx = frameIdx;
       m_smoothedNumberOfTrainingRecords = 0;
@@ -883,7 +897,7 @@ namespace dxvk {
   }
 
   uint32_t NeuralRadianceCache::calculateNumTrainingIterations() {
-    // Pathtracer will generally generate a lot of training records
+    // Pathtracer will generally generate more training records
     // until it gets calibrated, since we don't have actual count until m_smoothedNumberOfTrainingRecords is calculated
     // assume plenty have been generated which is usually the case and it allows to to speed up the training.
     // The SDK will pad training iterations with records should the pathtracer not generate enough
