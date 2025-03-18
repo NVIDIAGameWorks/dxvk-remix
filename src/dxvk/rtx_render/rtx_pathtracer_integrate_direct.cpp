@@ -109,9 +109,7 @@ namespace dxvk {
         pipelineManager.registerRaytracingShaders(getPipelineShaders(true, ommEnabled));
       }
 
-      DxvkComputePipelineShaders shaders;
-      shaders.cs = getComputeShader();
-      pipelineManager.createComputePipeline(shaders);
+      getComputeShader();
     } else {
       // Note: The getter for OMM enabled also checks if OMMs are supported, so we do not need to check for that manually.
       const bool ommEnabled = RtxOptions::Get()->getEnableOpacityMicromap();
@@ -119,8 +117,7 @@ namespace dxvk {
       DxvkComputePipelineShaders shaders;
       switch (RtxOptions::Get()->getRenderPassIntegrateDirectRaytraceMode()) {
       case RaytraceMode::RayQuery:
-        shaders.cs = getComputeShader();
-        pipelineManager.createComputePipeline(shaders);
+        getComputeShader();
         break;
       case RaytraceMode::RayQueryRayGen:
         pipelineManager.registerRaytracingShaders(getPipelineShaders(true, ommEnabled));

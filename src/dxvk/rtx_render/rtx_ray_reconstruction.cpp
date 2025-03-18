@@ -81,6 +81,7 @@ namespace dxvk {
 
         END_PARAMETER()
     };
+    PREWARM_SHADER_PIPELINE(PrepareRayReconstructionShader);
   }
 
   DxvkRayReconstruction::DxvkRayReconstruction(DxvkDevice* device)

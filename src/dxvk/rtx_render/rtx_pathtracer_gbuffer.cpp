@@ -203,9 +203,7 @@ namespace dxvk {
             }
           }
 
-          DxvkComputePipelineShaders shaders;
-          shaders.cs = getComputeShader(isPSRPass, nrcEnabled);
-          pipelineManager.createComputePipeline(shaders);
+          getComputeShader(isPSRPass, nrcEnabled);
         }
       }
     } else {
@@ -220,8 +218,7 @@ namespace dxvk {
           DxvkComputePipelineShaders shaders;
           switch (RtxOptions::Get()->getRenderPassGBufferRaytraceMode()) {
           case RaytraceMode::RayQuery:
-            shaders.cs = getComputeShader(isPSRPass, nrcEnabled);
-            pipelineManager.createComputePipeline(shaders);
+            getComputeShader(isPSRPass, nrcEnabled);
             break;
           case RaytraceMode::RayQueryRayGen:
             pipelineManager.registerRaytracingShaders(getPipelineShaders(isPSRPass, true, serEnabled, ommEnabled, includePortals, nrcEnabled));

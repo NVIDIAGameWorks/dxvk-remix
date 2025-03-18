@@ -21,6 +21,11 @@ namespace dxvk {
    */
   struct DxvkComputePipelineShaders {
     Rc<DxvkShader> cs;
+    // Note: This flag should be set for all Remix shaders for the most part not using spec constants.
+    // This allows shaders to bypass needing to be seen and cached to disk on first run before they can be prewarmed in
+    // subsequent runs by indicating that there will be no spec constant state that requires consideration.
+    // If set to false, shaders may cause a blocking stall on first run on a clean system.
+    bool forceNoSpecConstants = false;
 
     bool eq(const DxvkComputePipelineShaders& other) const {
       return cs == other.cs;
@@ -144,6 +149,9 @@ namespace dxvk {
     
     sync::Spinlock                           m_mutex;
     std::vector<DxvkComputePipelineInstance> m_pipelines;
+    // Note: A special pipeline to be used when spec constants are known to not be in use to avoid
+    // needing to rely on cached spec constant state to compile pipelines in advance.
+    std::optional<DxvkComputePipelineInstance> m_noSpecConstantPipelines;
     
     DxvkComputePipelineInstance* createInstance(
       const DxvkComputePipelineStateInfo& state);
