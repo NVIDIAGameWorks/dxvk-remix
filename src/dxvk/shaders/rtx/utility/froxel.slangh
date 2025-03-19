@@ -243,7 +243,7 @@ VolumeLookup froxelCoordinateToPrev(VolumeArgs volumeArgs, uint froxelDepthSlice
     froxelDepthSlices, volumeArgs.froxelDepthSliceDistributionExponent, volumeArgs.froxelMaxDistance, previousCamera.nearPlane,
     previousLookupFroxelPreviousTranslatedWorldPosition);
   
-  reprojectionValid = all(previousFroxelUVW > vec3(0.0f, 0.0f, 0.0f) && previousFroxelUVW < vec3(1.0f, 1.0f, 1.0f));
+  reprojectionValid = all(previousFroxelUVW > vec3(0.0f, 0.0f, 0.0f) && previousFroxelUVW < vec3(1.0f, 1.0f, 1.0f)) && !volumeArgs.resetHistory;
   
   // Note: The previous froxel coordinate/index are only valid if the Froxel UVW coordinate is valid (meaning successful reprojection).
   const uvec3 froxelDimensions = uvec3(volumeArgs.froxelGridDimensions, froxelDepthSlices);

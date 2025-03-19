@@ -612,8 +612,9 @@ namespace dxvk {
     volumeArgs.scatteringCoefficient = volumetricScatteringCoefficient;
     volumeArgs.enableVolumeRISInitialVisibility = enableInitialVisibility();
     volumeArgs.enablevisibilityReuse = visibilityReuse();
-    volumeArgs.enableVolumeTemporalResampling = enableTemporalResampling();
-    volumeArgs.enableVolumeSpatialResampling = enableSpatialResampling();
+    // Note: We need to invalidate the volumetric reservoir when detecting camera cut to avoid accumulating the history from different scenes
+    volumeArgs.enableVolumeTemporalResampling = enableTemporalResampling() && !cameraManager.getMainCamera().isCameraCut();
+    volumeArgs.enableVolumeSpatialResampling = enableSpatialResampling() && !cameraManager.getMainCamera().isCameraCut();
     volumeArgs.numSpatialSamples = spatialReuseMaxSampleCount();
     volumeArgs.spatialSamplingRadius = spatialReuseSamplingRadius();
     volumeArgs.numFroxelVolumes = m_numFroxelVolumes;     
@@ -670,6 +671,9 @@ namespace dxvk {
     if (volumeArgs.froxelMaxDistance > cameraFrustumMaxDistance) {
       ONCE(Logger::info(str::format("[RTX-Compatibility-Info] Volume Froxel Max Distance set to ", volumeArgs.froxelMaxDistance, " but current camera frustum allows only a maximum of ", cameraFrustumMaxDistance)));
     }
+
+    // Note: We need to invalidate the volumetric history buffers (radiance and age buffers) when detecting camera cut to avoid accumulating the history from different scenes
+    volumeArgs.resetHistory = cameraManager.getMainCamera().isCameraCut();
 
     return volumeArgs;
   }
