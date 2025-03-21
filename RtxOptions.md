@@ -636,6 +636,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.shader.recompileOnLaunch|bool|False|When set to true runtime shader recompilation will execute on the first frame after launch\.<br>This option is mainly meant for development use and should not be set for user\-facing operation\. Also see rtx\.useLiveShaderEditMode for a similar option which auto\-detects shader changes instead\.|
 |rtx.shader.useLiveEditMode|bool|False|When set to true shaders will be automatically recompiled when any shader file is updated \(saved for instance\) in addition to the usual manual recompilation trigger\.<br>This option is mainly meant for development use and should not be set for user\-facing operation\.|
 |rtx.shakeCamera|bool|False|Enables animation of the free camera\.|
+|rtx.showLegacyACESOption|bool|False|Show 'rtx\.useLegacyACES' in the developer menu\. Default is OFF, as the non\-legacy ACES is currently experimental and the implementation is a subject to change\.|
 |rtx.showRayReconstructionUI|bool|True|Show ray reconstruction UI\.|
 |rtx.showRaytracingOption|bool|True|Enables or disables the option to toggle ray tracing in the UI\. When set to false the ray tracing checkbox will not appear in the Remix UI\.|
 |rtx.showUI|int|0|0 = Don't Show, 1 = Show Simple, 2 = Show Advanced\.|
@@ -754,6 +755,7 @@ Tables below enumerate all the options and their defaults set by RTX Remix. Note
 |rtx.useHighlightUnsafeAnchorMode|bool|False||
 |rtx.useHighlightUnsafeReplacementMode|bool|False||
 |rtx.useIntersectionBillboardsOnPrimaryRays|bool|False||
+|rtx.useLegacyACES|bool|True|Use a luminance\-only approximation of ACES that over\-saturates the highlights\. If false, use a refined ACES transform that converts between color spaces with more precision\.|
 |rtx.useObsoleteHashOnTextureUpload|bool|False|Whether or not to use slower XXH64 hash on texture upload\.<br>New projects should not enable this option as this solely exists for compatibility with older hashing schemes\.|
 |rtx.usePartialDdsLoader|bool|True|A flag controlling if the partial DDS loader should be used, true to enable, false to disable and use GLI instead\.<br>Generally this should be always enabled as it allows for simple parsing of DDS header information without loading the entire texture into memory like GLI does to retrieve similar information\.<br>Should only be set to false for debugging purposes if the partial DDS loader's logic is suspected to be incorrect to compare against GLI's implementation\.|
 |rtx.usePostFilter|bool|True|Uses post filter to remove fireflies in the denoised result\.|

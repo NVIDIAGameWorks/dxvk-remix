@@ -63,7 +63,9 @@ struct LuminanceArgs
   float highlights;
   uint debugView;
 
-  vec3 padding;
+  uint useLegacyACES;
+  uint pad1;
+  uint pad2;
   uint enableAutoExposure;
 };
 
@@ -103,7 +105,7 @@ struct FinalCombineArgs
 
   uint ditherMode;
   uint frameIndex;
-  uint pad1;
+  uint useLegacyACES;
   uint pad2;
 };
 

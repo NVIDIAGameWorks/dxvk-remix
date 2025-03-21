@@ -183,6 +183,7 @@ namespace dxvk {
       pushArgs.highlights = pow(2.f, -highlights());
       pushArgs.debugView = debugView.debugViewIdx();
       pushArgs.enableAutoExposure = enableAutoExposure;
+      pushArgs.useLegacyACES = RtxOptions::useLegacyACES();
       ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
       ctx->bindResourceView(LUMINANCE_ORIGINAL, rtOutput.m_finalOutput.view(Resources::AccessType::Read), nullptr);
       ctx->bindResourceView(LUMINANCE_OUTPUT, m_mips.views[0], nullptr);
@@ -275,6 +276,7 @@ namespace dxvk {
       pushArgs.enableAutoExposure = enableAutoExposure;
       pushArgs.performSRGBConversion = performSRGBConversion;
       pushArgs.finalizeWithACES = finalizeWithACES();
+      pushArgs.useLegacyACES = RtxOptions::useLegacyACES();
       switch (ditherMode()) {
       case DitherMode::None: pushArgs.ditherMode = ditherModeNone; break;
       case DitherMode::Spatial: pushArgs.ditherMode = ditherModeSpatialOnly; break;
