@@ -793,10 +793,7 @@ namespace dxvk
     poolInfo.queueFamilyIndex = m_device->queues().__DLFG_QUEUE.queueFamily;
   }
 
-  void toNGX(float (&ret)[4][4], const Matrix4& _mat) {
-    // NGX expects row-major matrices. Ours are column-major, so transpose first.
-    Matrix4 mat = transpose(_mat);
-
+  void toNGX(float (&ret)[4][4], const Matrix4& mat) {
     ret[0][0] = mat[0].x;
     ret[0][1] = mat[0].y;
     ret[0][2] = mat[0].z;
