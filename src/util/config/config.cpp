@@ -1330,56 +1330,65 @@ namespace dxvk {
   }
   
   bool Config::parseOptionValue(
-    const std::string& value,
-    VirtualKeys& result) {
+     const std::string& value,
+     VirtualKeys& result) {
     std::stringstream ss(value);
     std::string s;
-    bool bFoundValidConfig = false;
+    bool bFoundValidConfig = true; // Start as true to allow for multiple valid keys
     VirtualKeys virtKeys;
+
     while (std::getline(ss, s, ',')) {
       VirtualKey vk;
-      if(s.find("0x") != std::string::npos) {
-        VkValue vkVal = std::stoul(s, nullptr, 16);
-        vk.val = vkVal;
+
+      if (s.find("0x") != std::string::npos) {
+        try {
+          VkValue vkVal = std::stoul(s, nullptr, 16);
+          vk.val = vkVal;
+        }
+        catch (const std::exception&) {
+          bFoundValidConfig = false;
+          break; // Invalid hex value
+        }
       } else {
         vk = KeyBind::getVk(s);
       }
-      if(!KeyBind::isValidVk(vk)) {
+
+      if (!KeyBind::isValidVk(vk)) {
         bFoundValidConfig = false;
-        break;
+        break; // Invalid virtual key
       }
+
       virtKeys.push_back(vk);
-      bFoundValidConfig = true;
     }
-    if(bFoundValidConfig) {
+
+    if (bFoundValidConfig) {
       result = std::move(virtKeys);
     }
+
     return bFoundValidConfig;
   }
-  
+
   bool Config::parseOptionValue(
-    const std::string&  value,
-          Tristate&     result) {
-    static const std::array<std::pair<const char*, Tristate>, 3> s_lookup = {{
-      { "true",  Tristate::True  },
-      { "false", Tristate::False },
-      { "auto",  Tristate::Auto  },
-    }};
+      const std::string& value,
+      Tristate& result) {
+    static const std::array<std::pair<const char*, Tristate>, 3> s_lookup = { {
+        {"true", Tristate::True},
+        {"false", Tristate::False},
+        {"auto", Tristate::Auto},
+    } };
 
-    return parseStringOption(value,
-      s_lookup.begin(), s_lookup.end(), result);
+    return parseStringOption(value, s_lookup.begin(), s_lookup.end(), result);
   }
-
 
   template<typename I, typename V>
   bool Config::parseStringOption(
-          std::string   str,
-          I             begin,
-          I             end,
-          V&            value) {
+      std::string str,
+      I begin,
+      I end,
+      V& value) {
     str = Config::toLower(str);
 
-    for (auto i = begin; i != end; i++) {
+    for (auto i = begin; i != end; ++i) {
       if (str == i->first) {
         value = i->second;
         return true;
