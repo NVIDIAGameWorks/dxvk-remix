@@ -1030,6 +1030,76 @@ namespace {
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
 
+  remixapi_ErrorCode REMIXAPI_CALL remixapi_AddTextureHash(
+    const char* textureCategory,
+    const char* textureHash) {
+    std::lock_guard lock { s_mutex };
+
+    if (!textureCategory || textureCategory[0] == '\0' || !textureHash) {
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+    }
+
+    std::string strCategory = std::string { textureCategory };
+    const auto& globalRtxOptions = dxvk::RtxOptionImpl::getGlobalRtxOptionMap();
+    const XXH64_hash_t optionHash = dxvk::StringToXXH64(strCategory, 0);
+    auto found = globalRtxOptions.find(optionHash);
+    if (found == globalRtxOptions.end()) {
+      return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
+    }
+
+    if (found->second->type != dxvk::OptionType::HashSet) {
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+    }
+
+    auto& textureSet = *found->second->valueList[(int) dxvk::RtxOptionImpl::ValueType::Value].hashSet;
+
+    const XXH64_hash_t h = std::stoull(textureHash, nullptr, 16);
+    const auto textureIterator = textureSet.find(h);
+
+    if (textureIterator == textureSet.end()) {
+      textureSet.insert(h);
+    } else {
+      return REMIXAPI_ERROR_CODE_SUCCESS; // already exists
+    }
+
+    return REMIXAPI_ERROR_CODE_SUCCESS;
+  }
+
+  remixapi_ErrorCode REMIXAPI_CALL remixapi_RemoveTextureHash(
+    const char* textureCategory,
+    const char* textureHash) {
+    std::lock_guard lock { s_mutex };
+
+    if (!textureCategory || textureCategory[0] == '\0' || !textureHash) {
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+    }
+
+    std::string strCategory = std::string { textureCategory };
+    const auto& globalRtxOptions = dxvk::RtxOptionImpl::getGlobalRtxOptionMap();
+    const XXH64_hash_t optionHash = dxvk::StringToXXH64(strCategory, 0);
+    auto found = globalRtxOptions.find(optionHash);
+    if (found == globalRtxOptions.end()) {
+      return REMIXAPI_ERROR_CODE_GENERAL_FAILURE;
+    }
+
+    if (found->second->type != dxvk::OptionType::HashSet) {
+      return REMIXAPI_ERROR_CODE_INVALID_ARGUMENTS;
+    }
+
+    auto& textureSet = *found->second->valueList[(int) dxvk::RtxOptionImpl::ValueType::Value].hashSet;
+
+    const XXH64_hash_t h = std::stoull(textureHash, nullptr, 16);
+    const auto textureIterator = textureSet.find(h);
+
+    if (textureIterator != textureSet.end()) {
+       textureSet.erase(textureIterator);
+    } else {
+      return REMIXAPI_ERROR_CODE_SUCCESS; // does not exist
+    }
+
+    return REMIXAPI_ERROR_CODE_SUCCESS;
+  }
+
   remixapi_ErrorCode REMIXAPI_CALL remixapi_pick_RequestObjectPicking(
     const remixapi_Rect2D* pixelRegion,
     PFN_remixapi_pick_RequestObjectPickingUserCallback callback,
@@ -1497,6 +1567,8 @@ extern "C"
       interf.DestroyLight = remixapi_DestroyLight;
       interf.DrawLightInstance = remixapi_DrawLightInstance;
       interf.SetConfigVariable = remixapi_SetConfigVariable;
+      interf.AddTextureHash = remixapi_AddTextureHash;
+      interf.RemoveTextureHash = remixapi_RemoveTextureHash;
       interf.dxvk_CreateD3D9 = remixapi_dxvk_CreateD3D9_legacy;
       interf.dxvk_RegisterD3D9Device = remixapi_dxvk_RegisterD3D9Device;
       interf.dxvk_GetExternalSwapchain = remixapi_dxvk_GetExternalSwapchain;
@@ -1506,7 +1578,7 @@ extern "C"
       interf.pick_RequestObjectPicking = remixapi_pick_RequestObjectPicking;
       interf.pick_HighlightObjects = remixapi_pick_HighlightObjects;
     }
-    static_assert(sizeof(interf) == 168, "Add/remove function registration");
+    static_assert(sizeof(interf) == 184, "Add/remove function registration");
 
     *out_result = interf;
     return REMIXAPI_ERROR_CODE_SUCCESS;
