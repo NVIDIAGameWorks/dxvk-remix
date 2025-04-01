@@ -63,6 +63,9 @@ namespace dxvk {
     /// by the specification.
     VkDeviceSize requiredAlignmentOverride = 1;
     // NV-DXVK end
+
+    // Shared handle info
+    DxvkSharedHandleInfo sharing;
   };
   
   
