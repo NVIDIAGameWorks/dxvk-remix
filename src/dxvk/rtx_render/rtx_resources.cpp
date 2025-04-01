@@ -110,8 +110,8 @@ namespace dxvk {
     return resource;
   }
 
-  Resources::SharedResource::SharedResource(Resources::Resource& _resource)
-    : resource(_resource) {
+  Resources::SharedResource::SharedResource(Resources::Resource&& _resource)
+    : resource(std::move(_resource)) {
   }
 
   Resources::AliasedResource::AliasedResource(Rc<DxvkContext>& ctx,
