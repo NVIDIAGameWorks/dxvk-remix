@@ -400,7 +400,7 @@ namespace dxvk {
     }
   }
 
-  void OpacityMicromapManager::destroyOmmData(OpacityMicromapCache::iterator& ommCacheItemIter, bool destroyParentInstanceOmmRequestContainer) {
+  void OpacityMicromapManager::destroyOmmData(OpacityMicromapCache::iterator ommCacheItemIter, bool destroyParentInstanceOmmRequestContainer) {
     const XXH64_hash_t ommSrcHash = ommCacheItemIter->first;
     OpacityMicromapCacheItem& ommCacheItem = ommCacheItemIter->second;
     const OpacityMicromapCacheState ommCacheState = ommCacheItem.cacheState;

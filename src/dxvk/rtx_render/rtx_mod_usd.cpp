@@ -710,7 +710,7 @@ void UsdMod::Impl::processReplacementRecursive(Args& args, const pxr::UsdPrim& p
     processLight(args, prim, isRoot);
   }
   auto children = prim.GetFilteredChildren(pxr::UsdPrimIsActive);
-  for (auto& child : children) {
+  for (auto child : children) {
     processReplacementRecursive(args, child);
   }
 }
