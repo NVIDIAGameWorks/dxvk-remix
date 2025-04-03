@@ -248,6 +248,8 @@ namespace dxvk {
 
     globalSettings.maxNumFramesInFlight = kMaxFramesInFlight;
 
+    globalSettings.depsDirectoryPath = !NrcCtxOptions::cudaDllDepsDirectoryPath().empty() ? NrcCtxOptions::cudaDllDepsDirectoryPath().c_str() : nullptr;
+
     // Initialize the NRC Library
     nrc::Status status = nrc::vulkan::Initialize(globalSettings);
     if (status != nrc::Status::OK) {

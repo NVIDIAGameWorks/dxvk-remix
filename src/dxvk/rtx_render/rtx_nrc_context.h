@@ -36,6 +36,7 @@ namespace dxvk {
     RTX_OPTION("rtx.neuralRadianceCache", bool, enableCustomNetworkConfig, false,
                "Enables usage of a custom config \"CustomNetworkConfig.json\" for NRC.\n"
                "The file needs to be present in the application's working directory.");
+    RTX_OPTION_ENV("rtx.neuralRadianceCache", std::string, cudaDllDepsDirectoryPath, std::string(), "RTX_NRC_CUDA_DEPS_DIR", "Optional setting for specifying a custom directory path where the CUDA run-time dll dependencies are located.");
   };
 
   // Encapsulates lower level calls to NRC library and management of memory objects shared between NRC and the app
