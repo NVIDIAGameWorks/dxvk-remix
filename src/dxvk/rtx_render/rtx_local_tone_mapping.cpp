@@ -114,6 +114,11 @@ namespace dxvk {
       END_PARAMETER()
     };
     PREWARM_SHADER_PIPELINE(FinalCombineShader);
+
+
+    float safeEVLog2(float v) {
+      return log2f(std::max(1e-10f, v));
+    }
   }
   
   DxvkLocalToneMapping::DxvkLocalToneMapping(DxvkDevice* device)
@@ -173,11 +178,12 @@ namespace dxvk {
     {
       ScopedGpuProfileZone(ctx, "Luminance");
       LuminanceArgs pushArgs = {};
-      pushArgs.exposure = exposure();
+      pushArgs.exposure = exp2f(safeEVLog2(exposure()) + RtxOptions::calcUserEVBias());
       pushArgs.shadows = pow(2.f, shadows());
       pushArgs.highlights = pow(2.f, -highlights());
       pushArgs.debugView = debugView.debugViewIdx();
       pushArgs.enableAutoExposure = enableAutoExposure;
+      pushArgs.useLegacyACES = RtxOptions::useLegacyACES();
       ctx->pushConstants(0, sizeof(pushArgs), &pushArgs);
       ctx->bindResourceView(LUMINANCE_ORIGINAL, rtOutput.m_finalOutput.view(Resources::AccessType::Read), nullptr);
       ctx->bindResourceView(LUMINANCE_OUTPUT, m_mips.views[0], nullptr);
@@ -264,12 +270,13 @@ namespace dxvk {
         1.0f / mipResolution.x,
         1.0f / mipResolution.y
       };
-      pushArgs.exposure = exposure();
+      pushArgs.exposure = exp2f(safeEVLog2(exposure()) + RtxOptions::calcUserEVBias());
       pushArgs.resolution = uvec2 { finalResolution.width, finalResolution.height };
       pushArgs.debugView = debugView.debugViewIdx();
       pushArgs.enableAutoExposure = enableAutoExposure;
       pushArgs.performSRGBConversion = performSRGBConversion;
       pushArgs.finalizeWithACES = finalizeWithACES();
+      pushArgs.useLegacyACES = RtxOptions::useLegacyACES();
       switch (ditherMode()) {
       case DitherMode::None: pushArgs.ditherMode = ditherModeNone; break;
       case DitherMode::Spatial: pushArgs.ditherMode = ditherModeSpatialOnly; break;

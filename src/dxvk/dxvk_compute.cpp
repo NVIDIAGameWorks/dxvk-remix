@@ -50,6 +50,10 @@ namespace dxvk {
   
   
   DxvkComputePipeline::~DxvkComputePipeline() {
+    if (m_noSpecConstantPipelines) {
+      this->destroyPipeline(m_noSpecConstantPipelines->pipeline());
+    }
+
     for (const auto& instance : m_pipelines)
       this->destroyPipeline(instance.pipeline());
   }
@@ -74,13 +78,21 @@ namespace dxvk {
     if (!instance)
       return VK_NULL_HANDLE;
 
-    this->writePipelineStateToCache(state);
+    // Note: Only write pipelines with actual spec constant state to the cache as
+    // without this state there is nothing to cache (and circumventing this disk caching
+    // dependency is part of the point of the flag to force no spec constants anyways).
+    if (!m_shaders.forceNoSpecConstants) {
+      this->writePipelineStateToCache(state);
+    }
+
     return instance->pipeline();
   }
 
 
   void DxvkComputePipeline::compilePipeline(
     const DxvkComputePipelineStateInfo& state) {
+    ScopedCpuProfileZone();
+
     std::lock_guard<sync::Spinlock> lock(m_mutex);
 
     if (!this->findInstance(state))
@@ -93,12 +105,29 @@ namespace dxvk {
     VkPipeline newPipelineHandle = this->createPipeline(state);
 
     m_pipeMgr->m_numComputePipelines += 1;
-    return &m_pipelines.emplace_back(state, newPipelineHandle);
+
+    if (m_shaders.forceNoSpecConstants) {
+      return &m_noSpecConstantPipelines.emplace(state, newPipelineHandle);
+    } else {
+      return &m_pipelines.emplace_back(state, newPipelineHandle);
+    }
   }
 
   
   DxvkComputePipelineInstance* DxvkComputePipeline::findInstance(
     const DxvkComputePipelineStateInfo& state) {
+    // Handle forced no spec constant case
+
+    if (m_shaders.forceNoSpecConstants) {
+      if (m_noSpecConstantPipelines) {
+        return &*m_noSpecConstantPipelines;
+      } else {
+        return nullptr;
+      }
+    }
+
+    // Handle typical pipeline state case
+
     for (auto& instance : m_pipelines) {
       if (instance.isCompatible(state))
         return &instance;
@@ -118,11 +147,15 @@ namespace dxvk {
     }
     
     DxvkSpecConstants specData;
-    for (uint32_t i = 0; i < m_layout->bindingCount(); i++)
-      specData.set(i, state.bsBindingMask.test(i), true);
-    
-    for (uint32_t i = 0; i < MaxNumSpecConstants; i++)
-      specData.set(getSpecId(i), state.sc.specConstants[i], 0u);
+
+    // Note: Only set spec constants if they are needed.
+    if (!m_shaders.forceNoSpecConstants) {
+      for (uint32_t i = 0; i < m_layout->bindingCount(); i++)
+        specData.set(i, state.bsBindingMask.test(i), true);
+
+      for (uint32_t i = 0; i < MaxNumSpecConstants; i++)
+        specData.set(getSpecId(i), state.sc.specConstants[i], 0u);
+    }
 
     VkSpecializationInfo specInfo = specData.getSpecInfo();
     
@@ -171,6 +204,8 @@ namespace dxvk {
   
   void DxvkComputePipeline::writePipelineStateToCache(
     const DxvkComputePipelineStateInfo& state) const {
+    assert(!m_shaders.forceNoSpecConstants);
+
     if (m_pipeMgr->m_stateCache == nullptr)
       return;
     

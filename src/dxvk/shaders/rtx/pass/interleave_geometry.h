@@ -36,7 +36,7 @@
 
 namespace interleaver {
 
-  enum class SupportedVkFormats {
+  enum SupportedVkFormats : uint32_t {
     VK_FORMAT_R8G8B8A8_UNORM = 37,
     VK_FORMAT_A2B10G10R10_SNORM_PACK32 = 65,
 

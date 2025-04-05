@@ -997,6 +997,12 @@ namespace dxvk {
       const static ImGuiTabBarFlags tab_bar_flags = ImGuiTabBarFlags_NoCloseWithMiddleMouseButton;
       const static ImGuiTabItemFlags tab_item_flags = ImGuiTabItemFlags_NoCloseWithMiddleMouseButton;
 
+      {
+        ImGui::TextSeparator("Display Settings");
+        ImGui::SliderInt("Brightness##user", &RtxOptions::userBrightnessObject(), 0, 100, "%d", ImGuiSliderFlags_AlwaysClamp);
+        ImGui::Dummy({ 0.f, 4.f });
+      }
+
       if (ImGui::BeginTabBar("Settings Tabs", tab_bar_flags)) {
         if (ImGui::BeginTabItem("General", nullptr, tab_item_flags)) {
           showUserGeneralSettings(ctx, subItemWidth, subItemIndent);
@@ -3217,11 +3223,23 @@ namespace dxvk {
 
       if (ImGui::CollapsingHeader("Tonemapping", collapsingHeaderClosedFlags))
       {
+        ImGui::SliderInt("User Brightness", &RtxOptions::userBrightnessObject(), 0, 100, "%d");
+        ImGui::DragFloat("User Brightness EV Range", &RtxOptions::userBrightnessEVRangeObject(), 0.5f, 0.f, 10.f, "%.1f");
+        ImGui::Separator();
         ImGui::Combo("Tonemapping Mode", &RtxOptions::Get()->tonemappingModeObject(), "Global\0Local\0");
         if (RtxOptions::Get()->tonemappingMode() == TonemappingMode::Global) {
           common->metaToneMapping().showImguiSettings();
         } else {
           common->metaLocalToneMapping().showImguiSettings();
+        }
+        if (RtxOptions::showLegacyACESOption()) {
+          ImGui::Separator();
+          ImGui::Checkbox("Use Legacy ACES", &RtxOptions::useLegacyACESObject());
+          if (!RtxOptions::useLegacyACES()) {
+            ImGui::Indent();
+            ImGui::TextWrapped("WARNING: Non-legacy ACES is currently experimental and the implementation is a subject to change.");
+            ImGui::Unindent();
+          }
         }
       }
 

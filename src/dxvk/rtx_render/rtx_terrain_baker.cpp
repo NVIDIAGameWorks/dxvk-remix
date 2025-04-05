@@ -714,7 +714,8 @@ namespace dxvk {
 
         if (texture.views.size() > 0) {
           for (Rc<DxvkImageView>& view : texture.views) {
-            textureManager.releaseTexture(TextureRef(view));
+            auto viewRef = TextureRef(view);
+            textureManager.releaseTexture(viewRef);
           }
         }
       }
@@ -910,7 +911,8 @@ namespace dxvk {
       
       if (texture.views.size() > 0) {
         for (Rc<DxvkImageView>& view : texture.views) {
-          textureManager.releaseTexture(TextureRef(view));
+          auto viewRef = TextureRef(view);
+          textureManager.releaseTexture(viewRef);
         }
       }
       texture.reset();

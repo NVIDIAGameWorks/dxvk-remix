@@ -196,13 +196,8 @@ namespace dxvk {
 
         // Currently automatic prewarm only applies to compute shaders
         if (shader->stage() != VK_SHADER_STAGE_COMPUTE_BIT) {
-          Logger::err(str::format("Attempted to prewarm shader (stage=", shader->stage(),") when we only support automatic prewarming for compute"));
-          return;
+          Logger::warn(str::format("Attempted to prewarm shader (name=", shader->debugName(), ", stage=", shader->stage(), ") when currently only automatic prewarming for compute shaders is supported."));
         }
-
-        DxvkComputePipelineShaders shaders;
-        shaders.cs = shader;
-        pipelineManager.createComputePipeline(shaders);
       }
 
       s_shaderGetters.clear();

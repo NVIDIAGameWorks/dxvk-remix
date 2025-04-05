@@ -464,7 +464,7 @@ namespace dxvk {
     void deleteCachedSourceData(fast_unordered_cache<CachedSourceData>::iterator sourceDataIter, OpacityMicromapCacheState ommCacheState, bool destroyParentInstanceOmmRequestContainer);
     void deleteCachedSourceData(XXH64_hash_t ommSrcHash, OpacityMicromapCacheState ommCacheState, bool destroyParentInstanceOmmRequestContainer);
     bool insertToUnprocessedList(const OmmRequest& ommRequest, std::list<XXH64_hash_t>::iterator& cacheStateListIter);
-    void destroyOmmData(OpacityMicromapCache::iterator& ommCacheIterator, bool destroyParentInstanceOmmRequestContainer = true);
+    void destroyOmmData(OpacityMicromapCache::iterator ommCacheIterator, bool destroyParentInstanceOmmRequestContainer = true);
     void destroyOmmData(XXH64_hash_t ommSrcHash);
     static OpacityMicromapInstanceData& getOmmInstanceData(const RtInstance& instance);
 

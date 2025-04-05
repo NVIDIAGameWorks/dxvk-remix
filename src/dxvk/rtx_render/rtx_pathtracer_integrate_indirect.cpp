@@ -293,9 +293,7 @@ namespace dxvk {
             }
           }
 
-          DxvkComputePipelineShaders shaders;
-          shaders.cs = getComputeShader(useNeeCache, nrcEnabled);
-          pipelineManager.createComputePipeline(shaders);
+          getComputeShader(useNeeCache, nrcEnabled);
         }
       }
     } else {
@@ -311,8 +309,7 @@ namespace dxvk {
           DxvkComputePipelineShaders shaders;
           switch (RtxOptions::Get()->getRenderPassIntegrateIndirectRaytraceMode()) {
           case RaytraceMode::RayQuery:
-            shaders.cs = getComputeShader(useNeeCache, nrcEnabled);
-            pipelineManager.createComputePipeline(shaders);
+            getComputeShader(useNeeCache, nrcEnabled);
             break;
           case RaytraceMode::RayQueryRayGen:
             pipelineManager.registerRaytracingShaders(getPipelineShaders(true, serEnabled, ommEnabled, useNeeCache, includesPortals, pomEnabled, nrcEnabled));

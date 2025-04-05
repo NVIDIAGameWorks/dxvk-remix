@@ -872,6 +872,7 @@ namespace dxvk {
                                                 "geometrydescriptor,"
                                                 "vertexlayout" },
         { "rtx.allowCubemaps",                  "True" },
+      { "rtx.showLegacyACESOption",                             "True"   },
     }} },
     /* Kohan II                                  */
     { R"(\\k2\.exe$)", {{

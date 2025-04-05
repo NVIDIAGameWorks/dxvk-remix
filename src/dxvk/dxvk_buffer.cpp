@@ -126,6 +126,17 @@ namespace dxvk {
     info.size                  = m_physSliceStride * sliceCount;
     info.usage                 = m_info.usage | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 
+    // NV-DXVK start: include external memory handle type flags if specified
+    VkExternalMemoryBufferCreateInfo extMemBufferCreateInfo = {};
+    if (m_info.sharing.mode != DxvkSharedHandleMode::None) {
+      extMemBufferCreateInfo.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO;
+      extMemBufferCreateInfo.handleTypes = m_info.sharing.type;
+      extMemBufferCreateInfo.pNext = nullptr;
+      info.pNext = &extMemBufferCreateInfo;
+    }
+    // NV-DXVK end
+
+
     if (!isAccelerationStructure && m_device->features().vulkan12Features.bufferDeviceAddress)
     {
       info.usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
@@ -173,6 +184,21 @@ namespace dxvk {
 
     vkd->vkGetBufferMemoryRequirements2(
        vkd->device(), &memReqInfo, &memReq);
+
+    // NV-DXVK start: include external memory handle type flags if specified
+    VkExportMemoryAllocateInfo exportMemoryAllocateInfo = {};
+    if (m_info.sharing.mode == DxvkSharedHandleMode::Export) {
+      exportMemoryAllocateInfo.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
+      exportMemoryAllocateInfo.handleTypes = m_info.sharing.type;
+      exportMemoryAllocateInfo.pNext = VK_NULL_HANDLE;
+      dedMemoryAllocInfo.pNext = &exportMemoryAllocateInfo;
+      dedicatedRequirements.requiresDedicatedAllocation = VK_TRUE;
+      dedicatedRequirements.prefersDedicatedAllocation = VK_TRUE;
+    } else if (m_info.sharing.mode == DxvkSharedHandleMode::Import) {
+      // TODO: not yet implemented
+      assert(false);
+    }
+    // NV-DXVK end
 
     // NV-DXVK start: Increase memory requirement alignment based on override requirement.
     // Note: This increase in alignment is safe to do as long as the override alignment is less than or equal to the maximum alignment

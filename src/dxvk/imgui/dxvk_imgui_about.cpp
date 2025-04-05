@@ -100,9 +100,9 @@ namespace dxvk {
           "Friedrich 'pixelcluster' Vock",
           "James 'jdswebb' Webb",
           "David 'King David' Wiltos",
-          "Dayton 'watbulb'"
+          "Dayton 'watbulb'",
           "Basil 'EliteCombineSoldier'",
-          "Lorenzo 'King Vulpes' Acevedo IV"
+          "Lorenzo 'King Vulpes' Acevedo IV",
       }},
       { "Engineering",
         { "Riley Alston",

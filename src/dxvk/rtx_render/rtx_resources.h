@@ -86,7 +86,7 @@ namespace dxvk
 
     class SharedResource : public RcObject {
     public:
-      SharedResource(Resource& _resource);
+      SharedResource(Resource&& _resource);
 #ifdef REMIX_DEVELOPMENT  
       std::weak_ptr<const AliasedResource*> owner;
 #endif

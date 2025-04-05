@@ -90,7 +90,7 @@ To profile:
 ### Remix API
 
 If there's an intent to use the Remix Renderer in projects with *available* source code, Direct3D 9 API can be utilized, since Remix's `d3d9.dll` implements the Direct3D 9 API.
-Alternatively, Remix API can be used to programmatically pass the game data to the Remix Renderer, with *or* instead of Direct3D API. [Click for more info.](/tests/rtx/apps/README.md)
+Alternatively, Remix API can be used to programmatically pass the game data to the Remix Renderer, with *or* instead of Direct3D API. [Click for more info.](/documentation/RemixSDK.md)
 
 ## Project Documentation
 
@@ -98,7 +98,7 @@ Alternatively, Remix API can be used to programmatically pass the game data to t
 - [Foliage System](/documentation/FoliageSystem.md)
 - [GPU Print](/documentation/GpuPrint.md)
 - [Opacity Micromap](/documentation/OpacityMicromap.md)
-- [Remix API](/tests/rtx/apps/README.md)
+- [Remix API](/documentation/RemixSDK.md)
 - [Rtx Options](/RtxOptions.md)
 - [Terrain System](/documentation/TerrainSystem.md)
 - [Unit Test](/documentation/UnitTest.md)

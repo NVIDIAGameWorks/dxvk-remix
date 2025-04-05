@@ -39,8 +39,6 @@ namespace dxvk {
     DxvkTemporalAA(DxvkDevice* device);
     ~DxvkTemporalAA();
 
-    void prewarmShaders(DxvkPipelineManager& pipelineManager) const;
-
     void dispatch(
       Rc<DxvkContext> ctx,
       Rc<DxvkSampler> linearSampler,

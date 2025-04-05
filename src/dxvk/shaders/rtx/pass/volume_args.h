@@ -87,8 +87,9 @@ struct VolumeArgs {
   vec3 planetCenter;
   float atmosphereRadius;
 
-  vec3 pad;
+  vec2 pad;
   float maxAttenuationDistanceForNoAtmosphere;
+  uint resetHistory;
 };
 
 #ifdef __cplusplus

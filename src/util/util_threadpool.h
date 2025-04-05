@@ -115,8 +115,8 @@ namespace dxvk {
 
   private:
     std::array<uint8_t, Capacity> storage;
-    bool hasResult = false;
-    bool isDisposed = false;
+    std::atomic_bool hasResult = false;
+    std::atomic_bool isDisposed = false;
 
     OnSetCondition cond;
     mutable ResultMutex mtx;
@@ -292,7 +292,7 @@ namespace dxvk {
     : m_numThread(std::clamp(numThreads, (uint8_t)1u, (uint8_t)dxvk::thread::hardware_concurrency())) {
       // Note: round up to a closest power-of-two so we can use mask as modulo
       m_taskCount = 1 << (32 - bit::lzcnt(static_cast<uint32_t>(NumTasksPerThread * m_numThread) - 1));
-      m_tasks.resize(m_taskCount);
+      m_tasks.reset(new Task[m_taskCount]);
       m_workerTasks.resize(m_numThread);
       m_workerThreads.resize(m_numThread);
       // Create the work queues first!  We need to create
@@ -443,7 +443,7 @@ namespace dxvk {
       return true;
     }
 
-    std::vector<Task> m_tasks;
+    std::unique_ptr<Task[]> m_tasks;
     std::atomic<TaskId> m_taskId = 0;
     uint32_t m_taskCount;
 
