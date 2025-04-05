@@ -349,7 +349,7 @@ namespace dxvk {
 
     auto lowGraphicsPresetCommonSettings = [&]() {
       pathMinBouncesRef() = 0;
-      pathMaxBouncesRef() = 2;
+      pathMaxBouncesRef() = 1;
       enableTransmissionApproximationInIndirectRaysRef() = true;
       enableUnorderedEmissiveParticlesInIndirectRaysRef() = false;
       denoiseDirectAndIndirectLightingSeparatelyRef() = false;
@@ -422,7 +422,8 @@ namespace dxvk {
       DxvkRayReconstruction::modelRef() = DxvkRayReconstruction::RayReconstructionModel::Transformer;
     } else if (graphicsPreset() == GraphicsPreset::Medium) {
       lowGraphicsPresetCommonSettings();
-
+      pathMinBouncesRef() = 0;
+      pathMaxBouncesRef() = 2;
       russianRouletteMaxContinueProbabilityRef() = 0.7f;
       russianRoulette1stBounceMinContinueProbabilityRef() = 0.4f;
 
