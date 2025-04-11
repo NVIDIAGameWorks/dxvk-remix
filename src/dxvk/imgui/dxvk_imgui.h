@@ -156,8 +156,6 @@ namespace dxvk {
     bool                  m_userGraphicsSettingChanged = false;
     bool m_hudMessageTimeReset = false;
     std::chrono::time_point<std::chrono::steady_clock> m_hudMessageStartTime;
-    ShaderMessageType m_shaderMessage = ShaderMessageType::None;
-    std::chrono::time_point<std::chrono::steady_clock> m_shaderMessageTimeout;
     bool m_reflexRangesInitialized = false;
     float m_currentGameToRenderDurationMin;
     float m_currentGameToRenderDurationMax;
@@ -219,7 +217,7 @@ namespace dxvk {
 
     void showEnhancementsWindow(const Rc<DxvkContext>& ctx);
     void showEnhancementsTab(const Rc<DxvkContext>& ctx);
-    void showAppConfig(const Rc<DxvkContext>& ctx);
+    void showDevelopmentSettings(const Rc<DxvkContext>& ctx);
 
     // helper to display a configurable grid of all textures currently hooked to ImGUI
     void showTextureSelectionGrid(const Rc<DxvkContext>& ctx, const char* uniqueId, const uint32_t texturesPerRow, const float thumbnailSize, const float minChildHeight = 600.0f);

@@ -476,8 +476,9 @@ namespace dxvk {
     }
     
 #ifdef REMIX_DEVELOPMENT
-    // Check if the Shader Manager has been requested to recompile shaders at runtime
-    ShaderManager::getInstance()->checkForShaderChanges();
+    // Update the Shader Manager
+
+    ShaderManager::getInstance()->update();
 #endif
 
     const float frameTimeMilliseconds = RtxOptions::Get()->timeDeltaBetweenFrames() == 0.f ? getWallTimeSinceLastCall() : RtxOptions::Get()->timeDeltaBetweenFrames();
