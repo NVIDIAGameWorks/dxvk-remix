@@ -919,7 +919,7 @@ namespace dxvk {
               m_about->show(ctx);
               break;
             case kTab_Development:
-              showAppConfig(ctx);
+              showDevelopmentSettings(ctx);
               break;
             }
             m_curTab = tab;
@@ -1554,7 +1554,7 @@ namespace dxvk {
     }
   }
 
-  void ImGUI::showAppConfig(const Rc<DxvkContext>& ctx) {
+  void ImGUI::showDevelopmentSettings(const Rc<DxvkContext>& ctx) {
     ImGui::PushItemWidth(250);
     if (ImGui::Button("Take Screenshot")) {
       RtxContext::triggerScreenshot();
@@ -1564,38 +1564,80 @@ namespace dxvk {
 
     ImGui::SameLine(200.f);
     ImGui::Checkbox("Include G-Buffer", &RtxOptions::Get()->captureDebugImageObject());
+
+    ImGui::Separator();
         
 #ifdef REMIX_DEVELOPMENT
-    { // Recompile Shaders button and its status message
+    { // Recompile Shaders button and its status information (Only available for Development Remix builds)
+      const auto& shaderManager{ ShaderManager::getInstance() };
+      const auto shaderReloadPhase{ shaderManager->getShaderReloadPhase() };
+      const auto lastShaderReloadStatus{ shaderManager->getLastShaderReloadStatus() };
+
+      // Note: Only allow the Recompile Shaders button to function if a shader recompile is not currently in progress (be
+      // it one manually initiated by the user, or something automatic from the live shader edit mode).
+      ImGui::BeginDisabled(shaderReloadPhase != ShaderManager::ShaderReloadPhase::Idle);
+
       if (ImGui::Button("Recompile Shaders")) {
-        if (ShaderManager::getInstance()->reloadShaders())
-          m_shaderMessage = ShaderMessageType::Ok;
-        else
-          m_shaderMessage = ShaderMessageType::Error;
-
-        // Set a 5 seconds timeout to hide the message later
-        m_shaderMessageTimeout = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        shaderManager->requestReloadShaders();
       }
 
-      if (m_shaderMessage != ShaderMessageType::None) {
-        // Display the message: green OK if successful, red ERROR if not
-        ImGui::SameLine();
-        ImGui::PushStyleColor(ImGuiCol_Text, m_shaderMessage == ShaderMessageType::Ok ? 0xff40ff40 : 0xff4040ff);
-        ImGui::TextUnformatted(m_shaderMessage == ShaderMessageType::Ok ? "OK" : "ERROR");
-        ImGui::PopStyleColor();
-
-        // Hide the message after a timeout
-        if (std::chrono::steady_clock::now() > m_shaderMessageTimeout) {
-          m_shaderMessage = ShaderMessageType::None;
-        }
-      }
+      ImGui::EndDisabled();
 
       ImGui::SameLine(200.f);
       ImGui::Checkbox("Live shader edit mode", &RtxOptions::Shader::useLiveEditModeObject());
 
-      ImGui::InputText("Shader Binary File Path", &RtxOptions::Shader::shaderBinaryPathObject(), ImGuiInputTextFlags_EnterReturnsTrue);
+      const char* shaderReloadPhaseText;
+      const char* lastShaderReloadStatusText;
+      ImVec4 shaderReloadPhaseTextColor;
+      ImVec4 lastShaderReloadStatusTextColor;
+
+      switch (shaderReloadPhase) {
+      default: assert(false); [[fallthrough]];
+      case ShaderManager::ShaderReloadPhase::Idle:
+        shaderReloadPhaseText = "Idle";
+        shaderReloadPhaseTextColor = ImVec4(0.5f, 0.5f, 0.5f, 1.0f);
+        break;
+      case ShaderManager::ShaderReloadPhase::SPIRVRecompilation:
+        shaderReloadPhaseText = "Working (SPIR-V Recompilation)";
+        shaderReloadPhaseTextColor = ImVec4(0.73f, 0.87f, 0.54f, 1.0f);
+        break;
+      case ShaderManager::ShaderReloadPhase::ShaderRecreation:
+        shaderReloadPhaseText = "Working (Shader Recreation)";
+        shaderReloadPhaseTextColor = ImVec4(0.73f, 0.87f, 0.54f, 1.0f);
+        break;
+      }
+
+      switch (lastShaderReloadStatus) {
+      default: assert(false); [[fallthrough]];
+      case ShaderManager::ShaderReloadStatus::Unknown:
+        lastShaderReloadStatusText = "N/A";
+        lastShaderReloadStatusTextColor = ImVec4(0.5f, 0.5f, 0.5f, 1.0f);
+        break;
+      case ShaderManager::ShaderReloadStatus::Failure:
+        lastShaderReloadStatusText = "Failure";
+        lastShaderReloadStatusTextColor = ImVec4(0.83f, 0.32f, 0.32f, 1.0f);
+        break;
+      case ShaderManager::ShaderReloadStatus::Success:
+        lastShaderReloadStatusText = "Success";
+        lastShaderReloadStatusTextColor = ImVec4(0.44f, 0.81f, 0.42f, 1.0f);
+        break;
+      }
+
+      ImGui::TextUnformatted("Shader Reload Phase:");
+      ImGui::SameLine();
+      ImGui::PushStyleColor(ImGuiCol_Text, shaderReloadPhaseTextColor);
+      ImGui::TextUnformatted(shaderReloadPhaseText);
+      ImGui::PopStyleColor();
+
+      ImGui::TextUnformatted("Last Shader Reload Status:");
+      ImGui::SameLine();
+      ImGui::PushStyleColor(ImGuiCol_Text, lastShaderReloadStatusTextColor);
+      ImGui::TextUnformatted(lastShaderReloadStatusText);
+      ImGui::PopStyleColor();
     }
 #endif
+
+    ImGui::Separator();
 
     showVsyncOptions(false);
 

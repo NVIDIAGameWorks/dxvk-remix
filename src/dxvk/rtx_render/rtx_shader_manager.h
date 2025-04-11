@@ -22,7 +22,7 @@
 #pragma once
 
 #include <vector>
-#include <filesystem>
+#include <windows.h>
 
 #include "dxvk_include.h"
 #include "dxvk_shader.h"
@@ -207,6 +207,18 @@ namespace dxvk {
 
   class ShaderManager {
   public:
+    enum class ShaderReloadPhase {
+      Idle,
+      SPIRVRecompilation,
+      ShaderRecreation,
+    };
+
+    enum class ShaderReloadStatus {
+      Unknown,
+      Failure,
+      Success,
+    };
+
     ShaderManager(const ShaderManager& other) = delete;
     ShaderManager(ShaderManager&& other) noexcept = delete;
     ShaderManager& operator=(const ShaderManager& other) = delete;
@@ -222,11 +234,6 @@ namespace dxvk {
     void addGlobalExtraLayout(const VkDescriptorSetLayout extraLayout) {
       m_extraLayouts.push_back(extraLayout);
     }
-
-#ifdef REMIX_DEVELOPMENT
-    void checkForShaderChanges();
-    bool reloadShaders();
-#endif
 
     template<typename T>
     Rc<DxvkShader> getShader() {
@@ -271,6 +278,23 @@ namespace dxvk {
       }
     }
 
+#ifdef REMIX_DEVELOPMENT
+    // Updates the Shader Manager, should be called every frame.
+    void update();
+
+    // Requests shaders to be reloaded via the runtime shader recompilation system. This call may block on SPIR-V shader compilation if rtx.shader.asyncSpirVRecompilation
+    // is set to false. Note that in either case some blocking will occur either on this call or on update when the driver compiles the SPIR-V to ISA.
+    // This function should not be called if getShaderReloadPhase returns a non-Idle phase as this indicates shader reloading is already in progress.
+    // See getLastShaderReloadStatus for information about the reloading process after this function has been called, though do note results may take some time to
+    // become available if asynchronous SPIR-V compilation is used.
+    void requestReloadShaders();
+    // Gets the current phase of the runtime shader recompilation system.
+    ShaderReloadPhase getShaderReloadPhase() const;
+    // Gets the status of the last shader reload request. Unknown generally indicates no reload request has started or one is in progress, whereas Success/Failure indicate
+    // if the reload was successful or not.
+    ShaderReloadStatus getLastShaderReloadStatus() const;
+#endif
+
   private:
 
     struct ShaderInfo {
@@ -286,7 +310,7 @@ namespace dxvk {
     };
 
     ShaderManager();
-    ~ShaderManager() = default;
+    ~ShaderManager();
 
     Rc<DxvkShader> createShader(const ShaderInfo& info) {
       DxvkShaderOptions options;
@@ -306,11 +330,45 @@ namespace dxvk {
       return shader;
     }
 
+#ifdef REMIX_DEVELOPMENT
+    // Allocates a change notification to watch the shader directory for changes. This function can be called even if
+    // the change notification is already allocated and no new allocation will be done. Returns true if the allocation
+    // was successful or the change notification was already allocated, false otherwise.
+    bool allocateShaderChangeNotification();
+    // Frees the change notification. This function can be called even if the change notification is already freed.
+    void freeShaderChangeNotification();
+    // Returns true if the shadersChanged parameter was written to, false if an error occured.
+    // If shadersChanged was written to, a value of true indicates one or more files in the shader directory have changed since the last time it was checked, false otherwise.
+    bool checkShaderChangeNotification(bool& shadersChanged);
+
+    // Dispatches a process to recompile shaders to SPIR-V binaries. Returns true if the process was created successfully, false otherwise.
+    bool dispatchSpirVRecompilation();
+    // Tries to get the results from a currently active SPIR-V recompilation process, meaning this function must only be called when getShaderReloadPhase
+    // is in the SPIR-V recompilation phase. If blockUntilCompletion is set to true, this function will block until the process completes and a result
+    // is available. The completed parameter will be set to true if the process is complete (always will be the case when blocking) and indicate that a
+    // result has been written to the result parameter. The result parameter when written to will indicate if the process returned a successful exit code
+    // or not, a success indicating that SPIR-V binaries should be ready to process. Returns true if the query succeeded, false otherwise. Note that neither
+    // completed nor result will be written to if an error occured and false is returned.
+    bool tryGetSpirVRecompilationResults(bool blockUntilCompletion, bool& completed, bool& result);
+    // Frees handles associated with the SPIR-V recompilation process. This must only be called when getShaderReloadPhase is in the SPIR-V recompilation phase,
+    // and ideally only after the process has exited (or been terminated).
+    void freeSpirVRecompilationHandles();
+    // Abruptly terminates the SPIR-V recompilation process. This should only be used in error conditions or when the result of the recompilation is no
+    // longer important.
+    void terminateSpirVRecompilation();
+
+    // Re-creates shaders in the Shader manager based on SPIR-V binaries written to disk by the SPIR-V recompilation process.
+    void recreateShaders();
+
+    // Tries to finalize the shader reloading process after a request to reload shaders has been submitted via requestReloadShaders. Can either be blocking or
+    // non-blocking depending on the blockUntilComplete parameter. If non-blocking this call may not do anything if work is not yet ready to be finalized.
+    // After the shader reloading is finalized however, new recreated shaders should be ready to use if no errors have occured.
+    void tryFinalizeReloadShaders(bool blockUntilComplete);
+#endif
+
     static ShaderManager* s_instance;
 
-    const std::filesystem::path m_shaderBinaryPath;
-    bool m_recompileShadersOnLaunch;
-    // HANDLE m_shaderChangeNotificationObject;
+    // General State
 
     DxvkDevice* m_device;
 
@@ -318,5 +376,18 @@ namespace dxvk {
 
     std::unordered_map<std::string, ShaderInfo> m_shaderMap;
     dxvk::mutex m_shaderMapLock;
+
+    // Runtime Shader Recompilation State
+
+#ifdef REMIX_DEVELOPMENT
+    bool m_recompileShadersOnLaunch;
+    HANDLE m_shaderChangeNotificationObject{ NULL };
+
+    // The current phase of the runtime shader recompilation system.
+    ShaderReloadPhase m_shaderReloadPhase{ ShaderReloadPhase::Idle };
+    // The status of the last shader reload, if any. Will be set to unknown if no reload has occured or if one is in progress.
+    ShaderReloadStatus m_lastShaderReloadStatus{ ShaderReloadStatus::Unknown };
+    PROCESS_INFORMATION m_spirVRecompilationDispatchInformation;
+#endif
   };
 }

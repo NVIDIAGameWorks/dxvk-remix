@@ -409,27 +409,11 @@ nrc_dep = declare_dependency(
 )
 
 generated_dxvk_shaders = glsl_generator.process(dxvk_shaders)
-
-rtx_shaders_command = [ python_interpreter, shader_compile_script,
-    '-glslang', glsl_compiler,
-    '-slangc', slang_compiler,
-    '-input', '@CURRENT_SOURCE_DIR@/shaders/rtx',
-    '-include', '@CURRENT_SOURCE_DIR@/shaders',
-    '-include', rtxdi_include_path_string,
-    '-include', volumetrics_include_path_string,
-    '-include', rtxcr_include_path_string,
-    '-output', '@OUTDIR@/rtx_shaders',
-    '-parallel' ]
-
-if get_option('buildtype').startswith('debug')
-  rtx_shaders_command += [ '-debug' ]
-endif
-
 rtx_shaders = custom_target(
   'rtx_shaders',
   build_by_default: true,
   output: ['_built_shaders.txt'],
-  command: rtx_shaders_command
+  command: [ python_interpreter ] + rtx_shaders_command_arguments
 )
 
 dxvk_embedded_data_files = files([
