@@ -227,7 +227,7 @@ struct RaytraceArgs {
   uint16_t translucentTransmissionLobeSamplingProbabilityZeroThreshold;
   uint16_t minTranslucentTransmissionLobeSamplingProbability;
   float roughnessDemodulationOffset;
-  uint timeSinceStartMS;
+  float timeSinceStartSeconds;
   
   uint enableCalculateVirtualShadingNormals;
   uint enableDirectLighting;

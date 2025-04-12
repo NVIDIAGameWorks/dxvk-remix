@@ -219,8 +219,9 @@ struct RtSurface {
 
     std::uint32_t textureSpritesheetData = 0;
 
-    textureSpritesheetData |= (static_cast<uint32_t>(spriteSheetRows) << 0);
-    textureSpritesheetData |= (static_cast<uint32_t>(spriteSheetCols) << 8);
+    // Clamp rows and cols to at least 1, to avoid divide by 0 errors.
+    textureSpritesheetData |= (static_cast<uint32_t>(std::max<uint8_t>(1, spriteSheetRows)) << 0);
+    textureSpritesheetData |= (static_cast<uint32_t>(std::max<uint8_t>(1, spriteSheetCols)) << 8);
     textureSpritesheetData |= (static_cast<uint32_t>(spriteSheetFPS) << 16);
     // pack decalSortOrder into data13.x's last 8 bits.
     textureSpritesheetData |= (static_cast<uint32_t>(decalSortOrder) << 24);

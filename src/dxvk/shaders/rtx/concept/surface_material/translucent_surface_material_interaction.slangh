@@ -40,7 +40,7 @@ float16_t translucentSurfaceMaterialInteractionGetThinWallThickness(
 TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreate(
   TranslucentSurfaceMaterial translucentSurfaceMaterial,
   Surface surface,
-  SurfaceInteraction surfaceInteraction,
+  inout SurfaceInteraction surfaceInteraction,
   MinimalRayInteraction minimalRayInteraction)
 {
   TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteraction;
@@ -52,31 +52,41 @@ TranslucentSurfaceMaterialInteraction translucentSurfaceMaterialInteractionCreat
   f16vec4 transmittanceOrDiffuseSample;
   f16vec4 emissiveColorSample;
 
+  bool secondNormalLoaded = false;
+  if (cb.translucentMaterialArgs.animatedWaterEnable && surface.isAnimatedWater)
+  {
+    vec2 uvSize, uvBias;
+    calcSpritesheetValues(
+      cb.timeSinceStartSeconds,
+      surface.spriteSheetRows,
+      surface.spriteSheetCols,
+      surface.spriteSheetFPS,
+      uvSize,
+      uvBias);
+
+    // The UV as it was before applying a spritesheet (in 0-1 space).
+    const vec2 uvPreSpritesheet = frac(surfaceInteraction.textureCoordinates * vec2(surface.spriteSheetCols, surface.spriteSheetRows));
+
+    // The texcoords with primary motion applied, put back into spritesheet space.
+    const vec2 primaryUV = uvBias + uvSize *(frac(uvPreSpritesheet + cb.timeSinceStartSeconds * cb.translucentMaterialArgs.animatedWaterPrimaryNormalMotion));
+
+    // Take a second sample before taking the primary, so that we don't have to keep the secondary UV around.
+    // Use a lod bias now and a different texcoord velocity to make it a second 'layer' of normals.
+    const vec2 secondaryUV = uvBias + uvSize *(frac(uvPreSpritesheet + cb.timeSinceStartSeconds * cb.translucentMaterialArgs.animatedWaterSecondaryNormalMotion));
+    const float lodBias = cb.translucentMaterialArgs.animatedWaterSecondaryNormalLodBias;
+
+    surfaceInteraction.textureCoordinates = secondaryUV;;
+    secondNormalLoaded = surfaceMaterialInteractionTextureReadHelper(translucentSurfaceMaterial.normalTextureIndex, translucentSurfaceMaterial.samplerIndex, surfaceInteraction, secondNormalSample, lodBias);
+    surfaceInteraction.textureCoordinates = primaryUV;
+  }
+
   const bool normalLoaded = surfaceMaterialInteractionTextureReadHelper(translucentSurfaceMaterial.normalTextureIndex, translucentSurfaceMaterial.samplerIndex, surfaceInteraction, normalSample);
   // Note: Premultiplied alpha should really be used here for the transmittance or diffuse color as without it "transparent" regions of the texture in the diffuse color case for
   // example may cause incorrect coloration on the edges of more opaque regions due to texture filtering. This is hard to ensure on the art pipeline side of things however.
   const bool transmittanceOrDiffuseLoaded = surfaceMaterialInteractionTextureReadHelper(translucentSurfaceMaterial.transmittanceOrDiffuseTextureIndex, translucentSurfaceMaterial.samplerIndex, surfaceInteraction, transmittanceOrDiffuseSample);
   const bool emissiveColorLoaded = surfaceMaterialInteractionTextureReadHelper(translucentSurfaceMaterial.emissiveColorTextureIndex, translucentSurfaceMaterial.samplerIndex, surfaceInteraction, emissiveColorSample);
 
-  bool secondNormalLoaded = false;
-  if (cb.opaqueMaterialArgs.layeredWaterNormalEnable && surface.isAnimatedWater)
-  {
-    // take a second sample from a higher LOD using a modified texture xform
-    const vec2 motionScale = vec2(cb.opaqueMaterialArgs.layeredWaterNormalMotionX, cb.opaqueMaterialArgs.layeredWaterNormalMotionY) * cb.opaqueMaterialArgs.layeredWaterNormalMotionScale;
-    const float lodBias = cb.opaqueMaterialArgs.layeredWaterNormalLodBias;
-
-    mat4x2 xform = surface.textureTransform;
-    xform[0][2] *= motionScale.x;
-    xform[1][2] *= motionScale.y;
-
-    vec2 savedCoordinates = surfaceInteraction.textureCoordinates;
-    surfaceInteraction.textureCoordinates = mul(xform, float4(surfaceInteraction.textureCoordinates, 0.f, 1.f)).xy;
-    secondNormalLoaded = surfaceMaterialInteractionTextureReadHelper(translucentSurfaceMaterial.normalTextureIndex, translucentSurfaceMaterial.samplerIndex, surfaceInteraction, secondNormalSample, lodBias);
-    surfaceInteraction.textureCoordinates = savedCoordinates;
-  }
-
   // Create a tangent to world space matrix for future calculations
-
   const f16mat3 tangentToWorld = transpose(f16mat3(surfaceInteraction.interpolatedTangent, surfaceInteraction.interpolatedBitangent, surfaceInteraction.interpolatedNormal));
 
   // Load Normal

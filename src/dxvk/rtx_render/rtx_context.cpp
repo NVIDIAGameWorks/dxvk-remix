@@ -1193,7 +1193,7 @@ namespace dxvk {
     // at the 24 bit boundary (as we use a 8 bit scalar on top of this time which we want to fit into 32 bits without issues,
     // plus we also convert this value to a floating point value at some point as well which has 23 bits of precision).
     // Bitwise and used rather than modulus as well for slightly better performance.
-    constants.timeSinceStartMS = static_cast<uint32_t>(getSceneManager().getGameTimeSinceStartMS()) & ((1U << 24U) - 1U);
+    constants.timeSinceStartSeconds = (static_cast<uint32_t>(getSceneManager().getGameTimeSinceStartMS()) & ((1U << 24U) - 1U)) / 1000.f;
 
     m_common->metaRtxdiRayQuery().setRaytraceArgs(rtOutput);
     getSceneManager().getLightManager().setRaytraceArgs(

@@ -152,7 +152,7 @@ void calcSpriteSheetAdjustment(
   inout vec2 textureCoordinates,
   inout vec2 textureGradientX,
   inout vec2 textureGradientY,
-  uint32_t timeSinceStartMS,
+  float timeSinceStartSeconds,
   uint8_t spriteSheetRows,
   uint8_t spriteSheetCols,
   uint8_t spriteSheetFPS)
@@ -162,17 +162,35 @@ void calcSpriteSheetAdjustment(
   {
     return;
   }
-
-  const uint numSprites = spriteSheetCols * spriteSheetRows;
-  // Note: timeSinceStartMS is clamped to 2^24 - 1 on the CPU side so this multiplication shouldn't overflow.
-  const uint frame = ((timeSinceStartMS * spriteSheetFPS) / 1000) % numSprites;
-
-  const vec2 uvSize = vec2(1.0f / spriteSheetCols, 1.0f / spriteSheetRows);
-  const vec2 uvBias = vec2(frame % spriteSheetCols, frame / spriteSheetCols) * uvSize;
+  vec2 uvSize, uvBias;
+  calcSpritesheetValues(
+    timeSinceStartSeconds,
+    spriteSheetRows,
+    spriteSheetCols,
+    spriteSheetFPS,
+    uvSize,
+    uvBias);
 
   textureCoordinates = uvBias + frac(textureCoordinates) * uvSize;
   textureGradientX *= uvSize;
   textureGradientY *= uvSize;
+}
+
+void calcSpritesheetValues(
+  float timeSinceStartSeconds,
+  uint8_t spriteSheetRows,
+  uint8_t spriteSheetCols,
+  uint8_t spriteSheetFPS,
+  inout vec2 uvSize,
+  inout vec2 uvBias
+)
+{
+  const uint numSprites = spriteSheetCols * spriteSheetRows;
+  // Note: timeSinceStartSeconds is clamped to (2^24 - 1) / 1000 on the CPU side so this multiplication shouldn't overflow.
+  const uint frame = (uint(timeSinceStartSeconds * spriteSheetFPS)) % numSprites;
+
+  uvSize = vec2(1.0f / spriteSheetCols, 1.0f / spriteSheetRows);
+  uvBias = vec2(frame % spriteSheetCols, frame / spriteSheetCols) * uvSize;
 }
 
 SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
@@ -581,7 +599,7 @@ SurfaceInteraction surfaceInteractionCreate<let GenerateTangents : bool>(
       surfaceInteraction.textureCoordinates,
       surfaceInteraction.textureGradientX,
       surfaceInteraction.textureGradientY,
-      cb.timeSinceStartMS,
+      cb.timeSinceStartSeconds,
       surface.spriteSheetRows,
       surface.spriteSheetCols,
       surface.spriteSheetFPS);
