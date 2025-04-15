@@ -96,7 +96,6 @@ namespace dxvk {
           "Alexander 'xoxor4d' Engel",
           "James Horsley 'mmdanggg2'",
           "Leonardo Leotte",
-          "Jeffrey (skurtyyskirts) Munoz",
           "Nico Rodrigues-McKenna",
           "Friedrich 'pixelcluster' Vock",
           "James 'jdswebb' Webb",
